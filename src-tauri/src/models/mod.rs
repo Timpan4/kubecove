@@ -30,6 +30,14 @@ pub struct ResourceDetails {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceDetailsFull {
+    pub summary: ResourceSummary,
+    pub yaml: String,
+    pub metadata: serde_json::Value,
+    pub status: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppError {
     pub message: String,
     pub kind: String,

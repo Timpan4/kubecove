@@ -1,5 +1,5 @@
 import { invoke, InvokeOptions } from "@tauri-apps/api/core";
-import type { ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetails, AppError } from "./types";
+import type { ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetails, ResourceDetailsFull, AppError } from "./types";
 
 export interface TauriClient {
   invoke<T>(cmd: string, args?: Record<string, unknown>, options?: InvokeOptions): Promise<T>;
@@ -47,6 +47,16 @@ export async function getResourceYaml(
   namespace?: string
 ): Promise<ResourceDetails> {
   return client.invoke<ResourceDetails>("get_resource_yaml", { clusterContext, kind, name, namespace });
+}
+
+export async function getResourceDetails(
+  client: TauriClient,
+  clusterContext: string,
+  kind: string,
+  name: string,
+  namespace?: string
+): Promise<ResourceDetailsFull> {
+  return client.invoke<ResourceDetailsFull>("get_resource_details", { clusterContext, kind, name, namespace });
 }
 
 export function isAppError(value: unknown): value is AppError {
