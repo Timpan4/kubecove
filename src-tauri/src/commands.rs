@@ -1,4 +1,4 @@
-use crate::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary};
+use crate::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetails};
 use chrono::{DateTime, TimeZone, Utc};
 use kube::{
     api::Api,
@@ -211,4 +211,100 @@ pub async fn list_resources(
     namespace: Option<String>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
     resources_summary_from(cluster_context, kind, namespace).await
+}
+
+pub async fn resource_yaml_from(
+    cluster_context: String,
+    kind: String,
+    name: String,
+    namespace: Option<String>,
+) -> Result<ResourceDetails, AppError> {
+    let options = KubeConfigOptions {
+        context: Some(cluster_context.clone()),
+        ..Default::default()
+    };
+
+    let config = kube::Config::from_kubeconfig(&options)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+
+    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+
+    match kind.as_str() {
+        "Pod" => {
+            let api: Api<k8s_openapi::api::core::v1::Pod> = if let Some(ns) = &namespace {
+                Api::namespaced(client, ns)
+            } else {
+                Api::all(client)
+            };
+            let pod = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let yaml = serde_yaml::to_string(&pod).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            Ok(ResourceDetails {
+                kind: "Pod".to_string(),
+                cluster: cluster_context,
+                name,
+                namespace,
+                yaml,
+            })
+        }
+        "Deployment" => {
+            let api: Api<k8s_openapi::api::apps::v1::Deployment> = if let Some(ns) = &namespace {
+                Api::namespaced(client, ns)
+            } else {
+                Api::all(client)
+            };
+            let deploy = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let yaml = serde_yaml::to_string(&deploy).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            Ok(ResourceDetails {
+                kind: "Deployment".to_string(),
+                cluster: cluster_context,
+                name,
+                namespace,
+                yaml,
+            })
+        }
+        "Service" => {
+            let api: Api<k8s_openapi::api::core::v1::Service> = if let Some(ns) = &namespace {
+                Api::namespaced(client, ns)
+            } else {
+                Api::all(client)
+            };
+            let svc = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let yaml = serde_yaml::to_string(&svc).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            Ok(ResourceDetails {
+                kind: "Service".to_string(),
+                cluster: cluster_context,
+                name,
+                namespace,
+                yaml,
+            })
+        }
+        "ConfigMap" => {
+            let api: Api<k8s_openapi::api::core::v1::ConfigMap> = if let Some(ns) = &namespace {
+                Api::namespaced(client, ns)
+            } else {
+                Api::all(client)
+            };
+            let cm = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let yaml = serde_yaml::to_string(&cm).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            Ok(ResourceDetails {
+                kind: "ConfigMap".to_string(),
+                cluster: cluster_context,
+                name,
+                namespace,
+                yaml,
+            })
+        }
+        _ => Err(AppError::new(format!("unsupported resource kind: {}", kind), "cluster")),
+    }
+}
+
+#[tauri::command]
+pub async fn get_resource_yaml(
+    cluster_context: String,
+    kind: String,
+    name: String,
+    namespace: Option<String>,
+) -> Result<ResourceDetails, AppError> {
+    resource_yaml_from(cluster_context, kind, name, namespace).await
 }
