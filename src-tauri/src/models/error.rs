@@ -12,6 +12,8 @@ pub enum AppError {
     Resource(String),
     #[error("serialization error: {0}")]
     Serialization(String),
+    #[error("kube error: {0}")]
+    Kube(String),
 }
 
 impl AppError {
@@ -21,6 +23,7 @@ impl AppError {
             AppError::Cluster(_) => "cluster",
             AppError::Resource(_) => "resource",
             AppError::Serialization(_) => "serialization",
+            AppError::Kube(_) => "cluster",
         }
     }
 }
