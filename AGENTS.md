@@ -35,7 +35,7 @@ The React app should call only typed Tauri command wrappers. Kubernetes credenti
 
 ## Implementation Style
 
-- Prefer boring, stable dependencies.
+- Prefer stable, well-maintained libraries with strong ecosystem support. Avoid niche or experimental dependencies unless they clearly solve a project-specific problem.
 - Use Bun for frontend package management, scripts, and app scaffolding unless a tool requires a different runner.
 - Commit `bun.lock` when frontend dependencies exist.
 - Do not introduce duplicate router, table, state, styling, or command-wrapper libraries without an ADR.
