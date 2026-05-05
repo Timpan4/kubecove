@@ -23,6 +23,13 @@ export interface ResourceDetails {
   yaml: string;
 }
 
+export interface ResourceDetailsFull {
+  summary: ResourceSummary;
+  yaml: string;
+  metadata: Record<string, unknown>;
+  status?: Record<string, unknown>;
+}
+
 export interface AppError {
   message: string;
   kind: string;
