@@ -92,6 +92,7 @@ src/
 
 Responsibilities:
 
+- Bun is the default JavaScript runtime and package manager for frontend scripts, dependency installation, and scaffolding.
 - `lib/tauri.ts`: typed wrappers around Tauri commands.
 - `lib/types.ts`: frontend copies of the serde contracts.
 - `stores/filters.ts`: selected context, namespaces, kinds, search, and drawer selection.

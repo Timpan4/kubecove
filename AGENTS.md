@@ -1,6 +1,6 @@
 # Agent Guide
 
-This repository is for a local desktop Kubernetes IDE built with Tauri v2, React, TypeScript, Rust, and `kube-rs`.
+This repository is for a local desktop Kubernetes IDE built with Tauri v2, React, TypeScript, Bun, Rust, and `kube-rs`.
 
 Before making implementation changes, read:
 
@@ -32,6 +32,7 @@ The React app should call only typed Tauri command wrappers. Kubernetes credenti
 ## Implementation Style
 
 - Prefer boring, stable dependencies.
+- Use Bun for frontend package management, scripts, and app scaffolding unless a tool requires a different runner.
 - Keep changes reviewable and scoped.
 - Add tests or checks where risk justifies them.
 - Use clear type names that match the docs unless there is a good reason to change them.

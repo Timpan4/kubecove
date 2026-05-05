@@ -15,6 +15,7 @@ This project is intentionally local-only for the MVP. Nothing is deployed into c
 
 - Tauri v2
 - React and TypeScript
+- Bun as the JavaScript runtime and package manager
 - Rust backend
 - `kube-rs` for Kubernetes API access
 - TanStack Router, Query, and Table

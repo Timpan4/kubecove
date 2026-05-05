@@ -14,8 +14,8 @@ Goal: create the project container for implementation work.
 
 Goal: working local desktop app that can browse common Kubernetes resources through Rust-side Tauri commands.
 
-- [ ] Scaffold Tauri v2, React, TypeScript, and Rust project.
-- [ ] Add frontend tooling and validation scripts.
+- [ ] Scaffold Tauri v2, React, TypeScript, Bun, and Rust project.
+- [ ] Add Bun-based frontend tooling and validation scripts.
 - [ ] Add Rust dependencies for Tauri commands, `kube-rs`, serde, YAML serialization, and error handling.
 - [ ] Implement `list_kube_contexts`.
 - [ ] Implement context-specific client construction.

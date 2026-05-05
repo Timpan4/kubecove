@@ -2,12 +2,12 @@
 
 ## Next Session: Scaffold the App
 
-- [ ] Create Tauri v2 + React + TypeScript app in this repo.
+- [ ] Create Tauri v2 + React + TypeScript app in this repo using Bun.
 - [ ] Choose and install the component/UI baseline.
 - [ ] Add TanStack Router, Query, and Table.
 - [ ] Choose Zustand or Jotai for local UI state.
 - [ ] Add Tailwind CSS.
-- [ ] Add scripts for frontend typecheck, Rust check, and dev mode.
+- [ ] Add Bun scripts for frontend typecheck, Rust check, and dev mode.
 - [ ] Confirm the generated app starts locally.
 
 ## Backend MVP
