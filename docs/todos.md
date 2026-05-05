@@ -22,6 +22,7 @@
 - [ ] List basic cluster-scoped resources.
 - [ ] Convert resource objects into summaries.
 - [ ] Serialize full objects to read-only YAML.
+- [ ] Keep resource summary fields ready for Argo app and Helm release grouping.
 
 ## Frontend MVP
 
@@ -49,3 +50,23 @@
 - [ ] Argo and Helm label detection.
 - [ ] Owner reference display.
 - [ ] Basic app/owner grouping experiment.
+
+## Argo CD Native
+
+- [ ] Detect Argo CD CRDs.
+- [ ] List Applications, ApplicationSets, and AppProjects through the Kubernetes API.
+- [ ] Add Argo application summaries.
+- [ ] Add Argo application detail view.
+- [ ] Group resources by Argo tracking metadata.
+- [ ] Add ADR before Argo CD API, CLI, sync, rollback, or diff support.
+
+## K8Studio-Inspired Backlog
+
+- [ ] Topology and relationship maps.
+- [ ] Advanced logs.
+- [ ] Cluster overview and metrics.
+- [ ] RBAC and user permissions views.
+- [ ] Security inspection views.
+- [ ] Helm release views.
+- [ ] Customizable workspace layout.
+- [ ] Context-aware AI assistance.

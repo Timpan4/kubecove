@@ -18,6 +18,8 @@ Cluster group -> Cluster/context -> Namespace -> App/owner -> Resource
 
 The long-term differentiator is persistent global filtering across selected clusters, namespaces, resource kinds, health, owner references, Argo CD signals, and Helm release labels.
 
+K8Studio is the main public product benchmark for feature breadth, especially grid views, selected-object details, topology, multi-cluster management, logs, metrics, RBAC/security views, Helm views, docking layouts, and AI-assisted troubleshooting. This app should use those as inspiration while keeping an original namespace-first workflow and stricter local security boundary.
+
 ## Security Boundary
 
 The frontend is an untrusted UI surface compared with the Rust backend.
@@ -63,6 +65,7 @@ Responsibilities:
 - `kube/client`: construct context-specific `kube::Client` values.
 - `kube/resources`: list/get common MVP resource types.
 - `kube/discovery`: later home for dynamic resources and CRD discovery.
+- `kube/argo`: later home for Argo CD Application, ApplicationSet, AppProject, and tracking metadata support.
 - `kube/serializers`: convert Kubernetes objects into frontend-safe summaries and read-only YAML.
 - `models`: serde-compatible app contracts shared by commands.
 
@@ -79,6 +82,7 @@ src/
     layout/
     ui/
   features/
+    argo/
     clusters/
     namespaces/
     resources/
@@ -97,6 +101,7 @@ Responsibilities:
 - `lib/types.ts`: frontend copies of the serde contracts.
 - `stores/filters.ts`: selected context, namespaces, kinds, search, and drawer selection.
 - `features/clusters`: context selector.
+- `features/argo`: Argo application views, grouping, and read-only Argo details once Argo CRDs are supported.
 - `features/namespaces`: namespace list and multi-select.
 - `features/resources`: table, filters, and query orchestration.
 - `features/resource-detail`: read-only YAML, metadata, labels, annotations, owner references, and status tabs.
@@ -178,6 +183,14 @@ Start with typed or semi-typed support for common resources:
 
 CRDs can be added through discovery once the basic typed/common flow is stable.
 
+Argo CD CRDs should be treated as a priority dynamic-resource path once the common resources are stable:
+
+- `argoproj.io/v1alpha1` `Application`
+- `argoproj.io/v1alpha1` `ApplicationSet`
+- `argoproj.io/v1alpha1` `AppProject`
+
+The first Argo implementation should read these through the Kubernetes API, not the Argo CD API or CLI.
+
 ## Read-Only Details
 
 The detail panel should show:
@@ -201,6 +214,8 @@ No edit/apply/delete/scale/restart actions belong in the first milestone.
 - pod exec
 - Helm release views
 - Argo CD grouping
+- Argo CD Application, ApplicationSet, and AppProject views
+- K8Studio-inspired topology, security, logs, metrics, Helm, and workspace layout features
 - RBAC inspection
 - metrics
 - local SQLite saved state

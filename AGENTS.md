@@ -7,6 +7,7 @@ Before making implementation changes, read:
 - `docs/architecture-blueprint.md`
 - `docs/milestones.md`
 - `docs/todos.md`
+- `docs/product-inspiration.md`
 - `docs/development-workflow.md`
 
 ## Core Constraints
@@ -17,6 +18,7 @@ Before making implementation changes, read:
 - Do not let frontend code run arbitrary shell commands.
 - Use `kube-rs` and the Kubernetes API for core list/get/discovery flows.
 - Treat `kubectl`, Helm, and Argo CD CLIs as future optional sidecars or fallbacks, not as the core data path.
+- Treat Argo CD as a native product area, starting with Kubernetes API access to Argo CD CRDs and tracking metadata.
 - Keep modules small and typed so future agent work can target focused files.
 
 ## Preferred Architecture
@@ -58,7 +60,14 @@ Write an ADR before changing:
 - the Kubernetes access path
 - Tauri plugin permissions or capabilities
 - mutation support for Kubernetes objects
+- Argo CD API, CLI, sync, rollback, or diff integration
 - long-lived local persistence of cluster-derived data
+
+## Product Inspiration
+
+- Use K8Studio as a public feature benchmark for Kubernetes IDE capabilities.
+- Do not copy K8Studio code, assets, branding, proprietary layouts, or marketing text.
+- Preserve this app's differentiator: context-first and namespace-first workflows.
 
 ## Verification
 
