@@ -1,4 +1,4 @@
-use crate::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetails};
+use crate::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetails, ResourceDetailsFull};
 use chrono::{DateTime, TimeZone, Utc};
 use kube::{
     api::Api,
@@ -307,4 +307,139 @@ pub async fn get_resource_yaml(
     namespace: Option<String>,
 ) -> Result<ResourceDetails, AppError> {
     resource_yaml_from(cluster_context, kind, name, namespace).await
+}
+
+pub async fn resource_details_from(
+    cluster_context: String,
+    kind: String,
+    name: String,
+    namespace: Option<String>,
+) -> Result<ResourceDetailsFull, AppError> {
+    let options = KubeConfigOptions {
+        context: Some(cluster_context.clone()),
+        ..Default::default()
+    };
+
+    let config = kube::Config::from_kubeconfig(&options)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+
+    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+
+    match kind.as_str() {
+        "Pod" => {
+            let api: Api<k8s_openapi::api::core::v1::Pod> = if let Some(ns) = &namespace {
+                Api::namespaced(client, ns)
+            } else {
+                Api::all(client)
+            };
+            let pod = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let yaml = serde_yaml::to_string(&pod).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let metadata = serde_json::to_value(&pod.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = pod.status.as_ref().map(|s| serde_json::to_value(s).ok()).flatten();
+            let summary = ResourceSummary {
+                kind: "Pod".to_string(),
+                cluster: cluster_context.clone(),
+                name: name.clone(),
+                namespace: namespace.clone(),
+                age: resource_age(pod.metadata.creation_timestamp.clone().map(|t| {
+                    Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+                })),
+            };
+            Ok(ResourceDetailsFull {
+                summary,
+                yaml,
+                metadata,
+                status,
+            })
+        }
+        "Deployment" => {
+            let api: Api<k8s_openapi::api::apps::v1::Deployment> = if let Some(ns) = &namespace {
+                Api::namespaced(client, ns)
+            } else {
+                Api::all(client)
+            };
+            let deploy = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let yaml = serde_yaml::to_string(&deploy).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let metadata = serde_json::to_value(&deploy.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = deploy.status.as_ref().map(|s| serde_json::to_value(s).ok()).flatten();
+            let summary = ResourceSummary {
+                kind: "Deployment".to_string(),
+                cluster: cluster_context.clone(),
+                name: name.clone(),
+                namespace: namespace.clone(),
+                age: resource_age(deploy.metadata.creation_timestamp.clone().map(|t| {
+                    Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+                })),
+            };
+            Ok(ResourceDetailsFull {
+                summary,
+                yaml,
+                metadata,
+                status,
+            })
+        }
+        "Service" => {
+            let api: Api<k8s_openapi::api::core::v1::Service> = if let Some(ns) = &namespace {
+                Api::namespaced(client, ns)
+            } else {
+                Api::all(client)
+            };
+            let svc = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let yaml = serde_yaml::to_string(&svc).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let metadata = serde_json::to_value(&svc.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = svc.status.as_ref().map(|s| serde_json::to_value(s).ok()).flatten();
+            let summary = ResourceSummary {
+                kind: "Service".to_string(),
+                cluster: cluster_context.clone(),
+                name: name.clone(),
+                namespace: namespace.clone(),
+                age: resource_age(svc.metadata.creation_timestamp.clone().map(|t| {
+                    Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+                })),
+            };
+            Ok(ResourceDetailsFull {
+                summary,
+                yaml,
+                metadata,
+                status,
+            })
+        }
+        "ConfigMap" => {
+            let api: Api<k8s_openapi::api::core::v1::ConfigMap> = if let Some(ns) = &namespace {
+                Api::namespaced(client, ns)
+            } else {
+                Api::all(client)
+            };
+            let cm = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let yaml = serde_yaml::to_string(&cm).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let metadata = serde_json::to_value(&cm.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let summary = ResourceSummary {
+                kind: "ConfigMap".to_string(),
+                cluster: cluster_context.clone(),
+                name: name.clone(),
+                namespace: namespace.clone(),
+                age: resource_age(cm.metadata.creation_timestamp.clone().map(|t| {
+                    Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+                })),
+            };
+            Ok(ResourceDetailsFull {
+                summary,
+                yaml,
+                metadata,
+                status: None,
+            })
+        }
+        _ => Err(AppError::new(format!("unsupported resource kind: {}", kind), "cluster")),
+    }
+}
+
+#[tauri::command]
+pub async fn get_resource_details(
+    cluster_context: String,
+    kind: String,
+    name: String,
+    namespace: Option<String>,
+) -> Result<ResourceDetailsFull, AppError> {
+    resource_details_from(cluster_context, kind, name, namespace).await
 }

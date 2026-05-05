@@ -1,4 +1,4 @@
-use k8s_manager_lib::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetails};
+use k8s_manager_lib::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetails, ResourceDetailsFull};
 use serde_json::json;
 
 #[test]
@@ -79,4 +79,26 @@ fn test_cluster_context_from_json() {
     let json_val = json!({ "name": "docker-desktop" });
     let ctx: ClusterContext = serde_json::from_value(json_val).unwrap();
     assert_eq!(ctx.name, "docker-desktop");
+}
+
+#[test]
+fn test_resource_details_full_serde() {
+    let summary = ResourceSummary {
+        kind: "Pod".to_string(),
+        cluster: "minikube".to_string(),
+        name: "nginx".to_string(),
+        namespace: Some("default".to_string()),
+        age: "2024-01-01T00:00:00Z".to_string(),
+    };
+    let rdf = ResourceDetailsFull {
+        summary,
+        yaml: "apiVersion: v1\nkind: Pod".to_string(),
+        metadata: serde_json::json!({ "name": "nginx", "namespace": "default" }),
+        status: Some(serde_json::json!({ "phase": "Running" })),
+    };
+    let json_str = serde_json::to_string(&rdf).unwrap();
+    let parsed: ResourceDetailsFull = serde_json::from_str(&json_str).unwrap();
+    assert_eq!(parsed.yaml, "apiVersion: v1\nkind: Pod");
+    assert_eq!(parsed.summary.kind, "Pod");
+    assert!(parsed.status.is_some());
 }
