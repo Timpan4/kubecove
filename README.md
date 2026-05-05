@@ -42,6 +42,7 @@ The second deliverable should add search, status chips, age formatting, owner de
 - [Milestones](docs/milestones.md)
 - [Project TODOs](docs/todos.md)
 - [Product Inspiration](docs/product-inspiration.md)
+- [Agent Skill Backlog](docs/agent-skills.md)
 - [Development Workflow](docs/development-workflow.md)
 - [Architecture Decision Records](docs/decisions)
 - [Agent Guide](AGENTS.md)

@@ -8,6 +8,7 @@ Before making implementation changes, read:
 - `docs/milestones.md`
 - `docs/todos.md`
 - `docs/product-inspiration.md`
+- `docs/agent-skills.md`
 - `docs/development-workflow.md`
 
 ## Core Constraints
@@ -76,6 +77,12 @@ Write an ADR before changing:
 - Frontend changes should pass `bun run typecheck`; run `bun run lint` once linting exists.
 - Rust backend changes should pass `cargo check --manifest-path src-tauri/Cargo.toml`.
 - If a check cannot run, state the exact blocker and what remains unverified.
+
+## Skill Backlog
+
+- Use `docs/agent-skills.md` as the source of truth for project-specific skill ideas.
+- Do not create or install actual Codex skills from that backlog without a focused skill-writing and validation pass.
+- Until those skills exist, apply the documented rules manually when working in matching areas.
 
 ## Git Hygiene
 

@@ -42,6 +42,15 @@
 - [ ] Keep first milestone read-only.
 - [ ] Make future mutation commands explicit and permission-gated.
 
+## Agent Skills
+
+- [ ] Create and validate `tauri-security-review`.
+- [ ] Create and validate `kube-rs-resource-api`.
+- [ ] Create and validate `k8s-ux-resource-browser`.
+- [ ] Create and validate `argocd-awareness`.
+- [ ] Revisit `frontend-state-table-patterns` after frontend patterns exist.
+- [ ] Revisit `safe-k8s-mutations` before mutation work starts.
+
 ## Nice Soon
 
 - [ ] Search/filter bar.
