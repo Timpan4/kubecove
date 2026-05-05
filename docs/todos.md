@@ -2,6 +2,7 @@
 
 ## Next Session: Scaffold the App
 
+- [ ] Enable local hooks with `git config core.hooksPath .githooks`.
 - [ ] Create Tauri v2 + React + TypeScript app in this repo using Bun.
 - [ ] Choose and install the component/UI baseline.
 - [ ] Add TanStack Router, Query, and Table.

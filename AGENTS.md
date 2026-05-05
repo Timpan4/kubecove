@@ -7,6 +7,7 @@ Before making implementation changes, read:
 - `docs/architecture-blueprint.md`
 - `docs/milestones.md`
 - `docs/todos.md`
+- `docs/development-workflow.md`
 
 ## Core Constraints
 
@@ -33,11 +34,39 @@ The React app should call only typed Tauri command wrappers. Kubernetes credenti
 
 - Prefer boring, stable dependencies.
 - Use Bun for frontend package management, scripts, and app scaffolding unless a tool requires a different runner.
+- Commit `bun.lock` when frontend dependencies exist.
+- Do not introduce duplicate router, table, state, styling, or command-wrapper libraries without an ADR.
 - Keep changes reviewable and scoped.
 - Add tests or checks where risk justifies them.
 - Use clear type names that match the docs unless there is a good reason to change them.
 - Add comments only for non-obvious architecture decisions.
 - Add TODOs for future features without implementing them early.
+
+## Tauri Command Contracts
+
+- All frontend Kubernetes data must go through typed wrappers in `src/lib/tauri.ts`.
+- Every new Tauri command needs a Rust serde model, a TypeScript type, and a typed frontend wrapper.
+- Command errors must serialize into user-visible application errors.
+- Do not add broad command payloads that leak kubeconfig, tokens, certificate data, or arbitrary filesystem contents.
+
+## Security-Sensitive Changes
+
+Write an ADR before changing:
+
+- the frontend/backend security boundary
+- the JavaScript runtime or package manager
+- the Kubernetes access path
+- Tauri plugin permissions or capabilities
+- mutation support for Kubernetes objects
+- long-lived local persistence of cluster-derived data
+
+## Verification
+
+- Enable repo hooks with `git config core.hooksPath .githooks`.
+- Run the relevant checks before claiming work is complete.
+- Frontend changes should pass `bun run typecheck`; run `bun run lint` once linting exists.
+- Rust backend changes should pass `cargo check --manifest-path src-tauri/Cargo.toml`.
+- If a check cannot run, state the exact blocker and what remains unverified.
 
 ## Git Hygiene
 

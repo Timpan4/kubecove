@@ -41,6 +41,7 @@ The second deliverable should add search, status chips, age formatting, owner de
 - [Architecture Blueprint](docs/architecture-blueprint.md)
 - [Milestones](docs/milestones.md)
 - [Project TODOs](docs/todos.md)
+- [Development Workflow](docs/development-workflow.md)
 - [Architecture Decision Records](docs/decisions)
 - [Agent Guide](AGENTS.md)
 
