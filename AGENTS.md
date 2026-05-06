@@ -77,6 +77,7 @@ Write an ADR before changing:
 - Frontend changes should pass `bun run typecheck`; run `bun run lint` once linting exists.
 - Rust backend changes should pass `cargo check --manifest-path src-tauri/Cargo.toml`.
 - If a check cannot run, state the exact blocker and what remains unverified.
+- When completing scoped work, check off the corresponding items in `docs/milestones.md` and `docs/todos.md`.
 
 ## Skill Backlog
 

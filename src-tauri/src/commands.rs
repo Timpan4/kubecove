@@ -1,10 +1,31 @@
-use crate::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetails, ResourceDetailsFull};
+use crate::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetailsFull};
 use chrono::{DateTime, TimeZone, Utc};
 use kube::{
     api::Api,
     config::{KubeConfigOptions, Kubeconfig},
-    Client,
+    Client, Resource,
 };
+use k8s_openapi::NamespaceResourceScope;
+use serde::{de::DeserializeOwned, Serialize};
+
+/// Fetch a namespaced resource and serialize it to YAML.
+async fn fetch_and_serialize<T: Resource<Scope = NamespaceResourceScope> + Serialize + DeserializeOwned + Clone + std::fmt::Debug + Send + Sync>(
+    client: Client,
+    namespace: Option<&str>,
+    name: &str,
+) -> Result<(T, String), AppError>
+where
+    <T as Resource>::DynamicType: Default,
+{
+    let api: Api<T> = if let Some(ns) = namespace {
+        Api::namespaced(client, ns)
+    } else {
+        Api::all(client)
+    };
+    let resource = api.get(name).await.map_err(|e: kube::Error| AppError::kube(e.to_string()))?;
+    let yaml = serde_yaml::to_string(&resource).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    Ok((resource, yaml))
+}
 
 pub fn get_cluster_contexts() -> Result<Vec<ClusterContext>, AppError> {
     let kubeconfig = Kubeconfig::read()
@@ -218,7 +239,7 @@ pub async fn resource_yaml_from(
     kind: String,
     name: String,
     namespace: Option<String>,
-) -> Result<ResourceDetails, AppError> {
+) -> Result<String, AppError> {
     let options = KubeConfigOptions {
         context: Some(cluster_context.clone()),
         ..Default::default()
@@ -232,68 +253,20 @@ pub async fn resource_yaml_from(
 
     match kind.as_str() {
         "Pod" => {
-            let api: Api<k8s_openapi::api::core::v1::Pod> = if let Some(ns) = &namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            let pod = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
-            let yaml = serde_yaml::to_string(&pod).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            Ok(ResourceDetails {
-                kind: "Pod".to_string(),
-                cluster: cluster_context,
-                name,
-                namespace,
-                yaml,
-            })
+            let (_pod, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Pod>(client, namespace.as_deref(), &name).await?;
+            Ok(yaml)
         }
         "Deployment" => {
-            let api: Api<k8s_openapi::api::apps::v1::Deployment> = if let Some(ns) = &namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            let deploy = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
-            let yaml = serde_yaml::to_string(&deploy).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            Ok(ResourceDetails {
-                kind: "Deployment".to_string(),
-                cluster: cluster_context,
-                name,
-                namespace,
-                yaml,
-            })
+            let (_deploy, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::Deployment>(client, namespace.as_deref(), &name).await?;
+            Ok(yaml)
         }
         "Service" => {
-            let api: Api<k8s_openapi::api::core::v1::Service> = if let Some(ns) = &namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            let svc = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
-            let yaml = serde_yaml::to_string(&svc).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            Ok(ResourceDetails {
-                kind: "Service".to_string(),
-                cluster: cluster_context,
-                name,
-                namespace,
-                yaml,
-            })
+            let (_svc, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Service>(client, namespace.as_deref(), &name).await?;
+            Ok(yaml)
         }
         "ConfigMap" => {
-            let api: Api<k8s_openapi::api::core::v1::ConfigMap> = if let Some(ns) = &namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            let cm = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
-            let yaml = serde_yaml::to_string(&cm).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            Ok(ResourceDetails {
-                kind: "ConfigMap".to_string(),
-                cluster: cluster_context,
-                name,
-                namespace,
-                yaml,
-            })
+            let (_cm, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::ConfigMap>(client, namespace.as_deref(), &name).await?;
+            Ok(yaml)
         }
         _ => Err(AppError::new(format!("unsupported resource kind: {}", kind), "cluster")),
     }
@@ -305,7 +278,7 @@ pub async fn get_resource_yaml(
     kind: String,
     name: String,
     namespace: Option<String>,
-) -> Result<ResourceDetails, AppError> {
+) -> Result<String, AppError> {
     resource_yaml_from(cluster_context, kind, name, namespace).await
 }
 
@@ -328,13 +301,7 @@ pub async fn resource_details_from(
 
     match kind.as_str() {
         "Pod" => {
-            let api: Api<k8s_openapi::api::core::v1::Pod> = if let Some(ns) = &namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            let pod = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
-            let yaml = serde_yaml::to_string(&pod).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let (pod, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Pod>(client, namespace.as_deref(), &name).await?;
             let metadata = serde_json::to_value(&pod.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let status = pod.status.as_ref().map(|s| serde_json::to_value(s).ok()).flatten();
             let summary = ResourceSummary {
@@ -354,13 +321,7 @@ pub async fn resource_details_from(
             })
         }
         "Deployment" => {
-            let api: Api<k8s_openapi::api::apps::v1::Deployment> = if let Some(ns) = &namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            let deploy = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
-            let yaml = serde_yaml::to_string(&deploy).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let (deploy, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::Deployment>(client, namespace.as_deref(), &name).await?;
             let metadata = serde_json::to_value(&deploy.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let status = deploy.status.as_ref().map(|s| serde_json::to_value(s).ok()).flatten();
             let summary = ResourceSummary {
@@ -380,13 +341,7 @@ pub async fn resource_details_from(
             })
         }
         "Service" => {
-            let api: Api<k8s_openapi::api::core::v1::Service> = if let Some(ns) = &namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            let svc = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
-            let yaml = serde_yaml::to_string(&svc).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let (svc, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Service>(client, namespace.as_deref(), &name).await?;
             let metadata = serde_json::to_value(&svc.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let status = svc.status.as_ref().map(|s| serde_json::to_value(s).ok()).flatten();
             let summary = ResourceSummary {
@@ -406,13 +361,7 @@ pub async fn resource_details_from(
             })
         }
         "ConfigMap" => {
-            let api: Api<k8s_openapi::api::core::v1::ConfigMap> = if let Some(ns) = &namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            let cm = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
-            let yaml = serde_yaml::to_string(&cm).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let (cm, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::ConfigMap>(client, namespace.as_deref(), &name).await?;
             let metadata = serde_json::to_value(&cm.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let summary = ResourceSummary {
                 kind: "ConfigMap".to_string(),
