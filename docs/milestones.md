@@ -21,7 +21,7 @@ Goal: working local desktop app that can browse common Kubernetes resources thro
 - [ ] Implement context-specific client construction.
 - [ ] Implement `list_namespaces`.
 - [ ] Implement `list_resources` for Pods, Deployments, Services, Ingresses, ConfigMaps, Secrets, PVCs, Jobs, and CronJobs.
-- [ ] Implement `get_resource_yaml`.
+- [x] Implement `get_resource_yaml`.
 - [ ] Build the layout with left sidebar, main resource table, and right detail panel.
 - [ ] Add namespace multi-select filtering.
 - [ ] Add read-only YAML/details tabs.

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { createMockTauriClient, listKubeContexts, listNamespaces, isAppError } from "../src/lib/tauri";
+import { createMockTauriClient, listKubeContexts, listNamespaces, getResourceYaml, isAppError } from "../src/lib/tauri";
 import type { ClusterContext, NamespaceSummary } from "../src/lib/types";
 
 describe("createMockTauriClient", () => {
@@ -59,5 +59,16 @@ describe("isAppError", () => {
     expect(isAppError({ message: "test" })).toBe(false);
     expect(isAppError({ kind: "cluster" })).toBe(false);
     expect(isAppError(null)).toBe(false);
+  });
+});
+
+describe("getResourceYaml", () => {
+  test("returns raw YAML string from client", async () => {
+    const mockYaml = "apiVersion: v1\nkind: Pod\nmetadata:\n  name: test-pod";
+    const client = createMockTauriClient({ get_resource_yaml: mockYaml });
+
+    const result = await getResourceYaml(client, "minikube", "Pod", "test-pod", "default");
+    expect(result).toBe(mockYaml);
+    expect(typeof result).toBe("string");
   });
 });
