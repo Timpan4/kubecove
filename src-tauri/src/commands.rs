@@ -237,7 +237,7 @@ pub async fn resource_yaml_from(
             } else {
                 Api::all(client)
             };
-            let pod = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let pod = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
             let yaml = serde_yaml::to_string(&pod).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             Ok(ResourceDetails {
                 kind: "Pod".to_string(),
@@ -253,7 +253,7 @@ pub async fn resource_yaml_from(
             } else {
                 Api::all(client)
             };
-            let deploy = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let deploy = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
             let yaml = serde_yaml::to_string(&deploy).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             Ok(ResourceDetails {
                 kind: "Deployment".to_string(),
@@ -269,7 +269,7 @@ pub async fn resource_yaml_from(
             } else {
                 Api::all(client)
             };
-            let svc = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let svc = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
             let yaml = serde_yaml::to_string(&svc).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             Ok(ResourceDetails {
                 kind: "Service".to_string(),
@@ -285,7 +285,7 @@ pub async fn resource_yaml_from(
             } else {
                 Api::all(client)
             };
-            let cm = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let cm = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
             let yaml = serde_yaml::to_string(&cm).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             Ok(ResourceDetails {
                 kind: "ConfigMap".to_string(),
@@ -333,7 +333,7 @@ pub async fn resource_details_from(
             } else {
                 Api::all(client)
             };
-            let pod = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let pod = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
             let yaml = serde_yaml::to_string(&pod).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let metadata = serde_json::to_value(&pod.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let status = pod.status.as_ref().map(|s| serde_json::to_value(s).ok()).flatten();
@@ -359,7 +359,7 @@ pub async fn resource_details_from(
             } else {
                 Api::all(client)
             };
-            let deploy = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let deploy = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
             let yaml = serde_yaml::to_string(&deploy).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let metadata = serde_json::to_value(&deploy.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let status = deploy.status.as_ref().map(|s| serde_json::to_value(s).ok()).flatten();
@@ -385,7 +385,7 @@ pub async fn resource_details_from(
             } else {
                 Api::all(client)
             };
-            let svc = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let svc = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
             let yaml = serde_yaml::to_string(&svc).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let metadata = serde_json::to_value(&svc.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let status = svc.status.as_ref().map(|s| serde_json::to_value(s).ok()).flatten();
@@ -411,7 +411,7 @@ pub async fn resource_details_from(
             } else {
                 Api::all(client)
             };
-            let cm = api.get(&name, &Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let cm = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
             let yaml = serde_yaml::to_string(&cm).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let metadata = serde_json::to_value(&cm.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let summary = ResourceSummary {
