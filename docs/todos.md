@@ -21,7 +21,7 @@
 - [ ] List MVP namespaced resources.
 - [ ] List basic cluster-scoped resources.
 - [ ] Convert resource objects into summaries.
-- [ ] Serialize full objects to read-only YAML.
+- [x] Serialize full objects to read-only YAML.
 - [ ] Keep resource summary fields ready for Argo app and Helm release grouping.
 
 ## Frontend MVP
