@@ -13,6 +13,12 @@ export interface ResourceSummary {
   name: string;
   namespace: string | null;
   age: string;
+  status?: string;
+  ready?: string;
+  restarts?: number;
+  ownerRef?: string;
+  argoApp?: string;
+  helmRelease?: string;
 }
 
 export interface ResourceDetails {
@@ -34,3 +40,19 @@ export interface AppError {
   message: string;
   kind: string;
 }
+
+export const SUPPORTED_KINDS = [
+  "Pod",
+  "Deployment",
+  "StatefulSet",
+  "DaemonSet",
+  "Service",
+  "Ingress",
+  "ConfigMap",
+  "Secret",
+  "PersistentVolumeClaim",
+  "Job",
+  "CronJob",
+] as const;
+
+export type SupportedKind = (typeof SUPPORTED_KINDS)[number];

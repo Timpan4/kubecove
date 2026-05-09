@@ -4,12 +4,12 @@ import type { NamespaceSummary } from "../lib/types";
 
 interface NamespaceListProps {
   clusterContext: string;
-  onNamespaceSelect: (namespace: string) => void;
+  selectedNamespaces: string[];
+  onNamespaceChange: (namespaces: string[]) => void;
 }
 
-export function NamespaceList({ clusterContext, onNamespaceSelect }: NamespaceListProps) {
+export function NamespaceList({ clusterContext, selectedNamespaces, onNamespaceChange }: NamespaceListProps) {
   const [namespaces, setNamespaces] = useState<NamespaceSummary[]>([]);
-  const [selected, setSelected] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,9 +37,20 @@ export function NamespaceList({ clusterContext, onNamespaceSelect }: NamespaceLi
     loadNamespaces();
   }, [loadNamespaces]);
 
-  const handleClick = (name: string) => {
-    setSelected(name);
-    onNamespaceSelect(name);
+  const handleToggleAll = () => {
+    if (selectedNamespaces.length === namespaces.length) {
+      onNamespaceChange([]);
+    } else {
+      onNamespaceChange(namespaces.map((ns) => ns.name));
+    }
+  };
+
+  const handleToggleOne = (name: string) => {
+    if (selectedNamespaces.includes(name)) {
+      onNamespaceChange(selectedNamespaces.filter((n) => n !== name));
+    } else {
+      onNamespaceChange([...selectedNamespaces, name]);
+    }
   };
 
   if (!clusterContext) {
@@ -63,18 +74,36 @@ export function NamespaceList({ clusterContext, onNamespaceSelect }: NamespaceLi
     return <div className="namespace-list empty">No namespaces found</div>;
   }
 
+  const allSelected = namespaces.length > 0 && selectedNamespaces.length === namespaces.length;
+
   return (
     <div className="namespace-list">
-      <h3 className="namespace-list-title">Namespaces</h3>
+      <div className="namespace-list-header">
+        <h3 className="namespace-list-title">Namespaces</h3>
+        <button
+          className="select-all-btn"
+          onClick={handleToggleAll}
+          type="button"
+        >
+          {allSelected ? "Deselect All" : "Select All"}
+        </button>
+      </div>
       <ul className="namespace-items">
         {namespaces.map((ns) => (
           <li
             key={ns.name}
-            className={`namespace-item ${selected === ns.name ? "selected" : ""}`}
-            onClick={() => handleClick(ns.name)}
+            className={`namespace-item ${selectedNamespaces.includes(ns.name) ? "selected" : ""}`}
           >
-            <span className="namespace-name">{ns.name}</span>
-            <span className="namespace-age">{ns.age}</span>
+            <label className="namespace-checkbox-label">
+              <input
+                type="checkbox"
+                checked={selectedNamespaces.includes(ns.name)}
+                onChange={() => handleToggleOne(ns.name)}
+                className="namespace-checkbox"
+              />
+              <span className="namespace-name">{ns.name}</span>
+              <span className="namespace-age">{ns.age}</span>
+            </label>
           </li>
         ))}
       </ul>
