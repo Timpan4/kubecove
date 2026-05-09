@@ -874,7 +874,7 @@ pub async fn resource_details_from(
                 age: resource_age(pvc.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
                 })),
-                status: status.as_ref().and_then(|s| s.get("phase").map(|p| p.to_string())),
+                status: status.as_ref().and_then(|s| s.get("phase").and_then(|p| p.as_str().map(str::to_owned))),
                 ready: None,
                 restarts: None,
                 owner_ref: extract_owner_ref(&pvc.metadata),

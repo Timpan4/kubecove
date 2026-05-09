@@ -8,7 +8,6 @@ interface KindListProps {
 
 export function KindList({ selectedKinds, onToggleKind }: KindListProps) {
   const allSelected = selectedKinds.length === SUPPORTED_KINDS.length;
-  const someSelected = selectedKinds.length > 0 && !allSelected;
 
   const handleToggleAll = () => {
     if (allSelected) {
@@ -35,7 +34,7 @@ export function KindList({ selectedKinds, onToggleKind }: KindListProps) {
           onClick={handleToggleAll}
           type="button"
         >
-          {allSelected ? "Deselect All" : someSelected ? "Deselect All" : "Select All"}
+          {allSelected ? "Deselect All" : "Select All"}
         </button>
       </div>
       <ul className="kind-items">

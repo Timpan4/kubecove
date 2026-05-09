@@ -133,10 +133,11 @@ body {
 }
 
 .yaml-block {
-  font-family: "Menlo", "Consolas", monospace;
+  font-family: Menlo, Consolas, monospace;
   font-size: 12px;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  word-break: normal;
   color: #e0e0e0;
   line-height: 1.5;
 }
@@ -157,7 +158,8 @@ body {
 
 .detail-value {
   color: #e0e0e0;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  word-break: normal;
   font-size: 12px;
 }
 
