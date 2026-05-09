@@ -14,31 +14,31 @@ Goal: create the project container for implementation work.
 
 Goal: working local desktop app that can browse common Kubernetes resources through Rust-side Tauri commands.
 
-- [ ] Scaffold Tauri v2, React, TypeScript, Bun, and Rust project.
-- [ ] Add Bun-based frontend tooling and validation scripts.
-- [ ] Add Rust dependencies for Tauri commands, `kube-rs`, serde, YAML serialization, and error handling.
-- [ ] Implement `list_kube_contexts`.
-- [ ] Implement context-specific client construction.
-- [ ] Implement `list_namespaces`.
-- [ ] Implement `list_resources` for Pods, Deployments, Services, Ingresses, ConfigMaps, Secrets, PVCs, Jobs, and CronJobs.
+- [x] Scaffold Tauri v2, React, TypeScript, Bun, and Rust project.
+- [x] Add Bun-based frontend tooling and validation scripts.
+- [x] Add Rust dependencies for Tauri commands, `kube-rs`, serde, YAML serialization, and error handling.
+- [x] Implement `list_kube_contexts`.
+- [x] Implement context-specific client construction.
+- [x] Implement `list_namespaces`.
+- [x] Implement `list_resources` for Pods, Deployments, Services, Ingresses, ConfigMaps, Secrets, PVCs, Jobs, and CronJobs.
 - [x] Implement `get_resource_yaml`.
-- [ ] Build the layout with left sidebar, main resource table, and right detail panel.
-- [ ] Add namespace multi-select filtering.
-- [ ] Add read-only YAML/details tabs.
-- [ ] Run frontend typecheck, Rust check, and app dev mode.
+- [x] Build the layout with left sidebar, main resource table, and right detail panel.
+- [x] Add namespace multi-select filtering.
+- [x] Add read-only YAML/details tabs.
+- [x] Run frontend typecheck, Rust check, and app dev mode.
 
 ## Milestone 2: Usability Pass
 
 Goal: make the browser feel useful instead of merely connected.
 
-- [ ] Add resource search.
-- [ ] Add status chips.
-- [ ] Add age formatting.
-- [ ] Add owner reference detection.
-- [ ] Add Argo CD label and annotation detection.
-- [ ] Add Helm release label detection.
-- [ ] Add loading, empty, and error states.
-- [ ] Persist selected context and namespaces in local UI state.
+- [x] Add resource search.
+- [x] Add status chips.
+- [x] Add age formatting.
+- [x] Add owner reference detection.
+- [x] Add Argo CD label and annotation detection.
+- [x] Add Helm release label detection.
+- [x] Add loading, empty, and error states.
+- [x] Persist selected context and namespaces in local UI state.
 
 ## Milestone 3: Argo CD Native Read-Only Views
 
