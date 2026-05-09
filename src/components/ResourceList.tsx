@@ -140,6 +140,7 @@ const columns = [
     id: "argo-helm",
     header: "App",
     cell: ({ row }) => <ArgoHelmBadges row={row.original} />,
+    enableSorting: false,
   }),
 ];
 

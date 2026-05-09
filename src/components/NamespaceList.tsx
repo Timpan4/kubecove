@@ -75,7 +75,6 @@ export function NamespaceList({ clusterContext, selectedNamespaces, onNamespaceC
   }
 
   const allSelected = namespaces.length > 0 && selectedNamespaces.length === namespaces.length;
-  const someSelected = selectedNamespaces.length > 0 && !allSelected;
 
   return (
     <div className="namespace-list">
@@ -86,7 +85,7 @@ export function NamespaceList({ clusterContext, selectedNamespaces, onNamespaceC
           onClick={handleToggleAll}
           type="button"
         >
-          {allSelected ? "Deselect All" : someSelected ? "Deselect All" : "Select All"}
+          {allSelected ? "Deselect All" : "Select All"}
         </button>
       </div>
       <ul className="namespace-items">
