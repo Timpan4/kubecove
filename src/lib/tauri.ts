@@ -1,5 +1,15 @@
 import { invoke, InvokeOptions } from "@tauri-apps/api/core";
-import type { ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetailsFull, AppError } from "./types";
+import type {
+  ClusterContext,
+  NamespaceSummary,
+  ResourceSummary,
+  ResourceDetailsFull,
+  AppError,
+  ArgoApplicationSummary,
+  ArgoApplicationDetails,
+  ArgoApplicationSetSummary,
+  ArgoAppProjectSummary,
+} from "./types";
 
 export interface TauriClient {
   invoke<T>(cmd: string, args?: Record<string, unknown>, options?: InvokeOptions): Promise<T>;
@@ -66,4 +76,39 @@ export function isAppError(value: unknown): value is AppError {
     "message" in value &&
     "kind" in value
   );
+}
+
+// Argo CD commands
+export async function detectArgoCD(client: TauriClient, clusterContext: string): Promise<boolean> {
+  return client.invoke<boolean>("detect_argocd", { clusterContext });
+}
+
+export async function listArgoApplications(
+  client: TauriClient,
+  clusterContext: string
+): Promise<ArgoApplicationSummary[]> {
+  return client.invoke<ArgoApplicationSummary[]>("list_argocd_applications", { clusterContext });
+}
+
+export async function getArgoApplicationDetails(
+  client: TauriClient,
+  clusterContext: string,
+  name: string,
+  namespace?: string
+): Promise<ArgoApplicationDetails> {
+  return client.invoke<ArgoApplicationDetails>("get_argocd_application_details", { clusterContext, name, namespace });
+}
+
+export async function listArgoApplicationSets(
+  client: TauriClient,
+  clusterContext: string
+): Promise<ArgoApplicationSetSummary[]> {
+  return client.invoke<ArgoApplicationSetSummary[]>("list_argocd_appsets", { clusterContext });
+}
+
+export async function listArgoAppProjects(
+  client: TauriClient,
+  clusterContext: string
+): Promise<ArgoAppProjectSummary[]> {
+  return client.invoke<ArgoAppProjectSummary[]>("list_argocd_appprojects", { clusterContext });
 }

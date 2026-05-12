@@ -10,7 +10,8 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { createTauriClient, listResources } from "../lib/tauri";
-import type { ResourceSummary } from "../lib/types";
+import type { ResourceSummary, ClusterScopedKind } from "../lib/types";
+import { CLUSTER_SCOPED_KINDS } from "../lib/types";
 
 interface ResourceListProps {
   clusterContext: string;
@@ -22,14 +23,24 @@ interface ResourceListProps {
 
 interface FetchKey {
   kind: string;
-  namespace: string;
+  namespace: string | undefined; // undefined means cluster-scoped (no namespace)
+}
+
+function isClusterScopedKind(kind: string): kind is ClusterScopedKind {
+  return (CLUSTER_SCOPED_KINDS as readonly string[]).includes(kind);
 }
 
 function buildFetchKeys(namespaces: string[], kinds: string[]): FetchKey[] {
   const keys: FetchKey[] = [];
-  for (const ns of namespaces) {
-    for (const k of kinds) {
-      keys.push({ kind: k, namespace: ns });
+  for (const k of kinds) {
+    if (isClusterScopedKind(k)) {
+      // Cluster-scoped kinds have no namespace
+      keys.push({ kind: k, namespace: undefined });
+    } else {
+      // Namespaced kinds use each selected namespace
+      for (const ns of namespaces) {
+        keys.push({ kind: k, namespace: ns });
+      }
     }
   }
   return keys;
@@ -42,7 +53,8 @@ async function fetchResourcePage(
   const client = createTauriClient();
   const results = await Promise.all(
     fetchKeys.map(({ kind, namespace }) =>
-      listResources(client, clusterContext, kind, namespace)
+      // Pass undefined for namespace when cluster-scoped (backend receives None)
+      listResources(client, clusterContext, kind, namespace === "" ? undefined : namespace)
     )
   );
   return results.flat();

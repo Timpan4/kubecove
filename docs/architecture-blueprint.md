@@ -16,6 +16,10 @@ This project should start from operational context:
 Cluster group -> Cluster/context -> Namespace -> App/owner -> Resource
 ```
 
+A **cluster group** is a local saved set of kubeconfig contexts, usually matching a team, customer, region, or environment family. It is a navigation convenience only; it does not change cluster credentials or Kubernetes API access.
+
+A **saved workspace** stores a cluster group or context set, selected namespaces, filters, shortcuts, and preferred layout. Restoring a workspace should fetch live cluster state and open a curated overview for that scope rather than replaying stale selected objects.
+
 The long-term differentiator is persistent global filtering across selected clusters, namespaces, resource kinds, health, owner references, Argo CD signals, and Helm release labels.
 
 K8Studio is the main public product benchmark for feature breadth, especially grid views, selected-object details, topology, multi-cluster management, logs, metrics, RBAC/security views, Helm views, docking layouts, and AI-assisted troubleshooting. This app should use those as inspiration while keeping an original namespace-first workflow and stricter local security boundary.
