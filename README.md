@@ -39,6 +39,7 @@ The second deliverable should add search, status chips, age formatting, owner de
 ## Docs
 
 - [Architecture Blueprint](docs/architecture-blueprint.md)
+- [Product Vision](docs/product-vision.md)
 - [Milestones](docs/milestones.md)
 - [Project TODOs](docs/todos.md)
 - [Product Inspiration](docs/product-inspiration.md)
