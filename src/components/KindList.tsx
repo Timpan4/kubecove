@@ -1,23 +1,24 @@
-import type { SupportedKind } from "../lib/types";
-import { SUPPORTED_KINDS } from "../lib/types";
+import type { AnyKind } from "../lib/types";
+import { SUPPORTED_KINDS, CLUSTER_SCOPED_KINDS } from "../lib/types";
 
 interface KindListProps {
-  selectedKinds: SupportedKind[];
-  onToggleKind: (kind: SupportedKind) => void;
+  selectedKinds: AnyKind[];
+  onToggleKind: (kind: AnyKind) => void;
 }
 
 export function KindList({ selectedKinds, onToggleKind }: KindListProps) {
-  const allSelected = selectedKinds.length === SUPPORTED_KINDS.length;
+  const allKinds = [...SUPPORTED_KINDS, ...CLUSTER_SCOPED_KINDS];
+  const allSelected = selectedKinds.length === allKinds.length;
 
   const handleToggleAll = () => {
     if (allSelected) {
-      SUPPORTED_KINDS.forEach((kind) => {
+      allKinds.forEach((kind) => {
         if (selectedKinds.includes(kind)) {
           onToggleKind(kind);
         }
       });
     } else {
-      SUPPORTED_KINDS.forEach((kind) => {
+      allKinds.forEach((kind) => {
         if (!selectedKinds.includes(kind)) {
           onToggleKind(kind);
         }
@@ -54,6 +55,27 @@ export function KindList({ selectedKinds, onToggleKind }: KindListProps) {
             </label>
           </li>
         ))}
+        {CLUSTER_SCOPED_KINDS.length > 0 && (
+          <>
+            <li className="kind-divider" />
+            {CLUSTER_SCOPED_KINDS.map((kind) => (
+              <li
+                key={kind}
+                className={`kind-item ${selectedKinds.includes(kind) ? "selected" : ""}`}
+              >
+                <label className="kind-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={selectedKinds.includes(kind)}
+                    onChange={() => onToggleKind(kind)}
+                    className="kind-checkbox"
+                  />
+                  {kind}
+                </label>
+              </li>
+            ))}
+          </>
+        )}
       </ul>
     </div>
   );
