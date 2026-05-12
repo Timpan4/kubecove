@@ -1,11 +1,12 @@
-use crate::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetailsFull};
+use crate::models::{AppError, ArgoApplicationDetails, ArgoApplicationSetSummary, ArgoAppProjectSummary, ArgoApplicationSummary, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetailsFull};
 use chrono::{DateTime, TimeZone, Utc};
 use kube::{
-    api::Api,
+    api::{Api, DynamicObject, Resource},
     config::{KubeConfigOptions, Kubeconfig},
-    Client, Resource,
+    discovery::Discovery,
+    Client,
 };
-use k8s_openapi::NamespaceResourceScope;
+use k8s_openapi::{NamespaceResourceScope, ClusterResourceScope};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// ARGO CD ANNOTATIONS AND LABEL KEYS
@@ -118,6 +119,20 @@ where
     } else {
         Api::all(client)
     };
+    let resource = api.get(name).await.map_err(|e: kube::Error| AppError::kube(e.to_string()))?;
+    let yaml = serde_yaml::to_string(&resource).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    Ok((resource, yaml))
+}
+
+/// Fetch a cluster-scoped resource and serialize it to YAML.
+async fn fetch_and_serialize_cluster<T: Resource<Scope = ClusterResourceScope> + Serialize + DeserializeOwned + Clone + std::fmt::Debug + Send + Sync>(
+    client: Client,
+    name: &str,
+) -> Result<(T, String), AppError>
+where
+    <T as Resource>::DynamicType: Default,
+{
+    let api: Api<T> = Api::all(client);
     let resource = api.get(name).await.map_err(|e: kube::Error| AppError::kube(e.to_string()))?;
     let yaml = serde_yaml::to_string(&resource).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
     Ok((resource, yaml))
@@ -529,6 +544,68 @@ pub async fn resources_summary_from(
                 })
                 .collect()
         }
+        "Node" => {
+            let api: Api<k8s_openapi::api::core::v1::Node> = Api::all(client);
+            let nodes = api.list(&Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            nodes
+                .iter()
+                .map(|node| {
+                    let mut summary = base_resource_summary(
+                        "Node",
+                        &cluster_context,
+                        &node.metadata,
+                        resource_age(node.metadata.creation_timestamp.clone().map(|t| {
+                            Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+                        })),
+                    );
+                    if let Some(ref status) = node.status {
+                        if let Some(ref conditions) = status.conditions {
+                            let ready_count = conditions.iter().filter(|c| c.type_ == "Ready" && c.status == "True").count();
+                            summary.ready = Some(format!("{}/{}", ready_count, 1));
+                            let ready = conditions.iter().find(|c| c.type_ == "Ready").map(|c| c.status.clone());
+                            summary.status = ready;
+                        }
+                    }
+                    summary
+                })
+                .collect()
+        }
+        "StorageClass" => {
+            let api: Api<k8s_openapi::api::storage::v1::StorageClass> = Api::all(client);
+            let scs = api.list(&Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            scs
+                .iter()
+                .map(|sc| {
+                    base_resource_summary(
+                        "StorageClass",
+                        &cluster_context,
+                        &sc.metadata,
+                        resource_age(sc.metadata.creation_timestamp.clone().map(|t| {
+                            Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+                        })),
+                    )
+                })
+                .collect()
+        }
+        "PersistentVolume" => {
+            let api: Api<k8s_openapi::api::core::v1::PersistentVolume> = Api::all(client);
+            let pvs = api.list(&Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            pvs
+                .iter()
+                .map(|pv| {
+                    let mut summary = base_resource_summary(
+                        "PersistentVolume",
+                        &cluster_context,
+                        &pv.metadata,
+                        resource_age(pv.metadata.creation_timestamp.clone().map(|t| {
+                            Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+                        })),
+                    );
+                    summary.status = pv.status.as_ref().and_then(|s| s.phase.as_ref()).map(|p| p.clone());
+                    summary
+                })
+                .collect()
+        }
         _ => return Err(AppError::new(format!("unsupported resource kind: {}", kind), "cluster")),
     };
 
@@ -606,6 +683,18 @@ pub async fn resource_yaml_from(
         }
         "CronJob" => {
             let (_cj, yaml) = fetch_and_serialize::<k8s_openapi::api::batch::v1::CronJob>(client, namespace.as_deref(), &name).await?;
+            Ok(yaml)
+        }
+        "Node" => {
+            let (_node, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::core::v1::Node>(client, &name).await?;
+            Ok(yaml)
+        }
+        "StorageClass" => {
+            let (_sc, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::storage::v1::StorageClass>(client, &name).await?;
+            Ok(yaml)
+        }
+        "PersistentVolume" => {
+            let (_pv, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::core::v1::PersistentVolume>(client, &name).await?;
             Ok(yaml)
         }
         _ => Err(AppError::new(format!("unsupported resource kind: {}", kind), "cluster")),
@@ -959,6 +1048,89 @@ pub async fn resource_details_from(
                 status,
             })
         }
+        "Node" => {
+            let (node, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::core::v1::Node>(client, &name).await?;
+            let metadata = serde_json::to_value(&node.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = node.status.as_ref().map(|s| serde_json::to_value(s).ok()).flatten();
+            let summary = ResourceSummary {
+                kind: "Node".to_string(),
+                cluster: cluster_context.clone(),
+                name: name.clone(),
+                namespace: None,
+                age: resource_age(node.metadata.creation_timestamp.clone().map(|t| {
+                    Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+                })),
+                status: node.status.as_ref().and_then(|s| {
+                    s.conditions.as_ref()?.iter().find(|c| c.type_ == "Ready").map(|c| c.status.clone())
+                }),
+                ready: node.status.as_ref().and_then(|s| {
+                    s.conditions.as_ref().map(|conds| {
+                        format!("{}/{}", conds.iter().filter(|c| c.type_ == "Ready" && c.status == "True").count(), 1)
+                    })
+                }),
+                restarts: None,
+                owner_ref: None,
+                argo_app: None,
+                helm_release: None,
+            };
+            Ok(ResourceDetailsFull {
+                summary,
+                yaml,
+                metadata,
+                status,
+            })
+        }
+        "StorageClass" => {
+            let (sc, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::storage::v1::StorageClass>(client, &name).await?;
+            let metadata = serde_json::to_value(&sc.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let summary = ResourceSummary {
+                kind: "StorageClass".to_string(),
+                cluster: cluster_context.clone(),
+                name: name.clone(),
+                namespace: None,
+                age: resource_age(sc.metadata.creation_timestamp.clone().map(|t| {
+                    Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+                })),
+                status: None,
+                ready: None,
+                restarts: None,
+                owner_ref: None,
+                argo_app: None,
+                helm_release: None,
+            };
+            Ok(ResourceDetailsFull {
+                summary,
+                yaml,
+                metadata,
+                status: None,
+            })
+        }
+        "PersistentVolume" => {
+            let (pv, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::core::v1::PersistentVolume>(client, &name).await?;
+            let metadata = serde_json::to_value(&pv.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = pv.status.as_ref().map(|s| serde_json::to_value(s).ok()).flatten();
+            let summary = ResourceSummary {
+                kind: "PersistentVolume".to_string(),
+                cluster: cluster_context.clone(),
+                name: name.clone(),
+                namespace: None,
+                age: resource_age(pv.metadata.creation_timestamp.clone().map(|t| {
+                    Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+                })),
+                status: pv.status.as_ref().and_then(|s| s.phase.as_ref()).map(|p| p.clone()),
+                ready: None,
+                restarts: None,
+                owner_ref: None,
+                argo_app: None,
+                helm_release: None,
+            };
+            Ok(ResourceDetailsFull {
+                summary,
+                yaml,
+                metadata,
+                status,
+            })
+        }
         _ => Err(AppError::new(format!("unsupported resource kind: {}", kind), "cluster")),
     }
 }
@@ -971,4 +1143,288 @@ pub async fn get_resource_details(
     namespace: Option<String>,
 ) -> Result<ResourceDetailsFull, AppError> {
     resource_details_from(cluster_context, kind, name, namespace).await
+}
+
+/// Detect if Argo CD CRDs are present in the cluster.
+#[tauri::command]
+pub async fn detect_argocd(cluster_context: String) -> Result<bool, AppError> {
+    let options = KubeConfigOptions {
+        context: Some(cluster_context.clone()),
+        ..Default::default()
+    };
+
+    let config = kube::Config::from_kubeconfig(&options)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+
+    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+
+    // Check specifically for the Application CRD in argoproj.io group
+    match find_api_resource(&client, "argoproj.io", "Application").await {
+        Ok(Some(_)) => Ok(true),
+        Ok(None) => Ok(false),
+        Err(_) => Ok(false),
+    }
+}
+
+/// Find API resource for a given kind in the cluster discovery.
+async fn find_api_resource(
+    client: &Client,
+    group: &str,
+    kind: &str,
+) -> Result<Option<kube::discovery::ApiResource>, AppError> {
+    let discovery = Discovery::new(client.clone()).run_aggregated().await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+
+    for g in discovery.groups() {
+        if g.name() == group {
+            for (ar, _) in g.recommended_resources() {
+                if ar.kind == kind {
+                    return Ok(Some(ar));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// List Argo CD Applications in the cluster.
+#[tauri::command]
+pub async fn list_argocd_applications(cluster_context: String) -> Result<Vec<ArgoApplicationSummary>, AppError> {
+    let options = KubeConfigOptions {
+        context: Some(cluster_context.clone()),
+        ..Default::default()
+    };
+
+    let config = kube::Config::from_kubeconfig(&options)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+
+    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+
+    let ar = match find_api_resource(&client, "argoproj.io", "Application").await? {
+        Some(ar) => ar,
+        None => return Ok(vec![]),
+    };
+
+    let api: Api<DynamicObject> = Api::all_with(client.clone(), &ar);
+    let items = api.list(&Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+
+    let summaries: Vec<ArgoApplicationSummary> = items
+        .iter()
+        .filter_map(|obj| {
+            let name = obj.metadata.name.clone().unwrap_or_default();
+            let namespace = obj.metadata.namespace.clone();
+            let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
+                Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+            }));
+            let data = obj.data.as_object()?;
+
+            let project = data.get("spec").and_then(|s| s.get("project")).and_then(|p| p.as_str()).map(String::from);
+            let destination_namespace = data.get("spec").and_then(|s| s.get("destination")).and_then(|d| d.get("namespace")).and_then(|n| n.as_str()).map(String::from);
+            let destination_server = data.get("spec").and_then(|s| s.get("destination")).and_then(|d| d.get("server")).and_then(|s| s.as_str()).map(String::from);
+            let source_repo = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("repoURL")).and_then(|r| r.as_str()).map(String::from);
+            let source_revision = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("targetRevision")).and_then(|r| r.as_str()).map(String::from);
+            let sync_status = data.get("status").and_then(|s| s.get("sync")).and_then(|s| s.get("status")).and_then(|st| st.as_str()).map(String::from);
+            let health_status = data.get("status").and_then(|s| s.get("health")).and_then(|h| h.get("status")).and_then(|st| st.as_str()).map(String::from);
+
+            Some(ArgoApplicationSummary {
+                cluster: cluster_context.clone(),
+                name,
+                age,
+                namespace,
+                project,
+                sync_status,
+                health_status,
+                destination_namespace,
+                destination_server,
+                source_repo,
+                source_revision,
+            })
+        })
+        .collect();
+
+    Ok(summaries)
+}
+
+/// Get detailed Argo CD Application information including YAML, metadata, and status.
+#[tauri::command]
+pub async fn get_argocd_application_details(
+    cluster_context: String,
+    name: String,
+    namespace: Option<String>,
+) -> Result<ArgoApplicationDetails, AppError> {
+    let options = KubeConfigOptions {
+        context: Some(cluster_context.clone()),
+        ..Default::default()
+    };
+
+    let config = kube::Config::from_kubeconfig(&options)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+
+    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+
+    let ar = match find_api_resource(&client, "argoproj.io", "Application").await? {
+        Some(ar) => ar,
+        None => return Err(AppError::new("Application CRD not found", "cluster")),
+    };
+
+    let api: Api<DynamicObject> = if let Some(ns) = &namespace {
+        Api::namespaced_with(client.clone(), ns.as_str(), &ar)
+    } else {
+        Api::all_with(client.clone(), &ar)
+    };
+
+    let obj = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
+
+    let yaml = serde_yaml::to_string(&obj).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let metadata = serde_json::to_value(&obj.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let data = obj.data.as_object().ok_or_else(|| AppError::new("invalid application data", "cluster"))?;
+
+    let name = obj.metadata.name.clone().unwrap_or_default();
+    let namespace = obj.metadata.namespace.clone();
+    let age = resource_age(obj.metadata.creation_timestamp.map(|t| {
+        Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+    }));
+
+    let project = data.get("spec").and_then(|s| s.get("project")).and_then(|p| p.as_str()).map(String::from);
+    let destination_namespace = data.get("spec").and_then(|s| s.get("destination")).and_then(|d| d.get("namespace")).and_then(|n| n.as_str()).map(String::from);
+    let destination_server = data.get("spec").and_then(|s| s.get("destination")).and_then(|d| d.get("server")).and_then(|s| s.as_str()).map(String::from);
+    let source_repo = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("repoURL")).and_then(|r| r.as_str()).map(String::from);
+    let source_revision = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("targetRevision")).and_then(|r| r.as_str()).map(String::from);
+    let sync_status = data.get("status").and_then(|s| s.get("sync")).and_then(|s| s.get("status")).and_then(|st| st.as_str()).map(String::from);
+    let health_status = data.get("status").and_then(|s| s.get("health")).and_then(|h| h.get("status")).and_then(|st| st.as_str()).map(String::from);
+    let status = data.get("status").cloned();
+
+    let summary = ArgoApplicationSummary {
+        cluster: cluster_context.clone(),
+        name,
+        age,
+        namespace,
+        project,
+        sync_status,
+        health_status,
+        destination_namespace,
+        destination_server,
+        source_repo,
+        source_revision,
+    };
+
+    Ok(ArgoApplicationDetails {
+        summary,
+        yaml,
+        metadata,
+        status,
+    })
+}
+
+/// List Argo CD ApplicationSets in the cluster.
+#[tauri::command]
+pub async fn list_argocd_appsets(cluster_context: String) -> Result<Vec<ArgoApplicationSetSummary>, AppError> {
+    let options = KubeConfigOptions {
+        context: Some(cluster_context.clone()),
+        ..Default::default()
+    };
+
+    let config = kube::Config::from_kubeconfig(&options)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+
+    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+
+    let ar = match find_api_resource(&client, "argoproj.io", "ApplicationSet").await? {
+        Some(ar) => ar,
+        None => return Ok(vec![]),
+    };
+
+    let api: Api<DynamicObject> = Api::all_with(client.clone(), &ar);
+    let items = api.list(&Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+
+    let summaries: Vec<ArgoApplicationSetSummary> = items
+        .iter()
+        .filter_map(|obj| {
+            let name = obj.metadata.name.clone().unwrap_or_default();
+            let namespace = obj.metadata.namespace.clone();
+            let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
+                Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+            }));
+            let data = obj.data.as_object()?;
+
+            let project = data.get("spec").and_then(|s| s.get("project")).and_then(|p| p.as_str()).map(String::from);
+            let status = data.get("status").and_then(|s| s.get("conditions")).and_then(|c| c.as_array()).and_then(|arr| arr.first()).and_then(|c| c.get("type")).and_then(|t| t.as_str()).map(String::from);
+            let sync_status = data.get("status").and_then(|s| s.get("sync")).and_then(|s| s.get("status")).and_then(|st| st.as_str()).map(String::from);
+            let health_status = data.get("status").and_then(|s| s.get("health")).and_then(|h| h.get("status")).and_then(|st| st.as_str()).map(String::from);
+            let destination_namespace = data.get("spec").and_then(|s| s.get("generatorParams")).and_then(|arr| arr.as_array()).and_then(|a| a.first()).and_then(|p| p.get("dest-namespace")).and_then(|n| n.as_str()).map(String::from);
+            let destination_server = data.get("spec").and_then(|s| s.get("generatorParams")).and_then(|arr| arr.as_array()).and_then(|a| a.first()).and_then(|p| p.get("dest-server")).and_then(|s| s.as_str()).map(String::from);
+            let source_repo = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("repoURL")).and_then(|r| r.as_str()).map(String::from);
+            let source_revision = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("targetRevision")).and_then(|r| r.as_str()).map(String::from);
+
+            Some(ArgoApplicationSetSummary {
+                cluster: cluster_context.clone(),
+                name,
+                age,
+                namespace,
+                project,
+                status,
+                sync_status,
+                health_status,
+                destination_namespace,
+                destination_server,
+                source_repo,
+                source_revision,
+            })
+        })
+        .collect();
+
+    Ok(summaries)
+}
+
+/// List Argo CD AppProjects in the cluster.
+#[tauri::command]
+pub async fn list_argocd_appprojects(cluster_context: String) -> Result<Vec<ArgoAppProjectSummary>, AppError> {
+    let options = KubeConfigOptions {
+        context: Some(cluster_context.clone()),
+        ..Default::default()
+    };
+
+    let config = kube::Config::from_kubeconfig(&options)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+
+    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+
+    let ar = match find_api_resource(&client, "argoproj.io", "AppProject").await? {
+        Some(ar) => ar,
+        None => return Ok(vec![]),
+    };
+
+    let api: Api<DynamicObject> = Api::all_with(client.clone(), &ar);
+    let items = api.list(&Default::default()).await.map_err(|e| AppError::kube(e.to_string()))?;
+
+    let summaries: Vec<ArgoAppProjectSummary> = items
+        .iter()
+        .filter_map(|obj| {
+            let name = obj.metadata.name.clone().unwrap_or_default();
+            let namespace = obj.metadata.namespace.clone();
+            let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
+                Utc.timestamp_opt(t.0.as_second() as i64, 0).single().unwrap_or_else(Utc::now)
+            }));
+            let data = obj.data.as_object()?;
+
+            let description = data.get("spec").and_then(|s| s.get("description")).and_then(|d| d.as_str()).map(String::from);
+            let status = data.get("status").and_then(|s| s.get("conditions")).and_then(|c| c.as_array()).and_then(|arr| arr.first()).and_then(|c| c.get("type")).and_then(|t| t.as_str()).map(String::from);
+
+            Some(ArgoAppProjectSummary {
+                cluster: cluster_context.clone(),
+                name,
+                age,
+                namespace,
+                description,
+                status,
+            })
+        })
+        .collect();
+
+    Ok(summaries)
 }
