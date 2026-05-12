@@ -10,11 +10,14 @@ Context -> Namespace -> App / Owner -> Resource
 
 K8Studio is especially useful as a reference for what a serious Kubernetes GUI can grow into: multi-cluster management, grid views, object detail panels, topology views, logs, metrics, security/RBAC views, Helm workflows, docking layouts, and AI-assisted troubleshooting.
 
+Aptakube is useful as a reference for clean, low-friction Kubernetes UX: fast startup, readable resource tables, approachable multi-cluster browsing, and a polished desktop feel. This app should borrow that clarity while preserving its own context-first and namespace-first workflow.
+
 Reference links:
 
 - K8Studio: https://k8studio.io/
 - K8Studio features: https://k8studio.io/features/
 - K8Studio GitHub: https://github.com/guiqui/k8Studio
+- Aptakube: https://aptakube.com/
 
 ## What To Borrow As Product Ideas
 
@@ -61,6 +64,6 @@ Reference links:
 
 ## Legal And Design Boundary
 
-K8Studio is inspiration, not source material.
+K8Studio and Aptakube are inspiration, not source material.
 
-Do not copy K8Studio code, assets, branding, proprietary layouts, or marketing text. Use public feature concepts as a benchmark and design original UI around this app's namespace-first workflow.
+Do not copy K8Studio or Aptakube code, assets, branding, proprietary layouts, or marketing text. Use public feature concepts as benchmarks and design original UI around this app's namespace-first workflow.
