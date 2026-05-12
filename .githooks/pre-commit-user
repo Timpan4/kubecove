@@ -1,0 +1,53 @@
+#!/bin/sh
+set -eu
+
+echo "Running pre-commit checks..."
+
+if ! git diff --cached --check; then
+  echo "pre-commit: staged diff has whitespace errors or conflict markers."
+  exit 1
+fi
+
+staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ -n "$staged_files" ]; then
+  for file in $staged_files; do
+    case "$file" in
+      .githooks/pre-commit)
+        continue
+        ;;
+      *.png|*.jpg|*.jpeg|*.gif|*.ico|*.icns|*.webp|*.pdf|*.zip)
+        continue
+        ;;
+    esac
+
+    if git show ":$file" 2>/dev/null | grep -Eiq '(^|[[:space:]])(client-key-data|client-certificate-data|certificate-authority-data|current-context|clusters|contexts|users):'; then
+      echo "pre-commit: possible kubeconfig or credential material staged in $file"
+      echo "Move credentials out of the repo or add a narrow exception after review."
+      exit 1
+    fi
+  done
+fi
+
+if [ -f package.json ]; then
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "pre-commit: package.json exists, but bun was not found on PATH."
+    exit 1
+  fi
+
+  if grep -Eq '"typecheck"[[:space:]]*:' package.json; then
+    bun run typecheck
+  fi
+
+  if grep -Eq '"lint"[[:space:]]*:' package.json; then
+    bun run lint
+  fi
+fi
+
+if [ -f src-tauri/Cargo.toml ]; then
+  cargo check --manifest-path src-tauri/Cargo.toml
+elif [ -f Cargo.toml ]; then
+  cargo check
+fi
+
+echo "pre-commit checks passed."

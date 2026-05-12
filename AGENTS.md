@@ -5,6 +5,7 @@ This repository is for a local desktop Kubernetes IDE built with Tauri v2, React
 Before making implementation changes, read:
 
 - `docs/architecture-blueprint.md`
+- `docs/product-vision.md`
 - `docs/milestones.md`
 - `docs/todos.md`
 - `docs/product-inspiration.md`
@@ -67,7 +68,8 @@ Write an ADR before changing:
 ## Product Inspiration
 
 - Use K8Studio as a public feature benchmark for Kubernetes IDE capabilities.
-- Do not copy K8Studio code, assets, branding, proprietary layouts, or marketing text.
+- Use Aptakube as a public benchmark for clean, low-friction Kubernetes UX.
+- Do not copy K8Studio or Aptakube code, assets, branding, proprietary layouts, or marketing text.
 - Preserve this app's differentiator: context-first and namespace-first workflows.
 
 ## Verification

@@ -59,6 +59,8 @@
 - [x] Argo and Helm label detection.
 - [x] Owner reference display.
 - [ ] Basic app/owner grouping experiment.
+- [ ] Define saved workspace launcher and curated restore behavior.
+- [ ] Add custom density toggle after the baseline workspace layout stabilizes.
 
 ## Argo CD Native
 
@@ -78,4 +80,5 @@
 - [ ] Security inspection views.
 - [ ] Helm release views.
 - [ ] Customizable workspace layout.
+- [ ] Adaptive workspace defaults for explicit saved workspace types.
 - [ ] Context-aware AI assistance.
