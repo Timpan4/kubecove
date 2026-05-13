@@ -43,6 +43,12 @@ fn test_resource_summary_serde() {
         name: "nginx".to_string(),
         namespace: Some("default".to_string()),
         age: "2024-01-01T00:00:00Z".to_string(),
+        status: None,
+        ready: None,
+        restarts: None,
+        owner_ref: None,
+        argo_app: None,
+        helm_release: None,
     };
     let json_str = serde_json::to_string(&rs).unwrap();
     let parsed: ResourceSummary = serde_json::from_str(&json_str).unwrap();
@@ -89,6 +95,12 @@ fn test_resource_details_full_serde() {
         name: "nginx".to_string(),
         namespace: Some("default".to_string()),
         age: "2024-01-01T00:00:00Z".to_string(),
+        status: None,
+        ready: None,
+        restarts: None,
+        owner_ref: None,
+        argo_app: None,
+        helm_release: None,
     };
     let rdf = ResourceDetailsFull {
         summary,
