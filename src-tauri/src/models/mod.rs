@@ -120,6 +120,14 @@ pub struct ArgoApplicationSetSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ArgoApplicationSetDetails {
+    pub summary: ArgoApplicationSetSummary,
+    pub yaml: String,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ArgoAppProjectSummary {
     pub cluster: String,
     pub name: String,
@@ -129,3 +137,10 @@ pub struct ArgoAppProjectSummary {
     pub status: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArgoAppProjectDetails {
+    pub summary: ArgoAppProjectSummary,
+    pub yaml: String,
+    pub metadata: serde_json::Value,
+}

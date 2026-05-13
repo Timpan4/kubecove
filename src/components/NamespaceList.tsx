@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { createTauriClient, listNamespaces } from "../lib/tauri";
 import type { NamespaceSummary } from "../lib/types";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface NamespaceListProps {
   clusterContext: string;
@@ -54,55 +56,64 @@ export function NamespaceList({ clusterContext, selectedNamespaces, onNamespaceC
   };
 
   if (!clusterContext) {
-    return <div className="namespace-list empty">Select a cluster context first</div>;
+    return <div className="text-sm text-muted-foreground">Select a cluster context first</div>;
   }
 
   if (loading) {
-    return <div className="namespace-list">Loading namespaces...</div>;
+    return <div className="flex flex-col text-sm text-muted-foreground">Loading namespaces...</div>;
   }
 
   if (error) {
     return (
-      <div className="namespace-list error">
+      <div className="flex flex-col gap-2 text-sm text-destructive">
         Error: {error}
-        <button onClick={loadNamespaces} className="retry-btn">Retry</button>
+        <Button type="button" variant="outline" size="sm" onClick={loadNamespaces}>
+          Retry
+        </Button>
       </div>
     );
   }
 
   if (namespaces.length === 0) {
-    return <div className="namespace-list empty">No namespaces found</div>;
+    return <div className="text-sm text-muted-foreground">No namespaces found</div>;
   }
 
   const allSelected = namespaces.length > 0 && selectedNamespaces.length === namespaces.length;
 
   return (
-    <div className="namespace-list">
-      <div className="namespace-list-header">
-        <h3 className="namespace-list-title">Namespaces</h3>
-        <button
-          className="select-all-btn"
+    <div className="flex flex-col">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="m-0 text-xs font-semibold uppercase text-muted-foreground">
+          Namespaces
+        </h3>
+        <Button
           onClick={handleToggleAll}
           type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-[0.625rem]"
         >
           {allSelected ? "Deselect All" : "Select All"}
-        </button>
+        </Button>
       </div>
-      <ul className="namespace-items">
+      <ul className="m-0 list-none p-0">
         {namespaces.map((ns) => (
           <li
             key={ns.name}
-            className={`namespace-item ${selectedNamespaces.includes(ns.name) ? "selected" : ""}`}
+            className={cn(
+              "cursor-pointer rounded-md p-2 text-sm transition-colors hover:bg-accent",
+              selectedNamespaces.includes(ns.name) && "bg-accent",
+            )}
           >
-            <label className="namespace-checkbox-label">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={selectedNamespaces.includes(ns.name)}
                 onChange={() => handleToggleOne(ns.name)}
-                className="namespace-checkbox"
+                className="accent-primary"
               />
-              <span className="namespace-name">{ns.name}</span>
-              <span className="namespace-age">{ns.age}</span>
+              <span className="flex-1">{ns.name}</span>
+              <span className="text-xs text-muted-foreground">{ns.age}</span>
             </label>
           </li>
         ))}
