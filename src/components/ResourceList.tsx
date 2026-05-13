@@ -33,6 +33,7 @@ import {
 	getResourceGroupVisual,
 	getResourceKindVisual,
 } from "@/lib/resource-visuals";
+import { TimestampText } from "@/components/TimestampText";
 
 interface ResourceListProps {
 	clusterContext: string;
@@ -224,6 +225,16 @@ function KindCell({ kind }: { kind: string }) {
 	);
 }
 
+function AgeCell({ row }: { row: ResourceSummary }) {
+	return (
+		<TimestampText
+			relative={row.age}
+			exact={row.createdAt}
+			className="block min-w-0 truncate outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+		/>
+	);
+}
+
 // Argo/Helm badges rendered inline in the App column
 function ArgoHelmBadges({ row }: { row: ResourceSummary }) {
 	const badges: Array<{ label: string; className: string }> = [];
@@ -315,7 +326,7 @@ const columns = [
 	}),
 	columnHelper.accessor("age", {
 		header: "Age",
-		cell: (info) => <TruncatedCell value={info.getValue()} />,
+		cell: (info) => <AgeCell row={info.row.original} />,
 	}),
 	columnHelper.display({
 		id: "argo-helm",

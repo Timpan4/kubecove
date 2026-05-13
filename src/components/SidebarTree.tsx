@@ -104,6 +104,13 @@ function TreeNodeComponent({
     onNodeSelect(node.id);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleClick();
+    }
+  };
+
   const handleChevronClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onSectionToggle(idStr);
@@ -122,7 +129,9 @@ function TreeNodeComponent({
         )}
         data-depth={depth}
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
         role="treeitem"
+        tabIndex={0}
         aria-expanded={hasChildren ? isExpanded : undefined}
       >
         <button

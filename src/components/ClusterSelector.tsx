@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createTauriClient, listKubeContexts } from "../lib/tauri";
 import type { ClusterContext } from "../lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -19,6 +20,16 @@ export function ClusterSelector({ onClusterChange }: ClusterSelectorProps) {
   const [selected, setSelected] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const selectedRef = useRef(selected);
+  const onClusterChangeRef = useRef(onClusterChange);
+
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+
+  useEffect(() => {
+    onClusterChangeRef.current = onClusterChange;
+  }, [onClusterChange]);
 
   const loadClusters = useCallback(async () => {
     const client = createTauriClient();
@@ -27,6 +38,15 @@ export function ClusterSelector({ onClusterChange }: ClusterSelectorProps) {
     try {
       const contexts = await listKubeContexts(client);
       setClusters(contexts);
+      const currentContext = contexts.find((ctx) => ctx.isCurrent);
+      const preferredContext = currentContext ?? contexts[0];
+      const selectedContext = selectedRef.current;
+      const selectedStillExists = contexts.some((ctx) => ctx.name === selectedContext);
+      if ((!selectedContext || !selectedStillExists) && preferredContext) {
+        selectedRef.current = preferredContext.name;
+        setSelected(preferredContext.name);
+        onClusterChangeRef.current(preferredContext.name);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load contexts");
     } finally {
@@ -39,6 +59,7 @@ export function ClusterSelector({ onClusterChange }: ClusterSelectorProps) {
   }, [loadClusters]);
 
   const handleChange = (value: string) => {
+    selectedRef.current = value;
     setSelected(value);
     onClusterChange(value);
   };
@@ -68,7 +89,10 @@ export function ClusterSelector({ onClusterChange }: ClusterSelectorProps) {
 
   return (
     <div className="flex flex-row items-center gap-2">
-      <span className="whitespace-nowrap text-[0.6875rem] font-bold uppercase tracking-wide text-muted-foreground">
+      <span
+        id="cluster-select-label"
+        className="whitespace-nowrap text-[0.6875rem] font-bold uppercase tracking-wide text-muted-foreground"
+      >
         Cluster Context:
       </span>
       <Select
@@ -77,16 +101,19 @@ export function ClusterSelector({ onClusterChange }: ClusterSelectorProps) {
       >
         <SelectTrigger
           id="cluster-select"
+          aria-labelledby="cluster-select-label"
           className="h-8 min-w-40 bg-background/50 text-xs"
         >
           <SelectValue placeholder="Select a context..." />
         </SelectTrigger>
         <SelectContent>
-        {clusters.map((ctx) => (
-          <SelectItem key={ctx.name} value={ctx.name}>
-            {ctx.name}
-          </SelectItem>
-        ))}
+          <SelectGroup>
+            {clusters.map((ctx) => (
+              <SelectItem key={ctx.name} value={ctx.name}>
+                {ctx.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         </SelectContent>
       </Select>
     </div>

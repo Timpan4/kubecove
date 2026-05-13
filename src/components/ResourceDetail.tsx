@@ -6,7 +6,7 @@ export function ResourceDetail({ resource }: ResourceDetailProps) {
   if (!resource) {
     return (
       <div className="text-sm text-muted-foreground">
-        <div>Select a resource to view details</div>
+        Select a resource to view details
       </div>
     );
   }

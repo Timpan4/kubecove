@@ -3,6 +3,7 @@ import type {
 	ClusterContext,
 	NamespaceSummary,
 	ResourceSummary,
+	ResourceEventSummary,
 	ResourceDetailsFull,
 	AppError,
 	ArgoApplicationSummary,
@@ -119,6 +120,21 @@ export async function getResourceDetails(
 	namespace?: string,
 ): Promise<ResourceDetailsFull> {
 	return client.invoke<ResourceDetailsFull>("get_resource_details", {
+		clusterContext,
+		kind,
+		name,
+		namespace,
+	});
+}
+
+export async function listResourceEvents(
+	client: TauriClient,
+	clusterContext: string,
+	kind: string,
+	name: string,
+	namespace?: string,
+): Promise<ResourceEventSummary[]> {
+	return client.invoke<ResourceEventSummary[]>("list_resource_events", {
 		clusterContext,
 		kind,
 		name,

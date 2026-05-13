@@ -25,5 +25,6 @@ fn test_cluster_context_fields() {
     let contexts = result.unwrap();
     for ctx in &contexts {
         assert_eq!(std::mem::size_of_val(&ctx.name), std::mem::size_of::<String>());
+        let _: bool = ctx.is_current;
     }
 }
