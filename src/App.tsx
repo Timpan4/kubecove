@@ -1,5 +1,5 @@
 import "./App.css";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDashboardState } from "./lib/hooks";
 import { ClusterSelector } from "./components/ClusterSelector";
 import { SidebarTree } from "./components/SidebarTree";
@@ -7,238 +7,379 @@ import { ResourceList } from "./components/ResourceList";
 import { ResourceDetailPanel } from "./features/resource-detail/ResourceDetailPanel";
 import { ArgoCDPanel } from "./features/argo/ArgoCDPanel";
 import { ArgoDetailPanel } from "./features/argo/ArgoDetailPanel";
-import type { ResourceSummary, ArgoApplicationSummary } from "./lib/types";
-import { CLUSTER_SCOPED_KINDS } from "./lib/types";
+import { Search } from "lucide-react";
+
 import { createTauriClient, detectArgoCD } from "./lib/tauri";
 import {
-  resolveTreeScope,
-  emptyStateMessage,
-  type TreeNodeId,
+	resolveTreeScope,
+	emptyStateMessage,
+	type TreeNodeId,
 } from "./lib/tree-nav";
+import { diagnosticLog } from "./lib/diagnostics";
 
-function isClusterScopedOnly(kinds: string[]): boolean {
-  return kinds.length > 0 && kinds.every((k) => (CLUSTER_SCOPED_KINDS as readonly string[]).includes(k));
+const DETAIL_PANEL_DEFAULT_WIDTH = 480;
+const DETAIL_PANEL_MIN_WIDTH = 390;
+const MAIN_PANEL_MIN_WIDTH = 360;
+const SIDEBAR_WIDTH = 260;
+
+function clampDetailPanelWidth(width: number): number {
+	const viewportWidth =
+		typeof window === "undefined" ? 1440 : window.innerWidth;
+	const maxWidth = Math.max(
+		DETAIL_PANEL_MIN_WIDTH,
+		viewportWidth - SIDEBAR_WIDTH - MAIN_PANEL_MIN_WIDTH,
+	);
+	return Math.min(Math.max(width, DETAIL_PANEL_MIN_WIDTH), maxWidth);
 }
 
 function App() {
-  const {
-    clusterContext,
-    selectedNamespaces,
-    selectedKinds,
-    selectedResource,
-    argoDetected,
-    selectedArgoApp,
-    viewMode,
-    setClusterContext,
-    setSelectedNamespaces,
-    setSelectedResource,
-    setArgoDetected,
-    setSelectedArgoApp,
-    setViewMode,
-    selectedTreeNode,
-    expandedSections,
-    setSelectedTreeNode,
-    toggleExpandedSection,
-  } = useDashboardState();
+	const {
+		clusterContext,
+		selectedNamespaces,
+		selectedKinds,
+		selectedResource,
+		selectedArgoApp,
+		selectedArgoAppFilter,
+		viewMode,
+		setClusterContext,
+		setSelectedNamespaces,
+		setSelectedResource,
+		resetResource,
+		setArgoDetected,
+		setSelectedArgoApp,
+		setSelectedArgoAppFilter,
+		setViewMode,
+		selectedTreeNode,
+		expandedSections,
+		setSelectedTreeNode,
+		toggleExpandedSection,
+	} = useDashboardState();
+	const [detailPanelWidth, setDetailPanelWidth] = useState(
+		DETAIL_PANEL_DEFAULT_WIDTH,
+	);
+	const appRenderCountRef = useRef(0);
+	appRenderCountRef.current += 1;
 
-  const handleClusterChange = (ctx: string) => {
-    setClusterContext(ctx);
-    // Clear inspector state on context switch
-    setSelectedResource(null);
-    setSelectedArgoApp(null);
-    setSelectedNamespaces([]);
-    setArgoDetected(false);
-    setSelectedTreeNode(null);
-    setViewMode("resources");
-  };
+	const handleClusterChange = (ctx: string) => {
+		diagnosticLog("app.cluster.change", { cluster: ctx });
+		setClusterContext(ctx);
+		// Clear inspector state on context switch
+		setSelectedResource(null);
+		setSelectedArgoApp(null);
+		setSelectedArgoAppFilter("");
+		setSelectedNamespaces([]);
+		setArgoDetected(false);
+		setSelectedTreeNode(null);
+		setViewMode("resources");
+	};
 
-  const handleTreeNodeSelect = (nodeId: TreeNodeId) => {
-    const scope = resolveTreeScope(nodeId);
+	const handleTreeNodeSelect = (nodeId: TreeNodeId) => {
+		const scope = resolveTreeScope(nodeId);
+		diagnosticLog("app.tree.select", {
+			type: nodeId.type,
+			section: nodeId.section ?? "",
+			namespace: nodeId.namespace ?? "",
+			kind: nodeId.kind ?? "",
+			argoMode: scope.argoMode,
+		});
 
-    // Argo section or child → switch to argo view, clear resource state
-    if (scope.argoMode) {
-      setViewMode("argo");
-      setSelectedArgoApp(null);
-      setSelectedResource(null);
-    } else if (viewMode === "argo") {
-      // Leaving Argo → switch to resources, clear Argo state
-      setViewMode("resources");
-      setSelectedArgoApp(null);
-    }
+		// Argo section or child → switch to argo view, clear resource state
+		setSelectedArgoAppFilter("");
 
-    setSelectedTreeNode(nodeId);
-  };
+		if (scope.argoMode) {
+			setViewMode("argo");
+			setSelectedArgoApp(null);
+			setSelectedResource(null);
+		} else if (viewMode === "argo") {
+			// Leaving Argo → switch to resources, clear Argo state
+			setViewMode("resources");
+			setSelectedArgoApp(null);
+		}
 
-  const handleResourceSelect = (resource: ResourceSummary) => {
-    setSelectedResource(resource);
-  };
+		setSelectedTreeNode(nodeId);
+	};
 
-  const handleArgoAppSelect = (app: ArgoApplicationSummary) => {
-    setSelectedArgoApp(app);
-  };
+	const selectedResourceKey = useMemo(
+		() =>
+			selectedResource
+				? `${selectedResource.cluster}::${selectedResource.kind}::${selectedResource.namespace ?? ""}::${selectedResource.name}`
+				: null,
+		[
+			selectedResource?.cluster,
+			selectedResource?.kind,
+			selectedResource?.namespace,
+			selectedResource?.name,
+		],
+	);
 
-  const handleArgoClose = () => {
-    setSelectedArgoApp(null);
-  };
+	const handleArgoAppSelect = (
+		app: NonNullable<ReturnType<typeof useDashboardState>["selectedArgoApp"]>,
+	) => {
+		diagnosticLog("app.argo.select", {
+			name: app.name,
+			namespace: app.namespace ?? "",
+		});
+		setSelectedArgoApp(app);
+	};
 
-  // Detect Argo CD when cluster context changes
-  useEffect(() => {
-    if (!clusterContext) {
-      setArgoDetected(false);
-      return;
-    }
-    let cancelled = false;
-    const client = createTauriClient();
-    detectArgoCD(client, clusterContext)
-      .then((detected) => {
-        if (!cancelled) setArgoDetected(detected);
-      })
-      .catch(() => {
-        if (!cancelled) setArgoDetected(false);
-      });
-    return () => { cancelled = true; };
-  }, [clusterContext, setArgoDetected]);
+	const handleArgoClose = () => {
+		diagnosticLog("app.argo.close");
+		setSelectedArgoApp(null);
+	};
 
-  // Compute scope from selected tree node
-  const scope = useMemo(() => resolveTreeScope(selectedTreeNode), [selectedTreeNode]);
+	const handleDetailResizeStart = useCallback(
+		(event: React.PointerEvent<HTMLDivElement>) => {
+			event.preventDefault();
+			const startX = event.clientX;
+			const startWidth = detailPanelWidth;
 
-  // Derive selectedKinds and selectedNamespaces from tree selection
-  const computedKinds = useMemo<string[]>(() => {
-    if (scope.kinds.length > 0) return scope.kinds;
-    // Fall back to hook state for kind toggles (backwards compat)
-    return selectedKinds as string[];
-  }, [scope.kinds, selectedKinds]);
+			const handlePointerMove = (moveEvent: PointerEvent) => {
+				const nextWidth = startWidth + startX - moveEvent.clientX;
+				setDetailPanelWidth(clampDetailPanelWidth(nextWidth));
+			};
 
-  const computedNamespaces = useMemo<string[]>(() => {
-    if (scope.namespace) return [scope.namespace];
-    return selectedNamespaces;
-  }, [scope.namespace, selectedNamespaces]);
+			const handlePointerUp = () => {
+				document.body.style.cursor = "";
+				document.body.style.userSelect = "";
+				window.removeEventListener("pointermove", handlePointerMove);
+				window.removeEventListener("pointerup", handlePointerUp);
+			};
 
-  // SECTIONS import for content title
-  const SECTIONS = useMemo(() => ({
-    clusterOverview: { label: "Cluster Overview" },
-    namespaces: { label: "Namespaces" },
-    workloads: { label: "Workloads" },
-    network: { label: "Network" },
-    config: { label: "Config" },
-    storage: { label: "Storage" },
-    argo: { label: "Argo CD" },
-  }), []);
+			document.body.style.cursor = "col-resize";
+			document.body.style.userSelect = "none";
+			window.addEventListener("pointermove", handlePointerMove);
+			window.addEventListener("pointerup", handlePointerUp, { once: true });
+		},
+		[detailPanelWidth],
+	);
 
-  // Determine content title from scope
-  const contentTitle = useMemo(() => {
-    if (viewMode === "argo") {
-      if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
-        return `${selectedTreeNode.kind}`;
-      }
-      return "Argo CD";
-    }
-    if (!scope.section) return "Kubernetes Resources";
-    if (scope.section === "clusterOverview") {
-      if (scope.kinds.length === 1) return `${scope.kinds[0]} Resources`;
-      if (scope.kinds.length > 1) return "Cluster Overview";
-      return "Cluster Overview";
-    }
-    if (scope.section === "namespaces" && scope.namespace) {
-      if (scope.group && scope.kinds.length > 0) {
-        return `${scope.namespace} / ${scope.group}`;
-      }
-      return scope.namespace;
-    }
-    if (scope.group) return scope.group;
-    if (scope.kinds.length === 1) return `${scope.kinds[0]} Resources`;
-    if (scope.kinds.length > 1) return SECTIONS[scope.section]?.label ?? scope.section;
-    return SECTIONS[scope.section as keyof typeof SECTIONS]?.label ?? scope.section;
-  }, [scope, viewMode, selectedTreeNode]);
+	// Detect Argo CD when cluster context changes
+	useEffect(() => {
+		if (!clusterContext) {
+			setArgoDetected(false);
+			return;
+		}
+		let cancelled = false;
+		const client = createTauriClient();
+		detectArgoCD(client, clusterContext)
+			.then((detected) => {
+				if (!cancelled) {
+					diagnosticLog("app.argo.detect.done", {
+						cluster: clusterContext,
+						detected,
+					});
+					setArgoDetected(detected);
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					diagnosticLog("app.argo.detect.error", { cluster: clusterContext });
+					setArgoDetected(false);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [clusterContext, setArgoDetected]);
 
-  const emptyMsg = useMemo(
-    () => emptyStateMessage(scope, !!clusterContext),
-    [scope, clusterContext]
-  );
+	// Compute scope from selected tree node
+	const scope = useMemo(
+		() => resolveTreeScope(selectedTreeNode),
+		[selectedTreeNode],
+	);
 
-  return (
-    <div className="app-shell">
-      {/* Top Bar */}
-      <header className="top-bar">
-        <div className="top-bar-left">
-          <ClusterSelector onClusterChange={handleClusterChange} />
-        </div>
-        <div className="top-bar-center">
-          <span className="top-bar-title">{contentTitle}</span>
-        </div>
-        <div className="top-bar-right">
-          <div className="global-search-placeholder">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="#888" aria-hidden="true">
-              <path d="M10 6a4 4 0 11-2.77 1.21l-2.96 2.96a.5.5 0 01-.35.15.5.5 0 01-.5-.5.5.5 0 01.15-.35l2.96-2.96A4 4 0 0110 6zm-5 4a3 3 0 100-6 3 3 0 000 6z" fillRule="evenodd" />
-            </svg>
-            <span>Search resources…</span>
-          </div>
-        </div>
-      </header>
+	// Derive selectedKinds and selectedNamespaces from tree selection
+	const computedKinds = useMemo<string[]>(() => {
+		if (scope.kinds.length > 0) return scope.kinds;
+		// Fall back to hook state for kind toggles (backwards compat)
+		return selectedKinds as string[];
+	}, [scope.kinds, selectedKinds]);
 
-      {/* Main row: sidebar + content + inspector */}
-      <div className="app-body">
-        {/* Left Sidebar Tree */}
-        <aside className="sidebar">
-          <SidebarTree
-            clusterContext={clusterContext}
-            selectedNode={selectedTreeNode}
-            expandedSections={expandedSections}
-            onNodeSelect={handleTreeNodeSelect}
-            onSectionToggle={toggleExpandedSection}
-          />
-        </aside>
+	const computedNamespaces = useMemo<string[]>(() => {
+		if (scope.namespace) return [scope.namespace];
+		return selectedNamespaces;
+	}, [scope.namespace, selectedNamespaces]);
 
-        {/* Main Content */}
-        <main className="main-content">
-          {viewMode === "argo" && argoDetected ? (
-            <>
-              <div className="resource-area">
-                <ArgoCDPanel
-                  clusterContext={clusterContext}
-                  selectedArgoApp={selectedArgoApp}
-                  onAppSelect={handleArgoAppSelect}
-                  selectedArgoKind={
-                    selectedTreeNode?.type === "kind" && selectedTreeNode.kind
-                      ? selectedTreeNode.kind
-                      : null
-                  }
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="resource-area">
-                {computedKinds.length > 0 &&
-                (computedNamespaces.length > 0 || isClusterScopedOnly(computedKinds)) &&
-                clusterContext ? (
-                  <ResourceList
-                    clusterContext={clusterContext}
-                    selectedNamespaces={computedNamespaces}
-                    selectedKinds={computedKinds}
-                    selectedResource={selectedResource}
-                    onResourceSelect={handleResourceSelect}
-                  />
-                ) : (
-                  <div className="resource-area-empty">{emptyMsg}</div>
-                )}
-              </div>
-            </>
-          )}
-        </main>
+	// SECTIONS import for content title
+	const SECTIONS = useMemo(
+		() => ({
+			clusterOverview: { label: "Cluster Overview" },
+			namespaces: { label: "Namespaces" },
+			workloads: { label: "Workloads" },
+			network: { label: "Network" },
+			config: { label: "Config" },
+			storage: { label: "Storage" },
+			argo: { label: "Argo CD" },
+		}),
+		[],
+	);
 
-        {/* Right Detail Panel */}
-        {viewMode === "argo" && selectedArgoApp ? (
-          <ArgoDetailPanel app={selectedArgoApp} onClose={handleArgoClose} />
-        ) : selectedResource ? (
-          <ResourceDetailPanel
-            resource={selectedResource}
-            onClose={() => setSelectedResource(null)}
-          />
-        ) : null}
-      </div>
-    </div>
-  );
+	// Determine content title from scope
+	const contentTitle = useMemo(() => {
+		if (viewMode === "argo") {
+			if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
+				return `${selectedTreeNode.kind}`;
+			}
+			return "Argo CD";
+		}
+		if (!scope.section) return "Kubernetes Resources";
+		if (scope.section === "clusterOverview") {
+			if (scope.kinds.length === 1) return `${scope.kinds[0]} Resources`;
+			if (scope.kinds.length > 1) return "Cluster Overview";
+			return "Cluster Overview";
+		}
+		if (scope.section === "namespaces" && scope.namespace) {
+			if (scope.group && scope.kinds.length > 0) {
+				return `${scope.namespace} / ${scope.group}`;
+			}
+			return scope.namespace;
+		}
+		if (scope.group) return scope.group;
+		if (scope.kinds.length === 1) return `${scope.kinds[0]} Resources`;
+		if (scope.kinds.length > 1)
+			return SECTIONS[scope.section]?.label ?? scope.section;
+		return (
+			SECTIONS[scope.section as keyof typeof SECTIONS]?.label ?? scope.section
+		);
+	}, [scope, viewMode, selectedTreeNode]);
+
+	const canQueryResources =
+		computedKinds.length > 0 &&
+		!!clusterContext &&
+		(scope.clusterScoped || computedNamespaces.length > 0);
+
+	const emptyMsg = useMemo(
+		() => emptyStateMessage(scope, !!clusterContext),
+		[scope, clusterContext],
+	);
+
+	useEffect(() => {
+		diagnosticLog("app.render", {
+			render: appRenderCountRef.current,
+			cluster: clusterContext,
+			view: viewMode,
+			canQuery: canQueryResources,
+			kinds: computedKinds.join("|"),
+			namespaces: computedNamespaces.join("|"),
+			selectedResource: selectedResourceKey ?? "",
+			argoFilter: selectedArgoAppFilter,
+		});
+	});
+
+	const mainContent = (
+		<main className="flex h-full w-full min-w-0 flex-col overflow-hidden">
+			{viewMode === "argo" ? (
+				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
+					<ArgoCDPanel
+						clusterContext={clusterContext}
+						selectedArgoItem={selectedArgoApp}
+						onArgoItemSelect={handleArgoAppSelect}
+						selectedArgoKind={
+							selectedTreeNode?.type === "kind" && selectedTreeNode.kind
+								? selectedTreeNode.kind
+								: null
+						}
+					/>
+				</div>
+			) : (
+				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
+					{canQueryResources ? (
+						<ResourceList
+							clusterContext={clusterContext}
+							selectedNamespaces={computedNamespaces}
+							selectedKinds={computedKinds}
+							selectedArgoAppFilter={selectedArgoAppFilter}
+							onArgoAppFilterChange={setSelectedArgoAppFilter}
+							onResourceSelect={setSelectedResource}
+						/>
+					) : (
+						<div className="p-8 text-center text-sm text-muted-foreground">
+							{emptyMsg}
+						</div>
+					)}
+				</div>
+			)}
+		</main>
+	);
+
+	const detailPanel =
+		viewMode === "argo" && selectedArgoApp ? (
+			<ArgoDetailPanel app={selectedArgoApp} onClose={handleArgoClose} />
+		) : selectedResource ? (
+			<ResourceDetailPanel
+				key={selectedResourceKey}
+				resource={selectedResource}
+				onClose={resetResource}
+			/>
+		) : null;
+
+	return (
+		<div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
+			{/* Top Bar */}
+			<header className="flex h-12 shrink-0 items-center gap-4 border-b bg-sidebar px-4 [-webkit-app-region:drag]">
+				<div className="flex shrink-0 items-center gap-3 [-webkit-app-region:no-drag]">
+					<ClusterSelector onClusterChange={handleClusterChange} />
+				</div>
+				<div className="flex min-w-0 flex-1 items-center justify-center">
+					<span className="truncate whitespace-nowrap text-sm font-semibold">
+						{contentTitle}
+					</span>
+				</div>
+				<div className="flex shrink-0 items-center">
+					<div className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border bg-background/50 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-ring hover:text-foreground">
+						<Search className="size-3.5" aria-hidden="true" />
+						<span>Search resources…</span>
+					</div>
+				</div>
+			</header>
+
+			{/* Main row: sidebar + content + inspector */}
+			<div className="flex min-h-0 flex-1 flex-row overflow-hidden">
+				{/* Left Sidebar Tree */}
+				<aside className="flex w-[260px] min-w-[260px] shrink-0 flex-col overflow-y-auto overflow-x-hidden border-r bg-sidebar">
+					<SidebarTree
+						clusterContext={clusterContext}
+						selectedNode={selectedTreeNode}
+						expandedSections={expandedSections}
+						onNodeSelect={handleTreeNodeSelect}
+						onSectionToggle={toggleExpandedSection}
+					/>
+				</aside>
+
+				{detailPanel ? (
+					<div className="flex min-w-0 flex-1 overflow-hidden">
+						<div className="min-w-0 flex-1 overflow-hidden">
+							{mainContent}
+						</div>
+						<div
+							role="separator"
+							aria-orientation="vertical"
+							aria-label="Resize details panel"
+							className="group relative flex w-2 shrink-0 cursor-col-resize items-center justify-center"
+							onPointerDown={handleDetailResizeStart}
+							onDoubleClick={() =>
+								setDetailPanelWidth(DETAIL_PANEL_DEFAULT_WIDTH)
+							}
+						>
+							<div className="h-full w-px bg-border transition-colors group-hover:bg-ring" />
+							<div className="absolute h-8 w-1 rounded-full bg-border transition-colors group-hover:bg-ring" />
+						</div>
+						<div
+							className="h-full shrink-0 overflow-hidden"
+							style={{
+								width: clampDetailPanelWidth(detailPanelWidth),
+								minWidth: DETAIL_PANEL_MIN_WIDTH,
+							}}
+						>
+							{detailPanel}
+						</div>
+					</div>
+				) : (
+					mainContent
+				)}
+			</div>
+		</div>
+	);
 }
 
 export default App;

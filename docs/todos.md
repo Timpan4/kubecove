@@ -4,10 +4,10 @@
 
 - [ ] Enable local hooks with `git config core.hooksPath .githooks`.
 - [ ] Create Tauri v2 + React + TypeScript app in this repo using Bun.
-- [ ] Choose and install the component/UI baseline.
+- [x] Choose and install the component/UI baseline.
 - [x] Add TanStack Router, Query, and Table.
 - [x] Choose Zustand or Jotai for local UI state.
-- [ ] Add Tailwind CSS.
+- [x] Add Tailwind CSS.
 - [x] Add Bun scripts for frontend typecheck, Rust check, and dev mode.
 - [x] Confirm the generated app starts locally.
 
@@ -19,7 +19,7 @@
 - [x] Build context-specific Kubernetes clients.
 - [x] List namespaces.
 - [x] List MVP namespaced resources.
-- [ ] List basic cluster-scoped resources.
+- [x] List basic cluster-scoped resources (Node, StorageClass, PersistentVolume).
 - [x] Convert resource objects into summaries.
 - [x] Serialize full objects to read-only YAML.
 - [x] Keep resource summary fields ready for Argo app and Helm release grouping.
@@ -64,11 +64,11 @@
 
 ## Argo CD Native
 
-- [ ] Detect Argo CD CRDs.
-- [ ] List Applications, ApplicationSets, and AppProjects through the Kubernetes API.
-- [ ] Add Argo application summaries.
-- [ ] Add Argo application detail view.
-- [ ] Group resources by Argo tracking metadata.
+- [x] Detect Argo CD CRDs.
+- [x] List Applications, ApplicationSets, and AppProjects through the Kubernetes API.
+- [x] Add Argo application summaries.
+- [x] Add Argo application detail view.
+- [x] Group resources by Argo tracking metadata.
 - [ ] Add ADR before Argo CD API, CLI, sync, rollback, or diff support.
 
 ## K8Studio-Inspired Backlog

@@ -44,14 +44,14 @@ Goal: make the browser feel useful instead of merely connected.
 
 Goal: make Argo CD a first-class read-only navigation and grouping layer through the Kubernetes API.
 
-- [ ] Detect whether Argo CD CRDs exist in the selected context.
-- [ ] List Argo CD Applications.
-- [ ] List Argo CD ApplicationSets.
-- [ ] List Argo CD AppProjects.
-- [ ] Summarize Application sync status, health status, destination namespace, source repo, revision, and project.
-- [ ] Group resources by Argo application when tracking metadata is available.
-- [ ] Add read-only Argo application detail panel.
-- [ ] Add global Argo application filter.
+- [x] Detect whether Argo CD CRDs exist in the selected context.
+- [x] List Argo CD Applications.
+- [x] List Argo CD ApplicationSets.
+- [x] List Argo CD AppProjects.
+- [x] Summarize Application sync status, health status, destination namespace, source repo, revision, and project.
+- [x] Group resources by Argo application when tracking metadata is available.
+- [x] Add read-only Argo application detail panel.
+- [x] Add global Argo application filter.
 
 ## Milestone 4: Discovery and Grouping
 
