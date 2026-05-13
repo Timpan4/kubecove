@@ -17,6 +17,22 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+	getResourceGroupVisual,
+	getResourceKindVisual,
+} from "@/lib/resource-visuals";
 
 interface ResourceListProps {
 	clusterContext: string;
@@ -99,6 +115,37 @@ async function fetchResourcePage(
 const columnHelper = createColumnHelper<ResourceSummary>();
 
 type ChipVariant = "neutral" | "success" | "warning" | "error" | "info";
+const CHIP_BADGE_STYLES: Record<
+	ChipVariant,
+	{
+		variant: "secondary" | "destructive" | "outline";
+		className: string;
+	}
+> = {
+	neutral: {
+		variant: "secondary",
+		className: "",
+	},
+	success: {
+		variant: "outline",
+		className:
+			"border-emerald-500/30 bg-emerald-500/10 text-emerald-300 dark:bg-emerald-500/15",
+	},
+	warning: {
+		variant: "outline",
+		className:
+			"border-amber-500/30 bg-amber-500/10 text-amber-300 dark:bg-amber-500/15",
+	},
+	error: {
+		variant: "destructive",
+		className: "",
+	},
+	info: {
+		variant: "outline",
+		className:
+			"border-sky-500/30 bg-sky-500/10 text-sky-300 dark:bg-sky-500/15",
+	},
+};
 
 function StatusChip({
 	value,
@@ -107,9 +154,18 @@ function StatusChip({
 	value: string;
 	variant?: ChipVariant;
 }) {
+	const badgeStyle = CHIP_BADGE_STYLES[variant];
 	return (
 		<TableTooltip content={value}>
-			<span className={`chip chip-${variant}`}>{value}</span>
+			<Badge
+				variant={badgeStyle.variant}
+				className={cn(
+					"max-w-full rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
+					badgeStyle.className,
+				)}
+			>
+				{value}
+			</Badge>
 		</TableTooltip>
 	);
 }
@@ -132,7 +188,10 @@ function TableTooltip({
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<span className="tooltip-anchor" tabIndex={0}>
+				<span
+					className="block min-w-0 outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+					tabIndex={0}
+				>
 					{children}
 				</span>
 			</TooltipTrigger>
@@ -147,30 +206,59 @@ function TruncatedCell({ value }: { value: string | number | null | undefined })
 	const text = tableTooltipText(value);
 	return (
 		<TableTooltip content={text}>
-			<span className="truncate-cell">{text}</span>
+			<span className="block min-w-0 truncate">{text}</span>
+		</TableTooltip>
+	);
+}
+
+function KindCell({ kind }: { kind: string }) {
+	const visual = getResourceKindVisual(kind);
+	const Icon = visual.icon;
+	return (
+		<TableTooltip content={kind}>
+			<span className="inline-flex min-w-0 max-w-full items-center gap-1.5 truncate">
+				<Icon className={cn("size-3.5 shrink-0", visual.className)} />
+				<span className="min-w-0 truncate">{kind}</span>
+			</span>
 		</TableTooltip>
 	);
 }
 
 // Argo/Helm badges rendered inline in the App column
 function ArgoHelmBadges({ row }: { row: ResourceSummary }) {
-	const badges: Array<{ label: string; cls: string }> = [];
+	const badges: Array<{ label: string; className: string }> = [];
 
 	if (row.argoApp) {
-		badges.push({ label: `Argo: ${row.argoApp}`, cls: "badge-argo" });
+		badges.push({
+			label: `Argo: ${row.argoApp}`,
+			className:
+				"border-primary/30 bg-primary/10 text-primary dark:bg-primary/15",
+		});
 	}
 
 	if (row.helmRelease) {
-		badges.push({ label: `Helm: ${row.helmRelease}`, cls: "badge-helm" });
+		badges.push({
+			label: `Helm: ${row.helmRelease}`,
+			className:
+				"border-sky-500/30 bg-sky-500/10 text-sky-300 dark:bg-sky-500/15",
+		});
 	}
 
 	if (badges.length === 0) return null;
 
 	return (
-		<div className="row-badges">
+		<div className="flex flex-wrap gap-1">
 			{badges.map((badge, i) => (
 				<TableTooltip key={i} content={badge.label}>
-					<span className={`badge ${badge.cls}`}>{badge.label}</span>
+					<Badge
+						variant="outline"
+						className={cn(
+							"max-w-full truncate rounded-sm px-1.5 py-0 text-[0.625rem] shadow-none",
+							badge.className,
+						)}
+					>
+						{badge.label}
+					</Badge>
 				</TableTooltip>
 			))}
 		</div>
@@ -188,7 +276,7 @@ const columns = [
 	}),
 	columnHelper.accessor("kind", {
 		header: "Kind",
-		cell: (info) => <TruncatedCell value={info.getValue()} />,
+		cell: (info) => <KindCell kind={info.getValue()} />,
 	}),
 	columnHelper.accessor("status", {
 		header: "Status",
@@ -238,6 +326,17 @@ const columns = [
 ];
 
 const PAGE_SIZE = 50;
+const TABLE_CLASS =
+	"min-w-[1120px] table-fixed border-collapse text-sm [&_th:nth-child(1)]:w-[27%] [&_td:nth-child(1)]:w-[27%] [&_th:nth-child(2)]:w-[11%] [&_td:nth-child(2)]:w-[11%] [&_th:nth-child(3)]:w-[12%] [&_td:nth-child(3)]:w-[12%] [&_th:nth-child(4)]:w-[10%] [&_td:nth-child(4)]:w-[10%] [&_th:nth-child(5)]:w-[7%] [&_td:nth-child(5)]:w-[7%] [&_th:nth-child(6)]:w-[9%] [&_td:nth-child(6)]:w-[9%] [&_th:nth-child(7)]:w-[14%] [&_td:nth-child(7)]:w-[14%] [&_th:nth-child(8)]:w-[5%] [&_td:nth-child(8)]:w-[5%] [&_th:nth-child(9)]:w-[7%] [&_td:nth-child(9)]:w-[7%] [&_th]:border-b-2 [&_th]:px-3 [&_th]:py-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:text-muted-foreground [&_td]:whitespace-nowrap [&_td]:border-b [&_td]:px-3 [&_td]:py-3";
+const ROW_CLASS =
+	"cursor-pointer transition-colors hover:bg-accent/60";
+const SELECTED_ROW_CLASS = "bg-accent";
+const STATE_CLASS = "p-8 text-center text-sm text-muted-foreground";
+const ERROR_STATE_CLASS = "p-8 text-center text-sm text-destructive";
+const EMPTY_PAGE_CLASS = "p-8 text-center text-sm text-muted-foreground";
+const TOOLBAR_CLASS = "mb-1 flex items-center gap-2 p-0";
+const PAGINATION_CLASS =
+	"flex items-center justify-between border-t py-2 text-xs text-muted-foreground";
 
 function sortedRows(
 	data: ResourceSummary[],
@@ -377,6 +476,25 @@ export function buildResourceHealthSummary(
 	);
 }
 
+function HealthMetric({
+	label,
+	value,
+	valueClassName,
+}: {
+	label: string;
+	value: number;
+	valueClassName?: string;
+}) {
+	return (
+		<div className="flex min-h-14 flex-col justify-center gap-1 rounded-md border bg-card p-3">
+			<span className="text-[0.72rem] font-semibold uppercase text-muted-foreground">
+				{label}
+			</span>
+			<strong className={valueClassName}>{value}</strong>
+		</div>
+	);
+}
+
 function ResourceListComponent({
 	clusterContext,
 	selectedNamespaces,
@@ -510,6 +628,7 @@ function ResourceListComponent({
 		onSortingChange: setSorting,
 		getCoreRowModel: getCoreRowModel(),
 	});
+	const rowModel = table.getRowModel();
 
 	useEffect(() => {
 		diagnosticLog("resources.render", {
@@ -537,25 +656,25 @@ function ResourceListComponent({
 
 	if (isPending) {
 		return (
-			<div className="resource-list-state">
-				<div className="skeleton-list">
+			<div className={STATE_CLASS}>
+				<div className="mb-4 flex flex-col gap-px">
 					{Array.from({ length: 8 }).map((_, i) => (
-						<div key={i} className="skeleton-row">
-							<div className="skeleton-cell skeleton-name"></div>
-							<div className="skeleton-cell skeleton-ns"></div>
-							<div className="skeleton-cell skeleton-kind"></div>
-							<div className="skeleton-cell skeleton-status"></div>
+						<div key={i} className="flex gap-3 border-b py-2">
+							<div className="h-3.5 w-[180px] animate-pulse rounded-sm bg-muted"></div>
+							<div className="h-3.5 w-[100px] animate-pulse rounded-sm bg-muted"></div>
+							<div className="h-3.5 w-20 animate-pulse rounded-sm bg-muted"></div>
+							<div className="h-3.5 w-[70px] animate-pulse rounded-sm bg-muted"></div>
 						</div>
 					))}
 				</div>
-				<span className="loading-indicator">Loading resources…</span>
+				<span className="inline-flex items-center gap-2">Loading resources…</span>
 			</div>
 		);
 	}
 
 	if (isError) {
 		return (
-			<div className="resource-list-state error-state">
+			<div className={ERROR_STATE_CLASS}>
 				<span>
 					Error:{" "}
 					{error instanceof Error ? error.message : "Failed to load resources"}
@@ -566,90 +685,112 @@ function ResourceListComponent({
 
 	if (!data || data.length === 0) {
 		return (
-			<div className="resource-list-state empty-state">
+			<div className={STATE_CLASS}>
 				<span>No resources found</span>
 			</div>
 		);
 	}
 
 	return (
-		<div className="resource-table-container">
-			<div className="resource-context-strip" aria-label="Current resource scope">
+		<div className="flex min-w-0 flex-col gap-3">
+			<div className="flex min-h-8 flex-wrap items-center gap-2" aria-label="Current resource scope">
 				{scopePills.map((pill) => (
-					<div className="scope-pill" key={pill.label}>
-						<span>{pill.label}</span>
-						<strong>{pill.value}</strong>
-					</div>
+					<Badge
+						key={pill.label}
+						variant="outline"
+						className="h-8 max-w-full gap-1.5 rounded-sm border-slate-700/80 bg-slate-950/45 px-2.5 text-xs shadow-none"
+					>
+						<span className="text-muted-foreground">{pill.label}</span>
+						<strong className="min-w-0 truncate font-semibold text-foreground">
+							{pill.value}
+						</strong>
+					</Badge>
 				))}
 			</div>
-			<div className="resource-health-strip" aria-label="Resource health summary">
-				<div className="health-card health-card-total">
-					<span>Total</span>
-					<strong>{healthSummary.total}</strong>
-				</div>
-				<div className="health-card health-card-healthy">
-					<span>Healthy</span>
-					<strong>{healthSummary.healthy}</strong>
-				</div>
-				<div className="health-card health-card-attention">
-					<span>Needs attention</span>
-					<strong>{healthSummary.attention}</strong>
-				</div>
-				<div className="health-card health-card-degraded">
-					<span>Degraded</span>
-					<strong>{healthSummary.degraded}</strong>
-				</div>
-				<div className="health-card health-card-restarted">
-					<span>Restarted</span>
-					<strong>{healthSummary.restarted}</strong>
-				</div>
-			</div>
-			<div className="resource-list-toolbar">
-				<input
-					className="resource-search-input"
-					type="text"
-					placeholder="Search by name, namespace, kind, owner, Argo app, Helm release…"
-					value={search}
-					onChange={(e) => {
-						setSearch(e.target.value);
-						setPageIndex(0);
-					}}
+			<div className="grid grid-cols-1 gap-2 md:grid-cols-5" aria-label="Resource health summary">
+				<HealthMetric label="Total" value={healthSummary.total} />
+				<HealthMetric
+					label="Healthy"
+					value={healthSummary.healthy}
+					valueClassName="text-emerald-300"
 				/>
-				{argoApps.length > 0 && (
-					<select
-						className="resource-filter-select"
-						value={selectedArgoAppFilter}
-						onChange={(event) => {
-							onArgoAppFilterChange(event.target.value);
+				<HealthMetric
+					label="Needs attention"
+					value={healthSummary.attention}
+					valueClassName="text-amber-300"
+				/>
+				<HealthMetric
+					label="Degraded"
+					value={healthSummary.degraded}
+					valueClassName="text-red-300"
+				/>
+				<HealthMetric
+					label="Restarted"
+					value={healthSummary.restarted}
+					valueClassName="text-sky-300"
+				/>
+			</div>
+			<div className={TOOLBAR_CLASS}>
+				<div className="relative min-w-0 flex-1">
+					<Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+					<Input
+						className="h-9 border-slate-700/80 bg-slate-950/45 pl-8 text-sm text-foreground placeholder:text-muted-foreground"
+						type="text"
+						placeholder="Search by name, namespace, kind, owner, Argo app, Helm release..."
+						value={search}
+						onChange={(e) => {
+							setSearch(e.target.value);
 							setPageIndex(0);
 						}}
-						aria-label="Filter by Argo application"
+					/>
+				</div>
+				{argoApps.length > 0 && (
+					<Select
+						value={selectedArgoAppFilter || "all"}
+						onValueChange={(value) => {
+							onArgoAppFilterChange(value === "all" ? "" : value);
+							setPageIndex(0);
+						}}
 					>
-						<option value="">All Argo apps</option>
-						{argoApps.map((app) => (
-							<option key={app} value={app}>
-								{app}
-							</option>
-						))}
-					</select>
+						<SelectTrigger
+							className="h-9 max-w-52 border-slate-700/80 bg-slate-950/45 text-foreground"
+							aria-label="Filter by Argo application"
+						>
+							<SelectValue placeholder="All Argo apps" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="all">All Argo apps</SelectItem>
+							{argoApps.map((app) => (
+								<SelectItem key={app} value={app}>
+									{app}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
 				)}
 				{(search || selectedArgoAppFilter) && (
-					<button
-						className="clear-filter-btn"
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
 						onClick={() => {
 							setSearch("");
 							onArgoAppFilterChange("");
 							setPageIndex(0);
 						}}
 					>
+						<X className="size-3.5" />
 						Clear
-					</button>
+					</Button>
 				)}
 				{(search || selectedArgoAppFilter) && filteredData.length === 0 && (
-					<span className="filter-no-results">
-						No results for current filters —{" "}
-						<button
-							className="clear-filter-link"
+					<span className="text-xs text-muted-foreground">
+						No results for current filters{" "}
+						<Button
+							type="button"
+							variant="link"
+							size="sm"
+							className="h-auto px-0 py-0 text-xs"
 							onClick={() => {
 								setSearch("");
 								onArgoAppFilterChange("");
@@ -657,12 +798,13 @@ function ResourceListComponent({
 							}}
 						>
 							clear filters
-						</button>
+						</Button>
 					</span>
 				)}
 			</div>
 
-			<table className="resource-table">
+			<div className="w-full max-w-full min-w-0 overflow-x-auto">
+				<table className={TABLE_CLASS}>
 				<thead>
 					{table.getHeaderGroups().map((headerGroup) => (
 						<tr key={headerGroup.id}>
@@ -670,9 +812,7 @@ function ResourceListComponent({
 								<th
 									key={header.id}
 									onClick={header.column.getToggleSortingHandler()}
-									style={{
-										cursor: header.column.getCanSort() ? "pointer" : "default",
-									}}
+									className={header.column.getCanSort() ? "cursor-pointer" : "cursor-default"}
 								>
 									{flexRender(
 										header.column.columnDef.header,
@@ -691,17 +831,17 @@ function ResourceListComponent({
 				<tbody>
 					{pageRows.length === 0 ? (
 						<tr>
-							<td colSpan={columns.length} className="empty-page-state">
+							<td colSpan={columns.length} className={EMPTY_PAGE_CLASS}>
 								No resources match your filter
 							</td>
 						</tr>
 					) : (
-						table.getRowModel().rows.map((row, index) => {
+						rowModel.rows.map((row, index) => {
 							const resourceKey = `${row.original.cluster}:${row.original.kind}:${row.original.namespace ?? ""}:${row.original.name}`;
 							const isSelected = selectedResourceKey === resourceKey;
 							const previous =
 								index > 0
-									? table.getRowModel().rows[index - 1]?.original
+									? rowModel.rows[index - 1]?.original
 									: null;
 							const showGroupHeader =
 								groupedByArgo &&
@@ -715,6 +855,10 @@ function ResourceListComponent({
 							const typeCollapseKey = resourceTypeGroupCollapseKey(row.original);
 							const appCollapsed = collapsedGroups.has(appCollapseKey);
 							const typeCollapsed = collapsedGroups.has(typeCollapseKey);
+							const appVisual = getResourceGroupVisual(label);
+							const AppIcon = appVisual.icon;
+							const typeVisual = getResourceKindVisual(row.original.kind);
+							const TypeIcon = typeVisual.icon;
 							const showTypeGroupHeader =
 								groupedByArgo &&
 								(!previous ||
@@ -725,19 +869,24 @@ function ResourceListComponent({
 							return (
 								<Fragment key={row.id}>
 									{showGroupHeader && (
-										<tr className="resource-group-row">
-											<td colSpan={columns.length}>
+										<tr className="[&_td]:bg-muted/50 [&_td]:p-0 [&_td]:text-xs [&_td]:font-bold [&_td]:text-primary">
+											<td colSpan={columns.length} className="!p-0">
 												<button
 													type="button"
-													className="group-toggle"
+													className="flex w-full cursor-pointer items-center gap-2 border-0 bg-muted/50 px-3 py-2 text-left text-inherit focus-visible:ring-1 focus-visible:ring-ring/50"
 													onClick={() => toggleGroup(appCollapseKey)}
 													aria-expanded={!appCollapsed}
 												>
-													<span className="group-chevron">
-														{appCollapsed ? ">" : "v"}
-													</span>
-													<span>{label}</span>
-													<small>
+													{appCollapsed ? (
+														<ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+													) : (
+														<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+													)}
+													<AppIcon
+														className={cn("size-3.5 shrink-0", appVisual.className)}
+													/>
+													<span className="ml-0 text-muted-foreground">{label}</span>
+													<small className="ml-0.5 text-[0.6875rem] font-medium text-muted-foreground">
 														{pageGroups.get(label) ?? 0} resources on this page
 													</small>
 												</button>
@@ -745,19 +894,24 @@ function ResourceListComponent({
 										</tr>
 									)}
 									{showTypeGroupHeader && !appCollapsed && (
-										<tr className="resource-type-group-row">
-											<td colSpan={columns.length}>
+										<tr className="[&_td]:bg-card [&_td]:p-0 [&_td]:text-[0.72rem] [&_td]:font-bold [&_td]:uppercase [&_td]:text-foreground">
+											<td colSpan={columns.length} className="!p-0">
 												<button
 													type="button"
-													className="group-toggle type-toggle"
+													className="flex w-full cursor-pointer items-center gap-2 border-0 bg-card py-1.5 pl-6 pr-3 text-left text-[0.6875rem] text-inherit focus-visible:ring-1 focus-visible:ring-ring/50"
 													onClick={() => toggleGroup(typeCollapseKey)}
 													aria-expanded={!typeCollapsed}
 												>
-													<span className="group-chevron">
-														{typeCollapsed ? ">" : "v"}
-													</span>
-													<span>{typeLabel}</span>
-													<small>
+													{typeCollapsed ? (
+														<ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+													) : (
+														<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+													)}
+													<TypeIcon
+														className={cn("size-3.5 shrink-0", typeVisual.className)}
+													/>
+													<span className="ml-0 text-inherit">{typeLabel}</span>
+													<small className="ml-0.5 text-[0.625rem] font-medium normal-case text-muted-foreground">
 														{pageTypeGroups.get(typeKey) ?? 0} on this page
 													</small>
 												</button>
@@ -766,7 +920,7 @@ function ResourceListComponent({
 									)}
 									{!hideResourceRow && (
 										<tr
-											className={`resource-row${isSelected ? " selected" : ""}`}
+											className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 											onClick={() => {
 												diagnosticLog("resources.row.click", {
 													key: resourceKey,
@@ -792,29 +946,34 @@ function ResourceListComponent({
 						})
 					)}
 				</tbody>
-			</table>
+				</table>
+			</div>
 
-			<div className="table-pagination">
-				<button
-					className="pagination-btn"
+			<div className={PAGINATION_CLASS}>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
 					onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
 					disabled={safePageIndex === 0}
 				>
 					Previous
-				</button>
-				<span className="pagination-info">
+				</Button>
+				<span>
 					{totalRows} {search ? "filtered" : "total"} rows
 				</span>
-				<span className="pagination-page">
+				<span>
 					Page {safePageIndex + 1} of {pageCount}
 				</span>
-				<button
-					className="pagination-btn"
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
 					onClick={() => setPageIndex((p) => Math.min(pageCount - 1, p + 1))}
 					disabled={safePageIndex >= pageCount - 1}
 				>
 					Next
-				</button>
+				</Button>
 			</div>
 		</div>
 	);
