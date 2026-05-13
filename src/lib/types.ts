@@ -1,10 +1,12 @@
 export interface ClusterContext {
 	name: string;
+	isCurrent: boolean;
 }
 
 export interface NamespaceSummary {
 	name: string;
 	age: string;
+	createdAt?: string;
 }
 
 export interface ResourceSummary {
@@ -13,6 +15,7 @@ export interface ResourceSummary {
 	name: string;
 	namespace: string | null;
 	age: string;
+	createdAt?: string;
 	status?: string;
 	ready?: string;
 	restarts?: number;
@@ -34,6 +37,17 @@ export interface ResourceDetailsFull {
 	yaml: string;
 	metadata: Record<string, unknown>;
 	status?: Record<string, unknown>;
+}
+
+export interface ResourceEventSummary {
+	eventType: string;
+	reason: string;
+	message: string;
+	count: number;
+	lastSeen: string;
+	lastSeenAt?: string;
+	source: string;
+	namespace: string | null;
 }
 
 export interface AppError {
@@ -80,6 +94,7 @@ export interface ArgoApplicationSummary {
 	sourceRepo: string | null;
 	sourceRevision: string | null;
 	age: string;
+	createdAt?: string;
 }
 
 export interface ArgoApplicationDetails {
@@ -94,6 +109,7 @@ export interface ArgoApplicationSetSummary {
 	cluster: string;
 	namespace: string | null;
 	age: string;
+	createdAt?: string;
 	project: string | null;
 	status: string | null;
 	syncStatus: string | null;
@@ -115,6 +131,7 @@ export interface ArgoAppProjectSummary {
 	cluster: string;
 	namespace: string | null;
 	age: string;
+	createdAt?: string;
 	description: string | null;
 	status: string | null;
 }

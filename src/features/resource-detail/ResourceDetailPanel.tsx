@@ -3,22 +3,25 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
 	getResourceDetails,
 	getResourceYaml,
+	listResourceEvents,
 	createTauriClient,
 } from "../../lib/tauri";
-import type { ResourceSummary } from "../../lib/types";
+import type { ResourceEventSummary, ResourceSummary } from "../../lib/types";
 import { diagnosticLog, diagnosticResultSummary } from "../../lib/diagnostics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MetadataBadges } from "@/components/MetadataBadges";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { X } from "lucide-react";
+import { Clock, TriangleAlert, X } from "lucide-react";
+import { TimestampText } from "@/components/TimestampText";
 
 interface ResourceDetailPanelProps {
 	resource: ResourceSummary;
 	onClose: () => void;
 }
 
-type Tab = "details" | "yaml";
+type Tab = "details" | "events" | "yaml";
 type ChipVariant = "neutral" | "success" | "warning" | "error" | "info";
 const CHIP_BADGE_STYLES: Record<
 	ChipVariant,
@@ -59,7 +62,7 @@ const DETAIL_SECTION_TITLE_CLASS =
 	"mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
 const DETAIL_ROW_CLASS = "flex gap-3 border-b py-1.5";
 const DETAIL_KEY_CLASS = "min-w-[120px] text-xs font-medium text-muted-foreground";
-const DETAIL_VALUE_CLASS = "overflow-wrap-anywhere text-xs text-foreground";
+const DETAIL_VALUE_CLASS = "min-w-0 flex-1 overflow-wrap-anywhere text-xs text-foreground";
 const LOADING_STATE_CLASS = "p-6 text-center text-xs text-muted-foreground";
 const ERROR_STATE_CLASS = "p-6 text-center text-xs text-destructive";
 const LOADING_SPINNER_CLASS =
@@ -202,6 +205,70 @@ function ConditionList({ conditions }: { conditions: ConditionRow[] }) {
 	);
 }
 
+function EventList({ events }: { events: ResourceEventSummary[] }) {
+	if (events.length === 0) {
+		return (
+			<div className="rounded-md border bg-card p-4 text-xs text-muted-foreground">
+				No events found for this resource.
+			</div>
+		);
+	}
+
+	return (
+		<div className="flex flex-col gap-2">
+			{events.map((event, index) => {
+				const isWarning = event.eventType === "Warning";
+				return (
+					<div
+						className="rounded-md border bg-card p-3"
+						key={`${event.reason}:${event.lastSeen}:${index}`}
+					>
+						<div className="flex items-start justify-between gap-2">
+							<div className="min-w-0">
+								<div className="flex min-w-0 items-center gap-1.5">
+									{isWarning ? (
+										<TriangleAlert className="size-3.5 shrink-0 text-destructive" />
+									) : (
+										<Clock className="size-3.5 shrink-0 text-muted-foreground" />
+									)}
+									<span className="truncate text-[0.82rem] font-semibold text-foreground">
+										{event.reason}
+									</span>
+								</div>
+								{event.message && (
+									<div className="mt-1.5 text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+										{event.message}
+									</div>
+								)}
+							</div>
+							<Badge
+								variant={isWarning ? "destructive" : "outline"}
+								className={cn(
+									"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
+									!isWarning &&
+										"border-sky-500/30 bg-sky-500/10 text-sky-300 dark:bg-sky-500/15",
+								)}
+							>
+								{event.eventType}
+							</Badge>
+						</div>
+						<div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[0.6875rem] text-muted-foreground">
+							<TimestampText
+								relative={`${event.lastSeen} ago`}
+								exact={event.lastSeenAt}
+								className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+							/>
+							{event.count > 1 && <span>{event.count} times</span>}
+							<span>{event.source}</span>
+							{event.namespace && <span>{event.namespace}</span>}
+						</div>
+					</div>
+				);
+			})}
+		</div>
+	);
+}
+
 function BadgeRow({
 	argoApp,
 	helmRelease,
@@ -266,6 +333,11 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 	const detailsEnabled = shouldFetchResourceDetails(resource);
 	const yamlEnabled =
 		activeTab === "yaml" &&
+		!!resource.cluster &&
+		!!resource.kind &&
+		!!resource.name;
+	const eventsEnabled =
+		activeTab === "events" &&
 		!!resource.cluster &&
 		!!resource.kind &&
 		!!resource.name;
@@ -338,6 +410,40 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		retry: false,
 	});
 
+	const {
+		data: events,
+		isLoading: eventsLoading,
+		isError: eventsError,
+		error: eventsErr,
+	} = useQuery({
+		queryKey: [
+			"resource-events",
+			resource.cluster,
+			resource.kind,
+			resource.name,
+			resource.namespace,
+		],
+		queryFn: async () => {
+			const started = performance.now();
+			diagnosticLog("detail.events.fetch.start", { key: resourceKey });
+			const result = await listResourceEvents(
+				client,
+				resource.cluster,
+				resource.kind,
+				resource.name,
+				resource.namespace ?? undefined,
+			);
+			diagnosticLog("detail.events.fetch.done", {
+				key: resourceKey,
+				ms: Math.round(performance.now() - started),
+				result: diagnosticResultSummary(result),
+			});
+			return result;
+		},
+		enabled: eventsEnabled,
+		retry: false,
+	});
+
 	useEffect(() => {
 		diagnosticLog("detail.render", {
 			key: resourceKey,
@@ -347,8 +453,11 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 			detailsLoading,
 			yamlEnabled,
 			yamlLoading,
+			eventsEnabled,
+			eventsLoading,
 			hasDetails: Boolean(details),
 			hasYaml: Boolean(yaml),
+			hasEvents: Boolean(events),
 		});
 	});
 
@@ -370,12 +479,12 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		if (metadata.labels)
 			entries.push({
 				key: "Labels",
-				value: JSON.stringify(metadata.labels, null, 2),
+				value: metadata.labels,
 			});
 		if (metadata.annotations)
 			entries.push({
 				key: "Annotations",
-				value: JSON.stringify(metadata.annotations, null, 2),
+				value: metadata.annotations,
 			});
 		return entries;
 	};
@@ -422,6 +531,9 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 						<TabsTrigger className={PANEL_TAB_CLASS} value="details">
 							Details
 						</TabsTrigger>
+						<TabsTrigger className={PANEL_TAB_CLASS} value="events">
+							Events
+						</TabsTrigger>
 						<TabsTrigger className={PANEL_TAB_CLASS} value="yaml">
 							YAML
 						</TabsTrigger>
@@ -442,7 +554,13 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 							{resource.age && (
 								<div className="min-w-0 rounded-md border bg-card p-3">
 									<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">Age</span>
-									<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">{resource.age}</strong>
+									<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
+										<TimestampText
+											relative={resource.age}
+											exact={resource.createdAt}
+											className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+										/>
+									</strong>
 								</div>
 							)}
 						</div>
@@ -515,14 +633,36 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 										<div key={key} className={DETAIL_ROW_CLASS}>
 											<span className={DETAIL_KEY_CLASS}>{key}</span>
 											<span className={DETAIL_VALUE_CLASS}>
-												{typeof value === "string"
-													? value
-													: JSON.stringify(value)}
+												{key === "Labels" || key === "Annotations" ? (
+													<MetadataBadges value={value} />
+												) : typeof value === "string" ? (
+													value
+												) : (
+													JSON.stringify(value)
+												)}
 											</span>
 										</div>
 									))}
 								</div>
 							</>
+						)}
+					</>
+					</TabsContent>
+					<TabsContent value="events" className="m-0">
+					<>
+						{eventsLoading && (
+							<div className={LOADING_STATE_CLASS}>
+								<div className={LOADING_SPINNER_CLASS}></div>
+								<span>Loading events...</span>
+							</div>
+						)}
+						{eventsError && (
+							<div className={ERROR_STATE_CLASS}>
+								<p>Error loading events: {getErrorMessage(eventsErr)}</p>
+							</div>
+						)}
+						{!eventsLoading && !eventsError && events && (
+							<EventList events={events} />
 						)}
 					</>
 					</TabsContent>

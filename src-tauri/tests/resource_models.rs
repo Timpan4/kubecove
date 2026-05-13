@@ -1,4 +1,4 @@
-use k8s_manager_lib::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetails, ResourceDetailsFull};
+use k8s_manager_lib::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetails, ResourceDetailsFull, ResourceEventSummary};
 use serde_json::json;
 
 #[test]
@@ -17,10 +17,11 @@ fn test_app_error_kube() {
 
 #[test]
 fn test_cluster_context_serde() {
-    let ctx = ClusterContext { name: "minikube".to_string() };
+    let ctx = ClusterContext { name: "minikube".to_string(), is_current: true };
     let json_str = serde_json::to_string(&ctx).unwrap();
     let parsed: ClusterContext = serde_json::from_str(&json_str).unwrap();
     assert_eq!(parsed.name, "minikube");
+    assert!(parsed.is_current);
 }
 
 #[test]
@@ -28,6 +29,7 @@ fn test_namespace_summary_serde() {
     let ns = NamespaceSummary {
         name: "default".to_string(),
         age: "2024-01-01T00:00:00Z".to_string(),
+        created_at: None,
     };
     let json_str = serde_json::to_string(&ns).unwrap();
     let parsed: NamespaceSummary = serde_json::from_str(&json_str).unwrap();
@@ -43,6 +45,7 @@ fn test_resource_summary_serde() {
         name: "nginx".to_string(),
         namespace: Some("default".to_string()),
         age: "2024-01-01T00:00:00Z".to_string(),
+        created_at: None,
         status: None,
         ready: None,
         restarts: None,
@@ -82,9 +85,10 @@ fn test_app_error_serialize() {
 
 #[test]
 fn test_cluster_context_from_json() {
-    let json_val = json!({ "name": "docker-desktop" });
+    let json_val = json!({ "name": "docker-desktop", "isCurrent": false });
     let ctx: ClusterContext = serde_json::from_value(json_val).unwrap();
     assert_eq!(ctx.name, "docker-desktop");
+    assert!(!ctx.is_current);
 }
 
 #[test]
@@ -95,6 +99,7 @@ fn test_resource_details_full_serde() {
         name: "nginx".to_string(),
         namespace: Some("default".to_string()),
         age: "2024-01-01T00:00:00Z".to_string(),
+        created_at: None,
         status: None,
         ready: None,
         restarts: None,
@@ -113,4 +118,24 @@ fn test_resource_details_full_serde() {
     assert_eq!(parsed.yaml, "apiVersion: v1\nkind: Pod");
     assert_eq!(parsed.summary.kind, "Pod");
     assert!(parsed.status.is_some());
+}
+
+#[test]
+fn test_resource_event_summary_serde() {
+    let event = ResourceEventSummary {
+        event_type: "Warning".to_string(),
+        reason: "BackOff".to_string(),
+        message: "Back-off restarting failed container".to_string(),
+        count: 3,
+        last_seen: "2m".to_string(),
+        last_seen_at: None,
+        source: "kubelet".to_string(),
+        namespace: Some("default".to_string()),
+    };
+    let json_val = serde_json::to_value(&event).unwrap();
+    assert_eq!(json_val["eventType"], "Warning");
+    assert_eq!(json_val["reason"], "BackOff");
+    let parsed: ResourceEventSummary = serde_json::from_value(json_val).unwrap();
+    assert_eq!(parsed.count, 3);
+    assert_eq!(parsed.namespace, Some("default".to_string()));
 }

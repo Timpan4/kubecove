@@ -13,6 +13,7 @@ import type {
 } from "../../lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MetadataBadges } from "@/components/MetadataBadges";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
@@ -58,7 +59,7 @@ const DETAIL_SECTION_TITLE_CLASS =
 	"mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
 const DETAIL_ROW_CLASS = "flex gap-3 border-b py-1.5";
 const DETAIL_KEY_CLASS = "min-w-[120px] text-xs font-medium text-muted-foreground";
-const DETAIL_VALUE_CLASS = "overflow-wrap-anywhere text-xs text-foreground";
+const DETAIL_VALUE_CLASS = "min-w-0 flex-1 overflow-wrap-anywhere text-xs text-foreground";
 const LOADING_STATE_CLASS = "p-6 text-center text-xs text-muted-foreground";
 const ERROR_STATE_CLASS = "p-6 text-center text-xs text-destructive";
 const LOADING_SPINNER_CLASS =
@@ -129,12 +130,12 @@ function formatMetadata(
 	if (metadata.labels)
 		entries.push({
 			key: "Labels",
-			value: JSON.stringify(metadata.labels, null, 2),
+			value: metadata.labels,
 		});
 	if (metadata.annotations)
 		entries.push({
 			key: "Annotations",
-			value: JSON.stringify(metadata.annotations, null, 2),
+			value: metadata.annotations,
 		});
 	return entries;
 }
@@ -248,7 +249,13 @@ function ArgoApplicationDetail({ app }: { app: ArgoApplicationSummary }) {
 						<div key={key} className={DETAIL_ROW_CLASS}>
 							<span className={DETAIL_KEY_CLASS}>{key}</span>
 							<span className={DETAIL_VALUE_CLASS}>
-								{typeof value === "string" ? value : JSON.stringify(value)}
+								{key === "Labels" || key === "Annotations" ? (
+									<MetadataBadges value={value} />
+								) : typeof value === "string" ? (
+									value
+								) : (
+									JSON.stringify(value)
+								)}
 							</span>
 						</div>
 					),
@@ -378,7 +385,13 @@ function ArgoApplicationSetDetail({
 						<div key={key} className={DETAIL_ROW_CLASS}>
 							<span className={DETAIL_KEY_CLASS}>{key}</span>
 							<span className={DETAIL_VALUE_CLASS}>
-								{typeof value === "string" ? value : JSON.stringify(value)}
+								{key === "Labels" || key === "Annotations" ? (
+									<MetadataBadges value={value} />
+								) : typeof value === "string" ? (
+									value
+								) : (
+									JSON.stringify(value)
+								)}
 							</span>
 						</div>
 					),
@@ -497,7 +510,13 @@ function ArgoAppProjectDetail({ project }: { project: ArgoAppProjectSummary }) {
 						<div key={key} className={DETAIL_ROW_CLASS}>
 							<span className={DETAIL_KEY_CLASS}>{key}</span>
 							<span className={DETAIL_VALUE_CLASS}>
-								{typeof value === "string" ? value : JSON.stringify(value)}
+								{key === "Labels" || key === "Annotations" ? (
+									<MetadataBadges value={value} />
+								) : typeof value === "string" ? (
+									value
+								) : (
+									JSON.stringify(value)
+								)}
 							</span>
 						</div>
 					),

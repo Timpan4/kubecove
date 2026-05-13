@@ -1,4 +1,4 @@
-use crate::models::{AppError, ArgoAppProjectDetails, ArgoApplicationDetails, ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoAppProjectSummary, ArgoApplicationSummary, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetailsFull};
+use crate::models::{AppError, ArgoAppProjectDetails, ArgoApplicationDetails, ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoAppProjectSummary, ArgoApplicationSummary, ClusterContext, NamespaceSummary, ResourceEventSummary, ResourceSummary, ResourceDetailsFull};
 use chrono::{DateTime, TimeZone, Utc};
 use kube::{
     api::{Api, DynamicObject, ListParams, Resource},
@@ -111,6 +111,9 @@ fn base_resource_summary(
         name: metadata.name.clone().unwrap_or_default(),
         namespace: metadata.namespace.clone(),
         age,
+        created_at: metadata.creation_timestamp.as_ref().and_then(|t| {
+            k8s_timestamp_to_datetime(&t.0).map(|dt| dt.to_rfc3339())
+        }),
         status: None,
         ready: None,
         restarts: None,
@@ -180,12 +183,14 @@ where
 pub fn get_cluster_contexts() -> Result<Vec<ClusterContext>, AppError> {
     let kubeconfig = Kubeconfig::read()
         .map_err(|e: kube::config::KubeconfigError| AppError::kube(e.to_string()))?;
+    let current_context = kubeconfig.current_context.as_deref();
 
     let cluster_contexts: Vec<ClusterContext> = kubeconfig
         .contexts
         .iter()
         .map(|ctx| ClusterContext {
             name: ctx.name.clone(),
+            is_current: current_context == Some(ctx.name.as_str()),
         })
         .collect();
 
@@ -243,6 +248,7 @@ pub async fn namespaces_summary_from(
             age: namespace_age(ns.metadata.creation_timestamp.clone().map(|t| {
                 Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
             })),
+            created_at: k8s_creation_timestamp_to_rfc3339(&ns.metadata.creation_timestamp),
         })
         .collect();
 
@@ -278,6 +284,121 @@ fn resource_age(creation_timestamp: Option<DateTime<Utc>>) -> String {
         }
         None => "unknown".to_string(),
     }
+}
+
+fn k8s_timestamp_to_datetime(timestamp: &k8s_openapi::jiff::Timestamp) -> Option<DateTime<Utc>> {
+    Utc.timestamp_opt(timestamp.as_second(), 0).single()
+}
+
+fn k8s_creation_timestamp_to_rfc3339(
+    timestamp: &Option<k8s_openapi::apimachinery::pkg::apis::meta::v1::Time>,
+) -> Option<String> {
+    timestamp
+        .as_ref()
+        .and_then(|t| k8s_timestamp_to_datetime(&t.0))
+        .map(|dt| dt.to_rfc3339())
+}
+
+fn event_timestamp(event: &k8s_openapi::api::core::v1::Event) -> Option<DateTime<Utc>> {
+    event.event_time.as_ref()
+        .and_then(|t| k8s_timestamp_to_datetime(&t.0))
+        .or_else(|| event.last_timestamp.as_ref().and_then(|t| k8s_timestamp_to_datetime(&t.0)))
+        .or_else(|| event.first_timestamp.as_ref().and_then(|t| k8s_timestamp_to_datetime(&t.0)))
+        .or_else(|| event.metadata.creation_timestamp.as_ref().and_then(|t| k8s_timestamp_to_datetime(&t.0)))
+}
+
+fn event_source(event: &k8s_openapi::api::core::v1::Event) -> String {
+    if let Some(component) = &event.reporting_component {
+        if !component.is_empty() {
+            return component.clone();
+        }
+    }
+    event
+        .source
+        .as_ref()
+        .and_then(|source| source.component.clone())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn event_matches_resource(
+    event: &k8s_openapi::api::core::v1::Event,
+    kind: &str,
+    name: &str,
+    namespace: Option<&str>,
+) -> bool {
+    event.involved_object.kind.as_deref() == Some(kind)
+        && event.involved_object.name.as_deref() == Some(name)
+        && match namespace {
+            Some(ns) => event.involved_object.namespace.as_deref() == Some(ns),
+            None => true,
+        }
+}
+
+fn summarize_event(event: &k8s_openapi::api::core::v1::Event) -> ResourceEventSummary {
+    ResourceEventSummary {
+        event_type: event.type_.clone().unwrap_or_else(|| "Normal".to_string()),
+        reason: event.reason.clone().unwrap_or_else(|| "Event".to_string()),
+        message: event.message.clone().unwrap_or_default(),
+        count: event.count.unwrap_or(1),
+        last_seen: resource_age(event_timestamp(event)),
+        last_seen_at: event_timestamp(event).map(|dt| dt.to_rfc3339()),
+        source: event_source(event),
+        namespace: event.metadata.namespace.clone(),
+    }
+}
+
+pub async fn resource_events_from(
+    cluster_context: String,
+    kind: String,
+    name: String,
+    namespace: Option<String>,
+) -> Result<Vec<ResourceEventSummary>, AppError> {
+    let options = KubeConfigOptions {
+        context: Some(cluster_context),
+        ..Default::default()
+    };
+
+    let config = kube::Config::from_kubeconfig(&options)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+
+    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let event_api: Api<k8s_openapi::api::core::v1::Event> = if let Some(ns) = &namespace {
+        Api::namespaced(client, ns)
+    } else {
+        Api::all(client)
+    };
+
+    let mut events: Vec<_> = event_api
+        .list(&list_params())
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?
+        .into_iter()
+        .filter(|event| event_matches_resource(event, &kind, &name, namespace.as_deref()))
+        .collect();
+
+    events.sort_by_key(|event| event_timestamp(event));
+    events.reverse();
+
+    Ok(events.iter().map(summarize_event).collect())
+}
+
+#[tauri::command]
+pub async fn list_resource_events(
+    cluster_context: String,
+    kind: String,
+    name: String,
+    namespace: Option<String>,
+) -> Result<Vec<ResourceEventSummary>, AppError> {
+    let started = Instant::now();
+    let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
+    eprintln!("[k8s-manager:backend] list_resource_events start context={} kind={} namespace={} name={}", cluster_context, kind, namespace_label, name);
+    let result = resource_events_from(cluster_context.clone(), kind.clone(), name.clone(), namespace.clone()).await;
+    match &result {
+        Ok(events) => eprintln!("[k8s-manager:backend] list_resource_events done context={} kind={} namespace={} name={} rows={} ms={}", cluster_context, kind, namespace_label, name, events.len(), started.elapsed().as_millis()),
+        Err(err) => eprintln!("[k8s-manager:backend] list_resource_events error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis()),
+    }
+    result
 }
 
 pub async fn resources_summary_from(
@@ -803,6 +924,7 @@ pub async fn resource_details_from(
                 age: resource_age(pod.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&pod.metadata.creation_timestamp),
                 status: pod.status.as_ref().map(|s| s.phase.clone().unwrap_or_default()),
                 ready: pod.status.as_ref().and_then(|s| {
                     s.conditions.as_ref().and_then(|conds| conds.iter().find(|c| c.type_ == "Ready")).map(|c| c.status.clone())
@@ -834,6 +956,7 @@ pub async fn resource_details_from(
                 age: resource_age(deploy.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&deploy.metadata.creation_timestamp),
                 status: None,
                 ready: None,
                 restarts: None,
@@ -863,6 +986,7 @@ pub async fn resource_details_from(
                 age: resource_age(svc.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&svc.metadata.creation_timestamp),
                 status: None,
                 ready: None,
                 restarts: None,
@@ -888,6 +1012,7 @@ pub async fn resource_details_from(
                 age: resource_age(cm.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&cm.metadata.creation_timestamp),
                 status: None,
                 ready: None,
                 restarts: None,
@@ -914,6 +1039,7 @@ pub async fn resource_details_from(
                 age: resource_age(ss.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&ss.metadata.creation_timestamp),
                 status: None,
                 ready: None,
                 restarts: None,
@@ -943,6 +1069,7 @@ pub async fn resource_details_from(
                 age: resource_age(ds.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&ds.metadata.creation_timestamp),
                 status: None,
                 ready: None,
                 restarts: None,
@@ -972,6 +1099,7 @@ pub async fn resource_details_from(
                 age: resource_age(ing.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&ing.metadata.creation_timestamp),
                 status: None,
                 ready: None,
                 restarts: None,
@@ -999,6 +1127,7 @@ pub async fn resource_details_from(
                 age: resource_age(sec.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&sec.metadata.creation_timestamp),
                 status: None,
                 ready: None,
                 restarts: None,
@@ -1025,6 +1154,7 @@ pub async fn resource_details_from(
                 age: resource_age(pvc.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&pvc.metadata.creation_timestamp),
                 status: status.as_ref().and_then(|s| s.get("phase").and_then(|p| p.as_str().map(str::to_owned))),
                 ready: None,
                 restarts: None,
@@ -1051,6 +1181,7 @@ pub async fn resource_details_from(
                 age: resource_age(job.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&job.metadata.creation_timestamp),
                 status: None,
                 ready: None,
                 restarts: None,
@@ -1089,6 +1220,7 @@ pub async fn resource_details_from(
                 age: resource_age(cj.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&cj.metadata.creation_timestamp),
                 status: None,
                 ready: None,
                 restarts: None,
@@ -1122,6 +1254,7 @@ pub async fn resource_details_from(
                 age: resource_age(node.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&node.metadata.creation_timestamp),
                 status: node.status.as_ref().and_then(|s| {
                     s.conditions.as_ref()?.iter().find(|c| c.type_ == "Ready").map(|c| c.status.clone())
                 }),
@@ -1153,6 +1286,7 @@ pub async fn resource_details_from(
                 age: resource_age(sc.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&sc.metadata.creation_timestamp),
                 status: None,
                 ready: None,
                 restarts: None,
@@ -1179,6 +1313,7 @@ pub async fn resource_details_from(
                 age: resource_age(pv.metadata.creation_timestamp.clone().map(|t| {
                     Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
                 })),
+                created_at: k8s_creation_timestamp_to_rfc3339(&pv.metadata.creation_timestamp),
                 status: pv.status.as_ref().and_then(|s| s.phase.as_ref()).cloned(),
                 ready: None,
                 restarts: None,
@@ -1302,6 +1437,7 @@ pub async fn list_argocd_applications(cluster_context: String) -> Result<Vec<Arg
                 cluster: cluster_context.clone(),
                 name,
                 age,
+                created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
                 namespace,
                 project,
                 sync_status,
@@ -1354,7 +1490,7 @@ pub async fn get_argocd_application_details(
 
     let name = obj.metadata.name.clone().unwrap_or_default();
     let namespace = obj.metadata.namespace.clone();
-    let age = resource_age(obj.metadata.creation_timestamp.map(|t| {
+    let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
         Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
     }));
 
@@ -1371,6 +1507,7 @@ pub async fn get_argocd_application_details(
         cluster: cluster_context.clone(),
         name,
         age,
+        created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
         namespace,
         project,
         sync_status,
@@ -1434,6 +1571,7 @@ pub async fn list_argocd_appsets(cluster_context: String) -> Result<Vec<ArgoAppl
                 cluster: cluster_context.clone(),
                 name,
                 age,
+                created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
                 namespace,
                 project,
                 status,
@@ -1486,7 +1624,7 @@ pub async fn get_argocd_appset_details(
 
     let name = obj.metadata.name.clone().unwrap_or_default();
     let namespace = obj.metadata.namespace.clone();
-    let age = resource_age(obj.metadata.creation_timestamp.map(|t| {
+    let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
         Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
     }));
     let project = data.get("spec").and_then(|s| s.get("project")).and_then(|p| p.as_str()).map(String::from);
@@ -1501,6 +1639,7 @@ pub async fn get_argocd_appset_details(
         cluster: cluster_context.clone(),
         name: name.clone(),
         age,
+        created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
         namespace: namespace.clone(),
         project,
         status,
@@ -1555,7 +1694,7 @@ pub async fn get_argocd_appproject_details(
 
     let name = obj.metadata.name.clone().unwrap_or_default();
     let namespace = obj.metadata.namespace.clone();
-    let age = resource_age(obj.metadata.creation_timestamp.map(|t| {
+    let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
         Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
     }));
     let description = data.get("spec").and_then(|s| s.get("description")).and_then(|d| d.as_str()).map(String::from);
@@ -1564,6 +1703,7 @@ pub async fn get_argocd_appproject_details(
         cluster: cluster_context.clone(),
         name,
         age,
+        created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
         namespace,
         description,
         status,
@@ -1614,6 +1754,7 @@ pub async fn list_argocd_appprojects(cluster_context: String) -> Result<Vec<Argo
                 cluster: cluster_context.clone(),
                 name,
                 age,
+                created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
                 namespace,
                 description,
                 status,

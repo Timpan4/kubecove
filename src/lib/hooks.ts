@@ -23,7 +23,7 @@ export interface DashboardState {
 	argoDetected: boolean;
 	selectedArgoApp: ArgoSelectedItem;
 	selectedArgoAppFilter: string;
-	viewMode: "resources" | "argo";
+	viewMode: "resources" | "argo" | "settings";
 	// Tree navigation state
 	selectedTreeNode: TreeNodeId | null;
 	expandedSections: string[]; // array of nodeId strings for stable serialization
@@ -40,7 +40,7 @@ export interface DashboardSetters {
 	setArgoDetected: (detected: boolean) => void;
 	setSelectedArgoApp: (app: ArgoSelectedItem) => void;
 	setSelectedArgoAppFilter: (app: string) => void;
-	setViewMode: (mode: "resources" | "argo") => void;
+	setViewMode: (mode: "resources" | "argo" | "settings") => void;
 	// Tree navigation setters
 	setSelectedTreeNode: (node: TreeNodeId | null) => void;
 	setExpandedSections: (sections: string[]) => void;
@@ -94,8 +94,8 @@ interface NonPersistedSlice {
 	setSelectedArgoApp: (app: ArgoSelectedItem) => void;
 	setSelectedArgoAppFilter: (app: string) => void;
 	// View mode: resources or argo
-	viewMode: "resources" | "argo";
-	setViewMode: (mode: "resources" | "argo") => void;
+	viewMode: "resources" | "argo" | "settings";
+	setViewMode: (mode: "resources" | "argo" | "settings") => void;
 	// Tree navigation state
 	selectedTreeNode: TreeNodeId | null;
 	expandedSections: string[];
@@ -124,7 +124,7 @@ const useNonPersistedStore = create<NonPersistedSlice>()((set) => ({
 	setSelectedArgoApp: (app: ArgoSelectedItem) => set({ selectedArgoApp: app }),
 	setSelectedArgoAppFilter: (app: string) => set({ selectedArgoAppFilter: app }),
 	viewMode: "resources",
-	setViewMode: (mode: "resources" | "argo") => set({ viewMode: mode }),
+	setViewMode: (mode: "resources" | "argo" | "settings") => set({ viewMode: mode }),
 	selectedTreeNode: null,
 	expandedSections: [],
 	setSelectedTreeNode: (node: TreeNodeId | null) =>
