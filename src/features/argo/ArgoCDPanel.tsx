@@ -12,6 +12,11 @@ import type {
 	ArgoApplicationSetSummary,
 	ArgoAppProjectSummary,
 } from "../../lib/types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Search, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ArgoCDPanelProps {
 	clusterContext: string;
@@ -30,6 +35,40 @@ interface ArgoCDPanelProps {
 }
 
 type ChipVariant = "neutral" | "success" | "warning" | "error" | "info";
+const CHIP_BADGE_STYLES: Record<
+	ChipVariant,
+	{
+		variant: "secondary" | "destructive" | "outline";
+		className: string;
+	}
+> = {
+	neutral: { variant: "secondary", className: "" },
+	success: {
+		variant: "outline",
+		className:
+			"border-emerald-500/30 bg-emerald-500/10 text-emerald-300 dark:bg-emerald-500/15",
+	},
+	warning: {
+		variant: "outline",
+		className:
+			"border-amber-500/30 bg-amber-500/10 text-amber-300 dark:bg-amber-500/15",
+	},
+	error: { variant: "destructive", className: "" },
+	info: {
+		variant: "outline",
+		className:
+			"border-sky-500/30 bg-sky-500/10 text-sky-300 dark:bg-sky-500/15",
+	},
+};
+const TABLE_CLASS =
+	"w-full table-fixed border-collapse text-sm [&_th]:border-b-2 [&_th]:px-3 [&_th]:py-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:text-muted-foreground [&_td]:whitespace-nowrap [&_td]:border-b [&_td]:px-3 [&_td]:py-3 [&_td]:truncate";
+const ROW_CLASS = "cursor-pointer transition-colors hover:bg-accent/60";
+const SELECTED_ROW_CLASS = "bg-accent";
+const EMPTY_PAGE_CLASS = "p-8 text-center text-sm text-muted-foreground";
+const STATE_CLASS = "p-8 text-center text-sm text-muted-foreground";
+const ERROR_STATE_CLASS = "p-8 text-center text-sm text-destructive";
+const TOOLBAR_CLASS = "mb-1 flex items-center gap-2 p-0";
+const PAGINATION_CLASS = "flex items-center border-t py-2 text-xs text-muted-foreground";
 
 function StatusChip({
 	value,
@@ -39,7 +78,18 @@ function StatusChip({
 	variant?: ChipVariant;
 }) {
 	if (!value) return null;
-	return <span className={`chip chip-${variant}`}>{value}</span>;
+	const badgeStyle = CHIP_BADGE_STYLES[variant];
+	return (
+		<Badge
+			variant={badgeStyle.variant}
+			className={cn(
+				"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
+				badgeStyle.className,
+			)}
+		>
+			{value}
+		</Badge>
+	);
 }
 
 function syncStatusVariant(status: string | null): ChipVariant {
@@ -79,21 +129,30 @@ function ApplicationsTable({
 
 	return (
 		<>
-			<div className="resource-list-toolbar">
-				<input
-					className="resource-search-input"
-					type="text"
-					placeholder="Search by name, project, repo..."
-					value={search}
-					onChange={(e) => setSearch(e.target.value)}
-				/>
+			<div className={TOOLBAR_CLASS}>
+				<div className="relative min-w-0 flex-1">
+					<Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+					<Input
+						className="h-9 border-slate-700/80 bg-slate-950/45 pl-8 text-sm text-foreground placeholder:text-muted-foreground"
+						type="text"
+						placeholder="Search by name, project, repo..."
+						value={search}
+						onChange={(e) => setSearch(e.target.value)}
+					/>
+				</div>
 				{search && (
-					<button className="clear-filter-btn" onClick={() => setSearch("")}>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => setSearch("")}
+					>
+						<X className="size-3.5" />
 						Clear
-					</button>
+					</Button>
 				)}
 			</div>
-			<table className="resource-table">
+			<table className={TABLE_CLASS}>
 				<thead>
 					<tr>
 						<th>Name</th>
@@ -109,7 +168,7 @@ function ApplicationsTable({
 				<tbody>
 					{filtered.length === 0 ? (
 						<tr>
-							<td colSpan={8} className="empty-page-state">
+							<td colSpan={8} className={EMPTY_PAGE_CLASS}>
 								No applications found
 							</td>
 						</tr>
@@ -122,7 +181,7 @@ function ApplicationsTable({
 							return (
 								<tr
 									key={app.name}
-									className={`resource-row${isSelected ? " selected" : ""}`}
+									className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 									onClick={() => onAppSelect(app)}
 								>
 									<td>{app.name}</td>
@@ -151,8 +210,8 @@ function ApplicationsTable({
 					)}
 				</tbody>
 			</table>
-			<div className="table-pagination">
-				<span className="pagination-info">
+			<div className={PAGINATION_CLASS}>
+				<span>
 					{filtered.length} {search ? "filtered" : "total"} applications
 				</span>
 			</div>
@@ -182,21 +241,30 @@ function ApplicationSetsTable({
 
 	return (
 		<>
-			<div className="resource-list-toolbar">
-				<input
-					className="resource-search-input"
-					type="text"
-					placeholder="Search by name, project..."
-					value={search}
-					onChange={(e) => setSearch(e.target.value)}
-				/>
+			<div className={TOOLBAR_CLASS}>
+				<div className="relative min-w-0 flex-1">
+					<Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+					<Input
+						className="h-9 border-slate-700/80 bg-slate-950/45 pl-8 text-sm text-foreground placeholder:text-muted-foreground"
+						type="text"
+						placeholder="Search by name, project..."
+						value={search}
+						onChange={(e) => setSearch(e.target.value)}
+					/>
+				</div>
 				{search && (
-					<button className="clear-filter-btn" onClick={() => setSearch("")}>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => setSearch("")}
+					>
+						<X className="size-3.5" />
 						Clear
-					</button>
+					</Button>
 				)}
 			</div>
-			<table className="resource-table">
+			<table className={TABLE_CLASS}>
 				<thead>
 					<tr>
 						<th>Name</th>
@@ -213,7 +281,7 @@ function ApplicationSetsTable({
 				<tbody>
 					{filtered.length === 0 ? (
 						<tr>
-							<td colSpan={9} className="empty-page-state">
+							<td colSpan={9} className={EMPTY_PAGE_CLASS}>
 								No application sets found
 							</td>
 						</tr>
@@ -226,7 +294,7 @@ function ApplicationSetsTable({
 							return (
 								<tr
 									key={as.name}
-									className={`resource-row${isSelected ? " selected" : ""}`}
+									className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 									onClick={() => onArgoItemSelect(as)}
 								>
 									<td>{as.name}</td>
@@ -258,8 +326,8 @@ function ApplicationSetsTable({
 					)}
 				</tbody>
 			</table>
-			<div className="table-pagination">
-				<span className="pagination-info">
+			<div className={PAGINATION_CLASS}>
+				<span>
 					{filtered.length} {search ? "filtered" : "total"} application sets
 				</span>
 			</div>
@@ -289,21 +357,30 @@ function AppProjectsTable({
 
 	return (
 		<>
-			<div className="resource-list-toolbar">
-				<input
-					className="resource-search-input"
-					type="text"
-					placeholder="Search by name, description..."
-					value={search}
-					onChange={(e) => setSearch(e.target.value)}
-				/>
+			<div className={TOOLBAR_CLASS}>
+				<div className="relative min-w-0 flex-1">
+					<Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+					<Input
+						className="h-9 border-slate-700/80 bg-slate-950/45 pl-8 text-sm text-foreground placeholder:text-muted-foreground"
+						type="text"
+						placeholder="Search by name, description..."
+						value={search}
+						onChange={(e) => setSearch(e.target.value)}
+					/>
+				</div>
 				{search && (
-					<button className="clear-filter-btn" onClick={() => setSearch("")}>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => setSearch("")}
+					>
+						<X className="size-3.5" />
 						Clear
-					</button>
+					</Button>
 				)}
 			</div>
-			<table className="resource-table">
+			<table className={TABLE_CLASS}>
 				<thead>
 					<tr>
 						<th>Name</th>
@@ -315,7 +392,7 @@ function AppProjectsTable({
 				<tbody>
 					{filtered.length === 0 ? (
 						<tr>
-							<td colSpan={4} className="empty-page-state">
+							<td colSpan={4} className={EMPTY_PAGE_CLASS}>
 								No app projects found
 							</td>
 						</tr>
@@ -328,7 +405,7 @@ function AppProjectsTable({
 							return (
 								<tr
 									key={p.name}
-									className={`resource-row${isSelected ? " selected" : ""}`}
+									className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 									onClick={() => onArgoItemSelect(p)}
 								>
 									<td>{p.name}</td>
@@ -343,8 +420,8 @@ function AppProjectsTable({
 					)}
 				</tbody>
 			</table>
-			<div className="table-pagination">
-				<span className="pagination-info">
+			<div className={PAGINATION_CLASS}>
+				<span>
 					{filtered.length} {search ? "filtered" : "total"} app projects
 				</span>
 			</div>
@@ -411,15 +488,15 @@ export function ArgoCDPanel({
 
 	if (detectPending) {
 		return (
-			<div className="resource-list-state">
-				<span className="loading-indicator">Checking for Argo CD...</span>
+			<div className={STATE_CLASS}>
+				<span className="inline-flex items-center gap-2">Checking for Argo CD...</span>
 			</div>
 		);
 	}
 
 	if (argoDetected === false) {
 		return (
-			<div className="resource-list-state empty-state">
+			<div className={STATE_CLASS}>
 				<span>Argo CD not detected in this cluster</span>
 			</div>
 		);
@@ -428,7 +505,7 @@ export function ArgoCDPanel({
 	// Show empty state when no specific Argo kind selected
 	if (!selectedArgoKind) {
 		return (
-			<div className="resource-list-state empty-state">
+			<div className={STATE_CLASS}>
 				<span>Select an Argo CD resource type</span>
 			</div>
 		);
@@ -439,8 +516,8 @@ export function ArgoCDPanel({
 	if (isApps) {
 		if (appsPending) {
 			return (
-				<div className="resource-list-state">
-					<span className="loading-indicator">
+				<div className={STATE_CLASS}>
+					<span className="inline-flex items-center gap-2">
 						Loading Argo CD applications...
 					</span>
 				</div>
@@ -448,7 +525,7 @@ export function ArgoCDPanel({
 		}
 		if (appsError) {
 			return (
-				<div className="resource-list-state error-state">
+				<div className={ERROR_STATE_CLASS}>
 					<span>
 						Error:{" "}
 						{appsErr instanceof Error
@@ -460,13 +537,13 @@ export function ArgoCDPanel({
 		}
 		if (!apps) {
 			return (
-				<div className="resource-list-state empty-state">
+				<div className={STATE_CLASS}>
 					<span>Loading…</span>
 				</div>
 			);
 		}
 		return (
-			<div className="argo-panel">
+			<div className="flex flex-col">
 				<ApplicationsTable
 					apps={apps}
 					selectedArgoApp={selectedArgoItem as ArgoApplicationSummary | null}
@@ -483,8 +560,8 @@ export function ArgoCDPanel({
 	if (isAppSets) {
 		if (appsetsPending) {
 			return (
-				<div className="resource-list-state">
-					<span className="loading-indicator">
+				<div className={STATE_CLASS}>
+					<span className="inline-flex items-center gap-2">
 						Loading Argo CD application sets...
 					</span>
 				</div>
@@ -492,7 +569,7 @@ export function ArgoCDPanel({
 		}
 		if (appsetsError) {
 			return (
-				<div className="resource-list-state error-state">
+				<div className={ERROR_STATE_CLASS}>
 					<span>
 						Error:{" "}
 						{appsetsErr instanceof Error
@@ -504,13 +581,13 @@ export function ArgoCDPanel({
 		}
 		if (!appsets) {
 			return (
-				<div className="resource-list-state empty-state">
+				<div className={STATE_CLASS}>
 					<span>Loading…</span>
 				</div>
 			);
 		}
 		return (
-			<div className="argo-panel">
+			<div className="flex flex-col">
 				<ApplicationSetsTable
 					appsets={appsets}
 					selectedArgoItem={selectedArgoItem as ArgoApplicationSetSummary | null}
@@ -525,8 +602,8 @@ export function ArgoCDPanel({
 	if (isAppProjects) {
 		if (projectsPending) {
 			return (
-				<div className="resource-list-state">
-					<span className="loading-indicator">
+				<div className={STATE_CLASS}>
+					<span className="inline-flex items-center gap-2">
 						Loading Argo CD app projects...
 					</span>
 				</div>
@@ -534,7 +611,7 @@ export function ArgoCDPanel({
 		}
 		if (projectsError) {
 			return (
-				<div className="resource-list-state error-state">
+				<div className={ERROR_STATE_CLASS}>
 					<span>
 						Error:{" "}
 						{projectsErr instanceof Error
@@ -546,13 +623,13 @@ export function ArgoCDPanel({
 		}
 		if (!projects) {
 			return (
-				<div className="resource-list-state empty-state">
+				<div className={STATE_CLASS}>
 					<span>Loading…</span>
 				</div>
 			);
 		}
 		return (
-			<div className="argo-panel">
+			<div className="flex flex-col">
 				<AppProjectsTable
 					projects={projects}
 					selectedArgoItem={selectedArgoItem as ArgoAppProjectSummary | null}
@@ -564,7 +641,7 @@ export function ArgoCDPanel({
 
 	// Fallback — should not reach here
 	return (
-		<div className="resource-list-state empty-state">
+		<div className={STATE_CLASS}>
 			<span>{selectedArgoKind} is not yet supported</span>
 		</div>
 	);

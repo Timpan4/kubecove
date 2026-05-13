@@ -1,5 +1,7 @@
 import type { AnyKind } from "../lib/types";
 import { SUPPORTED_KINDS, CLUSTER_SCOPED_KINDS } from "../lib/types";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface KindListProps {
   selectedKinds: AnyKind[];
@@ -27,29 +29,36 @@ export function KindList({ selectedKinds, onToggleKind }: KindListProps) {
   };
 
   return (
-    <div className="kind-list">
-      <div className="kind-list-header">
-        <h3 className="kind-list-title">Resource Kinds</h3>
-        <button
-          className="select-all-btn"
+    <div className="flex flex-col">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="m-0 text-xs font-semibold uppercase text-muted-foreground">
+          Resource Kinds
+        </h3>
+        <Button
           onClick={handleToggleAll}
           type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-[0.625rem]"
         >
           {allSelected ? "Deselect All" : "Select All"}
-        </button>
+        </Button>
       </div>
-      <ul className="kind-items">
+      <ul className="m-0 list-none p-0">
         {SUPPORTED_KINDS.map((kind) => (
           <li
             key={kind}
-            className={`kind-item ${selectedKinds.includes(kind) ? "selected" : ""}`}
+            className={cn(
+              "cursor-pointer rounded-md p-2 text-sm transition-colors hover:bg-accent",
+              selectedKinds.includes(kind) && "bg-accent",
+            )}
           >
-            <label className="kind-checkbox-label">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={selectedKinds.includes(kind)}
                 onChange={() => onToggleKind(kind)}
-                className="kind-checkbox"
+                className="accent-primary"
               />
               {kind}
             </label>
@@ -57,18 +66,21 @@ export function KindList({ selectedKinds, onToggleKind }: KindListProps) {
         ))}
         {CLUSTER_SCOPED_KINDS.length > 0 && (
           <>
-            <li className="kind-divider" />
+            <li className="my-2 border-t" />
             {CLUSTER_SCOPED_KINDS.map((kind) => (
               <li
                 key={kind}
-                className={`kind-item ${selectedKinds.includes(kind) ? "selected" : ""}`}
+                className={cn(
+                  "cursor-pointer rounded-md p-2 text-sm transition-colors hover:bg-accent",
+                  selectedKinds.includes(kind) && "bg-accent",
+                )}
               >
-                <label className="kind-checkbox-label">
+                <label className="flex cursor-pointer items-center gap-2">
                   <input
                     type="checkbox"
                     checked={selectedKinds.includes(kind)}
                     onChange={() => onToggleKind(kind)}
-                    className="kind-checkbox"
+                    className="accent-primary"
                   />
                   {kind}
                 </label>

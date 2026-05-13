@@ -5,6 +5,8 @@ import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./app/router";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
+document.documentElement.classList.add("dark");
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -17,7 +19,7 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
+      <TooltipProvider delayDuration={300}>
         <RouterProvider router={router} />
       </TooltipProvider>
     </QueryClientProvider>

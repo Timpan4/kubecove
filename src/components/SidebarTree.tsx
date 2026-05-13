@@ -32,6 +32,12 @@ import {
   type KindGroupName,
   nodeIdToString,
 } from "../lib/tree-nav";
+import { cn } from "@/lib/utils";
+import { ChevronRight } from "lucide-react";
+import {
+  getResourceGroupVisual,
+  getResourceKindVisual,
+} from "@/lib/resource-visuals";
 
 interface SidebarTreeProps {
   clusterContext: string;
@@ -51,23 +57,22 @@ interface TreeNodeProps {
   hasChildren: boolean;
 }
 
-// Chevron icon (inline SVG, no emoji)
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 10 10"
-      fill="currentColor"
-      style={{
-        transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
-        transition: "transform 0.15s",
-        flexShrink: 0,
-      }}
-    >
-      <path d="M3 2l4 3-4 3z" />
-    </svg>
+    <ChevronRight
+      className={cn("size-3 shrink-0 transition-transform", expanded && "rotate-90")}
+    />
   );
+}
+
+function getNodeVisual(node: TreeNode) {
+  if (node.id.type === "kind" && node.id.kind) {
+    return getResourceKindVisual(node.id.kind);
+  }
+  if (node.id.type === "namespace") {
+    return getResourceGroupVisual("Namespaces");
+  }
+  return getResourceGroupVisual(node.label);
 }
 
 function TreeNodeComponent({
@@ -82,6 +87,18 @@ function TreeNodeComponent({
   const idStr = nodeIdToString(node.id);
   const isSelected = selectedNode !== null && nodeIdToString(selectedNode) === idStr;
   const isExpanded = expandedSections.includes(idStr);
+  const visual = getNodeVisual(node);
+  const NodeIcon = visual.icon;
+  const depthPaddingClass =
+    depth === 0
+      ? "pl-2"
+      : depth === 1
+        ? "pl-6"
+        : depth === 2
+          ? "pl-10"
+          : depth === 3
+            ? "pl-14"
+            : "pl-[72px]";
 
   const handleClick = () => {
     onNodeSelect(node.id);
@@ -93,28 +110,43 @@ function TreeNodeComponent({
   };
 
   return (
-    <li className="tree-node">
+    <li>
       <div
-        className={`tree-row${isSelected ? " tree-row--selected" : ""}`}
-        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        className={cn(
+          "relative flex h-[26px] cursor-pointer select-none items-center gap-1 rounded-none text-[0.8125rem] text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          isSelected &&
+            "bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:bottom-0 before:left-0 before:top-0 before:w-0.5 before:rounded-r-sm before:bg-sidebar-primary",
+          depth === 0 &&
+            "text-[0.6875rem] font-bold uppercase tracking-wide text-muted-foreground hover:bg-transparent hover:text-foreground/70",
+          depthPaddingClass,
+        )}
         data-depth={depth}
         onClick={handleClick}
         role="treeitem"
         aria-expanded={hasChildren ? isExpanded : undefined}
       >
         <button
-          className="tree-chevron"
+          className={cn(
+            "flex size-[18px] shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-muted-foreground transition-colors hover:text-foreground",
+            !hasChildren && "invisible",
+          )}
           onClick={handleChevronClick}
           tabIndex={-1}
-          style={{ visibility: hasChildren ? "visible" : "hidden" }}
           aria-hidden="true"
         >
           <ChevronIcon expanded={isExpanded} />
         </button>
-        <span className="tree-label">{node.label}</span>
+        <NodeIcon
+          className={cn(
+            "size-3.5 shrink-0",
+            depth === 0 ? "size-3" : "size-3.5",
+            visual.className,
+          )}
+        />
+        <span className="min-w-0 flex-1 truncate leading-none">{node.label}</span>
       </div>
       {hasChildren && isExpanded && node.children && (
-        <ul className="tree-children" role="group">
+        <ul className="m-0 list-none p-0" role="group">
           {node.children.map((child) => (
             <TreeNodeComponent
               key={nodeIdToString(child.id)}
@@ -250,23 +282,23 @@ export function SidebarTree({
 
   if (!clusterContext) {
     return (
-      <div className="sidebar-tree-empty">
+      <div className="p-4 text-center text-xs text-muted-foreground">
         Select a cluster context to load the resource tree
       </div>
     );
   }
 
   if (loading) {
-    return <div className="sidebar-tree-empty">Loading namespaces…</div>;
+    return <div className="p-4 text-center text-xs text-muted-foreground">Loading namespaces…</div>;
   }
 
   if (error) {
-    return <div className="sidebar-tree-empty error">{error}</div>;
+    return <div className="p-4 text-center text-xs text-destructive">{error}</div>;
   }
 
   return (
-    <nav className="sidebar-tree" aria-label="Kubernetes resource tree">
-      <ul className="tree-root" role="tree">
+    <nav className="flex-1 py-2" aria-label="Kubernetes resource tree">
+      <ul className="m-0 list-none p-0" role="tree">
         {fullTree.map((node) => (
           <TreeNodeComponent
             key={nodeIdToString(node.id)}
