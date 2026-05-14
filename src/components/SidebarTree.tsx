@@ -24,7 +24,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createTauriClient, listNamespaces, listResourceKinds } from "../lib/tauri";
 import type { DiscoveredResourceKind, NamespaceSummary } from "../lib/types";
-import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "../lib/types";
 import {
   type TreeNodeId,
   type TreeNode,
@@ -272,60 +271,63 @@ export function SidebarTree({
   }, [loadResourceKinds]);
 
   // Build the static tree (no namespace children yet — those are built dynamically)
-  const staticTree = useMemo<TreeNode[]>(() => {
-    const nodes: TreeNode[] = [];
-
-    // Cluster Overview
-    nodes.push({
+  const staticTree = useMemo(() => {
+    const clusterOverviewNode: TreeNode = {
       id: { type: "section", section: "clusterOverview" },
       label: SECTIONS.clusterOverview.label,
       children: (["Node", "StorageClass", "PersistentVolume"] as const).map((kind) => ({
         id: { type: "kind", section: "clusterOverview", namespace: undefined, group: undefined, kind },
         label: kind,
       })),
-    });
+    };
 
-    // Static sections (Workloads, Network, Config, Storage, Argo CD)
-    const staticSections: Array<{ id: string; label: string; children: readonly string[] }> = [
+    const curatedSections: Array<{ id: string; label: string; children: readonly string[] }> = [
       { id: "workloads", label: SECTIONS.workloads.label, children: SECTIONS.workloads.children },
       { id: "network", label: SECTIONS.network.label, children: SECTIONS.network.children },
       { id: "config", label: SECTIONS.config.label, children: SECTIONS.config.children },
       { id: "storage", label: SECTIONS.storage.label, children: SECTIONS.storage.children },
-      { id: "argo", label: SECTIONS.argo.label, children: SECTIONS.argo.children },
     ];
 
-    for (const sec of staticSections) {
-      const isArgo = sec.id === "argo";
-      nodes.push({
-        id: { type: "section", section: sec.id },
-        label: sec.label,
-        children: sec.children.map((child) => {
-          if (isArgo) {
-            return {
-              id: { type: "kind", section: "argo", namespace: undefined, group: undefined, kind: child },
-              label: child,
-            };
-          }
-          // For static sections (Workloads/Network/Config/Storage), children are kinds directly,
-          // not groups — there is no KIND_GROUPS entry for e.g. "Pod" as a group key
-          return {
-            id: { type: "kind", section: sec.id, namespace: undefined, group: undefined, kind: child } as TreeNodeId,
-            label: child,
-          };
-        }),
-      });
-    }
+    const curatedSectionNodes = curatedSections.map((sec): TreeNode => ({
+      id: { type: "section", section: sec.id },
+      label: sec.label,
+      children: sec.children.map((child) => ({
+        id: { type: "kind", section: sec.id, namespace: undefined, group: undefined, kind: child } as TreeNodeId,
+        label: child,
+      })),
+    }));
 
-    return nodes;
+    const argoNode: TreeNode = {
+      id: { type: "section", section: "argo" },
+      label: SECTIONS.argo.label,
+      children: SECTIONS.argo.children.map((child) => ({
+        id: { type: "kind", section: "argo", namespace: undefined, group: undefined, kind: child },
+        label: child,
+      })),
+    };
+
+    return { clusterOverviewNode, curatedSectionNodes, argoNode };
   }, []);
 
   const discoveredTree = useMemo<TreeNode>(() => {
-    const curatedKinds = new Set<string>([
-      ...SUPPORTED_KINDS,
-      ...CLUSTER_SCOPED_KINDS,
-      "Application",
-      "ApplicationSet",
-      "AppProject",
+    const curatedKindKeys = new Set<string>([
+      "/Pod",
+      "/Service",
+      "/ConfigMap",
+      "/Secret",
+      "/PersistentVolumeClaim",
+      "/Node",
+      "/PersistentVolume",
+      "apps/Deployment",
+      "apps/StatefulSet",
+      "apps/DaemonSet",
+      "batch/Job",
+      "batch/CronJob",
+      "networking.k8s.io/Ingress",
+      "storage.k8s.io/StorageClass",
+      "argoproj.io/Application",
+      "argoproj.io/ApplicationSet",
+      "argoproj.io/AppProject",
     ]);
 
     let children: TreeNode[];
@@ -349,7 +351,7 @@ export function SidebarTree({
       ];
     } else {
       const extraKinds = resourceKinds
-        .filter((resourceKind) => !curatedKinds.has(resourceKind.kind))
+        .filter((resourceKind) => !curatedKindKeys.has(`${resourceKind.group}/${resourceKind.kind}`))
         .sort((a, b) =>
           a.kind.localeCompare(b.kind) ||
           a.apiVersion.localeCompare(b.apiVersion) ||
@@ -416,11 +418,11 @@ export function SidebarTree({
       children: namespaces.map((ns) => buildNamespaceSubtree(ns.name)),
     };
     return [
-      staticTree[0],
+      staticTree.clusterOverviewNode,
       namespaceNode,
-      ...staticTree.slice(1, -1),
+      ...staticTree.curatedSectionNodes,
       discoveredTree,
-      staticTree[staticTree.length - 1],
+      staticTree.argoNode,
     ];
   }, [namespaces, staticTree, buildNamespaceSubtree, discoveredTree]);
 

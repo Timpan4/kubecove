@@ -149,12 +149,10 @@ fn test_discovered_resource_kind_serde() {
         kind: "Deployment".to_string(),
         plural: "deployments".to_string(),
         namespaced: true,
-        preferred: true,
     };
     let json_val = serde_json::to_value(&kind).unwrap();
     assert_eq!(json_val["apiVersion"], "apps/v1");
     assert_eq!(json_val["namespaced"], true);
     let parsed: DiscoveredResourceKind = serde_json::from_value(json_val).unwrap();
     assert_eq!(parsed.kind, "Deployment");
-    assert!(parsed.preferred);
 }

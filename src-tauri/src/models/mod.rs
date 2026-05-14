@@ -80,7 +80,6 @@ pub struct DiscoveredResourceKind {
     pub kind: String,
     pub plural: String,
     pub namespaced: bool,
-    pub preferred: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

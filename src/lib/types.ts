@@ -57,7 +57,6 @@ export interface DiscoveredResourceKind {
 	kind: string;
 	plural: string;
 	namespaced: boolean;
-	preferred: boolean;
 }
 
 export interface AppError {

@@ -482,8 +482,25 @@ pub async fn list_resource_events(
     )
     .await;
     match &result {
-        Ok(events) => eprintln!("[k8s-manager:backend] list_resource_events done context={} kind={} namespace={} name={} rows={} ms={}", cluster_context, kind, namespace_label, name, events.len(), started.elapsed().as_millis()),
-        Err(err) => eprintln!("[k8s-manager:backend] list_resource_events error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis()),
+        Ok(events) => eprintln!(
+            "[k8s-manager:backend] list_resource_events done context={} kind={} namespace={} name={} rows={} ms={}",
+            cluster_context,
+            kind,
+            namespace_label,
+            name,
+            events.len(),
+            started.elapsed().as_millis()
+        ),
+        Err(err) => eprintln!(
+            "[k8s-manager:backend] list_resource_events error context={} kind={} namespace={} name={} error_kind={} message={} ms={}",
+            cluster_context,
+            kind,
+            namespace_label,
+            name,
+            err.kind,
+            err.message,
+            started.elapsed().as_millis()
+        ),
     }
     result
 }
@@ -521,7 +538,6 @@ pub async fn resource_kinds_from(
                 kind: api_resource.kind,
                 plural: api_resource.plural,
                 namespaced: matches!(capabilities.scope, Scope::Namespaced),
-                preferred: true,
             });
         }
     }
