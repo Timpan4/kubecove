@@ -39,6 +39,7 @@ The hook currently:
 
 - runs `git diff --cached --check`
 - blocks likely kubeconfig or credential material
+- enforces file-size caps from [handbook/file-size-and-split.md](handbook/file-size-and-split.md): warn at soft cap, fail at hard cap; legacy oversized files exempt via an explicit list in the hook
 - runs `bun run typecheck` when `package.json` defines `typecheck`
 - runs `bun run lint` when `package.json` defines `lint`
 - runs `cargo check` when a Rust manifest exists
