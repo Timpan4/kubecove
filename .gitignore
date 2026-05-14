@@ -28,4 +28,5 @@ Thumbs.db
 .idea/
 .vscode/
 .sisyphus/
+.claude/
 .pi-lens

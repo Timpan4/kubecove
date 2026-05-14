@@ -1,4 +1,4 @@
-use k8s_manager_lib::models::{AppError, ClusterContext, NamespaceSummary, ResourceSummary, ResourceDetails, ResourceDetailsFull, ResourceEventSummary};
+use k8s_manager_lib::models::{AppError, ClusterContext, DiscoveredResourceKind, NamespaceSummary, ResourceSummary, ResourceDetails, ResourceDetailsFull, ResourceEventSummary};
 use serde_json::json;
 
 #[test]
@@ -138,4 +138,21 @@ fn test_resource_event_summary_serde() {
     let parsed: ResourceEventSummary = serde_json::from_value(json_val).unwrap();
     assert_eq!(parsed.count, 3);
     assert_eq!(parsed.namespace, Some("default".to_string()));
+}
+
+#[test]
+fn test_discovered_resource_kind_serde() {
+    let kind = DiscoveredResourceKind {
+        group: "apps".to_string(),
+        version: "v1".to_string(),
+        api_version: "apps/v1".to_string(),
+        kind: "Deployment".to_string(),
+        plural: "deployments".to_string(),
+        namespaced: true,
+    };
+    let json_val = serde_json::to_value(&kind).unwrap();
+    assert_eq!(json_val["apiVersion"], "apps/v1");
+    assert_eq!(json_val["namespaced"], true);
+    let parsed: DiscoveredResourceKind = serde_json::from_value(json_val).unwrap();
+    assert_eq!(parsed.kind, "Deployment");
 }

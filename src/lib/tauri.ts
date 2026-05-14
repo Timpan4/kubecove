@@ -2,6 +2,7 @@ import { invoke, type InvokeOptions } from "@tauri-apps/api/core";
 import type {
 	ClusterContext,
 	NamespaceSummary,
+	DiscoveredResourceKind,
 	ResourceSummary,
 	ResourceEventSummary,
 	ResourceDetailsFull,
@@ -80,6 +81,15 @@ export async function listNamespaces(
 	clusterContext: string,
 ): Promise<NamespaceSummary[]> {
 	return client.invoke<NamespaceSummary[]>("list_namespaces", {
+		clusterContext,
+	});
+}
+
+export async function listResourceKinds(
+	client: TauriClient,
+	clusterContext: string,
+): Promise<DiscoveredResourceKind[]> {
+	return client.invoke<DiscoveredResourceKind[]>("list_resource_kinds", {
 		clusterContext,
 	});
 }

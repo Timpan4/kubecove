@@ -50,6 +50,15 @@ export interface ResourceEventSummary {
 	namespace: string | null;
 }
 
+export interface DiscoveredResourceKind {
+	group: string;
+	version: string;
+	apiVersion: string;
+	kind: string;
+	plural: string;
+	namespaced: boolean;
+}
+
 export interface AppError {
 	message: string;
 	kind: string;
