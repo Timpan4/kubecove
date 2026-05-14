@@ -22,8 +22,9 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { createTauriClient, listNamespaces } from "../lib/tauri";
-import type { NamespaceSummary } from "../lib/types";
+import { createTauriClient, listNamespaces, listResourceKinds } from "../lib/tauri";
+import type { DiscoveredResourceKind, NamespaceSummary } from "../lib/types";
+import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "../lib/types";
 import {
   type TreeNodeId,
   type TreeNode,
@@ -87,6 +88,7 @@ function TreeNodeComponent({
   const idStr = nodeIdToString(node.id);
   const isSelected = selectedNode !== null && nodeIdToString(selectedNode) === idStr;
   const isExpanded = expandedSections.includes(idStr);
+  const isDisabled = node.disabled === true;
   const visual = getNodeVisual(node);
   const NodeIcon = visual.icon;
   const depthPaddingClass =
@@ -101,6 +103,9 @@ function TreeNodeComponent({
             : "pl-[72px]";
 
   const handleClick = () => {
+    if (isDisabled) {
+      return;
+    }
     onNodeSelect(node.id);
   };
 
@@ -145,6 +150,8 @@ function TreeNodeComponent({
       <div
         className={cn(
           "relative flex h-[26px] cursor-pointer select-none items-center gap-1 rounded-none text-[0.8125rem] text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          isDisabled &&
+            "cursor-default text-muted-foreground/70 hover:bg-transparent hover:text-muted-foreground/70",
           isSelected &&
             "bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:bottom-0 before:left-0 before:top-0 before:w-0.5 before:rounded-r-sm before:bg-sidebar-primary",
           depth === 0 &&
@@ -155,9 +162,11 @@ function TreeNodeComponent({
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         role="treeitem"
-        tabIndex={0}
+        tabIndex={isDisabled ? -1 : 0}
         aria-selected={isSelected}
         aria-expanded={hasChildren ? isExpanded : undefined}
+        aria-disabled={isDisabled || undefined}
+        title={node.description}
       >
         <button
           className={cn(
@@ -208,8 +217,11 @@ export function SidebarTree({
   onSectionToggle,
 }: SidebarTreeProps) {
   const [namespaces, setNamespaces] = useState<NamespaceSummary[]>([]);
+  const [resourceKinds, setResourceKinds] = useState<DiscoveredResourceKind[]>([]);
   const [loading, setLoading] = useState(false);
+  const [resourceKindsLoading, setResourceKindsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resourceKindsError, setResourceKindsError] = useState<string | null>(null);
 
   const loadNamespaces = useCallback(async () => {
     if (!clusterContext) {
@@ -229,9 +241,35 @@ export function SidebarTree({
     }
   }, [clusterContext]);
 
+  const loadResourceKinds = useCallback(async () => {
+    if (!clusterContext) {
+      setResourceKinds([]);
+      setResourceKindsError(null);
+      return;
+    }
+    const client = createTauriClient();
+    setResourceKindsLoading(true);
+    setResourceKindsError(null);
+    try {
+      const kinds = await listResourceKinds(client, clusterContext);
+      setResourceKinds(kinds);
+    } catch (err) {
+      setResourceKinds([]);
+      setResourceKindsError(
+        err instanceof Error ? err.message : "Failed to load discovered resources",
+      );
+    } finally {
+      setResourceKindsLoading(false);
+    }
+  }, [clusterContext]);
+
   useEffect(() => {
     loadNamespaces();
   }, [loadNamespaces]);
+
+  useEffect(() => {
+    loadResourceKinds();
+  }, [loadResourceKinds]);
 
   // Build the static tree (no namespace children yet — those are built dynamically)
   const staticTree = useMemo<TreeNode[]>(() => {
@@ -281,6 +319,71 @@ export function SidebarTree({
     return nodes;
   }, []);
 
+  const discoveredTree = useMemo<TreeNode>(() => {
+    const curatedKinds = new Set<string>([
+      ...SUPPORTED_KINDS,
+      ...CLUSTER_SCOPED_KINDS,
+      "Application",
+      "ApplicationSet",
+      "AppProject",
+    ]);
+
+    let children: TreeNode[];
+
+    if (resourceKindsLoading) {
+      children = [
+        {
+          id: { type: "kind", section: "discovered", kind: "__loading" },
+          label: "Loading discovered kinds...",
+          disabled: true,
+        },
+      ];
+    } else if (resourceKindsError) {
+      children = [
+        {
+          id: { type: "kind", section: "discovered", kind: "__error" },
+          label: "Discovery failed",
+          description: resourceKindsError,
+          disabled: true,
+        },
+      ];
+    } else {
+      const extraKinds = resourceKinds
+        .filter((resourceKind) => !curatedKinds.has(resourceKind.kind))
+        .sort((a, b) =>
+          a.kind.localeCompare(b.kind) ||
+          a.apiVersion.localeCompare(b.apiVersion) ||
+          a.plural.localeCompare(b.plural),
+        );
+
+      children =
+        extraKinds.length > 0
+          ? extraKinds.map((resourceKind) => ({
+              id: {
+                type: "kind",
+                section: "discovered",
+                kind: `${resourceKind.apiVersion}/${resourceKind.kind}`,
+              } as TreeNodeId,
+              label: resourceKind.kind,
+              description: `${resourceKind.apiVersion} / ${resourceKind.plural} / ${resourceKind.namespaced ? "namespaced" : "cluster-scoped"}`,
+              disabled: true,
+            }))
+          : [
+              {
+                id: { type: "kind", section: "discovered", kind: "__empty" },
+                label: "No extra kinds",
+                disabled: true,
+              },
+            ];
+    }
+
+    return {
+      id: { type: "section", section: "discovered" },
+      label: SECTIONS.discovered.label,
+      children,
+    };
+  }, [resourceKinds, resourceKindsError, resourceKindsLoading]);
+
   // Build namespace subtree for a given namespace name
   const buildNamespaceSubtree = useCallback(
     (namespace: string): TreeNode => {
@@ -312,8 +415,14 @@ export function SidebarTree({
       label: SECTIONS.namespaces.label,
       children: namespaces.map((ns) => buildNamespaceSubtree(ns.name)),
     };
-    return [staticTree[0], namespaceNode, ...staticTree.slice(1)];
-  }, [namespaces, staticTree, buildNamespaceSubtree]);
+    return [
+      staticTree[0],
+      namespaceNode,
+      ...staticTree.slice(1, -1),
+      discoveredTree,
+      staticTree[staticTree.length - 1],
+    ];
+  }, [namespaces, staticTree, buildNamespaceSubtree, discoveredTree]);
 
   if (!clusterContext) {
     return (

@@ -85,6 +85,7 @@ const GROUP_VISUALS: Record<string, ResourceVisual> = {
 	Network: NETWORK_VISUAL,
 	Config: CONFIG_VISUAL,
 	Storage: STORAGE_VISUAL,
+	Discovered: { icon: Package, className: "text-muted-foreground" },
 	"Argo CD": ARGO_VISUAL,
 	"Managed by Argo app": ARGO_VISUAL,
 	"Unmanaged resources": { icon: Package, className: "text-muted-foreground" },

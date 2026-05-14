@@ -1,12 +1,17 @@
-use crate::models::{AppError, ArgoAppProjectDetails, ArgoApplicationDetails, ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoAppProjectSummary, ArgoApplicationSummary, ClusterContext, NamespaceSummary, ResourceEventSummary, ResourceSummary, ResourceDetailsFull};
+use crate::models::{
+    AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails,
+    ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSummary, ClusterContext,
+    DiscoveredResourceKind, NamespaceSummary, ResourceDetailsFull, ResourceEventSummary,
+    ResourceSummary,
+};
 use chrono::{DateTime, TimeZone, Utc};
+use k8s_openapi::{ClusterResourceScope, NamespaceResourceScope};
 use kube::{
     api::{Api, DynamicObject, ListParams, Resource},
     config::{KubeConfigOptions, Kubeconfig},
-    discovery::Discovery,
+    discovery::{verbs, Discovery, Scope},
     Client,
 };
-use k8s_openapi::{NamespaceResourceScope, ClusterResourceScope};
 use serde::{de::DeserializeOwned, Serialize};
 use std::time::Instant;
 
@@ -24,7 +29,9 @@ const LABEL_APP_KUBERNETES_IO_INSTANCE: &str = "app.kubernetes.io/instance";
 const LABEL_HELM_RELEASE_NAME: &str = "helm.sh/release";
 
 /// Extract the name of the first owner reference, if any.
-fn extract_owner_ref(metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta) -> Option<String> {
+fn extract_owner_ref(
+    metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
+) -> Option<String> {
     metadata
         .owner_references
         .as_ref()
@@ -41,7 +48,9 @@ fn argo_app_from_tracking_id(tracking_id: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-fn extract_argo_app(metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta) -> Option<String> {
+fn extract_argo_app(
+    metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
+) -> Option<String> {
     // Try annotation: argocd.argoproj.io/name or argocd.argoproj.io/tracking-id
     if let Some(annotations) = &metadata.annotations {
         if let Some(name) = annotations.get(ANNOTATION_ARGOCD_APP_NAME) {
@@ -88,7 +97,9 @@ mod tests {
 }
 
 /// Check labels for Helm release signals.
-fn extract_helm_release(metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta) -> Option<String> {
+fn extract_helm_release(
+    metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
+) -> Option<String> {
     metadata
         .labels
         .as_ref()
@@ -111,9 +122,10 @@ fn base_resource_summary(
         name: metadata.name.clone().unwrap_or_default(),
         namespace: metadata.namespace.clone(),
         age,
-        created_at: metadata.creation_timestamp.as_ref().and_then(|t| {
-            k8s_timestamp_to_datetime(&t.0).map(|dt| dt.to_rfc3339())
-        }),
+        created_at: metadata
+            .creation_timestamp
+            .as_ref()
+            .and_then(|t| k8s_timestamp_to_datetime(&t.0).map(|dt| dt.to_rfc3339())),
         status: None,
         ready: None,
         restarts: None,
@@ -125,7 +137,8 @@ fn base_resource_summary(
 
 /// Helper to unwrap an Option<i32> for formatting, defaulting to 0.
 fn opt_i32_to_str(opt: Option<i32>) -> String {
-    opt.map(|v| v.to_string()).unwrap_or_else(|| "0".to_string())
+    opt.map(|v| v.to_string())
+        .unwrap_or_else(|| "0".to_string())
 }
 
 /// Helper to format any integer-like value for ready count display.
@@ -148,7 +161,15 @@ fn redact_secret(secret: &mut k8s_openapi::api::core::v1::Secret) {
 }
 
 /// Fetch a namespaced resource and serialize it to YAML.
-async fn fetch_and_serialize<T: Resource<Scope = NamespaceResourceScope> + Serialize + DeserializeOwned + Clone + std::fmt::Debug + Send + Sync>(
+async fn fetch_and_serialize<
+    T: Resource<Scope = NamespaceResourceScope>
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync,
+>(
     client: Client,
     namespace: Option<&str>,
     name: &str,
@@ -161,13 +182,25 @@ where
     } else {
         Api::all(client)
     };
-    let resource = api.get(name).await.map_err(|e: kube::Error| AppError::kube(e.to_string()))?;
-    let yaml = serde_yaml::to_string(&resource).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let resource = api
+        .get(name)
+        .await
+        .map_err(|e: kube::Error| AppError::kube(e.to_string()))?;
+    let yaml = serde_yaml::to_string(&resource)
+        .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
     Ok((resource, yaml))
 }
 
 /// Fetch a cluster-scoped resource and serialize it to YAML.
-async fn fetch_and_serialize_cluster<T: Resource<Scope = ClusterResourceScope> + Serialize + DeserializeOwned + Clone + std::fmt::Debug + Send + Sync>(
+async fn fetch_and_serialize_cluster<
+    T: Resource<Scope = ClusterResourceScope>
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync,
+>(
     client: Client,
     name: &str,
 ) -> Result<(T, String), AppError>
@@ -175,8 +208,12 @@ where
     <T as Resource>::DynamicType: Default,
 {
     let api: Api<T> = Api::all(client);
-    let resource = api.get(name).await.map_err(|e: kube::Error| AppError::kube(e.to_string()))?;
-    let yaml = serde_yaml::to_string(&resource).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let resource = api
+        .get(name)
+        .await
+        .map_err(|e: kube::Error| AppError::kube(e.to_string()))?;
+    let yaml = serde_yaml::to_string(&resource)
+        .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
     Ok((resource, yaml))
 }
 
@@ -246,7 +283,9 @@ pub async fn namespaces_summary_from(
         .map(|ns| NamespaceSummary {
             name: ns.metadata.name.clone().unwrap_or_default(),
             age: namespace_age(ns.metadata.creation_timestamp.clone().map(|t| {
-                Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                Utc.timestamp_opt(t.0.as_second(), 0)
+                    .single()
+                    .unwrap_or_else(Utc::now)
             })),
             created_at: k8s_creation_timestamp_to_rfc3339(&ns.metadata.creation_timestamp),
         })
@@ -258,11 +297,25 @@ pub async fn namespaces_summary_from(
 #[tauri::command]
 pub async fn list_namespaces(cluster_context: String) -> Result<Vec<NamespaceSummary>, AppError> {
     let started = Instant::now();
-    eprintln!("[k8s-manager:backend] list_namespaces start context={}", cluster_context);
+    eprintln!(
+        "[k8s-manager:backend] list_namespaces start context={}",
+        cluster_context
+    );
     let result = namespaces_summary_from(cluster_context.clone()).await;
     match &result {
-        Ok(rows) => eprintln!("[k8s-manager:backend] list_namespaces done context={} rows={} ms={}", cluster_context, rows.len(), started.elapsed().as_millis()),
-        Err(err) => eprintln!("[k8s-manager:backend] list_namespaces error context={} kind={} message={} ms={}", cluster_context, err.kind, err.message, started.elapsed().as_millis()),
+        Ok(rows) => eprintln!(
+            "[k8s-manager:backend] list_namespaces done context={} rows={} ms={}",
+            cluster_context,
+            rows.len(),
+            started.elapsed().as_millis()
+        ),
+        Err(err) => eprintln!(
+            "[k8s-manager:backend] list_namespaces error context={} kind={} message={} ms={}",
+            cluster_context,
+            err.kind,
+            err.message,
+            started.elapsed().as_millis()
+        ),
     }
     result
 }
@@ -300,11 +353,29 @@ fn k8s_creation_timestamp_to_rfc3339(
 }
 
 fn event_timestamp(event: &k8s_openapi::api::core::v1::Event) -> Option<DateTime<Utc>> {
-    event.event_time.as_ref()
+    event
+        .event_time
+        .as_ref()
         .and_then(|t| k8s_timestamp_to_datetime(&t.0))
-        .or_else(|| event.last_timestamp.as_ref().and_then(|t| k8s_timestamp_to_datetime(&t.0)))
-        .or_else(|| event.first_timestamp.as_ref().and_then(|t| k8s_timestamp_to_datetime(&t.0)))
-        .or_else(|| event.metadata.creation_timestamp.as_ref().and_then(|t| k8s_timestamp_to_datetime(&t.0)))
+        .or_else(|| {
+            event
+                .last_timestamp
+                .as_ref()
+                .and_then(|t| k8s_timestamp_to_datetime(&t.0))
+        })
+        .or_else(|| {
+            event
+                .first_timestamp
+                .as_ref()
+                .and_then(|t| k8s_timestamp_to_datetime(&t.0))
+        })
+        .or_else(|| {
+            event
+                .metadata
+                .creation_timestamp
+                .as_ref()
+                .and_then(|t| k8s_timestamp_to_datetime(&t.0))
+        })
 }
 
 fn event_source(event: &k8s_openapi::api::core::v1::Event) -> String {
@@ -399,11 +470,100 @@ pub async fn list_resource_events(
 ) -> Result<Vec<ResourceEventSummary>, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
-    eprintln!("[k8s-manager:backend] list_resource_events start context={} kind={} namespace={} name={}", cluster_context, kind, namespace_label, name);
-    let result = resource_events_from(cluster_context.clone(), kind.clone(), name.clone(), namespace.clone()).await;
+    eprintln!(
+        "[k8s-manager:backend] list_resource_events start context={} kind={} namespace={} name={}",
+        cluster_context, kind, namespace_label, name
+    );
+    let result = resource_events_from(
+        cluster_context.clone(),
+        kind.clone(),
+        name.clone(),
+        namespace.clone(),
+    )
+    .await;
     match &result {
         Ok(events) => eprintln!("[k8s-manager:backend] list_resource_events done context={} kind={} namespace={} name={} rows={} ms={}", cluster_context, kind, namespace_label, name, events.len(), started.elapsed().as_millis()),
         Err(err) => eprintln!("[k8s-manager:backend] list_resource_events error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis()),
+    }
+    result
+}
+
+pub async fn resource_kinds_from(
+    cluster_context: String,
+) -> Result<Vec<DiscoveredResourceKind>, AppError> {
+    let options = KubeConfigOptions {
+        context: Some(cluster_context),
+        ..Default::default()
+    };
+
+    let config = kube::Config::from_kubeconfig(&options)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+
+    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let discovery = Discovery::new(client)
+        .run_aggregated()
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+
+    let mut kinds = Vec::new();
+
+    for group in discovery.groups() {
+        for (api_resource, capabilities) in group.recommended_resources() {
+            if !capabilities.supports_operation(verbs::LIST) {
+                continue;
+            }
+
+            kinds.push(DiscoveredResourceKind {
+                group: api_resource.group,
+                version: api_resource.version,
+                api_version: api_resource.api_version,
+                kind: api_resource.kind,
+                plural: api_resource.plural,
+                namespaced: matches!(capabilities.scope, Scope::Namespaced),
+                preferred: true,
+            });
+        }
+    }
+
+    kinds.sort_by(|a, b| {
+        a.group
+            .cmp(&b.group)
+            .then(a.kind.cmp(&b.kind))
+            .then(a.version.cmp(&b.version))
+            .then(a.plural.cmp(&b.plural))
+    });
+    kinds.dedup_by(|a, b| {
+        a.group == b.group && a.version == b.version && a.kind == b.kind && a.plural == b.plural
+    });
+
+    Ok(kinds)
+}
+
+#[tauri::command]
+pub async fn list_resource_kinds(
+    cluster_context: String,
+) -> Result<Vec<DiscoveredResourceKind>, AppError> {
+    let started = Instant::now();
+    eprintln!(
+        "[k8s-manager:backend] list_resource_kinds start context={}",
+        cluster_context
+    );
+    let result = resource_kinds_from(cluster_context.clone()).await;
+    match &result {
+        Ok(rows) => eprintln!(
+            "[k8s-manager:backend] list_resource_kinds done context={} rows={} ms={}",
+            cluster_context,
+            rows.len(),
+            started.elapsed().as_millis()
+        ),
+        Err(err) => eprintln!(
+            "[k8s-manager:backend] list_resource_kinds error context={} kind={} message={} ms={}",
+            cluster_context,
+            err.kind,
+            err.message,
+            started.elapsed().as_millis()
+        ),
     }
     result
 }
@@ -431,7 +591,10 @@ pub async fn resources_summary_from(
             } else {
                 Api::all(client)
             };
-            let pods = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let pods = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
             pods.iter()
                 .map(|pod| {
                     let mut summary = base_resource_summary(
@@ -439,7 +602,9 @@ pub async fn resources_summary_from(
                         &cluster_context,
                         &pod.metadata,
                         resource_age(pod.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     );
                     // Pod phase and ready containers
@@ -471,7 +636,10 @@ pub async fn resources_summary_from(
             } else {
                 Api::all(client)
             };
-            let deployments = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let deployments = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
             deployments
                 .iter()
                 .map(|deploy| {
@@ -480,7 +648,9 @@ pub async fn resources_summary_from(
                         &cluster_context,
                         &deploy.metadata,
                         resource_age(deploy.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     );
                     if let Some(ref status) = deploy.status {
@@ -502,7 +672,10 @@ pub async fn resources_summary_from(
             } else {
                 Api::all(client)
             };
-            let services = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let services = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
             services
                 .iter()
                 .map(|svc| {
@@ -511,7 +684,9 @@ pub async fn resources_summary_from(
                         &cluster_context,
                         &svc.metadata,
                         resource_age(svc.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     )
                 })
@@ -523,7 +698,10 @@ pub async fn resources_summary_from(
             } else {
                 Api::all(client)
             };
-            let configmaps = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let configmaps = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
             configmaps
                 .iter()
                 .map(|cm| {
@@ -532,7 +710,9 @@ pub async fn resources_summary_from(
                         &cluster_context,
                         &cm.metadata,
                         resource_age(cm.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     )
                 })
@@ -544,7 +724,10 @@ pub async fn resources_summary_from(
             } else {
                 Api::all(client)
             };
-            let statefulsets = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let statefulsets = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
             statefulsets
                 .iter()
                 .map(|ss| {
@@ -553,7 +736,9 @@ pub async fn resources_summary_from(
                         &cluster_context,
                         &ss.metadata,
                         resource_age(ss.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     );
                     if let Some(ref status) = ss.status {
@@ -569,7 +754,10 @@ pub async fn resources_summary_from(
             } else {
                 Api::all(client)
             };
-            let daemonsets = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let daemonsets = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
             daemonsets
                 .iter()
                 .map(|ds| {
@@ -578,7 +766,9 @@ pub async fn resources_summary_from(
                         &cluster_context,
                         &ds.metadata,
                         resource_age(ds.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     );
                     if let Some(ref status) = ds.status {
@@ -596,7 +786,10 @@ pub async fn resources_summary_from(
             } else {
                 Api::all(client)
             };
-            let ingresses = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let ingresses = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
             ingresses
                 .iter()
                 .map(|ing| {
@@ -605,7 +798,9 @@ pub async fn resources_summary_from(
                         &cluster_context,
                         &ing.metadata,
                         resource_age(ing.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     )
                 })
@@ -617,7 +812,10 @@ pub async fn resources_summary_from(
             } else {
                 Api::all(client)
             };
-            let secrets = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let secrets = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
             secrets
                 .iter()
                 .map(|sec| {
@@ -626,28 +824,35 @@ pub async fn resources_summary_from(
                         &cluster_context,
                         &sec.metadata,
                         resource_age(sec.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     )
                 })
                 .collect()
         }
         "PersistentVolumeClaim" => {
-            let api: Api<k8s_openapi::api::core::v1::PersistentVolumeClaim> = if let Some(ns) = &namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            let pvcs = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
-            pvcs
-                .iter()
+            let api: Api<k8s_openapi::api::core::v1::PersistentVolumeClaim> =
+                if let Some(ns) = &namespace {
+                    Api::namespaced(client, ns)
+                } else {
+                    Api::all(client)
+                };
+            let pvcs = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
+            pvcs.iter()
                 .map(|pvc| {
                     base_resource_summary(
                         "PersistentVolumeClaim",
                         &cluster_context,
                         &pvc.metadata,
                         resource_age(pvc.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     )
                 })
@@ -659,16 +864,20 @@ pub async fn resources_summary_from(
             } else {
                 Api::all(client)
             };
-            let jobs = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
-            jobs
-                .iter()
+            let jobs = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
+            jobs.iter()
                 .map(|job| {
                     let mut summary = base_resource_summary(
                         "Job",
                         &cluster_context,
                         &job.metadata,
                         resource_age(job.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     );
                     if let Some(ref status) = job.status {
@@ -684,7 +893,11 @@ pub async fn resources_summary_from(
                         } else {
                             Some("Pending".to_string())
                         };
-                        summary.ready = Some(format!("{}/{}", succeeded, job.spec.as_ref().and_then(|s| s.completions).unwrap_or(1)));
+                        summary.ready = Some(format!(
+                            "{}/{}",
+                            succeeded,
+                            job.spec.as_ref().and_then(|s| s.completions).unwrap_or(1)
+                        ));
                     }
                     summary
                 })
@@ -696,7 +909,10 @@ pub async fn resources_summary_from(
             } else {
                 Api::all(client)
             };
-            let cronjobs = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let cronjobs = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
             cronjobs
                 .iter()
                 .map(|cj| {
@@ -705,7 +921,9 @@ pub async fn resources_summary_from(
                         &cluster_context,
                         &cj.metadata,
                         resource_age(cj.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     );
                     if let Some(ref status) = cj.status {
@@ -720,7 +938,10 @@ pub async fn resources_summary_from(
         }
         "Node" => {
             let api: Api<k8s_openapi::api::core::v1::Node> = Api::all(client);
-            let nodes = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+            let nodes = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
             nodes
                 .iter()
                 .map(|node| {
@@ -729,14 +950,22 @@ pub async fn resources_summary_from(
                         &cluster_context,
                         &node.metadata,
                         resource_age(node.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     );
                     if let Some(ref status) = node.status {
                         if let Some(ref conditions) = status.conditions {
-                            let ready_count = conditions.iter().filter(|c| c.type_ == "Ready" && c.status == "True").count();
+                            let ready_count = conditions
+                                .iter()
+                                .filter(|c| c.type_ == "Ready" && c.status == "True")
+                                .count();
                             summary.ready = Some(format!("{}/{}", ready_count, 1));
-                            let ready = conditions.iter().find(|c| c.type_ == "Ready").map(|c| c.status.clone());
+                            let ready = conditions
+                                .iter()
+                                .find(|c| c.type_ == "Ready")
+                                .map(|c| c.status.clone());
                             summary.status = ready;
                         }
                     }
@@ -746,16 +975,20 @@ pub async fn resources_summary_from(
         }
         "StorageClass" => {
             let api: Api<k8s_openapi::api::storage::v1::StorageClass> = Api::all(client);
-            let scs = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
-            scs
-                .iter()
+            let scs = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
+            scs.iter()
                 .map(|sc| {
                     base_resource_summary(
                         "StorageClass",
                         &cluster_context,
                         &sc.metadata,
                         resource_age(sc.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     )
                 })
@@ -763,16 +996,20 @@ pub async fn resources_summary_from(
         }
         "PersistentVolume" => {
             let api: Api<k8s_openapi::api::core::v1::PersistentVolume> = Api::all(client);
-            let pvs = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
-            pvs
-                .iter()
+            let pvs = api
+                .list(&list_params())
+                .await
+                .map_err(|e| AppError::kube(e.to_string()))?;
+            pvs.iter()
                 .map(|pv| {
                     let mut summary = base_resource_summary(
                         "PersistentVolume",
                         &cluster_context,
                         &pv.metadata,
                         resource_age(pv.metadata.creation_timestamp.clone().map(|t| {
-                            Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                            Utc.timestamp_opt(t.0.as_second(), 0)
+                                .single()
+                                .unwrap_or_else(Utc::now)
                         })),
                     );
                     summary.status = pv.status.as_ref().and_then(|s| s.phase.as_ref()).cloned();
@@ -780,7 +1017,12 @@ pub async fn resources_summary_from(
                 })
                 .collect()
         }
-        _ => return Err(AppError::new(format!("unsupported resource kind: {}", kind), "cluster")),
+        _ => {
+            return Err(AppError::new(
+                format!("unsupported resource kind: {}", kind),
+                "cluster",
+            ))
+        }
     };
 
     Ok(summaries)
@@ -794,8 +1036,12 @@ pub async fn list_resources(
 ) -> Result<Vec<ResourceSummary>, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<all>");
-    eprintln!("[k8s-manager:backend] list_resources start context={} kind={} namespace={}", cluster_context, kind, namespace_label);
-    let result = resources_summary_from(cluster_context.clone(), kind.clone(), namespace.clone()).await;
+    eprintln!(
+        "[k8s-manager:backend] list_resources start context={} kind={} namespace={}",
+        cluster_context, kind, namespace_label
+    );
+    let result =
+        resources_summary_from(cluster_context.clone(), kind.clone(), namespace.clone()).await;
     match &result {
         Ok(rows) => eprintln!("[k8s-manager:backend] list_resources done context={} kind={} namespace={} rows={} ms={}", cluster_context, kind, namespace_label, rows.len(), started.elapsed().as_millis()),
         Err(err) => eprintln!("[k8s-manager:backend] list_resources error context={} kind={} namespace={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, err.kind, err.message, started.elapsed().as_millis()),
@@ -822,64 +1068,129 @@ pub async fn resource_yaml_from(
 
     match kind.as_str() {
         "Pod" => {
-            let (_pod, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Pod>(client, namespace.as_deref(), &name).await?;
+            let (_pod, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Pod>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
             Ok(yaml)
         }
         "Deployment" => {
-            let (_deploy, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::Deployment>(client, namespace.as_deref(), &name).await?;
+            let (_deploy, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::Deployment>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
             Ok(yaml)
         }
         "Service" => {
-            let (_svc, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Service>(client, namespace.as_deref(), &name).await?;
+            let (_svc, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Service>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
             Ok(yaml)
         }
         "ConfigMap" => {
-            let (_cm, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::ConfigMap>(client, namespace.as_deref(), &name).await?;
+            let (_cm, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::ConfigMap>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
             Ok(yaml)
         }
         "StatefulSet" => {
-            let (_ss, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::StatefulSet>(client, namespace.as_deref(), &name).await?;
+            let (_ss, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::StatefulSet>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
             Ok(yaml)
         }
         "DaemonSet" => {
-            let (_ds, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::DaemonSet>(client, namespace.as_deref(), &name).await?;
+            let (_ds, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::DaemonSet>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
             Ok(yaml)
         }
         "Ingress" => {
-            let (_ing, yaml) = fetch_and_serialize::<k8s_openapi::api::networking::v1::Ingress>(client, namespace.as_deref(), &name).await?;
+            let (_ing, yaml) = fetch_and_serialize::<k8s_openapi::api::networking::v1::Ingress>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
             Ok(yaml)
         }
         "Secret" => {
-            let (mut sec, _yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Secret>(client, namespace.as_deref(), &name).await?;
+            let (mut sec, _yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Secret>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
             redact_secret(&mut sec);
-            let yaml = serde_yaml::to_string(&sec).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let yaml = serde_yaml::to_string(&sec)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             Ok(yaml)
         }
         "PersistentVolumeClaim" => {
-            let (_pvc, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::PersistentVolumeClaim>(client, namespace.as_deref(), &name).await?;
+            let (_pvc, yaml) = fetch_and_serialize::<
+                k8s_openapi::api::core::v1::PersistentVolumeClaim,
+            >(client, namespace.as_deref(), &name)
+            .await?;
             Ok(yaml)
         }
         "Job" => {
-            let (_job, yaml) = fetch_and_serialize::<k8s_openapi::api::batch::v1::Job>(client, namespace.as_deref(), &name).await?;
+            let (_job, yaml) = fetch_and_serialize::<k8s_openapi::api::batch::v1::Job>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
             Ok(yaml)
         }
         "CronJob" => {
-            let (_cj, yaml) = fetch_and_serialize::<k8s_openapi::api::batch::v1::CronJob>(client, namespace.as_deref(), &name).await?;
+            let (_cj, yaml) = fetch_and_serialize::<k8s_openapi::api::batch::v1::CronJob>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
             Ok(yaml)
         }
         "Node" => {
-            let (_node, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::core::v1::Node>(client, &name).await?;
+            let (_node, yaml) =
+                fetch_and_serialize_cluster::<k8s_openapi::api::core::v1::Node>(client, &name)
+                    .await?;
             Ok(yaml)
         }
         "StorageClass" => {
-            let (_sc, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::storage::v1::StorageClass>(client, &name).await?;
+            let (_sc, yaml) = fetch_and_serialize_cluster::<
+                k8s_openapi::api::storage::v1::StorageClass,
+            >(client, &name)
+            .await?;
             Ok(yaml)
         }
         "PersistentVolume" => {
-            let (_pv, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::core::v1::PersistentVolume>(client, &name).await?;
+            let (_pv, yaml) = fetch_and_serialize_cluster::<
+                k8s_openapi::api::core::v1::PersistentVolume,
+            >(client, &name)
+            .await?;
             Ok(yaml)
         }
-        _ => Err(AppError::new(format!("unsupported resource kind: {}", kind), "cluster")),
+        _ => Err(AppError::new(
+            format!("unsupported resource kind: {}", kind),
+            "cluster",
+        )),
     }
 }
 
@@ -892,8 +1203,17 @@ pub async fn get_resource_yaml(
 ) -> Result<String, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
-    eprintln!("[k8s-manager:backend] get_resource_yaml start context={} kind={} namespace={} name={}", cluster_context, kind, namespace_label, name);
-    let result = resource_yaml_from(cluster_context.clone(), kind.clone(), name.clone(), namespace.clone()).await;
+    eprintln!(
+        "[k8s-manager:backend] get_resource_yaml start context={} kind={} namespace={} name={}",
+        cluster_context, kind, namespace_label, name
+    );
+    let result = resource_yaml_from(
+        cluster_context.clone(),
+        kind.clone(),
+        name.clone(),
+        namespace.clone(),
+    )
+    .await;
     match &result {
         Ok(yaml) => eprintln!("[k8s-manager:backend] get_resource_yaml done context={} kind={} namespace={} name={} bytes={} ms={}", cluster_context, kind, namespace_label, name, yaml.len(), started.elapsed().as_millis()),
         Err(err) => eprintln!("[k8s-manager:backend] get_resource_yaml error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis()),
@@ -920,25 +1240,50 @@ pub async fn resource_details_from(
 
     match kind.as_str() {
         "Pod" => {
-            let (pod, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Pod>(client, namespace.as_deref(), &name).await?;
-            let metadata = serde_json::to_value(&pod.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let status = pod.status.as_ref().and_then(|s| serde_json::to_value(s).ok());
+            let (pod, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Pod>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
+            let metadata = serde_json::to_value(&pod.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = pod
+                .status
+                .as_ref()
+                .and_then(|s| serde_json::to_value(s).ok());
             let summary = ResourceSummary {
                 kind: "Pod".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: namespace.clone(),
                 age: resource_age(pod.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&pod.metadata.creation_timestamp),
-                status: pod.status.as_ref().map(|s| s.phase.clone().unwrap_or_default()),
+                status: pod
+                    .status
+                    .as_ref()
+                    .map(|s| s.phase.clone().unwrap_or_default()),
                 ready: pod.status.as_ref().and_then(|s| {
-                    s.conditions.as_ref().and_then(|conds| conds.iter().find(|c| c.type_ == "Ready")).map(|c| c.status.clone())
+                    s.conditions
+                        .as_ref()
+                        .and_then(|conds| conds.iter().find(|c| c.type_ == "Ready"))
+                        .map(|c| c.status.clone())
                 }),
                 restarts: pod.status.as_ref().and_then(|s| {
-                    let r: i32 = s.container_statuses.as_ref().map(|cs| cs.iter().map(|c| c.restart_count).sum()).unwrap_or(0);
-                    if r > 0 { Some(r) } else { None }
+                    let r: i32 = s
+                        .container_statuses
+                        .as_ref()
+                        .map(|cs| cs.iter().map(|c| c.restart_count).sum())
+                        .unwrap_or(0);
+                    if r > 0 {
+                        Some(r)
+                    } else {
+                        None
+                    }
                 }),
                 owner_ref: extract_owner_ref(&pod.metadata),
                 argo_app: extract_argo_app(&pod.metadata),
@@ -952,16 +1297,27 @@ pub async fn resource_details_from(
             })
         }
         "Deployment" => {
-            let (deploy, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::Deployment>(client, namespace.as_deref(), &name).await?;
-            let metadata = serde_json::to_value(&deploy.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let status = deploy.status.as_ref().and_then(|s| serde_json::to_value(s).ok());
+            let (deploy, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::Deployment>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
+            let metadata = serde_json::to_value(&deploy.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = deploy
+                .status
+                .as_ref()
+                .and_then(|s| serde_json::to_value(s).ok());
             let mut summary = ResourceSummary {
                 kind: "Deployment".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: namespace.clone(),
                 age: resource_age(deploy.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&deploy.metadata.creation_timestamp),
                 status: None,
@@ -972,7 +1328,11 @@ pub async fn resource_details_from(
                 helm_release: extract_helm_release(&deploy.metadata),
             };
             if let Some(ref s) = deploy.status {
-                summary.ready = Some(format!("{}/{}", s.ready_replicas.unwrap_or(0), s.replicas.unwrap_or(0)));
+                summary.ready = Some(format!(
+                    "{}/{}",
+                    s.ready_replicas.unwrap_or(0),
+                    s.replicas.unwrap_or(0)
+                ));
             }
             Ok(ResourceDetailsFull {
                 summary,
@@ -982,16 +1342,27 @@ pub async fn resource_details_from(
             })
         }
         "Service" => {
-            let (svc, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Service>(client, namespace.as_deref(), &name).await?;
-            let metadata = serde_json::to_value(&svc.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let status = svc.status.as_ref().and_then(|s| serde_json::to_value(s).ok());
+            let (svc, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Service>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
+            let metadata = serde_json::to_value(&svc.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = svc
+                .status
+                .as_ref()
+                .and_then(|s| serde_json::to_value(s).ok());
             let summary = ResourceSummary {
                 kind: "Service".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: namespace.clone(),
                 age: resource_age(svc.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&svc.metadata.creation_timestamp),
                 status: None,
@@ -1009,15 +1380,23 @@ pub async fn resource_details_from(
             })
         }
         "ConfigMap" => {
-            let (cm, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::ConfigMap>(client, namespace.as_deref(), &name).await?;
-            let metadata = serde_json::to_value(&cm.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let (cm, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::ConfigMap>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
+            let metadata = serde_json::to_value(&cm.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let summary = ResourceSummary {
                 kind: "ConfigMap".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: namespace.clone(),
                 age: resource_age(cm.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&cm.metadata.creation_timestamp),
                 status: None,
@@ -1035,16 +1414,27 @@ pub async fn resource_details_from(
             })
         }
         "StatefulSet" => {
-            let (ss, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::StatefulSet>(client, namespace.as_deref(), &name).await?;
-            let metadata = serde_json::to_value(&ss.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let status = ss.status.as_ref().and_then(|s| serde_json::to_value(s).ok());
+            let (ss, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::StatefulSet>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
+            let metadata = serde_json::to_value(&ss.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = ss
+                .status
+                .as_ref()
+                .and_then(|s| serde_json::to_value(s).ok());
             let mut summary = ResourceSummary {
                 kind: "StatefulSet".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: namespace.clone(),
                 age: resource_age(ss.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&ss.metadata.creation_timestamp),
                 status: None,
@@ -1065,16 +1455,27 @@ pub async fn resource_details_from(
             })
         }
         "DaemonSet" => {
-            let (ds, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::DaemonSet>(client, namespace.as_deref(), &name).await?;
-            let metadata = serde_json::to_value(&ds.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let status = ds.status.as_ref().and_then(|s| serde_json::to_value(s).ok());
+            let (ds, yaml) = fetch_and_serialize::<k8s_openapi::api::apps::v1::DaemonSet>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
+            let metadata = serde_json::to_value(&ds.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = ds
+                .status
+                .as_ref()
+                .and_then(|s| serde_json::to_value(s).ok());
             let mut summary = ResourceSummary {
                 kind: "DaemonSet".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: namespace.clone(),
                 age: resource_age(ds.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&ds.metadata.creation_timestamp),
                 status: None,
@@ -1095,16 +1496,27 @@ pub async fn resource_details_from(
             })
         }
         "Ingress" => {
-            let (ing, yaml) = fetch_and_serialize::<k8s_openapi::api::networking::v1::Ingress>(client, namespace.as_deref(), &name).await?;
-            let metadata = serde_json::to_value(&ing.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let status = ing.status.as_ref().and_then(|s| serde_json::to_value(s).ok());
+            let (ing, yaml) = fetch_and_serialize::<k8s_openapi::api::networking::v1::Ingress>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
+            let metadata = serde_json::to_value(&ing.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = ing
+                .status
+                .as_ref()
+                .and_then(|s| serde_json::to_value(s).ok());
             let summary = ResourceSummary {
                 kind: "Ingress".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: namespace.clone(),
                 age: resource_age(ing.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&ing.metadata.creation_timestamp),
                 status: None,
@@ -1122,17 +1534,26 @@ pub async fn resource_details_from(
             })
         }
         "Secret" => {
-            let (mut sec, _yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Secret>(client, namespace.as_deref(), &name).await?;
+            let (mut sec, _yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Secret>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
             redact_secret(&mut sec);
-            let yaml = serde_yaml::to_string(&sec).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let metadata = serde_json::to_value(&sec.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let yaml = serde_yaml::to_string(&sec)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let metadata = serde_json::to_value(&sec.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let summary = ResourceSummary {
                 kind: "Secret".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: namespace.clone(),
                 age: resource_age(sec.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&sec.metadata.creation_timestamp),
                 status: None,
@@ -1150,19 +1571,30 @@ pub async fn resource_details_from(
             })
         }
         "PersistentVolumeClaim" => {
-            let (pvc, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::PersistentVolumeClaim>(client, namespace.as_deref(), &name).await?;
-            let metadata = serde_json::to_value(&pvc.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let status = pvc.status.as_ref().and_then(|s| serde_json::to_value(s).ok());
+            let (pvc, yaml) = fetch_and_serialize::<
+                k8s_openapi::api::core::v1::PersistentVolumeClaim,
+            >(client, namespace.as_deref(), &name)
+            .await?;
+            let metadata = serde_json::to_value(&pvc.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = pvc
+                .status
+                .as_ref()
+                .and_then(|s| serde_json::to_value(s).ok());
             let summary = ResourceSummary {
                 kind: "PersistentVolumeClaim".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: namespace.clone(),
                 age: resource_age(pvc.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&pvc.metadata.creation_timestamp),
-                status: status.as_ref().and_then(|s| s.get("phase").and_then(|p| p.as_str().map(str::to_owned))),
+                status: status
+                    .as_ref()
+                    .and_then(|s| s.get("phase").and_then(|p| p.as_str().map(str::to_owned))),
                 ready: None,
                 restarts: None,
                 owner_ref: extract_owner_ref(&pvc.metadata),
@@ -1177,16 +1609,27 @@ pub async fn resource_details_from(
             })
         }
         "Job" => {
-            let (job, yaml) = fetch_and_serialize::<k8s_openapi::api::batch::v1::Job>(client, namespace.as_deref(), &name).await?;
-            let metadata = serde_json::to_value(&job.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let status = job.status.as_ref().and_then(|s| serde_json::to_value(s).ok());
+            let (job, yaml) = fetch_and_serialize::<k8s_openapi::api::batch::v1::Job>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
+            let metadata = serde_json::to_value(&job.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = job
+                .status
+                .as_ref()
+                .and_then(|s| serde_json::to_value(s).ok());
             let mut summary = ResourceSummary {
                 kind: "Job".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: namespace.clone(),
                 age: resource_age(job.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&job.metadata.creation_timestamp),
                 status: None,
@@ -1197,7 +1640,14 @@ pub async fn resource_details_from(
                 helm_release: extract_helm_release(&job.metadata),
             };
             if let Some(ref s) = job.status {
-                summary.ready = Some(format!("{}/{}", s.succeeded.unwrap_or(0), job.spec.as_ref().and_then(|spec| spec.completions).unwrap_or(1)));
+                summary.ready = Some(format!(
+                    "{}/{}",
+                    s.succeeded.unwrap_or(0),
+                    job.spec
+                        .as_ref()
+                        .and_then(|spec| spec.completions)
+                        .unwrap_or(1)
+                ));
                 summary.status = if s.failed.unwrap_or(0) > 0 {
                     Some("Failed".to_string())
                 } else if s.succeeded.unwrap_or(0) > 0 {
@@ -1216,16 +1666,27 @@ pub async fn resource_details_from(
             })
         }
         "CronJob" => {
-            let (cj, yaml) = fetch_and_serialize::<k8s_openapi::api::batch::v1::CronJob>(client, namespace.as_deref(), &name).await?;
-            let metadata = serde_json::to_value(&cj.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let status = cj.status.as_ref().and_then(|s| serde_json::to_value(s).ok());
+            let (cj, yaml) = fetch_and_serialize::<k8s_openapi::api::batch::v1::CronJob>(
+                client,
+                namespace.as_deref(),
+                &name,
+            )
+            .await?;
+            let metadata = serde_json::to_value(&cj.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = cj
+                .status
+                .as_ref()
+                .and_then(|s| serde_json::to_value(s).ok());
             let mut summary = ResourceSummary {
                 kind: "CronJob".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: namespace.clone(),
                 age: resource_age(cj.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&cj.metadata.creation_timestamp),
                 status: None,
@@ -1250,24 +1711,43 @@ pub async fn resource_details_from(
             })
         }
         "Node" => {
-            let (node, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::core::v1::Node>(client, &name).await?;
-            let metadata = serde_json::to_value(&node.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let status = node.status.as_ref().and_then(|s| serde_json::to_value(s).ok());
+            let (node, yaml) =
+                fetch_and_serialize_cluster::<k8s_openapi::api::core::v1::Node>(client, &name)
+                    .await?;
+            let metadata = serde_json::to_value(&node.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = node
+                .status
+                .as_ref()
+                .and_then(|s| serde_json::to_value(s).ok());
             let summary = ResourceSummary {
                 kind: "Node".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: None,
                 age: resource_age(node.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&node.metadata.creation_timestamp),
                 status: node.status.as_ref().and_then(|s| {
-                    s.conditions.as_ref()?.iter().find(|c| c.type_ == "Ready").map(|c| c.status.clone())
+                    s.conditions
+                        .as_ref()?
+                        .iter()
+                        .find(|c| c.type_ == "Ready")
+                        .map(|c| c.status.clone())
                 }),
                 ready: node.status.as_ref().and_then(|s| {
                     s.conditions.as_ref().map(|conds| {
-                        format!("{}/{}", conds.iter().filter(|c| c.type_ == "Ready" && c.status == "True").count(), 1)
+                        format!(
+                            "{}/{}",
+                            conds
+                                .iter()
+                                .filter(|c| c.type_ == "Ready" && c.status == "True")
+                                .count(),
+                            1
+                        )
                     })
                 }),
                 restarts: None,
@@ -1283,15 +1763,21 @@ pub async fn resource_details_from(
             })
         }
         "StorageClass" => {
-            let (sc, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::storage::v1::StorageClass>(client, &name).await?;
-            let metadata = serde_json::to_value(&sc.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let (sc, yaml) = fetch_and_serialize_cluster::<
+                k8s_openapi::api::storage::v1::StorageClass,
+            >(client, &name)
+            .await?;
+            let metadata = serde_json::to_value(&sc.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             let summary = ResourceSummary {
                 kind: "StorageClass".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: None,
                 age: resource_age(sc.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&sc.metadata.creation_timestamp),
                 status: None,
@@ -1309,16 +1795,25 @@ pub async fn resource_details_from(
             })
         }
         "PersistentVolume" => {
-            let (pv, yaml) = fetch_and_serialize_cluster::<k8s_openapi::api::core::v1::PersistentVolume>(client, &name).await?;
-            let metadata = serde_json::to_value(&pv.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            let status = pv.status.as_ref().and_then(|s| serde_json::to_value(s).ok());
+            let (pv, yaml) = fetch_and_serialize_cluster::<
+                k8s_openapi::api::core::v1::PersistentVolume,
+            >(client, &name)
+            .await?;
+            let metadata = serde_json::to_value(&pv.metadata)
+                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+            let status = pv
+                .status
+                .as_ref()
+                .and_then(|s| serde_json::to_value(s).ok());
             let summary = ResourceSummary {
                 kind: "PersistentVolume".to_string(),
                 cluster: cluster_context.clone(),
                 name: name.clone(),
                 namespace: None,
                 age: resource_age(pv.metadata.creation_timestamp.clone().map(|t| {
-                    Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                    Utc.timestamp_opt(t.0.as_second(), 0)
+                        .single()
+                        .unwrap_or_else(Utc::now)
                 })),
                 created_at: k8s_creation_timestamp_to_rfc3339(&pv.metadata.creation_timestamp),
                 status: pv.status.as_ref().and_then(|s| s.phase.as_ref()).cloned(),
@@ -1335,7 +1830,10 @@ pub async fn resource_details_from(
                 status,
             })
         }
-        _ => Err(AppError::new(format!("unsupported resource kind: {}", kind), "cluster")),
+        _ => Err(AppError::new(
+            format!("unsupported resource kind: {}", kind),
+            "cluster",
+        )),
     }
 }
 
@@ -1348,8 +1846,17 @@ pub async fn get_resource_details(
 ) -> Result<ResourceDetailsFull, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
-    eprintln!("[k8s-manager:backend] get_resource_details start context={} kind={} namespace={} name={}", cluster_context, kind, namespace_label, name);
-    let result = resource_details_from(cluster_context.clone(), kind.clone(), name.clone(), namespace.clone()).await;
+    eprintln!(
+        "[k8s-manager:backend] get_resource_details start context={} kind={} namespace={} name={}",
+        cluster_context, kind, namespace_label, name
+    );
+    let result = resource_details_from(
+        cluster_context.clone(),
+        kind.clone(),
+        name.clone(),
+        namespace.clone(),
+    )
+    .await;
     match &result {
         Ok(details) => eprintln!("[k8s-manager:backend] get_resource_details done context={} kind={} namespace={} name={} yaml_bytes={} status={} ms={}", cluster_context, kind, namespace_label, name, details.yaml.len(), details.status.is_some(), started.elapsed().as_millis()),
         Err(err) => eprintln!("[k8s-manager:backend] get_resource_details error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis()),
@@ -1385,7 +1892,9 @@ async fn find_api_resource(
     group: &str,
     kind: &str,
 ) -> Result<Option<kube::discovery::ApiResource>, AppError> {
-    let discovery = Discovery::new(client.clone()).run_aggregated().await
+    let discovery = Discovery::new(client.clone())
+        .run_aggregated()
+        .await
         .map_err(|e| AppError::kube(e.to_string()))?;
 
     for g in discovery.groups() {
@@ -1402,7 +1911,9 @@ async fn find_api_resource(
 
 /// List Argo CD Applications in the cluster.
 #[tauri::command]
-pub async fn list_argocd_applications(cluster_context: String) -> Result<Vec<ArgoApplicationSummary>, AppError> {
+pub async fn list_argocd_applications(
+    cluster_context: String,
+) -> Result<Vec<ArgoApplicationSummary>, AppError> {
     let options = KubeConfigOptions {
         context: Some(cluster_context.clone()),
         ..Default::default()
@@ -1420,7 +1931,10 @@ pub async fn list_argocd_applications(cluster_context: String) -> Result<Vec<Arg
     };
 
     let api: Api<DynamicObject> = Api::all_with(client.clone(), &ar);
-    let items = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+    let items = api
+        .list(&list_params())
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
 
     let summaries: Vec<ArgoApplicationSummary> = items
         .iter()
@@ -1428,17 +1942,53 @@ pub async fn list_argocd_applications(cluster_context: String) -> Result<Vec<Arg
             let name = obj.metadata.name.clone().unwrap_or_default();
             let namespace = obj.metadata.namespace.clone();
             let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
-                Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                Utc.timestamp_opt(t.0.as_second(), 0)
+                    .single()
+                    .unwrap_or_else(Utc::now)
             }));
             let data = obj.data.as_object()?;
 
-            let project = data.get("spec").and_then(|s| s.get("project")).and_then(|p| p.as_str()).map(String::from);
-            let destination_namespace = data.get("spec").and_then(|s| s.get("destination")).and_then(|d| d.get("namespace")).and_then(|n| n.as_str()).map(String::from);
-            let destination_server = data.get("spec").and_then(|s| s.get("destination")).and_then(|d| d.get("server")).and_then(|s| s.as_str()).map(String::from);
-            let source_repo = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("repoURL")).and_then(|r| r.as_str()).map(String::from);
-            let source_revision = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("targetRevision")).and_then(|r| r.as_str()).map(String::from);
-            let sync_status = data.get("status").and_then(|s| s.get("sync")).and_then(|s| s.get("status")).and_then(|st| st.as_str()).map(String::from);
-            let health_status = data.get("status").and_then(|s| s.get("health")).and_then(|h| h.get("status")).and_then(|st| st.as_str()).map(String::from);
+            let project = data
+                .get("spec")
+                .and_then(|s| s.get("project"))
+                .and_then(|p| p.as_str())
+                .map(String::from);
+            let destination_namespace = data
+                .get("spec")
+                .and_then(|s| s.get("destination"))
+                .and_then(|d| d.get("namespace"))
+                .and_then(|n| n.as_str())
+                .map(String::from);
+            let destination_server = data
+                .get("spec")
+                .and_then(|s| s.get("destination"))
+                .and_then(|d| d.get("server"))
+                .and_then(|s| s.as_str())
+                .map(String::from);
+            let source_repo = data
+                .get("spec")
+                .and_then(|s| s.get("source"))
+                .and_then(|s| s.get("repoURL"))
+                .and_then(|r| r.as_str())
+                .map(String::from);
+            let source_revision = data
+                .get("spec")
+                .and_then(|s| s.get("source"))
+                .and_then(|s| s.get("targetRevision"))
+                .and_then(|r| r.as_str())
+                .map(String::from);
+            let sync_status = data
+                .get("status")
+                .and_then(|s| s.get("sync"))
+                .and_then(|s| s.get("status"))
+                .and_then(|st| st.as_str())
+                .map(String::from);
+            let health_status = data
+                .get("status")
+                .and_then(|s| s.get("health"))
+                .and_then(|h| h.get("status"))
+                .and_then(|st| st.as_str())
+                .map(String::from);
 
             Some(ArgoApplicationSummary {
                 cluster: cluster_context.clone(),
@@ -1489,25 +2039,69 @@ pub async fn get_argocd_application_details(
         Api::all_with(client.clone(), &ar)
     };
 
-    let obj = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
+    let obj = api
+        .get(&name)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
 
-    let yaml = serde_yaml::to_string(&obj).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-    let metadata = serde_json::to_value(&obj.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-    let data = obj.data.as_object().ok_or_else(|| AppError::new("invalid application data", "cluster"))?;
+    let yaml =
+        serde_yaml::to_string(&obj).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let metadata = serde_json::to_value(&obj.metadata)
+        .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let data = obj
+        .data
+        .as_object()
+        .ok_or_else(|| AppError::new("invalid application data", "cluster"))?;
 
     let name = obj.metadata.name.clone().unwrap_or_default();
     let namespace = obj.metadata.namespace.clone();
     let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
-        Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+        Utc.timestamp_opt(t.0.as_second(), 0)
+            .single()
+            .unwrap_or_else(Utc::now)
     }));
 
-    let project = data.get("spec").and_then(|s| s.get("project")).and_then(|p| p.as_str()).map(String::from);
-    let destination_namespace = data.get("spec").and_then(|s| s.get("destination")).and_then(|d| d.get("namespace")).and_then(|n| n.as_str()).map(String::from);
-    let destination_server = data.get("spec").and_then(|s| s.get("destination")).and_then(|d| d.get("server")).and_then(|s| s.as_str()).map(String::from);
-    let source_repo = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("repoURL")).and_then(|r| r.as_str()).map(String::from);
-    let source_revision = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("targetRevision")).and_then(|r| r.as_str()).map(String::from);
-    let sync_status = data.get("status").and_then(|s| s.get("sync")).and_then(|s| s.get("status")).and_then(|st| st.as_str()).map(String::from);
-    let health_status = data.get("status").and_then(|s| s.get("health")).and_then(|h| h.get("status")).and_then(|st| st.as_str()).map(String::from);
+    let project = data
+        .get("spec")
+        .and_then(|s| s.get("project"))
+        .and_then(|p| p.as_str())
+        .map(String::from);
+    let destination_namespace = data
+        .get("spec")
+        .and_then(|s| s.get("destination"))
+        .and_then(|d| d.get("namespace"))
+        .and_then(|n| n.as_str())
+        .map(String::from);
+    let destination_server = data
+        .get("spec")
+        .and_then(|s| s.get("destination"))
+        .and_then(|d| d.get("server"))
+        .and_then(|s| s.as_str())
+        .map(String::from);
+    let source_repo = data
+        .get("spec")
+        .and_then(|s| s.get("source"))
+        .and_then(|s| s.get("repoURL"))
+        .and_then(|r| r.as_str())
+        .map(String::from);
+    let source_revision = data
+        .get("spec")
+        .and_then(|s| s.get("source"))
+        .and_then(|s| s.get("targetRevision"))
+        .and_then(|r| r.as_str())
+        .map(String::from);
+    let sync_status = data
+        .get("status")
+        .and_then(|s| s.get("sync"))
+        .and_then(|s| s.get("status"))
+        .and_then(|st| st.as_str())
+        .map(String::from);
+    let health_status = data
+        .get("status")
+        .and_then(|s| s.get("health"))
+        .and_then(|h| h.get("status"))
+        .and_then(|st| st.as_str())
+        .map(String::from);
     let status = data.get("status").cloned();
 
     let summary = ArgoApplicationSummary {
@@ -1535,7 +2129,9 @@ pub async fn get_argocd_application_details(
 
 /// List Argo CD ApplicationSets in the cluster.
 #[tauri::command]
-pub async fn list_argocd_appsets(cluster_context: String) -> Result<Vec<ArgoApplicationSetSummary>, AppError> {
+pub async fn list_argocd_appsets(
+    cluster_context: String,
+) -> Result<Vec<ArgoApplicationSetSummary>, AppError> {
     let options = KubeConfigOptions {
         context: Some(cluster_context.clone()),
         ..Default::default()
@@ -1553,7 +2149,10 @@ pub async fn list_argocd_appsets(cluster_context: String) -> Result<Vec<ArgoAppl
     };
 
     let api: Api<DynamicObject> = Api::all_with(client.clone(), &ar);
-    let items = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+    let items = api
+        .list(&list_params())
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
 
     let summaries: Vec<ArgoApplicationSetSummary> = items
         .iter()
@@ -1561,18 +2160,65 @@ pub async fn list_argocd_appsets(cluster_context: String) -> Result<Vec<ArgoAppl
             let name = obj.metadata.name.clone().unwrap_or_default();
             let namespace = obj.metadata.namespace.clone();
             let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
-                Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                Utc.timestamp_opt(t.0.as_second(), 0)
+                    .single()
+                    .unwrap_or_else(Utc::now)
             }));
             let data = obj.data.as_object()?;
 
-            let project = data.get("spec").and_then(|s| s.get("project")).and_then(|p| p.as_str()).map(String::from);
-            let status = data.get("status").and_then(|s| s.get("conditions")).and_then(|c| c.as_array()).and_then(|arr| arr.first()).and_then(|c| c.get("type")).and_then(|t| t.as_str()).map(String::from);
-            let sync_status = data.get("status").and_then(|s| s.get("sync")).and_then(|s| s.get("status")).and_then(|st| st.as_str()).map(String::from);
-            let health_status = data.get("status").and_then(|s| s.get("health")).and_then(|h| h.get("status")).and_then(|st| st.as_str()).map(String::from);
-            let destination_namespace = data.get("spec").and_then(|s| s.get("generatorParams")).and_then(|arr| arr.as_array()).and_then(|a| a.first()).and_then(|p| p.get("dest-namespace")).and_then(|n| n.as_str()).map(String::from);
-            let destination_server = data.get("spec").and_then(|s| s.get("generatorParams")).and_then(|arr| arr.as_array()).and_then(|a| a.first()).and_then(|p| p.get("dest-server")).and_then(|s| s.as_str()).map(String::from);
-            let source_repo = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("repoURL")).and_then(|r| r.as_str()).map(String::from);
-            let source_revision = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("targetRevision")).and_then(|r| r.as_str()).map(String::from);
+            let project = data
+                .get("spec")
+                .and_then(|s| s.get("project"))
+                .and_then(|p| p.as_str())
+                .map(String::from);
+            let status = data
+                .get("status")
+                .and_then(|s| s.get("conditions"))
+                .and_then(|c| c.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|c| c.get("type"))
+                .and_then(|t| t.as_str())
+                .map(String::from);
+            let sync_status = data
+                .get("status")
+                .and_then(|s| s.get("sync"))
+                .and_then(|s| s.get("status"))
+                .and_then(|st| st.as_str())
+                .map(String::from);
+            let health_status = data
+                .get("status")
+                .and_then(|s| s.get("health"))
+                .and_then(|h| h.get("status"))
+                .and_then(|st| st.as_str())
+                .map(String::from);
+            let destination_namespace = data
+                .get("spec")
+                .and_then(|s| s.get("generatorParams"))
+                .and_then(|arr| arr.as_array())
+                .and_then(|a| a.first())
+                .and_then(|p| p.get("dest-namespace"))
+                .and_then(|n| n.as_str())
+                .map(String::from);
+            let destination_server = data
+                .get("spec")
+                .and_then(|s| s.get("generatorParams"))
+                .and_then(|arr| arr.as_array())
+                .and_then(|a| a.first())
+                .and_then(|p| p.get("dest-server"))
+                .and_then(|s| s.as_str())
+                .map(String::from);
+            let source_repo = data
+                .get("spec")
+                .and_then(|s| s.get("source"))
+                .and_then(|s| s.get("repoURL"))
+                .and_then(|r| r.as_str())
+                .map(String::from);
+            let source_revision = data
+                .get("spec")
+                .and_then(|s| s.get("source"))
+                .and_then(|s| s.get("targetRevision"))
+                .and_then(|r| r.as_str())
+                .map(String::from);
 
             Some(ArgoApplicationSetSummary {
                 cluster: cluster_context.clone(),
@@ -1617,31 +2263,85 @@ pub async fn get_argocd_appset_details(
         None => return Err(AppError::new("ApplicationSet CRD not found", "cluster")),
     };
 
-
     let api: Api<DynamicObject> = if let Some(ns) = &namespace {
         Api::namespaced_with(client.clone(), ns.as_str(), &ar)
     } else {
         Api::all_with(client.clone(), &ar)
     };
 
-    let obj = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
-    let yaml = serde_yaml::to_string(&obj).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-    let metadata = serde_json::to_value(&obj.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-    let data = obj.data.as_object().ok_or_else(|| AppError::new("invalid ApplicationSet data", "cluster"))?;
+    let obj = api
+        .get(&name)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+    let yaml =
+        serde_yaml::to_string(&obj).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let metadata = serde_json::to_value(&obj.metadata)
+        .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let data = obj
+        .data
+        .as_object()
+        .ok_or_else(|| AppError::new("invalid ApplicationSet data", "cluster"))?;
 
     let name = obj.metadata.name.clone().unwrap_or_default();
     let namespace = obj.metadata.namespace.clone();
     let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
-        Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+        Utc.timestamp_opt(t.0.as_second(), 0)
+            .single()
+            .unwrap_or_else(Utc::now)
     }));
-    let project = data.get("spec").and_then(|s| s.get("project")).and_then(|p| p.as_str()).map(String::from);
-    let destination_namespace = data.get("spec").and_then(|s| s.get("generatorParams")).and_then(|arr| arr.as_array()).and_then(|a| a.first()).and_then(|p| p.get("dest-namespace")).and_then(|n| n.as_str()).map(String::from);
-    let destination_server = data.get("spec").and_then(|s| s.get("generatorParams")).and_then(|arr| arr.as_array()).and_then(|a| a.first()).and_then(|p| p.get("dest-server")).and_then(|s| s.as_str()).map(String::from);
-    let source_repo = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("repoURL")).and_then(|r| r.as_str()).map(String::from);
-    let source_revision = data.get("spec").and_then(|s| s.get("source")).and_then(|s| s.get("targetRevision")).and_then(|r| r.as_str()).map(String::from);
-    let status = data.get("status").and_then(|s| s.get("conditions")).and_then(|c| c.as_array()).and_then(|arr| arr.first()).and_then(|c| c.get("type")).and_then(|t| t.as_str()).map(String::from);
-    let sync_status = data.get("status").and_then(|s| s.get("sync")).and_then(|s| s.get("status")).and_then(|st| st.as_str()).map(String::from);
-    let health_status = data.get("status").and_then(|s| s.get("health")).and_then(|h| h.get("status")).and_then(|st| st.as_str()).map(String::from);
+    let project = data
+        .get("spec")
+        .and_then(|s| s.get("project"))
+        .and_then(|p| p.as_str())
+        .map(String::from);
+    let destination_namespace = data
+        .get("spec")
+        .and_then(|s| s.get("generatorParams"))
+        .and_then(|arr| arr.as_array())
+        .and_then(|a| a.first())
+        .and_then(|p| p.get("dest-namespace"))
+        .and_then(|n| n.as_str())
+        .map(String::from);
+    let destination_server = data
+        .get("spec")
+        .and_then(|s| s.get("generatorParams"))
+        .and_then(|arr| arr.as_array())
+        .and_then(|a| a.first())
+        .and_then(|p| p.get("dest-server"))
+        .and_then(|s| s.as_str())
+        .map(String::from);
+    let source_repo = data
+        .get("spec")
+        .and_then(|s| s.get("source"))
+        .and_then(|s| s.get("repoURL"))
+        .and_then(|r| r.as_str())
+        .map(String::from);
+    let source_revision = data
+        .get("spec")
+        .and_then(|s| s.get("source"))
+        .and_then(|s| s.get("targetRevision"))
+        .and_then(|r| r.as_str())
+        .map(String::from);
+    let status = data
+        .get("status")
+        .and_then(|s| s.get("conditions"))
+        .and_then(|c| c.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|c| c.get("type"))
+        .and_then(|t| t.as_str())
+        .map(String::from);
+    let sync_status = data
+        .get("status")
+        .and_then(|s| s.get("sync"))
+        .and_then(|s| s.get("status"))
+        .and_then(|st| st.as_str())
+        .map(String::from);
+    let health_status = data
+        .get("status")
+        .and_then(|s| s.get("health"))
+        .and_then(|h| h.get("status"))
+        .and_then(|st| st.as_str())
+        .map(String::from);
     let summary = ArgoApplicationSetSummary {
         cluster: cluster_context.clone(),
         name: name.clone(),
@@ -1663,7 +2363,6 @@ pub async fn get_argocd_appset_details(
         metadata,
     })
 }
-
 
 /// Get detailed Argo CD AppProject information including YAML and metadata.
 #[tauri::command]
@@ -1692,20 +2391,39 @@ pub async fn get_argocd_appproject_details(
         Api::all_with(client.clone(), &ar)
     };
 
-
-    let obj = api.get(&name).await.map_err(|e| AppError::kube(e.to_string()))?;
-    let yaml = serde_yaml::to_string(&obj).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-    let metadata = serde_json::to_value(&obj.metadata).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-    let data = obj.data.as_object().ok_or_else(|| AppError::new("invalid AppProject data", "cluster"))?;
-
+    let obj = api
+        .get(&name)
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
+    let yaml =
+        serde_yaml::to_string(&obj).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let metadata = serde_json::to_value(&obj.metadata)
+        .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let data = obj
+        .data
+        .as_object()
+        .ok_or_else(|| AppError::new("invalid AppProject data", "cluster"))?;
 
     let name = obj.metadata.name.clone().unwrap_or_default();
     let namespace = obj.metadata.namespace.clone();
     let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
-        Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+        Utc.timestamp_opt(t.0.as_second(), 0)
+            .single()
+            .unwrap_or_else(Utc::now)
     }));
-    let description = data.get("spec").and_then(|s| s.get("description")).and_then(|d| d.as_str()).map(String::from);
-    let status = data.get("status").and_then(|s| s.get("conditions")).and_then(|c| c.as_array()).and_then(|arr| arr.first()).and_then(|c| c.get("type")).and_then(|t| t.as_str()).map(String::from);
+    let description = data
+        .get("spec")
+        .and_then(|s| s.get("description"))
+        .and_then(|d| d.as_str())
+        .map(String::from);
+    let status = data
+        .get("status")
+        .and_then(|s| s.get("conditions"))
+        .and_then(|c| c.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|c| c.get("type"))
+        .and_then(|t| t.as_str())
+        .map(String::from);
     let summary = ArgoAppProjectSummary {
         cluster: cluster_context.clone(),
         name,
@@ -1724,7 +2442,9 @@ pub async fn get_argocd_appproject_details(
 
 /// List Argo CD AppProjects in the cluster.
 #[tauri::command]
-pub async fn list_argocd_appprojects(cluster_context: String) -> Result<Vec<ArgoAppProjectSummary>, AppError> {
+pub async fn list_argocd_appprojects(
+    cluster_context: String,
+) -> Result<Vec<ArgoAppProjectSummary>, AppError> {
     let options = KubeConfigOptions {
         context: Some(cluster_context.clone()),
         ..Default::default()
@@ -1742,7 +2462,10 @@ pub async fn list_argocd_appprojects(cluster_context: String) -> Result<Vec<Argo
     };
 
     let api: Api<DynamicObject> = Api::all_with(client.clone(), &ar);
-    let items = api.list(&list_params()).await.map_err(|e| AppError::kube(e.to_string()))?;
+    let items = api
+        .list(&list_params())
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?;
 
     let summaries: Vec<ArgoAppProjectSummary> = items
         .iter()
@@ -1750,12 +2473,25 @@ pub async fn list_argocd_appprojects(cluster_context: String) -> Result<Vec<Argo
             let name = obj.metadata.name.clone().unwrap_or_default();
             let namespace = obj.metadata.namespace.clone();
             let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
-                Utc.timestamp_opt(t.0.as_second(), 0).single().unwrap_or_else(Utc::now)
+                Utc.timestamp_opt(t.0.as_second(), 0)
+                    .single()
+                    .unwrap_or_else(Utc::now)
             }));
             let data = obj.data.as_object()?;
 
-            let description = data.get("spec").and_then(|s| s.get("description")).and_then(|d| d.as_str()).map(String::from);
-            let status = data.get("status").and_then(|s| s.get("conditions")).and_then(|c| c.as_array()).and_then(|arr| arr.first()).and_then(|c| c.get("type")).and_then(|t| t.as_str()).map(String::from);
+            let description = data
+                .get("spec")
+                .and_then(|s| s.get("description"))
+                .and_then(|d| d.as_str())
+                .map(String::from);
+            let status = data
+                .get("status")
+                .and_then(|s| s.get("conditions"))
+                .and_then(|c| c.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|c| c.get("type"))
+                .and_then(|t| t.as_str())
+                .map(String::from);
 
             Some(ArgoAppProjectSummary {
                 cluster: cluster_context.clone(),
