@@ -211,6 +211,7 @@ function App() {
 			network: { label: "Network" },
 			config: { label: "Config" },
 			storage: { label: "Storage" },
+			discovered: { label: "Discovered" },
 			argo: { label: "Argo CD" },
 		}),
 		[],

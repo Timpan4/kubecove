@@ -25,6 +25,8 @@ export interface TreeNodeId {
 export interface TreeNode {
   id: TreeNodeId;
   label: string;
+  description?: string;
+  disabled?: boolean;
   children?: TreeNode[];
 }
 
@@ -78,6 +80,12 @@ export const SECTIONS = {
     label: "Storage",
     children: [...KIND_GROUPS.Storage] as const,
   },
+  /** Discovered: read-only inventory of extra API resources. */
+  discovered: {
+    id: "discovered",
+    label: "Discovered",
+    children: [] as readonly string[],
+  },
   /** Argo CD: Applications, ApplicationSets, AppProjects */
   argo: {
     id: "argo",
@@ -97,6 +105,7 @@ export const STATIC_SECTION_NAMES: SectionName[] = [
   "network",
   "config",
   "storage",
+  "discovered",
   "argo",
 ];
 
@@ -250,6 +259,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
 export function emptyStateMessage(scope: TreeScope, hasClusterContext: boolean): string {
   if (!hasClusterContext) return "Select a cluster context first";
   if (scope.argoMode) return "Select an Argo CD resource type";
+  if (scope.section === "discovered") return "Discovered resources are shown as read-only inventory";
   if (!scope.section) return "Select a section from the sidebar";
   if (scope.section === "clusterOverview" && scope.kinds.length > 0) return "Select a cluster context to view cluster-scoped resources";
   if (scope.section === "namespaces" && !scope.namespace) return "Select a namespace";
