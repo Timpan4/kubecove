@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TimestampText } from "@/components/TimestampText";
 
 interface ArgoCDPanelProps {
 	clusterContext: string;
@@ -203,7 +204,13 @@ function ApplicationsTable({
 										{app.sourceRepo?.split("/").pop() ?? "—"}
 									</td>
 									<td>{app.sourceRevision ?? "—"}</td>
-									<td>{app.age}</td>
+									<td>
+										<TimestampText
+											relative={app.age}
+											exact={app.createdAt}
+											className="block min-w-0 truncate outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+										/>
+									</td>
 								</tr>
 							);
 						})
@@ -319,7 +326,13 @@ function ApplicationSetsTable({
 										{as.sourceRepo?.split("/").pop() ?? "—"}
 									</td>
 									<td>{as.sourceRevision ?? "—"}</td>
-									<td>{as.age}</td>
+									<td>
+										<TimestampText
+											relative={as.age}
+											exact={as.createdAt}
+											className="block min-w-0 truncate outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+										/>
+									</td>
 								</tr>
 							);
 						})
@@ -413,7 +426,13 @@ function AppProjectsTable({
 									<td>
 										<StatusChip value={p.status} variant="neutral" />
 									</td>
-									<td>{p.age}</td>
+									<td>
+										<TimestampText
+											relative={p.age}
+											exact={p.createdAt}
+											className="block min-w-0 truncate outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+										/>
+									</td>
 								</tr>
 							);
 						})

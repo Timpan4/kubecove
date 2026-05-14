@@ -104,9 +104,40 @@ function TreeNodeComponent({
     onNodeSelect(node.id);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleClick();
+      if (hasChildren) {
+        onSectionToggle(idStr);
+      }
+      return;
+    }
+
+    if (!hasChildren) {
+      return;
+    }
+
+    if (e.key === "ArrowRight" && !isExpanded) {
+      e.preventDefault();
+      onSectionToggle(idStr);
+    } else if (e.key === "ArrowLeft" && isExpanded) {
+      e.preventDefault();
+      onSectionToggle(idStr);
+    }
+  };
+
   const handleChevronClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onSectionToggle(idStr);
+  };
+
+  const handleChevronKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      onSectionToggle(idStr);
+    }
   };
 
   return (
@@ -122,7 +153,10 @@ function TreeNodeComponent({
         )}
         data-depth={depth}
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
         role="treeitem"
+        tabIndex={0}
+        aria-selected={isSelected}
         aria-expanded={hasChildren ? isExpanded : undefined}
       >
         <button
@@ -131,8 +165,9 @@ function TreeNodeComponent({
             !hasChildren && "invisible",
           )}
           onClick={handleChevronClick}
-          tabIndex={-1}
-          aria-hidden="true"
+          onKeyDown={handleChevronKeyDown}
+          aria-label={`${isExpanded ? "Collapse" : "Expand"} ${node.label}`}
+          disabled={!hasChildren}
         >
           <ChevronIcon expanded={isExpanded} />
         </button>

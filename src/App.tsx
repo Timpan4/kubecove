@@ -7,7 +7,9 @@ import { ResourceList } from "./components/ResourceList";
 import { ResourceDetailPanel } from "./features/resource-detail/ResourceDetailPanel";
 import { ArgoCDPanel } from "./features/argo/ArgoCDPanel";
 import { ArgoDetailPanel } from "./features/argo/ArgoDetailPanel";
-import { Search } from "lucide-react";
+import { Search, Settings } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { SettingsPage } from "./features/settings/SettingsPage";
 
 import { createTauriClient, detectArgoCD } from "./lib/tauri";
 import {
@@ -90,7 +92,7 @@ function App() {
 			setViewMode("argo");
 			setSelectedArgoApp(null);
 			setSelectedResource(null);
-		} else if (viewMode === "argo") {
+		} else if (viewMode === "argo" || viewMode === "settings") {
 			// Leaving Argo → switch to resources, clear Argo state
 			setViewMode("resources");
 			setSelectedArgoApp(null);
@@ -216,6 +218,7 @@ function App() {
 
 	// Determine content title from scope
 	const contentTitle = useMemo(() => {
+		if (viewMode === "settings") return "Settings";
 		if (viewMode === "argo") {
 			if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
 				return `${selectedTreeNode.kind}`;
@@ -268,7 +271,11 @@ function App() {
 
 	const mainContent = (
 		<main className="flex h-full w-full min-w-0 flex-col overflow-hidden">
-			{viewMode === "argo" ? (
+			{viewMode === "settings" ? (
+				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
+					<SettingsPage />
+				</div>
+			) : viewMode === "argo" ? (
 				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
 					<ArgoCDPanel
 						clusterContext={clusterContext}
@@ -326,6 +333,20 @@ function App() {
 					</span>
 				</div>
 				<div className="flex shrink-0 items-center">
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						className="mr-2 size-8 text-muted-foreground [-webkit-app-region:no-drag]"
+						aria-label="Open settings"
+						onClick={() => {
+							setViewMode("settings");
+							setSelectedResource(null);
+							setSelectedArgoApp(null);
+						}}
+					>
+						<Settings />
+					</Button>
 					<div className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border bg-background/50 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-ring hover:text-foreground">
 						<Search className="size-3.5" aria-hidden="true" />
 						<span>Search resources…</span>

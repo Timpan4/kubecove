@@ -3,6 +3,7 @@ import { createTauriClient, listNamespaces } from "../lib/tauri";
 import type { NamespaceSummary } from "../lib/types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { TimestampText } from "@/components/TimestampText";
 
 interface NamespaceListProps {
   clusterContext: string;
@@ -113,7 +114,11 @@ export function NamespaceList({ clusterContext, selectedNamespaces, onNamespaceC
                 className="accent-primary"
               />
               <span className="flex-1">{ns.name}</span>
-              <span className="text-xs text-muted-foreground">{ns.age}</span>
+              <TimestampText
+                relative={ns.age}
+                exact={ns.createdAt}
+                className="text-xs text-muted-foreground outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+              />
             </label>
           </li>
         ))}
