@@ -61,7 +61,13 @@ export function MetadataBadges({ value }: { value: unknown }) {
 					<span className="shrink-0 opacity-75">=</span>
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<span className="min-w-0 flex-1 truncate">{entryValue}</span>
+							<span
+								className="min-w-0 flex-1 truncate"
+								tabIndex={0}
+								aria-label={`${key} value`}
+							>
+								{entryValue}
+							</span>
 						</TooltipTrigger>
 						<TooltipContent
 							align="start"

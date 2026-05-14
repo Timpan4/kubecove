@@ -368,9 +368,16 @@ pub async fn resource_events_from(
     } else {
         Api::all(client)
     };
+    let field_selector = match namespace.as_deref() {
+        Some(ns) => format!(
+            "involvedObject.kind={},involvedObject.name={},involvedObject.namespace={}",
+            kind, name, ns,
+        ),
+        None => format!("involvedObject.kind={},involvedObject.name={}", kind, name),
+    };
 
     let mut events: Vec<_> = event_api
-        .list(&list_params())
+        .list(&list_params().fields(&field_selector))
         .await
         .map_err(|e| AppError::kube(e.to_string()))?
         .into_iter()

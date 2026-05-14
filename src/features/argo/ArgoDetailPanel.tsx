@@ -59,7 +59,7 @@ const DETAIL_SECTION_TITLE_CLASS =
 	"mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
 const DETAIL_ROW_CLASS = "flex gap-3 border-b py-1.5";
 const DETAIL_KEY_CLASS = "min-w-[120px] text-xs font-medium text-muted-foreground";
-const DETAIL_VALUE_CLASS = "min-w-0 flex-1 overflow-wrap-anywhere text-xs text-foreground";
+const DETAIL_VALUE_CLASS = "min-w-0 flex-1 wrap-anywhere text-xs text-foreground";
 const LOADING_STATE_CLASS = "p-6 text-center text-xs text-muted-foreground";
 const ERROR_STATE_CLASS = "p-6 text-center text-xs text-destructive";
 const LOADING_SPINNER_CLASS =
