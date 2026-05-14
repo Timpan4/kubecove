@@ -63,6 +63,29 @@ Goal: broaden Kubernetes coverage without hard-coding every resource.
 - [ ] Add resource kind filter backed by discovery.
 - [ ] Add app/owner grouping views.
 
+## Cross-Cutting Tracks
+
+Items that don't belong to a single milestone but need to stay visible.
+
+### Security and Safety
+
+- [ ] Verify frontend cannot invoke arbitrary shell commands.
+- [x] Keep kubeconfig secrets Rust-side.
+- [x] Keep first milestone read-only.
+- [ ] Make future mutation commands explicit and permission-gated.
+- [ ] Add ADR before Argo CD API, CLI, sync, rollback, or diff support.
+
+### Agent Skills
+
+Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
+
+- [ ] `tauri-security-review`
+- [ ] `kube-rs-resource-api`
+- [ ] `k8s-ux-resource-browser`
+- [ ] `argocd-awareness`
+- [ ] Revisit `frontend-state-table-patterns` after frontend patterns exist.
+- [ ] Revisit `safe-k8s-mutations` before mutation work starts.
+
 ## K8Studio-Inspired Later Milestones
 
 - topology and relationship maps
