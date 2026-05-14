@@ -32,15 +32,18 @@ function SettingsRow({
 function ToggleButton({
 	checked,
 	onCheckedChange,
+	ariaLabel,
 }: {
 	checked: boolean;
 	onCheckedChange: (checked: boolean) => void;
+	ariaLabel: string;
 }) {
 	return (
 		<button
 			type="button"
 			role="switch"
 			aria-checked={checked}
+			aria-label={ariaLabel}
 			className={cn(
 				"flex h-6 w-11 items-center rounded-full border px-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
 				checked
@@ -107,6 +110,7 @@ export function SettingsPage() {
 					<ToggleButton
 						checked={showExactTimestamps}
 						onCheckedChange={setShowExactTimestamps}
+						ariaLabel="Show exact timestamps"
 					/>
 				</SettingsRow>
 				<SettingsRow

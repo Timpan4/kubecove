@@ -8,6 +8,7 @@ pub struct ClusterContext {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NamespaceSummary {
     pub name: String,
     pub age: String,
