@@ -38,15 +38,7 @@ The second deliverable should add search, status chips, age formatting, owner de
 
 ## Docs
 
-- [Architecture Blueprint](docs/architecture-blueprint.md)
-- [Product Vision](docs/product-vision.md)
-- [Milestones](docs/milestones.md)
-- [Project TODOs](docs/todos.md)
-- [Product Inspiration](docs/product-inspiration.md)
-- [Agent Skill Backlog](docs/agent-skills.md)
-- [Development Workflow](docs/development-workflow.md)
-- [Architecture Decision Records](docs/decisions)
-- [Agent Guide](AGENTS.md)
+See the [docs index](docs/README.md) for the full set, ordered by reading priority. Top entry points: [Product Vision](docs/product-vision.md), [Architecture Blueprint](docs/architecture-blueprint.md), [Milestones](docs/milestones.md), and the [Agent Guide](AGENTS.md).
 
 ## Status
 

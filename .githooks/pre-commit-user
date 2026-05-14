@@ -29,6 +29,82 @@ if [ -n "$staged_files" ]; then
   done
 fi
 
+# File-size enforcement.
+# Rules: docs/handbook/file-size-and-split.md
+# Drain LEGACY_OVERSIZED_FILES over time — do not add new entries.
+LEGACY_OVERSIZED_FILES="
+src-tauri/src/commands.rs
+src/components/ResourceList.tsx
+"
+
+soft_cap_for() {
+  case "$1" in
+    *.rs)  echo 500 ;;
+    *.tsx) echo 400 ;;
+    *.ts)  echo 300 ;;
+    *)     echo "" ;;
+  esac
+}
+
+hard_cap_for() {
+  case "$1" in
+    *.rs)  echo 800 ;;
+    *.tsx) echo 700 ;;
+    *.ts)  echo 600 ;;
+    *)     echo "" ;;
+  esac
+}
+
+is_size_exempt() {
+  case "$1" in
+    *.test.*|*.spec.*|*.gen.*|*.d.ts)
+      return 0 ;;
+    bun.lock|node_modules/*|src-tauri/target/*|target/*)
+      return 0 ;;
+  esac
+  for legacy in $LEGACY_OVERSIZED_FILES; do
+    if [ "$1" = "$legacy" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+size_check_failed=0
+if [ -n "$staged_files" ]; then
+  # Read newline-separated paths so filenames with spaces are preserved.
+  # Heredoc keeps the loop in the current shell so size_check_failed persists.
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    if is_size_exempt "$file"; then
+      continue
+    fi
+    hard=$(hard_cap_for "$file")
+    if [ -z "$hard" ]; then
+      continue
+    fi
+    # Count lines from the staged blob, not the working tree — partial
+    # staging can otherwise pass or fail the gate incorrectly.
+    lines=$(git show ":$file" 2>/dev/null | wc -l | tr -d ' ')
+    if [ -z "$lines" ]; then
+      continue
+    fi
+    soft=$(soft_cap_for "$file")
+    if [ "$lines" -gt "$hard" ]; then
+      echo "pre-commit: $file is $lines lines (hard cap $hard). Split before committing — see docs/handbook/file-size-and-split.md."
+      size_check_failed=1
+    elif [ "$lines" -gt "$soft" ]; then
+      echo "pre-commit: warning — $file is $lines lines (soft cap $soft). Plan a split — see docs/handbook/file-size-and-split.md."
+    fi
+  done <<EOF
+$staged_files
+EOF
+fi
+
+if [ "$size_check_failed" -eq 1 ]; then
+  exit 1
+fi
+
 if [ -f package.json ]; then
   if ! command -v bun >/dev/null 2>&1; then
     echo "pre-commit: package.json exists, but bun was not found on PATH."

@@ -1,5 +1,7 @@
 # Architecture Blueprint
 
+This doc describes the **target shape** of the code. For the *rules* — file-size caps, what belongs in which folder, when to split, dead-code policy — see the [engineering handbook](handbook/). Each module folder also has a short `README.md` next to the code.
+
 ## Product Direction
 
 `k8s-manager` is a local desktop Kubernetes IDE with a context-first and namespace-first workflow.
