@@ -57,7 +57,7 @@ hard_cap_for() {
 
 is_size_exempt() {
   case "$1" in
-    *.test.ts|*.test.tsx|*.spec.ts|*.spec.tsx|*.gen.ts|*.gen.tsx|*.gen.rs|*.d.ts)
+    *.test.*|*.spec.*|*.gen.*|*.d.ts)
       return 0 ;;
     bun.lock|node_modules/*|src-tauri/target/*|target/*)
       return 0 ;;
@@ -72,7 +72,10 @@ is_size_exempt() {
 
 size_check_failed=0
 if [ -n "$staged_files" ]; then
-  for file in $staged_files; do
+  # Read newline-separated paths so filenames with spaces are preserved.
+  # Heredoc keeps the loop in the current shell so size_check_failed persists.
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
     if is_size_exempt "$file"; then
       continue
     fi
@@ -80,10 +83,12 @@ if [ -n "$staged_files" ]; then
     if [ -z "$hard" ]; then
       continue
     fi
-    if [ ! -f "$file" ]; then
+    # Count lines from the staged blob, not the working tree — partial
+    # staging can otherwise pass or fail the gate incorrectly.
+    lines=$(git show ":$file" 2>/dev/null | wc -l | tr -d ' ')
+    if [ -z "$lines" ]; then
       continue
     fi
-    lines=$(wc -l <"$file" | tr -d ' ')
     soft=$(soft_cap_for "$file")
     if [ "$lines" -gt "$hard" ]; then
       echo "pre-commit: $file is $lines lines (hard cap $hard). Split before committing — see docs/handbook/file-size-and-split.md."
@@ -91,7 +96,9 @@ if [ -n "$staged_files" ]; then
     elif [ "$lines" -gt "$soft" ]; then
       echo "pre-commit: warning — $file is $lines lines (soft cap $soft). Plan a split — see docs/handbook/file-size-and-split.md."
     fi
-  done
+  done <<EOF
+$staged_files
+EOF
 fi
 
 if [ "$size_check_failed" -eq 1 ]; then
