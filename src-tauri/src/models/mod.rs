@@ -1,14 +1,19 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClusterContext {
     pub name: String,
+    pub is_current: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NamespaceSummary {
     pub name: String,
     pub age: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,6 +24,8 @@ pub struct ResourceSummary {
     pub name: String,
     pub namespace: Option<String>,
     pub age: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -48,6 +55,20 @@ pub struct ResourceDetailsFull {
     pub yaml: String,
     pub metadata: serde_json::Value,
     pub status: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceEventSummary {
+    pub event_type: String,
+    pub reason: String,
+    pub message: String,
+    pub count: i32,
+    pub last_seen: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_seen_at: Option<String>,
+    pub source: String,
+    pub namespace: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +103,8 @@ pub struct ArgoApplicationSummary {
     pub cluster: String,
     pub name: String,
     pub age: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
     pub namespace: Option<String>,
     pub project: Option<String>,
     pub sync_status: Option<String>,
@@ -107,6 +130,8 @@ pub struct ArgoApplicationSetSummary {
     pub cluster: String,
     pub name: String,
     pub age: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
     pub namespace: Option<String>,
     pub project: Option<String>,
     pub status: Option<String>,
@@ -132,6 +157,8 @@ pub struct ArgoAppProjectSummary {
     pub cluster: String,
     pub name: String,
     pub age: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
     pub namespace: Option<String>,
     pub description: Option<String>,
     pub status: Option<String>,
