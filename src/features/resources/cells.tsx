@@ -146,8 +146,8 @@ export function ArgoHelmBadges({ row }: { row: ResourceSummary }) {
 
 	return (
 		<div className="flex flex-wrap gap-1">
-			{badges.map((badge, i) => (
-				<TableTooltip key={i} content={badge.label}>
+			{badges.map((badge) => (
+				<TableTooltip key={badge.label} content={badge.label}>
 					<Badge
 						variant="outline"
 						className={cn(
