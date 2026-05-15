@@ -29,7 +29,6 @@ import {
 interface ResourceTableProps {
 	table: Table<ResourceSummary>;
 	groupedByArgo: boolean;
-	pageRows: ResourceSummary[];
 	pageGroups: Map<string, number>;
 	pageTypeGroups: Map<string, number>;
 	collapsedGroups: Set<string>;
@@ -46,7 +45,6 @@ function resourceRowKey(resource: ResourceSummary): string {
 export function ResourceTable({
 	table,
 	groupedByArgo,
-	pageRows,
 	pageGroups,
 	pageTypeGroups,
 	collapsedGroups,
@@ -88,7 +86,7 @@ export function ResourceTable({
 					))}
 				</thead>
 				<tbody>
-					{pageRows.length === 0 ? (
+					{rowModel.rows.length === 0 ? (
 						<tr>
 							<td colSpan={columns.length} className={EMPTY_PAGE_CLASS}>
 								No resources match your filter

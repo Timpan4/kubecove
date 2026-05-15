@@ -239,7 +239,6 @@ function ResourceListComponent({
 			<ResourceTable
 				table={table}
 				groupedByArgo={groupedByArgo}
-				pageRows={pageRows}
 				pageGroups={pageGroups}
 				pageTypeGroups={pageTypeGroups}
 				collapsedGroups={collapsedGroups}
