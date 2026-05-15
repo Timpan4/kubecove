@@ -1,4 +1,9 @@
-use k8s_manager_lib::models::{AppError, ClusterContext, DiscoveredResourceKind, NamespaceSummary, ResourceSummary, ResourceDetails, ResourceDetailsFull, ResourceEventSummary};
+use k8s_manager_lib::models::{
+    AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails,
+    ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSummary, ClusterContext,
+    DiscoveredResourceKind, NamespaceSummary, ResourceDetails, ResourceDetailsFull,
+    ResourceEventSummary, ResourceSummary,
+};
 use serde_json::json;
 
 #[test]
@@ -17,7 +22,10 @@ fn test_app_error_kube() {
 
 #[test]
 fn test_cluster_context_serde() {
-    let ctx = ClusterContext { name: "minikube".to_string(), is_current: true };
+    let ctx = ClusterContext {
+        name: "minikube".to_string(),
+        is_current: true,
+    };
     let json_str = serde_json::to_string(&ctx).unwrap();
     let parsed: ClusterContext = serde_json::from_str(&json_str).unwrap();
     assert_eq!(parsed.name, "minikube");
@@ -155,4 +163,85 @@ fn test_discovered_resource_kind_serde() {
     assert_eq!(json_val["namespaced"], true);
     let parsed: DiscoveredResourceKind = serde_json::from_value(json_val).unwrap();
     assert_eq!(parsed.kind, "Deployment");
+}
+
+#[test]
+fn test_argo_application_models_serde() {
+    let summary = ArgoApplicationSummary {
+        cluster: "kind-prod".to_string(),
+        name: "payments".to_string(),
+        age: "1h".to_string(),
+        created_at: Some("2026-05-15T10:00:00Z".to_string()),
+        namespace: Some("argocd".to_string()),
+        project: Some("default".to_string()),
+        sync_status: Some("Synced".to_string()),
+        health_status: Some("Healthy".to_string()),
+        destination_namespace: Some("payments".to_string()),
+        destination_server: Some("https://kubernetes.default.svc".to_string()),
+        source_repo: Some("https://example.invalid/repo.git".to_string()),
+        source_revision: Some("main".to_string()),
+    };
+    let details = ArgoApplicationDetails {
+        summary,
+        yaml: "kind: Application".to_string(),
+        metadata: json!({ "name": "payments" }),
+        status: Some(json!({ "sync": { "status": "Synced" } })),
+    };
+
+    let json_val = serde_json::to_value(&details).unwrap();
+    assert_eq!(json_val["summary"]["syncStatus"], "Synced");
+    let parsed: ArgoApplicationDetails = serde_json::from_value(json_val).unwrap();
+    assert_eq!(parsed.summary.health_status, Some("Healthy".to_string()));
+}
+
+#[test]
+fn test_argo_appset_models_serde() {
+    let summary = ArgoApplicationSetSummary {
+        cluster: "kind-prod".to_string(),
+        name: "payments-set".to_string(),
+        age: "2h".to_string(),
+        created_at: None,
+        namespace: Some("argocd".to_string()),
+        project: Some("default".to_string()),
+        status: Some("ResourcesUpToDate".to_string()),
+        sync_status: Some("Synced".to_string()),
+        health_status: Some("Healthy".to_string()),
+        destination_namespace: Some("payments".to_string()),
+        destination_server: Some("https://kubernetes.default.svc".to_string()),
+        source_repo: Some("https://example.invalid/repo.git".to_string()),
+        source_revision: Some("main".to_string()),
+    };
+    let details = ArgoApplicationSetDetails {
+        summary,
+        yaml: "kind: ApplicationSet".to_string(),
+        metadata: json!({ "name": "payments-set" }),
+    };
+
+    let json_val = serde_json::to_value(&details).unwrap();
+    assert_eq!(json_val["summary"]["healthStatus"], "Healthy");
+    let parsed: ArgoApplicationSetDetails = serde_json::from_value(json_val).unwrap();
+    assert_eq!(parsed.summary.status, Some("ResourcesUpToDate".to_string()));
+}
+
+#[test]
+fn test_argo_appproject_models_serde() {
+    let summary = ArgoAppProjectSummary {
+        cluster: "kind-prod".to_string(),
+        name: "default".to_string(),
+        age: "3h".to_string(),
+        created_at: None,
+        namespace: Some("argocd".to_string()),
+        description: Some("default project".to_string()),
+        status: Some("Healthy".to_string()),
+    };
+    let details = ArgoAppProjectDetails {
+        summary,
+        yaml: "kind: AppProject".to_string(),
+        metadata: json!({ "name": "default" }),
+    };
+
+    let json_val = serde_json::to_value(&details).unwrap();
+    assert_eq!(json_val["summary"]["description"], "default project");
+    let parsed: ArgoAppProjectDetails = serde_json::from_value(json_val).unwrap();
+    assert_eq!(parsed.summary.name, "default");
 }

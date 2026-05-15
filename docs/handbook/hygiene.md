@@ -32,7 +32,7 @@ When a PR replaces a component, function, or module with a new one:
 
 If two components serve the same purpose, the PR that introduces the second one is wrong. Examples to avoid:
 
-- `ResourceDetail.tsx` and `ResourceDetailPanel.tsx` (one is orphaned at the time of writing).
+- Two detail panels for the same resource inspector.
 - Two badge components, two timestamp formatters, two "selectable list" wrappers.
 
 When you notice a duplicate during routine work, fold one into the other in a short follow-up PR. Don't leave both.

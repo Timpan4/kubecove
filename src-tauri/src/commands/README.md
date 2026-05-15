@@ -6,4 +6,4 @@ Caps: `.rs` soft 500 lines, hard 800. If a domain file approaches the soft cap, 
 
 A new file in this folder must own a single command domain. Don't dump unrelated commands in an existing file because it's open already.
 
-Note: at the time the handbook was introduced, all commands still live in a single `commands.rs` listed in `LEGACY_OVERSIZED_FILES`. New commands should be added in the per-domain layout described here.
+Commands are split by domain. New commands should be added in the per-domain layout described here.
