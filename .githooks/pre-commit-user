@@ -33,8 +33,6 @@ fi
 # Rules: docs/handbook/file-size-and-split.md
 # Drain LEGACY_OVERSIZED_FILES over time — do not add new entries.
 LEGACY_OVERSIZED_FILES="
-src-tauri/src/commands.rs
-src/components/ResourceList.tsx
 "
 
 soft_cap_for() {

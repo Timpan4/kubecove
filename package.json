@@ -8,9 +8,11 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
+    "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "rust:check": "cargo check --manifest-path src-tauri/Cargo.toml",
-    "check": "bun run typecheck && bun run rust:check"
+    "check": "bun run typecheck && bun test && bun run rust:test && bun run rust:check"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",

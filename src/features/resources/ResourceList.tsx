@@ -1,22 +1,14 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-	createColumnHelper,
 	flexRender,
 	getCoreRowModel,
 	useReactTable,
 	type SortingState,
 } from "@tanstack/react-table";
-import { createTauriClient, listResources } from "../lib/tauri";
-import type { ResourceSummary, ClusterScopedKind } from "../lib/types";
-import { CLUSTER_SCOPED_KINDS } from "../lib/types";
-import { diagnosticLog } from "../lib/diagnostics";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { createTauriClient, listResources } from "@/lib/tauri";
+import type { ResourceSummary } from "@/lib/types";
+import { diagnosticLog } from "@/lib/diagnostics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,11 +21,24 @@ import {
 } from "@/components/ui/select";
 import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { columns } from "./columns";
 import {
 	getResourceGroupVisual,
 	getResourceKindVisual,
 } from "@/lib/resource-visuals";
-import { TimestampText } from "@/components/TimestampText";
+import {
+	buildFetchKeys,
+	buildResourceHealthSummary,
+	describeResourceScope,
+	filterResources,
+	formatResourceGroupLabel,
+	formatResourceTypeGroupLabel,
+	resourceGroupCollapseKey,
+	resourceTypeGroupCollapseKey,
+	sortedRows,
+	uniqueArgoApps,
+	type FetchKey,
+} from "./helpers";
 
 interface ResourceListProps {
 	clusterContext: string;
@@ -42,44 +47,6 @@ interface ResourceListProps {
 	selectedArgoAppFilter: string;
 	onArgoAppFilterChange: (app: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
-}
-
-interface FetchKey {
-	kind: string;
-	namespace: string | undefined; // undefined means all namespaces or cluster-scoped
-}
-
-interface HealthSummary {
-	total: number;
-	healthy: number;
-	attention: number;
-	degraded: number;
-	restarted: number;
-}
-
-interface ScopePill {
-	label: string;
-	value: string;
-}
-
-function isClusterScopedKind(kind: string): kind is ClusterScopedKind {
-	return (CLUSTER_SCOPED_KINDS as readonly string[]).includes(kind);
-}
-
-function buildFetchKeys(namespaces: string[], kinds: string[]): FetchKey[] {
-	const keys: FetchKey[] = [];
-	for (const k of kinds) {
-		if (isClusterScopedKind(k)) {
-			// Cluster-scoped kinds have no namespace
-			keys.push({ kind: k, namespace: undefined });
-		} else {
-			// Namespaced kinds require explicit selected namespaces.
-			for (const ns of namespaces) {
-				keys.push({ kind: k, namespace: ns });
-			}
-		}
-	}
-	return keys;
 }
 
 async function fetchResourcePage(
@@ -113,229 +80,6 @@ async function fetchResourcePage(
 	return rows;
 }
 
-const columnHelper = createColumnHelper<ResourceSummary>();
-
-type ChipVariant = "neutral" | "success" | "warning" | "error" | "info";
-const CHIP_BADGE_STYLES: Record<
-	ChipVariant,
-	{
-		variant: "secondary" | "destructive" | "outline";
-		className: string;
-	}
-> = {
-	neutral: {
-		variant: "secondary",
-		className: "",
-	},
-	success: {
-		variant: "outline",
-		className:
-			"border-emerald-500/30 bg-emerald-500/10 text-emerald-300 dark:bg-emerald-500/15",
-	},
-	warning: {
-		variant: "outline",
-		className:
-			"border-amber-500/30 bg-amber-500/10 text-amber-300 dark:bg-amber-500/15",
-	},
-	error: {
-		variant: "destructive",
-		className: "",
-	},
-	info: {
-		variant: "outline",
-		className:
-			"border-sky-500/30 bg-sky-500/10 text-sky-300 dark:bg-sky-500/15",
-	},
-};
-
-function StatusChip({
-	value,
-	variant = "neutral",
-}: {
-	value: string;
-	variant?: ChipVariant;
-}) {
-	const badgeStyle = CHIP_BADGE_STYLES[variant];
-	return (
-		<TableTooltip content={value}>
-			<Badge
-				variant={badgeStyle.variant}
-				className={cn(
-					"max-w-full rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
-					badgeStyle.className,
-				)}
-			>
-				{value}
-			</Badge>
-		</TableTooltip>
-	);
-}
-
-export function tableTooltipText(
-	value: string | number | null | undefined,
-): string {
-	return value === undefined || value === null || value === ""
-		? "—"
-		: String(value);
-}
-
-function TableTooltip({
-	children,
-	content,
-}: {
-	children: ReactNode;
-	content: string;
-}) {
-	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<span
-					className="block min-w-0 outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
-					tabIndex={0}
-				>
-					{children}
-				</span>
-			</TooltipTrigger>
-			<TooltipContent side="top" align="start" sideOffset={6}>
-				{content}
-			</TooltipContent>
-		</Tooltip>
-	);
-}
-
-function TruncatedCell({ value }: { value: string | number | null | undefined }) {
-	const text = tableTooltipText(value);
-	return (
-		<TableTooltip content={text}>
-			<span className="block min-w-0 truncate">{text}</span>
-		</TableTooltip>
-	);
-}
-
-function KindCell({ kind }: { kind: string }) {
-	const visual = getResourceKindVisual(kind);
-	const Icon = visual.icon;
-	return (
-		<TableTooltip content={kind}>
-			<span className="inline-flex min-w-0 max-w-full items-center gap-1.5 truncate">
-				<Icon className={cn("size-3.5 shrink-0", visual.className)} />
-				<span className="min-w-0 truncate">{kind}</span>
-			</span>
-		</TableTooltip>
-	);
-}
-
-function AgeCell({ row }: { row: ResourceSummary }) {
-	return (
-		<TimestampText
-			relative={row.age}
-			exact={row.createdAt}
-			className="block min-w-0 truncate outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
-		/>
-	);
-}
-
-// Argo/Helm badges rendered inline in the App column
-function ArgoHelmBadges({ row }: { row: ResourceSummary }) {
-	const badges: Array<{ label: string; className: string }> = [];
-
-	if (row.argoApp) {
-		badges.push({
-			label: `Argo: ${row.argoApp}`,
-			className:
-				"border-primary/30 bg-primary/10 text-primary dark:bg-primary/15",
-		});
-	}
-
-	if (row.helmRelease) {
-		badges.push({
-			label: `Helm: ${row.helmRelease}`,
-			className:
-				"border-sky-500/30 bg-sky-500/10 text-sky-300 dark:bg-sky-500/15",
-		});
-	}
-
-	if (badges.length === 0) return null;
-
-	return (
-		<div className="flex flex-wrap gap-1">
-			{badges.map((badge, i) => (
-				<TableTooltip key={i} content={badge.label}>
-					<Badge
-						variant="outline"
-						className={cn(
-							"max-w-full truncate rounded-sm px-1.5 py-0 text-[0.625rem] shadow-none",
-							badge.className,
-						)}
-					>
-						{badge.label}
-					</Badge>
-				</TableTooltip>
-			))}
-		</div>
-	);
-}
-
-const columns = [
-	columnHelper.accessor("name", {
-		header: "Name",
-		cell: (info) => <TruncatedCell value={info.getValue()} />,
-	}),
-	columnHelper.accessor("namespace", {
-		header: "Namespace",
-		cell: (info) => <TruncatedCell value={info.getValue()} />,
-	}),
-	columnHelper.accessor("kind", {
-		header: "Kind",
-		cell: (info) => <KindCell kind={info.getValue()} />,
-	}),
-	columnHelper.accessor("status", {
-		header: "Status",
-		cell: (info) => {
-			const value = info.getValue();
-			if (!value) return "—";
-			const variant: ChipVariant =
-				value === "Running" || value === "Succeeded" || value === "Ready"
-					? "success"
-					: value === "Pending" || value === "Terminating"
-						? "warning"
-						: value === "Failed" || value === "Error"
-							? "error"
-							: "neutral";
-			return <StatusChip value={value} variant={variant} />;
-		},
-	}),
-	columnHelper.accessor("ready", {
-		header: "Ready",
-		cell: (info) => <TruncatedCell value={info.getValue()} />,
-	}),
-	columnHelper.accessor("restarts", {
-		header: "Restarts",
-		cell: (info) => {
-			const value = info.getValue();
-			if (value === undefined || value === null) return "—";
-			if (value === 0) return "0";
-			const variant: ChipVariant =
-				value > 5 ? "error" : value > 0 ? "warning" : "neutral";
-			return <StatusChip value={String(value)} variant={variant} />;
-		},
-	}),
-	columnHelper.accessor("ownerRef", {
-		header: "Owner",
-		cell: (info) => <TruncatedCell value={info.getValue()} />,
-	}),
-	columnHelper.accessor("age", {
-		header: "Age",
-		cell: (info) => <AgeCell row={info.row.original} />,
-	}),
-	columnHelper.display({
-		id: "argo-helm",
-		header: "App",
-		cell: ({ row }) => <ArgoHelmBadges row={row.original} />,
-		enableSorting: false,
-	}),
-];
-
 const PAGE_SIZE = 50;
 const TABLE_CLASS =
 	"min-w-[1120px] table-fixed border-collapse text-sm [&_th:nth-child(1)]:w-[27%] [&_td:nth-child(1)]:w-[27%] [&_th:nth-child(2)]:w-[11%] [&_td:nth-child(2)]:w-[11%] [&_th:nth-child(3)]:w-[12%] [&_td:nth-child(3)]:w-[12%] [&_th:nth-child(4)]:w-[10%] [&_td:nth-child(4)]:w-[10%] [&_th:nth-child(5)]:w-[7%] [&_td:nth-child(5)]:w-[7%] [&_th:nth-child(6)]:w-[9%] [&_td:nth-child(6)]:w-[9%] [&_th:nth-child(7)]:w-[14%] [&_td:nth-child(7)]:w-[14%] [&_th:nth-child(8)]:w-[5%] [&_td:nth-child(8)]:w-[5%] [&_th:nth-child(9)]:w-[7%] [&_td:nth-child(9)]:w-[7%] [&_th]:border-b-2 [&_th]:px-3 [&_th]:py-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:text-muted-foreground [&_td]:whitespace-nowrap [&_td]:border-b [&_td]:px-3 [&_td]:py-3";
@@ -348,144 +92,6 @@ const EMPTY_PAGE_CLASS = "p-8 text-center text-sm text-muted-foreground";
 const TOOLBAR_CLASS = "mb-1 flex items-center gap-2 p-0";
 const PAGINATION_CLASS =
 	"flex items-center justify-between border-t py-2 text-xs text-muted-foreground";
-
-function sortedRows(
-	data: ResourceSummary[],
-	sorting: SortingState,
-): ResourceSummary[] {
-	if (sorting.length === 0) return data;
-	return [...data].sort((a, b) => {
-		for (const { id, desc } of sorting) {
-			const av = (a as unknown as Record<string, unknown>)[id];
-			const bv = (b as unknown as Record<string, unknown>)[id];
-			if (av == null && bv == null) continue;
-			if (av == null) return desc ? 1 : -1;
-			if (bv == null) return desc ? -1 : 1;
-			const cmp = String(av).localeCompare(String(bv));
-			if (cmp !== 0) return desc ? -cmp : cmp;
-		}
-		return 0;
-	});
-}
-
-function filterResources(
-	data: ResourceSummary[],
-	search: string,
-	argoAppFilter: string,
-): ResourceSummary[] {
-	const term = search.trim().toLowerCase();
-	return data.filter((r) => {
-		if (argoAppFilter && r.argoApp !== argoAppFilter) return false;
-		if (!term) return true;
-		return (
-			r.name.toLowerCase().includes(term) ||
-			r.namespace?.toLowerCase().includes(term) === true ||
-			r.kind.toLowerCase().includes(term) ||
-			r.ownerRef?.toLowerCase().includes(term) === true ||
-			r.argoApp?.toLowerCase().includes(term) === true ||
-			r.helmRelease?.toLowerCase().includes(term) === true
-		);
-	});
-}
-
-function uniqueArgoApps(data: ResourceSummary[]): string[] {
-	return Array.from(
-		new Set(
-			data.map((r) => r.argoApp).filter((app): app is string => Boolean(app)),
-		),
-	).sort((a, b) => a.localeCompare(b));
-}
-
-export function formatResourceGroupLabel(resource: ResourceSummary): string {
-	return resource.argoApp
-		? `Managed by Argo app: ${resource.argoApp}`
-		: "Unmanaged resources";
-}
-
-export function formatResourceTypeGroupLabel(resource: ResourceSummary): string {
-	if (resource.kind.endsWith("s")) return `${resource.kind}es`;
-	if (resource.kind.endsWith("y")) return `${resource.kind.slice(0, -1)}ies`;
-	return `${resource.kind}s`;
-}
-
-export function resourceGroupCollapseKey(resource: ResourceSummary): string {
-	return `app:${formatResourceGroupLabel(resource)}`;
-}
-
-export function resourceTypeGroupCollapseKey(resource: ResourceSummary): string {
-	return `${resourceGroupCollapseKey(resource)}::type:${formatResourceTypeGroupLabel(resource)}`;
-}
-
-export function describeResourceScope(
-	clusterContext: string,
-	namespaces: string[],
-	kinds: string[],
-	argoAppFilter: string,
-): ScopePill[] {
-	const pills: ScopePill[] = [{ label: "Context", value: clusterContext }];
-	if (namespaces.length > 0) {
-		pills.push({
-			label: namespaces.length === 1 ? "Namespace" : "Namespaces",
-			value:
-				namespaces.length <= 2
-					? namespaces.join(", ")
-					: `${namespaces.slice(0, 2).join(", ")} +${namespaces.length - 2}`,
-		});
-	}
-	if (kinds.length > 0) {
-		pills.push({
-			label: kinds.length === 1 ? "Kind" : "Kinds",
-			value:
-				kinds.length <= 3
-					? kinds.join(", ")
-					: `${kinds.slice(0, 3).join(", ")} +${kinds.length - 3}`,
-		});
-	}
-	if (argoAppFilter) {
-		pills.push({ label: "Argo app", value: argoAppFilter });
-	}
-	return pills;
-}
-
-export function buildResourceHealthSummary(
-	rows: ResourceSummary[],
-): HealthSummary {
-	return rows.reduce<HealthSummary>(
-		(summary, row) => {
-			const status = row.status?.toLowerCase() ?? "";
-			const ready = row.ready?.toLowerCase() ?? "";
-			const restarts = row.restarts ?? 0;
-			const isDegraded =
-				status === "failed" ||
-				status === "error" ||
-				status === "crashloopbackoff" ||
-				status === "imagepullbackoff" ||
-				ready === "false";
-			const needsAttention =
-				!isDegraded &&
-				(status === "pending" ||
-					status === "terminating" ||
-					status === "unknown" ||
-					restarts > 0);
-			const isHealthy =
-				!isDegraded &&
-				!needsAttention &&
-				(status === "running" ||
-					status === "succeeded" ||
-					status === "ready" ||
-					ready === "true");
-
-			return {
-				total: summary.total + 1,
-				healthy: summary.healthy + (isHealthy ? 1 : 0),
-				attention: summary.attention + (needsAttention ? 1 : 0),
-				degraded: summary.degraded + (isDegraded ? 1 : 0),
-				restarted: summary.restarted + (restarts > 0 ? 1 : 0),
-			};
-		},
-		{ total: 0, healthy: 0, attention: 0, degraded: 0, restarted: 0 },
-	);
-}
 
 function HealthMetric({
 	label,
