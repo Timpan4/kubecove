@@ -1,5 +1,8 @@
 mod details;
 mod summary;
+mod summary_cluster;
+mod summary_core;
+mod summary_workloads;
 mod yaml;
 
 pub use details::{get_resource_details, resource_details_from};
