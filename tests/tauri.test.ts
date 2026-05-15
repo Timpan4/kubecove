@@ -19,6 +19,10 @@ import {
 	uniqueArgoApps,
 } from "../src/features/resources/helpers";
 import {
+	pageAppGroupCounts,
+	pageTypeGroupCounts,
+} from "../src/features/resources/grouping";
+import {
 	emptyStateMessage,
 	resolveTreeScope,
 	type TreeNodeId,
@@ -233,6 +237,29 @@ describe("resource browser presentation helpers", () => {
 
     expect(resourceGroupCollapseKey(resource)).toBe("app:Managed by Argo app: argocd");
     expect(resourceTypeGroupCollapseKey(resource)).toBe("app:Managed by Argo app: argocd::type:ConfigMaps");
+  });
+
+  test("counts page groups for grouped resource tables", () => {
+    const rows: ResourceSummary[] = [
+      { ...baseResource, name: "api", kind: "Pod", argoApp: "payments" },
+      { ...baseResource, name: "svc", kind: "Service", argoApp: "payments" },
+      { ...baseResource, name: "cm", kind: "ConfigMap" },
+    ];
+
+    expect(pageAppGroupCounts(rows, true)).toEqual(
+      new Map([
+        ["Managed by Argo app: payments", 2],
+        ["Unmanaged resources", 1],
+      ]),
+    );
+    expect(pageTypeGroupCounts(rows, true)).toEqual(
+      new Map([
+        ["Managed by Argo app: payments::Pods", 1],
+        ["Managed by Argo app: payments::Services", 1],
+        ["Unmanaged resources::ConfigMaps", 1],
+      ]),
+    );
+    expect(pageAppGroupCounts(rows, false).size).toBe(0);
   });
 
   test("normalizes tooltip values for table display", () => {
