@@ -166,7 +166,8 @@ mod tests {
     #[test]
     fn event_helpers_match_source_and_timestamp_precedence() {
         let event_time = Time(k8s_openapi::jiff::Timestamp::from_second(1_700_000_100).unwrap());
-        let last_timestamp = Time(k8s_openapi::jiff::Timestamp::from_second(1_700_000_000).unwrap());
+        let last_timestamp =
+            Time(k8s_openapi::jiff::Timestamp::from_second(1_700_000_000).unwrap());
         let event = Event {
             event_time: Some(MicroTime(event_time.0)),
             last_timestamp: Some(last_timestamp),
@@ -188,8 +189,18 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(event_matches_resource(&event, "Pod", "api-0", Some("payments")));
-        assert!(!event_matches_resource(&event, "Pod", "api-1", Some("payments")));
+        assert!(event_matches_resource(
+            &event,
+            "Pod",
+            "api-0",
+            Some("payments")
+        ));
+        assert!(!event_matches_resource(
+            &event,
+            "Pod",
+            "api-1",
+            Some("payments")
+        ));
         assert_eq!(event_source(&event), "deployment-controller");
         assert_eq!(event_timestamp(&event).unwrap().timestamp(), 1_700_000_100);
 

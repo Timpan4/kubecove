@@ -1,6 +1,6 @@
 use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, list_params};
 use crate::models::{AppError, NamespaceSummary};
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use kube::{api::Api, config::KubeConfigOptions, Client};
 use std::time::Instant;
 
@@ -47,16 +47,21 @@ pub async fn namespaces_summary_from(
         .iter()
         .map(|ns| NamespaceSummary {
             name: ns.metadata.name.clone().unwrap_or_default(),
-            age: namespace_age(ns.metadata.creation_timestamp.clone().map(|t| {
-                Utc.timestamp_opt(t.0.as_second(), 0)
-                    .single()
-                    .unwrap_or_else(Utc::now)
-            })),
+            age: namespace_age(
+                ns.metadata
+                    .creation_timestamp
+                    .as_ref()
+                    .and_then(|t| k8s_openapi_time_to_datetime(&t.0)),
+            ),
             created_at: k8s_creation_timestamp_to_rfc3339(&ns.metadata.creation_timestamp),
         })
         .collect();
 
     Ok(summaries)
+}
+
+fn k8s_openapi_time_to_datetime(timestamp: &k8s_openapi::jiff::Timestamp) -> Option<DateTime<Utc>> {
+    DateTime::from_timestamp(timestamp.as_second(), 0)
 }
 
 #[tauri::command]

@@ -22,7 +22,10 @@ fn test_app_error_kube() {
 
 #[test]
 fn test_cluster_context_serde() {
-    let ctx = ClusterContext { name: "minikube".to_string(), is_current: true };
+    let ctx = ClusterContext {
+        name: "minikube".to_string(),
+        is_current: true,
+    };
     let json_str = serde_json::to_string(&ctx).unwrap();
     let parsed: ClusterContext = serde_json::from_str(&json_str).unwrap();
     assert_eq!(parsed.name, "minikube");
