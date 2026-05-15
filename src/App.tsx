@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDashboardState } from "./lib/hooks";
 import { ClusterSelector } from "./components/ClusterSelector";
 import { SidebarTree } from "./components/SidebarTree";
-import { ResourceList } from "./components/ResourceList";
+import { ResourceList } from "./features/resources/ResourceList";
 import { ResourceDetailPanel } from "./features/resource-detail/ResourceDetailPanel";
 import { ArgoCDPanel } from "./features/argo/ArgoCDPanel";
 import { ArgoDetailPanel } from "./features/argo/ArgoDetailPanel";

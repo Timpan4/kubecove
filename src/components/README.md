@@ -13,4 +13,4 @@ Does **not** belong here:
 
 See [docs/handbook/code-organization.md](../../docs/handbook/code-organization.md).
 
-Note: at the time this handbook landed, several feature-specific components still live here flat (`ClusterSelector`, `NamespaceList`, `KindList`, `ResourceList`, `SidebarTree`). They're slated to move into feature folders in a follow-up pass — new components should not be added here unless they're truly generic.
+Note: at the time this handbook landed, several feature-specific components still live here flat (`ClusterSelector`, `NamespaceList`, `KindList`, `SidebarTree`). They're slated to move into feature folders in a follow-up pass — new components should not be added here unless they're truly generic.
