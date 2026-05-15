@@ -38,7 +38,10 @@ where
     let api: Api<T> = if let Some(ns) = namespace {
         Api::namespaced(client, ns)
     } else {
-        Api::all(client)
+        return Err(AppError::new(
+            "namespace is required for namespaced resources",
+            "validation",
+        ));
     };
     let resource = api
         .get(name)
