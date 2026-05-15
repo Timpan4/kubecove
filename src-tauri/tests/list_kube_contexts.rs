@@ -24,7 +24,10 @@ fn test_cluster_context_fields() {
     assert!(result.is_ok());
     let contexts = result.unwrap();
     for ctx in &contexts {
-        assert_eq!(std::mem::size_of_val(&ctx.name), std::mem::size_of::<String>());
+        assert_eq!(
+            std::mem::size_of_val(&ctx.name),
+            std::mem::size_of::<String>()
+        );
         let _: bool = ctx.is_current;
     }
 }

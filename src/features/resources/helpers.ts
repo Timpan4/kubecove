@@ -53,7 +53,13 @@ export function sortedRows(
 			if (av == null && bv == null) continue;
 			if (av == null) return desc ? 1 : -1;
 			if (bv == null) return desc ? -1 : 1;
-			const cmp = String(av).localeCompare(String(bv));
+			const cmp =
+				typeof av === "number" && typeof bv === "number"
+					? av - bv
+					: String(av).localeCompare(String(bv), undefined, {
+							numeric: true,
+							sensitivity: "base",
+						});
 			if (cmp !== 0) return desc ? -cmp : cmp;
 		}
 		return 0;

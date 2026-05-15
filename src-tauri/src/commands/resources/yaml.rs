@@ -1,6 +1,4 @@
-use crate::commands::helpers::{
-    fetch_and_serialize, fetch_and_serialize_cluster, redact_secret,
-};
+use crate::commands::helpers::{fetch_and_serialize, fetch_and_serialize_cluster, redact_secret};
 use crate::models::AppError;
 use kube::{config::KubeConfigOptions, Client};
 use std::time::Instant;

@@ -188,12 +188,13 @@ describe("resource browser presentation helpers", () => {
 
   test("sorts rows using table sorting state", () => {
     const resources: ResourceSummary[] = [
-      { ...baseResource, name: "worker" },
-      { ...baseResource, name: "api" },
+      { ...baseResource, name: "worker", restarts: 10 },
+      { ...baseResource, name: "api", restarts: 2 },
     ];
 
     expect(sortedRows(resources, [{ id: "name", desc: false }]).map((r) => r.name)).toEqual(["api", "worker"]);
     expect(sortedRows(resources, [{ id: "name", desc: true }]).map((r) => r.name)).toEqual(["worker", "api"]);
+    expect(sortedRows(resources, [{ id: "restarts", desc: false }]).map((r) => r.restarts)).toEqual([2, 10]);
   });
 
   test("describes namespace-first scope in the table header", () => {

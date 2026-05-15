@@ -7,10 +7,8 @@ use kube::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 
-const RESOURCE_LIST_LIMIT: u32 = 500;
-
 pub(crate) fn list_params() -> ListParams {
-    ListParams::default().limit(RESOURCE_LIST_LIMIT)
+    ListParams::default()
 }
 
 /// ARGO CD ANNOTATIONS AND LABEL KEYS
@@ -206,7 +204,9 @@ pub(crate) fn resource_age(creation_timestamp: Option<DateTime<Utc>>) -> String 
     }
 }
 
-pub(crate) fn k8s_timestamp_to_datetime(timestamp: &k8s_openapi::jiff::Timestamp) -> Option<DateTime<Utc>> {
+pub(crate) fn k8s_timestamp_to_datetime(
+    timestamp: &k8s_openapi::jiff::Timestamp,
+) -> Option<DateTime<Utc>> {
     Utc.timestamp_opt(timestamp.as_second(), 0).single()
 }
 
@@ -246,7 +246,10 @@ mod tests {
     fn extracts_owner_argo_and_helm_metadata() {
         let mut labels = BTreeMap::new();
         labels.insert(LABEL_ARGOCD_APP_NAME.to_string(), "payments".to_string());
-        labels.insert(LABEL_HELM_RELEASE_NAME.to_string(), "payments-api".to_string());
+        labels.insert(
+            LABEL_HELM_RELEASE_NAME.to_string(),
+            "payments-api".to_string(),
+        );
         let metadata = ObjectMeta {
             labels: Some(labels),
             owner_references: Some(vec![OwnerReference {
@@ -261,22 +264,34 @@ mod tests {
 
         assert_eq!(extract_owner_ref(&metadata), Some("api".to_string()));
         assert_eq!(extract_argo_app(&metadata), Some("payments".to_string()));
-        assert_eq!(extract_helm_release(&metadata), Some("payments-api".to_string()));
+        assert_eq!(
+            extract_helm_release(&metadata),
+            Some("payments-api".to_string())
+        );
     }
 
     #[test]
     fn argocd_annotation_precedes_instance_label() {
         let mut annotations = BTreeMap::new();
-        annotations.insert(ANNOTATION_ARGOCD_APP_NAME.to_string(), "annotation-app".to_string());
+        annotations.insert(
+            ANNOTATION_ARGOCD_APP_NAME.to_string(),
+            "annotation-app".to_string(),
+        );
         let mut labels = BTreeMap::new();
-        labels.insert(LABEL_APP_KUBERNETES_IO_INSTANCE.to_string(), "instance-app".to_string());
+        labels.insert(
+            LABEL_APP_KUBERNETES_IO_INSTANCE.to_string(),
+            "instance-app".to_string(),
+        );
         let metadata = ObjectMeta {
             annotations: Some(annotations),
             labels: Some(labels),
             ..Default::default()
         };
 
-        assert_eq!(extract_argo_app(&metadata), Some("annotation-app".to_string()));
+        assert_eq!(
+            extract_argo_app(&metadata),
+            Some("annotation-app".to_string())
+        );
     }
 
     #[test]

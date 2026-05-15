@@ -1,6 +1,4 @@
-use crate::commands::helpers::{
-    base_resource_summary, fmt_ready, list_params, resource_age,
-};
+use crate::commands::helpers::{base_resource_summary, fmt_ready, list_params, resource_age};
 use crate::models::{AppError, ResourceSummary};
 use chrono::{TimeZone, Utc};
 use kube::{api::Api, config::KubeConfigOptions, Client};
@@ -47,7 +45,7 @@ pub async fn resources_summary_from(
                     );
                     // Pod phase and ready containers
                     if let Some(ref status) = pod.status {
-                        summary.status = Some(status.phase.clone().unwrap_or_default());
+                        summary.status = status.phase.clone().filter(|phase| !phase.is_empty());
                         let ready = status
                             .conditions
                             .as_ref()
