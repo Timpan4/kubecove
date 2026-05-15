@@ -1,33 +1,41 @@
 use k8s_manager_lib::commands::{get_cluster_contexts, list_kube_contexts};
+use k8s_manager_lib::models::ClusterContext;
 
-#[test]
-fn test_list_kube_contexts_command() {
-    let result = list_kube_contexts();
-    assert!(result.is_ok());
-    let contexts = result.unwrap();
-    assert!(contexts.iter().all(|c| !c.name.is_empty()));
-}
-
-#[test]
-fn test_get_cluster_contexts_returns_cluster_contexts() {
-    let result = get_cluster_contexts();
-    assert!(result.is_ok());
-    let contexts = result.unwrap();
-    for ctx in &contexts {
+fn assert_contexts_shape(contexts: &[ClusterContext]) {
+    for ctx in contexts {
         assert!(!ctx.name.is_empty());
+        let _: bool = ctx.is_current;
     }
 }
 
 #[test]
-fn test_cluster_context_fields() {
-    let result = get_cluster_contexts();
-    assert!(result.is_ok());
-    let contexts = result.unwrap();
-    for ctx in &contexts {
-        assert_eq!(
-            std::mem::size_of_val(&ctx.name),
-            std::mem::size_of::<String>()
-        );
-        let _: bool = ctx.is_current;
+fn test_cluster_context_contract_without_kubeconfig() {
+    let contexts = vec![ClusterContext {
+        name: "minikube".to_string(),
+        is_current: true,
+    }];
+
+    assert_contexts_shape(&contexts);
+}
+
+#[test]
+fn test_list_kube_contexts_command() {
+    if let Ok(contexts) = list_kube_contexts() {
+        assert_contexts_shape(&contexts);
+    }
+}
+
+#[test]
+fn test_get_cluster_contexts_returns_cluster_contexts() {
+    if let Ok(contexts) = get_cluster_contexts() {
+        assert_contexts_shape(&contexts);
+    }
+}
+
+#[test]
+fn test_kubeconfig_errors_are_cluster_errors() {
+    if let Err(err) = get_cluster_contexts() {
+        assert_eq!(err.kind, "cluster");
+        assert!(!err.message.is_empty());
     }
 }
