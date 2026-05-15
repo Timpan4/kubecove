@@ -21,7 +21,7 @@ pub(crate) fn argo_app_from_tracking_id(tracking_id: &str) -> Option<String> {
     tracking_id
         .split_once(':')
         .map(|(app, _)| app)
-        .filter(|app| !app.is_empty())
+        .filter(|app| !app.trim().is_empty())
         .map(str::to_string)
 }
 
@@ -29,7 +29,10 @@ pub(crate) fn extract_argo_app(
     metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
 ) -> Option<String> {
     if let Some(annotations) = &metadata.annotations {
-        if let Some(name) = annotations.get(ANNOTATION_ARGOCD_APP_NAME) {
+        if let Some(name) = annotations
+            .get(ANNOTATION_ARGOCD_APP_NAME)
+            .filter(|value| !value.trim().is_empty())
+        {
             return Some(name.clone());
         }
         if let Some(id) = annotations.get(ANNOTATION_ARGOCD_TRACKING_ID) {
@@ -39,10 +42,16 @@ pub(crate) fn extract_argo_app(
         }
     }
     if let Some(labels) = &metadata.labels {
-        if let Some(name) = labels.get(LABEL_ARGOCD_APP_NAME) {
+        if let Some(name) = labels
+            .get(LABEL_ARGOCD_APP_NAME)
+            .filter(|value| !value.trim().is_empty())
+        {
             return Some(name.clone());
         }
-        if let Some(instance) = labels.get(LABEL_APP_KUBERNETES_IO_INSTANCE) {
+        if let Some(instance) = labels
+            .get(LABEL_APP_KUBERNETES_IO_INSTANCE)
+            .filter(|value| !value.trim().is_empty())
+        {
             return Some(instance.clone());
         }
     }
@@ -163,6 +172,32 @@ mod tests {
         assert_eq!(
             extract_argo_app(&metadata),
             Some("annotation-app".to_string())
+        );
+    }
+
+    #[test]
+    fn skips_empty_argocd_values_and_uses_fallbacks() {
+        let mut annotations = BTreeMap::new();
+        annotations.insert(ANNOTATION_ARGOCD_APP_NAME.to_string(), String::new());
+        annotations.insert(
+            ANNOTATION_ARGOCD_TRACKING_ID.to_string(),
+            "   :ConfigMap:argocd/argocd-cm".to_string(),
+        );
+        let mut labels = BTreeMap::new();
+        labels.insert(LABEL_ARGOCD_APP_NAME.to_string(), " ".to_string());
+        labels.insert(
+            LABEL_APP_KUBERNETES_IO_INSTANCE.to_string(),
+            "fallback-app".to_string(),
+        );
+        let metadata = ObjectMeta {
+            annotations: Some(annotations),
+            labels: Some(labels),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            extract_argo_app(&metadata),
+            Some("fallback-app".to_string())
         );
     }
 }
