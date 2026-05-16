@@ -1,12 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
+	getDynamicResourceDetails,
 	getResourceDetails,
 	getResourceYaml,
 	listResourceEvents,
 	createTauriClient,
 } from "../../lib/tauri";
-import type { ResourceEventSummary, ResourceSummary } from "../../lib/types";
+import type {
+	DiscoveredResourceKind,
+	ResourceEventSummary,
+	ResourceSummary,
+} from "../../lib/types";
 import { diagnosticLog, diagnosticResultSummary } from "../../lib/diagnostics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,6 +92,30 @@ export function shouldFetchResourceDetails(
 		Boolean(resource.kind) &&
 		Boolean(resource.name)
 	);
+}
+
+function dynamicResourceKindFromSummary(
+	resource: ResourceSummary,
+): DiscoveredResourceKind | null {
+	if (
+		!resource.dynamic ||
+		!resource.apiVersion ||
+		resource.version === undefined ||
+		!resource.kind ||
+		!resource.plural ||
+		resource.namespaced === undefined
+	) {
+		return null;
+	}
+
+	return {
+		group: resource.group ?? "",
+		version: resource.version,
+		apiVersion: resource.apiVersion,
+		kind: resource.kind,
+		plural: resource.plural,
+		namespaced: resource.namespaced,
+	};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -310,7 +339,11 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 }: ResourceDetailPanelProps) {
 	const [activeTab, setActiveTab] = useState<Tab>("details");
 	const client = useMemo(() => createTauriClient(), []);
-	const resourceKey = `${resource.cluster}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
+	const dynamicResourceKind = useMemo(
+		() => dynamicResourceKindFromSummary(resource),
+		[resource],
+	);
+	const resourceKey = `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
 	const renderCountRef = useRef(0);
 	renderCountRef.current += 1;
 
@@ -351,6 +384,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		queryKey: [
 			"resource-details",
 			resource.cluster,
+			resource.apiVersion,
 			resource.kind,
 			resource.name,
 			resource.namespace,
@@ -358,13 +392,21 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		queryFn: async () => {
 			const started = performance.now();
 			diagnosticLog("detail.details.fetch.start", { key: resourceKey });
-			const result = await getResourceDetails(
-				client,
-				resource.cluster,
-				resource.kind,
-				resource.name,
-				resource.namespace ?? undefined,
-			);
+			const result = dynamicResourceKind
+				? await getDynamicResourceDetails(
+						client,
+						resource.cluster,
+						dynamicResourceKind,
+						resource.name,
+						resource.namespace ?? undefined,
+					)
+				: await getResourceDetails(
+						client,
+						resource.cluster,
+						resource.kind,
+						resource.name,
+						resource.namespace ?? undefined,
+					);
 			diagnosticLog("detail.details.fetch.done", {
 				key: resourceKey,
 				ms: Math.round(performance.now() - started),
@@ -385,6 +427,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		queryKey: [
 			"resource-yaml",
 			resource.cluster,
+			resource.apiVersion,
 			resource.kind,
 			resource.name,
 			resource.namespace,
@@ -392,13 +435,23 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		queryFn: async () => {
 			const started = performance.now();
 			diagnosticLog("detail.yaml.fetch.start", { key: resourceKey });
-			const result = await getResourceYaml(
-				client,
-				resource.cluster,
-				resource.kind,
-				resource.name,
-				resource.namespace ?? undefined,
-			);
+			const result = dynamicResourceKind
+				? (
+						await getDynamicResourceDetails(
+							client,
+							resource.cluster,
+							dynamicResourceKind,
+							resource.name,
+							resource.namespace ?? undefined,
+						)
+					).yaml
+				: await getResourceYaml(
+						client,
+						resource.cluster,
+						resource.kind,
+						resource.name,
+						resource.namespace ?? undefined,
+					);
 			diagnosticLog("detail.yaml.fetch.done", {
 				key: resourceKey,
 				ms: Math.round(performance.now() - started),
@@ -419,6 +472,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		queryKey: [
 			"resource-events",
 			resource.cluster,
+			resource.apiVersion,
 			resource.kind,
 			resource.name,
 			resource.namespace,
@@ -547,6 +601,12 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 								<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">Kind</span>
 								<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">{resource.kind}</strong>
 							</div>
+							{resource.apiVersion && (
+								<div className="min-w-0 rounded-md border bg-card p-3">
+									<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">API Version</span>
+									<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">{resource.apiVersion}</strong>
+								</div>
+							)}
 							<div className="min-w-0 rounded-md border bg-card p-3">
 								<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">Namespace</span>
 								<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">{resource.namespace ?? "cluster-scoped"}</strong>

@@ -4,6 +4,7 @@
  */
 
 import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "./types";
+import type { DiscoveredResourceKind, ResourceKindSelection } from "./types";
 
 // ─── Tree Node Types ───────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ export interface TreeNodeId {
   namespace?: string;        // namespace name (for namespace/group/kind nodes)
   group?: string;            // group name (for kind nodes)
   kind?: string;             // kind name (for kind nodes)
+  resourceKind?: DiscoveredResourceKind;
 }
 
 /** A node in the sidebar tree. */
@@ -130,6 +132,10 @@ export function nodeIdToString(id: TreeNodeId): string {
   return parts.join("::");
 }
 
+export function discoveredResourceKindKey(resourceKind: DiscoveredResourceKind): string {
+  return `${resourceKind.group}/${resourceKind.version}/${resourceKind.plural}/${resourceKind.kind}`;
+}
+
 export function stringToNodeId(s: string): TreeNodeId {
   const parts = s.split("::");
   return {
@@ -177,9 +183,9 @@ export interface TreeScope {
   /** The selected namespace (null = cluster overview / no namespace selected) */
   namespace: string | null;
   /** The selected kind group (null if not in a group) */
-  group: KindGroupName | null;
+  group: string | null;
   /** The selected resource kind(s) */
-  kinds: string[];
+  kinds: ResourceKindSelection[];
   /** Whether the scope is for cluster-scoped resources */
   clusterScoped: boolean;
   /** Whether the scope is for Argo CD */
@@ -201,7 +207,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
         section: "clusterOverview",
         namespace: null,
         group: null,
-        kinds: [...CLUSTER_SCOPED_KINDS] as string[],
+        kinds: [...CLUSTER_SCOPED_KINDS] as ResourceKindSelection[],
         clusterScoped: true,
         argoMode: false,
       };
@@ -214,7 +220,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
     // Namespace selected — return all namespaced kinds for that namespace
     const namespacedKinds = (SUPPORTED_KINDS as readonly string[]).filter(
       (k) => !(CLUSTER_SCOPED_KINDS as readonly string[]).includes(k)
-    );
+    ) as ResourceKindSelection[];
     return {
       section: "namespaces",
       namespace: nodeId.namespace ?? null,
@@ -229,7 +235,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
     const groupName = nodeId.group as KindGroupName;
     const groupKinds = KIND_GROUPS[groupName];
     if (!groupKinds) return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false };
-    const kinds = [...groupKinds];
+    const kinds = [...groupKinds] as ResourceKindSelection[];
     return {
       section: nodeId.section as SectionName,
       namespace: nodeId.namespace ?? null,
@@ -244,9 +250,17 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
     return {
       section: nodeId.section as SectionName,
       namespace: nodeId.namespace ?? null,
-      group: nodeId.group as KindGroupName | null,
-      kinds: nodeId.kind ? [nodeId.kind] : [],
-      clusterScoped: nodeId.kind ? (CLUSTER_SCOPED_KINDS as readonly string[]).includes(nodeId.kind) : false,
+      group: nodeId.group ?? null,
+      kinds: nodeId.resourceKind
+        ? [nodeId.resourceKind]
+        : nodeId.kind
+          ? ([nodeId.kind] as ResourceKindSelection[])
+          : [],
+      clusterScoped: nodeId.resourceKind
+        ? !nodeId.resourceKind.namespaced
+        : nodeId.kind
+          ? (CLUSTER_SCOPED_KINDS as readonly string[]).includes(nodeId.kind)
+          : false,
       argoMode: nodeId.section === "argo",
     };
   }
@@ -259,7 +273,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
 export function emptyStateMessage(scope: TreeScope, hasClusterContext: boolean): string {
   if (!hasClusterContext) return "Select a cluster context first";
   if (scope.argoMode) return "Select an Argo CD resource type";
-  if (scope.section === "discovered") return "Discovered resources are shown as read-only inventory";
+  if (scope.section === "discovered") return "Select a discovered resource kind";
   if (!scope.section) return "Select a section from the sidebar";
   if (scope.section === "clusterOverview" && scope.kinds.length > 0) return "Select a cluster context to view cluster-scoped resources";
   if (scope.section === "namespaces" && !scope.namespace) return "Select a namespace";

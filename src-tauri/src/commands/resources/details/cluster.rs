@@ -29,6 +29,12 @@ pub(super) async fn node_details(
                 .single()
                 .unwrap_or_else(Utc::now)
         })),
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: k8s_creation_timestamp_to_rfc3339(&node.metadata.creation_timestamp),
         status: node.status.as_ref().and_then(|s| {
             s.conditions
@@ -83,6 +89,12 @@ pub(super) async fn storageclass_details(
                 .single()
                 .unwrap_or_else(Utc::now)
         })),
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: k8s_creation_timestamp_to_rfc3339(&sc.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -124,6 +136,12 @@ pub(super) async fn pv_details(
                 .single()
                 .unwrap_or_else(Utc::now)
         })),
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: k8s_creation_timestamp_to_rfc3339(&pv.metadata.creation_timestamp),
         status: pv.status.as_ref().and_then(|s| s.phase.as_ref()).cloned(),
         ready: None,

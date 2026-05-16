@@ -6,7 +6,7 @@ import {
 	type SortingState,
 } from "@tanstack/react-table";
 import { diagnosticLog } from "@/lib/diagnostics";
-import type { ResourceSummary } from "@/lib/types";
+import type { ResourceKindSelection, ResourceSummary } from "@/lib/types";
 import { columns } from "./columns";
 import { ERROR_STATE_CLASS, PAGE_SIZE, STATE_CLASS } from "./constants";
 import { pageAppGroupCounts, pageTypeGroupCounts } from "./grouping";
@@ -16,6 +16,7 @@ import {
 	describeResourceScope,
 	filterResources,
 	formatResourceGroupLabel,
+	resourceKindFetchKey,
 	sortedRows,
 	uniqueArgoApps,
 } from "./helpers";
@@ -28,7 +29,7 @@ import { ResourceToolbar } from "./toolbar";
 interface ResourceListProps {
 	clusterContext: string;
 	selectedNamespaces: string[];
-	selectedKinds: string[];
+	selectedKinds: ResourceKindSelection[];
 	selectedArgoAppFilter: string;
 	onArgoAppFilterChange: (app: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
@@ -55,7 +56,7 @@ function ResourceListComponent({
 	renderCountRef.current += 1;
 
 	const namespaceKey = selectedNamespaces.join(",");
-	const kindKey = selectedKinds.join(",");
+	const kindKey = selectedKinds.map(resourceKindFetchKey).join(",");
 	const fetchKeys = useMemo(
 		() => buildFetchKeys(selectedNamespaces, selectedKinds),
 		[namespaceKey, kindKey],
@@ -65,7 +66,7 @@ function ResourceListComponent({
 			[
 				"resources",
 				clusterContext,
-				...fetchKeys.map((key) => `${key.kind}:${key.namespace}`),
+				...fetchKeys.map((key) => `${resourceKindFetchKey(key.kind)}:${key.namespace ?? ""}`),
 			] as const,
 		[clusterContext, fetchKeys],
 	);
@@ -95,7 +96,7 @@ function ResourceListComponent({
 		[filteredData, sorting],
 	);
 	const groupedByArgo = useMemo(
-		() => filteredData.some((resource) => resource.argoApp),
+		() => filteredData.some((resource) => resource.argoApp || resource.ownerRef),
 		[filteredData],
 	);
 	const displayData = useMemo(() => {

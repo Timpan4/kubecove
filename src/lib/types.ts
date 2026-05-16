@@ -15,6 +15,12 @@ export interface ResourceSummary {
 	name: string;
 	namespace: string | null;
 	age: string;
+	apiVersion?: string;
+	group?: string;
+	version?: string;
+	plural?: string;
+	namespaced?: boolean;
+	dynamic?: boolean;
 	createdAt?: string;
 	status?: string;
 	ready?: string;
@@ -88,6 +94,7 @@ export const CLUSTER_SCOPED_KINDS = [
 export type SupportedKind = (typeof SUPPORTED_KINDS)[number];
 export type ClusterScopedKind = (typeof CLUSTER_SCOPED_KINDS)[number];
 export type AnyKind = SupportedKind | ClusterScopedKind;
+export type ResourceKindSelection = AnyKind | DiscoveredResourceKind;
 
 // Argo CD types - fields match Rust camelCase models exactly
 // Optional fields are string | null per Rust Option<String> serialization

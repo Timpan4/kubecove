@@ -30,6 +30,7 @@ import {
   SECTIONS,
   KIND_GROUPS,
   type KindGroupName,
+  discoveredResourceKindKey,
   nodeIdToString,
 } from "../lib/tree-nav";
 import { cn } from "@/lib/utils";
@@ -309,7 +310,7 @@ export function SidebarTree({
     return { clusterOverviewNode, curatedSectionNodes, argoNode };
   }, []);
 
-  const discoveredTree = useMemo<TreeNode>(() => {
+  const extraKinds = useMemo(() => {
     const curatedKindKeys = new Set<string>([
       "/Pod",
       "/Service",
@@ -329,7 +330,16 @@ export function SidebarTree({
       "argoproj.io/ApplicationSet",
       "argoproj.io/AppProject",
     ]);
+    return resourceKinds
+      .filter((resourceKind) => !curatedKindKeys.has(`${resourceKind.group}/${resourceKind.kind}`))
+      .sort((a, b) =>
+        a.kind.localeCompare(b.kind) ||
+        a.apiVersion.localeCompare(b.apiVersion) ||
+        a.plural.localeCompare(b.plural),
+      );
+  }, [resourceKinds]);
 
+  const discoveredTree = useMemo<TreeNode>(() => {
     let children: TreeNode[];
 
     if (resourceKindsLoading) {
@@ -350,25 +360,17 @@ export function SidebarTree({
         },
       ];
     } else {
-      const extraKinds = resourceKinds
-        .filter((resourceKind) => !curatedKindKeys.has(`${resourceKind.group}/${resourceKind.kind}`))
-        .sort((a, b) =>
-          a.kind.localeCompare(b.kind) ||
-          a.apiVersion.localeCompare(b.apiVersion) ||
-          a.plural.localeCompare(b.plural),
-        );
-
       children =
         extraKinds.length > 0
           ? extraKinds.map((resourceKind) => ({
               id: {
                 type: "kind",
                 section: "discovered",
-                kind: `${resourceKind.apiVersion}/${resourceKind.kind}`,
+                kind: discoveredResourceKindKey(resourceKind),
+                resourceKind,
               } as TreeNodeId,
               label: resourceKind.kind,
               description: `${resourceKind.apiVersion} / ${resourceKind.plural} / ${resourceKind.namespaced ? "namespaced" : "cluster-scoped"}`,
-              disabled: true,
             }))
           : [
               {
@@ -384,7 +386,7 @@ export function SidebarTree({
       label: SECTIONS.discovered.label,
       children,
     };
-  }, [resourceKinds, resourceKindsError, resourceKindsLoading]);
+  }, [extraKinds, resourceKindsError, resourceKindsLoading]);
 
   // Build namespace subtree for a given namespace name
   const buildNamespaceSubtree = useCallback(
@@ -400,6 +402,25 @@ export function SidebarTree({
           })),
         };
       });
+      const namespaceDiscoveredKinds = extraKinds.filter((resourceKind) => resourceKind.namespaced);
+      if (namespaceDiscoveredKinds.length > 0) {
+        groups.push({
+          id: { type: "group", section: "namespaces", namespace, group: "Discovered" } as TreeNodeId,
+          label: "Discovered",
+          children: namespaceDiscoveredKinds.map((resourceKind) => ({
+            id: {
+              type: "kind",
+              section: "namespaces",
+              namespace,
+              group: "Discovered",
+              kind: discoveredResourceKindKey(resourceKind),
+              resourceKind,
+            } as TreeNodeId,
+            label: resourceKind.kind,
+            description: `${resourceKind.apiVersion} / ${resourceKind.plural}`,
+          })),
+        });
+      }
 
       return {
         id: { type: "namespace", section: "namespaces", namespace },
@@ -407,7 +428,7 @@ export function SidebarTree({
         children: groups,
       };
     },
-    []
+    [extraKinds]
   );
 
   // Full tree with namespace children
