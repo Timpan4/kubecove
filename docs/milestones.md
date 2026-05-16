@@ -58,10 +58,10 @@ Goal: make Argo CD a first-class read-only navigation and grouping layer through
 Goal: broaden Kubernetes coverage without hard-coding every resource.
 
 - [x] Add Kubernetes API discovery module.
-- [ ] Add CRD listing if practical.
-- [ ] Add dynamic-object listing for discovered resources.
-- [ ] Add resource kind filter backed by discovery.
-- [ ] Add app/owner grouping views.
+- [x] Add CRD listing if practical.
+- [x] Add dynamic-object listing for discovered resources.
+- [x] Add resource kind filter backed by discovery.
+- [x] Add app/owner grouping views.
 
 ## Cross-Cutting Tracks
 
