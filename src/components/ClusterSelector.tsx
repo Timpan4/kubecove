@@ -12,12 +12,13 @@ import {
 } from "@/components/ui/select";
 
 interface ClusterSelectorProps {
+  value?: string;
   onClusterChange: (cluster: string) => void;
 }
 
-export function ClusterSelector({ onClusterChange }: ClusterSelectorProps) {
+export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps) {
   const [clusters, setClusters] = useState<ClusterContext[]>([]);
-  const [selected, setSelected] = useState<string>("");
+  const [selected, setSelected] = useState<string>(value ?? "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const selectedRef = useRef(selected);
@@ -26,6 +27,13 @@ export function ClusterSelector({ onClusterChange }: ClusterSelectorProps) {
   useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
+
+  useEffect(() => {
+    if (value !== undefined && value !== selectedRef.current) {
+      selectedRef.current = value;
+      setSelected(value);
+    }
+  }, [value]);
 
   useEffect(() => {
     onClusterChangeRef.current = onClusterChange;
@@ -40,7 +48,7 @@ export function ClusterSelector({ onClusterChange }: ClusterSelectorProps) {
       setClusters(contexts);
       const currentContext = contexts.find((ctx) => ctx.isCurrent);
       const preferredContext = currentContext ?? contexts[0];
-      const selectedContext = selectedRef.current;
+      const selectedContext = value ?? selectedRef.current;
       const selectedStillExists = contexts.some((ctx) => ctx.name === selectedContext);
       if ((!selectedContext || !selectedStillExists) && preferredContext) {
         selectedRef.current = preferredContext.name;
@@ -52,7 +60,7 @@ export function ClusterSelector({ onClusterChange }: ClusterSelectorProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [value]);
 
   useEffect(() => {
     loadClusters();

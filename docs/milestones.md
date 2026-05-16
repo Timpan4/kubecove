@@ -63,13 +63,24 @@ Goal: broaden Kubernetes coverage without hard-coding every resource.
 - [x] Add resource kind filter backed by discovery.
 - [x] Add app/owner grouping views.
 
+## Milestone 5: Saved Workspace Launcher
+
+Goal: make app launch restore operator intent through live workspace scopes instead of stale object state.
+
+- [x] Add saved workspace launcher.
+- [x] Add create, edit, open, and delete flows for local workspaces.
+- [x] Persist workspace scope locally without kubeconfig or credential material.
+- [x] Restore workspace scopes into a live curated overview.
+- [x] Show unavailable saved context, namespace, and kind state during restore.
+- [x] Keep resource browser and Argo views reachable from workspace shortcuts.
+
 ## Cross-Cutting Tracks
 
 Items that don't belong to a single milestone but need to stay visible.
 
 ### Security and Safety
 
-- [ ] Verify frontend cannot invoke arbitrary shell commands.
+- [x] Verify frontend cannot invoke arbitrary shell commands.
 - [x] Keep kubeconfig secrets Rust-side.
 - [x] Keep first milestone read-only.
 - [ ] Make future mutation commands explicit and permission-gated.
