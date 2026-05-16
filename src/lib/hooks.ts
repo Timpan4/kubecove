@@ -1,11 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
-	AnyKind,
 	ResourceSummary,
 	ArgoApplicationSummary,
 	ArgoApplicationSetSummary,
 	ArgoAppProjectSummary,
+	ResourceKindSelection,
 } from "./types";
 import type { TreeNodeId } from "./tree-nav";
 
@@ -18,7 +18,7 @@ export type ArgoSelectedItem =
 export interface DashboardState {
 	clusterContext: string;
 	selectedNamespaces: string[];
-	selectedKinds: AnyKind[];
+	selectedKinds: ResourceKindSelection[];
 	selectedResource: ResourceSummary | null;
 	argoDetected: boolean;
 	selectedArgoApp: ArgoSelectedItem;
@@ -33,8 +33,8 @@ export interface DashboardSetters {
 	setClusterContext: (ctx: string) => void;
 	setSelectedNamespaces: (ns: string[]) => void;
 	toggleNamespace: (ns: string) => void;
-	setSelectedKinds: (kinds: AnyKind[]) => void;
-	toggleKind: (kind: AnyKind) => void;
+	setSelectedKinds: (kinds: ResourceKindSelection[]) => void;
+	toggleKind: (kind: ResourceKindSelection) => void;
 	setSelectedResource: (resource: ResourceSummary | null) => void;
 	resetResource: () => void;
 	setArgoDetected: (detected: boolean) => void;
@@ -80,10 +80,10 @@ const usePersistedStore = create<PersistedSlice>()(
 
 // Non-persisted slice: kinds + resource selection + Argo CD + tree navigation
 interface NonPersistedSlice {
-	selectedKinds: AnyKind[];
+	selectedKinds: ResourceKindSelection[];
 	selectedResource: ResourceSummary | null;
-	setSelectedKinds: (kinds: AnyKind[]) => void;
-	toggleKind: (kind: AnyKind) => void;
+	setSelectedKinds: (kinds: ResourceKindSelection[]) => void;
+	toggleKind: (kind: ResourceKindSelection) => void;
 	setSelectedResource: (resource: ResourceSummary | null) => void;
 	resetResource: () => void;
 	// Argo CD state
@@ -104,16 +104,29 @@ interface NonPersistedSlice {
 	toggleExpandedSection: (nodeIdStr: string) => void;
 }
 
+function resourceKindKey(kind: ResourceKindSelection): string {
+	if (typeof kind === "string") return kind;
+	return `${kind.group}/${kind.version}/${kind.kind}/${kind.plural}`;
+}
+
 const useNonPersistedStore = create<NonPersistedSlice>()((set) => ({
 	selectedKinds: [],
 	selectedResource: null,
-	setSelectedKinds: (kinds: AnyKind[]) => set({ selectedKinds: kinds }),
-	toggleKind: (kind: AnyKind) =>
-		set((state) =>
-			state.selectedKinds.includes(kind)
-				? { selectedKinds: state.selectedKinds.filter((k) => k !== kind) }
-				: { selectedKinds: [...state.selectedKinds, kind] },
-		),
+	setSelectedKinds: (kinds: ResourceKindSelection[]) => set({ selectedKinds: kinds }),
+	toggleKind: (kind: ResourceKindSelection) =>
+		set((state) => {
+			const key = resourceKindKey(kind);
+			const selected = state.selectedKinds.some(
+				(selectedKind) => resourceKindKey(selectedKind) === key,
+			);
+			return selected
+				? {
+						selectedKinds: state.selectedKinds.filter(
+							(selectedKind) => resourceKindKey(selectedKind) !== key,
+						),
+					}
+				: { selectedKinds: [...state.selectedKinds, kind] };
+		}),
 	setSelectedResource: (resource: ResourceSummary | null) =>
 		set({ selectedResource: resource }),
 	resetResource: () => set({ selectedResource: null }),

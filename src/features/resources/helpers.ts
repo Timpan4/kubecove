@@ -1,9 +1,14 @@
 import type { SortingState } from "@tanstack/react-table";
-import type { ClusterScopedKind, ResourceSummary } from "@/lib/types";
+import type {
+	ClusterScopedKind,
+	DiscoveredResourceKind,
+	ResourceKindSelection,
+	ResourceSummary,
+} from "@/lib/types";
 import { CLUSTER_SCOPED_KINDS } from "@/lib/types";
 
 export interface FetchKey {
-	kind: string;
+	kind: ResourceKindSelection;
 	namespace: string | undefined;
 }
 
@@ -24,13 +29,39 @@ export function isClusterScopedKind(kind: string): kind is ClusterScopedKind {
 	return (CLUSTER_SCOPED_KINDS as readonly string[]).includes(kind);
 }
 
+export function isDiscoveredResourceKind(
+	kind: ResourceKindSelection,
+): kind is DiscoveredResourceKind {
+	return typeof kind !== "string";
+}
+
+export function resourceKindLabel(kind: ResourceKindSelection): string {
+	return isDiscoveredResourceKind(kind) ? kind.kind : kind;
+}
+
+export function resourceKindFetchKey(kind: ResourceKindSelection): string {
+	return isDiscoveredResourceKind(kind)
+		? `dynamic:${kind.apiVersion}:${kind.plural}:${kind.kind}`
+		: `typed:${kind}`;
+}
+
+function isClusterScopedSelection(kind: ResourceKindSelection): boolean {
+	return isDiscoveredResourceKind(kind)
+		? !kind.namespaced
+		: isClusterScopedKind(kind);
+}
+
 export function buildFetchKeys(
 	namespaces: string[],
-	kinds: string[],
+	kinds: ResourceKindSelection[],
 ): FetchKey[] {
 	const keys: FetchKey[] = [];
 	for (const kind of kinds) {
-		if (isClusterScopedKind(kind)) {
+		if (isClusterScopedSelection(kind)) {
+			keys.push({ kind, namespace: undefined });
+			continue;
+		}
+		if (isDiscoveredResourceKind(kind) && namespaces.length === 0) {
 			keys.push({ kind, namespace: undefined });
 			continue;
 		}
@@ -79,6 +110,9 @@ export function filterResources(
 			resource.name.toLowerCase().includes(term) ||
 			resource.namespace?.toLowerCase().includes(term) === true ||
 			resource.kind.toLowerCase().includes(term) ||
+			resource.apiVersion?.toLowerCase().includes(term) === true ||
+			resource.group?.toLowerCase().includes(term) === true ||
+			resource.plural?.toLowerCase().includes(term) === true ||
 			resource.ownerRef?.toLowerCase().includes(term) === true ||
 			resource.argoApp?.toLowerCase().includes(term) === true ||
 			resource.helmRelease?.toLowerCase().includes(term) === true
@@ -97,9 +131,9 @@ export function uniqueArgoApps(data: ResourceSummary[]): string[] {
 }
 
 export function formatResourceGroupLabel(resource: ResourceSummary): string {
-	return resource.argoApp
-		? `Managed by Argo app: ${resource.argoApp}`
-		: "Unmanaged resources";
+	if (resource.argoApp) return `Managed by Argo app: ${resource.argoApp}`;
+	if (resource.ownerRef) return `Owned by: ${resource.ownerRef}`;
+	return "Unmanaged resources";
 }
 
 export function formatResourceTypeGroupLabel(resource: ResourceSummary): string {
@@ -109,7 +143,7 @@ export function formatResourceTypeGroupLabel(resource: ResourceSummary): string 
 }
 
 export function resourceGroupCollapseKey(resource: ResourceSummary): string {
-	return `app:${formatResourceGroupLabel(resource)}`;
+	return `group:${formatResourceGroupLabel(resource)}`;
 }
 
 export function resourceTypeGroupCollapseKey(
@@ -121,7 +155,7 @@ export function resourceTypeGroupCollapseKey(
 export function describeResourceScope(
 	clusterContext: string,
 	namespaces: string[],
-	kinds: string[],
+	kinds: ResourceKindSelection[],
 	argoAppFilter: string,
 ): ScopePill[] {
 	const pills: ScopePill[] = [{ label: "Context", value: clusterContext }];
@@ -139,8 +173,10 @@ export function describeResourceScope(
 			label: kinds.length === 1 ? "Kind" : "Kinds",
 			value:
 				kinds.length <= 3
-					? kinds.join(", ")
-					: `${kinds.slice(0, 3).join(", ")} +${kinds.length - 3}`,
+					? kinds.map(resourceKindLabel).join(", ")
+					: `${kinds.slice(0, 3).map(resourceKindLabel).join(", ")} +${
+							kinds.length - 3
+						}`,
 		});
 	}
 	if (argoAppFilter) {

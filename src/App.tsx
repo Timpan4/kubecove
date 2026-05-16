@@ -15,14 +15,28 @@ import { createTauriClient, detectArgoCD } from "./lib/tauri";
 import {
 	resolveTreeScope,
 	emptyStateMessage,
+	discoveredResourceKindKey,
 	type TreeNodeId,
 } from "./lib/tree-nav";
 import { diagnosticLog } from "./lib/diagnostics";
+import type { ResourceKindSelection } from "./lib/types";
 
 const DETAIL_PANEL_DEFAULT_WIDTH = 480;
 const DETAIL_PANEL_MIN_WIDTH = 390;
 const MAIN_PANEL_MIN_WIDTH = 360;
 const SIDEBAR_WIDTH = 260;
+
+function resourceKindLabel(kind: ResourceKindSelection): string {
+	return typeof kind === "string" ? kind : kind.kind;
+}
+
+function resourceKindLogKey(kind: ResourceKindSelection): string {
+	return typeof kind === "string" ? kind : discoveredResourceKindKey(kind);
+}
+
+function hasDiscoveredKind(kinds: ResourceKindSelection[]): boolean {
+	return kinds.some((kind) => typeof kind !== "string");
+}
 
 function clampDetailPanelWidth(width: number): number {
 	const viewportWidth =
@@ -104,10 +118,11 @@ function App() {
 	const selectedResourceKey = useMemo(
 		() =>
 			selectedResource
-				? `${selectedResource.cluster}::${selectedResource.kind}::${selectedResource.namespace ?? ""}::${selectedResource.name}`
+				? `${selectedResource.cluster}::${selectedResource.apiVersion ?? ""}::${selectedResource.kind}::${selectedResource.namespace ?? ""}::${selectedResource.name}`
 				: null,
 		[
 			selectedResource?.cluster,
+			selectedResource?.apiVersion,
 			selectedResource?.kind,
 			selectedResource?.namespace,
 			selectedResource?.name,
@@ -191,10 +206,10 @@ function App() {
 	);
 
 	// Derive selectedKinds and selectedNamespaces from tree selection
-	const computedKinds = useMemo<string[]>(() => {
+	const computedKinds = useMemo<ResourceKindSelection[]>(() => {
 		if (scope.kinds.length > 0) return scope.kinds;
 		// Fall back to hook state for kind toggles (backwards compat)
-		return selectedKinds as string[];
+		return selectedKinds as ResourceKindSelection[];
 	}, [scope.kinds, selectedKinds]);
 
 	const computedNamespaces = useMemo<string[]>(() => {
@@ -228,7 +243,7 @@ function App() {
 		}
 		if (!scope.section) return "Kubernetes Resources";
 		if (scope.section === "clusterOverview") {
-			if (scope.kinds.length === 1) return `${scope.kinds[0]} Resources`;
+			if (scope.kinds.length === 1) return `${resourceKindLabel(scope.kinds[0])} Resources`;
 			if (scope.kinds.length > 1) return "Cluster Overview";
 			return "Cluster Overview";
 		}
@@ -239,7 +254,7 @@ function App() {
 			return scope.namespace;
 		}
 		if (scope.group) return scope.group;
-		if (scope.kinds.length === 1) return `${scope.kinds[0]} Resources`;
+		if (scope.kinds.length === 1) return `${resourceKindLabel(scope.kinds[0])} Resources`;
 		if (scope.kinds.length > 1)
 			return SECTIONS[scope.section]?.label ?? scope.section;
 		return (
@@ -250,7 +265,9 @@ function App() {
 	const canQueryResources =
 		computedKinds.length > 0 &&
 		!!clusterContext &&
-		(scope.clusterScoped || computedNamespaces.length > 0);
+		(scope.clusterScoped ||
+			computedNamespaces.length > 0 ||
+			hasDiscoveredKind(computedKinds));
 
 	const emptyMsg = useMemo(
 		() => emptyStateMessage(scope, !!clusterContext),
@@ -263,7 +280,7 @@ function App() {
 			cluster: clusterContext,
 			view: viewMode,
 			canQuery: canQueryResources,
-			kinds: computedKinds.join("|"),
+			kinds: computedKinds.map(resourceKindLogKey).join("|"),
 			namespaces: computedNamespaces.join("|"),
 			selectedResource: selectedResourceKey ?? "",
 			argoFilter: selectedArgoAppFilter,
