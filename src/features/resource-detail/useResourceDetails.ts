@@ -26,6 +26,9 @@ export function useResourceDetails({
 	client,
 	dynamicResourceKind,
 }: UseResourceDetailsArgs) {
+	const dynamicResourceKindKey = dynamicResourceKind
+		? `${dynamicResourceKind.group}/${dynamicResourceKind.version}/${dynamicResourceKind.kind}/${dynamicResourceKind.plural}/${dynamicResourceKind.namespaced}`
+		: null;
 	const detailsEnabled = shouldFetchResourceDetails(resource);
 	const yamlEnabled =
 		activeTab === "yaml" &&
@@ -41,6 +44,7 @@ export function useResourceDetails({
 	const detailsQuery = useQuery({
 		queryKey: [
 			"resource-details",
+			dynamicResourceKindKey,
 			resource.cluster,
 			resource.apiVersion,
 			resource.kind,
@@ -79,6 +83,7 @@ export function useResourceDetails({
 	const yamlQuery = useQuery({
 		queryKey: [
 			"resource-yaml",
+			dynamicResourceKindKey,
 			resource.cluster,
 			resource.apiVersion,
 			resource.kind,
