@@ -31,7 +31,7 @@ export function buildWorkspaceFetchKeys(
 
 	return scope.kinds.flatMap((kind) => {
 		if (isClusterScopedKind(kind)) return [{ kind }];
-		if (namespaces.length === 0) return [{ kind }];
+		if (namespaces.length === 0) return [];
 		return namespaces.map((namespace) => ({ kind, namespace }));
 	});
 }

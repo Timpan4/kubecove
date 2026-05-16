@@ -111,7 +111,6 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 - permissions and security inspection
 - metrics
 - customizable workspace layout
-- saved workspace launcher and curated restore
 - custom density modes
 - adaptive defaults for explicit workspace types
 - context-aware AI assistance

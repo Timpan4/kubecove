@@ -5,6 +5,7 @@ import {
 	createWorkspaceRecord,
 	summarizeWorkspaceScope,
 } from "../src/lib/workspaces";
+import { buildWorkspaceFetchKeys } from "../src/features/workspaces/query";
 import type {
 	ClusterContext,
 	ResourceKindSelection,
@@ -83,6 +84,22 @@ describe("workspace helpers", () => {
 			degraded: 1,
 			restarted: 1,
 		});
+	});
+
+	test("does not widen namespace-scoped workspace resources to cluster scope", () => {
+		const workspace = createWorkspaceRecord(
+			{
+				name: "Ops",
+				clusterContext: "kind-dev",
+				namespaces: ["missing"],
+				kinds: ["Pod", "Node"],
+			},
+			"2026-05-16T12:00:00.000Z",
+		);
+
+		expect(buildWorkspaceFetchKeys(workspace.scope, [])).toEqual([
+			{ kind: "Node" },
+		]);
 	});
 });
 

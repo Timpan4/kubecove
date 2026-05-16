@@ -88,9 +88,10 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 
 	const handleSubmit = () => {
 		if (!canCreate) return;
+		const trimmedName = name.trim();
 		if (editingWorkspace) {
 			updateWorkspace(editingWorkspace.id, {
-				name: name || effectiveContext,
+				name: trimmedName || effectiveContext,
 				scope: {
 					...editingWorkspace.scope,
 					clusterContext: effectiveContext,
@@ -102,7 +103,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 			return;
 		}
 		const workspace = createWorkspace({
-			name: name || effectiveContext,
+			name: trimmedName || effectiveContext,
 			clusterContext: effectiveContext,
 			namespaces: selectedNamespaces,
 			kinds: DEFAULT_WORKSPACE_KINDS,

@@ -1,18 +1,16 @@
 import "./App.css";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useDashboardState } from "./lib/hooks";
-import { ClusterSelector } from "./components/ClusterSelector";
 import { SidebarTree } from "./components/SidebarTree";
 import { ResourceList } from "./features/resources/ResourceList";
 import { ResourceDetailPanel } from "./features/resource-detail/ResourceDetailPanel";
 import { ArgoCDPanel } from "./features/argo/ArgoCDPanel";
 import { ArgoDetailPanel } from "./features/argo/ArgoDetailPanel";
-import { FolderOpen, Search, Settings } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { WorkspaceLauncher, WorkspaceOverview } from "./features/workspaces";
-
-import { createTauriClient, detectArgoCD } from "./lib/tauri";
+import { AppTopBar } from "./app/AppTopBar";
+import { DetailPanelFrame } from "./app/DetailPanelFrame";
+import { useArgoDetection } from "./app/useArgoDetection";
 import {
 	resolveTreeScope,
 	emptyStateMessage,
@@ -27,11 +25,6 @@ import {
 	type SavedWorkspace,
 } from "./lib/workspaces";
 
-const DETAIL_PANEL_DEFAULT_WIDTH = 480;
-const DETAIL_PANEL_MIN_WIDTH = 390;
-const MAIN_PANEL_MIN_WIDTH = 360;
-const SIDEBAR_WIDTH = 260;
-
 function resourceKindLabel(kind: ResourceKindSelection): string {
 	return typeof kind === "string" ? kind : kind.kind;
 }
@@ -44,15 +37,16 @@ function hasDiscoveredKind(kinds: ResourceKindSelection[]): boolean {
 	return kinds.some((kind) => typeof kind !== "string");
 }
 
-function clampDetailPanelWidth(width: number): number {
-	const viewportWidth =
-		typeof window === "undefined" ? 1440 : window.innerWidth;
-	const maxWidth = Math.max(
-		DETAIL_PANEL_MIN_WIDTH,
-		viewportWidth - SIDEBAR_WIDTH - MAIN_PANEL_MIN_WIDTH,
-	);
-	return Math.min(Math.max(width, DETAIL_PANEL_MIN_WIDTH), maxWidth);
-}
+const SECTION_LABELS: Record<string, string> = {
+	clusterOverview: "Cluster Overview",
+	namespaces: "Namespaces",
+	workloads: "Workloads",
+	network: "Network",
+	config: "Config",
+	storage: "Storage",
+	discovered: "Discovered",
+	argo: "Argo CD",
+};
 
 function App() {
 	const {
@@ -85,9 +79,6 @@ function App() {
 	} = useDashboardState();
 	const activeWorkspace =
 		workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
-	const [detailPanelWidth, setDetailPanelWidth] = useState(
-		DETAIL_PANEL_DEFAULT_WIDTH,
-	);
 	const appRenderCountRef = useRef(0);
 	appRenderCountRef.current += 1;
 
@@ -230,60 +221,7 @@ function App() {
 		setSelectedArgoApp(null);
 	};
 
-	const handleDetailResizeStart = useCallback(
-		(event: React.PointerEvent<HTMLDivElement>) => {
-			event.preventDefault();
-			const startX = event.clientX;
-			const startWidth = detailPanelWidth;
-
-			const handlePointerMove = (moveEvent: PointerEvent) => {
-				const nextWidth = startWidth + startX - moveEvent.clientX;
-				setDetailPanelWidth(clampDetailPanelWidth(nextWidth));
-			};
-
-			const handlePointerUp = () => {
-				document.body.style.cursor = "";
-				document.body.style.userSelect = "";
-				window.removeEventListener("pointermove", handlePointerMove);
-				window.removeEventListener("pointerup", handlePointerUp);
-			};
-
-			document.body.style.cursor = "col-resize";
-			document.body.style.userSelect = "none";
-			window.addEventListener("pointermove", handlePointerMove);
-			window.addEventListener("pointerup", handlePointerUp, { once: true });
-		},
-		[detailPanelWidth],
-	);
-
-	// Detect Argo CD when cluster context changes
-	useEffect(() => {
-		if (!clusterContext) {
-			setArgoDetected(false);
-			return;
-		}
-		let cancelled = false;
-		const client = createTauriClient();
-		detectArgoCD(client, clusterContext)
-			.then((detected) => {
-				if (!cancelled) {
-					diagnosticLog("app.argo.detect.done", {
-						cluster: clusterContext,
-						detected,
-					});
-					setArgoDetected(detected);
-				}
-			})
-			.catch(() => {
-				if (!cancelled) {
-					diagnosticLog("app.argo.detect.error", { cluster: clusterContext });
-					setArgoDetected(false);
-				}
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [clusterContext, setArgoDetected]);
+	useArgoDetection(clusterContext, setArgoDetected);
 
 	// Compute scope from selected tree node
 	const scope = useMemo(
@@ -291,10 +229,8 @@ function App() {
 		[selectedTreeNode],
 	);
 
-	// Derive selectedKinds and selectedNamespaces from tree selection
 	const computedKinds = useMemo<ResourceKindSelection[]>(() => {
 		if (scope.kinds.length > 0) return scope.kinds;
-		// Fall back to hook state for kind toggles (backwards compat)
 		return selectedKinds as ResourceKindSelection[];
 	}, [scope.kinds, selectedKinds]);
 
@@ -303,22 +239,6 @@ function App() {
 		return selectedNamespaces;
 	}, [scope.namespace, selectedNamespaces]);
 
-	// SECTIONS import for content title
-	const SECTIONS = useMemo(
-		() => ({
-			clusterOverview: { label: "Cluster Overview" },
-			namespaces: { label: "Namespaces" },
-			workloads: { label: "Workloads" },
-			network: { label: "Network" },
-			config: { label: "Config" },
-			storage: { label: "Storage" },
-			discovered: { label: "Discovered" },
-			argo: { label: "Argo CD" },
-		}),
-		[],
-	);
-
-	// Determine content title from scope
 	const contentTitle = useMemo(() => {
 		if (viewMode === "overview") return activeWorkspace?.name ?? "Workspace";
 		if (viewMode === "settings") return "Settings";
@@ -343,10 +263,8 @@ function App() {
 		if (scope.group) return scope.group;
 		if (scope.kinds.length === 1) return `${resourceKindLabel(scope.kinds[0])} Resources`;
 		if (scope.kinds.length > 1)
-			return SECTIONS[scope.section]?.label ?? scope.section;
-		return (
-			SECTIONS[scope.section as keyof typeof SECTIONS]?.label ?? scope.section
-		);
+			return SECTION_LABELS[scope.section] ?? scope.section;
+		return SECTION_LABELS[scope.section] ?? scope.section;
 	}, [scope, viewMode, selectedTreeNode, activeWorkspace?.name]);
 
 	const canQueryResources =
@@ -440,50 +358,17 @@ function App() {
 
 	return (
 		<div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
-			{/* Top Bar */}
-			<header className="flex h-12 shrink-0 items-center gap-4 border-b bg-sidebar px-4 [-webkit-app-region:drag]">
-				<div className="flex shrink-0 items-center gap-3 [-webkit-app-region:no-drag]">
-					<ClusterSelector
-						value={clusterContext}
-						onClusterChange={handleClusterChange}
-					/>
-				</div>
-				<div className="flex min-w-0 flex-1 items-center justify-center">
-					<span className="truncate whitespace-nowrap text-sm font-semibold">
-						{contentTitle}
-					</span>
-				</div>
-				<div className="flex shrink-0 items-center">
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon"
-						className="mr-1 size-8 text-muted-foreground [-webkit-app-region:no-drag]"
-						aria-label="Open workspaces"
-						onClick={handleOpenLauncher}
-					>
-						<FolderOpen />
-					</Button>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon"
-						className="mr-2 size-8 text-muted-foreground [-webkit-app-region:no-drag]"
-						aria-label="Open settings"
-						onClick={() => {
-							setViewMode("settings");
-							setSelectedResource(null);
-							setSelectedArgoApp(null);
-						}}
-					>
-						<Settings />
-					</Button>
-					<div className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border bg-background/50 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-ring hover:text-foreground">
-						<Search className="size-3.5" aria-hidden="true" />
-						<span>Search resources…</span>
-					</div>
-				</div>
-			</header>
+			<AppTopBar
+				clusterContext={clusterContext}
+				contentTitle={contentTitle}
+				onClusterChange={handleClusterChange}
+				onOpenLauncher={handleOpenLauncher}
+				onOpenSettings={() => {
+					setViewMode("settings");
+					setSelectedResource(null);
+					setSelectedArgoApp(null);
+				}}
+			/>
 
 			{/* Main row: sidebar + content + inspector */}
 			<div className="flex min-h-0 flex-1 flex-row overflow-hidden">
@@ -498,37 +383,10 @@ function App() {
 					/>
 				</aside>
 
-				{detailPanel ? (
-					<div className="flex min-w-0 flex-1 overflow-hidden">
-						<div className="min-w-0 flex-1 overflow-hidden">
-							{mainContent}
-						</div>
-						<div
-							role="separator"
-							aria-orientation="vertical"
-							aria-label="Resize details panel"
-							className="group relative flex w-2 shrink-0 cursor-col-resize items-center justify-center"
-							onPointerDown={handleDetailResizeStart}
-							onDoubleClick={() =>
-								setDetailPanelWidth(DETAIL_PANEL_DEFAULT_WIDTH)
-							}
-						>
-							<div className="h-full w-px bg-border transition-colors group-hover:bg-ring" />
-							<div className="absolute h-8 w-1 rounded-full bg-border transition-colors group-hover:bg-ring" />
-						</div>
-						<div
-							className="h-full shrink-0 overflow-hidden"
-							style={{
-								width: clampDetailPanelWidth(detailPanelWidth),
-								minWidth: DETAIL_PANEL_MIN_WIDTH,
-							}}
-						>
-							{detailPanel}
-						</div>
-					</div>
-				) : (
-					mainContent
-				)}
+				<DetailPanelFrame
+					mainContent={mainContent}
+					detailPanel={detailPanel}
+				/>
 			</div>
 		</div>
 	);

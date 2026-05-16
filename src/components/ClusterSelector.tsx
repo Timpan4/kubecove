@@ -25,10 +25,6 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
   const onClusterChangeRef = useRef(onClusterChange);
 
   useEffect(() => {
-    selectedRef.current = selected;
-  }, [selected]);
-
-  useEffect(() => {
     if (value !== undefined && value !== selectedRef.current) {
       selectedRef.current = value;
       setSelected(value);
@@ -48,7 +44,7 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
       setClusters(contexts);
       const currentContext = contexts.find((ctx) => ctx.isCurrent);
       const preferredContext = currentContext ?? contexts[0];
-      const selectedContext = value ?? selectedRef.current;
+      const selectedContext = selectedRef.current;
       const selectedStillExists = contexts.some((ctx) => ctx.name === selectedContext);
       if ((!selectedContext || !selectedStillExists) && preferredContext) {
         selectedRef.current = preferredContext.name;
@@ -60,7 +56,7 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
     } finally {
       setLoading(false);
     }
-  }, [value]);
+  }, []);
 
   useEffect(() => {
     loadClusters();
