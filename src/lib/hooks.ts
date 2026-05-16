@@ -104,16 +104,29 @@ interface NonPersistedSlice {
 	toggleExpandedSection: (nodeIdStr: string) => void;
 }
 
+function resourceKindKey(kind: ResourceKindSelection): string {
+	if (typeof kind === "string") return kind;
+	return `${kind.group}/${kind.version}/${kind.kind}/${kind.plural}`;
+}
+
 const useNonPersistedStore = create<NonPersistedSlice>()((set) => ({
 	selectedKinds: [],
 	selectedResource: null,
 	setSelectedKinds: (kinds: ResourceKindSelection[]) => set({ selectedKinds: kinds }),
 	toggleKind: (kind: ResourceKindSelection) =>
-		set((state) =>
-			state.selectedKinds.includes(kind)
-				? { selectedKinds: state.selectedKinds.filter((k) => k !== kind) }
-				: { selectedKinds: [...state.selectedKinds, kind] },
-		),
+		set((state) => {
+			const key = resourceKindKey(kind);
+			const selected = state.selectedKinds.some(
+				(selectedKind) => resourceKindKey(selectedKind) === key,
+			);
+			return selected
+				? {
+						selectedKinds: state.selectedKinds.filter(
+							(selectedKind) => resourceKindKey(selectedKind) !== key,
+						),
+					}
+				: { selectedKinds: [...state.selectedKinds, kind] };
+		}),
 	setSelectedResource: (resource: ResourceSummary | null) =>
 		set({ selectedResource: resource }),
 	resetResource: () => set({ selectedResource: null }),
