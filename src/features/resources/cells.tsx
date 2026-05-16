@@ -73,12 +73,7 @@ function TableTooltip({
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<span
-					className="block min-w-0 outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
-					tabIndex={0}
-				>
-					{children}
-				</span>
+				<span className="block min-w-0">{children}</span>
 			</TooltipTrigger>
 			<TooltipContent side="top" align="start" sideOffset={6}>
 				{content}
