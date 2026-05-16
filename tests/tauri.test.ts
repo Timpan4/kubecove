@@ -9,7 +9,7 @@ import type {
 import {
 	getConditionRows,
 	shouldFetchResourceDetails,
-} from "../src/features/resource-detail/ResourceDetailPanel";
+} from "../src/features/resource-detail/helpers";
 import {
 	buildFetchKeys,
 	buildResourceHealthSummary,
