@@ -18,6 +18,8 @@ export function ResourcePagination({
 	pageCount,
 	onPageChange,
 }: ResourcePaginationProps) {
+	const displayPage = pageCount === 0 ? 0 : pageIndex + 1;
+
 	return (
 		<div className={PAGINATION_CLASS}>
 			<Button
@@ -33,7 +35,7 @@ export function ResourcePagination({
 				{totalRows} {search ? "filtered" : "total"} rows
 			</span>
 			<span>
-				Page {pageIndex + 1} of {pageCount}
+				Page {displayPage} of {pageCount}
 			</span>
 			<Button
 				type="button"

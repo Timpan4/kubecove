@@ -260,6 +260,7 @@ describe("resource browser presentation helpers", () => {
       ]),
     );
     expect(pageAppGroupCounts(rows, false).size).toBe(0);
+    expect(pageTypeGroupCounts(rows, false).size).toBe(0);
   });
 
   test("normalizes tooltip values for table display", () => {
