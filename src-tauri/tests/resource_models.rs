@@ -53,6 +53,12 @@ fn test_resource_summary_serde() {
         name: "nginx".to_string(),
         namespace: Some("default".to_string()),
         age: "2024-01-01T00:00:00Z".to_string(),
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: None,
         status: None,
         ready: None,
@@ -107,6 +113,12 @@ fn test_resource_details_full_serde() {
         name: "nginx".to_string(),
         namespace: Some("default".to_string()),
         age: "2024-01-01T00:00:00Z".to_string(),
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: None,
         status: None,
         ready: None,
@@ -163,6 +175,58 @@ fn test_discovered_resource_kind_serde() {
     assert_eq!(json_val["namespaced"], true);
     let parsed: DiscoveredResourceKind = serde_json::from_value(json_val).unwrap();
     assert_eq!(parsed.kind, "Deployment");
+}
+
+#[test]
+fn test_crd_discovered_resource_kind_serde() {
+    let kind = DiscoveredResourceKind {
+        group: "apiextensions.k8s.io".to_string(),
+        version: "v1".to_string(),
+        api_version: "apiextensions.k8s.io/v1".to_string(),
+        kind: "CustomResourceDefinition".to_string(),
+        plural: "customresourcedefinitions".to_string(),
+        namespaced: false,
+    };
+    let json_val = serde_json::to_value(&kind).unwrap();
+    assert_eq!(json_val["apiVersion"], "apiextensions.k8s.io/v1");
+    assert_eq!(json_val["plural"], "customresourcedefinitions");
+    assert_eq!(json_val["namespaced"], false);
+    let parsed: DiscoveredResourceKind = serde_json::from_value(json_val).unwrap();
+    assert_eq!(parsed.kind, "CustomResourceDefinition");
+    assert!(!parsed.namespaced);
+}
+
+#[test]
+fn test_dynamic_resource_summary_fields_serde() {
+    let summary = ResourceSummary {
+        kind: "Widget".to_string(),
+        cluster: "kind-prod".to_string(),
+        name: "sample".to_string(),
+        namespace: Some("default".to_string()),
+        age: "1h".to_string(),
+        api_version: Some("example.com/v1".to_string()),
+        group: Some("example.com".to_string()),
+        version: Some("v1".to_string()),
+        plural: Some("widgets".to_string()),
+        namespaced: Some(true),
+        dynamic: Some(true),
+        created_at: None,
+        status: Some("Running".to_string()),
+        ready: None,
+        restarts: None,
+        owner_ref: Some("sample-owner".to_string()),
+        argo_app: None,
+        helm_release: None,
+    };
+
+    let json_val = serde_json::to_value(&summary).unwrap();
+    assert_eq!(json_val["apiVersion"], "example.com/v1");
+    assert_eq!(json_val["dynamic"], true);
+    assert_eq!(json_val["plural"], "widgets");
+    let parsed: ResourceSummary = serde_json::from_value(json_val).unwrap();
+    assert_eq!(parsed.group, Some("example.com".to_string()));
+    assert_eq!(parsed.namespaced, Some(true));
+    assert_eq!(parsed.owner_ref, Some("sample-owner".to_string()));
 }
 
 #[test]

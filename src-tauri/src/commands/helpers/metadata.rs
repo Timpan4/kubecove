@@ -80,6 +80,12 @@ pub(crate) fn base_resource_summary(
         name: metadata.name.clone().unwrap_or_default(),
         namespace: metadata.namespace.clone(),
         age,
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: metadata
             .creation_timestamp
             .as_ref()

@@ -39,7 +39,7 @@ interface ResourceTableProps {
 }
 
 function resourceRowKey(resource: ResourceSummary): string {
-	return `${resource.cluster}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
+	return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
 }
 
 export function ResourceTable({

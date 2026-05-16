@@ -107,6 +107,19 @@ export async function listResources(
 	});
 }
 
+export async function listDynamicResources(
+	client: TauriClient,
+	clusterContext: string,
+	resourceKind: DiscoveredResourceKind,
+	namespace?: string,
+): Promise<ResourceSummary[]> {
+	return client.invoke<ResourceSummary[]>("list_dynamic_resources", {
+		clusterContext,
+		resourceKind,
+		namespace,
+	});
+}
+
 export async function getResourceYaml(
 	client: TauriClient,
 	clusterContext: string,
@@ -132,6 +145,21 @@ export async function getResourceDetails(
 	return client.invoke<ResourceDetailsFull>("get_resource_details", {
 		clusterContext,
 		kind,
+		name,
+		namespace,
+	});
+}
+
+export async function getDynamicResourceDetails(
+	client: TauriClient,
+	clusterContext: string,
+	resourceKind: DiscoveredResourceKind,
+	name: string,
+	namespace?: string,
+): Promise<ResourceDetailsFull> {
+	return client.invoke<ResourceDetailsFull>("get_dynamic_resource_details", {
+		clusterContext,
+		resourceKind,
 		name,
 		namespace,
 	});

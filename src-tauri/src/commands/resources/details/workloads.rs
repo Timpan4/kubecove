@@ -34,6 +34,12 @@ pub(super) async fn deployment_details(
                 .single()
                 .unwrap_or_else(Utc::now)
         })),
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: k8s_creation_timestamp_to_rfc3339(&deploy.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -85,6 +91,12 @@ pub(super) async fn statefulset_details(
                 .single()
                 .unwrap_or_else(Utc::now)
         })),
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: k8s_creation_timestamp_to_rfc3339(&ss.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -132,6 +144,12 @@ pub(super) async fn daemonset_details(
                 .single()
                 .unwrap_or_else(Utc::now)
         })),
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: k8s_creation_timestamp_to_rfc3339(&ds.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -179,6 +197,12 @@ pub(super) async fn ingress_details(
                 .single()
                 .unwrap_or_else(Utc::now)
         })),
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: k8s_creation_timestamp_to_rfc3339(&ing.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -223,6 +247,12 @@ pub(super) async fn job_details(
                 .single()
                 .unwrap_or_else(Utc::now)
         })),
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: k8s_creation_timestamp_to_rfc3339(&job.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -286,6 +316,12 @@ pub(super) async fn cronjob_details(
                 .single()
                 .unwrap_or_else(Utc::now)
         })),
+        api_version: None,
+        group: None,
+        version: None,
+        plural: None,
+        namespaced: None,
+        dynamic: None,
         created_at: k8s_creation_timestamp_to_rfc3339(&cj.metadata.creation_timestamp),
         status: None,
         ready: None,

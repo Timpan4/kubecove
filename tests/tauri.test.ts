@@ -1,10 +1,15 @@
 import { describe, test, expect } from "bun:test";
 import { createMockTauriClient, listKubeContexts, listNamespaces, getResourceYaml, isAppError } from "../src/lib/tauri";
-import type { ClusterContext, NamespaceSummary, ResourceSummary } from "../src/lib/types";
+import type {
+  ClusterContext,
+  DiscoveredResourceKind,
+  NamespaceSummary,
+  ResourceSummary,
+} from "../src/lib/types";
 import {
 	getConditionRows,
 	shouldFetchResourceDetails,
-} from "../src/features/resource-detail/ResourceDetailPanel";
+} from "../src/features/resource-detail/helpers";
 import {
 	buildFetchKeys,
 	buildResourceHealthSummary,
@@ -153,6 +158,20 @@ describe("resource browser presentation helpers", () => {
     namespace: "payments",
     age: "3h",
   };
+  const widgetKind: DiscoveredResourceKind = {
+    group: "example.com",
+    version: "v1",
+    apiVersion: "example.com/v1",
+    kind: "Widget",
+    plural: "widgets",
+    namespaced: true,
+  };
+  const clusterWidgetKind: DiscoveredResourceKind = {
+    ...widgetKind,
+    kind: "ClusterWidget",
+    plural: "clusterwidgets",
+    namespaced: false,
+  };
 
   test("summarizes resource health for the active filter", () => {
     const summary = buildResourceHealthSummary([
@@ -178,6 +197,16 @@ describe("resource browser presentation helpers", () => {
     ]);
   });
 
+  test("builds fetch keys for discovered resource kinds", () => {
+    expect(buildFetchKeys([], [widgetKind])).toEqual([
+      { kind: widgetKind, namespace: undefined },
+    ]);
+    expect(buildFetchKeys(["default"], [widgetKind, clusterWidgetKind])).toEqual([
+      { kind: widgetKind, namespace: "default" },
+      { kind: clusterWidgetKind, namespace: undefined },
+    ]);
+  });
+
   test("filters resources by search text and Argo app", () => {
     const resources: ResourceSummary[] = [
       { ...baseResource, name: "api-0", ownerRef: "api", argoApp: "payments" },
@@ -188,6 +217,21 @@ describe("resource browser presentation helpers", () => {
     expect(filterResources(resources, "jobs", "")).toEqual([resources[1]]);
     expect(filterResources(resources, "api", "payments")).toEqual([resources[0]]);
     expect(filterResources(resources, "api", "batch")).toEqual([]);
+  });
+
+  test("filters dynamic resources by discovered metadata", () => {
+    const resource: ResourceSummary = {
+      ...baseResource,
+      kind: "Widget",
+      apiVersion: "example.com/v1",
+      group: "example.com",
+      plural: "widgets",
+      dynamic: true,
+    };
+
+    expect(filterResources([resource], "widgets", "")).toEqual([resource]);
+    expect(filterResources([resource], "example.com", "")).toEqual([resource]);
+    expect(filterResources([resource], "apps/v1", "")).toEqual([]);
   });
 
   test("sorts rows using table sorting state", () => {
@@ -212,6 +256,7 @@ describe("resource browser presentation helpers", () => {
 
   test("uses readable group labels for Argo-managed and unmanaged resources", () => {
     expect(formatResourceGroupLabel({ ...baseResource, argoApp: "argocd" })).toBe("Managed by Argo app: argocd");
+    expect(formatResourceGroupLabel({ ...baseResource, ownerRef: "api" })).toBe("Owned by: api");
     expect(formatResourceGroupLabel(baseResource)).toBe("Unmanaged resources");
   });
 
@@ -235,20 +280,22 @@ describe("resource browser presentation helpers", () => {
   test("builds stable collapse keys for app and type groups", () => {
     const resource = { ...baseResource, kind: "ConfigMap", argoApp: "argocd" };
 
-    expect(resourceGroupCollapseKey(resource)).toBe("app:Managed by Argo app: argocd");
-    expect(resourceTypeGroupCollapseKey(resource)).toBe("app:Managed by Argo app: argocd::type:ConfigMaps");
+    expect(resourceGroupCollapseKey(resource)).toBe("group:Managed by Argo app: argocd");
+    expect(resourceTypeGroupCollapseKey(resource)).toBe("group:Managed by Argo app: argocd::type:ConfigMaps");
   });
 
   test("counts page groups for grouped resource tables", () => {
     const rows: ResourceSummary[] = [
       { ...baseResource, name: "api", kind: "Pod", argoApp: "payments" },
       { ...baseResource, name: "svc", kind: "Service", argoApp: "payments" },
+      { ...baseResource, name: "deploy-pod", kind: "Pod", ownerRef: "api" },
       { ...baseResource, name: "cm", kind: "ConfigMap" },
     ];
 
     expect(pageAppGroupCounts(rows, true)).toEqual(
       new Map([
         ["Managed by Argo app: payments", 2],
+        ["Owned by: api", 1],
         ["Unmanaged resources", 1],
       ]),
     );
@@ -256,6 +303,7 @@ describe("resource browser presentation helpers", () => {
       new Map([
         ["Managed by Argo app: payments::Pods", 1],
         ["Managed by Argo app: payments::Services", 1],
+        ["Owned by: api::Pods", 1],
         ["Unmanaged resources::ConfigMaps", 1],
       ]),
     );
@@ -329,9 +377,36 @@ describe("tree navigation scope helpers", () => {
     });
   });
 
+  test("resolves discovered resource kind nodes", () => {
+    const resourceKind: DiscoveredResourceKind = {
+      group: "example.com",
+      version: "v1",
+      apiVersion: "example.com/v1",
+      kind: "Widget",
+      plural: "widgets",
+      namespaced: true,
+    };
+
+    expect(
+      resolveTreeScope({
+        type: "kind",
+        section: "discovered",
+        kind: "example.com/v1/widgets/Widget",
+        resourceKind,
+      }),
+    ).toMatchObject({
+      section: "discovered",
+      namespace: null,
+      kinds: [resourceKind],
+      clusterScoped: false,
+      argoMode: false,
+    });
+  });
+
   test("explains empty states from scope", () => {
     expect(emptyStateMessage(resolveTreeScope(null), false)).toBe("Select a cluster context first");
     expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "namespaces" } as TreeNodeId), true)).toBe("Select a namespace");
     expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "argo" } as TreeNodeId), true)).toBe("Select an Argo CD resource type");
+    expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "discovered" } as TreeNodeId), true)).toBe("Select a discovered resource kind");
   });
 });
