@@ -13,6 +13,7 @@ import {
 	getContainerStatusRows,
 	getErrorMessage,
 	incidentSignalCardClassName,
+	isCleanCompletedContainer,
 } from "./helpers";
 import type {
 	ResourceDetailsFull,
@@ -139,6 +140,9 @@ function ConditionList({ conditions }: { conditions: ConditionRow[] }) {
 }
 
 function containerTone(container: ContainerStatusRow): ChipVariant {
+	if (isCleanCompletedContainer(container)) {
+		return "neutral";
+	}
 	if (
 		container.ready === false ||
 		(container.exitCode !== undefined && container.exitCode !== 0)
@@ -155,6 +159,12 @@ function containerTone(container: ContainerStatusRow): ChipVariant {
 		return "success";
 	}
 	return "neutral";
+}
+
+function containerReadinessLabel(container: ContainerStatusRow): string {
+	if (isCleanCompletedContainer(container)) return "completed";
+	if (container.ready === undefined) return "ready unknown";
+	return container.ready ? "ready" : "not ready";
 }
 
 function ContainerList({ containers }: { containers: ContainerStatusRow[] }) {
@@ -186,11 +196,7 @@ function ContainerList({ containers }: { containers: ContainerStatusRow[] }) {
 											badgeStyle.className,
 										)}
 									>
-										{container.ready === undefined
-											? "ready unknown"
-											: container.ready
-												? "ready"
-												: "not ready"}
+										{containerReadinessLabel(container)}
 									</Badge>
 								</div>
 								<div className="mt-2 grid gap-1 text-xs text-muted-foreground">
