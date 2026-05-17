@@ -12,20 +12,24 @@ import {
 } from "@/components/ui/select";
 
 interface ClusterSelectorProps {
+  value?: string;
   onClusterChange: (cluster: string) => void;
 }
 
-export function ClusterSelector({ onClusterChange }: ClusterSelectorProps) {
+export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps) {
   const [clusters, setClusters] = useState<ClusterContext[]>([]);
-  const [selected, setSelected] = useState<string>("");
+  const [selected, setSelected] = useState<string>(value ?? "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const selectedRef = useRef(selected);
   const onClusterChangeRef = useRef(onClusterChange);
 
   useEffect(() => {
-    selectedRef.current = selected;
-  }, [selected]);
+    if (value !== undefined && value !== selectedRef.current) {
+      selectedRef.current = value;
+      setSelected(value);
+    }
+  }, [value]);
 
   useEffect(() => {
     onClusterChangeRef.current = onClusterChange;

@@ -23,7 +23,7 @@ export interface DashboardState {
 	argoDetected: boolean;
 	selectedArgoApp: ArgoSelectedItem;
 	selectedArgoAppFilter: string;
-	viewMode: "resources" | "argo" | "settings";
+	viewMode: DashboardViewMode;
 	// Tree navigation state
 	selectedTreeNode: TreeNodeId | null;
 	expandedSections: string[]; // array of nodeId strings for stable serialization
@@ -40,12 +40,14 @@ export interface DashboardSetters {
 	setArgoDetected: (detected: boolean) => void;
 	setSelectedArgoApp: (app: ArgoSelectedItem) => void;
 	setSelectedArgoAppFilter: (app: string) => void;
-	setViewMode: (mode: "resources" | "argo" | "settings") => void;
+	setViewMode: (mode: DashboardViewMode) => void;
 	// Tree navigation setters
 	setSelectedTreeNode: (node: TreeNodeId | null) => void;
 	setExpandedSections: (sections: string[]) => void;
 	toggleExpandedSection: (nodeIdStr: string) => void;
 }
+
+export type DashboardViewMode = "overview" | "resources" | "argo" | "settings";
 
 // Persisted slice: context + namespaces only (Milestone 2 requirement)
 interface PersistedSlice {
@@ -93,9 +95,8 @@ interface NonPersistedSlice {
 	setArgoDetected: (detected: boolean) => void;
 	setSelectedArgoApp: (app: ArgoSelectedItem) => void;
 	setSelectedArgoAppFilter: (app: string) => void;
-	// View mode: resources or argo
-	viewMode: "resources" | "argo" | "settings";
-	setViewMode: (mode: "resources" | "argo" | "settings") => void;
+	viewMode: DashboardViewMode;
+	setViewMode: (mode: DashboardViewMode) => void;
 	// Tree navigation state
 	selectedTreeNode: TreeNodeId | null;
 	expandedSections: string[];
@@ -137,7 +138,7 @@ const useNonPersistedStore = create<NonPersistedSlice>()((set) => ({
 	setSelectedArgoApp: (app: ArgoSelectedItem) => set({ selectedArgoApp: app }),
 	setSelectedArgoAppFilter: (app: string) => set({ selectedArgoAppFilter: app }),
 	viewMode: "resources",
-	setViewMode: (mode: "resources" | "argo" | "settings") => set({ viewMode: mode }),
+	setViewMode: (mode: DashboardViewMode) => set({ viewMode: mode }),
 	selectedTreeNode: null,
 	expandedSections: [],
 	setSelectedTreeNode: (node: TreeNodeId | null) =>
