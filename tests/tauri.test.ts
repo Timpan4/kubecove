@@ -561,6 +561,17 @@ describe("incident signal helpers", () => {
 		).toEqual([]);
 	});
 
+	test("does not fall back to raw restart counts when container context is pending", () => {
+		expect(
+			buildIncidentSignals(
+				{ ...resource, status: "Running", ready: "True", restarts: 1 },
+				[{ type: "Ready", status: "True" }],
+				[],
+				[],
+			),
+		).toEqual([]);
+	});
+
 	test("keeps restart signals for recent or unclean container restarts", () => {
 		expect(
 			buildIncidentSignals(
