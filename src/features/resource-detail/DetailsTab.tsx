@@ -143,10 +143,7 @@ function containerTone(container: ContainerStatusRow): ChipVariant {
 	if (isCleanCompletedContainer(container)) {
 		return "neutral";
 	}
-	if (
-		container.ready === false ||
-		(container.exitCode !== undefined && container.exitCode !== 0)
-	) {
+	if (container.exitCode !== undefined && container.exitCode !== 0) {
 		return "error";
 	}
 	if (
@@ -154,6 +151,9 @@ function containerTone(container: ContainerStatusRow): ChipVariant {
 		(container.lastExitCode !== undefined && container.lastExitCode !== 0)
 	) {
 		return "warning";
+	}
+	if (container.ready === false) {
+		return "error";
 	}
 	if (container.ready === true || container.state === "running") {
 		return "success";
@@ -360,8 +360,10 @@ export function DetailsTab({
 		() => getContainerStatusRows(details?.status),
 		[details?.status],
 	);
+	const podDetailsLoading =
+		resource.kind === "Pod" && detailsLoading && !details && !detailsError;
 	const signalContainers =
-		resource.kind === "Pod" || details ? containerRows : undefined;
+		details || podDetailsLoading ? containerRows : undefined;
 	const signals = useMemo(
 		() =>
 			buildIncidentSignals(

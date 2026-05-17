@@ -662,6 +662,74 @@ describe("incident signal helpers", () => {
 		]);
 	});
 
+	test("derives restart severity from actionable restarts only", () => {
+		expect(
+			buildIncidentSignals(
+				{ ...resource, status: "Running", ready: "True", restarts: 8 },
+				[{ type: "Ready", status: "True" }],
+				[],
+				[
+					{
+						name: "api",
+						ready: true,
+						restartCount: 1,
+						state: "running",
+						lastState: "terminated",
+						lastReason: "Error",
+						lastExitCode: 1,
+						lastFinishedAt: "2026-05-17T11:55:00Z",
+					},
+					{
+						name: "sidecar",
+						ready: true,
+						restartCount: 7,
+						state: "running",
+						lastState: "terminated",
+						lastReason: "Completed",
+						lastExitCode: 0,
+						lastFinishedAt: "2026-05-13T12:25:53Z",
+					},
+				],
+				{ now: new Date("2026-05-17T12:00:00Z") },
+			),
+		).toEqual([
+			{
+				id: "restarts",
+				label: "Restarts",
+				value: "api restarted 1 time · Error · exit 1 · finished 2026-05-17T11:55:00Z",
+				tone: "warning",
+				source: "status",
+			},
+		]);
+	});
+
+	test("classifies waiting containers before generic not-ready containers", () => {
+		const source = readFileSync(
+			"src/features/resource-detail/DetailsTab.tsx",
+			"utf8",
+		);
+		const waitingIndex = source.indexOf('container.state === "waiting"');
+		const notReadyIndex = source.indexOf("container.ready === false");
+
+		expect(waitingIndex).toBeGreaterThanOrEqual(0);
+		expect(notReadyIndex).toBeGreaterThanOrEqual(0);
+		expect(waitingIndex).toBeLessThan(notReadyIndex);
+	});
+
+	test("falls back to summary restarts only after pod details are unavailable", () => {
+		const source = readFileSync(
+			"src/features/resource-detail/DetailsTab.tsx",
+			"utf8",
+		);
+
+		expect(source).toContain("details || podDetailsLoading");
+		expect(source).toContain("? containerRows");
+		expect(source).toContain(": undefined");
+		expect(source).not.toContain(
+			'resource.kind === "Pod" || details ? containerRows : undefined',
+		);
+	});
+
   test("treats crash loop and image pull states as error incident signals", () => {
     expect(
       buildIncidentSignals(
