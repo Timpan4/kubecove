@@ -267,10 +267,10 @@ function isActionableContainerRestart(
 	if (container.state === "terminated" && container.exitCode !== 0) return true;
 	if (container.lastExitCode !== undefined && container.lastExitCode !== 0) return true;
 	if (container.lastReason && container.lastReason !== "Completed") return true;
-	if (isCleanPreviousRestart(container)) return false;
 	if (isRecentTimestamp(container.lastFinishedAt, now, staleRestartMs)) {
 		return true;
 	}
+	if (isCleanPreviousRestart(container)) return false;
 	return !hasPreviousRestartContext(container);
 }
 

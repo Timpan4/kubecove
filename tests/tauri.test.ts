@@ -610,6 +610,44 @@ describe("incident signal helpers", () => {
 		).toEqual([]);
 	});
 
+	test("keeps recent clean restarts actionable", () => {
+		expect(
+			buildIncidentSignals(
+				{ ...resource, status: "Running", ready: "True", restarts: 1 },
+				[{ type: "Ready", status: "True" }],
+				[],
+				[
+					{
+						name: "worker",
+						ready: true,
+						restartCount: 1,
+						state: "running",
+						lastState: "terminated",
+						lastReason: "Completed",
+						lastExitCode: 0,
+						lastFinishedAt: "2026-05-17T11:55:00Z",
+					},
+				],
+				{ now: new Date("2026-05-17T12:00:00Z") },
+			),
+		).toEqual([
+			{
+				id: "restarts",
+				label: "Restarts",
+				value: "worker restarted 1 time · Completed · exit 0 · finished 2026-05-17T11:55:00Z",
+				valueParts: [
+					{ kind: "text", text: "worker restarted 1 time" },
+					{ kind: "text", text: " · Completed" },
+					{ kind: "text", text: " · exit 0" },
+					{ kind: "text", text: " · finished " },
+					{ kind: "timestamp", value: "2026-05-17T11:55:00Z" },
+				],
+				tone: "warning",
+				source: "status",
+			},
+		]);
+	});
+
 	test("falls back to restart signals when restart history is unknown", () => {
 		expect(
 			buildIncidentSignals(
