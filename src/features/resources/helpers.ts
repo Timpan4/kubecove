@@ -5,6 +5,7 @@ import type {
 	ResourceKindSelection,
 	ResourceSummary,
 } from "@/lib/types";
+import { classifyResourceHealth } from "@/lib/resource-health";
 import { CLUSTER_SCOPED_KINDS } from "@/lib/types";
 
 export interface FetchKey {
@@ -19,6 +20,8 @@ export interface HealthSummary {
 	degraded: number;
 	restarted: number;
 }
+
+export type HealthFilter = "all" | "attention" | "degraded" | "restarted";
 
 export interface ScopePill {
 	label: string;
@@ -185,40 +188,27 @@ export function describeResourceScope(
 	return pills;
 }
 
+export function filterResourcesByHealth(
+	rows: ResourceSummary[],
+	filter: HealthFilter,
+): ResourceSummary[] {
+	if (filter === "all") return rows;
+	return rows.filter((row) => classifyResourceHealth(row)[filter]);
+}
+
 export function buildResourceHealthSummary(
 	rows: ResourceSummary[],
 ): HealthSummary {
 	return rows.reduce<HealthSummary>(
 		(summary, row) => {
-			const status = row.status?.toLowerCase() ?? "";
-			const ready = row.ready?.toLowerCase() ?? "";
-			const restarts = row.restarts ?? 0;
-			const isDegraded =
-				status === "failed" ||
-				status === "error" ||
-				status === "crashloopbackoff" ||
-				status === "imagepullbackoff" ||
-				ready === "false";
-			const needsAttention =
-				!isDegraded &&
-				(status === "pending" ||
-					status === "terminating" ||
-					status === "unknown" ||
-					restarts > 0);
-			const isHealthy =
-				!isDegraded &&
-				!needsAttention &&
-				(status === "running" ||
-					status === "succeeded" ||
-					status === "ready" ||
-					ready === "true");
+			const flags = classifyResourceHealth(row);
 
 			return {
 				total: summary.total + 1,
-				healthy: summary.healthy + (isHealthy ? 1 : 0),
-				attention: summary.attention + (needsAttention ? 1 : 0),
-				degraded: summary.degraded + (isDegraded ? 1 : 0),
-				restarted: summary.restarted + (restarts > 0 ? 1 : 0),
+				healthy: summary.healthy + (flags.healthy ? 1 : 0),
+				attention: summary.attention + (flags.attention ? 1 : 0),
+				degraded: summary.degraded + (flags.degraded ? 1 : 0),
+				restarted: summary.restarted + (flags.restarted ? 1 : 0),
 			};
 		},
 		{ total: 0, healthy: 0, attention: 0, degraded: 0, restarted: 0 },

@@ -1,10 +1,23 @@
 import { MetadataBadges } from "@/components/MetadataBadges";
 import { TimestampText } from "@/components/TimestampText";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import type { ConditionRow } from "./helpers";
-import { formatMetadata, getErrorMessage } from "./helpers";
-import type { ResourceDetailsFull, ResourceSummary } from "../../lib/types";
+import { useMemo } from "react";
+import type { ConditionRow, IncidentSignal } from "./helpers";
+import {
+	buildIncidentSignals,
+	formatMetadata,
+	getErrorMessage,
+	incidentSignalCardClassName,
+} from "./helpers";
+import type {
+	ResourceDetailsFull,
+	ResourceEventSummary,
+	ResourceSummary,
+} from "../../lib/types";
 import {
 	CHIP_BADGE_STYLES,
 	DETAIL_KEY_CLASS,
@@ -12,12 +25,10 @@ import {
 	DETAIL_SECTION_CLASS,
 	DETAIL_SECTION_TITLE_CLASS,
 	DETAIL_VALUE_CLASS,
-	ERROR_STATE_CLASS,
 	JSON_BLOCK_CLASS,
-	LOADING_SPINNER_CLASS,
 	LOADING_STATE_CLASS,
-	type ChipVariant,
 } from "./constants";
+import { StatusChip } from "./DetailStatusField";
 
 interface DetailsTabProps {
 	resource: ResourceSummary;
@@ -26,6 +37,9 @@ interface DetailsTabProps {
 	detailsError: boolean;
 	detailsErr: unknown;
 	conditionRows: ConditionRow[];
+	events: ResourceEventSummary[] | undefined;
+	eventsLoading: boolean;
+	eventsError: boolean;
 }
 
 function DetailField({
@@ -44,41 +58,6 @@ function DetailField({
 	);
 }
 
-function StatusChip({
-	value,
-	label,
-}: {
-	value: string | undefined;
-	label: string;
-}) {
-	if (!value) return null;
-	const variant: ChipVariant =
-		value === "Running" || value === "Succeeded" || value === "Ready"
-			? "success"
-			: value === "Pending" || value === "Terminating"
-				? "warning"
-				: value === "Failed" || value === "Error"
-					? "error"
-					: "neutral";
-	const badgeStyle = CHIP_BADGE_STYLES[variant];
-	return (
-		<div className={DETAIL_ROW_CLASS}>
-			<span className={DETAIL_KEY_CLASS}>{label}</span>
-			<span className={DETAIL_VALUE_CLASS}>
-				<Badge
-					variant={badgeStyle.variant}
-					className={cn(
-						"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
-						badgeStyle.className,
-					)}
-				>
-					{value}
-				</Badge>
-			</span>
-		</div>
-	);
-}
-
 function ConditionList({ conditions }: { conditions: ConditionRow[] }) {
 	if (conditions.length === 0) return null;
 	return (
@@ -86,10 +65,11 @@ function ConditionList({ conditions }: { conditions: ConditionRow[] }) {
 			<div className={DETAIL_SECTION_TITLE_CLASS}>Conditions</div>
 			<div className="flex flex-col gap-2">
 				{conditions.map((condition) => (
-					<div
-						className="rounded-md border bg-card p-3"
+					<Card
+						size="sm"
 						key={`${condition.type}:${condition.status}`}
 					>
+						<CardContent>
 						<div className="flex items-center justify-between gap-2">
 							<span className="text-[0.82rem] font-semibold text-foreground">
 								{condition.type}
@@ -128,9 +108,78 @@ function ConditionList({ conditions }: { conditions: ConditionRow[] }) {
 								{condition.message}
 							</div>
 						)}
-					</div>
+						</CardContent>
+					</Card>
 				))}
 			</div>
+		</div>
+	);
+}
+
+function SignalList({
+	signals,
+	eventsLoading,
+	eventsError,
+}: {
+	signals: IncidentSignal[];
+	eventsLoading: boolean;
+	eventsError: boolean;
+}) {
+	return (
+		<div className={DETAIL_SECTION_CLASS}>
+			<div className={DETAIL_SECTION_TITLE_CLASS}>Signals</div>
+			{signals.length === 0 && !eventsLoading && !eventsError && (
+				<Card size="sm">
+					<CardContent className="text-xs text-muted-foreground">
+						No active incident signals for this resource.
+					</CardContent>
+				</Card>
+			)}
+			{signals.length === 0 && eventsLoading && (
+				<Card size="sm">
+					<CardContent className="text-xs text-muted-foreground">
+						Checking selected resource events...
+					</CardContent>
+				</Card>
+			)}
+			{eventsError && (
+				<div className="mb-2 rounded-md border border-amber-500/40 bg-card p-3 text-xs text-amber-200">
+					Event signals unavailable.
+				</div>
+			)}
+			{signals.length > 0 && (
+				<div className="flex flex-col gap-2">
+					{signals.map((signal) => {
+						const badgeStyle = CHIP_BADGE_STYLES[signal.tone];
+						return (
+							<div
+								className={incidentSignalCardClassName(signal.tone)}
+								key={signal.id}
+							>
+								<div className="flex items-start justify-between gap-2">
+									<div className="min-w-0">
+										<div className="text-[0.78rem] font-semibold text-foreground">
+											{signal.label}
+										</div>
+										<div className="mt-1 text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+											{signal.value}
+										</div>
+									</div>
+									<Badge
+										variant={badgeStyle.variant}
+										className={cn(
+											"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
+											badgeStyle.className,
+										)}
+									>
+										{signal.source}
+									</Badge>
+								</div>
+							</div>
+						);
+					})}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -177,38 +226,53 @@ export function DetailsTab({
 	detailsError,
 	detailsErr,
 	conditionRows,
+	events,
+	eventsLoading,
+	eventsError,
 }: DetailsTabProps) {
+	const signals = useMemo(
+		() => buildIncidentSignals(resource, conditionRows, events ?? []),
+		[resource, conditionRows, events],
+	);
+
 	return (
 		<>
 			<div className="mb-4 grid grid-cols-1 gap-2">
-				<div className="min-w-0 rounded-md border bg-card p-3">
+				<Card size="sm" className="min-w-0">
+					<CardContent>
 					<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">
 						Kind
 					</span>
 					<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
 						{resource.kind}
 					</strong>
-				</div>
+					</CardContent>
+				</Card>
 				{resource.apiVersion && (
-					<div className="min-w-0 rounded-md border bg-card p-3">
+					<Card size="sm" className="min-w-0">
+						<CardContent>
 						<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">
 							API Version
 						</span>
 						<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
 							{resource.apiVersion}
 						</strong>
-					</div>
+						</CardContent>
+					</Card>
 				)}
-				<div className="min-w-0 rounded-md border bg-card p-3">
+				<Card size="sm" className="min-w-0">
+					<CardContent>
 					<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">
 						Namespace
 					</span>
 					<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
 						{resource.namespace ?? "cluster-scoped"}
 					</strong>
-				</div>
+					</CardContent>
+				</Card>
 				{resource.age && (
-					<div className="min-w-0 rounded-md border bg-card p-3">
+					<Card size="sm" className="min-w-0">
+						<CardContent>
 						<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">
 							Age
 						</span>
@@ -219,9 +283,16 @@ export function DetailsTab({
 								className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
 							/>
 						</strong>
-					</div>
+						</CardContent>
+					</Card>
 				)}
 			</div>
+
+			<SignalList
+				signals={signals}
+				eventsLoading={eventsLoading}
+				eventsError={eventsError}
+			/>
 
 			<div className={DETAIL_SECTION_CLASS}>
 				<div className={DETAIL_SECTION_TITLE_CLASS}>Status</div>
@@ -262,14 +333,15 @@ export function DetailsTab({
 
 			{detailsLoading && (
 				<div className={LOADING_STATE_CLASS}>
-					<div className={LOADING_SPINNER_CLASS}></div>
+					<Spinner className="mx-auto mb-2 size-4" />
 					<span>Loading details...</span>
 				</div>
 			)}
 			{detailsError && (
-				<div className={ERROR_STATE_CLASS}>
-					<p>Error loading details: {getErrorMessage(detailsErr)}</p>
-				</div>
+				<Alert variant="destructive">
+					<AlertTitle>Failed to load details</AlertTitle>
+					<AlertDescription>{getErrorMessage(detailsErr)}</AlertDescription>
+				</Alert>
 			)}
 			{!detailsLoading && !detailsError && details && (
 				<>

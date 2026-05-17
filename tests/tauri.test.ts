@@ -4,10 +4,14 @@ import type {
   ClusterContext,
   DiscoveredResourceKind,
   NamespaceSummary,
+  ResourceEventSummary,
   ResourceSummary,
 } from "../src/lib/types";
 import {
+	buildIncidentSignals,
 	getConditionRows,
+	incidentSignalCardClassName,
+	shouldFetchResourceEvents,
 	shouldFetchResourceDetails,
 } from "../src/features/resource-detail/helpers";
 import {
@@ -15,6 +19,7 @@ import {
 	buildResourceHealthSummary,
 	describeResourceScope,
 	filterResources,
+	filterResourcesByHealth,
 	formatResourceGroupLabel,
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,
@@ -189,6 +194,20 @@ describe("resource browser presentation helpers", () => {
     });
   });
 
+  test("filters resources by transient health filter", () => {
+    const resources: ResourceSummary[] = [
+      { ...baseResource, name: "api-0", status: "Running", ready: "True", restarts: 0 },
+      { ...baseResource, name: "worker-0", status: "Pending", restarts: 0 },
+      { ...baseResource, name: "job-0", status: "Failed", ready: "False", restarts: 1 },
+      { ...baseResource, name: "cache-0", status: "Running", ready: "True", restarts: 2 },
+    ];
+
+    expect(filterResourcesByHealth(resources, "all")).toEqual(resources);
+    expect(filterResourcesByHealth(resources, "attention").map((r) => r.name)).toEqual(["worker-0"]);
+    expect(filterResourcesByHealth(resources, "degraded").map((r) => r.name)).toEqual(["job-0"]);
+    expect(filterResourcesByHealth(resources, "restarted").map((r) => r.name)).toEqual(["job-0", "cache-0"]);
+  });
+
   test("builds fetch keys for namespaced and cluster-scoped kinds", () => {
     expect(buildFetchKeys(["default", "payments"], ["Pod", "Node"])).toEqual([
       { kind: "Pod", namespace: "default" },
@@ -315,6 +334,114 @@ describe("resource browser presentation helpers", () => {
     expect(tableTooltipText("argocd-server-7886b899c8-l5lqd")).toBe("argocd-server-7886b899c8-l5lqd");
     expect(tableTooltipText(null)).toBe("—");
     expect(tableTooltipText("")).toBe("—");
+  });
+});
+
+describe("incident signal helpers", () => {
+  const resource: ResourceSummary = {
+    cluster: "kind-prod",
+    kind: "Pod",
+    name: "api-0",
+    namespace: "payments",
+    age: "3h",
+  };
+
+  test("summarizes factual selected-resource incident signals", () => {
+    const conditions = [
+      {
+        type: "Ready",
+        status: "False",
+        reason: "ContainersNotReady",
+        message: "containers with unready status",
+      },
+      { type: "Initialized", status: "True" },
+    ];
+    const events: ResourceEventSummary[] = [
+      {
+        eventType: "Warning",
+        reason: "BackOff",
+        message: "Back-off restarting failed container",
+        count: 4,
+        lastSeen: "2m",
+        source: "kubelet",
+        namespace: "payments",
+      },
+      {
+        eventType: "Normal",
+        reason: "Pulled",
+        message: "Container image already present",
+        count: 1,
+        lastSeen: "4m",
+        source: "kubelet",
+        namespace: "payments",
+      },
+    ];
+
+    expect(
+      buildIncidentSignals(
+        { ...resource, status: "Failed", ready: "False", restarts: 3 },
+        conditions,
+        events,
+      ),
+    ).toEqual([
+      {
+        id: "status",
+        label: "Status",
+        value: "Failed",
+        tone: "error",
+        source: "status",
+      },
+      {
+        id: "ready",
+        label: "Ready",
+        value: "False",
+        tone: "error",
+        source: "status",
+      },
+      {
+        id: "restarts",
+        label: "Restarts",
+        value: "3",
+        tone: "warning",
+        source: "status",
+      },
+      {
+        id: "condition:Ready",
+        label: "Condition",
+        value: "Ready=False · ContainersNotReady",
+        tone: "error",
+        source: "condition",
+      },
+      {
+        id: "events:warnings",
+        label: "Warning events",
+        value: "1 warning reason · 4 repeats",
+        tone: "warning",
+        source: "event",
+      },
+    ]);
+  });
+
+  test("returns no incident signals for healthy resources with no warning events", () => {
+    expect(
+      buildIncidentSignals(
+        { ...resource, status: "Running", ready: "True", restarts: 0 },
+        [{ type: "Ready", status: "True" }],
+        [],
+      ),
+    ).toEqual([]);
+  });
+
+  test("fetches selected resource events whenever a resource identity is available", () => {
+    expect(shouldFetchResourceEvents(resource)).toBe(true);
+    expect(shouldFetchResourceEvents({ ...resource, name: "" })).toBe(false);
+  });
+
+  test("maps incident signal severity to scannable card accents", () => {
+    expect(incidentSignalCardClassName("error")).toContain("border-l-red-500");
+    expect(incidentSignalCardClassName("warning")).toContain("border-l-amber-500");
+    expect(incidentSignalCardClassName("info")).toContain("border-l-sky-500");
+    expect(incidentSignalCardClassName("neutral")).toContain("border-l-muted");
   });
 });
 
