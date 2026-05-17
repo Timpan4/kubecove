@@ -10,6 +10,25 @@ export interface ConditionRow {
 	status: string;
 	reason?: string;
 	message?: string;
+	lastTransitionTime?: string;
+}
+
+export interface ContainerStatusRow {
+	name: string;
+	ready?: boolean;
+	restartCount: number;
+	state?: string;
+	reason?: string;
+	message?: string;
+	startedAt?: string;
+	finishedAt?: string;
+	exitCode?: number;
+	lastState?: string;
+	lastReason?: string;
+	lastMessage?: string;
+	lastStartedAt?: string;
+	lastFinishedAt?: string;
+	lastExitCode?: number;
 }
 
 export function shouldFetchResourceDetails(
@@ -67,7 +86,84 @@ export function getConditionRows(
 			typeof condition.reason === "string" ? condition.reason : undefined,
 		message:
 			typeof condition.message === "string" ? condition.message : undefined,
+		lastTransitionTime:
+			typeof condition.lastTransitionTime === "string"
+				? condition.lastTransitionTime
+				: undefined,
 	}));
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+	const value = record[key];
+	return typeof value === "string" ? value : undefined;
+}
+
+function numberField(record: Record<string, unknown>, key: string): number | undefined {
+	const value = record[key];
+	return typeof value === "number" ? value : undefined;
+}
+
+interface ParsedContainerState {
+	state?: string;
+	reason?: string;
+	message?: string;
+	startedAt?: string;
+	finishedAt?: string;
+	exitCode?: number;
+}
+
+function parseStateFields(state: unknown): ParsedContainerState {
+	if (!isRecord(state)) return {};
+	const stateEntry = Object.entries(state).find(([, value]) => isRecord(value));
+	if (!stateEntry) return {};
+	const [stateName, stateValue] = stateEntry;
+	if (!isRecord(stateValue)) return {};
+
+	return {
+		state: stateName,
+		reason: stringField(stateValue, "reason"),
+		message: stringField(stateValue, "message"),
+		startedAt: stringField(stateValue, "startedAt"),
+		finishedAt: stringField(stateValue, "finishedAt"),
+		exitCode: numberField(stateValue, "exitCode"),
+	};
+}
+
+function getStatusList(status: Record<string, unknown>, key: string): Record<string, unknown>[] {
+	const value = status[key];
+	return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+export function getContainerStatusRows(
+	status: Record<string, unknown> | undefined,
+): ContainerStatusRow[] {
+	if (!status) return [];
+	return [
+		...getStatusList(status, "initContainerStatuses"),
+		...getStatusList(status, "containerStatuses"),
+		...getStatusList(status, "ephemeralContainerStatuses"),
+	].map((container) => {
+		const currentState = parseStateFields(container.state);
+		const lastState = parseStateFields(container.lastState);
+		return {
+			name: String(container.name ?? "container"),
+			ready: typeof container.ready === "boolean" ? container.ready : undefined,
+			restartCount:
+				typeof container.restartCount === "number" ? container.restartCount : 0,
+			state: currentState.state,
+			reason: currentState.reason,
+			message: currentState.message,
+			startedAt: currentState.startedAt,
+			finishedAt: currentState.finishedAt,
+			exitCode: currentState.exitCode,
+			lastState: lastState.state,
+			lastReason: lastState.reason,
+			lastMessage: lastState.message,
+			lastStartedAt: lastState.startedAt,
+			lastFinishedAt: lastState.finishedAt,
+			lastExitCode: lastState.exitCode,
+		};
+	});
 }
 
 export interface IncidentSignal {
@@ -76,6 +172,11 @@ export interface IncidentSignal {
 	value: string;
 	tone: ChipVariant;
 	source: "status" | "condition" | "event";
+}
+
+interface IncidentSignalOptions {
+	now?: Date;
+	staleRestartMs?: number;
 }
 
 export function incidentSignalCardClassName(tone: ChipVariant): string {
@@ -104,15 +205,73 @@ function eventWarningSummary(events: ResourceEventSummary[]): string | null {
 	return `${reasons.size} ${reasonLabel} · ${repeats} ${repeatLabel}`;
 }
 
+function isRecentTimestamp(
+	timestamp: string | undefined,
+	now: Date,
+	staleRestartMs: number,
+): boolean {
+	if (!timestamp) return true;
+	const value = Date.parse(timestamp);
+	if (Number.isNaN(value)) return true;
+	return now.getTime() - value <= staleRestartMs;
+}
+
+function isActionableContainerRestart(
+	container: ContainerStatusRow,
+	now: Date,
+	staleRestartMs: number,
+): boolean {
+	if (container.restartCount <= 0) return false;
+	if (container.ready === false) return true;
+	if (container.state === "waiting") return true;
+	if (container.state === "terminated" && container.exitCode !== 0) return true;
+	if (container.lastExitCode !== undefined && container.lastExitCode !== 0) return true;
+	if (container.lastReason && container.lastReason !== "Completed") return true;
+	if (container.restartCount > 5) return true;
+	return isRecentTimestamp(container.lastFinishedAt, now, staleRestartMs);
+}
+
+function restartSignalValue(containers: ContainerStatusRow[]): string {
+	const total = containers.reduce((sum, container) => sum + container.restartCount, 0);
+	const label = containers
+		.map((container) => {
+			const details = [
+				`${container.name} restarted ${container.restartCount} ${
+					container.restartCount === 1 ? "time" : "times"
+				}`,
+				container.lastReason,
+				container.lastExitCode !== undefined ? `exit ${container.lastExitCode}` : undefined,
+				container.lastFinishedAt ? `finished ${container.lastFinishedAt}` : undefined,
+			].filter(Boolean);
+			return details.join(" · ");
+		})
+		.join("; ");
+	return label || String(total);
+}
+
+function conditionSignalValue(condition: ConditionRow): string {
+	return [
+		`${condition.type}=${condition.status}`,
+		condition.reason,
+		condition.lastTransitionTime
+			? `since ${condition.lastTransitionTime}`
+			: undefined,
+	].filter(Boolean).join(" · ");
+}
+
 export function buildIncidentSignals(
 	resource: ResourceSummary,
 	conditions: ConditionRow[],
 	events: ResourceEventSummary[],
+	containers?: ContainerStatusRow[],
+	options: IncidentSignalOptions = {},
 ): IncidentSignal[] {
 	const signals: IncidentSignal[] = [];
 	const status = resource.status?.toLowerCase();
 	const ready = resource.ready?.toLowerCase();
 	const restarts = resource.restarts ?? 0;
+	const now = options.now ?? new Date();
+	const staleRestartMs = options.staleRestartMs ?? 60 * 60 * 1000;
 
 	if (
 		resource.status &&
@@ -150,11 +309,25 @@ export function buildIncidentSignals(
 		});
 	}
 
-	if (restarts > 0) {
+	const restartedContainers = containers?.filter(
+		(container) => container.restartCount > 0,
+	);
+	const actionableRestartContainers = restartedContainers?.filter((container) =>
+		isActionableContainerRestart(container, now, staleRestartMs),
+	);
+	const shouldShowRestartSignal = containers
+		? Boolean(actionableRestartContainers?.length)
+		: restarts > 0;
+
+	if (shouldShowRestartSignal) {
+		const restartValue =
+			actionableRestartContainers && actionableRestartContainers.length > 0
+				? restartSignalValue(actionableRestartContainers)
+				: String(restarts);
 		signals.push({
 			id: "restarts",
 			label: "Restarts",
-			value: String(restarts),
+			value: restartValue,
 			tone: restarts > 5 ? "error" : "warning",
 			source: "status",
 		});
@@ -165,9 +338,7 @@ export function buildIncidentSignals(
 		signals.push({
 			id: `condition:${condition.type}`,
 			label: "Condition",
-			value: `${condition.type}=${condition.status}${
-				condition.reason ? ` · ${condition.reason}` : ""
-			}`,
+			value: conditionSignalValue(condition),
 			tone: condition.status === "False" ? "error" : "warning",
 			source: "condition",
 		});

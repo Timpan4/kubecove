@@ -10,6 +10,7 @@ import type {
 } from "../src/lib/types";
 import {
 	buildIncidentSignals,
+	getContainerStatusRows,
 	getConditionRows,
 	incidentSignalCardClassName,
 	shouldFetchResourceEvents,
@@ -138,6 +139,7 @@ describe("getConditionRows", () => {
             status: "False",
             reason: "ContainersNotReady",
             message: "containers with unready status",
+            lastTransitionTime: "2026-05-17T11:55:00Z",
           },
         ],
       }),
@@ -147,6 +149,7 @@ describe("getConditionRows", () => {
         status: "False",
         reason: "ContainersNotReady",
         message: "containers with unready status",
+        lastTransitionTime: "2026-05-17T11:55:00Z",
       },
     ]);
   });
@@ -154,6 +157,44 @@ describe("getConditionRows", () => {
   test("returns an empty list when status conditions are absent", () => {
     expect(getConditionRows({ phase: "Running" })).toEqual([]);
   });
+});
+
+describe("getContainerStatusRows", () => {
+	test("extracts container restart context with timestamps", () => {
+		expect(
+			getContainerStatusRows({
+				containerStatuses: [
+					{
+						name: "api",
+						ready: true,
+						restartCount: 1,
+						state: { running: { startedAt: "2026-05-17T11:56:00Z" } },
+						lastState: {
+							terminated: {
+								reason: "Error",
+								exitCode: 1,
+								startedAt: "2026-05-17T11:45:00Z",
+								finishedAt: "2026-05-17T11:55:00Z",
+							},
+						},
+					},
+				],
+			}),
+		).toEqual([
+			{
+				name: "api",
+				ready: true,
+				restartCount: 1,
+				state: "running",
+				startedAt: "2026-05-17T11:56:00Z",
+				lastState: "terminated",
+				lastReason: "Error",
+				lastExitCode: 1,
+				lastStartedAt: "2026-05-17T11:45:00Z",
+				lastFinishedAt: "2026-05-17T11:55:00Z",
+			},
+		]);
+	});
 });
 
 describe("resource browser presentation helpers", () => {
@@ -416,6 +457,7 @@ describe("incident signal helpers", () => {
         status: "False",
         reason: "ContainersNotReady",
         message: "containers with unready status",
+        lastTransitionTime: "2026-05-17T11:55:00Z",
       },
       { type: "Initialized", status: "True" },
     ];
@@ -471,7 +513,7 @@ describe("incident signal helpers", () => {
       {
         id: "condition:Ready",
         label: "Condition",
-        value: "Ready=False · ContainersNotReady",
+        value: "Ready=False · ContainersNotReady · since 2026-05-17T11:55:00Z",
         tone: "error",
         source: "condition",
       },
@@ -485,15 +527,70 @@ describe("incident signal helpers", () => {
     ]);
   });
 
-  test("returns no incident signals for healthy resources with no warning events", () => {
-    expect(
-      buildIncidentSignals(
-        { ...resource, status: "Running", ready: "True", restarts: 0 },
-        [{ type: "Ready", status: "True" }],
-        [],
+	test("returns no incident signals for healthy resources with no warning events", () => {
+		expect(
+			buildIncidentSignals(
+				{ ...resource, status: "Running", ready: "True", restarts: 0 },
+				[{ type: "Ready", status: "True" }],
+				[],
       ),
-    ).toEqual([]);
-  });
+		).toEqual([]);
+	});
+
+	test("does not promote old clean restarts on currently ready containers", () => {
+		expect(
+			buildIncidentSignals(
+				{ ...resource, status: "Running", ready: "True", restarts: 1 },
+				[{ type: "Ready", status: "True" }],
+				[],
+				[
+					{
+						name: "applicationset-controller",
+						ready: true,
+						restartCount: 1,
+						state: "running",
+						startedAt: "2026-05-13T12:28:58Z",
+						lastState: "terminated",
+						lastReason: "Completed",
+						lastExitCode: 0,
+						lastFinishedAt: "2026-05-13T12:25:53Z",
+					},
+				],
+				{ now: new Date("2026-05-17T12:00:00Z") },
+			),
+		).toEqual([]);
+	});
+
+	test("keeps restart signals for recent or unclean container restarts", () => {
+		expect(
+			buildIncidentSignals(
+				{ ...resource, status: "Running", ready: "True", restarts: 1 },
+				[{ type: "Ready", status: "True" }],
+				[],
+				[
+					{
+						name: "api",
+						ready: true,
+						restartCount: 1,
+						state: "running",
+						lastState: "terminated",
+						lastReason: "Error",
+						lastExitCode: 1,
+						lastFinishedAt: "2026-05-17T11:55:00Z",
+					},
+				],
+				{ now: new Date("2026-05-17T12:00:00Z") },
+			),
+		).toEqual([
+			{
+				id: "restarts",
+				label: "Restarts",
+				value: "api restarted 1 time · Error · exit 1 · finished 2026-05-17T11:55:00Z",
+				tone: "warning",
+				source: "status",
+			},
+		]);
+	});
 
   test("treats crash loop and image pull states as error incident signals", () => {
     expect(
