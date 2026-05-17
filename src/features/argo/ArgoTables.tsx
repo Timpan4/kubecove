@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { Search, X } from "lucide-react";
 import { TimestampText } from "@/components/TimestampText";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,25 @@ const EMPTY_PAGE_CLASS = "p-8 text-center text-sm text-muted-foreground";
 const TOOLBAR_CLASS = "mb-1 flex items-center gap-2 p-0";
 const PAGINATION_CLASS =
 	"flex items-center border-t py-2 text-xs text-muted-foreground";
+
+type ArgoSelectableItem =
+	| ArgoApplicationSummary
+	| ArgoApplicationSetSummary
+	| ArgoAppProjectSummary;
+
+function argoItemKey(item: Pick<ArgoSelectableItem, "name" | "namespace">) {
+	return `${item.namespace ?? "_cluster"}:${item.name}`;
+}
+
+function handleRowActivation<T extends ArgoSelectableItem>(
+	event: KeyboardEvent<HTMLTableRowElement>,
+	item: T,
+	onSelect: (item: T) => void,
+) {
+	if (event.key !== "Enter" && event.key !== " ") return;
+	event.preventDefault();
+	onSelect(item);
+}
 
 function ArgoSearchToolbar({
 	search,
@@ -128,9 +147,15 @@ export function ApplicationsTable({
 								app.namespace === selectedArgoApp.namespace;
 							return (
 								<TableRow
-									key={app.name}
+									key={argoItemKey(app)}
 									className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 									onClick={() => onAppSelect(app)}
+									onKeyDown={(event) =>
+										handleRowActivation(event, app, onAppSelect)
+									}
+									tabIndex={0}
+									role="button"
+									aria-selected={isSelected}
 								>
 									<TableCell>{app.name}</TableCell>
 									<TableCell>{app.project ?? "—"}</TableCell>
@@ -228,9 +253,15 @@ export function ApplicationSetsTable({
 								appset.namespace === selectedArgoItem.namespace;
 							return (
 								<TableRow
-									key={appset.name}
+									key={argoItemKey(appset)}
 									className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 									onClick={() => onArgoItemSelect(appset)}
+									onKeyDown={(event) =>
+										handleRowActivation(event, appset, onArgoItemSelect)
+									}
+									tabIndex={0}
+									role="button"
+									aria-selected={isSelected}
 								>
 									<TableCell>{appset.name}</TableCell>
 									<TableCell>{appset.project ?? "—"}</TableCell>
@@ -326,9 +357,15 @@ export function AppProjectsTable({
 								project.namespace === selectedArgoItem.namespace;
 							return (
 								<TableRow
-									key={project.name}
+									key={argoItemKey(project)}
 									className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 									onClick={() => onArgoItemSelect(project)}
+									onKeyDown={(event) =>
+										handleRowActivation(event, project, onArgoItemSelect)
+									}
+									tabIndex={0}
+									role="button"
+									aria-selected={isSelected}
 								>
 									<TableCell>{project.name}</TableCell>
 									<TableCell>{project.description ?? "—"}</TableCell>

@@ -102,12 +102,18 @@ export function ArgoCDPanel({
 }: ArgoCDPanelProps) {
 	const client = useMemo(() => createTauriClient(), []);
 
-	const { data: argoDetected, isPending: detectPending } = useQuery({
+	const {
+		data: argoDetected,
+		isPending: detectPending,
+		isError: detectError,
+		error: detectErr,
+	} = useQuery({
 		queryKey: ["argo-detect", clusterContext],
 		queryFn: () => detectArgoCD(client, clusterContext),
 		enabled: !!clusterContext,
 		staleTime: 60_000,
 	});
+	const argoResourcesAvailable = argoDetected === true && !detectError;
 
 	const isApps = selectedArgoKind === "Applications";
 	const isAppSets = selectedArgoKind === "ApplicationSets";
@@ -121,7 +127,7 @@ export function ArgoCDPanel({
 	} = useQuery({
 		queryKey: ["argo-apps", clusterContext],
 		queryFn: () => listArgoApplications(client, clusterContext),
-		enabled: !!clusterContext && argoDetected === true && isApps,
+		enabled: !!clusterContext && argoResourcesAvailable && isApps,
 		staleTime: 30_000,
 	});
 
@@ -133,7 +139,7 @@ export function ArgoCDPanel({
 	} = useQuery({
 		queryKey: ["argo-appsets", clusterContext],
 		queryFn: () => listArgoApplicationSets(client, clusterContext),
-		enabled: !!clusterContext && argoDetected === true && isAppSets,
+		enabled: !!clusterContext && argoResourcesAvailable && isAppSets,
 		staleTime: 30_000,
 	});
 
@@ -145,12 +151,22 @@ export function ArgoCDPanel({
 	} = useQuery({
 		queryKey: ["argo-appprojects", clusterContext],
 		queryFn: () => listArgoAppProjects(client, clusterContext),
-		enabled: !!clusterContext && argoDetected === true && isAppProjects,
+		enabled: !!clusterContext && argoResourcesAvailable && isAppProjects,
 		staleTime: 30_000,
 	});
 
 	if (detectPending) {
 		return <LoadingState label="Checking for Argo CD..." />;
+	}
+
+	if (detectError) {
+		return (
+			<ErrorState
+				title="Failed to detect Argo CD"
+				error={detectErr}
+				fallback="Failed to detect Argo CD resources"
+			/>
+		);
 	}
 
 	if (argoDetected === false) {

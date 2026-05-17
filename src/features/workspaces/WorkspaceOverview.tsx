@@ -163,8 +163,8 @@ export function WorkspaceOverview({
 		queryFn: () => listArgoApplications(client, workspace.scope.clusterContext),
 		enabled: argoDetectedQuery.data === true,
 	});
-	const argoApps = argoAppsQuery.data ?? [];
-	const argoDrift = argoApps.filter(
+	const argoApps = argoAppsQuery.data;
+	const argoDrift = (argoApps ?? []).filter(
 		(app) => app.syncStatus && app.syncStatus !== "Synced",
 	).length;
 
@@ -276,16 +276,34 @@ export function WorkspaceOverview({
 					)}
 					{argoDetectedQuery.data === true && (
 						<div className="grid gap-2">
-							<div className="flex items-center justify-between py-2 text-xs">
-								<span className="text-muted-foreground">Applications</span>
-								<strong>{argoApps.length}</strong>
-							</div>
-							<Separator />
-							<div className="flex items-center justify-between py-2 text-xs">
-								<span className="text-muted-foreground">Out of sync</span>
-								<strong className="text-amber-300">{argoDrift}</strong>
-							</div>
-							<Separator />
+							{argoAppsQuery.isPending && (
+								<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+									<Spinner className="size-4" />
+									Loading applications...
+								</div>
+							)}
+							{argoAppsQuery.isError && (
+								<Alert variant="destructive">
+									<AlertTitle>Failed to load applications</AlertTitle>
+									<AlertDescription>
+										Application counts are unavailable until the next refresh.
+									</AlertDescription>
+								</Alert>
+							)}
+							{argoApps && (
+								<>
+									<div className="flex items-center justify-between py-2 text-xs">
+										<span className="text-muted-foreground">Applications</span>
+										<strong>{argoApps.length}</strong>
+									</div>
+									<Separator />
+									<div className="flex items-center justify-between py-2 text-xs">
+										<span className="text-muted-foreground">Out of sync</span>
+										<strong className="text-amber-300">{argoDrift}</strong>
+									</div>
+									<Separator />
+								</>
+							)}
 							<Button type="button" variant="outline" onClick={() => onOpenArgo()}>
 								<GitBranch data-icon="inline-start" />
 								Open Argo CD

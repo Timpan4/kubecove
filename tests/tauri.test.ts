@@ -203,7 +203,7 @@ describe("resource browser presentation helpers", () => {
     ];
 
     expect(filterResourcesByHealth(resources, "all")).toEqual(resources);
-    expect(filterResourcesByHealth(resources, "attention").map((r) => r.name)).toEqual(["worker-0"]);
+    expect(filterResourcesByHealth(resources, "attention").map((r) => r.name)).toEqual(["worker-0", "cache-0"]);
     expect(filterResourcesByHealth(resources, "degraded").map((r) => r.name)).toEqual(["job-0"]);
     expect(filterResourcesByHealth(resources, "restarted").map((r) => r.name)).toEqual(["job-0", "cache-0"]);
   });
@@ -430,6 +430,32 @@ describe("incident signal helpers", () => {
         [],
       ),
     ).toEqual([]);
+  });
+
+  test("treats crash loop and image pull states as error incident signals", () => {
+    expect(
+      buildIncidentSignals(
+        { ...resource, status: "CrashLoopBackOff" },
+        [],
+        [],
+      ),
+    ).toEqual([
+      {
+        id: "status",
+        label: "Status",
+        value: "CrashLoopBackOff",
+        tone: "error",
+        source: "status",
+      },
+    ]);
+
+    expect(
+      buildIncidentSignals(
+        { ...resource, status: "ImagePullBackOff" },
+        [],
+        [],
+      )[0]?.tone,
+    ).toBe("error");
   });
 
   test("fetches selected resource events whenever a resource identity is available", () => {

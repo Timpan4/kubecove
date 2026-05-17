@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, type KeyboardEvent } from "react";
 import {
 	flexRender,
 	type Row,
@@ -50,6 +50,16 @@ function resourceRowKey(resource: ResourceSummary): string {
 	return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
 }
 
+function sortAriaValue(sortState: false | "asc" | "desc") {
+	if (sortState === "asc") return "ascending";
+	if (sortState === "desc") return "descending";
+	return "none";
+}
+
+function isActivationKey(event: KeyboardEvent) {
+	return event.key === "Enter" || event.key === " ";
+}
+
 export function ResourceTable({
 	table,
 	groupedByArgo,
@@ -68,27 +78,39 @@ export function ResourceTable({
 			<TableHeader>
 				{table.getHeaderGroups().map((headerGroup) => (
 					<TableRow key={headerGroup.id}>
-						{headerGroup.headers.map((header) => (
-							<TableHead
-								key={header.id}
-								onClick={header.column.getToggleSortingHandler()}
-								className={
-									header.column.getCanSort()
-										? "cursor-pointer"
-										: "cursor-default"
-								}
-							>
-								{flexRender(
-									header.column.columnDef.header,
-									header.getContext(),
-								)}
-								{header.column.getIsSorted() === "asc"
-									? " ↑"
-									: header.column.getIsSorted() === "desc"
-										? " ↓"
-										: ""}
-							</TableHead>
-						))}
+						{headerGroup.headers.map((header) => {
+							const canSort = header.column.getCanSort();
+							const toggleSorting = header.column.getToggleSortingHandler();
+							const sortState = header.column.getIsSorted();
+							return (
+								<TableHead
+									key={header.id}
+									onClick={canSort ? toggleSorting : undefined}
+									onKeyDown={
+										canSort
+											? (event) => {
+													if (!isActivationKey(event)) return;
+													event.preventDefault();
+													toggleSorting?.(event);
+												}
+											: undefined
+									}
+									tabIndex={canSort ? 0 : undefined}
+									aria-sort={canSort ? sortAriaValue(sortState) : undefined}
+									className={canSort ? "cursor-pointer" : "cursor-default"}
+								>
+									{flexRender(
+										header.column.columnDef.header,
+										header.getContext(),
+									)}
+									{sortState === "asc"
+										? " ↑"
+										: sortState === "desc"
+											? " ↓"
+											: ""}
+								</TableHead>
+							);
+						})}
 					</TableRow>
 				))}
 			</TableHeader>
@@ -167,6 +189,15 @@ function ResourceTableRow({
 			formatResourceGroupLabel(previous) !== label ||
 			formatResourceTypeGroupLabel(previous) !== typeLabel);
 	const hideResourceRow = groupedByArgo && (appCollapsed || typeCollapsed);
+	const selectResource = () => {
+		diagnosticLog("resources.row.click", {
+			key: resourceKey,
+			alreadySelected: isSelected,
+			rowIndex: index,
+		});
+		onSelectedResourceKeyChange(resourceKey);
+		onResourceSelect(row.original);
+	};
 
 	return (
 		<Fragment>
@@ -190,15 +221,15 @@ function ResourceTableRow({
 			{!hideResourceRow && (
 				<TableRow
 					className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
-					onClick={() => {
-						diagnosticLog("resources.row.click", {
-							key: resourceKey,
-							alreadySelected: isSelected,
-							rowIndex: index,
-						});
-						onSelectedResourceKeyChange(resourceKey);
-						onResourceSelect(row.original);
+					onClick={selectResource}
+					onKeyDown={(event) => {
+						if (!isActivationKey(event)) return;
+						event.preventDefault();
+						selectResource();
 					}}
+					tabIndex={0}
+					role="button"
+					aria-selected={isSelected}
 				>
 					{row.getVisibleCells().map((cell) => (
 						<TableCell key={cell.id}>

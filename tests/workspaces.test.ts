@@ -81,8 +81,8 @@ describe("workspace helpers", () => {
 		);
 		expect(buildWorkspaceHealthSummary(rows)).toEqual({
 			total: 4,
-			healthy: 2,
-			attention: 1,
+			healthy: 1,
+			attention: 2,
 			degraded: 1,
 			restarted: 1,
 		});
