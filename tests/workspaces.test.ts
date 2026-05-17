@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
 	buildWorkspaceHealthSummary,
 	computeRestoreStatus,
@@ -12,7 +13,9 @@ import type {
 	ResourceSummary,
 } from "../src/lib/types";
 
-const contexts: ClusterContext[] = [{ name: "kind-dev", isCurrent: true }];
+const clusterContexts: ClusterContext[] = [
+	{ name: "kind-dev", isCurrent: true },
+];
 
 describe("workspace helpers", () => {
 	test("creates sorted local workspace records without kubeconfig data", () => {
@@ -47,7 +50,7 @@ describe("workspace helpers", () => {
 
 		const status = computeRestoreStatus(
 			workspace,
-			contexts,
+			clusterContexts,
 			["default"],
 			[],
 		);
@@ -117,6 +120,32 @@ describe("workspace helpers", () => {
 		expect(buildWorkspaceFetchKeys(workspace.scope, [])).toEqual([
 			{ kind: "Node" },
 		]);
+	});
+
+	test("uses an explicit height for the workspace namespace scroll area", () => {
+		const source = readFileSync(
+			"src/features/workspaces/WorkspaceLauncher.tsx",
+			"utf8",
+		);
+
+		expect(source).toContain(
+			'ScrollArea className="h-52 rounded-md border bg-background/40"',
+		);
+		expect(source).not.toContain(
+			'ScrollArea className="max-h-52 rounded-md border bg-background/40"',
+		);
+	});
+
+	test("allows workspace saves when namespace listing fails", () => {
+		const source = readFileSync(
+			"src/features/workspaces/WorkspaceLauncher.tsx",
+			"utf8",
+		);
+
+		expect(source).not.toContain("namespaceScopeUnavailable");
+		expect(source).toContain(
+			"You can still save an all-namespace workspace",
+		);
 	});
 });
 

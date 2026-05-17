@@ -1,8 +1,24 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Boxes, FolderOpen, GitBranch, Layers } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyTitle,
+} from "@/components/ui/empty";
+import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	createTauriClient,
 	detectArgoCD,
@@ -37,12 +53,14 @@ function Metric({
 	tone?: string;
 }) {
 	return (
-		<div className="flex min-h-20 flex-col justify-center gap-1 rounded-md border bg-card p-4">
+		<Card size="sm" className="min-h-20 justify-center">
+			<CardContent className="flex flex-col gap-1">
 			<span className="text-[0.72rem] font-semibold uppercase text-muted-foreground">
 				{label}
 			</span>
 			<strong className={tone}>{value}</strong>
-		</div>
+			</CardContent>
+		</Card>
 	);
 }
 
@@ -145,8 +163,8 @@ export function WorkspaceOverview({
 		queryFn: () => listArgoApplications(client, workspace.scope.clusterContext),
 		enabled: argoDetectedQuery.data === true,
 	});
-	const argoApps = argoAppsQuery.data ?? [];
-	const argoDrift = argoApps.filter(
+	const argoApps = argoAppsQuery.data;
+	const argoDrift = (argoApps ?? []).filter(
 		(app) => app.syncStatus && app.syncStatus !== "Synced",
 	).length;
 
@@ -185,11 +203,10 @@ export function WorkspaceOverview({
 			</div>
 
 			{hasRestoreWarning && (
-				<div className="rounded-md border border-amber-500/40 bg-card p-3 text-xs text-amber-200">
-					<div className="mb-1 flex items-center gap-2 font-semibold">
-						<AlertTriangle className="size-3.5" />
-						Unavailable saved scope
-					</div>
+				<Alert className="border-amber-500/40 text-amber-200">
+					<AlertTriangle className="size-3.5" />
+					<AlertTitle>Unavailable saved scope</AlertTitle>
+					<AlertDescription className="text-amber-200/90">
 					{!restoreStatus.clusterAvailable && (
 						<div>Context missing: {workspace.scope.clusterContext}</div>
 					)}
@@ -199,7 +216,8 @@ export function WorkspaceOverview({
 					{restoreStatus.missingKinds.length > 0 && (
 						<div>Kinds: {restoreStatus.missingKinds.join(", ")}</div>
 					)}
-				</div>
+					</AlertDescription>
+				</Alert>
 			)}
 
 			<div className="grid grid-cols-1 gap-2 md:grid-cols-5">
@@ -211,14 +229,24 @@ export function WorkspaceOverview({
 			</div>
 
 			<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-				<section className="rounded-md border bg-card p-4">
-					<div className="mb-3 flex items-center justify-between gap-3">
-						<h2 className="text-sm font-semibold">Shortcuts</h2>
+				<Card>
+					<CardHeader>
+						<CardTitle>Shortcuts</CardTitle>
 						<span className="text-xs text-muted-foreground">
 							{workspace.shortcuts.length}
 						</span>
-					</div>
-					<div className="flex flex-wrap gap-2">
+					</CardHeader>
+					<CardContent className="flex flex-wrap gap-2">
+						{workspace.shortcuts.length === 0 && (
+							<Empty className="min-h-32 border-0">
+								<EmptyHeader>
+									<EmptyTitle>No shortcuts</EmptyTitle>
+									<EmptyDescription>
+										Workspace shortcuts appear after scope is saved.
+									</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						)}
 						{workspace.shortcuts.map((shortcut) => (
 							<ShortcutButton
 								key={shortcut.id}
@@ -227,39 +255,72 @@ export function WorkspaceOverview({
 								onOpenArgo={onOpenArgo}
 							/>
 						))}
-					</div>
-				</section>
-				<section className="rounded-md border bg-card p-4">
-					<h2 className="mb-3 text-sm font-semibold">Argo CD</h2>
+					</CardContent>
+				</Card>
+				<Card>
+					<CardHeader>
+						<CardTitle>Argo CD</CardTitle>
+						<CardDescription>
+							Application inventory for this cluster.
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
 					{argoDetectedQuery.isPending && (
-						<div className="text-xs text-muted-foreground">Detecting...</div>
+						<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+							<Spinner className="size-4" />
+							Detecting...
+						</div>
 					)}
 					{argoDetectedQuery.data === false && (
 						<div className="text-xs text-muted-foreground">Not detected</div>
 					)}
 					{argoDetectedQuery.data === true && (
 						<div className="grid gap-2">
-							<div className="flex items-center justify-between border-b py-2 text-xs">
-								<span className="text-muted-foreground">Applications</span>
-								<strong>{argoApps.length}</strong>
-							</div>
-							<div className="flex items-center justify-between border-b py-2 text-xs">
-								<span className="text-muted-foreground">Out of sync</span>
-								<strong className="text-amber-300">{argoDrift}</strong>
-							</div>
+							{argoAppsQuery.isPending && (
+								<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+									<Spinner className="size-4" />
+									Loading applications...
+								</div>
+							)}
+							{argoAppsQuery.isError && (
+								<Alert variant="destructive">
+									<AlertTitle>Failed to load applications</AlertTitle>
+									<AlertDescription>
+										Application counts are unavailable until the next refresh.
+									</AlertDescription>
+								</Alert>
+							)}
+							{argoApps && (
+								<>
+									<div className="flex items-center justify-between py-2 text-xs">
+										<span className="text-muted-foreground">Applications</span>
+										<strong>{argoApps.length}</strong>
+									</div>
+									<Separator />
+									<div className="flex items-center justify-between py-2 text-xs">
+										<span className="text-muted-foreground">Out of sync</span>
+										<strong className="text-amber-300">{argoDrift}</strong>
+									</div>
+									<Separator />
+								</>
+							)}
 							<Button type="button" variant="outline" onClick={() => onOpenArgo()}>
 								<GitBranch data-icon="inline-start" />
 								Open Argo CD
 							</Button>
 						</div>
 					)}
-				</section>
+					</CardContent>
+				</Card>
 			</div>
 
 			{resourcesQuery.isError && (
-				<div className="rounded-md border border-destructive/40 bg-card p-3 text-xs text-destructive">
-					Failed to refresh workspace resources.
-				</div>
+				<Alert variant="destructive">
+					<AlertTitle>Failed to refresh workspace resources</AlertTitle>
+					<AlertDescription>
+						Resource health may be stale until the next refresh succeeds.
+					</AlertDescription>
+				</Alert>
 			)}
 		</div>
 	);

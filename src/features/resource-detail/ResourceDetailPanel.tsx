@@ -146,6 +146,9 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 							detailsError={detailsQuery.isError}
 							detailsErr={detailsQuery.error}
 							conditionRows={conditionRows}
+							events={events}
+							eventsLoading={eventsQuery.isLoading}
+							eventsError={eventsQuery.isError}
 						/>
 					</TabsContent>
 					<TabsContent value="events" className="m-0">

@@ -12,9 +12,14 @@ import { AppTopBar } from "./app/AppTopBar";
 import { DetailPanelFrame } from "./app/DetailPanelFrame";
 import { useArgoDetection } from "./app/useArgoDetection";
 import {
-	resolveTreeScope,
+	Sidebar,
+	SidebarContent,
+	SidebarInset,
+	SidebarProvider,
+} from "@/components/ui/sidebar";
+import {
 	emptyStateMessage,
-	discoveredResourceKindKey,
+	resolveTreeScope,
 	type TreeNodeId,
 } from "./lib/tree-nav";
 import { diagnosticLog } from "./lib/diagnostics";
@@ -24,29 +29,13 @@ import {
 	useWorkspaceStore,
 	type SavedWorkspace,
 } from "./lib/workspaces";
-
-function resourceKindLabel(kind: ResourceKindSelection): string {
-	return typeof kind === "string" ? kind : kind.kind;
-}
-
-function resourceKindLogKey(kind: ResourceKindSelection): string {
-	return typeof kind === "string" ? kind : discoveredResourceKindKey(kind);
-}
-
-function hasDiscoveredKind(kinds: ResourceKindSelection[]): boolean {
-	return kinds.some((kind) => typeof kind !== "string");
-}
-
-const SECTION_LABELS: Record<string, string> = {
-	clusterOverview: "Cluster Overview",
-	namespaces: "Namespaces",
-	workloads: "Workloads",
-	network: "Network",
-	config: "Config",
-	storage: "Storage",
-	discovered: "Discovered",
-	argo: "Argo CD",
-};
+import {
+	hasDiscoveredKind,
+	resourceKindLabel,
+	resourceKindLogKey,
+	SECTION_LABELS,
+	SIDEBAR_PROVIDER_STYLE,
+} from "./app/viewHelpers";
 
 function App() {
 	const {
@@ -297,7 +286,10 @@ function App() {
 	}
 
 	const mainContent = (
-		<main className="flex h-full w-full min-w-0 flex-col overflow-hidden">
+		<div
+			role="main"
+			className="flex h-full w-full min-w-0 flex-col overflow-hidden"
+		>
 			{viewMode === "overview" ? (
 				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
 					<WorkspaceOverview
@@ -342,7 +334,7 @@ function App() {
 					)}
 				</div>
 			)}
-		</main>
+		</div>
 	);
 
 	const detailPanel =
@@ -370,10 +362,16 @@ function App() {
 				}}
 			/>
 
-			{/* Main row: sidebar + content + inspector */}
-			<div className="flex min-h-0 flex-1 flex-row overflow-hidden">
-				{/* Left Sidebar Tree */}
-				<aside className="flex w-[260px] min-w-[260px] shrink-0 flex-col overflow-y-auto overflow-x-hidden border-r bg-sidebar">
+			<SidebarProvider
+				defaultOpen
+				className="min-h-0 flex-1 overflow-hidden"
+				style={SIDEBAR_PROVIDER_STYLE}
+			>
+				<Sidebar
+					collapsible="none"
+					className="shrink-0 border-r bg-sidebar"
+				>
+					<SidebarContent className="overflow-y-auto overflow-x-hidden">
 					<SidebarTree
 						clusterContext={clusterContext}
 						selectedNode={selectedTreeNode}
@@ -381,13 +379,16 @@ function App() {
 						onNodeSelect={handleTreeNodeSelect}
 						onSectionToggle={toggleExpandedSection}
 					/>
-				</aside>
+					</SidebarContent>
+				</Sidebar>
 
+				<SidebarInset className="min-h-0 min-w-0 flex-1 overflow-hidden">
 				<DetailPanelFrame
 					mainContent={mainContent}
 					detailPanel={detailPanel}
 				/>
-			</div>
+				</SidebarInset>
+			</SidebarProvider>
 		</div>
 	);
 }
