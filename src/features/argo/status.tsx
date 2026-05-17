@@ -24,5 +24,5 @@ export function healthStatusVariant(status: string | null): ChipVariant {
 	if (status === "Healthy") return "success";
 	if (status === "Degraded" || status === "Missing") return "error";
 	if (status === "Progressing" || status === "Unknown") return "warning";
-	return "neutral";
+	return "warning";
 }

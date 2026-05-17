@@ -78,7 +78,12 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 	const selectedContextMissing =
 		effectiveContext.length > 0 &&
 		!contexts.some((context) => context.name === effectiveContext);
-	const canCreate = effectiveContext.length > 0 && !selectedContextMissing;
+	const namespaceScopeUnavailable =
+		effectiveContext.length > 0 && namespacesQuery.isError;
+	const canCreate =
+		effectiveContext.length > 0 &&
+		!selectedContextMissing &&
+		!namespaceScopeUnavailable;
 
 	const sortedWorkspaces = useMemo(
 		() =>
@@ -309,12 +314,28 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 											Loading namespaces...
 										</div>
 									)}
-									{!namespacesQuery.isPending && namespaces.length === 0 && (
+									{namespacesQuery.isError && (
+										<div className="grid gap-2 px-2 py-1.5 text-xs text-destructive">
+											<span>Failed to load namespaces.</span>
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												className="w-fit"
+												onClick={() => namespacesQuery.refetch()}
+											>
+												Retry
+											</Button>
+										</div>
+									)}
+									{!namespacesQuery.isPending &&
+										!namespacesQuery.isError &&
+										namespaces.length === 0 && (
 										<div className="px-2 py-1.5 text-xs text-muted-foreground">
 											All namespaces
 										</div>
 									)}
-									{namespaces.map((namespace) => {
+									{!namespacesQuery.isError && namespaces.map((namespace) => {
 										const checkboxId = `workspace-namespace-${namespace.name}`;
 										return (
 											<Field

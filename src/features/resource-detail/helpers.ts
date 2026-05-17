@@ -116,15 +116,26 @@ export function buildIncidentSignals(
 
 	if (
 		resource.status &&
-		["failed", "error", "pending", "terminating", "unknown"].includes(
-			status ?? "",
-		)
+		[
+			"failed",
+			"error",
+			"crashloopbackoff",
+			"imagepullbackoff",
+			"pending",
+			"terminating",
+			"unknown",
+		].includes(status ?? "")
 	) {
+		const isErrorStatus =
+			status === "failed" ||
+			status === "error" ||
+			status === "crashloopbackoff" ||
+			status === "imagepullbackoff";
 		signals.push({
 			id: "status",
 			label: "Status",
 			value: resource.status,
-			tone: status === "failed" || status === "error" ? "error" : "warning",
+			tone: isErrorStatus ? "error" : "warning",
 			source: "status",
 		});
 	}

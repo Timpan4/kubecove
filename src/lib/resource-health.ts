@@ -11,6 +11,7 @@ export function classifyResourceHealth(row: ResourceSummary): ResourceHealthFlag
 	const status = row.status?.toLowerCase() ?? "";
 	const ready = row.ready?.toLowerCase() ?? "";
 	const restarts = row.restarts ?? 0;
+	const restarted = restarts > 0;
 	const degraded =
 		status === "failed" ||
 		status === "error" ||
@@ -19,7 +20,8 @@ export function classifyResourceHealth(row: ResourceSummary): ResourceHealthFlag
 		ready === "false";
 	const attention =
 		!degraded &&
-		(status === "pending" ||
+		(restarted ||
+			status === "pending" ||
 			status === "terminating" ||
 			status === "unknown");
 	const healthy =
@@ -34,6 +36,6 @@ export function classifyResourceHealth(row: ResourceSummary): ResourceHealthFlag
 		healthy,
 		attention,
 		degraded,
-		restarted: restarts > 0,
+		restarted,
 	};
 }

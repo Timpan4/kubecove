@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TimestampText } from "@/components/TimestampText";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -24,8 +24,10 @@ export function NamespaceList({
 	const [namespaces, setNamespaces] = useState<NamespaceSummary[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const requestSeqRef = useRef(0);
 
 	const loadNamespaces = useCallback(async () => {
+		const requestSeq = ++requestSeqRef.current;
 		if (!clusterContext) {
 			setNamespaces([]);
 			setLoading(false);
@@ -37,10 +39,13 @@ export function NamespaceList({
 		setError(null);
 		try {
 			const ns = await listNamespaces(client, clusterContext);
+			if (requestSeq !== requestSeqRef.current) return;
 			setNamespaces(ns);
 		} catch (err) {
+			if (requestSeq !== requestSeqRef.current) return;
 			setError(err instanceof Error ? err.message : "Failed to load namespaces");
 		} finally {
+			if (requestSeq !== requestSeqRef.current) return;
 			setLoading(false);
 		}
 	}, [clusterContext]);
