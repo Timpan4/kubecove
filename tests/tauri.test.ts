@@ -762,10 +762,30 @@ describe("incident signal helpers", () => {
 			"utf8",
 		);
 
-		expect(source).toContain("formatExactTimestamp");
+		expect(source).toContain("ExactTimestampText");
 		expect(source).toContain("valueParts");
 		expect(source).toContain("<SignalValue signal={signal} />");
 		expect(source).not.toContain("{signal.value}");
+	});
+
+	test("renders metadata creation timestamps through the shared timestamp formatter", () => {
+		const source = readFileSync(
+			"src/features/resource-detail/DetailsTab.tsx",
+			"utf8",
+		);
+
+		expect(source).toContain('name === "Created"');
+		expect(source).toContain("<ExactTimestampText value={value} />");
+	});
+
+	test("renders Argo detail metadata creation timestamps through the shared timestamp formatter", () => {
+		const source = readFileSync(
+			"src/features/argo/ArgoDetailShared.tsx",
+			"utf8",
+		);
+
+		expect(source).toContain('key === "Created"');
+		expect(source).toContain("<ExactTimestampText value={value} />");
 	});
 
   test("treats crash loop and image pull states as error incident signals", () => {

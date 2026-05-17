@@ -1,10 +1,9 @@
 import { MetadataBadges } from "@/components/MetadataBadges";
-import { formatExactTimestamp, TimestampText } from "@/components/TimestampText";
+import { ExactTimestampText, TimestampText } from "@/components/TimestampText";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { useSettingsState } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { useMemo } from "react";
 import type { ConditionRow, ContainerStatusRow, IncidentSignal } from "./helpers";
@@ -62,21 +61,6 @@ function DetailField({
 	);
 }
 
-function ExactTimestamp({ value }: { value: string }) {
-	const { timestampTimezone } = useSettingsState();
-	const formatted = formatExactTimestamp(value, timestampTimezone) ?? value;
-
-	return (
-		<TimestampText
-			relative={formatted}
-			exact={value}
-			className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
-		>
-			{formatted}
-		</TimestampText>
-	);
-}
-
 function ConditionList({ conditions }: { conditions: ConditionRow[] }) {
 	if (conditions.length === 0) return null;
 	return (
@@ -131,7 +115,10 @@ function ConditionList({ conditions }: { conditions: ConditionRow[] }) {
 							<div className="mt-2 text-xs text-muted-foreground">
 								Last transition:{" "}
 								<span className="text-foreground">
-									<ExactTimestamp value={condition.lastTransitionTime} />
+									<ExactTimestampText
+										value={condition.lastTransitionTime}
+										className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+									/>
 								</span>
 							</div>
 						)}
@@ -212,7 +199,10 @@ function ContainerList({ containers }: { containers: ContainerStatusRow[] }) {
 										<div>
 											Started:{" "}
 											<span className="text-foreground">
-												<ExactTimestamp value={container.startedAt} />
+												<ExactTimestampText
+													value={container.startedAt}
+													className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+												/>
 											</span>
 										</div>
 									)}
@@ -232,7 +222,10 @@ function ContainerList({ containers }: { containers: ContainerStatusRow[] }) {
 										<div>
 											Last finished:{" "}
 											<span className="text-foreground">
-												<ExactTimestamp value={container.lastFinishedAt} />
+												<ExactTimestampText
+													value={container.lastFinishedAt}
+													className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+												/>
 											</span>
 										</div>
 									)}
@@ -254,7 +247,11 @@ function SignalValue({ signal }: { signal: IncidentSignal }) {
 		<>
 			{parts.map((part, index) =>
 				part.kind === "timestamp" ? (
-					<ExactTimestamp key={`${part.value}:${index}`} value={part.value} />
+					<ExactTimestampText
+						key={`${part.value}:${index}`}
+						value={part.value}
+						className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+					/>
 				) : (
 					<span key={`${part.text}:${index}`}>{part.text}</span>
 				),
@@ -364,6 +361,17 @@ function BadgeRow({
 			</span>
 		</div>
 	);
+}
+
+function MetadataValue({ name, value }: { name: string; value: unknown }) {
+	if (name === "Labels" || name === "Annotations") {
+		return <MetadataBadges value={value} />;
+	}
+	if (name === "Created" && typeof value === "string") {
+		return <ExactTimestampText value={value} />;
+	}
+	if (typeof value === "string") return value;
+	return JSON.stringify(value);
 }
 
 export function DetailsTab({
@@ -521,13 +529,7 @@ export function DetailsTab({
 							<div key={key} className={DETAIL_ROW_CLASS}>
 								<span className={DETAIL_KEY_CLASS}>{key}</span>
 								<span className={DETAIL_VALUE_CLASS}>
-									{key === "Labels" || key === "Annotations" ? (
-										<MetadataBadges value={value} />
-									) : typeof value === "string" ? (
-										value
-									) : (
-										JSON.stringify(value)
-									)}
+									<MetadataValue name={key} value={value} />
 								</span>
 							</div>
 						))}
