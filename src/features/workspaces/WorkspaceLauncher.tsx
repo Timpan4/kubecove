@@ -1,8 +1,32 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FolderOpen, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+	Card,
+	CardAction,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyTitle,
+} from "@/components/ui/empty";
+import {
+	Field,
+	FieldGroup,
+	FieldLabel,
+	FieldLegend,
+	FieldSet,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
 	Select,
 	SelectContent,
@@ -128,48 +152,59 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 						</div>
 						<div className="grid gap-2">
 							{contextsQuery.isPending && (
-								<div className="rounded-md border bg-card p-4 text-xs text-muted-foreground">
-									Loading contexts...
-								</div>
+								<Card size="sm">
+									<CardContent className="text-xs text-muted-foreground">
+										Loading contexts...
+									</CardContent>
+								</Card>
 							)}
 							{contextsQuery.isError && (
-								<div className="rounded-md border border-destructive/40 bg-card p-4 text-xs text-destructive">
-									Failed to load contexts.
-								</div>
+								<Alert variant="destructive">
+									<AlertTitle>Failed to load contexts</AlertTitle>
+									<AlertDescription>
+										Refresh the workspace list after your kubeconfig is available.
+									</AlertDescription>
+								</Alert>
 							)}
 							{sortedWorkspaces.length === 0 && !contextsQuery.isPending && (
-								<div className="rounded-md border bg-card p-4 text-sm text-muted-foreground">
-									No saved workspaces.
-								</div>
+								<Empty className="min-h-40 border">
+									<EmptyHeader>
+										<EmptyTitle>No saved workspaces</EmptyTitle>
+										<EmptyDescription>
+											Create a workspace from a cluster context to start.
+										</EmptyDescription>
+									</EmptyHeader>
+								</Empty>
 							)}
 							{sortedWorkspaces.map((workspace) => {
 								const unavailable = !contexts.some(
 									(context) => context.name === workspace.scope.clusterContext,
 								);
 								return (
-									<article
+									<Card
 										key={workspace.id}
+										size="sm"
 										className={cn(
-											"grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_auto]",
+											"grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]",
 											unavailable && "border-amber-500/40",
 										)}
 									>
-										<div className="min-w-0">
+										<CardHeader className="min-w-0">
 											<div className="flex min-w-0 items-center gap-2">
-												<h2 className="truncate text-sm font-semibold">
+												<CardTitle className="truncate">
 													{workspace.name}
-												</h2>
+												</CardTitle>
 												{unavailable && (
 													<span className="rounded-sm border border-amber-500/40 px-1.5 py-0.5 text-[0.6875rem] text-amber-300">
 														Context unavailable
 													</span>
 												)}
 											</div>
-											<p className="mt-1 truncate text-xs text-muted-foreground">
+											<CardDescription className="truncate">
 												{summarizeWorkspaceScope(workspace.scope)}
-											</p>
-										</div>
-										<div className="flex items-center justify-end gap-2">
+											</CardDescription>
+										</CardHeader>
+										<CardAction className="row-start-auto flex items-center justify-end gap-2 px-3">
 											<Button
 												type="button"
 												variant="outline"
@@ -200,45 +235,45 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 											>
 												<Trash2 />
 											</Button>
-										</div>
-									</article>
+										</CardAction>
+									</Card>
 								);
 							})}
 						</div>
 					</section>
 
-					<section className="rounded-md border bg-card p-4">
-						<div className="mb-4 flex items-center justify-between gap-2">
-							<h2 className="text-sm font-semibold">
+					<Card size="sm">
+						<CardHeader>
+							<CardTitle>
 								{editingWorkspace ? "Edit workspace" : "New workspace"}
-							</h2>
+							</CardTitle>
 							{editingWorkspace && (
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-sm"
-									aria-label="Cancel edit"
-									onClick={resetForm}
-								>
-									<X />
-								</Button>
+								<CardAction>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon-sm"
+										aria-label="Cancel edit"
+										onClick={resetForm}
+									>
+										<X />
+									</Button>
+								</CardAction>
 							)}
-						</div>
-						<div className="grid gap-3">
-							<label className="grid gap-1.5">
-								<span className="text-xs font-medium text-muted-foreground">
-									Name
-								</span>
+						</CardHeader>
+						<CardContent>
+							<FieldGroup className="gap-3">
+								<Field>
+									<FieldLabel htmlFor="workspace-name">Name</FieldLabel>
 								<Input
+									id="workspace-name"
 									value={name}
 									placeholder={effectiveContext || "Workspace name"}
 									onChange={(event) => setName(event.target.value)}
 								/>
-							</label>
-							<label className="grid gap-1.5">
-								<span className="text-xs font-medium text-muted-foreground">
-									Context
-								</span>
+								</Field>
+								<Field>
+									<FieldLabel>Context</FieldLabel>
 								<Select
 									value={effectiveContext}
 									onValueChange={(value) => {
@@ -259,12 +294,16 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 										</SelectGroup>
 									</SelectContent>
 								</Select>
-							</label>
-							<div className="grid gap-1.5">
-								<div className="text-xs font-medium text-muted-foreground">
-									Namespaces
-								</div>
-								<div className="max-h-52 overflow-y-auto rounded-md border bg-background/40 p-1">
+								</Field>
+								<FieldSet className="gap-1.5">
+									<FieldLegend
+										variant="label"
+										className="text-muted-foreground"
+									>
+										Namespaces
+									</FieldLegend>
+								<ScrollArea className="max-h-52 rounded-md border bg-background/40">
+									<div className="p-1">
 									{namespacesQuery.isPending && effectiveContext && (
 										<div className="px-2 py-1.5 text-xs text-muted-foreground">
 											Loading namespaces...
@@ -275,21 +314,31 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 											All namespaces
 										</div>
 									)}
-									{namespaces.map((namespace) => (
-										<label
-											key={namespace.name}
-											className="flex h-7 items-center gap-2 rounded-sm px-2 text-xs hover:bg-muted"
-										>
-											<input
-												type="checkbox"
-												checked={selectedNamespaces.includes(namespace.name)}
-												onChange={() => toggleNamespace(namespace.name)}
-											/>
-											<span className="min-w-0 truncate">{namespace.name}</span>
-										</label>
-									))}
-								</div>
-							</div>
+									{namespaces.map((namespace) => {
+										const checkboxId = `workspace-namespace-${namespace.name}`;
+										return (
+											<Field
+												key={namespace.name}
+												orientation="horizontal"
+												className="h-7 items-center gap-2 rounded-sm px-2 text-xs hover:bg-muted"
+											>
+												<Checkbox
+													id={checkboxId}
+													checked={selectedNamespaces.includes(namespace.name)}
+													onCheckedChange={() => toggleNamespace(namespace.name)}
+												/>
+												<FieldLabel
+													htmlFor={checkboxId}
+													className="min-w-0 flex-1 cursor-pointer truncate font-normal"
+												>
+													{namespace.name}
+												</FieldLabel>
+											</Field>
+										);
+									})}
+									</div>
+								</ScrollArea>
+								</FieldSet>
 							<Button
 								type="button"
 								size="lg"
@@ -303,8 +352,9 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 								)}
 								{editingWorkspace ? "Save workspace" : "Create workspace"}
 							</Button>
-						</div>
-					</section>
+							</FieldGroup>
+						</CardContent>
+					</Card>
 				</div>
 			</main>
 		</div>

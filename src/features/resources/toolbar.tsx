@@ -1,9 +1,15 @@
 import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+	InputGroupText,
+} from "@/components/ui/input-group";
 import {
 	Select,
 	SelectContent,
+	SelectGroup,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
@@ -34,17 +40,21 @@ export function ResourceToolbar({
 
 	return (
 		<div className={TOOLBAR_CLASS}>
-			<div className="relative min-w-0 flex-1">
-				<Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-				<Input
+			<InputGroup className="h-9 min-w-0 flex-1 border-slate-700/80 bg-slate-950/45">
+				<InputGroupAddon align="inline-start">
+					<InputGroupText>
+						<Search className="size-4" />
+					</InputGroupText>
+				</InputGroupAddon>
+				<InputGroupInput
 					aria-label="Search resources by name, namespace, kind, owner, Argo app, or Helm release"
-					className="h-9 border-slate-700/80 bg-slate-950/45 pl-8 text-sm text-foreground placeholder:text-muted-foreground"
+					className="h-8 text-sm text-foreground placeholder:text-muted-foreground"
 					type="text"
 					placeholder="Search by name, namespace, kind, owner, Argo app, Helm release..."
 					value={search}
 					onChange={(e) => onSearchChange(e.target.value)}
 				/>
-			</div>
+			</InputGroup>
 			{argoApps.length > 0 && (
 				<Select
 					value={selectedArgoAppFilter || "all"}
@@ -59,12 +69,14 @@ export function ResourceToolbar({
 						<SelectValue placeholder="All Argo apps" />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="all">All Argo apps</SelectItem>
-						{argoApps.map((app) => (
-							<SelectItem key={app} value={app}>
-								{app}
-							</SelectItem>
-						))}
+						<SelectGroup>
+							<SelectItem value="all">All Argo apps</SelectItem>
+							{argoApps.map((app) => (
+								<SelectItem key={app} value={app}>
+									{app}
+								</SelectItem>
+							))}
+						</SelectGroup>
 					</SelectContent>
 				</Select>
 			)}

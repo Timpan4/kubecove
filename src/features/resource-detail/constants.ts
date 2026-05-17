@@ -1,32 +1,7 @@
 export type Tab = "details" | "events" | "yaml";
 
-export type ChipVariant = "neutral" | "success" | "warning" | "error" | "info";
-
-export const CHIP_BADGE_STYLES: Record<
-	ChipVariant,
-	{
-		variant: "secondary" | "destructive" | "outline";
-		className: string;
-	}
-> = {
-	neutral: { variant: "secondary", className: "" },
-	success: {
-		variant: "outline",
-		className:
-			"border-emerald-500/30 bg-emerald-500/10 text-emerald-300 dark:bg-emerald-500/15",
-	},
-	warning: {
-		variant: "outline",
-		className:
-			"border-amber-500/30 bg-amber-500/10 text-amber-300 dark:bg-amber-500/15",
-	},
-	error: { variant: "destructive", className: "" },
-	info: {
-		variant: "outline",
-		className:
-			"border-sky-500/30 bg-sky-500/10 text-sky-300 dark:bg-sky-500/15",
-	},
-};
+export type { StatusTone as ChipVariant } from "@/components/StatusBadge";
+export { STATUS_BADGE_STYLES as CHIP_BADGE_STYLES } from "@/components/StatusBadge";
 
 export const PANEL_CLASS =
 	"flex h-full min-w-0 flex-col overflow-hidden border-l bg-card";
@@ -44,9 +19,6 @@ export const DETAIL_ROW_CLASS = "flex gap-3 border-b py-1.5";
 export const DETAIL_KEY_CLASS = "min-w-[120px] text-xs font-medium text-muted-foreground";
 export const DETAIL_VALUE_CLASS = "min-w-0 flex-1 wrap-anywhere text-xs text-foreground";
 export const LOADING_STATE_CLASS = "p-6 text-center text-xs text-muted-foreground";
-export const ERROR_STATE_CLASS = "p-6 text-center text-xs text-destructive";
-export const LOADING_SPINNER_CLASS =
-	"mx-auto mb-2 size-4 animate-spin rounded-full border-2 border-muted border-t-primary";
 export const YAML_BLOCK_CLASS =
 	"whitespace-pre-wrap break-normal font-mono text-xs leading-relaxed text-foreground [overflow-wrap:anywhere]";
 export const JSON_BLOCK_CLASS =

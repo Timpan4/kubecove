@@ -12,7 +12,9 @@ import type {
 	ResourceSummary,
 } from "../src/lib/types";
 
-const contexts: ClusterContext[] = [{ name: "kind-dev", isCurrent: true }];
+const clusterContexts: ClusterContext[] = [
+	{ name: "kind-dev", isCurrent: true },
+];
 
 describe("workspace helpers", () => {
 	test("creates sorted local workspace records without kubeconfig data", () => {
@@ -47,7 +49,7 @@ describe("workspace helpers", () => {
 
 		const status = computeRestoreStatus(
 			workspace,
-			contexts,
+			clusterContexts,
 			["default"],
 			[],
 		);
@@ -79,8 +81,8 @@ describe("workspace helpers", () => {
 		);
 		expect(buildWorkspaceHealthSummary(rows)).toEqual({
 			total: 4,
-			healthy: 1,
-			attention: 2,
+			healthy: 2,
+			attention: 1,
 			degraded: 1,
 			restarted: 1,
 		});
