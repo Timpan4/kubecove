@@ -235,6 +235,25 @@ export function isCleanCompletedContainer(
 	);
 }
 
+function hasPreviousRestartContext(container: ContainerStatusRow): boolean {
+	return (
+		container.lastState !== undefined ||
+		container.lastReason !== undefined ||
+		container.lastMessage !== undefined ||
+		container.lastStartedAt !== undefined ||
+		container.lastFinishedAt !== undefined ||
+		container.lastExitCode !== undefined
+	);
+}
+
+function isCleanPreviousRestart(container: ContainerStatusRow): boolean {
+	if (container.lastState !== "terminated") return false;
+	if (container.lastExitCode !== undefined && container.lastExitCode !== 0) {
+		return false;
+	}
+	return container.lastReason === "Completed" || container.lastExitCode === 0;
+}
+
 function isActionableContainerRestart(
 	container: ContainerStatusRow,
 	now: Date,
@@ -248,7 +267,11 @@ function isActionableContainerRestart(
 	if (container.state === "terminated" && container.exitCode !== 0) return true;
 	if (container.lastExitCode !== undefined && container.lastExitCode !== 0) return true;
 	if (container.lastReason && container.lastReason !== "Completed") return true;
-	return isRecentTimestamp(container.lastFinishedAt, now, staleRestartMs);
+	if (isCleanPreviousRestart(container)) return false;
+	if (isRecentTimestamp(container.lastFinishedAt, now, staleRestartMs)) {
+		return true;
+	}
+	return !hasPreviousRestartContext(container);
 }
 
 function restartSignalValue(containers: ContainerStatusRow[]): string {

@@ -610,6 +610,34 @@ describe("incident signal helpers", () => {
 		).toEqual([]);
 	});
 
+	test("falls back to restart signals when restart history is unknown", () => {
+		expect(
+			buildIncidentSignals(
+				{ ...resource, status: "Running", ready: "True", restarts: 1 },
+				[{ type: "Ready", status: "True" }],
+				[],
+				[
+					{
+						name: "sidecar",
+						ready: true,
+						restartCount: 1,
+						state: "running",
+					},
+				],
+				{ now: new Date("2026-05-17T12:00:00Z") },
+			),
+		).toEqual([
+			{
+				id: "restarts",
+				label: "Restarts",
+				value: "sidecar restarted 1 time",
+				valueParts: [{ kind: "text", text: "sidecar restarted 1 time" }],
+				tone: "warning",
+				source: "status",
+			},
+		]);
+	});
+
 	test("does not fall back to raw restart counts when container context is pending", () => {
 		expect(
 			buildIncidentSignals(
