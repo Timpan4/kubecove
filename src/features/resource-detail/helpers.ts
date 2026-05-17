@@ -215,9 +215,9 @@ function isRecentTimestamp(
 	now: Date,
 	staleRestartMs: number,
 ): boolean {
-	if (!timestamp) return true;
+	if (!timestamp) return false;
 	const value = Date.parse(timestamp);
-	if (Number.isNaN(value)) return true;
+	if (Number.isNaN(value)) return false;
 	return now.getTime() - value <= staleRestartMs;
 }
 
