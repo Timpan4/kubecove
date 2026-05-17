@@ -360,6 +360,46 @@ describe("resource browser presentation helpers", () => {
   });
 });
 
+describe("sidebar source safeguards", () => {
+	test("avoids unsafe returns in namespace cleanup", () => {
+		const source = readFileSync("src/components/NamespaceList.tsx", "utf8");
+
+		expect(source).not.toContain(
+			"finally {\n\t\t\tif (requestSeq !== requestSeqRef.current) return;",
+		);
+		expect(source).toContain("if (requestSeq === requestSeqRef.current)");
+	});
+
+	test("uses non-submit button types for sidebar controls", () => {
+		const layoutSource = readFileSync(
+			"src/components/ui/sidebar-layout.tsx",
+			"utf8",
+		);
+		const menuSource = readFileSync(
+			"src/components/ui/sidebar-menu.tsx",
+			"utf8",
+		);
+
+		expect(layoutSource).toContain('type="button"');
+		expect(layoutSource).toContain('type={asChild ? undefined : "button"}');
+		expect(menuSource.match(/type=\{asChild \? undefined : "button"\}/g))
+			.toHaveLength(2);
+	});
+
+	test("ignores the sidebar keyboard shortcut inside editable controls", () => {
+		const source = readFileSync(
+			"src/components/ui/sidebar-provider.tsx",
+			"utf8",
+		);
+
+		expect(source).toContain("const isEditable");
+		expect(source).toContain("HTMLInputElement");
+		expect(source).toContain("HTMLTextAreaElement");
+		expect(source).toContain("HTMLSelectElement");
+		expect(source).toContain('getAttribute("role") === "textbox"');
+	});
+});
+
 describe("incident signal helpers", () => {
   const resource: ResourceSummary = {
     cluster: "kind-prod",

@@ -45,8 +45,9 @@ export function NamespaceList({
 			if (requestSeq !== requestSeqRef.current) return;
 			setError(err instanceof Error ? err.message : "Failed to load namespaces");
 		} finally {
-			if (requestSeq !== requestSeqRef.current) return;
-			setLoading(false);
+			if (requestSeq === requestSeqRef.current) {
+				setLoading(false);
+			}
 		}
 	}, [clusterContext]);
 
