@@ -354,15 +354,17 @@ export function DetailsTab({
 		() => getContainerStatusRows(details?.status),
 		[details?.status],
 	);
+	const signalContainers =
+		resource.kind === "Pod" || details ? containerRows : undefined;
 	const signals = useMemo(
 		() =>
 			buildIncidentSignals(
 				resource,
 				conditionRows,
 				events ?? [],
-				details ? containerRows : undefined,
+				signalContainers,
 			),
-		[resource, conditionRows, events, details, containerRows],
+		[resource, conditionRows, events, signalContainers],
 	);
 	const restartSignal = signals.find((signal) => signal.id === "restarts");
 	const restartTone = restartSignal?.tone ?? "neutral";
