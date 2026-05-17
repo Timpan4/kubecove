@@ -1,17 +1,19 @@
 import { MetadataBadges } from "@/components/MetadataBadges";
-import { TimestampText } from "@/components/TimestampText";
+import { ExactTimestampText, TimestampText } from "@/components/TimestampText";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { useMemo } from "react";
-import type { ConditionRow, IncidentSignal } from "./helpers";
+import type { ConditionRow, ContainerStatusRow, IncidentSignal } from "./helpers";
 import {
 	buildIncidentSignals,
 	formatMetadata,
+	getContainerStatusRows,
 	getErrorMessage,
 	incidentSignalCardClassName,
+	isCleanCompletedContainer,
 } from "./helpers";
 import type {
 	ResourceDetailsFull,
@@ -20,6 +22,7 @@ import type {
 } from "../../lib/types";
 import {
 	CHIP_BADGE_STYLES,
+	type ChipVariant,
 	DETAIL_KEY_CLASS,
 	DETAIL_ROW_CLASS,
 	DETAIL_SECTION_CLASS,
@@ -108,11 +111,152 @@ function ConditionList({ conditions }: { conditions: ConditionRow[] }) {
 								{condition.message}
 							</div>
 						)}
+						{condition.lastTransitionTime && (
+							<div className="mt-2 text-xs text-muted-foreground">
+								Last transition:{" "}
+								<span className="text-foreground">
+									<ExactTimestampText
+										value={condition.lastTransitionTime}
+										className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+									/>
+								</span>
+							</div>
+						)}
 						</CardContent>
 					</Card>
 				))}
 			</div>
 		</div>
+	);
+}
+
+function containerTone(container: ContainerStatusRow): ChipVariant {
+	if (isCleanCompletedContainer(container)) {
+		return "neutral";
+	}
+	if (container.exitCode !== undefined && container.exitCode !== 0) {
+		return "error";
+	}
+	if (
+		container.state === "waiting" ||
+		(container.lastExitCode !== undefined && container.lastExitCode !== 0)
+	) {
+		return "warning";
+	}
+	if (container.ready === false) {
+		return "error";
+	}
+	if (container.ready === true || container.state === "running") {
+		return "success";
+	}
+	return "neutral";
+}
+
+function containerReadinessLabel(container: ContainerStatusRow): string {
+	if (isCleanCompletedContainer(container)) return "completed";
+	if (container.ready === undefined) return "ready unknown";
+	return container.ready ? "ready" : "not ready";
+}
+
+function ContainerList({ containers }: { containers: ContainerStatusRow[] }) {
+	if (containers.length === 0) return null;
+	return (
+		<div className={DETAIL_SECTION_CLASS}>
+			<div className={DETAIL_SECTION_TITLE_CLASS}>Containers</div>
+			<div className="flex flex-col gap-2">
+				{containers.map((container) => {
+					const tone = containerTone(container);
+					const badgeStyle = CHIP_BADGE_STYLES[tone];
+					return (
+						<Card size="sm" key={container.name}>
+							<CardContent>
+								<div className="flex items-start justify-between gap-2">
+									<div className="min-w-0">
+										<div className="text-[0.82rem] font-semibold text-foreground [overflow-wrap:anywhere]">
+											{container.name}
+										</div>
+										<div className="mt-1 text-xs text-muted-foreground">
+											{container.state ?? "state unknown"}
+											{container.reason ? ` · ${container.reason}` : ""}
+										</div>
+									</div>
+									<Badge
+										variant={badgeStyle.variant}
+										className={cn(
+											"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
+											badgeStyle.className,
+										)}
+									>
+										{containerReadinessLabel(container)}
+									</Badge>
+								</div>
+								<div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+									<div>
+										Restarts:{" "}
+										<span className="text-foreground">{container.restartCount}</span>
+									</div>
+									{container.startedAt && (
+										<div>
+											Started:{" "}
+											<span className="text-foreground">
+												<ExactTimestampText
+													value={container.startedAt}
+													className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+												/>
+											</span>
+										</div>
+									)}
+									{container.lastState && (
+										<div>
+											Last state:{" "}
+											<span className="text-foreground">
+												{container.lastState}
+												{container.lastReason ? ` · ${container.lastReason}` : ""}
+												{container.lastExitCode !== undefined
+													? ` · exit ${container.lastExitCode}`
+													: ""}
+											</span>
+										</div>
+									)}
+									{container.lastFinishedAt && (
+										<div>
+											Last finished:{" "}
+											<span className="text-foreground">
+												<ExactTimestampText
+													value={container.lastFinishedAt}
+													className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+												/>
+											</span>
+										</div>
+									)}
+								</div>
+							</CardContent>
+						</Card>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
+function SignalValue({ signal }: { signal: IncidentSignal }) {
+	const parts = signal.valueParts ?? [
+		{ kind: "text" as const, text: signal.value },
+	];
+	return (
+		<>
+			{parts.map((part, index) =>
+				part.kind === "timestamp" ? (
+					<ExactTimestampText
+						key={`${part.value}:${index}`}
+						value={part.value}
+						className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+					/>
+				) : (
+					<span key={`${part.text}:${index}`}>{part.text}</span>
+				),
+			)}
+		</>
 	);
 }
 
@@ -162,7 +306,7 @@ function SignalList({
 											{signal.label}
 										</div>
 										<div className="mt-1 text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]">
-											{signal.value}
+											<SignalValue signal={signal} />
 										</div>
 									</div>
 									<Badge
@@ -219,6 +363,17 @@ function BadgeRow({
 	);
 }
 
+function MetadataValue({ name, value }: { name: string; value: unknown }) {
+	if (name === "Labels" || name === "Annotations") {
+		return <MetadataBadges value={value} />;
+	}
+	if (name === "Created" && typeof value === "string") {
+		return <ExactTimestampText value={value} />;
+	}
+	if (typeof value === "string") return value;
+	return JSON.stringify(value);
+}
+
 export function DetailsTab({
 	resource,
 	details,
@@ -230,10 +385,28 @@ export function DetailsTab({
 	eventsLoading,
 	eventsError,
 }: DetailsTabProps) {
-	const signals = useMemo(
-		() => buildIncidentSignals(resource, conditionRows, events ?? []),
-		[resource, conditionRows, events],
+	const containerRows = useMemo(
+		() => getContainerStatusRows(details?.status),
+		[details?.status],
 	);
+	const podDetailsLoading =
+		resource.kind === "Pod" && detailsLoading && !details && !detailsError;
+	const signalContainers =
+		resource.kind === "Pod" && (details || podDetailsLoading)
+			? containerRows
+			: undefined;
+	const signals = useMemo(
+		() =>
+			buildIncidentSignals(
+				resource,
+				conditionRows,
+				events ?? [],
+				signalContainers,
+			),
+		[resource, conditionRows, events, signalContainers],
+	);
+	const restartSignal = signals.find((signal) => signal.id === "restarts");
+	const restartTone = restartSignal?.tone ?? "neutral";
 
 	return (
 		<>
@@ -303,16 +476,10 @@ export function DetailsTab({
 						<span className={DETAIL_KEY_CLASS}>Restarts</span>
 						<span className={DETAIL_VALUE_CLASS}>
 							<Badge
-								variant={
-									CHIP_BADGE_STYLES[
-										resource.restarts > 5 ? "error" : "warning"
-									].variant
-								}
+								variant={CHIP_BADGE_STYLES[restartTone].variant}
 								className={cn(
 									"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
-									CHIP_BADGE_STYLES[
-										resource.restarts > 5 ? "error" : "warning"
-									].className,
+									CHIP_BADGE_STYLES[restartTone].className,
 								)}
 							>
 								{resource.restarts}
@@ -346,6 +513,7 @@ export function DetailsTab({
 			{!detailsLoading && !detailsError && details && (
 				<>
 					<ConditionList conditions={conditionRows} />
+					<ContainerList containers={containerRows} />
 					{details.status && (
 						<div className={DETAIL_SECTION_CLASS}>
 							<div className={DETAIL_SECTION_TITLE_CLASS}>Status Details</div>
@@ -363,13 +531,7 @@ export function DetailsTab({
 							<div key={key} className={DETAIL_ROW_CLASS}>
 								<span className={DETAIL_KEY_CLASS}>{key}</span>
 								<span className={DETAIL_VALUE_CLASS}>
-									{key === "Labels" || key === "Annotations" ? (
-										<MetadataBadges value={value} />
-									) : typeof value === "string" ? (
-										value
-									) : (
-										JSON.stringify(value)
-									)}
+									<MetadataValue name={key} value={value} />
 								</span>
 							</div>
 						))}

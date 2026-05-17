@@ -84,3 +84,20 @@ export function TimestampText({
 		</Tooltip>
 	);
 }
+
+export function ExactTimestampText({
+	value,
+	className,
+}: {
+	value: string;
+	className?: string;
+}) {
+	const { timestampTimezone } = useSettingsState();
+	const formatted = formatExactTimestamp(value, timestampTimezone) ?? value;
+
+	return (
+		<TimestampText relative={formatted} exact={value} className={className}>
+			{formatted}
+		</TimestampText>
+	);
+}

@@ -10,6 +10,26 @@ export interface ConditionRow {
 	status: string;
 	reason?: string;
 	message?: string;
+	lastTransitionTime?: string;
+}
+
+export interface ContainerStatusRow {
+	name: string;
+	type?: "init" | "container" | "ephemeral";
+	ready?: boolean;
+	restartCount: number;
+	state?: string;
+	reason?: string;
+	message?: string;
+	startedAt?: string;
+	finishedAt?: string;
+	exitCode?: number;
+	lastState?: string;
+	lastReason?: string;
+	lastMessage?: string;
+	lastStartedAt?: string;
+	lastFinishedAt?: string;
+	lastExitCode?: number;
 }
 
 export function shouldFetchResourceDetails(
@@ -67,15 +87,113 @@ export function getConditionRows(
 			typeof condition.reason === "string" ? condition.reason : undefined,
 		message:
 			typeof condition.message === "string" ? condition.message : undefined,
+		lastTransitionTime:
+			typeof condition.lastTransitionTime === "string"
+				? condition.lastTransitionTime
+				: undefined,
 	}));
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+	const value = record[key];
+	return typeof value === "string" ? value : undefined;
+}
+
+function numberField(record: Record<string, unknown>, key: string): number | undefined {
+	const value = record[key];
+	return typeof value === "number" ? value : undefined;
+}
+
+interface ParsedContainerState {
+	state?: string;
+	reason?: string;
+	message?: string;
+	startedAt?: string;
+	finishedAt?: string;
+	exitCode?: number;
+}
+
+function parseStateFields(state: unknown): ParsedContainerState {
+	if (!isRecord(state)) return {};
+	const stateEntry = Object.entries(state).find(([, value]) => isRecord(value));
+	if (!stateEntry) return {};
+	const [stateName, stateValue] = stateEntry;
+	if (!isRecord(stateValue)) return {};
+
+	return {
+		state: stateName,
+		reason: stringField(stateValue, "reason"),
+		message: stringField(stateValue, "message"),
+		startedAt: stringField(stateValue, "startedAt"),
+		finishedAt: stringField(stateValue, "finishedAt"),
+		exitCode: numberField(stateValue, "exitCode"),
+	};
+}
+
+function getStatusList(status: Record<string, unknown>, key: string): Record<string, unknown>[] {
+	const value = status[key];
+	return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+export function getContainerStatusRows(
+	status: Record<string, unknown> | undefined,
+): ContainerStatusRow[] {
+	if (!status) return [];
+	const containers = [
+		...getStatusList(status, "initContainerStatuses").map((container) => ({
+			container,
+			type: "init" as const,
+		})),
+		...getStatusList(status, "containerStatuses").map((container) => ({
+			container,
+			type: "container" as const,
+		})),
+		...getStatusList(status, "ephemeralContainerStatuses").map((container) => ({
+			container,
+			type: "ephemeral" as const,
+		})),
+	];
+	return containers.map(({ container, type }) => {
+		const currentState = parseStateFields(container.state);
+		const lastState = parseStateFields(container.lastState);
+		return {
+			name: String(container.name ?? "container"),
+			type,
+			ready: typeof container.ready === "boolean" ? container.ready : undefined,
+			restartCount:
+				typeof container.restartCount === "number" ? container.restartCount : 0,
+			state: currentState.state,
+			reason: currentState.reason,
+			message: currentState.message,
+			startedAt: currentState.startedAt,
+			finishedAt: currentState.finishedAt,
+			exitCode: currentState.exitCode,
+			lastState: lastState.state,
+			lastReason: lastState.reason,
+			lastMessage: lastState.message,
+			lastStartedAt: lastState.startedAt,
+			lastFinishedAt: lastState.finishedAt,
+			lastExitCode: lastState.exitCode,
+		};
+	});
 }
 
 export interface IncidentSignal {
 	id: string;
 	label: string;
 	value: string;
+	valueParts?: IncidentSignalValuePart[];
 	tone: ChipVariant;
 	source: "status" | "condition" | "event";
+}
+
+export type IncidentSignalValuePart =
+	| { kind: "text"; text: string }
+	| { kind: "timestamp"; value: string };
+
+interface IncidentSignalOptions {
+	now?: Date;
+	staleRestartMs?: number;
 }
 
 export function incidentSignalCardClassName(tone: ChipVariant): string {
@@ -104,15 +222,177 @@ function eventWarningSummary(events: ResourceEventSummary[]): string | null {
 	return `${reasons.size} ${reasonLabel} · ${repeats} ${repeatLabel}`;
 }
 
+function isRecentTimestamp(
+	timestamp: string | undefined,
+	now: Date,
+	staleRestartMs: number,
+): boolean {
+	if (!timestamp) return false;
+	const value = Date.parse(timestamp);
+	if (Number.isNaN(value)) return false;
+	return now.getTime() - value <= staleRestartMs;
+}
+
+function isSucceededResource(resource: ResourceSummary): boolean {
+	return resource.status?.toLowerCase() === "succeeded";
+}
+
+export function isCleanCompletedContainer(
+	container: ContainerStatusRow,
+): boolean {
+	return (
+		container.state === "terminated" &&
+		container.reason === "Completed" &&
+		(container.exitCode === undefined || container.exitCode === 0)
+	);
+}
+
+function hasPreviousRestartContext(container: ContainerStatusRow): boolean {
+	return (
+		container.lastState !== undefined ||
+		container.lastReason !== undefined ||
+		container.lastMessage !== undefined ||
+		container.lastStartedAt !== undefined ||
+		container.lastFinishedAt !== undefined ||
+		container.lastExitCode !== undefined
+	);
+}
+
+function isCleanPreviousRestart(container: ContainerStatusRow): boolean {
+	if (container.lastState !== "terminated") return false;
+	if (container.lastExitCode !== undefined && container.lastExitCode !== 0) {
+		return false;
+	}
+	return container.lastReason === "Completed" || container.lastExitCode === 0;
+}
+
+function isActionableContainerRestart(
+	container: ContainerStatusRow,
+	now: Date,
+	staleRestartMs: number,
+	succeededResource: boolean,
+): boolean {
+	if (container.restartCount <= 0) return false;
+	if (succeededResource && isCleanCompletedContainer(container)) return false;
+	if (
+		container.type === "init" &&
+		isCleanCompletedContainer(container) &&
+		isCleanPreviousRestart(container) &&
+		!isRecentTimestamp(container.lastFinishedAt, now, staleRestartMs)
+	) {
+		return false;
+	}
+	if (container.ready === false) return true;
+	if (container.state === "waiting") return true;
+	if (container.state === "terminated" && container.exitCode !== 0) return true;
+	if (container.lastExitCode !== undefined && container.lastExitCode !== 0) return true;
+	if (container.lastReason && container.lastReason !== "Completed") return true;
+	if (isRecentTimestamp(container.lastFinishedAt, now, staleRestartMs)) {
+		return true;
+	}
+	if (isCleanPreviousRestart(container)) return false;
+	return !hasPreviousRestartContext(container);
+}
+
+function restartSignalValue(containers: ContainerStatusRow[]): string {
+	return signalValueFromParts(restartSignalValueParts(containers));
+}
+
+function textPart(text: string): IncidentSignalValuePart {
+	return { kind: "text", text };
+}
+
+function timestampPart(value: string): IncidentSignalValuePart {
+	return { kind: "timestamp", value };
+}
+
+function signalValueFromParts(parts: IncidentSignalValuePart[]): string {
+	return parts
+		.map((part) => (part.kind === "text" ? part.text : part.value))
+		.join("");
+}
+
+function restartSignalValueParts(
+	containers: ContainerStatusRow[],
+): IncidentSignalValuePart[] {
+	const parts: IncidentSignalValuePart[] = [];
+	containers.forEach((container, index) => {
+		if (index > 0) parts.push(textPart("; "));
+		parts.push(
+			textPart(
+				`${container.name} restarted ${container.restartCount} ${
+					container.restartCount === 1 ? "time" : "times"
+				}`,
+			),
+		);
+		if (container.lastReason) parts.push(textPart(` · ${container.lastReason}`));
+		if (container.lastExitCode !== undefined) {
+			parts.push(textPart(` · exit ${container.lastExitCode}`));
+		}
+		if (container.lastFinishedAt) {
+			parts.push(textPart(" · finished "));
+			parts.push(timestampPart(container.lastFinishedAt));
+		}
+	});
+	return parts;
+}
+
+function restartSignalTone(
+	containers: ContainerStatusRow[] | undefined,
+	restarts: number,
+): ChipVariant {
+	const actionableRestarts =
+		containers?.reduce((sum, container) => sum + container.restartCount, 0) ??
+		restarts;
+	return actionableRestarts > 5 ? "error" : "warning";
+}
+
+function isCompletedReadinessCondition(condition: ConditionRow): boolean {
+	if (
+		condition.reason === "PodCompleted" &&
+		["Ready", "ContainersReady"].includes(condition.type)
+	) {
+		return true;
+	}
+	return condition.type === "PodReadyToStartContainers";
+}
+
+function isDisruptionTargetCondition(condition: ConditionRow): boolean {
+	return condition.type === "DisruptionTarget" && condition.status === "True";
+}
+
+function conditionSignalValue(condition: ConditionRow): string {
+	return signalValueFromParts(conditionSignalValueParts(condition));
+}
+
+function conditionSignalValueParts(
+	condition: ConditionRow,
+): IncidentSignalValuePart[] {
+	const parts: IncidentSignalValuePart[] = [
+		textPart(`${condition.type}=${condition.status}`),
+	];
+	if (condition.reason) parts.push(textPart(` · ${condition.reason}`));
+	if (condition.lastTransitionTime) {
+		parts.push(textPart(" · since "));
+		parts.push(timestampPart(condition.lastTransitionTime));
+	}
+	return parts;
+}
+
 export function buildIncidentSignals(
 	resource: ResourceSummary,
 	conditions: ConditionRow[],
 	events: ResourceEventSummary[],
+	containers?: ContainerStatusRow[],
+	options: IncidentSignalOptions = {},
 ): IncidentSignal[] {
 	const signals: IncidentSignal[] = [];
 	const status = resource.status?.toLowerCase();
 	const ready = resource.ready?.toLowerCase();
 	const restarts = resource.restarts ?? 0;
+	const now = options.now ?? new Date();
+	const staleRestartMs = options.staleRestartMs ?? 60 * 60 * 1000;
+	const succeededResource = isSucceededResource(resource);
 
 	if (
 		resource.status &&
@@ -140,7 +420,7 @@ export function buildIncidentSignals(
 		});
 	}
 
-	if (resource.ready && ready === "false") {
+	if (resource.ready && ready === "false" && !succeededResource) {
 		signals.push({
 			id: "ready",
 			label: "Ready",
@@ -150,24 +430,59 @@ export function buildIncidentSignals(
 		});
 	}
 
-	if (restarts > 0) {
+	const restartedContainers = containers?.filter(
+		(container) => container.restartCount > 0,
+	);
+	const actionableRestartContainers = restartedContainers?.filter((container) =>
+		isActionableContainerRestart(
+			container,
+			now,
+			staleRestartMs,
+			succeededResource,
+		),
+	);
+	const shouldShowRestartSignal = containers
+		? Boolean(actionableRestartContainers?.length)
+		: restarts > 0;
+
+	if (shouldShowRestartSignal) {
+		const restartValue =
+			actionableRestartContainers && actionableRestartContainers.length > 0
+				? restartSignalValue(actionableRestartContainers)
+				: String(restarts);
+		const restartValueParts =
+			actionableRestartContainers && actionableRestartContainers.length > 0
+				? restartSignalValueParts(actionableRestartContainers)
+				: undefined;
 		signals.push({
 			id: "restarts",
 			label: "Restarts",
-			value: String(restarts),
-			tone: restarts > 5 ? "error" : "warning",
+			value: restartValue,
+			valueParts: restartValueParts,
+			tone: restartSignalTone(actionableRestartContainers, restarts),
 			source: "status",
 		});
 	}
 
 	for (const condition of conditions) {
+		if (isDisruptionTargetCondition(condition)) {
+			signals.push({
+				id: `condition:${condition.type}`,
+				label: "Condition",
+				value: conditionSignalValue(condition),
+				valueParts: conditionSignalValueParts(condition),
+				tone: "info",
+				source: "condition",
+			});
+			continue;
+		}
 		if (condition.status === "True") continue;
+		if (succeededResource && isCompletedReadinessCondition(condition)) continue;
 		signals.push({
 			id: `condition:${condition.type}`,
 			label: "Condition",
-			value: `${condition.type}=${condition.status}${
-				condition.reason ? ` · ${condition.reason}` : ""
-			}`,
+			value: conditionSignalValue(condition),
+			valueParts: conditionSignalValueParts(condition),
 			tone: condition.status === "False" ? "error" : "warning",
 			source: "condition",
 		});
