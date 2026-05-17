@@ -572,6 +572,65 @@ describe("incident signal helpers", () => {
 		).toEqual([]);
 	});
 
+	test("treats succeeded completed pods as historical context, not active incidents", () => {
+		expect(
+			buildIncidentSignals(
+				{ ...resource, status: "Succeeded", ready: "False", restarts: 1 },
+				[
+					{
+						type: "DisruptionTarget",
+						status: "True",
+						reason: "TerminationByKubelet",
+						message: "Pod was terminated in response to imminent node shutdown.",
+						lastTransitionTime: "2026-05-13T11:54:59Z",
+					},
+					{
+						type: "PodReadyToStartContainers",
+						status: "False",
+						lastTransitionTime: "2026-05-13T11:54:58Z",
+					},
+					{
+						type: "Ready",
+						status: "False",
+						reason: "PodCompleted",
+						lastTransitionTime: "2026-05-13T11:54:58Z",
+					},
+					{
+						type: "ContainersReady",
+						status: "False",
+						reason: "PodCompleted",
+						lastTransitionTime: "2026-05-13T11:54:58Z",
+					},
+				],
+				[],
+				[
+					{
+						name: "redis",
+						ready: false,
+						restartCount: 1,
+						state: "terminated",
+						reason: "Completed",
+						exitCode: 0,
+						finishedAt: "2026-05-13T11:54:44Z",
+						lastState: "terminated",
+						lastReason: "Completed",
+						lastExitCode: 0,
+						lastFinishedAt: "2026-05-13T11:54:44Z",
+					},
+				],
+				{ now: new Date("2026-05-17T12:00:00Z") },
+			),
+		).toEqual([
+			{
+				id: "condition:DisruptionTarget",
+				label: "Condition",
+				value: "DisruptionTarget=True · TerminationByKubelet · since 2026-05-13T11:54:59Z",
+				tone: "info",
+				source: "condition",
+			},
+		]);
+	});
+
 	test("keeps restart signals for recent or unclean container restarts", () => {
 		expect(
 			buildIncidentSignals(

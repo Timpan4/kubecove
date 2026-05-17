@@ -216,12 +216,28 @@ function isRecentTimestamp(
 	return now.getTime() - value <= staleRestartMs;
 }
 
+function isSucceededResource(resource: ResourceSummary): boolean {
+	return resource.status?.toLowerCase() === "succeeded";
+}
+
+export function isCleanCompletedContainer(
+	container: ContainerStatusRow,
+): boolean {
+	return (
+		container.state === "terminated" &&
+		container.reason === "Completed" &&
+		(container.exitCode === undefined || container.exitCode === 0)
+	);
+}
+
 function isActionableContainerRestart(
 	container: ContainerStatusRow,
 	now: Date,
 	staleRestartMs: number,
+	succeededResource: boolean,
 ): boolean {
 	if (container.restartCount <= 0) return false;
+	if (succeededResource && isCleanCompletedContainer(container)) return false;
 	if (container.ready === false) return true;
 	if (container.state === "waiting") return true;
 	if (container.state === "terminated" && container.exitCode !== 0) return true;
@@ -249,6 +265,20 @@ function restartSignalValue(containers: ContainerStatusRow[]): string {
 	return label || String(total);
 }
 
+function isCompletedReadinessCondition(condition: ConditionRow): boolean {
+	if (
+		condition.reason === "PodCompleted" &&
+		["Ready", "ContainersReady"].includes(condition.type)
+	) {
+		return true;
+	}
+	return condition.type === "PodReadyToStartContainers";
+}
+
+function isDisruptionTargetCondition(condition: ConditionRow): boolean {
+	return condition.type === "DisruptionTarget" && condition.status === "True";
+}
+
 function conditionSignalValue(condition: ConditionRow): string {
 	return [
 		`${condition.type}=${condition.status}`,
@@ -272,6 +302,7 @@ export function buildIncidentSignals(
 	const restarts = resource.restarts ?? 0;
 	const now = options.now ?? new Date();
 	const staleRestartMs = options.staleRestartMs ?? 60 * 60 * 1000;
+	const succeededResource = isSucceededResource(resource);
 
 	if (
 		resource.status &&
@@ -299,7 +330,7 @@ export function buildIncidentSignals(
 		});
 	}
 
-	if (resource.ready && ready === "false") {
+	if (resource.ready && ready === "false" && !succeededResource) {
 		signals.push({
 			id: "ready",
 			label: "Ready",
@@ -313,7 +344,12 @@ export function buildIncidentSignals(
 		(container) => container.restartCount > 0,
 	);
 	const actionableRestartContainers = restartedContainers?.filter((container) =>
-		isActionableContainerRestart(container, now, staleRestartMs),
+		isActionableContainerRestart(
+			container,
+			now,
+			staleRestartMs,
+			succeededResource,
+		),
 	);
 	const shouldShowRestartSignal = containers
 		? Boolean(actionableRestartContainers?.length)
@@ -334,7 +370,18 @@ export function buildIncidentSignals(
 	}
 
 	for (const condition of conditions) {
+		if (isDisruptionTargetCondition(condition)) {
+			signals.push({
+				id: `condition:${condition.type}`,
+				label: "Condition",
+				value: conditionSignalValue(condition),
+				tone: "info",
+				source: "condition",
+			});
+			continue;
+		}
 		if (condition.status === "True") continue;
+		if (succeededResource && isCompletedReadinessCondition(condition)) continue;
 		signals.push({
 			id: `condition:${condition.type}`,
 			label: "Condition",
