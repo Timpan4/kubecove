@@ -243,7 +243,6 @@ function isActionableContainerRestart(
 	if (container.state === "terminated" && container.exitCode !== 0) return true;
 	if (container.lastExitCode !== undefined && container.lastExitCode !== 0) return true;
 	if (container.lastReason && container.lastReason !== "Completed") return true;
-	if (container.restartCount > 5) return true;
 	return isRecentTimestamp(container.lastFinishedAt, now, staleRestartMs);
 }
 
@@ -263,6 +262,16 @@ function restartSignalValue(containers: ContainerStatusRow[]): string {
 		})
 		.join("; ");
 	return label || String(total);
+}
+
+function restartSignalTone(
+	containers: ContainerStatusRow[] | undefined,
+	restarts: number,
+): ChipVariant {
+	const actionableRestarts =
+		containers?.reduce((sum, container) => sum + container.restartCount, 0) ??
+		restarts;
+	return actionableRestarts > 5 ? "error" : "warning";
 }
 
 function isCompletedReadinessCondition(condition: ConditionRow): boolean {
@@ -364,7 +373,7 @@ export function buildIncidentSignals(
 			id: "restarts",
 			label: "Restarts",
 			value: restartValue,
-			tone: restarts > 5 ? "error" : "warning",
+			tone: restartSignalTone(actionableRestartContainers, restarts),
 			source: "status",
 		});
 	}
