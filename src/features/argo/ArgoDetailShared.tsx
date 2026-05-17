@@ -1,5 +1,6 @@
 import { MetadataBadges } from "@/components/MetadataBadges";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
+import { ExactTimestampText } from "@/components/TimestampText";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -89,6 +90,8 @@ export function DetailMetadata({
 					<span className={DETAIL_VALUE_CLASS}>
 						{key === "Labels" || key === "Annotations" ? (
 							<MetadataBadges value={value} />
+						) : key === "Created" && typeof value === "string" ? (
+							<ExactTimestampText value={value} />
 						) : typeof value === "string" ? (
 							value
 						) : (
