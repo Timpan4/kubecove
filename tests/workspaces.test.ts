@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
 	buildWorkspaceHealthSummary,
 	computeRestoreStatus,
@@ -119,6 +120,20 @@ describe("workspace helpers", () => {
 		expect(buildWorkspaceFetchKeys(workspace.scope, [])).toEqual([
 			{ kind: "Node" },
 		]);
+	});
+
+	test("uses an explicit height for the workspace namespace scroll area", () => {
+		const source = readFileSync(
+			"src/features/workspaces/WorkspaceLauncher.tsx",
+			"utf8",
+		);
+
+		expect(source).toContain(
+			'ScrollArea className="h-52 rounded-md border bg-background/40"',
+		);
+		expect(source).not.toContain(
+			'ScrollArea className="max-h-52 rounded-md border bg-background/40"',
+		);
 	});
 });
 

@@ -307,7 +307,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 									>
 										Namespaces
 									</FieldLegend>
-								<ScrollArea className="max-h-52 rounded-md border bg-background/40">
+								<ScrollArea className="h-52 rounded-md border bg-background/40">
 									<div className="p-1">
 									{namespacesQuery.isPending && effectiveContext && (
 										<div className="px-2 py-1.5 text-xs text-muted-foreground">
