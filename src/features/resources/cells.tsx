@@ -56,6 +56,40 @@ export function TruncatedCell({
 	);
 }
 
+function CenteredCell({ children }: { children: ReactNode }) {
+	return <div className="flex justify-center">{children}</div>;
+}
+
+export function RestartsCell({
+	value,
+}: {
+	value: number | null | undefined;
+}) {
+	if (value === undefined || value === null) {
+		return (
+			<CenteredCell>
+				<TruncatedCell value={value} />
+			</CenteredCell>
+		);
+	}
+
+	if (value === 0) {
+		return (
+			<CenteredCell>
+				<TruncatedCell value={value} />
+			</CenteredCell>
+		);
+	}
+
+	const variant: StatusTone =
+		value > 5 ? "error" : value > 0 ? "warning" : "neutral";
+	return (
+		<CenteredCell>
+			<StatusChip value={String(value)} variant={variant} />
+		</CenteredCell>
+	);
+}
+
 export function KindCell({ kind }: { kind: string }) {
 	const visual = getResourceKindVisual(kind);
 	const Icon = visual.icon;

@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test";
+import { readFileSync } from "node:fs";
 import { createMockTauriClient, listKubeContexts, listNamespaces, getResourceYaml, isAppError } from "../src/lib/tauri";
 import type {
   ClusterContext,
@@ -334,6 +335,15 @@ describe("resource browser presentation helpers", () => {
     expect(tableTooltipText("argocd-server-7886b899c8-l5lqd")).toBe("argocd-server-7886b899c8-l5lqd");
     expect(tableTooltipText(null)).toBe("—");
     expect(tableTooltipText("")).toBe("—");
+  });
+
+  test("centers restart count badges in the resource table", () => {
+    const cellsSource = readFileSync("src/features/resources/cells.tsx", "utf8");
+    const columnsSource = readFileSync("src/features/resources/columns.tsx", "utf8");
+
+    expect(cellsSource).toContain("export function RestartsCell");
+    expect(cellsSource).toContain("justify-center");
+    expect(columnsSource).toContain("RestartsCell");
   });
 });
 
