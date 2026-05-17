@@ -392,7 +392,9 @@ export function DetailsTab({
 	const podDetailsLoading =
 		resource.kind === "Pod" && detailsLoading && !details && !detailsError;
 	const signalContainers =
-		details || podDetailsLoading ? containerRows : undefined;
+		resource.kind === "Pod" && (details || podDetailsLoading)
+			? containerRows
+			: undefined;
 	const signals = useMemo(
 		() =>
 			buildIncidentSignals(

@@ -567,6 +567,49 @@ describe("incident signal helpers", () => {
 		).toEqual([]);
 	});
 
+	test("does not promote clean restarts with unknown timestamps", () => {
+		expect(
+			buildIncidentSignals(
+				{ ...resource, status: "Running", ready: "True", restarts: 1 },
+				[{ type: "Ready", status: "True" }],
+				[],
+				[
+					{
+						name: "sidecar",
+						ready: true,
+						restartCount: 1,
+						state: "running",
+						lastState: "terminated",
+						lastReason: "Completed",
+						lastExitCode: 0,
+					},
+				],
+				{ now: new Date("2026-05-17T12:00:00Z") },
+			),
+		).toEqual([]);
+
+		expect(
+			buildIncidentSignals(
+				{ ...resource, status: "Running", ready: "True", restarts: 1 },
+				[{ type: "Ready", status: "True" }],
+				[],
+				[
+					{
+						name: "sidecar",
+						ready: true,
+						restartCount: 1,
+						state: "running",
+						lastState: "terminated",
+						lastReason: "Completed",
+						lastExitCode: 0,
+						lastFinishedAt: "not-a-timestamp",
+					},
+				],
+				{ now: new Date("2026-05-17T12:00:00Z") },
+			),
+		).toEqual([]);
+	});
+
 	test("does not fall back to raw restart counts when container context is pending", () => {
 		expect(
 			buildIncidentSignals(
@@ -748,6 +791,9 @@ describe("incident signal helpers", () => {
 			"utf8",
 		);
 
+		expect(source).toContain(
+			'resource.kind === "Pod" && (details || podDetailsLoading)',
+		);
 		expect(source).toContain("details || podDetailsLoading");
 		expect(source).toContain("? containerRows");
 		expect(source).toContain(": undefined");
