@@ -4,6 +4,7 @@ import {
 	AgeCell,
 	ArgoHelmBadges,
 	KindCell,
+	RestartsCell,
 	StatusChip,
 	TruncatedCell,
 	type ChipVariant,
@@ -45,15 +46,8 @@ export const columns = [
 		cell: (info) => <TruncatedCell value={info.getValue()} />,
 	}),
 	columnHelper.accessor("restarts", {
-		header: "Restarts",
-		cell: (info) => {
-			const value = info.getValue();
-			if (value === undefined || value === null) return "—";
-			if (value === 0) return "0";
-			const variant: ChipVariant =
-				value > 5 ? "error" : value > 0 ? "warning" : "neutral";
-			return <StatusChip value={String(value)} variant={variant} />;
-		},
+		header: () => <span className="block text-center">Restarts</span>,
+		cell: (info) => <RestartsCell value={info.getValue()} />,
 	}),
 	columnHelper.accessor("ownerRef", {
 		header: "Owner",
