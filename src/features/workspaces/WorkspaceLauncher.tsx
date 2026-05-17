@@ -78,12 +78,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 	const selectedContextMissing =
 		effectiveContext.length > 0 &&
 		!contexts.some((context) => context.name === effectiveContext);
-	const namespaceScopeUnavailable =
-		effectiveContext.length > 0 && namespacesQuery.isError;
-	const canCreate =
-		effectiveContext.length > 0 &&
-		!selectedContextMissing &&
-		!namespaceScopeUnavailable;
+	const canCreate = effectiveContext.length > 0 && !selectedContextMissing;
 
 	const sortedWorkspaces = useMemo(
 		() =>
@@ -316,7 +311,9 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 									)}
 									{namespacesQuery.isError && (
 										<div className="grid gap-2 px-2 py-1.5 text-xs text-destructive">
-											<span>Failed to load namespaces.</span>
+											<span>
+												Failed to load namespaces. You can still save an all-namespace workspace.
+											</span>
 											<Button
 												type="button"
 												variant="outline"

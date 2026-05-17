@@ -135,6 +135,18 @@ describe("workspace helpers", () => {
 			'ScrollArea className="max-h-52 rounded-md border bg-background/40"',
 		);
 	});
+
+	test("allows workspace saves when namespace listing fails", () => {
+		const source = readFileSync(
+			"src/features/workspaces/WorkspaceLauncher.tsx",
+			"utf8",
+		);
+
+		expect(source).not.toContain("namespaceScopeUnavailable");
+		expect(source).toContain(
+			"You can still save an all-namespace workspace",
+		);
+	});
 });
 
 function resource(overrides: Partial<ResourceSummary>): ResourceSummary {
