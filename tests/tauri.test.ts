@@ -183,6 +183,7 @@ describe("getContainerStatusRows", () => {
 		).toEqual([
 			{
 				name: "api",
+				type: "container",
 				ready: true,
 				restartCount: 1,
 				state: "running",
@@ -556,6 +557,33 @@ describe("incident signal helpers", () => {
 						restartCount: 1,
 						state: "running",
 						startedAt: "2026-05-13T12:28:58Z",
+						lastState: "terminated",
+						lastReason: "Completed",
+						lastExitCode: 0,
+						lastFinishedAt: "2026-05-13T12:25:53Z",
+					},
+				],
+				{ now: new Date("2026-05-17T12:00:00Z") },
+			),
+		).toEqual([]);
+	});
+
+	test("does not promote old clean completed init container restarts", () => {
+		expect(
+			buildIncidentSignals(
+				{ ...resource, status: "Running", ready: "True", restarts: 1 },
+				[{ type: "Ready", status: "True" }],
+				[],
+				[
+					{
+						name: "copyutil",
+						type: "init",
+						ready: false,
+						restartCount: 1,
+						state: "terminated",
+						reason: "Completed",
+						exitCode: 0,
+						finishedAt: "2026-05-13T12:25:53Z",
 						lastState: "terminated",
 						lastReason: "Completed",
 						lastExitCode: 0,

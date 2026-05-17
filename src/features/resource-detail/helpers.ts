@@ -15,6 +15,7 @@ export interface ConditionRow {
 
 export interface ContainerStatusRow {
 	name: string;
+	type?: "init" | "container" | "ephemeral";
 	ready?: boolean;
 	restartCount: number;
 	state?: string;
@@ -138,15 +139,26 @@ export function getContainerStatusRows(
 	status: Record<string, unknown> | undefined,
 ): ContainerStatusRow[] {
 	if (!status) return [];
-	return [
-		...getStatusList(status, "initContainerStatuses"),
-		...getStatusList(status, "containerStatuses"),
-		...getStatusList(status, "ephemeralContainerStatuses"),
-	].map((container) => {
+	const containers = [
+		...getStatusList(status, "initContainerStatuses").map((container) => ({
+			container,
+			type: "init" as const,
+		})),
+		...getStatusList(status, "containerStatuses").map((container) => ({
+			container,
+			type: "container" as const,
+		})),
+		...getStatusList(status, "ephemeralContainerStatuses").map((container) => ({
+			container,
+			type: "ephemeral" as const,
+		})),
+	];
+	return containers.map(({ container, type }) => {
 		const currentState = parseStateFields(container.state);
 		const lastState = parseStateFields(container.lastState);
 		return {
 			name: String(container.name ?? "container"),
+			type,
 			ready: typeof container.ready === "boolean" ? container.ready : undefined,
 			restartCount:
 				typeof container.restartCount === "number" ? container.restartCount : 0,
@@ -262,6 +274,14 @@ function isActionableContainerRestart(
 ): boolean {
 	if (container.restartCount <= 0) return false;
 	if (succeededResource && isCleanCompletedContainer(container)) return false;
+	if (
+		container.type === "init" &&
+		isCleanCompletedContainer(container) &&
+		isCleanPreviousRestart(container) &&
+		!isRecentTimestamp(container.lastFinishedAt, now, staleRestartMs)
+	) {
+		return false;
+	}
 	if (container.ready === false) return true;
 	if (container.state === "waiting") return true;
 	if (container.state === "terminated" && container.exitCode !== 0) return true;
