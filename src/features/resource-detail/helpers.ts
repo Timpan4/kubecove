@@ -170,9 +170,14 @@ export interface IncidentSignal {
 	id: string;
 	label: string;
 	value: string;
+	valueParts?: IncidentSignalValuePart[];
 	tone: ChipVariant;
 	source: "status" | "condition" | "event";
 }
+
+export type IncidentSignalValuePart =
+	| { kind: "text"; text: string }
+	| { kind: "timestamp"; value: string };
 
 interface IncidentSignalOptions {
 	now?: Date;
@@ -247,21 +252,46 @@ function isActionableContainerRestart(
 }
 
 function restartSignalValue(containers: ContainerStatusRow[]): string {
-	const total = containers.reduce((sum, container) => sum + container.restartCount, 0);
-	const label = containers
-		.map((container) => {
-			const details = [
+	return signalValueFromParts(restartSignalValueParts(containers));
+}
+
+function textPart(text: string): IncidentSignalValuePart {
+	return { kind: "text", text };
+}
+
+function timestampPart(value: string): IncidentSignalValuePart {
+	return { kind: "timestamp", value };
+}
+
+function signalValueFromParts(parts: IncidentSignalValuePart[]): string {
+	return parts
+		.map((part) => (part.kind === "text" ? part.text : part.value))
+		.join("");
+}
+
+function restartSignalValueParts(
+	containers: ContainerStatusRow[],
+): IncidentSignalValuePart[] {
+	const parts: IncidentSignalValuePart[] = [];
+	containers.forEach((container, index) => {
+		if (index > 0) parts.push(textPart("; "));
+		parts.push(
+			textPart(
 				`${container.name} restarted ${container.restartCount} ${
 					container.restartCount === 1 ? "time" : "times"
 				}`,
-				container.lastReason,
-				container.lastExitCode !== undefined ? `exit ${container.lastExitCode}` : undefined,
-				container.lastFinishedAt ? `finished ${container.lastFinishedAt}` : undefined,
-			].filter(Boolean);
-			return details.join(" · ");
-		})
-		.join("; ");
-	return label || String(total);
+			),
+		);
+		if (container.lastReason) parts.push(textPart(` · ${container.lastReason}`));
+		if (container.lastExitCode !== undefined) {
+			parts.push(textPart(` · exit ${container.lastExitCode}`));
+		}
+		if (container.lastFinishedAt) {
+			parts.push(textPart(" · finished "));
+			parts.push(timestampPart(container.lastFinishedAt));
+		}
+	});
+	return parts;
 }
 
 function restartSignalTone(
@@ -289,13 +319,21 @@ function isDisruptionTargetCondition(condition: ConditionRow): boolean {
 }
 
 function conditionSignalValue(condition: ConditionRow): string {
-	return [
-		`${condition.type}=${condition.status}`,
-		condition.reason,
-		condition.lastTransitionTime
-			? `since ${condition.lastTransitionTime}`
-			: undefined,
-	].filter(Boolean).join(" · ");
+	return signalValueFromParts(conditionSignalValueParts(condition));
+}
+
+function conditionSignalValueParts(
+	condition: ConditionRow,
+): IncidentSignalValuePart[] {
+	const parts: IncidentSignalValuePart[] = [
+		textPart(`${condition.type}=${condition.status}`),
+	];
+	if (condition.reason) parts.push(textPart(` · ${condition.reason}`));
+	if (condition.lastTransitionTime) {
+		parts.push(textPart(" · since "));
+		parts.push(timestampPart(condition.lastTransitionTime));
+	}
+	return parts;
 }
 
 export function buildIncidentSignals(
@@ -369,10 +407,15 @@ export function buildIncidentSignals(
 			actionableRestartContainers && actionableRestartContainers.length > 0
 				? restartSignalValue(actionableRestartContainers)
 				: String(restarts);
+		const restartValueParts =
+			actionableRestartContainers && actionableRestartContainers.length > 0
+				? restartSignalValueParts(actionableRestartContainers)
+				: undefined;
 		signals.push({
 			id: "restarts",
 			label: "Restarts",
 			value: restartValue,
+			valueParts: restartValueParts,
 			tone: restartSignalTone(actionableRestartContainers, restarts),
 			source: "status",
 		});
@@ -384,6 +427,7 @@ export function buildIncidentSignals(
 				id: `condition:${condition.type}`,
 				label: "Condition",
 				value: conditionSignalValue(condition),
+				valueParts: conditionSignalValueParts(condition),
 				tone: "info",
 				source: "condition",
 			});
@@ -395,6 +439,7 @@ export function buildIncidentSignals(
 			id: `condition:${condition.type}`,
 			label: "Condition",
 			value: conditionSignalValue(condition),
+			valueParts: conditionSignalValueParts(condition),
 			tone: condition.status === "False" ? "error" : "warning",
 			source: "condition",
 		});

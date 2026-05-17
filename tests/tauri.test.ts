@@ -514,6 +514,12 @@ describe("incident signal helpers", () => {
         id: "condition:Ready",
         label: "Condition",
         value: "Ready=False · ContainersNotReady · since 2026-05-17T11:55:00Z",
+        valueParts: [
+          { kind: "text", text: "Ready=False" },
+          { kind: "text", text: " · ContainersNotReady" },
+          { kind: "text", text: " · since " },
+          { kind: "timestamp", value: "2026-05-17T11:55:00Z" },
+        ],
         tone: "error",
         source: "condition",
       },
@@ -625,6 +631,12 @@ describe("incident signal helpers", () => {
 				id: "condition:DisruptionTarget",
 				label: "Condition",
 				value: "DisruptionTarget=True · TerminationByKubelet · since 2026-05-13T11:54:59Z",
+				valueParts: [
+					{ kind: "text", text: "DisruptionTarget=True" },
+					{ kind: "text", text: " · TerminationByKubelet" },
+					{ kind: "text", text: " · since " },
+					{ kind: "timestamp", value: "2026-05-13T11:54:59Z" },
+				],
 				tone: "info",
 				source: "condition",
 			},
@@ -656,6 +668,13 @@ describe("incident signal helpers", () => {
 				id: "restarts",
 				label: "Restarts",
 				value: "api restarted 1 time · Error · exit 1 · finished 2026-05-17T11:55:00Z",
+				valueParts: [
+					{ kind: "text", text: "api restarted 1 time" },
+					{ kind: "text", text: " · Error" },
+					{ kind: "text", text: " · exit 1" },
+					{ kind: "text", text: " · finished " },
+					{ kind: "timestamp", value: "2026-05-17T11:55:00Z" },
+				],
 				tone: "warning",
 				source: "status",
 			},
@@ -697,6 +716,13 @@ describe("incident signal helpers", () => {
 				id: "restarts",
 				label: "Restarts",
 				value: "api restarted 1 time · Error · exit 1 · finished 2026-05-17T11:55:00Z",
+				valueParts: [
+					{ kind: "text", text: "api restarted 1 time" },
+					{ kind: "text", text: " · Error" },
+					{ kind: "text", text: " · exit 1" },
+					{ kind: "text", text: " · finished " },
+					{ kind: "timestamp", value: "2026-05-17T11:55:00Z" },
+				],
 				tone: "warning",
 				source: "status",
 			},
@@ -728,6 +754,18 @@ describe("incident signal helpers", () => {
 		expect(source).not.toContain(
 			'resource.kind === "Pod" || details ? containerRows : undefined',
 		);
+	});
+
+	test("renders signal timestamps through the shared timestamp formatter", () => {
+		const source = readFileSync(
+			"src/features/resource-detail/DetailsTab.tsx",
+			"utf8",
+		);
+
+		expect(source).toContain("formatExactTimestamp");
+		expect(source).toContain("valueParts");
+		expect(source).toContain("<SignalValue signal={signal} />");
+		expect(source).not.toContain("{signal.value}");
 	});
 
   test("treats crash loop and image pull states as error incident signals", () => {

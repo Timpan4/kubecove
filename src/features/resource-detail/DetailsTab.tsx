@@ -1,9 +1,10 @@
 import { MetadataBadges } from "@/components/MetadataBadges";
-import { TimestampText } from "@/components/TimestampText";
+import { formatExactTimestamp, TimestampText } from "@/components/TimestampText";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { useSettingsState } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { useMemo } from "react";
 import type { ConditionRow, ContainerStatusRow, IncidentSignal } from "./helpers";
@@ -62,13 +63,16 @@ function DetailField({
 }
 
 function ExactTimestamp({ value }: { value: string }) {
+	const { timestampTimezone } = useSettingsState();
+	const formatted = formatExactTimestamp(value, timestampTimezone) ?? value;
+
 	return (
 		<TimestampText
-			relative={value}
+			relative={formatted}
 			exact={value}
 			className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
 		>
-			{value}
+			{formatted}
 		</TimestampText>
 	);
 }
@@ -242,6 +246,23 @@ function ContainerList({ containers }: { containers: ContainerStatusRow[] }) {
 	);
 }
 
+function SignalValue({ signal }: { signal: IncidentSignal }) {
+	const parts = signal.valueParts ?? [
+		{ kind: "text" as const, text: signal.value },
+	];
+	return (
+		<>
+			{parts.map((part, index) =>
+				part.kind === "timestamp" ? (
+					<ExactTimestamp key={`${part.value}:${index}`} value={part.value} />
+				) : (
+					<span key={`${part.text}:${index}`}>{part.text}</span>
+				),
+			)}
+		</>
+	);
+}
+
 function SignalList({
 	signals,
 	eventsLoading,
@@ -288,7 +309,7 @@ function SignalList({
 											{signal.label}
 										</div>
 										<div className="mt-1 text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]">
-											{signal.value}
+											<SignalValue signal={signal} />
 										</div>
 									</div>
 									<Badge
