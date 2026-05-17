@@ -345,6 +345,19 @@ describe("resource browser presentation helpers", () => {
     expect(cellsSource).toContain("justify-center");
     expect(columnsSource).toContain("RestartsCell");
   });
+
+  test("uses pointer cursors for enabled shared interactive controls", () => {
+    const controlFiles = [
+      "src/components/ui/button.tsx",
+      "src/components/ui/tabs.tsx",
+      "src/components/ui/select.tsx",
+      "src/components/ui/checkbox.tsx",
+    ];
+
+    for (const file of controlFiles) {
+      expect(readFileSync(file, "utf8")).toContain("cursor-pointer");
+    }
+  });
 });
 
 describe("incident signal helpers", () => {
