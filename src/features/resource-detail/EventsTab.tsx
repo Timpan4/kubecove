@@ -1,13 +1,16 @@
 import { TimestampText } from "@/components/TimestampText";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyTitle,
+} from "@/components/ui/empty";
+import { Spinner } from "@/components/ui/spinner";
 import { Clock, TriangleAlert } from "lucide-react";
 import type { ResourceEventSummary } from "../../lib/types";
-import {
-	ERROR_STATE_CLASS,
-	LOADING_SPINNER_CLASS,
-	LOADING_STATE_CLASS,
-} from "./constants";
 import { getErrorMessage } from "./helpers";
 
 interface EventsTabProps {
@@ -20,9 +23,14 @@ interface EventsTabProps {
 function EventList({ events }: { events: ResourceEventSummary[] }) {
 	if (events.length === 0) {
 		return (
-			<div className="rounded-md border bg-card p-4 text-xs text-muted-foreground">
-				No events found for this resource.
-			</div>
+			<Empty className="min-h-40 border">
+				<EmptyHeader>
+					<EmptyTitle>No events found</EmptyTitle>
+					<EmptyDescription>
+						This resource does not have events in the selected namespace.
+					</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
 		);
 	}
 
@@ -31,10 +39,11 @@ function EventList({ events }: { events: ResourceEventSummary[] }) {
 			{events.map((event, index) => {
 				const isWarning = event.eventType === "Warning";
 				return (
-					<div
-						className="rounded-md border bg-card p-3"
+					<Card
+						size="sm"
 						key={`${event.reason}:${event.lastSeen}:${index}`}
 					>
+						<CardContent>
 						<div className="flex items-start justify-between gap-2">
 							<div className="min-w-0">
 								<div className="flex min-w-0 items-center gap-1.5">
@@ -53,16 +62,9 @@ function EventList({ events }: { events: ResourceEventSummary[] }) {
 									</div>
 								)}
 							</div>
-							<Badge
-								variant={isWarning ? "destructive" : "outline"}
-								className={cn(
-									"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
-									!isWarning &&
-										"border-sky-500/30 bg-sky-500/10 text-sky-300 dark:bg-sky-500/15",
-								)}
-							>
+							<StatusBadge tone={isWarning ? "error" : "info"}>
 								{event.eventType}
-							</Badge>
+							</StatusBadge>
 						</div>
 						<div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[0.6875rem] text-muted-foreground">
 							<TimestampText
@@ -74,7 +76,8 @@ function EventList({ events }: { events: ResourceEventSummary[] }) {
 							<span>{event.source}</span>
 							{event.namespace && <span>{event.namespace}</span>}
 						</div>
-					</div>
+						</CardContent>
+					</Card>
 				);
 			})}
 		</div>
@@ -90,15 +93,16 @@ export function EventsTab({
 	return (
 		<>
 			{eventsLoading && (
-				<div className={LOADING_STATE_CLASS}>
-					<div className={LOADING_SPINNER_CLASS}></div>
+				<div className="p-6 text-center text-xs text-muted-foreground">
+					<Spinner className="mx-auto mb-2 size-4" />
 					<span>Loading events...</span>
 				</div>
 			)}
 			{eventsError && (
-				<div className={ERROR_STATE_CLASS}>
-					<p>Error loading events: {getErrorMessage(eventsErr)}</p>
-				</div>
+				<Alert variant="destructive">
+					<AlertTitle>Failed to load events</AlertTitle>
+					<AlertDescription>{getErrorMessage(eventsErr)}</AlertDescription>
+				</Alert>
 			)}
 			{!eventsLoading && !eventsError && events && (
 				<EventList events={events} />

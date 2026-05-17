@@ -8,6 +8,7 @@ import {
 	type ResourceKindSelection,
 	type ResourceSummary,
 } from "./types";
+import { classifyResourceHealth } from "./resource-health";
 
 export type WorkspaceShortcutKind = "resources" | "namespace" | "argo";
 
@@ -169,11 +170,11 @@ function knownKindKeys(discoveredKinds: DiscoveredResourceKind[]): Set<string> {
 
 export function computeRestoreStatus(
 	workspace: SavedWorkspace,
-	contexts: ClusterContext[],
+	clusterContexts: ClusterContext[],
 	namespaces: string[],
 	discoveredKinds: DiscoveredResourceKind[],
 ): WorkspaceRestoreStatus {
-	const clusterAvailable = contexts.some(
+	const clusterAvailable = clusterContexts.some(
 		(context) => context.name === workspace.scope.clusterContext,
 	);
 	const namespaceSet = new Set(namespaces);
@@ -194,34 +195,13 @@ export function buildWorkspaceHealthSummary(
 ): WorkspaceHealthSummary {
 	return rows.reduce<WorkspaceHealthSummary>(
 		(summary, row) => {
-			const status = row.status?.toLowerCase() ?? "";
-			const ready = row.ready?.toLowerCase() ?? "";
-			const restarts = row.restarts ?? 0;
-			const degraded =
-				status === "failed" ||
-				status === "error" ||
-				status === "crashloopbackoff" ||
-				status === "imagepullbackoff" ||
-				ready === "false";
-			const attention =
-				!degraded &&
-				(status === "pending" ||
-					status === "terminating" ||
-					status === "unknown" ||
-					restarts > 0);
-			const healthy =
-				!degraded &&
-				!attention &&
-				(status === "running" ||
-					status === "succeeded" ||
-					status === "ready" ||
-					ready === "true");
+			const health = classifyResourceHealth(row);
 			return {
 				total: summary.total + 1,
-				healthy: summary.healthy + (healthy ? 1 : 0),
-				attention: summary.attention + (attention ? 1 : 0),
-				degraded: summary.degraded + (degraded ? 1 : 0),
-				restarted: summary.restarted + (restarts > 0 ? 1 : 0),
+				healthy: summary.healthy + (health.healthy ? 1 : 0),
+				attention: summary.attention + (health.attention ? 1 : 0),
+				degraded: summary.degraded + (health.degraded ? 1 : 0),
+				restarted: summary.restarted + (health.restarted ? 1 : 0),
 			};
 		},
 		{ total: 0, healthy: 0, attention: 0, degraded: 0, restarted: 0 },

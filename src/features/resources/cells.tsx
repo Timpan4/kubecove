@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TimestampText } from "@/components/TimestampText";
@@ -7,58 +8,18 @@ import type { ResourceSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { tableTooltipText } from "./helpers";
 
-type ChipVariant = "neutral" | "success" | "warning" | "error" | "info";
-const CHIP_BADGE_STYLES: Record<
-	ChipVariant,
-	{
-		variant: "secondary" | "destructive" | "outline";
-		className: string;
-	}
-> = {
-	neutral: {
-		variant: "secondary",
-		className: "",
-	},
-	success: {
-		variant: "outline",
-		className:
-			"border-emerald-500/30 bg-emerald-500/10 text-emerald-300 dark:bg-emerald-500/15",
-	},
-	warning: {
-		variant: "outline",
-		className:
-			"border-amber-500/30 bg-amber-500/10 text-amber-300 dark:bg-amber-500/15",
-	},
-	error: {
-		variant: "destructive",
-		className: "",
-	},
-	info: {
-		variant: "outline",
-		className:
-			"border-sky-500/30 bg-sky-500/10 text-sky-300 dark:bg-sky-500/15",
-	},
-};
-
 export function StatusChip({
 	value,
 	variant = "neutral",
 }: {
 	value: string;
-	variant?: ChipVariant;
+	variant?: StatusTone;
 }) {
-	const badgeStyle = CHIP_BADGE_STYLES[variant];
 	return (
 		<TableTooltip content={value}>
-			<Badge
-				variant={badgeStyle.variant}
-				className={cn(
-					"max-w-full rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
-					badgeStyle.className,
-				)}
-			>
+			<StatusBadge tone={variant} className="max-w-full">
 				{value}
-			</Badge>
+			</StatusBadge>
 		</TableTooltip>
 	);
 }
@@ -92,6 +53,40 @@ export function TruncatedCell({
 		<TableTooltip content={text}>
 			<span className="block min-w-0 truncate">{text}</span>
 		</TableTooltip>
+	);
+}
+
+function CenteredCell({ children }: { children: ReactNode }) {
+	return <div className="flex justify-center">{children}</div>;
+}
+
+export function RestartsCell({
+	value,
+}: {
+	value: number | null | undefined;
+}) {
+	if (value === undefined || value === null) {
+		return (
+			<CenteredCell>
+				<TruncatedCell value={value} />
+			</CenteredCell>
+		);
+	}
+
+	if (value === 0) {
+		return (
+			<CenteredCell>
+				<TruncatedCell value={value} />
+			</CenteredCell>
+		);
+	}
+
+	const variant: StatusTone =
+		value > 5 ? "error" : value > 0 ? "warning" : "neutral";
+	return (
+		<CenteredCell>
+			<StatusChip value={String(value)} variant={variant} />
+		</CenteredCell>
 	);
 }
 
@@ -158,4 +153,4 @@ export function ArgoHelmBadges({ row }: { row: ResourceSummary }) {
 	);
 }
 
-export type { ChipVariant };
+export type { StatusTone as ChipVariant };

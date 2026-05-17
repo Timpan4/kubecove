@@ -1,10 +1,18 @@
-import { Fragment } from "react";
+import { Fragment, type KeyboardEvent } from "react";
 import {
 	flexRender,
 	type Row,
-	type Table,
+	type Table as TanStackTable,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
 import { diagnosticLog } from "@/lib/diagnostics";
 import {
 	getResourceGroupVisual,
@@ -27,7 +35,7 @@ import {
 } from "./helpers";
 
 interface ResourceTableProps {
-	table: Table<ResourceSummary>;
+	table: TanStackTable<ResourceSummary>;
 	groupedByArgo: boolean;
 	pageGroups: Map<string, number>;
 	pageTypeGroups: Map<string, number>;
@@ -40,6 +48,16 @@ interface ResourceTableProps {
 
 function resourceRowKey(resource: ResourceSummary): string {
 	return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
+}
+
+function sortAriaValue(sortState: false | "asc" | "desc") {
+	if (sortState === "asc") return "ascending";
+	if (sortState === "desc") return "descending";
+	return "none";
+}
+
+function isActivationKey(event: KeyboardEvent) {
+	return event.key === "Enter" || event.key === " ";
 }
 
 export function ResourceTable({
@@ -56,63 +74,73 @@ export function ResourceTable({
 	const rowModel = table.getRowModel();
 
 	return (
-		<div className="w-full max-w-full min-w-0 overflow-x-auto">
-			<table className={TABLE_CLASS}>
-				<thead>
-					{table.getHeaderGroups().map((headerGroup) => (
-						<tr key={headerGroup.id}>
-							{headerGroup.headers.map((header) => (
-								<th
+		<Table className={TABLE_CLASS}>
+			<TableHeader>
+				{table.getHeaderGroups().map((headerGroup) => (
+					<TableRow key={headerGroup.id}>
+						{headerGroup.headers.map((header) => {
+							const canSort = header.column.getCanSort();
+							const toggleSorting = header.column.getToggleSortingHandler();
+							const sortState = header.column.getIsSorted();
+							return (
+								<TableHead
 									key={header.id}
-									onClick={header.column.getToggleSortingHandler()}
-									className={
-										header.column.getCanSort()
-											? "cursor-pointer"
-											: "cursor-default"
+									onClick={canSort ? toggleSorting : undefined}
+									onKeyDown={
+										canSort
+											? (event) => {
+													if (!isActivationKey(event)) return;
+													event.preventDefault();
+													toggleSorting?.(event);
+												}
+											: undefined
 									}
+									tabIndex={canSort ? 0 : undefined}
+									aria-sort={canSort ? sortAriaValue(sortState) : undefined}
+									className={canSort ? "cursor-pointer" : "cursor-default"}
 								>
 									{flexRender(
 										header.column.columnDef.header,
 										header.getContext(),
 									)}
-									{header.column.getIsSorted() === "asc"
+									{sortState === "asc"
 										? " ↑"
-										: header.column.getIsSorted() === "desc"
+										: sortState === "desc"
 											? " ↓"
 											: ""}
-								</th>
-							))}
-						</tr>
-					))}
-				</thead>
-				<tbody>
-					{rowModel.rows.length === 0 ? (
-						<tr>
-							<td colSpan={columns.length} className={EMPTY_PAGE_CLASS}>
-								No resources match your filter
-							</td>
-						</tr>
-					) : (
-						rowModel.rows.map((row, index) => (
-							<ResourceTableRow
-								key={row.id}
-								row={row}
-								index={index}
-								previous={index > 0 ? rowModel.rows[index - 1]?.original : null}
-								groupedByArgo={groupedByArgo}
-								pageGroups={pageGroups}
-								pageTypeGroups={pageTypeGroups}
-								collapsedGroups={collapsedGroups}
-								selectedResourceKey={selectedResourceKey}
-								onToggleGroup={onToggleGroup}
-								onSelectedResourceKeyChange={onSelectedResourceKeyChange}
-								onResourceSelect={onResourceSelect}
-							/>
-						))
-					)}
-				</tbody>
-			</table>
-		</div>
+								</TableHead>
+							);
+						})}
+					</TableRow>
+				))}
+			</TableHeader>
+			<TableBody>
+				{rowModel.rows.length === 0 ? (
+					<TableRow>
+						<TableCell colSpan={columns.length} className={EMPTY_PAGE_CLASS}>
+							No resources match your filter
+						</TableCell>
+					</TableRow>
+				) : (
+					rowModel.rows.map((row, index) => (
+						<ResourceTableRow
+							key={row.id}
+							row={row}
+							index={index}
+							previous={index > 0 ? rowModel.rows[index - 1]?.original : null}
+							groupedByArgo={groupedByArgo}
+							pageGroups={pageGroups}
+							pageTypeGroups={pageTypeGroups}
+							collapsedGroups={collapsedGroups}
+							selectedResourceKey={selectedResourceKey}
+							onToggleGroup={onToggleGroup}
+							onSelectedResourceKeyChange={onSelectedResourceKeyChange}
+							onResourceSelect={onResourceSelect}
+						/>
+					))
+				)}
+			</TableBody>
+		</Table>
 	);
 }
 
@@ -161,6 +189,15 @@ function ResourceTableRow({
 			formatResourceGroupLabel(previous) !== label ||
 			formatResourceTypeGroupLabel(previous) !== typeLabel);
 	const hideResourceRow = groupedByArgo && (appCollapsed || typeCollapsed);
+	const selectResource = () => {
+		diagnosticLog("resources.row.click", {
+			key: resourceKey,
+			alreadySelected: isSelected,
+			rowIndex: index,
+		});
+		onSelectedResourceKeyChange(resourceKey);
+		onResourceSelect(row.original);
+	};
 
 	return (
 		<Fragment>
@@ -182,24 +219,24 @@ function ResourceTableRow({
 				/>
 			)}
 			{!hideResourceRow && (
-				<tr
+				<TableRow
 					className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
-					onClick={() => {
-						diagnosticLog("resources.row.click", {
-							key: resourceKey,
-							alreadySelected: isSelected,
-							rowIndex: index,
-						});
-						onSelectedResourceKeyChange(resourceKey);
-						onResourceSelect(row.original);
+					onClick={selectResource}
+					onKeyDown={(event) => {
+						if (!isActivationKey(event)) return;
+						event.preventDefault();
+						selectResource();
 					}}
+					tabIndex={0}
+					role="button"
+					aria-selected={isSelected}
 				>
 					{row.getVisibleCells().map((cell) => (
-						<td key={cell.id}>
+						<TableCell key={cell.id}>
 							{flexRender(cell.column.columnDef.cell, cell.getContext())}
-						</td>
+						</TableCell>
 					))}
-				</tr>
+				</TableRow>
 			)}
 		</Fragment>
 	);
@@ -220,8 +257,8 @@ function ResourceGroupHeader({
 	const Icon = visual.icon;
 
 	return (
-		<tr className="[&_td]:bg-muted/50 [&_td]:p-0 [&_td]:text-xs [&_td]:font-bold [&_td]:text-primary">
-			<td colSpan={columns.length} className="!p-0">
+		<TableRow className="bg-muted/50 text-xs font-bold text-primary hover:bg-muted/50">
+			<TableCell colSpan={columns.length} className="!p-0">
 				<button
 					type="button"
 					className="flex w-full cursor-pointer items-center gap-2 border-0 bg-muted/50 px-3 py-2 text-left text-inherit focus-visible:ring-1 focus-visible:ring-ring/50"
@@ -239,8 +276,8 @@ function ResourceGroupHeader({
 						{count} resources on this page
 					</small>
 				</button>
-			</td>
-		</tr>
+			</TableCell>
+		</TableRow>
 	);
 }
 
@@ -261,8 +298,8 @@ function ResourceTypeGroupHeader({
 	const Icon = visual.icon;
 
 	return (
-		<tr className="[&_td]:bg-card [&_td]:p-0 [&_td]:text-[0.72rem] [&_td]:font-bold [&_td]:uppercase [&_td]:text-foreground">
-			<td colSpan={columns.length} className="!p-0">
+		<TableRow className="bg-card text-[0.72rem] font-bold uppercase text-foreground hover:bg-card">
+			<TableCell colSpan={columns.length} className="!p-0">
 				<button
 					type="button"
 					className="flex w-full cursor-pointer items-center gap-2 border-0 bg-card py-1.5 pl-6 pr-3 text-left text-[0.6875rem] text-inherit focus-visible:ring-1 focus-visible:ring-ring/50"
@@ -280,7 +317,7 @@ function ResourceTypeGroupHeader({
 						{count} on this page
 					</small>
 				</button>
-			</td>
-		</tr>
+			</TableCell>
+		</TableRow>
 	);
 }

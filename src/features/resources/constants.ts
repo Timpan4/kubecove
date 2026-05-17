@@ -5,6 +5,4 @@ export const TABLE_CLASS =
 
 export const ROW_CLASS = "cursor-pointer transition-colors hover:bg-accent/60";
 export const SELECTED_ROW_CLASS = "bg-accent";
-export const STATE_CLASS = "p-8 text-center text-sm text-muted-foreground";
-export const ERROR_STATE_CLASS = "p-8 text-center text-sm text-destructive";
 export const EMPTY_PAGE_CLASS = "p-8 text-center text-sm text-muted-foreground";

@@ -38,6 +38,10 @@ Current entries:
 
 App-level wiring only: router, providers. One or two files.
 
+### `src/hooks/`
+
+Generic React hooks that are reusable across features or required by shared UI primitives. Feature-specific hooks stay in their feature folder.
+
 ## Backend (`src-tauri/src/`)
 
 ### `commands/`

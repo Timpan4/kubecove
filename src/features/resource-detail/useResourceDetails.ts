@@ -9,7 +9,7 @@ import {
 import type { DiscoveredResourceKind, ResourceSummary } from "../../lib/types";
 import { diagnosticLog, diagnosticResultSummary } from "../../lib/diagnostics";
 import type { Tab } from "./constants";
-import { shouldFetchResourceDetails } from "./helpers";
+import { shouldFetchResourceDetails, shouldFetchResourceEvents } from "./helpers";
 
 interface UseResourceDetailsArgs {
 	resource: ResourceSummary;
@@ -35,11 +35,7 @@ export function useResourceDetails({
 		!!resource.cluster &&
 		!!resource.kind &&
 		!!resource.name;
-	const eventsEnabled =
-		activeTab === "events" &&
-		!!resource.cluster &&
-		!!resource.kind &&
-		!!resource.name;
+	const eventsEnabled = shouldFetchResourceEvents(resource);
 
 	const detailsQuery = useQuery({
 		queryKey: [

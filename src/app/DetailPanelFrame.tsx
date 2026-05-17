@@ -1,19 +1,14 @@
-import { useCallback, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import {
+	ResizableHandle,
+	ResizablePanel,
+	ResizablePanelGroup,
+} from "@/components/ui/resizable";
 
-const DETAIL_PANEL_DEFAULT_WIDTH = 480;
-const DETAIL_PANEL_MIN_WIDTH = 390;
-const MAIN_PANEL_MIN_WIDTH = 360;
-const SIDEBAR_WIDTH = 260;
-
-function clampDetailPanelWidth(width: number): number {
-	const viewportWidth =
-		typeof window === "undefined" ? 1440 : window.innerWidth;
-	const maxWidth = Math.max(
-		DETAIL_PANEL_MIN_WIDTH,
-		viewportWidth - SIDEBAR_WIDTH - MAIN_PANEL_MIN_WIDTH,
-	);
-	return Math.min(Math.max(width, DETAIL_PANEL_MIN_WIDTH), maxWidth);
-}
+const MAIN_PANEL_DEFAULT_SIZE = 60;
+const DETAIL_PANEL_DEFAULT_SIZE = 40;
+const MAIN_PANEL_MIN_SIZE = 30;
+const DETAIL_PANEL_MIN_SIZE = 33;
 
 export function DetailPanelFrame({
 	mainContent,
@@ -22,61 +17,32 @@ export function DetailPanelFrame({
 	mainContent: ReactNode;
 	detailPanel: ReactNode;
 }) {
-	const [detailPanelWidth, setDetailPanelWidth] = useState(
-		DETAIL_PANEL_DEFAULT_WIDTH,
-	);
-
-	const handleDetailResizeStart = useCallback(
-		(event: React.PointerEvent<HTMLDivElement>) => {
-			event.preventDefault();
-			const startX = event.clientX;
-			const startWidth = detailPanelWidth;
-
-			const handlePointerMove = (moveEvent: PointerEvent) => {
-				const nextWidth = startWidth + startX - moveEvent.clientX;
-				setDetailPanelWidth(clampDetailPanelWidth(nextWidth));
-			};
-
-			const handlePointerUp = () => {
-				document.body.style.cursor = "";
-				document.body.style.userSelect = "";
-				window.removeEventListener("pointermove", handlePointerMove);
-				window.removeEventListener("pointerup", handlePointerUp);
-			};
-
-			document.body.style.cursor = "col-resize";
-			document.body.style.userSelect = "none";
-			window.addEventListener("pointermove", handlePointerMove);
-			window.addEventListener("pointerup", handlePointerUp, { once: true });
-		},
-		[detailPanelWidth],
-	);
-
 	if (!detailPanel) return mainContent;
 
 	return (
-		<div className="flex min-w-0 flex-1 overflow-hidden">
-			<div className="min-w-0 flex-1 overflow-hidden">{mainContent}</div>
-			<div
-				role="separator"
-				aria-orientation="vertical"
-				aria-label="Resize details panel"
-				className="group relative flex w-2 shrink-0 cursor-col-resize items-center justify-center"
-				onPointerDown={handleDetailResizeStart}
-				onDoubleClick={() => setDetailPanelWidth(DETAIL_PANEL_DEFAULT_WIDTH)}
+		<ResizablePanelGroup
+			orientation="horizontal"
+			className="min-w-0 flex-1 overflow-hidden"
+		>
+			<ResizablePanel
+				defaultSize={MAIN_PANEL_DEFAULT_SIZE}
+				minSize={MAIN_PANEL_MIN_SIZE}
+				className="min-w-0 overflow-hidden"
 			>
-				<div className="h-full w-px bg-border transition-colors group-hover:bg-ring" />
-				<div className="absolute h-8 w-1 rounded-full bg-border transition-colors group-hover:bg-ring" />
-			</div>
-			<div
-				className="h-full shrink-0 overflow-hidden"
-				style={{
-					width: clampDetailPanelWidth(detailPanelWidth),
-					minWidth: DETAIL_PANEL_MIN_WIDTH,
-				}}
+				{mainContent}
+			</ResizablePanel>
+			<ResizableHandle
+				withHandle
+				aria-label="Resize details panel"
+				className="w-2 bg-transparent data-[resize-handle-state=hover]:bg-border/40 data-[resize-handle-state=drag]:bg-border/60"
+			/>
+			<ResizablePanel
+				defaultSize={DETAIL_PANEL_DEFAULT_SIZE}
+				minSize={DETAIL_PANEL_MIN_SIZE}
+				className="h-full min-w-0 overflow-hidden"
 			>
 				{detailPanel}
-			</div>
-		</div>
+			</ResizablePanel>
+		</ResizablePanelGroup>
 	);
 }

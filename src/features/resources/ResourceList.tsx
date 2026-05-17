@@ -5,22 +5,37 @@ import {
 	useReactTable,
 	type SortingState,
 } from "@tanstack/react-table";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyTitle,
+} from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { diagnosticLog } from "@/lib/diagnostics";
 import type { ResourceKindSelection, ResourceSummary } from "@/lib/types";
 import { columns } from "./columns";
-import { ERROR_STATE_CLASS, PAGE_SIZE, STATE_CLASS } from "./constants";
+import { PAGE_SIZE } from "./constants";
 import { pageAppGroupCounts, pageTypeGroupCounts } from "./grouping";
 import {
 	buildFetchKeys,
 	buildResourceHealthSummary,
 	describeResourceScope,
+	filterResourcesByHealth,
 	filterResources,
 	formatResourceGroupLabel,
+	type HealthFilter,
 	resourceKindFetchKey,
 	sortedRows,
 	uniqueArgoApps,
 } from "./helpers";
-import { ResourceHealthStrip, ResourceScopePills } from "./health";
+import {
+	ActiveHealthFilterBanner,
+	ResourceHealthStrip,
+	ResourceScopePills,
+} from "./health";
 import { ResourcePagination } from "./pagination";
 import { fetchResourcePage } from "./query";
 import { ResourceTable } from "./ResourceTable";
@@ -52,6 +67,7 @@ function ResourceListComponent({
 	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
 		() => new Set(),
 	);
+	const [healthFilter, setHealthFilter] = useState<HealthFilter>("all");
 	const renderCountRef = useRef(0);
 	renderCountRef.current += 1;
 
@@ -73,10 +89,11 @@ function ResourceListComponent({
 
 	useEffect(() => {
 		setPageIndex(0);
-	}, [clusterContext, namespaceKey, kindKey, selectedArgoAppFilter]);
+	}, [clusterContext, namespaceKey, kindKey, selectedArgoAppFilter, healthFilter]);
 
 	useEffect(() => {
 		setCollapsedGroups(new Set());
+		setHealthFilter("all");
 	}, [clusterContext, namespaceKey, kindKey]);
 
 	const { data, isPending, isError, error } = useQuery({
@@ -87,9 +104,13 @@ function ResourceListComponent({
 	});
 
 	const argoApps = useMemo(() => uniqueArgoApps(data ?? []), [data]);
-	const filteredData = useMemo(
+	const scopedData = useMemo(
 		() => filterResources(data ?? [], search, selectedArgoAppFilter),
 		[data, search, selectedArgoAppFilter],
+	);
+	const filteredData = useMemo(
+		() => filterResourcesByHealth(scopedData, healthFilter),
+		[scopedData, healthFilter],
 	);
 	const sortedData = useMemo(
 		() => sortedRows(filteredData, sorting),
@@ -112,8 +133,8 @@ function ResourceListComponent({
 		});
 	}, [groupedByArgo, sortedData]);
 	const healthSummary = useMemo(
-		() => buildResourceHealthSummary(filteredData),
-		[filteredData],
+		() => buildResourceHealthSummary(scopedData),
+		[scopedData],
 	);
 	const scopePills = useMemo(
 		() =>
@@ -166,6 +187,7 @@ function ResourceListComponent({
 
 	const clearFilters = () => {
 		setSearch("");
+		setHealthFilter("all");
 		onArgoAppFilterChange("");
 		setPageIndex(0);
 	};
@@ -183,45 +205,63 @@ function ResourceListComponent({
 
 	if (isPending) {
 		return (
-			<div className={STATE_CLASS}>
+			<div className="p-8 text-center text-sm text-muted-foreground">
 				<div className="mb-4 flex flex-col gap-px">
 					{Array.from({ length: 8 }).map((_, i) => (
 						<div key={i} className="flex gap-3 border-b py-2">
-							<div className="h-3.5 w-[180px] animate-pulse rounded-sm bg-muted"></div>
-							<div className="h-3.5 w-[100px] animate-pulse rounded-sm bg-muted"></div>
-							<div className="h-3.5 w-20 animate-pulse rounded-sm bg-muted"></div>
-							<div className="h-3.5 w-[70px] animate-pulse rounded-sm bg-muted"></div>
+							<Skeleton className="h-3.5 w-[180px]" />
+							<Skeleton className="h-3.5 w-[100px]" />
+							<Skeleton className="h-3.5 w-20" />
+							<Skeleton className="h-3.5 w-[70px]" />
 						</div>
 					))}
 				</div>
-				<span className="inline-flex items-center gap-2">Loading resources…</span>
+				<span className="inline-flex items-center gap-2">
+					<Spinner className="size-4" />
+					Loading resources...
+				</span>
 			</div>
 		);
 	}
 
 	if (isError) {
 		return (
-			<div className={ERROR_STATE_CLASS}>
-				<span>
-					Error:{" "}
-					{error instanceof Error ? error.message : "Failed to load resources"}
-				</span>
+			<div className="p-4">
+				<Alert variant="destructive">
+					<AlertTitle>Failed to load resources</AlertTitle>
+					<AlertDescription>
+						{error instanceof Error ? error.message : "Failed to load resources"}
+					</AlertDescription>
+				</Alert>
 			</div>
 		);
 	}
 
 	if (!data || data.length === 0) {
 		return (
-			<div className={STATE_CLASS}>
-				<span>No resources found</span>
-			</div>
+			<Empty className="min-h-64 border-0">
+				<EmptyHeader>
+					<EmptyTitle>No resources found</EmptyTitle>
+					<EmptyDescription>
+						Try a different namespace or resource kind selection.
+					</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
 		);
 	}
 
 	return (
 		<div className="flex min-w-0 flex-col gap-3">
 			<ResourceScopePills pills={scopePills} />
-			<ResourceHealthStrip summary={healthSummary} />
+			<ResourceHealthStrip
+				summary={healthSummary}
+				activeFilter={healthFilter}
+				onFilterChange={setHealthFilter}
+			/>
+			<ActiveHealthFilterBanner
+				filter={healthFilter}
+				onReset={() => setHealthFilter("all")}
+			/>
 			<ResourceToolbar
 				search={search}
 				argoApps={argoApps}
