@@ -86,6 +86,23 @@ describe("workspace helpers", () => {
 		});
 	});
 
+	test("preserves all-namespace workspace resource fetches", () => {
+		const workspace = createWorkspaceRecord(
+			{
+				name: "Ops",
+				clusterContext: "kind-dev",
+				namespaces: [],
+				kinds: ["Pod", "Node"],
+			},
+			"2026-05-16T12:00:00.000Z",
+		);
+
+		expect(buildWorkspaceFetchKeys(workspace.scope, [])).toEqual([
+			{ kind: "Pod" },
+			{ kind: "Node" },
+		]);
+	});
+
 	test("does not widen namespace-scoped workspace resources to cluster scope", () => {
 		const workspace = createWorkspaceRecord(
 			{
