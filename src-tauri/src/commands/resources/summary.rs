@@ -60,14 +60,14 @@ pub async fn list_resources(
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<all>");
     eprintln!(
-        "[k8s-manager:backend] list_resources start context={} kind={} namespace={}",
+        "[kubecove:backend] list_resources start context={} kind={} namespace={}",
         cluster_context, kind, namespace_label
     );
     let result =
         resources_summary_from(cluster_context.clone(), kind.clone(), namespace.clone()).await;
     match &result {
-        Ok(rows) => eprintln!("[k8s-manager:backend] list_resources done context={} kind={} namespace={} rows={} ms={}", cluster_context, kind, namespace_label, rows.len(), started.elapsed().as_millis()),
-        Err(err) => eprintln!("[k8s-manager:backend] list_resources error context={} kind={} namespace={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, err.kind, err.message, started.elapsed().as_millis()),
+        Ok(rows) => eprintln!("[kubecove:backend] list_resources done context={} kind={} namespace={} rows={} ms={}", cluster_context, kind, namespace_label, rows.len(), started.elapsed().as_millis()),
+        Err(err) => eprintln!("[kubecove:backend] list_resources error context={} kind={} namespace={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, err.kind, err.message, started.elapsed().as_millis()),
     }
     result
 }

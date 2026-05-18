@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "k8s-manager",
+  "productName": "KubeCove",
   "version": "0.1.0",
-  "identifier": "com.timpan.k8s-manager",
+  "identifier": "com.timpan.kubecove",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "k8s-manager",
+        "title": "KubeCove",
         "width": 800,
         "height": 600
       }

@@ -20,6 +20,6 @@ export const useSettingsState = create<SettingsState>()(
 			setTimestampTimezone: (timezone: TimestampTimezone) =>
 				set({ timestampTimezone: timezone }),
 		}),
-		{ name: "k8s-manager-settings" },
+		{ name: "kubecove-settings" },
 	),
 );

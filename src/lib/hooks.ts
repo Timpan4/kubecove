@@ -76,7 +76,7 @@ const usePersistedStore = create<PersistedSlice>()(
 						: { selectedNamespaces: [...state.selectedNamespaces, ns] },
 				),
 		}),
-		{ name: "k8s-manager-dashboard" },
+		{ name: "kubecove-dashboard" },
 	),
 );
 

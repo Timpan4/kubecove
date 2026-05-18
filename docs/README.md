@@ -1,6 +1,6 @@
 # Docs Index
 
-Documentation for the `k8s-manager` desktop Kubernetes IDE. Read in roughly this order — vision first, then the constraints that fall out of it, then the work tracker.
+Documentation for the KubeCove desktop Kubernetes workspace. Read in roughly this order — vision first, then the constraints that fall out of it, then the work tracker.
 
 ## Start here
 

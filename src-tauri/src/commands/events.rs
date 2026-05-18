@@ -123,7 +123,7 @@ pub async fn list_resource_events(
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
     eprintln!(
-        "[k8s-manager:backend] list_resource_events start context={} kind={} namespace={} name={}",
+        "[kubecove:backend] list_resource_events start context={} kind={} namespace={} name={}",
         cluster_context, kind, namespace_label, name
     );
     let result = resource_events_from(
@@ -135,7 +135,7 @@ pub async fn list_resource_events(
     .await;
     match &result {
         Ok(events) => eprintln!(
-            "[k8s-manager:backend] list_resource_events done context={} kind={} namespace={} name={} rows={} ms={}",
+            "[kubecove:backend] list_resource_events done context={} kind={} namespace={} name={} rows={} ms={}",
             cluster_context,
             kind,
             namespace_label,
@@ -144,7 +144,7 @@ pub async fn list_resource_events(
             started.elapsed().as_millis()
         ),
         Err(err) => eprintln!(
-            "[k8s-manager:backend] list_resource_events error context={} kind={} namespace={} name={} error_kind={} message={} ms={}",
+            "[kubecove:backend] list_resource_events error context={} kind={} namespace={} name={} error_kind={} message={} ms={}",
             cluster_context,
             kind,
             namespace_label,
