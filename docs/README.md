@@ -21,6 +21,7 @@ Documentation for the KubeCove desktop Kubernetes workspace. Read in roughly thi
 - [Milestones](milestones.md) — single source of truth for goal-level progress. Includes cross-cutting tracks for security and agent skills.
 - [Agent Skill Backlog](agent-skills.md) — project-specific skill ideas to write before installing as real skills.
 - [Development Workflow](development-workflow.md) — Bun/cargo commands, pre-commit hook, verification expectations.
+- [Beta Releases](release.md) — installer download guidance and maintainer release steps.
 
 ## Context
 

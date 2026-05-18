@@ -62,6 +62,8 @@ Reserved for the day Kubernetes access has a second consumer beyond `commands/` 
 
 Adding a new top-level directory under `src/` or `src-tauri/src/` requires a one-line entry in this file describing what belongs there. Update the handbook **before** creating the directory, not after.
 
+Repo-level `scripts/` contains maintainer automation for release and repository workflows; it must not contain app runtime code.
+
 ## Cross-cutting rules
 
 - Frontend never calls Kubernetes directly. All cluster data flows through typed Tauri wrappers in `lib/tauri.ts`.

@@ -14,6 +14,10 @@
 
 ## Quick Start
 
+### Beta Installers
+
+Beta installers for macOS, Windows, and Linux are published under [GitHub Releases](https://github.com/Timpan4/kubecove/releases). Use those installers when you only want to test KubeCove; the source setup below is for development.
+
 Requirements:
 
 - Bun
@@ -41,6 +45,12 @@ Build a desktop bundle:
 
 ```sh
 bun run tauri build
+```
+
+Create a draft beta release from a clean `main` branch:
+
+```sh
+bun run release
 ```
 
 ## What Works Today
