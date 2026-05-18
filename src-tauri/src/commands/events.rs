@@ -225,4 +225,41 @@ mod tests {
 
         assert_eq!(event_source(&event), "kubelet");
     }
+
+    #[test]
+    fn event_matching_allows_cluster_scope_only_when_namespace_is_absent() {
+        let event = Event {
+            involved_object: ObjectReference {
+                kind: Some("Node".to_string()),
+                name: Some("kind-worker".to_string()),
+                namespace: None,
+                ..Default::default()
+            },
+            metadata: ObjectMeta::default(),
+            ..Default::default()
+        };
+
+        assert!(event_matches_resource(&event, "Node", "kind-worker", None));
+        assert!(!event_matches_resource(
+            &event,
+            "Node",
+            "kind-worker",
+            Some("default"),
+        ));
+    }
+
+    #[test]
+    fn event_timestamp_falls_back_to_creation_timestamp() {
+        let created = Time(k8s_openapi::jiff::Timestamp::from_second(1_700_000_050).unwrap());
+        let event = Event {
+            involved_object: ObjectReference::default(),
+            metadata: ObjectMeta {
+                creation_timestamp: Some(created),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(event_timestamp(&event).unwrap().timestamp(), 1_700_000_050);
+    }
 }

@@ -167,4 +167,21 @@ mod tests {
 
         assert_eq!(pod.group.as_deref(), Some(""));
     }
+
+    #[test]
+    fn known_cluster_scoped_kind_sets_namespaced_false() {
+        let node = normalize_resource_kind(&WatchResourceKind {
+            kind: "Node".to_string(),
+            group: None,
+            version: None,
+            api_version: None,
+            plural: None,
+            namespaced: None,
+        })
+        .expect("node metadata");
+
+        assert_eq!(node.api_version.as_deref(), Some("v1"));
+        assert_eq!(node.plural.as_deref(), Some("nodes"));
+        assert_eq!(node.namespaced, Some(false));
+    }
 }
