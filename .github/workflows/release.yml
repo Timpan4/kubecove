@@ -20,6 +20,7 @@ jobs:
       - name: Detect existing release state
         id: release
         env:
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
@@ -139,6 +140,7 @@ jobs:
     steps:
       - name: Publish completed release
         env:
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
         run: gh release edit "$TAG_NAME" --draft=false --prerelease=false
