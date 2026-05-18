@@ -6,7 +6,7 @@ authors = ["timpan"]
 edition = "2021"
 
 [lib]
-name = "k8s_manager_lib"
+name = "kubecove_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
