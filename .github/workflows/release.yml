@@ -103,7 +103,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "KubeCove v__VERSION__"
-          releaseBody: "Beta installers for KubeCove. These artifacts are unsigned private beta builds; smoke test before publishing."
-          releaseDraft: true
-          prerelease: true
+          releaseBody: "Beta installers for KubeCove. These artifacts are unsigned beta builds; smoke test before sharing broadly."
+          releaseDraft: false
+          prerelease: false
           args: ${{ matrix.args }}
