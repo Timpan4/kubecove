@@ -19,15 +19,20 @@ jobs:
     steps:
       - name: Detect existing release state
         id: release
+        shell: bash
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          if gh release view "$TAG_NAME" --json isDraft --jq '.isDraft' > release-draft.txt 2>/dev/null; then
-            echo "release-draft=$(cat release-draft.txt)" >> "$GITHUB_OUTPUT"
-          else
+          set -euo pipefail
+          if release_draft="$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft' 2>release-error.txt)"; then
+            echo "release-draft=$release_draft" >> "$GITHUB_OUTPUT"
+          elif grep -qiE "not found|404" release-error.txt; then
             echo "release-draft=true" >> "$GITHUB_OUTPUT"
+          else
+            cat release-error.txt >&2
+            exit 1
           fi
 
   build:

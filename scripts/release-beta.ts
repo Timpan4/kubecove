@@ -60,7 +60,7 @@ console.log(`Pushed ${tagName} for origin/main ${shortSha(originMainSha)}.`);
 console.log("GitHub Actions will run tests, build installers, and publish a GitHub Release.");
 
 function fetchReleaseRefs(): void {
-	run("git", ["fetch", "--quiet", "--tags", "origin", "main"]);
+	run("git", ["fetch", "--quiet", "--no-tags", "origin", "main:refs/remotes/origin/main"]);
 }
 
 function readRemoteFile(path: string): string {
