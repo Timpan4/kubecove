@@ -17,6 +17,11 @@ import {
 	shouldFetchResourceDetails,
 } from "../src/features/resource-detail/helpers";
 import {
+	orderedLogLines,
+	parseLogLine,
+} from "../src/features/resource-detail/log-helpers";
+import { formatExactTimestamp } from "../src/components/TimestampText";
+import {
 	buildFetchKeys,
 	buildResourceHealthSummary,
 	describeResourceScope,
@@ -29,6 +34,7 @@ import {
 	sortedRows,
 	tableTooltipText,
 	uniqueArgoApps,
+	watchKeysFromFetchKeys,
 } from "../src/features/resources/helpers";
 import {
 	pageAppGroupCounts,
@@ -266,6 +272,26 @@ describe("resource browser presentation helpers", () => {
     expect(buildFetchKeys(["default"], [widgetKind, clusterWidgetKind])).toEqual([
       { kind: widgetKind, namespace: "default" },
       { kind: clusterWidgetKind, namespace: undefined },
+    ]);
+  });
+
+  test("builds realtime watch keys for typed and discovered resources", () => {
+    expect(watchKeysFromFetchKeys([
+      { kind: "Pod", namespace: "default" },
+      { kind: widgetKind, namespace: "apps" },
+    ])).toEqual([
+      { resourceKind: { kind: "Pod" }, namespace: "default" },
+      {
+        resourceKind: {
+          kind: "Widget",
+          group: "example.com",
+          version: "v1",
+          apiVersion: "example.com/v1",
+          plural: "widgets",
+          namespaced: true,
+        },
+        namespace: "apps",
+      },
     ]);
   });
 
@@ -1058,4 +1084,49 @@ describe("tree navigation scope helpers", () => {
     expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "argo" } as TreeNodeId), true)).toBe("Select an Argo CD resource type");
     expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "discovered" } as TreeNodeId), true)).toBe("Select a discovered resource kind");
   });
+});
+
+describe("log presentation helpers", () => {
+	test("splits Kubernetes log timestamps from the message", () => {
+		expect(
+			parseLogLine(
+				'2026-05-18T09:01:35.103840719Z time="2026-05-18T09:01:35Z" level=info msg="ok"',
+			),
+		).toEqual({
+			index: 0,
+			message: 'time="2026-05-18T09:01:35Z" level=info msg="ok"',
+			raw: '2026-05-18T09:01:35.103840719Z time="2026-05-18T09:01:35Z" level=info msg="ok"',
+			timestamp: "2026-05-18T09:01:35.103840719Z",
+		});
+	});
+
+	test("uses embedded time fields when no leading timestamp exists", () => {
+		expect(parseLogLine('level=info time="2026-05-18T09:01:35Z" msg="ok"')).toMatchObject({
+			message: 'level=info time="2026-05-18T09:01:35Z" msg="ok"',
+			timestamp: "2026-05-18T09:01:35Z",
+		});
+	});
+
+	test("can show newest log lines first", () => {
+		expect(orderedLogLines(["first", "second"], true).map((line) => line.message)).toEqual([
+			"second",
+			"first",
+		]);
+	});
+
+	test("formats log timestamps through the shared timestamp formatter", () => {
+		expect(
+			formatExactTimestamp(
+				"2026-05-18T09:01:35.103840719Z",
+				"utc",
+				"millisecond",
+			),
+		).toBe("2026-05-18 09:01:35.103 UTC");
+		expect(
+			formatExactTimestamp("2026-05-18T09:01:35Z", "utc", "second"),
+		).toBe("2026-05-18 09:01:35 UTC");
+		expect(formatExactTimestamp("2026-05-18T09:01:35Z", "utc")).toBe(
+			"2026-05-18 09:01 UTC",
+		);
+	});
 });

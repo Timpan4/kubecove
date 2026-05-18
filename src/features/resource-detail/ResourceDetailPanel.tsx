@@ -19,7 +19,9 @@ import { EventsTab } from "./EventsTab";
 import {
 	dynamicResourceKindFromSummary,
 	getConditionRows,
+	getContainerStatusRows,
 } from "./helpers";
+import { LogsTab } from "./LogsTab";
 import { useResourceDetails } from "./useResourceDetails";
 import { YamlTab } from "./YamlTab";
 
@@ -33,6 +35,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 	onClose,
 }: ResourceDetailPanelProps) {
 	const [activeTab, setActiveTab] = useState<Tab>("details");
+	const [selectedContainer, setSelectedContainer] = useState("");
 	const client = useMemo(() => createTauriClient(), []);
 	const dynamicResourceKind = useMemo(
 		() => dynamicResourceKindFromSummary(resource),
@@ -96,6 +99,30 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		() => getConditionRows(details?.status),
 		[details?.status],
 	);
+	const containerRows = useMemo(
+		() => getContainerStatusRows(details?.status),
+		[details?.status],
+	);
+	const containerSignature = containerRows
+		.map((container) => `${container.type ?? "container"}:${container.name}`)
+		.join("|");
+
+	useEffect(() => {
+		if (resource.kind !== "Pod") {
+			setSelectedContainer("");
+			return;
+		}
+		if (
+			selectedContainer &&
+			containerRows.some((container) => container.name === selectedContainer)
+		) {
+			return;
+		}
+		const regularContainer =
+			containerRows.find((container) => container.type === "container") ??
+			containerRows[0];
+		setSelectedContainer(regularContainer?.name ?? "");
+	}, [containerRows, containerSignature, resource.kind, selectedContainer]);
 
 	return (
 		<div className={PANEL_CLASS}>
@@ -132,6 +159,11 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 						<TabsTrigger className={PANEL_TAB_CLASS} value="events">
 							Events
 						</TabsTrigger>
+						{resource.kind === "Pod" && (
+							<TabsTrigger className={PANEL_TAB_CLASS} value="logs">
+								Logs
+							</TabsTrigger>
+						)}
 						<TabsTrigger className={PANEL_TAB_CLASS} value="yaml">
 							YAML
 						</TabsTrigger>
@@ -159,6 +191,18 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 							eventsErr={eventsQuery.error}
 						/>
 					</TabsContent>
+					{resource.kind === "Pod" && (
+						<TabsContent value="logs" className="m-0 h-full min-h-0">
+							<LogsTab
+								client={client}
+								resource={resource}
+								containers={containerRows}
+								selectedContainer={selectedContainer}
+								onSelectedContainerChange={setSelectedContainer}
+								active={activeTab === "logs"}
+							/>
+						</TabsContent>
+					)}
 					<TabsContent value="yaml" className="m-0">
 						<YamlTab
 							yaml={yaml}

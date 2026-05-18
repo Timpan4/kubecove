@@ -6,6 +6,7 @@ import {
 	type SortingState,
 } from "@tanstack/react-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import {
 	Empty,
 	EmptyDescription,
@@ -15,6 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { diagnosticLog } from "@/lib/diagnostics";
+import { createTauriClient } from "@/lib/tauri";
 import type { ResourceKindSelection, ResourceSummary } from "@/lib/types";
 import { columns } from "./columns";
 import { PAGE_SIZE } from "./constants";
@@ -30,6 +32,7 @@ import {
 	resourceKindFetchKey,
 	sortedRows,
 	uniqueArgoApps,
+	watchKeysFromFetchKeys,
 } from "./helpers";
 import {
 	ActiveHealthFilterBanner,
@@ -40,6 +43,7 @@ import { ResourcePagination } from "./pagination";
 import { fetchResourcePage } from "./query";
 import { ResourceTable } from "./ResourceTable";
 import { ResourceToolbar } from "./toolbar";
+import { useResourceWatch } from "./useResourceWatch";
 
 interface ResourceListProps {
 	clusterContext: string;
@@ -68,6 +72,7 @@ function ResourceListComponent({
 		() => new Set(),
 	);
 	const [healthFilter, setHealthFilter] = useState<HealthFilter>("all");
+	const client = useMemo(() => createTauriClient(), []);
 	const renderCountRef = useRef(0);
 	renderCountRef.current += 1;
 
@@ -101,6 +106,14 @@ function ResourceListComponent({
 		queryFn: () => fetchResourcePage(clusterContext, fetchKeys),
 		enabled: fetchKeys.length > 0,
 		staleTime: 30_000,
+	});
+	const watchKeys = useMemo(() => watchKeysFromFetchKeys(fetchKeys), [fetchKeys]);
+	const realtime = useResourceWatch({
+		client,
+		clusterContext,
+		keys: watchKeys,
+		queryKey,
+		enabled: fetchKeys.length > 0 && !isError,
 	});
 
 	const argoApps = useMemo(() => uniqueArgoApps(data ?? []), [data]);
@@ -277,6 +290,12 @@ function ResourceListComponent({
 				}}
 				onClearFilters={clearFilters}
 			/>
+			<div className="flex items-center gap-2 text-xs text-muted-foreground">
+				<Badge variant={realtime.status === "error" ? "destructive" : "outline"}>
+					Realtime: {realtime.status}
+				</Badge>
+				<span className="truncate">{realtime.error ?? realtime.message}</span>
+			</div>
 			<ResourceTable
 				table={table}
 				groupedByArgo={groupedByArgo}
