@@ -97,18 +97,35 @@ jobs:
 
       - name: Validate release tag and versions
         shell: bash
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
           PACKAGE_VERSION="$(bun -p "require('./package.json').version")"
           TAURI_VERSION="$(bun -p "require('./src-tauri/tauri.conf.json').version")"
           CARGO_VERSION="$(sed -n 's/^version = \"\\(.*\\)\"/\\1/p' src-tauri/Cargo.toml | head -n 1)"
 
-          test "$PACKAGE_VERSION" = "$TAURI_VERSION"
-          test "$PACKAGE_VERSION" = "$CARGO_VERSION"
-          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+          echo "package.json version: $PACKAGE_VERSION"
+          echo "tauri.conf.json version: $TAURI_VERSION"
+          echo "Cargo.toml version: $CARGO_VERSION"
+          echo "release ref: $REF_TYPE $TAG_NAME"
+
+          if [ "$PACKAGE_VERSION" != "$TAURI_VERSION" ]; then
+            echo "package.json and tauri.conf.json versions must match."
+            exit 1
+          fi
+          if [ "$PACKAGE_VERSION" != "$CARGO_VERSION" ]; then
+            echo "package.json and Cargo.toml versions must match."
+            exit 1
+          fi
+          if [ "$REF_TYPE" != "tag" ]; then
             echo "Release workflow must run from an app-v* tag. For manual dispatch, choose the existing release tag ref."
             exit 1
           fi
-          test "$GITHUB_REF_NAME" = "app-v$PACKAGE_VERSION"
+          if [ "$TAG_NAME" != "app-v$PACKAGE_VERSION" ]; then
+            echo "Release tag must match app-v<package version>. Expected app-v$PACKAGE_VERSION, found $TAG_NAME."
+            exit 1
+          fi
 
       - name: Typecheck frontend
         run: bun run typecheck
