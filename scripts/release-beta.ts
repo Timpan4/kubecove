@@ -1,4 +1,9 @@
 import { spawnSync } from "node:child_process";
+import {
+	assertMatchingReleaseVersions,
+	parseCargoPackageVersion,
+	requireVersion,
+} from "./release-versions";
 
 type Mode = "check" | "dry-run" | "release";
 
@@ -22,11 +27,11 @@ const packageJson = JSON.parse(readRemoteFile("package.json")) as { version?: st
 const tauriConfig = JSON.parse(readRemoteFile("src-tauri/tauri.conf.json")) as { version?: string };
 const cargoToml = readRemoteFile("src-tauri/Cargo.toml");
 
-const packageVersion = requireVersion("origin/main:package.json", packageJson.version);
-const tauriVersion = requireVersion("origin/main:src-tauri/tauri.conf.json", tauriConfig.version);
-const cargoVersion = parseCargoVersion(cargoToml);
+const { packageVersion, tauriVersion, cargoVersion } = parseRemoteVersions();
 
-if (packageVersion !== tauriVersion || packageVersion !== cargoVersion) {
+try {
+	assertMatchingReleaseVersions({ packageVersion, tauriVersion, cargoVersion });
+} catch {
 	fail([
 		"Release versions on origin/main must match:",
 		`  origin/main:package.json: ${packageVersion}`,
@@ -67,18 +72,26 @@ function readRemoteFile(path: string): string {
 	return run("git", ["show", `origin/main:${path}`]).stdout;
 }
 
-function requireVersion(source: string, version: string | undefined): string {
-	if (!version) fail(`${source} is missing a version.`);
-	if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
-		fail(`${source} version must be semver-like. Found: ${version}`);
+function parseRemoteVersions(): {
+	packageVersion: string;
+	tauriVersion: string;
+	cargoVersion: string;
+} {
+	try {
+		return {
+			packageVersion: requireVersion("origin/main:package.json", packageJson.version),
+			tauriVersion: requireVersion(
+				"origin/main:src-tauri/tauri.conf.json",
+				tauriConfig.version,
+			),
+			cargoVersion: parseCargoPackageVersion(
+				cargoToml,
+				"origin/main:src-tauri/Cargo.toml",
+			),
+		};
+	} catch (error) {
+		fail(error instanceof Error ? error.message : String(error));
 	}
-	return version;
-}
-
-function parseCargoVersion(contents: string): string {
-	const match = contents.match(/^version\s*=\s*"([^"]+)"/m);
-	if (!match) fail("origin/main:src-tauri/Cargo.toml is missing package version.");
-	return requireVersion("origin/main:src-tauri/Cargo.toml", match[1]);
 }
 
 function assertMissingLocalTag(tagName: string): void {
