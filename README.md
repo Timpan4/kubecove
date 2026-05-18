@@ -1,10 +1,16 @@
 # KubeCove
 
-![KubeCove logo](public/kubecove-logo.svg)
-
-A context-first desktop workspace for Kubernetes operations.
-
-KubeCove is a local Kubernetes IDE focused on fast, safe cluster exploration today and deliberate operational workflows later. It keeps Kubernetes access on the Rust side of the Tauri boundary, starts from contexts and namespaces, and helps you move from workspace scope to resources, Argo CD signals, events, logs, YAML, and detail views without losing the operational thread.
+<table>
+  <tr>
+    <td width="180" valign="top">
+      <img src="public/kubecove-logo.svg" alt="KubeCove logo" width="160">
+    </td>
+    <td valign="top">
+      <p><strong>A context-first desktop workspace for Kubernetes operations.</strong></p>
+      <p>KubeCove is a local Kubernetes IDE focused on fast, safe cluster exploration today and deliberate operational workflows later. It keeps Kubernetes access on the Rust side of the Tauri boundary, starts from contexts and namespaces, and helps you move from workspace scope to resources, Argo CD signals, events, logs, YAML, and detail views without losing the operational thread.</p>
+    </td>
+  </tr>
+</table>
 
 ## Quick Start
 
