@@ -5,6 +5,7 @@ mod events;
 mod helpers;
 mod namespaces;
 mod resources;
+mod streams;
 
 pub use argo::{
     detect_argocd, get_argocd_application_details, get_argocd_appproject_details,
@@ -19,4 +20,8 @@ pub use resources::{
     dynamic_resource_details_from, dynamic_resources_summary_from, get_dynamic_resource_details,
     get_resource_details, get_resource_yaml, list_dynamic_resources, list_resources,
     resource_details_from, resource_yaml_from, resources_summary_from,
+};
+pub use streams::{
+    start_pod_log_stream, start_resource_event_watch, start_resource_watch, stop_stream,
+    StreamRegistry,
 };

@@ -4,6 +4,7 @@ import type {
 	DiscoveredResourceKind,
 	ResourceKindSelection,
 	ResourceSummary,
+	WatchResourceKey,
 } from "@/lib/types";
 import { classifyResourceHealth } from "@/lib/resource-health";
 import { CLUSTER_SCOPED_KINDS } from "@/lib/types";
@@ -73,6 +74,29 @@ export function buildFetchKeys(
 		}
 	}
 	return keys;
+}
+
+export function watchKeysFromFetchKeys(keys: FetchKey[]): WatchResourceKey[] {
+	return keys.map((key) => {
+		if (isDiscoveredResourceKind(key.kind)) {
+			return {
+				resourceKind: {
+					kind: key.kind.kind,
+					group: key.kind.group,
+					version: key.kind.version,
+					apiVersion: key.kind.apiVersion,
+					plural: key.kind.plural,
+					namespaced: key.kind.namespaced,
+				},
+				namespace: key.namespace,
+			};
+		}
+
+		return {
+			resourceKind: { kind: key.kind },
+			namespace: key.namespace,
+		};
+	});
 }
 
 export function sortedRows(

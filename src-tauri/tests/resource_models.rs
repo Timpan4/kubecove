@@ -1,8 +1,9 @@
 use kubecove_lib::models::{
     AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails,
     ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSummary, ClusterContext,
-    DiscoveredResourceKind, NamespaceSummary, ResourceDetails, ResourceDetailsFull,
-    ResourceEventSummary, ResourceSummary,
+    DiscoveredResourceKind, NamespaceSummary, PodLogStreamRequest, ResourceDetails,
+    ResourceDetailsFull, ResourceEventSummary, ResourceSummary, StreamMessage, WatchResourceKey,
+    WatchResourceKind,
 };
 use serde_json::json;
 
@@ -308,4 +309,42 @@ fn test_argo_appproject_models_serde() {
     assert_eq!(json_val["summary"]["description"], "default project");
     let parsed: ArgoAppProjectDetails = serde_json::from_value(json_val).unwrap();
     assert_eq!(parsed.summary.name, "default");
+}
+
+#[test]
+fn test_stream_models_serde() {
+    let key = WatchResourceKey {
+        resource_kind: WatchResourceKind {
+            kind: "Pod".to_string(),
+            group: None,
+            version: None,
+            api_version: None,
+            plural: None,
+            namespaced: None,
+        },
+        namespace: Some("default".to_string()),
+    };
+    let json_val = serde_json::to_value(&key).unwrap();
+    assert_eq!(json_val["resourceKind"]["kind"], "Pod");
+    assert_eq!(json_val["namespace"], "default");
+
+    let request = PodLogStreamRequest {
+        cluster_context: "admin@solid-k8s".to_string(),
+        namespace: "default".to_string(),
+        pod_name: "api-0".to_string(),
+        container: Some("api".to_string()),
+        tail_lines: Some(200),
+    };
+    let json_val = serde_json::to_value(&request).unwrap();
+    assert_eq!(json_val["clusterContext"], "admin@solid-k8s");
+    assert_eq!(json_val["podName"], "api-0");
+    assert_eq!(json_val["tailLines"], 200);
+
+    let message = StreamMessage::LogLine {
+        stream_id: "logs-1".to_string(),
+        line: "2026-05-18T10:00:00Z ready".to_string(),
+    };
+    let json_val = serde_json::to_value(&message).unwrap();
+    assert_eq!(json_val["type"], "logLine");
+    assert_eq!(json_val["streamId"], "logs-1");
 }
