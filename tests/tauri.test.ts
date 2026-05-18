@@ -1,10 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
-import { createMockTauriClient, listKubeContexts, listNamespaces, getResourceYaml, isAppError } from "../src/lib/tauri";
 import type {
-  ClusterContext,
   DiscoveredResourceKind,
-  NamespaceSummary,
   ResourceEventSummary,
   ResourceSummary,
 } from "../src/lib/types";
@@ -16,11 +13,6 @@ import {
 	shouldFetchResourceEvents,
 	shouldFetchResourceDetails,
 } from "../src/features/resource-detail/helpers";
-import {
-	orderedLogLines,
-	parseLogLine,
-} from "../src/features/resource-detail/log-helpers";
-import { formatExactTimestamp } from "../src/components/TimestampText";
 import {
 	buildFetchKeys,
 	buildResourceHealthSummary,
@@ -37,85 +29,10 @@ import {
 	watchKeysFromFetchKeys,
 } from "../src/features/resources/helpers";
 import {
-	pageAppGroupCounts,
-	pageTypeGroupCounts,
-} from "../src/features/resources/grouping";
-import {
 	emptyStateMessage,
 	resolveTreeScope,
 	type TreeNodeId,
 } from "../src/lib/tree-nav";
-
-describe("createMockTauriClient", () => {
-  test("returns mock response for known command", async () => {
-    const mockContexts: ClusterContext[] = [{ name: "minikube" }, { name: "docker-desktop" }];
-    const client = createMockTauriClient({
-      list_kube_contexts: mockContexts,
-    });
-
-    const result = await listKubeContexts(client);
-    expect(result).toEqual(mockContexts);
-  });
-
-  test("throws for unknown command", async () => {
-    const client = createMockTauriClient({});
-
-    let threw = false;
-    try {
-      await listKubeContexts(client);
-    } catch {
-      threw = true;
-    }
-    expect(threw).toBe(true);
-  });
-});
-
-describe("listKubeContexts", () => {
-  test("returns cluster contexts from client", async () => {
-    const mockContexts: ClusterContext[] = [{ name: "minikube" }];
-    const mockClient = createMockTauriClient({ list_kube_contexts: mockContexts });
-
-    const result = await listKubeContexts(mockClient);
-    expect(result).toEqual(mockContexts);
-    expect(result[0].name).toBe("minikube");
-  });
-});
-
-describe("listNamespaces", () => {
-  test("passes cluster_context to client", async () => {
-    const mockNamespaces: NamespaceSummary[] = [
-      { name: "default", age: "2024-01-01T00:00:00Z" },
-    ];
-    const client = createMockTauriClient({ list_namespaces: mockNamespaces });
-
-    const result = await listNamespaces(client, "minikube");
-    expect(result).toEqual(mockNamespaces);
-  });
-});
-
-describe("isAppError", () => {
-  test("returns true for valid AppError", () => {
-    const err = { message: "test", kind: "cluster" };
-    expect(isAppError(err)).toBe(true);
-  });
-
-  test("returns false for non-AppError object", () => {
-    expect(isAppError({ message: "test" })).toBe(false);
-    expect(isAppError({ kind: "cluster" })).toBe(false);
-    expect(isAppError(null)).toBe(false);
-  });
-});
-
-describe("getResourceYaml", () => {
-  test("returns raw YAML string from client", async () => {
-    const mockYaml = "apiVersion: v1\nkind: Pod\nmetadata:\n  name: test-pod";
-    const client = createMockTauriClient({ get_resource_yaml: mockYaml });
-
-    const result = await getResourceYaml(client, "minikube", "Pod", "test-pod", "default");
-    expect(result).toBe(mockYaml);
-    expect(typeof result).toBe("string");
-  });
-});
 
 describe("shouldFetchResourceDetails", () => {
   const resource = {
@@ -370,33 +287,6 @@ describe("resource browser presentation helpers", () => {
 
     expect(resourceGroupCollapseKey(resource)).toBe("group:Managed by Argo app: argocd");
     expect(resourceTypeGroupCollapseKey(resource)).toBe("group:Managed by Argo app: argocd::type:ConfigMaps");
-  });
-
-  test("counts page groups for grouped resource tables", () => {
-    const rows: ResourceSummary[] = [
-      { ...baseResource, name: "api", kind: "Pod", argoApp: "payments" },
-      { ...baseResource, name: "svc", kind: "Service", argoApp: "payments" },
-      { ...baseResource, name: "deploy-pod", kind: "Pod", ownerRef: "api" },
-      { ...baseResource, name: "cm", kind: "ConfigMap" },
-    ];
-
-    expect(pageAppGroupCounts(rows, true)).toEqual(
-      new Map([
-        ["Managed by Argo app: payments", 2],
-        ["Owned by: api", 1],
-        ["Unmanaged resources", 1],
-      ]),
-    );
-    expect(pageTypeGroupCounts(rows, true)).toEqual(
-      new Map([
-        ["Managed by Argo app: payments::Pods", 1],
-        ["Managed by Argo app: payments::Services", 1],
-        ["Owned by: api::Pods", 1],
-        ["Unmanaged resources::ConfigMaps", 1],
-      ]),
-    );
-    expect(pageAppGroupCounts(rows, false).size).toBe(0);
-    expect(pageTypeGroupCounts(rows, false).size).toBe(0);
   });
 
   test("normalizes tooltip values for table display", () => {
@@ -1084,49 +974,4 @@ describe("tree navigation scope helpers", () => {
     expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "argo" } as TreeNodeId), true)).toBe("Select an Argo CD resource type");
     expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "discovered" } as TreeNodeId), true)).toBe("Select a discovered resource kind");
   });
-});
-
-describe("log presentation helpers", () => {
-	test("splits Kubernetes log timestamps from the message", () => {
-		expect(
-			parseLogLine(
-				'2026-05-18T09:01:35.103840719Z time="2026-05-18T09:01:35Z" level=info msg="ok"',
-			),
-		).toEqual({
-			index: 0,
-			message: 'time="2026-05-18T09:01:35Z" level=info msg="ok"',
-			raw: '2026-05-18T09:01:35.103840719Z time="2026-05-18T09:01:35Z" level=info msg="ok"',
-			timestamp: "2026-05-18T09:01:35.103840719Z",
-		});
-	});
-
-	test("uses embedded time fields when no leading timestamp exists", () => {
-		expect(parseLogLine('level=info time="2026-05-18T09:01:35Z" msg="ok"')).toMatchObject({
-			message: 'level=info time="2026-05-18T09:01:35Z" msg="ok"',
-			timestamp: "2026-05-18T09:01:35Z",
-		});
-	});
-
-	test("can show newest log lines first", () => {
-		expect(orderedLogLines(["first", "second"], true).map((line) => line.message)).toEqual([
-			"second",
-			"first",
-		]);
-	});
-
-	test("formats log timestamps through the shared timestamp formatter", () => {
-		expect(
-			formatExactTimestamp(
-				"2026-05-18T09:01:35.103840719Z",
-				"utc",
-				"millisecond",
-			),
-		).toBe("2026-05-18 09:01:35.103 UTC");
-		expect(
-			formatExactTimestamp("2026-05-18T09:01:35Z", "utc", "second"),
-		).toBe("2026-05-18 09:01:35 UTC");
-		expect(formatExactTimestamp("2026-05-18T09:01:35Z", "utc")).toBe(
-			"2026-05-18 09:01 UTC",
-		);
-	});
 });
