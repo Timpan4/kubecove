@@ -2,6 +2,7 @@
 name = "kubecove"
 version = "0.1.0"
 description = "A context-first desktop workspace for Kubernetes operations"
+license = "AGPL-3.0-or-later"
 authors = ["timpan"]
 edition = "2021"
 

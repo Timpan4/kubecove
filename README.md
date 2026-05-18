@@ -84,6 +84,10 @@ The MVP is read-only. Future mutation workflows are planned, but they need expli
 
 Future candidates include Monaco Editor for YAML, richer topology views, SQLite for local saved state, and optional sidecars or fallbacks for `kubectl`, Helm, and Argo CD.
 
+## License
+
+KubeCove is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
+
 ## Docs
 
 See the [docs index](docs/README.md) for the full set, ordered by reading priority. Top entry points: [Product Vision](docs/product-vision.md), [Architecture Blueprint](docs/architecture-blueprint.md), [Milestones](docs/milestones.md), and the [Agent Guide](AGENTS.md).
