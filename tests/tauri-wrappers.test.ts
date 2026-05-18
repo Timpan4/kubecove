@@ -3,10 +3,11 @@ import {
 	createMockTauriClient,
 	getResourceYaml,
 	isAppError,
+	listResourceTopology,
 	listKubeContexts,
 	listNamespaces,
 } from "../src/lib/tauri";
-import type { ClusterContext, NamespaceSummary } from "../src/lib/types";
+import type { ClusterContext, NamespaceSummary, ResourceTopology } from "../src/lib/types";
 
 describe("createMockTauriClient", () => {
 	test("returns mock response for known command", async () => {
@@ -47,6 +48,28 @@ describe("typed Tauri wrappers", () => {
 		expect(
 			await getResourceYaml(client, "minikube", "Pod", "test-pod", "default"),
 		).toBe(mockYaml);
+	});
+
+	test("passes topology scope through the typed client", async () => {
+		const topology: ResourceTopology = { nodes: [], edges: [], warnings: [] };
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				return topology as T;
+			},
+		};
+
+		expect(await listResourceTopology(client, "kind-dev", ["default", "payments"])).toEqual(topology);
+		expect(calls).toEqual([
+			{
+				cmd: "list_resource_topology",
+				args: {
+					clusterContext: "kind-dev",
+					namespaces: ["default", "payments"],
+				},
+			},
+		]);
 	});
 });
 

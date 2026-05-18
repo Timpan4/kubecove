@@ -6,7 +6,6 @@ import {
 	type SortingState,
 } from "@tanstack/react-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import {
 	Empty,
 	EmptyDescription,
@@ -16,8 +15,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { diagnosticLog } from "@/lib/diagnostics";
-import { createTauriClient } from "@/lib/tauri";
-import type { ResourceKindSelection, ResourceSummary } from "@/lib/types";
+import { createTauriClient, listResourceTopology } from "@/lib/tauri";
+import type {
+	ResourceKindSelection,
+	ResourceSummary,
+	TopologyNode,
+} from "@/lib/types";
 import { columns } from "./columns";
 import { PAGE_SIZE } from "./constants";
 import { pageAppGroupCounts, pageTypeGroupCounts } from "./grouping";
@@ -28,6 +31,7 @@ import {
 	filterResourcesByHealth,
 	filterResources,
 	formatResourceGroupLabel,
+	resourceSelectionKey,
 	type HealthFilter,
 	resourceKindFetchKey,
 	sortedRows,
@@ -39,9 +43,8 @@ import {
 	ResourceHealthStrip,
 	ResourceScopePills,
 } from "./health";
-import { ResourcePagination } from "./pagination";
 import { fetchResourcePage } from "./query";
-import { ResourceTable } from "./ResourceTable";
+import { ResourceMapTableLayout } from "./ResourceMapTableLayout";
 import { ResourceToolbar } from "./toolbar";
 import { useResourceWatch } from "./useResourceWatch";
 
@@ -50,6 +53,7 @@ interface ResourceListProps {
 	selectedNamespaces: string[];
 	selectedKinds: ResourceKindSelection[];
 	selectedArgoAppFilter: string;
+	selectedResource: ResourceSummary | null;
 	onArgoAppFilterChange: (app: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
 }
@@ -59,6 +63,7 @@ function ResourceListComponent({
 	selectedNamespaces,
 	selectedKinds,
 	selectedArgoAppFilter,
+	selectedResource,
 	onArgoAppFilterChange,
 	onResourceSelect,
 }: ResourceListProps) {
@@ -72,6 +77,9 @@ function ResourceListComponent({
 		() => new Set(),
 	);
 	const [healthFilter, setHealthFilter] = useState<HealthFilter>("all");
+	const [selectedTopologyNodeId, setSelectedTopologyNodeId] = useState<
+		string | null
+	>(null);
 	const client = useMemo(() => createTauriClient(), []);
 	const renderCountRef = useRef(0);
 	renderCountRef.current += 1;
@@ -105,6 +113,12 @@ function ResourceListComponent({
 		queryKey,
 		queryFn: () => fetchResourcePage(clusterContext, fetchKeys),
 		enabled: fetchKeys.length > 0,
+		staleTime: 30_000,
+	});
+	const topologyQuery = useQuery({
+		queryKey: ["resource-topology", clusterContext, namespaceKey],
+		queryFn: () => listResourceTopology(client, clusterContext, selectedNamespaces),
+		enabled: Boolean(clusterContext),
 		staleTime: 30_000,
 	});
 	const watchKeys = useMemo(() => watchKeysFromFetchKeys(fetchKeys), [fetchKeys]);
@@ -185,6 +199,17 @@ function ResourceListComponent({
 		onSortingChange: setSorting,
 		getCoreRowModel: getCoreRowModel(),
 	});
+	const externalSelectedResourceKey = selectedResource
+		? resourceSelectionKey(selectedResource)
+		: null;
+	const activeSelectedResourceKey =
+		selectedResourceKey ?? externalSelectedResourceKey;
+
+	useEffect(() => {
+		if (externalSelectedResourceKey) {
+			setSelectedResourceKey(externalSelectedResourceKey);
+		}
+	}, [externalSelectedResourceKey]);
 
 	useEffect(() => {
 		diagnosticLog("resources.render", {
@@ -194,7 +219,7 @@ function ResourceListComponent({
 			rawRows: data?.length ?? 0,
 			pageRows: pageRows.length,
 			fetches: fetchKeys.length,
-			selected: selectedResourceKey ?? "",
+			selected: activeSelectedResourceKey ?? "",
 		});
 	});
 
@@ -214,6 +239,26 @@ function ResourceListComponent({
 			}
 			return next;
 		});
+	};
+	const syncedTopologyNodeId = useMemo(() => {
+		const selectedFromTable = topologyQuery.data?.nodes.find(
+			(node) => resourceSelectionKey(node.summary) === activeSelectedResourceKey,
+		);
+		return selectedFromTable?.id ?? selectedTopologyNodeId;
+	}, [activeSelectedResourceKey, selectedTopologyNodeId, topologyQuery.data]);
+	const handleResourceSelect = (resource: ResourceSummary) => {
+		setSelectedTopologyNodeId(null);
+		setSelectedResourceKey(resourceSelectionKey(resource));
+		onResourceSelect(resource);
+	};
+	const handleTopologyNodeSelect = (
+		node: TopologyNode,
+		resource: ResourceSummary | null,
+	) => {
+		setSelectedTopologyNodeId(node.id);
+		if (!resource) return;
+		setSelectedResourceKey(resourceSelectionKey(resource));
+		onResourceSelect(resource);
 	};
 
 	if (isPending) {
@@ -290,29 +335,28 @@ function ResourceListComponent({
 				}}
 				onClearFilters={clearFilters}
 			/>
-			<div className="flex items-center gap-2 text-xs text-muted-foreground">
-				<Badge variant={realtime.status === "error" ? "destructive" : "outline"}>
-					Realtime: {realtime.status}
-				</Badge>
-				<span className="truncate">{realtime.error ?? realtime.message}</span>
-			</div>
-			<ResourceTable
+			<ResourceMapTableLayout
+				topology={topologyQuery.data}
+				topologyLoading={topologyQuery.isPending}
+				topologyError={topologyQuery.isError}
+				topologyErr={topologyQuery.error}
+				selectedTopologyNodeId={syncedTopologyNodeId}
+				onTopologyNodeSelect={handleTopologyNodeSelect}
 				table={table}
 				groupedByArgo={groupedByArgo}
 				pageGroups={pageGroups}
 				pageTypeGroups={pageTypeGroups}
 				collapsedGroups={collapsedGroups}
-				selectedResourceKey={selectedResourceKey}
+				selectedResourceKey={activeSelectedResourceKey}
 				onToggleGroup={toggleGroup}
 				onSelectedResourceKeyChange={setSelectedResourceKey}
-				onResourceSelect={onResourceSelect}
-			/>
-			<ResourcePagination
+				onResourceSelect={handleResourceSelect}
 				totalRows={totalRows}
 				search={search}
 				pageIndex={safePageIndex}
 				pageCount={pageCount}
 				onPageChange={setPageIndex}
+				realtime={realtime}
 			/>
 		</div>
 	);

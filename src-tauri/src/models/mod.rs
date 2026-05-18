@@ -16,7 +16,10 @@ pub use discovery::DiscoveredResourceKind;
 pub use error::AppError;
 pub use events::ResourceEventSummary;
 pub use namespace::NamespaceSummary;
-pub use resource::{ResourceDetails, ResourceDetailsFull, ResourceSummary};
+pub use resource::{
+    OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull, ResourceSummary, ResourceTopology,
+    TopologyEdge, TopologyNode, TopologyRelation,
+};
 pub use streams::{
     PodLogStreamRequest, StreamMessage, WatchResourceKey, WatchResourceKind, WatchResourceTarget,
 };

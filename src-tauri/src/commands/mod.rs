@@ -18,8 +18,9 @@ pub use events::{list_resource_events, resource_events_from};
 pub use namespaces::{list_namespaces, namespaces_summary_from};
 pub use resources::{
     dynamic_resource_details_from, dynamic_resources_summary_from, get_dynamic_resource_details,
-    get_resource_details, get_resource_yaml, list_dynamic_resources, list_resources,
-    resource_details_from, resource_yaml_from, resources_summary_from,
+    get_resource_details, get_resource_yaml, list_dynamic_resources, list_resource_topology,
+    list_resources, resource_details_from, resource_topology_from, resource_yaml_from,
+    resources_summary_from,
 };
 pub use streams::{
     start_pod_log_stream, start_resource_event_watch, start_resource_watch, stop_stream,

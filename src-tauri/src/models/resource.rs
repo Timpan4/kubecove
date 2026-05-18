@@ -1,5 +1,14 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnerReferenceSummary {
+    pub api_version: String,
+    pub kind: String,
+    pub name: String,
+    pub uid: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceSummary {
@@ -51,4 +60,42 @@ pub struct ResourceDetailsFull {
     pub yaml: String,
     pub metadata: serde_json::Value,
     pub status: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TopologyRelation {
+    Owns,
+    Creates,
+    Groups,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopologyNode {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub namespace: Option<String>,
+    pub status: Option<String>,
+    pub health: String,
+    pub selectable: bool,
+    pub summary: ResourceSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopologyEdge {
+    pub id: String,
+    pub source: String,
+    pub target: String,
+    pub relation: TopologyRelation,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceTopology {
+    pub nodes: Vec<TopologyNode>,
+    pub edges: Vec<TopologyEdge>,
+    pub warnings: Vec<String>,
 }

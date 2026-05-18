@@ -45,6 +45,39 @@ export interface ResourceDetailsFull {
 	status?: Record<string, unknown>;
 }
 
+export type TopologyHealth =
+	| "healthy"
+	| "attention"
+	| "degraded"
+	| "restarted"
+	| "unknown";
+
+export type TopologyRelation = "owns" | "creates" | "groups";
+
+export interface TopologyNode {
+	id: string;
+	kind: string;
+	name: string;
+	namespace: string | null;
+	status?: string | null;
+	health: TopologyHealth;
+	selectable: boolean;
+	summary: ResourceSummary;
+}
+
+export interface TopologyEdge {
+	id: string;
+	source: string;
+	target: string;
+	relation: TopologyRelation;
+}
+
+export interface ResourceTopology {
+	nodes: TopologyNode[];
+	edges: TopologyEdge[];
+	warnings: string[];
+}
+
 export interface ResourceEventSummary {
 	eventType: string;
 	reason: string;

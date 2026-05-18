@@ -324,6 +324,7 @@ function App() {
 							selectedNamespaces={computedNamespaces}
 							selectedKinds={computedKinds}
 							selectedArgoAppFilter={selectedArgoAppFilter}
+							selectedResource={selectedResource}
 							onArgoAppFilterChange={setSelectedArgoAppFilter}
 							onResourceSelect={setSelectedResource}
 						/>
