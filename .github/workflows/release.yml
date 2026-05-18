@@ -78,9 +78,11 @@ jobs:
 
           test "$PACKAGE_VERSION" = "$TAURI_VERSION"
           test "$PACKAGE_VERSION" = "$CARGO_VERSION"
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            test "$GITHUB_REF_NAME" = "app-v$PACKAGE_VERSION"
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "Release workflow must run from an app-v* tag. For manual dispatch, choose the existing release tag ref."
+            exit 1
           fi
+          test "$GITHUB_REF_NAME" = "app-v$PACKAGE_VERSION"
 
       - name: Typecheck frontend
         run: bun run typecheck

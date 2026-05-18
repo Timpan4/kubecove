@@ -17,7 +17,7 @@ The beta bundles only the app and normal Tauri installer/runtime files. It does 
 ## Maintainer Release Flow
 
 1. Update the version in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
-2. Make sure the release commit is on `main` and the worktree is clean.
+2. Make sure the release commit is on `main`, matches `origin/main`, and the worktree is clean.
 3. Run:
 
 ```sh
@@ -30,7 +30,7 @@ bun run release:dry-run
 bun run release
 ```
 
-The release command creates an annotated `app-vX.Y.Z` tag and pushes it to `origin`. GitHub Actions builds macOS, Windows, and Linux installers and creates a draft GitHub Release.
+The release command creates an annotated `app-vX.Y.Z` tag and pushes it to `origin`. GitHub Actions builds macOS, Windows, and Linux installers and creates a draft GitHub Release. Manual workflow dispatch is only for rerunning an existing `app-v*` tag.
 
 ## Publishing Checklist
 

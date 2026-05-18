@@ -36,6 +36,7 @@ const tagName = `app-v${packageVersion}`;
 const releaseName = `KubeCove v${packageVersion}`;
 
 assertOnMain();
+assertHeadMatchesOriginMain();
 assertCleanWorktree();
 assertMissingLocalTag(tagName);
 assertMissingRemoteTag(tagName);
@@ -75,6 +76,16 @@ function assertOnMain(): void {
 	const branch = run("git", ["branch", "--show-current"]);
 	if (branch.stdout.trim() !== "main") {
 		fail(`Release must run from main. Current branch: ${branch.stdout.trim() || "(detached)"}`);
+	}
+}
+
+function assertHeadMatchesOriginMain(): void {
+	run("git", ["fetch", "--quiet", "origin", "main"]);
+	const head = run("git", ["rev-parse", "HEAD"]).stdout.trim();
+	const originMain = run("git", ["rev-parse", "origin/main"]).stdout.trim();
+
+	if (head !== originMain) {
+		fail("Release HEAD must match origin/main. Pull or push main before creating the release tag.");
 	}
 }
 
