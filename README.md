@@ -47,7 +47,7 @@ Build a desktop bundle:
 bun run tauri build
 ```
 
-Create a draft beta release from a clean `main` branch:
+Create a beta release from the current `origin/main` commit:
 
 ```sh
 bun run release

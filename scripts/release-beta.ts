@@ -15,48 +15,57 @@ if (!validModes.has(mode)) {
 	fail(`Unknown release mode: ${mode}\nUsage: bun scripts/release-beta.ts [check|dry-run|release]`);
 }
 
-const packageJson = await Bun.file("package.json").json() as { version?: string };
-const tauriConfig = await Bun.file("src-tauri/tauri.conf.json").json() as { version?: string };
-const cargoToml = await Bun.file("src-tauri/Cargo.toml").text();
+fetchReleaseRefs();
 
-const packageVersion = requireVersion("package.json", packageJson.version);
-const tauriVersion = requireVersion("src-tauri/tauri.conf.json", tauriConfig.version);
+const originMainSha = run("git", ["rev-parse", "origin/main"]).stdout.trim();
+const packageJson = JSON.parse(readRemoteFile("package.json")) as { version?: string };
+const tauriConfig = JSON.parse(readRemoteFile("src-tauri/tauri.conf.json")) as { version?: string };
+const cargoToml = readRemoteFile("src-tauri/Cargo.toml");
+
+const packageVersion = requireVersion("origin/main:package.json", packageJson.version);
+const tauriVersion = requireVersion("origin/main:src-tauri/tauri.conf.json", tauriConfig.version);
 const cargoVersion = parseCargoVersion(cargoToml);
 
 if (packageVersion !== tauriVersion || packageVersion !== cargoVersion) {
 	fail([
-		"Release versions must match:",
-		`  package.json: ${packageVersion}`,
-		`  src-tauri/tauri.conf.json: ${tauriVersion}`,
-		`  src-tauri/Cargo.toml: ${cargoVersion}`,
+		"Release versions on origin/main must match:",
+		`  origin/main:package.json: ${packageVersion}`,
+		`  origin/main:src-tauri/tauri.conf.json: ${tauriVersion}`,
+		`  origin/main:src-tauri/Cargo.toml: ${cargoVersion}`,
 	].join("\n"));
 }
 
 const tagName = `app-v${packageVersion}`;
 const releaseName = `KubeCove v${packageVersion}`;
 
-assertOnMain();
-assertHeadMatchesOriginMain();
-assertCleanWorktree();
 assertMissingLocalTag(tagName);
 assertMissingRemoteTag(tagName);
-runProjectChecks();
 
 if (mode === "check") {
-	console.log(`Release check passed for ${releaseName} (${tagName}).`);
+	console.log(`Release check passed for ${releaseName} (${tagName}) at origin/main ${shortSha(originMainSha)}.`);
 	process.exit(0);
 }
 
 if (mode === "dry-run") {
 	console.log(`Release dry run passed for ${releaseName}.`);
-	console.log(`Would create annotated tag: ${tagName}`);
+	console.log(`Would create annotated tag: ${tagName} -> origin/main ${shortSha(originMainSha)}`);
 	console.log(`Would push tag: git push origin ${tagName}`);
+	console.log("GitHub Actions would run tests, build installers, and publish a GitHub Release.");
 	process.exit(0);
 }
 
-run("git", ["tag", "-a", tagName, "-m", releaseName], { inherit: true });
+run("git", ["tag", "-a", tagName, originMainSha, "-m", releaseName], { inherit: true });
 run("git", ["push", "origin", tagName], { inherit: true });
-console.log(`Pushed ${tagName}. GitHub Actions will create a draft beta release.`);
+console.log(`Pushed ${tagName} for origin/main ${shortSha(originMainSha)}.`);
+console.log("GitHub Actions will run tests, build installers, and publish a GitHub Release.");
+
+function fetchReleaseRefs(): void {
+	run("git", ["fetch", "--quiet", "--no-tags", "origin", "main:refs/remotes/origin/main"]);
+}
+
+function readRemoteFile(path: string): string {
+	return run("git", ["show", `origin/main:${path}`]).stdout;
+}
 
 function requireVersion(source: string, version: string | undefined): string {
 	if (!version) fail(`${source} is missing a version.`);
@@ -68,32 +77,8 @@ function requireVersion(source: string, version: string | undefined): string {
 
 function parseCargoVersion(contents: string): string {
 	const match = contents.match(/^version\s*=\s*"([^"]+)"/m);
-	if (!match) fail("src-tauri/Cargo.toml is missing package version.");
-	return requireVersion("src-tauri/Cargo.toml", match[1]);
-}
-
-function assertOnMain(): void {
-	const branch = run("git", ["branch", "--show-current"]);
-	if (branch.stdout.trim() !== "main") {
-		fail(`Release must run from main. Current branch: ${branch.stdout.trim() || "(detached)"}`);
-	}
-}
-
-function assertHeadMatchesOriginMain(): void {
-	run("git", ["fetch", "--quiet", "origin", "main"]);
-	const head = run("git", ["rev-parse", "HEAD"]).stdout.trim();
-	const originMain = run("git", ["rev-parse", "origin/main"]).stdout.trim();
-
-	if (head !== originMain) {
-		fail("Release HEAD must match origin/main. Pull or push main before creating the release tag.");
-	}
-}
-
-function assertCleanWorktree(): void {
-	const status = run("git", ["status", "--short", "--untracked-files=all"]);
-	if (status.stdout.trim()) {
-		fail(`Release requires a clean worktree:\n${status.stdout}`);
-	}
+	if (!match) fail("origin/main:src-tauri/Cargo.toml is missing package version.");
+	return requireVersion("origin/main:src-tauri/Cargo.toml", match[1]);
 }
 
 function assertMissingLocalTag(tagName: string): void {
@@ -104,7 +89,7 @@ function assertMissingLocalTag(tagName: string): void {
 }
 
 function assertMissingRemoteTag(tagName: string): void {
-	const result = run("git", ["ls-remote", "--exit-code", "--tags", "origin", tagName], {
+	const result = run("git", ["ls-remote", "--exit-code", "--tags", "origin", `refs/tags/${tagName}`], {
 		allowFailure: true,
 	});
 	if (result.status === 0) fail(`Remote tag already exists on origin: ${tagName}`);
@@ -113,9 +98,8 @@ function assertMissingRemoteTag(tagName: string): void {
 	}
 }
 
-function runProjectChecks(): void {
-	console.log("Running release checks: bun run check");
-	run("bun", ["run", "check"], { inherit: true });
+function shortSha(sha: string): string {
+	return sha.slice(0, 12);
 }
 
 function run(
