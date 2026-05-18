@@ -1,6 +1,6 @@
 # KubeCove
 
-![KubeCove logo](public/kubecove-logo.svg)
+<img src="public/kubecove-logo.svg" alt="KubeCove logo" width="160">
 
 A context-first desktop workspace for Kubernetes operations.
 
