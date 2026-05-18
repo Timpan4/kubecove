@@ -1,0 +1,300 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 1024 1024"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">KubeCove logo</title>
+  <desc id="desc">KubeCove app icon with a dark rounded-square background, hexagonal Kubernetes-inspired frame, central nut, and layered blue and green waves.</desc>
+  <defs>
+    <!-- Background gradient and subtle top glow -->
+    <linearGradient
+      id="bg"
+      x1="190"
+      y1="0"
+      x2="820"
+      y2="1024"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#244e5b" />
+      <stop offset="0.48" stop-color="#142d3f" />
+      <stop offset="1" stop-color="#071126" />
+    </linearGradient>
+
+    <radialGradient id="topGlow" cx="50%" cy="4%" r="58%">
+      <stop offset="0" stop-color="#2d6b72" stop-opacity=".46" />
+      <stop offset=".55" stop-color="#244b5a" stop-opacity=".14" />
+      <stop offset="1" stop-color="#071126" stop-opacity="0" />
+    </radialGradient>
+
+    <radialGradient id="innerGlow" cx="51%" cy="52%" r="37%">
+      <stop offset="0" stop-color="#244f61" stop-opacity=".42" />
+      <stop offset="1" stop-color="#0a1928" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Slightly blue-tinted whites, matching the rendered icon -->
+    <linearGradient
+      id="white"
+      x1="360"
+      y1="240"
+      x2="660"
+      y2="790"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#ffffff" />
+      <stop offset=".55" stop-color="#eefbff" />
+      <stop offset="1" stop-color="#c7dce5" />
+    </linearGradient>
+
+    <linearGradient
+      id="whiteWave"
+      x1="220"
+      y1="635"
+      x2="850"
+      y2="595"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#ddf9ff" />
+      <stop offset=".45" stop-color="#ffffff" />
+      <stop offset="1" stop-color="#f4ffff" />
+    </linearGradient>
+
+    <linearGradient
+      id="bevel"
+      x1="335"
+      y1="260"
+      x2="725"
+      y2="760"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#e3fbff" />
+      <stop offset="1" stop-color="#82aebc" />
+    </linearGradient>
+
+    <!-- Wave gradients -->
+    <linearGradient
+      id="cyan"
+      x1="250"
+      y1="560"
+      x2="790"
+      y2="575"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#39dde0" />
+      <stop offset=".55" stop-color="#37bdd9" />
+      <stop offset="1" stop-color="#5fa0ff" />
+    </linearGradient>
+
+    <linearGradient
+      id="blue"
+      x1="295"
+      y1="655"
+      x2="805"
+      y2="565"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#2f9fbe" />
+      <stop offset=".55" stop-color="#35a8ea" />
+      <stop offset="1" stop-color="#628dff" />
+    </linearGradient>
+
+    <linearGradient
+      id="teal"
+      x1="260"
+      y1="700"
+      x2="800"
+      y2="640"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#4ed7ca" />
+      <stop offset=".5" stop-color="#75e9b2" />
+      <stop offset="1" stop-color="#55ddc7" />
+    </linearGradient>
+
+    <linearGradient
+      id="deepTeal"
+      x1="250"
+      y1="690"
+      x2="750"
+      y2="725"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#2baec1" />
+      <stop offset="1" stop-color="#247b96" />
+    </linearGradient>
+
+    <!-- Soft shadows -->
+    <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow
+        dx="0"
+        dy="28"
+        stdDeviation="22"
+        flood-color="#000"
+        flood-opacity=".34"
+      />
+    </filter>
+
+    <filter id="smallShadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow
+        dx="0"
+        dy="10"
+        stdDeviation="10"
+        flood-color="#000"
+        flood-opacity=".26"
+      />
+    </filter>
+
+    <!-- Internal clipping area for waves behind the frame -->
+    <clipPath id="shieldClip">
+      <path d="M512 207 L771 356 L771 648 L512 807 L253 648 L253 356 Z" />
+    </clipPath>
+  </defs>
+
+  <!-- Rounded app-icon tile -->
+  <rect width="1024" height="1024" rx="174" fill="url(#bg)" />
+  <rect width="1024" height="1024" rx="174" fill="url(#topGlow)" />
+  <rect width="1024" height="1024" rx="174" fill="url(#innerGlow)" />
+
+  <!-- Base drop shadow under the shield -->
+  <path
+    d="M512 212 L766 359 L766 646 L512 811 L258 646 L258 359 Z"
+    fill="#020814"
+    opacity=".30"
+    filter="url(#shadow)"
+  />
+
+  <!-- Back waves clipped inside the shield -->
+  <g clip-path="url(#shieldClip)">
+    <path
+      d="M260 574 C367 520 466 512 566 566 C655 614 723 599 793 538 L793 608 C714 665 632 670 535 621 C439 572 353 573 260 628 Z"
+      fill="url(#cyan)"
+      opacity=".95"
+    />
+
+    <path
+      d="M296 646 C391 594 493 606 587 654 C674 699 735 676 794 620 L794 696 C715 745 637 742 544 694 C448 645 368 636 296 678 Z"
+      fill="url(#deepTeal)"
+      opacity=".78"
+    />
+
+    <path
+      d="M273 665 C380 600 476 617 574 675 C650 719 719 711 771 657 L771 722 L512 787 L273 650 Z"
+      fill="url(#deepTeal)"
+      opacity=".62"
+    />
+
+    <path
+      d="M288 625 C400 565 484 586 575 633 C660 677 725 652 793 586"
+      fill="none"
+      stroke="url(#blue)"
+      stroke-width="46"
+      stroke-linecap="round"
+      opacity=".88"
+    />
+
+    <path
+      d="M282 694 C383 616 483 621 579 674 C673 726 741 693 793 641"
+      fill="none"
+      stroke="url(#teal)"
+      stroke-width="36"
+      stroke-linecap="round"
+      opacity=".70"
+    />
+  </g>
+
+  <!-- Outer hexagonal frame -->
+  <path
+    d="M512 205 L772 356 L772 647 L512 812 L252 647 L252 356 Z"
+    fill="none"
+    stroke="url(#white)"
+    stroke-width="47"
+    stroke-linejoin="round"
+  />
+
+  <!-- Inner bevel line of the frame -->
+  <path
+    d="M512 258 L724 381 L724 624 L512 759 L300 624 L300 381 Z"
+    fill="none"
+    stroke="url(#bevel)"
+    stroke-width="9"
+    stroke-linejoin="round"
+    opacity=".72"
+  />
+
+  <!-- Central nut / bolt shape -->
+  <g filter="url(#smallShadow)">
+    <path
+      d="M439 375 H586 L659 502 L586 628 H439 L365 502 Z"
+      fill="url(#white)"
+    />
+
+    <path
+      d="M474 427 H552 L602 502 L552 577 H474 L423 502 Z"
+      fill="#0c2233"
+      stroke="url(#bevel)"
+      stroke-width="21"
+      stroke-linejoin="round"
+    />
+
+    <circle cx="512" cy="502" r="36" fill="url(#white)" />
+  </g>
+
+  <!-- Foreground coloured wave ribbons -->
+  <g>
+    <path
+      d="M247 663 C347 592 454 591 556 643 C657 695 740 670 798 604"
+      fill="none"
+      stroke="url(#cyan)"
+      stroke-width="24"
+      stroke-linecap="round"
+      opacity=".86"
+    />
+
+    <path
+      d="M258 657 C361 592 452 582 555 630 C657 678 744 654 807 587"
+      fill="none"
+      stroke="url(#blue)"
+      stroke-width="37"
+      stroke-linecap="round"
+      opacity=".96"
+    />
+
+    <path
+      d="M243 717 C352 637 455 638 557 692 C656 745 733 704 794 649"
+      fill="none"
+      stroke="url(#teal)"
+      stroke-width="23"
+      stroke-linecap="round"
+      opacity=".96"
+    />
+  </g>
+
+  <!-- Dominant white wave in front of the icon -->
+  <g>
+    <path
+      d="M213 677 C305 592 409 584 510 610 C611 636 664 684 746 639 C780 621 805 594 829 569"
+      fill="none"
+      stroke="#020a16"
+      stroke-width="54"
+      stroke-linecap="round"
+      opacity=".24"
+    />
+
+    <path
+      d="M213 677 C305 592 409 584 510 610 C611 636 664 684 746 639 C780 621 805 594 829 569"
+      fill="none"
+      stroke="url(#whiteWave)"
+      stroke-width="40"
+      stroke-linecap="round"
+    />
+
+    <path
+      d="M218 694 C316 608 414 604 510 630 C612 658 667 699 752 653 C788 633 813 605 835 581"
+      fill="none"
+      stroke="#bff5ff"
+      stroke-width="10"
+      stroke-linecap="round"
+      opacity=".72"
+    />
+  </g>
+</svg>

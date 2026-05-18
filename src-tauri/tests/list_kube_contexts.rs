@@ -1,5 +1,5 @@
-use k8s_manager_lib::commands::{get_cluster_contexts, list_kube_contexts};
-use k8s_manager_lib::models::ClusterContext;
+use kubecove_lib::commands::{get_cluster_contexts, list_kube_contexts};
+use kubecove_lib::models::ClusterContext;
 
 fn assert_contexts_shape(contexts: &[ClusterContext]) {
     for ctx in contexts {

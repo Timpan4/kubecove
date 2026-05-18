@@ -1,4 +1,4 @@
-use k8s_manager_lib::models::{
+use kubecove_lib::models::{
     AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails,
     ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSummary, ClusterContext,
     DiscoveredResourceKind, NamespaceSummary, ResourceDetails, ResourceDetailsFull,

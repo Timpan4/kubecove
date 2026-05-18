@@ -1,17 +1,61 @@
-# k8s-manager
+# KubeCove
 
-A local desktop Kubernetes IDE experiment with a namespace-first and context-first workflow.
+![KubeCove logo](public/kubecove-logo.svg)
 
-The goal is to build something similar in spirit to Lens or K8Studio, but with a workflow centered on:
+A context-first desktop workspace for Kubernetes operations.
 
-- cluster groups and kubeconfig contexts
-- namespaces as a first-class navigation surface
-- app, owner, Argo CD, and Helm grouping signals
-- read-only Kubernetes exploration first
+KubeCove is a local Kubernetes IDE focused on fast, safe cluster exploration today and deliberate operational workflows later. It keeps Kubernetes access on the Rust side of the Tauri boundary, starts from contexts and namespaces, and helps you move from workspace scope to resources, Argo CD signals, events, logs, YAML, and detail views without losing the operational thread.
 
-This project is intentionally local-only for the MVP. Nothing is deployed into clusters, kubeconfig stays on the Rust side of the Tauri boundary, and normal Kubernetes API access should go through `kube-rs` rather than shelling out to `kubectl`.
+## Quick Start
 
-## Planned Stack
+Requirements:
+
+- Bun
+- Rust and Cargo
+- Tauri v2 system prerequisites for your OS
+- A local kubeconfig with at least one readable context
+
+Install dependencies and start the desktop app:
+
+```sh
+bun install
+bun run tauri dev
+```
+
+Useful checks:
+
+```sh
+bun run typecheck
+bun test
+bun run rust:check
+bun run check
+```
+
+Build a desktop bundle:
+
+```sh
+bun run tauri build
+```
+
+## What Works Today
+
+- list local kubeconfig contexts
+- select a context and list namespaces
+- create and restore local workspaces
+- filter one or more namespaces globally
+- discover and list Kubernetes resource kinds
+- list resources in fast tables with search, status, age, owner, Argo CD, and Helm signals
+- show resource details, events, logs, and read-only YAML
+- detect Argo CD CRDs and browse Applications, ApplicationSets, and AppProjects
+- keep kubeconfig contents and cluster credentials out of the frontend
+
+## Safety Model
+
+KubeCove is intentionally local-first. Nothing is deployed into clusters, kubeconfig stays on the Rust side of the Tauri boundary, and normal Kubernetes API access goes through `kube-rs` rather than shelling out to `kubectl`.
+
+The MVP is read-only. Future mutation workflows are planned, but they need explicit guardrails, permission-aware UX, and an Architecture Decision Record before they become part of the product.
+
+## Stack
 
 - Tauri v2
 - React and TypeScript
@@ -19,27 +63,11 @@ This project is intentionally local-only for the MVP. Nothing is deployed into c
 - Rust backend
 - `kube-rs` for Kubernetes API access
 - TanStack Router, Query, and Table
-- Zustand or Jotai for local UI state
-- Tailwind CSS and shadcn/ui if it stays low-friction
+- Zustand for local UI state
+- Tailwind CSS and shadcn/ui
 
-Future candidates include Monaco Editor for YAML, xterm.js for pod exec, SQLite for local saved state, and optional sidecars or fallbacks for `kubectl`, Helm, and Argo CD.
-
-## MVP Shape
-
-The first working deliverable should:
-
-- list local kubeconfig contexts
-- select a context and list namespaces
-- filter one or more namespaces globally
-- list common read-only namespaced resources in a fast table
-- show a read-only resource detail panel with YAML, metadata, and status
-
-The second deliverable should add search, status chips, age formatting, owner detection, Argo/Helm label detection, empty/loading/error states, and persistent local UI selections.
+Future candidates include Monaco Editor for YAML, richer topology views, SQLite for local saved state, and optional sidecars or fallbacks for `kubectl`, Helm, and Argo CD.
 
 ## Docs
 
 See the [docs index](docs/README.md) for the full set, ordered by reading priority. Top entry points: [Product Vision](docs/product-vision.md), [Architecture Blueprint](docs/architecture-blueprint.md), [Milestones](docs/milestones.md), and the [Agent Guide](AGENTS.md).
-
-## Status
-
-Repository foundation is being initialized. The desktop app scaffold has not been created yet.
