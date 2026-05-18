@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	Background,
 	BackgroundVariant,
@@ -189,15 +189,31 @@ export function OwnershipMap({
 		() => (topology ? buildReactFlowTopology(topology, selectedNodeId) : null),
 		[topology, selectedNodeId],
 	);
+	const mapViewportRef = useRef<HTMLDivElement>(null);
+	const [viewportSizeKey, setViewportSizeKey] = useState("0x0");
 	const topologySignature = useMemo(() => {
 		if (!topology) return "";
 		const nodeIds = topology.nodes.map((node) => node.id).sort().join("|");
 		const edgeIds = topology.edges.map((edge) => edge.id).sort().join("|");
 		return `${nodeIds}::${edgeIds}`;
 	}, [topology]);
+	const centerViewportKey = `${heightClassName}:${viewportSizeKey}`;
 	const handleNodeClick: NodeMouseHandler<OwnershipGraphNode> = (_, node) => {
 		onNodeSelect(node.data.node, node.data.resource);
 	};
+
+	useEffect(() => {
+		const element = mapViewportRef.current;
+		if (!element) return;
+		const updateViewportSize = () => {
+			const rect = element.getBoundingClientRect();
+			setViewportSizeKey(`${Math.round(rect.width)}x${Math.round(rect.height)}`);
+		};
+		updateViewportSize();
+		const observer = new ResizeObserver(updateViewportSize);
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, []);
 
 	if (isLoading) {
 		return (
@@ -260,7 +276,7 @@ export function OwnershipMap({
 				)}
 			</div>
 			<Separator />
-			<div className={cn(heightClassName, "bg-background")}>
+			<div ref={mapViewportRef} className={cn(heightClassName, "bg-background")}>
 				<ReactFlow
 					nodes={graph.nodes}
 					edges={graph.edges}
@@ -281,7 +297,7 @@ export function OwnershipMap({
 					<CenterSelectedNode
 						nodes={graph.nodes}
 						selectedNodeId={selectedNodeId}
-						viewportKey={heightClassName}
+						viewportKey={centerViewportKey}
 					/>
 					<Background
 						variant={BackgroundVariant.Dots}
