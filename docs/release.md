@@ -32,7 +32,7 @@ bun run release
 
 The release command can run from any local branch or GitButler workspace. It fetches `origin/main`, reads the release version from that remote commit, creates an annotated `app-vX.Y.Z` tag pointing at `origin/main`, and pushes only the tag.
 
-GitHub Actions then runs typecheck, frontend tests, Rust tests, Rust check, builds macOS, Windows, and Linux installers, and publishes a GitHub Release after every platform build succeeds. Manual workflow dispatch is only for rerunning an existing `app-v*` tag.
+GitHub Actions then runs typecheck, frontend tests, Rust tests, Rust check, builds macOS, Windows, and Linux installers, and publishes a GitHub Release after every platform build succeeds. Manual workflow dispatch is only for rerunning an existing `app-v*` tag; reruns preserve the existing release visibility.
 
 ## Publishing Checklist
 

@@ -10,8 +10,28 @@ permissions:
   contents: write
 
 jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      release-draft: ${{ steps.release.outputs.release-draft }}
+
+    steps:
+      - name: Detect existing release state
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG_NAME" --json isDraft --jq '.isDraft' > release-draft.txt 2>/dev/null; then
+            echo "release-draft=$(cat release-draft.txt)" >> "$GITHUB_OUTPUT"
+          else
+            echo "release-draft=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build ${{ matrix.label }}
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -104,13 +124,16 @@ jobs:
           tagName: app-v__VERSION__
           releaseName: "KubeCove v__VERSION__"
           releaseBody: "Beta installers for KubeCove. These artifacts are unsigned beta builds; smoke test before sharing broadly."
-          releaseDraft: true
+          releaseDraft: ${{ needs.prepare.outputs.release-draft }}
           prerelease: false
           args: ${{ matrix.args }}
 
   publish:
     name: Publish release
-    needs: build
+    needs:
+      - prepare
+      - build
+    if: needs.prepare.outputs.release-draft == 'true'
     runs-on: ubuntu-latest
 
     steps:
