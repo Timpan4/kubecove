@@ -239,7 +239,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
 			setActiveWorkspace: (id) => set({ activeWorkspaceId: id }),
 		}),
 		{
-			name: "k8s-manager-workspaces",
+			name: "kubecove-workspaces",
 			partialize: (state) => ({ workspaces: state.workspaces }),
 		},
 	),

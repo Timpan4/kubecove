@@ -63,19 +63,19 @@ pub async fn list_resource_kinds(
 ) -> Result<Vec<DiscoveredResourceKind>, AppError> {
     let started = Instant::now();
     eprintln!(
-        "[k8s-manager:backend] list_resource_kinds start context={}",
+        "[kubecove:backend] list_resource_kinds start context={}",
         cluster_context
     );
     let result = resource_kinds_from(cluster_context.clone()).await;
     match &result {
         Ok(rows) => eprintln!(
-            "[k8s-manager:backend] list_resource_kinds done context={} rows={} ms={}",
+            "[kubecove:backend] list_resource_kinds done context={} rows={} ms={}",
             cluster_context,
             rows.len(),
             started.elapsed().as_millis()
         ),
         Err(err) => eprintln!(
-            "[k8s-manager:backend] list_resource_kinds error context={} kind={} message={} ms={}",
+            "[kubecove:backend] list_resource_kinds error context={} kind={} message={} ms={}",
             cluster_context,
             err.kind,
             err.message,
