@@ -17,7 +17,7 @@ The beta bundles only the app and normal Tauri installer/runtime files. It does 
 ## Maintainer Release Flow
 
 1. Update the version in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
-2. Make sure the release commit is on `main`, matches `origin/main`, and the worktree is clean.
+2. Merge the version commit to `main`.
 3. Run:
 
 ```sh
@@ -30,13 +30,15 @@ bun run release:dry-run
 bun run release
 ```
 
-The release command creates an annotated `app-vX.Y.Z` tag and pushes it to `origin`. GitHub Actions builds macOS, Windows, and Linux installers and creates a draft GitHub Release. Manual workflow dispatch is only for rerunning an existing `app-v*` tag.
+The release command can run from any local branch or GitButler workspace. It fetches `origin/main`, reads the release version from that remote commit, creates an annotated `app-vX.Y.Z` tag pointing at `origin/main`, and pushes only the tag.
+
+GitHub Actions then runs typecheck, frontend tests, Rust tests, Rust check, builds macOS, Windows, and Linux installers, and publishes a GitHub Release after every platform build succeeds. Manual workflow dispatch is only for rerunning an existing `app-v*` tag; reruns preserve the existing release visibility.
 
 ## Publishing Checklist
 
-- Confirm the draft release contains macOS, Windows, and Linux assets.
+- Confirm the release contains macOS, Windows, and Linux assets.
 - Download at least one artifact and confirm it launches.
 - Smoke test context listing, namespace/resource browsing, and clean error messages when kubeconfig or cluster access is unavailable.
-- Publish the draft release after artifact checks pass.
+- Share the release after artifact checks pass.
 
-If a release is bad, leave or restore the prior release as the recommended tester download and delete the broken draft if it has not been published.
+If a release is bad, leave or restore the prior release as the recommended tester download and delete the broken release after replacing it.
