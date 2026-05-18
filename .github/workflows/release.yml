@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "app-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS universal
+            platform: macos-latest
+            args: "--target universal-apple-darwin --no-sign"
+            rust-targets: "aarch64-apple-darwin x86_64-apple-darwin"
+          - label: Windows x64
+            platform: windows-latest
+            args: "--target x86_64-pc-windows-msvc --no-sign"
+            rust-targets: "x86_64-pc-windows-msvc"
+          - label: Linux x64
+            platform: ubuntu-22.04
+            args: "--target x86_64-unknown-linux-gnu --no-sign"
+            rust-targets: "x86_64-unknown-linux-gnu"
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux Tauri dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            file \
+            libayatana-appindicator3-dev \
+            libfuse2 \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf \
+            rpm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust targets
+        run: rustup target add ${{ matrix.rust-targets }}
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate release tag and versions
+        shell: bash
+        run: |
+          PACKAGE_VERSION="$(bun -p "require('./package.json').version")"
+          TAURI_VERSION="$(bun -p "require('./src-tauri/tauri.conf.json').version")"
+          CARGO_VERSION="$(sed -n 's/^version = \"\\(.*\\)\"/\\1/p' src-tauri/Cargo.toml | head -n 1)"
+
+          test "$PACKAGE_VERSION" = "$TAURI_VERSION"
+          test "$PACKAGE_VERSION" = "$CARGO_VERSION"
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            test "$GITHUB_REF_NAME" = "app-v$PACKAGE_VERSION"
+          fi
+
+      - name: Typecheck frontend
+        run: bun run typecheck
+
+      - name: Test frontend
+        run: bun test
+
+      - name: Test Rust
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Check Rust
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Build and upload release assets
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: "KubeCove v__VERSION__"
+          releaseBody: "Beta installers for KubeCove. These artifacts are unsigned private beta builds; smoke test before publishing."
+          releaseDraft: true
+          prerelease: true
+          args: ${{ matrix.args }}

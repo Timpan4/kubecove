@@ -1,0 +1,42 @@
+# Beta Releases
+
+KubeCove beta installers are published as GitHub Releases:
+
+https://github.com/Timpan4/kubecove/releases
+
+Use a release installer when you only want to test the app. Building from source is for development work.
+
+## Installer Guide
+
+- macOS: download the `.dmg` asset. The beta is unsigned, so macOS may require right-clicking the app and choosing Open, or allowing it from System Settings.
+- Windows: download the `-setup.exe` asset when present. The beta is unsigned, so SmartScreen may show a warning; choose More info and Run anyway if you trust the build.
+- Linux: download the `.AppImage` for a portable build, or `.deb` / `.rpm` for package-manager installs when those assets are present. AppImage may need `chmod +x`.
+
+The beta bundles only the app and normal Tauri installer/runtime files. It does not bundle `kubectl`, Helm, Argo CD, kubeconfig files, tokens, or cluster credentials.
+
+## Maintainer Release Flow
+
+1. Update the version in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
+2. Make sure the release commit is on `main` and the worktree is clean.
+3. Run:
+
+```sh
+bun run release:dry-run
+```
+
+4. If the dry run is clean, create and push the release tag:
+
+```sh
+bun run release
+```
+
+The release command creates an annotated `app-vX.Y.Z` tag and pushes it to `origin`. GitHub Actions builds macOS, Windows, and Linux installers and creates a draft GitHub Release.
+
+## Publishing Checklist
+
+- Confirm the draft release contains macOS, Windows, and Linux assets.
+- Download at least one artifact and confirm it launches.
+- Smoke test context listing, namespace/resource browsing, and clean error messages when kubeconfig or cluster access is unavailable.
+- Publish the draft release after artifact checks pass.
+
+If a release is bad, leave or restore the prior release as the recommended tester download and delete the broken draft if it has not been published.
