@@ -158,7 +158,7 @@ pub async fn get_resource_yaml(
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
     eprintln!(
-        "[k8s-manager:backend] get_resource_yaml start context={} kind={} namespace={} name={}",
+        "[kubecove:backend] get_resource_yaml start context={} kind={} namespace={} name={}",
         cluster_context, kind, namespace_label, name
     );
     let result = resource_yaml_from(
@@ -169,8 +169,8 @@ pub async fn get_resource_yaml(
     )
     .await;
     match &result {
-        Ok(yaml) => eprintln!("[k8s-manager:backend] get_resource_yaml done context={} kind={} namespace={} name={} bytes={} ms={}", cluster_context, kind, namespace_label, name, yaml.len(), started.elapsed().as_millis()),
-        Err(err) => eprintln!("[k8s-manager:backend] get_resource_yaml error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis()),
+        Ok(yaml) => eprintln!("[kubecove:backend] get_resource_yaml done context={} kind={} namespace={} name={} bytes={} ms={}", cluster_context, kind, namespace_label, name, yaml.len(), started.elapsed().as_millis()),
+        Err(err) => eprintln!("[kubecove:backend] get_resource_yaml error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis()),
     }
     result
 }

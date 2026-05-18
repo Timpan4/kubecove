@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">KubeCove logo</title>
+  <desc id="desc">A sheltered cove wave around a Kubernetes-style hexagonal workspace mark.</desc>
+  <defs>
+    <linearGradient id="bg" x1="90" x2="430" y1="54" y2="458" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12313f"/>
+      <stop offset="0.52" stop-color="#1d4b5f"/>
+      <stop offset="1" stop-color="#24305e"/>
+    </linearGradient>
+    <linearGradient id="water" x1="92" x2="432" y1="356" y2="178" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4ee3c1"/>
+      <stop offset="0.5" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#8b7cf6"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="169" x2="337" y1="122" y2="289" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8d35b"/>
+      <stop offset="1" stop-color="#f97316"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#07151f" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path fill="#0b1824" opacity="0.22" d="M70 344c54 30 111 42 171 35 80-9 131-49 201-43v108H70z"/>
+  <circle cx="256" cy="218" r="92" fill="url(#sun)" opacity="0.92"/>
+
+  <g filter="url(#shadow)">
+    <path fill="#f8fafc" d="M256 102 386 177v150l-130 75-130-75V177z"/>
+    <path fill="#122432" d="M256 130 362 191v122l-106 61-106-61V191z"/>
+    <path fill="url(#water)" d="M150 274c36-18 76-17 120 3 50 23 92 21 126-8v44l-140 81-106-61z"/>
+    <path fill="#f8fafc" d="M219 187h74l37 64-37 64h-74l-37-64zm19 32-18 32 18 32h36l18-32-18-32z"/>
+    <circle cx="256" cy="251" r="18" fill="#f8fafc"/>
+  </g>
+
+  <path fill="none" stroke="#f8fafc" stroke-linecap="round" stroke-width="20" d="M108 338c48-40 102-49 163-23 58 25 104 15 142-30"/>
+  <path fill="none" stroke="#4ee3c1" stroke-linecap="round" stroke-width="10" d="M121 359c42-28 88-33 139-11 53 23 99 16 138-23"/>
+</svg>

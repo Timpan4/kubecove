@@ -1706,22 +1706,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "k8s-manager"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "futures-util",
- "k8s-openapi",
- "kube",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "thiserror 2.0.18",
- "yaml_serde",
-]
-
-[[package]]
 name = "k8s-openapi"
 version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1821,6 +1805,22 @@ dependencies = [
  "serde",
  "serde_json",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "kubecove"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures-util",
+ "k8s-openapi",
+ "kube",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "thiserror 2.0.18",
+ "yaml_serde",
 ]
 
 [[package]]

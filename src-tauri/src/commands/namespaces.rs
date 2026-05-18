@@ -68,19 +68,19 @@ fn k8s_openapi_time_to_datetime(timestamp: &k8s_openapi::jiff::Timestamp) -> Opt
 pub async fn list_namespaces(cluster_context: String) -> Result<Vec<NamespaceSummary>, AppError> {
     let started = Instant::now();
     eprintln!(
-        "[k8s-manager:backend] list_namespaces start context={}",
+        "[kubecove:backend] list_namespaces start context={}",
         cluster_context
     );
     let result = namespaces_summary_from(cluster_context.clone()).await;
     match &result {
         Ok(rows) => eprintln!(
-            "[k8s-manager:backend] list_namespaces done context={} rows={} ms={}",
+            "[kubecove:backend] list_namespaces done context={} rows={} ms={}",
             cluster_context,
             rows.len(),
             started.elapsed().as_millis()
         ),
         Err(err) => eprintln!(
-            "[k8s-manager:backend] list_namespaces error context={} kind={} message={} ms={}",
+            "[kubecove:backend] list_namespaces error context={} kind={} message={} ms={}",
             cluster_context,
             err.kind,
             err.message,

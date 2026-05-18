@@ -139,7 +139,7 @@ pub async fn list_dynamic_resources(
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<all>");
     eprintln!(
-        "[k8s-manager:backend] list_dynamic_resources start context={} kind={} api_version={} namespace={}",
+        "[kubecove:backend] list_dynamic_resources start context={} kind={} api_version={} namespace={}",
         cluster_context, resource_kind.kind, resource_kind.api_version, namespace_label
     );
     let result = dynamic_resources_summary_from(
@@ -150,7 +150,7 @@ pub async fn list_dynamic_resources(
     .await;
     match &result {
         Ok(rows) => eprintln!(
-            "[k8s-manager:backend] list_dynamic_resources done context={} kind={} namespace={} rows={} ms={}",
+            "[kubecove:backend] list_dynamic_resources done context={} kind={} namespace={} rows={} ms={}",
             cluster_context,
             resource_kind.kind,
             namespace_label,
@@ -158,7 +158,7 @@ pub async fn list_dynamic_resources(
             started.elapsed().as_millis()
         ),
         Err(err) => eprintln!(
-            "[k8s-manager:backend] list_dynamic_resources error context={} kind={} namespace={} error_kind={} message={} ms={}",
+            "[kubecove:backend] list_dynamic_resources error context={} kind={} namespace={} error_kind={} message={} ms={}",
             cluster_context,
             resource_kind.kind,
             namespace_label,
@@ -226,7 +226,7 @@ pub async fn get_dynamic_resource_details(
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
     eprintln!(
-        "[k8s-manager:backend] get_dynamic_resource_details start context={} kind={} api_version={} namespace={} name={}",
+        "[kubecove:backend] get_dynamic_resource_details start context={} kind={} api_version={} namespace={} name={}",
         cluster_context, resource_kind.kind, resource_kind.api_version, namespace_label, name
     );
     let result = dynamic_resource_details_from(
@@ -238,7 +238,7 @@ pub async fn get_dynamic_resource_details(
     .await;
     match &result {
         Ok(details) => eprintln!(
-            "[k8s-manager:backend] get_dynamic_resource_details done context={} kind={} namespace={} name={} yaml_bytes={} status={} ms={}",
+            "[kubecove:backend] get_dynamic_resource_details done context={} kind={} namespace={} name={} yaml_bytes={} status={} ms={}",
             cluster_context,
             resource_kind.kind,
             namespace_label,
@@ -248,7 +248,7 @@ pub async fn get_dynamic_resource_details(
             started.elapsed().as_millis()
         ),
         Err(err) => eprintln!(
-            "[k8s-manager:backend] get_dynamic_resource_details error context={} kind={} namespace={} name={} error_kind={} message={} ms={}",
+            "[kubecove:backend] get_dynamic_resource_details error context={} kind={} namespace={} name={} error_kind={} message={} ms={}",
             cluster_context,
             resource_kind.kind,
             namespace_label,

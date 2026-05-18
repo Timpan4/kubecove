@@ -2,7 +2,7 @@
 
 ## Identity
 
-k8s-manager is a local desktop Kubernetes IDE with an Aptakube-clean aesthetic. It is neither a minimal cluster dashboard nor an overloaded IDE. The product personality is **focused clarity under load**: present the right information quickly, support fast navigation between incident context and resource detail, and keep mental overhead low even when working across multiple clusters or namespaces.
+KubeCove is a local desktop Kubernetes workspace with an Aptakube-clean aesthetic. It is neither a minimal cluster dashboard nor an overloaded IDE. The product personality is **focused clarity under load**: present the right information quickly, support fast navigation between incident context and resource detail, and keep mental overhead low even when working across multiple clusters or namespaces.
 
 Inspiration benchmarks are K8Studio and Aptakube. K8Studio demonstrates what a serious Kubernetes GUI can grow into. Aptakube demonstrates a clean, modern aesthetic that this project should approach without matching directly. The visual language is original and must not copy K8Studio or Aptakube code, assets, branding, layouts, or marketing text.
 

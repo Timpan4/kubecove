@@ -4,7 +4,7 @@ This doc describes the **target shape** of the code. For the *rules* — file-si
 
 ## Product Direction
 
-`k8s-manager` is a local desktop Kubernetes IDE with a context-first and namespace-first workflow.
+KubeCove is a local desktop Kubernetes workspace with a context-first and namespace-first workflow.
 
 Most Kubernetes tools start from resource kinds:
 

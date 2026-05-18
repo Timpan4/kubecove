@@ -63,7 +63,7 @@ pub async fn get_resource_details(
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
     eprintln!(
-        "[k8s-manager:backend] get_resource_details start context={} kind={} namespace={} name={}",
+        "[kubecove:backend] get_resource_details start context={} kind={} namespace={} name={}",
         cluster_context, kind, namespace_label, name
     );
     let result = resource_details_from(
@@ -74,8 +74,8 @@ pub async fn get_resource_details(
     )
     .await;
     match &result {
-        Ok(details) => eprintln!("[k8s-manager:backend] get_resource_details done context={} kind={} namespace={} name={} yaml_bytes={} status={} ms={}", cluster_context, kind, namespace_label, name, details.yaml.len(), details.status.is_some(), started.elapsed().as_millis()),
-        Err(err) => eprintln!("[k8s-manager:backend] get_resource_details error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis()),
+        Ok(details) => eprintln!("[kubecove:backend] get_resource_details done context={} kind={} namespace={} name={} yaml_bytes={} status={} ms={}", cluster_context, kind, namespace_label, name, details.yaml.len(), details.status.is_some(), started.elapsed().as_millis()),
+        Err(err) => eprintln!("[kubecove:backend] get_resource_details error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis()),
     }
     result
 }
