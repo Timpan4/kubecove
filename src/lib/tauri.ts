@@ -1,11 +1,18 @@
-import { invoke, type InvokeOptions } from "@tauri-apps/api/core";
+import {
+	Channel,
+	invoke,
+	type InvokeOptions,
+} from "@tauri-apps/api/core";
 import type {
 	ClusterContext,
 	NamespaceSummary,
 	DiscoveredResourceKind,
+	PodLogStreamRequest,
 	ResourceSummary,
 	ResourceEventSummary,
 	ResourceDetailsFull,
+	StreamMessage,
+	WatchResourceKey,
 	AppError,
 	ArgoApplicationSummary,
 	ArgoApplicationDetails,
@@ -178,6 +185,69 @@ export async function listResourceEvents(
 		name,
 		namespace,
 	});
+}
+
+export function createStreamChannel(
+	onMessage: (message: StreamMessage) => void,
+): Channel<StreamMessage> {
+	return new Channel<StreamMessage>(onMessage);
+}
+
+export function closeStreamChannel(channel: Channel<StreamMessage>): void {
+	const disposableChannel = channel as unknown as {
+		cleanupCallback?: () => void;
+		unregister?: () => Promise<void>;
+	};
+	if (typeof disposableChannel.unregister === "function") {
+		void disposableChannel.unregister();
+		return;
+	}
+	disposableChannel.cleanupCallback?.();
+}
+
+export async function startResourceWatch(
+	client: TauriClient,
+	clusterContext: string,
+	keys: WatchResourceKey[],
+	channel: Channel<StreamMessage>,
+): Promise<string> {
+	return client.invoke<string>("start_resource_watch", {
+		clusterContext,
+		keys,
+		channel,
+	});
+}
+
+export async function startResourceEventWatch(
+	client: TauriClient,
+	clusterContext: string,
+	kind: string,
+	name: string,
+	namespace: string | null | undefined,
+	channel: Channel<StreamMessage>,
+): Promise<string> {
+	return client.invoke<string>("start_resource_event_watch", {
+		clusterContext,
+		kind,
+		name,
+		namespace,
+		channel,
+	});
+}
+
+export async function startPodLogStream(
+	client: TauriClient,
+	request: PodLogStreamRequest,
+	channel: Channel<StreamMessage>,
+): Promise<string> {
+	return client.invoke<string>("start_pod_log_stream", { request, channel });
+}
+
+export async function stopStream(
+	client: TauriClient,
+	streamId: string,
+): Promise<boolean> {
+	return client.invoke<boolean>("stop_stream", { streamId });
 }
 
 export function isAppError(value: unknown): value is AppError {

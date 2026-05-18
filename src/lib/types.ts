@@ -65,6 +65,61 @@ export interface DiscoveredResourceKind {
 	namespaced: boolean;
 }
 
+export interface WatchResourceKind {
+	kind: string;
+	group?: string;
+	version?: string;
+	apiVersion?: string;
+	plural?: string;
+	namespaced?: boolean;
+}
+
+export interface WatchResourceKey {
+	resourceKind: WatchResourceKind;
+	namespace?: string;
+}
+
+export interface PodLogStreamRequest {
+	clusterContext: string;
+	namespace: string;
+	podName: string;
+	container?: string;
+	tailLines?: number;
+}
+
+export interface WatchResourceTarget {
+	cluster: string;
+	kind: string;
+	namespace?: string | null;
+	name?: string | null;
+}
+
+export type StreamStatus = "connected" | "reconnecting" | "stopped" | "error";
+
+export type StreamMessage =
+	| { type: "started"; streamId: string; label: string }
+	| {
+			type: "status";
+			streamId: string;
+			status: StreamStatus | string;
+			message: string;
+	  }
+	| {
+			type: "resourceChanged";
+			streamId: string;
+			target: WatchResourceTarget;
+			action: string;
+	  }
+	| {
+			type: "resourceEventsChanged";
+			streamId: string;
+			target: WatchResourceTarget;
+			action: string;
+	  }
+	| { type: "logLine"; streamId: string; line: string }
+	| { type: "error"; streamId: string; message: string }
+	| { type: "stopped"; streamId: string };
+
 export interface AppError {
 	message: string;
 	kind: string;
