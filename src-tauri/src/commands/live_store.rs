@@ -14,13 +14,14 @@ use std::{
 };
 
 const COMPLETED_GRACE: Duration = Duration::from_millis(500);
+const RESOURCE_FRESHNESS: Duration = Duration::from_secs(30);
 
 type SharedLoad<T> = Shared<BoxFuture<'static, Result<T, AppError>>>;
 
 #[derive(Clone, Copy)]
 enum CacheMode {
     GraceOnly,
-    LiveUntilDirty,
+    LiveFor(Duration),
 }
 
 struct ReadyValue<T> {
@@ -72,7 +73,7 @@ where
 
         match mode {
             CacheMode::GraceOnly => ready.completed_at.elapsed() <= COMPLETED_GRACE,
-            CacheMode::LiveUntilDirty => true,
+            CacheMode::LiveFor(freshness) => ready.completed_at.elapsed() <= freshness,
         }
     }
 
@@ -310,7 +311,10 @@ impl ClusterLiveStore {
     {
         if let ScopeNamespace::Named(namespace) = &namespace_key {
             let all_key = resource_cache_key(&cluster_context, &kind_key, &ScopeNamespace::All);
-            if let Some(rows) = self.resources.peek(&all_key, CacheMode::LiveUntilDirty) {
+            if let Some(rows) = self
+                .resources
+                .peek(&all_key, CacheMode::LiveFor(RESOURCE_FRESHNESS))
+            {
                 eprintln!(
                     "[kubecove:backend] live_store cache_hit area=resources key={} covered_by={}",
                     resource_cache_key(&cluster_context, &kind_key, &namespace_key),
@@ -326,7 +330,7 @@ impl ClusterLiveStore {
         self.resources
             .get_or_load(
                 resource_cache_key(&cluster_context, &kind_key, &namespace_key),
-                CacheMode::LiveUntilDirty,
+                CacheMode::LiveFor(RESOURCE_FRESHNESS),
                 loader,
             )
             .await
@@ -344,7 +348,7 @@ impl ClusterLiveStore {
     {
         let key = topology_cache_key(&cluster_context, &namespaces);
         self.topologies
-            .get_or_load(key, CacheMode::LiveUntilDirty, loader)
+            .get_or_load(key, CacheMode::LiveFor(RESOURCE_FRESHNESS), loader)
             .await
     }
 

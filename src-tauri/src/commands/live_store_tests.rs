@@ -74,7 +74,7 @@ fn dirty_live_cache_reloads_even_inside_grace_window() {
         let first = cache
             .get_or_load(
                 "same".to_string(),
-                CacheMode::LiveUntilDirty,
+                CacheMode::LiveFor(Duration::from_secs(30)),
                 move || async move {
                     first_loads.fetch_add(1, Ordering::SeqCst);
                     Ok::<_, AppError>(vec!["one".to_string()])
@@ -89,7 +89,47 @@ fn dirty_live_cache_reloads_even_inside_grace_window() {
         let second = cache
             .get_or_load(
                 "same".to_string(),
-                CacheMode::LiveUntilDirty,
+                CacheMode::LiveFor(Duration::from_secs(30)),
+                move || async move {
+                    second_loads.fetch_add(1, Ordering::SeqCst);
+                    Ok::<_, AppError>(vec!["two".to_string()])
+                },
+            )
+            .await
+            .expect("second load");
+
+        assert_eq!(first, vec!["one".to_string()]);
+        assert_eq!(second, vec!["two".to_string()]);
+        assert_eq!(loads.load(Ordering::SeqCst), 2);
+    });
+}
+
+#[test]
+fn live_cache_reloads_after_freshness_window() {
+    tauri::async_runtime::block_on(async {
+        let cache = SharedCache::new("test");
+        let loads = Arc::new(AtomicUsize::new(0));
+
+        let first_loads = loads.clone();
+        let first = cache
+            .get_or_load(
+                "same".to_string(),
+                CacheMode::LiveFor(Duration::from_millis(1)),
+                move || async move {
+                    first_loads.fetch_add(1, Ordering::SeqCst);
+                    Ok::<_, AppError>(vec!["one".to_string()])
+                },
+            )
+            .await
+            .expect("first load");
+
+        std::thread::sleep(Duration::from_millis(5));
+
+        let second_loads = loads.clone();
+        let second = cache
+            .get_or_load(
+                "same".to_string(),
+                CacheMode::LiveFor(Duration::from_millis(1)),
                 move || async move {
                     second_loads.fetch_add(1, Ordering::SeqCst);
                     Ok::<_, AppError>(vec!["two".to_string()])
