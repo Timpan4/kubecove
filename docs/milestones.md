@@ -84,6 +84,16 @@ Goal: make existing read-only browser surfaces useful during troubleshooting.
 - [x] Prioritize warning events and preserve pod log container selection while details refresh.
 - [x] Add workspace overview shortcuts for unhealthy, warning, and restarted resources.
 
+## Milestone 7: Stabilization and Release Readiness
+
+Goal: make the current read-only incident workflow a reliable baseline before starting another product area.
+
+- [x] Repair frontend verification after local `node_modules` corruption.
+- [x] Run frontend typecheck, frontend tests, and Rust tests.
+- [x] Audit read-only logs, events, topology, and watch refresh behavior against the current UI.
+- [x] Reconcile README and milestone tracking for already-built incident surfaces.
+- [ ] Run a manual Tauri smoke test against a readable cluster before the next beta release.
+
 ## Cross-Cutting Tracks
 
 Items that don't belong to a single milestone but need to stay visible.
@@ -109,10 +119,6 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 
 ## K8Studio-Inspired Later Milestones
 
-- topology and relationship maps
-- logs
-- events
-- watches
 - YAML edit/apply with explicit guardrails
 - port-forward
 - pod exec
