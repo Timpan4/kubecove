@@ -100,9 +100,11 @@ fn dedupe_rows(rows: Vec<ResourceSummary>) -> Vec<ResourceSummary> {
     for row in rows {
         by_key.insert(
             format!(
-                "{}:{}:{}:{}",
+                "{}:{}:{}:{}:{}:{}",
                 row.cluster,
                 row.kind,
+                row.api_version.as_deref().unwrap_or(""),
+                row.plural.as_deref().unwrap_or(""),
                 row.namespace.as_deref().unwrap_or(""),
                 row.name
             ),
@@ -162,7 +164,12 @@ pub async fn resource_scope_from(
                         .await?
                 }
             };
-            Ok::<_, AppError>(filter_promoted_rows(rows, &group))
+            let rows = if promoted {
+                filter_promoted_rows(rows, &group)
+            } else {
+                rows
+            };
+            Ok::<_, AppError>(rows)
         }
     });
 

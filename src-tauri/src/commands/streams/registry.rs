@@ -33,6 +33,13 @@ impl StreamBroadcaster {
         subscribers.len()
     }
 
+    fn is_empty(&self) -> bool {
+        self.subscribers
+            .lock()
+            .expect("stream subscribers lock")
+            .is_empty()
+    }
+
     fn send(&self, message: impl Fn(&str) -> StreamMessage) -> bool {
         let subscribers = self
             .subscribers
@@ -132,15 +139,9 @@ impl StreamRegistry {
         key: &WatchResourceKey,
         channel: Channel<StreamMessage>,
     ) -> (String, StreamBroadcaster, bool) {
-        let exact_key = resource_watch_key(cluster_context, key);
-        let all_key = key
-            .namespace
-            .as_ref()
-            .map(|_| resource_watch_key_all_namespaces(cluster_context, key));
+        let watch_key = resource_watch_key(cluster_context, key);
         let mut state = self.state.lock().expect("stream registry lock");
-        let watch_key = all_key
-            .filter(|key| state.resource_watches.contains_key(key))
-            .unwrap_or(exact_key);
+        remove_empty_resource_watch(&mut state, &watch_key);
         let mut started = false;
         let watch = state
             .resource_watches
@@ -193,6 +194,7 @@ impl StreamRegistry {
     ) -> (String, StreamBroadcaster, bool) {
         let watch_key = event_watch_key(cluster_context, kind, name, namespace);
         let mut state = self.state.lock().expect("stream registry lock");
+        remove_empty_event_watch(&mut state, &watch_key);
         let mut started = false;
         let watch = state
             .event_watches
@@ -283,6 +285,36 @@ impl StreamRegistry {
     }
 }
 
+fn remove_empty_resource_watch(state: &mut RegistryState, key: &str) {
+    let should_remove = state
+        .resource_watches
+        .get(key)
+        .is_some_and(|watch| watch.broadcaster.is_empty());
+    if should_remove {
+        if let Some(mut watch) = state.resource_watches.remove(key) {
+            if let Some(handle) = watch.handle.take() {
+                handle.abort();
+            }
+            eprintln!("[kubecove:backend] watch_cleanup kind=resource key={}", key);
+        }
+    }
+}
+
+fn remove_empty_event_watch(state: &mut RegistryState, key: &str) {
+    let should_remove = state
+        .event_watches
+        .get(key)
+        .is_some_and(|watch| watch.broadcaster.is_empty());
+    if should_remove {
+        if let Some(mut watch) = state.event_watches.remove(key) {
+            if let Some(handle) = watch.handle.take() {
+                handle.abort();
+            }
+            eprintln!("[kubecove:backend] watch_cleanup kind=events key={}", key);
+        }
+    }
+}
+
 fn resource_watch_key(cluster_context: &str, key: &WatchResourceKey) -> String {
     format!(
         "context={}|kind={}|api={}|plural={}|namespace={}",
@@ -295,12 +327,6 @@ fn resource_watch_key(cluster_context: &str, key: &WatchResourceKey) -> String {
         key.resource_kind.plural.as_deref().unwrap_or("<typed>"),
         key.namespace.as_deref().unwrap_or("<all>")
     )
-}
-
-fn resource_watch_key_all_namespaces(cluster_context: &str, key: &WatchResourceKey) -> String {
-    let mut key = key.clone();
-    key.namespace = None;
-    resource_watch_key(cluster_context, &key)
 }
 
 fn event_watch_key(
@@ -337,11 +363,10 @@ mod tests {
     }
 
     #[test]
-    fn all_namespace_watch_key_can_cover_namespaced_key() {
+    fn namespaced_watch_key_stays_distinct_from_all_namespace_key() {
         let all = resource_watch_key("kind-dev", &pod_key(None));
-        let default_as_all =
-            resource_watch_key_all_namespaces("kind-dev", &pod_key(Some("default")));
+        let default = resource_watch_key("kind-dev", &pod_key(Some("default")));
 
-        assert_eq!(all, default_as_all);
+        assert_ne!(all, default);
     }
 }

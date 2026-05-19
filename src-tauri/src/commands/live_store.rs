@@ -31,6 +31,7 @@ enum CacheEntry<T> {
     Loading {
         future: SharedLoad<T>,
         previous: Option<ReadyValue<T>>,
+        dirty: bool,
     },
 }
 
@@ -121,6 +122,7 @@ where
                         CacheEntry::Loading {
                             future: future.clone(),
                             previous,
+                            dirty: false,
                         },
                     );
                     future
@@ -130,13 +132,24 @@ where
 
         let result = future.await;
         let mut entries = self.entries.lock().expect("live store cache lock");
+        let dirty_while_loading = entries.get(&key).is_some_and(|entry| {
+            matches!(entry, CacheEntry::Loading { dirty: true, .. })
+                || matches!(entry, CacheEntry::Ready(ready) if ready.dirty)
+        });
         match &result {
             Ok(value) => {
-                entries.insert(key, CacheEntry::Ready(Self::ready_value(value.clone())));
+                let mut ready = Self::ready_value(value.clone());
+                ready.dirty = dirty_while_loading;
+                entries.insert(key, CacheEntry::Ready(ready));
             }
             Err(_) => {
                 let previous = entries.remove(&key).and_then(|entry| match entry {
-                    CacheEntry::Loading { previous, .. } => previous,
+                    CacheEntry::Loading {
+                        previous, dirty, ..
+                    } => previous.map(|mut ready| {
+                        ready.dirty |= dirty;
+                        ready
+                    }),
                     CacheEntry::Ready(ready) => Some(ready),
                 });
                 if let Some(previous) = previous {
@@ -149,8 +162,11 @@ where
 
     fn mark_dirty(&self, key: &str) {
         let mut entries = self.entries.lock().expect("live store cache lock");
-        if let Some(CacheEntry::Ready(ready)) = entries.get_mut(key) {
-            ready.dirty = true;
+        if let Some(entry) = entries.get_mut(key) {
+            match entry {
+                CacheEntry::Ready(ready) => ready.dirty = true,
+                CacheEntry::Loading { dirty, .. } => *dirty = true,
+            }
         }
     }
 
@@ -160,8 +176,9 @@ where
             if !matches(key) {
                 continue;
             }
-            if let CacheEntry::Ready(ready) = entry {
-                ready.dirty = true;
+            match entry {
+                CacheEntry::Ready(ready) => ready.dirty = true,
+                CacheEntry::Loading { dirty, .. } => *dirty = true,
             }
         }
     }
@@ -347,9 +364,6 @@ fn dynamic_kind_key(api_version: &str, plural: &str, kind: &str) -> String {
 }
 
 fn watch_kind_key(resource_kind: &WatchResourceKind) -> String {
-    if is_known_typed_kind(&resource_kind.kind) {
-        return typed_kind_key(&resource_kind.kind);
-    }
     match (
         resource_kind.api_version.as_deref(),
         resource_kind.plural.as_deref(),
@@ -402,27 +416,6 @@ fn topology_cache_key(context: &str, namespaces: &[String]) -> String {
 
 fn is_cluster_scoped_kind(kind: &str) -> bool {
     matches!(kind, "Node" | "StorageClass" | "PersistentVolume")
-}
-
-fn is_known_typed_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "Pod"
-            | "Deployment"
-            | "ReplicaSet"
-            | "StatefulSet"
-            | "DaemonSet"
-            | "Service"
-            | "Ingress"
-            | "ConfigMap"
-            | "Secret"
-            | "PersistentVolumeClaim"
-            | "Job"
-            | "CronJob"
-            | "Node"
-            | "StorageClass"
-            | "PersistentVolume"
-    )
 }
 
 #[cfg(test)]

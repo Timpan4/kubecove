@@ -30,11 +30,17 @@ export interface ResourceSummary {
 	helmRelease?: string;
 }
 
-export interface ResourceListRequest {
-	kind?: string;
-	resourceKind?: DiscoveredResourceKind;
-	namespace?: string;
-}
+export type ResourceListRequest =
+	| {
+			kind: string;
+			namespace?: string;
+			resourceKind?: never;
+	  }
+	| {
+			resourceKind: DiscoveredResourceKind;
+			namespace?: string;
+			kind?: never;
+	  };
 
 export interface ResourceDetails {
 	kind: string;
