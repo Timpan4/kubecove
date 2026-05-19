@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	Background,
 	BackgroundVariant,
@@ -28,6 +28,11 @@ import {
 	type OwnershipResourceGraphNode,
 	type StandaloneKindGroupGraphNode,
 } from "./topology";
+import {
+	absoluteGraphNodePosition,
+	getOwnershipMapTranslateExtent,
+	ownershipGraphLayoutSignature,
+} from "./topology-viewport";
 
 interface OwnershipMapProps {
 	topology: ResourceTopology | undefined;
@@ -45,6 +50,8 @@ function errorMessage(error: unknown): string {
 
 const FIT_VIEW_OPTIONS = { padding: 0.24, maxZoom: 1 };
 const NODE_CENTER_OFFSET = { x: 95, y: 39 };
+const MIN_MAP_ZOOM = 0.18;
+const MAX_MAP_ZOOM = 1.4;
 
 function isOwnershipResourceNode(
 	node: OwnershipGraphNode,
@@ -56,23 +63,6 @@ function isStandaloneKindGroupNode(
 	node: OwnershipGraphNode,
 ): node is StandaloneKindGroupGraphNode {
 	return node.type === "standaloneKindGroup";
-}
-
-function absoluteNodePosition(
-	nodes: OwnershipGraphNode[],
-	node: OwnershipGraphNode,
-): { x: number; y: number } {
-	let x = node.position.x;
-	let y = node.position.y;
-	let parentId = node.parentId;
-	while (parentId) {
-		const parent = nodes.find((candidate) => candidate.id === parentId);
-		if (!parent) break;
-		x += parent.position.x;
-		y += parent.position.y;
-		parentId = parent.parentId;
-	}
-	return { x, y };
 }
 
 function FitTopologyView({ signature }: { signature: string }) {
@@ -107,8 +97,13 @@ function CenterSelectedNode({
 		if (!selectedNodeId) return;
 		const selectedNode = nodes.find((node) => node.id === selectedNodeId);
 		if (!selectedNode) return;
-		const selectedPosition = absoluteNodePosition(nodes, selectedNode);
-		const requestKey = `${selectedNodeId}:${viewportKey}`;
+		const selectedPosition = absoluteGraphNodePosition(nodes, selectedNode);
+		const requestKey = [
+			selectedNodeId,
+			viewportKey,
+			Math.round(selectedPosition.x),
+			Math.round(selectedPosition.y),
+		].join(":");
 		if (lastCenterRequestRef.current === requestKey) return;
 		lastCenterRequestRef.current = requestKey;
 		let secondFrame: number | null = null;
@@ -151,15 +146,26 @@ export function OwnershipMap({
 				: null,
 		[topology, selectedNodeId, expandedStandaloneKinds],
 	);
-	const mapViewportRef = useRef<HTMLDivElement>(null);
-	const [viewportSizeKey, setViewportSizeKey] = useState("0x0");
-	const topologySignature = useMemo(() => {
-		if (!topology) return "";
-		const nodeIds = topology.nodes.map((node) => node.id).sort().join("|");
-		const edgeIds = topology.edges.map((edge) => edge.id).sort().join("|");
-		return `${nodeIds}::${edgeIds}`;
-	}, [topology]);
+	const [mapViewportElement, setMapViewportElement] =
+		useState<HTMLDivElement | null>(null);
+	const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+	const translateExtent = useMemo(
+		() =>
+			graph && viewportSize.width > 0 && viewportSize.height > 0
+				? getOwnershipMapTranslateExtent(graph.nodes, viewportSize)
+				: undefined,
+		[graph, viewportSize],
+	);
+	const graphLayoutSignature = useMemo(
+		() =>
+			graph ? ownershipGraphLayoutSignature(graph.nodes, graph.edges) : "",
+		[graph],
+	);
+	const viewportSizeKey = `${viewportSize.width}x${viewportSize.height}`;
 	const centerViewportKey = `${heightClassName}:${viewportSizeKey}`;
+	const setMapViewportRef = useCallback((element: HTMLDivElement | null) => {
+		setMapViewportElement(element);
+	}, []);
 	const handleNodeClick: NodeMouseHandler<OwnershipGraphNode> = (_, node) => {
 		if (isStandaloneKindGroupNode(node)) {
 			setExpandedStandaloneKinds((current) => {
@@ -178,17 +184,25 @@ export function OwnershipMap({
 	};
 
 	useEffect(() => {
-		const element = mapViewportRef.current;
-		if (!element) return;
+		if (!mapViewportElement) return;
 		const updateViewportSize = () => {
-			const rect = element.getBoundingClientRect();
-			setViewportSizeKey(`${Math.round(rect.width)}x${Math.round(rect.height)}`);
+			const rect = mapViewportElement.getBoundingClientRect();
+			const nextSize = {
+				width: Math.round(rect.width),
+				height: Math.round(rect.height),
+			};
+			setViewportSize((currentSize) =>
+				currentSize.width === nextSize.width &&
+				currentSize.height === nextSize.height
+					? currentSize
+					: nextSize,
+			);
 		};
 		updateViewportSize();
 		const observer = new ResizeObserver(updateViewportSize);
-		observer.observe(element);
+		observer.observe(mapViewportElement);
 		return () => observer.disconnect();
-	}, []);
+	}, [mapViewportElement]);
 
 	if (isLoading) {
 		return (
@@ -251,14 +265,15 @@ export function OwnershipMap({
 				)}
 			</div>
 			<Separator />
-			<div ref={mapViewportRef} className={cn(heightClassName, "bg-background")}>
+			<div ref={setMapViewportRef} className={cn(heightClassName, "bg-background")}>
 				<ReactFlow
 					nodes={graph.nodes}
 					edges={graph.edges}
 					nodeTypes={ownershipMapNodeTypes}
 					onNodeClick={handleNodeClick}
-					minZoom={0.18}
-					maxZoom={1.4}
+					translateExtent={translateExtent}
+					minZoom={MIN_MAP_ZOOM}
+					maxZoom={MAX_MAP_ZOOM}
 					nodesDraggable={false}
 					nodesConnectable={false}
 					edgesFocusable={false}
@@ -266,9 +281,9 @@ export function OwnershipMap({
 					zoomOnDoubleClick={false}
 					deleteKeyCode={null}
 					proOptions={{ hideAttribution: true }}
-					className="[&_.react-flow__attribution]:bg-background/80 [&_.react-flow__controls-button]:border-border [&_.react-flow__controls-button]:bg-card [&_.react-flow__controls-button]:text-foreground [&_.react-flow__controls-button]:shadow-none [&_.react-flow__controls-button:hover]:bg-accent [&_.react-flow__controls-button_svg]:fill-current [&_.react-flow__controls-button_svg]:stroke-current [&_.react-flow__controls]:overflow-hidden [&_.react-flow__controls]:rounded-md [&_.react-flow__controls]:border [&_.react-flow__controls]:border-border [&_.react-flow__controls]:bg-card [&_.react-flow__edge-path]:stroke-muted-foreground/55"
+					className="ownership-map-flow"
 				>
-					<FitTopologyView signature={topologySignature} />
+					<FitTopologyView signature={graphLayoutSignature} />
 					<CenterSelectedNode
 						nodes={graph.nodes}
 						selectedNodeId={selectedNodeId}
