@@ -182,8 +182,8 @@
 }
 
 .ownership-map-flow .react-flow__controls-button svg {
-  fill: currentColor;
-  stroke: currentColor;
+  fill: currentcolor;
+  stroke: currentcolor;
 }
 
 .ownership-map-flow .react-flow__attribution {

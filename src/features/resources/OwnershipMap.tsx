@@ -98,7 +98,12 @@ function CenterSelectedNode({
 		const selectedNode = nodes.find((node) => node.id === selectedNodeId);
 		if (!selectedNode) return;
 		const selectedPosition = absoluteGraphNodePosition(nodes, selectedNode);
-		const requestKey = `${selectedNodeId}:${viewportKey}`;
+		const requestKey = [
+			selectedNodeId,
+			viewportKey,
+			Math.round(selectedPosition.x),
+			Math.round(selectedPosition.y),
+		].join(":");
 		if (lastCenterRequestRef.current === requestKey) return;
 		lastCenterRequestRef.current = requestKey;
 		let secondFrame: number | null = null;

@@ -162,4 +162,16 @@ describe("ownership map viewport helpers", () => {
 		expect(smallPaddingY).toBe(252);
 		expect(largePaddingY).toBe(smallPaddingY);
 	});
+
+	test("returns a safe zero extent before viewport dimensions are measured", () => {
+		const extent = getOwnershipMapTranslateExtent([graphNode("pod-a", 96, 96)], {
+			width: 0,
+			height: 600,
+		});
+
+		expect(extent).toEqual([
+			[0, 0],
+			[0, 0],
+		]);
+	});
 });

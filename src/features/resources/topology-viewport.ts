@@ -19,6 +19,10 @@ export interface OwnershipGraphBounds {
 const PAN_PADDING_RATIO = 0.42;
 const MIN_PAN_PADDING = 180;
 const MAX_PAN_PADDING = 720;
+const ZERO_TRANSLATE_EXTENT: CoordinateExtent = [
+	[0, 0],
+	[0, 0],
+];
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
@@ -71,6 +75,11 @@ function nodeDimensions(node: OwnershipGraphNode): {
 	};
 }
 
+function warnInDevelopment(message: string): void {
+	const env = (import.meta as { env?: { DEV?: boolean } }).env;
+	if (env?.DEV) console.warn(message);
+}
+
 export function ownershipMapBoundaryPadding(
 	viewportSize: OwnershipMapViewportSize,
 ): { x: number; y: number } {
@@ -97,7 +106,13 @@ function absoluteGraphNodePositionFromLookup(
 	let parentId = node.parentId;
 	const visitedParentIds = new Set<string>();
 
-	while (parentId && !visitedParentIds.has(parentId)) {
+	while (parentId) {
+		if (visitedParentIds.has(parentId)) {
+			warnInDevelopment(
+				`Cycle detected in ownership map parent chain for node "${node.id}" at parent "${parentId}".`,
+			);
+			break;
+		}
 		visitedParentIds.add(parentId);
 		const parent = nodesById.get(parentId);
 		if (!parent) break;
@@ -153,13 +168,12 @@ export function getOwnershipMapTranslateExtent(
 	nodes: OwnershipGraphNode[],
 	viewportSize: OwnershipMapViewportSize,
 ): CoordinateExtent {
-	const bounds = getOwnershipGraphBounds(nodes);
-	if (!bounds) {
-		return [
-			[0, 0],
-			[0, 0],
-		];
+	if (viewportSize.width <= 0 || viewportSize.height <= 0) {
+		return ZERO_TRANSLATE_EXTENT;
 	}
+
+	const bounds = getOwnershipGraphBounds(nodes);
+	if (!bounds) return ZERO_TRANSLATE_EXTENT;
 
 	const padding = ownershipMapBoundaryPadding(viewportSize);
 	return [
