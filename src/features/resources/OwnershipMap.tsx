@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	Background,
 	BackgroundVariant,
@@ -146,11 +146,12 @@ export function OwnershipMap({
 				: null,
 		[topology, selectedNodeId, expandedStandaloneKinds],
 	);
-	const mapViewportRef = useRef<HTMLDivElement>(null);
+	const [mapViewportElement, setMapViewportElement] =
+		useState<HTMLDivElement | null>(null);
 	const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
 	const translateExtent = useMemo(
 		() =>
-			graph
+			graph && viewportSize.width > 0 && viewportSize.height > 0
 				? getOwnershipMapTranslateExtent(graph.nodes, viewportSize)
 				: undefined,
 		[graph, viewportSize],
@@ -162,6 +163,9 @@ export function OwnershipMap({
 	);
 	const viewportSizeKey = `${viewportSize.width}x${viewportSize.height}`;
 	const centerViewportKey = `${heightClassName}:${viewportSizeKey}`;
+	const setMapViewportRef = useCallback((element: HTMLDivElement | null) => {
+		setMapViewportElement(element);
+	}, []);
 	const handleNodeClick: NodeMouseHandler<OwnershipGraphNode> = (_, node) => {
 		if (isStandaloneKindGroupNode(node)) {
 			setExpandedStandaloneKinds((current) => {
@@ -180,10 +184,9 @@ export function OwnershipMap({
 	};
 
 	useEffect(() => {
-		const element = mapViewportRef.current;
-		if (!element) return;
+		if (!mapViewportElement) return;
 		const updateViewportSize = () => {
-			const rect = element.getBoundingClientRect();
+			const rect = mapViewportElement.getBoundingClientRect();
 			const nextSize = {
 				width: Math.round(rect.width),
 				height: Math.round(rect.height),
@@ -197,9 +200,9 @@ export function OwnershipMap({
 		};
 		updateViewportSize();
 		const observer = new ResizeObserver(updateViewportSize);
-		observer.observe(element);
+		observer.observe(mapViewportElement);
 		return () => observer.disconnect();
-	}, []);
+	}, [mapViewportElement]);
 
 	if (isLoading) {
 		return (
@@ -262,7 +265,7 @@ export function OwnershipMap({
 				)}
 			</div>
 			<Separator />
-			<div ref={mapViewportRef} className={cn(heightClassName, "bg-background")}>
+			<div ref={setMapViewportRef} className={cn(heightClassName, "bg-background")}>
 				<ReactFlow
 					nodes={graph.nodes}
 					edges={graph.edges}
