@@ -129,3 +129,45 @@ fn all_namespace_resources_cover_named_namespace_reads() {
         assert_eq!(default_rows[0].name, "api");
     });
 }
+
+#[test]
+fn normalized_builtin_watch_invalidates_typed_resource_cache() {
+    let store = ClusterLiveStore::default();
+    tauri::async_runtime::block_on(async {
+        store
+            .typed_resources(
+                "kind-dev".to_string(),
+                "Pod".to_string(),
+                Some("default".to_string()),
+                || async { Ok::<_, AppError>(vec![resource("api", "default")]) },
+            )
+            .await
+            .expect("typed load");
+
+        store.mark_watch_resource_dirty(
+            "kind-dev",
+            &WatchResourceKind {
+                kind: "Pod".to_string(),
+                group: Some("".to_string()),
+                version: Some("v1".to_string()),
+                api_version: Some("v1".to_string()),
+                plural: Some("pods".to_string()),
+                namespaced: Some(true),
+            },
+            Some("default"),
+        );
+
+        let rows = store
+            .typed_resources(
+                "kind-dev".to_string(),
+                "Pod".to_string(),
+                Some("default".to_string()),
+                || async { Ok::<_, AppError>(vec![resource("worker", "default")]) },
+            )
+            .await
+            .expect("typed reload");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].name, "worker");
+    });
+}

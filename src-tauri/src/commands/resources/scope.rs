@@ -76,7 +76,14 @@ fn group_requests(
 }
 
 fn should_promote_to_all(group: &ResourceScopeGroup) -> bool {
-    group.all_namespaces || group.namespaces.len() > 1
+    group.all_namespaces
+}
+
+fn fetch_namespaces(group: &ResourceScopeGroup) -> Vec<Option<String>> {
+    if should_promote_to_all(group) || group.namespaces.is_empty() {
+        return vec![None];
+    }
+    group.namespaces.iter().cloned().map(Some).collect()
 }
 
 fn filter_promoted_rows(
@@ -125,45 +132,53 @@ pub async fn resource_scope_from(
         let cluster_context = cluster_context.clone();
         async move {
             let promoted = should_promote_to_all(&group);
-            let namespace = if promoted {
-                None
-            } else {
-                group.namespaces.iter().next().cloned()
-            };
-            let rows = match group.kind.clone() {
-                ResourceScopeKind::Typed(kind) => {
-                    live_store
-                        .typed_resources(
-                            cluster_context.clone(),
-                            kind.clone(),
-                            namespace.clone(),
-                            {
-                                let cluster_context = cluster_context.clone();
-                                move || resources_summary_from(cluster_context, kind, namespace)
-                            },
-                        )
-                        .await?
+            let fetches = fetch_namespaces(&group).into_iter().map(|namespace| {
+                let kind = group.kind.clone();
+                let live_store = live_store.clone();
+                let cluster_context = cluster_context.clone();
+                async move {
+                    match kind {
+                        ResourceScopeKind::Typed(kind) => {
+                            live_store
+                                .typed_resources(
+                                    cluster_context.clone(),
+                                    kind.clone(),
+                                    namespace.clone(),
+                                    {
+                                        let cluster_context = cluster_context.clone();
+                                        move || {
+                                            resources_summary_from(cluster_context, kind, namespace)
+                                        }
+                                    },
+                                )
+                                .await
+                        }
+                        ResourceScopeKind::Dynamic(resource_kind) => {
+                            live_store
+                                .dynamic_resources(
+                                    cluster_context.clone(),
+                                    resource_kind.clone(),
+                                    namespace.clone(),
+                                    {
+                                        let cluster_context = cluster_context.clone();
+                                        move || {
+                                            dynamic_resources_summary_from(
+                                                cluster_context,
+                                                resource_kind,
+                                                namespace,
+                                            )
+                                        }
+                                    },
+                                )
+                                .await
+                        }
+                    }
                 }
-                ResourceScopeKind::Dynamic(resource_kind) => {
-                    live_store
-                        .dynamic_resources(
-                            cluster_context.clone(),
-                            resource_kind.clone(),
-                            namespace.clone(),
-                            {
-                                let cluster_context = cluster_context.clone();
-                                move || {
-                                    dynamic_resources_summary_from(
-                                        cluster_context,
-                                        resource_kind,
-                                        namespace,
-                                    )
-                                }
-                            },
-                        )
-                        .await?
-                }
-            };
+            });
+            let mut rows = Vec::new();
+            for result in join_all(fetches).await {
+                rows.extend(result?);
+            }
             let rows = if promoted {
                 filter_promoted_rows(rows, &group)
             } else {
@@ -230,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn groups_multiple_namespaces_for_one_kind() {
+    fn groups_multiple_namespaces_for_one_kind_without_promoting_to_all() {
         let groups = group_requests(vec![
             pod_request(Some("default")),
             pod_request(Some("argocd")),
@@ -238,7 +253,11 @@ mod tests {
         .expect("groups");
         let group = groups.get("typed:Pod").expect("pod group");
 
-        assert!(should_promote_to_all(group));
+        assert!(!should_promote_to_all(group));
+        assert_eq!(
+            fetch_namespaces(group),
+            vec![Some("argocd".to_string()), Some("default".to_string())]
+        );
         assert_eq!(group.namespaces.len(), 2);
     }
 

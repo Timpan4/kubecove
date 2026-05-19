@@ -336,13 +336,14 @@ impl ClusterLiveStore {
         resource_kind: &WatchResourceKind,
         namespace: Option<&str>,
     ) {
-        let kind_key = watch_kind_key(resource_kind);
         let namespace_key =
             namespace_key_for_namespaced(resource_kind.namespaced.unwrap_or(true), namespace);
-        let exact_key = resource_cache_key(cluster_context, &kind_key, &namespace_key);
-        let all_key = resource_cache_key(cluster_context, &kind_key, &ScopeNamespace::All);
-        self.resources.mark_dirty(&exact_key);
-        self.resources.mark_dirty(&all_key);
+        for kind_key in watch_kind_keys(resource_kind) {
+            let exact_key = resource_cache_key(cluster_context, &kind_key, &namespace_key);
+            let all_key = resource_cache_key(cluster_context, &kind_key, &ScopeNamespace::All);
+            self.resources.mark_dirty(&exact_key);
+            self.resources.mark_dirty(&all_key);
+        }
         self.topologies
             .mark_dirty_where(|key| key.starts_with(&format!("context={}|", cluster_context)));
     }
@@ -373,6 +374,17 @@ fn watch_kind_key(resource_kind: &WatchResourceKind) -> String {
         }
         _ => typed_kind_key(&resource_kind.kind),
     }
+}
+
+fn watch_kind_keys(resource_kind: &WatchResourceKind) -> Vec<String> {
+    let mut keys = vec![watch_kind_key(resource_kind)];
+    if is_known_typed_kind(&resource_kind.kind) {
+        let typed_key = typed_kind_key(&resource_kind.kind);
+        if !keys.contains(&typed_key) {
+            keys.push(typed_key);
+        }
+    }
+    keys
 }
 
 fn namespace_key_for_typed(kind: &str, namespace: Option<&str>) -> ScopeNamespace {
@@ -416,6 +428,27 @@ fn topology_cache_key(context: &str, namespaces: &[String]) -> String {
 
 fn is_cluster_scoped_kind(kind: &str) -> bool {
     matches!(kind, "Node" | "StorageClass" | "PersistentVolume")
+}
+
+fn is_known_typed_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "Pod"
+            | "Deployment"
+            | "ReplicaSet"
+            | "StatefulSet"
+            | "DaemonSet"
+            | "Service"
+            | "Ingress"
+            | "ConfigMap"
+            | "Secret"
+            | "PersistentVolumeClaim"
+            | "Job"
+            | "CronJob"
+            | "Node"
+            | "StorageClass"
+            | "PersistentVolume"
+    )
 }
 
 #[cfg(test)]
