@@ -27,6 +27,13 @@ import {
 	selectedTopologyPath,
 	uniqueNodes,
 } from "./topology-graph";
+import {
+	buildStandaloneGroups,
+	STANDALONE_NODE_WIDTH,
+	type StandaloneKindGroupGraphNode,
+} from "./topology-standalone-groups";
+
+export type { StandaloneKindGroupGraphNode } from "./topology-standalone-groups";
 
 export interface TopologyRow {
 	node: TopologyNode;
@@ -41,12 +48,17 @@ export interface OwnershipGraphNodeData extends Record<string, unknown> {
 	selected: boolean;
 	connected: boolean;
 	dimmed: boolean;
+	standalone: boolean;
 }
 
-export type OwnershipGraphNode = Node<
+export type OwnershipResourceGraphNode = Node<
 	OwnershipGraphNodeData,
 	"ownershipResource"
 >;
+
+export type OwnershipGraphNode =
+	| OwnershipResourceGraphNode
+	| StandaloneKindGroupGraphNode;
 export type OwnershipGraphEdge = Edge<
 	{ relation: TopologyRelation },
 	"smoothstep"
@@ -57,6 +69,10 @@ export type OwnershipGraphEdge = Edge<
 export interface ReactFlowTopology {
 	nodes: OwnershipGraphNode[];
 	edges: OwnershipGraphEdge[];
+}
+
+export interface BuildReactFlowTopologyOptions {
+	expandedStandaloneKinds?: ReadonlySet<string>;
 }
 
 export function resourceTopologyNodeId(
@@ -76,6 +92,7 @@ function sortNodes(a: TopologyNode, b: TopologyNode): number {
 export function buildReactFlowTopology(
 	topology: ResourceTopology,
 	selectedNodeId: string | null,
+	options: BuildReactFlowTopologyOptions = {},
 ): ReactFlowTopology {
 	const depthById = topologyColumnDepth(topology);
 	const graph = buildTopologyGraph(topology);
@@ -84,7 +101,24 @@ export function buildReactFlowTopology(
 	const compareNodes = compareNodesByLayoutOrder(orderById, depthById);
 	const selectedPath = selectedTopologyPath(graph, selectedNodeId);
 	const hasSelection = Boolean(selectedNodeId && selectedPath.nodeIds.size > 0);
+	const standaloneGroups = buildStandaloneGroups(
+		graph,
+		positions,
+		compareNodes,
+		selectedPath.nodeIds,
+		hasSelection,
+		options.expandedStandaloneKinds ?? new Set<string>(),
+		selectedNodeId,
+	);
 	const sortedNodes = graph.nodes.sort((a, b) => {
+		const aStandalone = standaloneGroups.standaloneIds.has(a.id);
+		const bStandalone = standaloneGroups.standaloneIds.has(b.id);
+		if (aStandalone !== bStandalone) return aStandalone ? 1 : -1;
+		const aGroupId = standaloneGroups.groupIdByNodeId.get(a.id);
+		const bGroupId = standaloneGroups.groupIdByNodeId.get(b.id);
+		if (aGroupId && bGroupId && aGroupId !== bGroupId) {
+			return aGroupId.localeCompare(bGroupId);
+		}
 		const aPosition = positions.get(a.id);
 		const bPosition = positions.get(b.id);
 		const x = (aPosition?.x ?? 0) - (bPosition?.x ?? 0);
@@ -92,28 +126,39 @@ export function buildReactFlowTopology(
 		const y = (aPosition?.y ?? 0) - (bPosition?.y ?? 0);
 		if (y !== 0) return y;
 		return compareNodes(a, b);
+	}).filter((node) => {
+		if (!standaloneGroups.standaloneIds.has(node.id)) return true;
+		return standaloneGroups.groupIdByNodeId.has(node.id);
 	});
 	const nodes = sortedNodes.map<OwnershipGraphNode>((node) => {
 		const selected = selectedNodeId === node.id;
 		const connected = selectedPath.nodeIds.has(node.id) && !selected;
+		const standalone = standaloneGroups.groupIdByNodeId.has(node.id);
 		return {
 			id: node.id,
 			type: "ownershipResource",
-			position: positions.get(node.id) ?? { x: CANVAS_PADDING, y: CANVAS_PADDING },
+			position:
+				standaloneGroups.positionsById.get(node.id) ??
+				positions.get(node.id) ??
+				{ x: CANVAS_PADDING, y: CANVAS_PADDING },
 			data: {
 				node,
 				resource: topologySelectableResource(node),
 				selected,
 				connected,
 				dimmed: hasSelection && !selectedPath.nodeIds.has(node.id),
+				standalone,
 			},
+			parentId: standaloneGroups.groupIdByNodeId.get(node.id),
+			extent: standalone ? "parent" : undefined,
 			draggable: false,
 			selectable: true,
 			connectable: false,
 			selected,
 			sourcePosition: Position.Right,
 			targetPosition: Position.Left,
-			style: { width: NODE_WIDTH },
+			style: { width: standalone ? STANDALONE_NODE_WIDTH : NODE_WIDTH },
+			zIndex: standalone ? 1 : undefined,
 		};
 	});
 	const edges = graph.edges
@@ -148,7 +193,7 @@ export function buildReactFlowTopology(
 			};
 		});
 
-	return { nodes, edges };
+	return { nodes: [...standaloneGroups.groupNodes, ...nodes], edges };
 }
 
 export function buildTopologyRows(topology: ResourceTopology): TopologyRow[] {

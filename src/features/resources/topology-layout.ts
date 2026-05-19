@@ -3,14 +3,14 @@ import type { ResourceTopology, TopologyNode } from "@/lib/types";
 import { type TopologyGraph, uniqueNodes } from "./topology-graph";
 
 export const NODE_WIDTH = 190;
+export const NODE_HEIGHT = 78;
 const COLUMN_GAP = 104;
-const ROW_GAP = 34;
-const NODE_HEIGHT = 66;
+const ROW_GAP = 14;
 export const CANVAS_PADDING = 96;
 const NODE_Y_STEP = NODE_HEIGHT + ROW_GAP;
-const SUBTREE_GAP = 58;
-const ROOT_GROUP_GAP = 92;
-const STANDALONE_GROUP_GAP = 28;
+const SUBTREE_GAP = 20;
+const ROOT_GROUP_GAP = 16;
+const STANDALONE_GROUP_GAP = 10;
 
 export const EDGE_PATH_OPTIONS: SmoothStepPathOptions = {
 	borderRadius: 10,
