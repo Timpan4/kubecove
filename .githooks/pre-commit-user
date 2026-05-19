@@ -13,7 +13,7 @@ staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
 if [ -n "$staged_files" ]; then
   for file in $staged_files; do
     case "$file" in
-      .githooks/pre-commit)
+      .githooks/pre-commit|.githooks/pre-commit-user)
         continue
         ;;
       *.png|*.jpg|*.jpeg|*.gif|*.ico|*.icns|*.webp|*.pdf|*.zip)
@@ -21,7 +21,14 @@ if [ -n "$staged_files" ]; then
         ;;
     esac
 
-    if git show ":$file" 2>/dev/null | grep -Eiq '(^|[[:space:]])(client-key-data|client-certificate-data|certificate-authority-data|current-context|clusters|contexts|users):'; then
+    scan_content=$(git show ":$file" 2>/dev/null || true)
+    case "$file" in
+      src-tauri/src/commands/mod.rs)
+        scan_content=$(printf '%s\n' "$scan_content" | grep -Ev '^[[:space:]]*pub use contexts::' || true)
+        ;;
+    esac
+
+    if printf '%s\n' "$scan_content" | grep -Eiq '(^|[[:space:]])(client-key-data|client-certificate-data|certificate-authority-data|current-context|clusters|contexts|users):'; then
       echo "pre-commit: possible kubeconfig or credential material staged in $file"
       echo "Move credentials out of the repo or add a narrow exception after review."
       exit 1

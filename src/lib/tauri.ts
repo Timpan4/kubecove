@@ -11,6 +11,7 @@ import type {
 	ResourceSummary,
 	ResourceEventSummary,
 	ResourceDetailsFull,
+	ResourceTopology,
 	StreamMessage,
 	WatchResourceKey,
 	AppError,
@@ -184,6 +185,17 @@ export async function listResourceEvents(
 		kind,
 		name,
 		namespace,
+	});
+}
+
+export async function listResourceTopology(
+	client: TauriClient,
+	clusterContext: string,
+	namespaces: string[],
+): Promise<ResourceTopology> {
+	return client.invoke<ResourceTopology>("list_resource_topology", {
+		clusterContext,
+		namespaces,
 	});
 }
 

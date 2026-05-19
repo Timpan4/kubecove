@@ -1,5 +1,5 @@
 use crate::commands::helpers::k8s_timestamp_to_datetime;
-use crate::models::ResourceSummary;
+use crate::models::{OwnerReferenceSummary, ResourceSummary};
 
 const ANNOTATION_ARGOCD_APP_NAME: &str = "argocd.argoproj.io/name";
 const ANNOTATION_ARGOCD_TRACKING_ID: &str = "argocd.argoproj.io/tracking-id";
@@ -15,6 +15,21 @@ pub(crate) fn extract_owner_ref(
         .as_ref()
         .and_then(|refs| refs.iter().next())
         .map(|r| r.name.clone())
+}
+
+pub(crate) fn extract_owner_ref_summary(
+    metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
+) -> Option<OwnerReferenceSummary> {
+    metadata
+        .owner_references
+        .as_ref()
+        .and_then(|refs| refs.iter().next())
+        .map(|r| OwnerReferenceSummary {
+            api_version: r.api_version.clone(),
+            kind: r.kind.clone(),
+            name: r.name.clone(),
+            uid: r.uid.clone(),
+        })
 }
 
 pub(crate) fn argo_app_from_tracking_id(tracking_id: &str) -> Option<String> {
@@ -150,11 +165,30 @@ mod tests {
         };
 
         assert_eq!(extract_owner_ref(&metadata), Some("api".to_string()));
+        assert_eq!(
+            extract_owner_ref_summary(&metadata),
+            Some(crate::models::OwnerReferenceSummary {
+                api_version: "apps/v1".to_string(),
+                kind: "Deployment".to_string(),
+                name: "api".to_string(),
+                uid: "uid-1".to_string(),
+            })
+        );
         assert_eq!(extract_argo_app(&metadata), Some("payments".to_string()));
         assert_eq!(
             extract_helm_release(&metadata),
             Some("payments-api".to_string())
         );
+    }
+
+    #[test]
+    fn owner_ref_summary_is_absent_without_owner_references() {
+        let metadata = ObjectMeta {
+            name: Some("api".to_string()),
+            ..Default::default()
+        };
+
+        assert_eq!(extract_owner_ref_summary(&metadata), None);
     }
 
     #[test]

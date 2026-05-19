@@ -316,6 +316,26 @@ describe("resource browser presentation helpers", () => {
       expect(readFileSync(file, "utf8")).toContain("cursor-pointer");
     }
   });
+
+  test("keeps the ownership map mounted as the primary resource view", () => {
+    const appSource = readFileSync("src/App.tsx", "utf8");
+    const listSource = readFileSync("src/features/resources/ResourceList.tsx", "utf8");
+    const layoutSource = readFileSync("src/features/resources/ResourceMapTableLayout.tsx", "utf8");
+
+    expect(listSource).toContain("<ResourceMapTableLayout");
+    expect(layoutSource).toContain("tablePanelOpen");
+    expect(layoutSource).toContain("hasActiveSelection");
+    expect(layoutSource).toContain("mapHeightClassName");
+    expect(appSource).toContain("selectedResource={selectedResource}");
+    expect(listSource).toContain("activeSelectedResourceKey");
+    expect(layoutSource).toContain("xl:grid-cols-[minmax(620px,1fr)_minmax(420px,0.82fr)]");
+    expect(layoutSource).toContain("h-[360px]");
+    expect(layoutSource).toContain("h-[560px]");
+    expect(layoutSource).toContain("<OwnershipMap");
+    expect(layoutSource).toContain("Hide table");
+    expect(listSource).not.toContain('resourceView === "map"');
+    expect(listSource).not.toContain('resourceView === "table"');
+  });
 });
 
 describe("sidebar source safeguards", () => {

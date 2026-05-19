@@ -29,6 +29,10 @@ export interface ScopePill {
 	value: string;
 }
 
+export function resourceSelectionKey(resource: ResourceSummary): string {
+	return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
+}
+
 export function isClusterScopedKind(kind: string): kind is ClusterScopedKind {
 	return (CLUSTER_SCOPED_KINDS as readonly string[]).includes(kind);
 }

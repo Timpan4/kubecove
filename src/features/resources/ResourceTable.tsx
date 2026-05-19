@@ -30,6 +30,7 @@ import {
 import {
 	formatResourceGroupLabel,
 	formatResourceTypeGroupLabel,
+	resourceSelectionKey,
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,
 } from "./helpers";
@@ -44,10 +45,6 @@ interface ResourceTableProps {
 	onToggleGroup: (key: string) => void;
 	onSelectedResourceKeyChange: (key: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
-}
-
-function resourceRowKey(resource: ResourceSummary): string {
-	return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
 }
 
 function sortAriaValue(sortState: false | "asc" | "desc") {
@@ -171,7 +168,7 @@ function ResourceTableRow({
 	onSelectedResourceKeyChange,
 	onResourceSelect,
 }: ResourceTableRowProps) {
-	const resourceKey = resourceRowKey(row.original);
+	const resourceKey = resourceSelectionKey(row.original);
 	const isSelected = selectedResourceKey === resourceKey;
 	const label = formatResourceGroupLabel(row.original);
 	const typeLabel = formatResourceTypeGroupLabel(row.original);
