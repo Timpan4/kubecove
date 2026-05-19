@@ -39,7 +39,7 @@ function standaloneGroupWidth(columns: number): number {
 function standaloneGroupHeight(rows: number): number {
 	return (
 		STANDALONE_GROUP_HEADER_HEIGHT +
-		STANDALONE_GROUP_PADDING +
+		STANDALONE_GROUP_PADDING * 2 +
 		rows * NODE_HEIGHT +
 		Math.max(0, rows - 1) * STANDALONE_GROUP_ROW_GAP
 	);
@@ -135,6 +135,7 @@ export function buildStandaloneGroups(
 						column * (STANDALONE_NODE_WIDTH + STANDALONE_GROUP_COLUMN_GAP),
 					y:
 						STANDALONE_GROUP_HEADER_HEIGHT +
+						STANDALONE_GROUP_PADDING +
 						row * (NODE_HEIGHT + STANDALONE_GROUP_ROW_GAP),
 				});
 			});

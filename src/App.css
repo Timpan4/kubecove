@@ -152,3 +152,44 @@
     @apply font-sans;
   }
 }
+
+.ownership-map-flow .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--card) 92%, transparent);
+  box-shadow: none;
+}
+
+.ownership-map-flow .react-flow__controls.horizontal .react-flow__controls-button {
+  width: 26px;
+  height: 26px;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-foreground);
+  box-shadow: none;
+}
+
+.ownership-map-flow
+  .react-flow__controls.horizontal
+  .react-flow__controls-button:last-child {
+  border-right: 0;
+}
+
+.ownership-map-flow .react-flow__controls-button:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.ownership-map-flow .react-flow__controls-button svg {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.ownership-map-flow .react-flow__attribution {
+  background: color-mix(in oklch, var(--background) 80%, transparent);
+}
+
+.ownership-map-flow .react-flow__edge-path {
+  stroke: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+}
