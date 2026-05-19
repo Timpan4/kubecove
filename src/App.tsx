@@ -1,5 +1,5 @@
 import "./App.css";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDashboardState } from "./lib/hooks";
 import { SidebarTree } from "./components/SidebarTree";
 import { ResourceList } from "./features/resources/ResourceList";
@@ -24,6 +24,7 @@ import {
 } from "./lib/tree-nav";
 import { diagnosticLog } from "./lib/diagnostics";
 import type { ResourceKindSelection } from "./lib/types";
+import type { HealthFilter } from "./features/resources/helpers";
 import {
 	makeWorkspaceShortcuts,
 	useWorkspaceStore,
@@ -68,6 +69,8 @@ function App() {
 	} = useDashboardState();
 	const activeWorkspace =
 		workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
+	const [resourceHealthFilter, setResourceHealthFilter] =
+		useState<HealthFilter>("all");
 	const appRenderCountRef = useRef(0);
 	appRenderCountRef.current += 1;
 
@@ -81,6 +84,7 @@ function App() {
 			setSelectedArgoApp(null);
 			setSelectedArgoAppFilter(workspace.scope.argoAppFilter);
 			setSelectedTreeNode(null);
+			setResourceHealthFilter("all");
 			setViewMode("overview");
 		},
 		[
@@ -107,6 +111,7 @@ function App() {
 		setSelectedKinds(activeWorkspace?.scope.kinds ?? []);
 		setArgoDetected(false);
 		setSelectedTreeNode(null);
+		setResourceHealthFilter("all");
 		setViewMode("resources");
 		if (activeWorkspace) {
 			updateWorkspace(activeWorkspace.id, {
@@ -121,7 +126,10 @@ function App() {
 		}
 	};
 
-	const handleOpenResources = (namespace?: string) => {
+	const handleOpenResources = (
+		namespace?: string,
+		healthFilter: HealthFilter = "all",
+	) => {
 		const workspace = activeWorkspace;
 		if (!workspace) return;
 		setSelectedNamespaces(
@@ -132,6 +140,7 @@ function App() {
 		setSelectedTreeNode(null);
 		setSelectedArgoApp(null);
 		setSelectedResource(null);
+		setResourceHealthFilter(healthFilter);
 		setViewMode("resources");
 	};
 
@@ -140,6 +149,7 @@ function App() {
 		setSelectedTreeNode({ type: "section", section: "argo" });
 		setSelectedResource(null);
 		setSelectedArgoApp(null);
+		setResourceHealthFilter("all");
 		setViewMode("argo");
 	};
 
@@ -148,6 +158,7 @@ function App() {
 		setSelectedResource(null);
 		setSelectedArgoApp(null);
 		setSelectedTreeNode(null);
+		setResourceHealthFilter("all");
 		setViewMode("resources");
 	};
 
@@ -168,6 +179,7 @@ function App() {
 			setViewMode("argo");
 			setSelectedArgoApp(null);
 			setSelectedResource(null);
+			setResourceHealthFilter("all");
 		} else if (
 			viewMode === "argo" ||
 			viewMode === "settings" ||
@@ -176,6 +188,7 @@ function App() {
 			// Leaving non-resource views clears inspector state.
 			setViewMode("resources");
 			setSelectedArgoApp(null);
+			setResourceHealthFilter("all");
 		}
 
 		setSelectedTreeNode(nodeId);
@@ -325,6 +338,7 @@ function App() {
 							selectedKinds={computedKinds}
 							selectedArgoAppFilter={selectedArgoAppFilter}
 							selectedResource={selectedResource}
+							initialHealthFilter={resourceHealthFilter}
 							onArgoAppFilterChange={setSelectedArgoAppFilter}
 							onResourceSelect={setSelectedResource}
 						/>

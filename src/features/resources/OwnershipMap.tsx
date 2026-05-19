@@ -305,8 +305,18 @@ export function OwnershipMap({
 			{topology.warnings.length > 0 && (
 				<>
 					<Separator />
-					<div className="truncate px-3 py-2 text-[0.6875rem] text-muted-foreground">
-						{topology.warnings[0]}
+					<div className="flex flex-col gap-1 px-3 py-2 text-[0.6875rem] text-muted-foreground">
+						<div className="font-semibold text-foreground">
+							Topology warnings
+						</div>
+						{topology.warnings.slice(0, 3).map((warning) => (
+							<div key={warning} className="truncate">
+								{warning}
+							</div>
+						))}
+						{topology.warnings.length > 3 && (
+							<div>{topology.warnings.length - 3} more warnings</div>
+						)}
 					</div>
 				</>
 			)}

@@ -55,6 +55,7 @@ interface ResourceListProps {
 	selectedKinds: ResourceKindSelection[];
 	selectedArgoAppFilter: string;
 	selectedResource: ResourceSummary | null;
+	initialHealthFilter?: HealthFilter;
 	onArgoAppFilterChange: (app: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
 }
@@ -65,6 +66,7 @@ function ResourceListComponent({
 	selectedKinds,
 	selectedArgoAppFilter,
 	selectedResource,
+	initialHealthFilter = "all",
 	onArgoAppFilterChange,
 	onResourceSelect,
 }: ResourceListProps) {
@@ -77,7 +79,8 @@ function ResourceListComponent({
 	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
 		() => new Set(),
 	);
-	const [healthFilter, setHealthFilter] = useState<HealthFilter>("all");
+	const [healthFilter, setHealthFilter] =
+		useState<HealthFilter>(initialHealthFilter);
 	const [selectedTopologyNodeId, setSelectedTopologyNodeId] = useState<
 		string | null
 	>(null);
@@ -101,9 +104,14 @@ function ResourceListComponent({
 	}, [clusterContext, namespaceKey, kindKey, selectedArgoAppFilter, healthFilter]);
 
 	useEffect(() => {
+		setHealthFilter(initialHealthFilter);
+		setPageIndex(0);
+	}, [initialHealthFilter]);
+
+	useEffect(() => {
 		setCollapsedGroups(new Set());
-		setHealthFilter("all");
-	}, [clusterContext, namespaceKey, kindKey]);
+		setHealthFilter(initialHealthFilter);
+	}, [clusterContext, namespaceKey, kindKey, initialHealthFilter]);
 
 	const { data, isPending, isError, error } = useQuery({
 		queryKey,
@@ -242,6 +250,13 @@ function ResourceListComponent({
 		);
 		return selectedFromTable?.id ?? selectedTopologyNodeId;
 	}, [activeSelectedResourceKey, selectedTopologyNodeId, topologyQuery.data]);
+	useEffect(() => {
+		if (!selectedTopologyNodeId || !topologyQuery.data) return;
+		if (topologyQuery.data.nodes.some((node) => node.id === selectedTopologyNodeId)) {
+			return;
+		}
+		setSelectedTopologyNodeId(null);
+	}, [selectedTopologyNodeId, topologyQuery.data]);
 	const handleResourceSelect = (resource: ResourceSummary) => {
 		setSelectedTopologyNodeId(null);
 		setSelectedResourceKey(resourceSelectionKey(resource));

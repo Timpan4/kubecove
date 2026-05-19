@@ -35,11 +35,12 @@ import {
 	type SavedWorkspace,
 	type WorkspaceShortcut,
 } from "@/lib/workspaces";
+import type { HealthFilter } from "@/features/resources/helpers";
 import { buildWorkspaceFetchKeys, fetchWorkspaceResources } from "./query";
 
 interface WorkspaceOverviewProps {
 	workspace: SavedWorkspace;
-	onOpenResources: (namespace?: string) => void;
+	onOpenResources: (namespace?: string, healthFilter?: HealthFilter) => void;
 	onOpenArgo: (argoApp?: string) => void;
 	onOpenLauncher: () => void;
 }
@@ -71,7 +72,7 @@ function ShortcutButton({
 	onOpenArgo,
 }: {
 	shortcut: WorkspaceShortcut;
-	onOpenResources: (namespace?: string) => void;
+	onOpenResources: (namespace?: string, healthFilter?: HealthFilter) => void;
 	onOpenArgo: (argoApp?: string) => void;
 }) {
 	const icon =
@@ -89,6 +90,34 @@ function ShortcutButton({
 		>
 			{icon}
 			{shortcut.label}
+		</Button>
+	);
+}
+
+function IncidentShortcutButton({
+	label,
+	count,
+	filter,
+	onOpenResources,
+}: {
+	label: string;
+	count: number;
+	filter: HealthFilter;
+	onOpenResources: (namespace?: string, healthFilter?: HealthFilter) => void;
+}) {
+	if (count === 0) return null;
+	return (
+		<Button
+			type="button"
+			variant="outline"
+			size="sm"
+			onClick={() => onOpenResources(undefined, filter)}
+		>
+			<AlertTriangle data-icon="inline-start" />
+			{label}
+			<Badge variant="secondary" className="ml-1 rounded-sm px-1.5">
+				{count}
+			</Badge>
 		</Button>
 	);
 }
@@ -170,6 +199,9 @@ export function WorkspaceOverview({
 	const argoDrift = (argoApps ?? []).filter(
 		(app) => app.syncStatus && app.syncStatus !== "Synced",
 	).length;
+	const unhealthyCount = health.attention + health.degraded;
+	const hasIncidentShortcuts =
+		unhealthyCount > 0 || health.attention > 0 || health.restarted > 0;
 
 	const hasRestoreWarning =
 		!restoreStatus.clusterAvailable ||
@@ -230,6 +262,37 @@ export function WorkspaceOverview({
 				<Metric label="Degraded" value={health.degraded} tone="text-red-300" />
 				<Metric label="Restarted" value={health.restarted} tone="text-sky-300" />
 			</div>
+
+			{hasIncidentShortcuts && (
+				<Card>
+					<CardHeader>
+						<CardTitle>Incident shortcuts</CardTitle>
+						<CardDescription>
+							Open the saved scope with an investigation filter applied.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="flex flex-wrap gap-2">
+						<IncidentShortcutButton
+							label="Unhealthy"
+							count={unhealthyCount}
+							filter="unhealthy"
+							onOpenResources={onOpenResources}
+						/>
+						<IncidentShortcutButton
+							label="Warnings"
+							count={health.attention}
+							filter="attention"
+							onOpenResources={onOpenResources}
+						/>
+						<IncidentShortcutButton
+							label="Restarted"
+							count={health.restarted}
+							filter="restarted"
+							onOpenResources={onOpenResources}
+						/>
+					</CardContent>
+				</Card>
+			)}
 
 			<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
 				<Card>

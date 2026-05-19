@@ -833,15 +833,19 @@ describe("incident signal helpers", () => {
 	});
 
 	test("renders signal timestamps through the shared timestamp formatter", () => {
-		const source = readFileSync(
+		const detailsSource = readFileSync(
 			"src/features/resource-detail/DetailsTab.tsx",
 			"utf8",
 		);
+		const valueSource = readFileSync(
+			"src/features/resource-detail/IncidentSignalValue.tsx",
+			"utf8",
+		);
 
-		expect(source).toContain("ExactTimestampText");
-		expect(source).toContain("valueParts");
-		expect(source).toContain("<SignalValue signal={signal} />");
-		expect(source).not.toContain("{signal.value}");
+		expect(detailsSource).toContain("<IncidentSignalValue signal={signal} />");
+		expect(valueSource).toContain("ExactTimestampText");
+		expect(valueSource).toContain("valueParts");
+		expect(valueSource).not.toContain("{signal.value}");
 	});
 
 	test("renders metadata creation timestamps through the shared timestamp formatter", () => {
