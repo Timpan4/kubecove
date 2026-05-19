@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { ResourceEventSummary, ResourceSummary } from "../src/lib/types";
 import {
 	buildIncidentSignals,
-	sortIncidentEvents,
 	type ConditionRow,
 	type ContainerStatusRow,
 } from "../src/features/resource-detail/helpers";
+import { sortIncidentEvents } from "../src/features/resource-detail/incident-events";
 import { filterResourcesByHealth } from "../src/features/resources/helpers";
 
 function resource(overrides: Partial<ResourceSummary> = {}): ResourceSummary {

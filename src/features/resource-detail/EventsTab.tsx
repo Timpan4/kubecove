@@ -12,7 +12,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Clock, TriangleAlert } from "lucide-react";
 import { useMemo } from "react";
 import type { ResourceEventSummary } from "../../lib/types";
-import { getErrorMessage, sortIncidentEvents } from "./helpers";
+import { getErrorMessage } from "./helpers";
+import { sortIncidentEvents } from "./incident-events";
 
 interface EventsTabProps {
 	events: ResourceEventSummary[] | undefined;
