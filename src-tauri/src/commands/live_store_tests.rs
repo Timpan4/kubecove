@@ -65,6 +65,46 @@ fn grace_cache_reuses_recent_completed_value() {
 }
 
 #[test]
+fn dirty_live_cache_reloads_even_inside_grace_window() {
+    tauri::async_runtime::block_on(async {
+        let cache = SharedCache::new("test");
+        let loads = Arc::new(AtomicUsize::new(0));
+
+        let first_loads = loads.clone();
+        let first = cache
+            .get_or_load(
+                "same".to_string(),
+                CacheMode::LiveUntilDirty,
+                move || async move {
+                    first_loads.fetch_add(1, Ordering::SeqCst);
+                    Ok::<_, AppError>(vec!["one".to_string()])
+                },
+            )
+            .await
+            .expect("first load");
+
+        cache.mark_dirty("same");
+
+        let second_loads = loads.clone();
+        let second = cache
+            .get_or_load(
+                "same".to_string(),
+                CacheMode::LiveUntilDirty,
+                move || async move {
+                    second_loads.fetch_add(1, Ordering::SeqCst);
+                    Ok::<_, AppError>(vec!["two".to_string()])
+                },
+            )
+            .await
+            .expect("second load");
+
+        assert_eq!(first, vec!["one".to_string()]);
+        assert_eq!(second, vec!["two".to_string()]);
+        assert_eq!(loads.load(Ordering::SeqCst), 2);
+    });
+}
+
+#[test]
 fn all_namespace_resources_cover_named_namespace_reads() {
     let store = ClusterLiveStore::default();
     tauri::async_runtime::block_on(async {

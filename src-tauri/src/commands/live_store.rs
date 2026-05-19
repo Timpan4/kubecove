@@ -61,7 +61,7 @@ where
 
     fn can_reuse(ready: &ReadyValue<T>, mode: CacheMode) -> bool {
         if ready.dirty {
-            return ready.completed_at.elapsed() <= COMPLETED_GRACE;
+            return false;
         }
 
         match mode {
