@@ -12,6 +12,7 @@ fn known_resource_kind(kind: &str) -> Option<WatchResourceKind> {
         "Node" => ("v1", "", "v1", "nodes", false),
         "PersistentVolume" => ("v1", "", "v1", "persistentvolumes", false),
         "Deployment" => ("apps/v1", "apps", "v1", "deployments", true),
+        "ReplicaSet" => ("apps/v1", "apps", "v1", "replicasets", true),
         "StatefulSet" => ("apps/v1", "apps", "v1", "statefulsets", true),
         "DaemonSet" => ("apps/v1", "apps", "v1", "daemonsets", true),
         "Ingress" => (

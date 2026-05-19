@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import { queryKeys } from "@/lib/queryKeys";
 import {
 	createTauriClient,
 	detectArgoCD,
@@ -34,7 +35,7 @@ import {
 	type SavedWorkspace,
 	type WorkspaceShortcut,
 } from "@/lib/workspaces";
-import { fetchWorkspaceResources } from "./query";
+import { buildWorkspaceFetchKeys, fetchWorkspaceResources } from "./query";
 
 interface WorkspaceOverviewProps {
 	workspace: SavedWorkspace;
@@ -100,7 +101,7 @@ export function WorkspaceOverview({
 }: WorkspaceOverviewProps) {
 	const client = useMemo(() => createTauriClient(), []);
 	const contextsQuery = useQuery({
-		queryKey: ["workspace-overview-contexts"],
+		queryKey: queryKeys.kubeContexts(),
 		queryFn: () => listKubeContexts(client),
 	});
 	const contexts = contextsQuery.data ?? [];
@@ -109,14 +110,14 @@ export function WorkspaceOverview({
 		contexts.some((context) => context.name === workspace.scope.clusterContext);
 
 	const namespacesQuery = useQuery({
-		queryKey: ["workspace-overview-namespaces", workspace.scope.clusterContext],
+		queryKey: queryKeys.namespaces(workspace.scope.clusterContext),
 		queryFn: () => listNamespaces(client, workspace.scope.clusterContext),
 		enabled: clusterAvailable && !contextsQuery.isPending,
 	});
 	const namespaces = namespacesQuery.data?.map((namespace) => namespace.name) ?? [];
 
 	const kindsQuery = useQuery({
-		queryKey: ["workspace-overview-kinds", workspace.scope.clusterContext],
+		queryKey: queryKeys.resourceKinds(workspace.scope.clusterContext),
 		queryFn: () => listResourceKinds(client, workspace.scope.clusterContext),
 		enabled: clusterAvailable && !contextsQuery.isPending,
 	});
@@ -135,14 +136,16 @@ export function WorkspaceOverview({
 	const availableNamespaces = workspace.scope.namespaces.filter(
 		(namespace) => !restoreStatus.missingNamespaces.includes(namespace),
 	);
+	const workspaceFetchKeys = useMemo(
+		() => buildWorkspaceFetchKeys(workspace.scope, availableNamespaces),
+		[workspace.scope, availableNamespaces],
+	);
 
 	const resourcesQuery = useQuery({
-		queryKey: [
-			"workspace-overview-resources",
-			workspace.id,
-			workspace.updatedAt,
-			availableNamespaces.join(","),
-		],
+		queryKey: queryKeys.resources(
+			workspace.scope.clusterContext,
+			workspaceFetchKeys,
+		),
 		queryFn: () => fetchWorkspaceResources(workspace.scope, availableNamespaces),
 		enabled:
 			restoreStatus.clusterAvailable &&
@@ -154,12 +157,12 @@ export function WorkspaceOverview({
 	const health = useMemo(() => buildWorkspaceHealthSummary(rows), [rows]);
 
 	const argoDetectedQuery = useQuery({
-		queryKey: ["workspace-overview-argo-detect", workspace.scope.clusterContext],
+		queryKey: queryKeys.argoDetect(workspace.scope.clusterContext),
 		queryFn: () => detectArgoCD(client, workspace.scope.clusterContext),
 		enabled: restoreStatus.clusterAvailable,
 	});
 	const argoAppsQuery = useQuery({
-		queryKey: ["workspace-overview-argo-apps", workspace.scope.clusterContext],
+		queryKey: queryKeys.argoApps(workspace.scope.clusterContext),
 		queryFn: () => listArgoApplications(client, workspace.scope.clusterContext),
 		enabled: argoDetectedQuery.data === true,
 	});

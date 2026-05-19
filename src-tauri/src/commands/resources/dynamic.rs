@@ -2,6 +2,7 @@ use crate::commands::helpers::{
     extract_argo_app, extract_helm_release, extract_owner_ref, k8s_creation_timestamp_to_rfc3339,
     list_params, resource_age,
 };
+use crate::commands::ClusterLiveStore;
 use crate::models::{AppError, DiscoveredResourceKind, ResourceDetailsFull, ResourceSummary};
 use chrono::{TimeZone, Utc};
 use kube::{
@@ -11,6 +12,7 @@ use kube::{
 };
 use serde_json::Value;
 use std::time::Instant;
+use tauri::State;
 
 pub(crate) fn api_resource_from_discovered(
     resource_kind: &DiscoveredResourceKind,
@@ -135,6 +137,7 @@ pub async fn list_dynamic_resources(
     cluster_context: String,
     resource_kind: DiscoveredResourceKind,
     namespace: Option<String>,
+    live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<all>");
@@ -142,12 +145,19 @@ pub async fn list_dynamic_resources(
         "[kubecove:backend] list_dynamic_resources start context={} kind={} api_version={} namespace={}",
         cluster_context, resource_kind.kind, resource_kind.api_version, namespace_label
     );
-    let result = dynamic_resources_summary_from(
-        cluster_context.clone(),
-        resource_kind.clone(),
-        namespace.clone(),
-    )
-    .await;
+    let result = live_store
+        .dynamic_resources(
+            cluster_context.clone(),
+            resource_kind.clone(),
+            namespace.clone(),
+            {
+                let cluster_context = cluster_context.clone();
+                let resource_kind = resource_kind.clone();
+                let namespace = namespace.clone();
+                move || dynamic_resources_summary_from(cluster_context, resource_kind, namespace)
+            },
+        )
+        .await;
     match &result {
         Ok(rows) => eprintln!(
             "[kubecove:backend] list_dynamic_resources done context={} kind={} namespace={} rows={} ms={}",

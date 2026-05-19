@@ -1,14 +1,18 @@
-use super::topology_collection::collect_topology_inputs;
-use crate::commands::helpers::{base_resource_summary, extract_owner_ref_summary, resource_age};
+use super::{scope::resource_scope_from, topology_collection::collect_topology_inputs};
+use crate::commands::{
+    helpers::{base_resource_summary, extract_owner_ref_summary, resource_age},
+    ClusterLiveStore,
+};
 use crate::models::{
-    AppError, OwnerReferenceSummary, ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode,
-    TopologyRelation,
+    AppError, OwnerReferenceSummary, ResourceListRequest, ResourceSummary, ResourceTopology,
+    TopologyEdge, TopologyNode, TopologyRelation,
 };
 use chrono::{TimeZone, Utc};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{config::KubeConfigOptions, Client};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
+use tauri::State;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TopologyInputResource {
@@ -203,6 +207,107 @@ pub(crate) fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> Res
     }
 }
 
+fn typed_api_version(kind: &str) -> &'static str {
+    match kind {
+        "Deployment" | "DaemonSet" | "ReplicaSet" | "StatefulSet" => "apps/v1",
+        "CronJob" | "Job" => "batch/v1",
+        "Ingress" => "networking.k8s.io/v1",
+        _ => "v1",
+    }
+}
+
+fn topology_input_id(summary: &ResourceSummary) -> String {
+    topology_node_id(
+        &summary.cluster,
+        summary
+            .api_version
+            .as_deref()
+            .unwrap_or_else(|| typed_api_version(&summary.kind)),
+        &summary.kind,
+        summary.namespace.as_deref(),
+        &summary.name,
+    )
+}
+
+fn topology_inputs_from_summaries(rows: Vec<ResourceSummary>) -> Vec<TopologyInputResource> {
+    let mut identity_by_name = HashMap::new();
+    for row in &rows {
+        identity_by_name
+            .entry((row.namespace.clone().unwrap_or_default(), row.name.clone()))
+            .or_insert_with(|| {
+                (
+                    topology_input_id(row),
+                    row.kind.clone(),
+                    row.api_version
+                        .clone()
+                        .unwrap_or_else(|| typed_api_version(&row.kind).to_string()),
+                )
+            });
+    }
+
+    rows.into_iter()
+        .map(|mut summary| {
+            let uid = topology_input_id(&summary);
+            let owner = summary.owner_ref.as_ref().and_then(|owner_name| {
+                let namespace = summary.namespace.clone().unwrap_or_default();
+                let (owner_uid, owner_kind, owner_api_version) =
+                    identity_by_name.get(&(namespace, owner_name.clone()))?;
+                Some(OwnerReferenceSummary {
+                    api_version: owner_api_version.clone(),
+                    kind: owner_kind.clone(),
+                    name: owner_name.clone(),
+                    uid: owner_uid.clone(),
+                })
+            });
+            summary
+                .api_version
+                .get_or_insert_with(|| typed_api_version(&summary.kind).to_string());
+            TopologyInputResource {
+                uid,
+                owner,
+                summary,
+            }
+        })
+        .collect()
+}
+
+fn topology_resource_requests(namespaces: &[String]) -> Vec<ResourceListRequest> {
+    let kinds = [
+        "Deployment",
+        "DaemonSet",
+        "ReplicaSet",
+        "StatefulSet",
+        "CronJob",
+        "Job",
+        "Pod",
+        "PersistentVolumeClaim",
+        "Service",
+        "Ingress",
+        "ConfigMap",
+        "Secret",
+    ];
+    kinds
+        .into_iter()
+        .flat_map(|kind| {
+            if namespaces.is_empty() {
+                return vec![ResourceListRequest {
+                    kind: Some(kind.to_string()),
+                    resource_kind: None,
+                    namespace: None,
+                }];
+            }
+            namespaces
+                .iter()
+                .map(|namespace| ResourceListRequest {
+                    kind: Some(kind.to_string()),
+                    resource_kind: None,
+                    namespace: Some(namespace.clone()),
+                })
+                .collect()
+        })
+        .collect()
+}
+
 fn push_edge(
     edges: &mut Vec<TopologyEdge>,
     edge_keys: &mut HashSet<String>,
@@ -317,6 +422,7 @@ pub async fn resource_topology_from(
 pub async fn list_resource_topology(
     cluster_context: String,
     namespaces: Vec<String>,
+    live_store: State<'_, ClusterLiveStore>,
 ) -> Result<ResourceTopology, AppError> {
     let started = Instant::now();
     eprintln!(
@@ -324,7 +430,24 @@ pub async fn list_resource_topology(
         cluster_context,
         namespaces.join(",")
     );
-    let result = resource_topology_from(cluster_context.clone(), namespaces.clone()).await;
+    let result = live_store
+        .topology(cluster_context.clone(), namespaces.clone(), {
+            let cluster_context = cluster_context.clone();
+            let namespaces = namespaces.clone();
+            let live_store = live_store.inner().clone();
+            move || async move {
+                let rows = resource_scope_from(
+                    cluster_context.clone(),
+                    topology_resource_requests(&namespaces),
+                    live_store,
+                )
+                .await?;
+                Ok(build_resource_topology(topology_inputs_from_summaries(
+                    rows,
+                )))
+            }
+        })
+        .await;
     match &result {
         Ok(topology) => eprintln!(
             "[kubecove:backend] list_resource_topology done context={} namespaces={} nodes={} edges={} warnings={} ms={}",

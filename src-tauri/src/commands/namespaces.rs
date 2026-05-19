@@ -1,8 +1,12 @@
-use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, list_params};
+use crate::commands::{
+    helpers::{k8s_creation_timestamp_to_rfc3339, list_params},
+    ClusterLiveStore,
+};
 use crate::models::{AppError, NamespaceSummary};
 use chrono::{DateTime, Utc};
 use kube::{api::Api, config::KubeConfigOptions, Client};
 use std::time::Instant;
+use tauri::State;
 
 fn namespace_age(creation_timestamp: Option<DateTime<Utc>>) -> String {
     match creation_timestamp {
@@ -65,13 +69,21 @@ fn k8s_openapi_time_to_datetime(timestamp: &k8s_openapi::jiff::Timestamp) -> Opt
 }
 
 #[tauri::command]
-pub async fn list_namespaces(cluster_context: String) -> Result<Vec<NamespaceSummary>, AppError> {
+pub async fn list_namespaces(
+    cluster_context: String,
+    live_store: State<'_, ClusterLiveStore>,
+) -> Result<Vec<NamespaceSummary>, AppError> {
     let started = Instant::now();
     eprintln!(
         "[kubecove:backend] list_namespaces start context={}",
         cluster_context
     );
-    let result = namespaces_summary_from(cluster_context.clone()).await;
+    let result = live_store
+        .namespaces(cluster_context.clone(), {
+            let cluster_context = cluster_context.clone();
+            move || namespaces_summary_from(cluster_context)
+        })
+        .await;
     match &result {
         Ok(rows) => eprintln!(
             "[kubecove:backend] list_namespaces done context={} rows={} ms={}",
