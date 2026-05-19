@@ -81,7 +81,12 @@ export function buildStandaloneGroups(
 			: CANVAS_PADDING - STANDALONE_GROUP_GAP;
 	const groupedByKind = new Map<string, TopologyNode[]>();
 	for (const node of standaloneNodes) {
-		groupedByKind.set(node.kind, [...(groupedByKind.get(node.kind) ?? []), node]);
+		const bucket = groupedByKind.get(node.kind);
+		if (bucket) {
+			bucket.push(node);
+		} else {
+			groupedByKind.set(node.kind, [node]);
+		}
 	}
 
 	const groupNodes: StandaloneKindGroupGraphNode[] = [];
