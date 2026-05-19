@@ -108,18 +108,22 @@ describe("ownership topology helpers", () => {
 		expect(replicaSet?.position.x).toBeLessThan(pod?.position.x ?? 0);
 		expect(pod?.selected).toBe(true);
 		expect(pod?.data.selected).toBe(true);
+		expect(deployment?.data.connected).toBe(true);
 		expect(replicaSet?.data.connected).toBe(true);
 		expect(graph.edges.map((edge) => [edge.source, edge.target])).toEqual([
 			[deploymentId, replicaSetId],
 			[replicaSetId, podId],
 		]);
-		expect(graph.edges.every((edge) => edge.type === "simplebezier")).toBe(true);
+		expect(graph.edges.every((edge) => edge.type === "smoothstep")).toBe(true);
+		expect(graph.edges.every((edge) => edge.pathOptions?.borderRadius === 10)).toBe(
+			true,
+		);
 		expect(graph.edges.find((edge) => edge.id === "rs-pod")?.style?.stroke).toBe(
 			"var(--primary)",
 		);
 		expect(graph.edges.find((edge) => edge.id === "rs-pod")?.zIndex).toBe(10);
 		expect(graph.edges.find((edge) => edge.id === "deploy-rs")?.style?.opacity).toBe(
-			0.28,
+			1,
 		);
 	});
 
@@ -347,6 +351,207 @@ describe("ownership topology helpers", () => {
 		);
 
 		expect(maxAlloyY).toBeLessThan(minAlloyInClusterY);
+	});
+
+	test("adds Argo-style vertical gaps around nested ownership bands", () => {
+		const ciliumId = resourceTopologyNodeId(
+			"kind-dev",
+			"apps/v1",
+			"DaemonSet",
+			"kube-system",
+			"cilium",
+		);
+		const hubbleId = resourceTopologyNodeId(
+			"kind-dev",
+			"apps/v1",
+			"Deployment",
+			"kube-system",
+			"hubble-relay",
+		);
+		const hubbleReplicaSetId = resourceTopologyNodeId(
+			"kind-dev",
+			"apps/v1",
+			"ReplicaSet",
+			"kube-system",
+			"hubble-relay-7b7",
+		);
+		const hubblePodId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"Pod",
+			"kube-system",
+			"hubble-relay-7b7-x",
+		);
+		const ciliumPodId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"Pod",
+			"kube-system",
+			"cilium-dmpnh",
+		);
+		const metricsId = resourceTopologyNodeId(
+			"kind-dev",
+			"apps/v1",
+			"Deployment",
+			"kube-system",
+			"metrics-server",
+		);
+		const metricsPodId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"Pod",
+			"kube-system",
+			"metrics-server-x",
+		);
+		const node = (
+			id: string,
+			kind: ResourceSummary["kind"],
+			name: string,
+			selectable = true,
+		) => ({
+			id,
+			kind,
+			name,
+			namespace: "kube-system",
+			status: "Running",
+			health: "healthy" as const,
+			selectable,
+			summary: summary({ kind, name, namespace: "kube-system" }),
+		});
+		const topology: ResourceTopology = {
+			nodes: [
+				node(ciliumId, "DaemonSet", "cilium"),
+				node(hubbleId, "Deployment", "hubble-relay"),
+				node(hubbleReplicaSetId, "ReplicaSet", "hubble-relay-7b7", false),
+				node(hubblePodId, "Pod", "hubble-relay-7b7-x"),
+				node(ciliumPodId, "Pod", "cilium-dmpnh"),
+				node(metricsId, "Deployment", "metrics-server"),
+				node(metricsPodId, "Pod", "metrics-server-x"),
+			],
+			edges: [
+				{ id: "cilium-hubble", source: ciliumId, target: hubbleId, relation: "groups" },
+				{
+					id: "hubble-rs",
+					source: hubbleId,
+					target: hubbleReplicaSetId,
+					relation: "owns",
+				},
+				{
+					id: "hubble-pod",
+					source: hubbleReplicaSetId,
+					target: hubblePodId,
+					relation: "owns",
+				},
+				{ id: "cilium-pod", source: ciliumId, target: ciliumPodId, relation: "owns" },
+				{
+					id: "metrics-pod",
+					source: metricsId,
+					target: metricsPodId,
+					relation: "owns",
+				},
+			],
+			warnings: [],
+		};
+
+		const graph = buildReactFlowTopology(topology, null);
+		const yById = new Map(graph.nodes.map((graphNode) => [graphNode.id, graphNode.position.y]));
+		const hubblePodY = yById.get(hubblePodId) ?? 0;
+		const ciliumPodY = yById.get(ciliumPodId) ?? 0;
+		const metricsY = yById.get(metricsId) ?? 0;
+
+		expect(ciliumPodY - hubblePodY).toBeGreaterThan(140);
+		expect(metricsY - ciliumPodY).toBeGreaterThan(120);
+		expect(yById.get(ciliumId)).toBeGreaterThan(hubblePodY);
+		expect(yById.get(ciliumId)).toBeLessThan(ciliumPodY);
+	});
+
+	test("selecting a parent highlights the full descendant path", () => {
+		const deploymentId = resourceTopologyNodeId(
+			"kind-dev",
+			"apps/v1",
+			"Deployment",
+			"default",
+			"api",
+		);
+		const replicaSetId = resourceTopologyNodeId(
+			"kind-dev",
+			"apps/v1",
+			"ReplicaSet",
+			"default",
+			"api-7d9",
+		);
+		const podId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"Pod",
+			"default",
+			"api-7d9-x",
+		);
+		const standaloneId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"ConfigMap",
+			"default",
+			"kube-root-ca.crt",
+		);
+		const topology: ResourceTopology = {
+			nodes: [
+				{
+					id: deploymentId,
+					kind: "Deployment",
+					name: "api",
+					namespace: "default",
+					status: "Available: 1",
+					health: "healthy",
+					selectable: true,
+					summary: summary({ kind: "Deployment", name: "api", apiVersion: "apps/v1" }),
+				},
+				{
+					id: replicaSetId,
+					kind: "ReplicaSet",
+					name: "api-7d9",
+					namespace: "default",
+					status: "Available: 1",
+					health: "healthy",
+					selectable: false,
+					summary: summary({ kind: "ReplicaSet", name: "api-7d9", apiVersion: "apps/v1" }),
+				},
+				{
+					id: podId,
+					kind: "Pod",
+					name: "api-7d9-x",
+					namespace: "default",
+					status: "Running",
+					health: "healthy",
+					selectable: true,
+					summary: summary({ kind: "Pod", name: "api-7d9-x" }),
+				},
+				{
+					id: standaloneId,
+					kind: "ConfigMap",
+					name: "kube-root-ca.crt",
+					namespace: "default",
+					status: null,
+					health: "unknown",
+					selectable: true,
+					summary: summary({ kind: "ConfigMap", name: "kube-root-ca.crt" }),
+				},
+			],
+			edges: [
+				{ id: "deploy-rs", source: deploymentId, target: replicaSetId, relation: "owns" },
+				{ id: "rs-pod", source: replicaSetId, target: podId, relation: "owns" },
+			],
+			warnings: [],
+		};
+
+		const graph = buildReactFlowTopology(topology, deploymentId);
+		const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+
+		expect(nodesById.get(deploymentId)?.data.selected).toBe(true);
+		expect(nodesById.get(replicaSetId)?.data.connected).toBe(true);
+		expect(nodesById.get(podId)?.data.connected).toBe(true);
+		expect(nodesById.get(standaloneId)?.data.dimmed).toBe(true);
+		expect(graph.edges.every((edge) => edge.style?.opacity === 1)).toBe(true);
 	});
 
 	test("builds deterministic rows with parent resources before children", () => {

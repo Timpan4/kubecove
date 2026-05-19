@@ -3,6 +3,7 @@ import {
 	Position,
 	type Edge,
 	type Node,
+	type SmoothStepPathOptions,
 } from "@xyflow/react";
 import type {
 	ResourceSummary,
@@ -11,6 +12,21 @@ import type {
 	TopologyRelation,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+	CANVAS_PADDING,
+	EDGE_PATH_OPTIONS,
+	NODE_WIDTH,
+	buildTopologyPositions,
+	compareNodesByLayoutOrder,
+	sortTopologyNodes,
+	topologyColumnDepth,
+	topologyLayoutOrder,
+} from "./topology-layout";
+import {
+	buildTopologyGraph,
+	selectedTopologyPath,
+	uniqueNodes,
+} from "./topology-graph";
 
 export interface TopologyRow {
 	node: TopologyNode;
@@ -24,42 +40,23 @@ export interface OwnershipGraphNodeData extends Record<string, unknown> {
 	resource: ResourceSummary | null;
 	selected: boolean;
 	connected: boolean;
+	dimmed: boolean;
 }
 
 export type OwnershipGraphNode = Node<
 	OwnershipGraphNodeData,
 	"ownershipResource"
 >;
-export type OwnershipGraphEdge = Edge<{ relation: TopologyRelation }>;
+export type OwnershipGraphEdge = Edge<
+	{ relation: TopologyRelation },
+	"smoothstep"
+> & {
+	pathOptions?: SmoothStepPathOptions;
+};
 
 export interface ReactFlowTopology {
 	nodes: OwnershipGraphNode[];
 	edges: OwnershipGraphEdge[];
-}
-
-const NODE_WIDTH = 190;
-const COLUMN_GAP = 104;
-const ROW_GAP = 34;
-const NODE_HEIGHT = 66;
-const CANVAS_PADDING = 180;
-
-const KIND_RANK: Record<string, number> = {
-	Deployment: 0,
-	DaemonSet: 0,
-	StatefulSet: 0,
-	CronJob: 0,
-	Service: 0,
-	Ingress: 0,
-	ConfigMap: 0,
-	Secret: 0,
-	ReplicaSet: 1,
-	Job: 1,
-	Pod: 2,
-	PersistentVolumeClaim: 3,
-};
-
-function kindRank(kind: string): number {
-	return KIND_RANK[kind] ?? 9;
 }
 
 export function resourceTopologyNodeId(
@@ -73,113 +70,7 @@ export function resourceTopologyNodeId(
 }
 
 function sortNodes(a: TopologyNode, b: TopologyNode): number {
-	const rank = kindRank(a.kind) - kindRank(b.kind);
-	if (rank !== 0) return rank;
-	const namespace = (a.namespace ?? "").localeCompare(b.namespace ?? "");
-	if (namespace !== 0) return namespace;
-	const kind = a.kind.localeCompare(b.kind);
-	if (kind !== 0) return kind;
-	return a.name.localeCompare(b.name, undefined, { numeric: true });
-}
-
-function uniqueNodes(nodes: TopologyNode[]): TopologyNode[] {
-	return Array.from(new Map(nodes.map((node) => [node.id, node])).values());
-}
-
-function topologyColumnDepth(topology: ResourceTopology): Map<string, number> {
-	const topologyNodes = uniqueNodes(topology.nodes);
-	const nodesById = new Map(topologyNodes.map((node) => [node.id, node]));
-	const parents = new Map<string, string[]>();
-	for (const edge of topology.edges) {
-		if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) continue;
-		parents.set(edge.target, [...(parents.get(edge.target) ?? []), edge.source]);
-	}
-
-	const depthById = new Map<string, number>();
-	const visiting = new Set<string>();
-	function resolve(node: TopologyNode): number {
-		const cached = depthById.get(node.id);
-		if (cached !== undefined) return cached;
-		if (visiting.has(node.id)) return kindRank(node.kind);
-		visiting.add(node.id);
-		const parentIds = parents.get(node.id) ?? [];
-		if (parentIds.length === 0) {
-			depthById.set(node.id, 0);
-			visiting.delete(node.id);
-			return 0;
-		}
-		const parentDepths = parentIds
-			.map((id) => nodesById.get(id))
-			.filter((parent): parent is TopologyNode => Boolean(parent))
-			.map((parent) => resolve(parent) + 1);
-		const edgeDepth = Math.max(...parentDepths);
-		const depth = Math.max(edgeDepth, kindRank(node.kind));
-		depthById.set(node.id, depth);
-		visiting.delete(node.id);
-		return depth;
-	}
-
-	for (const node of topologyNodes) resolve(node);
-	return depthById;
-}
-
-function topologyIncomingParents(topology: ResourceTopology): Map<string, string[]> {
-	const nodeIds = new Set(uniqueNodes(topology.nodes).map((node) => node.id));
-	const parents = new Map<string, string[]>();
-	for (const edge of topology.edges) {
-		if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
-		parents.set(edge.target, [...(parents.get(edge.target) ?? []), edge.source]);
-	}
-	return parents;
-}
-
-function topologyLayoutOrder(
-	nodes: TopologyNode[],
-	topology: ResourceTopology,
-	depthById: Map<string, number>,
-): Map<string, string> {
-	const nodesById = new Map(nodes.map((node) => [node.id, node]));
-	const parents = topologyIncomingParents(topology);
-	const roots = nodes
-		.filter((node) => (parents.get(node.id) ?? []).length === 0)
-		.sort(sortNodes);
-	const rootOrder = new Map(roots.map((node, index) => [node.id, index]));
-	const memo = new Map<string, string>();
-	const visiting = new Set<string>();
-	const localKey = (node: TopologyNode) =>
-		[
-			String(kindRank(node.kind)).padStart(2, "0"),
-			node.namespace ?? "",
-			node.kind,
-			node.name,
-			node.id,
-		].join("|");
-
-	function resolve(node: TopologyNode): string {
-		const cached = memo.get(node.id);
-		if (cached) return cached;
-		if (visiting.has(node.id)) return localKey(node);
-		visiting.add(node.id);
-		const parentNodes = (parents.get(node.id) ?? [])
-			.map((id) => nodesById.get(id))
-			.filter((parent): parent is TopologyNode => Boolean(parent))
-			.sort((a, b) => sortNodes(a, b));
-		const parentKey =
-			parentNodes.length > 0
-				? parentNodes.map(resolve).sort()[0]
-				: String(rootOrder.get(node.id) ?? roots.length).padStart(4, "0");
-		const key = [
-			parentKey,
-			String(depthById.get(node.id) ?? 0).padStart(2, "0"),
-			localKey(node),
-		].join(">");
-		memo.set(node.id, key);
-		visiting.delete(node.id);
-		return key;
-	}
-
-	for (const node of nodes) resolve(node);
-	return memo;
+	return sortTopologyNodes(a, b);
 }
 
 export function buildReactFlowTopology(
@@ -187,42 +78,34 @@ export function buildReactFlowTopology(
 	selectedNodeId: string | null,
 ): ReactFlowTopology {
 	const depthById = topologyColumnDepth(topology);
-	const topologyNodes = uniqueNodes(topology.nodes);
-	const orderById = topologyLayoutOrder(topologyNodes, topology, depthById);
-	const sortedNodes = topologyNodes.sort((a, b) => {
-		const column = (depthById.get(a.id) ?? 0) - (depthById.get(b.id) ?? 0);
-		if (column !== 0) return column;
-		const order = (orderById.get(a.id) ?? "").localeCompare(
-			orderById.get(b.id) ?? "",
-		);
-		if (order !== 0) return order;
-		return sortNodes(a, b);
+	const graph = buildTopologyGraph(topology);
+	const orderById = topologyLayoutOrder(graph.nodes, topology, depthById);
+	const positions = buildTopologyPositions(graph, depthById, orderById);
+	const compareNodes = compareNodesByLayoutOrder(orderById, depthById);
+	const selectedPath = selectedTopologyPath(graph, selectedNodeId);
+	const hasSelection = Boolean(selectedNodeId && selectedPath.nodeIds.size > 0);
+	const sortedNodes = graph.nodes.sort((a, b) => {
+		const aPosition = positions.get(a.id);
+		const bPosition = positions.get(b.id);
+		const x = (aPosition?.x ?? 0) - (bPosition?.x ?? 0);
+		if (x !== 0) return x;
+		const y = (aPosition?.y ?? 0) - (bPosition?.y ?? 0);
+		if (y !== 0) return y;
+		return compareNodes(a, b);
 	});
-	const columnRows = new Map<number, number>();
-	const selectedConnections = new Set<string>();
-	if (selectedNodeId) {
-		for (const edge of topology.edges) {
-			if (edge.source === selectedNodeId) selectedConnections.add(edge.target);
-			if (edge.target === selectedNodeId) selectedConnections.add(edge.source);
-		}
-	}
 	const nodes = sortedNodes.map<OwnershipGraphNode>((node) => {
-		const column = depthById.get(node.id) ?? kindRank(node.kind);
-		const row = columnRows.get(column) ?? 0;
 		const selected = selectedNodeId === node.id;
-		columnRows.set(column, row + 1);
+		const connected = selectedPath.nodeIds.has(node.id) && !selected;
 		return {
 			id: node.id,
 			type: "ownershipResource",
-			position: {
-				x: CANVAS_PADDING + column * (NODE_WIDTH + COLUMN_GAP),
-				y: CANVAS_PADDING + row * (NODE_HEIGHT + ROW_GAP),
-			},
+			position: positions.get(node.id) ?? { x: CANVAS_PADDING, y: CANVAS_PADDING },
 			data: {
 				node,
 				resource: topologySelectableResource(node),
 				selected,
-				connected: selectedConnections.has(node.id),
+				connected,
+				dimmed: hasSelection && !selectedPath.nodeIds.has(node.id),
 			},
 			draggable: false,
 			selectable: true,
@@ -233,17 +116,9 @@ export function buildReactFlowTopology(
 			style: { width: NODE_WIDTH },
 		};
 	});
-	const nodeIds = new Set(nodes.map((node) => node.id));
-	const uniqueEdges = Array.from(
-		new Map(topology.edges.map((edge) => [edge.id, edge])).values(),
-	);
-	const edges = uniqueEdges
-		.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+	const edges = graph.edges
 		.map<OwnershipGraphEdge>((edge) => {
-			const selectedEdge = Boolean(
-				selectedNodeId &&
-					(edge.source === selectedNodeId || edge.target === selectedNodeId),
-			);
+			const selectedEdge = selectedPath.edgeIds.has(edge.id);
 			const mutedBySelection = Boolean(selectedNodeId && !selectedEdge);
 			const stroke = selectedEdge
 				? "var(--primary)"
@@ -252,8 +127,9 @@ export function buildReactFlowTopology(
 				id: edge.id,
 				source: edge.source,
 				target: edge.target,
-				type: "simplebezier",
+				type: "smoothstep",
 				data: { relation: edge.relation },
+				pathOptions: EDGE_PATH_OPTIONS,
 				animated: selectedEdge,
 				focusable: false,
 				zIndex: selectedEdge ? 10 : 0,
@@ -264,7 +140,7 @@ export function buildReactFlowTopology(
 					color: stroke,
 				},
 				style: {
-					opacity: selectedEdge ? 1 : mutedBySelection ? 0.28 : 0.72,
+					opacity: selectedEdge ? 1 : mutedBySelection ? 0.16 : 0.72,
 					stroke,
 					strokeWidth: selectedEdge ? 2.8 : 1.8,
 					strokeDasharray: edge.relation === "creates" ? "5 5" : undefined,

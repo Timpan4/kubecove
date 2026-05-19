@@ -76,6 +76,7 @@ function OwnershipResourceNode({
 					selectedOrConnected,
 				),
 				"relative flex h-[66px] w-[190px] flex-col justify-between px-2.5 py-2",
+				data.dimmed && "opacity-35",
 			)}
 			data-selected={data.selected ? "true" : undefined}
 		>
