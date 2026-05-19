@@ -6,7 +6,10 @@ use futures_util::future::{BoxFuture, FutureExt, Shared};
 use std::{
     collections::HashMap,
     future::Future,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, Instant},
 };
 
@@ -29,6 +32,7 @@ struct ReadyValue<T> {
 enum CacheEntry<T> {
     Ready(ReadyValue<T>),
     Loading {
+        load_id: u64,
         future: SharedLoad<T>,
         previous: Option<ReadyValue<T>>,
         dirty: bool,
@@ -37,6 +41,7 @@ enum CacheEntry<T> {
 
 struct SharedCache<T> {
     label: &'static str,
+    next_load_id: AtomicU64,
     entries: Mutex<HashMap<String, CacheEntry<T>>>,
 }
 
@@ -47,6 +52,7 @@ where
     fn new(label: &'static str) -> Self {
         Self {
             label,
+            next_load_id: AtomicU64::new(0),
             entries: Mutex::new(HashMap::new()),
         }
     }
@@ -90,7 +96,7 @@ where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<T, AppError>> + Send + 'static,
     {
-        let future = {
+        let (future, load_id) = {
             let mut entries = self.entries.lock().expect("live store cache lock");
             match entries.get(&key) {
                 Some(CacheEntry::Ready(ready)) if Self::can_reuse(ready, mode) => {
@@ -100,12 +106,14 @@ where
                     );
                     return Ok(ready.value.clone());
                 }
-                Some(CacheEntry::Loading { future, .. }) => {
+                Some(CacheEntry::Loading {
+                    load_id, future, ..
+                }) => {
                     eprintln!(
                         "[kubecove:backend] live_store singleflight_join area={} key={}",
                         self.label, key
                     );
-                    future.clone()
+                    (future.clone(), *load_id)
                 }
                 _ => {
                     eprintln!(
@@ -116,26 +124,36 @@ where
                         CacheEntry::Ready(ready) => Some(ready),
                         CacheEntry::Loading { previous, .. } => previous,
                     });
+                    let load_id = self.next_load_id.fetch_add(1, Ordering::Relaxed) + 1;
                     let future = async move { loader().await }.boxed().shared();
                     entries.insert(
                         key.clone(),
                         CacheEntry::Loading {
+                            load_id,
                             future: future.clone(),
                             previous,
                             dirty: false,
                         },
                     );
-                    future
+                    (future, load_id)
                 }
             }
         };
 
         let result = future.await;
         let mut entries = self.entries.lock().expect("live store cache lock");
-        let dirty_while_loading = entries.get(&key).is_some_and(|entry| {
-            matches!(entry, CacheEntry::Loading { dirty: true, .. })
-                || matches!(entry, CacheEntry::Ready(ready) if ready.dirty)
-        });
+        let Some(CacheEntry::Loading {
+            load_id: active_load_id,
+            dirty,
+            ..
+        }) = entries.get(&key)
+        else {
+            return result;
+        };
+        if *active_load_id != load_id {
+            return result;
+        }
+        let dirty_while_loading = *dirty;
         match &result {
             Ok(value) => {
                 let mut ready = Self::ready_value(value.clone());
