@@ -112,6 +112,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 			setSelectedContainer("");
 			return;
 		}
+		if (containerRows.length === 0) return;
 		if (
 			selectedContainer &&
 			containerRows.some((container) => container.name === selectedContainer)

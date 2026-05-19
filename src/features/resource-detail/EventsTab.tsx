@@ -10,8 +10,9 @@ import {
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Clock, TriangleAlert } from "lucide-react";
+import { useMemo } from "react";
 import type { ResourceEventSummary } from "../../lib/types";
-import { getErrorMessage } from "./helpers";
+import { getErrorMessage, sortIncidentEvents } from "./helpers";
 
 interface EventsTabProps {
 	events: ResourceEventSummary[] | undefined;
@@ -90,6 +91,10 @@ export function EventsTab({
 	eventsError,
 	eventsErr,
 }: EventsTabProps) {
+	const sortedEvents = useMemo(
+		() => (events ? sortIncidentEvents(events) : undefined),
+		[events],
+	);
 	return (
 		<>
 			{eventsLoading && (
@@ -104,8 +109,8 @@ export function EventsTab({
 					<AlertDescription>{getErrorMessage(eventsErr)}</AlertDescription>
 				</Alert>
 			)}
-			{!eventsLoading && !eventsError && events && (
-				<EventList events={events} />
+			{!eventsLoading && !eventsError && sortedEvents && (
+				<EventList events={sortedEvents} />
 			)}
 		</>
 	);

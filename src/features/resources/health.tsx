@@ -49,6 +49,8 @@ function HealthMetric({
 
 export function healthFilterLabel(filter: HealthFilter): string {
 	switch (filter) {
+		case "unhealthy":
+			return "Unhealthy";
 		case "attention":
 			return "Needs attention";
 		case "degraded":
@@ -93,7 +95,7 @@ export function ResourceHealthStrip({
 }) {
 	return (
 		<div
-			className="grid grid-cols-1 gap-2 md:grid-cols-5"
+			className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6"
 			aria-label="Resource health summary"
 		>
 			<HealthMetric
@@ -106,6 +108,13 @@ export function ResourceHealthStrip({
 				label="Healthy"
 				value={summary.healthy}
 				valueClassName="text-emerald-300"
+			/>
+			<HealthMetric
+				label="Unhealthy"
+				value={summary.attention + summary.degraded}
+				valueClassName="text-amber-300"
+				active={activeFilter === "unhealthy"}
+				onClick={() => onFilterChange("unhealthy")}
 			/>
 			<HealthMetric
 				label="Needs attention"

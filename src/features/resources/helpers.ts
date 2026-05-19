@@ -22,7 +22,12 @@ export interface HealthSummary {
 	restarted: number;
 }
 
-export type HealthFilter = "all" | "attention" | "degraded" | "restarted";
+export type HealthFilter =
+	| "all"
+	| "unhealthy"
+	| "attention"
+	| "degraded"
+	| "restarted";
 
 export interface ScopePill {
 	label: string;
@@ -221,7 +226,11 @@ export function filterResourcesByHealth(
 	filter: HealthFilter,
 ): ResourceSummary[] {
 	if (filter === "all") return rows;
-	return rows.filter((row) => classifyResourceHealth(row)[filter]);
+	return rows.filter((row) => {
+		const health = classifyResourceHealth(row);
+		if (filter === "unhealthy") return health.degraded || health.attention;
+		return health[filter];
+	});
 }
 
 export function buildResourceHealthSummary(

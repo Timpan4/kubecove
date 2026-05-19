@@ -74,6 +74,16 @@ Goal: make app launch restore operator intent through live workspace scopes inst
 - [x] Show unavailable saved context, namespace, and kind state during restore.
 - [x] Keep resource browser and Argo views reachable from workspace shortcuts.
 
+## Milestone 6: Incident Workflow Polish
+
+Goal: make existing read-only browser surfaces useful during troubleshooting.
+
+- [x] Add unhealthy investigation filtering across the resource browser.
+- [x] Keep table, map, and detail selection synchronized for incident inspection.
+- [x] Add compact incident summaries to resource details.
+- [x] Prioritize warning events and preserve pod log container selection while details refresh.
+- [x] Add workspace overview shortcuts for unhealthy, warning, and restarted resources.
+
 ## Cross-Cutting Tracks
 
 Items that don't belong to a single milestone but need to stay visible.
