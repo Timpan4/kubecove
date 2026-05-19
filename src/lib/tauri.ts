@@ -8,6 +8,7 @@ import type {
 	NamespaceSummary,
 	DiscoveredResourceKind,
 	PodLogStreamRequest,
+	ResourceListRequest,
 	ResourceSummary,
 	ResourceEventSummary,
 	ResourceDetailsFull,
@@ -125,6 +126,17 @@ export async function listDynamicResources(
 		clusterContext,
 		resourceKind,
 		namespace,
+	});
+}
+
+export async function listResourceScope(
+	client: TauriClient,
+	clusterContext: string,
+	requests: ResourceListRequest[],
+): Promise<ResourceSummary[]> {
+	return client.invoke<ResourceSummary[]>("list_resource_scope", {
+		clusterContext,
+		requests,
 	});
 }
 

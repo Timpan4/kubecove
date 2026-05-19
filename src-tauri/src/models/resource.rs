@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::DiscoveredResourceKind;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OwnerReferenceSummary {
@@ -43,6 +45,17 @@ pub struct ResourceSummary {
     pub argo_app: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub helm_release: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceListRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_kind: Option<DiscoveredResourceKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

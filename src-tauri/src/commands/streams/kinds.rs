@@ -12,6 +12,7 @@ fn known_resource_kind(kind: &str) -> Option<WatchResourceKind> {
         "Node" => ("v1", "", "v1", "nodes", false),
         "PersistentVolume" => ("v1", "", "v1", "persistentvolumes", false),
         "Deployment" => ("apps/v1", "apps", "v1", "deployments", true),
+        "ReplicaSet" => ("apps/v1", "apps", "v1", "replicasets", true),
         "StatefulSet" => ("apps/v1", "apps", "v1", "statefulsets", true),
         "DaemonSet" => ("apps/v1", "apps", "v1", "daemonsets", true),
         "Ingress" => (
@@ -183,5 +184,24 @@ mod tests {
         assert_eq!(node.api_version.as_deref(), Some("v1"));
         assert_eq!(node.plural.as_deref(), Some("nodes"));
         assert_eq!(node.namespaced, Some(false));
+    }
+
+    #[test]
+    fn known_replicaset_kind_fills_watch_metadata() {
+        let replicaset = normalize_resource_kind(&WatchResourceKind {
+            kind: "ReplicaSet".to_string(),
+            group: None,
+            version: None,
+            api_version: None,
+            plural: None,
+            namespaced: None,
+        })
+        .expect("replicaset metadata");
+
+        assert_eq!(replicaset.api_version.as_deref(), Some("apps/v1"));
+        assert_eq!(replicaset.group.as_deref(), Some("apps"));
+        assert_eq!(replicaset.version.as_deref(), Some("v1"));
+        assert_eq!(replicaset.plural.as_deref(), Some("replicasets"));
+        assert_eq!(replicaset.namespaced, Some(true));
     }
 }

@@ -2,9 +2,11 @@ use super::{
     summary_cluster::cluster_resource_summaries, summary_core::core_resource_summaries,
     summary_workloads::workload_resource_summaries,
 };
+use crate::commands::ClusterLiveStore;
 use crate::models::{AppError, ResourceSummary};
 use kube::{config::KubeConfigOptions, Client};
 use std::time::Instant;
+use tauri::State;
 
 pub async fn resources_summary_from(
     cluster_context: String,
@@ -56,6 +58,7 @@ pub async fn list_resources(
     cluster_context: String,
     kind: String,
     namespace: Option<String>,
+    live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<all>");
@@ -63,8 +66,14 @@ pub async fn list_resources(
         "[kubecove:backend] list_resources start context={} kind={} namespace={}",
         cluster_context, kind, namespace_label
     );
-    let result =
-        resources_summary_from(cluster_context.clone(), kind.clone(), namespace.clone()).await;
+    let result = live_store
+        .typed_resources(cluster_context.clone(), kind.clone(), namespace.clone(), {
+            let cluster_context = cluster_context.clone();
+            let kind = kind.clone();
+            let namespace = namespace.clone();
+            move || resources_summary_from(cluster_context, kind, namespace)
+        })
+        .await;
     match &result {
         Ok(rows) => eprintln!("[kubecove:backend] list_resources done context={} kind={} namespace={} rows={} ms={}", cluster_context, kind, namespace_label, rows.len(), started.elapsed().as_millis()),
         Err(err) => eprintln!("[kubecove:backend] list_resources error context={} kind={} namespace={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, err.kind, err.message, started.elapsed().as_millis()),

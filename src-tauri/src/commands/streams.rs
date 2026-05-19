@@ -3,6 +3,7 @@ mod logs;
 mod registry;
 mod watch;
 
+use crate::commands::ClusterLiveStore;
 use crate::models::{AppError, PodLogStreamRequest, StreamMessage, WatchResourceKey};
 use kube::{config::KubeConfigOptions, Client};
 pub use registry::StreamRegistry;
@@ -79,20 +80,23 @@ pub async fn start_resource_watch(
     keys: Vec<WatchResourceKey>,
     channel: Channel<StreamMessage>,
     registry: State<'_, StreamRegistry>,
+    live_store: State<'_, ClusterLiveStore>,
 ) -> Result<String, AppError> {
     validate_resource_watch_scope(&cluster_context, &keys)?;
     let stream_id = registry.stream_id("resources");
-    let mut handles = Vec::with_capacity(keys.len());
     for key in keys {
-        let handle = tauri::async_runtime::spawn(watch::run_resource_watch(
-            stream_id.clone(),
-            cluster_context.clone(),
-            key,
-            channel.clone(),
-        ));
-        handles.push(handle);
+        let (watch_key, broadcaster, should_start) =
+            registry.subscribe_resource(&stream_id, &cluster_context, &key, channel.clone());
+        if should_start {
+            let handle = tauri::async_runtime::spawn(watch::run_resource_watch(
+                cluster_context.clone(),
+                key,
+                broadcaster.clone(),
+                live_store.inner().clone(),
+            ));
+            registry.set_resource_handle(&watch_key, handle);
+        }
     }
-    registry.insert(stream_id.clone(), handles);
     send(
         &channel,
         StreamMessage::Started {
@@ -114,15 +118,24 @@ pub async fn start_resource_event_watch(
 ) -> Result<String, AppError> {
     validate_event_watch_target(&cluster_context, &kind, &name)?;
     let stream_id = registry.stream_id("events");
-    let handle = tauri::async_runtime::spawn(watch::run_event_watch(
-        stream_id.clone(),
-        cluster_context,
-        kind,
-        name,
-        namespace,
+    let (watch_key, broadcaster, should_start) = registry.subscribe_event(
+        &stream_id,
+        &cluster_context,
+        &kind,
+        &name,
+        namespace.as_deref(),
         channel.clone(),
-    ));
-    registry.insert(stream_id.clone(), vec![handle]);
+    );
+    if should_start {
+        let handle = tauri::async_runtime::spawn(watch::run_event_watch(
+            cluster_context,
+            kind,
+            name,
+            namespace,
+            broadcaster,
+        ));
+        registry.set_event_handle(&watch_key, handle);
+    }
     send(
         &channel,
         StreamMessage::Started {
@@ -146,7 +159,7 @@ pub async fn start_pod_log_stream(
         request,
         channel.clone(),
     ));
-    registry.insert(stream_id.clone(), vec![handle]);
+    registry.insert_handles(stream_id.clone(), vec![handle]);
     send(
         &channel,
         StreamMessage::Started {
@@ -181,21 +194,26 @@ mod tests {
 
     #[test]
     fn resource_watch_validation_requires_context_and_keys() {
-        assert!(validate_resource_watch_scope("kind-dev", &[WatchResourceKey {
-            resource_kind: crate::models::WatchResourceKind {
-                kind: "Pod".to_string(),
-                group: None,
-                version: None,
-                api_version: None,
-                plural: None,
-                namespaced: None,
-            },
-            namespace: Some("default".to_string()),
-        }])
+        assert!(validate_resource_watch_scope(
+            "kind-dev",
+            &[WatchResourceKey {
+                resource_kind: crate::models::WatchResourceKind {
+                    kind: "Pod".to_string(),
+                    group: None,
+                    version: None,
+                    api_version: None,
+                    plural: None,
+                    namespaced: None,
+                },
+                namespace: Some("default".to_string()),
+            }]
+        )
         .is_ok());
 
         assert_eq!(
-            validate_resource_watch_scope("", &[]).expect_err("empty scope").kind,
+            validate_resource_watch_scope("", &[])
+                .expect_err("empty scope")
+                .kind,
             "validation",
         );
         assert_eq!(

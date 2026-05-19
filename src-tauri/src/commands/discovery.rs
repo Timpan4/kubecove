@@ -1,10 +1,14 @@
-use crate::models::{AppError, DiscoveredResourceKind};
+use crate::{
+    commands::ClusterLiveStore,
+    models::{AppError, DiscoveredResourceKind},
+};
 use kube::{
     config::KubeConfigOptions,
     discovery::{verbs, Discovery, Scope},
     Client,
 };
 use std::time::Instant;
+use tauri::State;
 
 pub async fn resource_kinds_from(
     cluster_context: String,
@@ -60,13 +64,19 @@ pub async fn resource_kinds_from(
 #[tauri::command]
 pub async fn list_resource_kinds(
     cluster_context: String,
+    live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Vec<DiscoveredResourceKind>, AppError> {
     let started = Instant::now();
     eprintln!(
         "[kubecove:backend] list_resource_kinds start context={}",
         cluster_context
     );
-    let result = resource_kinds_from(cluster_context.clone()).await;
+    let result = live_store
+        .resource_kinds(cluster_context.clone(), {
+            let cluster_context = cluster_context.clone();
+            move || resource_kinds_from(cluster_context)
+        })
+        .await;
     match &result {
         Ok(rows) => eprintln!(
             "[kubecove:backend] list_resource_kinds done context={} rows={} ms={}",

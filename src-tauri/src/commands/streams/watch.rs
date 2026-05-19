@@ -1,9 +1,12 @@
 use super::{
     client_for_context,
     kinds::{api_resource_from_kind, normalize_resource_kind},
-    send,
+    registry::StreamBroadcaster,
 };
-use crate::models::{StreamMessage, WatchResourceKey, WatchResourceTarget};
+use crate::{
+    commands::ClusterLiveStore,
+    models::{WatchResourceKey, WatchResourceTarget},
+};
 use futures_util::StreamExt;
 use k8s_openapi::api::core::v1::Event;
 use kube::{
@@ -12,7 +15,6 @@ use kube::{
     Client,
 };
 use std::time::Duration;
-use tauri::ipc::Channel;
 
 async fn sleep(duration: Duration) {
     let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(duration)).await;
@@ -105,34 +107,22 @@ fn scoped_dynamic_api(
 }
 
 pub(super) async fn run_resource_watch(
-    stream_id: String,
     cluster_context: String,
     key: WatchResourceKey,
-    channel: Channel<StreamMessage>,
+    broadcaster: StreamBroadcaster,
+    live_store: ClusterLiveStore,
 ) {
     let normalized_kind = match normalize_resource_kind(&key.resource_kind) {
         Ok(kind) => kind,
         Err(err) => {
-            send(
-                &channel,
-                StreamMessage::Error {
-                    stream_id,
-                    message: err.message,
-                },
-            );
+            broadcaster.error(err.message);
             return;
         }
     };
     let api_resource = match api_resource_from_kind(&normalized_kind) {
         Ok(api_resource) => api_resource,
         Err(err) => {
-            send(
-                &channel,
-                StreamMessage::Error {
-                    stream_id,
-                    message: err.message,
-                },
-            );
+            broadcaster.error(err.message);
             return;
         }
     };
@@ -144,13 +134,7 @@ pub(super) async fn run_resource_watch(
         let client = match client_for_context(&cluster_context).await {
             Ok(client) => client,
             Err(err) => {
-                if !send(
-                    &channel,
-                    StreamMessage::Error {
-                        stream_id: stream_id.clone(),
-                        message: err.message,
-                    },
-                ) {
+                if !broadcaster.error(err.message) {
                     return;
                 }
                 sleep(Duration::from_secs(5)).await;
@@ -160,14 +144,7 @@ pub(super) async fn run_resource_watch(
         let api = scoped_dynamic_api(client, &key, namespaced, &api_resource);
         let params = WatchParams::default().timeout(30);
 
-        if !send(
-            &channel,
-            StreamMessage::Status {
-                stream_id: stream_id.clone(),
-                status: "connected".to_string(),
-                message: format!("Watching {}", kind_label),
-            },
-        ) {
+        if !broadcaster.status("connected", format!("Watching {}", kind_label)) {
             return;
         }
 
@@ -179,13 +156,7 @@ pub(super) async fn run_resource_watch(
                         Ok(event) => {
                             if let WatchEvent::Error(status) = event {
                                 resource_version = "0".to_string();
-                                if !send(
-                                    &channel,
-                                    StreamMessage::Error {
-                                        stream_id: stream_id.clone(),
-                                        message: watch_status_message(&status),
-                                    },
-                                ) {
+                                if !broadcaster.error(watch_status_message(&status)) {
                                     return;
                                 }
                                 break;
@@ -198,29 +169,19 @@ pub(super) async fn run_resource_watch(
                             if matches!(event, WatchEvent::Bookmark(_)) {
                                 continue;
                             }
-                            if !send(
-                                &channel,
-                                StreamMessage::ResourceChanged {
-                                    stream_id: stream_id.clone(),
-                                    target: dynamic_event_target(
-                                        &cluster_context,
-                                        &kind_label,
-                                        &event,
-                                    ),
-                                    action: event_action(&event),
-                                },
-                            ) {
+                            let target =
+                                dynamic_event_target(&cluster_context, &kind_label, &event);
+                            live_store.mark_watch_resource_dirty(
+                                &cluster_context,
+                                &normalized_kind,
+                                target.namespace.as_deref(),
+                            );
+                            if !broadcaster.resource_changed(target, event_action(&event)) {
                                 return;
                             }
                         }
                         Err(err) => {
-                            if !send(
-                                &channel,
-                                StreamMessage::Error {
-                                    stream_id: stream_id.clone(),
-                                    message: err.to_string(),
-                                },
-                            ) {
+                            if !broadcaster.error(err.to_string()) {
                                 return;
                             }
                             break;
@@ -229,26 +190,13 @@ pub(super) async fn run_resource_watch(
                 }
             }
             Err(err) => {
-                if !send(
-                    &channel,
-                    StreamMessage::Error {
-                        stream_id: stream_id.clone(),
-                        message: err.to_string(),
-                    },
-                ) {
+                if !broadcaster.error(err.to_string()) {
                     return;
                 }
             }
         }
 
-        if !send(
-            &channel,
-            StreamMessage::Status {
-                stream_id: stream_id.clone(),
-                status: "reconnecting".to_string(),
-                message: format!("Reconnecting {}", kind_label),
-            },
-        ) {
+        if !broadcaster.status("reconnecting", format!("Reconnecting {}", kind_label)) {
             return;
         }
         sleep(Duration::from_secs(2)).await;
@@ -270,12 +218,11 @@ fn event_target(
 }
 
 pub(super) async fn run_event_watch(
-    stream_id: String,
     cluster_context: String,
     kind: String,
     name: String,
     namespace: Option<String>,
-    channel: Channel<StreamMessage>,
+    broadcaster: StreamBroadcaster,
 ) {
     let field_selector = match namespace.as_deref() {
         Some(ns) => format!(
@@ -290,13 +237,7 @@ pub(super) async fn run_event_watch(
         let client = match client_for_context(&cluster_context).await {
             Ok(client) => client,
             Err(err) => {
-                if !send(
-                    &channel,
-                    StreamMessage::Error {
-                        stream_id: stream_id.clone(),
-                        message: err.message,
-                    },
-                ) {
+                if !broadcaster.error(err.message) {
                     return;
                 }
                 sleep(Duration::from_secs(5)).await;
@@ -310,14 +251,7 @@ pub(super) async fn run_event_watch(
         };
         let params = WatchParams::default().fields(&field_selector).timeout(30);
 
-        if !send(
-            &channel,
-            StreamMessage::Status {
-                stream_id: stream_id.clone(),
-                status: "connected".to_string(),
-                message: "Watching events".to_string(),
-            },
-        ) {
+        if !broadcaster.status("connected", "Watching events".to_string()) {
             return;
         }
 
@@ -329,13 +263,7 @@ pub(super) async fn run_event_watch(
                         Ok(event) => {
                             if let WatchEvent::Error(status) = event {
                                 resource_version = "0".to_string();
-                                if !send(
-                                    &channel,
-                                    StreamMessage::Error {
-                                        stream_id: stream_id.clone(),
-                                        message: watch_status_message(&status),
-                                    },
-                                ) {
+                                if !broadcaster.error(watch_status_message(&status)) {
                                     return;
                                 }
                                 break;
@@ -346,30 +274,15 @@ pub(super) async fn run_event_watch(
                             if matches!(event, WatchEvent::Bookmark(_)) {
                                 continue;
                             }
-                            if !send(
-                                &channel,
-                                StreamMessage::ResourceEventsChanged {
-                                    stream_id: stream_id.clone(),
-                                    target: event_target(
-                                        &cluster_context,
-                                        &kind,
-                                        &name,
-                                        namespace.as_deref(),
-                                    ),
-                                    action: event_action(&event),
-                                },
+                            if !broadcaster.events_changed(
+                                event_target(&cluster_context, &kind, &name, namespace.as_deref()),
+                                event_action(&event),
                             ) {
                                 return;
                             }
                         }
                         Err(err) => {
-                            if !send(
-                                &channel,
-                                StreamMessage::Error {
-                                    stream_id: stream_id.clone(),
-                                    message: err.to_string(),
-                                },
-                            ) {
+                            if !broadcaster.error(err.to_string()) {
                                 return;
                             }
                             break;
@@ -378,26 +291,13 @@ pub(super) async fn run_event_watch(
                 }
             }
             Err(err) => {
-                if !send(
-                    &channel,
-                    StreamMessage::Error {
-                        stream_id: stream_id.clone(),
-                        message: err.to_string(),
-                    },
-                ) {
+                if !broadcaster.error(err.to_string()) {
                     return;
                 }
             }
         }
 
-        if !send(
-            &channel,
-            StreamMessage::Status {
-                stream_id: stream_id.clone(),
-                status: "reconnecting".to_string(),
-                message: "Reconnecting events".to_string(),
-            },
-        ) {
+        if !broadcaster.status("reconnecting", "Reconnecting events".to_string()) {
             return;
         }
         sleep(Duration::from_secs(2)).await;

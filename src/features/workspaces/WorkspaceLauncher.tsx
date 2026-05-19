@@ -36,6 +36,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { createTauriClient, listKubeContexts, listNamespaces } from "@/lib/tauri";
+import { queryKeys } from "@/lib/queryKeys";
 import {
 	DEFAULT_WORKSPACE_KINDS,
 	makeWorkspaceShortcuts,
@@ -58,7 +59,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 	const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
 
 	const contextsQuery = useQuery({
-		queryKey: ["workspace-contexts"],
+		queryKey: queryKeys.kubeContexts(),
 		queryFn: () => listKubeContexts(createTauriClient()),
 	});
 	const contexts = contextsQuery.data ?? [];
@@ -69,7 +70,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 		"";
 
 	const namespacesQuery = useQuery({
-		queryKey: ["workspace-namespaces", effectiveContext],
+		queryKey: queryKeys.namespaces(effectiveContext),
 		queryFn: () => listNamespaces(createTauriClient(), effectiveContext),
 		enabled: effectiveContext.length > 0,
 	});

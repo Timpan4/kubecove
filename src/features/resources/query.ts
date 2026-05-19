@@ -1,15 +1,19 @@
 import { diagnosticLog } from "@/lib/diagnostics";
-import {
-	createTauriClient,
-	listDynamicResources,
-	listResources,
-} from "@/lib/tauri";
-import type { ResourceSummary } from "@/lib/types";
+import { createTauriClient, listResourceScope } from "@/lib/tauri";
+import type { ResourceListRequest, ResourceSummary } from "@/lib/types";
 import {
 	isDiscoveredResourceKind,
 	resourceKindLabel,
 	type FetchKey,
 } from "./helpers";
+
+function fetchKeyRequest({ kind, namespace }: FetchKey): ResourceListRequest {
+	const normalizedNamespace = namespace === "" ? undefined : namespace;
+	if (isDiscoveredResourceKind(kind)) {
+		return { resourceKind: kind, namespace: normalizedNamespace };
+	}
+	return { kind, namespace: normalizedNamespace };
+}
 
 export async function fetchResourcePage(
 	clusterContext: string,
@@ -22,21 +26,11 @@ export async function fetchResourcePage(
 		kinds: fetchKeys.map((key) => resourceKindLabel(key.kind)).join("|"),
 	});
 	const client = createTauriClient();
-	const results = await Promise.all(
-		fetchKeys.map(({ kind, namespace }) => {
-			const normalizedNamespace = namespace === "" ? undefined : namespace;
-			if (isDiscoveredResourceKind(kind)) {
-				return listDynamicResources(
-					client,
-					clusterContext,
-					kind,
-					normalizedNamespace,
-				);
-			}
-			return listResources(client, clusterContext, kind, normalizedNamespace);
-		}),
+	const rows = await listResourceScope(
+		client,
+		clusterContext,
+		fetchKeys.map(fetchKeyRequest),
 	);
-	const rows = results.flat();
 	diagnosticLog("resources.fetch.done", {
 		cluster: clusterContext,
 		fetches: fetchKeys.length,

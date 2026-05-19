@@ -17,8 +17,8 @@ pub use error::AppError;
 pub use events::ResourceEventSummary;
 pub use namespace::NamespaceSummary;
 pub use resource::{
-    OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull, ResourceSummary, ResourceTopology,
-    TopologyEdge, TopologyNode, TopologyRelation,
+    OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull, ResourceListRequest,
+    ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode, TopologyRelation,
 };
 pub use streams::{
     PodLogStreamRequest, StreamMessage, WatchResourceKey, WatchResourceKind, WatchResourceTarget,

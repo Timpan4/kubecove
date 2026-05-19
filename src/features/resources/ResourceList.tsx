@@ -15,6 +15,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { diagnosticLog } from "@/lib/diagnostics";
+import { queryKeys } from "@/lib/queryKeys";
 import { createTauriClient, listResourceTopology } from "@/lib/tauri";
 import type {
 	ResourceKindSelection,
@@ -91,12 +92,7 @@ function ResourceListComponent({
 		[namespaceKey, kindKey],
 	);
 	const queryKey = useMemo(
-		() =>
-			[
-				"resources",
-				clusterContext,
-				...fetchKeys.map((key) => `${resourceKindFetchKey(key.kind)}:${key.namespace ?? ""}`),
-			] as const,
+		() => queryKeys.resources(clusterContext, fetchKeys),
 		[clusterContext, fetchKeys],
 	);
 
@@ -116,7 +112,7 @@ function ResourceListComponent({
 		staleTime: 30_000,
 	});
 	const topologyQuery = useQuery({
-		queryKey: ["resource-topology", clusterContext, namespaceKey],
+		queryKey: queryKeys.resourceTopology(clusterContext, selectedNamespaces),
 		queryFn: () => listResourceTopology(client, clusterContext, selectedNamespaces),
 		enabled: Boolean(clusterContext),
 		staleTime: 30_000,

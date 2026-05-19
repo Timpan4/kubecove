@@ -12,6 +12,7 @@ import {
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
+import { queryKeys } from "@/lib/queryKeys";
 import {
 	createTauriClient,
 	detectArgoCD,
@@ -108,7 +109,7 @@ export function ArgoCDPanel({
 		isError: detectError,
 		error: detectErr,
 	} = useQuery({
-		queryKey: ["argo-detect", clusterContext],
+		queryKey: queryKeys.argoDetect(clusterContext),
 		queryFn: () => detectArgoCD(client, clusterContext),
 		enabled: !!clusterContext,
 		staleTime: 60_000,
@@ -125,7 +126,7 @@ export function ArgoCDPanel({
 		isError: appsError,
 		error: appsErr,
 	} = useQuery({
-		queryKey: ["argo-apps", clusterContext],
+		queryKey: queryKeys.argoApps(clusterContext),
 		queryFn: () => listArgoApplications(client, clusterContext),
 		enabled: !!clusterContext && argoResourcesAvailable && isApps,
 		staleTime: 30_000,
@@ -137,7 +138,7 @@ export function ArgoCDPanel({
 		isError: appsetsError,
 		error: appsetsErr,
 	} = useQuery({
-		queryKey: ["argo-appsets", clusterContext],
+		queryKey: queryKeys.argoAppSets(clusterContext),
 		queryFn: () => listArgoApplicationSets(client, clusterContext),
 		enabled: !!clusterContext && argoResourcesAvailable && isAppSets,
 		staleTime: 30_000,
@@ -149,7 +150,7 @@ export function ArgoCDPanel({
 		isError: projectsError,
 		error: projectsErr,
 	} = useQuery({
-		queryKey: ["argo-appprojects", clusterContext],
+		queryKey: queryKeys.argoAppProjects(clusterContext),
 		queryFn: () => listArgoAppProjects(client, clusterContext),
 		enabled: !!clusterContext && argoResourcesAvailable && isAppProjects,
 		staleTime: 30_000,

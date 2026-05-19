@@ -1,10 +1,10 @@
 import {
 	createTauriClient,
-	listDynamicResources,
-	listResources,
+	listResourceScope,
 } from "@/lib/tauri";
 import {
 	CLUSTER_SCOPED_KINDS,
+	type ResourceListRequest,
 	type ResourceKindSelection,
 	type ResourceSummary,
 } from "@/lib/types";
@@ -37,19 +37,22 @@ export function buildWorkspaceFetchKeys(
 	});
 }
 
+function fetchKeyRequest({ kind, namespace }: WorkspaceFetchKey): ResourceListRequest {
+	if (typeof kind === "string") {
+		return { kind, namespace };
+	}
+	return { resourceKind: kind, namespace };
+}
+
 export async function fetchWorkspaceResources(
 	scope: WorkspaceScope,
 	availableNamespaces?: string[],
 ): Promise<ResourceSummary[]> {
 	const client = createTauriClient();
 	const fetchKeys = buildWorkspaceFetchKeys(scope, availableNamespaces);
-	const results = await Promise.all(
-		fetchKeys.map(({ kind, namespace }) => {
-			if (typeof kind === "string") {
-				return listResources(client, scope.clusterContext, kind, namespace);
-			}
-			return listDynamicResources(client, scope.clusterContext, kind, namespace);
-		}),
+	return listResourceScope(
+		client,
+		scope.clusterContext,
+		fetchKeys.map(fetchKeyRequest),
 	);
-	return results.flat();
 }

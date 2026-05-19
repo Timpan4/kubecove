@@ -1,5 +1,8 @@
 use super::topology_collection::collect_topology_inputs;
-use crate::commands::helpers::{base_resource_summary, extract_owner_ref_summary, resource_age};
+use crate::commands::{
+    helpers::{base_resource_summary, extract_owner_ref_summary, resource_age},
+    ClusterLiveStore,
+};
 use crate::models::{
     AppError, OwnerReferenceSummary, ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode,
     TopologyRelation,
@@ -9,6 +12,7 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{config::KubeConfigOptions, Client};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
+use tauri::State;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TopologyInputResource {
@@ -317,6 +321,7 @@ pub async fn resource_topology_from(
 pub async fn list_resource_topology(
     cluster_context: String,
     namespaces: Vec<String>,
+    live_store: State<'_, ClusterLiveStore>,
 ) -> Result<ResourceTopology, AppError> {
     let started = Instant::now();
     eprintln!(
@@ -324,7 +329,13 @@ pub async fn list_resource_topology(
         cluster_context,
         namespaces.join(",")
     );
-    let result = resource_topology_from(cluster_context.clone(), namespaces.clone()).await;
+    let result = live_store
+        .topology(cluster_context.clone(), namespaces.clone(), {
+            let cluster_context = cluster_context.clone();
+            let namespaces = namespaces.clone();
+            move || resource_topology_from(cluster_context, namespaces)
+        })
+        .await;
     match &result {
         Ok(topology) => eprintln!(
             "[kubecove:backend] list_resource_topology done context={} namespaces={} nodes={} edges={} warnings={} ms={}",

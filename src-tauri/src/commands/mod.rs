@@ -3,6 +3,7 @@ mod contexts;
 mod discovery;
 mod events;
 mod helpers;
+mod live_store;
 mod namespaces;
 mod resources;
 mod streams;
@@ -15,12 +16,13 @@ pub use argo::{
 pub use contexts::{get_cluster_contexts, list_kube_contexts};
 pub use discovery::{list_resource_kinds, resource_kinds_from};
 pub use events::{list_resource_events, resource_events_from};
+pub use live_store::ClusterLiveStore;
 pub use namespaces::{list_namespaces, namespaces_summary_from};
 pub use resources::{
     dynamic_resource_details_from, dynamic_resources_summary_from, get_dynamic_resource_details,
-    get_resource_details, get_resource_yaml, list_dynamic_resources, list_resource_topology,
-    list_resources, resource_details_from, resource_topology_from, resource_yaml_from,
-    resources_summary_from,
+    get_resource_details, get_resource_yaml, list_dynamic_resources, list_resource_scope,
+    list_resource_topology, list_resources, resource_details_from, resource_scope_from,
+    resource_topology_from, resource_yaml_from, resources_summary_from,
 };
 pub use streams::{
     start_pod_log_stream, start_resource_event_watch, start_resource_watch, stop_stream,

@@ -21,6 +21,7 @@ pub(super) async fn workload_resource_summaries(
 ) -> Result<Option<Vec<ResourceSummary>>, AppError> {
     let summaries = match kind {
         "Deployment" => deployment_summaries(client, cluster_context, namespace).await?,
+        "ReplicaSet" => replicaset_summaries(client, cluster_context, namespace).await?,
         "StatefulSet" => statefulset_summaries(client, cluster_context, namespace).await?,
         "DaemonSet" => daemonset_summaries(client, cluster_context, namespace).await?,
         "Ingress" => ingress_summaries(client, cluster_context, namespace).await?,
@@ -62,6 +63,40 @@ async fn deployment_summaries(
                 if available > 0 || ready > 0 || desired > 0 {
                     summary.status = Some(format!("Available: {}", available));
                 }
+            }
+            summary
+        })
+        .collect())
+}
+
+async fn replicaset_summaries(
+    client: Client,
+    cluster_context: &str,
+    namespace: Option<&str>,
+) -> Result<Vec<ResourceSummary>, AppError> {
+    let api: Api<k8s_openapi::api::apps::v1::ReplicaSet> = if let Some(ns) = namespace {
+        Api::namespaced(client, ns)
+    } else {
+        Api::all(client)
+    };
+    Ok(api
+        .list(&list_params())
+        .await
+        .map_err(|e| AppError::kube(e.to_string()))?
+        .iter()
+        .map(|rs| {
+            let mut summary = base_resource_summary(
+                "ReplicaSet",
+                cluster_context,
+                &rs.metadata,
+                age_from_metadata(&rs.metadata),
+            );
+            if let Some(ref status) = rs.status {
+                summary.ready = Some(fmt_ready(status.ready_replicas, status.replicas));
+                summary.status = Some(format!(
+                    "Available: {}",
+                    status.available_replicas.unwrap_or(0)
+                ));
             }
             summary
         })
