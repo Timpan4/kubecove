@@ -3,13 +3,9 @@ import {
 	Background,
 	BackgroundVariant,
 	Controls,
-	Handle,
-	Position,
 	ReactFlow,
 	useReactFlow,
 	type NodeMouseHandler,
-	type NodeProps,
-	type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { AlertTriangle, GitBranch, Network } from "lucide-react";
@@ -23,13 +19,14 @@ import {
 } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getResourceKindVisual } from "@/lib/resource-visuals";
 import type { ResourceSummary, ResourceTopology, TopologyNode } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ownershipMapNodeTypes } from "./OwnershipMapNodes";
 import {
 	buildReactFlowTopology,
-	topologyNodeClassName,
 	type OwnershipGraphNode,
+	type OwnershipResourceGraphNode,
+	type StandaloneKindGroupGraphNode,
 } from "./topology";
 
 interface OwnershipMapProps {
@@ -46,82 +43,37 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : "Failed to load ownership map";
 }
 
-function HealthBadge({ health }: { health: string }) {
-	return (
-		<Badge
-			variant={health === "degraded" ? "destructive" : "outline"}
-			className="h-4 rounded-sm px-1.5 text-[0.625rem]"
-		>
-			{health}
-		</Badge>
-	);
-}
-
-function OwnershipResourceNode({
-	data,
-	selected,
-}: NodeProps<OwnershipGraphNode>) {
-	const node = data.node;
-	const visual = getResourceKindVisual(node.kind);
-	const Icon = visual.icon;
-	const selectedOrConnected = data.selected || data.connected;
-
-	return (
-		<div
-			className={cn(
-				topologyNodeClassName(
-					node,
-					data.selected || selected ? node.id : null,
-					node.id,
-					selectedOrConnected,
-				),
-				"relative flex h-[66px] w-[190px] flex-col justify-between px-2.5 py-2",
-				data.dimmed && "opacity-35",
-			)}
-			data-selected={data.selected ? "true" : undefined}
-		>
-			<Handle
-				type="target"
-				position={Position.Left}
-				isConnectable={false}
-				style={{ opacity: 0 }}
-			/>
-			<Handle
-				type="source"
-				position={Position.Right}
-				isConnectable={false}
-				style={{ opacity: 0 }}
-			/>
-			<div className="flex min-w-0 items-start justify-between gap-2">
-				<div className="flex min-w-0 items-start gap-2">
-					<Icon className={cn("mt-0.5 size-3.5 shrink-0", visual.className)} />
-					<div className="min-w-0">
-						<div className="truncate text-[0.6875rem] font-semibold text-foreground">
-							{node.name}
-						</div>
-						<div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[0.625rem] text-muted-foreground">
-							<span className="truncate">{node.kind}</span>
-							{node.namespace && <span className="truncate">{node.namespace}</span>}
-						</div>
-					</div>
-				</div>
-				<HealthBadge health={node.health} />
-			</div>
-			{node.status && (
-				<div className="truncate text-[0.625rem] text-muted-foreground">
-					{node.status}
-				</div>
-			)}
-		</div>
-	);
-}
-
-const nodeTypes = {
-	ownershipResource: OwnershipResourceNode,
-} satisfies NodeTypes;
-
 const FIT_VIEW_OPTIONS = { padding: 0.24, maxZoom: 1 };
-const NODE_CENTER_OFFSET = { x: 95, y: 33 };
+const NODE_CENTER_OFFSET = { x: 95, y: 39 };
+
+function isOwnershipResourceNode(
+	node: OwnershipGraphNode,
+): node is OwnershipResourceGraphNode {
+	return node.type === "ownershipResource";
+}
+
+function isStandaloneKindGroupNode(
+	node: OwnershipGraphNode,
+): node is StandaloneKindGroupGraphNode {
+	return node.type === "standaloneKindGroup";
+}
+
+function absoluteNodePosition(
+	nodes: OwnershipGraphNode[],
+	node: OwnershipGraphNode,
+): { x: number; y: number } {
+	let x = node.position.x;
+	let y = node.position.y;
+	let parentId = node.parentId;
+	while (parentId) {
+		const parent = nodes.find((candidate) => candidate.id === parentId);
+		if (!parent) break;
+		x += parent.position.x;
+		y += parent.position.y;
+		parentId = parent.parentId;
+	}
+	return { x, y };
+}
 
 function FitTopologyView({ signature }: { signature: string }) {
 	const { fitView } = useReactFlow();
@@ -155,6 +107,7 @@ function CenterSelectedNode({
 		if (!selectedNodeId) return;
 		const selectedNode = nodes.find((node) => node.id === selectedNodeId);
 		if (!selectedNode) return;
+		const selectedPosition = absoluteNodePosition(nodes, selectedNode);
 		const requestKey = `${selectedNodeId}:${viewportKey}`;
 		if (lastCenterRequestRef.current === requestKey) return;
 		lastCenterRequestRef.current = requestKey;
@@ -162,8 +115,8 @@ function CenterSelectedNode({
 		const firstFrame = window.requestAnimationFrame(() => {
 			secondFrame = window.requestAnimationFrame(() => {
 				void setCenter(
-					selectedNode.position.x + NODE_CENTER_OFFSET.x,
-					selectedNode.position.y + NODE_CENTER_OFFSET.y,
+					selectedPosition.x + NODE_CENTER_OFFSET.x,
+					selectedPosition.y + NODE_CENTER_OFFSET.y,
 					{ duration: 260, zoom: getZoom() },
 				);
 			});
@@ -186,9 +139,17 @@ export function OwnershipMap({
 	heightClassName = "h-[620px]",
 	onNodeSelect,
 }: OwnershipMapProps) {
+	const [expandedStandaloneKinds, setExpandedStandaloneKinds] = useState<Set<string>>(
+		() => new Set(),
+	);
 	const graph = useMemo(
-		() => (topology ? buildReactFlowTopology(topology, selectedNodeId) : null),
-		[topology, selectedNodeId],
+		() =>
+			topology
+				? buildReactFlowTopology(topology, selectedNodeId, {
+						expandedStandaloneKinds,
+					})
+				: null,
+		[topology, selectedNodeId, expandedStandaloneKinds],
 	);
 	const mapViewportRef = useRef<HTMLDivElement>(null);
 	const [viewportSizeKey, setViewportSizeKey] = useState("0x0");
@@ -200,6 +161,19 @@ export function OwnershipMap({
 	}, [topology]);
 	const centerViewportKey = `${heightClassName}:${viewportSizeKey}`;
 	const handleNodeClick: NodeMouseHandler<OwnershipGraphNode> = (_, node) => {
+		if (isStandaloneKindGroupNode(node)) {
+			setExpandedStandaloneKinds((current) => {
+				const next = new Set(current);
+				if (next.has(node.data.kind)) {
+					next.delete(node.data.kind);
+				} else {
+					next.add(node.data.kind);
+				}
+				return next;
+			});
+			return;
+		}
+		if (!isOwnershipResourceNode(node)) return;
 		onNodeSelect(node.data.node, node.data.resource);
 	};
 
@@ -265,7 +239,7 @@ export function OwnershipMap({
 							Ownership Map
 						</div>
 						<div className="text-[0.6875rem] text-muted-foreground">
-							{graph.nodes.length} nodes · {graph.edges.length} edges
+							{topology.nodes.length} nodes · {graph.edges.length} edges
 						</div>
 					</div>
 				</div>
@@ -281,7 +255,7 @@ export function OwnershipMap({
 				<ReactFlow
 					nodes={graph.nodes}
 					edges={graph.edges}
-					nodeTypes={nodeTypes}
+					nodeTypes={ownershipMapNodeTypes}
 					onNodeClick={handleNodeClick}
 					minZoom={0.18}
 					maxZoom={1.4}

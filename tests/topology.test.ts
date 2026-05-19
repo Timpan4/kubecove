@@ -152,15 +152,16 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, null);
+		const graph = buildReactFlowTopology(topology, podId);
+		const podNode = graph.nodes.find((node) => node.id === podId);
 
-		expect(graph.nodes[0].data.node.health).toBe("degraded");
-		expect(topologyNodeClassName(graph.nodes[0].data.node, null)).toContain(
+		expect(podNode?.data.node.health).toBe("degraded");
+		expect(topologyNodeClassName(podNode?.data.node ?? topology.nodes[0], null)).toContain(
 			"border-red-500",
 		);
 	});
 
-	test("keeps ownerless standalone resources in the root column", () => {
+	test("collapses ownerless standalone resources into type buckets by default", () => {
 		const deploymentId = resourceTopologyNodeId(
 			"kind-dev",
 			"apps/v1",
@@ -181,6 +182,13 @@ describe("ownership topology helpers", () => {
 			"ConfigMap",
 			"default",
 			"kube-root-ca.crt",
+		);
+		const appConfigMapId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"ConfigMap",
+			"default",
+			"api-config",
 		);
 		const topology: ResourceTopology = {
 			nodes: [
@@ -205,6 +213,16 @@ describe("ownership topology helpers", () => {
 					summary: summary({ kind: "ConfigMap", name: "kube-root-ca.crt" }),
 				},
 				{
+					id: appConfigMapId,
+					kind: "ConfigMap",
+					name: "api-config",
+					namespace: "default",
+					status: null,
+					health: "unknown",
+					selectable: true,
+					summary: summary({ kind: "ConfigMap", name: "api-config" }),
+				},
+				{
 					id: deploymentId,
 					kind: "Deployment",
 					name: "api",
@@ -220,17 +238,128 @@ describe("ownership topology helpers", () => {
 		};
 
 		const graph = buildReactFlowTopology(topology, null);
-		const deployment = graph.nodes.find((node) => node.id === deploymentId);
-		const service = graph.nodes.find((node) => node.id === serviceId);
-		const configMap = graph.nodes.find((node) => node.id === configMapId);
+		const groupIds = graph.nodes
+			.filter((node) => node.type === "standaloneKindGroup")
+			.map((node) => node.id);
+		const resourceNodes = graph.nodes.filter(
+			(node) => node.type === "ownershipResource",
+		);
+		const configMapGroup = graph.nodes.find(
+			(node) => node.id === "standalone-kind:ConfigMap",
+		);
 
-		expect(graph.nodes.map((node) => node.id)).toEqual([
-			configMapId,
-			deploymentId,
-			serviceId,
+		expect(groupIds).toEqual([
+			"standalone-kind:ConfigMap",
+			"standalone-kind:Deployment",
+			"standalone-kind:Service",
 		]);
-		expect(service?.position.x).toBe(deployment?.position.x);
-		expect(configMap?.position.x).toBe(deployment?.position.x);
+		expect(resourceNodes.map((node) => node.id)).toEqual([]);
+		expect(configMapGroup?.data.count).toBe(2);
+		expect(configMapGroup?.data.expanded).toBe(false);
+		expect(configMapGroup?.style?.height).toBe(42);
+	});
+
+	test("expands ownerless type buckets when requested", () => {
+		const configMapId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"ConfigMap",
+			"default",
+			"kube-root-ca.crt",
+		);
+		const appConfigMapId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"ConfigMap",
+			"default",
+			"api-config",
+		);
+		const topology: ResourceTopology = {
+			nodes: [
+				{
+					id: configMapId,
+					kind: "ConfigMap",
+					name: "kube-root-ca.crt",
+					namespace: "default",
+					status: null,
+					health: "unknown",
+					selectable: true,
+					summary: summary({ kind: "ConfigMap", name: "kube-root-ca.crt" }),
+				},
+				{
+					id: appConfigMapId,
+					kind: "ConfigMap",
+					name: "api-config",
+					namespace: "default",
+					status: null,
+					health: "unknown",
+					selectable: true,
+					summary: summary({ kind: "ConfigMap", name: "api-config" }),
+				},
+			],
+			edges: [],
+			warnings: [],
+		};
+
+		const graph = buildReactFlowTopology(topology, null, {
+			expandedStandaloneKinds: new Set(["ConfigMap"]),
+		});
+		const configMapGroup = graph.nodes.find(
+			(node) => node.id === "standalone-kind:ConfigMap",
+		);
+		const resourceNodes = graph.nodes.filter(
+			(node) => node.type === "ownershipResource",
+		);
+		const configMap = graph.nodes.find((node) => node.id === configMapId);
+		const appConfigMap = graph.nodes.find((node) => node.id === appConfigMapId);
+
+		expect(configMapGroup?.data.expanded).toBe(true);
+		expect(resourceNodes.map((node) => node.id)).toEqual([
+			appConfigMapId,
+			configMapId,
+		]);
+		expect(configMap?.parentId).toBe("standalone-kind:ConfigMap");
+		expect(appConfigMap?.parentId).toBe("standalone-kind:ConfigMap");
+		expect(configMap?.data.standalone).toBe(true);
+		expect(configMap?.style?.width).toBe(260);
+		expect(configMap?.position.y).toBe(appConfigMap?.position.y);
+		expect(configMap?.position.x).toBeGreaterThan(appConfigMap?.position.x ?? 0);
+	});
+
+	test("expands a collapsed ownerless bucket for the selected resource", () => {
+		const secretId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"Secret",
+			"default",
+			"bootstrap-token",
+		);
+		const topology: ResourceTopology = {
+			nodes: [
+				{
+					id: secretId,
+					kind: "Secret",
+					name: "bootstrap-token",
+					namespace: "default",
+					status: null,
+					health: "unknown",
+					selectable: true,
+					summary: summary({ kind: "Secret", name: "bootstrap-token" }),
+				},
+			],
+			edges: [],
+			warnings: [],
+		};
+
+		const graph = buildReactFlowTopology(topology, secretId);
+		const secretGroup = graph.nodes.find(
+			(node) => node.id === "standalone-kind:Secret",
+		);
+		const secret = graph.nodes.find((node) => node.id === secretId);
+
+		expect(secretGroup?.data.expanded).toBe(true);
+		expect(secret?.parentId).toBe("standalone-kind:Secret");
+		expect(secret?.selected).toBe(true);
 	});
 
 	test("deduplicates repeated topology nodes before React Flow render", () => {
@@ -259,7 +388,10 @@ describe("ownership topology helpers", () => {
 
 		const graph = buildReactFlowTopology(topology, null);
 
-		expect(graph.nodes.map((node) => node.id)).toEqual([serviceId]);
+		expect(graph.nodes.map((node) => node.id)).toEqual(["standalone-kind:Service"]);
+		expect(graph.nodes.find((node) => node.id === "standalone-kind:Service")?.data.count).toBe(
+			1,
+		);
 	});
 
 	test("groups child nodes by owner order to reduce crossing edges", () => {
@@ -345,12 +477,17 @@ describe("ownership topology helpers", () => {
 
 		const graph = buildReactFlowTopology(topology, null);
 		const yById = new Map(graph.nodes.map((node) => [node.id, node.position.y]));
+		const sortedAlloyYs = alloyPodIds
+			.map((id) => yById.get(id) ?? 0)
+			.sort((a, b) => a - b);
 		const maxAlloyY = Math.max(...alloyPodIds.map((id) => yById.get(id) ?? 0));
 		const minAlloyInClusterY = Math.min(
 			...alloyInClusterPodIds.map((id) => yById.get(id) ?? 0),
 		);
 
 		expect(maxAlloyY).toBeLessThan(minAlloyInClusterY);
+		expect(sortedAlloyYs[1] - sortedAlloyYs[0]).toBeGreaterThan(70);
+		expect(sortedAlloyYs[1] - sortedAlloyYs[0]).toBeLessThan(96);
 	});
 
 	test("adds Argo-style vertical gaps around nested ownership bands", () => {
@@ -458,9 +595,13 @@ describe("ownership topology helpers", () => {
 		const hubblePodY = yById.get(hubblePodId) ?? 0;
 		const ciliumPodY = yById.get(ciliumPodId) ?? 0;
 		const metricsY = yById.get(metricsId) ?? 0;
+		const nestedBandGap = ciliumPodY - hubblePodY;
+		const rootGroupGap = metricsY - ciliumPodY;
 
-		expect(ciliumPodY - hubblePodY).toBeGreaterThan(140);
-		expect(metricsY - ciliumPodY).toBeGreaterThan(120);
+		expect(nestedBandGap).toBeGreaterThanOrEqual(120);
+		expect(nestedBandGap).toBeLessThan(150);
+		expect(rootGroupGap).toBeGreaterThanOrEqual(90);
+		expect(rootGroupGap).toBeLessThan(130);
 		expect(yById.get(ciliumId)).toBeGreaterThan(hubblePodY);
 		expect(yById.get(ciliumId)).toBeLessThan(ciliumPodY);
 	});
@@ -550,7 +691,7 @@ describe("ownership topology helpers", () => {
 		expect(nodesById.get(deploymentId)?.data.selected).toBe(true);
 		expect(nodesById.get(replicaSetId)?.data.connected).toBe(true);
 		expect(nodesById.get(podId)?.data.connected).toBe(true);
-		expect(nodesById.get(standaloneId)?.data.dimmed).toBe(true);
+		expect(nodesById.get("standalone-kind:ConfigMap")?.data.dimmed).toBe(true);
 		expect(graph.edges.every((edge) => edge.style?.opacity === 1)).toBe(true);
 	});
 
