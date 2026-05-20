@@ -32,10 +32,12 @@ import {
 	filterResourcesByHealth,
 	filterResources,
 	formatResourceGroupLabel,
+	mergeWatchKeys,
 	resourceSelectionKey,
 	type HealthFilter,
 	resourceKindFetchKey,
 	sortedRows,
+	topologyWatchKeys,
 	uniqueArgoApps,
 	watchKeysFromFetchKeys,
 } from "./helpers";
@@ -149,13 +151,24 @@ function ResourceListComponent({
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		staleTime: 30_000,
 	});
-	const watchKeys = useMemo(() => watchKeysFromFetchKeys(fetchKeys), [fetchKeys]);
+	const tableWatchKeys = useMemo(
+		() => watchKeysFromFetchKeys(fetchKeys),
+		[fetchKeys],
+	);
+	const topologyResourceWatchKeys = useMemo(
+		() => (mapPanelOpen ? topologyWatchKeys(topologyNamespaces) : []),
+		[mapPanelOpen, topologyNamespaces],
+	);
+	const watchKeys = useMemo(
+		() => mergeWatchKeys(tableWatchKeys, topologyResourceWatchKeys),
+		[tableWatchKeys, topologyResourceWatchKeys],
+	);
 	const realtime = useResourceWatch({
 		client,
 		clusterContext,
 		keys: watchKeys,
 		queryKeys: realtimeQueryKeys,
-		enabled: fetchKeys.length > 0 && !isError,
+		enabled: watchKeys.length > 0 && !isError,
 	});
 
 	const argoApps = useMemo(() => uniqueArgoApps(data ?? []), [data]);

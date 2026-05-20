@@ -34,6 +34,21 @@ export interface ScopePill {
 	value: string;
 }
 
+const TOPOLOGY_WATCH_KINDS = [
+	"Deployment",
+	"DaemonSet",
+	"ReplicaSet",
+	"StatefulSet",
+	"CronJob",
+	"Job",
+	"Pod",
+	"PersistentVolumeClaim",
+	"Service",
+	"Ingress",
+	"ConfigMap",
+	"Secret",
+] as const;
+
 export function resourceSelectionKey(resource: ResourceSummary): string {
 	return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
 }
@@ -106,6 +121,39 @@ export function watchKeysFromFetchKeys(keys: FetchKey[]): WatchResourceKey[] {
 			namespace: key.namespace,
 		};
 	});
+}
+
+function watchKeySignature(key: WatchResourceKey): string {
+	const kind = key.resourceKind;
+	return [
+		kind.kind,
+		kind.apiVersion ?? "",
+		kind.plural ?? "",
+		key.namespace ?? "",
+	].join(":");
+}
+
+export function mergeWatchKeys(
+	...groups: WatchResourceKey[][]
+): WatchResourceKey[] {
+	const merged = new Map<string, WatchResourceKey>();
+	for (const group of groups) {
+		for (const key of group) {
+			merged.set(watchKeySignature(key), key);
+		}
+	}
+	return Array.from(merged.values());
+}
+
+export function topologyWatchKeys(namespaces: string[]): WatchResourceKey[] {
+	const namespaceScopes: Array<string | undefined> =
+		namespaces.length > 0 ? namespaces : [undefined];
+	return TOPOLOGY_WATCH_KINDS.flatMap((kind) =>
+		namespaceScopes.map((namespace) => ({
+			resourceKind: { kind },
+			namespace,
+		})),
+	);
 }
 
 export function sortedRows(
