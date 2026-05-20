@@ -83,6 +83,16 @@ export function useResourceWatch({
 		setMessage("Starting realtime watch");
 		setError(null);
 
+		const flushPendingInvalidations = () => {
+			const matchedQueryKeys = Array.from(
+				pendingInvalidationsRef.current.values(),
+			);
+			pendingInvalidationsRef.current.clear();
+			for (const queryKey of matchedQueryKeys) {
+				void queryClient.invalidateQueries({ queryKey });
+			}
+		};
+
 		const invalidateSoon = (target: WatchResourceTarget) => {
 			for (const subscription of subscriptions) {
 				if (
@@ -95,13 +105,7 @@ export function useResourceWatch({
 				}
 			}
 			if (debounceRef.current) clearTimeout(debounceRef.current);
-			debounceRef.current = setTimeout(() => {
-				const queryKeys = Array.from(pendingInvalidationsRef.current.values());
-				pendingInvalidationsRef.current.clear();
-				for (const queryKey of queryKeys) {
-					void queryClient.invalidateQueries({ queryKey });
-				}
-			}, 250);
+			debounceRef.current = setTimeout(flushPendingInvalidations, 250);
 		};
 
 		const channel = createStreamChannel((event: StreamMessage) => {
