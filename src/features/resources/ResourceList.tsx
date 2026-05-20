@@ -32,7 +32,6 @@ import {
 	filterResourcesByHealth,
 	filterResources,
 	formatResourceGroupLabel,
-	mergeWatchKeys,
 	resourceSelectionKey,
 	type HealthFilter,
 	resourceKindFetchKey,
@@ -120,10 +119,6 @@ function ResourceListComponent({
 		() => JSON.stringify(topologyQueryKey),
 		[topologyQueryKey],
 	);
-	const realtimeQueryKeys = useMemo(
-		() => [queryKey, topologyQueryKey],
-		[queryKey, topologyQueryKey],
-	);
 
 	useEffect(() => {
 		setPageIndex(0);
@@ -159,16 +154,20 @@ function ResourceListComponent({
 		() => (mapPanelOpen ? topologyWatchKeys(topologyNamespaces) : []),
 		[mapPanelOpen, topologyNamespaces],
 	);
-	const watchKeys = useMemo(
-		() => mergeWatchKeys(tableWatchKeys, topologyResourceWatchKeys),
-		[tableWatchKeys, topologyResourceWatchKeys],
+	const watchSubscriptions = useMemo(
+		() => [
+			{ keys: tableWatchKeys, queryKeys: [queryKey] },
+			{ keys: topologyResourceWatchKeys, queryKeys: [topologyQueryKey] },
+		],
+		[queryKey, tableWatchKeys, topologyQueryKey, topologyResourceWatchKeys],
 	);
 	const realtime = useResourceWatch({
 		client,
 		clusterContext,
-		keys: watchKeys,
-		queryKeys: realtimeQueryKeys,
-		enabled: watchKeys.length > 0 && !isError,
+		subscriptions: watchSubscriptions,
+		enabled:
+			watchSubscriptions.some((subscription) => subscription.keys.length > 0) &&
+			!isError,
 	});
 
 	const argoApps = useMemo(() => uniqueArgoApps(data ?? []), [data]);
