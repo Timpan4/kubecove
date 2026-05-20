@@ -29,7 +29,6 @@ import {
 import {
 	absoluteGraphNodePosition,
 	getOwnershipMapTranslateExtent,
-	ownershipGraphLayoutSignature,
 } from "./topology-viewport";
 
 interface OwnershipMapProps {
@@ -38,6 +37,7 @@ interface OwnershipMapProps {
 	isError: boolean;
 	error: unknown;
 	selectedNodeId: string | null;
+	fitViewKey: string;
 	heightClassName?: string;
 	onNodeSelect: (node: TopologyNode, resource: ResourceSummary | null) => void;
 }
@@ -63,18 +63,18 @@ function isStandaloneKindGroupNode(
 	return node.type === "standaloneKindGroup";
 }
 
-function FitTopologyView({ signature }: { signature: string }) {
+function FitTopologyView({ fitViewKey }: { fitViewKey: string }) {
 	const { fitView } = useReactFlow();
-	const lastFitSignatureRef = useRef<string | null>(null);
+	const lastFitViewKeyRef = useRef<string | null>(null);
 
 	useEffect(() => {
-		if (lastFitSignatureRef.current === signature) return;
-		lastFitSignatureRef.current = signature;
+		if (lastFitViewKeyRef.current === fitViewKey) return;
+		lastFitViewKeyRef.current = fitViewKey;
 		const frame = window.requestAnimationFrame(() => {
 			void fitView(FIT_VIEW_OPTIONS);
 		});
 		return () => window.cancelAnimationFrame(frame);
-	}, [fitView, signature]);
+	}, [fitView, fitViewKey]);
 
 	return null;
 }
@@ -129,6 +129,7 @@ export function OwnershipMap({
 	isError,
 	error,
 	selectedNodeId,
+	fitViewKey,
 	heightClassName = "h-[620px]",
 	onNodeSelect,
 }: OwnershipMapProps) {
@@ -153,11 +154,6 @@ export function OwnershipMap({
 				? getOwnershipMapTranslateExtent(graph.nodes, viewportSize)
 				: undefined,
 		[graph, viewportSize],
-	);
-	const graphLayoutSignature = useMemo(
-		() =>
-			graph ? ownershipGraphLayoutSignature(graph.nodes, graph.edges) : "",
-		[graph],
 	);
 	const viewportSizeKey = `${viewportSize.width}x${viewportSize.height}`;
 	const centerViewportKey = `${heightClassName}:${viewportSizeKey}`;
@@ -281,7 +277,7 @@ export function OwnershipMap({
 					proOptions={{ hideAttribution: true }}
 					className="ownership-map-flow"
 				>
-					<FitTopologyView signature={graphLayoutSignature} />
+					<FitTopologyView fitViewKey={fitViewKey} />
 					<CenterSelectedNode
 						nodes={graph.nodes}
 						selectedNodeId={selectedNodeId}

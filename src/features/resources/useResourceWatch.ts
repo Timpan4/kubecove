@@ -7,21 +7,51 @@ import {
 	stopStream,
 	type TauriClient,
 } from "@/lib/tauri";
-import type { StreamMessage, WatchResourceKey } from "@/lib/types";
+import type { StreamMessage, WatchResourceKey, WatchResourceTarget } from "@/lib/types";
+
+interface WatchSubscription {
+	keys: WatchResourceKey[];
+	queryKeys: QueryKey[];
+}
 
 interface UseResourceWatchArgs {
 	client: TauriClient;
 	clusterContext: string;
-	keys: WatchResourceKey[];
-	queryKey: QueryKey;
+	subscriptions: WatchSubscription[];
 	enabled: boolean;
+}
+
+function watchKeySignature(key: WatchResourceKey): string {
+	const kind = key.resourceKind;
+	return [
+		kind.kind,
+		kind.apiVersion ?? "",
+		kind.plural ?? "",
+		key.namespace ?? "",
+	].join(":");
+}
+
+function dedupeWatchKeys(keys: WatchResourceKey[]): WatchResourceKey[] {
+	const deduped = new Map<string, WatchResourceKey>();
+	for (const key of keys) {
+		deduped.set(watchKeySignature(key), key);
+	}
+	return Array.from(deduped.values());
+}
+
+function watchKeyMatchesTarget(
+	key: WatchResourceKey,
+	target: WatchResourceTarget,
+): boolean {
+	if (key.resourceKind.kind !== target.kind) return false;
+	if (!key.namespace) return true;
+	return key.namespace === (target.namespace ?? undefined);
 }
 
 export function useResourceWatch({
 	client,
 	clusterContext,
-	keys,
-	queryKey,
+	subscriptions,
 	enabled,
 }: UseResourceWatchArgs) {
 	const queryClient = useQueryClient();
@@ -29,7 +59,15 @@ export function useResourceWatch({
 	const [message, setMessage] = useState("Realtime idle");
 	const [error, setError] = useState<string | null>(null);
 	const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const keySignature = useMemo(() => JSON.stringify(keys), [keys]);
+	const pendingInvalidationsRef = useRef<Map<string, QueryKey>>(new Map());
+	const keys = useMemo(
+		() => dedupeWatchKeys(subscriptions.flatMap((subscription) => subscription.keys)),
+		[subscriptions],
+	);
+	const subscriptionSignature = useMemo(
+		() => JSON.stringify(subscriptions),
+		[subscriptions],
+	);
 
 	useEffect(() => {
 		if (!enabled || keys.length === 0) {
@@ -45,11 +83,29 @@ export function useResourceWatch({
 		setMessage("Starting realtime watch");
 		setError(null);
 
-		const invalidateSoon = () => {
-			if (debounceRef.current) clearTimeout(debounceRef.current);
-			debounceRef.current = setTimeout(() => {
+		const flushPendingInvalidations = () => {
+			const matchedQueryKeys = Array.from(
+				pendingInvalidationsRef.current.values(),
+			);
+			pendingInvalidationsRef.current.clear();
+			for (const queryKey of matchedQueryKeys) {
 				void queryClient.invalidateQueries({ queryKey });
-			}, 250);
+			}
+		};
+
+		const invalidateSoon = (target: WatchResourceTarget) => {
+			for (const subscription of subscriptions) {
+				if (
+					!subscription.keys.some((key) => watchKeyMatchesTarget(key, target))
+				) {
+					continue;
+				}
+				for (const queryKey of subscription.queryKeys) {
+					pendingInvalidationsRef.current.set(JSON.stringify(queryKey), queryKey);
+				}
+			}
+			if (debounceRef.current) clearTimeout(debounceRef.current);
+			debounceRef.current = setTimeout(flushPendingInvalidations, 250);
 		};
 
 		const channel = createStreamChannel((event: StreamMessage) => {
@@ -70,7 +126,7 @@ export function useResourceWatch({
 				setStatus("connected");
 				setMessage(`Realtime ${event.action}`);
 				setError(null);
-				invalidateSoon();
+				invalidateSoon(event.target);
 				return;
 			}
 			if (event.type === "error") {
@@ -102,10 +158,19 @@ export function useResourceWatch({
 		return () => {
 			cancelled = true;
 			if (debounceRef.current) clearTimeout(debounceRef.current);
+			pendingInvalidationsRef.current.clear();
 			if (streamId) void stopStream(client, streamId);
 			closeStreamChannel(channel);
 		};
-	}, [client, clusterContext, enabled, keySignature, queryClient, queryKey]);
+	}, [
+		client,
+		clusterContext,
+		enabled,
+		keys,
+		queryClient,
+		subscriptionSignature,
+		subscriptions,
+	]);
 
 	return { status, message, error };
 }

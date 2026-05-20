@@ -36,6 +36,7 @@ import {
 	type HealthFilter,
 	resourceKindFetchKey,
 	sortedRows,
+	topologyWatchKeys,
 	uniqueArgoApps,
 	watchKeysFromFetchKeys,
 } from "./helpers";
@@ -91,6 +92,17 @@ function ResourceListComponent({
 
 	const namespaceKey = selectedNamespaces.join(",");
 	const kindKey = selectedKinds.map(resourceKindFetchKey).join(",");
+	const topologyNamespaceKey = useMemo(
+		() =>
+			[...new Set(selectedNamespaces)]
+				.sort((a, b) => a.localeCompare(b))
+				.join(","),
+		[namespaceKey],
+	);
+	const topologyNamespaces = useMemo(
+		() => (topologyNamespaceKey ? topologyNamespaceKey.split(",") : []),
+		[topologyNamespaceKey],
+	);
 	const fetchKeys = useMemo(
 		() => buildFetchKeys(selectedNamespaces, selectedKinds),
 		[namespaceKey, kindKey],
@@ -98,6 +110,14 @@ function ResourceListComponent({
 	const queryKey = useMemo(
 		() => queryKeys.resources(clusterContext, fetchKeys),
 		[clusterContext, fetchKeys],
+	);
+	const topologyQueryKey = useMemo(
+		() => queryKeys.resourceTopology(clusterContext, topologyNamespaces),
+		[clusterContext, topologyNamespaces],
+	);
+	const topologyFitViewKey = useMemo(
+		() => JSON.stringify(topologyQueryKey),
+		[topologyQueryKey],
 	);
 
 	useEffect(() => {
@@ -121,18 +141,33 @@ function ResourceListComponent({
 		staleTime: 30_000,
 	});
 	const topologyQuery = useQuery({
-		queryKey: queryKeys.resourceTopology(clusterContext, selectedNamespaces),
-		queryFn: () => listResourceTopology(client, clusterContext, selectedNamespaces),
+		queryKey: topologyQueryKey,
+		queryFn: () => listResourceTopology(client, clusterContext, topologyNamespaces),
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		staleTime: 30_000,
 	});
-	const watchKeys = useMemo(() => watchKeysFromFetchKeys(fetchKeys), [fetchKeys]);
+	const tableWatchKeys = useMemo(
+		() => watchKeysFromFetchKeys(fetchKeys),
+		[fetchKeys],
+	);
+	const topologyResourceWatchKeys = useMemo(
+		() => (mapPanelOpen ? topologyWatchKeys(topologyNamespaces) : []),
+		[mapPanelOpen, topologyNamespaces],
+	);
+	const watchSubscriptions = useMemo(
+		() => [
+			{ keys: tableWatchKeys, queryKeys: [queryKey] },
+			{ keys: topologyResourceWatchKeys, queryKeys: [topologyQueryKey] },
+		],
+		[queryKey, tableWatchKeys, topologyQueryKey, topologyResourceWatchKeys],
+	);
 	const realtime = useResourceWatch({
 		client,
 		clusterContext,
-		keys: watchKeys,
-		queryKey,
-		enabled: fetchKeys.length > 0 && !isError,
+		subscriptions: watchSubscriptions,
+		enabled:
+			watchSubscriptions.some((subscription) => subscription.keys.length > 0) &&
+			!isError,
 	});
 
 	const argoApps = useMemo(() => uniqueArgoApps(data ?? []), [data]);
@@ -357,6 +392,7 @@ function ResourceListComponent({
 				topologyError={topologyQuery.isError}
 				topologyErr={topologyQuery.error}
 				selectedTopologyNodeId={syncedTopologyNodeId}
+				topologyFitViewKey={topologyFitViewKey}
 				mapPanelOpen={mapPanelOpen}
 				onMapPanelOpenChange={handleMapPanelOpenChange}
 				onTopologyNodeSelect={handleTopologyNodeSelect}
