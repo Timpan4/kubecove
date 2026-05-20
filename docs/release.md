@@ -34,6 +34,9 @@ The release command can run from any local branch or GitButler workspace. It fet
 
 GitHub Actions then runs typecheck, frontend tests, Rust tests, Rust check, builds macOS, Windows, and Linux installers, and publishes a GitHub Release after every platform build succeeds. Manual workflow dispatch is only for rerunning an existing `app-v*` tag; reruns preserve the existing release visibility.
 
+Release notes in GitHub Releases should mirror the matching version section in
+the root `CHANGELOG.md`.
+
 ## Publishing Checklist
 
 - Confirm the release contains macOS, Windows, and Linux assets.
