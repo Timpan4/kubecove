@@ -139,6 +139,23 @@ export interface WatchResourceTarget {
 	name?: string | null;
 }
 
+export interface AppUsageMetricsBreakdown {
+	label: string;
+	description: string;
+	cpuPercent: number;
+	memoryBytes: number;
+	processCount: number;
+	children: AppUsageMetricsBreakdown[];
+}
+
+export interface AppUsageMetrics {
+	cpuPercent: number;
+	memoryBytes: number;
+	processCount: number;
+	sampledAt: string;
+	breakdown: AppUsageMetricsBreakdown[];
+}
+
 export type StreamStatus = "connected" | "reconnecting" | "stopped" | "error";
 
 export type StreamMessage =

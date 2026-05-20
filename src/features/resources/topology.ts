@@ -175,7 +175,6 @@ export function buildReactFlowTopology(
 				type: "smoothstep",
 				data: { relation: edge.relation },
 				pathOptions: EDGE_PATH_OPTIONS,
-				animated: selectedEdge,
 				focusable: false,
 				zIndex: selectedEdge ? 10 : 0,
 				markerEnd: {
@@ -256,9 +255,8 @@ export function topologyNodeClassName(
 		node.health === "attention" && "border-amber-500/70 bg-amber-500/10",
 		node.health === "restarted" && "border-sky-500/70 bg-sky-500/10",
 		connected &&
-			"border-primary/60 bg-primary/5 ring-1 ring-primary/30 shadow-primary/10",
-		selected &&
-			"border-primary bg-primary/10 ring-2 ring-primary shadow-lg shadow-primary/25",
+			"border-primary/60 bg-primary/5 ring-1 ring-primary/30",
+		selected && "border-primary bg-primary/10 ring-2 ring-primary",
 	);
 }
 

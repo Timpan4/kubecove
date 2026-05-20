@@ -91,8 +91,10 @@ function TimezoneOption({
 export function SettingsPage() {
 	const {
 		showExactTimestamps,
+		showUsageFooter,
 		timestampTimezone,
 		setShowExactTimestamps,
+		setShowUsageFooter,
 		setTimestampTimezone,
 	} = useSettingsState();
 
@@ -111,6 +113,16 @@ export function SettingsPage() {
 						checked={showExactTimestamps}
 						onCheckedChange={setShowExactTimestamps}
 						ariaLabel="Show exact timestamps"
+					/>
+				</SettingsRow>
+				<SettingsRow
+					title="Show CPU and memory footer"
+					description="Adds a compact footer with KubeCove CPU and memory usage for the app process tree."
+				>
+					<ToggleButton
+						checked={showUsageFooter}
+						onCheckedChange={setShowUsageFooter}
+						ariaLabel="Show CPU and memory footer"
 					/>
 				</SettingsRow>
 				<SettingsRow

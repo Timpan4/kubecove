@@ -7,6 +7,7 @@ mod live_store;
 mod namespaces;
 mod resources;
 mod streams;
+mod usage;
 
 pub use argo::{
     detect_argocd, get_argocd_application_details, get_argocd_appproject_details,
@@ -28,3 +29,4 @@ pub use streams::{
     start_pod_log_stream, start_resource_event_watch, start_resource_watch, stop_stream,
     StreamRegistry,
 };
+pub use usage::{get_app_usage_metrics, AppUsageMonitor};

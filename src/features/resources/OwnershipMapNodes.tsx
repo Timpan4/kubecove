@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import {
 	Handle,
 	Position,
@@ -7,7 +6,6 @@ import {
 } from "@xyflow/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getResourceKindVisual } from "@/lib/resource-visuals";
 import { cn } from "@/lib/utils";
 import {
@@ -35,59 +33,32 @@ function ValueBadge({
 	className?: string;
 }) {
 	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<Badge
-					variant="outline"
-					className={cn(
-						"h-[1.125rem] min-w-0 max-w-full justify-start rounded-sm px-1.5 text-[0.625rem] font-medium leading-none",
-						className,
-					)}
-					tabIndex={0}
-				>
-					<span className="truncate">{value}</span>
-				</Badge>
-			</TooltipTrigger>
-			<TooltipContent
-				side="top"
-				align="start"
-				sideOffset={6}
-				className="max-w-[min(28rem,calc(100vw-2rem))] whitespace-normal break-words"
-			>
-				{value}
-			</TooltipContent>
-		</Tooltip>
+		<Badge
+			variant="outline"
+			className={cn(
+				"h-[1.125rem] min-w-0 max-w-full justify-start rounded-sm px-1.5 text-[0.625rem] font-medium leading-none",
+				className,
+			)}
+			title={value}
+		>
+			<span className="truncate">{value}</span>
+		</Badge>
 	);
 }
 
-function TopologyTextTooltip({
-	children,
+function TopologyText({
 	content,
+	title = content,
 	className,
 }: {
-	children: ReactNode;
 	content: string;
+	title?: string;
 	className?: string;
 }) {
 	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<span
-					className={cn("block min-w-0 truncate", className)}
-					tabIndex={0}
-				>
-					{children}
-				</span>
-			</TooltipTrigger>
-			<TooltipContent
-				side="top"
-				align="start"
-				sideOffset={6}
-				className="max-w-[min(28rem,calc(100vw-2rem))] whitespace-normal break-words"
-			>
-				{content}
-			</TooltipContent>
-		</Tooltip>
+		<span className={cn("block min-w-0 truncate", className)} title={title}>
+			{content}
+		</span>
 	);
 }
 
@@ -160,20 +131,17 @@ function OwnershipResourceNode({
 			/>
 			<div className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2">
 				<Icon className={cn("size-3.5 shrink-0", visual.className)} />
-				<TopologyTextTooltip
-					content={`${node.kind}/${node.name}`}
+				<TopologyText
+					content={displayName}
+					title={`${node.kind}/${node.name}`}
 					className="text-[0.6875rem] font-semibold leading-none text-foreground"
-				>
-					{displayName}
-				</TopologyTextTooltip>
+				/>
 				<HealthBadge health={node.health} />
 			</div>
-			<TopologyTextTooltip
+			<TopologyText
 				content={metadataText}
 				className="text-[0.64rem] leading-tight text-muted-foreground"
-			>
-				{metadataText}
-			</TopologyTextTooltip>
+			/>
 			<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
 				{node.status ? (
 					<ValueBadge value={node.status} className="border-primary/45 bg-primary/10" />
@@ -212,12 +180,10 @@ function StandaloneKindGroupNode({
 				<div className="flex min-w-0 items-center gap-2">
 					<ToggleIcon className="size-3 shrink-0 text-muted-foreground" />
 					<Icon className={cn("size-3.5 shrink-0", visual.className)} />
-					<TopologyTextTooltip
+					<TopologyText
 						content={`Ownerless ${data.kind}`}
 						className="text-[0.6875rem] font-semibold text-foreground"
-					>
-						Ownerless {data.kind}
-					</TopologyTextTooltip>
+					/>
 				</div>
 				<Badge variant="outline" className="h-4 rounded-sm px-1.5 text-[0.625rem]">
 					{data.count}

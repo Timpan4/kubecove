@@ -1,16 +1,21 @@
 import "./App.css";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useDashboardState } from "./lib/hooks";
 import { SidebarTree } from "./components/SidebarTree";
-import { ResourceList } from "./features/resources/ResourceList";
-import { ResourceDetailPanel } from "./features/resource-detail/ResourceDetailPanel";
-import { ArgoCDPanel } from "./features/argo/ArgoCDPanel";
-import { ArgoDetailPanel } from "./features/argo/ArgoDetailPanel";
-import { SettingsPage } from "./features/settings/SettingsPage";
-import { WorkspaceLauncher, WorkspaceOverview } from "./features/workspaces";
 import { AppTopBar } from "./app/AppTopBar";
+import { AppUsageFooter } from "./app/AppUsageFooter";
 import { DetailPanelFrame } from "./app/DetailPanelFrame";
 import { useArgoDetection } from "./app/useArgoDetection";
+import { ViewLoadingFallback } from "./app/ViewLoadingFallback";
+import { useSettingsState } from "./lib/settings";
 import {
 	Sidebar,
 	SidebarContent,
@@ -37,6 +42,42 @@ import {
 	SECTION_LABELS,
 	SIDEBAR_PROVIDER_STYLE,
 } from "./app/viewHelpers";
+
+const ResourceList = lazy(() =>
+	import("./features/resources/ResourceList").then((module) => ({
+		default: module.ResourceList,
+	})),
+);
+const ResourceDetailPanel = lazy(() =>
+	import("./features/resource-detail/ResourceDetailPanel").then((module) => ({
+		default: module.ResourceDetailPanel,
+	})),
+);
+const ArgoCDPanel = lazy(() =>
+	import("./features/argo/ArgoCDPanel").then((module) => ({
+		default: module.ArgoCDPanel,
+	})),
+);
+const ArgoDetailPanel = lazy(() =>
+	import("./features/argo/ArgoDetailPanel").then((module) => ({
+		default: module.ArgoDetailPanel,
+	})),
+);
+const SettingsPage = lazy(() =>
+	import("./features/settings/SettingsPage").then((module) => ({
+		default: module.SettingsPage,
+	})),
+);
+const WorkspaceLauncher = lazy(() =>
+	import("./features/workspaces").then((module) => ({
+		default: module.WorkspaceLauncher,
+	})),
+);
+const WorkspaceOverview = lazy(() =>
+	import("./features/workspaces").then((module) => ({
+		default: module.WorkspaceOverview,
+	})),
+);
 
 function App() {
 	const {
@@ -69,6 +110,7 @@ function App() {
 	} = useDashboardState();
 	const activeWorkspace =
 		workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
+	const showUsageFooter = useSettingsState((state) => state.showUsageFooter);
 	const [resourceHealthFilter, setResourceHealthFilter] =
 		useState<HealthFilter>("all");
 	const appRenderCountRef = useRef(0);
@@ -295,7 +337,16 @@ function App() {
 	});
 
 	if (!activeWorkspace) {
-		return <WorkspaceLauncher onOpenWorkspace={applyWorkspace} />;
+		return (
+			<div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
+				<div className="min-h-0 flex-1 overflow-hidden">
+					<Suspense fallback={<ViewLoadingFallback label="Loading workspaces..." />}>
+						<WorkspaceLauncher onOpenWorkspace={applyWorkspace} />
+					</Suspense>
+				</div>
+				<AppUsageFooter visible={showUsageFooter} />
+			</div>
+		);
 	}
 
 	const mainContent = (
@@ -305,43 +356,51 @@ function App() {
 		>
 			{viewMode === "overview" ? (
 				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<WorkspaceOverview
-						workspace={activeWorkspace}
-						onOpenResources={handleOpenResources}
-						onOpenArgo={handleOpenArgo}
-						onOpenLauncher={handleOpenLauncher}
-					/>
+					<Suspense fallback={<ViewLoadingFallback label="Loading overview..." />}>
+						<WorkspaceOverview
+							workspace={activeWorkspace}
+							onOpenResources={handleOpenResources}
+							onOpenArgo={handleOpenArgo}
+							onOpenLauncher={handleOpenLauncher}
+						/>
+					</Suspense>
 				</div>
 			) : viewMode === "settings" ? (
 				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<SettingsPage />
+					<Suspense fallback={<ViewLoadingFallback label="Loading settings..." />}>
+						<SettingsPage />
+					</Suspense>
 				</div>
 			) : viewMode === "argo" ? (
 				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<ArgoCDPanel
-						clusterContext={clusterContext}
-						selectedArgoItem={selectedArgoApp}
-						onArgoItemSelect={handleArgoAppSelect}
-						selectedArgoKind={
-							selectedTreeNode?.type === "kind" && selectedTreeNode.kind
-								? selectedTreeNode.kind
-								: null
-						}
-					/>
+					<Suspense fallback={<ViewLoadingFallback label="Loading Argo CD..." />}>
+						<ArgoCDPanel
+							clusterContext={clusterContext}
+							selectedArgoItem={selectedArgoApp}
+							onArgoItemSelect={handleArgoAppSelect}
+							selectedArgoKind={
+								selectedTreeNode?.type === "kind" && selectedTreeNode.kind
+									? selectedTreeNode.kind
+									: null
+							}
+						/>
+					</Suspense>
 				</div>
 			) : (
 				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
 					{canQueryResources ? (
-						<ResourceList
-							clusterContext={clusterContext}
-							selectedNamespaces={computedNamespaces}
-							selectedKinds={computedKinds}
-							selectedArgoAppFilter={selectedArgoAppFilter}
-							selectedResource={selectedResource}
-							initialHealthFilter={resourceHealthFilter}
-							onArgoAppFilterChange={setSelectedArgoAppFilter}
-							onResourceSelect={setSelectedResource}
-						/>
+						<Suspense fallback={<ViewLoadingFallback label="Loading resources..." />}>
+							<ResourceList
+								clusterContext={clusterContext}
+								selectedNamespaces={computedNamespaces}
+								selectedKinds={computedKinds}
+								selectedArgoAppFilter={selectedArgoAppFilter}
+								selectedResource={selectedResource}
+								initialHealthFilter={resourceHealthFilter}
+								onArgoAppFilterChange={setSelectedArgoAppFilter}
+								onResourceSelect={setSelectedResource}
+							/>
+						</Suspense>
 					) : (
 						<div className="p-8 text-center text-sm text-muted-foreground">
 							{emptyMsg}
@@ -354,13 +413,17 @@ function App() {
 
 	const detailPanel =
 		viewMode === "argo" && selectedArgoApp ? (
-			<ArgoDetailPanel app={selectedArgoApp} onClose={handleArgoClose} />
+			<Suspense fallback={<ViewLoadingFallback label="Loading app details..." />}>
+				<ArgoDetailPanel app={selectedArgoApp} onClose={handleArgoClose} />
+			</Suspense>
 		) : selectedResource ? (
-			<ResourceDetailPanel
-				key={selectedResourceKey}
-				resource={selectedResource}
-				onClose={resetResource}
-			/>
+			<Suspense fallback={<ViewLoadingFallback label="Loading resource details..." />}>
+				<ResourceDetailPanel
+					key={selectedResourceKey}
+					resource={selectedResource}
+					onClose={resetResource}
+				/>
+			</Suspense>
 		) : null;
 
 	return (
@@ -404,6 +467,7 @@ function App() {
 				/>
 				</SidebarInset>
 			</SidebarProvider>
+			<AppUsageFooter visible={showUsageFooter} />
 		</div>
 	);
 }

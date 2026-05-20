@@ -16,6 +16,7 @@ import type {
 	StreamMessage,
 	WatchResourceKey,
 	AppError,
+	AppUsageMetrics,
 	ArgoApplicationSummary,
 	ArgoApplicationDetails,
 	ArgoApplicationSetSummary,
@@ -272,6 +273,12 @@ export async function stopStream(
 	streamId: string,
 ): Promise<boolean> {
 	return client.invoke<boolean>("stop_stream", { streamId });
+}
+
+export async function getAppUsageMetrics(
+	client: TauriClient,
+): Promise<AppUsageMetrics> {
+	return client.invoke<AppUsageMetrics>("get_app_usage_metrics");
 }
 
 export function isAppError(value: unknown): value is AppError {

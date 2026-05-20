@@ -84,6 +84,7 @@ function ResourceListComponent({
 	const [selectedTopologyNodeId, setSelectedTopologyNodeId] = useState<
 		string | null
 	>(null);
+	const [mapPanelOpen, setMapPanelOpen] = useState(true);
 	const client = useMemo(() => createTauriClient(), []);
 	const renderCountRef = useRef(0);
 	renderCountRef.current += 1;
@@ -122,7 +123,7 @@ function ResourceListComponent({
 	const topologyQuery = useQuery({
 		queryKey: queryKeys.resourceTopology(clusterContext, selectedNamespaces),
 		queryFn: () => listResourceTopology(client, clusterContext, selectedNamespaces),
-		enabled: Boolean(clusterContext),
+		enabled: Boolean(clusterContext && mapPanelOpen),
 		staleTime: 30_000,
 	});
 	const watchKeys = useMemo(() => watchKeysFromFetchKeys(fetchKeys), [fetchKeys]);
@@ -271,6 +272,10 @@ function ResourceListComponent({
 		setSelectedResourceKey(resourceSelectionKey(resource));
 		onResourceSelect(resource);
 	};
+	const handleMapPanelOpenChange = (open: boolean) => {
+		setMapPanelOpen(open);
+		if (!open) setSelectedTopologyNodeId(null);
+	};
 
 	if (isPending) {
 		return (
@@ -352,6 +357,8 @@ function ResourceListComponent({
 				topologyError={topologyQuery.isError}
 				topologyErr={topologyQuery.error}
 				selectedTopologyNodeId={syncedTopologyNodeId}
+				mapPanelOpen={mapPanelOpen}
+				onMapPanelOpenChange={handleMapPanelOpenChange}
 				onTopologyNodeSelect={handleTopologyNodeSelect}
 				table={table}
 				groupedByArgo={groupedByArgo}
