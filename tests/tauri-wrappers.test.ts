@@ -1,13 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import {
 	createMockTauriClient,
+	getAppUsageMetrics,
 	getResourceYaml,
 	isAppError,
 	listResourceTopology,
 	listKubeContexts,
 	listNamespaces,
 } from "../src/lib/tauri";
-import type { ClusterContext, NamespaceSummary, ResourceTopology } from "../src/lib/types";
+import type {
+	AppUsageMetrics,
+	ClusterContext,
+	NamespaceSummary,
+	ResourceTopology,
+} from "../src/lib/types";
 
 describe("createMockTauriClient", () => {
 	test("returns mock response for known command", async () => {
@@ -70,6 +76,37 @@ describe("typed Tauri wrappers", () => {
 				},
 			},
 		]);
+	});
+
+	test("fetches app usage metrics through the typed client", async () => {
+		const metrics: AppUsageMetrics = {
+			cpuPercent: 2.4,
+			memoryBytes: 184 * 1024 * 1024,
+			processCount: 3,
+			sampledAt: "2026-05-20T10:00:00Z",
+			breakdown: [
+				{
+					label: "WebView",
+					description: "Embedded WebView browser runtime",
+					cpuPercent: 1.8,
+					memoryBytes: 128 * 1024 * 1024,
+					processCount: 2,
+					children: [
+						{
+							label: "WebView process 1",
+							description: "Embedded WebView browser runtime",
+							cpuPercent: 1.2,
+							memoryBytes: 96 * 1024 * 1024,
+							processCount: 1,
+							children: [],
+						},
+					],
+				},
+			],
+		};
+		const client = createMockTauriClient({ get_app_usage_metrics: metrics });
+
+		expect(await getAppUsageMetrics(client)).toEqual(metrics);
 	});
 });
 

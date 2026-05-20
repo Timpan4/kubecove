@@ -1,9 +1,9 @@
 use kubecove_lib::models::{
-    AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails,
-    ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSummary, ClusterContext,
-    DiscoveredResourceKind, NamespaceSummary, PodLogStreamRequest, ResourceDetails,
-    ResourceDetailsFull, ResourceEventSummary, ResourceSummary, StreamMessage, WatchResourceKey,
-    WatchResourceKind,
+    AppError, AppUsageMetrics, AppUsageMetricsBreakdown, ArgoAppProjectDetails,
+    ArgoAppProjectSummary, ArgoApplicationDetails, ArgoApplicationSetDetails,
+    ArgoApplicationSetSummary, ArgoApplicationSummary, ClusterContext, DiscoveredResourceKind,
+    NamespaceSummary, PodLogStreamRequest, ResourceDetails, ResourceDetailsFull,
+    ResourceEventSummary, ResourceSummary, StreamMessage, WatchResourceKey, WatchResourceKind,
 };
 use serde_json::json;
 
@@ -347,4 +347,47 @@ fn test_stream_models_serde() {
     let json_val = serde_json::to_value(&message).unwrap();
     assert_eq!(json_val["type"], "logLine");
     assert_eq!(json_val["streamId"], "logs-1");
+}
+
+#[test]
+fn test_app_usage_metrics_serde() {
+    let metrics = AppUsageMetrics {
+        cpu_percent: 2.4,
+        memory_bytes: 184 * 1024 * 1024,
+        process_count: 3,
+        sampled_at: "2026-05-20T10:00:00Z".to_string(),
+        breakdown: vec![AppUsageMetricsBreakdown {
+            label: "WebView".to_string(),
+            description: "Embedded WebView browser runtime".to_string(),
+            cpu_percent: 1.8,
+            memory_bytes: 128 * 1024 * 1024,
+            process_count: 2,
+            children: vec![AppUsageMetricsBreakdown {
+                label: "WebView process 1".to_string(),
+                description: "Embedded WebView browser runtime".to_string(),
+                cpu_percent: 1.2,
+                memory_bytes: 96 * 1024 * 1024,
+                process_count: 1,
+                children: Vec::new(),
+            }],
+        }],
+    };
+
+    let json_val = serde_json::to_value(&metrics).unwrap();
+    assert!((json_val["cpuPercent"].as_f64().unwrap() - 2.4).abs() < 0.001);
+    assert_eq!(json_val["memoryBytes"], 184 * 1024 * 1024);
+    assert_eq!(json_val["processCount"], 3);
+    assert_eq!(json_val["breakdown"][0]["label"], "WebView");
+    assert_eq!(
+        json_val["breakdown"][0]["description"],
+        "Embedded WebView browser runtime"
+    );
+    assert_eq!(
+        json_val["breakdown"][0]["children"][0]["label"],
+        "WebView process 1"
+    );
+    let parsed: AppUsageMetrics = serde_json::from_value(json_val).unwrap();
+    assert_eq!(parsed.process_count, 3);
+    assert_eq!(parsed.breakdown[0].process_count, 2);
+    assert_eq!(parsed.breakdown[0].children[0].process_count, 1);
 }

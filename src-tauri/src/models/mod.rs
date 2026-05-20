@@ -6,6 +6,7 @@ mod events;
 mod namespace;
 mod resource;
 mod streams;
+mod usage;
 
 pub use argo::{
     ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails,
@@ -23,3 +24,4 @@ pub use resource::{
 pub use streams::{
     PodLogStreamRequest, StreamMessage, WatchResourceKey, WatchResourceKind, WatchResourceTarget,
 };
+pub use usage::{AppUsageMetrics, AppUsageMetricsBreakdown};

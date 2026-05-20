@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Table as TanStackTable } from "@tanstack/react-table";
 import { GitBranch, PanelRightClose, PanelRightOpen, Table2 } from "lucide-react";
@@ -7,8 +7,11 @@ import { Button } from "@/components/ui/button";
 import type { ResourceSummary, ResourceTopology, TopologyNode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ResourcePagination } from "./pagination";
-import { OwnershipMap } from "./OwnershipMap";
 import { ResourceTable } from "./ResourceTable";
+
+const LazyOwnershipMap = lazy(() =>
+	import("./OwnershipMap").then((module) => ({ default: module.OwnershipMap })),
+);
 
 interface ResourceMapTableLayoutProps {
 	topology: ResourceTopology | undefined;
@@ -16,6 +19,8 @@ interface ResourceMapTableLayoutProps {
 	topologyError: boolean;
 	topologyErr: unknown;
 	selectedTopologyNodeId: string | null;
+	mapPanelOpen: boolean;
+	onMapPanelOpenChange: (open: boolean) => void;
 	onTopologyNodeSelect: (
 		node: TopologyNode,
 		resource: ResourceSummary | null,
@@ -47,6 +52,8 @@ export function ResourceMapTableLayout({
 	topologyError,
 	topologyErr,
 	selectedTopologyNodeId,
+	mapPanelOpen,
+	onMapPanelOpenChange,
 	onTopologyNodeSelect,
 	table,
 	groupedByArgo,
@@ -65,12 +72,16 @@ export function ResourceMapTableLayout({
 	realtime,
 }: ResourceMapTableLayoutProps) {
 	const [tablePanelOpen, setTablePanelOpen] = useState(true);
+	useEffect(() => {
+		if (!mapPanelOpen) setTablePanelOpen(true);
+	}, [mapPanelOpen]);
+
 	const hasActiveSelection = Boolean(
 		selectedResourceKey || selectedTopologyNodeId,
 	);
 	const mapHeightClassName =
 		tablePanelOpen && hasActiveSelection ? "h-[360px]" : "h-[640px]";
-	const contentGridClassName = tablePanelOpen
+	const contentGridClassName = mapPanelOpen && tablePanelOpen
 		? cn(
 				"grid min-w-0 gap-3",
 				hasActiveSelection
@@ -82,6 +93,15 @@ export function ResourceMapTableLayout({
 		"flex min-w-0 flex-col overflow-hidden rounded-md border bg-card/60",
 		hasActiveSelection ? "h-[560px]" : "h-[640px]",
 	);
+	const handleMapPanelToggle = () => {
+		const nextOpen = !mapPanelOpen;
+		onMapPanelOpenChange(nextOpen);
+		if (!nextOpen) setTablePanelOpen(true);
+	};
+	const handleTablePanelToggle = () => {
+		if (!mapPanelOpen) return;
+		setTablePanelOpen((open) => !open);
+	};
 
 	return (
 		<>
@@ -93,20 +113,33 @@ export function ResourceMapTableLayout({
 					</span>
 					<span>primary read-only incident view</span>
 				</div>
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					onClick={() => setTablePanelOpen((open) => !open)}
-					aria-pressed={tablePanelOpen}
-				>
-					{tablePanelOpen ? (
-						<PanelRightClose data-icon="inline-start" />
-					) : (
-						<PanelRightOpen data-icon="inline-start" />
-					)}
-					{tablePanelOpen ? "Hide table" : "Show table"}
-				</Button>
+				<div className="flex items-center gap-2">
+					<Button
+						type="button"
+						variant={mapPanelOpen ? "secondary" : "outline"}
+						size="sm"
+						onClick={handleMapPanelToggle}
+						aria-pressed={mapPanelOpen}
+					>
+						<GitBranch data-icon="inline-start" />
+						Map
+					</Button>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={handleTablePanelToggle}
+						aria-pressed={tablePanelOpen}
+						disabled={!mapPanelOpen}
+					>
+						{tablePanelOpen ? (
+							<PanelRightClose data-icon="inline-start" />
+						) : (
+							<PanelRightOpen data-icon="inline-start" />
+						)}
+						{tablePanelOpen ? "Hide table" : "Show table"}
+					</Button>
+				</div>
 			</div>
 			<div className="flex items-center gap-2 text-xs text-muted-foreground">
 				<Badge variant={realtime.status === "error" ? "destructive" : "outline"}>
@@ -115,17 +148,30 @@ export function ResourceMapTableLayout({
 				<span className="truncate">{realtime.error ?? realtime.message}</span>
 			</div>
 			<div className={contentGridClassName}>
-				<div className="min-w-0">
-					<OwnershipMap
-						topology={topology}
-						isLoading={topologyLoading}
-						isError={topologyError}
-						error={topologyErr}
-						selectedNodeId={selectedTopologyNodeId}
-						heightClassName={mapHeightClassName}
-						onNodeSelect={onTopologyNodeSelect}
-					/>
-				</div>
+				{mapPanelOpen && (
+					<div className="min-w-0">
+						<Suspense
+							fallback={
+								<div
+									className={cn(
+										mapHeightClassName,
+										"rounded-md border bg-card/60",
+									)}
+								/>
+							}
+						>
+							<LazyOwnershipMap
+								topology={topology}
+								isLoading={topologyLoading}
+								isError={topologyError}
+								error={topologyErr}
+								selectedNodeId={selectedTopologyNodeId}
+								heightClassName={mapHeightClassName}
+								onNodeSelect={onTopologyNodeSelect}
+							/>
+						</Suspense>
+					</div>
+				)}
 				{tablePanelOpen && (
 					<aside className={tablePanelClassName}>
 						<div className="flex items-center justify-between gap-2 border-b px-3 py-2">
@@ -143,8 +189,9 @@ export function ResourceMapTableLayout({
 								variant="ghost"
 								size="icon"
 								className="size-7"
-								onClick={() => setTablePanelOpen(false)}
+								onClick={handleTablePanelToggle}
 								aria-label="Hide resource table"
+								disabled={!mapPanelOpen}
 							>
 								<PanelRightClose className="size-4" />
 							</Button>

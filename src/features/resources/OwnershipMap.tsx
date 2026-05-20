@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-	Background,
-	BackgroundVariant,
 	Controls,
 	ReactFlow,
 	useReactFlow,
@@ -288,12 +286,6 @@ export function OwnershipMap({
 						nodes={graph.nodes}
 						selectedNodeId={selectedNodeId}
 						viewportKey={centerViewportKey}
-					/>
-					<Background
-						variant={BackgroundVariant.Dots}
-						gap={22}
-						size={1}
-						className="opacity-45"
 					/>
 					<Controls
 						position="top-left"

@@ -1,6 +1,9 @@
 import { spawnSync } from "node:child_process";
 import {
+	RELEASE_TAG_PREFIX,
 	assertMatchingReleaseVersions,
+	assertVersionGreaterThanLatestTag,
+	latestReleaseTagVersionFromRefs,
 	parseCargoPackageVersion,
 	requireVersion,
 } from "./release-versions";
@@ -23,6 +26,7 @@ if (!validModes.has(mode)) {
 fetchReleaseRefs();
 
 const originMainSha = run("git", ["rev-parse", "origin/main"]).stdout.trim();
+const latestReleaseTagVersion = readLatestRemoteReleaseTagVersion();
 const packageJson = JSON.parse(readRemoteFile("package.json")) as { version?: string };
 const tauriConfig = JSON.parse(readRemoteFile("src-tauri/tauri.conf.json")) as { version?: string };
 const cargoToml = readRemoteFile("src-tauri/Cargo.toml");
@@ -40,7 +44,17 @@ try {
 	].join("\n"));
 }
 
-const tagName = `app-v${packageVersion}`;
+try {
+	assertVersionGreaterThanLatestTag(
+		packageVersion,
+		latestReleaseTagVersion,
+		"origin/main release version",
+	);
+} catch (error) {
+	fail(error instanceof Error ? error.message : String(error));
+}
+
+const tagName = `${RELEASE_TAG_PREFIX}${packageVersion}`;
 const releaseName = `KubeCove v${packageVersion}`;
 
 assertMissingLocalTag(tagName);
@@ -48,11 +62,17 @@ assertMissingRemoteTag(tagName);
 
 if (mode === "check") {
 	console.log(`Release check passed for ${releaseName} (${tagName}) at origin/main ${shortSha(originMainSha)}.`);
+	console.log(latestReleaseTagVersion
+		? `Latest release tag: ${RELEASE_TAG_PREFIX}${latestReleaseTagVersion}.`
+		: "No existing release tags found.");
 	process.exit(0);
 }
 
 if (mode === "dry-run") {
 	console.log(`Release dry run passed for ${releaseName}.`);
+	console.log(latestReleaseTagVersion
+		? `Latest release tag: ${RELEASE_TAG_PREFIX}${latestReleaseTagVersion}.`
+		: "No existing release tags found.");
 	console.log(`Would create annotated tag: ${tagName} -> origin/main ${shortSha(originMainSha)}`);
 	console.log(`Would push tag: git push origin ${tagName}`);
 	console.log("GitHub Actions would run tests, build installers, and publish a GitHub Release.");
@@ -66,6 +86,16 @@ console.log("GitHub Actions will run tests, build installers, and publish a GitH
 
 function fetchReleaseRefs(): void {
 	run("git", ["fetch", "--quiet", "--no-tags", "origin", "main:refs/remotes/origin/main"]);
+}
+
+function readLatestRemoteReleaseTagVersion(): string | null {
+	const refs = run("git", [
+		"ls-remote",
+		"--tags",
+		"origin",
+		`refs/tags/${RELEASE_TAG_PREFIX}*`,
+	]).stdout;
+	return latestReleaseTagVersionFromRefs(refs);
 }
 
 function readRemoteFile(path: string): string {

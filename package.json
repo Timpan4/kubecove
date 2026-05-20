@@ -1,7 +1,7 @@
 {
   "name": "kubecove",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
@@ -14,6 +14,7 @@
     "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "rust:check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "check": "bun run typecheck && bun test && bun run rust:test && bun run rust:check",
+    "version:bump": "bun scripts/bump-version.ts",
     "release:check": "bun scripts/release-beta.ts check",
     "release:dry-run": "bun scripts/release-beta.ts dry-run",
     "release": "bun scripts/release-beta.ts release"
