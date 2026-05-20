@@ -22,7 +22,9 @@ export function formatMemoryBytes(bytes: number): string {
 }
 
 export function formatProcessCount(count: number): string {
-	return `${count} ${count === 1 ? "process" : "processes"}`;
+	if (!Number.isFinite(count) || count < 0) return "--";
+	const normalized = Math.floor(count);
+	return `${normalized} ${normalized === 1 ? "process" : "processes"}`;
 }
 
 export function formatUsageMetrics(metrics: AppUsageMetrics): string {

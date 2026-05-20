@@ -73,6 +73,7 @@ example = "9.9.9"
 		expect(compareSemverVersions("0.10.0", "0.2.0")).toBe(1);
 		expect(compareSemverVersions("1.0.0", "1.0.0-rc.1")).toBe(1);
 		expect(compareSemverVersions("1.0.0-beta.2", "1.0.0-beta.10")).toBe(-1);
+		expect(compareSemverVersions("1.0.0-rc-2", "1.0.0-rc-10")).toBe(1);
 	});
 
 	test("finds the latest app release version from git tag refs", () => {
@@ -121,5 +122,30 @@ example = "9.9.9"
 		expect(JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8")).version).toBe("0.2.0");
 		expect(readFileSync(join(root, "src-tauri", "Cargo.toml"), "utf8")).toContain('version = "0.2.0"');
 		expect(readFileSync(join(root, "src-tauri", "Cargo.lock"), "utf8")).toContain('version = "0.2.0"');
+	});
+
+	test("fails a bump when Cargo.lock is missing the kubecove package", () => {
+		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
+		mkdirSync(join(root, "src-tauri"), { recursive: true });
+		writeFileSync(
+			join(root, "package.json"),
+			'{\n  "name": "kubecove",\n  "version": "0.1.0"\n}\n',
+		);
+		writeFileSync(
+			join(root, "src-tauri", "tauri.conf.json"),
+			'{\n  "productName": "KubeCove",\n  "version": "0.1.0"\n}\n',
+		);
+		writeFileSync(
+			join(root, "src-tauri", "Cargo.toml"),
+			'[package]\nname = "kubecove"\nversion = "0.1.0"\n',
+		);
+		writeFileSync(
+			join(root, "src-tauri", "Cargo.lock"),
+			'[[package]]\nname = "other"\nversion = "0.1.0"\n',
+		);
+
+		expect(() => updateWorkspaceReleaseVersions("0.2.0", root)).toThrow(
+			'src-tauri/Cargo.lock is missing [[package]] entry with name = "kubecove".',
+		);
 	});
 });

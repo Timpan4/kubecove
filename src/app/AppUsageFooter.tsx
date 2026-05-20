@@ -52,15 +52,21 @@ function UsageBreakdownRow({
 	);
 }
 
-function UsageBreakdownRows({ item }: { item: AppUsageMetricsBreakdown }) {
+function UsageBreakdownRows({
+	item,
+	depth = 0,
+}: {
+	item: AppUsageMetricsBreakdown;
+	depth?: number;
+}) {
 	return (
 		<>
-			<UsageBreakdownRow item={item} />
-			{item.children.map((child) => (
-				<UsageBreakdownRow
-					key={`${item.label}:${child.label}`}
+			<UsageBreakdownRow item={item} child={depth > 0} />
+			{item.children.map((child, index) => (
+				<UsageBreakdownRows
+					key={`${item.label}:${index}:${child.label}`}
 					item={child}
-					child
+					depth={depth + 1}
 				/>
 			))}
 		</>
@@ -76,7 +82,10 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 		if (!visible) return;
 
 		let cancelled = false;
+		let inFlight = false;
 		const loadMetrics = async () => {
+			if (inFlight) return;
+			inFlight = true;
 			try {
 				const nextMetrics = await getAppUsageMetrics(client);
 				if (cancelled) return;
@@ -85,6 +94,8 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 			} catch (err) {
 				if (cancelled) return;
 				setError(err instanceof Error ? err.message : String(err));
+			} finally {
+				inFlight = false;
 			}
 		};
 

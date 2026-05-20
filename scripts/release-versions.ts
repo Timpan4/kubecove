@@ -229,7 +229,9 @@ function replaceCargoLockPackageVersion(
 		}
 	}
 
-	return contents;
+	throw new Error(
+		'src-tauri/Cargo.lock is missing [[package]] entry with name = "kubecove".',
+	);
 }
 
 function compareNumber(left: number, right: number): number {
@@ -243,7 +245,11 @@ function parseSemver(version: string): {
 	prerelease: string[];
 } {
 	const cleanVersion = requireVersion("semver", version).split("+")[0] ?? version;
-	const [core, prereleaseText] = cleanVersion.split("-");
+	const hyphenIndex = cleanVersion.indexOf("-");
+	const core =
+		hyphenIndex === -1 ? cleanVersion : cleanVersion.slice(0, hyphenIndex);
+	const prereleaseText =
+		hyphenIndex === -1 ? undefined : cleanVersion.slice(hyphenIndex + 1);
 	const [major, minor, patch] = (core ?? "").split(".").map(Number);
 	return {
 		major,
