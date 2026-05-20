@@ -91,6 +91,17 @@ function ResourceListComponent({
 
 	const namespaceKey = selectedNamespaces.join(",");
 	const kindKey = selectedKinds.map(resourceKindFetchKey).join(",");
+	const topologyNamespaceKey = useMemo(
+		() =>
+			[...new Set(selectedNamespaces)]
+				.sort((a, b) => a.localeCompare(b))
+				.join(","),
+		[namespaceKey],
+	);
+	const topologyNamespaces = useMemo(
+		() => (topologyNamespaceKey ? topologyNamespaceKey.split(",") : []),
+		[topologyNamespaceKey],
+	);
 	const fetchKeys = useMemo(
 		() => buildFetchKeys(selectedNamespaces, selectedKinds),
 		[namespaceKey, kindKey],
@@ -100,8 +111,8 @@ function ResourceListComponent({
 		[clusterContext, fetchKeys],
 	);
 	const topologyQueryKey = useMemo(
-		() => queryKeys.resourceTopology(clusterContext, selectedNamespaces),
-		[clusterContext, namespaceKey],
+		() => queryKeys.resourceTopology(clusterContext, topologyNamespaces),
+		[clusterContext, topologyNamespaces],
 	);
 	const topologyFitViewKey = useMemo(
 		() => JSON.stringify(topologyQueryKey),
@@ -134,7 +145,7 @@ function ResourceListComponent({
 	});
 	const topologyQuery = useQuery({
 		queryKey: topologyQueryKey,
-		queryFn: () => listResourceTopology(client, clusterContext, selectedNamespaces),
+		queryFn: () => listResourceTopology(client, clusterContext, topologyNamespaces),
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		staleTime: 30_000,
 	});
