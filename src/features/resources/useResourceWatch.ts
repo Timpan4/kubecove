@@ -13,7 +13,7 @@ interface UseResourceWatchArgs {
 	client: TauriClient;
 	clusterContext: string;
 	keys: WatchResourceKey[];
-	queryKey: QueryKey;
+	queryKeys: QueryKey[];
 	enabled: boolean;
 }
 
@@ -21,7 +21,7 @@ export function useResourceWatch({
 	client,
 	clusterContext,
 	keys,
-	queryKey,
+	queryKeys,
 	enabled,
 }: UseResourceWatchArgs) {
 	const queryClient = useQueryClient();
@@ -48,7 +48,9 @@ export function useResourceWatch({
 		const invalidateSoon = () => {
 			if (debounceRef.current) clearTimeout(debounceRef.current);
 			debounceRef.current = setTimeout(() => {
-				void queryClient.invalidateQueries({ queryKey });
+				for (const queryKey of queryKeys) {
+					void queryClient.invalidateQueries({ queryKey });
+				}
 			}, 250);
 		};
 
@@ -105,7 +107,7 @@ export function useResourceWatch({
 			if (streamId) void stopStream(client, streamId);
 			closeStreamChannel(channel);
 		};
-	}, [client, clusterContext, enabled, keySignature, queryClient, queryKey]);
+	}, [client, clusterContext, enabled, keySignature, queryClient, queryKeys]);
 
 	return { status, message, error };
 }

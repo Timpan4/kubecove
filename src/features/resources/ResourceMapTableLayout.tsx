@@ -19,6 +19,7 @@ interface ResourceMapTableLayoutProps {
 	topologyError: boolean;
 	topologyErr: unknown;
 	selectedTopologyNodeId: string | null;
+	topologyFitViewKey: string;
 	mapPanelOpen: boolean;
 	onMapPanelOpenChange: (open: boolean) => void;
 	onTopologyNodeSelect: (
@@ -52,6 +53,7 @@ export function ResourceMapTableLayout({
 	topologyError,
 	topologyErr,
 	selectedTopologyNodeId,
+	topologyFitViewKey,
 	mapPanelOpen,
 	onMapPanelOpenChange,
 	onTopologyNodeSelect,
@@ -166,6 +168,7 @@ export function ResourceMapTableLayout({
 								isError={topologyError}
 								error={topologyErr}
 								selectedNodeId={selectedTopologyNodeId}
+								fitViewKey={topologyFitViewKey}
 								heightClassName={mapHeightClassName}
 								onNodeSelect={onTopologyNodeSelect}
 							/>

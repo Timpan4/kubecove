@@ -99,6 +99,18 @@ function ResourceListComponent({
 		() => queryKeys.resources(clusterContext, fetchKeys),
 		[clusterContext, fetchKeys],
 	);
+	const topologyQueryKey = useMemo(
+		() => queryKeys.resourceTopology(clusterContext, selectedNamespaces),
+		[clusterContext, namespaceKey],
+	);
+	const topologyFitViewKey = useMemo(
+		() => JSON.stringify(topologyQueryKey),
+		[topologyQueryKey],
+	);
+	const realtimeQueryKeys = useMemo(
+		() => [queryKey, topologyQueryKey],
+		[queryKey, topologyQueryKey],
+	);
 
 	useEffect(() => {
 		setPageIndex(0);
@@ -121,7 +133,7 @@ function ResourceListComponent({
 		staleTime: 30_000,
 	});
 	const topologyQuery = useQuery({
-		queryKey: queryKeys.resourceTopology(clusterContext, selectedNamespaces),
+		queryKey: topologyQueryKey,
 		queryFn: () => listResourceTopology(client, clusterContext, selectedNamespaces),
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		staleTime: 30_000,
@@ -131,7 +143,7 @@ function ResourceListComponent({
 		client,
 		clusterContext,
 		keys: watchKeys,
-		queryKey,
+		queryKeys: realtimeQueryKeys,
 		enabled: fetchKeys.length > 0 && !isError,
 	});
 
@@ -357,6 +369,7 @@ function ResourceListComponent({
 				topologyError={topologyQuery.isError}
 				topologyErr={topologyQuery.error}
 				selectedTopologyNodeId={syncedTopologyNodeId}
+				topologyFitViewKey={topologyFitViewKey}
 				mapPanelOpen={mapPanelOpen}
 				onMapPanelOpenChange={handleMapPanelOpenChange}
 				onTopologyNodeSelect={handleTopologyNodeSelect}

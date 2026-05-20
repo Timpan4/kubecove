@@ -37,6 +37,28 @@ export function kindRank(kind: string): number {
 	return KIND_RANK[kind] ?? 9;
 }
 
+function createdAtMs(node: TopologyNode): number | null {
+	const createdAt = node.summary.createdAt;
+	if (!createdAt) return null;
+	const ms = Date.parse(createdAt);
+	return Number.isFinite(ms) ? ms : null;
+}
+
+function compareCreatedAtNewestFirst(a: TopologyNode, b: TopologyNode): number {
+	const aMs = createdAtMs(a);
+	const bMs = createdAtMs(b);
+	if (aMs === null && bMs === null) return 0;
+	if (aMs === null) return 1;
+	if (bMs === null) return -1;
+	return bMs - aMs;
+}
+
+function createdAtNewestFirstKey(node: TopologyNode): string {
+	const ms = createdAtMs(node);
+	if (ms === null) return "1:";
+	return `0:${String(Number.MAX_SAFE_INTEGER - ms).padStart(16, "0")}`;
+}
+
 export function sortTopologyNodes(a: TopologyNode, b: TopologyNode): number {
 	const rank = kindRank(a.kind) - kindRank(b.kind);
 	if (rank !== 0) return rank;
@@ -44,6 +66,8 @@ export function sortTopologyNodes(a: TopologyNode, b: TopologyNode): number {
 	if (namespace !== 0) return namespace;
 	const kind = a.kind.localeCompare(b.kind);
 	if (kind !== 0) return kind;
+	const createdAt = compareCreatedAtNewestFirst(a, b);
+	if (createdAt !== 0) return createdAt;
 	return a.name.localeCompare(b.name, undefined, { numeric: true });
 }
 
@@ -114,6 +138,7 @@ export function topologyLayoutOrder(
 			String(kindRank(node.kind)).padStart(2, "0"),
 			node.namespace ?? "",
 			node.kind,
+			createdAtNewestFirstKey(node),
 			node.name,
 			node.id,
 		].join("|");
