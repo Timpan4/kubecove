@@ -1,3 +1,7 @@
+use super::usage_webview::{
+    is_webview_process, orphan_webview_process_candidate,
+    selected_orphan_webview_cohort_start_time, webview_process_role,
+};
 use crate::models::{AppError, AppUsageMetrics, AppUsageMetricsBreakdown};
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
@@ -29,7 +33,7 @@ impl AppUsageMonitor {
                 .with_cmd(UpdateKind::Always),
         );
 
-        let pids = process_tree_pids(&system, current_pid);
+        let pids = usage_process_pids(&system, current_pid);
         let process_count = observed_process_count(&system, &pids);
         let memory_bytes = process_tree_memory_bytes(&system, &pids);
         let raw_cpu_percent = process_tree_cpu_percent(&system, &pids);
@@ -75,6 +79,41 @@ fn process_tree_pids(system: &System, root_pid: Pid) -> HashSet<Pid> {
         .iter()
         .map(|(pid, process)| (*pid, process.parent()));
     process_tree_pids_from_relations(root_pid, relations)
+}
+
+fn usage_process_pids(system: &System, root_pid: Pid) -> HashSet<Pid> {
+    let mut pids = process_tree_pids(system, root_pid);
+    add_related_orphan_webview_pids(system, root_pid, &mut pids);
+    pids
+}
+
+fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut HashSet<Pid>) {
+    let Some(root_process) = system.process(root_pid) else {
+        return;
+    };
+    let root_start_time = root_process.start_time();
+    let candidate_start_time = selected_orphan_webview_cohort_start_time(
+        root_start_time,
+        system
+            .processes()
+            .iter()
+            .filter(|(pid, process)| !pids.contains(pid) && is_webview_process(process))
+            .filter_map(|(_, process)| orphan_webview_process_candidate(process)),
+    );
+
+    let Some(candidate_start_time) = candidate_start_time else {
+        return;
+    };
+
+    pids.extend(
+        system
+            .processes()
+            .iter()
+            .filter(|(_, process)| {
+                is_webview_process(process) && process.start_time() == candidate_start_time
+            })
+            .map(|(pid, _)| *pid),
+    );
 }
 
 pub(crate) fn process_tree_pids_from_relations(
@@ -203,7 +242,7 @@ fn process_tree_breakdown(
         let Some(process) = system.process(*pid) else {
             continue;
         };
-        let group = usage_process_group(*pid, root_pid, &process_name_lossy(process));
+        let group = usage_process_group(*pid, root_pid, process);
         let bucket_index = match group {
             UsageProcessGroup::App => 0,
             UsageProcessGroup::WebView => 1,
@@ -264,88 +303,28 @@ fn usage_process_child_label(process: &Process) -> String {
 }
 
 fn usage_process_child_description(process: &Process) -> String {
-    if is_webview_process_name(&process_name_lossy(process)) {
+    if is_webview_process(process) {
         "WebView child process".to_string()
     } else {
         "Child process".to_string()
     }
 }
 
-fn process_name_lossy(process: &Process) -> String {
-    process.name().to_string_lossy().into_owned()
-}
-
-fn process_cmd_text(process: &Process) -> String {
-    process
-        .cmd()
-        .iter()
-        .map(|part| part.to_string_lossy().into_owned())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-pub(crate) fn webview_process_role_from_cmd(command_line: &str) -> Option<String> {
-    let text = command_line.to_ascii_lowercase();
-
-    if text.contains("--type=renderer") {
-        return Some("Renderer".to_string());
-    }
-    if text.contains("--type=gpu-process") {
-        return Some("GPU process".to_string());
-    }
-    if text.contains("--type=utility") && text.contains("network.mojom.networkservice") {
-        return Some("Network service".to_string());
-    }
-    if text.contains("--type=utility") && text.contains("storage.mojom.storageservice") {
-        return Some("Storage service".to_string());
-    }
-    if text.contains("--type=utility") && text.contains("audio.mojom.audioservice") {
-        return Some("Audio service".to_string());
-    }
-    if text.contains("--type=utility") {
-        return Some("Utility process".to_string());
-    }
-    if text.contains("--type=crashpad-handler") || text.contains("crashpad") {
-        return Some("Crash handler".to_string());
-    }
-    if text.contains("msedgewebview2") || text.contains("webview") {
-        return Some("Browser process".to_string());
-    }
-
-    None
-}
-
-fn webview_process_role(process: &Process) -> Option<String> {
-    if !is_webview_process_name(&process_name_lossy(process)) {
-        return None;
-    }
-    webview_process_role_from_cmd(&process_cmd_text(process))
-        .or_else(|| Some("WebView process".to_string()))
-}
-
-fn usage_process_group(pid: Pid, root_pid: Pid, process_name: &str) -> UsageProcessGroup {
+fn usage_process_group(pid: Pid, root_pid: Pid, process: &Process) -> UsageProcessGroup {
     if pid == root_pid {
         return UsageProcessGroup::App;
     }
 
-    if is_webview_process_name(process_name) {
+    if is_webview_process(process) {
         UsageProcessGroup::WebView
     } else {
         UsageProcessGroup::OtherChildren
     }
 }
 
-pub(crate) fn is_webview_process_name(process_name: &str) -> bool {
-    let name = process_name.to_ascii_lowercase();
-    name.contains("webview") || name.contains("msedgewebview")
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        is_webview_process_name, normalize_cpu_percent, process_tree_pids_from_relations,
-        webview_process_role_from_cmd,
-    };
+    use super::{normalize_cpu_percent, process_tree_pids_from_relations};
     use sysinfo::Pid;
 
     fn pid(value: u32) -> Pid {
@@ -375,30 +354,5 @@ mod tests {
         assert!(pids.contains(&pid(11)));
         assert!(pids.contains(&pid(12)));
         assert!(!pids.contains(&pid(20)));
-    }
-
-    #[test]
-    fn identifies_webview_process_names() {
-        assert!(is_webview_process_name("msedgewebview2.exe"));
-        assert!(is_webview_process_name("Microsoft.WebView2"));
-        assert!(!is_webview_process_name("kubecove.exe"));
-    }
-
-    #[test]
-    fn classifies_webview_roles_from_command_flags() {
-        assert_eq!(
-            webview_process_role_from_cmd("msedgewebview2.exe --type=renderer"),
-            Some("Renderer".to_string()),
-        );
-        assert_eq!(
-            webview_process_role_from_cmd("msedgewebview2.exe --type=gpu-process"),
-            Some("GPU process".to_string()),
-        );
-        assert_eq!(
-            webview_process_role_from_cmd(
-                "msedgewebview2.exe --type=utility --utility-sub-type=network.mojom.NetworkService",
-            ),
-            Some("Network service".to_string()),
-        );
     }
 }

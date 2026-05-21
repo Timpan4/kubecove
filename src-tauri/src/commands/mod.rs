@@ -8,6 +8,7 @@ mod namespaces;
 mod resources;
 mod streams;
 mod usage;
+mod usage_webview;
 
 pub use argo::{
     detect_argocd, get_argocd_application_details, get_argocd_appproject_details,
