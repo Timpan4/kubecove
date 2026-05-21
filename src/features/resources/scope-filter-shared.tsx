@@ -43,10 +43,14 @@ export function PickerHeader({
 	title,
 	allSelected,
 	onToggleAll,
+	toggleAllDisabled = false,
+	disabledLabel,
 }: {
 	title: string;
 	allSelected: boolean;
 	onToggleAll: () => void;
+	toggleAllDisabled?: boolean;
+	disabledLabel?: string;
 }) {
 	return (
 		<div className="mb-3 flex items-center justify-between">
@@ -59,8 +63,13 @@ export function PickerHeader({
 				size="sm"
 				className="h-7 px-2 text-[0.625rem]"
 				onClick={onToggleAll}
+				disabled={toggleAllDisabled}
 			>
-				{allSelected ? "Deselect All" : "Select All"}
+				{toggleAllDisabled && disabledLabel
+					? disabledLabel
+					: allSelected
+						? "Deselect All"
+						: "Select All"}
 			</Button>
 		</div>
 	);
@@ -107,24 +116,35 @@ export function ScopeOption({
 	label,
 	checked,
 	onToggle,
+	disabled = false,
 }: {
 	id: string;
 	label: string;
 	checked: boolean;
 	onToggle: () => void;
+	disabled?: boolean;
 }) {
 	return (
 		<li
 			className={cn(
 				"rounded-md p-2 text-sm transition-colors hover:bg-accent",
 				checked && "bg-accent",
+				disabled && "opacity-70",
 			)}
 		>
 			<Field orientation="horizontal" className="items-center gap-2">
-				<Checkbox id={id} checked={checked} onCheckedChange={onToggle} />
+				<Checkbox
+					id={id}
+					checked={checked}
+					disabled={disabled}
+					onCheckedChange={onToggle}
+				/>
 				<FieldLabel
 					htmlFor={id}
-					className="min-w-0 flex-1 cursor-pointer truncate font-normal"
+					className={cn(
+						"min-w-0 flex-1 truncate font-normal",
+						disabled ? "cursor-not-allowed" : "cursor-pointer",
+					)}
 				>
 					{label}
 				</FieldLabel>

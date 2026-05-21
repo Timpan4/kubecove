@@ -107,9 +107,11 @@ export function KindScopePicker({
 	const allSelected =
 		availableKinds.length > 0 &&
 		availableKinds.every((kind) => selectedKindKeys.has(resourceKindFetchKey(kind)));
+	const onlyOneKindSelected = selectedKinds.length === 1;
 
 	const toggleKind = (kind: ResourceKindSelection) => {
 		const kindKey = resourceKindFetchKey(kind);
+		if (selectedKindKeys.has(kindKey) && onlyOneKindSelected) return;
 		onKindChange(
 			selectedKindKeys.has(kindKey)
 				? selectedKinds.filter((selectedKind) => resourceKindFetchKey(selectedKind) !== kindKey)
@@ -122,6 +124,8 @@ export function KindScopePicker({
 			<PickerHeader
 				title="Resource kinds"
 				allSelected={allSelected}
+				toggleAllDisabled={allSelected}
+				disabledLabel="All Selected"
 				onToggleAll={() => onKindChange(allSelected ? [] : availableKinds)}
 			/>
 			<PickerStatus
@@ -138,6 +142,7 @@ export function KindScopePicker({
 							id={`scope-kind-${resourceKindFetchKey(kind)}`}
 							label={resourceKindLabel(kind)}
 							checked={selectedKindKeys.has(resourceKindFetchKey(kind))}
+							disabled={selectedKindKeys.has(resourceKindFetchKey(kind)) && onlyOneKindSelected}
 							onToggle={() => toggleKind(kind)}
 						/>
 					))}
@@ -152,6 +157,7 @@ export function KindScopePicker({
 									id={`scope-kind-${resourceKindFetchKey(kind)}`}
 									label={resourceKindLabel(kind)}
 									checked={selectedKindKeys.has(resourceKindFetchKey(kind))}
+									disabled={selectedKindKeys.has(resourceKindFetchKey(kind)) && onlyOneKindSelected}
 									onToggle={() => toggleKind(kind)}
 								/>
 							))}
