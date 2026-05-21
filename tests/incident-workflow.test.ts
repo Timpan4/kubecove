@@ -49,6 +49,9 @@ describe("incident workflow helpers", () => {
 			"failed",
 			"restarted",
 		]);
+		expect(filterResourcesByHealth(rows, "healthy").map((row) => row.name)).toEqual([
+			"healthy",
+		]);
 		expect(filterResourcesByHealth(rows, "degraded").map((row) => row.name)).toEqual([
 			"failed",
 		]);

@@ -24,12 +24,14 @@ export interface HealthSummary {
 
 export type HealthFilter =
 	| "all"
+	| "healthy"
 	| "unhealthy"
 	| "attention"
 	| "degraded"
 	| "restarted";
 
 export interface ScopePill {
+	kind: "namespaces" | "kinds" | "argoApp";
 	label: string;
 	value: string;
 }
@@ -245,14 +247,14 @@ export function resourceTypeGroupCollapseKey(
 }
 
 export function describeResourceScope(
-	clusterContext: string,
 	namespaces: string[],
 	kinds: ResourceKindSelection[],
 	argoAppFilter: string,
 ): ScopePill[] {
-	const pills: ScopePill[] = [{ label: "Context", value: clusterContext }];
+	const pills: ScopePill[] = [];
 	if (namespaces.length > 0) {
 		pills.push({
+			kind: "namespaces",
 			label: namespaces.length === 1 ? "Namespace" : "Namespaces",
 			value:
 				namespaces.length <= 2
@@ -262,6 +264,7 @@ export function describeResourceScope(
 	}
 	if (kinds.length > 0) {
 		pills.push({
+			kind: "kinds",
 			label: kinds.length === 1 ? "Kind" : "Kinds",
 			value:
 				kinds.length <= 3
@@ -272,7 +275,7 @@ export function describeResourceScope(
 		});
 	}
 	if (argoAppFilter) {
-		pills.push({ label: "Argo app", value: argoAppFilter });
+		pills.push({ kind: "argoApp", label: "Argo app", value: argoAppFilter });
 	}
 	return pills;
 }
