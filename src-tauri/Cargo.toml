@@ -24,3 +24,6 @@ thiserror = "2.0.18"
 chrono = "0.4"
 futures-util = "0.3"
 sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }
+
+[dev-dependencies]
+proptest = "1.11.0"
