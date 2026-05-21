@@ -279,6 +279,10 @@ describe("resource browser presentation helpers", () => {
       { kind: "kinds", label: "Kinds", value: "Pod, Service" },
       { kind: "argoApp", label: "Argo app", value: "argocd" },
     ]);
+    expect(describeResourceScope([], ["Pod"], "")).toEqual([
+      { kind: "namespaces", label: "Namespaces", value: "All namespaces" },
+      { kind: "kinds", label: "Kind", value: "Pod" },
+    ]);
   });
 
   test("uses readable group labels for Argo-managed and unmanaged resources", () => {

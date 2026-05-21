@@ -252,16 +252,16 @@ export function describeResourceScope(
 	argoAppFilter: string,
 ): ScopePill[] {
 	const pills: ScopePill[] = [];
-	if (namespaces.length > 0) {
-		pills.push({
-			kind: "namespaces",
-			label: namespaces.length === 1 ? "Namespace" : "Namespaces",
-			value:
-				namespaces.length <= 2
+	pills.push({
+		kind: "namespaces",
+		label: namespaces.length === 1 ? "Namespace" : "Namespaces",
+		value:
+			namespaces.length === 0
+				? "All namespaces"
+				: namespaces.length <= 2
 					? namespaces.join(", ")
 					: `${namespaces.slice(0, 2).join(", ")} +${namespaces.length - 2}`,
-		});
-	}
+	});
 	if (kinds.length > 0) {
 		pills.push({
 			kind: "kinds",
