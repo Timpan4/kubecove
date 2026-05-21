@@ -30,6 +30,7 @@ import {
 import {
 	formatResourceGroupLabel,
 	formatResourceTypeGroupLabel,
+	resourceIdentityKey,
 	resourceSelectionKey,
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,
@@ -42,6 +43,7 @@ interface ResourceTableProps {
 	pageTypeGroups: Map<string, number>;
 	collapsedGroups: Set<string>;
 	selectedResourceKey: string | null;
+	selectedResourceIdentityKey: string | null;
 	onToggleGroup: (key: string) => void;
 	onSelectedResourceKeyChange: (key: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
@@ -64,11 +66,17 @@ export function ResourceTable({
 	pageTypeGroups,
 	collapsedGroups,
 	selectedResourceKey,
+	selectedResourceIdentityKey,
 	onToggleGroup,
 	onSelectedResourceKeyChange,
 	onResourceSelect,
 }: ResourceTableProps) {
 	const rowModel = table.getRowModel();
+	const hasExactSelectedResource =
+		selectedResourceKey !== null &&
+		rowModel.rows.some(
+			(row) => resourceSelectionKey(row.original) === selectedResourceKey,
+		);
 
 	return (
 		<Table className={TABLE_CLASS}>
@@ -130,6 +138,8 @@ export function ResourceTable({
 							pageTypeGroups={pageTypeGroups}
 							collapsedGroups={collapsedGroups}
 							selectedResourceKey={selectedResourceKey}
+							selectedResourceIdentityKey={selectedResourceIdentityKey}
+							hasExactSelectedResource={hasExactSelectedResource}
 							onToggleGroup={onToggleGroup}
 							onSelectedResourceKeyChange={onSelectedResourceKeyChange}
 							onResourceSelect={onResourceSelect}
@@ -150,6 +160,8 @@ interface ResourceTableRowProps {
 	pageTypeGroups: Map<string, number>;
 	collapsedGroups: Set<string>;
 	selectedResourceKey: string | null;
+	selectedResourceIdentityKey: string | null;
+	hasExactSelectedResource: boolean;
 	onToggleGroup: (key: string) => void;
 	onSelectedResourceKeyChange: (key: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
@@ -164,12 +176,17 @@ function ResourceTableRow({
 	pageTypeGroups,
 	collapsedGroups,
 	selectedResourceKey,
+	selectedResourceIdentityKey,
+	hasExactSelectedResource,
 	onToggleGroup,
 	onSelectedResourceKeyChange,
 	onResourceSelect,
 }: ResourceTableRowProps) {
 	const resourceKey = resourceSelectionKey(row.original);
-	const isSelected = selectedResourceKey === resourceKey;
+	const identityKey = resourceIdentityKey(row.original);
+	const isSelected =
+		selectedResourceKey === resourceKey ||
+		(!hasExactSelectedResource && selectedResourceIdentityKey === identityKey);
 	const label = formatResourceGroupLabel(row.original);
 	const typeLabel = formatResourceTypeGroupLabel(row.original);
 	const typeKey = `${label}::${typeLabel}`;

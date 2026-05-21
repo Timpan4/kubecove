@@ -23,6 +23,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -31,5 +32,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQxQUE3Rjc1NTNBQjVFMkEKUldRcVhxdFRkWCtxMFkxMWQzUkRhUlJkc2lwenFYdzFjT1NSa1ZMS3FQMlV1WTNrT2U2S1VQK1AK",
+      "endpoints": [
+        "https://github.com/Timpan4/kubecove/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

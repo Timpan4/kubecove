@@ -52,13 +52,15 @@ export function diagnosticLog(event: string, data?: DiagnosticData): void {
 	const fields = serializeData(data);
 	const line = `[k8s-debug #${sequence} +${delta}ms count=${count}${heap ? ` heap=${heap}` : ""}] ${event}${fields ? ` ${fields}` : ""}`;
 
-	const debugWindow = window as DebugWindow;
-	const trace = debugWindow.__K8S_DEBUG_TRACE__ ?? [];
-	trace.push(line);
-	if (trace.length > MAX_TRACE_LINES) {
-		trace.splice(0, trace.length - MAX_TRACE_LINES);
+	if (typeof window !== "undefined") {
+		const debugWindow = window as DebugWindow;
+		const trace = debugWindow.__K8S_DEBUG_TRACE__ ?? [];
+		trace.push(line);
+		if (trace.length > MAX_TRACE_LINES) {
+			trace.splice(0, trace.length - MAX_TRACE_LINES);
+		}
+		debugWindow.__K8S_DEBUG_TRACE__ = trace;
 	}
-	debugWindow.__K8S_DEBUG_TRACE__ = trace;
 
 	if (!CHATTER_EVENTS.has(event) || count <= 20 || count % 100 === 0) {
 		console.info(line);

@@ -20,7 +20,9 @@ import {
 	filterResources,
 	filterResourcesByHealth,
 	formatResourceGroupLabel,
+	resourceIdentityKey,
 	resourceGroupCollapseKey,
+	resourceSelectionKey,
 	resourceTypeGroupCollapseKey,
 	formatResourceTypeGroupLabel,
 	sortedRows,
@@ -180,6 +182,26 @@ describe("resource browser presentation helpers", () => {
       { kind: "Pod", namespace: "payments" },
       { kind: "Node", namespace: undefined },
     ]);
+  });
+
+  test("builds selection identities that survive missing apiVersion", () => {
+    const tableResource: ResourceSummary = {
+      ...baseResource,
+      kind: "DaemonSet",
+      name: "cilium",
+      namespace: "kube-system",
+    };
+    const topologyResource: ResourceSummary = {
+      ...tableResource,
+      apiVersion: "apps/v1",
+    };
+
+    expect(resourceSelectionKey(tableResource)).not.toBe(
+      resourceSelectionKey(topologyResource),
+    );
+    expect(resourceIdentityKey(tableResource)).toBe(
+      resourceIdentityKey(topologyResource),
+    );
   });
 
   test("builds fetch keys for discovered resource kinds", () => {

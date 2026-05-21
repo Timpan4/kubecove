@@ -32,6 +32,7 @@ interface ResourceMapTableLayoutProps {
 	pageTypeGroups: Map<string, number>;
 	collapsedGroups: Set<string>;
 	selectedResourceKey: string | null;
+	selectedResourceIdentityKey: string | null;
 	onToggleGroup: (key: string) => void;
 	onSelectedResourceKeyChange: (key: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
@@ -63,6 +64,7 @@ export function ResourceMapTableLayout({
 	pageTypeGroups,
 	collapsedGroups,
 	selectedResourceKey,
+	selectedResourceIdentityKey,
 	onToggleGroup,
 	onSelectedResourceKeyChange,
 	onResourceSelect,
@@ -79,7 +81,7 @@ export function ResourceMapTableLayout({
 	}, [mapPanelOpen]);
 
 	const hasActiveSelection = Boolean(
-		selectedResourceKey || selectedTopologyNodeId,
+		selectedResourceKey || selectedResourceIdentityKey || selectedTopologyNodeId,
 	);
 	const mapHeightClassName =
 		tablePanelOpen && hasActiveSelection ? "h-[360px]" : "h-[640px]";
@@ -207,6 +209,7 @@ export function ResourceMapTableLayout({
 								pageTypeGroups={pageTypeGroups}
 								collapsedGroups={collapsedGroups}
 								selectedResourceKey={selectedResourceKey}
+								selectedResourceIdentityKey={selectedResourceIdentityKey}
 								onToggleGroup={onToggleGroup}
 								onSelectedResourceKeyChange={onSelectedResourceKeyChange}
 								onResourceSelect={onResourceSelect}

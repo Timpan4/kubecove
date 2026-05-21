@@ -32,6 +32,7 @@ import {
 	filterResourcesByHealth,
 	filterResources,
 	formatResourceGroupLabel,
+	resourceIdentityKey,
 	resourceSelectionKey,
 	type HealthFilter,
 	resourceKindFetchKey,
@@ -77,6 +78,9 @@ function ResourceListComponent({
 	const [selectedResourceKey, setSelectedResourceKey] = useState<string | null>(
 		null,
 	);
+	const [selectedResourceIdentityKey, setSelectedResourceIdentityKey] = useState<
+		string | null
+	>(null);
 	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
 		() => new Set(),
 	);
@@ -242,14 +246,22 @@ function ResourceListComponent({
 	const externalSelectedResourceKey = selectedResource
 		? resourceSelectionKey(selectedResource)
 		: null;
+	const externalSelectedResourceIdentityKey = selectedResource
+		? resourceIdentityKey(selectedResource)
+		: null;
 	const activeSelectedResourceKey =
 		selectedResourceKey ?? externalSelectedResourceKey;
+	const activeSelectedResourceIdentityKey =
+		selectedResourceIdentityKey ?? externalSelectedResourceIdentityKey;
 
 	useEffect(() => {
 		if (externalSelectedResourceKey) {
 			setSelectedResourceKey(externalSelectedResourceKey);
 		}
-	}, [externalSelectedResourceKey]);
+		if (externalSelectedResourceIdentityKey) {
+			setSelectedResourceIdentityKey(externalSelectedResourceIdentityKey);
+		}
+	}, [externalSelectedResourceKey, externalSelectedResourceIdentityKey]);
 
 	useEffect(() => {
 		diagnosticLog("resources.render", {
@@ -281,11 +293,23 @@ function ResourceListComponent({
 		});
 	};
 	const syncedTopologyNodeId = useMemo(() => {
-		const selectedFromTable = topologyQuery.data?.nodes.find(
-			(node) => resourceSelectionKey(node.summary) === activeSelectedResourceKey,
-		);
+		const topologyNodes = topologyQuery.data?.nodes;
+		if (!topologyNodes) return selectedTopologyNodeId;
+		const selectedFromTable =
+			topologyNodes.find(
+				(node) => resourceSelectionKey(node.summary) === activeSelectedResourceKey,
+			) ??
+			topologyNodes.find(
+				(node) =>
+					resourceIdentityKey(node.summary) === activeSelectedResourceIdentityKey,
+			);
 		return selectedFromTable?.id ?? selectedTopologyNodeId;
-	}, [activeSelectedResourceKey, selectedTopologyNodeId, topologyQuery.data]);
+	}, [
+		activeSelectedResourceIdentityKey,
+		activeSelectedResourceKey,
+		selectedTopologyNodeId,
+		topologyQuery.data,
+	]);
 	useEffect(() => {
 		if (!selectedTopologyNodeId || !topologyQuery.data) return;
 		if (topologyQuery.data.nodes.some((node) => node.id === selectedTopologyNodeId)) {
@@ -296,6 +320,7 @@ function ResourceListComponent({
 	const handleResourceSelect = (resource: ResourceSummary) => {
 		setSelectedTopologyNodeId(null);
 		setSelectedResourceKey(resourceSelectionKey(resource));
+		setSelectedResourceIdentityKey(resourceIdentityKey(resource));
 		onResourceSelect(resource);
 	};
 	const handleTopologyNodeSelect = (
@@ -305,6 +330,7 @@ function ResourceListComponent({
 		setSelectedTopologyNodeId(node.id);
 		if (!resource) return;
 		setSelectedResourceKey(resourceSelectionKey(resource));
+		setSelectedResourceIdentityKey(resourceIdentityKey(resource));
 		onResourceSelect(resource);
 	};
 	const handleMapPanelOpenChange = (open: boolean) => {
@@ -402,6 +428,7 @@ function ResourceListComponent({
 				pageTypeGroups={pageTypeGroups}
 				collapsedGroups={collapsedGroups}
 				selectedResourceKey={activeSelectedResourceKey}
+				selectedResourceIdentityKey={activeSelectedResourceIdentityKey}
 				onToggleGroup={toggleGroup}
 				onSelectedResourceKeyChange={setSelectedResourceKey}
 				onResourceSelect={handleResourceSelect}

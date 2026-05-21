@@ -15,6 +15,7 @@ import { AppUsageFooter } from "./app/AppUsageFooter";
 import { DetailPanelFrame } from "./app/DetailPanelFrame";
 import { useArgoDetection } from "./app/useArgoDetection";
 import { ViewLoadingFallback } from "./app/ViewLoadingFallback";
+import { useAppUpdateLaunchCheck } from "./features/app-updates";
 import { useSettingsState } from "./lib/settings";
 import {
 	Sidebar,
@@ -115,6 +116,7 @@ function App() {
 		useState<HealthFilter>("all");
 	const appRenderCountRef = useRef(0);
 	appRenderCountRef.current += 1;
+	useAppUpdateLaunchCheck();
 
 	const applyWorkspace = useCallback(
 		(workspace: SavedWorkspace) => {

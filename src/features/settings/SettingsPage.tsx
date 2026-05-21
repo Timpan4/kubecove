@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
-import { Check } from "lucide-react";
+import { Check, Download, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useAppUpdateStore } from "@/features/app-updates";
 import {
 	type TimestampTimezone,
 	useSettingsState,
@@ -88,6 +90,16 @@ function TimezoneOption({
 	);
 }
 
+function formatCheckedAt(value: string | null): string {
+	if (!value) return "Not checked yet";
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return "Not checked yet";
+	return new Intl.DateTimeFormat(undefined, {
+		dateStyle: "medium",
+		timeStyle: "short",
+	}).format(date);
+}
+
 export function SettingsPage() {
 	const {
 		showExactTimestamps,
@@ -97,6 +109,18 @@ export function SettingsPage() {
 		setShowUsageFooter,
 		setTimestampTimezone,
 	} = useSettingsState();
+	const {
+		status,
+		currentVersion,
+		availableVersion,
+		downloadProgress,
+		lastCheckedAt,
+		errorMessage,
+		checkForUpdates,
+		installUpdate,
+		relaunchApp,
+	} = useAppUpdateStore();
+	const updateBusy = status === "checking" || status === "downloading";
 
 	return (
 		<div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
@@ -144,6 +168,76 @@ export function SettingsPage() {
 						/>
 					</div>
 				</SettingsRow>
+				<SettingsRow
+					title="KubeCove version"
+					description={`Current version ${currentVersion}. Last checked: ${formatCheckedAt(lastCheckedAt)}.`}
+				>
+					<div className="flex items-center gap-2">
+						{availableVersion && (
+							<Badge variant="secondary">Update {availableVersion}</Badge>
+						)}
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							disabled={updateBusy}
+							onClick={() => void checkForUpdates({ manual: true })}
+						>
+							<RefreshCw data-icon="inline-start" />
+							Check
+						</Button>
+					</div>
+				</SettingsRow>
+				{status === "available" && (
+					<SettingsRow
+						title="Update available"
+						description={`KubeCove ${availableVersion} can be downloaded and installed now.`}
+					>
+						<Button type="button" size="sm" onClick={() => void installUpdate()}>
+							<Download data-icon="inline-start" />
+							Install
+						</Button>
+					</SettingsRow>
+				)}
+				{status === "downloading" && (
+					<SettingsRow
+						title="Installing update"
+						description={
+							downloadProgress === null
+								? "Preparing the installer."
+								: `Download progress: ${downloadProgress}%.`
+						}
+					>
+						<Badge variant="secondary">Working</Badge>
+					</SettingsRow>
+				)}
+				{status === "installed" && (
+					<SettingsRow
+						title="Relaunch required"
+						description="The update is installed. Relaunch KubeCove to finish."
+					>
+						<Button type="button" size="sm" onClick={() => void relaunchApp()}>
+							<RefreshCw data-icon="inline-start" />
+							Relaunch
+						</Button>
+					</SettingsRow>
+				)}
+				{status === "error" && errorMessage && (
+					<SettingsRow
+						title="Update check failed"
+						description={errorMessage}
+					>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => void checkForUpdates({ manual: true })}
+						>
+							<RefreshCw data-icon="inline-start" />
+							Retry
+						</Button>
+					</SettingsRow>
+				)}
 			</section>
 		</div>
 	);
