@@ -1,5 +1,6 @@
 use super::usage_webview::{
-    is_webview_process, selected_orphan_webview_start_time, webview_process_role,
+    is_webview_process, orphan_webview_process_candidate,
+    selected_orphan_webview_cohort_start_time, webview_process_role,
 };
 use crate::models::{AppError, AppUsageMetrics, AppUsageMetricsBreakdown};
 use chrono::Utc;
@@ -91,13 +92,13 @@ fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut Ha
         return;
     };
     let root_start_time = root_process.start_time();
-    let candidate_start_time = selected_orphan_webview_start_time(
+    let candidate_start_time = selected_orphan_webview_cohort_start_time(
         root_start_time,
         system
             .processes()
             .iter()
             .filter(|(pid, process)| !pids.contains(pid) && is_webview_process(process))
-            .map(|(_, process)| process.start_time()),
+            .filter_map(|(_, process)| orphan_webview_process_candidate(process)),
     );
 
     let Some(candidate_start_time) = candidate_start_time else {
