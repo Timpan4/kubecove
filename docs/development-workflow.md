@@ -46,6 +46,14 @@ The hook currently:
 
 The hook is intentionally lightweight before the app scaffold exists. Once the Tauri project is created, keep the hook aligned with the real scripts in `package.json`.
 
+## Testing Standard
+
+Use example-based tests for specific regressions and user-visible behavior. Add fixture-contract tests when Kubernetes object shapes, Tauri serde contracts, or frontend wrapper boundaries can drift. Fixtures must be sanitized, minimal, and checked into `tests/fixtures/` only when they represent a reusable Kubernetes or app contract.
+
+Use property-based tests for pure deterministic logic with compact invariants and many input combinations, such as topology graphs, grouping, sorting, filtering, and cache-key normalization. Keep generated inputs small, deterministic, and focused on invariants. Do not require property tests for React rendering, real cluster integration, Tauri command tests that need live Kubernetes clients, or one-off bug examples.
+
+Frontend property tests use `fast-check` with `bun test`. Rust property tests use `proptest` as a dev dependency. Prefer fixture-contract tests first when the risk is external shape drift; add property tests when the risk is combinatorial behavior.
+
 ## Verification Before Completion
 
 Before claiming a task is complete, run the checks that prove it:

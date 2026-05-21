@@ -1,8 +1,12 @@
 use super::topology::{
-    build_resource_topology, topology_node_id, topology_root_kinds, topology_standalone_kinds,
-    TopologyInputResource,
+    build_resource_topology, input_from_metadata, topology_node_id, topology_root_kinds,
+    topology_standalone_kinds, TopologyInputResource,
 };
 use crate::models::{OwnerReferenceSummary, ResourceSummary, TopologyRelation};
+use k8s_openapi::api::core::v1::Pod;
+use proptest::prelude::*;
+use proptest::test_runner::{Config as ProptestConfig, RngSeed};
+use std::collections::HashSet;
 
 fn resource(kind: &str, name: &str, namespace: &str, uid: &str) -> TopologyInputResource {
     TopologyInputResource {
@@ -63,6 +67,40 @@ fn owned(
     input
 }
 
+fn pod_fixture_input() -> TopologyInputResource {
+    let pod: Pod = serde_json::from_str(include_str!(
+        "../../../../tests/fixtures/kubernetes/pod-running.json"
+    ))
+    .expect("fixture pod");
+    let mut input = input_from_metadata("kind-dev", "Pod", "v1", &pod.metadata);
+    if let Some(status) = pod.status {
+        input.summary.status = status.phase.filter(|phase| !phase.is_empty());
+        input.summary.ready = status
+            .conditions
+            .as_ref()
+            .and_then(|conditions| {
+                conditions
+                    .iter()
+                    .find(|condition| condition.type_ == "Ready")
+            })
+            .map(|condition| condition.status.clone());
+        let restarts: i32 = status
+            .container_statuses
+            .as_ref()
+            .map(|statuses| {
+                statuses
+                    .iter()
+                    .map(|container| container.restart_count)
+                    .sum()
+            })
+            .unwrap_or(0);
+        if restarts > 0 {
+            input.summary.restarts = Some(restarts);
+        }
+    }
+    input
+}
+
 #[test]
 fn topology_root_kinds_include_daemonset() {
     assert!(topology_root_kinds().contains(&"DaemonSet"));
@@ -74,6 +112,84 @@ fn topology_standalone_kinds_include_ownerless_resources() {
     assert!(topology_standalone_kinds().contains(&"Ingress"));
     assert!(topology_standalone_kinds().contains(&"ConfigMap"));
     assert!(topology_standalone_kinds().contains(&"Secret"));
+}
+
+#[test]
+fn sanitized_pod_fixture_normalizes_to_topology_contract() {
+    let topology = build_resource_topology(vec![pod_fixture_input()]);
+    let node = topology.nodes.first().expect("pod node");
+    let summary_json = serde_json::to_string(&node.summary).expect("summary json");
+
+    assert_eq!(node.kind, "Pod");
+    assert_eq!(node.name, "payments-api-7d9-x");
+    assert_eq!(node.namespace.as_deref(), Some("payments"));
+    assert_eq!(node.status.as_deref(), Some("Running"));
+    assert_eq!(node.health, "healthy");
+    assert_eq!(node.summary.ready.as_deref(), Some("True"));
+    assert_eq!(node.summary.owner_ref.as_deref(), Some("payments-api-7d9"));
+    assert_eq!(node.summary.argo_app.as_deref(), Some("payments"));
+    assert_eq!(node.summary.helm_release.as_deref(), Some("payments-api"));
+    assert!(!summary_json.contains("token"));
+    assert!(!summary_json.contains("client-certificate-data"));
+    assert!(!summary_json.contains("client-key-data"));
+    assert!(!summary_json.contains("certificate-authority-data"));
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 50,
+        rng_seed: RngSeed::Fixed(20260521),
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn generated_topologies_keep_unique_nodes_and_valid_edges(pod_counts in proptest::collection::vec(0usize..4, 0..5)) {
+        let mut inputs = vec![resource("Deployment", "api", "default", "deploy-0")];
+
+        for (replica_set_index, pod_count) in pod_counts.iter().enumerate() {
+            let replica_set_name = format!("api-{}", replica_set_index);
+            let replica_set_uid = format!("rs-{}", replica_set_index);
+            inputs.push(owned(
+                "ReplicaSet",
+                &replica_set_name,
+                "default",
+                &replica_set_uid,
+                "Deployment",
+                "api",
+                "deploy-0",
+            ));
+
+            for pod_index in 0..*pod_count {
+                let pod_name = format!("api-{}-{}", replica_set_index, pod_index);
+                let pod_uid = format!("pod-{}-{}", replica_set_index, pod_index);
+                inputs.push(owned(
+                    "Pod",
+                    &pod_name,
+                    "default",
+                    &pod_uid,
+                    "ReplicaSet",
+                    &replica_set_name,
+                    &replica_set_uid,
+                ));
+            }
+        }
+
+        let topology = build_resource_topology(inputs.clone());
+        let second_topology = build_resource_topology(inputs);
+        let node_ids: HashSet<_> = topology.nodes.iter().map(|node| node.id.as_str()).collect();
+        let node_order: Vec<_> = topology.nodes.iter().map(|node| node.id.as_str()).collect();
+        let second_node_order: Vec<_> = second_topology.nodes.iter().map(|node| node.id.as_str()).collect();
+        let edge_order: Vec<_> = topology.edges.iter().map(|edge| edge.id.as_str()).collect();
+        let second_edge_order: Vec<_> = second_topology.edges.iter().map(|edge| edge.id.as_str()).collect();
+
+        prop_assert_eq!(node_ids.len(), topology.nodes.len());
+        prop_assert_eq!(node_order, second_node_order);
+        prop_assert_eq!(edge_order, second_edge_order);
+        for edge in &topology.edges {
+            prop_assert!(node_ids.contains(edge.source.as_str()));
+            prop_assert!(node_ids.contains(edge.target.as_str()));
+        }
+    }
 }
 
 #[test]
