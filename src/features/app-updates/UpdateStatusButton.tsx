@@ -20,6 +20,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { isAppUpdatesEnabled } from "@/lib/release-channel";
 import { cn } from "@/lib/utils";
 import { useAppUpdateStore } from "./store";
 
@@ -34,6 +35,7 @@ function formatCheckedAt(value: string | null): string {
 }
 
 export function UpdateStatusButton() {
+	const updatesEnabled = isAppUpdatesEnabled();
 	const {
 		status,
 		currentVersion,
@@ -51,6 +53,7 @@ export function UpdateStatusButton() {
 	const [open, setOpen] = useState(false);
 	const hasUpdate = status === "available" || status === "downloading";
 	const shouldAutoOpen =
+		updatesEnabled &&
 		status === "available" &&
 		availableVersion !== null &&
 		dismissedVersion !== availableVersion;
@@ -67,6 +70,8 @@ export function UpdateStatusButton() {
 		if (status === "checking") return "Checking for updates";
 		return "Check for updates";
 	}, [status]);
+
+	if (!updatesEnabled) return null;
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
