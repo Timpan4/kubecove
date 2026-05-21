@@ -31,6 +31,7 @@ export function NamespaceScopePicker({
 			return;
 		}
 
+		setNamespaces([]);
 		setLoading(true);
 		setError(null);
 		try {

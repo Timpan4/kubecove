@@ -65,6 +65,7 @@ export function KindScopePicker({
 			return;
 		}
 
+		setDiscoveredKinds([]);
 		setLoading(true);
 		setError(null);
 		try {
