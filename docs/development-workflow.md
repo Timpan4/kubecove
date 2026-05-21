@@ -48,6 +48,8 @@ The hook is intentionally lightweight before the app scaffold exists. Once the T
 
 ## Testing Standard
 
+Tests must prove behavior, contracts, or invariants. Do not add tests that merely restate current implementation details or assert the same branching logic in another form.
+
 Use example-based tests for specific regressions and user-visible behavior. Add fixture-contract tests when Kubernetes object shapes, Tauri serde contracts, or frontend wrapper boundaries can drift. Fixtures must be sanitized, minimal, and checked into `tests/fixtures/` only when they represent a reusable Kubernetes or app contract.
 
 Use property-based tests for pure deterministic logic with compact invariants and many input combinations, such as topology graphs, grouping, sorting, filtering, and cache-key normalization. Keep generated inputs small, deterministic, and focused on invariants. Do not require property tests for React rendering, real cluster integration, Tauri command tests that need live Kubernetes clients, or one-off bug examples.
