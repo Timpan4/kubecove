@@ -214,6 +214,8 @@ struct WebViewCohort {
     renderer_count: usize,
     gpu_count: usize,
     network_count: usize,
+    storage_count: usize,
+    auxiliary_count: usize,
     extra_count: usize,
 }
 
@@ -223,6 +225,10 @@ impl WebViewCohort {
             WebViewProcessRole::Renderer => self.renderer_count += 1,
             WebViewProcessRole::Gpu => self.gpu_count += 1,
             WebViewProcessRole::Network => self.network_count += 1,
+            WebViewProcessRole::Storage => self.storage_count += 1,
+            WebViewProcessRole::Audio | WebViewProcessRole::Utility | WebViewProcessRole::Crash => {
+                self.auxiliary_count += 1
+            }
             _ => self.extra_count += 1,
         }
     }
@@ -231,8 +237,10 @@ impl WebViewCohort {
         self.renderer_count == 1
             && self.gpu_count <= 1
             && self.network_count <= 1
+            && self.storage_count <= 1
+            && self.auxiliary_count <= 1
             && self.extra_count == 0
-            && self.gpu_count + self.network_count > 0
+            && self.gpu_count + self.network_count + self.storage_count > 0
     }
 }
 
@@ -299,6 +307,21 @@ mod tests {
     }
 
     #[test]
+    fn accepts_storage_helper_in_orphan_webview_cohort() {
+        assert_eq!(
+            selected_orphan_webview_cohort_start_time(
+                100,
+                [
+                    candidate(102, WebViewProcessRole::Renderer),
+                    candidate(102, WebViewProcessRole::Network),
+                    candidate(102, WebViewProcessRole::Storage),
+                ],
+            ),
+            Some(102),
+        );
+    }
+
+    #[test]
     fn ignores_ambiguous_orphan_webview_cohorts() {
         assert_eq!(
             selected_orphan_webview_cohort_start_time(
@@ -329,6 +352,18 @@ mod tests {
                 [
                     candidate(99, WebViewProcessRole::Renderer),
                     candidate(132, WebViewProcessRole::Gpu),
+                ],
+            ),
+            None,
+        );
+        assert_eq!(
+            selected_orphan_webview_cohort_start_time(
+                100,
+                [
+                    candidate(102, WebViewProcessRole::Renderer),
+                    candidate(102, WebViewProcessRole::Network),
+                    candidate(102, WebViewProcessRole::Storage),
+                    candidate(102, WebViewProcessRole::Storage),
                 ],
             ),
             None,
