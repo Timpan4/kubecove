@@ -30,6 +30,7 @@ import {
 import {
 	formatResourceGroupLabel,
 	formatResourceTypeGroupLabel,
+	resourceIdentityKey,
 	resourceSelectionKey,
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,
@@ -42,6 +43,7 @@ interface ResourceTableProps {
 	pageTypeGroups: Map<string, number>;
 	collapsedGroups: Set<string>;
 	selectedResourceKey: string | null;
+	selectedResourceIdentityKey: string | null;
 	onToggleGroup: (key: string) => void;
 	onSelectedResourceKeyChange: (key: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
@@ -64,6 +66,7 @@ export function ResourceTable({
 	pageTypeGroups,
 	collapsedGroups,
 	selectedResourceKey,
+	selectedResourceIdentityKey,
 	onToggleGroup,
 	onSelectedResourceKeyChange,
 	onResourceSelect,
@@ -130,6 +133,7 @@ export function ResourceTable({
 							pageTypeGroups={pageTypeGroups}
 							collapsedGroups={collapsedGroups}
 							selectedResourceKey={selectedResourceKey}
+							selectedResourceIdentityKey={selectedResourceIdentityKey}
 							onToggleGroup={onToggleGroup}
 							onSelectedResourceKeyChange={onSelectedResourceKeyChange}
 							onResourceSelect={onResourceSelect}
@@ -150,6 +154,7 @@ interface ResourceTableRowProps {
 	pageTypeGroups: Map<string, number>;
 	collapsedGroups: Set<string>;
 	selectedResourceKey: string | null;
+	selectedResourceIdentityKey: string | null;
 	onToggleGroup: (key: string) => void;
 	onSelectedResourceKeyChange: (key: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
@@ -164,12 +169,16 @@ function ResourceTableRow({
 	pageTypeGroups,
 	collapsedGroups,
 	selectedResourceKey,
+	selectedResourceIdentityKey,
 	onToggleGroup,
 	onSelectedResourceKeyChange,
 	onResourceSelect,
 }: ResourceTableRowProps) {
 	const resourceKey = resourceSelectionKey(row.original);
-	const isSelected = selectedResourceKey === resourceKey;
+	const identityKey = resourceIdentityKey(row.original);
+	const isSelected =
+		selectedResourceKey === resourceKey ||
+		selectedResourceIdentityKey === identityKey;
 	const label = formatResourceGroupLabel(row.original);
 	const typeLabel = formatResourceTypeGroupLabel(row.original);
 	const typeKey = `${label}::${typeLabel}`;
