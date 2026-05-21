@@ -3,6 +3,13 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.2.1 - 2026-05-21
+
+### Release
+
+- Prepared KubeCove v0.2.1 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
+
 ## 0.2.0 - 2026-05-20
 
 ### Added
