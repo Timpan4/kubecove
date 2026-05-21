@@ -1,7 +1,9 @@
+#[cfg(target_os = "macos")]
 use super::usage_webview::{
-    is_webview_process, orphan_webview_process_candidate,
-    selected_orphan_webview_cohort_start_time, webview_process_role,
+    is_macos_orphan_webkit_process, macos_orphan_webview_process_candidate,
+    selected_orphan_webview_cohort_start_time,
 };
+use super::usage_webview::{is_webview_descendant_process, webview_process_role};
 use crate::models::{AppError, AppUsageMetrics, AppUsageMetricsBreakdown};
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
@@ -27,13 +29,21 @@ impl AppUsageMonitor {
         system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::nothing()
-                .with_memory()
-                .with_cpu()
-                .with_cmd(UpdateKind::Always),
+            ProcessRefreshKind::nothing(),
         );
 
         let pids = usage_process_pids(&system, current_pid);
+        let pids_to_refresh: Vec<Pid> = pids.iter().copied().collect();
+        if !pids_to_refresh.is_empty() {
+            system.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&pids_to_refresh),
+                true,
+                ProcessRefreshKind::nothing()
+                    .with_memory()
+                    .with_cpu()
+                    .with_cmd(UpdateKind::Always),
+            );
+        }
         let process_count = observed_process_count(&system, &pids);
         let memory_bytes = process_tree_memory_bytes(&system, &pids);
         let raw_cpu_percent = process_tree_cpu_percent(&system, &pids);
@@ -87,6 +97,10 @@ fn usage_process_pids(system: &System, root_pid: Pid) -> HashSet<Pid> {
     pids
 }
 
+#[cfg(not(target_os = "macos"))]
+fn add_related_orphan_webview_pids(_system: &System, _root_pid: Pid, _pids: &mut HashSet<Pid>) {}
+
+#[cfg(target_os = "macos")]
 fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut HashSet<Pid>) {
     let Some(root_process) = system.process(root_pid) else {
         return;
@@ -97,8 +111,8 @@ fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut Ha
         system
             .processes()
             .iter()
-            .filter(|(pid, process)| !pids.contains(pid) && is_webview_process(process))
-            .filter_map(|(_, process)| orphan_webview_process_candidate(process)),
+            .filter(|(pid, process)| !pids.contains(pid) && is_macos_orphan_webkit_process(process))
+            .filter_map(|(_, process)| macos_orphan_webview_process_candidate(process)),
     );
 
     let Some(candidate_start_time) = candidate_start_time else {
@@ -110,7 +124,8 @@ fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut Ha
             .processes()
             .iter()
             .filter(|(_, process)| {
-                is_webview_process(process) && process.start_time() == candidate_start_time
+                is_macos_orphan_webkit_process(process)
+                    && process.start_time() == candidate_start_time
             })
             .map(|(pid, _)| *pid),
     );
@@ -303,7 +318,7 @@ fn usage_process_child_label(process: &Process) -> String {
 }
 
 fn usage_process_child_description(process: &Process) -> String {
-    if is_webview_process(process) {
+    if is_webview_descendant_process(process) {
         "WebView child process".to_string()
     } else {
         "Child process".to_string()
@@ -315,7 +330,7 @@ fn usage_process_group(pid: Pid, root_pid: Pid, process: &Process) -> UsageProce
         return UsageProcessGroup::App;
     }
 
-    if is_webview_process(process) {
+    if is_webview_descendant_process(process) {
         UsageProcessGroup::WebView
     } else {
         UsageProcessGroup::OtherChildren
@@ -354,5 +369,20 @@ mod tests {
         assert!(pids.contains(&pid(11)));
         assert!(pids.contains(&pid(12)));
         assert!(!pids.contains(&pid(20)));
+    }
+
+    #[test]
+    fn ignores_processes_without_parent_link_to_host() {
+        let pids = process_tree_pids_from_relations(
+            pid(10),
+            [
+                (pid(10), None),
+                (pid(11), Some(pid(10))),
+                (pid(30), None),
+                (pid(31), Some(pid(30))),
+            ],
+        );
+
+        assert_eq!(pids, [pid(10), pid(11)].into_iter().collect());
     }
 }

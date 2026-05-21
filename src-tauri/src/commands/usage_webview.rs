@@ -2,7 +2,7 @@ use sysinfo::Process;
 
 pub(super) const ORPHAN_WEBVIEW_START_WINDOW_SECONDS: u64 = 30;
 
-const WEBVIEW_PROCESS_MARKERS: &[&str] = &[
+const DESCENDANT_WEBVIEW_PROCESS_MARKERS: &[&str] = &[
     "webview",
     "msedgewebview",
     "webkitwebprocess",
@@ -11,6 +11,13 @@ const WEBVIEW_PROCESS_MARKERS: &[&str] = &[
     "webkitstorageprocess",
     "webkit.framework",
     "com.apple.webkit.",
+];
+
+const MACOS_ORPHAN_WEBKIT_PROCESS_MARKERS: &[&str] = &[
+    "com.apple.webkit.webcontent",
+    "com.apple.webkit.gpu",
+    "com.apple.webkit.networking",
+    "com.apple.webkit.storage",
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,27 +64,39 @@ fn process_identity_text(process: &Process) -> String {
     )
 }
 
-pub(super) fn is_webview_process(process: &Process) -> bool {
-    is_webview_process_text(&process_identity_text(process))
+pub(super) fn is_webview_descendant_process(process: &Process) -> bool {
+    is_webview_descendant_process_text(&process_identity_text(process))
 }
 
-pub(super) fn is_webview_process_text(process_text: &str) -> bool {
+pub(super) fn is_webview_descendant_process_text(process_text: &str) -> bool {
     let name = process_text.to_ascii_lowercase();
-    contains_any(&name, WEBVIEW_PROCESS_MARKERS)
+    contains_any(&name, DESCENDANT_WEBVIEW_PROCESS_MARKERS)
+}
+
+pub(super) fn is_macos_orphan_webkit_process(process: &Process) -> bool {
+    is_macos_orphan_webkit_process_text(&process_identity_text(process))
+}
+
+pub(super) fn is_macos_orphan_webkit_process_text(process_text: &str) -> bool {
+    let name = process_text.to_ascii_lowercase();
+    contains_any(&name, MACOS_ORPHAN_WEBKIT_PROCESS_MARKERS)
 }
 
 pub(super) fn webview_process_role(process: &Process) -> Option<String> {
     let identity = process_identity_text(process);
-    if !is_webview_process_text(&identity) {
+    if !is_webview_descendant_process_text(&identity) {
         return None;
     }
     webview_process_role_from_cmd(&identity)
 }
 
-pub(super) fn orphan_webview_process_candidate(
+pub(super) fn macos_orphan_webview_process_candidate(
     process: &Process,
 ) -> Option<OrphanWebViewProcessCandidate> {
     let identity = process_identity_text(process);
+    if !is_macos_orphan_webkit_process_text(&identity) {
+        return None;
+    }
     let role = webview_process_role_from_text(&identity)?;
     Some(OrphanWebViewProcessCandidate {
         start_time: process.start_time(),
@@ -138,13 +157,16 @@ fn webview_process_role_from_text(command_line: &str) -> Option<WebViewProcessRo
     ) {
         return Some(WebViewProcessRole::Network);
     }
-    if text.contains("webkitstorageprocess") || text.contains("webkitstorageservice") {
+    if text.contains("webkitstorageprocess")
+        || text.contains("webkitstorageservice")
+        || text.contains("com.apple.webkit.storage")
+    {
         return Some(WebViewProcessRole::Storage);
     }
     if text.contains("msedgewebview2") || text.contains("webview") {
         return Some(WebViewProcessRole::Browser);
     }
-    if is_webview_process_text(&text) {
+    if is_webview_descendant_process_text(&text) {
         return Some(WebViewProcessRole::WebKit);
     }
 
@@ -247,13 +269,13 @@ impl WebViewCohort {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_orphan_webview_start_candidate, is_webview_process_text,
-        selected_orphan_webview_cohort_start_time, webview_process_role_from_cmd,
-        OrphanWebViewProcessCandidate, WebViewProcessRole,
+        is_macos_orphan_webkit_process_text, is_orphan_webview_start_candidate,
+        is_webview_descendant_process_text, selected_orphan_webview_cohort_start_time,
+        webview_process_role_from_cmd, OrphanWebViewProcessCandidate, WebViewProcessRole,
     };
 
     #[test]
-    fn identifies_webview_process_names() {
+    fn identifies_descendant_webview_process_names() {
         for process_name in [
             "msedgewebview2.exe",
             "Microsoft.WebView2",
@@ -261,9 +283,32 @@ mod tests {
             "WebKitNetworkProcess",
             "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent",
         ] {
-            assert!(is_webview_process_text(process_name));
+            assert!(is_webview_descendant_process_text(process_name));
         }
-        assert!(!is_webview_process_text("kubecove.exe"));
+        assert!(!is_webview_descendant_process_text("kubecove.exe"));
+    }
+
+    #[test]
+    fn only_exact_macos_webkit_helpers_can_be_orphan_candidates() {
+        for process_name in [
+            "com.apple.WebKit.WebContent",
+            "com.apple.WebKit.GPU",
+            "com.apple.WebKit.Networking",
+            "com.apple.WebKit.Storage",
+            "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent",
+        ] {
+            assert!(is_macos_orphan_webkit_process_text(process_name));
+        }
+
+        for process_name in [
+            "my-webview-helper",
+            "WebKitWebProcess",
+            "Microsoft.WebView2",
+            "msedgewebview2.exe",
+            "webkit.framework",
+        ] {
+            assert!(!is_macos_orphan_webkit_process_text(process_name));
+        }
     }
 
     #[test]
