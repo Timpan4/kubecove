@@ -58,6 +58,7 @@ interface ResourceListProps {
 	selectedArgoAppFilter: string;
 	selectedResource: ResourceSummary | null;
 	initialHealthFilter?: HealthFilter;
+	initialSearch?: string;
 	onArgoAppFilterChange: (app: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
 }
@@ -69,6 +70,7 @@ function ResourceListComponent({
 	selectedArgoAppFilter,
 	selectedResource,
 	initialHealthFilter = "all",
+	initialSearch = "",
 	onArgoAppFilterChange,
 	onResourceSelect,
 }: ResourceListProps) {
@@ -132,6 +134,11 @@ function ResourceListComponent({
 		setHealthFilter(initialHealthFilter);
 		setPageIndex(0);
 	}, [initialHealthFilter]);
+
+	useEffect(() => {
+		setSearch(initialSearch);
+		setPageIndex(0);
+	}, [initialSearch]);
 
 	useEffect(() => {
 		setCollapsedGroups(new Set());

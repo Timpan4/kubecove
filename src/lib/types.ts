@@ -259,6 +259,28 @@ export interface ArgoApplicationSetDetails {
 	metadata: Record<string, unknown>;
 }
 
+export interface HelmReleaseSummary {
+	cluster: string;
+	name: string;
+	namespace: string;
+	age: string;
+	updatedAt?: string;
+	createdAt?: string;
+	chart?: string;
+	appVersion?: string;
+	revision?: number;
+	status?: string;
+	storageKind: string;
+	storageName: string;
+}
+
+export interface HelmReleaseDetails {
+	summary: HelmReleaseSummary;
+	yaml: string;
+	metadata: Record<string, unknown>;
+	release?: Record<string, unknown>;
+}
+
 export interface ArgoAppProjectSummary {
 	name: string;
 	cluster: string;

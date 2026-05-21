@@ -19,6 +19,8 @@
  * - Storage [section shortcut]
  * - Argo CD [section]
  *   - Applications, ApplicationSets, AppProjects [Argo child nodes]
+ * - Helm [section]
+ *   - Releases [read-only Helm v3 release inventory]
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -307,7 +309,16 @@ export function SidebarTree({
       })),
     };
 
-    return { clusterOverviewNode, curatedSectionNodes, argoNode };
+    const helmNode: TreeNode = {
+      id: { type: "section", section: "helm" },
+      label: SECTIONS.helm.label,
+      children: SECTIONS.helm.children.map((child) => ({
+        id: { type: "kind", section: "helm", namespace: undefined, group: undefined, kind: child },
+        label: child,
+      })),
+    };
+
+    return { clusterOverviewNode, curatedSectionNodes, argoNode, helmNode };
   }, []);
 
   const extraKinds = useMemo(() => {
@@ -444,6 +455,7 @@ export function SidebarTree({
       ...staticTree.curatedSectionNodes,
       discoveredTree,
       staticTree.argoNode,
+      staticTree.helmNode,
     ];
   }, [namespaces, staticTree, buildNamespaceSubtree, discoveredTree]);
 

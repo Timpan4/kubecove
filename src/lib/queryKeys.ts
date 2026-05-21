@@ -37,4 +37,19 @@ export const queryKeys = {
 		["argo-appsets", clusterContext] as const,
 	argoAppProjects: (clusterContext: string) =>
 		["argo-appprojects", clusterContext] as const,
+	helmReleases: (clusterContext: string) =>
+		["helm-releases", clusterContext] as const,
+	helmReleaseDetails: (
+		clusterContext: string,
+		namespace: string,
+		storageKind: string,
+		storageName: string,
+	) =>
+		[
+			"helm-release-details",
+			clusterContext,
+			namespace,
+			storageKind,
+			storageName,
+		] as const,
 };
