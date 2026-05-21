@@ -117,6 +117,8 @@ export const useAppUpdateStore = create<AppUpdateState>()(
 					set({
 						status: "error",
 						lastCheckedAt: new Date().toISOString(),
+						availableVersion: null,
+						releaseNotes: null,
 						errorMessage: errorMessage(error),
 					});
 					diagnosticLog("updates.check.error", { error: errorMessage(error) });
