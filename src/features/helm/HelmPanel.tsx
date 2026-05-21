@@ -90,7 +90,7 @@ function EmptyState() {
 }
 
 function releaseKey(release: HelmReleaseSummary): string {
-	return `${release.namespace}:${release.name}:${release.storageKind}:${release.storageName}`;
+	return `${release.cluster}:${release.namespace}:${release.name}:${release.storageKind}:${release.storageName}`;
 }
 
 function statusTone(status: string | undefined) {
@@ -264,6 +264,9 @@ export function HelmPanel({
 		staleTime: 30_000,
 	});
 
+	if (!clusterContext) {
+		return <div className={STATE_CLASS}>Select a cluster context first.</div>;
+	}
 	if (isPending) return <LoadingState />;
 	if (isError) return <ErrorState error={error} />;
 	if (!releases) return <LoadingState />;

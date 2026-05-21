@@ -3,7 +3,7 @@ use crate::models::{AppError, HelmReleaseDetails, HelmReleaseSummary};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::{DateTime, Utc};
 use flate2::read::GzDecoder;
-use k8s_openapi::api::core::v1::{ConfigMap, Secret};
+use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Secret};
 use kube::{
     api::{Api, ListParams, ObjectMeta},
     config::KubeConfigOptions,
@@ -54,16 +54,17 @@ struct HelmStorageRecord {
 pub async fn list_helm_releases(
     cluster_context: String,
 ) -> Result<Vec<HelmReleaseSummary>, AppError> {
-    let client = client_for_context(&cluster_context).await?;
+    let (client, default_namespace) = client_for_context(&cluster_context).await?;
+    let fallback_namespaces = helm_fallback_namespaces(client.clone(), &default_namespace).await;
     let mut records = Vec::new();
     let mut errors = Vec::new();
 
-    match list_secret_releases(client.clone(), &cluster_context).await {
+    match list_secret_releases(client.clone(), &cluster_context, &fallback_namespaces).await {
         Ok(mut releases) => records.append(&mut releases),
         Err(err) => errors.push(err.message),
     }
 
-    match list_configmap_releases(client, &cluster_context).await {
+    match list_configmap_releases(client, &cluster_context, &fallback_namespaces).await {
         Ok(mut releases) => records.append(&mut releases),
         Err(err) => errors.push(err.message),
     }
@@ -82,12 +83,18 @@ pub async fn get_helm_release_details(
     storage_kind: String,
     storage_name: String,
 ) -> Result<HelmReleaseDetails, AppError> {
-    let client = client_for_context(&cluster_context).await?;
+    let (client, _) = client_for_context(&cluster_context).await?;
 
     match storage_kind.as_str() {
         HELM_STORAGE_SECRET => {
             let api: Api<Secret> = Api::namespaced(client, &namespace);
             let mut secret = api.get(&storage_name).await.map_err(AppError::from)?;
+            if !is_helm_owned(secret.metadata.labels.as_ref()) {
+                return Err(AppError::new(
+                    "storage object is not a Helm release",
+                    "validation",
+                ));
+            }
             let record = secret_record(&cluster_context, &mut secret)?;
             let metadata = serde_json::to_value(&secret.metadata)
                 .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
@@ -104,6 +111,12 @@ pub async fn get_helm_release_details(
         HELM_STORAGE_CONFIGMAP => {
             let api: Api<ConfigMap> = Api::namespaced(client, &namespace);
             let mut configmap = api.get(&storage_name).await.map_err(AppError::from)?;
+            if !is_helm_owned(configmap.metadata.labels.as_ref()) {
+                return Err(AppError::new(
+                    "storage object is not a Helm release",
+                    "validation",
+                ));
+            }
             let record = configmap_record(&cluster_context, &mut configmap)?;
             let metadata = serde_json::to_value(&configmap.metadata)
                 .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
@@ -121,7 +134,7 @@ pub async fn get_helm_release_details(
     }
 }
 
-async fn client_for_context(cluster_context: &str) -> Result<Client, AppError> {
+async fn client_for_context(cluster_context: &str) -> Result<(Client, String), AppError> {
     let options = KubeConfigOptions {
         context: Some(cluster_context.to_string()),
         ..Default::default()
@@ -129,16 +142,52 @@ async fn client_for_context(cluster_context: &str) -> Result<Client, AppError> {
     let config = kube::Config::from_kubeconfig(&options)
         .await
         .map_err(|e| AppError::kube(e.to_string()))?;
-    Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))
+    let default_namespace = config.default_namespace.clone();
+    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    Ok((client, default_namespace))
+}
+
+async fn helm_fallback_namespaces(client: Client, default_namespace: &str) -> Vec<String> {
+    let api: Api<Namespace> = Api::all(client);
+    match api.list(&list_params()).await {
+        Ok(items) => {
+            let namespaces: Vec<String> = items
+                .items
+                .into_iter()
+                .filter_map(|namespace| namespace.metadata.name)
+                .collect();
+            if namespaces.is_empty() && !default_namespace.is_empty() {
+                vec![default_namespace.to_string()]
+            } else {
+                namespaces
+            }
+        }
+        Err(_) if !default_namespace.is_empty() => vec![default_namespace.to_string()],
+        Err(_) => Vec::new(),
+    }
 }
 
 async fn list_secret_releases(
     client: Client,
     cluster_context: &str,
+    fallback_namespaces: &[String],
 ) -> Result<Vec<HelmStorageRecord>, AppError> {
-    let api: Api<Secret> = Api::all(client);
+    let api: Api<Secret> = Api::all(client.clone());
     let params = helm_list_params();
-    let items = api.list(&params).await.map_err(AppError::from)?;
+    let items = match api.list(&params).await {
+        Ok(items) => items,
+        Err(all_error) => {
+            return list_secret_releases_by_namespace(client, cluster_context, fallback_namespaces)
+                .await
+                .map_err(|namespace_error| {
+                    AppError::kube(format!(
+                        "{}; {}",
+                        AppError::from(all_error).message,
+                        namespace_error.message
+                    ))
+                });
+        }
+    };
     items
         .items
         .into_iter()
@@ -149,15 +198,93 @@ async fn list_secret_releases(
 async fn list_configmap_releases(
     client: Client,
     cluster_context: &str,
+    fallback_namespaces: &[String],
 ) -> Result<Vec<HelmStorageRecord>, AppError> {
-    let api: Api<ConfigMap> = Api::all(client);
+    let api: Api<ConfigMap> = Api::all(client.clone());
     let params = helm_list_params();
-    let items = api.list(&params).await.map_err(AppError::from)?;
+    let items = match api.list(&params).await {
+        Ok(items) => items,
+        Err(all_error) => {
+            return list_configmap_releases_by_namespace(
+                client,
+                cluster_context,
+                fallback_namespaces,
+            )
+            .await
+            .map_err(|namespace_error| {
+                AppError::kube(format!(
+                    "{}; {}",
+                    AppError::from(all_error).message,
+                    namespace_error.message
+                ))
+            });
+        }
+    };
     items
         .items
         .into_iter()
         .map(|mut configmap| configmap_record(cluster_context, &mut configmap))
         .collect()
+}
+
+async fn list_secret_releases_by_namespace(
+    client: Client,
+    cluster_context: &str,
+    namespaces: &[String],
+) -> Result<Vec<HelmStorageRecord>, AppError> {
+    let params = helm_list_params();
+    let mut records = Vec::new();
+    let mut succeeded = false;
+    let mut errors = Vec::new();
+
+    for namespace in namespaces {
+        let api: Api<Secret> = Api::namespaced(client.clone(), namespace);
+        match api.list(&params).await {
+            Ok(items) => {
+                succeeded = true;
+                for mut secret in items.items {
+                    records.push(secret_record(cluster_context, &mut secret)?);
+                }
+            }
+            Err(err) => errors.push(format!("{}: {}", namespace, AppError::from(err).message)),
+        }
+    }
+
+    if !succeeded && !errors.is_empty() {
+        Err(AppError::kube(errors.join("; ")))
+    } else {
+        Ok(records)
+    }
+}
+
+async fn list_configmap_releases_by_namespace(
+    client: Client,
+    cluster_context: &str,
+    namespaces: &[String],
+) -> Result<Vec<HelmStorageRecord>, AppError> {
+    let params = helm_list_params();
+    let mut records = Vec::new();
+    let mut succeeded = false;
+    let mut errors = Vec::new();
+
+    for namespace in namespaces {
+        let api: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
+        match api.list(&params).await {
+            Ok(items) => {
+                succeeded = true;
+                for mut configmap in items.items {
+                    records.push(configmap_record(cluster_context, &mut configmap)?);
+                }
+            }
+            Err(err) => errors.push(format!("{}: {}", namespace, AppError::from(err).message)),
+        }
+    }
+
+    if !succeeded && !errors.is_empty() {
+        Err(AppError::kube(errors.join("; ")))
+    } else {
+        Ok(records)
+    }
 }
 
 fn helm_list_params() -> ListParams {
@@ -298,6 +425,10 @@ fn label_value(labels: Option<&BTreeMap<String, String>>, key: &str) -> Option<S
     labels.and_then(|labels| labels.get(key).cloned())
 }
 
+fn is_helm_owned(labels: Option<&BTreeMap<String, String>>) -> bool {
+    matches!(labels.and_then(|labels| labels.get("owner")), Some(owner) if owner == "helm")
+}
+
 fn release_name_from_storage_name(storage_name: &str) -> String {
     storage_name
         .strip_prefix("sh.helm.release.v1.")
@@ -335,5 +466,25 @@ fn redact_configmap_release(configmap: &mut ConfigMap) {
         if let Some(release) = data.get_mut("release") {
             *release = "REDACTED".to_string();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn helm_owner_label_marks_release_storage() {
+        let labels = BTreeMap::from([("owner".to_string(), "helm".to_string())]);
+
+        assert!(is_helm_owned(Some(&labels)));
+    }
+
+    #[test]
+    fn missing_helm_owner_label_rejects_storage() {
+        let labels = BTreeMap::from([("app".to_string(), "not-helm".to_string())]);
+
+        assert!(!is_helm_owned(Some(&labels)));
+        assert!(!is_helm_owned(None));
     }
 }

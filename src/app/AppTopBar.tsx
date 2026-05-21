@@ -60,7 +60,7 @@ export function AppTopBar({
 					<Settings />
 				</Button>
 				{showSearch && (
-					<div className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border bg-background/50 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-ring hover:text-foreground">
+					<div className="flex items-center gap-2 whitespace-nowrap rounded-md border bg-background/50 px-3 py-1.5 text-xs text-muted-foreground">
 						<Search className="size-3.5" aria-hidden="true" />
 						<span>Search resources...</span>
 					</div>
