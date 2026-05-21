@@ -1,7 +1,6 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { HealthFilter, HealthSummary, ScopePill } from "./helpers";
+import type { HealthFilter, HealthSummary } from "./helpers";
 
 function HealthMetric({
 	label,
@@ -49,6 +48,8 @@ function HealthMetric({
 
 export function healthFilterLabel(filter: HealthFilter): string {
 	switch (filter) {
+		case "healthy":
+			return "Healthy";
 		case "unhealthy":
 			return "Unhealthy";
 		case "attention":
@@ -60,28 +61,6 @@ export function healthFilterLabel(filter: HealthFilter): string {
 		case "all":
 			return "All";
 	}
-}
-
-export function ResourceScopePills({ pills }: { pills: ScopePill[] }) {
-	return (
-		<div
-			className="flex min-h-8 flex-wrap items-center gap-2"
-			aria-label="Current resource scope"
-		>
-			{pills.map((pill) => (
-				<Badge
-					key={pill.label}
-					variant="outline"
-					className="h-8 max-w-full gap-1.5 rounded-sm border-slate-700/80 bg-slate-950/45 px-2.5 text-xs shadow-none"
-				>
-					<span className="text-muted-foreground">{pill.label}</span>
-					<strong className="min-w-0 truncate font-semibold text-foreground">
-						{pill.value}
-					</strong>
-				</Badge>
-			))}
-		</div>
-	);
 }
 
 export function ResourceHealthStrip({
@@ -108,6 +87,8 @@ export function ResourceHealthStrip({
 				label="Healthy"
 				value={summary.healthy}
 				valueClassName="text-emerald-300"
+				active={activeFilter === "healthy"}
+				onClick={() => onFilterChange("healthy")}
 			/>
 			<HealthMetric
 				label="Unhealthy"

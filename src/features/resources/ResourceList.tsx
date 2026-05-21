@@ -44,10 +44,10 @@ import {
 import {
 	ActiveHealthFilterBanner,
 	ResourceHealthStrip,
-	ResourceScopePills,
 } from "./health";
 import { fetchResourcePage } from "./query";
 import { ResourceMapTableLayout } from "./ResourceMapTableLayout";
+import { ResourceScopePills } from "./scope-filters";
 import { ResourceToolbar } from "./toolbar";
 import { useResourceWatch } from "./useResourceWatch";
 
@@ -60,6 +60,8 @@ interface ResourceListProps {
 	initialHealthFilter?: HealthFilter;
 	initialSearch?: string;
 	onArgoAppFilterChange: (app: string) => void;
+	onNamespacesChange: (namespaces: string[]) => void;
+	onKindsChange: (kinds: ResourceKindSelection[]) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
 }
 
@@ -72,6 +74,8 @@ function ResourceListComponent({
 	initialHealthFilter = "all",
 	initialSearch = "",
 	onArgoAppFilterChange,
+	onNamespacesChange,
+	onKindsChange,
 	onResourceSelect,
 }: ResourceListProps) {
 	const [pageIndex, setPageIndex] = useState(0);
@@ -217,12 +221,11 @@ function ResourceListComponent({
 	const scopePills = useMemo(
 		() =>
 			describeResourceScope(
-				clusterContext,
 				selectedNamespaces,
 				selectedKinds,
 				selectedArgoAppFilter,
 			),
-		[clusterContext, selectedNamespaces, selectedKinds, selectedArgoAppFilter],
+		[selectedNamespaces, selectedKinds, selectedArgoAppFilter],
 	);
 
 	const totalRows = displayData.length;
@@ -394,7 +397,14 @@ function ResourceListComponent({
 
 	return (
 		<div className="flex min-w-0 flex-col gap-3">
-			<ResourceScopePills pills={scopePills} />
+			<ResourceScopePills
+				pills={scopePills}
+				clusterContext={clusterContext}
+				selectedNamespaces={selectedNamespaces}
+				selectedKinds={selectedKinds}
+				onNamespaceChange={onNamespacesChange}
+				onKindChange={onKindsChange}
+			/>
 			<ResourceHealthStrip
 				summary={healthSummary}
 				activeFilter={healthFilter}

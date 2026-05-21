@@ -171,6 +171,7 @@ describe("resource browser presentation helpers", () => {
     ];
 
     expect(filterResourcesByHealth(resources, "all")).toEqual(resources);
+    expect(filterResourcesByHealth(resources, "healthy").map((r) => r.name)).toEqual(["api-0"]);
     expect(filterResourcesByHealth(resources, "attention").map((r) => r.name)).toEqual(["worker-0", "cache-0"]);
     expect(filterResourcesByHealth(resources, "degraded").map((r) => r.name)).toEqual(["job-0"]);
     expect(filterResourcesByHealth(resources, "restarted").map((r) => r.name)).toEqual(["job-0", "cache-0"]);
@@ -273,11 +274,14 @@ describe("resource browser presentation helpers", () => {
   });
 
   test("describes namespace-first scope in the table header", () => {
-    expect(describeResourceScope("kind-prod", ["payments"], ["Pod", "Service"], "argocd")).toEqual([
-      { label: "Context", value: "kind-prod" },
-      { label: "Namespace", value: "payments" },
-      { label: "Kinds", value: "Pod, Service" },
-      { label: "Argo app", value: "argocd" },
+    expect(describeResourceScope(["payments"], ["Pod", "Service"], "argocd")).toEqual([
+      { kind: "namespaces", label: "Namespace", value: "payments" },
+      { kind: "kinds", label: "Kinds", value: "Pod, Service" },
+      { kind: "argoApp", label: "Argo app", value: "argocd" },
+    ]);
+    expect(describeResourceScope([], ["Pod"], "")).toEqual([
+      { kind: "namespaces", label: "Namespaces", value: "All namespaces" },
+      { kind: "kinds", label: "Kind", value: "Pod" },
     ]);
   });
 

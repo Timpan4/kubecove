@@ -347,6 +347,24 @@ function App() {
 		setViewMode("resources");
 	};
 
+	const handleResourceNamespacesChange = useCallback(
+		(namespaces: string[]) => {
+			setSelectedTreeNode(null);
+			setSelectedResource(null);
+			setSelectedNamespaces(namespaces);
+		},
+		[setSelectedTreeNode, setSelectedResource, setSelectedNamespaces],
+	);
+
+	const handleResourceKindsChange = useCallback(
+		(kinds: ResourceKindSelection[]) => {
+			setSelectedTreeNode(null);
+			setSelectedResource(null);
+			setSelectedKinds(kinds);
+		},
+		[setSelectedTreeNode, setSelectedResource, setSelectedKinds],
+	);
+
 	useArgoDetection(clusterContext, setArgoDetected);
 
 	// Compute scope from selected tree node
@@ -512,6 +530,8 @@ function App() {
 								initialHealthFilter={resourceHealthFilter}
 								initialSearch={resourceInitialSearch}
 								onArgoAppFilterChange={setSelectedArgoAppFilter}
+								onNamespacesChange={handleResourceNamespacesChange}
+								onKindsChange={handleResourceKindsChange}
 								onResourceSelect={setSelectedResource}
 							/>
 						</Suspense>
