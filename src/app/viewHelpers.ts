@@ -11,6 +11,7 @@ export const SECTION_LABELS: Record<string, string> = {
 	storage: "Storage",
 	discovered: "Discovered",
 	argo: "Argo CD",
+	helm: "Helm",
 };
 
 export const SIDEBAR_PROVIDER_STYLE = {

@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
 	createMockTauriClient,
 	getAppUsageMetrics,
+	getHelmReleaseDetails,
 	getResourceYaml,
 	isAppError,
+	listHelmReleases,
 	listResourceTopology,
 	listKubeContexts,
 	listNamespaces,
@@ -11,6 +13,8 @@ import {
 import type {
 	AppUsageMetrics,
 	ClusterContext,
+	HelmReleaseDetails,
+	HelmReleaseSummary,
 	NamespaceSummary,
 	ResourceTopology,
 } from "../src/lib/types";
@@ -107,6 +111,52 @@ describe("typed Tauri wrappers", () => {
 		const client = createMockTauriClient({ get_app_usage_metrics: metrics });
 
 		expect(await getAppUsageMetrics(client)).toEqual(metrics);
+	});
+
+	test("passes Helm release requests through typed wrappers", async () => {
+		const release: HelmReleaseSummary = {
+			cluster: "kind-dev",
+			name: "payments",
+			namespace: "payments",
+			age: "5m",
+			chart: "payments-1.2.3",
+			appVersion: "2026.5.21",
+			revision: 7,
+			status: "deployed",
+			storageKind: "Secret",
+			storageName: "sh.helm.release.v1.payments.v7",
+		};
+		const details: HelmReleaseDetails = {
+			summary: release,
+			yaml: "kind: Secret",
+			metadata: { name: release.storageName },
+		};
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				if (cmd === "list_helm_releases") return [release] as T;
+				return details as T;
+			},
+		};
+
+		expect(await listHelmReleases(client, "kind-dev")).toEqual([release]);
+		expect(await getHelmReleaseDetails(client, release)).toEqual(details);
+		expect(calls).toEqual([
+			{
+				cmd: "list_helm_releases",
+				args: { clusterContext: "kind-dev" },
+			},
+			{
+				cmd: "get_helm_release_details",
+				args: {
+					clusterContext: "kind-dev",
+					namespace: "payments",
+					storageKind: "Secret",
+					storageName: "sh.helm.release.v1.payments.v7",
+				},
+			},
+		]);
 	});
 });
 

@@ -948,6 +948,7 @@ describe("tree navigation scope helpers", () => {
       kinds: [],
       clusterScoped: false,
       argoMode: false,
+      helmMode: false,
     });
   });
 
@@ -996,6 +997,11 @@ describe("tree navigation scope helpers", () => {
       section: "argo",
       argoMode: true,
     });
+
+    expect(resolveTreeScope({ type: "section", section: "helm" })).toMatchObject({
+      section: "helm",
+      helmMode: true,
+    });
   });
 
   test("resolves discovered resource kind nodes", () => {
@@ -1026,8 +1032,14 @@ describe("tree navigation scope helpers", () => {
 
   test("explains empty states from scope", () => {
     expect(emptyStateMessage(resolveTreeScope(null), false)).toBe("Select a cluster context first");
-    expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "namespaces" } as TreeNodeId), true)).toBe("Select a namespace");
+    expect(
+      emptyStateMessage(
+        resolveTreeScope({ type: "section", section: "namespaces" } as TreeNodeId),
+        true,
+      ),
+    ).toBe("Loading all namespaces");
     expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "argo" } as TreeNodeId), true)).toBe("Select an Argo CD resource type");
+    expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "helm" } as TreeNodeId), true)).toBe("Select a Helm resource type");
     expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "discovered" } as TreeNodeId), true)).toBe("Select a discovered resource kind");
   });
 });

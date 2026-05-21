@@ -47,7 +47,12 @@ export interface DashboardSetters {
 	toggleExpandedSection: (nodeIdStr: string) => void;
 }
 
-export type DashboardViewMode = "overview" | "resources" | "argo" | "settings";
+export type DashboardViewMode =
+	| "overview"
+	| "resources"
+	| "argo"
+	| "helm"
+	| "settings";
 
 // Persisted slice: context + namespaces only (Milestone 2 requirement)
 interface PersistedSlice {

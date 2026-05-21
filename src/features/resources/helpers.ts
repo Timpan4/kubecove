@@ -97,6 +97,10 @@ export function buildFetchKeys(
 			keys.push({ kind, namespace: undefined });
 			continue;
 		}
+		if (namespaces.length === 0) {
+			keys.push({ kind, namespace: undefined });
+			continue;
+		}
 		for (const namespace of namespaces) {
 			keys.push({ kind, namespace });
 		}

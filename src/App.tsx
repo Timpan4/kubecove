@@ -29,7 +29,11 @@ import {
 	type TreeNodeId,
 } from "./lib/tree-nav";
 import { diagnosticLog } from "./lib/diagnostics";
-import type { ResourceKindSelection } from "./lib/types";
+import {
+	SUPPORTED_KINDS,
+	type HelmReleaseSummary,
+	type ResourceKindSelection,
+} from "./lib/types";
 import type { HealthFilter } from "./features/resources/helpers";
 import {
 	makeWorkspaceShortcuts,
@@ -62,6 +66,16 @@ const ArgoCDPanel = lazy(() =>
 const ArgoDetailPanel = lazy(() =>
 	import("./features/argo/ArgoDetailPanel").then((module) => ({
 		default: module.ArgoDetailPanel,
+	})),
+);
+const HelmPanel = lazy(() =>
+	import("./features/helm").then((module) => ({
+		default: module.HelmPanel,
+	})),
+);
+const HelmDetailPanel = lazy(() =>
+	import("./features/helm").then((module) => ({
+		default: module.HelmDetailPanel,
 	})),
 );
 const SettingsPage = lazy(() =>
@@ -114,6 +128,9 @@ function App() {
 	const showUsageFooter = useSettingsState((state) => state.showUsageFooter);
 	const [resourceHealthFilter, setResourceHealthFilter] =
 		useState<HealthFilter>("all");
+	const [selectedHelmRelease, setSelectedHelmRelease] =
+		useState<HelmReleaseSummary | null>(null);
+	const [resourceInitialSearch, setResourceInitialSearch] = useState("");
 	const appRenderCountRef = useRef(0);
 	appRenderCountRef.current += 1;
 	useAppUpdateLaunchCheck();
@@ -126,6 +143,8 @@ function App() {
 			setSelectedKinds(workspace.scope.kinds);
 			setSelectedResource(null);
 			setSelectedArgoApp(null);
+			setSelectedHelmRelease(null);
+			setResourceInitialSearch("");
 			setSelectedArgoAppFilter(workspace.scope.argoAppFilter);
 			setSelectedTreeNode(null);
 			setResourceHealthFilter("all");
@@ -150,6 +169,8 @@ function App() {
 		// Clear inspector state on context switch
 		setSelectedResource(null);
 		setSelectedArgoApp(null);
+		setSelectedHelmRelease(null);
+		setResourceInitialSearch("");
 		setSelectedArgoAppFilter("");
 		setSelectedNamespaces([]);
 		setSelectedKinds(activeWorkspace?.scope.kinds ?? []);
@@ -183,7 +204,9 @@ function App() {
 		setSelectedArgoAppFilter(workspace.scope.argoAppFilter);
 		setSelectedTreeNode(null);
 		setSelectedArgoApp(null);
+		setSelectedHelmRelease(null);
 		setSelectedResource(null);
+		setResourceInitialSearch("");
 		setResourceHealthFilter(healthFilter);
 		setViewMode("resources");
 	};
@@ -193,6 +216,8 @@ function App() {
 		setSelectedTreeNode({ type: "section", section: "argo" });
 		setSelectedResource(null);
 		setSelectedArgoApp(null);
+		setSelectedHelmRelease(null);
+		setResourceInitialSearch("");
 		setResourceHealthFilter("all");
 		setViewMode("argo");
 	};
@@ -201,9 +226,19 @@ function App() {
 		setActiveWorkspace(null);
 		setSelectedResource(null);
 		setSelectedArgoApp(null);
+		setSelectedHelmRelease(null);
+		setResourceInitialSearch("");
 		setSelectedTreeNode(null);
 		setResourceHealthFilter("all");
 		setViewMode("resources");
+	};
+
+	const handleOpenSettings = () => {
+		setViewMode("settings");
+		setSelectedResource(null);
+		setSelectedArgoApp(null);
+		setSelectedHelmRelease(null);
+		setResourceInitialSearch("");
 	};
 
 	const handleTreeNodeSelect = (nodeId: TreeNodeId) => {
@@ -214,25 +249,41 @@ function App() {
 			namespace: nodeId.namespace ?? "",
 			kind: nodeId.kind ?? "",
 			argoMode: scope.argoMode,
+			helmMode: scope.helmMode,
 		});
 
-		// Argo section or child → switch to argo view, clear resource state
+		// Tool sections own their inspector state.
 		setSelectedArgoAppFilter("");
 
 		if (scope.argoMode) {
 			setViewMode("argo");
 			setSelectedArgoApp(null);
+			setSelectedHelmRelease(null);
 			setSelectedResource(null);
+			setResourceInitialSearch("");
+			setResourceHealthFilter("all");
+		} else if (scope.helmMode) {
+			setViewMode("helm");
+			setSelectedArgoApp(null);
+			setSelectedHelmRelease(null);
+			setSelectedResource(null);
+			setResourceInitialSearch("");
 			setResourceHealthFilter("all");
 		} else if (
 			viewMode === "argo" ||
+			viewMode === "helm" ||
 			viewMode === "settings" ||
 			viewMode === "overview"
 		) {
 			// Leaving non-resource views clears inspector state.
 			setViewMode("resources");
 			setSelectedArgoApp(null);
+			setSelectedHelmRelease(null);
+			setResourceInitialSearch("");
 			setResourceHealthFilter("all");
+		}
+		if (!scope.argoMode && !scope.helmMode) {
+			setResourceInitialSearch("");
 		}
 
 		setSelectedTreeNode(nodeId);
@@ -267,6 +318,35 @@ function App() {
 		setSelectedArgoApp(null);
 	};
 
+	const handleHelmReleaseSelect = (release: HelmReleaseSummary) => {
+		diagnosticLog("app.helm.select", {
+			name: release.name,
+			namespace: release.namespace,
+		});
+		setSelectedHelmRelease(release);
+	};
+
+	const handleHelmClose = () => {
+		diagnosticLog("app.helm.close");
+		setSelectedHelmRelease(null);
+	};
+
+	const handleOpenHelmResources = (release: HelmReleaseSummary) => {
+		diagnosticLog("app.helm.openResources", {
+			name: release.name,
+			namespace: release.namespace,
+		});
+		setSelectedNamespaces([release.namespace]);
+		setSelectedKinds([...SUPPORTED_KINDS]);
+		setSelectedArgoAppFilter("");
+		setSelectedTreeNode(null);
+		setSelectedArgoApp(null);
+		setSelectedResource(null);
+		setResourceInitialSearch(release.name);
+		setResourceHealthFilter("all");
+		setViewMode("resources");
+	};
+
 	useArgoDetection(clusterContext, setArgoDetected);
 
 	// Compute scope from selected tree node
@@ -282,12 +362,14 @@ function App() {
 
 	const computedNamespaces = useMemo<string[]>(() => {
 		if (scope.namespace) return [scope.namespace];
+		if (scope.section === "namespaces") return [];
 		return selectedNamespaces;
-	}, [scope.namespace, selectedNamespaces]);
+	}, [scope.namespace, scope.section, selectedNamespaces]);
 
 	const contentTitle = useMemo(() => {
 		if (viewMode === "overview") return activeWorkspace?.name ?? "Workspace";
 		if (viewMode === "settings") return "Settings";
+		if (viewMode === "helm") return "Helm Releases";
 		if (viewMode === "argo") {
 			if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
 				return `${selectedTreeNode.kind}`;
@@ -317,6 +399,7 @@ function App() {
 		computedKinds.length > 0 &&
 		!!clusterContext &&
 		(scope.clusterScoped ||
+			scope.section === "namespaces" ||
 			computedNamespaces.length > 0 ||
 			hasDiscoveredKind(computedKinds));
 
@@ -334,6 +417,7 @@ function App() {
 			kinds: computedKinds.map(resourceKindLogKey).join("|"),
 			namespaces: computedNamespaces.join("|"),
 			selectedResource: selectedResourceKey ?? "",
+			selectedHelmRelease: selectedHelmRelease?.name ?? "",
 			argoFilter: selectedArgoAppFilter,
 		});
 	});
@@ -341,10 +425,27 @@ function App() {
 	if (!activeWorkspace) {
 		return (
 			<div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
+				<AppTopBar
+					clusterContext={clusterContext}
+					contentTitle={viewMode === "settings" ? "Settings" : "Workspaces"}
+					onClusterChange={handleClusterChange}
+					onOpenLauncher={handleOpenLauncher}
+					onOpenSettings={handleOpenSettings}
+					showClusterSelector={false}
+					showSearch={false}
+				/>
 				<div className="min-h-0 flex-1 overflow-hidden">
-					<Suspense fallback={<ViewLoadingFallback label="Loading workspaces..." />}>
-						<WorkspaceLauncher onOpenWorkspace={applyWorkspace} />
-					</Suspense>
+					{viewMode === "settings" ? (
+						<div className="h-full overflow-y-auto overflow-x-hidden p-4 md:px-6">
+							<Suspense fallback={<ViewLoadingFallback label="Loading settings..." />}>
+								<SettingsPage />
+							</Suspense>
+						</div>
+					) : (
+						<Suspense fallback={<ViewLoadingFallback label="Loading workspaces..." />}>
+							<WorkspaceLauncher onOpenWorkspace={applyWorkspace} />
+						</Suspense>
+					)}
 				</div>
 				<AppUsageFooter visible={showUsageFooter} />
 			</div>
@@ -388,6 +489,16 @@ function App() {
 						/>
 					</Suspense>
 				</div>
+			) : viewMode === "helm" ? (
+				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
+					<Suspense fallback={<ViewLoadingFallback label="Loading Helm releases..." />}>
+						<HelmPanel
+							clusterContext={clusterContext}
+							selectedRelease={selectedHelmRelease}
+							onReleaseSelect={handleHelmReleaseSelect}
+						/>
+					</Suspense>
+				</div>
 			) : (
 				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
 					{canQueryResources ? (
@@ -399,6 +510,7 @@ function App() {
 								selectedArgoAppFilter={selectedArgoAppFilter}
 								selectedResource={selectedResource}
 								initialHealthFilter={resourceHealthFilter}
+								initialSearch={resourceInitialSearch}
 								onArgoAppFilterChange={setSelectedArgoAppFilter}
 								onResourceSelect={setSelectedResource}
 							/>
@@ -414,7 +526,15 @@ function App() {
 	);
 
 	const detailPanel =
-		viewMode === "argo" && selectedArgoApp ? (
+		viewMode === "helm" && selectedHelmRelease ? (
+			<Suspense fallback={<ViewLoadingFallback label="Loading Helm details..." />}>
+				<HelmDetailPanel
+					release={selectedHelmRelease}
+					onClose={handleHelmClose}
+					onOpenResources={handleOpenHelmResources}
+				/>
+			</Suspense>
+		) : viewMode === "argo" && selectedArgoApp ? (
 			<Suspense fallback={<ViewLoadingFallback label="Loading app details..." />}>
 				<ArgoDetailPanel app={selectedArgoApp} onClose={handleArgoClose} />
 			</Suspense>
@@ -436,9 +556,7 @@ function App() {
 				onClusterChange={handleClusterChange}
 				onOpenLauncher={handleOpenLauncher}
 				onOpenSettings={() => {
-					setViewMode("settings");
-					setSelectedResource(null);
-					setSelectedArgoApp(null);
+					handleOpenSettings();
 				}}
 			/>
 

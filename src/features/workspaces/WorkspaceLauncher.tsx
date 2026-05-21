@@ -138,10 +138,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 	};
 
 	return (
-		<div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
-			<header className="flex h-12 shrink-0 items-center border-b bg-sidebar px-4">
-				<div className="text-sm font-semibold">KubeCove</div>
-			</header>
+		<div className="flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
 			<main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
 				<div className="mx-auto grid w-full max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
 					<section className="min-w-0">

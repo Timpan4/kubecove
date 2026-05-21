@@ -3,6 +3,7 @@ mod cluster;
 mod discovery;
 mod error;
 mod events;
+mod helm;
 mod namespace;
 mod resource;
 mod streams;
@@ -16,6 +17,7 @@ pub use cluster::ClusterContext;
 pub use discovery::DiscoveredResourceKind;
 pub use error::AppError;
 pub use events::ResourceEventSummary;
+pub use helm::{HelmReleaseDetails, HelmReleaseSummary};
 pub use namespace::NamespaceSummary;
 pub use resource::{
     OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull, ResourceListRequest,

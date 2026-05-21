@@ -23,6 +23,8 @@ import type {
 	ArgoAppProjectSummary,
 	ArgoApplicationSetDetails,
 	ArgoAppProjectDetails,
+	HelmReleaseSummary,
+	HelmReleaseDetails,
 } from "./types";
 import { diagnosticLog, diagnosticResultSummary } from "./diagnostics";
 
@@ -360,5 +362,29 @@ export async function getArgoAppProjectDetails(
 		clusterContext,
 		name,
 		namespace,
+	});
+}
+
+export async function listHelmReleases(
+	client: TauriClient,
+	clusterContext: string,
+): Promise<HelmReleaseSummary[]> {
+	return client.invoke<HelmReleaseSummary[]>("list_helm_releases", {
+		clusterContext,
+	});
+}
+
+export async function getHelmReleaseDetails(
+	client: TauriClient,
+	release: Pick<
+		HelmReleaseSummary,
+		"cluster" | "namespace" | "storageKind" | "storageName"
+	>,
+): Promise<HelmReleaseDetails> {
+	return client.invoke<HelmReleaseDetails>("get_helm_release_details", {
+		clusterContext: release.cluster,
+		namespace: release.namespace,
+		storageKind: release.storageKind,
+		storageName: release.storageName,
 	});
 }

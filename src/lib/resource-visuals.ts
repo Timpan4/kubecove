@@ -76,6 +76,7 @@ const KIND_VISUALS: Record<string, ResourceVisual> = {
 	ApplicationSet: { icon: Workflow, className: "text-[var(--resource-argo)]" },
 	AppProjects: { icon: Shield, className: "text-[var(--resource-argo)]" },
 	AppProject: { icon: Shield, className: "text-[var(--resource-argo)]" },
+	Releases: { icon: Package, className: "text-muted-foreground" },
 };
 
 const GROUP_VISUALS: Record<string, ResourceVisual> = {
@@ -87,6 +88,7 @@ const GROUP_VISUALS: Record<string, ResourceVisual> = {
 	Storage: STORAGE_VISUAL,
 	Discovered: { icon: Package, className: "text-muted-foreground" },
 	"Argo CD": ARGO_VISUAL,
+	Helm: { icon: Package, className: "text-muted-foreground" },
 	"Managed by Argo app": ARGO_VISUAL,
 	"Unmanaged resources": { icon: Package, className: "text-muted-foreground" },
 };

@@ -94,6 +94,12 @@ export const SECTIONS = {
     label: "Argo CD",
     children: ["Applications", "ApplicationSets", "AppProjects"] as const,
   },
+  /** Helm: read-only release inventory from Helm v3 storage objects. */
+  helm: {
+    id: "helm",
+    label: "Helm",
+    children: ["Releases"] as const,
+  },
 } as const;
 
 export type SectionName = keyof typeof SECTIONS;
@@ -109,6 +115,7 @@ export const STATIC_SECTION_NAMES: SectionName[] = [
   "storage",
   "discovered",
   "argo",
+  "helm",
 ];
 
 // ─── Section → Kinds Mapping ───────────────────────────────────────────────────
@@ -190,6 +197,8 @@ export interface TreeScope {
   clusterScoped: boolean;
   /** Whether the scope is for Argo CD */
   argoMode: boolean;
+  /** Whether the scope is for Helm */
+  helmMode: boolean;
 }
 
 /**
@@ -198,7 +207,7 @@ export interface TreeScope {
  */
 export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
   if (!nodeId) {
-    return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false };
+    return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false };
   }
 
   if (nodeId.type === "section") {
@@ -210,10 +219,33 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
         kinds: [...CLUSTER_SCOPED_KINDS] as ResourceKindSelection[],
         clusterScoped: true,
         argoMode: false,
+        helmMode: false,
+      };
+    }
+    if (nodeId.section === "namespaces") {
+      const namespacedKinds = (SUPPORTED_KINDS as readonly string[]).filter(
+        (k) => !(CLUSTER_SCOPED_KINDS as readonly string[]).includes(k)
+      ) as ResourceKindSelection[];
+      return {
+        section: "namespaces",
+        namespace: null,
+        group: null,
+        kinds: namespacedKinds,
+        clusterScoped: false,
+        argoMode: false,
+        helmMode: false,
       };
     }
     // Section selected without namespace — no kinds yet
-    return { section: nodeId.section as SectionName, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: nodeId.section === "argo" };
+    return {
+      section: nodeId.section as SectionName,
+      namespace: null,
+      group: null,
+      kinds: [],
+      clusterScoped: false,
+      argoMode: nodeId.section === "argo",
+      helmMode: nodeId.section === "helm",
+    };
   }
 
   if (nodeId.type === "namespace") {
@@ -228,13 +260,14 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       kinds: namespacedKinds,
       clusterScoped: false,
       argoMode: false,
+      helmMode: false,
     };
   }
 
   if (nodeId.type === "group") {
     const groupName = nodeId.group as KindGroupName;
     const groupKinds = KIND_GROUPS[groupName];
-    if (!groupKinds) return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false };
+    if (!groupKinds) return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false };
     const kinds = [...groupKinds] as ResourceKindSelection[];
     return {
       section: nodeId.section as SectionName,
@@ -243,6 +276,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       kinds,
       clusterScoped: false,
       argoMode: false,
+      helmMode: false,
     };
   }
 
@@ -262,10 +296,11 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
           ? (CLUSTER_SCOPED_KINDS as readonly string[]).includes(nodeId.kind)
           : false,
       argoMode: nodeId.section === "argo",
+      helmMode: nodeId.section === "helm",
     };
   }
 
-  return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false };
+  return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false };
 }
 
 // ─── Empty State Messages ─────────────────────────────────────────────────────
@@ -273,12 +308,12 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
 export function emptyStateMessage(scope: TreeScope, hasClusterContext: boolean): string {
   if (!hasClusterContext) return "Select a cluster context first";
   if (scope.argoMode) return "Select an Argo CD resource type";
+  if (scope.helmMode) return "Select a Helm resource type";
   if (scope.section === "discovered") return "Select a discovered resource kind";
   if (!scope.section) return "Select a section from the sidebar";
   if (scope.section === "clusterOverview" && scope.kinds.length > 0) return "Select a cluster context to view cluster-scoped resources";
-  if (scope.section === "namespaces" && !scope.namespace) return "Select a namespace";
   if (scope.namespace && scope.kinds.length === 0) return "Select a resource kind";
-  if (scope.kinds.length > 0 && !scope.clusterScoped && !scope.namespace) return "Select a namespace";
+  if (scope.kinds.length > 0 && !scope.clusterScoped && !scope.namespace) return "Loading all namespaces";
   return "Select a resource kind";
 }
 

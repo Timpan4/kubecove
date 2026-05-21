@@ -2,6 +2,7 @@ mod argo;
 mod contexts;
 mod discovery;
 mod events;
+mod helm;
 mod helpers;
 mod live_store;
 mod namespaces;
@@ -18,6 +19,7 @@ pub use argo::{
 pub use contexts::{get_cluster_contexts, list_kube_contexts};
 pub use discovery::{list_resource_kinds, resource_kinds_from};
 pub use events::{list_resource_events, resource_events_from};
+pub use helm::{get_helm_release_details, list_helm_releases};
 pub use live_store::ClusterLiveStore;
 pub use namespaces::{list_namespaces, namespaces_summary_from};
 pub use resources::{
