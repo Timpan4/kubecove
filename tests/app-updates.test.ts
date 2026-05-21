@@ -6,6 +6,7 @@ import {
 	useAppUpdateStore,
 } from "../src/features/app-updates/store";
 import type { AppUpdate, AppUpdateApi } from "../src/features/app-updates/types";
+import { setAppUpdatesEnabledForTests } from "../src/lib/release-channel";
 
 function mockApi(update: AppUpdate | null): AppUpdateApi {
 	return {
@@ -99,5 +100,26 @@ describe("app update store", () => {
 		expect(useAppUpdateStore.getState().errorMessage).toBe(
 			"network unavailable",
 		);
+	});
+
+	test("disabled update channel skips manual checks", async () => {
+		resetAppUpdateStateForTests();
+		setAppUpdatesEnabledForTests(false);
+		let checks = 0;
+		setAppUpdateApiForTests({
+			check: async () => {
+				checks += 1;
+				throw new Error("should not check");
+			},
+			relaunch: async () => undefined,
+		});
+
+		await useAppUpdateStore.getState().checkForUpdates({ manual: true });
+
+		expect(checks).toBe(0);
+		expect(useAppUpdateStore.getState().status).toBe("idle");
+		expect(useAppUpdateStore.getState().lastCheckedAt).toBeNull();
+		expect(useAppUpdateStore.getState().errorMessage).toBeNull();
+		setAppUpdatesEnabledForTests(true);
 	});
 });

@@ -7,6 +7,7 @@ import {
 	type TimestampTimezone,
 	useSettingsState,
 } from "@/lib/settings";
+import { isAppUpdatesEnabled } from "@/lib/release-channel";
 import { cn } from "@/lib/utils";
 
 function SettingsRow({
@@ -120,6 +121,7 @@ export function SettingsPage() {
 		installUpdate,
 		relaunchApp,
 	} = useAppUpdateStore();
+	const updatesEnabled = isAppUpdatesEnabled();
 	const updateBusy = status === "checking" || status === "downloading";
 
 	return (
@@ -170,25 +172,33 @@ export function SettingsPage() {
 				</SettingsRow>
 				<SettingsRow
 					title="KubeCove version"
-					description={`Current version ${currentVersion}. Last checked: ${formatCheckedAt(lastCheckedAt)}.`}
+					description={
+						updatesEnabled
+							? `Current version ${currentVersion}. Last checked: ${formatCheckedAt(lastCheckedAt)}.`
+							: `Current version ${currentVersion}. Development build; update checks disabled.`
+					}
 				>
 					<div className="flex items-center gap-2">
-						{availableVersion && (
+						{updatesEnabled && availableVersion && (
 							<Badge variant="secondary">Update {availableVersion}</Badge>
 						)}
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							disabled={updateBusy}
-							onClick={() => void checkForUpdates({ manual: true })}
-						>
-							<RefreshCw data-icon="inline-start" />
-							Check
-						</Button>
+						{updatesEnabled ? (
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								disabled={updateBusy}
+								onClick={() => void checkForUpdates({ manual: true })}
+							>
+								<RefreshCw data-icon="inline-start" />
+								Check
+							</Button>
+						) : (
+							<Badge variant="outline">Dev build</Badge>
+						)}
 					</div>
 				</SettingsRow>
-				{status === "available" && (
+				{updatesEnabled && status === "available" && (
 					<SettingsRow
 						title="Update available"
 						description={`KubeCove ${availableVersion} can be downloaded and installed now.`}
@@ -199,7 +209,7 @@ export function SettingsPage() {
 						</Button>
 					</SettingsRow>
 				)}
-				{status === "downloading" && (
+				{updatesEnabled && status === "downloading" && (
 					<SettingsRow
 						title="Installing update"
 						description={
@@ -211,7 +221,7 @@ export function SettingsPage() {
 						<Badge variant="secondary">Working</Badge>
 					</SettingsRow>
 				)}
-				{status === "installed" && (
+				{updatesEnabled && status === "installed" && (
 					<SettingsRow
 						title="Relaunch required"
 						description="The update is installed. Relaunch KubeCove to finish."
@@ -222,7 +232,7 @@ export function SettingsPage() {
 						</Button>
 					</SettingsRow>
 				)}
-				{status === "error" && errorMessage && (
+				{updatesEnabled && status === "error" && errorMessage && (
 					<SettingsRow
 						title="Update check failed"
 						description={errorMessage}

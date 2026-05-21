@@ -7,6 +7,10 @@ import {
 
 import { APP_VERSION } from "@/lib/app-version";
 import { diagnosticLog } from "@/lib/diagnostics";
+import {
+	isAppUpdatesEnabled,
+	setAppUpdatesEnabledForTests,
+} from "@/lib/release-channel";
 import { tauriAppUpdateApi } from "./api";
 import type {
 	AppUpdate,
@@ -74,6 +78,21 @@ export const useAppUpdateStore = create<AppUpdateState>()(
 			...initialState,
 			checkForUpdates: async ({ manual }) => {
 				diagnosticLog("updates.check.start", { manual });
+				if (!isAppUpdatesEnabled()) {
+					pendingUpdate = null;
+					set({
+						status: "idle",
+						availableVersion: null,
+						releaseNotes: null,
+						errorMessage: null,
+						downloadProgress: null,
+						downloadedBytes: 0,
+						totalBytes: null,
+					});
+					diagnosticLog("updates.check.skipped", { manual });
+					return;
+				}
+
 				set({
 					status: "checking",
 					errorMessage: null,
@@ -217,5 +236,6 @@ export function setAppUpdateApiForTests(api: AppUpdateApi): void {
 export function resetAppUpdateStateForTests(): void {
 	updateApi = tauriAppUpdateApi;
 	pendingUpdate = null;
+	setAppUpdatesEnabledForTests(true);
 	useAppUpdateStore.setState(initialState);
 }
