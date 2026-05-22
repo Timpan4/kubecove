@@ -102,6 +102,9 @@ function OwnershipResourceNode({
 			: node.kind;
 	const displayName = smartKubernetesName(node.name, node.kind);
 	const age = node.summary.age;
+	const portHint = data.showPortHints
+		? node.portHints?.slice(0, 3).join(", ")
+		: undefined;
 
 	return (
 		<div
@@ -143,8 +146,11 @@ function OwnershipResourceNode({
 				className="text-[0.64rem] leading-tight text-muted-foreground"
 			/>
 			<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-				{node.status ? (
-					<ValueBadge value={node.status} className="border-primary/45 bg-primary/10" />
+				{portHint || node.status ? (
+					<ValueBadge
+						value={portHint || node.status || ""}
+						className="border-primary/45 bg-primary/10"
+					/>
 				) : (
 					<span className="min-w-0" />
 				)}

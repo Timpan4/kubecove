@@ -2,16 +2,22 @@ use super::topology::{
     build_resource_topology, input_from_metadata, topology_node_id, topology_root_kinds,
     topology_standalone_kinds, TopologyInputResource,
 };
+use super::topology_network::{
+    build_network_flow_topology, NetworkEndpointSlice, NetworkIngressBackend, NetworkService,
+    NetworkTopologyInputs,
+};
 use crate::models::{OwnerReferenceSummary, ResourceSummary, TopologyRelation};
 use k8s_openapi::api::core::v1::Pod;
 use proptest::prelude::*;
 use proptest::test_runner::{Config as ProptestConfig, RngSeed};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 fn resource(kind: &str, name: &str, namespace: &str, uid: &str) -> TopologyInputResource {
     TopologyInputResource {
         uid: uid.to_string(),
         owner: None,
+        labels: BTreeMap::new(),
+        port_hints: Vec::new(),
         summary: ResourceSummary {
             kind: kind.to_string(),
             cluster: "kind-dev".to_string(),
@@ -22,6 +28,8 @@ fn resource(kind: &str, name: &str, namespace: &str, uid: &str) -> TopologyInput
                 match kind {
                     "Deployment" | "DaemonSet" | "ReplicaSet" | "StatefulSet" => "apps/v1",
                     "Job" | "CronJob" => "batch/v1",
+                    "Ingress" => "networking.k8s.io/v1",
+                    "EndpointSlice" => "discovery.k8s.io/v1",
                     _ => "v1",
                 }
                 .to_string(),
@@ -40,6 +48,21 @@ fn resource(kind: &str, name: &str, namespace: &str, uid: &str) -> TopologyInput
             helm_release: None,
         },
     }
+}
+
+fn labeled_pod(
+    name: &str,
+    namespace: &str,
+    uid: &str,
+    labels: &[(&str, &str)],
+) -> TopologyInputResource {
+    let mut pod = resource("Pod", name, namespace, uid);
+    pod.labels = labels
+        .iter()
+        .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+        .collect();
+    pod.port_hints = vec!["http:8080".to_string()];
+    pod
 }
 
 fn owned(
@@ -393,4 +416,166 @@ fn marks_incomplete_ready_ratios_as_attention() {
     let topology = build_resource_topology(vec![deployment]);
 
     assert_eq!(topology.nodes[0].health, "attention");
+}
+
+#[test]
+fn builds_network_flow_from_ingress_to_service_slice_and_pod() {
+    let selector = BTreeMap::from([("app".to_string(), "api".to_string())]);
+    let topology = build_network_flow_topology(NetworkTopologyInputs {
+        resources: vec![
+            resource("Ingress", "api", "default", "ing-1"),
+            resource("Service", "api", "default", "svc-1"),
+            resource("EndpointSlice", "api-abc", "default", "slice-1"),
+            labeled_pod("api-7d9-x", "default", "pod-1", &[("app", "api")]),
+        ],
+        services: vec![NetworkService {
+            namespace: "default".to_string(),
+            name: "api".to_string(),
+            service_type: "ClusterIP".to_string(),
+            selector,
+        }],
+        ingress_backends: vec![NetworkIngressBackend {
+            namespace: "default".to_string(),
+            ingress_name: "api".to_string(),
+            service_name: "api".to_string(),
+        }],
+        endpoint_slices: vec![NetworkEndpointSlice {
+            namespace: "default".to_string(),
+            name: "api-abc".to_string(),
+            service_name: Some("api".to_string()),
+            target_pods: vec!["api-7d9-x".to_string()],
+        }],
+    });
+
+    let ingress_id = topology_node_id(
+        "kind-dev",
+        "networking.k8s.io/v1",
+        "Ingress",
+        Some("default"),
+        "api",
+    );
+    let service_id = topology_node_id("kind-dev", "v1", "Service", Some("default"), "api");
+    let slice_id = topology_node_id(
+        "kind-dev",
+        "discovery.k8s.io/v1",
+        "EndpointSlice",
+        Some("default"),
+        "api-abc",
+    );
+    let pod_id = topology_node_id("kind-dev", "v1", "Pod", Some("default"), "api-7d9-x");
+
+    assert!(topology.edges.iter().any(|edge| {
+        edge.source == ingress_id
+            && edge.target == service_id
+            && edge.relation == TopologyRelation::RoutesTo
+    }));
+    assert!(topology.edges.iter().any(|edge| {
+        edge.source == service_id
+            && edge.target == slice_id
+            && edge.relation == TopologyRelation::Targets
+    }));
+    assert!(topology.edges.iter().any(|edge| {
+        edge.source == slice_id
+            && edge.target == pod_id
+            && edge.relation == TopologyRelation::Targets
+    }));
+    assert!(topology.warnings.is_empty());
+}
+
+#[test]
+fn network_flow_falls_back_to_service_selector_and_warns_on_misses() {
+    let topology = build_network_flow_topology(NetworkTopologyInputs {
+        resources: vec![
+            resource("Service", "api", "default", "svc-1"),
+            resource("Service", "missing", "default", "svc-2"),
+            labeled_pod("api-0", "default", "pod-1", &[("app", "api")]),
+        ],
+        services: vec![
+            NetworkService {
+                namespace: "default".to_string(),
+                name: "api".to_string(),
+                service_type: "ClusterIP".to_string(),
+                selector: BTreeMap::from([("app".to_string(), "api".to_string())]),
+            },
+            NetworkService {
+                namespace: "default".to_string(),
+                name: "missing".to_string(),
+                service_type: "ClusterIP".to_string(),
+                selector: BTreeMap::from([("app".to_string(), "missing".to_string())]),
+            },
+        ],
+        ingress_backends: Vec::new(),
+        endpoint_slices: Vec::new(),
+    });
+
+    let service_id = topology_node_id("kind-dev", "v1", "Service", Some("default"), "api");
+    let pod_id = topology_node_id("kind-dev", "v1", "Pod", Some("default"), "api-0");
+
+    assert!(topology.edges.iter().any(|edge| {
+        edge.source == service_id
+            && edge.target == pod_id
+            && edge.relation == TopologyRelation::Selects
+    }));
+    assert!(topology
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("Service default/missing has no matching Pod endpoints")));
+}
+
+#[test]
+fn network_flow_skips_missing_endpoint_warning_for_external_name_service() {
+    let topology = build_network_flow_topology(NetworkTopologyInputs {
+        resources: vec![resource("Service", "external-api", "default", "svc-1")],
+        services: vec![NetworkService {
+            namespace: "default".to_string(),
+            name: "external-api".to_string(),
+            service_type: "ExternalName".to_string(),
+            selector: BTreeMap::new(),
+        }],
+        ingress_backends: Vec::new(),
+        endpoint_slices: Vec::new(),
+    });
+
+    assert_eq!(topology.nodes.len(), 1);
+    assert_eq!(topology.nodes[0].kind, "Service");
+    assert!(topology.warnings.is_empty());
+}
+
+#[test]
+fn network_flow_skips_missing_pod_warning_for_selectorless_endpoint_slices() {
+    let topology = build_network_flow_topology(NetworkTopologyInputs {
+        resources: vec![
+            resource("Service", "api", "default", "svc-1"),
+            resource("EndpointSlice", "api-manual", "default", "slice-1"),
+        ],
+        services: vec![NetworkService {
+            namespace: "default".to_string(),
+            name: "api".to_string(),
+            service_type: "ClusterIP".to_string(),
+            selector: BTreeMap::new(),
+        }],
+        ingress_backends: Vec::new(),
+        endpoint_slices: vec![NetworkEndpointSlice {
+            namespace: "default".to_string(),
+            name: "api-manual".to_string(),
+            service_name: Some("api".to_string()),
+            target_pods: Vec::new(),
+        }],
+    });
+
+    let service_id = topology_node_id("kind-dev", "v1", "Service", Some("default"), "api");
+    let slice_id = topology_node_id(
+        "kind-dev",
+        "discovery.k8s.io/v1",
+        "EndpointSlice",
+        Some("default"),
+        "api-manual",
+    );
+
+    assert!(topology.edges.iter().any(|edge| {
+        edge.source == service_id
+            && edge.target == slice_id
+            && edge.relation == TopologyRelation::Targets
+    }));
+    assert!(topology.warnings.is_empty());
 }

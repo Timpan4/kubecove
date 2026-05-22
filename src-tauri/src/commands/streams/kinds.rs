@@ -22,6 +22,13 @@ fn known_resource_kind(kind: &str) -> Option<WatchResourceKind> {
             "ingresses",
             true,
         ),
+        "EndpointSlice" => (
+            "discovery.k8s.io/v1",
+            "discovery.k8s.io",
+            "v1",
+            "endpointslices",
+            true,
+        ),
         "Job" => ("batch/v1", "batch", "v1", "jobs", true),
         "CronJob" => ("batch/v1", "batch", "v1", "cronjobs", true),
         "StorageClass" => (
@@ -203,5 +210,27 @@ mod tests {
         assert_eq!(replicaset.version.as_deref(), Some("v1"));
         assert_eq!(replicaset.plural.as_deref(), Some("replicasets"));
         assert_eq!(replicaset.namespaced, Some(true));
+    }
+
+    #[test]
+    fn known_endpoint_slice_kind_fills_watch_metadata() {
+        let endpoint_slice = normalize_resource_kind(&WatchResourceKind {
+            kind: "EndpointSlice".to_string(),
+            group: None,
+            version: None,
+            api_version: None,
+            plural: None,
+            namespaced: None,
+        })
+        .expect("endpointslice metadata");
+
+        assert_eq!(
+            endpoint_slice.api_version.as_deref(),
+            Some("discovery.k8s.io/v1")
+        );
+        assert_eq!(endpoint_slice.group.as_deref(), Some("discovery.k8s.io"));
+        assert_eq!(endpoint_slice.version.as_deref(), Some("v1"));
+        assert_eq!(endpoint_slice.plural.as_deref(), Some("endpointslices"));
+        assert_eq!(endpoint_slice.namespaced, Some(true));
     }
 }

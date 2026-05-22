@@ -72,13 +72,14 @@ describe("typed Tauri wrappers", () => {
 			},
 		};
 
-		expect(await listResourceTopology(client, "kind-dev", ["default", "payments"])).toEqual(topology);
+		expect(await listResourceTopology(client, "kind-dev", ["default", "payments"], "networkFlow")).toEqual(topology);
 		expect(calls).toEqual([
 			{
 				cmd: "list_resource_topology",
 				args: {
 					clusterContext: "kind-dev",
 					namespaces: ["default", "payments"],
+					mode: "networkFlow",
 				},
 			},
 		]);

@@ -108,6 +108,7 @@ describe("ownership topology helpers", () => {
 		expect(replicaSet?.position.x).toBeLessThan(pod?.position.x ?? 0);
 		expect(pod?.selected).toBe(true);
 		expect(pod?.data.selected).toBe(true);
+		expect(pod?.data.showPortHints).toBe(false);
 		expect(deployment?.data.connected).toBe(true);
 		expect(replicaSet?.data.connected).toBe(true);
 		expect(graph.edges.map((edge) => [edge.source, edge.target])).toEqual([
@@ -257,6 +258,68 @@ describe("ownership topology helpers", () => {
 		expect(configMapGroup?.data.count).toBe(2);
 		expect(configMapGroup?.data.expanded).toBe(false);
 		expect(configMapGroup?.style?.height).toBe(42);
+	});
+
+	test("keeps network flow nodes ungrouped when standalone grouping is disabled", () => {
+		const serviceId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"Service",
+			"default",
+			"api",
+		);
+		const podId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"Pod",
+			"default",
+			"api-0",
+		);
+		const topology: ResourceTopology = {
+			nodes: [
+				{
+					id: serviceId,
+					kind: "Service",
+					name: "api",
+					namespace: "default",
+					status: null,
+					health: "unknown",
+					selectable: true,
+					summary: summary({ kind: "Service", name: "api" }),
+				},
+				{
+					id: podId,
+					kind: "Pod",
+					name: "api-0",
+					namespace: "default",
+					status: "Running",
+					health: "healthy",
+					selectable: true,
+					summary: summary({ kind: "Pod", name: "api-0" }),
+				},
+			],
+			edges: [
+				{
+					id: "svc-pod",
+					source: serviceId,
+					target: podId,
+					relation: "selects",
+				},
+			],
+			warnings: [],
+		};
+
+		const graph = buildReactFlowTopology(topology, null, {
+			groupStandalone: false,
+			showPortHints: true,
+		});
+
+		expect(graph.nodes.map((node) => node.id)).toEqual([serviceId, podId]);
+		expect(graph.nodes.every((node) => node.type === "ownershipResource")).toBe(
+			true,
+		);
+		expect(graph.edges[0]?.style?.strokeDasharray).toBe("5 5");
+		expect(graph.nodes[0]?.data.showPortHints).toBe(true);
 	});
 
 	test("expands ownerless type buckets when requested", () => {

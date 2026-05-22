@@ -1,4 +1,7 @@
-use super::topology_collection::collect_topology_inputs;
+use super::{
+    topology_collection::{collect_network_topology_inputs, collect_topology_inputs},
+    topology_network::build_network_flow_topology,
+};
 use crate::commands::{
     helpers::{base_resource_summary, extract_owner_ref_summary, resource_age},
     ClusterLiveStore,
@@ -18,7 +21,35 @@ use tauri::State;
 pub(crate) struct TopologyInputResource {
     pub uid: String,
     pub owner: Option<OwnerReferenceSummary>,
+    pub labels: BTreeMap<String, String>,
+    pub port_hints: Vec<String>,
     pub summary: ResourceSummary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TopologyMode {
+    Ownership,
+    NetworkFlow,
+}
+
+impl TopologyMode {
+    fn parse(mode: Option<String>) -> Result<Self, AppError> {
+        match mode.as_deref().unwrap_or("ownership") {
+            "ownership" => Ok(Self::Ownership),
+            "networkFlow" => Ok(Self::NetworkFlow),
+            value => Err(AppError::new(
+                format!("unsupported topology mode: {value}"),
+                "validation",
+            )),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Ownership => "ownership",
+            Self::NetworkFlow => "networkFlow",
+        }
+    }
 }
 
 fn age_from_metadata(metadata: &ObjectMeta) -> String {
@@ -99,7 +130,7 @@ fn parse_ready_ratio(ready: &str) -> Option<(i32, i32)> {
 }
 
 fn selectable_kind(kind: &str) -> bool {
-    !matches!(kind, "ReplicaSet")
+    !matches!(kind, "ReplicaSet" | "EndpointSlice")
 }
 
 pub(super) fn input_from_metadata(
@@ -114,6 +145,8 @@ pub(super) fn input_from_metadata(
     TopologyInputResource {
         uid: metadata.uid.clone().unwrap_or_default(),
         owner: extract_owner_ref_summary(metadata),
+        labels: metadata.labels.clone().unwrap_or_default(),
+        port_hints: Vec::new(),
         summary,
     }
 }
@@ -122,7 +155,7 @@ fn owner_lookup_key(owner: &OwnerReferenceSummary) -> String {
     owner.uid.clone()
 }
 
-fn node_from_input(input: &TopologyInputResource) -> TopologyNode {
+pub(super) fn node_from_input(input: &TopologyInputResource) -> TopologyNode {
     let api_version = input.summary.api_version.as_deref().unwrap_or("v1");
     TopologyNode {
         id: topology_node_id(
@@ -137,6 +170,7 @@ fn node_from_input(input: &TopologyInputResource) -> TopologyNode {
         namespace: input.summary.namespace.clone(),
         status: input.summary.status.clone(),
         health: node_health(&input.summary),
+        port_hints: input.port_hints.clone(),
         selectable: selectable_kind(&input.summary.kind),
         summary: input.summary.clone(),
     }
@@ -207,7 +241,7 @@ pub(crate) fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> Res
     }
 }
 
-fn push_edge(
+pub(super) fn push_edge(
     edges: &mut Vec<TopologyEdge>,
     edge_keys: &mut HashSet<String>,
     source: String,
@@ -225,7 +259,7 @@ fn push_edge(
     }
 }
 
-fn topology_kind_rank(kind: &str) -> usize {
+pub(super) fn topology_kind_rank(kind: &str) -> usize {
     if topology_root_kinds().contains(&kind) {
         return 0;
     }
@@ -234,7 +268,7 @@ fn topology_kind_rank(kind: &str) -> usize {
     }
     match kind {
         "ReplicaSet" | "Job" => 1,
-        "Pod" => 2,
+        "EndpointSlice" | "Pod" => 2,
         "PersistentVolumeClaim" => 3,
         _ => 4,
     }
@@ -303,7 +337,9 @@ fn add_statefulset_pvc_edges(
 pub async fn resource_topology_from(
     cluster_context: String,
     namespaces: Vec<String>,
+    mode: Option<String>,
 ) -> Result<ResourceTopology, AppError> {
+    let mode = TopologyMode::parse(mode)?;
     let options = KubeConfigOptions {
         context: Some(cluster_context.clone()),
         ..Default::default()
@@ -313,43 +349,63 @@ pub async fn resource_topology_from(
         .await
         .map_err(|e| AppError::kube(e.to_string()))?;
     let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
-    let inputs = collect_topology_inputs(client, &cluster_context, &namespaces).await?;
-    Ok(build_resource_topology(inputs))
+    match mode {
+        TopologyMode::Ownership => {
+            let inputs = collect_topology_inputs(client, &cluster_context, &namespaces).await?;
+            Ok(build_resource_topology(inputs))
+        }
+        TopologyMode::NetworkFlow => {
+            let inputs =
+                collect_network_topology_inputs(client, &cluster_context, &namespaces).await?;
+            Ok(build_network_flow_topology(inputs))
+        }
+    }
 }
 
 #[tauri::command]
 pub async fn list_resource_topology(
     cluster_context: String,
     namespaces: Vec<String>,
+    mode: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<ResourceTopology, AppError> {
+    let mode = TopologyMode::parse(mode)?;
     let started = Instant::now();
     eprintln!(
-        "[kubecove:backend] list_resource_topology start context={} namespaces={}",
+        "[kubecove:backend] list_resource_topology start context={} namespaces={} mode={}",
         cluster_context,
-        namespaces.join(",")
+        namespaces.join(","),
+        mode.as_str()
     );
     let result = live_store
-        .topology(cluster_context.clone(), namespaces.clone(), {
-            let cluster_context = cluster_context.clone();
-            let namespaces = namespaces.clone();
-            move || resource_topology_from(cluster_context, namespaces)
-        })
+        .topology(
+            cluster_context.clone(),
+            namespaces.clone(),
+            mode.as_str().to_string(),
+            {
+                let cluster_context = cluster_context.clone();
+                let namespaces = namespaces.clone();
+                let mode = mode.as_str().to_string();
+                move || resource_topology_from(cluster_context, namespaces, Some(mode))
+            },
+        )
         .await;
     match &result {
         Ok(topology) => eprintln!(
-            "[kubecove:backend] list_resource_topology done context={} namespaces={} nodes={} edges={} warnings={} ms={}",
+            "[kubecove:backend] list_resource_topology done context={} namespaces={} mode={} nodes={} edges={} warnings={} ms={}",
             cluster_context,
             namespaces.join(","),
+            mode.as_str(),
             topology.nodes.len(),
             topology.edges.len(),
             topology.warnings.len(),
             started.elapsed().as_millis()
         ),
         Err(err) => eprintln!(
-            "[kubecove:backend] list_resource_topology error context={} namespaces={} error_kind={} message={} ms={}",
+            "[kubecove:backend] list_resource_topology error context={} namespaces={} mode={} error_kind={} message={} ms={}",
             cluster_context,
             namespaces.join(","),
+            mode.as_str(),
             err.kind,
             err.message,
             started.elapsed().as_millis()

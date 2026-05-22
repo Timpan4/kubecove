@@ -340,13 +340,14 @@ impl ClusterLiveStore {
         &self,
         cluster_context: String,
         namespaces: Vec<String>,
+        mode: String,
         loader: F,
     ) -> Result<ResourceTopology, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<ResourceTopology, AppError>> + Send + 'static,
     {
-        let key = topology_cache_key(&cluster_context, &namespaces);
+        let key = topology_cache_key(&cluster_context, &namespaces, &mode);
         self.topologies
             .get_or_load(key, CacheMode::LiveFor(RESOURCE_FRESHNESS), loader)
             .await
@@ -441,11 +442,16 @@ fn resource_cache_key(context: &str, kind_key: &str, namespace: &ScopeNamespace)
     )
 }
 
-fn topology_cache_key(context: &str, namespaces: &[String]) -> String {
+fn topology_cache_key(context: &str, namespaces: &[String], mode: &str) -> String {
     let mut namespaces = namespaces.to_vec();
     namespaces.sort();
     namespaces.dedup();
-    format!("context={}|namespaces={}", context, namespaces.join(","))
+    format!(
+        "context={}|topology={}|namespaces={}",
+        context,
+        mode,
+        namespaces.join(",")
+    )
 }
 
 fn is_cluster_scoped_kind(kind: &str) -> bool {

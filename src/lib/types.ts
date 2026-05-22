@@ -64,7 +64,14 @@ export type TopologyHealth =
 	| "restarted"
 	| "unknown";
 
-export type TopologyRelation = "owns" | "creates" | "groups";
+export type TopologyMode = "ownership" | "networkFlow";
+export type TopologyRelation =
+	| "owns"
+	| "creates"
+	| "groups"
+	| "routesTo"
+	| "selects"
+	| "targets";
 
 export interface TopologyNode {
 	id: string;
@@ -73,6 +80,7 @@ export interface TopologyNode {
 	namespace: string | null;
 	status?: string | null;
 	health: TopologyHealth;
+	portHints?: string[];
 	selectable: boolean;
 	summary: ResourceSummary;
 }

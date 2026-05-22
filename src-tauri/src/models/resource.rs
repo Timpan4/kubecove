@@ -81,6 +81,9 @@ pub enum TopologyRelation {
     Owns,
     Creates,
     Groups,
+    RoutesTo,
+    Selects,
+    Targets,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +95,8 @@ pub struct TopologyNode {
     pub namespace: Option<String>,
     pub status: Option<String>,
     pub health: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub port_hints: Vec<String>,
     pub selectable: bool,
     pub summary: ResourceSummary,
 }

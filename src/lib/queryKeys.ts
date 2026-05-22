@@ -1,4 +1,4 @@
-import type { ResourceKindSelection } from "./types";
+import type { ResourceKindSelection, TopologyMode } from "./types";
 
 interface ResourceFetchKey {
 	kind: ResourceKindSelection;
@@ -29,8 +29,17 @@ export const queryKeys = {
 		["kube-resource-kinds", clusterContext] as const,
 	resources: (clusterContext: string, fetchKeys: ResourceFetchKey[]) =>
 		["resources", clusterContext, ...resourceScopeParts(fetchKeys)] as const,
-	resourceTopology: (clusterContext: string, namespaces: string[]) =>
-		["resource-topology", clusterContext, sortedNamespaces(namespaces)] as const,
+	resourceTopology: (
+		clusterContext: string,
+		namespaces: string[],
+		mode: TopologyMode,
+	) =>
+		[
+			"resource-topology",
+			clusterContext,
+			sortedNamespaces(namespaces),
+			mode,
+		] as const,
 	argoDetect: (clusterContext: string) => ["argo-detect", clusterContext] as const,
 	argoApps: (clusterContext: string) => ["argo-apps", clusterContext] as const,
 	argoAppSets: (clusterContext: string) =>

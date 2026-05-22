@@ -7,6 +7,7 @@ mod summary_core;
 mod summary_workloads;
 pub(crate) mod topology;
 mod topology_collection;
+mod topology_network;
 #[cfg(test)]
 mod topology_tests;
 mod yaml;
