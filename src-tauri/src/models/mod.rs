@@ -18,7 +18,10 @@ pub use cluster::ClusterContext;
 pub use discovery::DiscoveredResourceKind;
 pub use error::AppError;
 pub use events::ResourceEventSummary;
-pub use helm::{HelmReleaseDetails, HelmReleaseSummary};
+pub use helm::{
+    HelmManifestResourceSummary, HelmManifestSummary, HelmReleaseDetails, HelmReleaseSummary,
+    HelmValuesSummary,
+};
 pub use namespace::NamespaceSummary;
 pub use rbac::{
     RbacBindingSummary, RbacInspectionSummary, RbacNamespaceAccessSummary, RbacRiskIndicator,

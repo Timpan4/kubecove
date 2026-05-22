@@ -54,4 +54,9 @@ export const queryKeys = {
 			storageKind,
 			storageName,
 		] as const,
+	helmReleaseResources: (
+		clusterContext: string,
+		namespace: string,
+		releaseName: string,
+	) => ["helm-release-resources", clusterContext, namespace, releaseName] as const,
 };

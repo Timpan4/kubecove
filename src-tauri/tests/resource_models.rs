@@ -2,10 +2,11 @@ use kubecove_lib::models::{
     AppError, AppUsageMetrics, AppUsageMetricsBreakdown, ArgoAppProjectDetails,
     ArgoAppProjectSummary, ArgoApplicationDetails, ArgoApplicationSetDetails,
     ArgoApplicationSetSummary, ArgoApplicationSummary, ClusterContext, DiscoveredResourceKind,
-    HelmReleaseDetails, HelmReleaseSummary, NamespaceSummary, PodLogStreamRequest,
-    RbacInspectionSummary, RbacRiskIndicator, RbacRiskLevel, RbacRoleSummary, RbacRuleSummary,
-    ResourceDetails, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
-    ServiceAccountSummary, StreamMessage, WatchResourceKey, WatchResourceKind,
+    HelmManifestResourceSummary, HelmManifestSummary, HelmReleaseDetails, HelmReleaseSummary,
+    HelmValuesSummary, NamespaceSummary, PodLogStreamRequest, RbacInspectionSummary,
+    RbacRiskIndicator, RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, ResourceDetails,
+    ResourceDetailsFull, ResourceEventSummary, ResourceSummary, ServiceAccountSummary,
+    StreamMessage, WatchResourceKey, WatchResourceKind,
 };
 use serde_json::json;
 
@@ -333,15 +334,37 @@ fn test_helm_release_models_serde() {
         summary,
         yaml: "kind: Secret".to_string(),
         metadata: json!({ "name": "sh.helm.release.v1.payments.v7" }),
+        values_summary: HelmValuesSummary {
+            has_values: true,
+            top_level_keys: vec!["image".to_string()],
+            value_count: 1,
+        },
+        manifest_summary: HelmManifestSummary {
+            resource_count: 1,
+            resources: vec![HelmManifestResourceSummary {
+                api_version: Some("apps/v1".to_string()),
+                kind: Some("Deployment".to_string()),
+                name: Some("payments".to_string()),
+                namespace: Some("payments".to_string()),
+            }],
+            truncated: false,
+        },
         release: Some(json!({ "name": "payments", "version": 7 })),
     };
 
     let json_val = serde_json::to_value(&details).unwrap();
     assert_eq!(json_val["summary"]["appVersion"], "2026.5.21");
     assert_eq!(json_val["summary"]["storageKind"], "Secret");
+    assert_eq!(json_val["valuesSummary"]["topLevelKeys"][0], "image");
+    assert_eq!(
+        json_val["manifestSummary"]["resources"][0]["kind"],
+        "Deployment"
+    );
     let parsed: HelmReleaseDetails = serde_json::from_value(json_val).unwrap();
     assert_eq!(parsed.summary.revision, Some(7));
     assert_eq!(parsed.summary.namespace, "payments");
+    assert_eq!(parsed.values_summary.value_count, 1);
+    assert_eq!(parsed.manifest_summary.resource_count, 1);
 }
 
 #[test]

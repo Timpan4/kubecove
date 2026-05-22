@@ -31,6 +31,10 @@ import {
 	watchKeysFromFetchKeys,
 } from "../src/features/resources/helpers";
 import {
+	groupHelmReleasesByNamespace,
+	resourcesOwnedByHelmRelease,
+} from "../src/features/helm/helpers";
+import {
 	emptyStateMessage,
 	resolveTreeScope,
 	type TreeNodeId,
@@ -260,6 +264,35 @@ describe("resource browser presentation helpers", () => {
     expect(filterResources([resource], "widgets", "")).toEqual([resource]);
     expect(filterResources([resource], "example.com", "")).toEqual([resource]);
     expect(filterResources([resource], "apps/v1", "")).toEqual([]);
+  });
+
+  test("groups Helm releases by namespace and matches owned resources", () => {
+    const releases = [
+      {
+        cluster: "kind-dev",
+        name: "worker",
+        namespace: "jobs",
+        age: "1m",
+        storageKind: "Secret",
+        storageName: "sh.helm.release.v1.worker.v1",
+      },
+      {
+        cluster: "kind-dev",
+        name: "api",
+        namespace: "payments",
+        age: "1m",
+        storageKind: "Secret",
+        storageName: "sh.helm.release.v1.api.v2",
+      },
+    ];
+    const resources: ResourceSummary[] = [
+      { ...baseResource, name: "api-0", namespace: "payments", helmRelease: "api" },
+      { ...baseResource, name: "api-1", namespace: "other", helmRelease: "api" },
+      { ...baseResource, name: "worker-0", namespace: "jobs", helmRelease: "worker" },
+    ];
+
+    expect(groupHelmReleasesByNamespace(releases).map((group) => group.namespace)).toEqual(["jobs", "payments"]);
+    expect(resourcesOwnedByHelmRelease(resources, releases[1]).map((resource) => resource.name)).toEqual(["api-0"]);
   });
 
   test("sorts rows using table sorting state", () => {

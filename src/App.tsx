@@ -135,6 +135,10 @@ function App() {
 		useState<HealthFilter>("all");
 	const [selectedHelmRelease, setSelectedHelmRelease] =
 		useState<HelmReleaseSummary | null>(null);
+	const [targetHelmRelease, setTargetHelmRelease] = useState<{
+		name: string;
+		namespace?: string;
+	} | null>(null);
 	const [resourceInitialSearch, setResourceInitialSearch] = useState("");
 	const appRenderCountRef = useRef(0);
 	appRenderCountRef.current += 1;
@@ -361,6 +365,23 @@ function App() {
 		setViewMode("resources");
 	};
 
+	const handleOpenHelmReleaseFromResource = (
+		releaseName: string,
+		namespace?: string | null,
+	) => {
+		diagnosticLog("app.resource.openHelmRelease", {
+			name: releaseName,
+			namespace: namespace ?? "",
+		});
+		setTargetHelmRelease({
+			name: releaseName,
+			namespace: namespace ?? undefined,
+		});
+		setSelectedHelmRelease(null);
+		setSelectedResource(null);
+		setViewMode("helm");
+	};
+
 	const handleResourceNamespacesChange = useCallback(
 		(namespaces: string[]) => {
 			setSelectedTreeNode(null);
@@ -534,6 +555,8 @@ function App() {
 							clusterContext={clusterContext}
 							selectedRelease={selectedHelmRelease}
 							onReleaseSelect={handleHelmReleaseSelect}
+							targetRelease={targetHelmRelease}
+							onTargetReleaseResolved={() => setTargetHelmRelease(null)}
 						/>
 					</Suspense>
 				</div>
@@ -598,6 +621,7 @@ function App() {
 					key={selectedResourceKey}
 					resource={selectedResource}
 					onClose={resetResource}
+					onOpenHelmRelease={handleOpenHelmReleaseFromResource}
 				/>
 			</Suspense>
 		) : null;

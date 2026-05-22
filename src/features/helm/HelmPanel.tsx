@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { Search, X } from "lucide-react";
 import {
 	Alert,
@@ -34,11 +34,18 @@ import { queryKeys } from "@/lib/queryKeys";
 import { createTauriClient, listHelmReleases } from "@/lib/tauri";
 import type { HelmReleaseSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+	groupHelmReleasesByNamespace,
+	helmReleaseKey,
+	helmStatusTone,
+} from "./helpers";
 
 interface HelmPanelProps {
 	clusterContext: string;
 	selectedRelease: HelmReleaseSummary | null;
 	onReleaseSelect: (release: HelmReleaseSummary) => void;
+	targetRelease?: { name: string; namespace?: string } | null;
+	onTargetReleaseResolved?: () => void;
 }
 
 const STATE_CLASS =
@@ -87,17 +94,6 @@ function EmptyState() {
 			</EmptyHeader>
 		</Empty>
 	);
-}
-
-function releaseKey(release: HelmReleaseSummary): string {
-	return `${release.cluster}:${release.namespace}:${release.name}:${release.storageKind}:${release.storageName}`;
-}
-
-function statusTone(status: string | undefined) {
-	if (status === "deployed" || status === "superseded") return "success";
-	if (status === "failed" || status === "uninstalled") return "error";
-	if (status === "pending-install" || status === "pending-upgrade") return "warning";
-	return "neutral";
 }
 
 function handleRowActivation(
@@ -152,12 +148,17 @@ function HelmTable({
 	releases,
 	selectedRelease,
 	onReleaseSelect,
+	initialSearch,
 }: {
 	releases: HelmReleaseSummary[];
 	selectedRelease: HelmReleaseSummary | null;
 	onReleaseSelect: (release: HelmReleaseSummary) => void;
+	initialSearch?: string;
 }) {
-	const [search, setSearch] = useState("");
+	const [search, setSearch] = useState(initialSearch ?? "");
+	useEffect(() => {
+		if (initialSearch) setSearch(initialSearch);
+	}, [initialSearch]);
 	const searchTerm = search.trim().toLowerCase();
 	const filtered = searchTerm
 		? releases.filter(
@@ -168,6 +169,7 @@ function HelmTable({
 					release.appVersion?.toLowerCase().includes(searchTerm),
 			)
 		: releases;
+	const grouped = groupHelmReleasesByNamespace(filtered);
 
 	return (
 		<>
@@ -193,47 +195,57 @@ function HelmTable({
 							</TableCell>
 						</TableRow>
 					) : (
-						filtered.map((release) => {
-							const isSelected =
-								selectedRelease !== null &&
-								releaseKey(release) === releaseKey(selectedRelease);
-							return (
-								<TableRow
-									key={releaseKey(release)}
-									className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
-									onClick={() => onReleaseSelect(release)}
-									onKeyDown={(event) =>
-										handleRowActivation(event, release, onReleaseSelect)
-									}
-									tabIndex={0}
-									role="button"
-									aria-selected={isSelected}
+						grouped.flatMap((group) => [
+							<TableRow key={`namespace:${group.namespace}`} className="bg-muted/35">
+								<TableCell
+									colSpan={8}
+									className="py-2 text-xs font-semibold uppercase text-muted-foreground"
 								>
-									<TableCell>{release.name}</TableCell>
-									<TableCell>{release.namespace}</TableCell>
-									<TableCell>{release.chart ?? "-"}</TableCell>
-									<TableCell>{release.appVersion ?? "-"}</TableCell>
-									<TableCell>{release.revision ?? "-"}</TableCell>
-									<TableCell>
-										{release.status ? (
-											<StatusBadge tone={statusTone(release.status)}>
-												{release.status}
-											</StatusBadge>
-										) : (
-											"-"
-										)}
-									</TableCell>
-									<TableCell>{release.storageKind}</TableCell>
-									<TableCell>
-										<TimestampText
-											relative={release.age}
-											exact={release.updatedAt ?? release.createdAt}
-											className="block min-w-0 truncate outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
-										/>
-									</TableCell>
-								</TableRow>
-							);
-						})
+									{group.namespace} ({group.releases.length})
+								</TableCell>
+							</TableRow>,
+							...group.releases.map((release) => {
+								const isSelected =
+									selectedRelease !== null &&
+									helmReleaseKey(release) === helmReleaseKey(selectedRelease);
+								return (
+									<TableRow
+										key={helmReleaseKey(release)}
+										className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
+										onClick={() => onReleaseSelect(release)}
+										onKeyDown={(event) =>
+											handleRowActivation(event, release, onReleaseSelect)
+										}
+										tabIndex={0}
+										role="button"
+										aria-selected={isSelected}
+									>
+										<TableCell>{release.name}</TableCell>
+										<TableCell>{release.namespace}</TableCell>
+										<TableCell>{release.chart ?? "-"}</TableCell>
+										<TableCell>{release.appVersion ?? "-"}</TableCell>
+										<TableCell>{release.revision ?? "-"}</TableCell>
+										<TableCell>
+											{release.status ? (
+												<StatusBadge tone={helmStatusTone(release.status)}>
+													{release.status}
+												</StatusBadge>
+											) : (
+												"-"
+											)}
+										</TableCell>
+										<TableCell>{release.storageKind}</TableCell>
+										<TableCell>
+											<TimestampText
+												relative={release.age}
+												exact={release.updatedAt ?? release.createdAt}
+												className="block min-w-0 truncate outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+											/>
+										</TableCell>
+									</TableRow>
+								);
+							}),
+						])
 					)}
 				</TableBody>
 			</Table>
@@ -250,6 +262,8 @@ export function HelmPanel({
 	clusterContext,
 	selectedRelease,
 	onReleaseSelect,
+	targetRelease,
+	onTargetReleaseResolved,
 }: HelmPanelProps) {
 	const client = useMemo(() => createTauriClient(), []);
 	const {
@@ -263,6 +277,18 @@ export function HelmPanel({
 		enabled: !!clusterContext,
 		staleTime: 30_000,
 	});
+
+	useEffect(() => {
+		if (!targetRelease || !releases) return;
+		const match = releases.find(
+			(release) =>
+				release.name === targetRelease.name &&
+				(!targetRelease.namespace ||
+					release.namespace === targetRelease.namespace),
+		);
+		if (match) onReleaseSelect(match);
+		onTargetReleaseResolved?.();
+	}, [onReleaseSelect, onTargetReleaseResolved, releases, targetRelease]);
 
 	if (!clusterContext) {
 		return <div className={STATE_CLASS}>Select a cluster context first.</div>;
@@ -278,6 +304,7 @@ export function HelmPanel({
 				releases={releases}
 				selectedRelease={selectedRelease}
 				onReleaseSelect={onReleaseSelect}
+				initialSearch={targetRelease?.name}
 			/>
 		</div>
 	);
