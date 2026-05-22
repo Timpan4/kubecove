@@ -108,6 +108,7 @@ describe("ownership topology helpers", () => {
 		expect(replicaSet?.position.x).toBeLessThan(pod?.position.x ?? 0);
 		expect(pod?.selected).toBe(true);
 		expect(pod?.data.selected).toBe(true);
+		expect(pod?.data.showPortHints).toBe(false);
 		expect(deployment?.data.connected).toBe(true);
 		expect(replicaSet?.data.connected).toBe(true);
 		expect(graph.edges.map((edge) => [edge.source, edge.target])).toEqual([
@@ -310,6 +311,7 @@ describe("ownership topology helpers", () => {
 
 		const graph = buildReactFlowTopology(topology, null, {
 			groupStandalone: false,
+			showPortHints: true,
 		});
 
 		expect(graph.nodes.map((node) => node.id)).toEqual([serviceId, podId]);
@@ -317,6 +319,7 @@ describe("ownership topology helpers", () => {
 			true,
 		);
 		expect(graph.edges[0]?.style?.strokeDasharray).toBe("5 5");
+		expect(graph.nodes[0]?.data.showPortHints).toBe(true);
 	});
 
 	test("expands ownerless type buckets when requested", () => {

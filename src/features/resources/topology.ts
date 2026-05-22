@@ -49,6 +49,7 @@ export interface OwnershipGraphNodeData extends Record<string, unknown> {
 	connected: boolean;
 	dimmed: boolean;
 	standalone: boolean;
+	showPortHints: boolean;
 }
 
 export type OwnershipResourceGraphNode = Node<
@@ -74,6 +75,7 @@ export interface ReactFlowTopology {
 export interface BuildReactFlowTopologyOptions {
 	expandedStandaloneKinds?: ReadonlySet<string>;
 	groupStandalone?: boolean;
+	showPortHints?: boolean;
 }
 
 export function resourceTopologyNodeId(
@@ -156,6 +158,7 @@ export function buildReactFlowTopology(
 				connected,
 				dimmed: hasSelection && !selectedPath.nodeIds.has(node.id),
 				standalone,
+				showPortHints: options.showPortHints ?? false,
 			},
 			parentId: standaloneGroups.groupIdByNodeId.get(node.id),
 			extent: standalone ? "parent" : undefined,

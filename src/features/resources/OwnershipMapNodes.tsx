@@ -102,7 +102,9 @@ function OwnershipResourceNode({
 			: node.kind;
 	const displayName = smartKubernetesName(node.name, node.kind);
 	const age = node.summary.age;
-	const portHint = node.portHints?.slice(0, 3).join(", ");
+	const portHint = data.showPortHints
+		? node.portHints?.slice(0, 3).join(", ")
+		: undefined;
 
 	return (
 		<div

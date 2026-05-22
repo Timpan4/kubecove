@@ -147,9 +147,10 @@ export function OwnershipMap({
 		() =>
 			topology
 				? buildReactFlowTopology(topology, selectedNodeId, {
-						expandedStandaloneKinds,
-						groupStandalone: mode === "ownership",
-					})
+					expandedStandaloneKinds,
+					groupStandalone: mode === "ownership",
+					showPortHints: mode === "networkFlow",
+				})
 				: null,
 		[topology, selectedNodeId, expandedStandaloneKinds, mode],
 	);
