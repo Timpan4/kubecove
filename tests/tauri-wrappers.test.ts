@@ -3,6 +3,7 @@ import {
 	createMockTauriClient,
 	getAppUsageMetrics,
 	getHelmReleaseDetails,
+	listResourceMetrics,
 	listRbacInspection,
 	getResourceYaml,
 	isAppError,
@@ -18,6 +19,7 @@ import type {
 	HelmReleaseSummary,
 	NamespaceSummary,
 	RbacInspectionSummary,
+	ResourceMetricsSummary,
 	ResourceTopology,
 } from "../src/lib/types";
 
@@ -114,6 +116,42 @@ describe("typed Tauri wrappers", () => {
 		const client = createMockTauriClient({ get_app_usage_metrics: metrics });
 
 		expect(await getAppUsageMetrics(client)).toEqual(metrics);
+	});
+
+	test("passes resource metrics scope through the typed client", async () => {
+		const metrics: ResourceMetricsSummary = {
+			cluster: "kind-dev",
+			availability: { status: "available", message: "metrics available" },
+			pods: [
+				{
+					kind: "Pod",
+					cluster: "kind-dev",
+					name: "api-0",
+					namespace: "payments",
+					cpuMillicores: 125,
+					memoryBytes: 128,
+					sourcePods: [],
+				},
+			],
+			nodes: [],
+			workloads: [],
+			warnings: [],
+		};
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				return metrics as T;
+			},
+		};
+
+		expect(await listResourceMetrics(client, "kind-dev", ["payments"])).toEqual(metrics);
+		expect(calls).toEqual([
+			{
+				cmd: "list_resource_metrics",
+				args: { clusterContext: "kind-dev", namespaces: ["payments"] },
+			},
+		]);
 	});
 
 	test("passes Helm release requests through typed wrappers", async () => {

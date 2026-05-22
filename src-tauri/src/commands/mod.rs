@@ -5,6 +5,7 @@ mod events;
 mod helm;
 mod helpers;
 mod live_store;
+mod metrics;
 mod namespaces;
 mod rbac;
 mod resources;
@@ -22,6 +23,7 @@ pub use discovery::{list_resource_kinds, resource_kinds_from};
 pub use events::{list_resource_events, resource_events_from};
 pub use helm::{get_helm_release_details, list_helm_releases};
 pub use live_store::ClusterLiveStore;
+pub use metrics::{list_resource_metrics, resource_metrics_from};
 pub use namespaces::{list_namespaces, namespaces_summary_from};
 pub use rbac::{list_rbac_inspection, rbac_inspection_from};
 pub use resources::{

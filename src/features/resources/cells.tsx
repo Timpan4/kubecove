@@ -4,6 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TimestampText } from "@/components/TimestampText";
 import { getResourceKindVisual } from "@/lib/resource-visuals";
+import {
+	formatCpuMillicores,
+	formatMemoryBytes,
+} from "@/lib/resource-metrics";
 import type { ResourceSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { tableTooltipText } from "./helpers";
@@ -88,6 +92,14 @@ export function RestartsCell({
 			<StatusChip value={String(value)} variant={variant} />
 		</CenteredCell>
 	);
+}
+
+export function CpuCell({ value }: { value: number | null | undefined }) {
+	return <TruncatedCell value={formatCpuMillicores(value)} />;
+}
+
+export function MemoryCell({ value }: { value: number | null | undefined }) {
+	return <TruncatedCell value={formatMemoryBytes(value)} />;
 }
 
 export function KindCell({ kind }: { kind: string }) {

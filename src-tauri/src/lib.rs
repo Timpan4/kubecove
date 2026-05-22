@@ -7,9 +7,9 @@ use commands::{
     get_helm_release_details, get_resource_details, get_resource_yaml, list_argocd_applications,
     list_argocd_appprojects, list_argocd_appsets, list_dynamic_resources, list_helm_releases,
     list_kube_contexts, list_namespaces, list_rbac_inspection, list_resource_events,
-    list_resource_kinds, list_resource_scope, list_resource_topology, list_resources,
-    start_pod_log_stream, start_resource_event_watch, start_resource_watch, stop_stream,
-    AppUsageMonitor, ClusterLiveStore, StreamRegistry,
+    list_resource_kinds, list_resource_metrics, list_resource_scope, list_resource_topology,
+    list_resources, start_pod_log_stream, start_resource_event_watch, start_resource_watch,
+    stop_stream, AppUsageMonitor, ClusterLiveStore, StreamRegistry,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -28,6 +28,7 @@ pub fn run() {
             list_dynamic_resources,
             list_resource_scope,
             list_resource_topology,
+            list_resource_metrics,
             list_resource_events,
             get_resource_yaml,
             get_resource_details,

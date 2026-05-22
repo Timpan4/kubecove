@@ -18,6 +18,7 @@ import type {
 	WatchResourceKey,
 	AppError,
 	AppUsageMetrics,
+	ResourceMetricsSummary,
 	ArgoApplicationSummary,
 	ArgoApplicationDetails,
 	ArgoApplicationSetSummary,
@@ -285,6 +286,17 @@ export async function getAppUsageMetrics(
 	client: TauriClient,
 ): Promise<AppUsageMetrics> {
 	return client.invoke<AppUsageMetrics>("get_app_usage_metrics");
+}
+
+export async function listResourceMetrics(
+	client: TauriClient,
+	clusterContext: string,
+	namespaces: string[],
+): Promise<ResourceMetricsSummary> {
+	return client.invoke<ResourceMetricsSummary>("list_resource_metrics", {
+		clusterContext,
+		namespaces,
+	});
 }
 
 export function isAppError(value: unknown): value is AppError {

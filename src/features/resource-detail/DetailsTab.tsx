@@ -4,6 +4,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import {
+	formatCpuMillicores,
+	formatMemoryBytes,
+} from "@/lib/resource-metrics";
 import { cn } from "@/lib/utils";
 import { useMemo } from "react";
 import type { ConditionRow, ContainerStatusRow, IncidentSignal } from "./helpers";
@@ -491,6 +495,21 @@ export function DetailsTab({
 					</div>
 				)}
 			</div>
+
+			{resource.metrics && (
+				<div className={DETAIL_SECTION_CLASS}>
+					<div className={DETAIL_SECTION_TITLE_CLASS}>Metrics</div>
+					<DetailField
+						label="CPU"
+						value={formatCpuMillicores(resource.metrics.cpuMillicores)}
+					/>
+					<DetailField
+						label="Memory"
+						value={formatMemoryBytes(resource.metrics.memoryBytes)}
+					/>
+					<DetailField label="Sampled" value={resource.metrics.sampledAt} />
+				</div>
+			)}
 
 			<div className={DETAIL_SECTION_CLASS}>
 				<div className={DETAIL_SECTION_TITLE_CLASS}>Ownership</div>

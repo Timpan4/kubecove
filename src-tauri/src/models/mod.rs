@@ -4,6 +4,7 @@ mod discovery;
 mod error;
 mod events;
 mod helm;
+mod metrics;
 mod namespace;
 mod rbac;
 mod resource;
@@ -21,6 +22,10 @@ pub use events::ResourceEventSummary;
 pub use helm::{
     HelmManifestResourceSummary, HelmManifestSummary, HelmReleaseDetails, HelmReleaseSummary,
     HelmValuesSummary,
+};
+pub use metrics::{
+    ResourceMetricSummary, ResourceMetricsAvailability, ResourceMetricsAvailabilityStatus,
+    ResourceMetricsSummary,
 };
 pub use namespace::NamespaceSummary;
 pub use rbac::{

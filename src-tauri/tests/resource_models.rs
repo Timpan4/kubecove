@@ -5,8 +5,9 @@ use kubecove_lib::models::{
     HelmManifestResourceSummary, HelmManifestSummary, HelmReleaseDetails, HelmReleaseSummary,
     HelmValuesSummary, NamespaceSummary, PodLogStreamRequest, RbacInspectionSummary,
     RbacRiskIndicator, RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, ResourceDetails,
-    ResourceDetailsFull, ResourceEventSummary, ResourceSummary, ServiceAccountSummary,
-    StreamMessage, WatchResourceKey, WatchResourceKind,
+    ResourceDetailsFull, ResourceEventSummary, ResourceMetricSummary, ResourceMetricsAvailability,
+    ResourceMetricsAvailabilityStatus, ResourceMetricsSummary, ResourceSummary,
+    ServiceAccountSummary, StreamMessage, WatchResourceKey, WatchResourceKind,
 };
 use serde_json::json;
 
@@ -505,4 +506,39 @@ fn test_app_usage_metrics_serde() {
     assert_eq!(parsed.process_count, 3);
     assert_eq!(parsed.breakdown[0].process_count, 2);
     assert_eq!(parsed.breakdown[0].children[0].process_count, 1);
+}
+
+#[test]
+fn test_resource_metrics_models_serde() {
+    let summary = ResourceMetricsSummary {
+        cluster: "kind-dev".to_string(),
+        availability: ResourceMetricsAvailability {
+            status: ResourceMetricsAvailabilityStatus::Available,
+            message: Some("metrics available".to_string()),
+        },
+        pods: vec![ResourceMetricSummary {
+            kind: "Pod".to_string(),
+            cluster: "kind-dev".to_string(),
+            name: "api-0".to_string(),
+            namespace: Some("payments".to_string()),
+            cpu_millicores: Some(125.0),
+            memory_bytes: Some(64 * 1024 * 1024),
+            sampled_at: Some("2026-05-22T12:00:00Z".to_string()),
+            source_pods: Vec::new(),
+        }],
+        nodes: Vec::new(),
+        workloads: Vec::new(),
+        warnings: Vec::new(),
+    };
+
+    let json_val = serde_json::to_value(&summary).unwrap();
+    assert_eq!(json_val["availability"]["status"], "available");
+    assert_eq!(json_val["pods"][0]["cpuMillicores"], 125.0);
+    assert_eq!(json_val["pods"][0]["memoryBytes"], 64 * 1024 * 1024);
+    let parsed: ResourceMetricsSummary = serde_json::from_value(json_val).unwrap();
+    assert_eq!(parsed.pods[0].namespace, Some("payments".to_string()));
+    assert_eq!(
+        parsed.availability.status,
+        ResourceMetricsAvailabilityStatus::Available
+    );
 }

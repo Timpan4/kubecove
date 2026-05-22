@@ -16,7 +16,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { diagnosticLog } from "@/lib/diagnostics";
 import { queryKeys } from "@/lib/queryKeys";
-import { createTauriClient, listResourceTopology } from "@/lib/tauri";
+import {
+	createTauriClient,
+	listResourceMetrics,
+	listResourceTopology,
+} from "@/lib/tauri";
+import {
+	describeMetricsAvailability,
+	mergeResourceMetrics,
+	mergeTopologyMetrics,
+} from "@/lib/resource-metrics";
 import type {
 	ResourceKindSelection,
 	ResourceSummary,
@@ -164,6 +173,13 @@ function ResourceListComponent({
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		staleTime: 30_000,
 	});
+	const metricsQuery = useQuery({
+		queryKey: queryKeys.resourceMetrics(clusterContext, topologyNamespaces),
+		queryFn: () => listResourceMetrics(client, clusterContext, topologyNamespaces),
+		enabled: Boolean(clusterContext),
+		retry: false,
+		staleTime: 30_000,
+	});
 	const tableWatchKeys = useMemo(
 		() => watchKeysFromFetchKeys(fetchKeys),
 		[fetchKeys],
@@ -188,10 +204,21 @@ function ResourceListComponent({
 			!isError,
 	});
 
-	const argoApps = useMemo(() => uniqueArgoApps(data ?? []), [data]);
+	const dataWithMetrics = useMemo(
+		() => mergeResourceMetrics(data ?? [], metricsQuery.data),
+		[data, metricsQuery.data],
+	);
+	const topologyWithMetrics = useMemo(
+		() => mergeTopologyMetrics(topologyQuery.data, metricsQuery.data),
+		[topologyQuery.data, metricsQuery.data],
+	);
+	const metricsAvailabilityMessage = describeMetricsAvailability(
+		metricsQuery.data?.availability,
+	);
+	const argoApps = useMemo(() => uniqueArgoApps(dataWithMetrics), [dataWithMetrics]);
 	const scopedData = useMemo(
-		() => filterResources(data ?? [], search, selectedArgoAppFilter),
-		[data, search, selectedArgoAppFilter],
+		() => filterResources(dataWithMetrics, search, selectedArgoAppFilter),
+		[dataWithMetrics, search, selectedArgoAppFilter],
 	);
 	const filteredData = useMemo(
 		() => filterResourcesByHealth(scopedData, healthFilter),
@@ -306,7 +333,7 @@ function ResourceListComponent({
 		});
 	};
 	const syncedTopologyNodeId = useMemo(() => {
-		const topologyNodes = topologyQuery.data?.nodes;
+		const topologyNodes = topologyWithMetrics?.nodes;
 		if (!topologyNodes) return selectedTopologyNodeId;
 		const selectedFromTable =
 			topologyNodes.find(
@@ -321,15 +348,15 @@ function ResourceListComponent({
 		activeSelectedResourceIdentityKey,
 		activeSelectedResourceKey,
 		selectedTopologyNodeId,
-		topologyQuery.data,
+		topologyWithMetrics,
 	]);
 	useEffect(() => {
-		if (!selectedTopologyNodeId || !topologyQuery.data) return;
-		if (topologyQuery.data.nodes.some((node) => node.id === selectedTopologyNodeId)) {
+		if (!selectedTopologyNodeId || !topologyWithMetrics) return;
+		if (topologyWithMetrics.nodes.some((node) => node.id === selectedTopologyNodeId)) {
 			return;
 		}
 		setSelectedTopologyNodeId(null);
-	}, [selectedTopologyNodeId, topologyQuery.data]);
+	}, [selectedTopologyNodeId, topologyWithMetrics]);
 	const handleResourceSelect = (resource: ResourceSummary) => {
 		setSelectedTopologyNodeId(null);
 		setSelectedResourceKey(resourceSelectionKey(resource));
@@ -413,6 +440,16 @@ function ResourceListComponent({
 				activeFilter={healthFilter}
 				onFilterChange={setHealthFilter}
 			/>
+			{(metricsAvailabilityMessage || metricsQuery.isError) && (
+				<Alert variant="default" className="py-2">
+					<AlertTitle className="text-xs">Resource metrics</AlertTitle>
+					<AlertDescription className="text-xs">
+						{metricsQuery.isError
+							? "metrics API unavailable"
+							: metricsAvailabilityMessage}
+					</AlertDescription>
+				</Alert>
+			)}
 			<ActiveHealthFilterBanner
 				filter={healthFilter}
 				onReset={() => setHealthFilter("all")}
@@ -433,7 +470,7 @@ function ResourceListComponent({
 				onClearFilters={clearFilters}
 			/>
 			<ResourceMapTableLayout
-				topology={topologyQuery.data}
+				topology={topologyWithMetrics}
 				topologyLoading={topologyQuery.isPending}
 				topologyError={topologyQuery.isError}
 				topologyErr={topologyQuery.error}

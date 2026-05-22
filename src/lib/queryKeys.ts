@@ -40,6 +40,8 @@ export const queryKeys = {
 			sortedNamespaces(namespaces),
 			mode,
 		] as const,
+	resourceMetrics: (clusterContext: string, namespaces: string[]) =>
+		["resource-metrics", clusterContext, sortedNamespaces(namespaces)] as const,
 	argoDetect: (clusterContext: string) => ["argo-detect", clusterContext] as const,
 	argoApps: (clusterContext: string) => ["argo-apps", clusterContext] as const,
 	argoAppSets: (clusterContext: string) =>
