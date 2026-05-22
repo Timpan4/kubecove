@@ -6,6 +6,7 @@ import {
 } from "@xyflow/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { formatCompactResourceMetrics } from "@/lib/resource-metrics";
 import { getResourceKindVisual } from "@/lib/resource-visuals";
 import { cn } from "@/lib/utils";
 import {
@@ -105,6 +106,10 @@ function OwnershipResourceNode({
 	const portHint = data.showPortHints
 		? node.portHints?.slice(0, 3).join(", ")
 		: undefined;
+	const metricHint = formatCompactResourceMetrics(node.metrics ?? node.summary.metrics);
+	const primaryValue = [portHint || node.status, metricHint]
+		.filter((value): value is string => Boolean(value))
+		.join(" · ");
 
 	return (
 		<div
@@ -146,9 +151,9 @@ function OwnershipResourceNode({
 				className="text-[0.64rem] leading-tight text-muted-foreground"
 			/>
 			<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-				{portHint || node.status ? (
+				{primaryValue ? (
 					<ValueBadge
-						value={portHint || node.status || ""}
+						value={primaryValue}
 						className="border-primary/45 bg-primary/10"
 					/>
 				) : (

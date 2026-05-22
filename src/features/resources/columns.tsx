@@ -3,7 +3,9 @@ import type { ResourceSummary } from "@/lib/types";
 import {
 	AgeCell,
 	ArgoHelmBadges,
+	CpuCell,
 	KindCell,
+	MemoryCell,
 	RestartsCell,
 	StatusChip,
 	TruncatedCell,
@@ -48,6 +50,16 @@ export const columns = [
 	columnHelper.accessor("restarts", {
 		header: () => <span className="block text-center">Restarts</span>,
 		cell: (info) => <RestartsCell value={info.getValue()} />,
+	}),
+	columnHelper.accessor((row) => row.metrics?.cpuMillicores, {
+		id: "cpu",
+		header: "CPU",
+		cell: (info) => <CpuCell value={info.getValue()} />,
+	}),
+	columnHelper.accessor((row) => row.metrics?.memoryBytes, {
+		id: "memory",
+		header: "Memory",
+		cell: (info) => <MemoryCell value={info.getValue()} />,
 	}),
 	columnHelper.accessor("ownerRef", {
 		header: "Owner",

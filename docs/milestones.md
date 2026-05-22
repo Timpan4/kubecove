@@ -125,7 +125,7 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 - Helm views
 - RBAC inspection
 - permissions and security inspection
-- metrics
+- [x] metrics (initial read-only `metrics.k8s.io` integration)
 - customizable workspace layout
 - custom density modes
 - adaptive defaults for explicit workspace types

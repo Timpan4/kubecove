@@ -28,6 +28,7 @@ export interface ResourceSummary {
 	ownerRef?: string;
 	argoApp?: string;
 	helmRelease?: string;
+	metrics?: ResourceMetricSummary;
 }
 
 export type ResourceListRequest =
@@ -81,6 +82,7 @@ export interface TopologyNode {
 	status?: string | null;
 	health: TopologyHealth;
 	portHints?: string[];
+	metrics?: ResourceMetricSummary;
 	selectable: boolean;
 	summary: ResourceSummary;
 }
@@ -162,6 +164,37 @@ export interface AppUsageMetrics {
 	processCount: number;
 	sampledAt: string;
 	breakdown: AppUsageMetricsBreakdown[];
+}
+
+export type ResourceMetricsAvailabilityStatus =
+	| "available"
+	| "unavailable"
+	| "forbidden"
+	| "noSamples";
+
+export interface ResourceMetricsAvailability {
+	status: ResourceMetricsAvailabilityStatus;
+	message?: string;
+}
+
+export interface ResourceMetricSummary {
+	kind: string;
+	cluster: string;
+	name: string;
+	namespace: string | null;
+	cpuMillicores?: number;
+	memoryBytes?: number;
+	sampledAt?: string;
+	sourcePods: string[];
+}
+
+export interface ResourceMetricsSummary {
+	cluster: string;
+	availability: ResourceMetricsAvailability;
+	pods: ResourceMetricSummary[];
+	nodes: ResourceMetricSummary[];
+	workloads: ResourceMetricSummary[];
+	warnings: string[];
 }
 
 export type StreamStatus = "connected" | "reconnecting" | "stopped" | "error";
