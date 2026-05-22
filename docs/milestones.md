@@ -126,6 +126,7 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 - RBAC inspection
 - permissions and security inspection
 - [x] metrics (initial read-only `metrics.k8s.io` integration)
+- [x] workspace cluster groups and compare overview
 - customizable workspace layout
 - custom density modes
 - adaptive defaults for explicit workspace types

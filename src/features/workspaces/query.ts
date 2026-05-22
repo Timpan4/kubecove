@@ -9,6 +9,7 @@ import {
 	type ResourceSummary,
 } from "@/lib/types";
 import type { WorkspaceScope } from "@/lib/workspaces";
+import { workspaceScopeContexts } from "@/lib/workspaces";
 
 interface WorkspaceFetchKey {
 	kind: ResourceKindSelection;
@@ -50,9 +51,20 @@ export async function fetchWorkspaceResources(
 ): Promise<ResourceSummary[]> {
 	const client = createTauriClient();
 	const fetchKeys = buildWorkspaceFetchKeys(scope, availableNamespaces);
-	return listResourceScope(
-		client,
-		scope.clusterContext,
-		fetchKeys.map(fetchKeyRequest),
+	const requests = fetchKeys.map(fetchKeyRequest);
+	const results = await Promise.allSettled(
+		workspaceScopeContexts(scope).map((context) =>
+			listResourceScope(client, context, requests),
+		),
 	);
+	const rows = results.flatMap((result) =>
+		result.status === "fulfilled" ? result.value : [],
+	);
+	if (rows.length > 0 || results.every((result) => result.status === "fulfilled")) {
+		return rows;
+	}
+	const firstError = results.find(
+		(result): result is PromiseRejectedResult => result.status === "rejected",
+	);
+	throw firstError?.reason ?? new Error("Workspace resources unavailable");
 }

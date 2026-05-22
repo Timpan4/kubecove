@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
+	buildWorkspaceCompareEntries,
+	buildWorkspaceCompareSummaries,
 	buildWorkspaceHealthSummary,
 	computeRestoreStatus,
 	createWorkspaceRecord,
 	summarizeWorkspaceScope,
+	workspaceScopeContexts,
 } from "../src/lib/workspaces";
 import { buildWorkspaceFetchKeys } from "../src/features/workspaces/query";
 import type {
@@ -15,6 +18,7 @@ import type {
 
 const clusterContexts: ClusterContext[] = [
 	{ name: "kind-dev", isCurrent: true },
+	{ name: "kind-prod", isCurrent: false },
 ];
 
 describe("workspace helpers", () => {
@@ -34,6 +38,34 @@ describe("workspace helpers", () => {
 		expect(workspace.scope.kinds).toContain("Pod");
 		expect(JSON.stringify(workspace)).not.toContain("certificate");
 		expect(JSON.stringify(workspace)).not.toContain("token");
+	});
+
+	test("stores cluster groups as local scope metadata without secrets", () => {
+		const workspace = createWorkspaceRecord(
+			{
+				name: "Ops",
+				clusterContext: "kind-dev",
+				clusterContexts: ["kind-prod", "kind-dev"],
+				clusterGroupName: "Ops group",
+				namespaces: ["payments", "default"],
+			},
+			"2026-05-16T12:00:00.000Z",
+		);
+
+		expect(workspace.scope.clusterGroup).toEqual({
+			id: "cluster-group:kind-dev|kind-prod",
+			name: "Ops group",
+			members: ["kind-dev", "kind-prod"],
+		});
+		expect(workspaceScopeContexts(workspace.scope)).toEqual([
+			"kind-dev",
+			"kind-prod",
+		]);
+		expect(summarizeWorkspaceScope(workspace.scope)).toBe(
+			"Ops group (2) / default, payments / Pod, Deployment +4",
+		);
+		expect(JSON.stringify(workspace)).not.toContain("kubeconfig");
+		expect(JSON.stringify(workspace)).not.toContain("client-key");
 	});
 
 	test("reports missing restore scopes", () => {
@@ -56,8 +88,26 @@ describe("workspace helpers", () => {
 		);
 
 		expect(status.clusterAvailable).toBe(true);
+		expect(status.missingClusterContexts).toEqual([]);
 		expect(status.missingNamespaces).toEqual(["missing"]);
 		expect(status.missingKinds).toEqual(["NotARealKind"]);
+	});
+
+	test("reports unavailable saved contexts in a cluster group", () => {
+		const workspace = createWorkspaceRecord(
+			{
+				name: "Ops",
+				clusterContext: "kind-dev",
+				clusterContexts: ["missing-context"],
+				namespaces: [],
+			},
+			"2026-05-16T12:00:00.000Z",
+		);
+
+		const status = computeRestoreStatus(workspace, clusterContexts, [], []);
+
+		expect(status.clusterAvailable).toBe(true);
+		expect(status.missingClusterContexts).toEqual(["missing-context"]);
 	});
 
 	test("summarizes scope and health", () => {
@@ -87,6 +137,35 @@ describe("workspace helpers", () => {
 			degraded: 1,
 			restarted: 1,
 		});
+	});
+
+	test("builds context and namespace compare summaries from resource health", () => {
+		const workspace = createWorkspaceRecord(
+			{
+				name: "Ops",
+				clusterContext: "kind-dev",
+				clusterContexts: ["kind-prod"],
+				namespaces: ["default", "payments"],
+				kinds: ["Pod"],
+			},
+			"2026-05-16T12:00:00.000Z",
+		);
+		const rows = [
+			resource({ cluster: "kind-dev", namespace: "default", status: "Running", ready: "true" }),
+			resource({ cluster: "kind-prod", namespace: "default", status: "Failed" }),
+			resource({ cluster: "kind-dev", namespace: "payments", status: "Pending" }),
+		];
+		const entries = buildWorkspaceCompareEntries(workspace.scope);
+		const summaries = buildWorkspaceCompareSummaries(entries, rows);
+
+		expect(entries.map((entry) => entry.kind)).toEqual([
+			"contexts",
+			"namespaces",
+		]);
+		expect(summaries[0].left.total).toBe(2);
+		expect(summaries[0].right.degraded).toBe(1);
+		expect(summaries[1].left.total).toBe(2);
+		expect(summaries[1].right.attention).toBe(1);
 	});
 
 	test("preserves all-namespace workspace resource fetches", () => {

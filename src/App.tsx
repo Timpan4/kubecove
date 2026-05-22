@@ -36,6 +36,7 @@ import {
 } from "./lib/types";
 import type { HealthFilter } from "./features/resources/helpers";
 import {
+	createWorkspaceScope,
 	makeWorkspaceShortcuts,
 	useWorkspaceStore,
 	type SavedWorkspace,
@@ -188,14 +189,22 @@ function App() {
 		setResourceHealthFilter("all");
 		setViewMode("resources");
 		if (activeWorkspace) {
+			const scope = createWorkspaceScope({
+				name: activeWorkspace.name,
+				clusterContext: ctx,
+				clusterContexts: [ctx],
+				namespaces: [],
+				kinds: activeWorkspace.scope.kinds,
+				shortcutPreferences: activeWorkspace.scope.shortcutPreferences,
+			});
 			updateWorkspace(activeWorkspace.id, {
-				scope: {
-					...activeWorkspace.scope,
-					clusterContext: ctx,
-					namespaces: [],
-					argoAppFilter: "",
-				},
-				shortcuts: makeWorkspaceShortcuts([]),
+				scope,
+				shortcuts: makeWorkspaceShortcuts(
+					scope.namespaces,
+					undefined,
+					scope.shortcutPreferences,
+					scope,
+				),
 			});
 		}
 	};

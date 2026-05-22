@@ -39,12 +39,15 @@ import { createTauriClient, listKubeContexts, listNamespaces } from "@/lib/tauri
 import { queryKeys } from "@/lib/queryKeys";
 import {
 	DEFAULT_WORKSPACE_KINDS,
+	createWorkspaceScope,
 	makeWorkspaceShortcuts,
 	summarizeWorkspaceScope,
 	useWorkspaceStore,
+	workspaceScopeContexts,
 	type SavedWorkspace,
 } from "@/lib/workspaces";
 import { cn } from "@/lib/utils";
+import { WorkspaceContextGroupField } from "./WorkspaceContextGroupField";
 
 interface WorkspaceLauncherProps {
 	onOpenWorkspace: (workspace: SavedWorkspace) => void;
@@ -56,6 +59,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 	const [editingId, setEditingId] = useState<string | null>(null);
 	const [name, setName] = useState("");
 	const [selectedContext, setSelectedContext] = useState("");
+	const [selectedGroupContexts, setSelectedGroupContexts] = useState<string[]>([]);
 	const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
 
 	const contextsQuery = useQuery({
@@ -75,6 +79,13 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 		enabled: effectiveContext.length > 0,
 	});
 	const namespaces = namespacesQuery.data ?? [];
+	const selectedClusterContexts = useMemo(
+		() =>
+			Array.from(
+				new Set([effectiveContext, ...selectedGroupContexts].filter(Boolean)),
+			),
+		[effectiveContext, selectedGroupContexts],
+	);
 
 	const selectedContextMissing =
 		effectiveContext.length > 0 &&
@@ -96,11 +107,20 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 				: [...current, namespace],
 		);
 	};
+	const toggleGroupContext = (context: string) => {
+		if (context === effectiveContext) return;
+		setSelectedGroupContexts((current) =>
+			current.includes(context)
+				? current.filter((item) => item !== context)
+				: [...current, context],
+		);
+	};
 
 	const resetForm = () => {
 		setEditingId(null);
 		setName("");
 		setSelectedContext("");
+		setSelectedGroupContexts([]);
 		setSelectedNamespaces([]);
 	};
 
@@ -108,21 +128,44 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 		setEditingId(workspace.id);
 		setName(workspace.name);
 		setSelectedContext(workspace.scope.clusterContext);
+		setSelectedGroupContexts(
+			workspaceScopeContexts(workspace.scope).filter(
+				(context) => context !== workspace.scope.clusterContext,
+			),
+		);
 		setSelectedNamespaces(workspace.scope.namespaces);
 	};
 
 	const handleSubmit = () => {
 		if (!canCreate) return;
 		const trimmedName = name.trim();
+		const clusterGroupName =
+			selectedClusterContexts.length > 1
+				? `${trimmedName || effectiveContext} group`
+				: undefined;
 		if (editingWorkspace) {
+			const scope = createWorkspaceScope({
+				name: trimmedName || effectiveContext,
+				clusterContext: effectiveContext,
+				clusterContexts: selectedClusterContexts,
+				clusterGroupName,
+				namespaces: selectedNamespaces,
+				kinds: editingWorkspace.scope.kinds,
+				shortcutPreferences: editingWorkspace.scope.shortcutPreferences,
+			});
 			updateWorkspace(editingWorkspace.id, {
 				name: trimmedName || effectiveContext,
 				scope: {
-					...editingWorkspace.scope,
-					clusterContext: effectiveContext,
-					namespaces: selectedNamespaces,
+					...scope,
+					argoAppFilter: editingWorkspace.scope.argoAppFilter,
+					layout: editingWorkspace.scope.layout,
 				},
-				shortcuts: makeWorkspaceShortcuts(selectedNamespaces),
+				shortcuts: makeWorkspaceShortcuts(
+					scope.namespaces,
+					undefined,
+					scope.shortcutPreferences,
+					scope,
+				),
 			});
 			resetForm();
 			return;
@@ -130,6 +173,8 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 		const workspace = createWorkspace({
 			name: trimmedName || effectiveContext,
 			clusterContext: effectiveContext,
+			clusterContexts: selectedClusterContexts,
+			clusterGroupName,
 			namespaces: selectedNamespaces,
 			kinds: DEFAULT_WORKSPACE_KINDS,
 		});
@@ -293,6 +338,12 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 									</SelectContent>
 								</Select>
 								</Field>
+								<WorkspaceContextGroupField
+									items={contexts}
+									primaryContext={effectiveContext}
+									selectedNames={selectedClusterContexts}
+									onToggleContext={toggleGroupContext}
+								/>
 								<FieldSet className="gap-1.5">
 									<FieldLegend
 										variant="label"
