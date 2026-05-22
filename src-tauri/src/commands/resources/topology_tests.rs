@@ -540,3 +540,42 @@ fn network_flow_skips_missing_endpoint_warning_for_external_name_service() {
     assert_eq!(topology.nodes[0].kind, "Service");
     assert!(topology.warnings.is_empty());
 }
+
+#[test]
+fn network_flow_skips_missing_pod_warning_for_selectorless_endpoint_slices() {
+    let topology = build_network_flow_topology(NetworkTopologyInputs {
+        resources: vec![
+            resource("Service", "api", "default", "svc-1"),
+            resource("EndpointSlice", "api-manual", "default", "slice-1"),
+        ],
+        services: vec![NetworkService {
+            namespace: "default".to_string(),
+            name: "api".to_string(),
+            service_type: "ClusterIP".to_string(),
+            selector: BTreeMap::new(),
+        }],
+        ingress_backends: Vec::new(),
+        endpoint_slices: vec![NetworkEndpointSlice {
+            namespace: "default".to_string(),
+            name: "api-manual".to_string(),
+            service_name: Some("api".to_string()),
+            target_pods: Vec::new(),
+        }],
+    });
+
+    let service_id = topology_node_id("kind-dev", "v1", "Service", Some("default"), "api");
+    let slice_id = topology_node_id(
+        "kind-dev",
+        "discovery.k8s.io/v1",
+        "EndpointSlice",
+        Some("default"),
+        "api-manual",
+    );
+
+    assert!(topology.edges.iter().any(|edge| {
+        edge.source == service_id
+            && edge.target == slice_id
+            && edge.relation == TopologyRelation::Targets
+    }));
+    assert!(topology.warnings.is_empty());
+}

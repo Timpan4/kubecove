@@ -108,6 +108,7 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
             .collect();
 
         let mut linked_pods = HashSet::new();
+        let mut has_pod_targets = false;
         for slice in service_slices.iter() {
             let slice_id = resource_id(
                 "EndpointSlice",
@@ -128,6 +129,7 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
             }
 
             for pod_name in &slice.target_pods {
+                has_pod_targets = true;
                 let pod_id = resource_id("Pod", "v1", &slice.namespace, pod_name);
                 if let Some(pod_input) = resources_by_id.get(&pod_id) {
                     let node = node_from_input(pod_input);
@@ -171,7 +173,7 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
                 "Service {}/{} has no selector or EndpointSlice targets",
                 service.namespace, service.name
             ));
-        } else if linked_pods.is_empty() {
+        } else if (service_slices.is_empty() || has_pod_targets) && linked_pods.is_empty() {
             warnings.push(format!(
                 "Service {}/{} has no matching Pod endpoints",
                 service.namespace, service.name
