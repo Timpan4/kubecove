@@ -77,9 +77,18 @@ async function listHelmOwnedResources(
 			listResources(client, release.cluster, kind, release.namespace),
 		),
 	);
-	const resources = results.flatMap((result) =>
-		result.status === "fulfilled" ? result.value : [],
+	const rejected = results.filter(
+		(result): result is PromiseRejectedResult => result.status === "rejected",
 	);
+	if (rejected.length > 0) {
+		throw new Error("Failed to list Helm-owned resources");
+	}
+
+	const fulfilled = results.filter(
+		(result): result is PromiseFulfilledResult<ResourceSummary[]> =>
+			result.status === "fulfilled",
+	);
+	const resources = fulfilled.flatMap((result) => result.value);
 	return resourcesOwnedByHelmRelease(resources, release);
 }
 

@@ -335,15 +335,23 @@ function BadgeRow({
 							Argo: {argoApp}
 						</Badge>
 					)}
-					{helmRelease && (
-						<button
-							type="button"
-							className="rounded-sm border border-sky-500/30 bg-sky-500/10 px-1.5 py-0 text-[0.625rem] text-sky-300 shadow-none transition-colors hover:bg-sky-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-sky-500/15"
-							onClick={() => onOpenHelmRelease?.(helmRelease, namespace)}
-						>
-							Helm: {helmRelease}
-						</button>
-					)}
+					{helmRelease &&
+						(onOpenHelmRelease ? (
+							<button
+								type="button"
+								className="rounded-sm border border-sky-500/30 bg-sky-500/10 px-1.5 py-0 text-[0.625rem] text-sky-300 shadow-none transition-colors hover:bg-sky-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-sky-500/15"
+								onClick={() => onOpenHelmRelease(helmRelease, namespace)}
+							>
+								Helm: {helmRelease}
+							</button>
+						) : (
+							<Badge
+								variant="outline"
+								className="rounded-sm border-sky-500/30 bg-sky-500/10 px-1.5 py-0 text-[0.625rem] text-sky-300 shadow-none dark:bg-sky-500/15"
+							>
+								Helm: {helmRelease}
+							</Badge>
+						))}
 				</div>
 			</span>
 		</div>

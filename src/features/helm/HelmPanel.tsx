@@ -280,13 +280,17 @@ export function HelmPanel({
 
 	useEffect(() => {
 		if (!targetRelease || !releases) return;
-		const match = releases.find(
+		const matches = releases.filter(
 			(release) =>
 				release.name === targetRelease.name &&
 				(!targetRelease.namespace ||
 					release.namespace === targetRelease.namespace),
 		);
-		if (match) onReleaseSelect(match);
+		if (targetRelease.namespace) {
+			if (matches[0]) onReleaseSelect(matches[0]);
+		} else if (matches.length === 1) {
+			onReleaseSelect(matches[0]);
+		}
 		onTargetReleaseResolved?.();
 	}, [onReleaseSelect, onTargetReleaseResolved, releases, targetRelease]);
 

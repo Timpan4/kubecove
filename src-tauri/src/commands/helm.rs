@@ -475,6 +475,11 @@ fn values_summary(config: Option<&serde_json::Value>) -> HelmValuesSummary {
                 top_level_keys,
             }
         }
+        Some(serde_json::Value::Null) => HelmValuesSummary {
+            has_values: false,
+            value_count: 0,
+            top_level_keys: Vec::new(),
+        },
         Some(_) => HelmValuesSummary {
             has_values: true,
             value_count: 1,
@@ -667,6 +672,15 @@ mod tests {
         assert!(summary.has_values);
         assert_eq!(summary.value_count, 2);
         assert_eq!(summary.top_level_keys, vec!["image", "replicaCount"]);
+    }
+
+    #[test]
+    fn values_summary_treats_explicit_null_as_empty() {
+        let summary = values_summary(Some(&serde_json::Value::Null));
+
+        assert!(!summary.has_values);
+        assert_eq!(summary.value_count, 0);
+        assert!(summary.top_level_keys.is_empty());
     }
 
     #[test]
