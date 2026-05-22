@@ -70,6 +70,12 @@ function timestampMs(value: string | undefined): number {
 	return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
 }
 
+function validTimestampMs(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const parsed = Date.parse(value);
+	return Number.isNaN(parsed) ? undefined : parsed;
+}
+
 function pushUnique(
 	items: IncidentTimelineItem[],
 	seen: Set<string>,
@@ -181,7 +187,7 @@ export function buildIncidentTimeline({
 
 	for (const event of events.filter((item) => item.eventType === "Warning")) {
 		pushUnique(items, seen, {
-			id: `event:${event.reason}:${eventTimestamp(event) ?? event.message}`,
+			id: `event:${event.reason}:${eventTimestamp(event) ?? "unknown"}:${event.message}`,
 			source: "event",
 			tone: "warning",
 			title: `Warning ${event.reason}`,
@@ -217,8 +223,12 @@ export function buildIncidentTimeline({
 	}
 
 	const latestLog = [...logLines]
-		.filter((line) => line.timestamp)
-		.sort((a, b) => timestampMs(b.timestamp) - timestampMs(a.timestamp))[0];
+		.filter((line) => validTimestampMs(line.timestamp) !== undefined)
+		.sort(
+			(a, b) =>
+				(validTimestampMs(b.timestamp) ?? 0) -
+				(validTimestampMs(a.timestamp) ?? 0),
+		)[0];
 	if (latestLog?.timestamp) {
 		pushUnique(items, seen, {
 			id: `log:${latestLog.timestamp}:${latestLog.index}`,

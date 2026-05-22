@@ -241,6 +241,51 @@ describe("incident workflow helpers", () => {
 		expect(timeline[0].id).toBe("condition:Ready:False");
 	});
 
+	test("incident timeline keeps same-time warning events with distinct messages", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource(),
+			conditions: [],
+			events: [
+				event({
+					eventType: "Warning",
+					reason: "FailedMount",
+					message: "secret missing",
+					lastSeenAt: "2026-05-19T10:00:00.000Z",
+				}),
+				event({
+					eventType: "Warning",
+					reason: "FailedMount",
+					message: "configmap missing",
+					lastSeenAt: "2026-05-19T10:00:00.000Z",
+				}),
+			],
+		});
+
+		expect(timeline.map((item) => item.detail)).toEqual([
+			"configmap missing",
+			"secret missing",
+		]);
+	});
+
+	test("incident timeline ignores malformed log timestamps for latest sample", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource(),
+			conditions: [],
+			events: [],
+			logLines: [
+				parseLogLine('time="not-a-time" malformed', 0),
+				parseLogLine("2026-05-19T10:00:00Z valid", 1),
+			],
+		});
+
+		expect(timeline).toHaveLength(1);
+		expect(timeline[0]).toMatchObject({
+			source: "log",
+			detail: "valid",
+			timestamp: "2026-05-19T10:00:00Z",
+		});
+	});
+
 	test("incident timeline skips ready false for succeeded pods", () => {
 		const timeline = buildIncidentTimeline({
 			resource: resource({ status: "Succeeded", ready: "False" }),
