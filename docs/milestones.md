@@ -81,6 +81,7 @@ Goal: make existing read-only browser surfaces useful during troubleshooting.
 - [x] Add unhealthy investigation filtering across the resource browser.
 - [x] Keep table, map, and detail selection synchronized for incident inspection.
 - [x] Add compact incident summaries to resource details.
+- [x] Add incident triage timelines to resource details.
 - [x] Prioritize warning events and preserve pod log container selection while details refresh.
 - [x] Add workspace overview shortcuts for unhealthy, warning, and restarted resources.
 

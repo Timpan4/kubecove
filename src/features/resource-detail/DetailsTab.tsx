@@ -38,6 +38,7 @@ import {
 import { StatusChip } from "./DetailStatusField";
 import { IncidentSignalValue } from "./IncidentSignalValue";
 import { IncidentSummary } from "./IncidentSummary";
+import { IncidentTimeline } from "./IncidentTimeline";
 
 interface DetailsTabProps {
 	resource: ResourceSummary;
@@ -415,6 +416,13 @@ export function DetailsTab({
 				signals={signals}
 				eventsLoading={eventsLoading}
 				eventsError={eventsError}
+			/>
+
+			<IncidentTimeline
+				resource={resource}
+				conditions={conditionRows}
+				events={events ?? []}
+				containers={signalContainers}
 			/>
 
 			<div className="mb-4 grid grid-cols-1 gap-2">

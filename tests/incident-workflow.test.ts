@@ -5,7 +5,9 @@ import {
 	type ConditionRow,
 	type ContainerStatusRow,
 } from "../src/features/resource-detail/helpers";
+import { buildIncidentTimeline } from "../src/features/resource-detail/incident-timeline";
 import { sortIncidentEvents } from "../src/features/resource-detail/incident-events";
+import { parseLogLine } from "../src/features/resource-detail/log-helpers";
 import { filterResourcesByHealth } from "../src/features/resources/helpers";
 
 function resource(overrides: Partial<ResourceSummary> = {}): ResourceSummary {
@@ -132,5 +134,98 @@ describe("incident workflow helpers", () => {
 			"FailedMount",
 			"BackOff",
 		]);
+	});
+
+	test("incident timeline orders events, conditions, restarts, and log metadata", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource({ status: "Pending", ready: "false" }),
+			conditions: [
+				{
+					type: "Ready",
+					status: "False",
+					reason: "ContainersNotReady",
+					lastTransitionTime: "2026-05-19T09:55:00.000Z",
+				},
+			],
+			events: [
+				event({
+					eventType: "Warning",
+					reason: "BackOff",
+					message: "Back-off restarting failed container",
+					count: 3,
+					lastSeenAt: "2026-05-19T09:59:00.000Z",
+				}),
+				event({
+					eventType: "Normal",
+					reason: "Pulled",
+					lastSeenAt: "2026-05-19T09:58:00.000Z",
+				}),
+			],
+			containers: [
+				{
+					name: "api",
+					type: "container",
+					ready: false,
+					restartCount: 2,
+					state: "waiting",
+					reason: "CrashLoopBackOff",
+					lastReason: "Error",
+					lastExitCode: 1,
+					lastFinishedAt: "2026-05-19T09:57:00.000Z",
+				},
+			],
+			logLines: [
+				parseLogLine("2026-05-19T10:00:00Z request failed", 0),
+				parseLogLine("untimestamped", 1),
+			],
+		});
+
+		expect(timeline.map((item) => item.source)).toEqual([
+			"condition",
+			"restart",
+			"event",
+			"log",
+			"container",
+			"status",
+			"status",
+		]);
+		expect(timeline.find((item) => item.source === "event")?.detail).toContain(
+			"3 repeats",
+		);
+		expect(timeline.find((item) => item.source === "log")?.detail).toBe(
+			"request failed",
+		);
+	});
+
+	test("incident timeline deduplicates repeated condition entries", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource(),
+			conditions: [
+				{ type: "Ready", status: "False", reason: "A" },
+				{ type: "Ready", status: "False", reason: "A" },
+			],
+			events: [],
+		});
+
+		expect(timeline).toHaveLength(1);
+		expect(timeline[0].id).toBe("condition:Ready:False");
+	});
+
+	test("incident timeline stays empty for healthy resources", () => {
+		expect(
+			buildIncidentTimeline({
+				resource: resource({ status: "Running", ready: "true", restarts: 0 }),
+				conditions: [{ type: "Ready", status: "True" }],
+				events: [],
+				containers: [
+					{
+						name: "api",
+						ready: true,
+						restartCount: 0,
+						state: "running",
+					},
+				],
+			}),
+		).toEqual([]);
 	});
 });
