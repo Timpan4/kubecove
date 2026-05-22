@@ -3,6 +3,7 @@ import {
 	collectInspectionRisks,
 	highestRisk,
 	riskSummaryLabel,
+	subjectListLabel,
 	subjectLabel,
 } from "../src/features/rbac/risk";
 import type { RbacInspectionSummary, RbacRiskIndicator } from "../src/lib/types";
@@ -34,6 +35,19 @@ describe("RBAC risk helpers", () => {
 			"ServiceAccount:payments/api",
 		);
 		expect(subjectLabel({ kind: "User", name: "alice" })).toBe("User:alice");
+	});
+
+	test("summarizes truncated subject lists", () => {
+		expect(subjectListLabel([])).toBe("-");
+		expect(
+			subjectListLabel([
+				{ kind: "User", name: "alice" },
+				{ kind: "User", name: "bob" },
+				{ kind: "User", name: "carol" },
+				{ kind: "User", name: "dave" },
+				{ kind: "User", name: "erin" },
+			]),
+		).toBe("User:alice, User:bob, User:carol, User:dave, +1 more");
 	});
 
 	test("deduplicates inspection risks from all RBAC object groups", () => {

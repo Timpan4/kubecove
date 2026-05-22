@@ -43,14 +43,16 @@ pub(super) fn rule_risks(verbs: &[String], resources: &[String]) -> Vec<RbacRisk
             "Rule can read or change Secret resources.",
         ));
     }
-    if resource_set.iter().any(|resource| {
-        matches!(
-            *resource,
-            "roles" | "rolebindings" | "clusterroles" | "clusterrolebindings"
-        )
-    }) && verb_set
-        .iter()
-        .any(|verb| matches!(*verb, "create" | "update" | "patch" | "delete"))
+    if (has_wildcard_resource
+        || resource_set.iter().any(|resource| {
+            matches!(
+                *resource,
+                "roles" | "rolebindings" | "clusterroles" | "clusterrolebindings"
+            )
+        }))
+        && verb_set
+            .iter()
+            .any(|verb| matches!(*verb, "create" | "update" | "patch" | "delete"))
     {
         risks.push(risk(
             "medium",

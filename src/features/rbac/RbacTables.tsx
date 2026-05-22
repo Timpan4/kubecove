@@ -15,7 +15,7 @@ import type {
 	RbacRoleSummary,
 	ServiceAccountSummary,
 } from "@/lib/types";
-import { riskSummaryLabel, riskTone, subjectLabel } from "./risk";
+import { riskSummaryLabel, riskTone, subjectListLabel } from "./risk";
 
 const TABLE_CLASS =
 	"w-full table-fixed border-collapse text-sm [&_th]:border-b-2 [&_th]:px-3 [&_th]:py-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:text-muted-foreground [&_td]:border-b [&_td]:px-3 [&_td]:py-3";
@@ -68,7 +68,7 @@ export function NamespaceAccessTable({
 						<TableCell>{row.roles}</TableCell>
 						<TableCell>{row.roleBindings}</TableCell>
 						<TableCell className={MUTED_CELL}>
-							{row.boundSubjects.slice(0, 4).map(subjectLabel).join(", ") || "-"}
+							{subjectListLabel(row.boundSubjects)}
 						</TableCell>
 						<TableCell>
 							<RiskBadges risks={row.risks} />
@@ -136,7 +136,7 @@ export function BindingsTable({ rows }: { rows: RbacBindingSummary[] }) {
 							{row.roleRefKind}/{row.roleRefName}
 						</TableCell>
 						<TableCell className={MUTED_CELL}>
-							{row.subjects.slice(0, 4).map(subjectLabel).join(", ") || "-"}
+							{subjectListLabel(row.subjects)}
 						</TableCell>
 						<TableCell>
 							<RiskBadges risks={row.risks} />

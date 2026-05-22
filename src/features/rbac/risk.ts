@@ -44,6 +44,16 @@ export function subjectLabel(subject: {
 	return `${subject.kind}:${subject.name}`;
 }
 
+export function subjectListLabel(
+	subjects: Array<{ kind: string; name: string; namespace?: string }>,
+	limit = 4,
+): string {
+	if (subjects.length === 0) return "-";
+	const visible = subjects.slice(0, limit).map(subjectLabel).join(", ");
+	if (subjects.length <= limit) return visible;
+	return `${visible}, +${subjects.length - limit} more`;
+}
+
 export function uniqueRisks(risks: RbacRiskIndicator[]): RbacRiskIndicator[] {
 	const seen = new Set<string>();
 	return risks.filter((risk) => {

@@ -14,10 +14,11 @@ fn flags_wildcard_and_secrets_rules() {
 
 #[test]
 fn flags_wildcard_resources_as_secrets_access() {
-    let risks = rule_risks(&values(&["get"]), &values(&["*"]));
+    let risks = rule_risks(&values(&["get", "update"]), &values(&["*"]));
 
     assert!(risks.iter().any(|risk| risk.label == "Wildcard resources"));
     assert!(risks.iter().any(|risk| risk.label == "Secrets access"));
+    assert!(risks.iter().any(|risk| risk.label == "RBAC write access"));
 }
 
 #[test]

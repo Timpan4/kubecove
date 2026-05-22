@@ -159,7 +159,8 @@ export function RbacPanel({
 		data.roles.length === 0 &&
 		data.clusterRoles.length === 0 &&
 		data.roleBindings.length === 0 &&
-		data.clusterRoleBindings.length === 0
+		data.clusterRoleBindings.length === 0 &&
+		data.namespaceAccess.length === 0
 	) {
 		return <EmptyState />;
 	}
