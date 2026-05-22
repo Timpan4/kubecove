@@ -251,6 +251,42 @@ describe("incident workflow helpers", () => {
 		expect(timeline).toEqual([]);
 	});
 
+	test("incident timeline skips completed readiness conditions for succeeded pods", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource({ status: "Succeeded", ready: "False" }),
+			conditions: [
+				{ type: "Ready", status: "False", reason: "PodCompleted" },
+				{ type: "ContainersReady", status: "False", reason: "PodCompleted" },
+				{ type: "PodReadyToStartContainers", status: "False" },
+			],
+			events: [],
+		});
+
+		expect(timeline).toEqual([]);
+	});
+
+	test("incident timeline keeps disruption target conditions", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource(),
+			conditions: [
+				{
+					type: "DisruptionTarget",
+					status: "True",
+					reason: "EvictionByEvictionAPI",
+					lastTransitionTime: "2026-05-19T09:50:00.000Z",
+				},
+			],
+			events: [],
+		});
+
+		expect(timeline).toHaveLength(1);
+		expect(timeline[0]).toMatchObject({
+			source: "condition",
+			tone: "info",
+			timestamp: "2026-05-19T09:50:00.000Z",
+		});
+	});
+
 	test("incident timeline stays empty for healthy resources", () => {
 		expect(
 			buildIncidentTimeline({

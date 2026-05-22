@@ -46,6 +46,20 @@ function isSucceededResource(resource: ResourceSummary): boolean {
 	return resource.status?.toLowerCase() === "succeeded";
 }
 
+function isCompletedReadinessCondition(condition: ConditionRow): boolean {
+	if (
+		condition.reason === "PodCompleted" &&
+		["Ready", "ContainersReady"].includes(condition.type)
+	) {
+		return true;
+	}
+	return condition.type === "PodReadyToStartContainers";
+}
+
+function isDisruptionTargetCondition(condition: ConditionRow): boolean {
+	return condition.type === "DisruptionTarget" && condition.status === "True";
+}
+
 function eventTimestamp(event: ResourceEventSummary): string | undefined {
 	return event.lastSeenAt;
 }
@@ -143,11 +157,22 @@ export function buildIncidentTimeline({
 	}
 
 	for (const condition of conditions) {
-		if (condition.status === "True") continue;
+		const disruptionTarget = isDisruptionTargetCondition(condition);
+		if (
+			isSucceededResource(resource) &&
+			isCompletedReadinessCondition(condition)
+		) {
+			continue;
+		}
+		if (condition.status === "True" && !disruptionTarget) continue;
 		pushUnique(items, seen, {
 			id: `condition:${condition.type}:${condition.status}`,
 			source: "condition",
-			tone: condition.status === "False" ? "error" : "warning",
+			tone: disruptionTarget
+				? "info"
+				: condition.status === "False"
+					? "error"
+					: "warning",
 			title: `${condition.type} ${condition.status}`,
 			detail: [condition.reason, condition.message].filter(Boolean).join(" · "),
 			timestamp: condition.lastTransitionTime,
