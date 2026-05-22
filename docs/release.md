@@ -41,6 +41,47 @@ In-app updates are built for macOS, Windows, and Linux from the same release wor
 Release notes in GitHub Releases should mirror the matching version section in
 the root `CHANGELOG.md`.
 
+## Pre-Release Smoke Test
+
+Before cutting a beta release, run the verification baseline and a manual Tauri
+smoke test against a readable local cluster. Record the exact context and result
+in the release PR or release notes.
+
+Baseline checks:
+
+```sh
+bun run typecheck
+bun test
+bun run rust:test
+bun run rust:check
+```
+
+Manual Tauri path:
+
+1. Start the desktop app with `bun run tauri dev`.
+2. Confirm the workspace launcher loads local kube contexts without exposing raw
+   kubeconfig contents.
+3. Select a readable context and confirm namespaces load.
+4. Open a saved or newly created workspace.
+5. Open the resource browser and confirm resources load for the saved scope.
+6. Select a resource and confirm details, read-only YAML, events, and logs
+   surfaces behave as expected when available.
+7. Check Argo CD and Helm sections when the cluster provides matching metadata.
+
+Most recent partial smoke, 2026-05-22:
+
+- `bun run typecheck`, `bun test`, `bun run rust:test`, and `bun run rust:check`
+  passed locally after repairing a stale `node_modules` install with
+  `bun install --force`.
+- `bun run tauri dev` launched KubeCove v0.2.1 and served Vite on
+  `http://localhost:1420/`.
+- The Tauri desktop window loaded the readable `admin@solid-k8s` context and
+  listed namespaces including `alloy`, `argocd`, `cert-manager`, `default`,
+  `kube-system`, `monitoring`, and `traefik`.
+- The full workspace-open, resource-browser, resource-detail, YAML, events,
+  logs, Argo, and Helm click-through still needs human confirmation before the
+  Milestone 7 smoke-test checkbox is marked complete.
+
 ## Publishing Checklist
 
 - Confirm the release contains macOS, Windows, and Linux assets.
