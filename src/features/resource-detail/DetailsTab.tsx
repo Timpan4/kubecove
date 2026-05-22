@@ -39,6 +39,7 @@ import { StatusChip } from "./DetailStatusField";
 import { IncidentSignalValue } from "./IncidentSignalValue";
 import { IncidentSummary } from "./IncidentSummary";
 import { IncidentTimeline } from "./IncidentTimeline";
+import type { ParsedLogLine } from "./log-helpers";
 
 interface DetailsTabProps {
 	resource: ResourceSummary;
@@ -50,6 +51,7 @@ interface DetailsTabProps {
 	events: ResourceEventSummary[] | undefined;
 	eventsLoading: boolean;
 	eventsError: boolean;
+	logLines?: ParsedLogLine[];
 	onOpenHelmRelease?: (releaseName: string, namespace?: string | null) => void;
 }
 
@@ -384,6 +386,7 @@ export function DetailsTab({
 	events,
 	eventsLoading,
 	eventsError,
+	logLines,
 	onOpenHelmRelease,
 }: DetailsTabProps) {
 	const containerRows = useMemo(
@@ -423,6 +426,7 @@ export function DetailsTab({
 				conditions={conditionRows}
 				events={events ?? []}
 				containers={signalContainers}
+				logLines={logLines}
 			/>
 
 			<div className="mb-4 grid grid-cols-1 gap-2">

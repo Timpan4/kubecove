@@ -9,6 +9,7 @@ import {
 } from "./incident-timeline";
 import type { ResourceEventSummary, ResourceSummary } from "../../lib/types";
 import type { ConditionRow, ContainerStatusRow } from "./helpers";
+import type { ParsedLogLine } from "./log-helpers";
 import { DETAIL_SECTION_CLASS, DETAIL_SECTION_TITLE_CLASS } from "./constants";
 
 interface IncidentTimelineProps {
@@ -16,6 +17,7 @@ interface IncidentTimelineProps {
 	conditions: ConditionRow[];
 	events: ResourceEventSummary[];
 	containers?: ContainerStatusRow[];
+	logLines?: ParsedLogLine[];
 }
 
 function toneClassName(tone: IncidentTimelineTone): string {
@@ -68,12 +70,14 @@ export function IncidentTimeline({
 	conditions,
 	events,
 	containers,
+	logLines,
 }: IncidentTimelineProps) {
 	const items = buildIncidentTimeline({
 		resource,
 		conditions,
 		events,
 		containers,
+		logLines,
 	});
 
 	return (

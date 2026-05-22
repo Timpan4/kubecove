@@ -42,6 +42,10 @@ function isBadStatus(status: string | undefined): boolean {
 	].includes(status?.toLowerCase() ?? "");
 }
 
+function isSucceededResource(resource: ResourceSummary): boolean {
+	return resource.status?.toLowerCase() === "succeeded";
+}
+
 function eventTimestamp(event: ResourceEventSummary): string | undefined {
 	return event.lastSeenAt;
 }
@@ -126,7 +130,10 @@ export function buildIncidentTimeline({
 			title: `Status ${resource.status}`,
 		});
 	}
-	if (resource.ready?.toLowerCase() === "false") {
+	if (
+		resource.ready?.toLowerCase() === "false" &&
+		!isSucceededResource(resource)
+	) {
 		pushUnique(items, seen, {
 			id: "status:ready:false",
 			source: "status",

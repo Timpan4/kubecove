@@ -241,6 +241,16 @@ describe("incident workflow helpers", () => {
 		expect(timeline[0].id).toBe("condition:Ready:False");
 	});
 
+	test("incident timeline skips ready false for succeeded pods", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource({ status: "Succeeded", ready: "False" }),
+			conditions: [],
+			events: [],
+		});
+
+		expect(timeline).toEqual([]);
+	});
+
 	test("incident timeline stays empty for healthy resources", () => {
 		expect(
 			buildIncidentTimeline({
