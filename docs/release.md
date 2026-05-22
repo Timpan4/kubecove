@@ -43,9 +43,9 @@ the root `CHANGELOG.md`.
 
 ## Pre-Release Smoke Test
 
-Before cutting a beta release, run the verification baseline and a manual Tauri
-smoke test against a readable local cluster. Record the exact context and result
-in the release PR or release notes.
+Use automated checks during feature PRs. After the current seven-PR roadmap has
+merged, run the manual Tauri smoke test as a final release gate before cutting a
+beta. Record the exact context and result in the release PR or release notes.
 
 Baseline checks:
 
@@ -79,8 +79,8 @@ Most recent partial smoke, 2026-05-22:
   listed namespaces including `alloy`, `argocd`, `cert-manager`, `default`,
   `kube-system`, `monitoring`, and `traefik`.
 - The full workspace-open, resource-browser, resource-detail, YAML, events,
-  logs, Argo, and Helm click-through still needs human confirmation before the
-  Milestone 7 smoke-test checkbox is marked complete.
+  logs, Argo, and Helm click-through is deferred until after the seven roadmap
+  PRs merge.
 
 ## Publishing Checklist
 
