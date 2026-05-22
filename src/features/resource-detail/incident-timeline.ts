@@ -95,6 +95,15 @@ function shouldAddContainerState(container: ContainerStatusRow): boolean {
 	return container.state === "terminated" && container.exitCode !== 0;
 }
 
+function containerStateTimestamp(
+	container: ContainerStatusRow,
+): string | undefined {
+	if (container.state === "terminated") {
+		return container.finishedAt ?? container.startedAt;
+	}
+	return container.startedAt ?? container.finishedAt;
+}
+
 export function buildIncidentTimeline({
 	resource,
 	conditions,
@@ -115,7 +124,6 @@ export function buildIncidentTimeline({
 				? "error"
 				: "warning",
 			title: `Status ${resource.status}`,
-			timestamp: resource.createdAt,
 		});
 	}
 	if (resource.ready?.toLowerCase() === "false") {
@@ -124,7 +132,6 @@ export function buildIncidentTimeline({
 			source: "status",
 			tone: "error",
 			title: "Ready False",
-			timestamp: resource.createdAt,
 		});
 	}
 
@@ -172,7 +179,7 @@ export function buildIncidentTimeline({
 				tone: containerStateTone(container),
 				title: `${container.name} ${container.state}`,
 				detail: detail || undefined,
-				timestamp: container.startedAt ?? container.finishedAt,
+				timestamp: containerStateTimestamp(container),
 			});
 		}
 	}

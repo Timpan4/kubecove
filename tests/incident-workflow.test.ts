@@ -195,6 +195,36 @@ describe("incident workflow helpers", () => {
 		expect(timeline.find((item) => item.source === "log")?.detail).toBe(
 			"request failed",
 		);
+		expect(
+			timeline
+				.filter((item) => item.source === "status")
+				.every((item) => item.timestamp === undefined),
+		).toBe(true);
+	});
+
+	test("incident timeline timestamps terminated containers at finish time", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource(),
+			conditions: [],
+			events: [],
+			containers: [
+				{
+					name: "worker",
+					ready: false,
+					restartCount: 0,
+					state: "terminated",
+					exitCode: 1,
+					startedAt: "2026-05-19T09:00:00.000Z",
+					finishedAt: "2026-05-19T09:45:00.000Z",
+				},
+			],
+		});
+
+		expect(timeline).toHaveLength(1);
+		expect(timeline[0]).toMatchObject({
+			source: "container",
+			timestamp: "2026-05-19T09:45:00.000Z",
+		});
 	});
 
 	test("incident timeline deduplicates repeated condition entries", () => {
