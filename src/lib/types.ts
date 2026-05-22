@@ -278,7 +278,28 @@ export interface HelmReleaseDetails {
 	summary: HelmReleaseSummary;
 	yaml: string;
 	metadata: Record<string, unknown>;
+	valuesSummary: HelmValuesSummary;
+	manifestSummary: HelmManifestSummary;
 	release?: Record<string, unknown>;
+}
+
+export interface HelmValuesSummary {
+	hasValues: boolean;
+	topLevelKeys: string[];
+	valueCount: number;
+}
+
+export interface HelmManifestSummary {
+	resourceCount: number;
+	resources: HelmManifestResourceSummary[];
+	truncated: boolean;
+}
+
+export interface HelmManifestResourceSummary {
+	apiVersion?: string;
+	kind?: string;
+	name?: string;
+	namespace?: string;
 }
 
 export type RbacRiskLevel = "low" | "medium" | "high";

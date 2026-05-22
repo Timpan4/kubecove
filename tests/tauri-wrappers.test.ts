@@ -132,6 +132,23 @@ describe("typed Tauri wrappers", () => {
 			summary: release,
 			yaml: "kind: Secret",
 			metadata: { name: release.storageName },
+			valuesSummary: {
+				hasValues: true,
+				topLevelKeys: ["image"],
+				valueCount: 1,
+			},
+			manifestSummary: {
+				resourceCount: 1,
+				resources: [
+					{
+						apiVersion: "apps/v1",
+						kind: "Deployment",
+						name: "payments",
+						namespace: "payments",
+					},
+				],
+				truncated: false,
+			},
 		};
 		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
 		const client = {

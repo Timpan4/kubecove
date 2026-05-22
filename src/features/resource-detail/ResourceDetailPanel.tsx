@@ -28,11 +28,13 @@ import { YamlTab } from "./YamlTab";
 interface ResourceDetailPanelProps {
 	resource: ResourceSummary;
 	onClose: () => void;
+	onOpenHelmRelease?: (releaseName: string, namespace?: string | null) => void;
 }
 
 export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 	resource,
 	onClose,
+	onOpenHelmRelease,
 }: ResourceDetailPanelProps) {
 	const [activeTab, setActiveTab] = useState<Tab>("details");
 	const [selectedContainer, setSelectedContainer] = useState("");
@@ -182,6 +184,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 							events={events}
 							eventsLoading={eventsQuery.isLoading}
 							eventsError={eventsQuery.isError}
+							onOpenHelmRelease={onOpenHelmRelease}
 						/>
 					</TabsContent>
 					<TabsContent value="events" className="m-0">

@@ -2,10 +2,28 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryKeys } from "@/lib/queryKeys";
-import { createTauriClient, getHelmReleaseDetails } from "@/lib/tauri";
-import type { HelmReleaseSummary } from "@/lib/types";
+import {
+	createTauriClient,
+	getHelmReleaseDetails,
+	listResources,
+	type TauriClient,
+} from "@/lib/tauri";
+import {
+	SUPPORTED_KINDS,
+	type HelmReleaseSummary,
+	type ResourceSummary,
+} from "@/lib/types";
 import {
 	DetailErrorState,
 	DetailField,
@@ -18,8 +36,13 @@ import {
 	JSON_BLOCK_CLASS,
 	YAML_BLOCK_CLASS,
 } from "@/features/argo/ArgoDetailShared";
+import {
+	helmReleaseResourceLabel,
+	helmStatusTone,
+	resourcesOwnedByHelmRelease,
+} from "./helpers";
 
-type Tab = "details" | "yaml";
+type Tab = "details" | "resources" | "yaml";
 
 const PANEL_CLASS =
 	"flex h-full min-w-0 flex-col overflow-hidden border-l bg-card";
@@ -30,13 +53,6 @@ const PANEL_TABS_CLASS = "flex shrink-0 border-b";
 const PANEL_TAB_CLASS =
 	"rounded-none border-b-2 border-transparent bg-transparent px-4 py-2 text-[13px] text-muted-foreground shadow-none transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none";
 const PANEL_BODY_CLASS = "flex-1 overflow-y-auto p-4";
-
-function statusTone(status: string | undefined) {
-	if (status === "deployed" || status === "superseded") return "success";
-	if (status === "failed" || status === "uninstalled") return "error";
-	if (status === "pending-install" || status === "pending-upgrade") return "warning";
-	return "neutral";
-}
 
 function useHelmReleaseDetails(release: HelmReleaseSummary) {
 	const client = useMemo(() => createTauriClient(), []);
@@ -49,6 +65,44 @@ function useHelmReleaseDetails(release: HelmReleaseSummary) {
 		),
 		queryFn: () => getHelmReleaseDetails(client, release),
 		enabled: !!release.cluster && !!release.namespace && !!release.storageName,
+	});
+}
+
+async function listHelmOwnedResources(
+	client: TauriClient,
+	release: HelmReleaseSummary,
+): Promise<ResourceSummary[]> {
+	const results = await Promise.allSettled(
+		SUPPORTED_KINDS.map((kind) =>
+			listResources(client, release.cluster, kind, release.namespace),
+		),
+	);
+	const rejected = results.filter(
+		(result): result is PromiseRejectedResult => result.status === "rejected",
+	);
+	if (rejected.length > 0) {
+		throw new Error("Failed to list Helm-owned resources");
+	}
+
+	const fulfilled = results.filter(
+		(result): result is PromiseFulfilledResult<ResourceSummary[]> =>
+			result.status === "fulfilled",
+	);
+	const resources = fulfilled.flatMap((result) => result.value);
+	return resourcesOwnedByHelmRelease(resources, release);
+}
+
+function useHelmOwnedResources(release: HelmReleaseSummary) {
+	const client = useMemo(() => createTauriClient(), []);
+	return useQuery({
+		queryKey: queryKeys.helmReleaseResources(
+			release.cluster,
+			release.namespace,
+			release.name,
+		),
+		queryFn: () => listHelmOwnedResources(client, release),
+		enabled: !!release.cluster && !!release.namespace && !!release.name,
+		staleTime: 30_000,
 	});
 }
 
@@ -83,7 +137,7 @@ function HelmReleaseDetail({ release }: { release: HelmReleaseSummary }) {
 				<DetailStatusField
 					value={details.summary.status}
 					label="Status"
-					tone={statusTone(details.summary.status)}
+					tone={helmStatusTone(details.summary.status)}
 				/>
 			</div>
 
@@ -100,6 +154,58 @@ function HelmReleaseDetail({ release }: { release: HelmReleaseSummary }) {
 				<DetailField label="Updated" value={details.summary.updatedAt} />
 			</div>
 
+			<div className={DETAIL_SECTION_CLASS}>
+				<div className={DETAIL_SECTION_TITLE_CLASS}>Values</div>
+				<DetailField
+					label="Top-level keys"
+					value={
+						details.valuesSummary.topLevelKeys.length > 0
+							? details.valuesSummary.topLevelKeys.join(", ")
+							: details.valuesSummary.hasValues
+								? `${details.valuesSummary.valueCount} non-object value set`
+								: "No decoded values"
+					}
+				/>
+			</div>
+
+			<div className={DETAIL_SECTION_CLASS}>
+				<div className={DETAIL_SECTION_TITLE_CLASS}>Manifest</div>
+				<DetailField
+					label="Resources"
+					value={
+						details.manifestSummary.resourceCount > 0
+							? `${details.manifestSummary.resourceCount}${details.manifestSummary.truncated ? "+" : ""}`
+							: "No decoded manifest resources"
+					}
+				/>
+				{details.manifestSummary.resources.length > 0 && (
+					<div className="mt-2 overflow-hidden rounded-md border">
+						<Table className="w-full table-fixed text-xs">
+							<TableHeader>
+								<TableRow>
+									<TableHead>Kind</TableHead>
+									<TableHead>Name</TableHead>
+									<TableHead>Namespace</TableHead>
+									<TableHead>API</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{details.manifestSummary.resources.slice(0, 8).map((resource) => (
+									<TableRow
+										key={`${resource.apiVersion ?? ""}:${resource.kind ?? ""}:${resource.namespace ?? ""}:${resource.name ?? ""}`}
+									>
+										<TableCell>{resource.kind ?? "-"}</TableCell>
+										<TableCell>{resource.name ?? "-"}</TableCell>
+										<TableCell>{resource.namespace ?? "-"}</TableCell>
+										<TableCell>{resource.apiVersion ?? "-"}</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</div>
+				)}
+			</div>
+
 			{details.release && Object.keys(details.release).length > 0 && (
 				<div className={DETAIL_SECTION_CLASS}>
 					<div className={DETAIL_SECTION_TITLE_CLASS}>Decoded Metadata</div>
@@ -111,6 +217,68 @@ function HelmReleaseDetail({ release }: { release: HelmReleaseSummary }) {
 
 			<DetailMetadata metadata={details.metadata} />
 		</>
+	);
+}
+
+function HelmReleaseResources({ release }: { release: HelmReleaseSummary }) {
+	const {
+		data: resources,
+		isLoading,
+		isError,
+		error,
+	} = useHelmOwnedResources(release);
+
+	if (isLoading) {
+		return (
+			<div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
+				<span className="inline-flex items-center gap-2">
+					<Spinner className="size-4" />
+					Loading owned resources...
+				</span>
+			</div>
+		);
+	}
+	if (isError) {
+		return <DetailErrorState title="Failed to load resources" error={error} />;
+	}
+	if (!resources || resources.length === 0) {
+		return (
+			<div className={DETAIL_HINT_CLASS}>
+				No resources with matching Helm ownership labels were found.
+			</div>
+		);
+	}
+
+	return (
+		<div className={DETAIL_SECTION_CLASS}>
+			<div className={DETAIL_SECTION_TITLE_CLASS}>
+				Owned resources ({resources.length})
+			</div>
+			<div className="overflow-hidden rounded-md border">
+				<Table className="w-full table-fixed text-xs">
+					<TableHeader>
+						<TableRow>
+							<TableHead>Resource</TableHead>
+							<TableHead>Status</TableHead>
+							<TableHead>Ready</TableHead>
+							<TableHead>Age</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{resources.map((resource) => (
+							<TableRow
+								key={`${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`}
+							>
+								<TableCell>{helmReleaseResourceLabel(resource)}</TableCell>
+								<TableCell>{resource.status ?? "-"}</TableCell>
+								<TableCell>{resource.ready ?? "-"}</TableCell>
+								<TableCell>{resource.age}</TableCell>
+							</TableRow>
+						))}
+					</TableBody>
+				</Table>
+			</div>
+		</div>
 	);
 }
 
@@ -177,6 +345,9 @@ export function HelmDetailPanel({
 						<TabsTrigger className={PANEL_TAB_CLASS} value="details">
 							Details
 						</TabsTrigger>
+						<TabsTrigger className={PANEL_TAB_CLASS} value="resources">
+							Resources
+						</TabsTrigger>
 						<TabsTrigger className={PANEL_TAB_CLASS} value="yaml">
 							YAML
 						</TabsTrigger>
@@ -185,6 +356,9 @@ export function HelmDetailPanel({
 				<div className={PANEL_BODY_CLASS}>
 					<TabsContent value="details" className="m-0">
 						<HelmReleaseDetail release={release} />
+					</TabsContent>
+					<TabsContent value="resources" className="m-0">
+						<HelmReleaseResources release={release} />
 					</TabsContent>
 					<TabsContent value="yaml" className="m-0">
 						<HelmReleaseYaml release={release} />
