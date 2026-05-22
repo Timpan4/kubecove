@@ -11,9 +11,14 @@ import {
 import type { WorkspaceScope } from "@/lib/workspaces";
 import { workspaceScopeContexts } from "@/lib/workspaces";
 
-interface WorkspaceFetchKey {
+export interface WorkspaceFetchKey {
 	kind: ResourceKindSelection;
 	namespace?: string;
+}
+
+export interface WorkspaceFetchPlan {
+	clusterContext: string;
+	requests: ResourceListRequest[];
 }
 
 function isClusterScopedKind(kind: ResourceKindSelection): boolean {
@@ -45,26 +50,42 @@ function fetchKeyRequest({ kind, namespace }: WorkspaceFetchKey): ResourceListRe
 	return { resourceKind: kind, namespace };
 }
 
+export function buildWorkspaceFetchPlans(
+	scope: WorkspaceScope,
+	availableNamespaces?: string[],
+): WorkspaceFetchPlan[] {
+	const contexts = workspaceScopeContexts(scope);
+	return contexts.map((clusterContext) => {
+		const namespaceScope =
+			contexts.length === 1 ? availableNamespaces : undefined;
+		return {
+			clusterContext,
+			requests: buildWorkspaceFetchKeys(scope, namespaceScope).map(fetchKeyRequest),
+		};
+	});
+}
+
 export async function fetchWorkspaceResources(
 	scope: WorkspaceScope,
 	availableNamespaces?: string[],
 ): Promise<ResourceSummary[]> {
 	const client = createTauriClient();
-	const fetchKeys = buildWorkspaceFetchKeys(scope, availableNamespaces);
-	const requests = fetchKeys.map(fetchKeyRequest);
+	const plans = buildWorkspaceFetchPlans(scope, availableNamespaces);
 	const results = await Promise.allSettled(
-		workspaceScopeContexts(scope).map((context) =>
-			listResourceScope(client, context, requests),
+		plans.map((plan) =>
+			listResourceScope(client, plan.clusterContext, plan.requests),
 		),
 	);
+	const failedContexts = results.flatMap((result, index) =>
+		result.status === "rejected" ? [plans[index].clusterContext] : [],
+	);
+	if (failedContexts.length > 0) {
+		throw new Error(
+			`Workspace resources unavailable for ${failedContexts.join(", ")}`,
+		);
+	}
 	const rows = results.flatMap((result) =>
 		result.status === "fulfilled" ? result.value : [],
 	);
-	if (rows.length > 0 || results.every((result) => result.status === "fulfilled")) {
-		return rows;
-	}
-	const firstError = results.find(
-		(result): result is PromiseRejectedResult => result.status === "rejected",
-	);
-	throw firstError?.reason ?? new Error("Workspace resources unavailable");
+	return rows;
 }

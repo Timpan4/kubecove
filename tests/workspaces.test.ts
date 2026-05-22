@@ -9,7 +9,10 @@ import {
 	summarizeWorkspaceScope,
 	workspaceScopeContexts,
 } from "../src/lib/workspaces";
-import { buildWorkspaceFetchKeys } from "../src/features/workspaces/query";
+import {
+	buildWorkspaceFetchKeys,
+	buildWorkspaceFetchPlans,
+} from "../src/features/workspaces/query";
 import type {
 	ClusterContext,
 	ResourceKindSelection,
@@ -198,6 +201,33 @@ describe("workspace helpers", () => {
 
 		expect(buildWorkspaceFetchKeys(workspace.scope, [])).toEqual([
 			{ kind: "Node" },
+		]);
+	});
+
+	test("keeps namespace requests per context for cluster groups", () => {
+		const workspace = createWorkspaceRecord(
+			{
+				name: "Ops",
+				clusterContext: "kind-dev",
+				clusterContexts: ["kind-prod"],
+				namespaces: ["missing"],
+				kinds: ["Pod", "Node"],
+			},
+			"2026-05-16T12:00:00.000Z",
+		);
+
+		expect(buildWorkspaceFetchKeys(workspace.scope, [])).toEqual([
+			{ kind: "Node" },
+		]);
+		expect(buildWorkspaceFetchPlans(workspace.scope, [])).toEqual([
+			{
+				clusterContext: "kind-dev",
+				requests: [{ kind: "Pod", namespace: "missing" }, { kind: "Node" }],
+			},
+			{
+				clusterContext: "kind-prod",
+				requests: [{ kind: "Pod", namespace: "missing" }, { kind: "Node" }],
+			},
 		]);
 	});
 
