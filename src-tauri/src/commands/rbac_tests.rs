@@ -47,7 +47,7 @@ fn summarizes_namespace_subjects_without_duplicates() {
         risks: Vec::new(),
     };
 
-    let summaries = namespace_access_summary("kind-dev", &[], &[], &[binding], &[]);
+    let summaries = namespace_access_summary("kind-dev", &[], &[], &[], &[binding], &[]);
 
     assert_eq!(summaries[0].namespace, "payments");
     assert_eq!(summaries[0].role_bindings, 1);

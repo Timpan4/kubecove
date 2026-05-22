@@ -41,6 +41,7 @@ pub async fn rbac_inspection_from(
     let cluster_role_bindings = list_cluster_role_bindings(client, &cluster_context).await?;
     let namespace_access = namespace_access_summary(
         &cluster_context,
+        &namespaces,
         &service_accounts,
         &roles,
         &role_bindings,
