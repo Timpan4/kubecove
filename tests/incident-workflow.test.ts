@@ -5,7 +5,9 @@ import {
 	type ConditionRow,
 	type ContainerStatusRow,
 } from "../src/features/resource-detail/helpers";
+import { buildIncidentTimeline } from "../src/features/resource-detail/incident-timeline";
 import { sortIncidentEvents } from "../src/features/resource-detail/incident-events";
+import { parseLogLine } from "../src/features/resource-detail/log-helpers";
 import { filterResourcesByHealth } from "../src/features/resources/helpers";
 
 function resource(overrides: Partial<ResourceSummary> = {}): ResourceSummary {
@@ -132,5 +134,219 @@ describe("incident workflow helpers", () => {
 			"FailedMount",
 			"BackOff",
 		]);
+	});
+
+	test("incident timeline orders events, conditions, restarts, and log metadata", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource({ status: "Pending", ready: "false" }),
+			conditions: [
+				{
+					type: "Ready",
+					status: "False",
+					reason: "ContainersNotReady",
+					lastTransitionTime: "2026-05-19T09:55:00.000Z",
+				},
+			],
+			events: [
+				event({
+					eventType: "Warning",
+					reason: "BackOff",
+					message: "Back-off restarting failed container",
+					count: 3,
+					lastSeenAt: "2026-05-19T09:59:00.000Z",
+				}),
+				event({
+					eventType: "Normal",
+					reason: "Pulled",
+					lastSeenAt: "2026-05-19T09:58:00.000Z",
+				}),
+			],
+			containers: [
+				{
+					name: "api",
+					type: "container",
+					ready: false,
+					restartCount: 2,
+					state: "waiting",
+					reason: "CrashLoopBackOff",
+					lastReason: "Error",
+					lastExitCode: 1,
+					lastFinishedAt: "2026-05-19T09:57:00.000Z",
+				},
+			],
+			logLines: [
+				parseLogLine("2026-05-19T10:00:00Z request failed", 0),
+				parseLogLine("untimestamped", 1),
+			],
+		});
+
+		expect(timeline.map((item) => item.source)).toEqual([
+			"condition",
+			"restart",
+			"event",
+			"log",
+			"container",
+			"status",
+			"status",
+		]);
+		expect(timeline.find((item) => item.source === "event")?.detail).toContain(
+			"3 repeats",
+		);
+		expect(timeline.find((item) => item.source === "log")?.detail).toBe(
+			"request failed",
+		);
+		expect(
+			timeline
+				.filter((item) => item.source === "status")
+				.every((item) => item.timestamp === undefined),
+		).toBe(true);
+	});
+
+	test("incident timeline timestamps terminated containers at finish time", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource(),
+			conditions: [],
+			events: [],
+			containers: [
+				{
+					name: "worker",
+					ready: false,
+					restartCount: 0,
+					state: "terminated",
+					exitCode: 1,
+					startedAt: "2026-05-19T09:00:00.000Z",
+					finishedAt: "2026-05-19T09:45:00.000Z",
+				},
+			],
+		});
+
+		expect(timeline).toHaveLength(1);
+		expect(timeline[0]).toMatchObject({
+			source: "container",
+			timestamp: "2026-05-19T09:45:00.000Z",
+		});
+	});
+
+	test("incident timeline deduplicates repeated condition entries", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource(),
+			conditions: [
+				{ type: "Ready", status: "False", reason: "A" },
+				{ type: "Ready", status: "False", reason: "A" },
+			],
+			events: [],
+		});
+
+		expect(timeline).toHaveLength(1);
+		expect(timeline[0].id).toBe("condition:Ready:False");
+	});
+
+	test("incident timeline keeps same-time warning events with distinct messages", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource(),
+			conditions: [],
+			events: [
+				event({
+					eventType: "Warning",
+					reason: "FailedMount",
+					message: "secret missing",
+					lastSeenAt: "2026-05-19T10:00:00.000Z",
+				}),
+				event({
+					eventType: "Warning",
+					reason: "FailedMount",
+					message: "configmap missing",
+					lastSeenAt: "2026-05-19T10:00:00.000Z",
+				}),
+			],
+		});
+
+		expect(timeline.map((item) => item.detail)).toEqual([
+			"configmap missing",
+			"secret missing",
+		]);
+	});
+
+	test("incident timeline ignores malformed log timestamps for latest sample", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource(),
+			conditions: [],
+			events: [],
+			logLines: [
+				parseLogLine('time="not-a-time" malformed', 0),
+				parseLogLine("2026-05-19T10:00:00Z valid", 1),
+			],
+		});
+
+		expect(timeline).toHaveLength(1);
+		expect(timeline[0]).toMatchObject({
+			source: "log",
+			detail: "valid",
+			timestamp: "2026-05-19T10:00:00Z",
+		});
+	});
+
+	test("incident timeline skips ready false for succeeded pods", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource({ status: "Succeeded", ready: "False" }),
+			conditions: [],
+			events: [],
+		});
+
+		expect(timeline).toEqual([]);
+	});
+
+	test("incident timeline skips completed readiness conditions for succeeded pods", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource({ status: "Succeeded", ready: "False" }),
+			conditions: [
+				{ type: "Ready", status: "False", reason: "PodCompleted" },
+				{ type: "ContainersReady", status: "False", reason: "PodCompleted" },
+				{ type: "PodReadyToStartContainers", status: "False" },
+			],
+			events: [],
+		});
+
+		expect(timeline).toEqual([]);
+	});
+
+	test("incident timeline keeps disruption target conditions", () => {
+		const timeline = buildIncidentTimeline({
+			resource: resource(),
+			conditions: [
+				{
+					type: "DisruptionTarget",
+					status: "True",
+					reason: "EvictionByEvictionAPI",
+					lastTransitionTime: "2026-05-19T09:50:00.000Z",
+				},
+			],
+			events: [],
+		});
+
+		expect(timeline).toHaveLength(1);
+		expect(timeline[0]).toMatchObject({
+			source: "condition",
+			tone: "info",
+			timestamp: "2026-05-19T09:50:00.000Z",
+		});
+	});
+
+	test("incident timeline stays empty for healthy resources", () => {
+		expect(
+			buildIncidentTimeline({
+				resource: resource({ status: "Running", ready: "true", restarts: 0 }),
+				conditions: [{ type: "Ready", status: "True" }],
+				events: [],
+				containers: [
+					{
+						name: "api",
+						ready: true,
+						restartCount: 0,
+						state: "running",
+					},
+				],
+			}),
+		).toEqual([]);
 	});
 });

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { formatExactTimestamp } from "../src/components/TimestampText";
 import {
+	latestTimestampedLogLine,
 	orderedLogLines,
 	parseLogLine,
 } from "../src/features/resource-detail/log-helpers";
@@ -44,6 +45,20 @@ describe("log presentation helpers", () => {
 			"first",
 		]);
 		expect(lines).toEqual(["first", "second", "third"]);
+	});
+
+	test("finds latest timestamped log line by time and index", () => {
+		const lines = [
+			parseLogLine("2026-05-18T09:01:35Z first", 0),
+			parseLogLine("2026-05-18T09:01:35Z second", 1),
+			parseLogLine('level=info time="not-a-time" msg="bad"', 2),
+		];
+
+		expect(latestTimestampedLogLine(lines)).toMatchObject({
+			index: 1,
+			message: "second",
+			timestamp: "2026-05-18T09:01:35Z",
+		});
 	});
 
 	test("formats log timestamps through the shared timestamp formatter", () => {
