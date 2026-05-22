@@ -25,6 +25,7 @@ import type {
 	ArgoAppProjectDetails,
 	HelmReleaseSummary,
 	HelmReleaseDetails,
+	RbacInspectionSummary,
 } from "./types";
 import { diagnosticLog, diagnosticResultSummary } from "./diagnostics";
 
@@ -386,5 +387,16 @@ export async function getHelmReleaseDetails(
 		namespace: release.namespace,
 		storageKind: release.storageKind,
 		storageName: release.storageName,
+	});
+}
+
+export async function listRbacInspection(
+	client: TauriClient,
+	clusterContext: string,
+	namespaces: string[],
+): Promise<RbacInspectionSummary> {
+	return client.invoke<RbacInspectionSummary>("list_rbac_inspection", {
+		clusterContext,
+		namespaces,
 	});
 }

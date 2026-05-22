@@ -2,9 +2,10 @@ use kubecove_lib::models::{
     AppError, AppUsageMetrics, AppUsageMetricsBreakdown, ArgoAppProjectDetails,
     ArgoAppProjectSummary, ArgoApplicationDetails, ArgoApplicationSetDetails,
     ArgoApplicationSetSummary, ArgoApplicationSummary, ClusterContext, DiscoveredResourceKind,
-    HelmReleaseDetails, HelmReleaseSummary, NamespaceSummary, PodLogStreamRequest, ResourceDetails,
-    ResourceDetailsFull, ResourceEventSummary, ResourceSummary, StreamMessage, WatchResourceKey,
-    WatchResourceKind,
+    HelmReleaseDetails, HelmReleaseSummary, NamespaceSummary, PodLogStreamRequest,
+    RbacInspectionSummary, RbacRiskIndicator, RbacRiskLevel, RbacRoleSummary, RbacRuleSummary,
+    ResourceDetails, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
+    ServiceAccountSummary, StreamMessage, WatchResourceKey, WatchResourceKind,
 };
 use serde_json::json;
 
@@ -341,6 +342,60 @@ fn test_helm_release_models_serde() {
     let parsed: HelmReleaseDetails = serde_json::from_value(json_val).unwrap();
     assert_eq!(parsed.summary.revision, Some(7));
     assert_eq!(parsed.summary.namespace, "payments");
+}
+
+#[test]
+fn test_rbac_models_serde() {
+    let risk = RbacRiskIndicator {
+        level: RbacRiskLevel::High,
+        label: "Secrets access".to_string(),
+        reason: "Rule can read or change Secret resources.".to_string(),
+    };
+    let role = RbacRoleSummary {
+        cluster: "kind-dev".to_string(),
+        kind: "Role".to_string(),
+        name: "secret-reader".to_string(),
+        namespace: Some("payments".to_string()),
+        age: "1h".to_string(),
+        created_at: None,
+        rules_count: 1,
+        risks: vec![risk.clone()],
+        rules: vec![RbacRuleSummary {
+            verbs: vec!["get".to_string(), "list".to_string()],
+            api_groups: vec!["".to_string()],
+            resources: vec!["secrets".to_string()],
+            resource_names: Vec::new(),
+            non_resource_urls: Vec::new(),
+            risks: vec![risk.clone()],
+        }],
+    };
+    let service_account = ServiceAccountSummary {
+        cluster: "kind-dev".to_string(),
+        name: "api".to_string(),
+        namespace: "payments".to_string(),
+        age: "1h".to_string(),
+        created_at: None,
+        automount_token: Some(false),
+        secrets_count: 0,
+        image_pull_secrets_count: 0,
+        risks: Vec::new(),
+    };
+    let inspection = RbacInspectionSummary {
+        cluster: "kind-dev".to_string(),
+        service_accounts: vec![service_account],
+        roles: vec![role],
+        cluster_roles: Vec::new(),
+        role_bindings: Vec::new(),
+        cluster_role_bindings: Vec::new(),
+        namespace_access: Vec::new(),
+    };
+
+    let json_val = serde_json::to_value(&inspection).unwrap();
+    assert_eq!(json_val["serviceAccounts"][0]["automountToken"], false);
+    assert_eq!(json_val["roles"][0]["rulesCount"], 1);
+    assert_eq!(json_val["roles"][0]["risks"][0]["level"], "high");
+    let parsed: RbacInspectionSummary = serde_json::from_value(json_val).unwrap();
+    assert_eq!(parsed.roles[0].namespace, Some("payments".to_string()));
 }
 
 #[test]

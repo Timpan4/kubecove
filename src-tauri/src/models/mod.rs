@@ -5,6 +5,7 @@ mod error;
 mod events;
 mod helm;
 mod namespace;
+mod rbac;
 mod resource;
 mod streams;
 mod usage;
@@ -19,6 +20,10 @@ pub use error::AppError;
 pub use events::ResourceEventSummary;
 pub use helm::{HelmReleaseDetails, HelmReleaseSummary};
 pub use namespace::NamespaceSummary;
+pub use rbac::{
+    RbacBindingSummary, RbacInspectionSummary, RbacNamespaceAccessSummary, RbacRiskIndicator,
+    RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary, ServiceAccountSummary,
+};
 pub use resource::{
     OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull, ResourceListRequest,
     ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode, TopologyRelation,

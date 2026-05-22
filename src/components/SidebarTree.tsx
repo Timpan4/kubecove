@@ -21,6 +21,8 @@
  *   - Applications, ApplicationSets, AppProjects [Argo child nodes]
  * - Helm [section]
  *   - Releases [read-only Helm v3 release inventory]
+ * - RBAC [section]
+ *   - Namespace Access, Roles, Cluster Roles, Bindings, Service Accounts
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -318,7 +320,16 @@ export function SidebarTree({
       })),
     };
 
-    return { clusterOverviewNode, curatedSectionNodes, argoNode, helmNode };
+    const rbacNode: TreeNode = {
+      id: { type: "section", section: "rbac" },
+      label: SECTIONS.rbac.label,
+      children: SECTIONS.rbac.children.map((child) => ({
+        id: { type: "kind", section: "rbac", namespace: undefined, group: undefined, kind: child },
+        label: child,
+      })),
+    };
+
+    return { clusterOverviewNode, curatedSectionNodes, argoNode, helmNode, rbacNode };
   }, []);
 
   const extraKinds = useMemo(() => {
@@ -456,6 +467,7 @@ export function SidebarTree({
       discoveredTree,
       staticTree.argoNode,
       staticTree.helmNode,
+      staticTree.rbacNode,
     ];
   }, [namespaces, staticTree, buildNamespaceSubtree, discoveredTree]);
 

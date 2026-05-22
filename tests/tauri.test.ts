@@ -953,6 +953,7 @@ describe("tree navigation scope helpers", () => {
       clusterScoped: false,
       argoMode: false,
       helmMode: false,
+      rbacMode: false,
     });
   });
 
@@ -1006,6 +1007,11 @@ describe("tree navigation scope helpers", () => {
       section: "helm",
       helmMode: true,
     });
+
+    expect(resolveTreeScope({ type: "section", section: "rbac" })).toMatchObject({
+      section: "rbac",
+      rbacMode: true,
+    });
   });
 
   test("resolves discovered resource kind nodes", () => {
@@ -1044,6 +1050,7 @@ describe("tree navigation scope helpers", () => {
     ).toBe("Loading all namespaces");
     expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "argo" } as TreeNodeId), true)).toBe("Select an Argo CD resource type");
     expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "helm" } as TreeNodeId), true)).toBe("Select a Helm resource type");
+    expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "rbac" } as TreeNodeId), true)).toBe("Select an RBAC inspection view");
     expect(emptyStateMessage(resolveTreeScope({ type: "section", section: "discovered" } as TreeNodeId), true)).toBe("Select a discovered resource kind");
   });
 });

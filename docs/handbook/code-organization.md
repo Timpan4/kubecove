@@ -12,7 +12,7 @@ A new feature folder is created when:
 - A product area gains more than one component or hook of its own, AND
 - That code is not reusable outside the area.
 
-Current areas: `app-updates/`, `argo/`, `resource-detail/`, `resources/`, `settings/`, `workspaces/`. Future candidates: `clusters/`, `namespaces/`.
+Current areas: `app-updates/`, `argo/`, `rbac/`, `resource-detail/`, `resources/`, `settings/`, `workspaces/`. Future candidates: `clusters/`, `namespaces/`.
 
 ### `src/components/`
 

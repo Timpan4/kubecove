@@ -52,6 +52,7 @@ export type DashboardViewMode =
 	| "resources"
 	| "argo"
 	| "helm"
+	| "rbac"
 	| "settings";
 
 // Persisted slice: context + namespaces only (Milestone 2 requirement)
