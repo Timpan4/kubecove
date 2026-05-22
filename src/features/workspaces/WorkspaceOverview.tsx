@@ -1,6 +1,13 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Boxes, FolderOpen, GitBranch, Layers } from "lucide-react";
+import {
+	AlertTriangle,
+	Boxes,
+	FolderOpen,
+	GitBranch,
+	GitCompareArrows,
+	Layers,
+} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,11 +39,14 @@ import {
 	buildWorkspaceHealthSummary,
 	computeRestoreStatus,
 	resourceKindLabel,
+	workspaceClusterGroupLabel,
+	workspaceScopeContexts,
 	type SavedWorkspace,
 	type WorkspaceShortcut,
 } from "@/lib/workspaces";
 import type { HealthFilter } from "@/features/resources/helpers";
 import { buildWorkspaceFetchKeys, fetchWorkspaceResources } from "./query";
+import { WorkspaceComparePanel } from "./WorkspaceComparePanel";
 
 interface WorkspaceOverviewProps {
 	workspace: SavedWorkspace;
@@ -76,7 +86,15 @@ function ShortcutButton({
 	onOpenArgo: (argoApp?: string) => void;
 }) {
 	const icon =
-		shortcut.kind === "argo" ? <GitBranch /> : shortcut.kind === "namespace" ? <Layers /> : <Boxes />;
+		shortcut.kind === "argo" ? (
+			<GitBranch />
+		) : shortcut.kind === "namespace" ? (
+			<Layers />
+		) : shortcut.kind === "compare" ? (
+			<GitCompareArrows />
+		) : (
+			<Boxes />
+		);
 	return (
 		<Button
 			type="button"
@@ -137,6 +155,7 @@ export function WorkspaceOverview({
 	const clusterAvailable =
 		contextsQuery.isPending ||
 		contexts.some((context) => context.name === workspace.scope.clusterContext);
+	const workspaceContextKey = workspaceScopeContexts(workspace.scope).join("|");
 
 	const namespacesQuery = useQuery({
 		queryKey: queryKeys.namespaces(workspace.scope.clusterContext),
@@ -172,7 +191,7 @@ export function WorkspaceOverview({
 
 	const resourcesQuery = useQuery({
 		queryKey: queryKeys.resources(
-			workspace.scope.clusterContext,
+			workspaceContextKey,
 			workspaceFetchKeys,
 		),
 		queryFn: () => fetchWorkspaceResources(workspace.scope, availableNamespaces),
@@ -205,6 +224,7 @@ export function WorkspaceOverview({
 
 	const hasRestoreWarning =
 		!restoreStatus.clusterAvailable ||
+		restoreStatus.missingClusterContexts.length > 0 ||
 		restoreStatus.missingNamespaces.length > 0 ||
 		restoreStatus.missingKinds.length > 0;
 
@@ -215,7 +235,7 @@ export function WorkspaceOverview({
 					<h1 className="truncate text-lg font-semibold">{workspace.name}</h1>
 					<div className="mt-1 flex flex-wrap gap-2">
 						<Badge variant="outline" className="rounded-sm">
-							{workspace.scope.clusterContext}
+							{workspaceClusterGroupLabel(workspace.scope)}
 						</Badge>
 						<Badge variant="outline" className="rounded-sm">
 							{workspace.scope.namespaces.length || "All"} namespaces
@@ -244,6 +264,11 @@ export function WorkspaceOverview({
 					<AlertDescription className="text-amber-200/90">
 					{!restoreStatus.clusterAvailable && (
 						<div>Context missing: {workspace.scope.clusterContext}</div>
+					)}
+					{restoreStatus.missingClusterContexts.length > 0 && (
+						<div>
+							Group members: {restoreStatus.missingClusterContexts.join(", ")}
+						</div>
 					)}
 					{restoreStatus.missingNamespaces.length > 0 && (
 						<div>Namespaces: {restoreStatus.missingNamespaces.join(", ")}</div>
@@ -379,6 +404,8 @@ export function WorkspaceOverview({
 					</CardContent>
 				</Card>
 			</div>
+
+			<WorkspaceComparePanel workspace={workspace} rows={rows} />
 
 			{resourcesQuery.isError && (
 				<Alert variant="destructive">

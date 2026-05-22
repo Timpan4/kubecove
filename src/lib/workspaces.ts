@@ -10,7 +10,36 @@ import {
 } from "./types";
 import { classifyResourceHealth } from "./resource-health";
 
-export type WorkspaceShortcutKind = "resources" | "namespace" | "argo";
+export type WorkspaceShortcutKind = "resources" | "namespace" | "argo" | "compare";
+
+export interface WorkspaceClusterGroup {
+	id: string;
+	name: string;
+	members: string[];
+}
+
+export interface WorkspaceShortcutPreferences {
+	includeResources: boolean;
+	includeNamespaces: boolean;
+	includeCompare: boolean;
+	includeArgo: boolean;
+}
+
+export interface WorkspaceCompareEntry {
+	id: string;
+	kind: "contexts" | "namespaces";
+	label: string;
+	leftLabel: string;
+	rightLabel: string;
+	clusterContexts: string[];
+	namespaces: string[];
+}
+
+export interface WorkspaceCompareSummary {
+	entry: WorkspaceCompareEntry;
+	left: WorkspaceHealthSummary;
+	right: WorkspaceHealthSummary;
+}
 
 export interface WorkspaceShortcut {
 	id: string;
@@ -18,14 +47,17 @@ export interface WorkspaceShortcut {
 	kind: WorkspaceShortcutKind;
 	namespace?: string;
 	argoApp?: string;
+	compare?: WorkspaceCompareEntry;
 }
 
 export interface WorkspaceScope {
 	clusterContext: string;
+	clusterGroup?: WorkspaceClusterGroup;
 	namespaces: string[];
 	kinds: ResourceKindSelection[];
 	argoAppFilter: string;
 	layout: "overview" | "resources";
+	shortcutPreferences?: WorkspaceShortcutPreferences;
 }
 
 export interface SavedWorkspace {
@@ -39,6 +71,7 @@ export interface SavedWorkspace {
 
 export interface WorkspaceRestoreStatus {
 	clusterAvailable: boolean;
+	missingClusterContexts: string[];
 	missingNamespaces: string[];
 	missingKinds: string[];
 }
@@ -54,8 +87,15 @@ export interface WorkspaceHealthSummary {
 interface CreateWorkspaceInput {
 	name: string;
 	clusterContext: string;
+	clusterContexts?: string[];
+	clusterGroupName?: string;
 	namespaces: string[];
 	kinds?: ResourceKindSelection[];
+	shortcutPreferences?: Partial<WorkspaceShortcutPreferences>;
+}
+
+interface CreateWorkspaceScopeInput extends CreateWorkspaceInput {
+	name: string;
 }
 
 interface WorkspaceStore {
@@ -79,11 +119,41 @@ export const DEFAULT_WORKSPACE_KINDS: ResourceKindSelection[] = [
 	"Secret",
 ];
 
+export const DEFAULT_WORKSPACE_SHORTCUT_PREFERENCES: WorkspaceShortcutPreferences = {
+	includeResources: true,
+	includeNamespaces: true,
+	includeCompare: true,
+	includeArgo: true,
+};
+
 function newWorkspaceId(): string {
 	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
 		return crypto.randomUUID();
 	}
 	return `workspace-${Date.now().toString(36)}`;
+}
+
+function normalizeClusterContexts(
+	primaryContext: string,
+	clusterContexts?: string[],
+): string[] {
+	return Array.from(new Set([primaryContext, ...(clusterContexts ?? [])].filter(Boolean)));
+}
+
+function normalizeShortcutPreferences(
+	preferences?: Partial<WorkspaceShortcutPreferences>,
+): WorkspaceShortcutPreferences {
+	return {
+		...DEFAULT_WORKSPACE_SHORTCUT_PREFERENCES,
+		...preferences,
+	};
+}
+
+export function workspaceScopeContexts(scope: WorkspaceScope): string[] {
+	return normalizeClusterContexts(
+		scope.clusterContext,
+		scope.clusterGroup?.members,
+	);
 }
 
 export function resourceKindKey(kind: ResourceKindSelection): string {
@@ -95,7 +165,14 @@ export function resourceKindLabel(kind: ResourceKindSelection): string {
 	return typeof kind === "string" ? kind : kind.kind;
 }
 
+export function workspaceClusterGroupLabel(scope: WorkspaceScope): string {
+	const contexts = workspaceScopeContexts(scope);
+	if (contexts.length <= 1) return scope.clusterContext;
+	return `${scope.clusterGroup?.name ?? "Cluster group"} (${contexts.length})`;
+}
+
 export function summarizeWorkspaceScope(scope: WorkspaceScope): string {
+	const contextLabel = workspaceClusterGroupLabel(scope);
 	const namespaceLabel =
 		scope.namespaces.length === 0
 			? "All namespaces"
@@ -110,24 +187,71 @@ export function summarizeWorkspaceScope(scope: WorkspaceScope): string {
 			: `${scope.kinds.slice(0, 2).map(resourceKindLabel).join(", ")} +${
 					scope.kinds.length - 2
 				}`;
-	return `${scope.clusterContext} / ${namespaceLabel} / ${kindLabel}`;
+	return `${contextLabel} / ${namespaceLabel} / ${kindLabel}`;
+}
+
+export function buildWorkspaceCompareEntries(
+	scope: WorkspaceScope,
+): WorkspaceCompareEntry[] {
+	const entries: WorkspaceCompareEntry[] = [];
+	const contexts = workspaceScopeContexts(scope);
+	if (contexts.length >= 2) {
+		const [leftLabel, rightLabel] = contexts;
+		entries.push({
+			id: `ctx:${leftLabel}:${rightLabel}`,
+			kind: "contexts",
+			label: "Compare contexts",
+			leftLabel,
+			rightLabel,
+			clusterContexts: [leftLabel, rightLabel],
+			namespaces: scope.namespaces,
+		});
+	}
+	if (scope.namespaces.length >= 2) {
+		const [leftLabel, rightLabel] = scope.namespaces;
+		entries.push({
+			id: `namespaces:${leftLabel}:${rightLabel}`,
+			kind: "namespaces",
+			label: "Compare namespaces",
+			leftLabel,
+			rightLabel,
+			clusterContexts: contexts,
+			namespaces: [leftLabel, rightLabel],
+		});
+	}
+	return entries;
 }
 
 export function makeWorkspaceShortcuts(
 	namespaces: string[],
 	argoApp?: string,
+	preferences: WorkspaceShortcutPreferences = DEFAULT_WORKSPACE_SHORTCUT_PREFERENCES,
+	scope?: WorkspaceScope,
 ): WorkspaceShortcut[] {
-	const namespaceShortcuts = namespaces.slice(0, 4).map((namespace) => ({
-		id: `namespace:${namespace}`,
-		label: namespace,
-		kind: "namespace" as const,
-		namespace,
-	}));
-	const shortcuts: WorkspaceShortcut[] = [
-		{ id: "resources:all", label: "Resources", kind: "resources" },
-		...namespaceShortcuts,
-	];
-	if (argoApp) {
+	const shortcuts: WorkspaceShortcut[] = [];
+	if (preferences.includeResources) {
+		shortcuts.push({ id: "resources:all", label: "Resources", kind: "resources" });
+	}
+	if (preferences.includeNamespaces) {
+		shortcuts.push(
+			...namespaces.slice(0, 4).map((namespace) => ({
+				id: `namespace:${namespace}`,
+				label: namespace,
+				kind: "namespace" as const,
+				namespace,
+			})),
+		);
+	}
+	const compare = scope ? buildWorkspaceCompareEntries(scope)[0] : null;
+	if (preferences.includeCompare && compare) {
+		shortcuts.push({
+			id: `compare:${compare.id}`,
+			label: "Compare",
+			kind: "compare",
+			compare,
+		});
+	}
+	if (preferences.includeArgo && argoApp) {
 		shortcuts.push({
 			id: `argo:${argoApp}`,
 			label: argoApp,
@@ -143,20 +267,41 @@ export function createWorkspaceRecord(
 	now = new Date().toISOString(),
 ): SavedWorkspace {
 	const name = input.name.trim() || input.clusterContext;
-	const kinds = input.kinds?.length ? input.kinds : DEFAULT_WORKSPACE_KINDS;
+	const scope = createWorkspaceScope({ ...input, name });
+	const shortcutPreferences = normalizeShortcutPreferences(input.shortcutPreferences);
 	return {
 		id: newWorkspaceId(),
 		name,
 		createdAt: now,
 		updatedAt: now,
-		scope: {
-			clusterContext: input.clusterContext,
-			namespaces: [...input.namespaces].sort((a, b) => a.localeCompare(b)),
-			kinds,
-			argoAppFilter: "",
-			layout: "overview",
-		},
-		shortcuts: makeWorkspaceShortcuts(input.namespaces),
+		scope,
+		shortcuts: makeWorkspaceShortcuts(scope.namespaces, undefined, shortcutPreferences, scope),
+	};
+}
+
+export function createWorkspaceScope(
+	input: CreateWorkspaceScopeInput,
+): WorkspaceScope {
+	const name = input.name.trim() || input.clusterContext;
+	const kinds = input.kinds?.length ? input.kinds : DEFAULT_WORKSPACE_KINDS;
+	const contexts = normalizeClusterContexts(input.clusterContext, input.clusterContexts);
+	const shortcutPreferences = normalizeShortcutPreferences(input.shortcutPreferences);
+	const clusterGroupName = input.clusterGroupName?.trim() || `${name} contexts`;
+	return {
+		clusterContext: input.clusterContext,
+		clusterGroup:
+			contexts.length > 1 || input.clusterGroupName?.trim()
+				? {
+						id: `cluster-group:${contexts.join("|")}`,
+						name: clusterGroupName,
+						members: contexts,
+					}
+				: undefined,
+		namespaces: [...input.namespaces].sort((a, b) => a.localeCompare(b)),
+		kinds,
+		argoAppFilter: "",
+		layout: "overview",
+		shortcutPreferences,
 	};
 }
 
@@ -174,13 +319,16 @@ export function computeRestoreStatus(
 	namespaces: string[],
 	discoveredKinds: DiscoveredResourceKind[],
 ): WorkspaceRestoreStatus {
-	const clusterAvailable = clusterContexts.some(
-		(context) => context.name === workspace.scope.clusterContext,
+	const availableContexts = new Set(clusterContexts.map((context) => context.name));
+	const missingClusterContexts = workspaceScopeContexts(workspace.scope).filter(
+		(context) => !availableContexts.has(context),
 	);
+	const clusterAvailable = availableContexts.has(workspace.scope.clusterContext);
 	const namespaceSet = new Set(namespaces);
 	const kindSet = knownKindKeys(discoveredKinds);
 	return {
 		clusterAvailable,
+		missingClusterContexts,
 		missingNamespaces: workspace.scope.namespaces.filter(
 			(namespace) => !namespaceSet.has(namespace),
 		),
@@ -206,6 +354,29 @@ export function buildWorkspaceHealthSummary(
 		},
 		{ total: 0, healthy: 0, attention: 0, degraded: 0, restarted: 0 },
 	);
+}
+
+export function buildWorkspaceCompareSummaries(
+	entries: WorkspaceCompareEntry[],
+	rows: ResourceSummary[],
+): WorkspaceCompareSummary[] {
+	return entries.map((entry) => {
+		const leftRows = rows.filter((row) =>
+			entry.kind === "contexts"
+				? row.cluster === entry.leftLabel
+				: row.namespace === entry.leftLabel,
+		);
+		const rightRows = rows.filter((row) =>
+			entry.kind === "contexts"
+				? row.cluster === entry.rightLabel
+				: row.namespace === entry.rightLabel,
+		);
+		return {
+			entry,
+			left: buildWorkspaceHealthSummary(leftRows),
+			right: buildWorkspaceHealthSummary(rightRows),
+		};
+	});
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>()(
