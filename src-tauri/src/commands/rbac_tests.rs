@@ -87,10 +87,83 @@ fn cluster_role_binding_service_accounts_roll_up_to_namespace_access() {
         risks: binding_risks("ClusterRole", "cluster-admin", &[]),
     };
 
-    let summaries = namespace_access_summary("kind-dev", &[], &[], &[], &[binding]);
+    let summaries = namespace_access_summary("kind-dev", &[], &[], &[], &[], &[binding]);
 
     assert_eq!(summaries[0].namespace, "payments");
     assert_eq!(summaries[0].role_bindings, 1);
     assert_eq!(summaries[0].bound_subjects[0].name, "api");
     assert_eq!(summaries[0].risks[0].label, "Cluster admin binding");
+}
+
+#[test]
+fn cluster_role_binding_counts_once_per_namespace() {
+    let binding = RbacBindingSummary {
+        cluster: "kind-dev".to_string(),
+        kind: "ClusterRoleBinding".to_string(),
+        name: "payments-readers".to_string(),
+        namespace: None,
+        age: "1h".to_string(),
+        created_at: None,
+        role_ref_kind: "ClusterRole".to_string(),
+        role_ref_name: "view".to_string(),
+        subjects: vec![
+            RbacSubjectSummary {
+                kind: "ServiceAccount".to_string(),
+                name: "api".to_string(),
+                namespace: Some("payments".to_string()),
+            },
+            RbacSubjectSummary {
+                kind: "ServiceAccount".to_string(),
+                name: "worker".to_string(),
+                namespace: Some("payments".to_string()),
+            },
+        ],
+        risks: Vec::new(),
+    };
+
+    let summaries = namespace_access_summary("kind-dev", &[], &[], &[], &[], &[binding]);
+
+    assert_eq!(summaries[0].namespace, "payments");
+    assert_eq!(summaries[0].role_bindings, 1);
+    assert_eq!(summaries[0].bound_subjects.len(), 2);
+}
+
+#[test]
+fn cluster_role_binding_rollup_respects_namespace_scope() {
+    let binding = RbacBindingSummary {
+        cluster: "kind-dev".to_string(),
+        kind: "ClusterRoleBinding".to_string(),
+        name: "selected-admins".to_string(),
+        namespace: None,
+        age: "1h".to_string(),
+        created_at: None,
+        role_ref_kind: "ClusterRole".to_string(),
+        role_ref_name: "cluster-admin".to_string(),
+        subjects: vec![
+            RbacSubjectSummary {
+                kind: "ServiceAccount".to_string(),
+                name: "api".to_string(),
+                namespace: Some("payments".to_string()),
+            },
+            RbacSubjectSummary {
+                kind: "ServiceAccount".to_string(),
+                name: "worker".to_string(),
+                namespace: Some("shipping".to_string()),
+            },
+        ],
+        risks: binding_risks("ClusterRole", "cluster-admin", &[]),
+    };
+
+    let summaries = namespace_access_summary(
+        "kind-dev",
+        &["payments".to_string()],
+        &[],
+        &[],
+        &[],
+        &[binding],
+    );
+
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].namespace, "payments");
+    assert_eq!(summaries[0].bound_subjects[0].name, "api");
 }

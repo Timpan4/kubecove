@@ -364,12 +364,14 @@ fn normalize_values(values: Vec<String>) -> Vec<String> {
 
 fn namespace_access_summary(
     cluster_context: &str,
+    namespaces: &[String],
     service_accounts: &[ServiceAccountSummary],
     roles: &[RbacRoleSummary],
     role_bindings: &[RbacBindingSummary],
     cluster_role_bindings: &[RbacBindingSummary],
 ) -> Vec<RbacNamespaceAccessSummary> {
     let mut by_namespace: BTreeMap<String, RbacNamespaceAccessSummary> = BTreeMap::new();
+    let scoped_namespaces = namespaces.iter().cloned().collect::<BTreeSet<_>>();
 
     for service_account in service_accounts {
         let entry = namespace_entry(
@@ -396,15 +398,25 @@ fn namespace_access_summary(
         }
     }
     for binding in cluster_role_bindings {
+        let mut binding_namespaces: BTreeMap<String, Vec<RbacSubjectSummary>> = BTreeMap::new();
         for subject in &binding.subjects {
             if subject.kind == "ServiceAccount" {
                 if let Some(namespace) = subject.namespace.as_deref() {
-                    let entry = namespace_entry(&mut by_namespace, cluster_context, namespace);
-                    entry.role_bindings += 1;
-                    entry.bound_subjects.push(subject.clone());
-                    entry.risks.extend(binding.risks.clone());
+                    if !scoped_namespaces.is_empty() && !scoped_namespaces.contains(namespace) {
+                        continue;
+                    }
+                    binding_namespaces
+                        .entry(namespace.to_string())
+                        .or_default()
+                        .push(subject.clone());
                 }
             }
+        }
+        for (namespace, subjects) in binding_namespaces {
+            let entry = namespace_entry(&mut by_namespace, cluster_context, &namespace);
+            entry.role_bindings += 1;
+            entry.bound_subjects.extend(subjects);
+            entry.risks.extend(binding.risks.clone());
         }
     }
 
