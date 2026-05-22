@@ -22,6 +22,14 @@ fn flags_wildcard_resources_as_secrets_access() {
 }
 
 #[test]
+fn flags_wildcard_verbs_as_rbac_write_access() {
+    let risks = rule_risks(&values(&["*"]), &values(&["roles"]));
+
+    assert!(risks.iter().any(|risk| risk.label == "Wildcard verbs"));
+    assert!(risks.iter().any(|risk| risk.label == "RBAC write access"));
+}
+
+#[test]
 fn flags_privilege_escalation_verbs() {
     let risks = rule_risks(&values(&["bind"]), &values(&["clusterroles"]));
 

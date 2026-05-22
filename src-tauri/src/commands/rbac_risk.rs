@@ -50,9 +50,10 @@ pub(super) fn rule_risks(verbs: &[String], resources: &[String]) -> Vec<RbacRisk
                 "roles" | "rolebindings" | "clusterroles" | "clusterrolebindings"
             )
         }))
-        && verb_set
-            .iter()
-            .any(|verb| matches!(*verb, "create" | "update" | "patch" | "delete"))
+        && (has_wildcard_verb
+            || verb_set
+                .iter()
+                .any(|verb| matches!(*verb, "create" | "update" | "patch" | "delete")))
     {
         risks.push(risk(
             "medium",
