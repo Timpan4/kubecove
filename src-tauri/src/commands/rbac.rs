@@ -399,6 +399,7 @@ fn namespace_access_summary(
     }
     for binding in cluster_role_bindings {
         let mut binding_namespaces: BTreeMap<String, Vec<RbacSubjectSummary>> = BTreeMap::new();
+        let mut cluster_wide_subjects = Vec::new();
         for subject in &binding.subjects {
             if subject.kind == "ServiceAccount" {
                 if let Some(namespace) = subject.namespace.as_deref() {
@@ -410,6 +411,21 @@ fn namespace_access_summary(
                         .or_default()
                         .push(subject.clone());
                 }
+            } else {
+                cluster_wide_subjects.push(subject.clone());
+            }
+        }
+        if !cluster_wide_subjects.is_empty() {
+            let target_namespaces = if scoped_namespaces.is_empty() {
+                by_namespace.keys().cloned().collect::<Vec<_>>()
+            } else {
+                namespaces.to_vec()
+            };
+            for namespace in target_namespaces {
+                binding_namespaces
+                    .entry(namespace)
+                    .or_default()
+                    .extend(cluster_wide_subjects.clone());
             }
         }
         for (namespace, subjects) in binding_namespaces {

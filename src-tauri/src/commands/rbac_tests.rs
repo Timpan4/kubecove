@@ -13,6 +13,14 @@ fn flags_wildcard_and_secrets_rules() {
 }
 
 #[test]
+fn flags_wildcard_resources_as_secrets_access() {
+    let risks = rule_risks(&values(&["get"]), &values(&["*"]));
+
+    assert!(risks.iter().any(|risk| risk.label == "Wildcard resources"));
+    assert!(risks.iter().any(|risk| risk.label == "Secrets access"));
+}
+
+#[test]
 fn flags_privilege_escalation_verbs() {
     let risks = rule_risks(&values(&["bind"]), &values(&["clusterroles"]));
 
@@ -166,4 +174,56 @@ fn cluster_role_binding_rollup_respects_namespace_scope() {
     assert_eq!(summaries.len(), 1);
     assert_eq!(summaries[0].namespace, "payments");
     assert_eq!(summaries[0].bound_subjects[0].name, "api");
+}
+
+#[test]
+fn cluster_role_binding_group_subjects_roll_up_to_scoped_namespaces() {
+    let binding = RbacBindingSummary {
+        cluster: "kind-dev".to_string(),
+        kind: "ClusterRoleBinding".to_string(),
+        name: "masters".to_string(),
+        namespace: None,
+        age: "1h".to_string(),
+        created_at: None,
+        role_ref_kind: "ClusterRole".to_string(),
+        role_ref_name: "cluster-admin".to_string(),
+        subjects: vec![RbacSubjectSummary {
+            kind: "Group".to_string(),
+            name: "system:masters".to_string(),
+            namespace: None,
+        }],
+        risks: binding_risks(
+            "ClusterRole",
+            "cluster-admin",
+            &[RbacSubjectSummary {
+                kind: "Group".to_string(),
+                name: "system:masters".to_string(),
+                namespace: None,
+            }],
+        ),
+    };
+
+    let summaries = namespace_access_summary(
+        "kind-dev",
+        &["payments".to_string(), "shipping".to_string()],
+        &[],
+        &[],
+        &[],
+        &[binding],
+    );
+
+    assert_eq!(summaries.len(), 2);
+    assert!(summaries.iter().all(|summary| summary.role_bindings == 1));
+    assert!(summaries.iter().all(|summary| {
+        summary
+            .risks
+            .iter()
+            .any(|risk| risk.label == "Cluster admin binding")
+    }));
+    assert!(summaries.iter().all(|summary| {
+        summary
+            .bound_subjects
+            .iter()
+            .any(|subject| subject.name == "system:masters")
+    }));
 }

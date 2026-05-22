@@ -28,7 +28,7 @@ pub(super) fn rule_risks(verbs: &[String], resources: &[String]) -> Vec<RbacRisk
             "Rule includes impersonate, escalate, or bind.",
         ));
     }
-    if resource_set.contains("secrets")
+    if (resource_set.contains("secrets") || has_wildcard_resource)
         && (has_wildcard_verb
             || verb_set.iter().any(|verb| {
                 matches!(
