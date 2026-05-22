@@ -39,8 +39,13 @@ pub async fn rbac_inspection_from(
     let role_bindings = list_role_bindings(client.clone(), &cluster_context, &namespaces).await?;
     let cluster_roles = list_cluster_roles(client.clone(), &cluster_context).await?;
     let cluster_role_bindings = list_cluster_role_bindings(client, &cluster_context).await?;
-    let namespace_access =
-        namespace_access_summary(&cluster_context, &service_accounts, &roles, &role_bindings);
+    let namespace_access = namespace_access_summary(
+        &cluster_context,
+        &service_accounts,
+        &roles,
+        &role_bindings,
+        &cluster_role_bindings,
+    );
 
     Ok(RbacInspectionSummary {
         cluster: cluster_context,
@@ -296,10 +301,11 @@ fn binding_summary(
     role_ref_name: String,
     subjects: Option<Vec<Subject>>,
 ) -> RbacBindingSummary {
+    let binding_namespace = metadata.namespace.clone();
     let subject_summaries = subjects
         .unwrap_or_default()
         .into_iter()
-        .map(subject_summary)
+        .map(|subject| subject_summary(subject, binding_namespace.as_deref()))
         .collect::<Vec<_>>();
     let risks = binding_risks(&role_ref_kind, &role_ref_name, &subject_summaries);
     RbacBindingSummary {
@@ -316,11 +322,16 @@ fn binding_summary(
     }
 }
 
-fn subject_summary(subject: Subject) -> RbacSubjectSummary {
+fn subject_summary(subject: Subject, default_namespace: Option<&str>) -> RbacSubjectSummary {
+    let namespace = if subject.kind == "ServiceAccount" && subject.namespace.is_none() {
+        default_namespace.map(str::to_string)
+    } else {
+        subject.namespace
+    };
     RbacSubjectSummary {
         kind: subject.kind,
         name: subject.name,
-        namespace: subject.namespace,
+        namespace,
     }
 }
 
@@ -355,6 +366,7 @@ fn namespace_access_summary(
     service_accounts: &[ServiceAccountSummary],
     roles: &[RbacRoleSummary],
     role_bindings: &[RbacBindingSummary],
+    cluster_role_bindings: &[RbacBindingSummary],
 ) -> Vec<RbacNamespaceAccessSummary> {
     let mut by_namespace: BTreeMap<String, RbacNamespaceAccessSummary> = BTreeMap::new();
 
@@ -380,6 +392,18 @@ fn namespace_access_summary(
             entry.role_bindings += 1;
             entry.bound_subjects.extend(binding.subjects.clone());
             entry.risks.extend(binding.risks.clone());
+        }
+    }
+    for binding in cluster_role_bindings {
+        for subject in &binding.subjects {
+            if subject.kind == "ServiceAccount" {
+                if let Some(namespace) = subject.namespace.as_deref() {
+                    let entry = namespace_entry(&mut by_namespace, cluster_context, namespace);
+                    entry.role_bindings += 1;
+                    entry.bound_subjects.push(subject.clone());
+                    entry.risks.extend(binding.risks.clone());
+                }
+            }
         }
     }
 
