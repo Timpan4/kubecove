@@ -37,8 +37,23 @@ pub async fn rbac_inspection_from(
         list_service_accounts(client.clone(), &cluster_context, &namespaces).await?;
     let roles = list_roles(client.clone(), &cluster_context, &namespaces).await?;
     let role_bindings = list_role_bindings(client.clone(), &cluster_context, &namespaces).await?;
-    let cluster_roles = list_cluster_roles(client.clone(), &cluster_context).await?;
-    let cluster_role_bindings = list_cluster_role_bindings(client, &cluster_context).await?;
+    let mut warnings = Vec::new();
+    let cluster_roles = match list_cluster_roles(client.clone(), &cluster_context).await {
+        Ok(items) => items,
+        Err(err) if is_forbidden_app_error(&err) => {
+            warnings.push("ClusterRoles unavailable: forbidden by RBAC.".to_string());
+            Vec::new()
+        }
+        Err(err) => return Err(err),
+    };
+    let cluster_role_bindings = match list_cluster_role_bindings(client, &cluster_context).await {
+        Ok(items) => items,
+        Err(err) if is_forbidden_app_error(&err) => {
+            warnings.push("ClusterRoleBindings unavailable: forbidden by RBAC.".to_string());
+            Vec::new()
+        }
+        Err(err) => return Err(err),
+    };
     let namespace_access = namespace_access_summary(
         &cluster_context,
         &namespaces,
@@ -50,6 +65,7 @@ pub async fn rbac_inspection_from(
 
     Ok(RbacInspectionSummary {
         cluster: cluster_context,
+        warnings,
         service_accounts,
         roles,
         cluster_roles,
@@ -78,6 +94,11 @@ fn clean_namespaces(namespaces: Vec<String>) -> Vec<String> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
+}
+
+fn is_forbidden_app_error(error: &AppError) -> bool {
+    let message = error.message.to_ascii_lowercase();
+    message.contains("forbidden") || message.contains("403")
 }
 
 async fn list_service_accounts(

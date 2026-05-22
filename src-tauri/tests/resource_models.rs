@@ -382,6 +382,7 @@ fn test_rbac_models_serde() {
     };
     let inspection = RbacInspectionSummary {
         cluster: "kind-dev".to_string(),
+        warnings: vec!["ClusterRoles unavailable: forbidden by RBAC.".to_string()],
         service_accounts: vec![service_account],
         roles: vec![role],
         cluster_roles: Vec::new(),
@@ -392,6 +393,10 @@ fn test_rbac_models_serde() {
 
     let json_val = serde_json::to_value(&inspection).unwrap();
     assert_eq!(json_val["serviceAccounts"][0]["automountToken"], false);
+    assert_eq!(
+        json_val["warnings"][0],
+        "ClusterRoles unavailable: forbidden by RBAC."
+    );
     assert_eq!(json_val["roles"][0]["rulesCount"], 1);
     assert_eq!(json_val["roles"][0]["risks"][0]["level"], "high");
     let parsed: RbacInspectionSummary = serde_json::from_value(json_val).unwrap();

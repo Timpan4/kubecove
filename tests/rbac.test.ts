@@ -53,6 +53,7 @@ describe("RBAC risk helpers", () => {
 	test("deduplicates inspection risks from all RBAC object groups", () => {
 		const inspection: RbacInspectionSummary = {
 			cluster: "kind-dev",
+			warnings: [],
 			serviceAccounts: [],
 			roles: [{ cluster: "kind-dev", kind: "Role", name: "reader", age: "1m", rulesCount: 1, risks: [medium], rules: [] }],
 			clusterRoles: [{ cluster: "kind-dev", kind: "ClusterRole", name: "reader", age: "1m", rulesCount: 1, risks: [medium], rules: [] }],

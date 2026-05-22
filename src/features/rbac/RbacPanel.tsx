@@ -107,6 +107,19 @@ function SummaryCards({ data }: { data: RbacInspectionSummary }) {
 	);
 }
 
+function RbacWarnings({ warnings }: { warnings: string[] }) {
+	if (warnings.length === 0) return null;
+	return (
+		<Alert>
+			<AlertTitle>Partial RBAC data</AlertTitle>
+			<AlertDescription>
+				{warnings.slice(0, 3).join(" ")}
+				{warnings.length > 3 ? ` ${warnings.length - 3} more warnings.` : ""}
+			</AlertDescription>
+		</Alert>
+	);
+}
+
 function SelectedTable({
 	data,
 	selectedView,
@@ -160,13 +173,15 @@ export function RbacPanel({
 		data.clusterRoles.length === 0 &&
 		data.roleBindings.length === 0 &&
 		data.clusterRoleBindings.length === 0 &&
-		data.namespaceAccess.length === 0
+		data.namespaceAccess.length === 0 &&
+		data.warnings.length === 0
 	) {
 		return <EmptyState />;
 	}
 
 	return (
 		<div className="flex min-w-0 flex-col gap-4">
+			<RbacWarnings warnings={data.warnings} />
 			<SummaryCards data={data} />
 			<div className="min-w-0 overflow-x-auto">
 				<SelectedTable data={data} selectedView={selectedView} />

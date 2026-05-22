@@ -353,6 +353,7 @@ export interface RbacNamespaceAccessSummary {
 
 export interface RbacInspectionSummary {
 	cluster: string;
+	warnings: string[];
 	serviceAccounts: ServiceAccountSummary[];
 	roles: RbacRoleSummary[];
 	clusterRoles: RbacRoleSummary[];

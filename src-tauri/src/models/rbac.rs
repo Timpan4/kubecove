@@ -101,6 +101,7 @@ pub struct RbacNamespaceAccessSummary {
 #[serde(rename_all = "camelCase")]
 pub struct RbacInspectionSummary {
     pub cluster: String,
+    pub warnings: Vec<String>,
     pub service_accounts: Vec<ServiceAccountSummary>,
     pub roles: Vec<RbacRoleSummary>,
     pub cluster_roles: Vec<RbacRoleSummary>,

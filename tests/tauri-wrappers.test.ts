@@ -164,6 +164,7 @@ describe("typed Tauri wrappers", () => {
 	test("passes RBAC inspection scope through typed wrappers", async () => {
 		const inspection: RbacInspectionSummary = {
 			cluster: "kind-dev",
+			warnings: [],
 			serviceAccounts: [],
 			roles: [],
 			clusterRoles: [],
