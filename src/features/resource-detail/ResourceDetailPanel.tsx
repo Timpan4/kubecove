@@ -39,7 +39,9 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 }: ResourceDetailPanelProps) {
 	const [activeTab, setActiveTab] = useState<Tab>("details");
 	const [selectedContainer, setSelectedContainer] = useState("");
-	const [timelineLogLines, setTimelineLogLines] = useState<ParsedLogLine[]>([]);
+	const [timelineLogLine, setTimelineLogLine] = useState<
+		ParsedLogLine | undefined
+	>();
 	const client = useMemo(() => createTauriClient(), []);
 	const dynamicResourceKind = useMemo(
 		() => dynamicResourceKindFromSummary(resource),
@@ -55,7 +57,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 			render: renderCountRef.current,
 		});
 		setActiveTab("details");
-		setTimelineLogLines([]);
+		setTimelineLogLine(undefined);
 	}, [resourceKey]);
 
 	useEffect(() => {
@@ -187,7 +189,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 							events={events}
 							eventsLoading={eventsQuery.isLoading}
 							eventsError={eventsQuery.isError}
-							logLines={timelineLogLines}
+							logLines={timelineLogLine ? [timelineLogLine] : undefined}
 							onOpenHelmRelease={onOpenHelmRelease}
 						/>
 					</TabsContent>
@@ -207,7 +209,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 								containers={containerRows}
 								selectedContainer={selectedContainer}
 								onSelectedContainerChange={setSelectedContainer}
-								onLogLinesChange={setTimelineLogLines}
+								onLatestLogLineChange={setTimelineLogLine}
 								active={activeTab === "logs"}
 							/>
 						</TabsContent>

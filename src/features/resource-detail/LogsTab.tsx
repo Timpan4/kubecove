@@ -25,7 +25,11 @@ import type { TauriClient } from "@/lib/tauri";
 import type { ResourceSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { ContainerStatusRow } from "./helpers";
-import { orderedLogLines, type ParsedLogLine } from "./log-helpers";
+import {
+	latestTimestampedLogLine,
+	orderedLogLines,
+	type ParsedLogLine,
+} from "./log-helpers";
 import { usePodLogStream } from "./usePodLogStream";
 
 interface LogsTabProps {
@@ -34,7 +38,7 @@ interface LogsTabProps {
 	containers: ContainerStatusRow[];
 	selectedContainer: string;
 	onSelectedContainerChange: (container: string) => void;
-	onLogLinesChange?: (lines: ParsedLogLine[]) => void;
+	onLatestLogLineChange?: (line: ParsedLogLine | undefined) => void;
 	active: boolean;
 }
 
@@ -44,7 +48,7 @@ export function LogsTab({
 	containers,
 	selectedContainer,
 	onSelectedContainerChange,
-	onLogLinesChange,
+	onLatestLogLineChange,
 	active,
 }: LogsTabProps) {
 	const [wrapLines, setWrapLines] = useState(false);
@@ -87,9 +91,13 @@ export function LogsTab({
 		() => (latestFirst ? [...parsedLogLines].reverse() : parsedLogLines),
 		[latestFirst, parsedLogLines],
 	);
+	const latestLogLine = useMemo(
+		() => latestTimestampedLogLine(parsedLogLines),
+		[parsedLogLines],
+	);
 	useEffect(() => {
-		onLogLinesChange?.(parsedLogLines);
-	}, [onLogLinesChange, parsedLogLines]);
+		onLatestLogLineChange?.(latestLogLine);
+	}, [latestLogLine, onLatestLogLineChange]);
 	useEffect(() => {
 		if (!autoFollow || logStream.lines.length === 0) return;
 		const viewport = logViewportRef.current;

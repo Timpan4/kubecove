@@ -39,3 +39,23 @@ export function orderedLogLines(
 
 	return latestFirst ? parsed.reverse() : parsed;
 }
+
+function validTimestampMs(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const parsed = Date.parse(value);
+	return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+export function latestTimestampedLogLine(
+	lines: ParsedLogLine[],
+): ParsedLogLine | undefined {
+	return [...lines]
+		.filter((line) => validTimestampMs(line.timestamp) !== undefined)
+		.sort((a, b) => {
+			const timeDelta =
+				(validTimestampMs(b.timestamp) ?? 0) -
+				(validTimestampMs(a.timestamp) ?? 0);
+			if (timeDelta !== 0) return timeDelta;
+			return b.index - a.index;
+		})[0];
+}

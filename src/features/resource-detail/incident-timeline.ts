@@ -1,4 +1,7 @@
-import type { ParsedLogLine } from "./log-helpers";
+import {
+	latestTimestampedLogLine,
+	type ParsedLogLine,
+} from "./log-helpers";
 import type { ResourceEventSummary, ResourceSummary } from "../../lib/types";
 import type { ConditionRow, ContainerStatusRow } from "./helpers";
 import { isCleanCompletedContainer } from "./helpers";
@@ -68,12 +71,6 @@ function timestampMs(value: string | undefined): number {
 	if (!value) return Number.MAX_SAFE_INTEGER;
 	const parsed = Date.parse(value);
 	return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
-}
-
-function validTimestampMs(value: string | undefined): number | undefined {
-	if (!value) return undefined;
-	const parsed = Date.parse(value);
-	return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 function pushUnique(
@@ -222,13 +219,7 @@ export function buildIncidentTimeline({
 		}
 	}
 
-	const latestLog = [...logLines]
-		.filter((line) => validTimestampMs(line.timestamp) !== undefined)
-		.sort(
-			(a, b) =>
-				(validTimestampMs(b.timestamp) ?? 0) -
-				(validTimestampMs(a.timestamp) ?? 0),
-		)[0];
+	const latestLog = latestTimestampedLogLine(logLines);
 	if (latestLog?.timestamp) {
 		pushUnique(items, seen, {
 			id: `log:${latestLog.timestamp}:${latestLog.index}`,
