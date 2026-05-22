@@ -274,6 +274,8 @@ pub(super) async fn collect_network_topology_inputs(
                 .flatten()
                 .map(|port| service_port_hint(port.name.as_deref(), port.port))
                 .collect();
+            input.port_hints.sort();
+            input.port_hints.dedup();
         }
         service_flows.push(NetworkService {
             namespace,

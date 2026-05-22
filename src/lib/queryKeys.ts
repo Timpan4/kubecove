@@ -1,4 +1,4 @@
-import type { ResourceKindSelection } from "./types";
+import type { ResourceKindSelection, TopologyMode } from "./types";
 
 interface ResourceFetchKey {
 	kind: ResourceKindSelection;
@@ -32,7 +32,7 @@ export const queryKeys = {
 	resourceTopology: (
 		clusterContext: string,
 		namespaces: string[],
-		mode: string,
+		mode: TopologyMode,
 	) =>
 		[
 			"resource-topology",

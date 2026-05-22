@@ -148,7 +148,7 @@ function OwnershipResourceNode({
 			<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
 				{portHint || node.status ? (
 					<ValueBadge
-						value={portHint ?? node.status ?? ""}
+						value={portHint || node.status || ""}
 						className="border-primary/45 bg-primary/10"
 					/>
 				) : (

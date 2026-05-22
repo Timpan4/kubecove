@@ -208,10 +208,11 @@ export function OwnershipMap({
 	}, [mapViewportElement]);
 
 	if (isLoading) {
+		const HeaderIcon = mode === "networkFlow" ? Network : GitBranch;
 		return (
 			<div className="rounded-md border bg-card/60">
 				<div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
-					<Network className="size-4" />
+					<HeaderIcon className="size-4" />
 					{mode === "networkFlow" ? "Network Flow" : "Ownership Map"}
 				</div>
 				<Separator />
@@ -227,7 +228,11 @@ export function OwnershipMap({
 	if (isError) {
 		return (
 			<Alert variant="destructive">
-				<AlertTitle>Failed to load ownership map</AlertTitle>
+				<AlertTitle>
+					{mode === "networkFlow"
+						? "Failed to load network flow"
+						: "Failed to load ownership map"}
+				</AlertTitle>
 				<AlertDescription>{errorMessage(error)}</AlertDescription>
 			</Alert>
 		);
