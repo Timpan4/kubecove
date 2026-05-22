@@ -46,6 +46,7 @@ const TOPOLOGY_WATCH_KINDS = [
 	"Pod",
 	"PersistentVolumeClaim",
 	"Service",
+	"EndpointSlice",
 	"Ingress",
 	"ConfigMap",
 	"Secret",

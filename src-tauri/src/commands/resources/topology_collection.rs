@@ -266,8 +266,13 @@ pub(super) async fn collect_network_topology_inputs(
             .as_ref()
             .and_then(|spec| spec.selector.clone())
             .unwrap_or_default();
+        let service_type = service
+            .spec
+            .as_ref()
+            .and_then(|spec| spec.type_.clone())
+            .unwrap_or_else(|| "ClusterIP".to_string());
         if let Some(spec) = &service.spec {
-            input.summary.status = spec.type_.clone();
+            input.summary.status = Some(service_type.clone());
             input.port_hints = spec
                 .ports
                 .iter()
@@ -280,6 +285,7 @@ pub(super) async fn collect_network_topology_inputs(
         service_flows.push(NetworkService {
             namespace,
             name,
+            service_type,
             selector,
         });
         resources.push(input);

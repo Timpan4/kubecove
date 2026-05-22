@@ -27,6 +27,7 @@ import {
 	formatResourceTypeGroupLabel,
 	sortedRows,
 	tableTooltipText,
+	topologyWatchKeys,
 	uniqueArgoApps,
 	watchKeysFromFetchKeys,
 } from "../src/features/resources/helpers";
@@ -237,6 +238,13 @@ describe("resource browser presentation helpers", () => {
         namespace: "apps",
       },
     ]);
+  });
+
+  test("watches EndpointSlices for topology invalidation", () => {
+    expect(topologyWatchKeys(["default"])).toContainEqual({
+      resourceKind: { kind: "EndpointSlice" },
+      namespace: "default",
+    });
   });
 
   test("filters resources by search text and Argo app", () => {

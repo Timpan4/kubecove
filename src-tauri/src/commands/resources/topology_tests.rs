@@ -431,6 +431,7 @@ fn builds_network_flow_from_ingress_to_service_slice_and_pod() {
         services: vec![NetworkService {
             namespace: "default".to_string(),
             name: "api".to_string(),
+            service_type: "ClusterIP".to_string(),
             selector,
         }],
         ingress_backends: vec![NetworkIngressBackend {
@@ -493,11 +494,13 @@ fn network_flow_falls_back_to_service_selector_and_warns_on_misses() {
             NetworkService {
                 namespace: "default".to_string(),
                 name: "api".to_string(),
+                service_type: "ClusterIP".to_string(),
                 selector: BTreeMap::from([("app".to_string(), "api".to_string())]),
             },
             NetworkService {
                 namespace: "default".to_string(),
                 name: "missing".to_string(),
+                service_type: "ClusterIP".to_string(),
                 selector: BTreeMap::from([("app".to_string(), "missing".to_string())]),
             },
         ],
@@ -517,4 +520,23 @@ fn network_flow_falls_back_to_service_selector_and_warns_on_misses() {
         .warnings
         .iter()
         .any(|warning| warning.contains("Service default/missing has no matching Pod endpoints")));
+}
+
+#[test]
+fn network_flow_skips_missing_endpoint_warning_for_external_name_service() {
+    let topology = build_network_flow_topology(NetworkTopologyInputs {
+        resources: vec![resource("Service", "external-api", "default", "svc-1")],
+        services: vec![NetworkService {
+            namespace: "default".to_string(),
+            name: "external-api".to_string(),
+            service_type: "ExternalName".to_string(),
+            selector: BTreeMap::new(),
+        }],
+        ingress_backends: Vec::new(),
+        endpoint_slices: Vec::new(),
+    });
+
+    assert_eq!(topology.nodes.len(), 1);
+    assert_eq!(topology.nodes[0].kind, "Service");
+    assert!(topology.warnings.is_empty());
 }

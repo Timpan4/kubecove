@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, HashSet};
 pub(crate) struct NetworkService {
     pub namespace: String,
     pub name: String,
+    pub service_type: String,
     pub selector: BTreeMap<String, String>,
 }
 
@@ -159,6 +160,10 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
                     TopologyRelation::Selects,
                 );
             }
+        }
+
+        if service.service_type == "ExternalName" {
+            continue;
         }
 
         if service_slices.is_empty() && service.selector.is_empty() {
