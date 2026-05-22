@@ -17,7 +17,12 @@ import {
 } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ResourceSummary, ResourceTopology, TopologyNode } from "@/lib/types";
+import type {
+	ResourceSummary,
+	ResourceTopology,
+	TopologyMode,
+	TopologyNode,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ownershipMapNodeTypes } from "./OwnershipMapNodes";
 import {
@@ -38,6 +43,7 @@ interface OwnershipMapProps {
 	error: unknown;
 	selectedNodeId: string | null;
 	fitViewKey: string;
+	mode: TopologyMode;
 	heightClassName?: string;
 	onNodeSelect: (node: TopologyNode, resource: ResourceSummary | null) => void;
 }
@@ -130,6 +136,7 @@ export function OwnershipMap({
 	error,
 	selectedNodeId,
 	fitViewKey,
+	mode,
 	heightClassName = "h-[620px]",
 	onNodeSelect,
 }: OwnershipMapProps) {
@@ -141,9 +148,10 @@ export function OwnershipMap({
 			topology
 				? buildReactFlowTopology(topology, selectedNodeId, {
 						expandedStandaloneKinds,
+						groupStandalone: mode === "ownership",
 					})
 				: null,
-		[topology, selectedNodeId, expandedStandaloneKinds],
+		[topology, selectedNodeId, expandedStandaloneKinds, mode],
 	);
 	const [mapViewportElement, setMapViewportElement] =
 		useState<HTMLDivElement | null>(null);
@@ -203,7 +211,7 @@ export function OwnershipMap({
 			<div className="rounded-md border bg-card/60">
 				<div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
 					<Network className="size-4" />
-					Ownership Map
+					{mode === "networkFlow" ? "Network Flow" : "Ownership Map"}
 				</div>
 				<Separator />
 				<div className="grid h-[520px] grid-cols-3 gap-10 p-8">
@@ -228,9 +236,13 @@ export function OwnershipMap({
 		return (
 			<Empty className="min-h-52 border">
 				<EmptyHeader>
-					<EmptyTitle>No ownership graph</EmptyTitle>
+					<EmptyTitle>
+						{mode === "networkFlow" ? "No network flow" : "No ownership graph"}
+					</EmptyTitle>
 					<EmptyDescription>
-						No workload ownership relationships were found in this scope.
+						{mode === "networkFlow"
+							? "No ingress, service, or pod traffic relationships were found in this scope."
+							: "No workload ownership relationships were found in this scope."}
 					</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
@@ -241,10 +253,14 @@ export function OwnershipMap({
 		<div className="overflow-hidden rounded-md border bg-card/60">
 			<div className="flex items-center justify-between gap-2 px-3 py-2">
 				<div className="flex min-w-0 items-center gap-2">
-					<GitBranch className="size-4 text-primary" />
+					{mode === "networkFlow" ? (
+						<Network className="size-4 text-primary" />
+					) : (
+						<GitBranch className="size-4 text-primary" />
+					)}
 					<div className="min-w-0">
 						<div className="text-xs font-semibold text-foreground">
-							Ownership Map
+							{mode === "networkFlow" ? "Network Flow" : "Ownership Map"}
 						</div>
 						<div className="text-[0.6875rem] text-muted-foreground">
 							{topology.nodes.length} nodes · {graph.edges.length} edges

@@ -259,6 +259,66 @@ describe("ownership topology helpers", () => {
 		expect(configMapGroup?.style?.height).toBe(42);
 	});
 
+	test("keeps network flow nodes ungrouped when standalone grouping is disabled", () => {
+		const serviceId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"Service",
+			"default",
+			"api",
+		);
+		const podId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"Pod",
+			"default",
+			"api-0",
+		);
+		const topology: ResourceTopology = {
+			nodes: [
+				{
+					id: serviceId,
+					kind: "Service",
+					name: "api",
+					namespace: "default",
+					status: null,
+					health: "unknown",
+					selectable: true,
+					summary: summary({ kind: "Service", name: "api" }),
+				},
+				{
+					id: podId,
+					kind: "Pod",
+					name: "api-0",
+					namespace: "default",
+					status: "Running",
+					health: "healthy",
+					selectable: true,
+					summary: summary({ kind: "Pod", name: "api-0" }),
+				},
+			],
+			edges: [
+				{
+					id: "svc-pod",
+					source: serviceId,
+					target: podId,
+					relation: "selects",
+				},
+			],
+			warnings: [],
+		};
+
+		const graph = buildReactFlowTopology(topology, null, {
+			groupStandalone: false,
+		});
+
+		expect(graph.nodes.map((node) => node.id)).toEqual([serviceId, podId]);
+		expect(graph.nodes.every((node) => node.type === "ownershipResource")).toBe(
+			true,
+		);
+		expect(graph.edges[0]?.style?.strokeDasharray).toBe("5 5");
+	});
+
 	test("expands ownerless type buckets when requested", () => {
 		const configMapId = resourceTopologyNodeId(
 			"kind-dev",

@@ -29,6 +29,7 @@ const KIND_RANK: Record<string, number> = {
 	Secret: 0,
 	ReplicaSet: 1,
 	Job: 1,
+	EndpointSlice: 2,
 	Pod: 2,
 	PersistentVolumeClaim: 3,
 };

@@ -1,10 +1,15 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Table as TanStackTable } from "@tanstack/react-table";
-import { GitBranch, PanelRightClose, PanelRightOpen, Table2 } from "lucide-react";
+import { GitBranch, Network, PanelRightClose, PanelRightOpen, Table2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { ResourceSummary, ResourceTopology, TopologyNode } from "@/lib/types";
+import type {
+	ResourceSummary,
+	ResourceTopology,
+	TopologyMode,
+	TopologyNode,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ResourcePagination } from "./pagination";
 import { ResourceTable } from "./ResourceTable";
@@ -20,6 +25,8 @@ interface ResourceMapTableLayoutProps {
 	topologyErr: unknown;
 	selectedTopologyNodeId: string | null;
 	topologyFitViewKey: string;
+	topologyMode: TopologyMode;
+	onTopologyModeChange: (mode: TopologyMode) => void;
 	mapPanelOpen: boolean;
 	onMapPanelOpenChange: (open: boolean) => void;
 	onTopologyNodeSelect: (
@@ -55,6 +62,8 @@ export function ResourceMapTableLayout({
 	topologyErr,
 	selectedTopologyNodeId,
 	topologyFitViewKey,
+	topologyMode,
+	onTopologyModeChange,
 	mapPanelOpen,
 	onMapPanelOpenChange,
 	onTopologyNodeSelect,
@@ -115,9 +124,32 @@ export function ResourceMapTableLayout({
 						<GitBranch data-icon="inline-start" />
 						Map
 					</span>
-					<span>primary read-only incident view</span>
 				</div>
 				<div className="flex items-center gap-2">
+					<div className="inline-flex h-8 overflow-hidden rounded-md border bg-background p-0.5">
+						<Button
+							type="button"
+							variant={topologyMode === "ownership" ? "secondary" : "ghost"}
+							size="sm"
+							className="h-7 rounded-sm px-2 text-xs"
+							onClick={() => onTopologyModeChange("ownership")}
+							aria-pressed={topologyMode === "ownership"}
+						>
+							<GitBranch data-icon="inline-start" />
+							Ownership
+						</Button>
+						<Button
+							type="button"
+							variant={topologyMode === "networkFlow" ? "secondary" : "ghost"}
+							size="sm"
+							className="h-7 rounded-sm px-2 text-xs"
+							onClick={() => onTopologyModeChange("networkFlow")}
+							aria-pressed={topologyMode === "networkFlow"}
+						>
+							<Network data-icon="inline-start" />
+							Network Flow
+						</Button>
+					</div>
 					<Button
 						type="button"
 						variant={mapPanelOpen ? "secondary" : "outline"}
@@ -171,6 +203,7 @@ export function ResourceMapTableLayout({
 								error={topologyErr}
 								selectedNodeId={selectedTopologyNodeId}
 								fitViewKey={topologyFitViewKey}
+								mode={topologyMode}
 								heightClassName={mapHeightClassName}
 								onNodeSelect={onTopologyNodeSelect}
 							/>

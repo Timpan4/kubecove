@@ -20,6 +20,7 @@ import { createTauriClient, listResourceTopology } from "@/lib/tauri";
 import type {
 	ResourceKindSelection,
 	ResourceSummary,
+	TopologyMode,
 	TopologyNode,
 } from "@/lib/types";
 import { columns } from "./columns";
@@ -95,6 +96,7 @@ function ResourceListComponent({
 	const [selectedTopologyNodeId, setSelectedTopologyNodeId] = useState<
 		string | null
 	>(null);
+	const [topologyMode, setTopologyMode] = useState<TopologyMode>("ownership");
 	const [mapPanelOpen, setMapPanelOpen] = useState(true);
 	const client = useMemo(() => createTauriClient(), []);
 	const renderCountRef = useRef(0);
@@ -122,8 +124,8 @@ function ResourceListComponent({
 		[clusterContext, fetchKeys],
 	);
 	const topologyQueryKey = useMemo(
-		() => queryKeys.resourceTopology(clusterContext, topologyNamespaces),
-		[clusterContext, topologyNamespaces],
+		() => queryKeys.resourceTopology(clusterContext, topologyNamespaces, topologyMode),
+		[clusterContext, topologyMode, topologyNamespaces],
 	);
 	const topologyFitViewKey = useMemo(
 		() => JSON.stringify(topologyQueryKey),
@@ -157,7 +159,8 @@ function ResourceListComponent({
 	});
 	const topologyQuery = useQuery({
 		queryKey: topologyQueryKey,
-		queryFn: () => listResourceTopology(client, clusterContext, topologyNamespaces),
+		queryFn: () =>
+			listResourceTopology(client, clusterContext, topologyNamespaces, topologyMode),
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		staleTime: 30_000,
 	});
@@ -436,6 +439,8 @@ function ResourceListComponent({
 				topologyErr={topologyQuery.error}
 				selectedTopologyNodeId={syncedTopologyNodeId}
 				topologyFitViewKey={topologyFitViewKey}
+				topologyMode={topologyMode}
+				onTopologyModeChange={setTopologyMode}
 				mapPanelOpen={mapPanelOpen}
 				onMapPanelOpenChange={handleMapPanelOpenChange}
 				onTopologyNodeSelect={handleTopologyNodeSelect}

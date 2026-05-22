@@ -13,6 +13,7 @@ import type {
 	ResourceEventSummary,
 	ResourceDetailsFull,
 	ResourceTopology,
+	TopologyMode,
 	StreamMessage,
 	WatchResourceKey,
 	AppError,
@@ -208,10 +209,12 @@ export async function listResourceTopology(
 	client: TauriClient,
 	clusterContext: string,
 	namespaces: string[],
+	mode: TopologyMode = "ownership",
 ): Promise<ResourceTopology> {
 	return client.invoke<ResourceTopology>("list_resource_topology", {
 		clusterContext,
 		namespaces,
+		mode,
 	});
 }
 

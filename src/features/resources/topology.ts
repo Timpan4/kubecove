@@ -73,6 +73,7 @@ export interface ReactFlowTopology {
 
 export interface BuildReactFlowTopologyOptions {
 	expandedStandaloneKinds?: ReadonlySet<string>;
+	groupStandalone?: boolean;
 }
 
 export function resourceTopologyNodeId(
@@ -101,15 +102,22 @@ export function buildReactFlowTopology(
 	const compareNodes = compareNodesByLayoutOrder(orderById, depthById);
 	const selectedPath = selectedTopologyPath(graph, selectedNodeId);
 	const hasSelection = Boolean(selectedNodeId && selectedPath.nodeIds.size > 0);
-	const standaloneGroups = buildStandaloneGroups(
-		graph,
-		positions,
-		compareNodes,
-		selectedPath.nodeIds,
-		hasSelection,
-		options.expandedStandaloneKinds ?? new Set<string>(),
-		selectedNodeId,
-	);
+	const standaloneGroups = options.groupStandalone === false
+		? {
+				groupNodes: [],
+				standaloneIds: new Set<string>(),
+				groupIdByNodeId: new Map<string, string>(),
+				positionsById: new Map<string, { x: number; y: number }>(),
+			}
+		: buildStandaloneGroups(
+				graph,
+				positions,
+				compareNodes,
+				selectedPath.nodeIds,
+				hasSelection,
+				options.expandedStandaloneKinds ?? new Set<string>(),
+				selectedNodeId,
+			);
 	const sortedNodes = graph.nodes.sort((a, b) => {
 		const aStandalone = standaloneGroups.standaloneIds.has(a.id);
 		const bStandalone = standaloneGroups.standaloneIds.has(b.id);
@@ -187,7 +195,10 @@ export function buildReactFlowTopology(
 					opacity: selectedEdge ? 1 : mutedBySelection ? 0.16 : 0.72,
 					stroke,
 					strokeWidth: selectedEdge ? 2.8 : 1.8,
-					strokeDasharray: edge.relation === "creates" ? "5 5" : undefined,
+					strokeDasharray:
+						edge.relation === "creates" || edge.relation === "selects"
+							? "5 5"
+							: undefined,
 				},
 			};
 		});
