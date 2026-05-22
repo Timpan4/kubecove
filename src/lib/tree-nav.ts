@@ -100,6 +100,12 @@ export const SECTIONS = {
     label: "Helm",
     children: ["Releases"] as const,
   },
+  /** RBAC: read-only security inspection across namespaced and cluster-scoped RBAC. */
+  rbac: {
+    id: "rbac",
+    label: "RBAC",
+    children: ["Namespace Access", "Roles", "Cluster Roles", "Bindings", "Service Accounts"] as const,
+  },
 } as const;
 
 export type SectionName = keyof typeof SECTIONS;
@@ -116,6 +122,7 @@ export const STATIC_SECTION_NAMES: SectionName[] = [
   "discovered",
   "argo",
   "helm",
+  "rbac",
 ];
 
 // ─── Section → Kinds Mapping ───────────────────────────────────────────────────
@@ -199,6 +206,8 @@ export interface TreeScope {
   argoMode: boolean;
   /** Whether the scope is for Helm */
   helmMode: boolean;
+  /** Whether the scope is for RBAC inspection */
+  rbacMode: boolean;
 }
 
 /**
@@ -207,7 +216,7 @@ export interface TreeScope {
  */
 export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
   if (!nodeId) {
-    return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false };
+    return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, rbacMode: false };
   }
 
   if (nodeId.type === "section") {
@@ -220,6 +229,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
         clusterScoped: true,
         argoMode: false,
         helmMode: false,
+        rbacMode: false,
       };
     }
     if (nodeId.section === "namespaces") {
@@ -234,6 +244,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
         clusterScoped: false,
         argoMode: false,
         helmMode: false,
+        rbacMode: false,
       };
     }
     // Section selected without namespace — no kinds yet
@@ -245,6 +256,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       clusterScoped: false,
       argoMode: nodeId.section === "argo",
       helmMode: nodeId.section === "helm",
+      rbacMode: nodeId.section === "rbac",
     };
   }
 
@@ -261,13 +273,14 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       clusterScoped: false,
       argoMode: false,
       helmMode: false,
+      rbacMode: false,
     };
   }
 
   if (nodeId.type === "group") {
     const groupName = nodeId.group as KindGroupName;
     const groupKinds = KIND_GROUPS[groupName];
-    if (!groupKinds) return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false };
+    if (!groupKinds) return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, rbacMode: false };
     const kinds = [...groupKinds] as ResourceKindSelection[];
     return {
       section: nodeId.section as SectionName,
@@ -277,6 +290,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       clusterScoped: false,
       argoMode: false,
       helmMode: false,
+      rbacMode: false,
     };
   }
 
@@ -297,10 +311,11 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
           : false,
       argoMode: nodeId.section === "argo",
       helmMode: nodeId.section === "helm",
+      rbacMode: nodeId.section === "rbac",
     };
   }
 
-  return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false };
+  return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, rbacMode: false };
 }
 
 // ─── Empty State Messages ─────────────────────────────────────────────────────
@@ -309,6 +324,7 @@ export function emptyStateMessage(scope: TreeScope, hasClusterContext: boolean):
   if (!hasClusterContext) return "Select a cluster context first";
   if (scope.argoMode) return "Select an Argo CD resource type";
   if (scope.helmMode) return "Select a Helm resource type";
+  if (scope.rbacMode) return "Select an RBAC inspection view";
   if (scope.section === "discovered") return "Select a discovered resource kind";
   if (!scope.section) return "Select a section from the sidebar";
   if (scope.section === "clusterOverview" && scope.kinds.length > 0) return "Select a cluster context to view cluster-scoped resources";

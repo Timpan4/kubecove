@@ -3,6 +3,7 @@ import {
 	createMockTauriClient,
 	getAppUsageMetrics,
 	getHelmReleaseDetails,
+	listRbacInspection,
 	getResourceYaml,
 	isAppError,
 	listHelmReleases,
@@ -16,6 +17,7 @@ import type {
 	HelmReleaseDetails,
 	HelmReleaseSummary,
 	NamespaceSummary,
+	RbacInspectionSummary,
 	ResourceTopology,
 } from "../src/lib/types";
 
@@ -155,6 +157,34 @@ describe("typed Tauri wrappers", () => {
 					storageKind: "Secret",
 					storageName: "sh.helm.release.v1.payments.v7",
 				},
+			},
+		]);
+	});
+
+	test("passes RBAC inspection scope through typed wrappers", async () => {
+		const inspection: RbacInspectionSummary = {
+			cluster: "kind-dev",
+			warnings: [],
+			serviceAccounts: [],
+			roles: [],
+			clusterRoles: [],
+			roleBindings: [],
+			clusterRoleBindings: [],
+			namespaceAccess: [],
+		};
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				return inspection as T;
+			},
+		};
+
+		expect(await listRbacInspection(client, "kind-dev", ["payments"])).toEqual(inspection);
+		expect(calls).toEqual([
+			{
+				cmd: "list_rbac_inspection",
+				args: { clusterContext: "kind-dev", namespaces: ["payments"] },
 			},
 		]);
 	});

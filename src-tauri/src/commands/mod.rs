@@ -6,6 +6,7 @@ mod helm;
 mod helpers;
 mod live_store;
 mod namespaces;
+mod rbac;
 mod resources;
 mod streams;
 mod usage;
@@ -22,6 +23,7 @@ pub use events::{list_resource_events, resource_events_from};
 pub use helm::{get_helm_release_details, list_helm_releases};
 pub use live_store::ClusterLiveStore;
 pub use namespaces::{list_namespaces, namespaces_summary_from};
+pub use rbac::{list_rbac_inspection, rbac_inspection_from};
 pub use resources::{
     dynamic_resource_details_from, dynamic_resources_summary_from, get_dynamic_resource_details,
     get_resource_details, get_resource_yaml, list_dynamic_resources, list_resource_scope,

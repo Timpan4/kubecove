@@ -78,6 +78,11 @@ const HelmDetailPanel = lazy(() =>
 		default: module.HelmDetailPanel,
 	})),
 );
+const RbacPanel = lazy(() =>
+	import("./features/rbac").then((module) => ({
+		default: module.RbacPanel,
+	})),
+);
 const SettingsPage = lazy(() =>
 	import("./features/settings/SettingsPage").then((module) => ({
 		default: module.SettingsPage,
@@ -250,6 +255,7 @@ function App() {
 			kind: nodeId.kind ?? "",
 			argoMode: scope.argoMode,
 			helmMode: scope.helmMode,
+			rbacMode: scope.rbacMode,
 		});
 
 		// Tool sections own their inspector state.
@@ -269,9 +275,17 @@ function App() {
 			setSelectedResource(null);
 			setResourceInitialSearch("");
 			setResourceHealthFilter("all");
+		} else if (scope.rbacMode) {
+			setViewMode("rbac");
+			setSelectedArgoApp(null);
+			setSelectedHelmRelease(null);
+			setSelectedResource(null);
+			setResourceInitialSearch("");
+			setResourceHealthFilter("all");
 		} else if (
 			viewMode === "argo" ||
 			viewMode === "helm" ||
+			viewMode === "rbac" ||
 			viewMode === "settings" ||
 			viewMode === "overview"
 		) {
@@ -282,7 +296,7 @@ function App() {
 			setResourceInitialSearch("");
 			setResourceHealthFilter("all");
 		}
-		if (!scope.argoMode && !scope.helmMode) {
+		if (!scope.argoMode && !scope.helmMode && !scope.rbacMode) {
 			setResourceInitialSearch("");
 		}
 
@@ -388,6 +402,12 @@ function App() {
 		if (viewMode === "overview") return activeWorkspace?.name ?? "Workspace";
 		if (viewMode === "settings") return "Settings";
 		if (viewMode === "helm") return "Helm Releases";
+		if (viewMode === "rbac") {
+			if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
+				return selectedTreeNode.kind;
+			}
+			return "RBAC";
+		}
 		if (viewMode === "argo") {
 			if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
 				return `${selectedTreeNode.kind}`;
@@ -514,6 +534,20 @@ function App() {
 							clusterContext={clusterContext}
 							selectedRelease={selectedHelmRelease}
 							onReleaseSelect={handleHelmReleaseSelect}
+						/>
+					</Suspense>
+				</div>
+			) : viewMode === "rbac" ? (
+				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
+					<Suspense fallback={<ViewLoadingFallback label="Loading RBAC inspection..." />}>
+						<RbacPanel
+							clusterContext={clusterContext}
+							selectedNamespaces={selectedNamespaces}
+							selectedView={
+								selectedTreeNode?.type === "kind" && selectedTreeNode.kind
+									? selectedTreeNode.kind
+									: null
+							}
 						/>
 					</Suspense>
 				</div>
