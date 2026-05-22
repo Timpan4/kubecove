@@ -537,7 +537,17 @@ fn manifest_resource_summary(
     let name = metadata.and_then(|metadata| yaml_string(metadata, "name"));
     let namespace = metadata
         .and_then(|metadata| yaml_string(metadata, "namespace"))
-        .or_else(|| fallback_namespace.map(str::to_string));
+        .or_else(|| {
+            let is_cluster_scoped = kind
+                .as_deref()
+                .map(is_cluster_scoped_manifest_kind)
+                .unwrap_or(false);
+            if is_cluster_scoped {
+                None
+            } else {
+                fallback_namespace.map(str::to_string)
+            }
+        });
 
     if api_version.is_none() && kind.is_none() && name.is_none() {
         return None;
@@ -557,6 +567,25 @@ fn yaml_string(mapping: &serde_yaml::Mapping, key: &str) -> Option<String> {
         .and_then(serde_yaml::Value::as_str)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+fn is_cluster_scoped_manifest_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "APIService"
+            | "ClusterIssuer"
+            | "ClusterRole"
+            | "ClusterRoleBinding"
+            | "CustomResourceDefinition"
+            | "MutatingWebhookConfiguration"
+            | "Namespace"
+            | "Node"
+            | "PersistentVolume"
+            | "PodSecurityPolicy"
+            | "PriorityClass"
+            | "StorageClass"
+            | "ValidatingWebhookConfiguration"
+    )
 }
 
 fn label_value(labels: Option<&BTreeMap<String, String>>, key: &str) -> Option<String> {
@@ -662,6 +691,29 @@ metadata:
         assert_eq!(summary.resources[0].kind.as_deref(), Some("Deployment"));
         assert_eq!(summary.resources[0].namespace.as_deref(), Some("default"));
         assert_eq!(summary.resources[1].kind.as_deref(), Some("Service"));
+        assert_eq!(summary.resources[1].namespace.as_deref(), Some("payments"));
+    }
+
+    #[test]
+    fn manifest_summary_preserves_cluster_scoped_resources_without_namespace() {
+        let manifest = r#"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: payments-reader
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+"#;
+
+        let summary = manifest_summary(Some(manifest), Some("payments"));
+
+        assert_eq!(summary.resource_count, 2);
+        assert_eq!(summary.resources[0].kind.as_deref(), Some("ClusterRole"));
+        assert_eq!(summary.resources[0].namespace, None);
+        assert_eq!(summary.resources[1].kind.as_deref(), Some("Deployment"));
         assert_eq!(summary.resources[1].namespace.as_deref(), Some("payments"));
     }
 }
