@@ -531,7 +531,7 @@ fn manifest_summary(
 
 fn manifest_resource_summary(
     value: &serde_yaml::Value,
-    fallback_namespace: Option<&str>,
+    _fallback_namespace: Option<&str>,
 ) -> Option<HelmManifestResourceSummary> {
     let mapping = value.as_mapping()?;
     let api_version = yaml_string(mapping, "apiVersion");
@@ -540,19 +540,7 @@ fn manifest_resource_summary(
         .get(serde_yaml::Value::String("metadata".to_string()))
         .and_then(serde_yaml::Value::as_mapping);
     let name = metadata.and_then(|metadata| yaml_string(metadata, "name"));
-    let namespace = metadata
-        .and_then(|metadata| yaml_string(metadata, "namespace"))
-        .or_else(|| {
-            let is_cluster_scoped = kind
-                .as_deref()
-                .map(is_cluster_scoped_manifest_kind)
-                .unwrap_or(false);
-            if is_cluster_scoped {
-                None
-            } else {
-                fallback_namespace.map(str::to_string)
-            }
-        });
+    let namespace = metadata.and_then(|metadata| yaml_string(metadata, "namespace"));
 
     if api_version.is_none() && kind.is_none() && name.is_none() {
         return None;
@@ -572,25 +560,6 @@ fn yaml_string(mapping: &serde_yaml::Mapping, key: &str) -> Option<String> {
         .and_then(serde_yaml::Value::as_str)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-}
-
-fn is_cluster_scoped_manifest_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "APIService"
-            | "ClusterIssuer"
-            | "ClusterRole"
-            | "ClusterRoleBinding"
-            | "CustomResourceDefinition"
-            | "MutatingWebhookConfiguration"
-            | "Namespace"
-            | "Node"
-            | "PersistentVolume"
-            | "PodSecurityPolicy"
-            | "PriorityClass"
-            | "StorageClass"
-            | "ValidatingWebhookConfiguration"
-    )
 }
 
 fn label_value(labels: Option<&BTreeMap<String, String>>, key: &str) -> Option<String> {
@@ -703,23 +672,23 @@ metadata:
         assert_eq!(summary.resource_count, 2);
         assert!(!summary.truncated);
         assert_eq!(summary.resources[0].kind.as_deref(), Some("Deployment"));
-        assert_eq!(summary.resources[0].namespace.as_deref(), Some("default"));
+        assert_eq!(summary.resources[0].namespace, None);
         assert_eq!(summary.resources[1].kind.as_deref(), Some("Service"));
         assert_eq!(summary.resources[1].namespace.as_deref(), Some("payments"));
     }
 
     #[test]
-    fn manifest_summary_preserves_cluster_scoped_resources_without_namespace() {
+    fn manifest_summary_preserves_missing_namespace_without_kind_guessing() {
         let manifest = r#"
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: payments-reader
 ---
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
 metadata:
-  name: payments-api
+  name: internal
 "#;
 
         let summary = manifest_summary(Some(manifest), Some("payments"));
@@ -727,7 +696,7 @@ metadata:
         assert_eq!(summary.resource_count, 2);
         assert_eq!(summary.resources[0].kind.as_deref(), Some("ClusterRole"));
         assert_eq!(summary.resources[0].namespace, None);
-        assert_eq!(summary.resources[1].kind.as_deref(), Some("Deployment"));
-        assert_eq!(summary.resources[1].namespace.as_deref(), Some("payments"));
+        assert_eq!(summary.resources[1].kind.as_deref(), Some("IngressClass"));
+        assert_eq!(summary.resources[1].namespace, None);
     }
 }
