@@ -1,17 +1,22 @@
 # `src/lib/`
 
-Pure logic. **No JSX.** No feature-specific behavior.
+Pure shared logic belongs here. No JSX.
 
-Belongs here:
-- Typed wrappers around Tauri commands (`tauri.ts`).
-- Frontend mirrors of serde contracts (`types.ts`).
-- The Zustand store and composed hooks (`hooks.ts`).
-- Settings persistence (`settings.ts`).
-- Pure helpers shared across features (`tree-nav.ts`, `resource-visuals.ts`, `diagnostics.ts`, `utils.ts`).
+Allowed:
 
-Does **not** belong here:
-- React components. Those go in `src/components/` (generic) or `src/features/<area>/` (specific).
-- Anything that imports from `src/features/` or `src/components/`. `lib/` is upstream of both.
-- Logic that only one feature uses — move it into that feature.
+- typed Tauri wrappers in `tauri.ts`
+- frontend mirrors of serde contracts in `types.ts`
+- Zustand stores and composed dashboard hooks in `hooks.ts`
+- workspace, settings, query-key, release-channel, diagnostics, and formatting helpers
+- pure resource health, metrics, visuals, and tree-navigation logic
 
-Caps: `.ts` soft 300 lines, hard 600. See [docs/handbook/file-size-and-split.md](../../docs/handbook/file-size-and-split.md).
+Not allowed:
+
+- React components
+- imports from `src/features/`
+- imports from `src/components/`
+- logic that only one feature uses
+
+Feature-only logic belongs beside that feature. Generic React hooks belong in `src/hooks/`.
+
+Caps: `.ts` soft 300 / hard 600. See [docs/handbook/file-size-and-split.md](../../docs/handbook/file-size-and-split.md).

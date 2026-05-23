@@ -1,50 +1,66 @@
 # File Size and Split Triggers
 
-A file that's too long is unreadable, agent-hostile, and hides duplication. These caps are the bar.
+Large files are hard to review and easy to misuse. These caps are the working bar.
 
 ## Caps
 
-| Extension | Soft (warn)  | Hard (fail)  |
-|-----------|--------------|--------------|
-| `.rs`     | 500 lines    | 800 lines    |
-| `.tsx`    | 400 lines    | 700 lines    |
-| `.ts`     | 300 lines    | 600 lines    |
-| `.css`    | no cap yet   | no cap yet   |
+| Extension | Soft cap | Hard cap |
+|-----------|----------|----------|
+| `.rs`     | 500 lines | 800 lines |
+| `.tsx`    | 400 lines | 700 lines |
+| `.ts`     | 300 lines | 600 lines |
+| `.css`    | no cap yet | no cap yet |
 
-Tests, generated files, and lockfiles are exempt: `**/*.test.*`, `**/*.spec.*`, `**/*.gen.*`, `**/*.d.ts`, `bun.lock`, `node_modules/**`, `src-tauri/target/**`, `target/**`.
+Exempt:
 
-## What the caps mean
+- `**/*.test.*`
+- `**/*.spec.*`
+- `**/*.gen.*`
+- `**/*.d.ts`
+- `bun.lock`
+- `node_modules/**`
+- `src-tauri/target/**`
+- `target/**`
 
-- **Soft cap** — the pre-commit hook warns. Plan a split soon. Treat as a checklist item in the next PR that touches the file.
-- **Hard cap** — the pre-commit hook fails. Split before committing.
+## Meaning
 
-## Legacy exemptions
+- Soft cap: the hook warns. Plan a split the next time the file is touched for real work.
+- Hard cap: the hook fails. Split before committing.
 
-Files that already exceed the hard cap when this policy was introduced are listed in `.githooks/pre-commit-user` under `LEGACY_OVERSIZED_FILES`. They are allowed to be committed as-is, but:
+## Legacy Exemptions
 
-- Any structural edit to a legacy file should be paired with a split, not new growth.
-- The list is drained over time. A file is removed from the list when it drops below the soft cap.
-- The list is not a place to silence new offenders. New oversized files are not added.
+Files that already exceeded the hard cap when this policy was introduced live in `.githooks/pre-commit-user` under `LEGACY_OVERSIZED_FILES`.
 
-## How to split
+Rules:
 
-**Rust (`src-tauri/src/commands.rs`-style growth):**
-- Move related commands into a per-domain file (`commands/<domain>.rs`).
-- Move shared helpers into `commands/helpers.rs`.
-- Re-export from `commands/mod.rs` so `lib.rs`'s `invoke_handler!` registration doesn't need a sweeping rewrite — just update the import path.
-- `cargo check --manifest-path src-tauri/Cargo.toml` after each move.
+- Structural edits to a legacy oversized file should include a split.
+- Remove a file from the legacy list once it drops below the soft cap.
+- Do not add new oversized files to the list to silence the hook.
 
-**TypeScript / React (`*.tsx` growth):**
-- Pull subcomponents out into sibling files inside the same feature folder.
-- Pull pure functions (formatting, mapping, derived state) into a `feature-helpers.ts` or into `src/lib/` if truly generic.
-- Pull custom hooks into a `hooks.ts` next to the component.
-- `bun run typecheck` after each move.
+## How to Split
 
-**Don't:**
-- Don't split by line count alone. Each split should produce files with a coherent single responsibility.
-- Don't introduce a one-import wrapper just to dodge the cap.
-- Don't disable the hook. If a hard cap genuinely needs an exception, add the file to the legacy list with a code comment explaining why and a follow-up issue.
+Rust:
 
-## Why these numbers
+- Move command handlers into `commands/<domain>.rs` or `commands/<domain>/`.
+- Move shared helpers into `commands/helpers.rs` or a helper submodule.
+- Re-export through `commands/mod.rs`.
+- Run `bun run rust:check` after each coherent move.
 
-`src-tauri/src/commands.rs` hit 2525 lines before anyone flagged it. `src/components/ResourceList.tsx` hit 993. The caps are calibrated so the next file to grow past them is caught well before reaching that state. Soft caps can be re-tuned after the project has lived with them for a month.
+TypeScript and React:
+
+- Move feature subcomponents into sibling files in the same feature folder.
+- Move pure feature helpers to `helpers.ts` or a focused sibling module.
+- Move truly generic pure logic to `src/lib/`.
+- Move reusable generic hooks to `src/hooks/`.
+- Run `bun run typecheck` after each coherent move.
+
+Avoid:
+
+- splitting by line count alone
+- one-import wrapper files that only dodge the cap
+- disabling the hook
+- expanding legacy oversized files without a split plan
+
+## Why These Numbers
+
+The caps are designed to catch growth before files become agent-hostile. They can be revisited after the project has enough history to justify different limits.

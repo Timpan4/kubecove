@@ -1,7 +1,14 @@
 # `src-tauri/src/models/`
 
-Serde contracts shared with the frontend. Frontend mirrors live in `src/lib/types.ts`.
+Serde contracts shared with the frontend live here. Frontend mirrors live in `src/lib/types.ts`.
 
-While the module fits in one `mod.rs`, leave it. When it grows past the soft cap (500 lines), split per domain: `cluster.rs`, `namespace.rs`, `resource.rs`, `argo.rs`, `error.rs`. See [docs/handbook/code-organization.md](../../../docs/handbook/code-organization.md).
+Current domains include cluster, namespace, resource, discovery, events, streams, metrics, Argo CD, Helm, RBAC, usage, and error models.
 
-Models never embed raw Kubernetes objects. They are the trimmed, frontend-safe view. Anything that could leak kubeconfig contents, tokens, or certificate data does not belong here.
+Rules:
+
+- Models are trimmed app contracts, not raw Kubernetes object dumps.
+- Do not include kubeconfig contents, tokens, certificates, or broad filesystem data.
+- Prefer domain files over a growing `mod.rs`.
+- Keep field names stable with the TypeScript mirrors.
+
+Caps: `.rs` soft 500 / hard 800. See [docs/handbook/file-size-and-split.md](../../../docs/handbook/file-size-and-split.md).

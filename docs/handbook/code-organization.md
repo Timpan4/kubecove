@@ -1,72 +1,117 @@
 # Code Organization
 
-Where things go. The target shape lives in [architecture-blueprint.md](../architecture-blueprint.md); this page is the *rules*.
+This page is the placement rulebook. The app shape lives in [architecture-blueprint.md](../architecture-blueprint.md).
 
 ## Frontend (`src/`)
 
 ### `src/features/<area>/`
 
-Anything specific to one product area. A feature folder is **self-contained**: its components, hooks, helpers, and types live inside it. Other features import only the feature's public surface (named exports from a top-level file, not deep paths into private helpers).
+Feature folders hold product-area-specific components, hooks, helpers, and types. Other features should import only public exports from the feature entry point, not deep private helpers.
 
-A new feature folder is created when:
-- A product area gains more than one component or hook of its own, AND
-- That code is not reusable outside the area.
+Current areas:
 
-Current areas: `app-updates/`, `argo/`, `rbac/`, `resource-detail/`, `resources/`, `settings/`, `workspaces/`. Future candidates: `clusters/`, `namespaces/`.
+- `app-updates/`
+- `argo/`
+- `helm/`
+- `rbac/`
+- `resource-detail/`
+- `resources/`
+- `settings/`
+- `workspaces/`
+
+Create a new feature folder when a product area has more than one component or hook and the code is not reusable elsewhere.
 
 ### `src/components/`
 
-Only **generic, feature-agnostic** reusables. Examples that belong here: `ui/` (shadcn primitives), layout shells, badges, formatted timestamps, generic skeletons.
+Use only for generic, feature-agnostic UI:
 
-A component **does not** belong here if it's used by exactly one feature. Move it into that feature's folder.
+- shadcn primitives in `ui/`
+- shared layout chrome
+- generic badges, timestamp components, skeletons, and metadata display helpers
+
+A component used by one feature belongs in that feature folder. A component that imports from a feature folder is not generic.
+
+Some older flat components still live here (`ClusterSelector`, `NamespaceList`, `KindList`, `SidebarTree`). Move them into feature folders when touched for structural work; do not add new feature-specific components here.
 
 ### `src/lib/`
 
-Pure logic: utilities, types, the typed Tauri wrapper, the Zustand store. **No JSX.** No feature-specific logic.
+Pure logic only. No JSX.
 
-Current entries:
-- `tauri.ts` — typed wrappers around Tauri commands.
-- `types.ts` — frontend copies of the serde contracts.
-- `hooks.ts` — Zustand stores and the composed `useDashboardState` hook.
-- `settings.ts` — settings persistence helpers.
-- `tree-nav.ts` — sidebar tree navigation helpers (pure).
-- `resource-visuals.ts` — pure status → visual mapping.
-- `diagnostics.ts` — diagnostic logging.
-- `utils.ts` — tiny shared helpers.
+Current responsibilities:
+
+- `tauri.ts` - typed Tauri command wrappers
+- `types.ts` - frontend mirrors of serde contracts
+- `hooks.ts` - Zustand stores and composed dashboard hooks
+- `settings.ts` - settings persistence
+- `workspaces.ts` - workspace scope and restore helpers
+- `queryKeys.ts` - query key helpers
+- `tree-nav.ts` - sidebar tree helpers
+- `resource-visuals.ts`, `resource-health.ts`, `resource-metrics.ts` - pure resource presentation logic
+- `diagnostics.ts`, `usage-metrics.ts`, `app-version.ts`, `release-channel.ts`, `utils.ts` - shared utilities
+
+Logic used by one feature belongs inside that feature.
 
 ### `src/app/`
 
-App-level wiring only: router, providers. One or two files.
+App-level wiring and frames only: router, top bar, app shell helpers, shared loading frames, and cross-feature app hooks.
 
 ### `src/hooks/`
 
-Generic React hooks that are reusable across features or required by shared UI primitives. Feature-specific hooks stay in their feature folder.
+Generic React hooks shared across features. Feature-specific hooks stay inside their feature folder.
 
 ## Backend (`src-tauri/src/`)
 
 ### `commands/`
 
-One file per command domain. Each `#[tauri::command]` function lives in the file matching its domain. Shared helpers (`list_params`, `base_resource_summary`, `fetch_and_serialize`, age/timestamp formatting) live in `commands/helpers.rs`. The `mod.rs` re-exports the commands so `lib.rs`'s invoke handler registration imports from one place.
+One file or folder per command domain. Each `#[tauri::command]` belongs in its domain:
 
-Target domains (introduce as commands accumulate): `contexts`, `namespaces`, `resources`, `events`, `discovery`, `argo`.
+- `contexts`
+- `namespaces`
+- `resources`
+- `events`
+- `discovery`
+- `streams`
+- `metrics`
+- `argo`
+- `helm`
+- `rbac`
+- `usage`
+
+Shared command helpers belong in `commands/helpers.rs` or a helper submodule. `commands/mod.rs` re-exports commands for `lib.rs` invoke registration.
 
 ### `models/`
 
-Serde contracts shared with the frontend. When `models/mod.rs` exceeds the soft cap, split by domain (`cluster.rs`, `namespace.rs`, `resource.rs`, `argo.rs`, `error.rs`). Until then, one file is fine.
+Serde contracts shared with the frontend. Split by domain when a model set grows:
 
-### `kube/` (does not yet exist)
+- `cluster`
+- `namespace`
+- `resource`
+- `discovery`
+- `events`
+- `streams`
+- `metrics`
+- `argo`
+- `helm`
+- `rbac`
+- `usage`
+- `error`
 
-Reserved for the day Kubernetes access has a second consumer beyond `commands/` (e.g. watch streams, log streaming). YAGNI until that consumer appears.
+Models must be frontend-safe. They must not contain raw kubeconfig contents, tokens, certificates, or unnecessary full Kubernetes objects.
 
-## New top-level directories
+### Future `kube/`
 
-Adding a new top-level directory under `src/` or `src-tauri/src/` requires a one-line entry in this file describing what belongs there. Update the handbook **before** creating the directory, not after.
+Reserve `src-tauri/src/kube/` for reusable Kubernetes access logic once commands are no longer the only backend consumer. Do not create it just to move code around.
 
-Repo-level `scripts/` contains maintainer automation for release and repository workflows; it must not contain app runtime code.
+## New Top-Level Directories
 
-## Cross-cutting rules
+Adding a new top-level directory under `src/` or `src-tauri/src/` requires a one-line entry in this file before the directory is created.
 
-- Frontend never calls Kubernetes directly. All cluster data flows through typed Tauri wrappers in `lib/tauri.ts`.
-- Frontend never executes shell commands. Period.
-- Kubeconfig contents, tokens, and certificate data never cross the Tauri boundary. Rust redacts before serializing.
-- Security-sensitive changes require an ADR (see [AGENTS.md](../../AGENTS.md) for the list).
+Repo-level `scripts/` contains maintainer automation. It must not contain app runtime code.
+
+## Cross-Cutting Rules
+
+- Frontend never calls Kubernetes directly.
+- Frontend never executes shell commands.
+- All cluster data crosses the Tauri boundary through typed wrappers.
+- Kubeconfig contents, tokens, and certificate data never cross into React.
+- Security-sensitive changes require an ADR.

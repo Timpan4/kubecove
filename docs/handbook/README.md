@@ -1,18 +1,20 @@
 # Engineering Handbook
 
-Short, canonical rules for working in this repo. The handbook is the source of truth; module READMEs and `AGENTS.md` link back here. If you find a contradiction with another doc, the handbook wins — open a PR to fix the other doc.
+The handbook is the repo's source of truth for code organization, file size, and hygiene. If another doc contradicts it, fix the other doc or open an issue.
 
-## When to consult what
+## Pages
 
-- **About to add a file or folder** → [code-organization.md](code-organization.md). Tells you where it goes and when to make a new folder.
-- **A file is getting long** → [file-size-and-split.md](file-size-and-split.md). Soft/hard caps and how to split.
-- **About to replace, rename, or remove something** → [hygiene.md](hygiene.md). Dead-code, orphan-file, and duplicate-component policy.
-- **About to open a PR or finish an agent task** → [pr-checklist.md](pr-checklist.md). Tickbox list.
+- [code-organization.md](code-organization.md) - where files and folders belong.
+- [file-size-and-split.md](file-size-and-split.md) - soft/hard caps and how to split oversized files.
+- [hygiene.md](hygiene.md) - orphan files, superseded files, duplicates, and dead code.
+- [pr-checklist.md](pr-checklist.md) - final checks before opening a PR or marking agent work complete.
 
-## What this handbook is not
+## Boundaries
 
-- Not the product vision — see [product-vision.md](../product-vision.md).
-- Not the target architecture diagram — see [architecture-blueprint.md](../architecture-blueprint.md).
-- Not a list of locked-in decisions — see [decisions/](../decisions/).
+This handbook is not the product vision, architecture blueprint, or ADR log. Use:
 
-The handbook is rules and guardrails. Keep each page short enough to read in a minute.
+- [Product Vision](../product-vision.md) for product direction.
+- [Architecture Blueprint](../architecture-blueprint.md) for app shape and Tauri command boundary.
+- [decisions/](../decisions/) for locked-in decisions.
+
+Keep handbook pages short enough to reread during routine work.

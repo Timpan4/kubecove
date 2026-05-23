@@ -2,26 +2,31 @@
 
 ## Package Manager
 
-Use Bun for frontend package management, scripts, and scaffolding.
+Use Bun for frontend dependencies, scripts, and scaffolding.
 
-Expected frontend commands after the app is scaffolded:
+Common commands:
 
 ```sh
 bun install
-bun run dev
+bun run tauri dev
 bun run typecheck
-bun run lint
+bun test
+bun run rust:test
+bun run rust:check
+bun run check
 ```
 
-Rust checks should run through Cargo:
+`bun run check` runs the current local verification bundle:
 
 ```sh
-cargo check --manifest-path src-tauri/Cargo.toml
+bun run typecheck && bun test && bun run rust:test && bun run rust:check
 ```
 
-## Pre-Commit Hook
+There is no `lint` script at the moment. Add one only when the project has a real lint configuration.
 
-This repo uses a checked-in Git hook at `.githooks/pre-commit`.
+## Git Hook
+
+This repo uses `.githooks/pre-commit`.
 
 Enable it once per clone:
 
@@ -29,41 +34,40 @@ Enable it once per clone:
 git config core.hooksPath .githooks
 ```
 
-On Windows PowerShell, run the hook manually with:
+Run it manually on Windows PowerShell when needed:
 
 ```sh
 bash .githooks/pre-commit
 ```
 
-The hook currently:
+The hook:
 
 - runs `git diff --cached --check`
-- blocks likely kubeconfig or credential material
-- enforces file-size caps from [handbook/file-size-and-split.md](handbook/file-size-and-split.md): warn at soft cap, fail at hard cap; legacy oversized files exempt via an explicit list in the hook
-- runs `bun run typecheck` when `package.json` defines `typecheck`
-- runs `bun run lint` when `package.json` defines `lint`
+- blocks likely kubeconfig, token, certificate, or credential material
+- enforces file-size caps from [handbook/file-size-and-split.md](handbook/file-size-and-split.md)
+- runs `bun run typecheck` when available
+- runs `bun run lint` when a lint script exists
 - runs `cargo check` when a Rust manifest exists
-
-The hook is intentionally lightweight before the app scaffold exists. Once the Tauri project is created, keep the hook aligned with the real scripts in `package.json`.
 
 ## Testing Standard
 
-Tests must prove behavior, contracts, or invariants. Do not add tests that merely restate current implementation details or assert the same branching logic in another form.
+Tests should prove behavior, contracts, or invariants. Do not add tests that only mirror implementation branches.
 
-Use example-based tests for specific regressions and user-visible behavior. Add fixture-contract tests when Kubernetes object shapes, Tauri serde contracts, or frontend wrapper boundaries can drift. Fixtures must be sanitized, minimal, and checked into `tests/fixtures/` only when they represent a reusable Kubernetes or app contract.
+Use example-based tests for regressions and user-visible behavior. Use fixture-contract tests when Kubernetes object shape, Tauri serde contracts, or frontend wrapper boundaries can drift. Fixtures must be sanitized, minimal, and reusable.
 
-Use property-based tests for pure deterministic logic with compact invariants and many input combinations, such as topology graphs, grouping, sorting, filtering, and cache-key normalization. Keep generated inputs small, deterministic, and focused on invariants. Do not require property tests for React rendering, real cluster integration, Tauri command tests that need live Kubernetes clients, or one-off bug examples.
+Use property-based tests for pure deterministic logic with compact invariants, such as topology graphs, grouping, sorting, filtering, and cache-key normalization. Frontend property tests use `fast-check` with `bun test`; Rust property tests use `proptest`.
 
-Frontend property tests use `fast-check` with `bun test`. Rust property tests use `proptest` as a dev dependency. Prefer fixture-contract tests first when the risk is external shape drift; add property tests when the risk is combinatorial behavior.
+Do not require property tests for React rendering, live cluster integration, Tauri command tests that need real Kubernetes clients, or one-off bug examples.
 
 ## Verification Before Completion
 
-Before claiming a task is complete, run the checks that prove it:
+Run the checks that match the work:
 
-- docs-only change: pre-commit hook or a targeted docs sanity check
-- frontend change: `bun run typecheck` and `bun run lint`
-- Rust backend change: `cargo check --manifest-path src-tauri/Cargo.toml`
-- behavior change with tests: the relevant test command
-- Tauri integration change: app dev or build command, depending on scope
+- docs-only: pre-commit hook or targeted docs sanity check
+- frontend: `bun run typecheck` and relevant `bun test`
+- backend: `bun run rust:check` and relevant `bun run rust:test`
+- behavior change: the nearest focused test
+- Tauri integration: `bun run tauri dev` or build/smoke test, depending on scope
+- release change: `bun run release:dry-run`
 
-If a check cannot run locally, say exactly why and what remains unverified.
+If a check cannot run locally, record the exact blocker and what remains unverified.

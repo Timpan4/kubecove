@@ -1,16 +1,20 @@
 # `src/components/`
 
-Only **generic, feature-agnostic** reusables.
+Generic, feature-agnostic UI belongs here.
 
-Belongs here:
-- `ui/` — shadcn primitives (button, input, select, tabs, tooltip, badge).
-- Layout shells and chrome shared across features.
-- Generic display helpers like `MetadataBadges`, `TimestampText`.
+Allowed:
 
-Does **not** belong here:
-- A component used by exactly one feature. Move it into `src/features/<area>/`.
-- Anything that imports from a specific feature folder. That's a sign it's not generic.
+- shadcn primitives under `ui/`
+- shared layout chrome
+- reusable display helpers such as `MetadataBadges`, `StatusBadge`, and `TimestampText`
+- generic skeletons, empty states, badges, tooltips, and form controls
+
+Not allowed:
+
+- components used by exactly one feature
+- components that import from `src/features/`
+- feature-specific wrappers kept here for convenience
+
+Older flat components (`ClusterSelector`, `NamespaceList`, `KindList`, `SidebarTree`) still live here. Move them into feature folders when touching their structure. New feature-specific components should start in `src/features/<area>/`.
 
 See [docs/handbook/code-organization.md](../../docs/handbook/code-organization.md).
-
-Note: at the time this handbook landed, several feature-specific components still live here flat (`ClusterSelector`, `NamespaceList`, `KindList`, `SidebarTree`). They're slated to move into feature folders in a follow-up pass — new components should not be added here unless they're truly generic.

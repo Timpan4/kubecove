@@ -2,114 +2,88 @@
 
 ## Identity
 
-KubeCove is a local desktop Kubernetes workspace with an Aptakube-clean aesthetic. It is neither a minimal cluster dashboard nor an overloaded IDE. The product personality is **focused clarity under load**: present the right information quickly, support fast navigation between incident context and resource detail, and keep mental overhead low even when working across multiple clusters or namespaces.
+KubeCove is a local desktop Kubernetes workspace for operators and app developers who need fast, safe cluster exploration. It is not a thin `kubectl` wrapper and not a mutation-heavy IDE. Its product stance is focused clarity under load: keep context visible, make resource state easy to scan, and move from symptoms to detail without losing the namespace or app boundary.
 
-Inspiration benchmarks are K8Studio and Aptakube. K8Studio demonstrates what a serious Kubernetes GUI can grow into. Aptakube demonstrates a clean, modern aesthetic that this project should approach without matching directly. The visual language is original and must not copy K8Studio or Aptakube code, assets, branding, layouts, or marketing text.
+K8Studio and Aptakube are public benchmarks for capability breadth and low-friction desktop UX. KubeCove borrows product lessons, not code, branding, assets, layouts, or marketing text.
 
 ## Entry Point
 
-The first screen after launch is a **saved workspace launcher**. Users restore work by selecting a named workspace rather than replaying an exact stale state. A workspace encodes which clusters, namespaces, and resource filters were active, but the **restore experience is a curated home overview**, not a full state replay. Curation means the app refreshes live cluster state for the saved scope, summarizes current health, marks missing saved resources as unavailable instead of replaying stale data, and surfaces useful entry points for the saved context. The overview shows cluster health, GitOps sync status when GitOps metadata is available, and quick-access shortcuts to the most-used namespaces and applications.
+The app opens into a saved workspace launcher. A workspace stores local scope only: selected contexts, namespace sets, resource filters, shortcuts, and layout preferences. Restoring a workspace refreshes live cluster state and opens a curated overview rather than replaying stale selected objects.
 
-This preserves startup speed and avoids state mismatches from clusters that have changed since the workspace was saved.
+The overview should surface:
 
-## Inside a Workspace
+- cluster and namespace availability
+- health and incident shortcuts
+- Argo CD sync and health when Argo metadata exists
+- recent or pinned namespace, app, and resource entry points
+- unavailable saved contexts, namespaces, or kinds
 
-A workspace presents a **hybrid IDE tree plus fast shortcuts**. The left sidebar shows a cluster/namespace/resource-kind tree for deep navigation. The main area shows a fast-filtering resource table with a health strip along the top. Fast shortcuts are workspace-scoped entry points: user-pinned scopes, recent namespaces or applications, common resource kind filters, and health-driven shortcuts such as Unhealthy, Recent, Compare, and GitOps Drift.
+## Working Surface
 
-The split between table and detail panel is the primary working surface. The table answers "what is there." The detail panel answers "what is wrong with it."
+Inside a workspace, KubeCove uses a hybrid IDE shape:
+
+- left navigation for context, namespace, app/owner, and resource scope
+- center resource table and topology/map surfaces
+- right detail panel for YAML, details, events, logs, health, and incident summaries
+
+The table answers "what exists?" The detail panel answers "what is wrong or notable?" The topology view answers "how is this connected?"
 
 ## Core Jobs
 
-Three operational jobs drive every feature decision:
-
-1. **Browse resources fast.** List, filter, and search across namespaces and clusters with minimal friction.
-2. **Troubleshoot incidents.** Get from symptom to resource detail, YAML, events, and health status in as few clicks as possible.
-3. **Understand app topology.** See how workloads, services, and ingresses relate, and whether Argo CD is managing the application.
+1. Browse resources quickly across selected namespaces and contexts.
+2. Troubleshoot incidents from health signals, warning events, restarts, logs, and YAML.
+3. Understand application topology through owner references, services, ingresses, Argo CD, and Helm metadata.
 
 ## Navigation Model
 
-Namespace is first-class navigation state, not a filter buried in a dropdown. The navigation hierarchy is:
+Namespace is first-class state, not a hidden table filter.
 
-```
+```text
 Cluster group -> Cluster/context -> Namespace -> App/owner -> Resource
 ```
 
-This matches the mental model of operators working in a specific namespace across a deployment, rather than bouncing between random resource types.
+Supported paths:
 
-Supported navigation patterns:
-- **Namespace-first.** Start in a namespace and browse its resources.
-- **Cluster-first.** Start at the cluster level and drill into namespaces.
-- **App-first context.** When GitOps or ownership metadata is present, optional app entries appear in the tree, filters, and shortcuts so users can jump from application context back to Kubernetes resources.
-- **Multi-namespace workspace.** A single workspace can span multiple namespaces across one or more clusters.
-
-Namespace is never hidden or collapsed. It is always visible in the navigation state and table context.
+- Namespace-first browsing for routine operational work.
+- Cluster-first drilling when starting from an unfamiliar context.
+- App-first jumps when Argo CD, Helm, or ownership metadata identifies an application boundary.
+- Multi-namespace workspaces that keep selected scope visible across tables, maps, and details.
 
 ## Multi-Cluster
 
-Multi-cluster is a first-class concept, not an add-on. The app supports:
-- **Aggregate views.** See resources from multiple clusters in a single table.
-- **Side-by-side compare.** Open two clusters in split view for drift comparison.
-- **Custom cluster groups.** Define named groups of contexts for quick switching.
+Multi-cluster is part of the product model. KubeCove should support aggregate views, side-by-side compare, and named cluster groups. A cluster group is only local navigation metadata; it never changes credentials or Kubernetes API access.
 
-Cluster credentials stay on the Rust side. The frontend receives only context metadata, not raw kubeconfig contents.
+Credentials remain Rust-side. The frontend receives context and resource metadata, never raw kubeconfig content, tokens, or certificates.
 
-## Visual Emphasis
+## Visual Direction
 
-The default workspace layout uses a **split table plus health strip**. The table shows resource name, kind, namespace, status, age, and owner. A health strip at the top of the table summarizes healthy, degraded, and missing resources for the current filter context.
+The baseline is balanced IDE density: compact enough for real operational work, calm enough to stay readable during an incident. Tables should be fast and scannable. Detail panels should be structured. Topology should clarify relationships rather than become decorative.
 
-Later, **adaptive workspace defaults** can provide different default layouts for workspace types, such as resource browser, incident review, app map, or cluster comparison. This should be explicit and local to the saved workspace, not hidden behavior tracking. A custom density toggle will be added for users who prefer more or less information per screen.
+Density controls, adaptive workspace defaults, and customizable layouts are later enhancements. Defaults should remain explicit per workspace, not hidden behavior tracking.
 
-## GitOps Integration Posture
+## GitOps and Helm
 
-GitOps is an **optional intelligence and extension layer**, not the product backbone. The core Kubernetes browser works with or without Argo CD. When Argo CD is present, it adds:
+GitOps and package metadata are enrichment layers, not the backbone. The Kubernetes browser must work without Argo CD or Helm.
 
-- **Resource overlay.** Resources managed by an Argo application show the application name, sync status, and revision.
-- **Health and drift dashboard.** A read-only view summarizing Argo application health and sync drift across the workspace.
-- **Filters.** Filter the resource table by Argo application, sync status, or revision.
-- **App topology hints.** When an Argo application is selected, the table and detail view highlight related resources in the application chain.
+Argo CD support starts Kubernetes-API-first:
 
-Argo CD support uses the Kubernetes API, not the Argo CD CLI or API. The app detects Argo CRDs (`argoproj.io/v1alpha1` Application, ApplicationSet, AppProject) and surfaces their status through the same list and detail flows as native Kubernetes resources.
+- detect Argo CD CRDs and tracking metadata
+- list Applications, ApplicationSets, and AppProjects
+- show sync, health, destination namespace, source repo, revision, and project
+- group and filter resources by Argo application
 
-The language for GitOps tooling remains open. Argo CD is the first target, but future Flux and Fleet integrations should follow the same Kubernetes-API-first pattern when possible. No GitOps CLI, external API, sync, rollback, or mutation workflow should be added without an explicit ADR and the same read-only-by-default guardrails as the rest of the product.
+Helm support should follow the same read-only principle: inspect release metadata and related resources without turning Helm into the core data path.
 
-Argo CD does not become the navigation backbone. The namespace-first tree and fast shortcuts remain primary.
+Argo CD API, Argo CD CLI, Helm CLI, sync, rollback, diff, and mutation workflows require separate ADRs and guardrails.
 
-## Safety Posture
+## Safety
 
-The MVP is read-only. No create, update, delete, scale, sync, or rollback operations are exposed in the UI.
+The current product is read-only. No create, update, delete, scale, restart, sync, rollback, exec, or port-forward workflow should be exposed as a normal path without a new ADR.
 
-Future mutation capabilities are not forbidden, but they require:
-- An explicit Architecture Decision Record describing the mutation workflow.
-- Guardrails that make mutating actions deliberate, permission-gated, and reversible.
-- A separate advanced mode that must be explicitly enabled, not a default path.
+Future mutations must be deliberate, permission-aware, reversible where possible, and clearly separated from default browsing.
 
-Visible disabled actions in the UI serve as placeholders and signals that advanced operations exist behind proper guardrails. This makes the mutation path discoverable without making it accessible.
+## Roadmap Shape
 
-## Density
+Near-term work should harden the current read-only incident workflow: workspace restore, resource tables, topology, Argo CD, Helm, RBAC, metrics, events, logs, and release readiness.
 
-The baseline is **balanced IDE density**: enough information visible to work efficiently without the claustrophobia of a terminal multiplexer or the emptiness of a minimal dashboard. The table shows the most important columns by default. Detail panels are readable and structured.
-
-A **custom density toggle** is a planned enhancement, not the initial state. The default is medium density. Compact and expanded modes can be added later without changing the baseline experience.
-
-## Near-Term Implications
-
-The first milestones focus on making the browser genuinely useful:
-- Fast, filterable resource tables across namespaces and clusters.
-- Read-only YAML and detail views with owner references, labels, and status.
-- Argo CD detection and basic read-only Argo views.
-- Local saved workspaces that restore to a curated overview rather than stale exact state.
-
-These produce a working Kubernetes IDE that answers "what is in my cluster" and "is it healthy" quickly and reliably.
-
-## Long-Term Implications
-
-Later milestones can add:
-- Topology and relationship maps.
-- Log streaming and event views.
-- Helm release management.
-- RBAC and security inspection.
-- Metrics integration.
-- Context-aware AI troubleshooting assistance.
-- Local SQLite state for workspace history and saved bookmarks.
-
-Each of these follows the same principles: namespace-first navigation, Rust-side Kubernetes access, read-only by default, and explicit ADRs for mutation workflows.
+Later product areas can include guarded YAML apply, port-forward, pod exec, richer Helm workflows, deeper RBAC/security inspection, AI-assisted troubleshooting, and durable local workspace history.
