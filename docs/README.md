@@ -1,33 +1,34 @@
 # Docs Index
 
-Documentation for the KubeCove desktop Kubernetes workspace. Read in roughly this order — vision first, then the constraints that fall out of it, then the work tracker.
+Read these docs in this order when joining the project or starting a substantial change.
 
-## Start here
+## Product and Architecture
 
-- [Product Vision](product-vision.md) — what this app is, who it's for, the navigation model, GitOps posture, and safety posture.
-- [Architecture Blueprint](architecture-blueprint.md) — backend/frontend module layout, Tauri command contracts, MVP resource strategy, future extension points.
+- [Product Vision](product-vision.md) - what KubeCove is, who it serves, and which workflows define the product.
+- [Architecture Blueprint](architecture-blueprint.md) - current frontend/backend shape, Tauri command boundary, and extension points.
+- [Product Inspiration](product-inspiration.md) - K8Studio and Aptakube as public benchmarks, plus the legal/design boundary.
 
-## Conventions and handbook
+## Rules
 
-- [Engineering Handbook](handbook/) — file-size caps, module boundaries, hygiene rules, PR checklist. The source of truth for "where does this go" and "is this file too big." Module folders under `src/` and `src-tauri/src/` also have a short `README.md` next to the code.
+- [Engineering Handbook](handbook/) - file placement, size caps, hygiene rules, and the PR checklist.
+- [Agent Guide](../AGENTS.md) - agent-facing rules for this repo, including security boundaries and GitButler workflow.
+- [Architecture Decision Records](decisions/) - accepted decisions that require a new ADR to change.
 
-## Constraints and decisions
+Current ADRs:
 
-- [Architecture Decision Records](decisions/) — locked-in decisions that require an ADR to change. Currently: [0001 local read-only Kube API](decisions/0001-local-read-only-kube-api.md), [0002 Argo CD native Kubernetes-API-first](decisions/0002-argocd-native-kubernetes-api-first.md).
-- [Agent Guide](../AGENTS.md) — agent-facing rules: security boundary, command contracts, when an ADR is required, verification expectations.
+- [0001: Local Read-Only Kubernetes API Path](decisions/0001-local-read-only-kube-api.md)
+- [0002: Argo CD Native Support Starts Kubernetes-API-First](decisions/0002-argocd-native-kubernetes-api-first.md)
 
-## Work tracking
+## Work Tracking
 
-- [Milestones](milestones.md) — single source of truth for goal-level progress. Includes cross-cutting tracks for security and agent skills.
-- [Agent Skill Backlog](agent-skills.md) — project-specific skill ideas to write before installing as real skills.
-- [Development Workflow](development-workflow.md) — Bun/cargo commands, pre-commit hook, verification expectations.
-- [Beta Releases](release.md) — installer download guidance and maintainer release steps.
+- [Milestones](milestones.md) - goal-level project progress and remaining release gates.
+- [Agent Skill Backlog](agent-skills.md) - project-specific skill ideas to validate before installing.
+- [Development Workflow](development-workflow.md) - package manager, hooks, testing, and verification commands.
+- [Beta Releases](release.md) - installer guidance, maintainer release flow, smoke tests, and publishing checklist.
 
-## Context
+## Implementation History
 
-- [Product Inspiration](product-inspiration.md) — K8Studio and Aptakube reference, legal/design boundary for not copying their work.
+- [superpowers/specs/](superpowers/specs/) - dated design specs.
+- [superpowers/plans/](superpowers/plans/) - dated implementation plans.
 
-## Implementation history
-
-- [superpowers/plans/](superpowers/plans/) — dated implementation plans for completed or in-progress milestones.
-- [superpowers/specs/](superpowers/specs/) — dated design specs that those plans implement.
+Those historical docs explain why earlier work was shaped a certain way. Current behavior and rules live in the product, architecture, handbook, ADR, and milestone docs above.

@@ -1,24 +1,22 @@
 # Agent Skill Backlog
 
-This file captures project-specific skill ideas before they become installed Codex skills.
+This file tracks project-specific Codex skills that may be worth creating later. Do not install a skill from this list casually. First define the pressure scenario, observe what agents do without the skill, write the smallest useful `SKILL.md`, validate it, and only then install it under the normal skill path.
 
-Actual skills should not be created casually. Before turning one of these into a real skill, run a small skill-writing pass: define pressure scenarios, check what agents do without the skill, write the minimal `SKILL.md`, validate it, and only then install it under the user's normal skill path.
-
-## First Batch To Create
+## First Batch
 
 ### `tauri-security-review`
 
-Use when implementing or reviewing Tauri commands, capabilities, plugins, filesystem access, shell access, Kubernetes credential handling, or frontend/backend boundaries.
+Use when implementing or reviewing Tauri commands, plugins, capabilities, filesystem access, shell access, Kubernetes credential handling, or frontend/backend boundaries.
 
-Core rules:
+Rules:
 
 - No broad shell access from the frontend.
 - No kubeconfig, token, certificate, or secret leakage to React.
-- Prefer narrow typed Tauri commands over generic command bridges.
+- Prefer narrow typed Tauri commands over generic bridges.
 - Review Tauri capabilities and permissions when adding plugins.
 - Require an ADR for shell plugin usage, broad filesystem access, mutation commands, or long-lived sensitive state.
 
-Good trigger examples:
+Triggers:
 
 - "Add a Tauri command for Kubernetes data."
 - "Expose a Rust function to React."
@@ -27,56 +25,58 @@ Good trigger examples:
 
 ### `kube-rs-resource-api`
 
-Use when implementing Kubernetes list, get, watch, discovery, dynamic object, CRD, or serialization paths in Rust.
+Use when implementing Kubernetes list, get, watch, discovery, dynamic object, CRD, event, metrics, log, or serialization paths in Rust.
 
-Core rules:
+Rules:
 
 - Use `kube-rs` for normal Kubernetes API access.
-- Do not shell out to `kubectl` for list/get/watch/discovery in the core data path.
-- Keep typed resource support simple now, but structure code so dynamic resources and CRDs fit later.
+- Do not shell out to `kubectl` for core list/get/watch/discovery paths.
+- Keep typed resources simple while allowing discovery and dynamic resources to fit.
 - Keep API errors clean and serializable.
-- Keep raw Kubernetes objects out of the frontend unless a read-only detail/YAML view explicitly asks for them.
+- Keep raw Kubernetes objects out of general frontend state.
 
-Good trigger examples:
+Triggers:
 
 - "List pods or deployments."
 - "Add CRD support."
 - "Implement discovery."
 - "Serialize resource YAML."
+- "Add watch, events, logs, or metrics support."
 
 ### `k8s-ux-resource-browser`
 
-Use when designing or changing the Kubernetes browsing UI, navigation, filters, tables, detail panels, empty states, or loading/error states.
+Use when changing navigation, filters, tables, topology maps, detail panels, empty states, loading states, or Kubernetes browsing flows.
 
-Core rules:
+Rules:
 
 - Preserve context-first and namespace-first navigation.
-- Keep selected cluster/context and namespaces obvious at all times.
+- Keep selected context and namespace scope visible.
 - Treat persistent global filters as core product behavior.
 - Use dense, fast tables for repeated resource work.
-- Put raw YAML/details in a read-only detail panel for the first milestones.
-- Avoid landing-page or marketing-style UI patterns inside the app.
+- Keep YAML and details read-only by default.
+- Avoid marketing-page patterns inside the app shell.
 
-Good trigger examples:
+Triggers:
 
 - "Add the resource table."
 - "Change the sidebar."
 - "Design the detail drawer."
 - "Add namespace filtering."
+- "Change the topology map."
 
 ### `argocd-awareness`
 
 Use when adding Argo CD detection, grouping, filtering, Application views, ApplicationSet views, AppProject views, or future Argo CD API/CLI behavior.
 
-Core rules:
+Rules:
 
 - Start with Kubernetes API access to Argo CD CRDs and tracking metadata.
 - Detect ownership from `argocd.argoproj.io/instance`, `argocd.argoproj.io/tracking-id`, `app.kubernetes.io/instance`, and related annotations/labels.
-- Treat Argo CD API, CLI, sync, rollback, and diff as future features that need explicit ADRs.
+- Treat Argo CD API, CLI, sync, rollback, and diff as future features that need ADRs.
 - Warn before future mutations against Argo-managed resources.
-- Keep first Argo support read-only.
+- Keep first-class Argo support read-only unless a future ADR says otherwise.
 
-Good trigger examples:
+Triggers:
 
 - "Group resources by Argo app."
 - "List Argo Applications."
@@ -87,18 +87,18 @@ Good trigger examples:
 
 ### `frontend-state-table-patterns`
 
-Create after the frontend scaffold has real patterns.
+Create after frontend patterns settle.
 
 Expected scope:
 
-- TanStack Query cache keys and error/loading conventions.
-- TanStack Table row shape and column conventions.
+- TanStack Query cache keys and loading/error conventions.
+- TanStack Table row and column conventions.
 - Local UI state boundaries for filters and selections.
 - Rules against putting huge raw Kubernetes objects in table rows.
 
 ### `safe-k8s-mutations`
 
-Create before implementing apply, delete, scale, restart, sync, rollback, port-forward, exec, or terminal-backed actions.
+Create before apply, delete, scale, restart, sync, rollback, port-forward, exec, or terminal-backed actions.
 
 Expected scope:
 
@@ -106,20 +106,20 @@ Expected scope:
 - Server-side dry-run where available.
 - Diff before apply.
 - Explicit confirmation UX.
-- Argo/Helm ownership warnings.
-- Clear audit trail in local UI state or logs.
+- Argo and Helm ownership warnings.
+- Local audit trail or event log.
 
 ### `agent-task-discipline`
 
-Probably keep this in `AGENTS.md` unless repeated agent drift proves a dedicated skill is useful.
+Keep this in `AGENTS.md` unless repeated drift proves a dedicated skill is useful.
 
 Expected scope:
 
 - Inspect first.
-- Make a small plan for multi-file work.
-- Keep patches minimal.
+- Plan multi-file work.
+- Keep patches scoped.
 - Run checks.
-- Report changed files, checks, blockers, and residual risks.
+- Report changed files, checks, blockers, and residual risk.
 
 ## Creation Order
 
@@ -128,4 +128,4 @@ Expected scope:
 3. `k8s-ux-resource-browser`
 4. `argocd-awareness`
 
-Create one skill at a time. Validate each before starting the next.
+Create and validate one skill before starting the next.

@@ -1,214 +1,106 @@
 # Milestone 1 Completion Design
 
+Historical design note from 2026-05-06. It describes the first working read-only Kubernetes browser. Current architecture and behavior are tracked in [Architecture Blueprint](../../architecture-blueprint.md) and [Milestones](../../milestones.md).
+
 ## Goal
 
-Wire scaffolded components into a working read-only Kubernetes browser with TanStack Query/Router/Table, namespace multi-select, kind filter, and read-only detail panel.
+Turn the scaffolded Tauri/React app into a working read-only browser:
+
+- choose a local kube context
+- list namespaces
+- filter namespaces and resource kinds
+- show resources in a table
+- open a read-only detail panel with structured details and YAML
 
 ## Scope
 
-### Frontend
+Frontend:
 
-- One root dashboard route: `/`
-- TanStack Query for server state, TanStack Router for future routes, TanStack Table for resource grid
-- Plain CSS (no Tailwind or UI kit yet)
-- Left sidebar:
-  - Cluster context selector (single-select dropdown)
-  - Namespace multi-select (checkbox list)
-  - Kind filter (checkbox list: Pod, Deployment, StatefulSet, DaemonSet, Service, Ingress, ConfigMap, Secret, PersistentVolumeClaim, Job, CronJob)
-- Main area: TanStack resource table with columns: Name, Namespace, Kind, Age
-- Right panel: read-only detail with "Details" and "YAML" tabs
-- React component state/hooks for selected context, namespaces, kinds, and selected resource
+- one root dashboard route
+- TanStack Query for server state
+- TanStack Router for routing foundation
+- TanStack Table for the resource grid
+- local state for selected context, namespaces, kinds, and selected resource
+- sidebar, resource table, and right detail panel
 
-### Backend
+Backend:
 
-- Extend `list_resources` and `get_resource_details` for: StatefulSet, DaemonSet, Ingress, Secret, PersistentVolumeClaim, Job, CronJob
-- Extend `get_resource_yaml` for same kinds
-- No new Tauri commands
+- extend resource listing, details, and YAML support for common resource kinds
+- keep all Kubernetes access behind existing Tauri commands
+- keep kubeconfig and credentials out of frontend payloads
 
 ## Non-Goals
 
-- Tailwind, shadcn/ui, or other UI kits
-- Mutations, watches, logs, events
-- Argo CD or Helm integration
-- Persistent local state (beyond session)
-- Multi-cluster simultaneous view
+- mutations
+- watches
+- logs
+- events
+- Argo CD views
+- Helm views
+- multi-cluster aggregate views
+- persistent workspaces
 
-## Architecture
-
-```
-Frontend                     Backend (Rust/Tauri)
-  |                                   |
-  |-- list_kube_contexts()          --|
-  |-- list_namespaces(ctx)          --|
-  |-- list_resources(ctx, ns[], kind[]) --|
-  |-- get_resource_details(ctx, kind, name, ns) --|
-  |-- get_resource_yaml(ctx, kind, name, ns) --|
-  |                                   |
-  |<-- ClusterContext[]              --|
-  |<-- NamespaceSummary[]            --|
-  |<-- ResourceSummary[]            --|
-  |<-- ResourceDetailsFull           --|
-  |<-- String (YAML)                 --|
-```
-
-### Frontend Modules
-
-```
-src/
-  main.tsx
-  App.tsx                          # Root with router
-  App.css                          # Plain CSS (all styles)
-  app/
-    router.tsx                     # TanStack Router: single "/" route
-  lib/
-    tauri.ts                       # Typed Tauri wrappers (existing)
-    types.ts                       # Frontend types (existing)
-    hooks.ts                       # useState/useCallback for clusterContext, selectedNamespaces, selectedKinds, selectedResource
-  features/
-    clusters/
-      ClusterSelector.tsx          # Single-select dropdown
-    namespaces/
-      NamespaceList.tsx            # Multi-select checkboxes
-    resources/
-      ResourceTable.tsx            # TanStack Table
-      KindFilter.tsx               # Kind checkbox list
-    resource-detail/
-      ResourceDetailPanel.tsx      # Right panel: Details + YAML tabs
-```
-
-### Backend Modules
-
-```
-src-tauri/src/
-  main.rs                          # Entry point
-  lib.rs                           # Tauri builder (existing)
-  commands.rs                       # Tauri command handlers
-    - list_kube_contexts()         (existing)
-    - list_namespaces(ctx)         (existing)
-    - list_resources(ctx, kind, ns) (extend for 7 new kinds)
-    - get_resource_yaml(ctx, kind, name, ns) (extend for 7 new kinds)
-    - get_resource_details(ctx, kind, name, ns) (extend for 7 new kinds)
-  models/mod.rs                    # Serde contracts (existing)
-```
-
-## UI Layout
-
-```
-+------------------+--------------------------------+------------------+
-| LEFT SIDEBAR     | MAIN CONTENT                   | RIGHT PANEL      |
-| (280px fixed)    | (flex-grow)                    | (400px fixed)    |
-|                  |                                |                  |
-| Cluster: [dropdown] |  RESOURCE TABLE              | [Details] [YAML] |
-|                  |  Name | NS | Kind | Age        |                  |
-| Namespaces       |  ---- | -- | ---- | ---        | Read-only        |
-| [x] kube-system  |  pod-a| ns | Pod  | 2d         | resource data    |
-| [x] default      |  deploy-x| ns | Deploy | 5d   | or YAML          |
-| [ ] prod        |                                |                  |
-|                  |                                |                  |
-| Kinds            |                                |                  |
-| [x] Pod          |                                |                  |
-| [x] Deployment   |                                |                  |
-| [x] Service      |                                |                  |
-| [ ] StatefulSet  |                                |                  |
-| ...              |                                |                  |
-+------------------+--------------------------------+------------------+
-```
-
-### Component Details
-
-#### ClusterSelector
-- Single `<select>` dropdown
-- On change: update root component state `clusterContext`, reset `namespaces` and `selectedResource`
-
-#### NamespaceList
-- Checkbox list, not single-select click
-- "Select All" / "Deselect All" header buttons
-- On toggle: update root component state `selectedNamespaces`
-
-#### KindFilter
-- Checkbox list for each supported kind
-- "Select All" / "Deselect All" header buttons
-- On toggle: update root component state `selectedKinds`
-
-#### ResourceTable
-- TanStack Table v8
-- Columns: Name, Namespace, Kind, Age
-- Sortable by Name, Age
-- Paginated (50 rows/page)
-- Row click: set root component state `selectedResource`, open right panel
-
-#### ResourceDetailPanel
-- Tabs: "Details" and "YAML"
-- Details: show metadata key/value pairs, labels, annotations, status
-- YAML: show full read-only YAML from `get_resource_yaml`
-- Close button: clear `selectedResource`
+Those later became separate milestones.
 
 ## Data Flow
 
-1. User selects cluster context -> root component state `clusterContext` updated
-2. TanStack Query fetches namespaces -> NamespaceList populates checkboxes
-3. User selects namespaces and kinds -> root component state `selectedNamespaces`, `selectedKinds` updated
-4. TanStack Query fetches resources for selected namespaces and kinds
-5. ResourceTable renders results
-6. User clicks row -> root component state `selectedResource` updated -> detail panel opens
-7. TanStack Query fetches resource details and YAML on panel open
-8. Detail panel renders Details or YAML tab
-
-### UI State
-
-Root dashboard component (`App.tsx`) owns these states via `useState`/`useCallback`:
-
-```typescript
-interface DashboardState {
-  clusterContext: string;
-  selectedNamespaces: string[];
-  selectedKinds: string[];
-  selectedResource: ResourceSummary | null;
-}
+```text
+React dashboard
+  -> list_kube_contexts()
+  -> list_namespaces(context)
+  -> list_resources(context, namespace, kind)
+  -> get_resource_details(context, kind, namespace, name)
+  -> get_resource_yaml(context, kind, namespace, name)
+Rust/Tauri
+  -> kube-rs client
+  -> frontend-safe serde models or read-only YAML
 ```
 
-State passed down via props or context to sidebar components, table, and detail panel.
+Errors return as application errors that the UI can display without exposing kubeconfig, token, or certificate material.
 
-## Backend Resource Coverage
+## Resource Coverage
 
-| Kind              | API Version                   | Namespace-Scoped |
-|-------------------|-------------------------------|------------------|
-| Pod               | core/v1                       | Yes              |
-| Deployment        | apps/v1                       | Yes              |
-| StatefulSet       | apps/v1                       | Yes              |
-| DaemonSet         | apps/v1                       | Yes              |
-| Service           | core/v1                       | Yes              |
-| Ingress           | networking.k8s.io/v1          | Yes              |
-| ConfigMap         | core/v1                       | Yes              |
-| Secret            | core/v1                       | Yes              |
-| PersistentVolumeClaim | core/v1                   | Yes              |
-| Job               | batch/v1                      | Yes              |
-| CronJob           | batch/v1                      | Yes              |
+The milestone targeted common namespaced resources:
 
-All 11 kinds use the same pattern in `commands.rs` as existing Pod/Deployment/Service/ConfigMap.
+- Pods
+- Deployments
+- StatefulSets
+- DaemonSets
+- Services
+- Ingresses
+- ConfigMaps
+- Secrets
+- PersistentVolumeClaims
+- Jobs
+- CronJobs
 
-## Error Handling
+Cluster-scoped and dynamic discovery-backed resources were planned for later work.
 
-### Frontend
+## UI Shape
 
-- TanStack Query provides `isLoading` and `isError` per query
-- Each component shows loading spinner and error message with retry button
-- `AppError` from backend displays as: `[kind] message`
-- Empty states for: no contexts, no namespaces, no resources
+```text
++------------------+----------------------+------------------+
+| Sidebar          | Resource table       | Detail panel     |
+|                  |                      |                  |
+| Context selector | Name / Namespace     | Details tab      |
+| Namespaces       | Kind / Age           | YAML tab         |
+| Kind filter      |                      | Read-only        |
++------------------+----------------------+------------------+
+```
 
-### Backend
-
-- `AppError` serde struct with `message` and `kind` fields
-- `kind: "cluster"` for kube-rs errors
-- `kind: "serialization"` for serde errors
-- All errors return as JSON, never leak raw kubeconfig or certificate data
+The table owns browsing. The detail panel owns inspection. The YAML view is read-only.
 
 ## Verification
 
-- `bun run typecheck` passes
-- `cargo check --manifest-path src-tauri/Cargo.toml` passes
-- All existing components still render after wiring
-- New kinds return results in ResourceTable
-- Detail panel opens on row click and shows correct data
-- Namespace multi-select filters table results
-- Kind filter filters table results
+Original completion checks:
+
+- `bun run typecheck`
+- `cargo check --manifest-path src-tauri/Cargo.toml`
+- app launches in dev mode
+- selecting context and namespaces loads resource rows
+- selecting a row opens details and YAML
+- namespace and kind filters affect the table
+
+## Outcome
+
+Milestone 1 was completed and later expanded by usability, Argo CD, discovery, workspace, incident, metrics, Helm, RBAC, and topology milestones.

@@ -1,31 +1,21 @@
 # KubeCove
 
-<table>
-  <tr>
-    <td width="180" valign="top">
-      <img src="public/kubecove-logo.svg" alt="KubeCove logo" width="160">
-    </td>
-    <td valign="top">
-      <p><strong>A context-first desktop workspace for Kubernetes operations.</strong></p>
-      <p>KubeCove is a local Kubernetes IDE focused on fast, safe cluster exploration today and deliberate operational workflows later. It keeps Kubernetes access on the Rust side of the Tauri boundary, starts from contexts and namespaces, and helps you move from workspace scope to resources, Argo CD signals, events, logs, YAML, and detail views without losing the operational thread.</p>
-    </td>
-  </tr>
-</table>
+KubeCove is a local desktop workspace for Kubernetes operations. It starts from contexts, namespaces, and saved workspaces instead of raw resource-kind menus, then lets operators move quickly into resource tables, topology, Argo CD signals, Helm metadata, events, logs, YAML, and read-only detail views.
+
+The app is local-first and read-only by default. Kubernetes access stays behind Rust-side Tauri commands, kubeconfig contents never cross into React, and the core data path uses `kube-rs` rather than shelling out to `kubectl`.
 
 ## Quick Start
 
-### Beta Installers
+Use the beta installers from [GitHub Releases](https://github.com/Timpan4/kubecove/releases) when you only want to test the app.
 
-Beta installers for macOS, Windows, and Linux are published under [GitHub Releases](https://github.com/Timpan4/kubecove/releases). Use those installers when you only want to test KubeCove; the source setup below is for development.
-
-Requirements:
+Development requirements:
 
 - Bun
 - Rust and Cargo
 - Tauri v2 system prerequisites for your OS
 - A local kubeconfig with at least one readable context
 
-Install dependencies and start the desktop app:
+Run the desktop app:
 
 ```sh
 bun install
@@ -47,47 +37,46 @@ Build a desktop bundle:
 bun run tauri build
 ```
 
-Create a beta release from the current `origin/main` commit:
+Create a beta release tag from the current `origin/main` release version:
 
 ```sh
 bun run release
 ```
 
-## What Works Today
+## Current Capabilities
 
-- list local kubeconfig contexts
-- select a context and list namespaces
-- create and restore local workspaces
-- filter one or more namespaces globally
-- discover and list Kubernetes resource kinds
-- list resources in fast tables with search, status, age, owner, Argo CD, and Helm signals
-- show resource details, events, logs, and read-only YAML
-- detect Argo CD CRDs and browse Applications, ApplicationSets, and AppProjects
-- keep kubeconfig contents and cluster credentials out of the frontend
+- List local kubeconfig contexts without exposing raw kubeconfig data.
+- Create, edit, delete, and restore local workspace scopes.
+- Browse namespaces and discovered Kubernetes resource kinds.
+- Filter resource tables by namespace, kind, health, search text, Argo CD app, and owner context.
+- Inspect resources through read-only details, YAML, events, logs, metrics, and topology views.
+- Detect Argo CD CRDs and browse Applications, ApplicationSets, and AppProjects.
+- Detect Helm releases from cluster metadata.
+- Inspect RBAC summaries and risk indicators.
+- Publish unsigned beta installers for macOS, Windows, and Linux.
 
 ## Safety Model
 
-KubeCove is intentionally local-first. Nothing is deployed into clusters, kubeconfig stays on the Rust side of the Tauri boundary, and normal Kubernetes API access goes through `kube-rs` rather than shelling out to `kubectl`.
+KubeCove does not deploy agents into clusters. It does not expose raw kubeconfig contents to the frontend, and React cannot run arbitrary shell commands.
 
-The MVP is read-only. Future mutation workflows are planned, but they need explicit guardrails, permission-aware UX, and an Architecture Decision Record before they become part of the product.
+Mutation workflows such as apply, delete, scale, sync, rollback, exec, or port-forward require a new Architecture Decision Record and explicit UX guardrails before they can become product features.
 
 ## Stack
 
 - Tauri v2
 - React and TypeScript
-- Bun as the JavaScript runtime and package manager
+- Bun for JavaScript package management and scripts
 - Rust backend
 - `kube-rs` for Kubernetes API access
 - TanStack Router, Query, and Table
 - Zustand for local UI state
-- Tailwind CSS and shadcn/ui
+- Tailwind CSS and shadcn/ui primitives
+- React Flow for topology surfaces
 
-Future candidates include Monaco Editor for YAML, richer topology views, SQLite for local saved state, and optional sidecars or fallbacks for `kubectl`, Helm, and Argo CD.
+## Docs
+
+Start with the [docs index](docs/README.md). The highest-signal entry points are [Product Vision](docs/product-vision.md), [Architecture Blueprint](docs/architecture-blueprint.md), [Milestones](docs/milestones.md), and [AGENTS.md](AGENTS.md).
 
 ## License
 
 KubeCove is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
-
-## Docs
-
-See the [docs index](docs/README.md) for the full set, ordered by reading priority. Top entry points: [Product Vision](docs/product-vision.md), [Architecture Blueprint](docs/architecture-blueprint.md), [Milestones](docs/milestones.md), and the [Agent Guide](AGENTS.md).

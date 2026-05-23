@@ -1,37 +1,44 @@
 # PR / Agent Checklist
 
-Run through this before opening a PR or marking an agent task done. The pre-commit hook covers some of it; the rest is on you.
+Run this before opening a PR or marking agent work complete.
 
 ## Verification
 
-- [ ] `bun run typecheck` passes (frontend touched).
-- [ ] `bun run lint` passes (once lint exists).
-- [ ] `cargo check --manifest-path src-tauri/Cargo.toml` passes (backend touched).
-- [ ] The app starts and the affected feature works (Tauri integration changes).
+- [ ] Frontend touched: `bun run typecheck` passes.
+- [ ] Frontend behavior touched: relevant `bun test` coverage passes.
+- [ ] Backend touched: `bun run rust:check` passes.
+- [ ] Backend behavior touched: relevant `bun run rust:test` coverage passes.
+- [ ] Tauri integration touched: app starts and the affected path works.
+- [ ] Release flow touched: `bun run release:dry-run` passes.
 
 ## Organization
 
-- [ ] No new file lives in `src/components/` if it's feature-specific. See [code-organization.md](code-organization.md).
-- [ ] No new feature folder was created without a one-line entry in [code-organization.md](code-organization.md).
-- [ ] Typed Tauri wrappers in `src/lib/tauri.ts` cover any new commands — no raw `invoke()` calls in components.
+- [ ] Feature-specific frontend code lives in `src/features/<area>/`.
+- [ ] Generic frontend code only lives in `src/components/` or `src/lib/` when it is genuinely reusable.
+- [ ] New feature folders or top-level directories are documented in [code-organization.md](code-organization.md).
+- [ ] New Tauri commands have typed wrappers in `src/lib/tauri.ts`.
+- [ ] Components do not call raw `invoke()` directly.
 
 ## Size
 
-- [ ] No staged file exceeded its **hard** cap. (Hook fails if it did.)
-- [ ] If a staged file crossed a **soft** cap, you have a plan or a follow-up issue. See [file-size-and-split.md](file-size-and-split.md).
-- [ ] No new file was added to `LEGACY_OVERSIZED_FILES` in `.githooks/pre-commit-user`.
+- [ ] No touched file exceeds the hard cap.
+- [ ] Any touched file over the soft cap has a split plan or follow-up.
+- [ ] No new file was added to `LEGACY_OVERSIZED_FILES`.
 
 ## Hygiene
 
-- [ ] Any superseded file was deleted in this PR. See [hygiene.md](hygiene.md).
-- [ ] No "for reference" leftovers, commented-out blocks, or one-import wrappers added to dodge a cap.
-- [ ] No `#[allow(dead_code)]` added without a written reason.
+- [ ] Superseded files were deleted.
+- [ ] No "for reference" leftovers were added.
+- [ ] No commented-out blocks or one-import wrappers were added.
+- [ ] No `#[allow(dead_code)]` was added without a written reason.
 
-## Tracking
+## Tracking and Decisions
 
-- [ ] If this completes a milestone item, the box in [milestones.md](../milestones.md) is ticked.
-- [ ] If a security boundary changed (frontend/backend split, kubeconfig handling, Tauri capabilities, mutation support, Argo CD CLI/API), an ADR was added under [decisions/](../decisions/).
+- [ ] Completed milestone items are checked in [milestones.md](../milestones.md).
+- [ ] Security boundary changes have an ADR.
+- [ ] Kubernetes mutation, Argo CD API/CLI, sync, rollback, or diff support has an ADR before implementation.
 
 ## Secrets
 
-- [ ] No kubeconfig, token, certificate, or test-cluster credential staged. The hook checks; spot-check too.
+- [ ] No kubeconfig, token, certificate, or test-cluster credential is staged.
+- [ ] New command payloads do not expose broad filesystem contents or raw Kubernetes credentials.

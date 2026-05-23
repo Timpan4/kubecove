@@ -1,227 +1,145 @@
 # Architecture Blueprint
 
-This doc describes the **target shape** of the code. For the *rules* — file-size caps, what belongs in which folder, when to split, dead-code policy — see the [engineering handbook](handbook/). Each module folder also has a short `README.md` next to the code.
+This page describes the current shape of the app and the intended direction for near-term work. The rules for file placement, size caps, and hygiene live in the [engineering handbook](handbook/).
 
-## Product Direction
+## Product Shape
 
-KubeCove is a local desktop Kubernetes workspace with a context-first and namespace-first workflow.
-
-Most Kubernetes tools start from resource kinds:
-
-```text
-Cluster -> Workloads -> Pods -> namespace filter -> object
-```
-
-This project should start from operational context:
+KubeCove is a local desktop Kubernetes workspace with context-first and namespace-first navigation.
 
 ```text
 Cluster group -> Cluster/context -> Namespace -> App/owner -> Resource
 ```
 
-A **cluster group** is a local saved set of kubeconfig contexts, usually matching a team, customer, region, or environment family. It is a navigation convenience only; it does not change cluster credentials or Kubernetes API access.
+A cluster group is local saved navigation metadata. A saved workspace stores contexts, namespaces, filters, shortcuts, and layout preference. Restoring a workspace fetches live cluster state and opens a curated overview for that scope.
 
-A **saved workspace** stores a cluster group or context set, selected namespaces, filters, shortcuts, and preferred layout. Restoring a workspace should fetch live cluster state and open a curated overview for that scope rather than replaying stale selected objects.
-
-The long-term differentiator is persistent global filtering across selected clusters, namespaces, resource kinds, health, owner references, Argo CD signals, and Helm release labels.
-
-K8Studio is the main public product benchmark for feature breadth, especially grid views, selected-object details, topology, multi-cluster management, logs, metrics, RBAC/security views, Helm views, docking layouts, and AI-assisted troubleshooting. This app should use those as inspiration while keeping an original namespace-first workflow and stricter local security boundary.
+The long-term differentiator is persistent global filtering across selected contexts, namespaces, resource kinds, health, owner references, Argo CD signals, Helm releases, RBAC context, metrics, events, logs, and topology.
 
 ## Security Boundary
 
-The frontend is an untrusted UI surface compared with the Rust backend.
+The React frontend is an untrusted UI surface relative to the Rust backend.
 
-- React must not receive raw kubeconfig contents.
+- React must not receive raw kubeconfig contents, tokens, or certificate data.
 - React must not run arbitrary shell commands.
-- Rust Tauri commands are the only MVP path to Kubernetes data.
-- Kubernetes list/get/discovery operations should use `kube-rs`.
-- Destructive Kubernetes mutations are out of scope for the first milestone.
+- Kubernetes list, get, discovery, watch, events, logs, metrics, Argo, Helm, and RBAC reads flow through typed Tauri commands.
+- Normal Kubernetes API access uses `kube-rs`.
+- Mutating cluster operations require a new ADR and permission-aware UX.
 
-This keeps the app ready for Tauri v2 capabilities and future production-cluster guardrails.
+`kubectl`, Helm CLI, and Argo CD CLI may become optional future sidecars or fallbacks. They are not the core data path.
 
-## Backend Shape
+## Frontend
 
-Suggested Rust layout:
-
-```text
-src-tauri/src/
-  main.rs
-  commands/
-    mod.rs
-    kube_config.rs
-    kube_resources.rs
-  kube/
-    mod.rs
-    config.rs
-    client.rs
-    discovery.rs
-    resources.rs
-    serializers.rs
-  models/
-    mod.rs
-    cluster.rs
-    namespace.rs
-    resource.rs
-    error.rs
-```
-
-Responsibilities:
-
-- `commands`: small Tauri command handlers and input validation.
-- `kube/config`: load kubeconfig metadata and selected contexts without leaking secrets to the frontend.
-- `kube/client`: construct context-specific `kube::Client` values.
-- `kube/resources`: list/get common MVP resource types.
-- `kube/discovery`: later home for dynamic resources and CRD discovery.
-- `kube/argo`: later home for Argo CD Application, ApplicationSet, AppProject, and tracking metadata support.
-- `kube/serializers`: convert Kubernetes objects into frontend-safe summaries and read-only YAML.
-- `models`: serde-compatible app contracts shared by commands.
-
-## Frontend Shape
-
-Suggested React layout:
+Current high-level layout:
 
 ```text
 src/
-  main.tsx
-  app/
-    router.tsx
-  components/
-    layout/
-    ui/
+  app/                  app shell, top bar, router, shared app frames
+  components/           generic UI and shared display components
   features/
+    app-updates/
     argo/
-    clusters/
-    namespaces/
-    resources/
+    helm/
+    rbac/
     resource-detail/
-  lib/
-    tauri.ts
-    types.ts
-  stores/
-    filters.ts
+    resources/
+    settings/
+    workspaces/
+  hooks/                generic React hooks
+  lib/                  pure logic, stores, typed Tauri wrappers, types
 ```
 
-Responsibilities:
+Frontend rules:
 
-- Bun is the default JavaScript runtime and package manager for frontend scripts, dependency installation, and scaffolding.
-- `lib/tauri.ts`: typed wrappers around Tauri commands.
-- `lib/types.ts`: frontend copies of the serde contracts.
-- `stores/filters.ts`: selected context, namespaces, kinds, search, and drawer selection.
-- `features/clusters`: context selector.
-- `features/argo`: Argo application views, grouping, and read-only Argo details once Argo CRDs are supported.
-- `features/namespaces`: namespace list and multi-select.
-- `features/resources`: table, filters, and query orchestration.
-- `features/resource-detail`: read-only YAML, metadata, labels, annotations, owner references, and status tabs.
+- Components call typed wrappers in `src/lib/tauri.ts`, not raw `invoke()` directly.
+- Feature-specific components stay in `src/features/<area>/`.
+- Generic shadcn primitives and cross-feature display components stay in `src/components/`.
+- Pure shared logic belongs in `src/lib/`.
+- Frontend state should keep selected context, namespace scope, kind scope, active workspace, selected resource, and active detail view explicit.
 
-## Initial Commands
+## Backend
+
+Current high-level layout:
 
 ```text
-list_kube_contexts() -> Vec<ClusterContext>
-list_namespaces(context: String) -> Vec<NamespaceSummary>
-list_resources(context: String, namespaces: Vec<String>, kinds: Vec<String>) -> Vec<ResourceSummary>
-get_resource_yaml(context: String, api_version: String, kind: String, namespace: Option<String>, name: String) -> String
+src-tauri/src/
+  commands/
+    argo/
+    resources/
+    streams/
+    contexts.rs
+    discovery.rs
+    events.rs
+    helm.rs
+    metrics.rs
+    namespaces.rs
+    rbac.rs
+    usage.rs
+  models/
+    argo.rs
+    cluster.rs
+    discovery.rs
+    error.rs
+    events.rs
+    helm.rs
+    metrics.rs
+    namespace.rs
+    rbac.rs
+    resource.rs
+    streams.rs
+    usage.rs
 ```
 
-Errors should be returned as clean application errors and shown in the UI with enough context to diagnose kubeconfig, auth, or cluster connectivity problems.
+Backend rules:
 
-## Initial Data Contracts
+- `commands/` owns Tauri command handlers and command-domain helpers.
+- `models/` owns serde contracts returned to the frontend.
+- Commands return frontend-safe summaries, details, YAML strings, stream IDs, or typed error payloads.
+- Raw Kubernetes objects should not become general frontend state. Details and YAML are explicit read-only surfaces.
+- A separate `kube/` module can be introduced when Kubernetes access has a second backend consumer beyond commands.
 
-TypeScript:
+## Command Families
 
-```ts
-export type ClusterContext = {
-  name: string
-  cluster?: string
-  user?: string
-  namespace?: string
-}
+Typed frontend wrappers currently cover:
 
-export type NamespaceSummary = {
-  name: string
-  status?: string
-  age?: string
-}
+- context commands - `list_kube_contexts`
+- namespaces: `list_namespaces`
+- discovery: `list_resource_kinds`
+- resources: `list_resources`, `list_dynamic_resources`, `list_resource_scope`
+- resource details: `get_resource_details`, `get_dynamic_resource_details`, `get_resource_yaml`
+- topology: `list_resource_topology`
+- events and streams: `list_resource_events`, resource watches, event watches, pod log streams, `stop_stream`
+- metrics: `list_resource_metrics`, app usage metrics
+- Argo CD: detect, list, and detail commands for Applications, ApplicationSets, and AppProjects
+- Helm: release list and detail commands
+- RBAC: read-only inspection summary
 
-export type ResourceSummary = {
-  clusterContext: string
-  apiVersion: string
-  kind: string
-  namespace?: string
-  name: string
-  uid?: string
-  status?: string
-  age?: string
-  ready?: string
-  restarts?: number
-  owner?: string
-  argoApp?: string
-  helmRelease?: string
-  labels?: Record<string, string>
-}
+Every new command needs:
 
-export type ResourceDetails = {
-  summary: ResourceSummary
-  yaml: string
-  metadata: Record<string, unknown>
-  status?: Record<string, unknown>
-}
-```
+- a Rust serde model when the payload is structured
+- a TypeScript mirror type
+- a typed wrapper in `src/lib/tauri.ts`
+- user-visible serialized errors
+- no secret or broad filesystem leakage
 
-Rust should expose equivalent serde structs.
+## Resource Strategy
 
-## MVP Resource Strategy
+Common resource kinds should stay typed or semi-typed where that provides better summaries. Dynamic resources and CRDs should flow through Kubernetes discovery and `DynamicObject` support.
 
-Start with typed or semi-typed support for common resources:
+Core read-only surfaces:
 
-- Pods
-- Deployments
-- StatefulSets
-- DaemonSets
-- Services
-- Ingresses
-- ConfigMaps
-- Secrets
-- PersistentVolumeClaims
-- Jobs
-- CronJobs
-- Nodes
-- Namespaces
-- StorageClasses
+- resource table summaries
+- read-only YAML
+- metadata, labels, annotations, owner references, conditions, and status
+- events
+- pod logs
+- topology
+- metrics when `metrics.k8s.io` is available
 
-CRDs can be added through discovery once the basic typed/common flow is stable.
-
-Argo CD CRDs should be treated as a priority dynamic-resource path once the common resources are stable:
+Argo CD CRDs remain a priority dynamic-resource area:
 
 - `argoproj.io/v1alpha1` `Application`
 - `argoproj.io/v1alpha1` `ApplicationSet`
 - `argoproj.io/v1alpha1` `AppProject`
 
-The first Argo implementation should read these through the Kubernetes API, not the Argo CD API or CLI.
+## Extension Points
 
-## Read-Only Details
-
-The detail panel should show:
-
-- read-only YAML
-- metadata
-- labels
-- annotations
-- owner references
-- status and conditions where available
-
-No edit/apply/delete/scale/restart actions belong in the first milestone.
-
-## Future Extension Points
-
-- watch streams
-- events
-- logs
-- YAML edit and apply
-- port-forward
-- pod exec
-- Helm release views
-- Argo CD grouping
-- Argo CD Application, ApplicationSet, and AppProject views
-- K8Studio-inspired topology, security, logs, metrics, Helm, and workspace layout features
-- RBAC inspection
-- metrics
-- local SQLite saved state
+Future work can add guarded YAML edit/apply, port-forward, pod exec, richer Helm actions, Argo CD API flows, AI assistance, and durable local workspace history. Security-sensitive additions require ADRs before implementation.

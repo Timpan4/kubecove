@@ -1,9 +1,30 @@
 # `src-tauri/src/commands/`
 
-One file per command domain (`contexts`, `namespaces`, `resources`, `events`, `discovery`, `argo`). Shared helpers in `helpers.rs`. `mod.rs` re-exports the `#[tauri::command]` functions for `lib.rs`'s `invoke_handler!` registration.
+Tauri command handlers live here, split by domain.
 
-Caps: `.rs` soft 500 lines, hard 800. If a domain file approaches the soft cap, split by sub-domain (e.g. `argo/applications.rs`, `argo/appsets.rs`). See [docs/handbook/file-size-and-split.md](../../../docs/handbook/file-size-and-split.md).
+Current domains include:
 
-A new file in this folder must own a single command domain. Don't dump unrelated commands in an existing file because it's open already.
+- `contexts`
+- `namespaces`
+- `resources`
+- `events`
+- `discovery`
+- `streams`
+- `metrics`
+- `argo`
+- `helm`
+- `rbac`
+- `usage`
 
-Commands are split by domain. New commands should be added in the per-domain layout described here.
+Shared command helpers belong in `helpers.rs` or a focused helper submodule. `mod.rs` re-exports command functions for `lib.rs` invoke registration.
+
+Rules:
+
+- One command domain per file or folder.
+- Do not add unrelated commands to a file just because it is already open.
+- Keep returned payloads frontend-safe.
+- Keep kubeconfig contents, tokens, and certificates out of command responses.
+
+Caps: `.rs` soft 500 / hard 800. Split large domains by sub-domain, such as `resources/details/` or `argo/applications.rs`.
+
+See [docs/handbook/code-organization.md](../../../docs/handbook/code-organization.md).

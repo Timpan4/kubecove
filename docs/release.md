@@ -4,15 +4,15 @@ KubeCove beta installers are published as GitHub Releases:
 
 https://github.com/Timpan4/kubecove/releases
 
-Use a release installer when you only want to test the app. Building from source is for development work.
+Use a release installer when testing the app. Build from source only for development work.
 
 ## Installer Guide
 
-- macOS: download the `.dmg` asset. The beta is unsigned, so macOS may require right-clicking the app and choosing Open, or allowing it from System Settings.
-- Windows: download the `-setup.exe` asset when present. The beta is unsigned, so SmartScreen may show a warning; choose More info and Run anyway if you trust the build.
-- Linux: download the `.AppImage` for a portable build, or `.deb` / `.rpm` for package-manager installs when those assets are present. AppImage may need `chmod +x`.
+- macOS: download the `.dmg`. The beta is unsigned; macOS may require right-click Open or approval from System Settings.
+- Windows: download the `-setup.exe` when present. The beta is unsigned; SmartScreen may require More info -> Run anyway.
+- Linux: download the `.AppImage`, `.deb`, or `.rpm` when present. AppImage files may need `chmod +x`.
 
-The beta bundles only the app and normal Tauri installer/runtime files. It does not bundle `kubectl`, Helm, Argo CD, kubeconfig files, tokens, or cluster credentials.
+Installers contain the app and normal Tauri runtime/installer files. They do not bundle `kubectl`, Helm, Argo CD, kubeconfigs, tokens, or cluster credentials.
 
 ## Maintainer Release Flow
 
@@ -30,24 +30,25 @@ bun run release:dry-run
 bun run release
 ```
 
-The release command can run from any local branch or GitButler workspace. It fetches `origin/main`, reads the release version from that remote commit, creates an annotated `app-vX.Y.Z` tag pointing at `origin/main`, and pushes only the tag.
+The release command fetches `origin/main`, reads the release version from that commit, creates an annotated `app-vX.Y.Z` tag pointing at `origin/main`, and pushes only the tag. It can run from any local branch or GitButler workspace.
 
-GitHub Actions then runs typecheck, frontend tests, Rust tests, Rust check, builds macOS, Windows, and Linux installers, and publishes a GitHub Release after every platform build succeeds. Manual workflow dispatch is only for rerunning an existing `app-v*` tag; reruns preserve the existing release visibility.
+GitHub Actions runs typecheck, frontend tests, Rust tests, Rust check, builds macOS, Windows, and Linux installers, and publishes a GitHub Release after every platform build succeeds.
 
-In-app updates are enabled only for builds produced by the release workflow. Local development, git-pull, and ad hoc builds default to the `dev` release channel and do not check GitHub for updates.
+Manual workflow dispatch is only for rerunning an existing `app-v*` tag. Reruns preserve the existing release visibility.
 
-In-app updates are built for macOS, Windows, and Linux from the same release workflow. They require the GitHub Actions `TAURI_SIGNING_PRIVATE_KEY` secret to contain the updater private key content. `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is optional and only needed when the key was generated with a password. The public key is committed in `src-tauri/tauri.conf.json`; the Windows updater install mode in that config only controls Windows installer behavior. The installer packages may remain OS-unsigned beta builds, but updater artifacts and `latest.json` must be signed with the Tauri updater key.
+## In-App Updates
 
-Release notes in GitHub Releases should mirror the matching version section in
-the root `CHANGELOG.md`.
+In-app updates are enabled only for release-workflow builds. Local development, git-pull, and ad hoc builds use the `dev` release channel and do not check GitHub for updates.
+
+Updater artifacts require the GitHub Actions `TAURI_SIGNING_PRIVATE_KEY` secret. `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is optional and only needed for password-protected keys. The public key is committed in `src-tauri/tauri.conf.json`.
+
+Installer packages may remain OS-unsigned beta builds, but updater artifacts and `latest.json` must be signed with the Tauri updater key.
+
+GitHub release notes should mirror the matching version section in [CHANGELOG.md](../CHANGELOG.md).
 
 ## Pre-Release Smoke Test
 
-Use automated checks during feature PRs. After the current seven-PR roadmap has
-merged, run the manual Tauri smoke test as a final release gate before cutting a
-beta. Record the exact context and result in the release PR or release notes.
-
-Baseline checks:
+Automated baseline:
 
 ```sh
 bun run typecheck
@@ -59,34 +60,25 @@ bun run rust:check
 Manual Tauri path:
 
 1. Start the desktop app with `bun run tauri dev`.
-2. Confirm the workspace launcher loads local kube contexts without exposing raw
-   kubeconfig contents.
+2. Confirm the workspace launcher lists local kube contexts without exposing raw kubeconfig contents.
 3. Select a readable context and confirm namespaces load.
 4. Open a saved or newly created workspace.
 5. Open the resource browser and confirm resources load for the saved scope.
-6. Select a resource and confirm details, read-only YAML, events, and logs
-   surfaces behave as expected when available.
+6. Select a resource and confirm details, read-only YAML, events, and logs behave when available.
 7. Check Argo CD and Helm sections when the cluster provides matching metadata.
 
 Most recent partial smoke, 2026-05-22:
 
-- `bun run typecheck`, `bun test`, `bun run rust:test`, and `bun run rust:check`
-  passed locally after repairing a stale `node_modules` install with
-  `bun install --force`.
-- `bun run tauri dev` launched KubeCove v0.2.1 and served Vite on
-  `http://localhost:1420/`.
-- The Tauri desktop window loaded the readable `admin@solid-k8s` context and
-  listed namespaces including `alloy`, `argocd`, `cert-manager`, `default`,
-  `kube-system`, `monitoring`, and `traefik`.
-- The full workspace-open, resource-browser, resource-detail, YAML, events,
-  logs, Argo, and Helm click-through is deferred until after the seven roadmap
-  PRs merge.
+- `bun run typecheck`, `bun test`, `bun run rust:test`, and `bun run rust:check` passed after repairing a stale `node_modules` install with `bun install --force`.
+- `bun run tauri dev` launched KubeCove v0.2.1 and served Vite on `http://localhost:1420/`.
+- The Tauri desktop window loaded the readable `admin@solid-k8s` context and listed namespaces including `alloy`, `argocd`, `cert-manager`, `default`, `kube-system`, `monitoring`, and `traefik`.
+- Full workspace-open, resource-browser, resource-detail, YAML, events, logs, Argo, and Helm click-through remains the next manual release gate.
 
 ## Publishing Checklist
 
 - Confirm the release contains macOS, Windows, and Linux assets.
 - Download at least one artifact and confirm it launches.
-- Smoke test context listing, namespace/resource browsing, and clean error messages when kubeconfig or cluster access is unavailable.
-- Share the release after artifact checks pass.
+- Smoke test context listing, namespace/resource browsing, and clean errors when kubeconfig or cluster access is unavailable.
+- Share the release only after artifact checks pass.
 
 If a release is bad, leave or restore the prior release as the recommended tester download and delete the broken release after replacing it.

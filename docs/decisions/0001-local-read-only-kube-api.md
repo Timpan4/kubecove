@@ -6,22 +6,22 @@ Accepted.
 
 ## Context
 
-The app will eventually interact with real Kubernetes clusters, possibly production clusters. The MVP needs to establish a safe data boundary before adding richer workflows.
+KubeCove interacts with real Kubernetes clusters, including possible production clusters. The project needs a strict data boundary before adding richer operational workflows.
 
 ## Decision
 
-For the MVP:
+The app is local desktop software. Nothing is deployed into the cluster.
 
-- The app is local desktop software.
-- Nothing is deployed into the cluster.
+For the default product path:
+
 - Kubernetes credentials stay in local kubeconfig and are handled by the Rust backend.
 - React calls typed Tauri commands.
-- The Rust backend uses `kube-rs` for normal Kubernetes list/get/discovery operations.
-- The first milestone is read-only.
+- Normal Kubernetes list/get/discovery/watch operations use `kube-rs`.
 - The frontend cannot run arbitrary shell commands.
+- Cluster mutations are out of scope until a future ADR defines the workflow and guardrails.
 
-`kubectl`, Helm, and Argo CD may be added later as optional sidecars or fallbacks, but they are not the core data path.
+`kubectl`, Helm, and Argo CD may be optional future sidecars or fallbacks. They are not the core data path.
 
 ## Consequences
 
-This creates a stricter implementation boundary early. It may take slightly longer to build the MVP than shelling out to `kubectl`, but the app will be easier to secure, test, and extend.
+This boundary is slower than shelling out to `kubectl` for every operation, but it makes the app easier to secure, test, and extend. It also keeps credential handling and future production-cluster safeguards in one backend-controlled place.
