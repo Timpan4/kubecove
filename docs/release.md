@@ -9,10 +9,12 @@ Use a release installer when testing the app. Build from source only for develop
 ## Installer Guide
 
 - macOS: download the `.dmg`. The beta is unsigned; macOS may require right-click Open or approval from System Settings.
-- Windows: download the `-setup.exe` when present. The beta is unsigned; SmartScreen may require More info -> Run anyway.
+- Windows: download the `KubeCove_*_x64-setup.exe` / `-setup.exe` NSIS installer. The beta is unsigned; SmartScreen may require More info -> Run anyway.
 - Linux: download the `.AppImage`, `.deb`, or `.rpm` when present. AppImage files may need `chmod +x`.
 
 Installers contain the app and normal Tauri runtime/installer files. They do not bundle `kubectl`, Helm, Argo CD, kubeconfigs, tokens, or cluster credentials.
+
+Windows releases intentionally publish the NSIS setup executable, not MSI, so in-app updates stay on one installer path. Users who installed an older MSI build may see one prompt to uninstall that MSI; after uninstalling it once and installing the NSIS setup executable, future in-app updates should not require that migration step.
 
 ## Maintainer Release Flow
 
