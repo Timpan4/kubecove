@@ -3,6 +3,31 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.3.0 - 2026-05-26
+
+### Added
+
+- Added read-only Helm release views with release summaries, detail panels,
+  and related Kubernetes resource context.
+- Added read-only RBAC security inspection for namespace access, roles,
+  bindings, service accounts, and risk summaries.
+- Added optional read-only resource metrics when cluster metrics APIs are
+  available.
+- Added network flow topology and incident triage timelines for faster
+  troubleshooting.
+- Added workspace cluster groups for organizing local multi-cluster scopes.
+
+### Improved
+
+- Made resource filters selectable so active context, namespace, and kind scope
+  are easier to adjust while browsing.
+- Improved release smoke-test documentation and updater release-channel gating.
+
+### Release
+
+- Prepared KubeCove v0.3.0 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
+
 ## 0.2.1 - 2026-05-21
 
 ### Release
