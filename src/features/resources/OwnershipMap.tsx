@@ -143,7 +143,6 @@ export function OwnershipMap({
 	const [expandedStandaloneKinds, setExpandedStandaloneKinds] = useState<Set<string>>(
 		() => new Set(),
 	);
-	const mapViewportElementRef = useRef<HTMLDivElement | null>(null);
 	const graph = useMemo(
 		() =>
 			topology
@@ -155,6 +154,8 @@ export function OwnershipMap({
 				: null,
 		[topology, selectedNodeId, expandedStandaloneKinds, mode],
 	);
+	const [mapViewportElement, setMapViewportElement] =
+		useState<HTMLDivElement | null>(null);
 	const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
 	const translateExtent = useMemo(
 		() =>
@@ -166,7 +167,7 @@ export function OwnershipMap({
 	const viewportSizeKey = `${viewportSize.width}x${viewportSize.height}`;
 	const centerViewportKey = `${heightClassName}:${viewportSizeKey}`;
 	const setMapViewportRef = useCallback((element: HTMLDivElement | null) => {
-		mapViewportElementRef.current = element;
+		setMapViewportElement(element);
 	}, []);
 	const handleNodeClick: NodeMouseHandler<OwnershipGraphNode> = (_, node) => {
 		if (isStandaloneKindGroupNode(node)) {
@@ -186,7 +187,6 @@ export function OwnershipMap({
 	};
 
 	useEffect(() => {
-		const mapViewportElement = mapViewportElementRef.current;
 		if (!mapViewportElement) return;
 		const updateViewportSize = () => {
 			const rect = mapViewportElement.getBoundingClientRect();
@@ -205,7 +205,7 @@ export function OwnershipMap({
 		const observer = new ResizeObserver(updateViewportSize);
 		observer.observe(mapViewportElement);
 		return () => observer.disconnect();
-	}, []);
+	}, [mapViewportElement]);
 
 	if (isLoading) {
 		const HeaderIcon = mode === "networkFlow" ? Network : GitBranch;
