@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Tauri Linux dependencies
         run: |
@@ -33,6 +35,14 @@ jobs:
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
+
+      - name: Run React Doctor on changed files
+        if: github.event_name == 'pull_request'
+        run: bun run doctor:ci -- --diff origin/${{ github.base_ref }}
+
+      - name: Run React Doctor full error gate
+        if: github.event_name == 'push'
+        run: bun run doctor:ci -- --full
 
       - name: Typecheck frontend
         run: bun run typecheck

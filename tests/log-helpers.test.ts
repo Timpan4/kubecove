@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatExactTimestamp } from "../src/components/TimestampText";
+import { formatExactTimestamp } from "../src/components/timestamp-format";
 import {
 	latestTimestampedLogLine,
 	orderedLogLines,
