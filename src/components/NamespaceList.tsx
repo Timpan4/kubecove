@@ -30,6 +30,7 @@ export function NamespaceList({
 		if (!clusterContext) {
 			requestSeqRef.current += 1;
 			setNamespaces([]);
+			setError(null);
 			setLoading(false);
 			return;
 		}
