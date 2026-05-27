@@ -47,6 +47,9 @@
   --resource-secret: var(--destructive);
   --resource-cluster: var(--chart-3);
   --resource-argo: var(--primary);
+  --resource-deployment: var(--resource-workload);
+  --resource-replicaset: oklch(0.62 0.13 292);
+  --resource-pod: var(--resource-network);
 }
 
 @theme inline {
@@ -131,6 +134,9 @@
   --resource-secret: oklch(0.72 0.17 20);
   --resource-cluster: oklch(0.74 0.14 155);
   --resource-argo: var(--primary);
+  --resource-deployment: oklch(0.72 0.13 236);
+  --resource-replicaset: oklch(0.74 0.12 292);
+  --resource-pod: oklch(0.78 0.12 200);
 }
 
 @layer base {
@@ -151,6 +157,160 @@
   html {
     @apply font-sans;
   }
+}
+
+@layer components {
+  .resource-topology-node {
+    background: var(--topology-node-bg, var(--card)) !important;
+    border-color: var(--topology-node-border, var(--border)) !important;
+  }
+
+  .resource-tone-workload-surface {
+    --resource-tone-color: var(--resource-workload);
+  }
+
+  .resource-tone-deployment-surface {
+    --resource-tone-color: var(--resource-deployment);
+  }
+
+  .resource-tone-replicaset-surface {
+    --resource-tone-color: var(--resource-replicaset);
+  }
+
+  .resource-tone-pod-surface {
+    --resource-tone-color: var(--resource-pod);
+  }
+
+  .resource-tone-network-surface {
+    --resource-tone-color: var(--resource-network);
+  }
+
+  .resource-tone-config-surface {
+    --resource-tone-color: var(--resource-config);
+  }
+
+  .resource-tone-storage-surface {
+    --resource-tone-color: var(--resource-storage);
+  }
+
+  .resource-tone-secret-surface {
+    --resource-tone-color: var(--resource-secret);
+  }
+
+  .resource-tone-cluster-surface {
+    --resource-tone-color: var(--resource-cluster);
+  }
+
+  .resource-tone-argo-surface {
+    --resource-tone-color: var(--resource-argo);
+  }
+
+  .resource-tone-default-surface {
+    --resource-tone-color: var(--muted-foreground);
+  }
+
+  .resource-tone-workload-surface,
+  .resource-tone-deployment-surface,
+  .resource-tone-replicaset-surface,
+  .resource-tone-pod-surface,
+  .resource-tone-network-surface,
+  .resource-tone-config-surface,
+  .resource-tone-storage-surface,
+  .resource-tone-secret-surface,
+  .resource-tone-cluster-surface,
+  .resource-tone-argo-surface,
+  .resource-tone-default-surface {
+    --topology-node-bg: color-mix(in oklch, var(--resource-tone-color) 15%, var(--card));
+    --topology-node-border: color-mix(
+      in oklch,
+      var(--resource-tone-color) 38%,
+      var(--border)
+    );
+  }
+
+  .resource-tone-workload-badge {
+    --resource-badge-color: var(--resource-workload);
+  }
+
+  .resource-tone-deployment-badge {
+    --resource-badge-color: var(--resource-deployment);
+  }
+
+  .resource-tone-replicaset-badge {
+    --resource-badge-color: var(--resource-replicaset);
+  }
+
+  .resource-tone-pod-badge {
+    --resource-badge-color: var(--resource-pod);
+  }
+
+  .resource-tone-network-badge {
+    --resource-badge-color: var(--resource-network);
+  }
+
+  .resource-tone-config-badge {
+    --resource-badge-color: var(--resource-config);
+  }
+
+  .resource-tone-storage-badge {
+    --resource-badge-color: var(--resource-storage);
+  }
+
+  .resource-tone-secret-badge {
+    --resource-badge-color: var(--resource-secret);
+  }
+
+  .resource-tone-cluster-badge {
+    --resource-badge-color: var(--resource-cluster);
+  }
+
+  .resource-tone-argo-badge {
+    --resource-badge-color: var(--resource-argo);
+  }
+
+  .resource-tone-default-badge {
+    --resource-badge-color: var(--muted-foreground);
+  }
+
+  .resource-tone-workload-badge,
+  .resource-tone-deployment-badge,
+  .resource-tone-replicaset-badge,
+  .resource-tone-pod-badge,
+  .resource-tone-network-badge,
+  .resource-tone-config-badge,
+  .resource-tone-storage-badge,
+  .resource-tone-secret-badge,
+  .resource-tone-cluster-badge,
+  .resource-tone-argo-badge,
+  .resource-tone-default-badge {
+    border-color: color-mix(in oklch, var(--resource-badge-color) 52%, transparent) !important;
+    background: color-mix(in oklch, var(--resource-badge-color) 18%, transparent) !important;
+    color: color-mix(in oklch, var(--resource-badge-color) 78%, var(--foreground)) !important;
+  }
+
+  .resource-topology-node-health-degraded {
+    --topology-node-bg: color-mix(in oklch, var(--destructive) 14%, var(--card));
+    --topology-node-border: color-mix(in oklch, var(--destructive) 76%, var(--border));
+  }
+
+  .resource-topology-node-health-attention {
+    --topology-node-bg: color-mix(in oklch, oklch(0.769 0.188 70.08) 13%, var(--card));
+    --topology-node-border: color-mix(in oklch, oklch(0.769 0.188 70.08) 70%, var(--border));
+  }
+
+  .resource-topology-node-health-restarted {
+    --topology-node-bg: color-mix(in oklch, oklch(0.685 0.169 237.323) 13%, var(--card));
+    --topology-node-border: color-mix(in oklch, oklch(0.685 0.169 237.323) 70%, var(--border));
+  }
+
+  .resource-topology-node-connected {
+    --topology-node-border: color-mix(in oklch, var(--primary) 62%, var(--border));
+  }
+
+  .resource-topology-node-selected {
+    --topology-node-border: var(--primary);
+  }
+
 }
 
 .ownership-map-flow .react-flow__controls {

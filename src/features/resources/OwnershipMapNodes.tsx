@@ -47,6 +47,27 @@ function ValueBadge({
 	);
 }
 
+function KindBadge({
+	kind,
+	className,
+}: {
+	kind: string;
+	className?: string;
+}) {
+	return (
+		<Badge
+			variant="outline"
+			className={cn(
+				"h-4 max-w-[5.75rem] shrink-0 rounded-sm px-1.5 text-[0.625rem] font-semibold leading-none shadow-none",
+				className,
+			)}
+			title={kind}
+		>
+			<span className="truncate">{kind}</span>
+		</Badge>
+	);
+}
+
 function TopologyText({
 	content,
 	title = content,
@@ -96,11 +117,7 @@ function OwnershipResourceNode({
 	const visual = getResourceKindVisual(node.kind);
 	const Icon = visual.icon;
 	const selectedOrConnected = data.selected || data.connected;
-	const metadataText = data.standalone
-		? (node.namespace ?? "Cluster scoped")
-		: node.namespace
-			? `${node.kind} · ${node.namespace}`
-			: node.kind;
+	const scopeText = node.namespace ?? "Cluster scoped";
 	const displayName = smartKubernetesName(node.name, node.kind);
 	const age = node.summary.age;
 	const portHint = data.showPortHints
@@ -119,6 +136,7 @@ function OwnershipResourceNode({
 					data.selected || selected ? node.id : null,
 					node.id,
 					selectedOrConnected,
+					visual.surfaceClassName,
 				),
 				"relative grid h-[78px] w-full grid-rows-[auto_auto_auto] content-start gap-1.5 px-2.5 py-2",
 				data.dimmed && "opacity-35",
@@ -146,10 +164,13 @@ function OwnershipResourceNode({
 				/>
 				<HealthBadge health={node.health} />
 			</div>
-			<TopologyText
-				content={metadataText}
-				className="text-[0.64rem] leading-tight text-muted-foreground"
-			/>
+			<div className="flex min-w-0 items-center gap-1.5">
+				<KindBadge kind={node.kind} className={visual.badgeClassName} />
+				<TopologyText
+					content={scopeText}
+					className="text-[0.64rem] leading-tight text-muted-foreground"
+				/>
+			</div>
 			<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
 				{primaryValue ? (
 					<ValueBadge
@@ -178,7 +199,8 @@ function StandaloneKindGroupNode({
 	return (
 		<div
 			className={cn(
-				"h-full w-full rounded-md border border-border/80 bg-card/35 shadow-sm transition-colors hover:bg-accent/20",
+				"resource-topology-node h-full w-full rounded-md border border-border/80 shadow-sm transition-colors hover:bg-accent/20",
+				visual.surfaceClassName,
 				data.dimmed && "opacity-35",
 			)}
 		>
