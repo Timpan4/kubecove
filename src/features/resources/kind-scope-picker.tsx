@@ -57,32 +57,35 @@ export function KindScopePicker({
 	const requestSeqRef = useRef(0);
 
 	const loadKinds = useCallback(async () => {
-		const requestSeq = ++requestSeqRef.current;
 		if (!clusterContext) {
+			requestSeqRef.current += 1;
 			setDiscoveredKinds([]);
 			setError(null);
 			setLoading(false);
 			return;
 		}
 
+		const requestSeq = ++requestSeqRef.current;
 		setDiscoveredKinds([]);
 		setLoading(true);
 		setError(null);
 		try {
 			const kinds = await listResourceKinds(createTauriClient(), clusterContext);
-			if (requestSeq !== requestSeqRef.current) return;
-			setDiscoveredKinds(
-				kinds
-					.filter((kind) => !CURATED_DISCOVERY_KEYS.has(kindDiscoveryKey(kind)))
-					.sort((a, b) =>
-						a.kind.localeCompare(b.kind) ||
-						a.apiVersion.localeCompare(b.apiVersion) ||
-						a.plural.localeCompare(b.plural),
-					),
-			);
+			if (requestSeq === requestSeqRef.current) {
+				setDiscoveredKinds(
+					kinds
+						.filter((kind) => !CURATED_DISCOVERY_KEYS.has(kindDiscoveryKey(kind)))
+						.toSorted((a, b) =>
+							a.kind.localeCompare(b.kind) ||
+							a.apiVersion.localeCompare(b.apiVersion) ||
+							a.plural.localeCompare(b.plural),
+						),
+				);
+			}
 		} catch (err) {
-			if (requestSeq !== requestSeqRef.current) return;
-			setError(err instanceof Error ? err.message : "Failed to load resource kinds");
+			if (requestSeq === requestSeqRef.current) {
+				setError(err instanceof Error ? err.message : "Failed to load resource kinds");
+			}
 		} finally {
 			if (requestSeq === requestSeqRef.current) setLoading(false);
 		}

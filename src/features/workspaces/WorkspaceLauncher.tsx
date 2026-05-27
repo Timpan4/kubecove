@@ -93,8 +93,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 	const canCreate = effectiveContext.length > 0 && !selectedContextMissing;
 
 	const sortedWorkspaces = useMemo(
-		() =>
-			[...workspaces].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+		() => workspaces.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
 		[workspaces],
 	);
 	const editingWorkspace =

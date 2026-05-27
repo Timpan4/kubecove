@@ -15,7 +15,7 @@ import { AppUsageFooter } from "./app/AppUsageFooter";
 import { DetailPanelFrame } from "./app/DetailPanelFrame";
 import { useArgoDetection } from "./app/useArgoDetection";
 import { ViewLoadingFallback } from "./app/ViewLoadingFallback";
-import { useAppUpdateLaunchCheck } from "./features/app-updates";
+import { useAppUpdateLaunchCheck } from "./features/app-updates/useAppUpdateLaunchCheck";
 import { useSettingsState } from "./lib/settings";
 import {
 	Sidebar,
@@ -316,19 +316,9 @@ function App() {
 		setSelectedTreeNode(nodeId);
 	};
 
-	const selectedResourceKey = useMemo(
-		() =>
-			selectedResource
-				? `${selectedResource.cluster}::${selectedResource.apiVersion ?? ""}::${selectedResource.kind}::${selectedResource.namespace ?? ""}::${selectedResource.name}`
-				: null,
-		[
-			selectedResource?.cluster,
-			selectedResource?.apiVersion,
-			selectedResource?.kind,
-			selectedResource?.namespace,
-			selectedResource?.name,
-		],
-	);
+	const selectedResourceKey = selectedResource
+		? `${selectedResource.cluster}::${selectedResource.apiVersion ?? ""}::${selectedResource.kind}::${selectedResource.namespace ?? ""}::${selectedResource.name}`
+		: null;
 
 	const handleArgoAppSelect = (
 		app: NonNullable<ReturnType<typeof useDashboardState>["selectedArgoApp"]>,
@@ -390,6 +380,10 @@ function App() {
 		setSelectedResource(null);
 		setViewMode("helm");
 	};
+
+	const handleTargetHelmReleaseResolved = useCallback(() => {
+		setTargetHelmRelease(null);
+	}, [setTargetHelmRelease]);
 
 	const handleResourceNamespacesChange = useCallback(
 		(namespaces: string[]) => {
@@ -565,7 +559,7 @@ function App() {
 							selectedRelease={selectedHelmRelease}
 							onReleaseSelect={handleHelmReleaseSelect}
 							targetRelease={targetHelmRelease}
-							onTargetReleaseResolved={() => setTargetHelmRelease(null)}
+							onTargetReleaseResolved={handleTargetHelmReleaseResolved}
 						/>
 					</Suspense>
 				</div>
@@ -642,9 +636,7 @@ function App() {
 				contentTitle={contentTitle}
 				onClusterChange={handleClusterChange}
 				onOpenLauncher={handleOpenLauncher}
-				onOpenSettings={() => {
-					handleOpenSettings();
-				}}
+				onOpenSettings={handleOpenSettings}
 			/>
 
 			<SidebarProvider

@@ -48,6 +48,11 @@ import type { HealthFilter } from "@/features/resources/helpers";
 import { buildWorkspaceFetchKeys, fetchWorkspaceResources } from "./query";
 import { WorkspaceComparePanel } from "./WorkspaceComparePanel";
 
+const EMPTY_CONTEXTS: Awaited<ReturnType<typeof listKubeContexts>> = [];
+const EMPTY_NAMESPACES: string[] = [];
+const EMPTY_DISCOVERED_KINDS: Awaited<ReturnType<typeof listResourceKinds>> = [];
+const EMPTY_RESOURCE_ROWS: Awaited<ReturnType<typeof fetchWorkspaceResources>> = [];
+
 interface WorkspaceOverviewProps {
 	workspace: SavedWorkspace;
 	onOpenResources: (namespace?: string, healthFilter?: HealthFilter) => void;
@@ -151,7 +156,7 @@ export function WorkspaceOverview({
 		queryKey: queryKeys.kubeContexts(),
 		queryFn: () => listKubeContexts(client),
 	});
-	const contexts = contextsQuery.data ?? [];
+	const contexts = contextsQuery.data ?? EMPTY_CONTEXTS;
 	const clusterAvailable =
 		contextsQuery.isPending ||
 		contexts.some((context) => context.name === workspace.scope.clusterContext);
@@ -162,14 +167,20 @@ export function WorkspaceOverview({
 		queryFn: () => listNamespaces(client, workspace.scope.clusterContext),
 		enabled: clusterAvailable && !contextsQuery.isPending,
 	});
-	const namespaces = namespacesQuery.data?.map((namespace) => namespace.name) ?? [];
+	const namespaces = useMemo(
+		() =>
+			namespacesQuery.data
+				? namespacesQuery.data.map((namespace) => namespace.name)
+				: EMPTY_NAMESPACES,
+		[namespacesQuery.data],
+	);
 
 	const kindsQuery = useQuery({
 		queryKey: queryKeys.resourceKinds(workspace.scope.clusterContext),
 		queryFn: () => listResourceKinds(client, workspace.scope.clusterContext),
 		enabled: clusterAvailable && !contextsQuery.isPending,
 	});
-	const discoveredKinds = kindsQuery.data ?? [];
+	const discoveredKinds = kindsQuery.data ?? EMPTY_DISCOVERED_KINDS;
 
 	const restoreStatus = useMemo(
 		() =>
@@ -201,7 +212,7 @@ export function WorkspaceOverview({
 			!kindsQuery.isPending,
 		staleTime: 30_000,
 	});
-	const rows = resourcesQuery.data ?? [];
+	const rows = resourcesQuery.data ?? EMPTY_RESOURCE_ROWS;
 	const health = useMemo(() => buildWorkspaceHealthSummary(rows), [rows]);
 
 	const argoDetectedQuery = useQuery({

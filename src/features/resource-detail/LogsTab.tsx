@@ -108,7 +108,7 @@ export function LogsTab({
 		});
 
 		return () => window.cancelAnimationFrame(frame);
-	}, [autoFollow, latestFirst, logStream.version, wrapLines]);
+	}, [autoFollow, latestFirst, logStream.lines.length, logStream.version, wrapLines]);
 
 	if (resource.kind !== "Pod") {
 		return (
