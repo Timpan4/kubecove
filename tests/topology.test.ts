@@ -158,7 +158,7 @@ describe("ownership topology helpers", () => {
 
 		expect(podNode?.data.node.health).toBe("degraded");
 		expect(topologyNodeClassName(podNode?.data.node ?? topology.nodes[0], null)).toContain(
-			"border-red-500",
+			"resource-topology-node-health-degraded",
 		);
 	});
 
@@ -812,11 +812,15 @@ describe("ownership topology helpers", () => {
 			summary: summary({ status: "Failed" }),
 		};
 
-		expect(topologyNodeClassName(node, null)).toContain("border-red-500");
-		expect(topologyNodeClassName(node, "node-1")).toContain("border-primary");
+		expect(topologyNodeClassName(node, null)).toContain(
+			"resource-topology-node-health-degraded",
+		);
+		expect(topologyNodeClassName(node, "node-1")).toContain(
+			"resource-topology-node-selected",
+		);
 		expect(topologyNodeClassName(node, "node-1")).toContain("ring-primary");
 		expect(topologyNodeClassName(node, null, "node-1", true)).toContain(
-			"border-primary/60",
+			"resource-topology-node-connected",
 		);
 		expect(
 			topologyNodeClassName({ ...node, health: "healthy" }, "node-2"),

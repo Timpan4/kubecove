@@ -96,6 +96,20 @@ Goal: make the current read-only incident workflow a reliable beta baseline.
 - [x] Reconcile README and milestone tracking for already-built incident surfaces.
 - [ ] Run a manual Tauri smoke test against a readable cluster before the next beta release.
 
+## 0.3.0 Smoke Test Findings - 2026-05-26
+
+Test target: local Tauri dev app backed by the `admin@solid-k8s` context after KubeCove 0.3.0 was released. The installed Windows app was also launched, but deeper click-through used the dev window because it was easier to foreground and capture.
+
+- [x] Pass: workspace launcher loaded saved workspace `admin@solid-k8s` and listed namespaces without exposing kubeconfig contents.
+- [x] Pass: opening the saved workspace restored the overview for all namespaces and showed live cluster counts, incident shortcuts, Argo CD summary, and CPU/memory footer.
+- [x] Pass: resource browser opened from the overview.
+- [ ] Issue: Pod resource listing remained on `Loading all namespaces` for more than 20 seconds, blocking table, detail, YAML, event, log, metrics, and topology smoke coverage in this run.
+- [ ] Issue: starting `bun run tauri dev` while a Vite server already owns port 1420 leaves a confusing partial state: the Tauri window can launch, but the `beforeDevCommand` exits with a port-in-use error.
+- [ ] Improvement: the Resources shortcut opens an empty resource browser state that says "Select a section from the sidebar"; defaulting to the saved workspace kind scope or highlighting the next required click would make the path less abrupt.
+- [ ] Improvement: sidebar group labels and disclosure chevrons behave differently; clicking Workloads text selects the group, while clicking the chevron expands it. Make the hit target or affordance clearer.
+- [ ] Improvement: workspace card keyboard tab order reached Edit before Open during this smoke pass, making the safest primary action less direct from the keyboard.
+- [ ] Improvement: Windows smoke automation needs the Tauri window explicitly foregrounded; the WebView exposes only an opaque `WRY_WEBVIEW` pane through UI Automation.
+
 ## Cross-Cutting Tracks
 
 ### Security and Safety

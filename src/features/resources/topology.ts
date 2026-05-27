@@ -256,21 +256,22 @@ export function topologyNodeClassName(
 	selectedNodeId: string | null,
 	nodeId?: string,
 	connected = false,
+	kindSurfaceClassName?: string,
 ): string {
 	const actualNodeId = nodeId ?? node.id ?? null;
 	const selected = actualNodeId ? selectedNodeId === actualNodeId : false;
 	return cn(
-		"min-w-0 rounded-md border bg-card px-3 py-2 text-left shadow-sm transition-all",
+		"resource-topology-node min-w-0 rounded-md border px-3 py-2 text-left shadow-sm transition-all",
 		node.selectable
 			? "cursor-pointer hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring/40"
 			: "cursor-default opacity-90",
 		"border-border",
-		node.health === "degraded" && "border-red-500 bg-red-500/10",
-		node.health === "attention" && "border-amber-500/70 bg-amber-500/10",
-		node.health === "restarted" && "border-sky-500/70 bg-sky-500/10",
-		connected &&
-			"border-primary/60 bg-primary/5 ring-1 ring-primary/30",
-		selected && "border-primary bg-primary/10 ring-2 ring-primary",
+		kindSurfaceClassName,
+		node.health === "degraded" && "resource-topology-node-health-degraded",
+		node.health === "attention" && "resource-topology-node-health-attention",
+		node.health === "restarted" && "resource-topology-node-health-restarted",
+		connected && "resource-topology-node-connected ring-1 ring-primary/30",
+		selected && "resource-topology-node-selected ring-2 ring-primary",
 	);
 }
 
