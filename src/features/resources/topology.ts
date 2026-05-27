@@ -267,16 +267,11 @@ export function topologyNodeClassName(
 			: "cursor-default opacity-90",
 		"border-border",
 		kindSurfaceClassName,
-		node.health === "degraded" &&
-			"resource-topology-node-health-degraded border-red-500 bg-red-500/10",
-		node.health === "attention" &&
-			"resource-topology-node-health-attention border-amber-500/70 bg-amber-500/10",
-		node.health === "restarted" &&
-			"resource-topology-node-health-restarted border-sky-500/70 bg-sky-500/10",
-		connected &&
-			"resource-topology-node-connected border-primary/60 bg-primary/5 ring-1 ring-primary/30",
-		selected &&
-			"resource-topology-node-selected border-primary bg-primary/10 ring-2 ring-primary",
+		node.health === "degraded" && "resource-topology-node-health-degraded",
+		node.health === "attention" && "resource-topology-node-health-attention",
+		node.health === "restarted" && "resource-topology-node-health-restarted",
+		connected && "resource-topology-node-connected ring-1 ring-primary/30",
+		selected && "resource-topology-node-selected ring-2 ring-primary",
 	);
 }
 
