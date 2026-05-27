@@ -115,10 +115,10 @@ function ResourceListComponent({
 	const kindKey = selectedKinds.map(resourceKindFetchKey).join(",");
 	const topologyNamespaceKey = useMemo(
 		() =>
-			[...new Set(selectedNamespaces)]
-				.sort((a, b) => a.localeCompare(b))
+			Array.from(new Set(selectedNamespaces))
+				.toSorted((a, b) => a.localeCompare(b))
 				.join(","),
-		[namespaceKey],
+		[selectedNamespaces],
 	);
 	const topologyNamespaces = useMemo(
 		() => (topologyNamespaceKey ? topologyNamespaceKey.split(",") : []),
@@ -126,7 +126,7 @@ function ResourceListComponent({
 	);
 	const fetchKeys = useMemo(
 		() => buildFetchKeys(selectedNamespaces, selectedKinds),
-		[namespaceKey, kindKey],
+		[selectedNamespaces, selectedKinds],
 	);
 	const queryKey = useMemo(
 		() => queryKeys.resources(clusterContext, fetchKeys),
@@ -234,7 +234,7 @@ function ResourceListComponent({
 	);
 	const displayData = useMemo(() => {
 		if (!groupedByArgo) return sortedData;
-		return [...sortedData].sort((a, b) => {
+		return sortedData.toSorted((a, b) => {
 			const appCompare = formatResourceGroupLabel(a).localeCompare(
 				formatResourceGroupLabel(b),
 			);

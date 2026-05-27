@@ -27,23 +27,24 @@ export function NamespaceList({
 	const requestSeqRef = useRef(0);
 
 	const loadNamespaces = useCallback(async () => {
-		const requestSeq = ++requestSeqRef.current;
 		if (!clusterContext) {
+			requestSeqRef.current += 1;
 			setNamespaces([]);
 			setLoading(false);
 			return;
 		}
 
+		const requestSeq = ++requestSeqRef.current;
 		const client = createTauriClient();
 		setLoading(true);
 		setError(null);
 		try {
 			const ns = await listNamespaces(client, clusterContext);
-			if (requestSeq !== requestSeqRef.current) return;
-			setNamespaces(ns);
+			if (requestSeq === requestSeqRef.current) setNamespaces(ns);
 		} catch (err) {
-			if (requestSeq !== requestSeqRef.current) return;
-			setError(err instanceof Error ? err.message : "Failed to load namespaces");
+			if (requestSeq === requestSeqRef.current) {
+				setError(err instanceof Error ? err.message : "Failed to load namespaces");
+			}
 		} finally {
 			if (requestSeq === requestSeqRef.current) {
 				setLoading(false);

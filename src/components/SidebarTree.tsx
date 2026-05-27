@@ -173,6 +173,7 @@ function TreeNodeComponent({
         title={node.description}
       >
         <button
+          type="button"
           className={cn(
             "flex size-[18px] shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-muted-foreground transition-colors hover:text-foreground",
             !hasChildren && "invisible",

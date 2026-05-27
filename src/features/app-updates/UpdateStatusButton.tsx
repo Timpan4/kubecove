@@ -24,14 +24,16 @@ import { isAppUpdatesEnabled } from "@/lib/release-channel";
 import { cn } from "@/lib/utils";
 import { useAppUpdateStore } from "./store";
 
+const CHECKED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	dateStyle: "medium",
+	timeStyle: "short",
+});
+
 function formatCheckedAt(value: string | null): string {
 	if (!value) return "Not checked yet";
 	const date = new Date(value);
 	if (Number.isNaN(date.getTime())) return "Not checked yet";
-	return new Intl.DateTimeFormat(undefined, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(date);
+	return CHECKED_AT_FORMATTER.format(date);
 }
 
 export function UpdateStatusButton() {
