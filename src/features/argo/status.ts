@@ -1,17 +1,6 @@
-import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
+import type { StatusTone } from "@/components/StatusBadge";
 
 export type ChipVariant = StatusTone;
-
-export function StatusChip({
-	value,
-	variant = "neutral",
-}: {
-	value: string | null | undefined;
-	variant?: ChipVariant;
-}) {
-	if (!value) return null;
-	return <StatusBadge tone={variant}>{value}</StatusBadge>;
-}
 
 export function syncStatusVariant(status: string | null): ChipVariant {
 	if (status === "Synced") return "success";

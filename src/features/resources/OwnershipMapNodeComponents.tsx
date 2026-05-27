@@ -2,20 +2,20 @@ import {
 	Handle,
 	Position,
 	type NodeProps,
-	type NodeTypes,
 } from "@xyflow/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatCompactResourceMetrics } from "@/lib/resource-metrics";
 import { getResourceKindVisual } from "@/lib/resource-visuals";
 import { cn } from "@/lib/utils";
+import { smartKubernetesName } from "./ownership-node-name";
 import {
 	topologyNodeClassName,
 	type OwnershipResourceGraphNode,
 	type StandaloneKindGroupGraphNode,
 } from "./topology";
 
-function HealthBadge({ health }: { health: string }) {
+export function HealthBadge({ health }: { health: string }) {
 	return (
 		<Badge
 			variant={health === "degraded" ? "destructive" : "outline"}
@@ -26,7 +26,7 @@ function HealthBadge({ health }: { health: string }) {
 	);
 }
 
-function ValueBadge({
+export function ValueBadge({
 	value,
 	className,
 }: {
@@ -47,7 +47,7 @@ function ValueBadge({
 	);
 }
 
-function KindBadge({
+export function KindBadge({
 	kind,
 	className,
 }: {
@@ -68,7 +68,7 @@ function KindBadge({
 	);
 }
 
-function TopologyText({
+export function TopologyText({
 	content,
 	title = content,
 	className,
@@ -84,32 +84,7 @@ function TopologyText({
 	);
 }
 
-function smartKubernetesName(name: string, kind: string): string {
-	if (name.length <= 18) return name;
-	const parts = name.split("-");
-	const suffix = parts[parts.length - 1] ?? "";
-	const generatedPodName =
-		kind === "Pod" &&
-		parts.length >= 3 &&
-		/^[a-z0-9]{4,6}$/i.test(suffix);
-	if (generatedPodName) {
-		const prefix = parts.slice(0, -2).join("-");
-		if (prefix.length >= 4) return `${prefix}...${suffix}`;
-	}
-	const generatedControllerName =
-		["ReplicaSet", "Job"].includes(kind) &&
-		parts.length >= 2 &&
-		/^[a-z0-9]{6,12}$/i.test(suffix);
-	if (generatedControllerName) {
-		const prefix = parts.slice(0, -1).join("-");
-		if (prefix.length >= 4) return `${prefix}-${suffix.slice(0, 3)}...`;
-	}
-	const headLength = name.length > 28 ? 15 : 14;
-	const tailLength = name.length > 28 ? 5 : 4;
-	return `${name.slice(0, headLength)}...${name.slice(-tailLength)}`;
-}
-
-function OwnershipResourceNode({
+export function OwnershipResourceNode({
 	data,
 	selected,
 }: NodeProps<OwnershipResourceGraphNode>) {
@@ -189,7 +164,7 @@ function OwnershipResourceNode({
 	);
 }
 
-function StandaloneKindGroupNode({
+export function StandaloneKindGroupNode({
 	data,
 }: NodeProps<StandaloneKindGroupGraphNode>) {
 	const visual = getResourceKindVisual(data.kind);
@@ -225,8 +200,3 @@ function StandaloneKindGroupNode({
 		</div>
 	);
 }
-
-export const ownershipMapNodeTypes = {
-	ownershipResource: OwnershipResourceNode,
-	standaloneKindGroup: StandaloneKindGroupNode,
-} satisfies NodeTypes;

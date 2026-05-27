@@ -34,6 +34,18 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: Fetch React Doctor diff base
+        if: github.event_name == 'pull_request'
+        run: git fetch origin "${{ github.base_ref }}" --depth=1
+
+      - name: Run React Doctor on changed files
+        if: github.event_name == 'pull_request'
+        run: bun run doctor:ci -- --diff origin/${{ github.base_ref }}
+
+      - name: Run React Doctor full error gate
+        if: github.event_name == 'push'
+        run: bun run doctor:ci -- --full
+
       - name: Typecheck frontend
         run: bun run typecheck
 

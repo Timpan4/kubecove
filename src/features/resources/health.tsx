@@ -46,7 +46,7 @@ function HealthMetric({
 	);
 }
 
-export function healthFilterLabel(filter: HealthFilter): string {
+function healthFilterLabel(filter: HealthFilter): string {
 	switch (filter) {
 		case "healthy":
 			return "Healthy";

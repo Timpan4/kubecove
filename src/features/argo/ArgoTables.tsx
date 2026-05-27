@@ -22,7 +22,8 @@ import type {
 	ArgoAppProjectSummary,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { healthStatusVariant, StatusChip, syncStatusVariant } from "./status";
+import { StatusChip } from "./StatusChip";
+import { healthStatusVariant, syncStatusVariant } from "./status";
 
 const TABLE_CLASS =
 	"w-full table-fixed border-collapse text-sm [&_th]:border-b-2 [&_th]:px-3 [&_th]:py-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:text-muted-foreground [&_td]:whitespace-nowrap [&_td]:border-b [&_td]:px-3 [&_td]:py-3 [&_td]:truncate";
