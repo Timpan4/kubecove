@@ -46,6 +46,6 @@ export function canQueryResourceScope({
 	if (!clusterContext || kinds.length === 0) return false;
 	if (scope.clusterScoped || scope.namespace || namespaces.length > 0) return true;
 	if (scope.kinds.length > 0) return true;
-	if (hasActiveWorkspace) return true;
+	if (hasActiveWorkspace && scope.section === null) return true;
 	return hasDiscoveredKind(kinds);
 }

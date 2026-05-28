@@ -1,5 +1,6 @@
 const DEV_ORIGIN = "http://localhost:1420";
 const VITE_CLIENT_URL = `${DEV_ORIGIN}/@vite/client`;
+const VITE_CLIENT_MARKERS = ["import.meta.hot", "createHotContext", "/@vite/client"];
 
 async function fetchText(url: string): Promise<string | null> {
 	const controller = new AbortController();
@@ -21,7 +22,7 @@ async function hasKubeCoveViteServer(): Promise<boolean> {
 		fetchText(VITE_CLIENT_URL),
 	]);
 	return rootHtml?.includes("<title>KubeCove</title>") === true &&
-		viteClient !== null;
+		VITE_CLIENT_MARKERS.some((marker) => viteClient?.includes(marker));
 }
 
 async function hasAnyServer(): Promise<boolean> {

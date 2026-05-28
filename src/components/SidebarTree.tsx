@@ -111,7 +111,7 @@ function TreeNodeComponent({
       return;
     }
     onNodeSelect(node.id);
-    if (hasChildren && !isExpanded) {
+    if (hasChildren) {
       onSectionToggle(idStr);
     }
   };

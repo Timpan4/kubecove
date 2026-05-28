@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { buildFetchKeys } from "../src/features/resources/helpers";
+import { canQueryResourceScope } from "../src/app/viewHelpers";
 import { CLUSTER_SCOPED_KINDS } from "../src/lib/types";
 import { resolveTreeScope } from "../src/lib/tree-nav";
 
@@ -35,5 +36,27 @@ describe("navigation scope", () => {
 			{ kind: "Pod", namespace: undefined },
 			{ kind: "Service", namespace: undefined },
 		]);
+	});
+
+	test("workspace fallback queries only when no tree section is selected", () => {
+		expect(
+			canQueryResourceScope({
+				clusterContext: "admin@solid-k8s",
+				kinds: ["Pod"],
+				namespaces: [],
+				scope: resolveTreeScope(null),
+				hasActiveWorkspace: true,
+			}),
+		).toBe(true);
+
+		expect(
+			canQueryResourceScope({
+				clusterContext: "admin@solid-k8s",
+				kinds: ["Pod"],
+				namespaces: [],
+				scope: resolveTreeScope({ type: "section", section: "discovered" }),
+				hasActiveWorkspace: true,
+			}),
+		).toBe(false);
 	});
 });
