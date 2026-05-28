@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "tauri:dev-server": "bun scripts/tauri-dev-server.ts",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

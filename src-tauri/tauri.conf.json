@@ -4,7 +4,7 @@
   "version": "0.3.0",
   "identifier": "com.timpan.kubecove",
   "build": {
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "bun run tauri:dev-server",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
