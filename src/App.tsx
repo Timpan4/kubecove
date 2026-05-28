@@ -42,7 +42,7 @@ import {
 	type SavedWorkspace,
 } from "./lib/workspaces";
 import {
-	hasDiscoveredKind,
+	canQueryResourceScope,
 	resourceKindLabel,
 	resourceKindLogKey,
 	SECTION_LABELS,
@@ -457,13 +457,13 @@ function App() {
 		return SECTION_LABELS[scope.section] ?? scope.section;
 	}, [scope, viewMode, selectedTreeNode, activeWorkspace?.name]);
 
-	const canQueryResources =
-		computedKinds.length > 0 &&
-		!!clusterContext &&
-		(scope.clusterScoped ||
-			scope.section === "namespaces" ||
-			computedNamespaces.length > 0 ||
-			hasDiscoveredKind(computedKinds));
+	const canQueryResources = canQueryResourceScope({
+		clusterContext,
+		kinds: computedKinds,
+		namespaces: computedNamespaces,
+		scope,
+		hasActiveWorkspace: activeWorkspace !== null,
+	});
 
 	const emptyMsg = useMemo(
 		() => emptyStateMessage(scope, !!clusterContext),

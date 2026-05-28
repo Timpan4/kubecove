@@ -111,15 +111,15 @@ function TreeNodeComponent({
       return;
     }
     onNodeSelect(node.id);
+    if (hasChildren && !isExpanded) {
+      onSectionToggle(idStr);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       handleClick();
-      if (hasChildren) {
-        onSectionToggle(idStr);
-      }
       return;
     }
 

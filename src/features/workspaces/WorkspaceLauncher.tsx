@@ -246,11 +246,15 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 												{summarizeWorkspaceScope(workspace.scope)}
 											</CardDescription>
 										</CardHeader>
-										<CardAction className="row-start-auto flex items-center justify-end gap-2 px-3">
+										<CardAction
+											className="row-start-auto flex items-center justify-end gap-2 px-3"
+											role="group"
+											aria-label={`${workspace.name} actions`}
+										>
 											<Button
 												type="button"
-												variant="outline"
 												size="sm"
+												aria-label={`Open ${workspace.name}`}
 												onClick={() => onOpenWorkspace(workspace)}
 											>
 												<FolderOpen data-icon="inline-start" />
