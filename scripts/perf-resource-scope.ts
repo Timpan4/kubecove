@@ -110,10 +110,8 @@ console.log(
 				rowsPerCachedScope,
 			},
 			kubernetesWorkUnits: {
-				tablePodFetchesBefore: tableKeys.length,
-				tablePodFetchesAfter: tableKeys.length,
-				tablePodWatchesBefore: tableKeys.length,
-				tablePodWatchesAfter: tableWatchKeys.length,
+				tablePodNamespaceFetchKeys: tableKeys.length,
+				tablePodNamespaceWatchKeys: tableWatchKeys.length,
 				topologyWatchesBefore: namespaceCount * topologyKindCount,
 				topologyWatchesAfter: topologyWatchStreamCount,
 			},

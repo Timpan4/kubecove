@@ -80,26 +80,10 @@ fn should_promote_to_all(group: &ResourceScopeGroup) -> bool {
 }
 
 fn fetch_namespaces(group: &ResourceScopeGroup) -> Vec<Option<String>> {
-    if should_promote_to_all(group) || group.namespaces.is_empty() {
+    if should_promote_to_all(group) {
         return vec![None];
     }
     group.namespaces.iter().cloned().map(Some).collect()
-}
-
-fn filter_promoted_rows(
-    rows: Vec<ResourceSummary>,
-    group: &ResourceScopeGroup,
-) -> Vec<ResourceSummary> {
-    if group.all_namespaces || group.namespaces.is_empty() {
-        return rows;
-    }
-    rows.into_iter()
-        .filter(|row| {
-            row.namespace
-                .as_deref()
-                .is_some_and(|namespace| group.namespaces.contains(namespace))
-        })
-        .collect()
 }
 
 fn dedupe_rows(rows: Vec<ResourceSummary>) -> Vec<ResourceSummary> {
@@ -131,7 +115,6 @@ pub async fn resource_scope_from(
         let live_store = live_store.clone();
         let cluster_context = cluster_context.clone();
         async move {
-            let promoted = should_promote_to_all(&group);
             let fetches = fetch_namespaces(&group).into_iter().map(|namespace| {
                 let kind = group.kind.clone();
                 let live_store = live_store.clone();
@@ -179,11 +162,6 @@ pub async fn resource_scope_from(
             for result in join_all(fetches).await {
                 rows.extend(result?);
             }
-            let rows = if promoted {
-                filter_promoted_rows(rows, &group)
-            } else {
-                rows
-            };
             Ok::<_, AppError>(rows)
         }
     });
@@ -299,70 +277,6 @@ mod tests {
 
         assert!(should_promote_to_all(group));
         assert_eq!(fetch_namespaces(group), vec![None]);
-    }
-
-    #[test]
-    fn promoted_namespace_fetch_still_filters_to_requested_namespaces() {
-        let groups = group_requests(vec![
-            pod_request(Some("default")),
-            pod_request(Some("argocd")),
-            pod_request(Some("jobs")),
-            pod_request(Some("kube-system")),
-            pod_request(Some("monitoring")),
-            pod_request(Some("platform")),
-            pod_request(Some("staging")),
-            pod_request(Some("prod")),
-        ])
-        .expect("groups");
-        let group = groups.get("typed:Pod").expect("pod group");
-        let rows = filter_promoted_rows(
-            vec![
-                ResourceSummary {
-                    kind: "Pod".to_string(),
-                    cluster: "kind-dev".to_string(),
-                    name: "api".to_string(),
-                    namespace: Some("default".to_string()),
-                    age: "1m".to_string(),
-                    api_version: None,
-                    group: None,
-                    version: None,
-                    plural: None,
-                    namespaced: None,
-                    dynamic: None,
-                    created_at: None,
-                    status: None,
-                    ready: None,
-                    restarts: None,
-                    owner_ref: None,
-                    argo_app: None,
-                    helm_release: None,
-                },
-                ResourceSummary {
-                    kind: "Pod".to_string(),
-                    cluster: "kind-dev".to_string(),
-                    name: "db".to_string(),
-                    namespace: Some("other".to_string()),
-                    age: "1m".to_string(),
-                    api_version: None,
-                    group: None,
-                    version: None,
-                    plural: None,
-                    namespaced: None,
-                    dynamic: None,
-                    created_at: None,
-                    status: None,
-                    ready: None,
-                    restarts: None,
-                    owner_ref: None,
-                    argo_app: None,
-                    helm_release: None,
-                },
-            ],
-            group,
-        );
-
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].name, "api");
     }
 
     #[test]
