@@ -4,6 +4,7 @@ import type { PortForwardSessionSummary, ResourceSummary } from "../src/lib/type
 import {
 	extractServicePortOptions,
 	isPortForwardForResource,
+	isReusablePortForwardSession,
 	parsePortForwardForm,
 	parseSavedPortForwardForm,
 	portForwardLocalUrl,
@@ -171,6 +172,10 @@ spec:
 			localPort: undefined,
 		});
 		expect(savedPortForwardMatchesSession(saved, serviceSession)).toBe(true);
+		expect(isReusablePortForwardSession(serviceSession)).toBe(true);
+		expect(
+			isReusablePortForwardSession({ ...serviceSession, status: "error" }),
+		).toBe(false);
 		expect(
 			savedPortForwardMatchesSession(
 				{ ...saved, localPort: 19090 },

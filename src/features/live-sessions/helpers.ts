@@ -45,6 +45,12 @@ export function sortPortForwardSessions(
 	});
 }
 
+export function isReusablePortForwardSession(
+	session: Pick<PortForwardSessionSummary, "status">,
+): boolean {
+	return session.status === "listening" || session.status === "connected";
+}
+
 export function isPortForwardForResource(
 	session: PortForwardSessionSummary,
 	resource: ResourceSummary,

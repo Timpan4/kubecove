@@ -240,6 +240,18 @@ export function workspaceScopeContexts(scope: WorkspaceScope): string[] {
 	);
 }
 
+export function reconcileSavedPortForwardsForScope(
+	portForwards: SavedPortForward[],
+	scope: WorkspaceScope,
+): SavedPortForward[] {
+	const contexts = workspaceScopeContexts(scope);
+	return portForwards.filter(
+		({ clusterContext, namespace }) =>
+			contexts.includes(clusterContext) &&
+			(scope.namespaces.length === 0 || scope.namespaces.includes(namespace)),
+	);
+}
+
 export function resourceKindKey(kind: ResourceKindSelection): string {
 	if (typeof kind === "string") return `builtin:${kind}`;
 	return `dynamic:${kind.group}:${kind.version}:${kind.plural}:${kind.kind}`;
@@ -482,7 +494,13 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
 									...workspace,
 									...updates,
 									portForwards:
-										updates.portForwards ?? workspace.portForwards ?? [],
+										updates.portForwards ??
+										(updates.scope
+											? reconcileSavedPortForwardsForScope(
+													workspace.portForwards ?? [],
+													updates.scope,
+												)
+											: workspace.portForwards ?? []),
 									updatedAt: new Date().toISOString(),
 								}
 							: workspace,

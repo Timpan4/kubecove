@@ -7,6 +7,7 @@ import {
 	computeRestoreStatus,
 	createSavedPortForward,
 	createWorkspaceRecord,
+	createWorkspaceScope,
 	summarizeWorkspaceScope,
 	useWorkspaceStore,
 	workspaceScopeContexts,
@@ -112,6 +113,44 @@ describe("workspace helpers", () => {
 			.getState()
 			.deleteSavedPortForward(workspace.id, saved.id);
 		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([]);
+	});
+
+	test("reconciles saved forwards when workspace scope changes", () => {
+		useWorkspaceStore.setState({ workspaces: [], activeWorkspaceId: null });
+		const workspace = useWorkspaceStore.getState().createWorkspace({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: ["payments"],
+		});
+		const saved = useWorkspaceStore.getState().savePortForward(workspace.id, {
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			serviceName: "api",
+			servicePort: 8080,
+		});
+
+		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
+			scope: createWorkspaceScope({
+				name: "Ops",
+				clusterContext: "kind-prod",
+				namespaces: ["payments"],
+			}),
+		});
+
+		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([]);
+
+		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
+			portForwards: [saved],
+			scope: createWorkspaceScope({
+				name: "Ops",
+				clusterContext: "kind-dev",
+				namespaces: [],
+			}),
+		});
+
+		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([
+			saved,
+		]);
 	});
 
 	test("stores cluster groups as local scope metadata without secrets", () => {

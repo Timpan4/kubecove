@@ -14,6 +14,7 @@ import {
 	type SavedWorkspace,
 } from "@/lib/workspaces";
 import {
+	isReusablePortForwardSession,
 	savedPortForwardMatchesSession,
 	savedPortForwardToRequest,
 } from "./helpers";
@@ -70,8 +71,10 @@ async function startSavedPortForward({
 	knownSessions,
 	updateSavedPortForward,
 }: StartSavedPortForwardOptions): Promise<SavedPortForwardStartResult> {
-	const existingSession = knownSessions.find((session) =>
-		savedPortForwardMatchesSession(portForward, session),
+	const existingSession = knownSessions.find(
+		(session) =>
+			isReusablePortForwardSession(session) &&
+			savedPortForwardMatchesSession(portForward, session),
 	);
 	if (existingSession) {
 		updateSavedPortForward(workspaceId, portForward.id, {
