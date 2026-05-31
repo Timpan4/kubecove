@@ -37,6 +37,7 @@ interface ActivePortForwardsProps {
 export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 	const client = useMemo(() => createTauriClient(), []);
 	const queryClient = useQueryClient();
+	const [popoverOpen, setPopoverOpen] = useState(false);
 	const [stoppingId, setStoppingId] = useState<string | null>(null);
 	const [copyingId, setCopyingId] = useState<string | null>(null);
 	const sessionsQuery = useQuery({
@@ -71,7 +72,7 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 	};
 
 	return (
-		<Popover>
+		<Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
 			<PopoverTrigger asChild>
 				<Button
 					type="button"
@@ -101,7 +102,10 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 							type="button"
 							variant="outline"
 							size="sm"
-							onClick={onOpenManager}
+							onClick={() => {
+								setPopoverOpen(false);
+								onOpenManager();
+							}}
 						>
 							<Cable data-icon="inline-start" />
 							Manage

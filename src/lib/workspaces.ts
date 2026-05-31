@@ -490,19 +490,18 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
 				set((state) => ({
 					workspaces: state.workspaces.map((workspace) =>
 						workspace.id === id
-							? {
+							? (() => {
+									const scope = updates.scope ?? workspace.scope;
+									return {
 									...workspace,
 									...updates,
-									portForwards:
-										updates.portForwards ??
-										(updates.scope
-											? reconcileSavedPortForwardsForScope(
-													workspace.portForwards ?? [],
-													updates.scope,
-												)
-											: workspace.portForwards ?? []),
+									portForwards: reconcileSavedPortForwardsForScope(
+										updates.portForwards ?? workspace.portForwards ?? [],
+										scope,
+									),
 									updatedAt: new Date().toISOString(),
-								}
+								};
+								})()
 							: workspace,
 					),
 				})),
@@ -513,10 +512,10 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
 						workspace.id === workspaceId
 							? {
 									...workspace,
-									portForwards: [
-										savedPortForward,
-										...(workspace.portForwards ?? []),
-									],
+									portForwards: reconcileSavedPortForwardsForScope(
+										[savedPortForward, ...(workspace.portForwards ?? [])],
+										workspace.scope,
+									),
 									updatedAt: savedPortForward.updatedAt,
 								}
 							: workspace,
@@ -532,30 +531,33 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
 							workspace.id === workspaceId
 								? {
 										...workspace,
-										portForwards: (workspace.portForwards ?? []).map(
-											(portForward) => {
-												if (portForward.id !== portForwardId) {
-													return portForward;
-												}
-												const next = { ...portForward, ...updates };
-												return {
-													...portForward,
-													...normalizeSavedPortForwardInput(next),
-													lastStartedAt:
-														"lastStartedAt" in updates
-															? updates.lastStartedAt
-															: portForward.lastStartedAt,
-													lastStatus:
-														"lastStatus" in updates
-															? updates.lastStatus
-															: portForward.lastStatus,
-													lastError:
-														"lastError" in updates
-															? updates.lastError
-															: portForward.lastError,
-													updatedAt: now,
-												};
-											},
+										portForwards: reconcileSavedPortForwardsForScope(
+											(workspace.portForwards ?? []).map(
+												(portForward) => {
+													if (portForward.id !== portForwardId) {
+														return portForward;
+													}
+													const next = { ...portForward, ...updates };
+													return {
+														...portForward,
+														...normalizeSavedPortForwardInput(next),
+														lastStartedAt:
+															"lastStartedAt" in updates
+																? updates.lastStartedAt
+																: portForward.lastStartedAt,
+														lastStatus:
+															"lastStatus" in updates
+																? updates.lastStatus
+																: portForward.lastStatus,
+														lastError:
+															"lastError" in updates
+																? updates.lastError
+																: portForward.lastError,
+														updatedAt: now,
+													};
+												},
+											),
+											workspace.scope,
 										),
 										updatedAt: now,
 									}

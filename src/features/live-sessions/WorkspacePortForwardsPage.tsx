@@ -47,6 +47,8 @@ import type { PortForwardSessionSummary } from "@/lib/types";
 import { queryKeys } from "@/lib/queryKeys";
 import {
 	useWorkspaceStore,
+	workspaceScopeContexts,
+	type SavePortForwardInput,
 	type SavedPortForward,
 	type SavedWorkspace,
 } from "@/lib/workspaces";
@@ -93,6 +95,22 @@ function formStateFromSaved(
 
 function activeSessionTitle(session: PortForwardSessionSummary): string {
 	return `${session.namespace}/${session.targetKind}/${session.targetName}:${session.remotePort}`;
+}
+
+function validateSavedPortForwardScope(
+	workspace: SavedWorkspace,
+	input: SavePortForwardInput,
+): string | null {
+	if (!workspaceScopeContexts(workspace.scope).includes(input.clusterContext)) {
+		return "Cluster context must be in the current workspace scope.";
+	}
+	if (
+		workspace.scope.namespaces.length > 0 &&
+		!workspace.scope.namespaces.includes(input.namespace)
+	) {
+		return "Namespace must be in the current workspace scope.";
+	}
+	return null;
 }
 
 async function copyText(text: string): Promise<void> {
@@ -175,6 +193,11 @@ export function WorkspacePortForwardsPage({
 		const parsed = parseSavedPortForwardForm(form);
 		if (typeof parsed === "string") {
 			setFormError(parsed);
+			return;
+		}
+		const scopeError = validateSavedPortForwardScope(workspace, parsed);
+		if (scopeError) {
+			setFormError(scopeError);
 			return;
 		}
 		if (editingId) updateSavedPortForward(workspace.id, editingId, parsed);

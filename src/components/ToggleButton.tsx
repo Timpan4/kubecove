@@ -18,7 +18,7 @@ export function ToggleButton({
 			aria-checked={checked}
 			aria-label={ariaLabel}
 			className={cn(
-				"flex h-6 w-11 items-center rounded-full border px-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+				"flex h-6 w-11 items-center rounded-full border px-0.5 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/50",
 				checked
 					? "border-primary bg-primary"
 					: "border-border bg-muted",

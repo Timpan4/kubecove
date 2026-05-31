@@ -130,7 +130,7 @@ export function useSavedPortForwardActions(
 	const startOne = useCallback(
 		async (
 			portForward: SavedPortForward,
-			knownSessions: PortForwardSessionSummary[] = activeSessions ?? [],
+			knownSessions?: PortForwardSessionSummary[],
 		): Promise<SavedPortForwardStartResult> => {
 			if (!workspace) {
 				return {
@@ -139,13 +139,15 @@ export function useSavedPortForwardActions(
 					error: "No active workspace",
 				};
 			}
+			const currentSessions =
+				knownSessions ?? activeSessions ?? (await listPortForwards(client).catch(() => []));
 			setStartingId(setStartingIds, portForward.id, true);
 			try {
 				const result = await startSavedPortForward({
 					client,
 					workspaceId: workspace.id,
 					portForward,
-					knownSessions,
+					knownSessions: currentSessions,
 					updateSavedPortForward,
 				});
 				await queryClient.invalidateQueries({
@@ -167,7 +169,9 @@ export function useSavedPortForwardActions(
 			setStartingAll(true);
 			try {
 				let knownSessions =
-					activeSessions ?? (await listPortForwards(client).catch(() => []));
+					activeSessions !== undefined
+						? activeSessions
+						: await listPortForwards(client).catch(() => []);
 				const results: SavedPortForwardStartResult[] = [];
 				for (const portForward of portForwards) {
 					const result = await startOne(portForward, knownSessions);

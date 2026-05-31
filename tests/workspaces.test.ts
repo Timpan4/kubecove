@@ -151,6 +151,16 @@ describe("workspace helpers", () => {
 		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([
 			saved,
 		]);
+
+		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
+			scope: createWorkspaceScope({
+				name: "Ops",
+				clusterContext: "kind-dev",
+				namespaces: ["other"],
+			}),
+		});
+
+		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([]);
 	});
 
 	test("stores cluster groups as local scope metadata without secrets", () => {

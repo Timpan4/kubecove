@@ -285,8 +285,17 @@ describe("typed Tauri wrappers", () => {
 			remotePort: 8080,
 			localPort: 18080,
 		};
+		const serviceRequest = {
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			targetKind: "Service" as const,
+			targetName: "api",
+			remotePort: 8080,
+			localPort: 18080,
+		};
 
 		expect(await startPortForward(client, request)).toEqual(session);
+		expect(await startPortForward(client, serviceRequest)).toEqual(session);
 		expect(await startPodPortForward(client, request)).toEqual(session);
 		expect(await listPortForwards(client)).toEqual([session]);
 		expect(await stopPodPortForward(client, session.id)).toBe(true);
@@ -294,6 +303,10 @@ describe("typed Tauri wrappers", () => {
 			{
 				cmd: "start_pod_port_forward",
 				args: { request },
+			},
+			{
+				cmd: "start_pod_port_forward",
+				args: { request: serviceRequest },
 			},
 			{
 				cmd: "start_pod_port_forward",

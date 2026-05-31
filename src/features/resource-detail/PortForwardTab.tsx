@@ -52,6 +52,11 @@ interface PortForwardTabProps {
 	detailsYaml?: string;
 }
 
+type SaveMessage = {
+	kind: "saved" | "duplicate";
+	text: string;
+};
+
 async function copyText(text: string): Promise<void> {
 	await navigator.clipboard?.writeText(text);
 }
@@ -92,7 +97,7 @@ export function PortForwardTab({
 	const [localPort, setLocalPort] = useState("");
 	const [formError, setFormError] = useState<string | null>(null);
 	const [startError, setStartError] = useState<string | null>(null);
-	const [saveMessage, setSaveMessage] = useState<string | null>(null);
+	const [saveMessage, setSaveMessage] = useState<SaveMessage | null>(null);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [starting, setStarting] = useState(false);
 	const [stoppingId, setStoppingId] = useState<string | null>(null);
@@ -217,7 +222,10 @@ export function PortForwardTab({
 				portForward.localPort === parsed.localPort,
 		);
 		if (duplicate) {
-			setSaveMessage("This Service forward is already saved in the workspace.");
+			setSaveMessage({
+				kind: "duplicate",
+				text: "This Service forward is already saved in the workspace.",
+			});
 			return;
 		}
 		savePortForward(activeWorkspace.id, {
@@ -227,7 +235,10 @@ export function PortForwardTab({
 			servicePort: parsed.remotePort,
 			localPort: parsed.localPort,
 		});
-		setSaveMessage("Saved Service forward to this workspace.");
+		setSaveMessage({
+			kind: "saved",
+			text: "Saved Service forward to this workspace.",
+		});
 	};
 
 	const stopSession = async (sessionId: string) => {
@@ -347,8 +358,12 @@ export function PortForwardTab({
 			{saveMessage && (
 				<Alert>
 					<Save className="size-3.5" />
-					<AlertTitle>Saved forward</AlertTitle>
-					<AlertDescription>{saveMessage}</AlertDescription>
+					<AlertTitle>
+						{saveMessage.kind === "saved"
+							? "Saved forward"
+							: "Preset already saved"}
+					</AlertTitle>
+					<AlertDescription>{saveMessage.text}</AlertDescription>
 				</Alert>
 			)}
 			<div className="flex flex-wrap justify-end gap-2">

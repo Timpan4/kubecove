@@ -231,6 +231,10 @@ spec:
 			"src/features/live-sessions/WorkspacePortForwardsPage.tsx",
 			"utf8",
 		);
+		const actionsSource = readFileSync(
+			"src/features/live-sessions/useSavedPortForwardActions.ts",
+			"utf8",
+		);
 
 		expect(source).toContain("Resolved Pod");
 		expect(source).toContain("copySessionUrl");
@@ -238,6 +242,10 @@ spec:
 		expect(source).toContain("lastError");
 		expect(source).toContain("sessionsForActions");
 		expect(source).toContain("useSavedPortForwardActions(workspace, sessionsForActions)");
+		expect(source).toContain("validateSavedPortForwardScope");
+		expect(source).toContain("workspaceScopeContexts(workspace.scope)");
+		expect(actionsSource).toContain("knownSessions?: PortForwardSessionSummary[]");
+		expect(actionsSource).toContain("listPortForwards(client).catch(() => [])");
 	});
 
 	test("Service detail forwarding offers a port picker when ports are known", () => {
@@ -252,5 +260,6 @@ spec:
 		expect(source).toContain("Choose one of the TCP ports");
 		expect(source).toContain("Save preset");
 		expect(source).toContain("savePortForward(activeWorkspace.id");
+		expect(source).toContain("Preset already saved");
 	});
 });
