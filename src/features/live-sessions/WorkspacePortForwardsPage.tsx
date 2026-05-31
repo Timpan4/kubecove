@@ -123,12 +123,16 @@ export function WorkspacePortForwardsPage({
 		queryFn: () => listPortForwards(client),
 		refetchInterval: 3_000,
 	});
-	const sessions = useMemo(
-		() => sortPortForwardSessions(sessionsQuery.data ?? EMPTY_SESSIONS),
+	const sessionsForActions = useMemo(
+		() =>
+			sessionsQuery.data
+				? sortPortForwardSessions(sessionsQuery.data)
+				: undefined,
 		[sessionsQuery.data],
 	);
+	const sessions = sessionsForActions ?? EMPTY_SESSIONS;
 	const { startOne, startAll, startingIds, startingAll } =
-		useSavedPortForwardActions(workspace, sessions);
+		useSavedPortForwardActions(workspace, sessionsForActions);
 	const [formOpen, setFormOpen] = useState(false);
 	const [editingId, setEditingId] = useState<string | null>(null);
 	const [form, setForm] = useState<SavedPortForwardFormValues>(() =>

@@ -236,6 +236,8 @@ spec:
 		expect(source).toContain("copySessionUrl");
 		expect(source).toContain("stopSession");
 		expect(source).toContain("lastError");
+		expect(source).toContain("sessionsForActions");
+		expect(source).toContain("useSavedPortForwardActions(workspace, sessionsForActions)");
 	});
 
 	test("Service detail forwarding offers a port picker when ports are known", () => {
