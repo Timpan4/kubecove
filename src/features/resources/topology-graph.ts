@@ -13,6 +13,15 @@ export interface TopologyGraph {
 	outgoingEdges: Map<string, TopologyRelationEdge[]>;
 }
 
+function pushMapValue<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+	const values = map.get(key);
+	if (values) {
+		values.push(value);
+		return;
+	}
+	map.set(key, [value]);
+}
+
 export function uniqueNodes(nodes: TopologyNode[]): TopologyNode[] {
 	return Array.from(new Map(nodes.map((node) => [node.id, node])).values());
 }
@@ -30,10 +39,10 @@ export function buildTopologyGraph(topology: ResourceTopology): TopologyGraph {
 	const outgoingEdges = new Map<string, TopologyRelationEdge[]>();
 
 	for (const edge of edges) {
-		parents.set(edge.target, [...(parents.get(edge.target) ?? []), edge.source]);
-		children.set(edge.source, [...(children.get(edge.source) ?? []), edge.target]);
-		incomingEdges.set(edge.target, [...(incomingEdges.get(edge.target) ?? []), edge]);
-		outgoingEdges.set(edge.source, [...(outgoingEdges.get(edge.source) ?? []), edge]);
+		pushMapValue(parents, edge.target, edge.source);
+		pushMapValue(children, edge.source, edge.target);
+		pushMapValue(incomingEdges, edge.target, edge);
+		pushMapValue(outgoingEdges, edge.source, edge);
 	}
 
 	return {

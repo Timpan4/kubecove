@@ -33,11 +33,30 @@ function forceGc() {
 
 function rssBytes() {
 	forceGc();
-	return process.memoryUsage.rss();
+	return process.memoryUsage().rss;
+}
+
+function heapBytes() {
+	forceGc();
+	return process.memoryUsage().heapUsed;
 }
 
 function formatMiB(bytes: number) {
 	return Number((bytes / 1024 / 1024).toFixed(2));
+}
+
+function memorySample() {
+	return {
+		rss: rssBytes(),
+		heap: heapBytes(),
+	};
+}
+
+function memoryDelta(after: ReturnType<typeof memorySample>, before: ReturnType<typeof memorySample>) {
+	return {
+		rssMiB: formatMiB(after.rss - before.rss),
+		heapMiB: formatMiB(after.heap - before.heap),
+	};
 }
 
 function countTreeNodes(nodes: unknown): number {
@@ -105,19 +124,19 @@ function buildTopology(apps: number): ResourceTopology {
 	return { nodes, edges, warnings: [] };
 }
 
-const sidebarStartMemory = rssBytes();
+const sidebarStartMemory = memorySample();
 let started = performance.now();
 const eagerNamespaceNodes = namespaces.map((namespace) =>
 	buildNamespaceTreeNode(namespace, extraKinds),
 );
 const eagerSidebarMs = performance.now() - started;
-const eagerSidebarMemory = rssBytes();
+const eagerSidebarMemory = memorySample();
 const eagerNodeCount = countTreeNodes(eagerNamespaceNodes);
 
 started = performance.now();
 const shallowNamespaceNodes = namespaces.map(buildShallowNamespaceTreeNode);
 const shallowSidebarMs = performance.now() - started;
-const shallowSidebarMemory = rssBytes();
+const shallowSidebarMemory = memorySample();
 const shallowNodeCount = countTreeNodes(shallowNamespaceNodes);
 
 const topology = buildTopology(2_000);
@@ -131,6 +150,7 @@ for (const selectedId of selectedIds) {
 	buildReactFlowTopology(topology, selectedId, { groupStandalone: false });
 }
 const rebuildSelectionMs = performance.now() - started;
+const afterRebuildSelectionMemory = memorySample();
 
 started = performance.now();
 const layout = buildReactFlowTopologyLayout(topology, null, {
@@ -138,18 +158,21 @@ const layout = buildReactFlowTopologyLayout(topology, null, {
 });
 const layoutBuildMs = performance.now() - started;
 const selectionIndex = buildReactFlowTopologySelectionIndex(topology);
+const afterLayoutMemory = memorySample();
 
 started = performance.now();
 for (const selectedId of selectedIds) {
 	applyReactFlowTopologySelection(layout, topology, selectedId);
 }
 const splitSelectionMs = performance.now() - started;
+const afterSplitSelectionMemory = memorySample();
 
 started = performance.now();
 for (const selectedId of selectedIds) {
 	applyReactFlowTopologySelectionWithIndex(layout, selectionIndex, selectedId);
 }
 const indexedSelectionMs = performance.now() - started;
+const afterIndexedSelectionMemory = memorySample();
 
 console.log(
 	JSON.stringify(
@@ -163,8 +186,11 @@ console.log(
 				eagerBuildMs: Number(eagerSidebarMs.toFixed(2)),
 				shallowBuildMs: Number(shallowSidebarMs.toFixed(2)),
 				buildSpeedup: Number((eagerSidebarMs / shallowSidebarMs).toFixed(2)),
-				eagerIncrementalMiB: formatMiB(eagerSidebarMemory - sidebarStartMemory),
-				shallowIncrementalMiB: formatMiB(shallowSidebarMemory - eagerSidebarMemory),
+				eagerIncrementalMemory: memoryDelta(eagerSidebarMemory, sidebarStartMemory),
+				shallowIncrementalMemory: memoryDelta(
+					shallowSidebarMemory,
+					eagerSidebarMemory,
+				),
 			},
 			topologySelection: {
 				apps: 2_000,
@@ -176,6 +202,13 @@ console.log(
 				applySelectionOnlyMs: Number(splitSelectionMs.toFixed(2)),
 				applySelectionIndexedMs: Number(indexedSelectionMs.toFixed(2)),
 				selectionSpeedup: Number((rebuildSelectionMs / indexedSelectionMs).toFixed(2)),
+				rebuildSelectionMemory: memoryDelta(afterRebuildSelectionMemory, shallowSidebarMemory),
+				layoutAndIndexMemory: memoryDelta(afterLayoutMemory, afterRebuildSelectionMemory),
+				splitSelectionMemory: memoryDelta(afterSplitSelectionMemory, afterLayoutMemory),
+				indexedSelectionMemory: memoryDelta(
+					afterIndexedSelectionMemory,
+					afterSplitSelectionMemory,
+				),
 			},
 		},
 		null,

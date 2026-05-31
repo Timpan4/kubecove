@@ -235,7 +235,12 @@ export function buildReactFlowTopologySelectionIndex(
 	const graph = buildTopologyGraph(topology);
 	const nodeIdsByKind = new Map<string, string[]>();
 	for (const node of graph.nodes) {
-		nodeIdsByKind.set(node.kind, [...(nodeIdsByKind.get(node.kind) ?? []), node.id]);
+		const ids = nodeIdsByKind.get(node.kind);
+		if (ids) {
+			ids.push(node.id);
+		} else {
+			nodeIdsByKind.set(node.kind, [node.id]);
+		}
 	}
 	return { graph, nodeIdsByKind };
 }
