@@ -46,7 +46,21 @@ async function copyText(text: string): Promise<void> {
 }
 
 function sessionTitle(session: PortForwardSessionSummary): string {
-	return `${session.localAddress}:${session.localPort} -> ${session.podName}:${session.remotePort}`;
+	if (session.targetKind === "Service") {
+		return `${session.localAddress}:${session.localPort} -> Service/${session.targetName}:${session.remotePort}`;
+	}
+	return `${session.localAddress}:${session.localPort} -> Pod/${session.targetName}:${session.remotePort}`;
+}
+
+function sessionResolution(session: PortForwardSessionSummary): string {
+	if (session.targetKind === "Service") {
+		return `Resolved to Pod/${session.resolvedPodName}:${session.resolvedPodPort}`;
+	}
+	return `Pod/${session.resolvedPodName}:${session.resolvedPodPort}`;
+}
+
+function isForwardableResource(resource: ResourceSummary): boolean {
+	return resource.kind === "Pod" || resource.kind === "Service";
 }
 
 export function PortForwardTab({
@@ -78,13 +92,13 @@ export function PortForwardTab({
 		[resource, sessionsQuery.data],
 	);
 
-	if (resource.kind !== "Pod") {
+	if (!isForwardableResource(resource)) {
 		return (
 			<Empty className="min-h-64 border-0">
 				<EmptyHeader>
-					<EmptyTitle>Port forwarding starts from Pods</EmptyTitle>
+					<EmptyTitle>Port forwarding starts from Pods or Services</EmptyTitle>
 					<EmptyDescription>
-						Select a Pod to open a guarded localhost tunnel.
+						Select a namespaced Pod or selector-backed Service.
 					</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
@@ -96,11 +110,12 @@ export function PortForwardTab({
 			<Alert variant="destructive">
 				<AlertTitle>Namespace required</AlertTitle>
 				<AlertDescription>
-					Pod port-forwarding requires a namespaced Pod target.
+					Port-forwarding requires a namespaced target.
 				</AlertDescription>
 			</Alert>
 		);
 	}
+	const targetKind = resource.kind === "Service" ? "Service" : "Pod";
 
 	const invalidateSessions = () =>
 		queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
@@ -108,7 +123,10 @@ export function PortForwardTab({
 	const startSession = async () => {
 		setFormError(null);
 		setStartError(null);
-		const parsed = parsePortForwardForm({ remotePort, localPort });
+		const parsed = parsePortForwardForm(
+			{ remotePort, localPort },
+			{ remotePortLabel: targetKind === "Service" ? "Service port" : "Pod port" },
+		);
 		if (typeof parsed === "string") {
 			setFormError(parsed);
 			return;
@@ -118,7 +136,9 @@ export function PortForwardTab({
 			await startPodPortForward(client, {
 				clusterContext: resource.cluster,
 				namespace: resource.namespace ?? "",
-				podName: resource.name,
+				targetKind,
+				targetName: resource.name,
+				podName: targetKind === "Pod" ? resource.name : undefined,
 				remotePort: parsed.remotePort,
 				localPort: parsed.localPort,
 			});
@@ -154,25 +174,30 @@ export function PortForwardTab({
 		<div className="flex flex-col gap-4">
 			<Alert>
 				<Cable className="size-3.5" />
-				<AlertTitle>Local Pod tunnel</AlertTitle>
+				<AlertTitle>Local {targetKind} tunnel</AlertTitle>
 				<AlertDescription>
 					KubeCove binds only to 127.0.0.1 and keeps sessions in memory.
+					{targetKind === "Service"
+						? " Services resolve once to a ready backing Pod."
+						: ""}
 				</AlertDescription>
 			</Alert>
 			<FieldGroup>
 				<Field>
 					<FieldLabel htmlFor="pod-port-forward-remote-port">
-						Remote port
+						{targetKind === "Service" ? "Service port" : "Pod port"}
 					</FieldLabel>
 					<Input
 						id="pod-port-forward-remote-port"
 						inputMode="numeric"
 						value={remotePort}
-						placeholder="8080"
+						placeholder="Required"
 						onChange={(event) => setRemotePort(event.target.value)}
 					/>
 					<FieldDescription>
-						The Pod port Kubernetes should forward to.
+						{targetKind === "Service"
+							? "The Service port Kubernetes should resolve to a backing Pod."
+							: "The Pod port Kubernetes should forward to."}
 					</FieldDescription>
 				</Field>
 				<Field>
@@ -226,7 +251,7 @@ export function PortForwardTab({
 						<EmptyHeader>
 							<EmptyTitle>No port forwards</EmptyTitle>
 							<EmptyDescription>
-								Start a tunnel to make this Pod reachable on localhost.
+								Start a tunnel to make this {targetKind} reachable on localhost.
 							</EmptyDescription>
 						</EmptyHeader>
 					</Empty>
@@ -246,6 +271,9 @@ export function PortForwardTab({
 											</div>
 											<div className="truncate font-mono text-[11px] text-muted-foreground">
 												{localUrl}
+											</div>
+											<div className="truncate text-[11px] text-muted-foreground">
+												{sessionResolution(session)}
 											</div>
 										</div>
 										<Badge

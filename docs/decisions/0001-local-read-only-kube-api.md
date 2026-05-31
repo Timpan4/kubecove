@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Extended by [ADR 0003](0003-guarded-live-sessions.md) for guarded pod port-forwarding and [ADR 0004](0004-guarded-cluster-operations.md) for broader governed cluster operations.
+Accepted. Extended by [ADR 0003](0003-guarded-live-sessions.md) for guarded Pod and selector-backed Service port-forwarding and [ADR 0004](0004-guarded-cluster-operations.md) for broader governed cluster operations.
 
 ## Context
 

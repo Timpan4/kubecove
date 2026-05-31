@@ -145,7 +145,9 @@ export interface PodLogStreamRequest {
 export interface PortForwardRequest {
 	clusterContext: string;
 	namespace: string;
-	podName: string;
+	targetKind?: "Pod" | "Service";
+	targetName?: string;
+	podName?: string;
 	remotePort: number;
 	localPort?: number;
 }
@@ -154,14 +156,18 @@ export type PortForwardSessionStatus =
 	| "listening"
 	| "connected"
 	| "error"
-	| string;
+	| (string & {});
 
 export interface PortForwardSessionSummary {
 	id: string;
 	clusterContext: string;
 	namespace: string;
+	targetKind: "Pod" | "Service" | string;
+	targetName: string;
 	podName: string;
 	remotePort: number;
+	resolvedPodName: string;
+	resolvedPodPort: number;
 	localPort: number;
 	localAddress: string;
 	localUrl: string;

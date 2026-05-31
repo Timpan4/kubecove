@@ -22,7 +22,7 @@ The React frontend is an untrusted UI surface relative to the Rust backend.
 - React must not run arbitrary shell commands.
 - Kubernetes list, get, discovery, watch, events, logs, metrics, Argo, Helm, RBAC, live sessions, and future operation flows must cross typed Tauri commands.
 - Normal Kubernetes API access uses `kube-rs`.
-- Pod port-forwarding must follow [ADR 0003](decisions/0003-guarded-live-sessions.md). Other cluster-changing operations must follow [ADR 0004](decisions/0004-guarded-cluster-operations.md).
+- Pod and selector-backed Service port-forwarding must follow [ADR 0003](decisions/0003-guarded-live-sessions.md). Other cluster-changing operations must follow [ADR 0004](decisions/0004-guarded-cluster-operations.md).
 
 `kubectl`, Helm CLI, and Argo CD CLI may become optional future sidecars or fallbacks only after focused design. They are not the core data path.
 
@@ -147,4 +147,4 @@ Argo CD CRDs remain a priority dynamic-resource area:
 
 ## Extension Points
 
-Future work can add guarded YAML edit/apply, service/deployment-aware port-forwarding, pod exec, richer Helm actions, Argo CD API flows, AI assistance, and durable local workspace history. Security-sensitive additions require ADRs before implementation.
+Future work can add guarded YAML edit/apply, deployment-aware port-forwarding, pod exec, richer Helm actions, Argo CD API flows, AI assistance, and durable local workspace history. Security-sensitive additions require ADRs before implementation.

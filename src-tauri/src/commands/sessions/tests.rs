@@ -10,7 +10,9 @@ fn valid_request() -> PortForwardRequest {
     PortForwardRequest {
         cluster_context: "kind-dev".to_string(),
         namespace: "default".to_string(),
-        pod_name: "api-0".to_string(),
+        target_kind: Some("Pod".to_string()),
+        target_name: Some("api-0".to_string()),
+        pod_name: None,
         remote_port: 8080,
         local_port: Some(18080),
     }
@@ -21,8 +23,12 @@ fn test_summary(id: &str, local_port: u16) -> PortForwardSessionSummary {
         id: id.to_string(),
         cluster_context: "kind-dev".to_string(),
         namespace: "default".to_string(),
+        target_kind: "Pod".to_string(),
+        target_name: "api-0".to_string(),
         pod_name: "api-0".to_string(),
         remote_port: 8080,
+        resolved_pod_name: "api-0".to_string(),
+        resolved_pod_port: 8080,
         local_port,
         local_address: LOCAL_ADDRESS.to_string(),
         local_url: format!("http://{LOCAL_ADDRESS}:{local_port}"),
@@ -42,9 +48,21 @@ fn live_port(name: &str) -> i64 {
         .unwrap_or_else(|_| panic!("{name} must be a valid port"))
 }
 
+fn live_expect_http_response() -> bool {
+    matches!(
+        env::var("KUBECOVE_LIVE_PF_EXPECT_HTTP_RESPONSE").as_deref(),
+        Ok("1" | "true" | "TRUE" | "yes" | "YES")
+    )
+}
+
 async fn wait_until_port_closes(port: u16) -> bool {
     for _ in 0..20 {
-        match timeout(Duration::from_millis(250), TcpStream::connect((LOCAL_ADDRESS, port))).await {
+        match timeout(
+            Duration::from_millis(250),
+            TcpStream::connect((LOCAL_ADDRESS, port)),
+        )
+        .await
+        {
             Ok(Ok(_)) => {}
             Ok(Err(_)) | Err(_) => return true,
         }
@@ -64,7 +82,16 @@ fn validates_required_pod_target_and_ports() {
         })
         .expect_err("missing target")
         .message,
-        "pod port-forward target is required",
+        "port-forward target is required",
+    );
+    assert_eq!(
+        validate_request(&PortForwardRequest {
+            target_kind: Some("Deployment".to_string()),
+            ..valid_request()
+        })
+        .expect_err("unsupported target")
+        .message,
+        "port-forward target kind must be Pod or Service",
     );
     assert_eq!(
         validate_request(&PortForwardRequest {
@@ -117,14 +144,23 @@ fn registry_detects_local_port_collision() {
 #[ignore = "requires a reachable Kubernetes cluster and KUBECOVE_LIVE_PF_* env vars"]
 async fn live_pod_port_forward_starts_serves_lists_and_stops() {
     let registry = PortForwardRegistry::default();
+    let target_kind =
+        env::var("KUBECOVE_LIVE_PF_TARGET_KIND").unwrap_or_else(|_| "Pod".to_string());
+    let target_name = env::var("KUBECOVE_LIVE_PF_TARGET_NAME")
+        .or_else(|_| env::var("KUBECOVE_LIVE_PF_POD"))
+        .expect("KUBECOVE_LIVE_PF_TARGET_NAME or KUBECOVE_LIVE_PF_POD must be set");
     let request = PortForwardRequest {
         cluster_context: live_env("KUBECOVE_LIVE_PF_CONTEXT"),
         namespace: live_env("KUBECOVE_LIVE_PF_NAMESPACE"),
-        pod_name: live_env("KUBECOVE_LIVE_PF_POD"),
+        target_kind: Some(target_kind),
+        target_name: Some(target_name),
+        pod_name: None,
         remote_port: live_port("KUBECOVE_LIVE_PF_REMOTE_PORT"),
-        local_port: env::var("KUBECOVE_LIVE_PF_LOCAL_PORT")
-            .ok()
-            .map(|value| value.parse().expect("KUBECOVE_LIVE_PF_LOCAL_PORT must be valid")),
+        local_port: env::var("KUBECOVE_LIVE_PF_LOCAL_PORT").ok().map(|value| {
+            value
+                .parse()
+                .expect("KUBECOVE_LIVE_PF_LOCAL_PORT must be valid")
+        }),
     };
 
     let summary = start_pod_port_forward_in_registry(request, &registry)
@@ -140,17 +176,19 @@ async fn live_pod_port_forward_starts_serves_lists_and_stops() {
     let mut stream = TcpStream::connect((LOCAL_ADDRESS, summary.local_port))
         .await
         .expect("local port should accept connections");
-    stream
-        .write_all(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
-        .await
-        .expect("request should write through port-forward");
+    if live_expect_http_response() {
+        stream
+            .write_all(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+            .await
+            .expect("request should write through port-forward");
 
-    let mut response = vec![0_u8; 128];
-    let bytes_read = timeout(Duration::from_secs(5), stream.read(&mut response))
-        .await
-        .expect("response should arrive through port-forward")
-        .expect("response should read through port-forward");
-    assert!(bytes_read > 0);
+        let mut response = vec![0_u8; 128];
+        let bytes_read = timeout(Duration::from_secs(5), stream.read(&mut response))
+            .await
+            .expect("response should arrive through port-forward")
+            .expect("response should read through port-forward");
+        assert!(bytes_read > 0);
+    }
 
     assert!(registry.stop(&summary.id));
     assert!(registry

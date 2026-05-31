@@ -115,8 +115,8 @@ Test target: local Tauri dev app backed by the `admin@solid-k8s` context after K
 Goal: introduce live operational sessions without turning KubeCove into a shell wrapper.
 
 - [x] Add ADR 0003 for guarded live Kubernetes sessions.
-- [x] Add pod port-forward command, models, typed frontend wrappers, and visible session controls.
-- [x] Run a manual pod port-forward smoke test against a readable cluster before release.
+- [x] Add Pod and selector-backed Service port-forward command, models, typed frontend wrappers, and visible session controls.
+- [x] Run a manual port-forward smoke test against a readable cluster before release.
 - [ ] Add a separate design pass before pod exec.
 
 ## Cross-Cutting Tracks
@@ -144,7 +144,7 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 ## Later Product Areas
 
 - guarded YAML edit/apply
-- service/deployment-aware port-forwarding
+- deployment-aware port-forwarding
 - pod exec
 - richer Helm workflows
 - deeper RBAC and security inspection

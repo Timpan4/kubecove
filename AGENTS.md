@@ -17,7 +17,7 @@ Before making implementation changes, skim the [docs index](docs/README.md). The
 - Do not expose raw kubeconfig contents to the frontend.
 - Do not let frontend code run arbitrary shell commands.
 - Use `kube-rs` and the Kubernetes API for core list/get/discovery/watch flows.
-- Pod port-forwarding follows ADR 0003. Broader cluster-changing workflows must follow ADR 0004: typed Rust-side commands, visible target scope, confirmation where needed, and permission-aware UX.
+- Pod and selector-backed Service port-forwarding follow ADR 0003. Broader cluster-changing workflows must follow ADR 0004: typed Rust-side commands, visible target scope, confirmation where needed, and permission-aware UX.
 - Treat `kubectl`, Helm, and Argo CD CLIs as future optional sidecars or fallbacks, not as the core data path.
 - Treat Argo CD as a native product area, starting with Kubernetes API access to Argo CD CRDs and tracking metadata.
 - Keep modules small and typed so future agent work can target focused files.
@@ -38,7 +38,7 @@ Rust-side Tauri commands own Kubernetes access. Current command families include
 - `list_resource_topology`
 - `list_resource_metrics`
 - stream commands for watches, events, and pod logs
-- live-session commands for pod port-forwarding
+- live-session commands for Pod and selector-backed Service port-forwarding
 - Argo CD, Helm, RBAC, and usage commands
 
 The React app should call only typed Tauri command wrappers. Kubernetes credentials and kubeconfig parsing belong in Rust modules under `src-tauri/src`.

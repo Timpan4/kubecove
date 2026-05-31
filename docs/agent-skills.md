@@ -102,7 +102,7 @@ Expected scope:
 
 ### `safe-k8s-mutations`
 
-Create before apply, delete, scale, restart, sync, rollback, exec, terminal-backed actions, or live-session expansion beyond pod port-forwarding.
+Create before apply, delete, scale, restart, sync, rollback, exec, terminal-backed actions, or live-session expansion beyond ADR 0003 port-forwarding.
 
 Expected scope:
 

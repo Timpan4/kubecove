@@ -23,7 +23,7 @@ import {
 } from "./helpers";
 
 function sessionLabel(session: PortForwardSessionSummary): string {
-	return `${session.namespace}/${session.podName}:${session.remotePort}`;
+	return `${session.namespace}/${session.targetKind}/${session.targetName}:${session.remotePort}`;
 }
 
 async function copyText(text: string): Promise<void> {
@@ -45,7 +45,7 @@ export function ActivePortForwards() {
 		[sessionsQuery.data],
 	);
 
-	if (sessions.length === 0 && !sessionsQuery.isFetching) return null;
+	if (sessions.length === 0 && !sessionsQuery.isLoading) return null;
 
 	const stopSession = async (sessionId: string) => {
 		setStoppingId(sessionId);
@@ -87,7 +87,7 @@ export function ActivePortForwards() {
 								Port forwards
 							</div>
 							<div className="text-xs text-muted-foreground">
-								Active local Pod tunnels
+								Active local tunnels
 							</div>
 						</div>
 						{sessionsQuery.isFetching && <Spinner className="size-3.5" />}

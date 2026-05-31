@@ -7,13 +7,19 @@ export function portForwardLocalUrl(session: PortForwardSessionSummary): string 
 export function portForwardSessionKey(
 	session: Pick<
 		PortForwardSessionSummary,
-		"clusterContext" | "namespace" | "podName" | "remotePort" | "localPort"
+		| "clusterContext"
+		| "namespace"
+		| "targetKind"
+		| "targetName"
+		| "remotePort"
+		| "localPort"
 	>,
 ): string {
 	return [
 		session.clusterContext,
 		session.namespace,
-		session.podName,
+		session.targetKind,
+		session.targetName,
 		session.remotePort,
 		session.localPort,
 	].join(":");
@@ -36,10 +42,10 @@ export function isPortForwardForResource(
 	resource: ResourceSummary,
 ): boolean {
 	return (
-		resource.kind === "Pod" &&
 		session.clusterContext === resource.cluster &&
 		session.namespace === resource.namespace &&
-		session.podName === resource.name
+		session.targetKind === resource.kind &&
+		session.targetName === resource.name
 	);
 }
 
@@ -55,6 +61,9 @@ export interface ParsedPortForwardForm {
 
 function parsePort(value: string, label: string): number | string {
 	const trimmed = value.trim();
+	if (!trimmed) {
+		return `${label} is required`;
+	}
 	if (!/^\d+$/.test(trimmed)) {
 		return `${label} must be a number`;
 	}
@@ -67,8 +76,12 @@ function parsePort(value: string, label: string): number | string {
 
 export function parsePortForwardForm(
 	values: PortForwardFormValues,
+	options: { remotePortLabel?: string } = {},
 ): ParsedPortForwardForm | string {
-	const remotePort = parsePort(values.remotePort, "Remote port");
+	const remotePort = parsePort(
+		values.remotePort,
+		options.remotePortLabel ?? "Remote port",
+	);
 	if (typeof remotePort === "string") return remotePort;
 
 	const localPortText = values.localPort.trim();

@@ -20,9 +20,9 @@ Windows releases intentionally publish the NSIS setup executable, not MSI, so in
 
 ## Product Safety
 
-The current beta is inspection-first and includes guarded pod port-forward sessions. It supports local cluster browsing, resource details, YAML, events, logs, metrics, topology, Argo CD inspection, Helm release inspection, RBAC summaries, and local-only pod port-forwarding.
+The current beta is inspection-first and includes guarded Pod and selector-backed Service port-forward sessions. It supports local cluster browsing, resource details, YAML, events, logs, metrics, topology, Argo CD inspection, Helm release inspection, RBAC summaries, and local-only port-forwarding.
 
-Cluster-changing workflows such as apply, delete, scale, sync, rollback, and exec are not release features unless a typed command and guarded UX path exist. Pod port-forwarding follows [ADR 0003](decisions/0003-guarded-live-sessions.md). Future operation releases must follow [ADR 0004](decisions/0004-guarded-cluster-operations.md).
+Cluster-changing workflows such as apply, delete, scale, sync, rollback, and exec are not release features unless a typed command and guarded UX path exist. Pod and selector-backed Service port-forwarding follows [ADR 0003](decisions/0003-guarded-live-sessions.md). Future operation releases must follow [ADR 0004](decisions/0004-guarded-cluster-operations.md).
 
 ## Maintainer Release Flow
 

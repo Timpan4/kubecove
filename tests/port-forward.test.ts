@@ -11,8 +11,12 @@ const baseSession: PortForwardSessionSummary = {
 	id: "port-forward-1",
 	clusterContext: "kind-dev",
 	namespace: "payments",
+	targetKind: "Pod",
+	targetName: "api-0",
 	podName: "api-0",
 	remotePort: 8080,
+	resolvedPodName: "api-0",
+	resolvedPodPort: 8080,
 	localPort: 18080,
 	localAddress: "127.0.0.1",
 	localUrl: "http://127.0.0.1:18080",
@@ -38,8 +42,14 @@ describe("port-forward helpers", () => {
 			localPort: 18080,
 		});
 		expect(parsePortForwardForm({ remotePort: "", localPort: "" })).toBe(
-			"Remote port must be a number",
+			"Remote port is required",
 		);
+		expect(
+			parsePortForwardForm(
+				{ remotePort: "", localPort: "" },
+				{ remotePortLabel: "Service port" },
+			),
+		).toBe("Service port is required");
 		expect(parsePortForwardForm({ remotePort: "70000", localPort: "" })).toBe(
 			"Remote port must be between 1 and 65535",
 		);
@@ -48,11 +58,11 @@ describe("port-forward helpers", () => {
 		);
 	});
 
-	test("matches active sessions to the selected Pod only", () => {
+	test("matches active sessions to the selected target resource", () => {
 		expect(isPortForwardForResource(baseSession, baseResource)).toBe(true);
 		expect(
 			isPortForwardForResource(
-				{ ...baseSession, podName: "worker-0" },
+				{ ...baseSession, targetName: "worker-0", podName: "worker-0" },
 				baseResource,
 			),
 		).toBe(false);
@@ -62,11 +72,34 @@ describe("port-forward helpers", () => {
 				kind: "Deployment",
 			}),
 		).toBe(false);
+		expect(
+			isPortForwardForResource(
+				{
+					...baseSession,
+					targetKind: "Service",
+					targetName: "api",
+					podName: "api-7c9f",
+					resolvedPodName: "api-7c9f",
+				},
+				{
+					...baseResource,
+					kind: "Service",
+					name: "api",
+				},
+			),
+		).toBe(true);
 	});
 
 	test("formats and sorts active sessions for stable UI", () => {
 		const sessions = [
-			{ ...baseSession, id: "b", podName: "worker-0", localPort: 18081 },
+			{
+				...baseSession,
+				id: "b",
+				targetName: "worker-0",
+				podName: "worker-0",
+				resolvedPodName: "worker-0",
+				localPort: 18081,
+			},
 			{ ...baseSession, id: "a" },
 		];
 

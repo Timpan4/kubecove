@@ -2,7 +2,7 @@
 
 KubeCove is a local desktop workspace for Kubernetes operations. It is built for operators and app developers who need to move from cluster scope to namespace, application, resource state, topology, events, logs, metrics, YAML, Helm metadata, Argo CD signals, and RBAC context without losing their place.
 
-The current beta is inspection-first with governed pod port-forward sessions. KubeCove does not deploy agents into clusters, does not expose raw kubeconfig contents to React, and does not let the frontend run arbitrary shell commands. The architecture is ready for guarded cluster operations, but apply, delete, scale, sync, rollback, and exec workflows are not shipped unless a typed Rust-side command and explicit UX guardrails exist.
+The current beta is inspection-first with governed Pod and selector-backed Service port-forward sessions. KubeCove does not deploy agents into clusters, does not expose raw kubeconfig contents to React, and does not let the frontend run arbitrary shell commands. The architecture is ready for guarded cluster operations, but apply, delete, scale, sync, rollback, and exec workflows are not shipped unless a typed Rust-side command and explicit UX guardrails exist.
 
 Current version metadata: `0.3.1`.
 
@@ -26,7 +26,7 @@ Beta installers are unsigned at the OS package level, so macOS Gatekeeper or Win
 - Argo CD CRD detection with Application, ApplicationSet, and AppProject browsing.
 - Helm release detection from cluster metadata.
 - RBAC summaries and risk indicators.
-- Guarded pod port-forward sessions with local-only listeners.
+- Guarded Pod and selector-backed Service port-forward sessions with local-only listeners.
 - Unsigned beta desktop installers for macOS, Windows, and Linux.
 
 ## Development
@@ -70,7 +70,7 @@ bun run release
 
 KubeCove keeps Kubernetes access behind Rust-side Tauri commands. Normal list, get, discovery, watch, logs, events, metrics, Argo CD, Helm, and RBAC flows use `kube-rs` and frontend-safe serde contracts.
 
-Pod port-forwarding follows [ADR 0003](docs/decisions/0003-guarded-live-sessions.md): exact pod targets, local-only listeners, visible sessions, and Rust-side Kubernetes access.
+Pod and selector-backed Service port-forwarding follows [ADR 0003](docs/decisions/0003-guarded-live-sessions.md): exact targets, local-only listeners, visible sessions, and Rust-side Kubernetes access.
 
 Future cluster-changing workflows must follow [ADR 0004](docs/decisions/0004-guarded-cluster-operations.md): typed commands, visible target scope, confirmation, user-visible errors, and permission-aware UX. CLI-backed, Argo CD API, sync, rollback, diff, exec, or broad filesystem workflows need focused design before they become product paths.
 

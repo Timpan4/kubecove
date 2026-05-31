@@ -4,7 +4,7 @@
 
 KubeCove is a local desktop Kubernetes workspace for operators and app developers who need fast, safe cluster work. It is not a thin `kubectl` wrapper and not a free-form mutation console. Its product stance is focused clarity under load: keep context visible, make resource state easy to scan, and move from symptoms to detail without losing the namespace or app boundary.
 
-The current beta is inspection-first with governed live sessions beginning with pod port-forwarding. The architecture is designed for guarded cluster operations when those workflows have typed Rust-side commands, clear target scope, confirmation, and permission-aware UX.
+The current beta is inspection-first with governed live sessions beginning with Pod and selector-backed Service port-forwarding. The architecture is designed for guarded cluster operations when those workflows have typed Rust-side commands, clear target scope, confirmation, and permission-aware UX.
 
 K8Studio and Aptakube are public benchmarks for capability breadth and low-friction desktop UX. KubeCove borrows product lessons, not code, branding, assets, layouts, or marketing text.
 
@@ -81,7 +81,7 @@ Argo CD API, Argo CD CLI, Helm CLI, sync, rollback, diff, and other cluster-chan
 
 ## Safety
 
-KubeCove is inspection-first today and mutation-ready only through governed operations. Pod port-forwarding is the first live-session workflow and follows [ADR 0003](decisions/0003-guarded-live-sessions.md). No create, update, delete, scale, restart, sync, rollback, or exec workflow should be exposed as a normal path until it satisfies [ADR 0004](decisions/0004-guarded-cluster-operations.md) or a focused ADR.
+KubeCove is inspection-first today and mutation-ready only through governed operations. Pod and selector-backed Service port-forwarding are the first live-session workflows and follow [ADR 0003](decisions/0003-guarded-live-sessions.md). No create, update, delete, scale, restart, sync, rollback, or exec workflow should be exposed as a normal path until it satisfies [ADR 0004](decisions/0004-guarded-cluster-operations.md) or a focused ADR.
 
 Future operations must be deliberate, permission-aware, reversible where possible, and clearly separated from browsing.
 
@@ -89,4 +89,4 @@ Future operations must be deliberate, permission-aware, reversible where possibl
 
 Near-term work should harden the current inspection workflow: workspace restore, resource tables, topology, Argo CD, Helm, RBAC, metrics, events, logs, and release readiness.
 
-Later product areas can include guarded YAML apply, service/deployment-aware port-forwarding, pod exec, richer Helm workflows, deeper RBAC/security inspection, AI-assisted troubleshooting, and durable local workspace history.
+Later product areas can include guarded YAML apply, deployment-aware port-forwarding, pod exec, richer Helm workflows, deeper RBAC/security inspection, AI-assisted troubleshooting, and durable local workspace history.

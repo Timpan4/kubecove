@@ -17,16 +17,45 @@ use tokio::{
     task::JoinSet,
 };
 
+mod service;
+
 const LOCAL_ADDRESS: &str = "127.0.0.1";
 const MIN_USER_LOCAL_PORT: u16 = 1024;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(super) enum PortForwardTargetKind {
+    Pod,
+    Service,
+}
+
+impl PortForwardTargetKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Pod => "Pod",
+            Self::Service => "Service",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ValidatedPortForwardRequest {
+    cluster_context: String,
+    namespace: String,
+    target_kind: PortForwardTargetKind,
+    target_name: String,
+    remote_port: u16,
+    local_port: Option<u16>,
+}
 
 #[derive(Debug, Clone)]
 struct PortForwardTarget {
     cluster_context: String,
     namespace: String,
+    target_kind: PortForwardTargetKind,
+    target_name: String,
     pod_name: String,
     remote_port: u16,
-    local_port: Option<u16>,
+    pod_port: u16,
 }
 
 struct PortForwardSession {
@@ -156,16 +185,36 @@ fn validate_port(value: i64, field: &str) -> Result<u16, AppError> {
     Ok(value as u16)
 }
 
-fn validate_request(request: &PortForwardRequest) -> Result<PortForwardTarget, AppError> {
-    if request.cluster_context.trim().is_empty()
-        || request.namespace.trim().is_empty()
-        || request.pod_name.trim().is_empty()
-    {
+fn target_text(value: Option<&String>) -> Option<String> {
+    value
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+}
+
+fn validate_target_kind(request: &PortForwardRequest) -> Result<PortForwardTargetKind, AppError> {
+    let target_kind =
+        target_text(request.target_kind.as_ref()).unwrap_or_else(|| "Pod".to_string());
+    match target_kind.as_str() {
+        "Pod" => Ok(PortForwardTargetKind::Pod),
+        "Service" => Ok(PortForwardTargetKind::Service),
+        _ => Err(AppError::new(
+            "port-forward target kind must be Pod or Service",
+            "validation",
+        )),
+    }
+}
+
+fn validate_request(request: &PortForwardRequest) -> Result<ValidatedPortForwardRequest, AppError> {
+    if request.cluster_context.trim().is_empty() || request.namespace.trim().is_empty() {
         return Err(AppError::new(
-            "pod port-forward target is required",
+            "port-forward target is required",
             "validation",
         ));
     }
+    let target_kind = validate_target_kind(request)?;
+    let target_name = target_text(request.target_name.as_ref())
+        .or_else(|| target_text(request.pod_name.as_ref()))
+        .ok_or_else(|| AppError::new("port-forward target is required", "validation"))?;
 
     let remote_port = validate_port(request.remote_port, "remote_port")?;
     let local_port = request
@@ -179,16 +228,34 @@ fn validate_request(request: &PortForwardRequest) -> Result<PortForwardTarget, A
         ));
     }
 
-    Ok(PortForwardTarget {
+    Ok(ValidatedPortForwardRequest {
         cluster_context: request.cluster_context.trim().to_string(),
         namespace: request.namespace.trim().to_string(),
-        pod_name: request.pod_name.trim().to_string(),
+        target_kind,
+        target_name,
         remote_port,
         local_port,
     })
 }
 
-async fn client_for_context(cluster_context: &str) -> Result<Client, AppError> {
+async fn resolve_port_forward_target(
+    request: ValidatedPortForwardRequest,
+) -> Result<PortForwardTarget, AppError> {
+    match request.target_kind {
+        PortForwardTargetKind::Pod => Ok(PortForwardTarget {
+            cluster_context: request.cluster_context,
+            namespace: request.namespace,
+            target_kind: PortForwardTargetKind::Pod,
+            target_name: request.target_name.clone(),
+            pod_name: request.target_name,
+            remote_port: request.remote_port,
+            pod_port: request.remote_port,
+        }),
+        PortForwardTargetKind::Service => service::resolve_service_target(request).await,
+    }
+}
+
+pub(super) async fn client_for_context(cluster_context: &str) -> Result<Client, AppError> {
     let options = KubeConfigOptions {
         context: Some(cluster_context.to_string()),
         ..Default::default()
@@ -208,11 +275,13 @@ fn port_forward_error_message(err: kube::Error) -> String {
     message
 }
 
-async fn verify_pod_port_forward(target: &PortForwardTarget) -> Result<(), AppError> {
-    let client = client_for_context(&target.cluster_context).await?;
+async fn verify_pod_port_forward(
+    client: Client,
+    target: &PortForwardTarget,
+) -> Result<(), AppError> {
     let pods: Api<Pod> = Api::namespaced(client, &target.namespace);
     let forwarder = pods
-        .portforward(&target.pod_name, &[target.remote_port])
+        .portforward(&target.pod_name, &[target.pod_port])
         .await
         .map_err(|err| AppError::kube(port_forward_error_message(err)))?;
     forwarder.abort();
@@ -228,8 +297,12 @@ fn session_summary(
         id,
         cluster_context: target.cluster_context.clone(),
         namespace: target.namespace.clone(),
+        target_kind: target.target_kind.as_str().to_string(),
+        target_name: target.target_name.clone(),
         pod_name: target.pod_name.clone(),
         remote_port: target.remote_port,
+        resolved_pod_name: target.pod_name.clone(),
+        resolved_pod_port: target.pod_port,
         local_port,
         local_address: LOCAL_ADDRESS.to_string(),
         local_url: format!("http://{LOCAL_ADDRESS}:{local_port}"),
@@ -240,21 +313,19 @@ fn session_summary(
 }
 
 async fn forward_connection(
+    client: Client,
     target: PortForwardTarget,
     mut local_stream: TcpStream,
 ) -> Result<(), String> {
-    let client = client_for_context(&target.cluster_context)
-        .await
-        .map_err(|err| err.message)?;
     let pods: Api<Pod> = Api::namespaced(client, &target.namespace);
     let mut forwarder = pods
-        .portforward(&target.pod_name, &[target.remote_port])
+        .portforward(&target.pod_name, &[target.pod_port])
         .await
         .map_err(port_forward_error_message)?;
     let mut pod_stream = forwarder
-        .take_stream(target.remote_port)
-        .ok_or_else(|| format!("remote port {} did not open", target.remote_port))?;
-    let error_future = forwarder.take_error(target.remote_port);
+        .take_stream(target.pod_port)
+        .ok_or_else(|| format!("remote port {} did not open", target.pod_port))?;
+    let error_future = forwarder.take_error(target.pod_port);
 
     let result = if let Some(error_future) = error_future {
         tokio::pin!(error_future);
@@ -285,6 +356,7 @@ async fn run_port_forward_session(
     target: PortForwardTarget,
     listener: TcpListener,
     registry: PortForwardRegistry,
+    client: Client,
 ) {
     let mut connections = JoinSet::new();
     loop {
@@ -299,8 +371,9 @@ async fn run_port_forward_session(
                 };
                 registry.mark_status(&session_id, "connected", None);
                 let connection_target = target.clone();
+                let connection_client = client.clone();
                 connections.spawn(async move {
-                    forward_connection(connection_target, local_stream).await
+                    forward_connection(connection_client, connection_target, local_stream).await
                 });
             }
             join_result = connections.join_next(), if !connections.is_empty() => {
@@ -327,8 +400,8 @@ async fn start_pod_port_forward_in_registry(
     request: PortForwardRequest,
     registry: &PortForwardRegistry,
 ) -> Result<PortForwardSessionSummary, AppError> {
-    let target = validate_request(&request)?;
-    if let Some(local_port) = target.local_port {
+    let request = validate_request(&request)?;
+    if let Some(local_port) = request.local_port {
         if registry.has_local_port(local_port) {
             return Err(AppError::new(
                 format!("local port {local_port} is already forwarded"),
@@ -337,7 +410,7 @@ async fn start_pod_port_forward_in_registry(
         }
     }
 
-    let bind_port = target.local_port.unwrap_or(0);
+    let bind_port = request.local_port.unwrap_or(0);
     let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, bind_port))
         .await
         .map_err(|err| AppError::new(format!("local port unavailable: {err}"), "session"))?;
@@ -352,7 +425,9 @@ async fn start_pod_port_forward_in_registry(
         ));
     }
 
-    verify_pod_port_forward(&target).await?;
+    let target = resolve_port_forward_target(request).await?;
+    let client = client_for_context(&target.cluster_context).await?;
+    verify_pod_port_forward(client.clone(), &target).await?;
 
     let session_id = registry.session_id();
     let summary = session_summary(session_id.clone(), &target, local_port);
@@ -360,7 +435,14 @@ async fn start_pod_port_forward_in_registry(
     let handle_target = target.clone();
     let handle_session_id = session_id.clone();
     let handle = tauri::async_runtime::spawn(async move {
-        run_port_forward_session(handle_session_id, handle_target, listener, handle_registry).await;
+        run_port_forward_session(
+            handle_session_id,
+            handle_target,
+            listener,
+            handle_registry,
+            client,
+        )
+        .await;
     });
     registry.insert(summary, handle)
 }
@@ -379,7 +461,10 @@ pub async fn stop_port_forward(
     registry: State<'_, PortForwardRegistry>,
 ) -> Result<bool, AppError> {
     if session_id.trim().is_empty() {
-        return Err(AppError::new("port-forward session id is required", "validation"));
+        return Err(AppError::new(
+            "port-forward session id is required",
+            "validation",
+        ));
     }
     Ok(registry.stop(session_id.trim()))
 }
