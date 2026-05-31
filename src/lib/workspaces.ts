@@ -50,6 +50,42 @@ export interface WorkspaceShortcut {
 	compare?: WorkspaceCompareEntry;
 }
 
+export type SavedPortForwardLastStatus =
+	| "idle"
+	| "starting"
+	| "listening"
+	| "connected"
+	| "error"
+	| (string & {});
+
+export interface SavedPortForward {
+	id: string;
+	clusterContext: string;
+	namespace: string;
+	serviceName: string;
+	servicePort: number;
+	localPort?: number;
+	label?: string;
+	createdAt: string;
+	updatedAt: string;
+	lastStartedAt?: string;
+	lastStatus?: SavedPortForwardLastStatus;
+	lastError?: string;
+}
+
+export interface SavePortForwardInput {
+	clusterContext: string;
+	namespace: string;
+	serviceName: string;
+	servicePort: number;
+	localPort?: number;
+	label?: string;
+}
+
+export type SavedPortForwardUpdates = Partial<
+	Omit<SavedPortForward, "id" | "createdAt">
+>;
+
 export interface WorkspaceScope {
 	clusterContext: string;
 	clusterGroup?: WorkspaceClusterGroup;
@@ -67,6 +103,7 @@ export interface SavedWorkspace {
 	updatedAt: string;
 	scope: WorkspaceScope;
 	shortcuts: WorkspaceShortcut[];
+	portForwards: SavedPortForward[];
 }
 
 export interface WorkspaceRestoreStatus {
@@ -104,7 +141,20 @@ interface WorkspaceStore {
 	createWorkspace: (input: CreateWorkspaceInput) => SavedWorkspace;
 	updateWorkspace: (
 		id: string,
-		updates: Partial<Pick<SavedWorkspace, "name" | "scope" | "shortcuts">>,
+		updates: Partial<Pick<SavedWorkspace, "name" | "scope" | "shortcuts" | "portForwards">>,
+	) => void;
+	savePortForward: (
+		workspaceId: string,
+		input: SavePortForwardInput,
+	) => SavedPortForward;
+	updateSavedPortForward: (
+		workspaceId: string,
+		portForwardId: string,
+		updates: SavedPortForwardUpdates,
+	) => void;
+	deleteSavedPortForward: (
+		workspaceId: string,
+		portForwardId: string,
 	) => void;
 	deleteWorkspace: (id: string) => void;
 	setActiveWorkspace: (id: string | null) => void;
@@ -133,6 +183,13 @@ function newWorkspaceId(): string {
 	return `workspace-${Date.now().toString(36)}`;
 }
 
+function newSavedPortForwardId(): string {
+	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+		return crypto.randomUUID();
+	}
+	return `port-forward-${Date.now().toString(36)}`;
+}
+
 function normalizeClusterContexts(
 	primaryContext: string,
 	clusterContexts?: string[],
@@ -146,6 +203,33 @@ function normalizeShortcutPreferences(
 	return {
 		...DEFAULT_WORKSPACE_SHORTCUT_PREFERENCES,
 		...preferences,
+	};
+}
+
+function normalizeSavedPortForwardInput(
+	input: SavePortForwardInput,
+): SavePortForwardInput {
+	const label = input.label?.trim();
+	return {
+		clusterContext: input.clusterContext.trim(),
+		namespace: input.namespace.trim(),
+		serviceName: input.serviceName.trim(),
+		servicePort: input.servicePort,
+		localPort: input.localPort,
+		label: label || undefined,
+	};
+}
+
+export function createSavedPortForward(
+	input: SavePortForwardInput,
+	now = new Date().toISOString(),
+): SavedPortForward {
+	return {
+		id: newSavedPortForwardId(),
+		...normalizeSavedPortForwardInput(input),
+		createdAt: now,
+		updatedAt: now,
+		lastStatus: "idle",
 	};
 }
 
@@ -276,6 +360,7 @@ export function createWorkspaceRecord(
 		updatedAt: now,
 		scope,
 		shortcuts: makeWorkspaceShortcuts(scope.namespaces, undefined, shortcutPreferences, scope),
+		portForwards: [],
 	};
 }
 
@@ -396,11 +481,87 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
 							? {
 									...workspace,
 									...updates,
+									portForwards:
+										updates.portForwards ?? workspace.portForwards ?? [],
 									updatedAt: new Date().toISOString(),
 								}
 							: workspace,
 					),
 				})),
+			savePortForward: (workspaceId, input) => {
+				const savedPortForward = createSavedPortForward(input);
+				set((state) => ({
+					workspaces: state.workspaces.map((workspace) =>
+						workspace.id === workspaceId
+							? {
+									...workspace,
+									portForwards: [
+										savedPortForward,
+										...(workspace.portForwards ?? []),
+									],
+									updatedAt: savedPortForward.updatedAt,
+								}
+							: workspace,
+					),
+				}));
+				return savedPortForward;
+			},
+			updateSavedPortForward: (workspaceId, portForwardId, updates) =>
+				set((state) => {
+					const now = new Date().toISOString();
+					return {
+						workspaces: state.workspaces.map((workspace) =>
+							workspace.id === workspaceId
+								? {
+										...workspace,
+										portForwards: (workspace.portForwards ?? []).map(
+											(portForward) => {
+												if (portForward.id !== portForwardId) {
+													return portForward;
+												}
+												const next = { ...portForward, ...updates };
+												return {
+													...portForward,
+													...normalizeSavedPortForwardInput(next),
+													lastStartedAt:
+														"lastStartedAt" in updates
+															? updates.lastStartedAt
+															: portForward.lastStartedAt,
+													lastStatus:
+														"lastStatus" in updates
+															? updates.lastStatus
+															: portForward.lastStatus,
+													lastError:
+														"lastError" in updates
+															? updates.lastError
+															: portForward.lastError,
+													updatedAt: now,
+												};
+											},
+										),
+										updatedAt: now,
+									}
+								: workspace,
+						),
+					};
+				}),
+			deleteSavedPortForward: (workspaceId, portForwardId) =>
+				set((state) => {
+					const now = new Date().toISOString();
+					return {
+						workspaces: state.workspaces.map((workspace) =>
+							workspace.id === workspaceId
+								? {
+										...workspace,
+										portForwards: (workspace.portForwards ?? []).filter(
+											(portForward) => portForward.id !== portForwardId,
+										),
+										updatedAt: now,
+									}
+								: workspace,
+						),
+					};
+				}),
 			deleteWorkspace: (id) =>
 				set((state) => ({
 					workspaces: state.workspaces.filter((workspace) => workspace.id !== id),

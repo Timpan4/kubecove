@@ -13,6 +13,7 @@ import {
 	listKubeContexts,
 	listNamespaces,
 	startPodPortForward,
+	startPortForward,
 	stopPodPortForward,
 } from "../src/lib/tauri";
 import type {
@@ -285,10 +286,15 @@ describe("typed Tauri wrappers", () => {
 			localPort: 18080,
 		};
 
+		expect(await startPortForward(client, request)).toEqual(session);
 		expect(await startPodPortForward(client, request)).toEqual(session);
 		expect(await listPortForwards(client)).toEqual([session]);
 		expect(await stopPodPortForward(client, session.id)).toBe(true);
 		expect(calls).toEqual([
+			{
+				cmd: "start_pod_port_forward",
+				args: { request },
+			},
 			{
 				cmd: "start_pod_port_forward",
 				args: { request },

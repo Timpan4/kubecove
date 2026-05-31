@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import type { PortForwardSessionSummary, ResourceSummary } from "../src/lib/types";
 import {
+	extractServicePortOptions,
 	isPortForwardForResource,
 	parsePortForwardForm,
+	parseSavedPortForwardForm,
 	portForwardLocalUrl,
+	savedPortForwardMatchesSession,
+	savedPortForwardToRequest,
 	sortPortForwardSessions,
 } from "../src/features/live-sessions/helpers";
+import { createSavedPortForward } from "../src/lib/workspaces";
 
 const baseSession: PortForwardSessionSummary = {
 	id: "port-forward-1",
@@ -56,6 +62,32 @@ describe("port-forward helpers", () => {
 		expect(parsePortForwardForm({ remotePort: "8080", localPort: "80" })).toBe(
 			"Local port must be 1024 or higher",
 		);
+	});
+
+	test("extracts selectable TCP Service ports from resource YAML", () => {
+		const yaml = `apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+  - name: dns
+    port: 53
+    protocol: UDP
+`;
+
+		expect(extractServicePortOptions(yaml)).toEqual([
+			{ name: "http", port: 8080, protocol: "TCP", targetPort: "8080" },
+			{ name: "metrics", port: 9090, targetPort: "metrics" },
+		]);
 	});
 
 	test("matches active sessions to the selected target resource", () => {
@@ -110,5 +142,108 @@ describe("port-forward helpers", () => {
 			"a",
 			"b",
 		]);
+	});
+
+	test("builds Service requests from saved presets and matches active sessions", () => {
+		const saved = createSavedPortForward(
+			{
+				clusterContext: "kind-dev",
+				namespace: "payments",
+				serviceName: "api",
+				servicePort: 8080,
+			},
+			"2026-05-31T00:00:00Z",
+		);
+		const serviceSession: PortForwardSessionSummary = {
+			...baseSession,
+			targetKind: "Service",
+			targetName: "api",
+			podName: "api-7c9f",
+			resolvedPodName: "api-7c9f",
+		};
+
+		expect(savedPortForwardToRequest(saved)).toEqual({
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			targetKind: "Service",
+			targetName: "api",
+			remotePort: 8080,
+			localPort: undefined,
+		});
+		expect(savedPortForwardMatchesSession(saved, serviceSession)).toBe(true);
+		expect(
+			savedPortForwardMatchesSession(
+				{ ...saved, localPort: 19090 },
+				serviceSession,
+			),
+		).toBe(false);
+		expect(
+			savedPortForwardToRequest({ ...saved, localPort: 19090 }).localPort,
+		).toBe(19090);
+	});
+
+	test("validates saved Service port-forward presets", () => {
+		expect(
+			parseSavedPortForwardForm({
+				clusterContext: "kind-dev",
+				namespace: "payments",
+				serviceName: "api",
+				servicePort: "8080",
+				localPort: "",
+				label: "API",
+			}),
+		).toEqual({
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			serviceName: "api",
+			servicePort: 8080,
+			label: "API",
+		});
+		expect(
+			parseSavedPortForwardForm({
+				clusterContext: "",
+				namespace: "payments",
+				serviceName: "api",
+				servicePort: "8080",
+				localPort: "",
+				label: "",
+			}),
+		).toBe("Cluster context is required");
+		expect(
+			parseSavedPortForwardForm({
+				clusterContext: "kind-dev",
+				namespace: "payments",
+				serviceName: "api",
+				servicePort: "8080",
+				localPort: "80",
+				label: "",
+			}),
+		).toBe("Local port must be 1024 or higher");
+	});
+
+	test("workspace manager renders active session controls and saved errors", () => {
+		const source = readFileSync(
+			"src/features/live-sessions/WorkspacePortForwardsPage.tsx",
+			"utf8",
+		);
+
+		expect(source).toContain("Resolved Pod");
+		expect(source).toContain("copySessionUrl");
+		expect(source).toContain("stopSession");
+		expect(source).toContain("lastError");
+	});
+
+	test("Service detail forwarding offers a port picker when ports are known", () => {
+		const source = readFileSync(
+			"src/features/resource-detail/PortForwardTab.tsx",
+			"utf8",
+		);
+
+		expect(source).toContain("extractServicePortOptions");
+		expect(source).toContain("<Select");
+		expect(source).toContain("<SelectGroup>");
+		expect(source).toContain("Choose one of the TCP ports");
+		expect(source).toContain("Save preset");
+		expect(source).toContain("savePortForward(activeWorkspace.id");
 	});
 });

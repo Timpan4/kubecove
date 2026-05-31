@@ -1,21 +1,32 @@
 import "./App.css";
-import {
-	lazy,
-	Suspense,
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDashboardState } from "./lib/hooks";
 import { SidebarTree } from "./components/SidebarTree";
 import { AppTopBar } from "./app/AppTopBar";
 import { AppUsageFooter } from "./app/AppUsageFooter";
 import { DetailPanelFrame } from "./app/DetailPanelFrame";
+import {
+	ArgoCDPanel,
+	ArgoDetailPanel,
+	HelmDetailPanel,
+	HelmPanel,
+	RbacPanel,
+	ResourceDetailPanel,
+	ResourceList,
+	SettingsPage,
+	WorkspaceLauncher,
+	WorkspaceOverview,
+	WorkspacePortForwardsPage,
+} from "./app/lazyViews";
 import { useArgoDetection } from "./app/useArgoDetection";
 import { ViewLoadingFallback } from "./app/ViewLoadingFallback";
 import { useAppUpdateLaunchCheck } from "./features/app-updates/useAppUpdateLaunchCheck";
+import { SavedPortForwardRestorePrompt } from "./features/live-sessions";
+import {
+	shouldAutoStartSavedPortForwards,
+	shouldShowSavedPortForwardRestorePrompt,
+} from "./features/live-sessions/restore";
+import { useSavedPortForwardActions } from "./features/live-sessions/useSavedPortForwardActions";
 import { useSettingsState } from "./lib/settings";
 import {
 	Sidebar,
@@ -43,62 +54,10 @@ import {
 } from "./lib/workspaces";
 import {
 	canQueryResourceScope,
-	resourceKindLabel,
+	getAppContentTitle,
 	resourceKindLogKey,
-	SECTION_LABELS,
 	SIDEBAR_PROVIDER_STYLE,
 } from "./app/viewHelpers";
-
-const ResourceList = lazy(() =>
-	import("./features/resources/ResourceList").then((module) => ({
-		default: module.ResourceList,
-	})),
-);
-const ResourceDetailPanel = lazy(() =>
-	import("./features/resource-detail/ResourceDetailPanel").then((module) => ({
-		default: module.ResourceDetailPanel,
-	})),
-);
-const ArgoCDPanel = lazy(() =>
-	import("./features/argo/ArgoCDPanel").then((module) => ({
-		default: module.ArgoCDPanel,
-	})),
-);
-const ArgoDetailPanel = lazy(() =>
-	import("./features/argo/ArgoDetailPanel").then((module) => ({
-		default: module.ArgoDetailPanel,
-	})),
-);
-const HelmPanel = lazy(() =>
-	import("./features/helm").then((module) => ({
-		default: module.HelmPanel,
-	})),
-);
-const HelmDetailPanel = lazy(() =>
-	import("./features/helm").then((module) => ({
-		default: module.HelmDetailPanel,
-	})),
-);
-const RbacPanel = lazy(() =>
-	import("./features/rbac").then((module) => ({
-		default: module.RbacPanel,
-	})),
-);
-const SettingsPage = lazy(() =>
-	import("./features/settings/SettingsPage").then((module) => ({
-		default: module.SettingsPage,
-	})),
-);
-const WorkspaceLauncher = lazy(() =>
-	import("./features/workspaces").then((module) => ({
-		default: module.WorkspaceLauncher,
-	})),
-);
-const WorkspaceOverview = lazy(() =>
-	import("./features/workspaces").then((module) => ({
-		default: module.WorkspaceOverview,
-	})),
-);
 
 function App() {
 	const {
@@ -132,6 +91,9 @@ function App() {
 	const activeWorkspace =
 		workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
 	const showUsageFooter = useSettingsState((state) => state.showUsageFooter);
+	const autoStartSavedPortForwards = useSettingsState(
+		(state) => state.autoStartSavedPortForwards,
+	);
 	const [resourceHealthFilter, setResourceHealthFilter] =
 		useState<HealthFilter>("all");
 	const [selectedHelmRelease, setSelectedHelmRelease] =
@@ -141,6 +103,14 @@ function App() {
 		namespace?: string;
 	} | null>(null);
 	const [resourceInitialSearch, setResourceInitialSearch] = useState("");
+	const [
+		dismissedPortForwardRestoreWorkspaceId,
+		setDismissedPortForwardRestoreWorkspaceId,
+	] = useState<string | null>(null);
+	const autoStartedSavedPortForwardWorkspaceIdsRef = useRef<Set<string>>(
+		new Set(),
+	);
+	const savedPortForwardActions = useSavedPortForwardActions(activeWorkspace);
 	const appRenderCountRef = useRef(0);
 	appRenderCountRef.current += 1;
 	useAppUpdateLaunchCheck();
@@ -158,6 +128,8 @@ function App() {
 			setSelectedArgoAppFilter(workspace.scope.argoAppFilter);
 			setSelectedTreeNode(null);
 			setResourceHealthFilter("all");
+			setDismissedPortForwardRestoreWorkspaceId(null);
+			autoStartedSavedPortForwardWorkspaceIdsRef.current.delete(workspace.id);
 			setViewMode("overview");
 		},
 		[
@@ -259,6 +231,19 @@ function App() {
 		setResourceInitialSearch("");
 	};
 
+	const handleOpenPortForwards = () => {
+		setViewMode("portForwards");
+		setSelectedTreeNode({ type: "section", section: "portForwards" });
+		setSelectedResource(null);
+		setSelectedArgoApp(null);
+		setSelectedHelmRelease(null);
+		setResourceInitialSearch("");
+		setResourceHealthFilter("all");
+		if (activeWorkspace) {
+			setDismissedPortForwardRestoreWorkspaceId(activeWorkspace.id);
+		}
+	};
+
 	const handleTreeNodeSelect = (nodeId: TreeNodeId) => {
 		const scope = resolveTreeScope(nodeId);
 		diagnosticLog("app.tree.select", {
@@ -268,6 +253,7 @@ function App() {
 			kind: nodeId.kind ?? "",
 			argoMode: scope.argoMode,
 			helmMode: scope.helmMode,
+			portForwardMode: scope.portForwardMode,
 			rbacMode: scope.rbacMode,
 		});
 
@@ -288,6 +274,16 @@ function App() {
 			setSelectedResource(null);
 			setResourceInitialSearch("");
 			setResourceHealthFilter("all");
+		} else if (scope.portForwardMode) {
+			setViewMode("portForwards");
+			setSelectedArgoApp(null);
+			setSelectedHelmRelease(null);
+			setSelectedResource(null);
+			setResourceInitialSearch("");
+			setResourceHealthFilter("all");
+			if (activeWorkspace) {
+				setDismissedPortForwardRestoreWorkspaceId(activeWorkspace.id);
+			}
 		} else if (scope.rbacMode) {
 			setViewMode("rbac");
 			setSelectedArgoApp(null);
@@ -298,6 +294,7 @@ function App() {
 		} else if (
 			viewMode === "argo" ||
 			viewMode === "helm" ||
+			viewMode === "portForwards" ||
 			viewMode === "rbac" ||
 			viewMode === "settings" ||
 			viewMode === "overview"
@@ -309,7 +306,12 @@ function App() {
 			setResourceInitialSearch("");
 			setResourceHealthFilter("all");
 		}
-		if (!scope.argoMode && !scope.helmMode && !scope.rbacMode) {
+		if (
+			!scope.argoMode &&
+			!scope.helmMode &&
+			!scope.portForwardMode &&
+			!scope.rbacMode
+		) {
 			setResourceInitialSearch("");
 		}
 
@@ -405,6 +407,26 @@ function App() {
 
 	useArgoDetection(clusterContext, setArgoDetected);
 
+	useEffect(() => {
+		if (
+			!shouldAutoStartSavedPortForwards({
+				workspace: activeWorkspace,
+				autoStart: autoStartSavedPortForwards,
+				startedWorkspaceIds:
+					autoStartedSavedPortForwardWorkspaceIdsRef.current,
+			}) ||
+			!activeWorkspace
+		) {
+			return;
+		}
+		autoStartedSavedPortForwardWorkspaceIdsRef.current.add(activeWorkspace.id);
+		void savedPortForwardActions.startAll();
+	}, [
+		activeWorkspace,
+		autoStartSavedPortForwards,
+		savedPortForwardActions,
+	]);
+
 	// Compute scope from selected tree node
 	const scope = useMemo(
 		() => resolveTreeScope(selectedTreeNode),
@@ -422,40 +444,16 @@ function App() {
 		return selectedNamespaces;
 	}, [scope.namespace, scope.section, selectedNamespaces]);
 
-	const contentTitle = useMemo(() => {
-		if (viewMode === "overview") return activeWorkspace?.name ?? "Workspace";
-		if (viewMode === "settings") return "Settings";
-		if (viewMode === "helm") return "Helm Releases";
-		if (viewMode === "rbac") {
-			if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
-				return selectedTreeNode.kind;
-			}
-			return "RBAC";
-		}
-		if (viewMode === "argo") {
-			if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
-				return `${selectedTreeNode.kind}`;
-			}
-			return "Argo CD";
-		}
-		if (!scope.section) return "Kubernetes Resources";
-		if (scope.section === "clusterOverview") {
-			if (scope.kinds.length === 1) return `${resourceKindLabel(scope.kinds[0])} Resources`;
-			if (scope.kinds.length > 1) return "Cluster Overview";
-			return "Cluster Overview";
-		}
-		if (scope.section === "namespaces" && scope.namespace) {
-			if (scope.group && scope.kinds.length > 0) {
-				return `${scope.namespace} / ${scope.group}`;
-			}
-			return scope.namespace;
-		}
-		if (scope.group) return scope.group;
-		if (scope.kinds.length === 1) return `${resourceKindLabel(scope.kinds[0])} Resources`;
-		if (scope.kinds.length > 1)
-			return SECTION_LABELS[scope.section] ?? scope.section;
-		return SECTION_LABELS[scope.section] ?? scope.section;
-	}, [scope, viewMode, selectedTreeNode, activeWorkspace?.name]);
+	const contentTitle = useMemo(
+		() =>
+			getAppContentTitle({
+				activeWorkspace,
+				scope,
+				selectedTreeNode,
+				viewMode,
+			}),
+		[activeWorkspace, scope, selectedTreeNode, viewMode],
+	);
 
 	const canQueryResources = canQueryResourceScope({
 		clusterContext,
@@ -469,6 +467,12 @@ function App() {
 		() => emptyStateMessage(scope, !!clusterContext),
 		[scope, clusterContext],
 	);
+	const showPortForwardRestorePrompt =
+		shouldShowSavedPortForwardRestorePrompt({
+			workspace: activeWorkspace,
+			autoStart: autoStartSavedPortForwards,
+			dismissedWorkspaceId: dismissedPortForwardRestoreWorkspaceId,
+		});
 
 	useEffect(() => {
 		diagnosticLog("app.render", {
@@ -519,6 +523,15 @@ function App() {
 			role="main"
 			className="flex h-full w-full min-w-0 flex-col overflow-hidden"
 		>
+			{showPortForwardRestorePrompt && activeWorkspace && (
+				<SavedPortForwardRestorePrompt
+					workspace={activeWorkspace}
+					onReview={handleOpenPortForwards}
+					onDismiss={() =>
+						setDismissedPortForwardRestoreWorkspaceId(activeWorkspace.id)
+					}
+				/>
+			)}
 			{viewMode === "overview" ? (
 				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
 					<Suspense fallback={<ViewLoadingFallback label="Loading overview..." />}>
@@ -526,6 +539,7 @@ function App() {
 							workspace={activeWorkspace}
 							onOpenResources={handleOpenResources}
 							onOpenArgo={handleOpenArgo}
+							onOpenPortForwards={handleOpenPortForwards}
 							onOpenLauncher={handleOpenLauncher}
 						/>
 					</Suspense>
@@ -561,6 +575,12 @@ function App() {
 							targetRelease={targetHelmRelease}
 							onTargetReleaseResolved={handleTargetHelmReleaseResolved}
 						/>
+					</Suspense>
+				</div>
+			) : viewMode === "portForwards" ? (
+				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
+					<Suspense fallback={<ViewLoadingFallback label="Loading port forwards..." />}>
+						<WorkspacePortForwardsPage workspace={activeWorkspace} />
 					</Suspense>
 				</div>
 			) : viewMode === "rbac" ? (
@@ -637,6 +657,7 @@ function App() {
 				onClusterChange={handleClusterChange}
 				onOpenLauncher={handleOpenLauncher}
 				onOpenSettings={handleOpenSettings}
+				onOpenPortForwards={handleOpenPortForwards}
 			/>
 
 			<SidebarProvider

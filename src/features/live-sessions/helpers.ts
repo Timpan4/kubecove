@@ -1,4 +1,12 @@
-import type { PortForwardSessionSummary, ResourceSummary } from "@/lib/types";
+import type {
+	PortForwardRequest,
+	PortForwardSessionSummary,
+	ResourceSummary,
+} from "@/lib/types";
+import type {
+	SavePortForwardInput,
+	SavedPortForward,
+} from "@/lib/workspaces";
 
 export function portForwardLocalUrl(session: PortForwardSessionSummary): string {
 	return session.localUrl || `http://${session.localAddress}:${session.localPort}`;
@@ -49,6 +57,48 @@ export function isPortForwardForResource(
 	);
 }
 
+export function savedPortForwardLabel(portForward: SavedPortForward): string {
+	return (
+		portForward.label?.trim() ||
+		`${portForward.namespace}/${portForward.serviceName}:${portForward.servicePort}`
+	);
+}
+
+export function savedPortForwardToRequest(
+	portForward: SavedPortForward,
+): PortForwardRequest {
+	return {
+		clusterContext: portForward.clusterContext,
+		namespace: portForward.namespace,
+		localPort: portForward.localPort,
+		targetKind: "Service",
+		targetName: portForward.serviceName,
+		remotePort: portForward.servicePort,
+	};
+}
+
+export function savedPortForwardMatchesSession(
+	portForward: SavedPortForward,
+	session: PortForwardSessionSummary,
+): boolean {
+	return (
+		session.clusterContext === portForward.clusterContext &&
+		session.namespace === portForward.namespace &&
+		session.targetKind === "Service" &&
+		session.targetName === portForward.serviceName &&
+		session.remotePort === portForward.servicePort &&
+		(portForward.localPort === undefined ||
+			session.localPort === portForward.localPort)
+	);
+}
+
+export interface ServicePortOption {
+	name?: string;
+	port: number;
+	targetPort?: string;
+	protocol?: string;
+}
+
 export interface PortForwardFormValues {
 	remotePort: string;
 	localPort: string;
@@ -57,6 +107,15 @@ export interface PortForwardFormValues {
 export interface ParsedPortForwardForm {
 	remotePort: number;
 	localPort?: number;
+}
+
+export interface SavedPortForwardFormValues {
+	clusterContext: string;
+	namespace: string;
+	serviceName: string;
+	servicePort: string;
+	localPort: string;
+	label: string;
 }
 
 function parsePort(value: string, label: string): number | string {
@@ -72,6 +131,98 @@ function parsePort(value: string, label: string): number | string {
 		return `${label} must be between 1 and 65535`;
 	}
 	return port;
+}
+
+function yamlIndent(line: string): number {
+	return line.length - line.trimStart().length;
+}
+
+function unquoteYamlScalar(value: string): string {
+	const trimmed = value.trim();
+	if (
+		(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+		(trimmed.startsWith("'") && trimmed.endsWith("'"))
+	) {
+		return trimmed.slice(1, -1);
+	}
+	return trimmed;
+}
+
+function parseYamlKeyValue(text: string): [string, string] | null {
+	const match = text.match(/^([A-Za-z][\w-]*):\s*(.*?)\s*$/);
+	if (!match) return null;
+	return [match[1], unquoteYamlScalar(match[2])];
+}
+
+function applyServicePortField(
+	port: Partial<ServicePortOption>,
+	key: string,
+	value: string,
+): void {
+	if (key === "port" && /^\d+$/.test(value)) {
+		port.port = Number(value);
+	} else if (key === "name" && value) {
+		port.name = value;
+	} else if (key === "targetPort" && value) {
+		port.targetPort = value;
+	} else if (key === "protocol" && value) {
+		port.protocol = value;
+	}
+}
+
+export function extractServicePortOptions(yaml: string | undefined): ServicePortOption[] {
+	if (!yaml) return [];
+	const ports: Partial<ServicePortOption>[] = [];
+	let specIndent: number | null = null;
+	let portsIndent: number | null = null;
+	let current: Partial<ServicePortOption> | null = null;
+
+	for (const line of yaml.split(/\r?\n/)) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.startsWith("#")) continue;
+		const indent = yamlIndent(line);
+
+		if (specIndent === null) {
+			if (trimmed === "spec:") specIndent = indent;
+			continue;
+		}
+		if (indent <= specIndent && trimmed !== "spec:") break;
+
+		if (portsIndent === null) {
+			if (trimmed === "ports:") portsIndent = indent;
+			continue;
+		}
+		if (indent < portsIndent || (indent === portsIndent && !trimmed.startsWith("-"))) {
+			break;
+		}
+
+		if (trimmed === "-" || trimmed.startsWith("- ")) {
+			current = {};
+			ports.push(current);
+			const inline = trimmed.slice(1).trim();
+			if (inline) {
+				const parsed = parseYamlKeyValue(inline);
+				if (parsed) applyServicePortField(current, parsed[0], parsed[1]);
+			}
+			continue;
+		}
+
+		if (!current) continue;
+		const parsed = parseYamlKeyValue(trimmed);
+		if (parsed) applyServicePortField(current, parsed[0], parsed[1]);
+	}
+
+	return ports
+		.filter((port): port is ServicePortOption => {
+			const protocol = port.protocol?.toUpperCase() ?? "TCP";
+			return (
+				typeof port.port === "number" &&
+				Number.isInteger(port.port) &&
+				port.port > 0 &&
+				protocol === "TCP"
+			);
+		})
+		.toSorted((a, b) => a.port - b.port || (a.name ?? "").localeCompare(b.name ?? ""));
 }
 
 export function parsePortForwardForm(
@@ -92,4 +243,43 @@ export function parsePortForwardForm(
 	if (localPort < 1024) return "Local port must be 1024 or higher";
 
 	return { remotePort, localPort };
+}
+
+export function parseSavedPortForwardForm(
+	values: SavedPortForwardFormValues,
+): SavePortForwardInput | string {
+	const clusterContext = values.clusterContext.trim();
+	const namespace = values.namespace.trim();
+	const serviceName = values.serviceName.trim();
+	const label = values.label.trim();
+	if (!clusterContext) return "Cluster context is required";
+	if (!namespace) return "Namespace is required";
+	if (!serviceName) return "Service name is required";
+
+	const servicePort = parsePort(values.servicePort, "Service port");
+	if (typeof servicePort === "string") return servicePort;
+
+	const localPortText = values.localPort.trim();
+	if (!localPortText) {
+		return {
+			clusterContext,
+			namespace,
+			serviceName,
+			servicePort,
+			label: label || undefined,
+		};
+	}
+
+	const localPort = parsePort(localPortText, "Local port");
+	if (typeof localPort === "string") return localPort;
+	if (localPort < 1024) return "Local port must be 1024 or higher";
+
+	return {
+		clusterContext,
+		namespace,
+		serviceName,
+		servicePort,
+		localPort,
+		label: label || undefined,
+	};
 }

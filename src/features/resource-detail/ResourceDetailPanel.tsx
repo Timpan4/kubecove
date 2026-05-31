@@ -226,6 +226,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 								client={client}
 								resource={resource}
 								active={activeTab === "portForward"}
+								detailsYaml={details?.yaml ?? yaml}
 							/>
 						</TabsContent>
 					)}

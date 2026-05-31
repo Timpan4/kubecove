@@ -386,11 +386,12 @@ describe("resource browser presentation helpers", () => {
 
   test("keeps the ownership map default-visible but unmountable", () => {
     const appSource = readFileSync("src/App.tsx", "utf8");
+    const lazyViewsSource = readFileSync("src/app/lazyViews.ts", "utf8");
     const listSource = readFileSync("src/features/resources/ResourceList.tsx", "utf8");
     const layoutSource = readFileSync("src/features/resources/ResourceMapTableLayout.tsx", "utf8");
 
-    expect(appSource).toContain('lazy(() =>');
-    expect(appSource).toContain('import("./features/resources/ResourceList")');
+    expect(lazyViewsSource).toContain('lazy(() =>');
+    expect(lazyViewsSource).toContain('import("../features/resources/ResourceList")');
     expect(listSource).toContain("<ResourceMapTableLayout");
     expect(listSource).toContain("mapPanelOpen");
     expect(listSource).toContain("setMapPanelOpen");
@@ -994,6 +995,7 @@ describe("tree navigation scope helpers", () => {
       clusterScoped: false,
       argoMode: false,
       helmMode: false,
+      portForwardMode: false,
       rbacMode: false,
     });
   });
@@ -1047,6 +1049,11 @@ describe("tree navigation scope helpers", () => {
     expect(resolveTreeScope({ type: "section", section: "helm" })).toMatchObject({
       section: "helm",
       helmMode: true,
+    });
+
+    expect(resolveTreeScope({ type: "section", section: "portForwards" })).toMatchObject({
+      section: "portForwards",
+      portForwardMode: true,
     });
 
     expect(resolveTreeScope({ type: "section", section: "rbac" })).toMatchObject({

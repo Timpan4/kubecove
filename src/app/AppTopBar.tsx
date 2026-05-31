@@ -10,6 +10,7 @@ interface AppTopBarProps {
 	onClusterChange: (cluster: string) => void;
 	onOpenLauncher: () => void;
 	onOpenSettings: () => void;
+	onOpenPortForwards?: () => void;
 	showClusterSelector?: boolean;
 	showSearch?: boolean;
 }
@@ -20,6 +21,7 @@ export function AppTopBar({
 	onClusterChange,
 	onOpenLauncher,
 	onOpenSettings,
+	onOpenPortForwards,
 	showClusterSelector = true,
 	showSearch = true,
 }: AppTopBarProps) {
@@ -39,7 +41,7 @@ export function AppTopBar({
 				</span>
 			</div>
 			<div className="flex shrink-0 items-center">
-				<ActivePortForwards />
+				<ActivePortForwards onOpenManager={onOpenPortForwards} />
 				<UpdateStatusButton />
 				<Button
 					type="button"

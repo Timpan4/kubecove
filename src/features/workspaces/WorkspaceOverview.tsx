@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
 	AlertTriangle,
 	Boxes,
+	Cable,
 	FolderOpen,
 	GitBranch,
 	GitCompareArrows,
@@ -57,6 +58,7 @@ interface WorkspaceOverviewProps {
 	workspace: SavedWorkspace;
 	onOpenResources: (namespace?: string, healthFilter?: HealthFilter) => void;
 	onOpenArgo: (argoApp?: string) => void;
+	onOpenPortForwards: () => void;
 	onOpenLauncher: () => void;
 }
 
@@ -149,6 +151,7 @@ export function WorkspaceOverview({
 	workspace,
 	onOpenResources,
 	onOpenArgo,
+	onOpenPortForwards,
 	onOpenLauncher,
 }: WorkspaceOverviewProps) {
 	const client = useMemo(() => createTauriClient(), []);
@@ -260,6 +263,10 @@ export function WorkspaceOverview({
 					<Button type="button" variant="outline" onClick={onOpenLauncher}>
 						<FolderOpen data-icon="inline-start" />
 						Workspaces
+					</Button>
+					<Button type="button" variant="outline" onClick={onOpenPortForwards}>
+						<Cable data-icon="inline-start" />
+						Port Forwards
 					</Button>
 					<Button type="button" onClick={() => onOpenResources()}>
 						<Boxes data-icon="inline-start" />
