@@ -1,7 +1,7 @@
 import {
 	buildNamespaceTreeNode,
 	buildShallowNamespaceTreeNode,
-} from "../src/components/SidebarTree";
+} from "../src/components/sidebar-tree-helpers";
 import {
 	applyReactFlowTopologySelection,
 	applyReactFlowTopologySelectionWithIndex,

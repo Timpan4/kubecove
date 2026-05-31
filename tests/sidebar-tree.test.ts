@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	buildNamespaceTreeNode,
 	buildShallowNamespaceTreeNode,
-} from "../src/components/SidebarTree";
+} from "../src/components/sidebar-tree-helpers";
 import type { DiscoveredResourceKind } from "../src/lib/types";
 
 function widgetKind(index: number): DiscoveredResourceKind {
