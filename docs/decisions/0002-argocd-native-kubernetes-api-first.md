@@ -6,7 +6,7 @@ Accepted.
 
 ## Context
 
-Argo CD is a common Kubernetes workflow, and KubeCove should understand Argo-managed applications natively. The core safety constraints still apply: local desktop app, read-only default, no cluster-side deployment, no arbitrary frontend shell execution, and Kubernetes access through Rust-side Tauri commands.
+Argo CD is a common Kubernetes workflow, and KubeCove should understand Argo-managed applications natively. The core safety constraints still apply: local desktop app, no cluster-side deployment, no arbitrary frontend shell execution, and Kubernetes access through Rust-side Tauri commands.
 
 ## Decision
 
@@ -18,9 +18,9 @@ Initial support:
 - list `Application`, `ApplicationSet`, and `AppProject` resources when CRDs exist
 - summarize Application sync and health status from resource fields
 - group related Kubernetes resources by Argo application when tracking metadata exists
-- expose read-only Argo details through typed Tauri commands
+- expose Argo inspection details through typed Tauri commands
 
-The Argo CD API, Argo CD CLI, sync, rollback, diff, and mutation workflows are future features. Each requires a separate ADR and explicit permission/UX guardrails.
+The Argo CD API, Argo CD CLI, sync, rollback, diff, and mutation workflows are future features. Each requires a focused ADR or an explicit ADR 0004-compatible design with permission-aware UX guardrails.
 
 ## Consequences
 

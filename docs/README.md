@@ -1,34 +1,38 @@
-# Docs Index
+# KubeCove Docs
 
-Read these docs in this order when joining the project or starting a substantial change.
+Use this index as the map for product, engineering, release, and governance work. Historical specs stay under `superpowers/`; current rules live in the product, architecture, handbook, ADR, and release docs below.
+
+## Users and Testers
+
+- [README](../README.md) - product overview, installer links, development quick start, and safety model.
+- [Beta Releases](release.md) - installer guidance, updater behavior, smoke tests, and publishing checks.
+- [Milestones](milestones.md) - current beta baseline, release gates, and tracked follow-up work.
+
+## Contributors
+
+- [Development Workflow](development-workflow.md) - package manager, hooks, tests, and verification commands.
+- [Engineering Handbook](handbook/) - file placement, size caps, hygiene rules, and the PR checklist.
+- [Agent Guide](../AGENTS.md) - agent-facing implementation rules, GitButler workflow, and security boundaries.
+- [Agent Skill Backlog](agent-skills.md) - project-specific skill ideas to validate before installing.
 
 ## Product and Architecture
 
-- [Product Vision](product-vision.md) - what KubeCove is, who it serves, and which workflows define the product.
-- [Architecture Blueprint](architecture-blueprint.md) - current frontend/backend shape, Tauri command boundary, and extension points.
-- [Product Inspiration](product-inspiration.md) - K8Studio and Aptakube as public benchmarks, plus the legal/design boundary.
+- [Product Vision](product-vision.md) - audience, workflow model, product direction, and safety posture.
+- [Architecture Blueprint](architecture-blueprint.md) - frontend/backend shape, Tauri command boundary, and extension points.
+- [Product Inspiration](product-inspiration.md) - public product benchmarks and the design/legal boundary.
 
-## Rules
+## Governance
 
-- [Engineering Handbook](handbook/) - file placement, size caps, hygiene rules, and the PR checklist.
-- [Agent Guide](../AGENTS.md) - agent-facing rules for this repo, including security boundaries and GitButler workflow.
-- [Architecture Decision Records](decisions/) - accepted decisions that require a new ADR to change.
+- [ADR 0001: Local Kubernetes API Boundary](decisions/0001-local-read-only-kube-api.md)
+- [ADR 0002: Argo CD Native Support Starts Kubernetes-API-First](decisions/0002-argocd-native-kubernetes-api-first.md)
+- [ADR 0003: Guarded Live Kubernetes Sessions](decisions/0003-guarded-live-sessions.md)
+- [ADR 0004: Guarded Cluster Operations](decisions/0004-guarded-cluster-operations.md)
 
-Current ADRs:
+New work that changes the frontend/backend security boundary, Kubernetes access path, Tauri permissions, cluster-changing behavior, or Argo CD/CLI integration needs an ADR before implementation.
 
-- [0001: Local Read-Only Kubernetes API Path](decisions/0001-local-read-only-kube-api.md)
-- [0002: Argo CD Native Support Starts Kubernetes-API-First](decisions/0002-argocd-native-kubernetes-api-first.md)
-
-## Work Tracking
-
-- [Milestones](milestones.md) - goal-level project progress and remaining release gates.
-- [Agent Skill Backlog](agent-skills.md) - project-specific skill ideas to validate before installing.
-- [Development Workflow](development-workflow.md) - package manager, hooks, testing, and verification commands.
-- [Beta Releases](release.md) - installer guidance, maintainer release flow, smoke tests, and publishing checklist.
-
-## Implementation History
+## Historical Specs
 
 - [superpowers/specs/](superpowers/specs/) - dated design specs.
 - [superpowers/plans/](superpowers/plans/) - dated implementation plans.
 
-Those historical docs explain why earlier work was shaped a certain way. Current behavior and rules live in the product, architecture, handbook, ADR, and milestone docs above.
+These files explain earlier decisions and should not be treated as the current contract when they differ from the docs above.

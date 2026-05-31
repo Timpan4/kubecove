@@ -2,6 +2,7 @@ import { FolderOpen, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ClusterSelector } from "@/components/ClusterSelector";
 import { UpdateStatusButton } from "@/features/app-updates";
+import { ActivePortForwards } from "@/features/live-sessions";
 
 interface AppTopBarProps {
 	clusterContext: string;
@@ -38,6 +39,7 @@ export function AppTopBar({
 				</span>
 			</div>
 			<div className="flex shrink-0 items-center">
+				<ActivePortForwards />
 				<UpdateStatusButton />
 				<Button
 					type="button"

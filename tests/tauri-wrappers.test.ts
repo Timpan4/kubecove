@@ -7,10 +7,13 @@ import {
 	listRbacInspection,
 	getResourceYaml,
 	isAppError,
+	listPortForwards,
 	listHelmReleases,
 	listResourceTopology,
 	listKubeContexts,
 	listNamespaces,
+	startPodPortForward,
+	stopPodPortForward,
 } from "../src/lib/tauri";
 import type {
 	AppUsageMetrics,
@@ -18,6 +21,7 @@ import type {
 	HelmReleaseDetails,
 	HelmReleaseSummary,
 	NamespaceSummary,
+	PortForwardSessionSummary,
 	RbacInspectionSummary,
 	ResourceMetricsSummary,
 	ResourceTopology,
@@ -241,6 +245,55 @@ describe("typed Tauri wrappers", () => {
 			{
 				cmd: "list_rbac_inspection",
 				args: { clusterContext: "kind-dev", namespaces: ["payments"] },
+			},
+		]);
+	});
+
+	test("passes port-forward requests through typed wrappers", async () => {
+		const session: PortForwardSessionSummary = {
+			id: "port-forward-1",
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			podName: "api-0",
+			remotePort: 8080,
+			localPort: 18080,
+			localAddress: "127.0.0.1",
+			localUrl: "http://127.0.0.1:18080",
+			status: "listening",
+			startedAt: "2026-05-31T00:00:00Z",
+		};
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				if (cmd === "start_pod_port_forward") return session as T;
+				if (cmd === "list_port_forwards") return [session] as T;
+				return true as T;
+			},
+		};
+		const request = {
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			podName: "api-0",
+			remotePort: 8080,
+			localPort: 18080,
+		};
+
+		expect(await startPodPortForward(client, request)).toEqual(session);
+		expect(await listPortForwards(client)).toEqual([session]);
+		expect(await stopPodPortForward(client, session.id)).toBe(true);
+		expect(calls).toEqual([
+			{
+				cmd: "start_pod_port_forward",
+				args: { request },
+			},
+			{
+				cmd: "list_port_forwards",
+				args: undefined,
+			},
+			{
+				cmd: "stop_port_forward",
+				args: { sessionId: session.id },
 			},
 		]);
 	});

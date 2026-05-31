@@ -36,7 +36,9 @@ Run this before opening a PR or marking agent work complete.
 
 - [ ] Completed milestone items are checked in [milestones.md](../milestones.md).
 - [ ] Security boundary changes have an ADR.
-- [ ] Kubernetes mutation, Argo CD API/CLI, sync, rollback, or diff support has an ADR before implementation.
+- [ ] Live-session behavior follows ADR 0003.
+- [ ] Other cluster-changing behavior follows ADR 0004.
+- [ ] Argo CD API/CLI, sync, rollback, or diff support has focused ADR coverage before implementation.
 
 ## Secrets
 

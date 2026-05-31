@@ -8,6 +8,8 @@ import type {
 	NamespaceSummary,
 	DiscoveredResourceKind,
 	PodLogStreamRequest,
+	PortForwardRequest,
+	PortForwardSessionSummary,
 	ResourceListRequest,
 	ResourceSummary,
 	ResourceEventSummary,
@@ -280,6 +282,28 @@ export async function stopStream(
 	streamId: string,
 ): Promise<boolean> {
 	return client.invoke<boolean>("stop_stream", { streamId });
+}
+
+export async function startPodPortForward(
+	client: TauriClient,
+	request: PortForwardRequest,
+): Promise<PortForwardSessionSummary> {
+	return client.invoke<PortForwardSessionSummary>("start_pod_port_forward", {
+		request,
+	});
+}
+
+export async function stopPodPortForward(
+	client: TauriClient,
+	sessionId: string,
+): Promise<boolean> {
+	return client.invoke<boolean>("stop_port_forward", { sessionId });
+}
+
+export async function listPortForwards(
+	client: TauriClient,
+): Promise<PortForwardSessionSummary[]> {
+	return client.invoke<PortForwardSessionSummary[]>("list_port_forwards");
 }
 
 export async function getAppUsageMetrics(

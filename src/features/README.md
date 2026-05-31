@@ -7,6 +7,7 @@ Current areas:
 - `app-updates/`
 - `argo/`
 - `helm/`
+- `live-sessions/`
 - `rbac/`
 - `resource-detail/`
 - `resources/`
@@ -14,6 +15,8 @@ Current areas:
 - `workspaces/`
 
 Import across features only through a public entry point when one exists. Do not deep-import private helpers from another feature.
+
+Future guarded operation UI belongs in the product feature it serves and must keep context, namespace, kind, and resource target visible before execution.
 
 Use:
 

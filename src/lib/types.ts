@@ -142,6 +142,34 @@ export interface PodLogStreamRequest {
 	tailLines?: number;
 }
 
+export interface PortForwardRequest {
+	clusterContext: string;
+	namespace: string;
+	podName: string;
+	remotePort: number;
+	localPort?: number;
+}
+
+export type PortForwardSessionStatus =
+	| "listening"
+	| "connected"
+	| "error"
+	| string;
+
+export interface PortForwardSessionSummary {
+	id: string;
+	clusterContext: string;
+	namespace: string;
+	podName: string;
+	remotePort: number;
+	localPort: number;
+	localAddress: string;
+	localUrl: string;
+	status: PortForwardSessionStatus;
+	startedAt: string;
+	lastError?: string;
+}
+
 export interface WatchResourceTarget {
 	cluster: string;
 	kind: string;

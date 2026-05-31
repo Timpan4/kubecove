@@ -15,6 +15,6 @@ This handbook is not the product vision, architecture blueprint, or ADR log. Use
 
 - [Product Vision](../product-vision.md) for product direction.
 - [Architecture Blueprint](../architecture-blueprint.md) for app shape and Tauri command boundary.
-- [decisions/](../decisions/) for locked-in decisions.
+- [decisions/](../decisions/) for locked-in decisions, including guarded cluster operations.
 
 Keep handbook pages short enough to reread during routine work.
