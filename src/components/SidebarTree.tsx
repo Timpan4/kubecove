@@ -56,10 +56,11 @@ interface TreeNodeProps {
   node: TreeNode;
   depth: number;
   selectedNode: TreeNodeId | null;
-  expandedSections: string[];
+  expandedSections: ReadonlySet<string>;
   onNodeSelect: (id: TreeNodeId) => void;
   onSectionToggle: (section: string) => void;
   hasChildren: boolean;
+  getLazyChildren?: (node: TreeNode) => TreeNode[] | undefined;
 }
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
@@ -80,6 +81,55 @@ function getNodeVisual(node: TreeNode) {
   return getResourceGroupVisual(node.label);
 }
 
+export function buildShallowNamespaceTreeNode(namespace: string): TreeNode {
+  return {
+    id: { type: "namespace", section: "namespaces", namespace },
+    label: namespace,
+  };
+}
+
+export function buildNamespaceTreeNode(
+  namespace: string,
+  extraKinds: DiscoveredResourceKind[],
+): TreeNode {
+  const groups: TreeNode[] = (Object.keys(KIND_GROUPS) as KindGroupName[]).map((groupName) => {
+    const kinds = KIND_GROUPS[groupName];
+    return {
+      id: { type: "group", section: "namespaces", namespace, group: groupName } as TreeNodeId,
+      label: groupName,
+      children: kinds.map((kind) => ({
+        id: { type: "kind", section: "namespaces", namespace, group: groupName, kind } as TreeNodeId,
+        label: kind,
+      })),
+    };
+  });
+  const namespaceDiscoveredKinds = extraKinds.filter((resourceKind) => resourceKind.namespaced);
+  if (namespaceDiscoveredKinds.length > 0) {
+    groups.push({
+      id: { type: "group", section: "namespaces", namespace, group: "Discovered" } as TreeNodeId,
+      label: "Discovered",
+      children: namespaceDiscoveredKinds.map((resourceKind) => ({
+        id: {
+          type: "kind",
+          section: "namespaces",
+          namespace,
+          group: "Discovered",
+          kind: discoveredResourceKindKey(resourceKind),
+          resourceKind,
+        } as TreeNodeId,
+        label: resourceKind.kind,
+        description: `${resourceKind.apiVersion} / ${resourceKind.plural}`,
+      })),
+    });
+  }
+
+  return {
+    id: { type: "namespace", section: "namespaces", namespace },
+    label: namespace,
+    children: groups,
+  };
+}
+
 function TreeNodeComponent({
   node,
   depth,
@@ -88,11 +138,13 @@ function TreeNodeComponent({
   onNodeSelect,
   onSectionToggle,
   hasChildren,
+  getLazyChildren,
 }: TreeNodeProps) {
   const idStr = nodeIdToString(node.id);
   const isSelected = selectedNode !== null && nodeIdToString(selectedNode) === idStr;
-  const isExpanded = expandedSections.includes(idStr);
+  const isExpanded = expandedSections.has(idStr);
   const isDisabled = node.disabled === true;
+  const children = isExpanded ? getLazyChildren?.(node) ?? node.children : node.children;
   const visual = getNodeVisual(node);
   const NodeIcon = visual.icon;
   const depthPaddingClass =
@@ -194,9 +246,9 @@ function TreeNodeComponent({
         />
         <span className="min-w-0 flex-1 truncate leading-none">{node.label}</span>
       </div>
-      {hasChildren && isExpanded && node.children && (
+      {hasChildren && isExpanded && children && (
         <ul className="m-0 list-none p-0" role="group">
-          {node.children.map((child) => (
+          {children.map((child) => (
             <TreeNodeComponent
               key={nodeIdToString(child.id)}
               node={child}
@@ -205,7 +257,11 @@ function TreeNodeComponent({
               expandedSections={expandedSections}
               onNodeSelect={onNodeSelect}
               onSectionToggle={onSectionToggle}
-              hasChildren={!!child.children && child.children.length > 0}
+              hasChildren={
+                child.id.type === "namespace" ||
+                (!!child.children && child.children.length > 0)
+              }
+              getLazyChildren={getLazyChildren}
             />
           ))}
         </ul>
@@ -411,55 +467,34 @@ export function SidebarTree({
     };
   }, [extraKinds, resourceKindsError, resourceKindsLoading]);
 
-  // Build namespace subtree for a given namespace name
-  const buildNamespaceSubtree = useCallback(
+  const buildNamespaceChildren = useCallback(
     (namespace: string): TreeNode => {
-      const groups: TreeNode[] = (Object.keys(KIND_GROUPS) as KindGroupName[]).map((groupName) => {
-        const kinds = KIND_GROUPS[groupName];
-        return {
-          id: { type: "group", section: "namespaces", namespace, group: groupName } as TreeNodeId,
-          label: groupName,
-          children: kinds.map((kind) => ({
-            id: { type: "kind", section: "namespaces", namespace, group: groupName, kind } as TreeNodeId,
-            label: kind,
-          })),
-        };
-      });
-      const namespaceDiscoveredKinds = extraKinds.filter((resourceKind) => resourceKind.namespaced);
-      if (namespaceDiscoveredKinds.length > 0) {
-        groups.push({
-          id: { type: "group", section: "namespaces", namespace, group: "Discovered" } as TreeNodeId,
-          label: "Discovered",
-          children: namespaceDiscoveredKinds.map((resourceKind) => ({
-            id: {
-              type: "kind",
-              section: "namespaces",
-              namespace,
-              group: "Discovered",
-              kind: discoveredResourceKindKey(resourceKind),
-              resourceKind,
-            } as TreeNodeId,
-            label: resourceKind.kind,
-            description: `${resourceKind.apiVersion} / ${resourceKind.plural}`,
-          })),
-        });
-      }
-
-      return {
-        id: { type: "namespace", section: "namespaces", namespace },
-        label: namespace,
-        children: groups,
-      };
+      return buildNamespaceTreeNode(namespace, extraKinds);
     },
     [extraKinds]
   );
 
-  // Full tree with namespace children
+  const getLazyChildren = useCallback(
+    (node: TreeNode): TreeNode[] | undefined => {
+      if (node.id.type !== "namespace" || !node.id.namespace) {
+        return node.children;
+      }
+      return buildNamespaceChildren(node.id.namespace).children;
+    },
+    [buildNamespaceChildren],
+  );
+
+  const expandedSectionSet = useMemo(
+    () => new Set(expandedSections),
+    [expandedSections],
+  );
+
+  // Full tree with shallow namespace children; deep namespace groups are lazy.
   const fullTree = useMemo<TreeNode[]>(() => {
     const namespaceNode: TreeNode = {
       id: { type: "section" as const, section: "namespaces" },
       label: SECTIONS.namespaces.label,
-      children: namespaces.map((ns) => buildNamespaceSubtree(ns.name)),
+      children: namespaces.map((ns) => buildShallowNamespaceTreeNode(ns.name)),
     };
     return [
       staticTree.clusterOverviewNode,
@@ -470,7 +505,7 @@ export function SidebarTree({
       staticTree.helmNode,
       staticTree.rbacNode,
     ];
-  }, [namespaces, staticTree, buildNamespaceSubtree, discoveredTree]);
+  }, [namespaces, staticTree, discoveredTree]);
 
   if (!clusterContext) {
     return (
@@ -497,10 +532,11 @@ export function SidebarTree({
             node={node}
             depth={0}
             selectedNode={selectedNode}
-            expandedSections={expandedSections}
+            expandedSections={expandedSectionSet}
             onNodeSelect={onNodeSelect}
             onSectionToggle={onSectionToggle}
             hasChildren={!!node.children && node.children.length > 0}
+            getLazyChildren={getLazyChildren}
           />
         ))}
       </ul>

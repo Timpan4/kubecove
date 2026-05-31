@@ -26,10 +26,12 @@ import type {
 import { cn } from "@/lib/utils";
 import { ownershipMapNodeTypes } from "./OwnershipMapNodes";
 import {
-	buildReactFlowTopology,
 	type OwnershipGraphNode,
 	type OwnershipResourceGraphNode,
 	type StandaloneKindGroupGraphNode,
+	buildReactFlowTopologyLayout,
+	buildReactFlowTopologySelectionIndex,
+	applyReactFlowTopologySelectionWithIndex,
 } from "./topology";
 import {
 	absoluteGraphNodePosition,
@@ -67,6 +69,19 @@ function isStandaloneKindGroupNode(
 	node: OwnershipGraphNode,
 ): node is StandaloneKindGroupGraphNode {
 	return node.type === "standaloneKindGroup";
+}
+
+function selectedStandaloneExpansionId(
+	topology: ResourceTopology | undefined,
+	selectedNodeId: string | null,
+): string | null {
+	if (!topology || !selectedNodeId) return null;
+	const selectedNode = topology.nodes.find((node) => node.id === selectedNodeId);
+	if (!selectedNode) return null;
+	const hasRelation = topology.edges.some(
+		(edge) => edge.source === selectedNodeId || edge.target === selectedNodeId,
+	);
+	return hasRelation ? null : selectedNodeId;
 }
 
 function FitTopologyView({ fitViewKey }: { fitViewKey: string }) {
@@ -143,16 +158,35 @@ export function OwnershipMap({
 	const [expandedStandaloneKinds, setExpandedStandaloneKinds] = useState<Set<string>>(
 		() => new Set(),
 	);
-	const graph = useMemo(
+	const standaloneExpansionId = useMemo(
+		() => selectedStandaloneExpansionId(topology, selectedNodeId),
+		[topology, selectedNodeId],
+	);
+	const graphLayout = useMemo(
 		() =>
 			topology
-				? buildReactFlowTopology(topology, selectedNodeId, {
+				? buildReactFlowTopologyLayout(topology, standaloneExpansionId, {
 					expandedStandaloneKinds,
 					groupStandalone: mode === "ownership",
 					showPortHints: mode === "networkFlow",
 				})
 				: null,
-		[topology, selectedNodeId, expandedStandaloneKinds, mode],
+		[topology, standaloneExpansionId, expandedStandaloneKinds, mode],
+	);
+	const selectionIndex = useMemo(
+		() => (topology ? buildReactFlowTopologySelectionIndex(topology) : null),
+		[topology],
+	);
+	const graph = useMemo(
+		() =>
+			graphLayout && selectionIndex
+				? applyReactFlowTopologySelectionWithIndex(
+					graphLayout,
+					selectionIndex,
+					selectedNodeId,
+				)
+				: null,
+		[graphLayout, selectionIndex, selectedNodeId],
 	);
 	const [mapViewportElement, setMapViewportElement] =
 		useState<HTMLDivElement | null>(null);

@@ -72,6 +72,11 @@ export interface ReactFlowTopology {
 	edges: OwnershipGraphEdge[];
 }
 
+export interface ReactFlowTopologySelectionIndex {
+	graph: ReturnType<typeof buildTopologyGraph>;
+	nodeIdsByKind: Map<string, string[]>;
+}
+
 export interface BuildReactFlowTopologyOptions {
 	expandedStandaloneKinds?: ReadonlySet<string>;
 	groupStandalone?: boolean;
@@ -97,13 +102,23 @@ export function buildReactFlowTopology(
 	selectedNodeId: string | null,
 	options: BuildReactFlowTopologyOptions = {},
 ): ReactFlowTopology {
+	return applyReactFlowTopologySelection(
+		buildReactFlowTopologyLayout(topology, selectedNodeId, options),
+		topology,
+		selectedNodeId,
+	);
+}
+
+export function buildReactFlowTopologyLayout(
+	topology: ResourceTopology,
+	selectedNodeIdForExpansion: string | null,
+	options: BuildReactFlowTopologyOptions = {},
+): ReactFlowTopology {
 	const depthById = topologyColumnDepth(topology);
 	const graph = buildTopologyGraph(topology);
 	const orderById = topologyLayoutOrder(graph.nodes, topology, depthById);
 	const positions = buildTopologyPositions(graph, depthById, orderById);
 	const compareNodes = compareNodesByLayoutOrder(orderById, depthById);
-	const selectedPath = selectedTopologyPath(graph, selectedNodeId);
-	const hasSelection = Boolean(selectedNodeId && selectedPath.nodeIds.size > 0);
 	const standaloneGroups = options.groupStandalone === false
 		? {
 				groupNodes: [],
@@ -115,10 +130,10 @@ export function buildReactFlowTopology(
 				graph,
 				positions,
 				compareNodes,
-				selectedPath.nodeIds,
-				hasSelection,
+				new Set<string>(),
+				false,
 				options.expandedStandaloneKinds ?? new Set<string>(),
-				selectedNodeId,
+				selectedNodeIdForExpansion,
 			);
 	const sortedNodes = graph.nodes.sort((a, b) => {
 		const aStandalone = standaloneGroups.standaloneIds.has(a.id);
@@ -141,8 +156,6 @@ export function buildReactFlowTopology(
 		return standaloneGroups.groupIdByNodeId.has(node.id);
 	});
 	const nodes = sortedNodes.map<OwnershipGraphNode>((node) => {
-		const selected = selectedNodeId === node.id;
-		const connected = selectedPath.nodeIds.has(node.id) && !selected;
 		const standalone = standaloneGroups.groupIdByNodeId.has(node.id);
 		return {
 			id: node.id,
@@ -154,9 +167,9 @@ export function buildReactFlowTopology(
 			data: {
 				node,
 				resource: topologySelectableResource(node),
-				selected,
-				connected,
-				dimmed: hasSelection && !selectedPath.nodeIds.has(node.id),
+				selected: false,
+				connected: false,
+				dimmed: false,
 				standalone,
 				showPortHints: options.showPortHints ?? false,
 			},
@@ -165,7 +178,7 @@ export function buildReactFlowTopology(
 			draggable: false,
 			selectable: true,
 			connectable: false,
-			selected,
+			selected: false,
 			sourcePosition: Position.Right,
 			targetPosition: Position.Left,
 			style: { width: standalone ? STANDALONE_NODE_WIDTH : NODE_WIDTH },
@@ -174,11 +187,6 @@ export function buildReactFlowTopology(
 	});
 	const edges = graph.edges
 		.map<OwnershipGraphEdge>((edge) => {
-			const selectedEdge = selectedPath.edgeIds.has(edge.id);
-			const mutedBySelection = Boolean(selectedNodeId && !selectedEdge);
-			const stroke = selectedEdge
-				? "var(--primary)"
-				: "var(--muted-foreground)";
 			return {
 				id: edge.id,
 				source: edge.source,
@@ -187,17 +195,17 @@ export function buildReactFlowTopology(
 				data: { relation: edge.relation },
 				pathOptions: EDGE_PATH_OPTIONS,
 				focusable: false,
-				zIndex: selectedEdge ? 10 : 0,
+				zIndex: 0,
 				markerEnd: {
 					type: MarkerType.ArrowClosed,
-					width: selectedEdge ? 18 : 14,
-					height: selectedEdge ? 18 : 14,
-					color: stroke,
+					width: 14,
+					height: 14,
+					color: "var(--muted-foreground)",
 				},
 				style: {
-					opacity: selectedEdge ? 1 : mutedBySelection ? 0.16 : 0.72,
-					stroke,
-					strokeWidth: selectedEdge ? 2.8 : 1.8,
+					opacity: 0.72,
+					stroke: "var(--muted-foreground)",
+					strokeWidth: 1.8,
 					strokeDasharray:
 						edge.relation === "creates" || edge.relation === "selects"
 							? "5 5"
@@ -207,6 +215,92 @@ export function buildReactFlowTopology(
 		});
 
 	return { nodes: [...standaloneGroups.groupNodes, ...nodes], edges };
+}
+
+export function applyReactFlowTopologySelection(
+	graphTopology: ReactFlowTopology,
+	topology: ResourceTopology,
+	selectedNodeId: string | null,
+): ReactFlowTopology {
+	return applyReactFlowTopologySelectionWithIndex(
+		graphTopology,
+		buildReactFlowTopologySelectionIndex(topology),
+		selectedNodeId,
+	);
+}
+
+export function buildReactFlowTopologySelectionIndex(
+	topology: ResourceTopology,
+): ReactFlowTopologySelectionIndex {
+	const graph = buildTopologyGraph(topology);
+	const nodeIdsByKind = new Map<string, string[]>();
+	for (const node of graph.nodes) {
+		nodeIdsByKind.set(node.kind, [...(nodeIdsByKind.get(node.kind) ?? []), node.id]);
+	}
+	return { graph, nodeIdsByKind };
+}
+
+export function applyReactFlowTopologySelectionWithIndex(
+	graphTopology: ReactFlowTopology,
+	index: ReactFlowTopologySelectionIndex,
+	selectedNodeId: string | null,
+): ReactFlowTopology {
+	if (!selectedNodeId) return graphTopology;
+
+	const selectedPath = selectedTopologyPath(index.graph, selectedNodeId);
+	const hasSelection = selectedPath.nodeIds.size > 0;
+	if (!hasSelection) return graphTopology;
+
+	const nodes = graphTopology.nodes.map<OwnershipGraphNode>((node) => {
+		if (node.type === "standaloneKindGroup") {
+			const kindNodeIds = index.nodeIdsByKind.get(node.data.kind) ?? [];
+			const dimmed = !kindNodeIds.some((nodeId) =>
+				selectedPath.nodeIds.has(nodeId),
+			);
+			return {
+				...node,
+				data: {
+					...node.data,
+					dimmed,
+				},
+			};
+		}
+
+		const selected = selectedNodeId === node.id;
+		const connected = selectedPath.nodeIds.has(node.id) && !selected;
+		return {
+			...node,
+			data: {
+				...node.data,
+				selected,
+				connected,
+				dimmed: !selectedPath.nodeIds.has(node.id),
+			},
+			selected,
+		};
+	});
+	const edges = graphTopology.edges.map<OwnershipGraphEdge>((edge) => {
+		const selectedEdge = selectedPath.edgeIds.has(edge.id);
+		const stroke = selectedEdge ? "var(--primary)" : "var(--muted-foreground)";
+		return {
+			...edge,
+			zIndex: selectedEdge ? 10 : 0,
+			markerEnd: {
+				type: MarkerType.ArrowClosed,
+				width: selectedEdge ? 18 : 14,
+				height: selectedEdge ? 18 : 14,
+				color: stroke,
+			},
+			style: {
+				...edge.style,
+				opacity: selectedEdge ? 1 : 0.16,
+				stroke,
+				strokeWidth: selectedEdge ? 2.8 : 1.8,
+			},
+		};
+	});
+
+	return { nodes, edges };
 }
 
 export function buildTopologyRows(topology: ResourceTopology): TopologyRow[] {

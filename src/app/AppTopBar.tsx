@@ -2,7 +2,7 @@ import { FolderOpen, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ClusterSelector } from "@/components/ClusterSelector";
 import { UpdateStatusButton } from "@/features/app-updates";
-import { ActivePortForwards } from "@/features/live-sessions";
+import { ActivePortForwards } from "@/features/live-sessions/ActivePortForwards";
 
 interface AppTopBarProps {
 	clusterContext: string;
