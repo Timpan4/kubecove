@@ -261,5 +261,7 @@ spec:
 		expect(source).toContain("Save preset");
 		expect(source).toContain("savePortForward(activeWorkspace.id");
 		expect(source).toContain("Preset already saved");
+		expect(source).toContain("workspaceScopeContexts(activeWorkspace.scope)");
+		expect(source).toContain("Workspace scope must include this Service");
 	});
 });

@@ -35,7 +35,7 @@ import {
 } from "@/lib/tauri";
 import type { PortForwardSessionSummary, ResourceSummary } from "@/lib/types";
 import { queryKeys } from "@/lib/queryKeys";
-import { useWorkspaceStore } from "@/lib/workspaces";
+import { useWorkspaceStore, workspaceScopeContexts } from "@/lib/workspaces";
 import { getErrorMessage } from "./helpers";
 import {
 	isPortForwardForResource,
@@ -211,6 +211,17 @@ export function PortForwardTab({
 		);
 		if (typeof parsed === "string") {
 			setFormError(parsed);
+			return;
+		}
+		const workspaceContexts = workspaceScopeContexts(activeWorkspace.scope);
+		if (
+			!workspaceContexts.includes(resource.cluster) ||
+			(activeWorkspace.scope.namespaces.length > 0 &&
+				!activeWorkspace.scope.namespaces.includes(resource.namespace ?? ""))
+		) {
+			setSaveError(
+				"Workspace scope must include this Service before saving a preset.",
+			);
 			return;
 		}
 		const duplicate = (activeWorkspace.portForwards ?? []).some(
