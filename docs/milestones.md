@@ -104,7 +104,7 @@ Test target: local Tauri dev app backed by the `admin@solid-k8s` context after K
 - [x] Pass: opening the saved workspace restored the overview for all namespaces and showed live cluster counts, incident shortcuts, Argo CD summary, and CPU/memory footer.
 - [x] Pass: resource browser opened from the overview.
 - [ ] Issue: Pod resource listing remained on `Loading all namespaces` for more than 20 seconds, blocking table, detail, YAML, event, log, metrics, and topology smoke coverage in this run.
-- [ ] Issue: starting `bun run tauri dev` while a Vite server already owns port 1420 leaves a confusing partial state: the Tauri window can launch, but the `beforeDevCommand` exits with a port-in-use error.
+- [x] Fixed: KubeCove dev mode uses ports 1430/1431 so it can run alongside another Tauri project on the default 1420/1421 ports.
 - [ ] Improvement: the Resources shortcut opens an empty resource browser state that says "Select a section from the sidebar"; defaulting to the saved workspace kind scope or highlighting the next required click would make the path less abrupt.
 - [ ] Improvement: sidebar group labels and disclosure chevrons behave differently; clicking Workloads text selects the group, while clicking the chevron expands it. Make the hit target or affordance clearer.
 - [ ] Improvement: workspace card keyboard tab order reached Edit before Open during this smoke pass, making the safest primary action less direct from the keyboard.

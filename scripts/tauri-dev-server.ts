@@ -1,4 +1,5 @@
-const DEV_ORIGIN = "http://localhost:1420";
+const DEV_PORT = 1430;
+const DEV_ORIGIN = `http://localhost:${DEV_PORT}`;
 const VITE_CLIENT_URL = `${DEV_ORIGIN}/@vite/client`;
 const VITE_CLIENT_MARKERS = ["import.meta.hot", "createHotContext", "/@vite/client"];
 
@@ -41,7 +42,7 @@ if (await hasKubeCoveViteServer()) {
 
 if (await hasAnyServer()) {
 	console.error(
-		`[kubecove:dev] Port 1420 is already in use, but ${DEV_ORIGIN} does not look like the KubeCove Vite dev server.`,
+		`[kubecove:dev] Port ${DEV_PORT} is already in use, but ${DEV_ORIGIN} does not look like the KubeCove Vite dev server.`,
 	);
 	console.error("[kubecove:dev] Stop that process, then run bun run tauri dev again.");
 	process.exit(1);
