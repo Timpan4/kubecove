@@ -533,5 +533,6 @@ export const formatMetadata = (
 export const getErrorMessage = (err: unknown): string => {
 	if (err instanceof Error) return err.message;
 	if (typeof err === "string") return err;
+	if (isRecord(err) && typeof err.message === "string") return err.message;
 	return "Unknown error";
 };

@@ -8,6 +8,7 @@ mod metrics;
 mod namespace;
 mod rbac;
 mod resource;
+mod sessions;
 mod streams;
 mod usage;
 
@@ -36,6 +37,7 @@ pub use resource::{
     OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull, ResourceListRequest,
     ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode, TopologyRelation,
 };
+pub use sessions::{PortForwardRequest, PortForwardSessionSummary};
 pub use streams::{
     PodLogStreamRequest, StreamMessage, WatchResourceKey, WatchResourceKind, WatchResourceTarget,
 };

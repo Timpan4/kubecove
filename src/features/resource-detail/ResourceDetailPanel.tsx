@@ -23,6 +23,7 @@ import {
 } from "./helpers";
 import { LogsTab } from "./LogsTab";
 import type { ParsedLogLine } from "./log-helpers";
+import { PortForwardTab } from "./PortForwardTab";
 import { useResourceDetails } from "./useResourceDetails";
 import { YamlTab } from "./YamlTab";
 
@@ -172,6 +173,11 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 								Logs
 							</TabsTrigger>
 						)}
+						{(resource.kind === "Pod" || resource.kind === "Service") && (
+							<TabsTrigger className={PANEL_TAB_CLASS} value="portForward">
+								Forward
+							</TabsTrigger>
+						)}
 						<TabsTrigger className={PANEL_TAB_CLASS} value="yaml">
 							YAML
 						</TabsTrigger>
@@ -211,6 +217,15 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 								onSelectedContainerChange={setSelectedContainer}
 								onLatestLogLineChange={setTimelineLogLine}
 								active={activeTab === "logs"}
+							/>
+						</TabsContent>
+					)}
+					{(resource.kind === "Pod" || resource.kind === "Service") && (
+						<TabsContent value="portForward" className="m-0">
+							<PortForwardTab
+								client={client}
+								resource={resource}
+								active={activeTab === "portForward"}
 							/>
 						</TabsContent>
 					)}

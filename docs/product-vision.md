@@ -2,7 +2,9 @@
 
 ## Identity
 
-KubeCove is a local desktop Kubernetes workspace for operators and app developers who need fast, safe cluster exploration. It is not a thin `kubectl` wrapper and not a mutation-heavy IDE. Its product stance is focused clarity under load: keep context visible, make resource state easy to scan, and move from symptoms to detail without losing the namespace or app boundary.
+KubeCove is a local desktop Kubernetes workspace for operators and app developers who need fast, safe cluster work. It is not a thin `kubectl` wrapper and not a free-form mutation console. Its product stance is focused clarity under load: keep context visible, make resource state easy to scan, and move from symptoms to detail without losing the namespace or app boundary.
+
+The current beta is inspection-first with governed live sessions beginning with Pod and selector-backed Service port-forwarding. The architecture is designed for guarded cluster operations when those workflows have typed Rust-side commands, clear target scope, confirmation, and permission-aware UX.
 
 K8Studio and Aptakube are public benchmarks for capability breadth and low-friction desktop UX. KubeCove borrows product lessons, not code, branding, assets, layouts, or marketing text.
 
@@ -26,13 +28,14 @@ Inside a workspace, KubeCove uses a hybrid IDE shape:
 - center resource table and topology/map surfaces
 - right detail panel for YAML, details, events, logs, health, and incident summaries
 
-The table answers "what exists?" The detail panel answers "what is wrong or notable?" The topology view answers "how is this connected?"
+The table answers "what exists?" The detail panel answers "what is wrong or notable?" The topology view answers "how is this connected?" Future operation surfaces must keep the same context and target visibility before acting.
 
 ## Core Jobs
 
 1. Browse resources quickly across selected namespaces and contexts.
 2. Troubleshoot incidents from health signals, warning events, restarts, logs, and YAML.
 3. Understand application topology through owner references, services, ingresses, Argo CD, and Helm metadata.
+4. Add guarded cluster operations only after the inspection path makes the target and expected effect clear.
 
 ## Navigation Model
 
@@ -72,18 +75,18 @@ Argo CD support starts Kubernetes-API-first:
 - show sync, health, destination namespace, source repo, revision, and project
 - group and filter resources by Argo application
 
-Helm support should follow the same read-only principle: inspect release metadata and related resources without turning Helm into the core data path.
+Helm support follows the same inspection-first principle: inspect release metadata and related resources without turning Helm into the core data path.
 
-Argo CD API, Argo CD CLI, Helm CLI, sync, rollback, diff, and mutation workflows require separate ADRs and guardrails.
+Argo CD API, Argo CD CLI, Helm CLI, sync, rollback, diff, and other cluster-changing workflows require ADR-backed guardrails before they become product paths.
 
 ## Safety
 
-The current product is read-only. No create, update, delete, scale, restart, sync, rollback, exec, or port-forward workflow should be exposed as a normal path without a new ADR.
+KubeCove is inspection-first today and mutation-ready only through governed operations. Pod and selector-backed Service port-forwarding are the first live-session workflows and follow [ADR 0003](decisions/0003-guarded-live-sessions.md). No create, update, delete, scale, restart, sync, rollback, or exec workflow should be exposed as a normal path until it satisfies [ADR 0004](decisions/0004-guarded-cluster-operations.md) or a focused ADR.
 
-Future mutations must be deliberate, permission-aware, reversible where possible, and clearly separated from default browsing.
+Future operations must be deliberate, permission-aware, reversible where possible, and clearly separated from browsing.
 
 ## Roadmap Shape
 
-Near-term work should harden the current read-only incident workflow: workspace restore, resource tables, topology, Argo CD, Helm, RBAC, metrics, events, logs, and release readiness.
+Near-term work should harden the current inspection workflow: workspace restore, resource tables, topology, Argo CD, Helm, RBAC, metrics, events, logs, and release readiness.
 
-Later product areas can include guarded YAML apply, port-forward, pod exec, richer Helm workflows, deeper RBAC/security inspection, AI-assisted troubleshooting, and durable local workspace history.
+Later product areas can include guarded YAML apply, deployment-aware port-forwarding, pod exec, richer Helm workflows, deeper RBAC/security inspection, AI-assisted troubleshooting, and durable local workspace history.

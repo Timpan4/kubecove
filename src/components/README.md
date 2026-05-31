@@ -14,6 +14,7 @@ Not allowed:
 - components used by exactly one feature
 - components that import from `src/features/`
 - feature-specific wrappers kept here for convenience
+- operation-specific confirmation flows that belong to a product feature
 
 Older flat components (`ClusterSelector`, `NamespaceList`, `KindList`, `SidebarTree`) still live here. Move them into feature folders when touching their structure. New feature-specific components should start in `src/features/<area>/`.
 

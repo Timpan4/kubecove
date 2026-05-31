@@ -6,6 +6,8 @@ https://github.com/Timpan4/kubecove/releases
 
 Use a release installer when testing the app. Build from source only for development work.
 
+Current version metadata: `0.3.1`.
+
 ## Installer Guide
 
 - macOS: download the `.dmg`. The beta is unsigned; macOS may require right-click Open or approval from System Settings.
@@ -15,6 +17,12 @@ Use a release installer when testing the app. Build from source only for develop
 Installers contain the app and normal Tauri runtime/installer files. They do not bundle `kubectl`, Helm, Argo CD, kubeconfigs, tokens, or cluster credentials.
 
 Windows releases intentionally publish the NSIS setup executable, not MSI, so in-app updates stay on one installer path. Users who installed an older MSI build may see one prompt to uninstall that MSI; after uninstalling it once and installing the NSIS setup executable, future in-app updates should not require that migration step.
+
+## Product Safety
+
+The current beta is inspection-first and includes guarded Pod and selector-backed Service port-forward sessions. It supports local cluster browsing, resource details, YAML, events, logs, metrics, topology, Argo CD inspection, Helm release inspection, RBAC summaries, and local-only port-forwarding.
+
+Cluster-changing workflows such as apply, delete, scale, sync, rollback, and exec are not release features unless a typed command and guarded UX path exist. Pod and selector-backed Service port-forwarding follows [ADR 0003](decisions/0003-guarded-live-sessions.md). Future operation releases must follow [ADR 0004](decisions/0004-guarded-cluster-operations.md).
 
 ## Maintainer Release Flow
 
@@ -66,21 +74,23 @@ Manual Tauri path:
 3. Select a readable context and confirm namespaces load.
 4. Open a saved or newly created workspace.
 5. Open the resource browser and confirm resources load for the saved scope.
-6. Select a resource and confirm details, read-only YAML, events, and logs behave when available.
+6. Select a resource and confirm details, YAML, events, and logs behave when available.
 7. Check Argo CD and Helm sections when the cluster provides matching metadata.
 
-Most recent partial smoke, 2026-05-22:
+Most recent partial smoke, 2026-05-26:
 
-- `bun run typecheck`, `bun test`, `bun run rust:test`, and `bun run rust:check` passed after repairing a stale `node_modules` install with `bun install --force`.
-- `bun run tauri dev` launched KubeCove v0.2.1 and served Vite on `http://localhost:1420/`.
-- The Tauri desktop window loaded the readable `admin@solid-k8s` context and listed namespaces including `alloy`, `argocd`, `cert-manager`, `default`, `kube-system`, `monitoring`, and `traefik`.
-- Full workspace-open, resource-browser, resource-detail, YAML, events, logs, Argo, and Helm click-through remains the next manual release gate.
+- The local Tauri dev app used `admin@solid-k8s` after KubeCove 0.3.0 was released.
+- The workspace launcher loaded the saved workspace, restored the overview, and showed live cluster counts, incident shortcuts, Argo CD summary, and CPU/memory footer.
+- The resource browser opened from the overview.
+- Pod resource listing remained on `Loading all namespaces` for more than 20 seconds, blocking full table, detail, YAML, event, log, metrics, and topology smoke coverage.
+- KubeCove dev mode now uses ports 1430/1431 so it can run alongside another Tauri project on the default 1420/1421 ports.
 
 ## Publishing Checklist
 
 - Confirm the release contains macOS, Windows, and Linux assets.
 - Download at least one artifact and confirm it launches.
 - Smoke test context listing, namespace/resource browsing, and clean errors when kubeconfig or cluster access is unavailable.
+- Confirm release notes do not claim guarded operations that are not implemented.
 - Share the release only after artifact checks pass.
 
 If a release is bad, leave or restore the prior release as the recommended tester download and delete the broken release after replacing it.

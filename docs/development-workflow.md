@@ -63,11 +63,12 @@ Do not require property tests for React rendering, live cluster integration, Tau
 
 Run the checks that match the work:
 
-- docs-only: pre-commit hook or targeted docs sanity check
+- docs-only: targeted Markdown/link/wording checks and `git diff --check`
 - frontend: `bun run typecheck` and relevant `bun test`
 - backend: `bun run rust:check` and relevant `bun run rust:test`
 - behavior change: the nearest focused test
 - Tauri integration: `bun run tauri dev` or build/smoke test, depending on scope
 - release change: `bun run release:dry-run`
+- guarded operation change: ADR 0003 or ADR 0004 checklist plus the nearest frontend/backend checks
 
 If a check cannot run locally, record the exact blocker and what remains unverified.

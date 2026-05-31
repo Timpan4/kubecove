@@ -12,7 +12,7 @@ Goal: create the project container for implementation work.
 - [x] Capture agent guidance.
 - [x] Create GitHub repository and push the foundation commit.
 
-## Milestone 1: Read-Only Kubernetes Browser
+## Milestone 1: Kubernetes Inspection Browser
 
 Goal: browse common Kubernetes resources through Rust-side Tauri commands.
 
@@ -22,10 +22,10 @@ Goal: browse common Kubernetes resources through Rust-side Tauri commands.
 - [x] Implement context discovery and context-specific client construction.
 - [x] Implement namespace listing.
 - [x] Implement resource listing for Pods, Deployments, Services, Ingresses, ConfigMaps, Secrets, PVCs, Jobs, and CronJobs.
-- [x] Implement read-only resource YAML and details.
+- [x] Implement resource YAML and detail inspection.
 - [x] Build sidebar, resource table, and detail panel.
 - [x] Add namespace multi-select filtering.
-- [x] Add read-only YAML/details tabs.
+- [x] Add YAML and details tabs.
 - [x] Run frontend typecheck, Rust check, and app dev mode.
 
 ## Milestone 2: Usability Pass
@@ -41,9 +41,9 @@ Goal: make the browser useful instead of merely connected.
 - [x] Add loading, empty, and error states.
 - [x] Persist selected context and namespaces in local UI state.
 
-## Milestone 3: Argo CD Native Read-Only Views
+## Milestone 3: Argo CD Native Inspection Views
 
-Goal: make Argo CD a first-class read-only grouping layer through the Kubernetes API.
+Goal: make Argo CD a first-class grouping layer through the Kubernetes API.
 
 - [x] Detect whether Argo CD CRDs exist in the selected context.
 - [x] List Argo CD Applications.
@@ -51,7 +51,7 @@ Goal: make Argo CD a first-class read-only grouping layer through the Kubernetes
 - [x] List Argo CD AppProjects.
 - [x] Summarize Application sync status, health status, destination namespace, source repo, revision, and project.
 - [x] Group resources by Argo application when tracking metadata exists.
-- [x] Add read-only Argo application detail panel.
+- [x] Add Argo application detail panel.
 - [x] Add global Argo application filter.
 
 ## Milestone 4: Discovery and Grouping
@@ -77,7 +77,7 @@ Goal: restore operator intent through live workspace scopes instead of stale obj
 
 ## Milestone 6: Incident Workflow Polish
 
-Goal: make the read-only browser useful during troubleshooting.
+Goal: make the inspection browser useful during troubleshooting.
 
 - [x] Add unhealthy investigation filtering.
 - [x] Keep table, map, and detail selection synchronized.
@@ -88,11 +88,11 @@ Goal: make the read-only browser useful during troubleshooting.
 
 ## Milestone 7: Stabilization and Release Readiness
 
-Goal: make the current read-only incident workflow a reliable beta baseline.
+Goal: make the current inspection-first incident workflow a reliable beta baseline.
 
 - [x] Repair frontend verification after local `node_modules` corruption.
 - [x] Run frontend typecheck, frontend tests, and Rust tests.
-- [x] Audit read-only logs, events, topology, and watch refresh behavior against the current UI.
+- [x] Audit logs, events, topology, and watch refresh behavior against the current UI.
 - [x] Reconcile README and milestone tracking for already-built incident surfaces.
 - [ ] Run a manual Tauri smoke test against a readable cluster before the next beta release.
 
@@ -110,15 +110,25 @@ Test target: local Tauri dev app backed by the `admin@solid-k8s` context after K
 - [ ] Improvement: workspace card keyboard tab order reached Edit before Open during this smoke pass, making the safest primary action less direct from the keyboard.
 - [ ] Improvement: Windows smoke automation needs the Tauri window explicitly foregrounded; the WebView exposes only an opaque `WRY_WEBVIEW` pane through UI Automation.
 
+## Milestone 8: Guarded Live Sessions
+
+Goal: introduce live operational sessions without turning KubeCove into a shell wrapper.
+
+- [x] Add ADR 0003 for guarded live Kubernetes sessions.
+- [x] Add Pod and selector-backed Service port-forward command, models, typed frontend wrappers, and visible session controls.
+- [x] Run a manual port-forward smoke test against a readable cluster before release.
+- [ ] Add a separate design pass before pod exec.
+
 ## Cross-Cutting Tracks
 
 ### Security and Safety
 
 - [x] Verify frontend cannot invoke arbitrary shell commands.
 - [x] Keep kubeconfig secrets Rust-side.
-- [x] Keep the current product read-only.
-- [ ] Make future mutation commands explicit and permission-gated.
-- [ ] Add ADR before Argo CD API, CLI, sync, rollback, or diff support.
+- [x] Keep the current beta inspection-first except for explicitly governed live sessions.
+- [x] Add ADR 0004 for guarded cluster operations.
+- [ ] Implement future cluster-changing commands as explicit, typed, permission-aware workflows.
+- [ ] Add focused ADR coverage before Argo CD API, CLI, sync, rollback, or diff support.
 
 ### Agent Skills
 
@@ -129,12 +139,12 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 - [ ] `k8s-ux-resource-browser`
 - [ ] `argocd-awareness`
 - [ ] Revisit `frontend-state-table-patterns` after frontend patterns settle.
-- [ ] Revisit `safe-k8s-mutations` before mutation work starts.
+- [ ] Revisit `safe-k8s-mutations` before broader guarded operation work starts.
 
 ## Later Product Areas
 
-- YAML edit/apply with explicit guardrails
-- port-forward
+- guarded YAML edit/apply
+- deployment-aware port-forwarding
 - pod exec
 - richer Helm workflows
 - deeper RBAC and security inspection

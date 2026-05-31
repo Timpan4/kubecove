@@ -1,14 +1,37 @@
 # KubeCove
 
-KubeCove is a local desktop workspace for Kubernetes operations. It starts from contexts, namespaces, and saved workspaces instead of raw resource-kind menus, then lets operators move quickly into resource tables, topology, Argo CD signals, Helm metadata, events, logs, YAML, and read-only detail views.
+KubeCove is a local desktop workspace for Kubernetes operations. It is built for operators and app developers who need to move from cluster scope to namespace, application, resource state, topology, events, logs, metrics, YAML, Helm metadata, Argo CD signals, and RBAC context without losing their place.
 
-The app is local-first and read-only by default. Kubernetes access stays behind Rust-side Tauri commands, kubeconfig contents never cross into React, and the core data path uses `kube-rs` rather than shelling out to `kubectl`.
+The current beta is inspection-first with governed Pod and selector-backed Service port-forward sessions. KubeCove does not deploy agents into clusters, does not expose raw kubeconfig contents to React, and does not let the frontend run arbitrary shell commands. The architecture is ready for guarded cluster operations, but apply, delete, scale, sync, rollback, and exec workflows are not shipped unless a typed Rust-side command and explicit UX guardrails exist.
 
-## Quick Start
+Current version metadata: `0.3.1`.
 
-Use the beta installers from [GitHub Releases](https://github.com/Timpan4/kubecove/releases) when you only want to test the app.
+## Get KubeCove
 
-Development requirements:
+Use the beta installers from [GitHub Releases](https://github.com/Timpan4/kubecove/releases) when you want to test the app.
+
+- macOS: `.dmg`
+- Windows: NSIS setup executable
+- Linux: `.AppImage`, `.deb`, or `.rpm` when present
+
+Beta installers are unsigned at the OS package level, so macOS Gatekeeper or Windows SmartScreen may require an explicit approval step. In-app updater artifacts are signed through the Tauri updater key.
+
+## Current Capabilities
+
+- Local kubeconfig context discovery without sending raw kubeconfig data to the frontend.
+- Saved workspaces for context, namespace, kind, filter, shortcut, and layout scope.
+- Namespace-first and context-first resource browsing across discovered Kubernetes kinds.
+- Fast resource tables with namespace, kind, health, search, Argo CD app, and owner filters.
+- Resource inspection through details, YAML, events, logs, metrics, and topology views.
+- Argo CD CRD detection with Application, ApplicationSet, and AppProject browsing.
+- Helm release detection from cluster metadata.
+- RBAC summaries and risk indicators.
+- Guarded Pod and selector-backed Service port-forward sessions with local-only listeners.
+- Unsigned beta desktop installers for macOS, Windows, and Linux.
+
+## Development
+
+Requirements:
 
 - Bun
 - Rust and Cargo
@@ -43,23 +66,13 @@ Create a beta release tag from the current `origin/main` release version:
 bun run release
 ```
 
-## Current Capabilities
-
-- List local kubeconfig contexts without exposing raw kubeconfig data.
-- Create, edit, delete, and restore local workspace scopes.
-- Browse namespaces and discovered Kubernetes resource kinds.
-- Filter resource tables by namespace, kind, health, search text, Argo CD app, and owner context.
-- Inspect resources through read-only details, YAML, events, logs, metrics, and topology views.
-- Detect Argo CD CRDs and browse Applications, ApplicationSets, and AppProjects.
-- Detect Helm releases from cluster metadata.
-- Inspect RBAC summaries and risk indicators.
-- Publish unsigned beta installers for macOS, Windows, and Linux.
-
 ## Safety Model
 
-KubeCove does not deploy agents into clusters. It does not expose raw kubeconfig contents to the frontend, and React cannot run arbitrary shell commands.
+KubeCove keeps Kubernetes access behind Rust-side Tauri commands. Normal list, get, discovery, watch, logs, events, metrics, Argo CD, Helm, and RBAC flows use `kube-rs` and frontend-safe serde contracts.
 
-Mutation workflows such as apply, delete, scale, sync, rollback, exec, or port-forward require a new Architecture Decision Record and explicit UX guardrails before they can become product features.
+Pod and selector-backed Service port-forwarding follows [ADR 0003](docs/decisions/0003-guarded-live-sessions.md): exact targets, local-only listeners, visible sessions, and Rust-side Kubernetes access.
+
+Future cluster-changing workflows must follow [ADR 0004](docs/decisions/0004-guarded-cluster-operations.md): typed commands, visible target scope, confirmation, user-visible errors, and permission-aware UX. CLI-backed, Argo CD API, sync, rollback, diff, exec, or broad filesystem workflows need focused design before they become product paths.
 
 ## Stack
 
@@ -75,7 +88,13 @@ Mutation workflows such as apply, delete, scale, sync, rollback, exec, or port-f
 
 ## Docs
 
-Start with the [docs index](docs/README.md). The highest-signal entry points are [Product Vision](docs/product-vision.md), [Architecture Blueprint](docs/architecture-blueprint.md), [Milestones](docs/milestones.md), and [AGENTS.md](AGENTS.md).
+Start with the [docs index](docs/README.md). High-signal entry points:
+
+- [Product Vision](docs/product-vision.md)
+- [Architecture Blueprint](docs/architecture-blueprint.md)
+- [Milestones](docs/milestones.md)
+- [Release Guide](docs/release.md)
+- [Agent Guide](AGENTS.md)
 
 ## License
 

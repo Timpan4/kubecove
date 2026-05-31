@@ -6,7 +6,7 @@ This file tracks project-specific Codex skills that may be worth creating later.
 
 ### `tauri-security-review`
 
-Use when implementing or reviewing Tauri commands, plugins, capabilities, filesystem access, shell access, Kubernetes credential handling, or frontend/backend boundaries.
+Use when implementing or reviewing Tauri commands, plugins, capabilities, filesystem access, shell access, Kubernetes credential handling, guarded operations, or frontend/backend boundaries.
 
 Rules:
 
@@ -14,7 +14,7 @@ Rules:
 - No kubeconfig, token, certificate, or secret leakage to React.
 - Prefer narrow typed Tauri commands over generic bridges.
 - Review Tauri capabilities and permissions when adding plugins.
-- Require an ADR for shell plugin usage, broad filesystem access, mutation commands, or long-lived sensitive state.
+- Require an ADR for shell plugin usage, broad filesystem access, cluster-changing commands, or long-lived sensitive state.
 
 Triggers:
 
@@ -22,10 +22,11 @@ Triggers:
 - "Expose a Rust function to React."
 - "Add a Tauri plugin."
 - "Review whether this leaks kubeconfig data."
+- "Add apply/delete/scale/sync support."
 
 ### `kube-rs-resource-api`
 
-Use when implementing Kubernetes list, get, watch, discovery, dynamic object, CRD, event, metrics, log, or serialization paths in Rust.
+Use when implementing Kubernetes list, get, watch, discovery, dynamic object, CRD, event, metrics, log, serialization, or governed operation paths in Rust.
 
 Rules:
 
@@ -34,6 +35,8 @@ Rules:
 - Keep typed resources simple while allowing discovery and dynamic resources to fit.
 - Keep API errors clean and serializable.
 - Keep raw Kubernetes objects out of general frontend state.
+- For live-session paths, follow ADR 0003 before writing command code.
+- For broader cluster-changing paths, follow ADR 0004 before writing command code.
 
 Triggers:
 
@@ -42,6 +45,7 @@ Triggers:
 - "Implement discovery."
 - "Serialize resource YAML."
 - "Add watch, events, logs, or metrics support."
+- "Add a guarded Kubernetes operation."
 
 ### `k8s-ux-resource-browser`
 
@@ -53,7 +57,7 @@ Rules:
 - Keep selected context and namespace scope visible.
 - Treat persistent global filters as core product behavior.
 - Use dense, fast tables for repeated resource work.
-- Keep YAML and details read-only by default.
+- Keep inspection surfaces separate from future operation surfaces.
 - Avoid marketing-page patterns inside the app shell.
 
 Triggers:
@@ -72,9 +76,9 @@ Rules:
 
 - Start with Kubernetes API access to Argo CD CRDs and tracking metadata.
 - Detect ownership from `argocd.argoproj.io/instance`, `argocd.argoproj.io/tracking-id`, `app.kubernetes.io/instance`, and related annotations/labels.
-- Treat Argo CD API, CLI, sync, rollback, and diff as future features that need ADRs.
-- Warn before future mutations against Argo-managed resources.
-- Keep first-class Argo support read-only unless a future ADR says otherwise.
+- Treat Argo CD API, CLI, sync, rollback, and diff as future features that need ADR-backed guardrails.
+- Warn before future operations against Argo-managed resources.
+- Keep first-class Argo support inspection-first unless an ADR says otherwise.
 
 Triggers:
 
@@ -98,11 +102,11 @@ Expected scope:
 
 ### `safe-k8s-mutations`
 
-Create before apply, delete, scale, restart, sync, rollback, port-forward, exec, or terminal-backed actions.
+Create before apply, delete, scale, restart, sync, rollback, exec, terminal-backed actions, or live-session expansion beyond ADR 0003 port-forwarding.
 
 Expected scope:
 
-- Read-only default.
+- ADR 0004 command and UX contract.
 - Server-side dry-run where available.
 - Diff before apply.
 - Explicit confirmation UX.

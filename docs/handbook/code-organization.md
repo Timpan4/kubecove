@@ -13,6 +13,7 @@ Current areas:
 - `app-updates/`
 - `argo/`
 - `helm/`
+- `live-sessions/`
 - `rbac/`
 - `resource-detail/`
 - `resources/`
@@ -75,6 +76,7 @@ One file or folder per command domain. Each `#[tauri::command]` belongs in its d
 - `argo`
 - `helm`
 - `rbac`
+- `sessions`
 - `usage`
 
 Shared command helpers belong in `commands/helpers.rs` or a helper submodule. `commands/mod.rs` re-exports commands for `lib.rs` invoke registration.
@@ -114,4 +116,6 @@ Repo-level `scripts/` contains maintainer automation. It must not contain app ru
 - Frontend never executes shell commands.
 - All cluster data crosses the Tauri boundary through typed wrappers.
 - Kubeconfig contents, tokens, and certificate data never cross into React.
+- Live-session commands follow [ADR 0003](../decisions/0003-guarded-live-sessions.md).
+- Other cluster-changing commands follow [ADR 0004](../decisions/0004-guarded-cluster-operations.md).
 - Security-sensitive changes require an ADR.

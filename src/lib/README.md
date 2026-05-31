@@ -9,6 +9,7 @@ Allowed:
 - Zustand stores and composed dashboard hooks in `hooks.ts`
 - workspace, settings, query-key, release-channel, diagnostics, and formatting helpers
 - pure resource health, metrics, visuals, and tree-navigation logic
+- future guarded operation helpers when they are pure and shared
 
 Not allowed:
 
@@ -16,6 +17,7 @@ Not allowed:
 - imports from `src/features/`
 - imports from `src/components/`
 - logic that only one feature uses
+- raw Kubernetes access, raw `invoke()` call sites outside `tauri.ts`, or shell command execution
 
 Feature-only logic belongs beside that feature. Generic React hooks belong in `src/hooks/`.
 

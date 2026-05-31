@@ -1,6 +1,6 @@
 # Agent Guide
 
-This repository is for a local desktop Kubernetes IDE built with Tauri v2, React, TypeScript, Bun, Rust, and `kube-rs`.
+This repository is for KubeCove, a local desktop Kubernetes workspace built with Tauri v2, React, TypeScript, Bun, Rust, and `kube-rs`.
 
 Before making implementation changes, skim the [docs index](docs/README.md). The minimum reading set is:
 
@@ -12,23 +12,34 @@ Before making implementation changes, skim the [docs index](docs/README.md). The
 
 ## Core Constraints
 
-- Keep the MVP read-only.
+- Keep the current beta inspection-first outside ADR-approved live-session or operation paths.
 - Do not deploy anything into Kubernetes clusters.
 - Do not expose raw kubeconfig contents to the frontend.
 - Do not let frontend code run arbitrary shell commands.
-- Use `kube-rs` and the Kubernetes API for core list/get/discovery flows.
+- Use `kube-rs` and the Kubernetes API for core list/get/discovery/watch flows.
+- Pod and selector-backed Service port-forwarding follow ADR 0003. Broader cluster-changing workflows must follow ADR 0004: typed Rust-side commands, visible target scope, confirmation where needed, and permission-aware UX.
 - Treat `kubectl`, Helm, and Argo CD CLIs as future optional sidecars or fallbacks, not as the core data path.
 - Treat Argo CD as a native product area, starting with Kubernetes API access to Argo CD CRDs and tracking metadata.
 - Keep modules small and typed so future agent work can target focused files.
 
 ## Preferred Architecture
 
-Rust-side Tauri commands own Kubernetes access:
+Rust-side Tauri commands own Kubernetes access. Current command families include:
 
 - `list_kube_contexts`
 - `list_namespaces`
+- `list_resource_kinds`
 - `list_resources`
+- `list_dynamic_resources`
+- `list_resource_scope`
 - `get_resource_yaml`
+- `get_resource_details`
+- `list_resource_events`
+- `list_resource_topology`
+- `list_resource_metrics`
+- stream commands for watches, events, and pod logs
+- live-session commands for Pod and selector-backed Service port-forwarding
+- Argo CD, Helm, RBAC, and usage commands
 
 The React app should call only typed Tauri command wrappers. Kubernetes credentials and kubeconfig parsing belong in Rust modules under `src-tauri/src`.
 
@@ -38,7 +49,7 @@ The engineering handbook at [docs/handbook/](docs/handbook/) is the source of tr
 
 Quick rules:
 
-- New files: feature-specific code goes in `src/features/<area>/`; generic reusables in `src/components/`; pure logic in `src/lib/`. Backend commands go in `src-tauri/src/commands/<domain>.rs`. Module READMEs at each folder describe what belongs where.
+- New files: feature-specific code goes in `src/features/<area>/`; generic reusables in `src/components/`; pure logic in `src/lib/`. Backend commands go in `src-tauri/src/commands/<domain>.rs` or a focused domain folder. Module READMEs at each folder describe what belongs where.
 - File-size caps: `.rs` 500 soft / 800 hard; `.tsx` 400 soft / 700 hard; `.ts` 300 soft / 600 hard. The pre-commit hook warns at soft, fails at hard. See [file-size-and-split.md](docs/handbook/file-size-and-split.md).
 - Orphan and superseded files are deleted in the PR that creates the orphan. No "for reference" copies, no stub re-exports. See [hygiene.md](docs/handbook/hygiene.md).
 - A new top-level directory requires a one-line entry in [code-organization.md](docs/handbook/code-organization.md) before the directory is created.
@@ -63,6 +74,7 @@ Run through [docs/handbook/pr-checklist.md](docs/handbook/pr-checklist.md) befor
 - Every new Tauri command needs a Rust serde model, a TypeScript type, and a typed frontend wrapper.
 - Command errors must serialize into user-visible application errors.
 - Do not add broad command payloads that leak kubeconfig, tokens, certificate data, or arbitrary filesystem contents.
+- Live-session commands must follow [ADR 0003](docs/decisions/0003-guarded-live-sessions.md). Other cluster-changing commands must include explicit target scope and follow [ADR 0004](docs/decisions/0004-guarded-cluster-operations.md).
 
 ## Security-Sensitive Changes
 
@@ -72,7 +84,7 @@ Write an ADR before changing:
 - the JavaScript runtime or package manager
 - the Kubernetes access path
 - Tauri plugin permissions or capabilities
-- mutation support for Kubernetes objects
+- guarded operation support for Kubernetes objects
 - Argo CD API, CLI, sync, rollback, or diff integration
 - long-lived local persistence of cluster-derived data
 
@@ -104,3 +116,25 @@ Write an ADR before changing:
 - Avoid unrelated formatting churn.
 - Do not rewrite user changes.
 - Prefer branch names with the `codex/` prefix for agent-created feature branches.
+
+## GitButler Workflow
+
+Before any git write, run `git branch --show-current`.
+
+If the current branch is `gitbutler/workspace`:
+
+- Use GitButler mode.
+- All git writes must use `but`; never use raw `git add`, `git commit`, `git push`, `git checkout`, `git rebase`, `git merge`, or `git stash`.
+- Use `but diff --no-tui` for diffs.
+- Never leave the workspace branch.
+- If `but` is missing or unclear, run `but --help`; do not fall back to raw git writes.
+- Before `but` commit, disable credit with `git config --local gitbutler.gitbutlerCommitter 0` unless requested otherwise.
+
+Outside GitButler mode, normal non-destructive git rules apply. Do not force push, amend, rewrite history, or bypass force-push protection unless explicitly requested and safe.
+
+Branch and commit naming:
+
+- Branch names use `feat|fix|refactor|docs|test|chore|perf` plus a concrete 2-6 word kebab-case slug.
+- Avoid vague names such as `tmp`, `misc`, `updates`, `stuff`, or ticket-only names.
+- Do not add AI or coauthor attribution unless requested.
+- Commit subjects should name one concrete outcome. An optional body may include 1-3 lines explaining why.

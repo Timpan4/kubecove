@@ -32,7 +32,7 @@ Reference links:
 
 - Make context and namespace global navigation state.
 - Restore saved workspaces into live curated overviews, not stale exact UI state.
-- Start read-only and require ADRs for mutation workflows.
+- Start inspection-first and require ADR-backed guardrails for live sessions and cluster-changing workflows.
 - Keep kubeconfig and Kubernetes API access behind Rust-side Tauri commands.
 - Avoid arbitrary frontend shell execution.
 - Treat `kubectl`, Helm CLI, Argo CD CLI, and terminals as optional future sidecars or fallbacks.
@@ -42,13 +42,13 @@ Reference links:
 
 Argo CD should be native product context, not just a badge.
 
-The first class path remains Kubernetes-API-first:
+The first-class path remains Kubernetes-API-first:
 
 - detect Argo-managed resources from labels and annotations
 - list `Application`, `ApplicationSet`, and `AppProject` resources when CRDs exist
 - surface sync status, health status, destination namespace, source repo, revision, and project
 - group Kubernetes resources under their Argo application when tracking metadata exists
-- show read-only YAML, metadata, sync/health summaries, and related resources
+- show YAML, metadata, sync/health summaries, and related resources
 
 Later Argo CD API support may add richer history, diff, sync, rollback, and auth-aware flows. Those features require explicit ADRs and permission-gated UX.
 

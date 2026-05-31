@@ -1,6 +1,6 @@
 # Architecture Blueprint
 
-This page describes the current shape of the app and the intended direction for near-term work. The rules for file placement, size caps, and hygiene live in the [engineering handbook](handbook/).
+This page describes the current app shape and the direction for near-term work. File placement, size caps, and hygiene rules live in the [engineering handbook](handbook/).
 
 ## Product Shape
 
@@ -12,7 +12,7 @@ Cluster group -> Cluster/context -> Namespace -> App/owner -> Resource
 
 A cluster group is local saved navigation metadata. A saved workspace stores contexts, namespaces, filters, shortcuts, and layout preference. Restoring a workspace fetches live cluster state and opens a curated overview for that scope.
 
-The long-term differentiator is persistent global filtering across selected contexts, namespaces, resource kinds, health, owner references, Argo CD signals, Helm releases, RBAC context, metrics, events, logs, and topology.
+The differentiator is persistent global scope across selected contexts, namespaces, resource kinds, health, owner references, Argo CD signals, Helm releases, RBAC context, metrics, events, logs, topology, and future guarded operations.
 
 ## Security Boundary
 
@@ -20,11 +20,11 @@ The React frontend is an untrusted UI surface relative to the Rust backend.
 
 - React must not receive raw kubeconfig contents, tokens, or certificate data.
 - React must not run arbitrary shell commands.
-- Kubernetes list, get, discovery, watch, events, logs, metrics, Argo, Helm, and RBAC reads flow through typed Tauri commands.
+- Kubernetes list, get, discovery, watch, events, logs, metrics, Argo, Helm, RBAC, live sessions, and future operation flows must cross typed Tauri commands.
 - Normal Kubernetes API access uses `kube-rs`.
-- Mutating cluster operations require a new ADR and permission-aware UX.
+- Pod and selector-backed Service port-forwarding must follow [ADR 0003](decisions/0003-guarded-live-sessions.md). Other cluster-changing operations must follow [ADR 0004](decisions/0004-guarded-cluster-operations.md).
 
-`kubectl`, Helm CLI, and Argo CD CLI may become optional future sidecars or fallbacks. They are not the core data path.
+`kubectl`, Helm CLI, and Argo CD CLI may become optional future sidecars or fallbacks only after focused design. They are not the core data path.
 
 ## Frontend
 
@@ -53,7 +53,7 @@ Frontend rules:
 - Feature-specific components stay in `src/features/<area>/`.
 - Generic shadcn primitives and cross-feature display components stay in `src/components/`.
 - Pure shared logic belongs in `src/lib/`.
-- Frontend state should keep selected context, namespace scope, kind scope, active workspace, selected resource, and active detail view explicit.
+- Frontend state should keep selected context, namespace scope, kind scope, active workspace, selected resource, active detail view, and future operation targets explicit.
 
 ## Backend
 
@@ -72,6 +72,7 @@ src-tauri/src/
     metrics.rs
     namespaces.rs
     rbac.rs
+    sessions.rs
     usage.rs
   models/
     argo.rs
@@ -84,6 +85,7 @@ src-tauri/src/
     namespace.rs
     rbac.rs
     resource.rs
+    sessions.rs
     streams.rs
     usage.rs
 ```
@@ -92,25 +94,26 @@ Backend rules:
 
 - `commands/` owns Tauri command handlers and command-domain helpers.
 - `models/` owns serde contracts returned to the frontend.
-- Commands return frontend-safe summaries, details, YAML strings, stream IDs, or typed error payloads.
-- Raw Kubernetes objects should not become general frontend state. Details and YAML are explicit read-only surfaces.
+- Commands return frontend-safe summaries, details, YAML strings, stream IDs, operation results, or typed error payloads.
+- Raw Kubernetes objects should not become general frontend state. Details and YAML are explicit inspection surfaces.
 - A separate `kube/` module can be introduced when Kubernetes access has a second backend consumer beyond commands.
 
 ## Command Families
 
 Typed frontend wrappers currently cover:
 
-- context commands - `list_kube_contexts`
+- context commands: `list_kube_contexts`
 - namespaces: `list_namespaces`
 - discovery: `list_resource_kinds`
 - resources: `list_resources`, `list_dynamic_resources`, `list_resource_scope`
 - resource details: `get_resource_details`, `get_dynamic_resource_details`, `get_resource_yaml`
 - topology: `list_resource_topology`
 - events and streams: `list_resource_events`, resource watches, event watches, pod log streams, `stop_stream`
+- live sessions: `start_pod_port_forward`, `stop_port_forward`, `list_port_forwards`
 - metrics: `list_resource_metrics`, app usage metrics
 - Argo CD: detect, list, and detail commands for Applications, ApplicationSets, and AppProjects
 - Helm: release list and detail commands
-- RBAC: read-only inspection summary
+- RBAC: inspection summary
 
 Every new command needs:
 
@@ -120,14 +123,16 @@ Every new command needs:
 - user-visible serialized errors
 - no secret or broad filesystem leakage
 
+Cluster-changing commands also need the ADR 0004 target, confirmation, and permission-aware UX contract unless a focused ADR defines a narrower model.
+
 ## Resource Strategy
 
 Common resource kinds should stay typed or semi-typed where that provides better summaries. Dynamic resources and CRDs should flow through Kubernetes discovery and `DynamicObject` support.
 
-Core read-only surfaces:
+Core inspection surfaces:
 
 - resource table summaries
-- read-only YAML
+- YAML
 - metadata, labels, annotations, owner references, conditions, and status
 - events
 - pod logs
@@ -142,4 +147,4 @@ Argo CD CRDs remain a priority dynamic-resource area:
 
 ## Extension Points
 
-Future work can add guarded YAML edit/apply, port-forward, pod exec, richer Helm actions, Argo CD API flows, AI assistance, and durable local workspace history. Security-sensitive additions require ADRs before implementation.
+Future work can add guarded YAML edit/apply, deployment-aware port-forwarding, pod exec, richer Helm actions, Argo CD API flows, AI assistance, and durable local workspace history. Security-sensitive additions require ADRs before implementation.
