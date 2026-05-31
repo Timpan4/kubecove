@@ -97,6 +97,17 @@ function activeSessionTitle(session: PortForwardSessionSummary): string {
 	return `${session.namespace}/${session.targetKind}/${session.targetName}:${session.remotePort}`;
 }
 
+function sessionInWorkspaceScope(
+	workspace: SavedWorkspace,
+	session: PortForwardSessionSummary,
+): boolean {
+	return (
+		workspaceScopeContexts(workspace.scope).includes(session.clusterContext) &&
+		(workspace.scope.namespaces.length === 0 ||
+			workspace.scope.namespaces.includes(session.namespace))
+	);
+}
+
 function validateSavedPortForwardScope(
 	workspace: SavedWorkspace,
 	input: SavePortForwardInput,
@@ -144,9 +155,13 @@ export function WorkspacePortForwardsPage({
 	const sessionsForActions = useMemo(
 		() =>
 			sessionsQuery.data
-				? sortPortForwardSessions(sessionsQuery.data)
+				? sortPortForwardSessions(
+						sessionsQuery.data.filter((session) =>
+							sessionInWorkspaceScope(workspace, session),
+						),
+					)
 				: undefined,
-		[sessionsQuery.data],
+		[sessionsQuery.data, workspace],
 	);
 	const sessions = sessionsForActions ?? EMPTY_SESSIONS;
 	const { startOne, startAll, startingIds, startingAll } =

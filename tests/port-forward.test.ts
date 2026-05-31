@@ -242,6 +242,10 @@ spec:
 		expect(source).toContain("lastError");
 		expect(source).toContain("sessionsForActions");
 		expect(source).toContain("useSavedPortForwardActions(workspace, sessionsForActions)");
+		expect(source).toContain("sessionInWorkspaceScope");
+		expect(source).toContain(
+			"workspaceScopeContexts(workspace.scope).includes(session.clusterContext)",
+		);
 		expect(source).toContain("validateSavedPortForwardScope");
 		expect(source).toContain("workspaceScopeContexts(workspace.scope)");
 		expect(actionsSource).toContain("knownSessions?: PortForwardSessionSummary[]");
