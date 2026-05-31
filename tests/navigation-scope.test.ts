@@ -59,4 +59,23 @@ describe("navigation scope", () => {
 			}),
 		).toBe(false);
 	});
+
+	test("port forwards section resolves to the workspace management view", () => {
+		const scope = resolveTreeScope({
+			type: "section",
+			section: "portForwards",
+		});
+
+		expect(scope.portForwardMode).toBe(true);
+		expect(scope.kinds).toEqual([]);
+		expect(
+			canQueryResourceScope({
+				clusterContext: "admin@solid-k8s",
+				kinds: scope.kinds,
+				namespaces: [],
+				scope,
+				hasActiveWorkspace: true,
+			}),
+		).toBe(false);
+	});
 });

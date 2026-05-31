@@ -1,0 +1,49 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+
+describe("resource view safeguards", () => {
+	test("keeps the ownership map default-visible but unmountable", () => {
+		const appSource = readFileSync("src/App.tsx", "utf8");
+		const lazyViewsSource = readFileSync("src/app/lazyViews.ts", "utf8");
+		const listSource = readFileSync(
+			"src/features/resources/ResourceList.tsx",
+			"utf8",
+		);
+		const layoutSource = readFileSync(
+			"src/features/resources/ResourceMapTableLayout.tsx",
+			"utf8",
+		);
+
+		expect(lazyViewsSource).toContain("lazy(() =>");
+		expect(lazyViewsSource).toContain(
+			'import("../features/resources/ResourceList")',
+		);
+		expect(listSource).toContain("<ResourceMapTableLayout");
+		expect(listSource).toContain("mapPanelOpen");
+		expect(listSource).toContain("setMapPanelOpen");
+		expect(listSource).toContain(
+			"enabled: Boolean(clusterContext && mapPanelOpen)",
+		);
+		expect(listSource).toContain(
+			"onMapPanelOpenChange={handleMapPanelOpenChange}",
+		);
+		expect(layoutSource).toContain("tablePanelOpen");
+		expect(layoutSource).toContain("mapPanelOpen");
+		expect(layoutSource).toContain("LazyOwnershipMap");
+		expect(layoutSource).toContain('import("./OwnershipMap")');
+		expect(layoutSource).toContain("aria-pressed={mapPanelOpen}");
+		expect(layoutSource).toContain("disabled={!mapPanelOpen}");
+		expect(layoutSource).toContain("hasActiveSelection");
+		expect(layoutSource).toContain("mapHeightClassName");
+		expect(appSource).toContain("selectedResource={selectedResource}");
+		expect(listSource).toContain("activeSelectedResourceKey");
+		expect(layoutSource).toContain(
+			"xl:grid-cols-[minmax(620px,1fr)_minmax(420px,0.82fr)]",
+		);
+		expect(layoutSource).toContain("h-[360px]");
+		expect(layoutSource).toContain("h-[560px]");
+		expect(layoutSource).toContain("Hide table");
+		expect(listSource).not.toContain('resourceView === "map"');
+		expect(listSource).not.toContain('resourceView === "table"');
+	});
+});

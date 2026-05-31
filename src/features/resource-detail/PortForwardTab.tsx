@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, Copy, Play, Square } from "lucide-react";
+import { Cable, Copy, Play, Save, Square } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,14 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import {
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	listPortForwards,
@@ -27,9 +35,11 @@ import {
 } from "@/lib/tauri";
 import type { PortForwardSessionSummary, ResourceSummary } from "@/lib/types";
 import { queryKeys } from "@/lib/queryKeys";
+import { useWorkspaceStore, workspaceScopeContexts } from "@/lib/workspaces";
 import { getErrorMessage } from "./helpers";
 import {
 	isPortForwardForResource,
+	extractServicePortOptions,
 	parsePortForwardForm,
 	portForwardLocalUrl,
 	sortPortForwardSessions,
@@ -39,7 +49,13 @@ interface PortForwardTabProps {
 	client: TauriClient;
 	resource: ResourceSummary;
 	active: boolean;
+	detailsYaml?: string;
 }
+
+type SaveMessage = {
+	kind: "saved" | "duplicate";
+	text: string;
+};
 
 async function copyText(text: string): Promise<void> {
 	await navigator.clipboard?.writeText(text);
@@ -67,12 +83,22 @@ export function PortForwardTab({
 	client,
 	resource,
 	active,
+	detailsYaml,
 }: PortForwardTabProps) {
 	const queryClient = useQueryClient();
+	const activeWorkspace = useWorkspaceStore(
+		(state) =>
+			state.workspaces.find(
+				(workspace) => workspace.id === state.activeWorkspaceId,
+			) ?? null,
+	);
+	const savePortForward = useWorkspaceStore((state) => state.savePortForward);
 	const [remotePort, setRemotePort] = useState("");
 	const [localPort, setLocalPort] = useState("");
 	const [formError, setFormError] = useState<string | null>(null);
 	const [startError, setStartError] = useState<string | null>(null);
+	const [saveMessage, setSaveMessage] = useState<SaveMessage | null>(null);
+	const [saveError, setSaveError] = useState<string | null>(null);
 	const [starting, setStarting] = useState(false);
 	const [stoppingId, setStoppingId] = useState<string | null>(null);
 	const [copyingId, setCopyingId] = useState<string | null>(null);
@@ -91,6 +117,23 @@ export function PortForwardTab({
 			),
 		[resource, sessionsQuery.data],
 	);
+	const servicePortOptions = useMemo(
+		() =>
+			resource.kind === "Service"
+				? extractServicePortOptions(detailsYaml)
+				: [],
+		[detailsYaml, resource.kind],
+	);
+
+	useEffect(() => {
+		if (
+			resource.kind === "Service" &&
+			!remotePort.trim() &&
+			servicePortOptions.length > 0
+		) {
+			setRemotePort(String(servicePortOptions[0].port));
+		}
+	}, [remotePort, resource.kind, servicePortOptions]);
 
 	if (!isForwardableResource(resource)) {
 		return (
@@ -123,6 +166,8 @@ export function PortForwardTab({
 	const startSession = async () => {
 		setFormError(null);
 		setStartError(null);
+		setSaveMessage(null);
+		setSaveError(null);
 		const parsed = parsePortForwardForm(
 			{ remotePort, localPort },
 			{ remotePortLabel: targetKind === "Service" ? "Service port" : "Pod port" },
@@ -149,6 +194,62 @@ export function PortForwardTab({
 		} finally {
 			setStarting(false);
 		}
+	};
+
+	const saveServicePreset = () => {
+		setFormError(null);
+		setSaveMessage(null);
+		setSaveError(null);
+		if (targetKind !== "Service") return;
+		if (!activeWorkspace) {
+			setSaveError("Open a workspace before saving port-forward presets.");
+			return;
+		}
+		const parsed = parsePortForwardForm(
+			{ remotePort, localPort },
+			{ remotePortLabel: "Service port" },
+		);
+		if (typeof parsed === "string") {
+			setFormError(parsed);
+			return;
+		}
+		const workspaceContexts = workspaceScopeContexts(activeWorkspace.scope);
+		if (
+			!workspaceContexts.includes(resource.cluster) ||
+			(activeWorkspace.scope.namespaces.length > 0 &&
+				!activeWorkspace.scope.namespaces.includes(resource.namespace ?? ""))
+		) {
+			setSaveError(
+				"Workspace scope must include this Service before saving a preset.",
+			);
+			return;
+		}
+		const duplicate = (activeWorkspace.portForwards ?? []).some(
+			(portForward) =>
+				portForward.clusterContext === resource.cluster &&
+				portForward.namespace === resource.namespace &&
+				portForward.serviceName === resource.name &&
+				portForward.servicePort === parsed.remotePort &&
+				portForward.localPort === parsed.localPort,
+		);
+		if (duplicate) {
+			setSaveMessage({
+				kind: "duplicate",
+				text: "This Service forward is already saved in the workspace.",
+			});
+			return;
+		}
+		savePortForward(activeWorkspace.id, {
+			clusterContext: resource.cluster,
+			namespace: resource.namespace ?? "",
+			serviceName: resource.name,
+			servicePort: parsed.remotePort,
+			localPort: parsed.localPort,
+		});
+		setSaveMessage({
+			kind: "saved",
+			text: "Saved Service forward to this workspace.",
+		});
 	};
 
 	const stopSession = async (sessionId: string) => {
@@ -183,20 +284,51 @@ export function PortForwardTab({
 				</AlertDescription>
 			</Alert>
 			<FieldGroup>
-				<Field>
+				<Field data-invalid={Boolean(formError?.includes("port"))}>
 					<FieldLabel htmlFor="pod-port-forward-remote-port">
 						{targetKind === "Service" ? "Service port" : "Pod port"}
 					</FieldLabel>
-					<Input
-						id="pod-port-forward-remote-port"
-						inputMode="numeric"
-						value={remotePort}
-						placeholder="Required"
-						onChange={(event) => setRemotePort(event.target.value)}
-					/>
+					{targetKind === "Service" && servicePortOptions.length > 0 ? (
+						<Select value={remotePort} onValueChange={setRemotePort}>
+							<SelectTrigger
+								id="pod-port-forward-remote-port"
+								className="w-full"
+								aria-invalid={Boolean(formError?.includes("port"))}
+							>
+								<SelectValue placeholder="Choose a Service port" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectGroup>
+									{servicePortOptions.map((option) => (
+										<SelectItem
+											key={`${option.port}:${option.name ?? ""}`}
+											value={String(option.port)}
+										>
+											{option.name ? `${option.name} - ` : ""}
+											{option.port}
+											{option.targetPort
+												? ` -> ${option.targetPort}`
+												: ""}
+										</SelectItem>
+									))}
+								</SelectGroup>
+							</SelectContent>
+						</Select>
+					) : (
+						<Input
+							id="pod-port-forward-remote-port"
+							inputMode="numeric"
+							value={remotePort}
+							placeholder="Required"
+							aria-invalid={Boolean(formError?.includes("port"))}
+							onChange={(event) => setRemotePort(event.target.value)}
+						/>
+					)}
 					<FieldDescription>
 						{targetKind === "Service"
-							? "The Service port Kubernetes should resolve to a backing Pod."
+							? servicePortOptions.length > 0
+								? "Choose one of the TCP ports declared on this Service."
+								: "The Service port Kubernetes should resolve to a backing Pod."
 							: "The Pod port Kubernetes should forward to."}
 					</FieldDescription>
 				</Field>
@@ -228,7 +360,34 @@ export function PortForwardTab({
 					<AlertDescription>{startError}</AlertDescription>
 				</Alert>
 			)}
-			<div className="flex justify-end">
+			{saveError && (
+				<Alert variant="destructive">
+					<AlertTitle>Failed to save preset</AlertTitle>
+					<AlertDescription>{saveError}</AlertDescription>
+				</Alert>
+			)}
+			{saveMessage && (
+				<Alert>
+					<Save className="size-3.5" />
+					<AlertTitle>
+						{saveMessage.kind === "saved"
+							? "Saved forward"
+							: "Preset already saved"}
+					</AlertTitle>
+					<AlertDescription>{saveMessage.text}</AlertDescription>
+				</Alert>
+			)}
+			<div className="flex flex-wrap justify-end gap-2">
+				{targetKind === "Service" && (
+					<Button
+						type="button"
+						variant="outline"
+						onClick={saveServicePreset}
+					>
+						<Save data-icon="inline-start" />
+						Save preset
+					</Button>
+				)}
 				<Button type="button" onClick={() => void startSession()} disabled={starting}>
 					{starting ? (
 						<Spinner data-icon="inline-start" />

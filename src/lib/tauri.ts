@@ -284,13 +284,20 @@ export async function stopStream(
 	return client.invoke<boolean>("stop_stream", { streamId });
 }
 
-export async function startPodPortForward(
+export async function startPortForward(
 	client: TauriClient,
 	request: PortForwardRequest,
 ): Promise<PortForwardSessionSummary> {
 	return client.invoke<PortForwardSessionSummary>("start_pod_port_forward", {
 		request,
 	});
+}
+
+export async function startPodPortForward(
+	client: TauriClient,
+	request: PortForwardRequest,
+): Promise<PortForwardSessionSummary> {
+	return startPortForward(client, request);
 }
 
 export async function stopPodPortForward(

@@ -223,9 +223,11 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 					{(resource.kind === "Pod" || resource.kind === "Service") && (
 						<TabsContent value="portForward" className="m-0">
 							<PortForwardTab
+								key={resourceKey}
 								client={client}
 								resource={resource}
 								active={activeTab === "portForward"}
+								detailsYaml={details?.yaml ?? yaml}
 							/>
 						</TabsContent>
 					)}

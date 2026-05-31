@@ -2,13 +2,13 @@ import type { ReactNode } from "react";
 import { Check, Download, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ToggleButton } from "@/components/ToggleButton";
 import { useAppUpdateStore } from "@/features/app-updates";
 import {
 	type TimestampTimezone,
 	useSettingsState,
 } from "@/lib/settings";
 import { isAppUpdatesEnabled } from "@/lib/release-channel";
-import { cn } from "@/lib/utils";
 
 const CHECKED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
 	dateStyle: "medium",
@@ -34,39 +34,6 @@ function SettingsRow({
 			</div>
 			<div className="shrink-0">{children}</div>
 		</div>
-	);
-}
-
-function ToggleButton({
-	checked,
-	onCheckedChange,
-	ariaLabel,
-}: {
-	checked: boolean;
-	onCheckedChange: (checked: boolean) => void;
-	ariaLabel: string;
-}) {
-	return (
-		<button
-			type="button"
-			role="switch"
-			aria-checked={checked}
-			aria-label={ariaLabel}
-			className={cn(
-				"flex h-6 w-11 items-center rounded-full border px-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-				checked
-					? "border-primary bg-primary"
-					: "border-border bg-muted",
-			)}
-			onClick={() => onCheckedChange(!checked)}
-		>
-			<span
-				className={cn(
-					"block size-5 rounded-full bg-background shadow-sm transition-transform",
-					checked && "translate-x-5",
-				)}
-			/>
-		</button>
 	);
 }
 
@@ -107,9 +74,11 @@ export function SettingsPage() {
 	const {
 		showExactTimestamps,
 		showUsageFooter,
+		autoStartSavedPortForwards,
 		timestampTimezone,
 		setShowExactTimestamps,
 		setShowUsageFooter,
+		setAutoStartSavedPortForwards,
 		setTimestampTimezone,
 	} = useSettingsState();
 	const {
@@ -151,6 +120,16 @@ export function SettingsPage() {
 						checked={showUsageFooter}
 						onCheckedChange={setShowUsageFooter}
 						ariaLabel="Show CPU and memory footer"
+					/>
+				</SettingsRow>
+				<SettingsRow
+					title="Auto-start saved port forwards"
+					description="Starts saved Service port-forward presets automatically when a workspace is restored."
+				>
+					<ToggleButton
+						checked={autoStartSavedPortForwards}
+						onCheckedChange={setAutoStartSavedPortForwards}
+						ariaLabel="Auto-start saved port forwards"
 					/>
 				</SettingsRow>
 				<SettingsRow

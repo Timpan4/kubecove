@@ -2,6 +2,7 @@ import {
 	Box,
 	Boxes,
 	BriefcaseBusiness,
+	Cable,
 	Clock3,
 	Database,
 	FileCog,
@@ -153,6 +154,7 @@ const GROUP_VISUALS: Record<string, ResourceVisual> = {
 	"Argo CD": ARGO_VISUAL,
 	Helm: DEFAULT_VISUAL,
 	RBAC: resourceVisual(Shield, "secret"),
+	"Port Forwards": resourceVisual(Cable, "network"),
 	"Managed by Argo app": ARGO_VISUAL,
 	"Unmanaged resources": DEFAULT_VISUAL,
 };

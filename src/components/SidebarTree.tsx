@@ -21,6 +21,7 @@
  *   - Applications, ApplicationSets, AppProjects [Argo child nodes]
  * - Helm [section]
  *   - Releases [read-only Helm v3 release inventory]
+ * - Port Forwards [section]
  * - RBAC [section]
  *   - Namespace Access, Roles, Cluster Roles, Bindings, Service Accounts
  */
@@ -321,6 +322,11 @@ export function SidebarTree({
       })),
     };
 
+    const portForwardsNode: TreeNode = {
+      id: { type: "section", section: "portForwards" },
+      label: SECTIONS.portForwards.label,
+    };
+
     const rbacNode: TreeNode = {
       id: { type: "section", section: "rbac" },
       label: SECTIONS.rbac.label,
@@ -330,7 +336,7 @@ export function SidebarTree({
       })),
     };
 
-    return { clusterOverviewNode, curatedSectionNodes, argoNode, helmNode, rbacNode };
+    return { clusterOverviewNode, curatedSectionNodes, argoNode, helmNode, portForwardsNode, rbacNode };
   }, []);
 
   const extraKinds = useMemo(() => {
@@ -468,6 +474,7 @@ export function SidebarTree({
       discoveredTree,
       staticTree.argoNode,
       staticTree.helmNode,
+      staticTree.portForwardsNode,
       staticTree.rbacNode,
     ];
   }, [namespaces, staticTree, buildNamespaceSubtree, discoveredTree]);

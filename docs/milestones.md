@@ -116,6 +116,7 @@ Goal: introduce live operational sessions without turning KubeCove into a shell 
 
 - [x] Add ADR 0003 for guarded live Kubernetes sessions.
 - [x] Add Pod and selector-backed Service port-forward command, models, typed frontend wrappers, and visible session controls.
+- [x] Add workspace Port Forwards manager with saved Service presets and restore prompts.
 - [x] Run a manual port-forward smoke test against a readable cluster before release.
 - [ ] Add a separate design pass before pod exec.
 

@@ -1,6 +1,12 @@
 import type { CSSProperties } from "react";
+import type { DashboardViewMode } from "@/lib/hooks";
 import type { ResourceKindSelection } from "@/lib/types";
-import { discoveredResourceKindKey, type TreeScope } from "@/lib/tree-nav";
+import {
+	discoveredResourceKindKey,
+	type TreeNodeId,
+	type TreeScope,
+} from "@/lib/tree-nav";
+import type { SavedWorkspace } from "@/lib/workspaces";
 
 export const SECTION_LABELS: Record<string, string> = {
 	clusterOverview: "Cluster Overview",
@@ -12,6 +18,8 @@ export const SECTION_LABELS: Record<string, string> = {
 	discovered: "Discovered",
 	argo: "Argo CD",
 	helm: "Helm",
+	portForwards: "Port Forwards",
+	rbac: "RBAC",
 };
 
 export const SIDEBAR_PROVIDER_STYLE = {
@@ -48,4 +56,52 @@ export function canQueryResourceScope({
 	if (scope.kinds.length > 0) return true;
 	if (hasActiveWorkspace && scope.section === null) return true;
 	return hasDiscoveredKind(kinds);
+}
+
+export function getAppContentTitle({
+	activeWorkspace,
+	scope,
+	selectedTreeNode,
+	viewMode,
+}: {
+	activeWorkspace: SavedWorkspace | null;
+	scope: TreeScope;
+	selectedTreeNode: TreeNodeId | null;
+	viewMode: DashboardViewMode;
+}): string {
+	if (viewMode === "overview") return activeWorkspace?.name ?? "Workspace";
+	if (viewMode === "settings") return "Settings";
+	if (viewMode === "helm") return "Helm Releases";
+	if (viewMode === "portForwards") return "Port Forwards";
+	if (viewMode === "rbac") {
+		if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
+			return selectedTreeNode.kind;
+		}
+		return "RBAC";
+	}
+	if (viewMode === "argo") {
+		if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
+			return selectedTreeNode.kind;
+		}
+		return "Argo CD";
+	}
+	if (!scope.section) return "Kubernetes Resources";
+	if (scope.section === "clusterOverview") {
+		if (scope.kinds.length === 1)
+			return `${resourceKindLabel(scope.kinds[0])} Resources`;
+		if (scope.kinds.length > 1) return "Cluster Overview";
+		return "Cluster Overview";
+	}
+	if (scope.section === "namespaces" && scope.namespace) {
+		if (scope.group && scope.kinds.length > 0) {
+			return `${scope.namespace} / ${scope.group}`;
+		}
+		return scope.namespace;
+	}
+	if (scope.group) return scope.group;
+	if (scope.kinds.length === 1)
+		return `${resourceKindLabel(scope.kinds[0])} Resources`;
+	if (scope.kinds.length > 1)
+		return SECTION_LABELS[scope.section] ?? scope.section;
+	return SECTION_LABELS[scope.section] ?? scope.section;
 }

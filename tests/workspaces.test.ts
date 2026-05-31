@@ -5,8 +5,11 @@ import {
 	buildWorkspaceCompareSummaries,
 	buildWorkspaceHealthSummary,
 	computeRestoreStatus,
+	createSavedPortForward,
 	createWorkspaceRecord,
+	createWorkspaceScope,
 	summarizeWorkspaceScope,
+	useWorkspaceStore,
 	workspaceScopeContexts,
 } from "../src/lib/workspaces";
 import {
@@ -41,6 +44,130 @@ describe("workspace helpers", () => {
 		expect(workspace.scope.kinds).toContain("Pod");
 		expect(JSON.stringify(workspace)).not.toContain("certificate");
 		expect(JSON.stringify(workspace)).not.toContain("token");
+		expect(workspace.portForwards).toEqual([]);
+	});
+
+	test("creates Service-only saved port-forward presets without session IDs", () => {
+		const saved = createSavedPortForward(
+			{
+				clusterContext: " kind-dev ",
+				namespace: " payments ",
+				serviceName: " api ",
+				servicePort: 8080,
+				localPort: 18080,
+				label: " API ",
+			},
+			"2026-05-31T12:00:00.000Z",
+		);
+
+		expect(saved).toMatchObject({
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			serviceName: "api",
+			servicePort: 8080,
+			localPort: 18080,
+			label: "API",
+			lastStatus: "idle",
+			createdAt: "2026-05-31T12:00:00.000Z",
+			updatedAt: "2026-05-31T12:00:00.000Z",
+		});
+		expect(JSON.stringify(saved)).not.toContain("session");
+		expect(JSON.stringify(saved)).not.toContain("podName");
+	});
+
+	test("manages saved Service forwards in workspace state", () => {
+		useWorkspaceStore.setState({ workspaces: [], activeWorkspaceId: null });
+		const store = useWorkspaceStore.getState();
+		const workspace = store.createWorkspace({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: ["payments"],
+		});
+
+		const saved = useWorkspaceStore.getState().savePortForward(workspace.id, {
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			serviceName: "api",
+			servicePort: 8080,
+		});
+		expect(
+			useWorkspaceStore.getState().workspaces[0].portForwards.map(
+				(portForward) => portForward.id,
+			),
+		).toEqual([saved.id]);
+
+		useWorkspaceStore.getState().updateSavedPortForward(workspace.id, saved.id, {
+			label: "Payments API",
+			localPort: 18080,
+			lastStatus: "error",
+			lastError: "local port 18080 is already in use",
+		});
+		expect(useWorkspaceStore.getState().workspaces[0].portForwards[0]).toMatchObject({
+			label: "Payments API",
+			localPort: 18080,
+			lastStatus: "error",
+			lastError: "local port 18080 is already in use",
+		});
+
+		useWorkspaceStore.getState().updateSavedPortForward(workspace.id, saved.id, {
+			localPort: undefined,
+		});
+		expect(
+			useWorkspaceStore.getState().workspaces[0].portForwards[0].localPort,
+		).toBeUndefined();
+
+		useWorkspaceStore
+			.getState()
+			.deleteSavedPortForward(workspace.id, saved.id);
+		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([]);
+	});
+
+	test("reconciles saved forwards when workspace scope changes", () => {
+		useWorkspaceStore.setState({ workspaces: [], activeWorkspaceId: null });
+		const workspace = useWorkspaceStore.getState().createWorkspace({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: ["payments"],
+		});
+		const saved = useWorkspaceStore.getState().savePortForward(workspace.id, {
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			serviceName: "api",
+			servicePort: 8080,
+		});
+
+		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
+			scope: createWorkspaceScope({
+				name: "Ops",
+				clusterContext: "kind-prod",
+				namespaces: ["payments"],
+			}),
+		});
+
+		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([]);
+
+		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
+			portForwards: [saved],
+			scope: createWorkspaceScope({
+				name: "Ops",
+				clusterContext: "kind-dev",
+				namespaces: [],
+			}),
+		});
+
+		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([
+			saved,
+		]);
+
+		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
+			scope: createWorkspaceScope({
+				name: "Ops",
+				clusterContext: "kind-dev",
+				namespaces: ["other"],
+			}),
+		});
+
+		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([]);
 	});
 
 	test("stores cluster groups as local scope metadata without secrets", () => {

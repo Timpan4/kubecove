@@ -30,9 +30,14 @@ async function copyText(text: string): Promise<void> {
 	await navigator.clipboard?.writeText(text);
 }
 
-export function ActivePortForwards() {
+interface ActivePortForwardsProps {
+	onOpenManager?: () => void;
+}
+
+export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 	const client = useMemo(() => createTauriClient(), []);
 	const queryClient = useQueryClient();
+	const [popoverOpen, setPopoverOpen] = useState(false);
 	const [stoppingId, setStoppingId] = useState<string | null>(null);
 	const [copyingId, setCopyingId] = useState<string | null>(null);
 	const sessionsQuery = useQuery({
@@ -67,7 +72,7 @@ export function ActivePortForwards() {
 	};
 
 	return (
-		<Popover>
+		<Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
 			<PopoverTrigger asChild>
 				<Button
 					type="button"
@@ -92,6 +97,20 @@ export function ActivePortForwards() {
 						</div>
 						{sessionsQuery.isFetching && <Spinner className="size-3.5" />}
 					</div>
+					{onOpenManager && (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => {
+								setPopoverOpen(false);
+								onOpenManager();
+							}}
+						>
+							<Cable data-icon="inline-start" />
+							Manage
+						</Button>
+					)}
 					<Separator />
 					<div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
 						{sessions.map((session) => {
