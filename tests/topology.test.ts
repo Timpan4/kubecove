@@ -758,6 +758,73 @@ describe("ownership topology helpers", () => {
 		expect(graph.edges.every((edge) => edge.style?.opacity === 1)).toBe(true);
 	});
 
+	test("dims standalone buckets when only owned nodes of the same kind are selected", () => {
+		const deploymentId = resourceTopologyNodeId(
+			"kind-dev",
+			"apps/v1",
+			"Deployment",
+			"default",
+			"api",
+		);
+		const ownedPodId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"Pod",
+			"default",
+			"api-7d9-x",
+		);
+		const standalonePodId = resourceTopologyNodeId(
+			"kind-dev",
+			"v1",
+			"Pod",
+			"default",
+			"debug-shell",
+		);
+		const topology: ResourceTopology = {
+			nodes: [
+				{
+					id: deploymentId,
+					kind: "Deployment",
+					name: "api",
+					namespace: "default",
+					status: "Available",
+					health: "healthy",
+					selectable: true,
+					summary: summary({ kind: "Deployment", name: "api", apiVersion: "apps/v1" }),
+				},
+				{
+					id: ownedPodId,
+					kind: "Pod",
+					name: "api-7d9-x",
+					namespace: "default",
+					status: "Running",
+					health: "healthy",
+					selectable: true,
+					summary: summary({ kind: "Pod", name: "api-7d9-x" }),
+				},
+				{
+					id: standalonePodId,
+					kind: "Pod",
+					name: "debug-shell",
+					namespace: "default",
+					status: "Running",
+					health: "healthy",
+					selectable: true,
+					summary: summary({ kind: "Pod", name: "debug-shell" }),
+				},
+			],
+			edges: [
+				{ id: "deploy-pod", source: deploymentId, target: ownedPodId, relation: "owns" },
+			],
+			warnings: [],
+		};
+
+		const graph = buildReactFlowTopology(topology, deploymentId);
+		const bucket = graph.nodes.find((node) => node.id === "standalone-kind:Pod");
+
+		expect(bucket?.data.dimmed).toBe(true);
+	});
+
 	test("builds deterministic rows with parent resources before children", () => {
 		const topology: ResourceTopology = {
 			nodes: [

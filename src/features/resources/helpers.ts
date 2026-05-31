@@ -58,8 +58,6 @@ const TOPOLOGY_WATCH_KINDS = [
 	"Secret",
 ] as const;
 
-const WATCH_NAMESPACE_COALESCE_THRESHOLD = 8;
-
 export function resourceSelectionKey(resource: ResourceSummary): string {
 	return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
 }
@@ -120,23 +118,8 @@ export function buildFetchKeys(
 }
 
 export function watchKeysFromFetchKeys(keys: FetchKey[]): WatchResourceKey[] {
-	const namespaceCounts = new Map<string, Set<string>>();
-	for (const key of keys) {
-		if (!key.namespace || isClusterScopedSelection(key.kind)) continue;
-		const kindKey = resourceKindFetchKey(key.kind);
-		const namespaces = namespaceCounts.get(kindKey) ?? new Set<string>();
-		namespaces.add(key.namespace);
-		namespaceCounts.set(kindKey, namespaces);
-	}
-
 	const coalesced = new Map<string, WatchResourceKey>();
 	for (const key of keys) {
-		const watchNamespace =
-			key.namespace &&
-			(namespaceCounts.get(resourceKindFetchKey(key.kind))?.size ?? 0) >=
-				WATCH_NAMESPACE_COALESCE_THRESHOLD
-				? undefined
-				: key.namespace;
 		if (isDiscoveredResourceKind(key.kind)) {
 			const watchKey = {
 				resourceKind: {
@@ -147,7 +130,7 @@ export function watchKeysFromFetchKeys(keys: FetchKey[]): WatchResourceKey[] {
 					plural: key.kind.plural,
 					namespaced: key.kind.namespaced,
 				},
-				namespace: watchNamespace,
+				namespace: key.namespace,
 			};
 			coalesced.set(watchKeySignature(watchKey), watchKey);
 			continue;
@@ -155,7 +138,7 @@ export function watchKeysFromFetchKeys(keys: FetchKey[]): WatchResourceKey[] {
 
 		const watchKey = {
 			resourceKind: { kind: key.kind },
-			namespace: watchNamespace,
+			namespace: key.namespace,
 		};
 		coalesced.set(watchKeySignature(watchKey), watchKey);
 	}
@@ -186,9 +169,7 @@ export function mergeWatchKeys(
 
 export function topologyWatchKeys(namespaces: string[]): WatchResourceKey[] {
 	const namespaceScopes: Array<string | undefined> =
-		namespaces.length >= WATCH_NAMESPACE_COALESCE_THRESHOLD || namespaces.length === 0
-			? [undefined]
-			: namespaces;
+		namespaces.length === 0 ? [undefined] : namespaces;
 	return TOPOLOGY_WATCH_KINDS.flatMap((kind) =>
 		namespaceScopes.map((namespace) => ({
 			resourceKind: { kind },

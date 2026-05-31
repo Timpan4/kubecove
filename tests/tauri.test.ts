@@ -242,19 +242,26 @@ describe("resource browser presentation helpers", () => {
     ]);
   });
 
-  test("coalesces large namespace watch sets into one all-namespace watch", () => {
+  test("keeps large namespace watch sets namespace-scoped for limited RBAC", () => {
+    const namespaces = [
+      "default",
+      "payments",
+      "jobs",
+      "kube-system",
+      "monitoring",
+      "platform",
+      "staging",
+      "prod",
+    ];
+
     expect(watchKeysFromFetchKeys([
-      { kind: "Pod", namespace: "default" },
-      { kind: "Pod", namespace: "payments" },
-      { kind: "Pod", namespace: "jobs" },
-      { kind: "Pod", namespace: "kube-system" },
-      { kind: "Pod", namespace: "monitoring" },
-      { kind: "Pod", namespace: "platform" },
-      { kind: "Pod", namespace: "staging" },
-      { kind: "Pod", namespace: "prod" },
+      ...namespaces.map((namespace) => ({ kind: "Pod" as const, namespace })),
       { kind: "Service", namespace: "default" },
     ])).toEqual([
-      { resourceKind: { kind: "Pod" }, namespace: undefined },
+      ...namespaces.map((namespace) => ({
+        resourceKind: { kind: "Pod" },
+        namespace,
+      })),
       { resourceKind: { kind: "Service" }, namespace: "default" },
     ]);
   });
@@ -266,8 +273,8 @@ describe("resource browser presentation helpers", () => {
     });
   });
 
-  test("coalesces large topology watch scopes across namespaces", () => {
-    expect(topologyWatchKeys([
+  test("keeps large topology watch scopes namespace-scoped for limited RBAC", () => {
+    const namespaces = [
       "default",
       "payments",
       "jobs",
@@ -276,20 +283,13 @@ describe("resource browser presentation helpers", () => {
       "platform",
       "staging",
       "prod",
-    ])).toContainEqual({
+    ];
+
+    expect(topologyWatchKeys(namespaces)).toContainEqual({
       resourceKind: { kind: "EndpointSlice" },
-      namespace: undefined,
+      namespace: "prod",
     });
-    expect(topologyWatchKeys([
-      "default",
-      "payments",
-      "jobs",
-      "kube-system",
-      "monitoring",
-      "platform",
-      "staging",
-      "prod",
-    ]).length).toBe(13);
+    expect(topologyWatchKeys(namespaces).length).toBe(104);
   });
 
   test("filters resources by search text and Argo app", () => {

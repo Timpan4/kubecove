@@ -74,7 +74,6 @@ export interface ReactFlowTopology {
 
 export interface ReactFlowTopologySelectionIndex {
 	graph: ReturnType<typeof buildTopologyGraph>;
-	nodeIdsByKind: Map<string, string[]>;
 }
 
 export interface BuildReactFlowTopologyOptions {
@@ -232,17 +231,7 @@ export function applyReactFlowTopologySelection(
 export function buildReactFlowTopologySelectionIndex(
 	topology: ResourceTopology,
 ): ReactFlowTopologySelectionIndex {
-	const graph = buildTopologyGraph(topology);
-	const nodeIdsByKind = new Map<string, string[]>();
-	for (const node of graph.nodes) {
-		const ids = nodeIdsByKind.get(node.kind);
-		if (ids) {
-			ids.push(node.id);
-		} else {
-			nodeIdsByKind.set(node.kind, [node.id]);
-		}
-	}
-	return { graph, nodeIdsByKind };
+	return { graph: buildTopologyGraph(topology) };
 }
 
 export function applyReactFlowTopologySelectionWithIndex(
@@ -258,8 +247,7 @@ export function applyReactFlowTopologySelectionWithIndex(
 
 	const nodes = graphTopology.nodes.map<OwnershipGraphNode>((node) => {
 		if (node.type === "standaloneKindGroup") {
-			const kindNodeIds = index.nodeIdsByKind.get(node.data.kind) ?? [];
-			const dimmed = !kindNodeIds.some((nodeId) =>
+			const dimmed = !node.data.nodeIds.some((nodeId) =>
 				selectedPath.nodeIds.has(nodeId),
 			);
 			return {

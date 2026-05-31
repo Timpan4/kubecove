@@ -6,6 +6,7 @@ import type { TopologyGraph } from "./topology-graph";
 export interface StandaloneKindGroupNodeData extends Record<string, unknown> {
 	kind: string;
 	count: number;
+	nodeIds: string[];
 	dimmed: boolean;
 	expanded: boolean;
 }
@@ -117,7 +118,13 @@ export function buildStandaloneGroups(
 			id: groupId,
 			type: "standaloneKindGroup",
 			position: { x: CANVAS_PADDING, y: cursorY },
-			data: { kind, count: nodes.length, dimmed: groupDimmed, expanded },
+			data: {
+				kind,
+				count: nodes.length,
+				nodeIds: nodes.map((node) => node.id),
+				dimmed: groupDimmed,
+				expanded,
+			},
 			draggable: false,
 			selectable: true,
 			connectable: false,

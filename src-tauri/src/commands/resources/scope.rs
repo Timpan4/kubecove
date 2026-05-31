@@ -8,8 +8,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 use tauri::State;
 
-const PROMOTE_NAMESPACE_FETCH_THRESHOLD: usize = 8;
-
 #[derive(Debug, Clone)]
 enum ResourceScopeKind {
     Typed(String),
@@ -78,7 +76,7 @@ fn group_requests(
 }
 
 fn should_promote_to_all(group: &ResourceScopeGroup) -> bool {
-    group.all_namespaces || group.namespaces.len() >= PROMOTE_NAMESPACE_FETCH_THRESHOLD
+    group.all_namespaces || group.namespaces.is_empty()
 }
 
 fn fetch_namespaces(group: &ResourceScopeGroup) -> Vec<Option<String>> {
@@ -264,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn promotes_large_namespace_sets_to_one_all_namespace_fetch() {
+    fn keeps_large_namespace_sets_namespace_scoped() {
         let groups = group_requests(vec![
             pod_request(Some("default")),
             pod_request(Some("argocd")),
@@ -276,6 +274,27 @@ mod tests {
             pod_request(Some("prod")),
         ])
         .expect("groups");
+        let group = groups.get("typed:Pod").expect("pod group");
+
+        assert!(!should_promote_to_all(group));
+        assert_eq!(
+            fetch_namespaces(group),
+            vec![
+                Some("argocd".to_string()),
+                Some("default".to_string()),
+                Some("jobs".to_string()),
+                Some("kube-system".to_string()),
+                Some("monitoring".to_string()),
+                Some("platform".to_string()),
+                Some("prod".to_string()),
+                Some("staging".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn promotes_explicit_all_namespace_request_to_one_fetch() {
+        let groups = group_requests(vec![pod_request(None)]).expect("groups");
         let group = groups.get("typed:Pod").expect("pod group");
 
         assert!(should_promote_to_all(group));

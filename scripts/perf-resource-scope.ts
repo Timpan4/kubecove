@@ -2,7 +2,6 @@ import {
 	buildFetchKeys,
 	buildResourceSearchIndex,
 	filterResourceSearchIndex,
-	filterResources,
 	topologyWatchKeys,
 	watchKeysFromFetchKeys,
 } from "../src/features/resources/helpers";
@@ -41,6 +40,31 @@ function makeRows(count: number): ResourceSummary[] {
 	}));
 }
 
+function legacyFilterResources(
+	data: ResourceSummary[],
+	search: string,
+	argoAppFilter: string,
+): ResourceSummary[] {
+	const term = search.trim().toLowerCase();
+	return data.filter((resource) => {
+		if (argoAppFilter && resource.argoApp !== argoAppFilter) return false;
+		if (!term) return true;
+		return [
+			resource.name,
+			resource.namespace,
+			resource.kind,
+			resource.apiVersion,
+			resource.group,
+			resource.plural,
+			resource.ownerRef,
+			resource.argoApp,
+			resource.helmRelease,
+		]
+			.filter(Boolean)
+			.some((value) => String(value).toLowerCase().includes(term));
+	});
+}
+
 const namespaces = Array.from({ length: namespaceCount }, (_, index) => `ns-${index}`);
 const tableKeys = buildFetchKeys(namespaces, ["Pod"]);
 const tableWatchKeys = watchKeysFromFetchKeys(tableKeys);
@@ -52,7 +76,7 @@ const baselineMemory = memoryBytes();
 let started = performance.now();
 let legacyMatches = 0;
 for (const query of ["api-4", "owner-99", "payments", "rel-49", "missing"]) {
-	legacyMatches += filterResources(rows, query, "").length;
+	legacyMatches += legacyFilterResources(rows, query, "").length;
 }
 const legacySearchMs = performance.now() - started;
 const afterLegacyMemory = memoryBytes();
@@ -87,7 +111,7 @@ console.log(
 			},
 			kubernetesWorkUnits: {
 				tablePodFetchesBefore: tableKeys.length,
-				tablePodFetchesAfter: 1,
+				tablePodFetchesAfter: tableKeys.length,
 				tablePodWatchesBefore: tableKeys.length,
 				tablePodWatchesAfter: tableWatchKeys.length,
 				topologyWatchesBefore: namespaceCount * topologyKindCount,

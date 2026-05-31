@@ -206,10 +206,6 @@ where
     }
 
     fn trim_to_budget(entries: &mut HashMap<String, CacheEntry<T>>) {
-        if entries.len() <= MAX_CACHE_ENTRIES {
-            return;
-        }
-
         let mut ready_entries: Vec<(String, Instant, bool)> = entries
             .iter()
             .filter_map(|(key, entry)| match entry {
@@ -217,19 +213,44 @@ where
                 CacheEntry::Loading { .. } => None,
             })
             .collect();
+        if ready_entries.len() <= MAX_CACHE_ENTRIES {
+            return;
+        }
+
+        let mut ready_count = ready_entries.len();
         ready_entries.sort_by_key(|(_, completed_at, dirty)| (*dirty, *completed_at));
 
         for (key, _, _) in ready_entries {
-            if entries.len() <= MAX_CACHE_ENTRIES {
+            if ready_count <= MAX_CACHE_ENTRIES {
                 break;
             }
-            entries.remove(&key);
+            if entries.remove(&key).is_some() {
+                ready_count -= 1;
+            }
         }
     }
 
     #[cfg(test)]
     fn len(&self) -> usize {
         self.entries.lock().expect("live store cache lock").len()
+    }
+
+    #[cfg(test)]
+    fn ready_len(&self) -> usize {
+        self.entries
+            .lock()
+            .expect("live store cache lock")
+            .values()
+            .filter(|entry| matches!(entry, CacheEntry::Ready(_)))
+            .count()
+    }
+
+    #[cfg(test)]
+    fn has_key(&self, key: &str) -> bool {
+        self.entries
+            .lock()
+            .expect("live store cache lock")
+            .contains_key(key)
     }
 }
 

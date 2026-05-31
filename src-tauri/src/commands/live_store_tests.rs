@@ -229,5 +229,61 @@ fn ready_cache_entries_are_bounded() {
         }
 
         assert_eq!(cache.len(), MAX_CACHE_ENTRIES);
+        assert_eq!(cache.ready_len(), MAX_CACHE_ENTRIES);
+    });
+}
+
+#[test]
+fn ready_cache_budget_keeps_dirty_entries_over_clean_entries() {
+    tauri::async_runtime::block_on(async {
+        let cache = SharedCache::new("test");
+
+        cache
+            .get_or_load(
+                "dirty".to_string(),
+                CacheMode::LiveFor(Duration::from_secs(30)),
+                || async { Ok::<_, AppError>(vec![0]) },
+            )
+            .await
+            .expect("dirty load");
+        cache.mark_dirty("dirty");
+
+        for index in 0..(MAX_CACHE_ENTRIES + 24) {
+            cache
+                .get_or_load(
+                    format!("clean-{index}"),
+                    CacheMode::LiveFor(Duration::from_secs(30)),
+                    move || async move { Ok::<_, AppError>(vec![index]) },
+                )
+                .await
+                .expect("clean load");
+        }
+
+        assert_eq!(cache.ready_len(), MAX_CACHE_ENTRIES);
+        assert!(cache.has_key("dirty"));
+    });
+}
+
+#[test]
+fn ready_cache_budget_evicts_oldest_clean_entries_first() {
+    tauri::async_runtime::block_on(async {
+        let cache = SharedCache::new("test");
+
+        for index in 0..(MAX_CACHE_ENTRIES + 2) {
+            cache
+                .get_or_load(
+                    format!("key-{index}"),
+                    CacheMode::LiveFor(Duration::from_secs(30)),
+                    move || async move { Ok::<_, AppError>(vec![index]) },
+                )
+                .await
+                .expect("cache load");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+
+        assert_eq!(cache.ready_len(), MAX_CACHE_ENTRIES);
+        assert!(!cache.has_key("key-0"));
+        assert!(!cache.has_key("key-1"));
+        assert!(cache.has_key(&format!("key-{}", MAX_CACHE_ENTRIES + 1)));
     });
 }
