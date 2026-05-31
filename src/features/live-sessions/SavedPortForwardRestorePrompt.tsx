@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Cable, Eye, Play, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -5,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ToggleButton } from "@/components/ToggleButton";
 import { useSettingsState } from "@/lib/settings";
 import type { SavedWorkspace } from "@/lib/workspaces";
+import { savedPortForwardStartFailureMessage } from "./restore";
 import { useSavedPortForwardActions } from "./useSavedPortForwardActions";
 
 interface SavedPortForwardRestorePromptProps {
@@ -25,10 +27,17 @@ export function SavedPortForwardRestorePrompt({
 		(state) => state.setAutoStartSavedPortForwards,
 	);
 	const { startAll, startingAll } = useSavedPortForwardActions(workspace);
+	const [startError, setStartError] = useState<string | null>(null);
 	const count = workspace.portForwards?.length ?? 0;
 
 	const handleStart = async () => {
-		await startAll();
+		setStartError(null);
+		const results = await startAll();
+		const failureMessage = savedPortForwardStartFailureMessage(results);
+		if (failureMessage) {
+			setStartError(failureMessage);
+			return;
+		}
 		onDismiss();
 	};
 
@@ -41,6 +50,11 @@ export function SavedPortForwardRestorePrompt({
 					This workspace has {count} saved Service{" "}
 					{count === 1 ? "forward" : "forwards"} ready to start.
 				</span>
+				{startError && (
+					<span className="w-full text-xs font-medium text-destructive">
+						{startError}
+					</span>
+				)}
 				<span className="flex flex-wrap items-center gap-2">
 					<span className="inline-flex items-center gap-2 pr-2 text-xs text-muted-foreground">
 						<ToggleButton

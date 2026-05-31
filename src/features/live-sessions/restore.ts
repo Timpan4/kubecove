@@ -1,7 +1,19 @@
 import type { SavedWorkspace } from "@/lib/workspaces";
 
+interface SavedPortForwardRestoreResult {
+	ok: boolean;
+}
+
 export function savedPortForwardCount(workspace: SavedWorkspace | null): number {
 	return workspace?.portForwards?.length ?? 0;
+}
+
+export function savedPortForwardStartFailureMessage(
+	results: SavedPortForwardRestoreResult[],
+): string | null {
+	const failedCount = results.filter((result) => !result.ok).length;
+	if (failedCount === 0) return null;
+	return `${failedCount} saved ${failedCount === 1 ? "forward" : "forwards"} failed to start. Review port forwards for details.`;
 }
 
 export function shouldShowSavedPortForwardRestorePrompt({

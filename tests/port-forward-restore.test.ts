@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	savedPortForwardStartFailureMessage,
 	shouldAutoStartSavedPortForwards,
 	shouldShowSavedPortForwardRestorePrompt,
 } from "../src/features/live-sessions/restore";
@@ -75,5 +76,16 @@ describe("saved port-forward restore behavior", () => {
 				startedWorkspaceIds,
 			}),
 		).toBe(false);
+	});
+
+	test("reports saved forward start failures without dismissing the prompt", () => {
+		expect(
+			savedPortForwardStartFailureMessage([
+				{ ok: true },
+				{ ok: false },
+				{ ok: false },
+			]),
+		).toBe("2 saved forwards failed to start. Review port forwards for details.");
+		expect(savedPortForwardStartFailureMessage([{ ok: true }])).toBeNull();
 	});
 });
