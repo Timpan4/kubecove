@@ -188,9 +188,8 @@ export function OwnershipMap({
 				: null,
 		[graphLayout, selectionIndex, selectedNodeId],
 	);
-	const [mapViewportElement, setMapViewportElement] =
-		useState<HTMLDivElement | null>(null);
 	const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+	const resizeObserverRef = useRef<ResizeObserver | null>(null);
 	const translateExtent = useMemo(
 		() =>
 			graph && viewportSize.width > 0 && viewportSize.height > 0
@@ -201,7 +200,26 @@ export function OwnershipMap({
 	const viewportSizeKey = `${viewportSize.width}x${viewportSize.height}`;
 	const centerViewportKey = `${heightClassName}:${viewportSizeKey}`;
 	const setMapViewportRef = useCallback((element: HTMLDivElement | null) => {
-		setMapViewportElement(element);
+		resizeObserverRef.current?.disconnect();
+		resizeObserverRef.current = null;
+		if (!element) return;
+		const updateViewportSize = () => {
+			const rect = element.getBoundingClientRect();
+			const nextSize = {
+				width: Math.round(rect.width),
+				height: Math.round(rect.height),
+			};
+			setViewportSize((currentSize) =>
+				currentSize.width === nextSize.width &&
+				currentSize.height === nextSize.height
+					? currentSize
+					: nextSize,
+			);
+		};
+		updateViewportSize();
+		const observer = new ResizeObserver(updateViewportSize);
+		observer.observe(element);
+		resizeObserverRef.current = observer;
 	}, []);
 	const handleNodeClick: NodeMouseHandler<OwnershipGraphNode> = (_, node) => {
 		if (isStandaloneKindGroupNode(node)) {
@@ -220,26 +238,12 @@ export function OwnershipMap({
 		onNodeSelect(node.data.node, node.data.resource);
 	};
 
-	useEffect(() => {
-		if (!mapViewportElement) return;
-		const updateViewportSize = () => {
-			const rect = mapViewportElement.getBoundingClientRect();
-			const nextSize = {
-				width: Math.round(rect.width),
-				height: Math.round(rect.height),
-			};
-			setViewportSize((currentSize) =>
-				currentSize.width === nextSize.width &&
-				currentSize.height === nextSize.height
-					? currentSize
-					: nextSize,
-			);
-		};
-		updateViewportSize();
-		const observer = new ResizeObserver(updateViewportSize);
-		observer.observe(mapViewportElement);
-		return () => observer.disconnect();
-	}, [mapViewportElement]);
+	useEffect(
+		() => () => {
+			resizeObserverRef.current?.disconnect();
+		},
+		[],
+	);
 
 	if (isLoading) {
 		const HeaderIcon = mode === "networkFlow" ? Network : GitBranch;
