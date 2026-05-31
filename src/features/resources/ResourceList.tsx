@@ -38,9 +38,10 @@ import { pageAppGroupCounts, pageTypeGroupCounts } from "./grouping";
 import {
 	buildFetchKeys,
 	buildResourceHealthSummary,
+	buildResourceSearchIndex,
 	describeResourceScope,
 	filterResourcesByHealth,
-	filterResources,
+	filterResourceSearchIndex,
 	formatResourceGroupLabel,
 	resourceIdentityKey,
 	resourceSelectionKey,
@@ -216,9 +217,13 @@ function ResourceListComponent({
 		metricsQuery.data?.availability,
 	);
 	const argoApps = useMemo(() => uniqueArgoApps(dataWithMetrics), [dataWithMetrics]);
+	const resourceSearchIndex = useMemo(
+		() => buildResourceSearchIndex(dataWithMetrics),
+		[dataWithMetrics],
+	);
 	const scopedData = useMemo(
-		() => filterResources(dataWithMetrics, search, selectedArgoAppFilter),
-		[dataWithMetrics, search, selectedArgoAppFilter],
+		() => filterResourceSearchIndex(resourceSearchIndex, search, selectedArgoAppFilter),
+		[resourceSearchIndex, search, selectedArgoAppFilter],
 	);
 	const filteredData = useMemo(
 		() => filterResourcesByHealth(scopedData, healthFilter),

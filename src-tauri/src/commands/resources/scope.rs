@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 use tauri::State;
 
+const PROMOTE_NAMESPACE_FETCH_THRESHOLD: usize = 8;
+
 #[derive(Debug, Clone)]
 enum ResourceScopeKind {
     Typed(String),
@@ -76,7 +78,7 @@ fn group_requests(
 }
 
 fn should_promote_to_all(group: &ResourceScopeGroup) -> bool {
-    group.all_namespaces
+    group.all_namespaces || group.namespaces.len() >= PROMOTE_NAMESPACE_FETCH_THRESHOLD
 }
 
 fn fetch_namespaces(group: &ResourceScopeGroup) -> Vec<Option<String>> {
@@ -259,6 +261,89 @@ mod tests {
             vec![Some("argocd".to_string()), Some("default".to_string())]
         );
         assert_eq!(group.namespaces.len(), 2);
+    }
+
+    #[test]
+    fn promotes_large_namespace_sets_to_one_all_namespace_fetch() {
+        let groups = group_requests(vec![
+            pod_request(Some("default")),
+            pod_request(Some("argocd")),
+            pod_request(Some("jobs")),
+            pod_request(Some("kube-system")),
+            pod_request(Some("monitoring")),
+            pod_request(Some("platform")),
+            pod_request(Some("staging")),
+            pod_request(Some("prod")),
+        ])
+        .expect("groups");
+        let group = groups.get("typed:Pod").expect("pod group");
+
+        assert!(should_promote_to_all(group));
+        assert_eq!(fetch_namespaces(group), vec![None]);
+    }
+
+    #[test]
+    fn promoted_namespace_fetch_still_filters_to_requested_namespaces() {
+        let groups = group_requests(vec![
+            pod_request(Some("default")),
+            pod_request(Some("argocd")),
+            pod_request(Some("jobs")),
+            pod_request(Some("kube-system")),
+            pod_request(Some("monitoring")),
+            pod_request(Some("platform")),
+            pod_request(Some("staging")),
+            pod_request(Some("prod")),
+        ])
+        .expect("groups");
+        let group = groups.get("typed:Pod").expect("pod group");
+        let rows = filter_promoted_rows(
+            vec![
+                ResourceSummary {
+                    kind: "Pod".to_string(),
+                    cluster: "kind-dev".to_string(),
+                    name: "api".to_string(),
+                    namespace: Some("default".to_string()),
+                    age: "1m".to_string(),
+                    api_version: None,
+                    group: None,
+                    version: None,
+                    plural: None,
+                    namespaced: None,
+                    dynamic: None,
+                    created_at: None,
+                    status: None,
+                    ready: None,
+                    restarts: None,
+                    owner_ref: None,
+                    argo_app: None,
+                    helm_release: None,
+                },
+                ResourceSummary {
+                    kind: "Pod".to_string(),
+                    cluster: "kind-dev".to_string(),
+                    name: "db".to_string(),
+                    namespace: Some("other".to_string()),
+                    age: "1m".to_string(),
+                    api_version: None,
+                    group: None,
+                    version: None,
+                    plural: None,
+                    namespaced: None,
+                    dynamic: None,
+                    created_at: None,
+                    status: None,
+                    ready: None,
+                    restarts: None,
+                    owner_ref: None,
+                    argo_app: None,
+                    helm_release: None,
+                },
+            ],
+            group,
+        );
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].name, "api");
     }
 
     #[test]

@@ -36,6 +36,12 @@ export interface ScopePill {
 	value: string;
 }
 
+export interface ResourceSearchEntry {
+	resource: ResourceSummary;
+	searchText: string;
+	argoApp: string;
+}
+
 const TOPOLOGY_WATCH_KINDS = [
 	"Deployment",
 	"DaemonSet",
@@ -51,6 +57,8 @@ const TOPOLOGY_WATCH_KINDS = [
 	"ConfigMap",
 	"Secret",
 ] as const;
+
+const WATCH_NAMESPACE_COALESCE_THRESHOLD = 8;
 
 export function resourceSelectionKey(resource: ResourceSummary): string {
 	return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
@@ -112,9 +120,25 @@ export function buildFetchKeys(
 }
 
 export function watchKeysFromFetchKeys(keys: FetchKey[]): WatchResourceKey[] {
-	return keys.map((key) => {
+	const namespaceCounts = new Map<string, Set<string>>();
+	for (const key of keys) {
+		if (!key.namespace || isClusterScopedSelection(key.kind)) continue;
+		const kindKey = resourceKindFetchKey(key.kind);
+		const namespaces = namespaceCounts.get(kindKey) ?? new Set<string>();
+		namespaces.add(key.namespace);
+		namespaceCounts.set(kindKey, namespaces);
+	}
+
+	const coalesced = new Map<string, WatchResourceKey>();
+	for (const key of keys) {
+		const watchNamespace =
+			key.namespace &&
+			(namespaceCounts.get(resourceKindFetchKey(key.kind))?.size ?? 0) >=
+				WATCH_NAMESPACE_COALESCE_THRESHOLD
+				? undefined
+				: key.namespace;
 		if (isDiscoveredResourceKind(key.kind)) {
-			return {
+			const watchKey = {
 				resourceKind: {
 					kind: key.kind.kind,
 					group: key.kind.group,
@@ -123,15 +147,19 @@ export function watchKeysFromFetchKeys(keys: FetchKey[]): WatchResourceKey[] {
 					plural: key.kind.plural,
 					namespaced: key.kind.namespaced,
 				},
-				namespace: key.namespace,
+				namespace: watchNamespace,
 			};
+			coalesced.set(watchKeySignature(watchKey), watchKey);
+			continue;
 		}
 
-		return {
+		const watchKey = {
 			resourceKind: { kind: key.kind },
-			namespace: key.namespace,
+			namespace: watchNamespace,
 		};
-	});
+		coalesced.set(watchKeySignature(watchKey), watchKey);
+	}
+	return Array.from(coalesced.values());
 }
 
 function watchKeySignature(key: WatchResourceKey): string {
@@ -158,7 +186,9 @@ export function mergeWatchKeys(
 
 export function topologyWatchKeys(namespaces: string[]): WatchResourceKey[] {
 	const namespaceScopes: Array<string | undefined> =
-		namespaces.length > 0 ? namespaces : [undefined];
+		namespaces.length >= WATCH_NAMESPACE_COALESCE_THRESHOLD || namespaces.length === 0
+			? [undefined]
+			: namespaces;
 	return TOPOLOGY_WATCH_KINDS.flatMap((kind) =>
 		namespaceScopes.map((namespace) => ({
 			resourceKind: { kind },
@@ -197,22 +227,50 @@ export function filterResources(
 	search: string,
 	argoAppFilter: string,
 ): ResourceSummary[] {
+	return filterResourceSearchIndex(
+		buildResourceSearchIndex(data),
+		search,
+		argoAppFilter,
+	);
+}
+
+export function buildResourceSearchIndex(
+	data: ResourceSummary[],
+): ResourceSearchEntry[] {
+	return data.map((resource) => ({
+		resource,
+		argoApp: resource.argoApp ?? "",
+		searchText: [
+			resource.name,
+			resource.namespace,
+			resource.kind,
+			resource.apiVersion,
+			resource.group,
+			resource.plural,
+			resource.ownerRef,
+			resource.argoApp,
+			resource.helmRelease,
+		]
+			.filter((value): value is string => Boolean(value))
+			.join("\n")
+			.toLowerCase(),
+	}));
+}
+
+export function filterResourceSearchIndex(
+	index: ResourceSearchEntry[],
+	search: string,
+	argoAppFilter: string,
+): ResourceSummary[] {
 	const term = search.trim().toLowerCase();
-	return data.filter((resource) => {
-		if (argoAppFilter && resource.argoApp !== argoAppFilter) return false;
-		if (!term) return true;
-		return (
-			resource.name.toLowerCase().includes(term) ||
-			resource.namespace?.toLowerCase().includes(term) === true ||
-			resource.kind.toLowerCase().includes(term) ||
-			resource.apiVersion?.toLowerCase().includes(term) === true ||
-			resource.group?.toLowerCase().includes(term) === true ||
-			resource.plural?.toLowerCase().includes(term) === true ||
-			resource.ownerRef?.toLowerCase().includes(term) === true ||
-			resource.argoApp?.toLowerCase().includes(term) === true ||
-			resource.helmRelease?.toLowerCase().includes(term) === true
-		);
-	});
+	const rows: ResourceSummary[] = [];
+	for (const entry of index) {
+		if (argoAppFilter && entry.argoApp !== argoAppFilter) continue;
+		if (!term || entry.searchText.includes(term)) {
+			rows.push(entry.resource);
+		}
+	}
+	return rows;
 }
 
 export function uniqueArgoApps(data: ResourceSummary[]): string[] {

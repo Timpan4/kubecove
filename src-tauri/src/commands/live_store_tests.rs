@@ -211,3 +211,23 @@ fn normalized_builtin_watch_invalidates_typed_resource_cache() {
         assert_eq!(rows[0].name, "worker");
     });
 }
+
+#[test]
+fn ready_cache_entries_are_bounded() {
+    tauri::async_runtime::block_on(async {
+        let cache = SharedCache::new("test");
+
+        for index in 0..(MAX_CACHE_ENTRIES + 24) {
+            cache
+                .get_or_load(
+                    format!("key-{index}"),
+                    CacheMode::LiveFor(Duration::from_secs(30)),
+                    move || async move { Ok::<_, AppError>(vec![index]) },
+                )
+                .await
+                .expect("cache load");
+        }
+
+        assert_eq!(cache.len(), MAX_CACHE_ENTRIES);
+    });
+}

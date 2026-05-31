@@ -16,8 +16,10 @@ import {
 import {
 	buildFetchKeys,
 	buildResourceHealthSummary,
+	buildResourceSearchIndex,
 	describeResourceScope,
 	filterResources,
+	filterResourceSearchIndex,
 	filterResourcesByHealth,
 	formatResourceGroupLabel,
 	resourceIdentityKey,
@@ -240,11 +242,54 @@ describe("resource browser presentation helpers", () => {
     ]);
   });
 
+  test("coalesces large namespace watch sets into one all-namespace watch", () => {
+    expect(watchKeysFromFetchKeys([
+      { kind: "Pod", namespace: "default" },
+      { kind: "Pod", namespace: "payments" },
+      { kind: "Pod", namespace: "jobs" },
+      { kind: "Pod", namespace: "kube-system" },
+      { kind: "Pod", namespace: "monitoring" },
+      { kind: "Pod", namespace: "platform" },
+      { kind: "Pod", namespace: "staging" },
+      { kind: "Pod", namespace: "prod" },
+      { kind: "Service", namespace: "default" },
+    ])).toEqual([
+      { resourceKind: { kind: "Pod" }, namespace: undefined },
+      { resourceKind: { kind: "Service" }, namespace: "default" },
+    ]);
+  });
+
   test("watches EndpointSlices for topology invalidation", () => {
     expect(topologyWatchKeys(["default"])).toContainEqual({
       resourceKind: { kind: "EndpointSlice" },
       namespace: "default",
     });
+  });
+
+  test("coalesces large topology watch scopes across namespaces", () => {
+    expect(topologyWatchKeys([
+      "default",
+      "payments",
+      "jobs",
+      "kube-system",
+      "monitoring",
+      "platform",
+      "staging",
+      "prod",
+    ])).toContainEqual({
+      resourceKind: { kind: "EndpointSlice" },
+      namespace: undefined,
+    });
+    expect(topologyWatchKeys([
+      "default",
+      "payments",
+      "jobs",
+      "kube-system",
+      "monitoring",
+      "platform",
+      "staging",
+      "prod",
+    ]).length).toBe(13);
   });
 
   test("filters resources by search text and Argo app", () => {
@@ -257,6 +302,17 @@ describe("resource browser presentation helpers", () => {
     expect(filterResources(resources, "jobs", "")).toEqual([resources[1]]);
     expect(filterResources(resources, "api", "payments")).toEqual([resources[0]]);
     expect(filterResources(resources, "api", "batch")).toEqual([]);
+  });
+
+  test("reuses a resource search index across repeated searches", () => {
+    const resources: ResourceSummary[] = [
+      { ...baseResource, name: "api-0", ownerRef: "api", argoApp: "payments" },
+      { ...baseResource, name: "worker-0", helmRelease: "jobs", argoApp: "batch" },
+    ];
+    const index = buildResourceSearchIndex(resources);
+
+    expect(filterResourceSearchIndex(index, "jobs", "").map((r) => r.name)).toEqual(["worker-0"]);
+    expect(filterResourceSearchIndex(index, "api", "payments").map((r) => r.name)).toEqual(["api-0"]);
   });
 
   test("filters dynamic resources by discovered metadata", () => {
