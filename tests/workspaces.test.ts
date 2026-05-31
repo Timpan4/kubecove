@@ -109,6 +109,13 @@ describe("workspace helpers", () => {
 			lastError: "local port 18080 is already in use",
 		});
 
+		useWorkspaceStore.getState().updateSavedPortForward(workspace.id, saved.id, {
+			localPort: undefined,
+		});
+		expect(
+			useWorkspaceStore.getState().workspaces[0].portForwards[0].localPort,
+		).toBeUndefined();
+
 		useWorkspaceStore
 			.getState()
 			.deleteSavedPortForward(workspace.id, saved.id);

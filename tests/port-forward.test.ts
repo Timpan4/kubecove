@@ -202,6 +202,7 @@ spec:
 			namespace: "payments",
 			serviceName: "api",
 			servicePort: 8080,
+			localPort: undefined,
 			label: "API",
 		});
 		expect(

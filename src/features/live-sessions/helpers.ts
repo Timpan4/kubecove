@@ -272,6 +272,7 @@ export function parseSavedPortForwardForm(
 			namespace,
 			serviceName,
 			servicePort,
+			localPort: undefined,
 			label: label || undefined,
 		};
 	}
