@@ -3,6 +3,22 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.4.1 - 2026-06-01
+
+### Improved
+
+- Kept Service port-forward sessions connected by re-resolving ready backing Pods
+  when local connections reconnect or sessions restart.
+- Fit ownership topology paths into view more reliably after selecting related
+  resources.
+- Added clearer topology health badge colors.
+- Improved GitHub Actions dependency caching for CI and release builds.
+
+### Release
+
+- Prepared KubeCove v0.4.1 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
+
 ## 0.4.0 - 2026-06-01
 
 ### Added
