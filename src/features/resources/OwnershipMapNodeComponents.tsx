@@ -4,7 +4,9 @@ import {
 	type NodeProps,
 } from "@xyflow/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
 import { Badge } from "@/components/ui/badge";
+import type { TopologyHealth } from "@/lib/types";
 import { formatCompactResourceMetrics } from "@/lib/resource-metrics";
 import { getResourceKindVisual } from "@/lib/resource-visuals";
 import { cn } from "@/lib/utils";
@@ -15,11 +17,31 @@ import {
 	type StandaloneKindGroupGraphNode,
 } from "./topology";
 
-export function HealthBadge({ health }: { health: string }) {
+function topologyHealthBadgeStyle(health: TopologyHealth) {
+	switch (health) {
+		case "healthy":
+			return STATUS_BADGE_STYLES.success;
+		case "attention":
+			return STATUS_BADGE_STYLES.warning;
+		case "degraded":
+			return STATUS_BADGE_STYLES.error;
+		case "restarted":
+			return STATUS_BADGE_STYLES.info;
+		default:
+			return STATUS_BADGE_STYLES.neutral;
+	}
+}
+
+export function HealthBadge({ health }: { health: TopologyHealth }) {
+	const badgeStyle = topologyHealthBadgeStyle(health);
+
 	return (
 		<Badge
-			variant={health === "degraded" ? "destructive" : "outline"}
-			className="h-[1.125rem] max-w-[4.75rem] shrink-0 rounded-sm px-1.5 text-[0.625rem] leading-none"
+			variant={badgeStyle.variant}
+			className={cn(
+				"h-[1.125rem] max-w-[4.75rem] shrink-0 rounded-sm px-1.5 text-[0.625rem] leading-none",
+				badgeStyle.className,
+			)}
 		>
 			<span className="truncate">{health}</span>
 		</Badge>
