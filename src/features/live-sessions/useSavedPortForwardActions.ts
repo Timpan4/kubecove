@@ -4,6 +4,7 @@ import {
 	createTauriClient,
 	listPortForwards,
 	startPortForward,
+	stopPodPortForward,
 	type TauriClient,
 } from "@/lib/tauri";
 import { queryKeys } from "@/lib/queryKeys";
@@ -14,6 +15,7 @@ import {
 	type SavedWorkspace,
 } from "@/lib/workspaces";
 import {
+	portForwardErrorMessage,
 	isReusablePortForwardSession,
 	savedPortForwardMatchesSession,
 	savedPortForwardToRequest,
@@ -25,20 +27,6 @@ export interface SavedPortForwardStartResult {
 	session?: PortForwardSessionSummary;
 	error?: string;
 	skipped?: boolean;
-}
-
-function getErrorMessage(error: unknown): string {
-	if (error instanceof Error) return error.message;
-	if (typeof error === "string") return error;
-	if (
-		typeof error === "object" &&
-		error !== null &&
-		"message" in error &&
-		typeof error.message === "string"
-	) {
-		return error.message;
-	}
-	return "Unknown error";
 }
 
 function setStartingId(
@@ -71,11 +59,10 @@ async function startSavedPortForward({
 	knownSessions,
 	updateSavedPortForward,
 }: StartSavedPortForwardOptions): Promise<SavedPortForwardStartResult> {
-	const existingSession = knownSessions.find(
-		(session) =>
-			isReusablePortForwardSession(session) &&
-			savedPortForwardMatchesSession(portForward, session),
+	const matchingSessions = knownSessions.filter((session) =>
+		savedPortForwardMatchesSession(portForward, session),
 	);
+	const existingSession = matchingSessions.find(isReusablePortForwardSession);
 	if (existingSession) {
 		updateSavedPortForward(workspaceId, portForward.id, {
 			lastStartedAt: existingSession.startedAt,
@@ -95,6 +82,9 @@ async function startSavedPortForward({
 		lastError: undefined,
 	});
 	try {
+		for (const session of matchingSessions) {
+			await stopPodPortForward(client, session.id);
+		}
 		const session = await startPortForward(
 			client,
 			savedPortForwardToRequest(portForward),
@@ -106,7 +96,7 @@ async function startSavedPortForward({
 		});
 		return { portForwardId: portForward.id, ok: true, session };
 	} catch (error) {
-		const message = getErrorMessage(error);
+		const message = portForwardErrorMessage(error);
 		updateSavedPortForward(workspaceId, portForward.id, {
 			lastStatus: "error",
 			lastError: message,

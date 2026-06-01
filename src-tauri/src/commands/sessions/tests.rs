@@ -126,6 +126,22 @@ fn registry_lists_marks_and_stops_sessions() {
     assert_eq!(session.status, "error");
     assert_eq!(session.last_error.as_deref(), Some("forbidden"));
 
+    registry.mark_resolved_target(
+        "pf-1",
+        &PortForwardTarget {
+            cluster_context: "kind-dev".to_string(),
+            namespace: "default".to_string(),
+            target_kind: PortForwardTargetKind::Service,
+            target_name: "api".to_string(),
+            pod_name: "api-1".to_string(),
+            remote_port: 80,
+            pod_port: 8081,
+        },
+    );
+    let session = registry.list().pop().expect("session");
+    assert_eq!(session.resolved_pod_name, "api-1");
+    assert_eq!(session.resolved_pod_port, 8081);
+
     assert!(registry.stop("pf-1"));
     assert!(!registry.stop("pf-1"));
     assert!(registry.list().is_empty());

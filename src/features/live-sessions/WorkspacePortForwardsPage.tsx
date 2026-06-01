@@ -6,6 +6,7 @@ import {
 	Pencil,
 	Play,
 	Plus,
+	RotateCcw,
 	Save,
 	Square,
 	Trash2,
@@ -54,12 +55,14 @@ import {
 } from "@/lib/workspaces";
 import {
 	parseSavedPortForwardForm,
+	portForwardErrorMessage,
 	portForwardLocalUrl,
 	savedPortForwardLabel,
 	savedPortForwardMatchesSession,
 	sortPortForwardSessions,
 	type SavedPortForwardFormValues,
 } from "./helpers";
+import { useReconnectPortForwardSession } from "./useReconnectPortForwardSession";
 import { useSavedPortForwardActions } from "./useSavedPortForwardActions";
 
 interface WorkspacePortForwardsPageProps {
@@ -150,6 +153,7 @@ export function WorkspacePortForwardsPage({
 	const sessionsQuery = useQuery({
 		queryKey: queryKeys.portForwards(),
 		queryFn: () => listPortForwards(client),
+		placeholderData: (previousData) => previousData,
 		refetchInterval: 3_000,
 	});
 	const sessionsForActions = useMemo(
@@ -175,6 +179,14 @@ export function WorkspacePortForwardsPage({
 	const [stoppingId, setStoppingId] = useState<string | null>(null);
 	const [copyingId, setCopyingId] = useState<string | null>(null);
 	const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+	const { reconnectingId, reconnectSession } =
+		useReconnectPortForwardSession({
+			client,
+			onSuccess: (session) =>
+				setBulkMessage(`Reconnected ${activeSessionTitle(session)}.`),
+			onError: (error) =>
+				setBulkMessage(`Reconnect failed: ${portForwardErrorMessage(error)}`),
+		});
 
 	const resetForm = () => {
 		setEditingId(null);
@@ -298,18 +310,17 @@ export function WorkspacePortForwardsPage({
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Active sessions</CardTitle>
+					<CardTitle className="inline-flex items-center gap-2">
+						Active sessions
+						{sessionsQuery.isFetching && (
+							<Spinner className="size-3.5 text-muted-foreground" />
+						)}
+					</CardTitle>
 					<CardDescription>
 						Sessions are in-memory only and bound to 127.0.0.1.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="flex flex-col gap-3">
-					{sessionsQuery.isFetching && (
-						<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-							<Spinner className="size-4" />
-							Refreshing sessions...
-						</div>
-					)}
 					{sessions.length === 0 ? (
 						<Empty className="min-h-36 border-0">
 							<EmptyHeader>
@@ -357,6 +368,20 @@ export function WorkspacePortForwardsPage({
 											)}
 										</div>
 										<div className="flex flex-wrap items-center justify-end gap-2">
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() => void reconnectSession(session)}
+												disabled={reconnectingId === session.id}
+											>
+												{reconnectingId === session.id ? (
+													<Spinner data-icon="inline-start" />
+												) : (
+													<RotateCcw data-icon="inline-start" />
+												)}
+												Reconnect
+											</Button>
 											<Button
 												type="button"
 												variant="outline"
