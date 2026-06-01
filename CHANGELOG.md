@@ -3,6 +3,38 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.4.0 - 2026-06-01
+
+### Added
+
+- Added reproducible frontend and resource-scope performance benchmarks for
+  sidebar expansion, topology selection, indexed search, and cache retention.
+
+### Improved
+
+- Cut retained sidebar tree objects by lazily building namespace children only
+  when a namespace is expanded.
+- Reused topology layout and selection indexes so selecting resources no longer
+  rebuilds the whole React Flow graph on every click.
+- Indexed table search text once per resource refresh instead of rebuilding
+  searchable fields for every search pass.
+- Bounded backend ready-cache retention and kept namespace-scoped reads and
+  watches namespace-scoped for limited-RBAC users.
+
+### Fixed
+
+- Fixed standalone topology bucket dimming when selected paths include owned
+  resources of the same kind.
+- Fixed live-store cache trimming so loading entries do not force eviction below
+  the intended ready-entry budget.
+- Removed stale namespace-coalescing benchmark claims after preserving
+  namespace-scoped Kubernetes access for RBAC safety.
+
+### Release
+
+- Prepared KubeCove v0.4.0 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
+
 ## 0.3.0 - 2026-05-26
 
 ### Added
