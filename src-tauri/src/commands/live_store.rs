@@ -15,6 +15,7 @@ use std::{
 
 const COMPLETED_GRACE: Duration = Duration::from_millis(500);
 const RESOURCE_FRESHNESS: Duration = Duration::from_secs(30);
+const MAX_CACHE_ENTRIES: usize = 128;
 
 type SharedLoad<T> = Shared<BoxFuture<'static, Result<T, AppError>>>;
 
@@ -160,6 +161,7 @@ where
                 let mut ready = Self::ready_value(value.clone());
                 ready.dirty = dirty_while_loading;
                 entries.insert(key, CacheEntry::Ready(ready));
+                Self::trim_to_budget(&mut entries);
             }
             Err(_) => {
                 let previous = entries.remove(&key).and_then(|entry| match entry {
@@ -173,6 +175,7 @@ where
                 });
                 if let Some(previous) = previous {
                     entries.insert(key, CacheEntry::Ready(previous));
+                    Self::trim_to_budget(&mut entries);
                 }
             }
         }
@@ -200,6 +203,54 @@ where
                 CacheEntry::Loading { dirty, .. } => *dirty = true,
             }
         }
+    }
+
+    fn trim_to_budget(entries: &mut HashMap<String, CacheEntry<T>>) {
+        let mut ready_entries: Vec<(String, Instant, bool)> = entries
+            .iter()
+            .filter_map(|(key, entry)| match entry {
+                CacheEntry::Ready(ready) => Some((key.clone(), ready.completed_at, ready.dirty)),
+                CacheEntry::Loading { .. } => None,
+            })
+            .collect();
+        if ready_entries.len() <= MAX_CACHE_ENTRIES {
+            return;
+        }
+
+        let mut ready_count = ready_entries.len();
+        ready_entries.sort_by_key(|(_, completed_at, dirty)| (*dirty, *completed_at));
+
+        for (key, _, _) in ready_entries {
+            if ready_count <= MAX_CACHE_ENTRIES {
+                break;
+            }
+            if entries.remove(&key).is_some() {
+                ready_count -= 1;
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.lock().expect("live store cache lock").len()
+    }
+
+    #[cfg(test)]
+    fn ready_len(&self) -> usize {
+        self.entries
+            .lock()
+            .expect("live store cache lock")
+            .values()
+            .filter(|entry| matches!(entry, CacheEntry::Ready(_)))
+            .count()
+    }
+
+    #[cfg(test)]
+    fn has_key(&self, key: &str) -> bool {
+        self.entries
+            .lock()
+            .expect("live store cache lock")
+            .contains_key(key)
     }
 }
 

@@ -26,10 +26,12 @@ import type {
 import { cn } from "@/lib/utils";
 import { ownershipMapNodeTypes } from "./OwnershipMapNodes";
 import {
-	buildReactFlowTopology,
 	type OwnershipGraphNode,
 	type OwnershipResourceGraphNode,
 	type StandaloneKindGroupGraphNode,
+	buildReactFlowTopologyLayout,
+	buildReactFlowTopologySelectionIndex,
+	applyReactFlowTopologySelectionWithIndex,
 } from "./topology";
 import {
 	absoluteGraphNodePosition,
@@ -67,6 +69,19 @@ function isStandaloneKindGroupNode(
 	node: OwnershipGraphNode,
 ): node is StandaloneKindGroupGraphNode {
 	return node.type === "standaloneKindGroup";
+}
+
+function selectedStandaloneExpansionId(
+	topology: ResourceTopology | undefined,
+	selectedNodeId: string | null,
+): string | null {
+	if (!topology || !selectedNodeId) return null;
+	const selectedNode = topology.nodes.find((node) => node.id === selectedNodeId);
+	if (!selectedNode) return null;
+	const hasRelation = topology.edges.some(
+		(edge) => edge.source === selectedNodeId || edge.target === selectedNodeId,
+	);
+	return hasRelation ? null : selectedNodeId;
 }
 
 function FitTopologyView({ fitViewKey }: { fitViewKey: string }) {
@@ -143,20 +158,38 @@ export function OwnershipMap({
 	const [expandedStandaloneKinds, setExpandedStandaloneKinds] = useState<Set<string>>(
 		() => new Set(),
 	);
-	const graph = useMemo(
+	const standaloneExpansionId = useMemo(
+		() => selectedStandaloneExpansionId(topology, selectedNodeId),
+		[topology, selectedNodeId],
+	);
+	const graphLayout = useMemo(
 		() =>
 			topology
-				? buildReactFlowTopology(topology, selectedNodeId, {
+				? buildReactFlowTopologyLayout(topology, standaloneExpansionId, {
 					expandedStandaloneKinds,
 					groupStandalone: mode === "ownership",
 					showPortHints: mode === "networkFlow",
 				})
 				: null,
-		[topology, selectedNodeId, expandedStandaloneKinds, mode],
+		[topology, standaloneExpansionId, expandedStandaloneKinds, mode],
 	);
-	const [mapViewportElement, setMapViewportElement] =
-		useState<HTMLDivElement | null>(null);
+	const selectionIndex = useMemo(
+		() => (topology ? buildReactFlowTopologySelectionIndex(topology) : null),
+		[topology],
+	);
+	const graph = useMemo(
+		() =>
+			graphLayout && selectionIndex
+				? applyReactFlowTopologySelectionWithIndex(
+					graphLayout,
+					selectionIndex,
+					selectedNodeId,
+				)
+				: null,
+		[graphLayout, selectionIndex, selectedNodeId],
+	);
 	const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+	const resizeObserverRef = useRef<ResizeObserver | null>(null);
 	const translateExtent = useMemo(
 		() =>
 			graph && viewportSize.width > 0 && viewportSize.height > 0
@@ -167,7 +200,26 @@ export function OwnershipMap({
 	const viewportSizeKey = `${viewportSize.width}x${viewportSize.height}`;
 	const centerViewportKey = `${heightClassName}:${viewportSizeKey}`;
 	const setMapViewportRef = useCallback((element: HTMLDivElement | null) => {
-		setMapViewportElement(element);
+		resizeObserverRef.current?.disconnect();
+		resizeObserverRef.current = null;
+		if (!element) return;
+		const updateViewportSize = () => {
+			const rect = element.getBoundingClientRect();
+			const nextSize = {
+				width: Math.round(rect.width),
+				height: Math.round(rect.height),
+			};
+			setViewportSize((currentSize) =>
+				currentSize.width === nextSize.width &&
+				currentSize.height === nextSize.height
+					? currentSize
+					: nextSize,
+			);
+		};
+		updateViewportSize();
+		const observer = new ResizeObserver(updateViewportSize);
+		observer.observe(element);
+		resizeObserverRef.current = observer;
 	}, []);
 	const handleNodeClick: NodeMouseHandler<OwnershipGraphNode> = (_, node) => {
 		if (isStandaloneKindGroupNode(node)) {
@@ -186,26 +238,12 @@ export function OwnershipMap({
 		onNodeSelect(node.data.node, node.data.resource);
 	};
 
-	useEffect(() => {
-		if (!mapViewportElement) return;
-		const updateViewportSize = () => {
-			const rect = mapViewportElement.getBoundingClientRect();
-			const nextSize = {
-				width: Math.round(rect.width),
-				height: Math.round(rect.height),
-			};
-			setViewportSize((currentSize) =>
-				currentSize.width === nextSize.width &&
-				currentSize.height === nextSize.height
-					? currentSize
-					: nextSize,
-			);
-		};
-		updateViewportSize();
-		const observer = new ResizeObserver(updateViewportSize);
-		observer.observe(mapViewportElement);
-		return () => observer.disconnect();
-	}, [mapViewportElement]);
+	useEffect(
+		() => () => {
+			resizeObserverRef.current?.disconnect();
+		},
+		[],
+	);
 
 	if (isLoading) {
 		const HeaderIcon = mode === "networkFlow" ? Network : GitBranch;

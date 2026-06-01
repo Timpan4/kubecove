@@ -76,30 +76,14 @@ fn group_requests(
 }
 
 fn should_promote_to_all(group: &ResourceScopeGroup) -> bool {
-    group.all_namespaces
+    group.all_namespaces || group.namespaces.is_empty()
 }
 
 fn fetch_namespaces(group: &ResourceScopeGroup) -> Vec<Option<String>> {
-    if should_promote_to_all(group) || group.namespaces.is_empty() {
+    if should_promote_to_all(group) {
         return vec![None];
     }
     group.namespaces.iter().cloned().map(Some).collect()
-}
-
-fn filter_promoted_rows(
-    rows: Vec<ResourceSummary>,
-    group: &ResourceScopeGroup,
-) -> Vec<ResourceSummary> {
-    if group.all_namespaces || group.namespaces.is_empty() {
-        return rows;
-    }
-    rows.into_iter()
-        .filter(|row| {
-            row.namespace
-                .as_deref()
-                .is_some_and(|namespace| group.namespaces.contains(namespace))
-        })
-        .collect()
 }
 
 fn dedupe_rows(rows: Vec<ResourceSummary>) -> Vec<ResourceSummary> {
@@ -131,7 +115,6 @@ pub async fn resource_scope_from(
         let live_store = live_store.clone();
         let cluster_context = cluster_context.clone();
         async move {
-            let promoted = should_promote_to_all(&group);
             let fetches = fetch_namespaces(&group).into_iter().map(|namespace| {
                 let kind = group.kind.clone();
                 let live_store = live_store.clone();
@@ -179,11 +162,6 @@ pub async fn resource_scope_from(
             for result in join_all(fetches).await {
                 rows.extend(result?);
             }
-            let rows = if promoted {
-                filter_promoted_rows(rows, &group)
-            } else {
-                rows
-            };
             Ok::<_, AppError>(rows)
         }
     });
@@ -259,6 +237,46 @@ mod tests {
             vec![Some("argocd".to_string()), Some("default".to_string())]
         );
         assert_eq!(group.namespaces.len(), 2);
+    }
+
+    #[test]
+    fn keeps_large_namespace_sets_namespace_scoped() {
+        let groups = group_requests(vec![
+            pod_request(Some("default")),
+            pod_request(Some("argocd")),
+            pod_request(Some("jobs")),
+            pod_request(Some("kube-system")),
+            pod_request(Some("monitoring")),
+            pod_request(Some("platform")),
+            pod_request(Some("staging")),
+            pod_request(Some("prod")),
+        ])
+        .expect("groups");
+        let group = groups.get("typed:Pod").expect("pod group");
+
+        assert!(!should_promote_to_all(group));
+        assert_eq!(
+            fetch_namespaces(group),
+            vec![
+                Some("argocd".to_string()),
+                Some("default".to_string()),
+                Some("jobs".to_string()),
+                Some("kube-system".to_string()),
+                Some("monitoring".to_string()),
+                Some("platform".to_string()),
+                Some("prod".to_string()),
+                Some("staging".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn promotes_explicit_all_namespace_request_to_one_fetch() {
+        let groups = group_requests(vec![pod_request(None)]).expect("groups");
+        let group = groups.get("typed:Pod").expect("pod group");
+
+        assert!(should_promote_to_all(group));
+        assert_eq!(fetch_namespaces(group), vec![None]);
     }
 
     #[test]
