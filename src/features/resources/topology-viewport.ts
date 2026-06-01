@@ -138,6 +138,13 @@ export function getOwnershipGraphBounds(
 	if (nodes.length === 0) return null;
 
 	const nodesById = new Map(nodes.map((node) => [node.id, node]));
+	return getOwnershipGraphBoundsFromNodes(nodes, nodesById);
+}
+
+function getOwnershipGraphBoundsFromNodes(
+	nodes: OwnershipGraphNode[],
+	nodesById: ReadonlyMap<string, OwnershipGraphNode>,
+): OwnershipGraphBounds | null {
 	let left = Number.POSITIVE_INFINITY;
 	let top = Number.POSITIVE_INFINITY;
 	let right = Number.NEGATIVE_INFINITY;
@@ -161,6 +168,29 @@ export function getOwnershipGraphBounds(
 		bottom,
 		width: right - left,
 		height: bottom - top,
+	};
+}
+
+export function getOwnershipGraphBoundsForNodeIds(
+	nodes: OwnershipGraphNode[],
+	nodeIds: ReadonlySet<string>,
+): OwnershipGraphBounds | null {
+	if (nodeIds.size === 0) return null;
+
+	const nodesById = new Map(nodes.map((node) => [node.id, node]));
+	const scopedNodes = nodes.filter((node) => nodeIds.has(node.id));
+	if (scopedNodes.length === 0) return null;
+	return getOwnershipGraphBoundsFromNodes(scopedNodes, nodesById);
+}
+
+export function ownershipGraphBoundsToViewportRect(
+	bounds: OwnershipGraphBounds,
+): { x: number; y: number; width: number; height: number } {
+	return {
+		x: bounds.left,
+		y: bounds.top,
+		width: bounds.width,
+		height: bounds.height,
 	};
 }
 
