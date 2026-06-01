@@ -154,6 +154,7 @@ export interface PortForwardRequest {
 
 export type PortForwardSessionStatus =
 	| "listening"
+	| "reconnecting"
 	| "connected"
 	| "error"
 	| (string & {});

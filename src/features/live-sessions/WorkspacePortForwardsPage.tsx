@@ -6,6 +6,7 @@ import {
 	Pencil,
 	Play,
 	Plus,
+	RotateCcw,
 	Save,
 	Square,
 	Trash2,
@@ -41,6 +42,7 @@ import { useSettingsState } from "@/lib/settings";
 import {
 	createTauriClient,
 	listPortForwards,
+	startPortForward,
 	stopPodPortForward,
 } from "@/lib/tauri";
 import type { PortForwardSessionSummary } from "@/lib/types";
@@ -54,6 +56,8 @@ import {
 } from "@/lib/workspaces";
 import {
 	parseSavedPortForwardForm,
+	portForwardErrorMessage,
+	portForwardSessionToRequest,
 	portForwardLocalUrl,
 	savedPortForwardLabel,
 	savedPortForwardMatchesSession,
@@ -150,6 +154,7 @@ export function WorkspacePortForwardsPage({
 	const sessionsQuery = useQuery({
 		queryKey: queryKeys.portForwards(),
 		queryFn: () => listPortForwards(client),
+		placeholderData: (previousData) => previousData,
 		refetchInterval: 3_000,
 	});
 	const sessionsForActions = useMemo(
@@ -173,6 +178,7 @@ export function WorkspacePortForwardsPage({
 	);
 	const [formError, setFormError] = useState<string | null>(null);
 	const [stoppingId, setStoppingId] = useState<string | null>(null);
+	const [reconnectingId, setReconnectingId] = useState<string | null>(null);
 	const [copyingId, setCopyingId] = useState<string | null>(null);
 	const [bulkMessage, setBulkMessage] = useState<string | null>(null);
 
@@ -240,6 +246,20 @@ export function WorkspacePortForwardsPage({
 		}
 	};
 
+	const reconnectSession = async (session: PortForwardSessionSummary) => {
+		setReconnectingId(session.id);
+		try {
+			await stopPodPortForward(client, session.id);
+			await startPortForward(client, portForwardSessionToRequest(session));
+			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
+			setBulkMessage(`Reconnected ${activeSessionTitle(session)}.`);
+		} catch (error) {
+			setBulkMessage(`Reconnect failed: ${portForwardErrorMessage(error)}`);
+		} finally {
+			setReconnectingId(null);
+		}
+	};
+
 	const copySessionUrl = async (session: PortForwardSessionSummary) => {
 		setCopyingId(session.id);
 		try {
@@ -298,18 +318,17 @@ export function WorkspacePortForwardsPage({
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Active sessions</CardTitle>
+					<CardTitle className="inline-flex items-center gap-2">
+						Active sessions
+						{sessionsQuery.isFetching && (
+							<Spinner className="size-3.5 text-muted-foreground" />
+						)}
+					</CardTitle>
 					<CardDescription>
 						Sessions are in-memory only and bound to 127.0.0.1.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="flex flex-col gap-3">
-					{sessionsQuery.isFetching && (
-						<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-							<Spinner className="size-4" />
-							Refreshing sessions...
-						</div>
-					)}
 					{sessions.length === 0 ? (
 						<Empty className="min-h-36 border-0">
 							<EmptyHeader>
@@ -357,6 +376,20 @@ export function WorkspacePortForwardsPage({
 											)}
 										</div>
 										<div className="flex flex-wrap items-center justify-end gap-2">
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() => void reconnectSession(session)}
+												disabled={reconnectingId === session.id}
+											>
+												{reconnectingId === session.id ? (
+													<Spinner data-icon="inline-start" />
+												) : (
+													<RotateCcw data-icon="inline-start" />
+												)}
+												Reconnect
+											</Button>
 											<Button
 												type="button"
 												variant="outline"

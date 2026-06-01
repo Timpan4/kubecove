@@ -21,7 +21,7 @@ Port-forward v1 rules:
 - Local listeners bind only to `127.0.0.1`.
 - Local port `0` is used only internally for automatic port selection. User-provided local ports must be unprivileged.
 - Sessions are in-memory only and are not restored across app restarts.
-- Service sessions do not auto-reconnect to replacement Pods.
+- Service sessions re-resolve to a ready backing Pod when a local connection reconnects or a session is explicitly restarted. They do not run as durable background controllers and are still not restored across app restarts.
 - Kubernetes RBAC remains authoritative for `pods/portforward`; forbidden errors are surfaced as command errors or session errors.
 - The frontend never receives kubeconfig contents, tokens, certificates, or broad filesystem access.
 - The frontend does not receive shell execution capability.

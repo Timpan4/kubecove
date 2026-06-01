@@ -8,6 +8,20 @@ import type {
 	SavedPortForward,
 } from "@/lib/workspaces";
 
+export function portForwardErrorMessage(error: unknown): string {
+	if (error instanceof Error) return error.message;
+	if (typeof error === "string") return error;
+	if (
+		typeof error === "object" &&
+		error !== null &&
+		"message" in error &&
+		typeof error.message === "string"
+	) {
+		return error.message;
+	}
+	return "Unknown error";
+}
+
 export function portForwardLocalUrl(session: PortForwardSessionSummary): string {
 	return session.localUrl || `http://${session.localAddress}:${session.localPort}`;
 }
@@ -80,6 +94,19 @@ export function savedPortForwardToRequest(
 		targetKind: "Service",
 		targetName: portForward.serviceName,
 		remotePort: portForward.servicePort,
+	};
+}
+
+export function portForwardSessionToRequest(
+	session: PortForwardSessionSummary,
+): PortForwardRequest {
+	return {
+		clusterContext: session.clusterContext,
+		namespace: session.namespace,
+		localPort: session.localPort,
+		targetKind: session.targetKind === "Service" ? "Service" : "Pod",
+		targetName: session.targetName,
+		remotePort: session.remotePort,
 	};
 }
 

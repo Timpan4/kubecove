@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, Copy, Square } from "lucide-react";
+import { Cable, Copy, RotateCcw, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,12 +13,15 @@ import { Spinner } from "@/components/ui/spinner";
 import {
 	createTauriClient,
 	listPortForwards,
+	startPortForward,
 	stopPodPortForward,
 } from "@/lib/tauri";
 import type { PortForwardSessionSummary } from "@/lib/types";
 import { queryKeys } from "@/lib/queryKeys";
 import {
+	portForwardErrorMessage,
 	portForwardLocalUrl,
+	portForwardSessionToRequest,
 	sortPortForwardSessions,
 } from "./helpers";
 
@@ -39,10 +42,13 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 	const queryClient = useQueryClient();
 	const [popoverOpen, setPopoverOpen] = useState(false);
 	const [stoppingId, setStoppingId] = useState<string | null>(null);
+	const [reconnectingId, setReconnectingId] = useState<string | null>(null);
+	const [reconnectError, setReconnectError] = useState<string | null>(null);
 	const [copyingId, setCopyingId] = useState<string | null>(null);
 	const sessionsQuery = useQuery({
 		queryKey: queryKeys.portForwards(),
 		queryFn: () => listPortForwards(client),
+		placeholderData: (previousData) => previousData,
 		refetchInterval: 3_000,
 	});
 	const sessions = useMemo(
@@ -59,6 +65,20 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 		} finally {
 			setStoppingId(null);
+		}
+	};
+
+	const reconnectSession = async (session: PortForwardSessionSummary) => {
+		setReconnectingId(session.id);
+		setReconnectError(null);
+		try {
+			await stopPodPortForward(client, session.id);
+			await startPortForward(client, portForwardSessionToRequest(session));
+			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
+		} catch (error) {
+			setReconnectError(portForwardErrorMessage(error));
+		} finally {
+			setReconnectingId(null);
 		}
 	};
 
@@ -111,6 +131,9 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 							Manage
 						</Button>
 					)}
+					{reconnectError && (
+						<div className="text-xs text-destructive">{reconnectError}</div>
+					)}
 					<Separator />
 					<div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
 						{sessions.map((session) => {
@@ -143,6 +166,20 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 										</div>
 									)}
 									<div className="flex flex-wrap justify-end gap-2">
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											onClick={() => void reconnectSession(session)}
+											disabled={reconnectingId === session.id}
+										>
+											{reconnectingId === session.id ? (
+												<Spinner data-icon="inline-start" />
+											) : (
+												<RotateCcw data-icon="inline-start" />
+											)}
+											Reconnect
+										</Button>
 										<Button
 											type="button"
 											variant="outline"

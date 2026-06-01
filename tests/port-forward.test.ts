@@ -8,6 +8,7 @@ import {
 	parsePortForwardForm,
 	parseSavedPortForwardForm,
 	portForwardLocalUrl,
+	portForwardSessionToRequest,
 	savedPortForwardMatchesSession,
 	savedPortForwardToRequest,
 	sortPortForwardSessions,
@@ -172,6 +173,14 @@ spec:
 			localPort: undefined,
 		});
 		expect(savedPortForwardMatchesSession(saved, serviceSession)).toBe(true);
+		expect(portForwardSessionToRequest(serviceSession)).toEqual({
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			targetKind: "Service",
+			targetName: "api",
+			remotePort: 8080,
+			localPort: 18080,
+		});
 		expect(isReusablePortForwardSession(serviceSession)).toBe(true);
 		expect(
 			isReusablePortForwardSession({ ...serviceSession, status: "error" }),
@@ -240,6 +249,7 @@ spec:
 		expect(source).toContain("Resolved Pod");
 		expect(source).toContain("copySessionUrl");
 		expect(source).toContain("stopSession");
+		expect(source).toContain("reconnectSession");
 		expect(source).toContain("lastError");
 		expect(source).toContain("sessionsForActions");
 		expect(source).toContain("useSavedPortForwardActions(workspace, sessionsForActions)");
@@ -251,6 +261,7 @@ spec:
 		expect(source).toContain("workspaceScopeContexts(workspace.scope)");
 		expect(actionsSource).toContain("knownSessions?: PortForwardSessionSummary[]");
 		expect(actionsSource).toContain("listPortForwards(client).catch(() => [])");
+		expect(actionsSource).toContain("stopPodPortForward(client, session.id)");
 	});
 
 	test("Service detail forwarding offers a port picker when ports are known", () => {

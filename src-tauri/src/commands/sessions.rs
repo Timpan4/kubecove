@@ -143,6 +143,20 @@ impl PortForwardRegistry {
         self.mark_status(session_id, "error", Some(message));
     }
 
+    fn mark_resolved_target(&self, session_id: &str, target: &PortForwardTarget) {
+        if let Some(session) = self
+            .state
+            .lock()
+            .expect("port-forward registry lock")
+            .sessions
+            .get_mut(session_id)
+        {
+            session.summary.pod_name = target.pod_name.clone();
+            session.summary.resolved_pod_name = target.pod_name.clone();
+            session.summary.resolved_pod_port = target.pod_port;
+        }
+    }
+
     fn stop(&self, session_id: &str) -> bool {
         let session = self
             .state
@@ -351,9 +365,25 @@ async fn forward_connection(
     result
 }
 
+async fn resolve_and_forward_connection(
+    client: Client,
+    request: ValidatedPortForwardRequest,
+    local_stream: TcpStream,
+    session_id: String,
+    registry: PortForwardRegistry,
+) -> Result<(), String> {
+    registry.mark_status(&session_id, "reconnecting", None);
+    let target = resolve_port_forward_target(request)
+        .await
+        .map_err(|err| err.message)?;
+    registry.mark_resolved_target(&session_id, &target);
+    registry.mark_status(&session_id, "connected", None);
+    forward_connection(client, target, local_stream).await
+}
+
 async fn run_port_forward_session(
     session_id: String,
-    target: PortForwardTarget,
+    request: ValidatedPortForwardRequest,
     listener: TcpListener,
     registry: PortForwardRegistry,
     client: Client,
@@ -369,11 +399,19 @@ async fn run_port_forward_session(
                         break;
                     }
                 };
-                registry.mark_status(&session_id, "connected", None);
-                let connection_target = target.clone();
+                let connection_request = request.clone();
                 let connection_client = client.clone();
+                let connection_registry = registry.clone();
+                let connection_session_id = session_id.clone();
                 connections.spawn(async move {
-                    forward_connection(connection_client, connection_target, local_stream).await
+                    resolve_and_forward_connection(
+                        connection_client,
+                        connection_request,
+                        local_stream,
+                        connection_session_id,
+                        connection_registry,
+                    )
+                    .await
                 });
             }
             join_result = connections.join_next(), if !connections.is_empty() => {
@@ -432,12 +470,19 @@ async fn start_pod_port_forward_in_registry(
     let session_id = registry.session_id();
     let summary = session_summary(session_id.clone(), &target, local_port);
     let handle_registry = registry.clone();
-    let handle_target = target.clone();
+    let handle_request = ValidatedPortForwardRequest {
+        cluster_context: target.cluster_context.clone(),
+        namespace: target.namespace.clone(),
+        target_kind: target.target_kind,
+        target_name: target.target_name.clone(),
+        remote_port: target.remote_port,
+        local_port: Some(local_port),
+    };
     let handle_session_id = session_id.clone();
     let handle = tauri::async_runtime::spawn(async move {
         run_port_forward_session(
             handle_session_id,
-            handle_target,
+            handle_request,
             listener,
             handle_registry,
             client,
