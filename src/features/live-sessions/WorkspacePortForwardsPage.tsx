@@ -42,7 +42,6 @@ import { useSettingsState } from "@/lib/settings";
 import {
 	createTauriClient,
 	listPortForwards,
-	startPortForward,
 	stopPodPortForward,
 } from "@/lib/tauri";
 import type { PortForwardSessionSummary } from "@/lib/types";
@@ -57,13 +56,13 @@ import {
 import {
 	parseSavedPortForwardForm,
 	portForwardErrorMessage,
-	portForwardSessionToRequest,
 	portForwardLocalUrl,
 	savedPortForwardLabel,
 	savedPortForwardMatchesSession,
 	sortPortForwardSessions,
 	type SavedPortForwardFormValues,
 } from "./helpers";
+import { useReconnectPortForwardSession } from "./useReconnectPortForwardSession";
 import { useSavedPortForwardActions } from "./useSavedPortForwardActions";
 
 interface WorkspacePortForwardsPageProps {
@@ -178,9 +177,16 @@ export function WorkspacePortForwardsPage({
 	);
 	const [formError, setFormError] = useState<string | null>(null);
 	const [stoppingId, setStoppingId] = useState<string | null>(null);
-	const [reconnectingId, setReconnectingId] = useState<string | null>(null);
 	const [copyingId, setCopyingId] = useState<string | null>(null);
 	const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+	const { reconnectingId, reconnectSession } =
+		useReconnectPortForwardSession({
+			client,
+			onSuccess: (session) =>
+				setBulkMessage(`Reconnected ${activeSessionTitle(session)}.`),
+			onError: (error) =>
+				setBulkMessage(`Reconnect failed: ${portForwardErrorMessage(error)}`),
+		});
 
 	const resetForm = () => {
 		setEditingId(null);
@@ -243,20 +249,6 @@ export function WorkspacePortForwardsPage({
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 		} finally {
 			setStoppingId(null);
-		}
-	};
-
-	const reconnectSession = async (session: PortForwardSessionSummary) => {
-		setReconnectingId(session.id);
-		try {
-			await stopPodPortForward(client, session.id);
-			await startPortForward(client, portForwardSessionToRequest(session));
-			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
-			setBulkMessage(`Reconnected ${activeSessionTitle(session)}.`);
-		} catch (error) {
-			setBulkMessage(`Reconnect failed: ${portForwardErrorMessage(error)}`);
-		} finally {
-			setReconnectingId(null);
 		}
 	};
 

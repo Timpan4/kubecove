@@ -13,7 +13,6 @@ import { Spinner } from "@/components/ui/spinner";
 import {
 	createTauriClient,
 	listPortForwards,
-	startPortForward,
 	stopPodPortForward,
 } from "@/lib/tauri";
 import type { PortForwardSessionSummary } from "@/lib/types";
@@ -21,9 +20,9 @@ import { queryKeys } from "@/lib/queryKeys";
 import {
 	portForwardErrorMessage,
 	portForwardLocalUrl,
-	portForwardSessionToRequest,
 	sortPortForwardSessions,
 } from "./helpers";
+import { useReconnectPortForwardSession } from "./useReconnectPortForwardSession";
 
 function sessionLabel(session: PortForwardSessionSummary): string {
 	return `${session.namespace}/${session.targetKind}/${session.targetName}:${session.remotePort}`;
@@ -42,9 +41,14 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 	const queryClient = useQueryClient();
 	const [popoverOpen, setPopoverOpen] = useState(false);
 	const [stoppingId, setStoppingId] = useState<string | null>(null);
-	const [reconnectingId, setReconnectingId] = useState<string | null>(null);
 	const [reconnectError, setReconnectError] = useState<string | null>(null);
 	const [copyingId, setCopyingId] = useState<string | null>(null);
+	const { reconnectingId, reconnectSession } =
+		useReconnectPortForwardSession({
+			client,
+			onSuccess: () => setReconnectError(null),
+			onError: (error) => setReconnectError(portForwardErrorMessage(error)),
+		});
 	const sessionsQuery = useQuery({
 		queryKey: queryKeys.portForwards(),
 		queryFn: () => listPortForwards(client),
@@ -65,20 +69,6 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 		} finally {
 			setStoppingId(null);
-		}
-	};
-
-	const reconnectSession = async (session: PortForwardSessionSummary) => {
-		setReconnectingId(session.id);
-		setReconnectError(null);
-		try {
-			await stopPodPortForward(client, session.id);
-			await startPortForward(client, portForwardSessionToRequest(session));
-			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
-		} catch (error) {
-			setReconnectError(portForwardErrorMessage(error));
-		} finally {
-			setReconnectingId(null);
 		}
 	};
 

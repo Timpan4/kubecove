@@ -14,7 +14,7 @@ Live session support starts with guarded port-forwarding only.
 
 Port-forward v1 rules:
 
-- Targets are exact Pods or selector-backed Services in a namespace. Service targets resolve once to one ready backing Pod at session start.
+- Targets are exact Pods or selector-backed Services in a namespace. Service targets resolve to one ready backing Pod at session start and re-resolve on reconnect or explicit restart.
 - Selectorless Services, ExternalName Services, and Services without ready matching Pods are rejected with readable errors.
 - Deployments and replacement-pod resolution are future work.
 - Sessions start only from explicit user action and stop only from explicit user action, app exit, or session failure.
