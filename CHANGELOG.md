@@ -7,8 +7,6 @@ should mirror the matching version section.
 
 ### Added
 
-- Added the workspace Port Forwards manager with saved Service presets and
-  guarded restore prompts for local-only live sessions.
 - Added reproducible frontend and resource-scope performance benchmarks for
   sidebar expansion, topology selection, indexed search, and cache retention.
 
