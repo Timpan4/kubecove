@@ -33,6 +33,20 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Bun dependencies
+        uses: actions/cache@v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2.9.1
+        with:
+          shared-key: kubecove-rust
+          workspaces: "./src-tauri -> target"
+
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
