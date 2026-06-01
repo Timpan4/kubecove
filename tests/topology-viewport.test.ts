@@ -7,6 +7,7 @@ import {
 } from "../src/features/resources/topology";
 import {
 	getOwnershipGraphBounds,
+	getOwnershipGraphBoundsForNodeIds,
 	getOwnershipMapTranslateExtent,
 	ownershipMapBoundaryPadding,
 } from "../src/features/resources/topology-viewport";
@@ -130,6 +131,48 @@ describe("ownership map viewport helpers", () => {
 		] as OwnershipGraphNode[];
 		const bounds = getOwnershipGraphBounds(nodes);
 
+		expect(bounds?.right).toBe(580);
+		expect(bounds?.bottom).toBe(238);
+	});
+
+	test("selected child bounds keep parent group offsets", () => {
+		const child = topologyNode("ConfigMap", "config");
+		const nodes = [
+			{
+				id: "parent",
+				type: "standaloneKindGroup",
+				position: { x: 100, y: 50 },
+				data: {
+					kind: "ConfigMap",
+					count: 1,
+					dimmed: false,
+					expanded: true,
+				},
+				style: { width: 120, height: 60 },
+			},
+			{
+				id: "child",
+				type: "ownershipResource",
+				parentId: "parent",
+				position: { x: 220, y: 110 },
+				data: {
+					node: child,
+					resource: null,
+					selected: true,
+					connected: false,
+					dimmed: false,
+					standalone: true,
+				},
+				style: { width: 260 },
+			},
+		] as OwnershipGraphNode[];
+		const bounds = getOwnershipGraphBoundsForNodeIds(
+			nodes,
+			new Set(["child"]),
+		);
+
+		expect(bounds?.left).toBe(320);
+		expect(bounds?.top).toBe(160);
 		expect(bounds?.right).toBe(580);
 		expect(bounds?.bottom).toBe(238);
 	});

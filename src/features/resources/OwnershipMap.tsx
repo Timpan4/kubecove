@@ -32,10 +32,13 @@ import {
 	buildReactFlowTopologyLayout,
 	buildReactFlowTopologySelectionIndex,
 	applyReactFlowTopologySelectionWithIndex,
+	type OwnershipGraphEdge,
 } from "./topology";
 import {
-	absoluteGraphNodePosition,
 	getOwnershipMapTranslateExtent,
+	getOwnershipGraphBoundsForNodeIds,
+	ownershipGraphBoundsToViewportRect,
+	ownershipGraphLayoutSignature,
 } from "./topology-viewport";
 
 interface OwnershipMapProps {
@@ -55,7 +58,7 @@ function errorMessage(error: unknown): string {
 }
 
 const FIT_VIEW_OPTIONS = { padding: 0.24, maxZoom: 1 };
-const NODE_CENTER_OFFSET = { x: 95, y: 39 };
+const FIT_SELECTED_BOUNDS_OPTIONS = { padding: 0.28, duration: 260 };
 const MIN_MAP_ZOOM = 0.18;
 const MAX_MAP_ZOOM = 1.4;
 
@@ -84,62 +87,73 @@ function selectedStandaloneExpansionId(
 	return hasRelation ? null : selectedNodeId;
 }
 
-function FitTopologyView({ fitViewKey }: { fitViewKey: string }) {
-	const { fitView } = useReactFlow();
-	const lastFitViewKeyRef = useRef<string | null>(null);
-
-	useEffect(() => {
-		if (lastFitViewKeyRef.current === fitViewKey) return;
-		lastFitViewKeyRef.current = fitViewKey;
-		const frame = window.requestAnimationFrame(() => {
-			void fitView(FIT_VIEW_OPTIONS);
-		});
-		return () => window.cancelAnimationFrame(frame);
-	}, [fitView, fitViewKey]);
-
-	return null;
+function selectedOwnershipNodeIds(nodes: OwnershipGraphNode[]): Set<string> {
+	const selectedNodeIds = new Set<string>();
+	for (const node of nodes) {
+		if (
+			node.type === "ownershipResource" &&
+			(node.data.selected || node.data.connected)
+		) {
+			selectedNodeIds.add(node.id);
+		}
+	}
+	return selectedNodeIds;
 }
 
-function CenterSelectedNode({
+function FitOwnershipMapView({
 	nodes,
+	edges,
 	selectedNodeId,
 	viewportKey,
 }: {
 	nodes: OwnershipGraphNode[];
+	edges: OwnershipGraphEdge[];
 	selectedNodeId: string | null;
 	viewportKey: string;
 }) {
-	const { getZoom, setCenter } = useReactFlow();
-	const lastCenterRequestRef = useRef<string | null>(null);
+	const { fitBounds, fitView } = useReactFlow();
+	const lastViewportRequestRef = useRef<string | null>(null);
 
 	useEffect(() => {
-		if (!selectedNodeId) return;
-		const selectedNode = nodes.find((node) => node.id === selectedNodeId);
-		if (!selectedNode) return;
-		const selectedPosition = absoluteGraphNodePosition(nodes, selectedNode);
-		const requestKey = [
-			selectedNodeId,
-			viewportKey,
-			Math.round(selectedPosition.x),
-			Math.round(selectedPosition.y),
-		].join(":");
-		if (lastCenterRequestRef.current === requestKey) return;
-		lastCenterRequestRef.current = requestKey;
+		const selectedNodeIds = selectedOwnershipNodeIds(nodes);
+		const selectedBounds = selectedNodeId
+			? getOwnershipGraphBoundsForNodeIds(nodes, selectedNodeIds)
+			: null;
+		const layoutSignature = ownershipGraphLayoutSignature(nodes, edges);
+		const requestKey = selectedBounds
+			? [
+					"selected",
+					selectedNodeId,
+					viewportKey,
+					Math.round(selectedBounds.left),
+					Math.round(selectedBounds.top),
+					Math.round(selectedBounds.width),
+					Math.round(selectedBounds.height),
+					Array.from(selectedNodeIds).sort().join(","),
+				].join(":")
+			: ["all", viewportKey, layoutSignature].join(":");
+
+		if (lastViewportRequestRef.current === requestKey) return;
+		lastViewportRequestRef.current = requestKey;
+
 		let secondFrame: number | null = null;
 		const firstFrame = window.requestAnimationFrame(() => {
 			secondFrame = window.requestAnimationFrame(() => {
-				void setCenter(
-					selectedPosition.x + NODE_CENTER_OFFSET.x,
-					selectedPosition.y + NODE_CENTER_OFFSET.y,
-					{ duration: 260, zoom: getZoom() },
-				);
+				if (selectedBounds) {
+					void fitBounds(
+						ownershipGraphBoundsToViewportRect(selectedBounds),
+						FIT_SELECTED_BOUNDS_OPTIONS,
+					);
+				} else {
+					void fitView(FIT_VIEW_OPTIONS);
+				}
 			});
 		});
 		return () => {
 			window.cancelAnimationFrame(firstFrame);
 			if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
 		};
-	}, [getZoom, nodes, selectedNodeId, setCenter, viewportKey]);
+	}, [edges, fitBounds, fitView, nodes, selectedNodeId, viewportKey]);
 
 	return null;
 }
@@ -198,7 +212,7 @@ export function OwnershipMap({
 		[graph, viewportSize],
 	);
 	const viewportSizeKey = `${viewportSize.width}x${viewportSize.height}`;
-	const centerViewportKey = `${heightClassName}:${viewportSizeKey}`;
+	const fitViewportKey = `${fitViewKey}:${heightClassName}:${viewportSizeKey}`;
 	const setMapViewportRef = useCallback((element: HTMLDivElement | null) => {
 		resizeObserverRef.current?.disconnect();
 		resizeObserverRef.current = null;
@@ -337,11 +351,11 @@ export function OwnershipMap({
 					proOptions={{ hideAttribution: true }}
 					className="ownership-map-flow"
 				>
-					<FitTopologyView fitViewKey={fitViewKey} />
-					<CenterSelectedNode
+					<FitOwnershipMapView
 						nodes={graph.nodes}
+						edges={graph.edges}
 						selectedNodeId={selectedNodeId}
-						viewportKey={centerViewportKey}
+						viewportKey={fitViewportKey}
 					/>
 					<Controls
 						position="top-left"
