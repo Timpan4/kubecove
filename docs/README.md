@@ -22,6 +22,7 @@ Current ADRs:
 ## Work Tracking
 
 - [Milestones](milestones.md) - goal-level project progress and remaining release gates.
+- [Task Workflow](task-workflow.md) - Phabricator, Git, MR, and Definition of Done workflow rules.
 - [Agent Skill Backlog](agent-skills.md) - project-specific skill ideas to validate before installing.
 - [Development Workflow](development-workflow.md) - package manager, hooks, testing, and verification commands.
 - [Beta Releases](release.md) - installer guidance, maintainer release flow, smoke tests, and publishing checklist.
