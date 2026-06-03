@@ -109,7 +109,7 @@ Typed frontend wrappers currently cover:
 - resource details: `get_resource_details`, `get_dynamic_resource_details`, `get_resource_yaml`
 - topology: `list_resource_topology`
 - events and streams: `list_resource_events`, resource watches, event watches, pod log streams, `stop_stream`
-- live sessions: `start_pod_port_forward`, `stop_port_forward`, `list_port_forwards`
+- live sessions: `start_pod_port_forward`, `stop_port_forward`, `list_port_forwards`, guarded Pod exec session commands
 - metrics: `list_resource_metrics`, app usage metrics
 - Argo CD: detect, list, and detail commands for Applications, ApplicationSets, and AppProjects
 - Helm: release list and detail commands

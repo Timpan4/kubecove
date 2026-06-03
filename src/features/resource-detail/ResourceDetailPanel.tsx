@@ -16,6 +16,7 @@ import {
 } from "./constants";
 import { DetailsTab } from "./DetailsTab";
 import { EventsTab } from "./EventsTab";
+import { ExecTab } from "./ExecTab";
 import {
 	dynamicResourceKindFromSummary,
 	getConditionRows,
@@ -173,6 +174,11 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 								Logs
 							</TabsTrigger>
 						)}
+						{resource.kind === "Pod" && (
+							<TabsTrigger className={PANEL_TAB_CLASS} value="exec">
+								Exec
+							</TabsTrigger>
+						)}
 						{(resource.kind === "Pod" || resource.kind === "Service") && (
 							<TabsTrigger className={PANEL_TAB_CLASS} value="portForward">
 								Forward
@@ -217,6 +223,18 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 								onSelectedContainerChange={setSelectedContainer}
 								onLatestLogLineChange={setTimelineLogLine}
 								active={activeTab === "logs"}
+							/>
+						</TabsContent>
+					)}
+					{resource.kind === "Pod" && (
+						<TabsContent value="exec" className="m-0 h-full min-h-0">
+							<ExecTab
+								client={client}
+								resource={resource}
+								containers={containerRows}
+								selectedContainer={selectedContainer}
+								onSelectedContainerChange={setSelectedContainer}
+								active={activeTab === "exec"}
 							/>
 						</TabsContent>
 					)}

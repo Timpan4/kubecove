@@ -8,13 +8,18 @@ import {
 	getResourceYaml,
 	isAppError,
 	listPortForwards,
+	listPodExecSessions,
 	listHelmReleases,
 	listResourceTopology,
 	listKubeContexts,
 	listNamespaces,
+	resizePodExecTerminal,
+	startPodExecSession,
 	startPodPortForward,
 	startPortForward,
+	stopPodExecSession,
 	stopPodPortForward,
+	writePodExecStdin,
 } from "../src/lib/tauri";
 import type {
 	AppUsageMetrics,
@@ -22,6 +27,7 @@ import type {
 	HelmReleaseDetails,
 	HelmReleaseSummary,
 	NamespaceSummary,
+	PodExecSessionSummary,
 	PortForwardSessionSummary,
 	RbacInspectionSummary,
 	ResourceMetricsSummary,
@@ -47,6 +53,78 @@ describe("createMockTauriClient", () => {
 		await expect(listKubeContexts(client)).rejects.toThrow(
 			"No mock response for command: list_kube_contexts",
 		);
+	});
+
+	test("passes Pod exec requests through typed wrappers", async () => {
+		const session: PodExecSessionSummary = {
+			id: "pod-exec-1",
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			podName: "api-0",
+			container: "api",
+			command: ["/bin/sh"],
+			stdin: true,
+			tty: true,
+			terminalCols: 100,
+			terminalRows: 32,
+			status: "running",
+			startedAt: "2026-06-01T10:00:00Z",
+		};
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				if (cmd === "start_pod_exec_session") return session as T;
+				if (cmd === "list_pod_exec_sessions") return [session] as T;
+				return true as T;
+			},
+		};
+		const channel = {} as never;
+		const request = {
+			clusterContext: "kind-dev",
+			namespace: "payments",
+			podName: "api-0",
+			container: "api",
+			command: ["/bin/sh"],
+			stdin: true,
+			tty: true,
+			terminalSize: { cols: 100, rows: 32 },
+			confirmation: {
+				acknowledged: true,
+				target: "kind-dev/payments/Pod/api-0",
+				command: "/bin/sh",
+			},
+		};
+
+		expect(await startPodExecSession(client, request, channel)).toEqual(session);
+		expect(await writePodExecStdin(client, session.id, "date\n")).toBe(true);
+		expect(
+			await resizePodExecTerminal(client, session.id, { cols: 120, rows: 40 }),
+		).toBe(true);
+		expect(await listPodExecSessions(client)).toEqual([session]);
+		expect(await stopPodExecSession(client, session.id)).toBe(true);
+		expect(calls).toEqual([
+			{
+				cmd: "start_pod_exec_session",
+				args: { request, channel },
+			},
+			{
+				cmd: "write_pod_exec_stdin",
+				args: { sessionId: session.id, data: "date\n" },
+			},
+			{
+				cmd: "resize_pod_exec_terminal",
+				args: { sessionId: session.id, size: { cols: 120, rows: 40 } },
+			},
+			{
+				cmd: "list_pod_exec_sessions",
+				args: undefined,
+			},
+			{
+				cmd: "stop_pod_exec_session",
+				args: { sessionId: session.id },
+			},
+		]);
 	});
 });
 

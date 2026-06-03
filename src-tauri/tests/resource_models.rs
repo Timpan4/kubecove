@@ -3,11 +3,12 @@ use kubecove_lib::models::{
     ArgoAppProjectSummary, ArgoApplicationDetails, ArgoApplicationSetDetails,
     ArgoApplicationSetSummary, ArgoApplicationSummary, ClusterContext, DiscoveredResourceKind,
     HelmManifestResourceSummary, HelmManifestSummary, HelmReleaseDetails, HelmReleaseSummary,
-    HelmValuesSummary, NamespaceSummary, PodLogStreamRequest, RbacInspectionSummary,
-    RbacRiskIndicator, RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, ResourceDetails,
-    ResourceDetailsFull, ResourceEventSummary, ResourceMetricSummary, ResourceMetricsAvailability,
-    ResourceMetricsAvailabilityStatus, ResourceMetricsSummary, ResourceSummary,
-    ServiceAccountSummary, StreamMessage, WatchResourceKey, WatchResourceKind,
+    HelmValuesSummary, NamespaceSummary, PodExecConfirmation, PodExecSessionMessage,
+    PodExecSessionRequest, PodExecSessionSummary, PodExecTerminalSize, PodLogStreamRequest,
+    RbacInspectionSummary, RbacRiskIndicator, RbacRiskLevel, RbacRoleSummary, RbacRuleSummary,
+    ResourceDetails, ResourceDetailsFull, ResourceEventSummary, ResourceMetricSummary,
+    ResourceMetricsAvailability, ResourceMetricsAvailabilityStatus, ResourceMetricsSummary,
+    ResourceSummary, ServiceAccountSummary, StreamMessage, WatchResourceKey, WatchResourceKind,
 };
 use serde_json::json;
 
@@ -163,6 +164,55 @@ fn test_resource_event_summary_serde() {
     let parsed: ResourceEventSummary = serde_json::from_value(json_val).unwrap();
     assert_eq!(parsed.count, 3);
     assert_eq!(parsed.namespace, Some("default".to_string()));
+}
+
+#[test]
+fn test_pod_exec_models_serde() {
+    let request = PodExecSessionRequest {
+        cluster_context: "kind-dev".to_string(),
+        namespace: "payments".to_string(),
+        pod_name: "api-0".to_string(),
+        container: Some("api".to_string()),
+        command: vec!["/bin/sh".to_string()],
+        stdin: true,
+        tty: true,
+        terminal_size: PodExecTerminalSize { cols: 100, rows: 32 },
+        confirmation: PodExecConfirmation {
+            acknowledged: true,
+            target: "kind-dev/payments/Pod/api-0".to_string(),
+            command: "/bin/sh".to_string(),
+        },
+    };
+    let json_val = serde_json::to_value(&request).unwrap();
+    assert_eq!(json_val["clusterContext"], "kind-dev");
+    assert_eq!(json_val["terminalSize"]["cols"], 100);
+    let parsed: PodExecSessionRequest = serde_json::from_value(json_val).unwrap();
+    assert_eq!(parsed.command, vec!["/bin/sh".to_string()]);
+
+    let summary = PodExecSessionSummary {
+        id: "pod-exec-1".to_string(),
+        cluster_context: "kind-dev".to_string(),
+        namespace: "payments".to_string(),
+        pod_name: "api-0".to_string(),
+        container: Some("api".to_string()),
+        command: vec!["/bin/sh".to_string()],
+        stdin: true,
+        tty: true,
+        terminal_cols: 100,
+        terminal_rows: 32,
+        status: "running".to_string(),
+        started_at: "2026-06-01T10:00:00Z".to_string(),
+        finished_at: None,
+        exit_code: None,
+        last_error: None,
+    };
+    let message = PodExecSessionMessage::Started {
+        session_id: summary.id.clone(),
+        summary,
+    };
+    let json_val = serde_json::to_value(&message).unwrap();
+    assert_eq!(json_val["type"], "started");
+    assert_eq!(json_val["summary"]["podName"], "api-0");
 }
 
 #[test]
