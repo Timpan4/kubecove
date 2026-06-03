@@ -246,9 +246,7 @@ export function reconcileSavedPortForwardsForScope(
 ): SavedPortForward[] {
 	const contexts = workspaceScopeContexts(scope);
 	return portForwards.filter(
-		({ clusterContext, namespace }) =>
-			contexts.includes(clusterContext) &&
-			(scope.namespaces.length === 0 || scope.namespaces.includes(namespace)),
+		({ clusterContext }) => contexts.includes(clusterContext),
 	);
 }
 

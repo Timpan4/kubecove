@@ -214,13 +214,9 @@ export function PortForwardTab({
 			return;
 		}
 		const workspaceContexts = workspaceScopeContexts(activeWorkspace.scope);
-		if (
-			!workspaceContexts.includes(resource.cluster) ||
-			(activeWorkspace.scope.namespaces.length > 0 &&
-				!activeWorkspace.scope.namespaces.includes(resource.namespace ?? ""))
-		) {
+		if (!workspaceContexts.includes(resource.cluster)) {
 			setSaveError(
-				"Workspace scope must include this Service before saving a preset.",
+				"Workspace context must include this Service before saving a preset.",
 			);
 			return;
 		}

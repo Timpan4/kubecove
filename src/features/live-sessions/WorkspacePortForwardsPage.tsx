@@ -104,11 +104,7 @@ function sessionInWorkspaceScope(
 	workspace: SavedWorkspace,
 	session: PortForwardSessionSummary,
 ): boolean {
-	return (
-		workspaceScopeContexts(workspace.scope).includes(session.clusterContext) &&
-		(workspace.scope.namespaces.length === 0 ||
-			workspace.scope.namespaces.includes(session.namespace))
-	);
+	return workspaceScopeContexts(workspace.scope).includes(session.clusterContext);
 }
 
 function validateSavedPortForwardScope(
@@ -117,12 +113,6 @@ function validateSavedPortForwardScope(
 ): string | null {
 	if (!workspaceScopeContexts(workspace.scope).includes(input.clusterContext)) {
 		return "Cluster context must be in the current workspace scope.";
-	}
-	if (
-		workspace.scope.namespaces.length > 0 &&
-		!workspace.scope.namespaces.includes(input.namespace)
-	) {
-		return "Namespace must be in the current workspace scope.";
 	}
 	return null;
 }
