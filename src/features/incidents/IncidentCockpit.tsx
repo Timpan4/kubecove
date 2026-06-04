@@ -41,6 +41,7 @@ import {
 	buildWorkspaceFetchKeys,
 	buildWorkspaceFetchPlans,
 } from "@/features/workspaces/query";
+import { workspaceScopeContexts } from "@/lib/workspaces";
 import {
 	countIncidentItems,
 	filterIncidentItems,
@@ -366,6 +367,10 @@ export function IncidentCockpit({
 		() => buildWorkspaceFetchKeys(workspace.scope),
 		[workspace.scope],
 	);
+	const workspaceContextKey = useMemo(
+		() => workspaceScopeContexts(workspace.scope).join("|"),
+		[workspace.scope],
+	);
 	const {
 		data,
 		isPending,
@@ -375,7 +380,7 @@ export function IncidentCockpit({
 		isFetching,
 	} = useQuery({
 		queryKey: queryKeys.incidentCockpit(
-			workspace.scope.clusterContext,
+			workspaceContextKey,
 			fetchKeys,
 			kubeconfigEnvVar,
 		),

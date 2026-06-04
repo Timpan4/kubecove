@@ -73,4 +73,36 @@ describe("incident helpers", () => {
 		]);
 		expect(groups[1].label).toBe("Helm release: jobs");
 	});
+
+	test("sorts equal severities by latest warning recency", () => {
+		const older = item("api-a", "warning");
+		older.latestWarningEvent = {
+			eventType: "Warning",
+			reason: "BackOff",
+			message: "old warning",
+			count: 1,
+			lastSeen: "10m",
+			lastSeenAt: "2026-06-04T10:00:00Z",
+			source: "kubelet",
+			namespace: "default",
+		};
+		const newer = item("api-z", "warning");
+		newer.latestWarningEvent = {
+			eventType: "Warning",
+			reason: "FailedMount",
+			message: "new warning",
+			count: 1,
+			lastSeen: "1m",
+			lastSeenAt: "2026-06-04T10:05:00Z",
+			source: "kubelet",
+			namespace: "default",
+		};
+
+		const groups = groupIncidentItems([older, newer]);
+
+		expect(groups[0].items.map((row) => row.resource.name)).toEqual([
+			"api-z",
+			"api-a",
+		]);
+	});
 });

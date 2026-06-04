@@ -21,6 +21,13 @@ const SEVERITY_WEIGHT: Record<IncidentSeverity, number> = {
 	warning: 1,
 };
 
+function latestWarningTime(item: IncidentCockpitItem): number {
+	const value = item.latestWarningEvent?.lastSeenAt;
+	if (!value) return 0;
+	const time = new Date(value).getTime();
+	return Number.isNaN(time) ? 0 : time;
+}
+
 export function incidentGroupLabel(resource: ResourceSummary): string {
 	if (resource.argoApp) return `Argo app: ${resource.argoApp}`;
 	if (resource.helmRelease) return `Helm release: ${resource.helmRelease}`;
@@ -54,6 +61,8 @@ export function sortIncidentItems(
 		const severityDelta =
 			SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity];
 		if (severityDelta !== 0) return severityDelta;
+		const warningRecencyDelta = latestWarningTime(b) - latestWarningTime(a);
+		if (warningRecencyDelta !== 0) return warningRecencyDelta;
 		const namespaceDelta = (a.resource.namespace ?? "").localeCompare(
 			b.resource.namespace ?? "",
 		);
