@@ -12,4 +12,4 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role, use the corresponding label string from this table.
 
-This setup records the label vocabulary only; it does not create labels in GitHub. If a configured label is missing when triage work begins, create that exact label or update this mapping before applying it.
+This setup records the label vocabulary only; it does not create labels in GitHub. Before applying a label, verify it exists with `gh label list --repo Timpan4/kubecove`. If a configured label is missing, create that exact label or update this mapping before applying it.
