@@ -34,6 +34,7 @@ import type {
 	HelmReleaseSummary,
 	HelmReleaseDetails,
 	RbacInspectionSummary,
+	IncidentCockpitSummary,
 } from "./types";
 import { diagnosticLog, diagnosticResultSummary } from "./diagnostics";
 
@@ -560,6 +561,19 @@ export async function listRbacInspection(
 	return client.invoke<RbacInspectionSummary>("list_rbac_inspection", {
 		clusterContext,
 		namespaces,
+		...kubeconfigArg(kubeconfigEnvVar),
+	});
+}
+
+export async function listIncidentCockpit(
+	client: TauriClient,
+	clusterContext: string,
+	requests: ResourceListRequest[],
+	kubeconfigEnvVar?: string,
+): Promise<IncidentCockpitSummary> {
+	return client.invoke<IncidentCockpitSummary>("list_incident_cockpit", {
+		clusterContext,
+		requests,
 		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }

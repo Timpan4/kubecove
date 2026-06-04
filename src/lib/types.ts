@@ -111,6 +111,35 @@ export interface ResourceEventSummary {
 	namespace: string | null;
 }
 
+export type IncidentSeverity =
+	| "degraded"
+	| "attention"
+	| "restarted"
+	| "warning";
+
+export interface IncidentSignalSummary {
+	kind: string;
+	label: string;
+	message: string;
+	source: string;
+	lastSeenAt?: string;
+}
+
+export interface IncidentCockpitItem {
+	resource: ResourceSummary;
+	severity: IncidentSeverity;
+	signals: IncidentSignalSummary[];
+	latestWarningEvent?: ResourceEventSummary;
+}
+
+export interface IncidentCockpitSummary {
+	cluster: string;
+	generatedAt: string;
+	requestedScope: ResourceListRequest[];
+	items: IncidentCockpitItem[];
+	warnings: string[];
+}
+
 export interface DiscoveredResourceKind {
 	group: string;
 	version: string;

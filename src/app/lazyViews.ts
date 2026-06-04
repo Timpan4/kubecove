@@ -42,6 +42,12 @@ export const RbacPanel = lazy(() =>
 	})),
 );
 
+export const IncidentCockpit = lazy(() =>
+	import("../features/incidents").then((module) => ({
+		default: module.IncidentCockpit,
+	})),
+);
+
 export const SettingsPage = lazy(() =>
 	import("../features/settings/SettingsPage").then((module) => ({
 		default: module.SettingsPage,

@@ -3,18 +3,17 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useDashboardState } from "./lib/hooks";
 import { SidebarTree } from "./components/SidebarTree";
 import { AppTopBar } from "./app/AppTopBar";
+import { AppDetailPanel } from "./app/AppDetailPanel";
 import { AppUsageFooter } from "./app/AppUsageFooter";
 import { DetailPanelFrame } from "./app/DetailPanelFrame";
+import { LauncherShell } from "./app/LauncherShell";
 import {
 	ArgoCDPanel,
-	ArgoDetailPanel,
-	HelmDetailPanel,
 	HelmPanel,
+	IncidentCockpit,
 	RbacPanel,
-	ResourceDetailPanel,
 	ResourceList,
 	SettingsPage,
-	WorkspaceLauncher,
 	WorkspaceOverview,
 	WorkspacePortForwardsPage,
 } from "./app/lazyViews";
@@ -212,6 +211,16 @@ function App() {
 		setViewMode("argo");
 	};
 
+	const handleOpenIncidents = () => {
+		setViewMode("incidents");
+		setSelectedTreeNode({ type: "section", section: "incidents" });
+		setSelectedArgoApp(null);
+		setSelectedHelmRelease(null);
+		setSelectedResource(null);
+		setResourceInitialSearch("");
+		setResourceHealthFilter("all");
+	};
+
 	const handleOpenLauncher = () => {
 		setActiveWorkspace(null);
 		setSelectedResource(null);
@@ -253,6 +262,7 @@ function App() {
 			kind: nodeId.kind ?? "",
 			argoMode: scope.argoMode,
 			helmMode: scope.helmMode,
+			incidentMode: scope.incidentMode,
 			portForwardMode: scope.portForwardMode,
 			rbacMode: scope.rbacMode,
 		});
@@ -269,6 +279,13 @@ function App() {
 			setResourceHealthFilter("all");
 		} else if (scope.helmMode) {
 			setViewMode("helm");
+			setSelectedArgoApp(null);
+			setSelectedHelmRelease(null);
+			setSelectedResource(null);
+			setResourceInitialSearch("");
+			setResourceHealthFilter("all");
+		} else if (scope.incidentMode) {
+			setViewMode("incidents");
 			setSelectedArgoApp(null);
 			setSelectedHelmRelease(null);
 			setSelectedResource(null);
@@ -294,6 +311,7 @@ function App() {
 		} else if (
 			viewMode === "argo" ||
 			viewMode === "helm" ||
+			viewMode === "incidents" ||
 			viewMode === "portForwards" ||
 			viewMode === "rbac" ||
 			viewMode === "settings" ||
@@ -309,6 +327,7 @@ function App() {
 		if (
 			!scope.argoMode &&
 			!scope.helmMode &&
+			!scope.incidentMode &&
 			!scope.portForwardMode &&
 			!scope.rbacMode
 		) {
@@ -427,7 +446,6 @@ function App() {
 		savedPortForwardActions,
 	]);
 
-	// Compute scope from selected tree node
 	const scope = useMemo(
 		() => resolveTreeScope(selectedTreeNode),
 		[selectedTreeNode],
@@ -490,31 +508,15 @@ function App() {
 
 	if (!activeWorkspace) {
 		return (
-			<div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
-				<AppTopBar
-					clusterContext={clusterContext}
-					contentTitle={viewMode === "settings" ? "Settings" : "Workspaces"}
-					onClusterChange={handleClusterChange}
-					onOpenLauncher={handleOpenLauncher}
-					onOpenSettings={handleOpenSettings}
-					showClusterSelector={false}
-					showSearch={false}
-				/>
-				<div className="min-h-0 flex-1 overflow-hidden">
-					{viewMode === "settings" ? (
-						<div className="h-full overflow-y-auto overflow-x-hidden p-4 md:px-6">
-							<Suspense fallback={<ViewLoadingFallback label="Loading settings..." />}>
-								<SettingsPage />
-							</Suspense>
-						</div>
-					) : (
-						<Suspense fallback={<ViewLoadingFallback label="Loading workspaces..." />}>
-							<WorkspaceLauncher onOpenWorkspace={applyWorkspace} />
-						</Suspense>
-					)}
-				</div>
-				<AppUsageFooter visible={showUsageFooter} />
-			</div>
+			<LauncherShell
+				clusterContext={clusterContext}
+				viewMode={viewMode}
+				showUsageFooter={showUsageFooter}
+				onClusterChange={handleClusterChange}
+				onOpenLauncher={handleOpenLauncher}
+				onOpenSettings={handleOpenSettings}
+				onOpenWorkspace={applyWorkspace}
+			/>
 		);
 	}
 
@@ -539,6 +541,7 @@ function App() {
 							workspace={activeWorkspace}
 							onOpenResources={handleOpenResources}
 							onOpenArgo={handleOpenArgo}
+							onOpenIncidents={handleOpenIncidents}
 							onOpenPortForwards={handleOpenPortForwards}
 							onOpenLauncher={handleOpenLauncher}
 						/>
@@ -574,6 +577,16 @@ function App() {
 							onReleaseSelect={handleHelmReleaseSelect}
 							targetRelease={targetHelmRelease}
 							onTargetReleaseResolved={handleTargetHelmReleaseResolved}
+						/>
+					</Suspense>
+				</div>
+			) : viewMode === "incidents" ? (
+				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
+					<Suspense fallback={<ViewLoadingFallback label="Loading incident cockpit..." />}>
+						<IncidentCockpit
+							workspace={activeWorkspace}
+							onResourceSelect={setSelectedResource}
+							onOpenResources={() => handleOpenResources()}
 						/>
 					</Suspense>
 				</div>
@@ -625,29 +638,20 @@ function App() {
 		</div>
 	);
 
-	const detailPanel =
-		viewMode === "helm" && selectedHelmRelease ? (
-			<Suspense fallback={<ViewLoadingFallback label="Loading Helm details..." />}>
-				<HelmDetailPanel
-					release={selectedHelmRelease}
-					onClose={handleHelmClose}
-					onOpenResources={handleOpenHelmResources}
-				/>
-			</Suspense>
-		) : viewMode === "argo" && selectedArgoApp ? (
-			<Suspense fallback={<ViewLoadingFallback label="Loading app details..." />}>
-				<ArgoDetailPanel app={selectedArgoApp} onClose={handleArgoClose} />
-			</Suspense>
-		) : selectedResource ? (
-			<Suspense fallback={<ViewLoadingFallback label="Loading resource details..." />}>
-				<ResourceDetailPanel
-					key={selectedResourceKey}
-					resource={selectedResource}
-					onClose={resetResource}
-					onOpenHelmRelease={handleOpenHelmReleaseFromResource}
-				/>
-			</Suspense>
-		) : null;
+	const detailPanel = (
+		<AppDetailPanel
+			viewMode={viewMode}
+			selectedHelmRelease={selectedHelmRelease}
+			selectedArgoApp={selectedArgoApp}
+			selectedResource={selectedResource}
+			selectedResourceKey={selectedResourceKey}
+			onHelmClose={handleHelmClose}
+			onArgoClose={handleArgoClose}
+			onResourceClose={resetResource}
+			onOpenHelmResources={handleOpenHelmResources}
+			onOpenHelmReleaseFromResource={handleOpenHelmReleaseFromResource}
+		/>
+	);
 
 	return (
 		<div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">

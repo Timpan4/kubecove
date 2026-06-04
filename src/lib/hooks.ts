@@ -52,6 +52,7 @@ export type DashboardViewMode =
 	| "resources"
 	| "argo"
 	| "helm"
+	| "incidents"
 	| "portForwards"
 	| "rbac"
 	| "settings";

@@ -18,6 +18,7 @@ export const SECTION_LABELS: Record<string, string> = {
 	discovered: "Discovered",
 	argo: "Argo CD",
 	helm: "Helm",
+	incidents: "Incidents",
 	portForwards: "Port Forwards",
 	rbac: "RBAC",
 };
@@ -72,6 +73,7 @@ export function getAppContentTitle({
 	if (viewMode === "overview") return activeWorkspace?.name ?? "Workspace";
 	if (viewMode === "settings") return "Settings";
 	if (viewMode === "helm") return "Helm Releases";
+	if (viewMode === "incidents") return "Incident Cockpit";
 	if (viewMode === "portForwards") return "Port Forwards";
 	if (viewMode === "rbac") {
 		if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
