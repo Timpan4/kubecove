@@ -59,6 +59,7 @@ interface WorkspaceOverviewProps {
 	workspace: SavedWorkspace;
 	onOpenResources: (namespace?: string, healthFilter?: HealthFilter) => void;
 	onOpenArgo: (argoApp?: string) => void;
+	onOpenIncidents: () => void;
 	onOpenPortForwards: () => void;
 	onOpenLauncher: () => void;
 }
@@ -123,13 +124,11 @@ function ShortcutButton({
 function IncidentShortcutButton({
 	label,
 	count,
-	filter,
-	onOpenResources,
+	onOpenIncidents,
 }: {
 	label: string;
 	count: number;
-	filter: HealthFilter;
-	onOpenResources: (namespace?: string, healthFilter?: HealthFilter) => void;
+	onOpenIncidents: () => void;
 }) {
 	if (count === 0) return null;
 	return (
@@ -137,7 +136,7 @@ function IncidentShortcutButton({
 			type="button"
 			variant="outline"
 			size="sm"
-			onClick={() => onOpenResources(undefined, filter)}
+			onClick={onOpenIncidents}
 		>
 			<AlertTriangle data-icon="inline-start" />
 			{label}
@@ -152,6 +151,7 @@ export function WorkspaceOverview({
 	workspace,
 	onOpenResources,
 	onOpenArgo,
+	onOpenIncidents,
 	onOpenPortForwards,
 	onOpenLauncher,
 }: WorkspaceOverviewProps) {
@@ -291,6 +291,10 @@ export function WorkspaceOverview({
 						<Cable data-icon="inline-start" />
 						Port Forwards
 					</Button>
+					<Button type="button" variant="outline" onClick={onOpenIncidents}>
+						<AlertTriangle data-icon="inline-start" />
+						Incidents
+					</Button>
 					<Button type="button" onClick={() => onOpenResources()}>
 						<Boxes data-icon="inline-start" />
 						Resources
@@ -334,27 +338,24 @@ export function WorkspaceOverview({
 					<CardHeader>
 						<CardTitle>Incident shortcuts</CardTitle>
 						<CardDescription>
-							Open the saved scope with an investigation filter applied.
+							Open Incident Cockpit for this workspace.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="flex flex-wrap gap-2">
 						<IncidentShortcutButton
 							label="Unhealthy"
 							count={unhealthyCount}
-							filter="unhealthy"
-							onOpenResources={onOpenResources}
+							onOpenIncidents={onOpenIncidents}
 						/>
 						<IncidentShortcutButton
 							label="Warnings"
 							count={health.attention}
-							filter="attention"
-							onOpenResources={onOpenResources}
+							onOpenIncidents={onOpenIncidents}
 						/>
 						<IncidentShortcutButton
 							label="Restarted"
 							count={health.restarted}
-							filter="restarted"
-							onOpenResources={onOpenResources}
+							onOpenIncidents={onOpenIncidents}
 						/>
 					</CardContent>
 				</Card>

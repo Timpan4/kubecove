@@ -43,7 +43,10 @@ export function buildWorkspaceFetchKeys(
 	});
 }
 
-function fetchKeyRequest({ kind, namespace }: WorkspaceFetchKey): ResourceListRequest {
+export function workspaceFetchKeyRequest({
+	kind,
+	namespace,
+}: WorkspaceFetchKey): ResourceListRequest {
 	if (typeof kind === "string") {
 		return { kind, namespace };
 	}
@@ -60,7 +63,9 @@ export function buildWorkspaceFetchPlans(
 			contexts.length === 1 ? availableNamespaces : undefined;
 		return {
 			clusterContext,
-			requests: buildWorkspaceFetchKeys(scope, namespaceScope).map(fetchKeyRequest),
+			requests: buildWorkspaceFetchKeys(scope, namespaceScope).map(
+				workspaceFetchKeyRequest,
+			),
 		};
 	});
 }

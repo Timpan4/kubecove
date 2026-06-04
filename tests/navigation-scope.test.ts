@@ -7,13 +7,11 @@ import { resolveTreeScope } from "../src/lib/tree-nav";
 
 describe("navigation scope", () => {
 	test("keeps launcher settings and update controls in app top bar", () => {
-		const source = readFileSync("src/App.tsx", "utf8");
-		const launcherGate = source.indexOf("if (!activeWorkspace)");
-		const topBar = source.indexOf("<AppTopBar", launcherGate);
-		const launcher = source.indexOf("<WorkspaceLauncher", launcherGate);
+		const source = readFileSync("src/app/LauncherShell.tsx", "utf8");
+		const topBar = source.indexOf("<AppTopBar");
+		const launcher = source.indexOf("<WorkspaceLauncher");
 
-		expect(launcherGate).toBeGreaterThanOrEqual(0);
-		expect(topBar).toBeGreaterThan(launcherGate);
+		expect(topBar).toBeGreaterThanOrEqual(0);
 		expect(launcher).toBeGreaterThan(topBar);
 		expect(source).toContain("showClusterSelector={false}");
 		expect(source).toContain("showSearch={false}");

@@ -100,6 +100,12 @@ export const SECTIONS = {
     label: "Helm",
     children: ["Releases"] as const,
   },
+  /** Incidents: workspace-level triage across resource status and warning events. */
+  incidents: {
+    id: "incidents",
+    label: "Incidents",
+    children: [] as readonly string[],
+  },
   /** Port Forwards: workspace-level live tunnel management. */
   portForwards: {
     id: "portForwards",
@@ -128,6 +134,7 @@ export const STATIC_SECTION_NAMES: SectionName[] = [
   "discovered",
   "argo",
   "helm",
+  "incidents",
   "portForwards",
   "rbac",
 ];
@@ -213,6 +220,8 @@ export interface TreeScope {
   argoMode: boolean;
   /** Whether the scope is for Helm */
   helmMode: boolean;
+  /** Whether the scope is for incident triage */
+  incidentMode: boolean;
   /** Whether the scope is for workspace port-forward management */
   portForwardMode: boolean;
   /** Whether the scope is for RBAC inspection */
@@ -225,7 +234,7 @@ export interface TreeScope {
  */
 export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
   if (!nodeId) {
-    return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, portForwardMode: false, rbacMode: false };
+    return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, incidentMode: false, portForwardMode: false, rbacMode: false };
   }
 
   if (nodeId.type === "section") {
@@ -238,6 +247,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
         clusterScoped: true,
         argoMode: false,
         helmMode: false,
+        incidentMode: false,
         portForwardMode: false,
         rbacMode: false,
       };
@@ -254,6 +264,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
         clusterScoped: false,
         argoMode: false,
         helmMode: false,
+        incidentMode: false,
         portForwardMode: false,
         rbacMode: false,
       };
@@ -267,6 +278,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       clusterScoped: false,
       argoMode: nodeId.section === "argo",
       helmMode: nodeId.section === "helm",
+      incidentMode: nodeId.section === "incidents",
       portForwardMode: nodeId.section === "portForwards",
       rbacMode: nodeId.section === "rbac",
     };
@@ -285,6 +297,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       clusterScoped: false,
       argoMode: false,
       helmMode: false,
+      incidentMode: false,
       portForwardMode: false,
       rbacMode: false,
     };
@@ -293,7 +306,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
   if (nodeId.type === "group") {
     const groupName = nodeId.group as KindGroupName;
     const groupKinds = KIND_GROUPS[groupName];
-    if (!groupKinds) return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, portForwardMode: false, rbacMode: false };
+    if (!groupKinds) return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, incidentMode: false, portForwardMode: false, rbacMode: false };
     const kinds = [...groupKinds] as ResourceKindSelection[];
     return {
       section: nodeId.section as SectionName,
@@ -303,6 +316,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       clusterScoped: false,
       argoMode: false,
       helmMode: false,
+      incidentMode: false,
       portForwardMode: false,
       rbacMode: false,
     };
@@ -325,12 +339,13 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
           : false,
       argoMode: nodeId.section === "argo",
       helmMode: nodeId.section === "helm",
+      incidentMode: nodeId.section === "incidents",
       portForwardMode: nodeId.section === "portForwards",
       rbacMode: nodeId.section === "rbac",
     };
   }
 
-  return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, portForwardMode: false, rbacMode: false };
+  return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, incidentMode: false, portForwardMode: false, rbacMode: false };
 }
 
 // ─── Empty State Messages ─────────────────────────────────────────────────────
@@ -339,6 +354,7 @@ export function emptyStateMessage(scope: TreeScope, hasClusterContext: boolean):
   if (!hasClusterContext) return "Select a cluster context first";
   if (scope.argoMode) return "Select an Argo CD resource type";
   if (scope.helmMode) return "Select a Helm resource type";
+  if (scope.incidentMode) return "Use the Incident Cockpit";
   if (scope.portForwardMode) return "Use the Port Forwards page";
   if (scope.rbacMode) return "Select an RBAC inspection view";
   if (scope.section === "discovered") return "Select a discovered resource kind";

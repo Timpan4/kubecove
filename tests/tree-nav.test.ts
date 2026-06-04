@@ -16,6 +16,7 @@ describe("tree navigation scope helpers", () => {
 			clusterScoped: false,
 			argoMode: false,
 			helmMode: false,
+			incidentMode: false,
 			portForwardMode: false,
 			rbacMode: false,
 		});
@@ -90,6 +91,12 @@ describe("tree navigation scope helpers", () => {
 			helmMode: true,
 		});
 		expect(
+			resolveTreeScope({ type: "section", section: "incidents" }),
+		).toMatchObject({
+			section: "incidents",
+			incidentMode: true,
+		});
+		expect(
 			resolveTreeScope({ type: "section", section: "portForwards" }),
 		).toMatchObject({
 			section: "portForwards",
@@ -152,6 +159,15 @@ describe("tree navigation scope helpers", () => {
 				true,
 			),
 		).toBe("Select a Helm resource type");
+		expect(
+			emptyStateMessage(
+				resolveTreeScope({
+					type: "section",
+					section: "incidents",
+				} as TreeNodeId),
+				true,
+			),
+		).toBe("Use the Incident Cockpit");
 		expect(
 			emptyStateMessage(
 				resolveTreeScope({ type: "section", section: "rbac" } as TreeNodeId),

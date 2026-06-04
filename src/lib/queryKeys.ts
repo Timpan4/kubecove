@@ -85,6 +85,17 @@ export const queryKeys = {
 			clusterContext,
 			sortedNamespaces(namespaces),
 		] as const,
+	incidentCockpit: (
+		clusterContext: string,
+		fetchKeys: ResourceFetchKey[],
+		kubeconfigEnvVar?: string,
+	) =>
+		[
+			"incident-cockpit",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			...resourceScopeParts(fetchKeys),
+		] as const,
 	portForwards: () => ["port-forwards"] as const,
 	podExecSessions: () => ["pod-exec-sessions"] as const,
 	helmReleaseDetails: (
