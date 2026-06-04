@@ -44,16 +44,22 @@ jobs:
         include:
           - label: macOS universal
             platform: macos-latest
-            args: "--target universal-apple-darwin"
+            args: "--target universal-apple-darwin --bundles app,dmg"
             rust-targets: "aarch64-apple-darwin x86_64-apple-darwin"
+            expected-updater-platforms: "darwin-aarch64 darwin-x86_64"
+            expected-updater-assets: "KubeCove.app.tar.gz KubeCove.app.tar.gz.sig"
           - label: Windows x64
             platform: windows-latest
             args: "--target x86_64-pc-windows-msvc"
             rust-targets: "x86_64-pc-windows-msvc"
+            expected-updater-platforms: "windows-x86_64 windows-x86_64-nsis"
+            expected-updater-assets: "KubeCove___VERSION___x64-setup.exe KubeCove___VERSION___x64-setup.exe.sig"
           - label: Linux x64
             platform: ubuntu-latest
             args: "--target x86_64-unknown-linux-gnu"
             rust-targets: "x86_64-unknown-linux-gnu"
+            expected-updater-platforms: "linux-x86_64 linux-x86_64-appimage"
+            expected-updater-assets: "KubeCove___VERSION___amd64.AppImage KubeCove___VERSION___amd64.AppImage.sig"
 
     runs-on: ${{ matrix.platform }}
 
@@ -150,20 +156,98 @@ jobs:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
+          EXPECTED_UPDATER_PLATFORMS: ${{ matrix.expected-updater-platforms }}
+          EXPECTED_UPDATER_ASSETS: ${{ matrix.expected-updater-assets }}
         run: |
           set -euo pipefail
-          gh release view "$TAG_NAME" --json assets --jq '.assets[].name' | grep -qx latest.json
+          version="${TAG_NAME#app-v}"
+          gh release view "$TAG_NAME" --json assets --jq '.assets[].name' > release-assets.txt
+          grep -qx latest.json release-assets.txt
+
+          for asset_template in $EXPECTED_UPDATER_ASSETS; do
+            asset="${asset_template//__VERSION__/$version}"
+            grep -qx "$asset" release-assets.txt
+          done
+
+          rm -rf updater-json-check
+          mkdir -p updater-json-check
+          gh release download "$TAG_NAME" --pattern latest.json --clobber --dir updater-json-check
+          node <<'EOF'
+          const { readFileSync } = require("node:fs");
+
+          const latest = JSON.parse(readFileSync("updater-json-check/latest.json", "utf8"));
+          const platforms = latest.platforms ?? {};
+          const missing = process.env.EXPECTED_UPDATER_PLATFORMS
+            .split(/\s+/)
+            .filter(Boolean)
+            .filter((platform) => !platforms[platform]);
+
+          if (missing.length > 0) {
+            throw new Error(`latest.json is missing updater platforms: ${missing.join(", ")}`);
+          }
+          EOF
 
   publish:
     name: Publish release
     needs:
       - prepare
       - build
-    if: needs.prepare.outputs.release-draft == 'true'
     runs-on: ubuntu-latest
 
     steps:
+      - name: Verify final updater platform coverage
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG_NAME#app-v}"
+          tmp="$(mktemp -d)"
+          gh release view "$TAG_NAME" --json assets --jq '.assets[].name' > "$tmp/assets.txt"
+          gh release download "$TAG_NAME" --pattern latest.json --clobber --dir "$tmp"
+          UPDATER_CHECK_DIR="$tmp" RELEASE_VERSION="$version" node <<'EOF'
+          const { readFileSync } = require("node:fs");
+
+          const dir = process.env.UPDATER_CHECK_DIR;
+          const version = process.env.RELEASE_VERSION;
+          const assets = new Set(readFileSync(`${dir}/assets.txt`, "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean));
+          const latest = JSON.parse(readFileSync(`${dir}/latest.json`, "utf8"));
+          const platforms = latest.platforms ?? {};
+
+          const requiredAssets = [
+            "KubeCove.app.tar.gz",
+            "KubeCove.app.tar.gz.sig",
+            `KubeCove_${version}_amd64.AppImage`,
+            `KubeCove_${version}_amd64.AppImage.sig`,
+            `KubeCove_${version}_x64-setup.exe`,
+            `KubeCove_${version}_x64-setup.exe.sig`,
+            "latest.json",
+          ];
+          const requiredPlatforms = [
+            "darwin-aarch64",
+            "darwin-x86_64",
+            "linux-x86_64",
+            "linux-x86_64-appimage",
+            "windows-x86_64",
+            "windows-x86_64-nsis",
+          ];
+
+          const missingAssets = requiredAssets.filter((asset) => !assets.has(asset));
+          const missingPlatforms = requiredPlatforms.filter((platform) => !platforms[platform]);
+
+          if (missingAssets.length > 0 || missingPlatforms.length > 0) {
+            throw new Error([
+              missingAssets.length ? `missing assets: ${missingAssets.join(", ")}` : null,
+              missingPlatforms.length ? `missing platforms: ${missingPlatforms.join(", ")}` : null,
+            ].filter(Boolean).join("; "));
+          }
+          EOF
+
       - name: Publish completed release
+        if: needs.prepare.outputs.release-draft == 'true'
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
