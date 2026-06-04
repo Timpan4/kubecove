@@ -105,6 +105,7 @@ fn is_forbidden_app_error(error: &AppError) -> bool {
 enum EventNamespaceScope {
     All,
     Namespaces(Vec<String>),
+    None,
 }
 
 fn event_namespace_scope(
@@ -121,7 +122,7 @@ fn event_namespace_scope(
         .into_iter()
         .collect::<Vec<_>>();
     if namespaces.is_empty() {
-        EventNamespaceScope::All
+        EventNamespaceScope::None
     } else {
         EventNamespaceScope::Namespaces(namespaces)
     }
@@ -144,6 +145,7 @@ async fn list_warning_events(
     let namespace_scopes = match scope {
         EventNamespaceScope::All => vec![None],
         EventNamespaceScope::Namespaces(namespaces) => namespaces.into_iter().map(Some).collect(),
+        EventNamespaceScope::None => return Ok(Vec::new()),
     };
     let mut events = Vec::new();
     for namespace in namespace_scopes {
@@ -532,5 +534,19 @@ mod tests {
         assert_eq!(items[1].resource.name, "api-1");
         assert_eq!(items[2].resource.name, "api-3");
         assert_eq!(items[3].resource.name, "api-2");
+    }
+
+    #[test]
+    fn namespace_scoped_empty_resources_do_not_query_all_events() {
+        let scope = event_namespace_scope(
+            &[ResourceListRequest {
+                kind: Some("Pod".to_string()),
+                namespace: Some("default".to_string()),
+                resource_kind: None,
+            }],
+            &[],
+        );
+
+        assert!(matches!(scope, EventNamespaceScope::None));
     }
 }
