@@ -167,7 +167,9 @@ describe("workspace helpers", () => {
 			}),
 		});
 
-		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([]);
+		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([
+			saved,
+		]);
 	});
 
 	test("stores cluster groups as local scope metadata without secrets", () => {
