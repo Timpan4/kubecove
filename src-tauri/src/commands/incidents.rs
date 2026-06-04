@@ -72,14 +72,22 @@ pub async fn incident_cockpit_from(
         .await?;
     let event_scope = event_namespace_scope(&requests, &resources);
     let mut warnings = Vec::new();
-    let events = match list_warning_events(&cluster_context, event_scope, kubeconfig_env_var).await {
-        Ok(events) => events,
-        Err(err) if is_forbidden_app_error(&err) => {
-            warnings.push("Warning events unavailable: forbidden by RBAC.".to_string());
-            Vec::new()
-        }
-        Err(err) => return Err(err),
-    };
+    let event_result =
+        match list_warning_events(&cluster_context, event_scope, kubeconfig_env_var).await {
+            Ok(result) => result,
+            Err(err) if is_forbidden_app_error(&err) => {
+                warnings.push("Warning events unavailable: forbidden by RBAC.".to_string());
+                WarningEventList::default()
+            }
+            Err(err) => return Err(err),
+        };
+    if !event_result.denied_namespaces.is_empty() {
+        warnings.push(format!(
+            "Warning events unavailable in namespaces: {}.",
+            event_result.denied_namespaces.join(", ")
+        ));
+    }
+    let events = event_result.events;
     if events.len() >= MAX_WARNING_EVENTS_TOTAL {
         warnings.push(format!(
             "Warning events capped at {} most recent matches.",
@@ -140,32 +148,49 @@ async fn list_warning_events(
     cluster_context: &str,
     scope: EventNamespaceScope,
     kubeconfig_env_var: Option<String>,
-) -> Result<Vec<ResourceEventMatch>, AppError> {
+) -> Result<WarningEventList, AppError> {
     let client = client_for_context(cluster_context, kubeconfig_env_var).await?;
     let namespace_scopes = match scope {
         EventNamespaceScope::All => vec![None],
         EventNamespaceScope::Namespaces(namespaces) => namespaces.into_iter().map(Some).collect(),
-        EventNamespaceScope::None => return Ok(Vec::new()),
+        EventNamespaceScope::None => return Ok(WarningEventList::default()),
     };
     let mut events = Vec::new();
+    let mut denied_namespaces = Vec::new();
     for namespace in namespace_scopes {
         let api: Api<Event> = if let Some(namespace) = &namespace {
             Api::namespaced(client.clone(), namespace)
         } else {
             Api::all(client.clone())
         };
-        let mut namespace_events = api
-            .list(&list_params())
-            .await
-            .map_err(AppError::from)?
-            .into_iter()
-            .filter_map(event_match)
-            .collect::<Vec<_>>();
+        let list = match api.list(&list_params()).await {
+            Ok(list) => list,
+            Err(err) => {
+                let app_error = AppError::from(err);
+                if let Some(namespace) = namespace.as_ref() {
+                    if is_forbidden_app_error(&app_error) {
+                        denied_namespaces.push(namespace.clone());
+                        continue;
+                    }
+                }
+                return Err(app_error);
+            }
+        };
+        let mut namespace_events = list.into_iter().filter_map(event_match).collect::<Vec<_>>();
         events.append(&mut namespace_events);
     }
     events.sort_by(event_match_sort);
     events.truncate(MAX_WARNING_EVENTS_TOTAL);
-    Ok(events)
+    Ok(WarningEventList {
+        events,
+        denied_namespaces,
+    })
+}
+
+#[derive(Debug, Clone, Default)]
+struct WarningEventList {
+    events: Vec<ResourceEventMatch>,
+    denied_namespaces: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -219,6 +244,7 @@ fn event_match(event: Event) -> Option<ResourceEventMatch> {
     }
     let kind = event.involved_object.kind.clone()?;
     let name = event.involved_object.name.clone()?;
+    let api_version = event.involved_object.api_version.clone();
     let namespace = event.involved_object.namespace.clone();
     let timestamp = event_timestamp(&event);
     let last_seen_at = timestamp.as_ref().map(DateTime::to_rfc3339);
@@ -235,7 +261,7 @@ fn event_match(event: Event) -> Option<ResourceEventMatch> {
         namespace: event.metadata.namespace.clone().or(namespace.clone()),
     };
     Some(ResourceEventMatch {
-        key: resource_match_key(&kind, namespace.as_deref(), &name),
+        key: resource_match_key(&kind, api_version.as_deref(), namespace.as_deref(), &name),
         summary,
     })
 }
@@ -256,13 +282,25 @@ fn event_time_ms(event: &ResourceEventSummary) -> i64 {
         .unwrap_or_default()
 }
 
-fn resource_match_key(kind: &str, namespace: Option<&str>, name: &str) -> String {
-    format!("{}:{}:{}", kind, namespace.unwrap_or_default(), name)
+fn resource_match_key(
+    kind: &str,
+    api_version: Option<&str>,
+    namespace: Option<&str>,
+    name: &str,
+) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        kind,
+        api_version.unwrap_or_default(),
+        namespace.unwrap_or_default(),
+        name
+    )
 }
 
 fn resource_key(resource: &ResourceSummary) -> String {
     resource_match_key(
         &resource.kind,
+        resource.api_version.as_deref(),
         resource.namespace.as_deref(),
         &resource.name,
     )
@@ -463,7 +501,7 @@ mod tests {
 
     fn warning(key_name: &str, reason: &str, at: &str) -> ResourceEventMatch {
         ResourceEventMatch {
-            key: resource_match_key("Pod", Some("default"), key_name),
+            key: resource_match_key("Pod", Some("v1"), Some("default"), key_name),
             summary: ResourceEventSummary {
                 event_type: "Warning".to_string(),
                 reason: reason.to_string(),
@@ -548,5 +586,35 @@ mod tests {
         );
 
         assert!(matches!(scope, EventNamespaceScope::None));
+    }
+
+    #[test]
+    fn warning_events_match_resources_by_api_version() {
+        let mut apps = resource("api");
+        apps.api_version = Some("apps/v1".to_string());
+        let mut batch = resource("api");
+        batch.api_version = Some("batch/v1".to_string());
+        let events = vec![ResourceEventMatch {
+            key: resource_match_key("Pod", Some("batch/v1"), Some("default"), "api"),
+            summary: ResourceEventSummary {
+                event_type: "Warning".to_string(),
+                reason: "FailedCreate".to_string(),
+                message: "batch resource warning".to_string(),
+                count: 1,
+                last_seen: "1m".to_string(),
+                last_seen_at: Some("2026-06-04T10:03:00Z".to_string()),
+                source: "controller".to_string(),
+                namespace: Some("default".to_string()),
+            },
+        }];
+
+        let items = build_incident_items(vec![apps, batch], events);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].resource.api_version.as_deref(), Some("batch/v1"));
+        assert_eq!(
+            items[0].latest_warning_event.as_ref().unwrap().reason,
+            "FailedCreate"
+        );
     }
 }
