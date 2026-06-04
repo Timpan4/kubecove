@@ -348,7 +348,10 @@ export function ExecTab({
 					<FieldLabel htmlFor="pod-exec-container">Container</FieldLabel>
 					<Select
 						value={selectedContainer}
-						onValueChange={onSelectedContainerChange}
+						onValueChange={(container) => {
+							onSelectedContainerChange(container);
+							setConfirmed(false);
+						}}
 					>
 						<SelectTrigger id="pod-exec-container" className="w-full">
 							<SelectValue placeholder="Default container" />
