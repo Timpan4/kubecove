@@ -27,6 +27,7 @@ Use this index as the map for product, engineering, release, and governance work
 - [ADR 0002: Argo CD Native Support Starts Kubernetes-API-First](decisions/0002-argocd-native-kubernetes-api-first.md)
 - [ADR 0003: Guarded Live Kubernetes Sessions](decisions/0003-guarded-live-sessions.md)
 - [ADR 0004: Guarded Cluster Operations](decisions/0004-guarded-cluster-operations.md)
+- [ADR 0005: Guarded Pod Exec Sessions](decisions/0005-guarded-pod-exec-sessions.md)
 
 New work that changes the frontend/backend security boundary, Kubernetes access path, Tauri permissions, cluster-changing behavior, or Argo CD/CLI integration needs an ADR before implementation.
 

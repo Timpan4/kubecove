@@ -118,7 +118,19 @@ Goal: introduce live operational sessions without turning KubeCove into a shell 
 - [x] Add Pod and selector-backed Service port-forward command, models, typed frontend wrappers, and visible session controls.
 - [x] Add workspace Port Forwards manager with saved Service presets and restore prompts.
 - [x] Run a manual port-forward smoke test against a readable cluster before release.
-- [ ] Add a separate design pass before pod exec.
+- [x] Add a separate design pass before pod exec.
+
+## Milestone 9: Guarded Pod Exec
+
+Goal: add exact-Pod interactive exec without broad shell or mutation surfaces.
+
+- [x] Add ADR 0005 and a focused Pod exec design note.
+- [x] Add Pod exec command models, typed Tauri commands, and an in-memory session registry.
+- [x] Add typed frontend wrappers and a Pod-only Exec detail tab.
+- [x] Add explicit target and command confirmation before starting exec.
+- [x] Add terminal output, stdin, resize, stop, and active-session listing.
+- [x] Run frontend typecheck, frontend tests, Rust tests, and Rust check.
+- [ ] Run a manual Pod exec smoke test against a readable cluster before release.
 
 ## Cross-Cutting Tracks
 
@@ -146,7 +158,7 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 
 - guarded YAML edit/apply
 - deployment-aware port-forwarding
-- pod exec
+- expanded exec scopes
 - richer Helm workflows
 - deeper RBAC and security inspection
 - customizable workspace layout

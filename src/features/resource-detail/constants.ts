@@ -1,4 +1,4 @@
-export type Tab = "details" | "events" | "logs" | "portForward" | "yaml";
+export type Tab = "details" | "events" | "logs" | "exec" | "portForward" | "yaml";
 
 export type { StatusTone as ChipVariant } from "@/components/StatusBadge";
 export { STATUS_BADGE_STYLES as CHIP_BADGE_STYLES } from "@/components/status-badge-styles";

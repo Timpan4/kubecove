@@ -7,6 +7,7 @@ mod helpers;
 mod live_store;
 mod metrics;
 mod namespaces;
+mod pod_exec;
 mod rbac;
 mod resources;
 mod sessions;
@@ -26,6 +27,10 @@ pub use helm::{get_helm_release_details, list_helm_releases};
 pub use live_store::ClusterLiveStore;
 pub use metrics::{list_resource_metrics, resource_metrics_from};
 pub use namespaces::{list_namespaces, namespaces_summary_from};
+pub use pod_exec::{
+    list_pod_exec_sessions, resize_pod_exec_terminal, start_pod_exec_session,
+    stop_pod_exec_session, write_pod_exec_stdin, PodExecRegistry,
+};
 pub use rbac::{list_rbac_inspection, rbac_inspection_from};
 pub use resources::{
     dynamic_resource_details_from, dynamic_resources_summary_from, get_dynamic_resource_details,

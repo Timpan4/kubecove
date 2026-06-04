@@ -177,6 +177,83 @@ export interface PortForwardSessionSummary {
 	lastError?: string;
 }
 
+export interface PodExecConfirmation {
+	acknowledged: boolean;
+	target: string;
+	command: string;
+}
+
+export interface PodExecTerminalSize {
+	cols: number;
+	rows: number;
+}
+
+export interface PodExecSessionRequest {
+	clusterContext: string;
+	namespace: string;
+	podName: string;
+	container?: string;
+	command: string[];
+	stdin: boolean;
+	tty: boolean;
+	terminalSize: PodExecTerminalSize;
+	confirmation: PodExecConfirmation;
+}
+
+export type PodExecSessionStatus =
+	| "starting"
+	| "connecting"
+	| "running"
+	| "exited"
+	| "error"
+	| (string & {});
+
+export interface PodExecSessionSummary {
+	id: string;
+	clusterContext: string;
+	namespace: string;
+	podName: string;
+	container?: string;
+	command: string[];
+	stdin: boolean;
+	tty: boolean;
+	terminalCols: number;
+	terminalRows: number;
+	status: PodExecSessionStatus;
+	startedAt: string;
+	finishedAt?: string;
+	exitCode?: number;
+	lastError?: string;
+}
+
+export type PodExecSessionMessage =
+	| {
+			type: "started";
+			sessionId: string;
+			summary: PodExecSessionSummary;
+	  }
+	| {
+			type: "status";
+			sessionId: string;
+			status: PodExecSessionStatus | string;
+			message: string;
+	  }
+	| {
+			type: "output";
+			sessionId: string;
+			stream: "stdout" | "stderr" | "terminal" | string;
+			data: string;
+	  }
+	| { type: "error"; sessionId: string; message: string }
+	| {
+			type: "exited";
+			sessionId: string;
+			exitCode?: number;
+			reason?: string;
+			message?: string;
+	  }
+	| { type: "stopped"; sessionId: string };
+
 export interface WatchResourceTarget {
 	cluster: string;
 	kind: string;

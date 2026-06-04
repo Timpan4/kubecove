@@ -37,7 +37,10 @@ pub use resource::{
     OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull, ResourceListRequest,
     ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode, TopologyRelation,
 };
-pub use sessions::{PortForwardRequest, PortForwardSessionSummary};
+pub use sessions::{
+    PodExecConfirmation, PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummary,
+    PodExecTerminalSize, PortForwardRequest, PortForwardSessionSummary,
+};
 pub use streams::{
     PodLogStreamRequest, StreamMessage, WatchResourceKey, WatchResourceKind, WatchResourceTarget,
 };

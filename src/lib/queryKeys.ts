@@ -53,6 +53,7 @@ export const queryKeys = {
 	rbacInspection: (clusterContext: string, namespaces: string[]) =>
 		["rbac-inspection", clusterContext, sortedNamespaces(namespaces)] as const,
 	portForwards: () => ["port-forwards"] as const,
+	podExecSessions: () => ["pod-exec-sessions"] as const,
 	helmReleaseDetails: (
 		clusterContext: string,
 		namespace: string,
