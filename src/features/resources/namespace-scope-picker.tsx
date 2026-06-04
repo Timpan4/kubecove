@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useSettingsState } from "@/lib/settings";
 import { createTauriClient, listNamespaces } from "@/lib/tauri";
 import type { NamespaceSummary } from "@/lib/types";
 import {
@@ -20,6 +21,7 @@ export function NamespaceScopePicker({
 	const [namespaces, setNamespaces] = useState<NamespaceSummary[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const requestSeqRef = useRef(0);
 
 	const loadNamespaces = useCallback(async () => {
@@ -36,7 +38,11 @@ export function NamespaceScopePicker({
 		setLoading(true);
 		setError(null);
 		try {
-			const ns = await listNamespaces(createTauriClient(), clusterContext);
+			const ns = await listNamespaces(
+				createTauriClient(),
+				clusterContext,
+				kubeconfigEnvVar,
+			);
 			if (requestSeq === requestSeqRef.current) setNamespaces(ns);
 		} catch (err) {
 			if (requestSeq === requestSeqRef.current) {
@@ -45,7 +51,7 @@ export function NamespaceScopePicker({
 		} finally {
 			if (requestSeq === requestSeqRef.current) setLoading(false);
 		}
-	}, [clusterContext]);
+	}, [clusterContext, kubeconfigEnvVar]);
 
 	useEffect(() => {
 		void loadNamespaces();

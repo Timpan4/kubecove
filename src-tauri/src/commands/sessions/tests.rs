@@ -9,6 +9,7 @@ use tokio::{
 fn valid_request() -> PortForwardRequest {
     PortForwardRequest {
         cluster_context: "kind-dev".to_string(),
+        kubeconfig_env_var: None,
         namespace: "default".to_string(),
         target_kind: Some("Pod".to_string()),
         target_name: Some("api-0".to_string()),
@@ -22,6 +23,7 @@ fn test_summary(id: &str, local_port: u16) -> PortForwardSessionSummary {
     PortForwardSessionSummary {
         id: id.to_string(),
         cluster_context: "kind-dev".to_string(),
+        kubeconfig_env_var: None,
         namespace: "default".to_string(),
         target_kind: "Pod".to_string(),
         target_name: "api-0".to_string(),
@@ -130,6 +132,7 @@ fn registry_lists_marks_and_stops_sessions() {
         "pf-1",
         &PortForwardTarget {
             cluster_context: "kind-dev".to_string(),
+            kubeconfig_env_var: None,
             namespace: "default".to_string(),
             target_kind: PortForwardTargetKind::Service,
             target_name: "api".to_string(),
@@ -167,6 +170,7 @@ async fn live_pod_port_forward_starts_serves_lists_and_stops() {
         .expect("KUBECOVE_LIVE_PF_TARGET_NAME or KUBECOVE_LIVE_PF_POD must be set");
     let request = PortForwardRequest {
         cluster_context: live_env("KUBECOVE_LIVE_PF_CONTEXT"),
+        kubeconfig_env_var: None,
         namespace: live_env("KUBECOVE_LIVE_PF_NAMESPACE"),
         target_kind: Some(target_kind),
         target_name: Some(target_name),

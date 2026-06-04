@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { useSettingsState } from "@/lib/settings";
 import { createTauriClient, listResourceKinds } from "@/lib/tauri";
 import {
 	CLUSTER_SCOPED_KINDS,
@@ -54,6 +55,7 @@ export function KindScopePicker({
 	const [discoveredKinds, setDiscoveredKinds] = useState<DiscoveredResourceKind[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const requestSeqRef = useRef(0);
 
 	const loadKinds = useCallback(async () => {
@@ -70,7 +72,11 @@ export function KindScopePicker({
 		setLoading(true);
 		setError(null);
 		try {
-			const kinds = await listResourceKinds(createTauriClient(), clusterContext);
+			const kinds = await listResourceKinds(
+				createTauriClient(),
+				clusterContext,
+				kubeconfigEnvVar,
+			);
 			if (requestSeq === requestSeqRef.current) {
 				setDiscoveredKinds(
 					kinds
@@ -89,7 +95,7 @@ export function KindScopePicker({
 		} finally {
 			if (requestSeq === requestSeqRef.current) setLoading(false);
 		}
-	}, [clusterContext]);
+	}, [clusterContext, kubeconfigEnvVar]);
 
 	useEffect(() => {
 		void loadKinds();

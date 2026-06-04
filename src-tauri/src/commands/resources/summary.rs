@@ -2,9 +2,11 @@ use super::{
     summary_cluster::cluster_resource_summaries, summary_core::core_resource_summaries,
     summary_workloads::workload_resource_summaries,
 };
-use crate::commands::ClusterLiveStore;
+use crate::commands::{
+    kubeconfig::{kubeconfig_source_key, KubeconfigSource},
+    ClusterLiveStore,
+};
 use crate::models::{AppError, ResourceSummary};
-use kube::{config::KubeConfigOptions, Client};
 use std::time::Instant;
 use tauri::State;
 
@@ -12,16 +14,10 @@ pub async fn resources_summary_from(
     cluster_context: String,
     kind: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.clone()),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let client = source.client_for_context(&cluster_context).await?;
 
     if let Some(rows) = core_resource_summaries(
         client.clone(),
@@ -58,6 +54,7 @@ pub async fn list_resources(
     cluster_context: String,
     kind: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
     let started = Instant::now();
@@ -66,13 +63,21 @@ pub async fn list_resources(
         "[kubecove:backend] list_resources start context={} kind={} namespace={}",
         cluster_context, kind, namespace_label
     );
+    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let result = live_store
-        .typed_resources(cluster_context.clone(), kind.clone(), namespace.clone(), {
-            let cluster_context = cluster_context.clone();
-            let kind = kind.clone();
-            let namespace = namespace.clone();
-            move || resources_summary_from(cluster_context, kind, namespace)
-        })
+        .typed_resources(
+            source_key,
+            cluster_context.clone(),
+            kind.clone(),
+            namespace.clone(),
+            {
+                let cluster_context = cluster_context.clone();
+                let kind = kind.clone();
+                let namespace = namespace.clone();
+                let kubeconfig_env_var = kubeconfig_env_var.clone();
+                move || resources_summary_from(cluster_context, kind, namespace, kubeconfig_env_var)
+            },
+        )
         .await;
     match &result {
         Ok(rows) => eprintln!("[kubecove:backend] list_resources done context={} kind={} namespace={} rows={} ms={}", cluster_context, kind, namespace_label, rows.len(), started.elapsed().as_millis()),

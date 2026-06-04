@@ -21,6 +21,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { useSettingsState } from "@/lib/settings";
 import type { TauriClient } from "@/lib/tauri";
 import type { ResourceSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -54,6 +55,7 @@ export function LogsTab({
 	const [wrapLines, setWrapLines] = useState(false);
 	const [latestFirst, setLatestFirst] = useState(false);
 	const [autoFollow, setAutoFollow] = useState(true);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const logViewportRef = useRef<HTMLDivElement>(null);
 	const regularContainers = containers.filter(
 		(container) => container.type !== "init",
@@ -66,6 +68,7 @@ export function LogsTab({
 		}
 		return {
 			clusterContext: resource.cluster,
+			kubeconfigEnvVar,
 			namespace: resource.namespace,
 			podName: resource.name,
 			container: selectedContainer,
@@ -76,6 +79,7 @@ export function LogsTab({
 		resource.kind,
 		resource.name,
 		resource.namespace,
+		kubeconfigEnvVar,
 		selectedContainer,
 	]);
 	const logStream = usePodLogStream({

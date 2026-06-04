@@ -28,6 +28,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createTauriClient, listNamespaces, listResourceKinds } from "../lib/tauri";
+import { useSettingsState } from "@/lib/settings";
 import type { DiscoveredResourceKind, NamespaceSummary } from "../lib/types";
 import {
   type TreeNodeId,
@@ -237,6 +238,7 @@ export function SidebarTree({
   const [resourceKindsLoading, setResourceKindsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resourceKindsError, setResourceKindsError] = useState<string | null>(null);
+  const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 
   const loadNamespaces = useCallback(async () => {
     if (!clusterContext) {
@@ -247,14 +249,14 @@ export function SidebarTree({
     setLoading(true);
     setError(null);
     try {
-      const ns = await listNamespaces(client, clusterContext);
+      const ns = await listNamespaces(client, clusterContext, kubeconfigEnvVar);
       setNamespaces(ns);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load namespaces");
     } finally {
       setLoading(false);
     }
-  }, [clusterContext]);
+  }, [clusterContext, kubeconfigEnvVar]);
 
   const loadResourceKinds = useCallback(async () => {
     if (!clusterContext) {
@@ -266,7 +268,7 @@ export function SidebarTree({
     setResourceKindsLoading(true);
     setResourceKindsError(null);
     try {
-      const kinds = await listResourceKinds(client, clusterContext);
+      const kinds = await listResourceKinds(client, clusterContext, kubeconfigEnvVar);
       setResourceKinds(kinds);
     } catch (err) {
       setResourceKinds([]);
@@ -276,7 +278,7 @@ export function SidebarTree({
     } finally {
       setResourceKindsLoading(false);
     }
-  }, [clusterContext]);
+  }, [clusterContext, kubeconfigEnvVar]);
 
   useEffect(() => {
     loadNamespaces();

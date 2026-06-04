@@ -1,7 +1,8 @@
+use crate::commands::kubeconfig::KubeconfigSource;
 use crate::models::{AppError, PortForwardRequest, PortForwardSessionSummary};
 use chrono::Utc;
 use k8s_openapi::api::core::v1::Pod;
-use kube::{api::Api, config::KubeConfigOptions, Client};
+use kube::{api::Api, Client};
 use std::{
     collections::BTreeMap,
     net::{Ipv4Addr, SocketAddrV4},
@@ -40,6 +41,7 @@ impl PortForwardTargetKind {
 #[derive(Debug, Clone)]
 pub(super) struct ValidatedPortForwardRequest {
     cluster_context: String,
+    kubeconfig_env_var: Option<String>,
     namespace: String,
     target_kind: PortForwardTargetKind,
     target_name: String,
@@ -50,6 +52,7 @@ pub(super) struct ValidatedPortForwardRequest {
 #[derive(Debug, Clone)]
 struct PortForwardTarget {
     cluster_context: String,
+    kubeconfig_env_var: Option<String>,
     namespace: String,
     target_kind: PortForwardTargetKind,
     target_name: String,
@@ -244,6 +247,7 @@ fn validate_request(request: &PortForwardRequest) -> Result<ValidatedPortForward
 
     Ok(ValidatedPortForwardRequest {
         cluster_context: request.cluster_context.trim().to_string(),
+        kubeconfig_env_var: request.kubeconfig_env_var.clone(),
         namespace: request.namespace.trim().to_string(),
         target_kind,
         target_name,
@@ -258,6 +262,7 @@ async fn resolve_port_forward_target(
     match request.target_kind {
         PortForwardTargetKind::Pod => Ok(PortForwardTarget {
             cluster_context: request.cluster_context,
+            kubeconfig_env_var: request.kubeconfig_env_var,
             namespace: request.namespace,
             target_kind: PortForwardTargetKind::Pod,
             target_name: request.target_name.clone(),
@@ -269,16 +274,12 @@ async fn resolve_port_forward_target(
     }
 }
 
-pub(super) async fn client_for_context(cluster_context: &str) -> Result<Client, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.to_string()),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-    Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))
+pub(super) async fn client_for_context(
+    cluster_context: &str,
+    kubeconfig_env_var: Option<String>,
+) -> Result<Client, AppError> {
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    source.client_for_context(cluster_context).await
 }
 
 fn port_forward_error_message(err: kube::Error) -> String {
@@ -310,6 +311,7 @@ fn session_summary(
     PortForwardSessionSummary {
         id,
         cluster_context: target.cluster_context.clone(),
+        kubeconfig_env_var: target.kubeconfig_env_var.clone(),
         namespace: target.namespace.clone(),
         target_kind: target.target_kind.as_str().to_string(),
         target_name: target.target_name.clone(),
@@ -464,7 +466,8 @@ async fn start_pod_port_forward_in_registry(
     }
 
     let target = resolve_port_forward_target(request).await?;
-    let client = client_for_context(&target.cluster_context).await?;
+    let client =
+        client_for_context(&target.cluster_context, target.kubeconfig_env_var.clone()).await?;
     verify_pod_port_forward(client.clone(), &target).await?;
 
     let session_id = registry.session_id();
@@ -472,6 +475,7 @@ async fn start_pod_port_forward_in_registry(
     let handle_registry = registry.clone();
     let handle_request = ValidatedPortForwardRequest {
         cluster_context: target.cluster_context.clone(),
+        kubeconfig_env_var: target.kubeconfig_env_var.clone(),
         namespace: target.namespace.clone(),
         target_kind: target.target_kind,
         target_name: target.target_name.clone(),

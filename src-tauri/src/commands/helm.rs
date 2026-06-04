@@ -1,4 +1,7 @@
-use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, list_params, resource_age};
+use crate::commands::{
+    helpers::{k8s_creation_timestamp_to_rfc3339, list_params, resource_age},
+    kubeconfig::KubeconfigSource,
+};
 use crate::models::{
     AppError, HelmManifestResourceSummary, HelmManifestSummary, HelmReleaseDetails,
     HelmReleaseSummary, HelmValuesSummary,
@@ -9,7 +12,6 @@ use flate2::read::GzDecoder;
 use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Secret};
 use kube::{
     api::{Api, ListParams, ObjectMeta},
-    config::KubeConfigOptions,
     Client,
 };
 use serde::{Deserialize, Serialize};
@@ -60,8 +62,10 @@ struct HelmStorageRecord {
 #[tauri::command]
 pub async fn list_helm_releases(
     cluster_context: String,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<HelmReleaseSummary>, AppError> {
-    let (client, default_namespace) = client_for_context(&cluster_context).await?;
+    let (client, default_namespace) =
+        client_for_context(&cluster_context, kubeconfig_env_var).await?;
     let fallback_namespaces = helm_fallback_namespaces(client.clone(), &default_namespace).await;
     let mut records = Vec::new();
     let mut errors = Vec::new();
@@ -89,8 +93,9 @@ pub async fn get_helm_release_details(
     namespace: String,
     storage_kind: String,
     storage_name: String,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<HelmReleaseDetails, AppError> {
-    let (client, _) = client_for_context(&cluster_context).await?;
+    let (client, _) = client_for_context(&cluster_context, kubeconfig_env_var).await?;
 
     match storage_kind.as_str() {
         HELM_STORAGE_SECRET => {
@@ -145,17 +150,12 @@ pub async fn get_helm_release_details(
     }
 }
 
-async fn client_for_context(cluster_context: &str) -> Result<(Client, String), AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.to_string()),
-        ..Default::default()
-    };
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-    let default_namespace = config.default_namespace.clone();
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
-    Ok((client, default_namespace))
+async fn client_for_context(
+    cluster_context: &str,
+    kubeconfig_env_var: Option<String>,
+) -> Result<(Client, String), AppError> {
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    source.client_and_default_namespace(cluster_context).await
 }
 
 async fn helm_fallback_namespaces(client: Client, default_namespace: &str) -> Vec<String> {

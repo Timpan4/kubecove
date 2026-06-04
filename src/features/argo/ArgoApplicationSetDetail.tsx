@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { kubeconfigSourceKey, useSettingsState } from "@/lib/settings";
 import { createTauriClient, getArgoApplicationSetDetails } from "@/lib/tauri";
 import type { ArgoApplicationSetSummary } from "@/lib/types";
 import {
@@ -15,9 +16,11 @@ import {
 
 function useArgoApplicationSetDetails(appset: ArgoApplicationSetSummary) {
 	const client = useMemo(() => createTauriClient(), []);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	return useQuery({
 		queryKey: [
 			"argo-appset-details",
+			kubeconfigSourceKey(kubeconfigEnvVar),
 			appset.cluster,
 			appset.name,
 			appset.namespace,
@@ -28,6 +31,7 @@ function useArgoApplicationSetDetails(appset: ArgoApplicationSetSummary) {
 				appset.cluster,
 				appset.name,
 				appset.namespace ?? undefined,
+				kubeconfigEnvVar,
 			),
 		enabled: !!appset.cluster && !!appset.name,
 	});

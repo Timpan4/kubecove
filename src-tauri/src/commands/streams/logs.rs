@@ -10,7 +10,12 @@ pub(super) async fn run_pod_log_stream(
     request: PodLogStreamRequest,
     channel: Channel<StreamMessage>,
 ) {
-    let client = match client_for_context(&request.cluster_context).await {
+    let client = match client_for_context(
+        &request.cluster_context,
+        request.kubeconfig_env_var.clone(),
+    )
+    .await
+    {
         Ok(client) => client,
         Err(err) => {
             send(

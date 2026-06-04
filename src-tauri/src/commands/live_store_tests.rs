@@ -149,14 +149,21 @@ fn all_namespace_resources_cover_named_namespace_reads() {
     let store = ClusterLiveStore::default();
     tauri::async_runtime::block_on(async {
         store
-            .typed_resources("kind-dev".to_string(), "Pod".to_string(), None, || async {
-                Ok::<_, AppError>(vec![resource("api", "default"), resource("worker", "jobs")])
-            })
+            .typed_resources(
+                "kubeconfigEnv=KUBECONFIG".to_string(),
+                "kind-dev".to_string(),
+                "Pod".to_string(),
+                None,
+                || async {
+                    Ok::<_, AppError>(vec![resource("api", "default"), resource("worker", "jobs")])
+                },
+            )
             .await
             .expect("all namespace load");
 
         let default_rows = store
             .typed_resources(
+                "kubeconfigEnv=KUBECONFIG".to_string(),
                 "kind-dev".to_string(),
                 "Pod".to_string(),
                 Some("default".to_string()),
@@ -176,6 +183,7 @@ fn normalized_builtin_watch_invalidates_typed_resource_cache() {
     tauri::async_runtime::block_on(async {
         store
             .typed_resources(
+                "kubeconfigEnv=KUBECONFIG".to_string(),
                 "kind-dev".to_string(),
                 "Pod".to_string(),
                 Some("default".to_string()),
@@ -185,6 +193,7 @@ fn normalized_builtin_watch_invalidates_typed_resource_cache() {
             .expect("typed load");
 
         store.mark_watch_resource_dirty(
+            "kubeconfigEnv=KUBECONFIG",
             "kind-dev",
             &WatchResourceKind {
                 kind: "Pod".to_string(),
@@ -199,6 +208,7 @@ fn normalized_builtin_watch_invalidates_typed_resource_cache() {
 
         let rows = store
             .typed_resources(
+                "kubeconfigEnv=KUBECONFIG".to_string(),
                 "kind-dev".to_string(),
                 "Pod".to_string(),
                 Some("default".to_string()),

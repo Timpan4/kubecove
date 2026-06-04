@@ -8,6 +8,7 @@ import {
 	type TauriClient,
 } from "@/lib/tauri";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import type { PortForwardSessionSummary } from "@/lib/types";
 import {
 	useWorkspaceStore,
@@ -47,6 +48,7 @@ interface StartSavedPortForwardOptions {
 	workspaceId: string;
 	portForward: SavedPortForward;
 	knownSessions: PortForwardSessionSummary[];
+	kubeconfigEnvVar?: string;
 	updateSavedPortForward: ReturnType<
 		typeof useWorkspaceStore.getState
 	>["updateSavedPortForward"];
@@ -57,10 +59,11 @@ async function startSavedPortForward({
 	workspaceId,
 	portForward,
 	knownSessions,
+	kubeconfigEnvVar,
 	updateSavedPortForward,
 }: StartSavedPortForwardOptions): Promise<SavedPortForwardStartResult> {
 	const matchingSessions = knownSessions.filter((session) =>
-		savedPortForwardMatchesSession(portForward, session),
+		savedPortForwardMatchesSession(portForward, session, kubeconfigEnvVar),
 	);
 	const existingSession = matchingSessions.find(isReusablePortForwardSession);
 	if (existingSession) {
@@ -87,7 +90,7 @@ async function startSavedPortForward({
 		}
 		const session = await startPortForward(
 			client,
-			savedPortForwardToRequest(portForward),
+			savedPortForwardToRequest(portForward, kubeconfigEnvVar),
 		);
 		updateSavedPortForward(workspaceId, portForward.id, {
 			lastStartedAt: session.startedAt,
@@ -110,6 +113,7 @@ export function useSavedPortForwardActions(
 	activeSessions?: PortForwardSessionSummary[],
 ) {
 	const client = useMemo(() => createTauriClient(), []);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const queryClient = useQueryClient();
 	const updateSavedPortForward = useWorkspaceStore(
 		(state) => state.updateSavedPortForward,
@@ -138,6 +142,7 @@ export function useSavedPortForwardActions(
 					workspaceId: workspace.id,
 					portForward,
 					knownSessions: currentSessions,
+					kubeconfigEnvVar,
 					updateSavedPortForward,
 				});
 				await queryClient.invalidateQueries({
@@ -148,7 +153,14 @@ export function useSavedPortForwardActions(
 				setStartingId(setStartingIds, portForward.id, false);
 			}
 		},
-		[activeSessions, client, queryClient, updateSavedPortForward, workspace],
+		[
+			activeSessions,
+			client,
+			queryClient,
+			kubeconfigEnvVar,
+			updateSavedPortForward,
+			workspace,
+		],
 	);
 
 	const startAll = useCallback(

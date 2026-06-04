@@ -135,11 +135,12 @@ impl StreamRegistry {
     pub(super) fn subscribe_resource(
         &self,
         stream_id: &str,
+        source_key: &str,
         cluster_context: &str,
         key: &WatchResourceKey,
         channel: Channel<StreamMessage>,
     ) -> (String, StreamBroadcaster, bool) {
-        let watch_key = resource_watch_key(cluster_context, key);
+        let watch_key = resource_watch_key(source_key, cluster_context, key);
         let mut state = self.state.lock().expect("stream registry lock");
         remove_empty_resource_watch(&mut state, &watch_key);
         let mut started = false;
@@ -186,13 +187,14 @@ impl StreamRegistry {
     pub(super) fn subscribe_event(
         &self,
         stream_id: &str,
+        source_key: &str,
         cluster_context: &str,
         kind: &str,
         name: &str,
         namespace: Option<&str>,
         channel: Channel<StreamMessage>,
     ) -> (String, StreamBroadcaster, bool) {
-        let watch_key = event_watch_key(cluster_context, kind, name, namespace);
+        let watch_key = event_watch_key(source_key, cluster_context, kind, name, namespace);
         let mut state = self.state.lock().expect("stream registry lock");
         remove_empty_event_watch(&mut state, &watch_key);
         let mut started = false;
@@ -315,9 +317,10 @@ fn remove_empty_event_watch(state: &mut RegistryState, key: &str) {
     }
 }
 
-fn resource_watch_key(cluster_context: &str, key: &WatchResourceKey) -> String {
+fn resource_watch_key(source_key: &str, cluster_context: &str, key: &WatchResourceKey) -> String {
     format!(
-        "context={}|kind={}|api={}|plural={}|namespace={}",
+        "{}|context={}|kind={}|api={}|plural={}|namespace={}",
+        source_key,
         cluster_context,
         key.resource_kind.kind,
         key.resource_kind
@@ -330,13 +333,15 @@ fn resource_watch_key(cluster_context: &str, key: &WatchResourceKey) -> String {
 }
 
 fn event_watch_key(
+    source_key: &str,
     cluster_context: &str,
     kind: &str,
     name: &str,
     namespace: Option<&str>,
 ) -> String {
     format!(
-        "context={}|kind={}|namespace={}|name={}",
+        "{}|context={}|kind={}|namespace={}|name={}",
+        source_key,
         cluster_context,
         kind,
         namespace.unwrap_or("<cluster>"),
@@ -364,9 +369,21 @@ mod tests {
 
     #[test]
     fn namespaced_watch_key_stays_distinct_from_all_namespace_key() {
-        let all = resource_watch_key("kind-dev", &pod_key(None));
-        let default = resource_watch_key("kind-dev", &pod_key(Some("default")));
+        let all = resource_watch_key("kubeconfigEnv=KUBECONFIG", "kind-dev", &pod_key(None));
+        let default = resource_watch_key(
+            "kubeconfigEnv=KUBECONFIG",
+            "kind-dev",
+            &pod_key(Some("default")),
+        );
 
         assert_ne!(all, default);
+    }
+
+    #[test]
+    fn watch_key_includes_kubeconfig_source_without_path() {
+        let key = resource_watch_key("kubeconfigEnv=KUBECOVE_CONFIG", "kind-dev", &pod_key(None));
+
+        assert!(key.starts_with("kubeconfigEnv=KUBECOVE_CONFIG|context=kind-dev"));
+        assert!(!key.contains('/'));
     }
 }

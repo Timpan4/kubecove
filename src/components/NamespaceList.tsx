@@ -7,6 +7,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { createTauriClient, listNamespaces } from "@/lib/tauri";
+import { useSettingsState } from "@/lib/settings";
 import type { NamespaceSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ export function NamespaceList({
 	const [namespaces, setNamespaces] = useState<NamespaceSummary[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const requestSeqRef = useRef(0);
 
 	const loadNamespaces = useCallback(async () => {
@@ -40,7 +42,7 @@ export function NamespaceList({
 		setLoading(true);
 		setError(null);
 		try {
-			const ns = await listNamespaces(client, clusterContext);
+			const ns = await listNamespaces(client, clusterContext, kubeconfigEnvVar);
 			if (requestSeq === requestSeqRef.current) setNamespaces(ns);
 		} catch (err) {
 			if (requestSeq === requestSeqRef.current) {
@@ -51,7 +53,7 @@ export function NamespaceList({
 				setLoading(false);
 			}
 		}
-	}, [clusterContext]);
+	}, [clusterContext, kubeconfigEnvVar]);
 
 	useEffect(() => {
 		loadNamespaces();

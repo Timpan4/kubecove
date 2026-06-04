@@ -1,12 +1,8 @@
-use super::find_api_resource;
+use super::{client_for_context, find_api_resource};
 use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, list_params, resource_age};
 use crate::models::{AppError, ArgoAppProjectDetails, ArgoAppProjectSummary};
 use chrono::{TimeZone, Utc};
-use kube::{
-    api::{Api, DynamicObject},
-    config::KubeConfigOptions,
-    Client,
-};
+use kube::api::{Api, DynamicObject};
 
 /// Get detailed Argo CD AppProject information including YAML and metadata.
 #[tauri::command]
@@ -14,15 +10,9 @@ pub async fn get_argocd_appproject_details(
     cluster_context: String,
     name: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<ArgoAppProjectDetails, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.clone()),
-        ..Default::default()
-    };
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
 
     let ar = match find_api_resource(&client, "argoproj.io", "AppProject").await? {
         Some(ar) => ar,
@@ -88,17 +78,9 @@ pub async fn get_argocd_appproject_details(
 #[tauri::command]
 pub async fn list_argocd_appprojects(
     cluster_context: String,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ArgoAppProjectSummary>, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.clone()),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
 
     let ar = match find_api_resource(&client, "argoproj.io", "AppProject").await? {
         Some(ar) => ar,

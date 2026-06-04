@@ -31,6 +31,7 @@ import {
 import { StatusBadge } from "@/components/StatusBadge";
 import { TimestampText } from "@/components/TimestampText";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import { createTauriClient, listHelmReleases } from "@/lib/tauri";
 import type { HelmReleaseSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -266,14 +267,15 @@ export function HelmPanel({
 	onTargetReleaseResolved,
 }: HelmPanelProps) {
 	const client = useMemo(() => createTauriClient(), []);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const {
 		data: releases,
 		isPending,
 		isError,
 		error,
 	} = useQuery({
-		queryKey: queryKeys.helmReleases(clusterContext),
-		queryFn: () => listHelmReleases(client, clusterContext),
+		queryKey: queryKeys.helmReleases(clusterContext, kubeconfigEnvVar),
+		queryFn: () => listHelmReleases(client, clusterContext, kubeconfigEnvVar),
 		enabled: !!clusterContext,
 		staleTime: 30_000,
 	});

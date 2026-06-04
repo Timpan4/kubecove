@@ -3,6 +3,7 @@ import type {
 	PodExecSessionSummary,
 	ResourceSummary,
 } from "@/lib/types";
+import { normalizeKubeconfigEnvVar } from "@/lib/settings";
 
 export type PodExecPreset = "sh" | "bash" | "custom";
 
@@ -43,6 +44,7 @@ export function commandForPreset(
 export function buildPodExecRequest(
 	resource: ResourceSummary,
 	draft: PodExecDraft,
+	kubeconfigEnvVar?: string,
 ): PodExecSessionRequest | string {
 	if (resource.kind !== "Pod") return "Pod exec starts from an exact Pod";
 	if (!resource.namespace) return "Pod exec requires a namespace";
@@ -55,6 +57,7 @@ export function buildPodExecRequest(
 
 	return {
 		clusterContext: resource.cluster,
+		kubeconfigEnvVar,
 		namespace: resource.namespace,
 		podName: resource.name,
 		container: draft.container || undefined,
@@ -73,9 +76,12 @@ export function buildPodExecRequest(
 export function isPodExecForResource(
 	session: PodExecSessionSummary,
 	resource: ResourceSummary,
+	kubeconfigEnvVar?: string,
 ): boolean {
 	return (
 		resource.kind === "Pod" &&
+		normalizeKubeconfigEnvVar(session.kubeconfigEnvVar) ===
+			normalizeKubeconfigEnvVar(kubeconfigEnvVar) &&
 		session.clusterContext === resource.cluster &&
 		session.namespace === resource.namespace &&
 		session.podName === resource.name

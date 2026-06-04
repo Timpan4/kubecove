@@ -2,8 +2,8 @@ mod cluster;
 mod core;
 mod workloads;
 
+use crate::commands::kubeconfig::KubeconfigSource;
 use crate::models::{AppError, ResourceDetailsFull};
-use kube::{config::KubeConfigOptions, Client};
 use std::time::Instant;
 
 pub async fn resource_details_from(
@@ -11,17 +11,10 @@ pub async fn resource_details_from(
     kind: String,
     name: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<ResourceDetailsFull, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.clone()),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let client = source.client_for_context(&cluster_context).await?;
 
     match kind.as_str() {
         "Pod" => core::pod_details(client, cluster_context, name, namespace).await,
@@ -59,6 +52,7 @@ pub async fn get_resource_details(
     kind: String,
     name: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<ResourceDetailsFull, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
@@ -71,6 +65,7 @@ pub async fn get_resource_details(
         kind.clone(),
         name.clone(),
         namespace.clone(),
+        kubeconfig_env_var,
     )
     .await;
     match &result {

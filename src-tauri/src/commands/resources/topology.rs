@@ -4,6 +4,7 @@ use super::{
 };
 use crate::commands::{
     helpers::{base_resource_summary, extract_owner_ref_summary, resource_age},
+    kubeconfig::{kubeconfig_source_key, KubeconfigSource},
     ClusterLiveStore,
 };
 use crate::models::{
@@ -12,7 +13,6 @@ use crate::models::{
 };
 use chrono::{TimeZone, Utc};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use kube::{config::KubeConfigOptions, Client};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
 use tauri::State;
@@ -338,17 +338,11 @@ pub async fn resource_topology_from(
     cluster_context: String,
     namespaces: Vec<String>,
     mode: Option<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<ResourceTopology, AppError> {
     let mode = TopologyMode::parse(mode)?;
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.clone()),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let client = source.client_for_context(&cluster_context).await?;
     match mode {
         TopologyMode::Ownership => {
             let inputs = collect_topology_inputs(client, &cluster_context, &namespaces).await?;
@@ -367,6 +361,7 @@ pub async fn list_resource_topology(
     cluster_context: String,
     namespaces: Vec<String>,
     mode: Option<String>,
+    kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<ResourceTopology, AppError> {
     let mode = TopologyMode::parse(mode)?;
@@ -377,8 +372,10 @@ pub async fn list_resource_topology(
         namespaces.join(","),
         mode.as_str()
     );
+    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let result = live_store
         .topology(
+            source_key,
             cluster_context.clone(),
             namespaces.clone(),
             mode.as_str().to_string(),
@@ -386,7 +383,15 @@ pub async fn list_resource_topology(
                 let cluster_context = cluster_context.clone();
                 let namespaces = namespaces.clone();
                 let mode = mode.as_str().to_string();
-                move || resource_topology_from(cluster_context, namespaces, Some(mode))
+                let kubeconfig_env_var = kubeconfig_env_var.clone();
+                move || {
+                    resource_topology_from(
+                        cluster_context,
+                        namespaces,
+                        Some(mode),
+                        kubeconfig_env_var,
+                    )
+                }
             },
         )
         .await;

@@ -1,4 +1,7 @@
-use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, list_params, resource_age};
+use crate::commands::{
+    helpers::{k8s_creation_timestamp_to_rfc3339, list_params, resource_age},
+    kubeconfig::KubeconfigSource,
+};
 use crate::models::{
     AppError, RbacBindingSummary, RbacInspectionSummary, RbacNamespaceAccessSummary,
     RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary, ServiceAccountSummary,
@@ -8,7 +11,7 @@ use k8s_openapi::api::{
     core::v1::ServiceAccount,
     rbac::v1::{ClusterRole, ClusterRoleBinding, PolicyRule, Role, RoleBinding, Subject},
 };
-use kube::{api::Api, config::KubeConfigOptions, Client};
+use kube::{api::Api, Client};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[path = "rbac_risk.rs"]
@@ -23,15 +26,17 @@ mod rbac_tests;
 pub async fn list_rbac_inspection(
     cluster_context: String,
     namespaces: Vec<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<RbacInspectionSummary, AppError> {
-    rbac_inspection_from(cluster_context, namespaces).await
+    rbac_inspection_from(cluster_context, namespaces, kubeconfig_env_var).await
 }
 
 pub async fn rbac_inspection_from(
     cluster_context: String,
     namespaces: Vec<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<RbacInspectionSummary, AppError> {
-    let client = client_for_context(&cluster_context).await?;
+    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
     let namespaces = clean_namespaces(namespaces);
     let service_accounts =
         list_service_accounts(client.clone(), &cluster_context, &namespaces).await?;
@@ -75,15 +80,12 @@ pub async fn rbac_inspection_from(
     })
 }
 
-async fn client_for_context(cluster_context: &str) -> Result<Client, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.to_string()),
-        ..Default::default()
-    };
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-    Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))
+async fn client_for_context(
+    cluster_context: &str,
+    kubeconfig_env_var: Option<String>,
+) -> Result<Client, AppError> {
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    source.client_for_context(cluster_context).await
 }
 
 fn clean_namespaces(namespaces: Vec<String>) -> Vec<String> {

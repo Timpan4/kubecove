@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct PortForwardRequest {
     pub cluster_context: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubeconfig_env_var: Option<String>,
     pub namespace: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_kind: Option<String>,
@@ -21,6 +23,8 @@ pub struct PortForwardRequest {
 pub struct PortForwardSessionSummary {
     pub id: String,
     pub cluster_context: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubeconfig_env_var: Option<String>,
     pub namespace: String,
     pub target_kind: String,
     pub target_name: String,
@@ -56,6 +60,8 @@ pub struct PodExecTerminalSize {
 #[serde(rename_all = "camelCase")]
 pub struct PodExecSessionRequest {
     pub cluster_context: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubeconfig_env_var: Option<String>,
     pub namespace: String,
     pub pod_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -72,6 +78,8 @@ pub struct PodExecSessionRequest {
 pub struct PodExecSessionSummary {
     pub id: String,
     pub cluster_context: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubeconfig_env_var: Option<String>,
     pub namespace: String,
     pub pod_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

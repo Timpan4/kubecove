@@ -17,6 +17,7 @@ interface WatchSubscription {
 interface UseResourceWatchArgs {
 	client: TauriClient;
 	clusterContext: string;
+	kubeconfigEnvVar?: string;
 	subscriptions: WatchSubscription[];
 	enabled: boolean;
 }
@@ -51,6 +52,7 @@ function watchKeyMatchesTarget(
 export function useResourceWatch({
 	client,
 	clusterContext,
+	kubeconfigEnvVar,
 	subscriptions,
 	enabled,
 }: UseResourceWatchArgs) {
@@ -142,7 +144,13 @@ export function useResourceWatch({
 			}
 		});
 
-		void startResourceWatch(client, clusterContext, keys, channel).then((id) => {
+		void startResourceWatch(
+			client,
+			clusterContext,
+			keys,
+			channel,
+			kubeconfigEnvVar,
+		).then((id) => {
 			if (cancelled) {
 				void stopStream(client, id);
 				return;
@@ -165,6 +173,7 @@ export function useResourceWatch({
 	}, [
 		client,
 		clusterContext,
+		kubeconfigEnvVar,
 		enabled,
 		keys,
 		queryClient,

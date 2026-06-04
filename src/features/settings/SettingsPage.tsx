@@ -1,10 +1,13 @@
 import type { ReactNode } from "react";
-import { Check, Download, RefreshCw } from "lucide-react";
+import { Check, Download, RefreshCw, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { ToggleButton } from "@/components/ToggleButton";
 import { useAppUpdateStore } from "@/features/app-updates";
 import {
+	DEFAULT_KUBECONFIG_ENV_VAR,
+	normalizeKubeconfigEnvVar,
 	type TimestampTimezone,
 	useSettingsState,
 } from "@/lib/settings";
@@ -76,10 +79,13 @@ export function SettingsPage() {
 		showUsageFooter,
 		autoStartSavedPortForwards,
 		timestampTimezone,
+		kubeconfigEnvVar,
 		setShowExactTimestamps,
 		setShowUsageFooter,
 		setAutoStartSavedPortForwards,
 		setTimestampTimezone,
+		setKubeconfigEnvVar,
+		resetKubeconfigEnvVar,
 	} = useSettingsState();
 	const {
 		status,
@@ -131,6 +137,29 @@ export function SettingsPage() {
 						onCheckedChange={setAutoStartSavedPortForwards}
 						ariaLabel="Auto-start saved port forwards"
 					/>
+				</SettingsRow>
+				<SettingsRow
+					title="Kubeconfig env var"
+					description={`Reads kubeconfig paths from ${normalizeKubeconfigEnvVar(kubeconfigEnvVar)}. Empty or unset values fall back to normal kubeconfig discovery.`}
+				>
+					<div className="flex items-center gap-2">
+						<Input
+							className="h-8 w-48"
+							value={kubeconfigEnvVar}
+							placeholder={DEFAULT_KUBECONFIG_ENV_VAR}
+							onChange={(event) => setKubeconfigEnvVar(event.target.value)}
+							aria-label="Kubeconfig env var"
+						/>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-sm"
+							aria-label="Reset kubeconfig env var"
+							onClick={resetKubeconfigEnvVar}
+						>
+							<RotateCcw />
+						</Button>
+					</div>
 				</SettingsRow>
 				<SettingsRow
 					title="Timestamp timezone"

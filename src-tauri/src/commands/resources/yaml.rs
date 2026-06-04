@@ -1,6 +1,8 @@
-use crate::commands::helpers::{fetch_and_serialize, fetch_and_serialize_cluster, redact_secret};
+use crate::commands::{
+    helpers::{fetch_and_serialize, fetch_and_serialize_cluster, redact_secret},
+    kubeconfig::KubeconfigSource,
+};
 use crate::models::AppError;
-use kube::{config::KubeConfigOptions, Client};
 use std::time::Instant;
 
 pub async fn resource_yaml_from(
@@ -8,17 +10,10 @@ pub async fn resource_yaml_from(
     kind: String,
     name: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<String, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.clone()),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let client = source.client_for_context(&cluster_context).await?;
 
     match kind.as_str() {
         "Pod" => {
@@ -154,6 +149,7 @@ pub async fn get_resource_yaml(
     kind: String,
     name: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<String, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
@@ -166,6 +162,7 @@ pub async fn get_resource_yaml(
         kind.clone(),
         name.clone(),
         namespace.clone(),
+        kubeconfig_env_var,
     )
     .await;
     match &result {

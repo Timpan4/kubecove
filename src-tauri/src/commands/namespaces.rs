@@ -1,10 +1,11 @@
 use crate::commands::{
     helpers::{k8s_creation_timestamp_to_rfc3339, list_params},
+    kubeconfig::{kubeconfig_source_key, KubeconfigSource},
     ClusterLiveStore,
 };
 use crate::models::{AppError, NamespaceSummary};
 use chrono::{DateTime, Utc};
-use kube::{api::Api, config::KubeConfigOptions, Client};
+use kube::api::Api;
 use std::time::Instant;
 use tauri::State;
 
@@ -29,17 +30,10 @@ fn namespace_age(creation_timestamp: Option<DateTime<Utc>>) -> String {
 
 pub async fn namespaces_summary_from(
     cluster_context: String,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<NamespaceSummary>, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.clone()),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let client = source.client_for_context(&cluster_context).await?;
     let ns_api: Api<k8s_openapi::api::core::v1::Namespace> = Api::all(client);
 
     let namespaces = ns_api
@@ -71,6 +65,7 @@ fn k8s_openapi_time_to_datetime(timestamp: &k8s_openapi::jiff::Timestamp) -> Opt
 #[tauri::command]
 pub async fn list_namespaces(
     cluster_context: String,
+    kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Vec<NamespaceSummary>, AppError> {
     let started = Instant::now();
@@ -78,10 +73,12 @@ pub async fn list_namespaces(
         "[kubecove:backend] list_namespaces start context={}",
         cluster_context
     );
+    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let result = live_store
-        .namespaces(cluster_context.clone(), {
+        .namespaces(source_key, cluster_context.clone(), {
             let cluster_context = cluster_context.clone();
-            move || namespaces_summary_from(cluster_context)
+            let kubeconfig_env_var = kubeconfig_env_var.clone();
+            move || namespaces_summary_from(cluster_context, kubeconfig_env_var)
         })
         .await;
     match &result {

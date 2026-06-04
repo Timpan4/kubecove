@@ -43,6 +43,7 @@ import {
 	type TauriClient,
 } from "@/lib/tauri";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import type { PodExecSessionMessage, ResourceSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { ContainerStatusRow } from "./helpers";
@@ -78,6 +79,7 @@ export function ExecTab({
 	active,
 }: ExecTabProps) {
 	const queryClient = useQueryClient();
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const terminalHostRef = useRef<HTMLDivElement>(null);
 	const terminalRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
@@ -108,10 +110,10 @@ export function ExecTab({
 		() =>
 			sortPodExecSessions(
 				(sessionsQuery.data ?? []).filter((session) =>
-					isPodExecForResource(session, resource),
+					isPodExecForResource(session, resource, kubeconfigEnvVar),
 				),
 			),
-		[resource, sessionsQuery.data],
+		[resource, sessionsQuery.data, kubeconfigEnvVar],
 	);
 	const command = commandForPreset(preset, customArgv);
 	const commandText = typeof command === "string" ? "" : podExecCommandText(command);
@@ -275,14 +277,18 @@ export function ExecTab({
 	const startSession = async () => {
 		setError(null);
 		const terminal = terminalRef.current;
-		const request = buildPodExecRequest(resource, {
-			preset,
-			customArgv,
-			container: selectedContainer,
-			cols: terminal?.cols ?? DEFAULT_COLS,
-			rows: terminal?.rows ?? DEFAULT_ROWS,
-			confirmed,
-		});
+		const request = buildPodExecRequest(
+			resource,
+			{
+				preset,
+				customArgv,
+				container: selectedContainer,
+				cols: terminal?.cols ?? DEFAULT_COLS,
+				rows: terminal?.rows ?? DEFAULT_ROWS,
+				confirmed,
+			},
+			kubeconfigEnvVar,
+		);
 		if (typeof request === "string") {
 			setError(request);
 			return;

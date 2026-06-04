@@ -91,27 +91,41 @@ export function createMockTauriClient(
 	};
 }
 
+function kubeconfigArg(kubeconfigEnvVar?: string): {
+	kubeconfigEnvVar?: string;
+} {
+	return kubeconfigEnvVar === undefined ? {} : { kubeconfigEnvVar };
+}
+
 export async function listKubeContexts(
 	client: TauriClient,
+	kubeconfigEnvVar?: string,
 ): Promise<ClusterContext[]> {
-	return client.invoke<ClusterContext[]>("list_kube_contexts");
+	return client.invoke<ClusterContext[]>(
+		"list_kube_contexts",
+		kubeconfigArg(kubeconfigEnvVar),
+	);
 }
 
 export async function listNamespaces(
 	client: TauriClient,
 	clusterContext: string,
+	kubeconfigEnvVar?: string,
 ): Promise<NamespaceSummary[]> {
 	return client.invoke<NamespaceSummary[]>("list_namespaces", {
 		clusterContext,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
 export async function listResourceKinds(
 	client: TauriClient,
 	clusterContext: string,
+	kubeconfigEnvVar?: string,
 ): Promise<DiscoveredResourceKind[]> {
 	return client.invoke<DiscoveredResourceKind[]>("list_resource_kinds", {
 		clusterContext,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -120,11 +134,13 @@ export async function listResources(
 	clusterContext: string,
 	kind: string,
 	namespace?: string,
+	kubeconfigEnvVar?: string,
 ): Promise<ResourceSummary[]> {
 	return client.invoke<ResourceSummary[]>("list_resources", {
 		clusterContext,
 		kind,
 		namespace,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -133,11 +149,13 @@ export async function listDynamicResources(
 	clusterContext: string,
 	resourceKind: DiscoveredResourceKind,
 	namespace?: string,
+	kubeconfigEnvVar?: string,
 ): Promise<ResourceSummary[]> {
 	return client.invoke<ResourceSummary[]>("list_dynamic_resources", {
 		clusterContext,
 		resourceKind,
 		namespace,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -145,10 +163,12 @@ export async function listResourceScope(
 	client: TauriClient,
 	clusterContext: string,
 	requests: ResourceListRequest[],
+	kubeconfigEnvVar?: string,
 ): Promise<ResourceSummary[]> {
 	return client.invoke<ResourceSummary[]>("list_resource_scope", {
 		clusterContext,
 		requests,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -158,12 +178,14 @@ export async function getResourceYaml(
 	kind: string,
 	name: string,
 	namespace?: string,
+	kubeconfigEnvVar?: string,
 ): Promise<string> {
 	return client.invoke<string>("get_resource_yaml", {
 		clusterContext,
 		kind,
 		name,
 		namespace,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -173,12 +195,14 @@ export async function getResourceDetails(
 	kind: string,
 	name: string,
 	namespace?: string,
+	kubeconfigEnvVar?: string,
 ): Promise<ResourceDetailsFull> {
 	return client.invoke<ResourceDetailsFull>("get_resource_details", {
 		clusterContext,
 		kind,
 		name,
 		namespace,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -188,12 +212,14 @@ export async function getDynamicResourceDetails(
 	resourceKind: DiscoveredResourceKind,
 	name: string,
 	namespace?: string,
+	kubeconfigEnvVar?: string,
 ): Promise<ResourceDetailsFull> {
 	return client.invoke<ResourceDetailsFull>("get_dynamic_resource_details", {
 		clusterContext,
 		resourceKind,
 		name,
 		namespace,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -203,12 +229,14 @@ export async function listResourceEvents(
 	kind: string,
 	name: string,
 	namespace?: string,
+	kubeconfigEnvVar?: string,
 ): Promise<ResourceEventSummary[]> {
 	return client.invoke<ResourceEventSummary[]>("list_resource_events", {
 		clusterContext,
 		kind,
 		name,
 		namespace,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -217,11 +245,13 @@ export async function listResourceTopology(
 	clusterContext: string,
 	namespaces: string[],
 	mode: TopologyMode = "ownership",
+	kubeconfigEnvVar?: string,
 ): Promise<ResourceTopology> {
 	return client.invoke<ResourceTopology>("list_resource_topology", {
 		clusterContext,
 		namespaces,
 		mode,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -264,11 +294,13 @@ export async function startResourceWatch(
 	clusterContext: string,
 	keys: WatchResourceKey[],
 	channel: Channel<StreamMessage>,
+	kubeconfigEnvVar?: string,
 ): Promise<string> {
 	return client.invoke<string>("start_resource_watch", {
 		clusterContext,
 		keys,
 		channel,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -279,6 +311,7 @@ export async function startResourceEventWatch(
 	name: string,
 	namespace: string | null | undefined,
 	channel: Channel<StreamMessage>,
+	kubeconfigEnvVar?: string,
 ): Promise<string> {
 	return client.invoke<string>("start_resource_event_watch", {
 		clusterContext,
@@ -286,6 +319,7 @@ export async function startResourceEventWatch(
 		name,
 		namespace,
 		channel,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -383,10 +417,12 @@ export async function listResourceMetrics(
 	client: TauriClient,
 	clusterContext: string,
 	namespaces: string[],
+	kubeconfigEnvVar?: string,
 ): Promise<ResourceMetricsSummary> {
 	return client.invoke<ResourceMetricsSummary>("list_resource_metrics", {
 		clusterContext,
 		namespaces,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -403,16 +439,22 @@ export function isAppError(value: unknown): value is AppError {
 export async function detectArgoCD(
 	client: TauriClient,
 	clusterContext: string,
+	kubeconfigEnvVar?: string,
 ): Promise<boolean> {
-	return client.invoke<boolean>("detect_argocd", { clusterContext });
+	return client.invoke<boolean>("detect_argocd", {
+		clusterContext,
+		...kubeconfigArg(kubeconfigEnvVar),
+	});
 }
 
 export async function listArgoApplications(
 	client: TauriClient,
 	clusterContext: string,
+	kubeconfigEnvVar?: string,
 ): Promise<ArgoApplicationSummary[]> {
 	return client.invoke<ArgoApplicationSummary[]>("list_argocd_applications", {
 		clusterContext,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -421,28 +463,33 @@ export async function getArgoApplicationDetails(
 	clusterContext: string,
 	name: string,
 	namespace?: string,
+	kubeconfigEnvVar?: string,
 ): Promise<ArgoApplicationDetails> {
 	return client.invoke<ArgoApplicationDetails>(
 		"get_argocd_application_details",
-		{ clusterContext, name, namespace },
+		{ clusterContext, name, namespace, ...kubeconfigArg(kubeconfigEnvVar) },
 	);
 }
 
 export async function listArgoApplicationSets(
 	client: TauriClient,
 	clusterContext: string,
+	kubeconfigEnvVar?: string,
 ): Promise<ArgoApplicationSetSummary[]> {
 	return client.invoke<ArgoApplicationSetSummary[]>("list_argocd_appsets", {
 		clusterContext,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
 export async function listArgoAppProjects(
 	client: TauriClient,
 	clusterContext: string,
+	kubeconfigEnvVar?: string,
 ): Promise<ArgoAppProjectSummary[]> {
 	return client.invoke<ArgoAppProjectSummary[]>("list_argocd_appprojects", {
 		clusterContext,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -451,11 +498,13 @@ export async function getArgoApplicationSetDetails(
 	clusterContext: string,
 	name: string,
 	namespace?: string,
+	kubeconfigEnvVar?: string,
 ): Promise<ArgoApplicationSetDetails> {
 	return client.invoke<ArgoApplicationSetDetails>("get_argocd_appset_details", {
 		clusterContext,
 		name,
 		namespace,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -464,20 +513,24 @@ export async function getArgoAppProjectDetails(
 	clusterContext: string,
 	name: string,
 	namespace?: string,
+	kubeconfigEnvVar?: string,
 ): Promise<ArgoAppProjectDetails> {
 	return client.invoke<ArgoAppProjectDetails>("get_argocd_appproject_details", {
 		clusterContext,
 		name,
 		namespace,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
 export async function listHelmReleases(
 	client: TauriClient,
 	clusterContext: string,
+	kubeconfigEnvVar?: string,
 ): Promise<HelmReleaseSummary[]> {
 	return client.invoke<HelmReleaseSummary[]>("list_helm_releases", {
 		clusterContext,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -487,12 +540,14 @@ export async function getHelmReleaseDetails(
 		HelmReleaseSummary,
 		"cluster" | "namespace" | "storageKind" | "storageName"
 	>,
+	kubeconfigEnvVar?: string,
 ): Promise<HelmReleaseDetails> {
 	return client.invoke<HelmReleaseDetails>("get_helm_release_details", {
 		clusterContext: release.cluster,
 		namespace: release.namespace,
 		storageKind: release.storageKind,
 		storageName: release.storageName,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
@@ -500,9 +555,11 @@ export async function listRbacInspection(
 	client: TauriClient,
 	clusterContext: string,
 	namespaces: string[],
+	kubeconfigEnvVar?: string,
 ): Promise<RbacInspectionSummary> {
 	return client.invoke<RbacInspectionSummary>("list_rbac_inspection", {
 		clusterContext,
 		namespaces,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }

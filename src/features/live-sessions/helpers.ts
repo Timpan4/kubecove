@@ -3,6 +3,7 @@ import type {
 	PortForwardSessionSummary,
 	ResourceSummary,
 } from "@/lib/types";
+import { normalizeKubeconfigEnvVar } from "@/lib/settings";
 import type {
 	SavePortForwardInput,
 	SavedPortForward,
@@ -68,8 +69,11 @@ export function isReusablePortForwardSession(
 export function isPortForwardForResource(
 	session: PortForwardSessionSummary,
 	resource: ResourceSummary,
+	kubeconfigEnvVar?: string,
 ): boolean {
 	return (
+		normalizeKubeconfigEnvVar(session.kubeconfigEnvVar) ===
+			normalizeKubeconfigEnvVar(kubeconfigEnvVar) &&
 		session.clusterContext === resource.cluster &&
 		session.namespace === resource.namespace &&
 		session.targetKind === resource.kind &&
@@ -86,9 +90,11 @@ export function savedPortForwardLabel(portForward: SavedPortForward): string {
 
 export function savedPortForwardToRequest(
 	portForward: SavedPortForward,
+	kubeconfigEnvVar?: string,
 ): PortForwardRequest {
 	return {
 		clusterContext: portForward.clusterContext,
+		kubeconfigEnvVar,
 		namespace: portForward.namespace,
 		localPort: portForward.localPort,
 		targetKind: "Service",
@@ -102,6 +108,7 @@ export function portForwardSessionToRequest(
 ): PortForwardRequest {
 	return {
 		clusterContext: session.clusterContext,
+		kubeconfigEnvVar: session.kubeconfigEnvVar,
 		namespace: session.namespace,
 		localPort: session.localPort,
 		targetKind: session.targetKind === "Service" ? "Service" : "Pod",
@@ -113,8 +120,11 @@ export function portForwardSessionToRequest(
 export function savedPortForwardMatchesSession(
 	portForward: SavedPortForward,
 	session: PortForwardSessionSummary,
+	kubeconfigEnvVar?: string,
 ): boolean {
 	return (
+		normalizeKubeconfigEnvVar(session.kubeconfigEnvVar) ===
+			normalizeKubeconfigEnvVar(kubeconfigEnvVar) &&
 		session.clusterContext === portForward.clusterContext &&
 		session.namespace === portForward.namespace &&
 		session.targetKind === "Service" &&
