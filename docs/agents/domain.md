@@ -7,6 +7,8 @@ How the engineering skills should consume this repo's domain documentation when 
 - `AGENTS.md` for agent-facing implementation rules, safety constraints, and GitButler workflow.
 - `docs/product-vision.md` for product direction, workflow model, and safety posture.
 - `docs/architecture-blueprint.md` for the frontend/backend shape, Tauri command boundary, and extension points.
+- `docs/milestones.md` for current milestone status and completion tracking.
+- `docs/development-workflow.md` for workflow conventions and verification commands.
 - Relevant ADRs in `docs/decisions/` before changing Kubernetes access, Tauri command boundaries, guarded operations, Argo CD behavior, or other security-sensitive paths.
 - `CONTEXT.md` at the repo root if it exists.
 
@@ -22,6 +24,8 @@ This is a single-context repo:
 |-- docs/
 |   |-- product-vision.md
 |   |-- architecture-blueprint.md
+|   |-- milestones.md
+|   |-- development-workflow.md
 |   `-- decisions/
 `-- src/
 ```
