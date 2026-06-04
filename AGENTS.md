@@ -110,6 +110,20 @@ Write an ADR before changing:
 - Do not create or install actual Codex skills from that backlog without a focused skill-writing and validation pass.
 - Until those skills exist, apply the documented rules manually when working in matching areas.
 
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues for `Timpan4/kubecove`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default five-label triage vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repo; use the agent guide, product/architecture docs, and ADRs as the domain sources. See `docs/agents/domain.md`.
+
 ## Git Hygiene
 
 - Use small commits.
