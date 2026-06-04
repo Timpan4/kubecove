@@ -4,7 +4,7 @@ KubeCove is a local desktop workspace for Kubernetes operations. It is built for
 
 The current beta is inspection-first with governed Pod and selector-backed Service port-forward sessions. KubeCove does not deploy agents into clusters, does not expose raw kubeconfig contents to React, and does not let the frontend run arbitrary shell commands. The architecture is ready for guarded cluster operations, but apply, delete, scale, sync, rollback, and exec workflows are not shipped unless a typed Rust-side command and explicit UX guardrails exist.
 
-Current version metadata: `0.4.1`.
+Current version metadata: `0.4.2`.
 
 ## Get KubeCove
 

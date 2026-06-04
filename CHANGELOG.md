@@ -3,6 +3,25 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.4.2 - 2026-06-04
+
+### Added
+
+- Added guarded Pod exec sessions with exact-Pod targeting, typed Tauri
+  commands, confirmation guardrails, terminal UI, and lifecycle cleanup.
+- Added agent-facing domain, issue-tracker, and triage-label docs for more
+  consistent project automation.
+
+### Fixed
+
+- Kept saved port-forward presets available across namespace filter changes
+  when the workspace context still matches.
+
+### Release
+
+- Prepared KubeCove v0.4.2 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
+
 ## 0.4.1 - 2026-06-01
 
 ### Improved
