@@ -136,6 +136,7 @@ export function WorkspacePortForwardsPage({
 	const autoStartSavedPortForwards = useSettingsState(
 		(state) => state.autoStartSavedPortForwards,
 	);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const setAutoStartSavedPortForwards = useSettingsState(
 		(state) => state.setAutoStartSavedPortForwards,
 	);
@@ -531,7 +532,11 @@ export function WorkspacePortForwardsPage({
 						<div className="grid gap-2">
 							{savedPortForwards.map((portForward) => {
 								const activeSession = sessions.find((session) =>
-									savedPortForwardMatchesSession(portForward, session),
+									savedPortForwardMatchesSession(
+										portForward,
+										session,
+										kubeconfigEnvVar,
+									),
 								);
 								const starting = startingIds.has(portForward.id);
 								return (
