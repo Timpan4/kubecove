@@ -20,6 +20,7 @@ import type {
 	WatchResourceKey,
 } from "../../lib/types";
 import { diagnosticLog, diagnosticResultSummary } from "../../lib/diagnostics";
+import { kubeconfigSourceKey, useSettingsState } from "../../lib/settings";
 import type { Tab } from "./constants";
 import { shouldFetchResourceDetails, shouldFetchResourceEvents } from "./helpers";
 
@@ -39,6 +40,8 @@ export function useResourceDetails({
 	dynamicResourceKind,
 }: UseResourceDetailsArgs) {
 	const queryClient = useQueryClient();
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const sourceKey = kubeconfigSourceKey(kubeconfigEnvVar);
 	const resourceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const eventsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const dynamicResourceKindKey = dynamicResourceKind
@@ -55,6 +58,7 @@ export function useResourceDetails({
 		() =>
 			[
 				"resource-details",
+				sourceKey,
 				dynamicResourceKindKey,
 				resource.cluster,
 				resource.apiVersion,
@@ -64,6 +68,7 @@ export function useResourceDetails({
 			] as const,
 		[
 			dynamicResourceKindKey,
+			sourceKey,
 			resource.apiVersion,
 			resource.cluster,
 			resource.kind,
@@ -75,6 +80,7 @@ export function useResourceDetails({
 		() =>
 			[
 				"resource-yaml",
+				sourceKey,
 				dynamicResourceKindKey,
 				resource.cluster,
 				resource.apiVersion,
@@ -84,6 +90,7 @@ export function useResourceDetails({
 			] as const,
 		[
 			dynamicResourceKindKey,
+			sourceKey,
 			resource.apiVersion,
 			resource.cluster,
 			resource.kind,
@@ -95,6 +102,7 @@ export function useResourceDetails({
 		() =>
 			[
 				"resource-events",
+				sourceKey,
 				resource.cluster,
 				resource.apiVersion,
 				resource.kind,
@@ -102,6 +110,7 @@ export function useResourceDetails({
 				resource.namespace,
 			] as const,
 		[
+			sourceKey,
 			resource.apiVersion,
 			resource.cluster,
 			resource.kind,
@@ -122,6 +131,7 @@ export function useResourceDetails({
 						dynamicResourceKind,
 						resource.name,
 						resource.namespace ?? undefined,
+						kubeconfigEnvVar,
 					)
 				: await getResourceDetails(
 						client,
@@ -129,6 +139,7 @@ export function useResourceDetails({
 						resource.kind,
 						resource.name,
 						resource.namespace ?? undefined,
+						kubeconfigEnvVar,
 					);
 			diagnosticLog("detail.details.fetch.done", {
 				key: resourceKey,
@@ -155,6 +166,7 @@ export function useResourceDetails({
 							dynamicResourceKind,
 							resource.name,
 							resource.namespace ?? undefined,
+							kubeconfigEnvVar,
 						)
 					).yaml
 				: await getResourceYaml(
@@ -163,6 +175,7 @@ export function useResourceDetails({
 						resource.kind,
 						resource.name,
 						resource.namespace ?? undefined,
+						kubeconfigEnvVar,
 					);
 			diagnosticLog("detail.yaml.fetch.done", {
 				key: resourceKey,
@@ -186,6 +199,7 @@ export function useResourceDetails({
 				resource.kind,
 				resource.name,
 				resource.namespace ?? undefined,
+				kubeconfigEnvVar,
 			);
 			diagnosticLog("detail.events.fetch.done", {
 				key: resourceKey,
@@ -242,7 +256,13 @@ export function useResourceDetails({
 			invalidateSoon();
 		});
 
-		void startResourceWatch(client, resource.cluster, [watchKey], channel).then((id) => {
+		void startResourceWatch(
+			client,
+			resource.cluster,
+			[watchKey],
+			channel,
+			kubeconfigEnvVar,
+		).then((id) => {
 			if (cancelled) {
 				void stopStream(client, id);
 				return;
@@ -268,6 +288,7 @@ export function useResourceDetails({
 		dynamicResourceKind,
 		detailsQueryKey,
 		queryClient,
+		kubeconfigEnvVar,
 		resource,
 		resourceKey,
 		yamlQueryKey,
@@ -299,6 +320,7 @@ export function useResourceDetails({
 			resource.name,
 			resource.namespace ?? undefined,
 			channel,
+			kubeconfigEnvVar,
 		).then((id) => {
 			if (cancelled) {
 				void stopStream(client, id);
@@ -323,6 +345,7 @@ export function useResourceDetails({
 		eventsEnabled,
 		eventsQueryKey,
 		queryClient,
+		kubeconfigEnvVar,
 		resource.cluster,
 		resource.kind,
 		resource.name,

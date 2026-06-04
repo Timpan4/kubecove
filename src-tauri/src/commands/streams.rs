@@ -3,9 +3,10 @@ mod logs;
 mod registry;
 mod watch;
 
+use crate::commands::kubeconfig::{kubeconfig_source_key, KubeconfigSource};
 use crate::commands::ClusterLiveStore;
 use crate::models::{AppError, PodLogStreamRequest, StreamMessage, WatchResourceKey};
-use kube::{config::KubeConfigOptions, Client};
+use kube::Client;
 pub use registry::StreamRegistry;
 use tauri::{ipc::Channel, State};
 
@@ -13,16 +14,12 @@ fn send(channel: &Channel<StreamMessage>, message: StreamMessage) -> bool {
     channel.send(message).is_ok()
 }
 
-async fn client_for_context(cluster_context: &str) -> Result<Client, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.to_string()),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-    Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))
+async fn client_for_context(
+    cluster_context: &str,
+    kubeconfig_env_var: Option<String>,
+) -> Result<Client, AppError> {
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    source.client_for_context(cluster_context).await
 }
 
 fn validate_resource_watch_scope(
@@ -78,19 +75,28 @@ fn validate_pod_log_stream_request(request: &PodLogStreamRequest) -> Result<(), 
 pub async fn start_resource_watch(
     cluster_context: String,
     keys: Vec<WatchResourceKey>,
+    kubeconfig_env_var: Option<String>,
     channel: Channel<StreamMessage>,
     registry: State<'_, StreamRegistry>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<String, AppError> {
     validate_resource_watch_scope(&cluster_context, &keys)?;
+    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let stream_id = registry.stream_id("resources");
     for key in keys {
-        let (watch_key, broadcaster, should_start) =
-            registry.subscribe_resource(&stream_id, &cluster_context, &key, channel.clone());
+        let (watch_key, broadcaster, should_start) = registry.subscribe_resource(
+            &stream_id,
+            &source_key,
+            &cluster_context,
+            &key,
+            channel.clone(),
+        );
         if should_start {
             let handle = tauri::async_runtime::spawn(watch::run_resource_watch(
+                source_key.clone(),
                 cluster_context.clone(),
                 key,
+                kubeconfig_env_var.clone(),
                 broadcaster.clone(),
                 live_store.inner().clone(),
             ));
@@ -113,13 +119,16 @@ pub async fn start_resource_event_watch(
     kind: String,
     name: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
     channel: Channel<StreamMessage>,
     registry: State<'_, StreamRegistry>,
 ) -> Result<String, AppError> {
     validate_event_watch_target(&cluster_context, &kind, &name)?;
+    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let stream_id = registry.stream_id("events");
     let (watch_key, broadcaster, should_start) = registry.subscribe_event(
         &stream_id,
+        &source_key,
         &cluster_context,
         &kind,
         &name,
@@ -132,6 +141,7 @@ pub async fn start_resource_event_watch(
             kind,
             name,
             namespace,
+            kubeconfig_env_var,
             broadcaster,
         ));
         registry.set_event_handle(&watch_key, handle);
@@ -185,6 +195,7 @@ mod tests {
     fn valid_log_request() -> PodLogStreamRequest {
         PodLogStreamRequest {
             cluster_context: "kind-dev".to_string(),
+            kubeconfig_env_var: None,
             namespace: "default".to_string(),
             pod_name: "api-0".to_string(),
             container: Some("api".to_string()),

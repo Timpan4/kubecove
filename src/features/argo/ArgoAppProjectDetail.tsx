@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { kubeconfigSourceKey, useSettingsState } from "@/lib/settings";
 import { createTauriClient, getArgoAppProjectDetails } from "@/lib/tauri";
 import type { ArgoAppProjectSummary } from "@/lib/types";
 import {
@@ -15,9 +16,11 @@ import {
 
 function useArgoAppProjectDetails(project: ArgoAppProjectSummary) {
 	const client = useMemo(() => createTauriClient(), []);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	return useQuery({
 		queryKey: [
 			"argo-appproject-details",
+			kubeconfigSourceKey(kubeconfigEnvVar),
 			project.cluster,
 			project.name,
 			project.namespace,
@@ -28,6 +31,7 @@ function useArgoAppProjectDetails(project: ArgoAppProjectSummary) {
 				project.cluster,
 				project.name,
 				project.namespace ?? undefined,
+				kubeconfigEnvVar,
 			),
 		enabled: !!project.cluster && !!project.name,
 	});

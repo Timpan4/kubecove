@@ -20,21 +20,21 @@ fn test_cluster_context_contract_without_kubeconfig() {
 
 #[test]
 fn test_list_kube_contexts_command() {
-    if let Ok(contexts) = list_kube_contexts() {
+    if let Ok(contexts) = list_kube_contexts(None) {
         assert_contexts_shape(&contexts);
     }
 }
 
 #[test]
 fn test_get_cluster_contexts_returns_cluster_contexts() {
-    if let Ok(contexts) = get_cluster_contexts() {
+    if let Ok(contexts) = get_cluster_contexts(None) {
         assert_contexts_shape(&contexts);
     }
 }
 
 #[test]
 fn test_kubeconfig_errors_are_cluster_errors() {
-    if let Err(err) = get_cluster_contexts() {
+    if let Err(err) = get_cluster_contexts(None) {
         assert_eq!(err.kind, "cluster");
         assert!(!err.message.is_empty());
     }

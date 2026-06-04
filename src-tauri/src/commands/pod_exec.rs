@@ -1,16 +1,13 @@
+use crate::commands::kubeconfig::KubeconfigSource;
 use crate::models::{
     AppError, PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummary,
     PodExecTerminalSize,
 };
 use chrono::Utc;
 use futures_util::SinkExt;
-use k8s_openapi::{
-    api::core::v1::Pod,
-    apimachinery::pkg::apis::meta::v1::Status,
-};
+use k8s_openapi::{api::core::v1::Pod, apimachinery::pkg::apis::meta::v1::Status};
 use kube::{
     api::{Api, AttachParams, TerminalSize},
-    config::KubeConfigOptions,
     Client,
 };
 use std::{
@@ -32,6 +29,7 @@ const MAX_TERMINAL_SIZE: u16 = 500;
 #[derive(Debug, Clone)]
 struct ValidatedPodExecRequest {
     cluster_context: String,
+    kubeconfig_env_var: Option<String>,
     namespace: String,
     pod_name: String,
     container: Option<String>,
@@ -278,7 +276,12 @@ fn validate_request(request: &PodExecSessionRequest) -> Result<ValidatedPodExecR
         .map(|container| trimmed(container))
         .filter(|container| !container.is_empty());
     if request.confirmation.target
-        != exec_target_text(&cluster_context, &namespace, &pod_name, container.as_deref())
+        != exec_target_text(
+            &cluster_context,
+            &namespace,
+            &pod_name,
+            container.as_deref(),
+        )
     {
         return Err(AppError::new(
             "pod exec confirmation target does not match the request",
@@ -294,6 +297,7 @@ fn validate_request(request: &PodExecSessionRequest) -> Result<ValidatedPodExecR
 
     Ok(ValidatedPodExecRequest {
         cluster_context,
+        kubeconfig_env_var: request.kubeconfig_env_var.clone(),
         namespace,
         pod_name,
         container,
@@ -304,15 +308,12 @@ fn validate_request(request: &PodExecSessionRequest) -> Result<ValidatedPodExecR
     })
 }
 
-async fn client_for_context(cluster_context: &str) -> Result<Client, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.to_string()),
-        ..Default::default()
-    };
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-    Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))
+async fn client_for_context(
+    cluster_context: &str,
+    kubeconfig_env_var: Option<String>,
+) -> Result<Client, AppError> {
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    source.client_for_context(cluster_context).await
 }
 
 fn send(channel: &Channel<PodExecSessionMessage>, message: PodExecSessionMessage) -> bool {
@@ -387,7 +388,12 @@ async fn run_exec_session(
         },
     );
 
-    let client = match client_for_context(&request.cluster_context).await {
+    let client = match client_for_context(
+        &request.cluster_context,
+        request.kubeconfig_env_var.clone(),
+    )
+    .await
+    {
         Ok(client) => client,
         Err(err) => {
             registry.mark_error(&session_id, err.message.clone());
@@ -414,7 +420,10 @@ async fn run_exec_session(
         params = params.container(container.clone());
     }
 
-    let mut attached = match pods.exec(&request.pod_name, request.command.clone(), &params).await {
+    let mut attached = match pods
+        .exec(&request.pod_name, request.command.clone(), &params)
+        .await
+    {
         Ok(attached) => attached,
         Err(err) => {
             let message = err.to_string();
@@ -551,6 +560,7 @@ async fn start_pod_exec_session_in_registry(
     let summary = PodExecSessionSummary {
         id: session_id.clone(),
         cluster_context: request.cluster_context.clone(),
+        kubeconfig_env_var: request.kubeconfig_env_var.clone(),
         namespace: request.namespace.clone(),
         pod_name: request.pod_name.clone(),
         container: request.container.clone(),
@@ -638,13 +648,17 @@ mod tests {
     fn valid_request() -> PodExecSessionRequest {
         PodExecSessionRequest {
             cluster_context: "kind-dev".to_string(),
+            kubeconfig_env_var: None,
             namespace: "default".to_string(),
             pod_name: "api-0".to_string(),
             container: Some("api".to_string()),
             command: vec!["/bin/sh".to_string()],
             stdin: true,
             tty: true,
-            terminal_size: PodExecTerminalSize { cols: 100, rows: 32 },
+            terminal_size: PodExecTerminalSize {
+                cols: 100,
+                rows: 32,
+            },
             confirmation: crate::models::PodExecConfirmation {
                 acknowledged: true,
                 target: "kind-dev/default/Pod/api-0/container/api".to_string(),
@@ -657,6 +671,7 @@ mod tests {
         PodExecSessionSummary {
             id: id.to_string(),
             cluster_context: "kind-dev".to_string(),
+            kubeconfig_env_var: None,
             namespace: "default".to_string(),
             pod_name: "api-0".to_string(),
             container: Some("api".to_string()),
@@ -729,7 +744,13 @@ mod tests {
         assert_eq!(session.status, "error");
         assert_eq!(session.last_error.as_deref(), Some("forbidden"));
 
-        registry.mark_terminal_size("exec-1", PodExecTerminalSize { cols: 120, rows: 40 });
+        registry.mark_terminal_size(
+            "exec-1",
+            PodExecTerminalSize {
+                cols: 120,
+                rows: 40,
+            },
+        );
         let session = registry.list().pop().expect("session");
         assert_eq!(session.terminal_cols, 120);
         assert_eq!(session.terminal_rows, 40);

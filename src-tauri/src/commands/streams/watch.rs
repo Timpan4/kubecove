@@ -107,8 +107,10 @@ fn scoped_dynamic_api(
 }
 
 pub(super) async fn run_resource_watch(
+    source_key: String,
     cluster_context: String,
     key: WatchResourceKey,
+    kubeconfig_env_var: Option<String>,
     broadcaster: StreamBroadcaster,
     live_store: ClusterLiveStore,
 ) {
@@ -131,7 +133,7 @@ pub(super) async fn run_resource_watch(
     let mut resource_version = "0".to_string();
 
     loop {
-        let client = match client_for_context(&cluster_context).await {
+        let client = match client_for_context(&cluster_context, kubeconfig_env_var.clone()).await {
             Ok(client) => client,
             Err(err) => {
                 if !broadcaster.error(err.message) {
@@ -172,6 +174,7 @@ pub(super) async fn run_resource_watch(
                             let target =
                                 dynamic_event_target(&cluster_context, &kind_label, &event);
                             live_store.mark_watch_resource_dirty(
+                                &source_key,
                                 &cluster_context,
                                 &normalized_kind,
                                 target.namespace.as_deref(),
@@ -222,6 +225,7 @@ pub(super) async fn run_event_watch(
     kind: String,
     name: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
     broadcaster: StreamBroadcaster,
 ) {
     let field_selector = match namespace.as_deref() {
@@ -234,7 +238,7 @@ pub(super) async fn run_event_watch(
     let mut resource_version = "0".to_string();
 
     loop {
-        let client = match client_for_context(&cluster_context).await {
+        let client = match client_for_context(&cluster_context, kubeconfig_env_var.clone()).await {
             Ok(client) => client,
             Err(err) => {
                 if !broadcaster.error(err.message) {

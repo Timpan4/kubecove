@@ -1,4 +1,4 @@
-use crate::commands::helpers::list_params;
+use crate::commands::{helpers::list_params, kubeconfig::KubeconfigSource};
 use crate::models::{
     AppError, ResourceMetricSummary, ResourceMetricsAvailability,
     ResourceMetricsAvailabilityStatus, ResourceMetricsSummary,
@@ -7,7 +7,6 @@ use k8s_openapi::api::apps::v1::ReplicaSet;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
     api::{Api, ApiResource, DynamicObject},
-    config::KubeConfigOptions,
     discovery::{verbs, Discovery},
     Client, Error,
 };
@@ -37,15 +36,12 @@ fn metrics_api_resource(kind: &str, plural: &str) -> ApiResource {
     }
 }
 
-async fn client_for_context(cluster_context: &str) -> Result<Client, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.to_string()),
-        ..Default::default()
-    };
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-    Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))
+async fn client_for_context(
+    cluster_context: &str,
+    kubeconfig_env_var: Option<String>,
+) -> Result<Client, AppError> {
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    source.client_for_context(cluster_context).await
 }
 
 async fn has_metrics_api(client: Client) -> Result<bool, AppError> {
@@ -376,8 +372,9 @@ fn availability(
 pub async fn resource_metrics_from(
     cluster_context: String,
     namespaces: Vec<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<ResourceMetricsSummary, AppError> {
-    let client = client_for_context(&cluster_context).await?;
+    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
     match has_metrics_api(client.clone()).await {
         Ok(true) => {}
         Ok(false) => {
@@ -509,6 +506,7 @@ pub async fn resource_metrics_from(
 pub async fn list_resource_metrics(
     cluster_context: String,
     namespaces: Vec<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<ResourceMetricsSummary, AppError> {
     let started = Instant::now();
     eprintln!(
@@ -516,7 +514,8 @@ pub async fn list_resource_metrics(
         cluster_context,
         namespaces.len()
     );
-    let result = resource_metrics_from(cluster_context.clone(), namespaces).await;
+    let result =
+        resource_metrics_from(cluster_context.clone(), namespaces, kubeconfig_env_var).await;
     match &result {
         Ok(summary) => eprintln!(
             "[kubecove:backend] list_resource_metrics done context={} status={:?} pods={} nodes={} workloads={} ms={}",

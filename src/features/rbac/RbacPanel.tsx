@@ -14,6 +14,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import { createTauriClient, listRbacInspection } from "@/lib/tauri";
 import type { RbacInspectionSummary } from "@/lib/types";
 import { collectInspectionRisks, riskyCount } from "./risk";
@@ -149,14 +150,20 @@ export function RbacPanel({
 	selectedView,
 }: RbacPanelProps) {
 	const client = useMemo(() => createTauriClient(), []);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const {
 		data,
 		isPending,
 		isError,
 		error,
 	} = useQuery({
-		queryKey: queryKeys.rbacInspection(clusterContext, selectedNamespaces),
-		queryFn: () => listRbacInspection(client, clusterContext, selectedNamespaces),
+		queryKey: queryKeys.rbacInspection(
+			clusterContext,
+			selectedNamespaces,
+			kubeconfigEnvVar,
+		),
+		queryFn: () =>
+			listRbacInspection(client, clusterContext, selectedNamespaces, kubeconfigEnvVar),
 		enabled: !!clusterContext,
 		staleTime: 30_000,
 	});

@@ -1,7 +1,10 @@
-use crate::commands::helpers::{k8s_timestamp_to_datetime, list_params, resource_age};
+use crate::commands::{
+    helpers::{k8s_timestamp_to_datetime, list_params, resource_age},
+    kubeconfig::KubeconfigSource,
+};
 use crate::models::{AppError, ResourceEventSummary};
 use chrono::{DateTime, Utc};
-use kube::{api::Api, config::KubeConfigOptions, Client};
+use kube::api::Api;
 use std::time::Instant;
 
 fn event_timestamp(event: &k8s_openapi::api::core::v1::Event) -> Option<DateTime<Utc>> {
@@ -75,17 +78,10 @@ pub async fn resource_events_from(
     kind: String,
     name: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ResourceEventSummary>, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let client = source.client_for_context(&cluster_context).await?;
     let event_api: Api<k8s_openapi::api::core::v1::Event> = if let Some(ns) = &namespace {
         Api::namespaced(client, ns)
     } else {
@@ -119,6 +115,7 @@ pub async fn list_resource_events(
     kind: String,
     name: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ResourceEventSummary>, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
@@ -131,6 +128,7 @@ pub async fn list_resource_events(
         kind.clone(),
         name.clone(),
         namespace.clone(),
+        kubeconfig_env_var,
     )
     .await;
     match &result {

@@ -68,12 +68,18 @@ export function buildWorkspaceFetchPlans(
 export async function fetchWorkspaceResources(
 	scope: WorkspaceScope,
 	availableNamespaces?: string[],
+	kubeconfigEnvVar?: string,
 ): Promise<ResourceSummary[]> {
 	const client = createTauriClient();
 	const plans = buildWorkspaceFetchPlans(scope, availableNamespaces);
 	const results = await Promise.allSettled(
 		plans.map((plan) =>
-			listResourceScope(client, plan.clusterContext, plan.requests),
+			listResourceScope(
+				client,
+				plan.clusterContext,
+				plan.requests,
+				kubeconfigEnvVar,
+			),
 		),
 	);
 	const failedContexts = results.flatMap((result, index) =>

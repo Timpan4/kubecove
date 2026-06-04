@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/select";
 import { createTauriClient, listKubeContexts, listNamespaces } from "@/lib/tauri";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import {
 	DEFAULT_WORKSPACE_KINDS,
 	createWorkspaceScope,
@@ -61,10 +62,11 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 	const [selectedContext, setSelectedContext] = useState("");
 	const [selectedGroupContexts, setSelectedGroupContexts] = useState<string[]>([]);
 	const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 
 	const contextsQuery = useQuery({
-		queryKey: queryKeys.kubeContexts(),
-		queryFn: () => listKubeContexts(createTauriClient()),
+		queryKey: queryKeys.kubeContexts(kubeconfigEnvVar),
+		queryFn: () => listKubeContexts(createTauriClient(), kubeconfigEnvVar),
 	});
 	const contexts = contextsQuery.data ?? [];
 	const effectiveContext =
@@ -74,8 +76,9 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 		"";
 
 	const namespacesQuery = useQuery({
-		queryKey: queryKeys.namespaces(effectiveContext),
-		queryFn: () => listNamespaces(createTauriClient(), effectiveContext),
+		queryKey: queryKeys.namespaces(effectiveContext, kubeconfigEnvVar),
+		queryFn: () =>
+			listNamespaces(createTauriClient(), effectiveContext, kubeconfigEnvVar),
 		enabled: effectiveContext.length > 0,
 	});
 	const namespaces = namespacesQuery.data ?? [];

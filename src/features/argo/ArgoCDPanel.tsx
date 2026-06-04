@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import {
 	createTauriClient,
 	detectArgoCD,
@@ -102,6 +103,7 @@ export function ArgoCDPanel({
 	selectedArgoKind,
 }: ArgoCDPanelProps) {
 	const client = useMemo(() => createTauriClient(), []);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 
 	const {
 		data: argoDetected,
@@ -109,8 +111,8 @@ export function ArgoCDPanel({
 		isError: detectError,
 		error: detectErr,
 	} = useQuery({
-		queryKey: queryKeys.argoDetect(clusterContext),
-		queryFn: () => detectArgoCD(client, clusterContext),
+		queryKey: queryKeys.argoDetect(clusterContext, kubeconfigEnvVar),
+		queryFn: () => detectArgoCD(client, clusterContext, kubeconfigEnvVar),
 		enabled: !!clusterContext,
 		staleTime: 60_000,
 	});
@@ -126,8 +128,8 @@ export function ArgoCDPanel({
 		isError: appsError,
 		error: appsErr,
 	} = useQuery({
-		queryKey: queryKeys.argoApps(clusterContext),
-		queryFn: () => listArgoApplications(client, clusterContext),
+		queryKey: queryKeys.argoApps(clusterContext, kubeconfigEnvVar),
+		queryFn: () => listArgoApplications(client, clusterContext, kubeconfigEnvVar),
 		enabled: !!clusterContext && argoResourcesAvailable && isApps,
 		staleTime: 30_000,
 	});
@@ -138,8 +140,9 @@ export function ArgoCDPanel({
 		isError: appsetsError,
 		error: appsetsErr,
 	} = useQuery({
-		queryKey: queryKeys.argoAppSets(clusterContext),
-		queryFn: () => listArgoApplicationSets(client, clusterContext),
+		queryKey: queryKeys.argoAppSets(clusterContext, kubeconfigEnvVar),
+		queryFn: () =>
+			listArgoApplicationSets(client, clusterContext, kubeconfigEnvVar),
 		enabled: !!clusterContext && argoResourcesAvailable && isAppSets,
 		staleTime: 30_000,
 	});
@@ -150,8 +153,8 @@ export function ArgoCDPanel({
 		isError: projectsError,
 		error: projectsErr,
 	} = useQuery({
-		queryKey: queryKeys.argoAppProjects(clusterContext),
-		queryFn: () => listArgoAppProjects(client, clusterContext),
+		queryKey: queryKeys.argoAppProjects(clusterContext, kubeconfigEnvVar),
+		queryFn: () => listArgoAppProjects(client, clusterContext, kubeconfigEnvVar),
 		enabled: !!clusterContext && argoResourcesAvailable && isAppProjects,
 		staleTime: 30_000,
 	});

@@ -170,13 +170,17 @@ fn test_resource_event_summary_serde() {
 fn test_pod_exec_models_serde() {
     let request = PodExecSessionRequest {
         cluster_context: "kind-dev".to_string(),
+        kubeconfig_env_var: None,
         namespace: "payments".to_string(),
         pod_name: "api-0".to_string(),
         container: Some("api".to_string()),
         command: vec!["/bin/sh".to_string()],
         stdin: true,
         tty: true,
-        terminal_size: PodExecTerminalSize { cols: 100, rows: 32 },
+        terminal_size: PodExecTerminalSize {
+            cols: 100,
+            rows: 32,
+        },
         confirmation: PodExecConfirmation {
             acknowledged: true,
             target: "kind-dev/payments/Pod/api-0/container/api".to_string(),
@@ -192,6 +196,7 @@ fn test_pod_exec_models_serde() {
     let summary = PodExecSessionSummary {
         id: "pod-exec-1".to_string(),
         cluster_context: "kind-dev".to_string(),
+        kubeconfig_env_var: None,
         namespace: "payments".to_string(),
         pod_name: "api-0".to_string(),
         container: Some("api".to_string()),
@@ -496,6 +501,7 @@ fn test_stream_models_serde() {
 
     let request = PodLogStreamRequest {
         cluster_context: "admin@solid-k8s".to_string(),
+        kubeconfig_env_var: None,
         namespace: "default".to_string(),
         pod_name: "api-0".to_string(),
         container: Some("api".to_string()),

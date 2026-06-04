@@ -18,6 +18,7 @@ function fetchKeyRequest({ kind, namespace }: FetchKey): ResourceListRequest {
 export async function fetchResourcePage(
 	clusterContext: string,
 	fetchKeys: FetchKey[],
+	kubeconfigEnvVar?: string,
 ): Promise<ResourceSummary[]> {
 	const started = performance.now();
 	diagnosticLog("resources.fetch.start", {
@@ -30,6 +31,7 @@ export async function fetchResourcePage(
 		client,
 		clusterContext,
 		fetchKeys.map(fetchKeyRequest),
+		kubeconfigEnvVar,
 	);
 	diagnosticLog("resources.fetch.done", {
 		cluster: clusterContext,

@@ -1,28 +1,16 @@
-use super::find_api_resource;
+use super::{client_for_context, find_api_resource};
 use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, list_params, resource_age};
 use crate::models::{AppError, ArgoApplicationDetails, ArgoApplicationSummary};
 use chrono::{TimeZone, Utc};
-use kube::{
-    api::{Api, DynamicObject},
-    config::KubeConfigOptions,
-    Client,
-};
+use kube::api::{Api, DynamicObject};
 
 /// List Argo CD Applications in the cluster.
 #[tauri::command]
 pub async fn list_argocd_applications(
     cluster_context: String,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ArgoApplicationSummary>, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.clone()),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
 
     let ar = match find_api_resource(&client, "argoproj.io", "Application").await? {
         Some(ar) => ar,
@@ -115,17 +103,9 @@ pub async fn get_argocd_application_details(
     cluster_context: String,
     name: String,
     namespace: Option<String>,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<ArgoApplicationDetails, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context.clone()),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
 
     let ar = match find_api_resource(&client, "argoproj.io", "Application").await? {
         Some(ar) => ar,

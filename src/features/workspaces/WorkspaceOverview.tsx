@@ -28,6 +28,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import {
 	createTauriClient,
 	detectArgoCD,
@@ -155,9 +156,10 @@ export function WorkspaceOverview({
 	onOpenLauncher,
 }: WorkspaceOverviewProps) {
 	const client = useMemo(() => createTauriClient(), []);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const contextsQuery = useQuery({
-		queryKey: queryKeys.kubeContexts(),
-		queryFn: () => listKubeContexts(client),
+		queryKey: queryKeys.kubeContexts(kubeconfigEnvVar),
+		queryFn: () => listKubeContexts(client, kubeconfigEnvVar),
 	});
 	const contexts = contextsQuery.data ?? EMPTY_CONTEXTS;
 	const clusterAvailable =
@@ -166,8 +168,12 @@ export function WorkspaceOverview({
 	const workspaceContextKey = workspaceScopeContexts(workspace.scope).join("|");
 
 	const namespacesQuery = useQuery({
-		queryKey: queryKeys.namespaces(workspace.scope.clusterContext),
-		queryFn: () => listNamespaces(client, workspace.scope.clusterContext),
+		queryKey: queryKeys.namespaces(
+			workspace.scope.clusterContext,
+			kubeconfigEnvVar,
+		),
+		queryFn: () =>
+			listNamespaces(client, workspace.scope.clusterContext, kubeconfigEnvVar),
 		enabled: clusterAvailable && !contextsQuery.isPending,
 	});
 	const namespaces = useMemo(
@@ -179,8 +185,12 @@ export function WorkspaceOverview({
 	);
 
 	const kindsQuery = useQuery({
-		queryKey: queryKeys.resourceKinds(workspace.scope.clusterContext),
-		queryFn: () => listResourceKinds(client, workspace.scope.clusterContext),
+		queryKey: queryKeys.resourceKinds(
+			workspace.scope.clusterContext,
+			kubeconfigEnvVar,
+		),
+		queryFn: () =>
+			listResourceKinds(client, workspace.scope.clusterContext, kubeconfigEnvVar),
 		enabled: clusterAvailable && !contextsQuery.isPending,
 	});
 	const discoveredKinds = kindsQuery.data ?? EMPTY_DISCOVERED_KINDS;
@@ -207,8 +217,14 @@ export function WorkspaceOverview({
 		queryKey: queryKeys.resources(
 			workspaceContextKey,
 			workspaceFetchKeys,
+			kubeconfigEnvVar,
 		),
-		queryFn: () => fetchWorkspaceResources(workspace.scope, availableNamespaces),
+		queryFn: () =>
+			fetchWorkspaceResources(
+				workspace.scope,
+				availableNamespaces,
+				kubeconfigEnvVar,
+			),
 		enabled:
 			restoreStatus.clusterAvailable &&
 			!namespacesQuery.isPending &&
@@ -219,13 +235,20 @@ export function WorkspaceOverview({
 	const health = useMemo(() => buildWorkspaceHealthSummary(rows), [rows]);
 
 	const argoDetectedQuery = useQuery({
-		queryKey: queryKeys.argoDetect(workspace.scope.clusterContext),
-		queryFn: () => detectArgoCD(client, workspace.scope.clusterContext),
+		queryKey: queryKeys.argoDetect(
+			workspace.scope.clusterContext,
+			kubeconfigEnvVar,
+		),
+		queryFn: () => detectArgoCD(client, workspace.scope.clusterContext, kubeconfigEnvVar),
 		enabled: restoreStatus.clusterAvailable,
 	});
 	const argoAppsQuery = useQuery({
-		queryKey: queryKeys.argoApps(workspace.scope.clusterContext),
-		queryFn: () => listArgoApplications(client, workspace.scope.clusterContext),
+		queryKey: queryKeys.argoApps(
+			workspace.scope.clusterContext,
+			kubeconfigEnvVar,
+		),
+		queryFn: () =>
+			listArgoApplications(client, workspace.scope.clusterContext, kubeconfigEnvVar),
 		enabled: argoDetectedQuery.data === true,
 	});
 	const argoApps = argoAppsQuery.data;

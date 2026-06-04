@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import {
 	createTauriClient,
 	getHelmReleaseDetails,
@@ -56,14 +57,16 @@ const PANEL_BODY_CLASS = "flex-1 overflow-y-auto p-4";
 
 function useHelmReleaseDetails(release: HelmReleaseSummary) {
 	const client = useMemo(() => createTauriClient(), []);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	return useQuery({
 		queryKey: queryKeys.helmReleaseDetails(
 			release.cluster,
 			release.namespace,
 			release.storageKind,
 			release.storageName,
+			kubeconfigEnvVar,
 		),
-		queryFn: () => getHelmReleaseDetails(client, release),
+		queryFn: () => getHelmReleaseDetails(client, release, kubeconfigEnvVar),
 		enabled: !!release.cluster && !!release.namespace && !!release.storageName,
 	});
 }
@@ -71,10 +74,11 @@ function useHelmReleaseDetails(release: HelmReleaseSummary) {
 async function listHelmOwnedResources(
 	client: TauriClient,
 	release: HelmReleaseSummary,
+	kubeconfigEnvVar?: string,
 ): Promise<ResourceSummary[]> {
 	const results = await Promise.allSettled(
 		SUPPORTED_KINDS.map((kind) =>
-			listResources(client, release.cluster, kind, release.namespace),
+			listResources(client, release.cluster, kind, release.namespace, kubeconfigEnvVar),
 		),
 	);
 	const rejected = results.filter(
@@ -94,13 +98,15 @@ async function listHelmOwnedResources(
 
 function useHelmOwnedResources(release: HelmReleaseSummary) {
 	const client = useMemo(() => createTauriClient(), []);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	return useQuery({
 		queryKey: queryKeys.helmReleaseResources(
 			release.cluster,
 			release.namespace,
 			release.name,
+			kubeconfigEnvVar,
 		),
-		queryFn: () => listHelmOwnedResources(client, release),
+		queryFn: () => listHelmOwnedResources(client, release, kubeconfigEnvVar),
 		enabled: !!release.cluster && !!release.namespace && !!release.name,
 		staleTime: 30_000,
 	});

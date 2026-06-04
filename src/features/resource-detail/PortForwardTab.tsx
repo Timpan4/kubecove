@@ -35,6 +35,7 @@ import {
 } from "@/lib/tauri";
 import type { PortForwardSessionSummary, ResourceSummary } from "@/lib/types";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import { useWorkspaceStore, workspaceScopeContexts } from "@/lib/workspaces";
 import { getErrorMessage } from "./helpers";
 import {
@@ -93,6 +94,7 @@ export function PortForwardTab({
 			) ?? null,
 	);
 	const savePortForward = useWorkspaceStore((state) => state.savePortForward);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const [remotePort, setRemotePort] = useState("");
 	const [localPort, setLocalPort] = useState("");
 	const [formError, setFormError] = useState<string | null>(null);
@@ -112,10 +114,10 @@ export function PortForwardTab({
 		() =>
 			sortPortForwardSessions(
 				(sessionsQuery.data ?? []).filter((session) =>
-					isPortForwardForResource(session, resource),
+					isPortForwardForResource(session, resource, kubeconfigEnvVar),
 				),
 			),
-		[resource, sessionsQuery.data],
+		[resource, sessionsQuery.data, kubeconfigEnvVar],
 	);
 	const servicePortOptions = useMemo(
 		() =>
@@ -180,6 +182,7 @@ export function PortForwardTab({
 		try {
 			await startPodPortForward(client, {
 				clusterContext: resource.cluster,
+				kubeconfigEnvVar,
 				namespace: resource.namespace ?? "",
 				targetKind,
 				targetName: resource.name,

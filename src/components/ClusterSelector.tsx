@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createTauriClient, listKubeContexts } from "../lib/tauri";
 import type { ClusterContext } from "../lib/types";
+import { useSettingsState } from "@/lib/settings";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -21,6 +22,7 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
   const [selected, setSelected] = useState<string>(value ?? "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
   const selectedRef = useRef(selected);
   const onClusterChangeRef = useRef(onClusterChange);
 
@@ -40,7 +42,7 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
     setLoading(true);
     setError(null);
     try {
-      const contexts = await listKubeContexts(client);
+      const contexts = await listKubeContexts(client, kubeconfigEnvVar);
       setClusters(contexts);
       const currentContext = contexts.find((ctx) => ctx.isCurrent);
       const preferredContext = currentContext ?? contexts[0];
@@ -56,7 +58,7 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [kubeconfigEnvVar]);
 
   useEffect(() => {
     loadClusters();

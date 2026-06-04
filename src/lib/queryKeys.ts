@@ -1,4 +1,5 @@
 import type { ResourceKindSelection, TopologyMode } from "./types";
+import { kubeconfigSourceKey } from "./settings";
 
 interface ResourceFetchKey {
 	kind: ResourceKindSelection;
@@ -22,36 +23,68 @@ function resourceScopeParts(fetchKeys: ResourceFetchKey[]): string[] {
 }
 
 export const queryKeys = {
-	kubeContexts: () => ["kube-contexts"] as const,
-	namespaces: (clusterContext: string) =>
-		["kube-namespaces", clusterContext] as const,
-	resourceKinds: (clusterContext: string) =>
-		["kube-resource-kinds", clusterContext] as const,
-	resources: (clusterContext: string, fetchKeys: ResourceFetchKey[]) =>
-		["resources", clusterContext, ...resourceScopeParts(fetchKeys)] as const,
+	kubeContexts: (kubeconfigEnvVar?: string) =>
+		["kube-contexts", kubeconfigSourceKey(kubeconfigEnvVar)] as const,
+	namespaces: (clusterContext: string, kubeconfigEnvVar?: string) =>
+		["kube-namespaces", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
+	resourceKinds: (clusterContext: string, kubeconfigEnvVar?: string) =>
+		["kube-resource-kinds", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
+	resources: (
+		clusterContext: string,
+		fetchKeys: ResourceFetchKey[],
+		kubeconfigEnvVar?: string,
+	) =>
+		[
+			"resources",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			...resourceScopeParts(fetchKeys),
+		] as const,
 	resourceTopology: (
 		clusterContext: string,
 		namespaces: string[],
 		mode: TopologyMode,
+		kubeconfigEnvVar?: string,
 	) =>
 		[
 			"resource-topology",
+			kubeconfigSourceKey(kubeconfigEnvVar),
 			clusterContext,
 			sortedNamespaces(namespaces),
 			mode,
 		] as const,
-	resourceMetrics: (clusterContext: string, namespaces: string[]) =>
-		["resource-metrics", clusterContext, sortedNamespaces(namespaces)] as const,
-	argoDetect: (clusterContext: string) => ["argo-detect", clusterContext] as const,
-	argoApps: (clusterContext: string) => ["argo-apps", clusterContext] as const,
-	argoAppSets: (clusterContext: string) =>
-		["argo-appsets", clusterContext] as const,
-	argoAppProjects: (clusterContext: string) =>
-		["argo-appprojects", clusterContext] as const,
-	helmReleases: (clusterContext: string) =>
-		["helm-releases", clusterContext] as const,
-	rbacInspection: (clusterContext: string, namespaces: string[]) =>
-		["rbac-inspection", clusterContext, sortedNamespaces(namespaces)] as const,
+	resourceMetrics: (
+		clusterContext: string,
+		namespaces: string[],
+		kubeconfigEnvVar?: string,
+	) =>
+		[
+			"resource-metrics",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			sortedNamespaces(namespaces),
+		] as const,
+	argoDetect: (clusterContext: string, kubeconfigEnvVar?: string) =>
+		["argo-detect", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
+	argoApps: (clusterContext: string, kubeconfigEnvVar?: string) =>
+		["argo-apps", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
+	argoAppSets: (clusterContext: string, kubeconfigEnvVar?: string) =>
+		["argo-appsets", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
+	argoAppProjects: (clusterContext: string, kubeconfigEnvVar?: string) =>
+		["argo-appprojects", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
+	helmReleases: (clusterContext: string, kubeconfigEnvVar?: string) =>
+		["helm-releases", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
+	rbacInspection: (
+		clusterContext: string,
+		namespaces: string[],
+		kubeconfigEnvVar?: string,
+	) =>
+		[
+			"rbac-inspection",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			sortedNamespaces(namespaces),
+		] as const,
 	portForwards: () => ["port-forwards"] as const,
 	podExecSessions: () => ["pod-exec-sessions"] as const,
 	helmReleaseDetails: (
@@ -59,9 +92,11 @@ export const queryKeys = {
 		namespace: string,
 		storageKind: string,
 		storageName: string,
+		kubeconfigEnvVar?: string,
 	) =>
 		[
 			"helm-release-details",
+			kubeconfigSourceKey(kubeconfigEnvVar),
 			clusterContext,
 			namespace,
 			storageKind,
@@ -71,5 +106,13 @@ export const queryKeys = {
 		clusterContext: string,
 		namespace: string,
 		releaseName: string,
-	) => ["helm-release-resources", clusterContext, namespace, releaseName] as const,
+		kubeconfigEnvVar?: string,
+	) =>
+		[
+			"helm-release-resources",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			namespace,
+			releaseName,
+		] as const,
 };

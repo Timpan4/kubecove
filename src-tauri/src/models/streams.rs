@@ -28,6 +28,8 @@ pub struct WatchResourceKey {
 #[serde(rename_all = "camelCase")]
 pub struct PodLogStreamRequest {
     pub cluster_context: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubeconfig_env_var: Option<String>,
     pub namespace: String,
     pub pod_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

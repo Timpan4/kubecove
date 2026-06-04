@@ -1,6 +1,6 @@
 use super::{dynamic_resources_summary_from, resources_summary_from};
 use crate::{
-    commands::ClusterLiveStore,
+    commands::{kubeconfig::kubeconfig_source_key, ClusterLiveStore},
     models::{AppError, DiscoveredResourceKind, ResourceListRequest, ResourceSummary},
 };
 use futures_util::future::join_all;
@@ -109,28 +109,41 @@ pub async fn resource_scope_from(
     cluster_context: String,
     requests: Vec<ResourceListRequest>,
     live_store: ClusterLiveStore,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
     let groups = group_requests(requests)?;
+    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let futures = groups.into_values().map(|group| {
         let live_store = live_store.clone();
         let cluster_context = cluster_context.clone();
+        let source_key = source_key.clone();
+        let kubeconfig_env_var = kubeconfig_env_var.clone();
         async move {
             let fetches = fetch_namespaces(&group).into_iter().map(|namespace| {
                 let kind = group.kind.clone();
                 let live_store = live_store.clone();
                 let cluster_context = cluster_context.clone();
+                let source_key = source_key.clone();
+                let kubeconfig_env_var = kubeconfig_env_var.clone();
                 async move {
                     match kind {
                         ResourceScopeKind::Typed(kind) => {
                             live_store
                                 .typed_resources(
+                                    source_key,
                                     cluster_context.clone(),
                                     kind.clone(),
                                     namespace.clone(),
                                     {
                                         let cluster_context = cluster_context.clone();
+                                        let kubeconfig_env_var = kubeconfig_env_var.clone();
                                         move || {
-                                            resources_summary_from(cluster_context, kind, namespace)
+                                            resources_summary_from(
+                                                cluster_context,
+                                                kind,
+                                                namespace,
+                                                kubeconfig_env_var,
+                                            )
                                         }
                                     },
                                 )
@@ -139,16 +152,19 @@ pub async fn resource_scope_from(
                         ResourceScopeKind::Dynamic(resource_kind) => {
                             live_store
                                 .dynamic_resources(
+                                    source_key,
                                     cluster_context.clone(),
                                     resource_kind.clone(),
                                     namespace.clone(),
                                     {
                                         let cluster_context = cluster_context.clone();
+                                        let kubeconfig_env_var = kubeconfig_env_var.clone();
                                         move || {
                                             dynamic_resources_summary_from(
                                                 cluster_context,
                                                 resource_kind,
                                                 namespace,
+                                                kubeconfig_env_var,
                                             )
                                         }
                                     },
@@ -178,6 +194,7 @@ pub async fn resource_scope_from(
 pub async fn list_resource_scope(
     cluster_context: String,
     requests: Vec<ResourceListRequest>,
+    kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
     let started = Instant::now();
@@ -190,6 +207,7 @@ pub async fn list_resource_scope(
         cluster_context.clone(),
         requests,
         live_store.inner().clone(),
+        kubeconfig_env_var,
     )
     .await;
     match &result {

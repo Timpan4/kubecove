@@ -21,6 +21,8 @@ import {
 	stopPodPortForward,
 	writePodExecStdin,
 } from "../src/lib/tauri";
+import { queryKeys } from "../src/lib/queryKeys";
+import { kubeconfigSourceKey } from "../src/lib/settings";
 import type {
 	AppUsageMetrics,
 	ClusterContext,
@@ -129,6 +131,46 @@ describe("createMockTauriClient", () => {
 });
 
 describe("typed Tauri wrappers", () => {
+	test("passes kubeconfig env var through cluster wrappers", async () => {
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				return [] as T;
+			},
+		};
+
+		await listKubeContexts(client, "KUBECOVE_CONFIG");
+		await listNamespaces(client, "kind-dev", "KUBECOVE_CONFIG");
+
+		expect(calls).toEqual([
+			{
+				cmd: "list_kube_contexts",
+				args: { kubeconfigEnvVar: "KUBECOVE_CONFIG" },
+			},
+			{
+				cmd: "list_namespaces",
+				args: {
+					clusterContext: "kind-dev",
+					kubeconfigEnvVar: "KUBECOVE_CONFIG",
+				},
+			},
+		]);
+	});
+
+	test("query keys include kubeconfig source", () => {
+		expect(kubeconfigSourceKey("")).toBe("kubeconfigEnv=KUBECONFIG");
+		expect(queryKeys.kubeContexts("KUBECOVE_CONFIG")).toEqual([
+			"kube-contexts",
+			"kubeconfigEnv=KUBECOVE_CONFIG",
+		]);
+		expect(queryKeys.namespaces("kind-dev", "KUBECOVE_CONFIG")).toEqual([
+			"kube-namespaces",
+			"kubeconfigEnv=KUBECOVE_CONFIG",
+			"kind-dev",
+		]);
+	});
+
 	test("passes namespace requests through the typed client", async () => {
 		const mockNamespaces: NamespaceSummary[] = [
 			{ name: "default", age: "1d" },

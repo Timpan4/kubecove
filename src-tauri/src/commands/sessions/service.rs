@@ -13,7 +13,8 @@ use std::collections::BTreeMap;
 pub(super) async fn resolve_service_target(
     request: ValidatedPortForwardRequest,
 ) -> Result<PortForwardTarget, AppError> {
-    let client = client_for_context(&request.cluster_context).await?;
+    let client =
+        client_for_context(&request.cluster_context, request.kubeconfig_env_var.clone()).await?;
     let services: Api<Service> = Api::namespaced(client.clone(), &request.namespace);
     let service = services
         .get(&request.target_name)
@@ -56,6 +57,7 @@ pub(super) async fn resolve_service_target(
 
     Ok(PortForwardTarget {
         cluster_context: request.cluster_context,
+        kubeconfig_env_var: request.kubeconfig_env_var,
         namespace: request.namespace,
         target_kind: PortForwardTargetKind::Service,
         target_name: request.target_name,

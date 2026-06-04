@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { diagnosticLog } from "@/lib/diagnostics";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import {
 	createTauriClient,
 	listResourceMetrics,
@@ -109,6 +110,7 @@ function ResourceListComponent({
 	const [topologyMode, setTopologyMode] = useState<TopologyMode>("ownership");
 	const [mapPanelOpen, setMapPanelOpen] = useState(true);
 	const client = useMemo(() => createTauriClient(), []);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	const renderCountRef = useRef(0);
 	renderCountRef.current += 1;
 
@@ -130,12 +132,18 @@ function ResourceListComponent({
 		[selectedNamespaces, selectedKinds],
 	);
 	const queryKey = useMemo(
-		() => queryKeys.resources(clusterContext, fetchKeys),
-		[clusterContext, fetchKeys],
+		() => queryKeys.resources(clusterContext, fetchKeys, kubeconfigEnvVar),
+		[clusterContext, fetchKeys, kubeconfigEnvVar],
 	);
 	const topologyQueryKey = useMemo(
-		() => queryKeys.resourceTopology(clusterContext, topologyNamespaces, topologyMode),
-		[clusterContext, topologyMode, topologyNamespaces],
+		() =>
+			queryKeys.resourceTopology(
+				clusterContext,
+				topologyNamespaces,
+				topologyMode,
+				kubeconfigEnvVar,
+			),
+		[clusterContext, topologyMode, topologyNamespaces, kubeconfigEnvVar],
 	);
 	const topologyFitViewKey = useMemo(
 		() => JSON.stringify(topologyQueryKey),
@@ -163,20 +171,31 @@ function ResourceListComponent({
 
 	const { data, isPending, isError, error } = useQuery({
 		queryKey,
-		queryFn: () => fetchResourcePage(clusterContext, fetchKeys),
+		queryFn: () => fetchResourcePage(clusterContext, fetchKeys, kubeconfigEnvVar),
 		enabled: fetchKeys.length > 0,
 		staleTime: 30_000,
 	});
 	const topologyQuery = useQuery({
 		queryKey: topologyQueryKey,
 		queryFn: () =>
-			listResourceTopology(client, clusterContext, topologyNamespaces, topologyMode),
+			listResourceTopology(
+				client,
+				clusterContext,
+				topologyNamespaces,
+				topologyMode,
+				kubeconfigEnvVar,
+			),
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		staleTime: 30_000,
 	});
 	const metricsQuery = useQuery({
-		queryKey: queryKeys.resourceMetrics(clusterContext, topologyNamespaces),
-		queryFn: () => listResourceMetrics(client, clusterContext, topologyNamespaces),
+		queryKey: queryKeys.resourceMetrics(
+			clusterContext,
+			topologyNamespaces,
+			kubeconfigEnvVar,
+		),
+		queryFn: () =>
+			listResourceMetrics(client, clusterContext, topologyNamespaces, kubeconfigEnvVar),
 		enabled: Boolean(clusterContext),
 		retry: false,
 		staleTime: 30_000,
@@ -199,6 +218,7 @@ function ResourceListComponent({
 	const realtime = useResourceWatch({
 		client,
 		clusterContext,
+		kubeconfigEnvVar,
 		subscriptions: watchSubscriptions,
 		enabled:
 			watchSubscriptions.some((subscription) => subscription.keys.length > 0) &&

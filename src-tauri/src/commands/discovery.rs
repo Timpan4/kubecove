@@ -1,28 +1,20 @@
 use crate::{
-    commands::ClusterLiveStore,
+    commands::{
+        kubeconfig::{kubeconfig_source_key, KubeconfigSource},
+        ClusterLiveStore,
+    },
     models::{AppError, DiscoveredResourceKind},
 };
-use kube::{
-    config::KubeConfigOptions,
-    discovery::{verbs, Discovery, Scope},
-    Client,
-};
+use kube::discovery::{verbs, Discovery, Scope};
 use std::time::Instant;
 use tauri::State;
 
 pub async fn resource_kinds_from(
     cluster_context: String,
+    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<DiscoveredResourceKind>, AppError> {
-    let options = KubeConfigOptions {
-        context: Some(cluster_context),
-        ..Default::default()
-    };
-
-    let config = kube::Config::from_kubeconfig(&options)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-
-    let client = Client::try_from(config).map_err(|e| AppError::kube(e.to_string()))?;
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let client = source.client_for_context(&cluster_context).await?;
     let discovery = Discovery::new(client)
         .run_aggregated()
         .await
@@ -64,6 +56,7 @@ pub async fn resource_kinds_from(
 #[tauri::command]
 pub async fn list_resource_kinds(
     cluster_context: String,
+    kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Vec<DiscoveredResourceKind>, AppError> {
     let started = Instant::now();
@@ -71,10 +64,12 @@ pub async fn list_resource_kinds(
         "[kubecove:backend] list_resource_kinds start context={}",
         cluster_context
     );
+    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let result = live_store
-        .resource_kinds(cluster_context.clone(), {
+        .resource_kinds(source_key, cluster_context.clone(), {
             let cluster_context = cluster_context.clone();
-            move || resource_kinds_from(cluster_context)
+            let kubeconfig_env_var = kubeconfig_env_var.clone();
+            move || resource_kinds_from(cluster_context, kubeconfig_env_var)
         })
         .await;
     match &result {

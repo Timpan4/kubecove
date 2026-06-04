@@ -276,6 +276,7 @@ impl Default for ClusterLiveStore {
 impl ClusterLiveStore {
     pub async fn namespaces<F, Fut>(
         &self,
+        source_key: String,
         cluster_context: String,
         loader: F,
     ) -> Result<Vec<NamespaceSummary>, AppError>
@@ -285,7 +286,7 @@ impl ClusterLiveStore {
     {
         self.namespaces
             .get_or_load(
-                format!("context={}", cluster_context),
+                context_cache_key(&source_key, &cluster_context),
                 CacheMode::GraceOnly,
                 loader,
             )
@@ -294,6 +295,7 @@ impl ClusterLiveStore {
 
     pub async fn resource_kinds<F, Fut>(
         &self,
+        source_key: String,
         cluster_context: String,
         loader: F,
     ) -> Result<Vec<DiscoveredResourceKind>, AppError>
@@ -303,7 +305,7 @@ impl ClusterLiveStore {
     {
         self.resource_kinds
             .get_or_load(
-                format!("context={}", cluster_context),
+                context_cache_key(&source_key, &cluster_context),
                 CacheMode::GraceOnly,
                 loader,
             )
@@ -312,6 +314,7 @@ impl ClusterLiveStore {
 
     pub async fn typed_resources<F, Fut>(
         &self,
+        source_key: String,
         cluster_context: String,
         kind: String,
         namespace: Option<String>,
@@ -323,12 +326,13 @@ impl ClusterLiveStore {
     {
         let kind_key = typed_kind_key(&kind);
         let namespace_key = namespace_key_for_typed(&kind, namespace.as_deref());
-        self.resources_for_scope(cluster_context, kind_key, namespace_key, loader)
+        self.resources_for_scope(source_key, cluster_context, kind_key, namespace_key, loader)
             .await
     }
 
     pub async fn dynamic_resources<F, Fut>(
         &self,
+        source_key: String,
         cluster_context: String,
         resource_kind: DiscoveredResourceKind,
         namespace: Option<String>,
@@ -345,12 +349,13 @@ impl ClusterLiveStore {
         );
         let namespace_key =
             namespace_key_for_namespaced(resource_kind.namespaced, namespace.as_deref());
-        self.resources_for_scope(cluster_context, kind_key, namespace_key, loader)
+        self.resources_for_scope(source_key, cluster_context, kind_key, namespace_key, loader)
             .await
     }
 
     async fn resources_for_scope<F, Fut>(
         &self,
+        source_key: String,
         cluster_context: String,
         kind_key: String,
         namespace_key: ScopeNamespace,
@@ -361,14 +366,19 @@ impl ClusterLiveStore {
         Fut: Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
     {
         if let ScopeNamespace::Named(namespace) = &namespace_key {
-            let all_key = resource_cache_key(&cluster_context, &kind_key, &ScopeNamespace::All);
+            let all_key = resource_cache_key(
+                &source_key,
+                &cluster_context,
+                &kind_key,
+                &ScopeNamespace::All,
+            );
             if let Some(rows) = self
                 .resources
                 .peek(&all_key, CacheMode::LiveFor(RESOURCE_FRESHNESS))
             {
                 eprintln!(
                     "[kubecove:backend] live_store cache_hit area=resources key={} covered_by={}",
-                    resource_cache_key(&cluster_context, &kind_key, &namespace_key),
+                    resource_cache_key(&source_key, &cluster_context, &kind_key, &namespace_key),
                     all_key
                 );
                 return Ok(rows
@@ -380,7 +390,7 @@ impl ClusterLiveStore {
 
         self.resources
             .get_or_load(
-                resource_cache_key(&cluster_context, &kind_key, &namespace_key),
+                resource_cache_key(&source_key, &cluster_context, &kind_key, &namespace_key),
                 CacheMode::LiveFor(RESOURCE_FRESHNESS),
                 loader,
             )
@@ -389,6 +399,7 @@ impl ClusterLiveStore {
 
     pub async fn topology<F, Fut>(
         &self,
+        source_key: String,
         cluster_context: String,
         namespaces: Vec<String>,
         mode: String,
@@ -398,7 +409,7 @@ impl ClusterLiveStore {
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<ResourceTopology, AppError>> + Send + 'static,
     {
-        let key = topology_cache_key(&cluster_context, &namespaces, &mode);
+        let key = topology_cache_key(&source_key, &cluster_context, &namespaces, &mode);
         self.topologies
             .get_or_load(key, CacheMode::LiveFor(RESOURCE_FRESHNESS), loader)
             .await
@@ -406,6 +417,7 @@ impl ClusterLiveStore {
 
     pub fn mark_watch_resource_dirty(
         &self,
+        source_key: &str,
         cluster_context: &str,
         resource_kind: &WatchResourceKind,
         namespace: Option<&str>,
@@ -413,13 +425,16 @@ impl ClusterLiveStore {
         let namespace_key =
             namespace_key_for_namespaced(resource_kind.namespaced.unwrap_or(true), namespace);
         for kind_key in watch_kind_keys(resource_kind) {
-            let exact_key = resource_cache_key(cluster_context, &kind_key, &namespace_key);
-            let all_key = resource_cache_key(cluster_context, &kind_key, &ScopeNamespace::All);
+            let exact_key =
+                resource_cache_key(source_key, cluster_context, &kind_key, &namespace_key);
+            let all_key =
+                resource_cache_key(source_key, cluster_context, &kind_key, &ScopeNamespace::All);
             self.resources.mark_dirty(&exact_key);
             self.resources.mark_dirty(&all_key);
         }
-        self.topologies
-            .mark_dirty_where(|key| key.starts_with(&format!("context={}|", cluster_context)));
+        self.topologies.mark_dirty_where(|key| {
+            key.starts_with(&format!("{}|context={}|", source_key, cluster_context))
+        });
     }
 }
 
@@ -481,24 +496,39 @@ fn namespace_key_for_namespaced(namespaced: bool, namespace: Option<&str>) -> Sc
     }
 }
 
-fn resource_cache_key(context: &str, kind_key: &str, namespace: &ScopeNamespace) -> String {
+fn context_cache_key(source_key: &str, context: &str) -> String {
+    format!("{}|context={}", source_key, context)
+}
+
+fn resource_cache_key(
+    source_key: &str,
+    context: &str,
+    kind_key: &str,
+    namespace: &ScopeNamespace,
+) -> String {
     let namespace = match namespace {
         ScopeNamespace::All => "<all>",
         ScopeNamespace::Cluster => "<cluster>",
         ScopeNamespace::Named(namespace) => namespace,
     };
     format!(
-        "context={}|kind={}|namespace={}",
-        context, kind_key, namespace
+        "{}|context={}|kind={}|namespace={}",
+        source_key, context, kind_key, namespace
     )
 }
 
-fn topology_cache_key(context: &str, namespaces: &[String], mode: &str) -> String {
+fn topology_cache_key(
+    source_key: &str,
+    context: &str,
+    namespaces: &[String],
+    mode: &str,
+) -> String {
     let mut namespaces = namespaces.to_vec();
     namespaces.sort();
     namespaces.dedup();
     format!(
-        "context={}|topology={}|namespaces={}",
+        "{}|context={}|topology={}|namespaces={}",
+        source_key,
         context,
         mode,
         namespaces.join(",")

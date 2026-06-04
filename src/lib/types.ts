@@ -136,6 +136,7 @@ export interface WatchResourceKey {
 
 export interface PodLogStreamRequest {
 	clusterContext: string;
+	kubeconfigEnvVar?: string;
 	namespace: string;
 	podName: string;
 	container?: string;
@@ -144,6 +145,7 @@ export interface PodLogStreamRequest {
 
 export interface PortForwardRequest {
 	clusterContext: string;
+	kubeconfigEnvVar?: string;
 	namespace: string;
 	targetKind?: "Pod" | "Service";
 	targetName?: string;
@@ -162,6 +164,7 @@ export type PortForwardSessionStatus =
 export interface PortForwardSessionSummary {
 	id: string;
 	clusterContext: string;
+	kubeconfigEnvVar?: string;
 	namespace: string;
 	targetKind: "Pod" | "Service" | string;
 	targetName: string;
@@ -190,6 +193,7 @@ export interface PodExecTerminalSize {
 
 export interface PodExecSessionRequest {
 	clusterContext: string;
+	kubeconfigEnvVar?: string;
 	namespace: string;
 	podName: string;
 	container?: string;
@@ -211,6 +215,7 @@ export type PodExecSessionStatus =
 export interface PodExecSessionSummary {
 	id: string;
 	clusterContext: string;
+	kubeconfigEnvVar?: string;
 	namespace: string;
 	podName: string;
 	container?: string;
