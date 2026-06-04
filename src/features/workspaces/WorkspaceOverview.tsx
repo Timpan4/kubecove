@@ -338,7 +338,7 @@ export function WorkspaceOverview({
 					<CardHeader>
 						<CardTitle>Incident shortcuts</CardTitle>
 						<CardDescription>
-							Open the saved scope with an investigation filter applied.
+							Open Incident Cockpit for this workspace.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="flex flex-wrap gap-2">
