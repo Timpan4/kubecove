@@ -73,7 +73,6 @@ impl PodExecRegistry {
         &self,
         summary: PodExecSessionSummary,
         commands: mpsc::UnboundedSender<ExecCommand>,
-        handle: JoinHandle<()>,
     ) -> PodExecSessionSummary {
         self.state
             .lock()
@@ -84,10 +83,26 @@ impl PodExecRegistry {
                 PodExecSession {
                     summary: summary.clone(),
                     commands,
-                    handle: Some(handle),
+                    handle: None,
                 },
             );
         summary
+    }
+
+    fn set_handle(&self, session_id: &str, handle: JoinHandle<()>) {
+        let mut handle = Some(handle);
+        if let Some(session) = self
+            .state
+            .lock()
+            .expect("pod exec registry lock")
+            .sessions
+            .get_mut(session_id)
+        {
+            session.handle = handle.take();
+        }
+        if let Some(handle) = handle {
+            handle.abort();
+        }
     }
 
     fn list(&self) -> Vec<PodExecSessionSummary> {
@@ -212,12 +227,18 @@ fn validate_terminal_size(size: &PodExecTerminalSize) -> Result<(), AppError> {
     Ok(())
 }
 
-fn exec_target_text(cluster_context: &str, namespace: &str, pod_name: &str) -> String {
-    format!("{cluster_context}/{namespace}/Pod/{pod_name}")
+fn exec_target_text(
+    cluster_context: &str,
+    namespace: &str,
+    pod_name: &str,
+    container: Option<&str>,
+) -> String {
+    let container = container.unwrap_or("<default>");
+    format!("{cluster_context}/{namespace}/Pod/{pod_name}/container/{container}")
 }
 
 fn exec_command_text(command: &[String]) -> String {
-    command.join(" ")
+    serde_json::to_string(command).expect("pod exec command serializes")
 }
 
 fn validate_request(request: &PodExecSessionRequest) -> Result<ValidatedPodExecRequest, AppError> {
@@ -251,7 +272,14 @@ fn validate_request(request: &PodExecSessionRequest) -> Result<ValidatedPodExecR
             "validation",
         ));
     }
-    if request.confirmation.target != exec_target_text(&cluster_context, &namespace, &pod_name) {
+    let container = request
+        .container
+        .as_ref()
+        .map(|container| trimmed(container))
+        .filter(|container| !container.is_empty());
+    if request.confirmation.target
+        != exec_target_text(&cluster_context, &namespace, &pod_name, container.as_deref())
+    {
         return Err(AppError::new(
             "pod exec confirmation target does not match the request",
             "validation",
@@ -268,11 +296,7 @@ fn validate_request(request: &PodExecSessionRequest) -> Result<ValidatedPodExecR
         cluster_context,
         namespace,
         pod_name,
-        container: request
-            .container
-            .as_ref()
-            .map(|container| trimmed(container))
-            .filter(|container| !container.is_empty()),
+        container,
         command,
         stdin: request.stdin,
         tty: request.tty,
@@ -542,6 +566,14 @@ async fn start_pod_exec_session_in_registry(
         last_error: None,
     };
     let (commands, command_rx) = mpsc::unbounded_channel();
+    let summary = registry.insert(summary, commands);
+    send(
+        &channel,
+        PodExecSessionMessage::Started {
+            session_id: session_id.clone(),
+            summary: summary.clone(),
+        },
+    );
     let registry_for_task = registry.clone();
     let handle = tauri::async_runtime::spawn(run_exec_session(
         summary.clone(),
@@ -550,14 +582,7 @@ async fn start_pod_exec_session_in_registry(
         channel.clone(),
         registry_for_task,
     ));
-    let summary = registry.insert(summary, commands, handle);
-    send(
-        &channel,
-        PodExecSessionMessage::Started {
-            session_id,
-            summary: summary.clone(),
-        },
-    );
+    registry.set_handle(&session_id, handle);
     Ok(summary)
 }
 
@@ -622,8 +647,8 @@ mod tests {
             terminal_size: PodExecTerminalSize { cols: 100, rows: 32 },
             confirmation: crate::models::PodExecConfirmation {
                 acknowledged: true,
-                target: "kind-dev/default/Pod/api-0".to_string(),
-                command: "/bin/sh".to_string(),
+                target: "kind-dev/default/Pod/api-0/container/api".to_string(),
+                command: "[\"/bin/sh\"]".to_string(),
             },
         }
     }

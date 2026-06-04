@@ -54,8 +54,8 @@ describe("pod exec helpers", () => {
 			terminalSize: { cols: 100, rows: 32 },
 			confirmation: {
 				acknowledged: true,
-				target: "kind-dev/payments/Pod/api-0",
-				command: "/bin/sh",
+				target: "kind-dev/payments/Pod/api-0/container/api",
+				command: "[\"/bin/sh\"]",
 			},
 		});
 	});
@@ -112,9 +112,14 @@ describe("pod exec helpers", () => {
 			"printenv",
 		]);
 		expect(commandForPreset("bash", "")).toEqual(["/bin/bash"]);
-		expect(podExecTarget(pod)).toBe("kind-dev/payments/Pod/api-0");
+		expect(podExecTarget(pod, "api")).toBe(
+			"kind-dev/payments/Pod/api-0/container/api",
+		);
+		expect(podExecTarget(pod)).toBe(
+			"kind-dev/payments/Pod/api-0/container/<default>",
+		);
 		expect(podExecCommandText(["/bin/sh", "-lc", "date"])).toBe(
-			"/bin/sh -lc date",
+			"[\"/bin/sh\",\"-lc\",\"date\"]",
 		);
 	});
 

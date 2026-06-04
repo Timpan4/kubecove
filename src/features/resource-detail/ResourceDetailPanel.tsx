@@ -229,6 +229,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 					{resource.kind === "Pod" && (
 						<TabsContent value="exec" className="m-0 h-full min-h-0">
 							<ExecTab
+								key={resourceKey}
 								client={client}
 								resource={resource}
 								containers={containerRows}

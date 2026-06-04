@@ -158,7 +158,7 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 
 - guarded YAML edit/apply
 - deployment-aware port-forwarding
-- pod exec
+- expanded exec scopes
 - richer Helm workflows
 - deeper RBAC and security inspection
 - customizable workspace layout

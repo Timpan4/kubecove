@@ -147,4 +147,4 @@ Argo CD CRDs remain a priority dynamic-resource area:
 
 ## Extension Points
 
-Future work can add guarded YAML edit/apply, deployment-aware port-forwarding, pod exec, richer Helm actions, Argo CD API flows, AI assistance, and durable local workspace history. Security-sensitive additions require ADRs before implementation.
+Future work can add guarded YAML edit/apply, deployment-aware port-forwarding, expanded exec scopes, richer Helm actions, Argo CD API flows, AI assistance, and durable local workspace history. Security-sensitive additions require ADRs before implementation.

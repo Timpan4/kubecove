@@ -15,12 +15,16 @@ export interface PodExecDraft {
 	confirmed: boolean;
 }
 
-export function podExecTarget(resource: ResourceSummary): string {
-	return `${resource.cluster}/${resource.namespace ?? ""}/Pod/${resource.name}`;
+export function podExecTarget(
+	resource: ResourceSummary,
+	container?: string,
+): string {
+	const containerName = container?.trim() || "<default>";
+	return `${resource.cluster}/${resource.namespace ?? ""}/Pod/${resource.name}/container/${containerName}`;
 }
 
 export function podExecCommandText(command: string[]): string {
-	return command.join(" ");
+	return JSON.stringify(command);
 }
 
 export function commandForPreset(
@@ -60,7 +64,7 @@ export function buildPodExecRequest(
 		terminalSize: { cols: draft.cols, rows: draft.rows },
 		confirmation: {
 			acknowledged: draft.confirmed,
-			target: podExecTarget(resource),
+			target: podExecTarget(resource, draft.container),
 			command: podExecCommandText(command),
 		},
 	};

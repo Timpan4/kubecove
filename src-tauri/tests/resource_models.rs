@@ -179,8 +179,8 @@ fn test_pod_exec_models_serde() {
         terminal_size: PodExecTerminalSize { cols: 100, rows: 32 },
         confirmation: PodExecConfirmation {
             acknowledged: true,
-            target: "kind-dev/payments/Pod/api-0".to_string(),
-            command: "/bin/sh".to_string(),
+            target: "kind-dev/payments/Pod/api-0/container/api".to_string(),
+            command: "[\"/bin/sh\"]".to_string(),
         },
     };
     let json_val = serde_json::to_value(&request).unwrap();

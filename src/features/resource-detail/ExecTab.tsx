@@ -83,6 +83,7 @@ export function ExecTab({
 	const fitAddonRef = useRef<FitAddon | null>(null);
 	const channelRef = useRef<ReturnType<typeof createPodExecChannel> | null>(null);
 	const sessionIdRef = useRef<string | null>(null);
+	const channelTokenRef = useRef(0);
 	const [preset, setPreset] = useState<PodExecPreset>("sh");
 	const [customArgv, setCustomArgv] = useState("");
 	const [confirmed, setConfirmed] = useState(false);
@@ -114,6 +115,15 @@ export function ExecTab({
 	);
 	const command = commandForPreset(preset, customArgv);
 	const commandText = typeof command === "string" ? "" : podExecCommandText(command);
+
+	const closeCurrentSession = () => {
+		channelTokenRef.current += 1;
+		sessionIdRef.current = null;
+		if (channelRef.current) {
+			closePodExecChannel(channelRef.current);
+			channelRef.current = null;
+		}
+	};
 
 	useEffect(() => {
 		if (!active || !terminalHostRef.current || terminalRef.current) return;
@@ -175,8 +185,8 @@ export function ExecTab({
 	useEffect(() => {
 		return () => {
 			const sessionId = sessionIdRef.current;
+			closeCurrentSession();
 			if (sessionId) void stopPodExecSession(client, sessionId);
-			if (channelRef.current) closePodExecChannel(channelRef.current);
 		};
 	}, [client]);
 
@@ -207,8 +217,22 @@ export function ExecTab({
 	const invalidateSessions = () =>
 		queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() });
 
-	const handleMessage = (event: PodExecSessionMessage) => {
+	const handleMessage = (event: PodExecSessionMessage, token: number) => {
+		if (token !== channelTokenRef.current) return;
+		if (
+			event.type !== "started" &&
+			sessionIdRef.current &&
+			event.sessionId !== sessionIdRef.current
+		) {
+			return;
+		}
 		if (event.type === "started") {
+			if (
+				sessionIdRef.current &&
+				sessionIdRef.current !== event.sessionId
+			) {
+				return;
+			}
 			sessionIdRef.current = event.sessionId;
 			setStatus(event.summary.status);
 			return;
@@ -226,6 +250,7 @@ export function ExecTab({
 			setStatus("error");
 			setError(event.message);
 			terminalRef.current?.writeln(`\r\n${event.message}`);
+			closeCurrentSession();
 			void invalidateSessions();
 			return;
 		}
@@ -236,11 +261,13 @@ export function ExecTab({
 					? "Exec session exited"
 					: `Exec session exited with code ${event.exitCode}`,
 			);
+			closeCurrentSession();
 			void invalidateSessions();
 			return;
 		}
 		if (event.type === "stopped") {
 			setMessage("Exec session stopped");
+			closeCurrentSession();
 			void invalidateSessions();
 		}
 	};
@@ -260,12 +287,23 @@ export function ExecTab({
 			setError(request);
 			return;
 		}
+		const previousSessionId = sessionIdRef.current;
+		closeCurrentSession();
+		if (previousSessionId) {
+			await stopPodExecSession(client, previousSessionId);
+		}
 		setStarting(true);
 		setStatus("starting");
 		setMessage("Starting exec session");
 		terminal?.clear();
-		terminal?.writeln(`Starting ${commandText} on ${podExecTarget(resource)}\r\n`);
-		const channel = createPodExecChannel(handleMessage);
+		terminal?.writeln(
+			`Starting ${commandText} on ${podExecTarget(resource, selectedContainer)}\r\n`,
+		);
+		const channelToken = channelTokenRef.current + 1;
+		channelTokenRef.current = channelToken;
+		const channel = createPodExecChannel((event) =>
+			handleMessage(event, channelToken),
+		);
 		channelRef.current = channel;
 		try {
 			const summary = await startPodExecSession(client, request, channel);
@@ -284,13 +322,10 @@ export function ExecTab({
 	const stopSession = async (sessionId: string) => {
 		setStoppingId(sessionId);
 		try {
+			const isActiveSession = sessionIdRef.current === sessionId;
+			if (isActiveSession) closeCurrentSession();
 			await stopPodExecSession(client, sessionId);
-			if (sessionIdRef.current === sessionId) {
-				sessionIdRef.current = null;
-				if (channelRef.current) {
-					closePodExecChannel(channelRef.current);
-					channelRef.current = null;
-				}
+			if (isActiveSession) {
 				setStatus("stopped");
 			}
 			await invalidateSessions();
@@ -378,7 +413,7 @@ export function ExecTab({
 			<div className="rounded-md border bg-muted/20 p-3 text-xs">
 				<div className="font-medium">Target</div>
 				<div className="mt-1 font-mono text-muted-foreground">
-					{podExecTarget(resource)}
+					{podExecTarget(resource, selectedContainer)}
 				</div>
 				<div className="mt-3 font-medium">Command</div>
 				<div className="mt-1 font-mono text-muted-foreground">
