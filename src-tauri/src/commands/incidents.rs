@@ -418,12 +418,27 @@ fn is_attention(resource: &ResourceSummary) -> bool {
     if is_degraded(resource) {
         return false;
     }
+    if let Some((ready_count, desired_count)) =
+        ready_ratio(resource.ready.as_deref().unwrap_or_default())
+    {
+        if desired_count > 0 && ready_count < desired_count {
+            return true;
+        }
+    }
     let status = resource
         .status
         .as_deref()
         .unwrap_or_default()
         .to_lowercase();
     matches!(status.as_str(), "pending" | "terminating" | "unknown")
+}
+
+fn ready_ratio(ready: &str) -> Option<(i32, i32)> {
+    let (ready_count, desired_count) = ready.split_once('/')?;
+    Some((
+        ready_count.trim().parse().ok()?,
+        desired_count.trim().parse().ok()?,
+    ))
 }
 
 fn status_message(resource: &ResourceSummary) -> String {
@@ -551,6 +566,23 @@ mod tests {
         let items = build_incident_items(vec![resource("api-0")], Vec::new());
 
         assert!(items.is_empty());
+    }
+
+    #[test]
+    fn workload_ready_ratio_below_desired_becomes_attention_item() {
+        let mut deployment = resource("api");
+        deployment.kind = "Deployment".to_string();
+        deployment.api_version = Some("apps/v1".to_string());
+        deployment.group = Some("apps".to_string());
+        deployment.plural = Some("deployments".to_string());
+        deployment.ready = Some("0/3".to_string());
+
+        let items = build_incident_items(vec![deployment], Vec::new());
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].severity, IncidentSeverity::Attention);
+        assert_eq!(items[0].signals[0].label, "Needs attention");
+        assert!(items[0].signals[0].message.contains("Ready 0/3"));
     }
 
     #[test]
