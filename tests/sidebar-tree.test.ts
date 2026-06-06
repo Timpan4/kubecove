@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
 	buildNamespaceTreeNode,
 	buildShallowNamespaceTreeNode,
@@ -49,5 +50,22 @@ describe("sidebar namespace tree helpers", () => {
 		expect(countTreeNodes([deep])).toBeGreaterThan(20);
 		expect(deep.children?.at(-1)?.label).toBe("Discovered");
 		expect(deep.children?.at(-1)?.children?.length).toBe(10);
+	});
+
+	test("uses the same selection path for sidebar rows and chevrons", () => {
+		const source = readFileSync("src/components/SidebarTree.tsx", "utf8");
+		const chevronClick = source.slice(
+			source.indexOf("const handleChevronClick"),
+			source.indexOf("const handleChevronKeyDown"),
+		);
+		const chevronKey = source.slice(
+			source.indexOf("const handleChevronKeyDown"),
+			source.indexOf("return (", source.indexOf("const handleChevronKeyDown")),
+		);
+
+		expect(chevronClick).toContain("onNodeSelect(node.id)");
+		expect(chevronClick).toContain("onSectionToggle(idStr)");
+		expect(chevronKey).toContain("onNodeSelect(node.id)");
+		expect(chevronKey).toContain("onSectionToggle(idStr)");
 	});
 });

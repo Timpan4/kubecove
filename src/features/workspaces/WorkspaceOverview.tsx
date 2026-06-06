@@ -282,7 +282,11 @@ export function WorkspaceOverview({
 						</Badge>
 					</div>
 				</div>
-				<div className="flex gap-2">
+				<div className="flex flex-wrap justify-end gap-2">
+					<Button type="button" onClick={() => onOpenResources()}>
+						<Boxes data-icon="inline-start" />
+						Resources
+					</Button>
 					<Button type="button" variant="outline" onClick={onOpenLauncher}>
 						<FolderOpen data-icon="inline-start" />
 						Workspaces
@@ -294,10 +298,6 @@ export function WorkspaceOverview({
 					<Button type="button" variant="outline" onClick={onOpenIncidents}>
 						<AlertTriangle data-icon="inline-start" />
 						Incidents
-					</Button>
-					<Button type="button" onClick={() => onOpenResources()}>
-						<Boxes data-icon="inline-start" />
-						Resources
 					</Button>
 				</div>
 			</div>

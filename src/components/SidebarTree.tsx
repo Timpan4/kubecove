@@ -146,6 +146,9 @@ function TreeNodeComponent({
 
   const handleChevronClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isDisabled) {
+      onNodeSelect(node.id);
+    }
     onSectionToggle(idStr);
   };
 
@@ -153,6 +156,9 @@ function TreeNodeComponent({
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       e.stopPropagation();
+      if (!isDisabled) {
+        onNodeSelect(node.id);
+      }
       onSectionToggle(idStr);
     }
   };

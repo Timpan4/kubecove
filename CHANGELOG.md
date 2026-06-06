@@ -3,6 +3,21 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.4.3 - 2026-06-06
+
+### Improved
+
+- Tightened the resource-browser shortcut path so overview Resources opens the
+  saved workspace scope directly.
+- Made sidebar chevron clicks select the same node they expand, reducing split
+  behavior between row labels and disclosure controls.
+- Added release smoke guidance for Windows foregrounding and guarded Pod exec.
+
+### Release
+
+- Prepared KubeCove v0.4.3 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
+
 ## 0.4.2 - 2026-06-04
 
 ### Added

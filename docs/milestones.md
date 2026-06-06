@@ -105,10 +105,27 @@ Test target: local Tauri dev app backed by the `admin@solid-k8s` context after K
 - [x] Pass: resource browser opened from the overview.
 - [ ] Issue: Pod resource listing remained on `Loading all namespaces` for more than 20 seconds, blocking table, detail, YAML, event, log, metrics, and topology smoke coverage in this run.
 - [x] Fixed: KubeCove dev mode uses ports 1430/1431 so it can run alongside another Tauri project on the default 1420/1421 ports.
-- [ ] Improvement: the Resources shortcut opens an empty resource browser state that says "Select a section from the sidebar"; defaulting to the saved workspace kind scope or highlighting the next required click would make the path less abrupt.
-- [ ] Improvement: sidebar group labels and disclosure chevrons behave differently; clicking Workloads text selects the group, while clicking the chevron expands it. Make the hit target or affordance clearer.
-- [ ] Improvement: workspace card keyboard tab order reached Edit before Open during this smoke pass, making the safest primary action less direct from the keyboard.
-- [ ] Improvement: Windows smoke automation needs the Tauri window explicitly foregrounded; the WebView exposes only an opaque `WRY_WEBVIEW` pane through UI Automation.
+- [x] Fixed in 0.4.3: the Resources shortcut opens the saved workspace resource scope directly instead of an empty browser state.
+- [x] Fixed in 0.4.3: sidebar group disclosure chevrons now select the same row they expand so selection and expansion feel aligned.
+- [x] Fixed in 0.4.3: workspace card keyboard order reaches Open before Edit and Delete.
+- [x] Documented in 0.4.3: Windows smoke automation needs the Tauri window explicitly foregrounded; the WebView exposes only an opaque `WRY_WEBVIEW` pane through UI Automation.
+
+## 0.4.3 Release-Hardening Checks - 2026-06-06
+
+Target: patch beta 0.4.3 using the existing readable `admin@solid-k8s` context before publishing.
+
+- [x] Version metadata bumped to 0.4.3 in frontend, Tauri, Rust, and lockfile metadata.
+- [x] README and release docs describe guarded exact-Pod exec as a shipped feature and keep apply/delete/scale/sync/rollback out of release claims.
+- [x] Overview Resources shortcut remains pinned to the saved workspace scope with regression coverage.
+- [x] Sidebar chevron clicks select the same node they expand with regression coverage.
+- [x] Workspace card action order keeps Open before Edit and Delete with regression coverage.
+- [x] Windows smoke guidance records that the Tauri window must be foregrounded before click-through because the WebView is exposed as an opaque `WRY_WEBVIEW` pane.
+- [x] Run local automated baseline: `bun run typecheck`, `bun test`, `bun run rust:test`, and `bun run rust:check`.
+- [ ] Rerun `bun run release:dry-run` after the 0.4.3 bump reaches `origin/main`; the 2026-06-06 pre-merge dry run correctly failed because `origin/main` still reports 0.4.2, equal to latest tag `app-v0.4.2`.
+- [x] Run partial manual Tauri smoke on `admin@solid-k8s`: launcher context and namespace loading, workspace restore, overview resource scope, resource browser, topology, metrics, and selected-resource details/events.
+- [x] Confirm saved workspace resource listing no longer remains stuck on `Loading all namespaces`; backend `list_resource_scope` completed with 293-313 rows in 315-642 ms during the 2026-06-06 smoke.
+- [ ] Complete manual Pod detail/YAML/logs and guarded Pod exec click-through from exact Pod detail before claiming 0.4.3 release readiness; Windows WebView capture became opaque during this pass.
+- [ ] Rerun port-forward manager smoke before publishing 0.4.3.
 
 ## Milestone 8: Guarded Live Sessions
 
