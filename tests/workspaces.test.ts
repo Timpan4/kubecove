@@ -385,6 +385,29 @@ describe("workspace helpers", () => {
 			"You can still save an all-namespace workspace",
 		);
 	});
+
+	test("keeps overview Resources primary and visible in wrapping actions", () => {
+		const source = readFileSync(
+			"src/features/workspaces/WorkspaceOverview.tsx",
+			"utf8",
+		);
+		const headerActionsStart = source.indexOf(
+			'className="flex flex-wrap justify-end gap-2"',
+		);
+		const headerActionsEnd = source.indexOf("</div>", headerActionsStart);
+		const headerActions = source.slice(headerActionsStart, headerActionsEnd);
+
+		expect(headerActionsStart).toBeGreaterThanOrEqual(0);
+		expect(headerActions.indexOf("Resources")).toBeLessThan(
+			headerActions.indexOf("Workspaces"),
+		);
+		expect(headerActions.indexOf("Resources")).toBeLessThan(
+			headerActions.indexOf("Port Forwards"),
+		);
+		expect(headerActions.indexOf("Resources")).toBeLessThan(
+			headerActions.indexOf("Incidents"),
+		);
+	});
 });
 
 function resource(overrides: Partial<ResourceSummary>): ResourceSummary {

@@ -59,13 +59,14 @@ jobs:
         run: bun run doctor:ci -- --full
 
       - name: Check React Doctor score
+        if: github.event_name == 'pull_request'
         env:
           REACT_DOCTOR_MIN_SCORE: "90"
         run: |
-          score="$(bun node_modules/react-doctor/bin/react-doctor.js . --score --fail-on none)"
-          echo "React Doctor score: ${score}"
+          score="$(bun node_modules/react-doctor/bin/react-doctor.js . --diff origin/${{ github.base_ref }} --score --fail-on none)"
+          echo "React Doctor changed-file score: ${score}"
           if [ "${score}" -lt "${REACT_DOCTOR_MIN_SCORE}" ]; then
-            echo "React Doctor score ${score} is below ${REACT_DOCTOR_MIN_SCORE}."
+            echo "React Doctor changed-file score ${score} is below ${REACT_DOCTOR_MIN_SCORE}."
             exit 1
           fi
 

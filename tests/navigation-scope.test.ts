@@ -58,6 +58,38 @@ describe("navigation scope", () => {
 		).toBe(false);
 	});
 
+	test("overview Resources shortcut opens the saved workspace scope directly", () => {
+		const source = readFileSync("src/App.tsx", "utf8");
+		const handlerStart = source.indexOf("const handleOpenResources = (");
+		const handlerEnd = source.indexOf("const handleOpenArgo =", handlerStart);
+		const handlerSource = source.slice(handlerStart, handlerEnd);
+
+		expect(handlerSource).toContain("setSelectedTreeNode(null)");
+		expect(handlerSource).toContain("setSelectedKinds(workspace.scope.kinds)");
+		expect(handlerSource).toContain("setViewMode(\"resources\")");
+		expect(handlerSource.indexOf("setSelectedTreeNode(null)")).toBeLessThan(
+			handlerSource.indexOf("setViewMode(\"resources\")"),
+		);
+	});
+
+	test("workspace card keyboard order keeps Open before edit and delete", () => {
+		const source = readFileSync(
+			"src/features/workspaces/WorkspaceLauncher.tsx",
+			"utf8",
+		);
+		const actionStart = source.indexOf("aria-label={`${workspace.name} actions`}");
+		const actionEnd = source.indexOf("</CardAction>", actionStart);
+		const actions = source.slice(actionStart, actionEnd);
+
+		expect(actions.indexOf("Open ${workspace.name}")).toBeGreaterThanOrEqual(0);
+		expect(actions.indexOf("Open ${workspace.name}")).toBeLessThan(
+			actions.indexOf("Edit ${workspace.name}"),
+		);
+		expect(actions.indexOf("Edit ${workspace.name}")).toBeLessThan(
+			actions.indexOf("Delete ${workspace.name}"),
+		);
+	});
+
 	test("port forwards section resolves to the workspace management view", () => {
 		const scope = resolveTreeScope({
 			type: "section",
