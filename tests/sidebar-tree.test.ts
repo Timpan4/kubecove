@@ -54,18 +54,16 @@ describe("sidebar namespace tree helpers", () => {
 
 	test("uses the same selection path for sidebar rows and chevrons", () => {
 		const source = readFileSync("src/components/SidebarTree.tsx", "utf8");
-		const chevronClick = source.slice(
-			source.indexOf("const handleChevronClick"),
-			source.indexOf("const handleChevronKeyDown"),
+		const chevronClick = /const handleChevronClick\b[^=]*=\s*\([^)]*\)\s*=>\s*\{[\s\S]*?\n\s*\};/.exec(
+			source,
 		);
-		const chevronKey = source.slice(
-			source.indexOf("const handleChevronKeyDown"),
-			source.indexOf("return (", source.indexOf("const handleChevronKeyDown")),
+		const chevronKey = /const handleChevronKeyDown\b[^=]*=\s*\([^)]*\)\s*=>\s*\{[\s\S]*?\n\s*\};/.exec(
+			source,
 		);
 
-		expect(chevronClick).toContain("onNodeSelect(node.id)");
-		expect(chevronClick).toContain("onSectionToggle(idStr)");
-		expect(chevronKey).toContain("onNodeSelect(node.id)");
-		expect(chevronKey).toContain("onSectionToggle(idStr)");
+		expect(chevronClick?.[0]).toMatch(/onNodeSelect\(node\.id\)/);
+		expect(chevronClick?.[0]).toMatch(/onSectionToggle\(idStr\)/);
+		expect(chevronKey?.[0]).toMatch(/onNodeSelect\(node\.id\)/);
+		expect(chevronKey?.[0]).toMatch(/onSectionToggle\(idStr\)/);
 	});
 });

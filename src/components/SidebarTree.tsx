@@ -114,7 +114,7 @@ function TreeNodeComponent({
             ? "pl-14"
             : "pl-[72px]";
 
-  const handleClick = () => {
+  const selectTreeNode = () => {
     if (isDisabled) {
       return;
     }
@@ -127,7 +127,7 @@ function TreeNodeComponent({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      handleClick();
+      selectTreeNode();
       return;
     }
 
@@ -177,7 +177,7 @@ function TreeNodeComponent({
           depthPaddingClass,
         )}
         data-depth={depth}
-        onClick={handleClick}
+        onClick={selectTreeNode}
         onKeyDown={handleKeyDown}
         role="treeitem"
         tabIndex={isDisabled ? -1 : 0}

@@ -401,7 +401,7 @@ export function WorkspaceOverview({
 					{argoDetectedQuery.isPending && (
 						<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
 							<Spinner className="size-4" />
-							Detecting...
+							Detecting&hellip;
 						</div>
 					)}
 					{argoDetectedQuery.data === false && (
@@ -412,7 +412,7 @@ export function WorkspaceOverview({
 							{argoAppsQuery.isPending && (
 								<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
 									<Spinner className="size-4" />
-									Loading applications...
+									Loading applications&hellip;
 								</div>
 							)}
 							{argoAppsQuery.isError && (
