@@ -245,7 +245,7 @@ export function SidebarTree({
   const [resourceKindsLoading, setResourceKindsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resourceKindsError, setResourceKindsError] = useState<string | null>(null);
-  const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+  const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 
   const loadNamespaces = useCallback(async () => {
     if (!clusterContext) {

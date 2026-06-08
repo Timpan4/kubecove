@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cable, Copy, Play, Save, Square } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -94,7 +94,10 @@ export function PortForwardTab({
 			) ?? null,
 	);
 	const savePortForward = useWorkspaceStore((state) => state.savePortForward);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
+	const showKubeconfigSourceLabels = useSettingsState(
+		(state) => state.showKubeconfigSourceLabels,
+	);
 	const [remotePort, setRemotePort] = useState("");
 	const [localPort, setLocalPort] = useState("");
 	const [formError, setFormError] = useState<string | null>(null);
@@ -126,16 +129,11 @@ export function PortForwardTab({
 				: [],
 		[detailsYaml, resource.kind],
 	);
-
-	useEffect(() => {
-		if (
-			resource.kind === "Service" &&
-			!remotePort.trim() &&
-			servicePortOptions.length > 0
-		) {
-			setRemotePort(String(servicePortOptions[0].port));
-		}
-	}, [remotePort, resource.kind, servicePortOptions]);
+	const selectedRemotePort =
+		remotePort.trim() ||
+		(resource.kind === "Service" && servicePortOptions[0]
+			? String(servicePortOptions[0].port)
+			: "");
 
 	if (!isForwardableResource(resource)) {
 		return (
@@ -171,7 +169,7 @@ export function PortForwardTab({
 		setSaveMessage(null);
 		setSaveError(null);
 		const parsed = parsePortForwardForm(
-			{ remotePort, localPort },
+			{ remotePort: selectedRemotePort, localPort },
 			{ remotePortLabel: targetKind === "Service" ? "Service port" : "Pod port" },
 		);
 		if (typeof parsed === "string") {
@@ -209,7 +207,7 @@ export function PortForwardTab({
 			return;
 		}
 		const parsed = parsePortForwardForm(
-			{ remotePort, localPort },
+			{ remotePort: selectedRemotePort, localPort },
 			{ remotePortLabel: "Service port" },
 		);
 		if (typeof parsed === "string") {
@@ -288,7 +286,7 @@ export function PortForwardTab({
 						{targetKind === "Service" ? "Service port" : "Pod port"}
 					</FieldLabel>
 					{targetKind === "Service" && servicePortOptions.length > 0 ? (
-						<Select value={remotePort} onValueChange={setRemotePort}>
+							<Select value={selectedRemotePort} onValueChange={setRemotePort}>
 							<SelectTrigger
 								id="pod-port-forward-remote-port"
 								className="w-full"
@@ -433,6 +431,12 @@ export function PortForwardTab({
 											<div className="truncate text-[11px] text-muted-foreground">
 												{sessionResolution(session)}
 											</div>
+											{showKubeconfigSourceLabels &&
+												session.kubeconfigSourceLabel && (
+													<div className="truncate text-[11px] text-muted-foreground">
+														{session.kubeconfigSourceLabel}
+													</div>
+												)}
 										</div>
 										<Badge
 											variant={

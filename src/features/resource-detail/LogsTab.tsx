@@ -55,7 +55,7 @@ export function LogsTab({
 	const [wrapLines, setWrapLines] = useState(false);
 	const [latestFirst, setLatestFirst] = useState(false);
 	const [autoFollow, setAutoFollow] = useState(true);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const logViewportRef = useRef<HTMLDivElement>(null);
 	const regularContainers = containers.filter(
 		(container) => container.type !== "init",

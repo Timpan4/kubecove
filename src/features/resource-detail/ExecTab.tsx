@@ -79,7 +79,10 @@ export function ExecTab({
 	active,
 }: ExecTabProps) {
 	const queryClient = useQueryClient();
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
+	const showKubeconfigSourceLabels = useSettingsState(
+		(state) => state.showKubeconfigSourceLabels,
+	);
 	const terminalHostRef = useRef<HTMLDivElement>(null);
 	const terminalRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
@@ -185,8 +188,8 @@ export function ExecTab({
 	}, [active]);
 
 	useEffect(() => {
+		const sessionId = sessionIdRef.current;
 		return () => {
-			const sessionId = sessionIdRef.current;
 			closeCurrentSession();
 			if (sessionId) void stopPodExecSession(client, sessionId);
 		};
@@ -499,6 +502,12 @@ export function ExecTab({
 											? `Container ${session.container}`
 											: "Default container"}
 									</div>
+									{showKubeconfigSourceLabels &&
+										session.kubeconfigSourceLabel && (
+											<div className="truncate text-[11px] text-muted-foreground">
+												{session.kubeconfigSourceLabel}
+											</div>
+										)}
 								</div>
 								<div className="flex items-center gap-2">
 									<Badge

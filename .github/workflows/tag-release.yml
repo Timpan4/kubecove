@@ -1,0 +1,68 @@
+name: Tag Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  tag:
+    name: Tag merged release PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Find associated release PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GH_REPO}/commits/${GITHUB_SHA}/pulls" > prs.json
+          node <<'EOF'
+          const { appendFileSync, readFileSync } = require("node:fs");
+          const prs = JSON.parse(readFileSync("prs.json", "utf8"));
+          const releasePr = prs.find((pr) =>
+            pr.state === "closed" &&
+            pr.merged_at &&
+            pr.labels?.some((label) => label.name === "release") &&
+            /^🔧 release KubeCove v\d+\.\d+\.\d+/.test(pr.title ?? "")
+          );
+          const output = process.env.GITHUB_OUTPUT;
+          if (!output) throw new Error("GITHUB_OUTPUT is missing.");
+          if (!releasePr) {
+            appendFileSync(output, "should_tag=false\n");
+          } else {
+            appendFileSync(output, "should_tag=true\n");
+            appendFileSync(output, `title=${releasePr.title}\n`);
+            appendFileSync(output, `labels=${releasePr.labels.map((label) => label.name).join(",")}\n`);
+            appendFileSync(output, `number=${releasePr.number}\n`);
+          }
+          EOF
+
+      - name: Checkout main
+        if: steps.pr.outputs.should_tag == 'true'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        if: steps.pr.outputs.should_tag == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Create release tag
+        if: steps.pr.outputs.should_tag == 'true'
+        env:
+          RELEASE_PR_TITLE: ${{ steps.pr.outputs.title }}
+          RELEASE_PR_LABELS: ${{ steps.pr.outputs.labels }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: bun scripts/tag-release.ts

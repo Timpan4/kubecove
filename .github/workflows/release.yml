@@ -121,6 +121,16 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
         run: bun scripts/validate-release-tag.ts
 
+      - name: Read release notes
+        id: release_body
+        shell: bash
+        run: |
+          {
+            echo "body<<EOF"
+            bun scripts/release-body.ts
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Typecheck frontend
         run: bun run typecheck
 
@@ -143,7 +153,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "KubeCove v__VERSION__"
-          releaseBody: "Beta installers for KubeCove. These artifacts are unsigned beta builds; smoke test before sharing broadly."
+          releaseBody: ${{ steps.release_body.outputs.body }}
           releaseDraft: ${{ needs.prepare.outputs.release-draft }}
           prerelease: false
           includeUpdaterJson: true

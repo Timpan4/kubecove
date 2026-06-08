@@ -103,7 +103,7 @@ export function ArgoCDPanel({
 	selectedArgoKind,
 }: ArgoCDPanelProps) {
 	const client = useMemo(() => createTauriClient(), []);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 
 	const {
 		data: argoDetected,

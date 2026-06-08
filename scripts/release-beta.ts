@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import {
 	RELEASE_TAG_PREFIX,
 	assertMatchingReleaseVersions,
-	assertVersionGreaterThanLatestTag,
+	compareSemverVersions,
 	latestReleaseTagVersionFromRefs,
 	parseCargoPackageVersion,
 	requireVersion,
@@ -44,27 +44,24 @@ try {
 	].join("\n"));
 }
 
-try {
-	assertVersionGreaterThanLatestTag(
-		packageVersion,
-		latestReleaseTagVersion,
-		"origin/main release version",
-	);
-} catch (error) {
-	fail(error instanceof Error ? error.message : String(error));
-}
+const versionTagState = compareVersionToLatestTag(packageVersion, latestReleaseTagVersion);
 
 const tagName = `${RELEASE_TAG_PREFIX}${packageVersion}`;
 const releaseName = `KubeCove v${packageVersion}`;
 
-assertMissingLocalTag(tagName);
-assertMissingRemoteTag(tagName);
+if (versionTagState === "new") {
+	assertMissingLocalTag(tagName);
+	assertMissingRemoteTag(tagName);
+}
 
 if (mode === "check") {
 	console.log(`Release check passed for ${releaseName} (${tagName}) at origin/main ${shortSha(originMainSha)}.`);
 	console.log(latestReleaseTagVersion
 		? `Latest release tag: ${RELEASE_TAG_PREFIX}${latestReleaseTagVersion}.`
 		: "No existing release tags found.");
+	if (versionTagState === "released") {
+		console.log("No pending release: origin/main already matches the latest release tag.");
+	}
 	process.exit(0);
 }
 
@@ -73,16 +70,20 @@ if (mode === "dry-run") {
 	console.log(latestReleaseTagVersion
 		? `Latest release tag: ${RELEASE_TAG_PREFIX}${latestReleaseTagVersion}.`
 		: "No existing release tags found.");
-	console.log(`Would create annotated tag: ${tagName} -> origin/main ${shortSha(originMainSha)}`);
-	console.log(`Would push tag: git push origin ${tagName}`);
+	if (versionTagState === "released") {
+		console.log("No pending release: origin/main already matches the latest release tag.");
+	} else {
+		console.log(`GitHub release PR flow would create ${tagName} after the release PR merges.`);
+	}
 	console.log("GitHub Actions would run tests, build installers, and publish a GitHub Release.");
 	process.exit(0);
 }
 
-run("git", ["tag", "-a", tagName, originMainSha, "-m", releaseName], { inherit: true });
-run("git", ["push", "origin", tagName], { inherit: true });
-console.log(`Pushed ${tagName} for origin/main ${shortSha(originMainSha)}.`);
-console.log("GitHub Actions will run tests, build installers, and publish a GitHub Release.");
+fail([
+	"Local release publishing is retired.",
+	"Start the Prepare Release PR workflow in GitHub Actions instead.",
+	`Validated candidate: ${releaseName} (${tagName}) at origin/main ${shortSha(originMainSha)}.`,
+].join("\n"));
 
 function fetchReleaseRefs(): void {
 	run("git", ["fetch", "--quiet", "--no-tags", "origin", "main:refs/remotes/origin/main"]);
@@ -143,6 +144,22 @@ function assertMissingRemoteTag(tagName: string): void {
 
 function shortSha(sha: string): string {
 	return sha.slice(0, 12);
+}
+
+function compareVersionToLatestTag(
+	version: string,
+	latestTagVersion: string | null,
+): "new" | "released" {
+	requireVersion("origin/main release version", version);
+	if (!latestTagVersion) return "new";
+	requireVersion("latest release tag", latestTagVersion);
+	const comparison = compareSemverVersions(version, latestTagVersion);
+	if (comparison < 0) {
+		fail(
+			`origin/main release version ${version} is older than latest release tag ${RELEASE_TAG_PREFIX}${latestTagVersion}.`,
+		);
+	}
+	return comparison === 0 ? "released" : "new";
 }
 
 function run(

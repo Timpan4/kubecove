@@ -65,7 +65,7 @@ function LoadingState() {
 		<div className={STATE_CLASS}>
 			<span className="inline-flex items-center gap-2">
 				<Spinner className="size-4" />
-				Loading Helm releases...
+					Loading Helm releases…
 			</span>
 		</div>
 	);
@@ -219,7 +219,7 @@ function HelmTable({
 										}
 										tabIndex={0}
 										role="button"
-										aria-selected={isSelected}
+											aria-pressed={isSelected}
 									>
 										<TableCell>{release.name}</TableCell>
 										<TableCell>{release.namespace}</TableCell>
@@ -267,7 +267,7 @@ export function HelmPanel({
 	onTargetReleaseResolved,
 }: HelmPanelProps) {
 	const client = useMemo(() => createTauriClient(), []);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const {
 		data: releases,
 		isPending,

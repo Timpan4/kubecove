@@ -25,7 +25,7 @@ export function NamespaceList({
 	const [namespaces, setNamespaces] = useState<NamespaceSummary[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const requestSeqRef = useRef(0);
 
 	const loadNamespaces = useCallback(async () => {
@@ -87,7 +87,7 @@ export function NamespaceList({
 		return (
 			<div className="flex items-center gap-2 text-sm text-muted-foreground">
 				<Spinner className="size-4" />
-				Loading namespaces...
+					Loading namespaces…
 			</div>
 		);
 	}

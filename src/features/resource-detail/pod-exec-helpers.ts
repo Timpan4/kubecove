@@ -44,7 +44,7 @@ export function commandForPreset(
 export function buildPodExecRequest(
 	resource: ResourceSummary,
 	draft: PodExecDraft,
-	kubeconfigEnvVar?: string,
+	kubeconfigSource?: string,
 ): PodExecSessionRequest | string {
 	if (resource.kind !== "Pod") return "Pod exec starts from an exact Pod";
 	if (!resource.namespace) return "Pod exec requires a namespace";
@@ -57,7 +57,7 @@ export function buildPodExecRequest(
 
 	return {
 		clusterContext: resource.cluster,
-		kubeconfigEnvVar,
+		kubeconfigEnvVar: sourceRequestEnvVar(kubeconfigSource),
 		namespace: resource.namespace,
 		podName: resource.name,
 		container: draft.container || undefined,
@@ -76,16 +76,31 @@ export function buildPodExecRequest(
 export function isPodExecForResource(
 	session: PodExecSessionSummary,
 	resource: ResourceSummary,
-	kubeconfigEnvVar?: string,
+	kubeconfigSource?: string,
 ): boolean {
 	return (
 		resource.kind === "Pod" &&
-		normalizeKubeconfigEnvVar(session.kubeconfigEnvVar) ===
-			normalizeKubeconfigEnvVar(kubeconfigEnvVar) &&
+		sessionKubeconfigSource(session) === normalizeKubeconfigSource(kubeconfigSource) &&
 		session.clusterContext === resource.cluster &&
 		session.namespace === resource.namespace &&
 		session.podName === resource.name
 	);
+}
+
+function normalizeKubeconfigSource(source?: string): string {
+	if (source?.startsWith("kubeconfigSource=")) return source;
+	return `kubeconfigEnv=${normalizeKubeconfigEnvVar(source)}`;
+}
+
+function sessionKubeconfigSource(session: PodExecSessionSummary): string {
+	return (
+		session.kubeconfigSourceKey ??
+		`kubeconfigEnv=${normalizeKubeconfigEnvVar(session.kubeconfigEnvVar)}`
+	);
+}
+
+function sourceRequestEnvVar(source?: string): string | undefined {
+	return source?.startsWith("kubeconfigSource=") ? undefined : source;
 }
 
 export function sortPodExecSessions(

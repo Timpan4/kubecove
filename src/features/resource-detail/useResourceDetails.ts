@@ -46,7 +46,7 @@ export function useResourceDetails({
 	yamlEncoding,
 }: UseResourceDetailsArgs) {
 	const queryClient = useQueryClient();
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const sourceKey = kubeconfigSourceKey(kubeconfigEnvVar);
 	const resourceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const eventsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
