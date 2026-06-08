@@ -2,9 +2,9 @@
 
 KubeCove is a local desktop workspace for Kubernetes operations. It is built for operators and app developers who need to move from cluster scope to namespace, application, resource state, topology, events, logs, metrics, YAML, Helm metadata, Argo CD signals, and RBAC context without losing their place.
 
-The current beta is inspection-first with governed Pod and selector-backed Service port-forward sessions plus exact-Pod guarded exec sessions. KubeCove does not deploy agents into clusters, does not expose raw kubeconfig contents to React, and does not let the frontend run arbitrary shell commands. The architecture is ready for guarded cluster operations, but apply, delete, scale, sync, and rollback workflows are not shipped unless a typed Rust-side command and explicit UX guardrails exist.
+The current beta is inspection-first with governed Pod and selector-backed Service port-forward sessions, exact-Pod guarded exec sessions, and selected-resource YAML apply. KubeCove does not deploy agents into clusters, does not expose raw kubeconfig contents to React, and does not let the frontend run arbitrary shell commands. The architecture is ready for guarded cluster operations, but broad apply, delete, scale, sync, and rollback workflows are not shipped unless a typed Rust-side command and explicit UX guardrails exist.
 
-Current version metadata: `0.4.3`.
+Current version metadata: `0.5.0`.
 
 ## Get KubeCove
 
@@ -24,10 +24,11 @@ Beta installers are unsigned at the OS package level, so macOS Gatekeeper or Win
 - Fast resource tables with namespace, kind, health, search, Argo CD app, and owner filters.
 - Resource inspection through details, YAML, events, logs, metrics, and topology views.
 - Argo CD CRD detection with Application, ApplicationSet, and AppProject browsing.
-- Helm release detection from cluster metadata.
+- Helm release detection, details, and reconciliation from cluster metadata.
 - RBAC summaries and risk indicators.
 - Guarded Pod and selector-backed Service port-forward sessions with local-only listeners.
 - Guarded exact-Pod exec sessions with explicit target and command confirmation.
+- Guarded selected-resource YAML apply with dry-run diff, Secret protection, and explicit confirmation.
 - Unsigned beta desktop installers for macOS, Windows, and Linux.
 
 ## Development
@@ -75,7 +76,9 @@ Pod and selector-backed Service port-forwarding follows [ADR 0003](docs/decision
 
 Pod exec follows [ADR 0005](docs/decisions/0005-guarded-pod-exec-sessions.md): exact Pod targets, explicit argv, visible sessions, and no frontend shell bridge.
 
-Future cluster-changing workflows must follow [ADR 0004](docs/decisions/0004-guarded-cluster-operations.md): typed commands, visible target scope, confirmation, user-visible errors, and permission-aware UX. CLI-backed, Argo CD API, sync, rollback, diff, or broad filesystem workflows need focused design before they become product paths.
+Selected-resource YAML apply follows [ADR 0006](docs/decisions/0006-guarded-selected-resource-yaml-apply.md): the edited object must match the selected resource, multi-document YAML and redacted Secrets are blocked, dry-run diff runs before apply, and the final apply needs explicit confirmation.
+
+Future cluster-changing workflows must follow [ADR 0004](docs/decisions/0004-guarded-cluster-operations.md): typed commands, visible target scope, confirmation, user-visible errors, and permission-aware UX. CLI-backed, Argo CD API, sync, rollback, broad apply, or broad filesystem workflows need focused design before they become product paths.
 
 ## Stack
 

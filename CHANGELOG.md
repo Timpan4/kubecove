@@ -3,6 +3,30 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.5.0 - 2026-06-08
+
+### Added
+
+- Added guarded selected-resource YAML apply with apply-friendly YAML, server-side
+  dry-run, diff review, Secret apply protection, and explicit final
+  confirmation.
+- Added Helm reconciliation so release details compare decoded Helm intent with
+  live cluster resources.
+- Added ADR 0006 for the selected-resource YAML apply guardrail contract.
+
+### Improved
+
+- Fixed the YAML edit flow so apply preparation and refresh behavior stay
+  aligned with the selected resource.
+- Improved ownership topology selection with animated flow paths that respect
+  reduced-motion preferences.
+- Tightened WebView process-tree detection for local browser/process tooling.
+
+### Release
+
+- Prepared KubeCove v0.5.0 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
+
 ## 0.4.3 - 2026-06-06
 
 ### Improved

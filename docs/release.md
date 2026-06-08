@@ -6,7 +6,7 @@ https://github.com/Timpan4/kubecove/releases
 
 Use a release installer when testing the app. Build from source only for development work.
 
-Current version metadata: `0.4.3`.
+Current version metadata: `0.5.0`.
 
 ## Installer Guide
 
@@ -20,9 +20,9 @@ Windows releases intentionally publish the NSIS setup executable, not MSI, so in
 
 ## Product Safety
 
-The current beta is inspection-first and includes guarded Pod and selector-backed Service port-forward sessions plus exact-Pod guarded exec sessions. It supports local cluster browsing, resource details, YAML, events, logs, metrics, topology, Argo CD inspection, Helm release inspection, RBAC summaries, local-only port-forwarding, and guarded exec from a selected Pod.
+The current beta is inspection-first and includes guarded Pod and selector-backed Service port-forward sessions, exact-Pod guarded exec sessions, and selected-resource YAML apply. It supports local cluster browsing, resource details, YAML, events, logs, metrics, topology, Argo CD inspection, Helm release inspection and reconciliation, RBAC summaries, local-only port-forwarding, guarded exec from a selected Pod, and guarded apply from the selected resource YAML panel.
 
-Cluster-changing workflows such as apply, delete, scale, sync, and rollback are not release features unless a typed command and guarded UX path exist. Pod and selector-backed Service port-forwarding follows [ADR 0003](decisions/0003-guarded-live-sessions.md), and exact-Pod exec follows [ADR 0005](decisions/0005-guarded-pod-exec-sessions.md). Future operation releases must follow [ADR 0004](decisions/0004-guarded-cluster-operations.md).
+Broad cluster-changing workflows such as arbitrary apply, delete, scale, sync, and rollback are not release features unless a typed command and guarded UX path exist. Pod and selector-backed Service port-forwarding follows [ADR 0003](decisions/0003-guarded-live-sessions.md), exact-Pod exec follows [ADR 0005](decisions/0005-guarded-pod-exec-sessions.md), and selected-resource YAML apply follows [ADR 0006](decisions/0006-guarded-selected-resource-yaml-apply.md). Future operation releases must follow [ADR 0004](decisions/0004-guarded-cluster-operations.md).
 
 ## Maintainer Release Flow
 
@@ -76,7 +76,8 @@ Manual Tauri path:
 5. Open the resource browser and confirm resources load for the saved scope.
 6. Select a resource and confirm details, YAML, events, and logs behave when available.
 7. For a selected Pod, confirm guarded exec requires explicit target and command confirmation, starts, streams output, accepts stdin, resizes, and stops.
-8. Check Argo CD and Helm sections when the cluster provides matching metadata.
+8. For a non-Secret selected resource, confirm YAML apply requires the Apply-friendly view, runs dry-run, shows a diff, and requires explicit final confirmation.
+9. Check Argo CD and Helm sections when the cluster provides matching metadata.
 
 Windows smoke note: foreground the Tauri window before click-through. The WebView appears as an opaque `WRY_WEBVIEW` pane to UI Automation, so treat UIA as launch/foreground help rather than full interaction automation.
 
@@ -88,7 +89,7 @@ Most recent partial smoke, 2026-05-26:
 - Pod resource listing remained on `Loading all namespaces` for more than 20 seconds, blocking full table, detail, YAML, event, log, metrics, and topology smoke coverage.
 - KubeCove dev mode now uses ports 1430/1431 so it can run alongside another Tauri project on the default 1420/1421 ports.
 
-0.4.3 release-hardening checks should re-run this path on `admin@solid-k8s`, plus guarded Pod exec, before publishing.
+0.5.0 release-hardening checks should re-run this path on `admin@solid-k8s`, plus guarded Pod exec, selected-resource YAML apply, and Helm reconciliation, before publishing.
 
 ## Publishing Checklist
 
