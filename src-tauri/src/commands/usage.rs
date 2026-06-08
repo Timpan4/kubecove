@@ -6,6 +6,10 @@ use super::usage_webview::{
 #[cfg(target_os = "windows")]
 use super::usage_webview::{is_orphan_webview_start_candidate, is_windows_app_webview_process};
 use super::usage_webview::{is_webview_descendant_process, webview_process_role};
+#[cfg(target_os = "windows")]
+use super::usage_webview::{
+    is_windows_app_webview_browser_process, windows_webview_host_exe_names,
+};
 use crate::models::{AppError, AppUsageMetrics, AppUsageMetricsBreakdown};
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
@@ -90,7 +94,7 @@ fn process_tree_pids(system: &System, root_pid: Pid) -> HashSet<Pid> {
         .processes()
         .iter()
         .map(|(pid, process)| (*pid, process.parent()));
-    process_tree_pids_from_relations(root_pid, relations)
+    process_tree_pids_from_roots([root_pid], relations)
 }
 
 fn usage_process_pids(system: &System, root_pid: Pid) -> HashSet<Pid> {
@@ -108,19 +112,36 @@ fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut Ha
         return;
     };
     let root_start_time = root_process.start_time();
-    let host_exe_name = root_process.name().to_string_lossy();
+    let host_exe_names = windows_webview_host_exe_names(root_process);
+    if host_exe_names.is_empty() {
+        return;
+    }
 
-    let related_pids: Vec<Pid> = system
+    let webview_roots: HashSet<Pid> = system
         .processes()
         .iter()
-        .filter(|(pid, process)| {
-            !pids.contains(pid)
-                && is_orphan_webview_start_candidate(root_start_time, process.start_time())
-                && is_windows_app_webview_process(process, &host_exe_name)
+        .filter_map(|(pid, process)| {
+            if !is_windows_app_webview_process(process, &host_exe_names) {
+                return None;
+            }
+            if is_windows_app_webview_browser_process(process, &host_exe_names)
+                || is_orphan_webview_start_candidate(root_start_time, process.start_time())
+            {
+                Some(*pid)
+            } else {
+                None
+            }
         })
-        .map(|(pid, _)| *pid)
         .collect();
-    pids.extend(related_pids);
+    if webview_roots.is_empty() {
+        return;
+    }
+
+    let relations = system
+        .processes()
+        .iter()
+        .map(|(pid, process)| (*pid, process.parent()));
+    pids.extend(process_tree_pids_from_roots(webview_roots, relations));
 }
 
 #[cfg(target_os = "macos")]
@@ -158,8 +179,15 @@ pub(crate) fn process_tree_pids_from_relations(
     root_pid: Pid,
     relations: impl IntoIterator<Item = (Pid, Option<Pid>)>,
 ) -> HashSet<Pid> {
+    process_tree_pids_from_roots([root_pid], relations)
+}
+
+fn process_tree_pids_from_roots(
+    root_pids: impl IntoIterator<Item = Pid>,
+    relations: impl IntoIterator<Item = (Pid, Option<Pid>)>,
+) -> HashSet<Pid> {
     let relations: Vec<(Pid, Option<Pid>)> = relations.into_iter().collect();
-    let mut pids = HashSet::from([root_pid]);
+    let mut pids: HashSet<Pid> = root_pids.into_iter().collect();
     let mut changed = true;
 
     while changed {
@@ -362,7 +390,9 @@ fn usage_process_group(pid: Pid, root_pid: Pid, process: &Process) -> UsageProce
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_cpu_percent, process_tree_pids_from_relations};
+    use super::{
+        normalize_cpu_percent, process_tree_pids_from_relations, process_tree_pids_from_roots,
+    };
     use sysinfo::Pid;
 
     fn pid(value: u32) -> Pid {
@@ -407,5 +437,25 @@ mod tests {
         );
 
         assert_eq!(pids, [pid(10), pid(11)].into_iter().collect());
+    }
+
+    #[test]
+    fn collects_multiple_process_roots_for_reused_webview_browser() {
+        let pids = process_tree_pids_from_roots(
+            [pid(10), pid(30)],
+            [
+                (pid(10), None),
+                (pid(30), Some(pid(99))),
+                (pid(31), Some(pid(30))),
+                (pid(32), Some(pid(30))),
+                (pid(40), None),
+                (pid(41), Some(pid(40))),
+            ],
+        );
+
+        assert_eq!(
+            pids,
+            [pid(10), pid(30), pid(31), pid(32)].into_iter().collect()
+        );
     }
 }
