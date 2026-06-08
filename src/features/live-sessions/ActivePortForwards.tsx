@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, Copy, RotateCcw, Square } from "lucide-react";
+import { Cable, Copy, RotateCcw, Square, Terminal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,10 +12,16 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	createTauriClient,
+	listPodExecSessions,
 	listPortForwards,
+	stopPodExecSession,
 	stopPodPortForward,
 } from "@/lib/tauri";
-import type { PortForwardSessionSummary } from "@/lib/types";
+import { useSettingsState } from "@/lib/settings";
+import type {
+	PodExecSessionSummary,
+	PortForwardSessionSummary,
+} from "@/lib/types";
 import { queryKeys } from "@/lib/queryKeys";
 import {
 	portForwardErrorMessage,
@@ -26,6 +32,10 @@ import { useReconnectPortForwardSession } from "./useReconnectPortForwardSession
 
 function sessionLabel(session: PortForwardSessionSummary): string {
 	return `${session.namespace}/${session.targetKind}/${session.targetName}:${session.remotePort}`;
+}
+
+function execSessionLabel(session: PodExecSessionSummary): string {
+	return `${session.namespace}/Pod/${session.podName}`;
 }
 
 async function copyText(text: string): Promise<void> {
@@ -43,6 +53,9 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 	const [stoppingId, setStoppingId] = useState<string | null>(null);
 	const [reconnectError, setReconnectError] = useState<string | null>(null);
 	const [copyingId, setCopyingId] = useState<string | null>(null);
+	const showKubeconfigSourceLabels = useSettingsState(
+		(state) => state.showKubeconfigSourceLabels,
+	);
 	const { reconnectingId, reconnectSession } =
 		useReconnectPortForwardSession({
 			client,
@@ -55,18 +68,52 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 		placeholderData: (previousData) => previousData,
 		refetchInterval: 3_000,
 	});
+	const execSessionsQuery = useQuery({
+		queryKey: queryKeys.podExecSessions(),
+		queryFn: () => listPodExecSessions(client),
+		placeholderData: (previousData) => previousData,
+		refetchInterval: 3_000,
+	});
 	const sessions = useMemo(
 		() => sortPortForwardSessions(sessionsQuery.data ?? []),
 		[sessionsQuery.data],
 	);
+	const execSessions = useMemo(
+		() =>
+			(execSessionsQuery.data ?? []).toSorted((a, b) =>
+				`${a.clusterContext}:${a.namespace}:${a.podName}:${a.startedAt}`.localeCompare(
+					`${b.clusterContext}:${b.namespace}:${b.podName}:${b.startedAt}`,
+				),
+			),
+		[execSessionsQuery.data],
+	);
+	const sessionCount = sessions.length + execSessions.length;
 
-	if (sessions.length === 0 && !sessionsQuery.isLoading) return null;
+	if (
+		sessionCount === 0 &&
+		!sessionsQuery.isLoading &&
+		!execSessionsQuery.isLoading
+	) {
+		return null;
+	}
 
 	const stopSession = async (sessionId: string) => {
 		setStoppingId(sessionId);
 		try {
 			await stopPodPortForward(client, sessionId);
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
+		} finally {
+			setStoppingId(null);
+		}
+	};
+
+	const stopExecSession = async (sessionId: string) => {
+		setStoppingId(sessionId);
+		try {
+			await stopPodExecSession(client, sessionId);
+			await queryClient.invalidateQueries({
+				queryKey: queryKeys.podExecSessions(),
+			});
 		} finally {
 			setStoppingId(null);
 		}
@@ -91,7 +138,7 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 					className="mr-1 h-8 text-muted-foreground [-webkit-app-region:no-drag]"
 				>
 					<Cable data-icon="inline-start" />
-					{sessions.length}
+					{sessionCount}
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent align="end" className="w-96">
@@ -99,13 +146,15 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 					<div className="flex items-center justify-between gap-3">
 						<div className="min-w-0">
 							<div className="truncate text-sm font-semibold">
-								Port forwards
+								Live sessions
 							</div>
 							<div className="text-xs text-muted-foreground">
-								Active local tunnels
+								Active port-forwards and Pod exec sessions
 							</div>
 						</div>
-						{sessionsQuery.isFetching && <Spinner className="size-3.5" />}
+						{(sessionsQuery.isFetching || execSessionsQuery.isFetching) && (
+							<Spinner className="size-3.5" />
+						)}
 					</div>
 					{onOpenManager && (
 						<Button
@@ -126,6 +175,58 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 					)}
 					<Separator />
 					<div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+						{execSessions.map((session) => (
+							<div
+								key={session.id}
+								className="flex min-w-0 flex-col gap-2 rounded-md border bg-background p-2"
+							>
+								<div className="flex min-w-0 items-center justify-between gap-2">
+									<div className="min-w-0">
+										<div className="inline-flex max-w-full items-center gap-1 truncate text-xs font-medium">
+											<Terminal className="size-3 shrink-0" />
+											<span className="truncate">{execSessionLabel(session)}</span>
+										</div>
+										<div className="truncate font-mono text-[11px] text-muted-foreground">
+											{session.command.join(" ")}
+										</div>
+										{showKubeconfigSourceLabels &&
+											session.kubeconfigSourceLabel && (
+												<div className="truncate text-[11px] text-muted-foreground">
+													{session.kubeconfigSourceLabel}
+												</div>
+											)}
+									</div>
+									<Badge
+										variant={
+											session.status === "error" ? "destructive" : "outline"
+										}
+									>
+										{session.status}
+									</Badge>
+								</div>
+								{session.lastError && (
+									<div className="text-xs text-destructive">
+										{session.lastError}
+									</div>
+								)}
+								<div className="flex flex-wrap justify-end gap-2">
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onClick={() => void stopExecSession(session.id)}
+										disabled={stoppingId === session.id}
+									>
+										{stoppingId === session.id ? (
+											<Spinner data-icon="inline-start" />
+										) : (
+											<Square data-icon="inline-start" />
+										)}
+										Stop
+									</Button>
+								</div>
+							</div>
+						))}
 						{sessions.map((session) => {
 							const localUrl = portForwardLocalUrl(session);
 							return (
@@ -141,6 +242,12 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 											<div className="truncate font-mono text-[11px] text-muted-foreground">
 												{localUrl}
 											</div>
+											{showKubeconfigSourceLabels &&
+												session.kubeconfigSourceLabel && (
+													<div className="truncate text-[11px] text-muted-foreground">
+														{session.kubeconfigSourceLabel}
+													</div>
+												)}
 										</div>
 										<Badge
 											variant={
@@ -198,7 +305,7 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 								</div>
 							);
 						})}
-						{sessions.length === 0 && (
+						{sessionCount === 0 && (
 							<div className="text-sm text-muted-foreground">
 								Loading active sessions...
 							</div>

@@ -18,6 +18,7 @@ import {
 import {
 	portForwardErrorMessage,
 	isReusablePortForwardSession,
+	savedPortForwardLocalPortConflict,
 	savedPortForwardMatchesSession,
 	savedPortForwardToRequest,
 } from "./helpers";
@@ -28,6 +29,7 @@ export interface SavedPortForwardStartResult {
 	session?: PortForwardSessionSummary;
 	error?: string;
 	skipped?: boolean;
+	conflict?: boolean;
 }
 
 function setStartingId(
@@ -80,6 +82,25 @@ async function startSavedPortForward({
 		};
 	}
 
+	const conflictingSession = savedPortForwardLocalPortConflict(
+		portForward,
+		knownSessions,
+	);
+	if (conflictingSession) {
+		const message = `Local port ${conflictingSession.localPort} is already used by ${conflictingSession.namespace}/${conflictingSession.targetKind}/${conflictingSession.targetName}.`;
+		updateSavedPortForward(workspaceId, portForward.id, {
+			lastStatus: "error",
+			lastError: message,
+		});
+		return {
+			portForwardId: portForward.id,
+			ok: false,
+			error: message,
+			skipped: true,
+			conflict: true,
+		};
+	}
+
 	updateSavedPortForward(workspaceId, portForward.id, {
 		lastStatus: "starting",
 		lastError: undefined,
@@ -113,7 +134,7 @@ export function useSavedPortForwardActions(
 	activeSessions?: PortForwardSessionSummary[],
 ) {
 	const client = useMemo(() => createTauriClient(), []);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const queryClient = useQueryClient();
 	const updateSavedPortForward = useWorkspaceStore(
 		(state) => state.updateSavedPortForward,

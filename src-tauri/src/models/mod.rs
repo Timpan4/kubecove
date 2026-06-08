@@ -46,8 +46,9 @@ pub use resource::{
     YamlViewMode,
 };
 pub use sessions::{
-    PodExecConfirmation, PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummary,
-    PodExecTerminalSize, PortForwardRequest, PortForwardSessionSummary,
+    LiveSessionCleanupRequest, LiveSessionCleanupResult, PodExecConfirmation,
+    PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummary, PodExecTerminalSize,
+    PortForwardRequest, PortForwardSessionSummary,
 };
 pub use streams::{
     PodLogStreamRequest, StreamMessage, WatchResourceKey, WatchResourceKind, WatchResourceTarget,

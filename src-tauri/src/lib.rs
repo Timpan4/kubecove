@@ -2,25 +2,34 @@ pub mod commands;
 pub mod models;
 
 use commands::{
-    apply_yaml, detect_argocd, get_app_usage_metrics, get_argocd_application_details,
-    get_argocd_appproject_details, get_argocd_appset_details, get_dynamic_resource_details,
-    get_helm_release_details, get_helm_release_reconciliation, get_resource_details,
-    get_resource_yaml, lint_kubernetes_yaml, list_argocd_applications, list_argocd_appprojects,
-    list_argocd_appsets, list_dynamic_resources, list_helm_releases, list_incident_cockpit,
-    list_kube_contexts, list_namespaces, list_pod_exec_sessions, list_port_forwards,
-    list_rbac_inspection, list_resource_events, list_resource_kinds, list_resource_metrics,
-    list_resource_scope, list_resource_topology, list_resources, prepare_yaml_apply,
-    resize_pod_exec_terminal, start_pod_exec_session, start_pod_log_stream, start_pod_port_forward,
-    start_resource_event_watch, start_resource_watch, stop_pod_exec_session, stop_port_forward,
-    stop_stream, write_pod_exec_stdin, AppUsageMonitor, ClusterLiveStore, PodExecRegistry,
-    PortForwardRegistry, StreamRegistry,
+    add_kubeconfig_paths, apply_yaml, detect_argocd, get_app_usage_metrics,
+    get_argocd_application_details, get_argocd_appproject_details, get_argocd_appset_details,
+    get_dynamic_resource_details, get_helm_release_details, get_helm_release_reconciliation,
+    get_kubeconfig_sources, get_resource_details, get_resource_yaml, init_kubeconfig_settings_path,
+    lint_kubernetes_yaml, list_argocd_applications, list_argocd_appprojects, list_argocd_appsets,
+    list_dynamic_resources, list_helm_releases, list_incident_cockpit, list_kube_contexts,
+    list_namespaces, list_pod_exec_sessions, list_port_forwards, list_rbac_inspection,
+    list_resource_events, list_resource_kinds, list_resource_metrics, list_resource_scope,
+    list_resource_topology, list_resources, pick_kubeconfig_paths, prepare_yaml_apply,
+    remove_kubeconfig_path, reorder_kubeconfig_paths, resize_pod_exec_terminal,
+    set_kubeconfig_env_var, set_show_kubeconfig_source_labels, start_pod_exec_session,
+    start_pod_log_stream, start_pod_port_forward, start_resource_event_watch, start_resource_watch,
+    stop_live_sessions_outside_scope, stop_pod_exec_session, stop_port_forward, stop_stream,
+    write_pod_exec_stdin, AppUsageMonitor, ClusterLiveStore, PodExecRegistry, PortForwardRegistry,
+    StreamRegistry,
 };
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .setup(|app| {
+            init_kubeconfig_settings_path(app.path().app_config_dir()?);
+            Ok(())
+        })
         .manage(ClusterLiveStore::default())
         .manage(StreamRegistry::default())
         .manage(PortForwardRegistry::default())
@@ -66,7 +75,15 @@ pub fn run() {
             resize_pod_exec_terminal,
             stop_pod_exec_session,
             list_pod_exec_sessions,
-            get_app_usage_metrics
+            stop_live_sessions_outside_scope,
+            get_app_usage_metrics,
+            get_kubeconfig_sources,
+            set_kubeconfig_env_var,
+            set_show_kubeconfig_source_labels,
+            pick_kubeconfig_paths,
+            add_kubeconfig_paths,
+            remove_kubeconfig_path,
+            reorder_kubeconfig_paths
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

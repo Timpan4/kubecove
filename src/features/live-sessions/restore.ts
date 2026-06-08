@@ -2,6 +2,7 @@ import type { SavedWorkspace } from "@/lib/workspaces";
 
 interface SavedPortForwardRestoreResult {
 	ok: boolean;
+	conflict?: boolean;
 }
 
 export function savedPortForwardCount(workspace: SavedWorkspace | null): number {
@@ -13,6 +14,10 @@ export function savedPortForwardStartFailureMessage(
 ): string | null {
 	const failedCount = results.filter((result) => !result.ok).length;
 	if (failedCount === 0) return null;
+	const conflictCount = results.filter((result) => result.conflict).length;
+	if (conflictCount > 0) {
+		return `${conflictCount} saved ${conflictCount === 1 ? "forward has" : "forwards have"} local port conflicts. Review port forwards for details.`;
+	}
 	return `${failedCount} saved ${failedCount === 1 ? "forward" : "forwards"} failed to start. Review port forwards for details.`;
 }
 

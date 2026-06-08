@@ -136,7 +136,10 @@ export function WorkspacePortForwardsPage({
 	const autoStartSavedPortForwards = useSettingsState(
 		(state) => state.autoStartSavedPortForwards,
 	);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
+	const showKubeconfigSourceLabels = useSettingsState(
+		(state) => state.showKubeconfigSourceLabels,
+	);
 	const setAutoStartSavedPortForwards = useSettingsState(
 		(state) => state.setAutoStartSavedPortForwards,
 	);
@@ -147,20 +150,27 @@ export function WorkspacePortForwardsPage({
 		placeholderData: (previousData) => previousData,
 		refetchInterval: 3_000,
 	});
-	const sessionsForActions = useMemo(
+	const allSessions = useMemo(
 		() =>
 			sessionsQuery.data
+				? sortPortForwardSessions(sessionsQuery.data)
+				: undefined,
+		[sessionsQuery.data],
+	);
+	const sessionsForActions = useMemo(
+		() =>
+			allSessions
 				? sortPortForwardSessions(
-						sessionsQuery.data.filter((session) =>
+						allSessions.filter((session) =>
 							sessionInWorkspaceScope(workspace, session),
 						),
 					)
 				: undefined,
-		[sessionsQuery.data, workspace],
+		[allSessions, workspace],
 	);
 	const sessions = sessionsForActions ?? EMPTY_SESSIONS;
 	const { startOne, startAll, startingIds, startingAll } =
-		useSavedPortForwardActions(workspace, sessionsForActions);
+		useSavedPortForwardActions(workspace, allSessions);
 	const [formOpen, setFormOpen] = useState(false);
 	const [editingId, setEditingId] = useState<string | null>(null);
 	const [form, setForm] = useState<SavedPortForwardFormValues>(() =>
@@ -226,9 +236,12 @@ export function WorkspacePortForwardsPage({
 	const handleStartAll = async () => {
 		const results = await startAll(savedPortForwards);
 		const failures = results.filter((result) => !result.ok).length;
+		const conflicts = results.filter((result) => result.conflict).length;
 		setBulkMessage(
 			failures > 0
-				? `${failures} saved ${failures === 1 ? "forward" : "forwards"} failed to start.`
+				? conflicts > 0
+					? `${conflicts} saved ${conflicts === 1 ? "forward has" : "forwards have"} local port conflicts.`
+					: `${failures} saved ${failures === 1 ? "forward" : "forwards"} failed to start.`
 				: `Started ${results.length} saved ${results.length === 1 ? "forward" : "forwards"}.`,
 		);
 	};
@@ -352,6 +365,12 @@ export function WorkspacePortForwardsPage({
 												Resolved Pod: {session.resolvedPodName}:
 												{session.resolvedPodPort}
 											</div>
+											{showKubeconfigSourceLabels &&
+												session.kubeconfigSourceLabel && (
+													<div className="mt-1 truncate text-xs text-muted-foreground">
+														{session.kubeconfigSourceLabel}
+													</div>
+												)}
 											{session.lastError && (
 												<div className="mt-2 text-xs text-destructive">
 													{session.lastError}

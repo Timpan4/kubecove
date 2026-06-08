@@ -17,7 +17,8 @@ Pod exec v1 is limited to exact namespaced Pods.
 - Interactive shell presets are exact `/bin/sh` and `/bin/bash` commands; there is no silent fallback.
 - Custom commands are passed as explicit argv, not parsed by a local shell.
 - Each start requires explicit user confirmation.
-- Sessions are in-memory only, visible in the Pod detail surface, and stoppable.
+- Sessions are in-memory only, visible in the Pod detail surface and live-session indicator, and stoppable.
+- Workspace switches and kubeconfig source changes stop sessions outside the new workspace context and source scope by default; a user setting may keep them running.
 - Sessions are not saved, restored, or auto-started across app restarts.
 - Output is streamed to the active UI session and is not persisted as local history.
 - Kubernetes RBAC remains authoritative for `pods/exec`; forbidden and command errors are surfaced as user-visible errors.

@@ -1,5 +1,6 @@
 import "./App.css";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useDashboardState } from "./lib/hooks";
 import { SidebarTree } from "./components/SidebarTree";
 import { AppTopBar } from "./app/AppTopBar";
@@ -27,6 +28,7 @@ import {
 } from "./features/live-sessions/restore";
 import { useSavedPortForwardActions } from "./features/live-sessions/useSavedPortForwardActions";
 import { useSettingsState } from "./lib/settings";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
 	Sidebar,
 	SidebarContent,
@@ -40,6 +42,11 @@ import {
 } from "./lib/tree-nav";
 import { diagnosticLog } from "./lib/diagnostics";
 import {
+	createTauriClient,
+	getKubeconfigSources,
+	stopLiveSessionsOutsideScope,
+} from "./lib/tauri";
+import {
 	SUPPORTED_KINDS,
 	type HelmReleaseSummary,
 	type ResourceKindSelection,
@@ -50,7 +57,9 @@ import {
 	makeWorkspaceShortcuts,
 	useWorkspaceStore,
 	type SavedWorkspace,
+	workspaceScopeContexts,
 } from "./lib/workspaces";
+import { queryKeys } from "./lib/queryKeys";
 import {
 	canQueryResourceScope,
 	getAppContentTitle,
@@ -60,6 +69,7 @@ import {
 } from "./app/viewHelpers";
 
 function App() {
+	const queryClient = useQueryClient();
 	const {
 		workspaces,
 		activeWorkspaceId,
@@ -91,8 +101,17 @@ function App() {
 	const activeWorkspace =
 		workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
 	const showUsageFooter = useSettingsState((state) => state.showUsageFooter);
+	const setKubeconfigSources = useSettingsState(
+		(state) => state.setKubeconfigSources,
+	);
 	const autoStartSavedPortForwards = useSettingsState(
 		(state) => state.autoStartSavedPortForwards,
+	);
+	const keepLiveSessionsOnWorkspaceSwitch = useSettingsState(
+		(state) => state.keepLiveSessionsOnWorkspaceSwitch,
+	);
+	const kubeconfigSourceKey = useSettingsState(
+		(state) => state.kubeconfigSourceKey,
 	);
 	const [resourceHealthFilter, setResourceHealthFilter] =
 		useState<HealthFilter>("all");
@@ -107,6 +126,11 @@ function App() {
 		dismissedPortForwardRestoreWorkspaceId,
 		setDismissedPortForwardRestoreWorkspaceId,
 	] = useState<string | null>(null);
+	const [liveSessionCleanupMessage, setLiveSessionCleanupMessage] = useState<
+		string | null
+	>(null);
+	const liveSessionScopeInitializedRef = useRef(false);
+	const liveSessionCleanupPromiseRef = useRef<Promise<void>>(Promise.resolve());
 	const autoStartedSavedPortForwardWorkspaceIdsRef = useRef<Set<string>>(
 		new Set(),
 	);
@@ -114,6 +138,15 @@ function App() {
 	const appRenderCountRef = useRef(0);
 	appRenderCountRef.current += 1;
 	useAppUpdateLaunchCheck();
+
+	useEffect(() => {
+		const client = createTauriClient();
+		void getKubeconfigSources(client).then(setKubeconfigSources).catch((error) => {
+			diagnosticLog("kubeconfig.sources.load.error", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+		});
+	}, [setKubeconfigSources]);
 
 	const applyWorkspace = useCallback(
 		(workspace: SavedWorkspace) => {
@@ -427,6 +460,55 @@ function App() {
 
 	useArgoDetection(clusterContext, setArgoDetected);
 
+	const liveSessionAllowedContexts = useMemo(
+		() => (activeWorkspace ? workspaceScopeContexts(activeWorkspace.scope) : []),
+		[activeWorkspace],
+	);
+	const liveSessionAllowedContextsKey = liveSessionAllowedContexts.join("|");
+
+	useEffect(() => {
+		if (!liveSessionScopeInitializedRef.current) {
+			liveSessionScopeInitializedRef.current = true;
+			return;
+		}
+		if (keepLiveSessionsOnWorkspaceSwitch) {
+			liveSessionCleanupPromiseRef.current = Promise.resolve();
+			return;
+		}
+
+		const client = createTauriClient();
+		const cleanup = (async () => {
+			try {
+				const result = await stopLiveSessionsOutsideScope(client, {
+					allowedClusterContexts: liveSessionAllowedContexts,
+					kubeconfigSourceKey,
+				});
+				await Promise.all([
+					queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() }),
+					queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() }),
+				]);
+				const stopped =
+					result.stoppedPortForwards + result.stoppedPodExecSessions;
+				if (stopped > 0) {
+					setLiveSessionCleanupMessage(
+						`Stopped ${result.stoppedPortForwards} port ${result.stoppedPortForwards === 1 ? "forward" : "forwards"} and ${result.stoppedPodExecSessions} exec ${result.stoppedPodExecSessions === 1 ? "session" : "sessions"} outside this workspace.`,
+					);
+				}
+			} catch (error) {
+				setLiveSessionCleanupMessage(
+					`Live session cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		})();
+		liveSessionCleanupPromiseRef.current = cleanup;
+	}, [
+		keepLiveSessionsOnWorkspaceSwitch,
+		kubeconfigSourceKey,
+		liveSessionAllowedContexts,
+		liveSessionAllowedContextsKey,
+		queryClient,
+	]);
+
 	useEffect(() => {
 		if (
 			!shouldAutoStartSavedPortForwards({
@@ -440,7 +522,10 @@ function App() {
 			return;
 		}
 		autoStartedSavedPortForwardWorkspaceIdsRef.current.add(activeWorkspace.id);
-		void savedPortForwardActions.startAll();
+		void (async () => {
+			await liveSessionCleanupPromiseRef.current;
+			await savedPortForwardActions.startAll();
+		})();
 	}, [
 		activeWorkspace,
 		autoStartSavedPortForwards,
@@ -526,6 +611,21 @@ function App() {
 			role="main"
 			className="flex h-full w-full min-w-0 flex-col overflow-hidden"
 		>
+			{liveSessionCleanupMessage && (
+				<Alert className="rounded-none border-x-0 border-t-0">
+					<AlertTitle>Live sessions updated</AlertTitle>
+					<AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+						<span>{liveSessionCleanupMessage}</span>
+						<button
+							type="button"
+							className="text-xs font-medium text-muted-foreground underline-offset-4 hover:underline"
+							onClick={() => setLiveSessionCleanupMessage(null)}
+						>
+							Dismiss
+						</button>
+					</AlertDescription>
+				</Alert>
+			)}
 			{showPortForwardRestorePrompt && activeWorkspace && (
 				<SavedPortForwardRestorePrompt
 					workspace={activeWorkspace}
