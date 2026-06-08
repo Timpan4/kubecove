@@ -33,6 +33,8 @@ Broad cluster-changing workflows such as arbitrary apply, delete, scale, sync, a
    - release notes do not claim guarded operations that are not implemented
 3. Merge the release PR to `main`.
 
+The prepare workflow needs a `RELEASE_PR_TOKEN` repository secret for opening or updating the release PR. Use a fine-grained token with repository access to `Timpan4/kubecove` and write permissions for Contents, Pull requests, and Issues.
+
 The release PR is the human review gate. After merge, GitHub Actions finds the merged PR with the `release` label, creates the matching annotated `app-vX.Y.Z` tag, runs the release workflow, builds macOS, Windows, and Linux installers, verifies updater assets, and publishes the GitHub Release automatically.
 
 Manual workflow dispatch for the release workflow is only for rerunning an existing `app-v*` tag. Reruns preserve the existing release visibility.
