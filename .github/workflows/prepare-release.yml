@@ -55,17 +55,13 @@ jobs:
 
       - name: Open release PR
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           BRANCH_NAME: ${{ steps.release.outputs.branch }}
           RELEASE_TITLE: ${{ steps.release.outputs.title }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "Missing RELEASE_PR_TOKEN secret. GitHub Actions GITHUB_TOKEN cannot create pull requests when repository Actions settings disallow it." >&2
-            exit 1
-          fi
           gh label create release --description "Release automation marker" --color "0E8A16" 2>/dev/null || true
           existing_pr="$(gh pr list --head "$BRANCH_NAME" --state open --json number --jq '.[0].number // empty')"
           body="$(cat <<EOF
