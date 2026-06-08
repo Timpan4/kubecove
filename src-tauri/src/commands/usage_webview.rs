@@ -20,6 +20,9 @@ const MACOS_ORPHAN_WEBKIT_PROCESS_MARKERS: &[&str] = &[
     "com.apple.webkit.storage",
 ];
 
+const WINDOWS_WEBVIEW_PROCESS_MARKER: &str = "msedgewebview2";
+const WINDOWS_WEBVIEW_HOST_EXE_ARG: &str = "--webview-exe-name=";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct OrphanWebViewProcessCandidate {
     pub start_time: u64,
@@ -80,6 +83,17 @@ pub(super) fn is_macos_orphan_webkit_process(process: &Process) -> bool {
 pub(super) fn is_macos_orphan_webkit_process_text(process_text: &str) -> bool {
     let name = process_text.to_ascii_lowercase();
     contains_any(&name, MACOS_ORPHAN_WEBKIT_PROCESS_MARKERS)
+}
+
+pub(super) fn is_windows_app_webview_process(process: &Process, host_exe_name: &str) -> bool {
+    is_windows_app_webview_process_text(host_exe_name, &process_identity_text(process))
+}
+
+pub(super) fn is_windows_app_webview_process_text(host_exe_name: &str, process_text: &str) -> bool {
+    let host_exe_name = host_exe_name.to_ascii_lowercase();
+    let text = process_text.to_ascii_lowercase();
+    text.contains(WINDOWS_WEBVIEW_PROCESS_MARKER)
+        && text.contains(&format!("{WINDOWS_WEBVIEW_HOST_EXE_ARG}{host_exe_name}"))
 }
 
 pub(super) fn webview_process_role(process: &Process) -> Option<String> {
@@ -270,8 +284,9 @@ impl WebViewCohort {
 mod tests {
     use super::{
         is_macos_orphan_webkit_process_text, is_orphan_webview_start_candidate,
-        is_webview_descendant_process_text, selected_orphan_webview_cohort_start_time,
-        webview_process_role_from_cmd, OrphanWebViewProcessCandidate, WebViewProcessRole,
+        is_webview_descendant_process_text, is_windows_app_webview_process_text,
+        selected_orphan_webview_cohort_start_time, webview_process_role_from_cmd,
+        OrphanWebViewProcessCandidate, WebViewProcessRole,
     };
 
     #[test]
@@ -309,6 +324,27 @@ mod tests {
         ] {
             assert!(!is_macos_orphan_webkit_process_text(process_name));
         }
+    }
+
+    #[test]
+    fn identifies_windows_webview_processes_for_the_host_exe() {
+        assert!(is_windows_app_webview_process_text(
+            "kubecove.exe",
+            r#""C:\Program Files (x86)\Microsoft\EdgeWebView\Application\148.0.3967.96\msedgewebview2.exe" --embedded-browser-webview=1 --webview-exe-name=kubecove.exe --user-data-dir="C:\Users\timpa\AppData\Local\com.timpan.kubecove\EBWebView""#,
+        ));
+        assert!(is_windows_app_webview_process_text(
+            "kubecove.exe",
+            r#""C:\Program Files (x86)\Microsoft\EdgeWebView\Application\148.0.3967.96\msedgewebview2.exe" --type=renderer --webview-exe-name=kubecove.exe --embedded-browser-webview=1"#,
+        ));
+
+        assert!(!is_windows_app_webview_process_text(
+            "kubecove.exe",
+            r#""C:\Program Files (x86)\Microsoft\EdgeWebView\Application\148.0.3967.96\msedgewebview2.exe" --embedded-browser-webview=1 --webview-exe-name=SearchHost.exe"#,
+        ));
+        assert!(!is_windows_app_webview_process_text(
+            "kubecove.exe",
+            r#""C:\Users\timpa\AppData\Local\KubeCove\kubecove.exe""#,
+        ));
     }
 
     #[test]

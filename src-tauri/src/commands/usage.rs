@@ -3,6 +3,8 @@ use super::usage_webview::{
     is_macos_orphan_webkit_process, macos_orphan_webview_process_candidate,
     selected_orphan_webview_cohort_start_time,
 };
+#[cfg(target_os = "windows")]
+use super::usage_webview::{is_orphan_webview_start_candidate, is_windows_app_webview_process};
 use super::usage_webview::{is_webview_descendant_process, webview_process_role};
 use crate::models::{AppError, AppUsageMetrics, AppUsageMetricsBreakdown};
 use chrono::Utc;
@@ -29,7 +31,7 @@ impl AppUsageMonitor {
         system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::nothing(),
+            ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
         );
 
         let pids = usage_process_pids(&system, current_pid);
@@ -97,8 +99,29 @@ fn usage_process_pids(system: &System, root_pid: Pid) -> HashSet<Pid> {
     pids
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn add_related_orphan_webview_pids(_system: &System, _root_pid: Pid, _pids: &mut HashSet<Pid>) {}
+
+#[cfg(target_os = "windows")]
+fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut HashSet<Pid>) {
+    let Some(root_process) = system.process(root_pid) else {
+        return;
+    };
+    let root_start_time = root_process.start_time();
+    let host_exe_name = root_process.name().to_string_lossy();
+
+    let related_pids: Vec<Pid> = system
+        .processes()
+        .iter()
+        .filter(|(pid, process)| {
+            !pids.contains(pid)
+                && is_orphan_webview_start_candidate(root_start_time, process.start_time())
+                && is_windows_app_webview_process(process, &host_exe_name)
+        })
+        .map(|(pid, _)| *pid)
+        .collect();
+    pids.extend(related_pids);
+}
 
 #[cfg(target_os = "macos")]
 fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut HashSet<Pid>) {
