@@ -399,7 +399,8 @@
 @media (prefers-reduced-motion: reduce) {
   .resource-topology-node-connected,
   .resource-topology-node-selected,
-  .ownership-map-flow .ownership-map-edge-active .react-flow__edge-path {
+  .ownership-map-flow .ownership-map-edge-active .react-flow__edge-path,
+  .ownership-map-flow .react-flow__edge.animated path {
     animation: none;
   }
 }
