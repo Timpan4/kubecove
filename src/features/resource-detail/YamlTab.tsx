@@ -1,4 +1,4 @@
-import { useCallback, useReducer } from "react";
+import { useCallback, useReducer, useRef } from "react";
 import type { Diagnostic } from "@codemirror/lint";
 import { YamlTabContent } from "@/features/resource-detail/YamlTabContent";
 import { YamlTabHeader } from "@/features/resource-detail/YamlTabHeader";
@@ -112,12 +112,14 @@ export function YamlTab({
 		},
 		[],
 	);
+	const startApplyRequestId = useRef(0);
 	const secretApplyDisabled =
 		resource.kind === "Secret" && (resource.apiVersion ?? "v1") === "v1";
 	const activeYamlEncoding = yamlEncoding;
 
 	const startApplyFlow = async () => {
 		if (loadingDraft) return;
+		const requestId = ++startApplyRequestId.current;
 		setState({
 			appliedMessage: "",
 			formatError: null,
@@ -140,14 +142,17 @@ export function YamlTab({
 				"applyClean",
 				yamlEncoding,
 			);
+			if (requestId !== startApplyRequestId.current) return;
 			setState({
 				draftYaml: applyCleanYaml,
 				draftReady: true,
 				editing: true,
 			});
 		} catch (err) {
+			if (requestId !== startApplyRequestId.current) return;
 			setState({ draftReady: false, prepareError: err });
 		} finally {
+			if (requestId !== startApplyRequestId.current) return;
 			setState({ loadingDraft: false });
 		}
 	};
