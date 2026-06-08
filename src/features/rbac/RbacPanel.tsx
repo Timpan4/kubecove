@@ -150,7 +150,7 @@ export function RbacPanel({
 	selectedView,
 }: RbacPanelProps) {
 	const client = useMemo(() => createTauriClient(), []);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const {
 		data,
 		isPending,

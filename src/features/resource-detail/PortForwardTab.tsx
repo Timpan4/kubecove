@@ -94,7 +94,10 @@ export function PortForwardTab({
 			) ?? null,
 	);
 	const savePortForward = useWorkspaceStore((state) => state.savePortForward);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
+	const showKubeconfigSourceLabels = useSettingsState(
+		(state) => state.showKubeconfigSourceLabels,
+	);
 	const [remotePort, setRemotePort] = useState("");
 	const [localPort, setLocalPort] = useState("");
 	const [formError, setFormError] = useState<string | null>(null);
@@ -433,6 +436,12 @@ export function PortForwardTab({
 											<div className="truncate text-[11px] text-muted-foreground">
 												{sessionResolution(session)}
 											</div>
+											{showKubeconfigSourceLabels &&
+												session.kubeconfigSourceLabel && (
+													<div className="truncate text-[11px] text-muted-foreground">
+														{session.kubeconfigSourceLabel}
+													</div>
+												)}
 										</div>
 										<Badge
 											variant={

@@ -267,7 +267,7 @@ export function HelmPanel({
 	onTargetReleaseResolved,
 }: HelmPanelProps) {
 	const client = useMemo(() => createTauriClient(), []);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const {
 		data: releases,
 		isPending,

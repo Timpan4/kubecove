@@ -156,7 +156,7 @@ export function WorkspaceOverview({
 	onOpenLauncher,
 }: WorkspaceOverviewProps) {
 	const client = useMemo(() => createTauriClient(), []);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const contextsQuery = useQuery({
 		queryKey: queryKeys.kubeContexts(kubeconfigEnvVar),
 		queryFn: () => listKubeContexts(client, kubeconfigEnvVar),

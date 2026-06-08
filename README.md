@@ -62,11 +62,13 @@ Build a desktop bundle:
 bun run tauri build
 ```
 
-Create a beta release tag from the current `origin/main` release version:
+Validate the current `origin/main` release metadata:
 
 ```sh
-bun run release
+bun run release:dry-run
 ```
+
+Create releases from GitHub Actions with the `Prepare Release PR` workflow.
 
 ## Safety Model
 

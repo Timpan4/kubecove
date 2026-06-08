@@ -55,7 +55,7 @@ export function KindScopePicker({
 	const [discoveredKinds, setDiscoveredKinds] = useState<DiscoveredResourceKind[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const requestSeqRef = useRef(0);
 
 	const loadKinds = useCallback(async () => {

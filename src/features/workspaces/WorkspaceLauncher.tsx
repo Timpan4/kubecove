@@ -62,7 +62,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 	const [selectedContext, setSelectedContext] = useState("");
 	const [selectedGroupContexts, setSelectedGroupContexts] = useState<string[]>([]);
 	const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 
 	const contextsQuery = useQuery({
 		queryKey: queryKeys.kubeContexts(kubeconfigEnvVar),

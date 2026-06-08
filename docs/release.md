@@ -26,25 +26,24 @@ Broad cluster-changing workflows such as arbitrary apply, delete, scale, sync, a
 
 ## Maintainer Release Flow
 
-1. Update the version in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
-2. Merge the version commit to `main`.
-3. Run:
+1. Open GitHub Actions and run **Prepare Release PR** with a `patch`, `minor`, or `major` bump.
+2. Review the generated release PR:
+   - version metadata in `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `Cargo.lock`, `README.md`, and this guide
+   - generated `CHANGELOG.md` section
+   - release notes do not claim guarded operations that are not implemented
+3. Merge the release PR to `main`.
+
+The release PR is the human review gate. After merge, GitHub Actions finds the merged PR with the `release` label, creates the matching annotated `app-vX.Y.Z` tag, runs the release workflow, builds macOS, Windows, and Linux installers, verifies updater assets, and publishes the GitHub Release automatically.
+
+Manual workflow dispatch for the release workflow is only for rerunning an existing `app-v*` tag. Reruns preserve the existing release visibility.
+
+Local maintainers can validate the current `origin/main` release metadata with:
 
 ```sh
 bun run release:dry-run
 ```
 
-4. If the dry run is clean, create and push the release tag:
-
-```sh
-bun run release
-```
-
-The release command fetches `origin/main`, reads the release version from that commit, creates an annotated `app-vX.Y.Z` tag pointing at `origin/main`, and pushes only the tag. It can run from any local branch or GitButler workspace.
-
-GitHub Actions runs typecheck, frontend tests, Rust tests, Rust check, builds macOS, Windows, and Linux installers, and publishes a GitHub Release after every platform build succeeds.
-
-Manual workflow dispatch is only for rerunning an existing `app-v*` tag. Reruns preserve the existing release visibility.
+`bun run release` no longer creates or pushes tags. Releases start from the GitHub **Prepare Release PR** workflow.
 
 ## In-App Updates
 
@@ -56,9 +55,9 @@ Installer packages may remain OS-unsigned beta builds, but updater artifacts and
 
 GitHub release notes should mirror the matching version section in [CHANGELOG.md](../CHANGELOG.md).
 
-## Pre-Release Smoke Test
+## Automated Release Gates
 
-Automated baseline:
+Every release tag runs:
 
 ```sh
 bun run typecheck
@@ -66,6 +65,10 @@ bun test
 bun run rust:test
 bun run rust:check
 ```
+
+The release workflow also verifies macOS, Windows, and Linux installer assets, updater signatures, `latest.json`, and final updater platform coverage before publishing.
+
+## Manual Smoke Test
 
 Manual Tauri path:
 
@@ -93,10 +96,8 @@ Most recent partial smoke, 2026-05-26:
 
 ## Publishing Checklist
 
-- Confirm the release contains macOS, Windows, and Linux assets.
-- Download at least one artifact and confirm it launches.
-- Smoke test context listing, namespace/resource browsing, and clean errors when kubeconfig or cluster access is unavailable.
+- Confirm the release PR version and changelog are accurate before merge.
 - Confirm release notes do not claim guarded operations that are not implemented.
-- Share the release only after artifact checks pass.
+- After publish, optionally download one artifact and smoke test context listing, namespace/resource browsing, and clean errors when kubeconfig or cluster access is unavailable.
 
-If a release is bad, leave or restore the prior release as the recommended tester download and delete the broken release after replacing it.
+If a release is bad, run the **Yank Release** workflow for the bad `app-v*` tag. Use `draft` to hide the release while keeping artifacts, or `delete-release` to remove the GitHub Release. Then ship a patch release through the normal release PR flow.

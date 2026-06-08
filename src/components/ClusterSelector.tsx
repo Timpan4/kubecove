@@ -22,7 +22,7 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
   const [selected, setSelected] = useState<string>(value ?? "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+  const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
   const selectedRef = useRef(selected);
   const onClusterChangeRef = useRef(onClusterChange);
 

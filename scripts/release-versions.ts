@@ -9,6 +9,19 @@ export type ReleaseVersions = {
 	cargoVersion: string;
 };
 
+export type ReleaseBump = "patch" | "minor" | "major";
+
+export function computeNextReleaseVersion(
+	latestVersion: string,
+	bump: ReleaseBump,
+): string {
+	const parsed = parseSemver(latestVersion);
+
+	if (bump === "major") return `${parsed.major + 1}.0.0`;
+	if (bump === "minor") return `${parsed.major}.${parsed.minor + 1}.0`;
+	return `${parsed.major}.${parsed.minor}.${parsed.patch + 1}`;
+}
+
 export function readWorkspaceReleaseVersions(root = "."): ReleaseVersions {
 	const packageJson = JSON.parse(
 		readFileSync(join(root, "package.json"), "utf8"),

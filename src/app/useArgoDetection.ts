@@ -7,7 +7,7 @@ export function useArgoDetection(
 	clusterContext: string,
 	setArgoDetected: (detected: boolean) => void,
 ) {
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	useEffect(() => {
 		if (!clusterContext) {
 			setArgoDetected(false);

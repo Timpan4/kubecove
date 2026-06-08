@@ -21,7 +21,7 @@ export function NamespaceScopePicker({
 	const [namespaces, setNamespaces] = useState<NamespaceSummary[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const requestSeqRef = useRef(0);
 
 	const loadNamespaces = useCallback(async () => {

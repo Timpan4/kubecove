@@ -110,7 +110,7 @@ function ResourceListComponent({
 	const [topologyMode, setTopologyMode] = useState<TopologyMode>("ownership");
 	const [mapPanelOpen, setMapPanelOpen] = useState(true);
 	const client = useMemo(() => createTauriClient(), []);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const renderCountRef = useRef(0);
 	renderCountRef.current += 1;
 

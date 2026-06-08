@@ -1,0 +1,81 @@
+name: Prepare Release PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  prepare:
+    name: Prepare release PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Prepare release files
+        id: release
+        env:
+          RELEASE_BUMP: ${{ inputs.bump }}
+        run: bun scripts/prepare-release-pr.ts "$RELEASE_BUMP"
+
+      - name: Commit release branch
+        env:
+          BRANCH_NAME: ${{ steps.release.outputs.branch }}
+          RELEASE_TITLE: ${{ steps.release.outputs.title }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH_NAME"
+          git add package.json bun.lock README.md CHANGELOG.md docs/release.md src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+          git commit -m "$RELEASE_TITLE"
+          git push --force-with-lease origin "$BRANCH_NAME"
+
+      - name: Open release PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH_NAME: ${{ steps.release.outputs.branch }}
+          RELEASE_TITLE: ${{ steps.release.outputs.title }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh label create release --description "Release automation marker" --color "0E8A16" 2>/dev/null || true
+          existing_pr="$(gh pr list --head "$BRANCH_NAME" --state open --json number --jq '.[0].number // empty')"
+          body="$(cat <<EOF
+          ## Summary
+          - Updates KubeCove release metadata for ${RELEASE_TAG}.
+          - Drafts CHANGELOG release notes from commits since the latest app release tag.
+          - Merge to let GitHub Actions create the release tag and auto-publish installers after verification.
+
+          ## Testing
+          - GitHub release workflow will run typecheck, tests, platform builds, updater asset checks, and publish gates.
+          EOF
+          )"
+          if [ -n "$existing_pr" ]; then
+            gh pr edit "$existing_pr" --title "$RELEASE_TITLE" --body "$body" --add-label release
+          else
+            gh pr create --base main --head "$BRANCH_NAME" --title "$RELEASE_TITLE" --body "$body" --label release
+          fi

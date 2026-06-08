@@ -24,7 +24,7 @@ function useArgoAppProjectDetails(
 	yamlEncoding: YamlEncoding = "yaml",
 ) {
 	const client = useMemo(() => createTauriClient(), []);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
+	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	return useQuery({
 		queryKey: [
 			"argo-appproject-details",
