@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import {
 	Table,
 	TableBody,
@@ -17,13 +16,16 @@ import { useSettingsState } from "@/lib/settings";
 import {
 	createTauriClient,
 	getHelmReleaseDetails,
-	listResources,
-	type TauriClient,
 } from "@/lib/tauri";
+import { YamlCodeViewer } from "@/components/YamlCodeViewer";
 import {
-	SUPPORTED_KINDS,
+	YamlEncodingControl,
+	YamlViewModeControl,
+} from "@/components/YamlModeControl";
+import {
 	type HelmReleaseSummary,
-	type ResourceSummary,
+	type YamlEncoding,
+	type YamlViewMode,
 } from "@/lib/types";
 import {
 	DetailErrorState,
@@ -35,15 +37,13 @@ import {
 	DETAIL_SECTION_CLASS,
 	DETAIL_SECTION_TITLE_CLASS,
 	JSON_BLOCK_CLASS,
-	YAML_BLOCK_CLASS,
 } from "@/features/argo/ArgoDetailShared";
 import {
-	helmReleaseResourceLabel,
 	helmStatusTone,
-	resourcesOwnedByHelmRelease,
 } from "./helpers";
+import { HelmReconciliationPanel } from "./HelmReconciliationPanel";
 
-type Tab = "details" | "resources" | "yaml";
+type Tab = "details" | "reconciliation" | "yaml";
 
 const PANEL_CLASS =
 	"flex h-full min-w-0 flex-col overflow-hidden border-l bg-card";
@@ -69,50 +69,18 @@ function useHelmReleaseDetails(
 			release.storageKind,
 			release.storageName,
 			kubeconfigEnvVar,
+			yamlViewMode,
+			yamlEncoding,
 		),
-		queryFn: () => getHelmReleaseDetails(client, release, kubeconfigEnvVar),
+		queryFn: () =>
+			getHelmReleaseDetails(
+				client,
+				release,
+				kubeconfigEnvVar,
+				yamlViewMode,
+				yamlEncoding,
+			),
 		enabled: !!release.cluster && !!release.namespace && !!release.storageName,
-	});
-}
-
-async function listHelmOwnedResources(
-	client: TauriClient,
-	release: HelmReleaseSummary,
-	kubeconfigEnvVar?: string,
-): Promise<ResourceSummary[]> {
-	const results = await Promise.allSettled(
-		SUPPORTED_KINDS.map((kind) =>
-			listResources(client, release.cluster, kind, release.namespace, kubeconfigEnvVar),
-		),
-	);
-	const rejected = results.filter(
-		(result): result is PromiseRejectedResult => result.status === "rejected",
-	);
-	if (rejected.length > 0) {
-		throw new Error("Failed to list Helm-owned resources");
-	}
-
-	const fulfilled = results.filter(
-		(result): result is PromiseFulfilledResult<ResourceSummary[]> =>
-			result.status === "fulfilled",
-	);
-	const resources = fulfilled.flatMap((result) => result.value);
-	return resourcesOwnedByHelmRelease(resources, release);
-}
-
-function useHelmOwnedResources(release: HelmReleaseSummary) {
-	const client = useMemo(() => createTauriClient(), []);
-	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
-	return useQuery({
-		queryKey: queryKeys.helmReleaseResources(
-			release.cluster,
-			release.namespace,
-			release.name,
-			kubeconfigEnvVar,
-		),
-		queryFn: () => listHelmOwnedResources(client, release, kubeconfigEnvVar),
-		enabled: !!release.cluster && !!release.namespace && !!release.name,
-		staleTime: 30_000,
 	});
 }
 
