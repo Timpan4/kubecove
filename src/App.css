@@ -305,12 +305,42 @@
 
   .resource-topology-node-connected {
     --topology-node-border: color-mix(in oklch, var(--primary) 62%, var(--border));
+    animation: topology-node-connected-glow 3.2s ease-in-out infinite;
   }
 
   .resource-topology-node-selected {
     --topology-node-border: var(--primary);
+    animation: topology-node-selected-glow 2.6s ease-in-out infinite;
   }
 
+}
+
+@keyframes topology-edge-flow {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+@keyframes topology-node-selected-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 color-mix(in oklch, var(--primary) 0%, transparent));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 10px color-mix(in oklch, var(--primary) 54%, transparent));
+  }
+}
+
+@keyframes topology-node-connected-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 color-mix(in oklch, var(--primary) 0%, transparent));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 7px color-mix(in oklch, var(--primary) 32%, transparent));
+  }
 }
 
 .ownership-map-flow .react-flow__controls {
@@ -352,4 +382,25 @@
 
 .ownership-map-flow .react-flow__edge-path {
   stroke: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+}
+
+.ownership-map-flow .ownership-map-edge-active .react-flow__edge-path {
+  stroke-dasharray: 8 8;
+  animation: topology-edge-flow 1.8s linear infinite;
+}
+
+.ownership-map-flow .ownership-map-edge-active .react-flow__edge-path,
+.ownership-map-flow .ownership-map-edge-active .react-flow__edge-interaction {
+  transition:
+    stroke 160ms ease,
+    opacity 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resource-topology-node-connected,
+  .resource-topology-node-selected,
+  .ownership-map-flow .ownership-map-edge-active .react-flow__edge-path,
+  .ownership-map-flow .react-flow__edge.animated path {
+    animation: none;
+  }
 }
