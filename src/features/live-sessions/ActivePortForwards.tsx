@@ -305,11 +305,11 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 								</div>
 							);
 						})}
-						{sessionCount === 0 && (
-							<div className="text-sm text-muted-foreground">
-								Loading active sessions...
-							</div>
-						)}
+							{sessionCount === 0 && (
+								<div className="text-sm text-muted-foreground">
+									Loading active sessions…
+								</div>
+							)}
 					</div>
 				</div>
 			</PopoverContent>

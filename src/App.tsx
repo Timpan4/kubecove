@@ -21,7 +21,7 @@ import {
 import { useArgoDetection } from "./app/useArgoDetection";
 import { ViewLoadingFallback } from "./app/ViewLoadingFallback";
 import { useAppUpdateLaunchCheck } from "./features/app-updates/useAppUpdateLaunchCheck";
-import { SavedPortForwardRestorePrompt } from "./features/live-sessions";
+import { SavedPortForwardRestorePrompt } from "./features/live-sessions/SavedPortForwardRestorePrompt";
 import {
 	shouldAutoStartSavedPortForwards,
 	shouldShowSavedPortForwardRestorePrompt,
@@ -607,10 +607,7 @@ function App() {
 	}
 
 	const mainContent = (
-		<div
-			role="main"
-			className="flex h-full w-full min-w-0 flex-col overflow-hidden"
-		>
+		<main className="flex h-full w-full min-w-0 flex-col overflow-hidden">
 			{liveSessionCleanupMessage && (
 				<Alert className="rounded-none border-x-0 border-t-0">
 					<AlertTitle>Live sessions updated</AlertTitle>
@@ -736,7 +733,7 @@ function App() {
 					)}
 				</div>
 			)}
-		</div>
+		</main>
 	);
 
 	const detailPanel = hasAppDetailPanel(viewMode, selectedHelmRelease !== null, selectedArgoApp !== null, selectedResource !== null) ? (
