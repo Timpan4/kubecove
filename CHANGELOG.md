@@ -16,8 +16,13 @@ should mirror the matching version section.
 
 ### Fixed
 
+- release PR token
 - live-session kubeconfig source build
 - live-session workspace cleanup
+
+### Release
+
+- KubeCove v0.6.0
 
 ## 0.5.0 - 2026-06-08
 
