@@ -418,7 +418,7 @@ function ResourceListComponent({
 				</div>
 				<span className="inline-flex items-center gap-2">
 					<Spinner className="size-4" />
-					Loading resources...
+						Loading resources…
 				</span>
 			</div>
 		);

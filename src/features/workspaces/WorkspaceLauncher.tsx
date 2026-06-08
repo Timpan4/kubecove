@@ -199,7 +199,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 							{contextsQuery.isPending && (
 								<Card size="sm">
 									<CardContent className="text-xs text-muted-foreground">
-										Loading contexts...
+											Loading contexts…
 									</CardContent>
 								</Card>
 							)}
@@ -361,7 +361,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 									<div className="p-1">
 									{namespacesQuery.isPending && effectiveContext && (
 										<div className="px-2 py-1.5 text-xs text-muted-foreground">
-											Loading namespaces...
+												Loading namespaces…
 										</div>
 									)}
 									{namespacesQuery.isError && (

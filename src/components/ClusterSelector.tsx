@@ -19,18 +19,14 @@ interface ClusterSelectorProps {
 
 export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps) {
   const [clusters, setClusters] = useState<ClusterContext[]>([]);
-  const [selected, setSelected] = useState<string>(value ?? "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
-  const selectedRef = useRef(selected);
+  const selectedRef = useRef(value ?? "");
   const onClusterChangeRef = useRef(onClusterChange);
 
   useEffect(() => {
-    if (value !== undefined && value !== selectedRef.current) {
-      selectedRef.current = value;
-      setSelected(value);
-    }
+    if (value !== undefined) selectedRef.current = value;
   }, [value]);
 
   useEffect(() => {
@@ -50,7 +46,6 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
       const selectedStillExists = contexts.some((ctx) => ctx.name === selectedContext);
       if ((!selectedContext || !selectedStillExists) && preferredContext) {
         selectedRef.current = preferredContext.name;
-        setSelected(preferredContext.name);
         onClusterChangeRef.current(preferredContext.name);
       }
     } catch (err) {
@@ -66,14 +61,13 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
 
   const handleChange = (value: string) => {
     selectedRef.current = value;
-    setSelected(value);
     onClusterChange(value);
   };
 
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        Loading contexts...
+        Loading contexts…
       </div>
     );
   }
@@ -102,7 +96,7 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
         Cluster Context:
       </span>
       <Select
-        value={selected}
+        value={value ?? selectedRef.current}
         onValueChange={handleChange}
       >
         <SelectTrigger

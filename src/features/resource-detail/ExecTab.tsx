@@ -188,8 +188,8 @@ export function ExecTab({
 	}, [active]);
 
 	useEffect(() => {
+		const sessionId = sessionIdRef.current;
 		return () => {
-			const sessionId = sessionIdRef.current;
 			closeCurrentSession();
 			if (sessionId) void stopPodExecSession(client, sessionId);
 		};

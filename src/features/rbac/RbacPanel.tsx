@@ -39,7 +39,7 @@ function LoadingState() {
 		<div className={STATE_CLASS}>
 			<span className="inline-flex items-center gap-2">
 				<Spinner className="size-4" />
-				Loading RBAC inspection...
+					Loading RBAC inspection…
 			</span>
 		</div>
 	);
