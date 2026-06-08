@@ -6,9 +6,9 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
-	formatYamlDocument,
 	YamlCodeViewer,
 } from "@/components/YamlCodeViewer";
+import { formatYamlDocument } from "@/lib/yamlFormat";
 import {
 	YamlEncodingControl,
 	YamlViewModeControl,
@@ -78,6 +78,7 @@ export function YamlTab({
 		resource.kind === "Secret" && (resource.apiVersion ?? "v1") === "v1";
 	const activeYamlEncoding = editing ? draftEncoding : yamlEncoding;
 	const diffContainerRef = useRef<HTMLDivElement | null>(null);
+	const draftRequestIdRef = useRef(0);
 
 	const diffLines = useMemo(
 		() =>
@@ -100,16 +101,17 @@ export function YamlTab({
 	};
 
 	const startApplyFlow = async () => {
+		const requestId = ++draftRequestIdRef.current;
 		setAppliedMessage("");
 		setFormatError(null);
 		setApplyError(null);
 		setPrepareError(null);
 		setPreview(null);
 		setShowFullDiff(false);
-		setEditing(true);
-		setDraftEncoding(yamlEncoding);
 		setDraftReady(false);
 		setLoadingDraft(true);
+		setDraftEncoding(yamlEncoding);
+		setDraftYaml("");
 		try {
 			const applyCleanYaml = await getResourceYaml(
 				client,
@@ -121,16 +123,23 @@ export function YamlTab({
 				"applyClean",
 				yamlEncoding,
 			);
+			if (requestId !== draftRequestIdRef.current) return;
 			setDraftYaml(applyCleanYaml);
 			setDraftReady(true);
+			setEditing(true);
 		} catch (err) {
+			if (requestId !== draftRequestIdRef.current) return;
+			setDraftReady(false);
 			setPrepareError(err);
 		} finally {
-			setLoadingDraft(false);
+			if (requestId === draftRequestIdRef.current) {
+				setLoadingDraft(false);
+			}
 		}
 	};
 
 	const cancelApplyFlow = () => {
+		draftRequestIdRef.current += 1;
 		setEditing(false);
 		setDraftYaml("");
 		setDraftReady(false);
@@ -194,6 +203,7 @@ export function YamlTab({
 
 	const prepare = async () => {
 		setPreparing(true);
+		setFormatError(null);
 		setPrepareError(null);
 		setApplyError(null);
 		setPreview(null);
@@ -297,7 +307,7 @@ export function YamlTab({
 							type="button"
 							variant="outline"
 							size="sm"
-							disabled={secretApplyDisabled || yamlLoading || yamlError}
+							disabled={secretApplyDisabled || yamlLoading || yamlError || loadingDraft}
 							onClick={() => void startApplyFlow()}
 						>
 							<Pencil data-icon="inline-start" />
