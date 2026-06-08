@@ -54,6 +54,7 @@ import {
 import {
 	canQueryResourceScope,
 	getAppContentTitle,
+	hasAppDetailPanel,
 	resourceKindLogKey,
 	SIDEBAR_PROVIDER_STYLE,
 } from "./app/viewHelpers";
@@ -638,7 +639,7 @@ function App() {
 		</div>
 	);
 
-	const detailPanel = (
+	const detailPanel = hasAppDetailPanel(viewMode, selectedHelmRelease !== null, selectedArgoApp !== null, selectedResource !== null) ? (
 		<AppDetailPanel
 			viewMode={viewMode}
 			selectedHelmRelease={selectedHelmRelease}
@@ -651,7 +652,7 @@ function App() {
 			onOpenHelmResources={handleOpenHelmResources}
 			onOpenHelmReleaseFromResource={handleOpenHelmReleaseFromResource}
 		/>
-	);
+	) : null;
 
 	return (
 		<div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
