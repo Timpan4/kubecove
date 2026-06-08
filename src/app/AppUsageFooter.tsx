@@ -1,6 +1,7 @@
 import { Activity, CircleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { createTauriClient, getAppUsageMetrics } from "@/lib/tauri";
 import type { AppUsageMetrics, AppUsageMetricsBreakdown } from "@/lib/types";
 import {
@@ -20,20 +21,20 @@ function UsageBreakdownRow({
 	child?: boolean;
 }) {
 	return (
-		<tr className={child ? "text-neutral-500" : "text-neutral-300"}>
+		<tr className={child ? "text-muted-foreground" : "text-foreground"}>
 			<td className="min-w-0 py-1 pr-3 align-top">
 				<div className={child ? "min-w-0 pl-3" : "min-w-0"}>
 					<div
 						className={
 							child
-								? "truncate text-neutral-400"
-								: "truncate font-medium text-neutral-100"
+								? "truncate text-muted-foreground"
+								: "truncate font-medium text-foreground"
 						}
 					>
 						{item.label}
 					</div>
 					{!child && (
-						<div className="truncate text-[0.625rem] text-neutral-500">
+						<div className="truncate text-[0.625rem] text-muted-foreground">
 							{item.description}
 						</div>
 					)}
@@ -77,6 +78,7 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 	const client = useMemo(() => createTauriClient(), []);
 	const [metrics, setMetrics] = useState<AppUsageMetrics | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [processTreeOpen, setProcessTreeOpen] = useState(false);
 
 	useEffect(() => {
 		if (!visible) return;
@@ -108,6 +110,10 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 		};
 	}, [client, visible]);
 
+	useEffect(() => {
+		if (!visible || error || !metrics) setProcessTreeOpen(false);
+	}, [error, metrics, visible]);
+
 	if (!visible) return null;
 
 	const content = error ? (
@@ -127,20 +133,26 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 	return (
 		<footer className="flex h-7 shrink-0 items-center justify-end gap-2 border-t bg-sidebar px-4 text-[0.6875rem] text-muted-foreground">
 			{metrics && !error ? (
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<span className="min-w-0 cursor-default outline-none focus-visible:ring-2 focus-visible:ring-ring/40">
+				<Popover open={processTreeOpen} onOpenChange={setProcessTreeOpen}>
+					<PopoverTrigger asChild>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							className="h-6 min-w-0 px-2 text-[0.6875rem] font-normal text-muted-foreground hover:text-foreground"
+							aria-label="Show app process tree"
+						>
 							{content}
-						</span>
-					</TooltipTrigger>
-					<TooltipContent
+						</Button>
+					</PopoverTrigger>
+					<PopoverContent
 						side="top"
 						align="end"
 						sideOffset={6}
-						className="w-[27rem] max-w-[calc(100vw-2rem)] items-stretch gap-0 rounded-md border border-white/10 bg-neutral-950 p-0 text-neutral-50 shadow-xl"
+						className="w-[31rem] max-w-[calc(100vw-2rem)] rounded-md border bg-popover p-0 text-popover-foreground shadow-xl"
 					>
-						<div className="w-full p-2 text-[0.6875rem]">
-							<div className="px-1 pb-1 text-[0.625rem] font-semibold uppercase text-neutral-400">
+						<div className="max-h-[min(58vh,28rem)] w-full overflow-auto p-2 text-[0.6875rem]">
+							<div className="px-1 pb-1 text-[0.625rem] font-semibold uppercase text-muted-foreground">
 								App process tree
 							</div>
 							<table className="w-full border-separate border-spacing-x-0 border-spacing-y-0.5">
@@ -151,7 +163,7 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 									<col className="w-[21%]" />
 								</colgroup>
 								<thead>
-									<tr className="text-[0.625rem] font-semibold uppercase text-neutral-500">
+									<tr className="text-[0.625rem] font-semibold uppercase text-muted-foreground">
 										<th className="px-1 pb-1 text-left">Process</th>
 										<th className="px-1 pb-1 text-right">CPU</th>
 										<th className="px-1 pb-1 text-right">Memory</th>
@@ -165,8 +177,8 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 								</tbody>
 							</table>
 						</div>
-					</TooltipContent>
-				</Tooltip>
+					</PopoverContent>
+				</Popover>
 			) : (
 				content
 			)}

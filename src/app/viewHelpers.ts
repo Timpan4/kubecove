@@ -59,6 +59,17 @@ export function canQueryResourceScope({
 	return hasDiscoveredKind(kinds);
 }
 
+export function hasAppDetailPanel(
+	viewMode: DashboardViewMode,
+	hasSelectedHelmRelease: boolean,
+	hasSelectedArgoApp: boolean,
+	hasSelectedResource: boolean,
+): boolean {
+	if (viewMode === "helm") return hasSelectedHelmRelease;
+	if (viewMode === "argo") return hasSelectedArgoApp;
+	return hasSelectedResource;
+}
+
 export function getAppContentTitle({
 	activeWorkspace,
 	scope,
