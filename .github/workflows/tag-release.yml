@@ -65,4 +65,7 @@ jobs:
           RELEASE_PR_TITLE: ${{ steps.pr.outputs.title }}
           RELEASE_PR_LABELS: ${{ steps.pr.outputs.labels }}
           GITHUB_SHA: ${{ github.sha }}
-        run: bun scripts/tag-release.ts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bun scripts/tag-release.ts
