@@ -127,6 +127,17 @@ Target: patch beta 0.4.3 using the existing readable `admin@solid-k8s` context b
 - [ ] Complete manual Pod detail/YAML/logs and guarded Pod exec click-through from exact Pod detail before claiming 0.4.3 release readiness; Windows WebView capture became opaque during this pass.
 - [ ] Rerun port-forward manager smoke before publishing 0.4.3.
 
+## 0.5.0 Release-Hardening Checks - 2026-06-08
+
+Target: beta 0.5.0 after selected-resource YAML apply and Helm reconciliation reached `origin/main`.
+
+- [x] Version metadata bumped to 0.5.0 in frontend, Tauri, Rust, and lockfile metadata.
+- [x] README and release docs describe selected-resource YAML apply as shipped while keeping broad apply/delete/scale/sync/rollback out of release claims.
+- [x] Changelog records selected-resource YAML apply, Helm reconciliation, ownership flow animation, and WebView process-tree fixes.
+- [x] Run local automated baseline: `bun run typecheck`, `bun test`, `bun run rust:test`, and `bun run rust:check`.
+- [ ] Run `bun run release:dry-run` after the 0.5.0 bump reaches `origin/main`.
+- [ ] Run manual Tauri smoke on `admin@solid-k8s`: workspace restore, resource browser, Pod details/YAML/logs, guarded Pod exec, selected-resource YAML apply, Helm reconciliation, and port-forward manager.
+
 ## Milestone 8: Guarded Live Sessions
 
 Goal: introduce live operational sessions without turning KubeCove into a shell wrapper.
