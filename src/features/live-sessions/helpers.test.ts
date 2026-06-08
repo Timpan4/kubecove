@@ -1,10 +1,17 @@
-import { describe, expect, test } from "bun:test";
 import type { PortForwardSessionSummary } from "@/lib/types";
 import type { SavedPortForward } from "@/lib/workspaces";
 import {
 	savedPortForwardLocalPortConflict,
 	savedPortForwardMatchesSession,
 } from "./helpers";
+
+declare function describe(name: string, fn: () => void): void;
+declare function test(name: string, fn: () => void): void;
+declare function expect(actual: unknown): {
+	toBe(expected: unknown): void;
+	toEqual(expected: unknown): void;
+	toBeNull(): void;
+};
 
 function savedForward(overrides: Partial<SavedPortForward> = {}): SavedPortForward {
 	return {
