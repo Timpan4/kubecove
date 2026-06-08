@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	ArrowDown,
 	ArrowUp,
@@ -200,12 +200,12 @@ export function SettingsPage() {
 	const [sourceBusy, setSourceBusy] = useState(false);
 	const [sourceError, setSourceError] = useState<string | null>(null);
 
-	const applySources = (next: KubeconfigSourcesSummary) => {
+	const applySources = useCallback((next: KubeconfigSourcesSummary) => {
 		setSources(next);
 		setKubeconfigSources(next);
 		setEnvDraft(next.kubeconfigEnvVar);
 		setSourceError(null);
-	};
+	}, [setKubeconfigSources]);
 
 	useEffect(() => {
 		void getKubeconfigSources(client)
@@ -213,7 +213,7 @@ export function SettingsPage() {
 			.catch((error) =>
 				setSourceError(error instanceof Error ? error.message : String(error)),
 			);
-	}, [client]);
+	}, [applySources, client]);
 
 	const runSourceUpdate = async (
 		action: () => Promise<KubeconfigSourcesSummary>,
