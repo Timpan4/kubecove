@@ -164,6 +164,7 @@ export function SettingsPage() {
 		showUsageFooter,
 		autoStartSavedPortForwards,
 		keepLiveSessionsOnWorkspaceSwitch,
+		allowYamlForceConflicts,
 		timestampTimezone,
 		yamlViewModeDefault,
 		yamlEncodingDefault,
@@ -173,6 +174,7 @@ export function SettingsPage() {
 		setShowUsageFooter,
 		setAutoStartSavedPortForwards,
 		setKeepLiveSessionsOnWorkspaceSwitch,
+		setAllowYamlForceConflicts,
 		setTimestampTimezone,
 		setYamlViewModeDefault,
 		setYamlEncodingDefault,
@@ -289,6 +291,16 @@ export function SettingsPage() {
 						checked={keepLiveSessionsOnWorkspaceSwitch}
 						onCheckedChange={setKeepLiveSessionsOnWorkspaceSwitch}
 						ariaLabel="Keep live sessions across workspace switches"
+					/>
+				</SettingsRow>
+				<SettingsRow
+					title="Allow YAML force-conflicts"
+					description="Lets selected-resource YAML dry-run and apply take server-side field ownership when another manager owns changed fields."
+				>
+					<ToggleButton
+						checked={allowYamlForceConflicts}
+						onCheckedChange={setAllowYamlForceConflicts}
+						ariaLabel="Allow YAML force-conflicts"
 					/>
 				</SettingsRow>
 				<div className="border-b py-4">

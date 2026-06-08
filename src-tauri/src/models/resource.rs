@@ -114,6 +114,8 @@ pub struct YamlApplyRequest {
     pub yaml: String,
     #[serde(default)]
     pub yaml_encoding: YamlEncoding,
+    #[serde(default)]
+    pub force_conflicts: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

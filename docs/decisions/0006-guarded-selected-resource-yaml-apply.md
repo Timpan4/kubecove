@@ -28,13 +28,20 @@ The apply flow must:
 - run server-side apply dry-run with `fieldManager=kubecove`
 - show a line diff between current `applyClean` YAML and the dry-run result
 - require a second explicit Apply action after dry-run succeeds
-- perform server-side apply without force-conflicts
+- perform server-side apply with `force-conflicts` only when the global YAML
+  force-conflicts setting or current selected-resource override allows it
 - invalidate the selected resource details and YAML after success
 
 The Rust side owns validation, dry-run, apply, and Kubernetes API access. React may edit YAML text and request the typed operation, but it does not receive kubeconfig material and does not run shell commands.
 
 ## Consequences
 
-Apply v1 is deliberately narrow: no bulk manifest paste, no multi-document apply, no namespace retargeting, no arbitrary cluster apply, and no force-conflicts.
+Apply v1 is deliberately narrow: no bulk manifest paste, no multi-document
+apply, no namespace retargeting, and no arbitrary cluster apply.
 
-Field ownership conflicts, RBAC denials, admission failures, and validation failures are surfaced as user-visible command errors. Future broad apply, Secret editing, conflict forcing, Argo CD sync, Helm actions, delete, or scale workflows need their own focused design under ADR 0004.
+Field ownership conflicts, RBAC denials, admission failures, and validation
+failures are surfaced as user-visible command errors. If force-conflicts is
+disabled globally, a field ownership conflict may be retried only through an
+explicit current-resource override after the failed dry-run. Future broad apply,
+Secret editing, Argo CD sync, Helm actions, delete, or scale workflows need
+their own focused design under ADR 0004.

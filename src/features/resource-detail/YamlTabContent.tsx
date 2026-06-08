@@ -25,10 +25,12 @@ interface YamlTabContentProps {
 	preparing: boolean;
 	applying: boolean;
 	showFullDiff: boolean;
+	canAllowForceConflicts: boolean;
 	activeYamlEncoding: YamlEncoding;
 	onEditChange: (value: string) => void;
 	onEditFormat: () => void;
 	onEditPrepare: () => Promise<void>;
+	onEditAllowForceConflicts: () => void;
 	onEditApply: () => Promise<void>;
 	onEditCancel: () => void;
 	onHideEditMessage: () => void;
@@ -55,10 +57,12 @@ export function YamlTabContent({
 	preparing,
 	applying,
 	showFullDiff,
+	canAllowForceConflicts,
 	activeYamlEncoding,
 	onEditChange,
 	onEditFormat,
 	onEditPrepare,
+	onEditAllowForceConflicts,
 	onEditApply,
 	onEditCancel,
 	onToggleEditFullDiff,
@@ -108,10 +112,12 @@ export function YamlTabContent({
 					preparing={preparing}
 					applying={applying}
 					showFullDiff={showFullDiff}
+					canAllowForceConflicts={canAllowForceConflicts}
 					activeYamlEncoding={activeYamlEncoding}
 					onChange={onEditChange}
 					onFormat={onEditFormat}
 					onPrepare={onEditPrepare}
+					onAllowForceConflicts={onEditAllowForceConflicts}
 					onApply={onEditApply}
 					onCancel={onEditCancel}
 					onHideMessage={onHideEditMessage}

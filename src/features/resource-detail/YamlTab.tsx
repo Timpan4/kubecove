@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { Diagnostic } from "@codemirror/lint";
 import { YamlTabContent } from "@/features/resource-detail/YamlTabContent";
 import { YamlTabHeader } from "@/features/resource-detail/YamlTabHeader";
@@ -47,6 +47,8 @@ type YamlTabState = {
 	applying: boolean;
 	loadingDraft: boolean;
 	showFullDiff: boolean;
+	forceConflictsForResource: boolean;
+	previewForceConflicts: boolean;
 };
 
 type YamlTabStateAction = {
@@ -63,6 +65,14 @@ const yamlTabReducer = (
 	}
 	return state;
 };
+
+function isErrorRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFieldManagerConflictError(error: unknown): boolean {
+	return isErrorRecord(error) && error.kind === "fieldManagerConflict";
+}
 
 export function YamlTab({
 	client,
@@ -91,6 +101,8 @@ export function YamlTab({
 		applying: false,
 		loadingDraft: false,
 		showFullDiff: false,
+		forceConflictsForResource: false,
+		previewForceConflicts: false,
 	} satisfies YamlTabState);
 	const {
 		editing,
@@ -105,6 +117,8 @@ export function YamlTab({
 		applying,
 		loadingDraft,
 		showFullDiff,
+		forceConflictsForResource,
+		previewForceConflicts,
 	} = state;
 	const setState = useCallback(
 		(payload: Partial<YamlTabState>) => {
@@ -113,9 +127,14 @@ export function YamlTab({
 		[],
 	);
 	const startApplyRequestId = useRef(0);
+	const allowYamlForceConflicts = useSettingsState(
+		(state) => state.allowYamlForceConflicts,
+	);
 	const secretApplyDisabled =
 		resource.kind === "Secret" && (resource.apiVersion ?? "v1") === "v1";
 	const activeYamlEncoding = yamlEncoding;
+	const forceConflicts = allowYamlForceConflicts || forceConflictsForResource;
+	const resourceKey = `${resource.cluster}:${resource.namespace ?? ""}:${resource.kind}:${resource.name}`;
 
 	const startApplyFlow = async () => {
 		if (loadingDraft) return;
@@ -127,6 +146,8 @@ export function YamlTab({
 			applyError: null,
 			prepareError: null,
 			preview: null,
+			forceConflictsForResource: false,
+			previewForceConflicts: false,
 			showFullDiff: false,
 			draftReady: false,
 			loadingDraft: true,
@@ -166,6 +187,8 @@ export function YamlTab({
 			draftYaml: "",
 			draftReady: false,
 			preview: null,
+			forceConflictsForResource: false,
+			previewForceConflicts: false,
 			showFullDiff: false,
 			formatError: null,
 			prepareError: null,
@@ -174,7 +197,23 @@ export function YamlTab({
 		});
 	};
 
-	const buildRequest = (): YamlApplyRequest => ({
+	useEffect(() => {
+		setState({
+			editing: false,
+			draftYaml: "",
+			draftReady: false,
+			preview: null,
+			forceConflictsForResource: false,
+			previewForceConflicts: false,
+			showFullDiff: false,
+			formatError: null,
+			prepareError: null,
+			applyError: null,
+			appliedMessage: "",
+		});
+	}, [resourceKey, setState]);
+
+	const buildRequest = (requestForceConflicts = forceConflicts): YamlApplyRequest => ({
 		clusterContext: resource.cluster,
 		kubeconfigEnvVar,
 		kind: resource.kind,
@@ -187,6 +226,7 @@ export function YamlTab({
 		namespace: resource.namespace,
 		yaml: draftYaml,
 		yamlEncoding: activeYamlEncoding,
+		forceConflicts: requestForceConflicts,
 	});
 
 	const buildRequestForYaml = useCallback(
@@ -203,8 +243,9 @@ export function YamlTab({
 			namespace: resource.namespace,
 			yaml: value,
 			yamlEncoding: activeYamlEncoding,
+			forceConflicts,
 		}),
-		[activeYamlEncoding, kubeconfigEnvVar, resource],
+		[activeYamlEncoding, forceConflicts, kubeconfigEnvVar, resource],
 	);
 
 	const kubernetesDiagnostics = useCallback(
@@ -225,18 +266,19 @@ export function YamlTab({
 		[buildRequestForYaml, client, editing],
 	);
 
-	const prepare = async () => {
+	const prepare = async (requestForceConflicts = forceConflicts) => {
 		setState({
 			preparing: true,
 			formatError: null,
 			prepareError: null,
 			applyError: null,
 			preview: null,
+			previewForceConflicts: false,
 			showFullDiff: false,
 		});
 		try {
-			const result = await prepareYamlApply(client, buildRequest());
-			setState({ preview: result });
+			const result = await prepareYamlApply(client, buildRequest(requestForceConflicts));
+			setState({ preview: result, previewForceConflicts: requestForceConflicts });
 		} catch (err) {
 			setState({ prepareError: err });
 		} finally {
@@ -250,6 +292,8 @@ export function YamlTab({
 			prepareError: null,
 			applyError: null,
 			preview: null,
+			forceConflictsForResource: false,
+			previewForceConflicts: false,
 			showFullDiff: false,
 		});
 		try {
@@ -266,11 +310,12 @@ export function YamlTab({
 		if (!preview) return;
 		setState({ applying: true, applyError: null });
 		try {
-			const result = await applyYaml(client, buildRequest());
-			setState({
-				appliedMessage: `Applied ${result.target.kind}/${result.target.name} with server-side apply.`,
-			});
+			const result = await applyYaml(client, buildRequest(previewForceConflicts));
+			const appliedMessage = previewForceConflicts
+				? `Applied ${result.target.kind}/${result.target.name} with server-side apply using force-conflicts.`
+				: `Applied ${result.target.kind}/${result.target.name} with server-side apply.`;
 			cancelApplyFlow();
+			setState({ appliedMessage });
 			onApplied();
 		} catch (err) {
 			setState({ applyError: err });
@@ -321,11 +366,18 @@ export function YamlTab({
 				preparing={preparing}
 				applying={applying}
 				showFullDiff={showFullDiff}
+				canAllowForceConflicts={
+					!allowYamlForceConflicts &&
+					!forceConflictsForResource &&
+					isFieldManagerConflictError(prepareError)
+				}
 				activeYamlEncoding={activeYamlEncoding}
 				onEditChange={(value) => {
 					setState({
 						draftYaml: value,
 						preview: null,
+						forceConflictsForResource: false,
+						previewForceConflicts: false,
 						showFullDiff: false,
 						formatError: null,
 						prepareError: null,
@@ -335,6 +387,10 @@ export function YamlTab({
 				}}
 				onEditFormat={formatDraft}
 				onEditPrepare={prepare}
+				onEditAllowForceConflicts={() => {
+					setState({ forceConflictsForResource: true });
+					void prepare(true);
+				}}
 				onEditApply={apply}
 				onEditCancel={cancelApplyFlow}
 				onHideEditMessage={() => {

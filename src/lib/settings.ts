@@ -15,6 +15,7 @@ interface SettingsState {
 	showUsageFooter: boolean;
 	autoStartSavedPortForwards: boolean;
 	keepLiveSessionsOnWorkspaceSwitch: boolean;
+	allowYamlForceConflicts: boolean;
 	timestampTimezone: TimestampTimezone;
 	yamlViewModeDefault: YamlViewMode;
 	yamlEncodingDefault: YamlEncoding;
@@ -26,6 +27,7 @@ interface SettingsState {
 	setShowUsageFooter: (show: boolean) => void;
 	setAutoStartSavedPortForwards: (autoStart: boolean) => void;
 	setKeepLiveSessionsOnWorkspaceSwitch: (keep: boolean) => void;
+	setAllowYamlForceConflicts: (allow: boolean) => void;
 	setTimestampTimezone: (timezone: TimestampTimezone) => void;
 	setYamlViewModeDefault: (mode: YamlViewMode) => void;
 	setYamlEncodingDefault: (encoding: YamlEncoding) => void;
@@ -51,6 +53,7 @@ export const useSettingsState = create<SettingsState>()(
 			showUsageFooter: false,
 			autoStartSavedPortForwards: false,
 			keepLiveSessionsOnWorkspaceSwitch: false,
+			allowYamlForceConflicts: true,
 			timestampTimezone: "local",
 			yamlViewModeDefault: "kubectl",
 			yamlEncodingDefault: "yaml",
@@ -65,6 +68,8 @@ export const useSettingsState = create<SettingsState>()(
 				set({ autoStartSavedPortForwards: autoStart }),
 			setKeepLiveSessionsOnWorkspaceSwitch: (keep: boolean) =>
 				set({ keepLiveSessionsOnWorkspaceSwitch: keep }),
+			setAllowYamlForceConflicts: (allow: boolean) =>
+				set({ allowYamlForceConflicts: allow }),
 			setTimestampTimezone: (timezone: TimestampTimezone) =>
 				set({ timestampTimezone: timezone }),
 			setYamlViewModeDefault: (mode: YamlViewMode) =>
@@ -101,6 +106,9 @@ export const useSettingsState = create<SettingsState>()(
 					keepLiveSessionsOnWorkspaceSwitch:
 						saved.keepLiveSessionsOnWorkspaceSwitch ??
 						current.keepLiveSessionsOnWorkspaceSwitch,
+					allowYamlForceConflicts:
+						saved.allowYamlForceConflicts ??
+						current.allowYamlForceConflicts,
 					timestampTimezone:
 						saved.timestampTimezone ?? current.timestampTimezone,
 					yamlViewModeDefault:
@@ -115,6 +123,7 @@ export const useSettingsState = create<SettingsState>()(
 				autoStartSavedPortForwards: state.autoStartSavedPortForwards,
 				keepLiveSessionsOnWorkspaceSwitch:
 					state.keepLiveSessionsOnWorkspaceSwitch,
+				allowYamlForceConflicts: state.allowYamlForceConflicts,
 				timestampTimezone: state.timestampTimezone,
 				yamlViewModeDefault: state.yamlViewModeDefault,
 				yamlEncodingDefault: state.yamlEncodingDefault,

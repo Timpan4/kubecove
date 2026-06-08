@@ -23,10 +23,12 @@ interface YamlTabEditModeProps {
 	preparing: boolean;
 	applying: boolean;
 	showFullDiff: boolean;
+	canAllowForceConflicts: boolean;
 	activeYamlEncoding: YamlEncoding;
 	onChange: (value: string) => void;
 	onFormat: () => void;
 	onPrepare: () => Promise<void>;
+	onAllowForceConflicts: () => void;
 	onApply: () => Promise<void>;
 	onCancel: () => void;
 	onHideMessage: () => void;
@@ -73,10 +75,12 @@ export function YamlTabEditMode({
 	preparing,
 	applying,
 	showFullDiff,
+	canAllowForceConflicts,
 	activeYamlEncoding,
 	onChange,
 	onFormat,
 	onPrepare,
+	onAllowForceConflicts,
 	onApply,
 	onCancel,
 	onHideMessage,
@@ -162,7 +166,24 @@ export function YamlTabEditMode({
 			{prepareError && (
 				<Alert variant="destructive">
 					<AlertTitle>Dry run failed</AlertTitle>
-					<AlertDescription>{getErrorMessage(prepareError)}</AlertDescription>
+					<AlertDescription>
+						<div className="flex flex-col gap-3">
+							<span>{getErrorMessage(prepareError)}</span>
+							{canAllowForceConflicts && (
+								<div>
+									<Button
+										type="button"
+										variant="destructive"
+										size="sm"
+										disabled={preparing || applying}
+										onClick={onAllowForceConflicts}
+									>
+										Allow force-conflicts for this resource
+									</Button>
+								</div>
+							)}
+						</div>
+					</AlertDescription>
 				</Alert>
 			)}
 			{applyError && (
