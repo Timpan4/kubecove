@@ -151,6 +151,7 @@ pub(super) fn is_windows_app_webview_browser_process_text(
 ) -> bool {
     let text = process_text.to_ascii_lowercase();
     text.contains("--embedded-browser-webview=1")
+        && !text.contains("--type=")
         && is_windows_app_webview_process_text(host_exe_names, &text)
 }
 
@@ -424,7 +425,7 @@ mod tests {
         ));
         assert!(!is_windows_app_webview_browser_process_text(
             &host_names,
-            r#""C:\Program Files (x86)\Microsoft\EdgeWebView\Application\148.0.3967.96\msedgewebview2.exe" --type=renderer --webview-exe-name=kubecove.exe"#,
+            r#""C:\Program Files (x86)\Microsoft\EdgeWebView\Application\148.0.3967.96\msedgewebview2.exe" --type=renderer --embedded-browser-webview=1 --webview-exe-name=kubecove.exe"#,
         ));
     }
 
