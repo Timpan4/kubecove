@@ -1,10 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createTauriClient } from "../../lib/tauri";
 import type { ResourceSummary } from "../../lib/types";
 import { diagnosticLog } from "../../lib/diagnostics";
+import { useSettingsState } from "../../lib/settings";
 import {
 	PANEL_BODY_CLASS,
 	PANEL_CLASS,
@@ -44,6 +46,15 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 	const [timelineLogLine, setTimelineLogLine] = useState<
 		ParsedLogLine | undefined
 	>();
+	const queryClient = useQueryClient();
+	const yamlEncodingDefault = useSettingsState(
+		(state) => state.yamlEncodingDefault,
+	);
+	const yamlViewModeDefault = useSettingsState(
+		(state) => state.yamlViewModeDefault,
+	);
+	const [yamlViewMode, setYamlViewMode] = useState(yamlViewModeDefault);
+	const [yamlEncoding, setYamlEncoding] = useState(yamlEncodingDefault);
 	const client = useMemo(() => createTauriClient(), []);
 	const dynamicResourceKind = useMemo(
 		() => dynamicResourceKindFromSummary(resource),
@@ -52,15 +63,6 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 	const resourceKey = `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
 	const renderCountRef = useRef(0);
 	renderCountRef.current += 1;
-
-	useEffect(() => {
-		diagnosticLog("detail.resource.changed", {
-			key: resourceKey,
-			render: renderCountRef.current,
-		});
-		setActiveTab("details");
-		setTimelineLogLine(undefined);
-	}, [resourceKey]);
 
 	useEffect(() => {
 		diagnosticLog("detail.mount", { key: resourceKey });
@@ -82,6 +84,8 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		resourceKey,
 		client,
 		dynamicResourceKind,
+		yamlViewMode,
+		yamlEncoding,
 	});
 	const { data: details } = detailsQuery;
 	const { data: yaml } = yamlQuery;
@@ -112,27 +116,22 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		() => getContainerStatusRows(details?.status),
 		[details?.status],
 	);
-	const containerSignature = containerRows
-		.map((container) => `${container.type ?? "container"}:${container.name}`)
-		.join("|");
 
-	useEffect(() => {
+	const selectedPodContainer = useMemo(() => {
 		if (resource.kind !== "Pod") {
-			setSelectedContainer("");
-			return;
+			return "";
 		}
-		if (containerRows.length === 0) return;
 		if (
 			selectedContainer &&
 			containerRows.some((container) => container.name === selectedContainer)
 		) {
-			return;
+			return selectedContainer;
 		}
 		const regularContainer =
 			containerRows.find((container) => container.type === "container") ??
 			containerRows[0];
-		setSelectedContainer(regularContainer?.name ?? "");
-	}, [containerRows, containerSignature, resource.kind, selectedContainer]);
+		return regularContainer?.name ?? "";
+	}, [containerRows, resource.kind, selectedContainer]);
 
 	return (
 		<div className={PANEL_CLASS}>
@@ -189,7 +188,11 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 						</TabsTrigger>
 					</TabsList>
 				</div>
-				<div className={PANEL_BODY_CLASS}>
+				<div
+					className={
+						activeTab === "yaml" ? "flex-1 overflow-y-auto p-0" : PANEL_BODY_CLASS
+					}
+				>
 					<TabsContent value="details" className="m-0">
 						<DetailsTab
 							resource={resource}
@@ -219,7 +222,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 								client={client}
 								resource={resource}
 								containers={containerRows}
-								selectedContainer={selectedContainer}
+								selectedContainer={selectedPodContainer}
 								onSelectedContainerChange={setSelectedContainer}
 								onLatestLogLineChange={setTimelineLogLine}
 								active={activeTab === "logs"}
@@ -233,7 +236,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 								client={client}
 								resource={resource}
 								containers={containerRows}
-								selectedContainer={selectedContainer}
+								selectedContainer={selectedPodContainer}
 								onSelectedContainerChange={setSelectedContainer}
 								active={activeTab === "exec"}
 							/>
@@ -252,10 +255,22 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 					)}
 					<TabsContent value="yaml" className="m-0">
 						<YamlTab
+							client={client}
+							resource={resource}
 							yaml={yaml}
 							yamlLoading={yamlQuery.isLoading}
 							yamlError={yamlQuery.isError}
 							yamlErr={yamlQuery.error}
+							yamlViewMode={yamlViewMode}
+							onYamlViewModeChange={setYamlViewMode}
+							yamlEncoding={yamlEncoding}
+							onYamlEncodingChange={setYamlEncoding}
+							onApplied={() => {
+								void queryClient.invalidateQueries({
+									queryKey: ["resource-details"],
+								});
+								void queryClient.invalidateQueries({ queryKey: ["resource-yaml"] });
+							}}
 						/>
 					</TabsContent>
 				</div>

@@ -1,6 +1,10 @@
 use super::{client_for_context, find_api_resource};
-use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, list_params, resource_age};
-use crate::models::{AppError, ArgoAppProjectDetails, ArgoAppProjectSummary};
+use crate::commands::helpers::{
+    k8s_creation_timestamp_to_rfc3339, list_params, resource_age, serialize_resource_document,
+};
+use crate::models::{
+    AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, YamlEncoding, YamlViewMode,
+};
 use chrono::{TimeZone, Utc};
 use kube::api::{Api, DynamicObject};
 
@@ -11,6 +15,8 @@ pub async fn get_argocd_appproject_details(
     name: String,
     namespace: Option<String>,
     kubeconfig_env_var: Option<String>,
+    yaml_view_mode: Option<YamlViewMode>,
+    yaml_encoding: Option<YamlEncoding>,
 ) -> Result<ArgoAppProjectDetails, AppError> {
     let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
 
@@ -29,8 +35,11 @@ pub async fn get_argocd_appproject_details(
         .get(&name)
         .await
         .map_err(|e| AppError::kube(e.to_string()))?;
-    let yaml =
-        serde_yaml::to_string(&obj).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let yaml = serialize_resource_document(
+        &obj,
+        yaml_view_mode.unwrap_or_default(),
+        yaml_encoding.unwrap_or_default(),
+    )?;
     let metadata = serde_json::to_value(&obj.metadata)
         .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
     let data = obj

@@ -33,10 +33,7 @@ import {
 	uniqueArgoApps,
 	watchKeysFromFetchKeys,
 } from "../src/features/resources/helpers";
-import {
-	groupHelmReleasesByNamespace,
-	resourcesOwnedByHelmRelease,
-} from "../src/features/helm/helpers";
+import { groupHelmReleasesByNamespace } from "../src/features/helm/helpers";
 
 describe("shouldFetchResourceDetails", () => {
   const resource = {
@@ -325,7 +322,7 @@ describe("resource browser presentation helpers", () => {
     expect(filterResources([resource], "apps/v1", "")).toEqual([]);
   });
 
-  test("groups Helm releases by namespace and matches owned resources", () => {
+  test("groups Helm releases by namespace", () => {
     const releases = [
       {
         cluster: "kind-dev",
@@ -344,14 +341,7 @@ describe("resource browser presentation helpers", () => {
         storageName: "sh.helm.release.v1.api.v2",
       },
     ];
-    const resources: ResourceSummary[] = [
-      { ...baseResource, name: "api-0", namespace: "payments", helmRelease: "api" },
-      { ...baseResource, name: "api-1", namespace: "other", helmRelease: "api" },
-      { ...baseResource, name: "worker-0", namespace: "jobs", helmRelease: "worker" },
-    ];
-
     expect(groupHelmReleasesByNamespace(releases).map((group) => group.namespace)).toEqual(["jobs", "payments"]);
-    expect(resourcesOwnedByHelmRelease(resources, releases[1]).map((resource) => resource.name)).toEqual(["api-0"]);
   });
 
   test("sorts rows using table sorting state", () => {
@@ -921,7 +911,10 @@ describe("incident signal helpers", () => {
 		);
 
 		expect(source).toContain(
-			'resource.kind === "Pod" && (details || podDetailsLoading)',
+			"details?.summary ? { ...resource, ...details.summary } : resource",
+		);
+		expect(source).toContain(
+			'currentResource.kind === "Pod" && (details || podDetailsLoading)',
 		);
 		expect(source).toContain("details || podDetailsLoading");
 		expect(source).toContain("? containerRows");

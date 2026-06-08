@@ -6,7 +6,10 @@ pub(crate) use metadata::{
     base_resource_summary, extract_argo_app, extract_helm_release, extract_owner_ref,
     extract_owner_ref_summary, fmt_ready,
 };
-pub(crate) use serialization::{fetch_and_serialize, fetch_and_serialize_cluster, redact_secret};
+pub(crate) use serialization::{
+    fetch_and_serialize, fetch_and_serialize_cluster, fetch_and_serialize_cluster_with_encoding,
+    fetch_and_serialize_with_encoding, redact_secret, serialize_resource_document,
+};
 pub(crate) use time::{k8s_creation_timestamp_to_rfc3339, k8s_timestamp_to_datetime, resource_age};
 
 use kube::api::ListParams;

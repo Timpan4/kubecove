@@ -25,7 +25,7 @@ pub use argo::{
 pub use contexts::{get_cluster_contexts, list_kube_contexts};
 pub use discovery::{list_resource_kinds, resource_kinds_from};
 pub use events::{list_resource_events, resource_events_from};
-pub use helm::{get_helm_release_details, list_helm_releases};
+pub use helm::{get_helm_release_details, get_helm_release_reconciliation, list_helm_releases};
 pub use incidents::{incident_cockpit_from, list_incident_cockpit};
 pub use kubeconfig::{kubeconfig_source_key, KubeconfigSource, DEFAULT_KUBECONFIG_ENV_VAR};
 pub use live_store::ClusterLiveStore;
@@ -37,10 +37,11 @@ pub use pod_exec::{
 };
 pub use rbac::{list_rbac_inspection, rbac_inspection_from};
 pub use resources::{
-    dynamic_resource_details_from, dynamic_resources_summary_from, get_dynamic_resource_details,
-    get_resource_details, get_resource_yaml, list_dynamic_resources, list_resource_scope,
-    list_resource_topology, list_resources, resource_details_from, resource_scope_from,
-    resource_topology_from, resource_yaml_from, resources_summary_from,
+    apply_yaml, dynamic_resource_details_from, dynamic_resources_summary_from,
+    get_dynamic_resource_details, get_resource_details, get_resource_yaml, lint_kubernetes_yaml,
+    list_dynamic_resources, list_resource_scope, list_resource_topology, list_resources,
+    prepare_yaml_apply, resource_details_from, resource_scope_from, resource_topology_from,
+    resource_yaml_from, resources_summary_from,
 };
 pub use sessions::{
     list_port_forwards, start_pod_port_forward, stop_port_forward, PortForwardRegistry,

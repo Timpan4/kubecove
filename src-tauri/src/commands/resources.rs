@@ -1,3 +1,4 @@
+mod apply;
 mod details;
 mod dynamic;
 mod scope;
@@ -12,7 +13,9 @@ mod topology_network;
 mod topology_tests;
 mod yaml;
 
+pub use apply::{apply_yaml, lint_kubernetes_yaml, prepare_yaml_apply};
 pub use details::{get_resource_details, resource_details_from};
+pub(crate) use dynamic::{api_resource_from_discovered, dynamic_resource_summary};
 pub use dynamic::{
     dynamic_resource_details_from, dynamic_resources_summary_from, get_dynamic_resource_details,
     list_dynamic_resources,

@@ -1,3 +1,4 @@
+use super::resource::ResourceSummary;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +34,50 @@ pub struct HelmReleaseDetails {
     pub manifest_summary: HelmManifestSummary,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelmReleaseReconciliation {
+    pub summary: HelmReleaseSummary,
+    pub totals: HelmReconciliationTotals,
+    pub resources: Vec<HelmReconciliationResource>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelmReconciliationTotals {
+    pub tracked: usize,
+    pub unlabeled_live: usize,
+    pub missing: usize,
+    pub label_only: usize,
+    pub unavailable: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HelmReconciliationStatus {
+    Tracked,
+    UnlabeledLive,
+    Missing,
+    LabelOnly,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelmReconciliationResource {
+    pub api_version: Option<String>,
+    pub kind: Option<String>,
+    pub namespace: Option<String>,
+    pub name: Option<String>,
+    pub status: HelmReconciliationStatus,
+    pub status_message: String,
+    pub in_manifest: bool,
+    pub explicit_helm_label: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live_resource: Option<ResourceSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

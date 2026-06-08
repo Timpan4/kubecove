@@ -2,10 +2,17 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+	YamlEncodingControl,
+	YamlViewModeControl,
+} from "@/components/YamlModeControl";
+import { useSettingsState } from "@/lib/settings";
 import type {
 	ArgoApplicationSetSummary,
 	ArgoApplicationSummary,
 	ArgoAppProjectSummary,
+	YamlEncoding,
+	YamlViewMode,
 } from "@/lib/types";
 import {
 	ArgoApplicationDetail,
@@ -65,20 +72,38 @@ function ArgoYamlContent({
 	isApp,
 	isAppSet,
 	isAppProject,
+	yamlViewMode,
+	yamlEncoding,
 }: {
 	app: ArgoDetailItem;
 	isApp: boolean;
 	isAppSet: boolean;
 	isAppProject: boolean;
+	yamlViewMode: YamlViewMode;
+	yamlEncoding: YamlEncoding;
 }) {
 	return (
 		<>
-			{isApp && <ArgoApplicationYaml app={app as ArgoApplicationSummary} />}
+			{isApp && (
+				<ArgoApplicationYaml
+					app={app as ArgoApplicationSummary}
+					yamlViewMode={yamlViewMode}
+					yamlEncoding={yamlEncoding}
+				/>
+			)}
 			{isAppSet && (
-				<ArgoApplicationSetYaml appset={app as ArgoApplicationSetSummary} />
+				<ArgoApplicationSetYaml
+					appset={app as ArgoApplicationSetSummary}
+					yamlViewMode={yamlViewMode}
+					yamlEncoding={yamlEncoding}
+				/>
 			)}
 			{isAppProject && (
-				<ArgoAppProjectYaml project={app as ArgoAppProjectSummary} />
+				<ArgoAppProjectYaml
+					project={app as ArgoAppProjectSummary}
+					yamlViewMode={yamlViewMode}
+					yamlEncoding={yamlEncoding}
+				/>
 			)}
 		</>
 	);
@@ -92,6 +117,14 @@ export function ArgoDetailPanel({
 	onClose: () => void;
 }) {
 	const [activeTab, setActiveTab] = useState<Tab>("details");
+	const yamlViewModeDefault = useSettingsState(
+		(state) => state.yamlViewModeDefault,
+	);
+	const yamlEncodingDefault = useSettingsState(
+		(state) => state.yamlEncodingDefault,
+	);
+	const [yamlViewMode, setYamlViewMode] = useState(yamlViewModeDefault);
+	const [yamlEncoding, setYamlEncoding] = useState(yamlEncodingDefault);
 	const isAppProject = "description" in app;
 	const isAppSet = !isAppProject && "status" in app;
 	const isApp = !isAppProject && !isAppSet;
@@ -137,11 +170,23 @@ export function ArgoDetailPanel({
 						/>
 					</TabsContent>
 					<TabsContent value="yaml" className="m-0">
+						<div className="mb-3 flex flex-wrap justify-end gap-2">
+							<YamlViewModeControl
+								value={yamlViewMode}
+								onChange={setYamlViewMode}
+							/>
+							<YamlEncodingControl
+								value={yamlEncoding}
+								onChange={setYamlEncoding}
+							/>
+						</div>
 						<ArgoYamlContent
 							app={app}
 							isApp={isApp}
 							isAppSet={isAppSet}
 							isAppProject={isAppProject}
+							yamlViewMode={yamlViewMode}
+							yamlEncoding={yamlEncoding}
 						/>
 					</TabsContent>
 				</div>

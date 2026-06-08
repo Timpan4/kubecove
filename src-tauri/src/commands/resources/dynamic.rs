@@ -1,12 +1,15 @@
 use crate::commands::helpers::{
     extract_argo_app, extract_helm_release, extract_owner_ref, k8s_creation_timestamp_to_rfc3339,
-    list_params, resource_age,
+    list_params, resource_age, serialize_resource_document,
 };
 use crate::commands::{
     kubeconfig::{kubeconfig_source_key, KubeconfigSource},
     ClusterLiveStore,
 };
-use crate::models::{AppError, DiscoveredResourceKind, ResourceDetailsFull, ResourceSummary};
+use crate::models::{
+    AppError, DiscoveredResourceKind, ResourceDetailsFull, ResourceSummary, YamlEncoding,
+    YamlViewMode,
+};
 use chrono::{TimeZone, Utc};
 use kube::{
     api::{Api, ApiResource, DynamicObject},
@@ -196,6 +199,8 @@ pub async fn dynamic_resource_details_from(
     name: String,
     namespace: Option<String>,
     kubeconfig_env_var: Option<String>,
+    yaml_view_mode: Option<YamlViewMode>,
+    yaml_encoding: Option<YamlEncoding>,
 ) -> Result<ResourceDetailsFull, AppError> {
     if resource_kind.namespaced && namespace.is_none() {
         return Err(AppError::new(
@@ -222,8 +227,11 @@ pub async fn dynamic_resource_details_from(
         .get(&name)
         .await
         .map_err(|e| AppError::kube(e.to_string()))?;
-    let yaml = serde_yaml::to_string(&object)
-        .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let yaml = serialize_resource_document(
+        &object,
+        yaml_view_mode.unwrap_or_default(),
+        yaml_encoding.unwrap_or_default(),
+    )?;
     let metadata = serde_json::to_value(&object.metadata)
         .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
     let status = dynamic_status_value(&object.data);
@@ -244,6 +252,8 @@ pub async fn get_dynamic_resource_details(
     name: String,
     namespace: Option<String>,
     kubeconfig_env_var: Option<String>,
+    yaml_view_mode: Option<YamlViewMode>,
+    yaml_encoding: Option<YamlEncoding>,
 ) -> Result<ResourceDetailsFull, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
@@ -257,6 +267,8 @@ pub async fn get_dynamic_resource_details(
         name.clone(),
         namespace.clone(),
         kubeconfig_env_var,
+        yaml_view_mode,
+        yaml_encoding,
     )
     .await;
     match &result {

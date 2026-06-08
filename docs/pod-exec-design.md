@@ -2,7 +2,7 @@
 
 ## Goal
 
-KubeCove 0.5.0 adds a narrow Pod exec workflow for troubleshooting a selected container without adding a generic shell runner or broad mutation surface.
+KubeCove includes a narrow Pod exec workflow for troubleshooting a selected container without adding a generic shell runner or broad mutation surface.
 
 ## V1 Behavior
 

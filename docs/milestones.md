@@ -160,6 +160,13 @@ Goal: add exact-Pod interactive exec without broad shell or mutation surfaces.
 - [ ] Implement future cluster-changing commands as explicit, typed, permission-aware workflows.
 - [ ] Add focused ADR coverage before Argo CD API, CLI, sync, rollback, or diff support.
 
+### Helm Reconciliation
+
+- [x] Add inspection-only Helm Reconciliation design note.
+- [x] Add typed backend reconciliation command for decoded manifest intent versus live cluster state.
+- [x] Replace Helm detail label-only Resources tab with backend-owned Reconciliation.
+- [ ] Run a manual Helm Reconciliation smoke test against a readable cluster with Helm releases.
+
 ### Agent Skills
 
 Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
