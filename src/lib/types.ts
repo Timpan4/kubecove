@@ -244,6 +244,8 @@ export interface PortForwardSessionSummary {
 	id: string;
 	clusterContext: string;
 	kubeconfigEnvVar?: string;
+	kubeconfigSourceKey?: string;
+	kubeconfigSourceLabel?: string;
 	namespace: string;
 	targetKind: "Pod" | "Service" | string;
 	targetName: string;
@@ -295,6 +297,8 @@ export interface PodExecSessionSummary {
 	id: string;
 	clusterContext: string;
 	kubeconfigEnvVar?: string;
+	kubeconfigSourceKey?: string;
+	kubeconfigSourceLabel?: string;
 	namespace: string;
 	podName: string;
 	container?: string;
@@ -308,6 +312,37 @@ export interface PodExecSessionSummary {
 	finishedAt?: string;
 	exitCode?: number;
 	lastError?: string;
+}
+
+export interface LiveSessionCleanupRequest {
+	allowedClusterContexts: string[];
+	kubeconfigSourceKey: string;
+}
+
+export interface LiveSessionCleanupResult {
+	stoppedPortForwardIds: string[];
+	stoppedPodExecIds: string[];
+	stoppedPortForwards: number;
+	stoppedPodExecSessions: number;
+}
+
+export interface KubeconfigPathEntry {
+	path: string;
+}
+
+export interface KubeconfigSourceWarning {
+	source: string;
+	path?: string;
+	message: string;
+}
+
+export interface KubeconfigSourcesSummary {
+	kubeconfigEnvVar: string;
+	paths: KubeconfigPathEntry[];
+	sourceKey: string;
+	sourceLabel: string;
+	showSourceLabels: boolean;
+	warnings: KubeconfigSourceWarning[];
 }
 
 export type PodExecSessionMessage =

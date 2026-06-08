@@ -1,5 +1,5 @@
 use super::*;
-use std::{env, time::Duration};
+use std::{collections::HashSet, env, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -24,6 +24,8 @@ fn test_summary(id: &str, local_port: u16) -> PortForwardSessionSummary {
         id: id.to_string(),
         cluster_context: "kind-dev".to_string(),
         kubeconfig_env_var: None,
+        kubeconfig_source_key: None,
+        kubeconfig_source_label: None,
         namespace: "default".to_string(),
         target_kind: "Pod".to_string(),
         target_name: "api-0".to_string(),
@@ -133,6 +135,8 @@ fn registry_lists_marks_and_stops_sessions() {
         &PortForwardTarget {
             cluster_context: "kind-dev".to_string(),
             kubeconfig_env_var: None,
+            kubeconfig_source_key: None,
+            kubeconfig_source_label: None,
             namespace: "default".to_string(),
             target_kind: PortForwardTargetKind::Service,
             target_name: "api".to_string(),
@@ -157,6 +161,32 @@ fn registry_detects_local_port_collision() {
 
     assert!(registry.has_local_port(18080));
     assert!(!registry.has_local_port(18081));
+}
+
+#[test]
+fn registry_stops_sessions_outside_context_or_source_scope() {
+    let registry = PortForwardRegistry::default();
+    let mut kept = test_summary("pf-kept", 18080);
+    kept.kubeconfig_source_key = Some("kubeconfigSource=current".to_string());
+    let mut wrong_context = test_summary("pf-context", 18081);
+    wrong_context.cluster_context = "other-context".to_string();
+    wrong_context.kubeconfig_source_key = Some("kubeconfigSource=current".to_string());
+    let mut wrong_source = test_summary("pf-source", 18082);
+    wrong_source.kubeconfig_source_key = Some("kubeconfigSource=old".to_string());
+    registry.insert_summary_for_test(kept);
+    registry.insert_summary_for_test(wrong_context);
+    registry.insert_summary_for_test(wrong_source);
+
+    let allowed = HashSet::from(["kind-dev".to_string()]);
+    let stopped = registry.stop_outside_scope(&allowed, "kubeconfigSource=current");
+
+    assert_eq!(
+        stopped,
+        vec!["pf-context".to_string(), "pf-source".to_string()]
+    );
+    let remaining = registry.list();
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].id, "pf-kept");
 }
 
 #[tokio::test(flavor = "current_thread")]

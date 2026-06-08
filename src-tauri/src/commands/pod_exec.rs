@@ -11,7 +11,7 @@ use kube::{
     Client,
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex,
@@ -30,6 +30,8 @@ const MAX_TERMINAL_SIZE: u16 = 500;
 struct ValidatedPodExecRequest {
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
+    kubeconfig_source_key: Option<String>,
+    kubeconfig_source_label: Option<String>,
     namespace: String,
     pod_name: String,
     container: Option<String>,
@@ -191,6 +193,41 @@ impl PodExecRegistry {
         true
     }
 
+    pub(crate) fn stop_outside_scope(
+        &self,
+        allowed_cluster_contexts: &HashSet<String>,
+        kubeconfig_source_key: &str,
+    ) -> Vec<String> {
+        let mut stopped = Vec::new();
+        let mut handles = Vec::new();
+        {
+            let mut state = self.state.lock().expect("pod exec registry lock");
+            let session_ids = state
+                .sessions
+                .iter()
+                .filter_map(|(id, session)| {
+                    let in_context =
+                        allowed_cluster_contexts.contains(&session.summary.cluster_context);
+                    let in_source = session.summary.kubeconfig_source_key.as_deref()
+                        == Some(kubeconfig_source_key);
+                    (!in_context || !in_source).then(|| id.clone())
+                })
+                .collect::<Vec<_>>();
+            for session_id in session_ids {
+                if let Some(mut session) = state.sessions.remove(&session_id) {
+                    if let Some(handle) = session.handle.take() {
+                        handles.push(handle);
+                    }
+                    stopped.push(session_id);
+                }
+            }
+        }
+        for handle in handles {
+            handle.abort();
+        }
+        stopped
+    }
+
     #[cfg(test)]
     fn insert_summary_for_test(&self, summary: PodExecSessionSummary) {
         let (commands, _rx) = mpsc::unbounded_channel();
@@ -295,9 +332,12 @@ fn validate_request(request: &PodExecSessionRequest) -> Result<ValidatedPodExecR
         ));
     }
 
+    let source = KubeconfigSource::new(request.kubeconfig_env_var.clone())?;
     Ok(ValidatedPodExecRequest {
         cluster_context,
         kubeconfig_env_var: request.kubeconfig_env_var.clone(),
+        kubeconfig_source_key: Some(source.key()),
+        kubeconfig_source_label: source.show_source_labels().then(|| source.label()),
         namespace,
         pod_name,
         container,
@@ -561,6 +601,8 @@ async fn start_pod_exec_session_in_registry(
         id: session_id.clone(),
         cluster_context: request.cluster_context.clone(),
         kubeconfig_env_var: request.kubeconfig_env_var.clone(),
+        kubeconfig_source_key: request.kubeconfig_source_key.clone(),
+        kubeconfig_source_label: request.kubeconfig_source_label.clone(),
         namespace: request.namespace.clone(),
         pod_name: request.pod_name.clone(),
         container: request.container.clone(),
@@ -644,6 +686,7 @@ pub async fn list_pod_exec_sessions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     fn valid_request() -> PodExecSessionRequest {
         PodExecSessionRequest {
@@ -672,6 +715,8 @@ mod tests {
             id: id.to_string(),
             cluster_context: "kind-dev".to_string(),
             kubeconfig_env_var: None,
+            kubeconfig_source_key: None,
+            kubeconfig_source_label: None,
             namespace: "default".to_string(),
             pod_name: "api-0".to_string(),
             container: Some("api".to_string()),
@@ -763,5 +808,31 @@ mod tests {
         assert!(registry.stop("exec-1"));
         assert!(!registry.stop("exec-1"));
         assert!(registry.list().is_empty());
+    }
+
+    #[test]
+    fn registry_stops_sessions_outside_context_or_source_scope() {
+        let registry = PodExecRegistry::default();
+        let mut kept = test_summary("exec-kept");
+        kept.kubeconfig_source_key = Some("kubeconfigSource=current".to_string());
+        let mut wrong_context = test_summary("exec-context");
+        wrong_context.cluster_context = "other-context".to_string();
+        wrong_context.kubeconfig_source_key = Some("kubeconfigSource=current".to_string());
+        let mut wrong_source = test_summary("exec-source");
+        wrong_source.kubeconfig_source_key = Some("kubeconfigSource=old".to_string());
+        registry.insert_summary_for_test(kept);
+        registry.insert_summary_for_test(wrong_context);
+        registry.insert_summary_for_test(wrong_source);
+
+        let allowed = HashSet::from(["kind-dev".to_string()]);
+        let stopped = registry.stop_outside_scope(&allowed, "kubeconfigSource=current");
+
+        assert_eq!(
+            stopped,
+            vec!["exec-context".to_string(), "exec-source".to_string()]
+        );
+        let remaining = registry.list();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, "exec-kept");
     }
 }

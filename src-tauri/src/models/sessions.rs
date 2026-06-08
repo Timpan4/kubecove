@@ -25,6 +25,10 @@ pub struct PortForwardSessionSummary {
     pub cluster_context: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kubeconfig_env_var: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubeconfig_source_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubeconfig_source_label: Option<String>,
     pub namespace: String,
     pub target_kind: String,
     pub target_name: String,
@@ -80,6 +84,10 @@ pub struct PodExecSessionSummary {
     pub cluster_context: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kubeconfig_env_var: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubeconfig_source_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubeconfig_source_label: Option<String>,
     pub namespace: String,
     pub pod_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -97,6 +105,22 @@ pub struct PodExecSessionSummary {
     pub exit_code: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveSessionCleanupRequest {
+    pub allowed_cluster_contexts: Vec<String>,
+    pub kubeconfig_source_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveSessionCleanupResult {
+    pub stopped_port_forward_ids: Vec<String>,
+    pub stopped_pod_exec_ids: Vec<String>,
+    pub stopped_port_forwards: usize,
+    pub stopped_pod_exec_sessions: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

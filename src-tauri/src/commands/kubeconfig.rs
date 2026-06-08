@@ -3,13 +3,72 @@ use kube::{
     config::{KubeConfigOptions, Kubeconfig},
     Client, Config,
 };
-use std::{env, ffi::OsString, path::PathBuf};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::hash_map::DefaultHasher,
+    env,
+    ffi::OsString,
+    fs,
+    hash::{Hash, Hasher},
+    path::PathBuf,
+    sync::OnceLock,
+};
+use tauri::AppHandle;
+use tauri_plugin_dialog::DialogExt;
 
 pub const DEFAULT_KUBECONFIG_ENV_VAR: &str = "KUBECONFIG";
+
+static KUBECONFIG_SETTINGS_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KubeconfigPathEntry {
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KubeconfigSourceWarning {
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KubeconfigSourcesSummary {
+    pub kubeconfig_env_var: String,
+    pub paths: Vec<KubeconfigPathEntry>,
+    pub source_key: String,
+    pub source_label: String,
+    pub show_source_labels: bool,
+    pub warnings: Vec<KubeconfigSourceWarning>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KubeconfigSettings {
+    kubeconfig_env_var: String,
+    paths: Vec<String>,
+    show_source_labels: bool,
+}
+
+impl Default for KubeconfigSettings {
+    fn default() -> Self {
+        Self {
+            kubeconfig_env_var: DEFAULT_KUBECONFIG_ENV_VAR.to_string(),
+            paths: Vec::new(),
+            show_source_labels: true,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KubeconfigSource {
     env_var: String,
+    paths: Vec<PathBuf>,
+    show_source_labels: bool,
 }
 
 impl KubeconfigSource {
@@ -20,15 +79,47 @@ impl KubeconfigSource {
     pub fn from_env_var(env_var: Option<&str>) -> Result<Self, AppError> {
         let env_var = normalize_env_var(env_var);
         validate_env_var_name(&env_var)?;
-        Ok(Self { env_var })
+        Ok(Self {
+            env_var,
+            paths: Vec::new(),
+            show_source_labels: false,
+        })
     }
 
     pub fn key(&self) -> String {
-        format!("kubeconfigEnv={}", self.env_var)
+        if self.paths.is_empty() {
+            format!("kubeconfigEnv={}", self.env_var)
+        } else {
+            format!(
+                "kubeconfigSource={:016x}",
+                kubeconfig_source_hash(&self.env_var, &self.paths)
+            )
+        }
     }
 
     pub fn env_var(&self) -> &str {
         &self.env_var
+    }
+
+    pub fn label(&self) -> String {
+        if self.paths.is_empty() {
+            self.env_var.clone()
+        } else {
+            format!(
+                "{} + {} {}",
+                self.env_var,
+                self.paths.len(),
+                if self.paths.len() == 1 {
+                    "path"
+                } else {
+                    "paths"
+                }
+            )
+        }
+    }
+
+    pub fn show_source_labels(&self) -> bool {
+        self.show_source_labels
     }
 
     pub fn read_kubeconfig(&self) -> Result<Kubeconfig, AppError> {
@@ -92,6 +183,10 @@ impl KubeconfigSource {
     }
 
     fn custom_env_value_paths(&self) -> Result<Option<Vec<PathBuf>>, AppError> {
+        if !self.paths.is_empty() {
+            return Ok(Some(self.paths.clone()));
+        }
+
         if self.env_var == DEFAULT_KUBECONFIG_ENV_VAR {
             return Ok(None);
         }
@@ -101,6 +196,87 @@ impl KubeconfigSource {
         };
         Ok(split_non_empty_paths(value))
     }
+}
+
+pub fn init_kubeconfig_settings_path(app_config_dir: PathBuf) {
+    let _ = KUBECONFIG_SETTINGS_PATH.set(app_config_dir.join("kubeconfig-sources.json"));
+}
+
+#[tauri::command]
+pub fn get_kubeconfig_sources() -> Result<KubeconfigSourcesSummary, AppError> {
+    summarize_settings(read_settings()?)
+}
+
+#[tauri::command]
+pub fn set_kubeconfig_env_var(env_var: String) -> Result<KubeconfigSourcesSummary, AppError> {
+    let mut settings = read_settings()?;
+    settings.kubeconfig_env_var = normalize_env_var(Some(&env_var));
+    validate_env_var_name(&settings.kubeconfig_env_var)?;
+    write_settings(&settings)?;
+    summarize_settings(settings)
+}
+
+#[tauri::command]
+pub fn set_show_kubeconfig_source_labels(show: bool) -> Result<KubeconfigSourcesSummary, AppError> {
+    let mut settings = read_settings()?;
+    settings.show_source_labels = show;
+    write_settings(&settings)?;
+    summarize_settings(settings)
+}
+
+#[tauri::command]
+pub fn pick_kubeconfig_paths(app: AppHandle) -> Result<KubeconfigSourcesSummary, AppError> {
+    let paths = app
+        .dialog()
+        .file()
+        .add_filter("Kubeconfig", &["yaml", "yml", "conf", "config"])
+        .blocking_pick_files()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|path| {
+            path.as_path()
+                .map(|path| path.to_string_lossy().to_string())
+        })
+        .collect::<Vec<_>>();
+    add_kubeconfig_paths(paths)
+}
+
+#[tauri::command]
+pub fn add_kubeconfig_paths(paths: Vec<String>) -> Result<KubeconfigSourcesSummary, AppError> {
+    let mut settings = read_settings()?;
+    for path in paths {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() && !settings.paths.iter().any(|existing| existing == trimmed) {
+            settings.paths.push(trimmed.to_string());
+        }
+    }
+    write_settings(&settings)?;
+    summarize_settings(settings)
+}
+
+#[tauri::command]
+pub fn remove_kubeconfig_path(path: String) -> Result<KubeconfigSourcesSummary, AppError> {
+    let mut settings = read_settings()?;
+    settings.paths.retain(|existing| existing != &path);
+    write_settings(&settings)?;
+    summarize_settings(settings)
+}
+
+#[tauri::command]
+pub fn reorder_kubeconfig_paths(paths: Vec<String>) -> Result<KubeconfigSourcesSummary, AppError> {
+    let mut settings = read_settings()?;
+    let known = settings.paths;
+    settings.paths = paths
+        .into_iter()
+        .filter(|path| known.iter().any(|known_path| known_path == path))
+        .collect();
+    for path in known {
+        if !settings.paths.iter().any(|ordered| ordered == &path) {
+            settings.paths.push(path);
+        }
+    }
+    write_settings(&settings)?;
+    summarize_settings(settings)
 }
 
 pub fn kubeconfig_source_key(kubeconfig_env_var: Option<&str>) -> Result<String, AppError> {
@@ -129,6 +305,78 @@ fn normalize_env_var(env_var: Option<&str>) -> String {
         .filter(|value| !value.is_empty())
         .unwrap_or(DEFAULT_KUBECONFIG_ENV_VAR)
         .to_string()
+}
+
+fn read_settings() -> Result<KubeconfigSettings, AppError> {
+    let Some(path) = KUBECONFIG_SETTINGS_PATH.get() else {
+        return Ok(KubeconfigSettings::default());
+    };
+    if !path.exists() {
+        return Ok(KubeconfigSettings::default());
+    }
+    let text = fs::read_to_string(path).map_err(settings_error)?;
+    serde_json::from_str(&text).map_err(settings_error)
+}
+
+fn write_settings(settings: &KubeconfigSettings) -> Result<(), AppError> {
+    let Some(path) = KUBECONFIG_SETTINGS_PATH.get() else {
+        return Ok(());
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(settings_error)?;
+    }
+    let text = serde_json::to_string_pretty(settings).map_err(settings_error)?;
+    fs::write(path, text).map_err(settings_error)
+}
+
+fn summarize_settings(settings: KubeconfigSettings) -> Result<KubeconfigSourcesSummary, AppError> {
+    validate_env_var_name(&settings.kubeconfig_env_var)?;
+    let source = KubeconfigSource {
+        env_var: settings.kubeconfig_env_var.clone(),
+        paths: settings.paths.iter().map(PathBuf::from).collect(),
+        show_source_labels: settings.show_source_labels,
+    };
+    Ok(KubeconfigSourcesSummary {
+        kubeconfig_env_var: settings.kubeconfig_env_var,
+        paths: settings
+            .paths
+            .into_iter()
+            .map(|path| KubeconfigPathEntry { path })
+            .collect(),
+        source_key: source.key(),
+        source_label: source.label(),
+        show_source_labels: source.show_source_labels(),
+        warnings: source_warnings(&source),
+    })
+}
+
+fn source_warnings(source: &KubeconfigSource) -> Vec<KubeconfigSourceWarning> {
+    source
+        .paths
+        .iter()
+        .filter(|path| !path.exists())
+        .map(|path| KubeconfigSourceWarning {
+            source: source.key(),
+            path: Some(path.to_string_lossy().to_string()),
+            message: "kubeconfig path does not exist".to_string(),
+        })
+        .collect()
+}
+
+fn kubeconfig_source_hash(env_var: &str, paths: &[PathBuf]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    env_var.hash(&mut hasher);
+    for path in paths {
+        path.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn settings_error(error: impl std::fmt::Display) -> AppError {
+    AppError::new(
+        format!("failed to persist kubeconfig settings: {error}"),
+        "io",
+    )
 }
 
 fn validate_env_var_name(env_var: &str) -> Result<(), AppError> {

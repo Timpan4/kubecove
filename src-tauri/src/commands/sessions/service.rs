@@ -58,6 +58,8 @@ pub(super) async fn resolve_service_target(
     Ok(PortForwardTarget {
         cluster_context: request.cluster_context,
         kubeconfig_env_var: request.kubeconfig_env_var,
+        kubeconfig_source_key: request.kubeconfig_source_key,
+        kubeconfig_source_label: request.kubeconfig_source_label,
         namespace: request.namespace,
         target_kind: PortForwardTargetKind::Service,
         target_name: request.target_name,

@@ -197,6 +197,8 @@ fn test_pod_exec_models_serde() {
         id: "pod-exec-1".to_string(),
         cluster_context: "kind-dev".to_string(),
         kubeconfig_env_var: None,
+        kubeconfig_source_key: None,
+        kubeconfig_source_label: None,
         namespace: "payments".to_string(),
         pod_name: "api-0".to_string(),
         container: Some("api".to_string()),

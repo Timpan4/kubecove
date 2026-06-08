@@ -6,6 +6,7 @@ mod helm;
 mod helpers;
 mod incidents;
 mod kubeconfig;
+mod live_sessions;
 mod live_store;
 mod metrics;
 mod namespaces;
@@ -27,7 +28,13 @@ pub use discovery::{list_resource_kinds, resource_kinds_from};
 pub use events::{list_resource_events, resource_events_from};
 pub use helm::{get_helm_release_details, get_helm_release_reconciliation, list_helm_releases};
 pub use incidents::{incident_cockpit_from, list_incident_cockpit};
-pub use kubeconfig::{kubeconfig_source_key, KubeconfigSource, DEFAULT_KUBECONFIG_ENV_VAR};
+pub use kubeconfig::{
+    add_kubeconfig_paths, get_kubeconfig_sources, init_kubeconfig_settings_path,
+    kubeconfig_source_key, pick_kubeconfig_paths, remove_kubeconfig_path, reorder_kubeconfig_paths,
+    set_kubeconfig_env_var, set_show_kubeconfig_source_labels, KubeconfigSource,
+    DEFAULT_KUBECONFIG_ENV_VAR,
+};
+pub use live_sessions::stop_live_sessions_outside_scope;
 pub use live_store::ClusterLiveStore;
 pub use metrics::{list_resource_metrics, resource_metrics_from};
 pub use namespaces::{list_namespaces, namespaces_summary_from};

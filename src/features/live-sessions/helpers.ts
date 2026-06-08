@@ -69,11 +69,10 @@ export function isReusablePortForwardSession(
 export function isPortForwardForResource(
 	session: PortForwardSessionSummary,
 	resource: ResourceSummary,
-	kubeconfigEnvVar?: string,
+	kubeconfigSource?: string,
 ): boolean {
 	return (
-		normalizeKubeconfigEnvVar(session.kubeconfigEnvVar) ===
-			normalizeKubeconfigEnvVar(kubeconfigEnvVar) &&
+		sessionKubeconfigSource(session) === normalizeKubeconfigSource(kubeconfigSource) &&
 		session.clusterContext === resource.cluster &&
 		session.namespace === resource.namespace &&
 		session.targetKind === resource.kind &&
@@ -90,11 +89,11 @@ export function savedPortForwardLabel(portForward: SavedPortForward): string {
 
 export function savedPortForwardToRequest(
 	portForward: SavedPortForward,
-	kubeconfigEnvVar?: string,
+	kubeconfigSource?: string,
 ): PortForwardRequest {
 	return {
 		clusterContext: portForward.clusterContext,
-		kubeconfigEnvVar,
+		kubeconfigEnvVar: sourceRequestEnvVar(kubeconfigSource),
 		namespace: portForward.namespace,
 		localPort: portForward.localPort,
 		targetKind: "Service",
@@ -120,11 +119,10 @@ export function portForwardSessionToRequest(
 export function savedPortForwardMatchesSession(
 	portForward: SavedPortForward,
 	session: PortForwardSessionSummary,
-	kubeconfigEnvVar?: string,
+	kubeconfigSource?: string,
 ): boolean {
 	return (
-		normalizeKubeconfigEnvVar(session.kubeconfigEnvVar) ===
-			normalizeKubeconfigEnvVar(kubeconfigEnvVar) &&
+		sessionKubeconfigSource(session) === normalizeKubeconfigSource(kubeconfigSource) &&
 		session.clusterContext === portForward.clusterContext &&
 		session.namespace === portForward.namespace &&
 		session.targetKind === "Service" &&
@@ -133,6 +131,33 @@ export function savedPortForwardMatchesSession(
 		(portForward.localPort === undefined ||
 			session.localPort === portForward.localPort)
 	);
+}
+
+export function savedPortForwardLocalPortConflict(
+	portForward: SavedPortForward,
+	sessions: PortForwardSessionSummary[],
+): PortForwardSessionSummary | null {
+	if (portForward.localPort === undefined) return null;
+	return (
+		sessions.find((session) => session.localPort === portForward.localPort) ??
+		null
+	);
+}
+
+function normalizeKubeconfigSource(source?: string): string {
+	if (source?.startsWith("kubeconfigSource=")) return source;
+	return `kubeconfigEnv=${normalizeKubeconfigEnvVar(source)}`;
+}
+
+function sessionKubeconfigSource(session: PortForwardSessionSummary): string {
+	return (
+		session.kubeconfigSourceKey ??
+		`kubeconfigEnv=${normalizeKubeconfigEnvVar(session.kubeconfigEnvVar)}`
+	);
+}
+
+function sourceRequestEnvVar(source?: string): string | undefined {
+	return source?.startsWith("kubeconfigSource=") ? undefined : source;
 }
 
 export interface ServicePortOption {

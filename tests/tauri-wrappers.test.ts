@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
 	createMockTauriClient,
+	addKubeconfigPaths,
 	getAppUsageMetrics,
 	getHelmReleaseDetails,
+	getKubeconfigSources,
 	getHelmReleaseReconciliation,
 	listResourceMetrics,
 	listRbacInspection,
@@ -15,9 +17,15 @@ import {
 	listKubeContexts,
 	listNamespaces,
 	resizePodExecTerminal,
+	removeKubeconfigPath,
+	reorderKubeconfigPaths,
+	setKubeconfigEnvVar,
+	setShowKubeconfigSourceLabels,
+	startPodLogStream,
 	startPodExecSession,
 	startPodPortForward,
 	startPortForward,
+	stopLiveSessionsOutsideScope,
 	stopPodExecSession,
 	stopPodPortForward,
 	writePodExecStdin,
@@ -36,6 +44,8 @@ import type {
 	RbacInspectionSummary,
 	ResourceMetricsSummary,
 	ResourceTopology,
+	KubeconfigSourcesSummary,
+	LiveSessionCleanupResult,
 } from "../src/lib/types";
 
 describe("createMockTauriClient", () => {
@@ -130,6 +140,34 @@ describe("createMockTauriClient", () => {
 			},
 		]);
 	});
+
+	test("passes live-session cleanup scope through typed wrapper", async () => {
+		const result: LiveSessionCleanupResult = {
+			stoppedPortForwardIds: ["port-forward-1"],
+			stoppedPodExecIds: ["pod-exec-1"],
+			stoppedPortForwards: 1,
+			stoppedPodExecSessions: 1,
+		};
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				return result as T;
+			},
+		};
+		const request = {
+			allowedClusterContexts: ["kind-dev", "staging"],
+			kubeconfigSourceKey: "kubeconfigSource=abc123",
+		};
+
+		expect(await stopLiveSessionsOutsideScope(client, request)).toEqual(result);
+		expect(calls).toEqual([
+			{
+				cmd: "stop_live_sessions_outside_scope",
+				args: { request },
+			},
+		]);
+	});
 });
 
 describe("typed Tauri wrappers", () => {
@@ -160,16 +198,95 @@ describe("typed Tauri wrappers", () => {
 		]);
 	});
 
+	test("omits backend source keys from kubeconfig env var args", async () => {
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				return [] as T;
+			},
+		};
+
+		await listKubeContexts(client, "kubeconfigSource=abc123");
+		await listNamespaces(client, "kind-dev", "kubeconfigSource=abc123");
+
+		expect(calls).toEqual([
+			{
+				cmd: "list_kube_contexts",
+				args: {},
+			},
+			{
+				cmd: "list_namespaces",
+				args: {
+					clusterContext: "kind-dev",
+				},
+			},
+		]);
+	});
+
 	test("query keys include kubeconfig source", () => {
 		expect(kubeconfigSourceKey("")).toBe("kubeconfigEnv=KUBECONFIG");
+		expect(kubeconfigSourceKey("kubeconfigSource=abc123")).toBe(
+			"kubeconfigSource=abc123",
+		);
 		expect(queryKeys.kubeContexts("KUBECOVE_CONFIG")).toEqual([
 			"kube-contexts",
 			"kubeconfigEnv=KUBECOVE_CONFIG",
+		]);
+		expect(queryKeys.kubeContexts("kubeconfigSource=abc123")).toEqual([
+			"kube-contexts",
+			"kubeconfigSource=abc123",
 		]);
 		expect(queryKeys.namespaces("kind-dev", "KUBECOVE_CONFIG")).toEqual([
 			"kube-namespaces",
 			"kubeconfigEnv=KUBECOVE_CONFIG",
 			"kind-dev",
+			]);
+	});
+
+	test("passes kubeconfig source settings through typed wrappers", async () => {
+		const sources: KubeconfigSourcesSummary = {
+			kubeconfigEnvVar: "KUBECOVE_KUBECONFIG",
+			paths: [{ path: "/tmp/a" }, { path: "/tmp/b" }],
+			sourceKey: "kubeconfigSource=abc123",
+			sourceLabel: "KUBECOVE_KUBECONFIG + 2 paths",
+			showSourceLabels: true,
+			warnings: [],
+		};
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				return sources as T;
+			},
+		};
+
+		expect(await getKubeconfigSources(client)).toEqual(sources);
+		expect(await setKubeconfigEnvVar(client, "KUBECOVE_KUBECONFIG")).toEqual(
+			sources,
+		);
+		expect(await setShowKubeconfigSourceLabels(client, false)).toEqual(sources);
+		expect(await addKubeconfigPaths(client, ["/tmp/a", "/tmp/b"])).toEqual(
+			sources,
+		);
+		expect(await removeKubeconfigPath(client, "/tmp/a")).toEqual(sources);
+		expect(await reorderKubeconfigPaths(client, ["/tmp/b", "/tmp/a"])).toEqual(
+			sources,
+		);
+
+		expect(calls).toEqual([
+			{ cmd: "get_kubeconfig_sources", args: undefined },
+			{
+				cmd: "set_kubeconfig_env_var",
+				args: { envVar: "KUBECOVE_KUBECONFIG" },
+			},
+			{ cmd: "set_show_kubeconfig_source_labels", args: { show: false } },
+			{ cmd: "add_kubeconfig_paths", args: { paths: ["/tmp/a", "/tmp/b"] } },
+			{ cmd: "remove_kubeconfig_path", args: { path: "/tmp/a" } },
+			{
+				cmd: "reorder_kubeconfig_paths",
+				args: { paths: ["/tmp/b", "/tmp/a"] },
+			},
 		]);
 	});
 
@@ -482,6 +599,110 @@ describe("typed Tauri wrappers", () => {
 				args: { sessionId: session.id },
 			},
 		]);
+	});
+
+	test("strips backend source keys from stream and live-session requests", async () => {
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				if (cmd === "start_pod_log_stream") return "stream-1" as T;
+				return {
+					id: "session-1",
+					clusterContext: "kind-dev",
+					namespace: "payments",
+					targetKind: "Pod",
+					targetName: "api-0",
+					podName: "api-0",
+					remotePort: 8080,
+					resolvedPodName: "api-0",
+					resolvedPodPort: 8080,
+					localPort: 18080,
+					localAddress: "127.0.0.1",
+					localUrl: "http://127.0.0.1:18080",
+					status: "listening",
+					startedAt: "2026-05-31T00:00:00Z",
+				} as T;
+			},
+		};
+		const channel = {} as never;
+
+		await startPodLogStream(
+			client,
+			{
+				clusterContext: "kind-dev",
+				kubeconfigEnvVar: "kubeconfigSource=abc123",
+				namespace: "payments",
+				podName: "api-0",
+				tailLines: 100,
+			},
+			channel,
+		);
+		await startPortForward(client, {
+			clusterContext: "kind-dev",
+			kubeconfigEnvVar: "kubeconfigSource=abc123",
+			namespace: "payments",
+			targetKind: "Pod",
+			targetName: "api-0",
+			podName: "api-0",
+			remotePort: 8080,
+		});
+		await startPodExecSession(
+			client,
+			{
+				clusterContext: "kind-dev",
+				kubeconfigEnvVar: "kubeconfigSource=abc123",
+				namespace: "payments",
+				podName: "api-0",
+				command: ["/bin/sh"],
+				stdin: true,
+				tty: true,
+				terminalSize: { cols: 100, rows: 32 },
+				confirmation: {
+					acknowledged: true,
+					target: "kind-dev/payments/Pod/api-0",
+					command: "/bin/sh",
+				},
+			},
+			channel,
+		);
+
+		expect(calls[0]?.args).toEqual({
+			request: {
+				clusterContext: "kind-dev",
+				namespace: "payments",
+				podName: "api-0",
+				tailLines: 100,
+			},
+			channel,
+		});
+		expect(calls[1]?.args).toEqual({
+			request: {
+				clusterContext: "kind-dev",
+				namespace: "payments",
+				targetKind: "Pod",
+				targetName: "api-0",
+				podName: "api-0",
+				remotePort: 8080,
+			},
+		});
+		expect(calls[2]?.args).toEqual({
+			request: {
+				clusterContext: "kind-dev",
+				namespace: "payments",
+				podName: "api-0",
+				command: ["/bin/sh"],
+				stdin: true,
+				tty: true,
+				terminalSize: { cols: 100, rows: 32 },
+				confirmation: {
+					acknowledged: true,
+					target: "kind-dev/payments/Pod/api-0",
+					command: "/bin/sh",
+				},
+			},
+			channel,
+		});
 	});
 });
 

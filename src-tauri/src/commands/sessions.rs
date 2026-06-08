@@ -4,7 +4,7 @@ use chrono::Utc;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{api::Api, Client};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     net::{Ipv4Addr, SocketAddrV4},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -42,6 +42,8 @@ impl PortForwardTargetKind {
 pub(super) struct ValidatedPortForwardRequest {
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
+    kubeconfig_source_key: Option<String>,
+    kubeconfig_source_label: Option<String>,
     namespace: String,
     target_kind: PortForwardTargetKind,
     target_name: String,
@@ -53,6 +55,8 @@ pub(super) struct ValidatedPortForwardRequest {
 struct PortForwardTarget {
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
+    kubeconfig_source_key: Option<String>,
+    kubeconfig_source_label: Option<String>,
     namespace: String,
     target_kind: PortForwardTargetKind,
     target_name: String,
@@ -176,6 +180,41 @@ impl PortForwardRegistry {
         true
     }
 
+    pub(crate) fn stop_outside_scope(
+        &self,
+        allowed_cluster_contexts: &HashSet<String>,
+        kubeconfig_source_key: &str,
+    ) -> Vec<String> {
+        let mut stopped = Vec::new();
+        let mut handles = Vec::new();
+        {
+            let mut state = self.state.lock().expect("port-forward registry lock");
+            let session_ids = state
+                .sessions
+                .iter()
+                .filter_map(|(id, session)| {
+                    let in_context =
+                        allowed_cluster_contexts.contains(&session.summary.cluster_context);
+                    let in_source = session.summary.kubeconfig_source_key.as_deref()
+                        == Some(kubeconfig_source_key);
+                    (!in_context || !in_source).then(|| id.clone())
+                })
+                .collect::<Vec<_>>();
+            for session_id in session_ids {
+                if let Some(mut session) = state.sessions.remove(&session_id) {
+                    if let Some(handle) = session.handle.take() {
+                        handles.push(handle);
+                    }
+                    stopped.push(session_id);
+                }
+            }
+        }
+        for handle in handles {
+            handle.abort();
+        }
+        stopped
+    }
+
     #[cfg(test)]
     fn insert_summary_for_test(&self, summary: PortForwardSessionSummary) {
         self.state
@@ -245,9 +284,12 @@ fn validate_request(request: &PortForwardRequest) -> Result<ValidatedPortForward
         ));
     }
 
+    let source = KubeconfigSource::new(request.kubeconfig_env_var.clone())?;
     Ok(ValidatedPortForwardRequest {
         cluster_context: request.cluster_context.trim().to_string(),
         kubeconfig_env_var: request.kubeconfig_env_var.clone(),
+        kubeconfig_source_key: Some(source.key()),
+        kubeconfig_source_label: source.show_source_labels().then(|| source.label()),
         namespace: request.namespace.trim().to_string(),
         target_kind,
         target_name,
@@ -263,6 +305,8 @@ async fn resolve_port_forward_target(
         PortForwardTargetKind::Pod => Ok(PortForwardTarget {
             cluster_context: request.cluster_context,
             kubeconfig_env_var: request.kubeconfig_env_var,
+            kubeconfig_source_key: request.kubeconfig_source_key,
+            kubeconfig_source_label: request.kubeconfig_source_label,
             namespace: request.namespace,
             target_kind: PortForwardTargetKind::Pod,
             target_name: request.target_name.clone(),
@@ -312,6 +356,8 @@ fn session_summary(
         id,
         cluster_context: target.cluster_context.clone(),
         kubeconfig_env_var: target.kubeconfig_env_var.clone(),
+        kubeconfig_source_key: target.kubeconfig_source_key.clone(),
+        kubeconfig_source_label: target.kubeconfig_source_label.clone(),
         namespace: target.namespace.clone(),
         target_kind: target.target_kind.as_str().to_string(),
         target_name: target.target_name.clone(),
@@ -476,6 +522,8 @@ async fn start_pod_port_forward_in_registry(
     let handle_request = ValidatedPortForwardRequest {
         cluster_context: target.cluster_context.clone(),
         kubeconfig_env_var: target.kubeconfig_env_var.clone(),
+        kubeconfig_source_key: target.kubeconfig_source_key.clone(),
+        kubeconfig_source_label: target.kubeconfig_source_label.clone(),
         namespace: target.namespace.clone(),
         target_kind: target.target_kind,
         target_name: target.target_name.clone(),

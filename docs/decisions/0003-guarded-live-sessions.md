@@ -17,10 +17,10 @@ Port-forward v1 rules:
 - Targets are exact Pods or selector-backed Services in a namespace. Service targets resolve to one ready backing Pod at session start and re-resolve on reconnect or explicit restart.
 - Selectorless Services, ExternalName Services, and Services without ready matching Pods are rejected with readable errors.
 - Deployments and replacement-pod resolution are future work.
-- Sessions start only from explicit user action and stop only from explicit user action, app exit, or session failure.
+- Sessions start only from explicit user action and stop from explicit user action, app exit, session failure, or workspace/kubeconfig source scope changes when live-session retention is not enabled.
 - Local listeners bind only to `127.0.0.1`.
 - Local port `0` is used only internally for automatic port selection. User-provided local ports must be unprivileged.
-- Sessions are in-memory only and are not restored across app restarts.
+- Sessions are in-memory only and are not restored across app restarts. Workspace switches cut sessions outside the new workspace context and kubeconfig source scope by default; a user setting may keep them running.
 - Service sessions re-resolve to a ready backing Pod when a local connection reconnects or a session is explicitly restarted. They do not run as durable background controllers and are still not restored across app restarts.
 - Kubernetes RBAC remains authoritative for `pods/portforward`; forbidden errors are surfaced as command errors or session errors.
 - The frontend never receives kubeconfig contents, tokens, certificates, or broad filesystem access.

@@ -41,7 +41,10 @@ import type {
 	YamlViewMode,
 	KubernetesYamlLintResult,
 	RbacInspectionSummary,
+	KubeconfigSourcesSummary,
 	IncidentCockpitSummary,
+	LiveSessionCleanupRequest,
+	LiveSessionCleanupResult,
 } from "./types";
 import { diagnosticLog, diagnosticResultSummary } from "./diagnostics";
 
@@ -102,7 +105,79 @@ export function createMockTauriClient(
 function kubeconfigArg(kubeconfigEnvVar?: string): {
 	kubeconfigEnvVar?: string;
 } {
-	return kubeconfigEnvVar === undefined ? {} : { kubeconfigEnvVar };
+	if (
+		kubeconfigEnvVar === undefined ||
+		kubeconfigEnvVar.startsWith("kubeconfigSource=")
+	) {
+		return {};
+	}
+	return { kubeconfigEnvVar };
+}
+
+function sanitizeKubeconfigRequest<T extends { kubeconfigEnvVar?: string }>(
+	request: T,
+): T {
+	if (!request.kubeconfigEnvVar?.startsWith("kubeconfigSource=")) return request;
+	const { kubeconfigEnvVar: _ignored, ...rest } = request;
+	return rest as T;
+}
+
+export async function getKubeconfigSources(
+	client: TauriClient,
+): Promise<KubeconfigSourcesSummary> {
+	return client.invoke<KubeconfigSourcesSummary>("get_kubeconfig_sources");
+}
+
+export async function setKubeconfigEnvVar(
+	client: TauriClient,
+	envVar: string,
+): Promise<KubeconfigSourcesSummary> {
+	return client.invoke<KubeconfigSourcesSummary>("set_kubeconfig_env_var", {
+		envVar,
+	});
+}
+
+export async function setShowKubeconfigSourceLabels(
+	client: TauriClient,
+	show: boolean,
+): Promise<KubeconfigSourcesSummary> {
+	return client.invoke<KubeconfigSourcesSummary>(
+		"set_show_kubeconfig_source_labels",
+		{ show },
+	);
+}
+
+export async function pickKubeconfigPaths(
+	client: TauriClient,
+): Promise<KubeconfigSourcesSummary> {
+	return client.invoke<KubeconfigSourcesSummary>("pick_kubeconfig_paths");
+}
+
+export async function addKubeconfigPaths(
+	client: TauriClient,
+	paths: string[],
+): Promise<KubeconfigSourcesSummary> {
+	return client.invoke<KubeconfigSourcesSummary>("add_kubeconfig_paths", {
+		paths,
+	});
+}
+
+export async function removeKubeconfigPath(
+	client: TauriClient,
+	path: string,
+): Promise<KubeconfigSourcesSummary> {
+	return client.invoke<KubeconfigSourcesSummary>("remove_kubeconfig_path", {
+		path,
+	});
+}
+
+export async function reorderKubeconfigPaths(
+	client: TauriClient,
+	paths: string[],
+): Promise<KubeconfigSourcesSummary> {
+	return client.invoke<KubeconfigSourcesSummary>("reorder_kubeconfig_paths", {
+		paths,
+	});
 }
 
 export async function listKubeContexts(
@@ -371,7 +446,10 @@ export async function startPodLogStream(
 	request: PodLogStreamRequest,
 	channel: Channel<StreamMessage>,
 ): Promise<string> {
-	return client.invoke<string>("start_pod_log_stream", { request, channel });
+	return client.invoke<string>("start_pod_log_stream", {
+		request: sanitizeKubeconfigRequest(request),
+		channel,
+	});
 }
 
 export async function stopStream(
@@ -386,7 +464,7 @@ export async function startPortForward(
 	request: PortForwardRequest,
 ): Promise<PortForwardSessionSummary> {
 	return client.invoke<PortForwardSessionSummary>("start_pod_port_forward", {
-		request,
+		request: sanitizeKubeconfigRequest(request),
 	});
 }
 
@@ -416,7 +494,7 @@ export async function startPodExecSession(
 	channel: Channel<PodExecSessionMessage>,
 ): Promise<PodExecSessionSummary> {
 	return client.invoke<PodExecSessionSummary>("start_pod_exec_session", {
-		request,
+		request: sanitizeKubeconfigRequest(request),
 		channel,
 	});
 }
@@ -448,6 +526,16 @@ export async function listPodExecSessions(
 	client: TauriClient,
 ): Promise<PodExecSessionSummary[]> {
 	return client.invoke<PodExecSessionSummary[]>("list_pod_exec_sessions");
+}
+
+export async function stopLiveSessionsOutsideScope(
+	client: TauriClient,
+	request: LiveSessionCleanupRequest,
+): Promise<LiveSessionCleanupResult> {
+	return client.invoke<LiveSessionCleanupResult>(
+		"stop_live_sessions_outside_scope",
+		{ request },
+	);
 }
 
 export async function getAppUsageMetrics(

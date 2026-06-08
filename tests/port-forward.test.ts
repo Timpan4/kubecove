@@ -252,7 +252,7 @@ spec:
 		expect(source).toContain("reconnectSession");
 		expect(source).toContain("lastError");
 		expect(source).toContain("sessionsForActions");
-		expect(source).toContain("useSavedPortForwardActions(workspace, sessionsForActions)");
+		expect(source).toContain("useSavedPortForwardActions(workspace, allSessions)");
 		expect(source).toContain("sessionInWorkspaceScope");
 		expect(source).toContain(
 			"workspaceScopeContexts(workspace.scope).includes(session.clusterContext)",
