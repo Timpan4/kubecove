@@ -74,6 +74,7 @@ export interface YamlApplyRequest {
 	namespace?: string | null;
 	yaml: string;
 	yamlEncoding?: YamlEncoding;
+	forceConflicts?: boolean;
 }
 
 export interface YamlApplyTarget {

@@ -82,4 +82,12 @@ describe("YAML encoding", () => {
 		expect(useSettingsState.getState().yamlViewModeDefault).toBe("applyClean");
 		expect(useSettingsState.getState().yamlEncodingDefault).toBe("kyaml");
 	});
+
+	test("settings allow YAML force-conflicts by default and can disable them", () => {
+		expect(useSettingsState.getState().allowYamlForceConflicts).toBe(true);
+
+		useSettingsState.getState().setAllowYamlForceConflicts(false);
+
+		expect(useSettingsState.getState().allowYamlForceConflicts).toBe(false);
+	});
 });

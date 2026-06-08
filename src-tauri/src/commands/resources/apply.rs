@@ -3,7 +3,10 @@ use crate::models::{
     AppError, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult, KubernetesYamlLintSeverity,
     YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlApplyTarget, YamlViewMode,
 };
-use kube::api::{Api, ApiResource, DynamicObject, Patch, PatchParams};
+use kube::{
+    api::{Api, ApiResource, DynamicObject, Patch, PatchParams},
+    Error as KubeError,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -35,11 +38,11 @@ pub async fn prepare_yaml_apply(request: YamlApplyRequest) -> Result<YamlApplyPr
     let dry_run = api
         .patch(
             &validated.request.name,
-            &PatchParams::apply(FIELD_MANAGER).dry_run(),
+            &apply_patch_params(validated.request.force_conflicts).dry_run(),
             &Patch::Apply(&validated.manifest),
         )
         .await
-        .map_err(AppError::from)?;
+        .map_err(apply_error)?;
     let dry_run_yaml = serialize_resource_document(&dry_run, YamlViewMode::ApplyClean, encoding)?;
 
     Ok(YamlApplyPreview {
@@ -60,11 +63,11 @@ pub async fn apply_yaml(request: YamlApplyRequest) -> Result<YamlApplyResult, Ap
     let applied = api
         .patch(
             &validated.request.name,
-            &PatchParams::apply(FIELD_MANAGER),
+            &apply_patch_params(validated.request.force_conflicts),
             &Patch::Apply(&validated.manifest),
         )
         .await
-        .map_err(AppError::from)?;
+        .map_err(apply_error)?;
     let applied_yaml = serialize_resource_document(
         &applied,
         YamlViewMode::ApplyClean,
@@ -109,6 +112,31 @@ fn lint_kubernetes_yaml_request(request: YamlApplyRequest) -> KubernetesYamlLint
     ));
 
     KubernetesYamlLintResult { diagnostics }
+}
+
+fn apply_patch_params(force_conflicts: bool) -> PatchParams {
+    let params = PatchParams::apply(FIELD_MANAGER);
+    if force_conflicts {
+        params.force()
+    } else {
+        params
+    }
+}
+
+fn apply_error(error: KubeError) -> AppError {
+    match &error {
+        KubeError::Api(api_error)
+            if api_error.details.as_ref().is_some_and(|details| {
+                details
+                    .causes
+                    .iter()
+                    .any(|cause| cause.reason == "FieldManagerConflict")
+            }) =>
+        {
+            AppError::new(api_error.message.clone(), "fieldManagerConflict")
+        }
+        _ => AppError::from(error),
+    }
 }
 
 fn collect_local_lint_diagnostics(
@@ -552,6 +580,10 @@ fn identity_error(field: &str, expected: &str, actual: &str) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kube::core::{
+        response::{StatusCause, StatusDetails},
+        Status,
+    };
 
     fn base_request(yaml: &str) -> YamlApplyRequest {
         YamlApplyRequest {
@@ -567,6 +599,7 @@ mod tests {
             namespace: Some("default".to_string()),
             yaml: yaml.to_string(),
             yaml_encoding: Default::default(),
+            force_conflicts: false,
         }
     }
 
@@ -627,6 +660,45 @@ mod tests {
         assert_eq!(validated.target.kind, "Service");
         assert!(validated.namespaced);
         assert_eq!(validated.api_resource.plural, "services");
+    }
+
+    #[test]
+    fn preserves_force_conflicts_request_flag() {
+        let mut request = base_request(
+            "apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n  namespace: default\n",
+        );
+        request.force_conflicts = true;
+
+        let validated = validate_yaml_apply(request).unwrap();
+
+        assert!(validated.request.force_conflicts);
+    }
+
+    #[test]
+    fn classifies_field_manager_conflict_errors() {
+        let error = KubeError::Api(Box::new(Status {
+            code: 409,
+            details: Some(StatusDetails {
+                name: String::new(),
+                group: String::new(),
+                kind: String::new(),
+                uid: String::new(),
+                causes: vec![StatusCause {
+                    reason: "FieldManagerConflict".to_string(),
+                    message: "conflict with \"helm\"".to_string(),
+                    field: ".spec.replicas".to_string(),
+                }],
+                retry_after_seconds: 0,
+            }),
+            message: "Apply failed with conflicts".to_string(),
+            reason: "Conflict".to_string(),
+            ..Default::default()
+        }));
+
+        let app_error = apply_error(error);
+
+        assert_eq!(app_error.kind, "fieldManagerConflict");
+        assert_eq!(app_error.message, "Apply failed with conflicts");
     }
 
     #[test]
