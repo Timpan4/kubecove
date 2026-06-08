@@ -29,6 +29,7 @@ tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "time"] }
 sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }
 tauri-plugin-updater = "2.10.1"
 tauri-plugin-process = "2.3.1"
+tauri-plugin-dialog = "2.7.1"
 
 [dev-dependencies]
 proptest = "1.11.0"
