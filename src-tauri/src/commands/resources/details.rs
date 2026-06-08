@@ -3,7 +3,7 @@ mod core;
 mod workloads;
 
 use crate::commands::kubeconfig::KubeconfigSource;
-use crate::models::{AppError, ResourceDetailsFull};
+use crate::models::{AppError, ResourceDetailsFull, YamlEncoding, YamlViewMode};
 use std::time::Instant;
 
 pub async fn resource_details_from(
@@ -53,6 +53,8 @@ pub async fn get_resource_details(
     name: String,
     namespace: Option<String>,
     kubeconfig_env_var: Option<String>,
+    _yaml_view_mode: Option<YamlViewMode>,
+    _yaml_encoding: Option<YamlEncoding>,
 ) -> Result<ResourceDetailsFull, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");

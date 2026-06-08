@@ -1,4 +1,9 @@
-import type { ResourceKindSelection, TopologyMode } from "./types";
+import type {
+	ResourceKindSelection,
+	TopologyMode,
+	YamlEncoding,
+	YamlViewMode,
+} from "./types";
 import { kubeconfigSourceKey } from "./settings";
 
 interface ResourceFetchKey {
@@ -104,6 +109,8 @@ export const queryKeys = {
 		storageKind: string,
 		storageName: string,
 		kubeconfigEnvVar?: string,
+		yamlViewMode: YamlViewMode = "kubectl",
+		yamlEncoding: YamlEncoding = "yaml",
 	) =>
 		[
 			"helm-release-details",

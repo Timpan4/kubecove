@@ -3,6 +3,7 @@ import {
 	createMockTauriClient,
 	getAppUsageMetrics,
 	getHelmReleaseDetails,
+	getHelmReleaseReconciliation,
 	listResourceMetrics,
 	listRbacInspection,
 	getResourceYaml,

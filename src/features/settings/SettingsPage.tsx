@@ -11,6 +11,7 @@ import {
 	type TimestampTimezone,
 	useSettingsState,
 } from "@/lib/settings";
+import type { YamlEncoding, YamlViewMode } from "@/lib/types";
 import { isAppUpdatesEnabled } from "@/lib/release-channel";
 
 const CHECKED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -66,6 +67,58 @@ function TimezoneOption({
 	);
 }
 
+function YamlEncodingOption({
+	value,
+	label,
+	selected,
+	onSelect,
+}: {
+	value: YamlEncoding;
+	label: string;
+	selected: boolean;
+	onSelect: (value: YamlEncoding) => void;
+}) {
+	return (
+		<Button
+			type="button"
+			variant={selected ? "secondary" : "ghost"}
+			size="sm"
+			className="h-8 rounded-sm px-2.5"
+			onClick={() => onSelect(value)}
+			aria-pressed={selected}
+		>
+			{selected && <Check data-icon="inline-start" />}
+			{label}
+		</Button>
+	);
+}
+
+function YamlViewModeOption({
+	value,
+	label,
+	selected,
+	onSelect,
+}: {
+	value: YamlViewMode;
+	label: string;
+	selected: boolean;
+	onSelect: (value: YamlViewMode) => void;
+}) {
+	return (
+		<Button
+			type="button"
+			variant={selected ? "secondary" : "ghost"}
+			size="sm"
+			className="h-8 rounded-sm px-2.5"
+			onClick={() => onSelect(value)}
+			aria-pressed={selected}
+		>
+			{selected && <Check data-icon="inline-start" />}
+			{label}
+		</Button>
+	);
+}
+
 function formatCheckedAt(value: string | null): string {
 	if (!value) return "Not checked yet";
 	const date = new Date(value);
@@ -79,11 +132,15 @@ export function SettingsPage() {
 		showUsageFooter,
 		autoStartSavedPortForwards,
 		timestampTimezone,
+		yamlViewModeDefault,
+		yamlEncodingDefault,
 		kubeconfigEnvVar,
 		setShowExactTimestamps,
 		setShowUsageFooter,
 		setAutoStartSavedPortForwards,
 		setTimestampTimezone,
+		setYamlViewModeDefault,
+		setYamlEncodingDefault,
 		setKubeconfigEnvVar,
 		resetKubeconfigEnvVar,
 	} = useSettingsState();
@@ -177,6 +234,44 @@ export function SettingsPage() {
 							label="UTC"
 							selected={timestampTimezone === "utc"}
 							onSelect={setTimestampTimezone}
+						/>
+					</div>
+				</SettingsRow>
+				<SettingsRow
+					title="YAML cleanup shape"
+					description="Controls whether YAML panels open with kubectl-style inspect output or apply-friendly output."
+				>
+					<div className="flex rounded-md border bg-background/50 p-0.5">
+						<YamlViewModeOption
+							value="kubectl"
+							label="Kubectl"
+							selected={yamlViewModeDefault === "kubectl"}
+							onSelect={setYamlViewModeDefault}
+						/>
+						<YamlViewModeOption
+							value="applyClean"
+							label="Apply-friendly"
+							selected={yamlViewModeDefault === "applyClean"}
+							onSelect={setYamlViewModeDefault}
+						/>
+					</div>
+				</SettingsRow>
+				<SettingsRow
+					title="YAML encoding"
+					description="Controls whether YAML panels open as regular YAML or Kubernetes KYAML flow-style text."
+				>
+					<div className="flex rounded-md border bg-background/50 p-0.5">
+						<YamlEncodingOption
+							value="yaml"
+							label="YAML"
+							selected={yamlEncodingDefault === "yaml"}
+							onSelect={setYamlEncodingDefault}
+						/>
+						<YamlEncodingOption
+							value="kyaml"
+							label="KYAML"
+							selected={yamlEncodingDefault === "kyaml"}
+							onSelect={setYamlEncodingDefault}
 						/>
 					</div>
 				</SettingsRow>

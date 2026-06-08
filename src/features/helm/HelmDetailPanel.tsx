@@ -55,7 +55,11 @@ const PANEL_TAB_CLASS =
 	"rounded-none border-b-2 border-transparent bg-transparent px-4 py-2 text-[13px] text-muted-foreground shadow-none transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none";
 const PANEL_BODY_CLASS = "flex-1 overflow-y-auto p-4";
 
-function useHelmReleaseDetails(release: HelmReleaseSummary) {
+function useHelmReleaseDetails(
+	release: HelmReleaseSummary,
+	yamlViewMode: YamlViewMode = "kubectl",
+	yamlEncoding: YamlEncoding = "yaml",
+) {
 	const client = useMemo(() => createTauriClient(), []);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	return useQuery({
@@ -226,82 +230,28 @@ function HelmReleaseDetail({ release }: { release: HelmReleaseSummary }) {
 	);
 }
 
-function HelmReleaseResources({ release }: { release: HelmReleaseSummary }) {
-	const {
-		data: resources,
-		isLoading,
-		isError,
-		error,
-	} = useHelmOwnedResources(release);
-
-	if (isLoading) {
-		return (
-			<div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
-				<span className="inline-flex items-center gap-2">
-					<Spinner className="size-4" />
-					Loading owned resources...
-				</span>
-			</div>
-		);
-	}
-	if (isError) {
-		return <DetailErrorState title="Failed to load resources" error={error} />;
-	}
-	if (!resources || resources.length === 0) {
-		return (
-			<div className={DETAIL_HINT_CLASS}>
-				No resources with matching Helm ownership labels were found.
-			</div>
-		);
-	}
-
-	return (
-		<div className={DETAIL_SECTION_CLASS}>
-			<div className={DETAIL_SECTION_TITLE_CLASS}>
-				Owned resources ({resources.length})
-			</div>
-			<div className="overflow-hidden rounded-md border">
-				<Table className="w-full table-fixed text-xs">
-					<TableHeader>
-						<TableRow>
-							<TableHead>Resource</TableHead>
-							<TableHead>Status</TableHead>
-							<TableHead>Ready</TableHead>
-							<TableHead>Age</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{resources.map((resource) => (
-							<TableRow
-								key={`${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`}
-							>
-								<TableCell>{helmReleaseResourceLabel(resource)}</TableCell>
-								<TableCell>{resource.status ?? "-"}</TableCell>
-								<TableCell>{resource.ready ?? "-"}</TableCell>
-								<TableCell>{resource.age}</TableCell>
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
-			</div>
-		</div>
-	);
-}
-
-function HelmReleaseYaml({ release }: { release: HelmReleaseSummary }) {
+function HelmReleaseYaml({
+	release,
+	yamlViewMode,
+	yamlEncoding,
+}: {
+	release: HelmReleaseSummary;
+	yamlViewMode: YamlViewMode;
+	yamlEncoding: YamlEncoding;
+}) {
 	const {
 		data: details,
 		isLoading,
 		isError,
 		error,
-	} = useHelmReleaseDetails(release);
+	} = useHelmReleaseDetails(release, yamlViewMode, yamlEncoding);
 
 	if (isLoading) return <DetailLoadingState label="Loading YAML..." />;
 	if (isError) {
 		return <DetailErrorState title="Failed to load YAML" error={error} />;
 	}
 	if (!details) return null;
-	return <pre className={YAML_BLOCK_CLASS}>{details.yaml}</pre>;
+	return <YamlCodeViewer value={details.yaml} minHeight="520px" />;
 }
 
 export function HelmDetailPanel({
@@ -314,6 +264,14 @@ export function HelmDetailPanel({
 	onOpenResources: (release: HelmReleaseSummary) => void;
 }) {
 	const [activeTab, setActiveTab] = useState<Tab>("details");
+	const yamlViewModeDefault = useSettingsState(
+		(state) => state.yamlViewModeDefault,
+	);
+	const yamlEncodingDefault = useSettingsState(
+		(state) => state.yamlEncodingDefault,
+	);
+	const [yamlViewMode, setYamlViewMode] = useState(yamlViewModeDefault);
+	const [yamlEncoding, setYamlEncoding] = useState(yamlEncodingDefault);
 	const title = `${release.name} (${release.namespace})`;
 
 	return (
@@ -351,8 +309,8 @@ export function HelmDetailPanel({
 						<TabsTrigger className={PANEL_TAB_CLASS} value="details">
 							Details
 						</TabsTrigger>
-						<TabsTrigger className={PANEL_TAB_CLASS} value="resources">
-							Resources
+						<TabsTrigger className={PANEL_TAB_CLASS} value="reconciliation">
+							Reconciliation
 						</TabsTrigger>
 						<TabsTrigger className={PANEL_TAB_CLASS} value="yaml">
 							YAML
@@ -363,11 +321,25 @@ export function HelmDetailPanel({
 					<TabsContent value="details" className="m-0">
 						<HelmReleaseDetail release={release} />
 					</TabsContent>
-					<TabsContent value="resources" className="m-0">
-						<HelmReleaseResources release={release} />
+					<TabsContent value="reconciliation" className="m-0">
+						<HelmReconciliationPanel release={release} />
 					</TabsContent>
 					<TabsContent value="yaml" className="m-0">
-						<HelmReleaseYaml release={release} />
+						<div className="mb-3 flex flex-wrap justify-end gap-2">
+							<YamlViewModeControl
+								value={yamlViewMode}
+								onChange={setYamlViewMode}
+							/>
+							<YamlEncodingControl
+								value={yamlEncoding}
+								onChange={setYamlEncoding}
+							/>
+						</div>
+						<HelmReleaseYaml
+							release={release}
+							yamlViewMode={yamlViewMode}
+							yamlEncoding={yamlEncoding}
+						/>
 					</TabsContent>
 				</div>
 			</Tabs>

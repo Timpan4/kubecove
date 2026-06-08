@@ -1,8 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { YamlCodeViewer } from "@/components/YamlCodeViewer";
 import { kubeconfigSourceKey, useSettingsState } from "@/lib/settings";
 import { createTauriClient, getArgoAppProjectDetails } from "@/lib/tauri";
-import type { ArgoAppProjectSummary } from "@/lib/types";
+import type {
+	ArgoAppProjectSummary,
+	YamlEncoding,
+	YamlViewMode,
+} from "@/lib/types";
 import {
 	DetailErrorState,
 	DetailField,
@@ -11,10 +16,13 @@ import {
 	DETAIL_HINT_CLASS,
 	DETAIL_SECTION_CLASS,
 	DETAIL_SECTION_TITLE_CLASS,
-	YAML_BLOCK_CLASS,
 } from "./ArgoDetailShared";
 
-function useArgoAppProjectDetails(project: ArgoAppProjectSummary) {
+function useArgoAppProjectDetails(
+	project: ArgoAppProjectSummary,
+	yamlViewMode: YamlViewMode = "kubectl",
+	yamlEncoding: YamlEncoding = "yaml",
+) {
 	const client = useMemo(() => createTauriClient(), []);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
 	return useQuery({
@@ -24,15 +32,19 @@ function useArgoAppProjectDetails(project: ArgoAppProjectSummary) {
 			project.cluster,
 			project.name,
 			project.namespace,
+			yamlViewMode,
+			yamlEncoding,
 		],
 		queryFn: () =>
 			getArgoAppProjectDetails(
 				client,
 				project.cluster,
 				project.name,
-				project.namespace ?? undefined,
-				kubeconfigEnvVar,
-			),
+			project.namespace ?? undefined,
+			kubeconfigEnvVar,
+			yamlViewMode,
+			yamlEncoding,
+		),
 		enabled: !!project.cluster && !!project.name,
 	});
 }
@@ -74,20 +86,24 @@ export function ArgoAppProjectDetail({
 
 export function ArgoAppProjectYaml({
 	project,
+	yamlViewMode,
+	yamlEncoding,
 }: {
 	project: ArgoAppProjectSummary;
+	yamlViewMode: YamlViewMode;
+	yamlEncoding: YamlEncoding;
 }) {
 	const {
 		data: details,
 		isLoading,
 		isError,
 		error,
-	} = useArgoAppProjectDetails(project);
+	} = useArgoAppProjectDetails(project, yamlViewMode, yamlEncoding);
 
 	if (isLoading) return <DetailLoadingState label="Loading YAML..." />;
 	if (isError) {
 		return <DetailErrorState title="Failed to load YAML" error={error} />;
 	}
 	if (!details) return null;
-	return <pre className={YAML_BLOCK_CLASS}>{details.yaml}</pre>;
+	return <YamlCodeViewer value={details.yaml} minHeight="520px" />;
 }

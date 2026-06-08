@@ -180,6 +180,8 @@ export async function getResourceYaml(
 	name: string,
 	namespace?: string,
 	kubeconfigEnvVar?: string,
+	yamlViewMode?: YamlViewMode,
+	yamlEncoding?: YamlEncoding,
 ): Promise<string> {
 	return client.invoke<string>("get_resource_yaml", {
 		clusterContext,
@@ -187,6 +189,8 @@ export async function getResourceYaml(
 		name,
 		namespace,
 		...kubeconfigArg(kubeconfigEnvVar),
+		yamlViewMode,
+		yamlEncoding,
 	});
 }
 
@@ -197,6 +201,8 @@ export async function getResourceDetails(
 	name: string,
 	namespace?: string,
 	kubeconfigEnvVar?: string,
+	yamlViewMode?: YamlViewMode,
+	yamlEncoding?: YamlEncoding,
 ): Promise<ResourceDetailsFull> {
 	return client.invoke<ResourceDetailsFull>("get_resource_details", {
 		clusterContext,
@@ -204,6 +210,8 @@ export async function getResourceDetails(
 		name,
 		namespace,
 		...kubeconfigArg(kubeconfigEnvVar),
+		yamlViewMode,
+		yamlEncoding,
 	});
 }
 
@@ -214,6 +222,8 @@ export async function getDynamicResourceDetails(
 	name: string,
 	namespace?: string,
 	kubeconfigEnvVar?: string,
+	yamlViewMode?: YamlViewMode,
+	yamlEncoding?: YamlEncoding,
 ): Promise<ResourceDetailsFull> {
 	return client.invoke<ResourceDetailsFull>("get_dynamic_resource_details", {
 		clusterContext,
@@ -221,6 +231,31 @@ export async function getDynamicResourceDetails(
 		name,
 		namespace,
 		...kubeconfigArg(kubeconfigEnvVar),
+		yamlViewMode,
+		yamlEncoding,
+	});
+}
+
+export async function prepareYamlApply(
+	client: TauriClient,
+	request: YamlApplyRequest,
+): Promise<YamlApplyPreview> {
+	return client.invoke<YamlApplyPreview>("prepare_yaml_apply", { request });
+}
+
+export async function applyYaml(
+	client: TauriClient,
+	request: YamlApplyRequest,
+): Promise<YamlApplyResult> {
+	return client.invoke<YamlApplyResult>("apply_yaml", { request });
+}
+
+export async function lintKubernetesYaml(
+	client: TauriClient,
+	request: YamlApplyRequest,
+): Promise<KubernetesYamlLintResult> {
+	return client.invoke<KubernetesYamlLintResult>("lint_kubernetes_yaml", {
+		request,
 	});
 }
 
@@ -465,10 +500,19 @@ export async function getArgoApplicationDetails(
 	name: string,
 	namespace?: string,
 	kubeconfigEnvVar?: string,
+	yamlViewMode?: YamlViewMode,
+	yamlEncoding?: YamlEncoding,
 ): Promise<ArgoApplicationDetails> {
 	return client.invoke<ArgoApplicationDetails>(
 		"get_argocd_application_details",
-		{ clusterContext, name, namespace, ...kubeconfigArg(kubeconfigEnvVar) },
+		{
+			clusterContext,
+			name,
+			namespace,
+			...kubeconfigArg(kubeconfigEnvVar),
+			yamlViewMode,
+			yamlEncoding,
+		},
 	);
 }
 
@@ -500,12 +544,16 @@ export async function getArgoApplicationSetDetails(
 	name: string,
 	namespace?: string,
 	kubeconfigEnvVar?: string,
+	yamlViewMode?: YamlViewMode,
+	yamlEncoding?: YamlEncoding,
 ): Promise<ArgoApplicationSetDetails> {
 	return client.invoke<ArgoApplicationSetDetails>("get_argocd_appset_details", {
 		clusterContext,
 		name,
 		namespace,
 		...kubeconfigArg(kubeconfigEnvVar),
+		yamlViewMode,
+		yamlEncoding,
 	});
 }
 
@@ -515,12 +563,16 @@ export async function getArgoAppProjectDetails(
 	name: string,
 	namespace?: string,
 	kubeconfigEnvVar?: string,
+	yamlViewMode?: YamlViewMode,
+	yamlEncoding?: YamlEncoding,
 ): Promise<ArgoAppProjectDetails> {
 	return client.invoke<ArgoAppProjectDetails>("get_argocd_appproject_details", {
 		clusterContext,
 		name,
 		namespace,
 		...kubeconfigArg(kubeconfigEnvVar),
+		yamlViewMode,
+		yamlEncoding,
 	});
 }
 
@@ -542,6 +594,8 @@ export async function getHelmReleaseDetails(
 		"cluster" | "namespace" | "storageKind" | "storageName"
 	>,
 	kubeconfigEnvVar?: string,
+	yamlViewMode?: YamlViewMode,
+	yamlEncoding?: YamlEncoding,
 ): Promise<HelmReleaseDetails> {
 	return client.invoke<HelmReleaseDetails>("get_helm_release_details", {
 		clusterContext: release.cluster,
@@ -549,7 +603,29 @@ export async function getHelmReleaseDetails(
 		storageKind: release.storageKind,
 		storageName: release.storageName,
 		...kubeconfigArg(kubeconfigEnvVar),
+		yamlViewMode,
+		yamlEncoding,
 	});
+}
+
+export async function getHelmReleaseReconciliation(
+	client: TauriClient,
+	release: Pick<
+		HelmReleaseSummary,
+		"cluster" | "namespace" | "storageKind" | "storageName"
+	>,
+	kubeconfigEnvVar?: string,
+): Promise<HelmReleaseReconciliation> {
+	return client.invoke<HelmReleaseReconciliation>(
+		"get_helm_release_reconciliation",
+		{
+			clusterContext: release.cluster,
+			namespace: release.namespace,
+			storageKind: release.storageKind,
+			storageName: release.storageName,
+			...kubeconfigArg(kubeconfigEnvVar),
+		},
+	);
 }
 
 export async function listRbacInspection(

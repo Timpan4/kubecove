@@ -18,6 +18,8 @@ import type {
 	ResourceSummary,
 	StreamMessage,
 	WatchResourceKey,
+	YamlEncoding,
+	YamlViewMode,
 } from "../../lib/types";
 import { diagnosticLog, diagnosticResultSummary } from "../../lib/diagnostics";
 import { kubeconfigSourceKey, useSettingsState } from "../../lib/settings";
@@ -30,6 +32,8 @@ interface UseResourceDetailsArgs {
 	resourceKey: string;
 	client: TauriClient;
 	dynamicResourceKind: DiscoveredResourceKind | null;
+	yamlViewMode: YamlViewMode;
+	yamlEncoding: YamlEncoding;
 }
 
 export function useResourceDetails({
@@ -38,6 +42,8 @@ export function useResourceDetails({
 	resourceKey,
 	client,
 	dynamicResourceKind,
+	yamlViewMode,
+	yamlEncoding,
 }: UseResourceDetailsArgs) {
 	const queryClient = useQueryClient();
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigEnvVar);
@@ -65,6 +71,8 @@ export function useResourceDetails({
 				resource.kind,
 				resource.name,
 				resource.namespace,
+				yamlViewMode,
+				yamlEncoding,
 			] as const,
 		[
 			dynamicResourceKindKey,
@@ -74,6 +82,8 @@ export function useResourceDetails({
 			resource.kind,
 			resource.name,
 			resource.namespace,
+			yamlViewMode,
+			yamlEncoding,
 		],
 	);
 	const yamlQueryKey = useMemo(
@@ -87,6 +97,8 @@ export function useResourceDetails({
 				resource.kind,
 				resource.name,
 				resource.namespace,
+				yamlViewMode,
+				yamlEncoding,
 			] as const,
 		[
 			dynamicResourceKindKey,
@@ -96,6 +108,8 @@ export function useResourceDetails({
 			resource.kind,
 			resource.name,
 			resource.namespace,
+			yamlViewMode,
+			yamlEncoding,
 		],
 	);
 	const eventsQueryKey = useMemo(
@@ -129,17 +143,21 @@ export function useResourceDetails({
 						client,
 						resource.cluster,
 						dynamicResourceKind,
-						resource.name,
-						resource.namespace ?? undefined,
-						kubeconfigEnvVar,
-					)
-				: await getResourceDetails(
+							resource.name,
+							resource.namespace ?? undefined,
+							kubeconfigEnvVar,
+							yamlViewMode,
+							yamlEncoding,
+						)
+					: await getResourceDetails(
 						client,
 						resource.cluster,
 						resource.kind,
 						resource.name,
 						resource.namespace ?? undefined,
 						kubeconfigEnvVar,
+						yamlViewMode,
+						yamlEncoding,
 					);
 			diagnosticLog("detail.details.fetch.done", {
 				key: resourceKey,
@@ -167,6 +185,8 @@ export function useResourceDetails({
 							resource.name,
 							resource.namespace ?? undefined,
 							kubeconfigEnvVar,
+							yamlViewMode,
+							yamlEncoding,
 						)
 					).yaml
 				: await getResourceYaml(
@@ -176,6 +196,8 @@ export function useResourceDetails({
 						resource.name,
 						resource.namespace ?? undefined,
 						kubeconfigEnvVar,
+						yamlViewMode,
+						yamlEncoding,
 					);
 			diagnosticLog("detail.yaml.fetch.done", {
 				key: resourceKey,

@@ -389,25 +389,29 @@ export function DetailsTab({
 	logLines,
 	onOpenHelmRelease,
 }: DetailsTabProps) {
+	const currentResource = useMemo(
+		() => (details?.summary ? { ...resource, ...details.summary } : resource),
+		[details?.summary, resource],
+	);
 	const containerRows = useMemo(
 		() => getContainerStatusRows(details?.status),
 		[details?.status],
 	);
 	const podDetailsLoading =
-		resource.kind === "Pod" && detailsLoading && !details && !detailsError;
+		currentResource.kind === "Pod" && detailsLoading && !details && !detailsError;
 	const signalContainers =
-		resource.kind === "Pod" && (details || podDetailsLoading)
+		currentResource.kind === "Pod" && (details || podDetailsLoading)
 			? containerRows
 			: undefined;
 	const signals = useMemo(
 		() =>
 			buildIncidentSignals(
-				resource,
+				currentResource,
 				conditionRows,
 				events ?? [],
 				signalContainers,
 			),
-		[resource, conditionRows, events, signalContainers],
+		[currentResource, conditionRows, events, signalContainers],
 	);
 	const restartSignal = signals.find((signal) => signal.id === "restarts");
 	const restartTone = restartSignal?.tone ?? "neutral";
@@ -415,14 +419,14 @@ export function DetailsTab({
 	return (
 		<>
 			<IncidentSummary
-				resource={resource}
+				resource={currentResource}
 				signals={signals}
 				eventsLoading={eventsLoading}
 				eventsError={eventsError}
 			/>
 
 			<IncidentTimeline
-				resource={resource}
+				resource={currentResource}
 				conditions={conditionRows}
 				events={events ?? []}
 				containers={signalContainers}
@@ -436,18 +440,18 @@ export function DetailsTab({
 						Kind
 					</span>
 					<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
-						{resource.kind}
+						{currentResource.kind}
 					</strong>
 					</CardContent>
 				</Card>
-				{resource.apiVersion && (
+				{currentResource.apiVersion && (
 					<Card size="sm" className="min-w-0">
 						<CardContent>
 						<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">
 							API Version
 						</span>
 						<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
-							{resource.apiVersion}
+							{currentResource.apiVersion}
 						</strong>
 						</CardContent>
 					</Card>
@@ -456,13 +460,13 @@ export function DetailsTab({
 					<CardContent>
 					<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">
 						Namespace
-					</span>
-					<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
-						{resource.namespace ?? "cluster-scoped"}
-					</strong>
-					</CardContent>
-				</Card>
-				{resource.age && (
+						</span>
+						<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
+							{currentResource.namespace ?? "cluster-scoped"}
+						</strong>
+						</CardContent>
+					</Card>
+				{currentResource.age && (
 					<Card size="sm" className="min-w-0">
 						<CardContent>
 						<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">
@@ -470,8 +474,8 @@ export function DetailsTab({
 						</span>
 						<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
 							<TimestampText
-								relative={resource.age}
-								exact={resource.createdAt}
+								relative={currentResource.age}
+								exact={currentResource.createdAt}
 								className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
 							/>
 						</strong>
@@ -488,9 +492,9 @@ export function DetailsTab({
 
 			<div className={DETAIL_SECTION_CLASS}>
 				<div className={DETAIL_SECTION_TITLE_CLASS}>Status</div>
-				<StatusChip value={resource.status} label="Phase" />
-				<StatusChip value={resource.ready} label="Ready" />
-				{resource.restarts !== undefined && resource.restarts > 0 && (
+				<StatusChip value={currentResource.status} label="Phase" />
+				<StatusChip value={currentResource.ready} label="Ready" />
+				{currentResource.restarts !== undefined && currentResource.restarts > 0 && (
 					<div className={DETAIL_ROW_CLASS}>
 						<span className={DETAIL_KEY_CLASS}>Restarts</span>
 						<span className={DETAIL_VALUE_CLASS}>
@@ -501,35 +505,35 @@ export function DetailsTab({
 									CHIP_BADGE_STYLES[restartTone].className,
 								)}
 							>
-								{resource.restarts}
+								{currentResource.restarts}
 							</Badge>
 						</span>
 					</div>
 				)}
 			</div>
 
-			{resource.metrics && (
+			{currentResource.metrics && (
 				<div className={DETAIL_SECTION_CLASS}>
 					<div className={DETAIL_SECTION_TITLE_CLASS}>Metrics</div>
 					<DetailField
 						label="CPU"
-						value={formatCpuMillicores(resource.metrics.cpuMillicores)}
+						value={formatCpuMillicores(currentResource.metrics.cpuMillicores)}
 					/>
 					<DetailField
 						label="Memory"
-						value={formatMemoryBytes(resource.metrics.memoryBytes)}
+						value={formatMemoryBytes(currentResource.metrics.memoryBytes)}
 					/>
-					<DetailField label="Sampled" value={resource.metrics.sampledAt} />
+					<DetailField label="Sampled" value={currentResource.metrics.sampledAt} />
 				</div>
 			)}
 
 			<div className={DETAIL_SECTION_CLASS}>
 				<div className={DETAIL_SECTION_TITLE_CLASS}>Ownership</div>
-				<DetailField label="Owner" value={resource.ownerRef} />
+				<DetailField label="Owner" value={currentResource.ownerRef} />
 				<BadgeRow
-					argoApp={resource.argoApp}
-					helmRelease={resource.helmRelease}
-					namespace={resource.namespace}
+					argoApp={currentResource.argoApp}
+					helmRelease={currentResource.helmRelease}
+					namespace={currentResource.namespace}
 					onOpenHelmRelease={onOpenHelmRelease}
 				/>
 			</div>

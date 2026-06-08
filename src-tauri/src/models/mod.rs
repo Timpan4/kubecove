@@ -38,8 +38,11 @@ pub use rbac::{
     RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary, ServiceAccountSummary,
 };
 pub use resource::{
+    KubernetesYamlLintDiagnostic, KubernetesYamlLintResult, KubernetesYamlLintSeverity,
     OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull, ResourceListRequest,
     ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode, TopologyRelation,
+    YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlApplyTarget, YamlEncoding,
+    YamlViewMode,
 };
 pub use sessions::{
     PodExecConfirmation, PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummary,

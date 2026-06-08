@@ -58,6 +58,56 @@ export interface ResourceDetailsFull {
 	status?: Record<string, unknown>;
 }
 
+export type YamlViewMode = "kubectl" | "applyClean";
+export type YamlEncoding = "yaml" | "kyaml";
+
+export interface YamlApplyRequest {
+	clusterContext: string;
+	kubeconfigEnvVar?: string;
+	kind: string;
+	apiVersion?: string;
+	group?: string;
+	version?: string;
+	plural?: string;
+	namespaced?: boolean;
+	name: string;
+	namespace?: string | null;
+	yaml: string;
+	yamlEncoding?: YamlEncoding;
+}
+
+export interface YamlApplyTarget {
+	clusterContext: string;
+	kind: string;
+	apiVersion?: string;
+	name: string;
+	namespace?: string | null;
+}
+
+export interface YamlApplyPreview {
+	target: YamlApplyTarget;
+	currentYaml: string;
+	dryRunYaml: string;
+}
+
+export interface YamlApplyResult {
+	target: YamlApplyTarget;
+	appliedYaml: string;
+}
+
+export type KubernetesYamlLintSeverity = "error" | "warning" | "info";
+
+export interface KubernetesYamlLintDiagnostic {
+	severity: KubernetesYamlLintSeverity;
+	source: string;
+	message: string;
+	fieldPath?: string;
+}
+
+export interface KubernetesYamlLintResult {
+	diagnostics: KubernetesYamlLintDiagnostic[];
+}
+
 export type TopologyHealth =
 	| "healthy"
 	| "attention"

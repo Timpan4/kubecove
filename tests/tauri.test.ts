@@ -921,7 +921,10 @@ describe("incident signal helpers", () => {
 		);
 
 		expect(source).toContain(
-			'resource.kind === "Pod" && (details || podDetailsLoading)',
+			"details?.summary ? { ...resource, ...details.summary } : resource",
+		);
+		expect(source).toContain(
+			'currentResource.kind === "Pod" && (details || podDetailsLoading)',
 		);
 		expect(source).toContain("details || podDetailsLoading");
 		expect(source).toContain("? containerRows");

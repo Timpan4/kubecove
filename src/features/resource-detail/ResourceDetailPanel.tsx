@@ -1,10 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createTauriClient } from "../../lib/tauri";
 import type { ResourceSummary } from "../../lib/types";
 import { diagnosticLog } from "../../lib/diagnostics";
+import { useSettingsState } from "../../lib/settings";
 import {
 	PANEL_BODY_CLASS,
 	PANEL_CLASS,
@@ -44,6 +46,15 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 	const [timelineLogLine, setTimelineLogLine] = useState<
 		ParsedLogLine | undefined
 	>();
+	const queryClient = useQueryClient();
+	const yamlEncodingDefault = useSettingsState(
+		(state) => state.yamlEncodingDefault,
+	);
+	const yamlViewModeDefault = useSettingsState(
+		(state) => state.yamlViewModeDefault,
+	);
+	const [yamlViewMode, setYamlViewMode] = useState(yamlViewModeDefault);
+	const [yamlEncoding, setYamlEncoding] = useState(yamlEncodingDefault);
 	const client = useMemo(() => createTauriClient(), []);
 	const dynamicResourceKind = useMemo(
 		() => dynamicResourceKindFromSummary(resource),
@@ -60,7 +71,9 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		});
 		setActiveTab("details");
 		setTimelineLogLine(undefined);
-	}, [resourceKey]);
+		setYamlViewMode(yamlViewModeDefault);
+		setYamlEncoding(yamlEncodingDefault);
+	}, [resourceKey, yamlEncodingDefault, yamlViewModeDefault]);
 
 	useEffect(() => {
 		diagnosticLog("detail.mount", { key: resourceKey });
@@ -82,6 +95,8 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		resourceKey,
 		client,
 		dynamicResourceKind,
+		yamlViewMode,
+		yamlEncoding,
 	});
 	const { data: details } = detailsQuery;
 	const { data: yaml } = yamlQuery;
@@ -189,7 +204,11 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 						</TabsTrigger>
 					</TabsList>
 				</div>
-				<div className={PANEL_BODY_CLASS}>
+				<div
+					className={
+						activeTab === "yaml" ? "flex-1 overflow-y-auto p-0" : PANEL_BODY_CLASS
+					}
+				>
 					<TabsContent value="details" className="m-0">
 						<DetailsTab
 							resource={resource}
@@ -252,10 +271,22 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 					)}
 					<TabsContent value="yaml" className="m-0">
 						<YamlTab
+							client={client}
+							resource={resource}
 							yaml={yaml}
 							yamlLoading={yamlQuery.isLoading}
 							yamlError={yamlQuery.isError}
 							yamlErr={yamlQuery.error}
+							yamlViewMode={yamlViewMode}
+							onYamlViewModeChange={setYamlViewMode}
+							yamlEncoding={yamlEncoding}
+							onYamlEncodingChange={setYamlEncoding}
+							onApplied={() => {
+								void queryClient.invalidateQueries({
+									queryKey: ["resource-details"],
+								});
+								void queryClient.invalidateQueries({ queryKey: ["resource-yaml"] });
+							}}
 						/>
 					</TabsContent>
 				</div>

@@ -62,14 +62,13 @@ pub async fn incident_cockpit_from(
     kubeconfig_env_var: Option<String>,
     live_store: ClusterLiveStore,
 ) -> Result<IncidentCockpitSummary, AppError> {
-    let resources =
-        resource_scope_from(
-            cluster_context.clone(),
-            requests.clone(),
-            live_store,
-            kubeconfig_env_var.clone(),
-        )
-        .await?;
+    let resources = resource_scope_from(
+        cluster_context.clone(),
+        requests.clone(),
+        live_store,
+        kubeconfig_env_var.clone(),
+    )
+    .await?;
     let event_scope = event_namespace_scope(&requests, &resources);
     let mut warnings = Vec::new();
     let event_result =
