@@ -520,6 +520,40 @@ export interface HelmReleaseDetails {
 	release?: Record<string, unknown>;
 }
 
+export type HelmReconciliationStatus =
+	| "tracked"
+	| "unlabeledLive"
+	| "missing"
+	| "labelOnly"
+	| "unavailable";
+
+export interface HelmReleaseReconciliation {
+	summary: HelmReleaseSummary;
+	totals: HelmReconciliationTotals;
+	resources: HelmReconciliationResource[];
+	warnings: string[];
+}
+
+export interface HelmReconciliationTotals {
+	tracked: number;
+	unlabeledLive: number;
+	missing: number;
+	labelOnly: number;
+	unavailable: number;
+}
+
+export interface HelmReconciliationResource {
+	apiVersion?: string;
+	kind?: string;
+	namespace?: string;
+	name?: string;
+	status: HelmReconciliationStatus;
+	statusMessage: string;
+	inManifest: boolean;
+	explicitHelmLabel: boolean;
+	liveResource?: ResourceSummary;
+}
+
 export interface HelmValuesSummary {
 	hasValues: boolean;
 	topLevelKeys: string[];

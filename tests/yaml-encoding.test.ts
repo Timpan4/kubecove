@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatYamlDocument } from "../src/components/YamlCodeViewer";
+import { formatYamlDocument } from "../src/lib/yamlFormat";
 import { queryKeys } from "../src/lib/queryKeys";
 import { useSettingsState } from "../src/lib/settings";
 
