@@ -33,6 +33,13 @@ import type {
 	ArgoAppProjectDetails,
 	HelmReleaseSummary,
 	HelmReleaseDetails,
+	HelmReleaseReconciliation,
+	YamlApplyPreview,
+	YamlApplyRequest,
+	YamlApplyResult,
+	YamlEncoding,
+	YamlViewMode,
+	KubernetesYamlLintResult,
 	RbacInspectionSummary,
 	IncidentCockpitSummary,
 } from "./types";

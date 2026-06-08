@@ -119,18 +119,22 @@ export const queryKeys = {
 			namespace,
 			storageKind,
 			storageName,
+			yamlViewMode,
+			yamlEncoding,
 		] as const,
-	helmReleaseResources: (
+	helmReleaseReconciliation: (
 		clusterContext: string,
 		namespace: string,
-		releaseName: string,
+		storageKind: string,
+		storageName: string,
 		kubeconfigEnvVar?: string,
 	) =>
 		[
-			"helm-release-resources",
+			"helm-release-reconciliation",
 			kubeconfigSourceKey(kubeconfigEnvVar),
 			clusterContext,
 			namespace,
-			releaseName,
+			storageKind,
+			storageName,
 		] as const,
 };

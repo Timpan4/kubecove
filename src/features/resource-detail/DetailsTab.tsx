@@ -271,7 +271,7 @@ function SignalList({
 			{signals.length === 0 && eventsLoading && (
 				<Card size="sm">
 					<CardContent className="text-xs text-muted-foreground">
-						Checking selected resource events...
+						Checking selected resource events…
 					</CardContent>
 				</Card>
 			)}
@@ -541,7 +541,7 @@ export function DetailsTab({
 			{detailsLoading && (
 				<div className={LOADING_STATE_CLASS}>
 					<Spinner className="mx-auto mb-2 size-4" />
-					<span>Loading details...</span>
+					<span>Loading details…</span>
 				</div>
 			)}
 			{detailsError && (

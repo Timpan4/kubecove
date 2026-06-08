@@ -65,17 +65,6 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 	renderCountRef.current += 1;
 
 	useEffect(() => {
-		diagnosticLog("detail.resource.changed", {
-			key: resourceKey,
-			render: renderCountRef.current,
-		});
-		setActiveTab("details");
-		setTimelineLogLine(undefined);
-		setYamlViewMode(yamlViewModeDefault);
-		setYamlEncoding(yamlEncodingDefault);
-	}, [resourceKey, yamlEncodingDefault, yamlViewModeDefault]);
-
-	useEffect(() => {
 		diagnosticLog("detail.mount", { key: resourceKey });
 		return () => {
 			diagnosticLog("detail.unmount", { key: resourceKey });
@@ -127,27 +116,22 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 		() => getContainerStatusRows(details?.status),
 		[details?.status],
 	);
-	const containerSignature = containerRows
-		.map((container) => `${container.type ?? "container"}:${container.name}`)
-		.join("|");
 
-	useEffect(() => {
+	const selectedPodContainer = useMemo(() => {
 		if (resource.kind !== "Pod") {
-			setSelectedContainer("");
-			return;
+			return "";
 		}
-		if (containerRows.length === 0) return;
 		if (
 			selectedContainer &&
 			containerRows.some((container) => container.name === selectedContainer)
 		) {
-			return;
+			return selectedContainer;
 		}
 		const regularContainer =
 			containerRows.find((container) => container.type === "container") ??
 			containerRows[0];
-		setSelectedContainer(regularContainer?.name ?? "");
-	}, [containerRows, containerSignature, resource.kind, selectedContainer]);
+		return regularContainer?.name ?? "";
+	}, [containerRows, resource.kind, selectedContainer]);
 
 	return (
 		<div className={PANEL_CLASS}>
@@ -238,7 +222,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 								client={client}
 								resource={resource}
 								containers={containerRows}
-								selectedContainer={selectedContainer}
+								selectedContainer={selectedPodContainer}
 								onSelectedContainerChange={setSelectedContainer}
 								onLatestLogLineChange={setTimelineLogLine}
 								active={activeTab === "logs"}
@@ -252,7 +236,7 @@ export const ResourceDetailPanel = memo(function ResourceDetailPanel({
 								client={client}
 								resource={resource}
 								containers={containerRows}
-								selectedContainer={selectedContainer}
+								selectedContainer={selectedPodContainer}
 								onSelectedContainerChange={setSelectedContainer}
 								active={activeTab === "exec"}
 							/>
