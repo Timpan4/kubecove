@@ -192,8 +192,10 @@ export function buildReactFlowTopologyLayout(
 				target: edge.target,
 				type: "smoothstep",
 				data: { relation: edge.relation },
+				className: "ownership-map-edge",
 				pathOptions: EDGE_PATH_OPTIONS,
 				focusable: false,
+				animated: false,
 				zIndex: 0,
 				markerEnd: {
 					type: MarkerType.ArrowClosed,
@@ -277,6 +279,11 @@ export function applyReactFlowTopologySelectionWithIndex(
 		const stroke = selectedEdge ? "var(--primary)" : "var(--muted-foreground)";
 		return {
 			...edge,
+			animated: selectedEdge,
+			className: cn(
+				"ownership-map-edge",
+				selectedEdge && "ownership-map-edge-active",
+			),
 			zIndex: selectedEdge ? 10 : 0,
 			markerEnd: {
 				type: MarkerType.ArrowClosed,
