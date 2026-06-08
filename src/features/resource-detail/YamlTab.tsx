@@ -120,6 +120,7 @@ export function YamlTab({
 	const startApplyFlow = async () => {
 		if (loadingDraft) return;
 		const requestId = ++startApplyRequestId.current;
+		if (requestId !== startApplyRequestId.current) return;
 		setState({
 			appliedMessage: "",
 			formatError: null,
@@ -132,7 +133,7 @@ export function YamlTab({
 			draftYaml: "",
 		});
 		try {
-			const applyCleanYaml = await getResourceYaml(
+			const applyCleanYamlRequest = getResourceYaml(
 				client,
 				resource.cluster,
 				resource.kind,
@@ -142,6 +143,8 @@ export function YamlTab({
 				"applyClean",
 				yamlEncoding,
 			);
+			if (requestId !== startApplyRequestId.current) return;
+			const applyCleanYaml = await applyCleanYamlRequest;
 			if (requestId !== startApplyRequestId.current) return;
 			setState({
 				draftYaml: applyCleanYaml,

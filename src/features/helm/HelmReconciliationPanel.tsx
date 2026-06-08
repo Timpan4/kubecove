@@ -61,7 +61,7 @@ function ReconciliationLoadingState() {
 		<div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
 			<span className="inline-flex items-center gap-2">
 				<Spinner className="size-4" />
-				Loading reconciliation...
+				Loading reconciliation…
 			</span>
 		</div>
 	);
