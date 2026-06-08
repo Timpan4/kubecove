@@ -68,7 +68,7 @@ src-tauri/src/
     contexts.rs
     discovery.rs
     events.rs
-    helm.rs
+    helm/
     metrics.rs
     namespaces.rs
     rbac.rs
@@ -80,7 +80,7 @@ src-tauri/src/
     discovery.rs
     error.rs
     events.rs
-    helm.rs
+    helm/
     metrics.rs
     namespace.rs
     rbac.rs
@@ -112,7 +112,7 @@ Typed frontend wrappers currently cover:
 - live sessions: `start_pod_port_forward`, `stop_port_forward`, `list_port_forwards`, guarded Pod exec session commands
 - metrics: `list_resource_metrics`, app usage metrics
 - Argo CD: detect, list, and detail commands for Applications, ApplicationSets, and AppProjects
-- Helm: release list and detail commands
+- Helm: release list, detail, and reconciliation commands
 - RBAC: inspection summary
 
 Every new command needs:

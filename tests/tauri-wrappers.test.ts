@@ -28,6 +28,7 @@ import type {
 	AppUsageMetrics,
 	ClusterContext,
 	HelmReleaseDetails,
+	HelmReleaseReconciliation,
 	HelmReleaseSummary,
 	NamespaceSummary,
 	PodExecSessionSummary,
@@ -315,17 +316,47 @@ describe("typed Tauri wrappers", () => {
 				truncated: false,
 			},
 		};
+		const reconciliation: HelmReleaseReconciliation = {
+			summary: release,
+			totals: {
+				tracked: 1,
+				unlabeledLive: 0,
+				missing: 0,
+				labelOnly: 0,
+				unavailable: 0,
+			},
+			resources: [
+				{
+					apiVersion: "apps/v1",
+					kind: "Deployment",
+					name: "payments",
+					namespace: "payments",
+					status: "tracked",
+					statusMessage:
+						"Manifest resource exists and carries the explicit Helm release label.",
+					inManifest: true,
+					explicitHelmLabel: true,
+				},
+			],
+			warnings: [],
+		};
 		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
 		const client = {
 			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
 				calls.push({ cmd, args });
 				if (cmd === "list_helm_releases") return [release] as T;
+				if (cmd === "get_helm_release_reconciliation") {
+					return reconciliation as T;
+				}
 				return details as T;
 			},
 		};
 
 		expect(await listHelmReleases(client, "kind-dev")).toEqual([release]);
 		expect(await getHelmReleaseDetails(client, release)).toEqual(details);
+		expect(await getHelmReleaseReconciliation(client, release)).toEqual(
+			reconciliation,
+		);
 		expect(calls).toEqual([
 			{
 				cmd: "list_helm_releases",
@@ -333,6 +364,15 @@ describe("typed Tauri wrappers", () => {
 			},
 			{
 				cmd: "get_helm_release_details",
+				args: {
+					clusterContext: "kind-dev",
+					namespace: "payments",
+					storageKind: "Secret",
+					storageName: "sh.helm.release.v1.payments.v7",
+				},
+			},
+			{
+				cmd: "get_helm_release_reconciliation",
 				args: {
 					clusterContext: "kind-dev",
 					namespace: "payments",

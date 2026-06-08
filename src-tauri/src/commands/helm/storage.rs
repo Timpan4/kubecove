@@ -1,13 +1,18 @@
+use super::manifest::{manifest_resources, manifest_summary_from_resources};
+use super::redaction::{redact_configmap_release, redact_secret_release};
+use super::time::parse_rfc3339;
+use super::values::values_summary;
 use crate::commands::{
-    helpers::{k8s_creation_timestamp_to_rfc3339, list_params, resource_age},
+    helpers::{
+        k8s_creation_timestamp_to_rfc3339, list_params, resource_age, serialize_resource_document,
+    },
     kubeconfig::KubeconfigSource,
 };
 use crate::models::{
     AppError, HelmManifestResourceSummary, HelmManifestSummary, HelmReleaseDetails,
-    HelmReleaseSummary, HelmValuesSummary,
+    HelmReleaseSummary, HelmValuesSummary, YamlEncoding, YamlViewMode,
 };
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use chrono::{DateTime, Utc};
 use flate2::read::GzDecoder;
 use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Secret};
 use kube::{
@@ -52,11 +57,12 @@ struct DecodedHelmChartMetadata {
 }
 
 #[derive(Debug, Clone)]
-struct HelmStorageRecord {
-    summary: HelmReleaseSummary,
-    release: Option<serde_json::Value>,
-    values_summary: HelmValuesSummary,
-    manifest_summary: HelmManifestSummary,
+pub(super) struct HelmStorageRecord {
+    pub(super) summary: HelmReleaseSummary,
+    pub(super) release: Option<serde_json::Value>,
+    pub(super) values_summary: HelmValuesSummary,
+    pub(super) manifest_summary: HelmManifestSummary,
+    pub(super) manifest_resources: Vec<HelmManifestResourceSummary>,
 }
 
 #[tauri::command]
@@ -94,10 +100,61 @@ pub async fn get_helm_release_details(
     storage_kind: String,
     storage_name: String,
     kubeconfig_env_var: Option<String>,
+    yaml_view_mode: Option<YamlViewMode>,
+    yaml_encoding: Option<YamlEncoding>,
 ) -> Result<HelmReleaseDetails, AppError> {
     let (client, _) = client_for_context(&cluster_context, kubeconfig_env_var).await?;
 
-    match storage_kind.as_str() {
+    let (record, metadata, yaml) = release_storage_object(
+        client,
+        &cluster_context,
+        &namespace,
+        &storage_kind,
+        &storage_name,
+        yaml_view_mode.unwrap_or_default(),
+        yaml_encoding.unwrap_or_default(),
+    )
+    .await?;
+    Ok(HelmReleaseDetails {
+        summary: record.summary,
+        yaml,
+        metadata,
+        values_summary: record.values_summary,
+        manifest_summary: record.manifest_summary,
+        release: record.release,
+    })
+}
+
+pub(super) async fn get_helm_storage_record(
+    client: Client,
+    cluster_context: &str,
+    namespace: &str,
+    storage_kind: &str,
+    storage_name: &str,
+) -> Result<HelmStorageRecord, AppError> {
+    let (record, _, _) = release_storage_object(
+        client,
+        cluster_context,
+        namespace,
+        storage_kind,
+        storage_name,
+        YamlViewMode::Kubectl,
+        YamlEncoding::Yaml,
+    )
+    .await?;
+    Ok(record)
+}
+
+async fn release_storage_object(
+    client: Client,
+    cluster_context: &str,
+    namespace: &str,
+    storage_kind: &str,
+    storage_name: &str,
+    yaml_view_mode: YamlViewMode,
+    yaml_encoding: YamlEncoding,
+) -> Result<(HelmStorageRecord, serde_json::Value, String), AppError> {
+    match storage_kind {
         HELM_STORAGE_SECRET => {
             let api: Api<Secret> = Api::namespaced(client, &namespace);
             let mut secret = api.get(&storage_name).await.map_err(AppError::from)?;
@@ -111,16 +168,8 @@ pub async fn get_helm_release_details(
             let metadata = serde_json::to_value(&secret.metadata)
                 .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             redact_secret_release(&mut secret);
-            let yaml = serde_yaml::to_string(&secret)
-                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            Ok(HelmReleaseDetails {
-                summary: record.summary,
-                yaml,
-                metadata,
-                values_summary: record.values_summary,
-                manifest_summary: record.manifest_summary,
-                release: record.release,
-            })
+            let yaml = serialize_resource_document(&secret, yaml_view_mode, yaml_encoding)?;
+            Ok((record, metadata, yaml))
         }
         HELM_STORAGE_CONFIGMAP => {
             let api: Api<ConfigMap> = Api::namespaced(client, &namespace);
@@ -135,22 +184,14 @@ pub async fn get_helm_release_details(
             let metadata = serde_json::to_value(&configmap.metadata)
                 .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             redact_configmap_release(&mut configmap);
-            let yaml = serde_yaml::to_string(&configmap)
-                .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
-            Ok(HelmReleaseDetails {
-                summary: record.summary,
-                yaml,
-                metadata,
-                values_summary: record.values_summary,
-                manifest_summary: record.manifest_summary,
-                release: record.release,
-            })
+            let yaml = serialize_resource_document(&configmap, yaml_view_mode, yaml_encoding)?;
+            Ok((record, metadata, yaml))
         }
         _ => Err(AppError::new("unsupported Helm storage kind", "validation")),
     }
 }
 
-async fn client_for_context(
+pub(super) async fn client_for_context(
     cluster_context: &str,
     kubeconfig_env_var: Option<String>,
 ) -> Result<(Client, String), AppError> {
@@ -315,12 +356,12 @@ fn secret_record(
     let release = decoded.as_ref().and_then(safe_release_metadata);
     let values_summary =
         values_summary(decoded.as_ref().and_then(|release| release.config.as_ref()));
-    let manifest_summary = manifest_summary(
+    let manifest_resources = manifest_resources(
         decoded
             .as_ref()
             .and_then(|release| release.manifest.as_deref()),
-        secret.metadata.namespace.as_deref(),
     );
+    let manifest_summary = manifest_summary_from_resources(&manifest_resources);
     let storage_name = secret.metadata.name.clone().unwrap_or_default();
     let summary = release_summary(
         cluster_context,
@@ -334,6 +375,7 @@ fn secret_record(
         release,
         values_summary,
         manifest_summary,
+        manifest_resources,
     })
 }
 
@@ -350,12 +392,12 @@ fn configmap_record(
     let release = decoded.as_ref().and_then(safe_release_metadata);
     let values_summary =
         values_summary(decoded.as_ref().and_then(|release| release.config.as_ref()));
-    let manifest_summary = manifest_summary(
+    let manifest_resources = manifest_resources(
         decoded
             .as_ref()
             .and_then(|release| release.manifest.as_deref()),
-        configmap.metadata.namespace.as_deref(),
     );
+    let manifest_summary = manifest_summary_from_resources(&manifest_resources);
     let storage_name = configmap.metadata.name.clone().unwrap_or_default();
     let summary = release_summary(
         cluster_context,
@@ -369,6 +411,7 @@ fn configmap_record(
         release,
         values_summary,
         manifest_summary,
+        manifest_resources,
     })
 }
 
@@ -464,104 +507,6 @@ fn safe_release_metadata(release: &DecodedHelmRelease) -> Option<serde_json::Val
     }))
 }
 
-fn values_summary(config: Option<&serde_json::Value>) -> HelmValuesSummary {
-    match config {
-        Some(serde_json::Value::Object(values)) => {
-            let mut top_level_keys: Vec<String> = values.keys().cloned().collect();
-            top_level_keys.sort();
-            HelmValuesSummary {
-                has_values: !values.is_empty(),
-                value_count: values.len(),
-                top_level_keys,
-            }
-        }
-        Some(serde_json::Value::Null) => HelmValuesSummary {
-            has_values: false,
-            value_count: 0,
-            top_level_keys: Vec::new(),
-        },
-        Some(_) => HelmValuesSummary {
-            has_values: true,
-            value_count: 1,
-            top_level_keys: Vec::new(),
-        },
-        None => HelmValuesSummary {
-            has_values: false,
-            value_count: 0,
-            top_level_keys: Vec::new(),
-        },
-    }
-}
-
-fn manifest_summary(
-    manifest: Option<&str>,
-    fallback_namespace: Option<&str>,
-) -> HelmManifestSummary {
-    const RESOURCE_PREVIEW_LIMIT: usize = 50;
-
-    let Some(manifest) = manifest.filter(|value| !value.trim().is_empty()) else {
-        return HelmManifestSummary {
-            resource_count: 0,
-            resources: Vec::new(),
-            truncated: false,
-        };
-    };
-
-    let mut resource_count = 0;
-    let mut resources = Vec::new();
-    for document in serde_yaml::Deserializer::from_str(manifest) {
-        let Ok(value) = serde_yaml::Value::deserialize(document) else {
-            continue;
-        };
-        let Some(resource) = manifest_resource_summary(&value, fallback_namespace) else {
-            continue;
-        };
-        resource_count += 1;
-        if resources.len() < RESOURCE_PREVIEW_LIMIT {
-            resources.push(resource);
-        }
-    }
-
-    HelmManifestSummary {
-        resource_count,
-        truncated: resource_count > resources.len(),
-        resources,
-    }
-}
-
-fn manifest_resource_summary(
-    value: &serde_yaml::Value,
-    _fallback_namespace: Option<&str>,
-) -> Option<HelmManifestResourceSummary> {
-    let mapping = value.as_mapping()?;
-    let api_version = yaml_string(mapping, "apiVersion");
-    let kind = yaml_string(mapping, "kind");
-    let metadata = mapping
-        .get(serde_yaml::Value::String("metadata".to_string()))
-        .and_then(serde_yaml::Value::as_mapping);
-    let name = metadata.and_then(|metadata| yaml_string(metadata, "name"));
-    let namespace = metadata.and_then(|metadata| yaml_string(metadata, "namespace"));
-
-    if api_version.is_none() && kind.is_none() && name.is_none() {
-        return None;
-    }
-
-    Some(HelmManifestResourceSummary {
-        api_version,
-        kind,
-        name,
-        namespace,
-    })
-}
-
-fn yaml_string(mapping: &serde_yaml::Mapping, key: &str) -> Option<String> {
-    mapping
-        .get(serde_yaml::Value::String(key.to_string()))
-        .and_then(serde_yaml::Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-}
-
 fn label_value(labels: Option<&BTreeMap<String, String>>, key: &str) -> Option<String> {
     labels.and_then(|labels| labels.get(key).cloned())
 }
@@ -588,115 +533,6 @@ fn chart_label(name: Option<&str>, version: Option<&str>) -> Option<String> {
     }
 }
 
-fn parse_rfc3339(value: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))
-}
-
-fn redact_secret_release(secret: &mut Secret) {
-    if let Some(data) = secret.data.as_mut() {
-        if let Some(release) = data.get_mut("release") {
-            release.0 = b"REDACTED".to_vec();
-        }
-    }
-}
-
-fn redact_configmap_release(configmap: &mut ConfigMap) {
-    if let Some(data) = configmap.data.as_mut() {
-        if let Some(release) = data.get_mut("release") {
-            *release = "REDACTED".to_string();
-        }
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn helm_owner_label_marks_release_storage() {
-        let labels = BTreeMap::from([("owner".to_string(), "helm".to_string())]);
-
-        assert!(is_helm_owned(Some(&labels)));
-    }
-
-    #[test]
-    fn missing_helm_owner_label_rejects_storage() {
-        let labels = BTreeMap::from([("app".to_string(), "not-helm".to_string())]);
-
-        assert!(!is_helm_owned(Some(&labels)));
-        assert!(!is_helm_owned(None));
-    }
-
-    #[test]
-    fn values_summary_exposes_only_value_keys() {
-        let config = serde_json::json!({
-            "image": { "tag": "2026.5.22" },
-            "replicaCount": 2,
-        });
-
-        let summary = values_summary(Some(&config));
-
-        assert!(summary.has_values);
-        assert_eq!(summary.value_count, 2);
-        assert_eq!(summary.top_level_keys, vec!["image", "replicaCount"]);
-    }
-
-    #[test]
-    fn values_summary_treats_explicit_null_as_empty() {
-        let summary = values_summary(Some(&serde_json::Value::Null));
-
-        assert!(!summary.has_values);
-        assert_eq!(summary.value_count, 0);
-        assert!(summary.top_level_keys.is_empty());
-    }
-
-    #[test]
-    fn manifest_summary_extracts_resource_refs_without_manifest_body() {
-        let manifest = r#"
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: payments-api
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: payments-api
-  namespace: payments
-"#;
-
-        let summary = manifest_summary(Some(manifest), Some("default"));
-
-        assert_eq!(summary.resource_count, 2);
-        assert!(!summary.truncated);
-        assert_eq!(summary.resources[0].kind.as_deref(), Some("Deployment"));
-        assert_eq!(summary.resources[0].namespace, None);
-        assert_eq!(summary.resources[1].kind.as_deref(), Some("Service"));
-        assert_eq!(summary.resources[1].namespace.as_deref(), Some("payments"));
-    }
-
-    #[test]
-    fn manifest_summary_preserves_missing_namespace_without_kind_guessing() {
-        let manifest = r#"
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: payments-reader
----
-apiVersion: networking.k8s.io/v1
-kind: IngressClass
-metadata:
-  name: internal
-"#;
-
-        let summary = manifest_summary(Some(manifest), Some("payments"));
-
-        assert_eq!(summary.resource_count, 2);
-        assert_eq!(summary.resources[0].kind.as_deref(), Some("ClusterRole"));
-        assert_eq!(summary.resources[0].namespace, None);
-        assert_eq!(summary.resources[1].kind.as_deref(), Some("IngressClass"));
-        assert_eq!(summary.resources[1].namespace, None);
-    }
-}
+#[path = "storage_tests.rs"]
+mod storage_tests;

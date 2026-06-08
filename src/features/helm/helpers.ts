@@ -1,4 +1,4 @@
-import type { HelmReleaseSummary } from "@/lib/types";
+import type { HelmReleaseSummary, ResourceSummary } from "@/lib/types";
 import type {
 	HelmReconciliationResource,
 	HelmReconciliationStatus,
@@ -31,6 +31,21 @@ export function groupHelmReleasesByNamespace(releases: HelmReleaseSummary[]) {
 				left.name.localeCompare(right.name),
 			),
 		}));
+}
+
+export function resourcesOwnedByHelmRelease(
+	resources: ResourceSummary[],
+	release: Pick<HelmReleaseSummary, "name" | "namespace">,
+) {
+	return resources.filter(
+		(resource) =>
+			resource.namespace === release.namespace &&
+			resource.helmRelease === release.name,
+	);
+}
+
+export function helmReleaseResourceLabel(resource: ResourceSummary): string {
+	return `${resource.kind}/${resource.name}`;
 }
 
 export function helmReconciliationStatusTone(

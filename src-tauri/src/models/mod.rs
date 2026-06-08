@@ -22,8 +22,9 @@ pub use discovery::DiscoveredResourceKind;
 pub use error::AppError;
 pub use events::ResourceEventSummary;
 pub use helm::{
-    HelmManifestResourceSummary, HelmManifestSummary, HelmReleaseDetails, HelmReleaseSummary,
-    HelmValuesSummary,
+    HelmManifestResourceSummary, HelmManifestSummary, HelmReconciliationResource,
+    HelmReconciliationStatus, HelmReconciliationTotals, HelmReleaseDetails,
+    HelmReleaseReconciliation, HelmReleaseSummary, HelmValuesSummary,
 };
 pub use incidents::{
     IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalSummary,

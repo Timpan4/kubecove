@@ -25,7 +25,7 @@ pub use argo::{
 pub use contexts::{get_cluster_contexts, list_kube_contexts};
 pub use discovery::{list_resource_kinds, resource_kinds_from};
 pub use events::{list_resource_events, resource_events_from};
-pub use helm::{get_helm_release_details, list_helm_releases};
+pub use helm::{get_helm_release_details, get_helm_release_reconciliation, list_helm_releases};
 pub use incidents::{incident_cockpit_from, list_incident_cockpit};
 pub use kubeconfig::{kubeconfig_source_key, KubeconfigSource, DEFAULT_KUBECONFIG_ENV_VAR};
 pub use live_store::ClusterLiveStore;
