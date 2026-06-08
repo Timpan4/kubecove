@@ -3,6 +3,22 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.6.0 - 2026-06-08
+### Added
+
+- kubeconfig sources and release automation
+
+### Improved
+
+- satisfy kubeconfig React checks
+- satisfy settings React check
+- satisfy live-session React checks
+
+### Fixed
+
+- live-session kubeconfig source build
+- live-session workspace cleanup
+
 ## 0.5.0 - 2026-06-08
 
 ### Added
