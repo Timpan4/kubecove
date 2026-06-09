@@ -3,6 +3,15 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.6.3 - 2026-06-09
+### Added
+
+- use persisted map panel setting & add collapsed rail UI (#120)
+
+### Fixed
+
+- React Doctor full scan flag (#119)
+
 ## 0.6.2 - 2026-06-09
 ### Release
 
