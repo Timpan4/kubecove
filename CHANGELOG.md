@@ -4,13 +4,22 @@ All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
 ## 0.6.3 - 2026-06-09
+
 ### Added
 
-- use persisted map panel setting & add collapsed rail UI (#120)
+- Added a persisted resource map panel preference so workspaces remember the
+  table/map layout between sessions.
+- Added a collapsed rail state for the resource map surface so operators can
+  keep topology available without crowding the resource table.
 
 ### Fixed
 
-- React Doctor full scan flag (#119)
+- Fixed the React Doctor full-scan flag used by CI verification.
+
+### Release
+
+- Prepared KubeCove v0.6.3 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
 
 ## 0.6.2 - 2026-06-09
 ### Release
