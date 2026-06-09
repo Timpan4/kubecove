@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.6.2 - 2026-06-09
+### Release
+
+- Prepared KubeCove beta release metadata.
+
 ## 0.6.1 - 2026-06-08
 ### Added
 
