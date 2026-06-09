@@ -38,10 +38,13 @@ describe("resource view safeguards", () => {
 		expect(appSource).toContain("selectedResource={selectedResource}");
 		expect(listSource).toContain("activeSelectedResourceKey");
 		expect(layoutSource).toContain(
-			"xl:grid-cols-[minmax(620px,1fr)_minmax(420px,0.82fr)]",
+			"grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)]",
 		);
-		expect(layoutSource).toContain("h-[360px]");
-		expect(layoutSource).toContain("h-[560px]");
+		expect(layoutSource).toContain(
+			"xl:grid-cols-[minmax(420px,0.4fr)_minmax(620px,0.6fr)]",
+		);
+		expect(layoutSource).toContain('mapHeightClassName = "h-full min-h-0"');
+		expect(layoutSource).toContain("min-h-[400px]");
 		expect(layoutSource).toContain("Hide table");
 		expect(listSource).not.toContain('resourceView === "map"');
 		expect(listSource).not.toContain('resourceView === "table"');

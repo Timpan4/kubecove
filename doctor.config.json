@@ -1,10 +1,5 @@
 {
   "deadCode": false,
-  "surfaces": {
-    "score": {
-      "excludeCategories": ["State & Effects"]
-    }
-  },
   "ignore": {
     "files": [
       "dist/**",

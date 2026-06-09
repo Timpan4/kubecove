@@ -332,26 +332,34 @@ function ResourceListComponent({
 	const activeSelectedResourceIdentityKey =
 		selectedResourceIdentityKey ?? externalSelectedResourceIdentityKey;
 
-	useEffect(() => {
-		if (!activeSelectedResourceKey && !activeSelectedResourceIdentityKey) return;
+	const effectiveCollapsedGroups = useMemo(() => {
+		if (!activeSelectedResourceKey && !activeSelectedResourceIdentityKey) {
+			return collapsedGroups;
+		}
 		const selectedRow = displayData.find(
 			(resource) =>
 				resourceSelectionKey(resource) === activeSelectedResourceKey ||
 				resourceIdentityKey(resource) === activeSelectedResourceIdentityKey,
 		);
-		if (!selectedRow) return;
+		if (!selectedRow) return collapsedGroups;
 		const appCollapseKey = resourceGroupCollapseKey(selectedRow);
 		const typeCollapseKey = resourceTypeGroupCollapseKey(selectedRow);
-		setCollapsedGroups((current) => {
-			if (!current.has(appCollapseKey) && !current.has(typeCollapseKey)) {
-				return current;
-			}
-			const next = new Set(current);
-			next.delete(appCollapseKey);
-			next.delete(typeCollapseKey);
-			return next;
-		});
-	}, [activeSelectedResourceIdentityKey, activeSelectedResourceKey, displayData]);
+		if (
+			!collapsedGroups.has(appCollapseKey) &&
+			!collapsedGroups.has(typeCollapseKey)
+		) {
+			return collapsedGroups;
+		}
+		const next = new Set(collapsedGroups);
+		next.delete(appCollapseKey);
+		next.delete(typeCollapseKey);
+		return next;
+	}, [
+		activeSelectedResourceIdentityKey,
+		activeSelectedResourceKey,
+		collapsedGroups,
+		displayData,
+	]);
 
 	useEffect(() => {
 		if (externalSelectedResourceKey) {
@@ -546,7 +554,7 @@ function ResourceListComponent({
 				groupedByArgo={groupedByArgo}
 				pageGroups={pageGroups}
 				pageTypeGroups={pageTypeGroups}
-				collapsedGroups={collapsedGroups}
+				collapsedGroups={effectiveCollapsedGroups}
 				selectedResourceKey={activeSelectedResourceKey}
 				selectedResourceIdentityKey={activeSelectedResourceIdentityKey}
 				onToggleGroup={toggleGroup}

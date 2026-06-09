@@ -58,15 +58,14 @@ jobs:
         if: github.event_name == 'push'
         run: bun run doctor:ci -- --full
 
-      - name: Check React Doctor score
+      - name: Check React Doctor changed-file diagnostics
         if: github.event_name == 'pull_request'
-        env:
-          REACT_DOCTOR_MIN_SCORE: "90"
         run: |
-          score="$(bun node_modules/react-doctor/bin/react-doctor.js . --diff origin/${{ github.base_ref }} --score --fail-on none)"
-          echo "React Doctor changed-file score: ${score}"
-          if [ "${score}" -lt "${REACT_DOCTOR_MIN_SCORE}" ]; then
-            echo "React Doctor changed-file score ${score} is below ${REACT_DOCTOR_MIN_SCORE}."
+          report="$(bun node_modules/react-doctor/bin/react-doctor.js . --diff origin/${{ github.base_ref }} --json --fail-on none)"
+          diagnostics="$(printf '%s' "${report}" | bun -e 'const report = await new Response(Bun.stdin.stream()).json(); console.log(report.summary?.totalDiagnosticCount ?? 0);')"
+          echo "React Doctor changed-file diagnostics: ${diagnostics}"
+          if [ "${diagnostics}" -gt "0" ]; then
+            echo "React Doctor found ${diagnostics} changed-file diagnostics."
             exit 1
           fi
 
