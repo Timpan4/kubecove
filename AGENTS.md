@@ -68,6 +68,18 @@ Run through [docs/handbook/pr-checklist.md](docs/handbook/pr-checklist.md) befor
 - Add comments only for non-obvious architecture decisions.
 - Add TODOs for future features without implementing them early.
 
+## Cross-Platform
+
+KubeCove ships cross-platform: macOS (universal), Windows x64, and Linux x64 (see `.github/workflows/release.yml`). All changes must work on all three platforms, not just the one you are developing on.
+
+- Never hardcode path separators, path-list separators, or home directories. Use `std::env::split_paths` for path lists (`:` vs `;`) and the existing helpers (e.g. `default_kubeconfig_path` handles `HOME` and `USERPROFILE`).
+- Platform-specific code is gated with `#[cfg(target_os = "...")]` at the call site, but its helpers stay compiled on every platform so shared tests cover them — mark those helpers `#[allow(dead_code)]` with the standard comment (see `src-tauri/src/commands/usage_webview.rs`).
+- Dead-code and lint results differ per OS: code that is "unused" on your machine may be the production path on another platform. Never delete platform-gated code because local clippy flags it; gate or annotate it instead.
+- Frontend code must not assume platform-specific keyboard shortcuts (Cmd vs Ctrl), window chrome, or file-system casing behavior.
+- The webview engine differs per platform: WKWebView/WebKit on macOS, WebView2/Chromium on Windows, WebKitGTK on Linux. Rendering-sensitive CSS (infinite animations, `filter`, compositing-heavy effects, especially inside transformed/scaled containers) must be verified on WebKit, not just on Windows — WebKit intermittently rasterizes animated-filter layers blank (see the topology glow fix).
+- Prefer Tailwind utilities over bespoke CSS in `App.css`; reserve `App.css` for what utilities cannot express. This does not exempt engine bugs — Tailwind animations compile to the same CSS — so any infinite animation, however authored, is a cross-platform risk: never run one inside React Flow node subtrees, and prefer finite transitions or one-shot animations for state-change feedback.
+- CI runs per-platform builds on release; local `cargo clippy`/`cargo test` only validates your current OS. Call out anything platform-sensitive in the PR so it gets attention on the other platforms.
+
 ## Tauri Command Contracts
 
 - All frontend Kubernetes data must go through typed wrappers in `src/lib/tauri.ts`.
