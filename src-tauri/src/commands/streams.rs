@@ -265,7 +265,7 @@ mod tests {
 
         assert_eq!(
             validate_pod_log_stream_request(&PodLogStreamRequest {
-                cluster_context: "".to_string(),
+                cluster_context: String::new(),
                 ..valid_log_request()
             })
             .expect_err("empty context")
@@ -283,7 +283,7 @@ mod tests {
         );
         assert_eq!(
             validate_pod_log_stream_request(&PodLogStreamRequest {
-                pod_name: "".to_string(),
+                pod_name: String::new(),
                 ..valid_log_request()
             })
             .expect_err("empty pod")

@@ -70,8 +70,7 @@ pub async fn list_namespaces(
 ) -> Result<Vec<NamespaceSummary>, AppError> {
     let started = Instant::now();
     eprintln!(
-        "[kubecove:backend] list_namespaces start context={}",
-        cluster_context
+        "[kubecove:backend] list_namespaces start context={cluster_context}"
     );
     let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let result = live_store

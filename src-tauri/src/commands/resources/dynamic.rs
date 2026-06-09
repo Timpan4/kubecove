@@ -52,13 +52,13 @@ pub(crate) fn dynamic_status_from_data(data: &Value) -> Option<String> {
             .is_some_and(|condition_type| condition_type == "Ready")
     }) {
         let condition_status = condition.get("status").and_then(Value::as_str)?;
-        return Some(format!("Ready: {}", condition_status));
+        return Some(format!("Ready: {condition_status}"));
     }
 
     conditions.first().and_then(|condition| {
         let condition_type = condition.get("type").and_then(Value::as_str)?;
         let condition_status = condition.get("status").and_then(Value::as_str)?;
-        Some(format!("{}: {}", condition_type, condition_status))
+        Some(format!("{condition_type}: {condition_status}"))
     })
 }
 

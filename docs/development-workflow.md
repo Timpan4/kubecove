@@ -13,16 +13,17 @@ bun run typecheck
 bun test
 bun run rust:test
 bun run rust:check
+bun run rust:lint
 bun run check
 ```
 
 `bun run check` runs the current local verification bundle:
 
 ```sh
-bun run typecheck && bun test && bun run rust:test && bun run rust:check
+bun run typecheck && bun test && bun run rust:test && bun run rust:check && bun run rust:lint
 ```
 
-There is no `lint` script at the moment. Add one only when the project has a real lint configuration.
+`bun run rust:lint` runs Clippy for all Rust targets and features with warnings denied.
 
 ## Git Hook
 

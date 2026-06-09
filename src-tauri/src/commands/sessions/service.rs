@@ -84,7 +84,7 @@ fn select_service_port(
     if ports.is_empty() {
         return Err(AppError::new("service has no ports to forward", "session"));
     }
-    let Some(port) = ports.iter().find(|port| port.port == requested_port as i32) else {
+    let Some(port) = ports.iter().find(|port| port.port == i32::from(requested_port)) else {
         let available = ports
             .iter()
             .map(|port| port.port.to_string())
@@ -105,7 +105,7 @@ fn select_service_port(
 }
 
 fn select_ready_pod(mut pods: Vec<Pod>) -> Option<Pod> {
-    pods.sort_by(|a, b| pod_name(a).cmp(&pod_name(b)));
+    pods.sort_by_key(pod_name);
     pods.into_iter().find(is_ready_running_pod)
 }
 
@@ -136,9 +136,9 @@ fn pod_name(pod: &Pod) -> Option<String> {
 
 fn resolve_service_target_port(pod: &Pod, service_port: &ServicePort) -> Result<u16, AppError> {
     match service_port.target_port.as_ref() {
-        Some(IntOrString::Int(port)) => validate_port(*port as i64, "service targetPort"),
+        Some(IntOrString::Int(port)) => validate_port(i64::from(*port), "service targetPort"),
         Some(IntOrString::String(name)) => find_named_container_port(pod, name),
-        None => validate_port(service_port.port as i64, "service port"),
+        None => validate_port(i64::from(service_port.port), "service port"),
     }
 }
 
@@ -154,7 +154,7 @@ fn find_named_container_port(pod: &Pod, port_name: &str) -> Result<u16, AppError
         .iter()
         .flat_map(|container| container.ports.iter().flatten())
         .find(|port| port.name.as_deref() == Some(port_name))
-        .map(|port| validate_port(port.container_port as i64, "container port"))
+        .map(|port| validate_port(i64::from(port.container_port), "container port"))
         .transpose()?
         .ok_or_else(|| {
             AppError::new(

@@ -89,8 +89,7 @@ pub async fn incident_cockpit_from(
     let events = event_result.events;
     if events.len() >= MAX_WARNING_EVENTS_TOTAL {
         warnings.push(format!(
-            "Warning events capped at {} most recent matches.",
-            MAX_WARNING_EVENTS_TOTAL
+            "Warning events capped at {MAX_WARNING_EVENTS_TOTAL} most recent matches."
         ));
     }
 
@@ -445,15 +444,15 @@ fn status_message(resource: &ResourceSummary) -> String {
         resource
             .status
             .as_ref()
-            .map(|status| format!("Status {}", status)),
+            .map(|status| format!("Status {status}")),
         resource
             .ready
             .as_ref()
-            .map(|ready| format!("Ready {}", ready)),
+            .map(|ready| format!("Ready {ready}")),
         resource
             .restarts
             .filter(|restarts| *restarts > 0)
-            .map(|restarts| format!("{} restarts", restarts)),
+            .map(|restarts| format!("{restarts} restarts")),
     ]
     .into_iter()
     .flatten()

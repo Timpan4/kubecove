@@ -156,27 +156,24 @@ where
             return result;
         }
         let dirty_while_loading = *dirty;
-        match &result {
-            Ok(value) => {
-                let mut ready = Self::ready_value(value.clone());
-                ready.dirty = dirty_while_loading;
-                entries.insert(key, CacheEntry::Ready(ready));
+        if let Ok(value) = &result {
+            let mut ready = Self::ready_value(value.clone());
+            ready.dirty = dirty_while_loading;
+            entries.insert(key, CacheEntry::Ready(ready));
+            Self::trim_to_budget(&mut entries);
+        } else {
+            let previous = entries.remove(&key).and_then(|entry| match entry {
+                CacheEntry::Loading {
+                    previous, dirty, ..
+                } => previous.map(|mut ready| {
+                    ready.dirty |= dirty;
+                    ready
+                }),
+                CacheEntry::Ready(ready) => Some(ready),
+            });
+            if let Some(previous) = previous {
+                entries.insert(key, CacheEntry::Ready(previous));
                 Self::trim_to_budget(&mut entries);
-            }
-            Err(_) => {
-                let previous = entries.remove(&key).and_then(|entry| match entry {
-                    CacheEntry::Loading {
-                        previous, dirty, ..
-                    } => previous.map(|mut ready| {
-                        ready.dirty |= dirty;
-                        ready
-                    }),
-                    CacheEntry::Ready(ready) => Some(ready),
-                });
-                if let Some(previous) = previous {
-                    entries.insert(key, CacheEntry::Ready(previous));
-                    Self::trim_to_budget(&mut entries);
-                }
             }
         }
         result
@@ -433,7 +430,7 @@ impl ClusterLiveStore {
             self.resources.mark_dirty(&all_key);
         }
         self.topologies.mark_dirty_where(|key| {
-            key.starts_with(&format!("{}|context={}|", source_key, cluster_context))
+            key.starts_with(&format!("{source_key}|context={cluster_context}|"))
         });
     }
 }
@@ -446,11 +443,11 @@ enum ScopeNamespace {
 }
 
 fn typed_kind_key(kind: &str) -> String {
-    format!("typed:{}", kind)
+    format!("typed:{kind}")
 }
 
 fn dynamic_kind_key(api_version: &str, plural: &str, kind: &str) -> String {
-    format!("dynamic:{}:{}:{}", api_version, plural, kind)
+    format!("dynamic:{api_version}:{plural}:{kind}")
 }
 
 fn watch_kind_key(resource_kind: &WatchResourceKind) -> String {
@@ -497,7 +494,7 @@ fn namespace_key_for_namespaced(namespaced: bool, namespace: Option<&str>) -> Sc
 }
 
 fn context_cache_key(source_key: &str, context: &str) -> String {
-    format!("{}|context={}", source_key, context)
+    format!("{source_key}|context={context}")
 }
 
 fn resource_cache_key(
@@ -512,8 +509,7 @@ fn resource_cache_key(
         ScopeNamespace::Named(namespace) => namespace,
     };
     format!(
-        "{}|context={}|kind={}|namespace={}",
-        source_key, context, kind_key, namespace
+        "{source_key}|context={context}|kind={kind_key}|namespace={namespace}"
     )
 }
 

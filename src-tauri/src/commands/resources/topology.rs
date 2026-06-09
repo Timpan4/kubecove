@@ -78,7 +78,7 @@ pub(crate) fn topology_node_id(
 }
 
 fn topology_edge_id(source: &str, target: &str, relation: &TopologyRelation) -> String {
-    format!("{}=>{}:{:?}", source, target, relation)
+    format!("{source}=>{target}:{relation:?}")
 }
 
 pub(crate) fn topology_root_kinds() -> &'static [&'static str] {

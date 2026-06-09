@@ -44,7 +44,7 @@ pub async fn resources_summary_from(
     }
 
     Err(AppError::new(
-        format!("unsupported resource kind: {}", kind),
+        format!("unsupported resource kind: {kind}"),
         "cluster",
     ))
 }
@@ -60,8 +60,7 @@ pub async fn list_resources(
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<all>");
     eprintln!(
-        "[kubecove:backend] list_resources start context={} kind={} namespace={}",
-        cluster_context, kind, namespace_label
+        "[kubecove:backend] list_resources start context={cluster_context} kind={kind} namespace={namespace_label}"
     );
     let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let result = live_store

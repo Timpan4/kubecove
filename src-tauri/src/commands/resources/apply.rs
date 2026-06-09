@@ -374,7 +374,7 @@ fn validate_yaml_apply(request: YamlApplyRequest) -> Result<ValidatedApply, AppE
         return Err(identity_error("metadata.name", &request.name, name));
     }
 
-    let (api_resource, namespaced) = api_resource_for_request(&request, &api_version)?;
+    let (api_resource, namespaced) = api_resource_for_request(&request, api_version)?;
     if namespaced {
         let expected_namespace = request.namespace.as_deref().ok_or_else(|| {
             AppError::new(
@@ -565,9 +565,7 @@ fn builtin_api_resource(kind: &str, api_version: &str) -> Result<(ApiResource, b
 
 fn split_api_version(api_version: &str) -> (String, String) {
     api_version
-        .split_once('/')
-        .map(|(group, version)| (group.to_string(), version.to_string()))
-        .unwrap_or_else(|| ("".to_string(), api_version.to_string()))
+        .split_once('/').map_or_else(|| (String::new(), api_version.to_string()), |(group, version)| (group.to_string(), version.to_string()))
 }
 
 fn identity_error(field: &str, expected: &str, actual: &str) -> AppError {
@@ -598,7 +596,7 @@ mod tests {
             name: "api".to_string(),
             namespace: Some("default".to_string()),
             yaml: yaml.to_string(),
-            yaml_encoding: Default::default(),
+            yaml_encoding: crate::models::YamlEncoding::default(),
             force_conflicts: false,
         }
     }

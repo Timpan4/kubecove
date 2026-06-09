@@ -109,7 +109,7 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
 
         let mut linked_pods = HashSet::new();
         let mut has_pod_targets = false;
-        for slice in service_slices.iter() {
+        for slice in &service_slices {
             let slice_id = resource_id(
                 "EndpointSlice",
                 "discovery.k8s.io/v1",

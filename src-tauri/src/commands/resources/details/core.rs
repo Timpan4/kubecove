@@ -49,8 +49,7 @@ pub(super) async fn pod_details(
             let r: i32 = s
                 .container_statuses
                 .as_ref()
-                .map(|cs| cs.iter().map(|c| c.restart_count).sum())
-                .unwrap_or(0);
+                .map_or(0, |cs| cs.iter().map(|c| c.restart_count).sum());
             if r > 0 {
                 Some(r)
             } else {

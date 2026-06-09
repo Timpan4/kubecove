@@ -156,15 +156,15 @@ async fn release_storage_object(
 ) -> Result<(HelmStorageRecord, serde_json::Value, String), AppError> {
     match storage_kind {
         HELM_STORAGE_SECRET => {
-            let api: Api<Secret> = Api::namespaced(client, &namespace);
-            let mut secret = api.get(&storage_name).await.map_err(AppError::from)?;
+            let api: Api<Secret> = Api::namespaced(client, namespace);
+            let mut secret = api.get(storage_name).await.map_err(AppError::from)?;
             if !is_helm_owned(secret.metadata.labels.as_ref()) {
                 return Err(AppError::new(
                     "storage object is not a Helm release",
                     "validation",
                 ));
             }
-            let record = secret_record(&cluster_context, &mut secret)?;
+            let record = secret_record(cluster_context, &mut secret)?;
             let metadata = serde_json::to_value(&secret.metadata)
                 .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             redact_secret_release(&mut secret);
@@ -172,15 +172,15 @@ async fn release_storage_object(
             Ok((record, metadata, yaml))
         }
         HELM_STORAGE_CONFIGMAP => {
-            let api: Api<ConfigMap> = Api::namespaced(client, &namespace);
-            let mut configmap = api.get(&storage_name).await.map_err(AppError::from)?;
+            let api: Api<ConfigMap> = Api::namespaced(client, namespace);
+            let mut configmap = api.get(storage_name).await.map_err(AppError::from)?;
             if !is_helm_owned(configmap.metadata.labels.as_ref()) {
                 return Err(AppError::new(
                     "storage object is not a Helm release",
                     "validation",
                 ));
             }
-            let record = configmap_record(&cluster_context, &mut configmap)?;
+            let record = configmap_record(cluster_context, &mut configmap)?;
             let metadata = serde_json::to_value(&configmap.metadata)
                 .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
             redact_configmap_release(&mut configmap);
@@ -387,7 +387,7 @@ fn configmap_record(
         .data
         .as_ref()
         .and_then(|data| data.get("release"))
-        .map(|data| data.as_bytes());
+        .map(std::string::String::as_bytes);
     let decoded = release_data.and_then(decode_helm_release);
     let release = decoded.as_ref().and_then(safe_release_metadata);
     let values_summary =
@@ -479,8 +479,7 @@ fn latest_releases(records: Vec<HelmStorageRecord>) -> Vec<HelmReleaseSummary> {
         );
         let replace = latest
             .get(&key)
-            .map(|existing| record.summary.revision.unwrap_or(0) > existing.revision.unwrap_or(0))
-            .unwrap_or(true);
+            .is_none_or(|existing| record.summary.revision.unwrap_or(0) > existing.revision.unwrap_or(0));
         if replace {
             latest.insert(key, record.summary);
         }
@@ -518,9 +517,7 @@ fn is_helm_owned(labels: Option<&BTreeMap<String, String>>) -> bool {
 fn release_name_from_storage_name(storage_name: &str) -> String {
     storage_name
         .strip_prefix("sh.helm.release.v1.")
-        .and_then(|rest| rest.rsplit_once(".v"))
-        .map(|(name, _)| name.to_string())
-        .unwrap_or_else(|| storage_name.to_string())
+        .and_then(|rest| rest.rsplit_once(".v")).map_or_else(|| storage_name.to_string(), |(name, _)| name.to_string())
 }
 
 fn chart_label(name: Option<&str>, version: Option<&str>) -> Option<String> {

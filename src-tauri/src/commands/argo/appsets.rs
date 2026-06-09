@@ -8,7 +8,7 @@ use crate::models::{
 use chrono::{TimeZone, Utc};
 use kube::api::{Api, DynamicObject};
 
-/// List Argo CD ApplicationSets in the cluster.
+/// List Argo CD `ApplicationSets` in the cluster.
 #[tauri::command]
 pub async fn list_argocd_appsets(
     cluster_context: String,
@@ -114,7 +114,7 @@ pub async fn list_argocd_appsets(
     Ok(summaries)
 }
 
-/// Get detailed Argo CD ApplicationSet information including YAML and metadata.
+/// Get detailed Argo CD `ApplicationSet` information including YAML and metadata.
 #[tauri::command]
 pub async fn get_argocd_appset_details(
     cluster_context: String,

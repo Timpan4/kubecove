@@ -81,7 +81,7 @@ pub(super) async fn collect_topology_inputs(
         if let Some(status) = deploy.status {
             let ready = status.ready_replicas.unwrap_or(0);
             let desired = status.replicas.unwrap_or(0);
-            input.summary.ready = Some(format!("{}/{}", ready, desired));
+            input.summary.ready = Some(format!("{ready}/{desired}"));
             input.summary.status = Some(format!(
                 "Available: {}",
                 status.available_replicas.unwrap_or(0)
@@ -132,10 +132,9 @@ pub(super) async fn collect_topology_inputs(
             let active = status
                 .active
                 .as_ref()
-                .map(|active| active.len())
-                .unwrap_or(0);
+                .map_or(0, std::vec::Vec::len);
             if active > 0 {
-                input.summary.status = Some(format!("{} active", active));
+                input.summary.status = Some(format!("{active} active"));
             }
         }
         inputs.push(input);
@@ -203,13 +202,13 @@ fn pod_input(cluster_context: &str, pod: Pod) -> TopologyInputResource {
             .containers
             .iter()
             .flat_map(|container| {
-                container.ports.iter().flatten().filter_map(|port| {
+                container.ports.iter().flatten().map(|port| {
                     let number = port.container_port;
                     let name = port.name.as_deref();
-                    Some(match name {
+                    match name {
                         Some(name) if !name.is_empty() => format!("{name}:{number}"),
                         _ => number.to_string(),
-                    })
+                    }
                 })
             })
             .collect();
@@ -226,13 +225,12 @@ fn pod_input(cluster_context: &str, pod: Pod) -> TopologyInputResource {
         let restarts: i32 = status
             .container_statuses
             .as_ref()
-            .map(|statuses| {
+            .map_or(0, |statuses| {
                 statuses
                     .iter()
                     .map(|container| container.restart_count)
                     .sum()
-            })
-            .unwrap_or(0);
+            });
         if restarts > 0 {
             input.summary.restarts = Some(restarts);
         }
