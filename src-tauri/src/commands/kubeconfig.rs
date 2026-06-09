@@ -1,3 +1,4 @@
+use super::helpers::client_cache;
 use crate::models::{AppError, ClusterContext};
 use kube::{
     config::{KubeConfigOptions, Kubeconfig},
@@ -11,7 +12,7 @@ use std::{
     fs,
     hash::{Hash, Hasher},
     path::PathBuf,
-    sync::OnceLock,
+    sync::{OnceLock, RwLock},
 };
 use tauri::AppHandle;
 use tauri_plugin_dialog::{DialogExt, FilePath};
@@ -20,6 +21,10 @@ pub const DEFAULT_KUBECONFIG_ENV_VAR: &str = "KUBECONFIG";
 const SETTINGS_FILE_NAME: &str = "kubeconfig-sources.json";
 
 static SETTINGS_PATH: OnceLock<PathBuf> = OnceLock::new();
+// In-memory copy of the persisted sources file. Every command constructs a
+// KubeconfigSource, so reading the settings JSON from disk each time is pure
+// overhead; the file is only ever written through save_persisted_sources.
+static SETTINGS_CACHE: RwLock<Option<PersistedKubeconfigSources>> = RwLock::new(None);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -169,18 +174,45 @@ impl KubeconfigSource {
     }
 
     pub async fn client_for_context(&self, cluster_context: &str) -> Result<Client, AppError> {
-        let config = self.config_for_context(cluster_context).await?;
-        Client::try_from(config).map_err(|err| AppError::kube(err.to_string()))
+        Ok(self.client_and_default_namespace(cluster_context).await?.0)
     }
 
     pub async fn client_and_default_namespace(
         &self,
         cluster_context: &str,
     ) -> Result<(Client, String), AppError> {
+        let fingerprint = client_cache::fingerprint_files(&self.effective_kubeconfig_paths()?);
+        let source_key = self.key();
+        if let Some(cached) = client_cache::lookup_client(&source_key, cluster_context, fingerprint)
+        {
+            return Ok(cached);
+        }
         let config = self.config_for_context(cluster_context).await?;
         let default_namespace = config.default_namespace.clone();
         let client = Client::try_from(config).map_err(|err| AppError::kube(err.to_string()))?;
+        client_cache::store_client(
+            source_key,
+            cluster_context.to_string(),
+            fingerprint,
+            client.clone(),
+            default_namespace.clone(),
+        );
         Ok((client, default_namespace))
+    }
+
+    // The kubeconfig files that back this source, in the same order
+    // config_for_context resolves them: configured env/app paths when present,
+    // otherwise kube's default discovery (KUBECONFIG, then ~/.kube/config).
+    fn effective_kubeconfig_paths(&self) -> Result<Vec<PathBuf>, AppError> {
+        if let Some(paths) = self.configured_paths()? {
+            return Ok(paths.into_iter().map(|configured| configured.path).collect());
+        }
+        if let Some(value) = env::var_os(DEFAULT_KUBECONFIG_ENV_VAR) {
+            if let Some(paths) = split_non_empty_paths(value) {
+                return Ok(paths);
+            }
+        }
+        Ok(default_kubeconfig_path().into_iter().collect())
     }
 
     fn custom_env_value_paths(&self) -> Result<Option<Vec<PathBuf>>, AppError> {
@@ -419,17 +451,24 @@ fn load_persisted_sources() -> Result<PersistedKubeconfigSources, AppError> {
     let Some(path) = settings_path() else {
         return Ok(PersistedKubeconfigSources::default());
     };
-    if !path.exists() {
-        return Ok(PersistedKubeconfigSources::default());
+    if let Some(cached) = SETTINGS_CACHE.read().expect("settings cache lock").clone() {
+        return Ok(cached);
     }
-    let content = fs::read_to_string(&path)
-        .map_err(|err| AppError::new(format!("failed to read kubeconfig sources: {err}"), "io"))?;
-    serde_json::from_str(&content).map_err(|err| {
-        AppError::new(
-            format!("failed to parse kubeconfig sources settings: {err}"),
-            "validation",
-        )
-    })
+    let settings = if path.exists() {
+        let content = fs::read_to_string(&path).map_err(|err| {
+            AppError::new(format!("failed to read kubeconfig sources: {err}"), "io")
+        })?;
+        serde_json::from_str(&content).map_err(|err| {
+            AppError::new(
+                format!("failed to parse kubeconfig sources settings: {err}"),
+                "validation",
+            )
+        })?
+    } else {
+        PersistedKubeconfigSources::default()
+    };
+    *SETTINGS_CACHE.write().expect("settings cache lock") = Some(settings.clone());
+    Ok(settings)
 }
 
 fn save_persisted_sources(settings: &PersistedKubeconfigSources) -> Result<(), AppError> {
@@ -455,7 +494,9 @@ fn save_persisted_sources(settings: &PersistedKubeconfigSources) -> Result<(), A
             format!("failed to write kubeconfig sources settings: {err}"),
             "io",
         )
-    })
+    })?;
+    *SETTINGS_CACHE.write().expect("settings cache lock") = Some(settings.clone());
+    Ok(())
 }
 
 fn kubeconfig_sources_summary() -> Result<KubeconfigSourcesSummary, AppError> {

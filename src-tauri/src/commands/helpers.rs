@@ -1,3 +1,4 @@
+pub(crate) mod client_cache;
 mod metadata;
 mod serialization;
 mod time;
