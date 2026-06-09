@@ -444,6 +444,7 @@ fn builds_network_flow_from_ingress_to_service_slice_and_pod() {
             service_name: Some("api".to_string()),
             target_pods: vec!["api-7d9-x".to_string()],
         }],
+        warnings: Vec::new(),
     });
 
     let ingress_id = topology_node_id(
@@ -505,6 +506,7 @@ fn network_flow_falls_back_to_service_selector_and_warns_on_misses() {
         ],
         ingress_backends: Vec::new(),
         endpoint_slices: Vec::new(),
+        warnings: Vec::new(),
     });
 
     let service_id = topology_node_id("kind-dev", "v1", "Service", Some("default"), "api");
@@ -533,6 +535,7 @@ fn network_flow_skips_missing_endpoint_warning_for_external_name_service() {
         }],
         ingress_backends: Vec::new(),
         endpoint_slices: Vec::new(),
+        warnings: Vec::new(),
     });
 
     assert_eq!(topology.nodes.len(), 1);
@@ -560,6 +563,7 @@ fn network_flow_skips_missing_pod_warning_for_selectorless_endpoint_slices() {
             service_name: Some("api".to_string()),
             target_pods: Vec::new(),
         }],
+        warnings: Vec::new(),
     });
 
     let service_id = topology_node_id("kind-dev", "v1", "Service", Some("default"), "api");
