@@ -362,6 +362,27 @@ function ResourceListComponent({
 	]);
 
 	useEffect(() => {
+		if (!activeSelectedResourceKey && !activeSelectedResourceIdentityKey) return;
+		const selectedRow = displayData.find(
+			(resource) =>
+				resourceSelectionKey(resource) === activeSelectedResourceKey ||
+				resourceIdentityKey(resource) === activeSelectedResourceIdentityKey,
+		);
+		if (!selectedRow) return;
+		const appCollapseKey = resourceGroupCollapseKey(selectedRow);
+		const typeCollapseKey = resourceTypeGroupCollapseKey(selectedRow);
+		setCollapsedGroups((current) => {
+			if (!current.has(appCollapseKey) && !current.has(typeCollapseKey)) {
+				return current;
+			}
+			const next = new Set(current);
+			next.delete(appCollapseKey);
+			next.delete(typeCollapseKey);
+			return next;
+		});
+	}, [activeSelectedResourceIdentityKey, activeSelectedResourceKey, displayData]);
+
+	useEffect(() => {
 		if (externalSelectedResourceKey) {
 			setSelectedResourceKey(externalSelectedResourceKey);
 		}
