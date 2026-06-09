@@ -197,7 +197,7 @@ fn normalized_builtin_watch_invalidates_typed_resource_cache() {
             "kind-dev",
             &WatchResourceKind {
                 kind: "Pod".to_string(),
-                group: Some("".to_string()),
+                group: Some(String::new()),
                 version: Some("v1".to_string()),
                 api_version: Some("v1".to_string()),
                 plural: Some("pods".to_string()),

@@ -146,7 +146,7 @@ pub(super) async fn run_resource_watch(
         let api = scoped_dynamic_api(client, &key, namespaced, &api_resource);
         let params = WatchParams::default().timeout(30);
 
-        if !broadcaster.status("connected", format!("Watching {}", kind_label)) {
+        if !broadcaster.status("connected", format!("Watching {kind_label}")) {
             return;
         }
 
@@ -199,7 +199,7 @@ pub(super) async fn run_resource_watch(
             }
         }
 
-        if !broadcaster.status("reconnecting", format!("Reconnecting {}", kind_label)) {
+        if !broadcaster.status("reconnecting", format!("Reconnecting {kind_label}")) {
             return;
         }
         sleep(Duration::from_secs(2)).await;
@@ -230,10 +230,9 @@ pub(super) async fn run_event_watch(
 ) {
     let field_selector = match namespace.as_deref() {
         Some(ns) => format!(
-            "involvedObject.kind={},involvedObject.name={},involvedObject.namespace={}",
-            kind, name, ns,
+            "involvedObject.kind={kind},involvedObject.name={name},involvedObject.namespace={ns}",
         ),
-        None => format!("involvedObject.kind={},involvedObject.name={}", kind, name),
+        None => format!("involvedObject.kind={kind},involvedObject.name={name}"),
     };
     let mut resource_version = "0".to_string();
 

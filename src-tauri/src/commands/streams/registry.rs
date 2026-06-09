@@ -62,11 +62,9 @@ impl StreamBroadcaster {
                 subscribers.remove(&stream_id);
             }
         }
-        self.subscribers
+        !self.subscribers
             .lock()
-            .expect("stream subscribers lock")
-            .len()
-            > 0
+            .expect("stream subscribers lock").is_empty()
     }
 
     pub(super) fn status(&self, status: &str, message: String) -> bool {
@@ -258,7 +256,7 @@ impl StreamRegistry {
                             if let Some(handle) = watch.handle.take() {
                                 handle.abort();
                             }
-                            eprintln!("[kubecove:backend] watch_stop kind=resource key={}", key);
+                            eprintln!("[kubecove:backend] watch_stop kind=resource key={key}");
                         }
                     }
                 }
@@ -273,7 +271,7 @@ impl StreamRegistry {
                         if let Some(handle) = watch.handle.take() {
                             handle.abort();
                         }
-                        eprintln!("[kubecove:backend] watch_stop kind=events key={}", key);
+                        eprintln!("[kubecove:backend] watch_stop kind=events key={key}");
                     }
                 }
             }
@@ -297,7 +295,7 @@ fn remove_empty_resource_watch(state: &mut RegistryState, key: &str) {
             if let Some(handle) = watch.handle.take() {
                 handle.abort();
             }
-            eprintln!("[kubecove:backend] watch_cleanup kind=resource key={}", key);
+            eprintln!("[kubecove:backend] watch_cleanup kind=resource key={key}");
         }
     }
 }
@@ -312,7 +310,7 @@ fn remove_empty_event_watch(state: &mut RegistryState, key: &str) {
             if let Some(handle) = watch.handle.take() {
                 handle.abort();
             }
-            eprintln!("[kubecove:backend] watch_cleanup kind=events key={}", key);
+            eprintln!("[kubecove:backend] watch_cleanup kind=events key={key}");
         }
     }
 }

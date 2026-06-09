@@ -1,7 +1,7 @@
 use super::*;
 
 fn values(items: &[&str]) -> Vec<String> {
-    items.iter().map(|item| item.to_string()).collect()
+    items.iter().map(std::string::ToString::to_string).collect()
 }
 
 #[test]

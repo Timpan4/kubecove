@@ -175,6 +175,8 @@ fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut Ha
     );
 }
 
+// Test helper for process-tree traversal without constructing sysinfo snapshots.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn process_tree_pids_from_relations(
     root_pid: Pid,
     relations: impl IntoIterator<Item = (Pid, Option<Pid>)>,
@@ -211,14 +213,14 @@ fn observed_process_count(system: &System, pids: &HashSet<Pid>) -> usize {
 fn process_tree_memory_bytes(system: &System, pids: &HashSet<Pid>) -> u64 {
     pids.iter()
         .filter_map(|pid| system.process(*pid))
-        .map(|process| process.memory())
+        .map(sysinfo::Process::memory)
         .sum()
 }
 
 fn process_tree_cpu_percent(system: &System, pids: &HashSet<Pid>) -> f32 {
     pids.iter()
         .filter_map(|pid| system.process(*pid))
-        .map(|process| process.cpu_usage())
+        .map(sysinfo::Process::cpu_usage)
         .sum()
 }
 
@@ -401,9 +403,9 @@ mod tests {
 
     #[test]
     fn normalizes_process_tree_cpu_to_host_percentage() {
-        assert_eq!(normalize_cpu_percent(240.0, 8), 30.0);
-        assert_eq!(normalize_cpu_percent(250.0, 0), 100.0);
-        assert_eq!(normalize_cpu_percent(f32::NAN, 8), 0.0);
+        assert!((normalize_cpu_percent(240.0, 8) - 30.0).abs() < f32::EPSILON);
+        assert!((normalize_cpu_percent(250.0, 0) - 100.0).abs() < f32::EPSILON);
+        assert!(normalize_cpu_percent(f32::NAN, 8).abs() < f32::EPSILON);
     }
 
     #[test]

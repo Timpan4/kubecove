@@ -81,7 +81,7 @@ fn validates_required_pod_target_and_ports() {
 
     assert_eq!(
         validate_request(&PortForwardRequest {
-            cluster_context: "".to_string(),
+            cluster_context: String::new(),
             ..valid_request()
         })
         .expect_err("missing target")

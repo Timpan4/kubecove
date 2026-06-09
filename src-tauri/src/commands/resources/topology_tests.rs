@@ -110,13 +110,12 @@ fn pod_fixture_input() -> TopologyInputResource {
         let restarts: i32 = status
             .container_statuses
             .as_ref()
-            .map(|statuses| {
+            .map_or(0, |statuses| {
                 statuses
                     .iter()
                     .map(|container| container.restart_count)
                     .sum()
-            })
-            .unwrap_or(0);
+            });
         if restarts > 0 {
             input.summary.restarts = Some(restarts);
         }
@@ -161,7 +160,7 @@ fn sanitized_pod_fixture_normalizes_to_topology_contract() {
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: 50,
-        rng_seed: RngSeed::Fixed(20260521),
+        rng_seed: RngSeed::Fixed(20_260_521),
         ..ProptestConfig::default()
     })]
 
@@ -170,8 +169,8 @@ proptest! {
         let mut inputs = vec![resource("Deployment", "api", "default", "deploy-0")];
 
         for (replica_set_index, pod_count) in pod_counts.iter().enumerate() {
-            let replica_set_name = format!("api-{}", replica_set_index);
-            let replica_set_uid = format!("rs-{}", replica_set_index);
+            let replica_set_name = format!("api-{replica_set_index}");
+            let replica_set_uid = format!("rs-{replica_set_index}");
             inputs.push(owned(
                 "ReplicaSet",
                 &replica_set_name,
@@ -183,8 +182,8 @@ proptest! {
             ));
 
             for pod_index in 0..*pod_count {
-                let pod_name = format!("api-{}-{}", replica_set_index, pod_index);
-                let pod_uid = format!("pod-{}-{}", replica_set_index, pod_index);
+                let pod_name = format!("api-{replica_set_index}-{pod_index}");
+                let pod_uid = format!("pod-{replica_set_index}-{pod_index}");
                 inputs.push(owned(
                     "Pod",
                     &pod_name,

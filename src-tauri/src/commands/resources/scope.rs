@@ -53,7 +53,7 @@ fn request_kind(request: &ResourceListRequest) -> Result<ResourceScopeKind, AppE
 
 fn kind_key(kind: &ResourceScopeKind) -> String {
     match kind {
-        ResourceScopeKind::Typed(kind) => format!("typed:{}", kind),
+        ResourceScopeKind::Typed(kind) => format!("typed:{kind}"),
         ResourceScopeKind::Dynamic(kind) => {
             format!("dynamic:{}:{}:{}", kind.api_version, kind.plural, kind.kind)
         }

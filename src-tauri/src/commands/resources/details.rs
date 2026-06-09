@@ -40,7 +40,7 @@ pub async fn resource_details_from(
         }
         "PersistentVolume" => cluster::pv_details(client, cluster_context, name, namespace).await,
         _ => Err(AppError::new(
-            format!("unsupported resource kind: {}", kind),
+            format!("unsupported resource kind: {kind}"),
             "cluster",
         )),
     }
@@ -59,8 +59,7 @@ pub async fn get_resource_details(
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
     eprintln!(
-        "[kubecove:backend] get_resource_details start context={} kind={} namespace={} name={}",
-        cluster_context, kind, namespace_label, name
+        "[kubecove:backend] get_resource_details start context={cluster_context} kind={kind} namespace={namespace_label} name={name}"
     );
     let result = resource_details_from(
         cluster_context.clone(),

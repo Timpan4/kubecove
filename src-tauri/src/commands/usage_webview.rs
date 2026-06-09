@@ -13,6 +13,8 @@ const DESCENDANT_WEBVIEW_PROCESS_MARKERS: &[&str] = &[
     "com.apple.webkit.",
 ];
 
+// macOS orphan WebKit detection is compiled on every platform so shared tests can cover it.
+#[allow(dead_code)]
 const MACOS_ORPHAN_WEBKIT_PROCESS_MARKERS: &[&str] = &[
     "com.apple.webkit.webcontent",
     "com.apple.webkit.gpu",
@@ -24,6 +26,8 @@ const WINDOWS_WEBVIEW_PROCESS_MARKER: &str = "msedgewebview2";
 const WINDOWS_WEBVIEW_HOST_EXE_ARG: &str = "--webview-exe-name=";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// macOS orphan WebKit detection is compiled on every platform so shared tests can cover it.
+#[allow(dead_code)]
 pub(super) struct OrphanWebViewProcessCandidate {
     pub start_time: u64,
     pub role: WebViewProcessRole,
@@ -76,10 +80,14 @@ pub(super) fn is_webview_descendant_process_text(process_text: &str) -> bool {
     contains_any(&name, DESCENDANT_WEBVIEW_PROCESS_MARKERS)
 }
 
+// macOS orphan WebKit detection is compiled on every platform so shared tests can cover it.
+#[allow(dead_code)]
 pub(super) fn is_macos_orphan_webkit_process(process: &Process) -> bool {
     is_macos_orphan_webkit_process_text(&process_identity_text(process))
 }
 
+// macOS orphan WebKit detection is compiled on every platform so shared tests can cover it.
+#[allow(dead_code)]
 pub(super) fn is_macos_orphan_webkit_process_text(process_text: &str) -> bool {
     let name = process_text.to_ascii_lowercase();
     contains_any(&name, MACOS_ORPHAN_WEBKIT_PROCESS_MARKERS)
@@ -111,7 +119,10 @@ fn add_windows_host_exe_name(names: &mut Vec<String>, name: &str) {
     if name.is_empty() {
         return;
     }
-    let candidates = if name.ends_with(".exe") {
+    let candidates = if std::path::Path::new(&name)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
+    {
         vec![name]
     } else {
         vec![name.clone(), format!("{name}.exe")]
@@ -163,6 +174,8 @@ pub(super) fn webview_process_role(process: &Process) -> Option<String> {
     webview_process_role_from_cmd(&identity)
 }
 
+// macOS orphan WebKit detection is compiled on every platform so shared tests can cover it.
+#[allow(dead_code)]
 pub(super) fn macos_orphan_webview_process_candidate(
     process: &Process,
 ) -> Option<OrphanWebViewProcessCandidate> {
@@ -270,6 +283,8 @@ pub(super) fn is_orphan_webview_start_candidate(
         && process_start_time.saturating_sub(root_start_time) <= ORPHAN_WEBVIEW_START_WINDOW_SECONDS
 }
 
+// macOS orphan WebKit detection is compiled on every platform so shared tests can cover it.
+#[allow(dead_code)]
 pub(super) fn selected_orphan_webview_cohort_start_time(
     root_start_time: u64,
     candidates: impl IntoIterator<Item = OrphanWebViewProcessCandidate>,
@@ -305,6 +320,8 @@ pub(super) fn selected_orphan_webview_cohort_start_time(
 }
 
 #[derive(Default)]
+// macOS orphan WebKit detection is compiled on every platform so shared tests can cover it.
+#[allow(dead_code)]
 struct WebViewCohort {
     renderer_count: usize,
     gpu_count: usize,
@@ -315,6 +332,8 @@ struct WebViewCohort {
 }
 
 impl WebViewCohort {
+    // macOS orphan WebKit detection is compiled on every platform so shared tests can cover it.
+    #[allow(dead_code)]
     fn add(&mut self, role: WebViewProcessRole) {
         match role {
             WebViewProcessRole::Renderer => self.renderer_count += 1,
@@ -322,12 +341,14 @@ impl WebViewCohort {
             WebViewProcessRole::Network => self.network_count += 1,
             WebViewProcessRole::Storage => self.storage_count += 1,
             WebViewProcessRole::Audio | WebViewProcessRole::Utility | WebViewProcessRole::Crash => {
-                self.auxiliary_count += 1
+                self.auxiliary_count += 1;
             }
             _ => self.extra_count += 1,
         }
     }
 
+    // macOS orphan WebKit detection is compiled on every platform so shared tests can cover it.
+    #[allow(dead_code)]
     fn is_unambiguous(&self) -> bool {
         self.renderer_count == 1
             && self.gpu_count <= 1

@@ -8,7 +8,7 @@ use crate::models::{
 use chrono::{TimeZone, Utc};
 use kube::api::{Api, DynamicObject};
 
-/// Get detailed Argo CD AppProject information including YAML and metadata.
+/// Get detailed Argo CD `AppProject` information including YAML and metadata.
 #[tauri::command]
 pub async fn get_argocd_appproject_details(
     cluster_context: String,
@@ -83,7 +83,7 @@ pub async fn get_argocd_appproject_details(
     })
 }
 
-/// List Argo CD AppProjects in the cluster.
+/// List Argo CD `AppProjects` in the cluster.
 #[tauri::command]
 pub async fn list_argocd_appprojects(
     cluster_context: String,

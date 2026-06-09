@@ -43,7 +43,7 @@ fn values_summary_treats_explicit_null_as_empty() {
 
 #[test]
 fn manifest_summary_extracts_resource_refs_without_manifest_body() {
-    let manifest = r#"
+    let manifest = r"
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,7 +54,7 @@ kind: Service
 metadata:
   name: payments-api
   namespace: payments
-"#;
+";
 
     let summary = manifest_summary(Some(manifest), Some("default"));
 
@@ -68,7 +68,7 @@ metadata:
 
 #[test]
 fn manifest_summary_preserves_missing_namespace_without_kind_guessing() {
-    let manifest = r#"
+    let manifest = r"
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -78,7 +78,7 @@ apiVersion: networking.k8s.io/v1
 kind: IngressClass
 metadata:
   name: internal
-"#;
+";
 
     let summary = manifest_summary(Some(manifest), Some("payments"));
 

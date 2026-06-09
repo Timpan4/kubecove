@@ -59,9 +59,9 @@ async fn deployment_summaries(
                 let available = status.available_replicas.unwrap_or(0);
                 let ready = status.ready_replicas.unwrap_or(0);
                 let desired = status.replicas.unwrap_or(0);
-                summary.ready = Some(format!("{}/{}", ready, desired));
+                summary.ready = Some(format!("{ready}/{desired}"));
                 if available > 0 || ready > 0 || desired > 0 {
-                    summary.status = Some(format!("Available: {}", available));
+                    summary.status = Some(format!("Available: {available}"));
                 }
             }
             summary
@@ -261,9 +261,9 @@ async fn cronjob_summaries(
                 age_from_metadata(&cj.metadata),
             );
             if let Some(ref status) = cj.status {
-                let active = status.active.as_ref().map(|a| a.len()).unwrap_or(0);
+                let active = status.active.as_ref().map_or(0, std::vec::Vec::len);
                 if active > 0 {
-                    summary.status = Some(format!("{} active", active));
+                    summary.status = Some(format!("{active} active"));
                 }
             }
             summary

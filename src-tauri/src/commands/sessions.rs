@@ -158,8 +158,11 @@ impl PortForwardRegistry {
             .sessions
             .get_mut(session_id)
         {
-            session.summary.pod_name = target.pod_name.clone();
-            session.summary.resolved_pod_name = target.pod_name.clone();
+            session.summary.pod_name.clone_from(&target.pod_name);
+            session
+                .summary
+                .resolved_pod_name
+                .clone_from(&target.pod_name);
             session.summary.resolved_pod_port = target.pod_port;
         }
     }
@@ -232,7 +235,7 @@ impl PortForwardRegistry {
 }
 
 fn validate_port(value: i64, field: &str) -> Result<u16, AppError> {
-    if !(1..=u16::MAX as i64).contains(&value) {
+    if !(1..=i64::from(u16::MAX)).contains(&value) {
         return Err(AppError::new(
             format!("{field} must be between 1 and 65535"),
             "validation",

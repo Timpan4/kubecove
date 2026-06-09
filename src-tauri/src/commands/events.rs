@@ -89,10 +89,9 @@ pub async fn resource_events_from(
     };
     let field_selector = match namespace.as_deref() {
         Some(ns) => format!(
-            "involvedObject.kind={},involvedObject.name={},involvedObject.namespace={}",
-            kind, name, ns,
+            "involvedObject.kind={kind},involvedObject.name={name},involvedObject.namespace={ns}",
         ),
-        None => format!("involvedObject.kind={},involvedObject.name={}", kind, name),
+        None => format!("involvedObject.kind={kind},involvedObject.name={name}"),
     };
 
     let mut events: Vec<_> = event_api
@@ -103,7 +102,7 @@ pub async fn resource_events_from(
         .filter(|event| event_matches_resource(event, &kind, &name, namespace.as_deref()))
         .collect();
 
-    events.sort_by_key(|event| event_timestamp(event));
+    events.sort_by_key(event_timestamp);
     events.reverse();
 
     Ok(events.iter().map(summarize_event).collect())
@@ -120,8 +119,7 @@ pub async fn list_resource_events(
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
     eprintln!(
-        "[kubecove:backend] list_resource_events start context={} kind={} namespace={} name={}",
-        cluster_context, kind, namespace_label, name
+        "[kubecove:backend] list_resource_events start context={cluster_context} kind={kind} namespace={namespace_label} name={name}"
     );
     let result = resource_events_from(
         cluster_context.clone(),

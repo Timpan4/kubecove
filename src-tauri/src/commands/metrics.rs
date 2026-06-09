@@ -293,7 +293,7 @@ fn add_workload_metric(
         entry.memory_bytes = Some(entry.memory_bytes.unwrap_or(0) + memory);
     }
     if metric.sampled_at > entry.sampled_at {
-        entry.sampled_at = metric.sampled_at.clone();
+        entry.sampled_at.clone_from(&metric.sampled_at);
     }
     entry.source_pods.push(pod_name.to_string());
 }
@@ -421,16 +421,12 @@ pub async fn resource_metrics_from(
     let mut had_unavailable_error = false;
 
     if pod_result
-        .failures
-        .iter()
-        .any(|status| *status == MetricsListStatus::Forbidden)
+        .failures.contains(&MetricsListStatus::Forbidden)
     {
         warnings.push("Pod metrics forbidden".to_string());
     }
     if pod_result
-        .failures
-        .iter()
-        .any(|status| *status == MetricsListStatus::Unavailable)
+        .failures.contains(&MetricsListStatus::Unavailable)
     {
         had_unavailable_error = true;
         warnings.push("Pod metrics unavailable".to_string());

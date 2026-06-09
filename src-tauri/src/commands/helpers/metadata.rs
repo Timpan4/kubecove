@@ -115,8 +115,7 @@ pub(crate) fn base_resource_summary(
 }
 
 fn opt_i32_to_str(opt: Option<i32>) -> String {
-    opt.map(|v| v.to_string())
-        .unwrap_or_else(|| "0".to_string())
+    opt.map_or_else(|| "0".to_string(), |v| v.to_string())
 }
 
 pub(crate) fn fmt_ready(ready: Option<i32>, desired: i32) -> String {
