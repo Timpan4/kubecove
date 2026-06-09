@@ -18,7 +18,29 @@ import {
 	setShowKubeconfigSourceLabels,
 } from "@/lib/tauri";
 import type { KubeconfigSourcesSummary } from "@/lib/types";
-import { SettingsRow, SettingsSection } from "./SettingsControls";
+import type { SettingsRowMeta } from "./SettingsControls";
+import { SettingsBlock, SettingsRow, SettingsSection } from "./SettingsControls";
+
+const ROW_META = {
+	activeSources: {
+		title: "Active sources",
+		description: "Where contexts are discovered from. Full file paths are shown only here.",
+	},
+	envVar: {
+		title: "Environment variable",
+		description: "Variable holding kubeconfig paths. The default is read when it is unset.",
+	},
+	sourceLabels: {
+		title: "Show source labels",
+		description: "Marks contexts with the kubeconfig source they were discovered from.",
+	},
+	addedPaths: {
+		title: "Added kubeconfig paths",
+		description: "Extra kubeconfig files KubeCove reads alongside the environment variable.",
+	},
+} satisfies Record<string, SettingsRowMeta>;
+
+export const KUBECONFIG_SETTINGS_ROWS: SettingsRowMeta[] = Object.values(ROW_META);
 
 function pathFileName(path: string): string {
 	return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
@@ -29,7 +51,7 @@ function sourceDescription(sources: KubeconfigSourcesSummary | null): string {
 	return `${sources.sourceLabel}. Full file paths are shown only here.`;
 }
 
-export function KubeconfigSourcesSection() {
+export function KubeconfigSourcesSection({ showTitle = true }: { showTitle?: boolean }) {
 	const {
 		kubeconfigEnvVar,
 		showKubeconfigSourceLabels,
@@ -89,8 +111,11 @@ export function KubeconfigSourcesSection() {
 	};
 
 	return (
-		<SettingsSection title="Kubeconfig">
-			<SettingsRow title="Active sources" description={sourceDescription(sources)}>
+		<SettingsSection title="Kubeconfig" showTitle={showTitle}>
+			<SettingsRow
+				title={ROW_META.activeSources.title}
+				description={sourceDescription(sources)}
+			>
 				<Badge variant="outline">
 					{sources?.sourceLabel ?? DEFAULT_KUBECONFIG_ENV_VAR}
 				</Badge>
@@ -116,10 +141,7 @@ export function KubeconfigSourcesSection() {
 				</div>
 			)}
 
-			<SettingsRow
-				title="Environment variable"
-				description="Variable holding kubeconfig paths. The default is read when it is unset."
-			>
+			<SettingsRow {...ROW_META.envVar}>
 				<div className="flex items-center gap-2">
 					<Input
 						className="h-8 w-44"
@@ -153,10 +175,7 @@ export function KubeconfigSourcesSection() {
 				</div>
 			</SettingsRow>
 
-			<SettingsRow
-				title="Show source labels"
-				description="Marks contexts with the kubeconfig source they were discovered from."
-			>
+			<SettingsRow {...ROW_META.sourceLabels}>
 				<ToggleButton
 					checked={showKubeconfigSourceLabels}
 					onCheckedChange={(show) =>
@@ -168,11 +187,9 @@ export function KubeconfigSourcesSection() {
 				/>
 			</SettingsRow>
 
-			<div className="flex flex-col gap-2 px-4 py-3">
-				<div className="flex items-center justify-between gap-3">
-					<div className="text-sm font-medium text-foreground">
-						Added kubeconfig paths
-					</div>
+			<SettingsBlock
+				{...ROW_META.addedPaths}
+				actions={
 					<Button
 						type="button"
 						variant="outline"
@@ -183,7 +200,8 @@ export function KubeconfigSourcesSection() {
 						<FilePlus data-icon="inline-start" />
 						Choose files
 					</Button>
-				</div>
+				}
+			>
 				{sources?.paths.length ? (
 					<div className="flex flex-col gap-2">
 						{sources.paths.map((entry, index) => (
@@ -268,7 +286,7 @@ export function KubeconfigSourcesSection() {
 						Add pasted paths
 					</Button>
 				</div>
-			</div>
+			</SettingsBlock>
 		</SettingsSection>
 	);
 }

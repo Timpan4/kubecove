@@ -3,7 +3,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAppUpdateStore } from "@/features/app-updates";
 import { isAppUpdatesEnabled } from "@/lib/release-channel";
+import type { SettingsRowMeta } from "./SettingsControls";
 import { SettingsRow, SettingsSection } from "./SettingsControls";
+
+export const UPDATES_SETTINGS_ROWS: SettingsRowMeta[] = [
+	{
+		title: "KubeCove version",
+		description: "Current version, update checks, and installing new releases.",
+	},
+];
 
 const CHECKED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
 	dateStyle: "medium",
@@ -17,7 +25,7 @@ function formatCheckedAt(value: string | null): string {
 	return CHECKED_AT_FORMATTER.format(date);
 }
 
-export function AppUpdatesSection() {
+export function AppUpdatesSection({ showTitle = true }: { showTitle?: boolean }) {
 	const {
 		status,
 		currentVersion,
@@ -33,7 +41,7 @@ export function AppUpdatesSection() {
 	const updateBusy = status === "checking" || status === "downloading";
 
 	return (
-		<SettingsSection title="Updates">
+		<SettingsSection title="Updates" showTitle={showTitle}>
 			<SettingsRow
 				title="KubeCove version"
 				description={
