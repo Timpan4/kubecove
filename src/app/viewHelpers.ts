@@ -9,6 +9,7 @@ import {
 import type { SavedWorkspace } from "@/lib/workspaces";
 
 export const SECTION_LABELS: Record<string, string> = {
+	workspaceOverview: "Workspace Overview",
 	clusterOverview: "Cluster Overview",
 	namespaces: "Namespaces",
 	workloads: "Workloads",

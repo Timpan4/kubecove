@@ -1,5 +1,5 @@
-import { useMemo, useRef } from "react";
-import { ChevronDown, WandSparkles } from "lucide-react";
+import { useMemo } from "react";
+import { WandSparkles } from "lucide-react";
 import type { Diagnostic } from "@codemirror/lint";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -87,7 +87,6 @@ export function YamlTabEditMode({
 	onToggleFullDiff,
 	extraDiagnostics,
 }: YamlTabEditModeProps) {
-	const diffContainerRef = useRef<HTMLDivElement | null>(null);
 	const diffLines = useMemo(
 		() =>
 			preview
@@ -101,12 +100,6 @@ export function YamlTabEditMode({
 		[diffLines, showFullDiff],
 	);
 	const hasHiddenDiffLines = diffLines.length > DIFF_PREVIEW_LINE_LIMIT;
-	const scrollToDiff = () => {
-		diffContainerRef.current?.scrollIntoView({
-			behavior: "smooth",
-			block: "start",
-		});
-	};
 
 	const onChangeHandled = (value: string) => {
 		onHideMessage();
@@ -151,6 +144,11 @@ export function YamlTabEditMode({
 					Cancel
 				</Button>
 			</div>
+			{!preview && (
+				<p className="-mt-2 text-right text-xs text-muted-foreground">
+					Run a dry run before applying.
+				</p>
+			)}
 			{appliedMessage && (
 				<Alert>
 					<AlertTitle>Apply complete</AlertTitle>
@@ -192,15 +190,8 @@ export function YamlTabEditMode({
 					<AlertDescription>{getErrorMessage(applyError)}</AlertDescription>
 				</Alert>
 			)}
-			<YamlCodeViewer
-				value={draftYaml}
-				editable
-				minHeight="420px"
-				extraDiagnostics={extraDiagnostics}
-				onChange={onChangeHandled}
-			/>
 			{preview && (
-				<div ref={diffContainerRef}>
+				<div>
 					<DryRunDiff lines={visibleDiffLines} isExpanded={showFullDiff} />
 					{hasHiddenDiffLines && (
 						<div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -219,23 +210,15 @@ export function YamlTabEditMode({
 							</Button>
 						</div>
 					)}
-					{preview && (
-						<div className="sticky bottom-3 z-30 flex justify-center py-1">
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onClick={scrollToDiff}
-								className="bg-card/95"
-								aria-label="Go to dry-run diff"
-							>
-								<ChevronDown data-icon="inline-start" />
-								Go to diff
-							</Button>
-						</div>
-					)}
 				</div>
 			)}
+			<YamlCodeViewer
+				value={draftYaml}
+				editable
+				minHeight="420px"
+				extraDiagnostics={extraDiagnostics}
+				onChange={onChangeHandled}
+			/>
 		</>
 	);
 }

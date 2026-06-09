@@ -276,6 +276,26 @@ export function formatResourceTypeGroupLabel(resource: ResourceSummary): string 
 	return `${resource.kind}s`;
 }
 
+const RESOURCE_GROUP_KIND_RANK: Record<string, number> = {
+	Deployment: 10,
+	StatefulSet: 11,
+	DaemonSet: 12,
+	ReplicaSet: 13,
+	Pod: 20,
+	Job: 30,
+	CronJob: 31,
+	Service: 40,
+	Ingress: 41,
+	EndpointSlice: 42,
+	PersistentVolumeClaim: 50,
+	ConfigMap: 80,
+	Secret: 81,
+};
+
+export function resourceGroupKindRank(kind: string): number {
+	return RESOURCE_GROUP_KIND_RANK[kind] ?? 70;
+}
+
 export function resourceGroupCollapseKey(resource: ResourceSummary): string {
 	return `group:${formatResourceGroupLabel(resource)}`;
 }

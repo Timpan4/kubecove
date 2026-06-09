@@ -33,6 +33,7 @@ pub(crate) struct NetworkTopologyInputs {
     pub services: Vec<NetworkService>,
     pub ingress_backends: Vec<NetworkIngressBackend>,
     pub endpoint_slices: Vec<NetworkEndpointSlice>,
+    pub warnings: Vec<String>,
 }
 
 pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> ResourceTopology {
@@ -41,6 +42,7 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
         services,
         ingress_backends,
         endpoint_slices,
+        warnings: collection_warnings,
     } = inputs;
     let mut resources_by_id = BTreeMap::new();
     for input in resources {
@@ -199,6 +201,7 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
             .then_with(|| a.name.cmp(&b.name))
     });
     edges.sort_by(|a, b| a.id.cmp(&b.id));
+    warnings.extend(collection_warnings);
     warnings.sort();
     warnings.dedup();
 

@@ -25,24 +25,13 @@ import type {
 	AppError,
 	AppUsageMetrics,
 	ResourceMetricsSummary,
-	ArgoApplicationSummary,
-	ArgoApplicationDetails,
-	ArgoApplicationSetSummary,
-	ArgoAppProjectSummary,
-	ArgoApplicationSetDetails,
-	ArgoAppProjectDetails,
-	HelmReleaseSummary,
-	HelmReleaseDetails,
-	HelmReleaseReconciliation,
 	YamlApplyPreview,
 	YamlApplyRequest,
 	YamlApplyResult,
 	YamlEncoding,
 	YamlViewMode,
 	KubernetesYamlLintResult,
-	RbacInspectionSummary,
 	KubeconfigSourcesSummary,
-	IncidentCockpitSummary,
 	LiveSessionCleanupRequest,
 	LiveSessionCleanupResult,
 } from "./types";
@@ -54,6 +43,20 @@ export interface TauriClient {
 		args?: Record<string, unknown>,
 		options?: InvokeOptions,
 	): Promise<T>;
+}
+
+function errorMessage(error: unknown): string {
+	if (error instanceof Error) return error.message;
+	if (typeof error === "string") return error;
+	if (
+		typeof error === "object" &&
+		error !== null &&
+		"message" in error &&
+		typeof error.message === "string"
+	) {
+		return error.message;
+	}
+	return String(error);
 }
 
 export function createTauriClient(): TauriClient {
@@ -80,7 +83,7 @@ export function createTauriClient(): TauriClient {
 				diagnosticLog("tauri.invoke.error", {
 					cmd,
 					ms: Math.round(performance.now() - started),
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 				console.error(`[k8s-manager:tauri] ${cmd} error`, error);
 				throw error;
@@ -102,7 +105,7 @@ export function createMockTauriClient(
 	};
 }
 
-function kubeconfigArg(kubeconfigEnvVar?: string): {
+export function kubeconfigArg(kubeconfigEnvVar?: string): {
 	kubeconfigEnvVar?: string;
 } {
 	if (
@@ -566,185 +569,4 @@ export function isAppError(value: unknown): value is AppError {
 	);
 }
 
-// Argo CD commands
-export async function detectArgoCD(
-	client: TauriClient,
-	clusterContext: string,
-	kubeconfigEnvVar?: string,
-): Promise<boolean> {
-	return client.invoke<boolean>("detect_argocd", {
-		clusterContext,
-		...kubeconfigArg(kubeconfigEnvVar),
-	});
-}
-
-export async function listArgoApplications(
-	client: TauriClient,
-	clusterContext: string,
-	kubeconfigEnvVar?: string,
-): Promise<ArgoApplicationSummary[]> {
-	return client.invoke<ArgoApplicationSummary[]>("list_argocd_applications", {
-		clusterContext,
-		...kubeconfigArg(kubeconfigEnvVar),
-	});
-}
-
-export async function getArgoApplicationDetails(
-	client: TauriClient,
-	clusterContext: string,
-	name: string,
-	namespace?: string,
-	kubeconfigEnvVar?: string,
-	yamlViewMode?: YamlViewMode,
-	yamlEncoding?: YamlEncoding,
-): Promise<ArgoApplicationDetails> {
-	return client.invoke<ArgoApplicationDetails>(
-		"get_argocd_application_details",
-		{
-			clusterContext,
-			name,
-			namespace,
-			...kubeconfigArg(kubeconfigEnvVar),
-			yamlViewMode,
-			yamlEncoding,
-		},
-	);
-}
-
-export async function listArgoApplicationSets(
-	client: TauriClient,
-	clusterContext: string,
-	kubeconfigEnvVar?: string,
-): Promise<ArgoApplicationSetSummary[]> {
-	return client.invoke<ArgoApplicationSetSummary[]>("list_argocd_appsets", {
-		clusterContext,
-		...kubeconfigArg(kubeconfigEnvVar),
-	});
-}
-
-export async function listArgoAppProjects(
-	client: TauriClient,
-	clusterContext: string,
-	kubeconfigEnvVar?: string,
-): Promise<ArgoAppProjectSummary[]> {
-	return client.invoke<ArgoAppProjectSummary[]>("list_argocd_appprojects", {
-		clusterContext,
-		...kubeconfigArg(kubeconfigEnvVar),
-	});
-}
-
-export async function getArgoApplicationSetDetails(
-	client: TauriClient,
-	clusterContext: string,
-	name: string,
-	namespace?: string,
-	kubeconfigEnvVar?: string,
-	yamlViewMode?: YamlViewMode,
-	yamlEncoding?: YamlEncoding,
-): Promise<ArgoApplicationSetDetails> {
-	return client.invoke<ArgoApplicationSetDetails>("get_argocd_appset_details", {
-		clusterContext,
-		name,
-		namespace,
-		...kubeconfigArg(kubeconfigEnvVar),
-		yamlViewMode,
-		yamlEncoding,
-	});
-}
-
-export async function getArgoAppProjectDetails(
-	client: TauriClient,
-	clusterContext: string,
-	name: string,
-	namespace?: string,
-	kubeconfigEnvVar?: string,
-	yamlViewMode?: YamlViewMode,
-	yamlEncoding?: YamlEncoding,
-): Promise<ArgoAppProjectDetails> {
-	return client.invoke<ArgoAppProjectDetails>("get_argocd_appproject_details", {
-		clusterContext,
-		name,
-		namespace,
-		...kubeconfigArg(kubeconfigEnvVar),
-		yamlViewMode,
-		yamlEncoding,
-	});
-}
-
-export async function listHelmReleases(
-	client: TauriClient,
-	clusterContext: string,
-	kubeconfigEnvVar?: string,
-): Promise<HelmReleaseSummary[]> {
-	return client.invoke<HelmReleaseSummary[]>("list_helm_releases", {
-		clusterContext,
-		...kubeconfigArg(kubeconfigEnvVar),
-	});
-}
-
-export async function getHelmReleaseDetails(
-	client: TauriClient,
-	release: Pick<
-		HelmReleaseSummary,
-		"cluster" | "namespace" | "storageKind" | "storageName"
-	>,
-	kubeconfigEnvVar?: string,
-	yamlViewMode?: YamlViewMode,
-	yamlEncoding?: YamlEncoding,
-): Promise<HelmReleaseDetails> {
-	return client.invoke<HelmReleaseDetails>("get_helm_release_details", {
-		clusterContext: release.cluster,
-		namespace: release.namespace,
-		storageKind: release.storageKind,
-		storageName: release.storageName,
-		...kubeconfigArg(kubeconfigEnvVar),
-		yamlViewMode,
-		yamlEncoding,
-	});
-}
-
-export async function getHelmReleaseReconciliation(
-	client: TauriClient,
-	release: Pick<
-		HelmReleaseSummary,
-		"cluster" | "namespace" | "storageKind" | "storageName"
-	>,
-	kubeconfigEnvVar?: string,
-): Promise<HelmReleaseReconciliation> {
-	return client.invoke<HelmReleaseReconciliation>(
-		"get_helm_release_reconciliation",
-		{
-			clusterContext: release.cluster,
-			namespace: release.namespace,
-			storageKind: release.storageKind,
-			storageName: release.storageName,
-			...kubeconfigArg(kubeconfigEnvVar),
-		},
-	);
-}
-
-export async function listRbacInspection(
-	client: TauriClient,
-	clusterContext: string,
-	namespaces: string[],
-	kubeconfigEnvVar?: string,
-): Promise<RbacInspectionSummary> {
-	return client.invoke<RbacInspectionSummary>("list_rbac_inspection", {
-		clusterContext,
-		namespaces,
-		...kubeconfigArg(kubeconfigEnvVar),
-	});
-}
-
-export async function listIncidentCockpit(
-	client: TauriClient,
-	clusterContext: string,
-	requests: ResourceListRequest[],
-	kubeconfigEnvVar?: string,
-): Promise<IncidentCockpitSummary> {
-	return client.invoke<IncidentCockpitSummary>("list_incident_cockpit", {
-		clusterContext,
-		requests,
-		...kubeconfigArg(kubeconfigEnvVar),
-	});
-}
+export * from "./tauri-inspection";

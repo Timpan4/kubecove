@@ -46,6 +46,12 @@ export type KindGroupName = keyof typeof KIND_GROUPS;
 // ─── Section Definitions ───────────────────────────────────────────────────────
 
 export const SECTIONS = {
+  /** Workspace Overview: saved workspace scope, shortcuts, and status summary. */
+  workspaceOverview: {
+    id: "workspaceOverview",
+    label: "Workspace Overview",
+    children: [] as readonly string[],
+  },
   /** Cluster Overview: cluster-scoped resources (Node, StorageClass, PersistentVolume) */
   clusterOverview: {
     id: "clusterOverview",
@@ -126,6 +132,7 @@ export type SectionName = keyof typeof SECTIONS;
 
 /** Sections that are always shown regardless of namespace selection. */
 export const STATIC_SECTION_NAMES: SectionName[] = [
+  "workspaceOverview",
   "clusterOverview",
   "workloads",
   "network",

@@ -1,34 +1,22 @@
 import "./App.css";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useDashboardState } from "./lib/hooks";
 import { SidebarTree } from "./components/SidebarTree";
+import { AppMainContent } from "./app/AppMainContent";
 import { AppTopBar } from "./app/AppTopBar";
 import { AppDetailPanel } from "./app/AppDetailPanel";
 import { AppUsageFooter } from "./app/AppUsageFooter";
 import { DetailPanelFrame } from "./app/DetailPanelFrame";
 import { LauncherShell } from "./app/LauncherShell";
-import {
-	ArgoCDPanel,
-	HelmPanel,
-	IncidentCockpit,
-	RbacPanel,
-	ResourceList,
-	SettingsPage,
-	WorkspaceOverview,
-	WorkspacePortForwardsPage,
-} from "./app/lazyViews";
 import { useArgoDetection } from "./app/useArgoDetection";
-import { ViewLoadingFallback } from "./app/ViewLoadingFallback";
 import { useAppUpdateLaunchCheck } from "./features/app-updates/useAppUpdateLaunchCheck";
-import { SavedPortForwardRestorePrompt } from "./features/live-sessions/SavedPortForwardRestorePrompt";
 import {
 	shouldAutoStartSavedPortForwards,
 	shouldShowSavedPortForwardRestorePrompt,
 } from "./features/live-sessions/restore";
 import { useSavedPortForwardActions } from "./features/live-sessions/useSavedPortForwardActions";
 import { useSettingsState } from "./lib/settings";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
 	Sidebar,
 	SidebarContent,
@@ -46,11 +34,7 @@ import {
 	getKubeconfigSources,
 	stopLiveSessionsOutsideScope,
 } from "./lib/tauri";
-import {
-	SUPPORTED_KINDS,
-	type HelmReleaseSummary,
-	type ResourceKindSelection,
-} from "./lib/types";
+import { SUPPORTED_KINDS, type HelmReleaseSummary, type ResourceKindSelection } from "./lib/types";
 import type { HealthFilter } from "./features/resources/helpers";
 import {
 	createWorkspaceScope,
@@ -98,8 +82,7 @@ function App() {
 		setSelectedTreeNode,
 		toggleExpandedSection,
 	} = useDashboardState();
-	const activeWorkspace =
-		workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
+	const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
 	const showUsageFooter = useSettingsState((state) => state.showUsageFooter);
 	const setKubeconfigSources = useSettingsState(
 		(state) => state.setKubeconfigSources,
@@ -304,7 +287,14 @@ function App() {
 		// Tool sections own their inspector state.
 		setSelectedArgoAppFilter("");
 
-		if (scope.argoMode) {
+		if (nodeId.type === "section" && nodeId.section === "workspaceOverview") {
+			setViewMode("overview");
+			setSelectedArgoApp(null);
+			setSelectedHelmRelease(null);
+			setSelectedResource(null);
+			setResourceInitialSearch("");
+			setResourceHealthFilter("all");
+		} else if (scope.argoMode) {
 			setViewMode("argo");
 			setSelectedArgoApp(null);
 			setSelectedHelmRelease(null);
@@ -607,133 +597,43 @@ function App() {
 	}
 
 	const mainContent = (
-		<main className="flex h-full w-full min-w-0 flex-col overflow-hidden">
-			{liveSessionCleanupMessage && (
-				<Alert className="rounded-none border-x-0 border-t-0">
-					<AlertTitle>Live sessions updated</AlertTitle>
-					<AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-						<span>{liveSessionCleanupMessage}</span>
-						<button
-							type="button"
-							className="text-xs font-medium text-muted-foreground underline-offset-4 hover:underline"
-							onClick={() => setLiveSessionCleanupMessage(null)}
-						>
-							Dismiss
-						</button>
-					</AlertDescription>
-				</Alert>
-			)}
-			{showPortForwardRestorePrompt && activeWorkspace && (
-				<SavedPortForwardRestorePrompt
-					workspace={activeWorkspace}
-					onReview={handleOpenPortForwards}
-					onDismiss={() =>
-						setDismissedPortForwardRestoreWorkspaceId(activeWorkspace.id)
-					}
-				/>
-			)}
-			{viewMode === "overview" ? (
-				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<Suspense fallback={<ViewLoadingFallback label="Loading overview..." />}>
-						<WorkspaceOverview
-							workspace={activeWorkspace}
-							onOpenResources={handleOpenResources}
-							onOpenArgo={handleOpenArgo}
-							onOpenIncidents={handleOpenIncidents}
-							onOpenPortForwards={handleOpenPortForwards}
-							onOpenLauncher={handleOpenLauncher}
-						/>
-					</Suspense>
-				</div>
-			) : viewMode === "settings" ? (
-				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<Suspense fallback={<ViewLoadingFallback label="Loading settings..." />}>
-						<SettingsPage />
-					</Suspense>
-				</div>
-			) : viewMode === "argo" ? (
-				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<Suspense fallback={<ViewLoadingFallback label="Loading Argo CD..." />}>
-						<ArgoCDPanel
-							clusterContext={clusterContext}
-							selectedArgoItem={selectedArgoApp}
-							onArgoItemSelect={handleArgoAppSelect}
-							selectedArgoKind={
-								selectedTreeNode?.type === "kind" && selectedTreeNode.kind
-									? selectedTreeNode.kind
-									: null
-							}
-						/>
-					</Suspense>
-				</div>
-			) : viewMode === "helm" ? (
-				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<Suspense fallback={<ViewLoadingFallback label="Loading Helm releases..." />}>
-						<HelmPanel
-							clusterContext={clusterContext}
-							selectedRelease={selectedHelmRelease}
-							onReleaseSelect={handleHelmReleaseSelect}
-							targetRelease={targetHelmRelease}
-							onTargetReleaseResolved={handleTargetHelmReleaseResolved}
-						/>
-					</Suspense>
-				</div>
-			) : viewMode === "incidents" ? (
-				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<Suspense fallback={<ViewLoadingFallback label="Loading incident cockpit..." />}>
-						<IncidentCockpit
-							workspace={activeWorkspace}
-							onResourceSelect={setSelectedResource}
-							onOpenResources={() => handleOpenResources()}
-						/>
-					</Suspense>
-				</div>
-			) : viewMode === "portForwards" ? (
-				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<Suspense fallback={<ViewLoadingFallback label="Loading port forwards..." />}>
-						<WorkspacePortForwardsPage workspace={activeWorkspace} />
-					</Suspense>
-				</div>
-			) : viewMode === "rbac" ? (
-				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<Suspense fallback={<ViewLoadingFallback label="Loading RBAC inspection..." />}>
-						<RbacPanel
-							clusterContext={clusterContext}
-							selectedNamespaces={selectedNamespaces}
-							selectedView={
-								selectedTreeNode?.type === "kind" && selectedTreeNode.kind
-									? selectedTreeNode.kind
-									: null
-							}
-						/>
-					</Suspense>
-				</div>
-			) : (
-				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					{canQueryResources ? (
-						<Suspense fallback={<ViewLoadingFallback label="Loading resources..." />}>
-							<ResourceList
-								clusterContext={clusterContext}
-								selectedNamespaces={computedNamespaces}
-								selectedKinds={computedKinds}
-								selectedArgoAppFilter={selectedArgoAppFilter}
-								selectedResource={selectedResource}
-								initialHealthFilter={resourceHealthFilter}
-								initialSearch={resourceInitialSearch}
-								onArgoAppFilterChange={setSelectedArgoAppFilter}
-								onNamespacesChange={handleResourceNamespacesChange}
-								onKindsChange={handleResourceKindsChange}
-								onResourceSelect={setSelectedResource}
-							/>
-						</Suspense>
-					) : (
-						<div className="p-8 text-center text-sm text-muted-foreground">
-							{emptyMsg}
-						</div>
-					)}
-				</div>
-			)}
-		</main>
+		<AppMainContent
+			activeWorkspace={activeWorkspace}
+			viewMode={viewMode}
+			liveSessionCleanupMessage={liveSessionCleanupMessage}
+			onDismissLiveSessionCleanup={() => setLiveSessionCleanupMessage(null)}
+			showPortForwardRestorePrompt={showPortForwardRestorePrompt}
+			onDismissPortForwardRestore={() =>
+				setDismissedPortForwardRestoreWorkspaceId(activeWorkspace.id)
+			}
+			onReviewPortForwards={handleOpenPortForwards}
+			onOpenResources={handleOpenResources}
+			onOpenArgo={handleOpenArgo}
+			onOpenIncidents={handleOpenIncidents}
+			onOpenPortForwards={handleOpenPortForwards}
+			onOpenLauncher={handleOpenLauncher}
+			clusterContext={clusterContext}
+			selectedArgoApp={selectedArgoApp}
+			onArgoItemSelect={handleArgoAppSelect}
+			selectedTreeNode={selectedTreeNode}
+			selectedHelmRelease={selectedHelmRelease}
+			onHelmReleaseSelect={handleHelmReleaseSelect}
+			targetHelmRelease={targetHelmRelease}
+			onTargetHelmReleaseResolved={handleTargetHelmReleaseResolved}
+			selectedNamespaces={selectedNamespaces}
+			canQueryResources={canQueryResources}
+			computedNamespaces={computedNamespaces}
+			computedKinds={computedKinds}
+			selectedArgoAppFilter={selectedArgoAppFilter}
+			selectedResource={selectedResource}
+			resourceHealthFilter={resourceHealthFilter}
+			resourceInitialSearch={resourceInitialSearch}
+			onArgoAppFilterChange={setSelectedArgoAppFilter}
+			onNamespacesChange={handleResourceNamespacesChange}
+			onKindsChange={handleResourceKindsChange}
+			onResourceSelect={setSelectedResource}
+			emptyMsg={emptyMsg}
+		/>
 	);
 
 	const detailPanel = hasAppDetailPanel(viewMode, selectedHelmRelease !== null, selectedArgoApp !== null, selectedResource !== null) ? (

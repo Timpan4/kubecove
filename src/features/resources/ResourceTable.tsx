@@ -1,4 +1,4 @@
-import { Fragment, type KeyboardEvent } from "react";
+import { Fragment, type KeyboardEvent, useEffect, useRef } from "react";
 import {
 	flexRender,
 	type Row,
@@ -59,6 +59,15 @@ function isActivationKey(event: KeyboardEvent) {
 	return event.key === "Enter" || event.key === " ";
 }
 
+function scrollSelectedRowIntoView(viewport: HTMLDivElement | null) {
+	if (!viewport) return;
+	const selectedRow = viewport.querySelector<HTMLElement>(
+		"tr[data-resource-selected='true']",
+	);
+	if (!selectedRow) return;
+	selectedRow.scrollIntoView({ block: "center", inline: "nearest" });
+}
+
 export function ResourceTable({
 	table,
 	groupedByArgo,
@@ -71,6 +80,7 @@ export function ResourceTable({
 	onSelectedResourceKeyChange,
 	onResourceSelect,
 }: ResourceTableProps) {
+	const tableViewportRef = useRef<HTMLDivElement | null>(null);
 	const rowModel = table.getRowModel();
 	const hasExactSelectedResource =
 		selectedResourceKey !== null &&
@@ -78,76 +88,114 @@ export function ResourceTable({
 			(row) => resourceSelectionKey(row.original) === selectedResourceKey,
 		);
 
+	useEffect(() => {
+		const viewport = tableViewportRef.current;
+		if (!viewport || (!selectedResourceKey && !selectedResourceIdentityKey)) return;
+		let secondFrame: number | null = null;
+		const firstFrame = window.requestAnimationFrame(() => {
+			scrollSelectedRowIntoView(viewport);
+			secondFrame = window.requestAnimationFrame(() => {
+				scrollSelectedRowIntoView(viewport);
+			});
+		});
+		return () => {
+			window.cancelAnimationFrame(firstFrame);
+			if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
+		};
+	}, [
+		collapsedGroups,
+		rowModel.rows,
+		selectedResourceIdentityKey,
+		selectedResourceKey,
+	]);
+
+	useEffect(() => {
+		const viewport = tableViewportRef.current;
+		if (!viewport || (!selectedResourceKey && !selectedResourceIdentityKey)) return;
+		const resizeObserver = new ResizeObserver(() => {
+			scrollSelectedRowIntoView(viewport);
+		});
+		resizeObserver.observe(viewport);
+		return () => resizeObserver.disconnect();
+	}, [selectedResourceIdentityKey, selectedResourceKey]);
+
 	return (
-		<Table className={TABLE_CLASS}>
-			<TableHeader>
-				{table.getHeaderGroups().map((headerGroup) => (
-					<TableRow key={headerGroup.id}>
-						{headerGroup.headers.map((header) => {
-							const canSort = header.column.getCanSort();
-							const toggleSorting = header.column.getToggleSortingHandler();
-							const sortState = header.column.getIsSorted();
-							return (
-								<TableHead
-									key={header.id}
-									onClick={canSort ? toggleSorting : undefined}
-									onKeyDown={
-										canSort
-											? (event) => {
-													if (!isActivationKey(event)) return;
-													event.preventDefault();
-													toggleSorting?.(event);
-												}
-											: undefined
-									}
-									tabIndex={canSort ? 0 : undefined}
-									aria-sort={canSort ? sortAriaValue(sortState) : undefined}
-									className={canSort ? "cursor-pointer" : "cursor-default"}
-								>
-									{flexRender(
-										header.column.columnDef.header,
-										header.getContext(),
-									)}
-									{sortState === "asc"
-										? " ↑"
-										: sortState === "desc"
-											? " ↓"
-											: ""}
-								</TableHead>
-							);
-						})}
-					</TableRow>
-				))}
-			</TableHeader>
-			<TableBody>
-				{rowModel.rows.length === 0 ? (
-					<TableRow>
-						<TableCell colSpan={columns.length} className={EMPTY_PAGE_CLASS}>
-							No resources match your filter
-						</TableCell>
-					</TableRow>
-				) : (
-					rowModel.rows.map((row, index) => (
-						<ResourceTableRow
-							key={row.id}
-							row={row}
-							index={index}
-							previous={index > 0 ? rowModel.rows[index - 1]?.original : null}
-							groupedByArgo={groupedByArgo}
-							pageGroups={pageGroups}
-							pageTypeGroups={pageTypeGroups}
-							collapsedGroups={collapsedGroups}
-							selectedResourceKey={selectedResourceKey}
-							selectedResourceIdentityKey={selectedResourceIdentityKey}
-							hasExactSelectedResource={hasExactSelectedResource}
-							onToggleGroup={onToggleGroup}
-							onSelectedResourceKeyChange={onSelectedResourceKeyChange}
-							onResourceSelect={onResourceSelect}
-						/>
-					))
-				)}
-			</TableBody>
-		</Table>
+		<div ref={tableViewportRef} className="h-full min-h-0 overflow-auto">
+			<Table className={TABLE_CLASS}>
+				<colgroup>
+					{table.getVisibleLeafColumns().map((column) => (
+						<col key={column.id} style={{ width: `${column.getSize()}px` }} />
+					))}
+				</colgroup>
+				<TableHeader>
+					{table.getHeaderGroups().map((headerGroup) => (
+						<TableRow key={headerGroup.id}>
+							{headerGroup.headers.map((header) => {
+								const canSort = header.column.getCanSort();
+								const toggleSorting = header.column.getToggleSortingHandler();
+								const sortState = header.column.getIsSorted();
+								return (
+									<TableHead
+										key={header.id}
+										onClick={canSort ? toggleSorting : undefined}
+										onKeyDown={
+											canSort
+												? (event) => {
+														if (!isActivationKey(event)) return;
+														event.preventDefault();
+														toggleSorting?.(event);
+													}
+												: undefined
+										}
+										tabIndex={canSort ? 0 : undefined}
+										aria-sort={canSort ? sortAriaValue(sortState) : undefined}
+										className={canSort ? "cursor-pointer" : "cursor-default"}
+									>
+										{flexRender(
+											header.column.columnDef.header,
+											header.getContext(),
+										)}
+										{sortState === "asc"
+											? " ↑"
+											: sortState === "desc"
+												? " ↓"
+												: ""}
+									</TableHead>
+								);
+							})}
+						</TableRow>
+					))}
+				</TableHeader>
+				<TableBody>
+					{rowModel.rows.length === 0 ? (
+						<TableRow>
+							<TableCell colSpan={columns.length} className={EMPTY_PAGE_CLASS}>
+								No resources match your filter
+							</TableCell>
+						</TableRow>
+					) : (
+						rowModel.rows.map((row, index) => (
+							<ResourceTableRow
+								key={row.id}
+								row={row}
+								index={index}
+								previous={index > 0 ? rowModel.rows[index - 1]?.original : null}
+								groupedByArgo={groupedByArgo}
+								pageGroups={pageGroups}
+								pageTypeGroups={pageTypeGroups}
+								collapsedGroups={collapsedGroups}
+								selectedResourceKey={selectedResourceKey}
+								selectedResourceIdentityKey={selectedResourceIdentityKey}
+								hasExactSelectedResource={hasExactSelectedResource}
+								onToggleGroup={onToggleGroup}
+								onSelectedResourceKeyChange={onSelectedResourceKeyChange}
+								onResourceSelect={onResourceSelect}
+							/>
+						))
+					)}
+				</TableBody>
+			</Table>
+		</div>
 	);
 }
 
@@ -234,6 +282,7 @@ function ResourceTableRow({
 			)}
 			{!hideResourceRow && (
 				<TableRow
+					data-resource-selected={isSelected ? "true" : undefined}
 					className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 					onClick={selectResource}
 					onKeyDown={(event) => {
