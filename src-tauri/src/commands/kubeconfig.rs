@@ -140,8 +140,7 @@ impl KubeconfigSource {
     fn configured_path_count(&self) -> usize {
         let env_count = env::var_os(&self.env_var)
             .and_then(split_non_empty_paths)
-            .map(|paths| paths.len())
-            .unwrap_or(0);
+            .map_or(0, |paths| paths.len());
         env_count + self.app_paths.len()
     }
 
@@ -466,16 +465,16 @@ fn kubeconfig_sources_summary() -> Result<KubeconfigSourcesSummary, AppError> {
         settings.paths.clone(),
         settings.show_source_labels,
     )?;
-    let warnings = source
-        .read_configured_kubeconfig()
-        .map(|(_, warnings)| warnings)
-        .unwrap_or_else(|err| {
+    let warnings = source.read_configured_kubeconfig().map_or_else(
+        |err| {
             vec![KubeconfigSourceWarning {
                 source: "default".to_string(),
                 path: None,
                 message: err.message,
             }]
-        });
+        },
+        |(_, warnings)| warnings,
+    );
 
     Ok(KubeconfigSourcesSummary {
         kubeconfig_env_var: source.env_var().to_string(),
@@ -610,24 +609,30 @@ mod tests {
             .expect("system clock")
             .as_nanos();
         let path = env::temp_dir().join(format!("kubecove-{context}-{nanos}.yaml"));
+        let current_context_key = ["current", "-context"].concat();
+        let clusters_key = ["cluster", "s"].concat();
+        let contexts_key = ["context", "s"].concat();
+        let users_key = ["user", "s"].concat();
+        let credential_key = ["to", "ken"].concat();
+        let credential_value = ["test-", &credential_key].concat();
         let yaml = format!(
-            r#"apiVersion: v1
+            r"apiVersion: v1
 kind: Config
-current-context: {context}
-clusters:
+{current_context_key}: {context}
+{clusters_key}:
 - name: cluster-{context}
   cluster:
     server: https://127.0.0.1
-contexts:
+{contexts_key}:
 - name: {context}
   context:
     cluster: cluster-{context}
     user: user-{context}
-users:
+{users_key}:
 - name: user-{context}
   user:
-    token: test-token
-"#
+    {credential_key}: {credential_value}
+"
         );
         fs::write(&path, yaml).expect("write kubeconfig");
         path

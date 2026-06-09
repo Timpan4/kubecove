@@ -24,6 +24,7 @@ interface ResourceMapTableLayoutProps {
 	topologyError: boolean;
 	topologyErr: unknown;
 	selectedTopologyNodeId: string | null;
+	hasDeferredTopologySelection: boolean;
 	topologyFitViewKey: string;
 	topologyMode: TopologyMode;
 	onTopologyModeChange: (mode: TopologyMode) => void;
@@ -61,6 +62,7 @@ export function ResourceMapTableLayout({
 	topologyError,
 	topologyErr,
 	selectedTopologyNodeId,
+	hasDeferredTopologySelection,
 	topologyFitViewKey,
 	topologyMode,
 	onTopologyModeChange,
@@ -89,22 +91,18 @@ export function ResourceMapTableLayout({
 		if (!mapPanelOpen) setTablePanelOpen(true);
 	}, [mapPanelOpen]);
 
-	const hasActiveSelection = Boolean(
-		selectedResourceKey || selectedResourceIdentityKey || selectedTopologyNodeId,
-	);
-	const mapHeightClassName =
-		tablePanelOpen && hasActiveSelection ? "h-[360px]" : "h-[640px]";
+	const hasActiveSelection = hasDeferredTopologySelection;
+	const mapHeightClassName = "h-full min-h-0";
 	const contentGridClassName = mapPanelOpen && tablePanelOpen
 		? cn(
-				"grid min-w-0 gap-3",
+				"grid min-h-0 min-w-0 flex-1 gap-3",
 				hasActiveSelection
-					? "grid-cols-1"
-					: "xl:grid-cols-[minmax(620px,1fr)_minmax(420px,0.82fr)]",
+					? "grid-cols-1 grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)]"
+					: "xl:grid-cols-[minmax(420px,0.4fr)_minmax(620px,0.6fr)]",
 			)
-		: "grid min-w-0 gap-3";
+		: "grid min-h-0 min-w-0 flex-1 gap-3";
 	const tablePanelClassName = cn(
-		"flex min-w-0 flex-col overflow-hidden rounded-md border bg-card/60",
-		hasActiveSelection ? "h-[560px]" : "h-[640px]",
+		"flex h-full min-h-[400px] min-w-0 flex-col overflow-hidden rounded-md border bg-card/60",
 	);
 	const handleMapPanelToggle = () => {
 		const nextOpen = !mapPanelOpen;
@@ -117,7 +115,7 @@ export function ResourceMapTableLayout({
 	};
 
 	return (
-		<>
+		<div className="flex min-h-0 flex-1 flex-col gap-3">
 			<div className="flex items-center justify-between gap-2">
 				<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
 					<span className="inline-flex items-center gap-1.5 font-medium text-foreground">
@@ -185,7 +183,7 @@ export function ResourceMapTableLayout({
 			</div>
 			<div className={contentGridClassName}>
 				{mapPanelOpen && (
-					<div className="min-w-0">
+					<div className="h-full min-h-[400px] min-w-0">
 						<Suspense
 							fallback={
 								<div
@@ -234,7 +232,7 @@ export function ResourceMapTableLayout({
 								<PanelRightClose className="size-4" />
 							</Button>
 						</div>
-						<div className="min-h-0 flex-1 overflow-auto">
+						<div className="min-h-0 flex-1 overflow-hidden">
 							<ResourceTable
 								table={table}
 								groupedByArgo={groupedByArgo}
@@ -260,6 +258,6 @@ export function ResourceMapTableLayout({
 					</aside>
 				)}
 			</div>
-		</>
+		</div>
 	);
 }

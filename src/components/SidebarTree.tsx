@@ -2,6 +2,7 @@
  * IDE-style sidebar tree for Kubernetes resource navigation.
  *
  * Tree structure:
+ * - Workspace Overview [section, saved workspace summary]
  * - Cluster Overview [section, cluster-scoped kinds]
  * - Namespaces [section, dynamic namespace nodes]
  *   - <namespace> [namespace node, expands to group children]
@@ -297,6 +298,11 @@ export function SidebarTree({
 
   // Build the static tree (no namespace children yet — those are built dynamically)
   const staticTree = useMemo(() => {
+    const workspaceOverviewNode: TreeNode = {
+      id: { type: "section", section: "workspaceOverview" },
+      label: SECTIONS.workspaceOverview.label,
+    };
+
     const clusterOverviewNode: TreeNode = {
       id: { type: "section", section: "clusterOverview" },
       label: SECTIONS.clusterOverview.label,
@@ -359,7 +365,7 @@ export function SidebarTree({
       })),
     };
 
-    return { clusterOverviewNode, curatedSectionNodes, argoNode, helmNode, incidentsNode, portForwardsNode, rbacNode };
+    return { workspaceOverviewNode, clusterOverviewNode, curatedSectionNodes, argoNode, helmNode, incidentsNode, portForwardsNode, rbacNode };
   }, []);
 
   const extraKinds = useMemo(() => {
@@ -470,6 +476,7 @@ export function SidebarTree({
       children: namespaces.map((ns) => buildShallowNamespaceTreeNode(ns.name)),
     };
     return [
+      staticTree.workspaceOverviewNode,
       staticTree.clusterOverviewNode,
       namespaceNode,
       ...staticTree.curatedSectionNodes,

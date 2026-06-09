@@ -1,4 +1,11 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import {
+	memo,
+	useDeferredValue,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
 	getCoreRowModel,
@@ -44,7 +51,10 @@ import {
 	filterResourcesByHealth,
 	filterResourceSearchIndex,
 	formatResourceGroupLabel,
+	resourceGroupCollapseKey,
+	resourceGroupKindRank,
 	resourceIdentityKey,
+	resourceTypeGroupCollapseKey,
 	resourceSelectionKey,
 	type HealthFilter,
 	resourceKindFetchKey,
@@ -264,6 +274,9 @@ function ResourceListComponent({
 				formatResourceGroupLabel(b),
 			);
 			if (appCompare !== 0) return appCompare;
+			const kindRankCompare =
+				resourceGroupKindRank(a.kind) - resourceGroupKindRank(b.kind);
+			if (kindRankCompare !== 0) return kindRankCompare;
 			const kindCompare = a.kind.localeCompare(b.kind);
 			if (kindCompare !== 0) return kindCompare;
 			return a.name.localeCompare(b.name);
@@ -318,6 +331,27 @@ function ResourceListComponent({
 		selectedResourceKey ?? externalSelectedResourceKey;
 	const activeSelectedResourceIdentityKey =
 		selectedResourceIdentityKey ?? externalSelectedResourceIdentityKey;
+
+	useEffect(() => {
+		if (!activeSelectedResourceKey && !activeSelectedResourceIdentityKey) return;
+		const selectedRow = displayData.find(
+			(resource) =>
+				resourceSelectionKey(resource) === activeSelectedResourceKey ||
+				resourceIdentityKey(resource) === activeSelectedResourceIdentityKey,
+		);
+		if (!selectedRow) return;
+		const appCollapseKey = resourceGroupCollapseKey(selectedRow);
+		const typeCollapseKey = resourceTypeGroupCollapseKey(selectedRow);
+		setCollapsedGroups((current) => {
+			if (!current.has(appCollapseKey) && !current.has(typeCollapseKey)) {
+				return current;
+			}
+			const next = new Set(current);
+			next.delete(appCollapseKey);
+			next.delete(typeCollapseKey);
+			return next;
+		});
+	}, [activeSelectedResourceIdentityKey, activeSelectedResourceKey, displayData]);
 
 	useEffect(() => {
 		if (externalSelectedResourceKey) {
@@ -375,6 +409,7 @@ function ResourceListComponent({
 		selectedTopologyNodeId,
 		topologyWithMetrics,
 	]);
+	const deferredSyncedTopologyNodeId = useDeferredValue(syncedTopologyNodeId);
 	useEffect(() => {
 		if (!selectedTopologyNodeId || !topologyWithMetrics) return;
 		if (topologyWithMetrics.nodes.some((node) => node.id === selectedTopologyNodeId)) {
@@ -451,7 +486,7 @@ function ResourceListComponent({
 	}
 
 	return (
-		<div className="flex min-w-0 flex-col gap-3">
+		<div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
 			<ResourceScopePills
 				pills={scopePills}
 				clusterContext={clusterContext}
@@ -499,7 +534,8 @@ function ResourceListComponent({
 				topologyLoading={topologyQuery.isPending}
 				topologyError={topologyQuery.isError}
 				topologyErr={topologyQuery.error}
-				selectedTopologyNodeId={syncedTopologyNodeId}
+				selectedTopologyNodeId={deferredSyncedTopologyNodeId}
+				hasDeferredTopologySelection={Boolean(deferredSyncedTopologyNodeId)}
 				topologyFitViewKey={topologyFitViewKey}
 				topologyMode={topologyMode}
 				onTopologyModeChange={setTopologyMode}

@@ -35,10 +35,11 @@ import {
 	type OwnershipGraphEdge,
 } from "./topology";
 import {
+	getOwnershipGraphBounds,
 	getOwnershipMapTranslateExtent,
 	getOwnershipGraphBoundsForNodeIds,
-	ownershipGraphBoundsToViewportRect,
 	ownershipGraphLayoutSignature,
+	type OwnershipGraphBounds,
 } from "./topology-viewport";
 
 interface OwnershipMapProps {
@@ -54,13 +55,46 @@ interface OwnershipMapProps {
 }
 
 function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : "Failed to load ownership map";
+	if (error instanceof Error) return error.message;
+	if (typeof error === "string") return error;
+	if (
+		typeof error === "object" &&
+		error !== null &&
+		"message" in error &&
+		typeof error.message === "string"
+	) {
+		return error.message;
+	}
+	return "Failed to load ownership map";
 }
 
-const FIT_VIEW_OPTIONS = { padding: 0.24, maxZoom: 1 };
-const FIT_SELECTED_BOUNDS_OPTIONS = { padding: 0.28, duration: 260 };
+const WIDTH_FIT_PADDING = 0.24;
+const WIDTH_FIT_DURATION_MS = 260;
 const MIN_MAP_ZOOM = 0.18;
 const MAX_MAP_ZOOM = 1.4;
+
+function clampMapZoom(zoom: number): number {
+	return Math.min(MAX_MAP_ZOOM, Math.max(MIN_MAP_ZOOM, zoom));
+}
+
+function widthFitViewport(
+	bounds: OwnershipGraphBounds,
+	viewportSize: { width: number; height: number },
+) {
+	const usableWidth = Math.max(
+		1,
+		viewportSize.width * (1 - WIDTH_FIT_PADDING * 2),
+	);
+	const zoom = clampMapZoom(usableWidth / Math.max(1, bounds.width));
+	const centerX = bounds.left + bounds.width / 2;
+	const centerY = bounds.top + bounds.height / 2;
+
+	return {
+		x: viewportSize.width / 2 - centerX * zoom,
+		y: viewportSize.height / 2 - centerY * zoom,
+		zoom,
+	};
+}
 
 function isOwnershipResourceNode(
 	node: OwnershipGraphNode,
@@ -104,21 +138,26 @@ function FitOwnershipMapView({
 	nodes,
 	edges,
 	selectedNodeId,
+	viewportSize,
 	viewportKey,
 }: {
 	nodes: OwnershipGraphNode[];
 	edges: OwnershipGraphEdge[];
 	selectedNodeId: string | null;
+	viewportSize: { width: number; height: number };
 	viewportKey: string;
 }) {
-	const { fitBounds, fitView } = useReactFlow();
+	const { setViewport } = useReactFlow();
 	const lastViewportRequestRef = useRef<string | null>(null);
 
 	useEffect(() => {
+		if (viewportSize.width <= 0 || viewportSize.height <= 0) return;
 		const selectedNodeIds = selectedOwnershipNodeIds(nodes);
 		const selectedBounds = selectedNodeId
 			? getOwnershipGraphBoundsForNodeIds(nodes, selectedNodeIds)
 			: null;
+		const bounds = selectedBounds ?? getOwnershipGraphBounds(nodes);
+		if (!bounds) return;
 		const layoutSignature = ownershipGraphLayoutSignature(nodes, edges);
 		const requestKey = selectedBounds
 			? [
@@ -139,21 +178,16 @@ function FitOwnershipMapView({
 		let secondFrame: number | null = null;
 		const firstFrame = window.requestAnimationFrame(() => {
 			secondFrame = window.requestAnimationFrame(() => {
-				if (selectedBounds) {
-					void fitBounds(
-						ownershipGraphBoundsToViewportRect(selectedBounds),
-						FIT_SELECTED_BOUNDS_OPTIONS,
-					);
-				} else {
-					void fitView(FIT_VIEW_OPTIONS);
-				}
+				void setViewport(widthFitViewport(bounds, viewportSize), {
+					duration: WIDTH_FIT_DURATION_MS,
+				});
 			});
 		});
 		return () => {
 			window.cancelAnimationFrame(firstFrame);
 			if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
 		};
-	}, [edges, fitBounds, fitView, nodes, selectedNodeId, viewportKey]);
+	}, [edges, nodes, selectedNodeId, setViewport, viewportKey, viewportSize]);
 
 	return null;
 }
@@ -262,13 +296,13 @@ export function OwnershipMap({
 	if (isLoading) {
 		const HeaderIcon = mode === "networkFlow" ? Network : GitBranch;
 		return (
-			<div className="rounded-md border bg-card/60">
+			<div className="flex h-full min-h-0 flex-col rounded-md border bg-card/60">
 				<div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
 					<HeaderIcon className="size-4" />
 					{mode === "networkFlow" ? "Network Flow" : "Ownership Map"}
 				</div>
 				<Separator />
-				<div className="grid h-[520px] grid-cols-3 gap-10 p-8">
+				<div className="grid min-h-0 flex-1 grid-cols-3 gap-10 p-8">
 					{Array.from({ length: 9 }).map((_, index) => (
 						<Skeleton key={index} className="h-16 w-48" />
 					))}
@@ -308,7 +342,7 @@ export function OwnershipMap({
 	}
 
 	return (
-		<div className="overflow-hidden rounded-md border bg-card/60">
+		<div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-card/60">
 			<div className="flex items-center justify-between gap-2 px-3 py-2">
 				<div className="flex min-w-0 items-center gap-2">
 					{mode === "networkFlow" ? (
@@ -333,7 +367,10 @@ export function OwnershipMap({
 				)}
 			</div>
 			<Separator />
-			<div ref={setMapViewportRef} className={cn(heightClassName, "bg-background")}>
+			<div
+				ref={setMapViewportRef}
+				className={cn(heightClassName, "flex-1 bg-background")}
+			>
 				<ReactFlow
 					nodes={graph.nodes}
 					edges={graph.edges}
@@ -355,6 +392,7 @@ export function OwnershipMap({
 						nodes={graph.nodes}
 						edges={graph.edges}
 						selectedNodeId={selectedNodeId}
+						viewportSize={viewportSize}
 						viewportKey={fitViewportKey}
 					/>
 					<Controls

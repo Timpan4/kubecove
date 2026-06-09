@@ -15,7 +15,12 @@ use k8s_openapi::api::{
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use k8s_openapi::NamespaceResourceScope;
-use kube::{api::Api, Client};
+use kube::{api::Api, Client, Error as KubeError};
+
+pub(super) struct TopologyInputCollection {
+    pub resources: Vec<TopologyInputResource>,
+    pub warnings: Vec<String>,
+}
 
 fn inputs_from_metadata<T>(cluster_context: &str, items: Vec<T>) -> Vec<TopologyInputResource>
 where
@@ -34,7 +39,32 @@ where
         .collect()
 }
 
-async fn list_namespaced<T>(client: Client, namespaces: &[String]) -> Result<Vec<T>, AppError>
+fn is_optional_topology_list_error(error: &KubeError) -> bool {
+    matches!(error, KubeError::Api(api_error) if matches!(api_error.code, 403 | 404))
+}
+
+fn push_topology_list_warning<T>(
+    warnings: &mut Vec<String>,
+    namespace: Option<&str>,
+    error: &KubeError,
+) where
+    T: k8s_openapi::Resource,
+{
+    warnings.push(format!(
+        "Skipped {}{} in topology: {}",
+        <T as k8s_openapi::Resource>::KIND,
+        namespace
+            .map(|namespace| format!(" in namespace {namespace}"))
+            .unwrap_or_else(|| " across namespaces".to_string()),
+        error
+    ));
+}
+
+async fn list_namespaced<T>(
+    client: Client,
+    namespaces: &[String],
+    warnings: &mut Vec<String>,
+) -> Result<Vec<T>, AppError>
 where
     T: Clone
         + std::fmt::Debug
@@ -48,22 +78,24 @@ where
     let mut out = Vec::new();
     if namespaces.is_empty() {
         let api: Api<T> = Api::all(client);
-        out.extend(
-            api.list(&list_params())
-                .await
-                .map_err(|e| AppError::kube(e.to_string()))?
-                .items,
-        );
+        match api.list(&list_params()).await {
+            Ok(rows) => out.extend(rows.items),
+            Err(error) if is_optional_topology_list_error(&error) => {
+                push_topology_list_warning::<T>(warnings, None, &error);
+            }
+            Err(error) => return Err(AppError::kube(error.to_string())),
+        }
         return Ok(out);
     }
     for namespace in namespaces {
         let api: Api<T> = Api::namespaced(client.clone(), namespace);
-        out.extend(
-            api.list(&list_params())
-                .await
-                .map_err(|e| AppError::kube(e.to_string()))?
-                .items,
-        );
+        match api.list(&list_params()).await {
+            Ok(rows) => out.extend(rows.items),
+            Err(error) if is_optional_topology_list_error(&error) => {
+                push_topology_list_warning::<T>(warnings, Some(namespace), &error);
+            }
+            Err(error) => return Err(AppError::kube(error.to_string())),
+        }
     }
     Ok(out)
 }
@@ -72,10 +104,11 @@ pub(super) async fn collect_topology_inputs(
     client: Client,
     cluster_context: &str,
     namespaces: &[String],
-) -> Result<Vec<TopologyInputResource>, AppError> {
+) -> Result<TopologyInputCollection, AppError> {
     let mut inputs = Vec::new();
+    let mut warnings = Vec::new();
 
-    for deploy in list_namespaced::<Deployment>(client.clone(), namespaces).await? {
+    for deploy in list_namespaced::<Deployment>(client.clone(), namespaces, &mut warnings).await? {
         let mut input =
             input_from_metadata(cluster_context, "Deployment", "apps/v1", &deploy.metadata);
         if let Some(status) = deploy.status {
@@ -90,7 +123,7 @@ pub(super) async fn collect_topology_inputs(
         inputs.push(input);
     }
 
-    for ds in list_namespaced::<DaemonSet>(client.clone(), namespaces).await? {
+    for ds in list_namespaced::<DaemonSet>(client.clone(), namespaces, &mut warnings).await? {
         let mut input = input_from_metadata(cluster_context, "DaemonSet", "apps/v1", &ds.metadata);
         if let Some(status) = ds.status {
             input.summary.ready = Some(format!(
@@ -105,7 +138,7 @@ pub(super) async fn collect_topology_inputs(
         inputs.push(input);
     }
 
-    for rs in list_namespaced::<ReplicaSet>(client.clone(), namespaces).await? {
+    for rs in list_namespaced::<ReplicaSet>(client.clone(), namespaces, &mut warnings).await? {
         let mut input = input_from_metadata(cluster_context, "ReplicaSet", "apps/v1", &rs.metadata);
         if let Some(status) = rs.status {
             input.summary.ready = Some(fmt_ready(status.ready_replicas, status.replicas));
@@ -117,7 +150,7 @@ pub(super) async fn collect_topology_inputs(
         inputs.push(input);
     }
 
-    for ss in list_namespaced::<StatefulSet>(client.clone(), namespaces).await? {
+    for ss in list_namespaced::<StatefulSet>(client.clone(), namespaces, &mut warnings).await? {
         let mut input =
             input_from_metadata(cluster_context, "StatefulSet", "apps/v1", &ss.metadata);
         if let Some(status) = ss.status {
@@ -126,13 +159,10 @@ pub(super) async fn collect_topology_inputs(
         inputs.push(input);
     }
 
-    for cj in list_namespaced::<CronJob>(client.clone(), namespaces).await? {
+    for cj in list_namespaced::<CronJob>(client.clone(), namespaces, &mut warnings).await? {
         let mut input = input_from_metadata(cluster_context, "CronJob", "batch/v1", &cj.metadata);
         if let Some(status) = cj.status {
-            let active = status
-                .active
-                .as_ref()
-                .map_or(0, std::vec::Vec::len);
+            let active = status.active.as_ref().map_or(0, std::vec::Vec::len);
             if active > 0 {
                 input.summary.status = Some(format!("{active} active"));
             }
@@ -140,7 +170,7 @@ pub(super) async fn collect_topology_inputs(
         inputs.push(input);
     }
 
-    for job in list_namespaced::<Job>(client.clone(), namespaces).await? {
+    for job in list_namespaced::<Job>(client.clone(), namespaces, &mut warnings).await? {
         let mut input = input_from_metadata(cluster_context, "Job", "batch/v1", &job.metadata);
         if let Some(status) = job.status {
             let active = status.active.unwrap_or(0);
@@ -167,32 +197,35 @@ pub(super) async fn collect_topology_inputs(
         inputs.push(input);
     }
 
-    for pod in list_namespaced::<Pod>(client.clone(), namespaces).await? {
+    for pod in list_namespaced::<Pod>(client.clone(), namespaces, &mut warnings).await? {
         inputs.push(pod_input(cluster_context, pod));
     }
 
     inputs.extend(inputs_from_metadata(
         cluster_context,
-        list_namespaced::<PersistentVolumeClaim>(client.clone(), namespaces).await?,
+        list_namespaced::<PersistentVolumeClaim>(client.clone(), namespaces, &mut warnings).await?,
     ));
     inputs.extend(inputs_from_metadata(
         cluster_context,
-        list_namespaced::<Service>(client.clone(), namespaces).await?,
+        list_namespaced::<Service>(client.clone(), namespaces, &mut warnings).await?,
     ));
     inputs.extend(inputs_from_metadata(
         cluster_context,
-        list_namespaced::<Ingress>(client.clone(), namespaces).await?,
+        list_namespaced::<Ingress>(client.clone(), namespaces, &mut warnings).await?,
     ));
     inputs.extend(inputs_from_metadata(
         cluster_context,
-        list_namespaced::<ConfigMap>(client.clone(), namespaces).await?,
+        list_namespaced::<ConfigMap>(client.clone(), namespaces, &mut warnings).await?,
     ));
     inputs.extend(inputs_from_metadata(
         cluster_context,
-        list_namespaced::<Secret>(client, namespaces).await?,
+        list_namespaced::<Secret>(client, namespaces, &mut warnings).await?,
     ));
 
-    Ok(inputs)
+    Ok(TopologyInputCollection {
+        resources: inputs,
+        warnings,
+    })
 }
 
 fn pod_input(cluster_context: &str, pod: Pod) -> TopologyInputResource {
@@ -222,15 +255,12 @@ fn pod_input(cluster_context: &str, pod: Pod) -> TopologyInputResource {
             .as_ref()
             .and_then(|conds| conds.iter().find(|condition| condition.type_ == "Ready"))
             .map(|condition| condition.status.clone());
-        let restarts: i32 = status
-            .container_statuses
-            .as_ref()
-            .map_or(0, |statuses| {
-                statuses
-                    .iter()
-                    .map(|container| container.restart_count)
-                    .sum()
-            });
+        let restarts: i32 = status.container_statuses.as_ref().map_or(0, |statuses| {
+            statuses
+                .iter()
+                .map(|container| container.restart_count)
+                .sum()
+        });
         if restarts > 0 {
             input.summary.restarts = Some(restarts);
         }
@@ -243,10 +273,12 @@ pub(super) async fn collect_network_topology_inputs(
     cluster_context: &str,
     namespaces: &[String],
 ) -> Result<NetworkTopologyInputs, AppError> {
-    let pods = list_namespaced::<Pod>(client.clone(), namespaces).await?;
-    let services = list_namespaced::<Service>(client.clone(), namespaces).await?;
-    let ingresses = list_namespaced::<Ingress>(client.clone(), namespaces).await?;
-    let endpoint_slices = list_namespaced::<EndpointSlice>(client, namespaces).await?;
+    let mut warnings = Vec::new();
+    let pods = list_namespaced::<Pod>(client.clone(), namespaces, &mut warnings).await?;
+    let services = list_namespaced::<Service>(client.clone(), namespaces, &mut warnings).await?;
+    let ingresses = list_namespaced::<Ingress>(client.clone(), namespaces, &mut warnings).await?;
+    let endpoint_slices =
+        list_namespaced::<EndpointSlice>(client, namespaces, &mut warnings).await?;
     let mut resources = Vec::new();
     let mut service_flows = Vec::new();
     let mut ingress_backends = Vec::new();
@@ -370,6 +402,7 @@ pub(super) async fn collect_network_topology_inputs(
         services: service_flows,
         ingress_backends,
         endpoint_slices: endpoint_slice_flows,
+        warnings,
     })
 }
 

@@ -345,8 +345,12 @@ pub async fn resource_topology_from(
     let client = source.client_for_context(&cluster_context).await?;
     match mode {
         TopologyMode::Ownership => {
-            let inputs = collect_topology_inputs(client, &cluster_context, &namespaces).await?;
-            Ok(build_resource_topology(inputs))
+            let collection = collect_topology_inputs(client, &cluster_context, &namespaces).await?;
+            let mut topology = build_resource_topology(collection.resources);
+            topology.warnings.extend(collection.warnings);
+            topology.warnings.sort();
+            topology.warnings.dedup();
+            Ok(topology)
         }
         TopologyMode::NetworkFlow => {
             let inputs =
