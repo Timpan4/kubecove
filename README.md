@@ -6,6 +6,8 @@ The current beta is inspection-first with governed Pod and selector-backed Servi
 
 Current version metadata: `0.6.3`.
 
+![Kubernetes resources view with the ownership map and live resource table](docs/assets/resources-view.png)
+
 ## Get KubeCove
 
 Use the beta installers from [GitHub Releases](https://github.com/Timpan4/kubecove/releases) when you want to test the app.
@@ -15,6 +17,15 @@ Use the beta installers from [GitHub Releases](https://github.com/Timpan4/kubeco
 - Linux: `.AppImage`, `.deb`, or `.rpm` when present
 
 Beta installers are unsigned at the OS package level, so macOS Gatekeeper or Windows SmartScreen may require an explicit approval step. In-app updater artifacts are signed through the Tauri updater key.
+
+## Getting Started
+
+1. Install KubeCove from a release installer and approve the Gatekeeper or SmartScreen prompt if your OS shows one.
+2. Make sure a kubeconfig with at least one readable context exists. KubeCove discovers contexts from `$KUBECONFIG` and the default kubeconfig location without sending their contents to the UI.
+3. Launch KubeCove and create a workspace: pick a context, optionally narrow it to specific namespaces and kinds, and open it.
+4. Browse from the workspace overview into resources, topology, events, logs, metrics, YAML, Argo CD, Helm, and RBAC views. Cluster-changing actions stay behind explicit confirmation.
+
+![Workspace overview with health summary and Argo CD inventory](docs/assets/workspace-overview.png)
 
 ## Current Capabilities
 
@@ -30,6 +41,8 @@ Beta installers are unsigned at the OS package level, so macOS Gatekeeper or Win
 - Guarded exact-Pod exec sessions with explicit target and command confirmation.
 - Guarded selected-resource YAML apply with dry-run diff, Secret protection, and explicit confirmation.
 - Unsigned beta desktop installers for macOS, Windows, and Linux.
+
+![Resource inspection with the guarded YAML editor](docs/assets/resource-yaml.png)
 
 ## Development
 
