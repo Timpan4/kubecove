@@ -157,43 +157,43 @@ export function WorkspaceOverview({
 }: WorkspaceOverviewProps) {
 	const client = useMemo(() => createTauriClient(), []);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
-	const contextsQuery = useQuery({
+	const { data: contextsData, isPending: contextsPending } = useQuery({
 		queryKey: queryKeys.kubeContexts(kubeconfigEnvVar),
 		queryFn: () => listKubeContexts(client, kubeconfigEnvVar),
 	});
-	const contexts = contextsQuery.data ?? EMPTY_CONTEXTS;
+	const contexts = contextsData ?? EMPTY_CONTEXTS;
 	const clusterAvailable =
-		contextsQuery.isPending ||
+		contextsPending ||
 		contexts.some((context) => context.name === workspace.scope.clusterContext);
 	const workspaceContextKey = workspaceScopeContexts(workspace.scope).join("|");
 
-	const namespacesQuery = useQuery({
+	const { data: namespacesData, isPending: namespacesPending } = useQuery({
 		queryKey: queryKeys.namespaces(
 			workspace.scope.clusterContext,
 			kubeconfigEnvVar,
 		),
 		queryFn: () =>
 			listNamespaces(client, workspace.scope.clusterContext, kubeconfigEnvVar),
-		enabled: clusterAvailable && !contextsQuery.isPending,
+		enabled: clusterAvailable && !contextsPending,
 	});
 	const namespaces = useMemo(
 		() =>
-			namespacesQuery.data
-				? namespacesQuery.data.map((namespace) => namespace.name)
+			namespacesData
+				? namespacesData.map((namespace) => namespace.name)
 				: EMPTY_NAMESPACES,
-		[namespacesQuery.data],
+		[namespacesData],
 	);
 
-	const kindsQuery = useQuery({
+	const { data: kindsData, isPending: kindsPending } = useQuery({
 		queryKey: queryKeys.resourceKinds(
 			workspace.scope.clusterContext,
 			kubeconfigEnvVar,
 		),
 		queryFn: () =>
 			listResourceKinds(client, workspace.scope.clusterContext, kubeconfigEnvVar),
-		enabled: clusterAvailable && !contextsQuery.isPending,
+		enabled: clusterAvailable && !contextsPending,
 	});
-	const discoveredKinds = kindsQuery.data ?? EMPTY_DISCOVERED_KINDS;
+	const discoveredKinds = kindsData ?? EMPTY_DISCOVERED_KINDS;
 
 	const restoreStatus = useMemo(
 		() =>
@@ -213,7 +213,7 @@ export function WorkspaceOverview({
 		[workspace.scope, availableNamespaces],
 	);
 
-	const resourcesQuery = useQuery({
+	const { data: resourcesData, isError: resourcesError } = useQuery({
 		queryKey: queryKeys.resources(
 			workspaceContextKey,
 			workspaceFetchKeys,
@@ -227,14 +227,17 @@ export function WorkspaceOverview({
 			),
 		enabled:
 			restoreStatus.clusterAvailable &&
-			!namespacesQuery.isPending &&
-			!kindsQuery.isPending,
+			!namespacesPending &&
+			!kindsPending,
 		staleTime: 30_000,
 	});
-	const rows = resourcesQuery.data ?? EMPTY_RESOURCE_ROWS;
+	const rows = resourcesData ?? EMPTY_RESOURCE_ROWS;
 	const health = useMemo(() => buildWorkspaceHealthSummary(rows), [rows]);
 
-	const argoDetectedQuery = useQuery({
+	const {
+		data: argoDetected,
+		isPending: argoDetectedPending,
+	} = useQuery({
 		queryKey: queryKeys.argoDetect(
 			workspace.scope.clusterContext,
 			kubeconfigEnvVar,
@@ -242,16 +245,19 @@ export function WorkspaceOverview({
 		queryFn: () => detectArgoCD(client, workspace.scope.clusterContext, kubeconfigEnvVar),
 		enabled: restoreStatus.clusterAvailable,
 	});
-	const argoAppsQuery = useQuery({
+	const {
+		data: argoApps,
+		isPending: argoAppsPending,
+		isError: argoAppsError,
+	} = useQuery({
 		queryKey: queryKeys.argoApps(
 			workspace.scope.clusterContext,
 			kubeconfigEnvVar,
 		),
 		queryFn: () =>
 			listArgoApplications(client, workspace.scope.clusterContext, kubeconfigEnvVar),
-		enabled: argoDetectedQuery.data === true,
+		enabled: argoDetected === true,
 	});
-	const argoApps = argoAppsQuery.data;
 	const argoDrift = (argoApps ?? []).filter(
 		(app) => app.syncStatus && app.syncStatus !== "Synced",
 	).length;
@@ -398,24 +404,24 @@ export function WorkspaceOverview({
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-					{argoDetectedQuery.isPending && (
+					{argoDetectedPending && (
 						<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
 							<Spinner className="size-4" />
 							Detecting&hellip;
 						</div>
 					)}
-					{argoDetectedQuery.data === false && (
+					{argoDetected === false && (
 						<div className="text-xs text-muted-foreground">Not detected</div>
 					)}
-					{argoDetectedQuery.data === true && (
+					{argoDetected === true && (
 						<div className="grid gap-2">
-							{argoAppsQuery.isPending && (
+							{argoAppsPending && (
 								<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
 									<Spinner className="size-4" />
 									Loading applications&hellip;
 								</div>
 							)}
-							{argoAppsQuery.isError && (
+							{argoAppsError && (
 								<Alert variant="destructive">
 									<AlertTitle>Failed to load applications</AlertTitle>
 									<AlertDescription>
@@ -449,7 +455,7 @@ export function WorkspaceOverview({
 
 			<WorkspaceComparePanel workspace={workspace} rows={rows} />
 
-			{resourcesQuery.isError && (
+			{resourcesError && (
 				<Alert variant="destructive">
 					<AlertTitle>Failed to refresh workspace resources</AlertTitle>
 					<AlertDescription>

@@ -103,7 +103,7 @@ export function ExecTab({
 		);
 		return regularContainers.length > 0 ? regularContainers : containers;
 	}, [containers]);
-	const sessionsQuery = useQuery({
+	const { data: sessionsData, isFetching: sessionsFetching } = useQuery({
 		queryKey: queryKeys.podExecSessions(),
 		queryFn: () => listPodExecSessions(client),
 		enabled: active,
@@ -112,11 +112,11 @@ export function ExecTab({
 	const sessions = useMemo(
 		() =>
 			sortPodExecSessions(
-				(sessionsQuery.data ?? []).filter((session) =>
+				(sessionsData ?? []).filter((session) =>
 					isPodExecForResource(session, resource, kubeconfigEnvVar),
 				),
 			),
-		[resource, sessionsQuery.data, kubeconfigEnvVar],
+		[resource, sessionsData, kubeconfigEnvVar],
 	);
 	const command = commandForPreset(preset, customArgv);
 	const commandText = typeof command === "string" ? "" : podExecCommandText(command);
@@ -475,7 +475,7 @@ export function ExecTab({
 					<div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 						Active exec sessions
 					</div>
-					{sessionsQuery.isFetching && <Spinner className="size-3.5" />}
+					{sessionsFetching && <Spinner className="size-3.5" />}
 				</div>
 				{sessions.length === 0 ? (
 					<Empty className="min-h-32 border-0">

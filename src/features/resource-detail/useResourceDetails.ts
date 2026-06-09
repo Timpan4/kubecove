@@ -133,7 +133,12 @@ export function useResourceDetails({
 		],
 	);
 
-	const detailsQuery = useQuery({
+	const {
+		data: detailsData,
+		isLoading: detailsLoading,
+		isError: detailsIsError,
+		error: detailsError,
+	} = useQuery({
 		queryKey: detailsQueryKey,
 		queryFn: async () => {
 			const started = performance.now();
@@ -170,13 +175,18 @@ export function useResourceDetails({
 		retry: false,
 	});
 
-	const yamlQuery = useQuery({
+	const {
+		data: yamlData,
+		isLoading: yamlLoading,
+		isError: yamlIsError,
+		error: yamlError,
+	} = useQuery({
 		queryKey: yamlQueryKey,
 		queryFn: async () => {
 			const started = performance.now();
 			diagnosticLog("detail.yaml.fetch.start", { key: resourceKey });
 			const result = dynamicResourceKind
-				? detailsQuery.data?.yaml ??
+				? detailsData?.yaml ??
 					(
 						await getDynamicResourceDetails(
 							client,
@@ -210,7 +220,12 @@ export function useResourceDetails({
 		retry: false,
 	});
 
-	const eventsQuery = useQuery({
+	const {
+		data: eventsData,
+		isLoading: eventsLoading,
+		isError: eventsIsError,
+		error: eventsError,
+	} = useQuery({
 		queryKey: eventsQueryKey,
 		queryFn: async () => {
 			const started = performance.now();
@@ -379,8 +394,23 @@ export function useResourceDetails({
 		detailsEnabled,
 		yamlEnabled,
 		eventsEnabled,
-		detailsQuery,
-		yamlQuery,
-		eventsQuery,
+		detailsQuery: {
+			data: detailsData,
+			isLoading: detailsLoading,
+			isError: detailsIsError,
+			error: detailsError,
+		},
+		yamlQuery: {
+			data: yamlData,
+			isLoading: yamlLoading,
+			isError: yamlIsError,
+			error: yamlError,
+		},
+		eventsQuery: {
+			data: eventsData,
+			isLoading: eventsLoading,
+			isError: eventsIsError,
+			error: eventsError,
+		},
 	};
 }

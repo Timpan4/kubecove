@@ -144,7 +144,7 @@ export function WorkspacePortForwardsPage({
 		(state) => state.setAutoStartSavedPortForwards,
 	);
 	const savedPortForwards = workspace.portForwards ?? [];
-	const sessionsQuery = useQuery({
+	const { data: sessionsData, isFetching: sessionsFetching } = useQuery({
 		queryKey: queryKeys.portForwards(),
 		queryFn: () => listPortForwards(client),
 		placeholderData: (previousData) => previousData,
@@ -152,10 +152,10 @@ export function WorkspacePortForwardsPage({
 	});
 	const allSessions = useMemo(
 		() =>
-			sessionsQuery.data
-				? sortPortForwardSessions(sessionsQuery.data)
+			sessionsData
+				? sortPortForwardSessions(sessionsData)
 				: undefined,
-		[sessionsQuery.data],
+		[sessionsData],
 	);
 	const sessionsForActions = useMemo(
 		() =>
@@ -316,7 +316,7 @@ export function WorkspacePortForwardsPage({
 				<CardHeader>
 					<CardTitle className="inline-flex items-center gap-2">
 						Active sessions
-						{sessionsQuery.isFetching && (
+						{sessionsFetching && (
 							<Spinner className="size-3.5 text-muted-foreground" />
 						)}
 					</CardTitle>
