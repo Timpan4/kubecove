@@ -1,4 +1,4 @@
-import type { TauriClient } from "./tauri";
+import { kubeconfigArg, type TauriClient } from "./tauri";
 import type {
 	ArgoApplicationDetails,
 	ArgoApplicationSetDetails,
@@ -15,18 +15,6 @@ import type {
 	YamlEncoding,
 	YamlViewMode,
 } from "./types";
-
-function kubeconfigArg(kubeconfigEnvVar?: string): {
-	kubeconfigEnvVar?: string;
-} {
-	if (
-		kubeconfigEnvVar === undefined ||
-		kubeconfigEnvVar.startsWith("kubeconfigSource=")
-	) {
-		return {};
-	}
-	return { kubeconfigEnvVar };
-}
 
 export async function detectArgoCD(
 	client: TauriClient,

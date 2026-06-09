@@ -105,7 +105,7 @@ export function createMockTauriClient(
 	};
 }
 
-function kubeconfigArg(kubeconfigEnvVar?: string): {
+export function kubeconfigArg(kubeconfigEnvVar?: string): {
 	kubeconfigEnvVar?: string;
 } {
 	if (
