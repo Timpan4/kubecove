@@ -3,41 +3,89 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
-## 0.6.2 - 2026-06-09
-### Release
+## 0.6.3 - 2026-06-09
 
-- Prepared KubeCove beta release metadata.
-
-## 0.6.1 - 2026-06-08
 ### Added
 
-- allow YAML force-conflicts
+- Added a persisted resource map panel preference so workspaces remember the
+  table/map layout between sessions.
+- Added a collapsed rail state for the resource map surface so operators can
+  keep topology available without crowding the resource table.
 
 ### Fixed
 
-- release macOS asset checks
-- release tag identity
+- Fixed the React Doctor full-scan flag used by CI verification.
 
-## 0.6.0 - 2026-06-08
-### Added
+### Release
 
-- kubeconfig sources and release automation
+- Prepared KubeCove v0.6.3 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
+
+## 0.6.2 - 2026-06-09
 
 ### Improved
 
-- satisfy kubeconfig React checks
-- satisfy settings React check
-- satisfy live-session React checks
+- Hardened the resource workspace for large and busy scopes by splitting the
+  app shell, keeping resource views responsive, and tightening topology/table
+  state handling.
+- Enforced strict Rust Clippy linting across the backend verification baseline.
 
 ### Fixed
 
-- release PR token
-- live-session kubeconfig source build
-- live-session workspace cleanup
+- Fixed the React Doctor CI gate and shared kubeconfig Tauri helper paths used
+  by resource views.
 
 ### Release
 
-- KubeCove v0.6.0
+- Prepared KubeCove v0.6.2 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
+
+## 0.6.1 - 2026-06-08
+
+### Added
+
+- Added a guarded YAML apply force-conflicts option with global settings and a
+  selected-resource override for field ownership conflict retries.
+
+### Fixed
+
+- Fixed release tag identity handling in the tag workflow.
+- Fixed macOS release asset checks so release validation matches the published
+  artifact names.
+
+### Release
+
+- Prepared KubeCove v0.6.1 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
+
+## 0.6.0 - 2026-06-08
+
+### Added
+
+- Added kubeconfig source tracking so commands and live-session cleanup can
+  respond to workspace and kubeconfig scope changes.
+- Added release automation for preparing release PRs, tagging releases, yanking
+  releases, and generating release notes from the changelog.
+
+### Improved
+
+- Strengthened React checks around kubeconfig flows, settings, and live-session
+  helpers.
+- Added release tests and documentation for the beta release workflow.
+
+### Fixed
+
+- Fixed live-session workspace cleanup so port-forward and exec sessions outside
+  the active workspace or kubeconfig source scope are stopped consistently.
+- Fixed live-session kubeconfig source build issues and aligned related helper
+  typings and port-forward action expectations.
+- Fixed and then reverted the release PR token change after workflow behavior
+  proved unsafe for the release path.
+
+### Release
+
+- Prepared KubeCove v0.6.0 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
 
 ## 0.5.0 - 2026-06-08
 
