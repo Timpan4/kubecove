@@ -53,9 +53,10 @@ fn push_topology_list_warning<T>(
     warnings.push(format!(
         "Skipped {}{} in topology: {}",
         <T as k8s_openapi::Resource>::KIND,
-        namespace
-            .map(|namespace| format!(" in namespace {namespace}"))
-            .unwrap_or_else(|| " across namespaces".to_string()),
+        namespace.map_or_else(
+            || " across namespaces".to_string(),
+            |namespace| format!(" in namespace {namespace}"),
+        ),
         error
     ));
 }
