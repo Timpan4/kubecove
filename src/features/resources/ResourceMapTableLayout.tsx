@@ -1,7 +1,12 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Table as TanStackTable } from "@tanstack/react-table";
-import { GitBranch, Network, PanelRightClose, PanelRightOpen, Table2 } from "lucide-react";
+import {
+	GitBranch,
+	PanelRightClose,
+	PanelRightOpen,
+	Table2,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type {
@@ -56,6 +61,54 @@ interface ResourceMapTableLayoutProps {
 	};
 }
 
+function CollapsedRail({
+	icon,
+	label,
+	detail,
+	ariaLabel,
+	onOpen,
+}: {
+	icon: "map" | "table";
+	label: string;
+	detail?: string;
+	ariaLabel: string;
+	onOpen: () => void;
+}) {
+	const Icon = icon === "map" ? GitBranch : Table2;
+	return (
+		<aside className="flex h-full min-h-[400px] w-12 shrink-0 flex-col items-center overflow-hidden rounded-md border bg-card/60">
+			<div className="flex w-full justify-center border-b p-2">
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					className="size-7"
+					onClick={onOpen}
+					aria-label={ariaLabel}
+				>
+					<PanelRightOpen />
+				</Button>
+			</div>
+			<button
+				type="button"
+				className="flex min-h-0 flex-1 flex-col items-center gap-2 px-2 py-3 text-muted-foreground hover:text-foreground"
+				onClick={onOpen}
+				aria-label={ariaLabel}
+			>
+				<Icon className="size-4 shrink-0" />
+				<span className="[writing-mode:vertical-rl] text-xs font-semibold">
+					{label}
+				</span>
+				{detail ? (
+					<span className="[writing-mode:vertical-rl] text-[0.6875rem]">
+						{detail}
+					</span>
+				) : null}
+			</button>
+		</aside>
+	);
+}
+
 export function ResourceMapTableLayout({
 	topology,
 	topologyLoading,
@@ -87,94 +140,35 @@ export function ResourceMapTableLayout({
 	realtime,
 }: ResourceMapTableLayoutProps) {
 	const [tablePanelOpen, setTablePanelOpen] = useState(true);
-	useEffect(() => {
-		if (!mapPanelOpen) setTablePanelOpen(true);
-	}, [mapPanelOpen]);
-
-	const hasActiveSelection = hasDeferredTopologySelection;
+	const hasActiveSelection =
+		hasDeferredTopologySelection ||
+		Boolean(selectedResourceIdentityKey ?? selectedResourceKey);
 	const mapHeightClassName = "h-full min-h-0";
-	const contentGridClassName = mapPanelOpen && tablePanelOpen
-		? cn(
-				"grid min-h-0 min-w-0 flex-1 gap-3",
-				hasActiveSelection
-					? "grid-cols-1 grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)]"
-					: "xl:grid-cols-[minmax(420px,0.4fr)_minmax(620px,0.6fr)]",
-			)
-		: "grid min-h-0 min-w-0 flex-1 gap-3";
 	const tablePanelClassName = cn(
 		"flex h-full min-h-[400px] min-w-0 flex-col overflow-hidden rounded-md border bg-card/60",
 	);
+	const mapPanelClassName = "h-full min-h-[400px] min-w-0";
+	const contentGridClassName = cn(
+		"grid min-h-0 min-w-0 flex-1 gap-3",
+		mapPanelOpen && tablePanelOpen
+			? hasActiveSelection
+				? "grid-cols-1 grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)]"
+				: "xl:grid-cols-[minmax(420px,0.4fr)_minmax(620px,0.6fr)]"
+			: mapPanelOpen
+				? "grid-cols-[minmax(0,1fr)_3rem]"
+				: tablePanelOpen
+					? "grid-cols-[3rem_minmax(620px,1fr)]"
+					: "grid-cols-[3rem_3rem]",
+	);
 	const handleMapPanelToggle = () => {
-		const nextOpen = !mapPanelOpen;
-		onMapPanelOpenChange(nextOpen);
-		if (!nextOpen) setTablePanelOpen(true);
+		onMapPanelOpenChange(!mapPanelOpen);
 	};
 	const handleTablePanelToggle = () => {
-		if (!mapPanelOpen) return;
 		setTablePanelOpen((open) => !open);
 	};
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col gap-3">
-			<div className="flex items-center justify-between gap-2">
-				<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-					<span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-						<GitBranch data-icon="inline-start" />
-						Map
-					</span>
-				</div>
-				<div className="flex items-center gap-2">
-					<div className="inline-flex h-8 overflow-hidden rounded-md border bg-background p-0.5">
-						<Button
-							type="button"
-							variant={topologyMode === "ownership" ? "secondary" : "ghost"}
-							size="sm"
-							className="h-7 rounded-sm px-2 text-xs"
-							onClick={() => onTopologyModeChange("ownership")}
-							aria-pressed={topologyMode === "ownership"}
-						>
-							<GitBranch data-icon="inline-start" />
-							Ownership
-						</Button>
-						<Button
-							type="button"
-							variant={topologyMode === "networkFlow" ? "secondary" : "ghost"}
-							size="sm"
-							className="h-7 rounded-sm px-2 text-xs"
-							onClick={() => onTopologyModeChange("networkFlow")}
-							aria-pressed={topologyMode === "networkFlow"}
-						>
-							<Network data-icon="inline-start" />
-							Network Flow
-						</Button>
-					</div>
-					<Button
-						type="button"
-						variant={mapPanelOpen ? "secondary" : "outline"}
-						size="sm"
-						onClick={handleMapPanelToggle}
-						aria-pressed={mapPanelOpen}
-					>
-						<GitBranch data-icon="inline-start" />
-						Map
-					</Button>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={handleTablePanelToggle}
-						aria-pressed={tablePanelOpen}
-						disabled={!mapPanelOpen}
-					>
-						{tablePanelOpen ? (
-							<PanelRightClose data-icon="inline-start" />
-						) : (
-							<PanelRightOpen data-icon="inline-start" />
-						)}
-						{tablePanelOpen ? "Hide table" : "Show table"}
-					</Button>
-				</div>
-			</div>
 			<div className="flex items-center gap-2 text-xs text-muted-foreground">
 				<Badge variant={realtime.status === "error" ? "destructive" : "outline"}>
 					Realtime: {realtime.status}
@@ -182,8 +176,8 @@ export function ResourceMapTableLayout({
 				<span className="truncate">{realtime.error ?? realtime.message}</span>
 			</div>
 			<div className={contentGridClassName}>
-				{mapPanelOpen && (
-					<div className="h-full min-h-[400px] min-w-0">
+				{mapPanelOpen ? (
+					<div className={mapPanelClassName}>
 						<Suspense
 							fallback={
 								<div
@@ -203,12 +197,21 @@ export function ResourceMapTableLayout({
 								fitViewKey={topologyFitViewKey}
 								mode={topologyMode}
 								heightClassName={mapHeightClassName}
+								onModeChange={onTopologyModeChange}
+								onMapToggle={handleMapPanelToggle}
 								onNodeSelect={onTopologyNodeSelect}
 							/>
 						</Suspense>
 					</div>
+				) : (
+					<CollapsedRail
+						icon="map"
+						label="Map"
+						ariaLabel="Show ownership map"
+						onOpen={handleMapPanelToggle}
+					/>
 				)}
-				{tablePanelOpen && (
+				{tablePanelOpen ? (
 					<aside className={tablePanelClassName}>
 						<div className="flex items-center justify-between gap-2 border-b px-3 py-2">
 							<div className="min-w-0">
@@ -226,10 +229,9 @@ export function ResourceMapTableLayout({
 								size="icon"
 								className="size-7"
 								onClick={handleTablePanelToggle}
-								aria-label="Hide resource table"
-								disabled={!mapPanelOpen}
+								aria-label="Collapse resource table"
 							>
-								<PanelRightClose className="size-4" />
+								<PanelRightClose />
 							</Button>
 						</div>
 						<div className="min-h-0 flex-1 overflow-hidden">
@@ -256,6 +258,14 @@ export function ResourceMapTableLayout({
 							/>
 						</div>
 					</aside>
+				) : (
+					<CollapsedRail
+						icon="table"
+						label="Table"
+						detail={`${totalRows} rows`}
+						ariaLabel="Show resource table"
+						onOpen={handleTablePanelToggle}
+					/>
 				)}
 			</div>
 		</div>

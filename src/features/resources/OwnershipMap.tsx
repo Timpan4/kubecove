@@ -6,9 +6,15 @@ import {
 	type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { AlertTriangle, GitBranch, Network } from "lucide-react";
+import {
+	AlertTriangle,
+	GitBranch,
+	Network,
+	PanelLeftClose,
+} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
 	Empty,
 	EmptyDescription,
@@ -51,6 +57,8 @@ interface OwnershipMapProps {
 	fitViewKey: string;
 	mode: TopologyMode;
 	heightClassName?: string;
+	onModeChange: (mode: TopologyMode) => void;
+	onMapToggle: () => void;
 	onNodeSelect: (node: TopologyNode, resource: ResourceSummary | null) => void;
 }
 
@@ -66,6 +74,83 @@ function errorMessage(error: unknown): string {
 		return error.message;
 	}
 	return "Failed to load ownership map";
+}
+
+function OwnershipMapHeader({
+	mode,
+	nodeCount,
+	edgeCount,
+	warningCount,
+	onModeChange,
+	onMapToggle,
+}: {
+	mode: TopologyMode;
+	nodeCount?: number;
+	edgeCount?: number;
+	warningCount?: number;
+	onModeChange: (mode: TopologyMode) => void;
+	onMapToggle: () => void;
+}) {
+	const HeaderIcon = mode === "networkFlow" ? Network : GitBranch;
+	const title = mode === "networkFlow" ? "Network Flow" : "Ownership Map";
+	return (
+		<div className="flex items-center justify-between gap-2 px-3 py-2">
+			<div className="flex min-w-0 items-center gap-2">
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					className="size-7"
+					onClick={onMapToggle}
+					aria-label="Collapse ownership map"
+					aria-pressed={true}
+				>
+					<PanelLeftClose />
+				</Button>
+				<HeaderIcon className="size-4 text-primary" />
+				<div className="min-w-0">
+					<div className="text-xs font-semibold text-foreground">{title}</div>
+					{nodeCount !== undefined && edgeCount !== undefined ? (
+						<div className="text-[0.6875rem] text-muted-foreground">
+							{nodeCount} nodes · {edgeCount} edges
+						</div>
+					) : null}
+				</div>
+			</div>
+			<div className="flex shrink-0 items-center gap-2">
+				<div className="inline-flex h-8 overflow-hidden rounded-md border bg-background p-0.5">
+					<Button
+						type="button"
+						variant={mode === "ownership" ? "secondary" : "ghost"}
+						size="sm"
+						className="h-7 rounded-sm px-2 text-xs"
+						onClick={() => onModeChange("ownership")}
+						aria-pressed={mode === "ownership"}
+					>
+						<GitBranch data-icon="inline-start" />
+						Ownership
+					</Button>
+					<Button
+						type="button"
+						variant={mode === "networkFlow" ? "secondary" : "ghost"}
+						size="sm"
+						className="h-7 rounded-sm px-2 text-xs"
+						onClick={() => onModeChange("networkFlow")}
+						aria-pressed={mode === "networkFlow"}
+					>
+						<Network data-icon="inline-start" />
+						Network Flow
+					</Button>
+				</div>
+				{warningCount ? (
+					<Badge variant="outline" className="rounded-sm">
+						<AlertTriangle data-icon="inline-start" />
+						{warningCount}
+					</Badge>
+				) : null}
+			</div>
+		</div>
+	);
 }
 
 const WIDTH_FIT_PADDING = 0.24;
@@ -201,6 +286,8 @@ export function OwnershipMap({
 	fitViewKey,
 	mode,
 	heightClassName = "h-[620px]",
+	onModeChange,
+	onMapToggle,
 	onNodeSelect,
 }: OwnershipMapProps) {
 	const [expandedStandaloneKinds, setExpandedStandaloneKinds] = useState<Set<string>>(
@@ -294,13 +381,13 @@ export function OwnershipMap({
 	);
 
 	if (isLoading) {
-		const HeaderIcon = mode === "networkFlow" ? Network : GitBranch;
 		return (
 			<div className="flex h-full min-h-0 flex-col rounded-md border bg-card/60">
-				<div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
-					<HeaderIcon className="size-4" />
-					{mode === "networkFlow" ? "Network Flow" : "Ownership Map"}
-				</div>
+				<OwnershipMapHeader
+					mode={mode}
+					onModeChange={onModeChange}
+					onMapToggle={onMapToggle}
+				/>
 				<Separator />
 				<div className="grid min-h-0 flex-1 grid-cols-3 gap-10 p-8">
 					{Array.from({ length: 9 }).map((_, index) => (
@@ -313,59 +400,64 @@ export function OwnershipMap({
 
 	if (isError) {
 		return (
-			<Alert variant="destructive">
-				<AlertTitle>
-					{mode === "networkFlow"
-						? "Failed to load network flow"
-						: "Failed to load ownership map"}
-				</AlertTitle>
-				<AlertDescription>{errorMessage(error)}</AlertDescription>
-			</Alert>
+			<div className="flex h-full min-h-0 flex-col rounded-md border bg-card/60">
+				<OwnershipMapHeader
+					mode={mode}
+					onModeChange={onModeChange}
+					onMapToggle={onMapToggle}
+				/>
+				<Separator />
+				<div className="p-3">
+					<Alert variant="destructive">
+						<AlertTitle>
+							{mode === "networkFlow"
+								? "Failed to load network flow"
+								: "Failed to load ownership map"}
+						</AlertTitle>
+						<AlertDescription>{errorMessage(error)}</AlertDescription>
+					</Alert>
+				</div>
+			</div>
 		);
 	}
 
 	if (!topology || topology.nodes.length === 0 || !graph) {
 		return (
-			<Empty className="min-h-52 border">
-				<EmptyHeader>
-					<EmptyTitle>
-						{mode === "networkFlow" ? "No network flow" : "No ownership graph"}
-					</EmptyTitle>
-					<EmptyDescription>
-						{mode === "networkFlow"
-							? "No ingress, service, or pod traffic relationships were found in this scope."
-							: "No workload ownership relationships were found in this scope."}
-					</EmptyDescription>
-				</EmptyHeader>
-			</Empty>
+			<div className="flex h-full min-h-0 flex-col rounded-md border bg-card/60">
+				<OwnershipMapHeader
+					mode={mode}
+					nodeCount={topology?.nodes.length}
+					edgeCount={0}
+					onModeChange={onModeChange}
+					onMapToggle={onMapToggle}
+				/>
+				<Separator />
+				<Empty className="min-h-52 flex-1 border-0">
+					<EmptyHeader>
+						<EmptyTitle>
+							{mode === "networkFlow" ? "No network flow" : "No ownership graph"}
+						</EmptyTitle>
+						<EmptyDescription>
+							{mode === "networkFlow"
+								? "No ingress, service, or pod traffic relationships were found in this scope."
+								: "No workload ownership relationships were found in this scope."}
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
+			</div>
 		);
 	}
 
 	return (
 		<div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-card/60">
-			<div className="flex items-center justify-between gap-2 px-3 py-2">
-				<div className="flex min-w-0 items-center gap-2">
-					{mode === "networkFlow" ? (
-						<Network className="size-4 text-primary" />
-					) : (
-						<GitBranch className="size-4 text-primary" />
-					)}
-					<div className="min-w-0">
-						<div className="text-xs font-semibold text-foreground">
-							{mode === "networkFlow" ? "Network Flow" : "Ownership Map"}
-						</div>
-						<div className="text-[0.6875rem] text-muted-foreground">
-							{topology.nodes.length} nodes · {graph.edges.length} edges
-						</div>
-					</div>
-				</div>
-				{topology.warnings.length > 0 && (
-					<Badge variant="outline" className="rounded-sm">
-						<AlertTriangle data-icon="inline-start" />
-						{topology.warnings.length}
-					</Badge>
-				)}
-			</div>
+			<OwnershipMapHeader
+				mode={mode}
+				nodeCount={topology.nodes.length}
+				edgeCount={graph.edges.length}
+				warningCount={topology.warnings.length}
+				onModeChange={onModeChange}
+				onMapToggle={onMapToggle}
+			/>
 			<Separator />
 			<div
 				ref={setMapViewportRef}

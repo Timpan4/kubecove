@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	ArrowDown,
+	ArrowLeft,
 	ArrowUp,
 	Check,
 	Download,
@@ -158,10 +159,11 @@ function sourceDescription(sources: KubeconfigSourcesSummary | null): string {
 	return `${sources.sourceLabel}. Full file paths are shown only here.`;
 }
 
-export function SettingsPage() {
+export function SettingsPage({ onBack }: { onBack: () => void }) {
 	const {
 		showExactTimestamps,
 		showUsageFooter,
+		showOwnershipMapByDefault,
 		autoStartSavedPortForwards,
 		keepLiveSessionsOnWorkspaceSwitch,
 		allowYamlForceConflicts,
@@ -172,6 +174,7 @@ export function SettingsPage() {
 		showKubeconfigSourceLabels,
 		setShowExactTimestamps,
 		setShowUsageFooter,
+		setShowOwnershipMapByDefault,
 		setAutoStartSavedPortForwards,
 		setKeepLiveSessionsOnWorkspaceSwitch,
 		setAllowYamlForceConflicts,
@@ -248,7 +251,18 @@ export function SettingsPage() {
 
 	return (
 		<div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-			<header className="border-b pb-4">
+			<header className="flex items-center gap-3 border-b pb-4">
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					className="size-8"
+					aria-label="Back"
+					title="Back"
+					onClick={onBack}
+				>
+					<ArrowLeft />
+				</Button>
 				<h1 className="text-lg font-semibold text-foreground">Settings</h1>
 			</header>
 
@@ -271,6 +285,16 @@ export function SettingsPage() {
 						checked={showUsageFooter}
 						onCheckedChange={setShowUsageFooter}
 						ariaLabel="Show CPU and memory footer"
+					/>
+				</SettingsRow>
+				<SettingsRow
+					title="Show ownership map by default"
+					description="Opens the ownership map when entering resource views. When off, the map stays collapsed until opened."
+				>
+					<ToggleButton
+						checked={showOwnershipMapByDefault}
+						onCheckedChange={setShowOwnershipMapByDefault}
+						ariaLabel="Show ownership map by default"
 					/>
 				</SettingsRow>
 				<SettingsRow

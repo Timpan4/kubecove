@@ -118,7 +118,10 @@ function ResourceListComponent({
 		string | null
 	>(null);
 	const [topologyMode, setTopologyMode] = useState<TopologyMode>("ownership");
-	const [mapPanelOpen, setMapPanelOpen] = useState(true);
+	const showOwnershipMapByDefault = useSettingsState(
+		(state) => state.showOwnershipMapByDefault,
+	);
+	const [mapPanelOpen, setMapPanelOpen] = useState(showOwnershipMapByDefault);
 	const client = useMemo(() => createTauriClient(), []);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const renderCountRef = useRef(0);
@@ -240,8 +243,11 @@ function ResourceListComponent({
 		[data, metricsQuery.data],
 	);
 	const topologyWithMetrics = useMemo(
-		() => mergeTopologyMetrics(topologyQuery.data, metricsQuery.data),
-		[topologyQuery.data, metricsQuery.data],
+		() =>
+			mapPanelOpen
+				? mergeTopologyMetrics(topologyQuery.data, metricsQuery.data)
+				: undefined,
+		[mapPanelOpen, topologyQuery.data, metricsQuery.data],
 	);
 	const metricsAvailabilityMessage = describeMetricsAvailability(
 		metricsQuery.data?.availability,

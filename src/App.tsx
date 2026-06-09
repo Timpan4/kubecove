@@ -1,7 +1,7 @@
 import "./App.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useDashboardState } from "./lib/hooks";
+import { useDashboardState, type DashboardViewMode } from "./lib/hooks";
 import { SidebarTree } from "./components/SidebarTree";
 import { AppMainContent } from "./app/AppMainContent";
 import { AppTopBar } from "./app/AppTopBar";
@@ -117,6 +117,7 @@ function App() {
 	const autoStartedSavedPortForwardWorkspaceIdsRef = useRef<Set<string>>(
 		new Set(),
 	);
+	const settingsReturnViewModeRef = useRef<DashboardViewMode>("resources");
 	const savedPortForwardActions = useSavedPortForwardActions(activeWorkspace);
 	const appRenderCountRef = useRef(0);
 	appRenderCountRef.current += 1;
@@ -250,11 +251,16 @@ function App() {
 	};
 
 	const handleOpenSettings = () => {
+		if (viewMode !== "settings") {
+			settingsReturnViewModeRef.current = viewMode;
+		}
 		setViewMode("settings");
-		setSelectedResource(null);
-		setSelectedArgoApp(null);
-		setSelectedHelmRelease(null);
-		setResourceInitialSearch("");
+	};
+
+	const handleBackFromSettings = () => {
+		setViewMode(
+			activeWorkspace ? settingsReturnViewModeRef.current : "resources",
+		);
 	};
 
 	const handleOpenPortForwards = () => {
@@ -591,6 +597,7 @@ function App() {
 				onClusterChange={handleClusterChange}
 				onOpenLauncher={handleOpenLauncher}
 				onOpenSettings={handleOpenSettings}
+				onBackFromSettings={handleBackFromSettings}
 				onOpenWorkspace={applyWorkspace}
 			/>
 		);
@@ -612,6 +619,7 @@ function App() {
 			onOpenIncidents={handleOpenIncidents}
 			onOpenPortForwards={handleOpenPortForwards}
 			onOpenLauncher={handleOpenLauncher}
+			onBackFromSettings={handleBackFromSettings}
 			clusterContext={clusterContext}
 			selectedArgoApp={selectedArgoApp}
 			onArgoItemSelect={handleArgoAppSelect}
