@@ -305,43 +305,45 @@
 
   .resource-topology-node-connected {
     --topology-node-border: color-mix(in oklch, var(--primary) 62%, var(--border));
-    animation: topology-node-connected-glow 3.2s ease-in-out infinite;
+    position: relative;
   }
 
   .resource-topology-node-selected {
     --topology-node-border: var(--primary);
-    animation: topology-node-selected-glow 2.6s ease-in-out infinite;
+    position: relative;
+  }
+
+  /* Selection glow uses a finite transition, never an infinite animation: any
+     continuously-running animation inside the node card subtree (filter,
+     box-shadow, even opacity on an empty pseudo-element) makes WKWebView
+     rasterize the card content blank inside React Flow's scaled pane.
+     Verified on macOS; WebView2/Chromium is unaffected. */
+  .resource-topology-node {
+    position: relative;
+  }
+
+  .resource-topology-node::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    box-shadow: 0 0 10px color-mix(in oklch, var(--primary) 54%, transparent);
+    transition: opacity 360ms ease;
+  }
+
+  .resource-topology-node-connected::after {
+    opacity: 1;
+    box-shadow: 0 0 7px color-mix(in oklch, var(--primary) 32%, transparent);
+  }
+
+  .resource-topology-node-selected::after {
+    opacity: 1;
   }
 
 }
 
-@keyframes topology-edge-flow {
-  to {
-    stroke-dashoffset: -28;
-  }
-}
-
-@keyframes topology-node-selected-glow {
-  0%,
-  100% {
-    filter: drop-shadow(0 0 0 color-mix(in oklch, var(--primary) 0%, transparent));
-  }
-
-  50% {
-    filter: drop-shadow(0 0 10px color-mix(in oklch, var(--primary) 54%, transparent));
-  }
-}
-
-@keyframes topology-node-connected-glow {
-  0%,
-  100% {
-    filter: drop-shadow(0 0 0 color-mix(in oklch, var(--primary) 0%, transparent));
-  }
-
-  50% {
-    filter: drop-shadow(0 0 7px color-mix(in oklch, var(--primary) 32%, transparent));
-  }
-}
 
 .ownership-map-flow .react-flow__controls {
   overflow: hidden;
@@ -384,9 +386,28 @@
   stroke: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
 }
 
+/* Edge dash-flow lives in React Flow's SVG layer, outside the node card
+   subtrees, so it does not trigger the WKWebView blank-card bug above. */
 .ownership-map-flow .ownership-map-edge-active .react-flow__edge-path {
   stroke-dasharray: 8 8;
   animation: topology-edge-flow 1.8s linear infinite;
+}
+
+@keyframes topology-edge-flow {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ownership-map-flow .ownership-map-edge-active .react-flow__edge-path,
+  .ownership-map-flow .react-flow__edge.animated path {
+    animation: none;
+  }
+
+  .resource-topology-node::after {
+    transition: none;
+  }
 }
 
 .ownership-map-flow .ownership-map-edge-active .react-flow__edge-path,
@@ -396,11 +417,3 @@
     opacity 160ms ease;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .resource-topology-node-connected,
-  .resource-topology-node-selected,
-  .ownership-map-flow .ownership-map-edge-active .react-flow__edge-path,
-  .ownership-map-flow .react-flow__edge.animated path {
-    animation: none;
-  }
-}
