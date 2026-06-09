@@ -3,6 +3,38 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.6.4 - 2026-06-09
+
+### Improved
+
+- Reused Kubernetes API clients across backend commands per kubeconfig source
+  and cluster context, removing repeated kubeconfig reads, TLS setup, and cold
+  connections from every resource, metrics, and session call. On-disk
+  kubeconfig changes (for example cloud CLI credential refresh) still
+  invalidate the cached client automatically.
+- Kept the previous resource table, topology map, and metrics visible while a
+  changed namespace or kind scope loads, instead of flashing a loading
+  skeleton on every scope switch.
+
+### Fixed
+
+- Fixed ownership map node cards rendering blank (missing kind, health,
+  metrics, and age badges) while a node was selected on macOS and Linux
+  WebKit webviews. The selection glow now fades in via a finite transition
+  instead of an infinite animation that WebKit rasterized blank.
+- Fixed React Doctor frontend errors across live session, resource detail,
+  workspace, and resource list views.
+- Fixed Rust lint verification on macOS and Linux hosts by marking the
+  Windows-only WebView2 detection helpers as compiled-everywhere shared-test
+  code instead of platform-dead code.
+
+### Release
+
+- Prepared KubeCove v0.6.4 beta release metadata across the frontend,
+  Tauri, and Rust package manifests.
+- Documented cross-platform rules in the agent guide: release targets,
+  webview engines per platform, and CSS animation constraints for WebKit.
+
 ## 0.6.3 - 2026-06-09
 
 ### Added
