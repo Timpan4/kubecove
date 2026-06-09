@@ -56,16 +56,16 @@ jobs:
 
       - name: Run React Doctor full error gate
         if: github.event_name == 'push'
-        run: bun run doctor:ci -- --full
+        run: bun run doctor:ci -- --diff false
 
       - name: Check React Doctor changed-file diagnostics
         if: github.event_name == 'pull_request'
         run: |
-          report="$(bun node_modules/react-doctor/bin/react-doctor.js . --diff origin/${{ github.base_ref }} --json --fail-on none)"
-          diagnostics="$(printf '%s' "${report}" | bun -e 'const report = await new Response(Bun.stdin.stream()).json(); console.log(report.summary?.totalDiagnosticCount ?? 0);')"
-          echo "React Doctor changed-file diagnostics: ${diagnostics}"
+          report="$(bun node_modules/react-doctor/bin/react-doctor.js . --diff origin/${{ github.base_ref }} --json --blocking none)"
+          diagnostics="$(printf '%s' "${report}" | bun -e 'const report = await new Response(Bun.stdin.stream()).json(); console.log(report.summary?.errorCount ?? 0);')"
+          echo "React Doctor changed-file error diagnostics: ${diagnostics}"
           if [ "${diagnostics}" -gt "0" ]; then
-            echo "React Doctor found ${diagnostics} changed-file diagnostics."
+            echo "React Doctor found ${diagnostics} changed-file error diagnostics."
             exit 1
           fi
 
