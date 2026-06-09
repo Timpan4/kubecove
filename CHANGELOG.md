@@ -3,6 +3,12 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.6.4 - 2026-06-09
+### Fixed
+
+- stop WebKit blanking topology cards on selection (#133)
+- React Doctor frontend errors (#122)
+
 ## 0.6.3 - 2026-06-09
 
 ### Added
