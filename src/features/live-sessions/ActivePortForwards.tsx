@@ -62,37 +62,45 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 			onSuccess: () => setReconnectError(null),
 			onError: (error) => setReconnectError(portForwardErrorMessage(error)),
 		});
-	const sessionsQuery = useQuery({
+	const {
+		data: portForwardSessionsData,
+		isLoading: portForwardSessionsLoading,
+		isFetching: portForwardSessionsFetching,
+	} = useQuery({
 		queryKey: queryKeys.portForwards(),
 		queryFn: () => listPortForwards(client),
 		placeholderData: (previousData) => previousData,
 		refetchInterval: 3_000,
 	});
-	const execSessionsQuery = useQuery({
+	const {
+		data: execSessionsData,
+		isLoading: execSessionsLoading,
+		isFetching: execSessionsFetching,
+	} = useQuery({
 		queryKey: queryKeys.podExecSessions(),
 		queryFn: () => listPodExecSessions(client),
 		placeholderData: (previousData) => previousData,
 		refetchInterval: 3_000,
 	});
 	const sessions = useMemo(
-		() => sortPortForwardSessions(sessionsQuery.data ?? []),
-		[sessionsQuery.data],
+		() => sortPortForwardSessions(portForwardSessionsData ?? []),
+		[portForwardSessionsData],
 	);
 	const execSessions = useMemo(
 		() =>
-			(execSessionsQuery.data ?? []).toSorted((a, b) =>
+			(execSessionsData ?? []).toSorted((a, b) =>
 				`${a.clusterContext}:${a.namespace}:${a.podName}:${a.startedAt}`.localeCompare(
 					`${b.clusterContext}:${b.namespace}:${b.podName}:${b.startedAt}`,
 				),
 			),
-		[execSessionsQuery.data],
+		[execSessionsData],
 	);
 	const sessionCount = sessions.length + execSessions.length;
 
 	if (
 		sessionCount === 0 &&
-		!sessionsQuery.isLoading &&
-		!execSessionsQuery.isLoading
+		!portForwardSessionsLoading &&
+		!execSessionsLoading
 	) {
 		return null;
 	}
@@ -152,7 +160,7 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 								Active port-forwards and Pod exec sessions
 							</div>
 						</div>
-						{(sessionsQuery.isFetching || execSessionsQuery.isFetching) && (
+						{(portForwardSessionsFetching || execSessionsFetching) && (
 							<Spinner className="size-3.5" />
 						)}
 					</div>

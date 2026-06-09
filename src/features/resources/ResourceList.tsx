@@ -129,6 +129,33 @@ function ResourceListComponent({
 
 	const namespaceKey = selectedNamespaces.join(",");
 	const kindKey = selectedKinds.map(resourceKindFetchKey).join(",");
+	const scopeStateKey = `${clusterContext}|${namespaceKey}|${kindKey}|${selectedArgoAppFilter}|${healthFilter}`;
+	const [prevScopeStateKey, setPrevScopeStateKey] = useState(scopeStateKey);
+	const resetStateKey = `${clusterContext}|${namespaceKey}|${kindKey}|${initialHealthFilter}`;
+	const [prevResetStateKey, setPrevResetStateKey] = useState(resetStateKey);
+	const [prevInitialHealthFilter, setPrevInitialHealthFilter] =
+		useState(initialHealthFilter);
+	const [prevInitialSearch, setPrevInitialSearch] = useState(initialSearch);
+
+	if (prevResetStateKey !== resetStateKey) {
+		setPrevResetStateKey(resetStateKey);
+		setCollapsedGroups(new Set());
+		setHealthFilter(initialHealthFilter);
+	}
+	if (prevScopeStateKey !== scopeStateKey) {
+		setPrevScopeStateKey(scopeStateKey);
+		setPageIndex(0);
+	}
+	if (prevInitialHealthFilter !== initialHealthFilter) {
+		setPrevInitialHealthFilter(initialHealthFilter);
+		setHealthFilter(initialHealthFilter);
+		setPageIndex(0);
+	}
+	if (prevInitialSearch !== initialSearch) {
+		setPrevInitialSearch(initialSearch);
+		setSearch(initialSearch);
+		setPageIndex(0);
+	}
 	const topologyNamespaceKey = useMemo(
 		() =>
 			Array.from(new Set(selectedNamespaces))
@@ -163,32 +190,18 @@ function ResourceListComponent({
 		[topologyQueryKey],
 	);
 
-	useEffect(() => {
-		setPageIndex(0);
-	}, [clusterContext, namespaceKey, kindKey, selectedArgoAppFilter, healthFilter]);
-
-	useEffect(() => {
-		setHealthFilter(initialHealthFilter);
-		setPageIndex(0);
-	}, [initialHealthFilter]);
-
-	useEffect(() => {
-		setSearch(initialSearch);
-		setPageIndex(0);
-	}, [initialSearch]);
-
-	useEffect(() => {
-		setCollapsedGroups(new Set());
-		setHealthFilter(initialHealthFilter);
-	}, [clusterContext, namespaceKey, kindKey, initialHealthFilter]);
-
 	const { data, isPending, isError, error } = useQuery({
 		queryKey,
 		queryFn: () => fetchResourcePage(clusterContext, fetchKeys, kubeconfigEnvVar),
 		enabled: fetchKeys.length > 0,
 		staleTime: 30_000,
 	});
-	const topologyQuery = useQuery({
+	const {
+		data: topologyData,
+		isPending: topologyPending,
+		isError: topologyError,
+		error: topologyErr,
+	} = useQuery({
 		queryKey: topologyQueryKey,
 		queryFn: () =>
 			listResourceTopology(
@@ -201,7 +214,7 @@ function ResourceListComponent({
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		staleTime: 30_000,
 	});
-	const metricsQuery = useQuery({
+	const { data: metricsData, isError: metricsError } = useQuery({
 		queryKey: queryKeys.resourceMetrics(
 			clusterContext,
 			topologyNamespaces,
@@ -239,18 +252,18 @@ function ResourceListComponent({
 	});
 
 	const dataWithMetrics = useMemo(
-		() => mergeResourceMetrics(data ?? [], metricsQuery.data),
-		[data, metricsQuery.data],
+		() => mergeResourceMetrics(data ?? [], metricsData),
+		[data, metricsData],
 	);
 	const topologyWithMetrics = useMemo(
 		() =>
 			mapPanelOpen
-				? mergeTopologyMetrics(topologyQuery.data, metricsQuery.data)
+				? mergeTopologyMetrics(topologyData, metricsData)
 				: undefined,
-		[mapPanelOpen, topologyQuery.data, metricsQuery.data],
+		[mapPanelOpen, topologyData, metricsData],
 	);
 	const metricsAvailabilityMessage = describeMetricsAvailability(
-		metricsQuery.data?.availability,
+		metricsData?.availability,
 	);
 	const argoApps = useMemo(() => uniqueArgoApps(dataWithMetrics), [dataWithMetrics]);
 	const resourceSearchIndex = useMemo(
@@ -429,6 +442,12 @@ function ResourceListComponent({
 	const syncedTopologyNodeId = useMemo(() => {
 		const topologyNodes = topologyWithMetrics?.nodes;
 		if (!topologyNodes) return selectedTopologyNodeId;
+		if (
+			selectedTopologyNodeId &&
+			!topologyNodes.some((node) => node.id === selectedTopologyNodeId)
+		) {
+			return null;
+		}
 		const selectedFromTable =
 			topologyNodes.find(
 				(node) => resourceSelectionKey(node.summary) === activeSelectedResourceKey,
@@ -445,13 +464,6 @@ function ResourceListComponent({
 		topologyWithMetrics,
 	]);
 	const deferredSyncedTopologyNodeId = useDeferredValue(syncedTopologyNodeId);
-	useEffect(() => {
-		if (!selectedTopologyNodeId || !topologyWithMetrics) return;
-		if (topologyWithMetrics.nodes.some((node) => node.id === selectedTopologyNodeId)) {
-			return;
-		}
-		setSelectedTopologyNodeId(null);
-	}, [selectedTopologyNodeId, topologyWithMetrics]);
 	const handleResourceSelect = (resource: ResourceSummary) => {
 		setSelectedTopologyNodeId(null);
 		setSelectedResourceKey(resourceSelectionKey(resource));
@@ -535,11 +547,11 @@ function ResourceListComponent({
 				activeFilter={healthFilter}
 				onFilterChange={setHealthFilter}
 			/>
-			{(metricsAvailabilityMessage || metricsQuery.isError) && (
+			{(metricsAvailabilityMessage || metricsError) && (
 				<Alert variant="default" className="py-2">
 					<AlertTitle className="text-xs">Resource metrics</AlertTitle>
 					<AlertDescription className="text-xs">
-						{metricsQuery.isError
+						{metricsError
 							? "metrics API unavailable"
 							: metricsAvailabilityMessage}
 					</AlertDescription>
@@ -566,9 +578,9 @@ function ResourceListComponent({
 			/>
 			<ResourceMapTableLayout
 				topology={topologyWithMetrics}
-				topologyLoading={topologyQuery.isPending}
-				topologyError={topologyQuery.isError}
-				topologyErr={topologyQuery.error}
+				topologyLoading={topologyPending}
+				topologyError={topologyError}
+				topologyErr={topologyErr}
 				selectedTopologyNodeId={deferredSyncedTopologyNodeId}
 				hasDeferredTopologySelection={Boolean(deferredSyncedTopologyNodeId)}
 				topologyFitViewKey={topologyFitViewKey}

@@ -107,7 +107,7 @@ export function PortForwardTab({
 	const [starting, setStarting] = useState(false);
 	const [stoppingId, setStoppingId] = useState<string | null>(null);
 	const [copyingId, setCopyingId] = useState<string | null>(null);
-	const sessionsQuery = useQuery({
+	const { data: sessionsData, isFetching: sessionsFetching } = useQuery({
 		queryKey: queryKeys.portForwards(),
 		queryFn: () => listPortForwards(client),
 		enabled: active,
@@ -116,11 +116,11 @@ export function PortForwardTab({
 	const sessions = useMemo(
 		() =>
 			sortPortForwardSessions(
-				(sessionsQuery.data ?? []).filter((session) =>
+				(sessionsData ?? []).filter((session) =>
 					isPortForwardForResource(session, resource, kubeconfigEnvVar),
 				),
 			),
-		[resource, sessionsQuery.data, kubeconfigEnvVar],
+		[resource, sessionsData, kubeconfigEnvVar],
 	);
 	const servicePortOptions = useMemo(
 		() =>
@@ -400,7 +400,7 @@ export function PortForwardTab({
 					<div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 						Active sessions
 					</div>
-					{sessionsQuery.isFetching && <Spinner className="size-3.5" />}
+					{sessionsFetching && <Spinner className="size-3.5" />}
 				</div>
 				{sessions.length === 0 ? (
 					<Empty className="min-h-40 border-0">

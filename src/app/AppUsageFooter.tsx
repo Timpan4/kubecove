@@ -110,10 +110,6 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 		};
 	}, [client, visible]);
 
-	useEffect(() => {
-		if (!visible || error || !metrics) setProcessTreeOpen(false);
-	}, [error, metrics, visible]);
-
 	if (!visible) return null;
 
 	const content = error ? (
@@ -133,7 +129,10 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 	return (
 		<footer className="flex h-7 shrink-0 items-center justify-end gap-2 border-t bg-sidebar px-4 text-[0.6875rem] text-muted-foreground">
 			{metrics && !error ? (
-				<Popover open={processTreeOpen} onOpenChange={setProcessTreeOpen}>
+				<Popover
+					open={processTreeOpen}
+					onOpenChange={(open) => setProcessTreeOpen(open)}
+				>
 					<PopoverTrigger asChild>
 						<Button
 							type="button"

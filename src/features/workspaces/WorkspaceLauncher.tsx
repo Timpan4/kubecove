@@ -64,24 +64,33 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 	const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 
-	const contextsQuery = useQuery({
+	const {
+		data: contextsData,
+		isPending: contextsPending,
+		isError: contextsError,
+	} = useQuery({
 		queryKey: queryKeys.kubeContexts(kubeconfigEnvVar),
 		queryFn: () => listKubeContexts(createTauriClient(), kubeconfigEnvVar),
 	});
-	const contexts = contextsQuery.data ?? [];
+	const contexts = contextsData ?? [];
 	const effectiveContext =
 		selectedContext ||
 		contexts.find((context) => context.isCurrent)?.name ||
 		contexts[0]?.name ||
 		"";
 
-	const namespacesQuery = useQuery({
+	const {
+		data: namespacesData,
+		isPending: namespacesPending,
+		isError: namespacesError,
+		refetch: refetchNamespaces,
+	} = useQuery({
 		queryKey: queryKeys.namespaces(effectiveContext, kubeconfigEnvVar),
 		queryFn: () =>
 			listNamespaces(createTauriClient(), effectiveContext, kubeconfigEnvVar),
 		enabled: effectiveContext.length > 0,
 	});
-	const namespaces = namespacesQuery.data ?? [];
+	const namespaces = namespacesData ?? [];
 	const selectedClusterContexts = useMemo(
 		() =>
 			Array.from(
@@ -196,14 +205,14 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 							</span>
 						</div>
 						<div className="grid gap-2">
-							{contextsQuery.isPending && (
+							{contextsPending && (
 								<Card size="sm">
 									<CardContent className="text-xs text-muted-foreground">
 											Loading contexts…
 									</CardContent>
 								</Card>
 							)}
-							{contextsQuery.isError && (
+							{contextsError && (
 								<Alert variant="destructive">
 									<AlertTitle>Failed to load contexts</AlertTitle>
 									<AlertDescription>
@@ -211,7 +220,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 									</AlertDescription>
 								</Alert>
 							)}
-							{sortedWorkspaces.length === 0 && !contextsQuery.isPending && (
+							{sortedWorkspaces.length === 0 && !contextsPending && (
 								<Empty className="min-h-40 border">
 									<EmptyHeader>
 										<EmptyTitle>No saved workspaces</EmptyTitle>
@@ -359,12 +368,12 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 									</FieldLegend>
 								<ScrollArea className="h-52 rounded-md border bg-background/40">
 									<div className="p-1">
-									{namespacesQuery.isPending && effectiveContext && (
+									{namespacesPending && effectiveContext && (
 										<div className="px-2 py-1.5 text-xs text-muted-foreground">
 												Loading namespaces…
 										</div>
 									)}
-									{namespacesQuery.isError && (
+									{namespacesError && (
 										<div className="grid gap-2 px-2 py-1.5 text-xs text-destructive">
 											<span>
 												Failed to load namespaces. You can still save an all-namespace workspace.
@@ -374,20 +383,20 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 												variant="outline"
 												size="sm"
 												className="w-fit"
-												onClick={() => namespacesQuery.refetch()}
+												onClick={() => refetchNamespaces()}
 											>
 												Retry
 											</Button>
 										</div>
 									)}
-									{!namespacesQuery.isPending &&
-										!namespacesQuery.isError &&
+									{!namespacesPending &&
+										!namespacesError &&
 										namespaces.length === 0 && (
 										<div className="px-2 py-1.5 text-xs text-muted-foreground">
 											All namespaces
 										</div>
 									)}
-									{!namespacesQuery.isError && namespaces.map((namespace) => {
+									{!namespacesError && namespaces.map((namespace) => {
 										const checkboxId = `workspace-namespace-${namespace.name}`;
 										return (
 											<Field
