@@ -12,6 +12,7 @@ export function LauncherShell({
 	onClusterChange,
 	onOpenLauncher,
 	onOpenSettings,
+	onBackFromSettings,
 	onOpenWorkspace,
 }: {
 	clusterContext: string;
@@ -20,6 +21,7 @@ export function LauncherShell({
 	onClusterChange: (cluster: string) => void;
 	onOpenLauncher: () => void;
 	onOpenSettings: () => void;
+	onBackFromSettings: () => void;
 	onOpenWorkspace: (workspace: SavedWorkspace) => void;
 }) {
 	return (
@@ -37,7 +39,7 @@ export function LauncherShell({
 				{viewMode === "settings" ? (
 					<div className="h-full overflow-y-auto overflow-x-hidden p-4 md:px-6">
 						<Suspense fallback={<ViewLoadingFallback label="Loading settings..." />}>
-							<SettingsPage />
+							<SettingsPage onBack={onBackFromSettings} />
 						</Suspense>
 					</div>
 				) : (

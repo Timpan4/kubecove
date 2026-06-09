@@ -35,6 +35,7 @@ interface AppMainContentProps {
 	onOpenIncidents: () => void;
 	onOpenPortForwards: () => void;
 	onOpenLauncher: () => void;
+	onBackFromSettings: () => void;
 	clusterContext: string;
 	selectedArgoApp: ArgoSelectedItem;
 	onArgoItemSelect: (app: NonNullable<ArgoSelectedItem>) => void;
@@ -71,6 +72,7 @@ export function AppMainContent({
 	onOpenIncidents,
 	onOpenPortForwards,
 	onOpenLauncher,
+	onBackFromSettings,
 	clusterContext,
 	selectedArgoApp,
 	onArgoItemSelect,
@@ -133,7 +135,7 @@ export function AppMainContent({
 			) : viewMode === "settings" ? (
 				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
 					<Suspense fallback={<ViewLoadingFallback label="Loading settings..." />}>
-						<SettingsPage />
+						<SettingsPage onBack={onBackFromSettings} />
 					</Suspense>
 				</div>
 			) : viewMode === "argo" ? (

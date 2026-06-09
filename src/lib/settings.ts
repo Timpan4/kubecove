@@ -13,6 +13,7 @@ const DEFAULT_KUBECONFIG_SOURCE_KEY = "kubeconfigSource=default";
 interface SettingsState {
 	showExactTimestamps: boolean;
 	showUsageFooter: boolean;
+	showOwnershipMapByDefault: boolean;
 	autoStartSavedPortForwards: boolean;
 	keepLiveSessionsOnWorkspaceSwitch: boolean;
 	allowYamlForceConflicts: boolean;
@@ -25,6 +26,7 @@ interface SettingsState {
 	showKubeconfigSourceLabels: boolean;
 	setShowExactTimestamps: (show: boolean) => void;
 	setShowUsageFooter: (show: boolean) => void;
+	setShowOwnershipMapByDefault: (show: boolean) => void;
 	setAutoStartSavedPortForwards: (autoStart: boolean) => void;
 	setKeepLiveSessionsOnWorkspaceSwitch: (keep: boolean) => void;
 	setAllowYamlForceConflicts: (allow: boolean) => void;
@@ -51,6 +53,7 @@ export const useSettingsState = create<SettingsState>()(
 		(set) => ({
 			showExactTimestamps: false,
 			showUsageFooter: false,
+			showOwnershipMapByDefault: true,
 			autoStartSavedPortForwards: false,
 			keepLiveSessionsOnWorkspaceSwitch: false,
 			allowYamlForceConflicts: true,
@@ -64,6 +67,8 @@ export const useSettingsState = create<SettingsState>()(
 			setShowExactTimestamps: (show: boolean) =>
 				set({ showExactTimestamps: show }),
 			setShowUsageFooter: (show: boolean) => set({ showUsageFooter: show }),
+			setShowOwnershipMapByDefault: (show: boolean) =>
+				set({ showOwnershipMapByDefault: show }),
 			setAutoStartSavedPortForwards: (autoStart: boolean) =>
 				set({ autoStartSavedPortForwards: autoStart }),
 			setKeepLiveSessionsOnWorkspaceSwitch: (keep: boolean) =>
@@ -100,6 +105,9 @@ export const useSettingsState = create<SettingsState>()(
 					showExactTimestamps:
 						saved.showExactTimestamps ?? current.showExactTimestamps,
 					showUsageFooter: saved.showUsageFooter ?? current.showUsageFooter,
+					showOwnershipMapByDefault:
+						saved.showOwnershipMapByDefault ??
+						current.showOwnershipMapByDefault,
 					autoStartSavedPortForwards:
 						saved.autoStartSavedPortForwards ??
 						current.autoStartSavedPortForwards,
@@ -120,6 +128,7 @@ export const useSettingsState = create<SettingsState>()(
 			partialize: (state) => ({
 				showExactTimestamps: state.showExactTimestamps,
 				showUsageFooter: state.showUsageFooter,
+				showOwnershipMapByDefault: state.showOwnershipMapByDefault,
 				autoStartSavedPortForwards: state.autoStartSavedPortForwards,
 				keepLiveSessionsOnWorkspaceSwitch:
 					state.keepLiveSessionsOnWorkspaceSwitch,

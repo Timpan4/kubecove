@@ -13,6 +13,10 @@ describe("resource view safeguards", () => {
 			"src/features/resources/ResourceMapTableLayout.tsx",
 			"utf8",
 		);
+		const ownershipMapSource = readFileSync(
+			"src/features/resources/OwnershipMap.tsx",
+			"utf8",
+		);
 
 		expect(lazyViewsSource).toContain("lazy(() =>");
 		expect(lazyViewsSource).toContain(
@@ -31,9 +35,12 @@ describe("resource view safeguards", () => {
 		expect(layoutSource).toContain("mapPanelOpen");
 		expect(layoutSource).toContain("LazyOwnershipMap");
 		expect(layoutSource).toContain('import("./OwnershipMap")');
-		expect(layoutSource).toContain("aria-pressed={mapPanelOpen}");
-		expect(layoutSource).toContain("disabled={!mapPanelOpen}");
+		expect(ownershipMapSource).toContain("aria-pressed={true}");
+		expect(ownershipMapSource).toContain("onClick={onMapToggle}");
 		expect(layoutSource).toContain("hasActiveSelection");
+		expect(layoutSource).toContain(
+			"Boolean(selectedResourceIdentityKey ?? selectedResourceKey)",
+		);
 		expect(layoutSource).toContain("mapHeightClassName");
 		expect(appSource).toContain("selectedResource={selectedResource}");
 		expect(listSource).toContain("activeSelectedResourceKey");
@@ -45,7 +52,7 @@ describe("resource view safeguards", () => {
 		);
 		expect(layoutSource).toContain('mapHeightClassName = "h-full min-h-0"');
 		expect(layoutSource).toContain("min-h-[400px]");
-		expect(layoutSource).toContain("Hide table");
+		expect(layoutSource).toContain("Collapse resource table");
 		expect(listSource).not.toContain('resourceView === "map"');
 		expect(listSource).not.toContain('resourceView === "table"');
 	});
