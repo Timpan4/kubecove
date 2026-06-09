@@ -6,7 +6,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
 	getCoreRowModel,
 	useReactTable,
@@ -195,6 +195,7 @@ function ResourceListComponent({
 		queryFn: () => fetchResourcePage(clusterContext, fetchKeys, kubeconfigEnvVar),
 		enabled: fetchKeys.length > 0,
 		staleTime: 30_000,
+		placeholderData: keepPreviousData,
 	});
 	const {
 		data: topologyData,
@@ -213,6 +214,7 @@ function ResourceListComponent({
 			),
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		staleTime: 30_000,
+		placeholderData: keepPreviousData,
 	});
 	const { data: metricsData, isError: metricsError } = useQuery({
 		queryKey: queryKeys.resourceMetrics(
@@ -225,6 +227,7 @@ function ResourceListComponent({
 		enabled: Boolean(clusterContext),
 		retry: false,
 		staleTime: 30_000,
+		placeholderData: keepPreviousData,
 	});
 	const tableWatchKeys = useMemo(
 		() => watchKeysFromFetchKeys(fetchKeys),
