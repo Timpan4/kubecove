@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -147,44 +147,67 @@ export function GitOpsOverview({
 	);
 	const [selectedFilter, setSelectedFilter] =
 		useState<GitOpsOverviewFilterKey | null>(null);
-	const [userSelectedFilter, setUserSelectedFilter] = useState(false);
 
-	const argoDetection = useQuery({
+	const {
+		data: argoDetection,
+		isPending: argoDetectionIsPending,
+		isError: argoDetectionIsError,
+		error: argoDetectionError,
+		isSuccess: argoDetectionIsSuccess,
+	} = useQuery({
 		queryKey: queryKeys.argoDetect(clusterContext, kubeconfigEnvVar),
 		queryFn: () => detectArgoCD(client, clusterContext, kubeconfigEnvVar),
 		enabled: !!clusterContext,
 		staleTime: 60_000,
 	});
-	const fluxDetection = useQuery({
+	const {
+		data: fluxDetection,
+		isPending: fluxDetectionIsPending,
+		isError: fluxDetectionIsError,
+		error: fluxDetectionError,
+		isSuccess: fluxDetectionIsSuccess,
+	} = useQuery({
 		queryKey: queryKeys.fluxDetect(clusterContext, kubeconfigEnvVar),
 		queryFn: () => detectFlux(client, clusterContext, kubeconfigEnvVar),
 		enabled: !!clusterContext,
 		staleTime: 60_000,
 	});
-	const argoDetected = argoDetection.data === true;
-	const fluxDetected = fluxDetection.data?.detected === true;
+	const argoDetected = argoDetection === true;
+	const fluxDetected = fluxDetection?.detected === true;
 
-	const apps = useQuery({
+	const {
+		data: apps,
+		isError: appsIsError,
+		error: appsError,
+	} = useQuery({
 		queryKey: queryKeys.argoApps(clusterContext, kubeconfigEnvVar),
 		queryFn: () => listArgoApplications(client, clusterContext, kubeconfigEnvVar),
 		enabled: !!clusterContext && argoDetected,
 		staleTime: 30_000,
 	});
-	const appsets = useQuery({
+	const {
+		data: appsets,
+		isError: appsetsIsError,
+		error: appsetsError,
+	} = useQuery({
 		queryKey: queryKeys.argoAppSets(clusterContext, kubeconfigEnvVar),
 		queryFn: () =>
 			listArgoApplicationSets(client, clusterContext, kubeconfigEnvVar),
 		enabled: !!clusterContext && argoDetected,
 		staleTime: 30_000,
 	});
-	const projects = useQuery({
+	const {
+		data: projects,
+		isError: projectsIsError,
+		error: projectsError,
+	} = useQuery({
 		queryKey: queryKeys.argoAppProjects(clusterContext, kubeconfigEnvVar),
 		queryFn: () => listArgoAppProjects(client, clusterContext, kubeconfigEnvVar),
 		enabled: !!clusterContext && argoDetected,
 		staleTime: 30_000,
 	});
 
-	const fluxKinds = fluxDetection.data?.kinds ?? [];
+	const fluxKinds = fluxDetection?.kinds ?? [];
 	const fluxResourceQueries = useQueries({
 		queries: fluxKinds.map((resourceKind) => ({
 			queryKey: queryKeys.fluxResources(
@@ -209,25 +232,25 @@ export function GitOpsOverview({
 			buildGitOpsOverviewFilters({
 				argoDetected,
 				showUnavailableArgo:
-					showUnavailableGitOpsProviders && argoDetection.data === false,
-				apps: apps.data ?? EMPTY_APPS,
-				appsets: appsets.data ?? EMPTY_APPSETS,
-				projects: projects.data ?? EMPTY_PROJECTS,
+					showUnavailableGitOpsProviders && argoDetection === false,
+				apps: apps ?? EMPTY_APPS,
+				appsets: appsets ?? EMPTY_APPSETS,
+				projects: projects ?? EMPTY_PROJECTS,
 				fluxDetected,
 				showUnavailableFlux:
 					showUnavailableGitOpsProviders &&
-					fluxDetection.data?.detected === false,
+					fluxDetection?.detected === false,
 				fluxKinds,
 				fluxRows,
 			}),
 		[
 			argoDetected,
-			argoDetection.data,
-			apps.data,
-			appsets.data,
-			projects.data,
+			argoDetection,
+			apps,
+			appsets,
+			projects,
 			fluxDetected,
-			fluxDetection.data?.detected,
+			fluxDetection?.detected,
 			fluxKinds,
 			fluxRows,
 			showUnavailableGitOpsProviders,
@@ -237,35 +260,27 @@ export function GitOpsOverview({
 		() => chooseDefaultGitOpsFilter(filters),
 		[filters],
 	);
-	const activeFilterKey = selectedFilter ?? defaultFilter;
+	const activeFilterKey = useMemo(() => {
+		if (
+			selectedFilter &&
+			filters.some((filter) => filter.key === selectedFilter && !filter.disabled)
+		) {
+			return selectedFilter;
+		}
+		return defaultFilter;
+	}, [selectedFilter, filters, defaultFilter]);
 	const activeFilter =
 		filters.find((filter) => filter.key === activeFilterKey) ?? null;
 
-	useEffect(() => {
-		if (!defaultFilter) {
-			setSelectedFilter(null);
-			setUserSelectedFilter(false);
-			return;
-		}
-		const selectedFilterIsValid =
-			selectedFilter &&
-			filters.some((filter) => filter.key === selectedFilter && !filter.disabled);
-		if (selectedFilterIsValid && userSelectedFilter) {
-			return;
-		}
-		setSelectedFilter(defaultFilter);
-	}, [defaultFilter, filters, selectedFilter, userSelectedFilter]);
-
 	function handleFilterSelect(filterKey: GitOpsOverviewFilterKey) {
-		setUserSelectedFilter(true);
 		setSelectedFilter(filterKey);
 	}
 
-	const initialLoading = argoDetection.isPending || fluxDetection.isPending;
+	const initialLoading = argoDetectionIsPending || fluxDetectionIsPending;
 	const noProvidersVisible =
-		filters.length === 0 && argoDetection.isSuccess && fluxDetection.isSuccess;
+		filters.length === 0 && argoDetectionIsSuccess && fluxDetectionIsSuccess;
 	const hasListError =
-		apps.isError || appsets.isError || projects.isError || Boolean(fluxError);
+		appsIsError || appsetsIsError || projectsIsError || Boolean(fluxError);
 
 	return (
 		<div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
@@ -276,16 +291,16 @@ export function GitOpsOverview({
 				</p>
 			</div>
 
-			{argoDetection.isError && (
+			{argoDetectionIsError && (
 				<Alert variant="destructive">
 					<AlertTitle>Failed to detect Argo CD</AlertTitle>
-					<AlertDescription>{queryErrorMessage(argoDetection.error)}</AlertDescription>
+					<AlertDescription>{queryErrorMessage(argoDetectionError)}</AlertDescription>
 				</Alert>
 			)}
-			{fluxDetection.isError && (
+			{fluxDetectionIsError && (
 				<Alert variant="destructive">
 					<AlertTitle>Failed to detect Flux</AlertTitle>
-					<AlertDescription>{queryErrorMessage(fluxDetection.error)}</AlertDescription>
+					<AlertDescription>{queryErrorMessage(fluxDetectionError)}</AlertDescription>
 				</Alert>
 			)}
 			{hasListError && (
@@ -293,7 +308,7 @@ export function GitOpsOverview({
 					<AlertTitle>Some GitOps resources could not load</AlertTitle>
 					<AlertDescription>
 						{queryErrorMessage(
-							apps.error ?? appsets.error ?? projects.error ?? fluxError,
+							appsError ?? appsetsError ?? projectsError ?? fluxError,
 						)}
 					</AlertDescription>
 				</Alert>
@@ -334,9 +349,9 @@ export function GitOpsOverview({
 						) : (
 							<GitOpsCardGrid
 								activeFilter={activeFilter}
-								apps={apps.data ?? EMPTY_APPS}
-								appsets={appsets.data ?? EMPTY_APPSETS}
-								projects={projects.data ?? EMPTY_PROJECTS}
+								apps={apps ?? EMPTY_APPS}
+								appsets={appsets ?? EMPTY_APPSETS}
+								projects={projects ?? EMPTY_PROJECTS}
 								fluxRows={fluxRows}
 								selectedGitOpsItem={selectedGitOpsItem}
 								selectedFluxResource={selectedFluxResource}

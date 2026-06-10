@@ -55,7 +55,7 @@ export function FluxDetailPanel({
 	const [yamlViewMode, setYamlViewMode] = useState<YamlViewMode>(yamlViewModeDefault);
 	const [yamlEncoding, setYamlEncoding] = useState<YamlEncoding>(yamlEncodingDefault);
 	const client = useMemo(() => createTauriClient(), []);
-	const details = useQuery({
+	const { isPending, isError, error, data } = useQuery({
 		queryKey: queryKeys.fluxResourceDetails(
 			resource.cluster,
 			resource.resourceKind,
@@ -115,26 +115,28 @@ export function FluxDetailPanel({
 					</TabsList>
 				</div>
 				<div className={PANEL_BODY_CLASS}>
-					{details.isPending ? (
+					{isPending ? (
 						<DetailLoadingState label="Loading Flux resource..." />
-					) : details.isError ? (
-						<DetailErrorState title="Failed to load Flux resource" error={details.error} />
+					) : isError ? (
+						<DetailErrorState title="Failed to load Flux resource" error={error} />
+					) : !data ? (
+						<DetailErrorState title="Failed to load Flux resource" error="No Flux resource data returned." />
 					) : (
 						<>
 							<TabsContent value="details" className="m-0">
-								<FluxDetails resource={details.data.summary} metadata={details.data.metadata} />
+								<FluxDetails resource={data.summary} metadata={data.metadata} />
 							</TabsContent>
 							<TabsContent value="yaml" className="m-0">
 								<div className="mb-3 flex flex-wrap justify-end gap-2">
 									<YamlViewModeControl value={yamlViewMode} onChange={setYamlViewMode} />
 									<YamlEncodingControl value={yamlEncoding} onChange={setYamlEncoding} />
 								</div>
-								<pre className={YAML_BLOCK_CLASS}>{details.data.yaml}</pre>
+								<pre className={YAML_BLOCK_CLASS}>{data.yaml}</pre>
 							</TabsContent>
 							<TabsContent value="status" className="m-0">
-								{details.data.status ? (
+								{data.status ? (
 									<pre className={JSON_BLOCK_CLASS}>
-										{JSON.stringify(details.data.status, null, 2)}
+										{JSON.stringify(data.status, null, 2)}
 									</pre>
 								) : (
 									<p className={DETAIL_HINT_CLASS}>No status reported.</p>

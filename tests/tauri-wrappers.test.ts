@@ -515,6 +515,7 @@ describe("typed Tauri wrappers", () => {
 			kind: "Kustomization",
 			plural: "kustomizations",
 			namespaced: true,
+			category: "Kustomize",
 		};
 		const detection: FluxDetectionSummary = {
 			detected: true,
@@ -528,7 +529,6 @@ describe("typed Tauri wrappers", () => {
 			namespace: "flux-system",
 			age: "5m",
 			readyStatus: "True",
-			conditions: [],
 			inventory: [],
 		};
 		const details: FluxResourceDetails = {

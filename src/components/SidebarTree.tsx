@@ -315,13 +315,21 @@ export function SidebarTree({
     (state) => state.showUnavailableGitOpsProviders,
   );
   const gitOpsClient = useMemo(() => createTauriClient(), []);
-  const argoDetection = useQuery({
+  const {
+    data: argoDetection,
+    isPending: argoDetectionIsPending,
+    isSuccess: argoDetectionIsSuccess,
+  } = useQuery({
     queryKey: queryKeys.argoDetect(clusterContext, kubeconfigEnvVar),
     queryFn: () => detectArgoCD(gitOpsClient, clusterContext, kubeconfigEnvVar),
     enabled: !!clusterContext,
     staleTime: 60_000,
   });
-  const fluxDetection = useQuery({
+  const {
+    data: fluxDetection,
+    isPending: fluxDetectionIsPending,
+    isSuccess: fluxDetectionIsSuccess,
+  } = useQuery({
     queryKey: queryKeys.fluxDetect(clusterContext, kubeconfigEnvVar),
     queryFn: () => detectFlux(gitOpsClient, clusterContext, kubeconfigEnvVar),
     enabled: !!clusterContext,
@@ -441,12 +449,12 @@ export function SidebarTree({
 
   const gitOpsNode = useMemo<TreeNode>(() => {
     const children: TreeNode[] = [];
-    const argoDetected = argoDetection.data === true;
-    const fluxDetected = fluxDetection.data?.detected === true;
+    const argoDetected = argoDetection === true;
+    const fluxDetected = fluxDetection?.detected === true;
     const argoKnownUnavailable =
-      argoDetection.isSuccess && argoDetection.data === false;
+      argoDetectionIsSuccess && argoDetection === false;
     const fluxKnownUnavailable =
-      fluxDetection.isSuccess && fluxDetection.data?.detected === false;
+      fluxDetectionIsSuccess && fluxDetection?.detected === false;
 
     if (argoDetected || (showUnavailableGitOpsProviders && argoKnownUnavailable)) {
       children.push(buildArgoProviderNode(!argoDetected));
@@ -456,7 +464,7 @@ export function SidebarTree({
     }
     if (
       children.length === 0 &&
-      (argoDetection.isPending || fluxDetection.isPending)
+      (argoDetectionIsPending || fluxDetectionIsPending)
     ) {
       children.push({
         id: { type: "group", section: "argo", group: "gitops:detecting" },
@@ -470,12 +478,12 @@ export function SidebarTree({
       children,
     };
   }, [
-    argoDetection.data,
-    argoDetection.isPending,
-    argoDetection.isSuccess,
-    fluxDetection.data?.detected,
-    fluxDetection.isPending,
-    fluxDetection.isSuccess,
+    argoDetection,
+    argoDetectionIsPending,
+    argoDetectionIsSuccess,
+    fluxDetection?.detected,
+    fluxDetectionIsPending,
+    fluxDetectionIsSuccess,
     showUnavailableGitOpsProviders,
   ]);
 

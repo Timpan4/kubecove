@@ -45,7 +45,12 @@ export function FluxPanel({
 }) {
 	const client = useMemo(() => createTauriClient(), []);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
-	const detection = useQuery({
+	const {
+		data: detection,
+		isPending: detectionIsPending,
+		isError: detectionIsError,
+		error: detectionError,
+	} = useQuery({
 		queryKey: queryKeys.fluxDetect(clusterContext, kubeconfigEnvVar),
 		queryFn: () => detectFlux(client, clusterContext, kubeconfigEnvVar),
 		enabled: !!clusterContext,
@@ -53,9 +58,14 @@ export function FluxPanel({
 	});
 	const resourceKind = fluxKindFromLabel(
 		selectedKindLabel,
-		detection.data?.kinds ?? [],
+		detection?.kinds ?? [],
 	);
-	const resources = useQuery({
+	const {
+		data: resources,
+		isPending: resourcesIsPending,
+		isError: resourcesIsError,
+		error: resourcesError,
+	} = useQuery({
 		queryKey: resourceKind
 			? queryKeys.fluxResources(clusterContext, resourceKind, kubeconfigEnvVar)
 			: ["flux-resources", clusterContext, selectedKindLabel ?? ""],
@@ -67,11 +77,11 @@ export function FluxPanel({
 		staleTime: 30_000,
 	});
 
-	if (detection.isPending) return <LoadingState label="Checking for Flux..." />;
-	if (detection.isError) {
-		return <ErrorState title="Failed to detect Flux" error={detection.error} />;
+	if (detectionIsPending) return <LoadingState label="Checking for Flux..." />;
+	if (detectionIsError) {
+		return <ErrorState title="Failed to detect Flux" error={detectionError} />;
 	}
-	if (!detection.data?.detected) {
+	if (!detection?.detected) {
 		return (
 			<EmptyState
 				title="Flux not detected"
@@ -87,11 +97,11 @@ export function FluxPanel({
 			/>
 		);
 	}
-	if (resources.isPending) return <LoadingState label={`Loading ${resourceKind.kind}...`} />;
-	if (resources.isError) {
-		return <ErrorState title={`Failed to load ${resourceKind.kind}`} error={resources.error} />;
+	if (resourcesIsPending) return <LoadingState label={`Loading ${resourceKind.kind}...`} />;
+	if (resourcesIsError) {
+		return <ErrorState title={`Failed to load ${resourceKind.kind}`} error={resourcesError} />;
 	}
-	const rows = resources.data ?? [];
+	const rows = resources ?? [];
 	if (rows.length === 0) {
 		return <EmptyState title={`No ${resourceKind.kind} resources`} />;
 	}

@@ -190,7 +190,12 @@ pub async fn get_flux_resource_details(
     let api: Api<DynamicObject> = if resource_kind.namespaced {
         match namespace.as_deref() {
             Some(ns) => Api::namespaced_with(client, ns, &api_resource),
-            None => Api::all_with(client, &api_resource),
+            None => {
+                return Err(AppError::new(
+                    "Namespace required for namespaced Flux resource",
+                    "validation",
+                ));
+            }
         }
     } else {
         Api::all_with(client, &api_resource)

@@ -91,7 +91,7 @@ export interface WorkspaceScope {
 	clusterGroup?: WorkspaceClusterGroup;
 	namespaces: string[];
 	kinds: ResourceKindSelection[];
-	gitOpsFilter: string;
+	gitOpsFilter?: string;
 	argoAppFilter: string;
 	layout: "overview" | "resources";
 	shortcutPreferences?: WorkspaceShortcutPreferences;
