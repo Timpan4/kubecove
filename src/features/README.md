@@ -6,6 +6,7 @@ Current areas:
 
 - `app-updates/`
 - `argo/`
+- `command-palette/`
 - `helm/`
 - `live-sessions/`
 - `rbac/`

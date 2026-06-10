@@ -2,7 +2,12 @@ import { FolderOpen, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ClusterSelector } from "@/components/ClusterSelector";
 import { UpdateStatusButton } from "@/features/app-updates";
+import { useCommandPaletteStore } from "@/features/command-palette";
 import { ActivePortForwards } from "@/features/live-sessions/ActivePortForwards";
+
+const IS_MAC =
+	typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
+const SEARCH_SHORTCUT_HINT = IS_MAC ? "⌘K" : "Ctrl K";
 
 interface AppTopBarProps {
 	clusterContext: string;
@@ -64,10 +69,18 @@ export function AppTopBar({
 					<Settings />
 				</Button>
 				{showSearch && (
-					<div className="flex items-center gap-2 whitespace-nowrap rounded-md border bg-background/50 px-3 py-1.5 text-xs text-muted-foreground">
+					<button
+						type="button"
+						className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border bg-background/50 px-3 py-1.5 text-xs text-muted-foreground transition-colors [-webkit-app-region:no-drag] hover:bg-accent hover:text-accent-foreground"
+						aria-label="Search views, namespaces, and resources"
+						onClick={() => useCommandPaletteStore.getState().setOpen(true)}
+					>
 						<Search className="size-3.5" aria-hidden="true" />
 						<span>Search resources...</span>
-					</div>
+						<kbd className="rounded border bg-muted px-1 py-px font-sans text-[10px] text-muted-foreground">
+							{SEARCH_SHORTCUT_HINT}
+						</kbd>
+					</button>
 				)}
 			</div>
 		</header>
