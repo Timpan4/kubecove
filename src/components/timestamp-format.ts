@@ -58,6 +58,27 @@ export function formatExactTimestamp(
 	return `${parts.year}-${pad(parts.month)}-${pad(parts.day)} ${time}${parts.suffix}`;
 }
 
+/** Time-of-day only ("22:46:43.244") — for dense per-line displays like logs. */
+export function formatExactTimeOnly(
+	value: string | null | undefined,
+	timezone: TimestampTimezone,
+	precision: TimestampPrecision = "millisecond",
+): string | null {
+	if (!value) return null;
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return null;
+
+	const parts = timeParts(date, timezone);
+	let time = `${pad(parts.hour)}:${pad(parts.minute)}`;
+	if (precision === "second" || precision === "millisecond") {
+		time = `${time}:${pad(parts.second)}`;
+	}
+	if (precision === "millisecond") {
+		time = `${time}.${milliseconds(parts.millisecond)}`;
+	}
+	return `${time}${parts.suffix}`;
+}
+
 export function formatRelativeTimestamp(
 	relative: string,
 	exact: string | null | undefined,

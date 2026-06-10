@@ -345,6 +345,7 @@ export function YamlTab({
 				onPrepare={prepare}
 				onApply={apply}
 				onCancel={cancelApplyFlow}
+				copyText={yaml}
 			/>
 
 			<YamlTabContent
