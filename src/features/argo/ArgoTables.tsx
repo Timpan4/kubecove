@@ -93,6 +93,32 @@ function ArgoSearchToolbar({
 	);
 }
 
+type AppHealthFilter = "all" | "degraded" | "progressing" | "outOfSync";
+
+const APP_HEALTH_FILTERS: {
+	id: AppHealthFilter;
+	label: string;
+	matches: (app: ArgoApplicationSummary) => boolean;
+}[] = [
+	{ id: "all", label: "All", matches: () => true },
+	{
+		id: "degraded",
+		label: "Degraded",
+		matches: (app) =>
+			app.healthStatus === "Degraded" || app.healthStatus === "Missing",
+	},
+	{
+		id: "progressing",
+		label: "Progressing",
+		matches: (app) => app.healthStatus === "Progressing",
+	},
+	{
+		id: "outOfSync",
+		label: "Out of sync",
+		matches: (app) => app.syncStatus === "OutOfSync",
+	},
+];
+
 export function ApplicationsTable({
 	apps,
 	selectedArgoApp,
@@ -103,8 +129,9 @@ export function ApplicationsTable({
 	onAppSelect: (app: ArgoApplicationSummary) => void;
 }) {
 	const [search, setSearch] = useState("");
+	const [healthFilter, setHealthFilter] = useState<AppHealthFilter>("all");
 	const searchTerm = search.trim().toLowerCase();
-	const filtered = searchTerm
+	const searched = searchTerm
 		? apps.filter(
 				(app) =>
 					app.name.toLowerCase().includes(searchTerm) ||
@@ -112,6 +139,10 @@ export function ApplicationsTable({
 					app.sourceRepo?.toLowerCase().includes(searchTerm),
 			)
 		: apps;
+	const activeFilter =
+		APP_HEALTH_FILTERS.find((item) => item.id === healthFilter) ??
+		APP_HEALTH_FILTERS[0];
+	const filtered = searched.filter(activeFilter.matches);
 
 	return (
 		<>
@@ -120,6 +151,26 @@ export function ApplicationsTable({
 				placeholder="Search by name, project, repo..."
 				onSearchChange={setSearch}
 			/>
+			<div className="mb-2 flex flex-wrap items-center gap-1.5">
+				{APP_HEALTH_FILTERS.map((item) => {
+					const count = searched.filter(item.matches).length;
+					const active = healthFilter === item.id;
+					return (
+						<Button
+							key={item.id}
+							type="button"
+							variant={active ? "secondary" : "outline"}
+							size="xs"
+							aria-pressed={active}
+							disabled={item.id !== "all" && count === 0}
+							onClick={() => setHealthFilter(item.id)}
+						>
+							{item.label}
+							<span className="text-muted-foreground">{count}</span>
+						</Button>
+					);
+				})}
+			</div>
 			<Table className={TABLE_CLASS}>
 				<TableHeader>
 					<TableRow>
@@ -137,7 +188,9 @@ export function ApplicationsTable({
 					{filtered.length === 0 ? (
 						<TableRow>
 							<TableCell colSpan={8} className={EMPTY_PAGE_CLASS}>
-								No applications found
+								{healthFilter === "all"
+									? "No applications found"
+									: `No ${activeFilter.label.toLowerCase()} applications`}
 							</TableCell>
 						</TableRow>
 					) : (
@@ -339,14 +392,13 @@ export function AppProjectsTable({
 					<TableRow>
 						<TableHead>Name</TableHead>
 						<TableHead>Description</TableHead>
-						<TableHead>Status</TableHead>
 						<TableHead>Age</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
 					{filtered.length === 0 ? (
 						<TableRow>
-							<TableCell colSpan={4} className={EMPTY_PAGE_CLASS}>
+							<TableCell colSpan={3} className={EMPTY_PAGE_CLASS}>
 								No app projects found
 							</TableCell>
 						</TableRow>
@@ -370,9 +422,6 @@ export function AppProjectsTable({
 								>
 									<TableCell>{project.name}</TableCell>
 									<TableCell>{project.description ?? "—"}</TableCell>
-									<TableCell>
-										<StatusChip value={project.status} variant="neutral" />
-									</TableCell>
 									<TableCell>
 										<TimestampText
 											relative={project.age}

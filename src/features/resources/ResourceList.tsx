@@ -13,10 +13,12 @@ import {
 	type SortingState,
 } from "@tanstack/react-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { SearchX } from "lucide-react";
 import {
 	Empty,
 	EmptyDescription,
 	EmptyHeader,
+	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -336,10 +338,26 @@ function ResourceListComponent({
 		[groupedByArgo, pageRows],
 	);
 
+	// Hide columns that would render "—" for every visible row so the name
+	// column keeps its width for what actually matters.
+	const columnVisibility = useMemo(
+		() => ({
+			ready: pageRows.some((row) => Boolean(row.ready)),
+			restarts: pageRows.some((row) => row.restarts !== undefined),
+			cpu: pageRows.some((row) => row.metrics?.cpuMillicores !== undefined),
+			memory: pageRows.some((row) => row.metrics?.memoryBytes !== undefined),
+			ownerRef: pageRows.some((row) => Boolean(row.ownerRef)),
+			"argo-helm": pageRows.some(
+				(row) => Boolean(row.argoApp) || Boolean(row.helmRelease),
+			),
+		}),
+		[pageRows],
+	);
+
 	const table = useReactTable({
 		data: pageRows,
 		columns,
-		state: { sorting },
+		state: { sorting, columnVisibility },
 		onSortingChange: setSorting,
 		getCoreRowModel: getCoreRowModel(),
 	});
@@ -523,15 +541,32 @@ function ResourceListComponent({
 	}
 
 	if (!data || data.length === 0) {
+		// Keep the scope pills mounted so the empty state is fixable in place
+		// and the layout doesn't jump when results disappear.
 		return (
-			<Empty className="min-h-64 border-0">
-				<EmptyHeader>
-					<EmptyTitle>No resources found</EmptyTitle>
-					<EmptyDescription>
-						Try a different namespace or resource kind selection.
-					</EmptyDescription>
-				</EmptyHeader>
-			</Empty>
+			<div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
+				<ResourceScopePills
+					pills={scopePills}
+					clusterContext={clusterContext}
+					selectedNamespaces={selectedNamespaces}
+					selectedKinds={selectedKinds}
+					onNamespaceChange={onNamespacesChange}
+					onKindChange={onKindsChange}
+				/>
+				<Empty className="min-h-64 flex-1 border-0">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<SearchX />
+						</EmptyMedia>
+						<EmptyTitle>No resources in this scope</EmptyTitle>
+						<EmptyDescription>
+							Nothing matched the current namespace and kind selection on{" "}
+							{clusterContext}. Adjust the scope filters above to widen the
+							search.
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
+			</div>
 		);
 	}
 

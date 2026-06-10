@@ -3,7 +3,6 @@ import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TimestampText } from "@/components/TimestampText";
-import { getResourceKindVisual } from "@/lib/resource-visuals";
 import {
 	formatCpuMillicores,
 	formatMemoryBytes,
@@ -100,19 +99,6 @@ export function CpuCell({ value }: { value: number | null | undefined }) {
 
 export function MemoryCell({ value }: { value: number | null | undefined }) {
 	return <TruncatedCell value={formatMemoryBytes(value)} />;
-}
-
-export function KindCell({ kind }: { kind: string }) {
-	const visual = getResourceKindVisual(kind);
-	const Icon = visual.icon;
-	return (
-		<TableTooltip content={kind}>
-			<span className="inline-flex min-w-0 max-w-full items-center gap-1.5 truncate">
-				<Icon className={cn("size-3.5 shrink-0", visual.className)} />
-				<span className="min-w-0 truncate">{kind}</span>
-			</span>
-		</TableTooltip>
-	);
 }
 
 export function AgeCell({ row }: { row: ResourceSummary }) {

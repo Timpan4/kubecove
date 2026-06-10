@@ -20,11 +20,12 @@ import {
 } from "@/lib/resource-visuals";
 import type { ResourceSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { columns } from "./columns";
 import {
 	EMPTY_PAGE_CLASS,
 	ROW_CLASS,
 	SELECTED_ROW_CLASS,
+	STICKY_APP_GROUP_TOP,
+	STICKY_TYPE_GROUP_TOP,
 	TABLE_CLASS,
 } from "./constants";
 import {
@@ -119,12 +120,66 @@ export function ResourceTable({
 		return () => resizeObserver.disconnect();
 	}, [selectedResourceIdentityKey, selectedResourceKey]);
 
+	// Measure the sticky levels and expose their offsets as CSS variables, so
+	// the group rows pin exactly under the header (with a 1px tuck to avoid
+	// seams) regardless of padding/zoom/font changes.
+	useEffect(() => {
+		const viewport = tableViewportRef.current;
+		if (!viewport) return;
+		const measure = () => {
+			const headerRow = viewport.querySelector("thead tr");
+			const appGroupCell = viewport.querySelector('[data-sticky="app-group"]');
+			const headerHeight = headerRow
+				? Math.round(headerRow.getBoundingClientRect().height)
+				: 0;
+			const appGroupHeight = appGroupCell
+				? Math.round(appGroupCell.getBoundingClientRect().height)
+				: 0;
+			viewport.style.setProperty(
+				"--sticky-app-top",
+				`${Math.max(headerHeight - 1, 0)}px`,
+			);
+			viewport.style.setProperty(
+				"--sticky-type-top",
+				`${Math.max(headerHeight + appGroupHeight - 2, 0)}px`,
+			);
+		};
+		measure();
+		const resizeObserver = new ResizeObserver(measure);
+		resizeObserver.observe(viewport);
+		return () => resizeObserver.disconnect();
+	}, []);
+
+	// colSpan must match the rendered column count exactly: a colSpan larger
+	// than the real number of columns makes the browser synthesize phantom
+	// columns, which widens the table past its last column.
+	const visibleColumnCount = table.getVisibleLeafColumns().length;
+
 	return (
-		<div ref={tableViewportRef} className="h-full min-h-0 overflow-auto">
-			<Table className={TABLE_CLASS}>
+		<div
+			ref={tableViewportRef}
+			// The ui Table wraps the <table> in an overflow-x-auto container,
+			// which would swallow position:sticky — neutralize it so the sticky
+			// header/group rows pin to this scrolling viewport instead.
+			className="scrollbar-classic h-full min-h-0 overflow-auto [&_[data-slot=table-container]]:overflow-visible"
+		>
+			{/* Width = sum of column sizes (so the scroll range ends exactly at
+			    the last column); when the panel is wider, the name column has
+			    no fixed width and absorbs the remaining space. */}
+			<Table
+				className={TABLE_CLASS}
+				style={{ minWidth: table.getCenterTotalSize() }}
+			>
 				<colgroup>
 					{table.getVisibleLeafColumns().map((column) => (
-						<col key={column.id} style={{ width: `${column.getSize()}px` }} />
+						<col
+							key={column.id}
+							style={
+								column.id === "name"
+									? undefined
+									: { width: `${column.getSize()}px` }
+							}
+						/>
 					))}
 				</colgroup>
 				<TableHeader>
@@ -169,7 +224,10 @@ export function ResourceTable({
 				<TableBody>
 					{rowModel.rows.length === 0 ? (
 						<TableRow>
-							<TableCell colSpan={columns.length} className={EMPTY_PAGE_CLASS}>
+							<TableCell
+								colSpan={visibleColumnCount}
+								className={EMPTY_PAGE_CLASS}
+							>
 								No resources match your filter
 							</TableCell>
 						</TableRow>
@@ -179,6 +237,7 @@ export function ResourceTable({
 								key={row.id}
 								row={row}
 								index={index}
+								visibleColumnCount={visibleColumnCount}
 								previous={index > 0 ? rowModel.rows[index - 1]?.original : null}
 								groupedByArgo={groupedByArgo}
 								pageGroups={pageGroups}
@@ -202,6 +261,7 @@ export function ResourceTable({
 interface ResourceTableRowProps {
 	row: Row<ResourceSummary>;
 	index: number;
+	visibleColumnCount: number;
 	previous: ResourceSummary | null;
 	groupedByArgo: boolean;
 	pageGroups: Map<string, number>;
@@ -218,6 +278,7 @@ interface ResourceTableRowProps {
 function ResourceTableRow({
 	row,
 	index,
+	visibleColumnCount,
 	previous,
 	groupedByArgo,
 	pageGroups,
@@ -267,6 +328,7 @@ function ResourceTableRow({
 				<ResourceGroupHeader
 					label={label}
 					count={pageGroups.get(label) ?? 0}
+					colSpan={visibleColumnCount}
 					collapsed={appCollapsed}
 					onToggle={() => onToggleGroup(appCollapseKey)}
 				/>
@@ -276,6 +338,7 @@ function ResourceTableRow({
 					label={typeLabel}
 					kind={row.original.kind}
 					count={pageTypeGroups.get(typeKey) ?? 0}
+					colSpan={visibleColumnCount}
 					collapsed={typeCollapsed}
 					onToggle={() => onToggleGroup(typeCollapseKey)}
 				/>
@@ -308,11 +371,13 @@ function ResourceTableRow({
 function ResourceGroupHeader({
 	label,
 	count,
+	colSpan,
 	collapsed,
 	onToggle,
 }: {
 	label: string;
 	count: number;
+	colSpan: number;
 	collapsed: boolean;
 	onToggle: () => void;
 }) {
@@ -320,8 +385,12 @@ function ResourceGroupHeader({
 	const Icon = visual.icon;
 
 	return (
-		<TableRow className="bg-muted/50 text-xs font-bold text-primary hover:bg-muted/50">
-			<TableCell colSpan={columns.length} className="!p-0">
+		<TableRow className="text-xs font-bold text-primary hover:bg-transparent">
+			<TableCell
+				colSpan={colSpan}
+				data-sticky="app-group"
+				className={cn("sticky z-20 !p-0 bg-background", STICKY_APP_GROUP_TOP)}
+			>
 				<button
 					type="button"
 					className="flex w-full cursor-pointer items-center gap-2 border-0 bg-muted/50 px-3 py-2 text-left text-inherit focus-visible:ring-1 focus-visible:ring-ring/50"
@@ -348,12 +417,14 @@ function ResourceTypeGroupHeader({
 	label,
 	kind,
 	count,
+	colSpan,
 	collapsed,
 	onToggle,
 }: {
 	label: string;
 	kind: string;
 	count: number;
+	colSpan: number;
 	collapsed: boolean;
 	onToggle: () => void;
 }) {
@@ -361,8 +432,11 @@ function ResourceTypeGroupHeader({
 	const Icon = visual.icon;
 
 	return (
-		<TableRow className="bg-card text-[0.72rem] font-bold uppercase text-foreground hover:bg-card">
-			<TableCell colSpan={columns.length} className="!p-0">
+		<TableRow className="text-[0.72rem] font-bold uppercase text-foreground hover:bg-transparent">
+			<TableCell
+				colSpan={colSpan}
+				className={cn("sticky z-10 !p-0 bg-card", STICKY_TYPE_GROUP_TOP)}
+			>
 				<button
 					type="button"
 					className="flex w-full cursor-pointer items-center gap-2 border-0 bg-card py-1.5 pl-6 pr-3 text-left text-[0.6875rem] text-inherit focus-visible:ring-1 focus-visible:ring-ring/50"
