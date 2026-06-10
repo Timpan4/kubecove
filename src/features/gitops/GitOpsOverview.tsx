@@ -1,32 +1,13 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import {
-	ArrowRight,
-	Bell,
-	Boxes,
-	GitBranch,
-	Image,
-	Layers,
-	PackageSearch,
-} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import {
 	Empty,
 	EmptyDescription,
 	EmptyHeader,
 	EmptyTitle,
 } from "@/components/ui/empty";
-import { Separator } from "@/components/ui/separator";
-import { Spinner } from "@/components/ui/spinner";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettingsState } from "@/lib/settings";
 import {
@@ -38,90 +19,133 @@ import {
 	listArgoAppProjects,
 	listFluxResources,
 } from "@/lib/tauri";
-import type { FluxResourceKind, FluxResourceSummary } from "@/lib/types";
+import type {
+	ArgoApplicationSetSummary,
+	ArgoApplicationSummary,
+	ArgoAppProjectSummary,
+	FluxResourceSummary,
+} from "@/lib/types";
+import { cn } from "@/lib/utils";
 import {
-	ARGO_NAV_KINDS,
-	ARGO_PROVIDER_GROUP_ID,
-	FLUX_FAMILIES,
-	fluxKindDefinitionFromLabel,
-} from "./gitops-nav";
+	buildGitOpsOverviewFilters,
+	chooseDefaultGitOpsFilter,
+	type GitOpsOverviewFilter,
+	type GitOpsOverviewFilterKey,
+} from "./gitops-overview-helpers";
+import { GitOpsCardGrid, LoadingState } from "./GitOpsOverviewCards";
+
+type ArgoSummaryItem =
+	| ArgoApplicationSummary
+	| ArgoApplicationSetSummary
+	| ArgoAppProjectSummary;
 
 interface GitOpsOverviewProps {
 	clusterContext: string;
-	onGitOpsKindSelect: (kind: string, group?: string) => void;
+	selectedGitOpsItem: ArgoSummaryItem | null;
+	selectedFluxResource: FluxResourceSummary | null;
+	onGitOpsItemSelect: (item: ArgoSummaryItem) => void;
+	onFluxResourceSelect: (resource: FluxResourceSummary) => void;
 }
 
-function CountRow({
-	label,
-	value,
-	tone,
-}: {
-	label: string;
-	value: number | string;
-	tone?: string;
-}) {
-	return (
-		<div className="flex items-center justify-between gap-3 py-2 text-sm">
-			<span className="min-w-0 truncate text-muted-foreground">{label}</span>
-			<strong className={tone}>{value}</strong>
-		</div>
-	);
-}
-
-function InlineLoading({ label }: { label: string }) {
-	return (
-		<div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-			<Spinner className="size-4" />
-			{label}
-		</div>
-	);
-}
-
-function ProviderUnavailableCard({ provider }: { provider: "Argo CD" | "Flux" }) {
-	return (
-		<Card className="opacity-65">
-			<CardHeader>
-				<CardTitle>{provider}</CardTitle>
-				<CardDescription>Not detected in this cluster.</CardDescription>
-			</CardHeader>
-		</Card>
-	);
-}
+const EMPTY_APPS: ArgoApplicationSummary[] = [];
+const EMPTY_APPSETS: ArgoApplicationSetSummary[] = [];
+const EMPTY_PROJECTS: ArgoAppProjectSummary[] = [];
 
 function queryErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : "GitOps request failed";
 }
 
-function matchingFluxKind(
-	kinds: FluxResourceKind[],
-	kindName: string,
-): FluxResourceKind | null {
-	return kinds.find((kind) => kind.kind === kindName) ?? null;
+function shortLabel(filter: GitOpsOverviewFilter): string {
+	if (filter.provider === "Argo CD") return filter.label.replace("Argo CD ", "");
+	return filter.label.replace("Flux ", "");
 }
 
-function familyRows(
-	rows: FluxResourceSummary[],
-	kinds: FluxResourceKind[],
-	familyKey: string,
-) {
-	const family = FLUX_FAMILIES.find((candidate) => candidate.key === familyKey);
-	if (!family) return { count: 0, installed: 0 };
-	const kindNames = new Set(family.kinds.map((kind) => kind.kind));
-	return {
-		count: rows.filter((row) => kindNames.has(row.resourceKind.kind)).length,
-		installed: kinds.filter((kind) => kindNames.has(kind.kind)).length,
-	};
+function FilterRail({
+	filters,
+	activeKey,
+	onSelect,
+}: {
+	filters: GitOpsOverviewFilter[];
+	activeKey: GitOpsOverviewFilterKey | null;
+	onSelect: (key: GitOpsOverviewFilterKey) => void;
+}) {
+	const providers = ["Argo CD", "Flux"] as const;
+	return (
+		<aside className="w-full shrink-0 lg:w-64">
+			<div className="sticky top-0 flex flex-col gap-4">
+				{providers.map((provider) => {
+					const providerFilters = filters.filter(
+						(filter) => filter.provider === provider,
+					);
+					if (providerFilters.length === 0) return null;
+					const groups = [...new Set(providerFilters.map((filter) => filter.group))];
+					return (
+						<section key={provider} className="space-y-2">
+							<div className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								{provider}
+							</div>
+							{groups.map((group) => {
+								const groupFilters = providerFilters.filter(
+									(filter) => filter.group === group,
+								);
+								return (
+									<div key={group} className="space-y-1">
+										{provider === "Flux" && (
+											<div className="px-1 py-1 text-xs text-muted-foreground">
+												{group}
+												{groupFilters[0]?.installedKinds !== undefined &&
+													` · ${groupFilters[0].installedKinds} kinds`}
+											</div>
+										)}
+										{groupFilters.map((filter) => (
+											<button
+												key={filter.key}
+												type="button"
+												className={cn(
+													"flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2.5 text-left text-sm transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/50",
+													activeKey === filter.key
+														? "bg-secondary font-medium text-foreground"
+														: "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+													filter.disabled &&
+														"cursor-default opacity-50 hover:bg-transparent hover:text-muted-foreground",
+												)}
+												disabled={filter.disabled}
+												onClick={() => onSelect(filter.key)}
+											>
+												<span className="min-w-0 flex-1 truncate">
+													{shortLabel(filter)}
+												</span>
+												<Badge variant="secondary" className="rounded-sm px-1.5">
+													{filter.count}
+												</Badge>
+											</button>
+										))}
+									</div>
+								);
+							})}
+						</section>
+					);
+				})}
+			</div>
+		</aside>
+	);
 }
 
 export function GitOpsOverview({
 	clusterContext,
-	onGitOpsKindSelect,
+	selectedGitOpsItem,
+	selectedFluxResource,
+	onGitOpsItemSelect,
+	onFluxResourceSelect,
 }: GitOpsOverviewProps) {
 	const client = useMemo(() => createTauriClient(), []);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const showUnavailableGitOpsProviders = useSettingsState(
 		(state) => state.showUnavailableGitOpsProviders,
 	);
+	const [selectedFilter, setSelectedFilter] =
+		useState<GitOpsOverviewFilterKey | null>(null);
+	const [userSelectedFilter, setUserSelectedFilter] = useState(false);
 
 	const argoDetection = useQuery({
 		queryKey: queryKeys.argoDetect(clusterContext, kubeconfigEnvVar),
@@ -135,19 +159,8 @@ export function GitOpsOverview({
 		enabled: !!clusterContext,
 		staleTime: 60_000,
 	});
-
 	const argoDetected = argoDetection.data === true;
 	const fluxDetected = fluxDetection.data?.detected === true;
-	const showArgo =
-		argoDetected ||
-		argoDetection.isPending ||
-		argoDetection.isError ||
-		(showUnavailableGitOpsProviders && argoDetection.data === false);
-	const showFlux =
-		fluxDetected ||
-		fluxDetection.isPending ||
-		fluxDetection.isError ||
-		(showUnavailableGitOpsProviders && fluxDetection.data?.detected === false);
 
 	const apps = useQuery({
 		queryKey: queryKeys.argoApps(clusterContext, kubeconfigEnvVar),
@@ -168,6 +181,7 @@ export function GitOpsOverview({
 		enabled: !!clusterContext && argoDetected,
 		staleTime: 30_000,
 	});
+
 	const fluxKinds = fluxDetection.data?.kinds ?? [];
 	const fluxResourceQueries = useQueries({
 		queries: fluxKinds.map((resourceKind) => ({
@@ -187,32 +201,105 @@ export function GitOpsOverview({
 	const fluxPending =
 		fluxResourceQueries.length > 0 &&
 		fluxResourceQueries.some((query) => query.isPending);
-	const fluxReady = fluxRows.filter((row) => row.readyStatus === "True").length;
-	const fluxAttention = fluxRows.filter(
-		(row) => row.readyStatus === "False" || row.suspended === true,
-	).length;
-	const argoOutOfSync = (apps.data ?? []).filter(
-		(app) => app.syncStatus && app.syncStatus !== "Synced",
-	).length;
-	const argoUnhealthy = (apps.data ?? []).filter(
-		(app) => app.healthStatus && app.healthStatus !== "Healthy",
-	).length;
+
+	const filters = useMemo(
+		() =>
+			buildGitOpsOverviewFilters({
+				argoDetected,
+				showUnavailableArgo:
+					showUnavailableGitOpsProviders && argoDetection.data === false,
+				apps: apps.data ?? EMPTY_APPS,
+				appsets: appsets.data ?? EMPTY_APPSETS,
+				projects: projects.data ?? EMPTY_PROJECTS,
+				fluxDetected,
+				showUnavailableFlux:
+					showUnavailableGitOpsProviders &&
+					fluxDetection.data?.detected === false,
+				fluxKinds,
+				fluxRows,
+			}),
+		[
+			argoDetected,
+			argoDetection.data,
+			apps.data,
+			appsets.data,
+			projects.data,
+			fluxDetected,
+			fluxDetection.data?.detected,
+			fluxKinds,
+			fluxRows,
+			showUnavailableGitOpsProviders,
+		],
+	);
+	const defaultFilter = useMemo(
+		() => chooseDefaultGitOpsFilter(filters),
+		[filters],
+	);
+	const activeFilterKey = selectedFilter ?? defaultFilter;
+	const activeFilter =
+		filters.find((filter) => filter.key === activeFilterKey) ?? null;
+
+	useEffect(() => {
+		if (!defaultFilter) {
+			setSelectedFilter(null);
+			setUserSelectedFilter(false);
+			return;
+		}
+		const selectedFilterIsValid =
+			selectedFilter &&
+			filters.some((filter) => filter.key === selectedFilter && !filter.disabled);
+		if (selectedFilterIsValid && userSelectedFilter) {
+			return;
+		}
+		setSelectedFilter(defaultFilter);
+	}, [defaultFilter, filters, selectedFilter, userSelectedFilter]);
+
+	function handleFilterSelect(filterKey: GitOpsOverviewFilterKey) {
+		setUserSelectedFilter(true);
+		setSelectedFilter(filterKey);
+	}
+
+	const initialLoading = argoDetection.isPending || fluxDetection.isPending;
 	const noProvidersVisible =
-		!showArgo &&
-		!showFlux &&
-		argoDetection.isSuccess &&
-		fluxDetection.isSuccess;
+		filters.length === 0 && argoDetection.isSuccess && fluxDetection.isSuccess;
+	const hasListError =
+		apps.isError || appsets.isError || projects.isError || Boolean(fluxError);
 
 	return (
-		<div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+		<div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
 			<div className="border-b pb-3">
 				<h1 className="text-lg font-semibold">GitOps</h1>
 				<p className="mt-1 text-sm text-muted-foreground">
-					Read-only provider inventory for this cluster.
+					Read-only resource cards for detected GitOps providers.
 				</p>
 			</div>
 
-			{noProvidersVisible && (
+			{argoDetection.isError && (
+				<Alert variant="destructive">
+					<AlertTitle>Failed to detect Argo CD</AlertTitle>
+					<AlertDescription>{queryErrorMessage(argoDetection.error)}</AlertDescription>
+				</Alert>
+			)}
+			{fluxDetection.isError && (
+				<Alert variant="destructive">
+					<AlertTitle>Failed to detect Flux</AlertTitle>
+					<AlertDescription>{queryErrorMessage(fluxDetection.error)}</AlertDescription>
+				</Alert>
+			)}
+			{hasListError && (
+				<Alert variant="destructive">
+					<AlertTitle>Some GitOps resources could not load</AlertTitle>
+					<AlertDescription>
+						{queryErrorMessage(
+							apps.error ?? appsets.error ?? projects.error ?? fluxError,
+						)}
+					</AlertDescription>
+				</Alert>
+			)}
+
+			{initialLoading && filters.length === 0 ? (
+				<LoadingState label="Checking GitOps providers..." />
+			) : noProvidersVisible ? (
 				<Empty className="min-h-64">
 					<EmptyHeader>
 						<EmptyTitle>No GitOps providers detected</EmptyTitle>
@@ -222,260 +309,42 @@ export function GitOpsOverview({
 						</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
+			) : (
+				<div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+					<FilterRail
+						filters={filters}
+						activeKey={activeFilterKey}
+						onSelect={handleFilterSelect}
+					/>
+					<section className="min-w-0">
+						<div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+							<div className="min-w-0">
+								<h2 className="truncate text-base font-semibold">
+									{activeFilter ? shortLabel(activeFilter) : "GitOps resources"}
+								</h2>
+								<p className="text-sm text-muted-foreground">
+									{activeFilter?.count ?? 0} resources
+								</p>
+							</div>
+						</div>
+						{fluxPending ? (
+							<LoadingState label="Loading Flux resources..." />
+						) : (
+							<GitOpsCardGrid
+								activeFilter={activeFilter}
+								apps={apps.data ?? EMPTY_APPS}
+								appsets={appsets.data ?? EMPTY_APPSETS}
+								projects={projects.data ?? EMPTY_PROJECTS}
+								fluxRows={fluxRows}
+								selectedGitOpsItem={selectedGitOpsItem}
+								selectedFluxResource={selectedFluxResource}
+								onGitOpsItemSelect={onGitOpsItemSelect}
+								onFluxResourceSelect={onFluxResourceSelect}
+							/>
+						)}
+					</section>
+				</div>
 			)}
-
-			<div className="grid gap-4 lg:grid-cols-2">
-				{showArgo && (
-					<>
-						{argoDetection.isPending ? (
-							<Card>
-								<CardHeader>
-									<CardTitle>Argo CD</CardTitle>
-									<CardDescription>
-										Checking provider CRDs for this cluster.
-									</CardDescription>
-								</CardHeader>
-								<CardContent>
-									<InlineLoading label="Detecting Argo CD..." />
-								</CardContent>
-							</Card>
-						) : argoDetection.isError ? (
-							<Card>
-								<CardHeader>
-									<CardTitle>Argo CD</CardTitle>
-									<CardDescription>
-										Provider detection did not complete.
-									</CardDescription>
-								</CardHeader>
-								<CardContent>
-									<Alert variant="destructive">
-										<AlertTitle>Failed to detect Argo CD</AlertTitle>
-										<AlertDescription>
-											{queryErrorMessage(argoDetection.error)}
-										</AlertDescription>
-									</Alert>
-								</CardContent>
-							</Card>
-						) : argoDetected ? (
-							<Card>
-								<CardHeader>
-									<div className="flex items-start justify-between gap-3">
-										<div>
-											<CardTitle>Argo CD</CardTitle>
-											<CardDescription>
-												Applications, ApplicationSets, and AppProjects.
-											</CardDescription>
-										</div>
-										<Badge variant="outline" className="rounded-sm">
-											Detected
-										</Badge>
-									</div>
-								</CardHeader>
-								<CardContent className="grid gap-3">
-									{apps.isPending || appsets.isPending || projects.isPending ? (
-										<InlineLoading label="Loading Argo CD inventory..." />
-									) : apps.isError || appsets.isError || projects.isError ? (
-										<Alert variant="destructive">
-											<AlertTitle>Argo CD counts unavailable</AlertTitle>
-											<AlertDescription>
-												{queryErrorMessage(
-													apps.error ?? appsets.error ?? projects.error,
-												)}
-											</AlertDescription>
-										</Alert>
-									) : (
-										<>
-											<CountRow
-												label="Argo CD Applications"
-												value={apps.data?.length ?? 0}
-											/>
-											<Separator />
-											<CountRow
-												label="Argo CD ApplicationSets"
-												value={appsets.data?.length ?? 0}
-											/>
-											<Separator />
-											<CountRow
-												label="Argo CD AppProjects"
-												value={projects.data?.length ?? 0}
-											/>
-											<Separator />
-											<CountRow
-												label="Out of sync"
-												value={argoOutOfSync}
-												tone="text-amber-300"
-											/>
-											<CountRow
-												label="Unhealthy"
-												value={argoUnhealthy}
-												tone="text-red-300"
-											/>
-										</>
-									)}
-									<div className="flex flex-wrap gap-2 pt-1">
-										{ARGO_NAV_KINDS.map((kind) => (
-											<Button
-												key={kind.key}
-												type="button"
-												variant="outline"
-												size="sm"
-												onClick={() =>
-													onGitOpsKindSelect(kind.label, ARGO_PROVIDER_GROUP_ID)
-												}
-											>
-												<GitBranch data-icon="inline-start" />
-												{kind.label.replace("Argo CD ", "")}
-												<ArrowRight data-icon="inline-end" />
-											</Button>
-										))}
-									</div>
-								</CardContent>
-							</Card>
-						) : (
-							<ProviderUnavailableCard provider="Argo CD" />
-						)}
-					</>
-				)}
-
-				{showFlux && (
-					<>
-						{fluxDetection.isPending ? (
-							<Card>
-								<CardHeader>
-									<CardTitle>Flux</CardTitle>
-									<CardDescription>
-										Checking provider CRDs for this cluster.
-									</CardDescription>
-								</CardHeader>
-								<CardContent>
-									<InlineLoading label="Detecting Flux..." />
-								</CardContent>
-							</Card>
-						) : fluxDetection.isError ? (
-							<Card>
-								<CardHeader>
-									<CardTitle>Flux</CardTitle>
-									<CardDescription>
-										Provider detection did not complete.
-									</CardDescription>
-								</CardHeader>
-								<CardContent>
-									<Alert variant="destructive">
-										<AlertTitle>Failed to detect Flux</AlertTitle>
-										<AlertDescription>
-											{queryErrorMessage(fluxDetection.error)}
-										</AlertDescription>
-									</Alert>
-								</CardContent>
-							</Card>
-						) : fluxDetected ? (
-							<Card>
-								<CardHeader>
-									<div className="flex items-start justify-between gap-3">
-										<div>
-											<CardTitle>Flux</CardTitle>
-											<CardDescription>
-												Sources, workloads, notifications, and image automation.
-											</CardDescription>
-										</div>
-										<Badge variant="outline" className="rounded-sm">
-											{fluxKinds.length} kinds
-										</Badge>
-									</div>
-								</CardHeader>
-								<CardContent className="grid gap-3">
-									{fluxPending ? (
-										<InlineLoading label="Loading Flux inventory..." />
-									) : fluxError ? (
-										<Alert variant="destructive">
-											<AlertTitle>Flux counts unavailable</AlertTitle>
-											<AlertDescription>
-												{queryErrorMessage(fluxError)}
-											</AlertDescription>
-										</Alert>
-									) : (
-										<>
-											{FLUX_FAMILIES.map((family) => {
-												const summary = familyRows(
-													fluxRows,
-													fluxKinds,
-													family.key,
-												);
-												const Icon =
-													family.key === "sources"
-														? PackageSearch
-														: family.key === "workloads"
-															? Layers
-															: family.key === "notifications"
-																? Bell
-																: Image;
-												return (
-													<div key={family.key}>
-														<div className="flex items-center justify-between gap-3 py-2 text-sm">
-															<span className="inline-flex min-w-0 items-center gap-2 truncate text-muted-foreground">
-																<Icon className="size-4 shrink-0" />
-																{family.label}
-															</span>
-															<strong>
-																{summary.count} resources / {summary.installed} kinds
-															</strong>
-														</div>
-														<Separator />
-													</div>
-												);
-											})}
-											<CountRow
-												label="Ready"
-												value={fluxReady}
-												tone="text-emerald-300"
-											/>
-											<CountRow
-												label="Needs attention"
-												value={fluxAttention}
-												tone="text-amber-300"
-											/>
-										</>
-									)}
-									<div className="flex flex-wrap gap-2 pt-1">
-										{FLUX_FAMILIES.map((family) => (
-											<Button
-												key={family.key}
-												type="button"
-												variant="outline"
-												size="sm"
-												disabled={
-													!family.kinds.some((kind) =>
-														matchingFluxKind(fluxKinds, kind.kind),
-													)
-												}
-												onClick={() => {
-													const firstInstalled = family.kinds.find((kind) =>
-														matchingFluxKind(fluxKinds, kind.kind),
-													);
-													const definition = fluxKindDefinitionFromLabel(
-														firstInstalled?.label ?? null,
-													);
-													if (!definition) return;
-													onGitOpsKindSelect(
-														definition.label,
-														family.groupId,
-													);
-												}}
-											>
-												<Boxes data-icon="inline-start" />
-												{family.label}
-												<ArrowRight data-icon="inline-end" />
-											</Button>
-										))}
-									</div>
-								</CardContent>
-							</Card>
-						) : (
-							<ProviderUnavailableCard provider="Flux" />
-						)}
-					</>
-				)}
-			</div>
 		</div>
 	);
 }

@@ -21,7 +21,6 @@ export function GitOpsPanel({
 	selectedGitOpsKind,
 	selectedFluxResource,
 	onFluxResourceSelect,
-	onGitOpsKindSelect,
 }: {
 	clusterContext: string;
 	selectedGitOpsItem: ArgoSummaryItem | null;
@@ -29,13 +28,15 @@ export function GitOpsPanel({
 	selectedGitOpsKind: string | null;
 	selectedFluxResource: FluxResourceSummary | null;
 	onFluxResourceSelect: (resource: FluxResourceSummary) => void;
-	onGitOpsKindSelect: (kind: string, group?: string) => void;
 }) {
 	if (!selectedGitOpsKind) {
 		return (
 			<GitOpsOverview
 				clusterContext={clusterContext}
-				onGitOpsKindSelect={onGitOpsKindSelect}
+				selectedGitOpsItem={selectedGitOpsItem}
+				selectedFluxResource={selectedFluxResource}
+				onGitOpsItemSelect={onGitOpsItemSelect}
+				onFluxResourceSelect={onFluxResourceSelect}
 			/>
 		);
 	}

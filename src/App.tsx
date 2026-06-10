@@ -237,18 +237,6 @@ function App() {
 		handleOpenPortForwards,
 		handleTreeNodeSelect,
 	} = navigation;
-	const handleGitOpsKindSelect = useCallback(
-		(kind: string, group?: string) => {
-			handleTreeNodeSelect({
-				type: "kind",
-				section: "argo",
-				namespace: undefined,
-				group,
-				kind,
-			});
-		},
-		[handleTreeNodeSelect],
-	);
 
 	const handlePaletteResourceSelect = (resource: ResourceSummary) => {
 		handleOpenResources(resource.namespace ?? undefined);
@@ -565,7 +553,6 @@ function App() {
 			onArgoItemSelect={handleArgoAppSelect}
 			selectedFluxResource={selectedFluxResource}
 			onFluxResourceSelect={handleFluxResourceSelect}
-			onGitOpsKindSelect={handleGitOpsKindSelect}
 			selectedTreeNode={selectedTreeNode}
 			selectedHelmRelease={selectedHelmRelease}
 			onHelmReleaseSelect={handleHelmReleaseSelect}
