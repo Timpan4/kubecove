@@ -59,7 +59,7 @@ describe("navigation scope", () => {
 	});
 
 	test("overview Resources shortcut opens the saved workspace scope directly", () => {
-		const source = readFileSync("src/App.tsx", "utf8");
+		const source = readFileSync("src/app/useAppNavigation.ts", "utf8");
 		const handlerStart = source.indexOf("const handleOpenResources = (");
 		const handlerEnd = source.indexOf("const handleOpenArgo =", handlerStart);
 		const handlerSource = source.slice(handlerStart, handlerEnd);
