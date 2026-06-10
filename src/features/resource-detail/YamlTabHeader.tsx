@@ -1,4 +1,5 @@
-import { Pencil, WandSparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, Copy, Pencil, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	YamlEncodingControl,
@@ -9,6 +10,49 @@ import type {
 	YamlEncoding,
 	YamlViewMode,
 } from "../../lib/types";
+
+function CopyYamlButton({ text }: { text: string }) {
+	const [copied, setCopied] = useState(false);
+	const resetTimerRef = useRef<number | null>(null);
+
+	useEffect(() => {
+		return () => {
+			if (resetTimerRef.current !== null) {
+				window.clearTimeout(resetTimerRef.current);
+			}
+		};
+	}, []);
+
+	const copy = async () => {
+		try {
+			await navigator.clipboard.writeText(text);
+			setCopied(true);
+			if (resetTimerRef.current !== null) {
+				window.clearTimeout(resetTimerRef.current);
+			}
+			resetTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
+		} catch {
+			// Clipboard unavailable; leave the button as-is.
+		}
+	};
+
+	return (
+		<Button
+			type="button"
+			variant="outline"
+			size="sm"
+			onClick={() => void copy()}
+			aria-label="Copy YAML to clipboard"
+		>
+			{copied ? (
+				<Check data-icon="inline-start" className="text-emerald-400" />
+			) : (
+				<Copy data-icon="inline-start" />
+			)}
+			{copied ? "Copied" : "Copy"}
+		</Button>
+	);
+}
 
 interface YamlTabHeaderProps {
 	editing: boolean;
@@ -29,6 +73,7 @@ interface YamlTabHeaderProps {
 	onPrepare: () => Promise<void>;
 	onApply: () => Promise<void>;
 	onCancel: () => void;
+	copyText?: string;
 }
 
 export function YamlTabHeader({
@@ -50,6 +95,7 @@ export function YamlTabHeader({
 	onPrepare,
 	onApply,
 	onCancel,
+	copyText,
 }: YamlTabHeaderProps) {
 	return (
 		<div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b bg-card px-4 py-3 shadow-sm">
@@ -104,16 +150,19 @@ export function YamlTabHeader({
 						</Button>
 					</>
 				) : (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						disabled={secretApplyDisabled || yamlLoading || yamlError || loadingDraft}
-						onClick={onStartApplyFlow}
-					>
-						<Pencil data-icon="inline-start" />
-						Edit YAML
-					</Button>
+					<>
+						{copyText && <CopyYamlButton text={copyText} />}
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							disabled={secretApplyDisabled || yamlLoading || yamlError || loadingDraft}
+							onClick={onStartApplyFlow}
+						>
+							<Pencil data-icon="inline-start" />
+							Edit YAML
+						</Button>
+					</>
 				)}
 			</div>
 		</div>

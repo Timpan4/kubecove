@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownUp, RotateCcw } from "lucide-react";
+import { ArrowDownUp, RotateCcw, Search } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ExactTimestampText } from "@/components/TimestampText";
+import { Input } from "@/components/ui/input";
+import { TimestampText } from "@/components/TimestampText";
+import { formatExactTimeOnly } from "@/components/timestamp-format";
 import {
 	Empty,
 	EmptyDescription,
@@ -33,6 +35,21 @@ import {
 } from "./log-helpers";
 import { usePodLogStream } from "./usePodLogStream";
 
+function LogLineTime({ value }: { value: string }) {
+	const timestampTimezone = useSettingsState(
+		(state) => state.timestampTimezone,
+	);
+	const timeOnly = formatExactTimeOnly(value, timestampTimezone);
+	// Time-of-day inline; the full date stays one hover away in the tooltip.
+	return (
+		<TimestampText
+			relative={timeOnly ?? value}
+			exact={value}
+			precision="millisecond"
+		/>
+	);
+}
+
 interface LogsTabProps {
 	client: TauriClient;
 	resource: ResourceSummary;
@@ -52,9 +69,10 @@ export function LogsTab({
 	onLatestLogLineChange,
 	active,
 }: LogsTabProps) {
-	const [wrapLines, setWrapLines] = useState(false);
+	const [wrapLines, setWrapLines] = useState(true);
 	const [latestFirst, setLatestFirst] = useState(false);
 	const [autoFollow, setAutoFollow] = useState(true);
+	const [filter, setFilter] = useState("");
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const logViewportRef = useRef<HTMLDivElement>(null);
 	const regularContainers = containers.filter(
@@ -91,10 +109,17 @@ export function LogsTab({
 		() => orderedLogLines(logStream.lines, false),
 		[logStream.lines],
 	);
-	const visibleLines = useMemo(
+	const orderedLines = useMemo(
 		() => (latestFirst ? [...parsedLogLines].reverse() : parsedLogLines),
 		[latestFirst, parsedLogLines],
 	);
+	const filterTerm = filter.trim().toLowerCase();
+	const visibleLines = useMemo(() => {
+		if (!filterTerm) return orderedLines;
+		return orderedLines.filter((line) =>
+			line.raw.toLowerCase().includes(filterTerm),
+		);
+	}, [filterTerm, orderedLines]);
 	const latestLogLine = useMemo(
 		() => latestTimestampedLogLine(parsedLogLines),
 		[parsedLogLines],
@@ -187,6 +212,21 @@ export function LogsTab({
 						>
 							Logs: {logStream.status}
 						</Badge>
+						<div className="relative min-w-0">
+							<Search className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+							<Input
+								value={filter}
+								onChange={(event) => setFilter(event.target.value)}
+								placeholder="Filter logs..."
+								aria-label="Filter log lines"
+								className="h-6 w-40 pl-6 text-xs"
+							/>
+						</div>
+						{filterTerm && (
+							<Badge variant="outline">
+								{visibleLines.length}/{parsedLogLines.length}
+							</Badge>
+						)}
 					</div>
 					<div className="flex flex-wrap items-center gap-2">
 						<Label
@@ -239,6 +279,10 @@ export function LogsTab({
 						{logStream.status === "connecting" && <Spinner className="size-3.5" />}
 						<span>{logStream.message}</span>
 					</div>
+				) : visibleLines.length === 0 ? (
+					<div className="p-3 text-muted-foreground">
+						No log lines match “{filter.trim()}”.
+					</div>
 				) : (
 					<div
 						className={cn(
@@ -255,16 +299,13 @@ export function LogsTab({
 								)}
 							>
 								<time
-									className="w-56 shrink-0 whitespace-nowrap border-r border-border/50 px-3 py-1 text-muted-foreground tabular-nums"
+									className="w-32 shrink-0 whitespace-nowrap border-r border-border/50 px-3 py-1 text-muted-foreground tabular-nums"
 									dateTime={line.timestamp}
 								>
 									{line.timestamp ? (
-										<ExactTimestampText
-											value={line.timestamp}
-											precision="millisecond"
-										/>
+										<LogLineTime value={line.timestamp} />
 									) : (
-										"no timestamp"
+										"—"
 									)}
 								</time>
 								<code
