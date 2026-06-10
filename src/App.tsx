@@ -39,7 +39,10 @@ import {
 	type ResourceSummary,
 } from "./lib/types";
 import { CommandPalette } from "./features/command-palette";
-import type { HealthFilter } from "./features/resources/helpers";
+import {
+	argoApplicationGitOpsFilterKey,
+	type HealthFilter,
+} from "./features/resources/helpers";
 import {
 	createWorkspaceScope,
 	makeWorkspaceShortcuts,
@@ -257,6 +260,27 @@ function App() {
 		});
 		setSelectedArgoApp(app);
 		setSelectedFluxResource(null);
+	};
+
+	const handleOpenArgoApplicationResources = (
+		app: NonNullable<ReturnType<typeof useDashboardState>["selectedArgoApp"]>,
+	) => {
+		if ("status" in app) return;
+		diagnosticLog("app.argo.openResources", {
+			name: app.name,
+			namespace: app.namespace ?? "",
+		});
+		setSelectedNamespaces([]);
+		setSelectedKinds([...SUPPORTED_KINDS]);
+		setSelectedArgoAppFilter(argoApplicationGitOpsFilterKey(app.name));
+		setSelectedTreeNode(null);
+		setSelectedArgoApp(app);
+		setSelectedFluxResource(null);
+		setSelectedHelmRelease(null);
+		setSelectedResource(null);
+		setResourceInitialSearch("");
+		setResourceHealthFilter("all");
+		setViewMode("resources");
 	};
 
 	const handleArgoClose = () => {
@@ -551,6 +575,7 @@ function App() {
 			clusterContext={clusterContext}
 			selectedArgoApp={selectedArgoApp}
 			onArgoItemSelect={handleArgoAppSelect}
+			onOpenArgoApplicationResources={handleOpenArgoApplicationResources}
 			selectedFluxResource={selectedFluxResource}
 			onFluxResourceSelect={handleFluxResourceSelect}
 			selectedTreeNode={selectedTreeNode}

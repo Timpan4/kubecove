@@ -1,6 +1,8 @@
 import type { ResourceSummary } from "@/lib/types";
 import {
+	argoApplicationGitOpsFilterKey,
 	buildResourceSearchIndex,
+	describeResourceScope,
 	filterResourceSearchIndex,
 	uniqueGitOpsFilters,
 } from "./helpers";
@@ -35,6 +37,18 @@ describe("resource GitOps filters", () => {
 			buildResourceSearchIndex([api, worker]),
 			"",
 			"payments",
+		);
+
+		expect(rows).toEqual([api]);
+	});
+
+	test("matches Argo Application GitOps filter keys against legacy app metadata", () => {
+		const api = resource("api", { argoApp: "payments" });
+		const worker = resource("worker", { argoApp: "jobs" });
+		const rows = filterResourceSearchIndex(
+			buildResourceSearchIndex([api, worker]),
+			"",
+			argoApplicationGitOpsFilterKey("payments"),
 		);
 
 		expect(rows).toEqual([api]);
@@ -89,5 +103,15 @@ describe("resource GitOps filters", () => {
 				label: "Flux HelmRelease: default/worker",
 			},
 		]);
+	});
+
+	test("uses readable scope labels for Argo Application GitOps filters", () => {
+		expect(
+			describeResourceScope(
+				[],
+				["Pod"],
+				argoApplicationGitOpsFilterKey("payments"),
+			).at(-1),
+		).toEqual({ kind: "gitOpsOwner", label: "GitOps", value: "payments" });
 	});
 });

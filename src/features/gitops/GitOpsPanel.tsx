@@ -18,6 +18,7 @@ export function GitOpsPanel({
 	clusterContext,
 	selectedGitOpsItem,
 	onGitOpsItemSelect,
+	onOpenArgoApplicationResources,
 	selectedGitOpsKind,
 	selectedFluxResource,
 	onFluxResourceSelect,
@@ -25,6 +26,7 @@ export function GitOpsPanel({
 	clusterContext: string;
 	selectedGitOpsItem: ArgoSummaryItem | null;
 	onGitOpsItemSelect: (item: ArgoSummaryItem) => void;
+	onOpenArgoApplicationResources: (app: ArgoApplicationSummary) => void;
 	selectedGitOpsKind: string | null;
 	selectedFluxResource: FluxResourceSummary | null;
 	onFluxResourceSelect: (resource: FluxResourceSummary) => void;
@@ -36,6 +38,7 @@ export function GitOpsPanel({
 				selectedGitOpsItem={selectedGitOpsItem}
 				selectedFluxResource={selectedFluxResource}
 				onGitOpsItemSelect={onGitOpsItemSelect}
+				onOpenArgoApplicationResources={onOpenArgoApplicationResources}
 				onFluxResourceSelect={onFluxResourceSelect}
 			/>
 		);

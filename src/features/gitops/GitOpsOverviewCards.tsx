@@ -265,6 +265,7 @@ export function GitOpsCardGrid({
 	selectedGitOpsItem,
 	selectedFluxResource,
 	onGitOpsItemSelect,
+	onOpenArgoApplicationResources,
 	onFluxResourceSelect,
 }: {
 	activeFilter: GitOpsOverviewFilter | null;
@@ -275,6 +276,7 @@ export function GitOpsCardGrid({
 	selectedGitOpsItem: ArgoSummaryItem | null;
 	selectedFluxResource: FluxResourceSummary | null;
 	onGitOpsItemSelect: (item: ArgoSummaryItem) => void;
+	onOpenArgoApplicationResources: (app: ArgoApplicationSummary) => void;
 	onFluxResourceSelect: (resource: FluxResourceSummary) => void;
 }) {
 	if (!activeFilter) return <EmptyCards title="No GitOps filter selected" />;
@@ -289,7 +291,7 @@ export function GitOpsCardGrid({
 							selectedGitOpsItem?.name === app.name &&
 							selectedGitOpsItem?.namespace === app.namespace
 						}
-						onSelect={() => onGitOpsItemSelect(app)}
+						onSelect={() => onOpenArgoApplicationResources(app)}
 					/>
 				))}
 				{apps.length === 0 && <EmptyCards title="No Argo CD Applications" />}

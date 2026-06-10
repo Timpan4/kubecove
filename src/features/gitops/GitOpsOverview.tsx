@@ -44,6 +44,7 @@ interface GitOpsOverviewProps {
 	selectedGitOpsItem: ArgoSummaryItem | null;
 	selectedFluxResource: FluxResourceSummary | null;
 	onGitOpsItemSelect: (item: ArgoSummaryItem) => void;
+	onOpenArgoApplicationResources: (app: ArgoApplicationSummary) => void;
 	onFluxResourceSelect: (resource: FluxResourceSummary) => void;
 }
 
@@ -136,6 +137,7 @@ export function GitOpsOverview({
 	selectedGitOpsItem,
 	selectedFluxResource,
 	onGitOpsItemSelect,
+	onOpenArgoApplicationResources,
 	onFluxResourceSelect,
 }: GitOpsOverviewProps) {
 	const client = useMemo(() => createTauriClient(), []);
@@ -339,6 +341,7 @@ export function GitOpsOverview({
 								selectedGitOpsItem={selectedGitOpsItem}
 								selectedFluxResource={selectedFluxResource}
 								onGitOpsItemSelect={onGitOpsItemSelect}
+								onOpenArgoApplicationResources={onOpenArgoApplicationResources}
 								onFluxResourceSelect={onFluxResourceSelect}
 							/>
 						)}

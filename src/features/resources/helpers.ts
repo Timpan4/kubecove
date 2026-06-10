@@ -50,6 +50,16 @@ export interface GitOpsFilterOption {
 	label: string;
 }
 
+export function argoApplicationGitOpsFilterKey(name: string): string {
+	return ["argo", "Application", "", name].join(":");
+}
+
+function argoApplicationNameFromGitOpsFilter(filter: string): string | null {
+	const [provider, kind, , name] = filter.split(":");
+	if (provider !== "argo" || kind !== "Application" || !name) return null;
+	return name;
+}
+
 const TOPOLOGY_WATCH_KINDS = [
 	"Deployment",
 	"DaemonSet",
@@ -260,7 +270,11 @@ export function filterResourceSearchIndex(
 	const rows: ResourceSummary[] = [];
 	for (const entry of index) {
 		if (argoAppFilter) {
-			const matchesLegacyArgo = entry.argoApp === argoAppFilter;
+			const argoApplicationName =
+				argoApplicationNameFromGitOpsFilter(argoAppFilter);
+			const matchesLegacyArgo =
+				entry.argoApp === argoAppFilter ||
+				(argoApplicationName !== null && entry.argoApp === argoApplicationName);
 			const matchesGitOpsOwner = entry.gitOpsFilterKey === argoAppFilter;
 			if (!matchesLegacyArgo && !matchesGitOpsOwner) continue;
 		}
@@ -396,7 +410,13 @@ export function describeResourceScope(
 		});
 	}
 	if (argoAppFilter) {
-		pills.push({ kind: "gitOpsOwner", label: "GitOps", value: argoAppFilter });
+		pills.push({
+			kind: "gitOpsOwner",
+			label: "GitOps",
+			value:
+				argoApplicationNameFromGitOpsFilter(argoAppFilter) ??
+				argoAppFilter,
+		});
 	}
 	return pills;
 }
