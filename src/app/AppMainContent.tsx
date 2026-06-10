@@ -1,7 +1,10 @@
 import { Suspense } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { SavedPortForwardRestorePrompt } from "@/features/live-sessions/SavedPortForwardRestorePrompt";
-import type { HealthFilter } from "@/features/resources/helpers";
+import {
+	argoApplicationGitOpsFilterKey,
+	type HealthFilter,
+} from "@/features/resources/helpers";
 import type { ResourceGitOpsFocus } from "@/features/resources/ResourceGitOpsFocusSummary";
 import type { ArgoSelectedItem, DashboardViewMode } from "@/lib/hooks";
 import type {
@@ -105,7 +108,9 @@ export function AppMainContent({
 	emptyMsg,
 }: AppMainContentProps) {
 	const resourceGitOpsFocus =
-		viewMode === "resources" ? argoApplicationFocus(selectedArgoApp) : null;
+		viewMode === "resources"
+			? argoApplicationFocus(selectedArgoApp, selectedArgoAppFilter)
+			: null;
 	return (
 		<main className="flex h-full w-full min-w-0 flex-col overflow-hidden">
 			{liveSessionCleanupMessage && (
@@ -241,9 +246,16 @@ export function AppMainContent({
 
 function argoApplicationFocus(
 	item: ArgoSelectedItem,
+	filter: string,
 ): ResourceGitOpsFocus | null {
 	if (!item) return null;
 	if ("status" in item) return null;
 	if (!("sourceRepo" in item) || !("destinationServer" in item)) return null;
+	if (
+		filter !== argoApplicationGitOpsFilterKey(item.name) &&
+		filter !== item.name
+	) {
+		return null;
+	}
 	return { provider: "argo", application: item };
 }

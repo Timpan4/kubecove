@@ -401,7 +401,15 @@ function App() {
 
 	const handleResourceSelect = (resource: ResourceSummary) => {
 		setSelectedResource(resource);
-		setSelectedArgoApp(null);
+		if (
+			!selectedArgoApp ||
+			"status" in selectedArgoApp ||
+			(selectedArgoAppFilter !==
+				argoApplicationGitOpsFilterKey(selectedArgoApp.name) &&
+				selectedArgoAppFilter !== selectedArgoApp.name)
+		) {
+			setSelectedArgoApp(null);
+		}
 		setSelectedFluxResource(null);
 		setSelectedHelmRelease(null);
 	};
