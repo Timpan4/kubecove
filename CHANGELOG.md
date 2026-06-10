@@ -3,6 +3,15 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.6.5 - 2026-06-10
+### Added
+
+- sticky resource table headers, icon-free kind, smarter columns (#140)
+- log filtering with compact timestamps, YAML copy button (#139)
+- consistent statuses, honest stat cards, structured Argo status detail (#138)
+- add ⌘K/Ctrl+K command palette with global search (#137)
+- redesign settings page with sectioned cards, sidebar, and search (#136)
+
 ## 0.6.4 - 2026-06-09
 
 ### Improved
