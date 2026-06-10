@@ -158,6 +158,7 @@ describe("resource browser presentation helpers", () => {
       attention: 1,
       degraded: 1,
       restarted: 1,
+      untracked: 0,
     });
   });
 

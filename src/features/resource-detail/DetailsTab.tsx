@@ -258,16 +258,12 @@ function SignalList({
 	eventsLoading: boolean;
 	eventsError: boolean;
 }) {
+	// The incident summary at the top already says "no active signals";
+	// don't repeat it as an empty section.
+	if (signals.length === 0 && !eventsLoading && !eventsError) return null;
 	return (
 		<div className={DETAIL_SECTION_CLASS}>
 			<div className={DETAIL_SECTION_TITLE_CLASS}>Signals</div>
-			{signals.length === 0 && !eventsLoading && !eventsError && (
-				<Card size="sm">
-					<CardContent className="text-xs text-muted-foreground">
-						No active incident signals for this resource.
-					</CardContent>
-				</Card>
-			)}
 			{signals.length === 0 && eventsLoading && (
 				<Card size="sm">
 					<CardContent className="text-xs text-muted-foreground">
@@ -433,43 +429,36 @@ export function DetailsTab({
 				logLines={logLines}
 			/>
 
-			<div className="mb-4 grid grid-cols-1 gap-2">
-				<Card size="sm" className="min-w-0">
-					<CardContent>
-					<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">
+			<div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-md border bg-card p-3">
+				<div className="min-w-0">
+					<span className="mb-0.5 block text-[0.68rem] font-bold uppercase text-muted-foreground">
 						Kind
 					</span>
 					<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
 						{currentResource.kind}
 					</strong>
-					</CardContent>
-				</Card>
+				</div>
+				<div className="min-w-0">
+					<span className="mb-0.5 block text-[0.68rem] font-bold uppercase text-muted-foreground">
+						Namespace
+					</span>
+					<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
+						{currentResource.namespace ?? "cluster-scoped"}
+					</strong>
+				</div>
 				{currentResource.apiVersion && (
-					<Card size="sm" className="min-w-0">
-						<CardContent>
-						<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">
+					<div className="min-w-0">
+						<span className="mb-0.5 block text-[0.68rem] font-bold uppercase text-muted-foreground">
 							API Version
 						</span>
 						<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
 							{currentResource.apiVersion}
 						</strong>
-						</CardContent>
-					</Card>
+					</div>
 				)}
-				<Card size="sm" className="min-w-0">
-					<CardContent>
-					<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">
-						Namespace
-						</span>
-						<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
-							{currentResource.namespace ?? "cluster-scoped"}
-						</strong>
-						</CardContent>
-					</Card>
 				{currentResource.age && (
-					<Card size="sm" className="min-w-0">
-						<CardContent>
-						<span className="mb-1 block text-[0.68rem] font-bold uppercase text-muted-foreground">
+					<div className="min-w-0">
+						<span className="mb-0.5 block text-[0.68rem] font-bold uppercase text-muted-foreground">
 							Age
 						</span>
 						<strong className="block text-[0.82rem] text-foreground [overflow-wrap:anywhere]">
@@ -479,8 +468,7 @@ export function DetailsTab({
 								className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
 							/>
 						</strong>
-						</CardContent>
-					</Card>
+					</div>
 				)}
 			</div>
 
@@ -493,7 +481,16 @@ export function DetailsTab({
 			<div className={DETAIL_SECTION_CLASS}>
 				<div className={DETAIL_SECTION_TITLE_CLASS}>Status</div>
 				<StatusChip value={currentResource.status} label="Phase" />
-				<StatusChip value={currentResource.ready} label="Ready" />
+				<StatusChip
+					value={
+						currentResource.ready === "True"
+							? "Ready"
+							: currentResource.ready === "False"
+								? "Not ready"
+								: currentResource.ready
+					}
+					label="Ready"
+				/>
 				{currentResource.restarts !== undefined && currentResource.restarts > 0 && (
 					<div className={DETAIL_ROW_CLASS}>
 						<span className={DETAIL_KEY_CLASS}>Restarts</span>
@@ -523,7 +520,17 @@ export function DetailsTab({
 						label="Memory"
 						value={formatMemoryBytes(currentResource.metrics.memoryBytes)}
 					/>
-					<DetailField label="Sampled" value={currentResource.metrics.sampledAt} />
+					{currentResource.metrics.sampledAt && (
+						<div className={DETAIL_ROW_CLASS}>
+							<span className={DETAIL_KEY_CLASS}>Sampled</span>
+							<span className={DETAIL_VALUE_CLASS}>
+								<ExactTimestampText
+									value={currentResource.metrics.sampledAt}
+									precision="second"
+								/>
+							</span>
+						</div>
+					)}
 				</div>
 			)}
 

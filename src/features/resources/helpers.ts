@@ -20,6 +20,8 @@ export interface HealthSummary {
 	attention: number;
 	degraded: number;
 	restarted: number;
+	/** Rows with no health semantics (ConfigMaps, Services, …). */
+	untracked: number;
 }
 
 export type HealthFilter =
@@ -359,15 +361,17 @@ export function buildResourceHealthSummary(
 		(summary, row) => {
 			const flags = classifyResourceHealth(row);
 
+			const untracked = !flags.healthy && !flags.attention && !flags.degraded;
 			return {
 				total: summary.total + 1,
 				healthy: summary.healthy + (flags.healthy ? 1 : 0),
 				attention: summary.attention + (flags.attention ? 1 : 0),
 				degraded: summary.degraded + (flags.degraded ? 1 : 0),
 				restarted: summary.restarted + (flags.restarted ? 1 : 0),
+				untracked: summary.untracked + (untracked ? 1 : 0),
 			};
 		},
-		{ total: 0, healthy: 0, attention: 0, degraded: 0, restarted: 0 },
+		{ total: 0, healthy: 0, attention: 0, degraded: 0, restarted: 0, untracked: 0 },
 	);
 }
 

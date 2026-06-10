@@ -5,12 +5,14 @@ import type { HealthFilter, HealthSummary } from "./helpers";
 function HealthMetric({
 	label,
 	value,
+	hint,
 	valueClassName,
 	active,
 	onClick,
 }: {
 	label: string;
 	value: number;
+	hint?: string;
 	valueClassName?: string;
 	active?: boolean;
 	onClick?: () => void;
@@ -20,6 +22,21 @@ function HealthMetric({
 		onClick && "cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50",
 		active && "border-primary/60 bg-primary/10",
 	);
+	// Zero counts stay muted so the eye lands on the cards that matter.
+	const valueClass = value === 0 ? "text-muted-foreground/70" : valueClassName;
+	const body = (
+		<>
+			<span className="text-[0.72rem] font-semibold uppercase text-muted-foreground">
+				{label}
+			</span>
+			<span className="flex items-baseline gap-1.5">
+				<strong className={valueClass}>{value}</strong>
+				{hint && (
+					<span className="text-[0.68rem] text-muted-foreground/80">{hint}</span>
+				)}
+			</span>
+		</>
+	);
 	if (onClick) {
 		return (
 			<button
@@ -28,22 +45,12 @@ function HealthMetric({
 				onClick={onClick}
 				aria-pressed={active}
 			>
-				<span className="text-[0.72rem] font-semibold uppercase text-muted-foreground">
-					{label}
-				</span>
-				<strong className={valueClassName}>{value}</strong>
+				{body}
 			</button>
 		);
 	}
 
-	return (
-		<div className={className}>
-			<span className="text-[0.72rem] font-semibold uppercase text-muted-foreground">
-				{label}
-			</span>
-			<strong className={valueClassName}>{value}</strong>
-		</div>
-	);
+	return <div className={className}>{body}</div>;
 }
 
 function healthFilterLabel(filter: HealthFilter): string {
@@ -80,6 +87,11 @@ export function ResourceHealthStrip({
 			<HealthMetric
 				label="Total"
 				value={summary.total}
+				hint={
+					summary.untracked > 0
+						? `${summary.untracked} without health checks`
+						: undefined
+				}
 				active={activeFilter === "all"}
 				onClick={() => onFilterChange("all")}
 			/>

@@ -3,6 +3,7 @@ import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { ExactTimestampText } from "@/components/TimestampText";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
+import { formatStatusLabel } from "@/lib/utils";
 
 export const DETAIL_SECTION_CLASS = "mb-4";
 export const DETAIL_SECTION_TITLE_CLASS =
@@ -46,7 +47,7 @@ export function DetailStatusField({
 		<div className={DETAIL_ROW_CLASS}>
 			<span className={DETAIL_KEY_CLASS}>{label}</span>
 			<span className={DETAIL_VALUE_CLASS}>
-				<StatusBadge tone={tone}>{value}</StatusBadge>
+				<StatusBadge tone={tone}>{formatStatusLabel(value)}</StatusBadge>
 			</span>
 		</div>
 	);
