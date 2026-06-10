@@ -54,6 +54,18 @@ Goal: make Argo CD a first-class grouping layer through the Kubernetes API.
 - [x] Add Argo application detail panel.
 - [x] Add global Argo application filter.
 
+## Milestone 3A: GitOps Provider Expansion
+
+Goal: expand the Argo CD product surface into GitOps while keeping provider integrations Kubernetes-API-first and inspection-only.
+
+- [x] Rename the navigation surface to GitOps while preserving existing Argo CD command names and saved state.
+- [x] Add ADR 0007 for GitOps providers as Kubernetes-API-first and inspection-only by default.
+- [x] Add Flux detection, list, and detail commands for Source, Kustomize, Helm, Notification, and Image API CRDs.
+- [x] Add Flux tables and detail panels for provider-specific inspection.
+- [x] Add GitOps ownership metadata to resource summaries while preserving legacy Argo and Helm metadata.
+- [x] Add GitOps resource filtering for Argo CD Applications, Flux Kustomizations, and Flux HelmReleases.
+- [ ] Run manual Flux smoke testing against a readable cluster with Flux installed.
+
 ## Milestone 4: Discovery and Grouping
 
 Goal: broaden Kubernetes coverage without hard-coding every resource.
@@ -169,7 +181,7 @@ Goal: add exact-Pod interactive exec without broad shell or mutation surfaces.
 - [x] Keep the current beta inspection-first except for explicitly governed live sessions.
 - [x] Add ADR 0004 for guarded cluster operations.
 - [ ] Implement future cluster-changing commands as explicit, typed, permission-aware workflows.
-- [ ] Add focused ADR coverage before Argo CD API, CLI, sync, rollback, or diff support.
+- [ ] Add focused ADR coverage before GitOps provider API, CLI, sync, reconcile, rollback, diff, or Git-writing support.
 
 ### Helm Reconciliation
 

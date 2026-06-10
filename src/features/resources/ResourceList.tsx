@@ -62,7 +62,7 @@ import {
 	resourceKindFetchKey,
 	sortedRows,
 	topologyWatchKeys,
-	uniqueArgoApps,
+	uniqueGitOpsFilters,
 	watchKeysFromFetchKeys,
 } from "./helpers";
 import {
@@ -270,7 +270,10 @@ function ResourceListComponent({
 	const metricsAvailabilityMessage = describeMetricsAvailability(
 		metricsData?.availability,
 	);
-	const argoApps = useMemo(() => uniqueArgoApps(dataWithMetrics), [dataWithMetrics]);
+	const gitOpsFilters = useMemo(
+		() => uniqueGitOpsFilters(dataWithMetrics),
+		[dataWithMetrics],
+	);
 	const resourceSearchIndex = useMemo(
 		() => buildResourceSearchIndex(dataWithMetrics),
 		[dataWithMetrics],
@@ -288,7 +291,11 @@ function ResourceListComponent({
 		[filteredData, sorting],
 	);
 	const groupedByArgo = useMemo(
-		() => filteredData.some((resource) => resource.argoApp || resource.ownerRef),
+		() =>
+			filteredData.some(
+				(resource) =>
+					resource.gitOpsOwner || resource.argoApp || resource.ownerRef,
+			),
 		[filteredData],
 	);
 	const displayData = useMemo(() => {
@@ -348,7 +355,10 @@ function ResourceListComponent({
 			memory: pageRows.some((row) => row.metrics?.memoryBytes !== undefined),
 			ownerRef: pageRows.some((row) => Boolean(row.ownerRef)),
 			"argo-helm": pageRows.some(
-				(row) => Boolean(row.argoApp) || Boolean(row.helmRelease),
+				(row) =>
+					Boolean(row.gitOpsOwner) ||
+					Boolean(row.argoApp) ||
+					Boolean(row.helmRelease),
 			),
 		}),
 		[pageRows],
@@ -601,7 +611,7 @@ function ResourceListComponent({
 			/>
 			<ResourceToolbar
 				search={search}
-				argoApps={argoApps}
+				gitOpsFilters={gitOpsFilters}
 				selectedArgoAppFilter={selectedArgoAppFilter}
 				hasNoFilterResults={filteredData.length === 0}
 				onSearchChange={(value) => {

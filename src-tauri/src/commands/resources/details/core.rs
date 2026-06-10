@@ -1,6 +1,6 @@
 use crate::commands::helpers::{
-    extract_argo_app, extract_helm_release, extract_owner_ref, fetch_and_serialize,
-    k8s_creation_timestamp_to_rfc3339, redact_secret, resource_age,
+    extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
+    fetch_and_serialize, k8s_creation_timestamp_to_rfc3339, redact_secret, resource_age,
 };
 use crate::models::{AppError, ResourceDetailsFull, ResourceSummary};
 use chrono::{TimeZone, Utc};
@@ -59,6 +59,7 @@ pub(super) async fn pod_details(
         owner_ref: extract_owner_ref(&pod.metadata),
         argo_app: extract_argo_app(&pod.metadata),
         helm_release: extract_helm_release(&pod.metadata),
+        git_ops_owner: extract_git_ops_owner(&pod.metadata),
     };
     Ok(ResourceDetailsFull {
         summary,
@@ -109,6 +110,7 @@ pub(super) async fn service_details(
         owner_ref: extract_owner_ref(&svc.metadata),
         argo_app: extract_argo_app(&svc.metadata),
         helm_release: extract_helm_release(&svc.metadata),
+        git_ops_owner: extract_git_ops_owner(&svc.metadata),
     };
     Ok(ResourceDetailsFull {
         summary,
@@ -155,6 +157,7 @@ pub(super) async fn configmap_details(
         owner_ref: extract_owner_ref(&cm.metadata),
         argo_app: extract_argo_app(&cm.metadata),
         helm_release: extract_helm_release(&cm.metadata),
+        git_ops_owner: extract_git_ops_owner(&cm.metadata),
     };
     Ok(ResourceDetailsFull {
         summary,
@@ -204,6 +207,7 @@ pub(super) async fn secret_details(
         owner_ref: extract_owner_ref(&sec.metadata),
         argo_app: extract_argo_app(&sec.metadata),
         helm_release: extract_helm_release(&sec.metadata),
+        git_ops_owner: extract_git_ops_owner(&sec.metadata),
     };
     Ok(ResourceDetailsFull {
         summary,
@@ -256,6 +260,7 @@ pub(super) async fn pvc_details(
         owner_ref: extract_owner_ref(&pvc.metadata),
         argo_app: extract_argo_app(&pvc.metadata),
         helm_release: extract_helm_release(&pvc.metadata),
+        git_ops_owner: extract_git_ops_owner(&pvc.metadata),
     };
     Ok(ResourceDetailsFull {
         summary,

@@ -29,6 +29,14 @@ function latestWarningTime(item: IncidentCockpitItem): number {
 }
 
 export function incidentGroupLabel(resource: ResourceSummary): string {
+	const owner = resource.gitOpsOwner;
+	if (owner?.provider === "flux") {
+		const scopedName = owner.namespace
+			? `${owner.namespace}/${owner.name}`
+			: owner.name;
+		return `Flux ${owner.kind}: ${scopedName}`;
+	}
+	if (owner?.provider === "argo") return `Argo app: ${owner.name}`;
 	if (resource.argoApp) return `Argo app: ${resource.argoApp}`;
 	if (resource.helmRelease) return `Helm release: ${resource.helmRelease}`;
 	if (resource.ownerRef) return `Owner: ${resource.ownerRef}`;

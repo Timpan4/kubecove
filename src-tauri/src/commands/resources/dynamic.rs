@@ -1,6 +1,6 @@
 use crate::commands::helpers::{
-    extract_argo_app, extract_helm_release, extract_owner_ref, k8s_creation_timestamp_to_rfc3339,
-    list_params, resource_age, serialize_resource_document,
+    extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
+    k8s_creation_timestamp_to_rfc3339, list_params, resource_age, serialize_resource_document,
 };
 use crate::commands::{
     kubeconfig::{kubeconfig_source_key, KubeconfigSource},
@@ -94,6 +94,7 @@ pub(crate) fn dynamic_resource_summary(
         owner_ref: extract_owner_ref(&object.metadata),
         argo_app: extract_argo_app(&object.metadata),
         helm_release: extract_helm_release(&object.metadata),
+        git_ops_owner: extract_git_ops_owner(&object.metadata),
     }
 }
 

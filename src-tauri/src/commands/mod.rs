@@ -2,6 +2,7 @@ mod argo;
 mod contexts;
 mod discovery;
 mod events;
+mod flux;
 mod helm;
 mod helpers;
 mod incidents;
@@ -26,6 +27,7 @@ pub use argo::{
 pub use contexts::{get_cluster_contexts, list_kube_contexts};
 pub use discovery::{list_resource_kinds, resource_kinds_from};
 pub use events::{list_resource_events, resource_events_from};
+pub use flux::{detect_flux, get_flux_resource_details, list_flux_resources};
 pub use helm::{get_helm_release_details, get_helm_release_reconciliation, list_helm_releases};
 pub use incidents::{incident_cockpit_from, list_incident_cockpit};
 pub use kubeconfig::{

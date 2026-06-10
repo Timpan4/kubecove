@@ -1,21 +1,24 @@
 import { Suspense } from "react";
 import {
 	ArgoDetailPanel,
+	FluxDetailPanel,
 	HelmDetailPanel,
 	ResourceDetailPanel,
 } from "./lazyViews";
 import { ViewLoadingFallback } from "./ViewLoadingFallback";
 import type { DashboardViewMode, ArgoSelectedItem } from "@/lib/hooks";
-import type { HelmReleaseSummary, ResourceSummary } from "@/lib/types";
+import type { FluxResourceSummary, HelmReleaseSummary, ResourceSummary } from "@/lib/types";
 
 export function AppDetailPanel({
 	viewMode,
 	selectedHelmRelease,
 	selectedArgoApp,
+	selectedFluxResource,
 	selectedResource,
 	selectedResourceKey,
 	onHelmClose,
 	onArgoClose,
+	onFluxClose,
 	onResourceClose,
 	onOpenHelmResources,
 	onOpenHelmReleaseFromResource,
@@ -23,10 +26,12 @@ export function AppDetailPanel({
 	viewMode: DashboardViewMode;
 	selectedHelmRelease: HelmReleaseSummary | null;
 	selectedArgoApp: ArgoSelectedItem;
+	selectedFluxResource: FluxResourceSummary | null;
 	selectedResource: ResourceSummary | null;
 	selectedResourceKey: string | null;
 	onHelmClose: () => void;
 	onArgoClose: () => void;
+	onFluxClose: () => void;
 	onResourceClose: () => void;
 	onOpenHelmResources: (release: HelmReleaseSummary) => void;
 	onOpenHelmReleaseFromResource: (
@@ -49,6 +54,13 @@ export function AppDetailPanel({
 		return (
 			<Suspense fallback={<ViewLoadingFallback label="Loading app details..." />}>
 				<ArgoDetailPanel app={selectedArgoApp} onClose={onArgoClose} />
+			</Suspense>
+		);
+	}
+	if (viewMode === "argo" && selectedFluxResource) {
+		return (
+			<Suspense fallback={<ViewLoadingFallback label="Loading Flux details..." />}>
+				<FluxDetailPanel resource={selectedFluxResource} onClose={onFluxClose} />
 			</Suspense>
 		);
 	}

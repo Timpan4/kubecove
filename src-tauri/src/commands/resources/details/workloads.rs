@@ -1,6 +1,6 @@
 use crate::commands::helpers::{
-    extract_argo_app, extract_helm_release, extract_owner_ref, fetch_and_serialize, fmt_ready,
-    k8s_creation_timestamp_to_rfc3339, resource_age,
+    extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
+    fetch_and_serialize, fmt_ready, k8s_creation_timestamp_to_rfc3339, resource_age,
 };
 use crate::models::{AppError, ResourceDetailsFull, ResourceSummary};
 use chrono::{TimeZone, Utc};
@@ -47,6 +47,7 @@ pub(super) async fn deployment_details(
         owner_ref: extract_owner_ref(&deploy.metadata),
         argo_app: extract_argo_app(&deploy.metadata),
         helm_release: extract_helm_release(&deploy.metadata),
+        git_ops_owner: extract_git_ops_owner(&deploy.metadata),
     };
     if let Some(ref s) = deploy.status {
         summary.ready = Some(format!(
@@ -104,6 +105,7 @@ pub(super) async fn statefulset_details(
         owner_ref: extract_owner_ref(&ss.metadata),
         argo_app: extract_argo_app(&ss.metadata),
         helm_release: extract_helm_release(&ss.metadata),
+        git_ops_owner: extract_git_ops_owner(&ss.metadata),
     };
     if let Some(ref s) = ss.status {
         summary.ready = Some(fmt_ready(s.ready_replicas, s.replicas));
@@ -157,6 +159,7 @@ pub(super) async fn daemonset_details(
         owner_ref: extract_owner_ref(&ds.metadata),
         argo_app: extract_argo_app(&ds.metadata),
         helm_release: extract_helm_release(&ds.metadata),
+        git_ops_owner: extract_git_ops_owner(&ds.metadata),
     };
     if let Some(ref s) = ds.status {
         summary.ready = Some(format!("{}/{}", s.number_ready, s.desired_number_scheduled));
@@ -210,6 +213,7 @@ pub(super) async fn ingress_details(
         owner_ref: extract_owner_ref(&ing.metadata),
         argo_app: extract_argo_app(&ing.metadata),
         helm_release: extract_helm_release(&ing.metadata),
+        git_ops_owner: extract_git_ops_owner(&ing.metadata),
     };
     Ok(ResourceDetailsFull {
         summary,
@@ -260,6 +264,7 @@ pub(super) async fn job_details(
         owner_ref: extract_owner_ref(&job.metadata),
         argo_app: extract_argo_app(&job.metadata),
         helm_release: extract_helm_release(&job.metadata),
+        git_ops_owner: extract_git_ops_owner(&job.metadata),
     };
     if let Some(ref s) = job.status {
         summary.ready = Some(format!(
@@ -329,6 +334,7 @@ pub(super) async fn cronjob_details(
         owner_ref: extract_owner_ref(&cj.metadata),
         argo_app: extract_argo_app(&cj.metadata),
         helm_release: extract_helm_release(&cj.metadata),
+        git_ops_owner: extract_git_ops_owner(&cj.metadata),
     };
     if let Some(ref s) = cj.status {
         if let Some(ref active) = s.active {

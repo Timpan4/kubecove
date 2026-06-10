@@ -4,6 +4,7 @@ import { SavedPortForwardRestorePrompt } from "@/features/live-sessions/SavedPor
 import type { HealthFilter } from "@/features/resources/helpers";
 import type { ArgoSelectedItem, DashboardViewMode } from "@/lib/hooks";
 import type {
+	FluxResourceSummary,
 	HelmReleaseSummary,
 	ResourceKindSelection,
 	ResourceSummary,
@@ -11,7 +12,7 @@ import type {
 import type { TreeNodeId } from "@/lib/tree-nav";
 import type { SavedWorkspace } from "@/lib/workspaces";
 import {
-	ArgoCDPanel,
+	GitOpsPanel,
 	HelmPanel,
 	IncidentCockpit,
 	RbacPanel,
@@ -39,6 +40,8 @@ interface AppMainContentProps {
 	clusterContext: string;
 	selectedArgoApp: ArgoSelectedItem;
 	onArgoItemSelect: (app: NonNullable<ArgoSelectedItem>) => void;
+	selectedFluxResource: FluxResourceSummary | null;
+	onFluxResourceSelect: (resource: FluxResourceSummary) => void;
 	selectedTreeNode: TreeNodeId | null;
 	selectedHelmRelease: HelmReleaseSummary | null;
 	onHelmReleaseSelect: (release: HelmReleaseSummary) => void;
@@ -76,6 +79,8 @@ export function AppMainContent({
 	clusterContext,
 	selectedArgoApp,
 	onArgoItemSelect,
+	selectedFluxResource,
+	onFluxResourceSelect,
 	selectedTreeNode,
 	selectedHelmRelease,
 	onHelmReleaseSelect,
@@ -140,12 +145,14 @@ export function AppMainContent({
 				</div>
 			) : viewMode === "argo" ? (
 				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<Suspense fallback={<ViewLoadingFallback label="Loading Argo CD..." />}>
-						<ArgoCDPanel
+					<Suspense fallback={<ViewLoadingFallback label="Loading GitOps..." />}>
+						<GitOpsPanel
 							clusterContext={clusterContext}
-							selectedArgoItem={selectedArgoApp}
-							onArgoItemSelect={onArgoItemSelect}
-							selectedArgoKind={
+							selectedGitOpsItem={selectedArgoApp}
+							onGitOpsItemSelect={onArgoItemSelect}
+							selectedFluxResource={selectedFluxResource}
+							onFluxResourceSelect={onFluxResourceSelect}
+							selectedGitOpsKind={
 								selectedTreeNode?.type === "kind" && selectedTreeNode.kind
 									? selectedTreeNode.kind
 									: null

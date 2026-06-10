@@ -3,6 +3,7 @@ mod cluster;
 mod discovery;
 mod error;
 mod events;
+mod flux;
 mod helm;
 mod incidents;
 mod metrics;
@@ -21,6 +22,10 @@ pub use cluster::ClusterContext;
 pub use discovery::DiscoveredResourceKind;
 pub use error::AppError;
 pub use events::ResourceEventSummary;
+pub use flux::{
+    FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails, FluxResourceKind,
+    FluxResourceSummary,
+};
 pub use helm::{
     HelmManifestResourceSummary, HelmManifestSummary, HelmReconciliationResource,
     HelmReconciliationStatus, HelmReconciliationTotals, HelmReleaseDetails,
@@ -39,11 +44,11 @@ pub use rbac::{
     RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary, ServiceAccountSummary,
 };
 pub use resource::{
-    KubernetesYamlLintDiagnostic, KubernetesYamlLintResult, KubernetesYamlLintSeverity,
-    OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull, ResourceListRequest,
-    ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode, TopologyRelation,
-    YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlApplyTarget, YamlEncoding,
-    YamlViewMode,
+    GitOpsOwnerSummary, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult,
+    KubernetesYamlLintSeverity, OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull,
+    ResourceListRequest, ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode,
+    TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlApplyTarget,
+    YamlEncoding, YamlViewMode,
 };
 pub use sessions::{
     LiveSessionCleanupRequest, LiveSessionCleanupResult, PodExecConfirmation,

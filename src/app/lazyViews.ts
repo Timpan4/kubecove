@@ -12,15 +12,21 @@ export const ResourceDetailPanel = lazy(() =>
 	})),
 );
 
-export const ArgoCDPanel = lazy(() =>
-	import("../features/argo/ArgoCDPanel").then((module) => ({
-		default: module.ArgoCDPanel,
+export const GitOpsPanel = lazy(() =>
+	import("../features/gitops/GitOpsPanel").then((module) => ({
+		default: module.GitOpsPanel,
 	})),
 );
 
 export const ArgoDetailPanel = lazy(() =>
 	import("../features/argo/ArgoDetailPanel").then((module) => ({
 		default: module.ArgoDetailPanel,
+	})),
+);
+
+export const FluxDetailPanel = lazy(() =>
+	import("../features/gitops/FluxDetailPanel").then((module) => ({
+		default: module.FluxDetailPanel,
 	})),
 );
 

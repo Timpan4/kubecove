@@ -94,11 +94,28 @@ export const SECTIONS = {
     label: "Discovered",
     children: [] as readonly string[],
   },
-  /** Argo CD: Applications, ApplicationSets, AppProjects */
+  /** GitOps: Argo CD and Flux provider resources. */
   argo: {
     id: "argo",
-    label: "Argo CD",
-    children: ["Applications", "ApplicationSets", "AppProjects"] as const,
+    label: "GitOps",
+    children: [
+      "Applications",
+      "ApplicationSets",
+      "AppProjects",
+      "Flux GitRepositories",
+      "Flux OCIRepositories",
+      "Flux HelmRepositories",
+      "Flux HelmCharts",
+      "Flux Buckets",
+      "Flux Kustomizations",
+      "Flux HelmReleases",
+      "Flux Providers",
+      "Flux Alerts",
+      "Flux Receivers",
+      "Flux ImageRepositories",
+      "Flux ImagePolicies",
+      "Flux ImageUpdateAutomations",
+    ] as const,
   },
   /** Helm: read-only release inventory from Helm v3 storage objects. */
   helm: {
@@ -223,7 +240,7 @@ export interface TreeScope {
   kinds: ResourceKindSelection[];
   /** Whether the scope is for cluster-scoped resources */
   clusterScoped: boolean;
-  /** Whether the scope is for Argo CD */
+  /** Whether the scope is for the GitOps section */
   argoMode: boolean;
   /** Whether the scope is for Helm */
   helmMode: boolean;
@@ -359,7 +376,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
 
 export function emptyStateMessage(scope: TreeScope, hasClusterContext: boolean): string {
   if (!hasClusterContext) return "Select a cluster context first";
-  if (scope.argoMode) return "Select an Argo CD resource type";
+  if (scope.argoMode) return "Select a GitOps resource type";
   if (scope.helmMode) return "Select a Helm resource type";
   if (scope.incidentMode) return "Use the Incident Cockpit";
   if (scope.portForwardMode) return "Use the Port Forwards page";

@@ -18,8 +18,8 @@
  * - Network [section shortcut]
  * - Config [section shortcut]
  * - Storage [section shortcut]
- * - Argo CD [section]
- *   - Applications, ApplicationSets, AppProjects [Argo child nodes]
+ * - GitOps [section]
+ *   - Argo CD and Flux provider child nodes
  * - Helm [section]
  *   - Releases [read-only Helm v3 release inventory]
  * - Incidents [section]

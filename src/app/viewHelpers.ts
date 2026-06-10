@@ -17,7 +17,7 @@ export const SECTION_LABELS: Record<string, string> = {
 	config: "Config",
 	storage: "Storage",
 	discovered: "Discovered",
-	argo: "Argo CD",
+	argo: "GitOps",
 	helm: "Helm",
 	incidents: "Incidents",
 	portForwards: "Port Forwards",
@@ -97,7 +97,7 @@ export function getAppContentTitle({
 		if (selectedTreeNode?.type === "kind" && selectedTreeNode.kind) {
 			return selectedTreeNode.kind;
 		}
-		return "Argo CD";
+		return "GitOps";
 	}
 	if (!scope.section) return "Kubernetes Resources";
 	if (scope.section === "clusterOverview") {

@@ -168,6 +168,9 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 				name: trimmedName || effectiveContext,
 				scope: {
 					...scope,
+					gitOpsFilter:
+						editingWorkspace.scope.gitOpsFilter ??
+						editingWorkspace.scope.argoAppFilter,
 					argoAppFilter: editingWorkspace.scope.argoAppFilter,
 					layout: editingWorkspace.scope.layout,
 				},

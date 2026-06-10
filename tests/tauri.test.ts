@@ -360,7 +360,7 @@ describe("resource browser presentation helpers", () => {
     expect(describeResourceScope(["payments"], ["Pod", "Service"], "argocd")).toEqual([
       { kind: "namespaces", label: "Namespace", value: "payments" },
       { kind: "kinds", label: "Kinds", value: "Pod, Service" },
-      { kind: "argoApp", label: "Argo app", value: "argocd" },
+      { kind: "gitOpsOwner", label: "GitOps", value: "argocd" },
     ]);
     expect(describeResourceScope([], ["Pod"], "")).toEqual([
       { kind: "namespaces", label: "Namespaces", value: "All namespaces" },
@@ -369,7 +369,7 @@ describe("resource browser presentation helpers", () => {
   });
 
   test("uses readable group labels for Argo-managed and unmanaged resources", () => {
-    expect(formatResourceGroupLabel({ ...baseResource, argoApp: "argocd" })).toBe("Managed by Argo app: argocd");
+    expect(formatResourceGroupLabel({ ...baseResource, argoApp: "argocd" })).toBe("Managed by Argo CD Application: argocd");
     expect(formatResourceGroupLabel({ ...baseResource, ownerRef: "api" })).toBe("Owned by: api");
     expect(formatResourceGroupLabel(baseResource)).toBe("Unmanaged resources");
   });
@@ -394,8 +394,8 @@ describe("resource browser presentation helpers", () => {
   test("builds stable collapse keys for app and type groups", () => {
     const resource = { ...baseResource, kind: "ConfigMap", argoApp: "argocd" };
 
-    expect(resourceGroupCollapseKey(resource)).toBe("group:Managed by Argo app: argocd");
-    expect(resourceTypeGroupCollapseKey(resource)).toBe("group:Managed by Argo app: argocd::type:ConfigMaps");
+    expect(resourceGroupCollapseKey(resource)).toBe("group:Managed by Argo CD Application: argocd");
+    expect(resourceTypeGroupCollapseKey(resource)).toBe("group:Managed by Argo CD Application: argocd::type:ConfigMaps");
   });
 
   test("normalizes tooltip values for table display", () => {
