@@ -147,13 +147,20 @@ function ErrorState({ error }: { error: unknown }) {
 	);
 }
 
-function CockpitEmptyState({ onOpenResources }: { onOpenResources: () => void }) {
+function CockpitEmptyState({
+	onOpenResources,
+	scopeLabel,
+}: {
+	onOpenResources: () => void;
+	scopeLabel: string;
+}) {
 	return (
 		<Empty className="min-h-64 border-0">
 			<EmptyHeader>
 				<EmptyTitle>No active incident signals</EmptyTitle>
 				<EmptyDescription>
-					This workspace scope has no degraded, restarted, or warning resources.
+					No degraded, restarted, or warning resources while {scopeLabel}.
+					Argo CD application health is tracked separately in the Argo CD view.
 				</EmptyDescription>
 			</EmptyHeader>
 			<Button type="button" variant="outline" onClick={onOpenResources}>
@@ -414,6 +421,11 @@ export function IncidentCockpit({
 					<div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
 						<span>{workspace.name}</span>
 						<span>{items.length} active signals</span>
+						<span>
+							{workspace.scope.namespaces.length === 0
+								? "scanning all namespaces"
+								: `scanning ${workspace.scope.namespaces.join(", ")}`}
+						</span>
 						<ExactTimestampText value={data.generatedAt} />
 					</div>
 				</div>
@@ -458,7 +470,14 @@ export function IncidentCockpit({
 						onFilterChange={setFilter}
 					/>
 					{items.length === 0 ? (
-						<CockpitEmptyState onOpenResources={onOpenResources} />
+						<CockpitEmptyState
+							onOpenResources={onOpenResources}
+							scopeLabel={
+								workspace.scope.namespaces.length === 0
+									? "scanning all namespaces"
+									: `scanning ${workspace.scope.namespaces.join(", ")}`
+							}
+						/>
 					) : filteredItems.length === 0 ? (
 						<Empty className="min-h-52 border-0">
 							<EmptyHeader>

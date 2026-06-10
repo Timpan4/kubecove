@@ -21,7 +21,7 @@ export function StatusChip({
 			? "success"
 			: value === "Pending" || value === "Terminating"
 				? "warning"
-				: value === "Failed" || value === "Error"
+				: value === "Failed" || value === "Error" || value === "Not ready"
 					? "error"
 					: "neutral";
 	const badgeStyle = CHIP_BADGE_STYLES[variant];

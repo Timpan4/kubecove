@@ -41,11 +41,25 @@ export function IncidentSummary({
 								{resource.status}
 							</Badge>
 						)}
-						{resource.ready && (
+						{resource.ready === "True" ? (
+							<Badge
+								variant="outline"
+								className="rounded-sm border-emerald-500/40 bg-emerald-500/10"
+							>
+								Ready
+							</Badge>
+						) : resource.ready === "False" ? (
+							<Badge
+								variant="outline"
+								className="rounded-sm border-red-500/40 bg-red-500/10"
+							>
+								Not ready
+							</Badge>
+						) : resource.ready ? (
 							<Badge variant="outline" className="rounded-sm">
 								Ready {resource.ready}
 							</Badge>
-						)}
+						) : null}
 						{resource.restarts !== undefined && resource.restarts > 0 && (
 							<Badge
 								variant="outline"

@@ -34,7 +34,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { useSettingsState } from "@/lib/settings";
 import { createTauriClient, listHelmReleases } from "@/lib/tauri";
 import type { HelmReleaseSummary } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, formatStatusLabel } from "@/lib/utils";
 import {
 	groupHelmReleasesByNamespace,
 	helmReleaseKey,
@@ -229,7 +229,7 @@ function HelmTable({
 										<TableCell>
 											{release.status ? (
 												<StatusBadge tone={helmStatusTone(release.status)}>
-													{release.status}
+													{formatStatusLabel(release.status)}
 												</StatusBadge>
 											) : (
 												"-"
