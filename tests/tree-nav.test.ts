@@ -152,7 +152,7 @@ describe("tree navigation scope helpers", () => {
 				resolveTreeScope({ type: "section", section: "argo" } as TreeNodeId),
 				true,
 			),
-		).toBe("Select an Argo CD resource type");
+		).toBe("Select a GitOps resource type");
 		expect(
 			emptyStateMessage(
 				resolveTreeScope({ type: "section", section: "helm" } as TreeNodeId),

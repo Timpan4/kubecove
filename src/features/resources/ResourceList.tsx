@@ -62,7 +62,7 @@ import {
 	resourceKindFetchKey,
 	sortedRows,
 	topologyWatchKeys,
-	uniqueArgoApps,
+	uniqueGitOpsFilters,
 	watchKeysFromFetchKeys,
 } from "./helpers";
 import {
@@ -71,6 +71,10 @@ import {
 } from "./health";
 import { fetchResourcePage } from "./query";
 import { ResourceMapTableLayout } from "./ResourceMapTableLayout";
+import {
+	ResourceGitOpsFocusSummary,
+	type ResourceGitOpsFocus,
+} from "./ResourceGitOpsFocusSummary";
 import { ResourceScopePills } from "./scope-filters";
 import { ResourceToolbar } from "./toolbar";
 import { useResourceWatch } from "./useResourceWatch";
@@ -80,6 +84,7 @@ interface ResourceListProps {
 	selectedNamespaces: string[];
 	selectedKinds: ResourceKindSelection[];
 	selectedArgoAppFilter: string;
+	gitOpsFocus?: ResourceGitOpsFocus | null;
 	selectedResource: ResourceSummary | null;
 	initialHealthFilter?: HealthFilter;
 	initialSearch?: string;
@@ -94,6 +99,7 @@ function ResourceListComponent({
 	selectedNamespaces,
 	selectedKinds,
 	selectedArgoAppFilter,
+	gitOpsFocus = null,
 	selectedResource,
 	initialHealthFilter = "all",
 	initialSearch = "",
@@ -270,7 +276,10 @@ function ResourceListComponent({
 	const metricsAvailabilityMessage = describeMetricsAvailability(
 		metricsData?.availability,
 	);
-	const argoApps = useMemo(() => uniqueArgoApps(dataWithMetrics), [dataWithMetrics]);
+	const gitOpsFilters = useMemo(
+		() => uniqueGitOpsFilters(dataWithMetrics),
+		[dataWithMetrics],
+	);
 	const resourceSearchIndex = useMemo(
 		() => buildResourceSearchIndex(dataWithMetrics),
 		[dataWithMetrics],
@@ -278,6 +287,24 @@ function ResourceListComponent({
 	const scopedData = useMemo(
 		() => filterResourceSearchIndex(resourceSearchIndex, search, selectedArgoAppFilter),
 		[resourceSearchIndex, search, selectedArgoAppFilter],
+	);
+	const gitOpsFocusRows = useMemo(
+		() =>
+			gitOpsFocus
+				? filterResourceSearchIndex(resourceSearchIndex, "", selectedArgoAppFilter)
+				: [],
+		[gitOpsFocus, resourceSearchIndex, selectedArgoAppFilter],
+	);
+	const gitOpsFocusNamespaces = useMemo(
+		() =>
+			Array.from(
+				new Set(
+					gitOpsFocusRows
+						.map((resource) => resource.namespace)
+						.filter((namespace): namespace is string => Boolean(namespace)),
+				),
+			).sort((a, b) => a.localeCompare(b)),
+		[gitOpsFocusRows],
 	);
 	const filteredData = useMemo(
 		() => filterResourcesByHealth(scopedData, healthFilter),
@@ -288,7 +315,11 @@ function ResourceListComponent({
 		[filteredData, sorting],
 	);
 	const groupedByArgo = useMemo(
-		() => filteredData.some((resource) => resource.argoApp || resource.ownerRef),
+		() =>
+			filteredData.some(
+				(resource) =>
+					resource.gitOpsOwner || resource.argoApp || resource.ownerRef,
+			),
 		[filteredData],
 	);
 	const displayData = useMemo(() => {
@@ -348,7 +379,10 @@ function ResourceListComponent({
 			memory: pageRows.some((row) => row.metrics?.memoryBytes !== undefined),
 			ownerRef: pageRows.some((row) => Boolean(row.ownerRef)),
 			"argo-helm": pageRows.some(
-				(row) => Boolean(row.argoApp) || Boolean(row.helmRelease),
+				(row) =>
+					Boolean(row.gitOpsOwner) ||
+					Boolean(row.argoApp) ||
+					Boolean(row.helmRelease),
 			),
 		}),
 		[pageRows],
@@ -545,6 +579,13 @@ function ResourceListComponent({
 		// and the layout doesn't jump when results disappear.
 		return (
 			<div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
+				{gitOpsFocus && (
+					<ResourceGitOpsFocusSummary
+						focus={gitOpsFocus}
+						resourceCount={gitOpsFocusRows.length}
+						namespaces={gitOpsFocusNamespaces}
+					/>
+				)}
 				<ResourceScopePills
 					pills={scopePills}
 					clusterContext={clusterContext}
@@ -572,6 +613,13 @@ function ResourceListComponent({
 
 	return (
 		<div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
+			{gitOpsFocus && (
+				<ResourceGitOpsFocusSummary
+					focus={gitOpsFocus}
+					resourceCount={gitOpsFocusRows.length}
+					namespaces={gitOpsFocusNamespaces}
+				/>
+			)}
 			<ResourceScopePills
 				pills={scopePills}
 				clusterContext={clusterContext}
@@ -601,7 +649,7 @@ function ResourceListComponent({
 			/>
 			<ResourceToolbar
 				search={search}
-				argoApps={argoApps}
+				gitOpsFilters={gitOpsFilters}
 				selectedArgoAppFilter={selectedArgoAppFilter}
 				hasNoFilterResults={filteredData.length === 0}
 				onSearchChange={(value) => {

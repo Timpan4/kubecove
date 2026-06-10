@@ -16,7 +16,7 @@ The overview should surface:
 
 - cluster and namespace availability
 - health and incident shortcuts
-- Argo CD sync and health when Argo metadata exists
+- GitOps sync and health when Argo CD or Flux metadata exists
 - recent or pinned namespace, app, and resource entry points
 - unavailable saved contexts, namespaces, or kinds
 
@@ -34,7 +34,7 @@ The table answers "what exists?" The detail panel answers "what is wrong or nota
 
 1. Browse resources quickly across selected namespaces and contexts.
 2. Troubleshoot incidents from health signals, warning events, restarts, logs, and YAML.
-3. Understand application topology through owner references, services, ingresses, Argo CD, and Helm metadata.
+3. Understand application topology through owner references, services, ingresses, GitOps, and Helm metadata.
 4. Add guarded cluster operations only after the inspection path makes the target and expected effect clear.
 
 ## Navigation Model
@@ -49,7 +49,7 @@ Supported paths:
 
 - Namespace-first browsing for routine operational work.
 - Cluster-first drilling when starting from an unfamiliar context.
-- App-first jumps when Argo CD, Helm, or ownership metadata identifies an application boundary.
+- App-first jumps when GitOps, Helm, or ownership metadata identifies an application boundary.
 - Multi-namespace workspaces that keep selected scope visible across tables, maps, and details.
 
 ## Multi-Cluster
@@ -66,18 +66,24 @@ Density controls, adaptive workspace defaults, and customizable layouts are late
 
 ## GitOps and Helm
 
-GitOps and package metadata are enrichment layers, not the backbone. The Kubernetes browser must work without Argo CD or Helm.
+GitOps and package metadata are enrichment layers, not the backbone. The Kubernetes browser must work without Argo CD, Flux, or Helm.
 
-Argo CD support starts Kubernetes-API-first:
+GitOps support starts Kubernetes-API-first:
 
 - detect Argo CD CRDs and tracking metadata
 - list Applications, ApplicationSets, and AppProjects
 - show sync, health, destination namespace, source repo, revision, and project
 - group and filter resources by Argo application
+- detect Flux CRDs across Source, Kustomize, Helm, Notification, and Image APIs
+- list Flux Kustomizations, Sources, HelmReleases, Alerts, Receivers, Providers, and Image Automation resources
+- show Flux Ready/Reconciling/Stalled conditions, source references, revisions, suspension state, and inventory
+- group and filter resources by Flux Kustomization or Flux HelmRelease when inventory or labels identify ownership
+
+The GitOps landing view should summarize detected providers first, then link into provider-specific resource groups. Provider groups are hidden when their CRDs are not detected unless the user enables the global "Show unavailable GitOps providers" setting.
 
 Helm support follows the same inspection-first principle: inspect release metadata and related resources without turning Helm into the core data path.
 
-Argo CD API, Argo CD CLI, Helm CLI, sync, rollback, diff, and other cluster-changing workflows require ADR-backed guardrails before they become product paths.
+Argo CD API, Flux CLI, Argo CD CLI, Helm CLI, sync, reconcile, rollback, diff, Git-writing, and other cluster-changing workflows require ADR-backed guardrails before they become product paths.
 
 ## Safety
 
@@ -87,6 +93,6 @@ Future operations must be deliberate, permission-aware, reversible where possibl
 
 ## Roadmap Shape
 
-Near-term work should harden the current inspection workflow: workspace restore, resource tables, topology, Argo CD, Helm, RBAC, metrics, events, logs, and release readiness.
+Near-term work should harden the current inspection workflow: workspace restore, resource tables, topology, GitOps, Helm, RBAC, metrics, events, logs, and release readiness.
 
 Later product areas can include guarded YAML apply, deployment-aware port-forwarding, pod exec, richer Helm workflows, deeper RBAC/security inspection, AI-assisted troubleshooting, and durable local workspace history.

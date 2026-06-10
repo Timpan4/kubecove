@@ -1,11 +1,15 @@
 use crate::commands::helpers::k8s_timestamp_to_datetime;
-use crate::models::{OwnerReferenceSummary, ResourceSummary};
+use crate::models::{GitOpsOwnerSummary, OwnerReferenceSummary, ResourceSummary};
 
 const ANNOTATION_ARGOCD_APP_NAME: &str = "argocd.argoproj.io/name";
 const ANNOTATION_ARGOCD_TRACKING_ID: &str = "argocd.argoproj.io/tracking-id";
 const LABEL_ARGOCD_APP_NAME: &str = "argocd.argoproj.io/application";
 const LABEL_APP_KUBERNETES_IO_INSTANCE: &str = "app.kubernetes.io/instance";
 const LABEL_HELM_RELEASE_NAME: &str = "helm.sh/release";
+const LABEL_FLUX_KUSTOMIZE_NAME: &str = "kustomize.toolkit.fluxcd.io/name";
+const LABEL_FLUX_KUSTOMIZE_NAMESPACE: &str = "kustomize.toolkit.fluxcd.io/namespace";
+const LABEL_FLUX_HELM_NAME: &str = "helm.toolkit.fluxcd.io/name";
+const LABEL_FLUX_HELM_NAMESPACE: &str = "helm.toolkit.fluxcd.io/namespace";
 
 pub(crate) fn extract_owner_ref(
     metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
@@ -83,6 +87,44 @@ pub(crate) fn extract_helm_release(
         .cloned()
 }
 
+pub(crate) fn extract_git_ops_owner(
+    metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
+) -> Option<GitOpsOwnerSummary> {
+    if let Some(argo_app) = extract_argo_app(metadata) {
+        return Some(GitOpsOwnerSummary {
+            provider: "argo".to_string(),
+            kind: "Application".to_string(),
+            name: argo_app,
+            namespace: None,
+            confidence: "metadata".to_string(),
+        });
+    }
+
+    let labels = metadata.labels.as_ref()?;
+    if let Some(name) = labels
+        .get(LABEL_FLUX_KUSTOMIZE_NAME)
+        .filter(|value| !value.trim().is_empty())
+    {
+        return Some(GitOpsOwnerSummary {
+            provider: "flux".to_string(),
+            kind: "Kustomization".to_string(),
+            name: name.clone(),
+            namespace: labels.get(LABEL_FLUX_KUSTOMIZE_NAMESPACE).cloned(),
+            confidence: "label".to_string(),
+        });
+    }
+    labels
+        .get(LABEL_FLUX_HELM_NAME)
+        .filter(|value| !value.trim().is_empty())
+        .map(|name| GitOpsOwnerSummary {
+            provider: "flux".to_string(),
+            kind: "HelmRelease".to_string(),
+            name: name.clone(),
+            namespace: labels.get(LABEL_FLUX_HELM_NAMESPACE).cloned(),
+            confidence: "label".to_string(),
+        })
+}
+
 pub(crate) fn base_resource_summary(
     kind: &str,
     cluster: &str,
@@ -111,6 +153,7 @@ pub(crate) fn base_resource_summary(
         owner_ref: extract_owner_ref(metadata),
         argo_app: extract_argo_app(metadata),
         helm_release: extract_helm_release(metadata),
+        git_ops_owner: extract_git_ops_owner(metadata),
     }
 }
 
@@ -175,6 +218,16 @@ mod tests {
         );
         assert_eq!(extract_argo_app(&metadata), Some("payments".to_string()));
         assert_eq!(
+            extract_git_ops_owner(&metadata),
+            Some(GitOpsOwnerSummary {
+                provider: "argo".to_string(),
+                kind: "Application".to_string(),
+                name: "payments".to_string(),
+                namespace: None,
+                confidence: "metadata".to_string(),
+            })
+        );
+        assert_eq!(
             extract_helm_release(&metadata),
             Some("payments-api".to_string())
         );
@@ -237,6 +290,32 @@ mod tests {
         assert_eq!(
             extract_argo_app(&metadata),
             Some("fallback-app".to_string())
+        );
+    }
+
+    #[test]
+    fn extracts_flux_gitops_owner_from_kustomization_labels() {
+        let labels = BTreeMap::from([
+            (LABEL_FLUX_KUSTOMIZE_NAME.to_string(), "apps".to_string()),
+            (
+                LABEL_FLUX_KUSTOMIZE_NAMESPACE.to_string(),
+                "flux-system".to_string(),
+            ),
+        ]);
+        let metadata = ObjectMeta {
+            labels: Some(labels),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            extract_git_ops_owner(&metadata),
+            Some(GitOpsOwnerSummary {
+                provider: "flux".to_string(),
+                kind: "Kustomization".to_string(),
+                name: "apps".to_string(),
+                namespace: Some("flux-system".to_string()),
+                confidence: "label".to_string(),
+            })
         );
     }
 }

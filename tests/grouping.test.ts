@@ -24,7 +24,7 @@ describe("resource grouping helpers", () => {
 
 		expect(pageAppGroupCounts(rows, true)).toEqual(
 			new Map([
-				["Managed by Argo app: payments", 2],
+				["Managed by Argo CD Application: payments", 2],
 				["Owned by: api", 1],
 				["Unmanaged resources", 1],
 			]),
@@ -41,8 +41,8 @@ describe("resource grouping helpers", () => {
 
 		expect(pageTypeGroupCounts(rows, true)).toEqual(
 			new Map([
-				["Managed by Argo app: payments::Pods", 1],
-				["Managed by Argo app: payments::Services", 1],
+				["Managed by Argo CD Application: payments::Pods", 1],
+				["Managed by Argo CD Application: payments::Services", 1],
 				["Owned by: api::Pods", 1],
 				["Unmanaged resources::ConfigMaps", 1],
 			]),

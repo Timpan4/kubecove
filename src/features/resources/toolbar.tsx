@@ -14,12 +14,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import type { GitOpsFilterOption } from "./helpers";
 
 const TOOLBAR_CLASS = "mb-1 flex items-center gap-2 p-0";
 
 interface ResourceToolbarProps {
 	search: string;
-	argoApps: string[];
+	gitOpsFilters: GitOpsFilterOption[];
 	selectedArgoAppFilter: string;
 	hasNoFilterResults: boolean;
 	onSearchChange: (search: string) => void;
@@ -29,7 +30,7 @@ interface ResourceToolbarProps {
 
 export function ResourceToolbar({
 	search,
-	argoApps,
+	gitOpsFilters,
 	selectedArgoAppFilter,
 	hasNoFilterResults,
 	onSearchChange,
@@ -47,15 +48,15 @@ export function ResourceToolbar({
 					</InputGroupText>
 				</InputGroupAddon>
 				<InputGroupInput
-					aria-label="Search resources by name, namespace, kind, owner, Argo app, or Helm release"
+					aria-label="Search resources by name, namespace, kind, owner, GitOps owner, or Helm release"
 					className="h-8 text-sm text-foreground placeholder:text-muted-foreground"
 					type="text"
-					placeholder="Search by name, namespace, kind, owner, Argo app, Helm release..."
+					placeholder="Search by name, namespace, kind, owner, GitOps owner, Helm release..."
 					value={search}
 					onChange={(e) => onSearchChange(e.target.value)}
 				/>
 			</InputGroup>
-			{argoApps.length > 0 && (
+			{gitOpsFilters.length > 0 && (
 				<Select
 					value={selectedArgoAppFilter || "all"}
 					onValueChange={(value) =>
@@ -64,16 +65,16 @@ export function ResourceToolbar({
 				>
 					<SelectTrigger
 						className="h-9 max-w-52 border-slate-700/80 bg-slate-950/45 text-foreground"
-						aria-label="Filter by Argo application"
+						aria-label="Filter by GitOps owner"
 					>
-						<SelectValue placeholder="All Argo apps" />
+						<SelectValue placeholder="All GitOps owners" />
 					</SelectTrigger>
 					<SelectContent>
 						<SelectGroup>
-							<SelectItem value="all">All Argo apps</SelectItem>
-							{argoApps.map((app) => (
-								<SelectItem key={app} value={app}>
-									{app}
+							<SelectItem value="all">All GitOps owners</SelectItem>
+							{gitOpsFilters.map((filter) => (
+								<SelectItem key={filter.key} value={filter.key}>
+									{filter.label}
 								</SelectItem>
 							))}
 						</SelectGroup>

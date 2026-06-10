@@ -509,6 +509,7 @@ mod tests {
             owner_ref: None,
             argo_app: None,
             helm_release: None,
+            git_ops_owner: None,
         }
     }
 

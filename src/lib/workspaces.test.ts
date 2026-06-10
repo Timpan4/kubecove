@@ -46,3 +46,18 @@ describe("reconcileSavedPortForwardsForScope", () => {
 		expect(reconcileSavedPortForwardsForScope([portForward], scope)).toEqual([]);
 	});
 });
+
+describe("createWorkspaceScope", () => {
+	test("initializes GitOps filter beside legacy Argo filter", () => {
+		const scope = createWorkspaceScope({
+			name: "ops",
+			clusterContext: "admin@solid-k8s",
+			namespaces: [],
+		});
+
+		expect({
+			gitOpsFilter: scope.gitOpsFilter,
+			argoAppFilter: scope.argoAppFilter,
+		}).toEqual({ gitOpsFilter: "", argoAppFilter: "" });
+	});
+});

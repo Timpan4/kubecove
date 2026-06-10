@@ -4,8 +4,8 @@ mod serialization;
 mod time;
 
 pub(crate) use metadata::{
-    base_resource_summary, extract_argo_app, extract_helm_release, extract_owner_ref,
-    extract_owner_ref_summary, fmt_ready,
+    base_resource_summary, extract_argo_app, extract_git_ops_owner, extract_helm_release,
+    extract_owner_ref, extract_owner_ref_summary, fmt_ready,
 };
 pub(crate) use serialization::{
     fetch_and_serialize, fetch_and_serialize_cluster, fetch_and_serialize_cluster_with_encoding,

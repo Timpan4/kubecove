@@ -9,6 +9,14 @@ export interface NamespaceSummary {
 	createdAt?: string;
 }
 
+export interface GitOpsOwnerSummary {
+	provider: "argo" | "flux" | string;
+	kind: string;
+	name: string;
+	namespace?: string | null;
+	confidence: "metadata" | "label" | "inventory" | string;
+}
+
 export interface ResourceSummary {
 	kind: string;
 	cluster: string;
@@ -28,6 +36,7 @@ export interface ResourceSummary {
 	ownerRef?: string;
 	argoApp?: string;
 	helmRelease?: string;
+	gitOpsOwner?: GitOpsOwnerSummary;
 	metrics?: ResourceMetricSummary;
 }
 
@@ -486,128 +495,8 @@ export type ClusterScopedKind = (typeof CLUSTER_SCOPED_KINDS)[number];
 export type AnyKind = SupportedKind | ClusterScopedKind;
 export type ResourceKindSelection = AnyKind | DiscoveredResourceKind;
 
-// Argo CD types - fields match Rust camelCase models exactly
-// Optional fields are string | null per Rust Option<String> serialization
-export interface ArgoApplicationSummary {
-	name: string;
-	cluster: string; // not clusterContext
-	namespace: string | null; // null for cluster-scoped
-	project: string | null;
-	syncStatus: string | null;
-	healthStatus: string | null;
-	destinationNamespace: string | null;
-	destinationServer: string | null;
-	sourceRepo: string | null;
-	sourceRevision: string | null;
-	age: string;
-	createdAt?: string;
-}
-
-export interface ArgoApplicationDetails {
-	summary: ArgoApplicationSummary;
-	yaml: string;
-	metadata: Record<string, unknown>;
-	status?: Record<string, unknown>; // backend returns Option, so optional
-}
-
-export interface ArgoApplicationSetSummary {
-	name: string;
-	cluster: string;
-	namespace: string | null;
-	age: string;
-	createdAt?: string;
-	project: string | null;
-	status: string | null;
-	syncStatus: string | null;
-	healthStatus: string | null;
-	destinationNamespace: string | null;
-	destinationServer: string | null;
-	sourceRepo: string | null;
-	sourceRevision: string | null;
-}
-
-export interface ArgoApplicationSetDetails {
-	summary: ArgoApplicationSetSummary;
-	yaml: string;
-	metadata: Record<string, unknown>;
-}
-
-export interface HelmReleaseSummary {
-	cluster: string;
-	name: string;
-	namespace: string;
-	age: string;
-	updatedAt?: string;
-	createdAt?: string;
-	chart?: string;
-	appVersion?: string;
-	revision?: number;
-	status?: string;
-	storageKind: string;
-	storageName: string;
-}
-
-export interface HelmReleaseDetails {
-	summary: HelmReleaseSummary;
-	yaml: string;
-	metadata: Record<string, unknown>;
-	valuesSummary: HelmValuesSummary;
-	manifestSummary: HelmManifestSummary;
-	release?: Record<string, unknown>;
-}
-
-export type HelmReconciliationStatus =
-	| "tracked"
-	| "unlabeledLive"
-	| "missing"
-	| "labelOnly"
-	| "unavailable";
-
-export interface HelmReleaseReconciliation {
-	summary: HelmReleaseSummary;
-	totals: HelmReconciliationTotals;
-	resources: HelmReconciliationResource[];
-	warnings: string[];
-}
-
-export interface HelmReconciliationTotals {
-	tracked: number;
-	unlabeledLive: number;
-	missing: number;
-	labelOnly: number;
-	unavailable: number;
-}
-
-export interface HelmReconciliationResource {
-	apiVersion?: string;
-	kind?: string;
-	namespace?: string;
-	name?: string;
-	status: HelmReconciliationStatus;
-	statusMessage: string;
-	inManifest: boolean;
-	explicitHelmLabel: boolean;
-	liveResource?: ResourceSummary;
-}
-
-export interface HelmValuesSummary {
-	hasValues: boolean;
-	topLevelKeys: string[];
-	valueCount: number;
-}
-
-export interface HelmManifestSummary {
-	resourceCount: number;
-	resources: HelmManifestResourceSummary[];
-	truncated: boolean;
-}
-
-export interface HelmManifestResourceSummary {
-	apiVersion?: string;
-	kind?: string;
-	name?: string;
-	namespace?: string;
-}
+export type * from "./gitops-types";
+export type * from "./helm-types";
 
 export type RbacRiskLevel = "low" | "medium" | "high";
 
@@ -688,20 +577,4 @@ export interface RbacInspectionSummary {
 	roleBindings: RbacBindingSummary[];
 	clusterRoleBindings: RbacBindingSummary[];
 	namespaceAccess: RbacNamespaceAccessSummary[];
-}
-
-export interface ArgoAppProjectSummary {
-	name: string;
-	cluster: string;
-	namespace: string | null;
-	age: string;
-	createdAt?: string;
-	description: string | null;
-	status: string | null;
-}
-
-export interface ArgoAppProjectDetails {
-	summary: ArgoAppProjectSummary;
-	yaml: string;
-	metadata: Record<string, unknown>;
 }

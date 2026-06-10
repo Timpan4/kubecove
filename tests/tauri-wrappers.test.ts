@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
 	createMockTauriClient,
 	addKubeconfigPaths,
+	detectFlux,
 	getAppUsageMetrics,
+	getFluxResourceDetails,
 	getHelmReleaseDetails,
 	getKubeconfigSources,
 	getHelmReleaseReconciliation,
@@ -13,6 +15,7 @@ import {
 	listPortForwards,
 	listPodExecSessions,
 	listHelmReleases,
+	listFluxResources,
 	listResourceTopology,
 	listKubeContexts,
 	listNamespaces,
@@ -35,6 +38,10 @@ import { kubeconfigSourceKey } from "../src/lib/settings";
 import type {
 	AppUsageMetrics,
 	ClusterContext,
+	FluxDetectionSummary,
+	FluxResourceDetails,
+	FluxResourceKind,
+	FluxResourceSummary,
 	HelmReleaseDetails,
 	HelmReleaseReconciliation,
 	HelmReleaseSummary,
@@ -495,6 +502,90 @@ describe("typed Tauri wrappers", () => {
 					namespace: "payments",
 					storageKind: "Secret",
 					storageName: "sh.helm.release.v1.payments.v7",
+				},
+			},
+		]);
+	});
+
+	test("passes Flux requests through typed wrappers", async () => {
+		const resourceKind: FluxResourceKind = {
+			group: "kustomize.toolkit.fluxcd.io",
+			version: "v1",
+			apiVersion: "kustomize.toolkit.fluxcd.io/v1",
+			kind: "Kustomization",
+			plural: "kustomizations",
+			namespaced: true,
+			category: "Kustomize",
+		};
+		const detection: FluxDetectionSummary = {
+			detected: true,
+			kinds: [resourceKind],
+			missingKinds: [],
+		};
+		const summary: FluxResourceSummary = {
+			cluster: "kind-dev",
+			resourceKind,
+			name: "apps",
+			namespace: "flux-system",
+			age: "5m",
+			readyStatus: "True",
+			inventory: [],
+		};
+		const details: FluxResourceDetails = {
+			summary,
+			yaml: "kind: Kustomization",
+			metadata: { name: "apps" },
+			status: { conditions: [] },
+		};
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				if (cmd === "detect_flux") return detection as T;
+				if (cmd === "list_flux_resources") return [summary] as T;
+				return details as T;
+			},
+		};
+
+		expect(await detectFlux(client, "kind-dev", "KUBECONFIG")).toEqual(detection);
+		expect(
+			await listFluxResources(client, "kind-dev", resourceKind, "KUBECONFIG"),
+		).toEqual([summary]);
+		expect(
+			await getFluxResourceDetails(
+				client,
+				"kind-dev",
+				resourceKind,
+				"apps",
+				"flux-system",
+				"KUBECONFIG",
+				"clean",
+				"yaml",
+			),
+		).toEqual(details);
+		expect(calls).toEqual([
+			{
+				cmd: "detect_flux",
+				args: { clusterContext: "kind-dev", kubeconfigEnvVar: "KUBECONFIG" },
+			},
+			{
+				cmd: "list_flux_resources",
+				args: {
+					clusterContext: "kind-dev",
+					resourceKind,
+					kubeconfigEnvVar: "KUBECONFIG",
+				},
+			},
+			{
+				cmd: "get_flux_resource_details",
+				args: {
+					clusterContext: "kind-dev",
+					resourceKind,
+					name: "apps",
+					namespace: "flux-system",
+					kubeconfigEnvVar: "KUBECONFIG",
+					yamlViewMode: "clean",
+					yamlEncoding: "yaml",
 				},
 			},
 		]);

@@ -1,4 +1,5 @@
 import type {
+	FluxResourceKind,
 	ResourceKindSelection,
 	TopologyMode,
 	YamlEncoding,
@@ -77,6 +78,42 @@ export const queryKeys = {
 		["argo-appsets", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
 	argoAppProjects: (clusterContext: string, kubeconfigEnvVar?: string) =>
 		["argo-appprojects", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
+	fluxDetect: (clusterContext: string, kubeconfigEnvVar?: string) =>
+		["flux-detect", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
+	fluxResources: (
+		clusterContext: string,
+		resourceKind: FluxResourceKind,
+		kubeconfigEnvVar?: string,
+	) =>
+		[
+			"flux-resources",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			resourceKind.apiVersion,
+			resourceKind.plural,
+			resourceKind.kind,
+		] as const,
+	fluxResourceDetails: (
+		clusterContext: string,
+		resourceKind: FluxResourceKind,
+		name: string,
+		namespace?: string | null,
+		kubeconfigEnvVar?: string,
+		yamlViewMode: YamlViewMode = "kubectl",
+		yamlEncoding: YamlEncoding = "yaml",
+	) =>
+		[
+			"flux-resource-details",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			resourceKind.apiVersion,
+			resourceKind.plural,
+			resourceKind.kind,
+			namespace ?? "",
+			name,
+			yamlViewMode,
+			yamlEncoding,
+		] as const,
 	helmReleases: (clusterContext: string, kubeconfigEnvVar?: string) =>
 		["helm-releases", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
 	rbacInspection: (

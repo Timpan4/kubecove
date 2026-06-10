@@ -1,9 +1,15 @@
 import { Suspense } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { SavedPortForwardRestorePrompt } from "@/features/live-sessions/SavedPortForwardRestorePrompt";
-import type { HealthFilter } from "@/features/resources/helpers";
+import {
+	argoApplicationGitOpsFilterKey,
+	type HealthFilter,
+} from "@/features/resources/helpers";
+import type { ResourceGitOpsFocus } from "@/features/resources/ResourceGitOpsFocusSummary";
 import type { ArgoSelectedItem, DashboardViewMode } from "@/lib/hooks";
 import type {
+	ArgoApplicationSummary,
+	FluxResourceSummary,
 	HelmReleaseSummary,
 	ResourceKindSelection,
 	ResourceSummary,
@@ -11,7 +17,7 @@ import type {
 import type { TreeNodeId } from "@/lib/tree-nav";
 import type { SavedWorkspace } from "@/lib/workspaces";
 import {
-	ArgoCDPanel,
+	GitOpsPanel,
 	HelmPanel,
 	IncidentCockpit,
 	RbacPanel,
@@ -39,6 +45,9 @@ interface AppMainContentProps {
 	clusterContext: string;
 	selectedArgoApp: ArgoSelectedItem;
 	onArgoItemSelect: (app: NonNullable<ArgoSelectedItem>) => void;
+	onOpenArgoApplicationResources: (app: ArgoApplicationSummary) => void;
+	selectedFluxResource: FluxResourceSummary | null;
+	onFluxResourceSelect: (resource: FluxResourceSummary) => void;
 	selectedTreeNode: TreeNodeId | null;
 	selectedHelmRelease: HelmReleaseSummary | null;
 	onHelmReleaseSelect: (release: HelmReleaseSummary) => void;
@@ -76,6 +85,9 @@ export function AppMainContent({
 	clusterContext,
 	selectedArgoApp,
 	onArgoItemSelect,
+	onOpenArgoApplicationResources,
+	selectedFluxResource,
+	onFluxResourceSelect,
 	selectedTreeNode,
 	selectedHelmRelease,
 	onHelmReleaseSelect,
@@ -95,6 +107,10 @@ export function AppMainContent({
 	onResourceSelect,
 	emptyMsg,
 }: AppMainContentProps) {
+	const resourceGitOpsFocus =
+		viewMode === "resources"
+			? argoApplicationFocus(selectedArgoApp, selectedArgoAppFilter)
+			: null;
 	return (
 		<main className="flex h-full w-full min-w-0 flex-col overflow-hidden">
 			{liveSessionCleanupMessage && (
@@ -140,12 +156,15 @@ export function AppMainContent({
 				</div>
 			) : viewMode === "argo" ? (
 				<div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:px-6">
-					<Suspense fallback={<ViewLoadingFallback label="Loading Argo CD..." />}>
-						<ArgoCDPanel
+					<Suspense fallback={<ViewLoadingFallback label="Loading GitOps..." />}>
+						<GitOpsPanel
 							clusterContext={clusterContext}
-							selectedArgoItem={selectedArgoApp}
-							onArgoItemSelect={onArgoItemSelect}
-							selectedArgoKind={
+							selectedGitOpsItem={selectedArgoApp}
+							onGitOpsItemSelect={onArgoItemSelect}
+							onOpenArgoApplicationResources={onOpenArgoApplicationResources}
+							selectedFluxResource={selectedFluxResource}
+							onFluxResourceSelect={onFluxResourceSelect}
+							selectedGitOpsKind={
 								selectedTreeNode?.type === "kind" && selectedTreeNode.kind
 									? selectedTreeNode.kind
 									: null
@@ -204,6 +223,7 @@ export function AppMainContent({
 								selectedNamespaces={computedNamespaces}
 								selectedKinds={computedKinds}
 								selectedArgoAppFilter={selectedArgoAppFilter}
+								gitOpsFocus={resourceGitOpsFocus}
 								selectedResource={selectedResource}
 								initialHealthFilter={resourceHealthFilter}
 								initialSearch={resourceInitialSearch}
@@ -222,4 +242,20 @@ export function AppMainContent({
 			)}
 		</main>
 	);
+}
+
+function argoApplicationFocus(
+	item: ArgoSelectedItem,
+	filter: string,
+): ResourceGitOpsFocus | null {
+	if (!item) return null;
+	if ("status" in item) return null;
+	if (!("sourceRepo" in item) || !("destinationServer" in item)) return null;
+	if (
+		filter !== argoApplicationGitOpsFilterKey(item.name) &&
+		filter !== item.name
+	) {
+		return null;
+	}
+	return { provider: "argo", application: item };
 }

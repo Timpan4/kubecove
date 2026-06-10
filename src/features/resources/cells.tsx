@@ -9,7 +9,7 @@ import {
 } from "@/lib/resource-metrics";
 import type { ResourceSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { tableTooltipText } from "./helpers";
+import { gitOpsOwnerLabel, tableTooltipText } from "./helpers";
 
 export function StatusChip({
 	value,
@@ -113,10 +113,11 @@ export function AgeCell({ row }: { row: ResourceSummary }) {
 
 export function ArgoHelmBadges({ row }: { row: ResourceSummary }) {
 	const badges: Array<{ label: string; className: string }> = [];
+	const gitOpsLabel = gitOpsOwnerLabel(row);
 
-	if (row.argoApp) {
+	if (gitOpsLabel) {
 		badges.push({
-			label: `Argo: ${row.argoApp}`,
+			label: gitOpsLabel,
 			className:
 				"border-primary/30 bg-primary/10 text-primary dark:bg-primary/15",
 		});

@@ -33,12 +33,16 @@ import {
 } from "./lib/tauri";
 import {
 	SUPPORTED_KINDS,
+	type FluxResourceSummary,
 	type HelmReleaseSummary,
 	type ResourceKindSelection,
 	type ResourceSummary,
 } from "./lib/types";
 import { CommandPalette } from "./features/command-palette";
-import type { HealthFilter } from "./features/resources/helpers";
+import {
+	argoApplicationGitOpsFilterKey,
+	type HealthFilter,
+} from "./features/resources/helpers";
 import {
 	createWorkspaceScope,
 	makeWorkspaceShortcuts,
@@ -103,6 +107,8 @@ function App() {
 		useState<HealthFilter>("all");
 	const [selectedHelmRelease, setSelectedHelmRelease] =
 		useState<HelmReleaseSummary | null>(null);
+	const [selectedFluxResource, setSelectedFluxResource] =
+		useState<FluxResourceSummary | null>(null);
 	const [targetHelmRelease, setTargetHelmRelease] = useState<{
 		name: string;
 		namespace?: string;
@@ -143,9 +149,12 @@ function App() {
 			setSelectedKinds(workspace.scope.kinds);
 			setSelectedResource(null);
 			setSelectedArgoApp(null);
+			setSelectedFluxResource(null);
 			setSelectedHelmRelease(null);
 			setResourceInitialSearch("");
-			setSelectedArgoAppFilter(workspace.scope.argoAppFilter);
+			setSelectedArgoAppFilter(
+				workspace.scope.gitOpsFilter ?? workspace.scope.argoAppFilter,
+			);
 			setSelectedTreeNode(null);
 			setResourceHealthFilter("all");
 			setDismissedPortForwardRestoreWorkspaceId(null);
@@ -159,6 +168,7 @@ function App() {
 			setSelectedKinds,
 			setSelectedResource,
 			setSelectedArgoApp,
+			setSelectedFluxResource,
 			setSelectedArgoAppFilter,
 			setSelectedTreeNode,
 			setViewMode,
@@ -171,6 +181,7 @@ function App() {
 		// Clear inspector state on context switch
 		setSelectedResource(null);
 		setSelectedArgoApp(null);
+		setSelectedFluxResource(null);
 		setSelectedHelmRelease(null);
 		setResourceInitialSearch("");
 		setSelectedArgoAppFilter("");
@@ -211,6 +222,7 @@ function App() {
 		setSelectedArgoAppFilter,
 		setSelectedTreeNode,
 		setSelectedArgoApp,
+		setSelectedFluxResource,
 		setSelectedResource,
 		setViewMode,
 		setSelectedHelmRelease,
@@ -232,6 +244,7 @@ function App() {
 	const handlePaletteResourceSelect = (resource: ResourceSummary) => {
 		handleOpenResources(resource.namespace ?? undefined);
 		setSelectedResource(resource);
+		setSelectedFluxResource(null);
 	};
 
 	const selectedResourceKey = selectedResource
@@ -246,11 +259,50 @@ function App() {
 			namespace: app.namespace ?? "",
 		});
 		setSelectedArgoApp(app);
+		setSelectedFluxResource(null);
+	};
+
+	const handleOpenArgoApplicationResources = (
+		app: NonNullable<ReturnType<typeof useDashboardState>["selectedArgoApp"]>,
+	) => {
+		if ("status" in app) return;
+		diagnosticLog("app.argo.openResources", {
+			name: app.name,
+			namespace: app.namespace ?? "",
+		});
+		setSelectedNamespaces([]);
+		setSelectedKinds([...SUPPORTED_KINDS]);
+		setSelectedArgoAppFilter(argoApplicationGitOpsFilterKey(app.name));
+		setSelectedTreeNode(null);
+		setSelectedArgoApp(app);
+		setSelectedFluxResource(null);
+		setSelectedHelmRelease(null);
+		setSelectedResource(null);
+		setResourceInitialSearch("");
+		setResourceHealthFilter("all");
+		setViewMode("resources");
 	};
 
 	const handleArgoClose = () => {
 		diagnosticLog("app.argo.close");
 		setSelectedArgoApp(null);
+	};
+
+	const handleFluxResourceSelect = (resource: FluxResourceSummary) => {
+		diagnosticLog("app.flux.select", {
+			name: resource.name,
+			namespace: resource.namespace ?? "",
+			kind: resource.resourceKind.kind,
+		});
+		setSelectedFluxResource(resource);
+		setSelectedArgoApp(null);
+		setSelectedHelmRelease(null);
+		setSelectedResource(null);
+	};
+
+	const handleFluxClose = () => {
+		diagnosticLog("app.flux.close");
+		setSelectedFluxResource(null);
 	};
 
 	const handleHelmReleaseSelect = (release: HelmReleaseSummary) => {
@@ -259,6 +311,7 @@ function App() {
 			namespace: release.namespace,
 		});
 		setSelectedHelmRelease(release);
+		setSelectedFluxResource(null);
 	};
 
 	const handleHelmClose = () => {
@@ -276,6 +329,7 @@ function App() {
 		setSelectedArgoAppFilter("");
 		setSelectedTreeNode(null);
 		setSelectedArgoApp(null);
+		setSelectedFluxResource(null);
 		setSelectedResource(null);
 		setResourceInitialSearch(release.name);
 		setResourceHealthFilter("all");
@@ -295,6 +349,7 @@ function App() {
 			namespace: namespace ?? undefined,
 		});
 		setSelectedHelmRelease(null);
+		setSelectedFluxResource(null);
 		setSelectedResource(null);
 		setViewMode("helm");
 	};
@@ -307,19 +362,57 @@ function App() {
 		(namespaces: string[]) => {
 			setSelectedTreeNode(null);
 			setSelectedResource(null);
+			setSelectedFluxResource(null);
 			setSelectedNamespaces(namespaces);
 		},
-		[setSelectedTreeNode, setSelectedResource, setSelectedNamespaces],
+		[
+			setSelectedTreeNode,
+			setSelectedResource,
+			setSelectedFluxResource,
+			setSelectedNamespaces,
+		],
 	);
 
 	const handleResourceKindsChange = useCallback(
 		(kinds: ResourceKindSelection[]) => {
 			setSelectedTreeNode(null);
 			setSelectedResource(null);
+			setSelectedFluxResource(null);
 			setSelectedKinds(kinds);
 		},
-		[setSelectedTreeNode, setSelectedResource, setSelectedKinds],
+		[setSelectedTreeNode, setSelectedResource, setSelectedFluxResource, setSelectedKinds],
 	);
+
+	const handleGitOpsFilterChange = useCallback(
+		(filter: string) => {
+			setSelectedArgoAppFilter(filter);
+			if (!activeWorkspace) return;
+			const legacyArgoFilter = filter.includes(":") ? "" : filter;
+			updateWorkspace(activeWorkspace.id, {
+				scope: {
+					...activeWorkspace.scope,
+					gitOpsFilter: filter,
+					argoAppFilter: legacyArgoFilter,
+				},
+			});
+		},
+		[activeWorkspace, setSelectedArgoAppFilter, updateWorkspace],
+	);
+
+	const handleResourceSelect = (resource: ResourceSummary) => {
+		setSelectedResource(resource);
+		if (
+			!selectedArgoApp ||
+			"status" in selectedArgoApp ||
+			(selectedArgoAppFilter !==
+				argoApplicationGitOpsFilterKey(selectedArgoApp.name) &&
+				selectedArgoAppFilter !== selectedArgoApp.name)
+		) {
+			setSelectedArgoApp(null);
+		}
+		setSelectedFluxResource(null);
+		setSelectedHelmRelease(null);
+	};
 
 	useArgoDetection(clusterContext, setArgoDetected);
 
@@ -490,6 +583,9 @@ function App() {
 			clusterContext={clusterContext}
 			selectedArgoApp={selectedArgoApp}
 			onArgoItemSelect={handleArgoAppSelect}
+			onOpenArgoApplicationResources={handleOpenArgoApplicationResources}
+			selectedFluxResource={selectedFluxResource}
+			onFluxResourceSelect={handleFluxResourceSelect}
 			selectedTreeNode={selectedTreeNode}
 			selectedHelmRelease={selectedHelmRelease}
 			onHelmReleaseSelect={handleHelmReleaseSelect}
@@ -503,23 +599,25 @@ function App() {
 			selectedResource={selectedResource}
 			resourceHealthFilter={resourceHealthFilter}
 			resourceInitialSearch={resourceInitialSearch}
-			onArgoAppFilterChange={setSelectedArgoAppFilter}
+			onArgoAppFilterChange={handleGitOpsFilterChange}
 			onNamespacesChange={handleResourceNamespacesChange}
 			onKindsChange={handleResourceKindsChange}
-			onResourceSelect={setSelectedResource}
+			onResourceSelect={handleResourceSelect}
 			emptyMsg={emptyMsg}
 		/>
 	);
 
-	const detailPanel = hasAppDetailPanel(viewMode, selectedHelmRelease !== null, selectedArgoApp !== null, selectedResource !== null) ? (
+	const detailPanel = hasAppDetailPanel(viewMode, selectedHelmRelease !== null, selectedArgoApp !== null || selectedFluxResource !== null, selectedResource !== null) ? (
 		<AppDetailPanel
 			viewMode={viewMode}
 			selectedHelmRelease={selectedHelmRelease}
 			selectedArgoApp={selectedArgoApp}
+			selectedFluxResource={selectedFluxResource}
 			selectedResource={selectedResource}
 			selectedResourceKey={selectedResourceKey}
 			onHelmClose={handleHelmClose}
 			onArgoClose={handleArgoClose}
+			onFluxClose={handleFluxClose}
 			onResourceClose={resetResource}
 			onOpenHelmResources={handleOpenHelmResources}
 			onOpenHelmReleaseFromResource={handleOpenHelmReleaseFromResource}

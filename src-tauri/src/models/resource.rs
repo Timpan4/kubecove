@@ -11,6 +11,17 @@ pub struct OwnerReferenceSummary {
     pub uid: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitOpsOwnerSummary {
+    pub provider: String,
+    pub kind: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+    pub confidence: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceSummary {
@@ -45,6 +56,8 @@ pub struct ResourceSummary {
     pub argo_app: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub helm_release: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_ops_owner: Option<GitOpsOwnerSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

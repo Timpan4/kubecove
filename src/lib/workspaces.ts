@@ -91,6 +91,7 @@ export interface WorkspaceScope {
 	clusterGroup?: WorkspaceClusterGroup;
 	namespaces: string[];
 	kinds: ResourceKindSelection[];
+	gitOpsFilter?: string;
 	argoAppFilter: string;
 	layout: "overview" | "resources";
 	shortcutPreferences?: WorkspaceShortcutPreferences;
@@ -394,6 +395,7 @@ export function createWorkspaceScope(
 				: undefined,
 		namespaces: [...input.namespaces].sort((a, b) => a.localeCompare(b)),
 		kinds,
+		gitOpsFilter: "",
 		argoAppFilter: "",
 		layout: "overview",
 		shortcutPreferences,

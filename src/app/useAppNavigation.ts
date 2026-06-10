@@ -1,4 +1,5 @@
 import type { MutableRefObject } from "react";
+import { ARGO_NAV_KINDS } from "@/features/gitops/gitops-nav";
 import type { DashboardViewMode } from "../lib/hooks";
 import { resolveTreeScope, type TreeNodeId } from "../lib/tree-nav";
 import { diagnosticLog } from "../lib/diagnostics";
@@ -16,6 +17,7 @@ interface AppNavigationDeps {
 	setSelectedArgoAppFilter: (filter: string) => void;
 	setSelectedTreeNode: (node: TreeNodeId | null) => void;
 	setSelectedArgoApp: (app: null) => void;
+	setSelectedFluxResource: (resource: null) => void;
 	setSelectedResource: (resource: null) => void;
 	setViewMode: (mode: DashboardViewMode) => void;
 	setSelectedHelmRelease: (release: null) => void;
@@ -46,6 +48,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 		setSelectedArgoAppFilter,
 		setSelectedTreeNode,
 		setSelectedArgoApp,
+		setSelectedFluxResource,
 		setSelectedResource,
 		setViewMode,
 		setSelectedHelmRelease,
@@ -64,9 +67,12 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 			namespace ? [namespace] : workspace.scope.namespaces,
 		);
 		setSelectedKinds(workspace.scope.kinds);
-		setSelectedArgoAppFilter(workspace.scope.argoAppFilter);
+		setSelectedArgoAppFilter(
+			workspace.scope.gitOpsFilter ?? workspace.scope.argoAppFilter,
+		);
 		setSelectedTreeNode(null);
 		setSelectedArgoApp(null);
+		setSelectedFluxResource(null);
 		setSelectedHelmRelease(null);
 		setSelectedResource(null);
 		setResourceInitialSearch("");
@@ -81,10 +87,11 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 			section: "argo",
 			namespace: undefined,
 			group: undefined,
-			kind: "Applications",
+			kind: ARGO_NAV_KINDS[0].label,
 		});
 		setSelectedResource(null);
 		setSelectedArgoApp(null);
+		setSelectedFluxResource(null);
 		setSelectedHelmRelease(null);
 		setResourceInitialSearch("");
 		setResourceHealthFilter("all");
@@ -95,6 +102,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 		setViewMode("incidents");
 		setSelectedTreeNode({ type: "section", section: "incidents" });
 		setSelectedArgoApp(null);
+		setSelectedFluxResource(null);
 		setSelectedHelmRelease(null);
 		setSelectedResource(null);
 		setResourceInitialSearch("");
@@ -105,6 +113,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 		setActiveWorkspace(null);
 		setSelectedResource(null);
 		setSelectedArgoApp(null);
+		setSelectedFluxResource(null);
 		setSelectedHelmRelease(null);
 		setResourceInitialSearch("");
 		setSelectedTreeNode(null);
@@ -130,6 +139,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 		setSelectedTreeNode({ type: "section", section: "portForwards" });
 		setSelectedResource(null);
 		setSelectedArgoApp(null);
+		setSelectedFluxResource(null);
 		setSelectedHelmRelease(null);
 		setResourceInitialSearch("");
 		setResourceHealthFilter("all");
@@ -139,18 +149,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 	};
 
 	const handleTreeNodeSelect = (rawNodeId: TreeNodeId) => {
-		// The Argo CD section header lands on Applications directly (mirroring
-		// Helm → Releases) instead of a "select a resource type" stub.
-		const nodeId: TreeNodeId =
-			rawNodeId.type === "section" && rawNodeId.section === "argo"
-				? {
-						type: "kind",
-						section: "argo",
-						namespace: undefined,
-						group: undefined,
-						kind: "Applications",
-					}
-				: rawNodeId;
+		const nodeId: TreeNodeId = rawNodeId;
 		const scope = resolveTreeScope(nodeId);
 		diagnosticLog("app.tree.select", {
 			type: nodeId.type,
@@ -170,6 +169,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 		if (nodeId.type === "section" && nodeId.section === "workspaceOverview") {
 			setViewMode("overview");
 			setSelectedArgoApp(null);
+			setSelectedFluxResource(null);
 			setSelectedHelmRelease(null);
 			setSelectedResource(null);
 			setResourceInitialSearch("");
@@ -177,6 +177,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 		} else if (scope.argoMode) {
 			setViewMode("argo");
 			setSelectedArgoApp(null);
+			setSelectedFluxResource(null);
 			setSelectedHelmRelease(null);
 			setSelectedResource(null);
 			setResourceInitialSearch("");
@@ -184,6 +185,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 		} else if (scope.helmMode) {
 			setViewMode("helm");
 			setSelectedArgoApp(null);
+			setSelectedFluxResource(null);
 			setSelectedHelmRelease(null);
 			setSelectedResource(null);
 			setResourceInitialSearch("");
@@ -191,6 +193,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 		} else if (scope.incidentMode) {
 			setViewMode("incidents");
 			setSelectedArgoApp(null);
+			setSelectedFluxResource(null);
 			setSelectedHelmRelease(null);
 			setSelectedResource(null);
 			setResourceInitialSearch("");
@@ -198,6 +201,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 		} else if (scope.portForwardMode) {
 			setViewMode("portForwards");
 			setSelectedArgoApp(null);
+			setSelectedFluxResource(null);
 			setSelectedHelmRelease(null);
 			setSelectedResource(null);
 			setResourceInitialSearch("");
@@ -208,6 +212,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 		} else if (scope.rbacMode) {
 			setViewMode("rbac");
 			setSelectedArgoApp(null);
+			setSelectedFluxResource(null);
 			setSelectedHelmRelease(null);
 			setSelectedResource(null);
 			setResourceInitialSearch("");
@@ -224,6 +229,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 			// Leaving non-resource views clears inspector state.
 			setViewMode("resources");
 			setSelectedArgoApp(null);
+			setSelectedFluxResource(null);
 			setSelectedHelmRelease(null);
 			setResourceInitialSearch("");
 			setResourceHealthFilter("all");

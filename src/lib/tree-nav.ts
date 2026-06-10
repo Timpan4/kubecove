@@ -94,11 +94,28 @@ export const SECTIONS = {
     label: "Discovered",
     children: [] as readonly string[],
   },
-  /** Argo CD: Applications, ApplicationSets, AppProjects */
+  /** GitOps: Argo CD and Flux provider resources. */
   argo: {
     id: "argo",
-    label: "Argo CD",
-    children: ["Applications", "ApplicationSets", "AppProjects"] as const,
+    label: "GitOps",
+    children: [
+      "Argo CD Applications",
+      "Argo CD ApplicationSets",
+      "Argo CD AppProjects",
+      "Flux Git Repositories",
+      "Flux OCI Repositories",
+      "Flux Helm Repositories",
+      "Flux Helm Charts",
+      "Flux Buckets",
+      "Flux Kustomizations",
+      "Flux Helm Releases",
+      "Flux Providers",
+      "Flux Alerts",
+      "Flux Receivers",
+      "Flux Image Repositories",
+      "Flux Image Policies",
+      "Flux Image Update Automations",
+    ] as const,
   },
   /** Helm: read-only release inventory from Helm v3 storage objects. */
   helm: {
@@ -223,7 +240,7 @@ export interface TreeScope {
   kinds: ResourceKindSelection[];
   /** Whether the scope is for cluster-scoped resources */
   clusterScoped: boolean;
-  /** Whether the scope is for Argo CD */
+  /** Whether the scope is for the GitOps section */
   argoMode: boolean;
   /** Whether the scope is for Helm */
   helmMode: boolean;
@@ -359,7 +376,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
 
 export function emptyStateMessage(scope: TreeScope, hasClusterContext: boolean): string {
   if (!hasClusterContext) return "Select a cluster context first";
-  if (scope.argoMode) return "Select an Argo CD resource type";
+  if (scope.argoMode) return "Select a GitOps resource type";
   if (scope.helmMode) return "Select a Helm resource type";
   if (scope.incidentMode) return "Use the Incident Cockpit";
   if (scope.portForwardMode) return "Use the Port Forwards page";
@@ -375,9 +392,12 @@ export function emptyStateMessage(scope: TreeScope, hasClusterContext: boolean):
 // ─── Argo Section Helpers ─────────────────────────────────────────────────────
 
 export const ARGO_CHILDREN_LABELS: Record<string, string> = {
-  Applications: "Applications",
-  ApplicationSets: "ApplicationSets",
-  AppProjects: "AppProjects",
+  Applications: "Argo CD Applications",
+  ApplicationSets: "Argo CD ApplicationSets",
+  AppProjects: "Argo CD AppProjects",
+  "Argo CD Applications": "Argo CD Applications",
+  "Argo CD ApplicationSets": "Argo CD ApplicationSets",
+  "Argo CD AppProjects": "Argo CD AppProjects",
 };
 
 export function isArgoSection(section: SectionName | string): boolean {
@@ -386,6 +406,9 @@ export function isArgoSection(section: SectionName | string): boolean {
 
 export function argoChildKinds(child: string): string[] {
   switch (child) {
+    case "Argo CD Applications": return [];
+    case "Argo CD ApplicationSets": return [];
+    case "Argo CD AppProjects": return [];
     case "Applications": return [];
     case "ApplicationSets": return [];
     case "AppProjects": return [];

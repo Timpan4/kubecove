@@ -33,7 +33,7 @@ export type HealthFilter =
 	| "restarted";
 
 export interface ScopePill {
-	kind: "namespaces" | "kinds" | "argoApp";
+	kind: "namespaces" | "kinds" | "argoApp" | "gitOpsOwner";
 	label: string;
 	value: string;
 }
@@ -42,6 +42,22 @@ export interface ResourceSearchEntry {
 	resource: ResourceSummary;
 	searchText: string;
 	argoApp: string;
+	gitOpsFilterKey: string;
+}
+
+export interface GitOpsFilterOption {
+	key: string;
+	label: string;
+}
+
+export function argoApplicationGitOpsFilterKey(name: string): string {
+	return ["argo", "Application", "", name].join(":");
+}
+
+function argoApplicationNameFromGitOpsFilter(filter: string): string | null {
+	const [provider, kind, , name] = filter.split(":");
+	if (provider !== "argo" || kind !== "Application" || !name) return null;
+	return name;
 }
 
 const TOPOLOGY_WATCH_KINDS = [
@@ -223,6 +239,7 @@ export function buildResourceSearchIndex(
 	return data.map((resource) => ({
 		resource,
 		argoApp: resource.argoApp ?? "",
+		gitOpsFilterKey: gitOpsFilterKey(resource),
 		searchText: [
 			resource.name,
 			resource.namespace,
@@ -232,6 +249,10 @@ export function buildResourceSearchIndex(
 			resource.plural,
 			resource.ownerRef,
 			resource.argoApp,
+			resource.gitOpsOwner?.provider,
+			resource.gitOpsOwner?.kind,
+			resource.gitOpsOwner?.name,
+			resource.gitOpsOwner?.namespace,
 			resource.helmRelease,
 		]
 			.filter((value): value is string => Boolean(value))
@@ -248,7 +269,15 @@ export function filterResourceSearchIndex(
 	const term = search.trim().toLowerCase();
 	const rows: ResourceSummary[] = [];
 	for (const entry of index) {
-		if (argoAppFilter && entry.argoApp !== argoAppFilter) continue;
+		if (argoAppFilter) {
+			const argoApplicationName =
+				argoApplicationNameFromGitOpsFilter(argoAppFilter);
+			const matchesLegacyArgo =
+				entry.argoApp === argoAppFilter ||
+				(argoApplicationName !== null && entry.argoApp === argoApplicationName);
+			const matchesGitOpsOwner = entry.gitOpsFilterKey === argoAppFilter;
+			if (!matchesLegacyArgo && !matchesGitOpsOwner) continue;
+		}
 		if (!term || entry.searchText.includes(term)) {
 			rows.push(entry.resource);
 		}
@@ -266,7 +295,51 @@ export function uniqueArgoApps(data: ResourceSummary[]): string[] {
 	).sort((a, b) => a.localeCompare(b));
 }
 
+export function gitOpsFilterKey(resource: ResourceSummary): string {
+	const owner = resource.gitOpsOwner;
+	if (owner) {
+		return [
+			owner.provider,
+			owner.kind,
+			owner.namespace ?? "",
+			owner.name,
+		].join(":");
+	}
+	return resource.argoApp ?? "";
+}
+
+export function gitOpsOwnerLabel(resource: ResourceSummary): string {
+	const owner = resource.gitOpsOwner;
+	if (owner?.provider === "flux") {
+		const scopedName = owner.namespace
+			? `${owner.namespace}/${owner.name}`
+			: owner.name;
+		return `Flux ${owner.kind}: ${scopedName}`;
+	}
+	if (owner?.provider === "argo") {
+		return `Argo CD Application: ${owner.name}`;
+	}
+	if (resource.argoApp) return `Argo CD Application: ${resource.argoApp}`;
+	return "";
+}
+
+export function uniqueGitOpsFilters(
+	data: ResourceSummary[],
+): GitOpsFilterOption[] {
+	const filters = new Map<string, string>();
+	for (const resource of data) {
+		const key = gitOpsFilterKey(resource);
+		if (!key) continue;
+		filters.set(key, gitOpsOwnerLabel(resource) || key);
+	}
+	return Array.from(filters, ([key, label]) => ({ key, label })).sort((a, b) =>
+		a.label.localeCompare(b.label),
+	);
+}
+
 export function formatResourceGroupLabel(resource: ResourceSummary): string {
+	const gitOpsLabel = gitOpsOwnerLabel(resource);
+	if (gitOpsLabel) return `Managed by ${gitOpsLabel}`;
 	if (resource.argoApp) return `Managed by Argo app: ${resource.argoApp}`;
 	if (resource.ownerRef) return `Owned by: ${resource.ownerRef}`;
 	return "Unmanaged resources";
@@ -337,7 +410,13 @@ export function describeResourceScope(
 		});
 	}
 	if (argoAppFilter) {
-		pills.push({ kind: "argoApp", label: "Argo app", value: argoAppFilter });
+		pills.push({
+			kind: "gitOpsOwner",
+			label: "GitOps",
+			value:
+				argoApplicationNameFromGitOpsFilter(argoAppFilter) ??
+				argoAppFilter,
+		});
 	}
 	return pills;
 }

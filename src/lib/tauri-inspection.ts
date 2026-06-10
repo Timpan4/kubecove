@@ -6,6 +6,10 @@ import type {
 	ArgoApplicationSummary,
 	ArgoAppProjectDetails,
 	ArgoAppProjectSummary,
+	FluxDetectionSummary,
+	FluxResourceDetails,
+	FluxResourceKind,
+	FluxResourceSummary,
 	HelmReleaseDetails,
 	HelmReleaseReconciliation,
 	HelmReleaseSummary,
@@ -112,6 +116,51 @@ export async function getArgoAppProjectDetails(
 ): Promise<ArgoAppProjectDetails> {
 	return client.invoke<ArgoAppProjectDetails>("get_argocd_appproject_details", {
 		clusterContext,
+		name,
+		namespace,
+		...kubeconfigArg(kubeconfigEnvVar),
+		yamlViewMode,
+		yamlEncoding,
+	});
+}
+
+export async function detectFlux(
+	client: TauriClient,
+	clusterContext: string,
+	kubeconfigEnvVar?: string,
+): Promise<FluxDetectionSummary> {
+	return client.invoke<FluxDetectionSummary>("detect_flux", {
+		clusterContext,
+		...kubeconfigArg(kubeconfigEnvVar),
+	});
+}
+
+export async function listFluxResources(
+	client: TauriClient,
+	clusterContext: string,
+	resourceKind: FluxResourceKind,
+	kubeconfigEnvVar?: string,
+): Promise<FluxResourceSummary[]> {
+	return client.invoke<FluxResourceSummary[]>("list_flux_resources", {
+		clusterContext,
+		resourceKind,
+		...kubeconfigArg(kubeconfigEnvVar),
+	});
+}
+
+export async function getFluxResourceDetails(
+	client: TauriClient,
+	clusterContext: string,
+	resourceKind: FluxResourceKind,
+	name: string,
+	namespace?: string | null,
+	kubeconfigEnvVar?: string,
+	yamlViewMode?: YamlViewMode,
+	yamlEncoding?: YamlEncoding,
+): Promise<FluxResourceDetails> {
+	return client.invoke<FluxResourceDetails>("get_flux_resource_details", {
+		clusterContext,
+		resourceKind,
 		name,
 		namespace,
 		...kubeconfigArg(kubeconfigEnvVar),

@@ -23,12 +23,13 @@ pub mod commands;
 pub mod models;
 
 use commands::{
-    add_kubeconfig_paths, apply_yaml, detect_argocd, get_app_usage_metrics,
+    add_kubeconfig_paths, apply_yaml, detect_argocd, detect_flux, get_app_usage_metrics,
     get_argocd_application_details, get_argocd_appproject_details, get_argocd_appset_details,
-    get_dynamic_resource_details, get_helm_release_details, get_helm_release_reconciliation,
-    get_kubeconfig_sources, get_resource_details, get_resource_yaml, init_kubeconfig_settings_path,
-    lint_kubernetes_yaml, list_argocd_applications, list_argocd_appprojects, list_argocd_appsets,
-    list_dynamic_resources, list_helm_releases, list_incident_cockpit, list_kube_contexts,
+    get_dynamic_resource_details, get_flux_resource_details, get_helm_release_details,
+    get_helm_release_reconciliation, get_kubeconfig_sources, get_resource_details,
+    get_resource_yaml, init_kubeconfig_settings_path, lint_kubernetes_yaml,
+    list_argocd_applications, list_argocd_appprojects, list_argocd_appsets, list_dynamic_resources,
+    list_flux_resources, list_helm_releases, list_incident_cockpit, list_kube_contexts,
     list_namespaces, list_pod_exec_sessions, list_port_forwards, list_rbac_inspection,
     list_resource_events, list_resource_kinds, list_resource_metrics, list_resource_scope,
     list_resource_topology, list_resources, pick_kubeconfig_paths, prepare_yaml_apply,
@@ -79,6 +80,9 @@ pub fn run() {
             list_argocd_appprojects,
             get_argocd_appset_details,
             get_argocd_appproject_details,
+            detect_flux,
+            list_flux_resources,
+            get_flux_resource_details,
             list_helm_releases,
             get_helm_release_details,
             get_helm_release_reconciliation,
