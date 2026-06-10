@@ -3,6 +3,35 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.6.5 - 2026-06-10
+
+### Added
+
+- Added a global command palette opened with Command+K on macOS and Ctrl+K
+  on Windows/Linux. It searches navigation targets, namespaces, and cached
+  resources, then jumps directly into the matching workspace view (#137).
+- Redesigned Settings around searchable sections, clearer navigation, and
+  denser controls for repeat configuration work (#136).
+
+### Improved
+
+- Made the resource table easier to scan in large scopes with sticky headers,
+  sticky Argo/kind group rows, smarter auto-hidden columns, Ready chips, and a
+  tighter empty state (#140).
+- Improved log reading with a line filter, compact time-only timestamps, line
+  wrapping by default, and a match count while preserving full timestamp
+  details on hover (#139).
+- Added a YAML copy action with transient confirmation in the resource detail
+  YAML tab (#139).
+- Reworked status presentation across Helm, Pods, stat cards, Argo CD details,
+  and the Incident Cockpit so health and sync signals are more consistent and
+  less noisy (#138).
+
+### Release
+
+- Prepared KubeCove v0.6.5 beta release metadata across the frontend, Tauri,
+  and Rust package manifests.
+
 ## 0.6.4 - 2026-06-09
 
 ### Improved
