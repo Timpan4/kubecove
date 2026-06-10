@@ -50,6 +50,11 @@ const GENERAL_ROWS = {
 		description:
 			"Opens the ownership map when entering resource views. When off, the map stays collapsed until opened.",
 	},
+	unavailableGitOpsProviders: {
+		title: "Show unavailable GitOps providers",
+		description:
+			"Shows Argo CD and Flux provider groups as disabled when their CRDs are not detected.",
+	},
 } satisfies Record<string, SettingsRowMeta>;
 
 const SESSION_ROWS = {
@@ -121,6 +126,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 		showExactTimestamps,
 		showUsageFooter,
 		showOwnershipMapByDefault,
+		showUnavailableGitOpsProviders,
 		autoStartSavedPortForwards,
 		keepLiveSessionsOnWorkspaceSwitch,
 		allowYamlForceConflicts,
@@ -130,6 +136,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 		setShowExactTimestamps,
 		setShowUsageFooter,
 		setShowOwnershipMapByDefault,
+		setShowUnavailableGitOpsProviders,
 		setAutoStartSavedPortForwards,
 		setKeepLiveSessionsOnWorkspaceSwitch,
 		setAllowYamlForceConflicts,
@@ -235,14 +242,21 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 								/>
 							</SettingsRow>
 							<SettingsRow {...GENERAL_ROWS.ownershipMap}>
-								<ToggleButton
-									checked={showOwnershipMapByDefault}
-									onCheckedChange={setShowOwnershipMapByDefault}
-									ariaLabel={GENERAL_ROWS.ownershipMap.title}
-								/>
-							</SettingsRow>
-						</SettingsSection>
-					)}
+							<ToggleButton
+								checked={showOwnershipMapByDefault}
+								onCheckedChange={setShowOwnershipMapByDefault}
+								ariaLabel={GENERAL_ROWS.ownershipMap.title}
+							/>
+						</SettingsRow>
+						<SettingsRow {...GENERAL_ROWS.unavailableGitOpsProviders}>
+							<ToggleButton
+								checked={showUnavailableGitOpsProviders}
+								onCheckedChange={setShowUnavailableGitOpsProviders}
+								ariaLabel={GENERAL_ROWS.unavailableGitOpsProviders.title}
+							/>
+						</SettingsRow>
+					</SettingsSection>
+				)}
 
 					{showCategory("sessions") && (
 						<SettingsSection title="Live sessions" showTitle={searching}>

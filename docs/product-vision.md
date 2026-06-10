@@ -79,6 +79,8 @@ GitOps support starts Kubernetes-API-first:
 - show Flux Ready/Reconciling/Stalled conditions, source references, revisions, suspension state, and inventory
 - group and filter resources by Flux Kustomization or Flux HelmRelease when inventory or labels identify ownership
 
+The GitOps landing view should summarize detected providers first, then link into provider-specific resource groups. Provider groups are hidden when their CRDs are not detected unless the user enables the global "Show unavailable GitOps providers" setting.
+
 Helm support follows the same inspection-first principle: inspect release metadata and related resources without turning Helm into the core data path.
 
 Argo CD API, Flux CLI, Argo CD CLI, Helm CLI, sync, reconcile, rollback, diff, Git-writing, and other cluster-changing workflows require ADR-backed guardrails before they become product paths.

@@ -7,6 +7,7 @@ import type {
 } from "@/lib/types";
 import { isFluxKindLabel } from "./flux-kinds";
 import { FluxPanel } from "./FluxPanel";
+import { GitOpsOverview } from "./GitOpsOverview";
 
 type ArgoSummaryItem =
 	| ArgoApplicationSummary
@@ -20,6 +21,7 @@ export function GitOpsPanel({
 	selectedGitOpsKind,
 	selectedFluxResource,
 	onFluxResourceSelect,
+	onGitOpsKindSelect,
 }: {
 	clusterContext: string;
 	selectedGitOpsItem: ArgoSummaryItem | null;
@@ -27,7 +29,17 @@ export function GitOpsPanel({
 	selectedGitOpsKind: string | null;
 	selectedFluxResource: FluxResourceSummary | null;
 	onFluxResourceSelect: (resource: FluxResourceSummary) => void;
+	onGitOpsKindSelect: (kind: string, group?: string) => void;
 }) {
+	if (!selectedGitOpsKind) {
+		return (
+			<GitOpsOverview
+				clusterContext={clusterContext}
+				onGitOpsKindSelect={onGitOpsKindSelect}
+			/>
+		);
+	}
+
 	if (isFluxKindLabel(selectedGitOpsKind)) {
 		return (
 			<FluxPanel

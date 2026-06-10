@@ -26,6 +26,7 @@ import type {
 	ArgoApplicationSummary,
 	ArgoAppProjectSummary,
 } from "@/lib/types";
+import { normalizeArgoKindLabel } from "@/features/gitops/gitops-nav";
 import {
 	ApplicationSetsTable,
 	ApplicationsTable,
@@ -118,9 +119,10 @@ export function ArgoCDPanel({
 	});
 	const argoResourcesAvailable = argoDetected === true && !detectError;
 
-	const isApps = selectedArgoKind === "Applications";
-	const isAppSets = selectedArgoKind === "ApplicationSets";
-	const isAppProjects = selectedArgoKind === "AppProjects";
+	const normalizedArgoKind = normalizeArgoKindLabel(selectedArgoKind);
+	const isApps = normalizedArgoKind === "applications";
+	const isAppSets = normalizedArgoKind === "applicationSets";
+	const isAppProjects = normalizedArgoKind === "appProjects";
 
 	const {
 		data: apps,
@@ -186,7 +188,7 @@ export function ArgoCDPanel({
 		return (
 			<EmptyState
 				title="Select an Argo CD resource type"
-				description="Choose applications, application sets, or app projects from the tree."
+				description="Choose Argo CD Applications, ApplicationSets, or AppProjects from the tree."
 			/>
 		);
 	}

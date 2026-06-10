@@ -32,7 +32,7 @@ GitOps provider support is inspection-only by default:
 
 ## Consequences
 
-The frontend can present a single GitOps area while preserving provider-specific labels and details.
+The frontend can present a single GitOps area while preserving provider-specific labels and details. Provider availability controls whether provider groups appear by default; it does not change the Kubernetes-API-first capability model.
 
 Flux ownership can be inferred from `Kustomization.status.inventory`, `HelmRelease.status.inventory`, and Flux labels where inventory is not available.
 

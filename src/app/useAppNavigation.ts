@@ -1,4 +1,5 @@
 import type { MutableRefObject } from "react";
+import { ARGO_NAV_KINDS } from "@/features/gitops/gitops-nav";
 import type { DashboardViewMode } from "../lib/hooks";
 import { resolveTreeScope, type TreeNodeId } from "../lib/tree-nav";
 import { diagnosticLog } from "../lib/diagnostics";
@@ -86,7 +87,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 			section: "argo",
 			namespace: undefined,
 			group: undefined,
-			kind: "Applications",
+			kind: ARGO_NAV_KINDS[0].label,
 		});
 		setSelectedResource(null);
 		setSelectedArgoApp(null);
@@ -148,18 +149,7 @@ export function useAppNavigation(deps: AppNavigationDeps): AppNavigation {
 	};
 
 	const handleTreeNodeSelect = (rawNodeId: TreeNodeId) => {
-		// The GitOps section header lands on Argo CD Applications directly (mirroring
-		// Helm → Releases) instead of a "select a resource type" stub.
-		const nodeId: TreeNodeId =
-			rawNodeId.type === "section" && rawNodeId.section === "argo"
-				? {
-						type: "kind",
-						section: "argo",
-						namespace: undefined,
-						group: undefined,
-						kind: "Applications",
-					}
-				: rawNodeId;
+		const nodeId: TreeNodeId = rawNodeId;
 		const scope = resolveTreeScope(nodeId);
 		diagnosticLog("app.tree.select", {
 			type: nodeId.type,

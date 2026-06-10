@@ -118,6 +118,8 @@ Typed frontend wrappers currently cover:
 - Helm: release list, detail, and reconciliation commands
 - RBAC: inspection summary
 
+The frontend GitOps section is provider-grouped. Its landing view uses the same read-only detection and list commands to show provider cards, hides unavailable providers by default, and can show disabled provider placeholders when the global setting is enabled.
+
 Every new command needs:
 
 - a Rust serde model when the payload is structured

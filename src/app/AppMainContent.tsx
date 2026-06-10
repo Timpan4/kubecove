@@ -42,6 +42,7 @@ interface AppMainContentProps {
 	onArgoItemSelect: (app: NonNullable<ArgoSelectedItem>) => void;
 	selectedFluxResource: FluxResourceSummary | null;
 	onFluxResourceSelect: (resource: FluxResourceSummary) => void;
+	onGitOpsKindSelect: (kind: string, group?: string) => void;
 	selectedTreeNode: TreeNodeId | null;
 	selectedHelmRelease: HelmReleaseSummary | null;
 	onHelmReleaseSelect: (release: HelmReleaseSummary) => void;
@@ -81,6 +82,7 @@ export function AppMainContent({
 	onArgoItemSelect,
 	selectedFluxResource,
 	onFluxResourceSelect,
+	onGitOpsKindSelect,
 	selectedTreeNode,
 	selectedHelmRelease,
 	onHelmReleaseSelect,
@@ -152,6 +154,7 @@ export function AppMainContent({
 							onGitOpsItemSelect={onArgoItemSelect}
 							selectedFluxResource={selectedFluxResource}
 							onFluxResourceSelect={onFluxResourceSelect}
+							onGitOpsKindSelect={onGitOpsKindSelect}
 							selectedGitOpsKind={
 								selectedTreeNode?.type === "kind" && selectedTreeNode.kind
 									? selectedTreeNode.kind

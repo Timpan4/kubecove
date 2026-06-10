@@ -29,9 +29,23 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { createTauriClient, listNamespaces, listResourceKinds } from "../lib/tauri";
+import { useQuery } from "@tanstack/react-query";
+import {
+  createTauriClient,
+  detectArgoCD,
+  detectFlux,
+  listNamespaces,
+  listResourceKinds,
+} from "../lib/tauri";
 import { useSettingsState } from "@/lib/settings";
 import type { DiscoveredResourceKind, NamespaceSummary } from "../lib/types";
+import {
+  ARGO_NAV_KINDS,
+  ARGO_PROVIDER_GROUP_ID,
+  FLUX_FAMILIES,
+  FLUX_PROVIDER_GROUP_ID,
+} from "@/features/gitops/gitops-nav";
+import { queryKeys } from "@/lib/queryKeys";
 import {
   type TreeNodeId,
   type TreeNode,
@@ -49,6 +63,56 @@ import {
   buildNamespaceTreeNode,
   buildShallowNamespaceTreeNode,
 } from "./sidebar-tree-helpers";
+
+function buildArgoProviderNode(disabled: boolean): TreeNode {
+  return {
+    id: { type: "group", section: "argo", group: ARGO_PROVIDER_GROUP_ID },
+    label: "Argo CD",
+    disabled,
+    description: disabled ? "Argo CD CRDs were not detected in this cluster." : undefined,
+    children: disabled
+      ? []
+      : ARGO_NAV_KINDS.map((kind) => ({
+          id: {
+            type: "kind",
+            section: "argo",
+            namespace: undefined,
+            group: ARGO_PROVIDER_GROUP_ID,
+            kind: kind.label,
+          },
+          label: kind.label,
+        })),
+  };
+}
+
+function buildFluxProviderNode(disabled: boolean): TreeNode {
+  return {
+    id: { type: "group", section: "argo", group: FLUX_PROVIDER_GROUP_ID },
+    label: "Flux",
+    disabled,
+    description: disabled ? "Flux CRDs were not detected in this cluster." : undefined,
+    children: disabled
+      ? []
+      : FLUX_FAMILIES.map((family) => ({
+          id: {
+            type: "group",
+            section: "argo",
+            group: family.groupId,
+          },
+          label: family.label,
+          children: family.kinds.map((kind) => ({
+            id: {
+              type: "kind",
+              section: "argo",
+              namespace: undefined,
+              group: family.groupId,
+              kind: kind.label,
+            },
+            label: kind.label,
+          })),
+        })),
+  };
+}
 
 interface SidebarTreeProps {
   clusterContext: string;
@@ -247,6 +311,22 @@ export function SidebarTree({
   const [error, setError] = useState<string | null>(null);
   const [resourceKindsError, setResourceKindsError] = useState<string | null>(null);
   const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
+  const showUnavailableGitOpsProviders = useSettingsState(
+    (state) => state.showUnavailableGitOpsProviders,
+  );
+  const gitOpsClient = useMemo(() => createTauriClient(), []);
+  const argoDetection = useQuery({
+    queryKey: queryKeys.argoDetect(clusterContext, kubeconfigEnvVar),
+    queryFn: () => detectArgoCD(gitOpsClient, clusterContext, kubeconfigEnvVar),
+    enabled: !!clusterContext,
+    staleTime: 60_000,
+  });
+  const fluxDetection = useQuery({
+    queryKey: queryKeys.fluxDetect(clusterContext, kubeconfigEnvVar),
+    queryFn: () => detectFlux(gitOpsClient, clusterContext, kubeconfigEnvVar),
+    enabled: !!clusterContext,
+    staleTime: 60_000,
+  });
 
   const loadNamespaces = useCallback(async () => {
     if (!clusterContext) {
@@ -328,15 +408,6 @@ export function SidebarTree({
       })),
     }));
 
-    const argoNode: TreeNode = {
-      id: { type: "section", section: "argo" },
-      label: SECTIONS.argo.label,
-      children: SECTIONS.argo.children.map((child) => ({
-        id: { type: "kind", section: "argo", namespace: undefined, group: undefined, kind: child },
-        label: child,
-      })),
-    };
-
     const helmNode: TreeNode = {
       id: { type: "section", section: "helm" },
       label: SECTIONS.helm.label,
@@ -365,8 +436,48 @@ export function SidebarTree({
       })),
     };
 
-    return { workspaceOverviewNode, clusterOverviewNode, curatedSectionNodes, argoNode, helmNode, incidentsNode, portForwardsNode, rbacNode };
+    return { workspaceOverviewNode, clusterOverviewNode, curatedSectionNodes, helmNode, incidentsNode, portForwardsNode, rbacNode };
   }, []);
+
+  const gitOpsNode = useMemo<TreeNode>(() => {
+    const children: TreeNode[] = [];
+    const argoDetected = argoDetection.data === true;
+    const fluxDetected = fluxDetection.data?.detected === true;
+    const argoKnownUnavailable =
+      argoDetection.isSuccess && argoDetection.data === false;
+    const fluxKnownUnavailable =
+      fluxDetection.isSuccess && fluxDetection.data?.detected === false;
+
+    if (argoDetected || (showUnavailableGitOpsProviders && argoKnownUnavailable)) {
+      children.push(buildArgoProviderNode(!argoDetected));
+    }
+    if (fluxDetected || (showUnavailableGitOpsProviders && fluxKnownUnavailable)) {
+      children.push(buildFluxProviderNode(!fluxDetected));
+    }
+    if (
+      children.length === 0 &&
+      (argoDetection.isPending || fluxDetection.isPending)
+    ) {
+      children.push({
+        id: { type: "group", section: "argo", group: "gitops:detecting" },
+        label: "Detecting providers...",
+        disabled: true,
+      });
+    }
+    return {
+      id: { type: "section", section: "argo" },
+      label: SECTIONS.argo.label,
+      children,
+    };
+  }, [
+    argoDetection.data,
+    argoDetection.isPending,
+    argoDetection.isSuccess,
+    fluxDetection.data?.detected,
+    fluxDetection.isPending,
+    fluxDetection.isSuccess,
+    showUnavailableGitOpsProviders,
+  ]);
 
   const extraKinds = useMemo(() => {
     const curatedKindKeys = new Set<string>([
@@ -481,13 +592,13 @@ export function SidebarTree({
       namespaceNode,
       ...staticTree.curatedSectionNodes,
       discoveredTree,
-      staticTree.argoNode,
+      gitOpsNode,
       staticTree.helmNode,
       staticTree.incidentsNode,
       staticTree.portForwardsNode,
       staticTree.rbacNode,
     ];
-  }, [namespaces, staticTree, discoveredTree]);
+  }, [namespaces, staticTree, discoveredTree, gitOpsNode]);
 
   if (!clusterContext) {
     return (
