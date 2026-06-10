@@ -196,12 +196,15 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 	return (
 		<div className="flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
 			<main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+				<div className="flex min-h-full flex-col justify-center">
 				<div className="mx-auto grid w-full max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
 					<section className="min-w-0">
-						<div className="mb-3 flex items-center justify-between gap-3">
+						<div className="mb-3 flex items-baseline gap-2">
 							<h1 className="text-base font-semibold">Workspaces</h1>
 							<span className="text-xs text-muted-foreground">
-								{sortedWorkspaces.length}
+								{sortedWorkspaces.length === 1
+									? "1 saved"
+									: `${sortedWorkspaces.length} saved`}
 							</span>
 						</div>
 						<div className="grid gap-2">
@@ -437,6 +440,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 							</FieldGroup>
 						</CardContent>
 					</Card>
+				</div>
 				</div>
 			</main>
 		</div>

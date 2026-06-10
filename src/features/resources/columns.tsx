@@ -4,7 +4,6 @@ import {
 	AgeCell,
 	ArgoHelmBadges,
 	CpuCell,
-	KindCell,
 	MemoryCell,
 	RestartsCell,
 	StatusChip,
@@ -18,17 +17,12 @@ export const columns = [
 	columnHelper.accessor("name", {
 		header: "Name",
 		cell: (info) => <TruncatedCell value={info.getValue()} />,
-		size: 185,
+		size: 250,
 	}),
 	columnHelper.accessor("namespace", {
 		header: "Namespace",
 		cell: (info) => <TruncatedCell value={info.getValue()} />,
 		size: 105,
-	}),
-	columnHelper.accessor("kind", {
-		header: "Kind",
-		cell: (info) => <KindCell kind={info.getValue()} />,
-		size: 120,
 	}),
 	columnHelper.accessor("status", {
 		header: "Status",
@@ -49,7 +43,15 @@ export const columns = [
 	}),
 	columnHelper.accessor("ready", {
 		header: "Ready",
-		cell: (info) => <TruncatedCell value={info.getValue()} />,
+		cell: (info) => {
+			const value = info.getValue();
+			// Pods report readiness as a raw boolean string; controllers as n/n.
+			if (value === "True") return <StatusChip value="Ready" variant="success" />;
+			if (value === "False") {
+				return <StatusChip value="Not ready" variant="error" />;
+			}
+			return <TruncatedCell value={value} />;
+		},
 		size: 70,
 	}),
 	columnHelper.accessor("restarts", {
