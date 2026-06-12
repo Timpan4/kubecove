@@ -1,4 +1,6 @@
-use crate::commands::helpers::{base_resource_summary, list_params, resource_age};
+use crate::commands::helpers::{
+    base_resource_summary, list_params, resource_age, update_resource_health,
+};
 use crate::models::{AppError, ResourceSummary};
 use chrono::{TimeZone, Utc};
 use kube::{api::Api, Client};
@@ -52,6 +54,7 @@ pub(super) async fn core_resource_summaries(
                             summary.restarts = Some(restarts);
                         }
                     }
+                    update_resource_health(&mut summary);
                     summary
                 })
                 .collect()

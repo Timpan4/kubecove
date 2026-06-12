@@ -1,6 +1,7 @@
 use crate::commands::helpers::{
     extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
     fetch_and_serialize, k8s_creation_timestamp_to_rfc3339, redact_secret, resource_age,
+    update_resource_health,
 };
 use crate::models::{AppError, ResourceDetailsFull, ResourceSummary};
 use chrono::{TimeZone, Utc};
@@ -21,7 +22,7 @@ pub(super) async fn pod_details(
         .status
         .as_ref()
         .and_then(|s| serde_json::to_value(s).ok());
-    let summary = ResourceSummary {
+    let mut summary = ResourceSummary {
         kind: "Pod".to_string(),
         cluster: cluster_context.clone(),
         name: name.clone(),
@@ -37,6 +38,7 @@ pub(super) async fn pod_details(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&pod.metadata.creation_timestamp),
         status: pod.status.as_ref().and_then(|s| s.phase.clone()),
         ready: pod.status.as_ref().and_then(|s| {
@@ -61,6 +63,7 @@ pub(super) async fn pod_details(
         helm_release: extract_helm_release(&pod.metadata),
         git_ops_owner: extract_git_ops_owner(&pod.metadata),
     };
+    update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {
         summary,
         yaml,
@@ -103,6 +106,7 @@ pub(super) async fn service_details(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&svc.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -150,6 +154,7 @@ pub(super) async fn configmap_details(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&cm.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -200,6 +205,7 @@ pub(super) async fn secret_details(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&sec.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -235,7 +241,7 @@ pub(super) async fn pvc_details(
         .status
         .as_ref()
         .and_then(|s| serde_json::to_value(s).ok());
-    let summary = ResourceSummary {
+    let mut summary = ResourceSummary {
         kind: "PersistentVolumeClaim".to_string(),
         cluster: cluster_context.clone(),
         name: name.clone(),
@@ -251,6 +257,7 @@ pub(super) async fn pvc_details(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&pvc.metadata.creation_timestamp),
         status: status
             .as_ref()
@@ -262,6 +269,7 @@ pub(super) async fn pvc_details(
         helm_release: extract_helm_release(&pvc.metadata),
         git_ops_owner: extract_git_ops_owner(&pvc.metadata),
     };
+    update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {
         summary,
         yaml,

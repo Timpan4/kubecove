@@ -1,6 +1,7 @@
 use crate::commands::helpers::{
     extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
     k8s_creation_timestamp_to_rfc3339, list_params, resource_age, serialize_resource_document,
+    update_resource_health,
 };
 use crate::commands::{
     kubeconfig::{kubeconfig_source_key, KubeconfigSource},
@@ -71,7 +72,7 @@ pub(crate) fn dynamic_resource_summary(
     resource_kind: &DiscoveredResourceKind,
     object: &DynamicObject,
 ) -> ResourceSummary {
-    ResourceSummary {
+    let mut summary = ResourceSummary {
         kind: resource_kind.kind.clone(),
         cluster: cluster_context.to_string(),
         name: object.metadata.name.clone().unwrap_or_default(),
@@ -87,6 +88,7 @@ pub(crate) fn dynamic_resource_summary(
         plural: Some(resource_kind.plural.clone()),
         namespaced: Some(resource_kind.namespaced),
         dynamic: Some(true),
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&object.metadata.creation_timestamp),
         status: dynamic_status_from_data(&object.data),
         ready: None,
@@ -95,7 +97,9 @@ pub(crate) fn dynamic_resource_summary(
         argo_app: extract_argo_app(&object.metadata),
         helm_release: extract_helm_release(&object.metadata),
         git_ops_owner: extract_git_ops_owner(&object.metadata),
-    }
+    };
+    update_resource_health(&mut summary);
+    summary
 }
 
 async fn client_for_context(

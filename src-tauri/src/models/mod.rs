@@ -46,9 +46,9 @@ pub use rbac::{
 pub use resource::{
     GitOpsOwnerSummary, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult,
     KubernetesYamlLintSeverity, OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull,
-    ResourceListRequest, ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode,
-    TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlApplyTarget,
-    YamlEncoding, YamlViewMode,
+    ResourceHealth, ResourceListRequest, ResourceSummary, ResourceTopology, TopologyEdge,
+    TopologyNode, TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
+    YamlApplyTarget, YamlEncoding, YamlViewMode,
 };
 pub use sessions::{
     LiveSessionCleanupRequest, LiveSessionCleanupResult, PodExecConfirmation,

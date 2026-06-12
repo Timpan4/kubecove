@@ -4,7 +4,7 @@ use super::{
         NetworkEndpointSlice, NetworkIngressBackend, NetworkService, NetworkTopologyInputs,
     },
 };
-use crate::commands::helpers::{fmt_ready, list_params};
+use crate::commands::helpers::{fmt_ready, list_params, update_resource_health};
 use crate::models::AppError;
 use k8s_openapi::api::{
     apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet},
@@ -121,6 +121,7 @@ pub(super) async fn collect_topology_inputs(
                 status.available_replicas.unwrap_or(0)
             ));
         }
+        update_resource_health(&mut input.summary);
         inputs.push(input);
     }
 
@@ -136,6 +137,7 @@ pub(super) async fn collect_topology_inputs(
                 status.number_available.unwrap_or(0)
             ));
         }
+        update_resource_health(&mut input.summary);
         inputs.push(input);
     }
 
@@ -148,6 +150,7 @@ pub(super) async fn collect_topology_inputs(
                 status.available_replicas.unwrap_or(0)
             ));
         }
+        update_resource_health(&mut input.summary);
         inputs.push(input);
     }
 
@@ -157,6 +160,7 @@ pub(super) async fn collect_topology_inputs(
         if let Some(status) = ss.status {
             input.summary.ready = Some(fmt_ready(status.ready_replicas, status.replicas));
         }
+        update_resource_health(&mut input.summary);
         inputs.push(input);
     }
 
@@ -168,6 +172,7 @@ pub(super) async fn collect_topology_inputs(
                 input.summary.status = Some(format!("{active} active"));
             }
         }
+        update_resource_health(&mut input.summary);
         inputs.push(input);
     }
 
@@ -195,6 +200,7 @@ pub(super) async fn collect_topology_inputs(
                     .unwrap_or(1)
             ));
         }
+        update_resource_health(&mut input.summary);
         inputs.push(input);
     }
 
@@ -266,6 +272,7 @@ fn pod_input(cluster_context: &str, pod: Pod) -> TopologyInputResource {
             input.summary.restarts = Some(restarts);
         }
     }
+    update_resource_health(&mut input.summary);
     input
 }
 
@@ -313,6 +320,7 @@ pub(super) async fn collect_network_topology_inputs(
             input.port_hints.sort();
             input.port_hints.dedup();
         }
+        update_resource_health(&mut input.summary);
         service_flows.push(NetworkService {
             namespace,
             name,

@@ -13,6 +13,7 @@ export function IncidentSignalValue({ signal }: { signal: IncidentSignal }) {
 					<ExactTimestampText
 						key={`${part.value}:${index}`}
 						value={part.value}
+						precision="millisecond"
 						className="outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
 					/>
 				) : (

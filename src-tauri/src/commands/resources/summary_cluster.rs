@@ -1,4 +1,6 @@
-use crate::commands::helpers::{base_resource_summary, list_params, resource_age};
+use crate::commands::helpers::{
+    base_resource_summary, list_params, resource_age, update_resource_health,
+};
 use crate::models::{AppError, ResourceSummary};
 use chrono::{TimeZone, Utc};
 use kube::{api::Api, Client};
@@ -58,6 +60,7 @@ async fn node_summaries(
                         .map(|c| c.status.clone());
                 }
             }
+            update_resource_health(&mut summary);
             summary
         })
         .collect())
@@ -102,6 +105,7 @@ async fn persistentvolume_summaries(
                 age_from_metadata(&pv.metadata),
             );
             summary.status = pv.status.as_ref().and_then(|s| s.phase.as_ref()).cloned();
+            update_resource_health(&mut summary);
             summary
         })
         .collect())

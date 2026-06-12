@@ -19,6 +19,7 @@ function resource(overrides: Partial<ResourceSummary> = {}): ResourceSummary {
 		age: "3m",
 		status: "Running",
 		ready: "true",
+		health: "healthy",
 		...overrides,
 	};
 }
@@ -40,16 +41,15 @@ function event(overrides: Partial<ResourceEventSummary>): ResourceEventSummary {
 describe("incident workflow helpers", () => {
 	test("unhealthy filtering includes degraded and attention resources", () => {
 		const rows = [
-			resource({ name: "healthy", status: "Running", ready: "true" }),
-			resource({ name: "pending", status: "Pending" }),
-			resource({ name: "failed", status: "Failed" }),
-			resource({ name: "restarted", restarts: 2 }),
+			resource({ name: "healthy", status: "Running", ready: "true", health: "healthy" }),
+			resource({ name: "pending", status: "Pending", health: "attention" }),
+			resource({ name: "failed", status: "Failed", health: "degraded" }),
+			resource({ name: "restarted", restarts: 2, health: "restarted" }),
 		];
 
 		expect(filterResourcesByHealth(rows, "unhealthy").map((row) => row.name)).toEqual([
 			"pending",
 			"failed",
-			"restarted",
 		]);
 		expect(filterResourcesByHealth(rows, "healthy").map((row) => row.name)).toEqual([
 			"healthy",
@@ -94,15 +94,88 @@ describe("incident workflow helpers", () => {
 		);
 
 		expect(signals.map((signal) => signal.id)).toEqual([
-			"status",
-			"ready",
+			"container:api:waiting",
+			"events:warnings",
 			"restarts",
 			"condition:Ready",
-			"events:warnings",
+			"status",
+			"ready",
 		]);
+		expect(signals[0]).toMatchObject({
+			label: "api waiting",
+			source: "container",
+			tone: "error",
+		});
 		expect(signals.find((signal) => signal.id === "restarts")?.tone).toBe(
 			"warning",
 		);
+	});
+
+	test("incident signals prioritize failed containers before derived pod state", () => {
+		const conditions: ConditionRow[] = [
+			{
+				type: "ContainersReady",
+				status: "False",
+				reason: "PodFailed",
+				lastTransitionTime: "2026-06-12T18:01:00.000Z",
+			},
+			{
+				type: "Ready",
+				status: "False",
+				reason: "PodFailed",
+				lastTransitionTime: "2026-06-12T18:01:00.000Z",
+			},
+			{
+				type: "PodReadyToStartContainers",
+				status: "False",
+				lastTransitionTime: "2026-06-12T18:01:00.000Z",
+			},
+		];
+		const containers: ContainerStatusRow[] = [
+			{
+				name: "fail",
+				type: "container",
+				ready: false,
+				restartCount: 0,
+				state: "terminated",
+				reason: "Error",
+				exitCode: 42,
+				finishedAt: "2026-06-12T18:01:00.000Z",
+			},
+		];
+		const failedPod = resource({
+			name: "issue-143-failure-control-99jns",
+			status: "Failed",
+			ready: "False",
+			health: "degraded",
+		});
+
+		const signals = buildIncidentSignals(failedPod, conditions, [], containers);
+		expect(signals.map((signal) => signal.id)).toEqual([
+			"container:fail:terminated",
+			"condition:ContainersReady",
+			"condition:Ready",
+			"condition:PodReadyToStartContainers",
+			"status",
+			"ready",
+		]);
+		expect(signals[0]).toMatchObject({
+			label: "fail terminated",
+			source: "container",
+			tone: "error",
+		});
+		expect(signals[0].value).toContain("exit 42");
+
+		const timeline = buildIncidentTimeline({
+			resource: failedPod,
+			conditions,
+			events: [],
+			containers,
+		});
+		const titles = timeline.map((item) => item.title);
+		expect(titles).toContain("fail terminated");
+		expect(titles).not.toContain("Status Failed");
+		expect(titles).not.toContain("Ready False");
 	});
 
 	test("warning events sort ahead of normal events, then newest first", () => {
@@ -186,8 +259,6 @@ describe("incident workflow helpers", () => {
 			"event",
 			"log",
 			"container",
-			"status",
-			"status",
 		]);
 		expect(timeline.find((item) => item.source === "event")?.detail).toContain(
 			"3 repeats",
@@ -195,11 +266,8 @@ describe("incident workflow helpers", () => {
 		expect(timeline.find((item) => item.source === "log")?.detail).toBe(
 			"request failed",
 		);
-		expect(
-			timeline
-				.filter((item) => item.source === "status")
-				.every((item) => item.timestamp === undefined),
-		).toBe(true);
+		expect(timeline.map((item) => item.title)).not.toContain("Status Pending");
+		expect(timeline.map((item) => item.title)).not.toContain("Ready False");
 	});
 
 	test("incident timeline timestamps terminated containers at finish time", () => {

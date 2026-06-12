@@ -26,6 +26,7 @@ function item(
 			name,
 			namespace: "default",
 			age: "1m",
+			health: "healthy",
 			...owner,
 		},
 	};

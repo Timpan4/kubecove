@@ -1,4 +1,6 @@
-use crate::commands::helpers::{base_resource_summary, fmt_ready, list_params, resource_age};
+use crate::commands::helpers::{
+    base_resource_summary, fmt_ready, list_params, resource_age, update_resource_health,
+};
 use crate::models::{AppError, ResourceSummary};
 use chrono::{TimeZone, Utc};
 use kube::{api::Api, Client};
@@ -64,6 +66,7 @@ async fn deployment_summaries(
                     summary.status = Some(format!("Available: {available}"));
                 }
             }
+            update_resource_health(&mut summary);
             summary
         })
         .collect())
@@ -98,6 +101,7 @@ async fn replicaset_summaries(
                     status.available_replicas.unwrap_or(0)
                 ));
             }
+            update_resource_health(&mut summary);
             summary
         })
         .collect())
@@ -128,6 +132,7 @@ async fn statefulset_summaries(
             if let Some(ref status) = ss.status {
                 summary.ready = Some(fmt_ready(status.ready_replicas, status.replicas));
             }
+            update_resource_health(&mut summary);
             summary
         })
         .collect())
@@ -161,6 +166,7 @@ async fn daemonset_summaries(
                     status.number_ready, status.desired_number_scheduled
                 ));
             }
+            update_resource_health(&mut summary);
             summary
         })
         .collect())
@@ -233,6 +239,7 @@ async fn job_summaries(
                     job.spec.as_ref().and_then(|s| s.completions).unwrap_or(1)
                 ));
             }
+            update_resource_health(&mut summary);
             summary
         })
         .collect())
@@ -266,6 +273,7 @@ async fn cronjob_summaries(
                     summary.status = Some(format!("{active} active"));
                 }
             }
+            update_resource_health(&mut summary);
             summary
         })
         .collect())

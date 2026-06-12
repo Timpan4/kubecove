@@ -6,9 +6,10 @@ use kubecove_lib::models::{
     HelmValuesSummary, NamespaceSummary, PodExecConfirmation, PodExecSessionMessage,
     PodExecSessionRequest, PodExecSessionSummary, PodExecTerminalSize, PodLogStreamRequest,
     RbacInspectionSummary, RbacRiskIndicator, RbacRiskLevel, RbacRoleSummary, RbacRuleSummary,
-    ResourceDetails, ResourceDetailsFull, ResourceEventSummary, ResourceMetricSummary,
-    ResourceMetricsAvailability, ResourceMetricsAvailabilityStatus, ResourceMetricsSummary,
-    ResourceSummary, ServiceAccountSummary, StreamMessage, WatchResourceKey, WatchResourceKind,
+    ResourceDetails, ResourceDetailsFull, ResourceEventSummary, ResourceHealth,
+    ResourceMetricSummary, ResourceMetricsAvailability, ResourceMetricsAvailabilityStatus,
+    ResourceMetricsSummary, ResourceSummary, ServiceAccountSummary, StreamMessage,
+    WatchResourceKey, WatchResourceKind,
 };
 use serde_json::json;
 
@@ -65,6 +66,7 @@ fn test_resource_summary_serde() {
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: ResourceHealth::Unknown,
         created_at: None,
         status: None,
         ready: None,
@@ -126,6 +128,7 @@ fn test_resource_details_full_serde() {
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: ResourceHealth::Unknown,
         created_at: None,
         status: None,
         ready: None,
@@ -274,6 +277,7 @@ fn test_dynamic_resource_summary_fields_serde() {
         plural: Some("widgets".to_string()),
         namespaced: Some(true),
         dynamic: Some(true),
+        health: ResourceHealth::Healthy,
         created_at: None,
         status: Some("Running".to_string()),
         ready: None,
@@ -287,6 +291,7 @@ fn test_dynamic_resource_summary_fields_serde() {
     let json_val = serde_json::to_value(&summary).unwrap();
     assert_eq!(json_val["apiVersion"], "example.com/v1");
     assert_eq!(json_val["dynamic"], true);
+    assert_eq!(json_val["health"], "healthy");
     assert_eq!(json_val["plural"], "widgets");
     let parsed: ResourceSummary = serde_json::from_value(json_val).unwrap();
     assert_eq!(parsed.group, Some("example.com".to_string()));

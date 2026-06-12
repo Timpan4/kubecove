@@ -1,5 +1,5 @@
 use crate::commands::helpers::k8s_timestamp_to_datetime;
-use crate::models::{GitOpsOwnerSummary, OwnerReferenceSummary, ResourceSummary};
+use crate::models::{GitOpsOwnerSummary, OwnerReferenceSummary, ResourceHealth, ResourceSummary};
 
 const ANNOTATION_ARGOCD_APP_NAME: &str = "argocd.argoproj.io/name";
 const ANNOTATION_ARGOCD_TRACKING_ID: &str = "argocd.argoproj.io/tracking-id";
@@ -143,6 +143,7 @@ pub(crate) fn base_resource_summary(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: ResourceHealth::Unknown,
         created_at: metadata
             .creation_timestamp
             .as_ref()

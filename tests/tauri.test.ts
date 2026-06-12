@@ -7,9 +7,12 @@ import type {
 } from "../src/lib/types";
 import {
 	buildIncidentSignals,
+	conditionStatusTone,
 	getContainerStatusRows,
 	getConditionRows,
 	incidentSignalCardClassName,
+	resourceReadyLabel,
+	resourceReadyTone,
 	shouldFetchResourceEvents,
 	shouldFetchResourceDetails,
 } from "../src/features/resource-detail/helpers";
@@ -83,6 +86,73 @@ describe("getConditionRows", () => {
   });
 });
 
+describe("resource detail status tones", () => {
+	const completedPod: ResourceSummary = {
+		cluster: "kind-prod",
+		kind: "Pod",
+		name: "job-pod",
+		namespace: "jobs-lab",
+		age: "6m",
+		health: "healthy",
+		status: "Succeeded",
+		ready: "False",
+	};
+
+	test("shows completed pods as not-dangerous when readiness is false", () => {
+		expect(resourceReadyLabel(completedPod)).toBe("Completed");
+		expect(resourceReadyTone(completedPod)).toBe("success");
+	});
+
+	test("renders complete phase chips as success", () => {
+		const source = readFileSync(
+			"src/features/resource-detail/DetailStatusField.tsx",
+			"utf8",
+		);
+
+		expect(source).toContain('"Complete"');
+		expect(source).toContain('"Completed"');
+	});
+
+	test("uses neutral condition chips for expected completed pod false conditions", () => {
+		expect(
+			conditionStatusTone(
+				{ type: "Ready", status: "False", reason: "PodCompleted" },
+				completedPod,
+			),
+		).toBe("neutral");
+		expect(
+			conditionStatusTone(
+				{ type: "ContainersReady", status: "False", reason: "PodCompleted" },
+				completedPod,
+			),
+		).toBe("neutral");
+		expect(
+			conditionStatusTone(
+				{ type: "PodReadyToStartContainers", status: "False" },
+				completedPod,
+			),
+		).toBe("neutral");
+	});
+
+	test("keeps active not-ready pods red", () => {
+		const runningPod = {
+			...completedPod,
+			status: "Running",
+			ready: "False",
+			health: "degraded" as const,
+		};
+
+		expect(resourceReadyLabel(runningPod)).toBe("Not ready");
+		expect(resourceReadyTone(runningPod)).toBe("error");
+		expect(
+			conditionStatusTone(
+				{ type: "Ready", status: "False", reason: "ContainersNotReady" },
+				runningPod,
+			),
+		).toBe("error");
+	});
+});
+
 describe("getContainerStatusRows", () => {
 	test("extracts container restart context with timestamps", () => {
 		expect(
@@ -129,6 +199,7 @@ describe("resource browser presentation helpers", () => {
     name: "api-0",
     namespace: "payments",
     age: "3h",
+    health: "unknown",
   };
   const widgetKind: DiscoveredResourceKind = {
     group: "example.com",
@@ -147,9 +218,9 @@ describe("resource browser presentation helpers", () => {
 
   test("summarizes resource health for the active filter", () => {
     const summary = buildResourceHealthSummary([
-      { ...baseResource, name: "api-0", status: "Running", ready: "True", restarts: 0 },
-      { ...baseResource, name: "worker-0", status: "Pending", restarts: 0 },
-      { ...baseResource, name: "job-0", status: "Failed", ready: "False", restarts: 1 },
+      { ...baseResource, name: "api-0", status: "Running", ready: "True", health: "healthy", restarts: 0 },
+      { ...baseResource, name: "worker-0", status: "Pending", health: "attention", restarts: 0 },
+      { ...baseResource, name: "job-0", status: "Failed", ready: "False", health: "degraded", restarts: 1 },
     ]);
 
     expect(summary).toEqual({
@@ -164,15 +235,15 @@ describe("resource browser presentation helpers", () => {
 
   test("filters resources by transient health filter", () => {
     const resources: ResourceSummary[] = [
-      { ...baseResource, name: "api-0", status: "Running", ready: "True", restarts: 0 },
-      { ...baseResource, name: "worker-0", status: "Pending", restarts: 0 },
-      { ...baseResource, name: "job-0", status: "Failed", ready: "False", restarts: 1 },
-      { ...baseResource, name: "cache-0", status: "Running", ready: "True", restarts: 2 },
+      { ...baseResource, name: "api-0", status: "Running", ready: "True", health: "healthy", restarts: 0 },
+      { ...baseResource, name: "worker-0", status: "Pending", health: "attention", restarts: 0 },
+      { ...baseResource, name: "job-0", status: "Failed", ready: "False", health: "degraded", restarts: 1 },
+      { ...baseResource, name: "cache-0", status: "Running", ready: "True", health: "restarted", restarts: 2 },
     ];
 
     expect(filterResourcesByHealth(resources, "all")).toEqual(resources);
     expect(filterResourcesByHealth(resources, "healthy").map((r) => r.name)).toEqual(["api-0"]);
-    expect(filterResourcesByHealth(resources, "attention").map((r) => r.name)).toEqual(["worker-0", "cache-0"]);
+    expect(filterResourcesByHealth(resources, "attention").map((r) => r.name)).toEqual(["worker-0"]);
     expect(filterResourcesByHealth(resources, "degraded").map((r) => r.name)).toEqual(["job-0"]);
     expect(filterResourcesByHealth(resources, "restarted").map((r) => r.name)).toEqual(["job-0", "cache-0"]);
   });
@@ -517,23 +588,17 @@ describe("incident signal helpers", () => {
       ),
     ).toEqual([
       {
-        id: "status",
-        label: "Status",
-        value: "Failed",
-        tone: "error",
-        source: "status",
-      },
-      {
-        id: "ready",
-        label: "Ready",
-        value: "False",
-        tone: "error",
-        source: "status",
+        id: "events:warnings",
+        label: "Warning events",
+        value: "1 warning reason · 4 repeats",
+        tone: "warning",
+        source: "event",
       },
       {
         id: "restarts",
         label: "Restarts",
         value: "3",
+        valueParts: undefined,
         tone: "warning",
         source: "status",
       },
@@ -551,11 +616,18 @@ describe("incident signal helpers", () => {
         source: "condition",
       },
       {
-        id: "events:warnings",
-        label: "Warning events",
-        value: "1 warning reason · 4 repeats",
-        tone: "warning",
-        source: "event",
+        id: "status",
+        label: "Status",
+        value: "Failed",
+        tone: "error",
+        source: "status",
+      },
+      {
+        id: "ready",
+        label: "Ready",
+        value: "False",
+        tone: "error",
+        source: "status",
       },
     ]);
   });
@@ -894,7 +966,7 @@ describe("incident signal helpers", () => {
 
 	test("classifies waiting containers before generic not-ready containers", () => {
 		const source = readFileSync(
-			"src/features/resource-detail/DetailsTab.tsx",
+			"src/features/resource-detail/ResourceDiagnosticLists.tsx",
 			"utf8",
 		);
 		const waitingIndex = source.indexOf('container.state === "waiting"');
@@ -926,8 +998,8 @@ describe("incident signal helpers", () => {
 	});
 
 	test("renders signal timestamps through the shared timestamp formatter", () => {
-		const detailsSource = readFileSync(
-			"src/features/resource-detail/DetailsTab.tsx",
+		const summarySource = readFileSync(
+			"src/features/resource-detail/IncidentSummary.tsx",
 			"utf8",
 		);
 		const valueSource = readFileSync(
@@ -935,20 +1007,34 @@ describe("incident signal helpers", () => {
 			"utf8",
 		);
 
-		expect(detailsSource).toContain("<IncidentSignalValue signal={signal} />");
+		expect(summarySource).toContain("<IncidentSignalValue signal={signal} />");
 		expect(valueSource).toContain("ExactTimestampText");
 		expect(valueSource).toContain("valueParts");
+		expect(valueSource).toContain('precision="millisecond"');
 		expect(valueSource).not.toContain("{signal.value}");
+	});
+
+	test("renders detail timeline timestamps with millisecond precision", () => {
+		const source = readFileSync(
+			"src/features/resource-detail/IncidentTimeline.tsx",
+			"utf8",
+		);
+
+		expect(source).toContain(
+			'<ExactTimestampText value={item.timestamp} precision="millisecond" />',
+		);
 	});
 
 	test("renders metadata creation timestamps through the shared timestamp formatter", () => {
 		const source = readFileSync(
-			"src/features/resource-detail/DetailsTab.tsx",
+			"src/features/resource-detail/ResourceDiagnostics.tsx",
 			"utf8",
 		);
 
 		expect(source).toContain('name === "Created"');
-		expect(source).toContain("<ExactTimestampText value={value} />");
+		expect(source).toContain(
+			'<ExactTimestampText value={value} precision="millisecond" />',
+		);
 	});
 
 	test("renders Argo detail metadata creation timestamps through the shared timestamp formatter", () => {

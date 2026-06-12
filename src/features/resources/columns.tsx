@@ -13,6 +13,47 @@ import {
 
 const columnHelper = createColumnHelper<ResourceSummary>();
 
+const SUCCESS_STATUS_VALUES = new Set([
+	"Running",
+	"Succeeded",
+	"Complete",
+	"Completed",
+	"Ready",
+]);
+
+function isSuccessfulTerminalPod(
+	row: Pick<ResourceSummary, "kind" | "status">,
+): boolean {
+	return (
+		row.kind === "Pod" &&
+		["succeeded", "complete", "completed"].includes(
+			row.status?.trim().toLowerCase() ?? "",
+		)
+	);
+}
+
+export function resourceStatusTone(value: string): ChipVariant {
+	return SUCCESS_STATUS_VALUES.has(value)
+		? "success"
+		: value === "Pending" || value === "Terminating"
+			? "warning"
+			: value === "Failed" || value === "Error"
+				? "error"
+				: "neutral";
+}
+
+export function resourceReadyChip(
+	row: Pick<ResourceSummary, "kind" | "status" | "ready">,
+): { value: string; variant: ChipVariant } | null {
+	if (row.ready === "True") return { value: "Ready", variant: "success" };
+	if (row.ready === "False") {
+		return isSuccessfulTerminalPod(row)
+			? { value: "Completed", variant: "success" }
+			: { value: "Not ready", variant: "error" };
+	}
+	return null;
+}
+
 export const columns = [
 	columnHelper.accessor("name", {
 		header: "Name",
@@ -30,25 +71,23 @@ export const columns = [
 		cell: (info) => {
 			const value = info.getValue();
 			if (!value) return "—";
-			const variant: ChipVariant =
-				value === "Running" || value === "Succeeded" || value === "Ready"
-					? "success"
-					: value === "Pending" || value === "Terminating"
-						? "warning"
-						: value === "Failed" || value === "Error"
-							? "error"
-							: "neutral";
-			return <StatusChip value={value} variant={variant} />;
+			return <StatusChip value={value} variant={resourceStatusTone(value)} />;
 		},
 	}),
 	columnHelper.accessor("ready", {
 		header: "Ready",
 		cell: (info) => {
 			const value = info.getValue();
+			const row = info.row.original;
 			// Pods report readiness as a raw boolean string; controllers as n/n.
-			if (value === "True") return <StatusChip value="Ready" variant="success" />;
-			if (value === "False") {
-				return <StatusChip value="Not ready" variant="error" />;
+			const readyChip = resourceReadyChip(row);
+			if (readyChip) {
+				return (
+					<StatusChip
+						value={readyChip.value}
+						variant={readyChip.variant}
+					/>
+				);
 			}
 			return <TruncatedCell value={value} />;
 		},

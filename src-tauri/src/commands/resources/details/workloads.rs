@@ -1,6 +1,7 @@
 use crate::commands::helpers::{
     extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
     fetch_and_serialize, fmt_ready, k8s_creation_timestamp_to_rfc3339, resource_age,
+    update_resource_health,
 };
 use crate::models::{AppError, ResourceDetailsFull, ResourceSummary};
 use chrono::{TimeZone, Utc};
@@ -40,6 +41,7 @@ pub(super) async fn deployment_details(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&deploy.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -56,6 +58,7 @@ pub(super) async fn deployment_details(
             s.replicas.unwrap_or(0)
         ));
     }
+    update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {
         summary,
         yaml,
@@ -98,6 +101,7 @@ pub(super) async fn statefulset_details(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&ss.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -110,6 +114,7 @@ pub(super) async fn statefulset_details(
     if let Some(ref s) = ss.status {
         summary.ready = Some(fmt_ready(s.ready_replicas, s.replicas));
     }
+    update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {
         summary,
         yaml,
@@ -152,6 +157,7 @@ pub(super) async fn daemonset_details(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&ds.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -164,6 +170,7 @@ pub(super) async fn daemonset_details(
     if let Some(ref s) = ds.status {
         summary.ready = Some(format!("{}/{}", s.number_ready, s.desired_number_scheduled));
     }
+    update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {
         summary,
         yaml,
@@ -206,6 +213,7 @@ pub(super) async fn ingress_details(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&ing.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -257,6 +265,7 @@ pub(super) async fn job_details(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&job.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -285,6 +294,7 @@ pub(super) async fn job_details(
             Some("Pending".to_string())
         };
     }
+    update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {
         summary,
         yaml,
@@ -327,6 +337,7 @@ pub(super) async fn cronjob_details(
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: Default::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&cj.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -343,6 +354,7 @@ pub(super) async fn cronjob_details(
             }
         }
     }
+    update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {
         summary,
         yaml,
