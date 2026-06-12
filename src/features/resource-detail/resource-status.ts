@@ -48,11 +48,26 @@ function isExpectedCompletedPodCondition(condition: ConditionRow): boolean {
 	);
 }
 
+function isFailureCondition(condition: ConditionRow): boolean {
+	const type = normalized(condition.type);
+	const reason = normalized(condition.reason);
+	return (
+		type === "failed" ||
+		type === "failuretarget" ||
+		reason.includes("failed") ||
+		reason.includes("failure") ||
+		reason === "backofflimitexceeded" ||
+		reason === "deadlineexceeded"
+	);
+}
+
 export function conditionStatusTone(
 	condition: ConditionRow,
 	resource: Pick<ResourceSummary, "kind" | "status">,
 ): ChipVariant {
-	if (condition.status === "True") return "success";
+	if (condition.status === "True") {
+		return isFailureCondition(condition) ? "warning" : "success";
+	}
 	if (condition.status === "False") {
 		return isSuccessfulTerminalResource(resource) &&
 			isExpectedCompletedPodCondition(condition)

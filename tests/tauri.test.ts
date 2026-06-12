@@ -151,6 +151,33 @@ describe("resource detail status tones", () => {
 			),
 		).toBe("error");
 	});
+
+	test("marks true failure conditions as warning", () => {
+		const failedJob = {
+			...completedPod,
+			kind: "Job",
+			status: "Failed",
+			ready: undefined,
+			health: "degraded" as const,
+		};
+
+		expect(
+			conditionStatusTone(
+				{
+					type: "FailureTarget",
+					status: "True",
+					reason: "BackoffLimitExceeded",
+				},
+				failedJob,
+			),
+		).toBe("warning");
+		expect(
+			conditionStatusTone(
+				{ type: "Failed", status: "True", reason: "BackoffLimitExceeded" },
+				failedJob,
+			),
+		).toBe("warning");
+	});
 });
 
 describe("getContainerStatusRows", () => {
