@@ -255,7 +255,7 @@ describe("resource browser presentation helpers", () => {
       healthy: 1,
       attention: 1,
       degraded: 1,
-      restarted: 1,
+      restarted: 0,
       untracked: 0,
     });
   });
@@ -272,7 +272,7 @@ describe("resource browser presentation helpers", () => {
     expect(filterResourcesByHealth(resources, "healthy").map((r) => r.name)).toEqual(["api-0"]);
     expect(filterResourcesByHealth(resources, "attention").map((r) => r.name)).toEqual(["worker-0"]);
     expect(filterResourcesByHealth(resources, "degraded").map((r) => r.name)).toEqual(["job-0"]);
-    expect(filterResourcesByHealth(resources, "restarted").map((r) => r.name)).toEqual(["job-0", "cache-0"]);
+    expect(filterResourcesByHealth(resources, "restarted").map((r) => r.name)).toEqual(["cache-0"]);
   });
 
   test("builds fetch keys for namespaced and cluster-scoped kinds", () => {

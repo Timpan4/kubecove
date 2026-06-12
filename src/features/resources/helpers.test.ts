@@ -153,6 +153,21 @@ describe("resource health helpers", () => {
 		expect(filterResourcesByHealth([pod], "unhealthy")).toEqual([]);
 		expect(filterResourcesByHealth([pod], "restarted")).toEqual([pod]);
 	});
+
+	test("does not double-count degraded resources with restarts", () => {
+		const pod = resource("api-0", {
+			kind: "Pod",
+			apiVersion: "v1",
+			health: "degraded",
+			restarts: 2,
+		});
+
+		const summary = buildResourceHealthSummary([pod]);
+
+		expect(summary.degraded).toBe(1);
+		expect(summary.restarted).toBe(0);
+		expect(filterResourcesByHealth([pod], "restarted")).toEqual([]);
+	});
 });
 
 describe("resource table status chips", () => {
@@ -160,6 +175,13 @@ describe("resource table status chips", () => {
 		expect(resourceStatusTone("Complete")).toBe("success");
 		expect(resourceStatusTone("Completed")).toBe("success");
 		expect(resourceStatusTone("Succeeded")).toBe("success");
+		expect(resourceStatusTone("succeeded")).toBe("success");
+	});
+
+	test("normalizes warning and failure statuses", () => {
+		expect(resourceStatusTone("Unknown")).toBe("warning");
+		expect(resourceStatusTone("CrashLoopBackOff")).toBe("error");
+		expect(resourceStatusTone("ImagePullBackOff")).toBe("error");
 	});
 
 	test("shows successful terminal pod readiness as completed success", () => {
@@ -168,10 +190,22 @@ describe("resource table status chips", () => {
 				resource("job-pod", {
 					kind: "Pod",
 					status: "Succeeded",
-					ready: "False",
+					ready: "false",
 				}),
 			),
 		).toEqual({ value: "Completed", variant: "success" });
+	});
+
+	test("normalizes ready booleans", () => {
+		expect(
+			resourceReadyChip(
+				resource("api-0", {
+					kind: "Pod",
+					status: "Running",
+					ready: "true",
+				}),
+			),
+		).toEqual({ value: "Ready", variant: "success" });
 	});
 
 	test("keeps active not-ready pod readiness red", () => {

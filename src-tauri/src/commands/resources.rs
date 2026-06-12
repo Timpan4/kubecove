@@ -1,6 +1,7 @@
 mod apply;
 mod details;
 mod dynamic;
+mod ingress_status;
 mod scope;
 mod summary;
 mod summary_cluster;

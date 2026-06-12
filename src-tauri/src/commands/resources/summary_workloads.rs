@@ -5,6 +5,8 @@ use crate::models::{AppError, ResourceSummary};
 use chrono::{TimeZone, Utc};
 use kube::{api::Api, Client};
 
+use super::ingress_status::apply_ingress_status;
+
 fn age_from_metadata(
     metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
 ) -> String {
@@ -188,12 +190,15 @@ async fn ingress_summaries(
         .map_err(|e| AppError::kube(e.to_string()))?
         .iter()
         .map(|ing| {
-            base_resource_summary(
+            let mut summary = base_resource_summary(
                 "Ingress",
                 cluster_context,
                 &ing.metadata,
                 age_from_metadata(&ing.metadata),
-            )
+            );
+            apply_ingress_status(&mut summary, ing.status.as_ref());
+            update_resource_health(&mut summary);
+            summary
         })
         .collect())
 }

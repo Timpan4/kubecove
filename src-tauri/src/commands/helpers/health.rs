@@ -9,13 +9,13 @@ pub(crate) fn classify_resource_health(summary: &ResourceSummary) -> ResourceHea
     let ready = normalized(summary.ready.as_deref());
     let successful_terminal = is_successful_terminal_status(&status);
 
+    if matches!(status.as_str(), "pending" | "terminating" | "unknown") {
+        return ResourceHealth::Attention;
+    }
     if is_degraded_status(&status) || (!successful_terminal && ready == "false") {
         return ResourceHealth::Degraded;
     }
     if !successful_terminal && has_incomplete_ready_ratio(&ready) {
-        return ResourceHealth::Attention;
-    }
-    if matches!(status.as_str(), "pending" | "terminating" | "unknown") {
         return ResourceHealth::Attention;
     }
     if summary.restarts.unwrap_or_default() > 0 {
@@ -117,6 +117,14 @@ mod tests {
         assert_eq!(
             classify_resource_health(&summary("Running", "False", None)),
             ResourceHealth::Degraded
+        );
+    }
+
+    #[test]
+    fn pending_pod_with_false_ready_needs_attention() {
+        assert_eq!(
+            classify_resource_health(&summary("Pending", "False", None)),
+            ResourceHealth::Attention
         );
     }
 

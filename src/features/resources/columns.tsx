@@ -14,12 +14,27 @@ import {
 const columnHelper = createColumnHelper<ResourceSummary>();
 
 const SUCCESS_STATUS_VALUES = new Set([
-	"Running",
-	"Succeeded",
-	"Complete",
-	"Completed",
-	"Ready",
+	"running",
+	"succeeded",
+	"complete",
+	"completed",
+	"ready",
 ]);
+const FAILURE_STATUS_VALUES = new Set([
+	"failed",
+	"error",
+	"crashloopbackoff",
+	"imagepullbackoff",
+]);
+const WARNING_STATUS_VALUES = new Set([
+	"pending",
+	"terminating",
+	"unknown",
+]);
+
+function normalized(value: string | undefined): string {
+	return value?.trim().toLowerCase() ?? "";
+}
 
 function isSuccessfulTerminalPod(
 	row: Pick<ResourceSummary, "kind" | "status">,
@@ -33,20 +48,19 @@ function isSuccessfulTerminalPod(
 }
 
 export function resourceStatusTone(value: string): ChipVariant {
-	return SUCCESS_STATUS_VALUES.has(value)
-		? "success"
-		: value === "Pending" || value === "Terminating"
-			? "warning"
-			: value === "Failed" || value === "Error"
-				? "error"
-				: "neutral";
+	const status = normalized(value);
+	if (SUCCESS_STATUS_VALUES.has(status)) return "success";
+	if (FAILURE_STATUS_VALUES.has(status)) return "error";
+	if (WARNING_STATUS_VALUES.has(status)) return "warning";
+	return "neutral";
 }
 
 export function resourceReadyChip(
 	row: Pick<ResourceSummary, "kind" | "status" | "ready">,
 ): { value: string; variant: ChipVariant } | null {
-	if (row.ready === "True") return { value: "Ready", variant: "success" };
-	if (row.ready === "False") {
+	const ready = normalized(row.ready);
+	if (ready === "true") return { value: "Ready", variant: "success" };
+	if (ready === "false") {
 		return isSuccessfulTerminalPod(row)
 			? { value: "Completed", variant: "success" }
 			: { value: "Not ready", variant: "error" };

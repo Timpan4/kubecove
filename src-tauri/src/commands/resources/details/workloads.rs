@@ -7,6 +7,8 @@ use crate::models::{AppError, ResourceDetailsFull, ResourceSummary};
 use chrono::{TimeZone, Utc};
 use kube::Client;
 
+use super::super::ingress_status::apply_ingress_status;
+
 pub(super) async fn deployment_details(
     client: Client,
     cluster_context: String,
@@ -197,7 +199,7 @@ pub(super) async fn ingress_details(
         .status
         .as_ref()
         .and_then(|s| serde_json::to_value(s).ok());
-    let summary = ResourceSummary {
+    let mut summary = ResourceSummary {
         kind: "Ingress".to_string(),
         cluster: cluster_context.clone(),
         name: name.clone(),
@@ -223,6 +225,8 @@ pub(super) async fn ingress_details(
         helm_release: extract_helm_release(&ing.metadata),
         git_ops_owner: extract_git_ops_owner(&ing.metadata),
     };
+    apply_ingress_status(&mut summary, ing.status.as_ref());
+    update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {
         summary,
         yaml,
