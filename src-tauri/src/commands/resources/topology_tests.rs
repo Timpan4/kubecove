@@ -6,7 +6,8 @@ use super::topology_network::{
     build_network_flow_topology, NetworkEndpointSlice, NetworkIngressBackend, NetworkService,
     NetworkTopologyInputs,
 };
-use crate::models::{OwnerReferenceSummary, ResourceSummary, TopologyRelation};
+use crate::commands::helpers::update_resource_health;
+use crate::models::{OwnerReferenceSummary, ResourceHealth, ResourceSummary, TopologyRelation};
 use k8s_openapi::api::core::v1::Pod;
 use proptest::prelude::*;
 use proptest::test_runner::{Config as ProptestConfig, RngSeed};
@@ -39,6 +40,7 @@ fn resource(kind: &str, name: &str, namespace: &str, uid: &str) -> TopologyInput
             plural: None,
             namespaced: Some(true),
             dynamic: None,
+            health: ResourceHealth::Healthy,
             created_at: None,
             status: Some("Running".to_string()),
             ready: Some("true".to_string()),
@@ -108,19 +110,17 @@ fn pod_fixture_input() -> TopologyInputResource {
                     .find(|condition| condition.type_ == "Ready")
             })
             .map(|condition| condition.status.clone());
-        let restarts: i32 = status
-            .container_statuses
-            .as_ref()
-            .map_or(0, |statuses| {
-                statuses
-                    .iter()
-                    .map(|container| container.restart_count)
-                    .sum()
-            });
+        let restarts: i32 = status.container_statuses.as_ref().map_or(0, |statuses| {
+            statuses
+                .iter()
+                .map(|container| container.restart_count)
+                .sum()
+        });
         if restarts > 0 {
             input.summary.restarts = Some(restarts);
         }
     }
+    update_resource_health(&mut input.summary);
     input
 }
 
@@ -147,7 +147,7 @@ fn sanitized_pod_fixture_normalizes_to_topology_contract() {
     assert_eq!(node.name, "payments-api-7d9-x");
     assert_eq!(node.namespace.as_deref(), Some("payments"));
     assert_eq!(node.status.as_deref(), Some("Running"));
-    assert_eq!(node.health, "healthy");
+    assert_eq!(node.health, ResourceHealth::Healthy);
     assert_eq!(node.summary.ready.as_deref(), Some("True"));
     assert_eq!(node.summary.owner_ref.as_deref(), Some("payments-api-7d9"));
     assert_eq!(node.summary.argo_app.as_deref(), Some("payments"));
@@ -412,10 +412,11 @@ fn marks_incomplete_ready_ratios_as_attention() {
     let mut deployment = resource("Deployment", "api", "default", "deploy-1");
     deployment.summary.ready = Some("0/3".to_string());
     deployment.summary.status = Some("Available: 0".to_string());
+    update_resource_health(&mut deployment.summary);
 
     let topology = build_resource_topology(vec![deployment]);
 
-    assert_eq!(topology.nodes[0].health, "attention");
+    assert_eq!(topology.nodes[0].health, ResourceHealth::Attention);
 }
 
 #[test]

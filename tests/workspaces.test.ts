@@ -253,10 +253,10 @@ describe("workspace helpers", () => {
 			"2026-05-16T12:00:00.000Z",
 		);
 		const rows = [
-			resource({ status: "Running", ready: "true" }),
-			resource({ status: "Pending" }),
-			resource({ status: "Failed" }),
-			resource({ status: "Running", restarts: 2 }),
+			resource({ status: "Running", ready: "true", health: "healthy" }),
+			resource({ status: "Pending", health: "attention" }),
+			resource({ status: "Failed", health: "degraded" }),
+			resource({ status: "Running", health: "restarted", restarts: 2 }),
 		];
 
 		expect(summarizeWorkspaceScope(workspace.scope)).toBe(
@@ -265,7 +265,7 @@ describe("workspace helpers", () => {
 		expect(buildWorkspaceHealthSummary(rows)).toEqual({
 			total: 4,
 			healthy: 1,
-			attention: 2,
+			attention: 1,
 			degraded: 1,
 			restarted: 1,
 		});
@@ -283,9 +283,9 @@ describe("workspace helpers", () => {
 			"2026-05-16T12:00:00.000Z",
 		);
 		const rows = [
-			resource({ cluster: "kind-dev", namespace: "default", status: "Running", ready: "true" }),
-			resource({ cluster: "kind-prod", namespace: "default", status: "Failed" }),
-			resource({ cluster: "kind-dev", namespace: "payments", status: "Pending" }),
+			resource({ cluster: "kind-dev", namespace: "default", status: "Running", ready: "true", health: "healthy" }),
+			resource({ cluster: "kind-prod", namespace: "default", status: "Failed", health: "degraded" }),
+			resource({ cluster: "kind-dev", namespace: "payments", status: "Pending", health: "attention" }),
 		];
 		const entries = buildWorkspaceCompareEntries(workspace.scope);
 		const summaries = buildWorkspaceCompareSummaries(entries, rows);
@@ -417,6 +417,7 @@ function resource(overrides: Partial<ResourceSummary>): ResourceSummary {
 		name: "nginx",
 		namespace: "default",
 		age: "1m",
+		health: "unknown",
 		...overrides,
 	};
 }

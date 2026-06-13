@@ -17,6 +17,7 @@ fn resource(name: &str, namespace: &str) -> ResourceSummary {
         plural: None,
         namespaced: None,
         dynamic: None,
+        health: crate::models::ResourceHealth::Unknown,
         created_at: None,
         status: None,
         ready: None,

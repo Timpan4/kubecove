@@ -8,22 +8,33 @@ import {
 	type ChipVariant,
 } from "./constants";
 
+const SUCCESS_STATUS_VALUES = new Set([
+	"Running",
+	"Succeeded",
+	"Complete",
+	"Completed",
+	"Ready",
+]);
+
 export function StatusChip({
 	value,
 	label,
+	tone,
 }: {
 	value: string | undefined;
 	label: string;
+	tone?: ChipVariant;
 }) {
 	if (!value) return null;
 	const variant: ChipVariant =
-		value === "Running" || value === "Succeeded" || value === "Ready"
+		tone ??
+		(SUCCESS_STATUS_VALUES.has(value)
 			? "success"
 			: value === "Pending" || value === "Terminating"
 				? "warning"
 				: value === "Failed" || value === "Error" || value === "Not ready"
 					? "error"
-					: "neutral";
+					: "neutral");
 	const badgeStyle = CHIP_BADGE_STYLES[variant];
 	return (
 		<div className={DETAIL_ROW_CLASS}>

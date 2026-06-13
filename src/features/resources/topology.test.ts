@@ -20,6 +20,7 @@ function summary(kind: string, name: string): ResourceSummary {
 		namespace: "argocd",
 		age: "1m",
 		apiVersion: "apps/v1",
+		health: "healthy",
 	};
 }
 

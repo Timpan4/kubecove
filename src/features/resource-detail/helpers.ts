@@ -4,6 +4,14 @@ import type {
 	ResourceSummary,
 } from "../../lib/types";
 import type { ChipVariant } from "./constants";
+import { isSuccessfulTerminalResource } from "./resource-status";
+
+export { incidentSignalCardClassName } from "./incident-signal-styles";
+export {
+	conditionStatusTone,
+	resourceReadyLabel,
+	resourceReadyTone,
+} from "./resource-status";
 
 export interface ConditionRow {
 	type: string;
@@ -184,7 +192,7 @@ export interface IncidentSignal {
 	value: string;
 	valueParts?: IncidentSignalValuePart[];
 	tone: ChipVariant;
-	source: "status" | "condition" | "event";
+	source: "status" | "condition" | "event" | "container";
 }
 
 export type IncidentSignalValuePart =
@@ -194,22 +202,6 @@ export type IncidentSignalValuePart =
 interface IncidentSignalOptions {
 	now?: Date;
 	staleRestartMs?: number;
-}
-
-export function incidentSignalCardClassName(tone: ChipVariant): string {
-	const base = "rounded-md border border-l-4 p-3";
-	switch (tone) {
-		case "error":
-			return `${base} border-red-500/25 border-l-red-500 bg-red-500/5`;
-		case "warning":
-			return `${base} border-amber-500/25 border-l-amber-500 bg-amber-500/5`;
-		case "info":
-			return `${base} border-sky-500/25 border-l-sky-500 bg-sky-500/5`;
-		case "success":
-			return `${base} border-emerald-500/25 border-l-emerald-500 bg-emerald-500/5`;
-		case "neutral":
-			return `${base} border-border border-l-muted bg-card`;
-	}
 }
 
 function eventWarningSummary(events: ResourceEventSummary[]): string | null {
@@ -233,8 +225,20 @@ function isRecentTimestamp(
 	return now.getTime() - value <= staleRestartMs;
 }
 
-function isSucceededResource(resource: ResourceSummary): boolean {
-	return resource.status?.toLowerCase() === "succeeded";
+function normalized(value: string | undefined): string {
+	return value?.trim().toLowerCase() ?? "";
+}
+
+export function resourceStatusTone(status: string | undefined): ChipVariant {
+	const value = normalized(status);
+	if (["running", "succeeded", "complete", "completed", "ready"].includes(value)) {
+		return "success";
+	}
+	if (["failed", "error", "crashloopbackoff", "imagepullbackoff"].includes(value)) {
+		return "error";
+	}
+	if (["pending", "terminating", "unknown"].includes(value)) return "warning";
+	return "neutral";
 }
 
 export function isCleanCompletedContainer(
@@ -379,6 +383,55 @@ function conditionSignalValueParts(
 	return parts;
 }
 
+function isContainerIncident(container: ContainerStatusRow): boolean {
+	if (isCleanCompletedContainer(container)) return false;
+	if (container.state === "terminated" && container.exitCode !== 0) return true;
+	if (container.state === "waiting") return true;
+	return (
+		container.ready === false &&
+		(Boolean(container.state) ||
+			Boolean(container.reason) ||
+			Boolean(container.message))
+	);
+}
+
+function containerIncidentTone(container: ContainerStatusRow): ChipVariant {
+	const reason = normalized(container.reason);
+	if (container.state === "terminated" && container.exitCode !== 0) return "error";
+	if (container.ready === false && reason.includes("error")) return "error";
+	if (container.ready === false && reason.includes("crash")) return "error";
+	if (container.ready === false && container.state !== "waiting") return "error";
+	return "warning";
+}
+
+function containerSignalLabel(container: ContainerStatusRow): string {
+	return `${container.name} ${container.state ?? "not ready"}`;
+}
+
+function containerSignalValueParts(
+	container: ContainerStatusRow,
+): IncidentSignalValuePart[] {
+	const parts: IncidentSignalValuePart[] = [];
+	if (container.reason) parts.push(textPart(container.reason));
+	if (container.message) {
+		if (parts.length > 0) parts.push(textPart(" · "));
+		parts.push(textPart(container.message));
+	}
+	if (container.exitCode !== undefined) {
+		if (parts.length > 0) parts.push(textPart(" · "));
+		parts.push(textPart(`exit ${container.exitCode}`));
+	}
+	if (container.finishedAt) {
+		if (parts.length > 0) parts.push(textPart(" · "));
+		parts.push(textPart("finished "));
+		parts.push(timestampPart(container.finishedAt));
+	}
+	if (parts.length === 0) {
+		parts.push(textPart(container.ready === false ? "not ready" : "state needs attention"));
+	}
+	return parts;
+}
+
 export function buildIncidentSignals(
 	resource: ResourceSummary,
 	conditions: ConditionRow[],
@@ -392,41 +445,28 @@ export function buildIncidentSignals(
 	const restarts = resource.restarts ?? 0;
 	const now = options.now ?? new Date();
 	const staleRestartMs = options.staleRestartMs ?? 60 * 60 * 1000;
-	const succeededResource = isSucceededResource(resource);
+	const succeededResource = isSuccessfulTerminalResource(resource);
 
-	if (
-		resource.status &&
-		[
-			"failed",
-			"error",
-			"crashloopbackoff",
-			"imagepullbackoff",
-			"pending",
-			"terminating",
-			"unknown",
-		].includes(status ?? "")
-	) {
-		const isErrorStatus =
-			status === "failed" ||
-			status === "error" ||
-			status === "crashloopbackoff" ||
-			status === "imagepullbackoff";
+	for (const container of containers?.filter(isContainerIncident) ?? []) {
+		const valueParts = containerSignalValueParts(container);
 		signals.push({
-			id: "status",
-			label: "Status",
-			value: resource.status,
-			tone: isErrorStatus ? "error" : "warning",
-			source: "status",
+			id: `container:${container.name}:${container.state ?? "not-ready"}`,
+			label: containerSignalLabel(container),
+			value: signalValueFromParts(valueParts),
+			valueParts,
+			tone: containerIncidentTone(container),
+			source: "container",
 		});
 	}
 
-	if (resource.ready && ready === "false" && !succeededResource) {
+	const warningSummary = eventWarningSummary(events);
+	if (warningSummary) {
 		signals.push({
-			id: "ready",
-			label: "Ready",
-			value: resource.ready,
-			tone: "error",
-			source: "status",
+			id: "events:warnings",
+			label: "Warning events",
+			value: warningSummary,
+			tone: "warning",
+			source: "event",
 		});
 	}
 
@@ -488,14 +528,34 @@ export function buildIncidentSignals(
 		});
 	}
 
-	const warningSummary = eventWarningSummary(events);
-	if (warningSummary) {
+	if (
+		resource.status &&
+		[
+			"failed",
+			"error",
+			"crashloopbackoff",
+			"imagepullbackoff",
+			"pending",
+			"terminating",
+			"unknown",
+		].includes(status ?? "")
+	) {
 		signals.push({
-			id: "events:warnings",
-			label: "Warning events",
-			value: warningSummary,
-			tone: "warning",
-			source: "event",
+			id: "status",
+			label: "Status",
+			value: resource.status,
+			tone: resourceStatusTone(resource.status),
+			source: "status",
+		});
+	}
+
+	if (resource.ready && ready === "false" && !succeededResource) {
+		signals.push({
+			id: "ready",
+			label: "Ready",
+			value: resource.ready,
+			tone: "error",
+			source: "status",
 		});
 	}
 

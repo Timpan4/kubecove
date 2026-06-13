@@ -440,7 +440,7 @@ export function buildResourceHealthSummary(
 		(summary, row) => {
 			const flags = classifyResourceHealth(row);
 
-			const untracked = !flags.healthy && !flags.attention && !flags.degraded;
+			const untracked = row.health === "unknown";
 			return {
 				total: summary.total + 1,
 				healthy: summary.healthy + (flags.healthy ? 1 : 0),

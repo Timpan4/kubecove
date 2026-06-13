@@ -2,6 +2,17 @@ use serde::{Deserialize, Serialize};
 
 use super::DiscoveredResourceKind;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ResourceHealth {
+    Healthy,
+    Attention,
+    Degraded,
+    Restarted,
+    #[default]
+    Unknown,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OwnerReferenceSummary {
@@ -42,6 +53,8 @@ pub struct ResourceSummary {
     pub namespaced: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dynamic: Option<bool>,
+    #[serde(default)]
+    pub health: ResourceHealth,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -201,7 +214,7 @@ pub struct TopologyNode {
     pub name: String,
     pub namespace: Option<String>,
     pub status: Option<String>,
-    pub health: String,
+    pub health: ResourceHealth,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub port_hints: Vec<String>,
     pub selectable: bool,

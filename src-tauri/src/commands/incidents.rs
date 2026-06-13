@@ -5,7 +5,7 @@ use crate::commands::{
 };
 use crate::models::{
     AppError, IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalSummary,
-    ResourceEventSummary, ResourceListRequest, ResourceSummary,
+    ResourceEventSummary, ResourceHealth, ResourceListRequest, ResourceSummary,
 };
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::core::v1::Event;
@@ -384,14 +384,11 @@ fn incident_item(
 }
 
 fn severity_for(resource: &ResourceSummary, has_warning: bool) -> Option<IncidentSeverity> {
-    if is_degraded(resource) {
-        return Some(IncidentSeverity::Degraded);
-    }
-    if is_attention(resource) {
-        return Some(IncidentSeverity::Attention);
-    }
-    if resource.restarts.unwrap_or_default() > 0 {
-        return Some(IncidentSeverity::Restarted);
+    match resource.health {
+        ResourceHealth::Degraded => return Some(IncidentSeverity::Degraded),
+        ResourceHealth::Attention => return Some(IncidentSeverity::Attention),
+        ResourceHealth::Restarted => return Some(IncidentSeverity::Restarted),
+        ResourceHealth::Healthy | ResourceHealth::Unknown => {}
     }
     if has_warning {
         return Some(IncidentSeverity::Warning);
@@ -400,43 +397,11 @@ fn severity_for(resource: &ResourceSummary, has_warning: bool) -> Option<Inciden
 }
 
 fn is_degraded(resource: &ResourceSummary) -> bool {
-    let status = resource
-        .status
-        .as_deref()
-        .unwrap_or_default()
-        .to_lowercase();
-    let ready = resource.ready.as_deref().unwrap_or_default().to_lowercase();
-    matches!(
-        status.as_str(),
-        "failed" | "error" | "crashloopbackoff" | "imagepullbackoff"
-    ) || ready == "false"
+    resource.health == ResourceHealth::Degraded
 }
 
 fn is_attention(resource: &ResourceSummary) -> bool {
-    if is_degraded(resource) {
-        return false;
-    }
-    if let Some((ready_count, desired_count)) =
-        ready_ratio(resource.ready.as_deref().unwrap_or_default())
-    {
-        if desired_count > 0 && ready_count < desired_count {
-            return true;
-        }
-    }
-    let status = resource
-        .status
-        .as_deref()
-        .unwrap_or_default()
-        .to_lowercase();
-    matches!(status.as_str(), "pending" | "terminating" | "unknown")
-}
-
-fn ready_ratio(ready: &str) -> Option<(i32, i32)> {
-    let (ready_count, desired_count) = ready.split_once('/')?;
-    Some((
-        ready_count.trim().parse().ok()?,
-        desired_count.trim().parse().ok()?,
-    ))
+    resource.health == ResourceHealth::Attention
 }
 
 fn status_message(resource: &ResourceSummary) -> String {
@@ -488,6 +453,7 @@ fn event_time_ms_opt(event: &Option<ResourceEventSummary>) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::helpers::update_resource_health;
 
     fn resource(name: &str) -> ResourceSummary {
         ResourceSummary {
@@ -502,6 +468,7 @@ mod tests {
             plural: Some("pods".to_string()),
             namespaced: Some(true),
             dynamic: None,
+            health: ResourceHealth::Healthy,
             created_at: Some("2026-06-04T10:00:00Z".to_string()),
             status: Some("Running".to_string()),
             ready: Some("true".to_string()),
@@ -534,6 +501,7 @@ mod tests {
         let mut pod = resource("api-0");
         pod.status = Some("CrashLoopBackOff".to_string());
         pod.ready = Some("false".to_string());
+        update_resource_health(&mut pod);
 
         let items = build_incident_items(
             vec![pod],
@@ -568,6 +536,18 @@ mod tests {
     }
 
     #[test]
+    fn succeeded_pod_with_false_ready_is_omitted_without_warning() {
+        let mut pod = resource("job-pod");
+        pod.status = Some("Succeeded".to_string());
+        pod.ready = Some("False".to_string());
+        update_resource_health(&mut pod);
+
+        let items = build_incident_items(vec![pod], Vec::new());
+
+        assert!(items.is_empty());
+    }
+
+    #[test]
     fn workload_ready_ratio_below_desired_becomes_attention_item() {
         let mut deployment = resource("api");
         deployment.kind = "Deployment".to_string();
@@ -575,6 +555,7 @@ mod tests {
         deployment.group = Some("apps".to_string());
         deployment.plural = Some("deployments".to_string());
         deployment.ready = Some("0/3".to_string());
+        update_resource_health(&mut deployment);
 
         let items = build_incident_items(vec![deployment], Vec::new());
 
@@ -588,8 +569,10 @@ mod tests {
     fn items_sort_by_severity_then_recent_warning() {
         let mut restarted = resource("api-1");
         restarted.restarts = Some(2);
+        update_resource_health(&mut restarted);
         let mut failed = resource("api-0");
         failed.status = Some("Failed".to_string());
+        update_resource_health(&mut failed);
 
         let items = build_incident_items(
             vec![restarted, failed, resource("api-2"), resource("api-3")],

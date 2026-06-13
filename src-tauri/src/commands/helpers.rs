@@ -1,8 +1,10 @@
 pub(crate) mod client_cache;
+mod health;
 mod metadata;
 mod serialization;
 mod time;
 
+pub(crate) use health::update_resource_health;
 pub(crate) use metadata::{
     base_resource_summary, extract_argo_app, extract_git_ops_owner, extract_helm_release,
     extract_owner_ref, extract_owner_ref_summary, fmt_ready,

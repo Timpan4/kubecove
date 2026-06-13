@@ -1,10 +1,52 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 import type { ResourceSummary } from "../../lib/types";
-import { CHIP_BADGE_STYLES } from "./constants";
-import type { IncidentSignal } from "./helpers";
+import { CHIP_BADGE_STYLES, type ChipVariant } from "./constants";
+import {
+	resourceReadyLabel,
+	resourceReadyTone,
+	resourceStatusTone,
+	type IncidentSignal,
+} from "./helpers";
 import { IncidentSignalValue } from "./IncidentSignalValue";
+
+function toneRowClassName(tone: ChipVariant): string {
+	switch (tone) {
+		case "error":
+			return "border-l-red-500 bg-red-500/5";
+		case "warning":
+			return "border-l-amber-500 bg-amber-500/5";
+		case "info":
+			return "border-l-sky-500 bg-sky-500/5";
+		case "success":
+			return "border-l-emerald-500 bg-emerald-500/5";
+		case "neutral":
+			return "border-l-muted bg-card";
+	}
+}
+
+function SummaryBadge({
+	tone,
+	children,
+}: {
+	tone: ChipVariant;
+	children: ReactNode;
+}) {
+	const badgeStyle = CHIP_BADGE_STYLES[tone];
+	return (
+		<Badge
+			variant={badgeStyle.variant}
+			className={cn(
+				"rounded-sm px-1.5 py-0 text-[0.6875rem] shadow-none",
+				badgeStyle.className,
+			)}
+		>
+			{children}
+		</Badge>
+	);
+}
 
 export function IncidentSummary({
 	resource,
@@ -18,6 +60,7 @@ export function IncidentSummary({
 	eventsError: boolean;
 }) {
 	const topSignals = signals.slice(0, 3);
+	const readyLabel = resourceReadyLabel(resource);
 	const hasOwnership =
 		Boolean(resource.ownerRef) ||
 		Boolean(resource.argoApp) ||
@@ -37,36 +80,19 @@ export function IncidentSummary({
 					</div>
 					<div className="flex flex-wrap justify-end gap-1.5">
 						{resource.status && (
-							<Badge variant="outline" className="rounded-sm">
+							<SummaryBadge tone={resourceStatusTone(resource.status)}>
 								{resource.status}
-							</Badge>
+							</SummaryBadge>
 						)}
-						{resource.ready === "True" ? (
-							<Badge
-								variant="outline"
-								className="rounded-sm border-emerald-500/40 bg-emerald-500/10"
-							>
-								Ready
-							</Badge>
-						) : resource.ready === "False" ? (
-							<Badge
-								variant="outline"
-								className="rounded-sm border-red-500/40 bg-red-500/10"
-							>
-								Not ready
-							</Badge>
-						) : resource.ready ? (
-							<Badge variant="outline" className="rounded-sm">
-								Ready {resource.ready}
-							</Badge>
-						) : null}
+						{readyLabel && (
+							<SummaryBadge tone={resourceReadyTone(resource)}>
+								{readyLabel}
+							</SummaryBadge>
+						)}
 						{resource.restarts !== undefined && resource.restarts > 0 && (
-							<Badge
-								variant="outline"
-								className="rounded-sm border-sky-500/40 bg-sky-500/10"
-							>
+							<SummaryBadge tone="warning">
 								{resource.restarts} restarts
-							</Badge>
+							</SummaryBadge>
 						)}
 					</div>
 				</div>
@@ -85,10 +111,13 @@ export function IncidentSummary({
 						return (
 							<div
 								key={signal.id}
-								className="flex items-start justify-between gap-2 rounded-md border bg-card px-3 py-2"
+								className={cn(
+									"flex items-start justify-between gap-2 rounded-md border border-l-4 px-2.5 py-1.5",
+									toneRowClassName(signal.tone),
+								)}
 							>
 								<div className="min-w-0">
-									<div className="text-xs font-semibold text-foreground">
+									<div className="text-[0.78rem] font-semibold text-foreground">
 										{signal.label}
 									</div>
 									<div className="mt-1 text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]">

@@ -29,6 +29,7 @@ export interface ResourceSummary {
 	plural?: string;
 	namespaced?: boolean;
 	dynamic?: boolean;
+	health: ResourceHealth;
 	createdAt?: string;
 	status?: string;
 	ready?: string;
@@ -118,12 +119,13 @@ export interface KubernetesYamlLintResult {
 	diagnostics: KubernetesYamlLintDiagnostic[];
 }
 
-export type TopologyHealth =
+export type ResourceHealth =
 	| "healthy"
 	| "attention"
 	| "degraded"
 	| "restarted"
 	| "unknown";
+export type TopologyHealth = ResourceHealth;
 
 export type TopologyMode = "ownership" | "networkFlow";
 export type TopologyRelation =

@@ -1,8 +1,11 @@
 import type { ResourceSummary } from "@/lib/types";
+import { resourceReadyChip, resourceStatusTone } from "./columns";
 import {
 	argoApplicationGitOpsFilterKey,
+	buildResourceHealthSummary,
 	buildResourceSearchIndex,
 	describeResourceScope,
+	filterResourcesByHealth,
 	filterResourceSearchIndex,
 	uniqueGitOpsFilters,
 } from "./helpers";
@@ -25,6 +28,7 @@ function resource(
 		namespace: "default",
 		age: "1m",
 		apiVersion: "apps/v1",
+		health: "healthy",
 		...owner,
 	};
 }
@@ -113,5 +117,106 @@ describe("resource GitOps filters", () => {
 				argoApplicationGitOpsFilterKey("payments"),
 			).at(-1),
 		).toEqual({ kind: "gitOpsOwner", label: "GitOps", value: "payments" });
+	});
+});
+
+describe("resource health helpers", () => {
+	test("trusts backend health for completed job pods", () => {
+		const pod = resource("descheduler-job-pod", {
+			kind: "Pod",
+			apiVersion: "v1",
+			status: "Succeeded",
+			ready: "False",
+			health: "healthy",
+		});
+
+		const summary = buildResourceHealthSummary([pod]);
+
+		expect(summary.healthy).toBe(1);
+		expect(summary.degraded).toBe(0);
+		expect(filterResourcesByHealth([pod], "degraded")).toEqual([]);
+		expect(filterResourcesByHealth([pod], "healthy")).toEqual([pod]);
+	});
+
+	test("keeps restarted as tracked but outside unhealthy filters", () => {
+		const pod = resource("api-0", {
+			kind: "Pod",
+			apiVersion: "v1",
+			health: "restarted",
+			restarts: 2,
+		});
+
+		const summary = buildResourceHealthSummary([pod]);
+
+		expect(summary.restarted).toBe(1);
+		expect(summary.untracked).toBe(0);
+		expect(filterResourcesByHealth([pod], "unhealthy")).toEqual([]);
+		expect(filterResourcesByHealth([pod], "restarted")).toEqual([pod]);
+	});
+
+	test("does not double-count degraded resources with restarts", () => {
+		const pod = resource("api-0", {
+			kind: "Pod",
+			apiVersion: "v1",
+			health: "degraded",
+			restarts: 2,
+		});
+
+		const summary = buildResourceHealthSummary([pod]);
+
+		expect(summary.degraded).toBe(1);
+		expect(summary.restarted).toBe(0);
+		expect(filterResourcesByHealth([pod], "restarted")).toEqual([]);
+	});
+});
+
+describe("resource table status chips", () => {
+	test("marks complete terminal status as success", () => {
+		expect(resourceStatusTone("Complete")).toBe("success");
+		expect(resourceStatusTone("Completed")).toBe("success");
+		expect(resourceStatusTone("Succeeded")).toBe("success");
+		expect(resourceStatusTone("succeeded")).toBe("success");
+	});
+
+	test("normalizes warning and failure statuses", () => {
+		expect(resourceStatusTone("Unknown")).toBe("warning");
+		expect(resourceStatusTone("CrashLoopBackOff")).toBe("error");
+		expect(resourceStatusTone("ImagePullBackOff")).toBe("error");
+	});
+
+	test("shows successful terminal pod readiness as completed success", () => {
+		expect(
+			resourceReadyChip(
+				resource("job-pod", {
+					kind: "Pod",
+					status: "Succeeded",
+					ready: "false",
+				}),
+			),
+		).toEqual({ value: "Completed", variant: "success" });
+	});
+
+	test("normalizes ready booleans", () => {
+		expect(
+			resourceReadyChip(
+				resource("api-0", {
+					kind: "Pod",
+					status: "Running",
+					ready: "true",
+				}),
+			),
+		).toEqual({ value: "Ready", variant: "success" });
+	});
+
+	test("keeps active not-ready pod readiness red", () => {
+		expect(
+			resourceReadyChip(
+				resource("api-0", {
+					kind: "Pod",
+					status: "Running",
+					ready: "False",
+				}),
+			),
+		).toEqual({ value: "Not ready", variant: "error" });
 	});
 });

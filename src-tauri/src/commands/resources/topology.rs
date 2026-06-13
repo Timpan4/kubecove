@@ -89,46 +89,6 @@ pub(crate) fn topology_standalone_kinds() -> &'static [&'static str] {
     &["Service", "Ingress", "ConfigMap", "Secret"]
 }
 
-fn node_health(summary: &ResourceSummary) -> String {
-    let status = summary.status.as_deref().unwrap_or("").to_lowercase();
-    let ready = summary.ready.as_deref().unwrap_or("").to_lowercase();
-    if let Some((ready_count, desired_count)) = parse_ready_ratio(&ready) {
-        if desired_count > 0 && ready_count < desired_count {
-            return "attention".to_string();
-        }
-    }
-    if matches!(
-        status.as_str(),
-        "failed" | "error" | "crashloopbackoff" | "imagepullbackoff"
-    ) || ready == "false"
-    {
-        return "degraded".to_string();
-    }
-    if status == "pending" || status == "terminating" || status == "unknown" {
-        return "attention".to_string();
-    }
-    if summary.restarts.unwrap_or(0) > 0 {
-        return "restarted".to_string();
-    }
-    if matches!(
-        status.as_str(),
-        "running" | "succeeded" | "ready" | "complete"
-    ) || ready == "true"
-        || ready.contains('/')
-    {
-        return "healthy".to_string();
-    }
-    "unknown".to_string()
-}
-
-fn parse_ready_ratio(ready: &str) -> Option<(i32, i32)> {
-    let (ready_count, desired_count) = ready.split_once('/')?;
-    Some((
-        ready_count.trim().parse().ok()?,
-        desired_count.trim().parse().ok()?,
-    ))
-}
-
 fn selectable_kind(kind: &str) -> bool {
     !matches!(kind, "ReplicaSet" | "EndpointSlice")
 }
@@ -169,7 +129,7 @@ pub(super) fn node_from_input(input: &TopologyInputResource) -> TopologyNode {
         name: input.summary.name.clone(),
         namespace: input.summary.namespace.clone(),
         status: input.summary.status.clone(),
-        health: node_health(&input.summary),
+        health: input.summary.health,
         port_hints: input.port_hints.clone(),
         selectable: selectable_kind(&input.summary.kind),
         summary: input.summary.clone(),

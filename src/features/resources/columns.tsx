@@ -13,6 +13,61 @@ import {
 
 const columnHelper = createColumnHelper<ResourceSummary>();
 
+const SUCCESS_STATUS_VALUES = new Set([
+	"running",
+	"succeeded",
+	"complete",
+	"completed",
+	"ready",
+]);
+const FAILURE_STATUS_VALUES = new Set([
+	"failed",
+	"error",
+	"crashloopbackoff",
+	"imagepullbackoff",
+]);
+const WARNING_STATUS_VALUES = new Set([
+	"pending",
+	"terminating",
+	"unknown",
+]);
+
+function normalized(value: string | undefined): string {
+	return value?.trim().toLowerCase() ?? "";
+}
+
+function isSuccessfulTerminalPod(
+	row: Pick<ResourceSummary, "kind" | "status">,
+): boolean {
+	return (
+		row.kind === "Pod" &&
+		["succeeded", "complete", "completed"].includes(
+			row.status?.trim().toLowerCase() ?? "",
+		)
+	);
+}
+
+export function resourceStatusTone(value: string): ChipVariant {
+	const status = normalized(value);
+	if (SUCCESS_STATUS_VALUES.has(status)) return "success";
+	if (FAILURE_STATUS_VALUES.has(status)) return "error";
+	if (WARNING_STATUS_VALUES.has(status)) return "warning";
+	return "neutral";
+}
+
+export function resourceReadyChip(
+	row: Pick<ResourceSummary, "kind" | "status" | "ready">,
+): { value: string; variant: ChipVariant } | null {
+	const ready = normalized(row.ready);
+	if (ready === "true") return { value: "Ready", variant: "success" };
+	if (ready === "false") {
+		return isSuccessfulTerminalPod(row)
+			? { value: "Completed", variant: "success" }
+			: { value: "Not ready", variant: "error" };
+	}
+	return null;
+}
+
 export const columns = [
 	columnHelper.accessor("name", {
 		header: "Name",
@@ -30,25 +85,23 @@ export const columns = [
 		cell: (info) => {
 			const value = info.getValue();
 			if (!value) return "—";
-			const variant: ChipVariant =
-				value === "Running" || value === "Succeeded" || value === "Ready"
-					? "success"
-					: value === "Pending" || value === "Terminating"
-						? "warning"
-						: value === "Failed" || value === "Error"
-							? "error"
-							: "neutral";
-			return <StatusChip value={value} variant={variant} />;
+			return <StatusChip value={value} variant={resourceStatusTone(value)} />;
 		},
 	}),
 	columnHelper.accessor("ready", {
 		header: "Ready",
 		cell: (info) => {
 			const value = info.getValue();
+			const row = info.row.original;
 			// Pods report readiness as a raw boolean string; controllers as n/n.
-			if (value === "True") return <StatusChip value="Ready" variant="success" />;
-			if (value === "False") {
-				return <StatusChip value="Not ready" variant="error" />;
+			const readyChip = resourceReadyChip(row);
+			if (readyChip) {
+				return (
+					<StatusChip
+						value={readyChip.value}
+						variant={readyChip.variant}
+					/>
+				);
 			}
 			return <TruncatedCell value={value} />;
 		},

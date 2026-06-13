@@ -7,7 +7,6 @@ import type { ConditionRow, ContainerStatusRow } from "./helpers";
 import { isCleanCompletedContainer } from "./helpers";
 
 export type IncidentTimelineSource =
-	| "status"
 	| "condition"
 	| "event"
 	| "restart"
@@ -31,18 +30,6 @@ interface IncidentTimelineInput {
 	events: ResourceEventSummary[];
 	containers?: ContainerStatusRow[];
 	logLines?: ParsedLogLine[];
-}
-
-function isBadStatus(status: string | undefined): boolean {
-	return [
-		"failed",
-		"error",
-		"crashloopbackoff",
-		"imagepullbackoff",
-		"pending",
-		"terminating",
-		"unknown",
-	].includes(status?.toLowerCase() ?? "");
 }
 
 function isSucceededResource(resource: ResourceSummary): boolean {
@@ -135,30 +122,6 @@ export function buildIncidentTimeline({
 	const items: IncidentTimelineItem[] = [];
 	const seen = new Set<string>();
 
-	if (resource.status && isBadStatus(resource.status)) {
-		pushUnique(items, seen, {
-			id: `status:${resource.status}`,
-			source: "status",
-			tone: ["failed", "error", "crashloopbackoff", "imagepullbackoff"].includes(
-				resource.status.toLowerCase(),
-			)
-				? "error"
-				: "warning",
-			title: `Status ${resource.status}`,
-		});
-	}
-	if (
-		resource.ready?.toLowerCase() === "false" &&
-		!isSucceededResource(resource)
-	) {
-		pushUnique(items, seen, {
-			id: "status:ready:false",
-			source: "status",
-			tone: "error",
-			title: "Ready False",
-		});
-	}
-
 	for (const condition of conditions) {
 		const disruptionTarget = isDisruptionTargetCondition(condition);
 		if (
@@ -176,7 +139,7 @@ export function buildIncidentTimeline({
 				: condition.status === "False"
 					? "error"
 					: "warning",
-			title: `${condition.type} ${condition.status}`,
+			title: `${condition.type}=${condition.status}`,
 			detail: [condition.reason, condition.message].filter(Boolean).join(" · "),
 			timestamp: condition.lastTransitionTime,
 		});
