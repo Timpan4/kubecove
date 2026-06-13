@@ -177,7 +177,7 @@ const GROUP_VISUALS: Record<string, ResourceVisual> = {
 	Incidents: resourceVisual(CircleAlert, "cluster"),
 	RBAC: resourceVisual(Shield, "secret"),
 	"Port Forwards": resourceVisual(Cable, "network"),
-	"Managed by Argo app": ARGO_VISUAL,
+	"Tracked by Argo CD": ARGO_VISUAL,
 	"Unmanaged resources": DEFAULT_VISUAL,
 };
 
@@ -186,6 +186,6 @@ export function getResourceKindVisual(kind: string): ResourceVisual {
 }
 
 export function getResourceGroupVisual(label: string): ResourceVisual {
-	if (label.startsWith("Managed by Argo app:")) return GROUP_VISUALS["Managed by Argo app"];
+	if (label.startsWith("Tracked by Argo CD:")) return GROUP_VISUALS["Tracked by Argo CD"];
 	return GROUP_VISUALS[label] ?? DEFAULT_VISUAL;
 }

@@ -9,6 +9,8 @@ export interface ArgoApplicationSummary {
 	destinationServer: string | null;
 	sourceRepo: string | null;
 	sourceRevision: string | null;
+	resourceNamespaces: string[];
+	trackedResourceCount?: number;
 	age: string;
 	createdAt?: string;
 }

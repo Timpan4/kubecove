@@ -32,6 +32,8 @@ function app(name: string): ArgoApplicationSummary {
 		destinationServer: "https://kubernetes.default.svc",
 		sourceRepo: "https://example.test/repo.git",
 		sourceRevision: "main",
+		resourceNamespaces: ["default"],
+		trackedResourceCount: 3,
 		age: "1h",
 	};
 }

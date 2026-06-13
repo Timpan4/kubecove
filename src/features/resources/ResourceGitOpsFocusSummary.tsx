@@ -9,8 +9,8 @@ export interface ResourceGitOpsFocus {
 	application: ArgoApplicationSummary;
 }
 
-function compactList(values: string[]): string {
-	if (values.length === 0) return "-";
+function compactNamespaceList(values: string[]): string {
+	if (values.length === 0) return "All namespaces";
 	if (values.length <= 3) return values.join(", ");
 	return `${values.slice(0, 3).join(", ")} +${values.length - 3}`;
 }
@@ -38,15 +38,12 @@ function SummaryField({
 
 export function ResourceGitOpsFocusSummary({
 	focus,
-	resourceCount,
-	namespaces,
 }: {
 	focus: ResourceGitOpsFocus;
-	resourceCount: number;
-	namespaces: string[];
 }) {
 	const app = focus.application;
 	const destination = app.destinationNamespace ?? app.destinationServer;
+	const namespaces = app.resourceNamespaces;
 	return (
 		<section className="rounded-md border border-sidebar-border bg-card/35 px-4 py-3">
 			<div className="flex flex-wrap items-start justify-between gap-3">
@@ -67,20 +64,26 @@ export function ResourceGitOpsFocusSummary({
 					</div>
 				</div>
 				<div className="text-right text-sm">
-					<div className="font-semibold text-foreground">{resourceCount}</div>
-					<div className="text-xs text-muted-foreground">resources</div>
+					<div className="font-semibold text-foreground">
+						{app.trackedResourceCount ?? "-"}
+					</div>
+					<div className="text-xs text-muted-foreground">tracked resources</div>
 				</div>
 			</div>
 			<div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
 				<SummaryField label="Project" value={app.project} />
-				<SummaryField label="Repo" value={app.sourceRepo} title={app.sourceRepo ?? undefined} />
+				<SummaryField
+					label="Repo"
+					value={app.sourceRepo}
+					title={app.sourceRepo ?? undefined}
+				/>
 				<SummaryField label="Revision" value={app.sourceRevision} />
 				<SummaryField label="Destination" value={destination} />
 				<SummaryField label="App namespace" value={app.namespace} />
 				<SummaryField
 					label="Resource namespaces"
-					value={compactList(namespaces)}
-					title={namespaces.join(", ")}
+					value={compactNamespaceList(namespaces)}
+					title={namespaces.length > 0 ? namespaces.join(", ") : undefined}
 				/>
 				<div className="min-w-0">
 					<div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">

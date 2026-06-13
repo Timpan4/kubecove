@@ -288,24 +288,6 @@ function ResourceListComponent({
 		() => filterResourceSearchIndex(resourceSearchIndex, search, selectedArgoAppFilter),
 		[resourceSearchIndex, search, selectedArgoAppFilter],
 	);
-	const gitOpsFocusRows = useMemo(
-		() =>
-			gitOpsFocus
-				? filterResourceSearchIndex(resourceSearchIndex, "", selectedArgoAppFilter)
-				: [],
-		[gitOpsFocus, resourceSearchIndex, selectedArgoAppFilter],
-	);
-	const gitOpsFocusNamespaces = useMemo(
-		() =>
-			Array.from(
-				new Set(
-					gitOpsFocusRows
-						.map((resource) => resource.namespace)
-						.filter((namespace): namespace is string => Boolean(namespace)),
-				),
-			).sort((a, b) => a.localeCompare(b)),
-		[gitOpsFocusRows],
-	);
 	const filteredData = useMemo(
 		() => filterResourcesByHealth(scopedData, healthFilter),
 		[scopedData, healthFilter],
@@ -579,13 +561,7 @@ function ResourceListComponent({
 		// and the layout doesn't jump when results disappear.
 		return (
 			<div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
-				{gitOpsFocus && (
-					<ResourceGitOpsFocusSummary
-						focus={gitOpsFocus}
-						resourceCount={gitOpsFocusRows.length}
-						namespaces={gitOpsFocusNamespaces}
-					/>
-				)}
+				{gitOpsFocus && <ResourceGitOpsFocusSummary focus={gitOpsFocus} />}
 				<ResourceScopePills
 					pills={scopePills}
 					clusterContext={clusterContext}
@@ -613,13 +589,7 @@ function ResourceListComponent({
 
 	return (
 		<div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
-			{gitOpsFocus && (
-				<ResourceGitOpsFocusSummary
-					focus={gitOpsFocus}
-					resourceCount={gitOpsFocusRows.length}
-					namespaces={gitOpsFocusNamespaces}
-				/>
-			)}
+			{gitOpsFocus && <ResourceGitOpsFocusSummary focus={gitOpsFocus} />}
 			<ResourceScopePills
 				pills={scopePills}
 				clusterContext={clusterContext}
