@@ -4,9 +4,31 @@ All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
 ## 0.6.6 - 2026-06-13
+
+### Added
+
+- Added Kubernetes API-first Flux inspection across Source, Kustomize, Helm,
+  Notification, and Image Automation CRDs, with detection, list, and detail
+  commands plus provider-specific GitOps views (#142).
+- Added ADR 0007 to keep GitOps providers Kubernetes-API-first and
+  inspection-only by default before any sync, reconcile, rollback, CLI, or
+  Git-writing workflows ship (#142).
+
+### Improved
+
+- Renamed the Argo CD navigation surface to GitOps while preserving existing
+  Argo CD command names, saved filters, and route compatibility (#142).
+- Added GitOps ownership metadata and resource filtering for Argo CD
+  Applications, Flux Kustomizations, and Flux HelmReleases while preserving
+  legacy Argo and Helm metadata (#142).
+- Improved resource health and diagnostic detail coverage with shared backend
+  health helpers, ingress status summarization, and structured frontend
+  diagnostic lists (#142).
+
 ### Release
 
-- Prepared KubeCove beta release metadata.
+- Prepared KubeCove v0.6.6 beta release metadata across the frontend, Tauri,
+  and Rust package manifests.
 
 ## 0.6.5 - 2026-06-10
 
