@@ -252,6 +252,7 @@ function argoApplicationFocus(
 	if ("status" in item) return null;
 	if (!("sourceRepo" in item) || !("destinationServer" in item)) return null;
 	if (
+		filter !== "" &&
 		filter !== argoApplicationGitOpsFilterKey(item.name) &&
 		filter !== item.name
 	) {

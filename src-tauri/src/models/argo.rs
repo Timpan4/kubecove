@@ -16,6 +16,10 @@ pub struct ArgoApplicationSummary {
     pub destination_server: Option<String>,
     pub source_repo: Option<String>,
     pub source_revision: Option<String>,
+    #[serde(default)]
+    pub resource_namespaces: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracked_resource_count: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

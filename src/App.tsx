@@ -41,6 +41,7 @@ import {
 import { CommandPalette } from "./features/command-palette";
 import {
 	argoApplicationGitOpsFilterKey,
+	argoApplicationResourceNamespaces,
 	type HealthFilter,
 } from "./features/resources/helpers";
 import {
@@ -270,9 +271,9 @@ function App() {
 			name: app.name,
 			namespace: app.namespace ?? "",
 		});
-		setSelectedNamespaces([]);
+		setSelectedNamespaces(argoApplicationResourceNamespaces(app));
 		setSelectedKinds([...SUPPORTED_KINDS]);
-		setSelectedArgoAppFilter(argoApplicationGitOpsFilterKey(app.name));
+		setSelectedArgoAppFilter("");
 		setSelectedTreeNode(null);
 		setSelectedArgoApp(app);
 		setSelectedFluxResource(null);
@@ -363,12 +364,14 @@ function App() {
 			setSelectedTreeNode(null);
 			setSelectedResource(null);
 			setSelectedFluxResource(null);
+			setSelectedArgoApp(null);
 			setSelectedNamespaces(namespaces);
 		},
 		[
 			setSelectedTreeNode,
 			setSelectedResource,
 			setSelectedFluxResource,
+			setSelectedArgoApp,
 			setSelectedNamespaces,
 		],
 	);
@@ -378,9 +381,16 @@ function App() {
 			setSelectedTreeNode(null);
 			setSelectedResource(null);
 			setSelectedFluxResource(null);
+			setSelectedArgoApp(null);
 			setSelectedKinds(kinds);
 		},
-		[setSelectedTreeNode, setSelectedResource, setSelectedFluxResource, setSelectedKinds],
+		[
+			setSelectedTreeNode,
+			setSelectedResource,
+			setSelectedFluxResource,
+			setSelectedArgoApp,
+			setSelectedKinds,
+		],
 	);
 
 	const handleGitOpsFilterChange = useCallback(
@@ -404,8 +414,9 @@ function App() {
 		if (
 			!selectedArgoApp ||
 			"status" in selectedArgoApp ||
-			(selectedArgoAppFilter !==
-				argoApplicationGitOpsFilterKey(selectedArgoApp.name) &&
+			(selectedArgoAppFilter !== "" &&
+				selectedArgoAppFilter !==
+					argoApplicationGitOpsFilterKey(selectedArgoApp.name) &&
 				selectedArgoAppFilter !== selectedArgoApp.name)
 		) {
 			setSelectedArgoApp(null);

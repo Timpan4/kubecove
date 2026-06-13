@@ -1,5 +1,6 @@
 import type { SortingState } from "@tanstack/react-table";
 import type {
+	ArgoApplicationSummary,
 	ClusterScopedKind,
 	DiscoveredResourceKind,
 	ResourceKindSelection,
@@ -52,6 +53,17 @@ export interface GitOpsFilterOption {
 
 export function argoApplicationGitOpsFilterKey(name: string): string {
 	return ["argo", "Application", "", name].join(":");
+}
+
+export function argoApplicationResourceNamespaces(
+	app: Pick<ArgoApplicationSummary, "destinationNamespace" | "resourceNamespaces">,
+): string[] {
+	const namespaces = Array.from(
+		new Set(app.resourceNamespaces.map((namespace) => namespace.trim()).filter(Boolean)),
+	).sort((a, b) => a.localeCompare(b));
+	if (namespaces.length > 0) return namespaces;
+	const destination = app.destinationNamespace?.trim();
+	return destination ? [destination] : [];
 }
 
 function argoApplicationNameFromGitOpsFilter(filter: string): string | null {
@@ -314,12 +326,12 @@ export function gitOpsOwnerLabel(resource: ResourceSummary): string {
 		const scopedName = owner.namespace
 			? `${owner.namespace}/${owner.name}`
 			: owner.name;
-		return `Flux ${owner.kind}: ${scopedName}`;
+		return `Tracked by Flux ${owner.kind}: ${scopedName}`;
 	}
 	if (owner?.provider === "argo") {
-		return `Argo CD Application: ${owner.name}`;
+		return `Tracked by Argo CD: ${owner.name}`;
 	}
-	if (resource.argoApp) return `Argo CD Application: ${resource.argoApp}`;
+	if (resource.argoApp) return `Tracked by Argo CD: ${resource.argoApp}`;
 	return "";
 }
 
@@ -339,8 +351,7 @@ export function uniqueGitOpsFilters(
 
 export function formatResourceGroupLabel(resource: ResourceSummary): string {
 	const gitOpsLabel = gitOpsOwnerLabel(resource);
-	if (gitOpsLabel) return `Managed by ${gitOpsLabel}`;
-	if (resource.argoApp) return `Managed by Argo app: ${resource.argoApp}`;
+	if (gitOpsLabel) return gitOpsLabel;
 	if (resource.ownerRef) return `Owned by: ${resource.ownerRef}`;
 	return "Unmanaged resources";
 }

@@ -314,6 +314,8 @@ fn test_argo_application_models_serde() {
         destination_server: Some("https://kubernetes.default.svc".to_string()),
         source_repo: Some("https://example.invalid/repo.git".to_string()),
         source_revision: Some("main".to_string()),
+        resource_namespaces: vec!["payments".to_string()],
+        tracked_resource_count: Some(3),
     };
     let details = ArgoApplicationDetails {
         summary,
@@ -324,8 +326,11 @@ fn test_argo_application_models_serde() {
 
     let json_val = serde_json::to_value(&details).unwrap();
     assert_eq!(json_val["summary"]["syncStatus"], "Synced");
+    assert_eq!(json_val["summary"]["resourceNamespaces"][0], "payments");
+    assert_eq!(json_val["summary"]["trackedResourceCount"], 3);
     let parsed: ArgoApplicationDetails = serde_json::from_value(json_val).unwrap();
     assert_eq!(parsed.summary.health_status, Some("Healthy".to_string()));
+    assert_eq!(parsed.summary.resource_namespaces, vec!["payments"]);
 }
 
 #[test]

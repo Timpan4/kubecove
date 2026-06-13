@@ -7,6 +7,7 @@ use crate::models::{
 };
 use chrono::{TimeZone, Utc};
 use kube::api::{Api, DynamicObject};
+use std::collections::BTreeSet;
 
 /// List Argo CD Applications in the cluster.
 #[tauri::command]
@@ -80,6 +81,9 @@ pub async fn list_argocd_applications(
                 .and_then(|h| h.get("status"))
                 .and_then(|st| st.as_str())
                 .map(String::from);
+            let resource_namespaces =
+                application_resource_namespaces(data, destination_namespace.as_deref());
+            let tracked_resource_count = application_tracked_resource_count(data);
 
             Some(ArgoApplicationSummary {
                 cluster: cluster_context.clone(),
@@ -94,6 +98,8 @@ pub async fn list_argocd_applications(
                 destination_server,
                 source_repo,
                 source_revision,
+                resource_namespaces,
+                tracked_resource_count,
             })
         })
         .collect();
@@ -190,6 +196,9 @@ pub async fn get_argocd_application_details(
         .and_then(|h| h.get("status"))
         .and_then(|st| st.as_str())
         .map(String::from);
+    let resource_namespaces =
+        application_resource_namespaces(data, destination_namespace.as_deref());
+    let tracked_resource_count = application_tracked_resource_count(data);
     let status = data.get("status").cloned();
 
     let summary = ArgoApplicationSummary {
@@ -205,6 +214,8 @@ pub async fn get_argocd_application_details(
         destination_server,
         source_repo,
         source_revision,
+        resource_namespaces,
+        tracked_resource_count,
     };
 
     Ok(ArgoApplicationDetails {
@@ -213,4 +224,114 @@ pub async fn get_argocd_application_details(
         metadata,
         status,
     })
+}
+
+fn application_resource_namespaces(
+    data: &serde_json::Map<String, serde_json::Value>,
+    destination_namespace: Option<&str>,
+) -> Vec<String> {
+    let mut namespaces = BTreeSet::new();
+    if let Some(resources) = data
+        .get("status")
+        .and_then(|status| status.get("resources"))
+        .and_then(|resources| resources.as_array())
+    {
+        for resource in resources {
+            if let Some(namespace) = resource
+                .get("namespace")
+                .and_then(|namespace| namespace.as_str())
+                .map(str::trim)
+                .filter(|namespace| !namespace.is_empty())
+            {
+                namespaces.insert(namespace.to_string());
+            }
+        }
+    }
+    if namespaces.is_empty() {
+        if let Some(namespace) = destination_namespace
+            .map(str::trim)
+            .filter(|namespace| !namespace.is_empty())
+        {
+            namespaces.insert(namespace.to_string());
+        }
+    }
+    namespaces.into_iter().collect()
+}
+
+fn application_tracked_resource_count(
+    data: &serde_json::Map<String, serde_json::Value>,
+) -> Option<usize> {
+    data.get("status")
+        .and_then(|status| status.get("resources"))
+        .and_then(|resources| resources.as_array())
+        .map(Vec::len)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extracts_unique_tracked_resource_namespaces() {
+        let data = json!({
+            "spec": {
+                "destination": {
+                    "namespace": "fallback"
+                }
+            },
+            "status": {
+                "resources": [
+                    { "kind": "Deployment", "namespace": "traefik", "name": "traefik" },
+                    { "kind": "Service", "namespace": "traefik", "name": "traefik" },
+                    { "kind": "ConfigMap", "namespace": "monitoring", "name": "dashboard" },
+                    { "kind": "ClusterRole", "name": "traefik" },
+                    { "kind": "CustomResourceDefinition", "namespace": "", "name": "ignored" }
+                ]
+            }
+        });
+        let data = data.as_object().expect("application data");
+
+        assert_eq!(
+            application_resource_namespaces(data, Some("fallback")),
+            vec!["monitoring".to_string(), "traefik".to_string()]
+        );
+        assert_eq!(application_tracked_resource_count(data), Some(5));
+    }
+
+    #[test]
+    fn falls_back_to_destination_namespace_without_status_resources() {
+        let data = json!({
+            "spec": {
+                "destination": {
+                    "namespace": "traefik"
+                }
+            }
+        });
+        let data = data.as_object().expect("application data");
+
+        assert_eq!(
+            application_resource_namespaces(data, Some("traefik")),
+            vec!["traefik".to_string()]
+        );
+        assert_eq!(application_tracked_resource_count(data), None);
+    }
+
+    #[test]
+    fn returns_empty_namespaces_for_all_namespace_fallback() {
+        let data = json!({
+            "status": {
+                "resources": [
+                    { "kind": "ClusterRole", "name": "traefik" }
+                ]
+            }
+        });
+        let data = data.as_object().expect("application data");
+
+        assert_eq!(
+            application_resource_namespaces(data, None),
+            Vec::<String>::new()
+        );
+        assert_eq!(application_tracked_resource_count(data), Some(1));
+    }
 }
