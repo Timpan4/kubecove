@@ -508,9 +508,7 @@ fn resource_cache_key(
         ScopeNamespace::Cluster => "<cluster>",
         ScopeNamespace::Named(namespace) => namespace,
     };
-    format!(
-        "{source_key}|context={context}|kind={kind_key}|namespace={namespace}"
-    )
+    format!("{source_key}|context={context}|kind={kind_key}|namespace={namespace}")
 }
 
 fn topology_cache_key(

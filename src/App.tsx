@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useDashboardState, type DashboardViewMode } from "./lib/hooks";
 import { SidebarTree } from "./components/SidebarTree";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppMainContent } from "./app/AppMainContent";
 import { AppTopBar } from "./app/AppTopBar";
 import { AppDetailPanel } from "./app/AppDetailPanel";
@@ -561,78 +562,84 @@ function App() {
 
 	if (!activeWorkspace) {
 		return (
-			<LauncherShell
-				clusterContext={clusterContext}
-				viewMode={viewMode}
-				showUsageFooter={showUsageFooter}
-				onClusterChange={handleClusterChange}
-				onOpenLauncher={handleOpenLauncher}
-				onOpenSettings={handleOpenSettings}
-				onBackFromSettings={handleBackFromSettings}
-				onOpenWorkspace={applyWorkspace}
-			/>
+			<ErrorBoundary label="launcher">
+				<LauncherShell
+					clusterContext={clusterContext}
+					viewMode={viewMode}
+					showUsageFooter={showUsageFooter}
+					onClusterChange={handleClusterChange}
+					onOpenLauncher={handleOpenLauncher}
+					onOpenSettings={handleOpenSettings}
+					onBackFromSettings={handleBackFromSettings}
+					onOpenWorkspace={applyWorkspace}
+				/>
+			</ErrorBoundary>
 		);
 	}
 
 	const mainContent = (
-		<AppMainContent
-			activeWorkspace={activeWorkspace}
-			viewMode={viewMode}
-			liveSessionCleanupMessage={liveSessionCleanupMessage}
-			onDismissLiveSessionCleanup={() => setLiveSessionCleanupMessage(null)}
-			showPortForwardRestorePrompt={showPortForwardRestorePrompt}
-			onDismissPortForwardRestore={() =>
-				setDismissedPortForwardRestoreWorkspaceId(activeWorkspace.id)
-			}
-			onReviewPortForwards={handleOpenPortForwards}
-			onOpenResources={handleOpenResources}
-			onOpenArgo={handleOpenArgo}
-			onOpenIncidents={handleOpenIncidents}
-			onOpenPortForwards={handleOpenPortForwards}
-			onOpenLauncher={handleOpenLauncher}
-			onBackFromSettings={handleBackFromSettings}
-			clusterContext={clusterContext}
-			selectedArgoApp={selectedArgoApp}
-			onArgoItemSelect={handleArgoAppSelect}
-			onOpenArgoApplicationResources={handleOpenArgoApplicationResources}
-			selectedFluxResource={selectedFluxResource}
-			onFluxResourceSelect={handleFluxResourceSelect}
-			selectedTreeNode={selectedTreeNode}
-			selectedHelmRelease={selectedHelmRelease}
-			onHelmReleaseSelect={handleHelmReleaseSelect}
-			targetHelmRelease={targetHelmRelease}
-			onTargetHelmReleaseResolved={handleTargetHelmReleaseResolved}
-			selectedNamespaces={selectedNamespaces}
-			canQueryResources={canQueryResources}
-			computedNamespaces={computedNamespaces}
-			computedKinds={computedKinds}
-			selectedArgoAppFilter={selectedArgoAppFilter}
-			selectedResource={selectedResource}
-			resourceHealthFilter={resourceHealthFilter}
-			resourceInitialSearch={resourceInitialSearch}
-			onArgoAppFilterChange={handleGitOpsFilterChange}
-			onNamespacesChange={handleResourceNamespacesChange}
-			onKindsChange={handleResourceKindsChange}
-			onResourceSelect={handleResourceSelect}
-			emptyMsg={emptyMsg}
-		/>
+		<ErrorBoundary label="main content">
+			<AppMainContent
+				activeWorkspace={activeWorkspace}
+				viewMode={viewMode}
+				liveSessionCleanupMessage={liveSessionCleanupMessage}
+				onDismissLiveSessionCleanup={() => setLiveSessionCleanupMessage(null)}
+				showPortForwardRestorePrompt={showPortForwardRestorePrompt}
+				onDismissPortForwardRestore={() =>
+					setDismissedPortForwardRestoreWorkspaceId(activeWorkspace.id)
+				}
+				onReviewPortForwards={handleOpenPortForwards}
+				onOpenResources={handleOpenResources}
+				onOpenArgo={handleOpenArgo}
+				onOpenIncidents={handleOpenIncidents}
+				onOpenPortForwards={handleOpenPortForwards}
+				onOpenLauncher={handleOpenLauncher}
+				onBackFromSettings={handleBackFromSettings}
+				clusterContext={clusterContext}
+				selectedArgoApp={selectedArgoApp}
+				onArgoItemSelect={handleArgoAppSelect}
+				onOpenArgoApplicationResources={handleOpenArgoApplicationResources}
+				selectedFluxResource={selectedFluxResource}
+				onFluxResourceSelect={handleFluxResourceSelect}
+				selectedTreeNode={selectedTreeNode}
+				selectedHelmRelease={selectedHelmRelease}
+				onHelmReleaseSelect={handleHelmReleaseSelect}
+				targetHelmRelease={targetHelmRelease}
+				onTargetHelmReleaseResolved={handleTargetHelmReleaseResolved}
+				selectedNamespaces={selectedNamespaces}
+				canQueryResources={canQueryResources}
+				computedNamespaces={computedNamespaces}
+				computedKinds={computedKinds}
+				selectedArgoAppFilter={selectedArgoAppFilter}
+				selectedResource={selectedResource}
+				resourceHealthFilter={resourceHealthFilter}
+				resourceInitialSearch={resourceInitialSearch}
+				onArgoAppFilterChange={handleGitOpsFilterChange}
+				onNamespacesChange={handleResourceNamespacesChange}
+				onKindsChange={handleResourceKindsChange}
+				onResourceSelect={handleResourceSelect}
+				emptyMsg={emptyMsg}
+			/>
+		</ErrorBoundary>
 	);
 
 	const detailPanel = hasAppDetailPanel(viewMode, selectedHelmRelease !== null, selectedArgoApp !== null || selectedFluxResource !== null, selectedResource !== null) ? (
-		<AppDetailPanel
-			viewMode={viewMode}
-			selectedHelmRelease={selectedHelmRelease}
-			selectedArgoApp={selectedArgoApp}
-			selectedFluxResource={selectedFluxResource}
-			selectedResource={selectedResource}
-			selectedResourceKey={selectedResourceKey}
-			onHelmClose={handleHelmClose}
-			onArgoClose={handleArgoClose}
-			onFluxClose={handleFluxClose}
-			onResourceClose={resetResource}
-			onOpenHelmResources={handleOpenHelmResources}
-			onOpenHelmReleaseFromResource={handleOpenHelmReleaseFromResource}
-		/>
+		<ErrorBoundary label="detail panel">
+			<AppDetailPanel
+				viewMode={viewMode}
+				selectedHelmRelease={selectedHelmRelease}
+				selectedArgoApp={selectedArgoApp}
+				selectedFluxResource={selectedFluxResource}
+				selectedResource={selectedResource}
+				selectedResourceKey={selectedResourceKey}
+				onHelmClose={handleHelmClose}
+				onArgoClose={handleArgoClose}
+				onFluxClose={handleFluxClose}
+				onResourceClose={resetResource}
+				onOpenHelmResources={handleOpenHelmResources}
+				onOpenHelmReleaseFromResource={handleOpenHelmReleaseFromResource}
+			/>
+		</ErrorBoundary>
 	) : null;
 
 	return (

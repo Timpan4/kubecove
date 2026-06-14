@@ -84,7 +84,10 @@ fn select_service_port(
     if ports.is_empty() {
         return Err(AppError::new("service has no ports to forward", "session"));
     }
-    let Some(port) = ports.iter().find(|port| port.port == i32::from(requested_port)) else {
+    let Some(port) = ports
+        .iter()
+        .find(|port| port.port == i32::from(requested_port))
+    else {
         let available = ports
             .iter()
             .map(|port| port.port.to_string())

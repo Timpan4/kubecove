@@ -62,9 +62,11 @@ impl StreamBroadcaster {
                 subscribers.remove(&stream_id);
             }
         }
-        !self.subscribers
+        !self
+            .subscribers
             .lock()
-            .expect("stream subscribers lock").is_empty()
+            .expect("stream subscribers lock")
+            .is_empty()
     }
 
     pub(super) fn status(&self, status: &str, message: String) -> bool {

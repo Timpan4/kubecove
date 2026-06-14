@@ -2,7 +2,7 @@ use crate::commands::helpers::{
     fetch_and_serialize_cluster, k8s_creation_timestamp_to_rfc3339, resource_age,
     update_resource_health,
 };
-use crate::models::{AppError, ResourceDetailsFull, ResourceSummary};
+use crate::models::{AppError, ResourceDetailsFull, ResourceHealth, ResourceSummary};
 use chrono::{TimeZone, Utc};
 use kube::Client;
 
@@ -36,7 +36,7 @@ pub(super) async fn node_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&node.metadata.creation_timestamp),
         status: node.status.as_ref().and_then(|s| {
             s.conditions
@@ -99,7 +99,7 @@ pub(super) async fn storageclass_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&sc.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -148,7 +148,7 @@ pub(super) async fn pv_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&pv.metadata.creation_timestamp),
         status: pv.status.as_ref().and_then(|s| s.phase.as_ref()).cloned(),
         ready: None,

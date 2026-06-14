@@ -3,7 +3,7 @@ use crate::commands::helpers::{
     fetch_and_serialize, fmt_ready, k8s_creation_timestamp_to_rfc3339, resource_age,
     update_resource_health,
 };
-use crate::models::{AppError, ResourceDetailsFull, ResourceSummary};
+use crate::models::{AppError, ResourceDetailsFull, ResourceHealth, ResourceSummary};
 use chrono::{TimeZone, Utc};
 use kube::Client;
 
@@ -43,7 +43,7 @@ pub(super) async fn deployment_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&deploy.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -103,7 +103,7 @@ pub(super) async fn statefulset_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&ss.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -159,7 +159,7 @@ pub(super) async fn daemonset_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&ds.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -215,7 +215,7 @@ pub(super) async fn ingress_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&ing.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -269,7 +269,7 @@ pub(super) async fn job_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&job.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -341,7 +341,7 @@ pub(super) async fn cronjob_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&cj.metadata.creation_timestamp),
         status: None,
         ready: None,

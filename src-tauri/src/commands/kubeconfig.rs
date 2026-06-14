@@ -205,7 +205,10 @@ impl KubeconfigSource {
     // otherwise kube's default discovery (KUBECONFIG, then ~/.kube/config).
     fn effective_kubeconfig_paths(&self) -> Result<Vec<PathBuf>, AppError> {
         if let Some(paths) = self.configured_paths()? {
-            return Ok(paths.into_iter().map(|configured| configured.path).collect());
+            return Ok(paths
+                .into_iter()
+                .map(|configured| configured.path)
+                .collect());
         }
         if let Some(value) = env::var_os(DEFAULT_KUBECONFIG_ENV_VAR) {
             if let Some(paths) = split_non_empty_paths(value) {

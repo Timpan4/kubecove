@@ -3,7 +3,7 @@ use crate::commands::helpers::{
     fetch_and_serialize, k8s_creation_timestamp_to_rfc3339, redact_secret, resource_age,
     update_resource_health,
 };
-use crate::models::{AppError, ResourceDetailsFull, ResourceSummary};
+use crate::models::{AppError, ResourceDetailsFull, ResourceHealth, ResourceSummary};
 use chrono::{TimeZone, Utc};
 use kube::Client;
 
@@ -38,7 +38,7 @@ pub(super) async fn pod_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&pod.metadata.creation_timestamp),
         status: pod.status.as_ref().and_then(|s| s.phase.clone()),
         ready: pod.status.as_ref().and_then(|s| {
@@ -106,7 +106,7 @@ pub(super) async fn service_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&svc.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -154,7 +154,7 @@ pub(super) async fn configmap_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&cm.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -205,7 +205,7 @@ pub(super) async fn secret_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&sec.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -257,7 +257,7 @@ pub(super) async fn pvc_details(
         plural: None,
         namespaced: None,
         dynamic: None,
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&pvc.metadata.creation_timestamp),
         status: status
             .as_ref()

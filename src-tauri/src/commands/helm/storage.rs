@@ -477,9 +477,9 @@ fn latest_releases(records: Vec<HelmStorageRecord>) -> Vec<HelmReleaseSummary> {
             record.summary.namespace.clone(),
             record.summary.name.clone(),
         );
-        let replace = latest
-            .get(&key)
-            .is_none_or(|existing| record.summary.revision.unwrap_or(0) > existing.revision.unwrap_or(0));
+        let replace = latest.get(&key).is_none_or(|existing| {
+            record.summary.revision.unwrap_or(0) > existing.revision.unwrap_or(0)
+        });
         if replace {
             latest.insert(key, record.summary);
         }
@@ -517,7 +517,8 @@ fn is_helm_owned(labels: Option<&BTreeMap<String, String>>) -> bool {
 fn release_name_from_storage_name(storage_name: &str) -> String {
     storage_name
         .strip_prefix("sh.helm.release.v1.")
-        .and_then(|rest| rest.rsplit_once(".v")).map_or_else(|| storage_name.to_string(), |(name, _)| name.to_string())
+        .and_then(|rest| rest.rsplit_once(".v"))
+        .map_or_else(|| storage_name.to_string(), |(name, _)| name.to_string())
 }
 
 fn chart_label(name: Option<&str>, version: Option<&str>) -> Option<String> {

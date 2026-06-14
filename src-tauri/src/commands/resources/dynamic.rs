@@ -8,8 +8,8 @@ use crate::commands::{
     ClusterLiveStore,
 };
 use crate::models::{
-    AppError, DiscoveredResourceKind, ResourceDetailsFull, ResourceSummary, YamlEncoding,
-    YamlViewMode,
+    AppError, DiscoveredResourceKind, ResourceDetailsFull, ResourceHealth, ResourceSummary,
+    YamlEncoding, YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
 use kube::{
@@ -88,7 +88,7 @@ pub(crate) fn dynamic_resource_summary(
         plural: Some(resource_kind.plural.clone()),
         namespaced: Some(resource_kind.namespaced),
         dynamic: Some(true),
-        health: Default::default(),
+        health: ResourceHealth::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&object.metadata.creation_timestamp),
         status: dynamic_status_from_data(&object.data),
         ready: None,
