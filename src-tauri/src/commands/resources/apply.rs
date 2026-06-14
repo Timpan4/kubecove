@@ -28,6 +28,13 @@ pub async fn prepare_yaml_apply(request: YamlApplyRequest) -> Result<YamlApplyPr
     let client = source
         .client_for_context(&validated.request.cluster_context)
         .await?;
+    prepare_yaml_apply_with_client(client, validated).await
+}
+
+async fn prepare_yaml_apply_with_client(
+    client: kube::Client,
+    validated: ValidatedApply,
+) -> Result<YamlApplyPreview, AppError> {
     let api = apply_api(client, &validated)?;
     let current = api
         .get(&validated.request.name)
@@ -59,6 +66,13 @@ pub async fn apply_yaml(request: YamlApplyRequest) -> Result<YamlApplyResult, Ap
     let client = source
         .client_for_context(&validated.request.cluster_context)
         .await?;
+    apply_yaml_with_client(client, validated).await
+}
+
+async fn apply_yaml_with_client(
+    client: kube::Client,
+    validated: ValidatedApply,
+) -> Result<YamlApplyResult, AppError> {
     let api = apply_api(client, &validated)?;
     let applied = api
         .patch(
@@ -717,3 +731,7 @@ mod tests {
             .any(|diagnostic| diagnostic.message.contains("apiVersion must match")));
     }
 }
+
+#[cfg(test)]
+#[path = "apply_client_tests.rs"]
+mod apply_client_tests;
