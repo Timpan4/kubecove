@@ -5,9 +5,12 @@ import type {
 	ArgoApplicationSummary,
 	ArgoApplicationSetSummary,
 	ArgoAppProjectSummary,
+	FluxResourceSummary,
+	HelmReleaseSummary,
 	ResourceKindSelection,
 } from "./types";
 import type { TreeNodeId } from "./tree-nav";
+import type { HealthFilter } from "../features/resources/helpers";
 
 export type ArgoSelectedItem =
 	| ArgoApplicationSummary
@@ -15,14 +18,35 @@ export type ArgoSelectedItem =
 	| ArgoAppProjectSummary
 	| null;
 
+export type InspectorSelection =
+	| { type: "resource"; resource: ResourceSummary }
+	| { type: "argo"; app: NonNullable<ArgoSelectedItem> }
+	| { type: "flux"; resource: FluxResourceSummary }
+	| { type: "helm"; release: HelmReleaseSummary }
+	| null;
+
+export interface OpenViewOptions {
+	treeNode?: TreeNodeId | null;
+	argoAppFilter?: string;
+	initialSearch?: string;
+	healthFilter?: HealthFilter;
+	preserveSelection?: boolean;
+	preserveResourceFilters?: boolean;
+}
+
 export interface DashboardState {
 	clusterContext: string;
 	selectedNamespaces: string[];
 	selectedKinds: ResourceKindSelection[];
+	selection: InspectorSelection;
 	selectedResource: ResourceSummary | null;
 	argoDetected: boolean;
 	selectedArgoApp: ArgoSelectedItem;
+	selectedFluxResource: FluxResourceSummary | null;
+	selectedHelmRelease: HelmReleaseSummary | null;
 	selectedArgoAppFilter: string;
+	resourceInitialSearch: string;
+	resourceHealthFilter: HealthFilter;
 	viewMode: DashboardViewMode;
 	// Tree navigation state
 	selectedTreeNode: TreeNodeId | null;
@@ -35,12 +59,12 @@ export interface DashboardSetters {
 	toggleNamespace: (ns: string) => void;
 	setSelectedKinds: (kinds: ResourceKindSelection[]) => void;
 	toggleKind: (kind: ResourceKindSelection) => void;
-	setSelectedResource: (resource: ResourceSummary | null) => void;
-	resetResource: () => void;
+	select: (selection: InspectorSelection) => void;
 	setArgoDetected: (detected: boolean) => void;
-	setSelectedArgoApp: (app: ArgoSelectedItem) => void;
 	setSelectedArgoAppFilter: (app: string) => void;
 	setViewMode: (mode: DashboardViewMode) => void;
+	openView: (mode: DashboardViewMode, options?: OpenViewOptions) => void;
+	setResourceInitialSearch: (search: string) => void;
 	// Tree navigation setters
 	setSelectedTreeNode: (node: TreeNodeId | null) => void;
 	setExpandedSections: (sections: string[]) => void;
@@ -88,23 +112,24 @@ const usePersistedStore = create<PersistedSlice>()(
 	),
 );
 
-// Non-persisted slice: kinds + resource selection + Argo CD + tree navigation
+// Non-persisted slice: view state + inspector selection + tree navigation
 interface NonPersistedSlice {
 	selectedKinds: ResourceKindSelection[];
-	selectedResource: ResourceSummary | null;
+	selection: InspectorSelection;
 	setSelectedKinds: (kinds: ResourceKindSelection[]) => void;
 	toggleKind: (kind: ResourceKindSelection) => void;
-	setSelectedResource: (resource: ResourceSummary | null) => void;
-	resetResource: () => void;
+	select: (selection: InspectorSelection) => void;
 	// Argo CD state
 	argoDetected: boolean;
-	selectedArgoApp: ArgoSelectedItem;
 	selectedArgoAppFilter: string;
 	setArgoDetected: (detected: boolean) => void;
-	setSelectedArgoApp: (app: ArgoSelectedItem) => void;
 	setSelectedArgoAppFilter: (app: string) => void;
+	resourceInitialSearch: string;
+	resourceHealthFilter: HealthFilter;
 	viewMode: DashboardViewMode;
 	setViewMode: (mode: DashboardViewMode) => void;
+	openView: (mode: DashboardViewMode, options?: OpenViewOptions) => void;
+	setResourceInitialSearch: (search: string) => void;
 	// Tree navigation state
 	selectedTreeNode: TreeNodeId | null;
 	expandedSections: string[];
@@ -118,9 +143,9 @@ function resourceKindKey(kind: ResourceKindSelection): string {
 	return `${kind.group}/${kind.version}/${kind.kind}/${kind.plural}`;
 }
 
-const useNonPersistedStore = create<NonPersistedSlice>()((set) => ({
+export const useDashboardStore = create<NonPersistedSlice>()((set) => ({
 	selectedKinds: [],
-	selectedResource: null,
+	selection: null,
 	setSelectedKinds: (kinds: ResourceKindSelection[]) => set({ selectedKinds: kinds }),
 	toggleKind: (kind: ResourceKindSelection) =>
 		set((state) => {
@@ -136,17 +161,34 @@ const useNonPersistedStore = create<NonPersistedSlice>()((set) => ({
 					}
 				: { selectedKinds: [...state.selectedKinds, kind] };
 		}),
-	setSelectedResource: (resource: ResourceSummary | null) =>
-		set({ selectedResource: resource }),
-	resetResource: () => set({ selectedResource: null }),
+	select: (selection: InspectorSelection) => set({ selection }),
 	argoDetected: false,
-	selectedArgoApp: null,
 	selectedArgoAppFilter: "",
 	setArgoDetected: (detected: boolean) => set({ argoDetected: detected }),
-	setSelectedArgoApp: (app: ArgoSelectedItem) => set({ selectedArgoApp: app }),
 	setSelectedArgoAppFilter: (app: string) => set({ selectedArgoAppFilter: app }),
+	resourceInitialSearch: "",
+	resourceHealthFilter: "all",
 	viewMode: "resources",
 	setViewMode: (mode: DashboardViewMode) => set({ viewMode: mode }),
+	openView: (mode: DashboardViewMode, options?: OpenViewOptions) =>
+		set((state) => ({
+			viewMode: mode,
+			selection: options?.preserveSelection ? state.selection : null,
+			resourceInitialSearch: options?.preserveResourceFilters
+				? state.resourceInitialSearch
+				: options?.initialSearch ?? "",
+			resourceHealthFilter: options?.preserveResourceFilters
+				? state.resourceHealthFilter
+				: options?.healthFilter ?? "all",
+			selectedArgoAppFilter: options?.preserveResourceFilters
+				? state.selectedArgoAppFilter
+				: options?.argoAppFilter ?? "",
+			...(options?.treeNode !== undefined
+				? { selectedTreeNode: options.treeNode }
+				: {}),
+		})),
+	setResourceInitialSearch: (search: string) =>
+		set({ resourceInitialSearch: search }),
 	selectedTreeNode: null,
 	expandedSections: [],
 	setSelectedTreeNode: (node: TreeNodeId | null) =>
@@ -177,44 +219,52 @@ export function useDashboardState(): DashboardState & DashboardSetters {
 		selectedKinds,
 		setSelectedKinds,
 		toggleKind,
-		selectedResource,
-		setSelectedResource,
-		resetResource,
+		selection,
+		select,
 		argoDetected,
-		selectedArgoApp,
 		selectedArgoAppFilter,
 		setArgoDetected,
-		setSelectedArgoApp,
 		setSelectedArgoAppFilter,
+		resourceInitialSearch,
+		resourceHealthFilter,
 		viewMode,
 		setViewMode,
+		openView,
+		setResourceInitialSearch,
 		selectedTreeNode,
 		expandedSections,
 		setSelectedTreeNode,
 		setExpandedSections,
 		toggleExpandedSection,
-	} = useNonPersistedStore();
+	} = useDashboardStore();
 
 	return {
 		clusterContext,
 		selectedNamespaces,
 		selectedKinds,
-		selectedResource,
+		selection,
+		selectedResource:
+			selection?.type === "resource" ? selection.resource : null,
 		argoDetected,
-		selectedArgoApp,
+		selectedArgoApp: selection?.type === "argo" ? selection.app : null,
+		selectedFluxResource:
+			selection?.type === "flux" ? selection.resource : null,
+		selectedHelmRelease: selection?.type === "helm" ? selection.release : null,
 		selectedArgoAppFilter,
+		resourceInitialSearch,
+		resourceHealthFilter,
 		viewMode,
 		setClusterContext,
 		setSelectedNamespaces,
 		toggleNamespace,
 		setSelectedKinds,
 		toggleKind,
-		setSelectedResource,
-		resetResource,
+		select,
 		setArgoDetected,
-		setSelectedArgoApp,
 		setSelectedArgoAppFilter,
 		setViewMode,
+		openView,
+		setResourceInitialSearch,
 		selectedTreeNode,
 		expandedSections,
 		setSelectedTreeNode,

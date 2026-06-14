@@ -40,11 +40,7 @@ import {
 	type ResourceSummary,
 } from "./lib/types";
 import { CommandPalette } from "./features/command-palette";
-import {
-	argoApplicationGitOpsFilterKey,
-	argoApplicationResourceNamespaces,
-	type HealthFilter,
-} from "./features/resources/helpers";
+import { argoApplicationResourceNamespaces } from "./features/resources/helpers";
 import {
 	createWorkspaceScope,
 	makeWorkspaceShortcuts,
@@ -75,17 +71,21 @@ function App() {
 		selectedKinds,
 		selectedResource,
 		selectedArgoApp,
+		selectedFluxResource,
+		selectedHelmRelease,
 		selectedArgoAppFilter,
+		resourceInitialSearch,
+		resourceHealthFilter,
 		viewMode,
 		setClusterContext,
 		setSelectedNamespaces,
 		setSelectedKinds,
-		setSelectedResource,
-		resetResource,
+		select,
 		setArgoDetected,
-		setSelectedArgoApp,
 		setSelectedArgoAppFilter,
 		setViewMode,
+		openView,
+		setResourceInitialSearch,
 		selectedTreeNode,
 		expandedSections,
 		setSelectedTreeNode,
@@ -105,17 +105,10 @@ function App() {
 	const kubeconfigSourceKey = useSettingsState(
 		(state) => state.kubeconfigSourceKey,
 	);
-	const [resourceHealthFilter, setResourceHealthFilter] =
-		useState<HealthFilter>("all");
-	const [selectedHelmRelease, setSelectedHelmRelease] =
-		useState<HelmReleaseSummary | null>(null);
-	const [selectedFluxResource, setSelectedFluxResource] =
-		useState<FluxResourceSummary | null>(null);
 	const [targetHelmRelease, setTargetHelmRelease] = useState<{
 		name: string;
 		namespace?: string;
 	} | null>(null);
-	const [resourceInitialSearch, setResourceInitialSearch] = useState("");
 	const [
 		dismissedPortForwardRestoreWorkspaceId,
 		setDismissedPortForwardRestoreWorkspaceId,
@@ -149,50 +142,30 @@ function App() {
 			setClusterContext(workspace.scope.clusterContext);
 			setSelectedNamespaces(workspace.scope.namespaces);
 			setSelectedKinds(workspace.scope.kinds);
-			setSelectedResource(null);
-			setSelectedArgoApp(null);
-			setSelectedFluxResource(null);
-			setSelectedHelmRelease(null);
-			setResourceInitialSearch("");
-			setSelectedArgoAppFilter(
-				workspace.scope.gitOpsFilter ?? workspace.scope.argoAppFilter,
-			);
-			setSelectedTreeNode(null);
-			setResourceHealthFilter("all");
 			setDismissedPortForwardRestoreWorkspaceId(null);
 			autoStartedSavedPortForwardWorkspaceIdsRef.current.delete(workspace.id);
-			setViewMode("overview");
+			openView("overview", {
+				treeNode: null,
+				argoAppFilter:
+					workspace.scope.gitOpsFilter ?? workspace.scope.argoAppFilter,
+			});
 		},
 		[
 			setActiveWorkspace,
 			setClusterContext,
 			setSelectedNamespaces,
 			setSelectedKinds,
-			setSelectedResource,
-			setSelectedArgoApp,
-			setSelectedFluxResource,
-			setSelectedArgoAppFilter,
-			setSelectedTreeNode,
-			setViewMode,
+			openView,
 		],
 	);
 
 	const handleClusterChange = (ctx: string) => {
 		diagnosticLog("app.cluster.change", { cluster: ctx });
 		setClusterContext(ctx);
-		// Clear inspector state on context switch
-		setSelectedResource(null);
-		setSelectedArgoApp(null);
-		setSelectedFluxResource(null);
-		setSelectedHelmRelease(null);
-		setResourceInitialSearch("");
-		setSelectedArgoAppFilter("");
 		setSelectedNamespaces([]);
 		setSelectedKinds(activeWorkspace?.scope.kinds ?? []);
 		setArgoDetected(false);
-		setSelectedTreeNode(null);
-		setResourceHealthFilter("all");
-		setViewMode("resources");
+		openView("resources", { treeNode: null });
 		if (activeWorkspace) {
 			const scope = createWorkspaceScope({
 				name: activeWorkspace.name,
@@ -223,13 +196,9 @@ function App() {
 		setSelectedKinds,
 		setSelectedArgoAppFilter,
 		setSelectedTreeNode,
-		setSelectedArgoApp,
-		setSelectedFluxResource,
-		setSelectedResource,
 		setViewMode,
-		setSelectedHelmRelease,
+		openView,
 		setResourceInitialSearch,
-		setResourceHealthFilter,
 		setDismissedPortForwardRestoreWorkspaceId,
 	});
 	const {
@@ -245,8 +214,7 @@ function App() {
 
 	const handlePaletteResourceSelect = (resource: ResourceSummary) => {
 		handleOpenResources(resource.namespace ?? undefined);
-		setSelectedResource(resource);
-		setSelectedFluxResource(null);
+		select({ type: "resource", resource });
 	};
 
 	const selectedResourceKey = selectedResource
@@ -260,8 +228,7 @@ function App() {
 			name: app.name,
 			namespace: app.namespace ?? "",
 		});
-		setSelectedArgoApp(app);
-		setSelectedFluxResource(null);
+		select({ type: "argo", app });
 	};
 
 	const handleOpenArgoApplicationResources = (
@@ -274,20 +241,13 @@ function App() {
 		});
 		setSelectedNamespaces(argoApplicationResourceNamespaces(app));
 		setSelectedKinds([...SUPPORTED_KINDS]);
-		setSelectedArgoAppFilter("");
-		setSelectedTreeNode(null);
-		setSelectedArgoApp(app);
-		setSelectedFluxResource(null);
-		setSelectedHelmRelease(null);
-		setSelectedResource(null);
-		setResourceInitialSearch("");
-		setResourceHealthFilter("all");
-		setViewMode("resources");
+		select({ type: "argo", app });
+		openView("resources", { treeNode: null, preserveSelection: true });
 	};
 
 	const handleArgoClose = () => {
 		diagnosticLog("app.argo.close");
-		setSelectedArgoApp(null);
+		select(null);
 	};
 
 	const handleFluxResourceSelect = (resource: FluxResourceSummary) => {
@@ -296,15 +256,12 @@ function App() {
 			namespace: resource.namespace ?? "",
 			kind: resource.resourceKind.kind,
 		});
-		setSelectedFluxResource(resource);
-		setSelectedArgoApp(null);
-		setSelectedHelmRelease(null);
-		setSelectedResource(null);
+		select({ type: "flux", resource });
 	};
 
 	const handleFluxClose = () => {
 		diagnosticLog("app.flux.close");
-		setSelectedFluxResource(null);
+		select(null);
 	};
 
 	const handleHelmReleaseSelect = (release: HelmReleaseSummary) => {
@@ -312,13 +269,12 @@ function App() {
 			name: release.name,
 			namespace: release.namespace,
 		});
-		setSelectedHelmRelease(release);
-		setSelectedFluxResource(null);
+		select({ type: "helm", release });
 	};
 
 	const handleHelmClose = () => {
 		diagnosticLog("app.helm.close");
-		setSelectedHelmRelease(null);
+		select(null);
 	};
 
 	const handleOpenHelmResources = (release: HelmReleaseSummary) => {
@@ -328,14 +284,10 @@ function App() {
 		});
 		setSelectedNamespaces([release.namespace]);
 		setSelectedKinds([...SUPPORTED_KINDS]);
-		setSelectedArgoAppFilter("");
-		setSelectedTreeNode(null);
-		setSelectedArgoApp(null);
-		setSelectedFluxResource(null);
-		setSelectedResource(null);
-		setResourceInitialSearch(release.name);
-		setResourceHealthFilter("all");
-		setViewMode("resources");
+		openView("resources", {
+			treeNode: null,
+			initialSearch: release.name,
+		});
 	};
 
 	const handleOpenHelmReleaseFromResource = (
@@ -350,10 +302,7 @@ function App() {
 			name: releaseName,
 			namespace: namespace ?? undefined,
 		});
-		setSelectedHelmRelease(null);
-		setSelectedFluxResource(null);
-		setSelectedResource(null);
-		setViewMode("helm");
+		openView("helm");
 	};
 
 	const handleTargetHelmReleaseResolved = useCallback(() => {
@@ -363,16 +312,12 @@ function App() {
 	const handleResourceNamespacesChange = useCallback(
 		(namespaces: string[]) => {
 			setSelectedTreeNode(null);
-			setSelectedResource(null);
-			setSelectedFluxResource(null);
-			setSelectedArgoApp(null);
+			select(null);
 			setSelectedNamespaces(namespaces);
 		},
 		[
 			setSelectedTreeNode,
-			setSelectedResource,
-			setSelectedFluxResource,
-			setSelectedArgoApp,
+			select,
 			setSelectedNamespaces,
 		],
 	);
@@ -380,16 +325,12 @@ function App() {
 	const handleResourceKindsChange = useCallback(
 		(kinds: ResourceKindSelection[]) => {
 			setSelectedTreeNode(null);
-			setSelectedResource(null);
-			setSelectedFluxResource(null);
-			setSelectedArgoApp(null);
+			select(null);
 			setSelectedKinds(kinds);
 		},
 		[
 			setSelectedTreeNode,
-			setSelectedResource,
-			setSelectedFluxResource,
-			setSelectedArgoApp,
+			select,
 			setSelectedKinds,
 		],
 	);
@@ -411,19 +352,7 @@ function App() {
 	);
 
 	const handleResourceSelect = (resource: ResourceSummary) => {
-		setSelectedResource(resource);
-		if (
-			!selectedArgoApp ||
-			"status" in selectedArgoApp ||
-			(selectedArgoAppFilter !== "" &&
-				selectedArgoAppFilter !==
-					argoApplicationGitOpsFilterKey(selectedArgoApp.name) &&
-				selectedArgoAppFilter !== selectedArgoApp.name)
-		) {
-			setSelectedArgoApp(null);
-		}
-		setSelectedFluxResource(null);
-		setSelectedHelmRelease(null);
+		select({ type: "resource", resource });
 	};
 
 	useArgoDetection(clusterContext, setArgoDetected);
@@ -635,7 +564,7 @@ function App() {
 				onHelmClose={handleHelmClose}
 				onArgoClose={handleArgoClose}
 				onFluxClose={handleFluxClose}
-				onResourceClose={resetResource}
+				onResourceClose={() => select(null)}
 				onOpenHelmResources={handleOpenHelmResources}
 				onOpenHelmReleaseFromResource={handleOpenHelmReleaseFromResource}
 			/>

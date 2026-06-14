@@ -64,11 +64,11 @@ describe("navigation scope", () => {
 		const handlerEnd = source.indexOf("const handleOpenArgo =", handlerStart);
 		const handlerSource = source.slice(handlerStart, handlerEnd);
 
-		expect(handlerSource).toContain("setSelectedTreeNode(null)");
 		expect(handlerSource).toContain("setSelectedKinds(workspace.scope.kinds)");
-		expect(handlerSource).toContain("setViewMode(\"resources\")");
-		expect(handlerSource.indexOf("setSelectedTreeNode(null)")).toBeLessThan(
-			handlerSource.indexOf("setViewMode(\"resources\")"),
+		expect(handlerSource).toContain('openView("resources"');
+		expect(handlerSource).toContain("treeNode: null");
+		expect(handlerSource.indexOf("setSelectedKinds(workspace.scope.kinds)")).toBeLessThan(
+			handlerSource.indexOf('openView("resources"'),
 		);
 	});
 
