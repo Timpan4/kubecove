@@ -443,13 +443,12 @@ pub async fn resource_metrics_from(
     let mut warnings = Vec::new();
     let mut had_unavailable_error = false;
 
-    if pod_result
-        .failures.contains(&MetricsListStatus::Forbidden)
-    {
+    if pod_result.failures.contains(&MetricsListStatus::Forbidden) {
         warnings.push("Pod metrics forbidden".to_string());
     }
     if pod_result
-        .failures.contains(&MetricsListStatus::Unavailable)
+        .failures
+        .contains(&MetricsListStatus::Unavailable)
     {
         had_unavailable_error = true;
         warnings.push("Pod metrics unavailable".to_string());

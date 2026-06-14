@@ -52,8 +52,7 @@ impl<T: Clone> Cache<T> {
 
 type ClientEntry = (Client, String);
 
-static CLIENTS: LazyLock<RwLock<Cache<ClientEntry>>> =
-    LazyLock::new(|| RwLock::new(Cache::new()));
+static CLIENTS: LazyLock<RwLock<Cache<ClientEntry>>> = LazyLock::new(|| RwLock::new(Cache::new()));
 
 pub(crate) fn lookup_client(
     source_key: &str,

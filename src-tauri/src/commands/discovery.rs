@@ -60,9 +60,7 @@ pub async fn list_resource_kinds(
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Vec<DiscoveredResourceKind>, AppError> {
     let started = Instant::now();
-    eprintln!(
-        "[kubecove:backend] list_resource_kinds start context={cluster_context}"
-    );
+    eprintln!("[kubecove:backend] list_resource_kinds start context={cluster_context}");
     let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let result = live_store
         .resource_kinds(source_key, cluster_context.clone(), {

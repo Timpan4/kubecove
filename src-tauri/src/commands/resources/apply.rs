@@ -564,8 +564,10 @@ fn builtin_api_resource(kind: &str, api_version: &str) -> Result<(ApiResource, b
 }
 
 fn split_api_version(api_version: &str) -> (String, String) {
-    api_version
-        .split_once('/').map_or_else(|| (String::new(), api_version.to_string()), |(group, version)| (group.to_string(), version.to_string()))
+    api_version.split_once('/').map_or_else(
+        || (String::new(), api_version.to_string()),
+        |(group, version)| (group.to_string(), version.to_string()),
+    )
 }
 
 fn identity_error(field: &str, expected: &str, actual: &str) -> AppError {
