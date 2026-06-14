@@ -12,13 +12,14 @@
     "tauri": "tauri",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
+    "lint": "biome lint .",
     "doctor": "react-doctor .",
     "doctor:ci": "react-doctor . --blocking error --annotations",
     "doctor:score": "react-doctor . --score --blocking none",
     "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "rust:check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "rust:lint": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
-    "check": "bun run typecheck && bun test && bun run rust:test && bun run rust:check && bun run rust:lint",
+    "check": "bun run typecheck && bun run lint && bun test && bun run rust:test && bun run rust:check && bun run rust:lint",
     "version:bump": "bun scripts/bump-version.ts",
     "release:prepare": "bun scripts/prepare-release-pr.ts",
     "release:check": "bun scripts/release-beta.ts check",
@@ -55,6 +56,7 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.0",
     "@tailwindcss/vite": "4.3.0",
     "@tauri-apps/cli": "2.11.2",
     "@types/react": "19.2.17",
