@@ -76,6 +76,13 @@ async fn wait_until_port_closes(port: u16) -> bool {
 }
 
 #[test]
+fn should_retry_accept_allows_up_to_threshold() {
+    assert!(should_retry_accept(1));
+    assert!(should_retry_accept(4));
+    assert!(!should_retry_accept(5));
+}
+
+#[test]
 fn validates_required_pod_target_and_ports() {
     assert!(validate_request(&valid_request()).is_ok());
 
@@ -152,6 +159,33 @@ fn registry_lists_marks_and_stops_sessions() {
     assert!(registry.stop("pf-1"));
     assert!(!registry.stop("pf-1"));
     assert!(registry.list().is_empty());
+}
+
+#[test]
+fn accept_error_status_keeps_session_listed() {
+    let registry = PortForwardRegistry::default();
+    registry.insert_summary_for_test(test_summary("pf-1", 18080));
+
+    registry.mark_status(
+        "pf-1",
+        "listening",
+        Some("accept retry 1: connection aborted".to_string()),
+    );
+    let sessions = registry.list();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].status, "listening");
+    assert_eq!(
+        sessions[0].last_error.as_deref(),
+        Some("accept retry 1: connection aborted")
+    );
+
+    registry.mark_error("pf-1", "too many accept failures".to_string());
+    let session = registry.list().pop().expect("session");
+    assert_eq!(session.status, "error");
+    assert_eq!(
+        session.last_error.as_deref(),
+        Some("too many accept failures")
+    );
 }
 
 #[test]
