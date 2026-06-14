@@ -22,6 +22,8 @@ mod service;
 
 const LOCAL_ADDRESS: &str = "127.0.0.1";
 const MIN_USER_LOCAL_PORT: u16 = 1024;
+const MAX_CONSECUTIVE_ACCEPT_FAILURES: u32 = 5;
+const ACCEPT_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(super) enum PortForwardTargetKind {
@@ -250,6 +252,10 @@ fn target_text(value: Option<&String>) -> Option<String> {
         .filter(|text| !text.is_empty())
 }
 
+fn should_retry_accept(consecutive_failures: u32) -> bool {
+    consecutive_failures < MAX_CONSECUTIVE_ACCEPT_FAILURES
+}
+
 fn validate_target_kind(request: &PortForwardRequest) -> Result<PortForwardTargetKind, AppError> {
     let target_kind =
         target_text(request.target_kind.as_ref()).unwrap_or_else(|| "Pod".to_string());
@@ -440,14 +446,28 @@ async fn run_port_forward_session(
     client: Client,
 ) {
     let mut connections = JoinSet::new();
+    let mut consecutive_accept_failures: u32 = 0;
     loop {
         tokio::select! {
             accept_result = listener.accept() => {
                 let (local_stream, _) = match accept_result {
-                    Ok(accepted) => accepted,
+                    Ok(accepted) => {
+                        consecutive_accept_failures = 0;
+                        accepted
+                    }
                     Err(err) => {
-                        registry.mark_error(&session_id, err.to_string());
-                        break;
+                        consecutive_accept_failures += 1;
+                        if !should_retry_accept(consecutive_accept_failures) {
+                            registry.mark_error(&session_id, err.to_string());
+                            break;
+                        }
+                        registry.mark_status(
+                            &session_id,
+                            "listening",
+                            Some(format!("accept retry {consecutive_accept_failures}: {err}")),
+                        );
+                        tokio::time::sleep(ACCEPT_RETRY_DELAY).await;
+                        continue;
                     }
                 };
                 let connection_request = request.clone();
