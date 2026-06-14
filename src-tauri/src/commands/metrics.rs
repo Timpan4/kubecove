@@ -3,6 +3,7 @@ use crate::models::{
     AppError, ResourceMetricSummary, ResourceMetricsAvailability,
     ResourceMetricsAvailabilityStatus, ResourceMetricsSummary,
 };
+use futures_util::{stream, StreamExt};
 use k8s_openapi::api::apps::v1::ReplicaSet;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
@@ -25,6 +26,8 @@ struct MetricsObjectList {
     objects: Vec<DynamicObject>,
     failures: Vec<MetricsListStatus>,
 }
+
+const MAX_NAMESPACE_CONCURRENCY: usize = 16;
 
 fn metrics_api_resource(kind: &str, plural: &str) -> ApiResource {
     ApiResource {
@@ -189,9 +192,17 @@ async fn list_pod_metric_objects(client: Client, namespaces: &[String]) -> Metri
         }
         return result;
     }
-    for namespace in namespaces {
-        let api: Api<DynamicObject> = Api::namespaced_with(client.clone(), namespace, &resource);
-        match api.list(&list_params()).await {
+    let outcomes = stream::iter(namespaces.to_vec())
+        .map(|namespace| {
+            let api: Api<DynamicObject> =
+                Api::namespaced_with(client.clone(), &namespace, &resource);
+            async move { api.list(&list_params()).await }
+        })
+        .buffered(MAX_NAMESPACE_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+    for outcome in outcomes {
+        match outcome {
             Ok(list) => result.objects.extend(list.items),
             Err(error) => result.failures.push(classify_metrics_error(&error)),
         }
@@ -218,11 +229,17 @@ async fn list_pods(client: Client, namespaces: &[String]) -> Result<Vec<Pod>, Ap
             .map(|list| list.items)
             .map_err(|e| AppError::kube(e.to_string()));
     }
-    for namespace in namespaces {
-        let api: Api<Pod> = Api::namespaced(client.clone(), namespace);
+    let outcomes = stream::iter(namespaces.to_vec())
+        .map(|namespace| {
+            let api: Api<Pod> = Api::namespaced(client.clone(), &namespace);
+            async move { api.list(&list_params()).await }
+        })
+        .buffered(MAX_NAMESPACE_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+    for outcome in outcomes {
         out.extend(
-            api.list(&list_params())
-                .await
+            outcome
                 .map_err(|e| AppError::kube(e.to_string()))?
                 .items,
         );
@@ -243,11 +260,17 @@ async fn list_replicasets(
             .map(|list| list.items)
             .map_err(|e| AppError::kube(e.to_string()));
     }
-    for namespace in namespaces {
-        let api: Api<ReplicaSet> = Api::namespaced(client.clone(), namespace);
+    let outcomes = stream::iter(namespaces.to_vec())
+        .map(|namespace| {
+            let api: Api<ReplicaSet> = Api::namespaced(client.clone(), &namespace);
+            async move { api.list(&list_params()).await }
+        })
+        .buffered(MAX_NAMESPACE_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+    for outcome in outcomes {
         out.extend(
-            api.list(&list_params())
-                .await
+            outcome
                 .map_err(|e| AppError::kube(e.to_string()))?
                 .items,
         );
