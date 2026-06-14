@@ -15,7 +15,6 @@ writes go through `but` (see AGENTS.md "GitButler Workflow").
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 002 | Error boundaries + stop retrying deterministic query errors | P1 | S | — | DONE |
 | 003 | Frontend lint baseline with Biome | P2 | S | — | TODO |
 | 004 | Inspector selection as a discriminated union + atomic `openView` | P2 | M | — | TODO |
 | 005 | Port-forward sessions survive transient accept errors | P2 | S | — | TODO |
@@ -31,17 +30,14 @@ REJECTED (with one-line rationale).
   loop; 005 is the behavior change, 007 refactors the loop signature and
   locks the behavior in with tests. Executing 007 first would test the
   pre-005 behavior and conflict textually.
-- **002, 003, 005, 006 are mutually independent** and touch disjoint
+- **003, 005, 006 are mutually independent** and touch disjoint
   files; they can run in parallel worktrees.
-- **004 vs 002**: both edit `src/App.tsx` (002 adds ~6 wrapper lines, 004
-  restructures state). They don't logically conflict, but run them
-  sequentially (either order) to avoid a textual merge in `App.tsx`.
 - **004 before roadmap feature work**: the maintainer's `feature-plans.md`
   (#97 guarded operations, F2 multi-pod logs) assumes the `openView`
   action exists.
 - **003 ordering note**: landing lint *after* other plans means their new
   files get linted on the next run; landing it first means executors of
-  002/004 must keep `bun run lint` green too. Either is fine; the plan's
+  004 must keep `bun run lint` green too. Either is fine; the plan's
   `check` script change makes the gate explicit.
 
 ## Findings considered and rejected
