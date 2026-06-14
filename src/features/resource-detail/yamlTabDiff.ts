@@ -80,7 +80,7 @@ export function findYamlFieldRange(
 	const lines = value.split("\n");
 	let offset = 0;
 	const keyPattern = new RegExp(
-		`(?:^|\s)(?:"${escapeRegExp(key)}"|${escapeRegExp(key)})\s*:`,
+		`(?:^|\\s)(?:"${escapeRegExp(key)}"|${escapeRegExp(key)})\\s*:`,
 	);
 	for (const line of lines) {
 		const match = keyPattern.exec(line);

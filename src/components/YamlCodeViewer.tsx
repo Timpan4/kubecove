@@ -8,7 +8,7 @@ import {
 import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
 import { tags } from "@lezer/highlight";
 import { useEffect, useMemo, useState } from "react";
-import { type YAMLError } from "yaml";
+import type { YAMLError } from "yaml";
 import { parseYamlErrors } from "@/lib/yamlFormat";
 import { loadYamlCodeViewerExtensions } from "@/components/yamlCodeViewerExtensions";
 

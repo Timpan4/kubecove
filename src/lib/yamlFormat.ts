@@ -58,7 +58,7 @@ function formatKyamlObject(value: Record<string, unknown>, indent: number): stri
 }
 
 function formatKyamlKey(key: string): string {
-	return /^[A-Za-z_][A-Za-z0-9_.\/-]*$/.test(key)
+	return /^[A-Za-z_][A-Za-z0-9_./-]*$/.test(key)
 		? key
 		: JSON.stringify(key);
 }

@@ -22,10 +22,10 @@ import {
 	YamlEncodingControl,
 	YamlViewModeControl,
 } from "@/components/YamlModeControl";
-import {
-	type HelmReleaseSummary,
-	type YamlEncoding,
-	type YamlViewMode,
+import type {
+	HelmReleaseSummary,
+	YamlEncoding,
+	YamlViewMode,
 } from "@/lib/types";
 import {
 	DetailErrorState,

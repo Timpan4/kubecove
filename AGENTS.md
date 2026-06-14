@@ -111,7 +111,7 @@ Write an ADR before changing:
 
 - Enable repo hooks with `git config core.hooksPath .githooks`.
 - Run the relevant checks before claiming work is complete.
-- Frontend changes should pass `bun run typecheck`; run `bun run lint` once linting exists.
+- Frontend changes should pass `bun run typecheck` and `bun run lint` (Biome).
 - Rust backend changes should pass `cargo check --manifest-path src-tauri/Cargo.toml`.
 - If a check cannot run, state the exact blocker and what remains unverified.
 - When completing scoped work, check off the corresponding items in `docs/milestones.md`.
