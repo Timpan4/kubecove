@@ -172,6 +172,7 @@ describe("inspector selection store", () => {
 	test("view-only settings transitions preserve selection and resource filters", () => {
 		useDashboardStore.setState({
 			selection: { type: "resource", resource: resource() },
+			selectedArgoAppFilter: "shop",
 			resourceInitialSearch: "api",
 			resourceHealthFilter: "attention",
 		});
@@ -180,6 +181,7 @@ describe("inspector selection store", () => {
 		useDashboardStore.getState().setViewMode("resources");
 
 		expect(useDashboardStore.getState().selection?.type).toBe("resource");
+		expect(useDashboardStore.getState().selectedArgoAppFilter).toBe("shop");
 		expect(useDashboardStore.getState().resourceInitialSearch).toBe("api");
 		expect(useDashboardStore.getState().resourceHealthFilter).toBe("attention");
 	});

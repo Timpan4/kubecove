@@ -180,7 +180,9 @@ export const useDashboardStore = create<NonPersistedSlice>()((set) => ({
 			resourceHealthFilter: options?.preserveResourceFilters
 				? state.resourceHealthFilter
 				: options?.healthFilter ?? "all",
-			selectedArgoAppFilter: options?.argoAppFilter ?? "",
+			selectedArgoAppFilter: options?.preserveResourceFilters
+				? state.selectedArgoAppFilter
+				: options?.argoAppFilter ?? "",
 			...(options?.treeNode !== undefined
 				? { selectedTreeNode: options.treeNode }
 				: {}),

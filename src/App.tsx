@@ -554,20 +554,20 @@ function App() {
 
 	const detailPanel = hasAppDetailPanel(viewMode, selectedHelmRelease !== null, selectedArgoApp !== null || selectedFluxResource !== null, selectedResource !== null) ? (
 		<ErrorBoundary label="detail panel">
-				<AppDetailPanel
+			<AppDetailPanel
 				viewMode={viewMode}
 				selectedHelmRelease={selectedHelmRelease}
 				selectedArgoApp={selectedArgoApp}
 				selectedFluxResource={selectedFluxResource}
 				selectedResource={selectedResource}
 				selectedResourceKey={selectedResourceKey}
-					onHelmClose={handleHelmClose}
-					onArgoClose={handleArgoClose}
-					onFluxClose={handleFluxClose}
-					onResourceClose={() => select(null)}
-					onOpenHelmResources={handleOpenHelmResources}
-					onOpenHelmReleaseFromResource={handleOpenHelmReleaseFromResource}
-				/>
+				onHelmClose={handleHelmClose}
+				onArgoClose={handleArgoClose}
+				onFluxClose={handleFluxClose}
+				onResourceClose={() => select(null)}
+				onOpenHelmResources={handleOpenHelmResources}
+				onOpenHelmReleaseFromResource={handleOpenHelmReleaseFromResource}
+			/>
 		</ErrorBoundary>
 	) : null;
 
