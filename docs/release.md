@@ -70,9 +70,9 @@ The release workflow also verifies macOS, Windows, and Linux installer assets, u
 
 ## Manual Smoke Test
 
-Manual Tauri path:
+Manual release path:
 
-1. Start the desktop app with `bun run tauri dev`.
+1. Install and start the release artifact for the target platform. Use `bun run tauri dev` only for development smoke before a release PR.
 2. Confirm the workspace launcher lists local kube contexts without exposing raw kubeconfig contents.
 3. Select a readable context and confirm namespaces load.
 4. Open a saved or newly created workspace.
@@ -81,6 +81,24 @@ Manual Tauri path:
 7. For a selected Pod, confirm guarded exec requires explicit target and command confirmation, starts, streams output, accepts stdin, resizes, and stops.
 8. For a non-Secret selected resource, confirm YAML apply requires the Apply-friendly view, runs dry-run, shows a diff, and requires explicit final confirmation.
 9. Check Argo CD and Helm sections when the cluster provides matching metadata.
+
+Latency smoke:
+
+1. Open Settings -> Diagnostics.
+2. Enable diagnostics, clear the trace, and return to the app.
+3. Run the smoke path above in the installed app.
+4. Return to Settings -> Diagnostics and copy the redacted latency report.
+5. Attach or paste the report into the release smoke notes. Treat it as a recorded artifact for now; open an issue for obvious stalls or regressions instead of using a hard publish budget.
+
+Local frontend comparison:
+
+```sh
+bun run perf:frontend
+bun run perf:resource-scope
+bun run perf:react-compiler
+```
+
+`perf:react-compiler` builds once with `KUBECOVE_REACT_COMPILER=on` and once with `KUBECOVE_REACT_COMPILER=off`. Release builds keep React Compiler disabled for now unless a maintainer explicitly opts in with `KUBECOVE_REACT_COMPILER=on`.
 
 Windows smoke note: foreground the Tauri window before click-through. The WebView appears as an opaque `WRY_WEBVIEW` pane to UI Automation, so treat UIA as launch/foreground help rather than full interaction automation.
 

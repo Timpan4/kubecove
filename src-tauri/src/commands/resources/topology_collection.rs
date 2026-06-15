@@ -6,6 +6,7 @@ use super::{
 };
 use crate::commands::helpers::{fmt_ready, list_params, update_resource_health};
 use crate::models::AppError;
+use futures_util::{stream, StreamExt};
 use k8s_openapi::api::{
     apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet},
     batch::v1::{CronJob, Job},
@@ -16,6 +17,8 @@ use k8s_openapi::api::{
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use k8s_openapi::NamespaceResourceScope;
 use kube::{api::Api, Client, Error as KubeError};
+
+const MAX_TOPOLOGY_LIST_CONCURRENCY: usize = 16;
 
 pub(super) struct TopologyInputCollection {
     pub resources: Vec<TopologyInputResource>,
@@ -88,12 +91,25 @@ where
         }
         return Ok(out);
     }
-    for namespace in namespaces {
-        let api: Api<T> = Api::namespaced(client.clone(), namespace);
-        match api.list(&list_params()).await {
-            Ok(rows) => out.extend(rows.items),
+    let outcomes = stream::iter(namespaces.to_vec())
+        .map(|namespace| {
+            let api: Api<T> = Api::namespaced(client.clone(), &namespace);
+            async move {
+                (
+                    namespace,
+                    api.list(&list_params()).await.map(|rows| rows.items),
+                )
+            }
+        })
+        .buffered(MAX_TOPOLOGY_LIST_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+
+    for (namespace, outcome) in outcomes {
+        match outcome {
+            Ok(rows) => out.extend(rows),
             Err(error) if is_optional_topology_list_error(&error) => {
-                push_topology_list_warning::<T>(warnings, Some(namespace), &error);
+                push_topology_list_warning::<T>(warnings, Some(&namespace), &error);
             }
             Err(error) => return Err(AppError::kube(error.to_string())),
         }

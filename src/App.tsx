@@ -6,10 +6,12 @@ import { SidebarTree } from "./components/SidebarTree";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppMainContent } from "./app/AppMainContent";
 import { AppTopBar } from "./app/AppTopBar";
+import { ForegroundLoadingBar } from "./app/ForegroundLoadingBar";
 import { AppDetailPanel } from "./app/AppDetailPanel";
 import { AppUsageFooter } from "./app/AppUsageFooter";
 import { DetailPanelFrame } from "./app/DetailPanelFrame";
 import { LauncherShell } from "./app/LauncherShell";
+import { useDiagnosticsSync } from "./app/useDiagnosticsSync";
 import { useArgoDetection } from "./app/useArgoDetection";
 import { useAppNavigation } from "./app/useAppNavigation";
 import { useAppUpdateLaunchCheck } from "./features/app-updates/useAppUpdateLaunchCheck";
@@ -27,6 +29,7 @@ import {
 } from "@/components/ui/sidebar";
 import { emptyStateMessage, resolveTreeScope } from "./lib/tree-nav";
 import { diagnosticLog } from "./lib/diagnostics";
+import { withForegroundLoad } from "./lib/foreground-loading";
 import {
 	createTauriClient,
 	getKubeconfigSources,
@@ -135,18 +138,32 @@ function App() {
 	const savedPortForwardActions = useSavedPortForwardActions(activeWorkspace);
 	const appRenderCountRef = useRef(0);
 	useAppUpdateLaunchCheck();
+	useDiagnosticsSync();
+
+	useEffect(() => {
+		diagnosticLog("app.launch.ready", { ms: Math.round(performance.now()) });
+	}, []);
 
 	useEffect(() => {
 		const client = createTauriClient();
-		void getKubeconfigSources(client).then(setKubeconfigSources).catch((error) => {
-			diagnosticLog("kubeconfig.sources.load.error", {
-				error: error instanceof Error ? error.message : String(error),
+		void withForegroundLoad("kubeconfig-sources", () =>
+			getKubeconfigSources(client),
+		)
+			.then(setKubeconfigSources)
+			.catch((error) => {
+				diagnosticLog("kubeconfig.sources.load.error", {
+					error: error instanceof Error ? error.message : String(error),
+				});
 			});
-		});
 	}, [setKubeconfigSources]);
 
 	const applyWorkspace = useCallback(
 		(workspace: SavedWorkspace) => {
+			diagnosticLog("app.workspace.restore", {
+				cluster: workspace.scope.clusterContext,
+				namespaces: workspace.scope.namespaces.length,
+				kinds: workspace.scope.kinds.length,
+			});
 			setActiveWorkspace(workspace.id);
 			setClusterContext(workspace.scope.clusterContext);
 			setSelectedNamespaces(workspace.scope.namespaces);
@@ -602,6 +619,7 @@ function App() {
 				onOpenSettings={handleOpenSettings}
 				onOpenPortForwards={handleOpenPortForwards}
 			/>
+			<ForegroundLoadingBar />
 
 			<SidebarProvider
 				defaultOpen

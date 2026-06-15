@@ -3,9 +3,11 @@ use super::{
     topology_network::build_network_flow_topology,
 };
 use crate::commands::{
+    diagnostic_field,
     helpers::{base_resource_summary, extract_owner_ref_summary, resource_age},
     kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-    ClusterLiveStore,
+    record_backend_cancelled, record_backend_error, record_backend_success,
+    BackendCancellationRegistry, ClusterLiveStore,
 };
 use crate::models::{
     AppError, OwnerReferenceSummary, ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode,
@@ -326,10 +328,14 @@ pub async fn list_resource_topology(
     namespaces: Vec<String>,
     mode: Option<String>,
     kubeconfig_env_var: Option<String>,
+    request_id: Option<String>,
+    cancel_scope: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
+    cancellations: State<'_, BackendCancellationRegistry>,
 ) -> Result<ResourceTopology, AppError> {
     let mode = TopologyMode::parse(mode)?;
     let started = Instant::now();
+    let namespace_count = namespaces.len();
     eprintln!(
         "[kubecove:backend] list_resource_topology start context={} namespaces={} mode={}",
         cluster_context,
@@ -337,8 +343,9 @@ pub async fn list_resource_topology(
         mode.as_str()
     );
     let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
-    let result = live_store
-        .topology(
+    let cancellation = cancellations.register(cancel_scope, request_id);
+    let result = cancellation
+        .run(live_store.topology(
             source_key,
             cluster_context.clone(),
             namespaces.clone(),
@@ -357,28 +364,54 @@ pub async fn list_resource_topology(
                     )
                 }
             },
-        )
+        ))
         .await;
     match &result {
-        Ok(topology) => eprintln!(
-            "[kubecove:backend] list_resource_topology done context={} namespaces={} mode={} nodes={} edges={} warnings={} ms={}",
-            cluster_context,
-            namespaces.join(","),
-            mode.as_str(),
-            topology.nodes.len(),
-            topology.edges.len(),
-            topology.warnings.len(),
-            started.elapsed().as_millis()
-        ),
-        Err(err) => eprintln!(
-            "[kubecove:backend] list_resource_topology error context={} namespaces={} mode={} error_kind={} message={} ms={}",
-            cluster_context,
-            namespaces.join(","),
-            mode.as_str(),
-            err.kind,
-            err.message,
-            started.elapsed().as_millis()
-        ),
+        Ok(topology) => {
+            eprintln!(
+                "[kubecove:backend] list_resource_topology done context={} namespaces={} mode={} nodes={} edges={} warnings={} ms={}",
+                cluster_context,
+                namespaces.join(","),
+                mode.as_str(),
+                topology.nodes.len(),
+                topology.edges.len(),
+                topology.warnings.len(),
+                started.elapsed().as_millis()
+            );
+            record_backend_success(
+                "list_resource_topology",
+                started,
+                vec![
+                    diagnostic_field("mode", mode.as_str()),
+                    diagnostic_field("namespaces", namespace_count),
+                    diagnostic_field("nodes", topology.nodes.len()),
+                    diagnostic_field("edges", topology.edges.len()),
+                    diagnostic_field("warnings", topology.warnings.len()),
+                ],
+            );
+        }
+        Err(err) if err.kind == "cancelled" => {
+            eprintln!(
+                "[kubecove:backend] list_resource_topology cancelled context={} namespaces={} mode={} ms={}",
+                cluster_context,
+                namespaces.join(","),
+                mode.as_str(),
+                started.elapsed().as_millis()
+            );
+            record_backend_cancelled("list_resource_topology", started);
+        }
+        Err(err) => {
+            eprintln!(
+                "[kubecove:backend] list_resource_topology error context={} namespaces={} mode={} error_kind={} message={} ms={}",
+                cluster_context,
+                namespaces.join(","),
+                mode.as_str(),
+                err.kind,
+                err.message,
+                started.elapsed().as_millis()
+            );
+            record_backend_error("list_resource_topology", started, &err.kind);
+        }
     }
     result
 }

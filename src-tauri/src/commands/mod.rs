@@ -1,5 +1,7 @@
 mod argo;
+mod cancellation;
 mod contexts;
+mod diagnostics;
 mod discovery;
 mod events;
 mod flux;
@@ -24,7 +26,12 @@ pub use argo::{
     get_argocd_appset_details, list_argocd_applications, list_argocd_appprojects,
     list_argocd_appsets,
 };
+pub use cancellation::{cancel_backend_requests, BackendCancellationRegistry};
 pub use contexts::{get_cluster_contexts, list_kube_contexts};
+pub use diagnostics::{
+    clear_backend_diagnostics, diagnostic_field, get_backend_diagnostics, record_backend_cancelled,
+    record_backend_error, record_backend_success, set_backend_diagnostics_enabled,
+};
 pub use discovery::{list_resource_kinds, resource_kinds_from};
 pub use events::{list_resource_events, resource_events_from};
 pub use flux::{detect_flux, get_flux_resource_details, list_flux_resources};

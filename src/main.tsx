@@ -5,8 +5,11 @@ import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./app/router";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { queryRetry } from "./lib/query-retry";
+import { setDiagnosticsEnabled } from "./lib/diagnostics";
+import { useSettingsState } from "./lib/settings";
 
 document.documentElement.classList.add("dark");
+setDiagnosticsEnabled(useSettingsState.getState().debugModeEnabled);
 
 const queryClient = new QueryClient({
   defaultOptions: {

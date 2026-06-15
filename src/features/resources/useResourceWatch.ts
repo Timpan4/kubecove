@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { diagnosticLog } from "@/lib/diagnostics";
 import {
 	closeStreamChannel,
 	createStreamChannel,
@@ -20,6 +21,15 @@ interface UseResourceWatchArgs {
 	kubeconfigEnvVar?: string;
 	subscriptions: WatchSubscription[];
 	enabled: boolean;
+}
+
+export const WATCH_WARMUP_MS = 2_000;
+
+export function shouldDropWarmupWatchEvent(
+	action: string,
+	elapsedMs: number,
+): boolean {
+	return action === "added" && elapsedMs < WATCH_WARMUP_MS;
 }
 
 function watchKeySignature(key: WatchResourceKey): string {
@@ -81,6 +91,7 @@ export function useResourceWatch({
 
 		let cancelled = false;
 		let streamId: string | null = null;
+		const watchStartedAt = performance.now();
 		setStatus("connecting");
 		setMessage("Starting realtime watch");
 		setError(null);
@@ -128,6 +139,14 @@ export function useResourceWatch({
 				setStatus("connected");
 				setMessage(`Realtime ${event.action}`);
 				setError(null);
+				if (shouldDropWarmupWatchEvent(event.action, performance.now() - watchStartedAt)) {
+					diagnosticLog("resources.watch.warmup.drop", {
+						kind: event.target.kind,
+						namespace: event.target.namespace ?? "",
+						action: event.action,
+					});
+					return;
+				}
 				invalidateSoon(event.target);
 				return;
 			}

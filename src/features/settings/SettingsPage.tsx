@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+	Activity,
 	ArrowDownToLine,
 	ArrowLeft,
 	Cable,
@@ -16,6 +17,10 @@ import { useSettingsState } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { AppUpdatesSection, UPDATES_SETTINGS_ROWS } from "./AppUpdatesSection";
 import {
+	DIAGNOSTICS_SETTINGS_ROWS,
+	DiagnosticsSection,
+} from "./DiagnosticsSection";
+import {
 	KUBECONFIG_SETTINGS_ROWS,
 	KubeconfigSourcesSection,
 } from "./KubeconfigSourcesSection";
@@ -28,7 +33,13 @@ import {
 	SettingsSection,
 } from "./SettingsControls";
 
-type SettingsCategoryId = "general" | "sessions" | "yaml" | "kubeconfig" | "updates";
+type SettingsCategoryId =
+	| "general"
+	| "sessions"
+	| "yaml"
+	| "kubeconfig"
+	| "updates"
+	| "diagnostics";
 
 const GENERAL_ROWS = {
 	exactTimestamps: {
@@ -118,6 +129,12 @@ const CATEGORIES: ReadonlyArray<{
 		label: "Updates",
 		icon: ArrowDownToLine,
 		rows: UPDATES_SETTINGS_ROWS,
+	},
+	{
+		id: "diagnostics",
+		label: "Diagnostics",
+		icon: Activity,
+		rows: Object.values(DIAGNOSTICS_SETTINGS_ROWS),
 	},
 ];
 
@@ -316,6 +333,10 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 					)}
 
 					{showCategory("updates") && <AppUpdatesSection showTitle={searching} />}
+
+					{showCategory("diagnostics") && (
+						<DiagnosticsSection showTitle={searching} />
+					)}
 				</SettingsSearchContext.Provider>
 			</div>
 		</div>

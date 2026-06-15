@@ -17,6 +17,10 @@ impl AppError {
     pub fn kube(message: impl Into<String>) -> Self {
         Self::new(message, "cluster")
     }
+
+    pub fn cancelled() -> Self {
+        Self::new("request cancelled", "cancelled")
+    }
 }
 
 impl From<kube::Error> for AppError {

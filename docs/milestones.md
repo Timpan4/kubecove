@@ -106,6 +106,7 @@ Goal: make the current inspection-first incident workflow a reliable beta baseli
 - [x] Run frontend typecheck, frontend tests, and Rust tests.
 - [x] Audit logs, events, topology, and watch refresh behavior against the current UI.
 - [x] Reconcile README and milestone tracking for already-built incident surfaces.
+- [x] Add release diagnostics mode for local frontend/backend latency reports and React Compiler comparison scripts.
 - [ ] Run a manual Tauri smoke test against a readable cluster before the next beta release.
 
 ## 0.3.0 Smoke Test Findings - 2026-05-26

@@ -68,6 +68,11 @@ export interface ResourceDetailsFull {
 	status?: Record<string, unknown>;
 }
 
+export type {
+	CancelBackendRequestsResult,
+	CancellableRequest,
+} from "./cancellation-types";
+
 export type YamlViewMode = "kubectl" | "applyClean";
 export type YamlEncoding = "yaml" | "kyaml";
 
@@ -356,6 +361,12 @@ export interface KubeconfigSourcesSummary {
 	showSourceLabels: boolean;
 	warnings: KubeconfigSourceWarning[];
 }
+
+export type {
+	BackendDiagnosticEvent,
+	BackendDiagnosticField,
+	BackendDiagnosticStatus,
+} from "./diagnostics-types";
 
 export type PodExecSessionMessage =
 	| {

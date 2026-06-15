@@ -1,7 +1,8 @@
 use crate::commands::{
+    diagnostic_field,
     helpers::{k8s_creation_timestamp_to_rfc3339, list_params},
     kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-    ClusterLiveStore,
+    record_backend_error, record_backend_success, ClusterLiveStore,
 };
 use crate::models::{AppError, NamespaceSummary};
 use chrono::{DateTime, Utc};
@@ -79,19 +80,29 @@ pub async fn list_namespaces(
         })
         .await;
     match &result {
-        Ok(rows) => eprintln!(
-            "[kubecove:backend] list_namespaces done context={} rows={} ms={}",
-            cluster_context,
-            rows.len(),
-            started.elapsed().as_millis()
-        ),
-        Err(err) => eprintln!(
-            "[kubecove:backend] list_namespaces error context={} kind={} message={} ms={}",
-            cluster_context,
-            err.kind,
-            err.message,
-            started.elapsed().as_millis()
-        ),
+        Ok(rows) => {
+            eprintln!(
+                "[kubecove:backend] list_namespaces done context={} rows={} ms={}",
+                cluster_context,
+                rows.len(),
+                started.elapsed().as_millis()
+            );
+            record_backend_success(
+                "list_namespaces",
+                started,
+                vec![diagnostic_field("rows", rows.len())],
+            );
+        }
+        Err(err) => {
+            eprintln!(
+                "[kubecove:backend] list_namespaces error context={} kind={} message={} ms={}",
+                cluster_context,
+                err.kind,
+                err.message,
+                started.elapsed().as_millis()
+            );
+            record_backend_error("list_namespaces", started, &err.kind);
+        }
     }
     result
 }

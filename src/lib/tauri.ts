@@ -34,6 +34,7 @@ import type {
 	KubeconfigSourcesSummary,
 	LiveSessionCleanupRequest,
 	LiveSessionCleanupResult,
+	CancellableRequest,
 } from "./types";
 import { diagnosticLog, diagnosticResultSummary } from "./diagnostics";
 
@@ -115,6 +116,13 @@ export function kubeconfigArg(kubeconfigEnvVar?: string): {
 		return {};
 	}
 	return { kubeconfigEnvVar };
+}
+
+function cancellableArg(
+	request?: CancellableRequest,
+): Partial<CancellableRequest> {
+	if (!request) return {};
+	return request;
 }
 
 function sanitizeKubeconfigRequest<T extends { kubeconfigEnvVar?: string }>(
@@ -250,11 +258,13 @@ export async function listResourceScope(
 	clusterContext: string,
 	requests: ResourceListRequest[],
 	kubeconfigEnvVar?: string,
+	cancellable?: CancellableRequest,
 ): Promise<ResourceSummary[]> {
 	return client.invoke<ResourceSummary[]>("list_resource_scope", {
 		clusterContext,
 		requests,
 		...kubeconfigArg(kubeconfigEnvVar),
+		...cancellableArg(cancellable),
 	});
 }
 
@@ -267,6 +277,7 @@ export async function getResourceYaml(
 	kubeconfigEnvVar?: string,
 	yamlViewMode?: YamlViewMode,
 	yamlEncoding?: YamlEncoding,
+	cancellable?: CancellableRequest,
 ): Promise<string> {
 	return client.invoke<string>("get_resource_yaml", {
 		clusterContext,
@@ -276,6 +287,7 @@ export async function getResourceYaml(
 		...kubeconfigArg(kubeconfigEnvVar),
 		yamlViewMode,
 		yamlEncoding,
+		...cancellableArg(cancellable),
 	});
 }
 
@@ -288,6 +300,7 @@ export async function getResourceDetails(
 	kubeconfigEnvVar?: string,
 	yamlViewMode?: YamlViewMode,
 	yamlEncoding?: YamlEncoding,
+	cancellable?: CancellableRequest,
 ): Promise<ResourceDetailsFull> {
 	return client.invoke<ResourceDetailsFull>("get_resource_details", {
 		clusterContext,
@@ -297,6 +310,7 @@ export async function getResourceDetails(
 		...kubeconfigArg(kubeconfigEnvVar),
 		yamlViewMode,
 		yamlEncoding,
+		...cancellableArg(cancellable),
 	});
 }
 
@@ -309,6 +323,7 @@ export async function getDynamicResourceDetails(
 	kubeconfigEnvVar?: string,
 	yamlViewMode?: YamlViewMode,
 	yamlEncoding?: YamlEncoding,
+	cancellable?: CancellableRequest,
 ): Promise<ResourceDetailsFull> {
 	return client.invoke<ResourceDetailsFull>("get_dynamic_resource_details", {
 		clusterContext,
@@ -318,6 +333,7 @@ export async function getDynamicResourceDetails(
 		...kubeconfigArg(kubeconfigEnvVar),
 		yamlViewMode,
 		yamlEncoding,
+		...cancellableArg(cancellable),
 	});
 }
 
@@ -351,6 +367,7 @@ export async function listResourceEvents(
 	name: string,
 	namespace?: string,
 	kubeconfigEnvVar?: string,
+	cancellable?: CancellableRequest,
 ): Promise<ResourceEventSummary[]> {
 	return client.invoke<ResourceEventSummary[]>("list_resource_events", {
 		clusterContext,
@@ -358,6 +375,7 @@ export async function listResourceEvents(
 		name,
 		namespace,
 		...kubeconfigArg(kubeconfigEnvVar),
+		...cancellableArg(cancellable),
 	});
 }
 
@@ -367,12 +385,14 @@ export async function listResourceTopology(
 	namespaces: string[],
 	mode: TopologyMode = "ownership",
 	kubeconfigEnvVar?: string,
+	cancellable?: CancellableRequest,
 ): Promise<ResourceTopology> {
 	return client.invoke<ResourceTopology>("list_resource_topology", {
 		clusterContext,
 		namespaces,
 		mode,
 		...kubeconfigArg(kubeconfigEnvVar),
+		...cancellableArg(cancellable),
 	});
 }
 
@@ -552,11 +572,13 @@ export async function listResourceMetrics(
 	clusterContext: string,
 	namespaces: string[],
 	kubeconfigEnvVar?: string,
+	cancellable?: CancellableRequest,
 ): Promise<ResourceMetricsSummary> {
 	return client.invoke<ResourceMetricsSummary>("list_resource_metrics", {
 		clusterContext,
 		namespaces,
 		...kubeconfigArg(kubeconfigEnvVar),
+		...cancellableArg(cancellable),
 	});
 }
 
@@ -570,3 +592,4 @@ export function isAppError(value: unknown): value is AppError {
 }
 
 export * from "./tauri-inspection";
+export * from "./tauri-diagnostics";
