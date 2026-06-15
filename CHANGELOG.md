@@ -3,6 +3,25 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.6.7 - 2026-06-15
+### Improved
+
+- memoize ownership map flow props
+- enable React Compiler
+- model inspector selection as union
+
+### Fixed
+
+- resource table state defaults
+- Address CI PR review feedback
+- React Doctor CI gate
+- stabilize resource table columns
+- make list ownership GitOps-only
+- keep port-forward accept loop resilient
+- restore YAML field whitespace matching
+- guard app rendering and query retries
+- show Argo app tracked namespaces (#147)
+
 ## 0.6.6 - 2026-06-13
 
 ### Added
