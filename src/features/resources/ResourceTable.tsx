@@ -355,7 +355,7 @@ function ResourceTableRow({
 					}}
 					tabIndex={0}
 					role="button"
-					aria-selected={isSelected}
+					aria-pressed={isSelected}
 				>
 					{row.getVisibleCells().map((cell) => (
 						<TableCell key={cell.id}>

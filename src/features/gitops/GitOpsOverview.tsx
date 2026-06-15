@@ -23,6 +23,7 @@ import type {
 	ArgoApplicationSetSummary,
 	ArgoApplicationSummary,
 	ArgoAppProjectSummary,
+	FluxResourceKind,
 	FluxResourceSummary,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,8 @@ interface GitOpsOverviewProps {
 const EMPTY_APPS: ArgoApplicationSummary[] = [];
 const EMPTY_APPSETS: ArgoApplicationSetSummary[] = [];
 const EMPTY_PROJECTS: ArgoAppProjectSummary[] = [];
+const EMPTY_FLUX_KINDS: FluxResourceKind[] = [];
+const GITOPS_PROVIDERS = ["Argo CD", "Flux"] as const;
 
 function queryErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : "GitOps request failed";
@@ -70,11 +73,10 @@ function FilterRail({
 	activeKey: GitOpsOverviewFilterKey | null;
 	onSelect: (key: GitOpsOverviewFilterKey) => void;
 }) {
-	const providers = ["Argo CD", "Flux"] as const;
 	return (
 		<aside className="w-full shrink-0 lg:w-64">
 			<div className="sticky top-0 flex flex-col gap-4">
-				{providers.map((provider) => {
+				{GITOPS_PROVIDERS.map((provider) => {
 					const providerFilters = filters.filter(
 						(filter) => filter.provider === provider,
 					);
@@ -207,7 +209,7 @@ export function GitOpsOverview({
 		staleTime: 30_000,
 	});
 
-	const fluxKinds = fluxDetection?.kinds ?? [];
+	const fluxKinds = fluxDetection?.kinds ?? EMPTY_FLUX_KINDS;
 	const fluxResourceQueries = useQueries({
 		queries: fluxKinds.map((resourceKind) => ({
 			queryKey: queryKeys.fluxResources(

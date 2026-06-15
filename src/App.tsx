@@ -39,7 +39,7 @@ import {
 	type ResourceKindSelection,
 	type ResourceSummary,
 } from "./lib/types";
-import { CommandPalette } from "./features/command-palette";
+import { CommandPalette } from "./features/command-palette/CommandPalette";
 import { argoApplicationResourceNamespaces } from "./features/resources/helpers";
 import {
 	createWorkspaceScope,
@@ -56,6 +56,14 @@ import {
 	resourceKindLogKey,
 	SIDEBAR_PROVIDER_STYLE,
 } from "./app/viewHelpers";
+
+function useLazyRef<T>(createValue: () => T): { current: T } {
+	const ref = useRef<T | null>(null);
+	if (ref.current === null) {
+		ref.current = createValue();
+	}
+	return ref as { current: T };
+}
 
 function App() {
 	const queryClient = useQueryClient();
@@ -117,14 +125,15 @@ function App() {
 		string | null
 	>(null);
 	const liveSessionScopeInitializedRef = useRef(false);
-	const liveSessionCleanupPromiseRef = useRef<Promise<void>>(Promise.resolve());
-	const autoStartedSavedPortForwardWorkspaceIdsRef = useRef<Set<string>>(
-		new Set(),
+	const liveSessionCleanupPromiseRef = useLazyRef<Promise<void>>(() =>
+		Promise.resolve(),
+	);
+	const autoStartedSavedPortForwardWorkspaceIdsRef = useLazyRef<Set<string>>(
+		() => new Set(),
 	);
 	const settingsReturnViewModeRef = useRef<DashboardViewMode>("resources");
 	const savedPortForwardActions = useSavedPortForwardActions(activeWorkspace);
 	const appRenderCountRef = useRef(0);
-	appRenderCountRef.current += 1;
 	useAppUpdateLaunchCheck();
 
 	useEffect(() => {
@@ -151,6 +160,7 @@ function App() {
 			});
 		},
 		[
+			autoStartedSavedPortForwardWorkspaceIdsRef,
 			setActiveWorkspace,
 			setClusterContext,
 			setSelectedNamespaces,
@@ -403,6 +413,7 @@ function App() {
 		kubeconfigSourceKey,
 		liveSessionAllowedContexts,
 		liveSessionAllowedContextsKey,
+		liveSessionCleanupPromiseRef,
 		queryClient,
 	]);
 
@@ -426,6 +437,8 @@ function App() {
 	}, [
 		activeWorkspace,
 		autoStartSavedPortForwards,
+		autoStartedSavedPortForwardWorkspaceIdsRef,
+		liveSessionCleanupPromiseRef,
 		savedPortForwardActions,
 	]);
 
@@ -476,6 +489,7 @@ function App() {
 		});
 
 	useEffect(() => {
+		appRenderCountRef.current += 1;
 		diagnosticLog("app.render", {
 			render: appRenderCountRef.current,
 			cluster: clusterContext,

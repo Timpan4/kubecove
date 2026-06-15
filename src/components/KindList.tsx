@@ -11,6 +11,8 @@ interface KindListProps {
 	onToggleKind: (kind: AnyKind) => void;
 }
 
+const ALL_KINDS: AnyKind[] = [...SUPPORTED_KINDS, ...CLUSTER_SCOPED_KINDS];
+
 function KindOption({
 	kind,
 	checked,
@@ -46,18 +48,17 @@ function KindOption({
 }
 
 export function KindList({ selectedKinds, onToggleKind }: KindListProps) {
-	const allKinds = [...SUPPORTED_KINDS, ...CLUSTER_SCOPED_KINDS];
-	const allSelected = selectedKinds.length === allKinds.length;
+	const allSelected = selectedKinds.length === ALL_KINDS.length;
 
 	const handleToggleAll = () => {
 		if (allSelected) {
-			allKinds.forEach((kind) => {
+			ALL_KINDS.forEach((kind) => {
 				if (selectedKinds.includes(kind)) {
 					onToggleKind(kind);
 				}
 			});
 		} else {
-			allKinds.forEach((kind) => {
+			ALL_KINDS.forEach((kind) => {
 				if (!selectedKinds.includes(kind)) {
 					onToggleKind(kind);
 				}

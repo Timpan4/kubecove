@@ -57,6 +57,7 @@ interface IncidentCockpitProps {
 
 const STATE_CLASS =
 	"flex min-h-64 items-center justify-center p-8 text-center text-sm text-muted-foreground";
+const EMPTY_INCIDENT_ITEMS: IncidentCockpitItem[] = [];
 
 const FILTERS: Array<{
 	id: IncidentFilter;
@@ -395,7 +396,7 @@ export function IncidentCockpit({
 		enabled: fetchKeys.length > 0,
 		staleTime: 30_000,
 	});
-	const items = data?.items ?? [];
+	const items = data?.items ?? EMPTY_INCIDENT_ITEMS;
 	const counts = useMemo(() => countIncidentItems(items), [items]);
 	const filteredItems = useMemo(
 		() => filterIncidentItems(items, filter),

@@ -88,7 +88,7 @@ function SelectableCard({
 		<Card
 			tabIndex={0}
 			role="button"
-			aria-selected={selected}
+			aria-pressed={selected}
 			onClick={onSelect}
 			onKeyDown={(event) => handleCardKey(event, onSelect)}
 			className={cn(

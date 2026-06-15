@@ -133,34 +133,32 @@ function ResourceListComponent({
 	const client = useMemo(() => createTauriClient(), []);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const renderCountRef = useRef(0);
-	renderCountRef.current += 1;
 
 	const namespaceKey = selectedNamespaces.join(",");
 	const kindKey = selectedKinds.map(resourceKindFetchKey).join(",");
 	const scopeStateKey = `${clusterContext}|${namespaceKey}|${kindKey}|${selectedArgoAppFilter}|${healthFilter}`;
-	const [prevScopeStateKey, setPrevScopeStateKey] = useState(scopeStateKey);
+	const prevScopeStateKeyRef = useRef(scopeStateKey);
 	const resetStateKey = `${clusterContext}|${namespaceKey}|${kindKey}|${initialHealthFilter}`;
-	const [prevResetStateKey, setPrevResetStateKey] = useState(resetStateKey);
-	const [prevInitialHealthFilter, setPrevInitialHealthFilter] =
-		useState(initialHealthFilter);
-	const [prevInitialSearch, setPrevInitialSearch] = useState(initialSearch);
+	const prevResetStateKeyRef = useRef(resetStateKey);
+	const prevInitialHealthFilterRef = useRef(initialHealthFilter);
+	const prevInitialSearchRef = useRef(initialSearch);
 
-	if (prevResetStateKey !== resetStateKey) {
-		setPrevResetStateKey(resetStateKey);
+	if (prevResetStateKeyRef.current !== resetStateKey) {
+		prevResetStateKeyRef.current = resetStateKey;
 		setCollapsedGroups(new Set());
 		setHealthFilter(initialHealthFilter);
 	}
-	if (prevScopeStateKey !== scopeStateKey) {
-		setPrevScopeStateKey(scopeStateKey);
+	if (prevScopeStateKeyRef.current !== scopeStateKey) {
+		prevScopeStateKeyRef.current = scopeStateKey;
 		setPageIndex(0);
 	}
-	if (prevInitialHealthFilter !== initialHealthFilter) {
-		setPrevInitialHealthFilter(initialHealthFilter);
+	if (prevInitialHealthFilterRef.current !== initialHealthFilter) {
+		prevInitialHealthFilterRef.current = initialHealthFilter;
 		setHealthFilter(initialHealthFilter);
 		setPageIndex(0);
 	}
-	if (prevInitialSearch !== initialSearch) {
-		setPrevInitialSearch(initialSearch);
+	if (prevInitialSearchRef.current !== initialSearch) {
+		prevInitialSearchRef.current = initialSearch;
 		setSearch(initialSearch);
 		setPageIndex(0);
 	}
@@ -448,6 +446,7 @@ function ResourceListComponent({
 	}, [externalSelectedResourceKey, externalSelectedResourceIdentityKey]);
 
 	useEffect(() => {
+		renderCountRef.current += 1;
 		diagnosticLog("resources.render", {
 			render: renderCountRef.current,
 			pending: isPending,
