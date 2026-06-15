@@ -9,6 +9,7 @@ import {
 	filterResourcesByHealth,
 	filterResourceSearchIndex,
 	formatResourceGroupLabel,
+	hasResourceListGitOpsOwner,
 	uniqueGitOpsFilters,
 } from "./helpers";
 
@@ -102,58 +103,115 @@ describe("resource GitOps filters", () => {
 			}),
 		]);
 
-			expect(filters).toEqual([
-				{ key: "payments", label: "Tracked by Argo CD: payments" },
-				{
-					key: "flux:HelmRelease:default:worker",
-					label: "Tracked by Flux HelmRelease: default/worker",
-				},
-			]);
+		expect(filters).toEqual([
+			{ key: "payments", label: "Owned by Argo CD: payments" },
+			{
+				key: "flux:HelmRelease:default:worker",
+				label: "Owned by Flux HelmRelease: default/worker",
+			},
+		]);
+	});
+
+	test("uses owned-by group labels for Argo resources", () => {
+		expect(formatResourceGroupLabel(resource("api", { argoApp: "payments" }))).toBe(
+			"Owned by Argo CD: payments",
+		);
+	});
+
+	test("uses owned-by group labels for Flux Kustomizations", () => {
+		expect(
+			formatResourceGroupLabel(
+				resource("api", {
+					gitOpsOwner: {
+						provider: "flux",
+						kind: "Kustomization",
+						name: "apps",
+						namespace: "flux-system",
+						confidence: "label",
+					},
+				}),
+			),
+		).toBe("Owned by Flux Kustomization: flux-system/apps");
+	});
+
+	test("does not use raw Kubernetes owner refs as list owners", () => {
+		const pod = resource("api-795b", {
+			kind: "Pod",
+			ownerRef: "api-795b",
 		});
 
-		test("uses tracked-by group labels for Argo resources", () => {
-			expect(formatResourceGroupLabel(resource("api", { argoApp: "payments" }))).toBe(
-				"Tracked by Argo CD: payments",
-			);
+		expect(hasResourceListGitOpsOwner(pod)).toBe(false);
+		expect(formatResourceGroupLabel(pod)).toBe("Unmanaged resources");
+	});
+
+	test("keeps raw Kubernetes owner refs searchable when hidden from the list", () => {
+		const pod = resource("api-0", {
+			kind: "Pod",
+			ownerRef: "api-795b",
 		});
 
-		test("uses readable scope labels for Argo Application GitOps filters", () => {
-			expect(
-				describeResourceScope(
+		const rows = filterResourceSearchIndex(
+			buildResourceSearchIndex([pod]),
+			"api-795b",
+			"",
+		);
+
+		expect(rows).toEqual([pod]);
+	});
+
+	test("does not treat Flux source resources as list owners", () => {
+		const sourceBacked = resource("source", {
+			gitOpsOwner: {
+				provider: "flux",
+				kind: "GitRepository",
+				name: "apps",
+				namespace: "flux-system",
+				confidence: "label",
+			},
+		});
+
+		expect(hasResourceListGitOpsOwner(sourceBacked)).toBe(false);
+		expect(uniqueGitOpsFilters([sourceBacked])).toEqual([]);
+		expect(formatResourceGroupLabel(sourceBacked)).toBe("Unmanaged resources");
+	});
+
+	test("uses readable scope labels for Argo Application GitOps filters", () => {
+		expect(
+			describeResourceScope(
 				[],
 				["Pod"],
 				argoApplicationGitOpsFilterKey("payments"),
 			).at(-1),
-			).toEqual({ kind: "gitOpsOwner", label: "GitOps", value: "payments" });
-		});
-
-		test("opens tracked namespaces from Argo Application summaries", () => {
-			expect(
-				argoApplicationResourceNamespaces({
-					resourceNamespaces: ["traefik", "monitoring", "traefik"],
-					destinationNamespace: "default",
-				}),
-			).toEqual(["monitoring", "traefik"]);
-		});
-
-		test("falls back to destination namespace for Argo Application resources", () => {
-			expect(
-				argoApplicationResourceNamespaces({
-					resourceNamespaces: [],
-					destinationNamespace: "traefik",
-				}),
-			).toEqual(["traefik"]);
-		});
-
-		test("empty Argo Application namespace scope means all namespaces", () => {
-			expect(
-				argoApplicationResourceNamespaces({
-					resourceNamespaces: [],
-					destinationNamespace: null,
-				}),
-			).toEqual([]);
-		});
+		).toEqual({ kind: "gitOpsOwner", label: "GitOps", value: "payments" });
 	});
+
+	test("opens tracked namespaces from Argo Application summaries", () => {
+		expect(
+			argoApplicationResourceNamespaces({
+				resourceNamespaces: ["traefik", "monitoring", "traefik"],
+				destinationNamespace: "default",
+			}),
+		).toEqual(["monitoring", "traefik"]);
+	});
+
+	test("falls back to destination namespace for Argo Application resources", () => {
+		expect(
+			argoApplicationResourceNamespaces({
+				resourceNamespaces: [],
+				destinationNamespace: "traefik",
+			}),
+		).toEqual(["traefik"]);
+	});
+
+	test("empty Argo Application namespace scope means all namespaces", () => {
+		expect(
+			argoApplicationResourceNamespaces({
+				resourceNamespaces: [],
+				destinationNamespace: null,
+			}),
+		).toEqual([]);
+	});
+});
 
 describe("resource health helpers", () => {
 	test("trusts backend health for completed job pods", () => {

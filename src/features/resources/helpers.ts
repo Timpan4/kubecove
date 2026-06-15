@@ -51,6 +51,8 @@ export interface GitOpsFilterOption {
 	label: string;
 }
 
+const LIST_OWNING_FLUX_KINDS = new Set(["Kustomization", "HelmRelease"]);
+
 export function argoApplicationGitOpsFilterKey(name: string): string {
 	return ["argo", "Application", "", name].join(":");
 }
@@ -309,7 +311,15 @@ export function uniqueArgoApps(data: ResourceSummary[]): string[] {
 
 export function gitOpsFilterKey(resource: ResourceSummary): string {
 	const owner = resource.gitOpsOwner;
-	if (owner) {
+	if (owner?.provider === "argo" && owner.kind === "Application") {
+		return [
+			owner.provider,
+			owner.kind,
+			owner.namespace ?? "",
+			owner.name,
+		].join(":");
+	}
+	if (owner?.provider === "flux" && LIST_OWNING_FLUX_KINDS.has(owner.kind)) {
 		return [
 			owner.provider,
 			owner.kind,
@@ -322,17 +332,21 @@ export function gitOpsFilterKey(resource: ResourceSummary): string {
 
 export function gitOpsOwnerLabel(resource: ResourceSummary): string {
 	const owner = resource.gitOpsOwner;
-	if (owner?.provider === "flux") {
+	if (owner?.provider === "flux" && LIST_OWNING_FLUX_KINDS.has(owner.kind)) {
 		const scopedName = owner.namespace
 			? `${owner.namespace}/${owner.name}`
 			: owner.name;
-		return `Tracked by Flux ${owner.kind}: ${scopedName}`;
+		return `Owned by Flux ${owner.kind}: ${scopedName}`;
 	}
-	if (owner?.provider === "argo") {
-		return `Tracked by Argo CD: ${owner.name}`;
+	if (owner?.provider === "argo" && owner.kind === "Application") {
+		return `Owned by Argo CD: ${owner.name}`;
 	}
-	if (resource.argoApp) return `Tracked by Argo CD: ${resource.argoApp}`;
+	if (resource.argoApp) return `Owned by Argo CD: ${resource.argoApp}`;
 	return "";
+}
+
+export function hasResourceListGitOpsOwner(resource: ResourceSummary): boolean {
+	return Boolean(gitOpsOwnerLabel(resource));
 }
 
 export function uniqueGitOpsFilters(
@@ -352,7 +366,6 @@ export function uniqueGitOpsFilters(
 export function formatResourceGroupLabel(resource: ResourceSummary): string {
 	const gitOpsLabel = gitOpsOwnerLabel(resource);
 	if (gitOpsLabel) return gitOpsLabel;
-	if (resource.ownerRef) return `Owned by: ${resource.ownerRef}`;
 	return "Unmanaged resources";
 }
 

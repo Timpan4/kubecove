@@ -67,12 +67,26 @@ describe("incident helpers", () => {
 		]);
 
 		expect(groups.length).toBe(2);
-		expect(groups[0].label).toBe("Argo app: payments");
+		expect(groups[0].label).toBe("Owned by Argo CD: payments");
 		expect(groups[0].items.map((row) => row.resource.name)).toEqual([
 			"api",
 			"sidecar",
 		]);
 		expect(groups[1].label).toBe("Helm release: jobs");
+	});
+
+	test("groups raw Kubernetes owner refs as unmanaged", () => {
+		const groups = groupIncidentItems([
+			item("api-0", "warning", { ownerRef: "api-795b" }),
+			item("api-1", "attention"),
+		]);
+
+		expect(groups.length).toBe(1);
+		expect(groups[0].label).toBe("Unmanaged resources");
+		expect(groups[0].items.map((row) => row.resource.name)).toEqual([
+			"api-1",
+			"api-0",
+		]);
 	});
 
 	test("sorts equal severities by latest warning recency", () => {
@@ -101,6 +115,7 @@ describe("incident helpers", () => {
 
 		const groups = groupIncidentItems([older, newer]);
 
+		expect(groups[0].label).toBe("Unmanaged resources");
 		expect(groups[0].items.map((row) => row.resource.name)).toEqual([
 			"api-z",
 			"api-a",

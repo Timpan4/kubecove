@@ -39,7 +39,7 @@ import {
 
 interface ResourceTableProps {
 	table: TanStackTable<ResourceSummary>;
-	groupedByArgo: boolean;
+	groupedByGitOps: boolean;
 	pageGroups: Map<string, number>;
 	pageTypeGroups: Map<string, number>;
 	collapsedGroups: Set<string>;
@@ -71,7 +71,7 @@ function scrollSelectedRowIntoView(viewport: HTMLDivElement | null) {
 
 export function ResourceTable({
 	table,
-	groupedByArgo,
+	groupedByGitOps,
 	pageGroups,
 	pageTypeGroups,
 	collapsedGroups,
@@ -239,7 +239,7 @@ export function ResourceTable({
 								index={index}
 								visibleColumnCount={visibleColumnCount}
 								previous={index > 0 ? rowModel.rows[index - 1]?.original : null}
-								groupedByArgo={groupedByArgo}
+								groupedByGitOps={groupedByGitOps}
 								pageGroups={pageGroups}
 								pageTypeGroups={pageTypeGroups}
 								collapsedGroups={collapsedGroups}
@@ -263,7 +263,7 @@ interface ResourceTableRowProps {
 	index: number;
 	visibleColumnCount: number;
 	previous: ResourceSummary | null;
-	groupedByArgo: boolean;
+	groupedByGitOps: boolean;
 	pageGroups: Map<string, number>;
 	pageTypeGroups: Map<string, number>;
 	collapsedGroups: Set<string>;
@@ -280,7 +280,7 @@ function ResourceTableRow({
 	index,
 	visibleColumnCount,
 	previous,
-	groupedByArgo,
+	groupedByGitOps,
 	pageGroups,
 	pageTypeGroups,
 	collapsedGroups,
@@ -299,19 +299,19 @@ function ResourceTableRow({
 	const label = formatResourceGroupLabel(row.original);
 	const typeLabel = formatResourceTypeGroupLabel(row.original);
 	const typeKey = `${label}::${typeLabel}`;
-	const appCollapseKey = resourceGroupCollapseKey(row.original);
+	const groupCollapseKey = resourceGroupCollapseKey(row.original);
 	const typeCollapseKey = resourceTypeGroupCollapseKey(row.original);
-	const appCollapsed = collapsedGroups.has(appCollapseKey);
+	const groupCollapsed = collapsedGroups.has(groupCollapseKey);
 	const typeCollapsed = collapsedGroups.has(typeCollapseKey);
 	const showGroupHeader =
-		groupedByArgo &&
+		groupedByGitOps &&
 		(!previous || formatResourceGroupLabel(previous) !== label);
 	const showTypeGroupHeader =
-		groupedByArgo &&
+		groupedByGitOps &&
 		(!previous ||
 			formatResourceGroupLabel(previous) !== label ||
 			formatResourceTypeGroupLabel(previous) !== typeLabel);
-	const hideResourceRow = groupedByArgo && (appCollapsed || typeCollapsed);
+	const hideResourceRow = groupedByGitOps && (groupCollapsed || typeCollapsed);
 	const selectResource = () => {
 		diagnosticLog("resources.row.click", {
 			key: resourceKey,
@@ -329,11 +329,11 @@ function ResourceTableRow({
 					label={label}
 					count={pageGroups.get(label) ?? 0}
 					colSpan={visibleColumnCount}
-					collapsed={appCollapsed}
-					onToggle={() => onToggleGroup(appCollapseKey)}
+					collapsed={groupCollapsed}
+					onToggle={() => onToggleGroup(groupCollapseKey)}
 				/>
 			)}
-			{showTypeGroupHeader && !appCollapsed && (
+			{showTypeGroupHeader && !groupCollapsed && (
 				<ResourceTypeGroupHeader
 					label={typeLabel}
 					kind={row.original.kind}
