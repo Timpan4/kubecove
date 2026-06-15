@@ -364,6 +364,16 @@ function ResourceListComponent({
 		}),
 		[pageRows],
 	);
+	const tableRenderKey = useMemo(() => {
+		const visibilityKey = Object.entries(columnVisibility)
+			.toSorted(([left], [right]) => left.localeCompare(right))
+			.map(([columnId, visible]) => `${columnId}:${visible ? "1" : "0"}`)
+			.join(",");
+		const sortingKey = sorting
+			.map((sort) => `${sort.id}:${sort.desc ? "desc" : "asc"}`)
+			.join(",");
+		return `${visibilityKey}|${sortingKey}`;
+	}, [columnVisibility, sorting]);
 
 	const table = useReactTable({
 		data: pageRows,
@@ -642,6 +652,7 @@ function ResourceListComponent({
 				onMapPanelOpenChange={handleMapPanelOpenChange}
 				onTopologyNodeSelect={handleTopologyNodeSelect}
 				table={table}
+				tableRenderKey={tableRenderKey}
 				groupedByGitOps={groupedByGitOps}
 				pageGroups={pageGroups}
 				pageTypeGroups={pageTypeGroups}

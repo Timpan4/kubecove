@@ -40,6 +40,7 @@ interface ResourceMapTableLayoutProps {
 		resource: ResourceSummary | null,
 	) => void;
 	table: TanStackTable<ResourceSummary>;
+	tableRenderKey: string;
 	groupedByGitOps: boolean;
 	pageGroups: Map<string, number>;
 	pageTypeGroups: Map<string, number>;
@@ -123,6 +124,7 @@ export function ResourceMapTableLayout({
 	onMapPanelOpenChange,
 	onTopologyNodeSelect,
 	table,
+	tableRenderKey,
 	groupedByGitOps,
 	pageGroups,
 	pageTypeGroups,
@@ -237,6 +239,7 @@ export function ResourceMapTableLayout({
 						<div className="min-h-0 flex-1 overflow-hidden">
 							<ResourceTable
 								table={table}
+								tableRenderKey={tableRenderKey}
 								groupedByGitOps={groupedByGitOps}
 								pageGroups={pageGroups}
 								pageTypeGroups={pageTypeGroups}

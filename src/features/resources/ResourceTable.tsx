@@ -1,4 +1,4 @@
-import { Fragment, type KeyboardEvent, useEffect, useRef } from "react";
+import { Fragment, type KeyboardEvent, useEffect, useMemo, useRef } from "react";
 import {
 	flexRender,
 	type Row,
@@ -39,6 +39,7 @@ import {
 
 interface ResourceTableProps {
 	table: TanStackTable<ResourceSummary>;
+	tableRenderKey: string;
 	groupedByGitOps: boolean;
 	pageGroups: Map<string, number>;
 	pageTypeGroups: Map<string, number>;
@@ -69,8 +70,21 @@ function scrollSelectedRowIntoView(viewport: HTMLDivElement | null) {
 	selectedRow.scrollIntoView({ block: "center", inline: "nearest" });
 }
 
+function readTableLayout(
+	table: TanStackTable<ResourceSummary>,
+	renderKey: string,
+) {
+	return {
+		renderKey,
+		visibleColumns: table.getVisibleLeafColumns(),
+		headerGroups: table.getHeaderGroups(),
+		centerTotalSize: table.getCenterTotalSize(),
+	};
+}
+
 export function ResourceTable({
 	table,
+	tableRenderKey,
 	groupedByGitOps,
 	pageGroups,
 	pageTypeGroups,
@@ -150,10 +164,17 @@ export function ResourceTable({
 		return () => resizeObserver.disconnect();
 	}, []);
 
+	// TanStack table keeps stable identity while visibility/sort state changes.
+	const tableLayout = useMemo(
+		() => readTableLayout(table, tableRenderKey),
+		[table, tableRenderKey],
+	);
+	const { centerTotalSize, headerGroups, renderKey, visibleColumns } =
+		tableLayout;
 	// colSpan must match the rendered column count exactly: a colSpan larger
 	// than the real number of columns makes the browser synthesize phantom
 	// columns, which widens the table past its last column.
-	const visibleColumnCount = table.getVisibleLeafColumns().length;
+	const visibleColumnCount = visibleColumns.length;
 
 	return (
 		<div
@@ -164,14 +185,11 @@ export function ResourceTable({
 			className="scrollbar-classic h-full min-h-0 overflow-auto [&_[data-slot=table-container]]:overflow-visible"
 		>
 			{/* Width = sum of column sizes (so the scroll range ends exactly at
-			    the last column); when the panel is wider, the name column has
-			    no fixed width and absorbs the remaining space. */}
-			<Table
-				className={TABLE_CLASS}
-				style={{ minWidth: table.getCenterTotalSize() }}
-			>
+		    the last column); when the panel is wider, the name column has
+		    no fixed width and absorbs the remaining space. */}
+			<Table className={TABLE_CLASS} style={{ minWidth: centerTotalSize }}>
 				<colgroup>
-					{table.getVisibleLeafColumns().map((column) => (
+					{visibleColumns.map((column) => (
 						<col
 							key={column.id}
 							style={
@@ -183,8 +201,8 @@ export function ResourceTable({
 					))}
 				</colgroup>
 				<TableHeader>
-					{table.getHeaderGroups().map((headerGroup) => (
-						<TableRow key={headerGroup.id}>
+					{headerGroups.map((headerGroup) => (
+						<TableRow key={`${renderKey}:${headerGroup.id}`}>
 							{headerGroup.headers.map((header) => {
 								const canSort = header.column.getCanSort();
 								const toggleSorting = header.column.getToggleSortingHandler();
@@ -238,6 +256,7 @@ export function ResourceTable({
 								row={row}
 								index={index}
 								visibleColumnCount={visibleColumnCount}
+								tableRenderKey={renderKey}
 								previous={index > 0 ? rowModel.rows[index - 1]?.original : null}
 								groupedByGitOps={groupedByGitOps}
 								pageGroups={pageGroups}
@@ -262,6 +281,7 @@ interface ResourceTableRowProps {
 	row: Row<ResourceSummary>;
 	index: number;
 	visibleColumnCount: number;
+	tableRenderKey: string;
 	previous: ResourceSummary | null;
 	groupedByGitOps: boolean;
 	pageGroups: Map<string, number>;
@@ -279,6 +299,7 @@ function ResourceTableRow({
 	row,
 	index,
 	visibleColumnCount,
+	tableRenderKey,
 	previous,
 	groupedByGitOps,
 	pageGroups,
@@ -358,7 +379,7 @@ function ResourceTableRow({
 					aria-pressed={isSelected}
 				>
 					{row.getVisibleCells().map((cell) => (
-						<TableCell key={cell.id}>
+						<TableCell key={`${tableRenderKey}:${cell.id}`}>
 							{flexRender(cell.column.columnDef.cell, cell.getContext())}
 						</TableCell>
 					))}
