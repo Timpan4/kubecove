@@ -649,7 +649,7 @@ function ResourceListComponent({
 const MemoizedResourceListComponent = memo(ResourceListComponent);
 
 export function ResourceList(props: ResourceListProps) {
-	const namespaceKey = props.selectedNamespaces.join(",");
+	const namespaceKey = [...props.selectedNamespaces].sort().join(",");
 	const kindKey = props.selectedKinds.map(resourceKindFetchKey).join(",");
 	const resetKey = `${props.clusterContext}|${namespaceKey}|${kindKey}|${
 		props.initialHealthFilter ?? "all"

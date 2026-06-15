@@ -31,13 +31,15 @@ export function useReconnectPortForwardSession({
 				await startPortForward(client, portForwardSessionToRequest(session));
 				await queryClient.invalidateQueries({
 					queryKey: queryKeys.portForwards(),
-				});
-				onSuccess?.(session);
-			} catch (error) {
-				onError?.(error);
-			}
+			});
+			onSuccess?.(session);
+		} catch (error) {
 			setReconnectingId(null);
-		},
+			onError?.(error);
+			return;
+		}
+		setReconnectingId(null);
+	},
 		[client, onError, onSuccess, queryClient],
 	);
 
