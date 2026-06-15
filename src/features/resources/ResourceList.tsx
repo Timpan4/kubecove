@@ -83,6 +83,7 @@ import {
 	type ResourceGitOpsFocus,
 } from "./ResourceGitOpsFocusSummary";
 import { ResourceScopePills } from "./scope-filters";
+import { createResourceTableState } from "./table-state";
 import { ResourceToolbar } from "./toolbar";
 import { useResourceWatch } from "./useResourceWatch";
 
@@ -121,7 +122,7 @@ function ResourceTableLayoutBoundary({
 	const tableOptions = {
 		data: pageRows,
 		columns,
-		state: { sorting, columnVisibility },
+		state: createResourceTableState(sorting, columnVisibility),
 		onSortingChange,
 		getCoreRowModel: getCoreRowModel(),
 		onStateChange: () => {},
