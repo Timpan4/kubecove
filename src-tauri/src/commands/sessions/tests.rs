@@ -1,8 +1,17 @@
 use super::*;
-use std::{collections::HashSet, env, time::Duration};
+use std::{
+    collections::HashSet,
+    env,
+    future::Future,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
+    net::{TcpListener, TcpStream},
     time::{sleep, timeout},
 };
 
@@ -40,6 +49,69 @@ fn test_summary(id: &str, local_port: u16) -> PortForwardSessionSummary {
         started_at: "2026-05-31T00:00:00Z".to_string(),
         last_error: None,
     }
+}
+
+async fn spawn_session_with_handler<H, F>(
+    registry: &PortForwardRegistry,
+    handler: H,
+) -> (String, u16)
+where
+    H: Fn(TcpStream) -> F + Send + 'static,
+    F: Future<Output = Result<(), String>> + Send + 'static,
+{
+    let listener = TcpListener::bind((LOCAL_ADDRESS, 0))
+        .await
+        .expect("localhost listener should bind");
+    let local_port = listener
+        .local_addr()
+        .expect("localhost listener should have a bound address")
+        .port();
+    let id = registry.session_id();
+    let task_id = id.clone();
+    let task_registry = registry.clone();
+    let handle = tauri::async_runtime::spawn(async move {
+        run_port_forward_session(task_id, listener, task_registry, handler).await;
+    });
+    registry
+        .insert(test_summary(&id, local_port), handle)
+        .expect("test session should insert");
+    (id, local_port)
+}
+
+async fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
+    for _ in 0..50 {
+        if condition() {
+            return true;
+        }
+        sleep(Duration::from_millis(20)).await;
+    }
+    false
+}
+
+async fn wait_until_connect_fails(local_port: u16) -> bool {
+    for _ in 0..50 {
+        match timeout(
+            Duration::from_millis(50),
+            TcpStream::connect((LOCAL_ADDRESS, local_port)),
+        )
+        .await
+        {
+            Ok(Ok(_stream)) => {}
+            Ok(Err(_)) | Err(_) => return true,
+        }
+        sleep(Duration::from_millis(20)).await;
+    }
+    false
+}
+
+fn session_snapshot(
+    registry: &PortForwardRegistry,
+    session_id: &str,
+) -> Option<PortForwardSessionSummary> {
+    registry
+        .list()
+        .into_iter()
+        .find(|session| session.id == session_id)
 }
 
 fn live_env(name: &str) -> String {
@@ -221,6 +293,139 @@ fn registry_stops_sessions_outside_context_or_source_scope() {
     let remaining = registry.list();
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].id, "pf-kept");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn session_loop_invokes_handler_per_connection() {
+    timeout(Duration::from_secs(5), async {
+        let registry = PortForwardRegistry::default();
+        let accepted_count = Arc::new(AtomicU32::new(0));
+        let handler_count = accepted_count.clone();
+        let (session_id, local_port) = spawn_session_with_handler(&registry, move |_stream| {
+            let handler_count = handler_count.clone();
+            async move {
+                handler_count.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            }
+        })
+        .await;
+
+        let _first = TcpStream::connect((LOCAL_ADDRESS, local_port))
+            .await
+            .expect("first local connection should be accepted");
+        let _second = TcpStream::connect((LOCAL_ADDRESS, local_port))
+            .await
+            .expect("second local connection should be accepted");
+
+        let saw_both_connections = wait_until(|| accepted_count.load(Ordering::Relaxed) == 2).await;
+        registry.stop(&session_id);
+
+        assert!(
+            saw_both_connections,
+            "session loop should invoke handler for each accepted connection"
+        );
+    })
+    .await
+    .expect("session lifecycle test should finish within timeout");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn session_loop_returns_to_listening_after_connections_close() {
+    timeout(Duration::from_secs(5), async {
+        let registry = PortForwardRegistry::default();
+        let (session_id, local_port) =
+            spawn_session_with_handler(&registry, |_stream| async { Ok(()) }).await;
+        registry.mark_status(&session_id, "connected", None);
+
+        let _stream = TcpStream::connect((LOCAL_ADDRESS, local_port))
+            .await
+            .expect("local connection should be accepted");
+
+        let returned_to_listening = wait_until(|| {
+            session_snapshot(&registry, &session_id).is_some_and(|session| {
+                session.status == "listening" && session.last_error.is_none()
+            })
+        })
+        .await;
+        registry.stop(&session_id);
+
+        assert!(
+            returned_to_listening,
+            "session loop should mark idle sessions as listening"
+        );
+    })
+    .await
+    .expect("session lifecycle test should finish within timeout");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn handler_error_marks_session_error_but_keeps_accepting() {
+    timeout(Duration::from_secs(5), async {
+        let registry = PortForwardRegistry::default();
+        let accepted_count = Arc::new(AtomicU32::new(0));
+        let handler_count = accepted_count.clone();
+        let (session_id, local_port) = spawn_session_with_handler(&registry, move |_stream| {
+            let handler_count = handler_count.clone();
+            async move {
+                let call_index = handler_count.fetch_add(1, Ordering::Relaxed);
+                if call_index == 0 {
+                    Err("boom".to_string())
+                } else {
+                    Ok(())
+                }
+            }
+        })
+        .await;
+
+        let _first = TcpStream::connect((LOCAL_ADDRESS, local_port))
+            .await
+            .expect("first local connection should be accepted");
+
+        let marked_error = wait_until(|| {
+            session_snapshot(&registry, &session_id).is_some_and(|session| {
+                session.status == "error" && session.last_error.as_deref() == Some("boom")
+            })
+        })
+        .await;
+
+        let accepted_after_error = if marked_error {
+            let _second = TcpStream::connect((LOCAL_ADDRESS, local_port))
+                .await
+                .expect("second local connection should be accepted after handler error");
+            wait_until(|| accepted_count.load(Ordering::Relaxed) == 2).await
+        } else {
+            false
+        };
+        registry.stop(&session_id);
+
+        assert!(
+            marked_error,
+            "handler error should mark session status and last_error"
+        );
+        assert!(
+            accepted_after_error,
+            "session loop should keep accepting after handler error"
+        );
+    })
+    .await
+    .expect("session lifecycle test should finish within timeout");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stop_aborts_session_task() {
+    timeout(Duration::from_secs(5), async {
+        let registry = PortForwardRegistry::default();
+        let (session_id, local_port) =
+            spawn_session_with_handler(&registry, |_stream| async { Ok(()) }).await;
+
+        assert!(registry.stop(&session_id));
+        assert!(
+            wait_until_connect_fails(local_port).await,
+            "local port {local_port} should close after session stop"
+        );
+    })
+    .await
+    .expect("session lifecycle test should finish within timeout");
 }
 
 #[tokio::test(flavor = "current_thread")]

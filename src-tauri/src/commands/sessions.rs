@@ -5,6 +5,7 @@ use k8s_openapi::api::core::v1::Pod;
 use kube::{api::Api, Client};
 use std::{
     collections::{BTreeMap, HashSet},
+    future::Future,
     net::{Ipv4Addr, SocketAddrV4},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -438,13 +439,15 @@ async fn resolve_and_forward_connection(
     forward_connection(client, target, local_stream).await
 }
 
-async fn run_port_forward_session(
+async fn run_port_forward_session<H, F>(
     session_id: String,
-    request: ValidatedPortForwardRequest,
     listener: TcpListener,
     registry: PortForwardRegistry,
-    client: Client,
-) {
+    handle_connection: H,
+) where
+    H: Fn(TcpStream) -> F + Send + 'static,
+    F: Future<Output = Result<(), String>> + Send + 'static,
+{
     let mut connections = JoinSet::new();
     let mut consecutive_accept_failures: u32 = 0;
     loop {
@@ -470,20 +473,7 @@ async fn run_port_forward_session(
                         continue;
                     }
                 };
-                let connection_request = request.clone();
-                let connection_client = client.clone();
-                let connection_registry = registry.clone();
-                let connection_session_id = session_id.clone();
-                connections.spawn(async move {
-                    resolve_and_forward_connection(
-                        connection_client,
-                        connection_request,
-                        local_stream,
-                        connection_session_id,
-                        connection_registry,
-                    )
-                    .await
-                });
+                connections.spawn(handle_connection(local_stream));
             }
             join_result = connections.join_next(), if !connections.is_empty() => {
                 match join_result {
@@ -541,7 +531,7 @@ async fn start_pod_port_forward_in_registry(
 
     let session_id = registry.session_id();
     let summary = session_summary(session_id.clone(), &target, local_port);
-    let handle_registry = registry.clone();
+    let loop_registry = registry.clone();
     let handle_request = ValidatedPortForwardRequest {
         cluster_context: target.cluster_context.clone(),
         kubeconfig_env_var: target.kubeconfig_env_var.clone(),
@@ -553,16 +543,19 @@ async fn start_pod_port_forward_in_registry(
         remote_port: target.remote_port,
         local_port: Some(local_port),
     };
-    let handle_session_id = session_id.clone();
-    let handle = tauri::async_runtime::spawn(async move {
-        run_port_forward_session(
-            handle_session_id,
-            handle_request,
-            listener,
-            handle_registry,
-            client,
+    let connection_session_id = session_id.clone();
+    let connection_registry = registry.clone();
+    let handle_connection = move |local_stream: TcpStream| {
+        resolve_and_forward_connection(
+            client.clone(),
+            handle_request.clone(),
+            local_stream,
+            connection_session_id.clone(),
+            connection_registry.clone(),
         )
-        .await;
+    };
+    let handle = tauri::async_runtime::spawn(async move {
+        run_port_forward_session(session_id, listener, loop_registry, handle_connection).await;
     });
     registry.insert(summary, handle)
 }
