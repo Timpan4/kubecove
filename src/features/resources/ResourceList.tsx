@@ -5,16 +5,9 @@ import {
 	useMemo,
 	useRef,
 	useState,
-	type Dispatch,
-	type SetStateAction,
 } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import {
-	createTable,
-	getCoreRowModel,
-	type SortingState,
-	type VisibilityState,
-} from "@tanstack/react-table";
+import type { SortingState } from "@tanstack/react-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { SearchX } from "lucide-react";
 import {
@@ -26,12 +19,18 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import {
+	createCancellableRequest,
+	createCancelScope,
+	useCancelBackendScopes,
+} from "@/lib/cancellable-loads";
 import { diagnosticLog } from "@/lib/diagnostics";
+import { withForegroundLoad } from "@/lib/foreground-loading";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettingsState } from "@/lib/settings";
 import {
 	createTauriClient,
-	listResourceMetrics,
+	isAppError,
 	listResourceTopology,
 } from "@/lib/tauri";
 import {
@@ -45,7 +44,7 @@ import type {
 	TopologyMode,
 	TopologyNode,
 } from "@/lib/types";
-import { columns } from "./columns";
+import { cn } from "@/lib/utils";
 import { PAGE_SIZE } from "./constants";
 import { pageGitOpsGroupCounts, pageTypeGroupCounts } from "./grouping";
 import {
@@ -60,10 +59,9 @@ import {
 	resourceGroupCollapseKey,
 	resourceGroupKindRank,
 	resourceIdentityKey,
-	resourceTypeGroupCollapseKey,
 	resourceSelectionKey,
 	type HealthFilter,
-	resourceKindFetchKey,
+	resourceTypeGroupCollapseKey,
 	sortedRows,
 	topologyWatchKeys,
 	uniqueGitOpsFilters,
@@ -75,16 +73,13 @@ import {
 } from "./health";
 import { fetchResourcePage } from "./query";
 import {
-	ResourceMapTableLayout,
-	type ResourceMapTableLayoutProps,
-} from "./ResourceMapTableLayout";
-import {
 	ResourceGitOpsFocusSummary,
 	type ResourceGitOpsFocus,
 } from "./ResourceGitOpsFocusSummary";
 import { ResourceScopePills } from "./scope-filters";
-import { createResourceTableState } from "./table-state";
+import { ResourceTableLayoutBoundary } from "./ResourceTableLayoutBoundary";
 import { ResourceToolbar } from "./toolbar";
+import { useDeferredResourceMetricsQuery } from "./useDeferredResourceMetrics";
 import { useResourceWatch } from "./useResourceWatch";
 
 interface ResourceListProps {
@@ -100,42 +95,6 @@ interface ResourceListProps {
 	onNamespacesChange: (namespaces: string[]) => void;
 	onKindsChange: (kinds: ResourceKindSelection[]) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
-}
-
-type ResourceTableLayoutBoundaryProps = Omit<
-	ResourceMapTableLayoutProps,
-	"table"
-> & {
-	pageRows: ResourceSummary[],
-	sorting: SortingState,
-	columnVisibility: VisibilityState,
-	onSortingChange: Dispatch<SetStateAction<SortingState>>,
-};
-
-function ResourceTableLayoutBoundary({
-	pageRows,
-	sorting,
-	columnVisibility,
-	onSortingChange,
-	...layoutProps
-}: ResourceTableLayoutBoundaryProps) {
-	const tableOptions = {
-		data: pageRows,
-		columns,
-		state: createResourceTableState(sorting, columnVisibility),
-		onSortingChange,
-		getCoreRowModel: getCoreRowModel(),
-		onStateChange: () => {},
-		renderFallbackValue: null,
-	};
-	const [table] = useState(() => createTable<ResourceSummary>(tableOptions));
-
-	table.setOptions((previous) => ({
-		...previous,
-		...tableOptions,
-	}));
-
-	return <ResourceMapTableLayout {...layoutProps} table={table} />;
 }
 
 function ResourceListComponent({
@@ -201,14 +160,44 @@ function ResourceListComponent({
 			),
 		[clusterContext, topologyMode, topologyNamespaces, kubeconfigEnvVar],
 	);
+	const resourceCancelScope = useMemo(
+		() => createCancelScope("resources", queryKey),
+		[queryKey],
+	);
+	const topologyCancelScope = useMemo(
+		() => createCancelScope("resource-topology", topologyQueryKey),
+		[topologyQueryKey],
+	);
 	const topologyFitViewKey = useMemo(
 		() => JSON.stringify(topologyQueryKey),
 		[topologyQueryKey],
 	);
+	const cancelEntries = useMemo(
+		() => [
+			{
+				cancelScope: resourceCancelScope,
+				queryKey,
+				event: "resources.scope.cancel",
+			},
+			{
+				cancelScope: topologyCancelScope,
+				queryKey: topologyQueryKey,
+				event: "resources.topology.cancel",
+			},
+		],
+		[queryKey, resourceCancelScope, topologyCancelScope, topologyQueryKey],
+	);
+	useCancelBackendScopes(client, cancelEntries);
 
-	const { data, isPending, isError, error } = useQuery({
+	const { data, isPending, isError, error, isPlaceholderData } = useQuery({
 		queryKey,
-		queryFn: () => fetchResourcePage(clusterContext, fetchKeys, kubeconfigEnvVar),
+		queryFn: () =>
+			fetchResourcePage(
+				clusterContext,
+				fetchKeys,
+				kubeconfigEnvVar,
+				resourceCancelScope,
+			),
 		enabled: fetchKeys.length > 0,
 		staleTime: 30_000,
 		placeholderData: keepPreviousData,
@@ -221,29 +210,37 @@ function ResourceListComponent({
 	} = useQuery({
 		queryKey: topologyQueryKey,
 		queryFn: () =>
-			listResourceTopology(
-				client,
-				clusterContext,
-				topologyNamespaces,
-				topologyMode,
-				kubeconfigEnvVar,
+			withForegroundLoad("resource-topology", () =>
+				listResourceTopology(
+					client,
+					clusterContext,
+					topologyNamespaces,
+					topologyMode,
+					kubeconfigEnvVar,
+					createCancellableRequest(topologyCancelScope, "topology"),
+				).catch((error) => {
+					if (isAppError(error) && error.kind === "cancelled") {
+						diagnosticLog("resources.topology.cancel", {
+							namespaces: topologyNamespaces.length,
+						});
+					}
+					throw error;
+				}),
 			),
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		staleTime: 30_000,
 		placeholderData: keepPreviousData,
 	});
-	const { data: metricsData, isError: metricsError } = useQuery({
-		queryKey: queryKeys.resourceMetrics(
+	const { data: metricsData, isError: metricsError } =
+		useDeferredResourceMetricsQuery({
+			client,
 			clusterContext,
-			topologyNamespaces,
+			namespaces: topologyNamespaces,
 			kubeconfigEnvVar,
-		),
-		queryFn: () =>
-			listResourceMetrics(client, clusterContext, topologyNamespaces, kubeconfigEnvVar),
-		enabled: Boolean(clusterContext),
-		retry: false,
-		staleTime: 30_000,
-		placeholderData: keepPreviousData,
+			resourceRowsReady: Boolean(data && !isPending && !isPlaceholderData),
+			resourceRowCount: data?.length ?? 0,
+			waitForTopology: mapPanelOpen,
+			topologyPending,
 	});
 	const tableWatchKeys = useMemo(
 		() => watchKeysFromFetchKeys(fetchKeys),
@@ -267,6 +264,7 @@ function ResourceListComponent({
 		subscriptions: watchSubscriptions,
 		enabled:
 			watchSubscriptions.some((subscription) => subscription.keys.length > 0) &&
+			Boolean(data && !isPending && !isPlaceholderData) &&
 			!isError,
 	});
 
@@ -336,6 +334,38 @@ function ResourceListComponent({
 			),
 		[selectedNamespaces, selectedKinds, selectedArgoAppFilter],
 	);
+	const resettableScopeKey = useMemo(
+		() => JSON.stringify(queryKey),
+		[queryKey],
+	);
+	const [previousResetState, setPreviousResetState] = useState(() => ({
+		healthFilter: initialHealthFilter,
+		scopeKey: resettableScopeKey,
+		search: initialSearch,
+	}));
+
+	if (
+		previousResetState.scopeKey !== resettableScopeKey ||
+		previousResetState.search !== initialSearch ||
+		previousResetState.healthFilter !== initialHealthFilter
+	) {
+		setPreviousResetState({
+			healthFilter: initialHealthFilter,
+			scopeKey: resettableScopeKey,
+			search: initialSearch,
+		});
+		if (previousResetState.scopeKey !== resettableScopeKey) {
+			setPageIndex(0);
+			setCollapsedGroups(new Set());
+			setSelectedTopologyNodeId(null);
+		}
+		if (previousResetState.search !== initialSearch) {
+			setSearch(initialSearch);
+		}
+		if (previousResetState.healthFilter !== initialHealthFilter) {
+			setHealthFilter(initialHealthFilter);
+		}
+	}
 
 	const totalRows = displayData.length;
 	const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
@@ -427,6 +457,7 @@ function ResourceListComponent({
 		diagnosticLog("resources.render", {
 			render: renderCountRef.current,
 			pending: isPending,
+			placeholder: isPlaceholderData,
 			error: isError,
 			rawRows: data?.length ?? 0,
 			pageRows: pageRows.length,
@@ -494,7 +525,7 @@ function ResourceListComponent({
 		if (!open) setSelectedTopologyNodeId(null);
 	};
 
-	if (isPending) {
+	if (isPending && !isPlaceholderData) {
 		return (
 			<div className="p-8 text-center text-sm text-muted-foreground">
 				<div className="mb-4 flex flex-col gap-px">
@@ -559,6 +590,8 @@ function ResourceListComponent({
 		);
 	}
 
+	const showingStaleRows = isPlaceholderData;
+
 	return (
 		<div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
 			{gitOpsFocus && <ResourceGitOpsFocusSummary focus={gitOpsFocus} />}
@@ -610,39 +643,46 @@ function ResourceListComponent({
 				}}
 				onClearFilters={clearFilters}
 			/>
-			<ResourceTableLayoutBoundary
-				pageRows={pageRows}
-				sorting={sorting}
-				columnVisibility={columnVisibility}
-				onSortingChange={setSorting}
-				topology={topologyWithMetrics}
-				topologyLoading={topologyPending}
-				topologyError={topologyError}
-				topologyErr={topologyErr}
-				selectedTopologyNodeId={deferredSyncedTopologyNodeId}
-				hasDeferredTopologySelection={Boolean(deferredSyncedTopologyNodeId)}
-				topologyFitViewKey={topologyFitViewKey}
-				topologyMode={topologyMode}
-				onTopologyModeChange={setTopologyMode}
-				mapPanelOpen={mapPanelOpen}
-				onMapPanelOpenChange={handleMapPanelOpenChange}
-				onTopologyNodeSelect={handleTopologyNodeSelect}
-				tableRenderKey={tableRenderKey}
-				groupedByGitOps={groupedByGitOps}
-				pageGroups={pageGroups}
-				pageTypeGroups={pageTypeGroups}
-				collapsedGroups={effectiveCollapsedGroups}
-				selectedResourceKey={activeSelectedResourceKey}
-				selectedResourceIdentityKey={activeSelectedResourceIdentityKey}
-				onToggleGroup={toggleGroup}
-				onResourceSelect={handleResourceSelect}
-				totalRows={totalRows}
-				search={search}
-				pageIndex={safePageIndex}
-				pageCount={pageCount}
-				onPageChange={setPageIndex}
-				realtime={realtime}
-			/>
+			<div
+				className={cn(
+					"min-h-0 flex-1 transition-opacity",
+					showingStaleRows && "opacity-60",
+				)}
+			>
+				<ResourceTableLayoutBoundary
+					pageRows={pageRows}
+					sorting={sorting}
+					columnVisibility={columnVisibility}
+					onSortingChange={setSorting}
+					topology={topologyWithMetrics}
+					topologyLoading={topologyPending}
+					topologyError={topologyError}
+					topologyErr={topologyErr}
+					selectedTopologyNodeId={deferredSyncedTopologyNodeId}
+					hasDeferredTopologySelection={Boolean(deferredSyncedTopologyNodeId)}
+					topologyFitViewKey={topologyFitViewKey}
+					topologyMode={topologyMode}
+					onTopologyModeChange={setTopologyMode}
+					mapPanelOpen={mapPanelOpen}
+					onMapPanelOpenChange={handleMapPanelOpenChange}
+					onTopologyNodeSelect={handleTopologyNodeSelect}
+					tableRenderKey={tableRenderKey}
+					groupedByGitOps={groupedByGitOps}
+					pageGroups={pageGroups}
+					pageTypeGroups={pageTypeGroups}
+					collapsedGroups={effectiveCollapsedGroups}
+					selectedResourceKey={activeSelectedResourceKey}
+					selectedResourceIdentityKey={activeSelectedResourceIdentityKey}
+					onToggleGroup={toggleGroup}
+					onResourceSelect={handleResourceSelect}
+					totalRows={totalRows}
+					search={search}
+					pageIndex={safePageIndex}
+					pageCount={pageCount}
+					onPageChange={setPageIndex}
+					realtime={realtime}
+				/>
+			</div>
 		</div>
 	);
 }
@@ -650,11 +690,5 @@ function ResourceListComponent({
 const MemoizedResourceListComponent = memo(ResourceListComponent);
 
 export function ResourceList(props: ResourceListProps) {
-	const namespaceKey = [...props.selectedNamespaces].sort().join(",");
-	const kindKey = props.selectedKinds.map(resourceKindFetchKey).join(",");
-	const resetKey = `${props.clusterContext}|${namespaceKey}|${kindKey}|${
-		props.initialHealthFilter ?? "all"
-	}|${props.initialSearch ?? ""}`;
-
-	return <MemoizedResourceListComponent key={resetKey} {...props} />;
+	return <MemoizedResourceListComponent {...props} />;
 }

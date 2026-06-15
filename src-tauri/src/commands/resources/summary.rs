@@ -3,8 +3,9 @@ use super::{
     summary_workloads::workload_resource_summaries,
 };
 use crate::commands::{
+    diagnostic_field,
     kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-    ClusterLiveStore,
+    record_backend_error, record_backend_success, ClusterLiveStore,
 };
 use crate::models::{AppError, ResourceSummary};
 use std::time::Instant;
@@ -79,8 +80,21 @@ pub async fn list_resources(
         )
         .await;
     match &result {
-        Ok(rows) => eprintln!("[kubecove:backend] list_resources done context={} kind={} namespace={} rows={} ms={}", cluster_context, kind, namespace_label, rows.len(), started.elapsed().as_millis()),
-        Err(err) => eprintln!("[kubecove:backend] list_resources error context={} kind={} namespace={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, err.kind, err.message, started.elapsed().as_millis()),
+        Ok(rows) => {
+            eprintln!("[kubecove:backend] list_resources done context={} kind={} namespace={} rows={} ms={}", cluster_context, kind, namespace_label, rows.len(), started.elapsed().as_millis());
+            record_backend_success(
+                "list_resources",
+                started,
+                vec![
+                    diagnostic_field("kind", &kind),
+                    diagnostic_field("rows", rows.len()),
+                ],
+            );
+        }
+        Err(err) => {
+            eprintln!("[kubecove:backend] list_resources error context={} kind={} namespace={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, err.kind, err.message, started.elapsed().as_millis());
+            record_backend_error("list_resources", started, &err.kind);
+        }
     }
     result
 }

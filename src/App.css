@@ -6,6 +6,28 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@keyframes foreground-loading-bar {
+  0% {
+    transform: translateX(-110%);
+  }
+  55% {
+    transform: translateX(140%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+.foreground-loading-bar {
+  animation: foreground-loading-bar 1.15s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .foreground-loading-bar {
+    animation: none;
+  }
+}
+
 :root {
   color-scheme: dark;
   --background: oklch(1 0 0);

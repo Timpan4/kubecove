@@ -15,6 +15,7 @@ interface SettingsState {
 	showUsageFooter: boolean;
 	showOwnershipMapByDefault: boolean;
 	showUnavailableGitOpsProviders: boolean;
+	debugModeEnabled: boolean;
 	autoStartSavedPortForwards: boolean;
 	keepLiveSessionsOnWorkspaceSwitch: boolean;
 	allowYamlForceConflicts: boolean;
@@ -29,6 +30,7 @@ interface SettingsState {
 	setShowUsageFooter: (show: boolean) => void;
 	setShowOwnershipMapByDefault: (show: boolean) => void;
 	setShowUnavailableGitOpsProviders: (show: boolean) => void;
+	setDebugModeEnabled: (enabled: boolean) => void;
 	setAutoStartSavedPortForwards: (autoStart: boolean) => void;
 	setKeepLiveSessionsOnWorkspaceSwitch: (keep: boolean) => void;
 	setAllowYamlForceConflicts: (allow: boolean) => void;
@@ -57,6 +59,7 @@ export const useSettingsState = create<SettingsState>()(
 			showUsageFooter: false,
 			showOwnershipMapByDefault: true,
 			showUnavailableGitOpsProviders: false,
+			debugModeEnabled: false,
 			autoStartSavedPortForwards: false,
 			keepLiveSessionsOnWorkspaceSwitch: false,
 			allowYamlForceConflicts: true,
@@ -74,6 +77,8 @@ export const useSettingsState = create<SettingsState>()(
 				set({ showOwnershipMapByDefault: show }),
 			setShowUnavailableGitOpsProviders: (show: boolean) =>
 				set({ showUnavailableGitOpsProviders: show }),
+			setDebugModeEnabled: (debugModeEnabled: boolean) =>
+				set({ debugModeEnabled }),
 			setAutoStartSavedPortForwards: (autoStart: boolean) =>
 				set({ autoStartSavedPortForwards: autoStart }),
 			setKeepLiveSessionsOnWorkspaceSwitch: (keep: boolean) =>
@@ -113,11 +118,13 @@ export const useSettingsState = create<SettingsState>()(
 					showOwnershipMapByDefault:
 						saved.showOwnershipMapByDefault ??
 						current.showOwnershipMapByDefault,
-					showUnavailableGitOpsProviders:
-						saved.showUnavailableGitOpsProviders ??
-						current.showUnavailableGitOpsProviders,
-					autoStartSavedPortForwards:
-						saved.autoStartSavedPortForwards ??
+				showUnavailableGitOpsProviders:
+					saved.showUnavailableGitOpsProviders ??
+					current.showUnavailableGitOpsProviders,
+				debugModeEnabled:
+					saved.debugModeEnabled ?? current.debugModeEnabled,
+				autoStartSavedPortForwards:
+					saved.autoStartSavedPortForwards ??
 						current.autoStartSavedPortForwards,
 					keepLiveSessionsOnWorkspaceSwitch:
 						saved.keepLiveSessionsOnWorkspaceSwitch ??
@@ -139,6 +146,7 @@ export const useSettingsState = create<SettingsState>()(
 				showOwnershipMapByDefault: state.showOwnershipMapByDefault,
 				showUnavailableGitOpsProviders:
 					state.showUnavailableGitOpsProviders,
+				debugModeEnabled: state.debugModeEnabled,
 				autoStartSavedPortForwards: state.autoStartSavedPortForwards,
 				keepLiveSessionsOnWorkspaceSwitch:
 					state.keepLiveSessionsOnWorkspaceSwitch,

@@ -1,5 +1,7 @@
 mod argo;
+mod cancellation;
 mod cluster;
+mod diagnostics;
 mod discovery;
 mod error;
 mod events;
@@ -18,7 +20,9 @@ pub use argo::{
     ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails,
     ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSummary,
 };
+pub use cancellation::CancelBackendRequestsResult;
 pub use cluster::ClusterContext;
+pub use diagnostics::{BackendDiagnosticEvent, BackendDiagnosticField, BackendDiagnosticStatus};
 pub use discovery::DiscoveredResourceKind;
 pub use error::AppError;
 pub use events::ResourceEventSummary;

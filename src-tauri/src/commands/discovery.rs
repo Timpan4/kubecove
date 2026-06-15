@@ -1,7 +1,8 @@
 use crate::{
     commands::{
+        diagnostic_field,
         kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-        ClusterLiveStore,
+        record_backend_error, record_backend_success, ClusterLiveStore,
     },
     models::{AppError, DiscoveredResourceKind},
 };
@@ -70,19 +71,29 @@ pub async fn list_resource_kinds(
         })
         .await;
     match &result {
-        Ok(rows) => eprintln!(
-            "[kubecove:backend] list_resource_kinds done context={} rows={} ms={}",
-            cluster_context,
-            rows.len(),
-            started.elapsed().as_millis()
-        ),
-        Err(err) => eprintln!(
-            "[kubecove:backend] list_resource_kinds error context={} kind={} message={} ms={}",
-            cluster_context,
-            err.kind,
-            err.message,
-            started.elapsed().as_millis()
-        ),
+        Ok(rows) => {
+            eprintln!(
+                "[kubecove:backend] list_resource_kinds done context={} rows={} ms={}",
+                cluster_context,
+                rows.len(),
+                started.elapsed().as_millis()
+            );
+            record_backend_success(
+                "list_resource_kinds",
+                started,
+                vec![diagnostic_field("rows", rows.len())],
+            );
+        }
+        Err(err) => {
+            eprintln!(
+                "[kubecove:backend] list_resource_kinds error context={} kind={} message={} ms={}",
+                cluster_context,
+                err.kind,
+                err.message,
+                started.elapsed().as_millis()
+            );
+            record_backend_error("list_resource_kinds", started, &err.kind);
+        }
     }
     result
 }

@@ -23,8 +23,9 @@ pub mod commands;
 pub mod models;
 
 use commands::{
-    add_kubeconfig_paths, apply_yaml, detect_argocd, detect_flux, get_app_usage_metrics,
-    get_argocd_application_details, get_argocd_appproject_details, get_argocd_appset_details,
+    add_kubeconfig_paths, apply_yaml, cancel_backend_requests, clear_backend_diagnostics,
+    detect_argocd, detect_flux, get_app_usage_metrics, get_argocd_application_details,
+    get_argocd_appproject_details, get_argocd_appset_details, get_backend_diagnostics,
     get_dynamic_resource_details, get_flux_resource_details, get_helm_release_details,
     get_helm_release_reconciliation, get_kubeconfig_sources, get_resource_details,
     get_resource_yaml, init_kubeconfig_settings_path, lint_kubernetes_yaml,
@@ -34,10 +35,11 @@ use commands::{
     list_resource_events, list_resource_kinds, list_resource_metrics, list_resource_scope,
     list_resource_topology, list_resources, pick_kubeconfig_paths, prepare_yaml_apply,
     remove_kubeconfig_path, reorder_kubeconfig_paths, resize_pod_exec_terminal,
-    set_kubeconfig_env_var, set_show_kubeconfig_source_labels, start_pod_exec_session,
-    start_pod_log_stream, start_pod_port_forward, start_resource_event_watch, start_resource_watch,
-    stop_live_sessions_outside_scope, stop_pod_exec_session, stop_port_forward, stop_stream,
-    write_pod_exec_stdin, AppUsageMonitor, ClusterLiveStore, PodExecRegistry, PortForwardRegistry,
+    set_backend_diagnostics_enabled, set_kubeconfig_env_var, set_show_kubeconfig_source_labels,
+    start_pod_exec_session, start_pod_log_stream, start_pod_port_forward,
+    start_resource_event_watch, start_resource_watch, stop_live_sessions_outside_scope,
+    stop_pod_exec_session, stop_port_forward, stop_stream, write_pod_exec_stdin, AppUsageMonitor,
+    BackendCancellationRegistry, ClusterLiveStore, PodExecRegistry, PortForwardRegistry,
     StreamRegistry,
 };
 use tauri::Manager;
@@ -53,6 +55,7 @@ pub fn run() {
             Ok(())
         })
         .manage(ClusterLiveStore::default())
+        .manage(BackendCancellationRegistry::default())
         .manage(StreamRegistry::default())
         .manage(PortForwardRegistry::default())
         .manage(PodExecRegistry::default())
@@ -108,7 +111,11 @@ pub fn run() {
             pick_kubeconfig_paths,
             add_kubeconfig_paths,
             remove_kubeconfig_path,
-            reorder_kubeconfig_paths
+            reorder_kubeconfig_paths,
+            set_backend_diagnostics_enabled,
+            get_backend_diagnostics,
+            clear_backend_diagnostics,
+            cancel_backend_requests
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

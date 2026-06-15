@@ -9,6 +9,10 @@ describe("resource view safeguards", () => {
 			"src/features/resources/ResourceList.tsx",
 			"utf8",
 		);
+		const tableBoundarySource = readFileSync(
+			"src/features/resources/ResourceTableLayoutBoundary.tsx",
+			"utf8",
+		);
 		const layoutSource = readFileSync(
 			"src/features/resources/ResourceMapTableLayout.tsx",
 			"utf8",
@@ -22,7 +26,7 @@ describe("resource view safeguards", () => {
 		expect(lazyViewsSource).toContain(
 			'import("../features/resources/ResourceList")',
 		);
-		expect(listSource).toContain("<ResourceMapTableLayout");
+		expect(tableBoundarySource).toContain("<ResourceMapTableLayout");
 		expect(listSource).toContain("mapPanelOpen");
 		expect(listSource).toContain("setMapPanelOpen");
 		expect(listSource).toContain(

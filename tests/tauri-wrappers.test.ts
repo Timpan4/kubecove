@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
 	createMockTauriClient,
 	addKubeconfigPaths,
+	clearBackendDiagnostics,
 	detectFlux,
+	getBackendDiagnostics,
 	getAppUsageMetrics,
 	getFluxResourceDetails,
 	getHelmReleaseDetails,
@@ -23,6 +25,7 @@ import {
 	removeKubeconfigPath,
 	reorderKubeconfigPaths,
 	setKubeconfigEnvVar,
+	setBackendDiagnosticsEnabled,
 	setShowKubeconfigSourceLabels,
 	startPodLogStream,
 	startPodExecSession,
@@ -53,6 +56,7 @@ import type {
 	ResourceTopology,
 	KubeconfigSourcesSummary,
 	LiveSessionCleanupResult,
+	BackendDiagnosticEvent,
 } from "../src/lib/types";
 
 describe("createMockTauriClient", () => {
@@ -367,6 +371,39 @@ describe("typed Tauri wrappers", () => {
 		const client = createMockTauriClient({ get_app_usage_metrics: metrics });
 
 		expect(await getAppUsageMetrics(client)).toEqual(metrics);
+	});
+
+	test("passes backend diagnostics commands through typed wrappers", async () => {
+		const event: BackendDiagnosticEvent = {
+			id: 1,
+			recordedAt: "2026-06-15T10:00:00Z",
+			command: "list_resource_scope",
+			status: "ok",
+			durationMs: 42,
+			summary: [{ key: "rows", value: "12" }],
+		};
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				if (cmd === "get_backend_diagnostics") return [event] as T;
+				if (cmd === "set_backend_diagnostics_enabled") return true as T;
+				return undefined as T;
+			},
+		};
+
+		expect(await setBackendDiagnosticsEnabled(client, true)).toBe(true);
+		expect(await getBackendDiagnostics(client)).toEqual([event]);
+		await clearBackendDiagnostics(client);
+
+		expect(calls).toEqual([
+			{
+				cmd: "set_backend_diagnostics_enabled",
+				args: { enabled: true },
+			},
+			{ cmd: "get_backend_diagnostics", args: undefined },
+			{ cmd: "clear_backend_diagnostics", args: undefined },
+		]);
 	});
 
 	test("passes resource metrics scope through the typed client", async () => {

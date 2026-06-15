@@ -2,11 +2,18 @@ import { useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import {
+	createCancellableRequest,
+	createCancelScope,
+	useCancelBackendScopes,
+} from "@/lib/cancellable-loads";
+import { withForegroundLoad } from "@/lib/foreground-loading";
+import {
 	closeStreamChannel,
 	createStreamChannel,
 	getDynamicResourceDetails,
 	getResourceDetails,
 	getResourceYaml,
+	isAppError,
 	listResourceEvents,
 	startResourceEventWatch,
 	startResourceWatch,
@@ -132,6 +139,46 @@ export function useResourceDetails({
 			resource.namespace,
 		],
 	);
+	const detailsCancelScope = useMemo(
+		() => createCancelScope("resource-details", detailsQueryKey),
+		[detailsQueryKey],
+	);
+	const yamlCancelScope = useMemo(
+		() => createCancelScope("resource-yaml", yamlQueryKey),
+		[yamlQueryKey],
+	);
+	const eventsCancelScope = useMemo(
+		() => createCancelScope("resource-events", eventsQueryKey),
+		[eventsQueryKey],
+	);
+	const cancelEntries = useMemo(
+		() => [
+			{
+				cancelScope: detailsCancelScope,
+				queryKey: detailsQueryKey,
+				event: "detail.details.cancel",
+			},
+			{
+				cancelScope: yamlCancelScope,
+				queryKey: yamlQueryKey,
+				event: "detail.yaml.cancel",
+			},
+			{
+				cancelScope: eventsCancelScope,
+				queryKey: eventsQueryKey,
+				event: "detail.events.cancel",
+			},
+		],
+		[
+			detailsCancelScope,
+			detailsQueryKey,
+			eventsCancelScope,
+			eventsQueryKey,
+			yamlCancelScope,
+			yamlQueryKey,
+		],
+	);
+	useCancelBackendScopes(client, cancelEntries);
 
 	const {
 		data: detailsData,
@@ -143,27 +190,37 @@ export function useResourceDetails({
 		queryFn: async () => {
 			const started = performance.now();
 			diagnosticLog("detail.details.fetch.start", { key: resourceKey });
-			const result = dynamicResourceKind
-				? await getDynamicResourceDetails(
-						client,
-						resource.cluster,
-						dynamicResourceKind,
+			const result = await withForegroundLoad("resource-details", () =>
+				(dynamicResourceKind
+					? getDynamicResourceDetails(
+							client,
+							resource.cluster,
+							dynamicResourceKind,
 							resource.name,
 							resource.namespace ?? undefined,
 							kubeconfigEnvVar,
 							yamlViewMode,
 							yamlEncoding,
+							createCancellableRequest(detailsCancelScope, "details"),
 						)
-					: await getResourceDetails(
-						client,
-						resource.cluster,
-						resource.kind,
-						resource.name,
-						resource.namespace ?? undefined,
-						kubeconfigEnvVar,
-						yamlViewMode,
-						yamlEncoding,
-					);
+					: getResourceDetails(
+							client,
+							resource.cluster,
+							resource.kind,
+							resource.name,
+							resource.namespace ?? undefined,
+							kubeconfigEnvVar,
+							yamlViewMode,
+							yamlEncoding,
+							createCancellableRequest(detailsCancelScope, "details"),
+						)
+				).catch((error) => {
+					if (isAppError(error) && error.kind === "cancelled") {
+						diagnosticLog("detail.details.cancel", { key: resourceKey });
+					}
+					throw error;
+				}),
+			);
 			diagnosticLog("detail.details.fetch.done", {
 				key: resourceKey,
 				ms: Math.round(performance.now() - started),
@@ -185,30 +242,42 @@ export function useResourceDetails({
 		queryFn: async () => {
 			const started = performance.now();
 			diagnosticLog("detail.yaml.fetch.start", { key: resourceKey });
-			const result = dynamicResourceKind
-				? detailsData?.yaml ??
-					(
-						await getDynamicResourceDetails(
+			const result = await withForegroundLoad("resource-yaml", () =>
+				(dynamicResourceKind
+					? Promise.resolve(detailsData?.yaml).then(async (cachedYaml) => {
+							if (cachedYaml) return cachedYaml;
+							return (
+								await getDynamicResourceDetails(
+									client,
+									resource.cluster,
+									dynamicResourceKind,
+									resource.name,
+									resource.namespace ?? undefined,
+									kubeconfigEnvVar,
+									yamlViewMode,
+									yamlEncoding,
+									createCancellableRequest(yamlCancelScope, "yaml"),
+								)
+							).yaml;
+						})
+					: getResourceYaml(
 							client,
 							resource.cluster,
-							dynamicResourceKind,
+							resource.kind,
 							resource.name,
 							resource.namespace ?? undefined,
 							kubeconfigEnvVar,
 							yamlViewMode,
 							yamlEncoding,
+							createCancellableRequest(yamlCancelScope, "yaml"),
 						)
-					).yaml
-				: await getResourceYaml(
-						client,
-						resource.cluster,
-						resource.kind,
-						resource.name,
-						resource.namespace ?? undefined,
-						kubeconfigEnvVar,
-						yamlViewMode,
-						yamlEncoding,
-					);
+				).catch((error) => {
+					if (isAppError(error) && error.kind === "cancelled") {
+						diagnosticLog("detail.yaml.cancel", { key: resourceKey });
+					}
+					throw error;
+				}),
+			);
 			diagnosticLog("detail.yaml.fetch.done", {
 				key: resourceKey,
 				ms: Math.round(performance.now() - started),
@@ -230,13 +299,21 @@ export function useResourceDetails({
 		queryFn: async () => {
 			const started = performance.now();
 			diagnosticLog("detail.events.fetch.start", { key: resourceKey });
-			const result = await listResourceEvents(
-				client,
-				resource.cluster,
-				resource.kind,
-				resource.name,
-				resource.namespace ?? undefined,
-				kubeconfigEnvVar,
+			const result = await withForegroundLoad("resource-events", () =>
+				listResourceEvents(
+					client,
+					resource.cluster,
+					resource.kind,
+					resource.name,
+					resource.namespace ?? undefined,
+					kubeconfigEnvVar,
+					createCancellableRequest(eventsCancelScope, "events"),
+				).catch((error) => {
+					if (isAppError(error) && error.kind === "cancelled") {
+						diagnosticLog("detail.events.cancel", { key: resourceKey });
+					}
+					throw error;
+				}),
 			);
 			diagnosticLog("detail.events.fetch.done", {
 				key: resourceKey,
