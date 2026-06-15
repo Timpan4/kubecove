@@ -23,7 +23,7 @@ const LazyOwnershipMap = lazy(() =>
 	import("./OwnershipMap").then((module) => ({ default: module.OwnershipMap })),
 );
 
-interface ResourceMapTableLayoutProps {
+export interface ResourceMapTableLayoutProps {
 	topology: ResourceTopology | undefined;
 	topologyLoading: boolean;
 	topologyError: boolean;
@@ -48,7 +48,6 @@ interface ResourceMapTableLayoutProps {
 	selectedResourceKey: string | null;
 	selectedResourceIdentityKey: string | null;
 	onToggleGroup: (key: string) => void;
-	onSelectedResourceKeyChange: (key: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
 	totalRows: number;
 	search: string;
@@ -132,7 +131,6 @@ export function ResourceMapTableLayout({
 	selectedResourceKey,
 	selectedResourceIdentityKey,
 	onToggleGroup,
-	onSelectedResourceKeyChange,
 	onResourceSelect,
 	totalRows,
 	search,
@@ -244,12 +242,11 @@ export function ResourceMapTableLayout({
 								pageGroups={pageGroups}
 								pageTypeGroups={pageTypeGroups}
 								collapsedGroups={collapsedGroups}
-								selectedResourceKey={selectedResourceKey}
-								selectedResourceIdentityKey={selectedResourceIdentityKey}
-								onToggleGroup={onToggleGroup}
-								onSelectedResourceKeyChange={onSelectedResourceKeyChange}
-								onResourceSelect={onResourceSelect}
-							/>
+							selectedResourceKey={selectedResourceKey}
+							selectedResourceIdentityKey={selectedResourceIdentityKey}
+							onToggleGroup={onToggleGroup}
+							onResourceSelect={onResourceSelect}
+						/>
 						</div>
 						<div className="border-t px-3 py-2">
 							<ResourcePagination

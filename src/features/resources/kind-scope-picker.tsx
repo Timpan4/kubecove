@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useSettingsState } from "@/lib/settings";
 import { createTauriClient, listResourceKinds } from "@/lib/tauri";
+import { queryKeys } from "@/lib/queryKeys";
 import {
 	CLUSTER_SCOPED_KINDS,
 	SUPPORTED_KINDS,
@@ -52,54 +54,36 @@ export function KindScopePicker({
 	selectedKinds: ResourceKindSelection[];
 	onKindChange: (kinds: ResourceKindSelection[]) => void;
 }) {
-	const [discoveredKinds, setDiscoveredKinds] = useState<DiscoveredResourceKind[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
-	const requestSeqRef = useRef(0);
-
-	const loadKinds = useCallback(async () => {
-		if (!clusterContext) {
-			requestSeqRef.current += 1;
-			setDiscoveredKinds([]);
-			setError(null);
-			setLoading(false);
-			return;
-		}
-
-		const requestSeq = ++requestSeqRef.current;
-		setDiscoveredKinds([]);
-		setLoading(true);
-		setError(null);
-		try {
-			const kinds = await listResourceKinds(
-				createTauriClient(),
-				clusterContext,
-				kubeconfigEnvVar,
-			);
-			if (requestSeq === requestSeqRef.current) {
-				setDiscoveredKinds(
-					kinds
-						.filter((kind) => !CURATED_DISCOVERY_KEYS.has(kindDiscoveryKey(kind)))
-						.toSorted((a, b) =>
-							a.kind.localeCompare(b.kind) ||
-							a.apiVersion.localeCompare(b.apiVersion) ||
-							a.plural.localeCompare(b.plural),
-						),
-				);
-			}
-		} catch (err) {
-			if (requestSeq === requestSeqRef.current) {
-				setError(err instanceof Error ? err.message : "Failed to load resource kinds");
-			}
-		} finally {
-			if (requestSeq === requestSeqRef.current) setLoading(false);
-		}
-	}, [clusterContext, kubeconfigEnvVar]);
-
-	useEffect(() => {
-		void loadKinds();
-	}, [loadKinds]);
+	const {
+		data: fetchedKinds = [],
+		isPending,
+		isError,
+		error,
+		refetch,
+	} = useQuery({
+		queryKey: queryKeys.resourceKinds(clusterContext, kubeconfigEnvVar),
+		queryFn: () =>
+			listResourceKinds(createTauriClient(), clusterContext, kubeconfigEnvVar),
+		enabled: Boolean(clusterContext),
+	});
+	const discoveredKinds = useMemo(
+		() =>
+			fetchedKinds
+				.filter((kind) => !CURATED_DISCOVERY_KEYS.has(kindDiscoveryKey(kind)))
+				.toSorted((a, b) =>
+					a.kind.localeCompare(b.kind) ||
+					a.apiVersion.localeCompare(b.apiVersion) ||
+					a.plural.localeCompare(b.plural),
+				),
+		[fetchedKinds],
+	);
+	const loading = Boolean(clusterContext) && isPending;
+	const errorMessage = isError
+		? error instanceof Error
+			? error.message
+			: "Failed to load resource kinds"
+		: null;
 
 	const builtInKinds = useMemo<ResourceKindSelection[]>(
 		() => [...SUPPORTED_KINDS, ...CLUSTER_SCOPED_KINDS],
@@ -140,8 +124,8 @@ export function KindScopePicker({
 			<PickerStatus
 				loading={loading}
 				loadingLabel="Loading discovered kinds..."
-				error={error}
-				onRetry={loadKinds}
+				error={errorMessage}
+				onRetry={() => void refetch()}
 			/>
 			<ScrollArea className="h-64 pr-2">
 				<ul className="m-0 flex list-none flex-col gap-1 p-0">

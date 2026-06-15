@@ -89,9 +89,8 @@ export function KubeconfigSourcesSection({ showTitle = true }: { showTitle?: boo
 			applySources(await action());
 		} catch (error) {
 			setSourceError(error instanceof Error ? error.message : String(error));
-		} finally {
-			setSourceBusy(false);
 		}
+		setSourceBusy(false);
 	};
 
 	const saveEnvVar = () =>

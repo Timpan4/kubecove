@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { TimestampText } from "@/components/TimestampText";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -7,8 +7,8 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { createTauriClient, listNamespaces } from "@/lib/tauri";
+import { queryKeys } from "@/lib/queryKeys";
 import { useSettingsState } from "@/lib/settings";
-import type { NamespaceSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface NamespaceListProps {
@@ -22,42 +22,19 @@ export function NamespaceList({
 	selectedNamespaces,
 	onNamespaceChange,
 }: NamespaceListProps) {
-	const [namespaces, setNamespaces] = useState<NamespaceSummary[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
-	const requestSeqRef = useRef(0);
-
-	const loadNamespaces = useCallback(async () => {
-		if (!clusterContext) {
-			requestSeqRef.current += 1;
-			setNamespaces([]);
-			setError(null);
-			setLoading(false);
-			return;
-		}
-
-		const requestSeq = ++requestSeqRef.current;
-		const client = createTauriClient();
-		setLoading(true);
-		setError(null);
-		try {
-			const ns = await listNamespaces(client, clusterContext, kubeconfigEnvVar);
-			if (requestSeq === requestSeqRef.current) setNamespaces(ns);
-		} catch (err) {
-			if (requestSeq === requestSeqRef.current) {
-				setError(err instanceof Error ? err.message : "Failed to load namespaces");
-			}
-		} finally {
-			if (requestSeq === requestSeqRef.current) {
-				setLoading(false);
-			}
-		}
-	}, [clusterContext, kubeconfigEnvVar]);
-
-	useEffect(() => {
-		loadNamespaces();
-	}, [loadNamespaces]);
+	const {
+		data: namespaces = [],
+		isPending: loading,
+		isError,
+		error,
+		refetch,
+	} = useQuery({
+		queryKey: queryKeys.namespaces(clusterContext, kubeconfigEnvVar),
+		queryFn: () =>
+			listNamespaces(createTauriClient(), clusterContext, kubeconfigEnvVar),
+		enabled: Boolean(clusterContext),
+	});
 
 	const handleToggleAll = () => {
 		if (selectedNamespaces.length === namespaces.length) {
@@ -92,18 +69,20 @@ export function NamespaceList({
 		);
 	}
 
-	if (error) {
+	if (isError) {
+		const errorMessage =
+			error instanceof Error ? error.message : "Failed to load namespaces";
 		return (
 			<Alert variant="destructive">
 				<AlertTitle>Failed to load namespaces</AlertTitle>
 				<AlertDescription className="flex flex-col gap-2">
-					<span>{error}</span>
+					<span>{errorMessage}</span>
 					<Button
 						type="button"
 						variant="outline"
 						size="sm"
 						className="w-fit"
-						onClick={loadNamespaces}
+						onClick={() => void refetch()}
 					>
 						Retry
 					</Button>
