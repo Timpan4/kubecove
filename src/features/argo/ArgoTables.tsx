@@ -209,7 +209,7 @@ export function ApplicationsTable({
 									}
 									tabIndex={0}
 									role="button"
-									aria-selected={isSelected}
+									aria-pressed={isSelected}
 								>
 									<TableCell>{app.name}</TableCell>
 									<TableCell>{app.project ?? "—"}</TableCell>
@@ -315,7 +315,7 @@ export function ApplicationSetsTable({
 									}
 									tabIndex={0}
 									role="button"
-									aria-selected={isSelected}
+									aria-pressed={isSelected}
 								>
 									<TableCell>{appset.name}</TableCell>
 									<TableCell>{appset.project ?? "—"}</TableCell>
@@ -418,7 +418,7 @@ export function AppProjectsTable({
 									}
 									tabIndex={0}
 									role="button"
-									aria-selected={isSelected}
+									aria-pressed={isSelected}
 								>
 									<TableCell>{project.name}</TableCell>
 									<TableCell>{project.description ?? "—"}</TableCell>

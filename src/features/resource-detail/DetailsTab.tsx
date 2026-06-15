@@ -47,7 +47,7 @@ export function DetailsTab({
 }: DetailsTabProps) {
 	const currentResource = useMemo(
 		() => (details?.summary ? { ...resource, ...details.summary } : resource),
-		[details?.summary, resource],
+		[details, resource],
 	);
 	const containerRows = useMemo(
 		() => getContainerStatusRows(details?.status),
