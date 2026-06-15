@@ -157,6 +157,7 @@ const WIDTH_FIT_PADDING = 0.24;
 const WIDTH_FIT_DURATION_MS = 260;
 const MIN_MAP_ZOOM = 0.18;
 const MAX_MAP_ZOOM = 1.4;
+const REACT_FLOW_PRO_OPTIONS = { hideAttribution: true };
 
 function clampMapZoom(zoom: number): number {
 	return Math.min(MAX_MAP_ZOOM, Math.max(MIN_MAP_ZOOM, zoom));
@@ -356,22 +357,25 @@ export function OwnershipMap({
 		observer.observe(element);
 		resizeObserverRef.current = observer;
 	}, []);
-	const handleNodeClick: NodeMouseHandler<OwnershipGraphNode> = (_, node) => {
-		if (isStandaloneKindGroupNode(node)) {
-			setExpandedStandaloneKinds((current) => {
-				const next = new Set(current);
-				if (next.has(node.data.kind)) {
-					next.delete(node.data.kind);
-				} else {
-					next.add(node.data.kind);
-				}
-				return next;
-			});
-			return;
-		}
-		if (!isOwnershipResourceNode(node)) return;
-		onNodeSelect(node.data.node, node.data.resource);
-	};
+	const handleNodeClick = useCallback<NodeMouseHandler<OwnershipGraphNode>>(
+		(_, node) => {
+			if (isStandaloneKindGroupNode(node)) {
+				setExpandedStandaloneKinds((current) => {
+					const next = new Set(current);
+					if (next.has(node.data.kind)) {
+						next.delete(node.data.kind);
+					} else {
+						next.add(node.data.kind);
+					}
+					return next;
+				});
+				return;
+			}
+			if (!isOwnershipResourceNode(node)) return;
+			onNodeSelect(node.data.node, node.data.resource);
+		},
+		[onNodeSelect],
+	);
 
 	useEffect(
 		() => () => {
@@ -477,7 +481,7 @@ export function OwnershipMap({
 					connectOnClick={false}
 					zoomOnDoubleClick={false}
 					deleteKeyCode={null}
-					proOptions={{ hideAttribution: true }}
+					proOptions={REACT_FLOW_PRO_OPTIONS}
 					className="ownership-map-flow"
 				>
 					<FitOwnershipMapView
