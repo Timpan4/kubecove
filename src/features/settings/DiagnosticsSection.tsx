@@ -238,9 +238,9 @@ export function DiagnosticsSection({ showTitle }: { showTitle: boolean }) {
 			const events = await getBackendDiagnostics(client);
 			setBackendEvents(events);
 			setStatus("Trace refreshed.");
+			backendRefreshPendingRef.current = false;
 		} catch (error) {
 			setStatus(errorStatus("Could not refresh diagnostics", error));
-		} finally {
 			backendRefreshPendingRef.current = false;
 		}
 	};
