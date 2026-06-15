@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, RefreshCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -172,6 +172,10 @@ function backendSummaries(events: BackendDiagnosticEvent[]) {
 	);
 }
 
+function errorStatus(prefix: string, error: unknown): string {
+	return `${prefix}: ${error instanceof Error ? error.message : String(error)}`;
+}
+
 export function DiagnosticsSection({ showTitle }: { showTitle: boolean }) {
 	const debugModeEnabled = useSettingsState((state) => state.debugModeEnabled);
 	const setDebugModeEnabled = useSettingsState(
@@ -182,20 +186,25 @@ export function DiagnosticsSection({ showTitle }: { showTitle: boolean }) {
 	const [backendEvents, setBackendEvents] = useState<BackendDiagnosticEvent[]>([]);
 	const [includeIdentifiers, setIncludeIdentifiers] = useState(false);
 	const [status, setStatus] = useState("");
+	const backendRefreshPendingRef = useRef(false);
 
 	useEffect(() => {
 		let cancelled = false;
 		const refresh = () => {
 			setSnapshot(getDiagnosticsSnapshot());
-			if (!debugModeEnabled) return;
+			if (!debugModeEnabled || backendRefreshPendingRef.current) return;
+			backendRefreshPendingRef.current = true;
 			void getBackendDiagnostics(client)
 				.then((events) => {
 					if (!cancelled) setBackendEvents(events);
 				})
 				.catch((error) => {
 					if (!cancelled) {
-						setStatus(error instanceof Error ? error.message : String(error));
+						setStatus(errorStatus("Could not refresh diagnostics", error));
 					}
+				})
+				.finally(() => {
+					backendRefreshPendingRef.current = false;
 				});
 		};
 		refresh();
@@ -213,26 +222,42 @@ export function DiagnosticsSection({ showTitle }: { showTitle: boolean }) {
 		clearDiagnostics();
 		setSnapshot(getDiagnosticsSnapshot());
 		setBackendEvents([]);
-		await clearBackendDiagnostics(client);
-		setStatus("Trace cleared.");
+		try {
+			await clearBackendDiagnostics(client);
+			setStatus("Trace cleared.");
+		} catch (error) {
+			setStatus(errorStatus("Could not clear diagnostics", error));
+		}
 	};
 
 	const refreshTrace = async () => {
 		setSnapshot(getDiagnosticsSnapshot());
-		const events = await getBackendDiagnostics(client);
-		setBackendEvents(events);
-		setStatus("Trace refreshed.");
+		if (backendRefreshPendingRef.current) return;
+		backendRefreshPendingRef.current = true;
+		try {
+			const events = await getBackendDiagnostics(client);
+			setBackendEvents(events);
+			setStatus("Trace refreshed.");
+		} catch (error) {
+			setStatus(errorStatus("Could not refresh diagnostics", error));
+		} finally {
+			backendRefreshPendingRef.current = false;
+		}
 	};
 
 	const copyReport = async () => {
-		const events = await getBackendDiagnostics(client).catch(() => backendEvents);
-		const report = createLatencyReport({
-			backendEvents: events,
-			includeIdentifiers,
-		});
-		await navigator.clipboard.writeText(report);
-		setBackendEvents(events);
-		setStatus(includeIdentifiers ? "Report copied." : "Redacted report copied.");
+		try {
+			const events = await getBackendDiagnostics(client);
+			const report = createLatencyReport({
+				backendEvents: events,
+				includeIdentifiers,
+			});
+			await navigator.clipboard.writeText(report);
+			setBackendEvents(events);
+			setStatus(includeIdentifiers ? "Report copied." : "Redacted report copied.");
+		} catch (error) {
+			setStatus(errorStatus("Could not copy diagnostics report", error));
+		}
 	};
 
 	return (
