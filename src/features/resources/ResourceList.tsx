@@ -44,7 +44,7 @@ import type {
 } from "@/lib/types";
 import { columns } from "./columns";
 import { PAGE_SIZE } from "./constants";
-import { pageAppGroupCounts, pageTypeGroupCounts } from "./grouping";
+import { pageGitOpsGroupCounts, pageTypeGroupCounts } from "./grouping";
 import {
 	buildFetchKeys,
 	buildResourceHealthSummary,
@@ -53,6 +53,7 @@ import {
 	filterResourcesByHealth,
 	filterResourceSearchIndex,
 	formatResourceGroupLabel,
+	hasResourceListGitOpsOwner,
 	resourceGroupCollapseKey,
 	resourceGroupKindRank,
 	resourceIdentityKey,
@@ -294,21 +295,17 @@ function ResourceListComponent({
 		() => sortedRows(filteredData, sorting),
 		[filteredData, sorting],
 	);
-	const groupedByArgo = useMemo(
-		() =>
-			filteredData.some(
-				(resource) =>
-					resource.gitOpsOwner || resource.argoApp || resource.ownerRef,
-			),
+	const groupedByGitOps = useMemo(
+		() => filteredData.some(hasResourceListGitOpsOwner),
 		[filteredData],
 	);
 	const displayData = useMemo(() => {
-		if (!groupedByArgo) return sortedData;
+		if (!groupedByGitOps) return sortedData;
 		return sortedData.toSorted((a, b) => {
-			const appCompare = formatResourceGroupLabel(a).localeCompare(
+			const groupCompare = formatResourceGroupLabel(a).localeCompare(
 				formatResourceGroupLabel(b),
 			);
-			if (appCompare !== 0) return appCompare;
+			if (groupCompare !== 0) return groupCompare;
 			const kindRankCompare =
 				resourceGroupKindRank(a.kind) - resourceGroupKindRank(b.kind);
 			if (kindRankCompare !== 0) return kindRankCompare;
@@ -316,7 +313,7 @@ function ResourceListComponent({
 			if (kindCompare !== 0) return kindCompare;
 			return a.name.localeCompare(b.name);
 		});
-	}, [groupedByArgo, sortedData]);
+	}, [groupedByGitOps, sortedData]);
 	const healthSummary = useMemo(
 		() => buildResourceHealthSummary(scopedData),
 		[scopedData],
@@ -341,12 +338,12 @@ function ResourceListComponent({
 		[displayData, startRow, endRow],
 	);
 	const pageGroups = useMemo(
-		() => pageAppGroupCounts(pageRows, groupedByArgo),
-		[groupedByArgo, pageRows],
+		() => pageGitOpsGroupCounts(pageRows, groupedByGitOps),
+		[groupedByGitOps, pageRows],
 	);
 	const pageTypeGroups = useMemo(
-		() => pageTypeGroupCounts(pageRows, groupedByArgo),
-		[groupedByArgo, pageRows],
+		() => pageTypeGroupCounts(pageRows, groupedByGitOps),
+		[groupedByGitOps, pageRows],
 	);
 
 	// Hide columns that would render "—" for every visible row so the name
@@ -357,7 +354,7 @@ function ResourceListComponent({
 			restarts: pageRows.some((row) => row.restarts !== undefined),
 			cpu: pageRows.some((row) => row.metrics?.cpuMillicores !== undefined),
 			memory: pageRows.some((row) => row.metrics?.memoryBytes !== undefined),
-			ownerRef: pageRows.some((row) => Boolean(row.ownerRef)),
+			ownerRef: false,
 			"argo-helm": pageRows.some(
 				(row) =>
 					Boolean(row.gitOpsOwner) ||
@@ -396,16 +393,16 @@ function ResourceListComponent({
 				resourceIdentityKey(resource) === activeSelectedResourceIdentityKey,
 		);
 		if (!selectedRow) return collapsedGroups;
-		const appCollapseKey = resourceGroupCollapseKey(selectedRow);
+		const groupCollapseKey = resourceGroupCollapseKey(selectedRow);
 		const typeCollapseKey = resourceTypeGroupCollapseKey(selectedRow);
 		if (
-			!collapsedGroups.has(appCollapseKey) &&
+			!collapsedGroups.has(groupCollapseKey) &&
 			!collapsedGroups.has(typeCollapseKey)
 		) {
 			return collapsedGroups;
 		}
 		const next = new Set(collapsedGroups);
-		next.delete(appCollapseKey);
+		next.delete(groupCollapseKey);
 		next.delete(typeCollapseKey);
 		return next;
 	}, [
@@ -423,14 +420,14 @@ function ResourceListComponent({
 				resourceIdentityKey(resource) === activeSelectedResourceIdentityKey,
 		);
 		if (!selectedRow) return;
-		const appCollapseKey = resourceGroupCollapseKey(selectedRow);
+		const groupCollapseKey = resourceGroupCollapseKey(selectedRow);
 		const typeCollapseKey = resourceTypeGroupCollapseKey(selectedRow);
 		setCollapsedGroups((current) => {
-			if (!current.has(appCollapseKey) && !current.has(typeCollapseKey)) {
+			if (!current.has(groupCollapseKey) && !current.has(typeCollapseKey)) {
 				return current;
 			}
 			const next = new Set(current);
-			next.delete(appCollapseKey);
+			next.delete(groupCollapseKey);
 			next.delete(typeCollapseKey);
 			return next;
 		});
@@ -645,7 +642,7 @@ function ResourceListComponent({
 				onMapPanelOpenChange={handleMapPanelOpenChange}
 				onTopologyNodeSelect={handleTopologyNodeSelect}
 				table={table}
-				groupedByArgo={groupedByArgo}
+				groupedByGitOps={groupedByGitOps}
 				pageGroups={pageGroups}
 				pageTypeGroups={pageTypeGroups}
 				collapsedGroups={effectiveCollapsedGroups}

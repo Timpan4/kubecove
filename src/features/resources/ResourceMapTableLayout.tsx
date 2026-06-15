@@ -40,7 +40,7 @@ interface ResourceMapTableLayoutProps {
 		resource: ResourceSummary | null,
 	) => void;
 	table: TanStackTable<ResourceSummary>;
-	groupedByArgo: boolean;
+	groupedByGitOps: boolean;
 	pageGroups: Map<string, number>;
 	pageTypeGroups: Map<string, number>;
 	collapsedGroups: Set<string>;
@@ -123,7 +123,7 @@ export function ResourceMapTableLayout({
 	onMapPanelOpenChange,
 	onTopologyNodeSelect,
 	table,
-	groupedByArgo,
+	groupedByGitOps,
 	pageGroups,
 	pageTypeGroups,
 	collapsedGroups,
@@ -237,7 +237,7 @@ export function ResourceMapTableLayout({
 						<div className="min-h-0 flex-1 overflow-hidden">
 							<ResourceTable
 								table={table}
-								groupedByArgo={groupedByArgo}
+								groupedByGitOps={groupedByGitOps}
 								pageGroups={pageGroups}
 								pageTypeGroups={pageTypeGroups}
 								collapsedGroups={collapsedGroups}

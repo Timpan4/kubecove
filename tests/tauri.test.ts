@@ -467,8 +467,8 @@ describe("resource browser presentation helpers", () => {
   });
 
   test("uses readable group labels for Argo-managed and unmanaged resources", () => {
-    expect(formatResourceGroupLabel({ ...baseResource, argoApp: "argocd" })).toBe("Tracked by Argo CD: argocd");
-    expect(formatResourceGroupLabel({ ...baseResource, ownerRef: "api" })).toBe("Owned by: api");
+    expect(formatResourceGroupLabel({ ...baseResource, argoApp: "argocd" })).toBe("Owned by Argo CD: argocd");
+    expect(formatResourceGroupLabel({ ...baseResource, ownerRef: "api" })).toBe("Unmanaged resources");
     expect(formatResourceGroupLabel(baseResource)).toBe("Unmanaged resources");
   });
 
@@ -492,8 +492,8 @@ describe("resource browser presentation helpers", () => {
   test("builds stable collapse keys for app and type groups", () => {
     const resource = { ...baseResource, kind: "ConfigMap", argoApp: "argocd" };
 
-    expect(resourceGroupCollapseKey(resource)).toBe("group:Tracked by Argo CD: argocd");
-    expect(resourceTypeGroupCollapseKey(resource)).toBe("group:Tracked by Argo CD: argocd::type:ConfigMaps");
+    expect(resourceGroupCollapseKey(resource)).toBe("group:Owned by Argo CD: argocd");
+    expect(resourceTypeGroupCollapseKey(resource)).toBe("group:Owned by Argo CD: argocd::type:ConfigMaps");
   });
 
   test("normalizes tooltip values for table display", () => {

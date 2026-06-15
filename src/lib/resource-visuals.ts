@@ -177,6 +177,8 @@ const GROUP_VISUALS: Record<string, ResourceVisual> = {
 	Incidents: resourceVisual(CircleAlert, "cluster"),
 	RBAC: resourceVisual(Shield, "secret"),
 	"Port Forwards": resourceVisual(Cable, "network"),
+	"Owned by Argo CD": ARGO_VISUAL,
+	"Owned by Flux": DEFAULT_VISUAL,
 	"Tracked by Argo CD": ARGO_VISUAL,
 	"Unmanaged resources": DEFAULT_VISUAL,
 };
@@ -186,6 +188,8 @@ export function getResourceKindVisual(kind: string): ResourceVisual {
 }
 
 export function getResourceGroupVisual(label: string): ResourceVisual {
+	if (label.startsWith("Owned by Argo CD:")) return GROUP_VISUALS["Owned by Argo CD"];
+	if (label.startsWith("Owned by Flux ")) return GROUP_VISUALS["Owned by Flux"];
 	if (label.startsWith("Tracked by Argo CD:")) return GROUP_VISUALS["Tracked by Argo CD"];
 	return GROUP_VISUALS[label] ?? DEFAULT_VISUAL;
 }
