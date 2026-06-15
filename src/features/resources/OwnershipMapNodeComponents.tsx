@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
 	Handle,
 	Position,
@@ -106,7 +107,7 @@ export function TopologyText({
 	);
 }
 
-export function OwnershipResourceNode({
+function OwnershipResourceNodeComponent({
 	data,
 	selected,
 }: NodeProps<OwnershipResourceGraphNode>) {
@@ -186,7 +187,7 @@ export function OwnershipResourceNode({
 	);
 }
 
-export function StandaloneKindGroupNode({
+function StandaloneKindGroupNodeComponent({
 	data,
 }: NodeProps<StandaloneKindGroupGraphNode>) {
 	const visual = getResourceKindVisual(data.kind);
@@ -222,3 +223,6 @@ export function StandaloneKindGroupNode({
 		</div>
 	);
 }
+
+export const OwnershipResourceNode = memo(OwnershipResourceNodeComponent);
+export const StandaloneKindGroupNode = memo(StandaloneKindGroupNodeComponent);
