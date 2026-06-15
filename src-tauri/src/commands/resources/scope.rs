@@ -213,8 +213,7 @@ pub async fn list_resource_scope(
         .collect::<BTreeSet<_>>()
         .len();
     eprintln!(
-        "[kubecove:backend] list_resource_scope start context={} requests={}",
-        cluster_context, request_count
+        "[kubecove:backend] list_resource_scope start context={cluster_context} requests={request_count}",
     );
     let cancellation = cancellations.register(cancel_scope, request_id);
     let result = cancellation

@@ -528,8 +528,7 @@ pub async fn list_resource_metrics(
     let started = Instant::now();
     let namespace_count = namespaces.len();
     eprintln!(
-        "[kubecove:backend] list_resource_metrics start context={} namespaces={}",
-        cluster_context, namespace_count
+        "[kubecove:backend] list_resource_metrics start context={cluster_context} namespaces={namespace_count}",
     );
     let cancellation = cancellations.register(cancel_scope, request_id);
     let result = cancellation

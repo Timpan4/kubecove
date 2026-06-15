@@ -338,18 +338,34 @@ function ResourceListComponent({
 		() => JSON.stringify(queryKey),
 		[queryKey],
 	);
+	const [previousResetState, setPreviousResetState] = useState(() => ({
+		healthFilter: initialHealthFilter,
+		scopeKey: resettableScopeKey,
+		search: initialSearch,
+	}));
 
-	useEffect(() => {
-		setPageIndex(0);
-		setCollapsedGroups(new Set());
-		setSelectedTopologyNodeId(null);
-	}, [resettableScopeKey]);
-	useEffect(() => {
-		setSearch(initialSearch);
-	}, [initialSearch]);
-	useEffect(() => {
-		setHealthFilter(initialHealthFilter);
-	}, [initialHealthFilter]);
+	if (
+		previousResetState.scopeKey !== resettableScopeKey ||
+		previousResetState.search !== initialSearch ||
+		previousResetState.healthFilter !== initialHealthFilter
+	) {
+		setPreviousResetState({
+			healthFilter: initialHealthFilter,
+			scopeKey: resettableScopeKey,
+			search: initialSearch,
+		});
+		if (previousResetState.scopeKey !== resettableScopeKey) {
+			setPageIndex(0);
+			setCollapsedGroups(new Set());
+			setSelectedTopologyNodeId(null);
+		}
+		if (previousResetState.search !== initialSearch) {
+			setSearch(initialSearch);
+		}
+		if (previousResetState.healthFilter !== initialHealthFilter) {
+			setHealthFilter(initialHealthFilter);
+		}
+	}
 
 	const totalRows = displayData.length;
 	const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
