@@ -251,18 +251,22 @@ export function WorkspacePortForwardsPage({
 		try {
 			await stopPodPortForward(client, sessionId);
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
-		} finally {
+		} catch (error) {
 			setStoppingId(null);
+			throw error;
 		}
+		setStoppingId(null);
 	};
 
 	const copySessionUrl = async (session: PortForwardSessionSummary) => {
 		setCopyingId(session.id);
 		try {
 			await copyText(portForwardLocalUrl(session));
-		} finally {
+		} catch (error) {
 			setCopyingId(null);
+			throw error;
 		}
+		setCopyingId(null);
 	};
 
 	return (

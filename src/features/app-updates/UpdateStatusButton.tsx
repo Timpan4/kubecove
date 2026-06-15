@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
 	AlertTriangle,
 	CheckCircle2,
@@ -52,17 +52,24 @@ export function UpdateStatusButton() {
 		relaunchApp,
 		dismissUpdate,
 	} = useAppUpdateStore();
-	const [open, setOpen] = useState(false);
+	const [manualOpen, setManualOpen] = useState(false);
+	const [autoOpenedVersion, setAutoOpenedVersion] = useState<string | null>(null);
 	const hasUpdate = status === "available" || status === "downloading";
 	const shouldAutoOpen =
 		updatesEnabled &&
 		status === "available" &&
 		availableVersion !== null &&
 		dismissedVersion !== availableVersion;
-
-	useEffect(() => {
-		if (shouldAutoOpen) setOpen(true);
-	}, [shouldAutoOpen]);
+	const autoOpenVersion = shouldAutoOpen ? availableVersion : null;
+	const open =
+		manualOpen ||
+		(autoOpenVersion !== null && autoOpenedVersion !== autoOpenVersion);
+	const setOpen = (nextOpen: boolean) => {
+		setManualOpen(nextOpen);
+		if (!nextOpen && autoOpenVersion !== null) {
+			setAutoOpenedVersion(autoOpenVersion);
+		}
+	};
 
 	const tooltip = useMemo(() => {
 		if (status === "available") return "Update available";

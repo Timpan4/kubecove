@@ -90,15 +90,16 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 			inFlight = true;
 			try {
 				const nextMetrics = await getAppUsageMetrics(client);
-				if (cancelled) return;
-				setMetrics(nextMetrics);
-				setError(null);
+				if (!cancelled) {
+					setMetrics(nextMetrics);
+					setError(null);
+				}
 			} catch (err) {
-				if (cancelled) return;
-				setError(err instanceof Error ? err.message : String(err));
-			} finally {
-				inFlight = false;
+				if (!cancelled) {
+					setError(err instanceof Error ? err.message : String(err));
+				}
 			}
+			inFlight = false;
 		};
 
 		void loadMetrics();

@@ -323,9 +323,8 @@ export function ExecTab({
 			channelRef.current = null;
 			setStatus("error");
 			setError(getErrorMessage(err));
-		} finally {
-			setStarting(false);
 		}
+		setStarting(false);
 	};
 
 	const stopSession = async (sessionId: string) => {
@@ -338,9 +337,11 @@ export function ExecTab({
 				setStatus("stopped");
 			}
 			await invalidateSessions();
-		} finally {
+		} catch (error) {
 			setStoppingId(null);
+			throw error;
 		}
+		setStoppingId(null);
 	};
 
 	return (

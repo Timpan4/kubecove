@@ -110,9 +110,11 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 		try {
 			await stopPodPortForward(client, sessionId);
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
-		} finally {
+		} catch (error) {
 			setStoppingId(null);
+			throw error;
 		}
+		setStoppingId(null);
 	};
 
 	const stopExecSession = async (sessionId: string) => {
@@ -122,18 +124,22 @@ export function ActivePortForwards({ onOpenManager }: ActivePortForwardsProps) {
 			await queryClient.invalidateQueries({
 				queryKey: queryKeys.podExecSessions(),
 			});
-		} finally {
+		} catch (error) {
 			setStoppingId(null);
+			throw error;
 		}
+		setStoppingId(null);
 	};
 
 	const copySessionUrl = async (session: PortForwardSessionSummary) => {
 		setCopyingId(session.id);
 		try {
 			await copyText(portForwardLocalUrl(session));
-		} finally {
+		} catch (error) {
 			setCopyingId(null);
+			throw error;
 		}
+		setCopyingId(null);
 	};
 
 	return (

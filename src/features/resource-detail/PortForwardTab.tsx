@@ -192,9 +192,8 @@ export function PortForwardTab({
 			await invalidateSessions();
 		} catch (err) {
 			setStartError(getErrorMessage(err));
-		} finally {
-			setStarting(false);
 		}
+		setStarting(false);
 	};
 
 	const saveServicePreset = () => {
@@ -254,18 +253,22 @@ export function PortForwardTab({
 		try {
 			await stopPodPortForward(client, sessionId);
 			await invalidateSessions();
-		} finally {
+		} catch (error) {
 			setStoppingId(null);
+			throw error;
 		}
+		setStoppingId(null);
 	};
 
 	const copySessionUrl = async (session: PortForwardSessionSummary) => {
 		setCopyingId(session.id);
 		try {
 			await copyText(portForwardLocalUrl(session));
-		} finally {
+		} catch (error) {
 			setCopyingId(null);
+			throw error;
 		}
+		setCopyingId(null);
 	};
 
 	return (

@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { createTauriClient, listKubeContexts } from "../lib/tauri";
-import type { ClusterContext } from "../lib/types";
+import { queryKeys } from "@/lib/queryKeys";
 import { useSettingsState } from "@/lib/settings";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,49 +19,33 @@ interface ClusterSelectorProps {
 }
 
 export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps) {
-  const [clusters, setClusters] = useState<ClusterContext[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
-  const selectedRef = useRef(value ?? "");
-  const onClusterChangeRef = useRef(onClusterChange);
+  const {
+    data: clusters = [],
+    isPending: loading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.kubeContexts(kubeconfigEnvVar),
+    queryFn: () => listKubeContexts(createTauriClient(), kubeconfigEnvVar),
+  });
+
+  const preferredContextName = useMemo(
+    () => clusters.find((ctx) => ctx.isCurrent)?.name ?? clusters[0]?.name ?? "",
+    [clusters],
+  );
+  const selectedValue = value ?? preferredContextName;
 
   useEffect(() => {
-    if (value !== undefined) selectedRef.current = value;
-  }, [value]);
-
-  useEffect(() => {
-    onClusterChangeRef.current = onClusterChange;
-  }, [onClusterChange]);
-
-  const loadClusters = useCallback(async () => {
-    const client = createTauriClient();
-    setLoading(true);
-    setError(null);
-    try {
-      const contexts = await listKubeContexts(client, kubeconfigEnvVar);
-      setClusters(contexts);
-      const currentContext = contexts.find((ctx) => ctx.isCurrent);
-      const preferredContext = currentContext ?? contexts[0];
-      const selectedContext = selectedRef.current;
-      const selectedStillExists = contexts.some((ctx) => ctx.name === selectedContext);
-      if ((!selectedContext || !selectedStillExists) && preferredContext) {
-        selectedRef.current = preferredContext.name;
-        onClusterChangeRef.current(preferredContext.name);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load contexts");
-    } finally {
-      setLoading(false);
+    if (!preferredContextName) return;
+    const selectedStillExists = clusters.some((ctx) => ctx.name === value);
+    if (!value || !selectedStillExists) {
+      onClusterChange(preferredContextName);
     }
-  }, [kubeconfigEnvVar]);
-
-  useEffect(() => {
-    loadClusters();
-  }, [loadClusters]);
+  }, [clusters, onClusterChange, preferredContextName, value]);
 
   const handleChange = (value: string) => {
-    selectedRef.current = value;
     onClusterChange(value);
   };
 
@@ -72,11 +57,18 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
     );
   }
 
-  if (error) {
+  if (isError) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to load contexts";
     return (
       <div className="flex items-center gap-2 text-xs text-destructive">
-        Error: {error}
-        <Button type="button" variant="outline" size="sm" onClick={loadClusters}>
+        Error: {errorMessage}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => void refetch()}
+        >
           Retry
         </Button>
       </div>
@@ -96,7 +88,7 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
         Cluster Context:
       </span>
       <Select
-        value={value ?? selectedRef.current}
+        value={selectedValue}
         onValueChange={handleChange}
       >
         <SelectTrigger

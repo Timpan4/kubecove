@@ -157,9 +157,6 @@ function HelmTable({
 	initialSearch?: string;
 }) {
 	const [search, setSearch] = useState(initialSearch ?? "");
-	useEffect(() => {
-		if (initialSearch) setSearch(initialSearch);
-	}, [initialSearch]);
 	const searchTerm = search.trim().toLowerCase();
 	const filtered = searchTerm
 		? releases.filter(

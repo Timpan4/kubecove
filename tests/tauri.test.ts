@@ -527,13 +527,13 @@ describe("resource browser presentation helpers", () => {
 });
 
 describe("sidebar source safeguards", () => {
-	test("avoids unsafe returns in namespace cleanup", () => {
+	test("uses query state for namespace loading", () => {
 		const source = readFileSync("src/components/NamespaceList.tsx", "utf8");
 
-		expect(source).not.toContain(
-			"finally {\n\t\t\tif (requestSeq !== requestSeqRef.current) return;",
-		);
-		expect(source).toContain("if (requestSeq === requestSeqRef.current)");
+		expect(source).toContain('useQuery({');
+		expect(source).toContain("queryKeys.namespaces");
+		expect(source).not.toContain("requestSeq");
+		expect(source).not.toContain("useEffect");
 	});
 
 	test("uses non-submit button types for sidebar controls", () => {

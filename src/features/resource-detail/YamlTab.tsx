@@ -175,10 +175,9 @@ export function YamlTab({
 		} catch (err) {
 			if (requestId !== startApplyRequestId.current) return;
 			setState({ draftReady: false, prepareError: err });
-		} finally {
-			if (requestId !== startApplyRequestId.current) return;
-			setState({ loadingDraft: false });
 		}
+		if (requestId !== startApplyRequestId.current) return;
+		setState({ loadingDraft: false });
 	};
 
 	const cancelApplyFlow = () => {
@@ -281,9 +280,8 @@ export function YamlTab({
 			setState({ preview: result, previewForceConflicts: requestForceConflicts });
 		} catch (err) {
 			setState({ prepareError: err });
-		} finally {
-			setState({ preparing: false });
 		}
+		setState({ preparing: false });
 	};
 
 	const formatDraft = () => {
@@ -319,9 +317,8 @@ export function YamlTab({
 			onApplied();
 		} catch (err) {
 			setState({ applyError: err });
-		} finally {
-			setState({ applying: false });
 		}
+		setState({ applying: false });
 	};
 
 	return (

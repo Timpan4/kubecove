@@ -157,7 +157,7 @@ export function useSavedPortForwardActions(
 			const currentSessions =
 				knownSessions ?? activeSessions ?? (await listPortForwards(client).catch(() => []));
 			setStartingId(setStartingIds, portForward.id, true);
-			try {
+			const result = await (async () => {
 				const result = await startSavedPortForward({
 					client,
 					workspaceId: workspace.id,
@@ -170,9 +170,12 @@ export function useSavedPortForwardActions(
 					queryKey: queryKeys.portForwards(),
 				});
 				return result;
-			} finally {
+			})().catch((error) => {
 				setStartingId(setStartingIds, portForward.id, false);
-			}
+				throw error;
+			});
+			setStartingId(setStartingIds, portForward.id, false);
+			return result;
 		},
 		[
 			activeSessions,
@@ -190,7 +193,7 @@ export function useSavedPortForwardActions(
 		): Promise<SavedPortForwardStartResult[]> => {
 			if (!workspace || portForwards.length === 0) return [];
 			setStartingAll(true);
-			try {
+			const results = await (async () => {
 				let knownSessions =
 					activeSessions !== undefined
 						? activeSessions
@@ -204,9 +207,12 @@ export function useSavedPortForwardActions(
 					}
 				}
 				return results;
-			} finally {
+			})().catch((error) => {
 				setStartingAll(false);
-			}
+				throw error;
+			});
+			setStartingAll(false);
+			return results;
 		},
 		[activeSessions, client, startOne, workspace],
 	);

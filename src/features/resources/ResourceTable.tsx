@@ -47,7 +47,6 @@ interface ResourceTableProps {
 	selectedResourceKey: string | null;
 	selectedResourceIdentityKey: string | null;
 	onToggleGroup: (key: string) => void;
-	onSelectedResourceKeyChange: (key: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
 }
 
@@ -92,7 +91,6 @@ export function ResourceTable({
 	selectedResourceKey,
 	selectedResourceIdentityKey,
 	onToggleGroup,
-	onSelectedResourceKeyChange,
 	onResourceSelect,
 }: ResourceTableProps) {
 	const tableViewportRef = useRef<HTMLDivElement | null>(null);
@@ -262,13 +260,12 @@ export function ResourceTable({
 								pageGroups={pageGroups}
 								pageTypeGroups={pageTypeGroups}
 								collapsedGroups={collapsedGroups}
-								selectedResourceKey={selectedResourceKey}
-								selectedResourceIdentityKey={selectedResourceIdentityKey}
-								hasExactSelectedResource={hasExactSelectedResource}
-								onToggleGroup={onToggleGroup}
-								onSelectedResourceKeyChange={onSelectedResourceKeyChange}
-								onResourceSelect={onResourceSelect}
-							/>
+							selectedResourceKey={selectedResourceKey}
+							selectedResourceIdentityKey={selectedResourceIdentityKey}
+							hasExactSelectedResource={hasExactSelectedResource}
+							onToggleGroup={onToggleGroup}
+							onResourceSelect={onResourceSelect}
+						/>
 						))
 					)}
 				</TableBody>
@@ -291,7 +288,6 @@ interface ResourceTableRowProps {
 	selectedResourceIdentityKey: string | null;
 	hasExactSelectedResource: boolean;
 	onToggleGroup: (key: string) => void;
-	onSelectedResourceKeyChange: (key: string) => void;
 	onResourceSelect: (resource: ResourceSummary) => void;
 }
 
@@ -309,7 +305,6 @@ function ResourceTableRow({
 	selectedResourceIdentityKey,
 	hasExactSelectedResource,
 	onToggleGroup,
-	onSelectedResourceKeyChange,
 	onResourceSelect,
 }: ResourceTableRowProps) {
 	const resourceKey = resourceSelectionKey(row.original);
@@ -339,7 +334,6 @@ function ResourceTableRow({
 			alreadySelected: isSelected,
 			rowIndex: index,
 		});
-		onSelectedResourceKeyChange(resourceKey);
 		onResourceSelect(row.original);
 	};
 

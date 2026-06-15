@@ -35,9 +35,8 @@ export function useReconnectPortForwardSession({
 				onSuccess?.(session);
 			} catch (error) {
 				onError?.(error);
-			} finally {
-				setReconnectingId(null);
 			}
+			setReconnectingId(null);
 		},
 		[client, onError, onSuccess, queryClient],
 	);

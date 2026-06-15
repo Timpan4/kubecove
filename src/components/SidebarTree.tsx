@@ -28,7 +28,7 @@
  *   - Namespace Access, Roles, Cluster Roles, Bindings, Service Accounts
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   createTauriClient,
@@ -38,7 +38,6 @@ import {
   listResourceKinds,
 } from "../lib/tauri";
 import { useSettingsState } from "@/lib/settings";
-import type { DiscoveredResourceKind, NamespaceSummary } from "../lib/types";
 import {
   ARGO_NAV_KINDS,
   ARGO_PROVIDER_GROUP_ID,
@@ -304,24 +303,44 @@ export function SidebarTree({
   onNodeSelect,
   onSectionToggle,
 }: SidebarTreeProps) {
-  const [namespaces, setNamespaces] = useState<NamespaceSummary[]>([]);
-  const [resourceKinds, setResourceKinds] = useState<DiscoveredResourceKind[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [resourceKindsLoading, setResourceKindsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [resourceKindsError, setResourceKindsError] = useState<string | null>(null);
   const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
   const showUnavailableGitOpsProviders = useSettingsState(
     (state) => state.showUnavailableGitOpsProviders,
   );
-  const gitOpsClient = useMemo(() => createTauriClient(), []);
+  const client = useMemo(() => createTauriClient(), []);
+  const {
+    data: namespaces = [],
+    isPending: loading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: queryKeys.namespaces(clusterContext, kubeconfigEnvVar),
+    queryFn: () => listNamespaces(client, clusterContext, kubeconfigEnvVar),
+    enabled: Boolean(clusterContext),
+  });
+  const {
+    data: resourceKinds = [],
+    isPending: resourceKindsLoading,
+    isError: resourceKindsIsError,
+    error: resourceKindsErr,
+  } = useQuery({
+    queryKey: queryKeys.resourceKinds(clusterContext, kubeconfigEnvVar),
+    queryFn: () => listResourceKinds(client, clusterContext, kubeconfigEnvVar),
+    enabled: Boolean(clusterContext),
+  });
+  const namespaceErrorMessage =
+    error instanceof Error ? error.message : "Failed to load namespaces";
+  const resourceKindsError =
+    resourceKindsErr instanceof Error
+      ? resourceKindsErr.message
+      : "Failed to load discovered resources";
   const {
     data: argoDetection,
     isPending: argoDetectionIsPending,
     isSuccess: argoDetectionIsSuccess,
   } = useQuery({
     queryKey: queryKeys.argoDetect(clusterContext, kubeconfigEnvVar),
-    queryFn: () => detectArgoCD(gitOpsClient, clusterContext, kubeconfigEnvVar),
+    queryFn: () => detectArgoCD(client, clusterContext, kubeconfigEnvVar),
     enabled: !!clusterContext,
     staleTime: 60_000,
   });
@@ -331,58 +350,10 @@ export function SidebarTree({
     isSuccess: fluxDetectionIsSuccess,
   } = useQuery({
     queryKey: queryKeys.fluxDetect(clusterContext, kubeconfigEnvVar),
-    queryFn: () => detectFlux(gitOpsClient, clusterContext, kubeconfigEnvVar),
+    queryFn: () => detectFlux(client, clusterContext, kubeconfigEnvVar),
     enabled: !!clusterContext,
     staleTime: 60_000,
   });
-
-  const loadNamespaces = useCallback(async () => {
-    if (!clusterContext) {
-      setNamespaces([]);
-      return;
-    }
-    const client = createTauriClient();
-    setLoading(true);
-    setError(null);
-    try {
-      const ns = await listNamespaces(client, clusterContext, kubeconfigEnvVar);
-      setNamespaces(ns);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load namespaces");
-    } finally {
-      setLoading(false);
-    }
-  }, [clusterContext, kubeconfigEnvVar]);
-
-  const loadResourceKinds = useCallback(async () => {
-    if (!clusterContext) {
-      setResourceKinds([]);
-      setResourceKindsError(null);
-      return;
-    }
-    const client = createTauriClient();
-    setResourceKindsLoading(true);
-    setResourceKindsError(null);
-    try {
-      const kinds = await listResourceKinds(client, clusterContext, kubeconfigEnvVar);
-      setResourceKinds(kinds);
-    } catch (err) {
-      setResourceKinds([]);
-      setResourceKindsError(
-        err instanceof Error ? err.message : "Failed to load discovered resources",
-      );
-    } finally {
-      setResourceKindsLoading(false);
-    }
-  }, [clusterContext, kubeconfigEnvVar]);
-
-  useEffect(() => {
-    loadNamespaces();
-  }, [loadNamespaces]);
-
-  useEffect(() => {
-    loadResourceKinds();
-  }, [loadResourceKinds]);
 
   // Build the static tree (no namespace children yet — those are built dynamically)
   const staticTree = useMemo(() => {
@@ -527,7 +498,7 @@ export function SidebarTree({
           disabled: true,
         },
       ];
-    } else if (resourceKindsError) {
+    } else if (resourceKindsIsError) {
       children = [
         {
           id: { type: "kind", section: "discovered", kind: "__error" },
@@ -563,7 +534,7 @@ export function SidebarTree({
       label: SECTIONS.discovered.label,
       children,
     };
-  }, [extraKinds, resourceKindsError, resourceKindsLoading]);
+  }, [extraKinds, resourceKindsError, resourceKindsIsError, resourceKindsLoading]);
 
   const buildNamespaceChildren = useCallback(
     (namespace: string): TreeNode => {
@@ -620,8 +591,8 @@ export function SidebarTree({
     return <div className="p-4 text-center text-xs text-muted-foreground">Loading namespaces…</div>;
   }
 
-  if (error) {
-    return <div className="p-4 text-center text-xs text-destructive">{error}</div>;
+  if (isError) {
+    return <div className="p-4 text-center text-xs text-destructive">{namespaceErrorMessage}</div>;
   }
 
   return (

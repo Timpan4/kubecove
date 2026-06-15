@@ -5,12 +5,15 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	type Dispatch,
+	type SetStateAction,
 } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
+	createTable,
 	getCoreRowModel,
-	useReactTable,
 	type SortingState,
+	type VisibilityState,
 } from "@tanstack/react-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { SearchX } from "lucide-react";
@@ -71,7 +74,10 @@ import {
 	ResourceHealthStrip,
 } from "./health";
 import { fetchResourcePage } from "./query";
-import { ResourceMapTableLayout } from "./ResourceMapTableLayout";
+import {
+	ResourceMapTableLayout,
+	type ResourceMapTableLayoutProps,
+} from "./ResourceMapTableLayout";
 import {
 	ResourceGitOpsFocusSummary,
 	type ResourceGitOpsFocus,
@@ -95,6 +101,42 @@ interface ResourceListProps {
 	onResourceSelect: (resource: ResourceSummary) => void;
 }
 
+type ResourceTableLayoutBoundaryProps = Omit<
+	ResourceMapTableLayoutProps,
+	"table"
+> & {
+	pageRows: ResourceSummary[],
+	sorting: SortingState,
+	columnVisibility: VisibilityState,
+	onSortingChange: Dispatch<SetStateAction<SortingState>>,
+};
+
+function ResourceTableLayoutBoundary({
+	pageRows,
+	sorting,
+	columnVisibility,
+	onSortingChange,
+	...layoutProps
+}: ResourceTableLayoutBoundaryProps) {
+	const tableOptions = {
+		data: pageRows,
+		columns,
+		state: { sorting, columnVisibility },
+		onSortingChange,
+		getCoreRowModel: getCoreRowModel(),
+		onStateChange: () => {},
+		renderFallbackValue: null,
+	};
+	const [table] = useState(() => createTable<ResourceSummary>(tableOptions));
+
+	table.setOptions((previous) => ({
+		...previous,
+		...tableOptions,
+	}));
+
+	return <ResourceMapTableLayout {...layoutProps} table={table} />;
+}
+
 function ResourceListComponent({
 	clusterContext,
 	selectedNamespaces,
@@ -111,13 +153,7 @@ function ResourceListComponent({
 }: ResourceListProps) {
 	const [pageIndex, setPageIndex] = useState(0);
 	const [sorting, setSorting] = useState<SortingState>([]);
-	const [search, setSearch] = useState("");
-	const [selectedResourceKey, setSelectedResourceKey] = useState<string | null>(
-		null,
-	);
-	const [selectedResourceIdentityKey, setSelectedResourceIdentityKey] = useState<
-		string | null
-	>(null);
+	const [search, setSearch] = useState(initialSearch);
 	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
 		() => new Set(),
 	);
@@ -135,34 +171,6 @@ function ResourceListComponent({
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	const renderCountRef = useRef(0);
 
-	const namespaceKey = selectedNamespaces.join(",");
-	const kindKey = selectedKinds.map(resourceKindFetchKey).join(",");
-	const scopeStateKey = `${clusterContext}|${namespaceKey}|${kindKey}|${selectedArgoAppFilter}|${healthFilter}`;
-	const prevScopeStateKeyRef = useRef(scopeStateKey);
-	const resetStateKey = `${clusterContext}|${namespaceKey}|${kindKey}|${initialHealthFilter}`;
-	const prevResetStateKeyRef = useRef(resetStateKey);
-	const prevInitialHealthFilterRef = useRef(initialHealthFilter);
-	const prevInitialSearchRef = useRef(initialSearch);
-
-	if (prevResetStateKeyRef.current !== resetStateKey) {
-		prevResetStateKeyRef.current = resetStateKey;
-		setCollapsedGroups(new Set());
-		setHealthFilter(initialHealthFilter);
-	}
-	if (prevScopeStateKeyRef.current !== scopeStateKey) {
-		prevScopeStateKeyRef.current = scopeStateKey;
-		setPageIndex(0);
-	}
-	if (prevInitialHealthFilterRef.current !== initialHealthFilter) {
-		prevInitialHealthFilterRef.current = initialHealthFilter;
-		setHealthFilter(initialHealthFilter);
-		setPageIndex(0);
-	}
-	if (prevInitialSearchRef.current !== initialSearch) {
-		prevInitialSearchRef.current = initialSearch;
-		setSearch(initialSearch);
-		setPageIndex(0);
-	}
 	const topologyNamespaceKey = useMemo(
 		() =>
 			Array.from(new Set(selectedNamespaces))
@@ -375,23 +383,14 @@ function ResourceListComponent({
 		return `${visibilityKey}|${sortingKey}`;
 	}, [columnVisibility, sorting]);
 
-	const table = useReactTable({
-		data: pageRows,
-		columns,
-		state: { sorting, columnVisibility },
-		onSortingChange: setSorting,
-		getCoreRowModel: getCoreRowModel(),
-	});
 	const externalSelectedResourceKey = selectedResource
 		? resourceSelectionKey(selectedResource)
 		: null;
 	const externalSelectedResourceIdentityKey = selectedResource
 		? resourceIdentityKey(selectedResource)
 		: null;
-	const activeSelectedResourceKey =
-		selectedResourceKey ?? externalSelectedResourceKey;
-	const activeSelectedResourceIdentityKey =
-		selectedResourceIdentityKey ?? externalSelectedResourceIdentityKey;
+	const activeSelectedResourceKey = externalSelectedResourceKey;
+	const activeSelectedResourceIdentityKey = externalSelectedResourceIdentityKey;
 
 	const effectiveCollapsedGroups = useMemo(() => {
 		if (!activeSelectedResourceKey && !activeSelectedResourceIdentityKey) {
@@ -421,36 +420,6 @@ function ResourceListComponent({
 		collapsedGroups,
 		displayData,
 	]);
-
-	useEffect(() => {
-		if (!activeSelectedResourceKey && !activeSelectedResourceIdentityKey) return;
-		const selectedRow = displayData.find(
-			(resource) =>
-				resourceSelectionKey(resource) === activeSelectedResourceKey ||
-				resourceIdentityKey(resource) === activeSelectedResourceIdentityKey,
-		);
-		if (!selectedRow) return;
-		const groupCollapseKey = resourceGroupCollapseKey(selectedRow);
-		const typeCollapseKey = resourceTypeGroupCollapseKey(selectedRow);
-		setCollapsedGroups((current) => {
-			if (!current.has(groupCollapseKey) && !current.has(typeCollapseKey)) {
-				return current;
-			}
-			const next = new Set(current);
-			next.delete(groupCollapseKey);
-			next.delete(typeCollapseKey);
-			return next;
-		});
-	}, [activeSelectedResourceIdentityKey, activeSelectedResourceKey, displayData]);
-
-	useEffect(() => {
-		if (externalSelectedResourceKey) {
-			setSelectedResourceKey(externalSelectedResourceKey);
-		}
-		if (externalSelectedResourceIdentityKey) {
-			setSelectedResourceIdentityKey(externalSelectedResourceIdentityKey);
-		}
-	}, [externalSelectedResourceKey, externalSelectedResourceIdentityKey]);
 
 	useEffect(() => {
 		renderCountRef.current += 1;
@@ -509,8 +478,6 @@ function ResourceListComponent({
 	const deferredSyncedTopologyNodeId = useDeferredValue(syncedTopologyNodeId);
 	const handleResourceSelect = (resource: ResourceSummary) => {
 		setSelectedTopologyNodeId(null);
-		setSelectedResourceKey(resourceSelectionKey(resource));
-		setSelectedResourceIdentityKey(resourceIdentityKey(resource));
 		onResourceSelect(resource);
 	};
 	const handleTopologyNodeSelect = (
@@ -519,8 +486,6 @@ function ResourceListComponent({
 	) => {
 		setSelectedTopologyNodeId(node.id);
 		if (!resource) return;
-		setSelectedResourceKey(resourceSelectionKey(resource));
-		setSelectedResourceIdentityKey(resourceIdentityKey(resource));
 		onResourceSelect(resource);
 	};
 	const handleMapPanelOpenChange = (open: boolean) => {
@@ -607,7 +572,10 @@ function ResourceListComponent({
 			<ResourceHealthStrip
 				summary={healthSummary}
 				activeFilter={healthFilter}
-				onFilterChange={setHealthFilter}
+				onFilterChange={(filter) => {
+					setHealthFilter(filter);
+					setPageIndex(0);
+				}}
 			/>
 			{(metricsAvailabilityMessage || metricsError) && (
 				<Alert variant="default" className="py-2">
@@ -621,7 +589,10 @@ function ResourceListComponent({
 			)}
 			<ActiveHealthFilterBanner
 				filter={healthFilter}
-				onReset={() => setHealthFilter("all")}
+				onReset={() => {
+					setHealthFilter("all");
+					setPageIndex(0);
+				}}
 			/>
 			<ResourceToolbar
 				search={search}
@@ -638,7 +609,11 @@ function ResourceListComponent({
 				}}
 				onClearFilters={clearFilters}
 			/>
-			<ResourceMapTableLayout
+			<ResourceTableLayoutBoundary
+				pageRows={pageRows}
+				sorting={sorting}
+				columnVisibility={columnVisibility}
+				onSortingChange={setSorting}
 				topology={topologyWithMetrics}
 				topologyLoading={topologyPending}
 				topologyError={topologyError}
@@ -651,7 +626,6 @@ function ResourceListComponent({
 				mapPanelOpen={mapPanelOpen}
 				onMapPanelOpenChange={handleMapPanelOpenChange}
 				onTopologyNodeSelect={handleTopologyNodeSelect}
-				table={table}
 				tableRenderKey={tableRenderKey}
 				groupedByGitOps={groupedByGitOps}
 				pageGroups={pageGroups}
@@ -660,7 +634,6 @@ function ResourceListComponent({
 				selectedResourceKey={activeSelectedResourceKey}
 				selectedResourceIdentityKey={activeSelectedResourceIdentityKey}
 				onToggleGroup={toggleGroup}
-				onSelectedResourceKeyChange={setSelectedResourceKey}
 				onResourceSelect={handleResourceSelect}
 				totalRows={totalRows}
 				search={search}
@@ -673,4 +646,14 @@ function ResourceListComponent({
 	);
 }
 
-export const ResourceList = memo(ResourceListComponent);
+const MemoizedResourceListComponent = memo(ResourceListComponent);
+
+export function ResourceList(props: ResourceListProps) {
+	const namespaceKey = props.selectedNamespaces.join(",");
+	const kindKey = props.selectedKinds.map(resourceKindFetchKey).join(",");
+	const resetKey = `${props.clusterContext}|${namespaceKey}|${kindKey}|${
+		props.initialHealthFilter ?? "all"
+	}|${props.initialSearch ?? ""}`;
+
+	return <MemoizedResourceListComponent key={resetKey} {...props} />;
+}
