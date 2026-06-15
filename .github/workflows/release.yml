@@ -9,10 +9,15 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   prepare:
     name: Prepare release
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       release-draft: ${{ steps.release.outputs.release-draft }}
 
@@ -35,81 +40,55 @@ jobs:
             exit 1
           fi
 
-  build:
-    name: Build ${{ matrix.label }}
+  verify:
+    name: Verify release inputs
     needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: macOS universal
-            platform: macos-latest
-            args: "--target universal-apple-darwin --bundles app,dmg"
-            rust-targets: "aarch64-apple-darwin x86_64-apple-darwin"
-            expected-updater-platforms: "darwin-aarch64 darwin-x86_64"
-            expected-updater-assets: "KubeCove_universal.app.tar.gz KubeCove_universal.app.tar.gz.sig"
-          - label: Windows x64
-            platform: windows-latest
-            args: "--target x86_64-pc-windows-msvc"
-            rust-targets: "x86_64-pc-windows-msvc"
-            expected-updater-platforms: "windows-x86_64 windows-x86_64-nsis"
-            expected-updater-assets: "KubeCove___VERSION___x64-setup.exe KubeCove___VERSION___x64-setup.exe.sig"
-          - label: Linux x64
-            platform: ubuntu-latest
-            args: "--target x86_64-unknown-linux-gnu"
-            rust-targets: "x86_64-unknown-linux-gnu"
-            expected-updater-platforms: "linux-x86_64 linux-x86_64-appimage"
-            expected-updater-assets: "KubeCove___VERSION___amd64.AppImage KubeCove___VERSION___amd64.AppImage.sig"
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      release-body: ${{ steps.release_body.outputs.body }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
       - name: Install Linux Tauri dependencies
-        if: matrix.platform == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            file \
-            libayatana-appindicator3-dev \
-            libfuse2 \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            patchelf \
-            rpm
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: >-
+            build-essential
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            libssl-dev
+            libwebkit2gtk-4.1-dev
+            patchelf
+          version: release-verify-tauri-linux-v1
 
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: latest
+          node-version: 24
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.3.14"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Bun dependencies
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@v5
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Install Rust targets
-        run: rustup target add ${{ matrix.rust-targets }}
-
       - name: Cache Rust
-        uses: swatinem/rust-cache@v2.9.1
+        uses: swatinem/rust-cache@v2
         with:
-          shared-key: kubecove-rust
+          shared-key: kubecove-rust-release-verify
           workspaces: "./src-tauri -> target"
 
       - name: Install frontend dependencies
@@ -134,14 +113,98 @@ jobs:
       - name: Typecheck frontend
         run: bun run typecheck
 
+      - name: Lint frontend
+        run: bun run lint
+
       - name: Test frontend
         run: bun test
 
       - name: Test Rust
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-      - name: Check Rust
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Lint Rust
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs:
+      - prepare
+      - verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS universal
+            platform: macos-latest
+            args: "--target universal-apple-darwin --bundles app,dmg"
+            rust-targets: "aarch64-apple-darwin x86_64-apple-darwin"
+            expected-updater-assets: "KubeCove_universal.app.tar.gz KubeCove_universal.app.tar.gz.sig"
+          - label: Windows x64
+            platform: windows-latest
+            args: "--target x86_64-pc-windows-msvc"
+            rust-targets: "x86_64-pc-windows-msvc"
+            expected-updater-assets: "KubeCove___VERSION___x64-setup.exe KubeCove___VERSION___x64-setup.exe.sig"
+          - label: Linux x64
+            platform: ubuntu-latest
+            args: "--target x86_64-unknown-linux-gnu"
+            rust-targets: "x86_64-unknown-linux-gnu"
+            expected-updater-assets: "KubeCove___VERSION___amd64.AppImage KubeCove___VERSION___amd64.AppImage.sig"
+
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Linux Tauri dependencies
+        if: matrix.platform == 'ubuntu-latest'
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: >-
+            build-essential
+            file
+            libayatana-appindicator3-dev
+            libfuse2
+            librsvg2-dev
+            libssl-dev
+            libwebkit2gtk-4.1-dev
+            patchelf
+            rpm
+          version: release-build-tauri-linux-v1
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install Rust targets
+        run: rustup target add ${{ matrix.rust-targets }}
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          shared-key: kubecove-rust-release-build
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
 
       - name: Build and upload release assets
         uses: tauri-apps/tauri-action@v0
@@ -153,58 +216,45 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: "KubeCove v__VERSION__"
-          releaseBody: ${{ steps.release_body.outputs.body }}
+          releaseBody: ${{ needs.verify.outputs.release-body }}
           releaseDraft: ${{ needs.prepare.outputs.release-draft }}
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
 
-      - name: Verify updater JSON asset
+      - name: Verify release assets
         shell: bash
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
-          EXPECTED_UPDATER_PLATFORMS: ${{ matrix.expected-updater-platforms }}
           EXPECTED_UPDATER_ASSETS: ${{ matrix.expected-updater-assets }}
         run: |
           set -euo pipefail
           version="${TAG_NAME#app-v}"
           gh release view "$TAG_NAME" --json assets --jq '.assets[].name' > release-assets.txt
-          grep -qx latest.json release-assets.txt
 
           for asset_template in $EXPECTED_UPDATER_ASSETS; do
             asset="${asset_template//__VERSION__/$version}"
             grep -qx "$asset" release-assets.txt
           done
 
-          rm -rf updater-json-check
-          mkdir -p updater-json-check
-          gh release download "$TAG_NAME" --pattern latest.json --clobber --dir updater-json-check
-          node <<'EOF'
-          const { readFileSync } = require("node:fs");
-
-          const latest = JSON.parse(readFileSync("updater-json-check/latest.json", "utf8"));
-          const platforms = latest.platforms ?? {};
-          const missing = process.env.EXPECTED_UPDATER_PLATFORMS
-            .split(/\s+/)
-            .filter(Boolean)
-            .filter((platform) => !platforms[platform]);
-
-          if (missing.length > 0) {
-            throw new Error(`latest.json is missing updater platforms: ${missing.join(", ")}`);
-          }
-          EOF
-
   publish:
     name: Publish release
     needs:
       - prepare
+      - verify
       - build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
       - name: Verify final updater platform coverage
         env:
           GH_REPO: ${{ github.repository }}

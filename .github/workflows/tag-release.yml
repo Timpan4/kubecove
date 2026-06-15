@@ -9,10 +9,15 @@ permissions:
   contents: write
   pull-requests: read
 
+concurrency:
+  group: tag-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   tag:
     name: Tag merged release PR
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Find associated release PR

@@ -75,9 +75,7 @@ pub fn get_app_usage_metrics(
 }
 
 fn available_cpu_count() -> usize {
-    std::thread::available_parallelism()
-        .map(usize::from)
-        .unwrap_or(1)
+    std::thread::available_parallelism().map_or(1, usize::from)
 }
 
 pub(crate) fn normalize_cpu_percent(raw_cpu_percent: f32, cpu_count: usize) -> f32 {
@@ -340,7 +338,7 @@ fn usage_process_children(
     mut children: Vec<UsageProcessSample>,
     cpu_count: usize,
 ) -> Vec<AppUsageMetricsBreakdown> {
-    children.sort_by(|a, b| b.memory_bytes.cmp(&a.memory_bytes));
+    children.sort_by_key(|child| std::cmp::Reverse(child.memory_bytes));
     let mut label_counts: HashMap<String, usize> = HashMap::new();
     children
         .into_iter()
