@@ -29,7 +29,8 @@ import type {
 	YamlViewMode,
 } from "../../lib/types";
 import { diagnosticLog, diagnosticResultSummary } from "../../lib/diagnostics";
-import { kubeconfigSourceKey, useSettingsState } from "../../lib/settings";
+import { useSettingsState } from "../../lib/settings";
+import { queryKeys } from "../../lib/queryKeys";
 import type { Tab } from "./constants";
 import { shouldFetchResourceDetails, shouldFetchResourceEvents } from "./helpers";
 
@@ -54,7 +55,6 @@ export function useResourceDetails({
 }: UseResourceDetailsArgs) {
 	const queryClient = useQueryClient();
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
-	const sourceKey = kubeconfigSourceKey(kubeconfigEnvVar);
 	const resourceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const eventsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const dynamicResourceKindKey = dynamicResourceKind
@@ -69,21 +69,16 @@ export function useResourceDetails({
 	const eventsEnabled = shouldFetchResourceEvents(resource);
 	const detailsQueryKey = useMemo(
 		() =>
-			[
-				"resource-details",
-				sourceKey,
+			queryKeys.resourceDetails(
+				resource,
 				dynamicResourceKindKey,
-				resource.cluster,
-				resource.apiVersion,
-				resource.kind,
-				resource.name,
-				resource.namespace,
+				kubeconfigEnvVar,
 				yamlViewMode,
 				yamlEncoding,
-			] as const,
+			),
 		[
 			dynamicResourceKindKey,
-			sourceKey,
+			kubeconfigEnvVar,
 			resource.apiVersion,
 			resource.cluster,
 			resource.kind,
@@ -95,21 +90,16 @@ export function useResourceDetails({
 	);
 	const yamlQueryKey = useMemo(
 		() =>
-			[
-				"resource-yaml",
-				sourceKey,
+			queryKeys.resourceYaml(
+				resource,
 				dynamicResourceKindKey,
-				resource.cluster,
-				resource.apiVersion,
-				resource.kind,
-				resource.name,
-				resource.namespace,
+				kubeconfigEnvVar,
 				yamlViewMode,
 				yamlEncoding,
-			] as const,
+			),
 		[
 			dynamicResourceKindKey,
-			sourceKey,
+			kubeconfigEnvVar,
 			resource.apiVersion,
 			resource.cluster,
 			resource.kind,
@@ -120,18 +110,9 @@ export function useResourceDetails({
 		],
 	);
 	const eventsQueryKey = useMemo(
-		() =>
-			[
-				"resource-events",
-				sourceKey,
-				resource.cluster,
-				resource.apiVersion,
-				resource.kind,
-				resource.name,
-				resource.namespace,
-			] as const,
+		() => queryKeys.resourceEvents(resource, kubeconfigEnvVar),
 		[
-			sourceKey,
+			kubeconfigEnvVar,
 			resource.apiVersion,
 			resource.cluster,
 			resource.kind,

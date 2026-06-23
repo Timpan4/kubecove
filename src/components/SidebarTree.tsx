@@ -231,13 +231,13 @@ function TreeNodeComponent({
     <li>
       <div
         className={cn(
-          "relative flex h-[26px] cursor-pointer select-none items-center gap-1 rounded-none text-[0.8125rem] text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          "relative flex h-[26px] cursor-pointer select-none items-center gap-1 rounded-none text-[0.8125rem] text-sidebar-foreground/80 transition-colors hover:bg-surface-1 hover:text-sidebar-accent-foreground",
           isDisabled &&
             "cursor-default text-muted-foreground/70 hover:bg-transparent hover:text-muted-foreground/70",
           isSelected &&
-            "bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:bottom-0 before:left-0 before:top-0 before:w-0.5 before:rounded-r-sm before:bg-sidebar-primary",
+            "bg-primary/10 text-sidebar-accent-foreground before:absolute before:bottom-0 before:left-0 before:top-0 before:w-0.5 before:rounded-r-sm before:bg-primary",
           depth === 0 &&
-            "text-[0.6875rem] font-bold uppercase tracking-wide text-muted-foreground hover:bg-transparent hover:text-foreground/70",
+            "text-[0.6875rem] font-bold uppercase tracking-wide text-muted-foreground/70 hover:bg-transparent hover:text-foreground/70",
           depthPaddingClass,
         )}
         data-depth={depth}

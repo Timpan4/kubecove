@@ -1,0 +1,116 @@
+<script lang="ts">
+	import { createQuery } from "@tanstack/svelte-query";
+	import { Activity, CircleAlert } from "lucide-svelte";
+	import { Button } from "@/components/ui/svelte";
+	import { queryKeys } from "@/lib/queryKeys";
+	import { createTauriClient, getAppUsageMetrics } from "@/lib/tauri";
+	import {
+		flattenUsageMetricsBreakdown,
+		formatCpuPercent,
+		formatMemoryBytes,
+		formatProcessCount,
+		formatUsageMetrics,
+	} from "@/lib/usage-metrics";
+	import { settingsStore } from "@/lib/settings-store";
+
+	const client = createTauriClient();
+	let open = $state(false);
+	const visible = $derived($settingsStore.showUsageFooter);
+
+	const usageQuery = createQuery(() => ({
+		queryKey: queryKeys.appUsageMetrics(),
+		queryFn: () => getAppUsageMetrics(client),
+		enabled: visible,
+		placeholderData: (previousData) => previousData,
+		refetchInterval: visible ? 2_000 : false,
+	}));
+
+	const metrics = $derived(usageQuery.data);
+	const rows = $derived(flattenUsageMetricsBreakdown(metrics?.breakdown ?? []));
+	const label = $derived(
+		usageQuery.isError
+			? "Usage metrics unavailable"
+			: metrics
+				? formatUsageMetrics(metrics)
+				: "Loading usage metrics...",
+	);
+
+	$effect(() => {
+		if (!visible) open = false;
+	});
+</script>
+
+{#if visible}
+	<footer class="relative flex h-7 shrink-0 items-center justify-end gap-2 border-t bg-sidebar px-4 text-[0.6875rem] text-muted-foreground">
+		{#if usageQuery.isError || !metrics}
+			<span class="inline-flex min-w-0 items-center gap-1.5">
+				{#if usageQuery.isError}
+					<CircleAlert class="size-3.5 shrink-0" />
+				{:else}
+					<Activity class="size-3.5 shrink-0" />
+				{/if}
+				<span class="truncate">{label}</span>
+			</span>
+		{:else}
+			<Button
+				type="button"
+				variant="ghost"
+				size="sm"
+				class="h-6 min-w-0 px-2 text-[0.6875rem] font-normal text-muted-foreground hover:text-foreground"
+				aria-label="Show app process tree"
+				aria-expanded={open}
+				onclick={() => (open = !open)}
+			>
+				<Activity data-icon="inline-start" class="size-3.5 shrink-0" />
+				<span class="truncate">{label}</span>
+			</Button>
+		{/if}
+
+		{#if open && metrics}
+			<div class="absolute bottom-8 right-4 z-popover w-[31rem] max-w-[calc(100vw-2rem)] rounded-md border bg-popover p-2 text-popover-foreground shadow-xl">
+				<div class="px-1 pb-1 text-[0.625rem] font-semibold uppercase text-muted-foreground">
+					App process tree
+				</div>
+				<div class="max-h-[min(58vh,28rem)] overflow-auto">
+					<table class="w-full border-separate border-spacing-x-0 border-spacing-y-0.5 text-[0.6875rem]">
+						<thead>
+							<tr class="text-[0.625rem] font-semibold uppercase text-muted-foreground">
+								<th class="px-1 pb-1 text-left">Process</th>
+								<th class="px-1 pb-1 text-right">CPU</th>
+								<th class="px-1 pb-1 text-right">Memory</th>
+								<th class="px-1 pb-1 text-right">Count</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each rows as row (`${row.depth}:${row.item.label}`)}
+								<tr class={row.depth > 0 ? "text-muted-foreground" : "text-foreground"}>
+									<td class="min-w-0 py-1 pr-3 align-top">
+										<div class="min-w-0" style={`padding-left: ${row.depth * 0.75}rem`}>
+											<div class={row.depth > 0 ? "truncate text-muted-foreground" : "truncate font-medium"}>
+												{row.item.label}
+											</div>
+											{#if row.depth === 0}
+												<div class="truncate text-[0.625rem] text-muted-foreground">
+													{row.item.description}
+												</div>
+											{/if}
+										</div>
+									</td>
+									<td class="whitespace-nowrap px-1 py-1 text-right align-top tabular-nums">
+										CPU {formatCpuPercent(row.item.cpuPercent)}
+									</td>
+									<td class="whitespace-nowrap px-1 py-1 text-right align-top tabular-nums">
+										{formatMemoryBytes(row.item.memoryBytes)}
+									</td>
+									<td class="whitespace-nowrap py-1 pl-1 text-right align-top tabular-nums">
+										{formatProcessCount(row.item.processCount)}
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		{/if}
+	</footer>
+{/if}

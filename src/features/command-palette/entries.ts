@@ -46,10 +46,10 @@ function kindEntry(section: SectionName, child: string): PaletteNavigationEntry 
  * Static navigation targets: every sidebar section and its curated kind
  * children, plus the two top-bar destinations (Settings, Workspaces).
  */
-export function buildNavigationEntries(argoDetected: boolean): PaletteNavigationEntry[] {
+export function buildNavigationEntries(gitOpsVisible: boolean): PaletteNavigationEntry[] {
 	const entries: PaletteNavigationEntry[] = [];
 	for (const section of STATIC_SECTION_NAMES) {
-		if (section === "argo" && !argoDetected) continue;
+		if (section === "argo" && !gitOpsVisible) continue;
 		entries.push(sectionEntry(section));
 		for (const child of SECTIONS[section].children) {
 			entries.push(kindEntry(section, child));

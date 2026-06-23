@@ -1,5 +1,5 @@
 export function smartKubernetesName(name: string, kind: string): string {
-	if (name.length <= 18) return name;
+	if (name.length <= 28) return name;
 	const parts = name.split("-");
 	const suffix = parts[parts.length - 1] ?? "";
 	const generatedPodName =

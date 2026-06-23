@@ -1,6 +1,7 @@
 import type {
 	FluxResourceKind,
 	ResourceKindSelection,
+	ResourceSummary,
 	TopologyMode,
 	YamlEncoding,
 	YamlViewMode,
@@ -70,6 +71,57 @@ export const queryKeys = {
 			clusterContext,
 			sortedNamespaces(namespaces),
 		] as const,
+	resourceDetails: (
+		resource: ResourceSummary,
+		dynamicResourceKindKey?: string | null,
+		kubeconfigEnvVar?: string,
+		yamlViewMode: YamlViewMode = "kubectl",
+		yamlEncoding: YamlEncoding = "yaml",
+	) =>
+		[
+			"resource-details",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			dynamicResourceKindKey ?? "",
+			resource.cluster,
+			resource.apiVersion ?? "",
+			resource.kind,
+			resource.namespace ?? "",
+			resource.name,
+			yamlViewMode,
+			yamlEncoding,
+		] as const,
+	resourceYaml: (
+		resource: ResourceSummary,
+		dynamicResourceKindKey?: string | null,
+		kubeconfigEnvVar?: string,
+		yamlViewMode: YamlViewMode = "kubectl",
+		yamlEncoding: YamlEncoding = "yaml",
+	) =>
+		[
+			"resource-yaml",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			dynamicResourceKindKey ?? "",
+			resource.cluster,
+			resource.apiVersion ?? "",
+			resource.kind,
+			resource.namespace ?? "",
+			resource.name,
+			yamlViewMode,
+			yamlEncoding,
+		] as const,
+	resourceEvents: (
+		resource: ResourceSummary,
+		kubeconfigEnvVar?: string,
+	) =>
+		[
+			"resource-events",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			resource.cluster,
+			resource.apiVersion ?? "",
+			resource.kind,
+			resource.namespace ?? "",
+			resource.name,
+		] as const,
 	argoDetect: (clusterContext: string, kubeconfigEnvVar?: string) =>
 		["argo-detect", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
 	argoApps: (clusterContext: string, kubeconfigEnvVar?: string) =>
@@ -78,6 +130,57 @@ export const queryKeys = {
 		["argo-appsets", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
 	argoAppProjects: (clusterContext: string, kubeconfigEnvVar?: string) =>
 		["argo-appprojects", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
+	argoAppDetails: (
+		clusterContext: string,
+		name: string,
+		namespace?: string | null,
+		kubeconfigEnvVar?: string,
+		yamlViewMode: YamlViewMode = "kubectl",
+		yamlEncoding: YamlEncoding = "yaml",
+	) =>
+		[
+			"argo-app-details",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			namespace ?? "",
+			name,
+			yamlViewMode,
+			yamlEncoding,
+		] as const,
+	argoAppSetDetails: (
+		clusterContext: string,
+		name: string,
+		namespace?: string | null,
+		kubeconfigEnvVar?: string,
+		yamlViewMode: YamlViewMode = "kubectl",
+		yamlEncoding: YamlEncoding = "yaml",
+	) =>
+		[
+			"argo-appset-details",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			namespace ?? "",
+			name,
+			yamlViewMode,
+			yamlEncoding,
+		] as const,
+	argoAppProjectDetails: (
+		clusterContext: string,
+		name: string,
+		namespace?: string | null,
+		kubeconfigEnvVar?: string,
+		yamlViewMode: YamlViewMode = "kubectl",
+		yamlEncoding: YamlEncoding = "yaml",
+	) =>
+		[
+			"argo-appproject-details",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			namespace ?? "",
+			name,
+			yamlViewMode,
+			yamlEncoding,
+		] as const,
 	fluxDetect: (clusterContext: string, kubeconfigEnvVar?: string) =>
 		["flux-detect", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
 	fluxResources: (
@@ -140,6 +243,8 @@ export const queryKeys = {
 		] as const,
 	portForwards: () => ["port-forwards"] as const,
 	podExecSessions: () => ["pod-exec-sessions"] as const,
+	appUsageMetrics: () => ["app-usage-metrics"] as const,
+	backendDiagnostics: () => ["backend-diagnostics"] as const,
 	helmReleaseDetails: (
 		clusterContext: string,
 		namespace: string,

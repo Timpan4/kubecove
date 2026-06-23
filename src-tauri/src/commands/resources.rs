@@ -2,6 +2,7 @@ mod apply;
 mod details;
 mod dynamic;
 mod ingress_status;
+mod kubeconform;
 mod scope;
 mod summary;
 mod summary_cluster;

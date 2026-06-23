@@ -1,20 +1,41 @@
+import { cva, type VariantProps } from "class-variance-authority"
 import type * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+export const cardVariants = cva(
+  "group/card flex flex-col gap-4 overflow-hidden rounded-lg bg-surface-1 py-4 text-xs/relaxed text-card-foreground border border-border has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg transition-shadow duration-150",
+  {
+    variants: {
+      elevation: {
+        flat: "shadow-none",
+        raised: "shadow-sm hover:shadow-md hover:border-primary/30",
+        overlay:
+          "shadow-xl border-border/60 bg-surface-2 backdrop-blur-2xl backdrop-saturate-150 z-popover",
+      },
+    },
+    defaultVariants: {
+      elevation: "flat",
+    },
+  }
+)
+
+type CardElevation = NonNullable<VariantProps<typeof cardVariants>["elevation"]>
+
 function Card({
   className,
   size = "default",
+  elevation = "flat",
   ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+}: React.ComponentProps<"div"> & {
+  size?: "default" | "sm"
+  elevation?: CardElevation
+}) {
   return (
     <div
       data-slot="card"
       data-size={size}
-      className={cn(
-        "group/card flex flex-col gap-4 overflow-hidden rounded-lg bg-card py-4 text-xs/relaxed text-card-foreground ring-1 ring-foreground/10 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg",
-        className
-      )}
+      className={cn(cardVariants({ elevation }), className)}
       {...props}
     />
   )

@@ -6,6 +6,7 @@ import {
 	formatUsageMetrics,
 	formatUsageMetricsBreakdown,
 	formatUsageMetricsBreakdownDetails,
+	flattenUsageMetricsBreakdown,
 } from "../src/lib/usage-metrics";
 
 describe("usage metrics formatting", () => {
@@ -92,5 +93,9 @@ describe("usage metrics formatting", () => {
 		expect(formatUsageMetricsBreakdown(item.children[0])).toBe(
 			"WebView · CPU 0.8% · 128 MB · 2 processes",
 		);
+		expect(flattenUsageMetricsBreakdown([item]).map(({ item, depth }) => [item.label, depth])).toEqual([
+			["KubeCove", 0],
+			["WebView", 1],
+		]);
 	});
 });

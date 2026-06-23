@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { formatExactTimestamp } from "../src/components/timestamp-format";
 import {
 	latestTimestampedLogLine,
@@ -75,5 +76,19 @@ describe("log presentation helpers", () => {
 		expect(formatExactTimestamp("2026-05-18T09:01:35Z", "utc")).toBe(
 			"2026-05-18 09:01 UTC",
 		);
+	});
+
+	test("Svelte logs use selected non-init containers before streaming", () => {
+		const source = [
+			readFileSync("src/features/resource-detail/ResourceDetailPanel.svelte", "utf8"),
+			readFileSync("src/features/resource-detail/LogsTab.svelte", "utf8"),
+		].join("\n");
+
+		expect(source).toContain(
+			'containerRows.filter((container) => container.type !== "init")',
+		);
+		expect(source).toContain("isPod && selectedContainer");
+		expect(source).toContain("container: selectedContainer");
+		expect(source).toContain("No containers found");
 	});
 });

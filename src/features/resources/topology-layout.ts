@@ -1,4 +1,4 @@
-import type { SmoothStepPathOptions } from "@xyflow/react";
+import type { SmoothStepPathOptions } from "@xyflow/system";
 import type { ResourceTopology, TopologyNode } from "@/lib/types";
 import { type TopologyGraph, uniqueNodes } from "./topology-graph";
 
@@ -7,10 +7,23 @@ export const NODE_HEIGHT = 78;
 const COLUMN_GAP = 104;
 const ROW_GAP = 14;
 export const CANVAS_PADDING = 96;
-const NODE_Y_STEP = NODE_HEIGHT + ROW_GAP;
 const SUBTREE_GAP = 20;
 const ROOT_GROUP_GAP = 16;
 const STANDALONE_GROUP_GAP = 10;
+
+export interface TopologyLayoutMetrics {
+	nodeWidth: number;
+	nodeHeight: number;
+	columnGap: number;
+	rowGap: number;
+}
+
+export const DEFAULT_TOPOLOGY_LAYOUT: TopologyLayoutMetrics = {
+	nodeWidth: NODE_WIDTH,
+	nodeHeight: NODE_HEIGHT,
+	columnGap: COLUMN_GAP,
+	rowGap: ROW_GAP,
+};
 
 export const EDGE_PATH_OPTIONS: SmoothStepPathOptions = {
 	borderRadius: 10,
@@ -223,10 +236,12 @@ export function buildTopologyPositions(
 	graph: TopologyGraph,
 	depthById: Map<string, number>,
 	orderById: Map<string, string>,
+	layout: TopologyLayoutMetrics = DEFAULT_TOPOLOGY_LAYOUT,
 ): Map<string, { x: number; y: number }> {
+	const nodeYStep = layout.nodeHeight + layout.rowGap;
 	const primaryChildren = buildPrimaryChildren(graph, orderById, depthById);
 	const primaryChildIds = new Set(
-		Array.from(primaryChildren.values()).flatMap((childIds) => childIds),
+		Array.from(primaryChildren.values()).flat(),
 	);
 	const compareNodes = compareNodesByLayoutOrder(orderById, depthById);
 	const roots = graph.nodes
@@ -245,16 +260,16 @@ export function buildTopologyPositions(
 
 	function nodeX(node: TopologyNode): number {
 		const column = depthById.get(node.id) ?? kindRank(node.kind);
-		return CANVAS_PADDING + column * (NODE_WIDTH + COLUMN_GAP);
+		return CANVAS_PADDING + column * (layout.nodeWidth + layout.columnGap);
 	}
 
 	function layoutNode(nodeId: string, topY: number, visiting: Set<string>): number {
 		const node = graph.nodesById.get(nodeId);
 		if (!node || visited.has(nodeId)) return topY;
 		if (visiting.has(nodeId)) {
-			positions.set(nodeId, { x: nodeX(node), y: topY });
-			visited.add(nodeId);
-			return topY + NODE_Y_STEP;
+				positions.set(nodeId, { x: nodeX(node), y: topY });
+				visited.add(nodeId);
+				return topY + nodeYStep;
 		}
 
 		visiting.add(nodeId);
@@ -278,7 +293,7 @@ export function buildTopologyPositions(
 		positions.set(nodeId, { x: nodeX(node), y });
 		visited.add(nodeId);
 		visiting.delete(nodeId);
-		return Math.max(nextY, y + NODE_Y_STEP);
+		return Math.max(nextY, y + nodeYStep);
 	}
 
 	let cursorY = CANVAS_PADDING;

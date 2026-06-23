@@ -59,6 +59,10 @@ import {
 	resourceKindLogKey,
 	SIDEBAR_PROVIDER_STYLE,
 } from "./app/viewHelpers";
+import {
+	takeUiRuntimeSettingsOpen,
+	takeUiRuntimeWorkspaceHandoff,
+} from "./lib/ui-runtime";
 
 function useLazyRef<T>(createValue: () => T): { current: T } {
 	const ref = useRef<T | null>(null);
@@ -100,6 +104,7 @@ function App() {
 		selectedTreeNode,
 		expandedSections,
 		setSelectedTreeNode,
+		setExpandedSections,
 		toggleExpandedSection,
 	} = useDashboardState();
 	const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
@@ -238,6 +243,44 @@ function App() {
 		handleOpenPortForwards,
 		handleTreeNodeSelect,
 	} = navigation;
+
+	useEffect(() => {
+		if (takeUiRuntimeSettingsOpen()) {
+			handleOpenSettings();
+		}
+	}, [handleOpenSettings]);
+
+	useEffect(() => {
+		const handoff = takeUiRuntimeWorkspaceHandoff();
+		if (!handoff) return;
+		const workspace = workspaces.find((item) => item.id === handoff.workspaceId);
+		if (workspace) {
+			applyWorkspace(workspace);
+			if (handoff.resourceNamespaceOverride) {
+				setSelectedNamespaces(handoff.resourceNamespaceOverride);
+			}
+			if (handoff.expandedSections) {
+				setExpandedSections(handoff.expandedSections);
+			}
+			if (handoff.viewMode) {
+				openView(handoff.viewMode, {
+					treeNode: handoff.selectedNode ?? null,
+					initialSearch: handoff.resourceInitialSearch,
+					argoAppFilter: handoff.resourceInitialGitOpsFilter,
+					healthFilter: handoff.resourceInitialHealthFilter,
+				});
+			} else if ("selectedNode" in handoff) {
+				setSelectedTreeNode(handoff.selectedNode ?? null);
+			}
+		}
+	}, [
+		applyWorkspace,
+		openView,
+		setExpandedSections,
+		setSelectedNamespaces,
+		setSelectedTreeNode,
+		workspaces,
+	]);
 
 	const handlePaletteResourceSelect = (resource: ResourceSummary) => {
 		handleOpenResources(resource.namespace ?? undefined);

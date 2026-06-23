@@ -3,9 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
 	createTauriClient,
 	listPortForwards,
-	startPortForward,
-	stopPodPortForward,
-	type TauriClient,
 } from "@/lib/tauri";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettingsState } from "@/lib/settings";
@@ -16,21 +13,10 @@ import {
 	type SavedWorkspace,
 } from "@/lib/workspaces";
 import {
-	portForwardErrorMessage,
-	isReusablePortForwardSession,
-	savedPortForwardLocalPortConflict,
-	savedPortForwardMatchesSession,
-	savedPortForwardToRequest,
-} from "./helpers";
-
-export interface SavedPortForwardStartResult {
-	portForwardId: string;
-	ok: boolean;
-	session?: PortForwardSessionSummary;
-	error?: string;
-	skipped?: boolean;
-	conflict?: boolean;
-}
+	startSavedPortForward,
+	startSavedPortForwards,
+	type SavedPortForwardStartResult,
+} from "./saved-port-forward-actions";
 
 function setStartingId(
 	setter: Dispatch<SetStateAction<Set<string>>>,
@@ -43,90 +29,6 @@ function setStartingId(
 		else next.delete(id);
 		return next;
 	});
-}
-
-interface StartSavedPortForwardOptions {
-	client: TauriClient;
-	workspaceId: string;
-	portForward: SavedPortForward;
-	knownSessions: PortForwardSessionSummary[];
-	kubeconfigEnvVar?: string;
-	updateSavedPortForward: ReturnType<
-		typeof useWorkspaceStore.getState
-	>["updateSavedPortForward"];
-}
-
-async function startSavedPortForward({
-	client,
-	workspaceId,
-	portForward,
-	knownSessions,
-	kubeconfigEnvVar,
-	updateSavedPortForward,
-}: StartSavedPortForwardOptions): Promise<SavedPortForwardStartResult> {
-	const matchingSessions = knownSessions.filter((session) =>
-		savedPortForwardMatchesSession(portForward, session, kubeconfigEnvVar),
-	);
-	const existingSession = matchingSessions.find(isReusablePortForwardSession);
-	if (existingSession) {
-		updateSavedPortForward(workspaceId, portForward.id, {
-			lastStartedAt: existingSession.startedAt,
-			lastStatus: existingSession.status,
-			lastError: undefined,
-		});
-		return {
-			portForwardId: portForward.id,
-			ok: true,
-			session: existingSession,
-			skipped: true,
-		};
-	}
-
-	const conflictingSession = savedPortForwardLocalPortConflict(
-		portForward,
-		knownSessions,
-	);
-	if (conflictingSession) {
-		const message = `Local port ${conflictingSession.localPort} is already used by ${conflictingSession.namespace}/${conflictingSession.targetKind}/${conflictingSession.targetName}.`;
-		updateSavedPortForward(workspaceId, portForward.id, {
-			lastStatus: "error",
-			lastError: message,
-		});
-		return {
-			portForwardId: portForward.id,
-			ok: false,
-			error: message,
-			skipped: true,
-			conflict: true,
-		};
-	}
-
-	updateSavedPortForward(workspaceId, portForward.id, {
-		lastStatus: "starting",
-		lastError: undefined,
-	});
-	try {
-		for (const session of matchingSessions) {
-			await stopPodPortForward(client, session.id);
-		}
-		const session = await startPortForward(
-			client,
-			savedPortForwardToRequest(portForward, kubeconfigEnvVar),
-		);
-		updateSavedPortForward(workspaceId, portForward.id, {
-			lastStartedAt: session.startedAt,
-			lastStatus: session.status,
-			lastError: undefined,
-		});
-		return { portForwardId: portForward.id, ok: true, session };
-	} catch (error) {
-		const message = portForwardErrorMessage(error);
-		updateSavedPortForward(workspaceId, portForward.id, {
-			lastStatus: "error",
-			lastError: message,
-		});
-		return { portForwardId: portForward.id, ok: false, error: message };
-	}
 }
 
 export function useSavedPortForwardActions(
@@ -163,7 +65,7 @@ export function useSavedPortForwardActions(
 					workspaceId: workspace.id,
 					portForward,
 					knownSessions: currentSessions,
-					kubeconfigEnvVar,
+					kubeconfigSource: kubeconfigEnvVar,
 					updateSavedPortForward,
 				});
 				await queryClient.invalidateQueries({
@@ -194,19 +96,14 @@ export function useSavedPortForwardActions(
 			if (!workspace || portForwards.length === 0) return [];
 			setStartingAll(true);
 			const results = await (async () => {
-				let knownSessions =
-					activeSessions !== undefined
-						? activeSessions
-						: await listPortForwards(client).catch(() => []);
-				const results: SavedPortForwardStartResult[] = [];
-				for (const portForward of portForwards) {
-					const result = await startOne(portForward, knownSessions);
-					results.push(result);
-					if (result.session) {
-						knownSessions = [...knownSessions, result.session];
-					}
-				}
-				return results;
+				return startSavedPortForwards({
+					client,
+					workspace,
+					portForwards,
+					activeSessions,
+					kubeconfigSource: kubeconfigEnvVar,
+					updateSavedPortForward,
+				});
 			})().catch((error) => {
 				setStartingAll(false);
 				throw error;
@@ -214,7 +111,7 @@ export function useSavedPortForwardActions(
 			setStartingAll(false);
 			return results;
 		},
-		[activeSessions, client, startOne, workspace],
+		[activeSessions, client, kubeconfigEnvVar, updateSavedPortForward, workspace],
 	);
 
 	return {

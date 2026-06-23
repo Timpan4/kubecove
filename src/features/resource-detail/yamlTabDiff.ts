@@ -1,7 +1,8 @@
 import { structuredPatch } from "diff";
+import type { YamlDiffStyle } from "@/lib/settings";
 
 export interface UnifiedDiffLine {
-	type: "header" | "hunk" | "add" | "remove" | "context" | "empty";
+	type: "header" | "hunk" | "add" | "remove" | "context" | "empty" | "meta";
 	text: string;
 }
 
@@ -9,8 +10,34 @@ const DIFF_CONTEXT_LINES = 3;
 
 export function buildCompactUnifiedDiff(
 	currentYaml: string,
+	dryRunYaml: string,
+): UnifiedDiffLine[] {
+	return buildUnifiedDiff(currentYaml, dryRunYaml, DIFF_CONTEXT_LINES);
+}
 
-dryRunYaml: string,
+export function buildYamlDryRunDiff({
+	currentYaml,
+	dryRunYaml,
+	style,
+	full,
+	forceConflicts,
+}: {
+	currentYaml: string;
+	dryRunYaml: string;
+	style: YamlDiffStyle;
+	full: boolean;
+	forceConflicts: boolean;
+}): UnifiedDiffLine[] {
+	if (style === "git") {
+		return buildUnifiedDiff(currentYaml, dryRunYaml, diffContext(currentYaml, dryRunYaml, full));
+	}
+	return buildCleanDiff(currentYaml, dryRunYaml, full, forceConflicts);
+}
+
+function buildUnifiedDiff(
+	currentYaml: string,
+	dryRunYaml: string,
+	context: number,
 ): UnifiedDiffLine[] {
 	const patch = structuredPatch(
 		"current",
@@ -19,7 +46,7 @@ dryRunYaml: string,
 		dryRunYaml,
 		"",
 		"",
-		{ context: DIFF_CONTEXT_LINES },
+		{ context },
 	);
 	const lines: UnifiedDiffLine[] = [
 		{ type: "header", text: "--- current" },
@@ -51,6 +78,58 @@ dryRunYaml: string,
 	return lines;
 }
 
+function buildCleanDiff(
+	currentYaml: string,
+	dryRunYaml: string,
+	full: boolean,
+	forceConflicts: boolean,
+): UnifiedDiffLine[] {
+	const patch = structuredPatch(
+		"current",
+		"dry-run",
+		currentYaml,
+		dryRunYaml,
+		"",
+		"",
+		{ context: diffContext(currentYaml, dryRunYaml, full) },
+	);
+	const lines: UnifiedDiffLine[] = [];
+
+	for (const hunk of patch.hunks) {
+		for (const line of hunk.lines) {
+			if (line.startsWith("+")) {
+				lines.push({ type: "add", text: line });
+			} else if (line.startsWith("-")) {
+				lines.push({ type: "remove", text: line });
+			} else if (line.startsWith("\\")) {
+				lines.push({ type: "empty", text: line });
+			} else {
+				lines.push({ type: "context", text: line });
+			}
+		}
+	}
+
+	if (patch.hunks.length === 0) {
+		lines.push({ type: "empty", text: "No server-side dry-run changes." });
+	}
+
+	lines.push(
+		{ type: "meta", text: "  apply gate: dry-run succeeded" },
+		{ type: "meta", text: `  force-conflicts: ${forceConflicts ? "true" : "false"}` },
+	);
+
+	return lines;
+}
+
+function diffContext(currentYaml: string, dryRunYaml: string, full: boolean): number {
+	if (!full) return DIFF_CONTEXT_LINES;
+	return Math.max(
+		currentYaml.split("\n").length,
+		dryRunYaml.split("\n").length,
+		DIFF_CONTEXT_LINES,
+	);
+}
+
 export function diffLineClassName(type: UnifiedDiffLine["type"]): string {
 	switch (type) {
 		case "add":
@@ -61,9 +140,9 @@ export function diffLineClassName(type: UnifiedDiffLine["type"]): string {
 			return "bg-primary/10 text-primary";
 		case "header":
 			return "bg-muted/35 font-semibold text-muted-foreground";
+		case "meta":
 		case "empty":
 			return "text-muted-foreground";
-		case "context":
 		default:
 			return "text-muted-foreground";
 	}

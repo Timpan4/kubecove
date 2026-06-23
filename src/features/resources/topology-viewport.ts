@@ -1,4 +1,4 @@
-import type { CoordinateExtent } from "@xyflow/react";
+import type { CoordinateExtent } from "@xyflow/system";
 import { NODE_HEIGHT, NODE_WIDTH } from "./topology-layout";
 import type { OwnershipGraphEdge, OwnershipGraphNode } from "./topology";
 

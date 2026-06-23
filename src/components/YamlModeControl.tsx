@@ -48,14 +48,14 @@ export function YamlViewModeControl({
 		<div className="flex rounded-md border bg-background/50 p-0.5">
 			<YamlToggleButton
 				value="kubectl"
-				label="Kubectl"
+				label="Kubectl view"
 				selected={value === "kubectl"}
 				onSelect={onChange}
 				disabled={disabled}
 			/>
 			<YamlToggleButton
 				value="applyClean"
-				label="Apply-friendly"
+				label="Apply clean"
 				selected={value === "applyClean"}
 				onSelect={onChange}
 				disabled={disabled}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
 	Activity,
@@ -14,6 +14,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleButton } from "@/components/ToggleButton";
 import { useSettingsState } from "@/lib/settings";
+import { useWorkspaceStore } from "@/lib/workspaces";
+import {
+	queueUiRuntimeReloadNotice,
+	queueUiRuntimeWorkspaceHandoff,
+	takeUiRuntimeSettingsFocus,
+	type UiRuntimeMode,
+	uiRuntimeModeLabel,
+} from "@/lib/ui-runtime";
 import { cn } from "@/lib/utils";
 import { AppUpdatesSection, UPDATES_SETTINGS_ROWS } from "./AppUpdatesSection";
 import {
@@ -42,6 +50,11 @@ type SettingsCategoryId =
 	| "diagnostics";
 
 const GENERAL_ROWS = {
+	uiRuntime: {
+		title: "Frontend runtime",
+		description:
+			"Switches between the default Svelte UI and the React fallback. The app reloads after changing mode.",
+	},
 	exactTimestamps: {
 		title: "Show exact timestamps",
 		description:
@@ -60,6 +73,11 @@ const GENERAL_ROWS = {
 		title: "Show ownership map by default",
 		description:
 			"Opens the ownership map when entering resource views. When off, the map stays collapsed until opened.",
+	},
+	fullTopologyOnSelection: {
+		title: "Keep full map visible during selection",
+		description:
+			"Shows unrelated ownership branches while a resource is selected. Large namespaces may render slower.",
 	},
 	unavailableGitOpsProviders: {
 		title: "Show unavailable GitOps providers",
@@ -83,14 +101,22 @@ const SESSION_ROWS = {
 
 const YAML_ROWS = {
 	cleanupShape: {
-		title: "YAML cleanup shape",
+		title: "YAML shape",
 		description:
-			"Controls whether YAML panels open with kubectl-style inspect output or apply-friendly output.",
+			"Controls whether YAML panels open with Kubectl view or Apply clean output.",
 	},
 	encoding: {
 		title: "YAML encoding",
 		description:
 			"Controls whether YAML panels open as regular YAML or Kubernetes KYAML flow-style text.",
+	},
+	diffAppearance: {
+		title: "YAML diff appearance",
+		description: "Controls selected-resource dry-run diff rendering.",
+	},
+	errorLens: {
+		title: "YAML error lens",
+		description: "Shows inline editor diagnostics below YAML lines.",
 	},
 	forceConflicts: {
 		title: "Allow YAML force-conflicts",
@@ -143,26 +169,38 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 		showExactTimestamps,
 		showUsageFooter,
 		showOwnershipMapByDefault,
+		showFullTopologyOnSelection,
 		showUnavailableGitOpsProviders,
+		uiRuntimeMode,
 		autoStartSavedPortForwards,
 		keepLiveSessionsOnWorkspaceSwitch,
 		allowYamlForceConflicts,
 		timestampTimezone,
 		yamlViewModeDefault,
 		yamlEncodingDefault,
+		yamlDiffStyle,
+		yamlErrorLensEnabled,
 		setShowExactTimestamps,
 		setShowUsageFooter,
 		setShowOwnershipMapByDefault,
+		setShowFullTopologyOnSelection,
 		setShowUnavailableGitOpsProviders,
+		setUiRuntimeMode,
 		setAutoStartSavedPortForwards,
 		setKeepLiveSessionsOnWorkspaceSwitch,
 		setAllowYamlForceConflicts,
 		setTimestampTimezone,
 		setYamlViewModeDefault,
 		setYamlEncodingDefault,
+		setYamlDiffStyle,
+		setYamlErrorLensEnabled,
 	} = useSettingsState();
+	const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
 	const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>("general");
 	const [query, setQuery] = useState("");
+	const [runtimeSwitchMessage, setRuntimeSwitchMessage] = useState<string | null>(
+		null,
+	);
 	const searching = query.trim().length > 0;
 	const hasMatches = CATEGORIES.some((category) =>
 		category.rows.some((row) => matchesSettingsQuery(query, row)),
@@ -174,7 +212,23 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 		: (CATEGORIES.find((category) => category.id === activeCategory)?.label ??
 			"Settings");
 
+	useEffect(() => {
+		if (!takeUiRuntimeSettingsFocus()) return;
+		setActiveCategory("general");
+		setQuery(GENERAL_ROWS.uiRuntime.title);
+	}, []);
+
+	const handleUiRuntimeModeChange = (mode: UiRuntimeMode) => {
+		if (mode === uiRuntimeMode) return;
+		if (activeWorkspaceId) queueUiRuntimeWorkspaceHandoff(activeWorkspaceId);
+		setUiRuntimeMode(mode);
+		queueUiRuntimeReloadNotice(mode);
+		setRuntimeSwitchMessage(`Switching to ${uiRuntimeModeLabel(mode)} UI...`);
+		window.setTimeout(() => window.location.reload(), 600);
+	};
+
 	return (
+		<>
 		<div className="mx-auto flex w-full max-w-5xl gap-8 pb-8 pt-2">
 			<aside className="flex w-52 shrink-0 flex-col gap-4">
 				<Button
@@ -233,6 +287,17 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 				<SettingsSearchContext.Provider value={query}>
 					{showCategory("general") && (
 						<SettingsSection title="General" showTitle={searching}>
+							<SettingsRow {...GENERAL_ROWS.uiRuntime}>
+								<SegmentedControl
+									value={uiRuntimeMode}
+									options={[
+										{ value: "react", label: "React" },
+										{ value: "svelte", label: "Svelte" },
+									]}
+									onChange={handleUiRuntimeModeChange}
+									ariaLabel={GENERAL_ROWS.uiRuntime.title}
+								/>
+							</SettingsRow>
 							<SettingsRow {...GENERAL_ROWS.exactTimestamps}>
 								<ToggleButton
 									checked={showExactTimestamps}
@@ -263,6 +328,13 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 								checked={showOwnershipMapByDefault}
 								onCheckedChange={setShowOwnershipMapByDefault}
 								ariaLabel={GENERAL_ROWS.ownershipMap.title}
+							/>
+						</SettingsRow>
+						<SettingsRow {...GENERAL_ROWS.fullTopologyOnSelection}>
+							<ToggleButton
+								checked={showFullTopologyOnSelection}
+								onCheckedChange={setShowFullTopologyOnSelection}
+								ariaLabel={GENERAL_ROWS.fullTopologyOnSelection.title}
 							/>
 						</SettingsRow>
 						<SettingsRow {...GENERAL_ROWS.unavailableGitOpsProviders}>
@@ -300,8 +372,8 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 								<SegmentedControl
 									value={yamlViewModeDefault}
 									options={[
-										{ value: "kubectl", label: "Kubectl" },
-										{ value: "applyClean", label: "Apply-friendly" },
+										{ value: "kubectl", label: "Kubectl view" },
+										{ value: "applyClean", label: "Apply clean" },
 									]}
 									onChange={setYamlViewModeDefault}
 									ariaLabel={YAML_ROWS.cleanupShape.title}
@@ -316,6 +388,24 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 									]}
 									onChange={setYamlEncodingDefault}
 									ariaLabel={YAML_ROWS.encoding.title}
+								/>
+							</SettingsRow>
+							<SettingsRow {...YAML_ROWS.diffAppearance}>
+								<SegmentedControl
+									value={yamlDiffStyle}
+									options={[
+										{ value: "clean", label: "Clean" },
+										{ value: "git", label: "Git" },
+									]}
+									onChange={setYamlDiffStyle}
+									ariaLabel={YAML_ROWS.diffAppearance.title}
+								/>
+							</SettingsRow>
+							<SettingsRow {...YAML_ROWS.errorLens}>
+								<ToggleButton
+									checked={yamlErrorLensEnabled}
+									onCheckedChange={setYamlErrorLensEnabled}
+									ariaLabel={YAML_ROWS.errorLens.title}
 								/>
 							</SettingsRow>
 							<SettingsRow {...YAML_ROWS.forceConflicts}>
@@ -340,5 +430,14 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 				</SettingsSearchContext.Provider>
 			</div>
 		</div>
+		{runtimeSwitchMessage && (
+			<div
+				role="status"
+				className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg"
+			>
+				{runtimeSwitchMessage}
+			</div>
+		)}
+		</>
 	);
 }

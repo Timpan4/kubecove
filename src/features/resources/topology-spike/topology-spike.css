@@ -57,3 +57,19 @@ body,
 .svelte-flow__node-default {
 	text-align: left;
 }
+
+.topology-spike-shell--compact .react-flow__node-default,
+.topology-spike-shell--compact .svelte-flow__node-default {
+	box-sizing: border-box;
+	display: block;
+	min-width: 18px;
+	min-height: 18px;
+	overflow: hidden;
+	font-size: 0;
+	line-height: 0;
+}
+
+.topology-spike-shell--compact .react-flow__handle,
+.topology-spike-shell--compact .svelte-flow__handle {
+	display: none;
+}

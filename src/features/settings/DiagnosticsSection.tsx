@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Copy, RefreshCcw, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, RefreshCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	Table,
@@ -39,7 +39,15 @@ export const DIAGNOSTICS_SETTINGS_ROWS = {
 		description:
 			"Shows frontend and backend timing summaries, with redacted copy output by default.",
 	},
+	topologySpike: {
+		title: "Topology spike",
+		description:
+			"Opens the Svelte topology benchmark harness with synthetic 4,000-node data, compact nodes, selected edges, and a focused viewport.",
+	},
 } satisfies Record<string, SettingsRowMeta>;
+
+const TOPOLOGY_SPIKE_URL =
+	"/src/features/resources/topology-spike/svelte.html?nodes=4000&viewport=focused&nodeDetail=compact&edgeMode=selected&edgeType=straight";
 
 function formatMs(value: number | undefined): string {
 	return typeof value === "number" ? `${value} ms` : "-";
@@ -260,6 +268,10 @@ export function DiagnosticsSection({ showTitle }: { showTitle: boolean }) {
 		}
 	};
 
+	const openTopologySpike = () => {
+		window.location.assign(TOPOLOGY_SPIKE_URL);
+	};
+
 	return (
 		<SettingsSection title="Diagnostics" showTitle={showTitle}>
 			<SettingsRow {...DIAGNOSTICS_SETTINGS_ROWS.debugMode}>
@@ -268,6 +280,17 @@ export function DiagnosticsSection({ showTitle }: { showTitle: boolean }) {
 					onCheckedChange={setDebugModeEnabled}
 					ariaLabel={DIAGNOSTICS_SETTINGS_ROWS.debugMode.title}
 				/>
+			</SettingsRow>
+			<SettingsRow {...DIAGNOSTICS_SETTINGS_ROWS.topologySpike}>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					onClick={openTopologySpike}
+				>
+					<ExternalLink data-icon="inline-start" />
+					Open 4k LOD
+				</Button>
 			</SettingsRow>
 			<SettingsBlock
 				{...DIAGNOSTICS_SETTINGS_ROWS.report}

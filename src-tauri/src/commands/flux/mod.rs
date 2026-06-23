@@ -1,23 +1,16 @@
-use crate::commands::helpers::{
-    k8s_creation_timestamp_to_rfc3339, list_params, resource_age, serialize_resource_document,
+use crate::commands::gitops_crd::{
+    client_for_context, discover_api_resources, get_crd_object, has_api_resource, list_crd_objects,
+    resource_metadata, resource_status, resource_yaml,
 };
-use crate::commands::KubeconfigSource;
+use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
 use crate::models::{
     AppError, FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails, FluxResourceKind,
     FluxResourceSummary, YamlEncoding, YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
-use kube::api::{Api, ApiResource, DynamicObject};
-use kube::{discovery::Discovery, Client};
+use kube::api::{ApiResource, DynamicObject};
+use kube::Client;
 use serde_json::Value;
-
-async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    source.client_for_context(cluster_context).await
-}
 
 pub(crate) const FLUX_KINDS: &[(&str, &str, &str, &str, bool, &str)] = &[
     (
@@ -160,11 +153,7 @@ pub async fn list_flux_resources(
         return Ok(vec![]);
     }
     let api_resource = api_resource_from_flux_kind(&resource_kind);
-    let api: Api<DynamicObject> = Api::all_with(client, &api_resource);
-    let items = api
-        .list(&list_params())
-        .await
-        .map_err(|err| AppError::kube(err.to_string()))?;
+    let items = list_crd_objects(client, &api_resource).await?;
 
     Ok(items
         .iter()
@@ -187,38 +176,27 @@ pub async fn get_flux_resource_details(
         return Err(AppError::new("Flux resource kind not found", "cluster"));
     }
     let api_resource = api_resource_from_flux_kind(&resource_kind);
-    let api: Api<DynamicObject> = if resource_kind.namespaced {
-        match namespace.as_deref() {
-            Some(ns) => Api::namespaced_with(client, ns, &api_resource),
-            None => {
-                return Err(AppError::new(
-                    "Namespace required for namespaced Flux resource",
-                    "validation",
-                ));
-            }
-        }
+    let namespace = if resource_kind.namespaced {
+        Some(namespace.as_deref().ok_or_else(|| {
+            AppError::new(
+                "Namespace required for namespaced Flux resource",
+                "validation",
+            )
+        })?)
     } else {
-        Api::all_with(client, &api_resource)
+        None
     };
-    let object = api
-        .get(&name)
-        .await
-        .map_err(|err| AppError::kube(err.to_string()))?;
+    let object = get_crd_object(client, &api_resource, &name, namespace).await?;
 
-    let yaml = serialize_resource_document(
-        &object,
-        yaml_view_mode.unwrap_or_default(),
-        yaml_encoding.unwrap_or_default(),
-    )?;
-    let metadata = serde_json::to_value(&object.metadata)
-        .map_err(|err| AppError::new(err.to_string(), "serialization"))?;
+    let yaml = resource_yaml(&object, yaml_view_mode, yaml_encoding)?;
+    let metadata = resource_metadata(&object)?;
     let summary = flux_summary(&cluster_context, &resource_kind, &object);
 
     Ok(FluxResourceDetails {
         summary,
         yaml,
         metadata,
-        status: object.data.get("status").cloned(),
+        status: resource_status(&object),
     })
 }
 
@@ -240,21 +218,10 @@ pub(crate) fn flux_kinds() -> Vec<FluxResourceKind> {
 }
 
 async fn installed_flux_kinds(client: &Client) -> Result<Vec<FluxResourceKind>, AppError> {
-    let discovery = Discovery::new(client.clone())
-        .run_aggregated()
-        .await
-        .map_err(|err| AppError::kube(err.to_string()))?;
+    let resources = discover_api_resources(client).await?;
     Ok(flux_kinds()
         .into_iter()
-        .filter(|kind| {
-            discovery.groups().any(|group| {
-                group.name() == kind.group
-                    && group
-                        .recommended_resources()
-                        .iter()
-                        .any(|(api_resource, _)| api_resource.kind == kind.kind)
-            })
-        })
+        .filter(|kind| has_api_resource(&resources, &kind.group, &kind.kind))
         .collect())
 }
 

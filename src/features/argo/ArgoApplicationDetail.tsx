@@ -3,7 +3,8 @@ import { useMemo } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ExactTimestampText } from "@/components/TimestampText";
 import { YamlCodeViewer } from "@/components/YamlCodeViewer";
-import { kubeconfigSourceKey, useSettingsState } from "@/lib/settings";
+import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import { createTauriClient, getArgoApplicationDetails } from "@/lib/tauri";
 import type {
 	ArgoApplicationSummary,
@@ -34,25 +35,24 @@ function useArgoApplicationDetails(
 	const client = useMemo(() => createTauriClient(), []);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	return useQuery({
-		queryKey: [
-			"argo-app-details",
-			kubeconfigSourceKey(kubeconfigEnvVar),
+		queryKey: queryKeys.argoAppDetails(
 			app.cluster,
 			app.name,
 			app.namespace,
+			kubeconfigEnvVar,
 			yamlViewMode,
 			yamlEncoding,
-		],
+		),
 		queryFn: () =>
 			getArgoApplicationDetails(
 				client,
 				app.cluster,
 				app.name,
-			app.namespace ?? undefined,
-			kubeconfigEnvVar,
-			"kubectl",
-			yamlEncoding,
-		),
+				app.namespace ?? undefined,
+				kubeconfigEnvVar,
+				yamlViewMode,
+				yamlEncoding,
+			),
 		enabled: !!app.cluster && !!app.name,
 	});
 }

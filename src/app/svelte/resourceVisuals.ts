@@ -1,0 +1,209 @@
+/**
+ * Svelte twin of `src/lib/resource-visuals.ts`.
+ *
+ * Tone class strings (`text-[var(--resource-*)]`, `resource-tone-*-surface/badge`) are
+ * identical to the React version and resolve against the shared OKLCH tokens in App.css,
+ * so colors stay in sync across runtimes. Only the icon components differ
+ * (lucide-svelte vs lucide-react).
+ */
+import {
+	Box,
+	Boxes,
+	BriefcaseBusiness,
+	Cable,
+	CircleAlert,
+	Clock3,
+	Database,
+	FileCog,
+	FolderTree,
+	GitBranch,
+	Globe2,
+	HardDrive,
+	KeyRound,
+	Layers,
+	Network,
+	Package,
+	Rocket,
+	Server,
+	Shield,
+	Workflow,
+} from "lucide-svelte";
+import type { ComponentType, SvelteComponent } from "svelte";
+
+export interface ResourceVisual {
+	icon: ComponentType<SvelteComponent>;
+	className: string;
+	surfaceClassName: string;
+	badgeClassName: string;
+}
+
+type ResourceTone =
+	| "argo"
+	| "cluster"
+	| "config"
+	| "default"
+	| "deployment"
+	| "network"
+	| "pod"
+	| "replicaset"
+	| "secret"
+	| "storage"
+	| "workload";
+
+const RESOURCE_TONE_CLASSES: Record<
+	ResourceTone,
+	Omit<ResourceVisual, "icon">
+> = {
+	argo: {
+		className: "text-[var(--resource-argo)]",
+		surfaceClassName: "resource-tone-argo-surface",
+		badgeClassName: "resource-tone-argo-badge",
+	},
+	cluster: {
+		className: "text-[var(--resource-cluster)]",
+		surfaceClassName: "resource-tone-cluster-surface",
+		badgeClassName: "resource-tone-cluster-badge",
+	},
+	config: {
+		className: "text-[var(--resource-config)]",
+		surfaceClassName: "resource-tone-config-surface",
+		badgeClassName: "resource-tone-config-badge",
+	},
+	default: {
+		className: "text-muted-foreground",
+		surfaceClassName: "resource-tone-default-surface",
+		badgeClassName: "resource-tone-default-badge",
+	},
+	deployment: {
+		className: "text-[var(--resource-deployment)]",
+		surfaceClassName: "resource-tone-deployment-surface",
+		badgeClassName: "resource-tone-deployment-badge",
+	},
+	network: {
+		className: "text-[var(--resource-network)]",
+		surfaceClassName: "resource-tone-network-surface",
+		badgeClassName: "resource-tone-network-badge",
+	},
+	pod: {
+		className: "text-[var(--resource-pod)]",
+		surfaceClassName: "resource-tone-pod-surface",
+		badgeClassName: "resource-tone-pod-badge",
+	},
+	replicaset: {
+		className: "text-[var(--resource-replicaset)]",
+		surfaceClassName: "resource-tone-replicaset-surface",
+		badgeClassName: "resource-tone-replicaset-badge",
+	},
+	secret: {
+		className: "text-[var(--resource-secret)]",
+		surfaceClassName: "resource-tone-secret-surface",
+		badgeClassName: "resource-tone-secret-badge",
+	},
+	storage: {
+		className: "text-[var(--resource-storage)]",
+		surfaceClassName: "resource-tone-storage-surface",
+		badgeClassName: "resource-tone-storage-badge",
+	},
+	workload: {
+		className: "text-[var(--resource-workload)]",
+		surfaceClassName: "resource-tone-workload-surface",
+		badgeClassName: "resource-tone-workload-badge",
+	},
+};
+
+function resourceVisual(
+	icon: ComponentType<SvelteComponent>,
+	tone: ResourceTone,
+): ResourceVisual {
+	return { icon, ...RESOURCE_TONE_CLASSES[tone] };
+}
+
+const WORKLOAD_VISUAL = resourceVisual(Boxes, "workload");
+const NETWORK_VISUAL = resourceVisual(Network, "network");
+const CONFIG_VISUAL = resourceVisual(FileCog, "config");
+const STORAGE_VISUAL = resourceVisual(HardDrive, "storage");
+const ARGO_VISUAL = resourceVisual(GitBranch, "argo");
+const DEFAULT_VISUAL = resourceVisual(Package, "default");
+
+const KIND_VISUALS: Record<string, ResourceVisual> = {
+	Pod: resourceVisual(Box, "pod"),
+	Deployment: resourceVisual(Rocket, "deployment"),
+	ReplicaSet: resourceVisual(Box, "replicaset"),
+	StatefulSet: resourceVisual(Database, "storage"),
+	DaemonSet: resourceVisual(Server, "workload"),
+	Job: resourceVisual(BriefcaseBusiness, "cluster"),
+	CronJob: resourceVisual(Clock3, "cluster"),
+	Service: resourceVisual(Network, "network"),
+	Ingress: resourceVisual(Globe2, "network"),
+	ConfigMap: resourceVisual(FileCog, "config"),
+	Secret: resourceVisual(KeyRound, "secret"),
+	PersistentVolumeClaim: resourceVisual(HardDrive, "storage"),
+	PersistentVolume: resourceVisual(Database, "storage"),
+	StorageClass: resourceVisual(Layers, "storage"),
+	Node: resourceVisual(Server, "cluster"),
+	Applications: resourceVisual(GitBranch, "argo"),
+	"Argo CD Applications": resourceVisual(GitBranch, "argo"),
+	Application: resourceVisual(GitBranch, "argo"),
+	ApplicationSets: resourceVisual(Workflow, "argo"),
+	"Argo CD ApplicationSets": resourceVisual(Workflow, "argo"),
+	ApplicationSet: resourceVisual(Workflow, "argo"),
+	AppProjects: resourceVisual(Shield, "argo"),
+	"Argo CD AppProjects": resourceVisual(Shield, "argo"),
+	AppProject: resourceVisual(Shield, "argo"),
+	"Flux Git Repositories": resourceVisual(GitBranch, "default"),
+	"Flux OCI Repositories": resourceVisual(Package, "default"),
+	"Flux Helm Repositories": resourceVisual(Package, "default"),
+	"Flux Helm Charts": resourceVisual(Package, "default"),
+	"Flux Buckets": resourceVisual(Database, "storage"),
+	"Flux Kustomizations": resourceVisual(Layers, "workload"),
+	"Flux Helm Releases": resourceVisual(Package, "default"),
+	"Flux Providers": resourceVisual(Network, "network"),
+	"Flux Alerts": resourceVisual(CircleAlert, "cluster"),
+	"Flux Receivers": resourceVisual(Cable, "network"),
+	"Flux Image Repositories": resourceVisual(Package, "default"),
+	"Flux Image Policies": resourceVisual(Workflow, "default"),
+	"Flux Image Update Automations": resourceVisual(Workflow, "default"),
+	Releases: resourceVisual(Package, "default"),
+	"Namespace Access": resourceVisual(Shield, "secret"),
+	Roles: resourceVisual(KeyRound, "secret"),
+	"Cluster Roles": resourceVisual(Shield, "secret"),
+	Bindings: resourceVisual(Workflow, "secret"),
+	"Service Accounts": resourceVisual(KeyRound, "secret"),
+};
+
+const GROUP_VISUALS: Record<string, ResourceVisual> = {
+	"Cluster Overview": resourceVisual(Server, "cluster"),
+	Namespaces: resourceVisual(FolderTree, "default"),
+	Workloads: WORKLOAD_VISUAL,
+	Network: NETWORK_VISUAL,
+	Config: CONFIG_VISUAL,
+	Storage: STORAGE_VISUAL,
+	Discovered: DEFAULT_VISUAL,
+	"Argo CD": ARGO_VISUAL,
+	Flux: DEFAULT_VISUAL,
+	Sources: resourceVisual(Package, "default"),
+	Notifications: resourceVisual(CircleAlert, "cluster"),
+	"Image Automation": resourceVisual(Workflow, "default"),
+	Helm: DEFAULT_VISUAL,
+	Incidents: resourceVisual(CircleAlert, "cluster"),
+	RBAC: resourceVisual(Shield, "secret"),
+	"Port Forwards": resourceVisual(Cable, "network"),
+	"Owned by Argo CD": ARGO_VISUAL,
+	"Owned by Flux": DEFAULT_VISUAL,
+	"Tracked by Argo CD": ARGO_VISUAL,
+	"Unmanaged resources": DEFAULT_VISUAL,
+};
+
+export function getResourceKindVisual(kind: string): ResourceVisual {
+	return KIND_VISUALS[kind] ?? DEFAULT_VISUAL;
+}
+
+export function getResourceGroupVisual(label: string): ResourceVisual {
+	if (label.startsWith("Owned by Argo CD:"))
+		return GROUP_VISUALS["Owned by Argo CD"];
+	if (label.startsWith("Owned by Flux "))
+		return GROUP_VISUALS["Owned by Flux"];
+	if (label.startsWith("Tracked by Argo CD:"))
+		return GROUP_VISUALS["Tracked by Argo CD"];
+	return GROUP_VISUALS[label] ?? DEFAULT_VISUAL;
+}

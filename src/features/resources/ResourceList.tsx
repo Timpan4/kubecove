@@ -126,6 +126,9 @@ function ResourceListComponent({
 	const showOwnershipMapByDefault = useSettingsState(
 		(state) => state.showOwnershipMapByDefault,
 	);
+	const showFullTopologyOnSelection = useSettingsState(
+		(state) => state.showFullTopologyOnSelection,
+	);
 	const [mapPanelOpen, setMapPanelOpen] = useState(showOwnershipMapByDefault);
 	const client = useMemo(() => createTauriClient(), []);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
@@ -664,6 +667,7 @@ function ResourceListComponent({
 					topologyMode={topologyMode}
 					onTopologyModeChange={setTopologyMode}
 					mapPanelOpen={mapPanelOpen}
+					showFullTopologyOnSelection={showFullTopologyOnSelection}
 					onMapPanelOpenChange={handleMapPanelOpenChange}
 					onTopologyNodeSelect={handleTopologyNodeSelect}
 					tableRenderKey={tableRenderKey}

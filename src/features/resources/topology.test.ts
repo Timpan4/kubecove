@@ -3,6 +3,7 @@ import {
 	applyReactFlowTopologySelectionWithIndex,
 	buildReactFlowTopologyLayout,
 	buildReactFlowTopologySelectionIndex,
+	filterReactFlowTopologyToSelectedRoot,
 } from "./topology";
 
 declare function describe(name: string, fn: () => void): void;
@@ -107,5 +108,69 @@ describe("topology selection", () => {
 			selected.nodes.find((node) => node.id === "Pod:argocd-redis-abc-123")
 				?.data.selected,
 		).toBe(true);
+	});
+
+	test("filters React topology selection to the selected root ownership tree", () => {
+		const topology: ResourceTopology = {
+			nodes: [
+				node("Deployment", "api"),
+				node("ReplicaSet", "api-abc"),
+				node("Pod", "api-abc-1"),
+				node("Pod", "api-abc-2"),
+				node("Deployment", "web"),
+				node("ReplicaSet", "web-abc"),
+				node("Pod", "web-abc-1"),
+			],
+			edges: [
+				{
+					id: "api-deployment-to-rs",
+					source: "Deployment:api",
+					target: "ReplicaSet:api-abc",
+					relation: "owns",
+				},
+				{
+					id: "api-rs-to-pod-1",
+					source: "ReplicaSet:api-abc",
+					target: "Pod:api-abc-1",
+					relation: "creates",
+				},
+				{
+					id: "api-rs-to-pod-2",
+					source: "ReplicaSet:api-abc",
+					target: "Pod:api-abc-2",
+					relation: "creates",
+				},
+				{
+					id: "web-deployment-to-rs",
+					source: "Deployment:web",
+					target: "ReplicaSet:web-abc",
+					relation: "owns",
+				},
+				{
+					id: "web-rs-to-pod",
+					source: "ReplicaSet:web-abc",
+					target: "Pod:web-abc-1",
+					relation: "creates",
+				},
+			],
+			warnings: [],
+		};
+		const filtered = filterReactFlowTopologyToSelectedRoot(
+			buildReactFlowTopologyLayout(topology, null),
+			buildReactFlowTopologySelectionIndex(topology),
+			"Pod:api-abc-1",
+		);
+
+		expect(filtered.nodes.map((item) => item.id)).toEqual([
+			"Deployment:api",
+			"ReplicaSet:api-abc",
+			"Pod:api-abc-1",
+			"Pod:api-abc-2",
+		]);
+		expect(filtered.edges.map((edge) => edge.id)).toEqual([
+			"api-deployment-to-rs",
+			"api-rs-to-pod-1",
+			"api-rs-to-pod-2",
+		]);
 	});
 });

@@ -245,6 +245,30 @@ spec:
 			"src/features/live-sessions/useSavedPortForwardActions.ts",
 			"utf8",
 		);
+		const sharedActionsSource = readFileSync(
+			"src/features/live-sessions/saved-port-forward-actions.ts",
+			"utf8",
+		);
+		const svelteSurfaceSource = readFileSync(
+			"src/app/svelte/AppSurfaces.svelte",
+			"utf8",
+		);
+		const svelteLiveSurfaceSource = [
+			svelteSurfaceSource,
+			readFileSync("src/app/svelte/LiveSessionsSurface.svelte", "utf8"),
+		].join("\n");
+		const svelteAppSource = readFileSync(
+			"src/app/svelte/App.svelte",
+			"utf8",
+		);
+		const svelteShellSource = readFileSync(
+			"src/app/svelte/WorkspaceShell.svelte",
+			"utf8",
+		);
+		const svelteChromeSource = readFileSync(
+			"src/app/svelte/ActiveLiveSessionsButton.svelte",
+			"utf8",
+		);
 
 		expect(source).toContain("Resolved Pod");
 		expect(source).toContain("copySessionUrl");
@@ -261,12 +285,54 @@ spec:
 		expect(source).toContain("workspaceScopeContexts(workspace.scope)");
 		expect(actionsSource).toContain("knownSessions?: PortForwardSessionSummary[]");
 		expect(actionsSource).toContain("listPortForwards(client).catch(() => [])");
-		expect(actionsSource).toContain("stopPodPortForward(client, session.id)");
+		expect(sharedActionsSource).toContain("stopPodPortForward(client, session.id)");
+		expect(sharedActionsSource).toContain("reconnectPortForwardSession");
+		expect(svelteLiveSurfaceSource).toContain("portForwardSessionResolution(session)");
+		expect(svelteLiveSurfaceSource).toContain("reconnectPortForward(session)");
+		expect(svelteLiveSurfaceSource).toContain("visiblePortForwardSessions");
+		expect(svelteLiveSurfaceSource).toContain("visibleExecSessions");
+		expect(svelteLiveSurfaceSource).toContain("workspaceContexts.includes(session.clusterContext)");
+		expect(svelteLiveSurfaceSource).toContain("showKubeconfigSourceLabels && session.kubeconfigSourceLabel");
+		expect(svelteLiveSurfaceSource).toContain("podExecCommandText(session.command)");
+		expect(svelteLiveSurfaceSource).not.toContain(
+			"Exec sessions\", sessionsQuery.data?.execSessions.length",
+		);
+		expect(svelteSurfaceSource).toContain(
+			"placeholderData: (previousData) => previousData",
+		);
+		expect(svelteSurfaceSource).toContain("queryKey: queryKeys.portForwards()");
+		expect(svelteSurfaceSource).toContain("queryKey: queryKeys.podExecSessions()");
+		expect(svelteLiveSurfaceSource).toContain("query={liveSessionsQuery}");
+		expect(svelteSurfaceSource).not.toContain('"svelte-live-sessions-surface"');
+		expect(svelteLiveSurfaceSource).toContain("Auto-start saved");
+		expect(svelteSurfaceSource).toContain("startAllSavedPortForwards");
+		expect(svelteSurfaceSource).toContain("startSavedPortForwardSessions");
+		expect(svelteShellSource).toContain("ActiveLiveSessionsButton");
+		expect(svelteShellSource).toContain("onOpenManager={openPortForwards}");
+		expect(svelteShellSource).toContain("Live sessions updated");
+		expect(svelteAppSource).toContain("stopLiveSessionsOutsideScope");
+		expect(svelteAppSource).toContain(
+			"$settingsStore.keepLiveSessionsOnWorkspaceSwitch",
+		);
+		expect(svelteAppSource).toContain("workspaceScopeContexts(workspace.scope)");
+		expect(svelteAppSource).toContain("queryKeys.portForwards()");
+		expect(svelteAppSource).toContain("queryKeys.podExecSessions()");
+		expect(svelteAppSource).toContain(
+			"Stopped $" + "{result.stoppedPortForwards} port",
+		);
+		expect(svelteChromeSource).toContain("listPortForwards(client)");
+		expect(svelteChromeSource).toContain("listPodExecSessions(client)");
+		expect(svelteChromeSource).toContain("queryKeys.portForwards()");
+		expect(svelteChromeSource).toContain("queryKeys.podExecSessions()");
 	});
 
 	test("Service detail forwarding offers a port picker when ports are known", () => {
 		const source = readFileSync(
 			"src/features/resource-detail/PortForwardTab.tsx",
+			"utf8",
+		);
+		const svelteSource = readFileSync(
+			"src/features/resource-detail/PortForwardTab.svelte",
 			"utf8",
 		);
 
@@ -279,5 +345,21 @@ spec:
 		expect(source).toContain("Preset already saved");
 		expect(source).toContain("workspaceScopeContexts(activeWorkspace.scope)");
 		expect(source).toContain("Workspace context must include this Service");
+		expect(svelteSource).toContain("extractServicePortOptions");
+		expect(svelteSource).toContain("<Select");
+		expect(svelteSource).toContain("Save preset");
+		expect(svelteSource).toContain("workspaceStore.saveSavedPortForward");
+		expect(svelteSource).toContain("Preset already saved");
+		expect(svelteSource).toContain("workspaceScopeContexts(activeWorkspace.scope)");
+		expect(svelteSource).toContain("Workspace context must include this Service");
+		expect(svelteSource).toContain("copySessionUrl");
+		expect(svelteSource).toContain("navigator.clipboard?.writeText");
+		expect(svelteSource).toContain("portForwardLocalUrl(session)");
+		expect(svelteSource).toContain("$settingsStore.showKubeconfigSourceLabels");
+		expect(svelteSource).toContain("session.kubeconfigSourceLabel");
+		expect(svelteSource).toContain("sessionTitle(session)");
+		expect(svelteSource).toContain("sessionResolution(session)");
+		expect(svelteSource).toContain("Resolved to Pod/");
+		expect(svelteSource).toContain('localPort = "";');
 	});
 });

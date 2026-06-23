@@ -19,6 +19,7 @@ Use this index as the map for product, engineering, release, and governance work
 
 - [Product Vision](product-vision.md) - audience, workflow model, product direction, and safety posture.
 - [Architecture Blueprint](architecture-blueprint.md) - frontend/backend shape, Tauri command boundary, and extension points.
+- [Svelte Frontend Migration Plan](svelte-frontend-migration-plan.md) - phased React-to-Svelte migration plan, gates, and verification.
 - [Product Inspiration](product-inspiration.md) - public product benchmarks and the design/legal boundary.
 - [Helm Reconciliation Design](helm-reconciliation-design.md) - inspection-only release intent versus live state comparison.
 
@@ -30,6 +31,7 @@ Use this index as the map for product, engineering, release, and governance work
 - [ADR 0004: Guarded Cluster Operations](decisions/0004-guarded-cluster-operations.md)
 - [ADR 0005: Guarded Pod Exec Sessions](decisions/0005-guarded-pod-exec-sessions.md)
 - [ADR 0007: GitOps Providers Are Kubernetes-API-First And Inspection-Only By Default](decisions/0007-gitops-providers-kubernetes-api-first.md)
+- [ADR 0008: Parallel Svelte Frontend Migration](decisions/0008-svelte-frontend-migration.md)
 
 New work that changes the frontend/backend security boundary, Kubernetes access path, Tauri permissions, cluster-changing behavior, or GitOps provider API/CLI integration needs an ADR before implementation.
 

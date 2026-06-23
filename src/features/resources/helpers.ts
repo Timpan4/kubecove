@@ -1,4 +1,3 @@
-import type { SortingState } from "@tanstack/react-table";
 import type {
 	ArgoApplicationSummary,
 	ClusterScopedKind,
@@ -9,6 +8,7 @@ import type {
 } from "@/lib/types";
 import { classifyResourceHealth } from "@/lib/resource-health";
 import { CLUSTER_SCOPED_KINDS } from "@/lib/types";
+import type { ResourceSortingState } from "./table-state";
 
 export interface FetchKey {
 	kind: ResourceKindSelection;
@@ -212,7 +212,7 @@ export function topologyWatchKeys(namespaces: string[]): WatchResourceKey[] {
 
 export function sortedRows(
 	data: ResourceSummary[],
-	sorting: SortingState,
+	sorting: ResourceSortingState,
 ): ResourceSummary[] {
 	if (sorting.length === 0) return data;
 	return [...data].sort((a, b) => {

@@ -5,7 +5,7 @@ import type {
 } from "@/lib/types";
 import { gitOpsOwnerLabel } from "@/features/resources/helpers";
 
-export type IncidentFilter = "all" | IncidentSeverity;
+export type IncidentFilter = "all" | "unhealthy" | IncidentSeverity;
 
 export interface IncidentCounts {
 	total: number;
@@ -41,6 +41,9 @@ export function filterIncidentItems(
 	filter: IncidentFilter,
 ): IncidentCockpitItem[] {
 	if (filter === "all") return items;
+	if (filter === "unhealthy") {
+		return items.filter((item) => item.severity === "degraded" || item.severity === "attention");
+	}
 	return items.filter((item) => item.severity === filter);
 }
 

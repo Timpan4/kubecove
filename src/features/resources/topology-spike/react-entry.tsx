@@ -23,10 +23,18 @@ declare global {
 }
 
 const startedAt = performance.now();
-const nodeCount = Number(
-	new URLSearchParams(window.location.search).get("nodes") ?? "1000",
-);
+const searchParams = new URLSearchParams(window.location.search);
+const nodeCount = Number(searchParams.get("nodes") ?? "1000");
+const edgeType = searchParams.get("edgeType") === "straight" ? "straight" : "smoothstep";
+const nodeDetail = searchParams.get("nodeDetail") === "compact" ? "compact" : "full";
+const edgeMode = searchParams.get("edgeMode") === "selected" ? "selected" : "all";
+const viewportMode = searchParams.get("viewport") === "focused" ? "focused" : "fit";
+const initialViewport = { x: 64, y: 72, zoom: 0.7 };
 const graph = createTopologySpikeGraph(nodeCount);
+const shellClass =
+	nodeDetail === "compact"
+		? "topology-spike-shell topology-spike-shell--compact"
+		: "topology-spike-shell";
 
 function frame(): Promise<void> {
 	return new Promise((resolve) => requestAnimationFrame(() => resolve()));
@@ -46,18 +54,46 @@ function jsHeapBytes(): number | null {
 		: null;
 }
 
+function nodeLabel(node: TopologySpikeGraph["nodes"][number]): string {
+	if (nodeDetail === "compact") return "";
+	return `${node.kind}\n${node.name}\n${node.namespace ?? "cluster"}`;
+}
+
 function nodeStyle(selected: boolean, health: string): React.CSSProperties {
+	const border = selected ? "2px solid #bae6fd" : "1px solid rgba(148, 163, 184, 0.55)";
+	const boxShadow = selected ? "0 0 0 3px rgba(56, 189, 248, 0.22)" : "none";
+	if (nodeDetail === "compact") {
+		const background =
+			health === "healthy"
+				? "#14b8a6"
+				: health === "attention"
+					? "#f59e0b"
+					: health === "restarted"
+						? "#8b5cf6"
+						: "#ef4444";
+		return {
+			width: 18,
+			height: 18,
+			minHeight: 18,
+			padding: 0,
+			borderRadius: 999,
+			border,
+			background,
+			boxShadow,
+		};
+	}
+	const background =
+		health === "healthy"
+			? "rgba(15, 23, 42, 0.94)"
+			: "rgba(30, 41, 59, 0.96)";
 	return {
 		width: 220,
 		minHeight: 74,
 		padding: "8px 10px",
 		borderRadius: 6,
-		border: selected ? "2px solid #38bdf8" : "1px solid rgba(148, 163, 184, 0.55)",
-		background:
-			health === "healthy"
-				? "rgba(15, 23, 42, 0.94)"
-				: "rgba(30, 41, 59, 0.96)",
-		boxShadow: selected ? "0 0 0 3px rgba(56, 189, 248, 0.22)" : "none",
+		border,
+		background,
+		boxShadow,
 		color: "#e5e7eb",
 		fontSize: 11,
 		lineHeight: 1.25,
@@ -144,10 +180,10 @@ function ReactTopologySpike() {
 				return {
 					id: node.id,
 					type: "default",
-					position: { x: node.x, y: node.y },
-					data: {
-						label: `${node.kind}\n${node.name}\n${node.namespace ?? "cluster"}`,
-					},
+				position: { x: node.x, y: node.y },
+				data: {
+					label: nodeLabel(node),
+				},
 					selected,
 					draggable: false,
 					connectable: false,
@@ -158,13 +194,20 @@ function ReactTopologySpike() {
 	);
 	const edges = useMemo<Edge[]>(
 		() =>
-			graph.edges.map((edge) => {
-				const active = edge.source === selectedId || edge.target === selectedId;
+			graph.edges
+				.filter(
+					(edge) =>
+						edgeMode !== "selected" ||
+						(selectedId !== null &&
+							(edge.source === selectedId || edge.target === selectedId)),
+				)
+				.map((edge) => {
+					const active = edge.source === selectedId || edge.target === selectedId;
 				return {
 					id: edge.id,
 					source: edge.source,
 					target: edge.target,
-					type: "smoothstep",
+					type: edgeType,
 					animated: active,
 					focusable: false,
 					style: {
@@ -180,25 +223,27 @@ function ReactTopologySpike() {
 	}, []);
 
 	return (
-		<div className="topology-spike-shell">
+		<div className={shellClass}>
 			<div className="topology-spike-header">
 				<strong>React Flow topology spike</strong>
 				<span>
 					{graph.nodes.length} nodes / {graph.edges.length} edges / layout{" "}
-					{Math.round(graph.layoutMs)} ms
+					{Math.round(graph.layoutMs)} ms / {viewportMode} viewport / {nodeDetail}{" "}
+					nodes / {edgeMode} {edgeType} edges
 				</span>
 			</div>
 			<div className="topology-spike-canvas">
 				<ReactFlow
 					nodes={nodes}
 					edges={edges}
-					fitView
+					fitView={viewportMode === "fit"}
+					defaultViewport={initialViewport}
 					minZoom={0.1}
 					maxZoom={1.5}
 					nodesDraggable={false}
 					nodesConnectable={false}
 					elementsSelectable
-					onlyRenderVisibleElements={false}
+					onlyRenderVisibleElements={true}
 					proOptions={{ hideAttribution: true }}
 				>
 					<Controls />

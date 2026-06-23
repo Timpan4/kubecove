@@ -120,8 +120,15 @@ export interface KubernetesYamlLintDiagnostic {
 	fieldPath?: string;
 }
 
+export interface KubernetesYamlLintStatusNote {
+	severity: KubernetesYamlLintSeverity;
+	source: string;
+	message: string;
+}
+
 export interface KubernetesYamlLintResult {
 	diagnostics: KubernetesYamlLintDiagnostic[];
+	notes: KubernetesYamlLintStatusNote[];
 }
 
 export type ResourceHealth =

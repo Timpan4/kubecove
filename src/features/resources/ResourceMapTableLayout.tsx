@@ -29,6 +29,7 @@ export interface ResourceMapTableLayoutProps {
 	topologyError: boolean;
 	topologyErr: unknown;
 	selectedTopologyNodeId: string | null;
+	showFullTopologyOnSelection: boolean;
 	hasDeferredTopologySelection: boolean;
 	topologyFitViewKey: string;
 	topologyMode: TopologyMode;
@@ -115,6 +116,7 @@ export function ResourceMapTableLayout({
 	topologyError,
 	topologyErr,
 	selectedTopologyNodeId,
+	showFullTopologyOnSelection,
 	hasDeferredTopologySelection,
 	topologyFitViewKey,
 	topologyMode,
@@ -194,6 +196,7 @@ export function ResourceMapTableLayout({
 								isError={topologyError}
 								error={topologyErr}
 								selectedNodeId={selectedTopologyNodeId}
+								showFullTopologyOnSelection={showFullTopologyOnSelection}
 								fitViewKey={topologyFitViewKey}
 								mode={topologyMode}
 								heightClassName={mapHeightClassName}

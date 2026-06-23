@@ -1,10 +1,10 @@
 import {
 	MarkerType,
 	Position,
-	type Edge,
-	type Node,
+	type EdgeBase,
+	type NodeBase,
 	type SmoothStepPathOptions,
-} from "@xyflow/react";
+} from "@xyflow/system";
 import type {
 	ResourceSummary,
 	ResourceTopology,
@@ -25,6 +25,7 @@ import {
 import {
 	buildTopologyGraph,
 	selectedTopologyPath,
+	selectedTopologyRootSubtree,
 	uniqueNodes,
 } from "./topology-graph";
 import {
@@ -52,19 +53,28 @@ export interface OwnershipGraphNodeData extends Record<string, unknown> {
 	showPortHints: boolean;
 }
 
-export type OwnershipResourceGraphNode = Node<
+type FlowStyle = Record<string, string | number | undefined>;
+
+export type OwnershipResourceGraphNode = NodeBase<
 	OwnershipGraphNodeData,
 	"ownershipResource"
->;
+> & {
+	style?: FlowStyle;
+	className?: string;
+	focusable?: boolean;
+};
 
 export type OwnershipGraphNode =
 	| OwnershipResourceGraphNode
 	| StandaloneKindGroupGraphNode;
-export type OwnershipGraphEdge = Edge<
+export type OwnershipGraphEdge = EdgeBase<
 	{ relation: TopologyRelation },
 	"smoothstep"
 > & {
 	pathOptions?: SmoothStepPathOptions;
+	style?: FlowStyle;
+	className?: string;
+	focusable?: boolean;
 };
 
 export interface ReactFlowTopology {
@@ -299,6 +309,38 @@ export function applyReactFlowTopologySelectionWithIndex(
 			},
 		};
 	});
+
+	return { nodes, edges };
+}
+
+export function filterReactFlowTopologyToSelectedRoot(
+	graphTopology: ReactFlowTopology,
+	index: ReactFlowTopologySelectionIndex,
+	selectedNodeId: string | null,
+): ReactFlowTopology {
+	if (!selectedNodeId) return graphTopology;
+
+	const rootSubtree = selectedTopologyRootSubtree(index.graph, selectedNodeId);
+	if (rootSubtree.nodeIds.size === 0) return graphTopology;
+
+	const graphNodeIds = new Set(rootSubtree.nodeIds);
+	for (const node of graphTopology.nodes) {
+		if (
+			node.type === "standaloneKindGroup" &&
+			node.data.nodeIds.some((nodeId) => rootSubtree.nodeIds.has(nodeId))
+		) {
+			graphNodeIds.add(node.id);
+		}
+	}
+
+	const nodes = graphTopology.nodes.filter((node) => graphNodeIds.has(node.id));
+	const visibleNodeIds = new Set(nodes.map((node) => node.id));
+	const edges = graphTopology.edges.filter(
+		(edge) =>
+			rootSubtree.edgeIds.has(edge.id) &&
+			visibleNodeIds.has(edge.source) &&
+			visibleNodeIds.has(edge.target),
+	);
 
 	return { nodes, edges };
 }

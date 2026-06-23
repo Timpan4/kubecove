@@ -38,6 +38,7 @@ import {
 	buildReactFlowTopologyLayout,
 	buildReactFlowTopologySelectionIndex,
 	applyReactFlowTopologySelectionWithIndex,
+	filterReactFlowTopologyToSelectedRoot,
 	type OwnershipGraphEdge,
 } from "./topology";
 import {
@@ -54,6 +55,7 @@ interface OwnershipMapProps {
 	isError: boolean;
 	error: unknown;
 	selectedNodeId: string | null;
+	showFullTopologyOnSelection?: boolean;
 	fitViewKey: string;
 	mode: TopologyMode;
 	heightClassName?: string;
@@ -284,6 +286,7 @@ export function OwnershipMap({
 	isError,
 	error,
 	selectedNodeId,
+	showFullTopologyOnSelection = false,
 	fitViewKey,
 	mode,
 	heightClassName = "h-[620px]",
@@ -317,12 +320,18 @@ export function OwnershipMap({
 		() =>
 			graphLayout && selectionIndex
 				? applyReactFlowTopologySelectionWithIndex(
-					graphLayout,
+					showFullTopologyOnSelection
+						? graphLayout
+						: filterReactFlowTopologyToSelectedRoot(
+								graphLayout,
+								selectionIndex,
+								selectedNodeId,
+							),
 					selectionIndex,
 					selectedNodeId,
 				)
 				: null,
-		[graphLayout, selectionIndex, selectedNodeId],
+		[graphLayout, selectionIndex, selectedNodeId, showFullTopologyOnSelection],
 	);
 	const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
 	const resizeObserverRef = useRef<ResizeObserver | null>(null);
