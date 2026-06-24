@@ -54,7 +54,7 @@ jobs:
 
       - name: Checkout main
         if: steps.pr.outputs.should_tag == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
