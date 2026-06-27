@@ -7,6 +7,7 @@ The handbook is the repo's source of truth for code organization, file size, and
 - [code-organization.md](code-organization.md) - where files and folders belong.
 - [file-size-and-split.md](file-size-and-split.md) - soft/hard caps and how to split oversized files.
 - [hygiene.md](hygiene.md) - orphan files, superseded files, duplicates, and dead code.
+- [design-system.md](design-system.md) - shared token layer (color, surface, elevation, z-index, typography) for both runtimes.
 - [pr-checklist.md](pr-checklist.md) - final checks before opening a PR or marking agent work complete.
 
 ## Boundaries

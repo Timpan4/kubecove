@@ -5,6 +5,7 @@ mod diagnostics;
 mod discovery;
 mod events;
 mod flux;
+mod gitops_crd;
 mod helm;
 mod helpers;
 mod incidents;

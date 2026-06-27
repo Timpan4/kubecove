@@ -8,7 +8,7 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import type { ScopePill } from "./helpers";
 
 export function EditableScopePill({
@@ -126,7 +126,7 @@ export function ScopeOption({
 }) {
 	return (
 		<li
-			className={cn(
+			className={cnfast(
 				"rounded-md p-2 text-sm transition-colors hover:bg-accent",
 				checked && "bg-accent",
 				disabled && "opacity-70",
@@ -141,7 +141,7 @@ export function ScopeOption({
 				/>
 				<FieldLabel
 					htmlFor={id}
-					className={cn(
+					className={cnfast(
 						"min-w-0 flex-1 truncate font-normal",
 						disabled ? "cursor-not-allowed" : "cursor-pointer",
 					)}

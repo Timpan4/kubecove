@@ -4,6 +4,7 @@ import { ClusterSelector } from "@/components/ClusterSelector";
 import { UpdateStatusButton } from "@/features/app-updates";
 import { useCommandPaletteStore } from "@/features/command-palette";
 import { ActivePortForwards } from "@/features/live-sessions/ActivePortForwards";
+import { RuntimeBadge } from "./runtime/RuntimeBadge";
 
 const IS_MAC =
 	typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
@@ -48,6 +49,7 @@ export function AppTopBar({
 			<div className="flex shrink-0 items-center">
 				<ActivePortForwards onOpenManager={onOpenPortForwards} />
 				<UpdateStatusButton />
+				<RuntimeBadge onOpenSettings={onOpenSettings} />
 				<Button
 					type="button"
 					variant="ghost"
@@ -71,13 +73,13 @@ export function AppTopBar({
 				{showSearch && (
 					<button
 						type="button"
-						className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border bg-background/50 px-3 py-1.5 text-xs text-muted-foreground transition-colors [-webkit-app-region:no-drag] hover:bg-accent hover:text-accent-foreground"
+						className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border border-border/60 bg-surface-1 px-3 py-1.5 text-xs text-muted-foreground shadow-xs transition-all [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-foreground hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
 						aria-label="Search views, namespaces, and resources"
 						onClick={() => useCommandPaletteStore.getState().setOpen(true)}
 					>
 						<Search className="size-3.5" aria-hidden="true" />
 						<span>Search resources...</span>
-						<kbd className="rounded border bg-muted px-1 py-px font-sans text-[10px] text-muted-foreground">
+						<kbd className="rounded border bg-muted px-1 py-px font-mono text-xs text-muted-foreground">
 							{SEARCH_SHORTCUT_HINT}
 						</kbd>
 					</button>

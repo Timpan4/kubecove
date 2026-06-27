@@ -15,7 +15,7 @@ import type {
 	TopologyMode,
 	TopologyNode,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { ResourcePagination } from "./pagination";
 import { ResourceTable } from "./ResourceTable";
 
@@ -29,6 +29,7 @@ export interface ResourceMapTableLayoutProps {
 	topologyError: boolean;
 	topologyErr: unknown;
 	selectedTopologyNodeId: string | null;
+	showFullTopologyOnSelection: boolean;
 	hasDeferredTopologySelection: boolean;
 	topologyFitViewKey: string;
 	topologyMode: TopologyMode;
@@ -115,6 +116,7 @@ export function ResourceMapTableLayout({
 	topologyError,
 	topologyErr,
 	selectedTopologyNodeId,
+	showFullTopologyOnSelection,
 	hasDeferredTopologySelection,
 	topologyFitViewKey,
 	topologyMode,
@@ -144,11 +146,11 @@ export function ResourceMapTableLayout({
 		hasDeferredTopologySelection ||
 		Boolean(selectedResourceIdentityKey ?? selectedResourceKey);
 	const mapHeightClassName = "h-full min-h-0";
-	const tablePanelClassName = cn(
+	const tablePanelClassName = cnfast(
 		"flex h-full min-h-[400px] min-w-0 flex-col overflow-hidden rounded-md border bg-card/60",
 	);
 	const mapPanelClassName = "h-full min-h-[400px] min-w-0";
-	const contentGridClassName = cn(
+	const contentGridClassName = cnfast(
 		"grid min-h-0 min-w-0 flex-1 gap-3",
 		mapPanelOpen && tablePanelOpen
 			? hasActiveSelection
@@ -181,7 +183,7 @@ export function ResourceMapTableLayout({
 						<Suspense
 							fallback={
 								<div
-									className={cn(
+									className={cnfast(
 										mapHeightClassName,
 										"rounded-md border bg-card/60",
 									)}
@@ -194,6 +196,7 @@ export function ResourceMapTableLayout({
 								isError={topologyError}
 								error={topologyErr}
 								selectedNodeId={selectedTopologyNodeId}
+								showFullTopologyOnSelection={showFullTopologyOnSelection}
 								fitViewKey={topologyFitViewKey}
 								mode={topologyMode}
 								heightClassName={mapHeightClassName}

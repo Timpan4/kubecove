@@ -5,7 +5,7 @@ import {
 	formatCpuMillicores,
 	formatMemoryBytes,
 } from "@/lib/resource-metrics";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { ResourceDetailsFull, ResourceSummary } from "../../lib/types";
 import {
@@ -206,7 +206,7 @@ export function ResourceDiagnostics({
 							<span className={DETAIL_VALUE_CLASS}>
 								<Badge
 									variant={restartBadgeStyle.variant}
-									className={cn(
+									className={cnfast(
 										"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
 										restartBadgeStyle.className,
 									)}

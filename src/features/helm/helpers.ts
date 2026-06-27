@@ -33,6 +33,20 @@ export function groupHelmReleasesByNamespace(releases: HelmReleaseSummary[]) {
 		}));
 }
 
+export function findHelmReleaseTarget(
+	releases: HelmReleaseSummary[],
+	target: { name: string; namespace?: string | null } | null | undefined,
+): HelmReleaseSummary | null {
+	if (!target) return null;
+	return (
+		releases.find(
+			(release) =>
+				release.name === target.name &&
+				(target.namespace == null || release.namespace === target.namespace),
+		) ?? null
+	);
+}
+
 export function resourcesOwnedByHelmRelease(
 	resources: ResourceSummary[],
 	release: Pick<HelmReleaseSummary, "name" | "namespace">,

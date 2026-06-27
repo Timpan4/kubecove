@@ -44,7 +44,7 @@ import type {
 	TopologyMode,
 	TopologyNode,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { PAGE_SIZE } from "./constants";
 import { pageGitOpsGroupCounts, pageTypeGroupCounts } from "./grouping";
 import {
@@ -125,6 +125,9 @@ function ResourceListComponent({
 	const [topologyMode, setTopologyMode] = useState<TopologyMode>("ownership");
 	const showOwnershipMapByDefault = useSettingsState(
 		(state) => state.showOwnershipMapByDefault,
+	);
+	const showFullTopologyOnSelection = useSettingsState(
+		(state) => state.showFullTopologyOnSelection,
 	);
 	const [mapPanelOpen, setMapPanelOpen] = useState(showOwnershipMapByDefault);
 	const client = useMemo(() => createTauriClient(), []);
@@ -644,7 +647,7 @@ function ResourceListComponent({
 				onClearFilters={clearFilters}
 			/>
 			<div
-				className={cn(
+				className={cnfast(
 					"min-h-0 flex-1 transition-opacity",
 					showingStaleRows && "opacity-60",
 				)}
@@ -664,6 +667,7 @@ function ResourceListComponent({
 					topologyMode={topologyMode}
 					onTopologyModeChange={setTopologyMode}
 					mapPanelOpen={mapPanelOpen}
+					showFullTopologyOnSelection={showFullTopologyOnSelection}
 					onMapPanelOpenChange={handleMapPanelOpenChange}
 					onTopologyNodeSelect={handleTopologyNodeSelect}
 					tableRenderKey={tableRenderKey}

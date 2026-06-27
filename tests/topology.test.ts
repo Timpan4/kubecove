@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import type { ResourceSummary, ResourceTopology } from "../src/lib/types";
 import {
 	buildReactFlowTopology,
@@ -22,6 +23,18 @@ function summary(overrides: Partial<ResourceSummary>): ResourceSummary {
 }
 
 describe("ownership topology helpers", () => {
+	test("keeps shared topology helpers independent from React Flow runtime types", () => {
+		for (const path of [
+			"src/features/resources/topology.ts",
+			"src/features/resources/topology-layout.ts",
+			"src/features/resources/topology-standalone-groups.ts",
+			"src/features/resources/topology-viewport.ts",
+		]) {
+			const source = readFileSync(path, "utf8");
+			expect(source).not.toContain("@xyflow/react");
+		}
+	});
+
 	test("converts topology into stable left-to-right React Flow nodes and edges", () => {
 		const deploymentId = resourceTopologyNodeId(
 			"kind-dev",

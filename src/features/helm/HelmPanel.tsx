@@ -34,7 +34,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { useSettingsState } from "@/lib/settings";
 import { createTauriClient, listHelmReleases } from "@/lib/tauri";
 import type { HelmReleaseSummary } from "@/lib/types";
-import { cn, formatStatusLabel } from "@/lib/utils";
+import { cnfast, formatStatusLabel } from "@/lib/utils";
 import {
 	groupHelmReleasesByNamespace,
 	helmReleaseKey,
@@ -209,7 +209,7 @@ function HelmTable({
 								return (
 									<TableRow
 										key={helmReleaseKey(release)}
-										className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
+										className={cnfast(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 										onClick={() => onReleaseSelect(release)}
 										onKeyDown={(event) =>
 											handleRowActivation(event, release, onReleaseSelect)

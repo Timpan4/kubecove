@@ -8,7 +8,7 @@ import {
 	formatMemoryBytes,
 } from "@/lib/resource-metrics";
 import type { ResourceSummary } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { gitOpsOwnerLabel, tableTooltipText } from "./helpers";
 
 export function StatusChip({
@@ -139,7 +139,7 @@ export function ArgoHelmBadges({ row }: { row: ResourceSummary }) {
 				<TableTooltip key={badge.label} content={badge.label}>
 					<Badge
 						variant="outline"
-						className={cn(
+						className={cnfast(
 							"max-w-full truncate rounded-sm px-1.5 py-0 text-[0.625rem] shadow-none",
 							badge.className,
 						)}

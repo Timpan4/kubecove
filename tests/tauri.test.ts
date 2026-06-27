@@ -17,6 +17,10 @@ import {
 	shouldFetchResourceDetails,
 } from "../src/features/resource-detail/helpers";
 import {
+	buildCuratedMetadata,
+	visibleMetadataBadges,
+} from "../src/features/resource-detail/metadata-details";
+import {
 	buildFetchKeys,
 	buildResourceHealthSummary,
 	buildResourceSearchIndex,
@@ -54,6 +58,143 @@ describe("shouldFetchResourceDetails", () => {
   test("does not fetch details until a complete resource identity exists", () => {
     expect(shouldFetchResourceDetails({ ...resource, name: "" })).toBe(false);
   });
+});
+
+describe("buildCuratedMetadata", () => {
+	const resource: ResourceSummary = {
+		cluster: "kind-prod",
+		kind: "Pod",
+		name: "todo-web-97bfcd566-jx9mb",
+		namespace: "todo",
+		age: "11d",
+		apiVersion: "v1",
+		health: "healthy",
+		ownerRef: "ReplicaSet todo-web-97bfcd566",
+		argoApp: "todo",
+	};
+
+	test("extracts identity and lifecycle fields from Kubernetes metadata", () => {
+		const metadata = buildCuratedMetadata(
+			{
+				name: "todo-web-97bfcd566-jx9mb",
+				namespace: "todo",
+				uid: "7335932b-8a03-42ac-b1d9-838bc1da55e0",
+				resourceVersion: "192041",
+				creationTimestamp: "2026-06-10T16:50:37Z",
+				generation: 1,
+				finalizers: [],
+				generateName: "todo-web-97bfcd566-",
+			},
+			resource,
+		);
+
+		expect(metadata.identity).toEqual([
+			{ label: "Name", value: "todo-web-97bfcd566-jx9mb" },
+			{ label: "Namespace", value: "todo" },
+			{ label: "UID", value: "7335932b-8a03-42ac-b1d9-838bc1da55e0" },
+			{ label: "Resource Version", value: "192041" },
+		]);
+		expect(metadata.lifecycle).toContainEqual({
+			label: "Deletion",
+			value: "not scheduled",
+		});
+		expect(metadata.lifecycle).toContainEqual({ label: "Finalizers", value: "none" });
+		expect(metadata.naming).toContainEqual({
+			label: "Generate name",
+			value: "todo-web-97bfcd566-",
+		});
+	});
+
+	test("chooses controller owner reference before other owners", () => {
+		const metadata = buildCuratedMetadata(
+			{
+				ownerReferences: [
+					{ kind: "Job", name: "backup", uid: "job-uid" },
+					{
+						kind: "ReplicaSet",
+						name: "todo-web-97bfcd566",
+						uid: "rs-uid",
+						controller: true,
+					},
+				],
+			},
+			resource,
+		);
+
+		expect(metadata.ownership).toContainEqual({
+			label: "Controller",
+			value: "ReplicaSet",
+		});
+		expect(metadata.ownership).toContainEqual({
+			label: "Owner",
+			value: "todo-web-97bfcd566",
+		});
+		expect(metadata.ownership).toContainEqual({ label: "Owner UID", value: "rs-uid" });
+	});
+
+	test("sorts labels and exposes truncation counts", () => {
+		const metadata = buildCuratedMetadata(
+			{
+				labels: {
+					"pod-template-hash": "97bfcd566",
+					"app.kubernetes.io/name": "todo-web",
+					"gitops.toolkit": "argocd",
+					"app.kubernetes.io/part-of": "kubecove-lab",
+					"tier": "frontend",
+				},
+			},
+			resource,
+		);
+		const visible = visibleMetadataBadges(metadata.labels, false);
+
+		expect(metadata.labels.map((label) => label.key)).toEqual([
+			"app.kubernetes.io/name",
+			"app.kubernetes.io/part-of",
+			"gitops.toolkit",
+			"pod-template-hash",
+			"tier",
+		]);
+		expect(visible.badges).toHaveLength(4);
+		expect(visible.hiddenCount).toBe(1);
+		expect(visibleMetadataBadges(metadata.labels, true).hiddenCount).toBe(0);
+	});
+
+	test("summarizes short annotations and keeps noisy values out of default view", () => {
+		const metadata = buildCuratedMetadata(
+			{
+				annotations: {
+					"checksum/config": "123456",
+					"kubectl.kubernetes.io/last-applied-configuration": "{\"kind\":\"Pod\"}",
+					"example.com/notes": "line one\nline two",
+					"example.com/long": "x".repeat(120),
+				},
+			},
+			resource,
+		);
+
+		expect(metadata.annotationCount).toBe(4);
+		expect(metadata.annotations).toEqual([
+			{ key: "checksum/config", value: "123456" },
+		]);
+	});
+
+	test("summarizes managedFields managers without exposing raw field maps", () => {
+		const metadata = buildCuratedMetadata(
+			{
+				managedFields: [
+					{ manager: "kubelet", fieldsV1: { "f:status": {} } },
+					{ manager: "kube-controller-manager", fieldsV1: { "f:metadata": {} } },
+					{ manager: "kubelet", fieldsV1: { "f:spec": {} } },
+				],
+			},
+			resource,
+		);
+
+		expect(metadata.management).toEqual([
+			{ label: "Managers", value: "kubelet, kube-controller-manager" },
+			{ label: "Raw managedFields", value: "advanced metadata" },
+		]);
+	});
 });
 
 describe("getConditionRows", () => {

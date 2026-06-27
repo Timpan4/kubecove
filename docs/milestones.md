@@ -173,6 +173,22 @@ Goal: add exact-Pod interactive exec without broad shell or mutation surfaces.
 - [x] Run frontend typecheck, frontend tests, Rust tests, and Rust check.
 - [ ] Run a manual Pod exec smoke test against a readable cluster before release.
 
+## Milestone 10: Svelte Frontend Migration
+
+Goal: track the parallel Svelte port honestly while React remains the fallback until cutover gates pass.
+
+- [x] Add Svelte SPA entrypoint behind the shared UI runtime setting.
+- [x] Add runtime badge, Settings toggle, reload notice, and React fallback path.
+- [x] Preserve shared settings and workspace storage schemas across runtimes.
+- [x] Port launcher, workspace shell, settings, resource browser, resource detail, YAML, events, logs, topology, GitOps, Helm, RBAC, incidents, live sessions, app updates, and usage footer surfaces to Svelte.
+- [x] Run automated Svelte migration baseline on 2026-06-22: `bun run svelte:check`, `bun run typecheck`, and `bun test`.
+- [x] Make Svelte the default for new installs while keeping React selectable as a fallback.
+- [ ] Record browser-backed app-wide launch, resource list, YAML detail, and 4k topology measurements for React and Svelte.
+- [ ] Prove at least one major app-wide memory or CPU-heavy bottleneck improves by 25% or more.
+- [ ] Run manual Svelte and React fallback Tauri smoke against a readable cluster.
+- [ ] Switch new installs to Svelte only after daily core parity, perf gates, runtime toggle, and fallback smoke pass.
+- [ ] Keep React fallback for one release after Svelte becomes default, then remove React only after tail parity is verified.
+
 ## Cross-Cutting Tracks
 
 ### Security and Safety

@@ -1,6 +1,6 @@
 import { Children, createContext, isValidElement, useContext } from "react";
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 
 export interface SettingsRowMeta {
 	title: string;
@@ -120,7 +120,7 @@ export function SegmentedControl<T extends string>({
 					type="button"
 					role="radio"
 					aria-checked={option.value === value}
-					className={cn(
+					className={cnfast(
 						"h-7 cursor-pointer rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/50",
 						option.value === value
 							? "bg-background text-foreground shadow-sm"

@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -21,7 +22,7 @@ export default defineConfig(async ({ mode }) => {
     : [];
 
   return {
-    plugins: [react(), ...reactCompilerPlugins, tailwindcss()],
+    plugins: [react(), ...reactCompilerPlugins, svelte(), tailwindcss()],
     define: {
       "import.meta.env.VITE_KUBECOVE_REACT_COMPILER_ENABLED": JSON.stringify(
         reactCompilerEnabled ? "true" : "false",
@@ -31,6 +32,9 @@ export default defineConfig(async ({ mode }) => {
       alias: {
         "@": "/src",
       },
+    },
+    optimizeDeps: {
+      exclude: ["@xyflow/svelte"],
     },
 
     // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

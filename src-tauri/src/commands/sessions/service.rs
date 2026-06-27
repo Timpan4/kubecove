@@ -1,4 +1,4 @@
-use super::{
+use super::target::{
     client_for_context, validate_port, PortForwardTarget, PortForwardTargetKind,
     ValidatedPortForwardRequest,
 };

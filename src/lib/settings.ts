@@ -5,23 +5,33 @@ import type {
 	YamlEncoding,
 	YamlViewMode,
 } from "./types";
+import {
+	DEFAULT_UI_RUNTIME_MODE,
+	isUiRuntimeMode,
+	type UiRuntimeMode,
+} from "./ui-runtime";
 
 export type TimestampTimezone = "local" | "utc";
+export type YamlDiffStyle = "clean" | "git";
 export const DEFAULT_KUBECONFIG_ENV_VAR = "KUBECONFIG";
 const DEFAULT_KUBECONFIG_SOURCE_KEY = "kubeconfigSource=default";
 
-interface SettingsState {
+export interface SettingsState {
 	showExactTimestamps: boolean;
 	showUsageFooter: boolean;
 	showOwnershipMapByDefault: boolean;
+	showFullTopologyOnSelection: boolean;
 	showUnavailableGitOpsProviders: boolean;
 	debugModeEnabled: boolean;
+	uiRuntimeMode: UiRuntimeMode;
 	autoStartSavedPortForwards: boolean;
 	keepLiveSessionsOnWorkspaceSwitch: boolean;
 	allowYamlForceConflicts: boolean;
 	timestampTimezone: TimestampTimezone;
 	yamlViewModeDefault: YamlViewMode;
 	yamlEncodingDefault: YamlEncoding;
+	yamlDiffStyle: YamlDiffStyle;
+	yamlErrorLensEnabled: boolean;
 	kubeconfigEnvVar: string;
 	kubeconfigSourceKey: string;
 	kubeconfigSourceLabel: string;
@@ -29,14 +39,18 @@ interface SettingsState {
 	setShowExactTimestamps: (show: boolean) => void;
 	setShowUsageFooter: (show: boolean) => void;
 	setShowOwnershipMapByDefault: (show: boolean) => void;
+	setShowFullTopologyOnSelection: (show: boolean) => void;
 	setShowUnavailableGitOpsProviders: (show: boolean) => void;
 	setDebugModeEnabled: (enabled: boolean) => void;
+	setUiRuntimeMode: (mode: UiRuntimeMode) => void;
 	setAutoStartSavedPortForwards: (autoStart: boolean) => void;
 	setKeepLiveSessionsOnWorkspaceSwitch: (keep: boolean) => void;
 	setAllowYamlForceConflicts: (allow: boolean) => void;
 	setTimestampTimezone: (timezone: TimestampTimezone) => void;
 	setYamlViewModeDefault: (mode: YamlViewMode) => void;
 	setYamlEncodingDefault: (encoding: YamlEncoding) => void;
+	setYamlDiffStyle: (style: YamlDiffStyle) => void;
+	setYamlErrorLensEnabled: (enabled: boolean) => void;
 	setKubeconfigEnvVar: (envVar: string) => void;
 	resetKubeconfigEnvVar: () => void;
 	setKubeconfigSources: (sources: KubeconfigSourcesSummary) => void;
@@ -52,20 +66,28 @@ export function kubeconfigSourceKey(envVar: string | undefined): string {
 	return `kubeconfigEnv=${normalizeKubeconfigEnvVar(envVar)}`;
 }
 
+function isYamlDiffStyle(style: unknown): style is YamlDiffStyle {
+	return style === "clean" || style === "git";
+}
+
 export const useSettingsState = create<SettingsState>()(
 	persist(
 		(set) => ({
 			showExactTimestamps: false,
 			showUsageFooter: false,
 			showOwnershipMapByDefault: true,
+			showFullTopologyOnSelection: false,
 			showUnavailableGitOpsProviders: false,
 			debugModeEnabled: false,
+			uiRuntimeMode: DEFAULT_UI_RUNTIME_MODE,
 			autoStartSavedPortForwards: false,
 			keepLiveSessionsOnWorkspaceSwitch: false,
 			allowYamlForceConflicts: true,
 			timestampTimezone: "local",
 			yamlViewModeDefault: "kubectl",
 			yamlEncodingDefault: "yaml",
+			yamlDiffStyle: "clean",
+			yamlErrorLensEnabled: true,
 			kubeconfigEnvVar: DEFAULT_KUBECONFIG_ENV_VAR,
 			kubeconfigSourceKey: DEFAULT_KUBECONFIG_SOURCE_KEY,
 			kubeconfigSourceLabel: DEFAULT_KUBECONFIG_ENV_VAR,
@@ -75,10 +97,14 @@ export const useSettingsState = create<SettingsState>()(
 			setShowUsageFooter: (show: boolean) => set({ showUsageFooter: show }),
 			setShowOwnershipMapByDefault: (show: boolean) =>
 				set({ showOwnershipMapByDefault: show }),
+			setShowFullTopologyOnSelection: (show: boolean) =>
+				set({ showFullTopologyOnSelection: show }),
 			setShowUnavailableGitOpsProviders: (show: boolean) =>
 				set({ showUnavailableGitOpsProviders: show }),
 			setDebugModeEnabled: (debugModeEnabled: boolean) =>
 				set({ debugModeEnabled }),
+			setUiRuntimeMode: (uiRuntimeMode: UiRuntimeMode) =>
+				set({ uiRuntimeMode }),
 			setAutoStartSavedPortForwards: (autoStart: boolean) =>
 				set({ autoStartSavedPortForwards: autoStart }),
 			setKeepLiveSessionsOnWorkspaceSwitch: (keep: boolean) =>
@@ -91,6 +117,10 @@ export const useSettingsState = create<SettingsState>()(
 				set({ yamlViewModeDefault: mode }),
 			setYamlEncodingDefault: (encoding: YamlEncoding) =>
 				set({ yamlEncodingDefault: encoding }),
+			setYamlDiffStyle: (yamlDiffStyle: YamlDiffStyle) =>
+				set({ yamlDiffStyle }),
+			setYamlErrorLensEnabled: (yamlErrorLensEnabled: boolean) =>
+				set({ yamlErrorLensEnabled }),
 			setKubeconfigEnvVar: (envVar: string) =>
 				set({ kubeconfigEnvVar: envVar.trim() }),
 			resetKubeconfigEnvVar: () =>
@@ -118,11 +148,17 @@ export const useSettingsState = create<SettingsState>()(
 					showOwnershipMapByDefault:
 						saved.showOwnershipMapByDefault ??
 						current.showOwnershipMapByDefault,
+					showFullTopologyOnSelection:
+						saved.showFullTopologyOnSelection ??
+						current.showFullTopologyOnSelection,
 				showUnavailableGitOpsProviders:
 					saved.showUnavailableGitOpsProviders ??
 					current.showUnavailableGitOpsProviders,
 				debugModeEnabled:
 					saved.debugModeEnabled ?? current.debugModeEnabled,
+				uiRuntimeMode: isUiRuntimeMode(saved.uiRuntimeMode)
+					? saved.uiRuntimeMode
+					: current.uiRuntimeMode,
 				autoStartSavedPortForwards:
 					saved.autoStartSavedPortForwards ??
 						current.autoStartSavedPortForwards,
@@ -138,15 +174,22 @@ export const useSettingsState = create<SettingsState>()(
 						saved.yamlViewModeDefault ?? current.yamlViewModeDefault,
 					yamlEncodingDefault:
 						saved.yamlEncodingDefault ?? current.yamlEncodingDefault,
+					yamlDiffStyle: isYamlDiffStyle(saved.yamlDiffStyle)
+						? saved.yamlDiffStyle
+						: current.yamlDiffStyle,
+					yamlErrorLensEnabled:
+						saved.yamlErrorLensEnabled ?? current.yamlErrorLensEnabled,
 				};
 			},
 			partialize: (state) => ({
 				showExactTimestamps: state.showExactTimestamps,
 				showUsageFooter: state.showUsageFooter,
 				showOwnershipMapByDefault: state.showOwnershipMapByDefault,
+				showFullTopologyOnSelection: state.showFullTopologyOnSelection,
 				showUnavailableGitOpsProviders:
 					state.showUnavailableGitOpsProviders,
 				debugModeEnabled: state.debugModeEnabled,
+				uiRuntimeMode: state.uiRuntimeMode,
 				autoStartSavedPortForwards: state.autoStartSavedPortForwards,
 				keepLiveSessionsOnWorkspaceSwitch:
 					state.keepLiveSessionsOnWorkspaceSwitch,
@@ -154,6 +197,8 @@ export const useSettingsState = create<SettingsState>()(
 				timestampTimezone: state.timestampTimezone,
 				yamlViewModeDefault: state.yamlViewModeDefault,
 				yamlEncodingDefault: state.yamlEncodingDefault,
+				yamlDiffStyle: state.yamlDiffStyle,
+				yamlErrorLensEnabled: state.yamlErrorLensEnabled,
 			}),
 		},
 	),

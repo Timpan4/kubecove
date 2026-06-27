@@ -1,4 +1,4 @@
-import type { Node } from "@xyflow/react";
+import type { NodeBase } from "@xyflow/system";
 import type { TopologyNode } from "@/lib/types";
 import { CANVAS_PADDING, NODE_HEIGHT, kindRank } from "./topology-layout";
 import type { TopologyGraph } from "./topology-graph";
@@ -11,10 +11,17 @@ export interface StandaloneKindGroupNodeData extends Record<string, unknown> {
 	expanded: boolean;
 }
 
-export type StandaloneKindGroupGraphNode = Node<
+export type StandaloneKindGroupGraphNode = NodeBase<
 	StandaloneKindGroupNodeData,
 	"standaloneKindGroup"
->;
+> & {
+	style?: Record<string, number>;
+};
+
+export interface StandaloneGroupLayoutOptions {
+	nodeHeight?: number;
+	standaloneNodeWidth?: number;
+}
 
 const STANDALONE_GROUP_COLUMNS = 3;
 export const STANDALONE_NODE_WIDTH = 260;
@@ -29,19 +36,19 @@ function standaloneGroupId(kind: string): string {
 	return `standalone-kind:${kind}`;
 }
 
-function standaloneGroupWidth(columns: number): number {
+function standaloneGroupWidth(columns: number, standaloneNodeWidth: number): number {
 	return (
 		STANDALONE_GROUP_PADDING * 2 +
-		columns * STANDALONE_NODE_WIDTH +
+		columns * standaloneNodeWidth +
 		Math.max(0, columns - 1) * STANDALONE_GROUP_COLUMN_GAP
 	);
 }
 
-function standaloneGroupHeight(rows: number): number {
+function standaloneGroupHeight(rows: number, nodeHeight: number): number {
 	return (
 		STANDALONE_GROUP_HEADER_HEIGHT +
 		STANDALONE_GROUP_PADDING * 2 +
-		rows * NODE_HEIGHT +
+		rows * nodeHeight +
 		Math.max(0, rows - 1) * STANDALONE_GROUP_ROW_GAP
 	);
 }
@@ -58,12 +65,15 @@ export function buildStandaloneGroups(
 	hasSelection: boolean,
 	expandedStandaloneKinds: ReadonlySet<string>,
 	selectedNodeId: string | null,
+	layout: StandaloneGroupLayoutOptions = {},
 ): {
 	groupNodes: StandaloneKindGroupGraphNode[];
 	positionsById: Map<string, { x: number; y: number }>;
 	standaloneIds: Set<string>;
 	groupIdByNodeId: Map<string, string>;
 } {
+	const nodeHeight = layout.nodeHeight ?? NODE_HEIGHT;
+	const standaloneNodeWidth = layout.standaloneNodeWidth ?? STANDALONE_NODE_WIDTH;
 	const standaloneNodes = graph.nodes
 		.filter(
 			(node) =>
@@ -78,7 +88,7 @@ export function buildStandaloneGroups(
 		.filter((position): position is { x: number; y: number } => Boolean(position));
 	const ownedBottom =
 		ownedPositions.length > 0
-			? Math.max(...ownedPositions.map((position) => position.y + NODE_HEIGHT))
+			? Math.max(...ownedPositions.map((position) => position.y + nodeHeight))
 			: CANVAS_PADDING - STANDALONE_GROUP_GAP;
 	const groupedByKind = new Map<string, TopologyNode[]>();
 	for (const node of standaloneNodes) {
@@ -107,10 +117,10 @@ export function buildStandaloneGroups(
 		const rows = expanded ? Math.ceil(nodes.length / columns) : 0;
 		const groupId = standaloneGroupId(kind);
 		const width = expanded
-			? standaloneGroupWidth(columns)
+			? standaloneGroupWidth(columns, standaloneNodeWidth)
 			: standaloneCollapsedGroupWidth(nodes.length);
 		const height = expanded
-			? standaloneGroupHeight(rows)
+			? standaloneGroupHeight(rows, nodeHeight)
 			: STANDALONE_COLLAPSED_HEIGHT;
 		const groupDimmed =
 			hasSelection && !nodes.some((node) => selectedPathNodeIds.has(node.id));
@@ -139,11 +149,11 @@ export function buildStandaloneGroups(
 				positionsById.set(node.id, {
 					x:
 						STANDALONE_GROUP_PADDING +
-						column * (STANDALONE_NODE_WIDTH + STANDALONE_GROUP_COLUMN_GAP),
+						column * (standaloneNodeWidth + STANDALONE_GROUP_COLUMN_GAP),
 					y:
 						STANDALONE_GROUP_HEADER_HEIGHT +
 						STANDALONE_GROUP_PADDING +
-						row * (NODE_HEIGHT + STANDALONE_GROUP_ROW_GAP),
+						row * (nodeHeight + STANDALONE_GROUP_ROW_GAP),
 				});
 			});
 		}

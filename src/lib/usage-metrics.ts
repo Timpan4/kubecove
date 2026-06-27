@@ -1,5 +1,10 @@
 import type { AppUsageMetrics, AppUsageMetricsBreakdown } from "./types";
 
+export interface FlattenedUsageMetricsBreakdown {
+	item: AppUsageMetricsBreakdown;
+	depth: number;
+}
+
 export function formatCpuPercent(value: number): string {
 	if (!Number.isFinite(value)) return "--";
 	const clamped = Math.min(100, Math.max(0, value));
@@ -49,4 +54,14 @@ export function formatUsageMetricsBreakdownDetails(
 		formatMemoryBytes(item.memoryBytes),
 		formatProcessCount(item.processCount),
 	].join(" · ");
+}
+
+export function flattenUsageMetricsBreakdown(
+	items: AppUsageMetricsBreakdown[],
+	depth = 0,
+): FlattenedUsageMetricsBreakdown[] {
+	return items.flatMap((item) => [
+		{ item, depth },
+		...flattenUsageMetricsBreakdown(item.children, depth + 1),
+	]);
 }

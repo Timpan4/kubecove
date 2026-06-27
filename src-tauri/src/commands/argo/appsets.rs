@@ -1,12 +1,12 @@
-use super::{client_for_context, find_api_resource};
-use crate::commands::helpers::{
-    k8s_creation_timestamp_to_rfc3339, list_params, resource_age, serialize_resource_document,
+use crate::commands::gitops_crd::{
+    client_for_context, find_api_resource, get_crd_object, list_crd_objects, resource_metadata,
+    resource_yaml,
 };
+use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
 use crate::models::{
     AppError, ArgoApplicationSetDetails, ArgoApplicationSetSummary, YamlEncoding, YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
-use kube::api::{Api, DynamicObject};
 
 /// List Argo CD `ApplicationSets` in the cluster.
 #[tauri::command]
@@ -21,11 +21,7 @@ pub async fn list_argocd_appsets(
         None => return Ok(vec![]),
     };
 
-    let api: Api<DynamicObject> = Api::all_with(client.clone(), &ar);
-    let items = api
-        .list(&list_params())
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
+    let items = list_crd_objects(client.clone(), &ar).await?;
 
     let summaries: Vec<ArgoApplicationSetSummary> = items
         .iter()
@@ -131,23 +127,9 @@ pub async fn get_argocd_appset_details(
         None => return Err(AppError::new("ApplicationSet CRD not found", "cluster")),
     };
 
-    let api: Api<DynamicObject> = if let Some(ns) = &namespace {
-        Api::namespaced_with(client.clone(), ns.as_str(), &ar)
-    } else {
-        Api::all_with(client.clone(), &ar)
-    };
-
-    let obj = api
-        .get(&name)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
-    let yaml = serialize_resource_document(
-        &obj,
-        yaml_view_mode.unwrap_or_default(),
-        yaml_encoding.unwrap_or_default(),
-    )?;
-    let metadata = serde_json::to_value(&obj.metadata)
-        .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    let obj = get_crd_object(client.clone(), &ar, &name, namespace.as_deref()).await?;
+    let yaml = resource_yaml(&obj, yaml_view_mode, yaml_encoding)?;
+    let metadata = resource_metadata(&obj)?;
     let data = obj
         .data
         .as_object()

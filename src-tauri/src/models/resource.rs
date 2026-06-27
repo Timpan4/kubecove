@@ -191,8 +191,18 @@ pub struct KubernetesYamlLintDiagnostic {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct KubernetesYamlLintStatusNote {
+    pub severity: KubernetesYamlLintSeverity,
+    pub source: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct KubernetesYamlLintResult {
     pub diagnostics: Vec<KubernetesYamlLintDiagnostic>,
+    #[serde(default)]
+    pub notes: Vec<KubernetesYamlLintStatusNote>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

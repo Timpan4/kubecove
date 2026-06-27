@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { YamlCodeViewer } from "@/components/YamlCodeViewer";
-import { kubeconfigSourceKey, useSettingsState } from "@/lib/settings";
+import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import { createTauriClient, getArgoApplicationSetDetails } from "@/lib/tauri";
 import type {
 	ArgoApplicationSetSummary,
@@ -26,15 +27,14 @@ function useArgoApplicationSetDetails(
 	const client = useMemo(() => createTauriClient(), []);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	return useQuery({
-		queryKey: [
-			"argo-appset-details",
-			kubeconfigSourceKey(kubeconfigEnvVar),
+		queryKey: queryKeys.argoAppSetDetails(
 			appset.cluster,
 			appset.name,
 			appset.namespace,
+			kubeconfigEnvVar,
 			yamlViewMode,
 			yamlEncoding,
-		],
+		),
 		queryFn: () =>
 			getArgoApplicationSetDetails(
 				client,

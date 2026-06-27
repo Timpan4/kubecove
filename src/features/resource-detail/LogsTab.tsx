@@ -26,7 +26,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useSettingsState } from "@/lib/settings";
 import type { TauriClient } from "@/lib/tauri";
 import type { ResourceSummary } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import type { ContainerStatusRow } from "./helpers";
 import {
 	latestTimestampedLogLine,
@@ -285,15 +285,15 @@ export function LogsTab({
 					</div>
 				) : (
 					<div
-						className={cn(
-							"min-w-full font-mono text-[11px] leading-5",
+						className={cnfast(
+							"min-w-full font-mono text-xs leading-5",
 							!wrapLines && "w-max",
 						)}
 					>
 						{visibleLines.map((line) => (
 							<div
 								key={`${line.index}:${line.raw}`}
-								className={cn(
+								className={cnfast(
 									"flex min-w-full border-b border-border/50 last:border-b-0",
 									!wrapLines && "w-max",
 								)}
@@ -309,7 +309,7 @@ export function LogsTab({
 									)}
 								</time>
 								<code
-									className={cn(
+									className={cnfast(
 										"block px-3 py-1 text-foreground",
 										wrapLines
 											? "min-w-0 flex-1 whitespace-pre-wrap break-words"

@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { YamlCodeViewer } from "@/components/YamlCodeViewer";
-import { kubeconfigSourceKey, useSettingsState } from "@/lib/settings";
+import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsState } from "@/lib/settings";
 import { createTauriClient, getArgoAppProjectDetails } from "@/lib/tauri";
 import type {
 	ArgoAppProjectSummary,
@@ -26,15 +27,14 @@ function useArgoAppProjectDetails(
 	const client = useMemo(() => createTauriClient(), []);
 	const kubeconfigEnvVar = useSettingsState((state) => state.kubeconfigSourceKey);
 	return useQuery({
-		queryKey: [
-			"argo-appproject-details",
-			kubeconfigSourceKey(kubeconfigEnvVar),
+		queryKey: queryKeys.argoAppProjectDetails(
 			project.cluster,
 			project.name,
 			project.namespace,
+			kubeconfigEnvVar,
 			yamlViewMode,
 			yamlEncoding,
-		],
+		),
 		queryFn: () =>
 			getArgoAppProjectDetails(
 				client,

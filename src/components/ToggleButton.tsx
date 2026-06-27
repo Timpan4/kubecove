@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 
 interface ToggleButtonProps {
 	checked: boolean;
@@ -17,7 +17,7 @@ export function ToggleButton({
 			role="switch"
 			aria-checked={checked}
 			aria-label={ariaLabel}
-			className={cn(
+			className={cnfast(
 				"flex h-6 w-11 cursor-pointer items-center rounded-full border px-0.5 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/50",
 				checked
 					? "border-primary bg-primary"
@@ -26,7 +26,7 @@ export function ToggleButton({
 			onClick={() => onCheckedChange(!checked)}
 		>
 			<span
-				className={cn(
+				className={cnfast(
 					"block size-5 rounded-full bg-background shadow-sm transition-transform",
 					checked && "translate-x-5",
 				)}

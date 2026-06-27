@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useCommandPaletteStore } from "./store";
+import { shouldToggleCommandPaletteShortcut } from "./shortcut";
 
 /**
  * Global ⌘K (macOS) / Ctrl+K (Windows, Linux) listener. Capture phase so it
@@ -9,20 +10,7 @@ import { useCommandPaletteStore } from "./store";
 export function useCommandPaletteShortcut(): void {
 	useEffect(() => {
 		const handler = (event: KeyboardEvent) => {
-			if (
-				!(event.metaKey || event.ctrlKey) ||
-				event.altKey ||
-				event.shiftKey ||
-				event.key.toLowerCase() !== "k"
-			) {
-				return;
-			}
-			if (
-				event.target instanceof HTMLElement &&
-				event.target.closest(".xterm")
-			) {
-				return;
-			}
+			if (!shouldToggleCommandPaletteShortcut(event)) return;
 			event.preventDefault();
 			event.stopPropagation();
 			useCommandPaletteStore.getState().toggle();

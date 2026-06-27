@@ -52,7 +52,7 @@ import {
   discoveredResourceKindKey,
   nodeIdToString,
 } from "../lib/tree-nav";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { ChevronRight } from "lucide-react";
 import {
   getResourceGroupVisual,
@@ -135,7 +135,7 @@ interface TreeNodeProps {
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
     <ChevronRight
-      className={cn("size-3 shrink-0 transition-transform", expanded && "rotate-90")}
+      className={cnfast("size-3 shrink-0 transition-transform", expanded && "rotate-90")}
     />
   );
 }
@@ -230,14 +230,14 @@ function TreeNodeComponent({
   return (
     <li>
       <div
-        className={cn(
-          "relative flex h-[26px] cursor-pointer select-none items-center gap-1 rounded-none text-[0.8125rem] text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        className={cnfast(
+          "relative flex h-[26px] cursor-pointer select-none items-center gap-1 rounded-none text-xs text-sidebar-foreground/80 transition-colors hover:bg-surface-1 hover:text-sidebar-accent-foreground",
           isDisabled &&
             "cursor-default text-muted-foreground/70 hover:bg-transparent hover:text-muted-foreground/70",
           isSelected &&
-            "bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:bottom-0 before:left-0 before:top-0 before:w-0.5 before:rounded-r-sm before:bg-sidebar-primary",
+            "bg-primary/10 text-sidebar-accent-foreground before:absolute before:bottom-0 before:left-0 before:top-0 before:w-0.5 before:rounded-r-sm before:bg-primary",
           depth === 0 &&
-            "text-[0.6875rem] font-bold uppercase tracking-wide text-muted-foreground hover:bg-transparent hover:text-foreground/70",
+            "text-xs font-bold uppercase tracking-wide text-muted-foreground/70 hover:bg-transparent hover:text-foreground/70",
           depthPaddingClass,
         )}
         data-depth={depth}
@@ -252,7 +252,7 @@ function TreeNodeComponent({
       >
         <button
           type="button"
-          className={cn(
+          className={cnfast(
             "flex size-[18px] shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-muted-foreground transition-colors hover:text-foreground",
             !hasChildren && "invisible",
           )}
@@ -264,7 +264,7 @@ function TreeNodeComponent({
           <ChevronIcon expanded={isExpanded} />
         </button>
         <NodeIcon
-          className={cn(
+          className={cnfast(
             "size-3.5 shrink-0",
             depth === 0 ? "size-3" : "size-3.5",
             visual.className,

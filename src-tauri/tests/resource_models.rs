@@ -1,12 +1,13 @@
 use kubecove_lib::models::{
     AppError, AppUsageMetrics, AppUsageMetricsBreakdown, ArgoAppProjectDetails,
     ArgoAppProjectSummary, ArgoApplicationDetails, ArgoApplicationSetDetails,
-    ArgoApplicationSetSummary, ArgoApplicationSummary, ClusterContext, DiscoveredResourceKind,
-    HelmManifestResourceSummary, HelmManifestSummary, HelmReleaseDetails, HelmReleaseSummary,
-    HelmValuesSummary, NamespaceSummary, PodExecConfirmation, PodExecSessionMessage,
-    PodExecSessionRequest, PodExecSessionSummary, PodExecTerminalSize, PodLogStreamRequest,
-    RbacInspectionSummary, RbacRiskIndicator, RbacRiskLevel, RbacRoleSummary, RbacRuleSummary,
-    ResourceDetails, ResourceDetailsFull, ResourceEventSummary, ResourceHealth,
+    ArgoApplicationSetSummary, ArgoApplicationSourceSummary, ArgoApplicationSummary,
+    ClusterContext, DiscoveredResourceKind, HelmManifestResourceSummary, HelmManifestSummary,
+    HelmReleaseDetails, HelmReleaseSummary, HelmValuesSummary, NamespaceSummary,
+    PodExecConfirmation, PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummary,
+    PodExecTerminalSize, PodLogStreamRequest, RbacInspectionSummary, RbacRiskIndicator,
+    RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, ResourceDetails, ResourceDetailsFull,
+    ResourceEventSummary, ResourceHealth,
     ResourceMetricSummary, ResourceMetricsAvailability, ResourceMetricsAvailabilityStatus,
     ResourceMetricsSummary, ResourceSummary, ServiceAccountSummary, StreamMessage,
     WatchResourceKey, WatchResourceKind,
@@ -314,6 +315,17 @@ fn test_argo_application_models_serde() {
         destination_server: Some("https://kubernetes.default.svc".to_string()),
         source_repo: Some("https://example.invalid/repo.git".to_string()),
         source_revision: Some("main".to_string()),
+        source_mode: Some("git".to_string()),
+        source_count: None,
+        sources: vec![ArgoApplicationSourceSummary {
+            repo_url: Some("https://example.invalid/repo.git".to_string()),
+            target_revision: Some("main".to_string()),
+            resolved_revision: Some("abc123".to_string()),
+            path: Some("apps/payments".to_string()),
+            chart: None,
+            source_mode: Some("git".to_string()),
+            reference: None,
+        }],
         resource_namespaces: vec!["payments".to_string()],
         tracked_resource_count: Some(3),
     };
@@ -326,6 +338,8 @@ fn test_argo_application_models_serde() {
 
     let json_val = serde_json::to_value(&details).unwrap();
     assert_eq!(json_val["summary"]["syncStatus"], "Synced");
+    assert_eq!(json_val["summary"]["sourceMode"], "git");
+    assert_eq!(json_val["summary"]["sources"][0]["path"], "apps/payments");
     assert_eq!(json_val["summary"]["resourceNamespaces"][0], "payments");
     assert_eq!(json_val["summary"]["trackedResourceCount"], 3);
     let parsed: ArgoApplicationDetails = serde_json::from_value(json_val).unwrap();

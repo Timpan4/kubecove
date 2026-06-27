@@ -19,7 +19,7 @@ import type {
 	AppUpdateStatus,
 } from "./types";
 
-interface AppUpdateState {
+export interface AppUpdateState {
 	status: AppUpdateStatus;
 	currentVersion: string;
 	availableVersion: string | null;

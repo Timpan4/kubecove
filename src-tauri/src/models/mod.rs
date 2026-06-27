@@ -18,7 +18,8 @@ mod usage;
 
 pub use argo::{
     ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails,
-    ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSummary,
+    ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSourceSummary,
+    ArgoApplicationSummary,
 };
 pub use cancellation::CancelBackendRequestsResult;
 pub use cluster::ClusterContext;
@@ -49,10 +50,10 @@ pub use rbac::{
 };
 pub use resource::{
     GitOpsOwnerSummary, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult,
-    KubernetesYamlLintSeverity, OwnerReferenceSummary, ResourceDetails, ResourceDetailsFull,
-    ResourceHealth, ResourceListRequest, ResourceSummary, ResourceTopology, TopologyEdge,
-    TopologyNode, TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
-    YamlApplyTarget, YamlEncoding, YamlViewMode,
+    KubernetesYamlLintSeverity, KubernetesYamlLintStatusNote, OwnerReferenceSummary,
+    ResourceDetails, ResourceDetailsFull, ResourceHealth, ResourceListRequest, ResourceSummary,
+    ResourceTopology, TopologyEdge, TopologyNode, TopologyRelation, YamlApplyPreview,
+    YamlApplyRequest, YamlApplyResult, YamlApplyTarget, YamlEncoding, YamlViewMode,
 };
 pub use sessions::{
     LiveSessionCleanupRequest, LiveSessionCleanupResult, PodExecConfirmation,

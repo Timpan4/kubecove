@@ -2,7 +2,7 @@ import type * as React from "react"
 import { Command as CommandPrimitive } from "cmdk"
 import { SearchIcon } from "lucide-react"
 
-import { cn } from "@/lib/utils"
+import { cnfast } from "@/lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,7 @@ function Command({
   return (
     <CommandPrimitive
       data-slot="command"
-      className={cn(
+      className={cnfast(
         "flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
         className
       )}
@@ -47,11 +47,11 @@ function CommandDialog({
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <DialogContent
-        className={cn("top-[20%] translate-y-0 overflow-hidden p-0", className)}
+        className={cnfast("top-[20%] translate-y-0 overflow-hidden p-0", className)}
       >
         <Command
           {...commandProps}
-          className={cn(
+          className={cnfast(
             "[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]]:px-2 [&_[data-cmdk-input-wrapper]_svg]:h-4 [&_[data-cmdk-input-wrapper]_svg]:w-4 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-2 [&_[cmdk-item]_svg]:h-4 [&_[cmdk-item]_svg]:w-4",
             commandProps?.className
           )}
@@ -76,7 +76,7 @@ function CommandInput({
       <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
       <CommandPrimitive.Input
         data-slot="command-input"
-        className={cn(
+        className={cnfast(
           "flex h-9 w-full rounded-md bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
@@ -93,7 +93,7 @@ function CommandList({
   return (
     <CommandPrimitive.List
       data-slot="command-list"
-      className={cn(
+      className={cnfast(
         "max-h-[320px] scroll-py-1 overflow-y-auto overflow-x-hidden",
         className
       )}
@@ -121,7 +121,7 @@ function CommandGroup({
   return (
     <CommandPrimitive.Group
       data-slot="command-group"
-      className={cn(
+      className={cnfast(
         "overflow-hidden py-1 text-foreground [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide",
         className
       )}
@@ -137,7 +137,7 @@ function CommandSeparator({
   return (
     <CommandPrimitive.Separator
       data-slot="command-separator"
-      className={cn("-mx-1 h-px bg-border", className)}
+      className={cnfast("-mx-1 h-px bg-border", className)}
       {...props}
     />
   )
@@ -150,7 +150,7 @@ function CommandItem({
   return (
     <CommandPrimitive.Item
       data-slot="command-item"
-      className={cn(
+      className={cnfast(
         "relative flex cursor-default select-none items-center gap-2 rounded-sm text-xs outline-none data-[disabled=true]:pointer-events-none data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50",
         className
       )}
@@ -166,7 +166,7 @@ function CommandShortcut({
   return (
     <span
       data-slot="command-shortcut"
-      className={cn(
+      className={cnfast(
         "ml-auto text-[10px] tracking-widest text-muted-foreground",
         className
       )}

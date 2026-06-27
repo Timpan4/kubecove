@@ -1,10 +1,30 @@
-import type {
-	SortingState,
-	TableState,
-	VisibilityState,
-} from "@tanstack/react-table";
+export type ResourceSortingState = Array<{ id: string; desc: boolean }>;
+export type ResourceColumnVisibilityState = Record<string, boolean>;
 
-const RESOURCE_TABLE_DEFAULT_STATE: TableState = {
+export interface ResourceTableState {
+	columnSizing: Record<string, number>;
+	columnSizingInfo: {
+		columnSizingStart: [string, number][];
+		deltaOffset: number | null;
+		deltaPercentage: number | null;
+		isResizingColumn: false | string;
+		startOffset: number | null;
+		startSize: number | null;
+	};
+	rowSelection: Record<string, boolean>;
+	rowPinning: { top: string[]; bottom: string[] };
+	expanded: Record<string, boolean>;
+	grouping: string[];
+	sorting: ResourceSortingState;
+	columnFilters: Array<{ id: string; value: unknown }>;
+	globalFilter: unknown;
+	columnPinning: { left: string[]; right: string[] };
+	columnOrder: string[];
+	columnVisibility: ResourceColumnVisibilityState;
+	pagination: { pageIndex: number; pageSize: number };
+}
+
+const RESOURCE_TABLE_DEFAULT_STATE: ResourceTableState = {
 	columnSizing: {},
 	columnSizingInfo: {
 		columnSizingStart: [],
@@ -28,9 +48,9 @@ const RESOURCE_TABLE_DEFAULT_STATE: TableState = {
 };
 
 export function createResourceTableState(
-	sorting: SortingState,
-	columnVisibility: VisibilityState,
-): TableState {
+	sorting: ResourceSortingState,
+	columnVisibility: ResourceColumnVisibilityState,
+): ResourceTableState {
 	return {
 		...RESOURCE_TABLE_DEFAULT_STATE,
 		sorting,

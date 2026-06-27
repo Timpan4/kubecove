@@ -1,13 +1,9 @@
 import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-	startPortForward,
-	stopPodPortForward,
-	type TauriClient,
-} from "@/lib/tauri";
+import type { TauriClient } from "@/lib/tauri";
 import type { PortForwardSessionSummary } from "@/lib/types";
 import { queryKeys } from "@/lib/queryKeys";
-import { portForwardSessionToRequest } from "./helpers";
+import { reconnectPortForwardSession } from "./saved-port-forward-actions";
 
 interface UseReconnectPortForwardSessionOptions {
 	client: TauriClient;
@@ -27,11 +23,10 @@ export function useReconnectPortForwardSession({
 		async (session: PortForwardSessionSummary) => {
 			setReconnectingId(session.id);
 			try {
-				await stopPodPortForward(client, session.id);
-				await startPortForward(client, portForwardSessionToRequest(session));
+				await reconnectPortForwardSession({ client, session });
 				await queryClient.invalidateQueries({
 					queryKey: queryKeys.portForwards(),
-			});
+				});
 			onSuccess?.(session);
 		} catch (error) {
 			setReconnectingId(null);

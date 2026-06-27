@@ -2,6 +2,15 @@
 
 This repository is for KubeCove, a local desktop Kubernetes workspace built with Tauri v2, React, TypeScript, Bun, Rust, and `kube-rs`.
 
+## Current Migration Phase
+
+KubeCove is actively rewriting the frontend from React to Svelte.
+
+- Default frontend work should advance Svelte feature parity with existing React behavior unless the user explicitly asks for React-only work.
+- Treat React as the parity reference until Svelte reaches feature equivalence: compare behavior, layout, keyboard/accessibility, data flow, command wrappers, and tests against React before claiming Svelte work done.
+- Keep the React fallback working during migration; do not delete React paths unless the user explicitly scopes that removal.
+- Prefer shared typed helpers/models where they reduce parity drift, but avoid new abstractions unless they are needed for parity or testability.
+
 Before making implementation changes, skim the [docs index](docs/README.md). The minimum reading set is:
 
 - `docs/product-vision.md`
@@ -41,7 +50,7 @@ Rust-side Tauri commands own Kubernetes access. Current command families include
 - live-session commands for Pod and selector-backed Service port-forwarding
 - Argo CD, Helm, RBAC, and usage commands
 
-The React app should call only typed Tauri command wrappers. Kubernetes credentials and kubeconfig parsing belong in Rust modules under `src-tauri/src`.
+The frontend apps should call only typed Tauri command wrappers. Kubernetes credentials and kubeconfig parsing belong in Rust modules under `src-tauri/src`.
 
 ## File Organization
 

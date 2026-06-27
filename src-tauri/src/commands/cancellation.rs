@@ -59,17 +59,13 @@ impl BackendCancellationRegistry {
             let next_generation = state.next_generation;
             state.next_generation = state.next_generation.saturating_add(1);
             generation = Some(next_generation);
-            let previous = state
-                .scopes
-                .entry(scope.clone())
-                .or_default()
-                .insert(
-                    request_id.clone(),
-                    RegisteredCancellation {
-                        generation: next_generation,
-                        token: token.clone(),
-                    },
-                );
+            let previous = state.scopes.entry(scope.clone()).or_default().insert(
+                request_id.clone(),
+                RegisteredCancellation {
+                    generation: next_generation,
+                    token: token.clone(),
+                },
+            );
             if let Some(previous) = previous {
                 previous.token.cancel();
             }

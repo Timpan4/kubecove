@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import type { ResourceEventSummary, ResourceSummary } from "../src/lib/types";
 import {
 	buildIncidentSignals,
@@ -36,6 +37,18 @@ function event(overrides: Partial<ResourceEventSummary>): ResourceEventSummary {
 		namespace: "default",
 		...overrides,
 	};
+}
+
+function svelteDetailSource(): string {
+	return [
+		"src/features/resource-detail/ResourceDetailPanel.svelte",
+		"src/features/resource-detail/DetailsTab.svelte",
+		"src/features/resource-detail/EventsTab.svelte",
+		"src/features/resource-detail/YamlTab.svelte",
+		"src/features/resource-detail/LogsTab.svelte",
+	]
+		.map((path) => readFileSync(path, "utf8"))
+		.join("\n");
 }
 
 describe("incident workflow helpers", () => {
@@ -207,6 +220,131 @@ describe("incident workflow helpers", () => {
 			"FailedMount",
 			"BackOff",
 		]);
+	});
+
+	test("Svelte resource detail renders events in incident priority order", () => {
+		const source = svelteDetailSource();
+
+		expect(source).toContain("sortIncidentEvents(eventsQuery.data ?? [])");
+		expect(source).toContain("{#each sortedEvents as event");
+		expect(source).toContain("<TableHead>Source</TableHead>");
+		expect(source).toContain("<TableCell>{event.source}</TableCell>");
+		expect(source).toContain("<TableCell>{event.namespace ?? \"-\"}</TableCell>");
+		expect(source).toContain("function formatEventLastSeen(event: ResourceEventSummary)");
+		expect(source).toContain("formatRelativeTimestamp(");
+		expect(source).toContain("`$" + "{event.lastSeen} ago`");
+		expect(source).toContain("<time datetime={event.lastSeenAt}");
+	});
+
+	test("Svelte resource detail wires incident summary and timeline helpers", () => {
+		const source = svelteDetailSource();
+
+		expect(source).toContain("buildIncidentSignals(");
+		expect(source).toContain("buildIncidentTimeline({");
+		expect(source).toContain("Incident summary");
+		expect(source).toContain("No incident timeline entries for this resource.");
+	});
+
+	test("Svelte resource detail orders conditions before curated metadata", () => {
+		const source = svelteDetailSource();
+
+		expect(source).toContain("buildCuratedMetadata(detailsQuery.data?.metadata ?? {}, detailResource)");
+		expect(source).toContain(">Conditions</div>");
+		expect(source).toContain(">Metadata</div>");
+		expect(source).not.toContain(">Diagnostics</div>");
+		expect(source.indexOf(">Conditions</div>")).toBeLessThan(
+			source.indexOf(">Metadata</div>"),
+		);
+		expect(source).not.toContain("diagnosticBadgeMetadataRows");
+		expect(source).not.toContain("metadataBadgeRows");
+		expect(source).not.toContain("hasOwnership");
+		expect(source).not.toContain('<Badge variant="outline">Owner {detailResource.ownerRef}</Badge>');
+	});
+
+	test("Svelte resource detail formats metadata and timestamps like React", () => {
+		const source = svelteDetailSource();
+
+		expect(source).toContain("function metadataBadgeStyle(key: string)");
+		expect(source).toContain("visibleMetadataBadges(curatedMetadata.labels, metadataLabelsExpanded)");
+		expect(source).toContain("visibleMetadataBadges(curatedMetadata.annotations, metadataAnnotationsExpanded)");
+		expect(source).toContain("<details class=\"rounded-md border bg-background/30\">");
+		expect(source).toContain("Advanced metadata");
+		expect(source).toContain("Show {visibleMetadataLabels.hiddenCount} more");
+		expect(source).toContain("Show {visibleMetadataAnnotations.hiddenCount} more");
+		expect(source).toContain('row.label === "Helm" && onOpenHelmRelease');
+		expect(source).toContain("onOpenHelmRelease?.(row.value, detailResource.namespace)");
+		expect(source).toContain("formatFullTimestamp(row.value)");
+		expect(source).toContain("title={formatFullTimestamp(line.timestamp)}");
+		expect(source).toContain("<TableHead>Last transition</TableHead>");
+		expect(source).toContain("datetime={condition.lastTransitionTime}");
+		expect(source).toContain("formatFullTimestamp(condition.lastTransitionTime)");
+		expect(source).toContain("<TableHead>Last finished</TableHead>");
+		expect(source).toContain("datetime={container.lastFinishedAt}");
+		expect(source).toContain("formatFullTimestamp(container.lastFinishedAt)");
+		expect(source).not.toContain("Sampled {formatLogTime(detailResource.metrics.sampledAt)}");
+	});
+
+	test("Svelte resource detail cancels stale backend requests", () => {
+		const source = svelteDetailSource();
+
+		expect(source).toContain('createCancelScope("resource-details", detailsQueryKey)');
+		expect(source).toContain('createCancelScope("resource-yaml", yamlQueryKey)');
+		expect(source).toContain('createCancelScope("resource-events", eventsQueryKey)');
+		expect(source).toContain('createCancellableRequest(detailsCancelScope, "details")');
+		expect(source).toContain('createCancellableRequest(yamlCancelScope, "yaml")');
+		expect(source).toContain('createCancellableRequest(eventsCancelScope, "events")');
+		expect(source).toContain("cancelBackendRequests(client, cancelScope)");
+		expect(source).toContain("queryKeys.resourceDetails(");
+		expect(source).toContain("queryKeys.resourceYaml(");
+		expect(source).toContain("queryKeys.resourceEvents(");
+		expect(source).toContain('"detail.details.cancel"');
+		expect(source).toContain('"detail.yaml.cancel"');
+		expect(source).toContain('"detail.events.cancel"');
+	});
+
+	test("Svelte resource detail honors YAML defaults and exposes YAML mode controls", () => {
+		const source = svelteDetailSource();
+
+		expect(source).toContain("getSettingsSnapshot().yamlViewModeDefault");
+		expect(source).toContain("getSettingsSnapshot().yamlEncodingDefault");
+		expect(source).toContain("function setYamlViewMode(value: string)");
+		expect(source).toContain("function setYamlEncoding(value: string)");
+		expect(source).toContain('aria-label="YAML shape"');
+		expect(source).toContain('aria-label="YAML encoding"');
+		expect(source).toContain('value={yamlEditing ? "applyClean" : yamlViewMode}');
+		expect(source).toContain(
+			'<SelectValue>{yamlEditing || yamlViewMode === "applyClean" ? "Apply clean" : "Kubectl view"}</SelectValue>',
+		);
+		expect(source).toContain(
+			'<SelectValue>{yamlEncoding === "kyaml" ? "KYAML" : "YAML"}</SelectValue>',
+		);
+		expect(source).toContain(
+			'<SelectItem value="kubectl" label="Kubectl view">Kubectl view</SelectItem>',
+		);
+		expect(source).toContain(
+			'<SelectItem value="applyClean" label="Apply clean">Apply clean</SelectItem>',
+		);
+		expect(source).toContain('<SelectItem value="yaml" label="YAML">YAML</SelectItem>');
+		expect(source).toContain('<SelectItem value="kyaml" label="KYAML">KYAML</SelectItem>');
+		expect(source).toContain('onclick={() => void previewYamlApply()}');
+		expect(source).toContain(
+			'title={!yamlPreview ? "Run a dry run before applying." : undefined}',
+		);
+		expect(source).toContain(
+			'aria-describedby={!yamlPreview ? "yaml-apply-disabled-tooltip" : undefined}',
+		);
+		expect(source).toContain('role="tooltip"');
+		expect(source).toContain("group-hover:block");
+		expect(source).toContain(
+			'<div class="overflow-x-auto py-1 font-mono text-xs leading-relaxed">',
+		);
+		expect(source).not.toContain(
+			'<pre class="overflow-x-auto p-0 font-mono text-xs leading-relaxed">',
+		);
+		expect(source).toContain('<YamlCodeEditor value={yamlText} minHeight="520px" />');
+		expect(source.indexOf("Dry-run diff")).toBeLessThan(
+			source.indexOf("bind:value={yamlDraft}"),
+		);
 	});
 
 	test("incident timeline orders events, conditions, restarts, and log metadata", () => {

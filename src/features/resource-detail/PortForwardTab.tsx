@@ -428,15 +428,15 @@ export function PortForwardTab({
 											<div className="truncate text-xs font-medium">
 												{sessionTitle(session)}
 											</div>
-											<div className="truncate font-mono text-[11px] text-muted-foreground">
+											<div className="truncate font-mono text-xs text-muted-foreground">
 												{localUrl}
 											</div>
-											<div className="truncate text-[11px] text-muted-foreground">
+											<div className="truncate text-xs text-muted-foreground">
 												{sessionResolution(session)}
 											</div>
 											{showKubeconfigSourceLabels &&
 												session.kubeconfigSourceLabel && (
-													<div className="truncate text-[11px] text-muted-foreground">
+													<div className="truncate text-xs text-muted-foreground">
 														{session.kubeconfigSourceLabel}
 													</div>
 												)}

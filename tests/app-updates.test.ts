@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 import {
 	resetAppUpdateStateForTests,
@@ -121,5 +122,60 @@ describe("app update store", () => {
 		expect(useAppUpdateStore.getState().lastCheckedAt).toBeNull();
 		expect(useAppUpdateStore.getState().errorMessage).toBeNull();
 		setAppUpdatesEnabledForTests(true);
+	});
+
+	test("Svelte runtime keeps launch checks and disabled-channel chrome parity", () => {
+		const appSource = readFileSync("src/app/svelte/App.svelte", "utf8");
+		const settingsSource = readFileSync(
+			"src/app/svelte/UpdatesSettings.svelte",
+			"utf8",
+		);
+		const buttonSource = readFileSync(
+			"src/app/svelte/UpdateStatusButton.svelte",
+			"utf8",
+		);
+		const bridgeSource = readFileSync(
+			"src/app/svelte/appUpdateStore.ts",
+			"utf8",
+		);
+
+		expect(appSource).toContain("isAppUpdatesEnabled()");
+		expect(appSource).toContain(
+			"appUpdateActions.checkForUpdates({ manual: false })",
+		);
+		expect(buttonSource).toContain("isAppUpdatesEnabled()");
+		expect(buttonSource).toContain("{#if updatesEnabled}");
+		expect(buttonSource).toContain("appUpdateStore");
+		expect(buttonSource).toContain("$appUpdateStore");
+		expect(settingsSource).toContain("appUpdateActions.checkForUpdates");
+		expect(settingsSource).toContain("appUpdateActions.installUpdate");
+		expect(settingsSource).toContain("appUpdateActions.relaunchApp");
+		expect(settingsSource).toContain("$appUpdateStore");
+		expect(bridgeSource).toContain("readable<AppUpdateState>");
+		expect(bridgeSource).toContain("useAppUpdateStore.subscribe(set)");
+		expect(bridgeSource).toContain("checkForUpdates");
+		expect(bridgeSource).toContain("dismissUpdate");
+		expect(appSource).not.toContain("useAppUpdateStore");
+		expect(buttonSource).not.toContain("useAppUpdateStore");
+		expect(settingsSource).not.toContain("useAppUpdateStore");
+	});
+
+	test("Svelte update chrome keeps release workflow parity", () => {
+		const buttonSource = readFileSync(
+			"src/app/svelte/UpdateStatusButton.svelte",
+			"utf8",
+		);
+
+		expect(buttonSource).toContain("let manualOpen = $state(false)");
+		expect(buttonSource).toContain("let autoOpenedVersion = $state<string | null>(null)");
+		expect(buttonSource).toContain("update.dismissedVersion !== update.availableVersion");
+		expect(buttonSource).toContain("update.releaseNotes");
+		expect(buttonSource).toContain("dismissAvailableUpdate");
+		expect(buttonSource).toContain("update.dismissUpdate(update.availableVersion)");
+		expect(buttonSource).toContain("update.installUpdate()");
+		expect(buttonSource).toContain("update.relaunchApp()");
+		expect(buttonSource).toContain("update.checkForUpdates({ manual: true })");
+		expect(buttonSource).toContain("update.downloadProgress ?? 12");
+		expect(buttonSource).toContain('role="dialog"');
 	});
 });

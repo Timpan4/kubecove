@@ -1,7 +1,7 @@
 import { ExactTimestampText } from "@/components/TimestampText";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import {
 	buildIncidentTimeline,
 	type IncidentTimelineItem,
@@ -36,14 +36,14 @@ function toneClassName(tone: IncidentTimelineTone): string {
 function TimelineItem({ item }: { item: IncidentTimelineItem }) {
 	return (
 		<div
-			className={cn(
+			className={cnfast(
 				"grid gap-1.5 rounded-md border border-l-4 px-2.5 py-2",
 				toneClassName(item.tone),
 			)}
 		>
 			<div className="flex items-start justify-between gap-2">
 				<div className="min-w-0">
-					<div className="text-[0.78rem] font-semibold text-foreground">
+					<div className="text-xs font-semibold text-foreground">
 						{item.title}
 					</div>
 					{item.detail && (
@@ -52,12 +52,12 @@ function TimelineItem({ item }: { item: IncidentTimelineItem }) {
 						</div>
 					)}
 				</div>
-				<Badge variant="outline" className="rounded-sm px-1.5 py-0 text-[0.625rem]">
+				<Badge variant="outline" className="rounded-sm px-1.5 py-0 text-xs">
 					{item.source}
 				</Badge>
 			</div>
 			{item.timestamp && (
-				<div className="text-[0.6875rem] text-muted-foreground">
+				<div className="text-xs text-muted-foreground">
 					<ExactTimestampText value={item.timestamp} precision="millisecond" />
 				</div>
 			)}

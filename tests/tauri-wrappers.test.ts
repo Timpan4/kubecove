@@ -252,7 +252,8 @@ describe("typed Tauri wrappers", () => {
 			"kube-namespaces",
 			"kubeconfigEnv=KUBECOVE_CONFIG",
 			"kind-dev",
-			]);
+		]);
+		expect(queryKeys.appUsageMetrics()).toEqual(["app-usage-metrics"]);
 	});
 
 	test("passes kubeconfig source settings through typed wrappers", async () => {

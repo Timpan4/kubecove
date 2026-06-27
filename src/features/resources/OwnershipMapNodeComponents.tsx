@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import type { TopologyHealth } from "@/lib/types";
 import { formatCompactResourceMetrics } from "@/lib/resource-metrics";
 import { getResourceKindVisual } from "@/lib/resource-visuals";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { smartKubernetesName } from "./ownership-node-name";
 import {
 	topologyNodeClassName,
@@ -39,7 +39,7 @@ export function HealthBadge({ health }: { health: TopologyHealth }) {
 	return (
 		<Badge
 			variant={badgeStyle.variant}
-			className={cn(
+			className={cnfast(
 				"h-[1.125rem] max-w-[4.75rem] shrink-0 rounded-sm px-1.5 text-[0.625rem] leading-none",
 				badgeStyle.className,
 			)}
@@ -59,7 +59,7 @@ export function ValueBadge({
 	return (
 		<Badge
 			variant="outline"
-			className={cn(
+			className={cnfast(
 				"h-[1.125rem] min-w-0 max-w-full justify-start rounded-sm px-1.5 text-[0.625rem] font-medium leading-none",
 				className,
 			)}
@@ -80,7 +80,7 @@ export function KindBadge({
 	return (
 		<Badge
 			variant="outline"
-			className={cn(
+			className={cnfast(
 				"h-4 max-w-[5.75rem] shrink-0 rounded-sm px-1.5 text-[0.625rem] font-semibold leading-none shadow-none",
 				className,
 			)}
@@ -101,7 +101,7 @@ export function TopologyText({
 	className?: string;
 }) {
 	return (
-		<span className={cn("block min-w-0 truncate", className)} title={title}>
+		<span className={cnfast("block min-w-0 truncate", className)} title={title}>
 			{content}
 		</span>
 	);
@@ -128,7 +128,7 @@ function OwnershipResourceNodeComponent({
 
 	return (
 		<div
-			className={cn(
+			className={cnfast(
 				topologyNodeClassName(
 					node,
 					data.selected || selected ? node.id : null,
@@ -154,7 +154,7 @@ function OwnershipResourceNodeComponent({
 				style={{ opacity: 0 }}
 			/>
 			<div className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2">
-				<Icon className={cn("size-3.5 shrink-0", visual.className)} />
+				<Icon className={cnfast("size-3.5 shrink-0", visual.className)} />
 				<TopologyText
 					content={displayName}
 					title={`${node.kind}/${node.name}`}
@@ -196,21 +196,21 @@ function StandaloneKindGroupNodeComponent({
 
 	return (
 		<div
-			className={cn(
+			className={cnfast(
 				"resource-topology-node h-full w-full rounded-md border border-border/80 shadow-sm transition-colors hover:bg-accent/20",
 				visual.surfaceClassName,
 				data.dimmed && "opacity-35",
 			)}
 		>
 			<div
-				className={cn(
+				className={cnfast(
 					"flex h-full items-center justify-between gap-3 px-3",
 					data.expanded && "h-[38px] border-b border-border/70",
 				)}
 			>
 				<div className="flex min-w-0 items-center gap-2">
 					<ToggleIcon className="size-3 shrink-0 text-muted-foreground" />
-					<Icon className={cn("size-3.5 shrink-0", visual.className)} />
+					<Icon className={cnfast("size-3.5 shrink-0", visual.className)} />
 					<TopologyText
 						content={`Ownerless ${data.kind}`}
 						className="text-[0.6875rem] font-semibold text-foreground"

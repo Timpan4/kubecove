@@ -1,0 +1,619 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import {
+	allKindOptions,
+	buildResourceTableModel,
+	syncedTopologyNodeId,
+} from "../src/features/resources/resourceBrowserModel";
+import {
+	buildFlowTopology,
+	topologyViewportFitKey,
+} from "../src/features/resources/topologyModel";
+import {
+	resourceGroupCollapseKey,
+	resourceTypeGroupCollapseKey,
+} from "../src/features/resources/helpers";
+import type {
+	DiscoveredResourceKind,
+	ResourceSummary,
+	ResourceTopology,
+	TopologyNode,
+} from "../src/lib/types";
+
+function resource(name: string, patch: Partial<ResourceSummary> = {}): ResourceSummary {
+	return {
+		cluster: "kind-dev",
+		kind: "Pod",
+		name,
+		namespace: "default",
+		age: "1d",
+		health: "healthy",
+		status: "Running",
+		ready: "1/1",
+		...patch,
+	};
+}
+
+function topologyNode(id: string, summary: ResourceSummary): TopologyNode {
+	return {
+		id,
+		kind: summary.kind,
+		name: summary.name,
+		namespace: summary.namespace ?? null,
+		status: summary.status,
+		health: summary.health,
+		selectable: true,
+		summary,
+	};
+}
+
+const widget: DiscoveredResourceKind = {
+	group: "example.com",
+	version: "v1",
+	apiVersion: "example.com/v1",
+	kind: "Widget",
+	plural: "widgets",
+	namespaced: true,
+};
+
+describe("svelte resource browser model", () => {
+	test("shared resource table state stays independent from React table imports", () => {
+		const tableStateSource = readFileSync(
+			"src/features/resources/table-state.ts",
+			"utf8",
+		);
+		const helpersSource = readFileSync("src/features/resources/helpers.ts", "utf8");
+
+		expect(tableStateSource).not.toContain("@tanstack/react-table");
+		expect(helpersSource).not.toContain("@tanstack/react-table");
+	});
+
+	test("filters, summarizes, groups, and collapses resource rows", () => {
+		const owned = resource("api", {
+			gitOpsOwner: {
+				provider: "argo",
+				kind: "Application",
+				name: "payments",
+				namespace: "argocd",
+				confidence: "metadata",
+			},
+		});
+		const restarted = resource("worker", {
+			health: "restarted",
+			restarts: 2,
+			status: "Running",
+		});
+		const collapsedGroups = new Set<string>([resourceGroupCollapseKey(owned)]);
+		const model = buildResourceTableModel([owned, restarted], {
+			search: "",
+			gitOpsFilter: "",
+			healthFilter: "all",
+			sort: { id: "name", desc: false },
+			pageIndex: 0,
+			collapsedGroups,
+		});
+
+		expect(model.healthSummary.total).toBe(2);
+		expect(model.healthSummary.healthy).toBe(1);
+		expect(model.healthSummary.restarted).toBe(1);
+		expect(model.groupedByGitOps).toBe(true);
+		expect(model.gitOpsFilters.map((filter) => filter.label)).toEqual([
+			"Owned by Argo CD: payments",
+		]);
+		expect(model.entries.some((entry) => entry.type === "group")).toBe(true);
+		expect(model.entries).toContainEqual(
+			expect.objectContaining({ type: "type", kind: "Pod" }),
+		);
+		expect(
+			model.entries.some(
+				(entry) => entry.type === "resource" && entry.resource.name === "api",
+			),
+		).toBe(false);
+	});
+
+	test("groups unmanaged Svelte table rows by resource type", () => {
+		const deployment = resource("argocd-applicationset-controller", {
+			kind: "Deployment",
+		});
+		const pod = resource("argocd-application-controller-0", {
+			kind: "Pod",
+		});
+		const service = resource("argocd-metrics", {
+			kind: "Service",
+		});
+		const model = buildResourceTableModel([service, pod, deployment], {
+			search: "",
+			gitOpsFilter: "",
+			healthFilter: "all",
+			sort: { id: "name", desc: false },
+			pageIndex: 0,
+			collapsedGroups: new Set([resourceTypeGroupCollapseKey(pod)]),
+		});
+
+		expect(model.groupedByGitOps).toBe(false);
+		expect(model.entries.filter((entry) => entry.type === "group")).toEqual([]);
+		expect(
+			model.entries
+				.filter((entry) => entry.type === "type")
+				.map((entry) => ({
+					kind: entry.kind,
+					label: entry.label,
+					count: entry.count,
+					collapsed: entry.collapsed,
+				})),
+		).toEqual([
+			{ kind: "Deployment", label: "Deployments", count: 1, collapsed: false },
+			{ kind: "Pod", label: "Pods", count: 1, collapsed: true },
+			{ kind: "Service", label: "Services", count: 1, collapsed: false },
+		]);
+		expect(
+			model.entries
+				.filter((entry) => entry.type === "resource")
+				.map((entry) => entry.resource.name),
+		).toEqual(["argocd-applicationset-controller", "argocd-metrics"]);
+	});
+
+	test("keeps built-in, cluster-scoped, and discovered kinds editable", () => {
+		expect(allKindOptions([widget]).map((kind) => (typeof kind === "string" ? kind : kind.kind))).toContain(
+			"Node",
+		);
+		expect(allKindOptions([widget]).map((kind) => (typeof kind === "string" ? kind : kind.kind))).toContain(
+			"Widget",
+		);
+	});
+
+	test("keeps selected Svelte resource visible inside collapsed groups", () => {
+		const owned = resource("api", {
+			apiVersion: "apps/v1",
+			gitOpsOwner: {
+				provider: "argo",
+				kind: "Application",
+				name: "payments",
+				namespace: "argocd",
+				confidence: "metadata",
+			},
+			kind: "Deployment",
+		});
+		const collapsedGroups = new Set<string>([
+			resourceGroupCollapseKey(owned),
+			resourceTypeGroupCollapseKey(owned),
+		]);
+		const model = buildResourceTableModel([owned], {
+			search: "",
+			gitOpsFilter: "",
+			healthFilter: "all",
+			sort: { id: "name", desc: false },
+			pageIndex: 0,
+			collapsedGroups,
+			selectedResource: resource("api", { apiVersion: "apps/v1", kind: "Deployment" }),
+		});
+
+		expect(
+			model.entries.some(
+				(entry) => entry.type === "resource" && entry.resource.name === "api",
+			),
+		).toBe(true);
+	});
+
+	test("syncs table selection into the Svelte topology selection", () => {
+		const selected = resource("api", { apiVersion: "v1" });
+		const topologySummary = resource("api", { apiVersion: "apps/v1" });
+		const topologyNodes = [
+			topologyNode("Deployment:api", topologySummary),
+			topologyNode("Pod:worker", resource("worker")),
+		];
+
+		expect(
+			syncedTopologyNodeId({
+				selectedTopologyNodeId: null,
+				selectedResource: selected,
+				topologyNodes,
+			}),
+		).toBe("Deployment:api");
+		expect(
+			syncedTopologyNodeId({
+				selectedTopologyNodeId: "missing-node",
+				selectedResource: selected,
+				topologyNodes,
+			}),
+		).toBeNull();
+	});
+
+	test("scrolls selected Svelte table rows into view like React", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(source).toContain("function scrollSelectedTableRowIntoView");
+		expect(source).toContain("tr[data-resource-selected='true']");
+		expect(source).toContain("scrollIntoView({ block: \"center\", inline: \"nearest\" })");
+		expect(source).toContain("secondFrame = window.requestAnimationFrame");
+		expect(source).toContain("new ResizeObserver(() => scrollSelectedTableRowIntoView(viewport))");
+		expect(source).toContain("hasExactSelectedResource");
+		expect(source).toContain("!exactMatchExists && resourceIdentityKey(resource) === identityKey");
+	});
+
+	test("passes metrics-enriched topology into the Svelte ownership map", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(source).toContain("mergeTopologyMetrics(topologyQuery.data, metricsQuery.data)");
+		expect(source).toContain("topology={topologyWithMetrics}");
+		expect(source).toContain("topologyNodes: topologyWithMetrics?.nodes");
+	});
+
+	test("keeps Svelte resource table collapsible beside the ownership map", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(source).toContain("let tablePanelOpen = $state(true)");
+		expect(source).toContain('aria-label="Collapse resource table"');
+		expect(source).toContain('aria-label="Show resource table"');
+		expect(source).toContain("<Table2");
+	});
+
+	test("keeps Svelte resource table icons and spans aligned with React table", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(source).toContain("getResourceGroupVisual(entry.label)");
+		expect(source).toContain("getResourceKindVisual(entry.kind)");
+		expect(source).toContain("class={TABLE_CLASS}");
+		expect(source).toContain("colspan={tableVisibleColumnCount}");
+		expect(source).not.toContain('colspan="10"');
+		expect(source).not.toContain('{entry.collapsed ? "Show" : "Hide"}');
+	});
+
+	test("keeps Svelte resource selection shell-controlled", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(source).toContain("selectedResource?: ResourceSummary | null");
+		expect(source).toContain("onResourceSelect?: (resource: ResourceSummary) => void");
+		expect(source).toContain("onResourceClose?: () => void");
+		expect(source).toContain("onResourceSelect(matchedResource)");
+		expect(source).toContain("onResourceSelect(resource)");
+		expect(source).toContain("onResourceClose()");
+		expect(source).not.toContain("let selectedResource = $state");
+		expect(source).not.toContain("ResourceDetailPanel");
+	});
+
+	test("keeps Svelte table and topology selection in sync", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(source).toContain("resourceIdentityKey(resource) === identityKey");
+		expect(source).toContain("selectedTopologyNodeId = null;\n\t\tonResourceSelect(resource)");
+		expect(source).toContain("function closeMapPanel()");
+		expect(source).toContain("onMapToggle={closeMapPanel}");
+	});
+
+	test("stacks Svelte map and table when shell inspector is open", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+	expect(source).toContain("const inspectorOpen = $derived(Boolean(selectedResource))");
+	expect(source).toContain("inspectorOpen && mapPanelOpen && tablePanelOpen");
+	expect(source).toContain("grid min-h-0 min-w-0 flex-1");
+	expect(source).toContain("grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)]");
+	expect(source).toContain("xl:grid-cols-[minmax(420px,0.4fr)_minmax(620px,0.6fr)]");
+});
+
+	test("keeps Svelte resource detail panel out of the browser", () => {
+		const browser = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
+
+		expect(browser).not.toContain("ResourceDetailPanel");
+		expect(browser).not.toContain("Close resource details");
+		expect(shell).toContain("<ResourceDetailPanel");
+		expect(shell).toContain('aria-label="Close resource details"');
+		expect(browser).toContain("selectedTopologyNodeId = null");
+	});
+
+	test("groups standalone Svelte topology nodes by kind", () => {
+		const configMap = topologyNode("ConfigMap:settings", resource("settings", { kind: "ConfigMap" }));
+		const secret = topologyNode("Secret:api-token", resource("api-token", { kind: "Secret" }));
+		const topology: ResourceTopology = {
+			nodes: [configMap, secret],
+			edges: [],
+			warnings: [],
+		};
+
+		const graph = buildFlowTopology(topology, null, "ownership");
+
+		expect(graph.nodes.map((node) => node.id)).toEqual([
+			"standalone-kind:ConfigMap",
+			"standalone-kind:Secret",
+		]);
+		expect(graph.nodes.every((node) => node.data.resource === null)).toBe(true);
+		expect(graph.nodes[0]?.data.expanded).toBe(false);
+	});
+
+	test("expands selected standalone Svelte topology bucket", () => {
+		const configMap = topologyNode("ConfigMap:settings", resource("settings", { kind: "ConfigMap" }));
+		const secret = topologyNode("Secret:api-token", resource("api-token", { kind: "Secret" }));
+		const topology: ResourceTopology = {
+			nodes: [configMap, secret],
+			edges: [],
+			warnings: [],
+		};
+
+		const graph = buildFlowTopology(topology, configMap.id, "ownership");
+
+		expect(graph.nodes.map((node) => node.id)).toContain("standalone-kind:ConfigMap");
+		expect(graph.nodes.map((node) => node.id)).toContain(configMap.id);
+		expect(graph.nodes.find((node) => node.id === configMap.id)?.parentId).toBe(
+			"standalone-kind:ConfigMap",
+		);
+		expect(graph.nodes.map((node) => node.id)).not.toContain(secret.id);
+	});
+
+	test("expands clicked standalone Svelte topology buckets without selecting resources", () => {
+		const configMap = topologyNode("ConfigMap:settings", resource("settings", { kind: "ConfigMap" }));
+		const secret = topologyNode("Secret:api-token", resource("api-token", { kind: "Secret" }));
+		const topology: ResourceTopology = {
+			nodes: [configMap, secret],
+			edges: [],
+			warnings: [],
+		};
+
+		const graph = buildFlowTopology(topology, null, "ownership", {
+			expandedStandaloneKinds: new Set(["Secret"]),
+		});
+
+		expect(graph.nodes.map((node) => node.id)).toContain("standalone-kind:Secret");
+		expect(graph.nodes.map((node) => node.id)).toContain(secret.id);
+		expect(graph.nodes.find((node) => node.id === secret.id)?.parentId).toBe(
+			"standalone-kind:Secret",
+		);
+		expect(graph.nodes.map((node) => node.id)).not.toContain(configMap.id);
+	});
+
+	test("keeps network-flow Svelte topology nodes ungrouped", () => {
+		const service = topologyNode("Service:web", resource("web", { kind: "Service" }));
+		const pod = topologyNode("Pod:web-abc", resource("web-abc", { kind: "Pod" }));
+		const topology: ResourceTopology = {
+			nodes: [service, pod],
+			edges: [],
+			warnings: [],
+		};
+
+		const graph = buildFlowTopology(topology, null, "networkFlow");
+
+		expect(graph.nodes.map((node) => node.id)).toEqual(["Service:web", "Pod:web-abc"]);
+		expect(graph.nodes.some((node) => node.id.startsWith("standalone-kind:"))).toBe(false);
+	});
+
+	test("toggles standalone Svelte topology buckets from map clicks", () => {
+		const source = readFileSync("src/features/resources/OwnershipMap.svelte", "utf8");
+
+		expect(source).toContain("let expandedStandaloneKinds = $state<Set<string>>(new Set())");
+		expect(source).toContain("expandedStandaloneKinds,");
+		expect(source).toContain('node.id.startsWith("standalone-kind:")');
+		expect(source).toContain("expandedStandaloneKinds = next");
+		expect(source).toContain("return;");
+	});
+
+	test("loads Svelte topology like React when ownership map is open", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(source).toContain('withForegroundLoad("resource-topology"');
+		expect(source).toContain("enabled: Boolean(clusterContext && mapPanelOpen)");
+	});
+
+	test("keeps Svelte topology mode copy and warnings aligned with React", () => {
+		const source = readFileSync("src/features/resources/OwnershipMap.svelte", "utf8");
+
+		expect(source).toContain('mode === "networkFlow" ? "Failed to load network flow" : "Failed to load ownership map"');
+		expect(source).toContain('mode === "networkFlow" ? "No network flow" : "No ownership graph"');
+		expect(source).toContain("No ingress, service, or pod traffic relationships were found in this scope.");
+		expect(source).toContain("No workload ownership relationships were found in this scope.");
+		expect(source).toContain('aria-label="Collapse ownership map"');
+		expect(source).toContain("Network Flow");
+		expect(source).toContain("Topology warnings");
+		expect(source).toContain("topology.warnings.slice(0, 3)");
+	});
+
+	test("keeps Svelte resource browser map collapse rail parity", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(source).toContain(
+			"let mapPanelOpen = $state(getSettingsSnapshot().showOwnershipMapByDefault)",
+		);
+		expect(source).toContain("settingsStore");
+		expect(source).toContain("$settingsStore.showFullTopologyOnSelection");
+		expect(source).toContain("{showFullTopologyOnSelection}");
+		expect(source).toContain("onMapToggle={closeMapPanel}");
+		expect(source).toContain('aria-label="Show ownership map"');
+		expect(source).toContain("[writing-mode:vertical-rl]");
+	});
+
+	test("renders Svelte sortable resource table headers for data columns", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		for (const column of [
+			"name",
+			"namespace",
+			"kind",
+			"status",
+			"ready",
+			"restarts",
+			"cpu",
+			"memory",
+			"age",
+		]) {
+			expect(source).toContain(`@render SortButton("${column}"`);
+		}
+		expect(source).toContain("onclick={() => toggleSort(column)}");
+	});
+
+	test("keeps Svelte topology viewport fitting selected paths", () => {
+		const mapSource = readFileSync("src/features/resources/OwnershipMap.svelte", "utf8");
+		const viewportSource = readFileSync(
+			"src/features/resources/OwnershipMapViewport.svelte",
+			"utf8",
+		);
+
+		expect(mapSource).toContain("<OwnershipMapViewport");
+		expect(viewportSource).toContain("useSvelteFlow<FlowTopologyNode, FlowTopologyEdge>()");
+		expect(viewportSource).toContain("node.data.selected || node.data.connected");
+		expect(viewportSource).toContain("flow.setViewport");
+		expect(viewportSource).toContain("widthFitFlowTopologyViewport");
+		expect(viewportSource).toContain("FIT_VIEW_DURATION_MS");
+		expect(viewportSource).toContain("SELECTED_FIT_VIEW_DURATION_MS");
+		expect(mapSource).toContain("filterFlowTopologyToSelectedRoot");
+		expect(mapSource).toContain("showFullTopologyOnSelection");
+		expect(mapSource).toContain("getTopologyTranslateExtent(");
+		expect(mapSource).toContain("{translateExtent}");
+		expect(mapSource).toContain("VISIBLE_ELEMENT_RENDER_THRESHOLD");
+		expect(mapSource).toContain("graph.nodes.length + graph.edges.length");
+		expect(mapSource).toContain("{onlyRenderVisibleElements}");
+		expect(mapSource).toContain("bind:clientWidth={viewportWidth}");
+		expect(mapSource).toContain("{viewportWidth}");
+		expect(mapSource).toContain("{viewportHeight}");
+		expect(mapSource).toContain("viewportKey={fitViewportKey}");
+	});
+
+	test("refits Svelte topology when scope, viewport size, or layout changes", () => {
+		const deployment = topologyNode(
+			"Deployment:api",
+			resource("api", { apiVersion: "apps/v1", kind: "Deployment" }),
+		);
+		const pod = topologyNode("Pod:api-7f9", resource("api-7f9"));
+		const topology: ResourceTopology = {
+			nodes: [deployment, pod],
+			edges: [{ id: "Deployment:api->Pod:api-7f9", source: deployment.id, target: pod.id, relation: "owns" }],
+			warnings: [],
+		};
+		const graph = buildFlowTopology(topology, null, "ownership");
+		const baseKey = topologyViewportFitKey(
+			graph.nodes,
+			graph.nodes,
+			graph.edges,
+			null,
+			'["resourceTopology","kind-dev",["default"],"ownership","a"]',
+		);
+		const resizedKey = topologyViewportFitKey(
+			graph.nodes,
+			graph.nodes,
+			graph.edges,
+			null,
+			'["resourceTopology","kind-dev",["default"],"ownership","a"]:900x600',
+		);
+		const movedNodes = graph.nodes.map((node) =>
+			node.id === pod.id ? { ...node, position: { ...node.position, x: node.position.x + 120 } } : node,
+		);
+		const movedKey = topologyViewportFitKey(
+			movedNodes,
+			movedNodes,
+			graph.edges,
+			null,
+			'["resourceTopology","kind-dev",["default"],"ownership","a"]',
+		);
+		const browserSource = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(resizedKey).not.toBe(baseKey);
+		expect(movedKey).not.toBe(baseKey);
+		expect(browserSource).toContain("const topologyFitViewKey = $derived(JSON.stringify(topologyQueryKey))");
+		expect(browserSource).toContain("fitViewKey={topologyFitViewKey}");
+	});
+
+	test("keeps Svelte resource rows visible during scope refetches", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(source).toContain("placeholderData: (previousData) => previousData");
+		expect(source).toContain(
+			"resourcesQuery.isPending && !resourcesQuery.isPlaceholderData",
+		);
+		expect(source).toContain("!resourcesQuery.isPlaceholderData");
+		const targetEffectStart = source.indexOf("if (!targetResourceKey)");
+		const targetEffectEnd = source.indexOf("const matchedResource", targetEffectStart);
+		expect(source.slice(targetEffectStart, targetEffectEnd)).toContain(
+			"resourcesQuery.isPlaceholderData",
+		);
+	});
+
+	test("defers Svelte metrics until resource rows and topology settle", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(source).toContain("const BACKGROUND_METRICS_DELAY_MS = 1_500");
+		expect(source).toContain("let metricsQueryReady = $state(false)");
+		expect(source).toContain("resourcesQuery.isPlaceholderData");
+		expect(source).toContain("(mapPanelOpen && topologyQuery.isPending)");
+		expect(source).toContain('diagnosticLog("resources.metrics.defer"');
+		expect(source).toContain('diagnosticLog("resources.metrics.enable"');
+		expect(source).toContain("window.setTimeout");
+		expect(source).toContain("enabled: metricsQueryReady && Boolean(clusterContext)");
+	});
+
+	test("cancels stale Svelte resource, topology, and metrics backend requests", () => {
+		const source = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+
+		expect(source).toContain('createCancelScope("resources", resourceQueryKey)');
+		expect(source).toContain('createCancelScope("resource-topology", topologyQueryKey)');
+		expect(source).toContain('createCancelScope("resource-metrics", metricsQueryKey)');
+		expect(source).toContain("fetchResourcePage(clusterContext, fetchKeys, kubeconfigSourceKey, resourceCancelScope)");
+		expect(source).toContain('createCancellableRequest(topologyCancelScope, "topology")');
+		expect(source).toContain('createCancellableRequest(metricsCancelScope, "metrics")');
+		expect(source).toContain("cancelBackendRequests(client, cancelScope)");
+		expect(source).toContain('scheduleBackendScopeCancel(');
+		expect(source).toContain('"resources.metrics.cancel"');
+	});
+
+	test("preserves incoming Svelte health filters when opening resources", () => {
+		const browserSource = readFileSync(
+			"src/features/resources/ResourceBrowser.svelte",
+			"utf8",
+		);
+		const shellSource = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
+		const surfacesSource = readFileSync("src/app/svelte/IncidentSurface.svelte", "utf8");
+
+		expect(browserSource).toContain('initialHealthFilter = "all"');
+		expect(browserSource).toContain("healthFilter: initialHealthFilter");
+		expect(browserSource).toContain("healthFilter = pathState?.healthFilter ?? initialHealthFilter");
+		expect(shellSource).toContain("resourceInitialHealthFilter");
+		expect(shellSource).toContain('initialHealthFilter: HealthFilter = "all"');
+		expect(shellSource).toContain("initialHealthFilter={resourceInitialHealthFilter}");
+		expect(surfacesSource).toContain("incidentResourcesHealthFilterFor(incidentFilter)");
+		expect(surfacesSource).toContain(
+			'onOpenResources(undefined, "", "", incidentResourcesHealthFilterFor(incidentFilter))',
+		);
+	});
+});

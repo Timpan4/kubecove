@@ -47,7 +47,7 @@ import {
 	workspaceScopeContexts,
 	type SavedWorkspace,
 } from "@/lib/workspaces";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { WorkspaceContextGroupField } from "./WorkspaceContextGroupField";
 
 interface WorkspaceLauncherProps {
@@ -244,7 +244,7 @@ export function WorkspaceLauncher({ onOpenWorkspace }: WorkspaceLauncherProps) {
 									<Card
 										key={workspace.id}
 										size="sm"
-										className={cn(
+										className={cnfast(
 											"grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]",
 											unavailable && "border-amber-500/40",
 										)}
