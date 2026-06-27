@@ -16,10 +16,10 @@ The differentiator is persistent global scope across selected contexts, namespac
 
 ## Security Boundary
 
-The React frontend is an untrusted UI surface relative to the Rust backend.
+The Svelte frontend is an untrusted UI surface relative to the Rust backend.
 
-- React must not receive raw kubeconfig contents, tokens, or certificate data.
-- React must not run arbitrary shell commands.
+- The frontend must not receive raw kubeconfig contents, tokens, or certificate data.
+- The frontend must not run arbitrary shell commands.
 - Kubernetes list, get, discovery, watch, events, logs, metrics, GitOps, Helm, RBAC, live sessions, and future operation flows must cross typed Tauri commands.
 - Normal Kubernetes API access uses `kube-rs`.
 - Pod and selector-backed Service port-forwarding must follow [ADR 0003](decisions/0003-guarded-live-sessions.md). Other cluster-changing operations must follow [ADR 0004](decisions/0004-guarded-cluster-operations.md).
@@ -44,7 +44,6 @@ src/
     resources/
     settings/
     workspaces/
-  hooks/                generic React hooks
   lib/                  pure logic, stores, typed Tauri wrappers, types
 ```
 

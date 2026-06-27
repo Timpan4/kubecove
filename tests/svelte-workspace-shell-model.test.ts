@@ -123,7 +123,7 @@ describe("svelte workspace shell model", () => {
 		]);
 	});
 
-	test("keeps Svelte namespace sidebar children lazy like React", () => {
+	test("keeps namespace sidebar children lazy", () => {
 		const nodes = buildSidebarTree({
 			namespaces,
 			resourceKinds: [widgets],

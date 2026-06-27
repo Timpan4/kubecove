@@ -77,16 +77,16 @@ export type OwnershipGraphEdge = EdgeBase<
 	focusable?: boolean;
 };
 
-export interface ReactFlowTopology {
+export interface OwnershipFlowTopology {
 	nodes: OwnershipGraphNode[];
 	edges: OwnershipGraphEdge[];
 }
 
-export interface ReactFlowTopologySelectionIndex {
+export interface OwnershipFlowTopologySelectionIndex {
 	graph: ReturnType<typeof buildTopologyGraph>;
 }
 
-export interface BuildReactFlowTopologyOptions {
+export interface BuildOwnershipFlowTopologyOptions {
 	expandedStandaloneKinds?: ReadonlySet<string>;
 	groupStandalone?: boolean;
 	showPortHints?: boolean;
@@ -106,23 +106,23 @@ function sortNodes(a: TopologyNode, b: TopologyNode): number {
 	return sortTopologyNodes(a, b);
 }
 
-export function buildReactFlowTopology(
+export function buildOwnershipFlowTopology(
 	topology: ResourceTopology,
 	selectedNodeId: string | null,
-	options: BuildReactFlowTopologyOptions = {},
-): ReactFlowTopology {
-	return applyReactFlowTopologySelection(
-		buildReactFlowTopologyLayout(topology, selectedNodeId, options),
+	options: BuildOwnershipFlowTopologyOptions = {},
+): OwnershipFlowTopology {
+	return applyOwnershipFlowTopologySelection(
+		buildOwnershipFlowTopologyLayout(topology, selectedNodeId, options),
 		topology,
 		selectedNodeId,
 	);
 }
 
-export function buildReactFlowTopologyLayout(
+export function buildOwnershipFlowTopologyLayout(
 	topology: ResourceTopology,
 	selectedNodeIdForExpansion: string | null,
-	options: BuildReactFlowTopologyOptions = {},
-): ReactFlowTopology {
+	options: BuildOwnershipFlowTopologyOptions = {},
+): OwnershipFlowTopology {
 	const depthById = topologyColumnDepth(topology);
 	const graph = buildTopologyGraph(topology);
 	const orderById = topologyLayoutOrder(graph.nodes, topology, depthById);
@@ -228,29 +228,29 @@ export function buildReactFlowTopologyLayout(
 	return { nodes: [...standaloneGroups.groupNodes, ...nodes], edges };
 }
 
-export function applyReactFlowTopologySelection(
-	graphTopology: ReactFlowTopology,
+export function applyOwnershipFlowTopologySelection(
+	graphTopology: OwnershipFlowTopology,
 	topology: ResourceTopology,
 	selectedNodeId: string | null,
-): ReactFlowTopology {
-	return applyReactFlowTopologySelectionWithIndex(
+): OwnershipFlowTopology {
+	return applyOwnershipFlowTopologySelectionWithIndex(
 		graphTopology,
-		buildReactFlowTopologySelectionIndex(topology),
+		buildOwnershipFlowTopologySelectionIndex(topology),
 		selectedNodeId,
 	);
 }
 
-export function buildReactFlowTopologySelectionIndex(
+export function buildOwnershipFlowTopologySelectionIndex(
 	topology: ResourceTopology,
-): ReactFlowTopologySelectionIndex {
+): OwnershipFlowTopologySelectionIndex {
 	return { graph: buildTopologyGraph(topology) };
 }
 
-export function applyReactFlowTopologySelectionWithIndex(
-	graphTopology: ReactFlowTopology,
-	index: ReactFlowTopologySelectionIndex,
+export function applyOwnershipFlowTopologySelectionWithIndex(
+	graphTopology: OwnershipFlowTopology,
+	index: OwnershipFlowTopologySelectionIndex,
 	selectedNodeId: string | null,
-): ReactFlowTopology {
+): OwnershipFlowTopology {
 	if (!selectedNodeId) return graphTopology;
 
 	const selectedPath = selectedTopologyPath(index.graph, selectedNodeId);
@@ -313,11 +313,11 @@ export function applyReactFlowTopologySelectionWithIndex(
 	return { nodes, edges };
 }
 
-export function filterReactFlowTopologyToSelectedRoot(
-	graphTopology: ReactFlowTopology,
-	index: ReactFlowTopologySelectionIndex,
+export function filterOwnershipFlowTopologyToSelectedRoot(
+	graphTopology: OwnershipFlowTopology,
+	index: OwnershipFlowTopologySelectionIndex,
 	selectedNodeId: string | null,
-): ReactFlowTopology {
+): OwnershipFlowTopology {
 	if (!selectedNodeId) return graphTopology;
 
 	const rootSubtree = selectedTopologyRootSubtree(index.graph, selectedNodeId);

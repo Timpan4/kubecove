@@ -5,7 +5,7 @@ import {
 } from "./foreground-loading";
 
 // ponytail: Svelte-readable wrapper over the runtime-agnostic foreground-loading store.
-// Mirrors useForegroundLoading (useSyncExternalStore) for Svelte consumers.
+// Svelte-readable wrapper over the runtime-agnostic foreground-loading store.
 export const foregroundLoading: Readable<number> = readable(
 	getForegroundLoadingSnapshot(),
 	(set) => subscribeForegroundLoading(() => set(getForegroundLoadingSnapshot())),

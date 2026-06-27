@@ -6,6 +6,7 @@ import type {
 	ResourceSummary,
 	WatchResourceKey,
 } from "@/lib/types";
+import type { StatusTone } from "@/components/status-badge-styles";
 import { classifyResourceHealth } from "@/lib/resource-health";
 import { CLUSTER_SCOPED_KINDS } from "@/lib/types";
 import type { ResourceSortingState } from "./table-state";
@@ -52,6 +53,54 @@ export interface GitOpsFilterOption {
 }
 
 const LIST_OWNING_FLUX_KINDS = new Set(["Kustomization", "HelmRelease"]);
+const SUCCESS_STATUS_VALUES = new Set([
+	"running",
+	"succeeded",
+	"complete",
+	"completed",
+	"ready",
+]);
+const FAILURE_STATUS_VALUES = new Set([
+	"failed",
+	"error",
+	"crashloopbackoff",
+	"imagepullbackoff",
+]);
+const WARNING_STATUS_VALUES = new Set(["pending", "terminating", "unknown"]);
+
+function normalized(value: string | undefined): string {
+	return value?.trim().toLowerCase() ?? "";
+}
+
+export function resourceStatusTone(value: string | undefined): StatusTone {
+	const status = normalized(value);
+	if (SUCCESS_STATUS_VALUES.has(status)) return "success";
+	if (FAILURE_STATUS_VALUES.has(status)) return "error";
+	if (WARNING_STATUS_VALUES.has(status)) return "warning";
+	return "neutral";
+}
+
+function isSuccessfulTerminalPod(
+	row: Pick<ResourceSummary, "kind" | "status">,
+): boolean {
+	return (
+		row.kind === "Pod" &&
+		["succeeded", "complete", "completed"].includes(normalized(row.status))
+	);
+}
+
+export function resourceReadyChip(
+	row: Pick<ResourceSummary, "kind" | "status" | "ready">,
+): { value: string; tone: StatusTone } | null {
+	const ready = normalized(row.ready);
+	if (ready === "true") return { value: "Ready", tone: "success" };
+	if (ready === "false") {
+		return isSuccessfulTerminalPod(row)
+			? { value: "Completed", tone: "success" }
+			: { value: "Not ready", tone: "error" };
+	}
+	return null;
+}
 
 export function argoApplicationGitOpsFilterKey(name: string): string {
 	return ["argo", "Application", "", name].join(":");
@@ -197,6 +246,10 @@ export function mergeWatchKeys(
 		}
 	}
 	return Array.from(merged.values());
+}
+
+export function shouldDropWarmupWatchEvent(action: string, elapsedMs: number): boolean {
+	return action === "added" && elapsedMs < 2_000;
 }
 
 export function topologyWatchKeys(namespaces: string[]): WatchResourceKey[] {

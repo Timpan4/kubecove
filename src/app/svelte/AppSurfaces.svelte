@@ -79,7 +79,6 @@
 		type SavedWorkspace,
 	} from "@/lib/workspace-model";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
-	import type { UiRuntimeWorkspaceHandoff } from "@/lib/ui-runtime";
 	import GitOpsSurface from "./GitOpsSurface.svelte";
 	import HelmSurface from "./HelmSurface.svelte";
 	import IncidentSurface from "./IncidentSurface.svelte";
@@ -122,7 +121,6 @@
 		workspace,
 		viewMode,
 		selectedNode,
-		runtimeWorkspaceHandoff = null,
 		targetHelmRelease,
 		targetGitOpsApplication,
 		initialIncidentFilter = "all",
@@ -137,7 +135,6 @@
 		workspace: SavedWorkspace;
 		viewMode: WorkspaceViewMode;
 		selectedNode: TreeNodeId | null;
-		runtimeWorkspaceHandoff?: UiRuntimeWorkspaceHandoff | null;
 		targetHelmRelease?: { name: string; namespace?: string | null } | null;
 		targetGitOpsApplication?: string | null;
 		initialIncidentFilter?: IncidentFilter;
@@ -898,8 +895,5 @@
 		{inputValue}
 	/>
 {:else if viewMode === "settings"}
-	<SettingsSurface
-		currentWorkspaceId={workspace.id}
-		workspaceHandoff={runtimeWorkspaceHandoff}
-	/>
+	<SettingsSurface />
 {/if}

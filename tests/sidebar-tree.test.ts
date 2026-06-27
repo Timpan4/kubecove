@@ -53,17 +53,14 @@ describe("sidebar namespace tree helpers", () => {
 	});
 
 	test("uses the same selection path for sidebar rows and chevrons", () => {
-		const source = readFileSync("src/components/SidebarTree.tsx", "utf8");
-		const chevronClick = /const handleChevronClick\b[^=]*=\s*\([^)]*\)\s*=>\s*\{[\s\S]*?\n\s*\};/.exec(
-			source,
-		);
-		const chevronKey = /const handleChevronKeyDown\b[^=]*=\s*\([^)]*\)\s*=>\s*\{[\s\S]*?\n\s*\};/.exec(
-			source,
-		);
+		const source = readFileSync("src/app/svelte/SidebarTreeNode.svelte", "utf8");
+		const toggleStart = source.indexOf("function toggleNode");
+		const toggleEnd = source.indexOf("function handleKeydown", toggleStart);
+		const toggleSource = source.slice(toggleStart, toggleEnd);
 
-		expect(chevronClick?.[0]).toMatch(/onNodeSelect\(node\.id\)/);
-		expect(chevronClick?.[0]).toMatch(/onSectionToggle\(idStr\)/);
-		expect(chevronKey?.[0]).toMatch(/onNodeSelect\(node\.id\)/);
-		expect(chevronKey?.[0]).toMatch(/onSectionToggle\(idStr\)/);
+		expect(toggleSource).toContain("onNodeSelect(node.id)");
+		expect(toggleSource).toContain("onSectionToggle(id)");
+		expect(source).toContain("onclick={selectNode}");
+		expect(source).toContain("onclick={toggleNode}");
 	});
 });

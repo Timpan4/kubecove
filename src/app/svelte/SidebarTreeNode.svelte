@@ -51,7 +51,7 @@
 					: "pl-[72px]",
 	);
 
-	/** Mirrors React's `getNodeVisual` in SidebarTree.tsx — kind → kind tone, else group tone. */
+	/** Kind nodes use their kind tone; everything else uses the group tone. */
 	function getNodeVisual(item: TreeNode): ResourceVisual {
 		if (item.id.type === "kind" && item.id.kind) {
 			return getResourceKindVisual(item.id.kind);

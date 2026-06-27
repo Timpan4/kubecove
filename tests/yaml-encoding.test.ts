@@ -196,7 +196,6 @@ describe("YAML encoding", () => {
 			readFileSync("src/features/resource-detail/YamlTab.svelte", "utf8"),
 		].join("\n");
 		const editorSource = readFileSync("src/components/YamlCodeEditor.svelte", "utf8");
-		const reactViewerSource = readFileSync("src/components/YamlCodeViewer.tsx", "utf8");
 
 		expect(source).toContain("lintKubernetesYaml");
 		expect(source).toContain("async function kubernetesYamlDiagnostics(value: string)");
@@ -221,6 +220,5 @@ describe("YAML encoding", () => {
 		expect(editorSource).toContain("loadYamlCodeViewerExtensions");
 		expect(editorSource).toContain("yamlDiagnostics(document)");
 		expect(editorSource).toContain("EditorView.updateListener.of");
-		expect(reactViewerSource).toContain("yamlCodeViewerDiagnostics");
 	});
 });

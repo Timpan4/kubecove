@@ -44,7 +44,6 @@
 	import { nodeIdToString, type TreeNodeId } from "@/lib/tree-nav";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { createTauriClient } from "@/lib/tauri";
-	import type { UiRuntimeWorkspaceHandoff } from "@/lib/ui-runtime";
 	import {
 		resourceRefFromSummary,
 		resourceSummaryFromRef,
@@ -93,18 +92,14 @@
 	let {
 		workspace,
 		openSettingsOnWorkspaceMount = false,
-		runtimeWorkspaceHandoff = null,
 		initialPathState = null,
-		onRuntimeWorkspaceHandoffConsumed = () => {},
 		onPathStateConsumed = () => {},
 		liveSessionCleanupMessage = null,
 		onDismissLiveSessionCleanup = () => {},
 	}: {
 		workspace: SavedWorkspace;
 		openSettingsOnWorkspaceMount?: boolean;
-		runtimeWorkspaceHandoff?: UiRuntimeWorkspaceHandoff | null;
 		initialPathState?: PathStateWorkspaceSnapshot | null;
-		onRuntimeWorkspaceHandoffConsumed?: () => void;
 		onPathStateConsumed?: () => void;
 		liveSessionCleanupMessage?: string | null;
 		onDismissLiveSessionCleanup?: () => void;
@@ -115,19 +110,13 @@
 	function initialPathSnapshotForWorkspace(): PathStateWorkspaceSnapshot | null {
 		return initialPathState?.workspaceId === workspace.id ? initialPathState : null;
 	}
-	function initialRuntimeWorkspaceHandoff(): UiRuntimeWorkspaceHandoff | null {
-		return runtimeWorkspaceHandoff?.workspaceId === workspace.id
-			? runtimeWorkspaceHandoff
-			: null;
-	}
 
-	const initialHandoff = initialRuntimeWorkspaceHandoff();
 	const initialPathSnapshot = initialPathSnapshotForWorkspace();
-	const initialResourcePathState = !initialHandoff ? (initialPathSnapshot?.resources ?? null) : null;
-	const initialDetailPathState = !initialHandoff ? (initialPathSnapshot?.detail ?? null) : null;
-	const initialSurfacesPathState = !initialHandoff ? (initialPathSnapshot?.surfaces ?? null) : null;
+	const initialResourcePathState = initialPathSnapshot?.resources ?? null;
+	const initialDetailPathState = initialPathSnapshot?.detail ?? null;
+	const initialSurfacesPathState = initialPathSnapshot?.surfaces ?? null;
 	const initialRestoreTargetResource =
-		!initialHandoff && initialPathSnapshot?.restoreTargetResource
+		initialPathSnapshot?.restoreTargetResource
 			? resourceSummaryFromRef(initialPathSnapshot.restoreTargetResource)
 			: null;
 	const defaultSelectedNode: TreeNodeId = {
@@ -135,58 +124,46 @@
 		section: "workspaceOverview",
 	};
 	const initialSelectedNode: TreeNodeId | null =
-		initialHandoff && "selectedNode" in initialHandoff
-			? (initialHandoff.selectedNode ?? null)
-			: initialPathSnapshot && "selectedNode" in initialPathSnapshot
+		initialPathSnapshot && "selectedNode" in initialPathSnapshot
 				? (initialPathSnapshot.selectedNode ?? null)
 			: defaultSelectedNode;
 	let selectedNode = $state<TreeNodeId | null>(initialSelectedNode);
 	let expandedSections = $state<string[]>(
-		initialHandoff?.expandedSections ??
-			initialPathSnapshot?.expandedSections ??
+		initialPathSnapshot?.expandedSections ??
 			(initialSelectedNode ? [nodeIdToString(initialSelectedNode)] : []),
 	);
 	let viewMode = $state<WorkspaceViewMode>(
-		initialHandoff?.viewMode ??
-			initialPathSnapshot?.viewMode ??
+		initialPathSnapshot?.viewMode ??
 			DEFAULT_WORKSPACE_VIEW,
 	);
 	let commandOpen = $state(false);
 	let focusedResource = $state<ResourceSummary | null>(null);
 	let restoreTargetResource = $state<ResourceSummary | null>(initialRestoreTargetResource);
 	let targetHelmRelease = $state<{ name: string; namespace?: string | null } | null>(
-		!initialHandoff
-			? (initialPathSnapshot?.targetHelmRelease ??
-				initialSurfacesPathState?.selectedHelmRelease ??
-				null)
-			: null,
+		initialPathSnapshot?.targetHelmRelease ??
+			initialSurfacesPathState?.selectedHelmRelease ??
+			null,
 	);
 	let targetGitOpsApplication = $state<string | null>(
-		!initialHandoff
-			? (initialPathSnapshot?.targetGitOpsApplication ??
-				initialSurfacesPathState?.selectedGitOpsApplication ??
-				null)
-			: null,
+		initialPathSnapshot?.targetGitOpsApplication ??
+			initialSurfacesPathState?.selectedGitOpsApplication ??
+			null,
 	);
 	let resourceGitOpsFocusApplication = $state<ArgoApplicationSummary | null>(null);
 	let resourceInitialSearch = $state(
-		initialHandoff?.resourceInitialSearch ??
-			initialPathSnapshot?.resourceInitialSearch ??
+		initialPathSnapshot?.resourceInitialSearch ??
 			"",
 	);
 	let resourceInitialGitOpsFilter = $state(
-		initialHandoff?.resourceInitialGitOpsFilter ??
-			initialPathSnapshot?.resourceInitialGitOpsFilter ??
+		initialPathSnapshot?.resourceInitialGitOpsFilter ??
 			"",
 	);
 	let resourceInitialHealthFilter = $state<HealthFilter>(
-		initialHandoff?.resourceInitialHealthFilter ??
-			initialPathSnapshot?.resourceInitialHealthFilter ??
+		initialPathSnapshot?.resourceInitialHealthFilter ??
 			"all",
 	);
 	let resourceNamespaceOverride = $state<string[] | null>(
-		initialHandoff?.resourceNamespaceOverride ??
-			initialPathSnapshot?.resourceNamespaceOverride ??
+		initialPathSnapshot?.resourceNamespaceOverride ??
 			null,
 	);
 	let initialIncidentFilter = $state<IncidentFilter>(
@@ -204,9 +181,6 @@
 	let dismissedPortForwardRestoreWorkspaceId = $state<string | null>(null);
 	let startingSavedPortForwards = $state(false);
 	let savedPortForwardRestoreError = $state<string | null>(null);
-	let settingsWorkspaceHandoff = $state<UiRuntimeWorkspaceHandoff | null>(
-		initialHandoff,
-	);
 	const autoStartedSavedPortForwardWorkspaceIds = new Set<string>();
 	const autoStartSavedPortForwards = $derived(
 		$settingsStore.autoStartSavedPortForwards,
@@ -246,7 +220,6 @@
 
 	onMount(() => {
 		if (openSettingsOnWorkspaceMount) openSettings();
-		if (initialHandoff) onRuntimeWorkspaceHandoffConsumed();
 		if (initialPathSnapshot) onPathStateConsumed();
 	});
 
@@ -300,19 +273,6 @@
 		viewMode = "resources";
 	}
 
-	function currentWorkspaceHandoff(): UiRuntimeWorkspaceHandoff {
-		return {
-			workspaceId: workspace.id,
-			selectedNode,
-			expandedSections,
-			viewMode,
-			resourceInitialSearch,
-			resourceInitialGitOpsFilter,
-			resourceInitialHealthFilter,
-			resourceNamespaceOverride,
-		};
-	}
-
 	function currentPathState(): PathStateWorkspaceSnapshot {
 		const selectedResourceRef = focusedResource ? resourceRefFromSummary(focusedResource) : null;
 		const restoreResourceRef = focusedResource
@@ -349,7 +309,6 @@
 	});
 
 	function openSettings() {
-		settingsWorkspaceHandoff = currentWorkspaceHandoff();
 		targetHelmRelease = null;
 		targetGitOpsApplication = null;
 		restoreTargetResource = null;
@@ -568,7 +527,7 @@
 		<div class="flex flex-1 items-center justify-end gap-1 [-webkit-app-region:no-drag]">
 			<ActiveLiveSessionsButton onOpenManager={openPortForwards} />
 			<UpdateStatusButton />
-			<RuntimeBadge mode="svelte" onOpenSettings={openSettings} />
+			<RuntimeBadge onOpenSettings={openSettings} />
 				<Button
 					type="button"
 					variant="ghost"
@@ -757,7 +716,6 @@
 						{workspace}
 						{viewMode}
 						{selectedNode}
-						runtimeWorkspaceHandoff={settingsWorkspaceHandoff}
 						{targetHelmRelease}
 						{targetGitOpsApplication}
 						{initialIncidentFilter}

@@ -1,6 +1,5 @@
 import {
 	decodePathStateSnapshot,
-	decodePathStateWorkspaceHandoff,
 	sanitizePathStateTreeNode,
 } from "./path-state";
 
@@ -12,33 +11,6 @@ declare function expect(actual: unknown): {
 };
 
 describe("path state sanitization", () => {
-	test("keeps legacy runtime handoff strings", () => {
-		expect(decodePathStateWorkspaceHandoff("workspace-a")).toEqual({
-			workspaceId: "workspace-a",
-		});
-	});
-
-	test("sanitizes runtime handoff fields through path state rules", () => {
-		const handoff = decodePathStateWorkspaceHandoff(
-			JSON.stringify({
-				workspaceId: "workspace-a",
-				selectedNode: { type: "kind", section: "workloads", kind: "Pod" },
-				expandedSections: ["workloads", 12, "workloads/Pod"],
-				viewMode: "resources",
-				resourceInitialHealthFilter: "nope",
-				resourceNamespaceOverride: ["default", false, "kube-system"],
-			}),
-		);
-
-		expect(handoff).toEqual({
-			workspaceId: "workspace-a",
-			selectedNode: { type: "kind", section: "workloads", kind: "Pod" },
-			expandedSections: ["workloads", "workloads/Pod"],
-			viewMode: "resources",
-			resourceNamespaceOverride: ["default", "kube-system"],
-		});
-	});
-
 	test("drops invalid tree nodes", () => {
 		expect(sanitizePathStateTreeNode({ type: "kind", kind: "Pod" })).toBe(null);
 	});

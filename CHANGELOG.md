@@ -7,14 +7,14 @@ should mirror the matching version section.
 ### Improved
 
 - memoize ownership map flow props
-- enable React Compiler
+- enable frontend compiler experiment
 - model inspector selection as union
 
 ### Fixed
 
 - resource table state defaults
 - Address CI PR review feedback
-- React Doctor CI gate
+- Svelte Doctor CI gate
 - stabilize resource table columns
 - make list ownership GitOps-only
 - keep port-forward accept loop resilient
@@ -97,7 +97,7 @@ should mirror the matching version section.
   metrics, and age badges) while a node was selected on macOS and Linux
   WebKit webviews. The selection glow now fades in via a finite transition
   instead of an infinite animation that WebKit rasterized blank.
-- Fixed React Doctor frontend errors across live session, resource detail,
+- Fixed Svelte Doctor frontend errors across live session, resource detail,
   workspace, and resource list views.
 - Fixed Rust lint verification on macOS and Linux hosts by marking the
   Windows-only WebView2 detection helpers as compiled-everywhere shared-test
@@ -121,7 +121,7 @@ should mirror the matching version section.
 
 ### Fixed
 
-- Fixed the React Doctor full-scan flag used by CI verification.
+- Fixed the Svelte Doctor full-scan flag used by CI verification.
 
 ### Release
 
@@ -139,7 +139,7 @@ should mirror the matching version section.
 
 ### Fixed
 
-- Fixed the React Doctor CI gate and shared kubeconfig Tauri helper paths used
+- Fixed the Svelte Doctor CI gate and shared kubeconfig Tauri helper paths used
   by resource views.
 
 ### Release
@@ -176,7 +176,7 @@ should mirror the matching version section.
 
 ### Improved
 
-- Strengthened React checks around kubeconfig flows, settings, and live-session
+- Strengthened frontend checks around kubeconfig flows, settings, and live-session
   helpers.
 - Added release tests and documentation for the beta release workflow.
 
@@ -280,7 +280,7 @@ should mirror the matching version section.
 - Cut retained sidebar tree objects by lazily building namespace children only
   when a namespace is expanded.
 - Reused topology layout and selection indexes so selecting resources no longer
-  rebuilds the whole React Flow graph on every click.
+  rebuilds the whole flow graph on every click.
 - Indexed table search text once per resource refresh instead of rebuilding
   searchable fields for every search pass.
 - Bounded backend ready-cache retention and kept namespace-scoped reads and
@@ -373,7 +373,7 @@ should mirror the matching version section.
 - Published the first KubeCove beta with a local read-only Kubernetes browser.
 - Added Rust-side Tauri commands for kube context discovery, namespace listing,
   resource listing, resource YAML, and resource details.
-- Added the core React workspace shell with context selection, namespace
+- Added the core frontend workspace shell with context selection, namespace
   filtering, resource tables, and read-only YAML/details panels.
 - Added Argo CD and Helm metadata detection, owner reference summaries, resource
   search, status chips, age formatting, and persisted dashboard state.

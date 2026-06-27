@@ -42,7 +42,7 @@ describe("svelte workspace store", () => {
 		expect(readPersistedWorkspaces(storage)).toEqual([workspace]);
 	});
 
-	test("create, edit, and delete keep React-readable storage shape", () => {
+	test("create, edit, and delete keep workspace storage shape", () => {
 		const storage = makeStorage();
 		const store = createWorkspaceStore(storage);
 
@@ -83,7 +83,7 @@ describe("svelte workspace store", () => {
 		expect(persistedWorkspaces(storage)).toEqual([]);
 	});
 
-	test("updates saved port-forward status in React-readable storage", () => {
+	test("updates saved port-forward status in workspace storage", () => {
 		const storage = makeStorage();
 		const portForward = createSavedPortForward({
 			clusterContext: "kind-dev",
@@ -116,7 +116,7 @@ describe("svelte workspace store", () => {
 		});
 	});
 
-	test("adds and deletes saved port-forwards in React-readable storage", () => {
+	test("adds and deletes saved port-forwards in workspace storage", () => {
 		const storage = makeStorage();
 		const store = createWorkspaceStore(storage);
 		const workspace = store.createWorkspace({

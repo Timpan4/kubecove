@@ -1,4 +1,4 @@
-import type { StatusTone } from "@/components/StatusBadge";
+import type { StatusTone } from "@/components/status-badge-styles";
 
 export type ChipVariant = StatusTone;
 

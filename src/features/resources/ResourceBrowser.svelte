@@ -85,8 +85,11 @@
 	} from "./constants";
 	import {
 		buildFetchKeys,
+		resourceReadyChip,
 		resourceIdentityKey,
 		resourceSelectionKey,
+		resourceStatusTone,
+		shouldDropWarmupWatchEvent,
 		topologyWatchKeys,
 		watchKeysFromFetchKeys,
 	} from "./helpers";
@@ -104,20 +107,6 @@
 
 	const BACKGROUND_METRICS_DELAY_MS = 1_500;
 	const EMPTY_CELL = "—";
-	const SUCCESS_STATUS_VALUES = new Set([
-		"running",
-		"succeeded",
-		"complete",
-		"completed",
-		"ready",
-	]);
-	const FAILURE_STATUS_VALUES = new Set([
-		"failed",
-		"error",
-		"crashloopbackoff",
-		"imagepullbackoff",
-	]);
-	const WARNING_STATUS_VALUES = new Set(["pending", "terminating", "unknown"]);
 
 	let {
 		clusterContext,
@@ -615,7 +604,7 @@
 				realtimeStatus = "connected";
 				realtimeMessage = `Realtime ${event.action}`;
 				realtimeError = "";
-				if (event.action === "added" && performance.now() - startedAt < 2_000) return;
+				if (shouldDropWarmupWatchEvent(event.action, performance.now() - startedAt)) return;
 				invalidateSoon();
 				return;
 			}
@@ -763,36 +752,6 @@
 		if (values.length === 0) return "All namespaces";
 		if (values.length <= 3) return values.join(", ");
 		return `${values.slice(0, 3).join(", ")} +${values.length - 3}`;
-	}
-
-	function normalized(value: string | undefined): string {
-		return value?.trim().toLowerCase() ?? "";
-	}
-
-	function resourceStatusTone(value: string): ChipVariant {
-		const status = normalized(value);
-		if (SUCCESS_STATUS_VALUES.has(status)) return "success";
-		if (FAILURE_STATUS_VALUES.has(status)) return "error";
-		if (WARNING_STATUS_VALUES.has(status)) return "warning";
-		return "neutral";
-	}
-
-	function isSuccessfulTerminalPod(row: Pick<ResourceSummary, "kind" | "status">): boolean {
-		return (
-			row.kind === "Pod" &&
-			["succeeded", "complete", "completed"].includes(normalized(row.status))
-		);
-	}
-
-	function readyChip(row: Pick<ResourceSummary, "kind" | "status" | "ready">) {
-		const ready = normalized(row.ready);
-		if (ready === "true") return { value: "Ready", tone: "success" as const };
-		if (ready === "false") {
-			return isSuccessfulTerminalPod(row)
-				? { value: "Completed", tone: "success" as const }
-				: { value: "Not ready", tone: "error" as const };
-		}
-		return null;
 	}
 
 	function statusBadgeVariant(tone: ChipVariant) {
@@ -1125,7 +1084,7 @@
 												</TableCell>
 												{#if tableModel.columnVisibility.ready}
 													<TableCell>
-														{@const ready = readyChip(row)}
+														{@const ready = resourceReadyChip(row)}
 														{#if ready}
 															<Badge variant={statusBadgeVariant(ready.tone)} class={statusBadgeClass(ready.tone)}>
 																{ready.value}

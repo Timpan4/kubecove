@@ -95,10 +95,7 @@ Local frontend comparison:
 ```sh
 bun run perf:frontend
 bun run perf:resource-scope
-bun run perf:react-compiler
 ```
-
-`perf:react-compiler` builds once with `KUBECOVE_REACT_COMPILER=on` and once with `KUBECOVE_REACT_COMPILER=off`. Release builds keep React Compiler disabled for now unless a maintainer explicitly opts in with `KUBECOVE_REACT_COMPILER=on`.
 
 Windows smoke note: foreground the Tauri window before click-through. The WebView appears as an opaque `WRY_WEBVIEW` pane to UI Automation, so treat UIA as launch/foreground help rather than full interaction automation.
 

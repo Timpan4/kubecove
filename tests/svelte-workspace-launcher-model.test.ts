@@ -8,21 +8,21 @@ import {
 } from "../src/features/workspaces/workspaceLauncherModel";
 import type { ClusterContext } from "../src/lib/types";
 
-const contexts: ClusterContext[] = [
+const availableContexts: ClusterContext[] = [
 	{ name: "kind-dev", isCurrent: false },
 	{ name: "kind-prod", isCurrent: true },
 ];
 
 describe("svelte workspace launcher model", () => {
 	test("picks selected, current, then first context", () => {
-		expect(pickEffectiveContext("kind-dev", contexts)).toBe("kind-dev");
-		expect(pickEffectiveContext("", contexts)).toBe("kind-prod");
+		expect(pickEffectiveContext("kind-dev", availableContexts)).toBe("kind-dev");
+		expect(pickEffectiveContext("", availableContexts)).toBe("kind-prod");
 		expect(
 			pickEffectiveContext("", [{ name: "kind-only", isCurrent: false }]),
 		).toBe("kind-only");
 	});
 
-	test("creates React-compatible context group input", () => {
+	test("creates context group input", () => {
 		const input = buildWorkspaceInput({
 			name: "Ops",
 			effectiveContext: "kind-prod",

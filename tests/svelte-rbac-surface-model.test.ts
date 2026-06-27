@@ -112,7 +112,7 @@ describe("svelte RBAC surface model", () => {
 		]);
 	});
 
-	test("summarizes RBAC warnings like the React surface", () => {
+	test("summarizes RBAC warnings", () => {
 		expect(rbacWarningSummary(["a", "b", "c", "d", "e"])).toBe(
 			"a b c 2 more warnings.",
 		);

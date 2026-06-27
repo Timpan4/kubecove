@@ -53,12 +53,10 @@ body,
 	font-size: 11px;
 }
 
-.react-flow__node-default,
 .svelte-flow__node-default {
 	text-align: left;
 }
 
-.topology-spike-shell--compact .react-flow__node-default,
 .topology-spike-shell--compact .svelte-flow__node-default {
 	box-sizing: border-box;
 	display: block;
@@ -69,7 +67,6 @@ body,
 	line-height: 0;
 }
 
-.topology-spike-shell--compact .react-flow__handle,
 .topology-spike-shell--compact .svelte-flow__handle {
 	display: none;
 }

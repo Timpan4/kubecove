@@ -8,7 +8,7 @@ Accepted.
 
 KubeCove started as an inspection-first Kubernetes workspace and has begun adding governed live operations, starting with Pod and selector-backed Service port-forwarding in [ADR 0003](0003-guarded-live-sessions.md). The broader product direction should allow cluster-changing workflows when they are intentionally designed and safe enough for real operator use.
 
-The existing boundary still matters: KubeCove is local desktop software, kubeconfig material stays Rust-side, React is not trusted with credentials, and the frontend must not become a shell or Kubernetes bridge.
+The existing boundary still matters: KubeCove is local desktop software, kubeconfig material stays Rust-side, the frontend is not trusted with credentials, and it must not become a shell or Kubernetes bridge.
 
 ## Decision
 

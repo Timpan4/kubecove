@@ -129,17 +129,6 @@ export interface PathStateWorkspaceSnapshot {
 	surfaces: PathStateSurfacesState | null;
 }
 
-export interface PathStateWorkspaceHandoff {
-	workspaceId: string;
-	selectedNode?: TreeNodeId | null;
-	expandedSections?: string[];
-	viewMode?: PathStateWorkspaceViewMode;
-	resourceInitialSearch?: string;
-	resourceInitialGitOpsFilter?: string;
-	resourceInitialHealthFilter?: PathStateHealthFilter;
-	resourceNamespaceOverride?: string[] | null;
-}
-
 export interface PathStateSnapshot {
 	version: typeof PATH_STATE_VERSION;
 	runtime: "svelte";
@@ -378,59 +367,6 @@ export function sanitizePathStateSnapshot(value: unknown): PathStateSnapshot | n
 		launcherView: pickString(value.launcherView, ["workspaces", "settings"] as const, "workspaces"),
 		workspace: sanitizeWorkspaceSnapshot(value.workspace),
 	};
-}
-
-export function sanitizePathStateWorkspaceHandoff(
-	value: unknown,
-): PathStateWorkspaceHandoff | null {
-	if (typeof value === "string") return value ? { workspaceId: value } : null;
-	if (!isRecord(value)) return null;
-	const workspaceId = stringValue(value.workspaceId);
-	if (!workspaceId) return null;
-	const handoff: PathStateWorkspaceHandoff = { workspaceId };
-	if ("selectedNode" in value) {
-		if (value.selectedNode === null) {
-			handoff.selectedNode = null;
-		} else {
-			const selectedNode = sanitizePathStateTreeNode(value.selectedNode);
-			if (selectedNode) handoff.selectedNode = selectedNode;
-		}
-	}
-	if (Array.isArray(value.expandedSections)) {
-		handoff.expandedSections = sanitizePathStateStringArray(value.expandedSections);
-	}
-	if (isPathStateWorkspaceViewMode(value.viewMode)) {
-		handoff.viewMode = value.viewMode;
-	}
-	const resourceInitialSearch = optionalString(value.resourceInitialSearch);
-	if (resourceInitialSearch !== undefined) {
-		handoff.resourceInitialSearch = resourceInitialSearch;
-	}
-	const resourceInitialGitOpsFilter = optionalString(value.resourceInitialGitOpsFilter);
-	if (resourceInitialGitOpsFilter !== undefined) {
-		handoff.resourceInitialGitOpsFilter = resourceInitialGitOpsFilter;
-	}
-	if (isPathStateHealthFilter(value.resourceInitialHealthFilter)) {
-		handoff.resourceInitialHealthFilter = value.resourceInitialHealthFilter;
-	}
-	if ("resourceNamespaceOverride" in value) {
-		handoff.resourceNamespaceOverride =
-			value.resourceNamespaceOverride === null
-				? null
-				: sanitizePathStateStringArray(value.resourceNamespaceOverride);
-	}
-	return handoff;
-}
-
-export function decodePathStateWorkspaceHandoff(
-	raw: string | null | undefined,
-): PathStateWorkspaceHandoff | null {
-	if (!raw) return null;
-	try {
-		return sanitizePathStateWorkspaceHandoff(JSON.parse(raw));
-	} catch {
-		return sanitizePathStateWorkspaceHandoff(raw);
-	}
 }
 
 export function encodePathStateSnapshot(snapshot: PathStateSnapshot): string {

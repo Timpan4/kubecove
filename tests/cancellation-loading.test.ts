@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { shouldDropWarmupWatchEvent } from "../src/features/resources/useResourceWatch";
+import { shouldDropWarmupWatchEvent } from "../src/features/resources/helpers";
 import {
 	createCancellableRequest,
 	createCancelScope,

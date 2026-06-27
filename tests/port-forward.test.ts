@@ -237,14 +237,6 @@ spec:
 	});
 
 	test("workspace manager renders active session controls and saved errors", () => {
-		const source = readFileSync(
-			"src/features/live-sessions/WorkspacePortForwardsPage.tsx",
-			"utf8",
-		);
-		const actionsSource = readFileSync(
-			"src/features/live-sessions/useSavedPortForwardActions.ts",
-			"utf8",
-		);
 		const sharedActionsSource = readFileSync(
 			"src/features/live-sessions/saved-port-forward-actions.ts",
 			"utf8",
@@ -270,21 +262,9 @@ spec:
 			"utf8",
 		);
 
-		expect(source).toContain("Resolved Pod");
-		expect(source).toContain("copySessionUrl");
-		expect(source).toContain("stopSession");
-		expect(source).toContain("reconnectSession");
-		expect(source).toContain("lastError");
-		expect(source).toContain("allSessions");
-		expect(source).toContain("useSavedPortForwardActions(workspace, allSessions)");
-		expect(source).toContain("sessionInWorkspaceScope");
-		expect(source).toContain(
-			"workspaceScopeContexts(workspace.scope).includes(session.clusterContext)",
-		);
-		expect(source).toContain("validateSavedPortForwardScope");
-		expect(source).toContain("workspaceScopeContexts(workspace.scope)");
-		expect(actionsSource).toContain("knownSessions?: PortForwardSessionSummary[]");
-		expect(actionsSource).toContain("listPortForwards(client).catch(() => [])");
+		expect(svelteLiveSurfaceSource).toContain("portForward.lastError");
+		expect(svelteLiveSurfaceSource).toContain("stopPortForwardSession(session.id)");
+		expect(svelteLiveSurfaceSource).toContain("reconnectPortForward(session)");
 		expect(sharedActionsSource).toContain("stopPodPortForward(client, session.id)");
 		expect(sharedActionsSource).toContain("reconnectPortForwardSession");
 		expect(svelteLiveSurfaceSource).toContain("portForwardSessionResolution(session)");
@@ -328,10 +308,6 @@ spec:
 
 	test("Service detail forwarding offers a port picker when ports are known", () => {
 		const source = readFileSync(
-			"src/features/resource-detail/PortForwardTab.tsx",
-			"utf8",
-		);
-		const svelteSource = readFileSync(
 			"src/features/resource-detail/PortForwardTab.svelte",
 			"utf8",
 		);
@@ -339,27 +315,19 @@ spec:
 		expect(source).toContain("extractServicePortOptions");
 		expect(source).toContain("<Select");
 		expect(source).toContain("<SelectGroup>");
-		expect(source).toContain("Choose one of the TCP ports");
 		expect(source).toContain("Save preset");
-		expect(source).toContain("savePortForward(activeWorkspace.id");
 		expect(source).toContain("Preset already saved");
 		expect(source).toContain("workspaceScopeContexts(activeWorkspace.scope)");
 		expect(source).toContain("Workspace context must include this Service");
-		expect(svelteSource).toContain("extractServicePortOptions");
-		expect(svelteSource).toContain("<Select");
-		expect(svelteSource).toContain("Save preset");
-		expect(svelteSource).toContain("workspaceStore.saveSavedPortForward");
-		expect(svelteSource).toContain("Preset already saved");
-		expect(svelteSource).toContain("workspaceScopeContexts(activeWorkspace.scope)");
-		expect(svelteSource).toContain("Workspace context must include this Service");
-		expect(svelteSource).toContain("copySessionUrl");
-		expect(svelteSource).toContain("navigator.clipboard?.writeText");
-		expect(svelteSource).toContain("portForwardLocalUrl(session)");
-		expect(svelteSource).toContain("$settingsStore.showKubeconfigSourceLabels");
-		expect(svelteSource).toContain("session.kubeconfigSourceLabel");
-		expect(svelteSource).toContain("sessionTitle(session)");
-		expect(svelteSource).toContain("sessionResolution(session)");
-		expect(svelteSource).toContain("Resolved to Pod/");
-		expect(svelteSource).toContain('localPort = "";');
+		expect(source).toContain("workspaceStore.saveSavedPortForward");
+		expect(source).toContain("copySessionUrl");
+		expect(source).toContain("navigator.clipboard?.writeText");
+		expect(source).toContain("portForwardLocalUrl(session)");
+		expect(source).toContain("$settingsStore.showKubeconfigSourceLabels");
+		expect(source).toContain("session.kubeconfigSourceLabel");
+		expect(source).toContain("sessionTitle(session)");
+		expect(source).toContain("sessionResolution(session)");
+		expect(source).toContain("Resolved to Pod/");
+		expect(source).toContain('localPort = "";');
 	});
 });

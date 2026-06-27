@@ -12,7 +12,7 @@ import {
 } from "../src/app/svelte/detailPanelFrameModel";
 
 describe("svelte detail panel frame", () => {
-	test("matches React detail panel sizing defaults", () => {
+	test("keeps detail panel sizing defaults", () => {
 		expect(MAIN_PANEL_DEFAULT_SIZE).toBe(60);
 		expect(DETAIL_PANEL_DEFAULT_SIZE).toBe(40);
 		expect(MAIN_PANEL_MIN_SIZE).toBe(30);

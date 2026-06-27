@@ -1,4 +1,4 @@
-	<script lang="ts">
+<script lang="ts">
 	import { onMount } from "svelte";
 	import { useQueryClient } from "@tanstack/svelte-query";
 	import { FolderOpen } from "lucide-svelte";
@@ -20,12 +20,7 @@
 		setBackendDiagnosticsEnabled,
 		stopLiveSessionsOutsideScope,
 	} from "@/lib/tauri";
-	import {
-		takeUiRuntimeReloadNotice,
-		takeUiRuntimeSettingsOpen,
-		takeUiRuntimeWorkspaceHandoff,
-		type UiRuntimeWorkspaceHandoff,
-	} from "@/lib/ui-runtime";
+	import { takeUiRuntimeSettingsOpen } from "@/lib/ui-runtime";
 	import {
 		readPathState,
 		writePathState,
@@ -39,10 +34,8 @@
 	const diagnosticsClient = createTauriClient();
 	const liveSessionClient = createTauriClient();
 	const queryClient = useQueryClient();
-	let notice = $state("");
 	let liveSessionCleanupMessage = $state<string | null>(null);
 	let openSettingsOnWorkspaceMount = $state(false);
-	let runtimeWorkspaceHandoff = $state<UiRuntimeWorkspaceHandoff | null>(null);
 	let initialWorkspacePathState = $state<PathStateWorkspaceSnapshot | null>(null);
 	let launcherView = $state<"workspaces" | "settings">("workspaces");
 	let pathStateReady = $state(false);
@@ -59,28 +52,12 @@
 	}
 
 	onMount(() => {
-		const message = takeUiRuntimeReloadNotice();
-		if (!message) return;
-		notice = message;
-		const timeout = window.setTimeout(() => {
-			notice = "";
-		}, 3_000);
-		return () => window.clearTimeout(timeout);
-	});
-
-	onMount(() => {
-		const handoff = takeUiRuntimeWorkspaceHandoff();
-		if (handoff) {
-			runtimeWorkspaceHandoff = handoff;
-			workspaceStore.openWorkspace(handoff.workspaceId);
-		} else {
-			const pathState = readPathState();
-			if (pathState?.workspace) {
-				initialWorkspacePathState = pathState.workspace;
-				workspaceStore.openWorkspace(pathState.workspace.workspaceId);
-			} else if (pathState?.launcherView) {
-				launcherView = pathState.launcherView;
-			}
+		const pathState = readPathState();
+		if (pathState?.workspace) {
+			initialWorkspacePathState = pathState.workspace;
+			workspaceStore.openWorkspace(pathState.workspace.workspaceId);
+		} else if (pathState?.launcherView) {
+			launcherView = pathState.launcherView;
 		}
 		openSettingsOnWorkspaceMount = takeUiRuntimeSettingsOpen();
 		if (openSettingsOnWorkspaceMount && !$selectedWorkspace) launcherView = "settings";
@@ -192,11 +169,9 @@
 	<WorkspaceShell
 		workspace={$selectedWorkspace}
 		{openSettingsOnWorkspaceMount}
-		{runtimeWorkspaceHandoff}
 		initialPathState={initialWorkspacePathState?.workspaceId === $selectedWorkspace.id
 			? initialWorkspacePathState
 			: null}
-		onRuntimeWorkspaceHandoffConsumed={() => (runtimeWorkspaceHandoff = null)}
 		onPathStateConsumed={() => (initialWorkspacePathState = null)}
 		{liveSessionCleanupMessage}
 		onDismissLiveSessionCleanup={() => (liveSessionCleanupMessage = null)}
@@ -218,7 +193,7 @@
 			</div>
 			<div class="flex flex-1 items-center justify-end gap-1 [-webkit-app-region:no-drag]">
 				<UpdateStatusButton />
-				<RuntimeBadge mode="svelte" onOpenSettings={openLauncherSettings} />
+				<RuntimeBadge onOpenSettings={openLauncherSettings} />
 				{#if launcherView === "settings"}
 					<Button
 						type="button"
@@ -243,14 +218,5 @@
 			{/if}
 		</main>
 		<AppUsageFooter />
-	</div>
-{/if}
-
-{#if notice}
-	<div
-		role="status"
-		class="fixed bottom-4 left-1/2 z-toast -translate-x-1/2 rounded-md border border-border/60 bg-surface-2 px-3 py-2 text-sm text-popover-foreground shadow-xl backdrop-blur-2xl"
-	>
-		{notice}
 	</div>
 {/if}

@@ -39,7 +39,7 @@ describe("svelte ui primitives", () => {
 		}
 	});
 
-	test("keeps React button variant and size names", () => {
+	test("keeps button variant and size names", () => {
 		const classes = readPrimitive("classes.ts");
 
 		for (const token of [

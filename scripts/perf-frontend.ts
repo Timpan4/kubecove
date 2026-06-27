@@ -3,11 +3,11 @@ import {
 	buildShallowNamespaceTreeNode,
 } from "../src/components/sidebar-tree-helpers";
 import {
-	applyReactFlowTopologySelection,
-	applyReactFlowTopologySelectionWithIndex,
-	buildReactFlowTopology,
-	buildReactFlowTopologyLayout,
-	buildReactFlowTopologySelectionIndex,
+	applyOwnershipFlowTopologySelection,
+	applyOwnershipFlowTopologySelectionWithIndex,
+	buildOwnershipFlowTopology,
+	buildOwnershipFlowTopologyLayout,
+	buildOwnershipFlowTopologySelectionIndex,
 	resourceTopologyNodeId,
 } from "../src/features/resources/topology";
 import type {
@@ -147,29 +147,29 @@ const selectedIds = topology.nodes
 
 started = performance.now();
 for (const selectedId of selectedIds) {
-	buildReactFlowTopology(topology, selectedId, { groupStandalone: false });
+	buildOwnershipFlowTopology(topology, selectedId, { groupStandalone: false });
 }
 const rebuildSelectionMs = performance.now() - started;
 const afterRebuildSelectionMemory = memorySample();
 
 started = performance.now();
-const layout = buildReactFlowTopologyLayout(topology, null, {
+const layout = buildOwnershipFlowTopologyLayout(topology, null, {
 	groupStandalone: false,
 });
 const layoutBuildMs = performance.now() - started;
-const selectionIndex = buildReactFlowTopologySelectionIndex(topology);
+const selectionIndex = buildOwnershipFlowTopologySelectionIndex(topology);
 const afterLayoutMemory = memorySample();
 
 started = performance.now();
 for (const selectedId of selectedIds) {
-	applyReactFlowTopologySelection(layout, topology, selectedId);
+	applyOwnershipFlowTopologySelection(layout, topology, selectedId);
 }
 const splitSelectionMs = performance.now() - started;
 const afterSplitSelectionMemory = memorySample();
 
 started = performance.now();
 for (const selectedId of selectedIds) {
-	applyReactFlowTopologySelectionWithIndex(layout, selectionIndex, selectedId);
+	applyOwnershipFlowTopologySelectionWithIndex(layout, selectionIndex, selectedId);
 }
 const indexedSelectionMs = performance.now() - started;
 const afterIndexedSelectionMemory = memorySample();

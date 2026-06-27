@@ -1,5 +1,4 @@
 import type { ResourceSummary } from "@/lib/types";
-import { resourceReadyChip, resourceStatusTone } from "./columns";
 import {
 	argoApplicationGitOpsFilterKey,
 	argoApplicationResourceNamespaces,
@@ -10,6 +9,8 @@ import {
 	filterResourceSearchIndex,
 	formatResourceGroupLabel,
 	hasResourceListGitOpsOwner,
+	resourceReadyChip,
+	resourceStatusTone,
 	uniqueGitOpsFilters,
 } from "./helpers";
 
@@ -286,7 +287,7 @@ describe("resource table status chips", () => {
 					ready: "false",
 				}),
 			),
-		).toEqual({ value: "Completed", variant: "success" });
+		).toEqual({ value: "Completed", tone: "success" });
 	});
 
 	test("normalizes ready booleans", () => {
@@ -298,7 +299,7 @@ describe("resource table status chips", () => {
 					ready: "true",
 				}),
 			),
-		).toEqual({ value: "Ready", variant: "success" });
+		).toEqual({ value: "Ready", tone: "success" });
 	});
 
 	test("keeps active not-ready pod readiness red", () => {
@@ -310,6 +311,6 @@ describe("resource table status chips", () => {
 					ready: "False",
 				}),
 			),
-		).toEqual({ value: "Not ready", variant: "error" });
+		).toEqual({ value: "Not ready", tone: "error" });
 	});
 });

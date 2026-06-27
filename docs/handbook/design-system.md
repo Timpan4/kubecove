@@ -1,13 +1,12 @@
 # Design System
 
-The visual language is shared by both React and Svelte runtimes. One token layer in `src/App.css` feeds both, so design refinements land twice. Do not fork styling per runtime.
+The visual language is shared through one token layer in `src/App.css`, so design refinements land once and flow through the Svelte UI.
 
 ## Stack
 
 - **Tailwind v4** (CSS-first config via `@theme inline`, no `tailwind.config.*`).
-- **shadcn** primitives on React (`src/components/ui/*.tsx`), **bits-ui** + hand-authored shadcn-svelte-style wrappers on Svelte (`src/components/ui/svelte/`).
-- **cva** variant maps mirrored byte-for-byte between `classes.ts` (Svelte) and each React primitive. Keep them in sync.
-- **OKLCH** colors throughout. Dark mode is always on (`.dark` added at boot in both `main-react.tsx` and `main-svelte.ts`); the `:root` light palette is declared but unused in production.
+- **bits-ui** + hand-authored shadcn-svelte-style wrappers in `src/components/ui/svelte/`.
+- **OKLCH** colors throughout. Dark mode is always on (`.dark` added at boot in `main-svelte.ts`); the `:root` light palette is declared but unused in production.
 - Fonts: **Inter Variable** (`--font-sans`, body), **Geist Variable** (`--font-heading`, titles), **Geist Mono Variable** (`--font-mono`, code/metrics/kbd). Loaded via `@fontsource-variable`.
 
 ## Token layers (all in `src/App.css`)

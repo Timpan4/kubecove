@@ -11,7 +11,7 @@ Use when implementing or reviewing Tauri commands, plugins, capabilities, filesy
 Rules:
 
 - No broad shell access from the frontend.
-- No kubeconfig, token, certificate, or secret leakage to React.
+- No kubeconfig, token, certificate, or secret leakage to the frontend.
 - Prefer narrow typed Tauri commands over generic bridges.
 - Review Tauri capabilities and permissions when adding plugins.
 - Require an ADR for shell plugin usage, broad filesystem access, cluster-changing commands, or long-lived sensitive state.
@@ -19,7 +19,7 @@ Rules:
 Triggers:
 
 - "Add a Tauri command for Kubernetes data."
-- "Expose a Rust function to React."
+- "Expose a Rust function to the frontend."
 - "Add a Tauri plugin."
 - "Review whether this leaks kubeconfig data."
 - "Add apply/delete/scale/sync support."

@@ -246,11 +246,12 @@ describe("resource detail status tones", () => {
 
 	test("renders complete phase chips as success", () => {
 		const source = readFileSync(
-			"src/features/resource-detail/DetailStatusField.tsx",
+			"src/features/resource-detail/resource-status.ts",
 			"utf8",
 		);
 
-		expect(source).toContain('"Complete"');
+		expect(source).toContain('"complete"');
+		expect(source).toContain('"completed"');
 		expect(source).toContain('"Completed"');
 	});
 
@@ -644,20 +645,18 @@ describe("resource browser presentation helpers", () => {
   });
 
   test("centers restart count badges in the resource table", () => {
-    const cellsSource = readFileSync("src/features/resources/cells.tsx", "utf8");
-    const columnsSource = readFileSync("src/features/resources/columns.tsx", "utf8");
+    const source = readFileSync("src/features/resources/ResourceBrowser.svelte", "utf8");
 
-    expect(cellsSource).toContain("export function RestartsCell");
-    expect(cellsSource).toContain("justify-center");
-    expect(columnsSource).toContain("RestartsCell");
+    expect(source).toContain('class="flex justify-center"');
+    expect(source).toContain("row.restarts");
   });
 
   test("uses pointer cursors for enabled shared interactive controls", () => {
     const controlFiles = [
-      "src/components/ui/button.tsx",
-      "src/components/ui/tabs.tsx",
-      "src/components/ui/select.tsx",
-      "src/components/ui/checkbox.tsx",
+      "src/components/ui/svelte/classes.ts",
+      "src/components/ui/svelte/TabsTrigger.svelte",
+      "src/components/ui/svelte/SelectTrigger.svelte",
+      "src/components/ui/svelte/Checkbox.svelte",
     ];
 
     for (const file of controlFiles) {
@@ -669,41 +668,25 @@ describe("resource browser presentation helpers", () => {
 
 describe("sidebar source safeguards", () => {
 	test("uses query state for namespace loading", () => {
-		const source = readFileSync("src/components/NamespaceList.tsx", "utf8");
+		const source = readFileSync("src/features/resources/NamespaceList.svelte", "utf8");
 
-		expect(source).toContain('useQuery({');
+		expect(source).toContain("createQuery");
 		expect(source).toContain("queryKeys.namespaces");
 		expect(source).not.toContain("requestSeq");
-		expect(source).not.toContain("useEffect");
+		expect(source).not.toContain("$effect");
 	});
 
 	test("uses non-submit button types for sidebar controls", () => {
-		const layoutSource = readFileSync(
-			"src/components/ui/sidebar-layout.tsx",
-			"utf8",
-		);
+		const buttonSource = readFileSync("src/components/ui/svelte/Button.svelte", "utf8");
 		const menuSource = readFileSync(
-			"src/components/ui/sidebar-menu.tsx",
+			"src/components/ui/svelte/SidebarMenuButton.svelte",
 			"utf8",
 		);
 
-		expect(layoutSource).toContain('type="button"');
-		expect(layoutSource).toContain('type={asChild ? undefined : "button"}');
-		expect(menuSource.match(/type=\{asChild \? undefined : "button"\}/g))
-			.toHaveLength(2);
-	});
-
-	test("ignores the sidebar keyboard shortcut inside editable controls", () => {
-		const source = readFileSync(
-			"src/components/ui/sidebar-provider.tsx",
-			"utf8",
-		);
-
-		expect(source).toContain("const isEditable");
-		expect(source).toContain("HTMLInputElement");
-		expect(source).toContain("HTMLTextAreaElement");
-		expect(source).toContain("HTMLSelectElement");
-		expect(source).toContain('getAttribute("role") === "textbox"');
+		expect(buttonSource).toContain('type = "button"');
+		expect(buttonSource).toContain("{type}");
+		expect(menuSource).toContain('type = "button"');
+		expect(menuSource).toContain("{type}");
 	});
 });
 
@@ -1134,7 +1117,7 @@ describe("incident signal helpers", () => {
 
 	test("classifies waiting containers before generic not-ready containers", () => {
 		const source = readFileSync(
-			"src/features/resource-detail/ResourceDiagnosticLists.tsx",
+			"src/features/resource-detail/ResourceDetailPanel.svelte",
 			"utf8",
 		);
 		const waitingIndex = source.indexOf('container.state === "waiting"');
@@ -1147,72 +1130,58 @@ describe("incident signal helpers", () => {
 
 	test("falls back to summary restarts only after pod details are unavailable", () => {
 		const source = readFileSync(
-			"src/features/resource-detail/DetailsTab.tsx",
+			"src/features/resource-detail/ResourceDetailPanel.svelte",
 			"utf8",
 		);
 
-		expect(source).toContain(
-			"details?.summary ? { ...resource, ...details.summary } : resource",
-		);
-		expect(source).toContain(
-			'currentResource.kind === "Pod" && (details || podDetailsLoading)',
-		);
-		expect(source).toContain("details || podDetailsLoading");
-		expect(source).toContain("? containerRows");
-		expect(source).toContain(": undefined");
+		expect(source).toContain("detailsQuery.data?.summary");
+		expect(source).toContain('resource.kind === "Pod"');
+		expect(source).toContain("containerRows");
 		expect(source).not.toContain(
 			'resource.kind === "Pod" || details ? containerRows : undefined',
 		);
 	});
 
 	test("renders signal timestamps through the shared timestamp formatter", () => {
-		const summarySource = readFileSync(
-			"src/features/resource-detail/IncidentSummary.tsx",
-			"utf8",
-		);
-		const valueSource = readFileSync(
-			"src/features/resource-detail/IncidentSignalValue.tsx",
+		const source = readFileSync(
+			"src/features/resource-detail/DetailsTab.svelte",
 			"utf8",
 		);
 
-		expect(summarySource).toContain("<IncidentSignalValue signal={signal} />");
-		expect(valueSource).toContain("ExactTimestampText");
-		expect(valueSource).toContain("valueParts");
-		expect(valueSource).toContain('precision="millisecond"');
-		expect(valueSource).not.toContain("{signal.value}");
+		expect(source).toContain("signalValueParts(signal)");
+		expect(source).toContain("formatFullTimestamp(part.value)");
+		expect(source).not.toContain("{signal.value}");
 	});
 
 	test("renders detail timeline timestamps with millisecond precision", () => {
 		const source = readFileSync(
-			"src/features/resource-detail/IncidentTimeline.tsx",
+			"src/features/resource-detail/DetailsTab.svelte",
 			"utf8",
 		);
 
-		expect(source).toContain(
-			'<ExactTimestampText value={item.timestamp} precision="millisecond" />',
-		);
+		expect(source).toContain("formatFullTimestamp(item.timestamp)");
 	});
 
 	test("renders metadata creation timestamps through the shared timestamp formatter", () => {
 		const source = readFileSync(
-			"src/features/resource-detail/ResourceDiagnostics.tsx",
+			"src/features/resource-detail/DetailsTab.svelte",
 			"utf8",
 		);
 
-		expect(source).toContain('name === "Created"');
+		expect(source).toContain('row.label === "Created"');
 		expect(source).toContain(
-			'<ExactTimestampText value={value} precision="millisecond" />',
+			"<time datetime={row.value} title={formatFullTimestamp(row.value)}>",
 		);
 	});
 
-	test("renders Argo detail metadata creation timestamps through the shared timestamp formatter", () => {
+	test("keeps GitOps age tooltip backed by creation timestamps", () => {
 		const source = readFileSync(
-			"src/features/argo/ArgoDetailShared.tsx",
+			"src/app/svelte/gitOpsSurfaceTooltips.ts",
 			"utf8",
 		);
 
-		expect(source).toContain('key === "Created"');
-		expect(source).toContain("<ExactTimestampText value={value} />");
+		expect(source).toContain("gitOpsSelectionAgeTooltip");
+		expect(source).toContain("selection.item.createdAt ?? null");
 	});
 
   test("treats crash loop and image pull states as error incident signals", () => {

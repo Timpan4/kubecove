@@ -6,7 +6,7 @@ import type {
 	TopologyNode,
 } from "../src/lib/types";
 import {
-	buildReactFlowTopology,
+	buildOwnershipFlowTopology,
 	buildTopologyRows,
 	resourceTopologyNodeId,
 } from "../src/features/resources/topology";
@@ -94,8 +94,8 @@ describe("ownership topology properties", () => {
 				(podCounts) => {
 					const topology = buildGeneratedTopology(podCounts);
 					const rows = buildTopologyRows(topology);
-					const graph = buildReactFlowTopology(topology, null);
-					const secondGraph = buildReactFlowTopology(topology, null);
+					const graph = buildOwnershipFlowTopology(topology, null);
+					const secondGraph = buildOwnershipFlowTopology(topology, null);
 					const graphNodeIds = graph.nodes.map((graphNode) => graphNode.id);
 					const graphNodeIdSet = new Set(graphNodeIds);
 					const rowNodeIds = rows.map((row) => row.node.id);

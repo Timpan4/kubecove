@@ -1,11 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
-	queueUiRuntimeWorkspaceHandoff,
 	queueUiRuntimeSettingsFocus,
 	queueUiRuntimeSettingsOpen,
-	readPersistedUiRuntimeMode,
-	takeUiRuntimeWorkspaceHandoff,
 	takeUiRuntimeSettingsFocus,
 	takeUiRuntimeSettingsOpen,
 } from "../src/lib/ui-runtime";
@@ -44,37 +41,6 @@ afterEach(() => {
 });
 
 describe("ui runtime queue helpers", () => {
-	test("defaults new installs to Svelte", () => {
-		expect(readPersistedUiRuntimeMode()).toBe("svelte");
-	});
-
-	test("keeps persisted React fallback selection", () => {
-		window.localStorage.setItem(
-			"kubecove-settings",
-			JSON.stringify({ state: { uiRuntimeMode: "react" }, version: 0 }),
-		);
-
-		expect(readPersistedUiRuntimeMode()).toBe("react");
-	});
-
-	test("falls back to Svelte when persisted runtime mode is invalid", () => {
-		window.localStorage.setItem(
-			"kubecove-settings",
-			JSON.stringify({
-				state: { uiRuntimeMode: "legacy-react" },
-				version: 0,
-			}),
-		);
-
-		expect(readPersistedUiRuntimeMode()).toBe("svelte");
-	});
-
-	test("falls back to Svelte when persisted runtime settings are corrupt", () => {
-		window.localStorage.setItem("kubecove-settings", "{");
-
-		expect(readPersistedUiRuntimeMode()).toBe("svelte");
-	});
-
 	test("opening Settings consumes only the open request", () => {
 		queueUiRuntimeSettingsOpen();
 		queueUiRuntimeSettingsFocus();
@@ -84,86 +50,27 @@ describe("ui runtime queue helpers", () => {
 		expect(takeUiRuntimeSettingsFocus()).toBe(true);
 	});
 
-	test("workspace handoff consumes once", () => {
-		queueUiRuntimeWorkspaceHandoff("workspace-1");
-
-		expect(takeUiRuntimeWorkspaceHandoff()).toEqual({
-			workspaceId: "workspace-1",
-		});
-		expect(takeUiRuntimeWorkspaceHandoff()).toBeNull();
-	});
-
-	test("workspace handoff preserves selected scope payload", () => {
-		queueUiRuntimeWorkspaceHandoff({
-			workspaceId: "workspace-1",
-			selectedNode: {
-				type: "kind",
-				section: "workloads",
-				namespace: "prod",
-				kind: "Deployment",
-			},
-			expandedSections: ["section::workloads"],
-			viewMode: "resources",
-			resourceInitialSearch: "nginx",
-			resourceInitialGitOpsFilter: "checkout",
-			resourceInitialHealthFilter: "degraded",
-			resourceNamespaceOverride: ["prod"],
-		});
-
-		expect(takeUiRuntimeWorkspaceHandoff()).toEqual({
-			workspaceId: "workspace-1",
-			selectedNode: {
-				type: "kind",
-				section: "workloads",
-				namespace: "prod",
-				kind: "Deployment",
-			},
-			expandedSections: ["section::workloads"],
-			viewMode: "resources",
-			resourceInitialSearch: "nginx",
-			resourceInitialGitOpsFilter: "checkout",
-			resourceInitialHealthFilter: "degraded",
-			resourceNamespaceOverride: ["prod"],
-		});
-		expect(takeUiRuntimeWorkspaceHandoff()).toBeNull();
-	});
-
-	test("Svelte runtime consumes settings and workspace handoff queues", () => {
+	test("Svelte app consumes settings queue and path state restore", () => {
 		const appSource = readFileSync("src/app/svelte/App.svelte", "utf8");
 		const shellSource = readFileSync(
 			"src/app/svelte/WorkspaceShell.svelte",
 			"utf8",
 		);
-		const svelteSettingsSource = readFileSync(
-			"src/app/svelte/SettingsSurface.svelte",
-			"utf8",
-		);
-		const reactSettingsSource = readFileSync(
-			"src/features/settings/SettingsPage.tsx",
-			"utf8",
-		);
 
-		expect(appSource).toContain("takeUiRuntimeWorkspaceHandoff()");
-		expect(appSource).toContain("workspaceStore.openWorkspace(handoff.workspaceId)");
+		expect(appSource).toContain("readPathState()");
+		expect(appSource).toContain(
+			"workspaceStore.openWorkspace(pathState.workspace.workspaceId)",
+		);
 		expect(appSource).toContain("takeUiRuntimeSettingsOpen()");
 		expect(appSource).toContain("{openSettingsOnWorkspaceMount}");
-		expect(appSource).toContain("{runtimeWorkspaceHandoff}");
 		expect(appSource).toContain("$settingsStore.debugModeEnabled");
 		expect(appSource).toContain("lastDiagnosticsEnabled");
 		expect(appSource).not.toContain("settingsStore.subscribe");
 		expect(shellSource).toContain("openSettingsOnWorkspaceMount");
 		expect(shellSource).toContain("openSettings()");
-		expect(shellSource).toContain("currentWorkspaceHandoff()");
-		expect(shellSource).toContain("settingsWorkspaceHandoff");
-		expect(svelteSettingsSource).toContain(
-			"queueUiRuntimeWorkspaceHandoff(handoff)",
-		);
-		expect(reactSettingsSource).toContain(
-			"queueUiRuntimeWorkspaceHandoff(activeWorkspaceId)",
-		);
 	});
 
-	test("Svelte runtime badge opens Settings from launcher and workspace chrome", () => {
+	test("Svelte badge opens Settings from launcher and workspace chrome", () => {
 		const appSource = readFileSync("src/app/svelte/App.svelte", "utf8");
 		const shellSource = readFileSync(
 			"src/app/svelte/WorkspaceShell.svelte",

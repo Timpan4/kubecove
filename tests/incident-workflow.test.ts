@@ -261,7 +261,7 @@ describe("incident workflow helpers", () => {
 		expect(source).not.toContain('<Badge variant="outline">Owner {detailResource.ownerRef}</Badge>');
 	});
 
-	test("Svelte resource detail formats metadata and timestamps like React", () => {
+	test("Svelte resource detail formats metadata and timestamps", () => {
 		const source = svelteDetailSource();
 
 		expect(source).toContain("function metadataBadgeStyle(key: string)");
