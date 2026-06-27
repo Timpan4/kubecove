@@ -35,7 +35,7 @@ Do not tune the topology spike further before the migration plan starts. Use the
 5. Tail parity and removal
    - Port command palette, incidents, RBAC, app updates, usage footer, and edge states.
    - Keep React fallback available for unported areas until this slice is complete.
-   - Remove React runtime, React-only dependencies, React compiler config, React Doctor scripts, and obsolete React source only after tail parity passes.
+   - Remove React runtime, React-only dependencies, React compiler config, and obsolete React source only after tail parity passes.
 
 ## Current Checklist
 

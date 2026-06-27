@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  react-doctor:
-    name: React Doctor
+  svelte-doctor:
+    name: Svelte Doctor
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -41,25 +41,14 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run React Doctor changed-file gate
+      - name: Run Svelte Doctor changed-file gate
         if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          bun node_modules/react-doctor/bin/react-doctor.js . \
-            --diff origin/${{ github.base_ref }} \
-            --json \
-            --blocking none > react-doctor-report.json
-          diagnostics="$(bun -e 'const report = await Bun.file("react-doctor-report.json").json(); console.log(report.summary?.errorCount ?? 0);')"
-          echo "React Doctor changed-file error diagnostics: ${diagnostics}"
-          if [ "${diagnostics}" -gt 0 ]; then
-            echo "React Doctor found ${diagnostics} changed-file error diagnostics."
-            exit 1
-          fi
+        run: bun run doctor:ci -- --diff origin/${{ github.base_ref }}
 
-      - name: Run React Doctor full report
+      - name: Run Svelte Doctor full report
         if: github.event_name == 'push'
         continue-on-error: true
-        run: bun run doctor:ci -- --diff false
+        run: bun run doctor:ci
 
   frontend:
     name: Frontend checks
@@ -134,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
-      - react-doctor
+      - svelte-doctor
       - frontend
       - rust
     if: always()
@@ -142,14 +131,14 @@ jobs:
     steps:
       - name: Verify required jobs
         env:
-          REACT_DOCTOR_RESULT: ${{ needs.react-doctor.result }}
+          SVELTE_DOCTOR_RESULT: ${{ needs.svelte-doctor.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           RUST_RESULT: ${{ needs.rust.result }}
         run: |
           set -euo pipefail
-          echo "React Doctor: ${REACT_DOCTOR_RESULT}"
+          echo "Svelte Doctor: ${SVELTE_DOCTOR_RESULT}"
           echo "Frontend checks: ${FRONTEND_RESULT}"
           echo "Rust checks: ${RUST_RESULT}"
-          test "${REACT_DOCTOR_RESULT}" = "success"
+          test "${SVELTE_DOCTOR_RESULT}" = "success"
           test "${FRONTEND_RESULT}" = "success"
           test "${RUST_RESULT}" = "success"
