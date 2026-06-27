@@ -67,16 +67,14 @@ function run(command: string, args: string[]): string {
 		stdio: ["ignore", "pipe", "pipe"],
 	});
 
-	if (result.status === 0) return result.stdout;
+	if (result.status === 0) return result.stdout ?? "";
 
-	fail(
-		[
-			`Command failed: ${command} ${args.join(" ")}`,
-			result.stderr.trim(),
-		]
-			.filter(Boolean)
-			.join("\n"),
-	);
+	const errorDetails = [
+		`Command failed: ${command} ${args.join(" ")}`,
+		result.stderr?.trim() || (result.error ? `Spawn error: ${result.error.message}` : "Unknown error"),
+	];
+
+	fail(errorDetails.filter(Boolean).join("\n"));
 }
 
 function shortSha(sha: string): string {
