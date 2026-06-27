@@ -23,7 +23,7 @@
     "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "rust:check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "rust:lint": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
-    "check": "bun run typecheck && bun run lint && bun test && bun run rust:test && bun run rust:check && bun run rust:lint",
+    "check": "bun run typecheck && bun run svelte:check && bun run lint && bun test && bun run rust:test && bun run rust:check && bun run rust:lint",
     "version:bump": "bun scripts/bump-version.ts",
     "release:prepare": "bun scripts/prepare-release-pr.ts",
     "release:check": "bun scripts/release-beta.ts check",

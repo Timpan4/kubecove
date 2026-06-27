@@ -16,6 +16,7 @@
 	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import {
 		createTauriClient,
+		getKubeconfigSources,
 		setBackendDiagnosticsEnabled,
 		stopLiveSessionsOutsideScope,
 	} from "@/lib/tauri";
@@ -30,7 +31,7 @@
 		writePathState,
 		type PathStateWorkspaceSnapshot,
 	} from "@/lib/path-state";
-	import { settingsStore } from "@/lib/settings-store";
+	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import { workspaceScopeContexts } from "@/lib/workspace-model";
 	import { appUpdateActions } from "./appUpdateStore";
 
@@ -84,6 +85,18 @@
 		openSettingsOnWorkspaceMount = takeUiRuntimeSettingsOpen();
 		if (openSettingsOnWorkspaceMount && !$selectedWorkspace) launcherView = "settings";
 		pathStateReady = true;
+	});
+
+	onMount(() => {
+		void getKubeconfigSources(liveSessionClient)
+			.then((sources) => {
+				getSettingsSnapshot().setKubeconfigSources(sources);
+			})
+			.catch((error) => {
+				diagnosticLog("kubeconfig.sources.bootstrap.error", {
+					error: error instanceof Error ? error.message : String(error),
+				});
+			});
 	});
 
 	onMount(() => {

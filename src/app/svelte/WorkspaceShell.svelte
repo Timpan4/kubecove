@@ -740,7 +740,7 @@
 							targetResource={restoreTargetResource ?? focusedResource}
 							selectedResource={focusedResource}
 							{title}
-							initialPathState={initialResourcePathState}
+							initialPathState={resourceBrowserPathState}
 							onPathStateChange={(state) => (resourceBrowserPathState = state)}
 							onResourceSelect={(resource) => {
 								focusedResource = resource;

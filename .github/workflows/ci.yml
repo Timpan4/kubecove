@@ -78,6 +78,9 @@ jobs:
       - name: Typecheck frontend
         run: bun run typecheck
 
+      - name: Check Svelte frontend
+        run: bun run svelte:check
+
       - name: Lint frontend
         run: bun run lint
 

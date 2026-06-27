@@ -266,7 +266,9 @@ fn target_triple() -> &'static str {
 
 fn is_missing_schema_message(message: &str) -> bool {
     let message = message.to_ascii_lowercase();
-    message.contains("could not find schema") || message.contains("failed initializing schema")
+    message.contains("could not find schema")
+        || message.contains("failed initializing schema")
+        || message.contains("failed downloading schema")
 }
 
 fn json_pointer_to_field_path(path: &str) -> Option<String> {
@@ -336,6 +338,22 @@ mod tests {
         let output = std::process::Output {
             status: exit_status(1),
             stdout: br#"{"resources":[{"kind":"Widget","status":"ERROR","msg":"could not find schema for Widget"}]}"#
+                .to_vec(),
+            stderr: Vec::new(),
+        };
+
+        collect_kubeconform_output(output, &mut result);
+
+        assert!(result.diagnostics.is_empty());
+        assert_eq!(result.notes.len(), 1);
+    }
+
+    #[test]
+    fn schema_download_failure_becomes_status_note() {
+        let mut result = result();
+        let output = std::process::Output {
+            status: exit_status(1),
+            stdout: br#"{"resources":[{"kind":"Deployment","status":"statusError","msg":"failed downloading schema from https://raw.githubusercontent.com/example/schema.json"}]}"#
                 .to_vec(),
             stderr: Vec::new(),
         };
