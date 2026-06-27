@@ -31,7 +31,7 @@ describe("svelte settings store", () => {
 		expect(getSettingsSnapshot().showFullTopologyOnSelection).toBe(true);
 	});
 
-	test("updates Svelte subscribers when React-readable settings change", () => {
+	test("updates Svelte subscribers when shared settings change", () => {
 		const values: boolean[] = [];
 		const unsubscribe = settingsStore.subscribe((settings) => {
 			values.push(settings.showUnavailableGitOpsProviders);
@@ -58,11 +58,8 @@ describe("svelte settings store", () => {
 
 	test("settings surfaces warn that full topology selection can affect performance", () => {
 		const svelteSource = readFileSync("src/app/svelte/SettingsSurface.svelte", "utf8");
-		const reactSource = readFileSync("src/features/settings/SettingsPage.tsx", "utf8");
 
 		expect(svelteSource).toContain("Keep full map visible during selection");
 		expect(svelteSource).toContain("Large namespaces may render slower");
-		expect(reactSource).toContain("Keep full map visible during selection");
-		expect(reactSource).toContain("Large namespaces may render slower");
 	});
 });

@@ -25,7 +25,7 @@ label-only, or unverifiable without adding Helm CLI, mutation, or shell behavior
 ## Safety Contract
 
 - Kubernetes access stays behind Rust-side typed Tauri commands and `kube-rs`.
-- React receives frontend-safe summaries only.
+- The frontend receives frontend-safe summaries only.
 - Raw Helm storage payloads, kubeconfig contents, tokens, certificates, and shell
   execution do not cross into the frontend.
 - This does not implement Helm diff, install, upgrade, uninstall, rollback,

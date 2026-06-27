@@ -1,10 +1,8 @@
 /**
- * Svelte twin of `src/lib/resource-visuals.ts`.
+ * Svelte resource visual map.
  *
- * Tone class strings (`text-[var(--resource-*)]`, `resource-tone-*-surface/badge`) are
- * identical to the React version and resolve against the shared OKLCH tokens in App.css,
- * so colors stay in sync across runtimes. Only the icon components differ
- * (lucide-svelte vs lucide-react).
+ * Tone class strings (`text-[var(--resource-*)]`, `resource-tone-*-surface/badge`)
+ * resolve against the shared OKLCH tokens in App.css.
  */
 import {
 	Box,

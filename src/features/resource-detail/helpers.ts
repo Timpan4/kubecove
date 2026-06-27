@@ -286,8 +286,8 @@ function isActionableContainerRestart(
 	) {
 		return false;
 	}
-	if (container.ready === false) return true;
 	if (container.state === "waiting") return true;
+	if (container.ready === false) return true;
 	if (container.state === "terminated" && container.exitCode !== 0) return true;
 	if (container.lastExitCode !== undefined && container.lastExitCode !== 0) return true;
 	if (container.lastReason && container.lastReason !== "Completed") return true;

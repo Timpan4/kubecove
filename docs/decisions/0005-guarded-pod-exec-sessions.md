@@ -6,7 +6,7 @@ Accepted.
 
 ## Context
 
-KubeCove now supports guarded port-forward live sessions under [ADR 0003](0003-guarded-live-sessions.md). Pod exec is a stronger operational capability because it opens an interactive process inside a running container. It must not turn the React frontend into a shell bridge, expose kubeconfig material, or create a broad Kubernetes operation runner.
+KubeCove now supports guarded port-forward live sessions under [ADR 0003](0003-guarded-live-sessions.md). Pod exec is a stronger operational capability because it opens an interactive process inside a running container. It must not turn the frontend into a shell bridge, expose kubeconfig material, or create a broad Kubernetes operation runner.
 
 ## Decision
 

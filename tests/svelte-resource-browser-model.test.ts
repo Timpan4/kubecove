@@ -57,15 +57,15 @@ const widget: DiscoveredResourceKind = {
 };
 
 describe("svelte resource browser model", () => {
-	test("shared resource table state stays independent from React table imports", () => {
+	test("shared resource table state stays independent from table runtime imports", () => {
 		const tableStateSource = readFileSync(
 			"src/features/resources/table-state.ts",
 			"utf8",
 		);
 		const helpersSource = readFileSync("src/features/resources/helpers.ts", "utf8");
 
-		expect(tableStateSource).not.toContain("@tanstack/react-table");
-		expect(helpersSource).not.toContain("@tanstack/react-table");
+		expect(tableStateSource).not.toContain("@tanstack/");
+		expect(helpersSource).not.toContain("@tanstack/");
 	});
 
 	test("filters, summarizes, groups, and collapses resource rows", () => {
@@ -219,7 +219,7 @@ describe("svelte resource browser model", () => {
 		).toBeNull();
 	});
 
-	test("scrolls selected Svelte table rows into view like React", () => {
+	test("scrolls selected Svelte table rows into view", () => {
 		const source = readFileSync(
 			"src/features/resources/ResourceBrowser.svelte",
 			"utf8",
@@ -257,7 +257,7 @@ describe("svelte resource browser model", () => {
 		expect(source).toContain("<Table2");
 	});
 
-	test("keeps Svelte resource table icons and spans aligned with React table", () => {
+	test("keeps Svelte resource table icons and spans aligned", () => {
 		const source = readFileSync(
 			"src/features/resources/ResourceBrowser.svelte",
 			"utf8",
@@ -410,7 +410,7 @@ describe("svelte resource browser model", () => {
 		expect(source).toContain("return;");
 	});
 
-	test("loads Svelte topology like React when ownership map is open", () => {
+	test("loads Svelte topology when ownership map is open", () => {
 		const source = readFileSync(
 			"src/features/resources/ResourceBrowser.svelte",
 			"utf8",
@@ -420,7 +420,7 @@ describe("svelte resource browser model", () => {
 		expect(source).toContain("enabled: Boolean(clusterContext && mapPanelOpen)");
 	});
 
-	test("keeps Svelte topology mode copy and warnings aligned with React", () => {
+	test("keeps Svelte topology mode copy and warnings aligned", () => {
 		const source = readFileSync("src/features/resources/OwnershipMap.svelte", "utf8");
 
 		expect(source).toContain('mode === "networkFlow" ? "Failed to load network flow" : "Failed to load ownership map"');

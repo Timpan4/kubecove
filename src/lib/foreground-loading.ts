@@ -1,5 +1,3 @@
-import { useSyncExternalStore } from "react";
-
 type Listener = () => void;
 
 const listeners = new Set<Listener>();
@@ -49,8 +47,4 @@ export async function withForegroundLoad<T>(
 	} finally {
 		end();
 	}
-}
-
-export function useForegroundLoading(): number {
-	return useSyncExternalStore(subscribeForegroundLoading, snapshot, snapshot);
 }

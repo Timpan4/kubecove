@@ -1,15 +1,13 @@
 # Agent Guide
 
-This repository is for KubeCove, a local desktop Kubernetes workspace built with Tauri v2, React, TypeScript, Bun, Rust, and `kube-rs`.
+This repository is for KubeCove, a local desktop Kubernetes workspace built with Tauri v2, Svelte, TypeScript, Bun, Rust, and `kube-rs`.
 
-## Current Migration Phase
+## Current Frontend
 
-KubeCove is actively rewriting the frontend from React to Svelte.
+KubeCove uses Svelte as its frontend runtime.
 
-- Default frontend work should advance Svelte feature parity with existing React behavior unless the user explicitly asks for React-only work.
-- Treat React as the parity reference until Svelte reaches feature equivalence: compare behavior, layout, keyboard/accessibility, data flow, command wrappers, and tests against React before claiming Svelte work done.
-- Keep the React fallback working during migration; do not delete React paths unless the user explicitly scopes that removal.
-- Prefer shared typed helpers/models where they reduce parity drift, but avoid new abstractions unless they are needed for parity or testability.
+- Default frontend work should fit the Svelte app and preserve typed Tauri command boundaries.
+- Prefer shared typed helpers/models where they reduce drift, but avoid new abstractions unless they are needed for parity with product behavior or testability.
 
 Before making implementation changes, skim the [docs index](docs/README.md). The minimum reading set is:
 
@@ -86,7 +84,7 @@ KubeCove ships cross-platform: macOS (universal), Windows x64, and Linux x64 (se
 - Dead-code and lint results differ per OS: code that is "unused" on your machine may be the production path on another platform. Never delete platform-gated code because local clippy flags it; gate or annotate it instead.
 - Frontend code must not assume platform-specific keyboard shortcuts (Cmd vs Ctrl), window chrome, or file-system casing behavior.
 - The webview engine differs per platform: WKWebView/WebKit on macOS, WebView2/Chromium on Windows, WebKitGTK on Linux. Rendering-sensitive CSS (infinite animations, `filter`, compositing-heavy effects, especially inside transformed/scaled containers) must be verified on WebKit, not just on Windows — WebKit intermittently rasterizes animated-filter layers blank (see the topology glow fix).
-- Prefer Tailwind utilities over bespoke CSS in `App.css`; reserve `App.css` for what utilities cannot express. This does not exempt engine bugs — Tailwind animations compile to the same CSS — so any infinite animation, however authored, is a cross-platform risk: never run one inside React Flow node subtrees, and prefer finite transitions or one-shot animations for state-change feedback.
+- Prefer Tailwind utilities over bespoke CSS in `App.css`; reserve `App.css` for what utilities cannot express. This does not exempt engine bugs: Tailwind animations compile to the same CSS, so any infinite animation is a cross-platform risk. Keep them out of flow node subtrees, and prefer finite transitions or one-shot animations for state-change feedback.
 - CI runs per-platform builds on release; local `cargo clippy`/`cargo test` only validates your current OS. Call out anything platform-sensitive in the PR so it gets attention on the other platforms.
 
 ## Tauri Command Contracts

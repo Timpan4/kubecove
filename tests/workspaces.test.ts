@@ -362,37 +362,36 @@ describe("workspace helpers", () => {
 
 	test("uses an explicit height for the workspace namespace scroll area", () => {
 		const source = readFileSync(
-			"src/features/workspaces/WorkspaceLauncher.tsx",
+			"src/features/workspaces/WorkspaceLauncher.svelte",
 			"utf8",
 		);
 
 		expect(source).toContain(
-			'ScrollArea className="h-52 rounded-md border bg-background/40"',
+			'ScrollArea class="h-52 rounded-md border bg-background/40"',
 		);
 		expect(source).not.toContain(
-			'ScrollArea className="max-h-52 rounded-md border bg-background/40"',
+			'ScrollArea class="max-h-52 rounded-md border bg-background/40"',
 		);
 	});
 
 	test("allows workspace saves when namespace listing fails", () => {
 		const source = readFileSync(
-			"src/features/workspaces/WorkspaceLauncher.tsx",
+			"src/features/workspaces/WorkspaceLauncher.svelte",
 			"utf8",
 		);
 
 		expect(source).not.toContain("namespaceScopeUnavailable");
-		expect(source).toContain(
-			"You can still save an all-namespace workspace",
-		);
+		expect(source).toContain("You can still save an");
+		expect(source).toContain("all-namespace workspace");
 	});
 
 	test("keeps overview Resources primary and visible in wrapping actions", () => {
 		const source = readFileSync(
-			"src/features/workspaces/WorkspaceOverview.tsx",
+			"src/features/workspaces/WorkspaceOverview.svelte",
 			"utf8",
 		);
 		const headerActionsStart = source.indexOf(
-			'className="flex flex-wrap justify-end gap-2"',
+			'class="flex flex-wrap justify-end gap-2"',
 		);
 		const headerActionsEnd = source.indexOf("</div>", headerActionsStart);
 		const headerActions = source.slice(headerActionsStart, headerActionsEnd);

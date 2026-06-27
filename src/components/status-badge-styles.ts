@@ -1,4 +1,4 @@
-import type { StatusTone } from "./StatusBadge";
+export type StatusTone = "neutral" | "success" | "warning" | "error" | "info";
 
 export const STATUS_BADGE_STYLES: Record<
 	StatusTone,

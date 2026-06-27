@@ -5,11 +5,6 @@ import type {
 	YamlEncoding,
 	YamlViewMode,
 } from "./types";
-import {
-	DEFAULT_UI_RUNTIME_MODE,
-	isUiRuntimeMode,
-	type UiRuntimeMode,
-} from "./ui-runtime";
 
 export type TimestampTimezone = "local" | "utc";
 export type YamlDiffStyle = "clean" | "git";
@@ -23,7 +18,6 @@ export interface SettingsState {
 	showFullTopologyOnSelection: boolean;
 	showUnavailableGitOpsProviders: boolean;
 	debugModeEnabled: boolean;
-	uiRuntimeMode: UiRuntimeMode;
 	autoStartSavedPortForwards: boolean;
 	keepLiveSessionsOnWorkspaceSwitch: boolean;
 	allowYamlForceConflicts: boolean;
@@ -42,7 +36,6 @@ export interface SettingsState {
 	setShowFullTopologyOnSelection: (show: boolean) => void;
 	setShowUnavailableGitOpsProviders: (show: boolean) => void;
 	setDebugModeEnabled: (enabled: boolean) => void;
-	setUiRuntimeMode: (mode: UiRuntimeMode) => void;
 	setAutoStartSavedPortForwards: (autoStart: boolean) => void;
 	setKeepLiveSessionsOnWorkspaceSwitch: (keep: boolean) => void;
 	setAllowYamlForceConflicts: (allow: boolean) => void;
@@ -79,7 +72,6 @@ export const useSettingsState = create<SettingsState>()(
 			showFullTopologyOnSelection: false,
 			showUnavailableGitOpsProviders: false,
 			debugModeEnabled: false,
-			uiRuntimeMode: DEFAULT_UI_RUNTIME_MODE,
 			autoStartSavedPortForwards: false,
 			keepLiveSessionsOnWorkspaceSwitch: false,
 			allowYamlForceConflicts: true,
@@ -103,8 +95,6 @@ export const useSettingsState = create<SettingsState>()(
 				set({ showUnavailableGitOpsProviders: show }),
 			setDebugModeEnabled: (debugModeEnabled: boolean) =>
 				set({ debugModeEnabled }),
-			setUiRuntimeMode: (uiRuntimeMode: UiRuntimeMode) =>
-				set({ uiRuntimeMode }),
 			setAutoStartSavedPortForwards: (autoStart: boolean) =>
 				set({ autoStartSavedPortForwards: autoStart }),
 			setKeepLiveSessionsOnWorkspaceSwitch: (keep: boolean) =>
@@ -156,12 +146,9 @@ export const useSettingsState = create<SettingsState>()(
 					current.showUnavailableGitOpsProviders,
 				debugModeEnabled:
 					saved.debugModeEnabled ?? current.debugModeEnabled,
-				uiRuntimeMode: isUiRuntimeMode(saved.uiRuntimeMode)
-					? saved.uiRuntimeMode
-					: current.uiRuntimeMode,
 				autoStartSavedPortForwards:
 					saved.autoStartSavedPortForwards ??
-						current.autoStartSavedPortForwards,
+					current.autoStartSavedPortForwards,
 					keepLiveSessionsOnWorkspaceSwitch:
 						saved.keepLiveSessionsOnWorkspaceSwitch ??
 						current.keepLiveSessionsOnWorkspaceSwitch,
@@ -189,7 +176,6 @@ export const useSettingsState = create<SettingsState>()(
 				showUnavailableGitOpsProviders:
 					state.showUnavailableGitOpsProviders,
 				debugModeEnabled: state.debugModeEnabled,
-				uiRuntimeMode: state.uiRuntimeMode,
 				autoStartSavedPortForwards: state.autoStartSavedPortForwards,
 				keepLiveSessionsOnWorkspaceSwitch:
 					state.keepLiveSessionsOnWorkspaceSwitch,

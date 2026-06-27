@@ -19,7 +19,7 @@ Use this index as the map for product, engineering, release, and governance work
 
 - [Product Vision](product-vision.md) - audience, workflow model, product direction, and safety posture.
 - [Architecture Blueprint](architecture-blueprint.md) - frontend/backend shape, Tauri command boundary, and extension points.
-- [Svelte Frontend Migration Plan](svelte-frontend-migration-plan.md) - phased React-to-Svelte migration plan, gates, and verification.
+- [Svelte Frontend Migration Plan](svelte-frontend-migration-plan.md) - cutover status, cleanup notes, and verification.
 - [Product Inspiration](product-inspiration.md) - public product benchmarks and the design/legal boundary.
 - [Helm Reconciliation Design](helm-reconciliation-design.md) - inspection-only release intent versus live state comparison.
 

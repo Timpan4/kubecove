@@ -15,8 +15,8 @@ KubeCove includes a narrow Pod exec workflow for troubleshooting a selected cont
 
 ## Safety Contract
 
-- No kubeconfig, token, certificate, or raw credential material reaches React.
-- React cannot execute local shell commands.
+- No kubeconfig, token, certificate, or raw credential material reaches the frontend.
+- The frontend cannot execute local shell commands.
 - The backend exposes only Pod-scoped exec commands, not a generic Kubernetes operation API.
 - RBAC failures, missing shells, disconnected sessions, and validation errors are shown as user-facing errors.
 - Output is not written to durable workspace state.

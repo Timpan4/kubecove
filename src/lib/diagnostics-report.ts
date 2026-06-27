@@ -11,7 +11,6 @@ import type { BackendDiagnosticEvent } from "./types";
 export interface LatencyReport {
 	generatedAt: string;
 	appVersion: string;
-	reactCompilerEnabled: boolean | null;
 	redacted: boolean;
 	frontend: {
 		summaries: DiagnosticMetricSummary[];
@@ -39,14 +38,6 @@ const REDACT_KEYS = new Set([
 	"streamId",
 ]);
 const OMIT_KEYS = new Set(["error", "message", "componentStack"]);
-
-function compilerEnabled(): boolean | null {
-	const env = (import.meta as ImportMeta & { env?: ImportMetaEnv }).env
-		?.VITE_KUBECOVE_REACT_COMPILER_ENABLED;
-	if (env === "true") return true;
-	if (env === "false") return false;
-	return null;
-}
 
 function aliasFactory() {
 	const aliases = new Map<string, Map<string, string>>();
@@ -125,7 +116,6 @@ export function createLatencyReport({
 	const report: LatencyReport = {
 		generatedAt: new Date().toISOString(),
 		appVersion: APP_VERSION,
-		reactCompilerEnabled: compilerEnabled(),
 		redacted: !includeIdentifiers,
 		frontend: {
 			summaries: snapshot.summaries,

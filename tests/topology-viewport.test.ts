@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ResourceSummary, ResourceTopology, TopologyNode } from "../src/lib/types";
 import {
-	buildReactFlowTopology,
+	buildOwnershipFlowTopology,
 	resourceTopologyNodeId,
 	type OwnershipGraphNode,
 } from "../src/features/resources/topology";
@@ -67,7 +67,7 @@ describe("ownership map viewport helpers", () => {
 			edges: [],
 			warnings: [],
 		};
-		const graph = buildReactFlowTopology(topology, null);
+		const graph = buildOwnershipFlowTopology(topology, null);
 		const extent = getOwnershipMapTranslateExtent(graph.nodes, {
 			width: 1200,
 			height: 640,
@@ -88,8 +88,8 @@ describe("ownership map viewport helpers", () => {
 			edges: [],
 			warnings: [],
 		};
-		const collapsedGraph = buildReactFlowTopology(topology, null);
-		const expandedGraph = buildReactFlowTopology(topology, null, {
+		const collapsedGraph = buildOwnershipFlowTopology(topology, null);
+		const expandedGraph = buildOwnershipFlowTopology(topology, null, {
 			expandedStandaloneKinds: new Set(["Secret"]),
 		});
 		const collapsedBounds = getOwnershipGraphBounds(collapsedGraph.nodes);

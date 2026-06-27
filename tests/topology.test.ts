@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import type { ResourceSummary, ResourceTopology } from "../src/lib/types";
 import {
-	buildReactFlowTopology,
+	buildOwnershipFlowTopology,
 	buildTopologyRows,
 	resourceTopologyNodeId,
 	topologyNodeClassName,
@@ -23,7 +23,7 @@ function summary(overrides: Partial<ResourceSummary>): ResourceSummary {
 }
 
 describe("ownership topology helpers", () => {
-	test("keeps shared topology helpers independent from React Flow runtime types", () => {
+	test("keeps shared topology helpers independent from renderer runtime types", () => {
 		for (const path of [
 			"src/features/resources/topology.ts",
 			"src/features/resources/topology-layout.ts",
@@ -31,11 +31,11 @@ describe("ownership topology helpers", () => {
 			"src/features/resources/topology-viewport.ts",
 		]) {
 			const source = readFileSync(path, "utf8");
-			expect(source).not.toContain("@xyflow/react");
+			expect(source).not.toContain("@xyflow/svelte");
 		}
 	});
 
-	test("converts topology into stable left-to-right React Flow nodes and edges", () => {
+	test("converts topology into stable left-to-right flow nodes and edges", () => {
 		const deploymentId = resourceTopologyNodeId(
 			"kind-dev",
 			"apps/v1",
@@ -107,7 +107,7 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, podId);
+		const graph = buildOwnershipFlowTopology(topology, podId);
 		const deployment = graph.nodes.find((node) => node.id === deploymentId);
 		const replicaSet = graph.nodes.find((node) => node.id === replicaSetId);
 		const pod = graph.nodes.find((node) => node.id === podId);
@@ -166,7 +166,7 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, podId);
+		const graph = buildOwnershipFlowTopology(topology, podId);
 		const podNode = graph.nodes.find((node) => node.id === podId);
 
 		expect(podNode?.data.node.health).toBe("degraded");
@@ -251,7 +251,7 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, null);
+		const graph = buildOwnershipFlowTopology(topology, null);
 		const groupIds = graph.nodes
 			.filter((node) => node.type === "standaloneKindGroup")
 			.map((node) => node.id);
@@ -322,7 +322,7 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, null, {
+		const graph = buildOwnershipFlowTopology(topology, null, {
 			groupStandalone: false,
 			showPortHints: true,
 		});
@@ -377,7 +377,7 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, null, {
+		const graph = buildOwnershipFlowTopology(topology, null, {
 			expandedStandaloneKinds: new Set(["ConfigMap"]),
 		});
 		const configMapGroup = graph.nodes.find(
@@ -427,7 +427,7 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, secretId);
+		const graph = buildOwnershipFlowTopology(topology, secretId);
 		const secretGroup = graph.nodes.find(
 			(node) => node.id === "standalone-kind:Secret",
 		);
@@ -438,7 +438,7 @@ describe("ownership topology helpers", () => {
 		expect(secret?.selected).toBe(true);
 	});
 
-	test("deduplicates repeated topology nodes before React Flow render", () => {
+	test("deduplicates repeated topology nodes before flow render", () => {
 		const serviceId = resourceTopologyNodeId(
 			"kind-dev",
 			"v1",
@@ -462,7 +462,7 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, null);
+		const graph = buildOwnershipFlowTopology(topology, null);
 
 		expect(graph.nodes.map((node) => node.id)).toEqual(["standalone-kind:Service"]);
 		expect(graph.nodes.find((node) => node.id === "standalone-kind:Service")?.data.count).toBe(
@@ -551,7 +551,7 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, null);
+		const graph = buildOwnershipFlowTopology(topology, null);
 		const yById = new Map(graph.nodes.map((node) => [node.id, node.position.y]));
 		const sortedAlloyYs = alloyPodIds
 			.map((id) => yById.get(id) ?? 0)
@@ -666,7 +666,7 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, null);
+		const graph = buildOwnershipFlowTopology(topology, null);
 		const yById = new Map(graph.nodes.map((graphNode) => [graphNode.id, graphNode.position.y]));
 		const hubblePodY = yById.get(hubblePodId) ?? 0;
 		const ciliumPodY = yById.get(ciliumPodId) ?? 0;
@@ -761,7 +761,7 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, deploymentId);
+		const graph = buildOwnershipFlowTopology(topology, deploymentId);
 		const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
 
 		expect(nodesById.get(deploymentId)?.data.selected).toBe(true);
@@ -832,7 +832,7 @@ describe("ownership topology helpers", () => {
 			warnings: [],
 		};
 
-		const graph = buildReactFlowTopology(topology, deploymentId);
+		const graph = buildOwnershipFlowTopology(topology, deploymentId);
 		const bucket = graph.nodes.find((node) => node.id === "standalone-kind:Pod");
 
 		expect(bucket?.data.dimmed).toBe(true);

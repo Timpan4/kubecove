@@ -16,7 +16,7 @@ Goal: create the project container for implementation work.
 
 Goal: browse common Kubernetes resources through Rust-side Tauri commands.
 
-- [x] Scaffold Tauri v2, React, TypeScript, Bun, and Rust.
+- [x] Scaffold Tauri v2, frontend TypeScript, Bun, and Rust.
 - [x] Add Bun-based frontend tooling and validation scripts.
 - [x] Add Rust dependencies for Tauri commands, `kube-rs`, serde, YAML serialization, and error handling.
 - [x] Implement context discovery and context-specific client construction.
@@ -106,7 +106,7 @@ Goal: make the current inspection-first incident workflow a reliable beta baseli
 - [x] Run frontend typecheck, frontend tests, and Rust tests.
 - [x] Audit logs, events, topology, and watch refresh behavior against the current UI.
 - [x] Reconcile README and milestone tracking for already-built incident surfaces.
-- [x] Add release diagnostics mode for local frontend/backend latency reports and React Compiler comparison scripts.
+- [x] Add release diagnostics mode for local frontend/backend latency reports.
 - [ ] Run a manual Tauri smoke test against a readable cluster before the next beta release.
 
 ## 0.3.0 Smoke Test Findings - 2026-05-26
@@ -175,19 +175,17 @@ Goal: add exact-Pod interactive exec without broad shell or mutation surfaces.
 
 ## Milestone 10: Svelte Frontend Migration
 
-Goal: track the parallel Svelte port honestly while React remains the fallback until cutover gates pass.
+Goal: finish the Svelte cutover and keep the frontend path simple.
 
-- [x] Add Svelte SPA entrypoint behind the shared UI runtime setting.
-- [x] Add runtime badge, Settings toggle, reload notice, and React fallback path.
-- [x] Preserve shared settings and workspace storage schemas across runtimes.
+- [x] Add Svelte SPA entrypoint.
+- [x] Add runtime badge.
+- [x] Preserve shared settings and workspace storage schemas through cutover.
 - [x] Port launcher, workspace shell, settings, resource browser, resource detail, YAML, events, logs, topology, GitOps, Helm, RBAC, incidents, live sessions, app updates, and usage footer surfaces to Svelte.
 - [x] Run automated Svelte migration baseline on 2026-06-22: `bun run svelte:check`, `bun run typecheck`, and `bun test`.
-- [x] Make Svelte the default for new installs while keeping React selectable as a fallback.
-- [ ] Record browser-backed app-wide launch, resource list, YAML detail, and 4k topology measurements for React and Svelte.
-- [ ] Prove at least one major app-wide memory or CPU-heavy bottleneck improves by 25% or more.
-- [ ] Run manual Svelte and React fallback Tauri smoke against a readable cluster.
-- [ ] Switch new installs to Svelte only after daily core parity, perf gates, runtime toggle, and fallback smoke pass.
-- [ ] Keep React fallback for one release after Svelte becomes default, then remove React only after tail parity is verified.
+- [x] Make Svelte the default for new installs.
+- [x] Remove the previous frontend runtime, fallback toggle, compiler config, and obsolete source.
+- [ ] Record browser-backed app-wide launch, resource list, YAML detail, and 4k topology measurements.
+- [ ] Run manual Svelte Tauri smoke against a readable cluster.
 
 ## Cross-Cutting Tracks
 

@@ -23,8 +23,8 @@ Use:
 
 - `src/components/` for generic UI
 - `src/lib/` for shared pure logic
-- `src/hooks/` for generic React hooks
+- shared UI helpers under `src/components/` or `src/lib/`
 
-Caps: `.tsx` soft 400 / hard 700, `.ts` soft 300 / hard 600. Split large feature files into sibling components, hooks, or helpers with coherent responsibilities.
+Caps: `.svelte` soft 400 / hard 700, `.ts` soft 300 / hard 600. Split large feature files into sibling components or helpers with coherent responsibilities.
 
 See [docs/handbook/code-organization.md](../../docs/handbook/code-organization.md) and [docs/handbook/file-size-and-split.md](../../docs/handbook/file-size-and-split.md).

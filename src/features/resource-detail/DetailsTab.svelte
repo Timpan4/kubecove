@@ -22,6 +22,7 @@
 		resourceReadyTone,
 		resourceStatusTone,
 	} from "./helpers";
+	import type { IncidentSignal, IncidentSignalValuePart } from "./helpers";
 
 	let {
 		detailsQuery,
@@ -50,6 +51,10 @@
 		containerReadyLabel,
 		containerStateLabel,
 	} = $props();
+
+	function signalValueParts(signal: IncidentSignal): IncidentSignalValuePart[] {
+		return signal.valueParts ?? [{ kind: "text", text: signal.value }];
+	}
 </script>
 
 <TabsContent value="details" class="min-h-0">
@@ -157,12 +162,20 @@
 								<div
 									class={`flex items-start justify-between gap-2 rounded-md border border-l-4 px-2.5 py-1.5 ${incidentToneClass(signal.tone)}`}
 								>
-									<div class="min-w-0">
-										<div class="text-xs font-semibold">{signal.label}</div>
-										<div class="mt-1 break-words text-xs leading-snug text-muted-foreground">
-											{signal.value}
-										</div>
-									</div>
+							<div class="min-w-0">
+								<div class="text-xs font-semibold">{signal.label}</div>
+								<div class="mt-1 break-words text-xs leading-snug text-muted-foreground">
+									{#each signalValueParts(signal) as part}
+										{#if part.kind === "timestamp"}
+											<time datetime={part.value} title={formatFullTimestamp(part.value)}>
+												{formatFullTimestamp(part.value)}
+											</time>
+										{:else}
+											{part.text}
+										{/if}
+									{/each}
+								</div>
+							</div>
 									<Badge
 										variant={toneBadgeVariant(signal.tone)}
 										class={compactToneBadgeClass(signal.tone)}
@@ -550,4 +563,3 @@
 			</div>
 		{/if}
 	</TabsContent>
-

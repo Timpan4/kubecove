@@ -58,7 +58,7 @@ Use example-based tests for regressions and user-visible behavior. Use fixture-c
 
 Use property-based tests for pure deterministic logic with compact invariants, such as topology graphs, grouping, sorting, filtering, and cache-key normalization. Frontend property tests use `fast-check` with `bun test`; Rust property tests use `proptest`.
 
-Do not require property tests for React rendering, live cluster integration, Tauri command tests that need real Kubernetes clients, or one-off bug examples.
+Do not require property tests for UI rendering, live cluster integration, Tauri command tests that need real Kubernetes clients, or one-off bug examples.
 
 ## Verification Before Completion
 

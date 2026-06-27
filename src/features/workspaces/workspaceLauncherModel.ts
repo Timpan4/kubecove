@@ -7,12 +7,12 @@ import type { ClusterContext } from "@/lib/types";
 
 export function pickEffectiveContext(
 	selectedContext: string,
-	contexts: ClusterContext[],
+	availableContexts: ClusterContext[],
 ): string {
 	return (
 		selectedContext ||
-		contexts.find((context) => context.isCurrent)?.name ||
-		contexts[0]?.name ||
+		availableContexts.find((context) => context.isCurrent)?.name ||
+		availableContexts[0]?.name ||
 		""
 	);
 }

@@ -4,7 +4,7 @@ Historical design note from 2026-05-06. It describes the first working read-only
 
 ## Goal
 
-Turn the scaffolded Tauri/React app into a working read-only browser:
+Turn the scaffolded Tauri frontend app into a working read-only browser:
 
 - choose a local kube context
 - list namespaces
@@ -45,7 +45,7 @@ Those later became separate milestones.
 ## Data Flow
 
 ```text
-React dashboard
+Frontend dashboard
   -> list_kube_contexts()
   -> list_namespaces(context)
   -> list_resources(context, namespace, kind)

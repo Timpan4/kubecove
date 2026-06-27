@@ -6,7 +6,7 @@ Accepted.
 
 ## Context
 
-KubeCove is inspection-first by default and now supports governed live-session work where the target and lifecycle are explicit. Port-forward and exec are different from list, get, watch, logs, and metrics because they open live operational sessions into a cluster. They still must respect the existing local desktop boundary: Kubernetes credentials stay Rust-side, React uses typed Tauri commands, and the app does not shell out to `kubectl`.
+KubeCove is inspection-first by default and now supports governed live-session work where the target and lifecycle are explicit. Port-forward and exec are different from list, get, watch, logs, and metrics because they open live operational sessions into a cluster. They still must respect the existing local desktop boundary: Kubernetes credentials stay Rust-side, the frontend uses typed Tauri commands, and the app does not shell out to `kubectl`.
 
 ## Decision
 

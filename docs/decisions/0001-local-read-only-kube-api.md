@@ -15,7 +15,7 @@ The app is local desktop software. Nothing is deployed into the cluster.
 For Kubernetes access:
 
 - Kubernetes credentials stay in local kubeconfig and are handled by the Rust backend.
-- React calls typed Tauri commands.
+- The frontend calls typed Tauri commands.
 - Normal Kubernetes list/get/discovery/watch operations use `kube-rs`.
 - The frontend cannot run arbitrary shell commands.
 - Cluster-changing operations are not a generic bridge. They require the governed command model defined in ADR 0004 or a focused ADR such as ADR 0003.

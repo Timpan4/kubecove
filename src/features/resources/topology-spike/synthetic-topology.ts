@@ -7,7 +7,7 @@ import type {
 	TopologyRelation,
 } from "@/lib/types";
 import {
-	buildReactFlowTopologyLayout,
+	buildOwnershipFlowTopologyLayout,
 	resourceTopologyNodeId,
 } from "../topology";
 
@@ -183,7 +183,7 @@ function selectionIdsFor(nodes: TopologySpikeNode[]): string[] {
 export function createTopologySpikeGraph(nodeCount: number): TopologySpikeGraph {
 	const topology = buildSyntheticTopology(nodeCount);
 	const started = performance.now();
-	const layout = buildReactFlowTopologyLayout(topology, null, {
+	const layout = buildOwnershipFlowTopologyLayout(topology, null, {
 		groupStandalone: false,
 		showPortHints: true,
 	});

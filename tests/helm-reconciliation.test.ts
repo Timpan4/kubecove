@@ -170,12 +170,13 @@ describe("Helm reconciliation UI helpers", () => {
 
 	test("detail tab uses backend reconciliation instead of fixed-kind listing", () => {
 		const source = readFileSync(
-			"src/features/helm/HelmDetailPanel.tsx",
+			"src/app/svelte/HelmSurface.svelte",
 			"utf8",
 		);
 
-		expect(source).toContain("HelmReconciliationPanel");
-		expect(source).toContain('value="reconciliation"');
+		expect(source).toContain("helmReconciliationQuery");
+		expect(source).toContain("helmReconciliationRows");
+		expect(source).toContain("reconciliation");
 		expect(source).not.toContain("SUPPORTED_KINDS");
 		expect(source).not.toContain("listResources");
 		expect(source).not.toContain("HelmReleaseResources");

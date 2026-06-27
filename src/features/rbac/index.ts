@@ -1,1 +1,0 @@
-export { RbacPanel } from "./RbacPanel";

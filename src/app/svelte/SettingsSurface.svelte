@@ -22,13 +22,7 @@
 	import { queryKeys } from "@/lib/queryKeys";
 	import type { TimestampTimezone, YamlDiffStyle } from "@/lib/settings";
 	import {
-		queueUiRuntimeReloadNotice,
-		queueUiRuntimeWorkspaceHandoff,
 		takeUiRuntimeSettingsFocus,
-		uiRuntimeModeLabel,
-		writePersistedUiRuntimeMode,
-		type UiRuntimeWorkspaceHandoff,
-		type UiRuntimeMode,
 	} from "@/lib/ui-runtime";
 	import {
 		createTauriClient,
@@ -43,13 +37,6 @@
 	import UpdatesSettings from "./UpdatesSettings.svelte";
 	import { settingsStore } from "@/lib/settings-store";
 
-	let {
-		currentWorkspaceId,
-		workspaceHandoff = null,
-	}: {
-		currentWorkspaceId?: string;
-		workspaceHandoff?: UiRuntimeWorkspaceHandoff | null;
-	} = $props();
 	type SettingsCategoryId =
 		| "general"
 		| "sessions"
@@ -60,11 +47,6 @@
 	type SettingsRowMeta = { title: string; description: string };
 
 	const GENERAL_ROWS = {
-		uiRuntime: {
-			title: "Frontend runtime",
-			description:
-				"Switches between the default Svelte UI and the React fallback. The app reloads after changing mode.",
-		},
 		exactTimestamps: {
 			title: "Show exact timestamps",
 			description: "Adds exact timestamps next to relative ages.",
@@ -199,7 +181,6 @@
 	const client = createTauriClient();
 	let activeCategory = $state<SettingsCategoryId>("general");
 	let query = $state("");
-	let runtimeSwitchMessage = $state<string | null>(null);
 	const settings = $derived($settingsStore);
 
 	const searching = $derived(query.trim().length > 0);
@@ -226,7 +207,7 @@
 	onMount(() => {
 		if (!takeUiRuntimeSettingsFocus()) return;
 		activeCategory = "general";
-		query = GENERAL_ROWS.uiRuntime.title;
+		query = "";
 	});
 
 	function matchesSettingsQuery(value: string, row: SettingsRowMeta): boolean {
@@ -241,18 +222,6 @@
 	function showCategory(id: SettingsCategoryId): boolean {
 		if (!searching) return activeCategory === id;
 		return categoryRows[id].some((row) => matchesSettingsQuery(query, row));
-	}
-
-	function handleUiRuntimeModeChange(mode: UiRuntimeMode) {
-		if (mode === settings.uiRuntimeMode) return;
-		const handoff =
-			workspaceHandoff ?? (currentWorkspaceId ? { workspaceId: currentWorkspaceId } : null);
-		if (handoff) queueUiRuntimeWorkspaceHandoff(handoff);
-		settings.setUiRuntimeMode(mode);
-		writePersistedUiRuntimeMode(mode);
-		queueUiRuntimeReloadNotice(mode);
-		runtimeSwitchMessage = `Switching to ${uiRuntimeModeLabel(mode)} UI...`;
-		window.setTimeout(() => window.location.reload(), 600);
 	}
 
 	function memoryText(bytes: number): string {
@@ -310,7 +279,7 @@
 
 	<StatGrid
 		stats={[
-			["Runtime", uiRuntimeModeLabel(settings.uiRuntimeMode)],
+			["Runtime", "Svelte"],
 			["Usage footer", settings.showUsageFooter ? "on" : "off"],
 			["YAML mode", settings.yamlViewModeDefault],
 			["Kubeconfig", settings.kubeconfigSourceLabel],
@@ -335,17 +304,6 @@
 
 	{#if showCategory("general")}
 		<FieldGroup>
-			<SettingsRow {...GENERAL_ROWS.uiRuntime}>
-				<SegmentedControl
-					value={settings.uiRuntimeMode}
-					options={[
-						{ value: "svelte", label: "Svelte" },
-						{ value: "react", label: "React" },
-					]}
-					onChange={handleUiRuntimeModeChange}
-					ariaLabel={GENERAL_ROWS.uiRuntime.title}
-				/>
-			</SettingsRow>
 			<SettingsRow {...GENERAL_ROWS.exactTimestamps}>
 				<Checkbox
 					checked={settings.showExactTimestamps}
@@ -499,12 +457,3 @@
 		</SurfaceFrame>
 	{/if}
 </div>
-
-{#if runtimeSwitchMessage}
-	<div
-		role="status"
-		class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg"
-	>
-		{runtimeSwitchMessage}
-	</div>
-{/if}

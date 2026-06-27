@@ -1,5 +1,5 @@
 export interface TopologySpikeRunResult {
-	framework: "react" | "svelte";
+	framework: "svelte";
 	nodeCount: number;
 	edgeCount: number;
 	initialRenderMs: number;

@@ -135,7 +135,7 @@ describe("path state", () => {
 
 	test("falls back on invalid input", () => {
 		expect(decodePathStateSnapshot("{")).toBeNull();
-		expect(sanitizePathStateSnapshot({ version: 1, runtime: "react" })).toBeNull();
+		expect(sanitizePathStateSnapshot({ version: 1, runtime: "legacy" })).toBeNull();
 
 		installWindow("#/settings").sessionStorage.setItem(PATH_STATE_SESSION_KEY, "{");
 		expect(readPathState()).toEqual(defaultPathStateSnapshot("settings"));

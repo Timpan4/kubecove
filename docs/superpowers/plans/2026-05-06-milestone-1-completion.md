@@ -17,7 +17,7 @@ Build the first useful read-only Kubernetes browser:
 ## Constraints
 
 - Read-only MVP.
-- No raw kubeconfig data in React.
+- No raw kubeconfig data in the frontend.
 - No arbitrary frontend shell execution.
 - Use `kube-rs` for Kubernetes API access.
 - Use typed Tauri wrappers from the frontend.
@@ -27,9 +27,9 @@ Build the first useful read-only Kubernetes browser:
 
 Frontend:
 
-- `src/main.tsx` for app providers
-- `src/app/router.tsx` for the initial route
-- `src/App.tsx` and `src/App.css` for the first dashboard shell
+- `src/main.ts` for app boot
+- `src/app/svelte/` for the app shell
+- `src/App.css` for shared styling
 - `src/lib/tauri.ts`, `src/lib/types.ts`, and local state hooks
 - cluster, namespace, resource table, kind filter, and detail panel components
 

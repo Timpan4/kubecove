@@ -462,11 +462,9 @@
     position: relative;
   }
 
-  /* Selection glow uses a finite transition, never an infinite animation: any
-     continuously-running animation inside the node card subtree (filter,
-     box-shadow, even opacity on an empty pseudo-element) makes WKWebView
-     rasterize the card content blank inside React Flow's scaled pane.
-     Verified on macOS; WebView2/Chromium is unaffected. */
+  /* Selection glow uses a finite transition, never an infinite animation:
+     continuously-running animation inside the node card subtree can make
+     WKWebView rasterize the scaled card content blank. */
   .resource-topology-node {
     position: relative;
   }
@@ -594,14 +592,6 @@
 }
 
 
-.ownership-map-flow .react-flow__controls {
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--card) 92%, transparent);
-  box-shadow: none;
-}
-
 .ownership-map-flow .svelte-flow__controls {
   overflow: hidden;
   border: 1px solid var(--border);
@@ -610,7 +600,6 @@
   box-shadow: none;
 }
 
-.ownership-map-flow .react-flow__controls.horizontal .react-flow__controls-button,
 .ownership-map-flow .svelte-flow__controls.horizontal .svelte-flow__controls-button {
   width: 26px;
   height: 26px;
@@ -621,37 +610,31 @@
 }
 
 .ownership-map-flow
-  .react-flow__controls.horizontal
-  .react-flow__controls-button:last-child,
-.ownership-map-flow
   .svelte-flow__controls.horizontal
   .svelte-flow__controls-button:last-child {
   border-right: 0;
 }
 
-.ownership-map-flow .react-flow__controls-button:hover,
 .ownership-map-flow .svelte-flow__controls-button:hover {
   background: var(--accent);
   color: var(--foreground);
 }
 
-.ownership-map-flow .react-flow__controls-button svg,
 .ownership-map-flow .svelte-flow__controls-button svg {
   fill: currentcolor;
   stroke: currentcolor;
 }
 
-.ownership-map-flow .react-flow__attribution {
+.ownership-map-flow .svelte-flow__attribution {
   background: color-mix(in oklch, var(--background) 80%, transparent);
 }
 
-.ownership-map-flow .react-flow__edge-path {
+.ownership-map-flow .svelte-flow__edge-path {
   stroke: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
 }
 
-/* Edge dash-flow lives in React Flow's SVG layer, outside the node card
-   subtrees, so it does not trigger the WKWebView blank-card bug above. */
-.ownership-map-flow .ownership-map-edge-active .react-flow__edge-path {
+/* Edge dash-flow lives in the SVG layer, outside node card subtrees. */
+.ownership-map-flow .ownership-map-edge-active .svelte-flow__edge-path {
   stroke-dasharray: 8 8;
   animation: topology-edge-flow 1.8s linear infinite;
 }
@@ -663,8 +646,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ownership-map-flow .ownership-map-edge-active .react-flow__edge-path,
-  .ownership-map-flow .react-flow__edge.animated path {
+  .ownership-map-flow .ownership-map-edge-active .svelte-flow__edge-path,
+  .ownership-map-flow .svelte-flow__edge.animated path {
     animation: none;
   }
 
@@ -673,8 +656,8 @@
   }
 }
 
-.ownership-map-flow .ownership-map-edge-active .react-flow__edge-path,
-.ownership-map-flow .ownership-map-edge-active .react-flow__edge-interaction {
+.ownership-map-flow .ownership-map-edge-active .svelte-flow__edge-path,
+.ownership-map-flow .ownership-map-edge-active .svelte-flow__edge-interaction {
   transition:
     stroke 160ms ease,
     opacity 160ms ease;

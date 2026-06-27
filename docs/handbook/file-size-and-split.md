@@ -46,12 +46,12 @@ Rust:
 - Re-export through `commands/mod.rs`.
 - Run `bun run rust:check` after each coherent move.
 
-TypeScript and React:
+TypeScript and Svelte:
 
 - Move feature subcomponents into sibling files in the same feature folder.
 - Move pure feature helpers to `helpers.ts` or a focused sibling module.
 - Move truly generic pure logic to `src/lib/`.
-- Move reusable generic hooks to `src/hooks/`.
+- Move reusable generic helpers to `src/lib/` or `src/components/`.
 - Run `bun run typecheck` after each coherent move.
 
 Avoid:

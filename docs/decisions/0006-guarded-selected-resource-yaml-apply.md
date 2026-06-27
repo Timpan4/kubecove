@@ -32,7 +32,7 @@ The apply flow must:
   force-conflicts setting or current selected-resource override allows it
 - invalidate the selected resource details and YAML after success
 
-The Rust side owns validation, dry-run, apply, and Kubernetes API access. React may edit YAML text and request the typed operation, but it does not receive kubeconfig material and does not run shell commands.
+The Rust side owns validation, dry-run, apply, and Kubernetes API access. The frontend may edit YAML text and request the typed operation, but it does not receive kubeconfig material and does not run shell commands.
 
 ## Consequences
 

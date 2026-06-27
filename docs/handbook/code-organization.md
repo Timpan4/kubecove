@@ -56,10 +56,6 @@ Logic used by one feature belongs inside that feature.
 
 App-level wiring and frames only: router, top bar, app shell helpers, shared loading frames, and cross-feature app hooks.
 
-### `src/hooks/`
-
-Generic React hooks shared across features. Feature-specific hooks stay inside their feature folder.
-
 ## Backend (`src-tauri/src/`)
 
 ### `commands/`
@@ -115,7 +111,7 @@ Repo-level `scripts/` contains maintainer automation. It must not contain app ru
 - Frontend never calls Kubernetes directly.
 - Frontend never executes shell commands.
 - All cluster data crosses the Tauri boundary through typed wrappers.
-- Kubeconfig contents, tokens, and certificate data never cross into React.
+- Kubeconfig contents, tokens, and certificate data never cross into the frontend.
 - Live-session commands follow [ADR 0003](../decisions/0003-guarded-live-sessions.md).
 - Other cluster-changing commands follow [ADR 0004](../decisions/0004-guarded-cluster-operations.md).
 - Security-sensitive changes require an ADR.

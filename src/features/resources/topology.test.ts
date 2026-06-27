@@ -1,9 +1,9 @@
 import type { ResourceSummary, ResourceTopology, TopologyNode } from "@/lib/types";
 import {
-	applyReactFlowTopologySelectionWithIndex,
-	buildReactFlowTopologyLayout,
-	buildReactFlowTopologySelectionIndex,
-	filterReactFlowTopologyToSelectedRoot,
+	applyOwnershipFlowTopologySelectionWithIndex,
+	buildOwnershipFlowTopologyLayout,
+	buildOwnershipFlowTopologySelectionIndex,
+	filterOwnershipFlowTopologyToSelectedRoot,
 } from "./topology";
 import {
 	buildFlowTopologyLayout,
@@ -77,12 +77,12 @@ describe("topology selection", () => {
 			],
 			warnings: [],
 		};
-		const layout = buildReactFlowTopologyLayout(topology, null, {
+		const layout = buildOwnershipFlowTopologyLayout(topology, null, {
 			groupStandalone: false,
 		});
-		const selected = applyReactFlowTopologySelectionWithIndex(
+		const selected = applyOwnershipFlowTopologySelectionWithIndex(
 			layout,
-			buildReactFlowTopologySelectionIndex(topology),
+			buildOwnershipFlowTopologySelectionIndex(topology),
 			"Pod:argocd-redis-abc-123",
 		);
 
@@ -118,7 +118,7 @@ describe("topology selection", () => {
 		).toBe(true);
 	});
 
-	test("filters React topology selection to the selected root ownership tree", () => {
+	test("filters topology selection to the selected root ownership tree", () => {
 		const topology: ResourceTopology = {
 			nodes: [
 				node("Deployment", "api"),
@@ -163,9 +163,9 @@ describe("topology selection", () => {
 			],
 			warnings: [],
 		};
-		const filtered = filterReactFlowTopologyToSelectedRoot(
-			buildReactFlowTopologyLayout(topology, null),
-			buildReactFlowTopologySelectionIndex(topology),
+		const filtered = filterOwnershipFlowTopologyToSelectedRoot(
+			buildOwnershipFlowTopologyLayout(topology, null),
+			buildOwnershipFlowTopologySelectionIndex(topology),
 			"Pod:api-abc-1",
 		);
 

@@ -13,12 +13,12 @@ Allowed:
 
 Not allowed:
 
-- React components
+- UI components
 - imports from `src/features/`
 - imports from `src/components/`
 - logic that only one feature uses
 - raw Kubernetes access, raw `invoke()` call sites outside `tauri.ts`, or shell command execution
 
-Feature-only logic belongs beside that feature. Generic React hooks belong in `src/hooks/`.
+Feature-only logic belongs beside that feature. Shared UI helpers belong in `src/components/` or `src/lib/`.
 
 Caps: `.ts` soft 300 / hard 600. See [docs/handbook/file-size-and-split.md](../../docs/handbook/file-size-and-split.md).

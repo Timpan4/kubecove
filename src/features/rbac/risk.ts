@@ -6,7 +6,7 @@ import type {
 	RbacRoleSummary,
 	ServiceAccountSummary,
 } from "@/lib/types";
-import type { StatusTone } from "@/components/StatusBadge";
+import type { StatusTone } from "@/components/status-badge-styles";
 
 const LEVEL_WEIGHT: Record<RbacRiskLevel, number> = {
 	low: 1,
