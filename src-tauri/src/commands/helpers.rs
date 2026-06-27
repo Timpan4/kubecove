@@ -11,7 +11,8 @@ pub(crate) use metadata::{
 };
 pub(crate) use serialization::{
     fetch_and_serialize, fetch_and_serialize_cluster, fetch_and_serialize_cluster_with_encoding,
-    fetch_and_serialize_with_encoding, redact_secret, serialize_resource_document,
+    fetch_and_serialize_with_encoding, normalize_k8s_yaml_value, redact_secret,
+    serialize_json_value_document, serialize_resource_document,
 };
 pub(crate) use time::{k8s_creation_timestamp_to_rfc3339, k8s_timestamp_to_datetime, resource_age};
 

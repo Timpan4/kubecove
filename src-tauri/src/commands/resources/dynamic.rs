@@ -1,7 +1,7 @@
 use crate::commands::helpers::{
     extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
-    k8s_creation_timestamp_to_rfc3339, list_params, resource_age, serialize_resource_document,
-    update_resource_health,
+    k8s_creation_timestamp_to_rfc3339, list_params, normalize_k8s_yaml_value, resource_age,
+    serialize_json_value_document, update_resource_health,
 };
 use crate::commands::{
     diagnostic_field,
@@ -102,6 +102,43 @@ pub(crate) fn dynamic_resource_summary(
     };
     update_resource_health(&mut summary);
     summary
+}
+
+fn is_core_v1_secret(resource_kind: &DiscoveredResourceKind) -> bool {
+    resource_kind.group.is_empty()
+        && resource_kind.version == "v1"
+        && resource_kind.api_version == "v1"
+        && resource_kind.kind == "Secret"
+        && resource_kind.plural == "secrets"
+}
+
+fn redact_dynamic_secret_fields(value: &mut Value) {
+    let Value::Object(root) = value else {
+        return;
+    };
+
+    for field in ["data", "stringData"] {
+        if let Some(Value::Object(values)) = root.get_mut(field) {
+            for value in values.values_mut() {
+                *value = Value::String("REDACTED".to_string());
+            }
+        }
+    }
+}
+
+fn serialize_dynamic_resource_document(
+    resource_kind: &DiscoveredResourceKind,
+    object: &DynamicObject,
+    mode: YamlViewMode,
+    encoding: YamlEncoding,
+) -> Result<String, AppError> {
+    let mut value =
+        serde_json::to_value(object).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
+    normalize_k8s_yaml_value(&mut value, mode);
+    if is_core_v1_secret(resource_kind) {
+        redact_dynamic_secret_fields(&mut value);
+    }
+    serialize_json_value_document(&value, encoding)
 }
 
 async fn client_for_context(
@@ -247,7 +284,8 @@ pub async fn dynamic_resource_details_from(
         .get(&name)
         .await
         .map_err(|e| AppError::kube(e.to_string()))?;
-    let yaml = serialize_resource_document(
+    let yaml = serialize_dynamic_resource_document(
+        &resource_kind,
         &object,
         yaml_view_mode.unwrap_or_default(),
         yaml_encoding.unwrap_or_default(),
@@ -362,6 +400,17 @@ mod tests {
         }
     }
 
+    fn secret_kind() -> DiscoveredResourceKind {
+        DiscoveredResourceKind {
+            group: String::new(),
+            version: "v1".to_string(),
+            api_version: "v1".to_string(),
+            kind: "Secret".to_string(),
+            plural: "secrets".to_string(),
+            namespaced: true,
+        }
+    }
+
     #[test]
     fn rejects_invalid_discovered_kind() {
         let mut kind = widget_kind();
@@ -416,5 +465,34 @@ mod tests {
         assert_eq!(summary.plural, Some("widgets".to_string()));
         assert_eq!(summary.namespaced, Some(true));
         assert_eq!(summary.dynamic, Some(true));
+    }
+
+    #[test]
+    fn redacts_core_v1_secret_dynamic_yaml() {
+        let resource_kind = secret_kind();
+        let api_resource = api_resource_from_discovered(&resource_kind).unwrap();
+        let object = DynamicObject::new("api-token", &api_resource)
+            .within("default")
+            .data(json!({
+                "data": {
+                    "password": "c3VwZXItc2VjcmV0LXBhc3N3b3Jk"
+                },
+                "stringData": {
+                    "token": "plain-secret"
+                },
+                "type": "Opaque"
+            }));
+
+        let yaml = serialize_dynamic_resource_document(
+            &resource_kind,
+            &object,
+            YamlViewMode::Kubectl,
+            YamlEncoding::Yaml,
+        )
+        .unwrap();
+
+        assert!(yaml.contains("REDACTED"));
+        assert!(!yaml.contains("c3VwZXItc2VjcmV0LXBhc3N3b3Jk"));
+        assert!(!yaml.contains("plain-secret"));
     }
 }
