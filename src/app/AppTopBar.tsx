@@ -79,7 +79,7 @@ export function AppTopBar({
 					>
 						<Search className="size-3.5" aria-hidden="true" />
 						<span>Search resources...</span>
-						<kbd className="rounded border bg-muted px-1 py-px font-mono text-[10px] text-muted-foreground">
+						<kbd className="rounded border bg-muted px-1 py-px font-mono text-xs text-muted-foreground">
 							{SEARCH_SHORTCUT_HINT}
 						</kbd>
 					</button>

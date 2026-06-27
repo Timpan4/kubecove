@@ -41,7 +41,7 @@
 </script>
 
 {#if visible}
-	<footer class="relative flex h-7 shrink-0 items-center justify-end gap-2 border-t bg-sidebar px-4 text-[0.6875rem] text-muted-foreground">
+	<footer class="relative flex h-7 shrink-0 items-center justify-end gap-2 border-t bg-sidebar px-4 text-xs text-muted-foreground">
 		{#if usageQuery.isError || !metrics}
 			<span class="inline-flex min-w-0 items-center gap-1.5">
 				{#if usageQuery.isError}
@@ -56,7 +56,7 @@
 				type="button"
 				variant="ghost"
 				size="sm"
-				class="h-6 min-w-0 px-2 text-[0.6875rem] font-normal text-muted-foreground hover:text-foreground"
+				class="h-6 min-w-0 px-2 text-xs font-normal text-muted-foreground hover:text-foreground"
 				aria-label="Show app process tree"
 				aria-expanded={open}
 				onclick={() => (open = !open)}
@@ -68,13 +68,13 @@
 
 		{#if open && metrics}
 			<div class="absolute bottom-8 right-4 z-popover w-[31rem] max-w-[calc(100vw-2rem)] rounded-md border bg-popover p-2 text-popover-foreground shadow-xl">
-				<div class="px-1 pb-1 text-[0.625rem] font-semibold uppercase text-muted-foreground">
+				<div class="px-1 pb-1 text-xs font-semibold uppercase text-muted-foreground">
 					App process tree
 				</div>
 				<div class="max-h-[min(58vh,28rem)] overflow-auto">
-					<table class="w-full border-separate border-spacing-x-0 border-spacing-y-0.5 text-[0.6875rem]">
+					<table class="w-full border-separate border-spacing-x-0 border-spacing-y-0.5 text-xs">
 						<thead>
-							<tr class="text-[0.625rem] font-semibold uppercase text-muted-foreground">
+							<tr class="text-xs font-semibold uppercase text-muted-foreground">
 								<th class="px-1 pb-1 text-left">Process</th>
 								<th class="px-1 pb-1 text-right">CPU</th>
 								<th class="px-1 pb-1 text-right">Memory</th>
@@ -90,7 +90,7 @@
 												{row.item.label}
 											</div>
 											{#if row.depth === 0}
-												<div class="truncate text-[0.625rem] text-muted-foreground">
+												<div class="truncate text-xs text-muted-foreground">
 													{row.item.description}
 												</div>
 											{/if}

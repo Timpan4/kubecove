@@ -498,14 +498,14 @@ export function ExecTab({
 									<div className="truncate font-mono text-xs">
 										{podExecCommandText(session.command)}
 									</div>
-									<div className="truncate text-[11px] text-muted-foreground">
+									<div className="truncate text-xs text-muted-foreground">
 										{session.container
 											? `Container ${session.container}`
 											: "Default container"}
 									</div>
 									{showKubeconfigSourceLabels &&
 										session.kubeconfigSourceLabel && (
-											<div className="truncate text-[11px] text-muted-foreground">
+											<div className="truncate text-xs text-muted-foreground">
 												{session.kubeconfigSourceLabel}
 											</div>
 										)}

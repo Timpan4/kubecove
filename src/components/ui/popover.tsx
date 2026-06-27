@@ -1,7 +1,7 @@
 import type * as React from "react";
 import { Popover as PopoverPrimitive } from "radix-ui";
 
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 
 function Popover({
 	...props
@@ -27,7 +27,7 @@ function PopoverContent({
 				data-slot="popover-content"
 				align={align}
 				sideOffset={sideOffset}
-				className={cn(
+				className={cnfast(
 					"z-popover w-72 rounded-md border bg-surface-2 p-4 text-popover-foreground shadow-xl outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
 					className,
 				)}

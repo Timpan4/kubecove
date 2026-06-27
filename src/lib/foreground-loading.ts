@@ -12,7 +12,7 @@ function emit() {
 	}
 }
 
-function subscribe(listener: Listener) {
+export function subscribeForegroundLoading(listener: Listener) {
 	listeners.add(listener);
 	return () => listeners.delete(listener);
 }
@@ -52,5 +52,5 @@ export async function withForegroundLoad<T>(
 }
 
 export function useForegroundLoading(): number {
-	return useSyncExternalStore(subscribe, snapshot, snapshot);
+	return useSyncExternalStore(subscribeForegroundLoading, snapshot, snapshot);
 }

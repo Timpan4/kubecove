@@ -1,5 +1,5 @@
 import type * as React from "react"
-import { cn } from "@/lib/utils"
+import { cnfast } from "@/lib/utils"
 
 /**
  * Segmented multi-choice control. Renders as a muted track with a raised active pill.
@@ -29,7 +29,7 @@ export function SegmentedControl<T extends string>({
 		<div
 			role="radiogroup"
 			aria-label={ariaLabel}
-			className={cn(
+			className={cnfast(
 				"inline-flex items-center rounded-lg bg-surface-0 p-0.5 ring-1 ring-border/60",
 				className
 			)}
@@ -43,7 +43,7 @@ export function SegmentedControl<T extends string>({
 						role="radio"
 						aria-checked={active}
 						onClick={() => onChange(option.value)}
-						className={cn(
+						className={cnfast(
 							"inline-flex cursor-pointer items-center gap-1.5 rounded-md font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 [&_svg]:pointer-events-none [&_svg]:size-3.5",
 							size === "md" ? "h-7 px-2.5 text-xs" : "h-6 px-2 text-xs",
 							active

@@ -24,6 +24,7 @@ describe("svelte detail panel frame", () => {
 		expect(clampDetailPanelSize(20)).toBe(33);
 		expect(clampDetailPanelSize(50)).toBe(50);
 		expect(clampDetailPanelSize(90)).toBe(70);
+		expect(clampDetailPanelSize(12, 18)).toBe(18);
 	});
 
 	test("converts pointer position into right-side detail size", () => {
@@ -31,6 +32,7 @@ describe("svelte detail panel frame", () => {
 		expect(detailPanelSizeFromPointer({ width: 1000, right: 1000 }, 900)).toBe(33);
 		expect(detailPanelSizeFromPointer({ width: 1000, right: 1000 }, 100)).toBe(70);
 		expect(detailPanelSizeFromPointer({ width: 0, right: 1000 }, 600)).toBe(40);
+		expect(detailPanelSizeFromPointer({ width: 0, right: 1000 }, 600, 22, 18)).toBe(22);
 	});
 
 	test("maps keyboard resize keys to the accessible value range", () => {
@@ -41,6 +43,7 @@ describe("svelte detail panel frame", () => {
 		expect(detailPanelSizeFromKey(40, "Home")).toBe(33);
 		expect(detailPanelSizeFromKey(40, "End")).toBe(70);
 		expect(detailPanelSizeFromKey(40, "Tab")).toBeNull();
+		expect(detailPanelSizeFromKey(19, "ArrowRight", 18)).toBe(18);
 	});
 
 	test("keeps resize handle accessible", () => {

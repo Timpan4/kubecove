@@ -99,7 +99,7 @@
 					onclick={() => (incidentFilter = option.id)}
 				>
 					{option.label}
-					<Badge variant="secondary" class="ml-1 rounded-sm px-1.5">{option.count}</Badge>
+					<Badge variant="secondary" class="ml-1 rounded-sm px-1.5 tabular-nums">{option.count}</Badge>
 				</Button>
 			{/each}
 		</div>

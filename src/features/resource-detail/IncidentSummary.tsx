@@ -38,8 +38,8 @@ function SummaryBadge({
 	return (
 		<Badge
 			variant={badgeStyle.variant}
-			className={cn(
-				"rounded-sm px-1.5 py-0 text-[0.6875rem] shadow-none",
+			className={cnfast(
+				"rounded-sm px-1.5 py-0 text-xs shadow-none",
 				badgeStyle.className,
 			)}
 		>
@@ -71,7 +71,7 @@ export function IncidentSummary({
 			<CardContent className="flex flex-col gap-3">
 				<div className="flex flex-wrap items-start justify-between gap-2">
 					<div className="min-w-0">
-						<div className="text-[0.72rem] font-semibold uppercase text-muted-foreground">
+						<div className="text-xs font-semibold uppercase text-muted-foreground">
 							Incident summary
 						</div>
 						<div className="mt-1 text-sm font-semibold text-foreground [overflow-wrap:anywhere]">
@@ -111,13 +111,13 @@ export function IncidentSummary({
 						return (
 							<div
 								key={signal.id}
-								className={cn(
+								className={cnfast(
 									"flex items-start justify-between gap-2 rounded-md border border-l-4 px-2.5 py-1.5",
 									toneRowClassName(signal.tone),
 								)}
 							>
 								<div className="min-w-0">
-									<div className="text-[0.78rem] font-semibold text-foreground">
+									<div className="text-xs font-semibold text-foreground">
 										{signal.label}
 									</div>
 									<div className="mt-1 text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]">
@@ -126,8 +126,8 @@ export function IncidentSummary({
 								</div>
 								<Badge
 									variant={badgeStyle.variant}
-									className={cn(
-										"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
+									className={cnfast(
+										"rounded-full px-2 py-0 text-xs shadow-none",
 										badgeStyle.className,
 									)}
 								>

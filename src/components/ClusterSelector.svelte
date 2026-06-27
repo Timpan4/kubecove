@@ -64,7 +64,7 @@
 	<div class="flex flex-row items-center gap-2">
 		<span
 			id="cluster-select-label"
-			class="whitespace-nowrap text-[0.6875rem] font-bold uppercase tracking-wide text-muted-foreground"
+			class="whitespace-nowrap text-xs font-bold uppercase tracking-wide text-muted-foreground"
 		>
 			Cluster Context:
 		</span>

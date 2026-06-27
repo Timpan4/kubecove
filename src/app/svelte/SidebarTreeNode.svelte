@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { ChevronRight } from "lucide-svelte";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import { nodeIdToString, type TreeNode, type TreeNodeId } from "@/lib/tree-nav";
 	import SidebarTreeNode from "./SidebarTreeNode.svelte";
 	import {
@@ -93,14 +93,14 @@
 
 <li>
 	<div
-		class={cn(
-			"relative flex h-[26px] cursor-pointer select-none items-center gap-1 rounded-none text-[0.8125rem] text-sidebar-foreground/80 transition-colors hover:bg-surface-1 hover:text-sidebar-accent-foreground",
+		class={cnfast(
+			"relative flex h-[26px] cursor-pointer select-none items-center gap-1 rounded-none text-xs text-sidebar-foreground/80 transition-colors hover:bg-surface-1 hover:text-sidebar-accent-foreground",
 			isDisabled &&
 				"cursor-default text-muted-foreground/70 hover:bg-transparent hover:text-muted-foreground/70",
 			isSelected &&
 				"bg-primary/10 text-sidebar-accent-foreground before:absolute before:bottom-0 before:left-0 before:top-0 before:w-0.5 before:rounded-r-sm before:bg-primary",
 			depth === 0 &&
-				"text-[0.6875rem] font-bold uppercase tracking-wide text-muted-foreground/70 hover:bg-transparent hover:text-foreground/70",
+				"text-xs font-bold uppercase tracking-wide text-muted-foreground/70 hover:bg-transparent hover:text-foreground/70",
 			depthClass,
 		)}
 		data-depth={depth}
@@ -115,7 +115,7 @@
 	>
 		<button
 			type="button"
-			class={cn(
+			class={cnfast(
 				"flex size-[18px] shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-muted-foreground transition-colors hover:text-foreground",
 				!hasChildren && "invisible",
 			)}
@@ -124,12 +124,12 @@
 			onclick={toggleNode}
 		>
 			<ChevronRight
-				class={cn("size-3 shrink-0 transition-transform", isExpanded && "rotate-90")}
+				class={cnfast("size-3 shrink-0 transition-transform", isExpanded && "rotate-90")}
 				aria-hidden="true"
 			/>
 		</button>
 		<NodeIcon
-			class={cn(
+			class={cnfast(
 				"size-3.5 shrink-0",
 				depth === 0 && "size-3",
 				visual.className,

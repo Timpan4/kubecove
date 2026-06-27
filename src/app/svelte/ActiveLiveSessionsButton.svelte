@@ -179,11 +179,11 @@
 										<Terminal class="size-3 shrink-0" />
 										<span class="truncate">{execSessionLabel(session)}</span>
 									</div>
-									<div class="truncate font-mono text-[11px] text-muted-foreground">
+									<div class="truncate font-mono text-xs text-muted-foreground">
 										{podExecCommandText(session.command)}
 									</div>
 									{#if showKubeconfigSourceLabels && session.kubeconfigSourceLabel}
-										<div class="truncate text-[11px] text-muted-foreground">
+										<div class="truncate text-xs text-muted-foreground">
 											{session.kubeconfigSourceLabel}
 										</div>
 									{/if}
@@ -219,14 +219,14 @@
 							<div class="flex min-w-0 items-center justify-between gap-2">
 								<div class="min-w-0">
 									<div class="truncate text-xs font-medium">{sessionLabel(session)}</div>
-									<div class="truncate font-mono text-[11px] text-muted-foreground">
+									<div class="truncate font-mono text-xs text-muted-foreground">
 										{localUrl}
 									</div>
-									<div class="truncate text-[11px] text-muted-foreground">
+									<div class="truncate text-xs text-muted-foreground">
 										Resolved {sessionResolution(session)}
 									</div>
 									{#if showKubeconfigSourceLabels && session.kubeconfigSourceLabel}
-										<div class="truncate text-[11px] text-muted-foreground">
+										<div class="truncate text-xs text-muted-foreground">
 											{session.kubeconfigSourceLabel}
 										</div>
 									{/if}

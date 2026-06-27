@@ -1,15 +1,20 @@
 <script lang="ts">
 	import { Handle, Position, type NodeProps } from "@xyflow/svelte";
 	import { Badge } from "@/components/ui/svelte";
-	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
-	import { formatExactTimestamp } from "@/components/timestamp-format";
 	import { getResourceKindVisual } from "@/app/svelte/resourceVisuals";
 	import { formatCompactResourceMetrics } from "@/lib/resource-metrics";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import { smartKubernetesName } from "./ownership-node-name";
-	import type { FlowTopologyNode, FlowTopologyNodeData } from "./topologyModel";
-
-	type BadgeTone = keyof typeof STATUS_BADGE_STYLES;
+	import {
+		topologyRailTone,
+		topologyReadyText,
+		topologyReadyTone,
+		topologyRestartTone,
+		topologyStatusTone,
+		type FlowTopologyNode,
+		type FlowTopologyNodeData,
+		type TopologyStoplightTone,
+	} from "./topologyModel";
 
 	let {
 		data,
@@ -25,47 +30,52 @@
 	const displayName = $derived(
 		node ? smartKubernetesName(node.name, node.kind) : nodeData.label,
 	);
-	const scopeText = $derived(node?.namespace ?? "cluster");
+	const kindLabel = $derived((node?.kind ?? nodeData.kind)?.toUpperCase());
+	const scopeText = $derived(node?.namespace ?? "Cluster scoped");
 	const age = $derived(node?.summary.age);
-	const exactAge = $derived(
-		formatExactTimestamp(node?.summary.createdAt, "local", "second"),
-	);
-	const ageTitle = $derived(exactAge ? `Created ${exactAge}` : age);
 	const metricHint = $derived(
 		node ? formatCompactResourceMetrics(node.metrics ?? node.summary.metrics) : undefined,
 	);
-	const primaryStatus = $derived(
+	const portHint = $derived(
 		nodeData.showPortHints && node?.portHints?.length
 			? node.portHints.slice(0, 3).join(", ")
-			: node?.status,
+			: undefined,
 	);
+	const lifecycleStatus = $derived(node?.status || node?.health);
+	const statusText = $derived(portHint || lifecycleStatus || "No status");
+	const readyText = $derived(topologyReadyText(node?.summary.ready, lifecycleStatus));
 	const restartCount = $derived(node?.summary.restarts ?? 0);
-	const healthStyle = $derived(STATUS_BADGE_STYLES[healthTone(node?.health)]);
+	const restartText = $derived(
+		restartCount > 0
+			? `${restartCount} ${restartCount === 1 ? "restart" : "restarts"}`
+			: undefined,
+	);
+	const metaText = $derived(
+		[scopeText, age, metricHint].filter((value): value is string => Boolean(value)).join(" · "),
+	);
+	const statusTone = $derived(topologyStatusTone(lifecycleStatus));
+	const readyTone = $derived(topologyReadyTone(node?.summary.ready, lifecycleStatus));
+	const restartTone = $derived(topologyRestartTone(restartCount));
+	const railTone = $derived(
+		topologyRailTone(lifecycleStatus, node?.summary.ready, restartCount, node?.health),
+	);
+	const statusTitle = $derived(
+		[statusText, readyText, metaText, restartText]
+			.filter((value): value is string => Boolean(value))
+			.join(" · "),
+	);
 	const isSelected = $derived(Boolean(selected || nodeData.selected));
 
-	function healthTone(health: string | undefined): BadgeTone {
-		if (health === "healthy") return "success";
-		if (health === "attention") return "warning";
-		if (health === "degraded") return "error";
-		if (health === "restarted") return "info";
-		return "neutral";
+	function stoplightClass(tone: TopologyStoplightTone): string {
+		return `resource-topology-stoplight-${tone}`;
+	}
+
+	function chipClass(tone: TopologyStoplightTone, extra = ""): string {
+		return cnfast("resource-topology-status-chip", `resource-topology-chip-${tone}`, extra);
 	}
 </script>
 
-<div
-	class={cn(
-		"resource-topology-node relative grid h-full min-h-[104px] w-full grid-rows-[20px_20px_20px] content-center gap-2.5 overflow-hidden rounded-md border px-4 py-2.5 text-xs shadow-sm transition-opacity",
-		"svelte-ownership-resource-node border-2 border-l-[5px] border-[var(--topology-node-border)] bg-card text-card-foreground",
-		visual.surfaceClassName,
-		node?.health === "degraded" && "resource-topology-node-health-degraded",
-		node?.health === "attention" && "resource-topology-node-health-attention",
-		node?.health === "restarted" && "resource-topology-node-health-restarted",
-		nodeData.connected && "resource-topology-node-connected ring-1 ring-primary/30",
-		isSelected && "resource-topology-node-selected ring-2 ring-primary",
-		nodeData.dimmed && "opacity-35",
-	)}
-	data-selected={isSelected ? "true" : undefined}
->
+<div class="relative h-full w-full overflow-visible" data-selected={isSelected ? "true" : undefined}>
 	<Handle
 		type="target"
 		position={targetPosition}
@@ -78,92 +88,71 @@
 		isConnectable={false}
 		style="opacity: 0"
 	/>
-
-	<div class="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2">
-		<Icon class={cn("size-4 shrink-0", visual.className)} aria-hidden="true" />
-		<span class="min-w-0 truncate text-[0.9rem] font-bold leading-tight" title={node?.name ?? displayName}>
+	<div
+		class={cnfast(
+			"resource-topology-node relative flex h-full min-h-[90px] w-full flex-col overflow-hidden rounded-md border px-3.5 py-3 pl-5 text-left text-xs transition-opacity",
+			"svelte-ownership-resource-node bg-card text-card-foreground",
+			stoplightClass(railTone),
+			visual.surfaceClassName,
+			nodeData.connected && "resource-topology-node-connected ring-1 ring-primary/30",
+			isSelected && "resource-topology-node-selected ring-2 ring-primary",
+			nodeData.dimmed && "opacity-35",
+		)}
+	>
+	<div class="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-2">
+		<Icon class={cnfast("size-3 shrink-0", visual.className)} aria-hidden="true" />
+		<span
+			class="min-w-0 truncate text-sm font-semibold leading-none text-foreground"
+			title={node ? `${node.kind}/${node.name}` : displayName}
+		>
 			{displayName}
 		</span>
-		{#if node?.health}
-			<Badge
-				variant={healthStyle.variant}
-				class={cn("h-5 shrink-0 rounded-sm px-2 text-[0.625rem] font-semibold", healthStyle.className)}
-			>
-				{node.health}
-			</Badge>
-		{/if}
-	</div>
-
-	<div class="flex min-w-0 items-center gap-2 whitespace-nowrap text-[0.6875rem] text-muted-foreground">
-		{#if node}
+		{#if node && kindLabel}
 			<Badge
 				variant="outline"
-				class={cn(
-					"h-5 max-w-[7.5rem] shrink-0 rounded-sm px-2 text-[0.625rem] font-semibold",
+				class={cnfast(
+					"h-5 max-w-[5.75rem] shrink-0 rounded-sm px-2 text-[0.625rem] font-semibold uppercase leading-none tracking-[0.04em]",
 					visual.badgeClassName,
 				)}
 				title={node.kind}
 			>
-				<span class="truncate">{node.kind}</span>
+				<span class="truncate">{kindLabel}</span>
 			</Badge>
-			<Badge
-				variant="outline"
-				class="h-5 max-w-[6rem] shrink-0 rounded-sm border-border/55 bg-muted/25 px-2 text-[0.625rem] font-medium text-muted-foreground"
-				title={scopeText}
-			>
-				<span class="truncate">{scopeText}</span>
-			</Badge>
-			{#if age}
-				<Badge
-					variant="outline"
-					class="h-5 shrink-0 rounded-sm border-border/55 bg-muted/25 px-2 text-[0.625rem] font-medium text-muted-foreground"
-					title={ageTitle}
-				>
-					{age}
-				</Badge>
-			{/if}
 		{/if}
 	</div>
 
-	<div class="flex min-w-0 items-center justify-between gap-3">
-		<div class="flex min-w-0 items-center gap-2">
-			{#if primaryStatus}
-				<Badge
-					variant="outline"
-					class="h-5 max-w-[8.5rem] rounded-sm border-primary/45 bg-primary/10 px-2 text-[0.625rem] font-semibold"
-					title={primaryStatus}
-				>
-					<span class="truncate">{primaryStatus}</span>
-				</Badge>
-			{/if}
-			{#if node?.summary.ready}
-				<Badge
-					variant="outline"
-					class="h-5 rounded-sm border-emerald-500/30 bg-emerald-500/10 px-2 text-[0.625rem] font-semibold text-emerald-300"
-					title={node.summary.ready}
-				>
-					<span class="truncate">{node.summary.ready}</span>
-				</Badge>
-			{/if}
-			{#if metricHint}
-				<Badge
-					variant="outline"
-					class="h-5 max-w-[7rem] rounded-sm px-2 text-[0.625rem] text-muted-foreground"
-					title={metricHint}
-				>
-					<span class="truncate">{metricHint}</span>
-				</Badge>
-			{/if}
+	{#if node && metaText}
+		<div
+			class="mt-1.5 min-w-0 truncate pl-6 text-xs leading-none text-muted-foreground"
+			title={metaText}
+		>
+			{metaText}
 		</div>
-		<div class="flex shrink-0 items-center gap-2">
-			{#if restartCount > 0}
-				<Badge
-					variant="outline"
-					class="h-5 rounded-sm border-red-400/35 bg-red-500/10 px-2 text-[0.625rem] font-semibold text-red-300"
-				>
-					{restartCount} restarts
-				</Badge>
-			{/if}
-		</div>
+	{/if}
+
+	<div
+		class="mt-auto flex min-w-0 items-center gap-1.5 border-t border-border/35 pt-1.5 text-xs leading-none"
+		title={statusTitle}
+	>
+		<span
+			class={cnfast(
+				"resource-topology-status-dot size-2 shrink-0 rounded-full",
+				`resource-topology-chip-${statusTone}`,
+			)}
+		></span>
+		<span class={chipClass(statusTone)}>
+			<span class="truncate">{statusText}</span>
+		</span>
+		{#if readyText}
+			<span class={chipClass(readyTone)}>
+				<span class="truncate">{readyText}</span>
+			</span>
+		{/if}
+		{#if restartText}
+			<span class={chipClass(restartTone, "ml-auto")}>
+				<span class="truncate">{restartText}</span>
+			</span>
+		{/if}
+	</div>
 	</div>
 </div>

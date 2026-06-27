@@ -9,23 +9,39 @@ export interface HorizontalResizeRect {
 	right: number;
 }
 
-export function clampDetailPanelSize(size: number): number {
-	const maxDetailSize = 100 - MAIN_PANEL_MIN_SIZE;
-	return Math.min(maxDetailSize, Math.max(DETAIL_PANEL_MIN_SIZE, size));
+export function clampDetailPanelSize(
+	size: number,
+	minSize = DETAIL_PANEL_MIN_SIZE,
+	mainMinSize = MAIN_PANEL_MIN_SIZE,
+): number {
+	const maxDetailSize = 100 - mainMinSize;
+	return Math.min(maxDetailSize, Math.max(minSize, size));
 }
 
 export function detailPanelSizeFromPointer(
 	rect: HorizontalResizeRect,
 	clientX: number,
+	defaultSize = DETAIL_PANEL_DEFAULT_SIZE,
+	minSize = DETAIL_PANEL_MIN_SIZE,
+	mainMinSize = MAIN_PANEL_MIN_SIZE,
 ): number {
-	if (rect.width <= 0) return DETAIL_PANEL_DEFAULT_SIZE;
-	return clampDetailPanelSize(((rect.right - clientX) / rect.width) * 100);
+	if (rect.width <= 0) return defaultSize;
+	return clampDetailPanelSize(((rect.right - clientX) / rect.width) * 100, minSize, mainMinSize);
 }
 
-export function detailPanelSizeFromKey(currentSize: number, key: string): number | null {
-	if (key === "ArrowLeft") return clampDetailPanelSize(currentSize + DETAIL_PANEL_RESIZE_STEP);
-	if (key === "ArrowRight") return clampDetailPanelSize(currentSize - DETAIL_PANEL_RESIZE_STEP);
-	if (key === "Home") return DETAIL_PANEL_MIN_SIZE;
-	if (key === "End") return 100 - MAIN_PANEL_MIN_SIZE;
+export function detailPanelSizeFromKey(
+	currentSize: number,
+	key: string,
+	minSize = DETAIL_PANEL_MIN_SIZE,
+	mainMinSize = MAIN_PANEL_MIN_SIZE,
+): number | null {
+	if (key === "ArrowLeft") {
+		return clampDetailPanelSize(currentSize + DETAIL_PANEL_RESIZE_STEP, minSize, mainMinSize);
+	}
+	if (key === "ArrowRight") {
+		return clampDetailPanelSize(currentSize - DETAIL_PANEL_RESIZE_STEP, minSize, mainMinSize);
+	}
+	if (key === "Home") return minSize;
+	if (key === "End") return 100 - mainMinSize;
 	return null;
 }

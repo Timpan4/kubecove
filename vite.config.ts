@@ -33,6 +33,9 @@ export default defineConfig(async ({ mode }) => {
         "@": "/src",
       },
     },
+    optimizeDeps: {
+      exclude: ["@xyflow/svelte"],
+    },
 
     // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
     //

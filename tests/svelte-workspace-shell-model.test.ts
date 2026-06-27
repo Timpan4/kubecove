@@ -34,7 +34,7 @@ const widgets: DiscoveredResourceKind = {
 	namespaced: true,
 };
 
-const clusters: DiscoveredResourceKind = {
+const clusterThings: DiscoveredResourceKind = {
 	group: "example.com",
 	version: "v1",
 	apiVersion: "example.com/v1",
@@ -77,8 +77,8 @@ function findNode(nodes: TreeNode[], label: string): TreeNode {
 
 describe("svelte workspace shell model", () => {
 	test("filters curated kinds from discovered tree additions", () => {
-		expect(extraDiscoveredKinds([widgets, deployment, clusters])).toEqual([
-			clusters,
+		expect(extraDiscoveredKinds([widgets, deployment, clusterThings])).toEqual([
+			clusterThings,
 			widgets,
 		]);
 	});
@@ -86,7 +86,7 @@ describe("svelte workspace shell model", () => {
 	test("builds opened-workspace sidebar parity tree from query data", () => {
 		const nodes = buildSidebarTree({
 			namespaces,
-			resourceKinds: [widgets, deployment, clusters],
+			resourceKinds: [widgets, deployment, clusterThings],
 			argoDetected: true,
 			fluxDetection: fluxDetected,
 			detectingGitOps: false,
@@ -423,10 +423,14 @@ describe("svelte workspace shell model", () => {
 		expect(shell).toContain(
 			'import ResourceDetailPanel from "@/features/resource-detail/ResourceDetailPanel.svelte"',
 		);
-		expect(shell).toContain(
-			'const resourceInspectorOpen = $derived(viewMode === "resources" && focusedResource !== null)',
-		);
-	expect(shell).toContain("<DetailPanelFrame detailOpen={resourceInspectorOpen}>");
+	expect(shell).toContain(
+		"const resourceInspectorOpen = $derived(focusedResource !== null)",
+	);
+	expect(shell).toContain('const resourceInspectorSizeKey = $derived(viewMode === "argo" ? "gitops" : "resource")');
+	expect(shell).toContain('const resourceInspectorDefaultSize = $derived(viewMode === "argo" ? 30 : 40)');
+	expect(shell).toContain('const resourceInspectorMinSize = $derived(viewMode === "argo" ? 25 : 33)');
+	expect(shell).toContain("detailOpen={resourceInspectorOpen}");
+	expect(shell).toContain("sizeKey={resourceInspectorSizeKey}");
 	expect(shell).toContain("selectedResource={focusedResource}");
 	expect(shell).toContain("focusedResource = resource;");
 	expect(shell).toContain("focusedResource = null;");

@@ -239,7 +239,10 @@
 			dismissedWorkspaceId: dismissedPortForwardRestoreWorkspaceId,
 		}),
 	);
-	const resourceInspectorOpen = $derived(viewMode === "resources" && focusedResource !== null);
+	const resourceInspectorOpen = $derived(focusedResource !== null);
+	const resourceInspectorSizeKey = $derived(viewMode === "argo" ? "gitops" : "resource");
+	const resourceInspectorDefaultSize = $derived(viewMode === "argo" ? 30 : 40);
+	const resourceInspectorMinSize = $derived(viewMode === "argo" ? 25 : 33);
 
 	onMount(() => {
 		if (openSettingsOnWorkspaceMount) openSettings();
@@ -509,6 +512,13 @@
 		viewMode = "resources";
 	}
 
+	function inspectResource(resource: ResourceSummary) {
+		targetHelmRelease = null;
+		targetGitOpsApplication = null;
+		restoreTargetResource = null;
+		focusedResource = resource;
+	}
+
 	function toggleSection(id: string) {
 		expandedSections = expandedSections.includes(id)
 			? expandedSections.filter((item) => item !== id)
@@ -585,7 +595,7 @@
 				>
 					<Search class="size-3.5" aria-hidden="true" />
 				<span>Search resources...</span>
-				<kbd class="rounded border bg-muted px-1 py-px font-mono text-[10px] text-muted-foreground">
+				<kbd class="rounded border bg-muted px-1 py-px font-mono text-xs text-muted-foreground">
 					{SEARCH_SHORTCUT_HINT}
 				</kbd>
 			</button>
@@ -650,7 +660,12 @@
 		{/if}
 
 		<main class="flex min-h-0 flex-1 overflow-hidden">
-			<DetailPanelFrame detailOpen={resourceInspectorOpen}>
+			<DetailPanelFrame
+				detailOpen={resourceInspectorOpen}
+				sizeKey={resourceInspectorSizeKey}
+				detailDefaultSize={resourceInspectorDefaultSize}
+				detailMinSize={resourceInspectorMinSize}
+			>
 				{#snippet detailPanel()}
 					{#if focusedResource}
 						<section class="flex h-full min-h-0 flex-col bg-surface-1">
@@ -747,8 +762,9 @@
 						{targetGitOpsApplication}
 						{initialIncidentFilter}
 						initialPathState={initialSurfacesPathState}
-						onOpenResources={openResources}
-						onResourceSelect={selectResource}
+					onOpenResources={openResources}
+					onResourceInspect={inspectResource}
+					onResourceSelect={selectResource}
 						onTargetHelmReleaseResolved={clearTargetHelmRelease}
 						onTargetGitOpsApplicationResolved={clearTargetGitOpsApplication}
 						onPathStateChange={(state) => (surfacesPathState = state)}

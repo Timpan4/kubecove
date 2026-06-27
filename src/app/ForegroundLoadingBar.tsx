@@ -1,5 +1,5 @@
 import { useForegroundLoading } from "@/lib/foreground-loading";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 
 export function ForegroundLoadingBar() {
 	const activeLoads = useForegroundLoading();
@@ -8,7 +8,7 @@ export function ForegroundLoadingBar() {
 	return (
 		<div
 			aria-hidden="true"
-			className={cn(
+			className={cnfast(
 				"h-0.5 overflow-hidden bg-transparent opacity-0 transition-opacity",
 				active && "opacity-100",
 			)}

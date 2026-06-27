@@ -208,7 +208,7 @@
 					<CommandItem value={resourceEntryKey(resource)} onSelect={() => selectResource(resource)}>
 						<Box class="shrink-0 text-muted-foreground" />
 						<span class="truncate">{resource.name}</span>
-						<span class="ml-auto flex shrink-0 items-center gap-2 text-[10px] text-muted-foreground">
+						<span class="ml-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
 							{#if resource.namespace}<span>{resource.namespace}</span>{/if}
 							<span>{resource.kind}</span>
 						</span>

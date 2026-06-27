@@ -34,7 +34,7 @@ function UsageBreakdownRow({
 						{item.label}
 					</div>
 					{!child && (
-						<div className="truncate text-[0.625rem] text-muted-foreground">
+						<div className="truncate text-xs text-muted-foreground">
 							{item.description}
 						</div>
 					)}
@@ -128,7 +128,7 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 	);
 
 	return (
-		<footer className="flex h-7 shrink-0 items-center justify-end gap-2 border-t bg-sidebar px-4 text-[0.6875rem] text-muted-foreground">
+		<footer className="flex h-7 shrink-0 items-center justify-end gap-2 border-t bg-sidebar px-4 text-xs text-muted-foreground">
 			{metrics && !error ? (
 				<Popover
 					open={processTreeOpen}
@@ -139,7 +139,7 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 							type="button"
 							variant="ghost"
 							size="sm"
-							className="h-6 min-w-0 px-2 text-[0.6875rem] font-normal text-muted-foreground hover:text-foreground"
+							className="h-6 min-w-0 px-2 text-xs font-normal text-muted-foreground hover:text-foreground"
 							aria-label="Show app process tree"
 						>
 							{content}
@@ -151,8 +151,8 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 						sideOffset={6}
 						className="w-[31rem] max-w-[calc(100vw-2rem)] rounded-md border bg-popover p-0 text-popover-foreground shadow-xl"
 					>
-						<div className="max-h-[min(58vh,28rem)] w-full overflow-auto p-2 text-[0.6875rem]">
-							<div className="px-1 pb-1 text-[0.625rem] font-semibold uppercase text-muted-foreground">
+						<div className="max-h-[min(58vh,28rem)] w-full overflow-auto p-2 text-xs">
+							<div className="px-1 pb-1 text-xs font-semibold uppercase text-muted-foreground">
 								App process tree
 							</div>
 							<table className="w-full border-separate border-spacing-x-0 border-spacing-y-0.5">
@@ -163,7 +163,7 @@ export function AppUsageFooter({ visible }: { visible: boolean }) {
 									<col className="w-[21%]" />
 								</colgroup>
 								<thead>
-									<tr className="text-[0.625rem] font-semibold uppercase text-muted-foreground">
+									<tr className="text-xs font-semibold uppercase text-muted-foreground">
 										<th className="px-1 pb-1 text-left">Process</th>
 										<th className="px-1 pb-1 text-right">CPU</th>
 										<th className="px-1 pb-1 text-right">Memory</th>

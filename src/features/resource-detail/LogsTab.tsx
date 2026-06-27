@@ -285,15 +285,15 @@ export function LogsTab({
 					</div>
 				) : (
 					<div
-						className={cn(
-							"min-w-full font-mono text-[11px] leading-5",
+						className={cnfast(
+							"min-w-full font-mono text-xs leading-5",
 							!wrapLines && "w-max",
 						)}
 					>
 						{visibleLines.map((line) => (
 							<div
 								key={`${line.index}:${line.raw}`}
-								className={cn(
+								className={cnfast(
 									"flex min-w-full border-b border-border/50 last:border-b-0",
 									!wrapLines && "w-max",
 								)}

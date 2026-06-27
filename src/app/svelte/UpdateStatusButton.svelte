@@ -9,7 +9,7 @@
 	} from "lucide-svelte";
 	import { Badge, Button } from "@/components/ui/svelte";
 	import { isAppUpdatesEnabled } from "@/lib/release-channel";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { AppUpdateState } from "@/features/app-updates/store";
 	import { appUpdateStore } from "./appUpdateStore";
 
@@ -74,7 +74,7 @@
 			aria-expanded={panelOpen}
 			onclick={() => (manualOpen = !manualOpen)}
 		>
-			<RotateCw class={cn(update.status === "checking" && "animate-spin")} />
+			<RotateCw class={cnfast(update.status === "checking" && "animate-spin")} />
 			{#if hasUpdate || update.status === "installed"}
 				<span class="absolute right-1 top-1 size-2 rounded-full bg-primary"></span>
 			{/if}

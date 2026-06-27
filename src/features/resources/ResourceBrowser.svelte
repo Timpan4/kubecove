@@ -1230,7 +1230,7 @@
 	{/if}
 </div>
 
-{#snippet SummaryField(label: string, value: string | number | null | undefined, title?: string)}
+{#snippet SummaryField(label: string, value: string | number | null | undefined, title: string | undefined = undefined)}
 	<div class="min-w-0">
 		<div class="text-[11px] font-medium uppercase text-muted-foreground">{label}</div>
 		<div class="min-w-0 truncate text-sm text-foreground" {title}>{value ?? "-"}</div>

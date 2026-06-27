@@ -332,19 +332,19 @@
 					<div class="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3">
 						<div class="min-w-0">
 							<div class="truncate text-xs font-medium">{sessionTitle(session)}</div>
-							<div class="truncate font-mono text-[11px] text-muted-foreground">
+							<div class="truncate font-mono text-xs text-muted-foreground">
 								{portForwardLocalUrl(session)}
 							</div>
-							<div class="truncate text-[11px] text-muted-foreground">
+							<div class="truncate text-xs text-muted-foreground">
 								{sessionResolution(session)}
 							</div>
 							{#if showKubeconfigSourceLabels && session.kubeconfigSourceLabel}
-								<div class="truncate text-[11px] text-muted-foreground">
+								<div class="truncate text-xs text-muted-foreground">
 									{session.kubeconfigSourceLabel}
 								</div>
 							{/if}
 							{#if session.lastError}
-								<div class="text-[11px] text-destructive">{session.lastError}</div>
+								<div class="text-xs text-destructive">{session.lastError}</div>
 							{/if}
 						</div>
 						<div class="flex items-center gap-2">

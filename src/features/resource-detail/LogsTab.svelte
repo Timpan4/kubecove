@@ -148,7 +148,7 @@
 						</div>
 					{:else}
 						<div
-							class="min-w-full font-mono text-[11px] leading-5 {logWrapLines ? '' : 'w-max'}"
+							class="min-w-full font-mono text-xs leading-5 {logWrapLines ? '' : 'w-max'}"
 						>
 							{#each visibleLogLines as line (`${line.index}:${line.raw}`)}
 								<div class="flex min-w-full border-b border-border/50 last:border-b-0 {logWrapLines ? '' : 'w-max'}">

@@ -54,7 +54,7 @@ export function MetadataBadges({ value }: { value: unknown }) {
 				<Badge
 					key={key}
 					variant="outline"
-					className="h-auto min-h-6 min-w-0 max-w-full justify-start overflow-hidden rounded-sm px-2 py-1 text-left text-[0.6875rem] leading-snug whitespace-nowrap shadow-none"
+					className="h-auto min-h-6 min-w-0 max-w-full justify-start overflow-hidden rounded-sm px-2 py-1 text-left text-xs leading-snug whitespace-nowrap shadow-none"
 					style={metadataBadgeStyle(key)}
 				>
 					<span className="shrink-0 font-semibold">{key}</span>

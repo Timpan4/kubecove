@@ -48,7 +48,7 @@ Status date: 2026-06-22. Checked items are based on repo inspection and automate
 - [x] Svelte resource browser, resource detail, YAML, events, logs, exec, port-forward, and topology surfaces exist.
 - [x] Svelte GitOps, Helm, RBAC, incidents, and live-session list/status surfaces exist.
 - [x] Automated evidence recorded on 2026-06-22: `bun run svelte:check`, `bun run typecheck`, and `bun test` pass.
-- [x] Default runtime gate reconciled: new installs default to React until Svelte cutover evidence is complete.
+- [x] Default runtime switched: new installs default to Svelte while React remains selectable as a fallback.
 - [ ] Record browser-backed app-wide launch, resource list, YAML detail, and 4k topology measurements.
 - [ ] Prove at least one major app-wide memory or CPU-heavy bottleneck improves by 25% or more.
 - [ ] Run manual Svelte and React fallback Tauri smoke against a readable cluster.

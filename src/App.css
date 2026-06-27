@@ -273,7 +273,11 @@
 @layer components {
   .resource-topology-node {
     background: var(--topology-node-bg, var(--card)) !important;
-    border-color: var(--topology-node-border, var(--border)) !important;
+    border-color:
+      var(--topology-node-border-top, var(--topology-node-border, var(--border)))
+      var(--topology-node-border-right, var(--topology-node-border, var(--border)))
+      var(--topology-node-border-bottom, var(--topology-node-border, var(--border)))
+      var(--topology-node-border-left, var(--topology-node-border, var(--border))) !important;
   }
 
   .resource-tone-workload-surface {
@@ -331,12 +335,13 @@
   .resource-tone-cluster-surface,
   .resource-tone-argo-surface,
   .resource-tone-default-surface {
-    --topology-node-bg: color-mix(in oklch, var(--resource-tone-color) 15%, var(--card));
+    --topology-node-bg: color-mix(in oklch, var(--resource-tone-color) 20%, var(--card));
     --topology-node-border: color-mix(
       in oklch,
-      var(--resource-tone-color) 38%,
+      var(--resource-tone-color) 62%,
       var(--border)
     );
+    --topology-node-glow: color-mix(in oklch, var(--resource-tone-color) 60%, transparent);
   }
 
   .resource-tone-workload-badge {
@@ -399,19 +404,52 @@
     color: color-mix(in oklch, var(--resource-badge-color) 78%, var(--foreground)) !important;
   }
 
+  .resource-topology-node-health-healthy {
+    --topology-health-color: oklch(0.78 0.13 164);
+  }
+
   .resource-topology-node-health-degraded {
-    --topology-node-bg: color-mix(in oklch, var(--destructive) 14%, var(--card));
-    --topology-node-border: color-mix(in oklch, var(--destructive) 76%, var(--border));
+    --topology-health-color: var(--destructive);
   }
 
   .resource-topology-node-health-attention {
-    --topology-node-bg: color-mix(in oklch, oklch(0.769 0.188 70.08) 13%, var(--card));
-    --topology-node-border: color-mix(in oklch, oklch(0.769 0.188 70.08) 70%, var(--border));
+    --topology-health-color: oklch(0.769 0.188 70.08);
   }
 
   .resource-topology-node-health-restarted {
-    --topology-node-bg: color-mix(in oklch, oklch(0.685 0.169 237.323) 13%, var(--card));
-    --topology-node-border: color-mix(in oklch, oklch(0.685 0.169 237.323) 70%, var(--border));
+    --topology-health-color: oklch(0.685 0.169 237.323);
+  }
+
+  .resource-topology-stoplight-success {
+    --topology-stoplight-color: oklch(0.78 0.13 164);
+  }
+
+  .resource-topology-stoplight-warning {
+    --topology-stoplight-color: oklch(0.769 0.188 70.08);
+  }
+
+  .resource-topology-stoplight-error {
+    --topology-stoplight-color: var(--destructive);
+  }
+
+  .resource-topology-stoplight-neutral {
+    --topology-stoplight-color: var(--muted-foreground);
+  }
+
+  .resource-topology-chip-success {
+    --topology-chip-color: oklch(0.78 0.13 164);
+  }
+
+  .resource-topology-chip-warning {
+    --topology-chip-color: oklch(0.769 0.188 70.08);
+  }
+
+  .resource-topology-chip-error {
+    --topology-chip-color: var(--destructive);
+  }
+
+  .resource-topology-chip-neutral {
+    --topology-chip-color: var(--muted-foreground);
   }
 
   .resource-topology-node-connected {
@@ -440,13 +478,13 @@
     border-radius: inherit;
     pointer-events: none;
     opacity: 0;
-    box-shadow: 0 0 10px color-mix(in oklch, var(--primary) 54%, transparent);
+    box-shadow: 0 0 10px color-mix(in oklch, var(--resource-tone-color, var(--primary)) 54%, transparent);
     transition: opacity 360ms ease;
   }
 
   .resource-topology-node-connected::after {
     opacity: 1;
-    box-shadow: 0 0 7px color-mix(in oklch, var(--primary) 32%, transparent);
+    box-shadow: 0 0 7px color-mix(in oklch, var(--resource-tone-color, var(--primary)) 36%, transparent);
   }
 
   .resource-topology-node-selected::after {
@@ -456,42 +494,101 @@
   .svelte-ownership-resource-node {
     --topology-node-border: color-mix(
       in oklch,
-      var(--resource-tone-color, var(--primary)) 52%,
-      transparent
+      var(--resource-tone-color, var(--primary)) 54%,
+      var(--border)
+    );
+    --topology-node-border-top: var(--topology-node-border);
+    --topology-node-border-right: var(--topology-node-border);
+    --topology-node-border-bottom: var(--topology-node-border);
+    --topology-node-border-left: color-mix(
+      in oklch,
+      var(--topology-stoplight-color, var(--resource-tone-color, var(--primary))) 92%,
+      var(--border)
     );
     --topology-node-bg:
-      radial-gradient(
-        ellipse 96% 140% at 0% 8%,
+      linear-gradient(
+        0deg,
         color-mix(
           in oklch,
-          var(--resource-tone-color, var(--primary)) 12%,
+          var(--resource-tone-color, var(--primary)) 78%,
           transparent
-        ),
-        transparent 62%
+        ) 0 2px,
+        transparent 2px
       ),
       linear-gradient(
         135deg,
         color-mix(
           in oklch,
-          var(--resource-tone-color, var(--primary)) 10%,
-          var(--card)
+          var(--resource-tone-color, var(--primary)) 11%,
+          #171a19
         ) 0%,
-        color-mix(
-          in oklch,
-          var(--resource-tone-color, var(--primary)) 6%,
-          var(--card)
-        ) 48%,
-        color-mix(in oklch, var(--card) 98%, black) 100%
+        #151918 60%,
+        #101211 100%
       );
     box-shadow:
-      inset 0 1px 0 color-mix(in oklch, white 7%, transparent),
-      0 1px 0 rgb(0 0 0 / 0.38),
-      0 14px 32px -24px
-      color-mix(
-        in oklch,
-        var(--resource-tone-color, var(--primary)) 46%,
-        transparent
-      );
+      inset 0 1px 0 rgb(255 255 255 / 0.055),
+      -4px 0 16px -9px
+      color-mix(in oklch, var(--topology-stoplight-color, var(--resource-tone-color, var(--primary))) 58%, transparent),
+      0 18px 34px -28px
+      var(--topology-node-glow, color-mix(in oklch, var(--resource-tone-color, var(--primary)) 46%, transparent));
+  }
+
+  .svelte-ownership-resource-node::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: 5px;
+    pointer-events: none;
+    border-radius: calc(var(--radius-sm) - 1px) 0 0 calc(var(--radius-sm) - 1px);
+    background: color-mix(
+      in oklch,
+      var(--topology-stoplight-color, var(--resource-tone-color, var(--primary))) 96%,
+      transparent
+    );
+  }
+
+  .svelte-ownership-resource-node.resource-tone-pod-surface {
+    --resource-tone-color: #7da8ff;
+    --topology-node-glow: rgb(125 168 255 / 0.44);
+  }
+
+  .svelte-ownership-resource-node.resource-tone-replicaset-surface {
+    --resource-tone-color: #a78bfa;
+    --topology-node-glow: rgb(167 139 250 / 0.44);
+  }
+
+  .svelte-ownership-resource-node .resource-tone-pod-badge {
+    --resource-badge-color: #7da8ff;
+  }
+
+  .svelte-ownership-resource-node .resource-tone-replicaset-badge {
+    --resource-badge-color: #a78bfa;
+  }
+
+  .svelte-ownership-resource-node .resource-topology-status-dot {
+    background: var(--topology-chip-color, var(--muted-foreground));
+    box-shadow: 0 0 8px color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 62%, transparent);
+  }
+
+  .svelte-ownership-resource-node .resource-topology-status-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    height: 1.375rem;
+    max-width: 8.625rem;
+    padding: 0 0.45rem;
+    overflow: hidden;
+    white-space: nowrap;
+    border-width: 1px;
+    border-style: solid;
+    border-radius: var(--radius-sm);
+    border-color: color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 36%, transparent);
+    background: color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 10%, transparent);
+    color: color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 88%, var(--foreground));
+    font-weight: 700;
+    box-shadow: none;
   }
 
 }

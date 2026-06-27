@@ -19,12 +19,14 @@
 		title,
 		query,
 		errorLabel,
+		wide = false,
 		children,
 	}: {
 		icon: LucideComponent;
 		title: string;
 		query: QueryLike;
 		errorLabel: string;
+		wide?: boolean;
 		children: Snippet;
 	} = $props();
 
@@ -33,7 +35,11 @@
 	}
 </script>
 
-<section class="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 md:p-6">
+<section
+	class={wide
+		? "flex w-full flex-col gap-4 px-3 py-4 md:px-5 md:py-5"
+		: "mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 md:px-4 md:py-5"}
+>
 	<header class="flex items-center gap-3">
 		<Icon class="size-5 text-muted-foreground" />
 		<div>

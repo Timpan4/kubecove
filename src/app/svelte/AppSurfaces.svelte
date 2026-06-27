@@ -41,10 +41,6 @@
 		createTauriClient,
 		detectArgoCD,
 		detectFlux,
-		getArgoApplicationDetails,
-		getArgoApplicationSetDetails,
-		getArgoAppProjectDetails,
-		getFluxResourceDetails,
 		getHelmReleaseDetails,
 		getHelmReleaseReconciliation,
 		getKubeconfigSources,
@@ -62,12 +58,8 @@
 	} from "@/lib/tauri";
 	import type {
 		ArgoApplicationSetSummary,
-		ArgoApplicationSetDetails,
-		ArgoApplicationDetails,
 		ArgoApplicationSummary,
-		ArgoAppProjectDetails,
 		ArgoAppProjectSummary,
-		FluxResourceDetails,
 		FluxResourceSummary,
 		HelmReconciliationResource,
 		HelmReleaseReconciliation,
@@ -96,8 +88,10 @@
 	import SettingsSurface from "./SettingsSurface.svelte";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import {
+		buildGitOpsRailItems,
 		buildGitOpsSelections,
 		buildGitOpsTable,
+		gitOpsActiveRailKey as resolveGitOpsActiveRailKey,
 		gitOpsSelectionKey,
 		gitOpsUnavailableProvider as resolveGitOpsUnavailableProvider,
 		type GitOpsSelection,
@@ -124,12 +118,6 @@
 		fluxDetected: boolean;
 	}
 
-	type GitOpsDetails =
-		| ArgoApplicationDetails
-		| ArgoApplicationSetDetails
-		| ArgoAppProjectDetails
-		| FluxResourceDetails;
-
 	let {
 		workspace,
 		viewMode,
@@ -140,6 +128,7 @@
 		initialIncidentFilter = "all",
 		initialPathState = null,
 		onOpenResources,
+		onResourceInspect,
 		onResourceSelect,
 		onTargetHelmReleaseResolved,
 		onTargetGitOpsApplicationResolved,
@@ -160,6 +149,7 @@
 			initialHealthFilter?: HealthFilter,
 			gitOpsFocusApplication?: ArgoApplicationSummary | null,
 		) => void;
+		onResourceInspect: (resource: ResourceSummary) => void;
 		onResourceSelect: (resource: ResourceSummary, nodeId: TreeNodeId) => void;
 		onTargetHelmReleaseResolved?: () => void;
 		onTargetGitOpsApplicationResolved?: () => void;
@@ -298,14 +288,6 @@
 		selectedGitOpsItem ? gitOpsSelectionKey(selectedGitOpsItem) : "",
 	);
 
-	const gitOpsDetailsQuery = createQuery<GitOpsDetails>(() => ({
-		queryKey: gitOpsDetailsQueryKey(selectedGitOpsItem, kubeconfigSourceKey),
-		queryFn: () =>
-			loadGitOpsDetails(selectedGitOpsItem as GitOpsSelection, kubeconfigSourceKey),
-		enabled: viewMode === "argo" && sourceReady && Boolean(selectedGitOpsItem),
-		staleTime: 15_000,
-	}));
-
 	const helmQuery = createQuery<HelmReleaseSummary[]>(() => ({
 		queryKey: queryKeys.helmReleases(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () => listHelmReleases(client, workspace.scope.clusterContext, kubeconfigSourceKey),
@@ -440,6 +422,12 @@
 	const gitOpsSelections = $derived(
 		gitOpsQuery.data ? buildGitOpsSelections(gitOpsQuery.data, selectedNode) : [],
 	);
+	const gitOpsRailItems = $derived(
+		gitOpsQuery.data ? buildGitOpsRailItems(gitOpsQuery.data) : [],
+	);
+	const gitOpsActiveRailKey = $derived(
+		gitOpsQuery.data ? resolveGitOpsActiveRailKey(gitOpsQuery.data, selectedNode) : "",
+	);
 
 	$effect(() => {
 		if (viewMode === "incidents") incidentFilter = initialIncidentFilter;
@@ -502,106 +490,6 @@
 			selectedHelmRelease = null;
 		}
 	});
-
-	async function loadGitOpsDetails(
-		selection: GitOpsSelection,
-		sourceKey?: string,
-	): Promise<GitOpsDetails> {
-		if (selection.type === "argoApp") {
-			const { item } = selection;
-			return getArgoApplicationDetails(
-				client,
-				item.cluster,
-				item.name,
-				item.namespace ?? undefined,
-				sourceKey,
-				"kubectl",
-				"yaml",
-			);
-		}
-		if (selection.type === "argoAppSet") {
-			const { item } = selection;
-			return getArgoApplicationSetDetails(
-				client,
-				item.cluster,
-				item.name,
-				item.namespace ?? undefined,
-				sourceKey,
-				"kubectl",
-				"yaml",
-			);
-		}
-		if (selection.type === "argoProject") {
-			const { item } = selection;
-			return getArgoAppProjectDetails(
-				client,
-				item.cluster,
-				item.name,
-				item.namespace ?? undefined,
-				sourceKey,
-				"kubectl",
-				"yaml",
-			);
-		}
-		const { item } = selection;
-		return getFluxResourceDetails(
-			client,
-			item.cluster,
-			item.resourceKind,
-			item.name,
-			item.namespace,
-			sourceKey,
-			"kubectl",
-			"yaml",
-		);
-	}
-
-	function gitOpsDetailsQueryKey(selection: GitOpsSelection | null, sourceKey?: string) {
-		if (!selection) return ["gitops-details", "idle"] as const;
-		if (selection.type === "argoApp") {
-			const { item } = selection;
-			return queryKeys.argoAppDetails(
-				item.cluster,
-				item.name,
-				item.namespace,
-				sourceKey,
-				"kubectl",
-				"yaml",
-			);
-		}
-		if (selection.type === "argoAppSet") {
-			const { item } = selection;
-			return queryKeys.argoAppSetDetails(
-				item.cluster,
-				item.name,
-				item.namespace,
-				sourceKey,
-				"kubectl",
-				"yaml",
-			);
-		}
-		if (selection.type === "argoProject") {
-			const { item } = selection;
-			return queryKeys.argoAppProjectDetails(
-				item.cluster,
-				item.name,
-				item.namespace,
-				sourceKey,
-				"kubectl",
-				"yaml",
-			);
-		}
-		const { item } = selection;
-		return queryKeys.fluxResourceDetails(
-			item.cluster,
-			item.resourceKind,
-			item.name,
-			item.namespace,
-			sourceKey,
-			"kubectl",
-			"yaml",
-		);
-	}
 
 	async function loadIncidents(
 		targetWorkspace: SavedWorkspace,
@@ -677,53 +565,8 @@
 		return "";
 	}
 
-	function gitOpsDetailsStatus(details: GitOpsDetails): Record<string, unknown> | undefined {
-		return "status" in details ? details.status : undefined;
-	}
-
-	function gitOpsSelectionLabel(selection: GitOpsSelection): string {
-		if (selection.type === "flux") {
-			return `${selection.item.resourceKind.kind}/${selection.item.name}`;
-		}
-		return selection.item.name;
-	}
-
-	function gitOpsSelectionFacts(selection: GitOpsSelection): [string, string][] {
-		if (selection.type === "flux") {
-			const { item } = selection;
-			return [
-				["Kind", item.resourceKind.kind],
-				["Namespace", item.namespace ?? "-"],
-				["Ready", item.readyStatus ?? "-"],
-				["Source", item.sourceName ?? "-"],
-				["Revision", item.lastAppliedRevision ?? "-"],
-				["Age", item.age],
-			];
-		}
-		if (selection.type === "argoProject") {
-			const { item } = selection;
-			return [
-				["Kind", "AppProject"],
-				["Namespace", item.namespace ?? "-"],
-				["Status", item.status ?? "-"],
-				["Description", item.description ?? "-"],
-				["Age", item.age],
-			];
-		}
-		const { item } = selection;
-		const kind = selection.type === "argoAppSet" ? "ApplicationSet" : "Application";
-		return [
-			["Kind", kind],
-			["Namespace", item.namespace ?? "-"],
-			["Sync", item.syncStatus ?? "-"],
-			["Health", item.healthStatus ?? "-"],
-			["Project", item.project ?? "-"],
-			["Source", item.sourceRepo ?? "-"],
-		];
-	}
-
-	function openSelectedArgoApplicationResources() {
-		const selection = selectedGitOpsItem;
+	function openSelectedArgoApplicationResources(selectionOverride?: GitOpsSelection) {
+		const selection = selectionOverride ?? selectedGitOpsItem;
 		if (!selection || selection.type !== "argoApp") return;
 		onOpenResources(
 			argoApplicationResourceNamespaces(selection.item),
@@ -978,15 +821,14 @@
 		{gitOpsUnavailableProvider}
 		{gitOpsTable}
 		{gitOpsSelections}
+		{gitOpsRailItems}
+		{gitOpsActiveRailKey}
 		bind:selectedGitOpsItem
 		{selectedGitOpsItemKey}
-		{gitOpsDetailsQuery}
 		{errorMessage}
 		{openSelectedArgoApplicationResources}
-		{gitOpsSelectionLabel}
-		{gitOpsSelectionFacts}
+		{onResourceInspect}
 		{gitOpsStatusClass}
-		{gitOpsDetailsStatus}
 	/>
 {:else if viewMode === "helm"}
 	<HelmSurface

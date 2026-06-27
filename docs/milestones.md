@@ -182,7 +182,7 @@ Goal: track the parallel Svelte port honestly while React remains the fallback u
 - [x] Preserve shared settings and workspace storage schemas across runtimes.
 - [x] Port launcher, workspace shell, settings, resource browser, resource detail, YAML, events, logs, topology, GitOps, Helm, RBAC, incidents, live sessions, app updates, and usage footer surfaces to Svelte.
 - [x] Run automated Svelte migration baseline on 2026-06-22: `bun run svelte:check`, `bun run typecheck`, and `bun test`.
-- [x] Keep new installs on React by default until Svelte cutover evidence is complete.
+- [x] Make Svelte the default for new installs while keeping React selectable as a fallback.
 - [ ] Record browser-backed app-wide launch, resource list, YAML detail, and 4k topology measurements for React and Svelte.
 - [ ] Prove at least one major app-wide memory or CPU-heavy bottleneck improves by 25% or more.
 - [ ] Run manual Svelte and React fallback Tauri smoke against a readable cluster.

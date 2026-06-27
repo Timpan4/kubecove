@@ -4,7 +4,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS, type AnyKind } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 
 interface KindListProps {
 	selectedKinds: AnyKind[];
@@ -25,7 +25,7 @@ function KindOption({
 	const checkboxId = `kind-${kind}`;
 	return (
 		<li
-			className={cn(
+			className={cnfast(
 				"cursor-pointer rounded-md p-2 text-sm transition-colors hover:bg-accent",
 				checked && "bg-accent",
 			)}
@@ -77,7 +77,7 @@ export function KindList({ selectedKinds, onToggleKind }: KindListProps) {
 					type="button"
 					variant="outline"
 					size="sm"
-					className="h-7 px-2 text-[0.625rem]"
+					className="h-7 px-2 text-xs"
 				>
 					{allSelected ? "Deselect All" : "Select All"}
 				</Button>

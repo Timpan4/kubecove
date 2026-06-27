@@ -1,29 +1,71 @@
 <script lang="ts">
-	import { AlertTriangle, ExternalLink, GitBranch, X } from "lucide-svelte";
+	import { CircleHelp, GitBranch, Layers, Package, Plug } from "lucide-svelte";
 	import {
 		Alert,
 		AlertDescription,
 		AlertTitle,
 		Badge,
 		Button,
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle,
 		Empty,
 		EmptyDescription,
 		EmptyHeader,
 		EmptyTitle,
-		Spinner,
+		Tooltip,
+		TooltipContent,
+		TooltipProvider,
+		TooltipTrigger,
 	} from "@/components/ui/svelte";
-	import { extractArgoStatusInsights } from "@/features/argo/status-insights";
-	import type { FluxResourceSummary } from "@/lib/types";
 	import { formatStatusLabel } from "@/lib/utils";
-	import { gitOpsSelectionCells, gitOpsSelectionKey } from "./gitOpsSurfaceModel";
-	import SimpleTable from "./SimpleTable.svelte";
-	import StatGrid from "./StatGrid.svelte";
+	import {
+		gitOpsDetailsActionKey,
+		gitOpsSelectionAgeTooltip,
+		gitOpsSelectionKey,
+		gitOpsSelectionPrimaryAction,
+		gitOpsSelectionResource,
+		gitOpsSelectionSourceLabel,
+		gitOpsSelectionSourceLine,
+		gitOpsSelectionSourceMode,
+		gitOpsSelectionSourceTooltip,
+		gitOpsSelectionSourceTooltipGroups,
+		gitOpsSelectionSourceTooltipTitle,
+		gitOpsSelectionRevisionLabel,
+		gitOpsSelectionRevisionTooltipRows,
+		gitOpsSelectionRevisionTooltipTitle,
+		type GitOpsRevisionTooltipRow,
+		type GitOpsSourceMode,
+		type GitOpsTooltipField,
+		type GitOpsRailItem,
+		type GitOpsSelection,
+	} from "./gitOpsSurfaceModel";
 	import SurfaceFrame from "./SurfaceFrame.svelte";
+
+	const gitOpsFactFieldClass =
+		"relative min-w-0 rounded-md border bg-background/30 px-2.5 pb-2 pt-3 text-left";
+	const gitOpsFactLabelClass =
+		"pointer-events-none absolute -top-1.5 left-2 bg-surface-1 px-1 text-[0.62rem] font-medium leading-none text-muted-foreground";
+	const gitOpsFactValueClass = "block min-w-0 truncate text-left font-medium";
+	const gitOpsTooltipClass =
+		"max-w-[34rem] flex-col items-stretch gap-2 border border-border/70 bg-surface-2 p-2 text-popover-foreground shadow-xl";
+	const gitOpsTooltipHeaderClass =
+		"text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground";
+	const gitOpsTooltipRowClass =
+		"rounded-md border bg-background/40 px-2 py-1.5 text-xs leading-snug text-foreground";
+	const gitOpsTooltipFieldGridClass =
+		"grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 gap-y-1";
+	const gitOpsSourceLineClass =
+		"mt-3 w-full truncate rounded-md border bg-background/40 px-2.5 py-2 text-left text-xs text-muted-foreground transition-colors";
+
+	type GitOpsCardFact = {
+		label: string;
+		value: string;
+		revisionRows?: GitOpsRevisionTooltipRow[];
+		tooltipFields?: GitOpsTooltipField[];
+		tooltipTitle?: string;
+	};
+
+	type MaybeGitOpsCardFact = Omit<GitOpsCardFact, "value"> & {
+		value: string | null | undefined;
+	};
 
 	let {
 		gitOpsQuery,
@@ -32,19 +74,172 @@
 		gitOpsUnavailableProvider,
 		gitOpsTable,
 		gitOpsSelections,
+		gitOpsRailItems,
+		gitOpsActiveRailKey,
 		selectedGitOpsItem = $bindable(null),
 		selectedGitOpsItemKey,
-		gitOpsDetailsQuery,
 		errorMessage,
 		openSelectedArgoApplicationResources,
-		gitOpsSelectionLabel,
-		gitOpsSelectionFacts,
+		onResourceInspect,
 		gitOpsStatusClass,
-		gitOpsDetailsStatus,
 	} = $props();
+
+	function railItemsFor(provider: GitOpsRailItem["provider"]): GitOpsRailItem[] {
+		return gitOpsRailItems.filter((item: GitOpsRailItem) => item.provider === provider);
+	}
+
+	function openGitOpsSelection(selection: GitOpsSelection) {
+		if (gitOpsSelectionPrimaryAction(selection) === "openResources") {
+			selectedGitOpsItem = selection;
+			openSelectedArgoApplicationResources(selection);
+			return;
+		}
+		onResourceInspect(gitOpsSelectionResource(selection));
+	}
+
+	function gitOpsCardActionLabel(selection: GitOpsSelection): string {
+		if (gitOpsSelectionPrimaryAction(selection) === "openResources") {
+			return `View resources for ${selection.item.name}`;
+		}
+		return `Open details for ${selection.item.name}`;
+	}
+
+	function openGitOpsDetails(event: MouseEvent, selection: GitOpsSelection) {
+		event.stopPropagation();
+		onResourceInspect(gitOpsSelectionResource(selection));
+	}
+
+	function stopTooltipEvent(event: Event) {
+		event.stopPropagation();
+	}
+
+	function handleGitOpsCardKeydown(event: KeyboardEvent, selection: GitOpsSelection) {
+		if (event.key !== "Enter" && event.key !== " ") return;
+		event.preventDefault();
+		openGitOpsSelection(selection);
+	}
+
+	function gitOpsCardSubtitle(selection: GitOpsSelection): string {
+		if (selection.type === "flux") return selection.item.resourceKind.kind;
+		if (selection.type === "argoProject") return selection.item.description ?? "AppProject";
+		return selection.item.project ?? "default";
+	}
+
+	function gitOpsCardBadges(selection: GitOpsSelection): [string, string][] {
+		if (selection.type === "flux") {
+			return selection.item.readyStatus ? [["Ready", selection.item.readyStatus]] : [];
+		}
+		if (selection.type === "argoProject") {
+			return selection.item.status ? [["Status", selection.item.status]] : [];
+		}
+		return [
+			["Sync", selection.item.syncStatus],
+			["Health", selection.item.healthStatus],
+		].filter((entry): entry is [string, string] => Boolean(entry[1]));
+	}
+
+	function gitOpsCardFacts(selection: GitOpsSelection): GitOpsCardFact[] {
+		if (selection.type === "flux") {
+			const { item } = selection;
+			return compactFacts([
+				revisionFact(selection),
+				{ label: "Namespace", value: item.namespace ?? "-" },
+				{ label: "Inventory", value: String(item.inventory.length) },
+				ageFact(selection),
+			]);
+		}
+		if (selection.type === "argoProject") {
+			const { item } = selection;
+			return compactFacts([
+				{ label: "Namespace", value: item.namespace ?? "-" },
+				{ label: "Description", value: item.description ?? "-" },
+				ageFact(selection),
+			]);
+		}
+		const { item } = selection;
+		return compactFacts([
+			revisionFact(selection),
+			{ label: "Destination", value: item.destinationNamespace ?? item.destinationServer ?? "-" },
+			{ label: "Namespace", value: item.namespace ?? "-" },
+			ageFact(selection),
+		]);
+	}
+
+	function revisionFact(selection: GitOpsSelection): MaybeGitOpsCardFact {
+		const rows = gitOpsSelectionRevisionTooltipRows(selection);
+		return {
+			label: "Revision",
+			value: gitOpsSelectionRevisionLabel(selection),
+			revisionRows: rows.length > 0 ? rows : undefined,
+			tooltipTitle: rows.length > 0 ? gitOpsSelectionRevisionTooltipTitle(selection) : undefined,
+		};
+	}
+
+	function ageFact(selection: GitOpsSelection): MaybeGitOpsCardFact {
+		const createdAt = gitOpsSelectionAgeTooltip(selection);
+		return {
+			label: "Age",
+			value: selection.item.age,
+			tooltipTitle: createdAt ? "Age" : undefined,
+			tooltipFields: createdAt ? [{ label: "created", value: createdAt }] : undefined,
+		};
+	}
+
+	function compactFacts(rows: MaybeGitOpsCardFact[]): GitOpsCardFact[] {
+		return rows.filter((row): row is GitOpsCardFact => Boolean(row.value));
+	}
+
+	function gitOpsCardTone(selection: GitOpsSelection): string {
+		const values = gitOpsCardBadges(selection).map(([, value]) => value);
+		if (values.some((value) => value === "Degraded" || value === "Missing" || value === "False")) {
+			return "bg-destructive";
+		}
+		if (
+			values.some((value) => value === "OutOfSync" || value === "Progressing" || value === "Unknown")
+		) {
+			return "bg-amber-400";
+		}
+		if (values.some((value) => value === "Synced" || value === "Healthy" || value === "True")) {
+			return "bg-emerald-400";
+		}
+		if (values.some((value) => value === "Active" || value === "Ready")) {
+			return "bg-emerald-400";
+		}
+		return "bg-muted";
+	}
+
+	function gitOpsSourceIcon(sourceMode: GitOpsSourceMode | null) {
+		if (sourceMode === "git") return GitBranch;
+		if (sourceMode === "helm") return Package;
+		if (sourceMode === "multi") return Layers;
+		if (sourceMode === "plugin") return Plug;
+		if (sourceMode === "unknown") return CircleHelp;
+		return null;
+	}
+
+	function gitOpsSourceIconClass(sourceMode: GitOpsSourceMode | null): string {
+		const base =
+			"inline-flex size-7 shrink-0 items-center justify-center rounded-md border bg-background/50";
+		if (sourceMode === "git") return `${base} border-sky-500/35 text-sky-300`;
+		if (sourceMode === "helm") return `${base} border-violet-500/35 text-violet-300`;
+		if (sourceMode === "multi") return `${base} border-amber-500/35 text-amber-300`;
+		if (sourceMode === "plugin") return `${base} border-emerald-500/35 text-emerald-300`;
+		return `${base} border-border text-muted-foreground`;
+	}
+
+	function argoSourceCount(selection: GitOpsSelection): number | undefined {
+		if (selection.type !== "argoApp") return undefined;
+		const count = selection.item.sourceCount ?? selection.item.sources?.length;
+		return count && count > 1 ? count : undefined;
+	}
+
+	function hasFactTooltip(fact: GitOpsCardFact): boolean {
+		return Boolean(fact.revisionRows?.length || fact.tooltipFields?.length);
+	}
 </script>
 
-<SurfaceFrame icon={GitBranch} title="GitOps" query={gitOpsQuery} errorLabel="GitOps data unavailable">
+<TooltipProvider delayDuration={400} skipDelayDuration={0}>
+	<SurfaceFrame icon={GitBranch} title="GitOps" query={gitOpsQuery} errorLabel="GitOps data unavailable" wide>
 		{@const data = gitOpsQuery.data}
 		{#if data}
 			{#if gitOpsProviderError}
@@ -59,14 +254,7 @@
 					<AlertDescription>{errorMessage(gitOpsListError)}</AlertDescription>
 				</Alert>
 			{/if}
-			<StatGrid
-				stats={[
-					["Argo apps", data.apps.length],
-					["AppSets", data.appSets.length],
-					["Projects", data.projects.length],
-					["Flux resources", data.flux.length],
-				]}
-			/>
+
 			{#if gitOpsUnavailableProvider}
 				<Empty>
 					<EmptyHeader>
@@ -82,224 +270,236 @@
 					</EmptyHeader>
 				</Empty>
 			{:else if gitOpsTable}
-				<Card size="sm" elevation="flat">
-					<CardHeader>
-						<CardTitle>{gitOpsTable.title}</CardTitle>
-						<CardDescription>Read-only GitOps inventory for current cluster context.</CardDescription>
-					</CardHeader>
-					<CardContent class="overflow-x-auto p-0">
-						<table class="w-full min-w-[760px] table-fixed border-collapse text-sm">
-							<thead>
-								<tr>
-									{#each gitOpsTable.headers as header}
-										<th class="border-b px-3 py-2 text-left text-xs font-semibold uppercase text-muted-foreground">
-											{header}
-										</th>
-									{/each}
-								</tr>
-							</thead>
-							<tbody>
-								{#if gitOpsSelections.length === 0}
-									<tr>
-										<td class="px-3 py-8 text-center text-muted-foreground" colspan={gitOpsTable.headers.length}>
-											{gitOpsTable.empty}
-										</td>
-									</tr>
-								{:else}
-									{#each gitOpsSelections as item (gitOpsSelectionKey(item))}
-										<tr
-											class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-												? "border-b bg-accent last:border-b-0"
-												: "cursor-pointer border-b last:border-b-0 hover:bg-accent/60"}
-											tabindex="0"
-											role="button"
-											aria-pressed={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
-											onclick={() => (selectedGitOpsItem = item)}
-											onkeydown={(event: KeyboardEvent) => {
-												if (event.key === "Enter" || event.key === " ") {
-													event.preventDefault();
-													selectedGitOpsItem = item;
-												}
-											}}
+				<div class="grid gap-5 lg:grid-cols-[14rem_minmax(0,1fr)]">
+				<aside class="space-y-5 border-r pr-4">
+					{#each ["Argo CD", "Flux"] as provider}
+						{@const providerItems = railItemsFor(provider as GitOpsRailItem["provider"])}
+						{#if providerItems.length > 0}
+							<section class="space-y-2">
+								<p class="px-1 text-xs font-semibold uppercase text-muted-foreground">{provider}</p>
+								<div class="grid gap-1">
+									{#each providerItems as item (item.key)}
+										<div
+											class={item.key === gitOpsActiveRailKey
+												? "flex items-center justify-between gap-2 rounded-md bg-accent px-2.5 py-2 text-sm font-medium"
+												: item.disabled
+													? "flex items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm text-muted-foreground opacity-60"
+													: "flex items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm text-muted-foreground"}
+											aria-current={item.key === gitOpsActiveRailKey ? "true" : undefined}
 										>
-											{#each gitOpsSelectionCells(item) as cell}
-												<td class="truncate px-3 py-2">{cell}</td>
-											{/each}
-										</tr>
+											<span class="min-w-0 truncate">{item.label}</span>
+											<span class="rounded bg-muted px-1.5 py-0.5 text-xs leading-none tabular-nums">{item.count}</span>
+										</div>
 									{/each}
-								{/if}
-							</tbody>
-						</table>
-					</CardContent>
-				</Card>
-			{/if}
-			<Card size="sm" elevation="flat">
-				<CardHeader class="flex flex-row items-start justify-between gap-3">
-					<div class="min-w-0">
-						<CardTitle>{selectedGitOpsItem ? gitOpsSelectionLabel(selectedGitOpsItem) : "GitOps details"}</CardTitle>
-						<CardDescription>
-							{#if selectedGitOpsItem}
-								{selectedGitOpsItem.item.namespace ?? "cluster-scoped"}
-							{:else}
-								Select a GitOps row to inspect details and YAML.
-							{/if}
-						</CardDescription>
+								</div>
+							</section>
+						{/if}
+					{/each}
+				</aside>
+
+				<section class="min-w-0 space-y-4">
+					<div class="border-b pb-3">
+						<h2 class="text-lg font-semibold">{gitOpsTable.title}</h2>
+						<p class="text-sm text-muted-foreground">Read-only resource cards for detected GitOps providers.</p>
 					</div>
-					{#if selectedGitOpsItem}
-						<div class="flex shrink-0 items-center gap-2">
-							{#if selectedGitOpsItem.type === "argoApp"}
-								<Button type="button" variant="outline" size="sm" onclick={openSelectedArgoApplicationResources}>
-									<ExternalLink data-icon="inline-start" />
-									View resources
-								</Button>
-							{/if}
-							<Button type="button" variant="ghost" size="icon" aria-label="Close GitOps details" onclick={() => (selectedGitOpsItem = null)}>
-								<X />
-							</Button>
-						</div>
-					{/if}
-				</CardHeader>
-				<CardContent>
-					{#if !selectedGitOpsItem}
+
+					{#if gitOpsSelections.length === 0}
 						<Empty>
 							<EmptyHeader>
-								<EmptyTitle>No GitOps item selected</EmptyTitle>
-								<EmptyDescription>Use the GitOps table to open read-only details.</EmptyDescription>
+								<EmptyTitle>{gitOpsTable.empty}</EmptyTitle>
+								<EmptyDescription>Select another GitOps provider or kind from the sidebar.</EmptyDescription>
 							</EmptyHeader>
-				</Empty>
-			{:else if gitOpsDetailsQuery.isPending}
-				<p class="inline-flex items-center gap-2 text-sm text-muted-foreground">
-					<Spinner class="size-4" />
-					Loading GitOps details...
-				</p>
-					{:else if gitOpsDetailsQuery.isError}
-						<Alert variant="destructive">
-							<AlertTriangle class="size-4" />
-							<AlertTitle>GitOps details unavailable</AlertTitle>
-							<AlertDescription>{errorMessage(gitOpsDetailsQuery.error)}</AlertDescription>
-						</Alert>
-					{:else if gitOpsDetailsQuery.data}
-						{@const details = gitOpsDetailsQuery.data}
-						<div class="grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-							<div class="space-y-4">
-								<div class="grid grid-cols-2 gap-2 text-sm">
-									{#each gitOpsSelectionFacts(selectedGitOpsItem) as [label, value]}
-										<div>
-											<p class="text-xs uppercase text-muted-foreground">{label}</p>
-											<p class="truncate font-medium">{value}</p>
-										</div>
-									{/each}
-								</div>
-								{#if selectedGitOpsItem.type === "argoApp"}
-									{@const app = selectedGitOpsItem.item}
-									{@const insights = extractArgoStatusInsights(gitOpsDetailsStatus(details))}
-									<div class="rounded-md border bg-surface-1 p-3">
-										<p class="mb-2 text-xs uppercase text-muted-foreground">Sync & Health</p>
-										<div class="grid gap-2 text-sm">
-											<div class="flex items-center justify-between gap-3">
-												<span class="text-xs font-medium text-muted-foreground">Sync Status</span>
-												{#if app.syncStatus}
-													<Badge variant="outline" class={gitOpsStatusClass(app.syncStatus)}>{formatStatusLabel(app.syncStatus)}</Badge>
-												{/if}
+						</Empty>
+					{:else}
+						<div class="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-3">
+							{#each gitOpsSelections as item (gitOpsSelectionKey(item))}
+								{@const sourceMode = gitOpsSelectionSourceMode(item)}
+								{@const SourceIcon = gitOpsSourceIcon(sourceMode)}
+								{@const sourceLabel = gitOpsSelectionSourceLabel(sourceMode, argoSourceCount(item))}
+								{@const sourceTooltip = gitOpsSelectionSourceTooltip(item)}
+								{@const sourceTooltipTitle = gitOpsSelectionSourceTooltipTitle(item)}
+								{@const sourceTooltipGroups = gitOpsSelectionSourceTooltipGroups(item)}
+								{@const sourceLine = gitOpsSelectionSourceLine(item)}
+								<div
+									class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
+										? "group flex min-h-60 cursor-pointer overflow-hidden rounded-lg border border-primary/60 bg-accent/40 text-xs/relaxed shadow-sm transition-all hover:-translate-y-px hover:border-primary/70 hover:bg-accent/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+										: "group flex min-h-60 cursor-pointer overflow-hidden rounded-lg border bg-surface-1 text-xs/relaxed transition-all hover:-translate-y-px hover:border-primary/50 hover:bg-accent/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"}
+									role="button"
+									tabindex="0"
+									aria-label={gitOpsCardActionLabel(item)}
+									aria-pressed={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
+									onclick={() => openGitOpsSelection(item)}
+									onkeydown={(event: KeyboardEvent) => handleGitOpsCardKeydown(event, item)}
+								>
+									<div class={`w-1 shrink-0 ${gitOpsCardTone(item)}`}></div>
+									<div class="flex min-w-0 flex-1 flex-col p-3">
+										<div class="flex items-start justify-between gap-3">
+											<div class="min-w-0 space-y-0.5">
+												<div class="truncate font-heading text-sm font-medium">{item.item.name}</div>
+												<div class="truncate text-xs/relaxed text-muted-foreground">{gitOpsCardSubtitle(item)}</div>
 											</div>
-											<div class="flex items-center justify-between gap-3">
-												<span class="text-xs font-medium text-muted-foreground">Health Status</span>
-												{#if app.healthStatus}
-													<Badge variant="outline" class={gitOpsStatusClass(app.healthStatus)}>{formatStatusLabel(app.healthStatus)}</Badge>
-												{/if}
-											</div>
-											{#if insights.healthMessage}
-												<div class="text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
-													{insights.healthMessage}
-												</div>
-											{/if}
-											{#if insights.healthTransitionTime}
-												<div class="text-xs text-muted-foreground">Last transition {insights.healthTransitionTime}</div>
-											{/if}
-										</div>
-									</div>
-									{#if insights.unhealthyResources.length > 0}
-										<div>
-											<p class="mb-2 text-xs uppercase text-muted-foreground">Unhealthy Resources</p>
-											<div class="grid gap-2">
-												{#each insights.unhealthyResources as resource, index (`${resource.kind}:${resource.namespace}:${resource.name}:${index}`)}
-													<div class="rounded-md border bg-surface-1 px-3 py-2">
-														<div class="flex items-center justify-between gap-2">
-															<span class="min-w-0 truncate text-xs font-semibold">{resource.kind ?? "Resource"}/{resource.name ?? "unknown"}</span>
-															{#if resource.health}
-																<Badge variant="outline" class={gitOpsStatusClass(resource.health)}>{formatStatusLabel(resource.health)}</Badge>
-															{/if}
-														</div>
-														{#if resource.message}
-															<div class="mt-1 text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">{resource.message}</div>
+											{#if SourceIcon}
+												<Tooltip>
+													<TooltipTrigger
+														type="button"
+														class={gitOpsSourceIconClass(sourceMode)}
+														aria-label={sourceTooltip}
+														onclick={stopTooltipEvent}
+														onkeydown={stopTooltipEvent}
+													>
+														<SourceIcon class="size-3.5" aria-hidden="true" />
+													</TooltipTrigger>
+													<TooltipContent side="top" align="end" sideOffset={8} class={gitOpsTooltipClass}>
+														<div class={gitOpsTooltipHeaderClass}>{sourceTooltipTitle}</div>
+														{#if sourceTooltipGroups.length > 0}
+															{#each sourceTooltipGroups as group}
+																<section class="space-y-1.5 rounded-md border bg-background/25 p-2">
+																	<div class="flex items-center justify-between gap-3 text-[0.68rem] font-semibold uppercase text-muted-foreground">
+																		<span>{group.label}</span>
+																		<span>{group.rows.length} source{group.rows.length === 1 ? "" : "s"}</span>
+																	</div>
+																	{#each group.rows as row}
+																		<div class={gitOpsTooltipRowClass}>
+																			<div class="mb-1 font-medium text-foreground">{row.name}</div>
+																			<div class={gitOpsTooltipFieldGridClass}>
+																				{#each row.fields as field}
+																					<span class="text-muted-foreground">{field.label}</span>
+																					<span class="break-all text-left font-medium">{field.value}</span>
+																				{/each}
+																			</div>
+																		</div>
+																	{/each}
+																</section>
+															{/each}
+														{:else if sourceLine}
+															<div class={gitOpsTooltipRowClass}>{sourceLine}</div>
+														{:else}
+															<div class={gitOpsTooltipRowClass}>{sourceLabel}</div>
 														{/if}
-													</div>
+													</TooltipContent>
+												</Tooltip>
+											{/if}
+										</div>
+										{#if gitOpsCardBadges(item).length > 0}
+											<div class="mt-3 flex flex-wrap gap-1.5">
+												{#each gitOpsCardBadges(item) as [, value]}
+													<Badge variant="outline" class={gitOpsStatusClass(value)}>
+														{formatStatusLabel(value)}
+													</Badge>
 												{/each}
 											</div>
-										</div>
-									{/if}
-									{#if insights.conditions.length > 0}
-										<div>
-											<p class="mb-2 text-xs uppercase text-muted-foreground">Conditions</p>
-											<div class="grid gap-2">
-												{#each insights.conditions as condition, index (`${condition.type}:${index}`)}
-													<div class="rounded-md border bg-surface-1 px-3 py-2">
-														<div class="flex items-center justify-between gap-2">
-															<span class="text-xs font-semibold">{condition.type}</span>
-															{#if condition.lastTransitionTime}
-																<span class="text-[0.68rem] text-muted-foreground">{condition.lastTransitionTime}</span>
+										{/if}
+										{#if sourceLine}
+											<Tooltip>
+												<TooltipTrigger
+													type="button"
+													class={`${gitOpsSourceLineClass} hover:border-primary/40`}
+													aria-label={sourceTooltip}
+													onclick={stopTooltipEvent}
+													onkeydown={stopTooltipEvent}
+												>
+													{sourceLine}
+												</TooltipTrigger>
+												<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
+													<div class={gitOpsTooltipHeaderClass}>{sourceTooltipTitle}</div>
+													{#if sourceTooltipGroups.length > 0}
+														{#each sourceTooltipGroups as group}
+															<section class="space-y-1.5 rounded-md border bg-background/25 p-2">
+																<div class="flex items-center justify-between gap-3 text-[0.68rem] font-semibold uppercase text-muted-foreground">
+																	<span>{group.label}</span>
+																	<span>{group.rows.length} source{group.rows.length === 1 ? "" : "s"}</span>
+																</div>
+																{#each group.rows as row}
+																	<div class={gitOpsTooltipRowClass}>
+																		<div class="mb-1 font-medium text-foreground">{row.name}</div>
+																		<div class={gitOpsTooltipFieldGridClass}>
+																			{#each row.fields as field}
+																				<span class="text-muted-foreground">{field.label}</span>
+																				<span class="break-all text-left font-medium">{field.value}</span>
+																			{/each}
+																		</div>
+																	</div>
+																{/each}
+															</section>
+														{/each}
+													{:else}
+														<div class={gitOpsTooltipRowClass}>{sourceLine}</div>
+													{/if}
+												</TooltipContent>
+											</Tooltip>
+										{/if}
+										<div class="mt-3 grid grid-cols-1 gap-1.5">
+											{#each gitOpsCardFacts(item) as fact}
+												{#if hasFactTooltip(fact)}
+													<Tooltip>
+														<TooltipTrigger
+															type="button"
+															class={`${gitOpsFactFieldClass} w-full cursor-help transition-colors hover:border-primary/40`}
+															aria-label={`${fact.label}: ${fact.value}`}
+															onclick={stopTooltipEvent}
+															onkeydown={stopTooltipEvent}
+														>
+															<span class={gitOpsFactLabelClass}>{fact.label}</span>
+															<span class={gitOpsFactValueClass}>{fact.value}</span>
+														</TooltipTrigger>
+														<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
+															<div class={gitOpsTooltipHeaderClass}>{fact.tooltipTitle ?? fact.label}</div>
+															{#if fact.revisionRows && fact.revisionRows.length > 0}
+																{#each fact.revisionRows as row}
+																	<div class={gitOpsTooltipRowClass}>
+																		<div class="mb-1 font-medium text-foreground">{row.name}</div>
+																		<div class={gitOpsTooltipFieldGridClass}>
+																			{#each row.fields as field}
+																				<span class="text-muted-foreground">{field.label}</span>
+																				<span class="break-all text-left font-medium">{field.value}</span>
+																			{/each}
+																		</div>
+																	</div>
+																{/each}
+															{:else if fact.tooltipFields && fact.tooltipFields.length > 0}
+																<div class={gitOpsTooltipRowClass}>
+																	<div class={gitOpsTooltipFieldGridClass}>
+																		{#each fact.tooltipFields as field}
+																			<span class="text-muted-foreground">{field.label}</span>
+																			<span class="break-all text-left font-medium">{field.value}</span>
+																		{/each}
+																	</div>
+																</div>
 															{/if}
-														</div>
-														{#if condition.message}
-															<div class="mt-1 text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">{condition.message}</div>
-														{/if}
+														</TooltipContent>
+													</Tooltip>
+												{:else}
+													<div class={gitOpsFactFieldClass}>
+														<span class={gitOpsFactLabelClass}>{fact.label}</span>
+														<span class={gitOpsFactValueClass}>{fact.value}</span>
 													</div>
-												{/each}
-											</div>
+												{/if}
+											{/each}
 										</div>
-									{/if}
-									<div class="grid grid-cols-2 gap-2 text-sm">
-										<div>
-											<p class="text-xs uppercase text-muted-foreground">Destination</p>
-											<p class="truncate font-medium">{app.destinationNamespace ?? app.destinationServer ?? "-"}</p>
-										</div>
-										<div>
-											<p class="text-xs uppercase text-muted-foreground">Revision</p>
-											<p class="truncate font-medium">{app.sourceRevision ?? "-"}</p>
+										<div class="mt-auto flex flex-wrap items-center gap-2 pt-3">
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												data-details-key={gitOpsDetailsActionKey(item)}
+												onclick={(event: MouseEvent) => openGitOpsDetails(event, item)}
+											>
+												Details
+											</Button>
+											{#if gitOpsSelectionPrimaryAction(item) === "openResources"}
+												<span class="ml-auto text-[0.68rem] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+													Card opens resources
+												</span>
+											{/if}
 										</div>
 									</div>
-								{/if}
-								<div>
-									<p class="mb-2 text-xs uppercase text-muted-foreground">Metadata</p>
-									<pre class="max-h-64 overflow-auto rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">{JSON.stringify(details.metadata, null, 2)}</pre>
 								</div>
-								{#if "status" in details && details.status}
-									<div>
-										<p class="mb-2 text-xs uppercase text-muted-foreground">Status</p>
-										<pre class="max-h-64 overflow-auto rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">{JSON.stringify(details.status, null, 2)}</pre>
-									</div>
-								{/if}
-							</div>
-							<div class="min-w-0">
-								<p class="mb-2 text-xs uppercase text-muted-foreground">Rendered YAML</p>
-								<pre class="max-h-80 overflow-auto rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">{details.yaml || "No YAML returned"}</pre>
-							</div>
+							{/each}
 						</div>
 					{/if}
-				</CardContent>
-			</Card>
-			{#if data.flux.length > 0 && gitOpsTable?.title.startsWith("Argo CD")}
-				<SimpleTable
-					headers={["Flux resource", "Namespace", "Ready", "Source", "Revision"]}
-				rows={data.flux.map((item: FluxResourceSummary) => [
-						`${item.resourceKind.kind}/${item.name}`,
-						item.namespace ?? "-",
-						item.readyStatus ?? "-",
-						item.sourceName ?? "-",
-						item.lastAppliedRevision ?? "-",
-					])}
-					empty="No Flux resources found"
-				/>
+				</section>
+				</div>
 			{/if}
 		{/if}
 	</SurfaceFrame>
+</TooltipProvider>

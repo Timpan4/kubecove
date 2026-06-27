@@ -404,7 +404,7 @@
 		<Button type="button" variant="outline" size="sm" onclick={() => onOpenIncidents(filter)}>
 			<AlertTriangle data-icon="inline-start" />
 			{label}
-			<Badge variant="secondary" class="ml-1 rounded-sm px-1.5">{count}</Badge>
+			<Badge variant="secondary" class="ml-1 rounded-sm px-1.5 tabular-nums">{count}</Badge>
 		</Button>
 	{/if}
 {/snippet}

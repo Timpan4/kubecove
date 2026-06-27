@@ -9,6 +9,7 @@
 	import UpdateStatusButton from "./UpdateStatusButton.svelte";
 	import WorkspaceShell from "./WorkspaceShell.svelte";
 	import WorkspaceLauncher from "@/features/workspaces/WorkspaceLauncher.svelte";
+	import ForegroundLoadingBar from "./ForegroundLoadingBar.svelte";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import { diagnosticLog, setDiagnosticsEnabled } from "@/lib/diagnostics";
 	import { queryKeys } from "@/lib/queryKeys";
@@ -174,6 +175,7 @@
 </svelte:head>
 
 {#if $selectedWorkspace}
+	<ForegroundLoadingBar />
 	<WorkspaceShell
 		workspace={$selectedWorkspace}
 		{openSettingsOnWorkspaceMount}
@@ -188,6 +190,7 @@
 	/>
 {:else}
 	<div class="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
+		<ForegroundLoadingBar />
 		<header class="flex h-12 shrink-0 items-center gap-4 border-b bg-sidebar px-4 [-webkit-app-region:drag]">
 			<div class="flex min-w-0 flex-1 items-center gap-2 [-webkit-app-region:no-drag]">
 				<span class="truncate whitespace-nowrap font-heading text-sm font-semibold">KubeCove</span>

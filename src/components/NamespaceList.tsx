@@ -9,7 +9,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { createTauriClient, listNamespaces } from "@/lib/tauri";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettingsState } from "@/lib/settings";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 
 interface NamespaceListProps {
 	clusterContext: string;
@@ -109,7 +109,7 @@ export function NamespaceList({
 					type="button"
 					variant="outline"
 					size="sm"
-					className="h-7 px-2 text-[0.625rem]"
+					className="h-7 px-2 text-xs"
 				>
 					{allSelected ? "Deselect All" : "Select All"}
 				</Button>
@@ -122,7 +122,7 @@ export function NamespaceList({
 						return (
 							<li
 								key={namespace.name}
-								className={cn(
+								className={cnfast(
 									"cursor-pointer rounded-md p-2 text-sm transition-colors hover:bg-accent",
 									checked && "bg-accent",
 								)}

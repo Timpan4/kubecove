@@ -83,7 +83,7 @@ export function ClusterSelector({ value, onClusterChange }: ClusterSelectorProps
     <div className="flex flex-row items-center gap-2">
       <span
         id="cluster-select-label"
-        className="whitespace-nowrap text-[0.6875rem] font-bold uppercase tracking-wide text-muted-foreground"
+        className="whitespace-nowrap text-xs font-bold uppercase tracking-wide text-muted-foreground"
       >
         Cluster Context:
       </span>
