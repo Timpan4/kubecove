@@ -3,7 +3,7 @@
 	import type { NodeProps } from "@xyflow/svelte";
 	import { Badge } from "@/components/ui/svelte";
 	import { getResourceKindVisual } from "@/app/svelte/resourceVisuals";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { FlowTopologyNode, FlowTopologyNodeData } from "./topologyModel";
 
 	let { data }: NodeProps<FlowTopologyNode> = $props();
@@ -16,7 +16,7 @@
 </script>
 
 <div
-	class={cn(
+	class={cnfast(
 		"resource-topology-node relative h-full w-full rounded-md border border-dashed border-[var(--topology-node-border)] px-3 py-2 text-xs shadow-sm transition-colors hover:bg-accent/20",
 		visual.surfaceClassName,
 		isSelected && "resource-topology-node-selected ring-2 ring-primary",
@@ -31,7 +31,7 @@
 	<div class="flex h-full min-w-0 items-center justify-between gap-3">
 		<div class="flex min-w-0 items-center gap-2">
 			<ToggleIcon class="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-			<Icon class={cn("size-3.5 shrink-0", visual.className)} aria-hidden="true" />
+			<Icon class={cnfast("size-3.5 shrink-0", visual.className)} aria-hidden="true" />
 			<span class="min-w-0 truncate font-semibold text-foreground" title={`Ownerless ${nodeData.kind}`}>
 				Ownerless {nodeData.kind}
 			</span>

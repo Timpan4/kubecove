@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import type { HealthFilter, HealthSummary } from "./helpers";
 
 function HealthMetric({
@@ -17,7 +17,7 @@ function HealthMetric({
 	active?: boolean;
 	onClick?: () => void;
 }) {
-	const className = cn(
+	const className = cnfast(
 		"flex min-h-14 flex-col justify-center gap-1 rounded-md border bg-card p-3 text-left transition-colors",
 		onClick && "cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50",
 		active && "border-primary/60 bg-primary/10",

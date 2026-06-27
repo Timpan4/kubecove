@@ -22,7 +22,7 @@ import {
 	type UiRuntimeMode,
 	uiRuntimeModeLabel,
 } from "@/lib/ui-runtime";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { AppUpdatesSection, UPDATES_SETTINGS_ROWS } from "./AppUpdatesSection";
 import {
 	DIAGNOSTICS_SETTINGS_ROWS,
@@ -259,7 +259,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 							aria-current={
 								!searching && activeCategory === category.id ? "page" : undefined
 							}
-							className={cn(
+							className={cnfast(
 								"flex h-8 cursor-pointer items-center gap-2 rounded-md px-2.5 text-sm transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/50",
 								!searching && activeCategory === category.id
 									? "bg-secondary font-medium text-foreground"

@@ -5,7 +5,7 @@
 	import DialogHeader from "./DialogHeader.svelte";
 	import DialogTitle from "./DialogTitle.svelte";
 	import Command from "./Command.svelte";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let {
@@ -19,7 +19,7 @@
 </script>
 
 <Dialog {...rest}>
-	<DialogContent class={cn("top-[20%] translate-y-0 overflow-hidden p-0", className)}>
+	<DialogContent class={cnfast("top-[20%] translate-y-0 overflow-hidden p-0", className)}>
 		<DialogHeader class="sr-only">
 			<DialogTitle>{title}</DialogTitle>
 			<DialogDescription>{description}</DialogDescription>

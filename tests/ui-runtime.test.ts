@@ -44,8 +44,8 @@ afterEach(() => {
 });
 
 describe("ui runtime queue helpers", () => {
-	test("defaults new installs to React until Svelte cutover gates pass", () => {
-		expect(readPersistedUiRuntimeMode()).toBe("react");
+	test("defaults new installs to Svelte", () => {
+		expect(readPersistedUiRuntimeMode()).toBe("svelte");
 	});
 
 	test("keeps persisted React fallback selection", () => {
@@ -57,7 +57,7 @@ describe("ui runtime queue helpers", () => {
 		expect(readPersistedUiRuntimeMode()).toBe("react");
 	});
 
-	test("falls back to React when persisted runtime mode is invalid", () => {
+	test("falls back to Svelte when persisted runtime mode is invalid", () => {
 		window.localStorage.setItem(
 			"kubecove-settings",
 			JSON.stringify({
@@ -66,13 +66,13 @@ describe("ui runtime queue helpers", () => {
 			}),
 		);
 
-		expect(readPersistedUiRuntimeMode()).toBe("react");
+		expect(readPersistedUiRuntimeMode()).toBe("svelte");
 	});
 
-	test("falls back to React when persisted runtime settings are corrupt", () => {
+	test("falls back to Svelte when persisted runtime settings are corrupt", () => {
 		window.localStorage.setItem("kubecove-settings", "{");
 
-		expect(readPersistedUiRuntimeMode()).toBe("react");
+		expect(readPersistedUiRuntimeMode()).toBe("svelte");
 	});
 
 	test("opening Settings consumes only the open request", () => {

@@ -2,6 +2,18 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ArgoApplicationSourceSummary {
+    pub repo_url: Option<String>,
+    pub target_revision: Option<String>,
+    pub resolved_revision: Option<String>,
+    pub path: Option<String>,
+    pub chart: Option<String>,
+    pub source_mode: Option<String>,
+    pub reference: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ArgoApplicationSummary {
     pub cluster: String,
     pub name: String,
@@ -16,6 +28,12 @@ pub struct ArgoApplicationSummary {
     pub destination_server: Option<String>,
     pub source_repo: Option<String>,
     pub source_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_count: Option<usize>,
+    #[serde(default)]
+    pub sources: Vec<ArgoApplicationSourceSummary>,
     #[serde(default)]
     pub resource_namespaces: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

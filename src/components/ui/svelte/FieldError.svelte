@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiFieldError, UiProps } from "./types";
 
 	let {
@@ -24,7 +24,7 @@
 	<div
 		role="alert"
 		data-slot="field-error"
-		class={cn("text-xs/relaxed font-normal text-destructive", className)}
+		class={cnfast("text-xs/relaxed font-normal text-destructive", className)}
 		{...rest}
 	>
 		{#if children}

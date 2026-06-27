@@ -21,7 +21,7 @@ import type {
 	ArgoApplicationSummary,
 	ArgoAppProjectSummary,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { StatusChip } from "./StatusChip";
 import { healthStatusVariant, syncStatusVariant } from "./status";
 
@@ -202,7 +202,7 @@ export function ApplicationsTable({
 							return (
 								<TableRow
 									key={argoItemKey(app)}
-									className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
+									className={cnfast(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 									onClick={() => onAppSelect(app)}
 									onKeyDown={(event) =>
 										handleRowActivation(event, app, onAppSelect)
@@ -308,7 +308,7 @@ export function ApplicationSetsTable({
 							return (
 								<TableRow
 									key={argoItemKey(appset)}
-									className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
+									className={cnfast(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 									onClick={() => onArgoItemSelect(appset)}
 									onKeyDown={(event) =>
 										handleRowActivation(event, appset, onArgoItemSelect)
@@ -411,7 +411,7 @@ export function AppProjectsTable({
 							return (
 								<TableRow
 									key={argoItemKey(project)}
-									className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
+									className={cnfast(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 									onClick={() => onArgoItemSelect(project)}
 									onKeyDown={(event) =>
 										handleRowActivation(event, project, onArgoItemSelect)

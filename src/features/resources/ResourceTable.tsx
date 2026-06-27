@@ -19,7 +19,7 @@ import {
 	getResourceKindVisual,
 } from "@/lib/resource-visuals";
 import type { ResourceSummary } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import {
 	EMPTY_PAGE_CLASS,
 	ROW_CLASS,
@@ -361,7 +361,7 @@ function ResourceTableRow({
 			{!hideResourceRow && (
 				<TableRow
 					data-resource-selected={isSelected ? "true" : undefined}
-					className={cn(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
+					className={cnfast(ROW_CLASS, isSelected && SELECTED_ROW_CLASS)}
 					onClick={selectResource}
 					onKeyDown={(event) => {
 						if (!isActivationKey(event)) return;
@@ -404,7 +404,7 @@ function ResourceGroupHeader({
 			<TableCell
 				colSpan={colSpan}
 				data-sticky="app-group"
-				className={cn("sticky z-20 !p-0 bg-background", STICKY_APP_GROUP_TOP)}
+				className={cnfast("sticky z-20 !p-0 bg-background", STICKY_APP_GROUP_TOP)}
 			>
 				<button
 					type="button"
@@ -417,7 +417,7 @@ function ResourceGroupHeader({
 					) : (
 						<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
 					)}
-					<Icon className={cn("size-3.5 shrink-0", visual.className)} />
+					<Icon className={cnfast("size-3.5 shrink-0", visual.className)} />
 					<span className="ml-0 text-muted-foreground">{label}</span>
 					<small className="ml-0.5 text-[0.6875rem] font-medium text-muted-foreground">
 						{count} resources on this page
@@ -450,7 +450,7 @@ function ResourceTypeGroupHeader({
 		<TableRow className="text-[0.72rem] font-bold uppercase text-foreground hover:bg-transparent">
 			<TableCell
 				colSpan={colSpan}
-				className={cn("sticky z-10 !p-0 bg-card", STICKY_TYPE_GROUP_TOP)}
+				className={cnfast("sticky z-10 !p-0 bg-card", STICKY_TYPE_GROUP_TOP)}
 			>
 				<button
 					type="button"
@@ -463,7 +463,7 @@ function ResourceTypeGroupHeader({
 					) : (
 						<ChevronDown className="size-4 shrink-0 text-muted-foreground" />
 					)}
-					<Icon className={cn("size-3.5 shrink-0", visual.className)} />
+					<Icon className={cnfast("size-3.5 shrink-0", visual.className)} />
 					<span className="ml-0 text-inherit">{label}</span>
 					<small className="ml-0.5 text-[0.625rem] font-medium normal-case text-muted-foreground">
 						{count} on this page

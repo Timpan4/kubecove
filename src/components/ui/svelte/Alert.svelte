@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import { alertVariants } from "./classes";
 	import type { UiProps } from "./types";
 
@@ -14,7 +14,7 @@
 <div
 	data-slot="alert"
 	role="alert"
-	class={cn(alertVariants({ variant }), className)}
+	class={cnfast(alertVariants({ variant }), className)}
 	{...rest}
 >
 	{@render children?.()}

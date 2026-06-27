@@ -7,7 +7,7 @@ import {
 export type UiRuntimeMode = "react" | "svelte";
 export type UiRuntimeWorkspaceHandoff = PathStateWorkspaceHandoff;
 
-export const DEFAULT_UI_RUNTIME_MODE: UiRuntimeMode = "react";
+export const DEFAULT_UI_RUNTIME_MODE: UiRuntimeMode = "svelte";
 export const SETTINGS_STORAGE_KEY = "kubecove-settings";
 export const UI_RUNTIME_RELOAD_NOTICE_KEY = "kubecove-ui-runtime-reload";
 export const UI_RUNTIME_SETTINGS_OPEN_KEY = "kubecove-settings-open";

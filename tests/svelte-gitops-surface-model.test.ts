@@ -36,8 +36,21 @@ const data = {
 			destinationServer: null,
 			sourceRepo: "https://git.example/api",
 			sourceRevision: "main",
+			sourceMode: "git",
+			sources: [
+				{
+					repoUrl: "https://git.example/api",
+					targetRevision: "main",
+					resolvedRevision: "abc123",
+					path: "apps/api",
+					chart: null,
+					sourceMode: "git",
+					reference: null,
+				},
+			],
 			resourceNamespaces: ["default"],
 			age: "1d",
+			createdAt: "2026-06-23T10:00:00Z",
 		},
 	],
 	appSets: [
@@ -446,31 +459,33 @@ describe("svelte GitOps surface model", () => {
 		expect(source).not.toContain("data.flux.slice");
 	});
 
-	test("Svelte Argo Application details expose React parity incident fields", () => {
+	test("Svelte GitOps details reuse the resource inspector", () => {
 		const source = gitOpsSurfaceSource();
 
-		expect(source).toContain("extractArgoStatusInsights");
-		expect(source).toContain('selectedGitOpsItem.type === "argoApp"');
-		expect(source).toContain("Sync & Health");
-		expect(source).toContain("Unhealthy Resources");
-		expect(source).toContain("Conditions");
-		expect(source).toContain("Destination");
-		expect(source).toContain("sourceRevision");
-		expect(source).toContain("queryKeys.argoAppDetails(");
-		expect(source).toContain("queryKeys.argoAppSetDetails(");
-		expect(source).toContain("queryKeys.argoAppProjectDetails(");
-		expect(source).toContain("queryKeys.fluxResourceDetails(");
+		expect(source).toContain("onResourceInspect");
+		expect(source).toContain("gitOpsSelectionResource(selection)");
+		expect(source).toContain("<ResourceDetailPanel");
+		expect(source).toContain('sizeKey={resourceInspectorSizeKey}');
+		expect(source).toContain('viewMode === "argo" ? 30 : 40');
+		expect(source).toContain('viewMode === "argo" ? 25 : 33');
+		expect(source).not.toContain("gitOpsDetailsQuery");
+		expect(source).not.toContain("extractArgoStatusInsights");
 		expect(source).not.toContain('"svelte-gitops-details"');
 	});
 
-	test("Svelte GitOps details show spinner while loading", () => {
+	test("Svelte GitOps details stay explicit instead of hijacking card clicks", () => {
 		const source = gitOpsSurfaceSource();
-		const loadingStart = source.indexOf("gitOpsDetailsQuery.isPending");
-		const loadingEnd = source.indexOf("gitOpsDetailsQuery.isError", loadingStart);
-		const loadingBody = source.slice(loadingStart, loadingEnd);
 
-		expect(loadingBody).toContain('<Spinner class="size-4" />');
-		expect(loadingBody).toContain("Loading GitOps details...");
+		expect(source).toContain('gitOpsSelectionPrimaryAction(selection) === "openResources"');
+		expect(source).toContain("openSelectedArgoApplicationResources(selection)");
+		expect(source).toContain("openGitOpsDetails(event: MouseEvent, selection: GitOpsSelection)");
+		expect(source).toContain("data-details-key={gitOpsDetailsActionKey(item)}");
+	});
+
+	test("Svelte GitOps tooltips reset delay between targets", () => {
+		const source = gitOpsSurfaceSource();
+
+		expect(source).toContain("<TooltipProvider delayDuration={400} skipDelayDuration={0}>");
 	});
 
 	test("Svelte GitOps probes providers before listing Argo CRDs", () => {

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import { fieldVariants, type FieldOrientation } from "./classes";
 	import type { UiProps } from "./types";
 
@@ -15,7 +15,7 @@
 	role="group"
 	data-slot="field"
 	data-orientation={orientation}
-	class={cn(fieldVariants({ orientation }), className)}
+	class={cnfast(fieldVariants({ orientation }), className)}
 	{...rest}
 >
 	{@render children?.()}

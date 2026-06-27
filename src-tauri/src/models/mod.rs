@@ -18,7 +18,8 @@ mod usage;
 
 pub use argo::{
     ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails,
-    ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSummary,
+    ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSourceSummary,
+    ArgoApplicationSummary,
 };
 pub use cancellation::CancelBackendRequestsResult;
 pub use cluster::ClusterContext;

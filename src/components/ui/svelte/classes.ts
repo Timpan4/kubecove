@@ -1,5 +1,5 @@
 import { cva } from "class-variance-authority";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 
 export type ButtonVariant =
 	| "default"
@@ -63,7 +63,7 @@ export function buttonClass({
 	size?: ButtonSize;
 	className?: string;
 }) {
-	return cn(buttonVariants({ variant, size }), className);
+	return cnfast(buttonVariants({ variant, size }), className);
 }
 
 export type BadgeVariant =
@@ -193,5 +193,5 @@ export function cardClass({
 	elevation?: CardElevation;
 	className?: string;
 }) {
-	return cn(cardVariants({ elevation }), className);
+	return cnfast(cardVariants({ elevation }), className);
 }

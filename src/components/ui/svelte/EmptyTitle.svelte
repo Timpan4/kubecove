@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let { class: className = "", children, ...rest }: UiProps = $props();
@@ -7,7 +7,7 @@
 
 <div
 	data-slot="empty-title"
-	class={cn("font-heading text-sm font-medium tracking-tight", className)}
+	class={cnfast("font-heading text-sm font-medium tracking-tight", className)}
 	{...rest}
 >
 	{@render children?.()}

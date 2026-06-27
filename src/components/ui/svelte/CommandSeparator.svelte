@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Command as CommandPrimitive } from "bits-ui";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let { class: className = "", ...rest }: UiProps = $props();
@@ -8,6 +8,6 @@
 
 <CommandPrimitive.Separator
 	data-slot="command-separator"
-	class={cn("-mx-1 h-px bg-border", className)}
+	class={cnfast("-mx-1 h-px bg-border", className)}
 	{...rest}
 />

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import { cardVariants, type CardElevation } from "./classes";
 	import type { UiProps } from "./types";
 
@@ -15,7 +15,7 @@
 <div
 	data-slot="card"
 	data-size={size}
-	class={cn(cardVariants({ elevation }), className)}
+	class={cnfast(cardVariants({ elevation }), className)}
 	{...rest}
 >
 	{@render children?.()}

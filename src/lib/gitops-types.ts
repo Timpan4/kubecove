@@ -1,3 +1,13 @@
+export interface ArgoApplicationSourceSummary {
+	repoUrl: string | null;
+	targetRevision: string | null;
+	resolvedRevision: string | null;
+	path: string | null;
+	chart: string | null;
+	sourceMode?: "git" | "helm" | "plugin" | "unknown" | string | null;
+	reference: string | null;
+}
+
 export interface ArgoApplicationSummary {
 	name: string;
 	cluster: string;
@@ -9,6 +19,9 @@ export interface ArgoApplicationSummary {
 	destinationServer: string | null;
 	sourceRepo: string | null;
 	sourceRevision: string | null;
+	sourceMode?: "git" | "helm" | "multi" | "plugin" | "unknown";
+	sourceCount?: number;
+	sources?: ArgoApplicationSourceSummary[];
 	resourceNamespaces: string[];
 	trackedResourceCount?: number;
 	age: string;

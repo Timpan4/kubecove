@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let { class: className = "", children, ...rest }: UiProps = $props();
@@ -7,7 +7,7 @@
 
 <tr
 	data-slot="table-row"
-	class={cn(
+	class={cnfast(
 		"border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
 		className,
 	)}

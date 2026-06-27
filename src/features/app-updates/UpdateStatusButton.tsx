@@ -21,7 +21,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { isAppUpdatesEnabled } from "@/lib/release-channel";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { useAppUpdateStore } from "./store";
 
 const CHECKED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -95,7 +95,7 @@ export function UpdateStatusButton() {
 							aria-label={tooltip}
 						>
 							<RotateCw
-								className={cn(status === "checking" && "animate-spin")}
+								className={cnfast(status === "checking" && "animate-spin")}
 							/>
 							{(hasUpdate || status === "installed") && (
 								<span className="absolute right-1 top-1 size-2 rounded-full bg-primary" />

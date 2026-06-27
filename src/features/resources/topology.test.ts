@@ -5,6 +5,14 @@ import {
 	buildReactFlowTopologySelectionIndex,
 	filterReactFlowTopologyToSelectedRoot,
 } from "./topology";
+import {
+	buildFlowTopologyLayout,
+	topologyRailTone,
+	topologyReadyText,
+	topologyReadyTone,
+	topologyRestartTone,
+	topologyStatusTone,
+} from "./topologyModel";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
@@ -172,5 +180,66 @@ describe("topology selection", () => {
 			"api-rs-to-pod-1",
 			"api-rs-to-pod-2",
 		]);
+	});
+});
+
+describe("Svelte topology layout", () => {
+	test("compacts direct Job to Pod ownership edges without empty columns", () => {
+		const topology: ResourceTopology = {
+			nodes: [
+				node("Job", "issue-143-failure-control"),
+				node("Pod", "issue-143-failure-xj9mv"),
+			],
+			edges: [
+				{
+					id: "job-to-pod",
+					source: "Job:issue-143-failure-control",
+					target: "Pod:issue-143-failure-xj9mv",
+					relation: "creates",
+				},
+			],
+			warnings: [],
+		};
+		const layout = buildFlowTopologyLayout(topology, null);
+		const job = layout.nodes.find((item) => item.id === "Job:issue-143-failure-control");
+		const pod = layout.nodes.find((item) => item.id === "Pod:issue-143-failure-xj9mv");
+
+		expect((pod?.position.x ?? 0) - (job?.position.x ?? 0)).toBe(520);
+	});
+});
+
+describe("topology stoplight tones", () => {
+	test("maps lifecycle status to stoplight tones", () => {
+		expect(topologyStatusTone("Running")).toBe("success");
+		expect(topologyStatusTone("Succeeded")).toBe("success");
+		expect(topologyStatusTone("Pending")).toBe("warning");
+		expect(topologyStatusTone("Waiting")).toBe("warning");
+		expect(topologyStatusTone("Failed")).toBe("error");
+		expect(topologyStatusTone("CrashLoopBackOff")).toBe("error");
+	});
+
+	test("maps restart counts to neutral, warning, and error thresholds", () => {
+		expect(topologyRestartTone(0)).toBe("neutral");
+		expect(topologyRestartTone(2)).toBe("neutral");
+		expect(topologyRestartTone(3)).toBe("warning");
+		expect(topologyRestartTone(4)).toBe("warning");
+		expect(topologyRestartTone(5)).toBe("error");
+	});
+
+	test("keeps terminal succeeded pods green despite false readiness", () => {
+		expect(topologyReadyTone("false", "Succeeded")).toBe("success");
+		expect(topologyReadyTone("Completed", "Succeeded")).toBe("success");
+		expect(topologyReadyText("false", "Succeeded")).toBe("Completed");
+		expect(topologyReadyTone("Not ready", "Running")).toBe("error");
+		expect(topologyReadyTone("0/1", "Pending")).toBe("warning");
+		expect(topologyReadyTone("0/1", "Running")).toBe("error");
+	});
+
+	test("uses strongest visible condition for the left rail", () => {
+		expect(topologyRailTone("Running", "true", 0)).toBe("success");
+		expect(topologyRailTone("Running", "true", 4)).toBe("warning");
+		expect(topologyRailTone("Running", "true", 5)).toBe("error");
+		expect(topologyRailTone("Failed", "true", 3)).toBe("error");
+		expect(topologyRailTone("Running", "true", 0, "degraded")).toBe("error");
 	});
 });

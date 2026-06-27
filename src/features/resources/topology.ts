@@ -11,7 +11,7 @@ import type {
 	TopologyNode,
 	TopologyRelation,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import {
 	CANVAS_PADDING,
 	EDGE_PATH_OPTIONS,
@@ -290,7 +290,7 @@ export function applyReactFlowTopologySelectionWithIndex(
 		return {
 			...edge,
 			animated: selectedEdge,
-			className: cn(
+			className: cnfast(
 				"ownership-map-edge",
 				selectedEdge && "ownership-map-edge-active",
 			),
@@ -396,7 +396,7 @@ export function topologyNodeClassName(
 ): string {
 	const actualNodeId = nodeId ?? node.id ?? null;
 	const selected = actualNodeId ? selectedNodeId === actualNodeId : false;
-	return cn(
+	return cnfast(
 		"resource-topology-node min-w-0 rounded-md border px-3 py-2 text-left shadow-sm transition-all",
 		node.selectable
 			? "cursor-pointer hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring/40"

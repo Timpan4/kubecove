@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let { class: className = "", children, ...rest }: UiProps = $props();
@@ -7,7 +7,7 @@
 
 <caption
 	data-slot="table-caption"
-	class={cn("mt-4 text-xs text-muted-foreground", className)}
+	class={cnfast("mt-4 text-xs text-muted-foreground", className)}
 	{...rest}
 >
 	{@render children?.()}

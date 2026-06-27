@@ -44,7 +44,7 @@ import type {
 	TopologyMode,
 	TopologyNode,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { PAGE_SIZE } from "./constants";
 import { pageGitOpsGroupCounts, pageTypeGroupCounts } from "./grouping";
 import {
@@ -647,7 +647,7 @@ function ResourceListComponent({
 				onClearFilters={clearFilters}
 			/>
 			<div
-				className={cn(
+				className={cnfast(
 					"min-h-0 flex-1 transition-opacity",
 					showingStaleRows && "opacity-60",
 				)}

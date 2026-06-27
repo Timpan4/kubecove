@@ -45,7 +45,7 @@ import {
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettingsState } from "@/lib/settings";
 import type { PodExecSessionMessage, ResourceSummary } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import type { ContainerStatusRow } from "./helpers";
 import { getErrorMessage } from "./helpers";
 import {
@@ -466,7 +466,7 @@ export function ExecTab({
 			</div>
 			<div
 				ref={terminalHostRef}
-				className={cn(
+				className={cnfast(
 					"min-h-[280px] flex-1 overflow-hidden rounded-md border bg-background p-2",
 					!active && "hidden",
 				)}

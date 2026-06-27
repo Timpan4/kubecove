@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import Separator from "./Separator.svelte";
 	import type { UiProps } from "./types";
 
@@ -8,6 +8,6 @@
 
 <Separator
 	data-slot="select-separator"
-	class={cn("pointer-events-none -mx-1 my-1 h-px bg-border/50", className)}
+	class={cnfast("pointer-events-none -mx-1 my-1 h-px bg-border/50", className)}
 	{...rest}
 />

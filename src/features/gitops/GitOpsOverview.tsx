@@ -26,7 +26,7 @@ import type {
 	FluxResourceKind,
 	FluxResourceSummary,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import {
 	buildGitOpsOverviewFilters,
 	chooseDefaultGitOpsFilter,
@@ -104,7 +104,7 @@ function FilterRail({
 											<button
 												key={filter.key}
 												type="button"
-												className={cn(
+												className={cnfast(
 													"flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2.5 text-left text-sm transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/50",
 													activeKey === filter.key
 														? "bg-secondary font-medium text-foreground"

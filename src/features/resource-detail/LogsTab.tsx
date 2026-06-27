@@ -26,7 +26,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useSettingsState } from "@/lib/settings";
 import type { TauriClient } from "@/lib/tauri";
 import type { ResourceSummary } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import type { ContainerStatusRow } from "./helpers";
 import {
 	latestTimestampedLogLine,
@@ -309,7 +309,7 @@ export function LogsTab({
 									)}
 								</time>
 								<code
-									className={cn(
+									className={cnfast(
 										"block px-3 py-1 text-foreground",
 										wrapLines
 											? "min-w-0 flex-1 whitespace-pre-wrap break-words"

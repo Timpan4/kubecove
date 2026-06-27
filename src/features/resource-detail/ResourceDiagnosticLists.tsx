@@ -1,6 +1,6 @@
 import { ExactTimestampText } from "@/components/TimestampText";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { ResourceSummary } from "../../lib/types";
 import {
@@ -62,7 +62,7 @@ export function ConditionList({
 					const badgeStyle = CHIP_BADGE_STYLES[tone];
 					return (
 						<div
-							className={cn(
+							className={cnfast(
 								"rounded-md border border-l-4 px-3 py-2",
 								toneRowClassName(tone),
 							)}
@@ -74,7 +74,7 @@ export function ConditionList({
 								</span>
 								<Badge
 									variant={badgeStyle.variant}
-									className={cn(
+									className={cnfast(
 										"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
 										badgeStyle.className,
 									)}
@@ -146,7 +146,7 @@ export function ContainerList({
 					const badgeStyle = CHIP_BADGE_STYLES[tone];
 					return (
 						<div
-							className={cn(
+							className={cnfast(
 								"rounded-md border border-l-4 px-3 py-2",
 								toneRowClassName(tone),
 							)}
@@ -164,7 +164,7 @@ export function ContainerList({
 								</div>
 								<Badge
 									variant={badgeStyle.variant}
-									className={cn(
+									className={cnfast(
 										"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
 										badgeStyle.className,
 									)}

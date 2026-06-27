@@ -31,18 +31,47 @@ import {
 	type OwnershipMapViewportSize,
 } from "./topology-viewport";
 import { buildStandaloneGroups } from "./topology-standalone-groups";
-
 const SVELTE_TOPOLOGY_LAYOUT = {
-	nodeWidth: 351,
-	nodeHeight: 104,
-	columnGap: 120,
-	rowGap: 18,
+	nodeWidth: 408,
+	nodeHeight: 98,
+	columnGap: 112,
+	rowGap: 30,
 };
 const SVELTE_STANDALONE_NODE_WIDTH = 320;
 const SVELTE_MIN_ZOOM = 0.12;
 const SVELTE_MAX_ZOOM = 1.4;
-const WIDTH_FIT_PADDING = 0.24;
-
+const WIDTH_FIT_PADDING = 0.08;
+export type TopologyStoplightTone = "success" | "warning" | "error" | "neutral";
+const SUCCESS_STATUSES = new Set([
+	"available",
+	"complete",
+	"completed",
+	"ready",
+	"running",
+	"succeeded",
+]);
+const WARNING_STATUSES = new Set([
+	"pending",
+	"restarting",
+	"terminating",
+	"unknown",
+	"waiting",
+]);
+const ERROR_STATUSES = new Set([
+	"crashloopbackoff",
+	"degraded",
+	"error",
+	"failed",
+	"imagepullbackoff",
+	"not ready",
+	"notready",
+]);
+const TONE_RANK: Record<TopologyStoplightTone, number> = {
+	neutral: 0,
+	success: 1,
+	warning: 2,
+	error: 3,
+};
 export interface FlowTopologyNodeData extends Record<string, unknown> {
 	node?: ResourceTopologyNode;
 	resource: ResourceSummary | null;
@@ -56,7 +85,6 @@ export interface FlowTopologyNodeData extends Record<string, unknown> {
 	dimmed?: boolean;
 	showPortHints?: boolean;
 }
-
 export type FlowTopologyNode = Node<
 	FlowTopologyNodeData,
 	"ownershipResource" | "standaloneKindGroup"
@@ -89,6 +117,86 @@ const ZERO_TRANSLATE_EXTENT: CoordinateExtent = [
 	[0, 0],
 	[0, 0],
 ];
+
+function normalized(value: string | undefined): string {
+	return value?.trim().toLowerCase() ?? "";
+}
+
+function isTerminalSuccessStatus(status: string | undefined): boolean {
+	const value = normalized(status);
+	return value === "complete" || value === "completed" || value === "succeeded";
+}
+
+export function topologyStatusTone(status: string | undefined): TopologyStoplightTone {
+	const value = normalized(status);
+	if (SUCCESS_STATUSES.has(value)) return "success";
+	if (WARNING_STATUSES.has(value)) return "warning";
+	if (ERROR_STATUSES.has(value)) return "error";
+	return "neutral";
+}
+
+function topologyHealthTone(health: string | undefined): TopologyStoplightTone {
+	const value = normalized(health);
+	if (value === "healthy") return "success";
+	if (value === "degraded") return "error";
+	if (value === "attention" || value === "restarted") return "warning";
+	return "neutral";
+}
+
+export function topologyRestartTone(restarts: number | undefined): TopologyStoplightTone {
+	if (restarts === undefined || restarts <= 0) return "neutral";
+	if (restarts >= 5) return "error";
+	if (restarts >= 3) return "warning";
+	return "neutral";
+}
+
+export function topologyReadyTone(
+	ready: string | undefined,
+	status: string | undefined,
+): TopologyStoplightTone {
+	const value = normalized(ready);
+	if (!value) return "neutral";
+	if (isTerminalSuccessStatus(status) && (value === "false" || value === "not ready")) {
+		return "success";
+	}
+	if (value === "true" || value === "ready" || value === "completed") return "success";
+	if (value === "false" || value === "not ready" || value === "notready") return "error";
+
+	const ratioMatch = /^(\d+)\s*\/\s*(\d+)$/.exec(value);
+	if (!ratioMatch) return "neutral";
+	const readyCount = Number(ratioMatch[1]);
+	const desiredCount = Number(ratioMatch[2]);
+	if (desiredCount > 0 && readyCount >= desiredCount) return "success";
+	return topologyStatusTone(status) === "warning" ? "warning" : "error";
+}
+
+export function topologyReadyText(
+	ready: string | undefined,
+	status: string | undefined,
+): string | undefined {
+	if (!ready) return undefined;
+	const value = normalized(ready);
+	if (isTerminalSuccessStatus(status) && (value === "false" || value === "not ready")) {
+		return "Completed";
+	}
+	if (value === "true") return "Ready";
+	if (value === "false") return "Not ready";
+	return ready;
+}
+
+export function topologyRailTone(
+	status: string | undefined,
+	ready: string | undefined,
+	restarts: number | undefined,
+	health?: string | undefined,
+): TopologyStoplightTone {
+	return [
+		topologyStatusTone(status),
+		topologyReadyTone(ready, status),
+		topologyRestartTone(restarts),
+		topologyHealthTone(health),
+	].sort((a, b) => TONE_RANK[b] - TONE_RANK[a])[0];
+}
 
 function finitePositiveNumber(value: unknown): number | null {
 	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
@@ -127,6 +235,26 @@ function absoluteTopologyNodePosition(
 
 function clampMapZoom(zoom: number): number {
 	return Math.min(SVELTE_MAX_ZOOM, Math.max(SVELTE_MIN_ZOOM, zoom));
+}
+
+function compactDirectEdgeDepths(
+	graph: ReturnType<typeof buildTopologyGraph>,
+	depthById: Map<string, number>,
+): Map<string, number> {
+	const compacted = new Map(depthById);
+	const nodesByDepth = [...graph.nodes].sort(
+		(a, b) => (depthById.get(a.id) ?? 0) - (depthById.get(b.id) ?? 0),
+	);
+	for (const node of nodesByDepth) {
+		const parentIds = graph.parents.get(node.id) ?? [];
+		if (parentIds.length === 0) continue;
+		const directDepth = Math.max(
+			...parentIds.map((id) => (compacted.get(id) ?? 0) + 1),
+		);
+		const currentDepth = compacted.get(node.id) ?? directDepth;
+		if (directDepth < currentDepth) compacted.set(node.id, directDepth);
+	}
+	return compacted;
 }
 
 export function getFlowTopologyBounds(
@@ -188,8 +316,8 @@ export function buildFlowTopologyLayout(
 	mode: TopologyMode = "ownership",
 	options: BuildFlowTopologyOptions = {},
 ): FlowTopology {
-	const depthById = topologyColumnDepth(topology);
 	const graph = buildTopologyGraph(topology);
+	const depthById = compactDirectEdgeDepths(graph, topologyColumnDepth(topology));
 	const orderById = topologyLayoutOrder(graph.nodes, topology, depthById);
 	const positions = buildTopologyPositions(
 		graph,

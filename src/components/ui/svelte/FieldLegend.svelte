@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let {
@@ -13,7 +13,7 @@
 <legend
 	data-slot="field-legend"
 	data-variant={variant}
-	class={cn(
+	class={cnfast(
 		"mb-2 font-medium data-[variant=label]:text-xs/relaxed data-[variant=legend]:text-sm",
 		className,
 	)}

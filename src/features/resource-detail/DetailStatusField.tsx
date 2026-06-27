@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import {
 	CHIP_BADGE_STYLES,
 	DETAIL_KEY_CLASS,
@@ -42,7 +42,7 @@ export function StatusChip({
 			<span className={DETAIL_VALUE_CLASS}>
 				<Badge
 					variant={badgeStyle.variant}
-					className={cn(
+					className={cnfast(
 						"rounded-full px-2 py-0 text-[0.6875rem] shadow-none",
 						badgeStyle.className,
 					)}

@@ -29,7 +29,7 @@ import type {
 	TopologyMode,
 	TopologyNode,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { ownershipMapNodeTypes } from "./OwnershipMapNodes";
 import {
 	type OwnershipGraphNode,
@@ -155,7 +155,7 @@ function OwnershipMapHeader({
 	);
 }
 
-const WIDTH_FIT_PADDING = 0.24;
+const WIDTH_FIT_PADDING = 0.08;
 const WIDTH_FIT_DURATION_MS = 260;
 const MIN_MAP_ZOOM = 0.18;
 const MAX_MAP_ZOOM = 1.4;
@@ -474,7 +474,7 @@ export function OwnershipMap({
 			<Separator />
 			<div
 				ref={setMapViewportRef}
-				className={cn(heightClassName, "flex-1 bg-background")}
+				className={cnfast(heightClassName, "flex-1 bg-background")}
 			>
 				<ReactFlow
 					nodes={graph.nodes}

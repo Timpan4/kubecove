@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let { class: className = "", children, ...rest }: UiProps = $props();
@@ -7,7 +7,7 @@
 
 <div
 	data-slot="empty-description"
-	class={cn(
+	class={cnfast(
 		"text-xs/relaxed text-muted-foreground [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
 		className,
 	)}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Button from "./Button.svelte";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { ButtonSize, ButtonVariant } from "./classes";
 	import type { UiProps } from "./types";
 
@@ -23,7 +23,7 @@
 	{variant}
 	{size}
 	data-size={size}
-	class={cn(
+	class={cnfast(
 		"flex items-center gap-2 rounded-md text-xs/relaxed shadow-none",
 		size === "xs" &&
 			"h-5 gap-1 rounded-[calc(var(--radius-sm)-2px)] px-1 [&>svg:not([class*='size-'])]:size-3",

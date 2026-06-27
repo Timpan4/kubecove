@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import { badgeVariants, type BadgeVariant } from "./classes";
 	import type { UiProps } from "./types";
 
@@ -14,7 +14,7 @@
 <span
 	data-slot="badge"
 	data-variant={variant}
-	class={cn(badgeVariants({ variant }), className)}
+	class={cnfast(badgeVariants({ variant }), className)}
 	{...rest}
 >
 	{@render children?.()}

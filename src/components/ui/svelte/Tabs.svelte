@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Tabs as TabsPrimitive } from "bits-ui";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let {
@@ -14,7 +14,7 @@
 <TabsPrimitive.Root
 	data-slot="tabs"
 	data-orientation={orientation}
-	class={cn("group/tabs flex gap-2 data-[orientation=horizontal]:flex-col", className)}
+	class={cnfast("group/tabs flex gap-2 data-[orientation=horizontal]:flex-col", className)}
 	{orientation}
 	{...rest}
 >

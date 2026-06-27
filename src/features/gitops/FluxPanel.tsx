@@ -22,7 +22,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { useSettingsState } from "@/lib/settings";
 import { createTauriClient, detectFlux, listFluxResources } from "@/lib/tauri";
 import type { FluxResourceSummary } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import { fluxKindFromLabel, fluxStatusTone } from "./flux-kinds";
 
 const STATE_CLASS =
@@ -128,7 +128,7 @@ export function FluxPanel({
 					return (
 						<TableRow
 							key={`${row.resourceKind.kind}:${row.namespace ?? "_cluster"}:${row.name}`}
-							className={cn(ROW_CLASS, selected && SELECTED_ROW_CLASS)}
+							className={cnfast(ROW_CLASS, selected && SELECTED_ROW_CLASS)}
 							tabIndex={0}
 							onClick={() => onFluxResourceSelect(row)}
 							onKeyDown={(event) => {

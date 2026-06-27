@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Dialog as DialogPrimitive } from "bits-ui";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let { class: className = "", children, ...rest }: UiProps = $props();
@@ -8,7 +8,7 @@
 
 <DialogPrimitive.Title
 	data-slot="dialog-title"
-	class={cn("font-heading text-sm font-medium text-foreground", className)}
+	class={cnfast("font-heading text-sm font-medium text-foreground", className)}
 	{...rest}
 >
 	{@render children?.()}

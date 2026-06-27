@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let { class: className = "", children, ...rest }: UiProps = $props();
@@ -7,7 +7,7 @@
 
 <tbody
 	data-slot="table-body"
-	class={cn("[&_tr:last-child]:border-0", className)}
+	class={cnfast("[&_tr:last-child]:border-0", className)}
 	{...rest}
 >
 	{@render children?.()}

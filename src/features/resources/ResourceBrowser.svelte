@@ -46,7 +46,7 @@
 		mergeTopologyMetrics,
 	} from "@/lib/resource-metrics";
 	import { queryKeys } from "@/lib/queryKeys";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import type { PathStateResourceBrowserState } from "@/lib/path-state";
@@ -1040,7 +1040,7 @@
 												<TableCell
 													colspan={tableVisibleColumnCount}
 													data-sticky="app-group"
-													class={cn("sticky z-20 !p-0 bg-background", STICKY_APP_GROUP_TOP)}
+													class={cnfast("sticky z-20 !p-0 bg-background", STICKY_APP_GROUP_TOP)}
 												>
 													<button
 														type="button"
@@ -1053,7 +1053,7 @@
 														{:else}
 															<ChevronDown class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 														{/if}
-														<GroupIcon class={cn("size-3.5 shrink-0", visual.className)} aria-hidden="true" />
+														<GroupIcon class={cnfast("size-3.5 shrink-0", visual.className)} aria-hidden="true" />
 														<span class="text-muted-foreground">{entry.label}</span>
 														<small class="text-[0.6875rem] font-medium text-muted-foreground">
 															{entry.count} resources on this page
@@ -1067,11 +1067,11 @@
 											<TableRow class="text-[0.72rem] font-bold uppercase text-foreground hover:bg-transparent">
 												<TableCell
 													colspan={tableVisibleColumnCount}
-													class={cn("sticky z-10 !p-0 bg-card", STICKY_TYPE_GROUP_TOP)}
+													class={cnfast("sticky z-10 !p-0 bg-card", STICKY_TYPE_GROUP_TOP)}
 												>
 													<button
 														type="button"
-														class={cn(
+														class={cnfast(
 															"flex w-full cursor-pointer items-center gap-2 border-0 bg-card py-1.5 pr-3 text-left text-[0.6875rem] text-inherit focus-visible:ring-1 focus-visible:ring-ring/50",
 															tableModel.groupedByGitOps ? "pl-6" : "pl-3",
 														)}
@@ -1083,7 +1083,7 @@
 														{:else}
 															<ChevronDown class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 														{/if}
-														<TypeIcon class={cn("size-3.5 shrink-0", visual.className)} aria-hidden="true" />
+														<TypeIcon class={cnfast("size-3.5 shrink-0", visual.className)} aria-hidden="true" />
 														<span>{entry.label}</span>
 														<small class="text-[0.625rem] font-medium normal-case text-muted-foreground">
 															{entry.count} on this page
@@ -1096,7 +1096,7 @@
 											{@const rowSelected = resourceMatchesKeys(row, selectedResourceKey, selectedResourceIdentityKey, hasExactSelectedResource)}
 											<TableRow
 												data-resource-selected={rowSelected ? "true" : undefined}
-												class={cn(ROW_CLASS, rowSelected && SELECTED_ROW_CLASS)}
+												class={cnfast(ROW_CLASS, rowSelected && SELECTED_ROW_CLASS)}
 												tabindex="0"
 												role="button"
 												aria-pressed={rowSelected}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Command as CommandPrimitive } from "bits-ui";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let { class: className = "", children, ...rest }: UiProps = $props();
@@ -8,7 +8,7 @@
 
 <CommandPrimitive.Root
 	data-slot="command"
-	class={cn(
+	class={cnfast(
 		"flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
 		className,
 	)}

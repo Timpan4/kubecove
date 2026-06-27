@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import type { UiProps } from "./types";
 
 	let { class: className = "", children, ...rest }: UiProps = $props();
@@ -7,7 +7,7 @@
 
 <div
 	data-slot="empty-header"
-	class={cn("flex max-w-sm flex-col items-center gap-1", className)}
+	class={cnfast("flex max-w-sm flex-col items-center gap-1", className)}
 	{...rest}
 >
 	{@render children?.()}

@@ -33,7 +33,7 @@
 		SelectTrigger,
 		SelectValue,
 	} from "@/components/ui/svelte";
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import {
 		summarizeWorkspaceScope,
 		workspaceScopeContexts,
@@ -269,7 +269,7 @@
 					<Card
 						size="sm"
 						elevation="raised"
-						class={cn(
+						class={cnfast(
 							"grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]",
 							unavailable && "border-amber-500/40 hover:border-amber-500/60",
 						)}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/lib/utils";
+	import { cnfast } from "@/lib/utils";
 	import Separator from "./Separator.svelte";
 	import type { UiProps } from "./types";
 
@@ -9,7 +9,7 @@
 <div
 	data-slot="field-separator"
 	data-content={Boolean(children)}
-	class={cn(
+	class={cnfast(
 		"relative -my-2 h-5 text-xs/relaxed group-data-[variant=outline]/field-group:-mb-2",
 		className,
 	)}

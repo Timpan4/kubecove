@@ -23,7 +23,7 @@ import type {
 	ArgoAppProjectSummary,
 	FluxResourceSummary,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cnfast } from "@/lib/utils";
 import type { GitOpsOverviewFilter } from "./gitops-overview-helpers";
 import { fluxStatusTone } from "./flux-kinds";
 
@@ -91,7 +91,7 @@ function SelectableCard({
 			aria-pressed={selected}
 			onClick={onSelect}
 			onKeyDown={(event) => handleCardKey(event, onSelect)}
-			className={cn(
+			className={cnfast(
 				"min-h-[236px] cursor-pointer border-l-4 border-l-transparent transition-colors hover:bg-accent/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/50",
 				selected && "border-l-sidebar-primary bg-accent/50",
 			)}

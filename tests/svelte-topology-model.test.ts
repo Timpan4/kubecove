@@ -6,6 +6,7 @@ import {
 	buildFlowTopologySelectionIndex,
 	filterFlowTopologyToSelectedRoot,
 	getTopologyTranslateExtent,
+	widthFitFlowTopologyViewport,
 } from "@/features/resources/topologyModel";
 
 declare function describe(name: string, fn: () => void): void;
@@ -89,7 +90,7 @@ describe("svelte topology model", () => {
 		expect(graph.edges.find((edge) => edge.id === "rs-to-pod")?.animated).toBe(true);
 		expect(graph.edges.find((edge) => edge.id === "deployment-to-rs")?.animated).toBe(true);
 		expect(graph.nodes[0]?.type).toBe("ownershipResource");
-		expect(graph.nodes[0]?.style).toContain("width: 351px");
+		expect(graph.nodes[0]?.style).toContain("width: 408px");
 		expect(graph.edges.every((edge) => edge.type === "smoothstep")).toBe(true);
 		expect(graph.edges.every((edge) => edge.pathOptions?.borderRadius === 10)).toBe(true);
 	});
@@ -254,7 +255,16 @@ describe("svelte topology model", () => {
 		]);
 		expect(getTopologyTranslateExtent(graph.nodes, { width: 1000, height: 500 })).toEqual([
 			[-8657.333333333334, -4280.666666666667],
-			[9200.333333333334, 4576.666666666667],
+			[9257.333333333334, 4570.666666666667],
 		]);
+	});
+
+	test("fits Svelte topology with tight side margins", () => {
+		expect(
+			widthFitFlowTopologyViewport(
+				{ left: 0, top: 0, right: 1000, bottom: 100, width: 1000, height: 100 },
+				{ width: 1000, height: 500 },
+			),
+		).toEqual({ x: 80, y: 208, zoom: 0.84 });
 	});
 });
