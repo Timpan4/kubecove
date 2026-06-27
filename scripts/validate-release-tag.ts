@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+
 import {
 	assertMatchingReleaseVersions,
 	readWorkspaceReleaseVersions,
@@ -28,6 +30,8 @@ try {
 			`Release tag must match app-v<package version>. Expected ${expectedTagName}, found ${tagName}.`,
 		);
 	}
+
+	assertTagTargetsOriginMain(tagName);
 } catch (error) {
 	fail(error instanceof Error ? error.message : String(error));
 }
@@ -35,4 +39,44 @@ try {
 function fail(message: string): never {
 	console.error(message);
 	process.exit(1);
+}
+
+function assertTagTargetsOriginMain(tagName: string): void {
+	run("git", ["fetch", "--quiet", "--no-tags", "origin", "main:refs/remotes/origin/main"]);
+
+	const tagCommit = run("git", ["rev-parse", `${tagName}^{commit}`]).trim();
+	const originMainCommit = run("git", ["rev-parse", "origin/main^{commit}"]).trim();
+
+	console.log(`release tag commit: ${shortSha(tagCommit)}`);
+	console.log(`origin/main commit: ${shortSha(originMainCommit)}`);
+
+	if (tagCommit === originMainCommit) return;
+
+	fail(
+		[
+			`Release tag ${tagName} must point to the current origin/main commit.`,
+			`Found tag commit ${tagCommit}, but origin/main is ${originMainCommit}.`,
+			"Create releases through the reviewed release PR flow so branch protection remains the publication gate.",
+		].join("\n"),
+	);
+}
+
+function run(command: string, args: string[]): string {
+	const result = spawnSync(command, args, {
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+
+	if (result.status === 0) return result.stdout ?? "";
+
+	const errorDetails = [
+		`Command failed: ${command} ${args.join(" ")}`,
+		result.stderr?.trim() || (result.error ? `Spawn error: ${result.error.message}` : "Unknown error"),
+	];
+
+	fail(errorDetails.filter(Boolean).join("\n"));
+}
+
+function shortSha(sha: string): string {
+	return sha.slice(0, 12);
 }
