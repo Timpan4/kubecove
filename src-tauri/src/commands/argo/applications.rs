@@ -492,14 +492,32 @@ mod tests {
         let plugin_sources = application_sources(plugin);
         let git_sources = application_sources(git);
 
-        assert_eq!(application_source_mode(&multi_sources).as_deref(), Some("multi"));
+        assert_eq!(
+            application_source_mode(&multi_sources).as_deref(),
+            Some("multi")
+        );
         assert_eq!(application_source_count(&multi_sources), Some(2));
-        assert_eq!(primary_source_repo(&multi_sources).as_deref(), Some("https://git.example/apps"));
-        assert_eq!(primary_source_revision(&multi_sources).as_deref(), Some("HEAD"));
+        assert_eq!(
+            primary_source_repo(&multi_sources).as_deref(),
+            Some("https://git.example/apps")
+        );
+        assert_eq!(
+            primary_source_revision(&multi_sources).as_deref(),
+            Some("HEAD")
+        );
         assert_eq!(multi_sources[0].path.as_deref(), Some("apps/api"));
         assert_eq!(multi_sources[1].chart.as_deref(), Some("redis"));
-        assert_eq!(application_source_mode(&helm_sources).as_deref(), Some("helm"));
-        assert_eq!(application_source_mode(&plugin_sources).as_deref(), Some("plugin"));
-        assert_eq!(application_source_mode(&git_sources).as_deref(), Some("git"));
+        assert_eq!(
+            application_source_mode(&helm_sources).as_deref(),
+            Some("helm")
+        );
+        assert_eq!(
+            application_source_mode(&plugin_sources).as_deref(),
+            Some("plugin")
+        );
+        assert_eq!(
+            application_source_mode(&git_sources).as_deref(),
+            Some("git")
+        );
     }
 }

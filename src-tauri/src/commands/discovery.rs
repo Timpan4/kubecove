@@ -19,7 +19,7 @@ pub async fn resource_kinds_from(
     let discovery = Discovery::new(client)
         .run_aggregated()
         .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
+        .map_err(AppError::from)?;
 
     let mut kinds = Vec::new();
 

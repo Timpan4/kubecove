@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
-	import { Alert, AlertDescription, ScrollArea } from "@/components/ui/svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
+	import { ScrollArea } from "@/components/ui/svelte";
 	import {
 		createTauriClient,
 		detectArgoCD,
@@ -77,11 +78,7 @@
 	}));
 
 	const namespaceError = $derived(
-		namespacesQuery.error instanceof Error
-			? namespacesQuery.error.message
-			: namespacesQuery.error
-				? String(namespacesQuery.error)
-				: "",
+		namespacesQuery.isError ? namespacesQuery.error : null,
 	);
 	const resourceKindsError = $derived(
 		resourceKindsQuery.error instanceof Error
@@ -113,9 +110,16 @@
 	</div>
 {:else}
 	{#if namespaceError}
-		<Alert variant="destructive" class="m-2">
-			<AlertDescription>{namespaceError}</AlertDescription>
-		</Alert>
+		<FriendlyError
+			mode="compact"
+			class="m-2"
+			error={namespaceError}
+			context={{
+				operation: "resourcesLoad",
+				fallbackTitle: "Namespaces failed to load",
+				partial: true,
+			}}
+		/>
 	{/if}
 	<ScrollArea class="min-h-0 flex-1">
 		<nav class="py-2" aria-label="Kubernetes resource tree">

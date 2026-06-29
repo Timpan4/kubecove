@@ -202,10 +202,7 @@ where
             "validation",
         ));
     };
-    let resource = api
-        .get(name)
-        .await
-        .map_err(|e: kube::Error| AppError::kube(e.to_string()))?;
+    let resource = api.get(name).await.map_err(AppError::from)?;
     let yaml = serialize_resource_document(&resource, mode, encoding)?;
     Ok((resource, yaml))
 }
@@ -265,10 +262,7 @@ where
     <T as Resource>::DynamicType: Default,
 {
     let api: Api<T> = Api::all(client);
-    let resource = api
-        .get(name)
-        .await
-        .map_err(|e: kube::Error| AppError::kube(e.to_string()))?;
+    let resource = api.get(name).await.map_err(AppError::from)?;
     let yaml = serialize_resource_document(&resource, mode, encoding)?;
     Ok((resource, yaml))
 }

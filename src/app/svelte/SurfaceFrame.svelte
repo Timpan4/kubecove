@@ -1,11 +1,7 @@
 <script lang="ts">
 	import type { ComponentType, Snippet, SvelteComponent } from "svelte";
-	import {
-		Alert,
-		AlertDescription,
-		AlertTitle,
-		Spinner,
-	} from "@/components/ui/svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
+	import { Spinner } from "@/components/ui/svelte";
 
 	type LucideComponent = ComponentType<SvelteComponent>;
 	type QueryLike = {
@@ -30,9 +26,6 @@
 		children: Snippet;
 	} = $props();
 
-	function errorText(error: unknown, fallback: string): string {
-		return error instanceof Error ? error.message : fallback;
-	}
 </script>
 
 <section
@@ -52,10 +45,10 @@
 			<Spinner class="size-4" /> Loading...
 		</div>
 	{:else if query.isError}
-		<Alert variant="destructive">
-			<AlertTitle>{errorLabel}</AlertTitle>
-			<AlertDescription>{errorText(query.error, errorLabel)}</AlertDescription>
-		</Alert>
+		<FriendlyError
+			error={query.error}
+			context={{ operation: "surfaceLoad", fallbackTitle: errorLabel }}
+		/>
 	{:else}
 		{@render children()}
 	{/if}

@@ -381,8 +381,8 @@ describe("workspace helpers", () => {
 		);
 
 		expect(source).not.toContain("namespaceScopeUnavailable");
-		expect(source).toContain("You can still save an");
-		expect(source).toContain("all-namespace workspace");
+		expect(source).toContain('mode="compact"');
+		expect(source).toContain('fallbackTitle: "Failed to load namespaces"');
 	});
 
 	test("keeps overview Resources primary and visible in wrapping actions", () => {

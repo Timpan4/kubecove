@@ -19,7 +19,7 @@ pub(super) async fn resolve_service_target(
     let service = services
         .get(&request.target_name)
         .await
-        .map_err(|err| AppError::kube(err.to_string()))?;
+        .map_err(AppError::from)?;
     let service_spec = service
         .spec
         .ok_or_else(|| AppError::new("service spec is unavailable", "session"))?;
@@ -48,9 +48,13 @@ pub(super) async fn resolve_service_target(
     let pod_list = pods
         .list(&ListParams::default().labels(&label_selector(&selector)))
         .await
-        .map_err(|err| AppError::kube(err.to_string()))?;
-    let pod = select_ready_pod(pod_list.items)
-        .ok_or_else(|| AppError::new("no ready Pods matched this Service selector", "session"))?;
+        .map_err(AppError::from)?;
+    let pod = select_ready_pod(pod_list.items).ok_or_else(|| {
+        AppError::new(
+            "no ready Pods matched this Service selector",
+            "liveSessionTargetUnavailable",
+        )
+    })?;
     let pod_name = pod_name(&pod)
         .ok_or_else(|| AppError::new("resolved Service target Pod is missing a name", "session"))?;
     let pod_port = resolve_service_target_port(&pod, service_port)?;

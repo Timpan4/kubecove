@@ -1,10 +1,21 @@
 const DETERMINISTIC_KINDS = new Set([
+	"admissionDenied",
+	"fieldManagerConflict",
+	"forbidden",
+	"immutableField",
+	"invalidResource",
+	"kubeconfig",
+	"kubeconfigConfig",
+	"liveSessionTargetUnavailable",
+	"notFound",
+	"providerDiscoveryUnavailable",
+	"providerUnavailable",
 	"validation",
 	"serialization",
-	"fieldManagerConflict",
 ]);
 
-const DETERMINISTIC_MESSAGE = /\bforbidden\b|\b403\b|\bnot ?found\b|\b404\b/i;
+const DETERMINISTIC_MESSAGE =
+	/\bforbidden\b|\b403\b|\bnot ?found\b|\b404\b|admission webhook|fieldmanagerconflict|field is immutable|pod updates may not change fields|kubeconfig|failed to infer config/i;
 
 function messageFromError(error: unknown): string {
 	if (error instanceof Error) return error.message;

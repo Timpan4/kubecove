@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Pencil, WandSparkles, X } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import YamlCodeEditor from "@/components/YamlCodeEditor.svelte";
 	import {
 		Alert,
@@ -17,7 +18,6 @@
 		Spinner,
 		TabsContent,
 	} from "@/components/ui/svelte";
-	import { getErrorMessage } from "./helpers";
 	import { diffLineClassName } from "./yamlTabDiff";
 
 	let {
@@ -36,7 +36,9 @@
 		yamlLintError,
 		yamlLintNotes,
 		yamlFormatError,
+		yamlPrepareRawError,
 		yamlPrepareError,
+		yamlApplyRawError,
 		yamlApplyError,
 		canAllowYamlForceConflicts,
 		yamlPreview,
@@ -65,10 +67,14 @@
 				<span>Loading YAML</span>
 			</div>
 		{:else if yamlQuery.isError}
-			<Alert variant="destructive">
-				<AlertTitle>Failed to load YAML</AlertTitle>
-				<AlertDescription>{getErrorMessage(yamlQuery.error)}</AlertDescription>
-			</Alert>
+			<FriendlyError
+				error={yamlQuery.error}
+				context={{
+					operation: "yamlLoad",
+					target: yamlApplyTarget,
+					fallbackTitle: "Failed to load YAML",
+				}}
+			/>
 		{:else}
 			<div class="flex flex-col gap-3">
 				<div class="flex flex-col gap-2">
@@ -189,10 +195,14 @@
 					</Alert>
 				{/if}
 				{#if yamlLintError}
-					<Alert variant="destructive">
-						<AlertTitle>YAML lint failed</AlertTitle>
-						<AlertDescription>{yamlLintError}</AlertDescription>
-					</Alert>
+					<FriendlyError
+						error={yamlLintError}
+						context={{
+							operation: "yamlDryRun",
+							target: yamlApplyTarget,
+							fallbackTitle: "YAML lint failed",
+						}}
+					/>
 				{:else if yamlLintNotes.length > 0}
 					<Alert>
 						<AlertTitle>YAML lint status</AlertTitle>
@@ -206,39 +216,49 @@
 					</Alert>
 				{/if}
 				{#if yamlFormatError}
-					<Alert variant="destructive">
-						<AlertTitle>Format failed</AlertTitle>
-						<AlertDescription>{yamlFormatError}</AlertDescription>
-					</Alert>
+					<FriendlyError
+						error={yamlFormatError}
+						context={{
+							operation: "yamlDryRun",
+							target: yamlApplyTarget,
+							fallbackTitle: "Format failed",
+						}}
+					/>
 				{/if}
 				{#if yamlPrepareError}
-					<Alert variant="destructive">
-						<AlertTitle>Dry run failed</AlertTitle>
-						<AlertDescription>
-							<div class="flex flex-col gap-3">
-								<span>{yamlPrepareError}</span>
-								{#if canAllowYamlForceConflicts}
-									<div>
-										<Button
-											type="button"
-											variant="destructive"
-											size="sm"
-											disabled={yamlPreparing || yamlApplying}
-											onclick={allowYamlForceConflictsForResource}
-										>
-											Allow force-conflicts for this resource
-										</Button>
-									</div>
-								{/if}
+					<div class="flex flex-col gap-2">
+						<FriendlyError
+							error={yamlPrepareRawError ?? yamlPrepareError}
+							context={{
+								operation: "yamlDryRun",
+								target: yamlApplyTarget,
+								fallbackTitle: "Dry run failed",
+							}}
+						/>
+						{#if canAllowYamlForceConflicts}
+							<div>
+								<Button
+									type="button"
+									variant="destructive"
+									size="sm"
+									disabled={yamlPreparing || yamlApplying}
+									onclick={allowYamlForceConflictsForResource}
+								>
+									Allow force-conflicts for this resource
+								</Button>
 							</div>
-						</AlertDescription>
-					</Alert>
+						{/if}
+					</div>
 				{/if}
 				{#if yamlApplyError}
-					<Alert variant="destructive">
-						<AlertTitle>YAML apply failed</AlertTitle>
-						<AlertDescription>{yamlApplyError}</AlertDescription>
-					</Alert>
+					<FriendlyError
+						error={yamlApplyRawError ?? yamlApplyError}
+						context={{
+							operation: "yamlApply",
+							target: yamlApplyTarget,
+							fallbackTitle: "YAML apply failed",
+						}}
+					/>
 				{/if}
 
 				{#if yamlEditing}
@@ -305,4 +325,3 @@
 			</div>
 		{/if}
 	</TabsContent>
-

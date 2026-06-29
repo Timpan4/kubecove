@@ -9,6 +9,7 @@
 		GitCompareArrows,
 		Layers,
 	} from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -180,7 +181,8 @@
 	const fluxPending = $derived(
 		fluxResourceQueries.length > 0 && fluxResourceQueries.some((query) => query.isPending),
 	);
-	const fluxError = $derived(fluxResourceQueries.some((query) => query.isError));
+	const fluxError = $derived(fluxResourceQueries.find((query) => query.isError)?.error ?? null);
+	const gitOpsInventoryError = $derived(argoAppsQuery.error ?? fluxError);
 	const gitOpsDetected = $derived(argoDetectedQuery.data === true || fluxDetected);
 	const gitOpsDetecting = $derived(argoDetectedQuery.isPending || fluxDetectedQuery.isPending);
 	const hasRestoreWarning = $derived(
@@ -265,10 +267,15 @@
 			<Spinner class="size-4" /> Loading workspace health...
 		</div>
 	{:else if resourcesQuery.isError}
-		<Alert variant="destructive">
-			<AlertTitle>Failed to refresh workspace resources</AlertTitle>
-			<AlertDescription>Resource health may be stale until the next refresh succeeds.</AlertDescription>
-		</Alert>
+		<FriendlyError
+			mode="compact"
+			error={resourcesQuery.error}
+			context={{
+				operation: "resourcesLoad",
+				fallbackTitle: "Failed to refresh workspace resources",
+				partial: true,
+			}}
+		/>
 	{/if}
 
 	{#if hasIncidentShortcuts}
@@ -330,11 +337,16 @@
 							<div class="inline-flex items-center gap-2 text-xs text-muted-foreground">
 								<Spinner class="size-4" /> Loading applications...
 							</div>
-						{:else if argoAppsQuery.isError || fluxError}
-							<Alert variant="destructive">
-								<AlertTitle>Failed to load GitOps inventory</AlertTitle>
-								<AlertDescription>Provider counts are unavailable until refresh.</AlertDescription>
-							</Alert>
+						{:else if gitOpsInventoryError}
+							<FriendlyError
+								mode="compact"
+								error={gitOpsInventoryError}
+								context={{
+									operation: "providerDetection",
+									fallbackTitle: "Failed to load GitOps inventory",
+									partial: true,
+								}}
+							/>
 						{:else if argoDetectedQuery.data === true}
 							<div class="flex items-center justify-between py-2 text-xs">
 								<span class="text-muted-foreground">Applications</span>

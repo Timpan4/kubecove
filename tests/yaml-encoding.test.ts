@@ -185,9 +185,9 @@ describe("YAML encoding", () => {
 		expect(source).toContain("function formatYamlDraft()");
 		expect(source).toContain("yamlDraft = formatYamlDocument(yamlDraft, yamlEncoding)");
 		expect(source).toContain("Format ({yamlEncoding.toUpperCase()})");
-		expect(source).toContain("<AlertTitle>Format failed</AlertTitle>");
+		expect(source).toContain('fallbackTitle: "Format failed"');
 		expect(source).toContain("Dry run");
-		expect(source).toContain("<AlertTitle>Dry run failed</AlertTitle>");
+		expect(source).toContain('fallbackTitle: "Dry run failed"');
 	});
 
 	test("Svelte YAML edit flow calls backend lint and renders diagnostics", () => {
@@ -212,7 +212,7 @@ describe("YAML encoding", () => {
 		expect(source).toContain("function allowYamlForceConflictsForResource()");
 		expect(source).toContain("void previewYamlApply(true)");
 		expect(source).toContain("Allow force-conflicts for this resource");
-		expect(source).toContain("<AlertTitle>YAML lint failed</AlertTitle>");
+		expect(source).toContain('fallbackTitle: "YAML lint failed"');
 		expect(source).toContain("<AlertTitle>YAML lint status</AlertTitle>");
 		expect(source).toContain("YAML diagnostics");
 		expect(source).toContain("onChange={clearYamlDraftFeedback}");

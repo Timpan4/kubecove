@@ -5,7 +5,6 @@
 	import {
 		formatExactTimeOnly,
 		formatExactTimestamp,
-		formatRelativeTimestamp,
 	} from "@/components/timestamp-format";
 	import { createCancellableRequest, createCancelScope } from "@/lib/cancellable-loads";
 	import { diagnosticLog, diagnosticResultSummary } from "@/lib/diagnostics";
@@ -128,7 +127,7 @@
 	let logLines = $state<string[]>([]);
 	let logStatus = $state("idle");
 	let logMessage = $state("Log stream idle");
-	let logError = $state("");
+	let logError = $state<unknown>(null);
 	let logFilter = $state(initialDetailState?.logFilter ?? "");
 	let logWrapLines = $state(initialDetailState?.logWrapLines ?? true);
 	let logLatestFirst = $state(initialDetailState?.logLatestFirst ?? false);
@@ -148,6 +147,7 @@
 	let yamlFormatError = $state("");
 	let yamlPrepareRawError = $state<unknown>(null);
 	let yamlPrepareError = $state("");
+	let yamlApplyRawError = $state<unknown>(null);
 	let yamlApplyError = $state("");
 	let yamlAppliedMessage = $state("");
 	let yamlShowFullDiff = $state(initialDetailState?.yamlShowFullDiff ?? false);
@@ -506,7 +506,7 @@
 	$effect(() => {
 		logSignature;
 		logLines = [];
-		logError = "";
+		logError = null;
 	});
 
 	$effect(() => {
@@ -640,14 +640,14 @@
 		if (activeTab !== "logs" || !logRequest) {
 			logStatus = "idle";
 			logMessage = "Log stream idle";
-			logError = "";
+			logError = null;
 			return;
 		}
 		let cancelled = false;
 		let streamId: string | null = null;
 		logStatus = "connecting";
 		logMessage = "Starting log stream";
-		logError = "";
+		logError = null;
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
 			if (event.type === "started") {
@@ -688,7 +688,7 @@
 				if (cancelled) return;
 				logStatus = "error";
 				logMessage = "Log stream failed";
-				logError = getErrorMessage(error);
+				logError = error;
 			});
 		return () => {
 			cancelled = true;
@@ -716,17 +716,12 @@
 		return formatExactTimestamp(timestamp, timestampTimezone, "millisecond") ?? timestamp ?? "-";
 	}
 
-	function formatEventLastSeen(event: ResourceEventSummary): string {
-		return formatRelativeTimestamp(
-			`${event.lastSeen} ago`,
-			event.lastSeenAt,
-			$settingsStore.showExactTimestamps,
-			timestampTimezone,
-		);
+	function formatEventExactTime(event: ResourceEventSummary): string {
+		return formatExactTimestamp(event.lastSeenAt, timestampTimezone, "millisecond") ?? event.lastSeen;
 	}
 
-	function formatEventExactTime(event: ResourceEventSummary): string {
-		return formatExactTimestamp(event.lastSeenAt, timestampTimezone) ?? event.lastSeen;
+	function formatEventCompactTime(event: ResourceEventSummary): string {
+		return formatExactTimeOnly(event.lastSeenAt, timestampTimezone, "second") ?? event.lastSeen;
 	}
 
 	function hashMetadataKeyToHue(key: string): number {
@@ -847,6 +842,7 @@
 		yamlFormatError = "";
 		yamlPrepareRawError = null;
 		yamlPrepareError = "";
+		yamlApplyRawError = null;
 		yamlApplyError = "";
 		yamlAppliedMessage = "";
 		yamlShowFullDiff = false;
@@ -871,6 +867,7 @@
 		yamlFormatError = "";
 		yamlPrepareRawError = null;
 		yamlPrepareError = "";
+		yamlApplyRawError = null;
 		yamlApplyError = "";
 		yamlAppliedMessage = "";
 		yamlPreview = null;
@@ -889,6 +886,7 @@
 			);
 			yamlEditing = true;
 		} catch (error) {
+			yamlPrepareRawError = error;
 			yamlPrepareError = getErrorMessage(error);
 		} finally {
 			yamlLoadingDraft = false;
@@ -902,6 +900,7 @@
 		yamlFormatError = "";
 		yamlPrepareRawError = null;
 		yamlPrepareError = "";
+		yamlApplyRawError = null;
 		yamlApplyError = "";
 		yamlAppliedMessage = "";
 		yamlPreview = null;
@@ -957,6 +956,7 @@
 		yamlFormatError = "";
 		yamlPrepareRawError = null;
 		yamlPrepareError = "";
+		yamlApplyRawError = null;
 		yamlApplyError = "";
 		yamlAppliedMessage = "";
 		yamlPreview = null;
@@ -976,6 +976,7 @@
 		yamlFormatError = "";
 		yamlPrepareRawError = null;
 		yamlPrepareError = "";
+		yamlApplyRawError = null;
 		yamlApplyError = "";
 		yamlAppliedMessage = "";
 		yamlPreview = null;
@@ -986,6 +987,7 @@
 	async function applyYamlPreview() {
 		if (!yamlPreview || yamlApplying) return;
 		yamlApplying = true;
+		yamlApplyRawError = null;
 		yamlApplyError = "";
 		try {
 			const result = await applyYaml(
@@ -1001,6 +1003,7 @@
 			void queryClient.invalidateQueries({ queryKey: detailsQueryKey });
 			void queryClient.invalidateQueries({ queryKey: yamlQueryKey });
 		} catch (error) {
+			yamlApplyRawError = error;
 			yamlApplyError = getErrorMessage(error);
 		} finally {
 			yamlApplying = false;
@@ -1062,7 +1065,9 @@
 		{yamlLintError}
 		{yamlLintNotes}
 		{yamlFormatError}
+		{yamlPrepareRawError}
 		{yamlPrepareError}
+		{yamlApplyRawError}
 		{yamlApplyError}
 		{canAllowYamlForceConflicts}
 		{yamlPreview}
@@ -1083,7 +1088,12 @@
 		{clearYamlDraftFeedback}
 	/>
 
-	<EventsTab {eventsQuery} {sortedEvents} {formatEventExactTime} {formatEventLastSeen} />
+	<EventsTab
+		{eventsQuery}
+		{sortedEvents}
+		{formatEventExactTime}
+		{formatEventCompactTime}
+	/>
 
 	{#if canShowLogs}
 		<LogsTab

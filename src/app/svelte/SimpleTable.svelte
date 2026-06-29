@@ -1,5 +1,14 @@
 <script lang="ts">
-	import { Card, CardContent } from "@/components/ui/svelte";
+	import {
+		Card,
+		CardContent,
+		Table,
+		TableBody,
+		TableCell,
+		TableHead,
+		TableHeader,
+		TableRow,
+	} from "@/components/ui/svelte";
 
 	let {
 		headers,
@@ -9,36 +18,36 @@
 </script>
 
 <Card size="sm" elevation="flat">
-	<CardContent class="overflow-x-auto p-0">
-		<table class="w-full min-w-[720px] table-fixed border-collapse text-sm">
-			<thead>
-				<tr>
+	<CardContent class="p-0">
+		<Table class="min-w-[720px] table-fixed text-sm">
+			<TableHeader>
+				<TableRow>
 					{#each headers as header}
-						<th
-							class="border-b px-3 py-2 text-left text-xs font-semibold uppercase text-muted-foreground"
+						<TableHead
+							class="px-3 py-2 text-xs font-semibold uppercase text-muted-foreground"
 						>
 							{header}
-						</th>
+						</TableHead>
 					{/each}
-				</tr>
-			</thead>
-			<tbody>
+				</TableRow>
+			</TableHeader>
+			<TableBody>
 				{#if rows.length === 0}
-					<tr>
-						<td class="px-3 py-8 text-center text-muted-foreground" colspan={headers.length}>
+					<TableRow>
+						<TableCell class="px-3 py-8 text-center text-muted-foreground" colspan={headers.length}>
 							{empty}
-						</td>
-					</tr>
+						</TableCell>
+					</TableRow>
 				{:else}
 					{#each rows as row}
-						<tr class="border-b last:border-b-0">
+						<TableRow>
 							{#each row as cell}
-								<td class="truncate px-3 py-2">{cell}</td>
+								<TableCell class="truncate px-3 py-2">{cell}</TableCell>
 							{/each}
-						</tr>
+						</TableRow>
 					{/each}
 				{/if}
-			</tbody>
-		</table>
+			</TableBody>
+		</Table>
 	</CardContent>
 </Card>

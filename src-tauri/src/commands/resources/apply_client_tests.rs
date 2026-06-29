@@ -195,7 +195,7 @@ async fn apply_classifies_field_manager_conflict() {
 }
 
 #[tokio::test]
-async fn apply_maps_forbidden_to_cluster_kind() {
+async fn apply_maps_forbidden_to_forbidden_kind() {
     let (client, mut handle) = mock_client();
     let validated = validate_yaml_apply(base_request_yaml(false)).unwrap();
 
@@ -221,6 +221,6 @@ async fn apply_maps_forbidden_to_cluster_kind() {
     let (result, ()) = await_mock(async { tokio::join!(operation, responder) }).await;
     let err = result.unwrap_err();
 
-    assert_eq!(err.kind, "cluster");
+    assert_eq!(err.kind, "forbidden");
     assert!(err.message.contains("services \"api\" is forbidden"));
 }

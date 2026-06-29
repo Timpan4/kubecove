@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { ArrowDownUp, RotateCcw, Search } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
-		Alert,
-		AlertDescription,
 		Badge,
 		Button,
 		Checkbox,
@@ -129,9 +128,15 @@
 					</Button>
 				</div>
 				{#if logError}
-					<Alert variant="destructive">
-						<AlertDescription>{logError}</AlertDescription>
-					</Alert>
+					<FriendlyError
+						mode="compact"
+						error={logError}
+						context={{
+							operation: "partial",
+							fallbackTitle: "Log stream failed",
+							partial: true,
+						}}
+					/>
 				{/if}
 				<div
 					bind:this={logViewport}

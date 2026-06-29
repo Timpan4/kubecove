@@ -1,5 +1,6 @@
-import type { Extension } from "@codemirror/state";
+import { RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
 import { lintKeymap } from "@codemirror/lint";
+import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
 
 const yamlIndentDepthClassCount = 6;
 
@@ -12,35 +13,6 @@ type EditorDoc = {
 
 type StateLike = { doc: EditorDoc };
 
-type CmStateLike = {
-	StateField: {
-		define(config: {
-			create(state: StateLike): unknown;
-			update(decorations: unknown, transaction: { docChanged: boolean; state?: StateLike }): unknown;
-			provide: (field: unknown) => unknown;
-		}): unknown;
-	};
-	RangeSetBuilder: new (...args: any[]) => {
-		add(from: number, to: number, value: unknown): void;
-		finish(): unknown;
-		map(changes: unknown): unknown;
-	};
-};
-
-type CmViewLike = {
-	Decoration: {
-		mark: (options: { class: string }) => unknown;
-	};
-	EditorView: {
-		theme: (styles: Record<string, Record<string, unknown>>, options?: unknown) => unknown;
-		decorations: { from: (field: unknown) => unknown };
-		lineWrapping: unknown;
-	};
-	keymap: {
-		of: (ext: unknown) => unknown;
-	};
-};
-
 export async function loadYamlCodeViewerExtensions(): Promise<readonly Extension[]> {
 	if (!yamlCodeViewerExtensionsPromise) {
 		yamlCodeViewerExtensionsPromise = buildYamlCodeViewerExtensions();
@@ -49,32 +21,29 @@ export async function loadYamlCodeViewerExtensions(): Promise<readonly Extension
 }
 
 async function buildYamlCodeViewerExtensions(): Promise<readonly Extension[]> {
-	const cmState = (await import("@codemirror/state")) as unknown as CmStateLike;
-	const cmView = (await import("@codemirror/view")) as unknown as CmViewLike;
+	const yamlEditorTheme = EditorView.theme(editorThemeStyles, { dark: true });
 
-	const yamlEditorTheme = cmView.EditorView.theme(editorThemeStyles, { dark: true });
-
-	const yamlValueDecorations = cmState.StateField.define({
+	const yamlValueDecorations = StateField.define<DecorationSet>({
 		create(state) {
-			return buildYamlValueDecorations(state, cmState.RangeSetBuilder, cmView.Decoration);
+			return buildYamlValueDecorations(state);
 		},
 		update(decorations, transaction) {
 			return transaction.docChanged && transaction.state
-				? buildYamlValueDecorations(transaction.state, cmState.RangeSetBuilder, cmView.Decoration)
+				? buildYamlValueDecorations(transaction.state)
 				: decorations;
 		},
-		provide: (field) => cmView.EditorView.decorations.from(field),
+		provide: (field) => EditorView.decorations.from(field),
 	});
 
 	return [
 		yamlEditorTheme,
-		cmView.EditorView.lineWrapping,
+		EditorView.lineWrapping,
 		yamlValueDecorations,
-		cmView.keymap.of(lintKeymap),
-	] as unknown as readonly Extension[];
+		keymap.of(lintKeymap),
+	];
 }
 
-const editorThemeStyles: Record<string, Record<string, unknown>> = {
+const editorThemeStyles: Parameters<typeof EditorView.theme>[0] = {
 	"&": {
 		backgroundColor: "var(--card)",
 		color: "var(--foreground)",
@@ -194,26 +163,23 @@ const editorThemeStyles: Record<string, Record<string, unknown>> = {
 
 function buildYamlValueDecorations(
 	state: StateLike | null,
-	RangeSetBuilderCtor: CmStateLike["RangeSetBuilder"],
-	DecorationCtor: CmViewLike["Decoration"],
 ) {
-	if (!state) return null;
+	if (!state) return Decoration.none;
 
-	const builder = new RangeSetBuilderCtor();
+	const builder = new RangeSetBuilder<Decoration>();
 	const viewState = state.doc;
 
 	for (let lineNumber = 1; lineNumber <= viewState.lines; lineNumber += 1) {
 		const line = viewState.line(lineNumber);
-		addIndentDecorations(builder, DecorationCtor, line.from, line.text);
-		addLineValueDecorations(builder, DecorationCtor, line.from, line.text);
+		addIndentDecorations(builder, line.from, line.text);
+		addLineValueDecorations(builder, line.from, line.text);
 	}
 
 	return builder.finish();
 }
 
 function addIndentDecorations(
-	builder: { add: (...args: any[]) => void },
-	DecorationCtor: CmViewLike["Decoration"],
+	builder: RangeSetBuilder<Decoration>,
 	lineFrom: number,
 	text: string,
 ) {
@@ -224,7 +190,7 @@ function addIndentDecorations(
 		builder.add(
 			lineFrom + start,
 			lineFrom + Math.min(start + 2, indentEnd),
-			DecorationCtor.mark({
+			Decoration.mark({
 				class: `kubecove-yaml-indent kubecove-yaml-indent-${depth % yamlIndentDepthClassCount}`,
 			}),
 		);
@@ -232,8 +198,7 @@ function addIndentDecorations(
 }
 
 function addLineValueDecorations(
-	builder: { add: (...args: any[]) => void },
-	DecorationCtor: CmViewLike["Decoration"],
+	builder: RangeSetBuilder<Decoration>,
 	lineFrom: number,
 	text: string,
 ) {
@@ -243,19 +208,18 @@ function addLineValueDecorations(
 
 	if (colonIndex !== null) {
 		const start = trimStartIndex(text, colonIndex + 1, contentEnd);
-		addScalarDecoration(builder, DecorationCtor, lineFrom, text, start, contentEnd);
+		addScalarDecoration(builder, lineFrom, text, start, contentEnd);
 		return;
 	}
 
 	const listItemStart = findListScalarStart(text, contentEnd);
 	if (listItemStart !== null) {
-		addScalarDecoration(builder, DecorationCtor, lineFrom, text, listItemStart, contentEnd);
+		addScalarDecoration(builder, lineFrom, text, listItemStart, contentEnd);
 	}
 }
 
 function addScalarDecoration(
-	builder: { add: (...args: any[]) => void },
-	DecorationCtor: CmViewLike["Decoration"],
+	builder: RangeSetBuilder<Decoration>,
 	lineFrom: number,
 	text: string,
 	start: number,
@@ -269,7 +233,7 @@ function addScalarDecoration(
 	builder.add(
 		lineFrom + valueStart,
 		lineFrom + valueEnd,
-		DecorationCtor.mark({ class: yamlScalarClass(value) }),
+		Decoration.mark({ class: yamlScalarClass(value) }),
 	);
 }
 

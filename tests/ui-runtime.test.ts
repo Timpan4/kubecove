@@ -80,7 +80,7 @@ describe("ui runtime queue helpers", () => {
 		expect(appSource).toContain("RuntimeBadge");
 		expect(appSource).toContain("onOpenSettings={openLauncherSettings}");
 		expect(appSource).toContain('launcherView === "settings"');
-		expect(appSource).toContain("<SettingsSurface />");
+		expect(appSource).toContain("<SettingsSurface onBack={openWorkspaceLauncher} />");
 		expect(shellSource).toContain("RuntimeBadge");
 		expect(shellSource).toContain("onOpenSettings={openSettings}");
 	});
@@ -90,17 +90,10 @@ describe("ui runtime queue helpers", () => {
 			"src/app/svelte/AppUsageFooter.svelte",
 			"utf8",
 		);
-		const settingsSource = readFileSync(
-			"src/app/svelte/SettingsSurface.svelte",
-			"utf8",
-		);
 
 		expect(footerSource).toContain("placeholderData: (previousData) => previousData");
-		expect(settingsSource).toContain("placeholderData: (previousData) => previousData");
 		expect(footerSource).toContain("queryKeys.appUsageMetrics()");
-		expect(settingsSource).toContain("queryKeys.appUsageMetrics()");
 		expect(footerSource).not.toContain('"svelte-app-usage-metrics"');
-		expect(settingsSource).not.toContain('"svelte-settings-usage-footer"');
 	});
 
 	test("Svelte settings rows reserve label room beside controls", () => {

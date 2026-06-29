@@ -226,14 +226,17 @@ describe("incident workflow helpers", () => {
 		const source = svelteDetailSource();
 
 		expect(source).toContain("sortIncidentEvents(eventsQuery.data ?? [])");
-		expect(source).toContain("{#each sortedEvents as event");
-		expect(source).toContain("<TableHead>Source</TableHead>");
-		expect(source).toContain("<TableCell>{event.source}</TableCell>");
-		expect(source).toContain("<TableCell>{event.namespace ?? \"-\"}</TableCell>");
-		expect(source).toContain("function formatEventLastSeen(event: ResourceEventSummary)");
-		expect(source).toContain("formatRelativeTimestamp(");
-		expect(source).toContain("`$" + "{event.lastSeen} ago`");
-		expect(source).toContain("<time datetime={event.lastSeenAt}");
+		expect(source).toContain("filterResourceEvents(sortedEvents, eventTypeFilter, eventSearch)");
+		expect(source).toContain("{#each visibleEvents as event");
+		expect(source).toContain("{sourceLabel(event)}");
+		expect(source).toContain("{event.namespace ?? \"cluster\"}");
+		expect(source).toContain("function formatEventCompactTime(event: ResourceEventSummary)");
+		expect(source).toContain('formatExactTimestamp(event.lastSeenAt, timestampTimezone, "millisecond")');
+		expect(source).toContain('formatExactTimeOnly(event.lastSeenAt, timestampTimezone, "second")');
+		expect(source).toContain("{formatEventCompactTime(event)}");
+		expect(source).toContain("{eventAgeLabel(event)}");
+		expect(source).toContain("datetime={event.lastSeenAt}");
+		expect(source).toContain("title={formatEventExactTime(event)}");
 	});
 
 	test("Svelte resource detail wires incident summary and timeline helpers", () => {

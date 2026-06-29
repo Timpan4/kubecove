@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
-		Alert,
-		AlertDescription,
 		Badge,
 		Empty,
 		EmptyDescription,
@@ -42,11 +41,11 @@
 
 	const namespaces = $derived(namespacesQuery.data ?? []);
 	const namespaceError = $derived(
-		namespacesQuery.error instanceof Error
-			? namespacesQuery.error.message
-			: namespacesQuery.error
-				? String(namespacesQuery.error)
-				: "",
+		sourceQuery.isError
+			? sourceQuery.error
+			: namespacesQuery.isError
+				? namespacesQuery.error
+				: null,
 	);
 	const loading = $derived(Boolean(clusterContext) && (!sourceReady || namespacesQuery.isPending));
 </script>
@@ -59,9 +58,10 @@
 		</EmptyHeader>
 	</Empty>
 {:else if namespaceError}
-	<Alert variant="destructive">
-		<AlertDescription>{namespaceError}</AlertDescription>
-	</Alert>
+	<FriendlyError
+		error={namespaceError}
+		context={{ operation: "resourcesLoad", fallbackTitle: "Failed to load namespaces" }}
+	/>
 {:else if loading}
 	<div class="flex min-h-40 items-center justify-center gap-2 text-xs text-muted-foreground">
 		<Spinner />

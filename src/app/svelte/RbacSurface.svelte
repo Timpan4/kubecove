@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { KeyRound } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
-		Alert,
-		AlertDescription,
-		AlertTitle,
 		Card,
 		CardContent,
 		CardDescription,
@@ -37,7 +35,15 @@
 				</Card>
 			{/if}
 			{#if data.warnings.length > 0}
-				<Alert><AlertTitle>Partial RBAC data</AlertTitle><AlertDescription>{rbacWarningSummary(data.warnings)}</AlertDescription></Alert>
+				<FriendlyError
+					mode="compact"
+					error={rbacWarningSummary(data.warnings)}
+					context={{
+						operation: "resourcesLoad",
+						fallbackTitle: "Partial RBAC data",
+						partial: true,
+					}}
+				/>
 			{/if}
 		{/if}
 	</SurfaceFrame>

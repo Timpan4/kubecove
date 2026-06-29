@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { CircleHelp, GitBranch, Layers, Package, Plug } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
-		Alert,
-		AlertDescription,
-		AlertTitle,
 		Badge,
 		Button,
 		Empty,
@@ -78,7 +76,6 @@
 		gitOpsActiveRailKey,
 		selectedGitOpsItem = $bindable(null),
 		selectedGitOpsItemKey,
-		errorMessage,
 		openSelectedArgoApplicationResources,
 		onResourceInspect,
 		gitOpsStatusClass,
@@ -243,16 +240,26 @@
 		{@const data = gitOpsQuery.data}
 		{#if data}
 			{#if gitOpsProviderError}
-				<Alert variant="destructive">
-					<AlertTitle>Some GitOps providers could not be detected</AlertTitle>
-					<AlertDescription>{errorMessage(gitOpsProviderError)}</AlertDescription>
-				</Alert>
+				<FriendlyError
+					mode="compact"
+					error={gitOpsProviderError}
+					context={{
+						operation: "providerDetection",
+						fallbackTitle: "Some GitOps providers could not be detected",
+						partial: true,
+					}}
+				/>
 			{/if}
 			{#if gitOpsListError}
-				<Alert variant="destructive">
-					<AlertTitle>Some GitOps resources could not load</AlertTitle>
-					<AlertDescription>{errorMessage(gitOpsListError)}</AlertDescription>
-				</Alert>
+				<FriendlyError
+					mode="compact"
+					error={gitOpsListError}
+					context={{
+						operation: "resourcesLoad",
+						fallbackTitle: "Some GitOps resources could not load",
+						partial: true,
+					}}
+				/>
 			{/if}
 
 			{#if gitOpsUnavailableProvider}

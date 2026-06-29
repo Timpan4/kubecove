@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { ExternalLink } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
-		Alert,
-		AlertDescription,
-		AlertTitle,
 		Badge,
 		Button,
 		Spinner,
@@ -17,7 +15,6 @@
 	} from "@/components/ui/svelte";
 	import {
 		conditionStatusTone,
-		getErrorMessage,
 		resourceReadyLabel,
 		resourceReadyTone,
 		resourceStatusTone,
@@ -64,10 +61,10 @@
 				<span>Loading details</span>
 			</div>
 		{:else if detailsQuery.isError}
-			<Alert variant="destructive">
-				<AlertTitle>Failed to load details</AlertTitle>
-				<AlertDescription>{getErrorMessage(detailsQuery.error)}</AlertDescription>
-			</Alert>
+			<FriendlyError
+				error={detailsQuery.error}
+				context={{ operation: "detailsLoad", fallbackTitle: "Failed to load details" }}
+			/>
 		{:else}
 				<div class="flex flex-col gap-3">
 					<div class="flex flex-wrap gap-2">

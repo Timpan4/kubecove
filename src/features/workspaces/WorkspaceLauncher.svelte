@@ -1,10 +1,8 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
 	import { FolderOpen, Pencil, Plus, Trash2, X } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
-		Alert,
-		AlertDescription,
-		AlertTitle,
 		Badge,
 		Button,
 		Card,
@@ -81,10 +79,10 @@
 	const contextsPending = $derived(!sourceReady || contextsQuery.isPending);
 	const contextsError = $derived(
 		sourceQuery.isError
-			? errorMessage(sourceQuery.error)
+			? sourceQuery.error
 			: contextsQuery.isError
-				? errorMessage(contextsQuery.error)
-				: "",
+				? contextsQuery.error
+				: null,
 	);
 
 	const sortedWorkspaces = $derived(
@@ -115,7 +113,7 @@
 		effectiveContext.length > 0 && (!sourceReady || namespacesQuery.isPending),
 	);
 	const namespacesError = $derived(
-		namespacesQuery.isError ? errorMessage(namespacesQuery.error) : "",
+		namespacesQuery.isError ? namespacesQuery.error : null,
 	);
 
 	$effect(() => {
@@ -123,10 +121,6 @@
 			selectedContext = pickEffectiveContext("", contexts);
 		}
 	});
-
-	function errorMessage(error: unknown): string {
-		return error instanceof Error ? error.message : String(error);
-	}
 
 	function elementId(prefix: string, value: string): string {
 		return `${prefix}-${value.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -231,9 +225,11 @@
 				{/if}
 
 				{#if contextsError}
-					<Alert variant="destructive">
-						<AlertTitle>Failed to load contexts</AlertTitle>
-						<AlertDescription>{contextsError}</AlertDescription>
+					<div class="grid gap-2">
+						<FriendlyError
+							error={contextsError}
+							context={{ operation: "contextLoad", fallbackTitle: "Failed to load contexts" }}
+						/>
 						<Button
 							type="button"
 							variant="outline"
@@ -243,7 +239,7 @@
 						>
 							Retry
 						</Button>
-					</Alert>
+					</div>
 				{/if}
 
 				{#if sortedWorkspaces.length === 0 && !contextsPending}
@@ -440,15 +436,20 @@
 										<div class="px-2 py-1.5 text-xs text-muted-foreground">
 											Loading namespaces...
 										</div>
-									{/if}
-									{#if namespacesError}
-										<div class="grid gap-2 px-2 py-1.5 text-xs text-destructive">
-											<span>
-												Failed to load namespaces. You can still save an
-												all-namespace workspace.
-											</span>
-											<Button
-												type="button"
+							{/if}
+							{#if namespacesError}
+								<div class="grid gap-2 px-2 py-1.5">
+									<FriendlyError
+										mode="compact"
+										error={namespacesError}
+										context={{
+											operation: "resourcesLoad",
+											fallbackTitle: "Failed to load namespaces",
+											partial: true,
+										}}
+									/>
+									<Button
+										type="button"
 												variant="outline"
 												size="sm"
 												class="w-fit"

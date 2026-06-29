@@ -227,4 +227,5 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 - custom density modes
 - adaptive defaults for explicit workspace types
 - context-aware AI assistance
+- optional teaching-mode Kubernetes error explanations
 - durable local saved state

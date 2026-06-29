@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { AlertTriangle, ExternalLink, RotateCcw } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
-		Alert,
-		AlertDescription,
-		AlertTitle,
 		Badge,
 		Button,
 		Card,
@@ -16,6 +14,12 @@
 		EmptyHeader,
 		EmptyTitle,
 		Spinner,
+		Table,
+		TableBody,
+		TableCell,
+		TableHead,
+		TableHeader,
+		TableRow,
 	} from "@/components/ui/svelte";
 	import type { IncidentFilter } from "@/features/incidents/helpers";
 	import {
@@ -76,10 +80,15 @@
 			</div>
 		</div>
 		{#if incidentsQuery.data?.warnings.length}
-			<Alert>
-				<AlertTitle>Partial incident data</AlertTitle>
-				<AlertDescription>{incidentsQuery.data.warnings.join(" ")}</AlertDescription>
-			</Alert>
+			<FriendlyError
+				mode="compact"
+				error={incidentsQuery.data.warnings.join(" ")}
+				context={{
+					operation: "resourcesLoad",
+					fallbackTitle: "Partial incident data",
+					partial: true,
+				}}
+			/>
 		{/if}
 		<StatGrid
 			stats={[
@@ -122,33 +131,33 @@
 			{#each incidentGroups as group}
 				<Card size="sm" elevation="flat">
 					<CardHeader><CardTitle>{group.label}</CardTitle><CardDescription>{group.items.length} signal rows</CardDescription></CardHeader>
-					<CardContent class="overflow-x-auto p-0">
-						<table class="w-full min-w-[980px] table-fixed border-collapse text-sm">
-							<thead>
-								<tr>
+					<CardContent class="p-0">
+						<Table class="min-w-[980px] table-fixed text-sm">
+							<TableHeader>
+								<TableRow>
 									{#each ["Resource", "Severity", "Scope", "Signals", "Latest warning", "Open"] as header}
-										<th class="border-b px-3 py-2 text-left text-xs font-semibold uppercase text-muted-foreground">
+										<TableHead class="px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
 											{header}
-										</th>
+										</TableHead>
 									{/each}
-								</tr>
-							</thead>
-							<tbody>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
 								{#each group.items as item (`${item.resource.cluster}:${item.resource.kind}:${item.resource.namespace ?? ""}:${item.resource.name}`)}
-									<tr class="border-b align-top last:border-b-0">
-										<td class="px-3 py-2">
+									<TableRow class="align-top">
+										<TableCell class="px-3 py-2">
 											<div class="truncate font-medium">{item.resource.kind}/{item.resource.name}</div>
 											<div class="mt-1 flex flex-wrap gap-1 text-xs text-muted-foreground">
 												{#if item.resource.status}<Badge variant="outline">{item.resource.status}</Badge>{/if}
 												{#if item.resource.ready}<Badge variant="outline">Ready {item.resource.ready}</Badge>{/if}
 												{#if item.resource.restarts && item.resource.restarts > 0}<Badge variant="outline">{item.resource.restarts} restarts</Badge>{/if}
 											</div>
-										</td>
-										<td class="px-3 py-2">{incidentSeverityLabel(item)}</td>
-										<td class="truncate px-3 py-2">{incidentScopeLabel(item)}</td>
-										<td class="px-3 py-2 text-xs">{incidentSignalSummary(item)}</td>
-										<td class="truncate px-3 py-2 text-xs">{incidentWarningSummary(item)}</td>
-										<td class="px-3 py-2 text-right">
+										</TableCell>
+										<TableCell class="px-3 py-2">{incidentSeverityLabel(item)}</TableCell>
+										<TableCell class="truncate px-3 py-2">{incidentScopeLabel(item)}</TableCell>
+										<TableCell class="px-3 py-2 text-xs">{incidentSignalSummary(item)}</TableCell>
+										<TableCell class="truncate px-3 py-2 text-xs">{incidentWarningSummary(item)}</TableCell>
+										<TableCell class="px-3 py-2 text-right">
 											<Button
 												type="button"
 												variant="ghost"
@@ -158,11 +167,11 @@
 												<ExternalLink data-icon="inline-start" />
 												Details
 											</Button>
-										</td>
-									</tr>
+										</TableCell>
+									</TableRow>
 								{/each}
-							</tbody>
-						</table>
+							</TableBody>
+						</Table>
 					</CardContent>
 				</Card>
 			{/each}

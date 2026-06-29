@@ -97,6 +97,7 @@ export { default as SidebarProvider } from "./SidebarProvider.svelte";
 export { default as SidebarSeparator } from "./SidebarSeparator.svelte";
 export { default as Skeleton } from "./Skeleton.svelte";
 export { default as Spinner } from "./Spinner.svelte";
+export { default as Switch } from "./Switch.svelte";
 export { default as Table } from "./Table.svelte";
 export { default as TableBody } from "./TableBody.svelte";
 export { default as TableCaption } from "./TableCaption.svelte";

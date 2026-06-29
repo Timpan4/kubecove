@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ChevronRight } from "lucide-svelte";
+	import { Button } from "@/components/ui/svelte";
 	import { cnfast } from "@/lib/utils";
 	import { nodeIdToString, type TreeNode, type TreeNodeId } from "@/lib/tree-nav";
 	import SidebarTreeNode from "./SidebarTreeNode.svelte";
@@ -113,10 +114,12 @@
 		onclick={selectNode}
 		onkeydown={handleKeydown}
 	>
-		<button
+		<Button
 			type="button"
+			variant="ghost"
+			size="icon-xs"
 			class={cnfast(
-				"flex size-[18px] shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-muted-foreground transition-colors hover:text-foreground",
+				"size-[18px] rounded-none p-0 text-muted-foreground hover:bg-transparent hover:text-foreground",
 				!hasChildren && "invisible",
 			)}
 			aria-label={`${isExpanded ? "Collapse" : "Expand"} ${node.label}`}
@@ -127,7 +130,7 @@
 				class={cnfast("size-3 shrink-0 transition-transform", isExpanded && "rotate-90")}
 				aria-hidden="true"
 			/>
-		</button>
+		</Button>
 		<NodeIcon
 			class={cnfast(
 				"size-3.5 shrink-0",

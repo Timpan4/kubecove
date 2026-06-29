@@ -101,7 +101,7 @@ pub async fn resource_events_from(
     let mut events: Vec<_> = event_api
         .list(&list_params().fields(&field_selector))
         .await
-        .map_err(|e| AppError::kube(e.to_string()))?
+        .map_err(AppError::from)?
         .into_iter()
         .filter(|event| event_matches_resource(event, &kind, &name, namespace.as_deref()))
         .collect();
