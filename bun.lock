@@ -26,7 +26,7 @@
         "@biomejs/biome": "2.5.1",
         "@codspeed/vitest-plugin": "^5.7.1",
         "@fontsource-variable/geist-mono": "^5.2.8",
-        "@framework-doctor/svelte": "1.1.1",
+        "@framework-doctor/svelte": "1.0.4",
         "@sveltejs/vite-plugin-svelte": "7.1.2",
         "@tailwindcss/vite": "4.3.1",
         "@tauri-apps/cli": "2.11.3",
@@ -99,9 +99,9 @@
 
     "@fontsource-variable/inter": ["@fontsource-variable/inter@5.2.8", "", {}, "sha512-kOfP2D+ykbcX/P3IFnokOhVRNoTozo5/JxhAIVYLpea/UBmCQ/YWPBfWIDuBImXX/15KH+eKh4xpEUyS2sQQGQ=="],
 
-    "@framework-doctor/core": ["@framework-doctor/core@1.1.0", "", { "dependencies": { "ora": "^9.3.0", "picocolors": "^1.1.1" } }, "sha512-gexe0pzk3yH6eqBUOjQFvAH7s0VRo2r6EGbvnc+g8eJkWGpbs2TIFRSagemNV//Go8qRXdu0u3mPBvYpyMTdsg=="],
+    "@framework-doctor/core": ["@framework-doctor/core@1.0.4", "", { "dependencies": { "ora": "^9.3.0", "picocolors": "^1.1.1" } }, "sha512-G367bu9wl2WnmLsOwn7ma5FcoJlZ1eWowVXOb78l2sBPxUUc9ZTDSFCbBn567Swc39PTU7ITET3m/Sv8wxsKHA=="],
 
-    "@framework-doctor/svelte": ["@framework-doctor/svelte@1.1.1", "", { "dependencies": { "@framework-doctor/core": "1.1.0", "commander": "^14.0.3", "knip": "^5.83.1", "ora": "^9.3.0", "oxlint": "^1.49.0", "picocolors": "^1.1.1", "prompts": "^2.4.2", "svelte-check": "^4.1.6" }, "bin": { "svelte-doctor": "dist/cli.js" } }, "sha512-G3TLr59cFiyqf9/e5Y1JhmG9lO1UsZAzLgBJb327ddmUitT6A70CB4rRNT8VoRyq2ZyjmP3YA1AcCOK3vxAG7Q=="],
+    "@framework-doctor/svelte": ["@framework-doctor/svelte@1.0.4", "", { "dependencies": { "@framework-doctor/core": "1.0.4", "commander": "^14.0.3", "knip": "^5.83.1", "ora": "^9.3.0", "oxlint": "^1.49.0", "picocolors": "^1.1.1", "prompts": "^2.4.2", "svelte-check": "^4.1.6" }, "bin": { "svelte-doctor": "dist/cli.js" } }, "sha512-SjJZqZ6gUshdR5dW7i/xZqZEzek0fJW38Nc2+lLgVYUO5IrnzDD7cjv+0TVt+FP41RBVaY7o1no4yaEEclagxQ=="],
 
     "@internationalized/date": ["@internationalized/date@3.12.2", "", { "dependencies": { "@swc/helpers": "^0.5.0" } }, "sha512-FY1Y+H64NDs+HAF6omlnWxm3mEpfgaCSWtL5l551ZZfImA+kGjPFgrnJrGjH6lfmLL0g8Z/mBu1R3kufeCp6Jw=="],
 
