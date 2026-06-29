@@ -34,7 +34,7 @@
     "@codemirror/lint": "6.9.7",
     "@fontsource-variable/geist": "5.2.9",
     "@fontsource-variable/inter": "5.2.8",
-    "@tanstack/svelte-query": "6.1.34",
+    "@tanstack/svelte-query": "6.1.36",
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-process": "2.3.1",
     "@tauri-apps/plugin-updater": "2.10.1",
