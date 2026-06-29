@@ -1,5 +1,7 @@
 # KubeCove
 
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/Timpan4/kubecove?utm_source=badge)
+
 KubeCove is a local desktop workspace for Kubernetes operations. It is built for operators and app developers who need to move from cluster scope to namespace, application, resource state, topology, events, logs, metrics, YAML, Helm metadata, Argo CD signals, and RBAC context without losing their place.
 
 The current beta is inspection-first with governed Pod and selector-backed Service port-forward sessions, exact-Pod guarded exec sessions, and selected-resource YAML apply. KubeCove does not deploy agents into clusters, does not expose raw kubeconfig contents to the frontend, and does not let the frontend run arbitrary shell commands. The architecture is ready for guarded cluster operations, but broad apply, delete, scale, sync, and rollback workflows are not shipped unless a typed Rust-side command and explicit UX guardrails exist.
