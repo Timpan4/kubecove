@@ -1,8 +1,5 @@
-import {
-	Channel,
-	invoke,
-	type InvokeOptions,
-} from "@tauri-apps/api/core";
+import { Channel, invoke, type InvokeOptions } from "@tauri-apps/api/core";
+import { createDevMockTauriClient } from "./tauri-dev-mocks";
 import type {
 	ClusterContext,
 	NamespaceSummary,
@@ -38,14 +35,16 @@ import type {
 } from "./types";
 import { diagnosticLog, diagnosticResultSummary } from "./diagnostics";
 
-export interface TauriClient {
-	invoke<T>(
-		cmd: string,
-		args?: Record<string, unknown>,
-		options?: InvokeOptions,
-	): Promise<T>;
-}
-
+export {
+	createMockChannel,
+	createMockTauriClient,
+	isBrowserDevMockMode,
+	isTauriRuntime,
+	shouldUseBrowserDevMocks,
+} from "./tauri-runtime";
+export type { TauriClient } from "./tauri-runtime";
+import { createMockChannel, shouldUseBrowserDevMocks } from "./tauri-runtime";
+import type { TauriClient } from "./tauri-runtime";
 function errorMessage(error: unknown): string {
 	if (error instanceof Error) return error.message;
 	if (typeof error === "string") return error;
@@ -61,6 +60,8 @@ function errorMessage(error: unknown): string {
 }
 
 export function createTauriClient(): TauriClient {
+	if (shouldUseBrowserDevMocks()) return createDevMockTauriClient();
+
 	return {
 		invoke: async <T>(
 			cmd: string,
@@ -92,20 +93,6 @@ export function createTauriClient(): TauriClient {
 		},
 	};
 }
-
-export function createMockTauriClient(
-	mockResponses: Record<string, unknown>,
-): TauriClient {
-	return {
-		invoke: async <T>(cmd: string): Promise<T> => {
-			if (cmd in mockResponses) {
-				return mockResponses[cmd] as T;
-			}
-			throw new Error(`No mock response for command: ${cmd}`);
-		},
-	};
-}
-
 export function kubeconfigArg(kubeconfigEnvVar?: string): {
 	kubeconfigEnvVar?: string;
 } {
@@ -399,6 +386,7 @@ export async function listResourceTopology(
 export function createStreamChannel(
 	onMessage: (message: StreamMessage) => void,
 ): Channel<StreamMessage> {
+	if (shouldUseBrowserDevMocks()) return createMockChannel(onMessage);
 	return new Channel<StreamMessage>(onMessage);
 }
 
@@ -421,6 +409,7 @@ export function closeStreamChannel(channel: Channel<StreamMessage>): void {
 export function createPodExecChannel(
 	onMessage: (message: PodExecSessionMessage) => void,
 ): Channel<PodExecSessionMessage> {
+	if (shouldUseBrowserDevMocks()) return createMockChannel(onMessage);
 	return new Channel<PodExecSessionMessage>(onMessage);
 }
 
