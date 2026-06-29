@@ -53,7 +53,7 @@ const rows = Array.from({ length: 10_000 }, (_, index) =>
 const searchIndex = buildResourceSearchIndex(rows);
 const gitOpsFilter = "argo:Application:argocd:checkout-42";
 const state: ResourceTableState = {
-	search: "checkout pod namespace-42",
+	search: "checkout",
 	gitOpsFilter: "",
 	healthFilter: "unhealthy",
 	sort: { id: "memory", desc: true },
