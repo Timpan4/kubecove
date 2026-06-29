@@ -138,6 +138,18 @@ fn topology_standalone_kinds_include_ownerless_resources() {
 }
 
 #[test]
+fn ownership_topology_omits_auto_injected_root_ca_configmap() {
+    let topology = build_resource_topology(vec![
+        resource("ConfigMap", "kube-root-ca.crt", "default", "root-ca"),
+        resource("ConfigMap", "app-config", "default", "app-config"),
+    ]);
+
+    assert_eq!(topology.nodes.len(), 1);
+    assert_eq!(topology.nodes[0].kind, "ConfigMap");
+    assert_eq!(topology.nodes[0].name, "app-config");
+}
+
+#[test]
 fn sanitized_pod_fixture_normalizes_to_topology_contract() {
     let topology = build_resource_topology(vec![pod_fixture_input()]);
     let node = topology.nodes.first().expect("pod node");

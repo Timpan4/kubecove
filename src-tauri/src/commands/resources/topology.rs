@@ -140,7 +140,10 @@ pub(super) fn node_from_input(input: &TopologyInputResource) -> TopologyNode {
 
 pub(crate) fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> ResourceTopology {
     let mut deduped_inputs = BTreeMap::new();
-    for input in inputs {
+    for input in inputs
+        .into_iter()
+        .filter(|input| !is_ownership_noise(input))
+    {
         let node = node_from_input(&input);
         deduped_inputs.insert(node.id, input);
     }
@@ -201,6 +204,10 @@ pub(crate) fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> Res
         edges,
         warnings,
     }
+}
+
+fn is_ownership_noise(input: &TopologyInputResource) -> bool {
+    input.summary.kind == "ConfigMap" && input.summary.name == "kube-root-ca.crt"
 }
 
 pub(super) fn push_edge(
