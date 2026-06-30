@@ -596,7 +596,8 @@ describe("svelte resource browser model", () => {
 
 		expect(resizedKey).not.toBe(baseKey);
 		expect(movedKey).not.toBe(baseKey);
-		expect(browserSource).toContain("const topologyFitViewKey = $derived(JSON.stringify(topologyQueryKey))");
+		expect(browserSource).toContain("const topologyFitViewKey = $derived(JSON.stringify(topologyBaseQueryKey))");
+		expect(browserSource).toContain("[...topologyBaseQueryKey, topologyCustomResourceKey]");
 		expect(browserSource).toContain("fitViewKey={topologyFitViewKey}");
 	});
 
