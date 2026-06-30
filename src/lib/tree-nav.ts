@@ -35,7 +35,7 @@ export interface TreeNode {
 // ─── Kind Groupings ────────────────────────────────────────────────────────────
 
 export const KIND_GROUPS = {
-  Workloads: ["Pod", "Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob"] as const,
+  Workloads: ["Pod", "Deployment", "ReplicaSet", "StatefulSet", "DaemonSet", "Job", "CronJob"] as const,
   Network: ["Service", "Ingress"] as const,
   Config: ["ConfigMap", "Secret"] as const,
   Storage: ["PersistentVolumeClaim", "PersistentVolume", "StorageClass"] as const,
@@ -64,7 +64,7 @@ export const SECTIONS = {
     label: "Namespaces",
     children: [] as readonly string[], // populated dynamically
   },
-  /** Workloads: Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob */
+  /** Workloads: Pod, Deployment, ReplicaSet, StatefulSet, DaemonSet, Job, CronJob */
   workloads: {
     id: "workloads",
     label: "Workloads",

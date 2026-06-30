@@ -348,6 +348,7 @@
 		resourceInitialSearch = initialSearch;
 		resourceInitialGitOpsFilter = initialGitOpsFilter;
 		resourceInitialHealthFilter = initialHealthFilter;
+		resourceBrowserPathState = null;
 		resourceNamespaceOverride = Array.isArray(namespace) ? namespace : null;
 		selectedNode = typeof namespace === "string"
 			? { type: "namespace", section: "namespaces", namespace }

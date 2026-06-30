@@ -194,7 +194,7 @@ describe("workspace helpers", () => {
 			"kind-prod",
 		]);
 		expect(summarizeWorkspaceScope(workspace.scope)).toBe(
-			"Ops group (2) / default, payments / Pod, Deployment +4",
+			"Ops group (2) / default, payments / Pod, Deployment +7",
 		);
 		expect(JSON.stringify(workspace)).not.toContain("kubeconfig");
 		expect(JSON.stringify(workspace)).not.toContain("client-key");
