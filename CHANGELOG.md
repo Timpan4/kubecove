@@ -6,7 +6,7 @@ should mirror the matching version section.
 ## 0.7.1 - 2026-06-30
 ### Fixed
 
-- Remove Svelte badge and pad launcher
+- Removed the leftover Svelte launcher badge, added breathing room around the workspace view, and raised the minimum desktop window size so launcher controls are not cramped.
 
 ## 0.7.0 - 2026-06-30
 
