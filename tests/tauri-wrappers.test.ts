@@ -525,6 +525,33 @@ describe("typed Tauri wrappers", () => {
 		expect(calls).toBe(1);
 	});
 
+	test("does not coalesce cancellable topology requests", async () => {
+		let calls = 0;
+		const seen: Record<string, unknown>[] = [];
+		const client = {
+			invoke: async <T>(_cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls += 1;
+				if (args) seen.push(args);
+				await new Promise((resolve) => setTimeout(resolve, 1));
+				return { nodes: [], edges: [], warnings: [] } as T;
+			},
+		};
+
+		await Promise.all([
+			listResourceTopology(client, "kind-dev", ["payments"], "ownership", undefined, {
+				requestId: "first",
+				cancelScope: "topology",
+			}),
+			listResourceTopology(client, "kind-dev", ["payments"], "ownership", undefined, {
+				requestId: "second",
+				cancelScope: "topology",
+			}),
+		]);
+
+		expect(calls).toBe(2);
+		expect(seen.map((args) => args.requestId)).toEqual(["first", "second"]);
+	});
+
 	test("coalesces duplicate in-flight present custom resource requests", async () => {
 		const kinds = [
 			{

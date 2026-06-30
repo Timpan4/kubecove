@@ -1,9 +1,10 @@
 use codspeed_divan_compat::black_box;
 use kubecove_lib::{
     commands::bench_support::{
-        build_bench_topology, build_custom_overlay_bench_topology, helm_manifest_resources,
-        helm_manifest_summary, present_custom_resource_scope_key, sample_custom_resource_kinds,
-        sample_topology_inputs, serialize_backend_yaml, sort_custom_resource_catalog,
+        build_bench_topology, build_custom_overlay_bench_topology_from_inputs,
+        custom_overlay_bench_inputs, helm_manifest_resources, helm_manifest_summary,
+        present_custom_resource_scope_key, sample_custom_resource_kinds, sample_topology_inputs,
+        serialize_backend_yaml, sort_custom_resource_catalog,
     },
     models::YamlEncoding,
 };
@@ -24,6 +25,9 @@ static WORKSPACE_NAMESPACES: LazyLock<Vec<String>> = LazyLock::new(|| {
         .map(|index| format!("namespace-{index}"))
         .collect()
 });
+static CUSTOM_OVERLAY_INPUTS: LazyLock<
+    kubecove_lib::commands::bench_support::BenchCustomOverlayInputs,
+> = LazyLock::new(|| custom_overlay_bench_inputs(500));
 
 mod helm_manifest_parse_250_resources {
     use super::*;
@@ -111,7 +115,9 @@ mod build_ownership_topology_500_apps_with_crd_overlay {
 
     #[codspeed_divan_compat::bench]
     fn run() -> usize {
-        let topology = black_box(build_custom_overlay_bench_topology(black_box(500)));
+        let topology = black_box(build_custom_overlay_bench_topology_from_inputs(black_box(
+            CUSTOM_OVERLAY_INPUTS.clone(),
+        )));
         topology.nodes.len() + topology.edges.len()
     }
 }

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
+	appendPresentCustomResourceKinds,
 	buildSidebarTree,
 	extraDiscoveredKinds,
+	GITOPS_RESOURCE_KINDS,
 	getResourceBrowserScope,
 	getWorkspacePlaceholder,
 	getWorkspaceTitle,
@@ -151,17 +153,13 @@ describe("svelte workspace shell model", () => {
 		expect(nodeSource).toContain("getLazyChildren?.(node)");
 	});
 
-	test("prewarms custom resources and refreshes topology when CRDs arrive", () => {
-		const shellSource = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-		const browserSource = readFileSync("src/features/resources/ResourceBrowser.svelte", "utf8");
+	test("appends CRD kinds to live resource scopes without changing the base scope", () => {
+		const base = [...GITOPS_RESOURCE_KINDS];
+		const live = appendPresentCustomResourceKinds(base, [widgets]);
 
-		expect(shellSource).toContain("workspaceCustomResourcePrewarmQuery");
-		expect(shellSource).toContain("workspace.scope.namespaces");
-		expect(shellSource).toContain("listPresentCustomResourceKinds(");
-		expect(browserSource).toContain("topologyCustomResourceKey");
-		expect(browserSource).toContain("topologyBaseQueryKey");
-		expect(browserSource).toContain("[...topologyBaseQueryKey, topologyCustomResourceKey]");
-		expect(browserSource).toContain("JSON.stringify(topologyBaseQueryKey)");
+		expect(base.includes(widgets)).toBe(false);
+		expect(live.includes(widgets)).toBe(true);
+		expect(live.filter((kind) => kind === "CustomResourceDefinition")).toHaveLength(1);
 	});
 
 	test("uses disabled placeholders while query-backed tree data loads or fails", () => {

@@ -256,11 +256,14 @@
 			? (presentCustomResourceKindsQuery.data ?? workspaceCustomResourcePrewarmQuery.data ?? [])
 			: (workspaceCustomResourcePrewarmQuery.data ?? []),
 	);
+	const resourceBrowserInitialKinds = $derived<ResourceKindSelection[]>(
+		resourceGitOpsFocusApplication
+			? [...GITOPS_RESOURCE_KINDS]
+			: resourceBrowserScope.kinds,
+	);
 	const resourceBrowserKinds = $derived<ResourceKindSelection[]>(
 		appendPresentCustomResourceKinds(
-			resourceGitOpsFocusApplication
-				? [...GITOPS_RESOURCE_KINDS]
-				: resourceBrowserScope.kinds,
+			resourceBrowserInitialKinds,
 			presentCustomResourceKinds,
 		),
 	);
@@ -765,7 +768,8 @@
 						<ResourceBrowser
 							clusterContext={workspace.scope.clusterContext}
 							initialNamespaces={resourceBrowserNamespaces}
-							initialKinds={resourceBrowserKinds}
+							initialKinds={resourceBrowserInitialKinds}
+							availableKinds={resourceBrowserKinds}
 							initialSearch={resourceInitialSearch}
 							initialGitOpsFilter={resourceInitialGitOpsFilter}
 							initialHealthFilter={resourceInitialHealthFilter}

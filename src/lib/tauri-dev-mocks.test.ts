@@ -21,4 +21,20 @@ describe("browser dev custom resources mock", () => {
 			"HelmRelease",
 		]);
 	});
+
+	test("filters present custom resources by namespace", async () => {
+		const client = createDevMockTauriClient();
+
+		const present = await client.invoke<DiscoveredResourceKind[]>(
+			"list_present_custom_resource_kinds",
+			{ namespaces: ["argocd"] },
+		);
+		const absent = await client.invoke<DiscoveredResourceKind[]>(
+			"list_present_custom_resource_kinds",
+			{ namespaces: ["no-crds-here"] },
+		);
+
+		expect(present.map((kind) => kind.kind)).toEqual(["Application"]);
+		expect(absent).toEqual([]);
+	});
 });

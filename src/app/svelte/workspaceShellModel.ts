@@ -54,6 +54,7 @@ const SECTION_LABELS: Record<string, string> = {
 
 export const GITOPS_RESOURCE_KINDS: ResourceKindSelection[] = [
 	...SUPPORTED_KINDS,
+	...SECTIONS.clusterOverview.children,
 	"CustomResourceDefinition",
 ];
 

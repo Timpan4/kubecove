@@ -50,4 +50,10 @@ describe("Custom Resources tree model", () => {
 	test("includes CRD definition objects in GitOps resource scopes", () => {
 		expect(GITOPS_RESOURCE_KINDS.includes("CustomResourceDefinition")).toBe(true);
 	});
+
+	test("keeps cluster-scoped native kinds in GitOps resource scopes", () => {
+		expect(GITOPS_RESOURCE_KINDS.includes("Node")).toBe(true);
+		expect(GITOPS_RESOURCE_KINDS.includes("StorageClass")).toBe(true);
+		expect(GITOPS_RESOURCE_KINDS.includes("PersistentVolume")).toBe(true);
+	});
 });

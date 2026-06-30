@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install Tauri Linux dependencies
         uses: awalsh128/cache-apt-pkgs-action@v1

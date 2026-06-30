@@ -110,6 +110,7 @@
 		clusterContext,
 		initialNamespaces,
 		initialKinds,
+		availableKinds = initialKinds,
 		initialSearch = "",
 		initialGitOpsFilter = "",
 		initialHealthFilter = "all",
@@ -125,6 +126,7 @@
 		clusterContext: string;
 		initialNamespaces: string[];
 		initialKinds: ResourceKindSelection[];
+		availableKinds?: ResourceKindSelection[];
 		initialSearch?: string;
 		initialGitOpsFilter?: string;
 		initialHealthFilter?: HealthFilter;
@@ -153,6 +155,7 @@
 	let collapsedGroups = $state<Set<string>>(new Set());
 	let selectedTopologyNodeId = $state<string | null>(null);
 	let topologyMode = $state<TopologyMode>("ownership");
+	let appliedAvailableKindsKey = $state("");
 	let mapPanelOpen = $state(getSettingsSnapshot().showOwnershipMapByDefault);
 	let tablePanelOpen = $state(true);
 	let appliedTargetResourceKey = $state("");
@@ -180,6 +183,7 @@
 		selectedNamespaces = pathState ? [...pathState.selectedNamespaces] : [...initialNamespaces];
 		selectedKinds = pathState ? [...pathState.selectedKinds] : [...initialKinds];
 		appliedScopeKey = incomingScopeKey;
+		appliedAvailableKindsKey = initialKinds.map(kindSelectionKey).sort().join(",");
 		search = pathState?.search ?? initialSearch;
 		gitOpsFilter = pathState?.gitOpsFilter ?? initialGitOpsFilter;
 		healthFilter = pathState?.healthFilter ?? initialHealthFilter;
@@ -194,6 +198,20 @@
 			pathState?.mapPanelOpen ?? getSettingsSnapshot().showOwnershipMapByDefault;
 		tablePanelOpen = pathState?.tablePanelOpen ?? true;
 		if (pathState) initialPathStateConsumed = true;
+	});
+	const availableKindsKey = $derived(
+		availableKinds.map(kindSelectionKey).sort().join(","),
+	);
+	$effect(() => {
+		if (appliedScopeKey === "" || appliedAvailableKindsKey === availableKindsKey) return;
+		const previous = new Set(appliedAvailableKindsKey.split(",").filter(Boolean));
+		const selected = new Set(selectedKinds.map(kindSelectionKey));
+		const additions = availableKinds.filter((kind) => {
+			const key = kindSelectionKey(kind);
+			return !previous.has(key) && !selected.has(key);
+		});
+		appliedAvailableKindsKey = availableKindsKey;
+		if (additions.length > 0) selectedKinds = [...selectedKinds, ...additions];
 	});
 
 	const sourceQuery = createQuery<KubeconfigSourcesSummary>(() => ({

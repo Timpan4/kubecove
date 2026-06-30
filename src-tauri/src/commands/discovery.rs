@@ -79,6 +79,13 @@ fn api_resource_from_kind(resource_kind: &DiscoveredResourceKind) -> ApiResource
     }
 }
 
+fn should_probe_present_kind(
+    resource_kind: &DiscoveredResourceKind,
+    namespaces: &[String],
+) -> bool {
+    resource_kind.namespaced || namespaces.is_empty()
+}
+
 pub(crate) fn sort_and_dedup_kinds(kinds: &mut Vec<DiscoveredResourceKind>) {
     kinds.sort_by(|a, b| {
         a.group
@@ -157,22 +164,27 @@ pub(crate) async fn present_custom_resource_kinds_for_catalog(
         .filter(|namespace| !namespace.trim().is_empty())
         .collect();
 
-    let outcomes = stream::iter(catalog.into_iter().filter(|kind| kind.namespaced))
-        .map(|resource_kind| {
-            let client = client.clone();
-            let namespaces = namespaces.clone();
-            async move {
-                match custom_resource_kind_present(client, &resource_kind, &namespaces).await {
-                    Ok(true) => Ok(Some(resource_kind)),
-                    Ok(false) => Ok(None),
-                    Err(err) if err.kind == "forbidden" || err.kind == "notFound" => Ok(None),
-                    Err(err) => Err(err),
-                }
+    let outcomes = stream::iter(
+        catalog
+            .into_iter()
+            .filter(|kind| should_probe_present_kind(kind, &namespaces)),
+    )
+    .map(|resource_kind| {
+        let client = client.clone();
+        let namespaces = namespaces.clone();
+        async move {
+            match custom_resource_kind_present(client, &resource_kind, &namespaces).await {
+                Ok(true) => Ok(Some(resource_kind)),
+                Ok(false) => Ok(None),
+                Err(err) if err.kind == "notFound" => Ok(None),
+                Err(err) if err.kind == "forbidden" && !namespaces.is_empty() => Ok(None),
+                Err(err) => Err(err),
             }
-        })
-        .buffer_unordered(MAX_PRESENT_KIND_CONCURRENCY)
-        .collect::<Vec<Result<Option<DiscoveredResourceKind>, AppError>>>()
-        .await;
+        }
+    })
+    .buffer_unordered(MAX_PRESENT_KIND_CONCURRENCY)
+    .collect::<Vec<Result<Option<DiscoveredResourceKind>, AppError>>>()
+    .await;
 
     let mut present = Vec::new();
     for outcome in outcomes {
@@ -376,5 +388,31 @@ mod tests {
         assert_eq!(kinds.len(), 2);
         assert_eq!(kinds[0].kind, "Alpha");
         assert_eq!(kinds[1].kind, "Zed");
+    }
+
+    #[test]
+    fn keeps_cluster_scoped_kinds_for_all_namespace_presence() {
+        let cluster_kind = discovered_kind_from_crd(&crd(
+            "v1",
+            "example.com",
+            "ClusterThing",
+            "clusterthings",
+            "Cluster",
+        ))
+        .unwrap();
+        let namespaced_kind =
+            discovered_kind_from_crd(&crd("v1", "example.com", "Widget", "widgets", "Namespaced"))
+                .unwrap();
+
+        assert!(should_probe_present_kind(&cluster_kind, &[]));
+        assert!(should_probe_present_kind(&namespaced_kind, &[]));
+        assert!(!should_probe_present_kind(
+            &cluster_kind,
+            &[String::from("default")]
+        ));
+        assert!(should_probe_present_kind(
+            &namespaced_kind,
+            &[String::from("default")]
+        ));
     }
 }

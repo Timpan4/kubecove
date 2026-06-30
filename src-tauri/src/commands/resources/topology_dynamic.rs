@@ -11,9 +11,13 @@ use kube::{
     api::{Api, DynamicObject},
     Client, Error as KubeError,
 };
+use std::sync::Arc;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 const MAX_TOPOLOGY_LIST_CONCURRENCY: usize = 16;
 const MAX_DYNAMIC_TOPOLOGY_KIND_CONCURRENCY: usize = 48;
+const MAX_DYNAMIC_TOPOLOGY_LIST_CONCURRENCY: usize = 32;
+type DynamicListLimiter = Arc<Semaphore>;
 
 fn inputs_from_metadata<T>(cluster_context: &str, items: Vec<T>) -> Vec<TopologyInputResource>
 where
@@ -55,6 +59,17 @@ fn push_dynamic_topology_list_warning(
         ),
         error.message
     ));
+}
+
+async fn dynamic_list_permit(
+    limiter: &DynamicListLimiter,
+) -> Result<OwnedSemaphorePermit, AppError> {
+    limiter.clone().acquire_owned().await.map_err(|err| {
+        AppError::new(
+            format!("dynamic topology limiter closed: {err}"),
+            "internal",
+        )
+    })
 }
 
 pub(super) async fn list_crd_definition_inputs(
@@ -104,6 +119,7 @@ async fn list_dynamic_topology_kind(
     resource_kind: &DiscoveredResourceKind,
     namespaces: &[String],
     warnings: &mut Vec<String>,
+    limiter: DynamicListLimiter,
 ) -> Result<Vec<TopologyInputResource>, AppError> {
     let api_resource = api_resource_from_discovered(resource_kind)?;
     let mut out = Vec::new();
@@ -112,6 +128,7 @@ async fn list_dynamic_topology_kind(
             return Ok(out);
         }
         let api: Api<DynamicObject> = Api::all_with(client, &api_resource);
+        let _permit = dynamic_list_permit(&limiter).await?;
         match api.list(&list_params()).await.map_err(AppError::from) {
             Ok(rows) => out.extend(
                 rows.iter()
@@ -127,6 +144,7 @@ async fn list_dynamic_topology_kind(
 
     if namespaces.is_empty() {
         let api: Api<DynamicObject> = Api::all_with(client, &api_resource);
+        let _permit = dynamic_list_permit(&limiter).await?;
         match api.list(&list_params()).await.map_err(AppError::from) {
             Ok(rows) => out.extend(
                 rows.iter()
@@ -144,21 +162,24 @@ async fn list_dynamic_topology_kind(
         .map(|namespace| {
             let api: Api<DynamicObject> =
                 Api::namespaced_with(client.clone(), &namespace, &api_resource);
+            let limiter = limiter.clone();
             async move {
-                (
+                let _permit = dynamic_list_permit(&limiter).await?;
+                Ok::<_, AppError>((
                     namespace,
                     api.list(&list_params())
                         .await
                         .map(|rows| rows.items)
                         .map_err(AppError::from),
-                )
+                ))
             }
         })
         .buffered(MAX_TOPOLOGY_LIST_CONCURRENCY)
         .collect::<Vec<_>>()
         .await;
 
-    for (namespace, outcome) in outcomes {
+    for outcome in outcomes {
+        let (namespace, outcome) = outcome?;
         match outcome {
             Ok(rows) => out.extend(
                 rows.iter()
@@ -183,6 +204,7 @@ async fn dynamic_topology_kind_present(
     resource_kind: &DiscoveredResourceKind,
     namespaces: &[String],
     warnings: &mut Vec<String>,
+    limiter: DynamicListLimiter,
 ) -> Result<bool, AppError> {
     let api_resource = api_resource_from_discovered(resource_kind)?;
     let params = list_params().limit(1);
@@ -191,6 +213,7 @@ async fn dynamic_topology_kind_present(
             return Ok(false);
         }
         let api: Api<DynamicObject> = Api::all_with(client, &api_resource);
+        let _permit = dynamic_list_permit(&limiter).await?;
         return match api.list_metadata(&params).await.map_err(AppError::from) {
             Ok(list) => Ok(!list.items.is_empty()),
             Err(error) if is_optional_app_error(&error) => {
@@ -203,6 +226,7 @@ async fn dynamic_topology_kind_present(
 
     if namespaces.is_empty() {
         let api: Api<DynamicObject> = Api::all_with(client, &api_resource);
+        let _permit = dynamic_list_permit(&limiter).await?;
         return match api.list_metadata(&params).await.map_err(AppError::from) {
             Ok(list) => Ok(!list.items.is_empty()),
             Err(error) if is_optional_app_error(&error) => {
@@ -216,6 +240,7 @@ async fn dynamic_topology_kind_present(
     for namespace in namespaces {
         let api: Api<DynamicObject> =
             Api::namespaced_with(client.clone(), namespace, &api_resource);
+        let _permit = dynamic_list_permit(&limiter).await?;
         match api.list_metadata(&params).await.map_err(AppError::from) {
             Ok(list) if !list.items.is_empty() => return Ok(true),
             Ok(_) => {}
@@ -241,9 +266,11 @@ pub(super) async fn list_dynamic_topology_inputs(
     kinds: Vec<DiscoveredResourceKind>,
     kinds_are_present: bool,
 ) -> Result<Vec<TopologyInputResource>, AppError> {
+    let limiter = Arc::new(Semaphore::new(MAX_DYNAMIC_TOPOLOGY_LIST_CONCURRENCY));
     let outcomes = stream::iter(kinds)
         .map(|resource_kind| {
             let client = client.clone();
+            let limiter = limiter.clone();
             let namespaces = namespaces.to_vec();
             async move {
                 let mut warnings = Vec::new();
@@ -253,6 +280,7 @@ pub(super) async fn list_dynamic_topology_inputs(
                         &resource_kind,
                         &namespaces,
                         &mut warnings,
+                        limiter.clone(),
                     )
                     .await?
                 {
@@ -264,6 +292,7 @@ pub(super) async fn list_dynamic_topology_inputs(
                     &resource_kind,
                     &namespaces,
                     &mut warnings,
+                    limiter,
                 )
                 .await?;
                 Ok::<_, AppError>((rows, warnings))

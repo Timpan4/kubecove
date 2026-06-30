@@ -14,6 +14,9 @@ pub struct BenchTopologyInput {
     pub owner: Option<BenchOwner>,
 }
 
+#[derive(Clone)]
+pub struct BenchCustomOverlayInputs(Vec<topology::TopologyInputResource>);
+
 pub struct BenchOwner {
     pub api_version: &'static str,
     pub kind: &'static str,
@@ -128,23 +131,17 @@ pub fn sample_custom_resource_kinds(count: usize) -> Vec<DiscoveredResourceKind>
     for index in (0..count).rev() {
         let group = format!("operator-{}.example.com", index % 40);
         let kind = format!("ManagedThing{index}");
-        kinds.push(DiscoveredResourceKind {
+        let resource_kind = DiscoveredResourceKind {
             group: group.clone(),
             version: if index % 3 == 0 { "v1beta1" } else { "v1" }.to_string(),
             api_version: format!("{group}/v1"),
             kind: kind.clone(),
             plural: format!("managedthings{index}"),
             namespaced: index % 7 != 0,
-        });
+        };
+        kinds.push(resource_kind.clone());
         if index % 10 == 0 {
-            kinds.push(DiscoveredResourceKind {
-                group,
-                version: "v1".to_string(),
-                api_version: "example.com/v1".to_string(),
-                kind,
-                plural: format!("managedthings{index}"),
-                namespaced: index % 7 != 0,
-            });
+            kinds.push(resource_kind);
         }
     }
     kinds
@@ -162,7 +159,7 @@ pub fn present_custom_resource_scope_key(namespaces: &[String]) -> String {
     live_store::present_custom_resource_kinds_cache_key("default", "admin@solid-k8s", namespaces)
 }
 
-pub fn build_custom_overlay_bench_topology(apps: usize) -> ResourceTopology {
+pub fn custom_overlay_bench_inputs(apps: usize) -> BenchCustomOverlayInputs {
     let mut resources = Vec::with_capacity(apps * 5);
     for index in 0..apps {
         let namespace = format!("namespace-{}", index % 100);
@@ -262,7 +259,18 @@ pub fn build_custom_overlay_bench_topology(apps: usize) -> ResourceTopology {
             ),
         });
     }
-    topology::build_resource_topology(resources)
+    BenchCustomOverlayInputs(resources)
+}
+
+pub fn build_custom_overlay_bench_topology(apps: usize) -> ResourceTopology {
+    let resources = custom_overlay_bench_inputs(apps);
+    build_custom_overlay_bench_topology_from_inputs(resources)
+}
+
+pub fn build_custom_overlay_bench_topology_from_inputs(
+    resources: BenchCustomOverlayInputs,
+) -> ResourceTopology {
+    topology::build_resource_topology(resources.0)
 }
 
 fn resource_summary(

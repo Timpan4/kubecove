@@ -118,9 +118,21 @@
 		const rows = new Map<string, DiscoveredResourceKind[]>();
 		for (const [index, query] of namespaceCustomResourceQueries.entries()) {
 			const namespace = expandedNamespaces[index];
-			if (namespace) rows.set(namespace, (query.data as DiscoveredResourceKind[] | undefined) ?? []);
+			if (namespace && query.data) rows.set(namespace, query.data as DiscoveredResourceKind[]);
 		}
 		return rows;
+	});
+	const customResourceErrorsByNamespace = $derived.by(() => {
+		const errors = new Map<string, string>();
+		for (const [index, query] of namespaceCustomResourceQueries.entries()) {
+			const namespace = expandedNamespaces[index];
+			if (!namespace || !query.isError) continue;
+			errors.set(
+				namespace,
+				query.error instanceof Error ? query.error.message : String(query.error),
+			);
+		}
+		return errors;
 	});
 	const pendingCustomResourceNamespaces = $derived.by(() => {
 		const pending = new Set<string>();
@@ -134,6 +146,20 @@
 		if (node.id.type !== "namespace" || !node.id.namespace) return node.children;
 		const customResources = customResourcesByNamespace.get(node.id.namespace) ?? [];
 		const children = buildNamespaceTreeNode(node.id.namespace, customResources).children ?? [];
+		const error = customResourceErrorsByNamespace.get(node.id.namespace);
+		if (error) {
+			return children.concat({
+				id: {
+					type: "group",
+					section: "namespaces",
+					namespace: node.id.namespace,
+					group: "custom-resources-error",
+				},
+				label: "Custom resources failed to load",
+				description: error,
+				disabled: true,
+			});
+		}
 		if (!pendingCustomResourceNamespaces.has(node.id.namespace)) return children;
 		return children.concat({
 			id: {

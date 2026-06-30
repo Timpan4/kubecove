@@ -398,6 +398,15 @@ export async function listResourceTopology(
 	kubeconfigEnvVar?: string,
 	cancellable?: CancellableRequest,
 ): Promise<ResourceTopology> {
+	if (cancellable) {
+		return client.invoke<ResourceTopology>("list_resource_topology", {
+			clusterContext,
+			namespaces,
+			mode,
+			...kubeconfigArg(kubeconfigEnvVar),
+			...cancellableArg(cancellable),
+		});
+	}
 	return coalescedInvoke(
 		client,
 		`list_resource_topology:${kubeconfigEnvVar ?? ""}:${clusterContext}:${sortedScopeKey(namespaces)}:${mode}`,
@@ -407,7 +416,6 @@ export async function listResourceTopology(
 				namespaces,
 				mode,
 				...kubeconfigArg(kubeconfigEnvVar),
-				...cancellableArg(cancellable),
 			}),
 	);
 }
