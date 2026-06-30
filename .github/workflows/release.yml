@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       release-draft: ${{ steps.release.outputs.release-draft }}
+      release-exists: ${{ steps.release.outputs.release-exists }}
 
     steps:
       - name: Detect existing release state
@@ -33,8 +34,10 @@ jobs:
           set -euo pipefail
           if release_draft="$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft' 2>release-error.txt)"; then
             echo "release-draft=$release_draft" >> "$GITHUB_OUTPUT"
+            echo "release-exists=true" >> "$GITHUB_OUTPUT"
           elif grep -qiE "not found|404" release-error.txt; then
             echo "release-draft=true" >> "$GITHUB_OUTPUT"
+            echo "release-exists=false" >> "$GITHUB_OUTPUT"
           else
             cat release-error.txt >&2
             exit 1
@@ -173,12 +176,40 @@ jobs:
           test "${FRONTEND_RESULT}" = "success"
           test "${RUST_RESULT}" = "success"
 
+  draft:
+    name: Create draft release
+    needs:
+      - prepare
+      - metadata
+      - verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Create release before asset builds
+        if: needs.prepare.outputs.release-draft == 'true' && needs.prepare.outputs.release-exists != 'true'
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ needs.metadata.outputs.release-body }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG_NAME#app-v}"
+          printf '%s\n' "$RELEASE_BODY" > release-notes.md
+          gh release create "$TAG_NAME" \
+            --title "KubeCove v${version}" \
+            --notes-file release-notes.md \
+            --draft \
+            --verify-tag
+
   build:
     name: Build ${{ matrix.label }}
     needs:
       - prepare
       - metadata
       - verify
+      - draft
     strategy:
       fail-fast: false
       matrix:
@@ -256,6 +287,17 @@ jobs:
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
+
+      - name: Prepare universal kubeconform sidecar
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          lipo -create \
+            src-tauri/bin/kubeconform-aarch64-apple-darwin \
+            src-tauri/bin/kubeconform-x86_64-apple-darwin \
+            -output src-tauri/bin/kubeconform-universal-apple-darwin
+          chmod 755 src-tauri/bin/kubeconform-universal-apple-darwin
 
       - name: Build and upload release assets
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
