@@ -221,19 +221,38 @@ function ownerLookupKey(resource: ResourceSummary): string {
 function resourcesWithInheritedGitOpsOwners(
 	rows: ResourceSummary[],
 ): ResourceSummary[] {
-	const resourcesByName = new Map(rows.map((row) => [ownerLookupKey(row), row]));
+	const ownerKeys = new Set<string>();
+	for (const row of rows) {
+		if (row.ownerRef && !hasResourceListGitOpsOwner(row)) {
+			ownerKeys.add(`${row.namespace ?? ""}/${row.ownerRef}`);
+		}
+	}
+	if (ownerKeys.size === 0) return rows;
+
+	const resourcesByName = new Map(
+		rows
+			.filter((row) => ownerKeys.has(ownerLookupKey(row)))
+			.map((row) => [ownerLookupKey(row), row]),
+	);
+	if (resourcesByName.size === 0) return rows;
+	const ownerCache = new Map<ResourceSummary, ResourceSummary | null>();
 
 	const owningResource = (resource: ResourceSummary): ResourceSummary | null => {
+		if (ownerCache.has(resource)) return ownerCache.get(resource) ?? null;
 		if (hasResourceListGitOpsOwner(resource)) return resource;
 		const seen = new Set<ResourceSummary>([resource]);
 		let current: ResourceSummary | undefined = resource;
 		while (current?.ownerRef) {
 			const owner = resourcesByName.get(`${current.namespace ?? ""}/${current.ownerRef}`);
 			if (!owner || seen.has(owner)) break;
-			if (hasResourceListGitOpsOwner(owner)) return owner;
+			if (hasResourceListGitOpsOwner(owner)) {
+				ownerCache.set(resource, owner);
+				return owner;
+			}
 			seen.add(owner);
 			current = owner;
 		}
+		ownerCache.set(resource, null);
 		return null;
 	};
 
