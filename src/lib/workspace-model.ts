@@ -137,6 +137,8 @@ export interface CreateWorkspaceScopeInput extends CreateWorkspaceInput {
 export const DEFAULT_WORKSPACE_KINDS: ResourceKindSelection[] = [
 	"Pod",
 	"Deployment",
+	"Job",
+	"CronJob",
 	"Service",
 	"Ingress",
 	"ConfigMap",

@@ -43,7 +43,7 @@
 		type SavedWorkspace,
 	} from "@/lib/workspace-model";
 	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
-	import type { ResourceSummary } from "@/lib/types";
+	import { SUPPORTED_KINDS, type ResourceKindSelection, type ResourceSummary } from "@/lib/types";
 	import { nodeIdToString, type TreeNodeId } from "@/lib/tree-nav";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { createTauriClient } from "@/lib/tauri";
@@ -207,6 +207,11 @@
 	);
 	const resourceBrowserNamespaces = $derived(
 		resourceNamespaceOverride ?? resourceBrowserScope.namespaces,
+	);
+	const resourceBrowserKinds = $derived<ResourceKindSelection[]>(
+		resourceGitOpsFocusApplication
+			? [...SUPPORTED_KINDS]
+			: resourceBrowserScope.kinds,
 	);
 	const showPortForwardRestorePrompt = $derived(
 		shouldShowSavedPortForwardRestorePrompt({
@@ -709,8 +714,8 @@
 					<section class="flex h-full min-h-0 w-full flex-col gap-4 p-4 md:p-6">
 						<ResourceBrowser
 							clusterContext={workspace.scope.clusterContext}
-						initialNamespaces={resourceBrowserNamespaces}
-							initialKinds={resourceBrowserScope.kinds}
+							initialNamespaces={resourceBrowserNamespaces}
+							initialKinds={resourceBrowserKinds}
 							initialSearch={resourceInitialSearch}
 							initialGitOpsFilter={resourceInitialGitOpsFilter}
 							initialHealthFilter={resourceInitialHealthFilter}
