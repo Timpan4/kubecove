@@ -2,7 +2,6 @@
 	import { onMount } from "svelte";
 	import { useQueryClient } from "@tanstack/svelte-query";
 	import { FolderOpen, Settings } from "lucide-svelte";
-	import RuntimeBadge from "../runtime/RuntimeBadge.svelte";
 	import { Button } from "@/components/ui/svelte";
 	import AppUsageFooter from "./AppUsageFooter.svelte";
 	import SettingsSurface from "./SettingsSurface.svelte";
@@ -20,7 +19,6 @@
 		setBackendDiagnosticsEnabled,
 		stopLiveSessionsOutsideScope,
 	} from "@/lib/tauri";
-	import { takeUiRuntimeSettingsOpen } from "@/lib/ui-runtime";
 	import {
 		readPathState,
 		writePathState,
@@ -35,7 +33,6 @@
 	const liveSessionClient = createTauriClient();
 	const queryClient = useQueryClient();
 	let liveSessionCleanupMessage = $state<string | null>(null);
-	let openSettingsOnWorkspaceMount = $state(false);
 	let initialWorkspacePathState = $state<PathStateWorkspaceSnapshot | null>(null);
 	let launcherView = $state<"workspaces" | "settings">("workspaces");
 	let pathStateReady = $state(false);
@@ -59,8 +56,6 @@
 		} else if (pathState?.launcherView) {
 			launcherView = pathState.launcherView;
 		}
-		openSettingsOnWorkspaceMount = takeUiRuntimeSettingsOpen();
-		if (openSettingsOnWorkspaceMount && !$selectedWorkspace) launcherView = "settings";
 		pathStateReady = true;
 	});
 
@@ -161,14 +156,13 @@
 </script>
 
 <svelte:head>
-	<title>KubeCove Svelte UI</title>
+	<title>KubeCove</title>
 </svelte:head>
 
 {#if $selectedWorkspace}
 	<ForegroundLoadingBar />
 	<WorkspaceShell
 		workspace={$selectedWorkspace}
-		{openSettingsOnWorkspaceMount}
 		initialPathState={initialWorkspacePathState?.workspaceId === $selectedWorkspace.id
 			? initialWorkspacePathState
 			: null}
@@ -193,7 +187,6 @@
 			</div>
 			<div class="flex flex-1 items-center justify-end gap-1 [-webkit-app-region:no-drag]">
 				<UpdateStatusButton />
-				<RuntimeBadge onOpenSettings={openLauncherSettings} />
 				{#if launcherView === "settings"}
 					<Button
 						type="button"

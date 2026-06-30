@@ -203,7 +203,7 @@
 	}
 </script>
 
-<section class="flex min-h-full flex-col justify-center">
+<section class="flex min-h-full flex-col justify-center p-4 md:p-6">
 	<div class="mx-auto grid w-full max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
 		<section class="min-w-0">
 			<div class="mb-3 flex items-baseline gap-2">

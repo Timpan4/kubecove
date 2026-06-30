@@ -11,7 +11,6 @@
 		X,
 	} from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
-	import RuntimeBadge from "../runtime/RuntimeBadge.svelte";
 	import {
 		Badge,
 		Button,
@@ -93,14 +92,12 @@
 
 	let {
 		workspace,
-		openSettingsOnWorkspaceMount = false,
 		initialPathState = null,
 		onPathStateConsumed = () => {},
 		liveSessionCleanupMessage = null,
 		onDismissLiveSessionCleanup = () => {},
 	}: {
 		workspace: SavedWorkspace;
-		openSettingsOnWorkspaceMount?: boolean;
 		initialPathState?: PathStateWorkspaceSnapshot | null;
 		onPathStateConsumed?: () => void;
 		liveSessionCleanupMessage?: string | null;
@@ -226,7 +223,6 @@
 	const resourceInspectorMinSize = $derived(viewMode === "argo" ? 25 : 33);
 
 	onMount(() => {
-		if (openSettingsOnWorkspaceMount) openSettings();
 		if (initialPathSnapshot) onPathStateConsumed();
 	});
 
@@ -537,10 +533,9 @@
 			<div class="flex min-w-0 flex-1 items-center justify-center">
 				<span class="truncate whitespace-nowrap text-sm font-semibold">{title}</span>
 			</div>
-		<div class="flex flex-1 items-center justify-end gap-1 [-webkit-app-region:no-drag]">
-			<ActiveLiveSessionsButton onOpenManager={openPortForwards} />
-			<UpdateStatusButton />
-			<RuntimeBadge onOpenSettings={openSettings} />
+			<div class="flex flex-1 items-center justify-end gap-1 [-webkit-app-region:no-drag]">
+				<ActiveLiveSessionsButton onOpenManager={openPortForwards} />
+				<UpdateStatusButton />
 				<Button
 					type="button"
 					variant="ghost"
@@ -555,7 +550,7 @@
 					variant="ghost"
 					size="icon"
 					aria-label="Open settings"
-				onclick={openSettings}
+					onclick={openSettings}
 				>
 					<Settings />
 				</Button>
@@ -568,11 +563,11 @@
 					onclick={() => (commandOpen = true)}
 				>
 					<Search class="size-3.5" aria-hidden="true" />
-				<span>Search resources...</span>
-				<kbd class="rounded border bg-muted px-1 py-px font-mono text-xs text-muted-foreground">
-					{SEARCH_SHORTCUT_HINT}
-				</kbd>
-			</Button>
+					<span>Search resources...</span>
+					<kbd class="rounded border bg-muted px-1 py-px font-mono text-xs text-muted-foreground">
+						{SEARCH_SHORTCUT_HINT}
+					</kbd>
+				</Button>
 			</div>
 		</header>
 
