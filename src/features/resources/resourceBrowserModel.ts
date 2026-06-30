@@ -223,17 +223,15 @@ function resourcesWithInheritedGitOpsOwners(
 ): ResourceSummary[] {
 	const ownerKeys = new Set<string>();
 	for (const row of rows) {
-		if (row.ownerRef && !hasResourceListGitOpsOwner(row)) {
-			ownerKeys.add(`${row.namespace ?? ""}/${row.ownerRef}`);
-		}
+		if (row.ownerRef) ownerKeys.add(`${row.namespace ?? ""}/${row.ownerRef}`);
 	}
 	if (ownerKeys.size === 0) return rows;
 
-	const resourcesByName = new Map(
-		rows
-			.filter((row) => ownerKeys.has(ownerLookupKey(row)))
-			.map((row) => [ownerLookupKey(row), row]),
-	);
+	const resourcesByName = new Map<string, ResourceSummary>();
+	for (const row of rows) {
+		const key = ownerLookupKey(row);
+		if (ownerKeys.has(key)) resourcesByName.set(key, row);
+	}
 	if (resourcesByName.size === 0) return rows;
 	const ownerCache = new Map<ResourceSummary, ResourceSummary | null>();
 
