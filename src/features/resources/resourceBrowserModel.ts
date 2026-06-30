@@ -214,6 +214,41 @@ function typeGroupedRows(rows: ResourceSummary[]): ResourceSummary[] {
 	});
 }
 
+function ownerLookupKey(resource: ResourceSummary): string {
+	return `${resource.namespace ?? ""}/${resource.name}`;
+}
+
+function resourcesWithInheritedGitOpsOwners(
+	rows: ResourceSummary[],
+): ResourceSummary[] {
+	const resourcesByName = new Map(rows.map((row) => [ownerLookupKey(row), row]));
+
+	const owningResource = (resource: ResourceSummary): ResourceSummary | null => {
+		if (hasResourceListGitOpsOwner(resource)) return resource;
+		const seen = new Set<ResourceSummary>([resource]);
+		let current: ResourceSummary | undefined = resource;
+		while (current?.ownerRef) {
+			const owner = resourcesByName.get(`${current.namespace ?? ""}/${current.ownerRef}`);
+			if (!owner || seen.has(owner)) break;
+			if (hasResourceListGitOpsOwner(owner)) return owner;
+			seen.add(owner);
+			current = owner;
+		}
+		return null;
+	};
+
+	return rows.map((row) => {
+		if (hasResourceListGitOpsOwner(row)) return row;
+		const owner = owningResource(row);
+		if (!owner) return row;
+		return {
+			...row,
+			argoApp: row.argoApp ?? owner.argoApp,
+			gitOpsOwner: row.gitOpsOwner ?? owner.gitOpsOwner,
+		};
+	});
+}
+
 function buildEntries({
 	pageRows,
 	groupedByGitOps,
@@ -305,7 +340,8 @@ export function buildResourceTableModel(
 	rows: ResourceSummary[],
 	state: ResourceTableState,
 ): ResourceTableModel {
-	const searchIndex = buildResourceSearchIndex(rows);
+	const rowsWithInheritedOwners = resourcesWithInheritedGitOpsOwners(rows);
+	const searchIndex = buildResourceSearchIndex(rowsWithInheritedOwners);
 	const scopedRows = filterResourceSearchIndex(
 		searchIndex,
 		state.search,
@@ -342,7 +378,7 @@ export function buildResourceTableModel(
 		pageCount,
 		safePageIndex,
 		groupedByGitOps,
-		gitOpsFilters: uniqueGitOpsFilters(rows),
+		gitOpsFilters: uniqueGitOpsFilters(rowsWithInheritedOwners),
 		healthSummary: buildResourceHealthSummary(scopedRows),
 		columnVisibility: {
 			ready: pageRows.some((row) => Boolean(row.ready)),
