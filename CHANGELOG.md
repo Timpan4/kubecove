@@ -4,35 +4,39 @@ All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
 ## 0.7.0 - 2026-06-30
+
 ### Added
 
-- Improve browser inspection and error surfaces
-- Add browser dev mock mode
-- update Svelte UI parity components
-- make Svelte the default runtime
-- migrate frontend toward Svelte runtime
-- add Svelte + Vite plugin and deps for Svelte support
+- Added the Svelte app shell as the shipped frontend, including workspace,
+  resource browser, resource detail, YAML, events, logs, topology, GitOps, Helm,
+  RBAC, incident, live-session, settings, app update, and usage surfaces.
+- Added browser dev mock mode so the Svelte frontend can run in a normal browser
+  with fake Tauri responses for UI inspection, DevTools, and browser automation.
+- Added release diagnostics and cancellable load reporting for local
+  frontend/backend latency investigation.
+- Added CodSpeed and focused frontend hot-path benchmarks for resource tables,
+  sidebar trees, topology, and YAML diffs.
 
 ### Improved
 
-- Remove React frontend runtime
-- add release latency diagnostics and cancellation
+- Removed the previous React runtime, fallback toggle, shadcn React primitives,
+  and obsolete frontend source after the Svelte cutover.
+- Improved GitOps resource grouping so controller, batch, and child resources
+  appear under the expected owner chains.
+- Kept owner inheritance cheaper in large resource tables by avoiding unresolved
+  owner-chain scans and limiting inheritance work to displayed rows.
+- Refreshed development tooling, Svelte Doctor verification, dependency update
+  automation, and GitHub Actions release runners.
 
 ### Fixed
 
-- Group child resources by GitOps owner chains
-- Include controller resources in resource tables
-- Show batch resources from GitOps apps
-- resource view routing issues
-- Hide root CA noise from ownership topology
-- Svelte PR review issues
-- apply CodeRabbit auto-fixes
-- dynamic secret redaction
-- release tag main validation
-- Rust dependency bumps
-- satisfy React Doctor after review fixes
-- address PR diagnostics review
-- satisfy CI diagnostics gates
+- Fixed resource view routing regressions and aligned GitOps route expectations.
+- Fixed dynamic Secret redaction so secret data stays protected in dynamic
+  resource detail flows.
+- Fixed release tag validation so release tags must match the version on
+  `origin/main`.
+- Fixed Rust dependency bumps that exceeded the supported MSRV constraints.
+- Hid root certificate authority noise from ownership topology.
 
 ## 0.6.7 - 2026-06-15
 ### Improved
