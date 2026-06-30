@@ -31,7 +31,6 @@
 		sortPodExecSessions,
 	} from "@/features/resource-detail/pod-exec-helpers";
 	import {
-		argoApplicationGitOpsFilterKey,
 		argoApplicationResourceNamespaces,
 	} from "@/features/resources/helpers";
 	import type { HealthFilter } from "@/features/resources/helpers";
@@ -570,7 +569,7 @@
 		onOpenResources(
 			argoApplicationResourceNamespaces(selection.item),
 			"",
-			argoApplicationGitOpsFilterKey(selection.item.name),
+			"",
 			"all",
 			selection.item,
 		);
