@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.7.1 - 2026-06-30
+### Fixed
+
+- Remove Svelte badge and pad launcher
+
 ## 0.7.0 - 2026-06-30
 
 ### Added
