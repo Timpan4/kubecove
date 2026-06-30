@@ -3,6 +3,37 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.7.0 - 2026-06-30
+### Added
+
+- Improve browser inspection and error surfaces
+- Add browser dev mock mode
+- update Svelte UI parity components
+- make Svelte the default runtime
+- migrate frontend toward Svelte runtime
+- add Svelte + Vite plugin and deps for Svelte support
+
+### Improved
+
+- Remove React frontend runtime
+- add release latency diagnostics and cancellation
+
+### Fixed
+
+- Group child resources by GitOps owner chains
+- Include controller resources in resource tables
+- Show batch resources from GitOps apps
+- resource view routing issues
+- Hide root CA noise from ownership topology
+- Svelte PR review issues
+- apply CodeRabbit auto-fixes
+- dynamic secret redaction
+- release tag main validation
+- Rust dependency bumps
+- satisfy React Doctor after review fixes
+- address PR diagnostics review
+- satisfy CI diagnostics gates
+
 ## 0.6.7 - 2026-06-15
 ### Improved
 
