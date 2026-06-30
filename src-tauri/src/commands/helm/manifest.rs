@@ -9,7 +9,7 @@ pub(super) fn manifest_summary(
     manifest_summary_from_resources(&manifest_resources(manifest))
 }
 
-pub(super) fn manifest_summary_from_resources(
+pub(crate) fn manifest_summary_from_resources(
     manifest_resources: &[HelmManifestResourceSummary],
 ) -> HelmManifestSummary {
     const RESOURCE_PREVIEW_LIMIT: usize = 50;
@@ -25,7 +25,7 @@ pub(super) fn manifest_summary_from_resources(
     }
 }
 
-pub(super) fn manifest_resources(manifest: Option<&str>) -> Vec<HelmManifestResourceSummary> {
+pub(crate) fn manifest_resources(manifest: Option<&str>) -> Vec<HelmManifestResourceSummary> {
     let Some(manifest) = manifest.filter(|value| !value.trim().is_empty()) else {
         return Vec::new();
     };

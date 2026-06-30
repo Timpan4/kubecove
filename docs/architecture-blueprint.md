@@ -131,7 +131,7 @@ Cluster-changing commands also need the ADR 0004 target, confirmation, and permi
 
 ## Resource Strategy
 
-Common resource kinds should stay typed or semi-typed where that provides better summaries. Dynamic resources and CRDs should flow through Kubernetes discovery and `DynamicObject` support.
+Common resource kinds should stay typed or semi-typed where that provides better summaries. Custom Resources are discovered from `CustomResourceDefinition` objects, then listed through `DynamicObject` support. Namespace and GitOps resource scopes may append present CRD-backed kinds for the selected namespace set.
 
 Core inspection surfaces:
 

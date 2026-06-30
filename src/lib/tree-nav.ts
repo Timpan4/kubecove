@@ -88,10 +88,10 @@ export const SECTIONS = {
     label: "Storage",
     children: [...KIND_GROUPS.Storage] as const,
   },
-  /** Discovered: read-only inventory of extra API resources. */
+  /** Custom Resources: read-only inventory of CRD-backed API resources. */
   discovered: {
     id: "discovered",
-    label: "Discovered",
+    label: "Custom Resources",
     children: [] as readonly string[],
   },
   /** GitOps: Argo CD and Flux provider resources. */
@@ -381,7 +381,7 @@ export function emptyStateMessage(scope: TreeScope, hasClusterContext: boolean):
   if (scope.incidentMode) return "Use the Incident Cockpit";
   if (scope.portForwardMode) return "Use the Port Forwards page";
   if (scope.rbacMode) return "Select an RBAC inspection view";
-  if (scope.section === "discovered") return "Select a discovered resource kind";
+  if (scope.section === "discovered") return "Select a custom resource kind";
   if (!scope.section) return "Select a section from the sidebar";
   if (scope.section === "clusterOverview" && scope.kinds.length > 0) return "Select a cluster context to view cluster-scoped resources";
   if (scope.namespace && scope.kinds.length === 0) return "Select a resource kind";

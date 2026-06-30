@@ -87,6 +87,7 @@
 			),
 		enabled: open && sourceReady,
 		staleTime: 30_000,
+		retry: false,
 	}));
 
 	const resourcesQuery = createQuery<ResourceSummary[]>(() => ({

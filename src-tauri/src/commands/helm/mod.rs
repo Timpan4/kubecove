@@ -1,4 +1,4 @@
-mod manifest;
+pub(crate) mod manifest;
 mod reconciliation;
 mod redaction;
 mod storage;

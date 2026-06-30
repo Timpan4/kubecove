@@ -93,6 +93,22 @@ fn owned(
     input
 }
 
+fn custom_resource(
+    kind: &str,
+    api_version: &str,
+    name: &str,
+    namespace: &str,
+    uid: &str,
+) -> TopologyInputResource {
+    let mut input = resource(kind, name, namespace, uid);
+    input.summary.api_version = Some(api_version.to_string());
+    input.summary.group = api_version
+        .split_once('/')
+        .map(|(group, _)| group.to_string());
+    input.summary.dynamic = Some(true);
+    input
+}
+
 fn pod_fixture_input() -> TopologyInputResource {
     let pod: Pod = serde_json::from_str(include_str!(
         "../../../../tests/fixtures/kubernetes/pod-running.json"
@@ -266,6 +282,50 @@ fn builds_deployment_to_replicaset_to_pod_edges_from_owner_uids() {
     }));
     assert!(topology.edges.iter().any(|edge| {
         edge.source == rs_id && edge.target == pod_id && edge.relation == TopologyRelation::Owns
+    }));
+    assert!(topology.warnings.is_empty());
+}
+
+#[test]
+fn builds_custom_resource_to_workload_edges_from_owner_uids() {
+    let topology = build_resource_topology(vec![
+        custom_resource(
+            "Cluster",
+            "postgresql.cnpg.io/v1",
+            "main",
+            "default",
+            "cluster-1",
+        ),
+        owned(
+            "StatefulSet",
+            "main-rw",
+            "default",
+            "ss-1",
+            "Cluster",
+            "main",
+            "cluster-1",
+        ),
+    ]);
+
+    let cluster_id = topology_node_id(
+        "kind-dev",
+        "postgresql.cnpg.io/v1",
+        "Cluster",
+        Some("default"),
+        "main",
+    );
+    let statefulset_id = topology_node_id(
+        "kind-dev",
+        "apps/v1",
+        "StatefulSet",
+        Some("default"),
+        "main-rw",
+    );
+
+    assert!(topology.edges.iter().any(|edge| {
+        edge.source == cluster_id
+            && edge.target == statefulset_id
+            && edge.relation == TopologyRelation::Owns
     }));
     assert!(topology.warnings.is_empty());
 }

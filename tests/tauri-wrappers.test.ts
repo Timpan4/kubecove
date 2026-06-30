@@ -25,6 +25,7 @@ import {
 	listPodExecSessions,
 	listHelmReleases,
 	listFluxResources,
+	listPresentCustomResourceKinds,
 	listResourceTopology,
 	listKubeContexts,
 	listNamespaces,
@@ -501,6 +502,57 @@ describe("typed Tauri wrappers", () => {
 				},
 			},
 		]);
+	});
+
+	test("coalesces duplicate in-flight topology requests", async () => {
+		const topology: ResourceTopology = { nodes: [], edges: [], warnings: [] };
+		let calls = 0;
+		const client = {
+			invoke: async <T>(): Promise<T> => {
+				calls += 1;
+				await new Promise((resolve) => setTimeout(resolve, 1));
+				return topology as T;
+			},
+		};
+
+		const [first, second] = await Promise.all([
+			listResourceTopology(client, "kind-dev", ["payments", "default"], "ownership"),
+			listResourceTopology(client, "kind-dev", ["default", "payments"], "ownership"),
+		]);
+
+		expect(first).toBe(topology);
+		expect(second).toBe(topology);
+		expect(calls).toBe(1);
+	});
+
+	test("coalesces duplicate in-flight present custom resource requests", async () => {
+		const kinds = [
+			{
+				kind: "Cluster",
+				apiVersion: "postgresql.cnpg.io/v1",
+				group: "postgresql.cnpg.io",
+				version: "v1",
+				plural: "clusters",
+				namespaced: true,
+			},
+		];
+		let calls = 0;
+		const client = {
+			invoke: async <T>(): Promise<T> => {
+				calls += 1;
+				await new Promise((resolve) => setTimeout(resolve, 1));
+				return kinds as T;
+			},
+		};
+
+		const [first, second] = await Promise.all([
+			listPresentCustomResourceKinds(client, "kind-dev", ["cnpg-system", "default"]),
+			listPresentCustomResourceKinds(client, "kind-dev", ["default", "cnpg-system"]),
+		]);
+
+		expect(first).toBe(kinds);
+		expect(second).toBe(kinds);
+		expect(calls).toBe(1);
 	});
 
 	test("fetches app usage metrics through the typed client", async () => {

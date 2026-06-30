@@ -42,7 +42,7 @@
 	} = $props();
 </script>
 
-<TabsContent value="logs">
+<TabsContent value="logs" class="flex min-h-0 flex-col">
 		{#if !isPod}
 			<Empty class="min-h-32 border border-dashed">
 				<EmptyHeader>
@@ -58,29 +58,27 @@
 				</EmptyHeader>
 			</Empty>
 		{:else}
-			<div class="flex flex-col gap-2">
-				<div class="flex flex-wrap items-center gap-2">
-					{#if containerOptions.length > 1}
-						<Select
-							value={selectedContainer}
-							items={containerOptions.map((container: string) => ({
-								value: container,
-								label: container,
-							}))}
-							onValueChange={(value: string) => (selectedContainer = value)}
-						>
-							<SelectTrigger class="h-8 max-w-64">
-								<SelectValue placeholder="Container" />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectGroup>
-									{#each containerOptions as container (container)}
-										<SelectItem value={container}>{container}</SelectItem>
-									{/each}
-								</SelectGroup>
-							</SelectContent>
-						</Select>
-					{/if}
+			<div class="flex min-h-0 flex-1 flex-col gap-2">
+				<div class="flex shrink-0 flex-wrap items-center gap-2">
+					<Select
+						value={selectedContainer}
+						items={containerOptions.map((container: string) => ({
+							value: container,
+							label: container,
+						}))}
+						onValueChange={(value: string) => (selectedContainer = value)}
+					>
+						<SelectTrigger class="h-8 w-44 max-w-64" aria-label="Log container">
+							<SelectValue placeholder="Container" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectGroup>
+								{#each containerOptions as container (container)}
+									<SelectItem value={container}>{container}</SelectItem>
+								{/each}
+							</SelectGroup>
+						</SelectContent>
+					</Select>
 					<Badge variant={logStatus === "error" ? "destructive" : "outline"}>{logStatus}</Badge>
 					<span class="text-xs text-muted-foreground">{logMessage}</span>
 					<div class="relative min-w-40">
@@ -140,7 +138,7 @@
 				{/if}
 				<div
 					bind:this={logViewport}
-					class="h-80 overflow-auto rounded-md border bg-background/50"
+					class="min-h-0 flex-1 overflow-auto rounded-md border bg-background/50"
 				>
 					{#if logLines.length === 0}
 						<div class="flex items-center gap-2 p-3 text-sm text-muted-foreground">

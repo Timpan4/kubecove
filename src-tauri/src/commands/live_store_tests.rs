@@ -29,6 +29,17 @@ fn resource(name: &str, namespace: &str) -> ResourceSummary {
     }
 }
 
+fn custom_kind(kind: &str) -> DiscoveredResourceKind {
+    DiscoveredResourceKind {
+        group: "example.com".to_string(),
+        version: "v1".to_string(),
+        api_version: "example.com/v1".to_string(),
+        kind: kind.to_string(),
+        plural: format!("{}s", kind.to_lowercase()),
+        namespaced: true,
+    }
+}
+
 #[test]
 fn grace_cache_reuses_recent_completed_value() {
     tauri::async_runtime::block_on(async {
@@ -176,6 +187,41 @@ fn all_namespace_resources_cover_named_namespace_reads() {
 
         assert_eq!(default_rows.len(), 1);
         assert_eq!(default_rows[0].name, "api");
+    });
+}
+
+#[test]
+fn cached_present_custom_resource_kinds_are_available_after_prewarm() {
+    let store = ClusterLiveStore::default();
+    tauri::async_runtime::block_on(async {
+        assert!(store
+            .cached_present_custom_resource_kinds(
+                "kubeconfigEnv=KUBECONFIG",
+                "kind-dev",
+                &["argocd".to_string()],
+            )
+            .is_none());
+
+        store
+            .present_custom_resource_kinds(
+                "kubeconfigEnv=KUBECONFIG".to_string(),
+                "kind-dev".to_string(),
+                vec!["argocd".to_string()],
+                || async { Ok::<_, AppError>(vec![custom_kind("Widget")]) },
+            )
+            .await
+            .expect("prewarm present custom resources");
+
+        let cached = store
+            .cached_present_custom_resource_kinds(
+                "kubeconfigEnv=KUBECONFIG",
+                "kind-dev",
+                &["argocd".to_string()],
+            )
+            .expect("cached present custom resources");
+
+        assert_eq!(cached.len(), 1);
+        assert_eq!(cached[0].kind, "Widget");
     });
 }
 

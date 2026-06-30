@@ -20,6 +20,7 @@
     "doctor:score": "svelte-doctor . --score --offline --no-analytics --no-dead-code",
     "perf:frontend": "bun scripts/perf-frontend.ts",
     "perf:resource-scope": "bun scripts/perf-resource-scope.ts",
+    "rust:bench": "cargo bench --manifest-path src-tauri/Cargo.toml --features bench-support --bench backend_hot_paths",
     "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "rust:check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "rust:lint": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",

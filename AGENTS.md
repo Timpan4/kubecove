@@ -75,6 +75,15 @@ Run through [docs/handbook/pr-checklist.md](docs/handbook/pr-checklist.md) befor
 - Add comments only for non-obvious architecture decisions.
 - Add TODOs for future features without implementing them early.
 
+## Performance Defaults
+
+- Treat CodSpeed as the primary performance signal for deterministic hot-path logic, especially Rust backend code.
+- Prefer CodSpeed-covered Rust benchmarks for backend logic that is local and repeatable, such as resource summarization, topology shaping, YAML/diff/serialization helpers, discovery or resource grouping, cache-key normalization, and command payload transformation.
+- Do not benchmark live Kubernetes API calls directly in CodSpeed. Use Settings -> Diagnostics latency reports for real Tauri command, cluster, network, and webview paths.
+- Frontend pure hot paths continue to use `bun run bench` and the existing CodSpeed Vitest benchmark suites.
+- For perf-sensitive changes, measure the relevant path before and after, optimize one measured bottleneck at a time, and re-measure the same benchmark or diagnostic path.
+- Add a new benchmark only when the changed hot path is not covered by existing benchmarks or diagnostics.
+
 ## Cross-Platform
 
 KubeCove ships cross-platform: macOS (universal), Windows x64, and Linux x64 (see `.github/workflows/release.yml`). All changes must work on all three platforms, not just the one you are developing on.

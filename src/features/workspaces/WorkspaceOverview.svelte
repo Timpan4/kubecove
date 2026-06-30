@@ -103,6 +103,7 @@
 		queryKey: queryKeys.namespaces(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () => listNamespaces(client, workspace.scope.clusterContext, kubeconfigSourceKey),
 		enabled: sourceReady && clusterAvailable && !contextsQuery.isPending,
+		retry: false,
 	}));
 	const namespaces = $derived((namespacesQuery.data ?? []).map((namespace) => namespace.name));
 
@@ -110,6 +111,7 @@
 		queryKey: queryKeys.resourceKinds(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () => listResourceKinds(client, workspace.scope.clusterContext, kubeconfigSourceKey),
 		enabled: sourceReady && clusterAvailable && !contextsQuery.isPending,
+		retry: false,
 	}));
 	const discoveredKinds = $derived(kindsQuery.data ?? []);
 

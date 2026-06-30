@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createQuery } from "@tanstack/svelte-query";
+	import { createQueries, createQuery } from "@tanstack/svelte-query";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import { ScrollArea } from "@/components/ui/svelte";
 	import {
@@ -8,6 +8,7 @@
 		detectFlux,
 		getKubeconfigSources,
 		listNamespaces,
+		listPresentCustomResourceKinds,
 		listResourceKinds,
 	} from "@/lib/tauri";
 	import { queryKeys } from "@/lib/queryKeys";
@@ -20,7 +21,7 @@
 	import { nodeIdToString, type TreeNode, type TreeNodeId } from "@/lib/tree-nav";
 	import { settingsStore } from "@/lib/settings-store";
 	import { buildNamespaceTreeNode } from "@/components/sidebar-tree-helpers";
-	import { buildSidebarTree, extraDiscoveredKinds } from "./workspaceShellModel";
+	import { buildSidebarTree } from "./workspaceShellModel";
 	import SidebarTreeNode from "./SidebarTreeNode.svelte";
 
 	let {
@@ -55,12 +56,14 @@
 		queryKey: queryKeys.namespaces(clusterContext, kubeconfigSourceKey),
 		queryFn: () => listNamespaces(client, clusterContext, kubeconfigSourceKey),
 		enabled: Boolean(clusterContext) && sourceReady,
+		retry: false,
 	}));
 
 	const resourceKindsQuery = createQuery<DiscoveredResourceKind[]>(() => ({
 		queryKey: queryKeys.resourceKinds(clusterContext, kubeconfigSourceKey),
 		queryFn: () => listResourceKinds(client, clusterContext, kubeconfigSourceKey),
 		enabled: Boolean(clusterContext) && sourceReady,
+		retry: false,
 	}));
 
 	const argoDetectionQuery = createQuery<boolean>(() => ({
@@ -87,10 +90,61 @@
 				? String(resourceKindsQuery.error)
 				: "",
 	);
-	const extraKinds = $derived(extraDiscoveredKinds(resourceKindsQuery.data ?? []));
+	const expandedNamespaces = $derived(
+		(namespacesQuery.data ?? [])
+			.map((namespace) => namespace.name)
+			.filter((namespace) =>
+				expandedSections.includes(
+					nodeIdToString({ type: "namespace", section: "namespaces", namespace }),
+				),
+			),
+	);
+	const namespaceCustomResourceQueries = createQueries(() => ({
+		queries: expandedNamespaces.map((namespace) => ({
+			queryKey: queryKeys.presentCustomResourceKinds(
+				clusterContext,
+				[namespace],
+				kubeconfigSourceKey,
+			),
+			queryFn: () =>
+				listPresentCustomResourceKinds(client, clusterContext, [namespace], kubeconfigSourceKey),
+			enabled: Boolean(clusterContext) && sourceReady,
+			staleTime: 30_000,
+			retry: false,
+			meta: { namespace },
+		})),
+	}));
+	const customResourcesByNamespace = $derived.by(() => {
+		const rows = new Map<string, DiscoveredResourceKind[]>();
+		for (const [index, query] of namespaceCustomResourceQueries.entries()) {
+			const namespace = expandedNamespaces[index];
+			if (namespace) rows.set(namespace, (query.data as DiscoveredResourceKind[] | undefined) ?? []);
+		}
+		return rows;
+	});
+	const pendingCustomResourceNamespaces = $derived.by(() => {
+		const pending = new Set<string>();
+		for (const [index, query] of namespaceCustomResourceQueries.entries()) {
+			const namespace = expandedNamespaces[index];
+			if (namespace && query.isPending) pending.add(namespace);
+		}
+		return pending;
+	});
 	function getLazyChildren(node: TreeNode) {
 		if (node.id.type !== "namespace" || !node.id.namespace) return node.children;
-		return buildNamespaceTreeNode(node.id.namespace, extraKinds).children;
+		const customResources = customResourcesByNamespace.get(node.id.namespace) ?? [];
+		const children = buildNamespaceTreeNode(node.id.namespace, customResources).children ?? [];
+		if (!pendingCustomResourceNamespaces.has(node.id.namespace)) return children;
+		return children.concat({
+			id: {
+				type: "group",
+				section: "namespaces",
+				namespace: node.id.namespace,
+				group: "custom-resources-loading",
+			},
+			label: "Loading custom resources...",
+			disabled: true,
+		});
 	}
 	const nodes = $derived(buildSidebarTree({
 		namespaces: namespacesQuery.data ?? [],

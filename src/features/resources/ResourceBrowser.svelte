@@ -208,19 +208,28 @@
 		queryFn: () => listNamespaces(client, clusterContext, kubeconfigSourceKey),
 		enabled: Boolean(clusterContext) && sourceReady,
 		staleTime: 30_000,
+		retry: false,
 	}));
 	const resourceKindsQuery = createQuery<DiscoveredResourceKind[]>(() => ({
 		queryKey: queryKeys.resourceKinds(clusterContext, kubeconfigSourceKey),
 		queryFn: () => listResourceKinds(client, clusterContext, kubeconfigSourceKey),
 		enabled: Boolean(clusterContext) && sourceReady,
 		staleTime: 30_000,
+		retry: false,
 	}));
 	const fetchKeys = $derived(buildFetchKeys(selectedNamespaces, selectedKinds));
 	const resourceQueryKey = $derived(
 		queryKeys.resources(clusterContext, fetchKeys, kubeconfigSourceKey),
 	);
 	const topologyNamespaces = $derived([...new Set(selectedNamespaces)].sort());
-	const topologyQueryKey = $derived(
+	const topologyCustomResourceKey = $derived(
+		selectedKinds
+			.filter((kind) => typeof kind !== "string")
+			.map(kindSelectionKey)
+			.sort()
+			.join(","),
+	);
+	const topologyBaseQueryKey = $derived(
 		queryKeys.resourceTopology(
 			clusterContext,
 			topologyNamespaces,
@@ -228,7 +237,8 @@
 			kubeconfigSourceKey,
 		),
 	);
-	const topologyFitViewKey = $derived(JSON.stringify(topologyQueryKey));
+	const topologyQueryKey = $derived([...topologyBaseQueryKey, topologyCustomResourceKey] as const);
+	const topologyFitViewKey = $derived(JSON.stringify(topologyBaseQueryKey));
 	const metricsQueryKey = $derived(
 		queryKeys.resourceMetrics(clusterContext, topologyNamespaces, kubeconfigSourceKey),
 	);
@@ -266,6 +276,7 @@
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		placeholderData: (previousData) => previousData,
 		staleTime: 30_000,
+		retry: false,
 	}));
 
 	function cancelPendingBackendScope(cancelScope: string) {

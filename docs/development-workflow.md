@@ -11,6 +11,8 @@ bun install
 bun run tauri dev
 bun run typecheck
 bun test
+bun run bench
+bun run rust:bench
 bun run rust:test
 bun run rust:check
 bun run rust:lint
@@ -71,6 +73,26 @@ Use example-based tests for regressions and user-visible behavior. Use fixture-c
 Use property-based tests for pure deterministic logic with compact invariants, such as topology graphs, grouping, sorting, filtering, and cache-key normalization. Frontend property tests use `fast-check` with `bun test`; Rust property tests use `proptest`.
 
 Do not require property tests for UI rendering, live cluster integration, Tauri command tests that need real Kubernetes clients, or one-off bug examples.
+
+## Performance Checks
+
+CodSpeed is the preferred performance signal for deterministic hot-path logic. Current frontend CodSpeed coverage runs through Vitest:
+
+```sh
+bun run bench
+```
+
+Existing frontend suites cover resource table modeling, sidebar tree building, topology selection/layout, and YAML dry-run diff generation.
+
+Backend CodSpeed coverage runs through `codspeed-divan-compat`:
+
+```sh
+bun run rust:bench
+```
+
+Existing backend suites cover Helm manifest parsing and summarization, backend YAML and KYAML serialization, ownership topology building, CRD catalog sorting, and present-custom-resource scope key generation. Backend performance work should prefer CodSpeed-covered Rust benchmarks when the hot path is deterministic and local, such as resource summarization, topology shaping, YAML/diff/serialization helpers, discovery or resource grouping, cache-key normalization, and command payload transformation.
+
+Do not use CodSpeed for live Kubernetes API timing. Use Settings -> Diagnostics latency reports for real Tauri command latency, cluster/network behavior, and webview paths. Keep `bun run perf:frontend` and `bun run perf:resource-scope` as local comparison helpers for app-level or resource-scope experiments that do not fit the benchmark suites.
 
 ## Verification Before Completion
 

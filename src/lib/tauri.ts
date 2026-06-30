@@ -1,24 +1,16 @@
-import { Channel, invoke, type InvokeOptions } from "@tauri-apps/api/core";
+import { invoke, type InvokeOptions } from "@tauri-apps/api/core";
 import { createDevMockTauriClient } from "./tauri-dev-mocks";
+import { cancellableArg, kubeconfigArg } from "./tauri-args";
 import type {
 	ClusterContext,
 	NamespaceSummary,
 	DiscoveredResourceKind,
-	PodLogStreamRequest,
-	PodExecSessionMessage,
-	PodExecSessionRequest,
-	PodExecSessionSummary,
-	PodExecTerminalSize,
-	PortForwardRequest,
-	PortForwardSessionSummary,
 	ResourceListRequest,
 	ResourceSummary,
 	ResourceEventSummary,
 	ResourceDetailsFull,
 	ResourceTopology,
 	TopologyMode,
-	StreamMessage,
-	WatchResourceKey,
 	AppError,
 	AppUsageMetrics,
 	ResourceMetricsSummary,
@@ -29,8 +21,6 @@ import type {
 	YamlViewMode,
 	KubernetesYamlLintResult,
 	KubeconfigSourcesSummary,
-	LiveSessionCleanupRequest,
-	LiveSessionCleanupResult,
 	CancellableRequest,
 } from "./types";
 import { diagnosticLog, diagnosticResultSummary } from "./diagnostics";
@@ -43,8 +33,37 @@ export {
 	shouldUseBrowserDevMocks,
 } from "./tauri-runtime";
 export type { TauriClient } from "./tauri-runtime";
-import { createMockChannel, shouldUseBrowserDevMocks } from "./tauri-runtime";
+export { kubeconfigArg } from "./tauri-args";
+export * from "./tauri-streams";
+import { shouldUseBrowserDevMocks } from "./tauri-runtime";
 import type { TauriClient } from "./tauri-runtime";
+
+const inFlightInvokes = new WeakMap<TauriClient, Map<string, Promise<unknown>>>();
+
+function sortedScopeKey(values: string[]): string {
+	return [...new Set(values)].sort((a, b) => a.localeCompare(b)).join(",");
+}
+
+function coalescedInvoke<T>(
+	client: TauriClient,
+	key: string,
+	invokeCommand: () => Promise<T>,
+): Promise<T> {
+	let clientInvokes = inFlightInvokes.get(client);
+	if (!clientInvokes) {
+		clientInvokes = new Map();
+		inFlightInvokes.set(client, clientInvokes);
+	}
+	const existing = clientInvokes.get(key);
+	if (existing) return existing as Promise<T>;
+
+	const request = invokeCommand().finally(() => {
+		clientInvokes.delete(key);
+	});
+	clientInvokes.set(key, request);
+	return request;
+}
+
 function errorMessage(error: unknown): string {
 	if (error instanceof Error) return error.message;
 	if (typeof error === "string") return error;
@@ -92,32 +111,6 @@ export function createTauriClient(): TauriClient {
 			}
 		},
 	};
-}
-export function kubeconfigArg(kubeconfigEnvVar?: string): {
-	kubeconfigEnvVar?: string;
-} {
-	if (
-		kubeconfigEnvVar === undefined ||
-		kubeconfigEnvVar.startsWith("kubeconfigSource=")
-	) {
-		return {};
-	}
-	return { kubeconfigEnvVar };
-}
-
-function cancellableArg(
-	request?: CancellableRequest,
-): Partial<CancellableRequest> {
-	if (!request) return {};
-	return request;
-}
-
-function sanitizeKubeconfigRequest<T extends { kubeconfigEnvVar?: string }>(
-	request: T,
-): T {
-	if (!request.kubeconfigEnvVar?.startsWith("kubeconfigSource=")) return request;
-	const { kubeconfigEnvVar: _ignored, ...rest } = request;
-	return rest as T;
 }
 
 export async function getKubeconfigSources(
@@ -193,10 +186,15 @@ export async function listNamespaces(
 	clusterContext: string,
 	kubeconfigEnvVar?: string,
 ): Promise<NamespaceSummary[]> {
-	return client.invoke<NamespaceSummary[]>("list_namespaces", {
-		clusterContext,
-		...kubeconfigArg(kubeconfigEnvVar),
-	});
+	return coalescedInvoke(
+		client,
+		`list_namespaces:${kubeconfigEnvVar ?? ""}:${clusterContext}`,
+		() =>
+			client.invoke<NamespaceSummary[]>("list_namespaces", {
+				clusterContext,
+				...kubeconfigArg(kubeconfigEnvVar),
+			}),
+	);
 }
 
 export async function listResourceKinds(
@@ -204,10 +202,36 @@ export async function listResourceKinds(
 	clusterContext: string,
 	kubeconfigEnvVar?: string,
 ): Promise<DiscoveredResourceKind[]> {
-	return client.invoke<DiscoveredResourceKind[]>("list_resource_kinds", {
-		clusterContext,
-		...kubeconfigArg(kubeconfigEnvVar),
-	});
+	return coalescedInvoke(
+		client,
+		`list_resource_kinds:${kubeconfigEnvVar ?? ""}:${clusterContext}`,
+		() =>
+			client.invoke<DiscoveredResourceKind[]>("list_resource_kinds", {
+				clusterContext,
+				...kubeconfigArg(kubeconfigEnvVar),
+			}),
+	);
+}
+
+export async function listPresentCustomResourceKinds(
+	client: TauriClient,
+	clusterContext: string,
+	namespaces: string[],
+	kubeconfigEnvVar?: string,
+): Promise<DiscoveredResourceKind[]> {
+	return coalescedInvoke(
+		client,
+		`list_present_custom_resource_kinds:${kubeconfigEnvVar ?? ""}:${clusterContext}:${sortedScopeKey(namespaces)}`,
+		() =>
+			client.invoke<DiscoveredResourceKind[]>(
+				"list_present_custom_resource_kinds",
+				{
+					clusterContext,
+					namespaces,
+					...kubeconfigArg(kubeconfigEnvVar),
+				},
+			),
+	);
 }
 
 export async function listResources(
@@ -374,179 +398,17 @@ export async function listResourceTopology(
 	kubeconfigEnvVar?: string,
 	cancellable?: CancellableRequest,
 ): Promise<ResourceTopology> {
-	return client.invoke<ResourceTopology>("list_resource_topology", {
-		clusterContext,
-		namespaces,
-		mode,
-		...kubeconfigArg(kubeconfigEnvVar),
-		...cancellableArg(cancellable),
-	});
-}
-
-export function createStreamChannel(
-	onMessage: (message: StreamMessage) => void,
-): Channel<StreamMessage> {
-	if (shouldUseBrowserDevMocks()) return createMockChannel(onMessage);
-	return new Channel<StreamMessage>(onMessage);
-}
-
-function closeChannel<T>(channel: Channel<T>): void {
-	const disposableChannel = channel as unknown as {
-		cleanupCallback?: () => void;
-		unregister?: () => Promise<void>;
-	};
-	if (typeof disposableChannel.unregister === "function") {
-		void disposableChannel.unregister();
-		return;
-	}
-	disposableChannel.cleanupCallback?.();
-}
-
-export function closeStreamChannel(channel: Channel<StreamMessage>): void {
-	closeChannel(channel);
-}
-
-export function createPodExecChannel(
-	onMessage: (message: PodExecSessionMessage) => void,
-): Channel<PodExecSessionMessage> {
-	if (shouldUseBrowserDevMocks()) return createMockChannel(onMessage);
-	return new Channel<PodExecSessionMessage>(onMessage);
-}
-
-export function closePodExecChannel(
-	channel: Channel<PodExecSessionMessage>,
-): void {
-	closeChannel(channel);
-}
-
-export async function startResourceWatch(
-	client: TauriClient,
-	clusterContext: string,
-	keys: WatchResourceKey[],
-	channel: Channel<StreamMessage>,
-	kubeconfigEnvVar?: string,
-): Promise<string> {
-	return client.invoke<string>("start_resource_watch", {
-		clusterContext,
-		keys,
-		channel,
-		...kubeconfigArg(kubeconfigEnvVar),
-	});
-}
-
-export async function startResourceEventWatch(
-	client: TauriClient,
-	clusterContext: string,
-	kind: string,
-	name: string,
-	namespace: string | null | undefined,
-	channel: Channel<StreamMessage>,
-	kubeconfigEnvVar?: string,
-): Promise<string> {
-	return client.invoke<string>("start_resource_event_watch", {
-		clusterContext,
-		kind,
-		name,
-		namespace,
-		channel,
-		...kubeconfigArg(kubeconfigEnvVar),
-	});
-}
-
-export async function startPodLogStream(
-	client: TauriClient,
-	request: PodLogStreamRequest,
-	channel: Channel<StreamMessage>,
-): Promise<string> {
-	return client.invoke<string>("start_pod_log_stream", {
-		request: sanitizeKubeconfigRequest(request),
-		channel,
-	});
-}
-
-export async function stopStream(
-	client: TauriClient,
-	streamId: string,
-): Promise<boolean> {
-	return client.invoke<boolean>("stop_stream", { streamId });
-}
-
-export async function startPortForward(
-	client: TauriClient,
-	request: PortForwardRequest,
-): Promise<PortForwardSessionSummary> {
-	return client.invoke<PortForwardSessionSummary>("start_pod_port_forward", {
-		request: sanitizeKubeconfigRequest(request),
-	});
-}
-
-export async function startPodPortForward(
-	client: TauriClient,
-	request: PortForwardRequest,
-): Promise<PortForwardSessionSummary> {
-	return startPortForward(client, request);
-}
-
-export async function stopPodPortForward(
-	client: TauriClient,
-	sessionId: string,
-): Promise<boolean> {
-	return client.invoke<boolean>("stop_port_forward", { sessionId });
-}
-
-export async function listPortForwards(
-	client: TauriClient,
-): Promise<PortForwardSessionSummary[]> {
-	return client.invoke<PortForwardSessionSummary[]>("list_port_forwards");
-}
-
-export async function startPodExecSession(
-	client: TauriClient,
-	request: PodExecSessionRequest,
-	channel: Channel<PodExecSessionMessage>,
-): Promise<PodExecSessionSummary> {
-	return client.invoke<PodExecSessionSummary>("start_pod_exec_session", {
-		request: sanitizeKubeconfigRequest(request),
-		channel,
-	});
-}
-
-export async function writePodExecStdin(
-	client: TauriClient,
-	sessionId: string,
-	data: string,
-): Promise<boolean> {
-	return client.invoke<boolean>("write_pod_exec_stdin", { sessionId, data });
-}
-
-export async function resizePodExecTerminal(
-	client: TauriClient,
-	sessionId: string,
-	size: PodExecTerminalSize,
-): Promise<boolean> {
-	return client.invoke<boolean>("resize_pod_exec_terminal", { sessionId, size });
-}
-
-export async function stopPodExecSession(
-	client: TauriClient,
-	sessionId: string,
-): Promise<boolean> {
-	return client.invoke<boolean>("stop_pod_exec_session", { sessionId });
-}
-
-export async function listPodExecSessions(
-	client: TauriClient,
-): Promise<PodExecSessionSummary[]> {
-	return client.invoke<PodExecSessionSummary[]>("list_pod_exec_sessions");
-}
-
-export async function stopLiveSessionsOutsideScope(
-	client: TauriClient,
-	request: LiveSessionCleanupRequest,
-): Promise<LiveSessionCleanupResult> {
-	return client.invoke<LiveSessionCleanupResult>(
-		"stop_live_sessions_outside_scope",
-		{ request },
+	return coalescedInvoke(
+		client,
+		`list_resource_topology:${kubeconfigEnvVar ?? ""}:${clusterContext}:${sortedScopeKey(namespaces)}:${mode}`,
+		() =>
+			client.invoke<ResourceTopology>("list_resource_topology", {
+				clusterContext,
+				namespaces,
+				mode,
+				...kubeconfigArg(kubeconfigEnvVar),
+				...cancellableArg(cancellable),
+			}),
 	);
 }
 

@@ -36,6 +36,17 @@ export const queryKeys = {
 		["kube-namespaces", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
 	resourceKinds: (clusterContext: string, kubeconfigEnvVar?: string) =>
 		["kube-resource-kinds", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
+	presentCustomResourceKinds: (
+		clusterContext: string,
+		namespaces: string[],
+		kubeconfigEnvVar?: string,
+	) =>
+		[
+			"kube-present-custom-resource-kinds",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			sortedNamespaces(namespaces),
+		] as const,
 	resources: (
 		clusterContext: string,
 		fetchKeys: ResourceFetchKey[],

@@ -1011,7 +1011,7 @@
 	}
 </script>
 
-<Tabs value={activeTab} onValueChange={tabChanged} class="min-h-0 gap-3">
+<Tabs value={activeTab} onValueChange={tabChanged} class="h-full min-h-0 gap-3">
 	<TabsList variant="line" class="flex-wrap justify-start">
 		<TabsTrigger value="details">Details</TabsTrigger>
 		<TabsTrigger value="events">Events</TabsTrigger>

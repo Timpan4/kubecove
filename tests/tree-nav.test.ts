@@ -182,6 +182,6 @@ describe("tree navigation scope helpers", () => {
 				} as TreeNodeId),
 				true,
 			),
-		).toBe("Select a discovered resource kind");
+		).toBe("Select a custom resource kind");
 	});
 });

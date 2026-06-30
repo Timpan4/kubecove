@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { useQueryClient } from "@tanstack/svelte-query";
+	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import {
 		Cable,
 		FolderOpen,
@@ -42,10 +42,14 @@
 		type SavedWorkspace,
 	} from "@/lib/workspace-model";
 	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
-	import { SUPPORTED_KINDS, type ResourceKindSelection, type ResourceSummary } from "@/lib/types";
+	import {
+		type DiscoveredResourceKind,
+		type ResourceKindSelection,
+		type ResourceSummary,
+	} from "@/lib/types";
 	import { nodeIdToString, type TreeNodeId } from "@/lib/tree-nav";
 	import { queryKeys } from "@/lib/queryKeys";
-	import { createTauriClient } from "@/lib/tauri";
+	import { createTauriClient, listPresentCustomResourceKinds } from "@/lib/tauri";
 	import {
 		resourceRefFromSummary,
 		resourceSummaryFromRef,
@@ -78,6 +82,8 @@
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import {
 		DEFAULT_WORKSPACE_VIEW,
+		GITOPS_RESOURCE_KINDS,
+		appendPresentCustomResourceKinds,
 		getResourceBrowserScope,
 		getWorkspacePlaceholder,
 		getWorkspaceTitle,
@@ -205,10 +211,58 @@
 	const resourceBrowserNamespaces = $derived(
 		resourceNamespaceOverride ?? resourceBrowserScope.namespaces,
 	);
+	const workspaceCustomResourcePrewarmQuery = createQuery<DiscoveredResourceKind[]>(() => ({
+		queryKey: queryKeys.presentCustomResourceKinds(
+			workspace.scope.clusterContext,
+			workspace.scope.namespaces,
+			kubeconfigSourceKey,
+		),
+		queryFn: () =>
+			listPresentCustomResourceKinds(
+				client,
+				workspace.scope.clusterContext,
+				workspace.scope.namespaces,
+				kubeconfigSourceKey,
+			),
+		enabled: Boolean(workspace.scope.clusterContext),
+		staleTime: 30_000,
+		retry: false,
+	}));
+	const includePresentCustomResources = $derived(
+		resourceBrowserScope.canQuery &&
+			(resourceGitOpsFocusApplication !== null ||
+				resourceNamespaceOverride !== null ||
+				selectedNode?.type === "namespace"),
+	);
+	const presentCustomResourceKindsQuery = createQuery<DiscoveredResourceKind[]>(() => ({
+		queryKey: queryKeys.presentCustomResourceKinds(
+			workspace.scope.clusterContext,
+			resourceBrowserNamespaces,
+			kubeconfigSourceKey,
+		),
+		queryFn: () =>
+			listPresentCustomResourceKinds(
+				client,
+				workspace.scope.clusterContext,
+				resourceBrowserNamespaces,
+				kubeconfigSourceKey,
+		),
+		enabled: Boolean(workspace.scope.clusterContext) && includePresentCustomResources,
+		staleTime: 30_000,
+		retry: false,
+	}));
+	const presentCustomResourceKinds = $derived(
+		includePresentCustomResources
+			? (presentCustomResourceKindsQuery.data ?? workspaceCustomResourcePrewarmQuery.data ?? [])
+			: (workspaceCustomResourcePrewarmQuery.data ?? []),
+	);
 	const resourceBrowserKinds = $derived<ResourceKindSelection[]>(
-		resourceGitOpsFocusApplication
-			? [...SUPPORTED_KINDS]
-			: resourceBrowserScope.kinds,
+		appendPresentCustomResourceKinds(
+			resourceGitOpsFocusApplication
+				? [...GITOPS_RESOURCE_KINDS]
+				: resourceBrowserScope.kinds,
+			presentCustomResourceKinds,
+		),
 	);
 	const showPortForwardRestorePrompt = $derived(
 		shouldShowSavedPortForwardRestorePrompt({

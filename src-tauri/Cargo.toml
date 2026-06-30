@@ -6,6 +6,9 @@ license = "AGPL-3.0-or-later"
 authors = ["timpan"]
 edition = "2021"
 
+[features]
+bench-support = []
+
 [lib]
 name = "kubecove_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -33,6 +36,13 @@ tauri-plugin-process = "2.3.1"
 tauri-plugin-dialog = "2.7.1"
 
 [dev-dependencies]
+codspeed-divan-compat = "5.0.1"
+divan = { package = "codspeed-divan-compat-walltime", version = "5.0.1" }
 http = "1"
 proptest = "1.11.0"
 tower-test = "0.4"
+
+[[bench]]
+name = "backend_hot_paths"
+harness = false
+required-features = ["bench-support"]
