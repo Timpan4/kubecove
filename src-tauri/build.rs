@@ -14,6 +14,7 @@ fn ensure_sidecar_permissions() {
         "bin/kubeconform-x86_64-unknown-linux-gnu",
         "bin/kubeconform-x86_64-apple-darwin",
         "bin/kubeconform-aarch64-apple-darwin",
+        "bin/kubeconform-universal-apple-darwin",
     ] {
         let path = Path::new(name);
         if !path.exists() {
