@@ -145,7 +145,7 @@ describe("Helm reconciliation UI helpers", () => {
 		expect(surfaces).toContain("No manifest or explicit Helm-labeled live resources were found.");
 	});
 
-	test("Svelte GitOps details open Argo-owned resources with owner filter", () => {
+	test("Svelte GitOps details open Argo app namespaces without owner filter", () => {
 		const browser = readFileSync(
 			"src/features/resources/ResourceBrowser.svelte",
 			"utf8",
@@ -164,7 +164,7 @@ describe("Helm reconciliation UI helpers", () => {
 		expect(shell).toContain("gitOpsFocusApplication={resourceGitOpsFocusApplication}");
 		expect(surfaces).toContain("openSelectedArgoApplicationResources");
 		expect(surfaces).toContain("argoApplicationResourceNamespaces(selection.item)");
-		expect(surfaces).toContain("argoApplicationGitOpsFilterKey(selection.item.name)");
+		expect(surfaces).not.toContain("argoApplicationGitOpsFilterKey(selection.item.name)");
 		expect(surfaces).toContain("selection.item");
 	});
 
