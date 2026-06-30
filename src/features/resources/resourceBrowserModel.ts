@@ -357,14 +357,15 @@ export function buildResourceTableModel(
 	rows: ResourceSummary[],
 	state: ResourceTableState,
 ): ResourceTableModel {
-	const rowsWithInheritedOwners = resourcesWithInheritedGitOpsOwners(rows);
-	const searchIndex = buildResourceSearchIndex(rowsWithInheritedOwners);
+	const searchIndex = buildResourceSearchIndex(rows);
 	const scopedRows = filterResourceSearchIndex(
 		searchIndex,
 		state.search,
 		state.gitOpsFilter,
 	);
-	const filteredRows = filterResourcesByHealth(scopedRows, state.healthFilter);
+	const filteredRows = resourcesWithInheritedGitOpsOwners(
+		filterResourcesByHealth(scopedRows, state.healthFilter),
+	);
 	const sortedRows = sortedResourceRows(filteredRows, state.sort);
 	const groupedByGitOps = filteredRows.some(hasResourceListGitOpsOwner);
 	const displayRows = groupedByGitOps
@@ -395,7 +396,7 @@ export function buildResourceTableModel(
 		pageCount,
 		safePageIndex,
 		groupedByGitOps,
-		gitOpsFilters: uniqueGitOpsFilters(rowsWithInheritedOwners),
+		gitOpsFilters: uniqueGitOpsFilters(rows),
 		healthSummary: buildResourceHealthSummary(scopedRows),
 		columnVisibility: {
 			ready: pageRows.some((row) => Boolean(row.ready)),
