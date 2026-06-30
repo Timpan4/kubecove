@@ -107,6 +107,7 @@
 		queryFn: () => listNamespaces(client, effectiveContext, kubeconfigSourceKey),
 		enabled: effectiveContext.length > 0 && sourceReady,
 		staleTime: 30_000,
+		retry: false,
 	}));
 	const namespaces = $derived(namespacesQuery.data ?? []);
 	const namespacesPending = $derived(

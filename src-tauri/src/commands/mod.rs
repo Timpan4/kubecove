@@ -1,4 +1,6 @@
 mod argo;
+#[cfg(feature = "bench-support")]
+pub mod bench_support;
 mod cancellation;
 mod contexts;
 mod diagnostics;
@@ -33,7 +35,10 @@ pub use diagnostics::{
     clear_backend_diagnostics, diagnostic_field, get_backend_diagnostics, record_backend_cancelled,
     record_backend_error, record_backend_success, set_backend_diagnostics_enabled,
 };
-pub use discovery::{list_resource_kinds, resource_kinds_from};
+pub use discovery::{
+    list_present_custom_resource_kinds, list_resource_kinds, present_custom_resource_kinds_from,
+    resource_kinds_from,
+};
 pub use events::{list_resource_events, resource_events_from};
 pub use flux::{detect_flux, get_flux_resource_details, list_flux_resources};
 pub use helm::{get_helm_release_details, get_helm_release_reconciliation, list_helm_releases};

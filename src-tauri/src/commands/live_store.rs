@@ -255,6 +255,7 @@ where
 pub struct ClusterLiveStore {
     namespaces: Arc<SharedCache<Vec<NamespaceSummary>>>,
     resource_kinds: Arc<SharedCache<Vec<DiscoveredResourceKind>>>,
+    present_custom_resource_kinds: Arc<SharedCache<Vec<DiscoveredResourceKind>>>,
     resources: Arc<SharedCache<Vec<ResourceSummary>>>,
     topologies: Arc<SharedCache<ResourceTopology>>,
 }
@@ -264,6 +265,9 @@ impl Default for ClusterLiveStore {
         Self {
             namespaces: Arc::new(SharedCache::new("namespaces")),
             resource_kinds: Arc::new(SharedCache::new("resource_kinds")),
+            present_custom_resource_kinds: Arc::new(SharedCache::new(
+                "present_custom_resource_kinds",
+            )),
             resources: Arc::new(SharedCache::new("resources")),
             topologies: Arc::new(SharedCache::new("topologies")),
         }
@@ -303,10 +307,51 @@ impl ClusterLiveStore {
         self.resource_kinds
             .get_or_load(
                 context_cache_key(&source_key, &cluster_context),
-                CacheMode::GraceOnly,
+                CacheMode::LiveFor(RESOURCE_FRESHNESS),
                 loader,
             )
             .await
+    }
+
+    pub fn cached_resource_kinds(
+        &self,
+        source_key: &str,
+        cluster_context: &str,
+    ) -> Option<Vec<DiscoveredResourceKind>> {
+        self.resource_kinds.peek(
+            &context_cache_key(source_key, cluster_context),
+            CacheMode::LiveFor(RESOURCE_FRESHNESS),
+        )
+    }
+
+    pub async fn present_custom_resource_kinds<F, Fut>(
+        &self,
+        source_key: String,
+        cluster_context: String,
+        namespaces: Vec<String>,
+        loader: F,
+    ) -> Result<Vec<DiscoveredResourceKind>, AppError>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = Result<Vec<DiscoveredResourceKind>, AppError>> + Send + 'static,
+    {
+        let key =
+            present_custom_resource_kinds_cache_key(&source_key, &cluster_context, &namespaces);
+        self.present_custom_resource_kinds
+            .get_or_load(key, CacheMode::LiveFor(RESOURCE_FRESHNESS), loader)
+            .await
+    }
+
+    pub fn cached_present_custom_resource_kinds(
+        &self,
+        source_key: &str,
+        cluster_context: &str,
+        namespaces: &[String],
+    ) -> Option<Vec<DiscoveredResourceKind>> {
+        self.present_custom_resource_kinds.peek(
+            &present_custom_resource_kinds_cache_key(source_key, cluster_context, namespaces),
+            CacheMode::LiveFor(RESOURCE_FRESHNESS),
+        )
     }
 
     pub async fn typed_resources<F, Fut>(
@@ -432,6 +477,9 @@ impl ClusterLiveStore {
         self.topologies.mark_dirty_where(|key| {
             key.starts_with(&format!("{source_key}|context={cluster_context}|"))
         });
+        self.present_custom_resource_kinds.mark_dirty_where(|key| {
+            key.starts_with(&format!("{source_key}|context={cluster_context}|"))
+        });
     }
 }
 
@@ -525,6 +573,22 @@ fn topology_cache_key(
         source_key,
         context,
         mode,
+        namespaces.join(",")
+    )
+}
+
+pub(crate) fn present_custom_resource_kinds_cache_key(
+    source_key: &str,
+    context: &str,
+    namespaces: &[String],
+) -> String {
+    let mut namespaces = namespaces.to_vec();
+    namespaces.sort();
+    namespaces.dedup();
+    format!(
+        "{}|context={}|present_custom_resource_kinds={}",
+        source_key,
+        context,
         namespaces.join(",")
     )
 }

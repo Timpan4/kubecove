@@ -110,6 +110,7 @@
 		clusterContext,
 		initialNamespaces,
 		initialKinds,
+		availableKinds = initialKinds,
 		initialSearch = "",
 		initialGitOpsFilter = "",
 		initialHealthFilter = "all",
@@ -125,6 +126,7 @@
 		clusterContext: string;
 		initialNamespaces: string[];
 		initialKinds: ResourceKindSelection[];
+		availableKinds?: ResourceKindSelection[];
 		initialSearch?: string;
 		initialGitOpsFilter?: string;
 		initialHealthFilter?: HealthFilter;
@@ -153,6 +155,7 @@
 	let collapsedGroups = $state<Set<string>>(new Set());
 	let selectedTopologyNodeId = $state<string | null>(null);
 	let topologyMode = $state<TopologyMode>("ownership");
+	let appliedAvailableKindsKey = $state("");
 	let mapPanelOpen = $state(getSettingsSnapshot().showOwnershipMapByDefault);
 	let tablePanelOpen = $state(true);
 	let appliedTargetResourceKey = $state("");
@@ -180,6 +183,7 @@
 		selectedNamespaces = pathState ? [...pathState.selectedNamespaces] : [...initialNamespaces];
 		selectedKinds = pathState ? [...pathState.selectedKinds] : [...initialKinds];
 		appliedScopeKey = incomingScopeKey;
+		appliedAvailableKindsKey = initialKinds.map(kindSelectionKey).sort().join(",");
 		search = pathState?.search ?? initialSearch;
 		gitOpsFilter = pathState?.gitOpsFilter ?? initialGitOpsFilter;
 		healthFilter = pathState?.healthFilter ?? initialHealthFilter;
@@ -195,6 +199,20 @@
 		tablePanelOpen = pathState?.tablePanelOpen ?? true;
 		if (pathState) initialPathStateConsumed = true;
 	});
+	const availableKindsKey = $derived(
+		availableKinds.map(kindSelectionKey).sort().join(","),
+	);
+	$effect(() => {
+		if (appliedScopeKey === "" || appliedAvailableKindsKey === availableKindsKey) return;
+		const previous = new Set(appliedAvailableKindsKey.split(",").filter(Boolean));
+		const selected = new Set(selectedKinds.map(kindSelectionKey));
+		const additions = availableKinds.filter((kind) => {
+			const key = kindSelectionKey(kind);
+			return !previous.has(key) && !selected.has(key);
+		});
+		appliedAvailableKindsKey = availableKindsKey;
+		if (additions.length > 0) selectedKinds = [...selectedKinds, ...additions];
+	});
 
 	const sourceQuery = createQuery<KubeconfigSourcesSummary>(() => ({
 		queryKey: ["kubeconfig-sources"] as const,
@@ -208,19 +226,28 @@
 		queryFn: () => listNamespaces(client, clusterContext, kubeconfigSourceKey),
 		enabled: Boolean(clusterContext) && sourceReady,
 		staleTime: 30_000,
+		retry: false,
 	}));
 	const resourceKindsQuery = createQuery<DiscoveredResourceKind[]>(() => ({
 		queryKey: queryKeys.resourceKinds(clusterContext, kubeconfigSourceKey),
 		queryFn: () => listResourceKinds(client, clusterContext, kubeconfigSourceKey),
 		enabled: Boolean(clusterContext) && sourceReady,
 		staleTime: 30_000,
+		retry: false,
 	}));
 	const fetchKeys = $derived(buildFetchKeys(selectedNamespaces, selectedKinds));
 	const resourceQueryKey = $derived(
 		queryKeys.resources(clusterContext, fetchKeys, kubeconfigSourceKey),
 	);
 	const topologyNamespaces = $derived([...new Set(selectedNamespaces)].sort());
-	const topologyQueryKey = $derived(
+	const topologyCustomResourceKey = $derived(
+		selectedKinds
+			.filter((kind) => typeof kind !== "string")
+			.map(kindSelectionKey)
+			.sort()
+			.join(","),
+	);
+	const topologyBaseQueryKey = $derived(
 		queryKeys.resourceTopology(
 			clusterContext,
 			topologyNamespaces,
@@ -228,7 +255,8 @@
 			kubeconfigSourceKey,
 		),
 	);
-	const topologyFitViewKey = $derived(JSON.stringify(topologyQueryKey));
+	const topologyQueryKey = $derived([...topologyBaseQueryKey, topologyCustomResourceKey] as const);
+	const topologyFitViewKey = $derived(JSON.stringify(topologyBaseQueryKey));
 	const metricsQueryKey = $derived(
 		queryKeys.resourceMetrics(clusterContext, topologyNamespaces, kubeconfigSourceKey),
 	);
@@ -266,6 +294,7 @@
 		enabled: Boolean(clusterContext && mapPanelOpen),
 		placeholderData: (previousData) => previousData,
 		staleTime: 30_000,
+		retry: false,
 	}));
 
 	function cancelPendingBackendScope(cancelScope: string) {

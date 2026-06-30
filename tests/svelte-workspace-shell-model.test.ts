@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
+	appendPresentCustomResourceKinds,
 	buildSidebarTree,
 	extraDiscoveredKinds,
+	GITOPS_RESOURCE_KINDS,
 	getResourceBrowserScope,
 	getWorkspacePlaceholder,
 	getWorkspaceTitle,
@@ -76,9 +78,10 @@ function findNode(nodes: TreeNode[], label: string): TreeNode {
 }
 
 describe("svelte workspace shell model", () => {
-	test("filters curated kinds from discovered tree additions", () => {
+	test("sorts CRD-backed custom resource tree additions", () => {
 		expect(extraDiscoveredKinds([widgets, deployment, clusterThings])).toEqual([
 			clusterThings,
+			deployment,
 			widgets,
 		]);
 	});
@@ -103,7 +106,7 @@ describe("svelte workspace shell model", () => {
 			"Network",
 			"Config",
 			"Storage",
-			"Discovered",
+			"Custom Resources",
 			"GitOps",
 			"Helm",
 			"Incidents",
@@ -115,8 +118,8 @@ describe("svelte workspace shell model", () => {
 			"argocd",
 		]);
 		expect(
-			findNode(nodes, "Discovered").children?.map((node) => node.label),
-		).toEqual(["ClusterThing", "Widget"]);
+			findNode(nodes, "Custom Resources").children?.map((node) => node.label),
+		).toEqual(["ClusterThing", "Deployment", "Widget"]);
 		expect(findNode(nodes, "GitOps").children?.map((node) => node.label)).toEqual([
 			"Argo CD",
 			"Flux",
@@ -143,10 +146,20 @@ describe("svelte workspace shell model", () => {
 
 		expect(namespace?.label).toBe("default");
 		expect(namespace?.children).toBeUndefined();
-		expect(sidebarSource).toContain("buildNamespaceTreeNode(node.id.namespace, extraKinds)");
+		expect(sidebarSource).toContain("listPresentCustomResourceKinds");
+		expect(sidebarSource).toContain("buildNamespaceTreeNode(node.id.namespace, customResources)");
 		expect(sidebarSource).toContain("{getLazyChildren}");
 		expect(nodeSource).toContain('node.id.type === "namespace"');
 		expect(nodeSource).toContain("getLazyChildren?.(node)");
+	});
+
+	test("appends CRD kinds to live resource scopes without changing the base scope", () => {
+		const base = [...GITOPS_RESOURCE_KINDS];
+		const live = appendPresentCustomResourceKinds(base, [widgets]);
+
+		expect(base.includes(widgets)).toBe(false);
+		expect(live.includes(widgets)).toBe(true);
+		expect(live.filter((kind) => kind === "CustomResourceDefinition")).toHaveLength(1);
 	});
 
 	test("uses disabled placeholders while query-backed tree data loads or fails", () => {
@@ -160,8 +173,8 @@ describe("svelte workspace shell model", () => {
 			resourceKindsError: "",
 			showUnavailableGitOpsProviders: false,
 		});
-		expect(findNode(loadingTree, "Discovered").children?.[0]).toMatchObject({
-			label: "Loading discovered kinds...",
+		expect(findNode(loadingTree, "Custom Resources").children?.[0]).toMatchObject({
+			label: "Loading custom resources...",
 			disabled: true,
 		});
 		expect(findNode(loadingTree, "GitOps").children?.[0]).toMatchObject({
@@ -179,8 +192,8 @@ describe("svelte workspace shell model", () => {
 			resourceKindsError: "boom",
 			showUnavailableGitOpsProviders: true,
 		});
-		expect(findNode(failedTree, "Discovered").children?.[0]).toMatchObject({
-			label: "Discovery failed",
+		expect(findNode(failedTree, "Custom Resources").children?.[0]).toMatchObject({
+			label: "Custom resource discovery unavailable",
 			description: "boom",
 			disabled: true,
 		});

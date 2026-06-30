@@ -43,6 +43,9 @@ pub async fn resource_details_from(
             cluster::storageclass_details(client, cluster_context, name, namespace).await
         }
         "PersistentVolume" => cluster::pv_details(client, cluster_context, name, namespace).await,
+        "CustomResourceDefinition" => {
+            cluster::crd_details(client, cluster_context, name, namespace).await
+        }
         _ => Err(AppError::new(
             format!("unsupported resource kind: {kind}"),
             "cluster",

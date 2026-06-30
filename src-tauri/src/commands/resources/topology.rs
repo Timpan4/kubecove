@@ -4,14 +4,15 @@ use super::{
 };
 use crate::commands::{
     diagnostic_field,
+    discovery::crd_resource_kinds,
     helpers::{base_resource_summary, extract_owner_ref_summary, resource_age},
     kubeconfig::{kubeconfig_source_key, KubeconfigSource},
     record_backend_cancelled, record_backend_error, record_backend_success,
     BackendCancellationRegistry, ClusterLiveStore,
 };
 use crate::models::{
-    AppError, OwnerReferenceSummary, ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode,
-    TopologyRelation,
+    AppError, DiscoveredResourceKind, OwnerReferenceSummary, ResourceSummary, ResourceTopology,
+    TopologyEdge, TopologyNode, TopologyRelation,
 };
 use chrono::{TimeZone, Utc};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -308,13 +309,26 @@ pub async fn resource_topology_from(
     namespaces: Vec<String>,
     mode: Option<String>,
     kubeconfig_env_var: Option<String>,
+    custom_resource_kinds: Option<Vec<DiscoveredResourceKind>>,
+    custom_resource_kinds_are_present: bool,
 ) -> Result<ResourceTopology, AppError> {
     let mode = TopologyMode::parse(mode)?;
     let source = KubeconfigSource::new(kubeconfig_env_var)?;
     let client = source.client_for_context(&cluster_context).await?;
     match mode {
         TopologyMode::Ownership => {
-            let collection = collect_topology_inputs(client, &cluster_context, &namespaces).await?;
+            let custom_resource_kinds = match custom_resource_kinds {
+                Some(kinds) => kinds,
+                None => crd_resource_kinds(client.clone()).await?,
+            };
+            let collection = Box::pin(collect_topology_inputs(
+                client,
+                &cluster_context,
+                &namespaces,
+                custom_resource_kinds,
+                custom_resource_kinds_are_present,
+            ))
+            .await?;
             let mut topology = build_resource_topology(collection.resources);
             topology.warnings.extend(collection.warnings);
             topology.warnings.sort();
@@ -351,24 +365,43 @@ pub async fn list_resource_topology(
     );
     let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let cancellation = cancellations.register(cancel_scope, request_id);
+    let cached_custom_resource_kinds = match &mode {
+        TopologyMode::Ownership => live_store
+            .cached_present_custom_resource_kinds(&source_key, &cluster_context, &namespaces)
+            .map(|kinds| (kinds, true)),
+        TopologyMode::NetworkFlow => None,
+    };
+    let topology_cache_mode = match (&mode, cached_custom_resource_kinds.is_some()) {
+        (TopologyMode::Ownership, false) => "ownership:native",
+        _ => mode.as_str(),
+    };
     let result = cancellation
         .run(live_store.topology(
-            source_key,
+            source_key.clone(),
             cluster_context.clone(),
             namespaces.clone(),
-            mode.as_str().to_string(),
+            topology_cache_mode.to_string(),
             {
                 let cluster_context = cluster_context.clone();
                 let namespaces = namespaces.clone();
                 let mode = mode.as_str().to_string();
                 let kubeconfig_env_var = kubeconfig_env_var.clone();
+                let cached_custom_resource_kinds = cached_custom_resource_kinds.clone();
                 move || {
-                    resource_topology_from(
-                        cluster_context,
-                        namespaces,
-                        Some(mode),
-                        kubeconfig_env_var,
-                    )
+                    let cached_custom_resource_kinds = cached_custom_resource_kinds.clone();
+                    async move {
+                        let (custom_resource_kinds, custom_resource_kinds_are_present) =
+                            cached_custom_resource_kinds.unwrap_or_default();
+                        Box::pin(resource_topology_from(
+                            cluster_context,
+                            namespaces,
+                            Some(mode),
+                            kubeconfig_env_var,
+                            Some(custom_resource_kinds),
+                            custom_resource_kinds_are_present,
+                        ))
+                        .await
+                    }
                 }
             },
         ))

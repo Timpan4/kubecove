@@ -37,6 +37,7 @@
 		queryKey: queryKeys.namespaces(clusterContext, kubeconfigSourceKey),
 		queryFn: () => listNamespaces(client, clusterContext, kubeconfigSourceKey),
 		enabled: Boolean(clusterContext) && sourceReady,
+		retry: false,
 	}));
 
 	const namespaces = $derived(namespacesQuery.data ?? []);

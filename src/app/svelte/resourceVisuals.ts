@@ -176,7 +176,7 @@ const GROUP_VISUALS: Record<string, ResourceVisual> = {
 	Network: NETWORK_VISUAL,
 	Config: CONFIG_VISUAL,
 	Storage: STORAGE_VISUAL,
-	Discovered: DEFAULT_VISUAL,
+	"Custom Resources": DEFAULT_VISUAL,
 	"Argo CD": ARGO_VISUAL,
 	Flux: DEFAULT_VISUAL,
 	Sources: resourceVisual(Package, "default"),

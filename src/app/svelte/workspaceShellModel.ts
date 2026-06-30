@@ -20,6 +20,7 @@ import type {
 	ResourceKindSelection,
 	ResourceSummary,
 } from "@/lib/types";
+import { SUPPORTED_KINDS } from "@/lib/types";
 import type { SavedWorkspace } from "@/lib/workspace-model";
 
 export type WorkspaceViewMode =
@@ -43,7 +44,7 @@ const SECTION_LABELS: Record<string, string> = {
 	network: "Network",
 	config: "Config",
 	storage: "Storage",
-	discovered: "Discovered",
+	discovered: "Custom Resources",
 	argo: "GitOps",
 	helm: "Helm",
 	incidents: "Incidents",
@@ -51,28 +52,20 @@ const SECTION_LABELS: Record<string, string> = {
 	rbac: "RBAC",
 };
 
-const CURATED_KIND_KEYS = new Set<string>([
-	"/Pod",
-	"/Service",
-	"/ConfigMap",
-	"/Secret",
-	"/PersistentVolumeClaim",
-	"/Node",
-	"/PersistentVolume",
-	"apps/Deployment",
-	"apps/StatefulSet",
-	"apps/DaemonSet",
-	"batch/Job",
-	"batch/CronJob",
-	"networking.k8s.io/Ingress",
-	"storage.k8s.io/StorageClass",
-	"argoproj.io/Application",
-	"argoproj.io/ApplicationSet",
-	"argoproj.io/AppProject",
-]);
+export const GITOPS_RESOURCE_KINDS: ResourceKindSelection[] = [
+	...SUPPORTED_KINDS,
+	...SECTIONS.clusterOverview.children,
+	"CustomResourceDefinition",
+];
 
 function resourceKindLabel(kind: ResourceKindSelection): string {
 	return typeof kind === "string" ? kind : kind.kind;
+}
+
+function resourceKindSelectionKey(kind: ResourceKindSelection): string {
+	return typeof kind === "string"
+		? `typed:${kind}`
+		: `dynamic:${discoveredResourceKindKey(kind)}`;
 }
 
 function gitOpsGroupLabel(group: string | undefined): string | null {
@@ -85,16 +78,28 @@ export function extraDiscoveredKinds(
 	resourceKinds: DiscoveredResourceKind[],
 ): DiscoveredResourceKind[] {
 	return resourceKinds
-		.filter((resourceKind) => {
-			return !CURATED_KIND_KEYS.has(`${resourceKind.group}/${resourceKind.kind}`);
-		})
-		.sort((left, right) => {
+		.toSorted((left, right) => {
 			return (
 				left.kind.localeCompare(right.kind) ||
 				left.apiVersion.localeCompare(right.apiVersion) ||
 				left.plural.localeCompare(right.plural)
 			);
 		});
+}
+
+export function appendPresentCustomResourceKinds(
+	kinds: ResourceKindSelection[],
+	customResourceKinds: DiscoveredResourceKind[],
+): ResourceKindSelection[] {
+	const seen = new Set(kinds.map(resourceKindSelectionKey));
+	return kinds.concat(
+		customResourceKinds.filter((kind) => {
+			const key = resourceKindSelectionKey(kind);
+			if (seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		}),
+	);
 }
 
 export function viewModeForTreeNode(
@@ -365,7 +370,7 @@ export function buildSidebarTree({
 		? [
 				{
 					id: { type: "kind", section: "discovered", kind: "__loading" },
-					label: "Loading discovered kinds...",
+					label: "Loading custom resources...",
 					disabled: true,
 				},
 			]
@@ -373,7 +378,7 @@ export function buildSidebarTree({
 			? [
 					{
 						id: { type: "kind", section: "discovered", kind: "__error" },
-						label: "Discovery failed",
+						label: "Custom resource discovery unavailable",
 						description: resourceKindsError,
 						disabled: true,
 					},
@@ -394,7 +399,7 @@ export function buildSidebarTree({
 				: [
 						{
 							id: { type: "kind", section: "discovered", kind: "__empty" },
-							label: "No extra kinds",
+							label: "No custom resources",
 							disabled: true,
 						},
 					];

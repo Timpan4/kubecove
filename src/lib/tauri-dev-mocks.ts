@@ -75,7 +75,9 @@ const handlers: Record<string, MockHandler> = {
 	reorder_kubeconfig_paths: () => source,
 	list_kube_contexts: () => mockContexts,
 	list_namespaces: () => namespaces,
-	list_resource_kinds: () => kinds,
+	list_resource_kinds: () => customResourceKinds(),
+	list_present_custom_resource_kinds: (args) =>
+		presentCustomResourceKinds(args?.namespaces as string[] | undefined),
 	list_resources: (args) => filterResources(args?.kind as string | undefined, args?.namespace as string | undefined, args?.clusterContext as string | undefined),
 	list_dynamic_resources: (args) => filterResources((args?.resourceKind as DiscoveredResourceKind | undefined)?.kind, args?.namespace as string | undefined, args?.clusterContext as string | undefined),
 	list_resource_scope: (args) => listScope(args?.requests as ResourceListRequest[] | undefined, args?.clusterContext as string | undefined),
@@ -126,6 +128,28 @@ const handlers: Record<string, MockHandler> = {
 function resourcesForCluster(cluster = "mock-dev"): ResourceSummary[] {
 	const rows = cluster === "docker-desktop" ? dockerResources : resources;
 	return rows.map((row) => ({ ...row, cluster }));
+}
+
+function customResourceKinds(): DiscoveredResourceKind[] {
+	return kinds.filter((kind) =>
+		[
+			"argoproj.io",
+			"kustomize.toolkit.fluxcd.io",
+			"helm.toolkit.fluxcd.io",
+		].includes(kind.group),
+	);
+}
+
+function presentCustomResourceKinds(namespaces: string[] = []): DiscoveredResourceKind[] {
+	const namespaceSet = new Set(namespaces);
+	return customResourceKinds().filter((kind) =>
+		resources.some(
+			(row) =>
+				row.kind === kind.kind &&
+				row.dynamic === true &&
+				(namespaceSet.size === 0 || (row.namespace !== null && namespaceSet.has(row.namespace))),
+		),
+	);
 }
 
 function filterResources(kindName?: string, namespace?: string, cluster?: string): ResourceSummary[] {

@@ -48,7 +48,7 @@ describe("sidebar namespace tree helpers", () => {
 		);
 
 		expect(countTreeNodes([deep])).toBeGreaterThan(20);
-		expect(deep.children?.at(-1)?.label).toBe("Discovered");
+		expect(deep.children?.at(-1)?.label).toBe("Custom Resources");
 		expect(deep.children?.at(-1)?.children?.length).toBe(10);
 	});
 

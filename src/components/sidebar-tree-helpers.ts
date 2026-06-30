@@ -51,15 +51,15 @@ export function buildNamespaceTreeNode(
 				type: "group",
 				section: "namespaces",
 				namespace,
-				group: "Discovered",
+				group: "Custom Resources",
 			} as TreeNodeId,
-			label: "Discovered",
+			label: "Custom Resources",
 			children: namespaceDiscoveredKinds.map((resourceKind) => ({
 				id: {
 					type: "kind",
 					section: "namespaces",
 					namespace,
-					group: "Discovered",
+					group: "Custom Resources",
 					kind: discoveredResourceKindKey(resourceKind),
 					resourceKind,
 				} as TreeNodeId,
