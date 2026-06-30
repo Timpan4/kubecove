@@ -33,9 +33,9 @@ fn test_get_cluster_contexts_returns_cluster_contexts() {
 }
 
 #[test]
-fn test_kubeconfig_errors_are_cluster_errors() {
+fn test_kubeconfig_errors_are_kubeconfig_errors() {
     if let Err(err) = get_cluster_contexts(None) {
-        assert_eq!(err.kind, "cluster");
+        assert_eq!(err.kind, "kubeconfig");
         assert!(!err.message.is_empty());
     }
 }
