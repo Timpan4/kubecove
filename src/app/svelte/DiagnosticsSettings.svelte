@@ -2,7 +2,7 @@
 	import { onDestroy, onMount } from "svelte";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { Copy, ExternalLink, RefreshCcw, Trash2 } from "lucide-svelte";
-	import { Button, Checkbox, FieldGroup } from "@/components/ui/svelte";
+	import { Button, Checkbox, Field, FieldGroup, FieldLabel, Switch } from "@/components/ui/svelte";
 	import {
 		clearDiagnostics,
 		getDiagnosticsSnapshot,
@@ -114,7 +114,7 @@
 		title="Enable diagnostics"
 		description="Collects local latency timings for release smoke testing. Trace data stays in memory."
 	>
-		<Checkbox
+		<Switch
 			checked={settings.debugModeEnabled}
 			onCheckedChange={settings.setDebugModeEnabled}
 			aria-label="Enable diagnostics"
@@ -165,14 +165,16 @@
 				<span>
 					Frontend {snapshot.frontendEvents.length} events, backend {backendEvents.length} events.
 				</span>
-				<label class="flex items-center gap-2">
-					<span>Include identifiers</span>
-					<Checkbox
-						checked={includeIdentifiers}
-						onCheckedChange={(value) => (includeIdentifiers = value)}
-						aria-label="Include identifiers in copied latency report"
-					/>
-				</label>
+				<Field orientation="horizontal" class="w-auto">
+					<FieldLabel class="items-center gap-2 text-xs text-muted-foreground">
+						<span>Include identifiers</span>
+						<Checkbox
+							checked={includeIdentifiers}
+							onCheckedChange={(value) => (includeIdentifiers = value)}
+							aria-label="Include identifiers in copied latency report"
+						/>
+					</FieldLabel>
+				</Field>
 			</div>
 
 			<div class="space-y-2">

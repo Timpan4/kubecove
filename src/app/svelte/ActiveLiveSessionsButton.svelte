@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { Cable, Copy, RotateCcw, Square, Terminal } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
 		Badge,
 		Button,
@@ -12,7 +13,6 @@
 		buttonClass,
 	} from "@/components/ui/svelte";
 	import {
-		portForwardErrorMessage,
 		portForwardLocalUrl,
 		sortPortForwardSessions,
 	} from "@/features/live-sessions/helpers";
@@ -37,7 +37,7 @@
 	let stoppingId = $state<string | null>(null);
 	let reconnectingId = $state<string | null>(null);
 	let copyingId = $state<string | null>(null);
-	let actionError = $state<string | null>(null);
+	let actionError = $state<unknown>(null);
 	const portForwardsQuery = createQuery(() => ({
 		queryKey: queryKeys.portForwards(),
 		queryFn: () => listPortForwards(client),
@@ -81,7 +81,7 @@
 			await stopPodPortForward(client, sessionId);
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 		} catch (error) {
-			actionError = portForwardErrorMessage(error);
+			actionError = error;
 		} finally {
 			stoppingId = null;
 		}
@@ -94,7 +94,7 @@
 			await stopPodExecSession(client, sessionId);
 			await queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() });
 		} catch (error) {
-			actionError = portForwardErrorMessage(error);
+			actionError = error;
 		} finally {
 			stoppingId = null;
 		}
@@ -107,7 +107,7 @@
 			await reconnectPortForwardSession({ client, session });
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 		} catch (error) {
-			actionError = portForwardErrorMessage(error);
+			actionError = error;
 		} finally {
 			reconnectingId = null;
 		}
@@ -119,7 +119,7 @@
 		try {
 			await navigator.clipboard?.writeText(portForwardLocalUrl(session));
 		} catch (error) {
-			actionError = portForwardErrorMessage(error);
+			actionError = error;
 		} finally {
 			copyingId = null;
 		}
@@ -167,7 +167,11 @@
 					Manage
 				</Button>
 				{#if actionError}
-					<div class="text-xs text-destructive">{actionError}</div>
+					<FriendlyError
+						mode="compact"
+						error={actionError}
+						context={{ operation: "liveSession", fallbackTitle: "Live-session action failed" }}
+					/>
 				{/if}
 				<Separator />
 				<div class="flex max-h-80 flex-col gap-2 overflow-y-auto">
@@ -193,7 +197,15 @@
 								</Badge>
 							</div>
 							{#if session.lastError}
-								<div class="text-xs text-destructive">{session.lastError}</div>
+								<FriendlyError
+									mode="compact"
+									error={session.lastError}
+									context={{
+										operation: "exec",
+										fallbackTitle: "Exec session failed",
+										partial: true,
+									}}
+								/>
 							{/if}
 							<div class="flex flex-wrap justify-end gap-2">
 								<Button
@@ -236,7 +248,15 @@
 								</Badge>
 							</div>
 							{#if session.lastError}
-								<div class="text-xs text-destructive">{session.lastError}</div>
+								<FriendlyError
+									mode="compact"
+									error={session.lastError}
+									context={{
+										operation: "portForward",
+										fallbackTitle: "Port-forward failed",
+										partial: true,
+									}}
+								/>
 							{/if}
 							<div class="flex flex-wrap justify-end gap-2">
 								<Button

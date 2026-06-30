@@ -89,8 +89,7 @@
 
 	function healthButtonClass(active: boolean) {
 		return [
-			"flex min-h-12 cursor-pointer flex-col justify-center gap-0.5 rounded-md border bg-background/30 px-2.5 py-1.5 text-left transition-colors",
-			"hover:bg-background/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+			"h-auto min-h-12 w-full flex-col items-start justify-center gap-0.5 bg-background/30 px-2.5 py-1.5 text-left font-normal hover:bg-background/50",
 			active ? "border-primary/50 bg-primary/10" : "",
 		].join(" ");
 	}
@@ -232,8 +231,9 @@
 
 	<div class="mt-2 grid gap-2 xl:grid-cols-2 xl:items-stretch">
 		<div class="grid grid-cols-2 gap-2 md:grid-cols-3 2xl:grid-cols-6" aria-label="Resource health summary">
-			<button
+			<Button
 				type="button"
+				variant="outline"
 				class={healthButtonClass(healthFilter === "all")}
 				aria-pressed={healthFilter === "all"}
 				onclick={() => onHealthSelect("all")}
@@ -243,9 +243,10 @@
 					<strong class={`tabular-nums ${countClass(healthSummary.total)}`}>{healthSummary.total}</strong>
 					<span class="text-[0.625rem] text-muted-foreground">{healthSummary.untracked} unchecked</span>
 				</span>
-			</button>
-			<button
+			</Button>
+			<Button
 				type="button"
+				variant="outline"
 				class={healthButtonClass(healthFilter === "healthy")}
 				aria-pressed={healthFilter === "healthy"}
 				onclick={() => onHealthSelect("healthy")}
@@ -254,9 +255,10 @@
 				<strong class={`tabular-nums ${countClass(healthSummary.healthy, "success")}`}>
 					{healthSummary.healthy}
 				</strong>
-			</button>
-			<button
+			</Button>
+			<Button
 				type="button"
+				variant="outline"
 				class={healthButtonClass(healthFilter === "unhealthy")}
 				aria-pressed={healthFilter === "unhealthy"}
 				onclick={() => onHealthSelect("unhealthy")}
@@ -267,9 +269,10 @@
 				>
 					{healthSummary.attention + healthSummary.degraded}
 				</strong>
-			</button>
-			<button
+			</Button>
+			<Button
 				type="button"
+				variant="outline"
 				class={healthButtonClass(healthFilter === "attention")}
 				aria-pressed={healthFilter === "attention"}
 				onclick={() => onHealthSelect("attention")}
@@ -278,9 +281,10 @@
 				<strong class={`tabular-nums ${countClass(healthSummary.attention, "warning")}`}>
 					{healthSummary.attention}
 				</strong>
-			</button>
-			<button
+			</Button>
+			<Button
 				type="button"
+				variant="outline"
 				class={healthButtonClass(healthFilter === "degraded")}
 				aria-pressed={healthFilter === "degraded"}
 				onclick={() => onHealthSelect("degraded")}
@@ -289,9 +293,10 @@
 				<strong class={`tabular-nums ${countClass(healthSummary.degraded, "danger")}`}>
 					{healthSummary.degraded}
 				</strong>
-			</button>
-			<button
+			</Button>
+			<Button
 				type="button"
+				variant="outline"
 				class={healthButtonClass(healthFilter === "restarted")}
 				aria-pressed={healthFilter === "restarted"}
 				onclick={() => onHealthSelect("restarted")}
@@ -300,7 +305,7 @@
 				<strong class={`tabular-nums ${countClass(healthSummary.restarted, "info")}`}>
 					{healthSummary.restarted}
 				</strong>
-			</button>
+			</Button>
 		</div>
 
 		<div class="grid min-w-0 gap-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,auto)]">

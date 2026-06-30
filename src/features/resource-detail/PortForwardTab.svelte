@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { Cable, Copy, Play, Square } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -45,7 +46,6 @@
 		ResourceSummary,
 	} from "@/lib/types";
 	import { workspaceScopeContexts } from "@/lib/workspace-model";
-	import { getErrorMessage } from "./helpers";
 
 	let {
 		client,
@@ -71,10 +71,10 @@
 	let starting = $state(false);
 	let stoppingId = $state<string | null>(null);
 	let copyingId = $state<string | null>(null);
-	let error = $state("");
-	let copyError = $state("");
+	let error = $state<unknown>(null);
+	let copyError = $state<unknown>(null);
 	let saveMessage = $state("");
-	let saveError = $state("");
+	let saveError = $state<unknown>(null);
 
 	const targetSupported = $derived(
 		(resource.kind === "Pod" || resource.kind === "Service") && Boolean(resource.namespace),
@@ -101,9 +101,9 @@
 	});
 
 	async function startForward() {
-		error = "";
-		copyError = "";
-		saveError = "";
+		error = null;
+		copyError = null;
+		saveError = null;
 		const parsed = parsePortForwardForm(
 			{ remotePort, localPort },
 			{ remotePortLabel: resource.kind === "Service" ? "Service port" : "Pod port" },
@@ -130,16 +130,16 @@
 			localPort = "";
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 		} catch (err) {
-			error = getErrorMessage(err);
+			error = err;
 		} finally {
 			starting = false;
 		}
 	}
 
 	function saveServicePreset() {
-		error = "";
+		error = null;
 		saveMessage = "";
-		saveError = "";
+		saveError = null;
 		if (resource.kind !== "Service") return;
 		const activeWorkspace = $selectedWorkspace;
 		if (!activeWorkspace) {
@@ -181,13 +181,13 @@
 	}
 
 	async function stopForward(id: string) {
-		copyError = "";
+		copyError = null;
 		stoppingId = id;
 		try {
 			await stopPodPortForward(client, id);
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 		} catch (err) {
-			error = getErrorMessage(err);
+			error = err;
 		} finally {
 			stoppingId = null;
 		}
@@ -195,11 +195,11 @@
 
 	async function copySessionUrl(session: PortForwardSessionSummary) {
 		copyingId = session.id;
-		copyError = "";
+		copyError = null;
 		try {
 			await navigator.clipboard?.writeText(portForwardLocalUrl(session));
 		} catch (err) {
-			copyError = getErrorMessage(err);
+			copyError = err;
 		} finally {
 			copyingId = null;
 		}
@@ -276,16 +276,16 @@
 		</FieldGroup>
 
 		{#if error}
-			<Alert variant="destructive">
-				<AlertTitle>Port-forward failed</AlertTitle>
-				<AlertDescription>{error}</AlertDescription>
-			</Alert>
+			<FriendlyError
+				error={error}
+				context={{ operation: "portForward", fallbackTitle: "Port-forward failed" }}
+			/>
 		{/if}
 		{#if saveError}
-			<Alert variant="destructive">
-				<AlertTitle>Preset not saved</AlertTitle>
-				<AlertDescription>{saveError}</AlertDescription>
-			</Alert>
+			<FriendlyError
+				error={saveError}
+				context={{ operation: "portForward", fallbackTitle: "Preset not saved" }}
+			/>
 		{/if}
 		{#if saveMessage}
 			<Alert>
@@ -294,10 +294,10 @@
 			</Alert>
 		{/if}
 		{#if copyError}
-			<Alert variant="destructive">
-				<AlertTitle>Copy failed</AlertTitle>
-				<AlertDescription>{copyError}</AlertDescription>
-			</Alert>
+			<FriendlyError
+				error={copyError}
+				context={{ operation: "portForward", fallbackTitle: "Copy failed" }}
+			/>
 		{/if}
 
 		<div class="flex flex-wrap items-center gap-2">
@@ -344,7 +344,15 @@
 								</div>
 							{/if}
 							{#if session.lastError}
-								<div class="text-xs text-destructive">{session.lastError}</div>
+								<FriendlyError
+									mode="compact"
+									error={session.lastError}
+									context={{
+										operation: "portForward",
+										fallbackTitle: "Port-forward failed",
+										partial: true,
+									}}
+								/>
 							{/if}
 						</div>
 						<div class="flex items-center gap-2">

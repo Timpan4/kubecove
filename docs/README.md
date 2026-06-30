@@ -22,6 +22,7 @@ Use this index as the map for product, engineering, release, and governance work
 - [Svelte Frontend Migration Plan](svelte-frontend-migration-plan.md) - cutover status, cleanup notes, and verification.
 - [Product Inspiration](product-inspiration.md) - public product benchmarks and the design/legal boundary.
 - [Helm Reconciliation Design](helm-reconciliation-design.md) - inspection-only release intent versus live state comparison.
+- [Browser Dev Mock Checklist](browser-dev-mock-checklist.md) - Chrome sweep notes for browser-only mock gaps and thin surfaces.
 
 ## Governance
 

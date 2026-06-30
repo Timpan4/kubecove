@@ -492,6 +492,7 @@ export interface AppError {
 export const SUPPORTED_KINDS = [
 	"Pod",
 	"Deployment",
+	"ReplicaSet",
 	"StatefulSet",
 	"DaemonSet",
 	"Service",

@@ -517,7 +517,8 @@ describe("svelte GitOps surface model", () => {
 
 		expect(source).toContain("const gitOpsListError = $derived(");
 		expect(source).toContain("Some GitOps resources could not load");
-		expect(source).toContain("errorMessage(gitOpsListError)");
+		expect(source).toContain("error={gitOpsListError}");
+		expect(source).toContain('mode="compact"');
 		expect(queryBody).toContain("isError: false");
 		expect(queryBody).not.toContain("argoAppsQuery.isError");
 		expect(queryBody).not.toContain("fluxResourceQueries.some((query) => query.isError)");

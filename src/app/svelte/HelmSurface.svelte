@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { AlertTriangle, ExternalLink, Package, Search, X } from "lucide-svelte";
+	import { ExternalLink, Package, Search, X } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -17,6 +18,12 @@
 		EmptyTitle,
 		Input,
 		Spinner,
+		Table,
+		TableBody,
+		TableCell,
+		TableHead,
+		TableHeader,
+		TableRow,
 	} from "@/components/ui/svelte";
 	import {
 		helmReconciliationResourceLabel,
@@ -39,7 +46,6 @@
 		helmDetailsQuery,
 		helmReconciliationQuery,
 		helmReconciliationRows,
-		errorMessage,
 		onOpenResources,
 		helmStatusVariant,
 		helmReconciliationClass,
@@ -75,39 +81,39 @@
 			{/if}
 		</div>
 		<Card size="sm" elevation="flat">
-			<CardContent class="overflow-x-auto p-0">
-				<table class="w-full min-w-[900px] table-fixed border-collapse text-sm">
-					<thead>
-						<tr>
+			<CardContent class="p-0">
+				<Table class="min-w-[900px] table-fixed text-sm">
+					<TableHeader>
+						<TableRow>
 							{#each ["Release", "Namespace", "Chart", "App Version", "Revision", "Status", "Storage", "Updated"] as header}
-								<th class="border-b px-3 py-2 text-left text-xs font-semibold uppercase text-muted-foreground">
+								<TableHead class="px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
 									{header}
-								</th>
+								</TableHead>
 							{/each}
-						</tr>
-					</thead>
-					<tbody>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
 						{#if filteredHelmReleases.length === 0}
-							<tr>
-								<td class="px-3 py-8 text-center text-muted-foreground" colspan="8">
+							<TableRow>
+								<TableCell class="px-3 py-8 text-center text-muted-foreground" colspan="8">
 									No Helm releases found
-								</td>
-							</tr>
+								</TableCell>
+							</TableRow>
 						{:else}
 							{#each groupedHelmReleases as group (group.namespace)}
-								<tr class="bg-muted/35">
-									<td
-										class="border-b px-3 py-2 text-xs font-semibold uppercase text-muted-foreground"
+								<TableRow class="bg-muted/35 hover:bg-muted/35">
+									<TableCell
+										class="px-3 py-2 text-xs font-semibold uppercase text-muted-foreground"
 										colspan="8"
 									>
 										{group.namespace} ({group.releases.length})
-									</td>
-								</tr>
+									</TableCell>
+								</TableRow>
 								{#each group.releases as release (helmReleaseKey(release))}
-									<tr
+									<TableRow
 										class={helmReleaseKey(release) === selectedHelmReleaseKey
-											? "border-b bg-accent last:border-b-0"
-											: "cursor-pointer border-b last:border-b-0 hover:bg-accent/60"}
+											? "bg-accent hover:bg-accent"
+											: "cursor-pointer hover:bg-accent/60"}
 										tabindex="0"
 										role="button"
 										aria-pressed={helmReleaseKey(release) === selectedHelmReleaseKey}
@@ -117,14 +123,14 @@
 												event.preventDefault();
 												selectedHelmRelease = release;
 											}
-										}}
+											}}
 									>
-										<td class="truncate px-3 py-2 font-medium">{release.name}</td>
-										<td class="truncate px-3 py-2">{release.namespace}</td>
-										<td class="truncate px-3 py-2">{release.chart ?? "-"}</td>
-										<td class="truncate px-3 py-2">{release.appVersion ?? "-"}</td>
-										<td class="truncate px-3 py-2">{release.revision ?? "-"}</td>
-										<td class="truncate px-3 py-2">
+										<TableCell class="truncate px-3 py-2 font-medium">{release.name}</TableCell>
+										<TableCell class="truncate px-3 py-2">{release.namespace}</TableCell>
+										<TableCell class="truncate px-3 py-2">{release.chart ?? "-"}</TableCell>
+										<TableCell class="truncate px-3 py-2">{release.appVersion ?? "-"}</TableCell>
+										<TableCell class="truncate px-3 py-2">{release.revision ?? "-"}</TableCell>
+										<TableCell class="truncate px-3 py-2">
 											{#if release.status}
 												<Badge variant={helmStatusVariant(release.status)}>
 													{formatStatusLabel(release.status)}
@@ -132,15 +138,15 @@
 											{:else}
 												-
 											{/if}
-										</td>
-										<td class="truncate px-3 py-2">{release.storageKind}</td>
-										<td class="truncate px-3 py-2">{release.age}</td>
-									</tr>
+										</TableCell>
+										<TableCell class="truncate px-3 py-2">{release.storageKind}</TableCell>
+										<TableCell class="truncate px-3 py-2">{release.age}</TableCell>
+									</TableRow>
 								{/each}
 							{/each}
 						{/if}
-					</tbody>
-				</table>
+					</TableBody>
+				</Table>
 			</CardContent>
 		</Card>
 		<Card size="sm" elevation="flat">
@@ -181,11 +187,13 @@
 				Loading Helm release details...
 			</p>
 				{:else if helmDetailsQuery.isError}
-					<Alert variant="destructive">
-						<AlertTriangle class="size-4" />
-						<AlertTitle>Helm details unavailable</AlertTitle>
-						<AlertDescription>{errorMessage(helmDetailsQuery.error)}</AlertDescription>
-					</Alert>
+					<FriendlyError
+						error={helmDetailsQuery.error}
+						context={{
+							operation: "detailsLoad",
+							fallbackTitle: "Helm details unavailable",
+						}}
+					/>
 				{:else if helmDetailsQuery.data}
 					{@const details = helmDetailsQuery.data}
 					<div class="grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
@@ -262,13 +270,17 @@
 									<p class="inline-flex items-center gap-2 text-sm text-muted-foreground">
 										<Spinner class="size-4" />
 										Loading reconciliation...
-									</p>
-								{:else if helmReconciliationQuery.isError}
-									<Alert variant="destructive">
-										<AlertTriangle class="size-4" />
-										<AlertTitle>Helm reconciliation unavailable</AlertTitle>
-										<AlertDescription>{errorMessage(helmReconciliationQuery.error)}</AlertDescription>
-									</Alert>
+								</p>
+							{:else if helmReconciliationQuery.isError}
+								<FriendlyError
+									mode="compact"
+									error={helmReconciliationQuery.error}
+									context={{
+										operation: "resourcesLoad",
+										fallbackTitle: "Helm reconciliation unavailable",
+										partial: true,
+									}}
+								/>
 								{:else if helmReconciliationQuery.data}
 									{#if helmReconciliationQuery.data.warnings.length > 0}
 										<Alert class="mb-3">
@@ -282,41 +294,41 @@
 											</AlertDescription>
 										</Alert>
 									{/if}
-									<div class="overflow-x-auto rounded-md border">
-										<table class="w-full min-w-[760px] table-fixed border-collapse text-xs">
-											<thead>
-												<tr>
-													<th class="border-b px-3 py-2 text-left font-semibold uppercase text-muted-foreground">Resource</th>
-													<th class="border-b px-3 py-2 text-left font-semibold uppercase text-muted-foreground">Namespace</th>
-													<th class="border-b px-3 py-2 text-left font-semibold uppercase text-muted-foreground">Status</th>
-													<th class="border-b px-3 py-2 text-left font-semibold uppercase text-muted-foreground">Source</th>
-													<th class="border-b px-3 py-2 text-left font-semibold uppercase text-muted-foreground">Message</th>
-												</tr>
-											</thead>
-											<tbody>
+									<div class="rounded-md border">
+										<Table class="min-w-[760px] table-fixed text-xs">
+											<TableHeader>
+												<TableRow>
+													<TableHead class="px-3 py-2 font-semibold uppercase text-muted-foreground">Resource</TableHead>
+													<TableHead class="px-3 py-2 font-semibold uppercase text-muted-foreground">Namespace</TableHead>
+													<TableHead class="px-3 py-2 font-semibold uppercase text-muted-foreground">Status</TableHead>
+													<TableHead class="px-3 py-2 font-semibold uppercase text-muted-foreground">Source</TableHead>
+													<TableHead class="px-3 py-2 font-semibold uppercase text-muted-foreground">Message</TableHead>
+												</TableRow>
+											</TableHeader>
+											<TableBody>
 												{#if helmReconciliationRows.length === 0}
-													<tr>
-														<td class="px-3 py-8 text-center text-muted-foreground" colspan="5">
+													<TableRow>
+														<TableCell class="px-3 py-8 text-center text-muted-foreground" colspan="5">
 															No manifest or explicit Helm-labeled live resources were found.
-														</td>
-													</tr>
+														</TableCell>
+													</TableRow>
 												{:else}
 													{#each helmReconciliationRows as resource}
-														<tr class="border-b last:border-b-0">
-															<td class="truncate px-3 py-2">{helmReconciliationResourceLabel(resource)}</td>
-															<td class="truncate px-3 py-2">{resource.namespace ?? "-"}</td>
-															<td class="px-3 py-2">
+														<TableRow>
+															<TableCell class="truncate px-3 py-2">{helmReconciliationResourceLabel(resource)}</TableCell>
+															<TableCell class="truncate px-3 py-2">{resource.namespace ?? "-"}</TableCell>
+															<TableCell class="px-3 py-2">
 																<Badge variant="outline" class={helmReconciliationClass(resource.status)}>
 																	{helmReconciliationStatusLabel(resource.status)}
 																</Badge>
-															</td>
-															<td class="truncate px-3 py-2">{helmReconciliationSource(resource)}</td>
-															<td class="truncate px-3 py-2">{resource.statusMessage}</td>
-														</tr>
+															</TableCell>
+															<TableCell class="truncate px-3 py-2">{helmReconciliationSource(resource)}</TableCell>
+															<TableCell class="truncate px-3 py-2">{resource.statusMessage}</TableCell>
+														</TableRow>
 													{/each}
 												{/if}
-											</tbody>
-										</table>
+											</TableBody>
+										</Table>
 									</div>
 								{/if}
 							</div>

@@ -3,10 +3,8 @@
 	import type { NodeEventWithPointer } from "@xyflow/svelte";
 	import "@xyflow/svelte/dist/style.css";
 	import { GitBranch, Network, PanelLeftClose } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
-		Alert,
-		AlertDescription,
-		AlertTitle,
 		Badge,
 		Button,
 		Empty,
@@ -16,7 +14,6 @@
 		Spinner,
 	} from "@/components/ui/svelte";
 	import type { ResourceSummary, ResourceTopology, TopologyMode } from "@/lib/types";
-	import { getErrorMessage } from "@/features/resource-detail/helpers";
 	import {
 		applyFlowTopologySelectionWithIndex,
 		buildFlowTopologyLayout,
@@ -227,10 +224,10 @@
 		</div>
 	{:else if isError}
 		<div class="p-3">
-			<Alert variant="destructive">
-				<AlertTitle>{errorTitle}</AlertTitle>
-				<AlertDescription>{getErrorMessage(error)}</AlertDescription>
-			</Alert>
+			<FriendlyError
+				{error}
+				context={{ operation: "resourcesLoad", fallbackTitle: errorTitle }}
+			/>
 		</div>
 	{:else if !topology || topology.nodes.length === 0 || !graph}
 		<Empty class="min-h-80 flex-1 border-0">

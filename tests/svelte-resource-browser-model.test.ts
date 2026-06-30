@@ -111,6 +111,60 @@ describe("svelte resource browser model", () => {
 		).toBe(false);
 	});
 
+	test("inherits GitOps table grouping through Kubernetes owner chains", () => {
+		const argoOwner = {
+			provider: "argo",
+			kind: "Application",
+			name: "todo",
+			namespace: "argocd",
+			confidence: "metadata",
+		} as const;
+		const rows = [
+			resource("todo-web", { kind: "Deployment", gitOpsOwner: argoOwner }),
+			resource("todo-web-97bfcd566", {
+				kind: "ReplicaSet",
+				ownerRef: "todo-web",
+			}),
+			resource("todo-web-97bfcd566-hhplq", {
+				kind: "Pod",
+				ownerRef: "todo-web-97bfcd566",
+			}),
+			resource("issue-143-cron-success", { kind: "CronJob", gitOpsOwner: argoOwner }),
+			resource("issue-143-cron-success-29713390", {
+				kind: "Job",
+				ownerRef: "issue-143-cron-success",
+			}),
+			resource("issue-143-cron-success-29713390-25hg7", {
+				kind: "Pod",
+				ownerRef: "issue-143-cron-success-29713390",
+			}),
+		];
+		const model = buildResourceTableModel(rows, {
+			search: "",
+			gitOpsFilter: "",
+			healthFilter: "all",
+			sort: { id: "name", desc: false },
+			pageIndex: 0,
+			collapsedGroups: new Set(),
+		});
+
+		expect(model.entries).toContainEqual(
+			expect.objectContaining({
+				type: "group",
+				label: "Owned by Argo CD: todo",
+				count: 6,
+			}),
+		);
+		expect(model.entries).not.toContainEqual(
+			expect.objectContaining({ type: "group", label: "Unmanaged resources" }),
+		);
+		expect(
+			model.pageRows
+				.filter((row) => row.kind === "Pod")
+				.map((row) => row.gitOpsOwner?.name),
+		).toEqual(["todo", "todo"]);
+	});
+
 	test("groups unmanaged Svelte table rows by resource type", () => {
 		const deployment = resource("argocd-applicationset-controller", {
 			kind: "Deployment",

@@ -10,6 +10,7 @@
 		Settings,
 		X,
 	} from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import RuntimeBadge from "../runtime/RuntimeBadge.svelte";
 	import {
 		Badge,
@@ -27,6 +28,8 @@
 		EmptyDescription,
 		EmptyHeader,
 		EmptyTitle,
+		Field,
+		FieldLabel,
 		ScrollArea,
 		Sidebar,
 		SidebarContent,
@@ -40,7 +43,7 @@
 		type SavedWorkspace,
 	} from "@/lib/workspace-model";
 	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
-	import type { ResourceSummary } from "@/lib/types";
+	import { SUPPORTED_KINDS, type ResourceKindSelection, type ResourceSummary } from "@/lib/types";
 	import { nodeIdToString, type TreeNodeId } from "@/lib/tree-nav";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { createTauriClient } from "@/lib/tauri";
@@ -53,7 +56,6 @@
 		type PathStateSurfacesState,
 		type PathStateWorkspaceSnapshot,
 	} from "@/lib/path-state";
-	import { portForwardErrorMessage } from "@/features/live-sessions/helpers";
 	import {
 		savedPortForwardStartFailureMessage,
 		shouldAutoStartSavedPortForwards,
@@ -180,7 +182,7 @@
 	);
 	let dismissedPortForwardRestoreWorkspaceId = $state<string | null>(null);
 	let startingSavedPortForwards = $state(false);
-	let savedPortForwardRestoreError = $state<string | null>(null);
+	let savedPortForwardRestoreError = $state<unknown>(null);
 	const autoStartedSavedPortForwardWorkspaceIds = new Set<string>();
 	const autoStartSavedPortForwards = $derived(
 		$settingsStore.autoStartSavedPortForwards,
@@ -205,6 +207,11 @@
 	);
 	const resourceBrowserNamespaces = $derived(
 		resourceNamespaceOverride ?? resourceBrowserScope.namespaces,
+	);
+	const resourceBrowserKinds = $derived<ResourceKindSelection[]>(
+		resourceGitOpsFocusApplication
+			? [...SUPPORTED_KINDS]
+			: resourceBrowserScope.kinds,
 	);
 	const showPortForwardRestorePrompt = $derived(
 		shouldShowSavedPortForwardRestorePrompt({
@@ -321,6 +328,11 @@
 		viewMode = "settings";
 	}
 
+	function closeSettings() {
+		selectedNode = defaultSelectedNode;
+		viewMode = "overview";
+	}
+
 	function openResources(
 		namespace?: string | string[],
 		initialSearch = "",
@@ -336,6 +348,7 @@
 		resourceInitialSearch = initialSearch;
 		resourceInitialGitOpsFilter = initialGitOpsFilter;
 		resourceInitialHealthFilter = initialHealthFilter;
+		resourceBrowserPathState = null;
 		resourceNamespaceOverride = Array.isArray(namespace) ? namespace : null;
 		selectedNode = typeof namespace === "string"
 			? { type: "namespace", section: "namespaces", namespace }
@@ -435,7 +448,7 @@
 			}
 			if (dismissOnSuccess) dismissPortForwardRestore();
 		} catch (error) {
-			savedPortForwardRestoreError = portForwardErrorMessage(error);
+			savedPortForwardRestoreError = error;
 		} finally {
 			startingSavedPortForwards = false;
 		}
@@ -546,9 +559,11 @@
 				>
 					<Settings />
 				</Button>
-				<button
+				<Button
 					type="button"
-					class="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border border-border/60 bg-surface-1 px-3 py-1.5 text-xs text-muted-foreground shadow-xs transition-all [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-foreground hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+					variant="outline"
+					size="sm"
+					class="gap-2 whitespace-nowrap bg-surface-1 px-3 text-xs font-normal text-muted-foreground shadow-xs [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-foreground hover:shadow-sm"
 					aria-label="Search views, namespaces, and resources"
 					onclick={() => (commandOpen = true)}
 				>
@@ -557,7 +572,7 @@
 				<kbd class="rounded border bg-muted px-1 py-px font-mono text-xs text-muted-foreground">
 					{SEARCH_SHORTCUT_HINT}
 				</kbd>
-			</button>
+			</Button>
 			</div>
 		</header>
 
@@ -583,19 +598,29 @@
 						{(workspace.portForwards?.length ?? 0) === 1 ? "forward" : "forwards"} ready to start.
 					</span>
 					{#if savedPortForwardRestoreError}
-						<span class="w-full text-xs font-medium text-destructive">
-							{savedPortForwardRestoreError}
-						</span>
+						<div class="w-full">
+							<FriendlyError
+								mode="compact"
+								error={savedPortForwardRestoreError}
+								context={{
+									operation: "portForward",
+									fallbackTitle: "Saved port-forwards failed",
+									partial: true,
+								}}
+							/>
+						</div>
 					{/if}
 					<span class="flex flex-wrap items-center gap-2">
-						<label class="inline-flex items-center gap-2 pr-2 text-xs text-muted-foreground">
-							<Checkbox
-								checked={autoStartSavedPortForwards}
-								onCheckedChange={setAutoStartSavedPortForwards}
-								aria-label="Auto-start saved port forwards"
-							/>
-							Auto-start
-						</label>
+						<Field orientation="horizontal" class="w-auto pr-2">
+							<FieldLabel class="items-center gap-2 text-xs text-muted-foreground">
+								<Checkbox
+									checked={autoStartSavedPortForwards}
+									onCheckedChange={setAutoStartSavedPortForwards}
+									aria-label="Auto-start saved port forwards"
+								/>
+								Auto-start
+							</FieldLabel>
+						</Field>
 						<Button
 							type="button"
 							size="sm"
@@ -690,8 +715,8 @@
 					<section class="flex h-full min-h-0 w-full flex-col gap-4 p-4 md:p-6">
 						<ResourceBrowser
 							clusterContext={workspace.scope.clusterContext}
-						initialNamespaces={resourceBrowserNamespaces}
-							initialKinds={resourceBrowserScope.kinds}
+							initialNamespaces={resourceBrowserNamespaces}
+							initialKinds={resourceBrowserKinds}
 							initialSearch={resourceInitialSearch}
 							initialGitOpsFilter={resourceInitialGitOpsFilter}
 							initialHealthFilter={resourceInitialHealthFilter}
@@ -726,6 +751,7 @@
 						onTargetHelmReleaseResolved={clearTargetHelmRelease}
 						onTargetGitOpsApplicationResolved={clearTargetGitOpsApplication}
 						onPathStateChange={(state) => (surfacesPathState = state)}
+						onCloseSettings={closeSettings}
 					/>
 				{:else}
 					<section class="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4 md:p-6">

@@ -8,15 +8,16 @@
 		RotateCcw,
 		Trash2,
 	} from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
 		Alert,
 		AlertDescription,
 		AlertTitle,
 		Badge,
 		Button,
-		Checkbox,
 		FieldGroup,
 		Input,
+		Switch,
 		Textarea,
 	} from "@/components/ui/svelte";
 	import {
@@ -42,7 +43,7 @@
 	let envDraft = $state(getSettingsSnapshot().kubeconfigEnvVar);
 	let pathDraft = $state("");
 	let sourceActionBusy = $state(false);
-	let sourceActionError = $state<string | null>(null);
+	let sourceActionError = $state<unknown>(null);
 	const settings = $derived($settingsStore);
 	const sourceQuery = createQuery<KubeconfigSourcesSummary>(() => ({
 		queryKey: KUBECONFIG_SOURCES_QUERY_KEY,
@@ -53,7 +54,7 @@
 	const sourceBusy = $derived(sourceActionBusy || sourceQuery.isFetching);
 	const sourceError = $derived(
 		sourceActionError ??
-			(sourceQuery.isError ? errorMessage(sourceQuery.error) : null),
+			(sourceQuery.isError ? sourceQuery.error : null),
 	);
 
 	$effect(() => {
@@ -67,10 +68,6 @@
 	function sourceDescription(): string {
 		if (!sources) return "Loading kubeconfig sources.";
 		return `${sources.sourceLabel}. Full file paths are shown only here.`;
-	}
-
-	function errorMessage(error: unknown): string {
-		return error instanceof Error ? error.message : String(error);
 	}
 
 	function applySources(next: KubeconfigSourcesSummary) {
@@ -88,7 +85,7 @@
 		try {
 			applySources(await action());
 		} catch (error) {
-			sourceActionError = errorMessage(error);
+			sourceActionError = error;
 		} finally {
 			if (busy) sourceActionBusy = false;
 		}
@@ -132,10 +129,13 @@
 	{#if sourceError || (sources?.warnings.length ?? 0) > 0}
 		<div class="flex flex-col gap-2">
 			{#if sourceError}
-				<Alert variant="destructive">
-					<AlertTitle>Kubeconfig sources failed</AlertTitle>
-					<AlertDescription>{sourceError}</AlertDescription>
-				</Alert>
+				<FriendlyError
+					error={sourceError}
+					context={{
+						operation: "contextLoad",
+						fallbackTitle: "Kubeconfig sources failed",
+					}}
+				/>
 			{/if}
 			{#each sources?.warnings ?? [] as warning (`${warning.source}:${warning.path ?? warning.message}`)}
 				<Alert>
@@ -186,7 +186,7 @@
 		title="Show source labels"
 		description="Marks contexts with kubeconfig source they were discovered from."
 	>
-		<Checkbox
+		<Switch
 			checked={settings.showKubeconfigSourceLabels}
 			onCheckedChange={(show) =>
 				void runSourceUpdate(() => setShowKubeconfigSourceLabels(client, show))}

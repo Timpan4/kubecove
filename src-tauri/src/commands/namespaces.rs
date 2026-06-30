@@ -37,10 +37,7 @@ pub async fn namespaces_summary_from(
     let client = source.client_for_context(&cluster_context).await?;
     let ns_api: Api<k8s_openapi::api::core::v1::Namespace> = Api::all(client);
 
-    let namespaces = ns_api
-        .list(&list_params())
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
+    let namespaces = ns_api.list(&list_params()).await.map_err(AppError::from)?;
 
     let summaries: Vec<NamespaceSummary> = namespaces
         .iter()

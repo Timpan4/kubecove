@@ -11,10 +11,8 @@
 		PanelRightOpen,
 		Table2,
 	} from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
-		Alert,
-		AlertDescription,
-		AlertTitle,
 		Badge,
 		Button,
 		Empty,
@@ -458,11 +456,11 @@
 			(!sourceReady || (resourcesQuery.isPending && !resourcesQuery.isPlaceholderData)),
 	);
 	const resourceError = $derived(
-		resourcesQuery.error instanceof Error
-			? resourcesQuery.error.message
-			: resourcesQuery.error
-				? String(resourcesQuery.error)
-				: "",
+		sourceQuery.isError
+			? sourceQuery.error
+			: resourcesQuery.isError
+				? resourcesQuery.error
+				: null,
 	);
 
 	$effect(() => {
@@ -825,10 +823,10 @@
 			</EmptyHeader>
 		</Empty>
 	{:else if resourceError}
-		<Alert variant="destructive">
-			<AlertTitle>Failed to load resources</AlertTitle>
-			<AlertDescription>{resourceError}</AlertDescription>
-		</Alert>
+		<FriendlyError
+			error={resourceError}
+			context={{ operation: "resourcesLoad", fallbackTitle: "Failed to load resources" }}
+		/>
 	{:else if loading}
 		<div class="flex min-h-52 items-center justify-center gap-2 text-xs text-muted-foreground">
 			<Spinner />
@@ -864,9 +862,15 @@
 			onClearFilters={clearFilters}
 		/>
 		{#if realtimeError}
-			<Alert variant="destructive">
-				<AlertDescription>{realtimeError}</AlertDescription>
-			</Alert>
+			<FriendlyError
+				mode="compact"
+				error={realtimeError}
+				context={{
+					operation: "resourcesLoad",
+					fallbackTitle: "Realtime watch failed",
+					partial: true,
+				}}
+			/>
 		{/if}
 
 		<div
@@ -915,15 +919,16 @@
 							<PanelRightOpen />
 						</Button>
 					</div>
-					<button
+					<Button
 						type="button"
-						class="flex min-h-0 flex-1 flex-col items-center gap-2 px-2 py-3 text-muted-foreground hover:text-foreground"
+						variant="ghost"
+						class="h-auto min-h-0 w-full flex-1 flex-col gap-2 rounded-none border-0 px-2 py-3 text-muted-foreground hover:bg-transparent hover:text-foreground"
 						onclick={() => (mapPanelOpen = true)}
 						aria-label="Show ownership map"
 					>
 						<GitBranch class="size-4 shrink-0" />
 						<span class="[writing-mode:vertical-rl] text-xs font-semibold">Map</span>
-					</button>
+					</Button>
 				</aside>
 			{/if}
 
@@ -1001,12 +1006,13 @@
 													data-sticky="app-group"
 													class={cnfast("sticky z-20 !p-0 bg-background", STICKY_APP_GROUP_TOP)}
 												>
-													<button
-														type="button"
-														class="flex w-full cursor-pointer items-center gap-2 border-0 bg-muted/50 px-3 py-2 text-left text-inherit focus-visible:ring-1 focus-visible:ring-ring/50"
-														onclick={() => toggleGroup(entry.key)}
-														aria-expanded={!entry.collapsed}
-													>
+							<Button
+								type="button"
+								variant="ghost"
+								class="h-auto w-full justify-start rounded-none border-0 bg-muted/50 px-3 py-2 text-left text-inherit hover:bg-muted/60"
+								onclick={() => toggleGroup(entry.key)}
+								aria-expanded={!entry.collapsed}
+							>
 														{#if entry.collapsed}
 															<ChevronRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 														{:else}
@@ -1015,9 +1021,9 @@
 														<GroupIcon class={cnfast("size-3.5 shrink-0", visual.className)} aria-hidden="true" />
 														<span class="text-muted-foreground">{entry.label}</span>
 														<small class="text-[0.6875rem] font-medium text-muted-foreground">
-															{entry.count} resources on this page
-														</small>
-													</button>
+									{entry.count} resources on this page
+								</small>
+							</Button>
 												</TableCell>
 											</TableRow>
 										{:else if entry.type === "type"}
@@ -1028,13 +1034,14 @@
 													colspan={tableVisibleColumnCount}
 													class={cnfast("sticky z-10 !p-0 bg-card", STICKY_TYPE_GROUP_TOP)}
 												>
-													<button
-														type="button"
-														class={cnfast(
-															"flex w-full cursor-pointer items-center gap-2 border-0 bg-card py-1.5 pr-3 text-left text-[0.6875rem] text-inherit focus-visible:ring-1 focus-visible:ring-ring/50",
-															tableModel.groupedByGitOps ? "pl-6" : "pl-3",
-														)}
-														onclick={() => toggleGroup(entry.key)}
+							<Button
+								type="button"
+								variant="ghost"
+								class={cnfast(
+									"h-auto w-full justify-start rounded-none border-0 bg-card py-1.5 pr-3 text-left text-[0.6875rem] text-inherit hover:bg-muted/40",
+									tableModel.groupedByGitOps ? "pl-6" : "pl-3",
+								)}
+								onclick={() => toggleGroup(entry.key)}
 														aria-expanded={!entry.collapsed}
 													>
 														{#if entry.collapsed}
@@ -1045,9 +1052,9 @@
 														<TypeIcon class={cnfast("size-3.5 shrink-0", visual.className)} aria-hidden="true" />
 														<span>{entry.label}</span>
 														<small class="text-[0.625rem] font-medium normal-case text-muted-foreground">
-															{entry.count} on this page
-														</small>
-													</button>
+									{entry.count} on this page
+								</small>
+							</Button>
 												</TableCell>
 											</TableRow>
 										{:else}
@@ -1174,15 +1181,16 @@
 							<PanelRightOpen />
 						</Button>
 					</div>
-					<button
+					<Button
 						type="button"
-						class="flex min-h-0 flex-1 flex-col items-center gap-2 px-2 py-3 text-muted-foreground hover:text-foreground"
+						variant="ghost"
+						class="h-auto min-h-0 w-full flex-1 flex-col gap-2 rounded-none border-0 px-2 py-3 text-muted-foreground hover:bg-transparent hover:text-foreground"
 						onclick={() => (tablePanelOpen = true)}
 						aria-label="Show resource table"
 					>
 						<Table2 class="size-4 shrink-0" />
 						<span class="[writing-mode:vertical-rl] text-xs font-semibold">Table</span>
-					</button>
+					</Button>
 				</aside>
 			{/if}
 		</div>
@@ -1197,13 +1205,15 @@
 {/snippet}
 
 {#snippet SortButton(column: ResourceSortColumn, label: string)}
-	<button
+	<Button
 		type="button"
-		class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-left text-inherit"
+		variant="ghost"
+		size="xs"
+		class="h-auto gap-1 border-0 bg-transparent p-0 text-left text-inherit hover:bg-transparent"
 		onclick={() => toggleSort(column)}
 		aria-label={`Sort by ${label}`}
 	>
 		{label}
 		{#if sortColumn === column && sortDesc}<ArrowDown class="size-3" aria-hidden="true" />{:else if sortColumn === column}<ArrowUp class="size-3" aria-hidden="true" />{:else}<ChevronsUpDown class="size-3" aria-hidden="true" />{/if}
-	</button>
+	</Button>
 {/snippet}

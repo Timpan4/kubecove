@@ -194,7 +194,7 @@ describe("workspace helpers", () => {
 			"kind-prod",
 		]);
 		expect(summarizeWorkspaceScope(workspace.scope)).toBe(
-			"Ops group (2) / default, payments / Pod, Deployment +4",
+			"Ops group (2) / default, payments / Pod, Deployment +7",
 		);
 		expect(JSON.stringify(workspace)).not.toContain("kubeconfig");
 		expect(JSON.stringify(workspace)).not.toContain("client-key");
@@ -381,8 +381,8 @@ describe("workspace helpers", () => {
 		);
 
 		expect(source).not.toContain("namespaceScopeUnavailable");
-		expect(source).toContain("You can still save an");
-		expect(source).toContain("all-namespace workspace");
+		expect(source).toContain('mode="compact"');
+		expect(source).toContain('fallbackTitle: "Failed to load namespaces"');
 	});
 
 	test("keeps overview Resources primary and visible in wrapping actions", () => {

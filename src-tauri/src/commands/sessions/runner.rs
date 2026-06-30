@@ -40,7 +40,12 @@ async fn verify_pod_port_forward(
     let forwarder = pods
         .portforward(&target.pod_name, &[target.pod_port])
         .await
-        .map_err(|err| AppError::kube(port_forward_error_message(err)))?;
+        .map_err(|err| {
+            AppError::new(
+                port_forward_error_message(err),
+                "liveSessionTargetUnavailable",
+            )
+        })?;
     forwarder.abort();
     Ok(())
 }
@@ -165,7 +170,7 @@ pub(super) async fn start_pod_port_forward_in_registry(
         if registry.has_local_port(local_port) {
             return Err(AppError::new(
                 format!("local port {local_port} is already forwarded"),
-                "session",
+                "liveSessionTargetUnavailable",
             ));
         }
     }
@@ -173,15 +178,25 @@ pub(super) async fn start_pod_port_forward_in_registry(
     let bind_port = request.local_port.unwrap_or(0);
     let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, bind_port))
         .await
-        .map_err(|err| AppError::new(format!("local port unavailable: {err}"), "session"))?;
+        .map_err(|err| {
+            AppError::new(
+                format!("local port unavailable: {err}"),
+                "liveSessionTargetUnavailable",
+            )
+        })?;
     let local_port = listener
         .local_addr()
-        .map_err(|err| AppError::new(format!("local port unavailable: {err}"), "session"))?
+        .map_err(|err| {
+            AppError::new(
+                format!("local port unavailable: {err}"),
+                "liveSessionTargetUnavailable",
+            )
+        })?
         .port();
     if registry.has_local_port(local_port) {
         return Err(AppError::new(
             format!("local port {local_port} is already forwarded"),
-            "session",
+            "liveSessionTargetUnavailable",
         ));
     }
 

@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
 	createMockTauriClient,
+	createMockChannel,
 	addKubeconfigPaths,
 	clearBackendDiagnostics,
 	detectFlux,
+	listArgoAppProjects,
+	listArgoApplicationSets,
+	listArgoApplications,
+	listIncidentCockpit,
 	getBackendDiagnostics,
 	getAppUsageMetrics,
 	getFluxResourceDetails,
@@ -11,8 +16,10 @@ import {
 	getKubeconfigSources,
 	getHelmReleaseReconciliation,
 	listResourceMetrics,
+	listResourceScope,
 	listRbacInspection,
 	getResourceYaml,
+	isTauriRuntime,
 	isAppError,
 	listPortForwards,
 	listPodExecSessions,
@@ -27,6 +34,7 @@ import {
 	setKubeconfigEnvVar,
 	setBackendDiagnosticsEnabled,
 	setShowKubeconfigSourceLabels,
+	shouldUseBrowserDevMocks,
 	startPodLogStream,
 	startPodExecSession,
 	startPodPortForward,
@@ -36,6 +44,7 @@ import {
 	stopPodPortForward,
 	writePodExecStdin,
 } from "../src/lib/tauri";
+import { createDevMockTauriClient } from "../src/lib/tauri-dev-mocks";
 import { queryKeys } from "../src/lib/queryKeys";
 import { kubeconfigSourceKey } from "../src/lib/settings";
 import type {
@@ -72,12 +81,163 @@ describe("createMockTauriClient", () => {
 		expect(await listKubeContexts(client)).toEqual(mockContexts);
 	});
 
+	test("passes args to handler mock responses", async () => {
+		const client = createMockTauriClient({
+			list_namespaces: (args) => [
+				{
+					name: args?.clusterContext === "prod" ? "payments" : "default",
+					age: "1d",
+				},
+			],
+		});
+
+		expect(await listNamespaces(client, "prod")).toEqual([
+			{ name: "payments", age: "1d" },
+		]);
+	});
+
 	test("throws for unknown command", async () => {
 		const client = createMockTauriClient({});
 
 		await expect(listKubeContexts(client)).rejects.toThrow(
 			"No mock response for command: list_kube_contexts",
 		);
+	});
+
+	test("detects browser dev mock runtime", () => {
+		expect(shouldUseBrowserDevMocks({ DEV: true }, {})).toBe(true);
+		expect(shouldUseBrowserDevMocks({ DEV: false }, {})).toBe(false);
+		expect(
+			shouldUseBrowserDevMocks(
+				{ DEV: true },
+				{ __TAURI_INTERNALS__: { invoke: () => undefined } },
+			),
+		).toBe(false);
+		expect(isTauriRuntime({ isTauri: true })).toBe(true);
+	});
+
+	test("mock channel stops forwarding after cleanup", () => {
+		const messages: string[] = [];
+		const channel = createMockChannel<string>((message) => messages.push(message)) as ReturnType<
+			typeof createMockChannel<string>
+		> & { cleanupCallback: () => void };
+
+		channel.onmessage("connected");
+		channel.cleanupCallback();
+		channel.onmessage("ignored");
+
+		expect(messages).toEqual(["connected"]);
+		expect(channel.toJSON()).toStartWith("__MOCK_CHANNEL__:");
+	});
+
+	test("browser dev topology returns mode-specific canonical graph data", async () => {
+		const client = createDevMockTauriClient();
+		const ownership = await listResourceTopology(client, "mock-dev", ["payments"], "ownership");
+		const network = await listResourceTopology(client, "mock-dev", ["payments"], "networkFlow");
+
+		expect(ownership.nodes.map((node) => node.id)).toContain(
+			"mock-dev:apps/v1:Deployment:payments:payments-api",
+		);
+		expect(ownership.nodes.map((node) => node.kind)).toContain("ReplicaSet");
+		expect(ownership.nodes.map((node) => node.kind)).toContain("ConfigMap");
+		expect(ownership.nodes.map((node) => node.kind)).toContain("Secret");
+		expect(ownership.nodes.map((node) => node.kind)).toContain("Service");
+		expect(ownership.edges.every((edge) => edge.relation !== "routesTo")).toBe(true);
+		expect(network.edges.map((edge) => edge.relation)).toContain("routesTo");
+		expect(network.edges.map((edge) => edge.relation)).toContain("targets");
+		expect(network.nodes.some((node) => node.portHints?.length)).toBe(true);
+	});
+
+	test("browser dev ownership topology matches real support-resource shape", async () => {
+		const client = createDevMockTauriClient();
+		const ownership = await listResourceTopology(client, "admin@solid-k8s", ["argocd", "monitoring", "todo", "jobs-lab"], "ownership");
+
+		expect(ownership.nodes.map((node) => node.id)).toContain(
+			"admin@solid-k8s:v1:ConfigMap:argocd:argocd-cm",
+		);
+		expect(ownership.nodes.map((node) => node.id)).toContain(
+			"admin@solid-k8s:v1:Secret:argocd:argocd-secret",
+		);
+		expect(ownership.nodes.map((node) => node.id)).toContain(
+			"admin@solid-k8s:v1:Service:monitoring:grafana",
+		);
+		expect(ownership.nodes.map((node) => node.id)).toContain(
+			"admin@solid-k8s:v1:ConfigMap:todo:todo-web-content",
+		);
+		expect(ownership.nodes.map((node) => node.id)).toContain(
+			"admin@solid-k8s:v1:Secret:todo:todo-web-session",
+		);
+		expect(ownership.nodes.map((node) => node.id)).toContain(
+			"admin@solid-k8s:v1:Service:todo:todo-web",
+		);
+		expect(ownership.nodes.map((node) => node.name)).not.toContain("kube-root-ca.crt");
+		expect(ownership.edges.every((edge) => edge.relation === "owns")).toBe(true);
+	});
+
+	test("browser dev mock keeps support resources attached to workload owners", async () => {
+		const client = createDevMockTauriClient();
+		const ownership = await listResourceTopology(client, "mock-dev", ["payments"], "ownership");
+		const deploymentId = "mock-dev:apps/v1:Deployment:payments:payments-api";
+
+		for (const supportId of [
+			"mock-dev:v1:ConfigMap:payments:payments-api-config",
+			"mock-dev:v1:Secret:payments:payments-api-secrets",
+			"mock-dev:v1:Service:payments:payments-api",
+			"mock-dev:networking.k8s.io/v1:Ingress:payments:payments-api",
+		]) {
+			expect(ownership.edges).toContainEqual({
+				id: `${deploymentId}->${supportId}`,
+				source: deploymentId,
+				target: supportId,
+				relation: "owns",
+			});
+		}
+		expect(ownership.warnings.join(" ")).not.toContain("static owner");
+	});
+
+	test("browser dev mock exposes richer network, compare, and live-session surfaces", async () => {
+		const client = createDevMockTauriClient();
+		const network = await listResourceTopology(client, "mock-dev", [], "networkFlow");
+		const mockDeployments = await listResourceScope(client, "mock-dev", [{ kind: "Deployment" }]);
+		const dockerDeployments = await listResourceScope(client, "docker-desktop", [{ kind: "Deployment" }]);
+		const portForwards = await listPortForwards(client);
+		const execSessions = await listPodExecSessions(client);
+
+		expect(network.edges.filter((edge) => edge.relation === "routesTo").length).toBeGreaterThanOrEqual(4);
+		expect(network.nodes.filter((node) => node.kind === "EndpointSlice").length).toBeGreaterThanOrEqual(4);
+		expect(mockDeployments.map((row) => row.name)).toContain("payments-api");
+		expect(dockerDeployments.map((row) => row.name)).toEqual([
+			"registry",
+			"ingress-nginx-controller",
+		]);
+		expect(portForwards.map((session) => session.localUrl)).toContain("http://127.0.0.1:13000");
+		expect(execSessions.map((session) => session.command.join(" "))).toContain("/bin/sh");
+	});
+
+	test("browser dev mock provides deeper GitOps, Helm, RBAC, and incident data", async () => {
+		const client = createDevMockTauriClient();
+		const fluxDetection = await detectFlux(client, "mock-dev");
+		const fluxResources = (await Promise.all(
+			fluxDetection.kinds.map((kind) => listFluxResources(client, "mock-dev", kind)),
+		)).flat();
+		const incidents = await listIncidentCockpit(client, "docker-desktop", []);
+		const rbac = await listRbacInspection(client, "mock-dev", ["payments", "monitoring", "argocd"]);
+
+		expect(await listArgoApplications(client, "mock-dev")).toHaveLength(2);
+		expect(await listArgoApplicationSets(client, "mock-dev")).toHaveLength(2);
+		expect(await listArgoAppProjects(client, "mock-dev")).toHaveLength(2);
+		expect(fluxResources.map((row) => row.resourceKind.kind)).toEqual([
+			"Kustomization",
+			"HelmRelease",
+		]);
+		expect(await listHelmReleases(client, "mock-dev")).toHaveLength(2);
+		expect(rbac.serviceAccounts).toHaveLength(3);
+		expect(rbac.roles.length).toBeGreaterThan(0);
+		expect(rbac.clusterRoleBindings.length).toBeGreaterThan(0);
+		expect(incidents.items.map((item) => item.resource.name)).toEqual([
+			"ingress-nginx-controller",
+			"ingress-nginx-controller-7bdbf967f9-dk4nc",
+		]);
 	});
 
 	test("passes Pod exec requests through typed wrappers", async () => {

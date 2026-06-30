@@ -17,6 +17,18 @@ bun run rust:lint
 bun run check
 ```
 
+## Browser Dev Mock Mode
+
+`bun run tauri dev` starts the Vite server at `http://localhost:1430`. Opening
+that URL in a normal browser during development runs the Svelte frontend with
+browser-only mock Tauri responses. This is intended for Chrome DevTools,
+browser automation, and frontend inspection.
+
+The Tauri webview still uses real Tauri IPC and real Rust-side Kubernetes
+commands. The browser tab does not receive kubeconfig contents, does not call a
+local Rust bridge, and does not access a real cluster. Treat all browser data as
+fake, even when a saved workspace name matches a real context.
+
 `bun run check` runs the current local verification bundle:
 
 ```sh

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
 		Button,
 		Select,
@@ -34,11 +35,6 @@
 		contexts.find((context) => context.isCurrent)?.name ?? contexts[0]?.name ?? "",
 	);
 	const selectedValue = $derived(value ?? preferredContextName);
-	const errorMessage = $derived(
-		contextsQuery.error instanceof Error
-			? contextsQuery.error.message
-			: "Failed to load contexts",
-	);
 
 	$effect(() => {
 		if (!preferredContextName) return;
@@ -52,8 +48,11 @@
 		Loading contexts...
 	</div>
 {:else if contextsQuery.isError}
-	<div class="flex items-center gap-2 text-xs text-destructive">
-		<span>Error: {errorMessage}</span>
+	<div class="flex flex-col gap-2">
+		<FriendlyError
+			error={contextsQuery.error}
+			context={{ operation: "contextLoad", fallbackTitle: "Failed to load contexts" }}
+		/>
 		<Button type="button" variant="outline" size="sm" onclick={() => void contextsQuery.refetch()}>
 			Retry
 		</Button>

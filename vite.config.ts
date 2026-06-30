@@ -14,6 +14,14 @@ export default defineConfig(() => ({
 		alias: {
 			"@": "/src",
 		},
+		dedupe: [
+			"@codemirror/lang-yaml",
+			"@codemirror/language",
+			"@codemirror/lint",
+			"@codemirror/state",
+			"@codemirror/view",
+			"@lezer/highlight",
+		],
 	},
 	optimizeDeps: {
 		exclude: ["@xyflow/svelte"],

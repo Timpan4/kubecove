@@ -1,39 +1,29 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import {
-		Activity,
 		Bug,
 		Cable,
 		FileCode2,
 		FolderCog,
 		RefreshCw,
 		Search,
-		Settings,
 		SlidersHorizontal,
 	} from "lucide-svelte";
-	import { createQuery } from "@tanstack/svelte-query";
 	import {
 		Button,
-		Checkbox,
 		FieldGroup,
 		Input,
 		SegmentedControl,
+		Switch,
 	} from "@/components/ui/svelte";
-	import { queryKeys } from "@/lib/queryKeys";
 	import type { TimestampTimezone, YamlDiffStyle } from "@/lib/settings";
 	import {
 		takeUiRuntimeSettingsFocus,
 	} from "@/lib/ui-runtime";
-	import {
-		createTauriClient,
-		getAppUsageMetrics,
-	} from "@/lib/tauri";
-	import type { AppUsageMetrics, YamlEncoding, YamlViewMode } from "@/lib/types";
+	import type { YamlEncoding, YamlViewMode } from "@/lib/types";
 	import DiagnosticsSettings from "./DiagnosticsSettings.svelte";
 	import KubeconfigSettings from "./KubeconfigSettings.svelte";
 	import SettingsRow from "./SettingsRow.svelte";
-	import StatGrid from "./StatGrid.svelte";
-	import SurfaceFrame from "./SurfaceFrame.svelte";
 	import UpdatesSettings from "./UpdatesSettings.svelte";
 	import { settingsStore } from "@/lib/settings-store";
 
@@ -178,9 +168,13 @@
 		{ id: "diagnostics", label: "Diagnostics" },
 	];
 
-	const client = createTauriClient();
 	let activeCategory = $state<SettingsCategoryId>("general");
 	let query = $state("");
+	let {
+		onBack,
+	}: {
+		onBack?: () => void;
+	} = $props();
 	const settings = $derived($settingsStore);
 
 	const searching = $derived(query.trim().length > 0);
@@ -195,14 +189,6 @@
 			.flat()
 			.some((row) => matchesSettingsQuery(query, row)),
 	);
-
-	const usageQuery = createQuery<AppUsageMetrics>(() => ({
-		queryKey: queryKeys.appUsageMetrics(),
-		queryFn: () => getAppUsageMetrics(client),
-		enabled: settings.showUsageFooter,
-		placeholderData: (previousData) => previousData,
-		refetchInterval: 5_000,
-	}));
 
 	onMount(() => {
 		if (!takeUiRuntimeSettingsFocus()) return;
@@ -224,88 +210,71 @@
 		return categoryRows[id].some((row) => matchesSettingsQuery(query, row));
 	}
 
-	function memoryText(bytes: number): string {
-		if (bytes >= 1024 * 1024 * 1024) {
-			return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-		}
-		if (bytes >= 1024 * 1024) {
-			return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
-		}
-		return `${Math.round(bytes / 1024)} KB`;
-	}
 </script>
 
-<div class="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4 md:p-6">
-	<header class="flex flex-wrap items-center justify-between gap-3">
-		<div class="flex items-center gap-3">
-			<Settings class="size-5 text-muted-foreground" />
-			<div>
-				<h2 class="font-heading text-lg font-semibold">Settings</h2>
-				<p class="text-xs text-muted-foreground">
-					Runtime, safety, live-session, and YAML preferences.
-				</p>
-			</div>
-		</div>
-		<div class="relative w-full sm:w-64">
+<div class="mx-auto grid w-full max-w-5xl gap-7 p-4 md:grid-cols-[240px_minmax(0,1fr)] md:p-6">
+	<aside class="flex min-w-0 flex-col gap-3">
+		{#if onBack}
+			<Button
+				type="button"
+				variant="ghost"
+				size="sm"
+				class="h-7 w-fit px-0 text-sm text-muted-foreground hover:text-foreground"
+				onclick={onBack}
+			>
+				Back to app
+			</Button>
+		{/if}
+		<div class="relative">
 			<Search
 				class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
 			/>
 			<Input
-				class="h-8 pl-8"
+				class="h-9 pl-9 text-sm"
 				bind:value={query}
 				placeholder="Search settings..."
 				aria-label="Search settings"
 			/>
 		</div>
-	</header>
+		<nav class="grid gap-1" aria-label="Settings sections">
+			{#each categories as category}
+				<Button
+					type="button"
+					variant={activeCategory === category.id && !searching
+						? "secondary"
+						: "ghost"}
+					size="sm"
+					class="h-8 justify-start gap-2.5 px-3 text-sm"
+					onclick={() => {
+						activeCategory = category.id;
+						query = "";
+					}}
+				>
+					{#if category.id === "general"}<SlidersHorizontal data-icon="inline-start" />
+					{:else if category.id === "sessions"}<Cable data-icon="inline-start" />
+					{:else if category.id === "yaml"}<FileCode2 data-icon="inline-start" />
+					{:else if category.id === "kubeconfig"}<FolderCog data-icon="inline-start" />
+					{:else if category.id === "updates"}<RefreshCw data-icon="inline-start" />
+					{:else}<Bug data-icon="inline-start" />{/if}
+					<span>{category.label}</span>
+				</Button>
+			{/each}
+		</nav>
+	</aside>
 
-	<div class="flex flex-wrap gap-2">
-		{#each categories as category}
-			<Button
-				type="button"
-				variant={activeCategory === category.id && !searching
-					? "secondary"
-					: "outline"}
-				size="sm"
-				onclick={() => {
-					activeCategory = category.id;
-					query = "";
-				}}
-			>
-				{category.label}
-			</Button>
-		{/each}
-	</div>
+	<section class="flex min-w-0 flex-col gap-4">
+		<h2 class="font-heading text-xl font-semibold">{heading}</h2>
 
-	<StatGrid
-		stats={[
-			["Runtime", "Svelte"],
-			["Usage footer", settings.showUsageFooter ? "on" : "off"],
-			["YAML mode", settings.yamlViewModeDefault],
-			["Kubeconfig", settings.kubeconfigSourceLabel],
-		]}
-	/>
+		{#if searching && !hasMatches}
+			<div class="rounded-md border bg-card p-4 text-sm text-muted-foreground">
+				No settings match "{query.trim()}".
+			</div>
+		{/if}
 
-	{#if searching && !hasMatches}
-		<div class="rounded-md border bg-card p-4 text-sm text-muted-foreground">
-			No settings match "{query.trim()}".
-		</div>
-	{/if}
-
-	<div class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-		{#if heading === "General"}<SlidersHorizontal class="size-3.5" />
-		{:else if heading === "Live sessions"}<Cable class="size-3.5" />
-		{:else if heading === "YAML"}<FileCode2 class="size-3.5" />
-		{:else if heading === "Kubeconfig"}<FolderCog class="size-3.5" />
-		{:else if heading === "Updates"}<RefreshCw class="size-3.5" />
-		{:else}<Bug class="size-3.5" />{/if}
-		<span>{heading}</span>
-	</div>
-
-	{#if showCategory("general")}
+		{#if showCategory("general")}
 		<FieldGroup>
 			<SettingsRow {...GENERAL_ROWS.exactTimestamps}>
-				<Checkbox
+				<Switch
 					checked={settings.showExactTimestamps}
 					onCheckedChange={settings.setShowExactTimestamps}
 					aria-label={GENERAL_ROWS.exactTimestamps.title}
@@ -324,56 +293,56 @@
 				/>
 			</SettingsRow>
 			<SettingsRow {...GENERAL_ROWS.usageFooter}>
-				<Checkbox
+				<Switch
 					checked={settings.showUsageFooter}
 					onCheckedChange={settings.setShowUsageFooter}
 					aria-label={GENERAL_ROWS.usageFooter.title}
 				/>
 			</SettingsRow>
 			<SettingsRow {...GENERAL_ROWS.ownershipMap}>
-				<Checkbox
+				<Switch
 					checked={settings.showOwnershipMapByDefault}
 					onCheckedChange={settings.setShowOwnershipMapByDefault}
 					aria-label={GENERAL_ROWS.ownershipMap.title}
 				/>
 			</SettingsRow>
 			<SettingsRow {...GENERAL_ROWS.fullTopologyOnSelection}>
-				<Checkbox
+				<Switch
 					checked={settings.showFullTopologyOnSelection}
 					onCheckedChange={settings.setShowFullTopologyOnSelection}
 					aria-label={GENERAL_ROWS.fullTopologyOnSelection.title}
 				/>
 			</SettingsRow>
 			<SettingsRow {...GENERAL_ROWS.unavailableGitOpsProviders}>
-				<Checkbox
+				<Switch
 					checked={settings.showUnavailableGitOpsProviders}
 					onCheckedChange={settings.setShowUnavailableGitOpsProviders}
 					aria-label={GENERAL_ROWS.unavailableGitOpsProviders.title}
 				/>
 			</SettingsRow>
 		</FieldGroup>
-	{/if}
+		{/if}
 
-	{#if showCategory("sessions")}
+		{#if showCategory("sessions")}
 		<FieldGroup>
 			<SettingsRow {...SESSION_ROWS.autoStartPortForwards}>
-				<Checkbox
+				<Switch
 					checked={settings.autoStartSavedPortForwards}
 					onCheckedChange={settings.setAutoStartSavedPortForwards}
 					aria-label={SESSION_ROWS.autoStartPortForwards.title}
 				/>
 			</SettingsRow>
 			<SettingsRow {...SESSION_ROWS.keepLiveSessions}>
-				<Checkbox
+				<Switch
 					checked={settings.keepLiveSessionsOnWorkspaceSwitch}
 					onCheckedChange={settings.setKeepLiveSessionsOnWorkspaceSwitch}
 					aria-label={SESSION_ROWS.keepLiveSessions.title}
 				/>
 			</SettingsRow>
 		</FieldGroup>
-	{/if}
+		{/if}
 
-	{#if showCategory("yaml")}
+		{#if showCategory("yaml")}
 		<FieldGroup>
 			<SettingsRow {...YAML_ROWS.cleanupShape}>
 				<SegmentedControl
@@ -409,51 +378,33 @@
 				/>
 			</SettingsRow>
 			<SettingsRow {...YAML_ROWS.errorLens}>
-				<Checkbox
+				<Switch
 					checked={settings.yamlErrorLensEnabled}
 					onCheckedChange={settings.setYamlErrorLensEnabled}
 					aria-label={YAML_ROWS.errorLens.title}
 				/>
 			</SettingsRow>
 			<SettingsRow {...YAML_ROWS.forceConflicts}>
-				<Checkbox
+				<Switch
 					checked={settings.allowYamlForceConflicts}
 					onCheckedChange={settings.setAllowYamlForceConflicts}
 					aria-label={YAML_ROWS.forceConflicts.title}
 				/>
 			</SettingsRow>
 		</FieldGroup>
-	{/if}
+		{/if}
 
-	{#if showCategory("kubeconfig")}
-		<KubeconfigSettings />
-	{/if}
+		{#if showCategory("kubeconfig")}
+			<KubeconfigSettings />
+		{/if}
 
-	{#if showCategory("updates")}
-		<UpdatesSettings />
-	{/if}
+		{#if showCategory("updates")}
+			<UpdatesSettings />
+		{/if}
 
-	{#if showCategory("diagnostics")}
-		<DiagnosticsSettings />
-	{/if}
+		{#if showCategory("diagnostics")}
+			<DiagnosticsSettings />
+		{/if}
 
-	{#if settings.showUsageFooter}
-		<SurfaceFrame
-			icon={Activity}
-			title="Usage Footer"
-			query={usageQuery}
-			errorLabel="Usage metrics unavailable"
-		>
-			{@const usage = usageQuery.data}
-			{#if usage}
-				<StatGrid
-					stats={[
-						["CPU", `${usage.cpuPercent.toFixed(1)}%`],
-						["Memory", memoryText(usage.memoryBytes)],
-						["Processes", usage.processCount],
-					]}
-				/>
-			{/if}
-		</SurfaceFrame>
-	{/if}
+	</section>
 </div>

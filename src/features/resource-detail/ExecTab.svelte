@@ -6,6 +6,7 @@
 	import { Terminal as XtermTerminal } from "@xterm/xterm";
 	import { onMount, tick } from "svelte";
 	import { Play, RotateCcw, Square, Terminal as TerminalIcon } from "lucide-svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -58,7 +59,6 @@
 		type PodExecPreset,
 	} from "./pod-exec-helpers";
 	import type { ContainerStatusRow } from "./helpers";
-	import { getErrorMessage } from "./helpers";
 
 	const DEFAULT_COLS = 100;
 	const DEFAULT_ROWS = 32;
@@ -87,7 +87,7 @@
 	let stoppingId = $state<string | null>(null);
 	let status = $state("idle");
 	let message = $state("Start an exec session to open the terminal.");
-	let error = $state("");
+	let error = $state<unknown>(null);
 	let sessionId = $state<string | null>(null);
 	let channel = $state<ReturnType<typeof createPodExecChannel> | null>(null);
 	let terminalHost = $state<HTMLDivElement | null>(null);
@@ -229,7 +229,7 @@
 	}
 
 	async function startSession() {
-		error = "";
+		error = null;
 		await tick();
 		fitTerminal();
 		const request = buildPodExecRequest(
@@ -269,7 +269,7 @@
 			closePodExecChannel(nextChannel);
 			if (channel === nextChannel) channel = null;
 			status = "error";
-			error = getErrorMessage(err);
+			error = err;
 		} finally {
 			starting = false;
 		}
@@ -282,7 +282,7 @@
 			await stopPodExecSession(client, id);
 			await queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() });
 		} catch (err) {
-			error = getErrorMessage(err);
+			error = err;
 		} finally {
 			stoppingId = null;
 		}
@@ -401,10 +401,10 @@
 		</Label>
 
 		{#if error}
-			<Alert variant="destructive">
-				<AlertTitle>Exec failed</AlertTitle>
-				<AlertDescription>{error}</AlertDescription>
-			</Alert>
+			<FriendlyError
+				error={error}
+				context={{ operation: "exec", fallbackTitle: "Exec failed" }}
+			/>
 		{/if}
 
 		<div class="flex flex-wrap items-center gap-2">

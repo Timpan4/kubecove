@@ -7,10 +7,9 @@ use kubecove_lib::models::{
     PodExecConfirmation, PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummary,
     PodExecTerminalSize, PodLogStreamRequest, RbacInspectionSummary, RbacRiskIndicator,
     RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, ResourceDetails, ResourceDetailsFull,
-    ResourceEventSummary, ResourceHealth,
-    ResourceMetricSummary, ResourceMetricsAvailability, ResourceMetricsAvailabilityStatus,
-    ResourceMetricsSummary, ResourceSummary, ServiceAccountSummary, StreamMessage,
-    WatchResourceKey, WatchResourceKind,
+    ResourceEventSummary, ResourceHealth, ResourceMetricSummary, ResourceMetricsAvailability,
+    ResourceMetricsAvailabilityStatus, ResourceMetricsSummary, ResourceSummary,
+    ServiceAccountSummary, StreamMessage, WatchResourceKey, WatchResourceKind,
 };
 use serde_json::json;
 
@@ -104,7 +103,7 @@ fn test_app_error_serialize() {
     let err = AppError::kube("connection refused");
     let json_val = serde_json::to_value(&err).unwrap();
     assert_eq!(json_val["message"], "connection refused");
-    assert_eq!(json_val["kind"], "cluster");
+    assert_eq!(json_val["kind"], "network");
 }
 
 #[test]

@@ -1,7 +1,15 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
 	import { Activity, CircleAlert } from "lucide-svelte";
-	import { Button } from "@/components/ui/svelte";
+	import {
+		Button,
+		Table,
+		TableBody,
+		TableCell,
+		TableHead,
+		TableHeader,
+		TableRow,
+	} from "@/components/ui/svelte";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { createTauriClient, getAppUsageMetrics } from "@/lib/tauri";
 	import {
@@ -72,19 +80,23 @@
 					App process tree
 				</div>
 				<div class="max-h-[min(58vh,28rem)] overflow-auto">
-					<table class="w-full border-separate border-spacing-x-0 border-spacing-y-0.5 text-xs">
-						<thead>
-							<tr class="text-xs font-semibold uppercase text-muted-foreground">
-								<th class="px-1 pb-1 text-left">Process</th>
-								<th class="px-1 pb-1 text-right">CPU</th>
-								<th class="px-1 pb-1 text-right">Memory</th>
-								<th class="px-1 pb-1 text-right">Count</th>
-							</tr>
-						</thead>
-						<tbody>
+					<Table class="border-separate border-spacing-x-0 border-spacing-y-0.5 text-xs">
+						<TableHeader>
+							<TableRow class="border-0 text-xs font-semibold uppercase text-muted-foreground hover:bg-transparent">
+								<TableHead class="h-auto px-1 pb-1 text-left">Process</TableHead>
+								<TableHead class="h-auto px-1 pb-1 text-right">CPU</TableHead>
+								<TableHead class="h-auto px-1 pb-1 text-right">Memory</TableHead>
+								<TableHead class="h-auto px-1 pb-1 text-right">Count</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
 							{#each rows as row (`${row.depth}:${row.item.label}`)}
-								<tr class={row.depth > 0 ? "text-muted-foreground" : "text-foreground"}>
-									<td class="min-w-0 py-1 pr-3 align-top">
+								<TableRow
+									class={row.depth > 0
+										? "border-0 text-muted-foreground hover:bg-transparent"
+										: "border-0 text-foreground hover:bg-transparent"}
+								>
+									<TableCell class="min-w-0 py-1 pr-3 align-top">
 										<div class="min-w-0" style={`padding-left: ${row.depth * 0.75}rem`}>
 											<div class={row.depth > 0 ? "truncate text-muted-foreground" : "truncate font-medium"}>
 												{row.item.label}
@@ -95,20 +107,20 @@
 												</div>
 											{/if}
 										</div>
-									</td>
-									<td class="whitespace-nowrap px-1 py-1 text-right align-top tabular-nums">
+									</TableCell>
+									<TableCell class="whitespace-nowrap px-1 py-1 text-right align-top tabular-nums">
 										CPU {formatCpuPercent(row.item.cpuPercent)}
-									</td>
-									<td class="whitespace-nowrap px-1 py-1 text-right align-top tabular-nums">
+									</TableCell>
+									<TableCell class="whitespace-nowrap px-1 py-1 text-right align-top tabular-nums">
 										{formatMemoryBytes(row.item.memoryBytes)}
-									</td>
-									<td class="whitespace-nowrap py-1 pl-1 text-right align-top tabular-nums">
+									</TableCell>
+									<TableCell class="whitespace-nowrap py-1 pl-1 text-right align-top tabular-nums">
 										{formatProcessCount(row.item.processCount)}
-									</td>
-								</tr>
+									</TableCell>
+								</TableRow>
 							{/each}
-						</tbody>
-					</table>
+						</TableBody>
+					</Table>
 				</div>
 			</div>
 		{/if}

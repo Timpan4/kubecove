@@ -31,7 +31,6 @@
 		sortPodExecSessions,
 	} from "@/features/resource-detail/pod-exec-helpers";
 	import {
-		argoApplicationGitOpsFilterKey,
 		argoApplicationResourceNamespaces,
 	} from "@/features/resources/helpers";
 	import type { HealthFilter } from "@/features/resources/helpers";
@@ -131,6 +130,7 @@
 		onTargetHelmReleaseResolved,
 		onTargetGitOpsApplicationResolved,
 		onPathStateChange = () => {},
+		onCloseSettings = () => {},
 	}: {
 		workspace: SavedWorkspace;
 		viewMode: WorkspaceViewMode;
@@ -151,6 +151,7 @@
 		onTargetHelmReleaseResolved?: () => void;
 		onTargetGitOpsApplicationResolved?: () => void;
 		onPathStateChange?: (state: PathStateSurfacesState) => void;
+		onCloseSettings?: () => void;
 	} = $props();
 
 	const client = createTauriClient();
@@ -177,7 +178,7 @@
 	let editingSavedPortForwardId = $state<string | null>(null);
 	let savedPortForwardFormError = $state<string | null>(null);
 	let savedPortForwardForm = $state<SavedPortForwardFormValues>(newSavedPortForwardForm());
-	let liveSessionActionError = $state<string | null>(null);
+	let liveSessionActionError = $state<unknown>(null);
 	const autoStartSavedPortForwards = $derived(
 		$settingsStore.autoStartSavedPortForwards,
 	);
@@ -568,14 +569,10 @@
 		onOpenResources(
 			argoApplicationResourceNamespaces(selection.item),
 			"",
-			argoApplicationGitOpsFilterKey(selection.item.name),
+			"",
 			"all",
 			selection.item,
 		);
-	}
-
-	function errorMessage(error: unknown): string {
-		return error instanceof Error ? error.message : String(error);
 	}
 
 	function portForwardSessionTitle(session: PortForwardSessionSummary): string {
@@ -687,8 +684,7 @@
 		try {
 			await navigator.clipboard.writeText(portForwardLocalUrl(session));
 		} catch (error) {
-			liveSessionActionError =
-				error instanceof Error ? error.message : "Failed to copy local URL";
+			liveSessionActionError = error;
 		} finally {
 			copyingSessionId = null;
 		}
@@ -704,7 +700,7 @@
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 			await portForwardsQuery.refetch();
 		} catch (error) {
-			liveSessionActionError = `Reconnect failed: ${portForwardErrorMessage(error)}`;
+			liveSessionActionError = error;
 		} finally {
 			reconnectingSessionId = null;
 		}
@@ -741,7 +737,7 @@
 				lastStatus: "error",
 				lastError: message,
 			});
-			liveSessionActionError = message;
+			liveSessionActionError = error;
 		} finally {
 			startingSavedPortForwardId = null;
 		}
@@ -772,7 +768,7 @@
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 			await portForwardsQuery.refetch();
 		} catch (error) {
-			liveSessionActionError = portForwardErrorMessage(error);
+			liveSessionActionError = error;
 		} finally {
 			startingSavedPortForwards = false;
 		}
@@ -786,8 +782,7 @@
 			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 			await portForwardsQuery.refetch();
 		} catch (error) {
-			liveSessionActionError =
-				error instanceof Error ? error.message : "Failed to stop port-forward";
+			liveSessionActionError = error;
 		} finally {
 			stoppingSessionId = null;
 		}
@@ -801,8 +796,7 @@
 			await queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() });
 			await execSessionsQuery.refetch();
 		} catch (error) {
-			liveSessionActionError =
-				error instanceof Error ? error.message : "Failed to stop exec session";
+			liveSessionActionError = error;
 		} finally {
 			stoppingSessionId = null;
 		}
@@ -822,7 +816,6 @@
 		{gitOpsActiveRailKey}
 		bind:selectedGitOpsItem
 		{selectedGitOpsItemKey}
-		{errorMessage}
 		{openSelectedArgoApplicationResources}
 		{onResourceInspect}
 		{gitOpsStatusClass}
@@ -838,7 +831,6 @@
 		{helmDetailsQuery}
 		{helmReconciliationQuery}
 		{helmReconciliationRows}
-		{errorMessage}
 		{onOpenResources}
 		{helmStatusVariant}
 		{helmReconciliationClass}
@@ -895,5 +887,5 @@
 		{inputValue}
 	/>
 {:else if viewMode === "settings"}
-	<SettingsSurface />
+	<SettingsSurface onBack={onCloseSettings} />
 {/if}

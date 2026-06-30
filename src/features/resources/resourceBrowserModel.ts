@@ -214,6 +214,58 @@ function typeGroupedRows(rows: ResourceSummary[]): ResourceSummary[] {
 	});
 }
 
+function ownerLookupKey(resource: ResourceSummary): string {
+	return `${resource.namespace ?? ""}/${resource.name}`;
+}
+
+function resourcesWithInheritedGitOpsOwners(
+	rows: ResourceSummary[],
+): ResourceSummary[] {
+	const ownerKeys = new Set<string>();
+	for (const row of rows) {
+		if (row.ownerRef) ownerKeys.add(`${row.namespace ?? ""}/${row.ownerRef}`);
+	}
+	if (ownerKeys.size === 0) return rows;
+
+	const resourcesByName = new Map<string, ResourceSummary>();
+	for (const row of rows) {
+		const key = ownerLookupKey(row);
+		if (ownerKeys.has(key)) resourcesByName.set(key, row);
+	}
+	if (resourcesByName.size === 0) return rows;
+	const ownerCache = new Map<ResourceSummary, ResourceSummary | null>();
+
+	const owningResource = (resource: ResourceSummary): ResourceSummary | null => {
+		if (ownerCache.has(resource)) return ownerCache.get(resource) ?? null;
+		if (hasResourceListGitOpsOwner(resource)) return resource;
+		const seen = new Set<ResourceSummary>([resource]);
+		let current: ResourceSummary | undefined = resource;
+		while (current?.ownerRef) {
+			const owner = resourcesByName.get(`${current.namespace ?? ""}/${current.ownerRef}`);
+			if (!owner || seen.has(owner)) break;
+			if (hasResourceListGitOpsOwner(owner)) {
+				ownerCache.set(resource, owner);
+				return owner;
+			}
+			seen.add(owner);
+			current = owner;
+		}
+		ownerCache.set(resource, null);
+		return null;
+	};
+
+	return rows.map((row) => {
+		if (hasResourceListGitOpsOwner(row)) return row;
+		const owner = owningResource(row);
+		if (!owner) return row;
+		return {
+			...row,
+			argoApp: row.argoApp ?? owner.argoApp,
+			gitOpsOwner: row.gitOpsOwner ?? owner.gitOpsOwner,
+		};
+	});
+}
+
 function buildEntries({
 	pageRows,
 	groupedByGitOps,
@@ -311,7 +363,9 @@ export function buildResourceTableModel(
 		state.search,
 		state.gitOpsFilter,
 	);
-	const filteredRows = filterResourcesByHealth(scopedRows, state.healthFilter);
+	const filteredRows = resourcesWithInheritedGitOpsOwners(
+		filterResourcesByHealth(scopedRows, state.healthFilter),
+	);
 	const sortedRows = sortedResourceRows(filteredRows, state.sort);
 	const groupedByGitOps = filteredRows.some(hasResourceListGitOpsOwner);
 	const displayRows = groupedByGitOps

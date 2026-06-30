@@ -167,10 +167,7 @@ pub async fn dynamic_resources_summary_from(
         Api::all_with(client, &api_resource)
     };
 
-    let objects = api
-        .list(&list_params())
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
+    let objects = api.list(&list_params()).await.map_err(AppError::from)?;
 
     Ok(objects
         .iter()
@@ -280,10 +277,7 @@ pub async fn dynamic_resource_details_from(
         Api::all_with(client, &api_resource)
     };
 
-    let object = api
-        .get(&name)
-        .await
-        .map_err(|e| AppError::kube(e.to_string()))?;
+    let object = api.get(&name).await.map_err(AppError::from)?;
     let yaml = serialize_dynamic_resource_document(
         &resource_kind,
         &object,

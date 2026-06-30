@@ -58,7 +58,7 @@ impl PortForwardRegistry {
             handle.abort();
             return Err(AppError::new(
                 format!("local port {} is already forwarded", summary.local_port),
-                "session",
+                "liveSessionTargetUnavailable",
             ));
         }
         state.sessions.insert(

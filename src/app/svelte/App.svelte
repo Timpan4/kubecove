@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { useQueryClient } from "@tanstack/svelte-query";
-	import { FolderOpen } from "lucide-svelte";
+	import { FolderOpen, Settings } from "lucide-svelte";
 	import RuntimeBadge from "../runtime/RuntimeBadge.svelte";
 	import { Button } from "@/components/ui/svelte";
 	import AppUsageFooter from "./AppUsageFooter.svelte";
@@ -204,15 +204,23 @@
 					>
 						<FolderOpen />
 					</Button>
+				{:else}
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						aria-label="Open settings"
+						onclick={openLauncherSettings}
+					>
+						<Settings />
+					</Button>
 				{/if}
 			</div>
 		</header>
 
 		<main class="min-h-0 flex-1 overflow-y-auto">
 			{#if launcherView === "settings"}
-				<section class="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 md:p-6">
-					<SettingsSurface />
-				</section>
+				<SettingsSurface onBack={openWorkspaceLauncher} />
 			{:else}
 				<WorkspaceLauncher />
 			{/if}
