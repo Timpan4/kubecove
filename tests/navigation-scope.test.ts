@@ -13,7 +13,8 @@ describe("navigation scope", () => {
 		expect(topBar).toBeGreaterThanOrEqual(0);
 		expect(launcher).toBeGreaterThan(topBar);
 		expect(source).toContain("UpdateStatusButton");
-		expect(source).toContain("RuntimeBadge");
+		expect(source).toContain('aria-label="Open settings"');
+		expect(source).not.toContain("RuntimeBadge");
 	});
 
 	test("selecting Namespaces scopes to all namespaced resource kinds", () => {

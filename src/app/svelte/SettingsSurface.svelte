@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from "svelte";
 	import {
 		Bug,
 		Cable,
@@ -17,9 +16,6 @@
 		Switch,
 	} from "@/components/ui/svelte";
 	import type { TimestampTimezone, YamlDiffStyle } from "@/lib/settings";
-	import {
-		takeUiRuntimeSettingsFocus,
-	} from "@/lib/ui-runtime";
 	import type { YamlEncoding, YamlViewMode } from "@/lib/types";
 	import DiagnosticsSettings from "./DiagnosticsSettings.svelte";
 	import KubeconfigSettings from "./KubeconfigSettings.svelte";
@@ -189,12 +185,6 @@
 			.flat()
 			.some((row) => matchesSettingsQuery(query, row)),
 	);
-
-	onMount(() => {
-		if (!takeUiRuntimeSettingsFocus()) return;
-		activeCategory = "general";
-		query = "";
-	});
 
 	function matchesSettingsQuery(value: string, row: SettingsRowMeta): boolean {
 		const needle = value.trim().toLowerCase();
