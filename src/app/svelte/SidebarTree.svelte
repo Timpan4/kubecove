@@ -109,7 +109,7 @@
 			),
 			queryFn: () =>
 				listPresentCustomResourceKinds(client, clusterContext, [namespace], kubeconfigSourceKey),
-			enabled: Boolean(clusterContext) && sourceReady,
+			enabled: showCustomResources && Boolean(clusterContext) && sourceReady,
 			staleTime: 30_000,
 			retry: false,
 			meta: { namespace },
@@ -117,6 +117,7 @@
 	}));
 	const customResourcesByNamespace = $derived.by(() => {
 		const rows = new Map<string, DiscoveredResourceKind[]>();
+		if (!showCustomResources) return rows;
 		for (const [index, query] of namespaceCustomResourceQueries.entries()) {
 			const namespace = expandedNamespaces[index];
 			if (namespace && query.data) rows.set(namespace, query.data as DiscoveredResourceKind[]);
@@ -125,6 +126,7 @@
 	});
 	const customResourceErrorsByNamespace = $derived.by(() => {
 		const errors = new Map<string, string>();
+		if (!showCustomResources) return errors;
 		for (const [index, query] of namespaceCustomResourceQueries.entries()) {
 			const namespace = expandedNamespaces[index];
 			if (!namespace || !query.isError) continue;
@@ -137,6 +139,7 @@
 	});
 	const pendingCustomResourceNamespaces = $derived.by(() => {
 		const pending = new Set<string>();
+		if (!showCustomResources) return pending;
 		for (const [index, query] of namespaceCustomResourceQueries.entries()) {
 			const namespace = expandedNamespaces[index];
 			if (namespace && query.isPending) pending.add(namespace);
@@ -145,6 +148,7 @@
 	});
 	function getLazyChildren(node: TreeNode) {
 		if (node.id.type !== "namespace" || !node.id.namespace) return node.children;
+		if (!showCustomResources) return node.children;
 		const customResources = customResourcesByNamespace.get(node.id.namespace) ?? [];
 		const children = buildNamespaceTreeNode(node.id.namespace, customResources).children ?? [];
 		const error = customResourceErrorsByNamespace.get(node.id.namespace);

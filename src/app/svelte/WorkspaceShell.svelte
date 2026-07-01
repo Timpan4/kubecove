@@ -222,10 +222,10 @@
 			listPresentCustomResourceKinds(
 				client,
 				workspace.scope.clusterContext,
-				workspace.scope.namespaces,
-				kubeconfigSourceKey,
-			),
-		enabled: Boolean(workspace.scope.clusterContext),
+			workspace.scope.namespaces,
+			kubeconfigSourceKey,
+		),
+		enabled: showCustomResources && Boolean(workspace.scope.clusterContext),
 		staleTime: 30_000,
 		retry: false,
 	}));
@@ -248,7 +248,10 @@
 				resourceBrowserNamespaces,
 				kubeconfigSourceKey,
 		),
-		enabled: Boolean(workspace.scope.clusterContext) && includePresentCustomResources,
+		enabled:
+			showCustomResources &&
+			Boolean(workspace.scope.clusterContext) &&
+			includePresentCustomResources,
 		staleTime: 30_000,
 		retry: false,
 	}));
