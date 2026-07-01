@@ -111,6 +111,8 @@
 		initialNamespaces,
 		initialKinds,
 		availableKinds = initialKinds,
+		customResourcesEnabled = true,
+		customResourcesStatus = null,
 		initialSearch = "",
 		initialGitOpsFilter = "",
 		initialHealthFilter = "all",
@@ -127,6 +129,8 @@
 		initialNamespaces: string[];
 		initialKinds: ResourceKindSelection[];
 		availableKinds?: ResourceKindSelection[];
+		customResourcesEnabled?: boolean;
+		customResourcesStatus?: string | null;
 		initialSearch?: string;
 		initialGitOpsFilter?: string;
 		initialHealthFilter?: HealthFilter;
@@ -160,6 +164,7 @@
 	let tablePanelOpen = $state(true);
 	let appliedTargetResourceKey = $state("");
 	let appliedMetricsScopeKey = $state("");
+	let appliedSelectionScrollKey = $state("");
 	let metricsQueryReady = $state(false);
 	let realtimeStatus = $state("idle");
 	let realtimeMessage = $state("Realtime idle");
@@ -231,7 +236,7 @@
 	const resourceKindsQuery = createQuery<DiscoveredResourceKind[]>(() => ({
 		queryKey: queryKeys.resourceKinds(clusterContext, kubeconfigSourceKey),
 		queryFn: () => listResourceKinds(client, clusterContext, kubeconfigSourceKey),
-		enabled: Boolean(clusterContext) && sourceReady,
+		enabled: customResourcesEnabled && Boolean(clusterContext) && sourceReady,
 		staleTime: 30_000,
 		retry: false,
 	}));
@@ -271,6 +276,28 @@
 		placeholderData: (previousData) => previousData,
 		staleTime: 30_000,
 	}));
+	$effect(() => {
+		if (!customResourcesEnabled) {
+			const nativeKinds = selectedKinds.filter((kind) => typeof kind === "string");
+			if (nativeKinds.length !== selectedKinds.length) selectedKinds = nativeKinds;
+			appliedAvailableKindsKey = availableKindsKey;
+			return;
+		}
+		if (
+			appliedScopeKey === "" ||
+			appliedAvailableKindsKey === availableKindsKey ||
+			!resourcesQuery.isSuccess ||
+			resourcesQuery.isPlaceholderData
+		) return;
+		const previous = new Set(appliedAvailableKindsKey.split(",").filter(Boolean));
+		const selected = new Set(selectedKinds.map(kindSelectionKey));
+		const additions = availableKinds.filter((kind) => {
+			const key = kindSelectionKey(kind);
+			return !previous.has(key) && !selected.has(key);
+		});
+		appliedAvailableKindsKey = availableKindsKey;
+		if (additions.length > 0) selectedKinds = [...selectedKinds, ...additions];
+	});
 	const topologyQuery = createQuery<ResourceTopology>(() => ({
 		queryKey: topologyQueryKey,
 		queryFn: () =>
@@ -407,7 +434,9 @@
 	}));
 
 	const namespaceOptions = $derived(namespacesQuery.data ?? []);
-	const kindOptions = $derived(allKindOptions(resourceKindsQuery.data ?? []));
+	const kindOptions = $derived(
+		allKindOptions(customResourcesEnabled ? (resourceKindsQuery.data ?? []) : []),
+	);
 	const selectedNamespaceSet = $derived(new Set(selectedNamespaces));
 	const selectedKindSet = $derived(new Set(selectedKinds.map(kindSelectionKey)));
 	const rowsWithMetrics = $derived(
@@ -530,10 +559,17 @@
 		const viewport = tableViewportElement;
 		const selectionKey = selectedResourceKey;
 		const identityKey = selectedResourceIdentityKey;
+		const scrollKey = `${selectionKey}:${identityKey}`;
+		if (!selectionKey && !identityKey) {
+			appliedSelectionScrollKey = "";
+			return;
+		}
+		if (appliedSelectionScrollKey === scrollKey) return;
 		const entries = tableModel.entries;
 		if (!tablePanelOpen || !viewport || (!selectionKey && !identityKey) || entries.length === 0) {
 			return;
 		}
+		appliedSelectionScrollKey = scrollKey;
 		let secondFrame: number | null = null;
 		const firstFrame = window.requestAnimationFrame(() => {
 			scrollSelectedTableRowIntoView(viewport);
@@ -543,19 +579,6 @@
 			window.cancelAnimationFrame(firstFrame);
 			if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
 		};
-	});
-
-	$effect(() => {
-		const viewport = tableViewportElement;
-		const selectionKey = selectedResourceKey;
-		const identityKey = selectedResourceIdentityKey;
-		if (!tablePanelOpen || !viewport || (!selectionKey && !identityKey)) return;
-		const resizeObserver =
-			typeof ResizeObserver === "undefined"
-				? null
-				: new ResizeObserver(() => scrollSelectedTableRowIntoView(viewport));
-		resizeObserver?.observe(viewport);
-		return () => resizeObserver?.disconnect();
 	});
 
 	$effect(() => {
@@ -875,6 +898,7 @@
 			{gitOpsFilter}
 			gitOpsFilters={tableModel.gitOpsFilters}
 			{metricsMessage}
+			{customResourcesStatus}
 			{realtimeStatus}
 			{realtimeMessage}
 			onAllNamespacesSelect={() => {
@@ -917,8 +941,8 @@
 				<div class="h-full min-h-[400px] min-w-0">
 					<OwnershipMap
 						topology={topologyWithMetrics}
-						isLoading={topologyQuery.isPending}
-						isError={topologyQuery.isError}
+						isLoading={topologyQuery.isPending && !topologyQuery.data}
+						isError={topologyQuery.isError && !topologyQuery.data}
 						error={topologyQuery.error}
 						mode={topologyMode}
 						selectedNodeId={syncedTopologyNodeId}

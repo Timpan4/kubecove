@@ -14,9 +14,10 @@ use k8s_openapi::api::{
     core::v1::{ConfigMap, PersistentVolumeClaim, Pod, Secret, Service},
     discovery::v1::EndpointSlice,
     networking::v1::Ingress,
+    storage::v1::StorageClass,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use k8s_openapi::NamespaceResourceScope;
+use k8s_openapi::{ClusterResourceScope, NamespaceResourceScope};
 use kube::{Api, Client, Error as KubeError};
 
 const MAX_TOPOLOGY_LIST_CONCURRENCY: usize = 16;
@@ -135,6 +136,39 @@ where
     let mut warnings = Vec::new();
     let rows = list_namespaced::<T>(client, namespaces, &mut warnings).await?;
     Ok((rows, warnings))
+}
+
+async fn list_cluster_with_warnings<T>(client: Client) -> Result<(Vec<T>, Vec<String>), AppError>
+where
+    T: Clone
+        + std::fmt::Debug
+        + serde::de::DeserializeOwned
+        + k8s_openapi::Metadata<Ty = ObjectMeta>
+        + kube::Resource<DynamicType = (), Scope = ClusterResourceScope>
+        + Send
+        + Sync
+        + 'static,
+{
+    let api: Api<T> = Api::all(client);
+    match api.list(&list_params()).await {
+        Ok(rows) => Ok((rows.items, Vec::new())),
+        Err(error) if is_optional_topology_list_error(&error) => {
+            let mut warnings = Vec::new();
+            push_topology_list_warning::<T>(&mut warnings, None, &error);
+            Ok((Vec::new(), warnings))
+        }
+        Err(error) => Err(AppError::from(error)),
+    }
+}
+
+pub(super) fn cluster_scoped_input_visible_in_scope(
+    input: &TopologyInputResource,
+    namespaces: &[String],
+) -> bool {
+    namespaces.is_empty()
+        || input.summary.git_ops_owner.is_some()
+        || input.summary.helm_release.is_some()
+        || input.owner.is_some()
 }
 
 pub(super) async fn collect_topology_inputs(
@@ -318,12 +352,14 @@ async fn collect_support_topology_inputs(
         (ingresses, mut ingress_warnings),
         (configmaps, mut configmap_warnings),
         (secrets, mut secret_warnings),
+        (storageclasses, mut storageclass_warnings),
     ) = futures_util::try_join!(
         list_namespaced_with_warnings::<PersistentVolumeClaim>(client.clone(), namespaces),
         list_namespaced_with_warnings::<Service>(client.clone(), namespaces),
         list_namespaced_with_warnings::<Ingress>(client.clone(), namespaces),
         list_namespaced_with_warnings::<ConfigMap>(client.clone(), namespaces),
-        list_namespaced_with_warnings::<Secret>(client, namespaces),
+        list_namespaced_with_warnings::<Secret>(client.clone(), namespaces),
+        list_cluster_with_warnings::<StorageClass>(client),
     )?;
 
     let mut inputs = Vec::new();
@@ -333,12 +369,18 @@ async fn collect_support_topology_inputs(
     warnings.append(&mut ingress_warnings);
     warnings.append(&mut configmap_warnings);
     warnings.append(&mut secret_warnings);
+    warnings.append(&mut storageclass_warnings);
 
     inputs.extend(inputs_from_metadata(cluster_context, pvcs));
     inputs.extend(inputs_from_metadata(cluster_context, services));
     inputs.extend(inputs_from_metadata(cluster_context, ingresses));
     inputs.extend(inputs_from_metadata(cluster_context, configmaps));
     inputs.extend(inputs_from_metadata(cluster_context, secrets));
+    inputs.extend(
+        inputs_from_metadata(cluster_context, storageclasses)
+            .into_iter()
+            .filter(|input| cluster_scoped_input_visible_in_scope(input, namespaces)),
+    );
 
     Ok(TopologyInputCollection {
         resources: inputs,
@@ -370,9 +412,6 @@ async fn collect_custom_topology_inputs(
     };
     let definitions = async {
         let mut warnings = Vec::new();
-        if !namespaces.is_empty() {
-            return Ok::<_, AppError>((Vec::new(), warnings));
-        }
         let rows = list_crd_definition_inputs(
             definition_client,
             cluster_context,

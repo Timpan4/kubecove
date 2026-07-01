@@ -54,12 +54,17 @@
 			description:
 				"Shows unrelated ownership branches while a resource is selected. Large namespaces may render slower.",
 		},
-		unavailableGitOpsProviders: {
-			title: "Show unavailable GitOps providers",
-			description:
-				"Shows Argo CD and Flux provider groups as disabled when CRDs are missing.",
-		},
-	} satisfies Record<string, SettingsRowMeta>;
+	unavailableGitOpsProviders: {
+		title: "Show unavailable GitOps providers",
+		description:
+			"Shows Argo CD and Flux provider groups as disabled when CRDs are missing.",
+	},
+	customResources: {
+		title: "Show Custom Resources",
+		description:
+			"Loads Custom Resources after native Kubernetes resources are visible.",
+	},
+} satisfies Record<string, SettingsRowMeta>;
 
 	const SESSION_ROWS = {
 		autoStartPortForwards: {
@@ -308,6 +313,13 @@
 					checked={settings.showUnavailableGitOpsProviders}
 					onCheckedChange={settings.setShowUnavailableGitOpsProviders}
 					aria-label={GENERAL_ROWS.unavailableGitOpsProviders.title}
+				/>
+			</SettingsRow>
+			<SettingsRow {...GENERAL_ROWS.customResources}>
+				<Switch
+					checked={settings.showCustomResources}
+					onCheckedChange={settings.setShowCustomResources}
+					aria-label={GENERAL_ROWS.customResources.title}
 				/>
 			</SettingsRow>
 		</FieldGroup>

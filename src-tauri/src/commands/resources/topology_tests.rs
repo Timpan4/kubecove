@@ -2,12 +2,15 @@ use super::topology::{
     build_resource_topology, input_from_metadata, topology_node_id, topology_root_kinds,
     topology_standalone_kinds, TopologyInputResource,
 };
+use super::topology_collection::cluster_scoped_input_visible_in_scope;
 use super::topology_network::{
     build_network_flow_topology, NetworkEndpointSlice, NetworkIngressBackend, NetworkService,
     NetworkTopologyInputs,
 };
 use crate::commands::helpers::update_resource_health;
-use crate::models::{OwnerReferenceSummary, ResourceHealth, ResourceSummary, TopologyRelation};
+use crate::models::{
+    GitOpsOwnerSummary, OwnerReferenceSummary, ResourceHealth, ResourceSummary, TopologyRelation,
+};
 use k8s_openapi::api::core::v1::Pod;
 use proptest::prelude::*;
 use proptest::test_runner::{Config as ProptestConfig, RngSeed};
@@ -51,6 +54,14 @@ fn resource(kind: &str, name: &str, namespace: &str, uid: &str) -> TopologyInput
             git_ops_owner: None,
         },
     }
+}
+
+fn cluster_resource(kind: &str, api_version: &str, name: &str, uid: &str) -> TopologyInputResource {
+    let mut input = resource(kind, name, "", uid);
+    input.summary.namespace = None;
+    input.summary.api_version = Some(api_version.to_string());
+    input.summary.namespaced = Some(false);
+    input
 }
 
 fn labeled_pod(
@@ -163,6 +174,74 @@ fn ownership_topology_omits_auto_injected_root_ca_configmap() {
     assert_eq!(topology.nodes.len(), 1);
     assert_eq!(topology.nodes[0].kind, "ConfigMap");
     assert_eq!(topology.nodes[0].name, "app-config");
+}
+
+#[test]
+fn ownership_topology_keeps_cluster_scoped_standalone_resources() {
+    let topology = build_resource_topology(vec![
+        cluster_resource(
+            "CustomResourceDefinition",
+            "apiextensions.k8s.io/v1",
+            "certificates.cert-manager.io",
+            "crd-certificates",
+        ),
+        cluster_resource(
+            "StorageClass",
+            "storage.k8s.io/v1",
+            "csi-cinder-sc-retain",
+            "storageclass-retain",
+        ),
+    ]);
+
+    let node_names: HashSet<_> = topology
+        .nodes
+        .iter()
+        .map(|node| {
+            (
+                node.kind.as_str(),
+                node.name.as_str(),
+                node.namespace.as_deref(),
+            )
+        })
+        .collect();
+
+    assert!(node_names.contains(&(
+        "CustomResourceDefinition",
+        "certificates.cert-manager.io",
+        None
+    )));
+    assert!(node_names.contains(&("StorageClass", "csi-cinder-sc-retain", None)));
+}
+
+#[test]
+fn scoped_topology_keeps_only_owned_cluster_scoped_inputs() {
+    let namespaces = vec!["argocd".to_string()];
+    let unmanaged = cluster_resource(
+        "StorageClass",
+        "storage.k8s.io/v1",
+        "unmanaged",
+        "storageclass-unmanaged",
+    );
+    let mut managed = cluster_resource(
+        "StorageClass",
+        "storage.k8s.io/v1",
+        "csi-cinder-sc-retain",
+        "storageclass-retain",
+    );
+    managed.summary.git_ops_owner = Some(GitOpsOwnerSummary {
+        provider: "argo".to_string(),
+        kind: "Application".to_string(),
+        name: "cinder-csi".to_string(),
+        namespace: Some("argocd".to_string()),
+        confidence: "explicit".to_string(),
+    });
+
+    assert!(!cluster_scoped_input_visible_in_scope(
+        &unmanaged,
+        &namespaces
+    ));
+    assert!(cluster_scoped_input_visible_in_scope(&managed, &namespaces));
+    assert!(cluster_scoped_input_visible_in_scope(&unmanaged, &[]));
 }
 
 #[test]

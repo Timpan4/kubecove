@@ -283,7 +283,8 @@ describe("svelte resource browser model", () => {
 		expect(source).toContain("tr[data-resource-selected='true']");
 		expect(source).toContain("scrollIntoView({ block: \"center\", inline: \"nearest\" })");
 		expect(source).toContain("secondFrame = window.requestAnimationFrame");
-		expect(source).toContain("new ResizeObserver(() => scrollSelectedTableRowIntoView(viewport))");
+		expect(source).toContain("appliedSelectionScrollKey === scrollKey");
+		expect(source).toContain("new ResizeObserver(measure)");
 		expect(source).toContain("hasExactSelectedResource");
 		expect(source).toContain("!exactMatchExists && resourceIdentityKey(resource) === identityKey");
 	});

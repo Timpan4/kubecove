@@ -63,4 +63,19 @@ describe("sidebar namespace tree helpers", () => {
 		expect(source).toContain("onclick={selectNode}");
 		expect(source).toContain("onclick={toggleNode}");
 	});
+
+	test("gates custom resource presence queries when disabled", () => {
+		const sidebar = readFileSync("src/app/svelte/SidebarTree.svelte", "utf8");
+		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
+
+		expect(sidebar).toContain(
+			"enabled: showCustomResources && Boolean(clusterContext) && sourceReady",
+		);
+		expect(sidebar).toContain("if (!showCustomResources) return node.children");
+		expect(shell).toContain(
+			"enabled: showCustomResources && Boolean(workspace.scope.clusterContext)",
+		);
+		expect(shell).toContain("showCustomResources &&");
+		expect(shell).toContain("includePresentCustomResources");
+	});
 });
