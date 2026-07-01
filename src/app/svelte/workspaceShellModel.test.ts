@@ -40,6 +40,22 @@ describe("Custom Resources tree model", () => {
 		expect(customResources?.children?.[0]?.label).toBe("Widget");
 	});
 
+	test("omits Custom Resources when disabled", () => {
+		const nodes = buildSidebarTree({
+			namespaces: [],
+			resourceKinds: [widget],
+			argoDetected: false,
+			fluxDetection: undefined,
+			detectingGitOps: false,
+			resourceKindsPending: false,
+			resourceKindsError: "",
+			showUnavailableGitOpsProviders: false,
+			showCustomResources: false,
+		});
+
+		expect(nodes.some((node) => node.id.section === "discovered")).toBe(false);
+	});
+
 	test("appends present custom resources without duplicates", () => {
 		expect(appendPresentCustomResourceKinds(["Pod", widget], [widget])).toEqual([
 			"Pod",

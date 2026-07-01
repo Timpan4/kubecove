@@ -352,12 +352,14 @@ async fn collect_support_topology_inputs(
         (ingresses, mut ingress_warnings),
         (configmaps, mut configmap_warnings),
         (secrets, mut secret_warnings),
+        (storageclasses, mut storageclass_warnings),
     ) = futures_util::try_join!(
         list_namespaced_with_warnings::<PersistentVolumeClaim>(client.clone(), namespaces),
         list_namespaced_with_warnings::<Service>(client.clone(), namespaces),
         list_namespaced_with_warnings::<Ingress>(client.clone(), namespaces),
         list_namespaced_with_warnings::<ConfigMap>(client.clone(), namespaces),
-        list_namespaced_with_warnings::<Secret>(client, namespaces),
+        list_namespaced_with_warnings::<Secret>(client.clone(), namespaces),
+        list_cluster_with_warnings::<StorageClass>(client),
     )?;
 
     let mut inputs = Vec::new();
@@ -367,12 +369,18 @@ async fn collect_support_topology_inputs(
     warnings.append(&mut ingress_warnings);
     warnings.append(&mut configmap_warnings);
     warnings.append(&mut secret_warnings);
+    warnings.append(&mut storageclass_warnings);
 
     inputs.extend(inputs_from_metadata(cluster_context, pvcs));
     inputs.extend(inputs_from_metadata(cluster_context, services));
     inputs.extend(inputs_from_metadata(cluster_context, ingresses));
     inputs.extend(inputs_from_metadata(cluster_context, configmaps));
     inputs.extend(inputs_from_metadata(cluster_context, secrets));
+    inputs.extend(
+        inputs_from_metadata(cluster_context, storageclasses)
+            .into_iter()
+            .filter(|input| cluster_scoped_input_visible_in_scope(input, namespaces)),
+    );
 
     Ok(TopologyInputCollection {
         resources: inputs,
@@ -404,9 +412,6 @@ async fn collect_custom_topology_inputs(
     };
     let definitions = async {
         let mut warnings = Vec::new();
-        if !namespaces.is_empty() {
-            return Ok::<_, AppError>((Vec::new(), warnings));
-        }
         let rows = list_crd_definition_inputs(
             definition_client,
             cluster_context,
