@@ -17,6 +17,7 @@ export interface SettingsState {
 	showOwnershipMapByDefault: boolean;
 	showFullTopologyOnSelection: boolean;
 	showUnavailableGitOpsProviders: boolean;
+	showCustomResources: boolean;
 	debugModeEnabled: boolean;
 	autoStartSavedPortForwards: boolean;
 	keepLiveSessionsOnWorkspaceSwitch: boolean;
@@ -35,6 +36,7 @@ export interface SettingsState {
 	setShowOwnershipMapByDefault: (show: boolean) => void;
 	setShowFullTopologyOnSelection: (show: boolean) => void;
 	setShowUnavailableGitOpsProviders: (show: boolean) => void;
+	setShowCustomResources: (show: boolean) => void;
 	setDebugModeEnabled: (enabled: boolean) => void;
 	setAutoStartSavedPortForwards: (autoStart: boolean) => void;
 	setKeepLiveSessionsOnWorkspaceSwitch: (keep: boolean) => void;
@@ -71,6 +73,7 @@ export const useSettingsState = create<SettingsState>()(
 			showOwnershipMapByDefault: true,
 			showFullTopologyOnSelection: false,
 			showUnavailableGitOpsProviders: false,
+			showCustomResources: true,
 			debugModeEnabled: false,
 			autoStartSavedPortForwards: false,
 			keepLiveSessionsOnWorkspaceSwitch: false,
@@ -93,6 +96,7 @@ export const useSettingsState = create<SettingsState>()(
 				set({ showFullTopologyOnSelection: show }),
 			setShowUnavailableGitOpsProviders: (show: boolean) =>
 				set({ showUnavailableGitOpsProviders: show }),
+			setShowCustomResources: (show: boolean) => set({ showCustomResources: show }),
 			setDebugModeEnabled: (debugModeEnabled: boolean) =>
 				set({ debugModeEnabled }),
 			setAutoStartSavedPortForwards: (autoStart: boolean) =>
@@ -144,6 +148,8 @@ export const useSettingsState = create<SettingsState>()(
 				showUnavailableGitOpsProviders:
 					saved.showUnavailableGitOpsProviders ??
 					current.showUnavailableGitOpsProviders,
+				showCustomResources:
+					saved.showCustomResources ?? current.showCustomResources,
 				debugModeEnabled:
 					saved.debugModeEnabled ?? current.debugModeEnabled,
 				autoStartSavedPortForwards:
@@ -175,6 +181,7 @@ export const useSettingsState = create<SettingsState>()(
 				showFullTopologyOnSelection: state.showFullTopologyOnSelection,
 				showUnavailableGitOpsProviders:
 					state.showUnavailableGitOpsProviders,
+				showCustomResources: state.showCustomResources,
 				debugModeEnabled: state.debugModeEnabled,
 				autoStartSavedPortForwards: state.autoStartSavedPortForwards,
 				keepLiveSessionsOnWorkspaceSwitch:

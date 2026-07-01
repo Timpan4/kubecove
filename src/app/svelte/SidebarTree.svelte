@@ -42,6 +42,7 @@
 	const showUnavailableGitOpsProviders = $derived(
 		$settingsStore.showUnavailableGitOpsProviders,
 	);
+	const showCustomResources = $derived($settingsStore.showCustomResources);
 
 	const sourceQuery = createQuery<KubeconfigSourcesSummary>(() => ({
 		queryKey: ["kubeconfig-sources"] as const,
@@ -62,7 +63,7 @@
 	const resourceKindsQuery = createQuery<DiscoveredResourceKind[]>(() => ({
 		queryKey: queryKeys.resourceKinds(clusterContext, kubeconfigSourceKey),
 		queryFn: () => listResourceKinds(client, clusterContext, kubeconfigSourceKey),
-		enabled: Boolean(clusterContext) && sourceReady,
+		enabled: showCustomResources && Boolean(clusterContext) && sourceReady,
 		retry: false,
 	}));
 
@@ -181,6 +182,7 @@
 		resourceKindsPending: resourceKindsQuery.isPending,
 		resourceKindsError,
 		showUnavailableGitOpsProviders,
+		showCustomResources,
 	}));
 </script>
 

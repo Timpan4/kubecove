@@ -348,6 +348,7 @@ export function buildSidebarTree({
 	resourceKindsPending,
 	resourceKindsError,
 	showUnavailableGitOpsProviders,
+	showCustomResources = true,
 }: {
 	namespaces: NamespaceSummary[];
 	resourceKinds: DiscoveredResourceKind[];
@@ -357,6 +358,7 @@ export function buildSidebarTree({
 	resourceKindsPending: boolean;
 	resourceKindsError: string;
 	showUnavailableGitOpsProviders: boolean;
+	showCustomResources?: boolean;
 }): TreeNode[] {
 	const extraKinds = extraDiscoveredKinds(resourceKinds);
 	const namespaceNode: TreeNode = {
@@ -428,11 +430,15 @@ export function buildSidebarTree({
 				})),
 			}),
 		),
-		{
-			id: { type: "section", section: "discovered" },
-			label: SECTIONS.discovered.label,
-			children: discoveredChildren,
-		},
+		...(showCustomResources
+			? [
+					{
+						id: { type: "section" as const, section: "discovered" as const },
+						label: SECTIONS.discovered.label,
+						children: discoveredChildren,
+					},
+				]
+			: []),
 		buildGitOpsNode({
 			argoDetected,
 			fluxDetection,

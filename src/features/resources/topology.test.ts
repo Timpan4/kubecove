@@ -206,6 +206,29 @@ describe("Svelte topology layout", () => {
 
 		expect((pod?.position.x ?? 0) - (job?.position.x ?? 0)).toBe(520);
 	});
+
+	test("shows cluster-scoped standalone resources as map groups", () => {
+		const crd = node(
+			"CustomResourceDefinition",
+			"certificates.cert-manager.io",
+		);
+		const storageClass = node("StorageClass", "csi-cinder-sc-retain");
+		crd.namespace = null;
+		crd.summary.namespace = null;
+		storageClass.namespace = null;
+		storageClass.summary.namespace = null;
+
+		const layout = buildFlowTopologyLayout(
+			{ nodes: [crd, storageClass], edges: [], warnings: [] },
+			null,
+		);
+
+		const groups = layout.nodes
+			.filter((item) => item.type === "standaloneKindGroup")
+			.map((item) => item.data.kind);
+
+		expect(groups).toEqual(["CustomResourceDefinition", "StorageClass"]);
+	});
 });
 
 describe("topology stoplight tones", () => {

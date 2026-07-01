@@ -191,6 +191,7 @@
 		$settingsStore.autoStartSavedPortForwards,
 	);
 	const kubeconfigSourceKey = $derived($settingsStore.kubeconfigSourceKey);
+	const showCustomResources = $derived($settingsStore.showCustomResources);
 
 	const title = $derived(getWorkspaceTitle({
 		workspace,
@@ -252,9 +253,27 @@
 		retry: false,
 	}));
 	const presentCustomResourceKinds = $derived(
-		includePresentCustomResources
-			? (presentCustomResourceKindsQuery.data ?? workspaceCustomResourcePrewarmQuery.data ?? [])
-			: (workspaceCustomResourcePrewarmQuery.data ?? []),
+		!showCustomResources
+			? []
+			: includePresentCustomResources
+				? (presentCustomResourceKindsQuery.data ?? workspaceCustomResourcePrewarmQuery.data ?? [])
+				: (workspaceCustomResourcePrewarmQuery.data ?? []),
+	);
+	const customResourcesStatus = $derived(
+		!showCustomResources
+			? "Custom Resources off"
+			: workspaceCustomResourcePrewarmQuery.isError ||
+				  (includePresentCustomResources && presentCustomResourceKindsQuery.isError)
+				? "Custom Resources unavailable"
+				: workspaceCustomResourcePrewarmQuery.isPending ||
+					  workspaceCustomResourcePrewarmQuery.isFetching ||
+					  (includePresentCustomResources &&
+							(presentCustomResourceKindsQuery.isPending ||
+								presentCustomResourceKindsQuery.isFetching))
+					? "Loading Custom Resources"
+					: presentCustomResourceKinds.length > 0
+						? "Custom Resources added"
+						: null,
 	);
 	const resourceBrowserInitialKinds = $derived<ResourceKindSelection[]>(
 		resourceGitOpsFocusApplication
@@ -770,6 +789,8 @@
 							initialNamespaces={resourceBrowserNamespaces}
 							initialKinds={resourceBrowserInitialKinds}
 							availableKinds={resourceBrowserKinds}
+							customResourcesEnabled={showCustomResources}
+							{customResourcesStatus}
 							initialSearch={resourceInitialSearch}
 							initialGitOpsFilter={resourceInitialGitOpsFilter}
 							initialHealthFilter={resourceInitialHealthFilter}

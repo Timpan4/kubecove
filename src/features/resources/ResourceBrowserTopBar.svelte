@@ -37,6 +37,7 @@
 		gitOpsFilter,
 		gitOpsFilters,
 		metricsMessage,
+		customResourcesStatus,
 		realtimeStatus,
 		realtimeMessage,
 		onAllNamespacesSelect,
@@ -59,6 +60,7 @@
 		gitOpsFilter: string;
 		gitOpsFilters: GitOpsFilterOption[];
 		metricsMessage: string | null;
+		customResourcesStatus?: string | null;
 		realtimeStatus: string;
 		realtimeMessage: string;
 		onAllNamespacesSelect: () => void;
@@ -308,10 +310,15 @@
 			</Button>
 		</div>
 
-		<div class="grid min-w-0 gap-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,auto)]">
+		<div class="grid min-w-0 gap-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(12rem,auto)]">
 			<div class="rounded-md border bg-background/30 px-3 py-2 text-xs">
 				<div class="font-semibold text-foreground">Resource metrics</div>
 				<div class="text-muted-foreground">{metricsMessage ?? "metrics available"}</div>
+			</div>
+
+			<div class="rounded-md border bg-background/30 px-3 py-2 text-xs">
+				<div class="font-semibold text-foreground">Custom Resources</div>
+				<div class="text-muted-foreground">{customResourcesStatus ?? "available"}</div>
 			</div>
 
 			<div class="flex min-w-0 items-center gap-2 rounded-md border bg-background/30 px-3 py-2 text-xs">
