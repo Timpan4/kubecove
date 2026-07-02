@@ -181,6 +181,18 @@ describe("svelte incident surface model", () => {
 		expect(refreshBody).toContain('<RotateCcw data-icon="inline-start" />');
 	});
 
+	test("Svelte incident inspection clears stale detail tab state for plain inspect", () => {
+		const shell = readFileSync(
+			new URL("../src/app/svelte/WorkspaceShell.svelte", import.meta.url),
+			"utf8",
+		);
+
+		expect(shell).toContain(
+			"resourceDetailPathState = detailTab ? detailPathStateForTab(detailTab) : null;",
+		);
+		expect(shell).not.toContain("if (detailTab) resourceDetailPathState = detailPathStateForTab(detailTab);");
+	});
+
 	test("Svelte overview incident shortcuts open Cockpit with matching filters", () => {
 		const overview = readFileSync(
 			new URL("../src/features/workspaces/WorkspaceOverview.svelte", import.meta.url),

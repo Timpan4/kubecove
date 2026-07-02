@@ -581,7 +581,7 @@
 		targetHelmRelease = null;
 		targetGitOpsApplication = null;
 		restoreTargetResource = null;
-		if (detailTab) resourceDetailPathState = detailPathStateForTab(detailTab);
+		resourceDetailPathState = detailTab ? detailPathStateForTab(detailTab) : null;
 		focusedResource = resource;
 	}
 
