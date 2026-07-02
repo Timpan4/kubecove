@@ -28,6 +28,9 @@ pub struct IncidentCockpitItem {
     pub resource: ResourceSummary,
     pub severity: IncidentSeverity,
     pub signals: Vec<IncidentSignalSummary>,
+    pub warning_event_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_signal_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_warning_event: Option<ResourceEventSummary>,
 }
