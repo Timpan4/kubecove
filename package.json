@@ -59,7 +59,7 @@
     "@biomejs/biome": "2.5.2",
     "@codspeed/vitest-plugin": "^5.7.1",
     "@fontsource-variable/geist-mono": "^5.2.8",
-    "@framework-doctor/svelte": "1.1.1",
+    "@framework-doctor/svelte": "1.1.0",
     "@sveltejs/vite-plugin-svelte": "7.1.2",
     "@tailwindcss/vite": "4.3.2",
     "@tauri-apps/cli": "2.11.4",
