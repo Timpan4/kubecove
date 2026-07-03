@@ -54,6 +54,7 @@
 		resourceRefFromSummary,
 		resourceSummaryFromRef,
 		writePathState,
+		type PathStateDetailTab,
 		type PathStateResourceBrowserState,
 		type PathStateResourceDetailState,
 		type PathStateSurfacesState,
@@ -559,10 +560,28 @@
 		viewMode = "resources";
 	}
 
-	function inspectResource(resource: ResourceSummary) {
+	function detailPathStateForTab(activeTab: PathStateDetailTab): PathStateResourceDetailState {
+		const settings = getSettingsSnapshot();
+		return {
+			activeTab,
+			metadataLabelsExpanded: resourceDetailPathState?.metadataLabelsExpanded ?? false,
+			metadataAnnotationsExpanded: resourceDetailPathState?.metadataAnnotationsExpanded ?? false,
+			selectedContainer: resourceDetailPathState?.selectedContainer ?? "",
+			logFilter: resourceDetailPathState?.logFilter ?? "",
+			logWrapLines: resourceDetailPathState?.logWrapLines ?? true,
+			logLatestFirst: resourceDetailPathState?.logLatestFirst ?? false,
+			logAutoFollow: resourceDetailPathState?.logAutoFollow ?? true,
+			yamlViewMode: resourceDetailPathState?.yamlViewMode ?? settings.yamlViewModeDefault,
+			yamlEncoding: resourceDetailPathState?.yamlEncoding ?? settings.yamlEncodingDefault,
+			yamlShowFullDiff: resourceDetailPathState?.yamlShowFullDiff ?? false,
+		};
+	}
+
+	function inspectResource(resource: ResourceSummary, detailTab?: PathStateDetailTab) {
 		targetHelmRelease = null;
 		targetGitOpsApplication = null;
 		restoreTargetResource = null;
+		resourceDetailPathState = detailTab ? detailPathStateForTab(detailTab) : null;
 		focusedResource = resource;
 	}
 
@@ -755,7 +774,7 @@
 										resource={focusedResource}
 										{kubeconfigSourceKey}
 										onOpenHelmRelease={openHelmReleaseFromResource}
-										initialPathState={initialDetailPathState}
+										initialPathState={resourceDetailPathState}
 										onPathStateChange={(state) => (resourceDetailPathState = state)}
 									/>
 								{/key}
@@ -820,6 +839,7 @@
 						{selectedNode}
 						{targetHelmRelease}
 						{targetGitOpsApplication}
+						selectedResource={focusedResource}
 						{initialIncidentFilter}
 						initialPathState={initialSurfacesPathState}
 					onOpenResources={openResources}

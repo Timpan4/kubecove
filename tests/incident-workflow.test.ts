@@ -248,6 +248,14 @@ describe("incident workflow helpers", () => {
 		expect(source).toContain("No incident timeline entries for this resource.");
 	});
 
+	test("Svelte resource detail does not pin user tab clicks to the incoming tab", () => {
+		const source = readFileSync("src/features/resource-detail/ResourceDetailPanel.svelte", "utf8");
+
+		expect(source).toContain("let appliedInitialActiveTab");
+		expect(source).toContain("requestedTab === appliedInitialActiveTab");
+		expect(source).not.toContain("requestedTab !== activeTab");
+	});
+
 	test("Svelte resource detail orders conditions before curated metadata", () => {
 		const source = svelteDetailSource();
 

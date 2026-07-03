@@ -20,6 +20,7 @@ function item(
 	return {
 		severity,
 		signals: [],
+		warningEventCount: 0,
 		resource: {
 			kind: "Pod",
 			cluster: "admin@solid-k8s",
@@ -89,29 +90,11 @@ describe("incident helpers", () => {
 		]);
 	});
 
-	test("sorts equal severities by latest warning recency", () => {
+	test("sorts equal severities by latest signal recency", () => {
 		const older = item("api-a", "warning");
-		older.latestWarningEvent = {
-			eventType: "Warning",
-			reason: "BackOff",
-			message: "old warning",
-			count: 1,
-			lastSeen: "10m",
-			lastSeenAt: "2026-06-04T10:00:00Z",
-			source: "kubelet",
-			namespace: "default",
-		};
+		older.latestSignalAt = "2026-06-04T10:00:00Z";
 		const newer = item("api-z", "warning");
-		newer.latestWarningEvent = {
-			eventType: "Warning",
-			reason: "FailedMount",
-			message: "new warning",
-			count: 1,
-			lastSeen: "1m",
-			lastSeenAt: "2026-06-04T10:05:00Z",
-			source: "kubelet",
-			namespace: "default",
-		};
+		newer.latestSignalAt = "2026-06-04T10:05:00Z";
 
 		const groups = groupIncidentItems([older, newer]);
 

@@ -119,6 +119,7 @@
 		initialDetailState?.yamlEncoding ?? getSettingsSnapshot().yamlEncodingDefault,
 	);
 	let activeTab = $state<DetailTab>(initialDetailState?.activeTab ?? "details");
+	let appliedInitialActiveTab = $state<DetailTab | null>(initialDetailState?.activeTab ?? null);
 	let metadataLabelsExpanded = $state(initialDetailState?.metadataLabelsExpanded ?? false);
 	let metadataAnnotationsExpanded = $state(
 		initialDetailState?.metadataAnnotationsExpanded ?? false,
@@ -469,6 +470,15 @@
 				)
 			: orderedVisibleLogLines,
 	);
+
+	$effect(() => {
+		const requestedTab = initialPathState?.activeTab ?? null;
+		if (!requestedTab || requestedTab === appliedInitialActiveTab) return;
+		appliedInitialActiveTab = requestedTab;
+		if (isDetailTabAvailable(requestedTab)) {
+			activeTab = requestedTab;
+		}
+	});
 
 	$effect(() => {
 		if (!isDetailTabAvailable(activeTab)) {

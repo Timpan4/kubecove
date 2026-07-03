@@ -533,7 +533,8 @@ function rbac(): RbacInspectionSummary {
 function incidents(cluster = "mock-dev"): IncidentCockpitSummary {
 	const items = resourcesForCluster(cluster).filter((row) => ["degraded", "attention", "restarted"].includes(row.health)).map((resource) => {
 		const severity: IncidentSeverity = resource.health === "degraded" ? "degraded" : resource.health === "restarted" ? "restarted" : "attention";
-		return { resource: { ...resource, cluster }, severity, signals: [{ kind: resource.kind, label: resource.status ?? resource.health, message: `${resource.name} needs attention in mock data.`, source: "browser mock", lastSeenAt: now }], latestWarningEvent: eventsFor({ kind: resource.kind, name: resource.name, namespace: resource.namespace })[0] };
+		const warningEvents = eventsFor({ kind: resource.kind, name: resource.name, namespace: resource.namespace }).filter((event) => event.eventType === "Warning");
+		return { resource: { ...resource, cluster }, severity, signals: [{ kind: resource.kind, label: resource.status ?? resource.health, message: `${resource.name} needs attention in mock data.`, source: "browser mock", lastSeenAt: now }], warningEventCount: warningEvents.length, latestSignalAt: now, latestWarningEvent: warningEvents[0] };
 	});
 	return { cluster, generatedAt: now, requestedScope: [], items, warnings: [] };
 }

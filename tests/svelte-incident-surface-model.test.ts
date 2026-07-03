@@ -2,11 +2,19 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
 	buildIncidentFilterOptions,
+	incidentCaseSummary,
+	incidentCaseTitle,
+	incidentDetailPivots,
+	incidentItemKey,
+	incidentKnownSummary,
+	incidentMissingSummary,
+	incidentNextSummary,
 	incidentResourcesHealthFilter,
 	incidentScopeLabel,
 	incidentSeverityLabel,
 	incidentSignalSummary,
 	incidentWarningSummary,
+	isIncidentResourceSelected,
 } from "../src/app/svelte/incidentSurfaceModel";
 import type { IncidentCockpitItem } from "../src/lib/types";
 
@@ -29,6 +37,8 @@ const item: IncidentCockpitItem = {
 		{ kind: "ready", label: "Ready", message: "0/1 ready", source: "pod" },
 		{ kind: "event", label: "Warning", message: "Back-off", source: "event" },
 	],
+	warningEventCount: 2,
+	latestSignalAt: "2026-06-04T10:02:00Z",
 	latestWarningEvent: {
 		eventType: "Warning",
 		reason: "BackOff",
@@ -76,13 +86,40 @@ describe("svelte incident surface model", () => {
 		expect(incidentResourcesHealthFilter("restarted")).toBe("restarted");
 	});
 
-	test("formats incident rows for compact Svelte tables", () => {
+	test("formats incident signal labels for the workbench", () => {
 		expect(incidentSeverityLabel(item)).toBe("Needs attention");
 		expect(incidentScopeLabel(item)).toBe("default / kind-dev");
 		expect(incidentSignalSummary(item)).toBe(
 			"Waiting: CrashLoopBackOff | Restarts: 4 restarts | Ready: 0/1 ready | +1 more",
 		);
-		expect(incidentWarningSummary(item)).toBe("BackOff (2m)");
+		expect(incidentWarningSummary(item)).toBe("BackOff (2m, 2 warnings)");
+	});
+
+	test("matches selected resources by stable incident key", () => {
+		expect(incidentItemKey(item)).toBe("kind-dev::Pod:default:api-7c9");
+		expect(isIncidentResourceSelected(item, item.resource)).toBe(true);
+		expect(
+			isIncidentResourceSelected(item, { ...item.resource, name: "api-other" }),
+		).toBe(false);
+		expect(isIncidentResourceSelected(item, null)).toBe(false);
+	});
+
+	test("derives selected incident case copy and detail pivots", () => {
+		expect(incidentCaseTitle(item)).toBe("Pod/api-7c9: Waiting");
+		expect(incidentCaseSummary(item)).toBe("CrashLoopBackOff");
+		expect(incidentKnownSummary(item)).toBe(
+			"CrashLoopBackOff, Ready 0/1, 4 restarts",
+		);
+		expect(incidentMissingSummary(item)).toBe(
+			"Check Events for repeat count and source details.",
+		);
+		expect(incidentNextSummary(item)).toBe("Inspect details, then Events or Logs.");
+		expect(incidentDetailPivots(item)).toEqual([
+			{ id: "details", label: "Inspect", tab: "details", enabled: true },
+			{ id: "events", label: "Events", tab: "events", enabled: true },
+			{ id: "logs", label: "Logs", tab: "logs", enabled: true },
+			{ id: "yaml", label: "YAML", tab: "yaml", enabled: true },
+		]);
 	});
 
 	test("does not silently cap grouped incident rows", () => {
@@ -98,6 +135,27 @@ describe("svelte incident surface model", () => {
 		expect(source).toContain("No active incident signals");
 		expect(source).toContain("No matching incident signals");
 		expect(source).toContain("Change severity filter to see other active signals.");
+	});
+
+	test("Svelte incidents wait for explicit signal selection", () => {
+		const source = incidentSurfaceSource();
+
+		expect(source).toContain("selectedResource = null");
+		expect(source).toContain("Choose an incident signal");
+		expect(source).toContain(
+			"visibleIncidents.find((item) => isIncidentResourceSelected(item, selectedResource))",
+		);
+		expect(source).not.toContain("incidentGroups[0]");
+	});
+
+	test("Svelte incidents render queue and case workbench instead of a warning table", () => {
+		const source = incidentSurfaceSource();
+
+		expect(source).toContain("Signal queue");
+		expect(source).toContain("Read-only pivots");
+		expect(source).toContain("Open in Resources");
+		expect(source).not.toContain("<Table");
+		expect(source).not.toContain("Latest warning");
 	});
 
 	test("Svelte incidents use shared cockpit query key", () => {
@@ -121,6 +179,18 @@ describe("svelte incident surface model", () => {
 		expect(refreshBody).toContain("incidentsQuery.isFetching");
 		expect(refreshBody).toContain('<Spinner data-icon="inline-start" />');
 		expect(refreshBody).toContain('<RotateCcw data-icon="inline-start" />');
+	});
+
+	test("Svelte incident inspection clears stale detail tab state for plain inspect", () => {
+		const shell = readFileSync(
+			new URL("../src/app/svelte/WorkspaceShell.svelte", import.meta.url),
+			"utf8",
+		);
+
+		expect(shell).toContain(
+			"resourceDetailPathState = detailTab ? detailPathStateForTab(detailTab) : null;",
+		);
+		expect(shell).not.toContain("if (detailTab) resourceDetailPathState = detailPathStateForTab(detailTab);");
 	});
 
 	test("Svelte overview incident shortcuts open Cockpit with matching filters", () => {
