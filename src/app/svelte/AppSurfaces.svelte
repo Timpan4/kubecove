@@ -71,7 +71,7 @@
 		ResourceSummary,
 	} from "@/lib/types";
 	import type { TreeNodeId } from "@/lib/tree-nav";
-	import type { PathStateSurfacesState } from "@/lib/path-state";
+	import type { PathStateDetailTab, PathStateSurfacesState } from "@/lib/path-state";
 	import {
 		workspaceScopeContexts,
 		type SavedPortForward,
@@ -122,6 +122,7 @@
 		selectedNode,
 		targetHelmRelease,
 		targetGitOpsApplication,
+		selectedResource,
 		initialIncidentFilter = "all",
 		initialPathState = null,
 		onOpenResources,
@@ -137,6 +138,7 @@
 		selectedNode: TreeNodeId | null;
 		targetHelmRelease?: { name: string; namespace?: string | null } | null;
 		targetGitOpsApplication?: string | null;
+		selectedResource?: ResourceSummary | null;
 		initialIncidentFilter?: IncidentFilter;
 		initialPathState?: PathStateSurfacesState | null;
 		onOpenResources: (
@@ -146,7 +148,7 @@
 			initialHealthFilter?: HealthFilter,
 			gitOpsFocusApplication?: ArgoApplicationSummary | null,
 		) => void;
-		onResourceInspect: (resource: ResourceSummary) => void;
+		onResourceInspect: (resource: ResourceSummary, detailTab?: PathStateDetailTab) => void;
 		onResourceSelect: (resource: ResourceSummary, nodeId: TreeNodeId) => void;
 		onTargetHelmReleaseResolved?: () => void;
 		onTargetGitOpsApplicationResolved?: () => void;
@@ -846,7 +848,9 @@
 		bind:incidentFilter
 		{incidentFilterOptions}
 		{incidentGroups}
+		{selectedResource}
 		{onOpenResources}
+		{onResourceInspect}
 		{onResourceSelect}
 	/>
 {:else if viewMode === "portForwards"}

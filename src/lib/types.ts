@@ -203,6 +203,8 @@ export interface IncidentCockpitItem {
 	resource: ResourceSummary;
 	severity: IncidentSeverity;
 	signals: IncidentSignalSummary[];
+	warningEventCount: number;
+	latestSignalAt?: string;
 	latestWarningEvent?: ResourceEventSummary;
 }
 

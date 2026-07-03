@@ -22,8 +22,8 @@ const SEVERITY_WEIGHT: Record<IncidentSeverity, number> = {
 	warning: 1,
 };
 
-function latestWarningTime(item: IncidentCockpitItem): number {
-	const value = item.latestWarningEvent?.lastSeenAt;
+function latestSignalTime(item: IncidentCockpitItem): number {
+	const value = item.latestSignalAt ?? item.latestWarningEvent?.lastSeenAt;
 	if (!value) return 0;
 	const time = new Date(value).getTime();
 	return Number.isNaN(time) ? 0 : time;
@@ -48,14 +48,12 @@ export function filterIncidentItems(
 }
 
 export function countIncidentItems(items: IncidentCockpitItem[]): IncidentCounts {
-	return items.reduce<IncidentCounts>(
-		(counts, item) => ({
-			...counts,
-			total: counts.total + 1,
-			[item.severity]: counts[item.severity] + 1,
-		}),
-		{ total: 0, degraded: 0, attention: 0, restarted: 0, warning: 0 },
-	);
+	const counts: IncidentCounts = { total: 0, degraded: 0, attention: 0, restarted: 0, warning: 0 };
+	for (const item of items) {
+		counts.total += 1;
+		counts[item.severity] += 1;
+	}
+	return counts;
 }
 
 export function sortIncidentItems(
@@ -65,8 +63,8 @@ export function sortIncidentItems(
 		const severityDelta =
 			SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity];
 		if (severityDelta !== 0) return severityDelta;
-		const warningRecencyDelta = latestWarningTime(b) - latestWarningTime(a);
-		if (warningRecencyDelta !== 0) return warningRecencyDelta;
+		const recencyDelta = latestSignalTime(b) - latestSignalTime(a);
+		if (recencyDelta !== 0) return recencyDelta;
 		const namespaceDelta = (a.resource.namespace ?? "").localeCompare(
 			b.resource.namespace ?? "",
 		);

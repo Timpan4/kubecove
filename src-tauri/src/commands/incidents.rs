@@ -372,13 +372,17 @@ fn incident_item(
         });
     }
 
+    let warning_event_count = warning_events.len();
     let latest_warning_event = warning_events.first().cloned();
     let severity = severity_for(&resource, latest_warning_event.is_some())?;
+    let latest_signal_at = latest_signal_at(&signals);
 
     Some(IncidentCockpitItem {
         resource,
         severity,
         signals,
+        warning_event_count,
+        latest_signal_at,
         latest_warning_event,
     })
 }
@@ -437,17 +441,35 @@ fn severity_weight(severity: &IncidentSeverity) -> u8 {
 fn incident_item_sort(a: &IncidentCockpitItem, b: &IncidentCockpitItem) -> std::cmp::Ordering {
     severity_weight(&b.severity)
         .cmp(&severity_weight(&a.severity))
-        .then_with(|| {
-            event_time_ms_opt(&b.latest_warning_event)
-                .cmp(&event_time_ms_opt(&a.latest_warning_event))
-        })
+        .then_with(|| latest_item_signal_time_ms(b).cmp(&latest_item_signal_time_ms(a)))
         .then_with(|| a.resource.namespace.cmp(&b.resource.namespace))
         .then_with(|| a.resource.kind.cmp(&b.resource.kind))
         .then_with(|| a.resource.name.cmp(&b.resource.name))
 }
 
-fn event_time_ms_opt(event: &Option<ResourceEventSummary>) -> i64 {
-    event.as_ref().map(event_time_ms).unwrap_or_default()
+fn latest_item_signal_time_ms(item: &IncidentCockpitItem) -> i64 {
+    item.latest_signal_at
+        .as_deref()
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|dt| dt.timestamp_millis())
+        .unwrap_or_default()
+}
+
+fn signal_time_ms(signal: &IncidentSignalSummary) -> i64 {
+    signal
+        .last_seen_at
+        .as_deref()
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|dt| dt.timestamp_millis())
+        .unwrap_or_default()
+}
+
+fn latest_signal_at(signals: &[IncidentSignalSummary]) -> Option<String> {
+    signals
+        .iter()
+        .filter(|signal| signal.last_seen_at.is_some())
+        .max_by_key(|signal| signal_time_ms(signal))
+        .and_then(|signal| signal.last_seen_at.clone())
 }
 
 #[cfg(test)]
@@ -510,6 +532,11 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].severity, IncidentSeverity::Degraded);
+        assert_eq!(items[0].warning_event_count, 1);
+        assert_eq!(
+            items[0].latest_signal_at.as_deref(),
+            Some("2026-06-04T10:01:00Z")
+        );
         assert!(items[0].signals.iter().any(|signal| signal.kind == "event"));
     }
 
@@ -522,6 +549,11 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].severity, IncidentSeverity::Warning);
+        assert_eq!(items[0].warning_event_count, 1);
+        assert_eq!(
+            items[0].latest_signal_at.as_deref(),
+            Some("2026-06-04T10:01:00Z")
+        );
         assert_eq!(
             items[0].latest_warning_event.as_ref().unwrap().reason,
             "FailedMount"
@@ -561,12 +593,17 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].severity, IncidentSeverity::Attention);
+        assert_eq!(items[0].warning_event_count, 0);
+        assert_eq!(
+            items[0].latest_signal_at.as_deref(),
+            Some("2026-06-04T10:00:00Z")
+        );
         assert_eq!(items[0].signals[0].label, "Needs attention");
         assert!(items[0].signals[0].message.contains("Ready 0/3"));
     }
 
     #[test]
-    fn items_sort_by_severity_then_recent_warning() {
+    fn items_sort_by_severity_then_recent_signal() {
         let mut restarted = resource("api-1");
         restarted.restarts = Some(2);
         update_resource_health(&mut restarted);
@@ -586,6 +623,34 @@ mod tests {
         assert_eq!(items[1].resource.name, "api-1");
         assert_eq!(items[2].resource.name, "api-3");
         assert_eq!(items[3].resource.name, "api-2");
+    }
+
+    #[test]
+    fn warning_event_count_preserves_all_matched_events() {
+        let items = build_incident_items(
+            vec![resource("api-0")],
+            vec![
+                warning("api-0", "BackOff", "2026-06-04T10:03:00Z"),
+                warning("api-0", "FailedMount", "2026-06-04T10:02:00Z"),
+                warning("api-0", "FailedPull", "2026-06-04T10:01:00Z"),
+                warning("api-0", "Unhealthy", "2026-06-04T10:00:00Z"),
+            ],
+        );
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].warning_event_count, 4);
+        assert_eq!(
+            items[0].latest_signal_at.as_deref(),
+            Some("2026-06-04T10:03:00Z")
+        );
+        assert_eq!(
+            items[0]
+                .signals
+                .iter()
+                .filter(|signal| signal.kind == "event")
+                .count(),
+            MAX_WARNING_EVENTS_PER_RESOURCE
+        );
     }
 
     #[test]
