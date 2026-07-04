@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { formatExactTimestamp } from "../src/components/timestamp-format";
+import {
+	formatExactTimeOnly,
+	formatExactTimestamp,
+} from "../src/components/timestamp-format";
 import {
 	latestTimestampedLogLine,
 	orderedLogLines,
@@ -75,6 +78,36 @@ describe("log presentation helpers", () => {
 		).toBe("2026-05-18 09:01:35 UTC");
 		expect(formatExactTimestamp("2026-05-18T09:01:35Z", "utc")).toBe(
 			"2026-05-18 09:01 UTC",
+		);
+	});
+
+	test("keeps full log timestamps out of the inline gutter", () => {
+		const timestamp = "2026-05-18T09:01:35.103840719Z";
+		expect(formatExactTimeOnly(timestamp, "utc")).toBe("09:01:35.103 UTC");
+		expect(formatExactTimestamp(timestamp, "utc", "millisecond")).toBe(
+			"2026-05-18 09:01:35.103 UTC",
+		);
+
+		const detailSource = readFileSync(
+			"src/features/resource-detail/ResourceDetailPanel.svelte",
+			"utf8",
+		);
+		const logTimeFunction = detailSource.match(
+			/function formatLogTime[\s\S]*?\n\t}/,
+		)?.[0];
+		const logsSource = readFileSync(
+			"src/features/resource-detail/LogsTab.svelte",
+			"utf8",
+		);
+
+		expect(logTimeFunction).toContain(
+			"return formatExactTimeOnly(timestamp, timestampTimezone)",
+		);
+		expect(logTimeFunction).not.toContain("formatExactTimestamp");
+		expect(logsSource).toContain("title={formatFullTimestamp(line.timestamp)}");
+		expect(logsSource).toContain("{formatLogTime(line.timestamp)}");
+		expect(logsSource).not.toMatch(
+			/>\s*\{formatFullTimestamp\(line\.timestamp\)\}\s*<\/time>/,
 		);
 	});
 
