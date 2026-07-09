@@ -35,6 +35,7 @@ use commands::{
     list_present_custom_resource_kinds, list_rbac_inspection, list_resource_events,
     list_resource_kinds, list_resource_metrics, list_resource_scope, list_resource_topology,
     list_resources, pick_kubeconfig_paths, prepare_yaml_apply, remove_kubeconfig_path,
+    pick_workspace_import_json, save_workspace_export_json,
     reorder_kubeconfig_paths, resize_pod_exec_terminal, set_backend_diagnostics_enabled,
     set_kubeconfig_env_var, set_show_kubeconfig_source_labels, start_pod_exec_session,
     start_pod_log_stream, start_pod_port_forward, start_resource_event_watch, start_resource_watch,
