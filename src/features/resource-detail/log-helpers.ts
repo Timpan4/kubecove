@@ -1,7 +1,17 @@
+import type { LogLineSource } from "@/lib/types";
+
+export interface LogLineEntry {
+	line: string;
+	source?: LogLineSource;
+}
+
+export type LogLineInput = string | LogLineEntry;
+
 export interface ParsedLogLine {
 	index: number;
 	message: string;
 	raw: string;
+	source?: LogLineSource;
 	timestamp?: string;
 }
 
@@ -9,7 +19,13 @@ const LEADING_TIMESTAMP_RE =
 	/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)\s+(.*)$/;
 const EMBEDDED_TIME_RE = /\btime=(?:"([^"]+)"|([^\s]+))/;
 
-export function parseLogLine(line: string, index = 0): ParsedLogLine {
+function entryFromLogLine(input: LogLineInput): LogLineEntry {
+	return typeof input === "string" ? { line: input } : input;
+}
+
+export function parseLogLine(input: LogLineInput, index = 0): ParsedLogLine {
+	const entry = entryFromLogLine(input);
+	const line = entry.line;
 	const leadingTimestamp = line.match(LEADING_TIMESTAMP_RE);
 
 	if (leadingTimestamp) {
@@ -17,6 +33,7 @@ export function parseLogLine(line: string, index = 0): ParsedLogLine {
 			index,
 			message: leadingTimestamp[2],
 			raw: line,
+			source: entry.source,
 			timestamp: leadingTimestamp[1],
 		};
 	}
@@ -27,17 +44,25 @@ export function parseLogLine(line: string, index = 0): ParsedLogLine {
 		index,
 		message: line,
 		raw: line,
+		source: entry.source,
 		timestamp: embeddedTime?.[1] ?? embeddedTime?.[2],
 	};
 }
 
 export function orderedLogLines(
-	lines: string[],
+	lines: LogLineInput[],
 	latestFirst: boolean,
 ): ParsedLogLine[] {
 	const parsed = lines.map((line, index) => parseLogLine(line, index));
 
 	return latestFirst ? parsed.reverse() : parsed;
+}
+
+export function logLineSearchText(line: ParsedLogLine): string {
+	return [line.raw, line.source?.podName, line.source?.container]
+		.filter(Boolean)
+		.join(" ")
+		.toLowerCase();
 }
 
 function validTimestampMs(value: string | undefined): number | undefined {

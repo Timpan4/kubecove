@@ -1,3 +1,4 @@
+mod aggregate_logs;
 mod kinds;
 mod logs;
 mod registry;
@@ -5,7 +6,9 @@ mod watch;
 
 use crate::commands::kubeconfig::{kubeconfig_source_key, KubeconfigSource};
 use crate::commands::ClusterLiveStore;
-use crate::models::{AppError, PodLogStreamRequest, StreamMessage, WatchResourceKey};
+use crate::models::{
+    AggregatedLogStreamRequest, AppError, PodLogStreamRequest, StreamMessage, WatchResourceKey,
+};
 use kube::Client;
 pub use registry::StreamRegistry;
 use tauri::{ipc::Channel, State};
@@ -64,6 +67,47 @@ fn validate_pod_log_stream_request(request: &PodLogStreamRequest) -> Result<(), 
     if matches!(request.tail_lines, Some(tail_lines) if tail_lines < 0) {
         return Err(AppError::new(
             "tail_lines must be non-negative",
+            "validation",
+        ));
+    }
+    if matches!(request.since_seconds, Some(since_seconds) if since_seconds < 0) {
+        return Err(AppError::new(
+            "since_seconds must be non-negative",
+            "validation",
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_aggregated_log_stream_request(
+    request: &AggregatedLogStreamRequest,
+) -> Result<(), AppError> {
+    if request.cluster_context.trim().is_empty()
+        || request.namespace.trim().is_empty()
+        || request.target_kind.trim().is_empty()
+        || request.target_name.trim().is_empty()
+    {
+        return Err(AppError::new(
+            "aggregated log stream target is required",
+            "validation",
+        ));
+    }
+    if !matches!(request.target_kind.as_str(), "Deployment" | "Service") {
+        return Err(AppError::new(
+            "aggregated logs support Deployment and selector-backed Service targets",
+            "validation",
+        ));
+    }
+    if matches!(request.tail_lines, Some(tail_lines) if tail_lines < 0) {
+        return Err(AppError::new(
+            "tail_lines must be non-negative",
+            "validation",
+        ));
+    }
+    if matches!(request.since_seconds, Some(since_seconds) if since_seconds < 0) {
+        return Err(AppError::new(
+            "since_seconds must be non-negative",
             "validation",
         ));
     }
@@ -181,6 +225,30 @@ pub async fn start_pod_log_stream(
 }
 
 #[tauri::command]
+pub async fn start_aggregated_log_stream(
+    request: AggregatedLogStreamRequest,
+    channel: Channel<StreamMessage>,
+    registry: State<'_, StreamRegistry>,
+) -> Result<String, AppError> {
+    validate_aggregated_log_stream_request(&request)?;
+    let stream_id = registry.stream_id("logs");
+    let handle = tauri::async_runtime::spawn(aggregate_logs::run_aggregated_log_stream(
+        stream_id.clone(),
+        request,
+        channel.clone(),
+    ));
+    registry.insert_handles(stream_id.clone(), vec![handle]);
+    send(
+        &channel,
+        StreamMessage::Started {
+            stream_id: stream_id.clone(),
+            label: "logs".to_string(),
+        },
+    );
+    Ok(stream_id)
+}
+
+#[tauri::command]
 pub async fn stop_stream(
     stream_id: String,
     registry: State<'_, StreamRegistry>,
@@ -200,6 +268,19 @@ mod tests {
             pod_name: "api-0".to_string(),
             container: Some("api".to_string()),
             tail_lines: Some(200),
+            since_seconds: None,
+        }
+    }
+
+    fn valid_aggregated_log_request() -> AggregatedLogStreamRequest {
+        AggregatedLogStreamRequest {
+            cluster_context: "kind-dev".to_string(),
+            kubeconfig_env_var: None,
+            namespace: "default".to_string(),
+            target_kind: "Deployment".to_string(),
+            target_name: "api".to_string(),
+            tail_lines: Some(200),
+            since_seconds: None,
         }
     }
 
@@ -298,6 +379,57 @@ mod tests {
             .expect_err("negative tail")
             .message,
             "tail_lines must be non-negative",
+        );
+        assert_eq!(
+            validate_pod_log_stream_request(&PodLogStreamRequest {
+                since_seconds: Some(-1),
+                ..valid_log_request()
+            })
+            .expect_err("negative since")
+            .message,
+            "since_seconds must be non-negative",
+        );
+    }
+
+    #[test]
+    fn aggregated_log_validation_requires_supported_target_and_non_negative_limits() {
+        assert!(validate_aggregated_log_stream_request(&valid_aggregated_log_request()).is_ok());
+
+        assert_eq!(
+            validate_aggregated_log_stream_request(&AggregatedLogStreamRequest {
+                target_name: String::new(),
+                ..valid_aggregated_log_request()
+            })
+            .expect_err("empty target")
+            .message,
+            "aggregated log stream target is required",
+        );
+        assert_eq!(
+            validate_aggregated_log_stream_request(&AggregatedLogStreamRequest {
+                target_kind: "StatefulSet".to_string(),
+                ..valid_aggregated_log_request()
+            })
+            .expect_err("unsupported kind")
+            .message,
+            "aggregated logs support Deployment and selector-backed Service targets",
+        );
+        assert_eq!(
+            validate_aggregated_log_stream_request(&AggregatedLogStreamRequest {
+                tail_lines: Some(-1),
+                ..valid_aggregated_log_request()
+            })
+            .expect_err("negative tail")
+            .message,
+            "tail_lines must be non-negative",
+        );
+        assert_eq!(
+            validate_aggregated_log_stream_request(&AggregatedLogStreamRequest {
+                since_seconds: Some(-1),
+                ..valid_aggregated_log_request()
+            })
+            .expect_err("negative since")
+            .message,
+            "since_seconds must be non-negative",
         );
     }
 }

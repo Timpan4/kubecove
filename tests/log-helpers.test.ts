@@ -6,6 +6,7 @@ import {
 } from "../src/components/timestamp-format";
 import {
 	latestTimestampedLogLine,
+	logLineSearchText,
 	orderedLogLines,
 	parseLogLine,
 } from "../src/features/resource-detail/log-helpers";
@@ -56,6 +57,31 @@ describe("log presentation helpers", () => {
 			raw: "plain message",
 			timestamp: undefined,
 		});
+	});
+
+	test("preserves aggregate log source metadata for ordering and filtering", () => {
+		const lines = orderedLogLines(
+			[
+				{
+					line: "2026-05-18T09:01:35Z ready",
+					source: { podName: "api-7f8d", container: "web" },
+				},
+				{
+					line: "plain worker message",
+					source: { podName: "api-9c2a", container: "worker" },
+				},
+			],
+			false,
+		);
+
+		expect(lines[0]).toMatchObject({
+			message: "ready",
+			source: { podName: "api-7f8d", container: "web" },
+			timestamp: "2026-05-18T09:01:35Z",
+		});
+		expect(logLineSearchText(lines[1])).toContain("api-9c2a");
+		expect(logLineSearchText(lines[1])).toContain("worker");
+		expect(logLineSearchText(lines[1])).toContain("plain worker message");
 	});
 
 	test("can show newest log lines first without mutating the original array", () => {
@@ -130,6 +156,7 @@ describe("log presentation helpers", () => {
 	test("Svelte logs use selected non-init containers before streaming", () => {
 		const source = [
 			readFileSync("src/features/resource-detail/ResourceDetailPanel.svelte", "utf8"),
+			readFileSync("src/features/resource-detail/ResourceLogsPane.svelte", "utf8"),
 			readFileSync("src/features/resource-detail/LogsTab.svelte", "utf8"),
 		].join("\n");
 

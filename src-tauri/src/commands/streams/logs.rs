@@ -1,5 +1,5 @@
 use super::{client_for_context, send};
-use crate::models::{PodLogStreamRequest, StreamMessage};
+use crate::models::{LogLineSource, PodLogStreamRequest, StreamMessage};
 use futures_util::{AsyncBufReadExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::{Api, LogParams};
@@ -33,6 +33,7 @@ pub(super) async fn run_pod_log_stream(
         container: request.container.clone(),
         follow: true,
         tail_lines: Some(request.tail_lines.unwrap_or(200)),
+        since_seconds: request.since_seconds,
         timestamps: true,
         ..LogParams::default()
     };
@@ -59,6 +60,10 @@ pub(super) async fn run_pod_log_stream(
                             StreamMessage::LogLine {
                                 stream_id: stream_id.clone(),
                                 line,
+                                source: Some(LogLineSource {
+                                    pod_name: request.pod_name.clone(),
+                                    container: request.container.clone(),
+                                }),
                             },
                         ) {
                             return;
