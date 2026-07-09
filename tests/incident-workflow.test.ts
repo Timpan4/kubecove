@@ -45,6 +45,7 @@ function svelteDetailSource(): string {
 		"src/features/resource-detail/DetailsTab.svelte",
 		"src/features/resource-detail/EventsTab.svelte",
 		"src/features/resource-detail/YamlTab.svelte",
+		"src/features/resource-detail/ResourceYamlPane.svelte",
 		"src/features/resource-detail/LogsTab.svelte",
 	]
 		.map((path) => readFileSync(path, "utf8"))
