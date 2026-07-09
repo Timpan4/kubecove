@@ -69,7 +69,7 @@ pub use sessions::{
     list_port_forwards, start_pod_port_forward, stop_port_forward, PortForwardRegistry,
 };
 pub use streams::{
-    start_pod_log_stream, start_resource_event_watch, start_resource_watch, stop_stream,
-    StreamRegistry,
+    start_aggregated_log_stream, start_pod_log_stream, start_resource_event_watch,
+    start_resource_watch, stop_stream, StreamRegistry,
 };
 pub use usage::{get_app_usage_metrics, AppUsageMonitor};

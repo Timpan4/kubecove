@@ -36,6 +36,31 @@ pub struct PodLogStreamRequest {
     pub container: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tail_lines: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since_seconds: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregatedLogStreamRequest {
+    pub cluster_context: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubeconfig_env_var: Option<String>,
+    pub namespace: String,
+    pub target_kind: String,
+    pub target_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tail_lines: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since_seconds: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogLineSource {
+    pub pod_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,6 +103,8 @@ pub enum StreamMessage {
     LogLine {
         stream_id: String,
         line: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<LogLineSource>,
     },
     Error {
         stream_id: String,

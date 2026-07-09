@@ -92,6 +92,7 @@ const handlers: Record<string, MockHandler> = {
 	start_resource_watch: (args) => startStream(args?.channel, "mock-watch", "Resource watch connected"),
 	start_resource_event_watch: (args) => startStream(args?.channel, "mock-events", "Event watch connected"),
 	start_pod_log_stream: (args) => startLogStream(args?.channel),
+	start_aggregated_log_stream: (args) => startLogStream(args?.channel, true),
 	stop_stream: () => true,
 	start_pod_port_forward: unavailable("Port forwarding is unavailable in browser mock mode."),
 	stop_port_forward: () => true,
@@ -546,12 +547,18 @@ function startStream(channel: unknown, idPrefix: string, message: string): strin
 	return streamId;
 }
 
-function startLogStream(channel: unknown): string {
+function startLogStream(channel: unknown, aggregate = false): string {
 	const streamId = `mock-logs-${Date.now()}`;
-	send(channel, { type: "started", streamId, label: "Mock pod logs" });
-	send(channel, { type: "status", streamId, status: "connected", message: "Mock log stream connected" });
-	for (const line of ["2026-06-29T10:00:00Z boot payments-api", "2026-06-29T10:00:02Z handled GET /healthz 200", "2026-06-29T10:00:04Z warning downstream retry budget at 82%"]) {
-		send(channel, { type: "logLine", streamId, line });
+	send(channel, { type: "started", streamId, label: aggregate ? "Mock aggregate logs" : "Mock pod logs" });
+	send(channel, { type: "status", streamId, status: "connected", message: aggregate ? "Streaming 2 pod containers" : "Mock log stream connected" });
+	const sources = aggregate
+		? [
+				{ podName: "payments-api-7db7c9c9d4-8n2xq", container: "app" },
+				{ podName: "payments-api-7db7c9c9d4-zl6pd", container: "app" },
+			]
+		: [undefined];
+	for (const [index, line] of ["2026-06-29T10:00:00Z boot payments-api", "2026-06-29T10:00:02Z handled GET /healthz 200", "2026-06-29T10:00:04Z warning downstream retry budget at 82%"].entries()) {
+		send(channel, { type: "logLine", streamId, line, source: sources[index % sources.length] });
 	}
 	return streamId;
 }
