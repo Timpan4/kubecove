@@ -1,11 +1,10 @@
 import {
 	createSavedPortForward,
 	createWorkspaceRecord,
-	makeWorkspaceShortcuts,
 	workspaceScopeContexts,
 	type SavePortForwardInput,
 	type SavedWorkspace,
-} from "./workspace-model";
+} from "@/lib/workspace-model";
 import { cloneScope, cloneShortcut, parseWorkspaceImport } from "./workspace-sharing-parse";
 import {
 	WORKSPACE_EXPORT_API_VERSION,
@@ -171,9 +170,7 @@ function sharedToSavedWorkspace(
 		createdAt: replace?.createdAt ?? now,
 		updatedAt: now,
 		scope,
-		shortcuts: workspace.shortcuts.length
-			? workspace.shortcuts.map(cloneShortcut)
-			: makeWorkspaceShortcuts(scope.namespaces, undefined, scope.shortcutPreferences, scope),
+		shortcuts: workspace.shortcuts.map(cloneShortcut),
 		portForwards: workspace.portForwards.map((forward) =>
 			createSavedPortForward(forward satisfies SavePortForwardInput, now),
 		),

@@ -3,8 +3,8 @@ import type {
 	WorkspaceScope,
 	WorkspaceShortcut,
 	WorkspaceShortcutPreferences,
-} from "./workspace-model";
-import type { DiscoveredResourceKind, ResourceKindSelection } from "./types";
+} from "@/lib/workspace-model";
+import type { DiscoveredResourceKind, ResourceKindSelection } from "@/lib/types";
 import {
 	WORKSPACE_EXPORT_API_VERSION,
 	type SharedWorkspacePortForward,
@@ -66,6 +66,9 @@ function parseScope(value: unknown): WorkspaceScope {
 	const scope = object(value, "spec.scope");
 	const clusterGroup =
 		scope.clusterGroup === undefined ? undefined : object(scope.clusterGroup, "scope.clusterGroup");
+	if (scope.layout !== "overview" && scope.layout !== "resources") {
+		throw new Error("scope.layout must be overview or resources.");
+	}
 	return {
 		clusterContext: requiredString(scope.clusterContext, "scope.clusterContext"),
 		clusterGroup: clusterGroup
@@ -79,7 +82,7 @@ function parseScope(value: unknown): WorkspaceScope {
 		kinds: array(scope.kinds, "scope.kinds").map(parseKind),
 		gitOpsFilter: optionalString(scope.gitOpsFilter),
 		argoAppFilter: optionalString(scope.argoAppFilter) ?? "",
-		layout: scope.layout === "resources" ? "resources" : "overview",
+		layout: scope.layout,
 		shortcutPreferences: parseShortcutPreferences(scope.shortcutPreferences),
 	};
 }
@@ -130,9 +133,12 @@ function parseKind(value: unknown): ResourceKindSelection {
 
 function parseCompare(value: unknown): WorkspaceCompareEntry {
 	const compare = object(value, "shortcut.compare");
+	if (compare.kind !== "contexts" && compare.kind !== "namespaces") {
+		throw new Error("compare.kind must be contexts or namespaces.");
+	}
 	return {
 		id: requiredString(compare.id, "compare.id"),
-		kind: compare.kind === "namespaces" ? "namespaces" : "contexts",
+		kind: compare.kind,
 		label: requiredString(compare.label, "compare.label"),
 		leftLabel: requiredString(compare.leftLabel, "compare.leftLabel"),
 		rightLabel: requiredString(compare.rightLabel, "compare.rightLabel"),
@@ -145,10 +151,19 @@ function parseShortcutPreferences(value: unknown): WorkspaceShortcutPreferences 
 	if (value === undefined) return undefined;
 	const preferences = object(value, "scope.shortcutPreferences");
 	return {
-		includeResources: Boolean(preferences.includeResources),
-		includeNamespaces: Boolean(preferences.includeNamespaces),
-		includeCompare: Boolean(preferences.includeCompare),
-		includeArgo: Boolean(preferences.includeArgo),
+		includeResources: booleanValue(
+			preferences.includeResources,
+			"scope.shortcutPreferences.includeResources",
+		),
+		includeNamespaces: booleanValue(
+			preferences.includeNamespaces,
+			"scope.shortcutPreferences.includeNamespaces",
+		),
+		includeCompare: booleanValue(
+			preferences.includeCompare,
+			"scope.shortcutPreferences.includeCompare",
+		),
+		includeArgo: booleanValue(preferences.includeArgo, "scope.shortcutPreferences.includeArgo"),
 	};
 }
 
@@ -175,6 +190,11 @@ function requiredString(value: unknown, label: string): string {
 
 function optionalString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function booleanValue(value: unknown, label: string): boolean {
+	if (typeof value === "boolean") return value;
+	throw new Error(`${label} must be a boolean.`);
 }
 
 function portValue(value: unknown, label: string): number {

@@ -15,7 +15,7 @@ import {
 	type WorkspaceImportDecisions,
 	type WorkspaceImportPreview,
 	type WorkspaceImportResult,
-} from "@/lib/workspace-sharing";
+	} from "./workspace-sharing";
 
 const WORKSPACE_STORAGE_KEY = "kubecove-workspaces";
 

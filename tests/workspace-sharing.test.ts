@@ -3,7 +3,7 @@ import {
 	applyWorkspaceImport,
 	buildWorkspaceImportPreview,
 	serializeWorkspaceExport,
-} from "../src/lib/workspace-sharing";
+} from "../src/features/workspaces/workspace-sharing";
 import {
 	createSavedPortForward,
 	createWorkspaceRecord,
@@ -98,6 +98,14 @@ describe("workspace sharing", () => {
 		expect(result.workspaces[0].portForwards[0].lastError).toBeUndefined();
 	});
 
+	test("preserves an empty imported shortcut collection", () => {
+		const document = JSON.parse(serializeWorkspaceExport([workspace()]));
+		document.spec.shortcuts = [];
+		const preview = buildWorkspaceImportPreview(JSON.stringify(document), []);
+
+		expect(applyWorkspaceImport([], preview, {}).workspaces[0].shortcuts).toEqual([]);
+	});
+
 	test("lets import choose skip, replace, or copy for collisions", () => {
 		const existing = workspace("Ops");
 		const imported = {
@@ -153,5 +161,43 @@ describe("workspace sharing", () => {
 		expect(() => buildWorkspaceImportPreview(JSON.stringify(duplicate), [])).toThrow(
 			"Duplicate workspace metadata.name",
 		);
+	});
+
+	test("rejects malformed workspace enums and shortcut preference booleans", () => {
+		const document = JSON.parse(serializeWorkspaceExport([workspace()]));
+		document.spec.scope.layout = "grid";
+		expect(() => buildWorkspaceImportPreview(JSON.stringify(document), [])).toThrow(
+			"scope.layout must be overview or resources.",
+		);
+
+		document.spec.scope.layout = "overview";
+		document.spec.shortcuts = [
+			{
+				id: "compare",
+				label: "Compare",
+				kind: "compare",
+				compare: {
+					id: "compare",
+					kind: "clusters",
+					label: "Compare",
+					leftLabel: "Left",
+					rightLabel: "Right",
+					clusterContexts: [],
+					namespaces: [],
+				},
+			},
+		];
+		expect(() => buildWorkspaceImportPreview(JSON.stringify(document), [])).toThrow(
+			"compare.kind must be contexts or namespaces.",
+		);
+
+		document.spec.shortcuts = [];
+		for (const field of ["includeResources", "includeNamespaces", "includeCompare", "includeArgo"]) {
+			document.spec.scope.shortcutPreferences[field] = "false";
+			expect(() => buildWorkspaceImportPreview(JSON.stringify(document), [])).toThrow(
+				`scope.shortcutPreferences.${field} must be a boolean.`,
+			);
+			document.spec.scope.shortcutPreferences[field] = false;
+		}
 	});
 });

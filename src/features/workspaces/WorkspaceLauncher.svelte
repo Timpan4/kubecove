@@ -44,7 +44,7 @@
 		slugifyWorkspaceName,
 		type WorkspaceImportAction,
 		type WorkspaceImportPreview,
-	} from "@/lib/workspace-sharing";
+	} from "./workspace-sharing";
 	import {
 		createTauriClient,
 		getKubeconfigSources,

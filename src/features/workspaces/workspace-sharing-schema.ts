@@ -1,4 +1,4 @@
-import type { SavedWorkspace, WorkspaceScope, WorkspaceShortcut } from "./workspace-model";
+import type { SavedWorkspace, WorkspaceScope, WorkspaceShortcut } from "@/lib/workspace-model";
 
 export const WORKSPACE_EXPORT_API_VERSION = "kubecove.dev/workspace/v1";
 

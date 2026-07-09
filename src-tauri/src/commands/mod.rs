@@ -74,3 +74,4 @@ pub use streams::{
     StreamRegistry,
 };
 pub use usage::{get_app_usage_metrics, AppUsageMonitor};
+pub use workspace_files::{pick_workspace_import_json, save_workspace_export_json};
