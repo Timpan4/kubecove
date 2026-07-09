@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, io::Read};
 
 use crate::models::AppError;
 use tauri::AppHandle;
@@ -24,9 +24,8 @@ pub fn save_workspace_export_json(
     };
 
     let path = file_path_to_path(file_path)?;
-    fs::write(&path, content).map_err(|err| {
-        AppError::new(format!("failed to write workspace export: {err}"), "io")
-    })?;
+    fs::write(&path, content)
+        .map_err(|err| AppError::new(format!("failed to write workspace export: {err}"), "io"))?;
     Ok(true)
 }
 
@@ -43,20 +42,23 @@ pub fn pick_workspace_import_json(app: AppHandle) -> Result<Option<String>, AppE
     };
 
     let path = file_path_to_path(file_path)?;
-    let metadata = fs::metadata(&path).map_err(|err| {
-        AppError::new(
-            format!("failed to inspect workspace import: {err}"),
-            "io",
-        )
-    })?;
-    if metadata.len() > WORKSPACE_IMPORT_MAX_BYTES {
+    let file = fs::File::open(&path)
+        .map_err(|err| AppError::new(format!("failed to open workspace import: {err}"), "io"))?;
+    let mut bytes = Vec::new();
+    file.take(WORKSPACE_IMPORT_MAX_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|err| AppError::new(format!("failed to read workspace import: {err}"), "io"))?;
+    if bytes.len() > WORKSPACE_IMPORT_MAX_BYTES as usize {
         return Err(AppError::new(
             "workspace import JSON must be 2 MiB or smaller",
             "validation",
         ));
     }
-    let content = fs::read_to_string(&path).map_err(|err| {
-        AppError::new(format!("failed to read workspace import: {err}"), "io")
+    let content = String::from_utf8(bytes).map_err(|_| {
+        AppError::new(
+            "workspace import JSON must use UTF-8 encoding",
+            "validation",
+        )
     })?;
     Ok(Some(content))
 }
