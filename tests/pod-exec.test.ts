@@ -142,6 +142,10 @@ describe("pod exec helpers", () => {
 			"src/features/resource-detail/ResourceDetailPanel.svelte",
 			"utf8",
 		);
+		const yamlPaneSource = readFileSync(
+			"src/features/resource-detail/ResourceYamlPane.svelte",
+			"utf8",
+		);
 
 		expect(source).toContain('const canShowExec = $derived(isPod)');
 		expect(source).toContain('const canShowPortForward = $derived(');
@@ -171,9 +175,10 @@ describe("pod exec helpers", () => {
 		expect(source).toContain('diagnosticLog("detail.tab.click", { key: resourceKey, tab: nextTab })');
 		expect(source).toContain("withForegroundLoad(loadLabel, task)");
 		expect(source).toContain('runDetailFetch("details", "resource-details"');
-		expect(source).toContain('runDetailFetch("yaml", "resource-yaml"');
+		expect(yamlPaneSource).toContain('runYamlFetch("resource-yaml"');
 		expect(source).toContain('runDetailFetch("events", "resource-events"');
 		expect(source).toContain("diagnosticResultSummary(result)");
+		expect(yamlPaneSource).toContain("diagnosticResultSummary(result)");
 	});
 
 	test("Svelte exec keeps guarded target and kubeconfig source visible", () => {

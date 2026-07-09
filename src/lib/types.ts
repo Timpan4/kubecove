@@ -246,6 +246,22 @@ export interface PodLogStreamRequest {
 	podName: string;
 	container?: string;
 	tailLines?: number;
+	sinceSeconds?: number;
+}
+
+export interface AggregatedLogStreamRequest {
+	clusterContext: string;
+	kubeconfigEnvVar?: string;
+	namespace: string;
+	targetKind: "Deployment" | "Service";
+	targetName: string;
+	tailLines?: number;
+	sinceSeconds?: number;
+}
+
+export interface LogLineSource {
+	podName: string;
+	container?: string;
 }
 
 export interface PortForwardRequest {
@@ -482,7 +498,7 @@ export type StreamMessage =
 			target: WatchResourceTarget;
 			action: string;
 	  }
-	| { type: "logLine"; streamId: string; line: string }
+	| { type: "logLine"; streamId: string; line: string; source?: LogLineSource }
 	| { type: "error"; streamId: string; message: string }
 	| { type: "stopped"; streamId: string };
 

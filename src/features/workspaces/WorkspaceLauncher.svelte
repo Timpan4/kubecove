@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
-	import { FolderOpen, Pencil, Plus, Trash2, X } from "lucide-svelte";
+	import { Download, FolderOpen, Pencil, Plus, Trash2, Upload, X } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
 		Badge,
@@ -24,6 +24,7 @@
 		FieldSet,
 		Input,
 		ScrollArea,
+		SegmentedControl,
 		Select,
 		SelectContent,
 		SelectGroup,
@@ -38,10 +39,19 @@
 		type SavedWorkspace,
 	} from "@/lib/workspace-model";
 	import {
+		buildWorkspaceImportPreview,
+		serializeWorkspaceExport,
+		slugifyWorkspaceName,
+		type WorkspaceImportAction,
+		type WorkspaceImportPreview,
+	} from "./workspace-sharing";
+	import {
 		createTauriClient,
 		getKubeconfigSources,
 		listKubeContexts,
 		listNamespaces,
+		pickWorkspaceImportJson,
+		saveWorkspaceExportJson,
 	} from "@/lib/tauri";
 	import { queryKeys } from "@/lib/queryKeys";
 	import type { ClusterContext, NamespaceSummary } from "@/lib/types";
@@ -60,6 +70,20 @@
 	let selectedContext = $state("");
 	let selectedGroupContexts = $state<string[]>([]);
 	let selectedNamespaces = $state<string[]>([]);
+	let workspaceTransferMessage = $state("");
+	let workspaceTransferError = $state("");
+	let importPreview = $state<WorkspaceImportPreview | null>(null);
+	let importActions = $state<Record<string, WorkspaceImportAction>>({});
+
+	const newImportOptions: { value: WorkspaceImportAction; label: string }[] = [
+		{ value: "add", label: "Add" },
+		{ value: "skip", label: "Skip" },
+	];
+	const collisionImportOptions: { value: WorkspaceImportAction; label: string }[] = [
+		{ value: "add", label: "Add copy" },
+		{ value: "replace", label: "Replace" },
+		{ value: "skip", label: "Skip" },
+	];
 
 	const client = createTauriClient();
 	const sourceQuery = createQuery(() => ({
@@ -102,6 +126,13 @@
 			!contexts.some((context) => context.name === effectiveContext),
 	);
 	const canCreate = $derived(effectiveContext.length > 0 && !selectedContextMissing);
+	const selectedImportCount = $derived(
+		importPreview
+			? importPreview.items.filter(
+					(item) => (importActions[item.id] ?? item.defaultAction) !== "skip",
+				).length
+			: 0,
+	);
 	const namespacesQuery = createQuery<NamespaceSummary[]>(() => ({
 		queryKey: queryKeys.namespaces(effectiveContext, kubeconfigSourceKey),
 		queryFn: () => listNamespaces(client, effectiveContext, kubeconfigSourceKey),
@@ -142,6 +173,68 @@
 		selectedContext = "";
 		selectedGroupContexts = [];
 		selectedNamespaces = [];
+	}
+
+	function workspaceFileName(workspaces: SavedWorkspace[]): string {
+		if (workspaces.length === 1) {
+			return `${slugifyWorkspaceName(workspaces[0].sharedKey ?? workspaces[0].name)}.kubecove-workspace.json`;
+		}
+		return "kubecove-workspaces.json";
+	}
+
+	function errorText(error: unknown): string {
+		return error instanceof Error ? error.message : String(error);
+	}
+
+	async function exportWorkspaces(workspaces: SavedWorkspace[]) {
+		if (workspaces.length === 0) return;
+		workspaceTransferError = "";
+		workspaceTransferMessage = "";
+		try {
+			const saved = await saveWorkspaceExportJson(
+				client,
+				workspaceFileName(workspaces),
+				serializeWorkspaceExport(workspaces),
+			);
+			workspaceTransferMessage = saved
+				? `Exported ${workspaces.length === 1 ? workspaces[0].name : `${workspaces.length} workspaces`}.`
+				: "Export canceled.";
+		} catch (error) {
+			workspaceTransferError = errorText(error);
+		}
+	}
+
+	async function importWorkspaces() {
+		workspaceTransferError = "";
+		workspaceTransferMessage = "";
+		try {
+			const raw = await pickWorkspaceImportJson(client);
+			if (!raw) {
+				workspaceTransferMessage = "Import canceled.";
+				return;
+			}
+			const preview = buildWorkspaceImportPreview(raw, $workspaces);
+			importPreview = preview;
+			importActions = Object.fromEntries(
+				preview.items.map((item) => [item.id, item.defaultAction]),
+			);
+			workspaceTransferMessage = `Loaded ${preview.items.length} workspace ${preview.items.length === 1 ? "item" : "items"}.`;
+		} catch (error) {
+			workspaceTransferError = errorText(error);
+		}
+	}
+
+	function setImportAction(itemId: string, action: WorkspaceImportAction) {
+		importActions = { ...importActions, [itemId]: action };
+	}
+
+	function applyImportPreview() {
+		if (!importPreview) return;
+		const result = workspaceStore.importWorkspaces(importPreview, importActions);
+		importPreview = null;
+		importActions = {};
+		workspaceTransferError = "";
+		workspaceTransferMessage = `Imported ${result.added} new, replaced ${result.replaced}, skipped ${result.skipped}.`;
 	}
 
 	function handleContextChange(value: string) {
@@ -207,14 +300,98 @@
 <section class="flex min-h-full flex-col justify-center p-4 md:p-6">
 	<div class="mx-auto grid w-full max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
 		<section class="min-w-0">
-			<div class="mb-3 flex items-baseline gap-2">
-				<h1 class="font-heading text-base font-semibold">Workspaces</h1>
-				<span class="text-xs text-muted-foreground">
-					{sortedWorkspaces.length === 1
-						? "1 saved"
-						: `${sortedWorkspaces.length} saved`}
-				</span>
+			<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+				<div class="flex items-baseline gap-2">
+					<h1 class="font-heading text-base font-semibold">Workspaces</h1>
+					<span class="text-xs text-muted-foreground">
+						{sortedWorkspaces.length === 1
+							? "1 saved"
+							: `${sortedWorkspaces.length} saved`}
+					</span>
+				</div>
+				<div class="flex flex-wrap justify-end gap-2" role="group" aria-label="Workspace sharing">
+					<Button type="button" variant="outline" size="sm" onclick={importWorkspaces}>
+						<Upload data-icon="inline-start" /> Import
+					</Button>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={sortedWorkspaces.length === 0}
+						onclick={() => exportWorkspaces(sortedWorkspaces)}
+					>
+						<Download data-icon="inline-start" /> Export all
+					</Button>
+				</div>
 			</div>
+
+			{#if workspaceTransferError}
+				<div class="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+					{workspaceTransferError}
+				</div>
+			{:else if workspaceTransferMessage}
+				<div class="mb-3 rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
+					{workspaceTransferMessage}
+				</div>
+			{/if}
+
+			{#if importPreview}
+				<Card size="sm" class="mb-3">
+					<CardHeader>
+						<CardTitle>Import preview</CardTitle>
+						<CardDescription>
+							Choose how each shared workspace should land locally.
+						</CardDescription>
+					</CardHeader>
+					<CardContent class="grid gap-3">
+						{#each importPreview.items as item (item.id)}
+							<div class="grid gap-2 rounded-md border bg-background/40 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+								<div class="min-w-0">
+									<div class="flex min-w-0 flex-wrap items-center gap-2">
+										<span class="truncate text-sm font-medium">{item.workspace.name}</span>
+										<Badge variant="outline" class="rounded-sm">{item.workspace.sharedKey}</Badge>
+										{#if item.existingWorkspaceName}
+											<Badge variant="secondary" class="rounded-sm">
+												Matches {item.existingWorkspaceName}
+											</Badge>
+										{/if}
+									</div>
+									<div class="mt-1 text-xs text-muted-foreground">
+										{item.workspace.scope.clusterContext} / {item.workspace.scope.namespaces.length || "All"} namespaces / {item.workspace.portForwards.length} port forwards
+									</div>
+								</div>
+								<SegmentedControl
+									value={importActions[item.id] ?? item.defaultAction}
+									options={item.existingWorkspaceId ? collisionImportOptions : newImportOptions}
+									ariaLabel={`Import action for ${item.workspace.name}`}
+									onChange={(action) => setImportAction(item.id, action)}
+								/>
+							</div>
+						{/each}
+						<div class="flex justify-end gap-2">
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								onclick={() => {
+									importPreview = null;
+									importActions = {};
+								}}
+							>
+								Cancel
+							</Button>
+							<Button
+								type="button"
+								size="sm"
+								disabled={selectedImportCount === 0}
+								onclick={applyImportPreview}
+							>
+								Apply import
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
+			{/if}
 
 			<div class="grid gap-2">
 				{#if contextsPending}
@@ -305,6 +482,15 @@
 							>
 								<FolderOpen data-icon="inline-start" />
 								Open
+							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-sm"
+								aria-label={`Export ${workspace.name}`}
+								onclick={() => exportWorkspaces([workspace])}
+							>
+								<Download />
 							</Button>
 							<Button
 								type="button"

@@ -23,6 +23,7 @@ mod sessions;
 mod streams;
 mod usage;
 mod usage_webview;
+mod workspace_files;
 
 pub use argo::{
     detect_argocd, get_argocd_application_details, get_argocd_appproject_details,
@@ -69,7 +70,8 @@ pub use sessions::{
     list_port_forwards, start_pod_port_forward, stop_port_forward, PortForwardRegistry,
 };
 pub use streams::{
-    start_pod_log_stream, start_resource_event_watch, start_resource_watch, stop_stream,
-    StreamRegistry,
+    start_aggregated_log_stream, start_pod_log_stream, start_resource_event_watch,
+    start_resource_watch, stop_stream, StreamRegistry,
 };
 pub use usage::{get_app_usage_metrics, AppUsageMonitor};
+pub use workspace_files::{pick_workspace_import_json, save_workspace_export_json};

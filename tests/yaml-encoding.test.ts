@@ -178,6 +178,7 @@ describe("YAML encoding", () => {
 	test("Svelte YAML edit flow keeps format and dry-run parity", () => {
 		const source = [
 			readFileSync("src/features/resource-detail/ResourceDetailPanel.svelte", "utf8"),
+			readFileSync("src/features/resource-detail/ResourceYamlPane.svelte", "utf8"),
 			readFileSync("src/features/resource-detail/YamlTab.svelte", "utf8"),
 		].join("\n");
 
@@ -193,6 +194,7 @@ describe("YAML encoding", () => {
 	test("Svelte YAML edit flow calls backend lint and renders diagnostics", () => {
 		const source = [
 			readFileSync("src/features/resource-detail/ResourceDetailPanel.svelte", "utf8"),
+			readFileSync("src/features/resource-detail/ResourceYamlPane.svelte", "utf8"),
 			readFileSync("src/features/resource-detail/YamlTab.svelte", "utf8"),
 		].join("\n");
 		const editorSource = readFileSync("src/components/YamlCodeEditor.svelte", "utf8");

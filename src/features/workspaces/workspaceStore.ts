@@ -10,6 +10,12 @@ import {
 	type SavedPortForwardUpdates,
 	type SavedWorkspace,
 } from "@/lib/workspace-model";
+import {
+	applyWorkspaceImport,
+	type WorkspaceImportDecisions,
+	type WorkspaceImportPreview,
+	type WorkspaceImportResult,
+	} from "./workspace-sharing";
 
 const WORKSPACE_STORAGE_KEY = "kubecove-workspaces";
 
@@ -48,6 +54,10 @@ export interface WorkspaceStore {
 		updates: SavedPortForwardUpdates,
 	) => void;
 	deleteSavedPortForward: (workspaceId: string, portForwardId: string) => void;
+	importWorkspaces: (
+		preview: WorkspaceImportPreview,
+		decisions: WorkspaceImportDecisions,
+	) => WorkspaceImportResult;
 	deleteWorkspace: (id: string) => void;
 	openWorkspace: (id: string) => void;
 	clearSelectedWorkspace: () => void;
@@ -199,6 +209,22 @@ export function createWorkspaceStore(
 					),
 				};
 			});
+		},
+		importWorkspaces: (preview, decisions) => {
+			let result: WorkspaceImportResult = {
+				workspaces: [],
+				added: 0,
+				replaced: 0,
+				skipped: 0,
+			};
+			updateAndPersist((current) => {
+				result = applyWorkspaceImport(current.workspaces, preview, decisions);
+				return {
+					workspaces: result.workspaces,
+					selectedWorkspaceId: current.selectedWorkspaceId,
+				};
+			});
+			return result;
 		},
 		deleteWorkspace: (id) => {
 			updateAndPersist((current) => ({
