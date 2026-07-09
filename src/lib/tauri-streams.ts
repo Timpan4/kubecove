@@ -2,6 +2,7 @@ import { Channel } from "@tauri-apps/api/core";
 import { kubeconfigArg, sanitizeKubeconfigRequest } from "./tauri-args";
 import { createMockChannel, shouldUseBrowserDevMocks, type TauriClient } from "./tauri-runtime";
 import type {
+	AggregatedLogStreamRequest,
 	LiveSessionCleanupRequest,
 	LiveSessionCleanupResult,
 	PodExecSessionMessage,
@@ -91,6 +92,17 @@ export async function startPodLogStream(
 	channel: Channel<StreamMessage>,
 ): Promise<string> {
 	return client.invoke<string>("start_pod_log_stream", {
+		request: sanitizeKubeconfigRequest(request),
+		channel,
+	});
+}
+
+export async function startAggregatedLogStream(
+	client: TauriClient,
+	request: AggregatedLogStreamRequest,
+	channel: Channel<StreamMessage>,
+): Promise<string> {
+	return client.invoke<string>("start_aggregated_log_stream", {
 		request: sanitizeKubeconfigRequest(request),
 		channel,
 	});

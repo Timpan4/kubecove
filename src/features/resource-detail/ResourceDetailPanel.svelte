@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/svelte";
-	import type { Diagnostic } from "@codemirror/lint";
 	import {
 		formatExactTimeOnly,
 		formatExactTimestamp,
@@ -13,36 +12,26 @@
 		cancelBackendRequests,
 		closeStreamChannel,
 		createStreamChannel,
-		applyYaml,
 		getDynamicResourceDetails,
 		getResourceDetails,
-		getResourceYaml,
 		isAppError,
 		listResourceEvents,
-		lintKubernetesYaml,
-		prepareYamlApply,
-		startPodLogStream,
 		startResourceEventWatch,
 		startResourceWatch,
 		stopStream,
 		type TauriClient,
 	} from "@/lib/tauri";
 	import type {
-		PodLogStreamRequest,
 		ResourceDetailsFull,
 		ResourceEventSummary,
 		ResourceSummary,
 		StreamMessage,
 		WatchResourceKey,
-		YamlApplyPreview,
 		YamlEncoding,
 		YamlViewMode,
-		KubernetesYamlLintDiagnostic,
-		KubernetesYamlLintStatusNote,
 	} from "@/lib/types";
 	import type { PathStateResourceDetailState } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
-	import { formatYamlDocument } from "@/lib/yamlFormat";
 	import {
 		getSettingsSnapshot,
 		settingsStore,
@@ -52,7 +41,6 @@
 		dynamicResourceKindFromSummary,
 		getConditionRows,
 		getContainerStatusRows,
-		getErrorMessage,
 		isCleanCompletedContainer,
 		shouldFetchResourceDetails,
 		shouldFetchResourceEvents,
@@ -62,33 +50,22 @@
 	import DetailsTab from "./DetailsTab.svelte";
 	import EventsTab from "./EventsTab.svelte";
 	import ExecTab from "./ExecTab.svelte";
-	import LogsTab from "./LogsTab.svelte";
 	import PortForwardTab from "./PortForwardTab.svelte";
-	import YamlTab from "./YamlTab.svelte";
-	import {
-		buildYamlDryRunDiff,
-		findYamlFieldRange,
-	} from "./yamlTabDiff";
+	import ResourceLogsPane from "./ResourceLogsPane.svelte";
+	import ResourceYamlPane from "./ResourceYamlPane.svelte";
 	import { sortIncidentEvents } from "./incident-events";
 	import {
 		buildIncidentTimeline,
 		type IncidentTimelineTone,
 	} from "./incident-timeline";
-	import { orderedLogLines } from "./log-helpers";
+	import type { ParsedLogLine } from "./log-helpers";
 	import {
 		buildCuratedMetadata,
 		visibleMetadataBadges,
 	} from "./metadata-details";
-	import {
-		buildYamlApplyRequest as createYamlApplyRequest,
-		isYamlApplyDisabled,
-		resolveYamlForceConflicts,
-		yamlAppliedMessage as formatYamlAppliedMessage,
-		yamlApplyTargetLabel,
-	} from "./yamlApplyModel";
 
 	type DetailTab = "details" | "yaml" | "events" | "logs" | "exec" | "portForward";
-	type DetailFetchKind = "details" | "yaml" | "events";
+	type DetailFetchKind = "details" | "events";
 
 	let {
 		client,
@@ -125,33 +102,13 @@
 		initialDetailState?.metadataAnnotationsExpanded ?? false,
 	);
 	let selectedContainer = $state(initialDetailState?.selectedContainer ?? "");
-	let logLines = $state<string[]>([]);
-	let logStatus = $state("idle");
-	let logMessage = $state("Log stream idle");
-	let logError = $state<unknown>(null);
 	let logFilter = $state(initialDetailState?.logFilter ?? "");
 	let logWrapLines = $state(initialDetailState?.logWrapLines ?? true);
 	let logLatestFirst = $state(initialDetailState?.logLatestFirst ?? false);
 	let logAutoFollow = $state(initialDetailState?.logAutoFollow ?? true);
-	let logViewport = $state<HTMLElement | null>(null);
-	let yamlEditing = $state(false);
-	let yamlDraft = $state("");
-	let yamlLoadingDraft = $state(false);
-	let yamlPreview = $state<YamlApplyPreview | null>(null);
-	let yamlPreviewForceConflicts = $state(false);
-	let yamlForceConflictsForResource = $state(false);
-	let yamlLintDiagnostics = $state<KubernetesYamlLintDiagnostic[]>([]);
-	let yamlLintNotes = $state<KubernetesYamlLintStatusNote[]>([]);
-	let yamlLintError = $state("");
-	let yamlPreparing = $state(false);
-	let yamlApplying = $state(false);
-	let yamlFormatError = $state("");
-	let yamlPrepareRawError = $state<unknown>(null);
-	let yamlPrepareError = $state("");
-	let yamlApplyRawError = $state<unknown>(null);
-	let yamlApplyError = $state("");
-	let yamlAppliedMessage = $state("");
+	let parsedLogLines = $state<ParsedLogLine[]>([]);
 	let yamlShowFullDiff = $state(initialDetailState?.yamlShowFullDiff ?? false);
+	let resourceRefreshVersion = $state(0);
 
 	const resourceKey = $derived(
 		`${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`,
@@ -164,9 +121,11 @@
 	);
 	const detailsEnabled = $derived(shouldFetchResourceDetails(resource));
 	const eventsEnabled = $derived(shouldFetchResourceEvents(resource));
-	const yamlEnabled = $derived(detailsEnabled && activeTab === "yaml");
 	const isPod = $derived(resource.kind === "Pod" && Boolean(resource.namespace));
-	const canShowLogs = $derived(isPod);
+	const canShowLogs = $derived(
+		Boolean(resource.namespace) &&
+			(resource.kind === "Pod" || resource.kind === "Deployment" || resource.kind === "Service"),
+	);
 	const canShowExec = $derived(isPod);
 	const canShowPortForward = $derived(
 		(resource.kind === "Pod" || resource.kind === "Service") && Boolean(resource.namespace),
@@ -174,12 +133,8 @@
 	const detailsQueryKey = $derived(
 		queryKeys.resourceDetails(resource, dynamicKindKey, kubeconfigSourceKey, yamlViewMode, yamlEncoding),
 	);
-	const yamlQueryKey = $derived(
-		queryKeys.resourceYaml(resource, dynamicKindKey, kubeconfigSourceKey, yamlViewMode, yamlEncoding),
-	);
 	const eventsQueryKey = $derived(queryKeys.resourceEvents(resource, kubeconfigSourceKey));
 	const detailsCancelScope = $derived(createCancelScope("resource-details", detailsQueryKey));
-	const yamlCancelScope = $derived(createCancelScope("resource-yaml", yamlQueryKey));
 	const eventsCancelScope = $derived(createCancelScope("resource-events", eventsQueryKey));
 	const pendingCancelTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -237,23 +192,15 @@
 	$effect(() => {
 		const currentDetailsCancelScope = detailsCancelScope;
 		const currentDetailsQueryKey = detailsQueryKey;
-		const currentYamlCancelScope = yamlCancelScope;
-		const currentYamlQueryKey = yamlQueryKey;
 		const currentEventsCancelScope = eventsCancelScope;
 		const currentEventsQueryKey = eventsQueryKey;
 		cancelPendingBackendScope(currentDetailsCancelScope);
-		cancelPendingBackendScope(currentYamlCancelScope);
 		cancelPendingBackendScope(currentEventsCancelScope);
 		return () => {
 			scheduleBackendScopeCancel(
 				currentDetailsCancelScope,
 				currentDetailsQueryKey,
 				"detail.details.cancel",
-			);
-			scheduleBackendScopeCancel(
-				currentYamlCancelScope,
-				currentYamlQueryKey,
-				"detail.yaml.cancel",
 			);
 			scheduleBackendScopeCancel(
 				currentEventsCancelScope,
@@ -300,50 +247,6 @@
 			}
 		},
 		enabled: detailsEnabled,
-		retry: false,
-		staleTime: 30_000,
-	}));
-	const yamlQuery = createQuery<string>(() => ({
-		queryKey: yamlQueryKey,
-		queryFn: async () => {
-			try {
-				return await runDetailFetch("yaml", "resource-yaml", async () => {
-					if (dynamicKind) {
-						return (
-							detailsQuery.data ??
-							(await getDynamicResourceDetails(
-								client,
-								resource.cluster,
-								dynamicKind,
-								resource.name,
-								resource.namespace ?? undefined,
-								kubeconfigSourceKey,
-								yamlViewMode,
-								yamlEncoding,
-								createCancellableRequest(yamlCancelScope, "yaml"),
-							))
-						).yaml;
-					}
-					return await getResourceYaml(
-						client,
-						resource.cluster,
-						resource.kind,
-						resource.name,
-						resource.namespace ?? undefined,
-						kubeconfigSourceKey,
-						yamlViewMode,
-						yamlEncoding,
-						createCancellableRequest(yamlCancelScope, "yaml"),
-					);
-				});
-			} catch (error) {
-				if (isAppError(error) && error.kind === "cancelled") {
-					diagnosticLog("detail.yaml.cancel", { key: resourceKey });
-				}
-				throw error;
-			}
-		},
-		enabled: yamlEnabled,
 		retry: false,
 		staleTime: 30_000,
 	}));
@@ -394,15 +297,7 @@
 		visibleMetadataBadges(curatedMetadata.annotations, metadataAnnotationsExpanded),
 	);
 	const statusRows = $derived(formatObjectRows(detailsQuery.data?.status ?? {}));
-	const yamlText = $derived(yamlQuery.data ?? detailsQuery.data?.yaml ?? "");
-	const yamlApplyDisabledReason = $derived(isYamlApplyDisabled(resource));
-	const yamlApplyTarget = $derived(yamlApplyTargetLabel(resource));
-	const canAllowYamlForceConflicts = $derived(
-		!$settingsStore.allowYamlForceConflicts &&
-			!yamlForceConflictsForResource &&
-			isAppError(yamlPrepareRawError) &&
-			yamlPrepareRawError.kind === "fieldManagerConflict",
-	);
+	const resourceYaml = $derived(detailsQuery.data?.yaml ?? "");
 	const sortedEvents = $derived(sortIncidentEvents(eventsQuery.data ?? []));
 	const signalContainers = $derived(
 		detailResource.kind === "Pod" &&
@@ -419,37 +314,6 @@
 		),
 	);
 	const topIncidentSignals = $derived(incidentSignals.slice(0, 3));
-	const yamlDiffLines = $derived(
-		yamlPreview
-			? buildYamlDryRunDiff({
-					currentYaml: yamlPreview.currentYaml,
-					dryRunYaml: yamlPreview.dryRunYaml,
-					style: $settingsStore.yamlDiffStyle,
-					full: yamlShowFullDiff,
-					forceConflicts: yamlPreviewForceConflicts,
-				})
-			: [],
-	);
-	const visibleYamlDiffLines = $derived(
-		yamlShowFullDiff ? yamlDiffLines : yamlDiffLines.slice(0, 24),
-	);
-	const hiddenYamlDiffCount = $derived(
-		Math.max(0, yamlDiffLines.length - visibleYamlDiffLines.length),
-	);
-	const logRequest = $derived<PodLogStreamRequest | null>(
-		isPod && selectedContainer
-			? {
-					clusterContext: resource.cluster,
-					kubeconfigEnvVar: kubeconfigSourceKey,
-					namespace: resource.namespace ?? "",
-					podName: resource.name,
-					container: selectedContainer,
-					tailLines: 200,
-				}
-			: null,
-	);
-	const logSignature = $derived(logRequest ? JSON.stringify(logRequest) : "");
-	const parsedLogLines = $derived(orderedLogLines(logLines, false));
 	const incidentTimeline = $derived(
 		buildIncidentTimeline({
 			resource: detailResource,
@@ -458,17 +322,6 @@
 			containers: signalContainers,
 			logLines: parsedLogLines,
 		}),
-	);
-	const orderedVisibleLogLines = $derived(
-		logLatestFirst ? [...parsedLogLines].reverse() : parsedLogLines,
-	);
-	const logFilterTerm = $derived(logFilter.trim().toLowerCase());
-	const visibleLogLines = $derived(
-		logFilterTerm
-			? orderedVisibleLogLines.filter((line) =>
-					line.raw.toLowerCase().includes(logFilterTerm),
-				)
-			: orderedVisibleLogLines,
 	);
 
 	$effect(() => {
@@ -487,17 +340,6 @@
 	});
 
 	$effect(() => {
-		if (!isPod) {
-			selectedContainer = "";
-			return;
-		}
-		if (containerOptions.length === 0) return;
-		if (!containerOptions.includes(selectedContainer)) {
-			selectedContainer = containerOptions[0] ?? "";
-		}
-	});
-
-	$effect(() => {
 		onPathStateChange({
 			activeTab,
 			metadataLabelsExpanded,
@@ -511,35 +353,6 @@
 			yamlEncoding,
 			yamlShowFullDiff,
 		});
-	});
-
-	$effect(() => {
-		logSignature;
-		logLines = [];
-		logError = null;
-	});
-
-	$effect(() => {
-		activeTab;
-		logLines.length;
-		visibleLogLines.length;
-		logAutoFollow;
-		logLatestFirst;
-		logWrapLines;
-		if (activeTab !== "logs" || !logAutoFollow || !logViewport) return;
-		const frame = window.requestAnimationFrame(() => {
-			if (!logViewport) return;
-			logViewport.scrollTop = logLatestFirst ? 0 : logViewport.scrollHeight;
-		});
-		return () => window.cancelAnimationFrame(frame);
-	});
-
-	$effect(() => {
-		resource.cluster;
-		resource.kind;
-		resource.name;
-		resource.namespace;
-		resetYamlApply();
 	});
 
 	$effect(() => {
@@ -568,7 +381,7 @@
 			debounce = setTimeout(() => {
 				void queryClient.invalidateQueries({ queryKey: detailsQueryKey });
 				if (activeTab === "yaml") {
-					void queryClient.invalidateQueries({ queryKey: yamlQueryKey });
+					resourceRefreshVersion += 1;
 				}
 			}, 250);
 		};
@@ -641,67 +454,6 @@
 		return () => {
 			cancelled = true;
 			if (debounce) clearTimeout(debounce);
-			if (streamId) void stopStream(client, streamId);
-			closeStreamChannel(channel);
-		};
-	});
-
-	$effect(() => {
-		if (activeTab !== "logs" || !logRequest) {
-			logStatus = "idle";
-			logMessage = "Log stream idle";
-			logError = null;
-			return;
-		}
-		let cancelled = false;
-		let streamId: string | null = null;
-		logStatus = "connecting";
-		logMessage = "Starting log stream";
-		logError = null;
-		const channel = createStreamChannel((event: StreamMessage) => {
-			if (cancelled) return;
-			if (event.type === "started") {
-				streamId = event.streamId;
-				return;
-			}
-			if (event.type === "status") {
-				logStatus = event.status;
-				logMessage = event.message;
-				return;
-			}
-			if (event.type === "logLine") {
-				logStatus = "connected";
-				logMessage = "Log stream connected";
-				logLines = [...logLines, event.line].slice(-1_000);
-				return;
-			}
-			if (event.type === "error") {
-				logStatus = "error";
-				logMessage = "Log stream error";
-				logError = event.message;
-				return;
-			}
-			if (event.type === "stopped") {
-				logStatus = "stopped";
-				logMessage = "Log stream stopped";
-			}
-		});
-		void startPodLogStream(client, logRequest, channel)
-			.then((id) => {
-				if (cancelled) {
-					void stopStream(client, id);
-					return;
-				}
-				streamId = id;
-			})
-			.catch((error: unknown) => {
-				if (cancelled) return;
-				logStatus = "error";
-				logMessage = "Log stream failed";
-				logError = error;
-			});
-		return () => {
-			cancelled = true;
 			if (streamId) void stopStream(client, streamId);
 			closeStreamChannel(channel);
 		};
@@ -820,204 +572,11 @@
 		}
 	}
 
-	function setYamlViewMode(value: string) {
-		yamlViewMode = value as YamlViewMode;
-		resetYamlApply();
-	}
-
-	function setYamlEncoding(value: string) {
-		yamlEncoding = value as YamlEncoding;
-		resetYamlApply();
-	}
-
 	function isDetailTabAvailable(tab: DetailTab): boolean {
 		if (tab === "logs") return canShowLogs;
 		if (tab === "exec") return canShowExec;
 		if (tab === "portForward") return canShowPortForward;
 		return true;
-	}
-
-	function resetYamlApply() {
-		yamlEditing = false;
-		yamlDraft = "";
-		yamlLoadingDraft = false;
-		yamlPreview = null;
-		yamlPreviewForceConflicts = false;
-		yamlForceConflictsForResource = false;
-		yamlLintDiagnostics = [];
-		yamlLintNotes = [];
-		yamlLintError = "";
-		yamlPreparing = false;
-		yamlApplying = false;
-		yamlFormatError = "";
-		yamlPrepareRawError = null;
-		yamlPrepareError = "";
-		yamlApplyRawError = null;
-		yamlApplyError = "";
-		yamlAppliedMessage = "";
-		yamlShowFullDiff = false;
-	}
-
-	function buildYamlApplyRequest(forceConflicts: boolean, yaml = yamlDraft) {
-		return createYamlApplyRequest({
-			resource,
-			kubeconfigSourceKey,
-			yaml,
-			yamlEncoding,
-			forceConflicts,
-		});
-	}
-
-	async function startYamlApplyEdit() {
-		if (yamlApplyDisabledReason || yamlLoadingDraft) return;
-		yamlLoadingDraft = true;
-		yamlLintDiagnostics = [];
-		yamlLintNotes = [];
-		yamlLintError = "";
-		yamlFormatError = "";
-		yamlPrepareRawError = null;
-		yamlPrepareError = "";
-		yamlApplyRawError = null;
-		yamlApplyError = "";
-		yamlAppliedMessage = "";
-		yamlPreview = null;
-		yamlForceConflictsForResource = false;
-		yamlShowFullDiff = false;
-		try {
-			yamlDraft = await getResourceYaml(
-				client,
-				resource.cluster,
-				resource.kind,
-				resource.name,
-				resource.namespace ?? undefined,
-				kubeconfigSourceKey,
-				"applyClean",
-				yamlEncoding,
-			);
-			yamlEditing = true;
-		} catch (error) {
-			yamlPrepareRawError = error;
-			yamlPrepareError = getErrorMessage(error);
-		} finally {
-			yamlLoadingDraft = false;
-		}
-	}
-
-	async function previewYamlApply(forceConflictsOverride?: unknown) {
-		if (!yamlEditing || yamlPreparing) return;
-		yamlPreparing = true;
-		yamlLintError = "";
-		yamlFormatError = "";
-		yamlPrepareRawError = null;
-		yamlPrepareError = "";
-		yamlApplyRawError = null;
-		yamlApplyError = "";
-		yamlAppliedMessage = "";
-		yamlPreview = null;
-		yamlShowFullDiff = false;
-		const forceConflicts = resolveYamlForceConflicts(
-			forceConflictsOverride,
-			$settingsStore.allowYamlForceConflicts || yamlForceConflictsForResource,
-		);
-		try {
-			yamlPreview = await prepareYamlApply(client, buildYamlApplyRequest(forceConflicts));
-			yamlPreviewForceConflicts = forceConflicts;
-		} catch (error) {
-			yamlPrepareRawError = error;
-			yamlPrepareError = getErrorMessage(error);
-		} finally {
-			yamlPreparing = false;
-		}
-	}
-
-	function allowYamlForceConflictsForResource() {
-		yamlForceConflictsForResource = true;
-		void previewYamlApply(true);
-	}
-
-	async function kubernetesYamlDiagnostics(value: string): Promise<Diagnostic[]> {
-		if (!yamlEditing || value.trim().length === 0) return [];
-		try {
-			const result = await lintKubernetesYaml(client, buildYamlApplyRequest(false, value));
-			yamlLintDiagnostics = result.diagnostics;
-			yamlLintNotes = result.notes;
-			yamlLintError = "";
-			return result.diagnostics.map((diagnostic) => {
-				const range = findYamlFieldRange(value, diagnostic.fieldPath);
-				return {
-					from: range.from,
-					to: range.to,
-					severity: diagnostic.severity,
-					source: diagnostic.source,
-					message: diagnostic.message,
-				};
-			});
-		} catch (error) {
-			yamlLintError = getErrorMessage(error);
-			return [];
-		}
-	}
-
-	function formatYamlDraft() {
-		if (!yamlEditing || yamlLoadingDraft || yamlPreparing || yamlApplying) return;
-		yamlLintDiagnostics = [];
-		yamlLintNotes = [];
-		yamlLintError = "";
-		yamlFormatError = "";
-		yamlPrepareRawError = null;
-		yamlPrepareError = "";
-		yamlApplyRawError = null;
-		yamlApplyError = "";
-		yamlAppliedMessage = "";
-		yamlPreview = null;
-		yamlForceConflictsForResource = false;
-		yamlShowFullDiff = false;
-		try {
-			yamlDraft = formatYamlDocument(yamlDraft, yamlEncoding);
-		} catch (error) {
-			yamlFormatError = getErrorMessage(error);
-		}
-	}
-
-	function clearYamlDraftFeedback() {
-		yamlLintDiagnostics = [];
-		yamlLintNotes = [];
-		yamlLintError = "";
-		yamlFormatError = "";
-		yamlPrepareRawError = null;
-		yamlPrepareError = "";
-		yamlApplyRawError = null;
-		yamlApplyError = "";
-		yamlAppliedMessage = "";
-		yamlPreview = null;
-		yamlForceConflictsForResource = false;
-		yamlShowFullDiff = false;
-	}
-
-	async function applyYamlPreview() {
-		if (!yamlPreview || yamlApplying) return;
-		yamlApplying = true;
-		yamlApplyRawError = null;
-		yamlApplyError = "";
-		try {
-			const result = await applyYaml(
-				client,
-				buildYamlApplyRequest(yamlPreviewForceConflicts),
-			);
-			yamlAppliedMessage = formatYamlAppliedMessage(
-				result,
-				yamlPreviewForceConflicts,
-			);
-			yamlEditing = false;
-			yamlPreview = null;
-			void queryClient.invalidateQueries({ queryKey: detailsQueryKey });
-			void queryClient.invalidateQueries({ queryKey: yamlQueryKey });
-		} catch (error) {
-			yamlApplyRawError = error;
-			yamlApplyError = getErrorMessage(error);
-		} finally {
-			yamlApplying = false;
-		}
 	}
 </script>
 
@@ -1059,43 +618,19 @@
 		{containerStateLabel}
 	/>
 
-	<YamlTab
-		{yamlQuery}
-		{yamlText}
-		{yamlApplyTarget}
-		{yamlAppliedMessage}
-		{yamlEditing}
-		{yamlViewMode}
-		{yamlEncoding}
-		{yamlLoadingDraft}
-		{yamlPreparing}
-		{yamlApplying}
-		bind:yamlDraft
-		{yamlApplyDisabledReason}
-		{yamlLintError}
-		{yamlLintNotes}
-		{yamlFormatError}
-		{yamlPrepareRawError}
-		{yamlPrepareError}
-		{yamlApplyRawError}
-		{yamlApplyError}
-		{canAllowYamlForceConflicts}
-		{yamlPreview}
+	<ResourceYamlPane
+		{client}
+		{resource}
+		{dynamicKind}
+		{kubeconfigSourceKey}
+		detailsYaml={resourceYaml}
+		{detailsQueryKey}
+		{detailsEnabled}
+		active={activeTab === "yaml"}
+		refreshVersion={resourceRefreshVersion}
+		bind:yamlViewMode
+		bind:yamlEncoding
 		bind:yamlShowFullDiff
-		{visibleYamlDiffLines}
-		{hiddenYamlDiffCount}
-		{yamlLintDiagnostics}
-		yamlErrorLensEnabled={$settingsStore.yamlErrorLensEnabled}
-		{setYamlViewMode}
-		{setYamlEncoding}
-		{resetYamlApply}
-		{startYamlApplyEdit}
-		{formatYamlDraft}
-		{previewYamlApply}
-		{applyYamlPreview}
-		{allowYamlForceConflictsForResource}
-		{kubernetesYamlDiagnostics}
-		{clearYamlDraftFeedback}
 	/>
 
 	<EventsTab
@@ -1106,22 +641,19 @@
 	/>
 
 	{#if canShowLogs}
-		<LogsTab
+		<ResourceLogsPane
+			{client}
+			{resource}
+			{kubeconfigSourceKey}
 			{isPod}
 			{containerOptions}
+			active={activeTab === "logs"}
 			bind:selectedContainer
-			{logStatus}
-			{logMessage}
-			{logError}
 			bind:logFilter
-			{logFilterTerm}
 			bind:logWrapLines
 			bind:logAutoFollow
 			bind:logLatestFirst
-			bind:logLines
-			bind:logViewport
-			{visibleLogLines}
-			{parsedLogLines}
+			bind:parsedLogLines
 			{formatFullTimestamp}
 			{formatLogTime}
 		/>
@@ -1143,7 +675,7 @@
 			{client}
 			{resource}
 			{kubeconfigSourceKey}
-			yaml={yamlText}
+			yaml={resourceYaml}
 			active={activeTab === "portForward"}
 		/>
 	</TabsContent>{/if}

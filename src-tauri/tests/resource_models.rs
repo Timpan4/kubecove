@@ -534,6 +534,7 @@ fn test_stream_models_serde() {
         pod_name: "api-0".to_string(),
         container: Some("api".to_string()),
         tail_lines: Some(200),
+        since_seconds: None,
     };
     let json_val = serde_json::to_value(&request).unwrap();
     assert_eq!(json_val["clusterContext"], "admin@solid-k8s");
@@ -543,6 +544,7 @@ fn test_stream_models_serde() {
     let message = StreamMessage::LogLine {
         stream_id: "logs-1".to_string(),
         line: "2026-05-18T10:00:00Z ready".to_string(),
+        source: None,
     };
     let json_val = serde_json::to_value(&message).unwrap();
     assert_eq!(json_val["type"], "logLine");
