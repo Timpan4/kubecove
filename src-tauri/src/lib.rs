@@ -37,9 +37,9 @@ use commands::{
     list_resources, pick_kubeconfig_paths, prepare_yaml_apply, remove_kubeconfig_path,
     reorder_kubeconfig_paths, resize_pod_exec_terminal, set_backend_diagnostics_enabled,
     set_kubeconfig_env_var, set_show_kubeconfig_source_labels, start_aggregated_log_stream,
-    start_pod_exec_session, start_pod_log_stream, start_pod_port_forward, start_resource_event_watch,
-    start_resource_watch, stop_live_sessions_outside_scope, stop_pod_exec_session,
-    stop_port_forward, stop_stream, write_pod_exec_stdin, AppUsageMonitor,
+    start_pod_exec_session, start_pod_log_stream, start_pod_port_forward,
+    start_resource_event_watch, start_resource_watch, stop_live_sessions_outside_scope,
+    stop_pod_exec_session, stop_port_forward, stop_stream, write_pod_exec_stdin, AppUsageMonitor,
     BackendCancellationRegistry, ClusterLiveStore, PodExecRegistry, PortForwardRegistry,
     StreamRegistry,
 };
