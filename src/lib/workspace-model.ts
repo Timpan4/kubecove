@@ -97,6 +97,7 @@ export interface WorkspaceScope {
 
 export interface SavedWorkspace {
 	id: string;
+	sharedKey?: string;
 	name: string;
 	createdAt: string;
 	updatedAt: string;

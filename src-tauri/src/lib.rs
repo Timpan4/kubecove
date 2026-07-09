@@ -110,6 +110,8 @@ pub fn run() {
             set_kubeconfig_env_var,
             set_show_kubeconfig_source_labels,
             pick_kubeconfig_paths,
+            save_workspace_export_json,
+            pick_workspace_import_json,
             add_kubeconfig_paths,
             remove_kubeconfig_path,
             reorder_kubeconfig_paths,

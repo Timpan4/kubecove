@@ -144,6 +144,23 @@ export async function pickKubeconfigPaths(
 	return client.invoke<KubeconfigSourcesSummary>("pick_kubeconfig_paths");
 }
 
+export async function saveWorkspaceExportJson(
+	client: TauriClient,
+	fileName: string,
+	content: string,
+): Promise<boolean> {
+	return client.invoke<boolean>("save_workspace_export_json", {
+		fileName,
+		content,
+	});
+}
+
+export async function pickWorkspaceImportJson(
+	client: TauriClient,
+): Promise<string | null> {
+	return client.invoke<string | null>("pick_workspace_import_json");
+}
+
 export async function addKubeconfigPaths(
 	client: TauriClient,
 	paths: string[],
