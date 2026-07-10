@@ -8,7 +8,7 @@ import {
 import {
 	buildFlowTopology,
 	topologyViewportFitKey,
-} from "../src/features/resources/topologyModel";
+} from "../src/features/resources/topology";
 import {
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,

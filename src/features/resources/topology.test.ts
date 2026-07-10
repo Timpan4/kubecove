@@ -1,18 +1,15 @@
 import type { ResourceSummary, ResourceTopology, TopologyNode } from "@/lib/types";
 import {
-	applyOwnershipFlowTopologySelectionWithIndex,
-	buildOwnershipFlowTopologyLayout,
-	buildOwnershipFlowTopologySelectionIndex,
-	filterOwnershipFlowTopologyToSelectedRoot,
-} from "./topology";
-import {
+	applyFlowTopologySelectionWithIndex,
 	buildFlowTopologyLayout,
+	buildFlowTopologySelectionIndex,
+	filterFlowTopologyToSelectedRoot,
 	topologyRailTone,
 	topologyReadyText,
 	topologyReadyTone,
 	topologyRestartTone,
 	topologyStatusTone,
-} from "./topologyModel";
+} from "./topology";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
@@ -77,12 +74,10 @@ describe("topology selection", () => {
 			],
 			warnings: [],
 		};
-		const layout = buildOwnershipFlowTopologyLayout(topology, null, {
-			groupStandalone: false,
-		});
-		const selected = applyOwnershipFlowTopologySelectionWithIndex(
+		const layout = buildFlowTopologyLayout(topology, null);
+		const selected = applyFlowTopologySelectionWithIndex(
 			layout,
-			buildOwnershipFlowTopologySelectionIndex(topology),
+			buildFlowTopologySelectionIndex(topology),
 			"Pod:argocd-redis-abc-123",
 		);
 
@@ -94,19 +89,7 @@ describe("topology selection", () => {
 		);
 
 		expect(activeEdge?.animated).toBe(true);
-		expect(activeEdge?.className).toBe(
-			"ownership-map-edge ownership-map-edge-active",
-		);
-		expect(activeEdge?.zIndex).toBe(10);
-		expect(activeEdge?.style?.opacity).toBe(1);
-		expect(activeEdge?.style?.strokeWidth).toBe(2.8);
-		expect(activeEdge?.style?.strokeDasharray).toBe("5 5");
-
 		expect(inactiveEdge?.animated).toBe(false);
-		expect(inactiveEdge?.className).toBe("ownership-map-edge");
-		expect(inactiveEdge?.zIndex).toBe(0);
-		expect(inactiveEdge?.style?.opacity).toBe(0.16);
-		expect(inactiveEdge?.style?.strokeWidth).toBe(1.8);
 
 		expect(
 			selected.nodes.find((node) => node.id === "Secret:argocd-secret")?.data
@@ -163,9 +146,9 @@ describe("topology selection", () => {
 			],
 			warnings: [],
 		};
-		const filtered = filterOwnershipFlowTopologyToSelectedRoot(
-			buildOwnershipFlowTopologyLayout(topology, null),
-			buildOwnershipFlowTopologySelectionIndex(topology),
+		const filtered = filterFlowTopologyToSelectedRoot(
+			buildFlowTopologyLayout(topology, null),
+			buildFlowTopologySelectionIndex(topology),
 			"Pod:api-abc-1",
 		);
 

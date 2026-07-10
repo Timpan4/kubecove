@@ -1,6 +1,17 @@
 import type { CoordinateExtent } from "@xyflow/system";
 import { NODE_HEIGHT, NODE_WIDTH } from "./topology-layout";
-import type { OwnershipGraphEdge, OwnershipGraphNode } from "./topology";
+
+interface OwnershipGraphNode {
+	id: string;
+	position: { x: number; y: number };
+	parentId?: string;
+	type?: string;
+	style?: unknown;
+}
+
+interface OwnershipGraphEdge {
+	id: string;
+}
 
 export interface OwnershipMapViewportSize {
 	width: number;

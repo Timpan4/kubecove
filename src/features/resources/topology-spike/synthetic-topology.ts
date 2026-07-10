@@ -7,7 +7,7 @@ import type {
 	TopologyRelation,
 } from "@/lib/types";
 import {
-	buildOwnershipFlowTopologyLayout,
+	buildFlowTopologyLayout,
 	resourceTopologyNodeId,
 } from "../topology";
 
@@ -183,15 +183,13 @@ function selectionIdsFor(nodes: TopologySpikeNode[]): string[] {
 export function createTopologySpikeGraph(nodeCount: number): TopologySpikeGraph {
 	const topology = buildSyntheticTopology(nodeCount);
 	const started = performance.now();
-	const layout = buildOwnershipFlowTopologyLayout(topology, null, {
-		groupStandalone: false,
-		showPortHints: true,
-	});
+	const layout = buildFlowTopologyLayout(topology, null, "networkFlow");
 	const layoutMs = performance.now() - started;
 	const nodes = layout.nodes
 		.filter((node) => node.type === "ownershipResource")
 		.map<TopologySpikeNode>((node) => {
 			const topologyNode = node.data.node;
+			if (!topologyNode) throw new Error(`Missing topology node for ${node.id}`);
 			return {
 				id: node.id,
 				x: node.position.x,

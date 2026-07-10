@@ -1,24 +1,19 @@
 import {
 	MarkerType,
 	Position,
-	type EdgeBase,
-	type NodeBase,
-	type SmoothStepPathOptions,
+	type CoordinateExtent,
 } from "@xyflow/system";
 import type {
-	ResourceSummary,
 	ResourceTopology,
-	TopologyNode,
-	TopologyRelation,
+	TopologyMode,
 } from "@/lib/types";
-import { cnfast } from "@/lib/utils";
 import {
 	CANVAS_PADDING,
 	EDGE_PATH_OPTIONS,
+	NODE_HEIGHT,
 	NODE_WIDTH,
 	buildTopologyPositions,
 	compareNodesByLayoutOrder,
-	sortTopologyNodes,
 	topologyColumnDepth,
 	topologyLayoutOrder,
 } from "./topology-layout";
@@ -26,145 +21,336 @@ import {
 	buildTopologyGraph,
 	selectedTopologyPath,
 	selectedTopologyRootSubtree,
-	uniqueNodes,
 } from "./topology-graph";
 import {
-	buildStandaloneGroups,
-	STANDALONE_NODE_WIDTH,
-	type StandaloneKindGroupGraphNode,
-} from "./topology-standalone-groups";
-
-export type { StandaloneKindGroupGraphNode } from "./topology-standalone-groups";
-
-export interface TopologyRow {
-	node: TopologyNode;
-	depth: number;
-	parentIds: string[];
-	incomingRelation: TopologyRelation | null;
-}
-
-export interface OwnershipGraphNodeData extends Record<string, unknown> {
-	node: TopologyNode;
-	resource: ResourceSummary | null;
-	selected: boolean;
-	connected: boolean;
-	dimmed: boolean;
-	standalone: boolean;
-	showPortHints: boolean;
-}
-
-type FlowStyle = Record<string, string | number | undefined>;
-
-export type OwnershipResourceGraphNode = NodeBase<
-	OwnershipGraphNodeData,
-	"ownershipResource"
-> & {
-	style?: FlowStyle;
-	className?: string;
-	focusable?: boolean;
+	ownershipMapBoundaryPadding,
+	type OwnershipMapViewportSize,
+} from "./topology-viewport";
+import { buildStandaloneGroups } from "./topology-standalone-groups";
+import type {
+	BuildFlowTopologyOptions,
+	FlowTopology,
+	FlowTopologyBounds,
+	FlowTopologyEdge,
+	FlowTopologyNode,
+	FlowTopologySelectionIndex,
+	TopologyStoplightTone,
+} from "./topology-types";
+export { resourceTopologyNodeId } from "./topology-graph";
+export type {
+	BuildFlowTopologyOptions,
+	FlowTopology,
+	FlowTopologyBounds,
+	FlowTopologyEdge,
+	FlowTopologyNode,
+	FlowTopologyNodeData,
+	FlowTopologySelectionIndex,
+	TopologyStoplightTone,
+} from "./topology-types";
+const SVELTE_TOPOLOGY_LAYOUT = {
+	nodeWidth: 408,
+	nodeHeight: 98,
+	columnGap: 112,
+	rowGap: 30,
 };
-
-export type OwnershipGraphNode =
-	| OwnershipResourceGraphNode
-	| StandaloneKindGroupGraphNode;
-export type OwnershipGraphEdge = EdgeBase<
-	{ relation: TopologyRelation },
-	"smoothstep"
-> & {
-	pathOptions?: SmoothStepPathOptions;
-	style?: FlowStyle;
-	className?: string;
-	focusable?: boolean;
+const SVELTE_STANDALONE_NODE_WIDTH = 320;
+const SVELTE_MIN_ZOOM = 0.12;
+const SVELTE_MAX_ZOOM = 1.4;
+const WIDTH_FIT_PADDING = 0.08;
+const SUCCESS_STATUSES = new Set([
+	"available",
+	"complete",
+	"completed",
+	"ready",
+	"running",
+	"succeeded",
+]);
+const WARNING_STATUSES = new Set([
+	"pending",
+	"restarting",
+	"terminating",
+	"unknown",
+	"waiting",
+]);
+const ERROR_STATUSES = new Set([
+	"crashloopbackoff",
+	"degraded",
+	"error",
+	"failed",
+	"imagepullbackoff",
+	"not ready",
+	"notready",
+]);
+const TONE_RANK: Record<TopologyStoplightTone, number> = {
+	neutral: 0,
+	success: 1,
+	warning: 2,
+	error: 3,
 };
+const ZERO_TRANSLATE_EXTENT: CoordinateExtent = [
+	[0, 0],
+	[0, 0],
+];
 
-export interface OwnershipFlowTopology {
-	nodes: OwnershipGraphNode[];
-	edges: OwnershipGraphEdge[];
+function normalized(value: string | undefined): string {
+	return value?.trim().toLowerCase() ?? "";
 }
 
-export interface OwnershipFlowTopologySelectionIndex {
-	graph: ReturnType<typeof buildTopologyGraph>;
+function isTerminalSuccessStatus(status: string | undefined): boolean {
+	const value = normalized(status);
+	return value === "complete" || value === "completed" || value === "succeeded";
 }
 
-export interface BuildOwnershipFlowTopologyOptions {
-	expandedStandaloneKinds?: ReadonlySet<string>;
-	groupStandalone?: boolean;
-	showPortHints?: boolean;
+export function topologyStatusTone(status: string | undefined): TopologyStoplightTone {
+	const value = normalized(status);
+	if (SUCCESS_STATUSES.has(value)) return "success";
+	if (WARNING_STATUSES.has(value)) return "warning";
+	if (ERROR_STATUSES.has(value)) return "error";
+	return "neutral";
 }
 
-export function resourceTopologyNodeId(
-	cluster: string,
-	apiVersion: string,
-	kind: string,
-	namespace: string | null | undefined,
-	name: string,
-): string {
-	return `${cluster}:${apiVersion}:${kind}:${namespace ?? ""}:${name}`;
+function topologyHealthTone(health: string | undefined): TopologyStoplightTone {
+	const value = normalized(health);
+	if (value === "healthy") return "success";
+	if (value === "degraded") return "error";
+	if (value === "attention") return "warning";
+	return "neutral";
 }
 
-function sortNodes(a: TopologyNode, b: TopologyNode): number {
-	return sortTopologyNodes(a, b);
+export function topologyRestartTone(restarts: number | undefined): TopologyStoplightTone {
+	if (restarts === undefined || restarts <= 0) return "neutral";
+	if (restarts >= 5) return "error";
+	if (restarts >= 3) return "warning";
+	return "neutral";
 }
 
-export function buildOwnershipFlowTopology(
+export function topologyReadyTone(
+	ready: string | undefined,
+	status: string | undefined,
+): TopologyStoplightTone {
+	const value = normalized(ready);
+	if (!value) return "neutral";
+	if (isTerminalSuccessStatus(status) && (value === "false" || value === "not ready")) {
+		return "success";
+	}
+	if (value === "true" || value === "ready" || value === "completed") return "success";
+	if (value === "false" || value === "not ready" || value === "notready") return "error";
+
+	const ratioMatch = /^(\d+)\s*\/\s*(\d+)$/.exec(value);
+	if (!ratioMatch) return "neutral";
+	const readyCount = Number(ratioMatch[1]);
+	const desiredCount = Number(ratioMatch[2]);
+	if (desiredCount > 0 && readyCount >= desiredCount) return "success";
+	return topologyStatusTone(status) === "warning" ? "warning" : "error";
+}
+
+export function topologyReadyText(
+	ready: string | undefined,
+	status: string | undefined,
+): string | undefined {
+	if (!ready) return undefined;
+	const value = normalized(ready);
+	if (isTerminalSuccessStatus(status) && (value === "false" || value === "not ready")) {
+		return "Completed";
+	}
+	if (value === "true") return "Ready";
+	if (value === "false") return "Not ready";
+	return ready;
+}
+
+export function topologyRailTone(
+	status: string | undefined,
+	ready: string | undefined,
+	health?: string | undefined,
+): TopologyStoplightTone {
+	return [
+		topologyStatusTone(status),
+		topologyReadyTone(ready, status),
+		topologyHealthTone(health),
+	].sort((a, b) => TONE_RANK[b] - TONE_RANK[a])[0];
+}
+
+function finitePositiveNumber(value: unknown): number | null {
+	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+	return value;
+}
+
+function nodeDimension(node: FlowTopologyNode, dimension: "width" | "height"): number {
+	return (
+		finitePositiveNumber(node[dimension]) ??
+		finitePositiveNumber(node.measured?.[dimension]) ??
+		(dimension === "width" ? NODE_WIDTH : NODE_HEIGHT)
+	);
+}
+
+function absoluteTopologyNodePosition(
+	nodesById: ReadonlyMap<string, FlowTopologyNode>,
+	node: FlowTopologyNode,
+): { x: number; y: number } {
+	let x = node.position.x;
+	let y = node.position.y;
+	let parentId = node.parentId;
+	const visitedParentIds = new Set<string>();
+
+	while (parentId) {
+		if (visitedParentIds.has(parentId)) break;
+		visitedParentIds.add(parentId);
+		const parent = nodesById.get(parentId);
+		if (!parent) break;
+		x += parent.position.x;
+		y += parent.position.y;
+		parentId = parent.parentId;
+	}
+
+	return { x, y };
+}
+
+function clampMapZoom(zoom: number): number {
+	return Math.min(SVELTE_MAX_ZOOM, Math.max(SVELTE_MIN_ZOOM, zoom));
+}
+
+function compactDirectEdgeDepths(
+	graph: ReturnType<typeof buildTopologyGraph>,
+	depthById: Map<string, number>,
+): Map<string, number> {
+	const compacted = new Map(depthById);
+	const nodesByDepth = [...graph.nodes].sort(
+		(a, b) => (depthById.get(a.id) ?? 0) - (depthById.get(b.id) ?? 0),
+	);
+	for (const node of nodesByDepth) {
+		const parentIds = graph.parents.get(node.id) ?? [];
+		if (parentIds.length === 0) continue;
+		const directDepth = Math.max(
+			...parentIds.map((id) => (compacted.get(id) ?? 0) + 1),
+		);
+		const currentDepth = compacted.get(node.id) ?? directDepth;
+		if (directDepth < currentDepth) compacted.set(node.id, directDepth);
+	}
+	return compacted;
+}
+
+export function getFlowTopologyBounds(
+	nodes: FlowTopologyNode[],
+	nodesToBound: FlowTopologyNode[] = nodes,
+): FlowTopologyBounds | null {
+	if (nodesToBound.length === 0) return null;
+
+	const nodesById = new Map(nodes.map((node) => [node.id, node]));
+	let left = Number.POSITIVE_INFINITY;
+	let top = Number.POSITIVE_INFINITY;
+	let right = Number.NEGATIVE_INFINITY;
+	let bottom = Number.NEGATIVE_INFINITY;
+
+	for (const node of nodesToBound) {
+		const position = absoluteTopologyNodePosition(nodesById, node);
+		left = Math.min(left, position.x);
+		top = Math.min(top, position.y);
+		right = Math.max(right, position.x + nodeDimension(node, "width"));
+		bottom = Math.max(bottom, position.y + nodeDimension(node, "height"));
+	}
+
+	if (!Number.isFinite(left + top + right + bottom)) return null;
+	return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+export function widthFitFlowTopologyViewport(
+	bounds: FlowTopologyBounds,
+	viewportSize: OwnershipMapViewportSize,
+): { x: number; y: number; zoom: number } {
+	const usableWidth = Math.max(1, viewportSize.width * (1 - WIDTH_FIT_PADDING * 2));
+	const zoom = clampMapZoom(usableWidth / Math.max(1, bounds.width));
+	const centerX = bounds.left + bounds.width / 2;
+	const centerY = bounds.top + bounds.height / 2;
+
+	return {
+		x: viewportSize.width / 2 - centerX * zoom,
+		y: viewportSize.height / 2 - centerY * zoom,
+		zoom,
+	};
+}
+
+export function buildFlowTopology(
 	topology: ResourceTopology,
 	selectedNodeId: string | null,
-	options: BuildOwnershipFlowTopologyOptions = {},
-): OwnershipFlowTopology {
-	return applyOwnershipFlowTopologySelection(
-		buildOwnershipFlowTopologyLayout(topology, selectedNodeId, options),
-		topology,
+	mode: TopologyMode = "ownership",
+	options: BuildFlowTopologyOptions = {},
+): FlowTopology {
+	return applyFlowTopologySelectionWithIndex(
+		buildFlowTopologyLayout(topology, selectedNodeId, mode, options),
+		buildFlowTopologySelectionIndex(topology),
 		selectedNodeId,
 	);
 }
 
-export function buildOwnershipFlowTopologyLayout(
+export function buildFlowTopologyLayout(
 	topology: ResourceTopology,
 	selectedNodeIdForExpansion: string | null,
-	options: BuildOwnershipFlowTopologyOptions = {},
-): OwnershipFlowTopology {
-	const depthById = topologyColumnDepth(topology);
+	mode: TopologyMode = "ownership",
+	options: BuildFlowTopologyOptions = {},
+): FlowTopology {
 	const graph = buildTopologyGraph(topology);
+	const depthById = compactDirectEdgeDepths(graph, topologyColumnDepth(topology));
 	const orderById = topologyLayoutOrder(graph.nodes, topology, depthById);
-	const positions = buildTopologyPositions(graph, depthById, orderById);
+	const positions = buildTopologyPositions(
+		graph,
+		depthById,
+		orderById,
+		SVELTE_TOPOLOGY_LAYOUT,
+	);
 	const compareNodes = compareNodesByLayoutOrder(orderById, depthById);
-	const standaloneGroups = options.groupStandalone === false
-		? {
-				groupNodes: [],
-				standaloneIds: new Set<string>(),
-				groupIdByNodeId: new Map<string, string>(),
-				positionsById: new Map<string, { x: number; y: number }>(),
-			}
-		: buildStandaloneGroups(
-				graph,
-				positions,
-				compareNodes,
-				new Set<string>(),
-				false,
-				options.expandedStandaloneKinds ?? new Set<string>(),
-				selectedNodeIdForExpansion,
+	const standaloneGroups =
+		mode === "networkFlow"
+			? {
+					groupNodes: [],
+					standaloneIds: new Set<string>(),
+					groupIdByNodeId: new Map<string, string>(),
+					positionsById: new Map<string, { x: number; y: number }>(),
+				}
+			: buildStandaloneGroups(
+					graph,
+					positions,
+					compareNodes,
+					new Set<string>(),
+					false,
+					options.expandedStandaloneKinds ?? new Set<string>(),
+					selectedNodeIdForExpansion,
+					{
+						nodeHeight: SVELTE_TOPOLOGY_LAYOUT.nodeHeight,
+						standaloneNodeWidth: SVELTE_STANDALONE_NODE_WIDTH,
+				},
 			);
-	const sortedNodes = graph.nodes.sort((a, b) => {
-		const aStandalone = standaloneGroups.standaloneIds.has(a.id);
-		const bStandalone = standaloneGroups.standaloneIds.has(b.id);
-		if (aStandalone !== bStandalone) return aStandalone ? 1 : -1;
-		const aGroupId = standaloneGroups.groupIdByNodeId.get(a.id);
-		const bGroupId = standaloneGroups.groupIdByNodeId.get(b.id);
-		if (aGroupId && bGroupId && aGroupId !== bGroupId) {
-			return aGroupId.localeCompare(bGroupId);
-		}
-		const aPosition = positions.get(a.id);
-		const bPosition = positions.get(b.id);
-		const x = (aPosition?.x ?? 0) - (bPosition?.x ?? 0);
-		if (x !== 0) return x;
-		const y = (aPosition?.y ?? 0) - (bPosition?.y ?? 0);
-		if (y !== 0) return y;
-		return compareNodes(a, b);
-	}).filter((node) => {
+	const groupNodes = standaloneGroups.groupNodes.map<FlowTopologyNode>((group) => {
+		const width = group.style?.width ?? SVELTE_TOPOLOGY_LAYOUT.nodeWidth;
+		const height = group.style?.height ?? SVELTE_TOPOLOGY_LAYOUT.nodeHeight;
+		return {
+			id: group.id,
+			type: "standaloneKindGroup",
+			position: group.position,
+			data: {
+				resource: null,
+				label: group.data.kind,
+				selected: false,
+				connected: false,
+				kind: group.data.kind,
+				count: group.data.count,
+				nodeIds: group.data.nodeIds,
+				expanded: group.data.expanded,
+				dimmed: group.data.dimmed,
+			},
+			draggable: false,
+			connectable: false,
+			focusable: false,
+			selectable: true,
+			width,
+			height,
+			style: `width: ${width}px; height: ${height}px`,
+			zIndex: group.zIndex,
+		};
+	});
+	const nodes = [...graph.nodes].sort(compareNodes).filter((node) => {
 		if (!standaloneGroups.standaloneIds.has(node.id)) return true;
 		return standaloneGroups.groupIdByNodeId.has(node.id);
-	});
-	const nodes = sortedNodes.map<OwnershipGraphNode>((node) => {
+	}).map<FlowTopologyNode>((node) => {
 		const standalone = standaloneGroups.groupIdByNodeId.has(node.id);
 		return {
 			id: node.id,
@@ -175,98 +361,79 @@ export function buildOwnershipFlowTopologyLayout(
 				{ x: CANVAS_PADDING, y: CANVAS_PADDING },
 			data: {
 				node,
-				resource: topologySelectableResource(node),
+				resource: node.selectable ? node.summary : null,
+				label: node.name,
 				selected: false,
 				connected: false,
 				dimmed: false,
-				standalone,
-				showPortHints: options.showPortHints ?? false,
+				showPortHints: mode === "networkFlow",
 			},
+			selected: false,
+			draggable: false,
+			connectable: false,
+			focusable: true,
 			parentId: standaloneGroups.groupIdByNodeId.get(node.id),
 			extent: standalone ? "parent" : undefined,
-			draggable: false,
-			selectable: true,
-			connectable: false,
-			selected: false,
 			sourcePosition: Position.Right,
 			targetPosition: Position.Left,
-			style: { width: standalone ? STANDALONE_NODE_WIDTH : NODE_WIDTH },
+			width: standalone ? SVELTE_STANDALONE_NODE_WIDTH : SVELTE_TOPOLOGY_LAYOUT.nodeWidth,
+			height: SVELTE_TOPOLOGY_LAYOUT.nodeHeight,
+			style: `width: ${
+				standalone ? SVELTE_STANDALONE_NODE_WIDTH : SVELTE_TOPOLOGY_LAYOUT.nodeWidth
+			}px; height: ${SVELTE_TOPOLOGY_LAYOUT.nodeHeight}px`,
 			zIndex: standalone ? 1 : undefined,
 		};
 	});
-	const edges = graph.edges
-		.map<OwnershipGraphEdge>((edge) => {
-			return {
-				id: edge.id,
-				source: edge.source,
-				target: edge.target,
-				type: "smoothstep",
-				data: { relation: edge.relation },
-				className: "ownership-map-edge",
-				pathOptions: EDGE_PATH_OPTIONS,
-				focusable: false,
-				animated: false,
-				zIndex: 0,
-				markerEnd: {
-					type: MarkerType.ArrowClosed,
-					width: 14,
-					height: 14,
-					color: "var(--muted-foreground)",
-				},
-				style: {
-					opacity: 0.72,
-					stroke: "var(--muted-foreground)",
-					strokeWidth: 1.8,
-					strokeDasharray:
-						edge.relation === "creates" || edge.relation === "selects"
-							? "5 5"
-							: undefined,
-				},
-			};
-		});
-
-	return { nodes: [...standaloneGroups.groupNodes, ...nodes], edges };
+	const edges = graph.edges.map<FlowTopologyEdge>((edge) => {
+		return {
+			id: edge.id,
+			source: edge.source,
+			target: edge.target,
+			type: "smoothstep",
+			data: { relation: edge.relation },
+			pathOptions: EDGE_PATH_OPTIONS,
+			animated: false,
+			focusable: false,
+			markerEnd: {
+				type: MarkerType.ArrowClosed,
+				width: 14,
+				height: 14,
+				color: "var(--muted-foreground)",
+			},
+			style: [
+				"stroke: var(--muted-foreground)",
+				"stroke-width: 1.6",
+				"opacity: 0.62",
+			].join("; "),
+		};
+	});
+	return { nodes: [...groupNodes, ...nodes], edges };
 }
 
-export function applyOwnershipFlowTopologySelection(
-	graphTopology: OwnershipFlowTopology,
+export function buildFlowTopologySelectionIndex(
 	topology: ResourceTopology,
-	selectedNodeId: string | null,
-): OwnershipFlowTopology {
-	return applyOwnershipFlowTopologySelectionWithIndex(
-		graphTopology,
-		buildOwnershipFlowTopologySelectionIndex(topology),
-		selectedNodeId,
-	);
-}
-
-export function buildOwnershipFlowTopologySelectionIndex(
-	topology: ResourceTopology,
-): OwnershipFlowTopologySelectionIndex {
+): FlowTopologySelectionIndex {
 	return { graph: buildTopologyGraph(topology) };
 }
 
-export function applyOwnershipFlowTopologySelectionWithIndex(
-	graphTopology: OwnershipFlowTopology,
-	index: OwnershipFlowTopologySelectionIndex,
+export function applyFlowTopologySelectionWithIndex(
+	graphTopology: FlowTopology,
+	index: FlowTopologySelectionIndex,
 	selectedNodeId: string | null,
-): OwnershipFlowTopology {
+): FlowTopology {
 	if (!selectedNodeId) return graphTopology;
 
 	const selectedPath = selectedTopologyPath(index.graph, selectedNodeId);
-	const hasSelection = selectedPath.nodeIds.size > 0;
-	if (!hasSelection) return graphTopology;
+	if (selectedPath.nodeIds.size === 0) return graphTopology;
 
-	const nodes = graphTopology.nodes.map<OwnershipGraphNode>((node) => {
+	const nodes = graphTopology.nodes.map<FlowTopologyNode>((node) => {
 		if (node.type === "standaloneKindGroup") {
-			const dimmed = !node.data.nodeIds.some((nodeId) =>
-				selectedPath.nodeIds.has(nodeId),
-			);
+			const nodeIds = node.data.nodeIds ?? [];
 			return {
 				...node,
 				data: {
 					...node.data,
-					dimmed,
+					dimmed: !nodeIds.some((nodeId) => selectedPath.nodeIds.has(nodeId)),
 				},
 			};
 		}
@@ -284,40 +451,34 @@ export function applyOwnershipFlowTopologySelectionWithIndex(
 			selected,
 		};
 	});
-	const edges = graphTopology.edges.map<OwnershipGraphEdge>((edge) => {
-		const selectedEdge = selectedPath.edgeIds.has(edge.id);
-		const stroke = selectedEdge ? "var(--primary)" : "var(--muted-foreground)";
+	const edges = graphTopology.edges.map<FlowTopologyEdge>((edge) => {
+		const active = selectedPath.edgeIds.has(edge.id);
+		const stroke = active ? "var(--primary)" : "var(--muted-foreground)";
 		return {
 			...edge,
-			animated: selectedEdge,
-			className: cnfast(
-				"ownership-map-edge",
-				selectedEdge && "ownership-map-edge-active",
-			),
-			zIndex: selectedEdge ? 10 : 0,
+			animated: active,
 			markerEnd: {
 				type: MarkerType.ArrowClosed,
-				width: selectedEdge ? 18 : 14,
-				height: selectedEdge ? 18 : 14,
+				width: active ? 18 : 14,
+				height: active ? 18 : 14,
 				color: stroke,
 			},
-			style: {
-				...edge.style,
-				opacity: selectedEdge ? 1 : 0.16,
-				stroke,
-				strokeWidth: selectedEdge ? 2.8 : 1.8,
-			},
+			style: [
+				`stroke: ${stroke}`,
+				`stroke-width: ${active ? 2.6 : 1.6}`,
+				`opacity: ${active ? 1 : 0.2}`,
+			].join("; "),
 		};
 	});
 
 	return { nodes, edges };
 }
 
-export function filterOwnershipFlowTopologyToSelectedRoot(
-	graphTopology: OwnershipFlowTopology,
-	index: OwnershipFlowTopologySelectionIndex,
+export function filterFlowTopologyToSelectedRoot(
+	graphTopology: FlowTopology,
+	index: FlowTopologySelectionIndex,
 	selectedNodeId: string | null,
-): OwnershipFlowTopology {
+): FlowTopology {
 	if (!selectedNodeId) return graphTopology;
 
 	const rootSubtree = selectedTopologyRootSubtree(index.graph, selectedNodeId);
@@ -325,10 +486,8 @@ export function filterOwnershipFlowTopologyToSelectedRoot(
 
 	const graphNodeIds = new Set(rootSubtree.nodeIds);
 	for (const node of graphTopology.nodes) {
-		if (
-			node.type === "standaloneKindGroup" &&
-			node.data.nodeIds.some((nodeId) => rootSubtree.nodeIds.has(nodeId))
-		) {
+		const nodeIds = node.data.nodeIds ?? [];
+		if (nodeIds.some((nodeId) => rootSubtree.nodeIds.has(nodeId))) {
 			graphNodeIds.add(node.id);
 		}
 	}
@@ -345,74 +504,69 @@ export function filterOwnershipFlowTopologyToSelectedRoot(
 	return { nodes, edges };
 }
 
-export function buildTopologyRows(topology: ResourceTopology): TopologyRow[] {
-	const topologyNodes = uniqueNodes(topology.nodes);
-	const nodesById = new Map(topologyNodes.map((node) => [node.id, node]));
-	const incoming = new Map<string, string[]>();
-	const incomingRelation = new Map<string, TopologyRelation>();
-	const children = new Map<string, string[]>();
-
-	for (const edge of topology.edges) {
-		if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) continue;
-		incoming.set(edge.target, [...(incoming.get(edge.target) ?? []), edge.source]);
-		incomingRelation.set(edge.target, edge.relation);
-		children.set(edge.source, [...(children.get(edge.source) ?? []), edge.target]);
+export function getTopologyTranslateExtent(
+	nodes: FlowTopologyNode[],
+	viewportSize: OwnershipMapViewportSize,
+): CoordinateExtent {
+	if (viewportSize.width <= 0 || viewportSize.height <= 0 || nodes.length === 0) {
+		return ZERO_TRANSLATE_EXTENT;
 	}
 
-	const rows: TopologyRow[] = [];
-	const visited = new Set<string>();
-	const sortedNodes = topologyNodes.sort(sortNodes);
-	const roots = sortedNodes.filter((node) => !incoming.has(node.id));
+	const padding = ownershipMapBoundaryPadding(viewportSize);
+	const nodesById = new Map(nodes.map((node) => [node.id, node]));
+	let left = Number.POSITIVE_INFINITY;
+	let top = Number.POSITIVE_INFINITY;
+	let right = Number.NEGATIVE_INFINITY;
+	let bottom = Number.NEGATIVE_INFINITY;
 
-	function visit(node: TopologyNode, depth: number, parentIds: string[]) {
-		if (visited.has(node.id)) return;
-		visited.add(node.id);
-		rows.push({
-			node,
-			depth,
-			parentIds,
-			incomingRelation: incomingRelation.get(node.id) ?? null,
-		});
-		const childNodes = (children.get(node.id) ?? [])
-			.map((id) => nodesById.get(id))
-			.filter((child): child is TopologyNode => Boolean(child))
-			.sort(sortNodes);
-		for (const child of childNodes) {
-			visit(child, depth + 1, [...parentIds, node.id]);
-		}
+	for (const node of nodes) {
+		const position = absoluteTopologyNodePosition(nodesById, node);
+		left = Math.min(left, position.x);
+		top = Math.min(top, position.y);
+		right = Math.max(right, position.x + nodeDimension(node, "width"));
+		bottom = Math.max(bottom, position.y + nodeDimension(node, "height"));
 	}
 
-	for (const root of roots) visit(root, 0, []);
-	for (const node of sortedNodes) visit(node, 0, []);
-	return rows;
+	if (![left, top, right, bottom].every(Number.isFinite)) return ZERO_TRANSLATE_EXTENT;
+	const zoomSlack = {
+		x: viewportSize.width / SVELTE_MIN_ZOOM,
+		y: viewportSize.height / SVELTE_MIN_ZOOM,
+	};
+	return [
+		[left - padding.x - zoomSlack.x, top - padding.y - zoomSlack.y],
+		[right + padding.x + zoomSlack.x, bottom + padding.y + zoomSlack.y],
+	];
 }
 
-export function topologyNodeClassName(
-	node: Pick<TopologyNode, "health" | "selectable"> & { id?: string },
+export function topologyViewportFitKey(
+	nodes: FlowTopologyNode[],
+	nodesToFit: FlowTopologyNode[],
+	edges: FlowTopologyEdge[],
 	selectedNodeId: string | null,
-	nodeId?: string,
-	connected = false,
-	kindSurfaceClassName?: string,
+	viewportKey: string,
 ): string {
-	const actualNodeId = nodeId ?? node.id ?? null;
-	const selected = actualNodeId ? selectedNodeId === actualNodeId : false;
-	return cnfast(
-		"resource-topology-node min-w-0 rounded-md border px-3 py-2 text-left shadow-sm transition-all",
-		node.selectable
-			? "cursor-pointer hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring/40"
-			: "cursor-default opacity-90",
-		"border-border",
-		kindSurfaceClassName,
-		node.health === "degraded" && "resource-topology-node-health-degraded",
-		node.health === "attention" && "resource-topology-node-health-attention",
-		node.health === "restarted" && "resource-topology-node-health-restarted",
-		connected && "resource-topology-node-connected ring-1 ring-primary/30",
-		selected && "resource-topology-node-selected ring-2 ring-primary",
-	);
-}
-
-export function topologySelectableResource(
-	node: Pick<TopologyNode, "selectable" | "summary">,
-): ResourceSummary | null {
-	return node.selectable ? node.summary : null;
+	const nodesById = new Map(nodes.map((node) => [node.id, node]));
+	const fittingSelection = nodesToFit.some((node) => node.data.selected || node.data.connected);
+	const nodeParts = nodesToFit
+		.map((node) => {
+			const position = absoluteTopologyNodePosition(nodesById, node);
+			return [
+				node.id,
+				node.parentId ?? "",
+				node.type ?? "",
+				position.x,
+				position.y,
+				nodeDimension(node, "width"),
+				nodeDimension(node, "height"),
+			].join(":");
+		})
+		.sort();
+	const edgeParts = edges.map((edge) => edge.id).sort();
+	return [
+		fittingSelection ? "selected" : "all",
+		selectedNodeId ?? "",
+		viewportKey,
+		nodeParts.join("|"),
+		fittingSelection ? "" : edgeParts.join("|"),
+	].join("::");
 }

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { ResourceSummary, ResourceTopology, TopologyNode } from "../src/lib/types";
 import {
-	buildOwnershipFlowTopology,
+	buildFlowTopology,
 	resourceTopologyNodeId,
-	type OwnershipGraphNode,
+	type FlowTopologyNode,
 } from "../src/features/resources/topology";
 import {
 	getOwnershipGraphBounds,
@@ -39,7 +39,7 @@ function topologyNode(kind: string, name: string): TopologyNode {
 	};
 }
 
-function graphNode(id: string, x: number, y: number): OwnershipGraphNode {
+function graphNode(id: string, x: number, y: number): FlowTopologyNode {
 	const node = topologyNode("Pod", id);
 	return {
 		id,
@@ -54,7 +54,7 @@ function graphNode(id: string, x: number, y: number): OwnershipGraphNode {
 			standalone: false,
 		},
 		style: { width: 190 },
-	} as OwnershipGraphNode;
+	} as unknown as FlowTopologyNode;
 }
 
 describe("ownership map viewport helpers", () => {
@@ -67,7 +67,7 @@ describe("ownership map viewport helpers", () => {
 			edges: [],
 			warnings: [],
 		};
-		const graph = buildOwnershipFlowTopology(topology, null);
+		const graph = buildFlowTopology(topology, null);
 		const extent = getOwnershipMapTranslateExtent(graph.nodes, {
 			width: 1200,
 			height: 640,
@@ -88,8 +88,8 @@ describe("ownership map viewport helpers", () => {
 			edges: [],
 			warnings: [],
 		};
-		const collapsedGraph = buildOwnershipFlowTopology(topology, null);
-		const expandedGraph = buildOwnershipFlowTopology(topology, null, {
+		const collapsedGraph = buildFlowTopology(topology, null);
+		const expandedGraph = buildFlowTopology(topology, null, "ownership", {
 			expandedStandaloneKinds: new Set(["Secret"]),
 		});
 		const collapsedBounds = getOwnershipGraphBounds(collapsedGraph.nodes);
@@ -128,7 +128,7 @@ describe("ownership map viewport helpers", () => {
 				},
 				style: { width: 260 },
 			},
-		] as OwnershipGraphNode[];
+		] as FlowTopologyNode[];
 		const bounds = getOwnershipGraphBounds(nodes);
 
 		expect(bounds?.right).toBe(580);
@@ -165,7 +165,7 @@ describe("ownership map viewport helpers", () => {
 				},
 				style: { width: 260 },
 			},
-		] as OwnershipGraphNode[];
+		] as FlowTopologyNode[];
 		const bounds = getOwnershipGraphBoundsForNodeIds(
 			nodes,
 			new Set(["child"]),

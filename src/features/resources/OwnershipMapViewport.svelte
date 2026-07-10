@@ -7,7 +7,7 @@
 		type FlowTopologyEdge,
 		type FlowTopologyNode,
 		widthFitFlowTopologyViewport,
-	} from "./topologyModel";
+	} from "./topology";
 
 	const FIT_VIEW_DURATION_MS = 260;
 	const SELECTED_FIT_VIEW_DURATION_MS = 120;

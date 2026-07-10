@@ -1,10 +1,9 @@
 import { bench, describe } from "vitest";
 import {
-	applyOwnershipFlowTopologySelection,
-	applyOwnershipFlowTopologySelectionWithIndex,
-	buildOwnershipFlowTopology,
-	buildOwnershipFlowTopologyLayout,
-	buildOwnershipFlowTopologySelectionIndex,
+	applyFlowTopologySelectionWithIndex,
+	buildFlowTopology,
+	buildFlowTopologyLayout,
+	buildFlowTopologySelectionIndex,
 	resourceTopologyNodeId,
 } from "@/features/resources/topology";
 import type {
@@ -69,35 +68,27 @@ const selectedIds = topology.nodes
 	.slice(0, 50)
 	.map((node) => node.id);
 
-const layout = buildOwnershipFlowTopologyLayout(topology, null, {
-	groupStandalone: false,
-});
-const selectionIndex = buildOwnershipFlowTopologySelectionIndex(topology);
+const layout = buildFlowTopologyLayout(topology, null);
+const selectionIndex = buildFlowTopologySelectionIndex(topology);
 
 // The full-rebuild path is the most expensive code path, so a smaller slice of
 // selections keeps the instrumented run reasonable while staying representative.
 const rebuildSelectedIds = selectedIds.slice(0, 10);
 
 describe("ownership flow topology (500 apps / 1k nodes)", () => {
-	bench("buildOwnershipFlowTopology per selection (rebuild)", () => {
+	bench("buildFlowTopology per selection (rebuild)", () => {
 		for (const selectedId of rebuildSelectedIds) {
-			buildOwnershipFlowTopology(topology, selectedId, { groupStandalone: false });
+			buildFlowTopology(topology, selectedId);
 		}
 	});
 
-	bench("buildOwnershipFlowTopologyLayout (build once)", () => {
-		buildOwnershipFlowTopologyLayout(topology, null, { groupStandalone: false });
+	bench("buildFlowTopologyLayout (build once)", () => {
+		buildFlowTopologyLayout(topology, null);
 	});
 
-	bench("applyOwnershipFlowTopologySelection (split selection)", () => {
+	bench("applyFlowTopologySelectionWithIndex (indexed selection)", () => {
 		for (const selectedId of selectedIds) {
-			applyOwnershipFlowTopologySelection(layout, topology, selectedId);
-		}
-	});
-
-	bench("applyOwnershipFlowTopologySelectionWithIndex (indexed selection)", () => {
-		for (const selectedId of selectedIds) {
-			applyOwnershipFlowTopologySelectionWithIndex(layout, selectionIndex, selectedId);
+			applyFlowTopologySelectionWithIndex(layout, selectionIndex, selectedId);
 		}
 	});
 });

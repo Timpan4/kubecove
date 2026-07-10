@@ -13,6 +13,16 @@ export interface TopologyGraph {
 	outgoingEdges: Map<string, TopologyRelationEdge[]>;
 }
 
+export function resourceTopologyNodeId(
+	cluster: string,
+	apiVersion: string,
+	kind: string,
+	namespace: string | null | undefined,
+	name: string,
+): string {
+	return `${cluster}:${apiVersion}:${kind}:${namespace ?? ""}:${name}`;
+}
+
 function pushMapValue<K, V>(map: Map<K, V[]>, key: K, value: V): void {
 	const values = map.get(key);
 	if (values) {

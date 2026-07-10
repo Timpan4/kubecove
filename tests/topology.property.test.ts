@@ -6,8 +6,7 @@ import type {
 	TopologyNode,
 } from "../src/lib/types";
 import {
-	buildOwnershipFlowTopology,
-	buildTopologyRows,
+	buildFlowTopologyLayout,
 	resourceTopologyNodeId,
 } from "../src/features/resources/topology";
 
@@ -86,24 +85,20 @@ function buildGeneratedTopology(podCounts: number[]): ResourceTopology {
 	return { nodes, edges, warnings: [] };
 }
 
-describe("ownership topology properties", () => {
-	test("generated topologies keep stable rows, unique nodes, and valid edges", () => {
+describe("topology properties", () => {
+	test("generated topologies keep stable nodes and valid edges", () => {
 		fc.assert(
 			fc.property(
 				fc.array(fc.integer({ min: 0, max: 3 }), { minLength: 0, maxLength: 4 }),
 				(podCounts) => {
 					const topology = buildGeneratedTopology(podCounts);
-					const rows = buildTopologyRows(topology);
-					const graph = buildOwnershipFlowTopology(topology, null);
-					const secondGraph = buildOwnershipFlowTopology(topology, null);
+					const graph = buildFlowTopologyLayout(topology, null);
+					const secondGraph = buildFlowTopologyLayout(topology, null);
 					const graphNodeIds = graph.nodes.map((graphNode) => graphNode.id);
 					const graphNodeIdSet = new Set(graphNodeIds);
-					const rowNodeIds = rows.map((row) => row.node.id);
 
-					expect(rowNodeIds).toEqual(buildTopologyRows(topology).map((row) => row.node.id));
 					expect(graphNodeIds).toEqual(secondGraph.nodes.map((graphNode) => graphNode.id));
 					expect(graphNodeIdSet.size).toBe(graph.nodes.length);
-					expect(new Set(rowNodeIds).size).toBe(rows.length);
 
 					for (const edge of graph.edges) {
 						expect(graphNodeIdSet.has(edge.source)).toBe(true);

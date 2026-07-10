@@ -21,7 +21,7 @@
 		filterFlowTopologyToSelectedRoot,
 		getTopologyTranslateExtent,
 		type FlowTopologyNode,
-	} from "./topologyModel";
+	} from "./topology";
 	import OwnershipMapViewport from "./OwnershipMapViewport.svelte";
 	import OwnershipResourceNode from "./OwnershipResourceNode.svelte";
 	import StandaloneKindGroupNode from "./StandaloneKindGroupNode.svelte";
