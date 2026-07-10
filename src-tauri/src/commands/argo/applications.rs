@@ -8,7 +8,68 @@ use crate::models::{
     YamlEncoding, YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
+use kube::core::DynamicObject;
 use std::collections::BTreeSet;
+
+fn application_summary_from_object(
+    cluster_context: &str,
+    obj: &DynamicObject,
+) -> Option<ArgoApplicationSummary> {
+    let data = obj.data.as_object()?;
+    let destination_namespace = data
+        .get("spec")
+        .and_then(|spec| spec.get("destination"))
+        .and_then(|destination| destination.get("namespace"))
+        .and_then(|namespace| namespace.as_str())
+        .map(String::from);
+    let sources = application_sources(data);
+
+    Some(ArgoApplicationSummary {
+        cluster: cluster_context.to_string(),
+        name: obj.metadata.name.clone().unwrap_or_default(),
+        age: resource_age(obj.metadata.creation_timestamp.clone().map(|timestamp| {
+            Utc.timestamp_opt(timestamp.0.as_second(), 0)
+                .single()
+                .unwrap_or_else(Utc::now)
+        })),
+        created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
+        namespace: obj.metadata.namespace.clone(),
+        project: data
+            .get("spec")
+            .and_then(|spec| spec.get("project"))
+            .and_then(|project| project.as_str())
+            .map(String::from),
+        sync_status: data
+            .get("status")
+            .and_then(|status| status.get("sync"))
+            .and_then(|sync| sync.get("status"))
+            .and_then(|status| status.as_str())
+            .map(String::from),
+        health_status: data
+            .get("status")
+            .and_then(|status| status.get("health"))
+            .and_then(|health| health.get("status"))
+            .and_then(|status| status.as_str())
+            .map(String::from),
+        destination_server: data
+            .get("spec")
+            .and_then(|spec| spec.get("destination"))
+            .and_then(|destination| destination.get("server"))
+            .and_then(|server| server.as_str())
+            .map(String::from),
+        source_repo: primary_source_repo(&sources),
+        source_revision: primary_source_revision(&sources),
+        source_mode: application_source_mode(&sources),
+        source_count: application_source_count(&sources),
+        resource_namespaces: application_resource_namespaces(
+            data,
+            destination_namespace.as_deref(),
+        ),
+        tracked_resource_count: application_tracked_resource_count(data),
+        destination_namespace,
+        sources,
+    })
+}
 
 /// List Argo CD Applications in the cluster.
 #[tauri::command]
@@ -25,76 +86,9 @@ pub async fn list_argocd_applications(
 
     let items = list_crd_objects(client.clone(), &ar).await?;
 
-    let summaries: Vec<ArgoApplicationSummary> = items
+    let summaries = items
         .iter()
-        .filter_map(|obj| {
-            let name = obj.metadata.name.clone().unwrap_or_default();
-            let namespace = obj.metadata.namespace.clone();
-            let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
-                Utc.timestamp_opt(t.0.as_second(), 0)
-                    .single()
-                    .unwrap_or_else(Utc::now)
-            }));
-            let data = obj.data.as_object()?;
-
-            let project = data
-                .get("spec")
-                .and_then(|s| s.get("project"))
-                .and_then(|p| p.as_str())
-                .map(String::from);
-            let destination_namespace = data
-                .get("spec")
-                .and_then(|s| s.get("destination"))
-                .and_then(|d| d.get("namespace"))
-                .and_then(|n| n.as_str())
-                .map(String::from);
-            let destination_server = data
-                .get("spec")
-                .and_then(|s| s.get("destination"))
-                .and_then(|d| d.get("server"))
-                .and_then(|s| s.as_str())
-                .map(String::from);
-            let sources = application_sources(data);
-            let source_repo = primary_source_repo(&sources);
-            let source_revision = primary_source_revision(&sources);
-            let source_mode = application_source_mode(&sources);
-            let source_count = application_source_count(&sources);
-            let sync_status = data
-                .get("status")
-                .and_then(|s| s.get("sync"))
-                .and_then(|s| s.get("status"))
-                .and_then(|st| st.as_str())
-                .map(String::from);
-            let health_status = data
-                .get("status")
-                .and_then(|s| s.get("health"))
-                .and_then(|h| h.get("status"))
-                .and_then(|st| st.as_str())
-                .map(String::from);
-            let resource_namespaces =
-                application_resource_namespaces(data, destination_namespace.as_deref());
-            let tracked_resource_count = application_tracked_resource_count(data);
-
-            Some(ArgoApplicationSummary {
-                cluster: cluster_context.clone(),
-                name,
-                age,
-                created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
-                namespace,
-                project,
-                sync_status,
-                health_status,
-                destination_namespace,
-                destination_server,
-                source_repo,
-                source_revision,
-                source_mode,
-                source_count,
-                sources,
-                resource_namespaces,
-                tracked_resource_count,
-            })
-        })
+        .filter_map(|obj| application_summary_from_object(&cluster_context, obj))
         .collect();
 
     Ok(summaries)
@@ -121,77 +115,9 @@ pub async fn get_argocd_application_details(
 
     let yaml = resource_yaml(&obj, yaml_view_mode, yaml_encoding)?;
     let metadata = resource_metadata(&obj)?;
-    let data = obj
-        .data
-        .as_object()
-        .ok_or_else(|| AppError::new("invalid application data", "cluster"))?;
-
-    let name = obj.metadata.name.clone().unwrap_or_default();
-    let namespace = obj.metadata.namespace.clone();
-    let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
-        Utc.timestamp_opt(t.0.as_second(), 0)
-            .single()
-            .unwrap_or_else(Utc::now)
-    }));
-
-    let project = data
-        .get("spec")
-        .and_then(|s| s.get("project"))
-        .and_then(|p| p.as_str())
-        .map(String::from);
-    let destination_namespace = data
-        .get("spec")
-        .and_then(|s| s.get("destination"))
-        .and_then(|d| d.get("namespace"))
-        .and_then(|n| n.as_str())
-        .map(String::from);
-    let destination_server = data
-        .get("spec")
-        .and_then(|s| s.get("destination"))
-        .and_then(|d| d.get("server"))
-        .and_then(|s| s.as_str())
-        .map(String::from);
-    let sources = application_sources(data);
-    let source_repo = primary_source_repo(&sources);
-    let source_revision = primary_source_revision(&sources);
-    let source_mode = application_source_mode(&sources);
-    let source_count = application_source_count(&sources);
-    let sync_status = data
-        .get("status")
-        .and_then(|s| s.get("sync"))
-        .and_then(|s| s.get("status"))
-        .and_then(|st| st.as_str())
-        .map(String::from);
-    let health_status = data
-        .get("status")
-        .and_then(|s| s.get("health"))
-        .and_then(|h| h.get("status"))
-        .and_then(|st| st.as_str())
-        .map(String::from);
-    let resource_namespaces =
-        application_resource_namespaces(data, destination_namespace.as_deref());
-    let tracked_resource_count = application_tracked_resource_count(data);
     let status = resource_status(&obj);
-
-    let summary = ArgoApplicationSummary {
-        cluster: cluster_context.clone(),
-        name,
-        age,
-        created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
-        namespace,
-        project,
-        sync_status,
-        health_status,
-        destination_namespace,
-        destination_server,
-        source_repo,
-        source_revision,
-        source_mode,
-        source_count,
-        sources,
-        resource_namespaces,
-        tracked_resource_count,
-    };
+    let summary = application_summary_from_object(&cluster_context, &obj)
+        .ok_or_else(|| AppError::new("invalid application data", "cluster"))?;
 
     Ok(ArgoApplicationDetails {
         summary,
@@ -382,7 +308,58 @@ fn application_source_count(sources: &[ArgoApplicationSourceSummary]) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kube::core::{ApiResource, DynamicObject};
     use serde_json::json;
+
+    fn application(data: serde_json::Value) -> DynamicObject {
+        DynamicObject::new(
+            "checkout",
+            &ApiResource {
+                group: "argoproj.io".to_string(),
+                version: "v1alpha1".to_string(),
+                api_version: "argoproj.io/v1alpha1".to_string(),
+                kind: "Application".to_string(),
+                plural: "applications".to_string(),
+            },
+        )
+        .within("argocd")
+        .data(data)
+    }
+
+    #[test]
+    fn projects_application_summary_from_dynamic_object() {
+        let object = application(json!({
+            "spec": {
+                "project": "payments",
+                "destination": { "namespace": "payments", "server": "in-cluster" },
+                "source": { "repoURL": "https://git.example/apps", "targetRevision": "main", "path": "checkout" }
+            },
+            "status": {
+                "sync": { "status": "Synced" },
+                "health": { "status": "Healthy" },
+                "resources": [{ "kind": "Deployment", "namespace": "payments", "name": "checkout" }]
+            }
+        }));
+
+        let summary = application_summary_from_object("kind-dev", &object).expect("summary");
+
+        assert_eq!(summary.cluster, "kind-dev");
+        assert_eq!(summary.name, "checkout");
+        assert_eq!(summary.namespace.as_deref(), Some("argocd"));
+        assert_eq!(summary.project.as_deref(), Some("payments"));
+        assert_eq!(summary.sync_status.as_deref(), Some("Synced"));
+        assert_eq!(summary.health_status.as_deref(), Some("Healthy"));
+        assert_eq!(
+            summary.source_repo.as_deref(),
+            Some("https://git.example/apps")
+        );
+        assert_eq!(summary.resource_namespaces, vec!["payments"]);
+    }
+
+    #[test]
+    fn rejects_non_object_application_data() {
+        assert!(application_summary_from_object("kind-dev", &application(json!(null))).is_none());
+    }
 
     #[test]
     fn extracts_unique_tracked_resource_namespaces() {
