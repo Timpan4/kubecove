@@ -8,7 +8,7 @@ import {
 	podExecCommandText,
 	podExecTarget,
 	sortPodExecSessions,
-} from "../src/features/resource-detail/pod-exec-helpers";
+} from "../src/features/live-sessions/podExecHelpers";
 
 const pod: ResourceSummary = {
 	kind: "Pod",

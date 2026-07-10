@@ -1,9 +1,9 @@
+import { normalizeKubeconfigEnvVar } from "@/lib/settings";
 import type {
 	PodExecSessionRequest,
 	PodExecSessionSummary,
 	ResourceSummary,
 } from "@/lib/types";
-import { normalizeKubeconfigEnvVar } from "@/lib/settings";
 
 export type PodExecPreset = "sh" | "bash" | "custom";
 
@@ -16,10 +16,7 @@ export interface PodExecDraft {
 	confirmed: boolean;
 }
 
-export function podExecTarget(
-	resource: ResourceSummary,
-	container?: string,
-): string {
+export function podExecTarget(resource: ResourceSummary, container?: string): string {
 	const containerName = container?.trim() || "<default>";
 	return `${resource.cluster}/${resource.namespace ?? ""}/Pod/${resource.name}/container/${containerName}`;
 }
@@ -57,7 +54,7 @@ export function buildPodExecRequest(
 
 	return {
 		clusterContext: resource.cluster,
-		kubeconfigEnvVar: sourceRequestEnvVar(kubeconfigSource),
+		kubeconfigEnvVar: podExecRequestKubeconfigEnvVar(kubeconfigSource),
 		namespace: resource.namespace,
 		podName: resource.name,
 		container: draft.container || undefined,
@@ -80,26 +77,29 @@ export function isPodExecForResource(
 ): boolean {
 	return (
 		resource.kind === "Pod" &&
-		sessionKubeconfigSource(session) === normalizeKubeconfigSource(kubeconfigSource) &&
+		podExecSessionMatchesKubeconfigSource(session, kubeconfigSource) &&
 		session.clusterContext === resource.cluster &&
 		session.namespace === resource.namespace &&
 		session.podName === resource.name
 	);
 }
 
-function normalizeKubeconfigSource(source?: string): string {
-	if (source?.startsWith("kubeconfigSource=")) return source;
-	return `kubeconfigEnv=${normalizeKubeconfigEnvVar(source)}`;
-}
-
-function sessionKubeconfigSource(session: PodExecSessionSummary): string {
-	return (
+export function podExecSessionMatchesKubeconfigSource(
+	session: PodExecSessionSummary,
+	kubeconfigSource?: string,
+): boolean {
+	const source = kubeconfigSource?.startsWith("kubeconfigSource=")
+		? kubeconfigSource
+		: `kubeconfigEnv=${normalizeKubeconfigEnvVar(kubeconfigSource)}`;
+	const sessionSource =
 		session.kubeconfigSourceKey ??
-		`kubeconfigEnv=${normalizeKubeconfigEnvVar(session.kubeconfigEnvVar)}`
-	);
+		`kubeconfigEnv=${normalizeKubeconfigEnvVar(session.kubeconfigEnvVar)}`;
+	return sessionSource === source;
 }
 
-function sourceRequestEnvVar(source?: string): string | undefined {
+export function podExecRequestKubeconfigEnvVar(
+	source?: string,
+): string | undefined {
 	return source?.startsWith("kubeconfigSource=") ? undefined : source;
 }
 

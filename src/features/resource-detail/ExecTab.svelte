@@ -32,15 +32,23 @@
 		Spinner,
 		Textarea,
 	} from "@/components/ui/svelte";
-	import { queryKeys } from "@/lib/queryKeys";
+	import {
+		buildPodExecRequest,
+		commandForPreset,
+		invalidatePodExecQueries,
+		isPodExecForResource,
+		podExecCommandText,
+		podExecQueryOptions,
+		podExecTarget,
+		startPodExec,
+		stopPodExec,
+		type PodExecPreset,
+	} from "@/features/live-sessions";
 	import { settingsStore } from "@/lib/settings-store";
 	import {
 		closePodExecChannel,
 		createPodExecChannel,
-		listPodExecSessions,
 		resizePodExecTerminal,
-		startPodExecSession,
-		stopPodExecSession,
 		writePodExecStdin,
 		type TauriClient,
 	} from "@/lib/tauri";
@@ -49,15 +57,6 @@
 		PodExecSessionSummary,
 		ResourceSummary,
 	} from "@/lib/types";
-	import {
-		buildPodExecRequest,
-		commandForPreset,
-		isPodExecForResource,
-		podExecCommandText,
-		podExecTarget,
-		sortPodExecSessions,
-		type PodExecPreset,
-	} from "./pod-exec-helpers";
 	import type { ContainerStatusRow } from "./helpers";
 
 	const DEFAULT_COLS = 100;
@@ -106,17 +105,15 @@
 	const command = $derived(commandForPreset(preset, customArgv));
 	const commandText = $derived(typeof command === "string" ? "" : podExecCommandText(command));
 
-	const sessionsQuery = createQuery<PodExecSessionSummary[]>(() => ({
-		queryKey: queryKeys.podExecSessions(),
-		queryFn: () => listPodExecSessions(client),
-		enabled: active,
-		refetchInterval: active ? 3_000 : false,
-	}));
+	const sessionsQuery = createQuery<PodExecSessionSummary[]>(() =>
+		podExecQueryOptions(client, {
+			enabled: active,
+			refetchInterval: active ? 3_000 : false,
+		}),
+	);
 	const sessions = $derived(
-		sortPodExecSessions(
-			(sessionsQuery.data ?? []).filter((session) =>
-				isPodExecForResource(session, resource, kubeconfigSourceKey),
-			),
+		(sessionsQuery.data ?? []).filter((session) =>
+			isPodExecForResource(session, resource, kubeconfigSourceKey),
 		),
 	);
 
@@ -151,7 +148,13 @@
 				window.cancelAnimationFrame(frame);
 				window.removeEventListener("resize", fit);
 				if (channel) closePodExecChannel(channel);
-				if (sessionId) void stopPodExecSession(client, sessionId);
+				if (sessionId) {
+					void stopPodExec({
+						client,
+						sessionId,
+						invalidateQueries: (options) => queryClient.invalidateQueries(options),
+					});
+				}
 				nextTerminal.dispose();
 				terminal = null;
 				fitAddon = null;
@@ -159,7 +162,13 @@
 		}
 		return () => {
 			if (channel) closePodExecChannel(channel);
-			if (sessionId) void stopPodExecSession(client, sessionId);
+			if (sessionId) {
+				void stopPodExec({
+					client,
+					sessionId,
+					invalidateQueries: (options) => queryClient.invalidateQueries(options),
+				});
+			}
 		};
 	});
 
@@ -208,7 +217,7 @@
 			error = event.message;
 			appendOutput(`\n${event.message}\n`);
 			closeChannelOnly();
-			void queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() });
+			void invalidatePodExecQueries((options) => queryClient.invalidateQueries(options));
 			return;
 		}
 		if (event.type === "exited") {
@@ -218,13 +227,13 @@
 					? "Exec session exited"
 					: `Exec session exited with code ${event.exitCode}`;
 			closeChannelOnly();
-			void queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() });
+			void invalidatePodExecQueries((options) => queryClient.invalidateQueries(options));
 			return;
 		}
 		if (event.type === "stopped") {
 			message = "Exec session stopped";
 			closeChannelOnly();
-			void queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() });
+			void invalidatePodExecQueries((options) => queryClient.invalidateQueries(options));
 		}
 	}
 
@@ -250,7 +259,13 @@
 		}
 		const previous = sessionId;
 		closeChannelOnly();
-		if (previous) await stopPodExecSession(client, previous);
+		if (previous) {
+			await stopPodExec({
+				client,
+				sessionId: previous,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
+			});
+		}
 		const nextChannel = createPodExecChannel(handleMessage);
 		channel = nextChannel;
 		starting = true;
@@ -261,10 +276,14 @@
 			`Starting ${commandText} on ${podExecTarget(resource, selectedContainer)}\r\n`,
 		);
 		try {
-			const summary = await startPodExecSession(client, request, nextChannel);
+			const summary = await startPodExec({
+				client,
+				request,
+				channel: nextChannel,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
+			});
 			sessionId = summary.id;
 			status = summary.status;
-			await queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() });
 		} catch (err) {
 			closePodExecChannel(nextChannel);
 			if (channel === nextChannel) channel = null;
@@ -279,8 +298,11 @@
 		stoppingId = id;
 		try {
 			if (sessionId === id) closeChannelOnly();
-			await stopPodExecSession(client, id);
-			await queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() });
+			await stopPodExec({
+				client,
+				sessionId: id,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
+			});
 		} catch (err) {
 			error = err;
 		} finally {

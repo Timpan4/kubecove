@@ -13,19 +13,17 @@
 		buttonClass,
 	} from "@/components/ui/svelte";
 	import {
+		buildLiveSessionReadModel,
+		podExecCommandText,
+		podExecQueryOptions,
 		portForwardLocalUrl,
 		portForwardQueryOptions,
 		reconnectPortForward as reconnectPortForwardLifecycle,
+		stopPodExec,
 		stopPortForward as stopPortForwardLifecycle,
 	} from "@/features/live-sessions";
-	import { podExecCommandText, sortPodExecSessions } from "@/features/resource-detail/pod-exec-helpers";
 	import { settingsStore } from "@/lib/settings-store";
-	import {
-		createTauriClient,
-		listPodExecSessions,
-		stopPodExecSession,
-	} from "@/lib/tauri";
-	import { queryKeys } from "@/lib/queryKeys";
+	import { createTauriClient } from "@/lib/tauri";
 	import type { PodExecSessionSummary, PortForwardSessionSummary } from "@/lib/types";
 
 	let { onOpenManager }: { onOpenManager: () => void } = $props();
@@ -38,18 +36,17 @@
 	let copyingId = $state<string | null>(null);
 	let actionError = $state<unknown>(null);
 	const portForwardsQuery = createQuery(() => portForwardQueryOptions(client));
-	const execSessionsQuery = createQuery(() => ({
-		queryKey: queryKeys.podExecSessions(),
-		queryFn: () => listPodExecSessions(client),
-		placeholderData: (previousData) => previousData,
-		refetchInterval: 3_000,
-	}));
+	const execSessionsQuery = createQuery(() => podExecQueryOptions(client));
 
-	const portForwardSessions = $derived(portForwardsQuery.data ?? []);
-	const execSessions = $derived(sortPodExecSessions(execSessionsQuery.data ?? []));
-	const portForwardCount = $derived(portForwardSessions.length);
-	const execSessionCount = $derived(execSessions.length);
-	const sessionCount = $derived(portForwardCount + execSessionCount);
+	const liveSessionModel = $derived(
+		buildLiveSessionReadModel(
+			portForwardsQuery.data ?? [],
+			execSessionsQuery.data ?? [],
+		),
+	);
+	const portForwardSessions = $derived(liveSessionModel.portForwards);
+	const execSessions = $derived(liveSessionModel.podExecSessions);
+	const sessionCount = $derived(liveSessionModel.counts.total);
 	const loading = $derived(portForwardsQuery.isLoading || execSessionsQuery.isLoading);
 	const fetching = $derived(portForwardsQuery.isFetching || execSessionsQuery.isFetching);
 	const showKubeconfigSourceLabels = $derived(
@@ -88,8 +85,11 @@
 		stoppingId = sessionId;
 		actionError = null;
 		try {
-			await stopPodExecSession(client, sessionId);
-			await queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() });
+			await stopPodExec({
+				client,
+				sessionId,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
+			});
 		} catch (error) {
 			actionError = error;
 		} finally {

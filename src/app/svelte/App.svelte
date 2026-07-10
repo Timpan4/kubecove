@@ -8,11 +8,13 @@
 	import UpdateStatusButton from "./UpdateStatusButton.svelte";
 	import WorkspaceShell from "./WorkspaceShell.svelte";
 	import WorkspaceLauncher from "@/features/workspaces/WorkspaceLauncher.svelte";
-	import { invalidatePortForwardQueries } from "@/features/live-sessions";
+	import {
+		invalidatePodExecQueries,
+		invalidatePortForwardQueries,
+	} from "@/features/live-sessions";
 	import ForegroundLoadingBar from "./ForegroundLoadingBar.svelte";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import { diagnosticLog, setDiagnosticsEnabled } from "@/lib/diagnostics";
-	import { queryKeys } from "@/lib/queryKeys";
 	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import {
 		createTauriClient,
@@ -137,9 +139,9 @@
 					invalidatePortForwardQueries((options) =>
 						queryClient.invalidateQueries(options),
 					),
-					queryClient.invalidateQueries({
-						queryKey: queryKeys.podExecSessions(),
-					}),
+					invalidatePodExecQueries((options) =>
+						queryClient.invalidateQueries(options),
+					),
 				]);
 				const stopped =
 					result.stoppedPortForwards + result.stoppedPodExecSessions;
