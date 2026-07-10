@@ -683,7 +683,8 @@
 							selectedResource={focusedResource}
 							{title}
 							initialPathState={navigation.resourceBrowserPathState}
-							onPathStateChange={(state) => (navigation.resourceBrowserPathState = state)}
+							onPathStateChange={(pathState) =>
+								applyWorkspaceNavigation({ type: "updateResourceBrowserPath", pathState })}
 							onResourceSelect={(resource) =>
 								applyWorkspaceNavigation({ type: "focusResource", resource })}
 							onResourceClose={() =>

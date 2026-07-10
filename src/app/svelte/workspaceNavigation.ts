@@ -64,6 +64,7 @@ export type WorkspaceNavigationIntent =
 	| { type: "selectResource"; resource: ResourceSummary; node: TreeNodeId }
 	| { type: "focusResource"; resource: ResourceSummary }
 	| { type: "inspectResource"; resource: ResourceSummary }
+	| { type: "updateResourceBrowserPath"; pathState: PathStateResourceBrowserState | null }
 	| { type: "clearResource" }
 	| { type: "clearHelmTarget" }
 	| { type: "clearGitOpsTarget" };
@@ -87,16 +88,13 @@ export function createWorkspaceNavigation(
 			null,
 		resourceGitOpsFocusApplication: null,
 		resourceInitialSearch: restored?.resourceInitialSearch ?? "",
-		resourceInitialGitOpsFilter:
-			restored?.resourceInitialGitOpsFilter ?? "",
-		resourceInitialHealthFilter:
-			restored?.resourceInitialHealthFilter ?? "all",
+		resourceInitialGitOpsFilter: restored?.resourceInitialGitOpsFilter ?? "",
+		resourceInitialHealthFilter: restored?.resourceInitialHealthFilter ?? "all",
 		resourceNamespaceOverride: restored?.resourceNamespaceOverride ?? null,
 		resourceBrowserPathState: restored?.resources ?? null,
 		initialIncidentFilter: restored?.surfaces?.incidentFilter ?? "all",
 	};
-}
-
+	}
 export function workspacePathForWorkspace(
 	workspace: SavedWorkspace,
 	snapshot: PathStateWorkspaceSnapshot | null,
@@ -128,6 +126,9 @@ export function navigateWorkspace(
 	}
 	if (intent.type === "focusResource") {
 		return { ...state, focusedResource: intent.resource, restoreTargetResource: null };
+	}
+	if (intent.type === "updateResourceBrowserPath") {
+		return { ...state, resourceBrowserPathState: intent.pathState };
 	}
 	if (intent.type === "inspectResource") {
 		return {
