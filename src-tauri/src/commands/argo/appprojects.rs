@@ -7,6 +7,39 @@ use crate::models::{
     AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, YamlEncoding, YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
+use kube::core::DynamicObject;
+
+fn app_project_summary_from_object(
+    cluster_context: &str,
+    obj: &DynamicObject,
+) -> Option<ArgoAppProjectSummary> {
+    let data = obj.data.as_object()?;
+
+    Some(ArgoAppProjectSummary {
+        cluster: cluster_context.to_string(),
+        name: obj.metadata.name.clone().unwrap_or_default(),
+        age: resource_age(obj.metadata.creation_timestamp.clone().map(|timestamp| {
+            Utc.timestamp_opt(timestamp.0.as_second(), 0)
+                .single()
+                .unwrap_or_else(Utc::now)
+        })),
+        created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
+        namespace: obj.metadata.namespace.clone(),
+        description: data
+            .get("spec")
+            .and_then(|spec| spec.get("description"))
+            .and_then(|description| description.as_str())
+            .map(String::from),
+        status: data
+            .get("status")
+            .and_then(|status| status.get("conditions"))
+            .and_then(|conditions| conditions.as_array())
+            .and_then(|conditions| conditions.first())
+            .and_then(|condition| condition.get("type"))
+            .and_then(|kind| kind.as_str())
+            .map(String::from),
+    })
+}
 
 /// Get detailed Argo CD `AppProject` information including YAML and metadata.
 #[tauri::command]
@@ -28,40 +61,8 @@ pub async fn get_argocd_appproject_details(
     let obj = get_crd_object(client.clone(), &ar, &name, namespace.as_deref()).await?;
     let yaml = resource_yaml(&obj, yaml_view_mode, yaml_encoding)?;
     let metadata = resource_metadata(&obj)?;
-    let data = obj
-        .data
-        .as_object()
+    let summary = app_project_summary_from_object(&cluster_context, &obj)
         .ok_or_else(|| AppError::new("invalid AppProject data", "cluster"))?;
-
-    let name = obj.metadata.name.clone().unwrap_or_default();
-    let namespace = obj.metadata.namespace.clone();
-    let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
-        Utc.timestamp_opt(t.0.as_second(), 0)
-            .single()
-            .unwrap_or_else(Utc::now)
-    }));
-    let description = data
-        .get("spec")
-        .and_then(|s| s.get("description"))
-        .and_then(|d| d.as_str())
-        .map(String::from);
-    let status = data
-        .get("status")
-        .and_then(|s| s.get("conditions"))
-        .and_then(|c| c.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|c| c.get("type"))
-        .and_then(|t| t.as_str())
-        .map(String::from);
-    let summary = ArgoAppProjectSummary {
-        cluster: cluster_context.clone(),
-        name,
-        age,
-        created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
-        namespace,
-        description,
-        status,
-    };
     Ok(ArgoAppProjectDetails {
         summary,
         yaml,
@@ -84,43 +85,53 @@ pub async fn list_argocd_appprojects(
 
     let items = list_crd_objects(client.clone(), &ar).await?;
 
-    let summaries: Vec<ArgoAppProjectSummary> = items
+    let summaries = items
         .iter()
-        .filter_map(|obj| {
-            let name = obj.metadata.name.clone().unwrap_or_default();
-            let namespace = obj.metadata.namespace.clone();
-            let age = resource_age(obj.metadata.creation_timestamp.clone().map(|t| {
-                Utc.timestamp_opt(t.0.as_second(), 0)
-                    .single()
-                    .unwrap_or_else(Utc::now)
-            }));
-            let data = obj.data.as_object()?;
-
-            let description = data
-                .get("spec")
-                .and_then(|s| s.get("description"))
-                .and_then(|d| d.as_str())
-                .map(String::from);
-            let status = data
-                .get("status")
-                .and_then(|s| s.get("conditions"))
-                .and_then(|c| c.as_array())
-                .and_then(|arr| arr.first())
-                .and_then(|c| c.get("type"))
-                .and_then(|t| t.as_str())
-                .map(String::from);
-
-            Some(ArgoAppProjectSummary {
-                cluster: cluster_context.clone(),
-                name,
-                age,
-                created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
-                namespace,
-                description,
-                status,
-            })
-        })
+        .filter_map(|obj| app_project_summary_from_object(&cluster_context, obj))
         .collect();
 
     Ok(summaries)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kube::core::{ApiResource, DynamicObject};
+    use serde_json::json;
+
+    fn app_project(data: serde_json::Value) -> DynamicObject {
+        DynamicObject::new(
+            "payments",
+            &ApiResource {
+                group: "argoproj.io".to_string(),
+                version: "v1alpha1".to_string(),
+                api_version: "argoproj.io/v1alpha1".to_string(),
+                kind: "AppProject".to_string(),
+                plural: "appprojects".to_string(),
+            },
+        )
+        .within("argocd")
+        .data(data)
+    }
+
+    #[test]
+    fn projects_app_project_summary_from_dynamic_object() {
+        let object = app_project(json!({
+            "spec": { "description": "Payment workloads" },
+            "status": { "conditions": [{ "type": "InvalidSpecError" }] }
+        }));
+
+        let summary = app_project_summary_from_object("kind-dev", &object).expect("summary");
+
+        assert_eq!(summary.cluster, "kind-dev");
+        assert_eq!(summary.name, "payments");
+        assert_eq!(summary.namespace.as_deref(), Some("argocd"));
+        assert_eq!(summary.description.as_deref(), Some("Payment workloads"));
+        assert_eq!(summary.status.as_deref(), Some("InvalidSpecError"));
+    }
+
+    #[test]
+    fn rejects_non_object_app_project_data() {
+        assert!(app_project_summary_from_object("kind-dev", &app_project(json!(null))).is_none());
+    }
 }
