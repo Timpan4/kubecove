@@ -21,7 +21,7 @@
 		incidentWarningSummary,
 		isIncidentResourceSelected,
 	} from "./incidentSurfaceModel";
-	import { treeNodeForResource } from "./workspaceShellModel";
+	import { treeNodeForResource } from "./workspaceNavigation";
 	import StatGrid from "./StatGrid.svelte";
 	import SurfaceFrame from "./SurfaceFrame.svelte";
 

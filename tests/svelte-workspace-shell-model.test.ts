@@ -9,9 +9,13 @@ import {
 	getWorkspacePlaceholder,
 	getWorkspaceTitle,
 	isNamespaceListView,
+} from "../src/app/svelte/workspaceShellModel";
+import {
+	createWorkspaceNavigation,
+	navigateWorkspace,
 	treeNodeForResource,
 	viewModeForTreeNode,
-} from "../src/app/svelte/workspaceShellModel";
+} from "../src/app/svelte/workspaceNavigation";
 import { createWorkspaceRecord } from "../src/lib/workspace-model";
 import { SUPPORTED_KINDS } from "../src/lib/types";
 import type {
@@ -387,20 +391,6 @@ describe("svelte workspace shell model", () => {
 		).toEqual({ canQuery: true, namespaces: [], kinds: ["Node"] });
 	});
 
-	test("Svelte shell clears resource handoff filters when navigating away", () => {
-		const source = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-
-		expect(source).toContain(
-			"initialGitOpsFilter = workspace.scope.gitOpsFilter ?? workspace.scope.argoAppFilter ?? \"\"",
-		);
-		const selectNodeStart = source.indexOf("function selectNode");
-		const selectNodeEnd = source.indexOf("function selectResource", selectNodeStart);
-		const selectNodeBody = source.slice(selectNodeStart, selectNodeEnd);
-		expect(selectNodeBody).toContain('resourceInitialSearch = ""');
-		expect(selectNodeBody).toContain('resourceInitialGitOpsFilter = ""');
-		expect(selectNodeBody).toContain("resourceNamespaceOverride = null");
-	});
-
 	test("Svelte workspace chrome keeps platform-aware command palette hint", () => {
 		const source = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
 
@@ -421,7 +411,7 @@ describe("svelte workspace shell model", () => {
 		expect(shell).toContain("workspaceStore.updateWorkspace(workspace.id");
 		expect(shell).toContain("clusterContexts: [clusterContext]");
 		expect(shell).toContain("namespaces: []");
-		expect(shell).toContain('viewMode = "resources"');
+		expect(shell).toContain('applyWorkspaceNavigation({ type: "changeCluster" })');
 		expect(selector).toContain("queryKeys.kubeContexts(kubeconfigSourceKey)");
 		expect(selector).toContain("listKubeContexts(client, kubeconfigSourceKey)");
 		expect(selector).toContain('aria-labelledby="cluster-select-label"');
@@ -445,8 +435,6 @@ describe("svelte workspace shell model", () => {
 	expect(shell).toContain("detailOpen={resourceInspectorOpen}");
 	expect(shell).toContain("sizeKey={resourceInspectorSizeKey}");
 	expect(shell).toContain("selectedResource={focusedResource}");
-	expect(shell).toContain("focusedResource = resource;");
-	expect(shell).toContain("focusedResource = null;");
 	expect(shell).toContain("{#key resourceSelectionKey(focusedResource)}");
 	expect(shell).toContain('aria-label="Close resource details"');
 	expect(shell).not.toContain("Back to workspaces");
@@ -454,14 +442,19 @@ describe("svelte workspace shell model", () => {
 
 	test("Svelte Argo shortcuts preserve target application selection", () => {
 		const overview = readFileSync("src/features/workspaces/WorkspaceOverview.svelte", "utf8");
-		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
 		const surfaces = readFileSync("src/app/svelte/AppSurfaces.svelte", "utf8");
+		const workspace = createWorkspaceRecord({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: [],
+		});
+		const navigation = navigateWorkspace(createWorkspaceNavigation(workspace), {
+			type: "openArgo",
+			application: "checkout",
+		});
 
 		expect(overview).toContain("onOpenArgo(shortcut.argoApp)");
-		expect(shell).toContain("let targetGitOpsApplication");
-		expect(shell).toContain(
-			"onTargetGitOpsApplicationResolved={clearTargetGitOpsApplication}",
-		);
+		expect(navigation.targetGitOpsApplication).toBe("checkout");
 		expect(surfaces).toContain("targetGitOpsApplication");
 		expect(surfaces).toContain('item.type === "argoApp"');
 	});

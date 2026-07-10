@@ -11,6 +11,11 @@ import type {
 	HelmReconciliationResource,
 	HelmReleaseSummary,
 } from "../src/lib/types";
+import { createWorkspaceRecord } from "../src/lib/workspace-model";
+import {
+	createWorkspaceNavigation,
+	navigateWorkspace,
+} from "../src/app/svelte/workspaceNavigation";
 
 function row(
 	kind: string,
@@ -101,13 +106,26 @@ describe("Helm reconciliation UI helpers", () => {
 			"src/features/resources/ResourceBrowser.svelte",
 			"utf8",
 		);
-		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
 		const surfaces = readFileSync("src/app/svelte/HelmSurface.svelte", "utf8");
+		const workspace = createWorkspaceRecord({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: ["payments"],
+		});
+		const navigation = navigateWorkspace(createWorkspaceNavigation(workspace), {
+			type: "openResources",
+			namespaces: "payments",
+			search: "checkout",
+		});
 
 		expect(browser).toContain('initialSearch = ""');
 		expect(browser).toContain("search = pathState?.search ?? initialSearch");
-		expect(shell).toContain("let resourceInitialSearch");
-		expect(shell).toContain("initialSearch={resourceInitialSearch}");
+		expect(navigation.resourceInitialSearch).toBe("checkout");
+		expect(navigation.selectedNode).toEqual({
+			type: "namespace",
+			section: "namespaces",
+			namespace: "payments",
+		});
 		expect(surfaces).toContain(
 			"onOpenResources(selectedHelmRelease?.namespace, selectedHelmRelease?.name)",
 		);

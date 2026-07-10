@@ -41,7 +41,7 @@
 	import type { ResourceSummary } from "@/lib/types";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
 	import { settingsStore } from "@/lib/settings-store";
-	import { treeNodeForResource } from "./workspaceShellModel";
+	import { treeNodeForResource } from "./workspaceNavigation";
 
 	const RESOURCE_RESULT_CAP = 50;
 	const NAMESPACE_RESULT_CAP = 8;
