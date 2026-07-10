@@ -165,13 +165,3 @@ export function portForwardRequestKubeconfigEnvVar(
 ): string | undefined {
 	return source?.startsWith("kubeconfigSource=") ? undefined : source;
 }
-
-export {
-	extractServicePortOptions,
-	parsePortForwardForm,
-	parseSavedPortForwardForm,
-	type ParsedPortForwardForm,
-	type PortForwardFormValues,
-	type SavedPortForwardFormValues,
-	type ServicePortOption,
-} from "./portForwardForms";

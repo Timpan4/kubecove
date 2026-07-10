@@ -14,8 +14,6 @@
 	} from "@/components/ui/svelte";
 	import {
 		portForwardLocalUrl,
-	} from "@/features/live-sessions/helpers";
-	import {
 		portForwardQueryOptions,
 		reconnectPortForward as reconnectPortForwardLifecycle,
 		stopPortForward as stopPortForwardLifecycle,

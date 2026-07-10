@@ -5,6 +5,7 @@ import {
 	portForwardQueryOptions,
 	portForwardSessionsForWorkspace,
 	startSavedPortForward,
+	startSavedPortForwards,
 	stopPortForward,
 } from "./portForwardLifecycle";
 
@@ -126,6 +127,46 @@ describe("port forward lifecycle", () => {
 					createdAt: "2026-07-10T00:00:00Z",
 					updatedAt: "2026-07-10T00:00:00Z",
 				},
+				updateSavedPortForward: () => {},
+				invalidateQueries: async () => {},
+			});
+		} catch (caught) {
+			error = caught;
+		}
+
+		expect(error instanceof Error ? error.message : error).toBe(
+			"session list unavailable",
+		);
+	});
+
+	test("does not bulk-start saved forwards when active sessions cannot be listed", async () => {
+		const client = createMockTauriClient({
+			list_port_forwards: () => {
+				throw new Error("session list unavailable");
+			},
+		});
+		const workspace = createWorkspaceRecord({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: ["payments"],
+		});
+		workspace.portForwards = [
+			{
+				id: "saved-1",
+				clusterContext: "kind-dev",
+				namespace: "payments",
+				serviceName: "api",
+				servicePort: 8080,
+				createdAt: "2026-07-10T00:00:00Z",
+				updatedAt: "2026-07-10T00:00:00Z",
+			},
+		];
+		let error: unknown = null;
+
+		try {
+			await startSavedPortForwards({
+				client,
+				workspace,
 				updateSavedPortForward: () => {},
 				invalidateQueries: async () => {},
 			});
