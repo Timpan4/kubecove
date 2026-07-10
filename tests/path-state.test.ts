@@ -224,8 +224,14 @@ describe("path state", () => {
 			yamlViewMode: "applyClean",
 			yamlEncoding: "kyaml",
 		});
-		expect((safe?.workspace?.detail as Record<string, unknown>).yamlDraft).toBeUndefined();
-		expect((safe?.workspace?.detail as Record<string, unknown>).logLines).toBeUndefined();
-		expect((safe?.workspace?.resources as Record<string, unknown>).fetchedRows).toBeUndefined();
+		expect(
+			(safe?.workspace?.detail as Record<string, unknown> | undefined)?.yamlDraft,
+		).toBeUndefined();
+		expect(
+			(safe?.workspace?.detail as Record<string, unknown> | undefined)?.logLines,
+		).toBeUndefined();
+		expect(
+			(safe?.workspace?.resources as Record<string, unknown> | undefined)?.fetchedRows,
+		).toBeUndefined();
 	});
 });

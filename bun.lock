@@ -30,7 +30,7 @@
         "@biomejs/biome": "2.5.3",
         "@codspeed/vitest-plugin": "^5.7.1",
         "@fontsource-variable/geist-mono": "^5.2.8",
-        "@framework-doctor/svelte": "1.1.1",
+        "@framework-doctor/svelte": "1.1.0",
         "@sveltejs/vite-plugin-svelte": "7.2.0",
         "@tailwindcss/vite": "4.3.2",
         "@tauri-apps/cli": "2.11.4",
@@ -108,7 +108,7 @@
 
     "@framework-doctor/core": ["@framework-doctor/core@1.1.0", "", { "dependencies": { "ora": "^9.3.0", "picocolors": "^1.1.1" } }, "sha512-gexe0pzk3yH6eqBUOjQFvAH7s0VRo2r6EGbvnc+g8eJkWGpbs2TIFRSagemNV//Go8qRXdu0u3mPBvYpyMTdsg=="],
 
-    "@framework-doctor/svelte": ["@framework-doctor/svelte@1.1.1", "", { "dependencies": { "@framework-doctor/core": "1.1.0", "commander": "^14.0.3", "knip": "^5.83.1", "ora": "^9.3.0", "oxlint": "^1.49.0", "picocolors": "^1.1.1", "prompts": "^2.4.2", "svelte-check": "^4.1.6" }, "bin": { "svelte-doctor": "dist/cli.js" } }, "sha512-G3TLr59cFiyqf9/e5Y1JhmG9lO1UsZAzLgBJb327ddmUitT6A70CB4rRNT8VoRyq2ZyjmP3YA1AcCOK3vxAG7Q=="],
+    "@framework-doctor/svelte": ["@framework-doctor/svelte@1.1.0", "", { "dependencies": { "@framework-doctor/core": "1.1.0", "commander": "^14.0.3", "knip": "^5.83.1", "ora": "^9.3.0", "oxlint": "^1.49.0", "picocolors": "^1.1.1", "prompts": "^2.4.2", "svelte-check": "^4.1.6" }, "bin": { "svelte-doctor": "dist/cli.js" } }, "sha512-HgBF0tqifU6xHdG27M9S7h0xY5Cj5Wdpt9x4Lyuha7KCHEWuTbvQCYx+UJP+8pzeUbLZ0BEh/5BN0jdty0C7ug=="],
 
     "@internationalized/date": ["@internationalized/date@3.12.2", "", { "dependencies": { "@swc/helpers": "^0.5.0" } }, "sha512-FY1Y+H64NDs+HAF6omlnWxm3mEpfgaCSWtL5l551ZZfImA+kGjPFgrnJrGjH6lfmLL0g8Z/mBu1R3kufeCp6Jw=="],
 
@@ -765,5 +765,7 @@
     "micromatch/picomatch": ["picomatch@2.3.2", "", {}, "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA=="],
 
     "tinyglobby/picomatch": ["picomatch@4.0.4", "", {}, "sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A=="],
+
+    "vitest/picomatch": ["picomatch@4.0.4", "", {}, "sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A=="],
   }
 }
