@@ -2,14 +2,10 @@ import {
 	MarkerType,
 	Position,
 	type CoordinateExtent,
-	type Edge,
-	type Node,
-} from "@xyflow/svelte";
+} from "@xyflow/system";
 import type {
-	ResourceSummary,
 	ResourceTopology,
 	TopologyMode,
-	TopologyNode as ResourceTopologyNode,
 } from "@/lib/types";
 import {
 	CANVAS_PADDING,
@@ -26,11 +22,26 @@ import {
 	selectedTopologyPath,
 	selectedTopologyRootSubtree,
 } from "./topology-graph";
-import {
-	ownershipMapBoundaryPadding,
-	type OwnershipMapViewportSize,
-} from "./topology-viewport";
+type OwnershipMapViewportSize = { width: number; height: number };
 import { buildStandaloneGroups } from "./topology-standalone-groups";
+import type {
+	BuildFlowTopologyOptions,
+	FlowTopology,
+	FlowTopologyBounds,
+	FlowTopologyEdge,
+	FlowTopologyNode,
+	FlowTopologySelectionIndex,
+} from "./topology-types";
+export { resourceTopologyNodeId } from "./topology-graph";
+export type {
+	BuildFlowTopologyOptions,
+	FlowTopology,
+	FlowTopologyBounds,
+	FlowTopologyEdge,
+	FlowTopologyNode,
+	FlowTopologyNodeData,
+	FlowTopologySelectionIndex,
+} from "./topology-types";
 const SVELTE_TOPOLOGY_LAYOUT = {
 	nodeWidth: 408,
 	nodeHeight: 98,
@@ -41,160 +52,28 @@ const SVELTE_STANDALONE_NODE_WIDTH = 320;
 const SVELTE_MIN_ZOOM = 0.12;
 const SVELTE_MAX_ZOOM = 1.4;
 const WIDTH_FIT_PADDING = 0.08;
-export type TopologyStoplightTone = "success" | "warning" | "error" | "neutral";
-const SUCCESS_STATUSES = new Set([
-	"available",
-	"complete",
-	"completed",
-	"ready",
-	"running",
-	"succeeded",
-]);
-const WARNING_STATUSES = new Set([
-	"pending",
-	"restarting",
-	"terminating",
-	"unknown",
-	"waiting",
-]);
-const ERROR_STATUSES = new Set([
-	"crashloopbackoff",
-	"degraded",
-	"error",
-	"failed",
-	"imagepullbackoff",
-	"not ready",
-	"notready",
-]);
-const TONE_RANK: Record<TopologyStoplightTone, number> = {
-	neutral: 0,
-	success: 1,
-	warning: 2,
-	error: 3,
-};
-export interface FlowTopologyNodeData extends Record<string, unknown> {
-	node?: ResourceTopologyNode;
-	resource: ResourceSummary | null;
-	label: string;
-	selected: boolean;
-	connected: boolean;
-	kind?: string;
-	count?: number;
-	nodeIds?: string[];
-	expanded?: boolean;
-	dimmed?: boolean;
-	showPortHints?: boolean;
-}
-export type FlowTopologyNode = Node<
-	FlowTopologyNodeData,
-	"ownershipResource" | "standaloneKindGroup"
->;
-export type FlowTopologyEdge = Edge<{ relation: string }, "smoothstep">;
+const PAN_PADDING_RATIO = 0.42;
+const MIN_PAN_PADDING = 180;
+const MAX_PAN_PADDING = 720;
 
-export interface FlowTopology {
-	nodes: FlowTopologyNode[];
-	edges: FlowTopologyEdge[];
+function ownershipMapBoundaryPadding(
+	viewportSize: OwnershipMapViewportSize,
+): { x: number; y: number } {
+	return {
+		x: Math.min(
+			MAX_PAN_PADDING,
+			Math.max(MIN_PAN_PADDING, viewportSize.width * PAN_PADDING_RATIO),
+		),
+		y: Math.min(
+			MAX_PAN_PADDING,
+			Math.max(MIN_PAN_PADDING, viewportSize.height * PAN_PADDING_RATIO),
+		),
+	};
 }
-
-export interface FlowTopologySelectionIndex {
-	graph: ReturnType<typeof buildTopologyGraph>;
-}
-
-export interface FlowTopologyBounds {
-	left: number;
-	top: number;
-	right: number;
-	bottom: number;
-	width: number;
-	height: number;
-}
-
-export interface BuildFlowTopologyOptions {
-	expandedStandaloneKinds?: ReadonlySet<string>;
-}
-
 const ZERO_TRANSLATE_EXTENT: CoordinateExtent = [
 	[0, 0],
 	[0, 0],
 ];
-
-function normalized(value: string | undefined): string {
-	return value?.trim().toLowerCase() ?? "";
-}
-
-function isTerminalSuccessStatus(status: string | undefined): boolean {
-	const value = normalized(status);
-	return value === "complete" || value === "completed" || value === "succeeded";
-}
-
-export function topologyStatusTone(status: string | undefined): TopologyStoplightTone {
-	const value = normalized(status);
-	if (SUCCESS_STATUSES.has(value)) return "success";
-	if (WARNING_STATUSES.has(value)) return "warning";
-	if (ERROR_STATUSES.has(value)) return "error";
-	return "neutral";
-}
-
-function topologyHealthTone(health: string | undefined): TopologyStoplightTone {
-	const value = normalized(health);
-	if (value === "healthy") return "success";
-	if (value === "degraded") return "error";
-	if (value === "attention") return "warning";
-	return "neutral";
-}
-
-export function topologyRestartTone(restarts: number | undefined): TopologyStoplightTone {
-	if (restarts === undefined || restarts <= 0) return "neutral";
-	if (restarts >= 5) return "error";
-	if (restarts >= 3) return "warning";
-	return "neutral";
-}
-
-export function topologyReadyTone(
-	ready: string | undefined,
-	status: string | undefined,
-): TopologyStoplightTone {
-	const value = normalized(ready);
-	if (!value) return "neutral";
-	if (isTerminalSuccessStatus(status) && (value === "false" || value === "not ready")) {
-		return "success";
-	}
-	if (value === "true" || value === "ready" || value === "completed") return "success";
-	if (value === "false" || value === "not ready" || value === "notready") return "error";
-
-	const ratioMatch = /^(\d+)\s*\/\s*(\d+)$/.exec(value);
-	if (!ratioMatch) return "neutral";
-	const readyCount = Number(ratioMatch[1]);
-	const desiredCount = Number(ratioMatch[2]);
-	if (desiredCount > 0 && readyCount >= desiredCount) return "success";
-	return topologyStatusTone(status) === "warning" ? "warning" : "error";
-}
-
-export function topologyReadyText(
-	ready: string | undefined,
-	status: string | undefined,
-): string | undefined {
-	if (!ready) return undefined;
-	const value = normalized(ready);
-	if (isTerminalSuccessStatus(status) && (value === "false" || value === "not ready")) {
-		return "Completed";
-	}
-	if (value === "true") return "Ready";
-	if (value === "false") return "Not ready";
-	return ready;
-}
-
-export function topologyRailTone(
-	status: string | undefined,
-	ready: string | undefined,
-	health?: string | undefined,
-): TopologyStoplightTone {
-	return [
-		topologyStatusTone(status),
-		topologyReadyTone(ready, status),
-		topologyHealthTone(health),
-	].sort((a, b) => TONE_RANK[b] - TONE_RANK[a])[0];
-}
 
 function finitePositiveNumber(value: unknown): number | null {
 	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
@@ -306,6 +185,57 @@ export function buildFlowTopology(
 		buildFlowTopologySelectionIndex(topology),
 		selectedNodeId,
 	);
+}
+
+export interface FlowTopologyViewOptions {
+	mode: TopologyMode;
+	selectedNodeId: string | null;
+	showFullTopologyOnSelection: boolean;
+	expandedStandaloneKinds: ReadonlySet<string>;
+	viewportSize?: OwnershipMapViewportSize;
+}
+
+export interface FlowTopologyView {
+	graph: FlowTopology;
+	translateExtent?: CoordinateExtent;
+}
+
+function selectedStandaloneExpansionId(
+	topology: ResourceTopology,
+	selectedNodeId: string | null,
+): string | null {
+	if (!selectedNodeId) return null;
+	const selectedNode = topology.nodes.find((node) => node.id === selectedNodeId);
+	if (!selectedNode) return null;
+	const hasRelation = topology.edges.some(
+		(edge) => edge.source === selectedNodeId || edge.target === selectedNodeId,
+	);
+	return hasRelation ? null : selectedNodeId;
+}
+
+export function buildFlowTopologyView(
+	topology: ResourceTopology,
+	options: FlowTopologyViewOptions,
+): FlowTopologyView {
+	const index = buildFlowTopologySelectionIndex(topology);
+	const layout = buildFlowTopologyLayout(
+		topology,
+		selectedStandaloneExpansionId(topology, options.selectedNodeId),
+		options.mode,
+		{ expandedStandaloneKinds: options.expandedStandaloneKinds },
+	);
+	const visible = options.showFullTopologyOnSelection
+		? layout
+		: filterFlowTopologyToSelectedRoot(layout, index, options.selectedNodeId);
+	const graph = applyFlowTopologySelectionWithIndex(visible, index, options.selectedNodeId);
+	const viewportSize = options.viewportSize;
+	return {
+		graph,
+		translateExtent:
+			viewportSize && viewportSize.width > 0 && viewportSize.height > 0
+				? getTopologyTranslateExtent(graph.nodes, viewportSize)
+				: undefined,
+	};
 }
 
 export function buildFlowTopologyLayout(
@@ -595,4 +525,36 @@ export function topologyViewportFitKey(
 		nodeParts.join("|"),
 		fittingSelection ? "" : edgeParts.join("|"),
 	].join("::");
+}
+
+export interface FlowTopologyFitPlan {
+	key: string;
+	viewport: { x: number; y: number; zoom: number };
+	focused: boolean;
+}
+
+export function buildFlowTopologyFitPlan(
+	nodes: FlowTopologyNode[],
+	edges: FlowTopologyEdge[],
+	selectedNodeId: string | null,
+	viewportKey: string,
+	viewportSize: OwnershipMapViewportSize,
+): FlowTopologyFitPlan | null {
+	const selectedPathNodes = selectedNodeId
+		? nodes.filter((node) => node.data.selected || node.data.connected)
+		: [];
+	const nodesToFit = selectedPathNodes.length > 0 ? selectedPathNodes : nodes;
+	const bounds = getFlowTopologyBounds(nodes, nodesToFit);
+	if (!bounds || viewportSize.width <= 0 || viewportSize.height <= 0) return null;
+	return {
+		key: topologyViewportFitKey(
+			nodes,
+			nodesToFit,
+			edges,
+			selectedNodeId,
+			viewportKey,
+		),
+		viewport: widthFitFlowTopologyViewport(bounds, viewportSize),
+		focused: selectedPathNodes.length > 0,
+	};
 }

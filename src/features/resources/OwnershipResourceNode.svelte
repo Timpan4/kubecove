@@ -12,7 +12,7 @@
 		type FlowTopologyNode,
 		type FlowTopologyNodeData,
 		type TopologyStoplightTone,
-	} from "./topologyModel";
+	} from "./topology";
 
 	let {
 		data,

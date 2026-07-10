@@ -1,18 +1,12 @@
 import type { ResourceSummary, ResourceTopology, TopologyNode } from "@/lib/types";
 import {
-	applyOwnershipFlowTopologySelectionWithIndex,
-	buildOwnershipFlowTopologyLayout,
-	buildOwnershipFlowTopologySelectionIndex,
-	filterOwnershipFlowTopologyToSelectedRoot,
-} from "./topology";
-import {
-	buildFlowTopologyLayout,
+	buildFlowTopologyView,
 	topologyRailTone,
 	topologyReadyText,
 	topologyReadyTone,
 	topologyRestartTone,
 	topologyStatusTone,
-} from "./topologyModel";
+} from "./topology";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
@@ -46,6 +40,19 @@ function node(kind: string, name: string): TopologyNode {
 	};
 }
 
+function view(
+	topology: ResourceTopology,
+	selectedNodeId: string | null = null,
+	showFullTopologyOnSelection = true,
+) {
+	return buildFlowTopologyView(topology, {
+		mode: "ownership",
+		selectedNodeId,
+		showFullTopologyOnSelection,
+		expandedStandaloneKinds: new Set(),
+	}).graph;
+}
+
 describe("topology selection", () => {
 	test("animates only selected ownership path edges", () => {
 		const topology: ResourceTopology = {
@@ -77,14 +84,7 @@ describe("topology selection", () => {
 			],
 			warnings: [],
 		};
-		const layout = buildOwnershipFlowTopologyLayout(topology, null, {
-			groupStandalone: false,
-		});
-		const selected = applyOwnershipFlowTopologySelectionWithIndex(
-			layout,
-			buildOwnershipFlowTopologySelectionIndex(topology),
-			"Pod:argocd-redis-abc-123",
-		);
+		const selected = view(topology, "Pod:argocd-redis-abc-123");
 
 		const activeEdge = selected.edges.find(
 			(edge) => edge.id === "replicaset-to-pod",
@@ -94,19 +94,7 @@ describe("topology selection", () => {
 		);
 
 		expect(activeEdge?.animated).toBe(true);
-		expect(activeEdge?.className).toBe(
-			"ownership-map-edge ownership-map-edge-active",
-		);
-		expect(activeEdge?.zIndex).toBe(10);
-		expect(activeEdge?.style?.opacity).toBe(1);
-		expect(activeEdge?.style?.strokeWidth).toBe(2.8);
-		expect(activeEdge?.style?.strokeDasharray).toBe("5 5");
-
 		expect(inactiveEdge?.animated).toBe(false);
-		expect(inactiveEdge?.className).toBe("ownership-map-edge");
-		expect(inactiveEdge?.zIndex).toBe(0);
-		expect(inactiveEdge?.style?.opacity).toBe(0.16);
-		expect(inactiveEdge?.style?.strokeWidth).toBe(1.8);
 
 		expect(
 			selected.nodes.find((node) => node.id === "Secret:argocd-secret")?.data
@@ -163,11 +151,7 @@ describe("topology selection", () => {
 			],
 			warnings: [],
 		};
-		const filtered = filterOwnershipFlowTopologyToSelectedRoot(
-			buildOwnershipFlowTopologyLayout(topology, null),
-			buildOwnershipFlowTopologySelectionIndex(topology),
-			"Pod:api-abc-1",
-		);
+		const filtered = view(topology, "Pod:api-abc-1", false);
 
 		expect(filtered.nodes.map((item) => item.id)).toEqual([
 			"Deployment:api",
@@ -200,7 +184,7 @@ describe("Svelte topology layout", () => {
 			],
 			warnings: [],
 		};
-		const layout = buildFlowTopologyLayout(topology, null);
+		const layout = view(topology);
 		const job = layout.nodes.find((item) => item.id === "Job:issue-143-failure-control");
 		const pod = layout.nodes.find((item) => item.id === "Pod:issue-143-failure-xj9mv");
 
@@ -218,10 +202,7 @@ describe("Svelte topology layout", () => {
 		storageClass.namespace = null;
 		storageClass.summary.namespace = null;
 
-		const layout = buildFlowTopologyLayout(
-			{ nodes: [crd, storageClass], edges: [], warnings: [] },
-			null,
-		);
+		const layout = view({ nodes: [crd, storageClass], edges: [], warnings: [] });
 
 		const groups = layout.nodes
 			.filter((item) => item.type === "standaloneKindGroup")

@@ -6,9 +6,9 @@ import {
 	syncedTopologyNodeId,
 } from "../src/features/resources/resourceBrowserModel";
 import {
-	buildFlowTopology,
-	topologyViewportFitKey,
-} from "../src/features/resources/topologyModel";
+	buildFlowTopologyFitPlan,
+	buildFlowTopologyView,
+} from "../src/features/resources/topology";
 import {
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,
@@ -45,6 +45,20 @@ function topologyNode(id: string, summary: ResourceSummary): TopologyNode {
 		selectable: true,
 		summary,
 	};
+}
+
+function topologyGraph(
+	topology: ResourceTopology,
+	selectedNodeId: string | null = null,
+	mode: "ownership" | "networkFlow" = "ownership",
+	expandedStandaloneKinds: ReadonlySet<string> = new Set(),
+) {
+	return buildFlowTopologyView(topology, {
+		mode,
+		selectedNodeId,
+		showFullTopologyOnSelection: true,
+		expandedStandaloneKinds,
+	}).graph;
 }
 
 const widget: DiscoveredResourceKind = {
@@ -390,7 +404,7 @@ describe("svelte resource browser model", () => {
 			warnings: [],
 		};
 
-		const graph = buildFlowTopology(topology, null, "ownership");
+		const graph = topologyGraph(topology);
 
 		expect(graph.nodes.map((node) => node.id)).toEqual([
 			"standalone-kind:ConfigMap",
@@ -409,7 +423,7 @@ describe("svelte resource browser model", () => {
 			warnings: [],
 		};
 
-		const graph = buildFlowTopology(topology, configMap.id, "ownership");
+		const graph = topologyGraph(topology, configMap.id);
 
 		expect(graph.nodes.map((node) => node.id)).toContain("standalone-kind:ConfigMap");
 		expect(graph.nodes.map((node) => node.id)).toContain(configMap.id);
@@ -428,9 +442,7 @@ describe("svelte resource browser model", () => {
 			warnings: [],
 		};
 
-		const graph = buildFlowTopology(topology, null, "ownership", {
-			expandedStandaloneKinds: new Set(["Secret"]),
-		});
+		const graph = topologyGraph(topology, null, "ownership", new Set(["Secret"]));
 
 		expect(graph.nodes.map((node) => node.id)).toContain("standalone-kind:Secret");
 		expect(graph.nodes.map((node) => node.id)).toContain(secret.id);
@@ -449,7 +461,7 @@ describe("svelte resource browser model", () => {
 			warnings: [],
 		};
 
-		const graph = buildFlowTopology(topology, null, "networkFlow");
+		const graph = topologyGraph(topology, null, "networkFlow");
 
 		expect(graph.nodes.map((node) => node.id)).toEqual(["Service:web", "Pod:web-abc"]);
 		expect(graph.nodes.some((node) => node.id.startsWith("standalone-kind:"))).toBe(false);
@@ -536,14 +548,14 @@ describe("svelte resource browser model", () => {
 
 		expect(mapSource).toContain("<OwnershipMapViewport");
 		expect(viewportSource).toContain("useSvelteFlow<FlowTopologyNode, FlowTopologyEdge>()");
-		expect(viewportSource).toContain("node.data.selected || node.data.connected");
+		expect(viewportSource).toContain("fitPlan?.focused");
 		expect(viewportSource).toContain("flow.setViewport");
-		expect(viewportSource).toContain("widthFitFlowTopologyViewport");
+		expect(viewportSource).toContain("buildFlowTopologyFitPlan");
 		expect(viewportSource).toContain("FIT_VIEW_DURATION_MS");
 		expect(viewportSource).toContain("SELECTED_FIT_VIEW_DURATION_MS");
-		expect(mapSource).toContain("filterFlowTopologyToSelectedRoot");
+		expect(mapSource).toContain("buildFlowTopologyView");
 		expect(mapSource).toContain("showFullTopologyOnSelection");
-		expect(mapSource).toContain("getTopologyTranslateExtent(");
+		expect(mapSource).toContain("translateExtent");
 		expect(mapSource).toContain("{translateExtent}");
 		expect(mapSource).toContain("VISIBLE_ELEMENT_RENDER_THRESHOLD");
 		expect(mapSource).toContain("graph.nodes.length + graph.edges.length");
@@ -565,31 +577,31 @@ describe("svelte resource browser model", () => {
 			edges: [{ id: "Deployment:api->Pod:api-7f9", source: deployment.id, target: pod.id, relation: "owns" }],
 			warnings: [],
 		};
-		const graph = buildFlowTopology(topology, null, "ownership");
-		const baseKey = topologyViewportFitKey(
-			graph.nodes,
+		const graph = topologyGraph(topology);
+		const baseKey = buildFlowTopologyFitPlan(
 			graph.nodes,
 			graph.edges,
 			null,
 			'["resourceTopology","kind-dev",["default"],"ownership","a"]',
-		);
-		const resizedKey = topologyViewportFitKey(
-			graph.nodes,
+			{ width: 800, height: 600 },
+		)?.key;
+		const resizedKey = buildFlowTopologyFitPlan(
 			graph.nodes,
 			graph.edges,
 			null,
 			'["resourceTopology","kind-dev",["default"],"ownership","a"]:900x600',
-		);
+			{ width: 900, height: 600 },
+		)?.key;
 		const movedNodes = graph.nodes.map((node) =>
 			node.id === pod.id ? { ...node, position: { ...node.position, x: node.position.x + 120 } } : node,
 		);
-		const movedKey = topologyViewportFitKey(
-			movedNodes,
+		const movedKey = buildFlowTopologyFitPlan(
 			movedNodes,
 			graph.edges,
 			null,
 			'["resourceTopology","kind-dev",["default"],"ownership","a"]',
-		);
+			{ width: 800, height: 600 },
+		)?.key;
 		const browserSource = readFileSync(
 			"src/features/resources/ResourceBrowser.svelte",
 			"utf8",

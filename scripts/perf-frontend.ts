@@ -3,13 +3,12 @@ import {
 	buildShallowNamespaceTreeNode,
 } from "../src/components/sidebar-tree-helpers";
 import {
-	applyOwnershipFlowTopologySelection,
-	applyOwnershipFlowTopologySelectionWithIndex,
-	buildOwnershipFlowTopology,
-	buildOwnershipFlowTopologyLayout,
-	buildOwnershipFlowTopologySelectionIndex,
+	applyFlowTopologySelectionWithIndex,
+	buildFlowTopology,
+	buildFlowTopologyLayout,
+	buildFlowTopologySelectionIndex,
 	resourceTopologyNodeId,
-} from "../src/features/resources/topology";
+} from "../src/features/resources/topology-implementation";
 import type {
 	DiscoveredResourceKind,
 	ResourceSummary,
@@ -147,29 +146,20 @@ const selectedIds = topology.nodes
 
 started = performance.now();
 for (const selectedId of selectedIds) {
-	buildOwnershipFlowTopology(topology, selectedId, { groupStandalone: false });
+	buildFlowTopology(topology, selectedId);
 }
 const rebuildSelectionMs = performance.now() - started;
 const afterRebuildSelectionMemory = memorySample();
 
 started = performance.now();
-const layout = buildOwnershipFlowTopologyLayout(topology, null, {
-	groupStandalone: false,
-});
+const layout = buildFlowTopologyLayout(topology, null);
 const layoutBuildMs = performance.now() - started;
-const selectionIndex = buildOwnershipFlowTopologySelectionIndex(topology);
+const selectionIndex = buildFlowTopologySelectionIndex(topology);
 const afterLayoutMemory = memorySample();
 
 started = performance.now();
 for (const selectedId of selectedIds) {
-	applyOwnershipFlowTopologySelection(layout, topology, selectedId);
-}
-const splitSelectionMs = performance.now() - started;
-const afterSplitSelectionMemory = memorySample();
-
-started = performance.now();
-for (const selectedId of selectedIds) {
-	applyOwnershipFlowTopologySelectionWithIndex(layout, selectionIndex, selectedId);
+	applyFlowTopologySelectionWithIndex(layout, selectionIndex, selectedId);
 }
 const indexedSelectionMs = performance.now() - started;
 const afterIndexedSelectionMemory = memorySample();
@@ -199,15 +189,13 @@ console.log(
 				selections: selectedIds.length,
 				rebuildEverySelectionMs: Number(rebuildSelectionMs.toFixed(2)),
 				layoutBuildOnceMs: Number(layoutBuildMs.toFixed(2)),
-				applySelectionOnlyMs: Number(splitSelectionMs.toFixed(2)),
 				applySelectionIndexedMs: Number(indexedSelectionMs.toFixed(2)),
 				selectionSpeedup: Number((rebuildSelectionMs / indexedSelectionMs).toFixed(2)),
 				rebuildSelectionMemory: memoryDelta(afterRebuildSelectionMemory, shallowSidebarMemory),
 				layoutAndIndexMemory: memoryDelta(afterLayoutMemory, afterRebuildSelectionMemory),
-				splitSelectionMemory: memoryDelta(afterSplitSelectionMemory, afterLayoutMemory),
 				indexedSelectionMemory: memoryDelta(
 					afterIndexedSelectionMemory,
-					afterSplitSelectionMemory,
+					afterLayoutMemory,
 				),
 			},
 		},

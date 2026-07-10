@@ -4,7 +4,7 @@
 	import { Badge } from "@/components/ui/svelte";
 	import { getResourceKindVisual } from "@/app/svelte/resourceVisuals";
 	import { cnfast } from "@/lib/utils";
-	import type { FlowTopologyNode, FlowTopologyNodeData } from "./topologyModel";
+	import type { FlowTopologyNode, FlowTopologyNodeData } from "./topology";
 
 	let { data }: NodeProps<FlowTopologyNode> = $props();
 
