@@ -139,7 +139,7 @@ function topologyHealthTone(health: string | undefined): TopologyStoplightTone {
 	const value = normalized(health);
 	if (value === "healthy") return "success";
 	if (value === "degraded") return "error";
-	if (value === "attention" || value === "restarted") return "warning";
+	if (value === "attention") return "warning";
 	return "neutral";
 }
 
@@ -187,13 +187,11 @@ export function topologyReadyText(
 export function topologyRailTone(
 	status: string | undefined,
 	ready: string | undefined,
-	restarts: number | undefined,
 	health?: string | undefined,
 ): TopologyStoplightTone {
 	return [
 		topologyStatusTone(status),
 		topologyReadyTone(ready, status),
-		topologyRestartTone(restarts),
 		topologyHealthTone(health),
 	].sort((a, b) => TONE_RANK[b] - TONE_RANK[a])[0];
 }

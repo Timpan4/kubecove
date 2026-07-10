@@ -340,7 +340,6 @@
       var(--resource-tone-color) 62%,
       var(--border)
     );
-    --topology-node-glow: color-mix(in oklch, var(--resource-tone-color) 60%, transparent);
   }
 
   .resource-tone-workload-badge {
@@ -475,13 +474,13 @@
     border-radius: inherit;
     pointer-events: none;
     opacity: 0;
-    box-shadow: 0 0 10px color-mix(in oklch, var(--resource-tone-color, var(--primary)) 54%, transparent);
+    box-shadow: 0 0 10px color-mix(in oklch, var(--primary) 42%, transparent);
     transition: opacity 360ms ease;
   }
 
   .resource-topology-node-connected::after {
     opacity: 1;
-    box-shadow: 0 0 7px color-mix(in oklch, var(--resource-tone-color, var(--primary)) 36%, transparent);
+    box-shadow: 0 0 7px color-mix(in oklch, var(--primary) 30%, transparent);
   }
 
   .resource-topology-node-selected::after {
@@ -491,43 +490,27 @@
   .svelte-ownership-resource-node {
     --topology-node-border: color-mix(
       in oklch,
-      var(--resource-tone-color, var(--primary)) 54%,
+      var(--resource-tone-color, var(--primary)) 40%,
       var(--border)
     );
     --topology-node-border-top: var(--topology-node-border);
     --topology-node-border-right: var(--topology-node-border);
     --topology-node-border-bottom: var(--topology-node-border);
-    --topology-node-border-left: color-mix(
-      in oklch,
-      var(--topology-stoplight-color, var(--resource-tone-color, var(--primary))) 92%,
-      var(--border)
-    );
+    --topology-node-border-left: var(--topology-node-border);
     --topology-node-bg:
-      linear-gradient(
-        0deg,
-        color-mix(
-          in oklch,
-          var(--resource-tone-color, var(--primary)) 78%,
-          transparent
-        ) 0 2px,
-        transparent 2px
-      ),
       linear-gradient(
         135deg,
         color-mix(
           in oklch,
-          var(--resource-tone-color, var(--primary)) 11%,
-          #171a19
+          var(--resource-tone-color, var(--primary)) 15%,
+          var(--surface-2)
         ) 0%,
-        #151918 60%,
-        #101211 100%
+        color-mix(
+          in oklch,
+          var(--resource-tone-color, var(--primary)) 5%,
+          var(--surface-1)
+        ) 100%
       );
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.055),
-      -4px 0 16px -9px
-      color-mix(in oklch, var(--topology-stoplight-color, var(--resource-tone-color, var(--primary))) 58%, transparent),
-      0 18px 34px -28px
-      var(--topology-node-glow, color-mix(in oklch, var(--resource-tone-color, var(--primary)) 46%, transparent));
   }
 
   .svelte-ownership-resource-node::before {
@@ -535,7 +518,7 @@
     position: absolute;
     inset-block: 0;
     left: 0;
-    width: 5px;
+    width: 4px;
     pointer-events: none;
     border-radius: calc(var(--radius-sm) - 1px) 0 0 calc(var(--radius-sm) - 1px);
     background: color-mix(
@@ -545,22 +528,25 @@
     );
   }
 
-  .svelte-ownership-resource-node.resource-tone-pod-surface {
-    --resource-tone-color: #7da8ff;
-    --topology-node-glow: rgb(125 168 255 / 0.44);
+  .svelte-ownership-resource-node .resource-topology-kind-icon {
+    border-color: color-mix(
+      in oklch,
+      var(--resource-tone-color, var(--primary)) 32%,
+      transparent
+    );
+    background: color-mix(
+      in oklch,
+      var(--resource-tone-color, var(--primary)) 19%,
+      transparent
+    );
   }
 
-  .svelte-ownership-resource-node.resource-tone-replicaset-surface {
-    --resource-tone-color: #a78bfa;
-    --topology-node-glow: rgb(167 139 250 / 0.44);
-  }
-
-  .svelte-ownership-resource-node .resource-tone-pod-badge {
-    --resource-badge-color: #7da8ff;
-  }
-
-  .svelte-ownership-resource-node .resource-tone-replicaset-badge {
-    --resource-badge-color: #a78bfa;
+  .svelte-ownership-resource-node .resource-topology-kind-label {
+    color: color-mix(
+      in oklch,
+      var(--resource-tone-color, var(--primary)) 78%,
+      var(--foreground)
+    );
   }
 
   .svelte-ownership-resource-node .resource-topology-status-dot {
@@ -568,28 +554,13 @@
     box-shadow: 0 0 8px color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 62%, transparent);
   }
 
-  .svelte-ownership-resource-node .resource-topology-status-chip {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 0;
-    height: 1.375rem;
-    max-width: 8.625rem;
-    padding: 0 0.45rem;
-    overflow: hidden;
-    white-space: nowrap;
-    border-width: 1px;
-    border-style: solid;
-    border-radius: var(--radius-sm);
-    border-color: color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 36%, transparent);
-    background: color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 10%, transparent);
-    color: color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 88%, var(--foreground));
-    font-weight: 700;
-    box-shadow: none;
-  }
-
 }
 
+.svelte-ownership-resource-node .resource-topology-restart-badge {
+  border-color: color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 36%, transparent);
+  background: color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 10%, transparent);
+  color: color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 88%, var(--foreground));
+}
 
 .ownership-map-flow .svelte-flow__controls {
   overflow: hidden;
