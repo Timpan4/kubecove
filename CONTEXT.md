@@ -13,3 +13,12 @@ _Avoid_ using it for durable tickets, alerts, or response lifecycle state.
 
 **Incident Workbench** means the read-only Incident Cockpit workflow that queues signals, guides inspection, and opens existing resource details.
 _Avoid_ treating it as a cluster-changing incident response surface.
+
+**Workspace Navigation** means movement within an active workspace scope across resource, GitOps, Helm, incident, settings, and live-session surfaces.
+_Avoid_ using it for switching between saved workspaces or changing cluster credentials.
+
+**Port Forward Lifecycle** means starting, restoring, reconnecting, observing, and stopping a guarded Pod or selector-backed Service port-forward session.
+_Avoid_ using it for Pod exec or durable background tunnels.
+
+**Pod Exec Lifecycle** means confirming, starting, interacting with, observing, and stopping a guarded exact-Pod exec session.
+_Avoid_ using it for local shell execution or owner-backed resource targets.
