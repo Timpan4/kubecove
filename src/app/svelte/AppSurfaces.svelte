@@ -105,7 +105,7 @@
 	} from "./rbacSurfaceModel";
 	import {
 		type WorkspaceViewMode,
-	} from "./workspaceShellModel";
+	} from "./workspaceNavigation";
 
 	interface GitOpsData {
 		argoDetected: boolean;

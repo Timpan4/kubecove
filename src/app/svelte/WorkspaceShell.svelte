@@ -51,8 +51,6 @@
 	import { queryKeys } from "@/lib/queryKeys";
 	import { createTauriClient, listPresentCustomResourceKinds } from "@/lib/tauri";
 	import {
-		resourceRefFromSummary,
-		resourceSummaryFromRef,
 		writePathState,
 		type PathStateDetailTab,
 		type PathStateResourceBrowserState,
@@ -82,16 +80,22 @@
 	import UpdateStatusButton from "./UpdateStatusButton.svelte";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import {
-		DEFAULT_WORKSPACE_VIEW,
 		GITOPS_RESOURCE_KINDS,
 		appendPresentCustomResourceKinds,
 		getResourceBrowserScope,
 		getWorkspacePlaceholder,
 		getWorkspaceTitle,
 		isNamespaceListView,
-		viewModeForTreeNode,
-		type WorkspaceViewMode,
 	} from "./workspaceShellModel";
+	import {
+		createWorkspaceNavigation,
+		navigateWorkspace,
+		workspacePathForWorkspace,
+		workspaceNavigationSnapshot,
+		type WorkspaceNavigationIntent,
+		type WorkspaceNavigationState,
+		type WorkspaceViewMode,
+	} from "./workspaceNavigation";
 
 	const IS_MAC =
 		typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
@@ -113,70 +117,49 @@
 
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
-	function initialPathSnapshotForWorkspace(): PathStateWorkspaceSnapshot | null {
-		return initialPathState?.workspaceId === workspace.id ? initialPathState : null;
+	function initialPathSnapshotForWorkspace() {
+		return workspacePathForWorkspace(workspace, initialPathState);
 	}
-
 	const initialPathSnapshot = initialPathSnapshotForWorkspace();
-	const initialResourcePathState = initialPathSnapshot?.resources ?? null;
+	function initialWorkspaceNavigation() {
+		return createWorkspaceNavigation(workspace, initialPathSnapshot);
+	}
+	const initialNavigation = initialWorkspaceNavigation();
 	const initialDetailPathState = initialPathSnapshot?.detail ?? null;
 	const initialSurfacesPathState = initialPathSnapshot?.surfaces ?? null;
-	const initialRestoreTargetResource =
-		initialPathSnapshot?.restoreTargetResource
-			? resourceSummaryFromRef(initialPathSnapshot.restoreTargetResource)
-			: null;
-	const defaultSelectedNode: TreeNodeId = {
-		type: "section",
-		section: "workspaceOverview",
-	};
-	const initialSelectedNode: TreeNodeId | null =
-		initialPathSnapshot && "selectedNode" in initialPathSnapshot
-				? (initialPathSnapshot.selectedNode ?? null)
-			: defaultSelectedNode;
-	let selectedNode = $state<TreeNodeId | null>(initialSelectedNode);
+	let selectedNode = $state<TreeNodeId | null>(initialNavigation.selectedNode);
 	let expandedSections = $state<string[]>(
 		initialPathSnapshot?.expandedSections ??
-			(initialSelectedNode ? [nodeIdToString(initialSelectedNode)] : []),
+			(initialNavigation.selectedNode
+				? [nodeIdToString(initialNavigation.selectedNode)]
+				: []),
 	);
-	let viewMode = $state<WorkspaceViewMode>(
-		initialPathSnapshot?.viewMode ??
-			DEFAULT_WORKSPACE_VIEW,
-	);
+	let viewMode = $state<WorkspaceViewMode>(initialNavigation.viewMode);
 	let commandOpen = $state(false);
-	let focusedResource = $state<ResourceSummary | null>(null);
-	let restoreTargetResource = $state<ResourceSummary | null>(initialRestoreTargetResource);
+	let focusedResource = $state<ResourceSummary | null>(initialNavigation.focusedResource);
+	let restoreTargetResource = $state<ResourceSummary | null>(
+		initialNavigation.restoreTargetResource,
+	);
 	let targetHelmRelease = $state<{ name: string; namespace?: string | null } | null>(
-		initialPathSnapshot?.targetHelmRelease ??
-			initialSurfacesPathState?.selectedHelmRelease ??
-			null,
+		initialNavigation.targetHelmRelease,
 	);
-	let targetGitOpsApplication = $state<string | null>(
-		initialPathSnapshot?.targetGitOpsApplication ??
-			initialSurfacesPathState?.selectedGitOpsApplication ??
-			null,
+	let targetGitOpsApplication = $state<string | null>(initialNavigation.targetGitOpsApplication);
+	let resourceGitOpsFocusApplication = $state<ArgoApplicationSummary | null>(
+		initialNavigation.resourceGitOpsFocusApplication,
 	);
-	let resourceGitOpsFocusApplication = $state<ArgoApplicationSummary | null>(null);
-	let resourceInitialSearch = $state(
-		initialPathSnapshot?.resourceInitialSearch ??
-			"",
-	);
-	let resourceInitialGitOpsFilter = $state(
-		initialPathSnapshot?.resourceInitialGitOpsFilter ??
-			"",
-	);
+	let resourceInitialSearch = $state(initialNavigation.resourceInitialSearch);
+	let resourceInitialGitOpsFilter = $state(initialNavigation.resourceInitialGitOpsFilter);
 	let resourceInitialHealthFilter = $state<HealthFilter>(
-		initialPathSnapshot?.resourceInitialHealthFilter ??
-			"all",
+		initialNavigation.resourceInitialHealthFilter,
 	);
 	let resourceNamespaceOverride = $state<string[] | null>(
-		initialPathSnapshot?.resourceNamespaceOverride ??
-			null,
+		initialNavigation.resourceNamespaceOverride,
 	);
 	let initialIncidentFilter = $state<IncidentFilter>(
-		initialSurfacesPathState?.incidentFilter ?? "all",
+		initialNavigation.initialIncidentFilter,
 	);
 	let resourceBrowserPathState = $state<PathStateResourceBrowserState | null>(
-		initialResourcePathState,
+		initialNavigation.resourceBrowserPathState,
 	);
 	let resourceDetailPathState = $state<PathStateResourceDetailState | null>(
 		initialDetailPathState,
@@ -306,6 +289,41 @@
 		if (initialPathSnapshot) onPathStateConsumed();
 	});
 
+	function currentWorkspaceNavigation(): WorkspaceNavigationState {
+		return {
+			selectedNode,
+			viewMode,
+			focusedResource,
+			restoreTargetResource,
+			targetHelmRelease,
+			targetGitOpsApplication,
+			resourceGitOpsFocusApplication,
+			resourceInitialSearch,
+			resourceInitialGitOpsFilter,
+			resourceInitialHealthFilter,
+			resourceNamespaceOverride,
+			resourceBrowserPathState,
+			initialIncidentFilter,
+		};
+	}
+
+	function applyWorkspaceNavigation(intent: WorkspaceNavigationIntent) {
+		const next = navigateWorkspace(currentWorkspaceNavigation(), intent);
+		selectedNode = next.selectedNode;
+		viewMode = next.viewMode;
+		focusedResource = next.focusedResource;
+		restoreTargetResource = next.restoreTargetResource;
+		targetHelmRelease = next.targetHelmRelease;
+		targetGitOpsApplication = next.targetGitOpsApplication;
+		resourceGitOpsFocusApplication = next.resourceGitOpsFocusApplication;
+		resourceInitialSearch = next.resourceInitialSearch;
+		resourceInitialGitOpsFilter = next.resourceInitialGitOpsFilter;
+		resourceInitialHealthFilter = next.resourceInitialHealthFilter;
+		resourceNamespaceOverride = next.resourceNamespaceOverride;
+		resourceBrowserPathState = next.resourceBrowserPathState;
+		initialIncidentFilter = next.initialIncidentFilter;
+	}
+
 	$effect(() => {
 		if (
 			!shouldAutoStartSavedPortForwards({
@@ -321,14 +339,7 @@
 	});
 
 	function openLauncher() {
-		targetHelmRelease = null;
-		targetGitOpsApplication = null;
-		restoreTargetResource = null;
-		focusedResource = null;
-		resourceInitialSearch = "";
-		resourceInitialGitOpsFilter = "";
-		resourceInitialHealthFilter = "all";
-		resourceNamespaceOverride = null;
+		applyWorkspaceNavigation({ type: "openLauncher" });
 		workspaceStore.clearSelectedWorkspace();
 	}
 
@@ -342,44 +353,17 @@
 			kinds: workspace.scope.kinds,
 			shortcutPreferences: workspace.scope.shortcutPreferences,
 		});
-		targetHelmRelease = null;
-		targetGitOpsApplication = null;
-		restoreTargetResource = null;
-		focusedResource = null;
-		resourceGitOpsFocusApplication = null;
-		resourceInitialSearch = "";
-		resourceInitialGitOpsFilter = "";
-		resourceInitialHealthFilter = "all";
-		resourceNamespaceOverride = null;
 		dismissedPortForwardRestoreWorkspaceId = null;
-		selectedNode = null;
-		viewMode = "resources";
+		applyWorkspaceNavigation({ type: "changeCluster" });
 	}
 
 	function currentPathState(): PathStateWorkspaceSnapshot {
-		const selectedResourceRef = focusedResource ? resourceRefFromSummary(focusedResource) : null;
-		const restoreResourceRef = focusedResource
-			? selectedResourceRef
-			: restoreTargetResource
-				? resourceRefFromSummary(restoreTargetResource)
-				: null;
-		return {
+		return workspaceNavigationSnapshot(currentWorkspaceNavigation(), {
 			workspaceId: workspace.id,
-			selectedNode,
 			expandedSections,
-			viewMode,
-			resourceInitialSearch,
-			resourceInitialGitOpsFilter,
-			resourceInitialHealthFilter,
-			resourceNamespaceOverride,
-			focusedResource: selectedResourceRef,
-			restoreTargetResource: restoreResourceRef,
-			targetHelmRelease,
-			targetGitOpsApplication,
-			resources: resourceBrowserPathState,
 			detail: resourceDetailPathState,
 			surfaces: surfacesPathState,
-		};
+		});
 	}
 
 	$effect(() => {
@@ -392,21 +376,11 @@
 	});
 
 	function openSettings() {
-		targetHelmRelease = null;
-		targetGitOpsApplication = null;
-		restoreTargetResource = null;
-		focusedResource = null;
-		resourceInitialSearch = "";
-		resourceInitialGitOpsFilter = "";
-		resourceInitialHealthFilter = "all";
-		resourceNamespaceOverride = null;
-		selectedNode = null;
-		viewMode = "settings";
+		applyWorkspaceNavigation({ type: "openSettings" });
 	}
 
 	function closeSettings() {
-		selectedNode = defaultSelectedNode;
-		viewMode = "overview";
+		applyWorkspaceNavigation({ type: "closeSettings" });
 	}
 
 	function openResources(
@@ -416,81 +390,42 @@
 		initialHealthFilter: HealthFilter = "all",
 		gitOpsFocusApplication: ArgoApplicationSummary | null = null,
 	) {
-		targetHelmRelease = null;
-		targetGitOpsApplication = null;
-		restoreTargetResource = null;
-		focusedResource = null;
-		resourceGitOpsFocusApplication = gitOpsFocusApplication;
-		resourceInitialSearch = initialSearch;
-		resourceInitialGitOpsFilter = initialGitOpsFilter;
-		resourceInitialHealthFilter = initialHealthFilter;
-		resourceBrowserPathState = null;
-		resourceNamespaceOverride = Array.isArray(namespace) ? namespace : null;
-		selectedNode = typeof namespace === "string"
-			? { type: "namespace", section: "namespaces", namespace }
-			: null;
-		viewMode = "resources";
+		applyWorkspaceNavigation({
+			type: "openResources",
+			namespaces: namespace,
+			search: initialSearch,
+			gitOpsFilter: initialGitOpsFilter,
+			healthFilter: initialHealthFilter,
+			gitOpsFocusApplication,
+		});
 	}
 
 	function openHelmReleaseFromResource(releaseName: string, namespace?: string | null) {
-		targetGitOpsApplication = null;
-		restoreTargetResource = null;
-		focusedResource = null;
-		resourceInitialSearch = "";
-		resourceInitialGitOpsFilter = "";
-		resourceInitialHealthFilter = "all";
-		resourceNamespaceOverride = null;
-		targetHelmRelease = { name: releaseName, namespace };
-		selectedNode = { type: "section", section: "helm" };
-		viewMode = "helm";
+		applyWorkspaceNavigation({
+			type: "openHelmRelease",
+			name: releaseName,
+			namespace,
+		});
 	}
 
 	function clearTargetHelmRelease() {
-		targetHelmRelease = null;
+		applyWorkspaceNavigation({ type: "clearHelmTarget" });
 	}
 
 	function clearTargetGitOpsApplication() {
-		targetGitOpsApplication = null;
+		applyWorkspaceNavigation({ type: "clearGitOpsTarget" });
 	}
 
 	function openArgo(argoApp?: string) {
-		targetHelmRelease = null;
-		targetGitOpsApplication = argoApp ?? null;
-		restoreTargetResource = null;
-		focusedResource = null;
-		resourceInitialSearch = "";
-		resourceInitialGitOpsFilter = "";
-		resourceInitialHealthFilter = "all";
-		resourceNamespaceOverride = null;
-		selectedNode = { type: "section", section: "argo" };
-		viewMode = "argo";
+		applyWorkspaceNavigation({ type: "openArgo", application: argoApp });
 	}
 
 	function openIncidents(filter: IncidentFilter = "all") {
-		targetHelmRelease = null;
-		targetGitOpsApplication = null;
-		restoreTargetResource = null;
-		focusedResource = null;
-		resourceInitialSearch = "";
-		resourceInitialGitOpsFilter = "";
-		resourceInitialHealthFilter = "all";
-		resourceNamespaceOverride = null;
-		initialIncidentFilter = filter;
-		selectedNode = { type: "section", section: "incidents" };
-		viewMode = "incidents";
+		applyWorkspaceNavigation({ type: "openIncidents", filter });
 	}
 
 	function openPortForwards() {
-		targetHelmRelease = null;
-		targetGitOpsApplication = null;
-		restoreTargetResource = null;
-		focusedResource = null;
-		resourceInitialSearch = "";
-		resourceInitialGitOpsFilter = "";
-		resourceInitialHealthFilter = "all";
-		resourceNamespaceOverride = null;
-		selectedNode = { type: "section", section: "portForwards" };
-		viewMode = "portForwards";
+		applyWorkspaceNavigation({ type: "openPortForwards" });
 	}
 
 	function setAutoStartSavedPortForwards(autoStart: boolean) {
@@ -531,33 +466,11 @@
 	}
 
 	function selectNode(nodeId: TreeNodeId) {
-		targetHelmRelease = null;
-		targetGitOpsApplication = null;
-		restoreTargetResource = null;
-		focusedResource = null;
-		resourceGitOpsFocusApplication = null;
-		resourceInitialSearch = "";
-		resourceInitialGitOpsFilter = "";
-		resourceInitialHealthFilter = "all";
-		resourceNamespaceOverride = null;
-		initialIncidentFilter =
-			nodeId.type === "section" && nodeId.section === "incidents" ? "all" : initialIncidentFilter;
-		selectedNode = nodeId;
-		viewMode = viewModeForTreeNode(nodeId);
+		applyWorkspaceNavigation({ type: "selectNode", node: nodeId });
 	}
 
 	function selectResource(resource: ResourceSummary, nodeId: TreeNodeId) {
-		targetHelmRelease = null;
-		targetGitOpsApplication = null;
-		restoreTargetResource = null;
-		resourceGitOpsFocusApplication = null;
-		resourceInitialSearch = "";
-		resourceInitialGitOpsFilter = "";
-		resourceInitialHealthFilter = "all";
-		resourceNamespaceOverride = null;
-		focusedResource = resource;
-		selectedNode = nodeId;
-		viewMode = "resources";
+		applyWorkspaceNavigation({ type: "selectResource", resource, node: nodeId });
 	}
 
 	function detailPathStateForTab(activeTab: PathStateDetailTab): PathStateResourceDetailState {
@@ -578,11 +491,8 @@
 	}
 
 	function inspectResource(resource: ResourceSummary, detailTab?: PathStateDetailTab) {
-		targetHelmRelease = null;
-		targetGitOpsApplication = null;
-		restoreTargetResource = null;
 		resourceDetailPathState = detailTab ? detailPathStateForTab(detailTab) : null;
-		focusedResource = resource;
+		applyWorkspaceNavigation({ type: "inspectResource", resource });
 	}
 
 	function toggleSection(id: string) {
@@ -759,10 +669,7 @@
 									size="icon"
 									class="size-7 text-muted-foreground"
 									aria-label="Close resource details"
-									onclick={() => {
-										focusedResource = null;
-										restoreTargetResource = null;
-									}}
+									onclick={() => applyWorkspaceNavigation({ type: "clearResource" })}
 								>
 									<X />
 								</Button>
@@ -822,14 +729,10 @@
 							{title}
 							initialPathState={resourceBrowserPathState}
 							onPathStateChange={(state) => (resourceBrowserPathState = state)}
-							onResourceSelect={(resource) => {
-								focusedResource = resource;
-								restoreTargetResource = null;
-							}}
-							onResourceClose={() => {
-								focusedResource = null;
-								restoreTargetResource = null;
-							}}
+							onResourceSelect={(resource) =>
+								applyWorkspaceNavigation({ type: "focusResource", resource })}
+							onResourceClose={() =>
+								applyWorkspaceNavigation({ type: "clearResource" })}
 						/>
 					</section>
 				{:else if viewMode === "argo" || viewMode === "helm" || viewMode === "rbac" || viewMode === "incidents" || viewMode === "portForwards" || viewMode === "settings"}

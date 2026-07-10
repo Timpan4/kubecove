@@ -3,6 +3,17 @@ import { readFileSync } from "node:fs";
 import { buildFetchKeys } from "../src/features/resources/helpers";
 import { CLUSTER_SCOPED_KINDS } from "../src/lib/types";
 import { resolveTreeScope } from "../src/lib/tree-nav";
+import { createWorkspaceRecord } from "../src/lib/workspace-model";
+import {
+	createWorkspaceNavigation,
+	navigateWorkspace,
+} from "../src/app/svelte/workspaceNavigation";
+
+const workspace = createWorkspaceRecord({
+	name: "Ops",
+	clusterContext: "kind-dev",
+	namespaces: ["default"],
+});
 
 describe("navigation scope", () => {
 	test("keeps launcher settings and update controls in app top bar", () => {
@@ -37,14 +48,13 @@ describe("navigation scope", () => {
 	});
 
 	test("overview Resources shortcut opens the saved workspace scope directly", () => {
-		const source = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-		const handlerStart = source.indexOf("function openResources(");
-		const handlerEnd = source.indexOf("function openArgo(", handlerStart);
-		const handlerSource = source.slice(handlerStart, handlerEnd);
+		const navigation = navigateWorkspace(createWorkspaceNavigation(workspace), {
+			type: "openResources",
+		});
 
-		expect(handlerSource).toContain("selectedNode =");
-		expect(handlerSource).toContain('viewMode = "resources"');
-		expect(handlerSource).toContain("resourceNamespaceOverride");
+		expect(navigation.selectedNode).toBeNull();
+		expect(navigation.viewMode).toBe("resources");
+		expect(navigation.resourceNamespaceOverride).toBeNull();
 	});
 
 	test("workspace card keyboard order keeps Open before edit and delete", () => {
@@ -67,18 +77,20 @@ describe("navigation scope", () => {
 	});
 
 	test("port forwards section resolves to the workspace management view", () => {
-		const source = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-		const handlerStart = source.indexOf("function openPortForwards()");
-		const handlerEnd = source.indexOf("function setAutoStartSavedPortForwards", handlerStart);
-		const handlerSource = source.slice(handlerStart, handlerEnd);
 		const scope = resolveTreeScope({
 			type: "section",
 			section: "portForwards",
 		});
+		const navigation = navigateWorkspace(createWorkspaceNavigation(workspace), {
+			type: "openPortForwards",
+		});
 
 		expect(scope.portForwardMode).toBe(true);
 		expect(scope.kinds).toEqual([]);
-		expect(handlerSource).toContain('section: "portForwards"');
-		expect(handlerSource).toContain('viewMode = "portForwards"');
+		expect(navigation.selectedNode).toEqual({
+			type: "section",
+			section: "portForwards",
+		});
+		expect(navigation.viewMode).toBe("portForwards");
 	});
 });

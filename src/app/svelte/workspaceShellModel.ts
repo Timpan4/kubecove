@@ -9,7 +9,6 @@ import {
 	discoveredResourceKindKey,
 	resolveTreeScope,
 	SECTIONS,
-	type SectionName,
 	type TreeNode,
 	type TreeNodeId,
 } from "@/lib/tree-nav";
@@ -18,23 +17,10 @@ import type {
 	FluxDetectionSummary,
 	NamespaceSummary,
 	ResourceKindSelection,
-	ResourceSummary,
 } from "@/lib/types";
 import { SUPPORTED_KINDS } from "@/lib/types";
 import type { SavedWorkspace } from "@/lib/workspace-model";
-
-export type WorkspaceViewMode =
-	| "overview"
-	| "resources"
-	| "argo"
-	| "helm"
-	| "incidents"
-	| "portForwards"
-	| "rbac"
-	| "settings";
-
-export const DEFAULT_WORKSPACE_VIEW: WorkspaceViewMode =
-	"overview";
+import type { WorkspaceViewMode } from "./workspaceNavigation";
 
 const SECTION_LABELS: Record<string, string> = {
 	workspaceOverview: "Workspace Overview",
@@ -100,43 +86,6 @@ export function appendPresentCustomResourceKinds(
 			return true;
 		}),
 	);
-}
-
-export function viewModeForTreeNode(
-	nodeId: TreeNodeId | null,
-): WorkspaceViewMode {
-	if (!nodeId) return "resources";
-	if (nodeId.type === "section" && nodeId.section === "workspaceOverview") {
-		return "overview";
-	}
-	if (nodeId.section === "argo") return "argo";
-	if (nodeId.section === "helm") return "helm";
-	if (nodeId.section === "rbac") return "rbac";
-	const scope = resolveTreeScope(nodeId);
-	if (scope.argoMode) return "argo";
-	if (scope.helmMode) return "helm";
-	if (scope.incidentMode) return "incidents";
-	if (scope.portForwardMode) return "portForwards";
-	if (scope.rbacMode) return "rbac";
-	return "resources";
-}
-
-export function treeNodeForResource(resource: ResourceSummary): TreeNodeId {
-	return {
-		type: "kind",
-		section: sectionForKind(resource.kind),
-		namespace: resource.namespace ?? undefined,
-		kind: resource.kind,
-	};
-}
-
-function sectionForKind(kind: string): SectionName {
-	for (const [section, config] of Object.entries(SECTIONS) as Array<
-		[SectionName, (typeof SECTIONS)[SectionName]]
-	>) {
-		if ((config.children as readonly string[]).includes(kind)) return section;
-	}
-	return "discovered";
 }
 
 export function isNamespaceListView({

@@ -16,7 +16,12 @@ import {
 	incidentWarningSummary,
 	isIncidentResourceSelected,
 } from "../src/app/svelte/incidentSurfaceModel";
+import {
+	createWorkspaceNavigation,
+	navigateWorkspace,
+} from "../src/app/svelte/workspaceNavigation";
 import type { IncidentCockpitItem } from "../src/lib/types";
+import { createWorkspaceRecord } from "../src/lib/workspace-model";
 
 const item: IncidentCockpitItem = {
 	resource: {
@@ -198,11 +203,20 @@ describe("svelte incident surface model", () => {
 			new URL("../src/features/workspaces/WorkspaceOverview.svelte", import.meta.url),
 			"utf8",
 		);
-		const shell = readFileSync(
-			new URL("../src/app/svelte/WorkspaceShell.svelte", import.meta.url),
-			"utf8",
-		);
 		const surfaces = incidentSurfaceSource();
+		const workspace = createWorkspaceRecord({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: [],
+		});
+		const shortcut = navigateWorkspace(createWorkspaceNavigation(workspace), {
+			type: "openIncidents",
+			filter: "restarted",
+		});
+		const sidebar = navigateWorkspace(shortcut, {
+			type: "selectNode",
+			node: { type: "section", section: "incidents" },
+		});
 
 		expect(overview).toContain(
 			'IncidentShortcutButton("Unhealthy", unhealthyCount, "unhealthy", onOpenIncidents)',
@@ -213,14 +227,8 @@ describe("svelte incident surface model", () => {
 		expect(overview).toContain(
 			'IncidentShortcutButton("Restarted", health.restarted, "restarted", onOpenIncidents)',
 		);
-		expect(shell).toContain("let initialIncidentFilter = $state<IncidentFilter>(");
-		expect(shell).toContain('initialSurfacesPathState?.incidentFilter ?? "all"');
-		expect(shell).toContain('function openIncidents(filter: IncidentFilter = "all")');
-		expect(shell).toContain("initialIncidentFilter = filter");
-		expect(shell).toContain(
-			'nodeId.type === "section" && nodeId.section === "incidents" ? "all" : initialIncidentFilter',
-		);
-		expect(shell).toContain("{initialIncidentFilter}");
+		expect(shortcut.initialIncidentFilter).toBe("restarted");
+		expect(sidebar.initialIncidentFilter).toBe("all");
 		expect(surfaces).toContain('initialIncidentFilter = "all"');
 		expect(surfaces).toContain(
 			'if (viewMode === "incidents") incidentFilter = initialIncidentFilter',
