@@ -11,6 +11,8 @@ import {
 	isNamespaceListView,
 } from "../src/app/svelte/workspaceShellModel";
 import {
+	createWorkspaceNavigation,
+	navigateWorkspace,
 	treeNodeForResource,
 	viewModeForTreeNode,
 } from "../src/app/svelte/workspaceNavigation";
@@ -440,14 +442,19 @@ describe("svelte workspace shell model", () => {
 
 	test("Svelte Argo shortcuts preserve target application selection", () => {
 		const overview = readFileSync("src/features/workspaces/WorkspaceOverview.svelte", "utf8");
-		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
 		const surfaces = readFileSync("src/app/svelte/AppSurfaces.svelte", "utf8");
+		const workspace = createWorkspaceRecord({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: [],
+		});
+		const navigation = navigateWorkspace(createWorkspaceNavigation(workspace), {
+			type: "openArgo",
+			application: "checkout",
+		});
 
 		expect(overview).toContain("onOpenArgo(shortcut.argoApp)");
-		expect(shell).toContain("let targetGitOpsApplication");
-		expect(shell).toContain(
-			"onTargetGitOpsApplicationResolved={clearTargetGitOpsApplication}",
-		);
+		expect(navigation.targetGitOpsApplication).toBe("checkout");
 		expect(surfaces).toContain("targetGitOpsApplication");
 		expect(surfaces).toContain('item.type === "argoApp"');
 	});

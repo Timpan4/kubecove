@@ -53,7 +53,6 @@
 	import {
 		writePathState,
 		type PathStateDetailTab,
-		type PathStateResourceBrowserState,
 		type PathStateResourceDetailState,
 		type PathStateSurfacesState,
 		type PathStateWorkspaceSnapshot,
@@ -94,7 +93,6 @@
 		workspaceNavigationSnapshot,
 		type WorkspaceNavigationIntent,
 		type WorkspaceNavigationState,
-		type WorkspaceViewMode,
 	} from "./workspaceNavigation";
 
 	const IS_MAC =
@@ -127,40 +125,28 @@
 	const initialNavigation = initialWorkspaceNavigation();
 	const initialDetailPathState = initialPathSnapshot?.detail ?? null;
 	const initialSurfacesPathState = initialPathSnapshot?.surfaces ?? null;
-	let selectedNode = $state<TreeNodeId | null>(initialNavigation.selectedNode);
+	let navigation = $state<WorkspaceNavigationState>(initialNavigation);
+	const selectedNode = $derived(navigation.selectedNode);
+	const viewMode = $derived(navigation.viewMode);
+	const focusedResource = $derived(navigation.focusedResource);
+	const restoreTargetResource = $derived(navigation.restoreTargetResource);
+	const targetHelmRelease = $derived(navigation.targetHelmRelease);
+	const targetGitOpsApplication = $derived(navigation.targetGitOpsApplication);
+	const resourceGitOpsFocusApplication = $derived(
+		navigation.resourceGitOpsFocusApplication,
+	);
+	const resourceInitialSearch = $derived(navigation.resourceInitialSearch);
+	const resourceInitialGitOpsFilter = $derived(navigation.resourceInitialGitOpsFilter);
+	const resourceInitialHealthFilter = $derived(navigation.resourceInitialHealthFilter);
+	const resourceNamespaceOverride = $derived(navigation.resourceNamespaceOverride);
+	const initialIncidentFilter = $derived(navigation.initialIncidentFilter);
 	let expandedSections = $state<string[]>(
 		initialPathSnapshot?.expandedSections ??
 			(initialNavigation.selectedNode
 				? [nodeIdToString(initialNavigation.selectedNode)]
 				: []),
 	);
-	let viewMode = $state<WorkspaceViewMode>(initialNavigation.viewMode);
 	let commandOpen = $state(false);
-	let focusedResource = $state<ResourceSummary | null>(initialNavigation.focusedResource);
-	let restoreTargetResource = $state<ResourceSummary | null>(
-		initialNavigation.restoreTargetResource,
-	);
-	let targetHelmRelease = $state<{ name: string; namespace?: string | null } | null>(
-		initialNavigation.targetHelmRelease,
-	);
-	let targetGitOpsApplication = $state<string | null>(initialNavigation.targetGitOpsApplication);
-	let resourceGitOpsFocusApplication = $state<ArgoApplicationSummary | null>(
-		initialNavigation.resourceGitOpsFocusApplication,
-	);
-	let resourceInitialSearch = $state(initialNavigation.resourceInitialSearch);
-	let resourceInitialGitOpsFilter = $state(initialNavigation.resourceInitialGitOpsFilter);
-	let resourceInitialHealthFilter = $state<HealthFilter>(
-		initialNavigation.resourceInitialHealthFilter,
-	);
-	let resourceNamespaceOverride = $state<string[] | null>(
-		initialNavigation.resourceNamespaceOverride,
-	);
-	let initialIncidentFilter = $state<IncidentFilter>(
-		initialNavigation.initialIncidentFilter,
-	);
-	let resourceBrowserPathState = $state<PathStateResourceBrowserState | null>(
-		initialNavigation.resourceBrowserPathState,
-	);
 	let resourceDetailPathState = $state<PathStateResourceDetailState | null>(
 		initialDetailPathState,
 	);
@@ -289,39 +275,8 @@
 		if (initialPathSnapshot) onPathStateConsumed();
 	});
 
-	function currentWorkspaceNavigation(): WorkspaceNavigationState {
-		return {
-			selectedNode,
-			viewMode,
-			focusedResource,
-			restoreTargetResource,
-			targetHelmRelease,
-			targetGitOpsApplication,
-			resourceGitOpsFocusApplication,
-			resourceInitialSearch,
-			resourceInitialGitOpsFilter,
-			resourceInitialHealthFilter,
-			resourceNamespaceOverride,
-			resourceBrowserPathState,
-			initialIncidentFilter,
-		};
-	}
-
 	function applyWorkspaceNavigation(intent: WorkspaceNavigationIntent) {
-		const next = navigateWorkspace(currentWorkspaceNavigation(), intent);
-		selectedNode = next.selectedNode;
-		viewMode = next.viewMode;
-		focusedResource = next.focusedResource;
-		restoreTargetResource = next.restoreTargetResource;
-		targetHelmRelease = next.targetHelmRelease;
-		targetGitOpsApplication = next.targetGitOpsApplication;
-		resourceGitOpsFocusApplication = next.resourceGitOpsFocusApplication;
-		resourceInitialSearch = next.resourceInitialSearch;
-		resourceInitialGitOpsFilter = next.resourceInitialGitOpsFilter;
-		resourceInitialHealthFilter = next.resourceInitialHealthFilter;
-		resourceNamespaceOverride = next.resourceNamespaceOverride;
-		resourceBrowserPathState = next.resourceBrowserPathState;
-		initialIncidentFilter = next.initialIncidentFilter;
+		navigation = navigateWorkspace(navigation, intent);
 	}
 
 	$effect(() => {
@@ -358,7 +313,7 @@
 	}
 
 	function currentPathState(): PathStateWorkspaceSnapshot {
-		return workspaceNavigationSnapshot(currentWorkspaceNavigation(), {
+		return workspaceNavigationSnapshot(navigation, {
 			workspaceId: workspace.id,
 			expandedSections,
 			detail: resourceDetailPathState,
@@ -727,8 +682,8 @@
 							targetResource={restoreTargetResource ?? focusedResource}
 							selectedResource={focusedResource}
 							{title}
-							initialPathState={resourceBrowserPathState}
-							onPathStateChange={(state) => (resourceBrowserPathState = state)}
+							initialPathState={navigation.resourceBrowserPathState}
+							onPathStateChange={(state) => (navigation.resourceBrowserPathState = state)}
 							onResourceSelect={(resource) =>
 								applyWorkspaceNavigation({ type: "focusResource", resource })}
 							onResourceClose={() =>
