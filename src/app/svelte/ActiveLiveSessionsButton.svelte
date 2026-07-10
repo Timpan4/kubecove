@@ -14,17 +14,16 @@
 	} from "@/components/ui/svelte";
 	import {
 		portForwardLocalUrl,
-		sortPortForwardSessions,
-	} from "@/features/live-sessions/helpers";
-	import { reconnectPortForwardSession } from "@/features/live-sessions/saved-port-forward-actions";
+		portForwardQueryOptions,
+		reconnectPortForward as reconnectPortForwardLifecycle,
+		stopPortForward as stopPortForwardLifecycle,
+	} from "@/features/live-sessions";
 	import { podExecCommandText, sortPodExecSessions } from "@/features/resource-detail/pod-exec-helpers";
 	import { settingsStore } from "@/lib/settings-store";
 	import {
 		createTauriClient,
 		listPodExecSessions,
-		listPortForwards,
 		stopPodExecSession,
-		stopPodPortForward,
 	} from "@/lib/tauri";
 	import { queryKeys } from "@/lib/queryKeys";
 	import type { PodExecSessionSummary, PortForwardSessionSummary } from "@/lib/types";
@@ -38,12 +37,7 @@
 	let reconnectingId = $state<string | null>(null);
 	let copyingId = $state<string | null>(null);
 	let actionError = $state<unknown>(null);
-	const portForwardsQuery = createQuery(() => ({
-		queryKey: queryKeys.portForwards(),
-		queryFn: () => listPortForwards(client),
-		placeholderData: (previousData) => previousData,
-		refetchInterval: 3_000,
-	}));
+	const portForwardsQuery = createQuery(() => portForwardQueryOptions(client));
 	const execSessionsQuery = createQuery(() => ({
 		queryKey: queryKeys.podExecSessions(),
 		queryFn: () => listPodExecSessions(client),
@@ -51,7 +45,7 @@
 		refetchInterval: 3_000,
 	}));
 
-	const portForwardSessions = $derived(sortPortForwardSessions(portForwardsQuery.data ?? []));
+	const portForwardSessions = $derived(portForwardsQuery.data ?? []);
 	const execSessions = $derived(sortPodExecSessions(execSessionsQuery.data ?? []));
 	const portForwardCount = $derived(portForwardSessions.length);
 	const execSessionCount = $derived(execSessions.length);
@@ -78,8 +72,11 @@
 		stoppingId = sessionId;
 		actionError = null;
 		try {
-			await stopPodPortForward(client, sessionId);
-			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
+			await stopPortForwardLifecycle({
+				client,
+				sessionId,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
+			});
 		} catch (error) {
 			actionError = error;
 		} finally {
@@ -104,8 +101,11 @@
 		reconnectingId = session.id;
 		actionError = null;
 		try {
-			await reconnectPortForwardSession({ client, session });
-			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
+			await reconnectPortForwardLifecycle({
+				client,
+				session,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
+			});
 		} catch (error) {
 			actionError = error;
 		} finally {

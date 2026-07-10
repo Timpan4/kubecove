@@ -1,4 +1,3 @@
-import { queryKeys } from "@/lib/queryKeys";
 import type { TauriClient } from "@/lib/tauri";
 import { listPortForwards, startPortForward, stopPodPortForward } from "@/lib/tauri";
 import type { PortForwardSessionSummary } from "@/lib/types";
@@ -132,7 +131,7 @@ export async function startSavedPortForwards({
 	let knownSessions =
 		activeSessions !== undefined
 			? activeSessions
-			: await listPortForwards(client).catch(() => []);
+			: await listPortForwards(client);
 	const results: SavedPortForwardStartResult[] = [];
 	for (const portForward of portForwards) {
 		const result = await startSavedPortForward({
@@ -149,12 +148,6 @@ export async function startSavedPortForwards({
 		}
 	}
 	return results;
-}
-
-export function invalidatePortForwardQueries(
-	invalidateQueries: (options: { queryKey: readonly unknown[] }) => Promise<unknown>,
-): Promise<unknown> {
-	return invalidateQueries({ queryKey: queryKeys.portForwards() });
 }
 
 export async function reconnectPortForwardSession({

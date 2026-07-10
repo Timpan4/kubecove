@@ -7,18 +7,18 @@
 		type IncidentFilter,
 	} from "@/features/incidents/helpers";
 	import {
-		portForwardLocalUrl,
-		portForwardErrorMessage,
 		parseSavedPortForwardForm,
+		portForwardErrorMessage,
+		portForwardLocalUrl,
+		portForwardQueryOptions,
+		portForwardSessionsForWorkspace,
+		reconnectPortForward as reconnectPortForwardLifecycle,
 		savedPortForwardLabel,
-		sortPortForwardSessions,
+		startSavedPortForward as startSavedPortForwardLifecycle,
+		startSavedPortForwards as startSavedPortForwardsLifecycle,
+		stopPortForward as stopPortForwardLifecycle,
 		type SavedPortForwardFormValues,
-	} from "@/features/live-sessions/helpers";
-	import {
-		reconnectPortForwardSession,
-		startSavedPortForward as startSavedPortForwardSession,
-		startSavedPortForwards as startSavedPortForwardSessions,
-	} from "@/features/live-sessions/saved-port-forward-actions";
+	} from "@/features/live-sessions";
 	import {
 		findHelmReleaseTarget,
 		groupHelmReleasesByNamespace,
@@ -50,10 +50,8 @@
 		listHelmReleases,
 		listIncidentCockpit,
 		listPodExecSessions,
-		listPortForwards,
 		listRbacInspection,
 		stopPodExecSession,
-		stopPodPortForward,
 	} from "@/lib/tauri";
 	import type {
 		ArgoApplicationSetSummary,
@@ -367,13 +365,12 @@
 		staleTime: 15_000,
 	}));
 
-	const portForwardsQuery = createQuery<PortForwardSessionSummary[]>(() => ({
-		queryKey: queryKeys.portForwards(),
-		queryFn: async () => sortPortForwardSessions(await listPortForwards(client)),
-		enabled: viewMode === "portForwards",
-		placeholderData: (previousData) => previousData,
-		refetchInterval: 2_500,
-	}));
+	const portForwardsQuery = createQuery<PortForwardSessionSummary[]>(() =>
+		portForwardQueryOptions(client, {
+			enabled: viewMode === "portForwards" && sourceReady,
+			refetchInterval: 2_500,
+		}),
+	);
 	const execSessionsQuery = createQuery<PodExecSessionSummary[]>(() => ({
 		queryKey: queryKeys.podExecSessions(),
 		queryFn: async () => sortPodExecSessions(await listPodExecSessions(client)),
@@ -394,8 +391,10 @@
 	const incidentFilterOptions = $derived(buildIncidentFilterOptions(incidentCounts));
 	const incidentGroups = $derived(groupIncidentItems(visibleIncidents));
 	const visiblePortForwardSessions = $derived(
-		(portForwardsQuery.data ?? []).filter((session) =>
-			workspaceContexts.includes(session.clusterContext),
+		portForwardSessionsForWorkspace(
+			portForwardsQuery.data ?? [],
+			workspace,
+			kubeconfigSourceKey,
 		),
 	);
 	const visibleExecSessions = $derived(
@@ -697,10 +696,12 @@
 		liveSessionActionError = null;
 		savedPortForwardActionMessage = null;
 		try {
-			await reconnectPortForwardSession({ client, session });
+			await reconnectPortForwardLifecycle({
+				client,
+				session,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
+			});
 			savedPortForwardActionMessage = `Reconnected ${portForwardSessionTitle(session)}.`;
-			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
-			await portForwardsQuery.refetch();
 		} catch (error) {
 			liveSessionActionError = error;
 		} finally {
@@ -713,14 +714,14 @@
 		liveSessionActionError = null;
 		savedPortForwardActionMessage = null;
 		try {
-			const knownSessions = portForwardsQuery.data ?? (await listPortForwards(client));
-			const result = await startSavedPortForwardSession({
+			const result = await startSavedPortForwardLifecycle({
 				client,
 				workspaceId: workspace.id,
 				portForward,
-				knownSessions,
+				knownSessions: portForwardsQuery.data,
 				kubeconfigSource: kubeconfigSourceKey,
 				updateSavedPortForward: workspaceStore.updateSavedPortForward,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
 			});
 			if (result.ok && result.skipped) {
 				savedPortForwardActionMessage = `${savedPortForwardLabel(portForward)} already active.`;
@@ -731,8 +732,6 @@
 				return;
 			}
 			savedPortForwardActionMessage = `Started ${savedPortForwardLabel(portForward)}.`;
-			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
-			await portForwardsQuery.refetch();
 		} catch (error) {
 			const message = portForwardErrorMessage(error);
 			workspaceStore.updateSavedPortForward(workspace.id, portForward.id, {
@@ -750,14 +749,14 @@
 		liveSessionActionError = null;
 		savedPortForwardActionMessage = null;
 		try {
-			const knownSessions = portForwardsQuery.data ?? (await listPortForwards(client));
-			const results = await startSavedPortForwardSessions({
+			const results = await startSavedPortForwardsLifecycle({
 				client,
 				workspace,
 				portForwards: workspace.portForwards ?? [],
-				activeSessions: knownSessions,
+				activeSessions: portForwardsQuery.data,
 				kubeconfigSource: kubeconfigSourceKey,
 				updateSavedPortForward: workspaceStore.updateSavedPortForward,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
 			});
 			const failures = results.filter((result) => !result.ok).length;
 			const conflicts = results.filter((result) => result.conflict).length;
@@ -767,8 +766,6 @@
 						? `${conflicts} saved ${conflicts === 1 ? "forward has" : "forwards have"} local port conflicts.`
 						: `${failures} saved ${failures === 1 ? "forward" : "forwards"} failed to start.`
 				: `Started ${results.length} saved ${results.length === 1 ? "forward" : "forwards"}.`;
-			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
-			await portForwardsQuery.refetch();
 		} catch (error) {
 			liveSessionActionError = error;
 		} finally {
@@ -780,9 +777,11 @@
 		stoppingSessionId = sessionId;
 		liveSessionActionError = null;
 		try {
-			await stopPodPortForward(client, sessionId);
-			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
-			await portForwardsQuery.refetch();
+			await stopPortForwardLifecycle({
+				client,
+				sessionId,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
+			});
 		} catch (error) {
 			liveSessionActionError = error;
 		} finally {

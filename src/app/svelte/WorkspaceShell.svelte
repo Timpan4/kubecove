@@ -62,7 +62,7 @@
 		shouldAutoStartSavedPortForwards,
 		shouldShowSavedPortForwardRestorePrompt,
 	} from "@/features/live-sessions/restore";
-	import { startSavedPortForwards } from "@/features/live-sessions/saved-port-forward-actions";
+	import { startSavedPortForwards } from "@/features/live-sessions";
 	import ResourceDetailPanel from "@/features/resource-detail/ResourceDetailPanel.svelte";
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
@@ -405,8 +405,8 @@
 				workspace,
 				kubeconfigSource: kubeconfigSourceKey,
 				updateSavedPortForward: workspaceStore.updateSavedPortForward,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
 			});
-			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 			const failureMessage = savedPortForwardStartFailureMessage(results);
 			if (failureMessage) {
 				savedPortForwardRestoreError = failureMessage;

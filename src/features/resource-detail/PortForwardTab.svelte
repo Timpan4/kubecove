@@ -26,21 +26,17 @@
 		Spinner,
 	} from "@/components/ui/svelte";
 	import {
-		isPortForwardForResource,
 		extractServicePortOptions,
+		isPortForwardForResource,
 		parsePortForwardForm,
 		portForwardLocalUrl,
-		sortPortForwardSessions,
-	} from "@/features/live-sessions/helpers";
+		portForwardQueryOptions,
+		startResourcePortForward,
+		stopPortForward,
+	} from "@/features/live-sessions";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
-	import { queryKeys } from "@/lib/queryKeys";
 	import { settingsStore } from "@/lib/settings-store";
-	import {
-		listPortForwards,
-		startPodPortForward,
-		stopPodPortForward,
-		type TauriClient,
-	} from "@/lib/tauri";
+	import type { TauriClient } from "@/lib/tauri";
 	import type {
 		PortForwardSessionSummary,
 		ResourceSummary,
@@ -80,17 +76,15 @@
 		(resource.kind === "Pod" || resource.kind === "Service") && Boolean(resource.namespace),
 	);
 	const servicePorts = $derived(extractServicePortOptions(yaml));
-	const sessionsQuery = createQuery<PortForwardSessionSummary[]>(() => ({
-		queryKey: queryKeys.portForwards(),
-		queryFn: () => listPortForwards(client),
-		enabled: active,
-		refetchInterval: active ? 3_000 : false,
-	}));
+	const sessionsQuery = createQuery<PortForwardSessionSummary[]>(() =>
+		portForwardQueryOptions(client, {
+			enabled: active,
+			refetchInterval: active ? 3_000 : false,
+		}),
+	);
 	const sessions = $derived(
-		sortPortForwardSessions(
-			(sessionsQuery.data ?? []).filter((session) =>
-				isPortForwardForResource(session, resource, kubeconfigSourceKey),
-			),
+		(sessionsQuery.data ?? []).filter((session) =>
+			isPortForwardForResource(session, resource, kubeconfigSourceKey),
 		),
 	);
 
@@ -118,17 +112,15 @@
 		}
 		starting = true;
 		try {
-			await startPodPortForward(client, {
-				clusterContext: resource.cluster,
-				kubeconfigEnvVar: kubeconfigSourceKey,
-				namespace: resource.namespace,
-				targetKind: resource.kind === "Service" ? "Service" : "Pod",
-				targetName: resource.name,
+			await startResourcePortForward({
+				client,
+				resource,
 				remotePort: parsed.remotePort,
 				localPort: parsed.localPort,
+				kubeconfigSource: kubeconfigSourceKey,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
 			});
 			localPort = "";
-			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
 		} catch (err) {
 			error = err;
 		} finally {
@@ -184,8 +176,11 @@
 		copyError = null;
 		stoppingId = id;
 		try {
-			await stopPodPortForward(client, id);
-			await queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() });
+			await stopPortForward({
+				client,
+				sessionId: id,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
+			});
 		} catch (err) {
 			error = err;
 		} finally {
