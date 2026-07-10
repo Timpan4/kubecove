@@ -1,17 +1,12 @@
 import type { ResourceSummary, ResourceTopology, TopologyNode } from "@/lib/types";
 import {
-	applyFlowTopologySelectionWithIndex,
-	buildFlowTopologyLayout,
-	buildFlowTopologySelectionIndex,
-	filterFlowTopologyToSelectedRoot,
-} from "./topology-implementation";
-import {
+	buildFlowTopologyView,
 	topologyRailTone,
 	topologyReadyText,
 	topologyReadyTone,
 	topologyRestartTone,
 	topologyStatusTone,
-} from "./topology-status";
+} from "./topology";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
@@ -45,6 +40,19 @@ function node(kind: string, name: string): TopologyNode {
 	};
 }
 
+function view(
+	topology: ResourceTopology,
+	selectedNodeId: string | null = null,
+	showFullTopologyOnSelection = true,
+) {
+	return buildFlowTopologyView(topology, {
+		mode: "ownership",
+		selectedNodeId,
+		showFullTopologyOnSelection,
+		expandedStandaloneKinds: new Set(),
+	}).graph;
+}
+
 describe("topology selection", () => {
 	test("animates only selected ownership path edges", () => {
 		const topology: ResourceTopology = {
@@ -76,12 +84,7 @@ describe("topology selection", () => {
 			],
 			warnings: [],
 		};
-		const layout = buildFlowTopologyLayout(topology, null);
-		const selected = applyFlowTopologySelectionWithIndex(
-			layout,
-			buildFlowTopologySelectionIndex(topology),
-			"Pod:argocd-redis-abc-123",
-		);
+		const selected = view(topology, "Pod:argocd-redis-abc-123");
 
 		const activeEdge = selected.edges.find(
 			(edge) => edge.id === "replicaset-to-pod",
@@ -148,11 +151,7 @@ describe("topology selection", () => {
 			],
 			warnings: [],
 		};
-		const filtered = filterFlowTopologyToSelectedRoot(
-			buildFlowTopologyLayout(topology, null),
-			buildFlowTopologySelectionIndex(topology),
-			"Pod:api-abc-1",
-		);
+		const filtered = view(topology, "Pod:api-abc-1", false);
 
 		expect(filtered.nodes.map((item) => item.id)).toEqual([
 			"Deployment:api",
@@ -185,7 +184,7 @@ describe("Svelte topology layout", () => {
 			],
 			warnings: [],
 		};
-		const layout = buildFlowTopologyLayout(topology, null);
+		const layout = view(topology);
 		const job = layout.nodes.find((item) => item.id === "Job:issue-143-failure-control");
 		const pod = layout.nodes.find((item) => item.id === "Pod:issue-143-failure-xj9mv");
 
@@ -203,10 +202,7 @@ describe("Svelte topology layout", () => {
 		storageClass.namespace = null;
 		storageClass.summary.namespace = null;
 
-		const layout = buildFlowTopologyLayout(
-			{ nodes: [crd, storageClass], edges: [], warnings: [] },
-			null,
-		);
+		const layout = view({ nodes: [crd, storageClass], edges: [], warnings: [] });
 
 		const groups = layout.nodes
 			.filter((item) => item.type === "standaloneKindGroup")

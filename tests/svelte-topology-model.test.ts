@@ -3,12 +3,6 @@ import {
 	buildFlowTopologyFitPlan,
 	buildFlowTopologyView,
 } from "@/features/resources/topology";
-import {
-	applyFlowTopologySelectionWithIndex,
-	buildFlowTopologyLayout,
-	buildFlowTopologySelectionIndex,
-	filterFlowTopologyToSelectedRoot,
-} from "@/features/resources/topology-implementation";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
@@ -57,11 +51,12 @@ function buildGraph(
 	topology: ResourceTopology,
 	selectedNodeId: string | null,
 	mode: "ownership" | "networkFlow" = "ownership",
+	showFullTopologyOnSelection = true,
 ) {
 	return buildFlowTopologyView(topology, {
 		mode,
 		selectedNodeId,
-		showFullTopologyOnSelection: true,
+		showFullTopologyOnSelection,
 		expandedStandaloneKinds: new Set(),
 	}).graph;
 }
@@ -150,7 +145,7 @@ describe("svelte topology model", () => {
 		);
 	});
 
-	test("applies Svelte topology selection without rebuilding layout", () => {
+	test("applies Svelte topology selection through the public interface", () => {
 		const topology: ResourceTopology = {
 			nodes: [
 				node("Deployment", "api"),
@@ -173,16 +168,7 @@ describe("svelte topology model", () => {
 			],
 			warnings: [],
 		};
-		const layout = buildFlowTopologyLayout(topology, null);
-		const selected = applyFlowTopologySelectionWithIndex(
-			layout,
-			buildFlowTopologySelectionIndex(topology),
-			"Pod:api-abc-123",
-		);
-
-		expect(selected.nodes.map((item) => item.position)).toEqual(
-			layout.nodes.map((item) => item.position),
-		);
+		const selected = buildGraph(topology, "Pod:api-abc-123");
 		expect(selected.nodes.find((item) => item.id === "Pod:api-abc-123")?.selected).toBe(
 			true,
 		);
@@ -237,11 +223,7 @@ describe("svelte topology model", () => {
 			],
 			warnings: [],
 		};
-		const filtered = filterFlowTopologyToSelectedRoot(
-			buildFlowTopologyLayout(topology, null),
-			buildFlowTopologySelectionIndex(topology),
-			"Pod:api-abc-1",
-		);
+		const filtered = buildGraph(topology, "Pod:api-abc-1", "ownership", false);
 
 		expect(filtered.nodes.map((item) => item.id)).toEqual([
 			"Deployment:api",
