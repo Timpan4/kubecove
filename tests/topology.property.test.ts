@@ -8,7 +8,7 @@ import type {
 import {
 	buildFlowTopologyLayout,
 	resourceTopologyNodeId,
-} from "../src/features/resources/topology";
+} from "../src/features/resources/topology-implementation";
 
 const propertyConfig = { seed: 20260521, numRuns: 50 };
 

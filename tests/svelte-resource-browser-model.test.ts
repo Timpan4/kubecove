@@ -8,7 +8,7 @@ import {
 import {
 	buildFlowTopology,
 	topologyViewportFitKey,
-} from "../src/features/resources/topology";
+} from "../src/features/resources/topology-implementation";
 import {
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,
@@ -536,14 +536,14 @@ describe("svelte resource browser model", () => {
 
 		expect(mapSource).toContain("<OwnershipMapViewport");
 		expect(viewportSource).toContain("useSvelteFlow<FlowTopologyNode, FlowTopologyEdge>()");
-		expect(viewportSource).toContain("node.data.selected || node.data.connected");
+		expect(viewportSource).toContain("fitPlan?.focused");
 		expect(viewportSource).toContain("flow.setViewport");
-		expect(viewportSource).toContain("widthFitFlowTopologyViewport");
+		expect(viewportSource).toContain("buildFlowTopologyFitPlan");
 		expect(viewportSource).toContain("FIT_VIEW_DURATION_MS");
 		expect(viewportSource).toContain("SELECTED_FIT_VIEW_DURATION_MS");
-		expect(mapSource).toContain("filterFlowTopologyToSelectedRoot");
+		expect(mapSource).toContain("buildFlowTopologyView");
 		expect(mapSource).toContain("showFullTopologyOnSelection");
-		expect(mapSource).toContain("getTopologyTranslateExtent(");
+		expect(mapSource).toContain("translateExtent");
 		expect(mapSource).toContain("{translateExtent}");
 		expect(mapSource).toContain("VISIBLE_ELEMENT_RENDER_THRESHOLD");
 		expect(mapSource).toContain("graph.nodes.length + graph.edges.length");

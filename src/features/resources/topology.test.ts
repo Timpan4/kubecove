@@ -4,12 +4,14 @@ import {
 	buildFlowTopologyLayout,
 	buildFlowTopologySelectionIndex,
 	filterFlowTopologyToSelectedRoot,
+} from "./topology-implementation";
+import {
 	topologyRailTone,
 	topologyReadyText,
 	topologyReadyTone,
 	topologyRestartTone,
 	topologyStatusTone,
-} from "./topology";
+} from "./topology-status";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;

@@ -15,11 +15,7 @@
 	} from "@/components/ui/svelte";
 	import type { ResourceSummary, ResourceTopology, TopologyMode } from "@/lib/types";
 	import {
-		applyFlowTopologySelectionWithIndex,
-		buildFlowTopologyLayout,
-		buildFlowTopologySelectionIndex,
-		filterFlowTopologyToSelectedRoot,
-		getTopologyTranslateExtent,
+		buildFlowTopologyView,
 		type FlowTopologyNode,
 	} from "./topology";
 	import OwnershipMapViewport from "./OwnershipMapViewport.svelte";
@@ -63,42 +59,21 @@
 	let viewportHeight = $state(0);
 	let expandedStandaloneKinds = $state<Set<string>>(new Set());
 	const hasViewportSize = $derived(viewportWidth > 0 && viewportHeight > 0);
-	const standaloneExpansionId = $derived(
-		selectedStandaloneExpansionId(topology, selectedNodeId),
-	);
-	const graphLayout = $derived(
+	const topologyView = $derived(
 		topology
-			? buildFlowTopologyLayout(topology, standaloneExpansionId, mode, {
-					expandedStandaloneKinds,
-				})
-			: null,
-	);
-	const selectionIndex = $derived(
-		topology ? buildFlowTopologySelectionIndex(topology) : null,
-	);
-	const graph = $derived(
-		graphLayout && selectionIndex
-			? applyFlowTopologySelectionWithIndex(
-					showFullTopologyOnSelection
-						? graphLayout
-						: filterFlowTopologyToSelectedRoot(
-								graphLayout,
-								selectionIndex,
-								selectedNodeId,
-							),
-					selectionIndex,
+			? buildFlowTopologyView(topology, {
+					mode,
 					selectedNodeId,
-				)
+					showFullTopologyOnSelection,
+					expandedStandaloneKinds,
+					viewportSize: hasViewportSize
+						? { width: viewportWidth, height: viewportHeight }
+						: undefined,
+				})
 			: null,
 	);
-	const translateExtent = $derived(
-		graph && hasViewportSize
-			? getTopologyTranslateExtent(graph.nodes, {
-					width: viewportWidth,
-					height: viewportHeight,
-				})
-			: undefined,
-	);
+	const graph = $derived(topologyView?.graph ?? null);
+	const translateExtent = $derived(topologyView?.translateExtent);
 	const onlyRenderVisibleElements = $derived(
 		graph
 			? graph.nodes.length + graph.edges.length >= VISIBLE_ELEMENT_RENDER_THRESHOLD
@@ -141,18 +116,6 @@
 		onNodeSelect(node.id, node.data.resource);
 	};
 
-	function selectedStandaloneExpansionId(
-		topology: ResourceTopology | undefined,
-		selectedNodeId: string | null,
-	): string | null {
-		if (!topology || !selectedNodeId) return null;
-		const selectedNode = topology.nodes.find((node) => node.id === selectedNodeId);
-		if (!selectedNode) return null;
-		const hasRelation = topology.edges.some(
-			(edge) => edge.source === selectedNodeId || edge.target === selectedNodeId,
-		);
-		return hasRelation ? null : selectedNodeId;
-	}
 </script>
 
 <div class="flex h-full min-h-[400px] min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-card/60">

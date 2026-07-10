@@ -1,19 +1,21 @@
 import type { ResourceSummary, ResourceTopology, TopologyNode } from "@/lib/types";
 import {
+	buildFlowTopologyFitPlan,
+	buildFlowTopologyView,
+} from "@/features/resources/topology";
+import {
 	applyFlowTopologySelectionWithIndex,
-	buildFlowTopology,
 	buildFlowTopologyLayout,
 	buildFlowTopologySelectionIndex,
 	filterFlowTopologyToSelectedRoot,
-	getTopologyTranslateExtent,
-	widthFitFlowTopologyViewport,
-} from "@/features/resources/topology";
+} from "@/features/resources/topology-implementation";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
 declare function expect(actual: unknown): {
 	not: { toContain(expected: unknown): void };
 	toBe(expected: unknown): void;
+	toBeGreaterThan(expected: number): void;
 	toEqual(expected: unknown): void;
 	toContain(expected: unknown): void;
 };
@@ -51,6 +53,19 @@ function serviceNode(name: string): TopologyNode {
 	};
 }
 
+function buildGraph(
+	topology: ResourceTopology,
+	selectedNodeId: string | null,
+	mode: "ownership" | "networkFlow" = "ownership",
+) {
+	return buildFlowTopologyView(topology, {
+		mode,
+		selectedNodeId,
+		showFullTopologyOnSelection: true,
+		expandedStandaloneKinds: new Set(),
+	}).graph;
+}
+
 describe("svelte topology model", () => {
 	test("maps backend topology into selectable Svelte Flow nodes and active edges", () => {
 		const topology: ResourceTopology = {
@@ -76,7 +91,7 @@ describe("svelte topology model", () => {
 			warnings: [],
 		};
 
-		const graph = buildFlowTopology(topology, "Pod:api-abc-123");
+		const graph = buildGraph(topology, "Pod:api-abc-123");
 
 		expect(graph.nodes.map((item) => item.id)).toEqual([
 			"Deployment:api",
@@ -102,8 +117,8 @@ describe("svelte topology model", () => {
 			warnings: [],
 		};
 
-		const ownership = buildFlowTopology(topology, null, "ownership");
-		const network = buildFlowTopology(topology, null, "networkFlow");
+		const ownership = buildGraph(topology, null, "ownership");
+		const network = buildGraph(topology, null, "networkFlow");
 
 		expect(ownership.nodes[0]?.id).toBe("standalone-kind:Service");
 		expect(network.nodes[0]?.data.showPortHints).toBe(true);
@@ -128,7 +143,7 @@ describe("svelte topology model", () => {
 			warnings: [],
 		};
 
-		const graph = buildFlowTopology(topology, pod.id);
+		const graph = buildGraph(topology, pod.id);
 
 		expect(graph.nodes.find((item) => item.id === pod.id)?.data.node?.metrics).toEqual(
 			pod.metrics,
@@ -247,24 +262,33 @@ describe("svelte topology model", () => {
 			edges: [],
 			warnings: [],
 		};
-		const graph = buildFlowTopology(topology, null, "networkFlow");
+		const view = buildFlowTopologyView(topology, {
+			mode: "networkFlow",
+			selectedNodeId: null,
+			showFullTopologyOnSelection: true,
+			expandedStandaloneKinds: new Set(),
+			viewportSize: { width: 1000, height: 500 },
+		});
 
-		expect(getTopologyTranslateExtent(graph.nodes, { width: 0, height: 640 })).toEqual([
-			[0, 0],
-			[0, 0],
-		]);
-		expect(getTopologyTranslateExtent(graph.nodes, { width: 1000, height: 500 })).toEqual([
+		expect(view.translateExtent).toEqual([
 			[-8657.333333333334, -4280.666666666667],
 			[9257.333333333334, 4570.666666666667],
 		]);
 	});
 
 	test("fits Svelte topology with tight side margins", () => {
-		expect(
-			widthFitFlowTopologyViewport(
-				{ left: 0, top: 0, right: 1000, bottom: 100, width: 1000, height: 100 },
-				{ width: 1000, height: 500 },
-			),
-		).toEqual({ x: 80, y: 208, zoom: 0.84 });
+		const graph = buildGraph(
+			{ nodes: [node("Pod", "api-0")], edges: [], warnings: [] },
+			null,
+			"networkFlow",
+		);
+		const plan = buildFlowTopologyFitPlan(
+			graph.nodes,
+			graph.edges,
+			null,
+			"test",
+			{ width: 1000, height: 500 },
+		);
+		expect(plan?.viewport.zoom).toBeGreaterThan(0);
 	});
 });

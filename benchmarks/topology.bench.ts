@@ -5,7 +5,7 @@ import {
 	buildFlowTopologyLayout,
 	buildFlowTopologySelectionIndex,
 	resourceTopologyNodeId,
-} from "@/features/resources/topology";
+} from "@/features/resources/topology-implementation";
 import type {
 	ResourceSummary,
 	ResourceTopology,

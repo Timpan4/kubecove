@@ -2,11 +2,9 @@
 	import { tick } from "svelte";
 	import { useSvelteFlow } from "@xyflow/svelte";
 	import {
-		getFlowTopologyBounds,
-		topologyViewportFitKey,
+		buildFlowTopologyFitPlan,
 		type FlowTopologyEdge,
 		type FlowTopologyNode,
-		widthFitFlowTopologyViewport,
 	} from "./topology";
 
 	const FIT_VIEW_DURATION_MS = 260;
@@ -30,41 +28,28 @@
 
 	const flow = useSvelteFlow<FlowTopologyNode, FlowTopologyEdge>();
 	let lastFitKey = "";
-	const selectedPathNodes = $derived(
-		selectedNodeId
-			? nodes.filter((node) => node.data.selected || node.data.connected)
-			: [],
+	const fitPlan = $derived(
+		buildFlowTopologyFitPlan(nodes, edges, selectedNodeId, viewportKey, {
+			width: viewportWidth,
+			height: viewportHeight,
+		}),
 	);
-	const nodesToFit = $derived(selectedPathNodes.length > 0 ? selectedPathNodes : nodes);
-	const fitKey = $derived(
-		topologyViewportFitKey(nodes, nodesToFit, edges, selectedNodeId, viewportKey),
-	);
-	const fitBounds = $derived(getFlowTopologyBounds(nodes, nodesToFit));
 	const fitDuration = $derived(
-		selectedPathNodes.length > 0 ? SELECTED_FIT_VIEW_DURATION_MS : FIT_VIEW_DURATION_MS,
+		fitPlan?.focused ? SELECTED_FIT_VIEW_DURATION_MS : FIT_VIEW_DURATION_MS,
 	);
 
 	$effect(() => {
 		if (
-			nodesToFit.length === 0 ||
-			!fitBounds ||
-			viewportWidth <= 0 ||
-			viewportHeight <= 0 ||
-			fitKey === lastFitKey ||
+			!fitPlan ||
+			fitPlan.key === lastFitKey ||
 			typeof window === "undefined"
 		) return;
-		lastFitKey = fitKey;
+		lastFitKey = fitPlan.key;
 		let secondFrame: number | null = null;
 		const firstFrame = window.requestAnimationFrame(() => {
 			secondFrame = window.requestAnimationFrame(() => {
 				void tick().then(() =>
-					flow.setViewport(
-						widthFitFlowTopologyViewport(fitBounds, {
-							width: viewportWidth,
-							height: viewportHeight,
-						}),
-						{ duration: fitDuration },
-					),
+					flow.setViewport(fitPlan.viewport, { duration: fitDuration }),
 				);
 			});
 		});
