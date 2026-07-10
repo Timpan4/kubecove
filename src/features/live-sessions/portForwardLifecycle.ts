@@ -9,6 +9,7 @@ import type { PortForwardSessionSummary, ResourceSummary } from "@/lib/types";
 import type { SavedPortForward, SavedWorkspace } from "@/lib/workspace-model";
 import { workspaceScopeContexts } from "@/lib/workspace-model";
 import {
+	portForwardRequestKubeconfigEnvVar,
 	portForwardSessionMatchesKubeconfigSource,
 	sortPortForwardSessions,
 } from "./helpers";
@@ -55,7 +56,9 @@ export function portForwardSessionsForWorkspace(
 	);
 }
 
-async function invalidate(invalidateQueries: InvalidatePortForwardQueries): Promise<void> {
+export async function invalidatePortForwardQueries(
+	invalidateQueries: InvalidatePortForwardQueries,
+): Promise<void> {
 	await invalidateQueries({ queryKey: queryKeys.portForwards() });
 }
 
@@ -69,7 +72,7 @@ export async function stopPortForward({
 	invalidateQueries: InvalidatePortForwardQueries;
 }): Promise<void> {
 	await stopPodPortForward(client, sessionId);
-	await invalidate(invalidateQueries);
+	await invalidatePortForwardQueries(invalidateQueries);
 }
 
 export async function reconnectPortForward({
@@ -82,7 +85,7 @@ export async function reconnectPortForward({
 	invalidateQueries: InvalidatePortForwardQueries;
 }): Promise<PortForwardSessionSummary> {
 	const reconnected = await reconnectPortForwardSession({ client, session });
-	await invalidate(invalidateQueries);
+	await invalidatePortForwardQueries(invalidateQueries);
 	return reconnected;
 }
 
@@ -106,16 +109,14 @@ export async function startResourcePortForward({
 	}
 	const session = await startPodPortForward(client, {
 		clusterContext: resource.cluster,
-		kubeconfigEnvVar: kubeconfigSource?.startsWith("kubeconfigSource=")
-			? undefined
-			: kubeconfigSource,
+		kubeconfigEnvVar: portForwardRequestKubeconfigEnvVar(kubeconfigSource),
 		namespace: resource.namespace,
 		targetKind: resource.kind,
 		targetName: resource.name,
 		remotePort,
 		localPort,
 	});
-	await invalidate(invalidateQueries);
+	await invalidatePortForwardQueries(invalidateQueries);
 	return session;
 }
 
@@ -129,9 +130,9 @@ export async function startSavedPortForward({
 }): Promise<SavedPortForwardStartResult> {
 	const result = await startSavedPortForwardPrimitive({
 		...options,
-		knownSessions: knownSessions ?? (await listPortForwards(options.client).catch(() => [])),
+		knownSessions: knownSessions ?? (await listPortForwards(options.client)),
 	});
-	await invalidate(invalidateQueries);
+	await invalidatePortForwardQueries(invalidateQueries);
 	return result;
 }
 
@@ -142,7 +143,7 @@ export async function startSavedPortForwards({
 	invalidateQueries: InvalidatePortForwardQueries;
 }): Promise<SavedPortForwardStartResult[]> {
 	const results = await startSavedPortForwardsPrimitive(options);
-	await invalidate(invalidateQueries);
+	await invalidatePortForwardQueries(invalidateQueries);
 	return results;
 }
 

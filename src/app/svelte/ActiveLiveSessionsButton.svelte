@@ -19,7 +19,7 @@
 		portForwardQueryOptions,
 		reconnectPortForward as reconnectPortForwardLifecycle,
 		stopPortForward as stopPortForwardLifecycle,
-	} from "@/features/live-sessions/portForwardLifecycle";
+	} from "@/features/live-sessions";
 	import { podExecCommandText, sortPodExecSessions } from "@/features/resource-detail/pod-exec-helpers";
 	import { settingsStore } from "@/lib/settings-store";
 	import {

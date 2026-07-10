@@ -62,7 +62,7 @@
 		shouldAutoStartSavedPortForwards,
 		shouldShowSavedPortForwardRestorePrompt,
 	} from "@/features/live-sessions/restore";
-	import { startSavedPortForwards } from "@/features/live-sessions/portForwardLifecycle";
+	import { startSavedPortForwards } from "@/features/live-sessions";
 	import ResourceDetailPanel from "@/features/resource-detail/ResourceDetailPanel.svelte";
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";

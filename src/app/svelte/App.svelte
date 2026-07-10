@@ -8,6 +8,7 @@
 	import UpdateStatusButton from "./UpdateStatusButton.svelte";
 	import WorkspaceShell from "./WorkspaceShell.svelte";
 	import WorkspaceLauncher from "@/features/workspaces/WorkspaceLauncher.svelte";
+	import { invalidatePortForwardQueries } from "@/features/live-sessions";
 	import ForegroundLoadingBar from "./ForegroundLoadingBar.svelte";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import { diagnosticLog, setDiagnosticsEnabled } from "@/lib/diagnostics";
@@ -133,7 +134,9 @@
 			.then(async (result) => {
 				if (cancelled) return;
 				await Promise.all([
-					queryClient.invalidateQueries({ queryKey: queryKeys.portForwards() }),
+					invalidatePortForwardQueries((options) =>
+						queryClient.invalidateQueries(options),
+					),
 					queryClient.invalidateQueries({
 						queryKey: queryKeys.podExecSessions(),
 					}),

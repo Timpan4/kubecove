@@ -289,7 +289,7 @@ spec:
 			"$settingsStore.keepLiveSessionsOnWorkspaceSwitch",
 		);
 		expect(svelteAppSource).toContain("workspaceScopeContexts(workspace.scope)");
-		expect(svelteAppSource).toContain("queryKeys.portForwards()");
+		expect(svelteAppSource).toContain("invalidatePortForwardQueries(");
 		expect(svelteAppSource).toContain("queryKeys.podExecSessions()");
 		expect(svelteAppSource).toContain(
 			"Stopped $" + "{result.stoppedPortForwards} port",

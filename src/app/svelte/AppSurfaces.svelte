@@ -20,7 +20,7 @@
 		startSavedPortForward as startSavedPortForwardLifecycle,
 		startSavedPortForwards as startSavedPortForwardsLifecycle,
 		stopPortForward as stopPortForwardLifecycle,
-	} from "@/features/live-sessions/portForwardLifecycle";
+	} from "@/features/live-sessions";
 	import {
 		findHelmReleaseTarget,
 		groupHelmReleasesByNamespace,

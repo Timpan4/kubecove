@@ -35,7 +35,7 @@
 		portForwardQueryOptions,
 		startResourcePortForward,
 		stopPortForward,
-	} from "@/features/live-sessions/portForwardLifecycle";
+	} from "@/features/live-sessions";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import { settingsStore } from "@/lib/settings-store";
 	import type { TauriClient } from "@/lib/tauri";

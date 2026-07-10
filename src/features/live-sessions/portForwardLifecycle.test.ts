@@ -4,6 +4,7 @@ import { createWorkspaceRecord } from "@/lib/workspace-model";
 import {
 	portForwardQueryOptions,
 	portForwardSessionsForWorkspace,
+	startSavedPortForward,
 	stopPortForward,
 } from "./portForwardLifecycle";
 
@@ -97,5 +98,43 @@ describe("port forward lifecycle", () => {
 
 		expect(calls).toEqual(["port-forward-1"]);
 		expect(invalidated).toEqual(["port-forwards"]);
+	});
+
+	test("does not start a saved forward when active sessions cannot be listed", async () => {
+		const client = createMockTauriClient({
+			list_port_forwards: () => {
+				throw new Error("session list unavailable");
+			},
+		});
+		const workspace = createWorkspaceRecord({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: ["payments"],
+		});
+		let error: unknown = null;
+
+		try {
+			await startSavedPortForward({
+				client,
+				workspaceId: workspace.id,
+				portForward: {
+					id: "saved-1",
+					clusterContext: "kind-dev",
+					namespace: "payments",
+					serviceName: "api",
+					servicePort: 8080,
+					createdAt: "2026-07-10T00:00:00Z",
+					updatedAt: "2026-07-10T00:00:00Z",
+				},
+				updateSavedPortForward: () => {},
+				invalidateQueries: async () => {},
+			});
+		} catch (caught) {
+			error = caught;
+		}
+
+		expect(error instanceof Error ? error.message : error).toBe(
+			"session list unavailable",
+		);
 	});
 });
