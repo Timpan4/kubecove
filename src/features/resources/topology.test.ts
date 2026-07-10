@@ -258,11 +258,13 @@ describe("topology stoplight tones", () => {
 		expect(topologyReadyTone("0/1", "Running")).toBe("error");
 	});
 
-	test("uses strongest visible condition for the left rail", () => {
-		expect(topologyRailTone("Running", "true", 0)).toBe("success");
-		expect(topologyRailTone("Running", "true", 4)).toBe("warning");
-		expect(topologyRailTone("Running", "true", 5)).toBe("error");
-		expect(topologyRailTone("Failed", "true", 3)).toBe("error");
-		expect(topologyRailTone("Running", "true", 0, "degraded")).toBe("error");
+	test("uses live status, readiness, and health for the left rail", () => {
+		expect(topologyRailTone("Running", "true")).toBe("success");
+		expect(topologyRailTone("Running", "true", "restarted")).toBe("success");
+		expect(topologyRailTone("Pending", "0/1")).toBe("warning");
+		expect(topologyRailTone("Running", "0/1")).toBe("error");
+		expect(topologyRailTone("Running", "true", "attention")).toBe("warning");
+		expect(topologyRailTone("Failed", "true")).toBe("error");
+		expect(topologyRailTone("Running", "true", "degraded")).toBe("error");
 	});
 });
