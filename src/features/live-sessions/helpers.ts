@@ -72,12 +72,19 @@ export function isPortForwardForResource(
 	kubeconfigSource?: string,
 ): boolean {
 	return (
-		sessionKubeconfigSource(session) === normalizeKubeconfigSource(kubeconfigSource) &&
+		portForwardSessionMatchesKubeconfigSource(session, kubeconfigSource) &&
 		session.clusterContext === resource.cluster &&
 		session.namespace === resource.namespace &&
 		session.targetKind === resource.kind &&
 		session.targetName === resource.name
 	);
+}
+
+export function portForwardSessionMatchesKubeconfigSource(
+	session: PortForwardSessionSummary,
+	kubeconfigSource?: string,
+): boolean {
+	return sessionKubeconfigSource(session) === normalizeKubeconfigSource(kubeconfigSource);
 }
 
 export function savedPortForwardLabel(portForward: SavedPortForward): string {
