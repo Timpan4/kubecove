@@ -6,6 +6,7 @@ on:
       - main
 
 permissions:
+  actions: write
   contents: write
   pull-requests: read
 
@@ -74,3 +75,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           bun scripts/tag-release.ts
+
+      - name: Start release workflow
+        if: steps.pr.outputs.should_tag == 'true'
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag_name="app-v$(node -p "require('./package.json').version")"
+          gh workflow run release.yml --ref "$tag_name"
