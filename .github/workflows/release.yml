@@ -218,7 +218,7 @@ jobs:
             platform: macos-latest
             args: "--target universal-apple-darwin --bundles app,dmg"
             rust-targets: "aarch64-apple-darwin x86_64-apple-darwin"
-            expected-updater-assets: "KubeCove_universal.app.tar.gz KubeCove_universal.app.tar.gz.sig"
+            expected-updater-assets: "KubeCove___VERSION___universal.app.tar.gz KubeCove___VERSION___universal.app.tar.gz.sig"
           - label: Windows x64
             platform: windows-latest
             args: "--target x86_64-pc-windows-msvc"
@@ -371,8 +371,8 @@ jobs:
           const platforms = latest.platforms ?? {};
 
           const requiredAssets = [
-            "KubeCove_universal.app.tar.gz",
-            "KubeCove_universal.app.tar.gz.sig",
+            `KubeCove_${version}_universal.app.tar.gz`,
+            `KubeCove_${version}_universal.app.tar.gz.sig`,
             `KubeCove_${version}_amd64.AppImage`,
             `KubeCove_${version}_amd64.AppImage.sig`,
             `KubeCove_${version}_x64-setup.exe`,

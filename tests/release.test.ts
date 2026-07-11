@@ -18,6 +18,20 @@ import {
 } from "../scripts/release-notes";
 
 describe("release version helpers", () => {
+	test("keeps release dispatch and macOS asset checks aligned", () => {
+		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
+		const tagWorkflow = readFileSync(".github/workflows/tag-release.yml", "utf8");
+
+		expect(releaseWorkflow).toContain(
+			'expected-updater-assets: "KubeCove___VERSION___universal.app.tar.gz KubeCove___VERSION___universal.app.tar.gz.sig"',
+		);
+		expect(releaseWorkflow).toContain(
+			"`KubeCove_$" + "{version}_universal.app.tar.gz`",
+		);
+		expect(tagWorkflow).toContain("actions: write");
+		expect(tagWorkflow).toContain('gh workflow run release.yml --ref "$tag_name"');
+	});
+
 	test("reads the package version from Cargo.toml", () => {
 		expect(
 			parseCargoPackageVersion(`
