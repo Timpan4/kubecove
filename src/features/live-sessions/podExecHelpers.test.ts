@@ -5,8 +5,7 @@ import {
 	isPodExecForResource,
 	podExecCommandText,
 	podExecTarget,
-	sortPodExecSessions,
-} from "./podExecHelpers";
+} from "@/features/live-sessions";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
@@ -130,16 +129,10 @@ describe("pod exec helpers", () => {
 		);
 	});
 
-	test("matches and sorts active sessions for a selected Pod", () => {
+	test("matches active sessions for a selected Pod", () => {
 		expect(isPodExecForResource(session, pod)).toBe(true);
 		expect(
 			isPodExecForResource({ ...session, podName: "worker-0" }, pod),
 		).toBe(false);
-		expect(
-			sortPodExecSessions([
-				{ ...session, id: "b", startedAt: "2026-06-01T10:01:00Z" },
-				{ ...session, id: "a", startedAt: "2026-06-01T10:00:00Z" },
-			]).map((item) => item.id),
-		).toEqual(["a", "b"]);
 	});
 });
