@@ -8,7 +8,7 @@
 		CardHeader,
 		CardTitle,
 	} from "@/components/ui/svelte";
-	import SimpleTable from "./SimpleTable.svelte";
+	import SimpleTable from "@/components/SimpleTable.svelte";
 	import StatGrid from "@/components/StatGrid.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 

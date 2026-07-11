@@ -30,27 +30,61 @@
 		helmReconciliationStatusLabel,
 		helmReleaseKey,
 	} from "@/features/helm/helpers";
-	import type { HelmManifestResourceSummary } from "@/lib/types";
+	import type {
+		HelmManifestResourceSummary,
+		HelmReconciliationResource,
+		HelmReleaseDetails,
+		HelmReleaseReconciliation,
+		HelmReleaseSummary,
+	} from "@/lib/types";
 	import { formatStatusLabel } from "@/lib/utils";
-	import SimpleTable from "./SimpleTable.svelte";
+	import SimpleTable from "@/components/SimpleTable.svelte";
 	import StatGrid from "@/components/StatGrid.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 
-	let {
-		helmQuery,
-		groupedHelmReleases,
-		filteredHelmReleases,
-		helmSearch = $bindable(""),
-		selectedHelmRelease = $bindable(null),
-		selectedHelmReleaseKey,
-		helmDetailsQuery,
-		helmReconciliationQuery,
-		helmReconciliationRows,
-		onOpenResources,
-		helmStatusVariant,
-		helmReconciliationClass,
-		helmReconciliationSource,
+	type QueryState<T> = {
+		data?: T;
+		isPending: boolean;
+		isError: boolean;
+		error: unknown;
+	};
+
+	let { list, details, reconciliation, actions }: {
+		list: {
+			query: QueryState<HelmReleaseSummary[]>;
+			groups: Array<{ namespace: string; releases: HelmReleaseSummary[] }>;
+			filtered: HelmReleaseSummary[];
+			search: string;
+			setSearch: (search: string) => void;
+			selected: HelmReleaseSummary | null;
+			selectedKey: string;
+			select: (release: HelmReleaseSummary | null) => void;
+		};
+		details: { query: QueryState<HelmReleaseDetails> };
+		reconciliation: {
+			query: QueryState<HelmReleaseReconciliation>;
+			rows: HelmReconciliationResource[];
+			classFor: (status: HelmReconciliationResource["status"]) => string;
+			sourceFor: (resource: HelmReconciliationResource) => string;
+		};
+		actions: {
+			openResources: (namespace?: string | string[], initialSearch?: string) => void;
+			statusVariant: (status: string | undefined) => "destructive" | "outline";
+		};
 	} = $props();
+	const helmQuery = $derived(list.query);
+	const groupedHelmReleases = $derived(list.groups);
+	const filteredHelmReleases = $derived(list.filtered);
+	const helmSearch = $derived(list.search);
+	const selectedHelmRelease = $derived(list.selected);
+	const selectedHelmReleaseKey = $derived(list.selectedKey);
+	const helmDetailsQuery = $derived(details.query);
+	const helmReconciliationQuery = $derived(reconciliation.query);
+	const helmReconciliationRows = $derived(reconciliation.rows);
+	const onOpenResources = $derived(actions.openResources);
+	const helmStatusVariant = $derived(actions.statusVariant);
+	const helmReconciliationClass = $derived(reconciliation.classFor);
+	const helmReconciliationSource = $derived(reconciliation.sourceFor);
 </script>
 
 <SurfaceFrame icon={Package} title="Helm Releases" query={helmQuery} errorLabel="Helm releases unavailable">
@@ -68,13 +102,15 @@
 				/>
 				<Input
 					class="h-8 pl-8"
-					bind:value={helmSearch}
+					value={helmSearch}
+					oninput={(event: Event & { currentTarget: HTMLInputElement }) =>
+						list.setSearch(event.currentTarget.value)}
 					placeholder="Search by release, namespace, chart, app version..."
 					aria-label="Search Helm releases"
 				/>
 			</div>
 			{#if helmSearch}
-				<Button type="button" variant="outline" size="sm" onclick={() => (helmSearch = "")}>
+				<Button type="button" variant="outline" size="sm" onclick={() => list.setSearch("")}>
 					<X data-icon="inline-start" />
 					Clear
 				</Button>
@@ -117,11 +153,11 @@
 										tabindex="0"
 										role="button"
 										aria-pressed={helmReleaseKey(release) === selectedHelmReleaseKey}
-										onclick={() => (selectedHelmRelease = release)}
+										onclick={() => list.select(release)}
 										onkeydown={(event: KeyboardEvent) => {
 											if (event.key === "Enter" || event.key === " ") {
 												event.preventDefault();
-												selectedHelmRelease = release;
+											list.select(release);
 											}
 											}}
 									>
@@ -167,7 +203,7 @@
 							<ExternalLink data-icon="inline-start" />
 							View resources
 						</Button>
-						<Button type="button" variant="ghost" size="icon" aria-label="Close Helm details" onclick={() => (selectedHelmRelease = null)}>
+						<Button type="button" variant="ghost" size="icon" aria-label="Close Helm details" onclick={() => list.select(null)}>
 							<X />
 						</Button>
 					</div>
