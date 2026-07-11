@@ -29,12 +29,69 @@
 		savedPortForwardMatchesSession,
 	} from "@/features/live-sessions/helpers";
 	import { podExecCommandText } from "./podExecHelpers";
-	import type { PortForwardSessionSummary } from "@/lib/types";
+	import type { PodExecSessionSummary, PortForwardSessionSummary } from "@/lib/types";
+	import type { SavedPortForward, SavedWorkspace } from "@/lib/workspace-model";
 	import StatGrid from "@/components/StatGrid.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 	import SavedPortForwardForm from "./SavedPortForwardForm.svelte";
+	import type { SavedPortForwardFormValues } from "./portForwardForms";
 
-	let { status, portForwards, savedForwards, podExec } = $props();
+	type LiveSessionStatus = {
+		query: { isPending: boolean; isError: boolean; error: unknown };
+		actionError: unknown;
+		actionMessage: string | null;
+		showKubeconfigSourceLabels: boolean;
+	};
+
+	type PortForwardViewModel = {
+		sessions: PortForwardSessionSummary[];
+		reconnectingId: string | null;
+		copyingId: string | null;
+		stoppingId: string | null;
+		title: (session: PortForwardSessionSummary) => string;
+		resolution: (session: PortForwardSessionSummary) => string;
+		copyUrl: (session: PortForwardSessionSummary) => Promise<void>;
+		reconnect: (session: PortForwardSessionSummary) => Promise<void>;
+		stop: (sessionId: string) => Promise<void>;
+	};
+
+	type SavedForwardViewModel = {
+		workspace: SavedWorkspace;
+		autoStart: boolean;
+		setAutoStart: (autoStart: boolean) => void;
+		startingAll: boolean;
+		startAll: () => Promise<void>;
+		startingId: string | null;
+		formOpen: boolean;
+		form: SavedPortForwardFormValues;
+		formError: string | null;
+		editingId: string | null;
+		kubeconfigSourceKey?: string;
+		beginAdd: () => void;
+		beginEdit: (portForward: SavedPortForward) => void;
+		resetForm: () => void;
+		submitForm: () => void;
+		delete: (portForward: SavedPortForward) => void;
+		start: (portForward: SavedPortForward) => Promise<void>;
+		setFormValue: (key: keyof SavedPortForwardFormValues, value: string) => void;
+	};
+
+	type PodExecViewModel = {
+		sessions: PodExecSessionSummary[];
+		stop: (sessionId: string) => Promise<void>;
+	};
+
+	let {
+		status,
+		portForwards,
+		savedForwards,
+		podExec,
+	}: {
+		status: LiveSessionStatus;
+		portForwards: PortForwardViewModel;
+		savedForwards: SavedForwardViewModel;
+		podExec: PodExecViewModel;
+	} = $props();
 	const liveSessionsQuery = $derived(status.query);
 	const liveSessionActionError = $derived(status.actionError);
 	const savedPortForwardActionMessage = $derived(status.actionMessage);
