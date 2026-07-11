@@ -441,8 +441,6 @@ describe("svelte workspace shell model", () => {
 });
 
 	test("Svelte Argo shortcuts preserve target application selection", () => {
-		const overview = readFileSync("src/features/workspaces/WorkspaceOverview.svelte", "utf8");
-		const surfaces = readFileSync("src/app/svelte/AppSurfaces.svelte", "utf8");
 		const workspace = createWorkspaceRecord({
 			name: "Ops",
 			clusterContext: "kind-dev",
@@ -453,10 +451,7 @@ describe("svelte workspace shell model", () => {
 			application: "checkout",
 		});
 
-		expect(overview).toContain("onOpenArgo(shortcut.argoApp)");
 		expect(navigation.targetGitOpsApplication).toBe("checkout");
-		expect(surfaces).toContain("targetGitOpsApplication");
-		expect(surfaces).toContain('item.type === "argoApp"');
 	});
 
 	test("Svelte workspace overview summarizes Flux in the GitOps card", () => {

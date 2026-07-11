@@ -1,4 +1,5 @@
 export {
+	argoApplicationResourceNamespaces,
 	buildFetchKeys,
 	buildResourceSearchIndex,
 	filterResourceSearchIndex,

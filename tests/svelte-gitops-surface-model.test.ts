@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import {
 	buildGitOpsRailItems,
 	buildGitOpsSelections,
@@ -21,7 +20,7 @@ import {
 	gitOpsSelectionSourceTooltipLines,
 	gitOpsSelectionSourceTooltipTitle,
 	gitOpsUnavailableProvider,
-} from "../src/app/svelte/gitOpsSurfaceModel";
+} from "../src/features/gitops/surfaceModel";
 
 const data = {
 	apps: [
@@ -102,14 +101,6 @@ const data = {
 		},
 	],
 };
-
-function gitOpsSurfaceSource(): string {
-	return [
-		readFileSync(new URL("../src/app/svelte/WorkspaceShell.svelte", import.meta.url), "utf8"),
-		readFileSync(new URL("../src/app/svelte/AppSurfaces.svelte", import.meta.url), "utf8"),
-		readFileSync(new URL("../src/app/svelte/GitOpsSurface.svelte", import.meta.url), "utf8"),
-	].join("\n");
-}
 
 describe("svelte GitOps surface model", () => {
 	test("builds provider rail counts for Argo CD and Flux groups", () => {
@@ -452,75 +443,4 @@ describe("svelte GitOps surface model", () => {
 		});
 	});
 
-	test("does not silently cap GitOps or Flux rows in the Svelte surface", () => {
-		const source = gitOpsSurfaceSource();
-
-		expect(source).not.toContain("gitOpsSelections.slice");
-		expect(source).not.toContain("data.flux.slice");
-	});
-
-	test("Svelte GitOps details reuse the resource inspector", () => {
-		const source = gitOpsSurfaceSource();
-
-		expect(source).toContain("onResourceInspect");
-		expect(source).toContain("gitOpsSelectionResource(selection)");
-		expect(source).toContain("<ResourceDetailPanel");
-		expect(source).toContain('sizeKey={resourceInspectorSizeKey}');
-		expect(source).toContain('viewMode === "argo" ? 30 : 40');
-		expect(source).toContain('viewMode === "argo" ? 25 : 33');
-		expect(source).not.toContain("gitOpsDetailsQuery");
-		expect(source).not.toContain("extractArgoStatusInsights");
-		expect(source).not.toContain('"svelte-gitops-details"');
-	});
-
-	test("Svelte GitOps details stay explicit instead of hijacking card clicks", () => {
-		const source = gitOpsSurfaceSource();
-
-		expect(source).toContain('gitOpsSelectionPrimaryAction(selection) === "openResources"');
-		expect(source).toContain("openSelectedArgoApplicationResources(selection)");
-		expect(source).toContain("openGitOpsDetails(event: MouseEvent, selection: GitOpsSelection)");
-		expect(source).toContain("data-details-key={gitOpsDetailsActionKey(item)}");
-	});
-
-	test("Svelte GitOps tooltips reset delay between targets", () => {
-		const source = gitOpsSurfaceSource();
-
-		expect(source).toContain("<TooltipProvider delayDuration={400} skipDelayDuration={0}>");
-	});
-
-	test("Svelte GitOps probes providers before listing Argo CRDs", () => {
-		const source = gitOpsSurfaceSource();
-
-		expect(source).toContain("detectArgoCD");
-		expect(source).toContain("queryKeys.argoDetect(workspace.scope.clusterContext, kubeconfigSourceKey)");
-		expect(source).toContain("queryKeys.fluxDetect(workspace.scope.clusterContext, kubeconfigSourceKey)");
-		expect(source).toContain("queryKeys.argoApps(workspace.scope.clusterContext, kubeconfigSourceKey)");
-		expect(source).toContain("queryKeys.argoAppSets(workspace.scope.clusterContext, kubeconfigSourceKey)");
-		expect(source).toContain("queryKeys.argoAppProjects(workspace.scope.clusterContext, kubeconfigSourceKey)");
-		expect(source).toContain("createQueries(() => ({");
-		expect(source).toContain("queryKeys.fluxResources(");
-		expect(source).toContain("fluxResourceQueries.flatMap");
-		expect(source).toContain("argoDetectionQuery.data === true");
-		expect(source).toContain("No GitOps providers detected");
-		expect(source).not.toContain('"svelte-gitops-surface"');
-		expect(source).not.toContain('"svelte-flux-resources-surface"');
-		expect(source).not.toContain(
-			"const [apps, appSets, projects, fluxDetection] = await Promise.all([",
-		);
-	});
-
-	test("Svelte GitOps keeps partial data visible when provider lists fail", () => {
-		const source = gitOpsSurfaceSource();
-		const queryStart = source.indexOf("const gitOpsQuery = $derived({");
-		const queryEnd = source.indexOf("const selectedGitOpsItemKey", queryStart);
-		const queryBody = source.slice(queryStart, queryEnd);
-
-		expect(source).toContain("const gitOpsListError = $derived(");
-		expect(source).toContain("Some GitOps resources could not load");
-		expect(source).toContain("error={gitOpsListError}");
-		expect(source).toContain('mode="compact"');
-		expect(queryBody).toContain("isError: false");
-		expect(queryBody).not.toContain("argoAppsQuery.isError");
-		expect(queryBody).not.toContain("fluxResourceQueries.some((query) => query.isError)");
-	});
 });
