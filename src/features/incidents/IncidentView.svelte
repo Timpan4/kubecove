@@ -44,6 +44,9 @@
 		incidentFilterOptions,
 		incidentGroups,
 		selectedResource = null,
+		selectedIncident,
+		emptyState,
+		visibleIncidentCount,
 		onOpenResources,
 		onResourceInspect,
 		onResourceSelect,
@@ -55,6 +58,9 @@
 		incidentFilterOptions: IncidentFilterOption[];
 		incidentGroups: Array<{ label: string; items: IncidentCockpitItem[] }>;
 		selectedResource?: ResourceSummary | null;
+		selectedIncident: IncidentCockpitItem | null;
+		emptyState: "clean" | "filtered" | "ready";
+		visibleIncidentCount: number;
 		onOpenResources: (
 			namespace?: string | string[],
 			initialSearch?: string,
@@ -64,13 +70,6 @@
 		onResourceInspect: (resource: ResourceSummary, detailTab?: PathStateDetailTab) => void;
 		onResourceSelect: (resource: ResourceSummary) => void;
 	} = $props();
-
-	const visibleIncidents = $derived(
-		incidentGroups.flatMap((group) => group.items),
-	);
-	const selectedIncident = $derived(
-		visibleIncidents.find((item) => isIncidentResourceSelected(item, selectedResource)) ?? null,
-	);
 
 	function inspectIncident(item: IncidentCockpitItem, tab: PathStateDetailTab = "details") {
 		onResourceInspect(item.resource, tab);
@@ -159,7 +158,7 @@
 		{/each}
 	</div>
 
-	{#if incidentCounts.total === 0}
+	{#if emptyState === "clean"}
 		<Empty class="min-h-40 border border-dashed bg-surface-1/50">
 			<EmptyHeader><EmptyTitle>No active incident signals</EmptyTitle><EmptyDescription>Scope looks clean.</EmptyDescription></EmptyHeader>
 			<Button type="button" variant="outline" onclick={() => onOpenResources()}>
@@ -167,7 +166,7 @@
 				Open resources
 			</Button>
 		</Empty>
-	{:else if incidentGroups.length === 0}
+	{:else if emptyState === "filtered"}
 		<Empty class="min-h-40 border border-dashed bg-surface-1/50">
 			<EmptyHeader>
 				<EmptyTitle>No matching incident signals</EmptyTitle>
@@ -182,7 +181,7 @@
 						<h3 class="text-sm font-semibold">Signal queue</h3>
 						<p class="mt-1 text-xs text-muted-foreground">Grouped by ownership, sorted by severity and recency.</p>
 					</div>
-					<Badge variant="secondary" class="tabular-nums">{visibleIncidents.length}</Badge>
+					<Badge variant="secondary" class="tabular-nums">{visibleIncidentCount}</Badge>
 				</header>
 				<div class="max-h-[58vh] min-h-0 overflow-y-auto p-3">
 					<div class="flex flex-col gap-3">

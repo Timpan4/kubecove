@@ -497,9 +497,8 @@
 			{workspace}
 			{sourceReady}
 			{kubeconfigSourceKey}
-			initialIncidentFilter={incidentFilter}
+			bind:incidentFilter
 			{selectedResource}
-			onIncidentFilterChange={(filter) => (incidentFilter = filter)}
 			{onOpenResources}
 			{onResourceInspect}
 			onResourceSelect={(resource) => onResourceSelect(resource, treeNodeForResource(resource))}

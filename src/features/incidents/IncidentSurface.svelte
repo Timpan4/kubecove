@@ -1,28 +1,20 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
 	import type { HealthFilter } from "@/features/resources";
-	import { buildWorkspaceFetchKeys, buildWorkspaceFetchPlans } from "@/features/workspaces";
 	import type { PathStateDetailTab } from "@/lib/path-state";
-	import { queryKeys } from "@/lib/queryKeys";
 	import { createTauriClient, listIncidentCockpit } from "@/lib/tauri";
 	import type { IncidentCockpitSummary, ResourceSummary } from "@/lib/types";
-	import { workspaceScopeContexts, type SavedWorkspace } from "@/lib/workspace-model";
-	import {
-		countIncidentItems,
-		filterIncidentItems,
-		groupIncidentItems,
-		type IncidentFilter,
-	} from "./helpers";
+	import type { SavedWorkspace } from "@/lib/workspace-model";
+	import type { IncidentFilter } from "./helpers";
 	import IncidentView from "./IncidentView.svelte";
-	import { buildIncidentFilterOptions } from "./model";
+	import { buildIncidentQueryState, buildIncidentSurfaceState } from "./surfaceState";
 
 	let {
 		workspace,
 		sourceReady,
 		kubeconfigSourceKey,
-		initialIncidentFilter = "all",
+		incidentFilter = $bindable("all" as IncidentFilter),
 		selectedResource = null,
-		onIncidentFilterChange = () => {},
 		onOpenResources,
 		onResourceInspect,
 		onResourceSelect,
@@ -30,9 +22,8 @@
 		workspace: SavedWorkspace;
 		sourceReady: boolean;
 		kubeconfigSourceKey?: string;
-		initialIncidentFilter?: IncidentFilter;
+		incidentFilter?: IncidentFilter;
 		selectedResource?: ResourceSummary | null;
-		onIncidentFilterChange?: (filter: IncidentFilter) => void;
 		onOpenResources: (
 			namespace?: string | string[],
 			initialSearch?: string,
@@ -44,30 +35,32 @@
 	} = $props();
 
 	const client = createTauriClient();
-	function initialIncidentFilterValue(): IncidentFilter {
-		return initialIncidentFilter;
-	}
-	let incidentFilter = $state<IncidentFilter>(initialIncidentFilterValue());
-	const fetchKeys = $derived(buildWorkspaceFetchKeys(workspace.scope));
-	const workspaceContextKey = $derived(workspaceScopeContexts(workspace.scope).join("|"));
+	const queryState = $derived(
+		buildIncidentQueryState(workspace, sourceReady, kubeconfigSourceKey),
+	);
 	const incidentsQuery = createQuery<IncidentCockpitSummary>(() => ({
-		queryKey: queryKeys.incidentCockpit(workspaceContextKey, fetchKeys, kubeconfigSourceKey),
+		queryKey: queryState.queryKey,
 		queryFn: loadIncidents,
-		enabled: sourceReady && fetchKeys.length > 0,
+		enabled: queryState.enabled,
 		staleTime: 15_000,
 	}));
-	const visibleIncidents = $derived(
-		filterIncidentItems(incidentsQuery.data?.items ?? [], incidentFilter),
+	const surfaceState = $derived(
+		buildIncidentSurfaceState(
+			incidentsQuery.data?.items ?? [],
+			incidentFilter,
+			selectedResource,
+		),
 	);
-	const incidentCounts = $derived(countIncidentItems(incidentsQuery.data?.items ?? []));
-	const incidentFilterOptions = $derived(buildIncidentFilterOptions(incidentCounts));
-	const incidentGroups = $derived(groupIncidentItems(visibleIncidents));
-
-	$effect(() => onIncidentFilterChange(incidentFilter));
+	const incidentCounts = $derived(surfaceState.counts);
+	const incidentFilterOptions = $derived(surfaceState.filterOptions);
+	const incidentGroups = $derived(surfaceState.groups);
+	const selectedIncident = $derived(surfaceState.selectedIncident);
+	const emptyState = $derived(surfaceState.emptyState);
+	const visibleIncidentCount = $derived(surfaceState.visibleCount);
 
 	async function loadIncidents(): Promise<IncidentCockpitSummary> {
 		const summaries = await Promise.all(
-			buildWorkspaceFetchPlans(workspace.scope).map((plan) =>
+			queryState.fetchPlans.map((plan) =>
 				listIncidentCockpit(client, plan.clusterContext, plan.requests, kubeconfigSourceKey),
 			),
 		);
@@ -91,6 +84,9 @@
 	{incidentFilterOptions}
 	{incidentGroups}
 	{selectedResource}
+	{selectedIncident}
+	{emptyState}
+	{visibleIncidentCount}
 	{onOpenResources}
 	{onResourceInspect}
 	{onResourceSelect}

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { IncidentCockpitItem } from "../src/lib/types";
+import { createWorkspaceRecord } from "../src/lib/workspace-model";
+import {
+	buildIncidentQueryState,
+	buildIncidentSurfaceState,
+} from "../src/features/incidents";
 import {
 	buildIncidentFilterOptions,
 	incidentCaseSummary,
@@ -50,6 +55,43 @@ const item: IncidentCockpitItem = {
 };
 
 describe("incident surface model", () => {
+	test("publishes scope-aware query state through the feature boundary", () => {
+		const workspace = createWorkspaceRecord({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			clusterContexts: ["kind-prod"],
+			namespaces: ["default"],
+			kinds: ["Pod"],
+		});
+		const waiting = buildIncidentQueryState(workspace, false, "source-a");
+		const ready = buildIncidentQueryState(workspace, true, "source-a");
+
+		expect(waiting.enabled).toBe(false);
+		expect(ready.enabled).toBe(true);
+		expect(ready.fetchPlans).toEqual([
+			{ clusterContext: "kind-dev", requests: [{ kind: "Pod", namespace: "default" }] },
+			{ clusterContext: "kind-prod", requests: [{ kind: "Pod", namespace: "default" }] },
+		]);
+		expect(ready.queryKey).toContain("kubeconfigEnv=source-a");
+	});
+
+	test("publishes selection, empty states, and uncapped rows through the feature boundary", () => {
+		const items = Array.from({ length: 120 }, (_, index) => ({
+			...item,
+			resource: { ...item.resource, name: `api-${index}` },
+		}));
+		const ready = buildIncidentSurfaceState(items, "attention", items[87].resource);
+		const filtered = buildIncidentSurfaceState(items, "degraded", null);
+		const clean = buildIncidentSurfaceState([], "all", null);
+
+		expect(ready.visibleCount).toBe(120);
+		expect(ready.groups.flatMap((group) => group.items)).toHaveLength(120);
+		expect(ready.selectedIncident?.resource.name).toBe("api-87");
+		expect(ready.emptyState).toBe("ready");
+		expect(filtered.emptyState).toBe("filtered");
+		expect(clean.emptyState).toBe("clean");
+	});
+
 	test("builds labeled filter options with counts", () => {
 		expect(buildIncidentFilterOptions({
 			total: 4,
