@@ -202,7 +202,7 @@
 		mapPanelOpen =
 			pathState?.mapPanelOpen ?? getSettingsSnapshot().showOwnershipMapByDefault;
 		tablePanelOpen = pathState?.tablePanelOpen ?? true;
-		if (pathState) initialPathStateConsumed = true;
+		initialPathStateConsumed = true;
 	});
 	const availableKindsKey = $derived(
 		availableKinds.map(kindSelectionKey).sort().join(","),

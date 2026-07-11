@@ -128,6 +128,9 @@ export function navigateWorkspace(
 		return { ...state, focusedResource: intent.resource, restoreTargetResource: null };
 	}
 	if (intent.type === "updateResourceBrowserPath") {
+		if (JSON.stringify(state.resourceBrowserPathState) === JSON.stringify(intent.pathState)) {
+			return state;
+		}
 		return { ...state, resourceBrowserPathState: intent.pathState };
 	}
 	if (intent.type === "inspectResource") {

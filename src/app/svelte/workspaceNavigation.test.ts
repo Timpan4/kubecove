@@ -220,6 +220,35 @@ describe("workspace navigation", () => {
 		expect(updated.resourceBrowserPathState).toEqual(pathState);
 	});
 
+	test("ignores an unchanged resource-browser path state", () => {
+		const pathState: PathStateResourceBrowserState = {
+			selectedNamespaces: ["payments"],
+			selectedKinds: ["Deployment"],
+			search: "",
+			gitOpsFilter: "",
+			healthFilter: "all",
+			sortColumn: "name",
+			sortDesc: false,
+			pageIndex: 0,
+			scopeEditorOpen: false,
+			collapsedGroups: [],
+			topologyMode: "ownership",
+			selectedTopologyNodeId: null,
+			mapPanelOpen: true,
+			tablePanelOpen: true,
+		};
+		const initial = navigateWorkspace(createWorkspaceNavigation(workspace), {
+			type: "updateResourceBrowserPath",
+			pathState,
+		});
+		const unchanged = navigateWorkspace(initial, {
+			type: "updateResourceBrowserPath",
+			pathState: { ...pathState },
+		});
+
+		expect(unchanged).toBe(initial);
+	});
+
 	test("clears cluster-bound navigation after a context change", () => {
 		const focused = navigateWorkspace(createWorkspaceNavigation(workspace), {
 			type: "selectResource",
