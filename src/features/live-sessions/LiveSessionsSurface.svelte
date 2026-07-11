@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
-	import { workspaceStore } from "@/features/workspaces/workspaceStore";
+	import { workspaceStore } from "@/features/workspaces";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import { createTauriClient } from "@/lib/tauri";
 	import type {
@@ -309,37 +309,45 @@
 </script>
 
 <LiveSessionsView
-	{workspace}
-	{liveSessionsQuery}
-	{autoStartSavedPortForwards}
-	{setAutoStartSavedPortForwards}
-	{startingSavedPortForwards}
-	{startAllSavedPortForwards}
-	{visiblePortForwardSessions}
-	{visibleExecSessions}
-	{liveSessionActionError}
-	{savedPortForwardActionMessage}
-	{showKubeconfigSourceLabels}
-	{reconnectingSessionId}
-	{copyingSessionId}
-	{stoppingSessionId}
-	{startingSavedPortForwardId}
-	{savedPortForwardFormOpen}
-	{savedPortForwardForm}
-	{savedPortForwardFormError}
-	{editingSavedPortForwardId}
-	{kubeconfigSourceKey}
-	{portForwardSessionTitle}
-	{portForwardSessionResolution}
-	{beginAddSavedPortForward}
-	{beginEditSavedPortForward}
-	{resetSavedPortForwardForm}
-	{submitSavedPortForwardForm}
-	{deleteSavedPortForward}
-	{copyPortForwardUrl}
-	{reconnectPortForward}
-	{startSavedPortForward}
-	{stopPortForwardSession}
-	{stopExecSession}
-	{setSavedPortForwardFormValue}
+	status={{
+		query: liveSessionsQuery,
+		actionError: liveSessionActionError,
+		actionMessage: savedPortForwardActionMessage,
+		showKubeconfigSourceLabels,
+	}}
+	portForwards={{
+		sessions: visiblePortForwardSessions,
+		reconnectingId: reconnectingSessionId,
+		copyingId: copyingSessionId,
+		stoppingId: stoppingSessionId,
+		title: portForwardSessionTitle,
+		resolution: portForwardSessionResolution,
+		copyUrl: copyPortForwardUrl,
+		reconnect: reconnectPortForward,
+		stop: stopPortForwardSession,
+	}}
+	savedForwards={{
+		workspace,
+		autoStart: autoStartSavedPortForwards,
+		setAutoStart: setAutoStartSavedPortForwards,
+		startingAll: startingSavedPortForwards,
+		startAll: startAllSavedPortForwards,
+		startingId: startingSavedPortForwardId,
+		formOpen: savedPortForwardFormOpen,
+		form: savedPortForwardForm,
+		formError: savedPortForwardFormError,
+		editingId: editingSavedPortForwardId,
+		kubeconfigSourceKey,
+		beginAdd: beginAddSavedPortForward,
+		beginEdit: beginEditSavedPortForward,
+		resetForm: resetSavedPortForwardForm,
+		submitForm: submitSavedPortForwardForm,
+		delete: deleteSavedPortForward,
+		start: startSavedPortForward,
+		setFormValue: setSavedPortForwardFormValue,
+	}}
+	podExec={{
+		sessions: visibleExecSessions,
+		stop: stopExecSession,
+	}}
 />

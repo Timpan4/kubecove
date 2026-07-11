@@ -28,47 +28,46 @@
 		savedPortForwardLabel,
 		savedPortForwardMatchesSession,
 	} from "@/features/live-sessions/helpers";
-	import { podExecCommandText } from "@/features/live-sessions";
+	import { podExecCommandText } from "./podExecHelpers";
 	import type { PortForwardSessionSummary } from "@/lib/types";
 	import StatGrid from "@/components/StatGrid.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 	import SavedPortForwardForm from "./SavedPortForwardForm.svelte";
 
-	let {
-		workspace,
-		liveSessionsQuery,
-		autoStartSavedPortForwards,
-		setAutoStartSavedPortForwards,
-		startingSavedPortForwards,
-		startAllSavedPortForwards,
-		visiblePortForwardSessions,
-		visibleExecSessions,
-		liveSessionActionError,
-		savedPortForwardActionMessage,
-		showKubeconfigSourceLabels,
-		reconnectingSessionId,
-		copyingSessionId,
-		stoppingSessionId,
-		startingSavedPortForwardId,
-		savedPortForwardFormOpen,
-		savedPortForwardForm,
-		savedPortForwardFormError,
-		editingSavedPortForwardId,
-		kubeconfigSourceKey,
-		portForwardSessionTitle,
-		portForwardSessionResolution,
-		beginAddSavedPortForward,
-		beginEditSavedPortForward,
-		resetSavedPortForwardForm,
-		submitSavedPortForwardForm,
-		deleteSavedPortForward,
-		copyPortForwardUrl,
-		reconnectPortForward,
-		startSavedPortForward,
-		stopPortForwardSession,
-		stopExecSession,
-		setSavedPortForwardFormValue,
-	} = $props();
+	let { status, portForwards, savedForwards, podExec } = $props();
+	const liveSessionsQuery = $derived(status.query);
+	const liveSessionActionError = $derived(status.actionError);
+	const savedPortForwardActionMessage = $derived(status.actionMessage);
+	const showKubeconfigSourceLabels = $derived(status.showKubeconfigSourceLabels);
+	const visiblePortForwardSessions = $derived(portForwards.sessions);
+	const reconnectingSessionId = $derived(portForwards.reconnectingId);
+	const copyingSessionId = $derived(portForwards.copyingId);
+	const stoppingSessionId = $derived(portForwards.stoppingId);
+	const portForwardSessionTitle = $derived(portForwards.title);
+	const portForwardSessionResolution = $derived(portForwards.resolution);
+	const copyPortForwardUrl = $derived(portForwards.copyUrl);
+	const reconnectPortForward = $derived(portForwards.reconnect);
+	const stopPortForwardSession = $derived(portForwards.stop);
+	const workspace = $derived(savedForwards.workspace);
+	const autoStartSavedPortForwards = $derived(savedForwards.autoStart);
+	const setAutoStartSavedPortForwards = $derived(savedForwards.setAutoStart);
+	const startingSavedPortForwards = $derived(savedForwards.startingAll);
+	const startAllSavedPortForwards = $derived(savedForwards.startAll);
+	const startingSavedPortForwardId = $derived(savedForwards.startingId);
+	const savedPortForwardFormOpen = $derived(savedForwards.formOpen);
+	const savedPortForwardForm = $derived(savedForwards.form);
+	const savedPortForwardFormError = $derived(savedForwards.formError);
+	const editingSavedPortForwardId = $derived(savedForwards.editingId);
+	const kubeconfigSourceKey = $derived(savedForwards.kubeconfigSourceKey);
+	const beginAddSavedPortForward = $derived(savedForwards.beginAdd);
+	const beginEditSavedPortForward = $derived(savedForwards.beginEdit);
+	const resetSavedPortForwardForm = $derived(savedForwards.resetForm);
+	const submitSavedPortForwardForm = $derived(savedForwards.submitForm);
+	const deleteSavedPortForward = $derived(savedForwards.delete);
+	const startSavedPortForward = $derived(savedForwards.start);
+	const setSavedPortForwardFormValue = $derived(savedForwards.setFormValue);
+	const visibleExecSessions = $derived(podExec.sessions);
+	const stopExecSession = $derived(podExec.stop);
 </script>
 
 <SurfaceFrame icon={Link2} title="Live Sessions" query={liveSessionsQuery} errorLabel="Live sessions unavailable">

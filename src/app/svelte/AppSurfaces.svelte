@@ -555,12 +555,14 @@
 		{onResourceSelect}
 	/>
 {:else if viewMode === "portForwards"}
-	<LiveSessionsSurface
-		{workspace}
-		{sourceReady}
-		{kubeconfigSourceKey}
-		{showKubeconfigSourceLabels}
-	/>
+	{#key workspace.id}
+		<LiveSessionsSurface
+			{workspace}
+			{sourceReady}
+			{kubeconfigSourceKey}
+			{showKubeconfigSourceLabels}
+		/>
+	{/key}
 {:else if viewMode === "settings"}
 	<SettingsSurface onBack={onCloseSettings} />
 {/if}
