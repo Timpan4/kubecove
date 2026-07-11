@@ -8,30 +8,21 @@
 	import { HelmSurface, selectedHelmReleasePath } from "@/features/helm";
 	import { IncidentSurface, type IncidentFilter } from "@/features/incidents";
 	import { LiveSessionsSurface } from "@/features/live-sessions";
+	import { RbacSurface } from "@/features/rbac";
 	import type { HealthFilter } from "@/features/resources";
-	import { queryKeys } from "@/lib/queryKeys";
 	import {
 		createTauriClient,
 		getKubeconfigSources,
-		listRbacInspection,
 	} from "@/lib/tauri";
 	import type {
 		ArgoApplicationSummary,
 		HelmReleaseSummary,
-		RbacInspectionSummary,
 		ResourceSummary,
 	} from "@/lib/types";
 	import type { TreeNodeId } from "@/lib/tree-nav";
 	import type { PathStateDetailTab, PathStateSurfacesState } from "@/lib/path-state";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
-	import RbacSurface from "./RbacSurface.svelte";
 	import SettingsSurface from "./SettingsSurface.svelte";
-	import {
-		buildRbacStats,
-		buildRbacTable,
-		selectedRbacView,
-		rbacWarningSummary,
-	} from "./rbacSurfaceModel";
 	import { treeNodeForResource, type WorkspaceViewMode } from "./workspaceNavigation";
 
 	let {
@@ -97,28 +88,6 @@
 	const kubeconfigSourceKey = $derived(sourceQuery.data?.sourceKey);
 	const showKubeconfigSourceLabels = $derived(sourceQuery.data?.showSourceLabels ?? false);
 
-	const rbacQuery = createQuery<RbacInspectionSummary>(() => ({
-		queryKey: queryKeys.rbacInspection(
-			workspace.scope.clusterContext,
-			workspace.scope.namespaces,
-			kubeconfigSourceKey,
-		),
-		queryFn: () =>
-			listRbacInspection(
-				client,
-				workspace.scope.clusterContext,
-				workspace.scope.namespaces,
-				kubeconfigSourceKey,
-			),
-		enabled: viewMode === "rbac" && sourceReady,
-		staleTime: 30_000,
-	}));
-
-	const rbacView = $derived(selectedRbacView(selectedNode));
-	const rbacTable = $derived(
-		rbacQuery.data ? buildRbacTable(rbacQuery.data, rbacView) : null,
-	);
-	const rbacStats = $derived(rbacQuery.data ? buildRbacStats(rbacQuery.data) : []);
 	$effect(() => {
 		if (viewMode === "incidents") incidentFilter = initialIncidentFilter;
 	});
@@ -169,7 +138,9 @@
 		/>
 	{/key}
 {:else if viewMode === "rbac"}
-	<RbacSurface {rbacQuery} {rbacStats} {rbacTable} {rbacView} {rbacWarningSummary} />
+	{#key workspace.id}
+		<RbacSurface {workspace} {sourceReady} {kubeconfigSourceKey} {selectedNode} />
+	{/key}
 {:else if viewMode === "incidents"}
 	{#key workspace.id}
 		<IncidentSurface

@@ -11,25 +11,38 @@
 	import SimpleTable from "@/components/SimpleTable.svelte";
 	import StatGrid from "@/components/StatGrid.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
+	import type { RbacInspectionSummary } from "@/lib/types";
+	import type { RbacTable, RbacView } from "./surfaceModel";
 
-	let { rbacQuery, rbacStats, rbacTable, rbacView, rbacWarningSummary } = $props();
+	let { query, stats, table, view, warningSummary }: {
+		query: {
+			data?: RbacInspectionSummary;
+			isPending: boolean;
+			isError: boolean;
+			error: unknown;
+		};
+		stats: Array<[string, number]>;
+		table: RbacTable | null;
+		view: RbacView;
+		warningSummary: (warnings: string[]) => string;
+	} = $props();
 </script>
 
-<SurfaceFrame icon={KeyRound} title="RBAC" query={rbacQuery} errorLabel="RBAC inspection unavailable">
-		{@const data = rbacQuery.data}
+<SurfaceFrame icon={KeyRound} title="RBAC" {query} errorLabel="RBAC inspection unavailable">
+		{@const data = query.data}
 		{#if data}
-			<StatGrid stats={rbacStats} />
-			{#if rbacTable}
+			<StatGrid {stats} />
+			{#if table}
 				<Card size="sm" elevation="flat">
 					<CardHeader>
-						<CardTitle>{rbacView}</CardTitle>
+						<CardTitle>{view}</CardTitle>
 						<CardDescription>Read-only RBAC inspection for current workspace scope.</CardDescription>
 					</CardHeader>
 					<CardContent>
 							<SimpleTable
-								headers={rbacTable.headers}
-								rows={rbacTable.rows}
-								empty={rbacTable.empty}
+								headers={table.headers}
+								rows={table.rows}
+								empty={table.empty}
 							/>
 					</CardContent>
 				</Card>
@@ -37,7 +50,7 @@
 			{#if data.warnings.length > 0}
 				<FriendlyError
 					mode="compact"
-					error={rbacWarningSummary(data.warnings)}
+					error={warningSummary(data.warnings)}
 					context={{
 						operation: "resourcesLoad",
 						fallbackTitle: "Partial RBAC data",
