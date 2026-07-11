@@ -17,7 +17,7 @@
 	import { queryKeys } from "@/lib/queryKeys";
 	import type { BackendDiagnosticEvent } from "@/lib/types";
 	import SettingsRow from "./SettingsRow.svelte";
-	import SimpleTable from "./SimpleTable.svelte";
+	import SimpleTable from "@/components/SimpleTable.svelte";
 	import {
 		backendDiagnosticMetricRows,
 		diagnosticCounterRows,

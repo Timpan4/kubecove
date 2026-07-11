@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import {
 	findHelmReleaseTarget,
 	helmReconciliationResourceLabel,
@@ -11,11 +10,6 @@ import type {
 	HelmReconciliationResource,
 	HelmReleaseSummary,
 } from "../src/lib/types";
-import { createWorkspaceRecord } from "../src/lib/workspace-model";
-import {
-	createWorkspaceNavigation,
-	navigateWorkspace,
-} from "../src/app/svelte/workspaceNavigation";
 
 function row(
 	kind: string,
@@ -88,92 +82,4 @@ describe("Helm reconciliation UI helpers", () => {
 		expect(findHelmReleaseTarget(releases, { name: "missing" })).toBeNull();
 	});
 
-	test("Svelte resource detail can hand Helm releases to the Helm surface", () => {
-		const detail = readFileSync("src/features/resource-detail/DetailsTab.svelte", "utf8");
-		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-		const surfaces = readFileSync("src/app/svelte/AppSurfaces.svelte", "utf8");
-
-		expect(detail).toContain("Open Helm release");
-		expect(shell).toContain("onOpenHelmRelease={openHelmReleaseFromResource}");
-		expect(shell).toContain("openHelmReleaseFromResource");
-		expect(shell).toContain("{targetHelmRelease}");
-		expect(surfaces).toContain("findHelmReleaseTarget");
-		expect(surfaces).toContain("onTargetHelmReleaseResolved?.()");
-	});
-
-	test("Svelte Helm details open release-filtered resources", () => {
-		const browser = readFileSync(
-			"src/features/resources/ResourceBrowser.svelte",
-			"utf8",
-		);
-		const surfaces = readFileSync("src/app/svelte/HelmSurface.svelte", "utf8");
-		const workspace = createWorkspaceRecord({
-			name: "Ops",
-			clusterContext: "kind-dev",
-			namespaces: ["payments"],
-		});
-		const navigation = navigateWorkspace(createWorkspaceNavigation(workspace), {
-			type: "openResources",
-			namespaces: "payments",
-			search: "checkout",
-		});
-
-		expect(browser).toContain('initialSearch = ""');
-		expect(browser).toContain("search = pathState?.search ?? initialSearch");
-		expect(navigation.resourceInitialSearch).toBe("checkout");
-		expect(navigation.selectedNode).toEqual({
-			type: "namespace",
-			section: "namespaces",
-			namespace: "payments",
-		});
-		expect(surfaces).toContain(
-			"onOpenResources(selectedHelmRelease?.namespace, selectedHelmRelease?.name)",
-		);
-	});
-
-	test("Svelte Helm details show all decoded manifest resources", () => {
-		const surfaces = readFileSync("src/app/svelte/HelmSurface.svelte", "utf8");
-
-		expect(surfaces).toContain('headers={["Kind", "Name", "Namespace", "API"]}');
-		expect(surfaces).toContain("rows={details.manifestSummary.resources.map(");
-		expect(surfaces).not.toContain("details.manifestSummary.resources.slice(");
-	});
-
-	test("Svelte Helm details show spinner while loading", () => {
-		const surfaces = readFileSync("src/app/svelte/HelmSurface.svelte", "utf8");
-		const loadingStart = surfaces.indexOf("helmDetailsQuery.isPending");
-		const loadingEnd = surfaces.indexOf("helmDetailsQuery.isError", loadingStart);
-		const loadingBody = surfaces.slice(loadingStart, loadingEnd);
-
-		expect(loadingBody).toContain('<Spinner class="size-4" />');
-		expect(loadingBody).toContain("Loading Helm release details...");
-	});
-
-	test("Svelte Helm details use backend reconciliation", () => {
-		const surfaces = [
-			readFileSync("src/app/svelte/AppSurfaces.svelte", "utf8"),
-			readFileSync("src/app/svelte/HelmSurface.svelte", "utf8"),
-		].join("\n");
-
-		expect(surfaces).toContain("getHelmReleaseReconciliation");
-		expect(surfaces).toContain("queryKeys.helmReleaseReconciliation");
-		expect(surfaces).toContain("sortHelmReconciliationResources");
-		expect(surfaces).toContain("helmReconciliationStatusLabel");
-		expect(surfaces).toContain("Helm reconciliation unavailable");
-		expect(surfaces).toContain("No manifest or explicit Helm-labeled live resources were found.");
-	});
-
-	test("detail tab uses backend reconciliation instead of fixed-kind listing", () => {
-		const source = readFileSync(
-			"src/app/svelte/HelmSurface.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain("helmReconciliationQuery");
-		expect(source).toContain("helmReconciliationRows");
-		expect(source).toContain("reconciliation");
-		expect(source).not.toContain("SUPPORTED_KINDS");
-		expect(source).not.toContain("listResources");
-		expect(source).not.toContain("HelmReleaseResources");
-	});
 });

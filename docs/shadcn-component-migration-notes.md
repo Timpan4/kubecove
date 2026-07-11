@@ -4,13 +4,13 @@ This is a quick pass over the frontend for places that still use native form/tab
 
 ## Completed high-confidence migrations
 
-- Done: `src/app/svelte/SimpleTable.svelte` now composes the shared shadcn Svelte table primitives, so downstream diagnostics, Helm, and RBAC simple tables inherit the component styling.
+- Done: `src/components/SimpleTable.svelte` now composes the shared shadcn Svelte table primitives, so downstream diagnostics, Helm, and RBAC simple tables inherit the component styling.
 
 - Done: `src/app/svelte/SidebarTreeNode.svelte` now uses the shared shadcn Svelte `Button` primitive for the expand/collapse control.
 
 - Done: `src/app/svelte/AppUsageFooter.svelte` now uses the shared shadcn Svelte table primitives for process rows.
 
-- Done: `src/app/svelte/HelmSurface.svelte` now uses the shared shadcn Svelte table primitives for release and reconciliation tables.
+- Done: `src/features/helm/HelmView.svelte` now uses the shared shadcn Svelte table primitives for release and reconciliation tables.
 
 - Done: `src/features/incidents/IncidentView.svelte` now uses the shared shadcn Svelte primitives for the incident cockpit.
 

@@ -30,11 +30,24 @@
 		helmReconciliationStatusLabel,
 		helmReleaseKey,
 	} from "@/features/helm/helpers";
-	import type { HelmManifestResourceSummary } from "@/lib/types";
+	import type {
+		HelmManifestResourceSummary,
+		HelmReconciliationResource,
+		HelmReleaseDetails,
+		HelmReleaseReconciliation,
+		HelmReleaseSummary,
+	} from "@/lib/types";
 	import { formatStatusLabel } from "@/lib/utils";
-	import SimpleTable from "./SimpleTable.svelte";
+	import SimpleTable from "@/components/SimpleTable.svelte";
 	import StatGrid from "@/components/StatGrid.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
+
+	type QueryState<T> = {
+		data?: T;
+		isPending: boolean;
+		isError: boolean;
+		error: unknown;
+	};
 
 	let {
 		helmQuery,
@@ -50,6 +63,20 @@
 		helmStatusVariant,
 		helmReconciliationClass,
 		helmReconciliationSource,
+	}: {
+		helmQuery: QueryState<HelmReleaseSummary[]>;
+		groupedHelmReleases: Array<{ namespace: string; releases: HelmReleaseSummary[] }>;
+		filteredHelmReleases: HelmReleaseSummary[];
+		helmSearch?: string;
+		selectedHelmRelease?: HelmReleaseSummary | null;
+		selectedHelmReleaseKey: string;
+		helmDetailsQuery: QueryState<HelmReleaseDetails>;
+		helmReconciliationQuery: QueryState<HelmReleaseReconciliation>;
+		helmReconciliationRows: HelmReconciliationResource[];
+		onOpenResources: (namespace?: string | string[], initialSearch?: string) => void;
+		helmStatusVariant: (status: string | undefined) => "destructive" | "outline";
+		helmReconciliationClass: (status: HelmReconciliationResource["status"]) => string;
+		helmReconciliationSource: (resource: HelmReconciliationResource) => string;
 	} = $props();
 </script>
 
