@@ -2,10 +2,8 @@
 	import "@xterm/xterm/css/xterm.css";
 
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
-	import { FitAddon } from "@xterm/addon-fit";
-	import { Terminal as XtermTerminal } from "@xterm/xterm";
 	import { onMount, tick } from "svelte";
-	import { Play, RotateCcw, Square, Terminal as TerminalIcon } from "lucide-svelte";
+	import { Play, RotateCcw, Terminal as TerminalIcon } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
 		Alert,
@@ -13,24 +11,11 @@
 		AlertTitle,
 		Badge,
 		Button,
-		Checkbox,
 		Empty,
 		EmptyDescription,
 		EmptyHeader,
 		EmptyTitle,
-		Field,
-		FieldDescription,
-		FieldGroup,
-		FieldLabel,
-		Label,
-		Select,
-		SelectContent,
-		SelectGroup,
-		SelectItem,
-		SelectTrigger,
-		SelectValue,
 		Spinner,
-		Textarea,
 	} from "@/components/ui/svelte";
 	import {
 		buildPodExecRequest,
@@ -57,6 +42,9 @@
 		PodExecSessionSummary,
 		ResourceSummary,
 	} from "@/lib/types";
+	import PodExecLaunchForm from "./PodExecLaunchForm.svelte";
+	import PodExecSessionList from "./PodExecSessionList.svelte";
+	import { createExecTerminal, type ExecTerminalHandle } from "./execTerminal";
 	import type { ContainerStatusRow } from "./helpers";
 
 	const DEFAULT_COLS = 100;
@@ -90,17 +78,11 @@
 	let sessionId = $state<string | null>(null);
 	let channel = $state<ReturnType<typeof createPodExecChannel> | null>(null);
 	let terminalHost = $state<HTMLDivElement | null>(null);
-	let terminal: XtermTerminal | null = null;
-	let fitAddon: FitAddon | null = null;
+	let terminal: ExecTerminalHandle | null = null;
 
 	const isPod = $derived(resource.kind === "Pod" && Boolean(resource.namespace));
 	const showKubeconfigSourceLabels = $derived(
 		$settingsStore.showKubeconfigSourceLabels,
-	);
-	const containerOptions = $derived(
-		containers.filter((container) => container.type !== "init").length > 0
-			? containers.filter((container) => container.type !== "init")
-			: containers,
 	);
 	const command = $derived(commandForPreset(preset, customArgv));
 	const commandText = $derived(typeof command === "string" ? "" : podExecCommandText(command));
@@ -119,28 +101,16 @@
 
 	onMount(() => {
 		if (terminalHost) {
-			const nextTerminal = new XtermTerminal({
-				cursorBlink: true,
-				convertEol: true,
-				fontFamily:
-					"var(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace)",
-				fontSize: 12,
-				theme: {
-					background: "#101113",
-					foreground: "#f4f4f5",
+			const nextTerminal = createExecTerminal(
+				terminalHost,
+				(data) => {
+					if (sessionId) void writePodExecStdin(client, sessionId, data);
 				},
-			});
-			const nextFitAddon = new FitAddon();
-			nextTerminal.loadAddon(nextFitAddon);
-			nextTerminal.open(terminalHost);
-			nextTerminal.onData((data) => {
-				if (sessionId) void writePodExecStdin(client, sessionId, data);
-			});
-			nextTerminal.onResize(({ cols, rows }) => {
-				if (sessionId) void resizePodExecTerminal(client, sessionId, { cols, rows });
-			});
+				(size) => {
+					if (sessionId) void resizePodExecTerminal(client, sessionId, size);
+				},
+			);
 			terminal = nextTerminal;
-			fitAddon = nextFitAddon;
 			const fit = () => fitTerminal();
 			const frame = window.requestAnimationFrame(fit);
 			window.addEventListener("resize", fit);
@@ -157,7 +127,6 @@
 				}
 				nextTerminal.dispose();
 				terminal = null;
-				fitAddon = null;
 			};
 		}
 		return () => {
@@ -179,11 +148,7 @@
 	});
 
 	function fitTerminal() {
-		try {
-			fitAddon?.fit();
-		} catch {
-			// Terminal can be hidden while tab/panel layout settles.
-		}
+		terminal?.fit();
 	}
 
 	function appendOutput(text: string) {
@@ -331,96 +296,17 @@
 			<AlertDescription>Exec is limited to this exact Pod through the Kubernetes API.</AlertDescription>
 		</Alert>
 
-		<FieldGroup>
-			<Field>
-				<FieldLabel>Container</FieldLabel>
-				<Select
-					value={selectedContainer || "__default"}
-					items={[
-						{ value: "__default", label: "Default container" },
-						...containerOptions.map((container) => ({
-							value: container.name,
-							label: container.name,
-						})),
-					]}
-					onValueChange={(value: string) => {
-						selectedContainer = value === "__default" ? "" : value;
-						confirmed = false;
-					}}
-				>
-					<SelectTrigger class="w-full">
-						<SelectValue placeholder="Default container" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectGroup>
-							<SelectItem value="__default">Default container</SelectItem>
-							{#each containerOptions as container (`${container.type}:${container.name}`)}
-								<SelectItem value={container.name}>{container.name}</SelectItem>
-							{/each}
-						</SelectGroup>
-					</SelectContent>
-				</Select>
-				<FieldDescription>Kubernetes chooses default only when no container is selected.</FieldDescription>
-			</Field>
-			<Field>
-				<FieldLabel>Command</FieldLabel>
-				<Select
-					value={preset}
-					items={[
-						{ value: "sh", label: "/bin/sh" },
-						{ value: "bash", label: "/bin/bash" },
-						{ value: "custom", label: "Custom argv" },
-					]}
-					onValueChange={(value: string) => {
-						preset = value as PodExecPreset;
-						confirmed = false;
-					}}
-				>
-					<SelectTrigger class="w-full">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectGroup>
-							<SelectItem value="sh">/bin/sh</SelectItem>
-							<SelectItem value="bash">/bin/bash</SelectItem>
-							<SelectItem value="custom">Custom argv</SelectItem>
-						</SelectGroup>
-					</SelectContent>
-				</Select>
-				<FieldDescription>Presets are exact commands; no local shell parsing.</FieldDescription>
-			</Field>
-			{#if preset === "custom"}
-				<Field>
-					<FieldLabel>Custom argv</FieldLabel>
-					<Textarea
-						bind:value={customArgv}
-						placeholder={"/usr/bin/env\nprintenv"}
-						oninput={() => (confirmed = false)}
-					/>
-					<FieldDescription>One argv item per line.</FieldDescription>
-				</Field>
-			{/if}
-		</FieldGroup>
-
-		<div class="rounded-md border bg-muted/20 p-3 text-xs">
-			<div class="font-medium">Target</div>
-			<div class="mt-1 break-words font-mono text-muted-foreground">
-				{podExecTarget(resource, selectedContainer)}
-			</div>
-			{#if showKubeconfigSourceLabels && kubeconfigSourceKey}
-				<div class="mt-2 font-medium">Kubeconfig source</div>
-				<div class="mt-1 break-words font-mono text-muted-foreground">{kubeconfigSourceKey}</div>
-			{/if}
-			<div class="mt-3 font-medium">Command</div>
-			<div class="mt-1 break-words font-mono text-muted-foreground">
-				{commandText || "Custom argv is required"}
-			</div>
-		</div>
-
-		<Label class="gap-2 rounded-md border bg-background p-3 text-xs text-muted-foreground">
-			<Checkbox checked={confirmed} onCheckedChange={(checked) => (confirmed = checked)} />
-			I understand this opens an interactive session in the selected Pod.
-		</Label>
+		<PodExecLaunchForm
+			{resource}
+			{containers}
+			bind:selectedContainer
+			bind:preset
+			bind:customArgv
+			bind:confirmed
+			{showKubeconfigSourceLabels}
+			{kubeconfigSourceKey}
+			{commandText}
+		/>
 
 		{#if error}
 			<FriendlyError
@@ -454,51 +340,12 @@
 			</Button>
 		</div>
 
-		<div class="flex items-center justify-between gap-2">
-			<div class="text-xs font-semibold uppercase text-muted-foreground">Active exec sessions</div>
-			{#if sessionsQuery.isFetching}<Spinner />{/if}
-		</div>
-		{#if sessions.length === 0}
-			<Empty class="min-h-24 border border-dashed">
-				<EmptyHeader>
-					<EmptyTitle>No exec sessions</EmptyTitle>
-					<EmptyDescription>Start guarded exec for this Pod.</EmptyDescription>
-				</EmptyHeader>
-			</Empty>
-		{:else}
-			<div class="flex flex-col gap-2">
-				{#each sessions as item (item.id)}
-					<div class="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3">
-						<div class="min-w-0">
-							<div class="truncate font-mono text-xs">{podExecCommandText(item.command)}</div>
-							<div class="text-[11px] text-muted-foreground">
-								{item.container ? `Container ${item.container}` : "Default container"}
-							</div>
-							{#if showKubeconfigSourceLabels && item.kubeconfigSourceLabel}
-								<div class="truncate text-[11px] text-muted-foreground">
-									{item.kubeconfigSourceLabel}
-								</div>
-							{/if}
-						</div>
-						<div class="flex items-center gap-2">
-							<Badge variant={item.status === "error" ? "destructive" : "outline"}>{item.status}</Badge>
-							<Button
-								variant="outline"
-								size="sm"
-								onclick={() => stopSession(item.id)}
-								disabled={stoppingId === item.id}
-							>
-								{#if stoppingId === item.id}
-									<Spinner data-icon="inline-start" />
-								{:else}
-									<Square data-icon="inline-start" />
-								{/if}
-								Stop
-							</Button>
-						</div>
-					</div>
-				{/each}
-			</div>
-		{/if}
+		<PodExecSessionList
+			{sessions}
+			fetching={sessionsQuery.isFetching}
+			{showKubeconfigSourceLabels}
+			{stoppingId}
+			onStop={(sessionId) => void stopSession(sessionId)}
+		/>
 	</div>
 {/if}

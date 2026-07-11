@@ -53,7 +53,7 @@ export function podExecSessionsForWorkspace(
 export async function invalidatePodExecQueries(
 	invalidateQueries: InvalidatePodExecQueries,
 ): Promise<void> {
-	await invalidateQueries({ queryKey: queryKeys.podExecSessions() });
+	await invalidateQueries({ queryKey: queryKeys.podExecSessions() }).catch(() => undefined);
 }
 
 export async function startPodExec({

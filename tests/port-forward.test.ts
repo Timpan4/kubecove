@@ -267,7 +267,7 @@ spec:
 		expect(svelteLiveSurfaceSource).toContain("reconnectPortForward(session)");
 		expect(svelteLiveSurfaceSource).toContain("visiblePortForwardSessions");
 		expect(svelteLiveSurfaceSource).toContain("visibleExecSessions");
-		expect(svelteLiveSurfaceSource).toContain("podExecSessionsForWorkspace(");
+		expect(svelteLiveSurfaceSource).toContain("kubeconfigSource: kubeconfigSourceKey");
 		expect(svelteLiveSurfaceSource).toContain("showKubeconfigSourceLabels && session.kubeconfigSourceLabel");
 		expect(svelteLiveSurfaceSource).toContain("podExecCommandText(session.command)");
 		expect(svelteLiveSurfaceSource).not.toContain(
@@ -276,7 +276,6 @@ spec:
 		expect(svelteSurfaceSource).toContain("buildLiveSessionReadModel(");
 		expect(svelteSurfaceSource).toContain("podExecQueryOptions(client");
 		expect(svelteSurfaceSource).toContain("portForwardQueryOptions(client");
-		expect(svelteSurfaceSource).toContain("portForwardSessionsForWorkspace(");
 		expect(svelteLiveSurfaceSource).toContain("query={liveSessionsQuery}");
 		expect(svelteSurfaceSource).not.toContain('"svelte-live-sessions-surface"');
 		expect(svelteLiveSurfaceSource).toContain("Auto-start saved");

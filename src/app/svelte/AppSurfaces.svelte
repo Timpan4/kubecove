@@ -9,12 +9,10 @@
 	import {
 		buildLiveSessionReadModel,
 		podExecQueryOptions,
-		podExecSessionsForWorkspace,
 		parseSavedPortForwardForm,
 		portForwardErrorMessage,
 		portForwardLocalUrl,
 		portForwardQueryOptions,
-		portForwardSessionsForWorkspace,
 		reconnectPortForward as reconnectPortForwardLifecycle,
 		savedPortForwardLabel,
 		startSavedPortForward as startSavedPortForwardLifecycle,
@@ -389,16 +387,9 @@
 	const incidentGroups = $derived(groupIncidentItems(visibleIncidents));
 	const liveSessionReadModel = $derived(
 		buildLiveSessionReadModel(
-			portForwardSessionsForWorkspace(
-				portForwardsQuery.data ?? [],
-				workspace,
-				kubeconfigSourceKey,
-			),
-			podExecSessionsForWorkspace(
-				execSessionsQuery.data ?? [],
-				workspace,
-				kubeconfigSourceKey,
-			),
+			portForwardsQuery.data ?? [],
+			execSessionsQuery.data ?? [],
+			{ workspace, kubeconfigSource: kubeconfigSourceKey },
 		),
 	);
 	const visiblePortForwardSessions = $derived(liveSessionReadModel.portForwards);

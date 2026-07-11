@@ -128,4 +128,36 @@ describe("pod exec lifecycle", () => {
 			["pod-exec-sessions"],
 		]);
 	});
+
+	test("returns a started session when cache invalidation fails", async () => {
+		const started = session("exec-1", "kind-dev", "2026-07-10T00:00:00Z");
+		const client = createMockTauriClient({
+			start_pod_exec_session: started,
+		});
+		const channel = createMockChannel<PodExecSessionMessage>(() => {});
+
+		const result = await startPodExec({
+			client,
+			request: {
+				clusterContext: "kind-dev",
+				namespace: "payments",
+				podName: "api-0",
+				command: ["/bin/sh"],
+				stdin: true,
+				tty: true,
+				terminalSize: { cols: 100, rows: 32 },
+				confirmation: {
+					acknowledged: true,
+					target: "kind-dev/payments/Pod/api-0/container/<default>",
+					command: '["/bin/sh"]',
+				},
+			},
+			channel,
+			invalidateQueries: async () => {
+				throw new Error("cache unavailable");
+			},
+		});
+
+		expect(result.id).toBe("exec-1");
+	});
 });
