@@ -5,7 +5,7 @@ import type {
 	RbacSubjectSummary,
 } from "@/lib/types";
 import type { TreeNodeId } from "@/lib/tree-nav";
-import { collectInspectionRisks, riskyCount } from "@/features/rbac/risk";
+import { collectInspectionRisks, riskyCount } from "./risk";
 
 export type RbacView =
 	| "Namespace Access"

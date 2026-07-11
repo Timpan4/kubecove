@@ -4,7 +4,7 @@ import {
 	buildRbacTable,
 	selectedRbacView,
 	rbacWarningSummary,
-} from "../src/app/svelte/rbacSurfaceModel";
+} from "../src/features/rbac/surfaceModel";
 import type { RbacInspectionSummary } from "../src/lib/types";
 
 const summary: RbacInspectionSummary = {
