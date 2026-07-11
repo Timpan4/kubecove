@@ -1,4 +1,4 @@
-import type { IncidentFilter } from "@/features/incidents/helpers";
+import type { IncidentFilter } from "./helpers";
 import type { HealthFilter } from "@/features/resources/helpers";
 import type { PathStateDetailTab } from "@/lib/path-state";
 import type { IncidentCockpitItem, ResourceSummary } from "@/lib/types";

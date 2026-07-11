@@ -671,7 +671,7 @@ describe("svelte resource browser model", () => {
 			"utf8",
 		);
 		const shellSource = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-		const surfacesSource = readFileSync("src/app/svelte/IncidentSurface.svelte", "utf8");
+		const surfacesSource = readFileSync("src/features/incidents/IncidentView.svelte", "utf8");
 
 		expect(browserSource).toContain('initialHealthFilter = "all"');
 		expect(browserSource).toContain("healthFilter: initialHealthFilter");

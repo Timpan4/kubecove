@@ -67,7 +67,7 @@
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
 	import { resourceSelectionKey, type HealthFilter } from "@/features/resources/helpers";
-	import type { IncidentFilter } from "@/features/incidents/helpers";
+	import type { IncidentFilter } from "@/features/incidents";
 	import WorkspaceOverview from "@/features/workspaces/WorkspaceOverview.svelte";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import AppSurfaces from "./AppSurfaces.svelte";

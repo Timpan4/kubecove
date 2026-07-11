@@ -1,11 +1,6 @@
 <script lang="ts">
 	import { createQueries, createQuery } from "@tanstack/svelte-query";
-	import {
-		countIncidentItems,
-		filterIncidentItems,
-		groupIncidentItems,
-		type IncidentFilter,
-	} from "@/features/incidents/helpers";
+	import { IncidentSurface, type IncidentFilter } from "@/features/incidents";
 	import { LiveSessionsSurface } from "@/features/live-sessions";
 	import {
 		findHelmReleaseTarget,
@@ -19,7 +14,6 @@
 		argoApplicationResourceNamespaces,
 	} from "@/features/resources/helpers";
 	import type { HealthFilter } from "@/features/resources/helpers";
-	import { buildWorkspaceFetchKeys, buildWorkspaceFetchPlans } from "@/features/workspaces/query";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
 		createTauriClient,
@@ -33,7 +27,6 @@
 		listArgoAppProjects,
 		listFluxResources,
 		listHelmReleases,
-		listIncidentCockpit,
 		listRbacInspection,
 	} from "@/lib/tauri";
 	import type {
@@ -45,16 +38,14 @@
 		HelmReleaseReconciliation,
 		HelmReleaseDetails,
 		HelmReleaseSummary,
-		IncidentCockpitSummary,
 		RbacInspectionSummary,
 		ResourceSummary,
 	} from "@/lib/types";
 	import type { TreeNodeId } from "@/lib/tree-nav";
 	import type { PathStateDetailTab, PathStateSurfacesState } from "@/lib/path-state";
-	import { workspaceScopeContexts, type SavedWorkspace } from "@/lib/workspace-model";
+	import type { SavedWorkspace } from "@/lib/workspace-model";
 	import GitOpsSurface from "./GitOpsSurface.svelte";
 	import HelmSurface from "./HelmSurface.svelte";
-	import IncidentSurface from "./IncidentSurface.svelte";
 	import RbacSurface from "./RbacSurface.svelte";
 	import SettingsSurface from "./SettingsSurface.svelte";
 	import {
@@ -67,17 +58,12 @@
 		type GitOpsSelection,
 	} from "./gitOpsSurfaceModel";
 	import {
-		buildIncidentFilterOptions,
-	} from "./incidentSurfaceModel";
-	import {
 		buildRbacStats,
 		buildRbacTable,
 		selectedRbacView,
 		rbacWarningSummary,
 	} from "./rbacSurfaceModel";
-	import {
-		type WorkspaceViewMode,
-	} from "./workspaceNavigation";
+	import { treeNodeForResource, type WorkspaceViewMode } from "./workspaceNavigation";
 
 	interface GitOpsData {
 		argoDetected: boolean;
@@ -150,8 +136,6 @@
 	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);
 	const kubeconfigSourceKey = $derived(sourceQuery.data?.sourceKey);
 	const showKubeconfigSourceLabels = $derived(sourceQuery.data?.showSourceLabels ?? false);
-	const incidentFetchKeys = $derived(buildWorkspaceFetchKeys(workspace.scope));
-	const workspaceContextKey = $derived(workspaceScopeContexts(workspace.scope).join("|"));
 
 	const argoDetectionQuery = createQuery<boolean>(() => ({
 		queryKey: queryKeys.argoDetect(workspace.scope.clusterContext, kubeconfigSourceKey),
@@ -316,20 +300,6 @@
 		staleTime: 30_000,
 	}));
 
-	const incidentsQuery = createQuery<IncidentCockpitSummary>(() => ({
-		queryKey: queryKeys.incidentCockpit(workspaceContextKey, incidentFetchKeys, kubeconfigSourceKey),
-		queryFn: () => loadIncidents(workspace, kubeconfigSourceKey),
-		enabled: viewMode === "incidents" && sourceReady && incidentFetchKeys.length > 0,
-		staleTime: 15_000,
-	}));
-
-
-	const visibleIncidents = $derived(
-		filterIncidentItems(incidentsQuery.data?.items ?? [], incidentFilter),
-	);
-	const incidentCounts = $derived(countIncidentItems(incidentsQuery.data?.items ?? []));
-	const incidentFilterOptions = $derived(buildIncidentFilterOptions(incidentCounts));
-	const incidentGroups = $derived(groupIncidentItems(visibleIncidents));
 	const rbacView = $derived(selectedRbacView(selectedNode));
 	const rbacTable = $derived(
 		rbacQuery.data ? buildRbacTable(rbacQuery.data, rbacView) : null,
@@ -417,26 +387,6 @@
 			selectedHelmRelease = null;
 		}
 	});
-
-	async function loadIncidents(
-		targetWorkspace: SavedWorkspace,
-		sourceKey?: string,
-	): Promise<IncidentCockpitSummary> {
-		const summaries = await Promise.all(
-			buildWorkspaceFetchPlans(targetWorkspace.scope).map((plan) =>
-				listIncidentCockpit(client, plan.clusterContext, plan.requests, sourceKey),
-			),
-		);
-		return {
-			cluster: targetWorkspace.scope.clusterContext,
-			generatedAt: new Date().toISOString(),
-			requestedScope: summaries.flatMap((summary) => summary.requestedScope),
-			items: summaries.flatMap((summary) => summary.items),
-			warnings: summaries.flatMap((summary) =>
-				summary.warnings.map((warning) => `${summary.cluster}: ${warning}`),
-			),
-		};
-	}
 
 	function filterHelmReleases(
 		releases: HelmReleaseSummary[],
@@ -542,18 +492,19 @@
 {:else if viewMode === "rbac"}
 	<RbacSurface {rbacQuery} {rbacStats} {rbacTable} {rbacView} {rbacWarningSummary} />
 {:else if viewMode === "incidents"}
-	<IncidentSurface
-		{workspace}
-		{incidentsQuery}
-		{incidentCounts}
-		bind:incidentFilter
-		{incidentFilterOptions}
-		{incidentGroups}
-		{selectedResource}
-		{onOpenResources}
-		{onResourceInspect}
-		{onResourceSelect}
-	/>
+	{#key workspace.id}
+		<IncidentSurface
+			{workspace}
+			{sourceReady}
+			{kubeconfigSourceKey}
+			initialIncidentFilter={incidentFilter}
+			{selectedResource}
+			onIncidentFilterChange={(filter) => (incidentFilter = filter)}
+			{onOpenResources}
+			{onResourceInspect}
+			onResourceSelect={(resource) => onResourceSelect(resource, treeNodeForResource(resource))}
+		/>
+	{/key}
 {:else if viewMode === "portForwards"}
 	{#key workspace.id}
 		<LiveSessionsSurface

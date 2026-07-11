@@ -3,10 +3,13 @@
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import { Badge, Button, Empty, EmptyDescription, EmptyHeader, EmptyTitle, Spinner } from "@/components/ui/svelte";
 	import type { PathStateDetailTab } from "@/lib/path-state";
-	import type { IncidentCockpitItem } from "@/lib/types";
-	import type { IncidentFilter } from "@/features/incidents/helpers";
+	import type { IncidentCockpitItem, IncidentCockpitSummary, ResourceSummary } from "@/lib/types";
+	import type { SavedWorkspace } from "@/lib/workspace-model";
+	import type { HealthFilter } from "@/features/resources/helpers";
+	import type { IncidentCounts, IncidentFilter } from "./helpers";
 	import { cnfast } from "@/lib/utils";
 	import {
+		type IncidentFilterOption,
 		incidentCaseSummary,
 		incidentCaseTitle,
 		incidentDetailPivots,
@@ -20,10 +23,18 @@
 		incidentSignalSummary,
 		incidentWarningSummary,
 		isIncidentResourceSelected,
-	} from "./incidentSurfaceModel";
-	import { treeNodeForResource } from "./workspaceNavigation";
+	} from "./model";
 	import StatGrid from "@/components/StatGrid.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
+
+	type IncidentQuery = {
+		data?: IncidentCockpitSummary;
+		isPending: boolean;
+		isError: boolean;
+		error: unknown;
+		isFetching: boolean;
+		refetch: () => Promise<unknown>;
+	};
 
 	let {
 		workspace,
@@ -36,12 +47,26 @@
 		onOpenResources,
 		onResourceInspect,
 		onResourceSelect,
+	}: {
+		workspace: SavedWorkspace;
+		incidentsQuery: IncidentQuery;
+		incidentCounts: IncidentCounts;
+		incidentFilter?: IncidentFilter;
+		incidentFilterOptions: IncidentFilterOption[];
+		incidentGroups: Array<{ label: string; items: IncidentCockpitItem[] }>;
+		selectedResource?: ResourceSummary | null;
+		onOpenResources: (
+			namespace?: string | string[],
+			initialSearch?: string,
+			initialGitOpsFilter?: string,
+			initialHealthFilter?: HealthFilter,
+		) => void;
+		onResourceInspect: (resource: ResourceSummary, detailTab?: PathStateDetailTab) => void;
+		onResourceSelect: (resource: ResourceSummary) => void;
 	} = $props();
 
 	const visibleIncidents = $derived(
-		(incidentGroups as Array<{ items: IncidentCockpitItem[] }>).flatMap(
-			(group) => group.items,
-		),
+		incidentGroups.flatMap((group) => group.items),
 	);
 	const selectedIncident = $derived(
 		visibleIncidents.find((item) => isIncidentResourceSelected(item, selectedResource)) ?? null,
@@ -249,7 +274,7 @@
 									type="button"
 									variant="outline"
 									size="sm"
-									onclick={() => onResourceSelect(selectedIncident.resource, treeNodeForResource(selectedIncident.resource))}
+									onclick={() => onResourceSelect(selectedIncident.resource)}
 								>
 									<ExternalLink data-icon="inline-start" />
 									Open in Resources
