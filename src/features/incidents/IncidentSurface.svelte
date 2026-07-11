@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
-	import type { HealthFilter } from "@/features/resources/helpers";
+	import type { HealthFilter } from "@/features/resources";
 	import { buildWorkspaceFetchKeys, buildWorkspaceFetchPlans } from "@/features/workspaces";
 	import type { PathStateDetailTab } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
