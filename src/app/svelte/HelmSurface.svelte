@@ -33,8 +33,8 @@
 	import type { HelmManifestResourceSummary } from "@/lib/types";
 	import { formatStatusLabel } from "@/lib/utils";
 	import SimpleTable from "./SimpleTable.svelte";
-	import StatGrid from "./StatGrid.svelte";
-	import SurfaceFrame from "./SurfaceFrame.svelte";
+	import StatGrid from "@/components/StatGrid.svelte";
+	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 
 	let {
 		helmQuery,

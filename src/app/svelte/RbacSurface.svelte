@@ -9,8 +9,8 @@
 		CardTitle,
 	} from "@/components/ui/svelte";
 	import SimpleTable from "./SimpleTable.svelte";
-	import StatGrid from "./StatGrid.svelte";
-	import SurfaceFrame from "./SurfaceFrame.svelte";
+	import StatGrid from "@/components/StatGrid.svelte";
+	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 
 	let { rbacQuery, rbacStats, rbacTable, rbacView, rbacWarningSummary } = $props();
 </script>

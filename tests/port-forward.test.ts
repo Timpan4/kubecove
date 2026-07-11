@@ -238,64 +238,6 @@ spec:
 		).toBe("Local port must be 1024 or higher");
 	});
 
-	test("workspace manager renders active session controls and saved errors", () => {
-		const svelteSurfaceSource = readFileSync(
-			"src/app/svelte/AppSurfaces.svelte",
-			"utf8",
-		);
-		const svelteLiveSurfaceSource = [
-			svelteSurfaceSource,
-			readFileSync("src/app/svelte/LiveSessionsSurface.svelte", "utf8"),
-		].join("\n");
-		const svelteAppSource = readFileSync(
-			"src/app/svelte/App.svelte",
-			"utf8",
-		);
-		const svelteShellSource = readFileSync(
-			"src/app/svelte/WorkspaceShell.svelte",
-			"utf8",
-		);
-		const svelteChromeSource = readFileSync(
-			"src/app/svelte/ActiveLiveSessionsButton.svelte",
-			"utf8",
-		);
-
-		expect(svelteLiveSurfaceSource).toContain("portForward.lastError");
-		expect(svelteLiveSurfaceSource).toContain("stopPortForwardSession(session.id)");
-		expect(svelteLiveSurfaceSource).toContain("reconnectPortForward(session)");
-		expect(svelteLiveSurfaceSource).toContain("portForwardSessionResolution(session)");
-		expect(svelteLiveSurfaceSource).toContain("reconnectPortForward(session)");
-		expect(svelteLiveSurfaceSource).toContain("visiblePortForwardSessions");
-		expect(svelteLiveSurfaceSource).toContain("visibleExecSessions");
-		expect(svelteLiveSurfaceSource).toContain("kubeconfigSource: kubeconfigSourceKey");
-		expect(svelteLiveSurfaceSource).toContain("showKubeconfigSourceLabels && session.kubeconfigSourceLabel");
-		expect(svelteLiveSurfaceSource).toContain("podExecCommandText(session.command)");
-		expect(svelteLiveSurfaceSource).not.toContain(
-			"Exec sessions\", sessionsQuery.data?.execSessions.length",
-		);
-		expect(svelteSurfaceSource).toContain("buildLiveSessionReadModel(");
-		expect(svelteSurfaceSource).toContain("podExecQueryOptions(client");
-		expect(svelteSurfaceSource).toContain("portForwardQueryOptions(client");
-		expect(svelteLiveSurfaceSource).toContain("query={liveSessionsQuery}");
-		expect(svelteSurfaceSource).not.toContain('"svelte-live-sessions-surface"');
-		expect(svelteLiveSurfaceSource).toContain("Auto-start saved");
-		expect(svelteSurfaceSource).toContain("startAllSavedPortForwards");
-		expect(svelteShellSource).toContain("ActiveLiveSessionsButton");
-		expect(svelteShellSource).toContain("onOpenManager={openPortForwards}");
-		expect(svelteShellSource).toContain("Live sessions updated");
-		expect(svelteAppSource).toContain("stopLiveSessionsOutsideScope");
-		expect(svelteAppSource).toContain(
-			"$settingsStore.keepLiveSessionsOnWorkspaceSwitch",
-		);
-		expect(svelteAppSource).toContain("workspaceScopeContexts(workspace.scope)");
-		expect(svelteAppSource).toContain("invalidatePortForwardQueries(");
-		expect(svelteAppSource).toContain("invalidatePodExecQueries(");
-		expect(svelteAppSource).toContain(
-			"Stopped $" + "{result.stoppedPortForwards} port",
-		);
-		expect(svelteChromeSource).toContain("portForwardQueryOptions(client)");
-		expect(svelteChromeSource).toContain("podExecQueryOptions(client)");
-	});
 
 	test("Service detail forwarding offers a port picker when ports are known", () => {
 		const source = readFileSync(

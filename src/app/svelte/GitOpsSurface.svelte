@@ -35,7 +35,7 @@
 		type GitOpsRailItem,
 		type GitOpsSelection,
 	} from "./gitOpsSurfaceModel";
-	import SurfaceFrame from "./SurfaceFrame.svelte";
+	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 
 	const gitOpsFactFieldClass =
 		"relative min-w-0 rounded-md border bg-background/30 px-2.5 pb-2 pt-3 text-left";

@@ -22,8 +22,8 @@
 		isIncidentResourceSelected,
 	} from "./incidentSurfaceModel";
 	import { treeNodeForResource } from "./workspaceNavigation";
-	import StatGrid from "./StatGrid.svelte";
-	import SurfaceFrame from "./SurfaceFrame.svelte";
+	import StatGrid from "@/components/StatGrid.svelte";
+	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 
 	let {
 		workspace,

@@ -44,3 +44,4 @@ export {
 	type LiveSessionReadItem,
 	type LiveSessionReadModel,
 } from "./liveSessionReadModel";
+export { default as LiveSessionsSurface } from "./LiveSessionsSurface.svelte";
