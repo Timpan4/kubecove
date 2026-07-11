@@ -4,7 +4,7 @@ import { createWorkspaceRecord } from "../src/lib/workspace-model";
 import {
 	buildIncidentQueryState,
 	buildIncidentSurfaceState,
-} from "../src/features/incidents";
+} from "../src/features/incidents/surfaceState";
 import {
 	buildIncidentFilterOptions,
 	incidentCaseSummary,
