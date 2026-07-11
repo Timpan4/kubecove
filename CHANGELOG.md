@@ -3,6 +3,41 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.8.0 - 2026-07-11
+### Added
+
+- Share workspaces and aggregate workload logs (#209)
+
+### Improved
+
+- Move RBAC surface ownership
+- Deepen Helm view boundary
+- Move Helm surface ownership
+- Tighten GitOps feature seams
+- Move GitOps surface ownership
+- Use public feature imports
+- Move Incident surface ownership
+- Move live session surface ownership
+- Deepen pod exec lifecycle
+- Deepen port forward lifecycle
+- Route path state through navigation intents
+- Keep navigation state atomic
+- Centralize workspace navigation
+- Unify Argo summary projections
+- Deepen topology interface
+- Consolidate topology transformation
+- Improve topology node kind and health hierarchy
+- prewarm CRDs for faster topology
+
+### Fixed
+
+- Synchronize Incident filter state
+- Reset live sessions per workspace
+- Preserve successful pod exec starts
+- Fail closed when restoring port forwards
+- Preserve guarded port forward starts
+- address CRD prewarm review feedback
+
 ## 0.7.1 - 2026-06-30
 ### Fixed
 
