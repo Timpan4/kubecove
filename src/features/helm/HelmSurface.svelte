@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
-	import type { HealthFilter } from "@/features/resources";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
 		createTauriClient,
@@ -9,7 +8,6 @@
 		listHelmReleases,
 	} from "@/lib/tauri";
 	import type {
-		ArgoApplicationSummary,
 		HelmReconciliationResource,
 		HelmReleaseDetails,
 		HelmReleaseReconciliation,
@@ -46,13 +44,7 @@
 		helmSearch?: string;
 		selectedHelmRelease?: HelmReleaseSummary | null;
 		onTargetHelmReleaseResolved?: () => void;
-		onOpenResources: (
-			namespace?: string | string[],
-			initialSearch?: string,
-			initialGitOpsFilter?: string,
-			initialHealthFilter?: HealthFilter,
-			gitOpsFocusApplication?: ArgoApplicationSummary | null,
-		) => void;
+		onOpenResources: (namespace?: string | string[], initialSearch?: string) => void;
 	} = $props();
 
 	const client = createTauriClient();
@@ -146,17 +138,25 @@
 </script>
 
 <HelmView
-	{helmQuery}
-	groupedHelmReleases={releaseState.groups}
-	filteredHelmReleases={releaseState.filtered}
-	bind:helmSearch
-	bind:selectedHelmRelease
-	{selectedHelmReleaseKey}
-	{helmDetailsQuery}
-	{helmReconciliationQuery}
-	{helmReconciliationRows}
-	{onOpenResources}
-	{helmStatusVariant}
-	{helmReconciliationClass}
-	{helmReconciliationSource}
+	list={{
+		query: helmQuery,
+		groups: releaseState.groups,
+		filtered: releaseState.filtered,
+		search: helmSearch,
+		setSearch: (search) => (helmSearch = search),
+		selected: selectedHelmRelease,
+		selectedKey: selectedHelmReleaseKey,
+		select: (release) => (selectedHelmRelease = release),
+	}}
+	details={{ query: helmDetailsQuery }}
+	reconciliation={{
+		query: helmReconciliationQuery,
+		rows: helmReconciliationRows,
+		classFor: helmReconciliationClass,
+		sourceFor: helmReconciliationSource,
+	}}
+	actions={{
+		openResources: onOpenResources,
+		statusVariant: helmStatusVariant,
+	}}
 />
