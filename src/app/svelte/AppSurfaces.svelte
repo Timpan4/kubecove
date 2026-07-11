@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { createQueries, createQuery } from "@tanstack/svelte-query";
+	import { createQuery } from "@tanstack/svelte-query";
+	import { GitOpsSurface, type GitOpsSelection } from "@/features/gitops";
 	import { IncidentSurface, type IncidentFilter } from "@/features/incidents";
 	import { LiveSessionsSurface } from "@/features/live-sessions";
 	import {
@@ -10,30 +11,18 @@
 		helmStatusTone,
 		sortHelmReconciliationResources,
 	} from "@/features/helm/helpers";
-	import {
-		argoApplicationResourceNamespaces,
-	} from "@/features/resources/helpers";
-	import type { HealthFilter } from "@/features/resources/helpers";
+	import type { HealthFilter } from "@/features/resources";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
 		createTauriClient,
-		detectArgoCD,
-		detectFlux,
 		getHelmReleaseDetails,
 		getHelmReleaseReconciliation,
 		getKubeconfigSources,
-		listArgoApplicationSets,
-		listArgoApplications,
-		listArgoAppProjects,
-		listFluxResources,
 		listHelmReleases,
 		listRbacInspection,
 	} from "@/lib/tauri";
 	import type {
-		ArgoApplicationSetSummary,
 		ArgoApplicationSummary,
-		ArgoAppProjectSummary,
-		FluxResourceSummary,
 		HelmReconciliationResource,
 		HelmReleaseReconciliation,
 		HelmReleaseDetails,
@@ -44,19 +33,9 @@
 	import type { TreeNodeId } from "@/lib/tree-nav";
 	import type { PathStateDetailTab, PathStateSurfacesState } from "@/lib/path-state";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
-	import GitOpsSurface from "./GitOpsSurface.svelte";
 	import HelmSurface from "./HelmSurface.svelte";
 	import RbacSurface from "./RbacSurface.svelte";
 	import SettingsSurface from "./SettingsSurface.svelte";
-	import {
-		buildGitOpsRailItems,
-		buildGitOpsSelections,
-		buildGitOpsTable,
-		gitOpsActiveRailKey as resolveGitOpsActiveRailKey,
-		gitOpsSelectionKey,
-		gitOpsUnavailableProvider as resolveGitOpsUnavailableProvider,
-		type GitOpsSelection,
-	} from "./gitOpsSurfaceModel";
 	import {
 		buildRbacStats,
 		buildRbacTable,
@@ -64,15 +43,6 @@
 		rbacWarningSummary,
 	} from "./rbacSurfaceModel";
 	import { treeNodeForResource, type WorkspaceViewMode } from "./workspaceNavigation";
-
-	interface GitOpsData {
-		argoDetected: boolean;
-		apps: ArgoApplicationSummary[];
-		appSets: ArgoApplicationSetSummary[];
-		projects: ArgoAppProjectSummary[];
-		flux: FluxResourceSummary[];
-		fluxDetected: boolean;
-	}
 
 	let {
 		workspace,
@@ -136,97 +106,6 @@
 	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);
 	const kubeconfigSourceKey = $derived(sourceQuery.data?.sourceKey);
 	const showKubeconfigSourceLabels = $derived(sourceQuery.data?.showSourceLabels ?? false);
-
-	const argoDetectionQuery = createQuery<boolean>(() => ({
-		queryKey: queryKeys.argoDetect(workspace.scope.clusterContext, kubeconfigSourceKey),
-		queryFn: () => detectArgoCD(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: viewMode === "argo" && sourceReady,
-		staleTime: 60_000,
-	}));
-	const fluxDetectionQuery = createQuery(() => ({
-		queryKey: queryKeys.fluxDetect(workspace.scope.clusterContext, kubeconfigSourceKey),
-		queryFn: () => detectFlux(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: viewMode === "argo" && sourceReady,
-		staleTime: 60_000,
-	}));
-	const argoAppsQuery = createQuery<ArgoApplicationSummary[]>(() => ({
-		queryKey: queryKeys.argoApps(workspace.scope.clusterContext, kubeconfigSourceKey),
-		queryFn: () => listArgoApplications(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: viewMode === "argo" && sourceReady && argoDetectionQuery.data === true,
-		staleTime: 15_000,
-	}));
-	const argoAppSetsQuery = createQuery<ArgoApplicationSetSummary[]>(() => ({
-		queryKey: queryKeys.argoAppSets(workspace.scope.clusterContext, kubeconfigSourceKey),
-		queryFn: () =>
-			listArgoApplicationSets(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: viewMode === "argo" && sourceReady && argoDetectionQuery.data === true,
-		staleTime: 15_000,
-	}));
-	const argoProjectsQuery = createQuery<ArgoAppProjectSummary[]>(() => ({
-		queryKey: queryKeys.argoAppProjects(workspace.scope.clusterContext, kubeconfigSourceKey),
-		queryFn: () => listArgoAppProjects(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: viewMode === "argo" && sourceReady && argoDetectionQuery.data === true,
-		staleTime: 15_000,
-	}));
-	const fluxResourceQueries = createQueries(() => ({
-		queries: (fluxDetectionQuery.data?.kinds ?? []).map((kind) => ({
-			queryKey: queryKeys.fluxResources(
-				workspace.scope.clusterContext,
-				kind,
-				kubeconfigSourceKey,
-			),
-			queryFn: () =>
-				listFluxResources(client, workspace.scope.clusterContext, kind, kubeconfigSourceKey),
-			enabled: viewMode === "argo" && sourceReady && fluxDetectionQuery.data?.detected === true,
-			staleTime: 15_000,
-		})),
-	}));
-	const fluxResources = $derived(
-		fluxResourceQueries.flatMap((query) => (query.data as FluxResourceSummary[] | undefined) ?? []),
-	);
-	const argoDetectionReady = $derived(
-		argoDetectionQuery.isSuccess || argoDetectionQuery.isError,
-	);
-	const fluxDetectionReady = $derived(
-		fluxDetectionQuery.isSuccess || fluxDetectionQuery.isError,
-	);
-	const gitOpsProviderError = $derived(
-		argoDetectionQuery.error ?? fluxDetectionQuery.error,
-	);
-	const gitOpsListError = $derived(
-		argoAppsQuery.error ??
-			argoAppSetsQuery.error ??
-			argoProjectsQuery.error ??
-			fluxResourceQueries.find((query) => query.error)?.error,
-	);
-	const gitOpsData = $derived<GitOpsData | undefined>(
-		!argoDetectionReady || !fluxDetectionReady
-			? undefined
-			: {
-					argoDetected: argoDetectionQuery.data === true,
-					apps: argoAppsQuery.data ?? [],
-					appSets: argoAppSetsQuery.data ?? [],
-					projects: argoProjectsQuery.data ?? [],
-					flux: fluxResources,
-					fluxDetected: fluxDetectionQuery.data?.detected === true,
-				},
-	);
-	const gitOpsQuery = $derived({
-		data: gitOpsData,
-		isPending:
-			argoDetectionQuery.isPending ||
-			fluxDetectionQuery.isPending ||
-			(argoDetectionQuery.data === true &&
-				(argoAppsQuery.isPending || argoAppSetsQuery.isPending || argoProjectsQuery.isPending)) ||
-			(fluxDetectionQuery.data?.detected === true &&
-				fluxResourceQueries.some((query) => query.isPending)),
-		isError: false,
-		error: null,
-	});
-
-	const selectedGitOpsItemKey = $derived(
-		selectedGitOpsItem ? gitOpsSelectionKey(selectedGitOpsItem) : "",
-	);
 
 	const helmQuery = createQuery<HelmReleaseSummary[]>(() => ({
 		queryKey: queryKeys.helmReleases(workspace.scope.clusterContext, kubeconfigSourceKey),
@@ -310,24 +189,11 @@
 	const helmReconciliationRows = $derived(
 		sortHelmReconciliationResources(helmReconciliationQuery.data?.resources ?? []),
 	);
-	const gitOpsTable = $derived(
-		gitOpsQuery.data ? buildGitOpsTable(gitOpsQuery.data, selectedNode) : null,
-	);
-	const gitOpsUnavailableProvider = $derived(
-		gitOpsQuery.data ? resolveGitOpsUnavailableProvider(gitOpsQuery.data, selectedNode) : null,
-	);
-	const gitOpsSelections = $derived(
-		gitOpsQuery.data ? buildGitOpsSelections(gitOpsQuery.data, selectedNode) : [],
-	);
-	const gitOpsRailItems = $derived(
-		gitOpsQuery.data ? buildGitOpsRailItems(gitOpsQuery.data) : [],
-	);
-	const gitOpsActiveRailKey = $derived(
-		gitOpsQuery.data ? resolveGitOpsActiveRailKey(gitOpsQuery.data, selectedNode) : "",
-	);
-
 	$effect(() => {
 		if (viewMode === "incidents") incidentFilter = initialIncidentFilter;
+	});
+	$effect(() => {
+		if (viewMode !== "argo") selectedGitOpsItem = null;
 	});
 
 	$effect(() => {
@@ -340,30 +206,6 @@
 			selectedGitOpsApplication:
 				selectedGitOpsItem?.type === "argoApp" ? selectedGitOpsItem.item.name : null,
 		});
-	});
-
-	$effect(() => {
-		if (viewMode !== "argo") {
-			selectedGitOpsItem = null;
-			return;
-		}
-		if (targetGitOpsApplication) {
-			const match = gitOpsSelections.find(
-				(item) => item.type === "argoApp" && item.item.name === targetGitOpsApplication,
-			);
-			if (match) {
-				selectedGitOpsItem = match;
-				onTargetGitOpsApplicationResolved?.();
-				return;
-			}
-			if (gitOpsQuery.data) onTargetGitOpsApplicationResolved?.();
-		}
-		if (
-			selectedGitOpsItem &&
-			!gitOpsSelections.some((item) => gitOpsSelectionKey(item) === selectedGitOpsItemKey)
-		) {
-			selectedGitOpsItem = null;
-		}
 	});
 
 	$effect(() => {
@@ -429,50 +271,23 @@
 		return "";
 	}
 
-	function gitOpsStatusClass(status: string | null | undefined) {
-		if (status === "Synced" || status === "Healthy") {
-			return "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
-		}
-		if (status === "Degraded" || status === "Missing") {
-			return "border-destructive/40 bg-destructive/10 text-destructive";
-		}
-		if (status === "OutOfSync" || status === "Progressing" || status === "Unknown") {
-			return "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300";
-		}
-		return "";
-	}
-
-	function openSelectedArgoApplicationResources(selectionOverride?: GitOpsSelection) {
-		const selection = selectionOverride ?? selectedGitOpsItem;
-		if (!selection || selection.type !== "argoApp") return;
-		onOpenResources(
-			argoApplicationResourceNamespaces(selection.item),
-			"",
-			"",
-			"all",
-			selection.item,
-		);
-	}
-
 
 </script>
 
 {#if viewMode === "argo"}
-	<GitOpsSurface
-		{gitOpsQuery}
-		{gitOpsProviderError}
-		{gitOpsListError}
-		{gitOpsUnavailableProvider}
-		{gitOpsTable}
-		{gitOpsSelections}
-		{gitOpsRailItems}
-		{gitOpsActiveRailKey}
-		bind:selectedGitOpsItem
-		{selectedGitOpsItemKey}
-		{openSelectedArgoApplicationResources}
-		{onResourceInspect}
-		{gitOpsStatusClass}
-	/>
+	{#key workspace.id}
+		<GitOpsSurface
+			{workspace}
+			{sourceReady}
+			{kubeconfigSourceKey}
+			{selectedNode}
+			{targetGitOpsApplication}
+			bind:selectedGitOpsItem
+			{onTargetGitOpsApplicationResolved}
+			{onOpenResources}
+			{onResourceInspect}
+		/>
+	{/key}
 {:else if viewMode === "helm"}
 	<HelmSurface
 		{helmQuery}

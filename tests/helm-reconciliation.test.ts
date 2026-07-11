@@ -91,7 +91,10 @@ describe("Helm reconciliation UI helpers", () => {
 	test("Svelte resource detail can hand Helm releases to the Helm surface", () => {
 		const detail = readFileSync("src/features/resource-detail/DetailsTab.svelte", "utf8");
 		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-		const surfaces = readFileSync("src/app/svelte/AppSurfaces.svelte", "utf8");
+		const surfaces = [
+			readFileSync("src/app/svelte/AppSurfaces.svelte", "utf8"),
+			readFileSync("src/features/gitops/GitOpsSurface.svelte", "utf8"),
+		].join("\n");
 
 		expect(detail).toContain("Open Helm release");
 		expect(shell).toContain("onOpenHelmRelease={openHelmReleaseFromResource}");
@@ -169,7 +172,10 @@ describe("Helm reconciliation UI helpers", () => {
 			"utf8",
 		);
 		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-		const surfaces = readFileSync("src/app/svelte/AppSurfaces.svelte", "utf8");
+		const surfaces = [
+			readFileSync("src/app/svelte/AppSurfaces.svelte", "utf8"),
+			readFileSync("src/features/gitops/GitOpsSurface.svelte", "utf8"),
+		].join("\n");
 
 		expect(browser).toContain('initialGitOpsFilter = ""');
 		expect(browser).toContain("gitOpsFilter = pathState?.gitOpsFilter ?? initialGitOpsFilter");

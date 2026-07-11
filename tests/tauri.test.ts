@@ -1176,7 +1176,7 @@ describe("incident signal helpers", () => {
 
 	test("keeps GitOps age tooltip backed by creation timestamps", () => {
 		const source = readFileSync(
-			"src/app/svelte/gitOpsSurfaceTooltips.ts",
+			"src/features/gitops/surfaceTooltips.ts",
 			"utf8",
 		);
 

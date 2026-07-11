@@ -1,4 +1,4 @@
-import { normalizeArgoKindLabel } from "@/features/gitops/gitops-nav";
+import { normalizeArgoKindLabel } from "./gitops-nav";
 import type {
 	ArgoApplicationSetSummary,
 	ArgoApplicationSummary,
@@ -20,14 +20,14 @@ export {
 	gitOpsSelectionSourceTooltipGroups,
 	gitOpsSelectionSourceTooltipLines,
 	gitOpsSelectionSourceTooltipTitle,
-} from "./gitOpsSurfaceTooltips";
+} from "./surfaceTooltips";
 export type {
 	GitOpsRevisionTooltipRow,
 	GitOpsSourceMode,
 	GitOpsSourceTooltipGroup,
 	GitOpsSourceTooltipRow,
 	GitOpsTooltipField,
-} from "./gitOpsSurfaceTooltips";
+} from "./surfaceTooltips";
 
 export interface GitOpsData {
 	argoDetected?: boolean;
@@ -51,6 +51,11 @@ export interface GitOpsRailItem {
 	label: string;
 	count: number;
 	disabled?: boolean;
+}
+
+export interface GitOpsUnavailableProvider {
+	title: string;
+	description: string;
 }
 
 export type GitOpsSelection =
@@ -302,7 +307,7 @@ function argoResourceSummary(
 export function gitOpsUnavailableProvider(
 	data: GitOpsData,
 	selectedNode: TreeNodeId | null,
-): { title: string; description: string } | null {
+): GitOpsUnavailableProvider | null {
 	if (selectedNode?.type !== "group" || selectedNode.section !== "argo") return null;
 	if (selectedNode.group === "gitops:argo" && data.argoDetected === false) {
 		return {

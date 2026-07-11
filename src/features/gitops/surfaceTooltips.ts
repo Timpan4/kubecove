@@ -2,7 +2,7 @@ import type {
 	ArgoApplicationSourceSummary,
 	ArgoApplicationSummary,
 } from "@/lib/types";
-import type { GitOpsSelection } from "./gitOpsSurfaceModel";
+import type { GitOpsSelection } from "./surfaceModel";
 
 export type GitOpsSourceMode = "git" | "helm" | "multi" | "plugin" | "unknown";
 

@@ -14,6 +14,7 @@
 		TooltipTrigger,
 	} from "@/components/ui/svelte";
 	import { formatStatusLabel } from "@/lib/utils";
+	import type { ResourceSummary } from "@/lib/types";
 	import {
 		gitOpsDetailsActionKey,
 		gitOpsSelectionAgeTooltip,
@@ -34,7 +35,10 @@
 		type GitOpsTooltipField,
 		type GitOpsRailItem,
 		type GitOpsSelection,
-	} from "./gitOpsSurfaceModel";
+		type GitOpsData,
+		type GitOpsTable,
+		type GitOpsUnavailableProvider,
+	} from "./surfaceModel";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 
 	const gitOpsFactFieldClass =
@@ -65,6 +69,13 @@
 		value: string | null | undefined;
 	};
 
+	type GitOpsQuery = {
+		data?: GitOpsData;
+		isPending: boolean;
+		isError: boolean;
+		error: unknown;
+	};
+
 	let {
 		gitOpsQuery,
 		gitOpsProviderError,
@@ -79,6 +90,20 @@
 		openSelectedArgoApplicationResources,
 		onResourceInspect,
 		gitOpsStatusClass,
+	}: {
+		gitOpsQuery: GitOpsQuery;
+		gitOpsProviderError: unknown;
+		gitOpsListError: unknown;
+		gitOpsUnavailableProvider: GitOpsUnavailableProvider | null;
+		gitOpsTable: GitOpsTable | null;
+		gitOpsSelections: GitOpsSelection[];
+		gitOpsRailItems: GitOpsRailItem[];
+		gitOpsActiveRailKey: string;
+		selectedGitOpsItem?: GitOpsSelection | null;
+		selectedGitOpsItemKey: string;
+		openSelectedArgoApplicationResources: (selection?: GitOpsSelection) => void;
+		onResourceInspect: (resource: ResourceSummary) => void;
+		gitOpsStatusClass: (status: string | null | undefined) => string;
 	} = $props();
 
 	function railItemsFor(provider: GitOpsRailItem["provider"]): GitOpsRailItem[] {
