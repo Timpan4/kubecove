@@ -267,18 +267,15 @@ spec:
 		expect(svelteLiveSurfaceSource).toContain("reconnectPortForward(session)");
 		expect(svelteLiveSurfaceSource).toContain("visiblePortForwardSessions");
 		expect(svelteLiveSurfaceSource).toContain("visibleExecSessions");
-		expect(svelteLiveSurfaceSource).toContain("workspaceContexts.includes(session.clusterContext)");
+		expect(svelteLiveSurfaceSource).toContain("kubeconfigSource: kubeconfigSourceKey");
 		expect(svelteLiveSurfaceSource).toContain("showKubeconfigSourceLabels && session.kubeconfigSourceLabel");
 		expect(svelteLiveSurfaceSource).toContain("podExecCommandText(session.command)");
 		expect(svelteLiveSurfaceSource).not.toContain(
 			"Exec sessions\", sessionsQuery.data?.execSessions.length",
 		);
-		expect(svelteSurfaceSource).toContain(
-			"placeholderData: (previousData) => previousData",
-		);
-		expect(svelteSurfaceSource).toContain("queryKey: queryKeys.podExecSessions()");
+		expect(svelteSurfaceSource).toContain("buildLiveSessionReadModel(");
+		expect(svelteSurfaceSource).toContain("podExecQueryOptions(client");
 		expect(svelteSurfaceSource).toContain("portForwardQueryOptions(client");
-		expect(svelteSurfaceSource).toContain("portForwardSessionsForWorkspace(");
 		expect(svelteLiveSurfaceSource).toContain("query={liveSessionsQuery}");
 		expect(svelteSurfaceSource).not.toContain('"svelte-live-sessions-surface"');
 		expect(svelteLiveSurfaceSource).toContain("Auto-start saved");
@@ -292,13 +289,12 @@ spec:
 		);
 		expect(svelteAppSource).toContain("workspaceScopeContexts(workspace.scope)");
 		expect(svelteAppSource).toContain("invalidatePortForwardQueries(");
-		expect(svelteAppSource).toContain("queryKeys.podExecSessions()");
+		expect(svelteAppSource).toContain("invalidatePodExecQueries(");
 		expect(svelteAppSource).toContain(
 			"Stopped $" + "{result.stoppedPortForwards} port",
 		);
 		expect(svelteChromeSource).toContain("portForwardQueryOptions(client)");
-		expect(svelteChromeSource).toContain("listPodExecSessions(client)");
-		expect(svelteChromeSource).toContain("queryKeys.podExecSessions()");
+		expect(svelteChromeSource).toContain("podExecQueryOptions(client)");
 	});
 
 	test("Service detail forwarding offers a port picker when ports are known", () => {

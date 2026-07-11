@@ -7,15 +7,17 @@
 		type IncidentFilter,
 	} from "@/features/incidents/helpers";
 	import {
+		buildLiveSessionReadModel,
+		podExecQueryOptions,
 		parseSavedPortForwardForm,
 		portForwardErrorMessage,
 		portForwardLocalUrl,
 		portForwardQueryOptions,
-		portForwardSessionsForWorkspace,
 		reconnectPortForward as reconnectPortForwardLifecycle,
 		savedPortForwardLabel,
 		startSavedPortForward as startSavedPortForwardLifecycle,
 		startSavedPortForwards as startSavedPortForwardsLifecycle,
+		stopPodExec,
 		stopPortForward as stopPortForwardLifecycle,
 		type SavedPortForwardFormValues,
 	} from "@/features/live-sessions";
@@ -27,9 +29,6 @@
 		helmStatusTone,
 		sortHelmReconciliationResources,
 	} from "@/features/helm/helpers";
-	import {
-		sortPodExecSessions,
-	} from "@/features/resource-detail/pod-exec-helpers";
 	import {
 		argoApplicationResourceNamespaces,
 	} from "@/features/resources/helpers";
@@ -49,9 +48,7 @@
 		listFluxResources,
 		listHelmReleases,
 		listIncidentCockpit,
-		listPodExecSessions,
 		listRbacInspection,
-		stopPodExecSession,
 	} from "@/lib/tauri";
 	import type {
 		ArgoApplicationSetSummary,
@@ -193,7 +190,6 @@
 	const showKubeconfigSourceLabels = $derived(sourceQuery.data?.showSourceLabels ?? false);
 	const incidentFetchKeys = $derived(buildWorkspaceFetchKeys(workspace.scope));
 	const workspaceContextKey = $derived(workspaceScopeContexts(workspace.scope).join("|"));
-	const workspaceContexts = $derived(workspaceScopeContexts(workspace.scope));
 
 	const argoDetectionQuery = createQuery<boolean>(() => ({
 		queryKey: queryKeys.argoDetect(workspace.scope.clusterContext, kubeconfigSourceKey),
@@ -371,13 +367,12 @@
 			refetchInterval: 2_500,
 		}),
 	);
-	const execSessionsQuery = createQuery<PodExecSessionSummary[]>(() => ({
-		queryKey: queryKeys.podExecSessions(),
-		queryFn: async () => sortPodExecSessions(await listPodExecSessions(client)),
-		enabled: viewMode === "portForwards",
-		placeholderData: (previousData) => previousData,
-		refetchInterval: 2_500,
-	}));
+	const execSessionsQuery = createQuery<PodExecSessionSummary[]>(() =>
+		podExecQueryOptions(client, {
+			enabled: viewMode === "portForwards" && sourceReady,
+			refetchInterval: 2_500,
+		}),
+	);
 	const liveSessionsQuery = $derived({
 		isPending: portForwardsQuery.isPending || execSessionsQuery.isPending,
 		isError: portForwardsQuery.isError || execSessionsQuery.isError,
@@ -390,18 +385,15 @@
 	const incidentCounts = $derived(countIncidentItems(incidentsQuery.data?.items ?? []));
 	const incidentFilterOptions = $derived(buildIncidentFilterOptions(incidentCounts));
 	const incidentGroups = $derived(groupIncidentItems(visibleIncidents));
-	const visiblePortForwardSessions = $derived(
-		portForwardSessionsForWorkspace(
+	const liveSessionReadModel = $derived(
+		buildLiveSessionReadModel(
 			portForwardsQuery.data ?? [],
-			workspace,
-			kubeconfigSourceKey,
+			execSessionsQuery.data ?? [],
+			{ workspace, kubeconfigSource: kubeconfigSourceKey },
 		),
 	);
-	const visibleExecSessions = $derived(
-		(execSessionsQuery.data ?? []).filter((session) =>
-			workspaceContexts.includes(session.clusterContext),
-		),
-	);
+	const visiblePortForwardSessions = $derived(liveSessionReadModel.portForwards);
+	const visibleExecSessions = $derived(liveSessionReadModel.podExecSessions);
 	const rbacView = $derived(selectedRbacView(selectedNode));
 	const rbacTable = $derived(
 		rbacQuery.data ? buildRbacTable(rbacQuery.data, rbacView) : null,
@@ -793,9 +785,11 @@
 		stoppingSessionId = sessionId;
 		liveSessionActionError = null;
 		try {
-			await stopPodExecSession(client, sessionId);
-			await queryClient.invalidateQueries({ queryKey: queryKeys.podExecSessions() });
-			await execSessionsQuery.refetch();
+			await stopPodExec({
+				client,
+				sessionId,
+				invalidateQueries: (options) => queryClient.invalidateQueries(options),
+			});
 		} catch (error) {
 			liveSessionActionError = error;
 		} finally {

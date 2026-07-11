@@ -29,7 +29,7 @@
 		savedPortForwardLabel,
 		savedPortForwardMatchesSession,
 	} from "@/features/live-sessions/helpers";
-	import { podExecCommandText } from "@/features/resource-detail/pod-exec-helpers";
+	import { podExecCommandText } from "@/features/live-sessions";
 	import type { PortForwardSessionSummary } from "@/lib/types";
 	import StatGrid from "./StatGrid.svelte";
 	import SurfaceFrame from "./SurfaceFrame.svelte";
