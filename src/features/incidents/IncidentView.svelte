@@ -3,10 +3,13 @@
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import { Badge, Button, Empty, EmptyDescription, EmptyHeader, EmptyTitle, Spinner } from "@/components/ui/svelte";
 	import type { PathStateDetailTab } from "@/lib/path-state";
-	import type { IncidentCockpitItem } from "@/lib/types";
-	import type { IncidentFilter } from "@/features/incidents/helpers";
+	import type { IncidentCockpitItem, IncidentCockpitSummary, ResourceSummary } from "@/lib/types";
+	import type { SavedWorkspace } from "@/lib/workspace-model";
+	import type { HealthFilter } from "@/features/resources";
+	import type { IncidentCounts, IncidentFilter } from "./helpers";
 	import { cnfast } from "@/lib/utils";
 	import {
+		type IncidentFilterOption,
 		incidentCaseSummary,
 		incidentCaseTitle,
 		incidentDetailPivots,
@@ -20,10 +23,18 @@
 		incidentSignalSummary,
 		incidentWarningSummary,
 		isIncidentResourceSelected,
-	} from "./incidentSurfaceModel";
-	import { treeNodeForResource } from "./workspaceNavigation";
+	} from "./model";
 	import StatGrid from "@/components/StatGrid.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
+
+	type IncidentQuery = {
+		data?: IncidentCockpitSummary;
+		isPending: boolean;
+		isError: boolean;
+		error: unknown;
+		isFetching: boolean;
+		refetch: () => Promise<unknown>;
+	};
 
 	let {
 		workspace,
@@ -33,19 +44,32 @@
 		incidentFilterOptions,
 		incidentGroups,
 		selectedResource = null,
+		selectedIncident,
+		emptyState,
+		visibleIncidentCount,
 		onOpenResources,
 		onResourceInspect,
 		onResourceSelect,
+	}: {
+		workspace: SavedWorkspace;
+		incidentsQuery: IncidentQuery;
+		incidentCounts: IncidentCounts;
+		incidentFilter?: IncidentFilter;
+		incidentFilterOptions: IncidentFilterOption[];
+		incidentGroups: Array<{ label: string; items: IncidentCockpitItem[] }>;
+		selectedResource?: ResourceSummary | null;
+		selectedIncident: IncidentCockpitItem | null;
+		emptyState: "clean" | "filtered" | "ready";
+		visibleIncidentCount: number;
+		onOpenResources: (
+			namespace?: string | string[],
+			initialSearch?: string,
+			initialGitOpsFilter?: string,
+			initialHealthFilter?: HealthFilter,
+		) => void;
+		onResourceInspect: (resource: ResourceSummary, detailTab?: PathStateDetailTab) => void;
+		onResourceSelect: (resource: ResourceSummary) => void;
 	} = $props();
-
-	const visibleIncidents = $derived(
-		(incidentGroups as Array<{ items: IncidentCockpitItem[] }>).flatMap(
-			(group) => group.items,
-		),
-	);
-	const selectedIncident = $derived(
-		visibleIncidents.find((item) => isIncidentResourceSelected(item, selectedResource)) ?? null,
-	);
 
 	function inspectIncident(item: IncidentCockpitItem, tab: PathStateDetailTab = "details") {
 		onResourceInspect(item.resource, tab);
@@ -134,7 +158,7 @@
 		{/each}
 	</div>
 
-	{#if incidentCounts.total === 0}
+	{#if emptyState === "clean"}
 		<Empty class="min-h-40 border border-dashed bg-surface-1/50">
 			<EmptyHeader><EmptyTitle>No active incident signals</EmptyTitle><EmptyDescription>Scope looks clean.</EmptyDescription></EmptyHeader>
 			<Button type="button" variant="outline" onclick={() => onOpenResources()}>
@@ -142,7 +166,7 @@
 				Open resources
 			</Button>
 		</Empty>
-	{:else if incidentGroups.length === 0}
+	{:else if emptyState === "filtered"}
 		<Empty class="min-h-40 border border-dashed bg-surface-1/50">
 			<EmptyHeader>
 				<EmptyTitle>No matching incident signals</EmptyTitle>
@@ -157,7 +181,7 @@
 						<h3 class="text-sm font-semibold">Signal queue</h3>
 						<p class="mt-1 text-xs text-muted-foreground">Grouped by ownership, sorted by severity and recency.</p>
 					</div>
-					<Badge variant="secondary" class="tabular-nums">{visibleIncidents.length}</Badge>
+					<Badge variant="secondary" class="tabular-nums">{visibleIncidentCount}</Badge>
 				</header>
 				<div class="max-h-[58vh] min-h-0 overflow-y-auto p-3">
 					<div class="flex flex-col gap-3">
@@ -249,7 +273,7 @@
 									type="button"
 									variant="outline"
 									size="sm"
-									onclick={() => onResourceSelect(selectedIncident.resource, treeNodeForResource(selectedIncident.resource))}
+									onclick={() => onResourceSelect(selectedIncident.resource)}
 								>
 									<ExternalLink data-icon="inline-start" />
 									Open in Resources

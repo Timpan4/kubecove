@@ -12,7 +12,7 @@ This is a quick pass over the frontend for places that still use native form/tab
 
 - Done: `src/app/svelte/HelmSurface.svelte` now uses the shared shadcn Svelte table primitives for release and reconciliation tables.
 
-- Done: `src/app/svelte/IncidentSurface.svelte` now uses the shared shadcn Svelte table primitives for the incident list.
+- Done: `src/features/incidents/IncidentView.svelte` now uses the shared shadcn Svelte primitives for the incident cockpit.
 
 - Done: `src/features/live-sessions/LiveSessionsSurface.svelte` now uses the shared shadcn Svelte table primitives for active port-forward, saved forward, and exec-session tables, plus `Field` + `FieldLabel` for the auto-start checkbox.
 

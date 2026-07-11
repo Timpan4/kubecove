@@ -54,7 +54,7 @@
 		type WorkspaceShortcut,
 	} from "@/lib/workspaces";
 	import type { HealthFilter } from "@/features/resources/helpers";
-	import type { IncidentFilter } from "@/features/incidents/helpers";
+	import type { IncidentFilter } from "@/features/incidents";
 
 	let {
 		workspace,
