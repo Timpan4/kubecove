@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { buildGitOpsReadState } from "../src/features/gitops/surfaceState";
+import {
+	argoApplicationResourceNavigation,
+	resolveTargetGitOpsSelection,
+} from "../src/features/gitops/surfaceSelection";
+import { selectedGitOpsApplicationName } from "../src/features/gitops";
 
 const readyDetection = {
 	isSuccess: true,
@@ -10,6 +15,43 @@ const readyDetection = {
 const emptyList = { data: [], isPending: false, error: null };
 
 describe("GitOps surface state", () => {
+	const application = {
+		type: "argoApp" as const,
+		item: {
+			name: "checkout",
+			cluster: "kind-dev",
+			namespace: "argocd",
+			project: "default",
+			syncStatus: "Synced",
+			healthStatus: "Healthy",
+			destinationNamespace: "store",
+			destinationServer: null,
+			sourceRepo: null,
+			sourceRevision: null,
+			resourceNamespaces: ["store", "payments"],
+			age: "1h",
+		},
+	};
+
+	test("resolves shortcut targets and mirrors selected applications into path state", () => {
+		const resolved = resolveTargetGitOpsSelection([application], "checkout", true);
+		const missing = resolveTargetGitOpsSelection([application], "missing", true);
+
+		expect(resolved).toEqual({ selection: application, shouldResolve: true });
+		expect(missing).toEqual({ selection: null, shouldResolve: true });
+		expect(selectedGitOpsApplicationName(resolved.selection)).toBe("checkout");
+		expect(selectedGitOpsApplicationName(null)).toBeNull();
+	});
+
+	test("opens Argo resources without an owner filter and preserves focus", () => {
+		expect(argoApplicationResourceNavigation(application)).toEqual({
+			namespaces: ["payments", "store"],
+			gitOpsFilter: "",
+			healthFilter: "all",
+			focusApplication: application.item,
+		});
+	});
+
 	test("waits for both provider probes before exposing data", () => {
 		const state = buildGitOpsReadState({
 			argoDetection: { ...readyDetection, data: true },

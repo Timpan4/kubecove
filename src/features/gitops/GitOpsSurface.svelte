@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { createQueries, createQuery } from "@tanstack/svelte-query";
-	import { argoApplicationResourceNamespaces, type HealthFilter } from "@/features/resources";
+	import type { HealthFilter } from "@/features/resources";
 	import type { PathStateDetailTab } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
@@ -31,6 +31,10 @@
 		type GitOpsSelection,
 	} from "./surfaceModel";
 	import { buildGitOpsReadState } from "./surfaceState";
+	import {
+		argoApplicationResourceNavigation,
+		resolveTargetGitOpsSelection,
+	} from "./surfaceSelection";
 
 	let {
 		workspace,
@@ -124,17 +128,17 @@
 	);
 
 	$effect(() => {
-		if (targetGitOpsApplication) {
-			const match = selections.find(
-				(item) => item.type === "argoApp" && item.item.name === targetGitOpsApplication,
-			);
-			if (match) {
-				selectedGitOpsItem = match;
-				onTargetGitOpsApplicationResolved();
-				return;
-			}
-			if (gitOpsData) onTargetGitOpsApplicationResolved();
+		const target = resolveTargetGitOpsSelection(
+			selections,
+			targetGitOpsApplication,
+			Boolean(gitOpsData),
+		);
+		if (target.selection) {
+			selectedGitOpsItem = target.selection;
+			onTargetGitOpsApplicationResolved();
+			return;
 		}
+		if (target.shouldResolve) onTargetGitOpsApplicationResolved();
 		if (
 			selectedGitOpsItem &&
 			!selections.some((item) => gitOpsSelectionKey(item) === selectedGitOpsItemKey)
@@ -145,13 +149,15 @@
 
 	function openSelectedArgoApplicationResources(selectionOverride?: GitOpsSelection) {
 		const selection = selectionOverride ?? selectedGitOpsItem;
-		if (!selection || selection.type !== "argoApp") return;
+		if (!selection) return;
+		const navigation = argoApplicationResourceNavigation(selection);
+		if (!navigation) return;
 		onOpenResources(
-			argoApplicationResourceNamespaces(selection.item),
+			navigation.namespaces,
 			"",
-			"",
-			"all",
-			selection.item,
+			navigation.gitOpsFilter,
+			navigation.healthFilter,
+			navigation.focusApplication,
 		);
 	}
 

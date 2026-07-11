@@ -166,32 +166,6 @@ describe("Helm reconciliation UI helpers", () => {
 		expect(surfaces).toContain("No manifest or explicit Helm-labeled live resources were found.");
 	});
 
-	test("Svelte GitOps details open Argo app namespaces without owner filter", () => {
-		const browser = readFileSync(
-			"src/features/resources/ResourceBrowser.svelte",
-			"utf8",
-		);
-		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-		const surfaces = [
-			readFileSync("src/app/svelte/AppSurfaces.svelte", "utf8"),
-			readFileSync("src/features/gitops/GitOpsSurface.svelte", "utf8"),
-		].join("\n");
-
-		expect(browser).toContain('initialGitOpsFilter = ""');
-		expect(browser).toContain("gitOpsFilter = pathState?.gitOpsFilter ?? initialGitOpsFilter");
-		expect(browser).toContain("gitOpsFocusApplication = null");
-		expect(browser).toContain("compactNamespaceList(app.resourceNamespaces)");
-		expect(browser).toContain("tracked resources");
-		expect(shell).toContain("resourceNamespaceOverride");
-		expect(shell).toContain("resourceGitOpsFocusApplication");
-		expect(shell).toContain("initialGitOpsFilter={resourceInitialGitOpsFilter}");
-		expect(shell).toContain("gitOpsFocusApplication={resourceGitOpsFocusApplication}");
-		expect(surfaces).toContain("openSelectedArgoApplicationResources");
-		expect(surfaces).toContain("argoApplicationResourceNamespaces(selection.item)");
-		expect(surfaces).not.toContain("argoApplicationGitOpsFilterKey(selection.item.name)");
-		expect(surfaces).toContain("selection.item");
-	});
-
 	test("detail tab uses backend reconciliation instead of fixed-kind listing", () => {
 		const source = readFileSync(
 			"src/app/svelte/HelmSurface.svelte",

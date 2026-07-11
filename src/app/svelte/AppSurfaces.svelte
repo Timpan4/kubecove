@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
-	import { GitOpsSurface, type GitOpsSelection } from "@/features/gitops";
+	import {
+		GitOpsSurface,
+		selectedGitOpsApplicationName,
+		type GitOpsSelection,
+	} from "@/features/gitops";
 	import { IncidentSurface, type IncidentFilter } from "@/features/incidents";
 	import { LiveSessionsSurface } from "@/features/live-sessions";
 	import {
@@ -203,8 +207,7 @@
 			selectedHelmRelease: selectedHelmRelease
 				? { name: selectedHelmRelease.name, namespace: selectedHelmRelease.namespace }
 				: null,
-			selectedGitOpsApplication:
-				selectedGitOpsItem?.type === "argoApp" ? selectedGitOpsItem.item.name : null,
+			selectedGitOpsApplication: selectedGitOpsApplicationName(selectedGitOpsItem),
 		});
 	});
 

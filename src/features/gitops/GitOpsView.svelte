@@ -32,6 +32,7 @@
 		gitOpsSelectionRevisionTooltipTitle,
 		type GitOpsRevisionTooltipRow,
 		type GitOpsSourceMode,
+		type GitOpsSourceTooltipGroup,
 		type GitOpsTooltipField,
 		type GitOpsRailItem,
 		type GitOpsSelection,
@@ -260,6 +261,37 @@
 	}
 </script>
 
+{#snippet sourceTooltipContent(
+	title: string,
+	groups: GitOpsSourceTooltipGroup[],
+	fallback: string,
+)}
+	<div class={gitOpsTooltipHeaderClass}>{title}</div>
+	{#if groups.length > 0}
+		{#each groups as group}
+			<section class="space-y-1.5 rounded-md border bg-background/25 p-2">
+				<div class="flex items-center justify-between gap-3 text-[0.68rem] font-semibold uppercase text-muted-foreground">
+					<span>{group.label}</span>
+					<span>{group.rows.length} source{group.rows.length === 1 ? "" : "s"}</span>
+				</div>
+				{#each group.rows as row}
+					<div class={gitOpsTooltipRowClass}>
+						<div class="mb-1 font-medium text-foreground">{row.name}</div>
+						<div class={gitOpsTooltipFieldGridClass}>
+							{#each row.fields as field}
+								<span class="text-muted-foreground">{field.label}</span>
+								<span class="break-all text-left font-medium">{field.value}</span>
+							{/each}
+						</div>
+					</div>
+				{/each}
+			</section>
+		{/each}
+	{:else}
+		<div class={gitOpsTooltipRowClass}>{fallback}</div>
+	{/if}
+{/snippet}
+
 <TooltipProvider delayDuration={400} skipDelayDuration={0}>
 	<SurfaceFrame icon={GitBranch} title="GitOps" query={gitOpsQuery} errorLabel="GitOps data unavailable" wide>
 		{@const data = gitOpsQuery.data}
@@ -381,34 +413,9 @@
 													>
 														<SourceIcon class="size-3.5" aria-hidden="true" />
 													</TooltipTrigger>
-													<TooltipContent side="top" align="end" sideOffset={8} class={gitOpsTooltipClass}>
-														<div class={gitOpsTooltipHeaderClass}>{sourceTooltipTitle}</div>
-														{#if sourceTooltipGroups.length > 0}
-															{#each sourceTooltipGroups as group}
-																<section class="space-y-1.5 rounded-md border bg-background/25 p-2">
-																	<div class="flex items-center justify-between gap-3 text-[0.68rem] font-semibold uppercase text-muted-foreground">
-																		<span>{group.label}</span>
-																		<span>{group.rows.length} source{group.rows.length === 1 ? "" : "s"}</span>
-																	</div>
-																	{#each group.rows as row}
-																		<div class={gitOpsTooltipRowClass}>
-																			<div class="mb-1 font-medium text-foreground">{row.name}</div>
-																			<div class={gitOpsTooltipFieldGridClass}>
-																				{#each row.fields as field}
-																					<span class="text-muted-foreground">{field.label}</span>
-																					<span class="break-all text-left font-medium">{field.value}</span>
-																				{/each}
-																			</div>
-																		</div>
-																	{/each}
-																</section>
-															{/each}
-														{:else if sourceLine}
-															<div class={gitOpsTooltipRowClass}>{sourceLine}</div>
-														{:else}
-															<div class={gitOpsTooltipRowClass}>{sourceLabel}</div>
-														{/if}
-													</TooltipContent>
+											<TooltipContent side="top" align="end" sideOffset={8} class={gitOpsTooltipClass}>
+												{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
+											</TooltipContent>
 												</Tooltip>
 											{/if}
 										</div>
@@ -432,32 +439,9 @@
 												>
 													{sourceLine}
 												</TooltipTrigger>
-												<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
-													<div class={gitOpsTooltipHeaderClass}>{sourceTooltipTitle}</div>
-													{#if sourceTooltipGroups.length > 0}
-														{#each sourceTooltipGroups as group}
-															<section class="space-y-1.5 rounded-md border bg-background/25 p-2">
-																<div class="flex items-center justify-between gap-3 text-[0.68rem] font-semibold uppercase text-muted-foreground">
-																	<span>{group.label}</span>
-																	<span>{group.rows.length} source{group.rows.length === 1 ? "" : "s"}</span>
-																</div>
-																{#each group.rows as row}
-																	<div class={gitOpsTooltipRowClass}>
-																		<div class="mb-1 font-medium text-foreground">{row.name}</div>
-																		<div class={gitOpsTooltipFieldGridClass}>
-																			{#each row.fields as field}
-																				<span class="text-muted-foreground">{field.label}</span>
-																				<span class="break-all text-left font-medium">{field.value}</span>
-																			{/each}
-																		</div>
-																	</div>
-																{/each}
-															</section>
-														{/each}
-													{:else}
-														<div class={gitOpsTooltipRowClass}>{sourceLine}</div>
-													{/if}
-												</TooltipContent>
+											<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
+												{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine)}
+											</TooltipContent>
 											</Tooltip>
 										{/if}
 										<div class="mt-3 grid grid-cols-1 gap-1.5">
