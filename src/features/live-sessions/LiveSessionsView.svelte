@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Copy, Link2, Pencil, Play, Plus, RotateCcw, Save, Square, Trash2, X } from "lucide-svelte";
+	import { Copy, Link2, Pencil, Play, Plus, RotateCcw, Square, Trash2 } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
 		Alert,
@@ -15,7 +15,6 @@
 		Checkbox,
 		Field,
 		FieldLabel,
-		Input,
 		Spinner,
 		Table,
 		TableBody,
@@ -29,47 +28,103 @@
 		savedPortForwardLabel,
 		savedPortForwardMatchesSession,
 	} from "@/features/live-sessions/helpers";
-	import { podExecCommandText } from "@/features/live-sessions";
-	import type { PortForwardSessionSummary } from "@/lib/types";
-	import StatGrid from "./StatGrid.svelte";
-	import SurfaceFrame from "./SurfaceFrame.svelte";
+	import { podExecCommandText } from "./podExecHelpers";
+	import type { PodExecSessionSummary, PortForwardSessionSummary } from "@/lib/types";
+	import type { SavedPortForward, SavedWorkspace } from "@/lib/workspace-model";
+	import StatGrid from "@/components/StatGrid.svelte";
+	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
+	import SavedPortForwardForm from "./SavedPortForwardForm.svelte";
+	import type { SavedPortForwardFormValues } from "./portForwardForms";
+
+	type LiveSessionStatus = {
+		query: { isPending: boolean; isError: boolean; error: unknown };
+		actionError: unknown;
+		actionMessage: string | null;
+		showKubeconfigSourceLabels: boolean;
+	};
+
+	type PortForwardViewModel = {
+		sessions: PortForwardSessionSummary[];
+		reconnectingId: string | null;
+		copyingId: string | null;
+		stoppingId: string | null;
+		title: (session: PortForwardSessionSummary) => string;
+		resolution: (session: PortForwardSessionSummary) => string;
+		copyUrl: (session: PortForwardSessionSummary) => Promise<void>;
+		reconnect: (session: PortForwardSessionSummary) => Promise<void>;
+		stop: (sessionId: string) => Promise<void>;
+	};
+
+	type SavedForwardViewModel = {
+		workspace: SavedWorkspace;
+		autoStart: boolean;
+		setAutoStart: (autoStart: boolean) => void;
+		startingAll: boolean;
+		startAll: () => Promise<void>;
+		startingId: string | null;
+		formOpen: boolean;
+		form: SavedPortForwardFormValues;
+		formError: string | null;
+		editingId: string | null;
+		kubeconfigSourceKey?: string;
+		beginAdd: () => void;
+		beginEdit: (portForward: SavedPortForward) => void;
+		resetForm: () => void;
+		submitForm: () => void;
+		delete: (portForward: SavedPortForward) => void;
+		start: (portForward: SavedPortForward) => Promise<void>;
+		setFormValue: (key: keyof SavedPortForwardFormValues, value: string) => void;
+	};
+
+	type PodExecViewModel = {
+		sessions: PodExecSessionSummary[];
+		stop: (sessionId: string) => Promise<void>;
+	};
 
 	let {
-		workspace,
-		liveSessionsQuery,
-		autoStartSavedPortForwards,
-		setAutoStartSavedPortForwards,
-		startingSavedPortForwards,
-		startAllSavedPortForwards,
-		visiblePortForwardSessions,
-		visibleExecSessions,
-		liveSessionActionError,
-		savedPortForwardActionMessage,
-		showKubeconfigSourceLabels,
-		reconnectingSessionId,
-		copyingSessionId,
-		stoppingSessionId,
-		startingSavedPortForwardId,
-		savedPortForwardFormOpen,
-		savedPortForwardForm,
-		savedPortForwardFormError,
-		editingSavedPortForwardId,
-		kubeconfigSourceKey,
-		portForwardSessionTitle,
-		portForwardSessionResolution,
-		beginAddSavedPortForward,
-		beginEditSavedPortForward,
-		resetSavedPortForwardForm,
-		submitSavedPortForwardForm,
-		deleteSavedPortForward,
-		copyPortForwardUrl,
-		reconnectPortForward,
-		startSavedPortForward,
-		stopPortForwardSession,
-		stopExecSession,
-		setSavedPortForwardFormValue,
-		inputValue,
+		status,
+		portForwards,
+		savedForwards,
+		podExec,
+	}: {
+		status: LiveSessionStatus;
+		portForwards: PortForwardViewModel;
+		savedForwards: SavedForwardViewModel;
+		podExec: PodExecViewModel;
 	} = $props();
+	const liveSessionsQuery = $derived(status.query);
+	const liveSessionActionError = $derived(status.actionError);
+	const savedPortForwardActionMessage = $derived(status.actionMessage);
+	const showKubeconfigSourceLabels = $derived(status.showKubeconfigSourceLabels);
+	const visiblePortForwardSessions = $derived(portForwards.sessions);
+	const reconnectingSessionId = $derived(portForwards.reconnectingId);
+	const copyingSessionId = $derived(portForwards.copyingId);
+	const stoppingSessionId = $derived(portForwards.stoppingId);
+	const portForwardSessionTitle = $derived(portForwards.title);
+	const portForwardSessionResolution = $derived(portForwards.resolution);
+	const copyPortForwardUrl = $derived(portForwards.copyUrl);
+	const reconnectPortForward = $derived(portForwards.reconnect);
+	const stopPortForwardSession = $derived(portForwards.stop);
+	const workspace = $derived(savedForwards.workspace);
+	const autoStartSavedPortForwards = $derived(savedForwards.autoStart);
+	const setAutoStartSavedPortForwards = $derived(savedForwards.setAutoStart);
+	const startingSavedPortForwards = $derived(savedForwards.startingAll);
+	const startAllSavedPortForwards = $derived(savedForwards.startAll);
+	const startingSavedPortForwardId = $derived(savedForwards.startingId);
+	const savedPortForwardFormOpen = $derived(savedForwards.formOpen);
+	const savedPortForwardForm = $derived(savedForwards.form);
+	const savedPortForwardFormError = $derived(savedForwards.formError);
+	const editingSavedPortForwardId = $derived(savedForwards.editingId);
+	const kubeconfigSourceKey = $derived(savedForwards.kubeconfigSourceKey);
+	const beginAddSavedPortForward = $derived(savedForwards.beginAdd);
+	const beginEditSavedPortForward = $derived(savedForwards.beginEdit);
+	const resetSavedPortForwardForm = $derived(savedForwards.resetForm);
+	const submitSavedPortForwardForm = $derived(savedForwards.submitForm);
+	const deleteSavedPortForward = $derived(savedForwards.delete);
+	const startSavedPortForward = $derived(savedForwards.start);
+	const setSavedPortForwardFormValue = $derived(savedForwards.setFormValue);
+	const visibleExecSessions = $derived(podExec.sessions);
+	const stopExecSession = $derived(podExec.stop);
 </script>
 
 <SurfaceFrame icon={Link2} title="Live Sessions" query={liveSessionsQuery} errorLabel="Live sessions unavailable">
@@ -218,68 +273,14 @@
 			</CardHeader>
 			<CardContent class="space-y-3">
 				{#if savedPortForwardFormOpen}
-					<div class="rounded-md border bg-muted/20 p-3">
-						<div class="grid gap-3 md:grid-cols-3">
-							<Input
-								value={savedPortForwardForm.label}
-								placeholder="Label"
-								aria-label="Saved forward label"
-								oninput={(event: Event) => setSavedPortForwardFormValue("label", inputValue(event))}
-							/>
-							<Input
-								value={savedPortForwardForm.clusterContext}
-								placeholder="Cluster context"
-								aria-label="Saved forward cluster context"
-								oninput={(event: Event) => setSavedPortForwardFormValue("clusterContext", inputValue(event))}
-							/>
-							<Input
-								value={savedPortForwardForm.namespace}
-								placeholder="Namespace"
-								aria-label="Saved forward namespace"
-								oninput={(event: Event) => setSavedPortForwardFormValue("namespace", inputValue(event))}
-							/>
-							<Input
-								value={savedPortForwardForm.serviceName}
-								placeholder="Service name"
-								aria-label="Saved forward Service name"
-								oninput={(event: Event) => setSavedPortForwardFormValue("serviceName", inputValue(event))}
-							/>
-							<Input
-								value={savedPortForwardForm.servicePort}
-								placeholder="Service port"
-								aria-label="Saved forward Service port"
-								inputmode="numeric"
-								oninput={(event: Event) => setSavedPortForwardFormValue("servicePort", inputValue(event))}
-							/>
-							<Input
-								value={savedPortForwardForm.localPort}
-								placeholder="Local port (auto)"
-								aria-label="Saved forward local port"
-								inputmode="numeric"
-								oninput={(event: Event) => setSavedPortForwardFormValue("localPort", inputValue(event))}
-							/>
-						</div>
-						{#if savedPortForwardFormError}
-							<FriendlyError
-								class="mt-3"
-								error={savedPortForwardFormError}
-								context={{
-									operation: "portForward",
-									fallbackTitle: "Check saved forward",
-								}}
-							/>
-						{/if}
-						<div class="mt-3 flex justify-end gap-2">
-							<Button type="button" variant="outline" size="sm" onclick={resetSavedPortForwardForm}>
-								<X data-icon="inline-start" />
-								Cancel
-							</Button>
-							<Button type="button" size="sm" onclick={submitSavedPortForwardForm}>
-								<Save data-icon="inline-start" />
-								{editingSavedPortForwardId ? "Save changes" : "Save forward"}
-							</Button>
-						</div>
-					</div>
+					<SavedPortForwardForm
+						form={savedPortForwardForm}
+						error={savedPortForwardFormError}
+						editingId={editingSavedPortForwardId}
+						onValue={setSavedPortForwardFormValue}
+						onCancel={resetSavedPortForwardForm}
+						onSubmit={submitSavedPortForwardForm}
+					/>
 				{/if}
 				<div>
 					<Table class="min-w-[980px] table-fixed text-sm">

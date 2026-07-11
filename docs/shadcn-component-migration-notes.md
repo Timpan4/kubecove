@@ -14,7 +14,7 @@ This is a quick pass over the frontend for places that still use native form/tab
 
 - Done: `src/app/svelte/IncidentSurface.svelte` now uses the shared shadcn Svelte table primitives for the incident list.
 
-- Done: `src/app/svelte/LiveSessionsSurface.svelte` now uses the shared shadcn Svelte table primitives for active port-forward, saved forward, and exec-session tables, plus `Field` + `FieldLabel` for the auto-start checkbox.
+- Done: `src/features/live-sessions/LiveSessionsSurface.svelte` now uses the shared shadcn Svelte table primitives for active port-forward, saved forward, and exec-session tables, plus `Field` + `FieldLabel` for the auto-start checkbox.
 
 ## Completed medium-priority cleanup
 
