@@ -32,4 +32,16 @@ describe("resource view safeguards", () => {
 		expect(browserSource).not.toContain('resourceView === "map"');
 		expect(browserSource).not.toContain('resourceView === "table"');
 	});
+
+	test("sizes resource controls from their pane instead of the viewport", () => {
+		const topBarSource = readFileSync(
+			"src/features/resources/ResourceBrowserTopBar.svelte",
+			"utf8",
+		);
+
+		expect(topBarSource).toContain('class="@container rounded-md');
+		expect(topBarSource).toContain("@5xl:grid-cols-2");
+		expect(topBarSource).toContain("@7xl:grid-cols-6");
+		expect(topBarSource).not.toContain(" xl:grid-cols-[minmax(12rem");
+	});
 });
