@@ -166,12 +166,14 @@ export async function reconnectPortForward({
 	invalidateQueries: InvalidatePortForwardQueries;
 }): Promise<PortForwardSessionSummary> {
 	await stopPodPortForward(client, session.id);
-	const reconnected = await startPortForward(
-		client,
-		portForwardSessionToRequest(session),
-	);
-	await invalidatePortForwardQueries(invalidateQueries);
-	return reconnected;
+	try {
+		return await startPortForward(
+			client,
+			portForwardSessionToRequest(session),
+		);
+	} finally {
+		await invalidatePortForwardQueries(invalidateQueries);
+	}
 }
 
 export async function startResourcePortForward({
@@ -240,9 +242,10 @@ async function startSavedPortForwardCore({
 		};
 	}
 
+	const matchingSessionIds = new Set(matchingSessions.map((session) => session.id));
 	const conflictingSession = savedPortForwardLocalPortConflict(
 		portForward,
-		knownSessions,
+		knownSessions.filter((session) => !matchingSessionIds.has(session.id)),
 	);
 	if (conflictingSession) {
 		const message = `Local port ${conflictingSession.localPort} is already used by ${conflictingSession.namespace}/${conflictingSession.targetKind}/${conflictingSession.targetName}.`;

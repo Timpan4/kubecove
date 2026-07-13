@@ -5,6 +5,7 @@ import {
 	parseSavedPortForwardForWorkspace,
 	portForwardQueryOptions,
 	portForwardSessionsForWorkspace,
+	reconnectPortForward,
 	savedPortForwardStartFailureMessage,
 	shouldAutoStartSavedPortForwards,
 	shouldShowSavedPortForwardRestorePrompt,
@@ -102,6 +103,38 @@ describe("port forward lifecycle", () => {
 		});
 
 		expect(calls).toEqual(["port-forward-1"]);
+		expect(invalidated).toEqual(["port-forwards"]);
+	});
+
+	test("invalidates the shared query when reconnecting fails after stop", async () => {
+		const calls: string[] = [];
+		const client = createMockTauriClient({
+			stop_port_forward: ({ sessionId }: Record<string, unknown>) => {
+				calls.push(`stop:${String(sessionId)}`);
+				return true;
+			},
+			start_pod_port_forward: () => {
+				calls.push("start");
+				throw new Error("restart failed");
+			},
+		});
+		let invalidated: readonly unknown[] | null = null;
+		let error: unknown = null;
+
+		try {
+			await reconnectPortForward({
+				client,
+				session: session("port-forward-1", "kind-dev"),
+				invalidateQueries: async ({ queryKey }) => {
+					invalidated = queryKey;
+				},
+			});
+		} catch (caught) {
+			error = caught;
+		}
+
+		expect(calls).toEqual(["stop:port-forward-1", "start"]);
+		expect(error instanceof Error ? error.message : error).toBe("restart failed");
 		expect(invalidated).toEqual(["port-forwards"]);
 	});
 
@@ -203,6 +236,59 @@ describe("port forward lifecycle", () => {
 			"1 saved forward failed to start. Review port forwards for details.",
 		);
 		expect(savedPortForwardStartFailureMessage([{ ok: true }])).toBe(null);
+	});
+
+	test("replaces a matching failed session that uses the saved local port", async () => {
+		const calls: string[] = [];
+		const failedSession = {
+			...session("failed", "kind-dev", "kubeconfigSource=default"),
+			targetKind: "Service" as const,
+			targetName: "api",
+			status: "error" as const,
+		};
+		const startedSession = {
+			...failedSession,
+			id: "replacement",
+			status: "listening" as const,
+		};
+		const client = createMockTauriClient({
+			stop_port_forward: ({ sessionId }: Record<string, unknown>) => {
+				calls.push(`stop:${String(sessionId)}`);
+				return true;
+			},
+			start_pod_port_forward: () => {
+				calls.push("start");
+				return startedSession;
+			},
+		});
+		const workspace = createWorkspaceRecord({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: ["payments"],
+		});
+
+		const result = await startSavedPortForward({
+			client,
+			workspaceId: workspace.id,
+			portForward: {
+				id: "saved-1",
+				clusterContext: "kind-dev",
+				namespace: "payments",
+				serviceName: "api",
+				servicePort: 8080,
+				localPort: 18080,
+				createdAt: "2026-07-10T00:00:00Z",
+				updatedAt: "2026-07-10T00:00:00Z",
+			},
+			knownSessions: [failedSession],
+			kubeconfigSource: "kubeconfigSource=default",
+			updateSavedPortForward: () => {},
+			invalidateQueries: async () => {},
+		});
+
+		expect(calls).toEqual(["stop:failed", "start"]);
+		expect(result.ok).toBe(true);
+		expect(result.session?.id).toBe("replacement");
 	});
 
 	test("does not start a saved forward when active sessions cannot be listed", async () => {
