@@ -19,6 +19,11 @@ import type {
 	YamlApplyResult,
 	YamlEncoding,
 	YamlViewMode,
+	ScaleWorkloadRequest,
+	RolloutRestartRequest,
+	DeleteResourceRequest,
+	ClusterOperationPreview,
+	ClusterOperationResult,
 	KubernetesYamlLintResult,
 	KubeconfigSourcesSummary,
 	CancellableRequest,
@@ -402,6 +407,48 @@ export async function lintKubernetesYaml(
 	return client.invoke<KubernetesYamlLintResult>("lint_kubernetes_yaml", {
 		request,
 	});
+}
+
+export async function previewScaleWorkload(
+	client: TauriClient,
+	request: ScaleWorkloadRequest,
+): Promise<ClusterOperationPreview> {
+	return client.invoke<ClusterOperationPreview>("preview_scale_workload", { request });
+}
+
+export async function scaleWorkload(
+	client: TauriClient,
+	request: ScaleWorkloadRequest,
+): Promise<ClusterOperationResult> {
+	return client.invoke<ClusterOperationResult>("scale_workload", { request });
+}
+
+export async function previewRolloutRestart(
+	client: TauriClient,
+	request: RolloutRestartRequest,
+): Promise<ClusterOperationPreview> {
+	return client.invoke<ClusterOperationPreview>("preview_rollout_restart", { request });
+}
+
+export async function rolloutRestart(
+	client: TauriClient,
+	request: RolloutRestartRequest,
+): Promise<ClusterOperationResult> {
+	return client.invoke<ClusterOperationResult>("rollout_restart", { request });
+}
+
+export async function previewDeleteResource(
+	client: TauriClient,
+	request: DeleteResourceRequest,
+): Promise<ClusterOperationPreview> {
+	return client.invoke<ClusterOperationPreview>("preview_delete_resource", { request });
+}
+
+export async function deleteResource(
+	client: TauriClient,
+	request: DeleteResourceRequest,
+): Promise<ClusterOperationResult> {
+	return client.invoke<ClusterOperationResult>("delete_resource", { request });
 }
 
 export async function listResourceEvents(

@@ -52,6 +52,7 @@
 	import EventsTab from "./EventsTab.svelte";
 	import ExecTab from "./ExecTab.svelte";
 	import PortForwardTab from "./PortForwardTab.svelte";
+	import OperationsTab from "./OperationsTab.svelte";
 	import ResourceLogsPane from "./ResourceLogsPane.svelte";
 	import ResourceYamlPane from "./ResourceYamlPane.svelte";
 	import { sortIncidentEvents } from "./incident-events";
@@ -65,7 +66,15 @@
 		visibleMetadataBadges,
 	} from "./metadata-details";
 
-	type DetailTab = "details" | "yaml" | "events" | "logs" | "exec" | "portForward" | "revisions";
+	type DetailTab =
+		| "details"
+		| "yaml"
+		| "events"
+		| "logs"
+		| "exec"
+		| "portForward"
+		| "revisions"
+		| "operations";
 	type DetailFetchKind = "details" | "events";
 
 	let {
@@ -579,6 +588,7 @@
 		if (tab === "exec") return canShowExec;
 		if (tab === "portForward") return canShowPortForward;
 		if (tab === "revisions") return canShowRevisions;
+		if (tab === "operations") return true;
 		return true;
 	}
 </script>
@@ -591,6 +601,7 @@
 		{#if canShowExec}<TabsTrigger value="exec">Exec</TabsTrigger>{/if}
 		{#if canShowPortForward}<TabsTrigger value="portForward">Forward</TabsTrigger>{/if}
 		{#if canShowRevisions}<TabsTrigger value="revisions">Revisions</TabsTrigger>{/if}
+		<TabsTrigger value="operations">Actions</TabsTrigger>
 		<TabsTrigger value="yaml">YAML</TabsTrigger>
 	</TabsList>
 
@@ -691,4 +702,7 @@
 			active={activeTab === "revisions"}
 		/>
 	{/if}
+	<TabsContent value="operations">
+		<OperationsTab {client} resource={detailResource} {kubeconfigSourceKey} />
+	</TabsContent>
 </Tabs>

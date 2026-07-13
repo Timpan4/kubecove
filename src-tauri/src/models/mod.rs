@@ -10,6 +10,7 @@ mod helm;
 mod incidents;
 mod metrics;
 mod namespace;
+mod operations;
 mod rbac;
 mod resource;
 mod sessions;
@@ -44,6 +45,10 @@ pub use metrics::{
     ResourceMetricsSummary,
 };
 pub use namespace::NamespaceSummary;
+pub use operations::{
+    ClusterOperationPreview, ClusterOperationResult, ClusterOperationTarget, DeleteResourceRequest,
+    RolloutRestartRequest, ScaleWorkloadRequest,
+};
 pub use rbac::{
     RbacBindingSummary, RbacInspectionSummary, RbacNamespaceAccessSummary, RbacRiskIndicator,
     RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary, ServiceAccountSummary,

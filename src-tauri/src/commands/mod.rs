@@ -16,6 +16,7 @@ mod live_sessions;
 mod live_store;
 mod metrics;
 mod namespaces;
+mod operations;
 mod pod_exec;
 mod rbac;
 mod resources;
@@ -54,6 +55,10 @@ pub use live_sessions::stop_live_sessions_outside_scope;
 pub use live_store::ClusterLiveStore;
 pub use metrics::{list_resource_metrics, resource_metrics_from};
 pub use namespaces::{list_namespaces, namespaces_summary_from};
+pub use operations::{
+    delete_resource, preview_delete_resource, preview_rollout_restart, preview_scale_workload,
+    rollout_restart, scale_workload,
+};
 pub use pod_exec::{
     list_pod_exec_sessions, resize_pod_exec_terminal, start_pod_exec_session,
     stop_pod_exec_session, write_pod_exec_stdin, PodExecRegistry,
