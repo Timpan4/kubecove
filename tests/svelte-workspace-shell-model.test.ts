@@ -1,27 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
-	appendPresentCustomResourceKinds,
-	buildSidebarTree,
-	extraDiscoveredKinds,
-	GITOPS_RESOURCE_KINDS,
-} from "../src/app/svelte/workspaceShellModel";
-import {
 	buildWorkspaceNavigationModel,
 	createWorkspaceNavigation,
 	navigateWorkspace,
 	treeNodeForResource,
 	viewModeForTreeNode,
 } from "../src/app/svelte/workspaceNavigation";
-import { createWorkspaceRecord } from "../src/lib/workspace-model";
-import { SUPPORTED_KINDS } from "../src/lib/types";
+import {
+	appendPresentCustomResourceKinds,
+	buildSidebarTree,
+	extraDiscoveredKinds,
+	GITOPS_RESOURCE_KINDS,
+} from "../src/app/svelte/workspaceShellModel";
+import type { TreeNode, TreeNodeId } from "../src/lib/tree-nav";
 import type {
 	DiscoveredResourceKind,
 	FluxDetectionSummary,
 	NamespaceSummary,
 	ResourceSummary,
 } from "../src/lib/types";
-import type { TreeNode, TreeNodeId } from "../src/lib/tree-nav";
+import { SUPPORTED_KINDS } from "../src/lib/types";
+import { createWorkspaceRecord } from "../src/lib/workspace-model";
 
 const namespaces: NamespaceSummary[] = [
 	{ name: "default", age: "1d" },
@@ -511,6 +511,17 @@ describe("svelte workspace shell model", () => {
 		});
 
 		expect(navigation.targetGitOpsApplication).toBe("checkout");
+	});
+
+	test("Svelte application entry points preserve namespace identity", () => {
+		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
+		const overview = readFileSync(
+			"src/features/workspaces/WorkspaceOverview.svelte",
+			"utf8",
+		);
+
+		expect(shell).toContain("function openArgo(argoApp?: string, namespace?: string)");
+		expect(overview).toContain("onOpenArgo(entry.name, entry.namespace)");
 	});
 
 	test("Svelte workspace overview summarizes Flux in the GitOps card", () => {

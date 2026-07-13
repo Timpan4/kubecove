@@ -1,26 +1,44 @@
 import { describe, expect, test } from "bun:test";
 import { get } from "svelte/store";
 import {
-	createSavedPortForward,
-	createWorkspaceRecord,
-} from "../src/lib/workspace-model";
-import {
 	createWorkspaceStore,
 	readPersistedWorkspaces,
 	writePersistedWorkspaces,
 } from "../src/features/workspaces/workspaceStore";
+import type { ResourceSummary } from "../src/lib/types";
+import {
+	createSavedPortForward,
+	createWorkspaceRecord,
+} from "../src/lib/workspace-model";
 
 function makeStorage() {
 	const values = new Map<string, string>();
+	let writes = 0;
 	return {
 		getItem: (key: string) => values.get(key) ?? null,
-		setItem: (key: string, value: string) => values.set(key, value),
+		setItem: (key: string, value: string) => {
+			writes += 1;
+			values.set(key, value);
+		},
+		writeCount: () => writes,
 	};
 }
 
 function persistedWorkspaces(storage: ReturnType<typeof makeStorage>) {
 	return JSON.parse(storage.getItem("kubecove-workspaces") ?? "{}").state
 		.workspaces;
+}
+
+function resource(name: string): ResourceSummary {
+	return {
+		cluster: "kind-dev",
+		namespace: "default",
+		kind: "Deployment",
+		apiVersion: "apps/v1",
+		name,
+		age: "1h",
+		health: "healthy",
+	};
 }
 
 describe("svelte workspace store", () => {
@@ -146,6 +164,84 @@ describe("svelte workspace store", () => {
 		store.deleteSavedPortForward(workspace.id, saved.id);
 
 		expect(persistedWorkspaces(storage)[0].portForwards).toEqual([]);
+	});
+
+	test("persists explicit namespace, application, and resource entry points", () => {
+		const storage = makeStorage();
+		const store = createWorkspaceStore(storage);
+		const workspace = store.createWorkspace({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: ["default"],
+		});
+
+		store.recordRecentNamespace(workspace.id, "kind-dev", "default");
+		store.recordRecentApplication(workspace.id, "kind-dev", "checkout", "argocd");
+		store.recordRecentResource(workspace.id, resource("api"));
+
+		expect(persistedWorkspaces(storage)[0].entryPoints.recent).toMatchObject([
+			{ kind: "resource", name: "api", resourceKind: "Deployment" },
+			{ kind: "app", name: "checkout", namespace: "argocd" },
+			{ kind: "namespace", name: "default", namespace: "default" },
+		]);
+	});
+
+	test("does not persist or update timestamps when reconciliation is unchanged", () => {
+		const storage = makeStorage();
+		const store = createWorkspaceStore(storage);
+		const workspace = store.createWorkspace({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: ["default"],
+		});
+		store.togglePinnedResource(workspace.id, resource("api"));
+		const before = get(store.workspaces)[0];
+		const writesBefore = storage.writeCount();
+
+		store.reconcileEntryPoints(
+			workspace.id,
+			[resource("api")],
+			[
+				{
+					clusterContext: "kind-dev",
+					requests: [{ kind: "Deployment", namespace: "default" }],
+				},
+			],
+		);
+
+		expect(storage.writeCount()).toBe(writesBefore);
+		expect(get(store.workspaces)[0]).toBe(before);
+		expect(get(store.workspaces)[0].updatedAt).toBe(before.updatedAt);
+	});
+
+	test("prunes covered missing resources while retaining out-of-scope identities", () => {
+		const storage = makeStorage();
+		const store = createWorkspaceStore(storage);
+		const workspace = store.createWorkspace({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: ["default"],
+		});
+		store.togglePinnedResource(workspace.id, resource("missing"));
+		store.togglePinnedResource(
+			workspace.id,
+			{ ...resource("payments-api"), namespace: "payments" },
+		);
+
+		store.reconcileEntryPoints(
+			workspace.id,
+			[],
+			[
+				{
+					clusterContext: "kind-dev",
+					requests: [{ kind: "Deployment", namespace: "default" }],
+				},
+			],
+		);
+
+		expect(persistedWorkspaces(storage)[0].entryPoints.pinned).toMatchObject([
+			{ name: "payments-api", namespace: "payments" },
+		]);
 	});
 
 	test("deleting selected workspace clears selected placeholder", () => {

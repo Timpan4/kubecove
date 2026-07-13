@@ -9,6 +9,7 @@
 		GitBranch,
 		PanelRightClose,
 		PanelRightOpen,
+		Pin,
 		Table2,
 	} from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
@@ -121,7 +122,9 @@
 		selectedResource = null,
 		title,
 		initialPathState = null,
+		pinnedResourceKeys = [],
 		onResourceSelect = () => {},
+		onResourcePinToggle = () => {},
 		onResourceClose = () => {},
 		onPathStateChange = () => {},
 	}: {
@@ -139,7 +142,9 @@
 		selectedResource?: ResourceSummary | null;
 		title: string;
 		initialPathState?: PathStateResourceBrowserState | null;
-		onResourceSelect?: (resource: ResourceSummary) => void;
+		pinnedResourceKeys?: string[];
+		onResourceSelect?: (resource: ResourceSummary, source?: "explicit" | "restore") => void;
+		onResourcePinToggle?: (resource: ResourceSummary) => void;
 		onResourceClose?: () => void;
 		onPathStateChange?: (state: PathStateResourceBrowserState) => void;
 	} = $props();
@@ -456,8 +461,9 @@
 			selectedResource,
 		}),
 	);
+	const pinnedResourceKeySet = $derived(new Set(pinnedResourceKeys));
 	const tableVisibleColumnCount = $derived(
-		5 +
+		6 +
 			Number(tableModel.columnVisibility.ready) +
 			Number(tableModel.columnVisibility.restarts) +
 			Number(tableModel.columnVisibility.cpu) +
@@ -474,7 +480,8 @@
 			(tableModel.columnVisibility.cpu ? 65 : 0) +
 			(tableModel.columnVisibility.memory ? 85 : 0) +
 			(tableModel.columnVisibility.gitOps ? 110 : 0) +
-			65,
+			65 +
+			40,
 	);
 	const tableStickyMeasureKey = $derived(
 		`${tablePanelOpen}:${tableModel.entries.length}:${tableVisibleColumnCount}`,
@@ -598,7 +605,7 @@
 		const rowIndex = tableModel.displayRows.findIndex(
 			(row) => resourceMatchesKeys(row, targetResourceKey, targetResourceIdentityKey, false),
 		);
-		onResourceSelect(matchedResource);
+		onResourceSelect(matchedResource, "restore");
 		selectedTopologyNodeId = null;
 		pageIndex = Math.max(0, Math.floor(rowIndex / PAGE_SIZE));
 		appliedTargetResourceKey = targetResourceKey;
@@ -752,12 +759,12 @@
 
 	function selectResource(resource: ResourceSummary) {
 		selectedTopologyNodeId = null;
-		onResourceSelect(resource);
+		onResourceSelect(resource, "explicit");
 	}
 
 	function selectTopologyResource(nodeId: string, resource: ResourceSummary | null) {
 		selectedTopologyNodeId = nodeId;
-		if (resource) onResourceSelect(resource);
+		if (resource) onResourceSelect(resource, "explicit");
 	}
 
 	function closeMapPanel() {
@@ -1026,6 +1033,7 @@
 								{#if tableModel.columnVisibility.memory}<col style="width: 85px;" />{/if}
 								{#if tableModel.columnVisibility.gitOps}<col style="width: 110px;" />{/if}
 								<col style="width: 65px;" />
+								<col style="width: 40px;" />
 							</colgroup>
 							<TableHeader>
 								<TableRow>
@@ -1039,6 +1047,7 @@
 									{#if tableModel.columnVisibility.memory}<TableHead>{@render SortButton("memory", "Memory")}</TableHead>{/if}
 									{#if tableModel.columnVisibility.gitOps}<TableHead>Owner</TableHead>{/if}
 									<TableHead>{@render SortButton("age", "Age")}</TableHead>
+									<TableHead><span class="sr-only">Pin</span></TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -1184,6 +1193,24 @@
 													</TableCell>
 												{/if}
 												<TableCell>{row.age}</TableCell>
+												<TableCell>
+													<Button
+														type="button"
+														variant="ghost"
+														size="icon"
+														class="size-7"
+														aria-label={`${pinnedResourceKeySet.has(resourceSelectionKey(row)) ? "Unpin" : "Pin"} ${row.kind} ${row.name}`}
+														onclick={(event: MouseEvent) => {
+															event.stopPropagation();
+															onResourcePinToggle(row);
+														}}
+														onkeydown={(event: KeyboardEvent) => event.stopPropagation()}
+													>
+														<Pin
+															class={pinnedResourceKeySet.has(resourceSelectionKey(row)) ? "fill-current" : ""}
+														/>
+													</Button>
+												</TableCell>
 											</TableRow>
 										{/if}
 									{/each}

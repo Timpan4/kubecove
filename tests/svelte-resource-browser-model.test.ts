@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
+	resourceGroupCollapseKey,
+	resourceTypeGroupCollapseKey,
+} from "../src/features/resources/helpers";
+import {
 	allKindOptions,
 	buildResourceTableModel,
 	syncedTopologyNodeId,
@@ -9,10 +13,6 @@ import {
 	buildFlowTopologyFitPlan,
 	buildFlowTopologyView,
 } from "../src/features/resources/topology";
-import {
-	resourceGroupCollapseKey,
-	resourceTypeGroupCollapseKey,
-} from "../src/features/resources/helpers";
 import type {
 	DiscoveredResourceKind,
 	ResourceSummary,
@@ -347,10 +347,12 @@ describe("svelte resource browser model", () => {
 		);
 
 		expect(source).toContain("selectedResource?: ResourceSummary | null");
-		expect(source).toContain("onResourceSelect?: (resource: ResourceSummary) => void");
+		expect(source).toContain(
+			'onResourceSelect?: (resource: ResourceSummary, source?: "explicit" | "restore") => void',
+		);
 		expect(source).toContain("onResourceClose?: () => void");
-		expect(source).toContain("onResourceSelect(matchedResource)");
-		expect(source).toContain("onResourceSelect(resource)");
+		expect(source).toContain('onResourceSelect(matchedResource, "restore")');
+		expect(source).toContain('onResourceSelect(resource, "explicit")');
 		expect(source).toContain("onResourceClose()");
 		expect(source).not.toContain("let selectedResource = $state");
 		expect(source).not.toContain("ResourceDetailPanel");
@@ -363,7 +365,9 @@ describe("svelte resource browser model", () => {
 		);
 
 		expect(source).toContain("resourceIdentityKey(resource) === identityKey");
-		expect(source).toContain("selectedTopologyNodeId = null;\n\t\tonResourceSelect(resource)");
+		expect(source).toContain(
+			'selectedTopologyNodeId = null;\n\t\tonResourceSelect(resource, "explicit")',
+		);
 		expect(source).toContain("function closeMapPanel()");
 		expect(source).toContain("onMapToggle={closeMapPanel}");
 	});

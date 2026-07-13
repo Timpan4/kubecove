@@ -8,6 +8,8 @@
 		GitBranch,
 		GitCompareArrows,
 		Layers,
+		Pin,
+		Clock3,
 	} from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
@@ -28,7 +30,11 @@
 		Separator,
 		Spinner,
 	} from "@/components/ui/svelte";
-	import { buildWorkspaceFetchKeys, fetchWorkspaceResources } from "@/features/workspaces/query";
+	import {
+		buildWorkspaceFetchKeys,
+		buildWorkspaceFetchPlans,
+		fetchWorkspaceResources,
+	} from "@/features/workspaces/query";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
 		createTauriClient,
@@ -41,7 +47,12 @@
 		listNamespaces,
 		listResourceKinds,
 	} from "@/lib/tauri";
-	import type { FluxResourceSummary } from "@/lib/types";
+	import type { FluxResourceSummary, ResourceSummary } from "@/lib/types";
+	import {
+		normalizeEntryPoints,
+		resourceFromEntryPoint,
+		type WorkspaceEntryPoint,
+	} from "@/lib/workspace-entry-points";
 	import {
 		buildWorkspaceCompareEntries,
 		buildWorkspaceCompareSummaries,
@@ -59,6 +70,8 @@
 	let {
 		workspace,
 		onOpenResources,
+		onOpenResource,
+		onReconcileEntryPoints,
 		onOpenArgo,
 		onOpenIncidents,
 		onOpenPortForwards,
@@ -71,7 +84,12 @@
 			initialGitOpsFilter?: string,
 			initialHealthFilter?: HealthFilter,
 		) => void;
-		onOpenArgo: (argoApp?: string) => void;
+		onOpenResource: (resource: ResourceSummary) => void;
+		onReconcileEntryPoints: (
+			resources: ResourceSummary[],
+			coverage: ReturnType<typeof buildWorkspaceFetchPlans>,
+		) => void;
+		onOpenArgo: (argoApp?: string, namespace?: string) => void;
 		onOpenIncidents: (filter?: IncidentFilter) => void;
 		onOpenPortForwards: () => void;
 		onOpenLauncher: () => void;
@@ -126,6 +144,9 @@
 	const workspaceFetchKeys = $derived(
 		buildWorkspaceFetchKeys(workspace.scope, availableNamespaces),
 	);
+	const workspaceFetchCoverage = $derived(
+		buildWorkspaceFetchPlans(workspace.scope, availableNamespaces),
+	);
 
 	const resourcesQuery = createQuery(() => ({
 		queryKey: queryKeys.resources(workspaceContextKey, workspaceFetchKeys, kubeconfigSourceKey),
@@ -138,6 +159,12 @@
 		staleTime: 30_000,
 	}));
 	const rows = $derived(resourcesQuery.data ?? []);
+	const entryPoints = $derived(normalizeEntryPoints(workspace.entryPoints));
+	$effect(() => {
+		if (resourcesQuery.isSuccess && !resourcesQuery.isPlaceholderData) {
+			onReconcileEntryPoints(resourcesQuery.data ?? [], workspaceFetchCoverage);
+		}
+	});
 	const health = $derived(buildWorkspaceHealthSummary(rows));
 	const unhealthyCount = $derived(health.attention + health.degraded);
 	const hasIncidentShortcuts = $derived(
@@ -204,6 +231,25 @@
 			return;
 		}
 		onOpenResources(shortcut.namespace);
+	}
+
+	function openEntryPoint(entry: WorkspaceEntryPoint) {
+		if (entry.kind === "namespace") {
+			onOpenResources(entry.namespace ?? entry.name);
+			return;
+		}
+		if (entry.kind === "app") {
+			onOpenArgo(entry.name, entry.namespace);
+			return;
+		}
+		const resource = resourceFromEntryPoint(entry);
+		if (resource) onOpenResource(resource);
+	}
+
+	function entryPointLabel(entry: WorkspaceEntryPoint): string {
+		if (entry.kind === "namespace") return `Namespace / ${entry.name}`;
+		if (entry.kind === "app") return `Application / ${entry.name}`;
+		return `${entry.resourceKind ?? "Resource"} / ${entry.name}`;
 	}
 </script>
 
@@ -379,6 +425,41 @@
 						</Button>
 					</div>
 				{/if}
+			</CardContent>
+		</Card>
+	</div>
+
+	<div class="grid gap-4 md:grid-cols-2">
+		<Card>
+			<CardHeader>
+				<CardTitle class="flex items-center gap-2"><Pin class="size-4" /> Pinned</CardTitle>
+				<CardDescription>Saved resource entry points for this workspace.</CardDescription>
+			</CardHeader>
+			<CardContent class="flex flex-wrap gap-2">
+				{#if entryPoints.pinned.length === 0}
+					<span class="text-sm text-muted-foreground">Pin resources from the table or detail panel.</span>
+				{/if}
+				{#each entryPoints.pinned as entry}
+					<Button type="button" variant="outline" size="sm" onclick={() => openEntryPoint(entry)}>
+						<Pin data-icon="inline-start" /> {entryPointLabel(entry)}
+					</Button>
+				{/each}
+			</CardContent>
+		</Card>
+		<Card>
+			<CardHeader>
+				<CardTitle class="flex items-center gap-2"><Clock3 class="size-4" /> Recent</CardTitle>
+				<CardDescription>Explicitly opened namespaces, applications, and resources.</CardDescription>
+			</CardHeader>
+			<CardContent class="flex flex-wrap gap-2">
+				{#if entryPoints.recent.length === 0}
+					<span class="text-sm text-muted-foreground">Recent visits will appear here.</span>
+				{/if}
+				{#each entryPoints.recent as entry}
+					<Button type="button" variant="outline" size="sm" onclick={() => openEntryPoint(entry)}>
+						<Clock3 data-icon="inline-start" /> {entryPointLabel(entry)}
+					</Button>
+				{/each}
 			</CardContent>
 		</Card>
 	</div>

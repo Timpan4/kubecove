@@ -1,14 +1,26 @@
-import { derived, get, writable, type Readable } from "svelte/store";
+import { derived, get, type Readable, writable } from "svelte/store";
+import type { ResourceSummary } from "@/lib/types";
 import {
+	entryPointFromApplication,
+	entryPointFromNamespace,
+	entryPointFromResource,
+	entryPointsEqual,
+	normalizeEntryPoints,
+	type ResourceEntryPointCoverage,
+	reconcileEntryPoints,
+	recordRecentEntry,
+	togglePinnedEntry,
+} from "@/lib/workspace-entry-points";
+import {
+	type CreateWorkspaceInput,
 	createSavedPortForward,
 	createWorkspaceRecord,
 	normalizeSavedPortForwardInput,
 	reconcileSavedPortForwardsForScope,
-	updateWorkspaceRecord,
-	type CreateWorkspaceInput,
-	type SavePortForwardInput,
 	type SavedPortForwardUpdates,
 	type SavedWorkspace,
+	type SavePortForwardInput,
+	updateWorkspaceRecord,
 } from "@/lib/workspace-model";
 import {
 	applyWorkspaceImport,
@@ -54,6 +66,20 @@ export interface WorkspaceStore {
 		updates: SavedPortForwardUpdates,
 	) => void;
 	deleteSavedPortForward: (workspaceId: string, portForwardId: string) => void;
+	togglePinnedResource: (workspaceId: string, resource: ResourceSummary) => void;
+	recordRecentNamespace: (workspaceId: string, clusterContext: string, namespace: string) => void;
+	recordRecentApplication: (
+		workspaceId: string,
+		clusterContext: string,
+		name: string,
+		namespace?: string | null,
+	) => void;
+	recordRecentResource: (workspaceId: string, resource: ResourceSummary) => void;
+	reconcileEntryPoints: (
+		workspaceId: string,
+		resources: ResourceSummary[],
+		coverage: ResourceEntryPointCoverage[],
+	) => void;
 	importWorkspaces: (
 		preview: WorkspaceImportPreview,
 		decisions: WorkspaceImportDecisions,
@@ -109,6 +135,34 @@ export function createWorkspaceStore(
 			const next = recipe(current);
 			writePersistedWorkspaces(next.workspaces, storage);
 			return next;
+		});
+	}
+
+	function updateWorkspaceEntryPoints(
+		workspaceId: string,
+		recipe: (
+			entryPoints: ReturnType<typeof normalizeEntryPoints>,
+			now: string,
+		) => ReturnType<typeof normalizeEntryPoints>,
+	) {
+		state.update((current) => {
+			const now = new Date().toISOString();
+			let changed = false;
+			const workspaces = current.workspaces.map((workspace) => {
+				if (workspace.id !== workspaceId) return workspace;
+				const currentEntryPoints = normalizeEntryPoints(workspace.entryPoints);
+				const nextEntryPoints = recipe(currentEntryPoints, now);
+				if (entryPointsEqual(currentEntryPoints, nextEntryPoints)) return workspace;
+				changed = true;
+				return {
+					...workspace,
+					entryPoints: nextEntryPoints,
+					updatedAt: now,
+				};
+			});
+			if (!changed) return current;
+			writePersistedWorkspaces(workspaces, storage);
+			return { ...current, workspaces };
 		});
 	}
 
@@ -209,6 +263,37 @@ export function createWorkspaceStore(
 					),
 				};
 			});
+		},
+		togglePinnedResource: (workspaceId, resource) => {
+			updateWorkspaceEntryPoints(workspaceId, (entryPoints, now) =>
+				togglePinnedEntry(entryPoints, entryPointFromResource(resource, now)),
+			);
+		},
+		recordRecentNamespace: (workspaceId, clusterContext, namespace) => {
+			updateWorkspaceEntryPoints(workspaceId, (entryPoints, now) =>
+				recordRecentEntry(
+					entryPoints,
+					entryPointFromNamespace(clusterContext, namespace, now),
+				),
+			);
+		},
+		recordRecentApplication: (workspaceId, clusterContext, name, namespace) => {
+			updateWorkspaceEntryPoints(workspaceId, (entryPoints, now) =>
+				recordRecentEntry(
+					entryPoints,
+					entryPointFromApplication(clusterContext, name, namespace, now),
+				),
+			);
+		},
+		recordRecentResource: (workspaceId, resource) => {
+			updateWorkspaceEntryPoints(workspaceId, (entryPoints, now) =>
+				recordRecentEntry(entryPoints, entryPointFromResource(resource, now)),
+			);
+		},
+		reconcileEntryPoints: (workspaceId, resources, coverage) => {
+			updateWorkspaceEntryPoints(workspaceId, (entryPoints) =>
+				reconcileEntryPoints(entryPoints, resources, coverage),
+			);
 		},
 		importWorkspaces: (preview, decisions) => {
 			let result: WorkspaceImportResult = {

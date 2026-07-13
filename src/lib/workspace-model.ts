@@ -1,12 +1,16 @@
+import { classifyResourceHealth } from "./resource-health";
 import {
 	CLUSTER_SCOPED_KINDS,
-	SUPPORTED_KINDS,
 	type ClusterContext,
 	type DiscoveredResourceKind,
 	type ResourceKindSelection,
 	type ResourceSummary,
+	SUPPORTED_KINDS,
 } from "./types";
-import { classifyResourceHealth } from "./resource-health";
+import {
+	normalizeEntryPoints,
+	type WorkspaceEntryPoints,
+} from "./workspace-entry-points";
 
 export type WorkspaceShortcutKind = "resources" | "namespace" | "argo" | "compare";
 
@@ -104,6 +108,7 @@ export interface SavedWorkspace {
 	scope: WorkspaceScope;
 	shortcuts: WorkspaceShortcut[];
 	portForwards: SavedPortForward[];
+	entryPoints?: WorkspaceEntryPoints;
 }
 
 export interface WorkspaceRestoreStatus {
@@ -349,6 +354,7 @@ export function createWorkspaceRecord(
 		scope,
 		shortcuts: makeWorkspaceShortcuts(scope.namespaces, undefined, shortcutPreferences, scope),
 		portForwards: [],
+		entryPoints: normalizeEntryPoints(),
 	};
 }
 
