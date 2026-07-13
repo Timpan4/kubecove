@@ -7,10 +7,8 @@ import {
 import { buildShallowNamespaceTreeNode } from "@/components/sidebar-tree-helpers";
 import {
 	discoveredResourceKindKey,
-	resolveTreeScope,
 	SECTIONS,
 	type TreeNode,
-	type TreeNodeId,
 } from "@/lib/tree-nav";
 import type {
 	DiscoveredResourceKind,
@@ -19,24 +17,6 @@ import type {
 	ResourceKindSelection,
 } from "@/lib/types";
 import { SUPPORTED_KINDS } from "@/lib/types";
-import type { SavedWorkspace } from "@/lib/workspace-model";
-import type { WorkspaceViewMode } from "./workspaceNavigation";
-
-const SECTION_LABELS: Record<string, string> = {
-	workspaceOverview: "Workspace Overview",
-	clusterOverview: "Cluster Overview",
-	namespaces: "Namespaces",
-	workloads: "Workloads",
-	network: "Network",
-	config: "Config",
-	storage: "Storage",
-	discovered: "Custom Resources",
-	argo: "GitOps",
-	helm: "Helm",
-	incidents: "Incidents",
-	portForwards: "Port Forwards",
-	rbac: "RBAC",
-};
 
 export const GITOPS_RESOURCE_KINDS: ResourceKindSelection[] = [
 	...SUPPORTED_KINDS,
@@ -44,20 +24,10 @@ export const GITOPS_RESOURCE_KINDS: ResourceKindSelection[] = [
 	"CustomResourceDefinition",
 ];
 
-function resourceKindLabel(kind: ResourceKindSelection): string {
-	return typeof kind === "string" ? kind : kind.kind;
-}
-
 function resourceKindSelectionKey(kind: ResourceKindSelection): string {
 	return typeof kind === "string"
 		? `typed:${kind}`
 		: `dynamic:${discoveredResourceKindKey(kind)}`;
-}
-
-function gitOpsGroupLabel(group: string | undefined): string | null {
-	if (group === ARGO_PROVIDER_GROUP_ID) return "Argo CD";
-	if (group === FLUX_PROVIDER_GROUP_ID) return "Flux";
-	return FLUX_FAMILIES.find((family) => family.groupId === group)?.label ?? null;
 }
 
 export function extraDiscoveredKinds(
@@ -86,124 +56,6 @@ export function appendPresentCustomResourceKinds(
 			return true;
 		}),
 	);
-}
-
-export function isNamespaceListView({
-	selectedNode,
-	viewMode,
-}: {
-	selectedNode: TreeNodeId | null;
-	viewMode: WorkspaceViewMode;
-}): boolean {
-	return (
-		viewMode === "resources" &&
-		selectedNode?.type === "section" &&
-		selectedNode.section === "namespaces"
-	);
-}
-
-export interface ResourceBrowserScope {
-	canQuery: boolean;
-	namespaces: string[];
-	kinds: ResourceKindSelection[];
-}
-
-export function getResourceBrowserScope({
-	workspace,
-	selectedNode,
-	viewMode,
-}: {
-	workspace: SavedWorkspace;
-	selectedNode: TreeNodeId | null;
-	viewMode: WorkspaceViewMode;
-}): ResourceBrowserScope {
-	if (viewMode !== "resources" || isNamespaceListView({ selectedNode, viewMode })) {
-		return { canQuery: false, namespaces: [], kinds: [] };
-	}
-	const scope = resolveTreeScope(selectedNode);
-	if (scope.argoMode || scope.helmMode || scope.incidentMode || scope.portForwardMode || scope.rbacMode) {
-		return { canQuery: false, namespaces: [], kinds: [] };
-	}
-	const kinds =
-		scope.kinds.length > 0 ? scope.kinds : [...workspace.scope.kinds];
-	const namespaces = scope.namespace
-		? [scope.namespace]
-		: scope.section === "namespaces" || scope.clusterScoped
-			? []
-			: [...workspace.scope.namespaces];
-	return { canQuery: kinds.length > 0, namespaces, kinds };
-}
-
-export function getWorkspaceTitle({
-	workspace,
-	selectedNode,
-	viewMode,
-}: {
-	workspace: SavedWorkspace;
-	selectedNode: TreeNodeId | null;
-	viewMode: WorkspaceViewMode;
-}): string {
-	const scope = resolveTreeScope(selectedNode);
-	if (viewMode === "overview") return workspace.name;
-	if (viewMode === "settings") return "Settings";
-	if (viewMode === "helm") return "Helm Releases";
-	if (viewMode === "incidents") return "Incident Cockpit";
-	if (viewMode === "portForwards") return "Port Forwards";
-	if (viewMode === "rbac") {
-		return selectedNode?.type === "kind" && selectedNode.kind
-			? selectedNode.kind
-			: "RBAC";
-	}
-	if (viewMode === "argo") {
-		if (selectedNode?.type === "group") {
-			return gitOpsGroupLabel(selectedNode.group) ?? "GitOps";
-		}
-		return selectedNode?.type === "kind" && selectedNode.kind
-			? selectedNode.kind
-			: "GitOps";
-	}
-	if (!scope.section) return "Kubernetes Resources";
-	if (scope.section === "clusterOverview") {
-		if (scope.kinds.length === 1) {
-			return `${resourceKindLabel(scope.kinds[0])} Resources`;
-		}
-		return "Cluster Overview";
-	}
-	if (scope.section === "namespaces" && scope.namespace) {
-		return scope.group ? `${scope.namespace} / ${scope.group}` : scope.namespace;
-	}
-	if (scope.group) return scope.group;
-	if (scope.kinds.length === 1) {
-		return `${resourceKindLabel(scope.kinds[0])} Resources`;
-	}
-	return SECTION_LABELS[scope.section] ?? scope.section;
-}
-
-export function getWorkspacePlaceholder({
-	selectedNode,
-	viewMode,
-}: {
-	selectedNode: TreeNodeId | null;
-	viewMode: WorkspaceViewMode;
-}): string {
-	if (viewMode === "overview") {
-		return "Use the sidebar to open resource and app surfaces for this workspace.";
-	}
-	if (viewMode === "settings") {
-		return "Adjust runtime, safety, and workspace preferences.";
-	}
-	const scope = resolveTreeScope(selectedNode);
-	if (scope.kinds.length > 0) {
-		return "Browse live resources for this scope.";
-	}
-	if (scope.argoMode) return "Inspect GitOps applications and sources.";
-	if (scope.helmMode) return "Inspect Helm releases, values, and manifests.";
-	if (scope.incidentMode) return "Review incident signals and timelines.";
-	if (scope.portForwardMode) {
-		return "Review saved and active live sessions.";
-	}
-	if (scope.rbacMode) return "Inspect RBAC bindings, subjects, and permissions.";
-	return "Select a sidebar item to open a workspace surface.";
 }
 
 function buildArgoProviderNode(disabled: boolean): TreeNode {

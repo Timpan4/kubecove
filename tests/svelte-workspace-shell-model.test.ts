@@ -5,12 +5,9 @@ import {
 	buildSidebarTree,
 	extraDiscoveredKinds,
 	GITOPS_RESOURCE_KINDS,
-	getResourceBrowserScope,
-	getWorkspacePlaceholder,
-	getWorkspaceTitle,
-	isNamespaceListView,
 } from "../src/app/svelte/workspaceShellModel";
 import {
+	buildWorkspaceNavigationModel,
 	createWorkspaceNavigation,
 	navigateWorkspace,
 	treeNodeForResource,
@@ -67,6 +64,68 @@ function resource(kind: string, namespace: string | null): ResourceSummary {
 		age: "1d",
 		health: "healthy",
 	};
+}
+
+const navigationWorkspace = createWorkspaceRecord({
+	name: "Navigation",
+	clusterContext: "kind-dev",
+	namespaces: [],
+});
+
+function navigationModel(
+	workspace: ReturnType<typeof createWorkspaceRecord>,
+	selectedNode: TreeNodeId | null,
+	viewMode: ReturnType<typeof viewModeForTreeNode> | "settings",
+) {
+	return buildWorkspaceNavigationModel(workspace, {
+		...createWorkspaceNavigation(workspace),
+		selectedNode,
+		viewMode,
+	});
+}
+
+function getWorkspaceTitle({
+	workspace,
+	selectedNode,
+	viewMode,
+}: {
+	workspace: ReturnType<typeof createWorkspaceRecord>;
+	selectedNode: TreeNodeId | null;
+	viewMode: ReturnType<typeof viewModeForTreeNode> | "settings";
+}) {
+	return navigationModel(workspace, selectedNode, viewMode).title;
+}
+
+function getWorkspacePlaceholder({
+	selectedNode,
+	viewMode,
+}: {
+	selectedNode: TreeNodeId | null;
+	viewMode: ReturnType<typeof viewModeForTreeNode> | "settings";
+}) {
+	return navigationModel(navigationWorkspace, selectedNode, viewMode).placeholder;
+}
+
+function isNamespaceListView({
+	selectedNode,
+	viewMode,
+}: {
+	selectedNode: TreeNodeId | null;
+	viewMode: ReturnType<typeof viewModeForTreeNode>;
+}) {
+	return navigationModel(navigationWorkspace, selectedNode, viewMode).isNamespaceList;
+}
+
+function getResourceBrowserScope({
+	workspace,
+	selectedNode,
+	viewMode,
+}: {
+	workspace: ReturnType<typeof createWorkspaceRecord>;
+	selectedNode: TreeNodeId | null;
+	viewMode: ReturnType<typeof viewModeForTreeNode>;
+}) {
+	return navigationModel(workspace, selectedNode, viewMode).resourceBrowserScope;
 }
 
 const fluxDetected: FluxDetectionSummary = {

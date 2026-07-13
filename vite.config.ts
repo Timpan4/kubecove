@@ -2,20 +2,14 @@ import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 
-const env = (globalThis as {
-	process?: { env?: { KUBECOVE_VITE_BUNDLED_DEV?: string; TAURI_DEV_HOST?: string } };
-}).process?.env;
-const host = env?.TAURI_DEV_HOST;
-const bundledDev = env?.KUBECOVE_VITE_BUNDLED_DEV === "1";
+const host = (globalThis as { process?: { env?: { TAURI_DEV_HOST?: string } } }).process?.env
+	?.TAURI_DEV_HOST;
 const devServerPort = 1430;
 const hmrPort = 1431;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
 	plugins: [svelte(), tailwindcss()],
-	experimental: {
-		bundledDev,
-	},
 	resolve: {
 		alias: {
 			"@": "/src",

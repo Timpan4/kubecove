@@ -55,4 +55,19 @@ describe("svelte detail panel frame", () => {
 		expect(source).toContain("onpointerdown={startResize}");
 		expect(source).toContain("onkeydown={handleResizeKeydown}");
 	});
+
+	test("hides the resize handle and overlays the detail pane below xl", () => {
+		const source = readFileSync("src/app/svelte/DetailPanelFrame.svelte", "utf8");
+		const resizeHandleClass = source.match(
+			/aria-label="Resize details panel"[\s\S]*?class="([^"]*max-xl:hidden[^"]*)"/,
+		)?.[1];
+		const detailPaneClass = source.match(
+			/<aside[\s\S]*?class="([^"]*max-xl:absolute[^"]*)"/,
+		)?.[1];
+
+		expect(resizeHandleClass).toContain("max-xl:hidden");
+		expect(detailPaneClass).toContain("max-xl:absolute");
+		expect(detailPaneClass).toContain("max-xl:inset-0");
+		expect(detailPaneClass).toContain("max-xl:z-10");
+	});
 });

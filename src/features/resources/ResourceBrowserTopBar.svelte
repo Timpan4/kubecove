@@ -106,8 +106,8 @@
 	}
 </script>
 
-<section class="rounded-md border bg-surface-1 p-2" aria-label="Resource controls">
-	<div class="grid gap-2 xl:grid-cols-[auto_minmax(18rem,1fr)_auto] xl:items-center">
+<section class="@container rounded-md border bg-surface-1 p-2" aria-label="Resource controls">
+	<div class="grid gap-2 @5xl:grid-cols-[auto_minmax(18rem,1fr)_auto] @5xl:items-center">
 		<div class="flex min-w-0 flex-wrap items-center gap-2" aria-label="Current resource scope">
 			<Popover bind:open={namespacePopoverOpen}>
 				<PopoverTrigger
@@ -196,7 +196,7 @@
 			/>
 		</InputGroup>
 
-		<div class="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
+		<div class="flex min-w-0 flex-wrap items-center gap-2 @5xl:justify-end">
 			{#if gitOpsFilters.length > 0}
 				<Select
 					value={gitOpsFilter || "__all"}
@@ -231,8 +231,8 @@
 		</div>
 	</div>
 
-	<div class="mt-2 grid gap-2 xl:grid-cols-2 xl:items-stretch">
-		<div class="grid grid-cols-2 gap-2 md:grid-cols-3 2xl:grid-cols-6" aria-label="Resource health summary">
+	<div class="mt-2 grid gap-2 @5xl:grid-cols-2 @5xl:items-stretch">
+		<div class="grid grid-cols-2 gap-2 @3xl:grid-cols-3 @7xl:grid-cols-6" aria-label="Resource health summary">
 			<Button
 				type="button"
 				variant="outline"
@@ -310,7 +310,7 @@
 			</Button>
 		</div>
 
-		<div class="grid min-w-0 gap-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(12rem,auto)]">
+		<div class="grid min-w-0 gap-2 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] @5xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)] @7xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(12rem,auto)]">
 			<div class="rounded-md border bg-background/30 px-3 py-2 text-xs">
 				<div class="font-semibold text-foreground">Resource metrics</div>
 				<div class="text-muted-foreground">{metricsMessage ?? "metrics available"}</div>

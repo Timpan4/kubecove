@@ -5,6 +5,7 @@
 		Cable,
 		FolderOpen,
 		Eye,
+		Menu,
 		Play,
 		Search,
 		Settings,
@@ -30,6 +31,9 @@
 		Field,
 		FieldLabel,
 		ScrollArea,
+		Sheet,
+		SheetContent,
+		SheetTitle,
 		Sidebar,
 		SidebarContent,
 		SidebarInset,
@@ -61,8 +65,8 @@
 		savedPortForwardStartFailureMessage,
 		shouldAutoStartSavedPortForwards,
 		shouldShowSavedPortForwardRestorePrompt,
-	} from "@/features/live-sessions/restore";
-	import { startSavedPortForwards } from "@/features/live-sessions";
+		startSavedPortForwards,
+	} from "@/features/live-sessions";
 	import ResourceDetailPanel from "@/features/resource-detail/ResourceDetailPanel.svelte";
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
@@ -81,12 +85,9 @@
 	import {
 		GITOPS_RESOURCE_KINDS,
 		appendPresentCustomResourceKinds,
-		getResourceBrowserScope,
-		getWorkspacePlaceholder,
-		getWorkspaceTitle,
-		isNamespaceListView,
 	} from "./workspaceShellModel";
 	import {
+		buildWorkspaceNavigationModel,
 		createWorkspaceNavigation,
 		navigateWorkspace,
 		workspacePathForWorkspace,
@@ -147,6 +148,7 @@
 				: []),
 	);
 	let commandOpen = $state(false);
+	let navigationOpen = $state(false);
 	let resourceDetailPathState = $state<PathStateResourceDetailState | null>(
 		initialDetailPathState,
 	);
@@ -163,25 +165,17 @@
 	const kubeconfigSourceKey = $derived($settingsStore.kubeconfigSourceKey);
 	const showCustomResources = $derived($settingsStore.showCustomResources);
 
-	const title = $derived(getWorkspaceTitle({
-		workspace,
-		selectedNode,
-		viewMode,
-	}));
-	const placeholder = $derived(getWorkspacePlaceholder({
-		selectedNode,
-		viewMode,
-	}));
+	const navigationModel = $derived(
+		buildWorkspaceNavigationModel(workspace, navigation),
+	);
+	const title = $derived(navigationModel.title);
+	const placeholder = $derived(navigationModel.placeholder);
 	const scopeSummary = $derived(summarizeWorkspaceScope(workspace.scope));
 	const contextCount = $derived(workspaceScopeContexts(workspace.scope).length);
-	const isOverview = $derived(viewMode === "overview");
-	const isNamespaceList = $derived(isNamespaceListView({ selectedNode, viewMode }));
-	const resourceBrowserScope = $derived(
-		getResourceBrowserScope({ workspace, selectedNode, viewMode }),
-	);
-	const resourceBrowserNamespaces = $derived(
-		resourceNamespaceOverride ?? resourceBrowserScope.namespaces,
-	);
+	const isOverview = $derived(navigationModel.isOverview);
+	const isNamespaceList = $derived(navigationModel.isNamespaceList);
+	const resourceBrowserScope = $derived(navigationModel.resourceBrowserScope);
+	const resourceBrowserNamespaces = $derived(resourceBrowserScope.namespaces);
 	const workspaceCustomResourcePrewarmQuery = createQuery<DiscoveredResourceKind[]>(() => ({
 		queryKey: queryKeys.presentCustomResourceKinds(
 			workspace.scope.clusterContext,
@@ -273,6 +267,11 @@
 
 	onMount(() => {
 		if (initialPathSnapshot) onPathStateConsumed();
+		const closeNarrowNavigation = () => {
+			if (window.matchMedia("(min-width: 80rem)").matches) navigationOpen = false;
+		};
+		window.addEventListener("resize", closeNarrowNavigation);
+		return () => window.removeEventListener("resize", closeNarrowNavigation);
 	});
 
 	function applyWorkspaceNavigation(intent: WorkspaceNavigationIntent) {
@@ -421,6 +420,7 @@
 	}
 
 	function selectNode(nodeId: TreeNodeId) {
+		navigationOpen = false;
 		applyWorkspaceNavigation({ type: "selectNode", node: nodeId });
 	}
 
@@ -459,7 +459,7 @@
 </script>
 
 <SidebarProvider class="h-screen overflow-hidden bg-background text-foreground">
-	<Sidebar class="flex w-[260px] shrink-0 flex-col border-r bg-surface-1">
+	<Sidebar class="hidden w-[260px] shrink-0 flex-col border-r bg-surface-1 xl:flex">
 		<div class="border-b px-3 py-3">
 			<div class="flex items-center justify-between gap-2">
 				<div class="min-w-0">
@@ -482,21 +482,59 @@
 		</SidebarContent>
 	</Sidebar>
 
+	{#if navigationOpen}
+		<Sheet open onOpenChange={(open: boolean) => (navigationOpen = open)}>
+		<SheetContent side="left" class="w-[280px] max-w-[85vw] p-0 xl:hidden">
+			<SheetTitle class="sr-only">Workspace navigation</SheetTitle>
+			<div class="border-b px-3 py-3 pr-12">
+				<div class="flex items-center justify-between gap-2">
+					<div class="min-w-0">
+						<div class="truncate text-sm font-semibold">{workspace.name}</div>
+						<div class="truncate text-xs text-muted-foreground">
+							{workspace.scope.clusterContext}
+						</div>
+					</div>
+					<Badge variant="outline" class="tabular-nums">{contextCount}</Badge>
+				</div>
+			</div>
+			<SidebarContent>
+				<SidebarTree
+					clusterContext={workspace.scope.clusterContext}
+					{selectedNode}
+					{expandedSections}
+					onNodeSelect={selectNode}
+					onSectionToggle={toggleSection}
+				/>
+			</SidebarContent>
+		</SheetContent>
+	</Sheet>
+	{/if}
+
 	<SidebarInset class="flex h-screen min-w-0 flex-col overflow-hidden">
 		<header
-			class="flex h-12 shrink-0 items-center gap-4 border-b bg-sidebar px-4 [-webkit-app-region:drag]"
+			class="flex h-12 shrink-0 items-center gap-2 border-b bg-sidebar px-2 sm:gap-4 sm:px-4 [-webkit-app-region:drag]"
 		>
-			<div class="flex min-w-0 flex-1 items-center gap-3 [-webkit-app-region:no-drag]">
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon"
+				class="shrink-0 xl:hidden [-webkit-app-region:no-drag]"
+				aria-label="Open workspace navigation"
+				onclick={() => (navigationOpen = true)}
+			>
+				<Menu />
+			</Button>
+			<div class="hidden min-w-0 flex-1 items-center gap-3 [-webkit-app-region:no-drag] md:flex">
 				<ClusterSelector
 					value={workspace.scope.clusterContext}
 					onClusterChange={changeClusterContext}
 				/>
 				<Badge variant="secondary" class="max-w-48 truncate">{workspace.name}</Badge>
 			</div>
-			<div class="flex min-w-0 flex-1 items-center justify-center">
+			<div class="flex min-w-0 flex-1 items-center justify-center md:flex-none md:basis-1/3">
 				<span class="truncate whitespace-nowrap text-sm font-semibold">{title}</span>
 			</div>
-			<div class="flex flex-1 items-center justify-end gap-1 [-webkit-app-region:no-drag]">
+			<div class="flex min-w-0 shrink-0 items-center justify-end gap-1 [-webkit-app-region:no-drag] md:flex-1">
 				<ActiveLiveSessionsButton onOpenManager={openPortForwards} />
 				<UpdateStatusButton />
 				<Button
@@ -521,7 +559,7 @@
 					type="button"
 					variant="outline"
 					size="sm"
-					class="gap-2 whitespace-nowrap bg-surface-1 px-3 text-xs font-normal text-muted-foreground shadow-xs [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-foreground hover:shadow-sm"
+					class="hidden gap-2 whitespace-nowrap bg-surface-1 px-3 text-xs font-normal text-muted-foreground shadow-xs [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-foreground hover:shadow-sm lg:inline-flex"
 					aria-label="Search views, namespaces, and resources"
 					onclick={() => (commandOpen = true)}
 				>

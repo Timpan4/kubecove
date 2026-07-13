@@ -83,12 +83,12 @@
 </script>
 
 {#if !detailOpen || !detailPanel}
-	<div class={cnfast("h-full min-h-0 flex-1 overflow-hidden", className)}>
+	<div class={cnfast("h-full min-h-0 min-w-0 flex-1 overflow-hidden", className)}>
 		{@render children?.()}
 	</div>
 {:else}
-	<div bind:this={frameElement} class={cnfast("flex h-full min-h-0 flex-1 overflow-hidden", className)}>
-		<section class="h-full min-w-0 overflow-hidden" style={`flex: 0 0 ${mainSize}%;`}>
+	<div bind:this={frameElement} class={cnfast("relative flex h-full min-h-0 min-w-0 flex-1 overflow-hidden", className)}>
+		<section class="h-full min-w-0 overflow-hidden max-xl:!basis-full" style={`flex: 0 0 ${mainSize}%;`}>
 			{@render children?.()}
 		</section>
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
@@ -100,7 +100,7 @@
 			aria-valuemax={100 - mainMinSize}
 			aria-valuenow={Math.round(detailSize)}
 			tabindex="0"
-			class="group relative flex w-2 shrink-0 cursor-col-resize items-center justify-center bg-transparent outline-none focus-visible:bg-border/50"
+			class="group relative flex w-2 shrink-0 cursor-col-resize items-center justify-center bg-transparent outline-none focus-visible:bg-border/50 max-xl:hidden"
 			onpointerdown={startResize}
 			onkeydown={handleResizeKeydown}
 		>
@@ -108,7 +108,7 @@
 			<div class="absolute h-8 w-1 rounded-full bg-border opacity-70"></div>
 		</div>
 		<aside
-			class="h-full min-w-0 overflow-hidden border-l bg-surface-1"
+			class="h-full min-w-0 overflow-hidden max-xl:!basis-full border-l bg-surface-1 max-xl:absolute max-xl:inset-0 max-xl:z-10 max-xl:shadow-xl"
 			style={`flex: 0 0 ${detailSize}%;`}
 		>
 			{@render detailPanel?.()}

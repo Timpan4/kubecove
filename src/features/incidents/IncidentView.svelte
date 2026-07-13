@@ -6,9 +6,10 @@
 	import type { IncidentCockpitItem, IncidentCockpitSummary, ResourceSummary } from "@/lib/types";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
 	import type { HealthFilter } from "@/features/resources";
-	import type { IncidentCounts, IncidentFilter } from "./helpers";
 	import { cnfast } from "@/lib/utils";
 	import {
+		type IncidentCounts,
+		type IncidentFilter,
 		type IncidentFilterOption,
 		incidentCaseSummary,
 		incidentCaseTitle,

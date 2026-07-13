@@ -3,6 +3,7 @@ import type { ArgoApplicationSummary } from "@/lib/gitops-types";
 import type { PathStateResourceBrowserState } from "@/lib/path-state";
 import type { ResourceSummary } from "@/lib/types";
 import {
+	buildWorkspaceNavigationModel,
 	createWorkspaceNavigation,
 	navigateWorkspace,
 	workspaceNavigationSnapshot,
@@ -174,6 +175,90 @@ describe("workspace navigation", () => {
 			targetGitOpsApplication: null,
 			selectedNode: { type: "section", section: "portForwards" },
 		});
+	});
+
+	test("derives query-safe models for workspace surfaces", () => {
+		const surfaces = [
+			{ type: "openSettings" as const },
+			{ type: "openArgo" as const },
+			{ type: "openHelmRelease" as const, name: "checkout" },
+			{ type: "openIncidents" as const },
+			{ type: "openPortForwards" as const },
+		];
+		for (const intent of surfaces) {
+			const navigation = navigateWorkspace(
+				createWorkspaceNavigation(workspace),
+				intent,
+			);
+			expect(
+				buildWorkspaceNavigationModel(workspace, navigation).resourceBrowserScope
+					.canQuery,
+			).toBe(false);
+		}
+
+		const overview = buildWorkspaceNavigationModel(
+			workspace,
+			createWorkspaceNavigation(workspace),
+		);
+		expect(overview.activeSurface).toBe("overview");
+		expect(overview.title).toBe("Ops");
+		expect(overview.resourceBrowserScope.canQuery).toBe(false);
+
+		const namespaceList = buildWorkspaceNavigationModel(workspace, {
+			...createWorkspaceNavigation(workspace),
+			viewMode: "resources",
+			selectedNode: { type: "section", section: "namespaces" },
+		});
+		expect(namespaceList.isNamespaceList).toBe(true);
+		expect(namespaceList.resourceBrowserScope.canQuery).toBe(false);
+	});
+
+	test("applies explicit namespace overrides inside the navigation model", () => {
+		const navigation = navigateWorkspace(createWorkspaceNavigation(workspace), {
+			type: "openResources",
+			namespaces: ["payments", "billing"],
+		});
+		const model = buildWorkspaceNavigationModel(workspace, navigation);
+
+		expect(model.activeSurface).toBe("resources");
+		expect(model.resourceBrowserScope.canQuery).toBe(true);
+		expect(model.resourceBrowserScope.namespaces).toEqual([
+			"payments",
+			"billing",
+		]);
+	});
+
+	test("preserves stale serialized state for a matching workspace", () => {
+		const restored = createWorkspaceNavigation(workspace, {
+			workspaceId: workspace.id,
+			viewMode: "resources",
+			selectedNode: {
+				type: "kind",
+				section: "workloads",
+				kind: "Deployment",
+				namespace: "removed-namespace",
+			},
+			expandedSections: [],
+			resourceInitialSearch: "",
+			resourceInitialGitOpsFilter: "",
+			resourceInitialHealthFilter: "all",
+			resourceNamespaceOverride: null,
+			focusedResource: null,
+			restoreTargetResource: null,
+			targetHelmRelease: null,
+			targetGitOpsApplication: null,
+			resources: null,
+			detail: null,
+			surfaces: null,
+		});
+
+		expect(restored.selectedNode).toMatchObject({
+			namespace: "removed-namespace",
+		});
+		expect(
+			buildWorkspaceNavigationModel(workspace, restored).resourceBrowserScope
+				.namespaces,
+		).toEqual(["removed-namespace"]);
 	});
 
 	test("encodes focused resource as the restore target", () => {

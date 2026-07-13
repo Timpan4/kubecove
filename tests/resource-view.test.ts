@@ -25,11 +25,23 @@ describe("resource view safeguards", () => {
 			"grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)]",
 		);
 		expect(browserSource).toContain(
-			"xl:grid-cols-[minmax(420px,0.4fr)_minmax(620px,0.6fr)]",
+			"xl:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)]",
 		);
 		expect(browserSource).toContain("min-h-[400px]");
 		expect(browserSource).toContain("Collapse resource table");
 		expect(browserSource).not.toContain('resourceView === "map"');
 		expect(browserSource).not.toContain('resourceView === "table"');
+	});
+
+	test("sizes resource controls from their pane instead of the viewport", () => {
+		const topBarSource = readFileSync(
+			"src/features/resources/ResourceBrowserTopBar.svelte",
+			"utf8",
+		);
+
+		expect(topBarSource).toContain('class="@container rounded-md');
+		expect(topBarSource).toContain("@5xl:grid-cols-2");
+		expect(topBarSource).toContain("@7xl:grid-cols-6");
+		expect(topBarSource).not.toContain(" xl:grid-cols-[minmax(12rem");
 	});
 });
