@@ -6,6 +6,7 @@
 		FolderOpen,
 		Eye,
 		Menu,
+		Pin,
 		Play,
 		Search,
 		Settings,
@@ -53,6 +54,12 @@
 	} from "@/lib/types";
 	import { nodeIdToString, type TreeNodeId } from "@/lib/tree-nav";
 	import { queryKeys } from "@/lib/queryKeys";
+	import {
+		entryPointFromResource,
+		isPinnedEntry,
+		normalizeEntryPoints,
+		resourceFromEntryPoint,
+	} from "@/lib/workspace-entry-points";
 	import { createTauriClient, listPresentCustomResourceKinds } from "@/lib/tauri";
 	import {
 		writePathState,
@@ -90,6 +97,7 @@
 		buildWorkspaceNavigationModel,
 		createWorkspaceNavigation,
 		navigateWorkspace,
+		treeNodeForResource,
 		workspacePathForWorkspace,
 		workspaceNavigationSnapshot,
 		type WorkspaceNavigationIntent,
@@ -260,6 +268,17 @@
 			dismissedWorkspaceId: dismissedPortForwardRestoreWorkspaceId,
 		}),
 	);
+	const pinnedResourceKeys = $derived(
+		normalizeEntryPoints(workspace.entryPoints).pinned.flatMap((entry) => {
+			const resource = resourceFromEntryPoint(entry);
+			return resource ? [resourceSelectionKey(resource)] : [];
+		}),
+	);
+	const focusedResourcePinned = $derived(
+		focusedResource
+			? isPinnedEntry(workspace.entryPoints, entryPointFromResource(focusedResource, ""))
+			: false,
+	);
 	const resourceInspectorOpen = $derived(focusedResource !== null);
 	const resourceInspectorSizeKey = $derived(viewMode === "argo" ? "gitops" : "resource");
 	const resourceInspectorDefaultSize = $derived(viewMode === "argo" ? 30 : 40);
@@ -344,6 +363,21 @@
 		initialHealthFilter: HealthFilter = "all",
 		gitOpsFocusApplication: ArgoApplicationSummary | null = null,
 	) {
+		if (typeof namespace === "string") {
+			workspaceStore.recordRecentNamespace(
+				workspace.id,
+				workspace.scope.clusterContext,
+				namespace,
+			);
+		}
+		if (gitOpsFocusApplication) {
+			workspaceStore.recordRecentApplication(
+				workspace.id,
+				gitOpsFocusApplication.cluster,
+				gitOpsFocusApplication.name,
+				gitOpsFocusApplication.namespace,
+			);
+		}
 		applyWorkspaceNavigation({
 			type: "openResources",
 			namespaces: namespace,
@@ -370,7 +404,15 @@
 		applyWorkspaceNavigation({ type: "clearGitOpsTarget" });
 	}
 
-	function openArgo(argoApp?: string) {
+	function openArgo(argoApp?: string, namespace?: string) {
+		if (argoApp) {
+			workspaceStore.recordRecentApplication(
+				workspace.id,
+				workspace.scope.clusterContext,
+				argoApp,
+				namespace,
+			);
+		}
 		applyWorkspaceNavigation({ type: "openArgo", application: argoApp });
 	}
 
@@ -421,10 +463,18 @@
 
 	function selectNode(nodeId: TreeNodeId) {
 		navigationOpen = false;
+		if (nodeId.type === "namespace" && nodeId.namespace) {
+			workspaceStore.recordRecentNamespace(
+				workspace.id,
+				workspace.scope.clusterContext,
+				nodeId.namespace,
+			);
+		}
 		applyWorkspaceNavigation({ type: "selectNode", node: nodeId });
 	}
 
 	function selectResource(resource: ResourceSummary, nodeId: TreeNodeId) {
+		workspaceStore.recordRecentResource(workspace.id, resource);
 		applyWorkspaceNavigation({ type: "selectResource", resource, node: nodeId });
 	}
 
@@ -447,7 +497,31 @@
 
 	function inspectResource(resource: ResourceSummary, detailTab?: PathStateDetailTab) {
 		resourceDetailPathState = detailTab ? detailPathStateForTab(detailTab) : null;
+		workspaceStore.recordRecentResource(workspace.id, resource);
 		applyWorkspaceNavigation({ type: "inspectResource", resource });
+	}
+
+	function focusResource(
+		resource: ResourceSummary,
+		source: "explicit" | "restore" = "explicit",
+	) {
+		if (source === "explicit") {
+			workspaceStore.recordRecentResource(workspace.id, resource);
+		}
+		applyWorkspaceNavigation({ type: "focusResource", resource });
+	}
+
+	function togglePinnedResource(resource: ResourceSummary) {
+		workspaceStore.togglePinnedResource(workspace.id, resource);
+	}
+
+	function openEntryPoint(resource: ResourceSummary) {
+		workspaceStore.recordRecentResource(workspace.id, resource);
+		applyWorkspaceNavigation({
+			type: "selectResource",
+			resource,
+			node: treeNodeForResource(resource),
+		});
 	}
 
 	function toggleSection(id: string) {
@@ -656,16 +730,28 @@
 										{focusedResource.kind} / {focusedResource.namespace ?? "cluster"}
 									</div>
 								</div>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon"
-									class="size-7 text-muted-foreground"
-									aria-label="Close resource details"
-									onclick={() => applyWorkspaceNavigation({ type: "clearResource" })}
-								>
-									<X />
-								</Button>
+								<div class="flex shrink-0 items-center gap-1">
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										class="size-7 text-muted-foreground"
+										aria-label={`${focusedResourcePinned ? "Unpin" : "Pin"} ${focusedResource.kind} ${focusedResource.name}`}
+										onclick={() => togglePinnedResource(focusedResource)}
+									>
+										<Pin class={focusedResourcePinned ? "fill-current" : ""} />
+									</Button>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										class="size-7 text-muted-foreground"
+										aria-label="Close resource details"
+										onclick={() => applyWorkspaceNavigation({ type: "clearResource" })}
+									>
+										<X />
+									</Button>
+								</div>
 							</header>
 							<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
 								{#key resourceSelectionKey(focusedResource)}
@@ -687,6 +773,9 @@
 					<WorkspaceOverview
 						{workspace}
 						onOpenResources={openResources}
+						onOpenResource={openEntryPoint}
+						onReconcileEntryPoints={(resources, coverage) =>
+							workspaceStore.reconcileEntryPoints(workspace.id, resources, coverage)}
 						onOpenArgo={openArgo}
 						onOpenIncidents={openIncidents}
 						onOpenPortForwards={openPortForwards}
@@ -721,10 +810,11 @@
 							selectedResource={focusedResource}
 							{title}
 							initialPathState={navigation.resourceBrowserPathState}
+							{pinnedResourceKeys}
 							onPathStateChange={(pathState) =>
 								applyWorkspaceNavigation({ type: "updateResourceBrowserPath", pathState })}
-							onResourceSelect={(resource) =>
-								applyWorkspaceNavigation({ type: "focusResource", resource })}
+							onResourceSelect={focusResource}
+							onResourcePinToggle={togglePinnedResource}
 							onResourceClose={() =>
 								applyWorkspaceNavigation({ type: "clearResource" })}
 						/>
