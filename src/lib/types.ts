@@ -139,6 +139,39 @@ export interface KubernetesYamlLintResult {
 	notes: KubernetesYamlLintStatusNote[];
 }
 
+export interface ClusterOperationTarget {
+	clusterContext: string;
+	kind: string;
+	name: string;
+	namespace?: string | null;
+}
+
+export interface ScaleWorkloadRequest extends ClusterOperationTarget {
+	replicas: number;
+	confirmed: boolean;
+	kubeconfigEnvVar?: string;
+}
+
+export interface RolloutRestartRequest extends ClusterOperationTarget {
+	confirmed: boolean;
+	kubeconfigEnvVar?: string;
+}
+
+export interface DeleteResourceRequest extends ClusterOperationTarget {
+	confirmed: boolean;
+	kubeconfigEnvVar?: string;
+}
+
+export interface ClusterOperationPreview {
+	target: ClusterOperationTarget;
+	effect: string;
+}
+
+export interface ClusterOperationResult {
+	target: ClusterOperationTarget;
+	effect: string;
+}
+
 export type ResourceHealth =
 	| "healthy"
 	| "attention"

@@ -195,7 +195,7 @@ Goal: finish the Svelte cutover and keep the frontend path simple.
 - [x] Keep kubeconfig secrets Rust-side.
 - [x] Keep the current beta inspection-first except for explicitly governed live sessions.
 - [x] Add ADR 0004 for guarded cluster operations.
-- [ ] Implement future cluster-changing commands as explicit, typed, permission-aware workflows.
+- [x] Implement guarded scale (Deployment/StatefulSet), rollout restart (Deployment/StatefulSet/DaemonSet), and exact delete (Pod/ConfigMap) as explicit, typed, permission-aware workflows.
 - [ ] Add focused ADR coverage before GitOps provider API, CLI, sync, reconcile, rollback, diff, or Git-writing support.
 
 ### Helm Reconciliation

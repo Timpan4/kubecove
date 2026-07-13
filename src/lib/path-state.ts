@@ -52,7 +52,8 @@ export type PathStateDetailTab =
 	| "logs"
 	| "exec"
 	| "portForward"
-	| "revisions";
+	| "revisions"
+	| "operations";
 export type PathStateIncidentFilter =
 	| "all"
 	| "unhealthy"

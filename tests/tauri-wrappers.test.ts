@@ -1,43 +1,51 @@
 import { describe, expect, test } from "bun:test";
+import { queryKeys } from "../src/lib/queryKeys";
+import { kubeconfigSourceKey } from "../src/lib/settings";
 import {
-	createMockTauriClient,
-	createMockChannel,
 	addKubeconfigPaths,
 	clearBackendDiagnostics,
+	createMockChannel,
+	createMockTauriClient,
+	deleteResource,
 	detectFlux,
-	listArgoAppProjects,
-	listArgoApplicationSets,
-	listArgoApplications,
-	listIncidentCockpit,
-	getBackendDiagnostics,
 	getAppUsageMetrics,
+	getBackendDiagnostics,
 	getFluxResourceDetails,
 	getHelmReleaseDetails,
-	getKubeconfigSources,
 	getHelmReleaseReconciliation,
-	listResourceMetrics,
-	listResourceScope,
-	listRbacInspection,
+	getKubeconfigSources,
 	getResourceYaml,
-	isTauriRuntime,
 	isAppError,
-	listPortForwards,
-	listPodExecSessions,
-	listHelmReleases,
+	isTauriRuntime,
+	listArgoApplicationSets,
+	listArgoApplications,
+	listArgoAppProjects,
 	listFluxResources,
-	listPresentCustomResourceKinds,
-	listResourceTopology,
+	listHelmReleases,
+	listIncidentCockpit,
 	listKubeContexts,
 	listNamespaces,
-	resizePodExecTerminal,
+	listPodExecSessions,
+	listPortForwards,
+	listPresentCustomResourceKinds,
+	listRbacInspection,
+	listResourceMetrics,
+	listResourceScope,
+	listResourceTopology,
+	previewDeleteResource,
+	previewRolloutRestart,
+	previewScaleWorkload,
 	removeKubeconfigPath,
 	reorderKubeconfigPaths,
-	setKubeconfigEnvVar,
+	resizePodExecTerminal,
+	rolloutRestart,
+	scaleWorkload,
 	setBackendDiagnosticsEnabled,
+	setKubeconfigEnvVar,
 	setShowKubeconfigSourceLabels,
 	shouldUseBrowserDevMocks,
-	startPodLogStream,
 	startPodExecSession,
+	startPodLogStream,
 	startPodPortForward,
 	startPortForward,
 	stopLiveSessionsOutsideScope,
@@ -46,10 +54,9 @@ import {
 	writePodExecStdin,
 } from "../src/lib/tauri";
 import { createDevMockTauriClient } from "../src/lib/tauri-dev-mocks";
-import { queryKeys } from "../src/lib/queryKeys";
-import { kubeconfigSourceKey } from "../src/lib/settings";
 import type {
 	AppUsageMetrics,
+	BackendDiagnosticEvent,
 	ClusterContext,
 	FluxDetectionSummary,
 	FluxResourceDetails,
@@ -58,15 +65,14 @@ import type {
 	HelmReleaseDetails,
 	HelmReleaseReconciliation,
 	HelmReleaseSummary,
+	KubeconfigSourcesSummary,
+	LiveSessionCleanupResult,
 	NamespaceSummary,
 	PodExecSessionSummary,
 	PortForwardSessionSummary,
 	RbacInspectionSummary,
 	ResourceMetricsSummary,
 	ResourceTopology,
-	KubeconfigSourcesSummary,
-	LiveSessionCleanupResult,
-	BackendDiagnosticEvent,
 } from "../src/lib/types";
 
 describe("createMockTauriClient", () => {
@@ -239,6 +245,42 @@ describe("createMockTauriClient", () => {
 			"ingress-nginx-controller",
 			"ingress-nginx-controller-7bdbf967f9-dk4nc",
 		]);
+	});
+
+	test("browser dev mock previews and confirms guarded operations", async () => {
+		const client = createDevMockTauriClient();
+		const scaleRequest = {
+			clusterContext: "mock-dev",
+			namespace: "payments",
+			kind: "Deployment",
+			name: "payments-api",
+			replicas: 4,
+			confirmed: false,
+		};
+		const restartRequest = {
+			clusterContext: "mock-dev",
+			namespace: "payments",
+			kind: "Deployment",
+			name: "payments-api",
+			confirmed: false,
+		};
+		const deleteRequest = {
+			clusterContext: "mock-dev",
+			namespace: "payments",
+			kind: "Pod",
+			name: "payments-api-0",
+			confirmed: false,
+		};
+
+		expect((await previewScaleWorkload(client, scaleRequest)).effect).toContain("4 replicas");
+		expect((await previewRolloutRestart(client, restartRequest)).effect).toContain("Restart");
+		expect((await previewDeleteResource(client, deleteRequest)).effect).toContain("Delete");
+		await expect(scaleWorkload(client, scaleRequest)).rejects.toThrow("confirmation");
+		await expect(rolloutRestart(client, restartRequest)).rejects.toThrow("confirmation");
+		await expect(deleteResource(client, deleteRequest)).rejects.toThrow("confirmation");
+		expect((await scaleWorkload(client, { ...scaleRequest, confirmed: true })).effect).toContain("Simulated");
+		expect((await rolloutRestart(client, { ...restartRequest, confirmed: true })).effect).toContain("Simulated");
+		expect((await deleteResource(client, { ...deleteRequest, confirmed: true })).effect).toContain("Simulated");
 	});
 
 	test("passes Pod exec requests through typed wrappers", async () => {
