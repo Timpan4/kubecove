@@ -3,7 +3,7 @@ import {
 	savedPortForwardStartFailureMessage,
 	shouldAutoStartSavedPortForwards,
 	shouldShowSavedPortForwardRestorePrompt,
-} from "../src/features/live-sessions/restore";
+} from "../src/features/live-sessions/portForwardLifecycle";
 import { createSavedPortForward, createWorkspaceRecord } from "../src/lib/workspaces";
 
 describe("saved port-forward restore behavior", () => {

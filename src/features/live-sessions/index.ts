@@ -1,8 +1,12 @@
 export {
 	invalidatePortForwardQueries,
+	parseSavedPortForwardForWorkspace,
 	portForwardQueryOptions,
 	portForwardSessionsForWorkspace,
 	reconnectPortForward,
+	savedPortForwardStartFailureMessage,
+	shouldAutoStartSavedPortForwards,
+	shouldShowSavedPortForwardRestorePrompt,
 	startResourcePortForward,
 	startSavedPortForward,
 	startSavedPortForwards,
@@ -19,7 +23,6 @@ export {
 export {
 	extractServicePortOptions,
 	parsePortForwardForm,
-	parseSavedPortForwardForm,
 	type SavedPortForwardFormValues,
 } from "./portForwardForms";
 export {

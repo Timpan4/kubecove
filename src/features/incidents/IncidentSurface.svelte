@@ -5,9 +5,12 @@
 	import { createTauriClient, listIncidentCockpit } from "@/lib/tauri";
 	import type { IncidentCockpitSummary, ResourceSummary } from "@/lib/types";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
-	import type { IncidentFilter } from "./helpers";
 	import IncidentView from "./IncidentView.svelte";
-	import { buildIncidentQueryState, buildIncidentSurfaceState } from "./surfaceState";
+	import {
+		buildIncidentQueryState,
+		buildIncidentSurfaceState,
+		type IncidentFilter,
+	} from "./model";
 
 	let {
 		workspace,

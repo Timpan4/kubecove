@@ -2,11 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { IncidentCockpitItem } from "../src/lib/types";
 import { createWorkspaceRecord } from "../src/lib/workspace-model";
 import {
+	buildIncidentFilterOptions,
 	buildIncidentQueryState,
 	buildIncidentSurfaceState,
-} from "../src/features/incidents/surfaceState";
-import {
-	buildIncidentFilterOptions,
 	incidentCaseSummary,
 	incidentCaseTitle,
 	incidentDetailPivots,

@@ -2,8 +2,12 @@ import { createMockTauriClient } from "@/lib/tauri";
 import type { PortForwardSessionSummary } from "@/lib/types";
 import { createWorkspaceRecord } from "@/lib/workspace-model";
 import {
+	parseSavedPortForwardForWorkspace,
 	portForwardQueryOptions,
 	portForwardSessionsForWorkspace,
+	savedPortForwardStartFailureMessage,
+	shouldAutoStartSavedPortForwards,
+	shouldShowSavedPortForwardRestorePrompt,
 	startSavedPortForward,
 	startSavedPortForwards,
 	stopPortForward,
@@ -99,6 +103,106 @@ describe("port forward lifecycle", () => {
 
 		expect(calls).toEqual(["port-forward-1"]);
 		expect(invalidated).toEqual(["port-forwards"]);
+	});
+
+	test("validates saved forward forms against workspace scope", () => {
+		const workspace = createWorkspaceRecord({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			clusterContexts: ["kind-dev", "prod"],
+			namespaces: ["payments"],
+		});
+		const values = {
+			clusterContext: "staging",
+			namespace: "payments",
+			serviceName: "api",
+			servicePort: "8080",
+			localPort: "18080",
+			label: "API",
+		};
+
+		expect(parseSavedPortForwardForWorkspace(values, workspace)).toBe(
+			"Cluster context must be in the current workspace scope.",
+		);
+		expect(
+			parseSavedPortForwardForWorkspace(
+				{ ...values, clusterContext: "prod" },
+				workspace,
+			),
+		).toEqual({
+			clusterContext: "prod",
+			namespace: "payments",
+			serviceName: "api",
+			servicePort: 8080,
+			localPort: 18080,
+			label: "API",
+		});
+	});
+
+	test("keeps restore eligibility scoped to caller-owned workspace state", () => {
+		const workspace = createWorkspaceRecord({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: ["payments"],
+		});
+		workspace.portForwards = [
+			{
+				id: "saved-1",
+				clusterContext: "kind-dev",
+				namespace: "payments",
+				serviceName: "api",
+				servicePort: 8080,
+				createdAt: "2026-07-10T00:00:00Z",
+				updatedAt: "2026-07-10T00:00:00Z",
+			},
+		];
+
+		expect(
+			shouldShowSavedPortForwardRestorePrompt({
+				workspace,
+				autoStart: false,
+				dismissedWorkspaceId: workspace.id,
+			}),
+		).toBe(false);
+		expect(
+			shouldShowSavedPortForwardRestorePrompt({
+				workspace,
+				autoStart: false,
+				dismissedWorkspaceId: "another-workspace",
+			}),
+		).toBe(true);
+
+		const startedWorkspaceIds = new Set<string>();
+		expect(
+			shouldAutoStartSavedPortForwards({
+				workspace,
+				autoStart: true,
+				startedWorkspaceIds,
+			}),
+		).toBe(true);
+		startedWorkspaceIds.add(workspace.id);
+		expect(
+			shouldAutoStartSavedPortForwards({
+				workspace,
+				autoStart: true,
+				startedWorkspaceIds,
+			}),
+		).toBe(false);
+	});
+
+	test("summarizes restore conflicts before generic failures", () => {
+		expect(
+			savedPortForwardStartFailureMessage([
+				{ ok: false, conflict: true },
+				{ ok: false },
+			]),
+		).toBe(
+			"1 saved forward has local port conflicts. Review port forwards for details.",
+		);
+		expect(savedPortForwardStartFailureMessage([{ ok: false }])).toBe(
+			"1 saved forward failed to start. Review port forwards for details.",
+		);
+		expect(savedPortForwardStartFailureMessage([{ ok: true }])).toBe(null);
 	});
 
 	test("does not start a saved forward when active sessions cannot be listed", async () => {

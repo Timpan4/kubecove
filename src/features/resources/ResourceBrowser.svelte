@@ -930,11 +930,11 @@
 			class={inspectorOpen && mapPanelOpen && tablePanelOpen
 				? "grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)] gap-3"
 				: mapPanelOpen && tablePanelOpen
-				? "grid min-h-0 min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(420px,0.4fr)_minmax(620px,0.6fr)]"
+				? "grid min-h-0 min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)]"
 				: mapPanelOpen
 					? "grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_3rem] gap-3"
 					: tablePanelOpen
-						? "grid min-h-0 min-w-0 flex-1 grid-cols-[3rem_minmax(620px,1fr)] gap-3"
+						? "grid min-h-0 min-w-0 flex-1 grid-cols-[3rem_minmax(0,1fr)] gap-3"
 						: "grid min-h-0 min-w-0 flex-1 grid-cols-[3rem_3rem] gap-3"}
 		>
 			{#if mapPanelOpen}

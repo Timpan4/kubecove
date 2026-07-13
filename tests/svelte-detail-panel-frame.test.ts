@@ -55,4 +55,11 @@ describe("svelte detail panel frame", () => {
 		expect(source).toContain("onpointerdown={startResize}");
 		expect(source).toContain("onkeydown={handleResizeKeydown}");
 	});
+
+	test("uses a bounded overlay detail pane below the wide-desktop breakpoint", () => {
+		const source = readFileSync("src/app/svelte/DetailPanelFrame.svelte", "utf8");
+
+		expect(source).toContain("max-xl:absolute max-xl:inset-0 max-xl:z-10");
+		expect(source).toContain("max-xl:hidden");
+	});
 });

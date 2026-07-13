@@ -1,3 +1,8 @@
+import {
+	ARGO_PROVIDER_GROUP_ID,
+	FLUX_FAMILIES,
+	FLUX_PROVIDER_GROUP_ID,
+} from "@/features/gitops/gitops-nav";
 import type { ArgoApplicationSummary } from "@/lib/gitops-types";
 import {
 	resourceRefFromSummary,
@@ -16,8 +21,154 @@ import {
 	type SectionName,
 	type TreeNodeId,
 } from "@/lib/tree-nav";
-import type { ResourceSummary } from "@/lib/types";
-import type { SavedWorkspace } from "@/lib/workspace-model";
+import type { ResourceKindSelection, ResourceSummary } from "@/lib/types";
+import {
+	resourceKindLabel,
+	type SavedWorkspace,
+} from "@/lib/workspace-model";
+
+export interface ResourceBrowserScope {
+	canQuery: boolean;
+	namespaces: string[];
+	kinds: ResourceKindSelection[];
+}
+
+export interface WorkspaceNavigationModel {
+	activeSurface: WorkspaceViewMode;
+	title: string;
+	placeholder: string;
+	isOverview: boolean;
+	isNamespaceList: boolean;
+	resourceBrowserScope: ResourceBrowserScope;
+}
+
+const SECTION_LABELS: Record<string, string> = {
+	workspaceOverview: "Workspace Overview",
+	clusterOverview: "Cluster Overview",
+	namespaces: "Namespaces",
+	workloads: "Workloads",
+	network: "Network",
+	config: "Config",
+	storage: "Storage",
+	discovered: "Custom Resources",
+	argo: "GitOps",
+	helm: "Helm",
+	incidents: "Incidents",
+	portForwards: "Port Forwards",
+	rbac: "RBAC",
+};
+
+function gitOpsGroupLabel(group: string | undefined): string | null {
+	if (group === ARGO_PROVIDER_GROUP_ID) return "Argo CD";
+	if (group === FLUX_PROVIDER_GROUP_ID) return "Flux";
+	return FLUX_FAMILIES.find((family) => family.groupId === group)?.label ?? null;
+}
+
+function isNamespaceListView(state: WorkspaceNavigationState): boolean {
+	return (
+		state.viewMode === "resources" &&
+		state.selectedNode?.type === "section" &&
+		state.selectedNode.section === "namespaces"
+	);
+}
+
+function resourceBrowserScope(
+	workspace: SavedWorkspace,
+	state: WorkspaceNavigationState,
+): ResourceBrowserScope {
+	if (state.viewMode !== "resources" || isNamespaceListView(state)) {
+		return { canQuery: false, namespaces: [], kinds: [] };
+	}
+	const scope = resolveTreeScope(state.selectedNode);
+	if (
+		scope.argoMode ||
+		scope.helmMode ||
+		scope.incidentMode ||
+		scope.portForwardMode ||
+		scope.rbacMode
+	) {
+		return { canQuery: false, namespaces: [], kinds: [] };
+	}
+	const kinds =
+		scope.kinds.length > 0 ? scope.kinds : [...workspace.scope.kinds];
+	const namespaces = state.resourceNamespaceOverride ??
+		(scope.namespace
+			? [scope.namespace]
+			: scope.section === "namespaces" || scope.clusterScoped
+				? []
+				: [...workspace.scope.namespaces]);
+	return { canQuery: kinds.length > 0, namespaces, kinds };
+}
+
+function workspaceTitle(
+	workspace: SavedWorkspace,
+	state: WorkspaceNavigationState,
+): string {
+	const scope = resolveTreeScope(state.selectedNode);
+	if (state.viewMode === "overview") return workspace.name;
+	if (state.viewMode === "settings") return "Settings";
+	if (state.viewMode === "helm") return "Helm Releases";
+	if (state.viewMode === "incidents") return "Incident Cockpit";
+	if (state.viewMode === "portForwards") return "Port Forwards";
+	if (state.viewMode === "rbac") {
+		return state.selectedNode?.type === "kind" && state.selectedNode.kind
+			? state.selectedNode.kind
+			: "RBAC";
+	}
+	if (state.viewMode === "argo") {
+		if (state.selectedNode?.type === "group") {
+			return gitOpsGroupLabel(state.selectedNode.group) ?? "GitOps";
+		}
+		return state.selectedNode?.type === "kind" && state.selectedNode.kind
+			? state.selectedNode.kind
+			: "GitOps";
+	}
+	if (!scope.section) return "Kubernetes Resources";
+	if (scope.section === "clusterOverview") {
+		return scope.kinds.length === 1
+			? `${resourceKindLabel(scope.kinds[0])} Resources`
+			: "Cluster Overview";
+	}
+	if (scope.section === "namespaces" && scope.namespace) {
+		return scope.group ? `${scope.namespace} / ${scope.group}` : scope.namespace;
+	}
+	if (scope.group) return scope.group;
+	if (scope.kinds.length === 1) {
+		return `${resourceKindLabel(scope.kinds[0])} Resources`;
+	}
+	return SECTION_LABELS[scope.section] ?? scope.section;
+}
+
+function workspacePlaceholder(state: WorkspaceNavigationState): string {
+	if (state.viewMode === "overview") {
+		return "Use the sidebar to open resource and app surfaces for this workspace.";
+	}
+	if (state.viewMode === "settings") {
+		return "Adjust runtime, safety, and workspace preferences.";
+	}
+	const scope = resolveTreeScope(state.selectedNode);
+	if (scope.kinds.length > 0) return "Browse live resources for this scope.";
+	if (scope.argoMode) return "Inspect GitOps applications and sources.";
+	if (scope.helmMode) return "Inspect Helm releases, values, and manifests.";
+	if (scope.incidentMode) return "Review incident signals and timelines.";
+	if (scope.portForwardMode) return "Review saved and active live sessions.";
+	if (scope.rbacMode) return "Inspect RBAC bindings, subjects, and permissions.";
+	return "Select a sidebar item to open a workspace surface.";
+}
+
+export function buildWorkspaceNavigationModel(
+	workspace: SavedWorkspace,
+	state: WorkspaceNavigationState,
+): WorkspaceNavigationModel {
+	return {
+		activeSurface: state.viewMode,
+		title: workspaceTitle(workspace, state),
+		placeholder: workspacePlaceholder(state),
+		isOverview: state.viewMode === "overview",
+		isNamespaceList: isNamespaceListView(state),
+		resourceBrowserScope: resourceBrowserScope(workspace, state),
+	};
+}
 
 export type WorkspaceViewMode = PathStateWorkspaceViewMode;
 

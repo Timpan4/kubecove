@@ -7,10 +7,9 @@
 		PodExecSessionSummary,
 		PortForwardSessionSummary,
 	} from "@/lib/types";
-	import {
-		workspaceScopeContexts,
-		type SavedPortForward,
-		type SavedWorkspace,
+	import type {
+		SavedPortForward,
+		SavedWorkspace,
 	} from "@/lib/workspace-model";
 	import {
 		portForwardErrorMessage,
@@ -18,9 +17,10 @@
 		savedPortForwardLabel,
 	} from "./helpers";
 	import { buildLiveSessionReadModel } from "./liveSessionReadModel";
-	import { parseSavedPortForwardForm, type SavedPortForwardFormValues } from "./portForwardForms";
+	import { type SavedPortForwardFormValues } from "./portForwardForms";
 	import { podExecQueryOptions, stopPodExec } from "./podExecLifecycle";
 	import {
+		parseSavedPortForwardForWorkspace,
 		portForwardQueryOptions,
 		reconnectPortForward as reconnectPortForwardLifecycle,
 		startSavedPortForward as startSavedPortForwardLifecycle,
@@ -151,13 +151,9 @@
 	}
 
 	function submitSavedPortForwardForm() {
-		const parsed = parseSavedPortForwardForm(savedPortForwardForm);
+		const parsed = parseSavedPortForwardForWorkspace(savedPortForwardForm, workspace);
 		if (typeof parsed === "string") {
 			savedPortForwardFormError = parsed;
-			return;
-		}
-		if (!workspaceScopeContexts(workspace.scope).includes(parsed.clusterContext)) {
-			savedPortForwardFormError = "Cluster context must be in the current workspace scope.";
 			return;
 		}
 		if (editingSavedPortForwardId) {
