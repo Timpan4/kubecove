@@ -53,6 +53,14 @@ export type ResourceListRequest =
 			kind?: never;
 	  };
 
+export interface DeploymentRevision {
+	name: string;
+	revision?: number;
+	changeCause?: string;
+	createdAt?: string;
+	podTemplateYaml: string;
+}
+
 export interface ResourceDetails {
 	kind: string;
 	cluster: string;

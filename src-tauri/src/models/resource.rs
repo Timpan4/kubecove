@@ -85,6 +85,19 @@ pub struct ResourceListRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeploymentRevision {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change_cause: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    pub pod_template_yaml: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceDetails {
     pub kind: String,
     pub cluster: String,

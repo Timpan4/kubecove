@@ -58,6 +58,17 @@ export const queryKeys = {
 			clusterContext,
 			...resourceScopeParts(fetchKeys),
 		] as const,
+	deploymentRevisions: (
+		resource: ResourceSummary,
+		kubeconfigEnvVar?: string,
+	) =>
+		[
+			"deployment-revisions",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			resource.cluster,
+			resource.namespace ?? "",
+			resource.name,
+		] as const,
 	resourceTopology: (
 		clusterContext: string,
 		namespaces: string[],

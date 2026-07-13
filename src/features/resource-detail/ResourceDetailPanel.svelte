@@ -48,6 +48,7 @@
 	} from "./helpers";
 	import { CHIP_BADGE_STYLES, type ChipVariant } from "./constants";
 	import DetailsTab from "./DetailsTab.svelte";
+	import DeploymentRevisionsTab from "./DeploymentRevisionsTab.svelte";
 	import EventsTab from "./EventsTab.svelte";
 	import ExecTab from "./ExecTab.svelte";
 	import PortForwardTab from "./PortForwardTab.svelte";
@@ -64,7 +65,7 @@
 		visibleMetadataBadges,
 	} from "./metadata-details";
 
-	type DetailTab = "details" | "yaml" | "events" | "logs" | "exec" | "portForward";
+	type DetailTab = "details" | "yaml" | "events" | "logs" | "exec" | "portForward" | "revisions";
 	type DetailFetchKind = "details" | "events";
 
 	let {
@@ -127,6 +128,7 @@
 			(resource.kind === "Pod" || resource.kind === "Deployment" || resource.kind === "Service"),
 	);
 	const canShowExec = $derived(isPod);
+	const canShowRevisions = $derived(resource.kind === "Deployment" && Boolean(resource.namespace));
 	const canShowPortForward = $derived(
 		(resource.kind === "Pod" || resource.kind === "Service") && Boolean(resource.namespace),
 	);
@@ -576,6 +578,7 @@
 		if (tab === "logs") return canShowLogs;
 		if (tab === "exec") return canShowExec;
 		if (tab === "portForward") return canShowPortForward;
+		if (tab === "revisions") return canShowRevisions;
 		return true;
 	}
 </script>
@@ -587,6 +590,7 @@
 		{#if canShowLogs}<TabsTrigger value="logs">Logs</TabsTrigger>{/if}
 		{#if canShowExec}<TabsTrigger value="exec">Exec</TabsTrigger>{/if}
 		{#if canShowPortForward}<TabsTrigger value="portForward">Forward</TabsTrigger>{/if}
+		{#if canShowRevisions}<TabsTrigger value="revisions">Revisions</TabsTrigger>{/if}
 		<TabsTrigger value="yaml">YAML</TabsTrigger>
 	</TabsList>
 
@@ -679,4 +683,12 @@
 			active={activeTab === "portForward"}
 		/>
 	</TabsContent>{/if}
+	{#if canShowRevisions}
+		<DeploymentRevisionsTab
+			{client}
+			{resource}
+			{kubeconfigSourceKey}
+			active={activeTab === "revisions"}
+		/>
+	{/if}
 </Tabs>
