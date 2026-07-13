@@ -62,9 +62,9 @@ pub use rbac::{list_rbac_inspection, rbac_inspection_from};
 pub use resources::{
     apply_yaml, dynamic_resource_details_from, dynamic_resources_summary_from,
     get_dynamic_resource_details, get_resource_details, get_resource_yaml, lint_kubernetes_yaml,
-    list_dynamic_resources, list_resource_scope, list_resource_topology, list_resources,
-    prepare_yaml_apply, resource_details_from, resource_scope_from, resource_topology_from,
-    resource_yaml_from, resources_summary_from,
+    list_deployment_revisions, list_dynamic_resources, list_resource_scope, list_resource_topology,
+    list_resources, prepare_yaml_apply, resource_details_from, resource_scope_from,
+    resource_topology_from, resource_yaml_from, resources_summary_from,
 };
 pub use sessions::{
     list_port_forwards, start_pod_port_forward, stop_port_forward, PortForwardRegistry,

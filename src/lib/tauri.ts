@@ -22,6 +22,7 @@ import type {
 	KubernetesYamlLintResult,
 	KubeconfigSourcesSummary,
 	CancellableRequest,
+	DeploymentRevision,
 } from "./types";
 import { diagnosticLog, diagnosticResultSummary } from "./diagnostics";
 
@@ -261,6 +262,21 @@ export async function listResources(
 	return client.invoke<ResourceSummary[]>("list_resources", {
 		clusterContext,
 		kind,
+		namespace,
+		...kubeconfigArg(kubeconfigEnvVar),
+	});
+}
+
+export async function listDeploymentRevisions(
+	client: TauriClient,
+	clusterContext: string,
+	name: string,
+	namespace: string,
+	kubeconfigEnvVar?: string,
+): Promise<DeploymentRevision[]> {
+	return client.invoke<DeploymentRevision[]>("list_deployment_revisions", {
+		clusterContext,
+		name,
 		namespace,
 		...kubeconfigArg(kubeconfigEnvVar),
 	});

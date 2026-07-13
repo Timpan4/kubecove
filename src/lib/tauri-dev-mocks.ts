@@ -2,6 +2,7 @@ import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
 import type { TauriClient } from "./tauri-runtime";
 import {
 	argoApps,
+	deploymentRevisions,
 	dockerResources,
 	fluxHelmKind,
 	fluxKind,
@@ -81,6 +82,7 @@ const handlers: Record<string, MockHandler> = {
 	list_present_custom_resource_kinds: (args) =>
 		presentCustomResourceKinds(args?.namespaces as string[] | undefined),
 	list_resources: (args) => filterResources(args?.kind as string | undefined, args?.namespace as string | undefined, args?.clusterContext as string | undefined),
+	list_deployment_revisions: () => deploymentRevisions,
 	list_dynamic_resources: (args) => filterResources((args?.resourceKind as DiscoveredResourceKind | undefined)?.kind, args?.namespace as string | undefined, args?.clusterContext as string | undefined),
 	list_resource_scope: (args) => listScope(args?.requests as ResourceListRequest[] | undefined, args?.clusterContext as string | undefined),
 	get_resource_yaml: (args) => yamlFor(args),

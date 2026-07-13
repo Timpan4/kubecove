@@ -49,7 +49,7 @@ pub use rbac::{
     RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary, ServiceAccountSummary,
 };
 pub use resource::{
-    GitOpsOwnerSummary, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult,
+    DeploymentRevision, GitOpsOwnerSummary, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult,
     KubernetesYamlLintSeverity, KubernetesYamlLintStatusNote, OwnerReferenceSummary,
     ResourceDetails, ResourceDetailsFull, ResourceHealth, ResourceListRequest, ResourceSummary,
     ResourceTopology, TopologyEdge, TopologyNode, TopologyRelation, YamlApplyPreview,

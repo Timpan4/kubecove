@@ -15,6 +15,22 @@ describe("path state sanitization", () => {
 		expect(sanitizePathStateTreeNode({ type: "kind", kind: "Pod" })).toBe(null);
 	});
 
+	test("preserves the revision detail tab", () => {
+		const snapshot = decodePathStateSnapshot(
+			JSON.stringify({
+				version: 1,
+				runtime: "svelte",
+				launcherView: "workspaces",
+				workspace: {
+					workspaceId: "workspace-a",
+					detail: { activeTab: "revisions" },
+				},
+			}),
+		);
+
+		expect(snapshot?.workspace?.detail?.activeTab).toBe("revisions");
+	});
+
 	test("falls back invalid workspace path filters", () => {
 		const snapshot = decodePathStateSnapshot(
 			JSON.stringify({

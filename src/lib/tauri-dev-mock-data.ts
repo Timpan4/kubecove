@@ -1,6 +1,7 @@
 import type {
 	ArgoApplicationSummary,
 	ClusterContext,
+	DeploymentRevision,
 	DiscoveredResourceKind,
 	FluxResourceKind,
 	FluxResourceSummary,
@@ -14,6 +15,24 @@ import type {
 
 
 export const now = "2026-06-29T10:00:00Z";
+
+export const deploymentRevisions: DeploymentRevision[] = [
+	{
+		name: "web-7c9d8d6f4b",
+		revision: 7,
+		changeCause: "Update web image to 1.4.0",
+		createdAt: now,
+		podTemplateYaml: "metadata:\n  labels:\n    app: web\nspec:\n  containers:\n    - name: web\n      image: example/web:1.4.0\n",
+	},
+	{
+		name: "web-68f8bc5cc8",
+		revision: 6,
+		changeCause: "Update web image to 1.3.0",
+		createdAt: "2026-06-28T09:30:00Z",
+		podTemplateYaml: "metadata:\n  labels:\n    app: web\nspec:\n  containers:\n    - name: web\n      image: example/web:1.3.0\n",
+	},
+];
+
 export const source: KubeconfigSourcesSummary = {
 	kubeconfigEnvVar: "kubeconfigSource=browser-mock",
 	paths: [],

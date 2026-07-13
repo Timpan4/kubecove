@@ -216,6 +216,10 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 - [ ] Revisit `frontend-state-table-patterns` after frontend patterns settle.
 - [ ] Revisit `safe-k8s-mutations` before broader guarded operation work starts.
 
+### Deployment Revision History
+
+- [x] Add read-only Deployment ReplicaSet revision history and pod-template comparison.
+
 ## Later Product Areas
 
 - guarded YAML edit/apply

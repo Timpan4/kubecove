@@ -51,7 +51,8 @@ export type PathStateDetailTab =
 	| "events"
 	| "logs"
 	| "exec"
-	| "portForward";
+	| "portForward"
+	| "revisions";
 export type PathStateIncidentFilter =
 	| "all"
 	| "unhealthy"
@@ -292,7 +293,15 @@ function sanitizeDetailState(value: unknown): PathStateResourceDetailState | nul
 	return {
 		activeTab: pickString(
 			value.activeTab,
-			["details", "yaml", "events", "logs", "exec", "portForward"] as const,
+			[
+				"details",
+				"yaml",
+				"events",
+				"logs",
+				"exec",
+				"portForward",
+				"revisions",
+			] as const,
 			"details",
 		),
 		metadataLabelsExpanded: booleanValue(value.metadataLabelsExpanded, false),
