@@ -31,8 +31,12 @@ export function createWorkspaceTransitionCoordinator<T>(
 
 	async function run() {
 		while (latest !== undefined) {
-			await hooks.suspend();
 			try {
+				try {
+					await hooks.suspend();
+				} catch (error) {
+					hooks.onCancelError?.(error);
+				}
 				try {
 					await hooks.cancel();
 				} catch (error) {
@@ -40,7 +44,13 @@ export function createWorkspaceTransitionCoordinator<T>(
 				}
 				const destination = latest;
 				latest = undefined;
-				if (destination !== undefined) hooks.apply(destination);
+				if (destination !== undefined) {
+					try {
+						hooks.apply(destination);
+					} catch (error) {
+						hooks.onCancelError?.(error);
+					}
+				}
 			} finally {
 				hooks.resume();
 			}

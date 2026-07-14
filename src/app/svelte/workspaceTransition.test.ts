@@ -153,4 +153,50 @@ describe("workspace transition coordinator", () => {
 		expect(resumed).toBe(true);
 		expect(coordinator.isPending()).toBe(false);
 	});
+
+	test("resumes and completes the switch when suspension fails", async () => {
+		const errors: unknown[] = [];
+		const applied: string[] = [];
+		let resumed = false;
+		const coordinator = createWorkspaceTransitionCoordinator<string>({
+			suspend: () => {
+				throw new Error("suspension failed");
+			},
+			cancel: async () => {},
+			apply: (destination) => applied.push(destination),
+			resume: () => {
+				resumed = true;
+			},
+			onCancelError: (error) => errors.push(error),
+		});
+
+		await coordinator.request("healthy");
+
+		expect(applied).toEqual(["healthy"]);
+		expect(errors).toHaveLength(1);
+		expect(resumed).toBe(true);
+		expect(coordinator.isPending()).toBe(false);
+	});
+
+	test("resumes without rejecting when applying the destination fails", async () => {
+		const errors: unknown[] = [];
+		let resumed = false;
+		const coordinator = createWorkspaceTransitionCoordinator<string>({
+			suspend: () => {},
+			cancel: async () => {},
+			apply: () => {
+				throw new Error("apply failed");
+			},
+			resume: () => {
+				resumed = true;
+			},
+			onCancelError: (error) => errors.push(error),
+		});
+
+		await coordinator.request("healthy");
+
+		expect(errors).toHaveLength(1);
+		expect(resumed).toBe(true);
+		expect(coordinator.isPending()).toBe(false);
+	});
 });
