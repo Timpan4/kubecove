@@ -1247,7 +1247,7 @@
 				</aside>
 			{:else}
 				<aside
-					class="flex h-full min-h-[400px] w-12 shrink-0 flex-col items-center overflow-hidden rounded-md border bg-surface-1"
+					class="flex h-full min-h-[400px] w-12 shrink-0 flex-col items-center overflow-hidden rounded-lg border bg-surface-1 shadow-sm"
 				>
 					<div class="flex w-full justify-center border-b p-2">
 						<Button
