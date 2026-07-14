@@ -25,7 +25,7 @@ describe("resource view safeguards", () => {
 			"grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)]",
 		);
 		expect(browserSource).toContain(
-			"xl:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)]",
+			"min-[1101px]:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)]",
 		);
 		expect(browserSource).toContain("min-h-[400px]");
 		expect(browserSource).toContain("Collapse resource table");
@@ -39,7 +39,7 @@ describe("resource view safeguards", () => {
 			"utf8",
 		);
 
-		expect(topBarSource).toContain('class="@container rounded-md');
+		expect(topBarSource).toContain('class="@container rounded-lg');
 		expect(topBarSource).toContain("@5xl:grid-cols-2");
 		expect(topBarSource).toContain("@7xl:grid-cols-6");
 		expect(topBarSource).not.toContain(" xl:grid-cols-[minmax(12rem");

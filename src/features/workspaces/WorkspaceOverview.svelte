@@ -253,33 +253,20 @@
 	}
 </script>
 
-<section class="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 md:p-6">
-	<header class="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-		<div class="min-w-0">
-			<h1 class="truncate text-lg font-semibold">{workspace.name}</h1>
-			<div class="mt-1 flex flex-wrap gap-2">
-				<Badge variant="outline" class="rounded-sm">{workspaceClusterGroupLabel(workspace.scope)}</Badge>
-				<Badge variant="outline" class="rounded-sm">
-					{workspace.scope.namespaces.length || "All"} namespaces
-				</Badge>
-				<Badge variant="outline" class="max-w-96 truncate rounded-sm">
-					{workspace.scope.kinds.map(resourceKindLabel).join(", ")}
-				</Badge>
-			</div>
-		</div>
-		<div class="flex flex-wrap justify-end gap-2">
-			<Button type="button" onclick={() => onOpenResources()}>
-				<Boxes data-icon="inline-start" /> Resources
-			</Button>
-			<Button type="button" variant="outline" onclick={onOpenLauncher}>
-				<FolderOpen data-icon="inline-start" /> Workspaces
-			</Button>
-			<Button type="button" variant="outline" onclick={onOpenPortForwards}>
-				<Cable data-icon="inline-start" /> Port Forwards
-			</Button>
-			<Button type="button" variant="outline" onclick={onOpenIncidents}>
-				<AlertTriangle data-icon="inline-start" /> Incidents
-			</Button>
+<section class="mx-auto flex w-full max-w-7xl flex-col gap-4 p-4 md:p-6">
+	<header class="border-b pb-3">
+		<p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
+			Workspace Overview
+		</p>
+		<h1 class="mt-1 truncate text-lg font-semibold tracking-tight">{workspace.name}</h1>
+		<div class="mt-2 flex flex-wrap gap-2">
+			<Badge variant="outline" class="rounded-sm">{workspaceClusterGroupLabel(workspace.scope)}</Badge>
+			<Badge variant="outline" class="rounded-sm">
+				{workspace.scope.namespaces.length || "All"} namespaces
+			</Badge>
+			<Badge variant="outline" class="max-w-96 truncate rounded-sm">
+				{workspace.scope.kinds.map(resourceKindLabel).join(", ")}
+			</Badge>
 		</div>
 	</header>
 
@@ -302,53 +289,82 @@
 		</Alert>
 	{/if}
 
-	<div class="grid grid-cols-1 gap-2 md:grid-cols-5">
-		{@render Metric("Total", health.total)}
-		{@render Metric("Healthy", health.healthy, "text-emerald-300")}
-		{@render Metric("Needs attention", health.attention, "text-amber-300")}
-		{@render Metric("Degraded", health.degraded, "text-red-300")}
-		{@render Metric("Restarted", health.restarted, "text-sky-300")}
-	</div>
+	<Card size="sm" elevation="flat" class="overflow-hidden">
+		<CardHeader class="border-b">
+			<CardTitle>Resource Health</CardTitle>
+			<CardDescription>Live status across saved workspace scope.</CardDescription>
+		</CardHeader>
+		<CardContent class="grid gap-3 pt-3">
+			<div class="grid grid-cols-2 gap-2 md:grid-cols-5">
+				{@render Metric("Total", health.total)}
+				{@render Metric("Healthy", health.healthy, "text-emerald-300")}
+				{@render Metric("Needs attention", health.attention, "text-amber-300")}
+				{@render Metric("Degraded", health.degraded, "text-red-300")}
+				{@render Metric("Restarted", health.restarted, "text-sky-300")}
+			</div>
 
-	{#if resourcesQuery.isPending}
-		<div class="flex min-h-20 items-center justify-center gap-2 text-sm text-muted-foreground">
-			<Spinner class="size-4" /> Loading workspace health...
-		</div>
-	{:else if resourcesQuery.isError}
-		<FriendlyError
-			mode="compact"
-			error={resourcesQuery.error}
-			context={{
-				operation: "resourcesLoad",
-				fallbackTitle: "Failed to refresh workspace resources",
-				partial: true,
-			}}
-		/>
-	{/if}
+			{#if resourcesQuery.isPending}
+				<div class="flex min-h-16 items-center justify-center gap-2 text-sm text-muted-foreground">
+					<Spinner class="size-4" /> Loading workspace health...
+				</div>
+			{:else if resourcesQuery.isError}
+				<FriendlyError
+					mode="compact"
+					error={resourcesQuery.error}
+					context={{
+						operation: "resourcesLoad",
+						fallbackTitle: "Failed to refresh workspace resources",
+						partial: true,
+					}}
+				/>
+			{/if}
 
-	{#if hasIncidentShortcuts}
-		<Card>
-			<CardHeader>
-				<CardTitle>Incident shortcuts</CardTitle>
-				<CardDescription>Open Incident Cockpit for this workspace.</CardDescription>
-			</CardHeader>
-			<CardContent class="flex flex-wrap gap-2">
+			{#if hasIncidentShortcuts}
+				<div class="flex flex-wrap items-center gap-2 border-t pt-3">
+					<span class="mr-1 text-xs font-medium text-muted-foreground">Incident shortcuts</span>
 				{@render IncidentShortcutButton("Unhealthy", unhealthyCount, "unhealthy", onOpenIncidents)}
 				{@render IncidentShortcutButton("Warnings", health.attention, "attention", onOpenIncidents)}
 				{@render IncidentShortcutButton("Restarted", health.restarted, "restarted", onOpenIncidents)}
-			</CardContent>
-		</Card>
-	{/if}
+				</div>
+			{/if}
+		</CardContent>
+	</Card>
 
-	<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-		<Card>
-			<CardHeader>
-				<CardTitle>Shortcuts</CardTitle>
-				<span class="text-xs text-muted-foreground">{workspace.shortcuts.length}</span>
-			</CardHeader>
-			<CardContent class="flex flex-wrap gap-2">
+	<Card size="sm" elevation="flat" class="overflow-hidden">
+		<CardHeader class="border-b">
+			<CardTitle>Operations</CardTitle>
+			<CardDescription>Open primary workspace surfaces without changing scope.</CardDescription>
+		</CardHeader>
+		<CardContent class="grid gap-2 pt-3 sm:grid-cols-2 xl:grid-cols-4">
+			<Button type="button" variant="outline" class="h-auto min-h-14 justify-start gap-3 px-4 py-3" onclick={() => onOpenResources()}>
+				<Boxes class="size-4 shrink-0" /> Resources
+			</Button>
+			<Button type="button" variant="outline" class="h-auto min-h-14 justify-start gap-3 px-4 py-3" onclick={onOpenLauncher}>
+				<FolderOpen class="size-4 shrink-0" /> Workspaces
+			</Button>
+			<Button type="button" variant="outline" class="h-auto min-h-14 justify-start gap-3 px-4 py-3" onclick={onOpenPortForwards}>
+				<Cable class="size-4 shrink-0" /> Port Forwards
+			</Button>
+			<Button type="button" variant="outline" class="h-auto min-h-14 justify-start gap-3 px-4 py-3" onclick={onOpenIncidents}>
+				<AlertTriangle class="size-4 shrink-0" /> Incidents
+			</Button>
+		</CardContent>
+	</Card>
+
+	<Card size="sm" elevation="flat" class="overflow-hidden">
+		<CardHeader class="border-b">
+			<CardTitle>Return to Work</CardTitle>
+			<CardDescription>Saved and recent entry points for this workspace.</CardDescription>
+		</CardHeader>
+		<CardContent class="grid gap-3 pt-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_20rem]">
+			<section class="overflow-hidden rounded-md border bg-background/30 md:col-span-2 xl:col-span-2">
+				<header class="flex items-center justify-between gap-2 border-b px-3 py-2">
+					<h2 class="text-sm font-semibold">Shortcuts</h2>
+					<span class="text-xs tabular-nums text-muted-foreground">{workspace.shortcuts.length}</span>
+				</header>
+				<div class="flex min-h-16 flex-wrap items-start gap-2 p-3">
 				{#if workspace.shortcuts.length === 0}
-					<Empty class="min-h-32 border-0">
+					<Empty class="min-h-20 w-full border-0">
 						<EmptyHeader>
 							<EmptyTitle>No shortcuts</EmptyTitle>
 							<EmptyDescription>Workspace shortcuts appear after scope is saved.</EmptyDescription>
@@ -364,15 +380,49 @@
 						{shortcut.label}
 					</Button>
 				{/each}
-			</CardContent>
-		</Card>
+				</div>
+			</section>
 
-		<Card>
-			<CardHeader>
-				<CardTitle>GitOps</CardTitle>
-				<CardDescription>Argo CD and Flux inventory for this cluster.</CardDescription>
-			</CardHeader>
-			<CardContent>
+			<section class="overflow-hidden rounded-md border bg-background/30">
+				<header class="border-b px-3 py-2">
+					<h2 class="flex items-center gap-2 text-sm font-semibold"><Pin class="size-4" /> Pinned</h2>
+					<p class="text-xs text-muted-foreground">Saved resource entry points.</p>
+				</header>
+				<div class="flex min-h-20 flex-wrap items-start gap-2 p-3">
+					{#if entryPoints.pinned.length === 0}
+						<span class="text-sm text-muted-foreground">Pin resources from the table or detail panel.</span>
+					{/if}
+					{#each entryPoints.pinned as entry}
+						<Button type="button" variant="outline" size="sm" onclick={() => openEntryPoint(entry)}>
+							<Pin data-icon="inline-start" /> {entryPointLabel(entry)}
+						</Button>
+					{/each}
+				</div>
+			</section>
+
+			<section class="overflow-hidden rounded-md border bg-background/30">
+				<header class="border-b px-3 py-2">
+					<h2 class="flex items-center gap-2 text-sm font-semibold"><Clock3 class="size-4" /> Recent</h2>
+					<p class="text-xs text-muted-foreground">Explicitly opened resources and scopes.</p>
+				</header>
+				<div class="flex min-h-20 flex-wrap items-start gap-2 p-3">
+					{#if entryPoints.recent.length === 0}
+						<span class="text-sm text-muted-foreground">Recent visits will appear here.</span>
+					{/if}
+					{#each entryPoints.recent as entry}
+						<Button type="button" variant="outline" size="sm" onclick={() => openEntryPoint(entry)}>
+							<Clock3 data-icon="inline-start" /> {entryPointLabel(entry)}
+						</Button>
+					{/each}
+				</div>
+			</section>
+
+			<section class="overflow-hidden rounded-md border bg-background/30 md:col-span-2 xl:col-span-1 xl:col-start-3 xl:row-span-2 xl:row-start-1">
+				<header class="border-b px-3 py-2">
+					<h2 class="text-sm font-semibold">GitOps</h2>
+					<p class="text-xs text-muted-foreground">Argo CD and Flux inventory.</p>
+				</header>
+				<div class="p-3">
 				{#if gitOpsDetecting}
 					<div class="inline-flex items-center gap-2 text-xs text-muted-foreground">
 						<Spinner class="size-4" /> Detecting...
@@ -425,44 +475,10 @@
 						</Button>
 					</div>
 				{/if}
-			</CardContent>
-		</Card>
-	</div>
-
-	<div class="grid gap-4 md:grid-cols-2">
-		<Card>
-			<CardHeader>
-				<CardTitle class="flex items-center gap-2"><Pin class="size-4" /> Pinned</CardTitle>
-				<CardDescription>Saved resource entry points for this workspace.</CardDescription>
-			</CardHeader>
-			<CardContent class="flex flex-wrap gap-2">
-				{#if entryPoints.pinned.length === 0}
-					<span class="text-sm text-muted-foreground">Pin resources from the table or detail panel.</span>
-				{/if}
-				{#each entryPoints.pinned as entry}
-					<Button type="button" variant="outline" size="sm" onclick={() => openEntryPoint(entry)}>
-						<Pin data-icon="inline-start" /> {entryPointLabel(entry)}
-					</Button>
-				{/each}
-			</CardContent>
-		</Card>
-		<Card>
-			<CardHeader>
-				<CardTitle class="flex items-center gap-2"><Clock3 class="size-4" /> Recent</CardTitle>
-				<CardDescription>Explicitly opened namespaces, applications, and resources.</CardDescription>
-			</CardHeader>
-			<CardContent class="flex flex-wrap gap-2">
-				{#if entryPoints.recent.length === 0}
-					<span class="text-sm text-muted-foreground">Recent visits will appear here.</span>
-				{/if}
-				{#each entryPoints.recent as entry}
-					<Button type="button" variant="outline" size="sm" onclick={() => openEntryPoint(entry)}>
-						<Clock3 data-icon="inline-start" /> {entryPointLabel(entry)}
-					</Button>
-				{/each}
-			</CardContent>
-		</Card>
-	</div>
+				</div>
+			</section>
+		</CardContent>
+	</Card>
 
 	{#if compareSummaries.length > 0}
 		<Card>

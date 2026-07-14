@@ -824,7 +824,7 @@
 	{#if gitOpsFocusApplication}
 		{@const app = gitOpsFocusApplication}
 		{@const destination = app.destinationNamespace ?? app.destinationServer}
-		<section class="rounded-md border border-sidebar-border bg-card/35 px-4 py-3">
+		<section class="rounded-lg border border-sidebar-border bg-surface-1 px-3 py-2.5 shadow-sm">
 			<div class="flex flex-wrap items-start justify-between gap-3">
 				<div class="min-w-0">
 					<div class="flex min-w-0 items-center gap-2">
@@ -851,7 +851,7 @@
 					<div class="text-xs text-muted-foreground">tracked resources</div>
 				</div>
 			</div>
-			<div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+			<div class="mt-2.5 grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
 				{@render SummaryField("Project", app.project)}
 				{@render SummaryField("Repo", app.sourceRepo, app.sourceRepo ?? undefined)}
 				{@render SummaryField("Revision", app.sourceRevision)}
@@ -937,7 +937,7 @@
 			class={inspectorOpen && mapPanelOpen && tablePanelOpen
 				? "grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)] gap-3"
 				: mapPanelOpen && tablePanelOpen
-				? "grid min-h-0 min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)]"
+					? "grid min-h-0 min-w-0 flex-1 gap-3 min-[1101px]:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)]"
 				: mapPanelOpen
 					? "grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_3rem] gap-3"
 					: tablePanelOpen
@@ -965,7 +965,7 @@
 				</div>
 			{:else}
 				<aside
-					class="flex h-full min-h-[400px] w-12 shrink-0 flex-col items-center overflow-hidden rounded-md border bg-card/60"
+					class="flex h-full min-h-[400px] w-12 shrink-0 flex-col items-center overflow-hidden rounded-lg border bg-surface-1 shadow-sm"
 				>
 					<div class="flex w-full justify-center border-b p-2">
 						<Button
@@ -994,7 +994,7 @@
 
 			{#if tablePanelOpen}
 				<aside
-					class="flex h-full min-h-[400px] min-w-0 flex-col overflow-hidden rounded-md border bg-card/60"
+					class="flex h-full min-h-[400px] min-w-0 flex-col overflow-hidden rounded-lg border bg-surface-1 shadow-sm"
 				>
 					<div class="flex items-start justify-between gap-2 border-b px-3 py-2">
 						<div class="min-w-0">
@@ -1247,7 +1247,7 @@
 				</aside>
 			{:else}
 				<aside
-					class="flex h-full min-h-[400px] w-12 shrink-0 flex-col items-center overflow-hidden rounded-md border bg-card/60"
+					class="flex h-full min-h-[400px] w-12 shrink-0 flex-col items-center overflow-hidden rounded-lg border bg-surface-1 shadow-sm"
 				>
 					<div class="flex w-full justify-center border-b p-2">
 						<Button

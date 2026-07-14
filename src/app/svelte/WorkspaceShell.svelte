@@ -3,6 +3,7 @@
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import {
 		Cable,
+		ChevronRight,
 		FolderOpen,
 		Eye,
 		Menu,
@@ -535,8 +536,10 @@
 
 </script>
 
-<SidebarProvider class="h-screen overflow-hidden bg-background text-foreground">
-	<Sidebar class="hidden w-[260px] shrink-0 flex-col border-r bg-surface-1 xl:flex">
+<SidebarProvider class="h-screen overflow-hidden bg-background text-foreground xl:gap-2 xl:p-2">
+	<Sidebar
+		class="hidden w-[260px] shrink-0 flex-col border-r bg-surface-1 xl:flex xl:overflow-hidden xl:rounded-xl xl:border xl:border-sidebar-border xl:shadow-lg"
+	>
 		<div class="border-b px-3 py-3">
 			<div class="flex items-center justify-between gap-2">
 				<div class="min-w-0">
@@ -587,7 +590,9 @@
 	</Sheet>
 	{/if}
 
-	<SidebarInset class="flex h-screen min-w-0 flex-col overflow-hidden">
+	<SidebarInset
+		class="flex h-full min-w-0 flex-col overflow-hidden xl:rounded-xl xl:border xl:border-sidebar-border xl:bg-background xl:shadow-lg"
+	>
 		<header
 			class="flex h-12 shrink-0 items-center gap-2 border-b bg-sidebar px-2 sm:gap-4 sm:px-4 [-webkit-app-region:drag]"
 		>
@@ -601,16 +606,35 @@
 			>
 				<Menu />
 			</Button>
-			<div class="hidden min-w-0 flex-1 items-center gap-3 [-webkit-app-region:no-drag] md:flex">
+			<nav
+				class="hidden min-w-0 flex-1 items-center gap-2 [-webkit-app-region:no-drag] md:flex"
+				aria-label="Workspace location"
+			>
 				<ClusterSelector
 					value={workspace.scope.clusterContext}
 					onClusterChange={changeClusterContext}
 				/>
-				<Badge variant="secondary" class="max-w-48 truncate">{workspace.name}</Badge>
-			</div>
-			<div class="flex min-w-0 flex-1 items-center justify-center md:flex-none md:basis-1/3">
-				<span class="truncate whitespace-nowrap text-sm font-semibold">{title}</span>
-			</div>
+				<ChevronRight class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+				<span class="truncate whitespace-nowrap text-xs font-medium text-muted-foreground">
+					{resourceBrowserScope.canQuery ? "Resources" : title}
+				</span>
+				{#if resourceGitOpsFocusApplication}
+					<ChevronRight class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+					<strong class="truncate text-xs font-semibold">{resourceGitOpsFocusApplication.name}</strong>
+				{/if}
+			</nav>
+			<nav
+				class="flex min-w-0 flex-1 items-center gap-1.5 md:hidden"
+				aria-label="Workspace location"
+			>
+				<span class="truncate whitespace-nowrap text-xs font-medium text-muted-foreground">
+					{resourceBrowserScope.canQuery ? "Resources" : title}
+				</span>
+				{#if resourceGitOpsFocusApplication}
+					<ChevronRight class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+					<strong class="truncate text-xs font-semibold">{resourceGitOpsFocusApplication.name}</strong>
+				{/if}
+			</nav>
 			<div class="flex min-w-0 shrink-0 items-center justify-end gap-1 [-webkit-app-region:no-drag] md:flex-1">
 				<ActiveLiveSessionsButton onOpenManager={openPortForwards} />
 				<UpdateStatusButton />
@@ -797,7 +821,7 @@
 						</Card>
 					</section>
 				{:else if resourceBrowserScope.canQuery}
-					<section class="flex h-full min-h-0 w-full flex-col gap-4 p-4 md:p-6">
+					<section class="flex h-full min-h-0 w-full flex-col gap-3 p-3 xl:p-4">
 						<ResourceBrowser
 							clusterContext={workspace.scope.clusterContext}
 							initialNamespaces={resourceBrowserNamespaces}

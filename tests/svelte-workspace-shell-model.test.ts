@@ -533,7 +533,7 @@ describe("svelte workspace shell model", () => {
 		expect(overview).toContain("queryKeys.fluxDetect(workspace.scope.clusterContext, kubeconfigSourceKey)");
 		expect(overview).toContain("queryKeys.fluxResources(");
 		expect(overview).toContain("const fluxRows = $derived(");
-		expect(overview).toContain("<CardTitle>GitOps</CardTitle>");
+		expect(overview).toContain('<h2 class="text-sm font-semibold">GitOps</h2>');
 		expect(overview).toContain("Flux resources");
 		expect(overview).not.toContain("<CardTitle>Argo CD</CardTitle>");
 	});
