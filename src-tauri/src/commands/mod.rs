@@ -12,6 +12,7 @@ mod helm;
 mod helpers;
 mod incidents;
 mod kubeconfig;
+mod kubeconfig_clients;
 mod live_sessions;
 mod live_store;
 mod metrics;
@@ -31,7 +32,9 @@ pub use argo::{
     get_argocd_appset_details, list_argocd_applications, list_argocd_appprojects,
     list_argocd_appsets,
 };
-pub use cancellation::{cancel_backend_requests, BackendCancellationRegistry};
+pub use cancellation::{
+    cancel_backend_requests, cancel_workspace_requests, BackendCancellationRegistry,
+};
 pub use contexts::{get_cluster_contexts, list_kube_contexts};
 pub use diagnostics::{
     clear_backend_diagnostics, diagnostic_field, get_backend_diagnostics, record_backend_cancelled,

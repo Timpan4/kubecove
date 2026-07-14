@@ -50,6 +50,17 @@ fn store_clears_cache_at_capacity_instead_of_growing() {
 }
 
 #[test]
+fn rotation_cancels_previous_generation_only() {
+    let previous = finite_client_generation();
+    let next_id = rotate_client_generation();
+    let replacement = finite_client_generation();
+
+    assert!(previous.token.is_cancelled());
+    assert_eq!(replacement.id, next_id);
+    assert!(!replacement.token.is_cancelled());
+}
+
+#[test]
 fn fingerprint_changes_when_file_content_changes() {
     let path = temp_file("first");
     let before = fingerprint_files(std::slice::from_ref(&path));

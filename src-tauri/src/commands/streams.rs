@@ -22,7 +22,7 @@ async fn client_for_context(
     kubeconfig_env_var: Option<String>,
 ) -> Result<Client, AppError> {
     let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    source.client_for_context(cluster_context).await
+    source.live_client_for_context(cluster_context).await
 }
 
 fn validate_resource_watch_scope(

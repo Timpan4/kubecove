@@ -125,6 +125,7 @@ Write an ADR before changing:
 
 ## Verification
 
+- Before launching or stopping KubeCove, check whether an app instance and its development server are already running. Reuse the existing instance by default; never close or restart a user-launched instance unless the user explicitly asks or a restart is technically required and has been explained first.
 - Enable repo hooks with `git config core.hooksPath .githooks`.
 - Run the relevant checks before claiming work is complete.
 - Frontend changes should pass `bun run typecheck` and `bun run lint` (Biome).

@@ -23,8 +23,8 @@ pub mod commands;
 pub mod models;
 
 use commands::{
-    add_kubeconfig_paths, apply_yaml, cancel_backend_requests, clear_backend_diagnostics,
-    delete_resource, detect_argocd, detect_flux, get_app_usage_metrics,
+    add_kubeconfig_paths, apply_yaml, cancel_backend_requests, cancel_workspace_requests,
+    clear_backend_diagnostics, delete_resource, detect_argocd, detect_flux, get_app_usage_metrics,
     get_argocd_application_details, get_argocd_appproject_details, get_argocd_appset_details,
     get_backend_diagnostics, get_dynamic_resource_details, get_flux_resource_details,
     get_helm_release_details, get_helm_release_reconciliation, get_kubeconfig_sources,
@@ -129,7 +129,8 @@ pub fn run() {
             set_backend_diagnostics_enabled,
             get_backend_diagnostics,
             clear_backend_diagnostics,
-            cancel_backend_requests
+            cancel_backend_requests,
+            cancel_workspace_requests
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -22,7 +22,7 @@ pub use argo::{
     ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSourceSummary,
     ArgoApplicationSummary,
 };
-pub use cancellation::CancelBackendRequestsResult;
+pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;
 pub use diagnostics::{BackendDiagnosticEvent, BackendDiagnosticField, BackendDiagnosticStatus};
 pub use discovery::DiscoveredResourceKind;

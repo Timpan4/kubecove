@@ -68,6 +68,9 @@ fn is_admission_status(status: &kube::core::Status) -> bool {
 
 fn kube_message_kind(message: &str) -> Option<&'static str> {
     let message = message.to_ascii_lowercase();
+    if message.contains("workspace request cancelled") || message.contains("request cancelled") {
+        return Some("cancelled");
+    }
     if message.contains("fieldmanagerconflict")
         || message.contains("field manager conflict")
         || message.contains("apply failed with conflicts")

@@ -34,6 +34,7 @@ Use this index as the map for product, engineering, release, and governance work
 - [ADR 0005: Guarded Pod Exec Sessions](decisions/0005-guarded-pod-exec-sessions.md)
 - [ADR 0007: GitOps Providers Are Kubernetes-API-First And Inspection-Only By Default](decisions/0007-gitops-providers-kubernetes-api-first.md)
 - [ADR 0008: Parallel Svelte Frontend Migration](decisions/0008-svelte-frontend-migration.md)
+- [ADR 0009: Workspace-Scoped Kubernetes Request Cancellation](decisions/0009-workspace-request-cancellation.md)
 
 New work that changes the frontend/backend security boundary, Kubernetes access path, Tauri permissions, cluster-changing behavior, or GitOps provider API/CLI integration needs an ADR before implementation.
 

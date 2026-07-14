@@ -26,7 +26,7 @@ pub async fn apply_yaml(request: YamlApplyRequest) -> Result<YamlApplyResult, Ap
     let validated = validate_yaml_apply(request)?;
     let source = KubeconfigSource::new(validated.request.kubeconfig_env_var.clone())?;
     let client = source
-        .client_for_context(&validated.request.cluster_context)
+        .operation_client_for_context(&validated.request.cluster_context)
         .await?;
     apply_yaml_with_client(client, validated).await
 }

@@ -30,6 +30,8 @@ chrono = "0.4"
 futures-util = "0.3"
 tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt", "time"] }
 tokio-util = "0.7.18"
+tower = { version = "0.5.3", features = ["util"] }
+http = "1"
 sysinfo = { version = "0.39.5", default-features = false, features = ["system"] }
 tauri-plugin-updater = "2.10.1"
 tauri-plugin-process = "2.3.1"
@@ -38,7 +40,6 @@ tauri-plugin-dialog = "2.7.1"
 [dev-dependencies]
 codspeed-divan-compat = "5.0.1"
 divan = { package = "codspeed-divan-compat-walltime", version = "5.0.1" }
-http = "1"
 proptest = "1.11.0"
 tower-test = "0.4"
 

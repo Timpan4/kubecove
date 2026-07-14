@@ -1,6 +1,9 @@
-import type { TauriClient } from "./tauri";
-import type { CancelBackendRequestsResult } from "./cancellation-types";
+import type {
+	CancelBackendRequestsResult,
+	CancelWorkspaceRequestsResult,
+} from "./cancellation-types";
 import type { BackendDiagnosticEvent } from "./diagnostics-types";
+import type { TauriClient } from "./tauri";
 
 export async function setBackendDiagnosticsEnabled(
 	client: TauriClient,
@@ -28,4 +31,10 @@ export async function cancelBackendRequests(
 	return client.invoke<CancelBackendRequestsResult>("cancel_backend_requests", {
 		cancelScope,
 	});
+}
+
+export async function cancelWorkspaceRequests(
+	client: TauriClient,
+): Promise<CancelWorkspaceRequestsResult> {
+	return client.invoke<CancelWorkspaceRequestsResult>("cancel_workspace_requests");
 }

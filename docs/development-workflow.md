@@ -27,7 +27,13 @@ browser-only mock Tauri responses. This is intended for Chrome DevTools,
 browser automation, and frontend inspection.
 
 The Tauri webview still uses real Tauri IPC and real Rust-side Kubernetes
-commands. The browser tab does not receive kubeconfig contents, does not call a
+commands. On Windows, `bun run tauri dev` exposes that development webview's
+Chrome DevTools Protocol endpoint at `http://127.0.0.1:9222`. Attach Chrome,
+Playwright, or another CDP client to inspect the real frontend console, network,
+DOM, and runtime state. Set `KUBECOVE_DEVTOOLS_PORT` before launch to use a
+different port. The endpoint is not enabled by `tauri build` or packaged apps.
+
+The browser tab does not receive kubeconfig contents, does not call a
 local Rust bridge, and does not access a real cluster. Treat all browser data as
 fake, even when a saved workspace name matches a real context.
 

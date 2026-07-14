@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import { useQueryClient } from "@tanstack/svelte-query";
 	import { FolderOpen, Settings } from "lucide-svelte";
 	import { Button } from "@/components/ui/svelte";
@@ -18,6 +18,7 @@
 	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import {
 		createTauriClient,
+		cancelWorkspaceRequests,
 		getKubeconfigSources,
 		setBackendDiagnosticsEnabled,
 		stopLiveSessionsOutsideScope,
@@ -28,13 +29,25 @@
 		type PathStateWorkspaceSnapshot,
 	} from "@/lib/path-state";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
-	import { workspaceScopeContexts } from "@/lib/workspace-model";
+	import { workspaceScopeContexts, type CreateWorkspaceInput } from "@/lib/workspace-model";
+	import { isFiniteKubernetesQuery } from "@/lib/queryKeys";
+	import {
+		cancelWorkspaceWork,
+		createWorkspaceTransitionCoordinator,
+	} from "./workspaceTransition";
 	import { appUpdateActions } from "./appUpdateStore";
 
 	const selectedWorkspace = workspaceStore.selectedWorkspace;
 	const diagnosticsClient = createTauriClient();
 	const liveSessionClient = createTauriClient();
+	const workspaceTransitionClient = createTauriClient();
 	const queryClient = useQueryClient();
+	type WorkspaceDestination =
+		| { type: "open"; workspaceId: string }
+		| { type: "create"; input: CreateWorkspaceInput }
+		| { type: "launcher" }
+		| { type: "context"; workspaceId: string; input: CreateWorkspaceInput };
+	let workspaceTransitionPending = $state(false);
 	let liveSessionCleanupMessage = $state<string | null>(null);
 	let initialWorkspacePathState = $state<PathStateWorkspaceSnapshot | null>(null);
 	let launcherView = $state<"workspaces" | "settings">("workspaces");
@@ -42,6 +55,61 @@
 	let lastDiagnosticsEnabled: boolean | null = null;
 	let liveSessionScopeInitialized = false;
 	let lastLiveSessionCleanupKey = "";
+
+	const workspaceTransition = createWorkspaceTransitionCoordinator<WorkspaceDestination>({
+		suspend: async () => {
+			workspaceTransitionPending = true;
+			await tick();
+		},
+		cancel: () =>
+			cancelWorkspaceWork(
+				() =>
+					queryClient.cancelQueries({
+						predicate: (query) => isFiniteKubernetesQuery(query.queryKey),
+					}),
+				() => cancelWorkspaceRequests(workspaceTransitionClient),
+			),
+		apply: (destination) => {
+			switch (destination.type) {
+				case "open":
+					workspaceStore.openWorkspace(destination.workspaceId);
+					break;
+				case "create":
+					workspaceStore.createWorkspace(destination.input);
+					break;
+				case "launcher":
+					workspaceStore.clearSelectedWorkspace();
+					break;
+				case "context":
+					workspaceStore.updateWorkspace(destination.workspaceId, destination.input);
+					break;
+			}
+		},
+		resume: () => {
+			workspaceTransitionPending = false;
+		},
+		onCancelError: (error) => {
+			diagnosticLog("workspace.transition.cancel.error", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+		},
+	});
+
+	function openWorkspace(workspaceId: string) {
+		void workspaceTransition.request({ type: "open", workspaceId });
+	}
+
+	function createWorkspace(input: CreateWorkspaceInput) {
+		void workspaceTransition.request({ type: "create", input });
+	}
+
+	function closeWorkspace() {
+		void workspaceTransition.request({ type: "launcher" });
+	}
+
+	function changeWorkspaceContext(workspaceId: string, input: CreateWorkspaceInput) {
+		void workspaceTransition.request({ type: "context", workspaceId, input });
+	}
 
 	function openLauncherSettings() {
 		launcherView = "settings";
@@ -96,7 +164,7 @@
 	});
 
 	$effect(() => {
-		if (!pathStateReady || $selectedWorkspace) return;
+		if (!pathStateReady || $selectedWorkspace || workspaceTransitionPending) return;
 		writePathState({
 			version: 1,
 			runtime: "svelte",
@@ -164,7 +232,11 @@
 	<title>KubeCove</title>
 </svelte:head>
 
-{#if $selectedWorkspace}
+{#if workspaceTransitionPending}
+	<div class="flex h-screen w-full items-center justify-center bg-background text-sm text-muted-foreground">
+		Switching workspace…
+	</div>
+{:else if $selectedWorkspace}
 	<ForegroundLoadingBar />
 	<WorkspaceShell
 		workspace={$selectedWorkspace}
@@ -174,6 +246,8 @@
 		onPathStateConsumed={() => (initialWorkspacePathState = null)}
 		{liveSessionCleanupMessage}
 		onDismissLiveSessionCleanup={() => (liveSessionCleanupMessage = null)}
+		onOpenLauncher={closeWorkspace}
+		onChangeClusterContext={changeWorkspaceContext}
 	/>
 {:else}
 	<div class="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
@@ -220,7 +294,7 @@
 			{#if launcherView === "settings"}
 				<SettingsSurface onBack={openWorkspaceLauncher} />
 			{:else}
-				<WorkspaceLauncher />
+				<WorkspaceLauncher {openWorkspace} {createWorkspace} />
 			{/if}
 		</main>
 		<AppUsageFooter />

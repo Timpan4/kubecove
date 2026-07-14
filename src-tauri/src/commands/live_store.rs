@@ -12,6 +12,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use tokio_util::sync::CancellationToken;
 
 const COMPLETED_GRACE: Duration = Duration::from_millis(500);
 const RESOURCE_FRESHNESS: Duration = Duration::from_secs(30);
@@ -36,6 +37,7 @@ enum CacheEntry<T> {
     Loading {
         load_id: u64,
         future: SharedLoad<T>,
+        cancellation: CancellationToken,
         previous: Option<ReadyValue<T>>,
         dirty: bool,
     },
@@ -127,12 +129,22 @@ where
                         CacheEntry::Loading { previous, .. } => previous,
                     });
                     let load_id = self.next_load_id.fetch_add(1, Ordering::Relaxed) + 1;
-                    let future = async move { loader().await }.boxed().shared();
+                    let cancellation = CancellationToken::new();
+                    let loader_cancellation = cancellation.clone();
+                    let future = async move {
+                        tokio::select! {
+                            result = loader() => result,
+                            () = loader_cancellation.cancelled() => Err(AppError::cancelled()),
+                        }
+                    }
+                    .boxed()
+                    .shared();
                     entries.insert(
                         key.clone(),
                         CacheEntry::Loading {
                             load_id,
                             future: future.clone(),
+                            cancellation,
                             previous,
                             dirty: false,
                         },
@@ -200,6 +212,33 @@ where
                 CacheEntry::Loading { dirty, .. } => *dirty = true,
             }
         }
+    }
+
+    fn cancel_loading(&self) -> usize {
+        let mut entries = self.entries.lock().expect("live store cache lock");
+        let loading_keys = entries
+            .iter()
+            .filter(|(_, entry)| matches!(entry, CacheEntry::Loading { .. }))
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        for key in &loading_keys {
+            let previous = entries.remove(key).and_then(|entry| match entry {
+                CacheEntry::Loading {
+                    cancellation,
+                    previous,
+                    ..
+                } => {
+                    cancellation.cancel();
+                    previous
+                }
+                CacheEntry::Ready(_) => None,
+            });
+            if let Some(mut previous) = previous {
+                previous.dirty = true;
+                entries.insert(key.clone(), CacheEntry::Ready(previous));
+            }
+        }
+        loading_keys.len()
     }
 
     fn trim_to_budget(entries: &mut HashMap<String, CacheEntry<T>>) {
@@ -275,6 +314,14 @@ impl Default for ClusterLiveStore {
 }
 
 impl ClusterLiveStore {
+    pub fn cancel_loading(&self) -> usize {
+        self.namespaces.cancel_loading()
+            + self.resource_kinds.cancel_loading()
+            + self.present_custom_resource_kinds.cancel_loading()
+            + self.resources.cancel_loading()
+            + self.topologies.cancel_loading()
+    }
+
     pub async fn namespaces<F, Fut>(
         &self,
         source_key: String,
