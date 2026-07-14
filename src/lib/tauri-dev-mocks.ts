@@ -21,6 +21,7 @@ import {
 	resources,
 	source,
 } from "./tauri-dev-mock-data";
+import { operationMockHandlers } from "./tauri-dev-mock-operations";
 import type { TauriClient } from "./tauri-runtime";
 import type {
 	AppUsageMetrics,
@@ -30,9 +31,6 @@ import type {
 	ArgoAppProjectDetails,
 	ArgoAppProjectSummary,
 	BackendDiagnosticEvent,
-	ClusterOperationPreview,
-	ClusterOperationResult,
-	DeleteResourceRequest,
 	DiscoveredResourceKind,
 	FluxDetectionSummary,
 	FluxResourceDetails,
@@ -51,8 +49,6 @@ import type {
 	ResourceMetricsSummary,
 	ResourceSummary,
 	ResourceTopology,
-	RolloutRestartRequest,
-	ScaleWorkloadRequest,
 	StreamMessage,
 	YamlApplyPreview,
 } from "./types";
@@ -88,12 +84,7 @@ const handlers: Record<string, MockHandler> = {
 		presentCustomResourceKinds(args?.namespaces as string[] | undefined),
 	list_resources: (args) => filterResources(args?.kind as string | undefined, args?.namespace as string | undefined, args?.clusterContext as string | undefined),
 	list_deployment_revisions: () => deploymentRevisions,
-	preview_scale_workload: (args) => scaleOperationPreview(operationRequest<ScaleWorkloadRequest>(args)),
-	scale_workload: (args) => scaleOperationResult(operationRequest<ScaleWorkloadRequest>(args)),
-	preview_rollout_restart: (args) => restartOperationPreview(operationRequest<RolloutRestartRequest>(args)),
-	rollout_restart: (args) => restartOperationResult(operationRequest<RolloutRestartRequest>(args)),
-	preview_delete_resource: (args) => deleteOperationPreview(operationRequest<DeleteResourceRequest>(args)),
-	delete_resource: (args) => deleteOperationResult(operationRequest<DeleteResourceRequest>(args)),
+	...operationMockHandlers,
 	list_dynamic_resources: (args) => filterResources((args?.resourceKind as DiscoveredResourceKind | undefined)?.kind, args?.namespace as string | undefined, args?.clusterContext as string | undefined),
 	list_resource_scope: (args) => listScope(args?.requests as ResourceListRequest[] | undefined, args?.clusterContext as string | undefined),
 	get_resource_yaml: (args) => yamlFor(args),
@@ -139,57 +130,12 @@ const handlers: Record<string, MockHandler> = {
 	get_backend_diagnostics: () => [] satisfies BackendDiagnosticEvent[],
 	clear_backend_diagnostics: () => undefined,
 	cancel_backend_requests: () => ({ cancelled: 0 }),
+	cancel_workspace_requests: () => ({
+		cancelledRequests: 0,
+		cancelledLoads: 0,
+		clientGeneration: 1,
+	}),
 };
-
-function operationRequest<T>(args?: MockArgs): T {
-	const request = args?.request;
-	if (!request || typeof request !== "object") throw new Error("Operation request is required.");
-	return request as T;
-}
-
-function operationTarget(request: ScaleWorkloadRequest | RolloutRestartRequest | DeleteResourceRequest) {
-	return {
-		clusterContext: request.clusterContext,
-		namespace: request.namespace,
-		kind: request.kind,
-		name: request.name,
-	};
-}
-
-function operationLabel(request: ScaleWorkloadRequest | RolloutRestartRequest | DeleteResourceRequest) {
-	return `${request.kind} ${request.namespace}/${request.name} in context ${request.clusterContext}`;
-}
-
-function requireMockConfirmation(request: RolloutRestartRequest | DeleteResourceRequest | ScaleWorkloadRequest) {
-	if (!request.confirmed) throw new Error("Explicit confirmation is required.");
-}
-
-function scaleOperationPreview(request: ScaleWorkloadRequest): ClusterOperationPreview {
-	return { target: operationTarget(request), effect: `Scale ${operationLabel(request)} to ${request.replicas} replicas` };
-}
-
-function scaleOperationResult(request: ScaleWorkloadRequest): ClusterOperationResult {
-	requireMockConfirmation(request);
-	return { target: operationTarget(request), effect: `Simulated scaling ${operationLabel(request)} to ${request.replicas} replicas in browser mock mode.` };
-}
-
-function restartOperationPreview(request: RolloutRestartRequest): ClusterOperationPreview {
-	return { target: operationTarget(request), effect: `Restart ${operationLabel(request)} by updating its pod template` };
-}
-
-function restartOperationResult(request: RolloutRestartRequest): ClusterOperationResult {
-	requireMockConfirmation(request);
-	return { target: operationTarget(request), effect: `Simulated restart of ${operationLabel(request)} in browser mock mode.` };
-}
-
-function deleteOperationPreview(request: DeleteResourceRequest): ClusterOperationPreview {
-	return { target: operationTarget(request), effect: `Delete ${operationLabel(request)}` };
-}
-
-function deleteOperationResult(request: DeleteResourceRequest): ClusterOperationResult {
-	requireMockConfirmation(request);
-	return { target: operationTarget(request), effect: `Simulated deletion of ${operationLabel(request)} in browser mock mode.` };
-}
 
 function resourcesForCluster(cluster = "mock-dev"): ResourceSummary[] {
 	const rows = cluster === "docker-desktop" ? dockerResources : resources;
