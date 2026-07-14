@@ -611,6 +611,7 @@
 								</div>
 								{#each gitOpsSelections as item (gitOpsSelectionKey(item))}
 									{@const sourceMode = gitOpsSelectionSourceMode(item)}
+									{@const SourceIcon = gitOpsSourceIcon(sourceMode)}
 									{@const sourceLabel = gitOpsSelectionSourceLabel(sourceMode, argoSourceCount(item))}
 									{@const sourceTooltip = gitOpsSelectionSourceTooltip(item)}
 									{@const sourceTooltipTitle = gitOpsSelectionSourceTooltipTitle(item)}
@@ -639,24 +640,31 @@
 												</Badge>
 											{/each}
 										</div>
-										{#if sourceLine}
-											<Tooltip>
-												<TooltipTrigger
-													type="button"
-													class="min-w-0 truncate text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-													aria-label={sourceTooltip}
-													onclick={stopTooltipEvent}
-													onkeydown={stopTooltipEvent}
-												>
-													{sourceLine}
-												</TooltipTrigger>
-												<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
-													{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
-												</TooltipContent>
-											</Tooltip>
-										{:else}
-											<span class="text-muted-foreground">-</span>
-										{/if}
+										<div class="flex min-w-0 items-center gap-2">
+											{#if SourceIcon}
+												<span class={gitOpsSourceIconClass(sourceMode)} aria-hidden="true">
+													<SourceIcon class="size-3.5" />
+												</span>
+											{/if}
+											{#if sourceLine}
+												<Tooltip>
+													<TooltipTrigger
+														type="button"
+														class="min-w-0 flex-1 truncate text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+														aria-label={sourceTooltip}
+														onclick={stopTooltipEvent}
+														onkeydown={stopTooltipEvent}
+													>
+														{sourceLine}
+													</TooltipTrigger>
+													<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
+														{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
+													</TooltipContent>
+												</Tooltip>
+											{:else}
+												<span class="text-muted-foreground">-</span>
+											{/if}
+										</div>
 										<span class="truncate font-medium">{gitOpsSelectionRevisionLabel(item)}</span>
 										<span class="truncate text-muted-foreground">{gitOpsSelectionDestination(item)}</span>
 										<span class="tabular-nums text-muted-foreground">{item.item.age ?? "-"}</span>
