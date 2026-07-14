@@ -824,7 +824,7 @@
 	{#if gitOpsFocusApplication}
 		{@const app = gitOpsFocusApplication}
 		{@const destination = app.destinationNamespace ?? app.destinationServer}
-		<section class="rounded-lg border border-sidebar-border bg-card/35 px-3 py-2.5 shadow-sm">
+		<section class="rounded-lg border border-sidebar-border bg-surface-1 px-3 py-2.5 shadow-sm">
 			<div class="flex flex-wrap items-start justify-between gap-3">
 				<div class="min-w-0">
 					<div class="flex min-w-0 items-center gap-2">
@@ -965,7 +965,7 @@
 				</div>
 			{:else}
 				<aside
-					class="flex h-full min-h-[400px] w-12 shrink-0 flex-col items-center overflow-hidden rounded-lg border bg-card/60 shadow-sm"
+					class="flex h-full min-h-[400px] w-12 shrink-0 flex-col items-center overflow-hidden rounded-lg border bg-surface-1 shadow-sm"
 				>
 					<div class="flex w-full justify-center border-b p-2">
 						<Button
@@ -994,7 +994,7 @@
 
 			{#if tablePanelOpen}
 				<aside
-					class="flex h-full min-h-[400px] min-w-0 flex-col overflow-hidden rounded-lg border bg-card/60 shadow-sm"
+					class="flex h-full min-h-[400px] min-w-0 flex-col overflow-hidden rounded-lg border bg-surface-1 shadow-sm"
 				>
 					<div class="flex items-start justify-between gap-2 border-b px-3 py-2">
 						<div class="min-w-0">
@@ -1247,7 +1247,7 @@
 				</aside>
 			{:else}
 				<aside
-					class="flex h-full min-h-[400px] w-12 shrink-0 flex-col items-center overflow-hidden rounded-md border bg-card/60"
+					class="flex h-full min-h-[400px] w-12 shrink-0 flex-col items-center overflow-hidden rounded-md border bg-surface-1"
 				>
 					<div class="flex w-full justify-center border-b p-2">
 						<Button

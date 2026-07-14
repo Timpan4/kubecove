@@ -620,11 +620,18 @@
 					<strong class="truncate text-xs font-semibold">{resourceGitOpsFocusApplication.name}</strong>
 				{/if}
 			</nav>
-			<div class="flex min-w-0 flex-1 items-center justify-center md:hidden">
-				<span class="truncate whitespace-nowrap text-sm font-semibold">
-					{resourceGitOpsFocusApplication?.name ?? title}
+			<nav
+				class="flex min-w-0 flex-1 items-center gap-1.5 md:hidden"
+				aria-label="Workspace location"
+			>
+				<span class="truncate whitespace-nowrap text-xs font-medium text-muted-foreground">
+					{resourceBrowserScope.canQuery ? "Resources" : title}
 				</span>
-			</div>
+				{#if resourceGitOpsFocusApplication}
+					<ChevronRight class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+					<strong class="truncate text-xs font-semibold">{resourceGitOpsFocusApplication.name}</strong>
+				{/if}
+			</nav>
 			<div class="flex min-w-0 shrink-0 items-center justify-end gap-1 [-webkit-app-region:no-drag] md:flex-1">
 				<ActiveLiveSessionsButton onOpenManager={openPortForwards} />
 				<UpdateStatusButton />
