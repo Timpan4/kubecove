@@ -1,6 +1,7 @@
 import {
 	cancelWorkspaceWork,
 	createWorkspaceTransitionCoordinator,
+	type WorkspaceTransitionCoordinator,
 } from "./workspaceTransition";
 
 declare function describe(name: string, fn: () => void): void;
@@ -104,6 +105,29 @@ describe("workspace transition coordinator", () => {
 
 		expect(cancellations).toBe(1);
 		expect(applied).toEqual(["C"]);
+	});
+
+	test("drains a destination requested by a resume microtask", async () => {
+		const applied: string[] = [];
+		let coordinator!: WorkspaceTransitionCoordinator<string>;
+		let queueNext = true;
+		coordinator = createWorkspaceTransitionCoordinator<string>({
+			suspend: () => {},
+			cancel: async () => {},
+			apply: (destination) => applied.push(destination),
+			resume: () => {
+				if (!queueNext) return;
+				queueNext = false;
+				queueMicrotask(() => {
+					void coordinator.request("C");
+				});
+			},
+		});
+
+		await coordinator.request("B");
+
+		expect(applied).toEqual(["B", "C"]);
+		expect(coordinator.isPending()).toBe(false);
 	});
 
 	test("continues the switch when backend cancellation fails", async () => {

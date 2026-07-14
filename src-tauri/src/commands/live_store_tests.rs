@@ -275,8 +275,7 @@ fn normalized_builtin_watch_invalidates_typed_resource_cache() {
 fn cancel_loading_allows_replacement_and_ignores_stale_completion() {
     tauri::async_runtime::block_on(async {
         let cache = Arc::new(SharedCache::new("test"));
-        let (release, waiting) = oneshot::channel::<()>();
-        let (started, inserted) = oneshot::channel::<()>();
+        let (waiting, started) = oneshot::channel::<()>();
         let first_cache = cache.clone();
         let first = tauri::async_runtime::spawn(async move {
             first_cache
@@ -284,16 +283,20 @@ fn cancel_loading_allows_replacement_and_ignores_stale_completion() {
                     "same".to_string(),
                     CacheMode::LiveFor(Duration::from_secs(30)),
                     move || async move {
-                        let _ = started.send(());
-                        let _ = waiting.await;
-                        Ok::<_, AppError>(vec!["stale".to_string()])
+                        let _ = waiting.send(());
+                        std::future::pending::<Result<Vec<String>, AppError>>().await
                     },
                 )
                 .await
         });
-        inserted.await.expect("loader inserted");
+        started.await.expect("loader inserted");
 
         assert_eq!(cache.cancel_loading(), 1);
+        let first_error = first
+            .await
+            .expect("join cancelled loader")
+            .expect_err("loader should be cancelled");
+        assert_eq!(first_error.kind, "cancelled");
         let replacement = cache
             .get_or_load(
                 "same".to_string(),
@@ -304,14 +307,6 @@ fn cancel_loading_allows_replacement_and_ignores_stale_completion() {
             .expect("replacement load");
         assert_eq!(replacement, vec!["fresh".to_string()]);
 
-        release.send(()).expect("release stale loader");
-        assert_eq!(
-            first
-                .await
-                .expect("join stale loader")
-                .expect("stale result"),
-            vec!["stale"]
-        );
         let cached = cache
             .get_or_load(
                 "same".to_string(),

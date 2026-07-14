@@ -47,15 +47,26 @@ export function createWorkspaceTransitionCoordinator<T>(
 		}
 	}
 
+	function start() {
+		const drain = run();
+		let completion!: Promise<void>;
+		completion = drain.finally(() => {
+			if (running !== completion) return;
+			running = null;
+			if (latest !== undefined) start();
+		});
+		running = completion;
+	}
+
+	async function waitForIdle() {
+		while (running) await running;
+	}
+
 	return {
 		request(destination) {
 			latest = destination;
-			if (!running) {
-				running = run().finally(() => {
-					running = null;
-				});
-			}
-			return running;
+			if (!running) start();
+			return waitForIdle();
 		},
 		isPending: () => running !== null,
 	};

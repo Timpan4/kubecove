@@ -78,6 +78,8 @@ impl FiniteClientState {
 
 static FINITE_CLIENTS: LazyLock<RwLock<FiniteClientState>> =
     LazyLock::new(|| RwLock::new(FiniteClientState::new()));
+static OPERATION_CLIENTS: LazyLock<RwLock<Cache<Client>>> =
+    LazyLock::new(|| RwLock::new(Cache::new()));
 static LIVE_CLIENTS: LazyLock<RwLock<Cache<ClientEntry>>> =
     LazyLock::new(|| RwLock::new(Cache::new()));
 
@@ -140,6 +142,29 @@ pub(crate) fn rotate_client_generation() -> u64 {
     };
     previous.cancel();
     next_id
+}
+
+pub(crate) fn lookup_operation_client(
+    source_key: &str,
+    cluster_context: &str,
+    fingerprint: u64,
+) -> Option<Client> {
+    OPERATION_CLIENTS
+        .read()
+        .expect("operation client cache lock")
+        .lookup(source_key, cluster_context, fingerprint)
+}
+
+pub(crate) fn store_operation_client(
+    source_key: String,
+    cluster_context: String,
+    fingerprint: u64,
+    client: Client,
+) {
+    OPERATION_CLIENTS
+        .write()
+        .expect("operation client cache lock")
+        .store(source_key, cluster_context, fingerprint, client);
 }
 
 pub(crate) fn lookup_live_client(

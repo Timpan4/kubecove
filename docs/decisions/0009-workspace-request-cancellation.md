@@ -26,9 +26,11 @@ Rapid transitions are coalesced while cancellation is in progress. A transition 
 
 Finite Kubernetes clients belong to a rotatable generation. Every generation has one cancellation token shared by its cached client clones. Rotating the generation clears the finite client cache, installs a fresh generation, and cancels the previous token. Client construction captures its generation and may enter the cache only if that generation is still current.
 
-Each finite client request races its transport future against the generation token. Finite clients also use a 30-second read timeout as a fallback for stalled endpoints. Workspace switching does not wait for this timeout because generation cancellation is immediate.
+Finite read clients also race kubeconfig and authentication resolution against their generation token, so cancellation does not wait for client construction to finish. Each finite client request then races its transport future against that token. Finite clients also use a 30-second read timeout as a fallback for stalled endpoints. Workspace switching does not wait for this timeout because generation cancellation is immediate.
 
-The backend cancellation command also cancels registered finite command guards and removes loading entries retained by the shared live store. A prior ready value is restored as dirty; completed ready values remain cached. Existing load identifiers prevent a stale loader completion from replacing a newer result.
+The backend cancellation command also cancels registered finite command guards and directly signals loading futures retained by the shared live store before removing them. A prior ready value is restored as dirty; completed ready values remain cached. Existing load identifiers prevent a stale loader completion from replacing a newer result.
+
+Confirmed cluster mutations use a third client path. Scale, rollout restart, delete, and YAML apply clients retain the 30-second timeout but are not tied to workspace generation rotation. Their preview and dry-run counterparts remain cancellable reads. This avoids reporting a mutation as cancelled after the API server may already have applied it.
 
 Long-lived operations use a separate, non-rotating client cache:
 
@@ -44,6 +46,6 @@ The cancellation result exposes only diagnostic counts and the new generation id
 
 A healthy workspace can begin loading promptly after an unreachable workspace is left, without waiting for old finite Kubernetes work. Old shared loaders cannot repopulate the active cache, and rapid transitions have latest-destination semantics.
 
-Finite and long-lived Kubernetes access now use deliberately separate client paths. New finite command families must use the rotating client path and be included in the frontend finite-query predicate. New live streams or explicit sessions must use the live client path and define their own cleanup policy.
+Finite reads, confirmed writes, and long-lived Kubernetes access now use deliberately separate client paths. New finite read command families must use the rotating client path and be included in the frontend finite-query predicate. New confirmed mutations must use the non-rotating operation client so workspace rotation cannot create an ambiguous write result. New live streams or explicit sessions must use the live client path and define their own cleanup policy.
 
-The 30-second timeout bounds finite reads even when cancellation is not triggered. It does not replace explicit workspace cancellation and does not apply to long-lived streams or sessions.
+The 30-second timeout bounds finite reads and confirmed operations even when cancellation is not triggered. It does not replace explicit workspace cancellation and does not apply to long-lived streams or sessions.
