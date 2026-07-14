@@ -382,7 +382,9 @@ describe("svelte resource browser model", () => {
 	expect(source).toContain("inspectorOpen && mapPanelOpen && tablePanelOpen");
 	expect(source).toContain("grid min-h-0 min-w-0 flex-1");
 	expect(source).toContain("grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)]");
-	expect(source).toContain("xl:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)]");
+	expect(source).toContain(
+		"min-[1101px]:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)]",
+	);
 });
 
 	test("keeps Svelte resource detail panel out of the browser", () => {

@@ -106,7 +106,7 @@
 	}
 </script>
 
-<section class="@container rounded-md border bg-surface-1 p-2" aria-label="Resource controls">
+<section class="@container rounded-lg border bg-surface-1 p-2 shadow-sm" aria-label="Resource controls">
 	<div class="grid gap-2 @5xl:grid-cols-[auto_minmax(18rem,1fr)_auto] @5xl:items-center">
 		<div class="flex min-w-0 flex-wrap items-center gap-2" aria-label="Current resource scope">
 			<Popover bind:open={namespacePopoverOpen}>
@@ -231,7 +231,7 @@
 		</div>
 	</div>
 
-	<div class="mt-2 grid gap-2 @5xl:grid-cols-2 @5xl:items-stretch">
+	<div class="mt-2 grid gap-2 border-t pt-2 @5xl:grid-cols-2 @5xl:items-stretch">
 		<div class="grid grid-cols-2 gap-2 @3xl:grid-cols-3 @7xl:grid-cols-6" aria-label="Resource health summary">
 			<Button
 				type="button"

@@ -390,10 +390,8 @@ describe("workspace helpers", () => {
 			"src/features/workspaces/WorkspaceOverview.svelte",
 			"utf8",
 		);
-		const headerActionsStart = source.indexOf(
-			'class="flex flex-wrap justify-end gap-2"',
-		);
-		const headerActionsEnd = source.indexOf("</div>", headerActionsStart);
+		const headerActionsStart = source.indexOf("<CardTitle>Operations</CardTitle>");
+		const headerActionsEnd = source.indexOf("</Card>", headerActionsStart);
 		const headerActions = source.slice(headerActionsStart, headerActionsEnd);
 
 		expect(headerActionsStart).toBeGreaterThanOrEqual(0);
