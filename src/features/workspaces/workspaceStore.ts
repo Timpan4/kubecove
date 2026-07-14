@@ -145,25 +145,24 @@ export function createWorkspaceStore(
 			now: string,
 		) => ReturnType<typeof normalizeEntryPoints>,
 	) {
-		state.update((current) => {
-			const now = new Date().toISOString();
-			let changed = false;
-			const workspaces = current.workspaces.map((workspace) => {
-				if (workspace.id !== workspaceId) return workspace;
-				const currentEntryPoints = normalizeEntryPoints(workspace.entryPoints);
-				const nextEntryPoints = recipe(currentEntryPoints, now);
-				if (entryPointsEqual(currentEntryPoints, nextEntryPoints)) return workspace;
-				changed = true;
-				return {
-					...workspace,
-					entryPoints: nextEntryPoints,
-					updatedAt: now,
-				};
-			});
-			if (!changed) return current;
-			writePersistedWorkspaces(workspaces, storage);
-			return { ...current, workspaces };
+		const current = get(state);
+		const now = new Date().toISOString();
+		let changed = false;
+		const workspaces = current.workspaces.map((workspace) => {
+			if (workspace.id !== workspaceId) return workspace;
+			const currentEntryPoints = normalizeEntryPoints(workspace.entryPoints);
+			const nextEntryPoints = recipe(currentEntryPoints, now);
+			if (entryPointsEqual(currentEntryPoints, nextEntryPoints)) return workspace;
+			changed = true;
+			return {
+				...workspace,
+				entryPoints: nextEntryPoints,
+				updatedAt: now,
+			};
 		});
+		if (!changed) return;
+		writePersistedWorkspaces(workspaces, storage);
+		state.set({ ...current, workspaces });
 	}
 
 	return {

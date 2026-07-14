@@ -197,6 +197,11 @@ describe("svelte workspace store", () => {
 		store.togglePinnedResource(workspace.id, resource("api"));
 		const before = get(store.workspaces)[0];
 		const writesBefore = storage.writeCount();
+		let notifications = 0;
+		const unsubscribe = store.subscribe(() => {
+			notifications += 1;
+		});
+		const notificationsBefore = notifications;
 
 		store.reconcileEntryPoints(
 			workspace.id,
@@ -209,6 +214,8 @@ describe("svelte workspace store", () => {
 			],
 		);
 
+		unsubscribe();
+		expect(notifications).toBe(notificationsBefore);
 		expect(storage.writeCount()).toBe(writesBefore);
 		expect(get(store.workspaces)[0]).toBe(before);
 		expect(get(store.workspaces)[0].updatedAt).toBe(before.updatedAt);
