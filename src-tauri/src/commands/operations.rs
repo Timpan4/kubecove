@@ -35,7 +35,7 @@ pub async fn scale_workload(
 ) -> Result<ClusterOperationResult, AppError> {
     let target = validate_scale(&request)?;
     require_confirmation(request.confirmed)?;
-    let client = client_for(&target, request.kubeconfig_env_var).await?;
+    let client = operation_client_for(&target, request.kubeconfig_env_var).await?;
     resource_api(client, &target)?
         .patch(
             &target.name,
@@ -80,7 +80,7 @@ pub async fn rollout_restart(
 ) -> Result<ClusterOperationResult, AppError> {
     let target = validate_restart(&request)?;
     require_confirmation(request.confirmed)?;
-    let client = client_for(&target, request.kubeconfig_env_var).await?;
+    let client = operation_client_for(&target, request.kubeconfig_env_var).await?;
     restart_with_params(
         resource_api(client, &target)?,
         &target,
@@ -114,7 +114,7 @@ pub async fn delete_resource(
 ) -> Result<ClusterOperationResult, AppError> {
     let target = validate_delete(&request)?;
     require_confirmation(request.confirmed)?;
-    let client = client_for(&target, request.kubeconfig_env_var).await?;
+    let client = operation_client_for(&target, request.kubeconfig_env_var).await?;
     resource_api(client, &target)?
         .delete(&target.name, &DeleteParams::default())
         .await?;
@@ -122,6 +122,15 @@ pub async fn delete_resource(
         effect: format!("Delete requested for {}", target_label(&target)),
         target,
     })
+}
+
+async fn operation_client_for(
+    target: &ClusterOperationTarget,
+    kubeconfig_env_var: Option<String>,
+) -> Result<kube::Client, AppError> {
+    KubeconfigSource::new(kubeconfig_env_var)?
+        .operation_client_for_context(&target.cluster_context)
+        .await
 }
 
 async fn client_for(
