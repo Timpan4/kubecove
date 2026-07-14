@@ -36,6 +36,7 @@
 	import {
 		summarizeWorkspaceScope,
 		workspaceScopeContexts,
+		type CreateWorkspaceInput,
 		type SavedWorkspace,
 	} from "@/lib/workspace-model";
 	import {
@@ -63,6 +64,13 @@
 	import { workspaceStore as workspaceStore } from "./workspaceStore";
 
 	const workspaces = workspaceStore.workspaces;
+	let {
+		openWorkspace,
+		createWorkspace,
+	}: {
+		openWorkspace: (workspaceId: string) => void;
+		createWorkspace: (input: CreateWorkspaceInput) => void;
+	} = $props();
 
 	// Form state — Svelte 5 runes.
 	let editingId = $state<string | null>(null);
@@ -283,7 +291,7 @@
 			resetForm();
 			return;
 		}
-		workspaceStore.createWorkspace(input);
+		createWorkspace(input);
 		resetForm();
 	}
 
@@ -478,7 +486,7 @@
 								type="button"
 								size="sm"
 								aria-label={`Open ${workspace.name}`}
-								onclick={() => workspaceStore.openWorkspace(workspace.id)}
+								onclick={() => openWorkspace(workspace.id)}
 							>
 								<FolderOpen data-icon="inline-start" />
 								Open

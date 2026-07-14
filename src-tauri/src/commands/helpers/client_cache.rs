@@ -8,6 +8,7 @@ use std::{
     sync::{LazyLock, RwLock},
     time::UNIX_EPOCH,
 };
+use tokio_util::sync::CancellationToken;
 
 // Building a kube Client re-reads kubeconfig files, redoes TLS setup, and
 // starts a cold connection pool, so commands reuse one client per
@@ -52,27 +53,115 @@ impl<T: Clone> Cache<T> {
 
 type ClientEntry = (Client, String);
 
-static CLIENTS: LazyLock<RwLock<Cache<ClientEntry>>> = LazyLock::new(|| RwLock::new(Cache::new()));
+#[derive(Clone)]
+pub(crate) struct ClientGeneration {
+    pub(crate) id: u64,
+    pub(crate) token: CancellationToken,
+}
+
+struct FiniteClientState {
+    generation: ClientGeneration,
+    clients: Cache<ClientEntry>,
+}
+
+impl FiniteClientState {
+    fn new() -> Self {
+        Self {
+            generation: ClientGeneration {
+                id: 0,
+                token: CancellationToken::new(),
+            },
+            clients: Cache::new(),
+        }
+    }
+}
+
+static FINITE_CLIENTS: LazyLock<RwLock<FiniteClientState>> =
+    LazyLock::new(|| RwLock::new(FiniteClientState::new()));
+static LIVE_CLIENTS: LazyLock<RwLock<Cache<ClientEntry>>> =
+    LazyLock::new(|| RwLock::new(Cache::new()));
+
+pub(crate) fn finite_client_generation() -> ClientGeneration {
+    FINITE_CLIENTS
+        .read()
+        .expect("finite client cache lock")
+        .generation
+        .clone()
+}
 
 pub(crate) fn lookup_client(
     source_key: &str,
     cluster_context: &str,
     fingerprint: u64,
+    generation: u64,
 ) -> Option<ClientEntry> {
-    CLIENTS
-        .read()
-        .expect("client cache lock")
-        .lookup(source_key, cluster_context, fingerprint)
+    let state = FINITE_CLIENTS.read().expect("finite client cache lock");
+    (state.generation.id == generation)
+        .then(|| {
+            state
+                .clients
+                .lookup(source_key, cluster_context, fingerprint)
+        })
+        .flatten()
 }
 
 pub(crate) fn store_client(
     source_key: String,
     cluster_context: String,
     fingerprint: u64,
+    generation: u64,
+    client: Client,
+    default_namespace: String,
+) -> bool {
+    let mut state = FINITE_CLIENTS.write().expect("finite client cache lock");
+    if state.generation.id != generation {
+        return false;
+    }
+    state.clients.store(
+        source_key,
+        cluster_context,
+        fingerprint,
+        (client, default_namespace),
+    );
+    true
+}
+
+pub(crate) fn rotate_client_generation() -> u64 {
+    let (previous, next_id) = {
+        let mut state = FINITE_CLIENTS.write().expect("finite client cache lock");
+        let previous = state.generation.token.clone();
+        let next_id = state.generation.id.saturating_add(1);
+        state.generation = ClientGeneration {
+            id: next_id,
+            token: CancellationToken::new(),
+        };
+        state.clients.entries.clear();
+        (previous, next_id)
+    };
+    previous.cancel();
+    next_id
+}
+
+pub(crate) fn lookup_live_client(
+    source_key: &str,
+    cluster_context: &str,
+    fingerprint: u64,
+) -> Option<ClientEntry> {
+    LIVE_CLIENTS.read().expect("live client cache lock").lookup(
+        source_key,
+        cluster_context,
+        fingerprint,
+    )
+}
+
+pub(crate) fn store_live_client(
+    source_key: String,
+    cluster_context: String,
+    fingerprint: u64,
     client: Client,
     default_namespace: String,
 ) {
-    CLIENTS.write().expect("client cache lock").store(
+    LIVE_CLIENTS.write().expect("live client cache lock").store(
         source_key,
         cluster_context,
         fingerprint,

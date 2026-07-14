@@ -1,0 +1,75 @@
+use super::kubeconfig::{KubeconfigSource, FINITE_REQUEST_READ_TIMEOUT};
+use crate::{
+    commands::helpers::{client_cache, client_cancellation::RequestCancellationLayer},
+    models::AppError,
+};
+use kube::{client::ClientBuilder, Client};
+
+impl KubeconfigSource {
+    pub async fn client_for_context(&self, cluster_context: &str) -> Result<Client, AppError> {
+        Ok(self.client_and_default_namespace(cluster_context).await?.0)
+    }
+
+    pub async fn client_and_default_namespace(
+        &self,
+        cluster_context: &str,
+    ) -> Result<(Client, String), AppError> {
+        let fingerprint = client_cache::fingerprint_files(&self.effective_kubeconfig_paths()?);
+        let source_key = self.key();
+        let generation = client_cache::finite_client_generation();
+        if let Some(cached) =
+            client_cache::lookup_client(&source_key, cluster_context, fingerprint, generation.id)
+        {
+            return Ok(cached);
+        }
+        let mut config = self.config_for_context(cluster_context).await?;
+        config.read_timeout = Some(FINITE_REQUEST_READ_TIMEOUT);
+        let default_namespace = config.default_namespace.clone();
+        let builder = ClientBuilder::try_from(config).map_err(AppError::from)?;
+        let client = builder
+            .with_layer(&RequestCancellationLayer::new(generation.token.clone()))
+            .build();
+        if !client_cache::store_client(
+            source_key,
+            cluster_context.to_string(),
+            fingerprint,
+            generation.id,
+            client.clone(),
+            default_namespace.clone(),
+        ) {
+            return Err(AppError::cancelled());
+        }
+        Ok((client, default_namespace))
+    }
+
+    pub async fn live_client_for_context(&self, cluster_context: &str) -> Result<Client, AppError> {
+        Ok(self
+            .live_client_and_default_namespace(cluster_context)
+            .await?
+            .0)
+    }
+
+    async fn live_client_and_default_namespace(
+        &self,
+        cluster_context: &str,
+    ) -> Result<(Client, String), AppError> {
+        let fingerprint = client_cache::fingerprint_files(&self.effective_kubeconfig_paths()?);
+        let source_key = self.key();
+        if let Some(cached) =
+            client_cache::lookup_live_client(&source_key, cluster_context, fingerprint)
+        {
+            return Ok(cached);
+        }
+        let config = self.config_for_context(cluster_context).await?;
+        let default_namespace = config.default_namespace.clone();
+        let client = Client::try_from(config).map_err(AppError::from)?;
+        client_cache::store_live_client(
+            source_key,
+            cluster_context.to_string(),
+            fingerprint,
+            client.clone(),
+            default_namespace.clone(),
+        );
+        Ok((client, default_namespace))
+    }
+}

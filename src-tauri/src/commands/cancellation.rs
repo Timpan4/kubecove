@@ -1,4 +1,7 @@
-use crate::models::{AppError, CancelBackendRequestsResult};
+use crate::{
+    commands::{helpers::client_cache, ClusterLiveStore},
+    models::{AppError, CancelBackendRequestsResult, CancelWorkspaceRequestsResult},
+};
 use std::{
     collections::BTreeMap,
     future::Future,
@@ -98,6 +101,25 @@ impl BackendCancellationRegistry {
         count
     }
 
+    pub fn cancel_all(&self) -> usize {
+        let tokens = {
+            let mut state = self
+                .inner
+                .lock()
+                .expect("backend cancellation registry mutex poisoned");
+            std::mem::take(&mut state.scopes)
+                .into_values()
+                .flat_map(BTreeMap::into_values)
+                .map(|entry| entry.token)
+                .collect::<Vec<_>>()
+        };
+        let count = tokens.len();
+        for token in tokens {
+            token.cancel();
+        }
+        count
+    }
+
     fn unregister(&self, scope: &str, request_id: &str, generation: u64) {
         let mut state = self
             .inner
@@ -150,6 +172,21 @@ pub fn cancel_backend_requests(
     }
 }
 
+#[tauri::command]
+pub fn cancel_workspace_requests(
+    registry: State<'_, BackendCancellationRegistry>,
+    live_store: State<'_, ClusterLiveStore>,
+) -> CancelWorkspaceRequestsResult {
+    let cancelled_requests = registry.cancel_all();
+    let client_generation = client_cache::rotate_client_generation();
+    let cancelled_loads = live_store.cancel_loading();
+    CancelWorkspaceRequestsResult {
+        cancelled_requests,
+        cancelled_loads,
+        client_generation,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,5 +223,21 @@ mod tests {
 
         assert_eq!(registry.cancel_scope("scope-a"), 1);
         assert!(second.token.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn cancel_all_interrupts_pending_guards() {
+        let registry = BackendCancellationRegistry::default();
+        let guard = registry.register(Some("scope-a".to_string()), Some("one".to_string()));
+        let waiting = guard.run(std::future::pending::<Result<(), AppError>>());
+        let cancellation = async {
+            tokio::task::yield_now().await;
+            assert_eq!(registry.cancel_all(), 1);
+        };
+
+        let (result, ()) = tokio::join!(waiting, cancellation);
+
+        let error = result.expect_err("pending request should be cancelled");
+        assert_eq!(error.kind, "cancelled");
     }
 }

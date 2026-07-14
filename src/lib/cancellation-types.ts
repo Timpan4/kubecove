@@ -6,3 +6,9 @@ export interface CancellableRequest {
 export interface CancelBackendRequestsResult {
 	cancelled: number;
 }
+
+export interface CancelWorkspaceRequestsResult {
+	cancelledRequests: number;
+	cancelledLoads: number;
+	clientGeneration: number;
+}

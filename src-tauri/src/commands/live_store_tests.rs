@@ -3,6 +3,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
+use tokio::sync::oneshot;
 
 fn resource(name: &str, namespace: &str) -> ResourceSummary {
     ResourceSummary {
@@ -267,6 +268,59 @@ fn normalized_builtin_watch_invalidates_typed_resource_cache() {
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].name, "worker");
+    });
+}
+
+#[test]
+fn cancel_loading_allows_replacement_and_ignores_stale_completion() {
+    tauri::async_runtime::block_on(async {
+        let cache = Arc::new(SharedCache::new("test"));
+        let (release, waiting) = oneshot::channel::<()>();
+        let (started, inserted) = oneshot::channel::<()>();
+        let first_cache = cache.clone();
+        let first = tauri::async_runtime::spawn(async move {
+            first_cache
+                .get_or_load(
+                    "same".to_string(),
+                    CacheMode::LiveFor(Duration::from_secs(30)),
+                    move || async move {
+                        let _ = started.send(());
+                        let _ = waiting.await;
+                        Ok::<_, AppError>(vec!["stale".to_string()])
+                    },
+                )
+                .await
+        });
+        inserted.await.expect("loader inserted");
+
+        assert_eq!(cache.cancel_loading(), 1);
+        let replacement = cache
+            .get_or_load(
+                "same".to_string(),
+                CacheMode::LiveFor(Duration::from_secs(30)),
+                || async { Ok::<_, AppError>(vec!["fresh".to_string()]) },
+            )
+            .await
+            .expect("replacement load");
+        assert_eq!(replacement, vec!["fresh".to_string()]);
+
+        release.send(()).expect("release stale loader");
+        assert_eq!(
+            first
+                .await
+                .expect("join stale loader")
+                .expect("stale result"),
+            vec!["stale"]
+        );
+        let cached = cache
+            .get_or_load(
+                "same".to_string(),
+                CacheMode::LiveFor(Duration::from_secs(30)),
+                || async { Ok::<_, AppError>(vec!["unexpected".to_string()]) },
+            )
+            .await
+            .expect("cached replacement");
+        assert_eq!(cached, vec!["fresh".to_string()]);
     });
 }
 

@@ -467,10 +467,11 @@ describe("svelte workspace shell model", () => {
 		expect(shell).toContain("<ClusterSelector");
 		expect(shell).toContain("value={workspace.scope.clusterContext}");
 		expect(shell).toContain("onClusterChange={changeClusterContext}");
-		expect(shell).toContain("workspaceStore.updateWorkspace(workspace.id");
+		expect(shell).toContain("onChangeClusterContext(workspace.id, {");
+		expect(shell).not.toContain("workspaceStore.updateWorkspace(workspace.id");
 		expect(shell).toContain("clusterContexts: [clusterContext]");
 		expect(shell).toContain("namespaces: []");
-		expect(shell).toContain('applyWorkspaceNavigation({ type: "changeCluster" })');
+		expect(shell).not.toContain('applyWorkspaceNavigation({ type: "changeCluster" })');
 		expect(selector).toContain("queryKeys.kubeContexts(kubeconfigSourceKey)");
 		expect(selector).toContain("listKubeContexts(client, kubeconfigSourceKey)");
 		expect(selector).toContain('aria-labelledby="cluster-select-label"');

@@ -44,6 +44,7 @@
 	import {
 		summarizeWorkspaceScope,
 		workspaceScopeContexts,
+		type CreateWorkspaceInput,
 		type SavedWorkspace,
 	} from "@/lib/workspace-model";
 	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
@@ -114,12 +115,16 @@
 		onPathStateConsumed = () => {},
 		liveSessionCleanupMessage = null,
 		onDismissLiveSessionCleanup = () => {},
+		onOpenLauncher,
+		onChangeClusterContext,
 	}: {
 		workspace: SavedWorkspace;
 		initialPathState?: PathStateWorkspaceSnapshot | null;
 		onPathStateConsumed?: () => void;
 		liveSessionCleanupMessage?: string | null;
 		onDismissLiveSessionCleanup?: () => void;
+		onOpenLauncher: () => void;
+		onChangeClusterContext: (workspaceId: string, input: CreateWorkspaceInput) => void;
 	} = $props();
 
 	const client = createTauriClient();
@@ -313,12 +318,12 @@
 
 	function openLauncher() {
 		applyWorkspaceNavigation({ type: "openLauncher" });
-		workspaceStore.clearSelectedWorkspace();
+		onOpenLauncher();
 	}
 
 	function changeClusterContext(clusterContext: string) {
 		if (clusterContext === workspace.scope.clusterContext) return;
-		workspaceStore.updateWorkspace(workspace.id, {
+		onChangeClusterContext(workspace.id, {
 			name: workspace.name,
 			clusterContext,
 			clusterContexts: [clusterContext],
@@ -326,8 +331,6 @@
 			kinds: workspace.scope.kinds,
 			shortcutPreferences: workspace.scope.shortcutPreferences,
 		});
-		dismissedPortForwardRestoreWorkspaceId = null;
-		applyWorkspaceNavigation({ type: "changeCluster" });
 	}
 
 	function currentPathState(): PathStateWorkspaceSnapshot {

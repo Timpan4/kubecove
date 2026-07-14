@@ -1,8 +1,7 @@
-use super::helpers::client_cache;
 use crate::models::{AppError, ClusterContext};
 use kube::{
     config::{KubeConfigOptions, Kubeconfig},
-    Client, Config,
+    Config,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -13,12 +12,14 @@ use std::{
     hash::{Hash, Hasher},
     path::PathBuf,
     sync::{OnceLock, RwLock},
+    time::Duration,
 };
 use tauri::AppHandle;
 use tauri_plugin_dialog::{DialogExt, FilePath};
 
 pub const DEFAULT_KUBECONFIG_ENV_VAR: &str = "KUBECONFIG";
 const SETTINGS_FILE_NAME: &str = "kubeconfig-sources.json";
+pub(super) const FINITE_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 static SETTINGS_PATH: OnceLock<PathBuf> = OnceLock::new();
 // In-memory copy of the persisted sources file. Every command constructs a
@@ -173,37 +174,10 @@ impl KubeconfigSource {
         }
     }
 
-    pub async fn client_for_context(&self, cluster_context: &str) -> Result<Client, AppError> {
-        Ok(self.client_and_default_namespace(cluster_context).await?.0)
-    }
-
-    pub async fn client_and_default_namespace(
-        &self,
-        cluster_context: &str,
-    ) -> Result<(Client, String), AppError> {
-        let fingerprint = client_cache::fingerprint_files(&self.effective_kubeconfig_paths()?);
-        let source_key = self.key();
-        if let Some(cached) = client_cache::lookup_client(&source_key, cluster_context, fingerprint)
-        {
-            return Ok(cached);
-        }
-        let config = self.config_for_context(cluster_context).await?;
-        let default_namespace = config.default_namespace.clone();
-        let client = Client::try_from(config).map_err(|err| AppError::kube(err.to_string()))?;
-        client_cache::store_client(
-            source_key,
-            cluster_context.to_string(),
-            fingerprint,
-            client.clone(),
-            default_namespace.clone(),
-        );
-        Ok((client, default_namespace))
-    }
-
     // The kubeconfig files that back this source, in the same order
     // config_for_context resolves them: configured env/app paths when present,
     // otherwise kube's default discovery (KUBECONFIG, then ~/.kube/config).
-    fn effective_kubeconfig_paths(&self) -> Result<Vec<PathBuf>, AppError> {
+    pub(super) fn effective_kubeconfig_paths(&self) -> Result<Vec<PathBuf>, AppError> {
         if let Some(paths) = self.configured_paths()? {
             return Ok(paths
                 .into_iter()

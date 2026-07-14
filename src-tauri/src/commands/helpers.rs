@@ -1,4 +1,5 @@
 pub(crate) mod client_cache;
+pub(crate) mod client_cancellation;
 mod health;
 mod metadata;
 mod serialization;

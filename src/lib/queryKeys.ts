@@ -1,3 +1,4 @@
+import { kubeconfigSourceKey } from "./settings";
 import type {
 	FluxResourceKind,
 	ResourceKindSelection,
@@ -6,7 +7,6 @@ import type {
 	YamlEncoding,
 	YamlViewMode,
 } from "./types";
-import { kubeconfigSourceKey } from "./settings";
 
 interface ResourceFetchKey {
 	kind: ResourceKindSelection;
@@ -27,6 +27,38 @@ function resourceScopeParts(fetchKeys: ResourceFetchKey[]): string[] {
 	return fetchKeys
 		.map((key) => `${resourceKindKey(key.kind)}:${key.namespace ?? ""}`)
 		.sort((a, b) => a.localeCompare(b));
+}
+
+export const finiteKubernetesQueryRoots = new Set([
+	"kube-namespaces",
+	"kube-resource-kinds",
+	"kube-present-custom-resource-kinds",
+	"resources",
+	"deployment-revisions",
+	"resource-topology",
+	"resource-metrics",
+	"resource-details",
+	"resource-yaml",
+	"resource-events",
+	"argo-detect",
+	"argo-apps",
+	"argo-appsets",
+	"argo-appprojects",
+	"argo-app-details",
+	"argo-appset-details",
+	"argo-appproject-details",
+	"flux-detect",
+	"flux-resources",
+	"flux-resource-details",
+	"helm-releases",
+	"helm-release-details",
+	"helm-release-reconciliation",
+	"rbac-inspection",
+	"incident-cockpit",
+]);
+
+export function isFiniteKubernetesQuery(queryKey: readonly unknown[]): boolean {
+	return typeof queryKey[0] === "string" && finiteKubernetesQueryRoots.has(queryKey[0]);
 }
 
 export const queryKeys = {

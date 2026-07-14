@@ -11,6 +11,7 @@ import {
 } from "../src/lib/foreground-loading";
 import {
 	cancelBackendRequests,
+	cancelWorkspaceRequests,
 	listResourceMetrics,
 	listResourceScope,
 	listResourceTopology,
@@ -53,6 +54,13 @@ describe("cancellable resource loads", () => {
 				if (cmd === "list_resource_metrics") return metrics as T;
 				if (cmd === "list_resource_topology") return topology as T;
 				if (cmd === "cancel_backend_requests") return { cancelled: 2 } as T;
+				if (cmd === "cancel_workspace_requests") {
+					return {
+						cancelledRequests: 3,
+						cancelledLoads: 1,
+						clientGeneration: 7,
+					} as T;
+				}
 				return [] as T;
 			},
 		};
@@ -74,6 +82,11 @@ describe("cancellable resource loads", () => {
 		await listResourceMetrics(client, "kind-dev", ["default"], "KUBECONFIG", cancellable);
 		expect(await cancelBackendRequests(client, "resources:scope-1")).toEqual({
 			cancelled: 2,
+		});
+		expect(await cancelWorkspaceRequests(client)).toEqual({
+			cancelledRequests: 3,
+			cancelledLoads: 1,
+			clientGeneration: 7,
 		});
 
 		expect(calls).toEqual([
@@ -111,6 +124,10 @@ describe("cancellable resource loads", () => {
 			{
 				cmd: "cancel_backend_requests",
 				args: { cancelScope: "resources:scope-1" },
+			},
+			{
+				cmd: "cancel_workspace_requests",
+				args: undefined,
 			},
 		]);
 	});

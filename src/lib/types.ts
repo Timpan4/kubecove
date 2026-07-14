@@ -79,6 +79,7 @@ export interface ResourceDetailsFull {
 export type {
 	CancelBackendRequestsResult,
 	CancellableRequest,
+	CancelWorkspaceRequestsResult,
 } from "./cancellation-types";
 
 export type YamlViewMode = "kubectl" | "applyClean";

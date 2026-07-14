@@ -202,6 +202,26 @@ where
         }
     }
 
+    fn cancel_loading(&self) -> usize {
+        let mut entries = self.entries.lock().expect("live store cache lock");
+        let loading_keys = entries
+            .iter()
+            .filter(|(_, entry)| matches!(entry, CacheEntry::Loading { .. }))
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        for key in &loading_keys {
+            let previous = entries.remove(key).and_then(|entry| match entry {
+                CacheEntry::Loading { previous, .. } => previous,
+                CacheEntry::Ready(_) => None,
+            });
+            if let Some(mut previous) = previous {
+                previous.dirty = true;
+                entries.insert(key.clone(), CacheEntry::Ready(previous));
+            }
+        }
+        loading_keys.len()
+    }
+
     fn trim_to_budget(entries: &mut HashMap<String, CacheEntry<T>>) {
         let mut ready_entries: Vec<(String, Instant, bool)> = entries
             .iter()
@@ -275,6 +295,14 @@ impl Default for ClusterLiveStore {
 }
 
 impl ClusterLiveStore {
+    pub fn cancel_loading(&self) -> usize {
+        self.namespaces.cancel_loading()
+            + self.resource_kinds.cancel_loading()
+            + self.present_custom_resource_kinds.cancel_loading()
+            + self.resources.cancel_loading()
+            + self.topologies.cancel_loading()
+    }
+
     pub async fn namespaces<F, Fut>(
         &self,
         source_key: String,
