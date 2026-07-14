@@ -14,6 +14,8 @@ export {
 	gitOpsSelectionResource,
 } from "./surfaceSelection";
 export type { GitOpsSelection } from "./surfaceSelection";
+export { buildGitOpsSummary } from "./surfaceSummary";
+export type { GitOpsSummary, GitOpsSummaryFact } from "./surfaceSummary";
 export {
 	gitOpsSelectionAgeTooltip,
 	gitOpsSelectionRevisionLabel,

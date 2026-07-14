@@ -1,451 +1,232 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>KubeCove Incident Workbench - Thoughtful Target</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KubeCove GitOps — resource-inspired refinement</title>
 <style>
-:root {
-  color-scheme: dark;
-  --bg: #070807;
-  --panel: #171614;
-  --panel-2: #1d1b18;
-  --panel-3: #111311;
-  --line: #37332e;
-  --line-soft: #282621;
-  --text: #f2efe7;
-  --muted: #aaa39a;
-  --faint: #766f68;
-  --teal: #15b8a6;
-  --teal-soft: rgba(21,184,166,.16);
-  --blue: #4da3ff;
-  --blue-soft: rgba(77,163,255,.16);
-  --amber: #f3b84b;
-  --amber-soft: rgba(243,184,75,.16);
-  --red: #ff6b6b;
-  --red-soft: rgba(255,107,107,.14);
-  --green: #61d394;
-  --green-soft: rgba(97,211,148,.14);
-  --shadow: 0 18px 48px rgba(0,0,0,.32);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+:root{
+  color-scheme:dark;
+  --page:#0a0a0b;--chrome:#1b1a19;--surface:#1c1b1a;--surface-2:#232120;--surface-3:#2b2927;
+  --line:rgba(255,255,255,.095);--line-strong:rgba(255,255,255,.15);--text:#f1efec;--muted:#aaa49f;
+  --faint:#79736e;--blue:#59b7eb;--blue-bg:rgba(50,148,204,.13);--green:#56d09a;--green-bg:rgba(53,194,133,.13);
+  --red:#ff7777;--red-bg:rgba(255,96,96,.13);--amber:#e9b957;--amber-bg:rgba(233,185,87,.13);
 }
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  letter-spacing: 0;
+*{box-sizing:border-box} html,body{margin:0;min-height:100%;background:var(--page);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+button{font:inherit;color:inherit}.page{min-height:100vh;padding:22px;background:radial-gradient(900px 440px at 80% -8%,rgba(60,148,198,.075),transparent 62%),var(--page)}
+.preview-head{max-width:1800px;margin:0 auto 16px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.preview-head h1{font-size:24px;letter-spacing:-.025em;margin:0 0 4px}.preview-head p{margin:0;color:var(--muted);font-size:13px}
+.tabs{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:11px;background:rgba(28,27,26,.9);backdrop-filter:blur(18px);box-shadow:0 14px 40px rgba(0,0,0,.34)}
+.tab{border:0;background:transparent;padding:7px 13px;border-radius:7px;color:var(--muted);cursor:pointer;font-size:12px}.tab.active{background:var(--surface-3);color:var(--text)}
+.variant{display:none;max-width:1800px;margin:auto}.variant.active{display:block}
+.note{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;margin-bottom:12px}.note>div{min-height:58px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(31,30,29,.66)}
+.note b{display:block;margin-bottom:3px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint)}.note span{font-size:12px;line-height:1.35;color:var(--muted)}
+.screen{container-type:inline-size;overflow:hidden;width:100%;aspect-ratio:2288/1358;border:1px solid var(--line-strong);border-radius:14px;background:#09090a;box-shadow:0 26px 80px rgba(0,0,0,.5)}
+.ref-img{display:block;width:100%;height:100%;object-fit:cover}
+.app{height:100%;display:grid;grid-template-rows:44px minmax(0,1fr) 26px;background:#09090a;font-size:12px}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 15px;background:rgba(29,28,27,.96);border-bottom:1px solid var(--line);color:var(--muted)}
+.top-left,.top-right,.cluster{display:flex;align-items:center}.top-left{gap:10px}.top-right{gap:11px}.cluster{gap:8px}.cluster-label{font-weight:650;font-size:10px;letter-spacing:.06em}
+.select{display:flex;align-items:center;gap:34px;padding:6px 9px;border:1px solid var(--line-strong);border-radius:7px;background:rgba(255,255,255,.035);color:#ddd}
+.chev{color:#6f6a66;font-size:17px}.search{width:220px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.04);padding:6px 10px;color:#8f8a85}.kbd{float:right;margin-left:14px;color:#77716d;font-family:ui-monospace,monospace}.top-ico{color:#aaa}
+.content{overflow:hidden;padding:15px 18px 17px;display:flex;flex-direction:column;gap:12px}
+.context-card{flex:none;border:1px solid var(--line-strong);border-radius:10px;background:linear-gradient(118deg,rgba(255,255,255,.04),rgba(255,255,255,.018));padding:13px 15px;box-shadow:0 8px 24px rgba(0,0,0,.17)}
+.context-top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.context-name{display:flex;align-items:center;gap:9px}.branch{width:18px;height:18px;color:var(--blue)}
+.context-name h2{font-size:16px;letter-spacing:-.018em;margin:0}.chips{display:flex;gap:6px;margin-top:8px}.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 7px;border-radius:999px;border:1px solid var(--line);font-size:10px;color:var(--muted)}
+.chip.blue{color:var(--blue);background:var(--blue-bg);border-color:rgba(89,183,235,.22)}.chip.green{color:var(--green);background:var(--green-bg);border-color:rgba(86,208,154,.22)}
+.context-count{text-align:right}.context-count strong{font-size:14px}.context-count span{display:block;color:var(--muted);font-size:10px;margin-top:2px}
+.summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:18px;margin-top:12px}.summary-field small{display:block;color:var(--faint);font-size:9px;font-weight:700;letter-spacing:.055em;text-transform:uppercase;margin-bottom:3px}.summary-field strong{font-size:12px;font-weight:600}.summary-field strong.green{color:var(--green)}.summary-field strong.red{color:var(--red)}
+.work{min-height:0;flex:1;display:grid;grid-template-columns:220px minmax(0,1fr);gap:18px}.rail{border-right:1px solid var(--line);padding-right:16px}.rail-label{padding:0 7px 7px;color:#96908b;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.rail-item{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-radius:7px;color:var(--muted);margin-bottom:3px}.rail-item.active{background:#2a2827;color:var(--text);font-weight:600}
+.count{min-width:18px;padding:2px 5px;border-radius:4px;text-align:center;background:#302e2c;color:#bbb4ae;font-size:10px}
+.main{min-width:0;overflow:hidden}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding-bottom:11px;margin-bottom:12px}
+.section-head h3{font-size:15px;letter-spacing:-.016em;margin:0 0 2px}.section-head p{font-size:11px;margin:0;color:var(--muted)}
+.head-actions{display:flex;align-items:center;gap:10px}.item-count{font-size:10px;color:var(--muted)}
+.view-switch{display:flex;padding:3px;border:1px solid var(--line);border-radius:8px;background:#151515}.mode{border:0;border-radius:5px;background:transparent;color:var(--muted);padding:5px 9px;font-size:10px;cursor:pointer}.mode.active{background:var(--surface-3);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,420px));gap:12px}
+.app-card{position:relative;overflow:hidden;height:296px;border:1px solid var(--line-strong);border-radius:10px;background:linear-gradient(120deg,rgba(255,255,255,.045),rgba(255,255,255,.018));box-shadow:0 7px 20px rgba(0,0,0,.16);transition:transform 150ms ease,border-color 150ms ease,box-shadow 150ms ease}
+.app-card:hover{transform:translateY(-1px);border-color:rgba(89,183,235,.32);box-shadow:0 11px 28px rgba(0,0,0,.24)}.tone{position:absolute;inset:0 auto 0 0;width:4px;background:var(--red)}.tone.green{background:var(--green)}.tone.amber{background:var(--amber)}
+.card-inner{height:100%;display:flex;flex-direction:column;padding:14px 15px 12px 18px}.card-top{display:flex;justify-content:space-between;gap:12px}.name{font-size:14px;font-weight:650;letter-spacing:-.01em}.sub{font-size:10px;color:var(--muted);margin-top:3px}.repo-mark{display:grid;place-items:center;width:28px;height:28px;border:1px solid rgba(89,183,235,.28);border-radius:7px;color:var(--blue);background:var(--blue-bg)}
+.badges{display:flex;gap:5px;margin-top:9px}.badge{display:inline-flex;padding:3px 7px;border-radius:999px;border:1px solid var(--line);font-size:9px;font-weight:650}.badge.green{color:var(--green);background:var(--green-bg);border-color:rgba(86,208,154,.23)}.badge.red{color:var(--red);background:var(--red-bg);border-color:rgba(255,119,119,.22)}.badge.amber{color:var(--amber);background:var(--amber-bg);border-color:rgba(233,185,87,.22)}
+.source{display:flex;align-items:center;gap:8px;min-width:0;margin-top:12px;padding:8px 9px;border:1px solid var(--line);border-radius:7px;background:rgba(0,0,0,.18)}.source span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}.fact{padding:8px 9px;border:1px solid var(--line);border-radius:7px;background:rgba(0,0,0,.11)}
+.fact small{display:block;color:var(--faint);font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}.fact strong{font-size:10px}
+.card-actions{display:flex;justify-content:flex-end;gap:7px;border-top:1px solid var(--line);margin-top:auto;padding-top:10px}.btn{border:1px solid var(--line-strong);border-radius:7px;background:rgba(255,255,255,.03);padding:5px 9px;font-size:10px;cursor:pointer}.btn.primary{border-color:rgba(89,183,235,.3);background:var(--blue-bg);color:#b7e5ff}
+.table{overflow:hidden;border:1px solid var(--line-strong);border-radius:10px;background:rgba(255,255,255,.018)}
+.table-head,.table-row{display:grid;grid-template-columns:minmax(170px,1.05fr) 150px minmax(250px,1.35fr) 110px 130px 70px 172px;align-items:center;gap:14px}
+.table-head{min-height:36px;padding:0 14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.024);color:var(--faint);font-size:9px;font-weight:700;letter-spacing:.045em;text-transform:uppercase}
+.table-row{position:relative;min-height:68px;padding:9px 14px 9px 17px;border-bottom:1px solid var(--line);transition:background 130ms ease}.table-row:last-child{border-bottom:0}.table-row:hover{background:rgba(255,255,255,.025)}
+.row-name{font-weight:650;font-size:12px}.row-sub{font-size:9px;color:var(--muted);margin-top:3px}.row-status{display:flex;gap:4px;flex-wrap:wrap}.cell{min-width:0}.cell .clip{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.cell small{display:block;color:var(--faint);font-size:9px;margin-top:2px}.row-actions{display:flex;justify-content:flex-end;gap:6px}
+.footer{display:flex;justify-content:flex-end;align-items:center;padding:0 13px;border-top:1px solid var(--line);background:#1a1918;color:#8c8680;font-size:9px}
+.compact-screen{max-width:760px;aspect-ratio:1 / 1;margin-inline:auto}
+@container (max-width:1100px){
+  .content{overflow:auto}
+  .summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .work{display:flex;flex-direction:column;gap:11px}
+  .rail{display:flex;align-items:center;gap:5px;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:0 0 9px}
+  .rail-label{padding:0 8px 0 0;white-space:nowrap}.rail-item{flex:none;margin:0}
+  .card-grid{grid-template-columns:repeat(auto-fit,minmax(270px,420px))}
+  .table-head,.table-row{grid-template-columns:1fr 130px 1.2fr 90px 130px}
+  .table-head>*:nth-child(6),.table-row>*:nth-child(6),.table-head>*:nth-child(7),.table-row>*:nth-child(7){display:none}
 }
-button, input { font: inherit; }
-.preview-shell { min-height: 100vh; padding: 18px; }
-.preview-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  margin: 0 auto 14px;
-  max-width: 1580px;
+@container (max-width:800px){
+  .content{padding:12px}
+  .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px}
+  .section-head{align-items:flex-start;flex-wrap:wrap}
+  .card-grid{grid-template-columns:repeat(2,minmax(0,1fr));justify-items:stretch}.app-card{width:100%;max-width:none}
+  .card-inner{padding:12px 12px 10px 15px}.source{margin-top:9px}.facts{gap:6px}.fact{padding:6px 7px}
+  .card-actions .btn{padding:4px 7px}
 }
-.preview-title { display: flex; gap: 10px; align-items: center; }
-.logo { width: 18px; height: 18px; border: 1px solid var(--teal); border-radius: 4px; background: var(--teal-soft); }
-h1 { margin: 0; font-size: 16px; line-height: 1.25; }
-.preview-sub { margin: 4px 0 0; color: var(--muted); font-size: 13px; max-width: 920px; }
-.preview-actions { display: flex; gap: 8px; align-items: center; }
-.nav-pill { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 7px; padding: 7px 10px; font-size: 12px; }
-.nav-pill.active { border-color: color-mix(in srgb, var(--teal) 60%, var(--line)); background: var(--teal-soft); }
-.design-notes {
-  max-width: 1580px;
-  margin: 0 auto 12px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.note {
-  border: 1px solid var(--line-soft);
-  background: #0d0e0c;
-  border-radius: 7px;
-  padding: 10px 12px;
-  min-height: 70px;
-}
-.note strong { display: block; font-size: 12px; color: var(--text); margin-bottom: 5px; }
-.note span { color: var(--muted); font-size: 12px; line-height: 1.4; }
-.app-frame {
-  max-width: 1580px;
-  margin: 0 auto 38px;
-  border: 1px solid var(--line);
-  background: #0b0c0a;
-  box-shadow: var(--shadow);
-  min-height: 780px;
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 380px;
-  overflow: hidden;
-}
-.sidebar {
-  background: #191815;
-  border-right: 1px solid var(--line);
-  padding: 14px 12px;
-  min-width: 0;
-}
-.cluster-name { font-weight: 750; font-size: 13px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cluster-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
-.side-group { margin-top: 20px; display: grid; gap: 4px; }
-.side-item {
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-.side-item.active { background: rgba(21,184,166,.12); color: #77eadb; border-left: 2px solid var(--teal); padding-left: 6px; }
-.main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  background: #080908;
-}
-.topbar {
-  height: 50px;
-  border-bottom: 1px solid var(--line-soft);
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr);
-  align-items: center;
-  gap: 12px;
-  padding: 0 14px;
-  background: #181714;
-}
-.context { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
-.select { border: 1px solid var(--line); background: #22201d; color: var(--text); border-radius: 7px; padding: 7px 10px; font-weight: 500; text-transform: none; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.top-title { font-weight: 750; font-size: 13px; text-align: center; }
-.search { justify-self: end; display: flex; align-items: center; gap: 8px; color: var(--muted); border: 1px solid var(--line); background: #22201d; border-radius: 8px; height: 30px; padding: 0 10px; min-width: 260px; font-size: 12px; }
-.content { min-height: 0; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.hero-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; border-bottom: 1px solid var(--line-soft); padding-bottom: 12px; }
-.title-row { display: flex; align-items: center; gap: 10px; }
-.icon-square { width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 6px; display: grid; place-items: center; color: var(--amber); background: var(--amber-soft); font-weight: 800; }
-h2 { margin: 0; font-size: 18px; line-height: 1.25; }
-.body-copy { margin: 4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
-.command-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.btn { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 7px; min-height: 31px; padding: 7px 10px; font-size: 12px; font-weight: 650; }
-.btn.primary { background: var(--teal-soft); border-color: color-mix(in srgb, var(--teal) 58%, var(--line)); color: #dffdf8; }
-.btn.icon { width: 31px; padding: 0; }
-.metric-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.metric { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 10px; min-height: 62px; }
-.metric .label { color: var(--muted); font-size: 11px; font-weight: 750; text-transform: uppercase; }
-.metric .value { margin-top: 7px; font-size: 22px; font-weight: 780; }
-.metric.hot { background: linear-gradient(0deg, var(--red-soft), transparent 80%), var(--panel); border-color: color-mix(in srgb, var(--red) 36%, var(--line)); }
-.metric.warn { background: linear-gradient(0deg, var(--amber-soft), transparent 82%), var(--panel); border-color: color-mix(in srgb, var(--amber) 34%, var(--line)); }
-.workbench {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(278px, 34%) minmax(0, 1fr);
-  gap: 12px;
-  overflow: hidden;
-}
-.queue, .case-panel, .details-panel, .section-card {
-  border: 1px solid var(--line);
-  background: var(--panel);
-  border-radius: 7px;
-}
-.queue { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.panel-head { padding: 12px; border-bottom: 1px solid var(--line-soft); display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.panel-title { font-size: 13px; font-weight: 780; }
-.panel-sub { color: var(--muted); font-size: 12px; margin-top: 3px; line-height: 1.35; }
-.count-badge { border: 1px solid var(--line); background: #292722; color: var(--text); border-radius: 999px; padding: 2px 7px; font-size: 11px; font-weight: 800; }
-.filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid var(--line-soft); }
-.filter { border: 1px solid var(--line); background: #22201d; color: var(--muted); border-radius: 7px; padding: 6px 8px; font-size: 11px; font-weight: 700; }
-.filter.active { background: #09689f; border-color: #118bd1; color: white; }
-.queue-scroll { overflow: auto; padding: 10px; display: grid; gap: 10px; }
-.group-label { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; margin: 4px 0 -2px; }
-.incident-card {
-  border: 1px solid var(--line-soft);
-  background: #151713;
-  border-radius: 7px;
-  padding: 10px;
-  display: grid;
-  gap: 7px;
-  border-left: 4px solid var(--line);
-}
-.incident-card.selected { border-color: color-mix(in srgb, var(--teal) 62%, var(--line)); border-left-color: var(--teal); background: #121b18; }
-.incident-card.degraded { border-left-color: var(--red); }
-.incident-card.attention { border-left-color: var(--amber); }
-.incident-card.restart { border-left-color: var(--blue); }
-.card-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
-.resource-name { min-width: 0; font-size: 13px; font-weight: 780; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.resource-meta { color: var(--muted); font-size: 12px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.age { color: var(--muted); border: 1px solid var(--line); background: #24221e; border-radius: 999px; padding: 2px 6px; font-size: 11px; flex: 0 0 auto; }
-.chips { display: flex; flex-wrap: wrap; gap: 5px; }
-.chip { border: 1px solid var(--line); background: #282622; border-radius: 999px; padding: 3px 7px; color: var(--muted); font-size: 11px; line-height: 1; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chip.red { color: #ffd8d8; background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 48%, var(--line)); }
-.chip.amber { color: #ffe7b6; background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 48%, var(--line)); }
-.chip.green { color: #c8fadd; background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 42%, var(--line)); }
-.chip.blue { color: #d8ecff; background: var(--blue-soft); border-color: color-mix(in srgb, var(--blue) 42%, var(--line)); }
-.evidence-line { color: var(--muted); font-size: 12px; line-height: 1.35; }
-.case-panel { min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
-.case-scroll { overflow: auto; padding: 14px; display: grid; gap: 12px; }
-.case-hero { border: 1px solid var(--line); background: var(--panel-3); border-radius: 7px; padding: 14px; display: grid; gap: 12px; }
-.case-heading { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-.case-heading h3 { margin: 0; font-size: 18px; line-height: 1.25; }
-.status-stack { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
-.summary-sentence { color: #e7e0d7; font-size: 14px; line-height: 1.45; }
-.fact-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.fact { border: 1px solid var(--line-soft); border-radius: 7px; background: #11120f; padding: 9px; min-width: 0; }
-.fact-label { color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
-.fact-value { margin-top: 5px; font-size: 13px; font-weight: 750; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.triage-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.story { border: 1px solid var(--line); border-radius: 7px; background: #131410; padding: 11px; min-width: 0; }
-.story h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; color: var(--muted); }
-.story p { margin: 0; color: #d7d0c7; font-size: 12px; line-height: 1.45; }
-.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.step { border: 1px solid var(--line); background: #131410; border-radius: 7px; padding: 10px; min-height: 80px; }
-.step-num { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--teal-soft); color: #a7fff3; border: 1px solid color-mix(in srgb, var(--teal) 56%, var(--line)); font-size: 11px; font-weight: 850; margin-right: 6px; }
-.step-title { font-size: 12px; font-weight: 800; }
-.step-body { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.4; }
-.pivot-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.details-panel {
-  min-width: 0;
-  background: var(--panel-2);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 0;
-  border-top: 0;
-  border-bottom: 0;
-  border-right: 0;
-}
-.detail-head { padding: 13px 14px; border-bottom: 1px solid var(--line-soft); display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-.detail-name { font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 285px; }
-.detail-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
-.close { width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--line); background: #20201b; color: var(--text); }
-.detail-body { min-height: 0; overflow: auto; padding: 13px; display: grid; gap: 12px; }
-.tabs { display: flex; gap: 6px; overflow: hidden; flex-wrap: wrap; }
-.tab { border: 1px solid var(--line); background: #171915; color: var(--text); border-radius: 7px; padding: 7px 9px; font-size: 12px; }
-.tab.active { background: var(--teal-soft); border-color: color-mix(in srgb, var(--teal) 54%, var(--line)); color: #dffdf8; }
-.detail-card { border: 1px solid var(--line); background: #151713; border-radius: 7px; padding: 11px; display: grid; gap: 9px; }
-.detail-card h4 { margin: 0; font-size: 12px; text-transform: uppercase; color: var(--muted); }
-.signal { border: 1px solid var(--line); border-left: 4px solid var(--amber); background: #11120f; border-radius: 7px; padding: 9px; }
-.signal.blue { border-left-color: var(--blue); }
-.signal.green { border-left-color: var(--green); }
-.signal-title { font-size: 12px; font-weight: 800; }
-.signal-body { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.4; }
-.timeline { display: grid; gap: 8px; }
-.time-item { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 10px; border: 1px solid var(--line-soft); background: #10120f; border-radius: 7px; padding: 9px; }
-.time { color: var(--muted); font-size: 11px; }
-.time-title { font-size: 12px; font-weight: 800; }
-.time-body { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.35; }
-.footer-callout { border: 1px solid var(--line-soft); background: #0f100e; border-radius: 7px; padding: 10px 12px; color: var(--muted); font-size: 12px; line-height: 1.4; }
-@media (max-width: 1240px) {
-  .app-frame { grid-template-columns: 190px minmax(0, 1fr); }
-  .details-panel { grid-column: 2; border-top: 1px solid var(--line); border-left: 0; max-height: 520px; }
-  .topbar { grid-template-columns: 1fr; height: auto; padding: 10px 14px; align-items: start; }
-  .top-title { text-align: left; }
-  .search { justify-self: stretch; min-width: 0; }
-}
-@media (max-width: 900px) {
-  .preview-shell { padding: 10px; }
-  .preview-head, .hero-row, .case-heading { flex-direction: column; align-items: stretch; }
-  .design-notes { grid-template-columns: 1fr; }
-  .app-frame { grid-template-columns: 1fr; }
-  .sidebar { display: none; }
-  .details-panel { grid-column: 1; }
-  .metric-row, .fact-grid, .triage-grid, .steps, .workbench { grid-template-columns: 1fr; }
-  .command-row, .status-stack { justify-content: flex-start; }
-  .queue { max-height: 520px; }
-}
+@container (max-width:560px){.card-grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.app-card,.table-row{transition:none}.app-card:hover{transform:none}}
 </style>
 </head>
 <body>
-<div class="preview-shell">
+<div class="page">
   <header class="preview-head">
-    <div class="preview-title">
-      <div class="logo" aria-hidden="true"></div>
-      <div>
-        <h1>KubeCove Incident Workbench - deliberate target</h1>
-        <p class="preview-sub">This pass is workflow-first: reduce table collisions, keep incident context visible, and reuse the existing selected resource details panel instead of inventing a second drilldown.</p>
-      </div>
-    </div>
-    <nav class="preview-actions" aria-label="Preview sections">
-      <a class="nav-pill active" href="#target">Target</a>
+    <div><h1>GitOps refinement</h1><p>Resources-style summary card. Cards become compact objects; the dense List direction stays locked.</p></div>
+    <nav class="tabs" aria-label="Preview variants">
+      <button class="tab" data-target="reference">Reference</button>
+      <button class="tab active" data-target="cards">Refined · Cards</button>
+      <button class="tab" data-target="compact">Compact · Cards</button>
+      <button class="tab" data-target="list">Refined · List</button>
     </nav>
   </header>
 
-  <section class="design-notes" aria-label="Design evidence">
-    <div class="note"><strong>Browser finding</strong><span>Current incident table overlaps long Signals and Latest warning text at desktop width. New design uses card queue plus selected case instead of trying to make one table answer every question.</span></div>
-    <div class="note"><strong>Repo finding</strong><span>`WorkspaceShell` already owns `DetailPanelFrame` and `ResourceDetailPanel`. Incident selection should inspect a resource in-place; separate Resources pivot can still navigate away.</span></div>
-    <div class="note"><strong>Product fit</strong><span>Keep read-only cockpit semantics. Actions are pivots to details, events, logs, YAML, topology/resources; no restart, delete, sync, or apply action appears here.</span></div>
+  <section class="variant" id="reference">
+    <div class="note"><div><b>Reference language</b><span>Strong context card first, then dense operational content below.</span></div><div><b>Borrow</b><span>Surface, compact facts, quiet borders, clear status.</span></div><div><b>Do not copy</b><span>Resources-specific controls and topology/table split remain out.</span></div></div>
+    <div class="screen"><img class="ref-img" src="file:///C:/Users/timpa/AppData/Local/Temp/codex-clipboard-684a7522-ca38-487f-9e9a-d0413713460d.png" alt="Resources view reference"></div>
   </section>
 
-  <main id="target" class="app-frame" aria-label="Incident Workbench target">
-    <aside class="sidebar">
-      <div class="cluster-name">mock-dev</div>
-      <div class="cluster-sub">mock-dev</div>
-      <div class="side-group">
-        <div class="side-item">Workspace Overview</div>
-        <div class="side-item">Cluster Overview</div>
-        <div class="side-item">Namespaces</div>
-        <div class="side-item">Workloads</div>
-        <div class="side-item">Network</div>
-        <div class="side-item">Config</div>
-        <div class="side-item">Storage</div>
-        <div class="side-item">GitOps</div>
-        <div class="side-item">Helm</div>
-        <div class="side-item active">Incidents</div>
-        <div class="side-item">Port Forwards</div>
-        <div class="side-item">RBAC</div>
-      </div>
-    </aside>
+  <section class="variant active" id="cards">
+    <div class="note"><div><b>Refined target · Cards</b><span>GitOps gets a full-width context card. Application cards fluidly grow from 300px to 420px while height stays fixed at 296px.</span></div><div><b>Hierarchy</b><span>Only width flexes; the approved 296px height and bottom-aligned actions remain stable.</span></div><div><b>Behavior</b><span>Two preview-only samples test the fluid 300–420px grid. Cards still default and persist.</span></div></div>
+    <div class="screen"><div class="app">
+    <div class="topbar"><div class="top-left"><div class="cluster"><span class="cluster-label">CLUSTER CONTEXT:</span><span class="select">kind-kubecove-argo⌄</span></div><span class="chev">›</span><span>GitOps</span></div><div class="top-right"><span class="top-ico">⟳ 1</span><span class="top-ico">▱</span><span class="top-ico">⚙</span><span class="search">⌕&nbsp; Search resources… <span class="kbd">Ctrl K</span></span></div></div>
+    <main class="content">
+      <section class="context-card">
+        <div class="context-top"><div><div class="context-name"><svg class="branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="6" cy="4" r="2"/><circle cx="6" cy="20" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 6v12M8 12c5 0 4-4 8-4"/></svg><h2>GitOps</h2></div><div class="chips"><span class="chip blue">Read-only</span><span class="chip green">● Argo CD detected</span></div></div><div class="context-count"><strong>4</strong><span>GitOps objects</span></div></div>
+        <div class="summary-grid"><div class="summary-field"><small>Applications</small><strong>3</strong></div><div class="summary-field"><small>ApplicationSets</small><strong>0</strong></div><div class="summary-field"><small>AppProjects</small><strong>1</strong></div><div class="summary-field"><small>Synced</small><strong class="green">2</strong></div><div class="summary-field"><small>Degraded</small><strong class="red">1</strong></div></div>
+      </section>
+      <div class="work"><aside class="rail"><div class="rail-label">Argo CD</div><div class="rail-item active"><span>Applications</span><span class="count">3</span></div><div class="rail-item"><span>ApplicationSets</span><span class="count">0</span></div><div class="rail-item"><span>AppProjects</span><span class="count">1</span></div></aside>
+      <section class="main"><div class="section-head"><div><h3>Applications</h3><p>Delivery state, source, destination, and revision.</p></div><div class="head-actions"><span class="item-count">3 applications</span><div class="view-switch" aria-label="GitOps view mode"><button class="mode active" data-mode="cards">▦ Cards</button><button class="mode " data-mode="list">☷ List</button></div></div></div>
+    <div class="card-grid">
+      <article class="app-card" tabindex="0"><i class="tone"></i><div class="card-inner">
+        <div class="card-top"><div><div class="name">todo</div><div class="sub">Project default · App namespace argocd</div></div><span class="repo-mark">⑂</span></div>
+        <div class="badges"><span class="badge green">Synced</span><span class="badge red">Degraded</span></div>
+        <div class="source"><span style="color:var(--blue)">⌘</span><span class="mono">http://10.89.1.50:8000/gitops-fixtures.git/cluster</span></div>
+        <div class="facts"><div class="fact"><small>Revision</small><strong class="mono">main</strong></div><div class="fact"><small>Destination</small><strong>todo</strong></div><div class="fact"><small>Namespace</small><strong>argocd</strong></div><div class="fact"><small>Age</small><strong>4d</strong></div></div>
+        <div class="card-actions"><button class="btn">Details</button><button class="btn primary">View resources</button></div>
+      </div></article>
+      <article class="app-card" tabindex="0"><i class="tone green"></i><div class="card-inner">
+        <div class="card-top"><div><div class="name">payments-api</div><div class="sub">Project platform · App namespace argocd</div></div><span class="repo-mark">⑂</span></div>
+        <div class="badges"><span class="badge green">Synced</span><span class="badge green">Healthy</span></div>
+        <div class="source"><span style="color:var(--blue)">⌘</span><span class="mono">https://github.com/acme/platform-config.git</span></div>
+        <div class="facts"><div class="fact"><small>Revision</small><strong class="mono">v2.8.1</strong></div><div class="fact"><small>Destination</small><strong>production</strong></div><div class="fact"><small>Namespace</small><strong>payments</strong></div><div class="fact"><small>Age</small><strong>18d</strong></div></div>
+        <div class="card-actions"><button class="btn">Details</button><button class="btn primary">View resources</button></div>
+      </div></article>
+      <article class="app-card" tabindex="0"><i class="tone amber"></i><div class="card-inner">
+        <div class="card-top"><div><div class="name">nightly-jobs</div><div class="sub">Project operations · App namespace argocd</div></div><span class="repo-mark">⑂</span></div>
+        <div class="badges"><span class="badge amber">OutOfSync</span><span class="badge amber">Progressing</span></div>
+        <div class="source"><span style="color:var(--blue)">⌘</span><span class="mono">https://github.com/acme/operations.git</span></div>
+        <div class="facts"><div class="fact"><small>Revision</small><strong class="mono">main</strong></div><div class="fact"><small>Destination</small><strong>staging</strong></div><div class="fact"><small>Namespace</small><strong>jobs-lab</strong></div><div class="fact"><small>Age</small><strong>6h</strong></div></div>
+        <div class="card-actions"><button class="btn">Details</button><button class="btn primary">View resources</button></div>
+      </div></article>
+    </div></section></div>
+    </main><footer class="footer">⌁ CPU 7.4% · Memory 489 MB · 7 processes</footer>
+  </div></div>
+  </section>
 
-    <section class="main">
-      <div class="topbar">
-        <div class="context">Cluster context: <span class="select">mock-dev</span></div>
-        <div class="top-title">Incident Cockpit</div>
-        <div class="search">Search resources... <span style="margin-left:auto;color:var(--faint)">Ctrl K</span></div>
-      </div>
-      <div class="content">
-        <div class="hero-row">
-          <div>
-            <div class="title-row"><span class="icon-square">!</span><h2>Guided Incident Workbench</h2></div>
-            <p class="body-copy">One selected signal becomes a case. The queue stays visible, and the existing selected-details panel carries deep evidence.</p>
-          </div>
-          <div class="command-row">
-            <button class="btn icon">R</button>
-            <button class="btn">Refresh</button>
-            <button class="btn primary">Open resources</button>
-          </div>
-        </div>
+  <section class="variant" id="compact">
+    <div class="note"><div><b>Compact target · Cards</b><span>GitOps gets a full-width context card. A 760px-wide app window fixes the grid at two cards per row and scrolls vertically.</span></div><div><b>Hierarchy</b><span>Provider navigation becomes a horizontal strip; two fluid columns share width at the same 296px height.</span></div><div><b>Behavior</b><span>This is the same content and actions at the compact breakpoint.</span></div></div>
+    <div class="screen compact-screen"><div class="app">
+    <div class="topbar"><div class="top-left"><div class="cluster"><span class="cluster-label">CLUSTER CONTEXT:</span><span class="select">kind-kubecove-argo⌄</span></div><span class="chev">›</span><span>GitOps</span></div><div class="top-right"><span class="top-ico">⟳ 1</span><span class="top-ico">▱</span><span class="top-ico">⚙</span><span class="search">⌕&nbsp; Search resources… <span class="kbd">Ctrl K</span></span></div></div>
+    <main class="content">
+      <section class="context-card">
+        <div class="context-top"><div><div class="context-name"><svg class="branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="6" cy="4" r="2"/><circle cx="6" cy="20" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 6v12M8 12c5 0 4-4 8-4"/></svg><h2>GitOps</h2></div><div class="chips"><span class="chip blue">Read-only</span><span class="chip green">● Argo CD detected</span></div></div><div class="context-count"><strong>4</strong><span>GitOps objects</span></div></div>
+        <div class="summary-grid"><div class="summary-field"><small>Applications</small><strong>3</strong></div><div class="summary-field"><small>ApplicationSets</small><strong>0</strong></div><div class="summary-field"><small>AppProjects</small><strong>1</strong></div><div class="summary-field"><small>Synced</small><strong class="green">2</strong></div><div class="summary-field"><small>Degraded</small><strong class="red">1</strong></div></div>
+      </section>
+      <div class="work"><aside class="rail"><div class="rail-label">Argo CD</div><div class="rail-item active"><span>Applications</span><span class="count">3</span></div><div class="rail-item"><span>ApplicationSets</span><span class="count">0</span></div><div class="rail-item"><span>AppProjects</span><span class="count">1</span></div></aside>
+      <section class="main"><div class="section-head"><div><h3>Applications</h3><p>Delivery state, source, destination, and revision.</p></div><div class="head-actions"><span class="item-count">3 applications</span><div class="view-switch" aria-label="GitOps view mode"><button class="mode active" data-mode="cards">▦ Cards</button><button class="mode " data-mode="list">☷ List</button></div></div></div>
+    <div class="card-grid">
+      <article class="app-card" tabindex="0"><i class="tone"></i><div class="card-inner">
+        <div class="card-top"><div><div class="name">todo</div><div class="sub">Project default · App namespace argocd</div></div><span class="repo-mark">⑂</span></div>
+        <div class="badges"><span class="badge green">Synced</span><span class="badge red">Degraded</span></div>
+        <div class="source"><span style="color:var(--blue)">⌘</span><span class="mono">http://10.89.1.50:8000/gitops-fixtures.git/cluster</span></div>
+        <div class="facts"><div class="fact"><small>Revision</small><strong class="mono">main</strong></div><div class="fact"><small>Destination</small><strong>todo</strong></div><div class="fact"><small>Namespace</small><strong>argocd</strong></div><div class="fact"><small>Age</small><strong>4d</strong></div></div>
+        <div class="card-actions"><button class="btn">Details</button><button class="btn primary">View resources</button></div>
+      </div></article>
+      <article class="app-card" tabindex="0"><i class="tone green"></i><div class="card-inner">
+        <div class="card-top"><div><div class="name">payments-api</div><div class="sub">Project platform · App namespace argocd</div></div><span class="repo-mark">⑂</span></div>
+        <div class="badges"><span class="badge green">Synced</span><span class="badge green">Healthy</span></div>
+        <div class="source"><span style="color:var(--blue)">⌘</span><span class="mono">https://github.com/acme/platform-config.git</span></div>
+        <div class="facts"><div class="fact"><small>Revision</small><strong class="mono">v2.8.1</strong></div><div class="fact"><small>Destination</small><strong>production</strong></div><div class="fact"><small>Namespace</small><strong>payments</strong></div><div class="fact"><small>Age</small><strong>18d</strong></div></div>
+        <div class="card-actions"><button class="btn">Details</button><button class="btn primary">View resources</button></div>
+      </div></article>
+      <article class="app-card" tabindex="0"><i class="tone amber"></i><div class="card-inner">
+        <div class="card-top"><div><div class="name">nightly-jobs</div><div class="sub">Project operations · App namespace argocd</div></div><span class="repo-mark">⑂</span></div>
+        <div class="badges"><span class="badge amber">OutOfSync</span><span class="badge amber">Progressing</span></div>
+        <div class="source"><span style="color:var(--blue)">⌘</span><span class="mono">https://github.com/acme/operations.git</span></div>
+        <div class="facts"><div class="fact"><small>Revision</small><strong class="mono">main</strong></div><div class="fact"><small>Destination</small><strong>staging</strong></div><div class="fact"><small>Namespace</small><strong>jobs-lab</strong></div><div class="fact"><small>Age</small><strong>6h</strong></div></div>
+        <div class="card-actions"><button class="btn">Details</button><button class="btn primary">View resources</button></div>
+      </div></article>
+    </div></section></div>
+    </main><footer class="footer">⌁ CPU 7.4% · Memory 489 MB · 7 processes</footer>
+  </div></div>
+  </section>
 
-        <section class="metric-row" aria-label="Incident counts">
-          <div class="metric hot"><div class="label">Needs inspection</div><div class="value">8</div></div>
-          <div class="metric hot"><div class="label">Degraded</div><div class="value">1</div></div>
-          <div class="metric warn"><div class="label">Attention</div><div class="value">5</div></div>
-          <div class="metric"><div class="label">Restarted</div><div class="value">2</div></div>
-        </section>
-
-        <section class="workbench">
-          <aside class="queue" aria-label="Signal queue">
-            <div class="panel-head">
-              <div><div class="panel-title">Signal queue</div><div class="panel-sub">Grouped by ownership, ordered by severity and recency.</div></div>
-              <span class="count-badge">8</span>
-            </div>
-            <div class="filters">
-              <span class="filter active">Priority 8</span><span class="filter">Degraded 1</span><span class="filter">Attention 5</span><span class="filter">Restarted 2</span>
-            </div>
-            <div class="queue-scroll">
-              <div class="group-label">Owned by Argo CD: shop</div>
-              <article class="incident-card selected degraded">
-                <div class="card-top"><div class="resource-name">Ingress/payments-api</div><span class="age">2m</span></div>
-                <div class="resource-meta">payments / mock-dev · Argo shop</div>
-                <div class="chips"><span class="chip red">MissingBackend</span><span class="chip amber">Warning event</span></div>
-                <div class="evidence-line">Route is degraded; backend service target looks missing in event stream.</div>
-              </article>
-              <article class="incident-card attention">
-                <div class="card-top"><div class="resource-name">Application/shop</div><span class="age">2m</span></div>
-                <div class="resource-meta">argocd / mock-dev · GitOps owner</div>
-                <div class="chips"><span class="chip amber">OutOfSync</span><span class="chip">Argo</span></div>
-                <div class="evidence-line">Application drift may explain child resource state.</div>
-              </article>
-              <article class="incident-card attention">
-                <div class="card-top"><div class="resource-name">Pod/payments-api-7d9c...</div><span class="age">8m</span></div>
-                <div class="resource-meta">payments / mock-dev · ReplicaSet</div>
-                <div class="chips"><span class="chip green">Running</span><span class="chip green">Ready 1/1</span><span class="chip blue">2 restarts</span></div>
-                <div class="evidence-line">Recovered pod with recent restarts; logs are the next useful pivot.</div>
-              </article>
-              <article class="incident-card restart">
-                <div class="card-top"><div class="resource-name">Deployment/checkout-worker</div><span class="age">9m</span></div>
-                <div class="resource-meta">payments / mock-dev · Argo shop</div>
-                <div class="chips"><span class="chip green">Ready 2/2</span><span class="chip blue">4 restarts</span></div>
-                <div class="evidence-line">Owner is healthy now, but pods under it restarted.</div>
-              </article>
-              <div class="group-label">Unmanaged resources</div>
-              <article class="incident-card attention">
-                <div class="card-top"><div class="resource-name">Ingress/opensearch-dashboards</div><span class="age">12m</span></div>
-                <div class="resource-meta">opensearch / mock-dev · no GitOps owner</div>
-                <div class="chips"><span class="chip amber">RetryBudget</span><span class="chip">Network</span></div>
-                <div class="evidence-line">No owner context; compare related Service and Pod manually.</div>
-              </article>
-            </div>
-          </aside>
-
-          <section class="case-panel" aria-label="Selected incident case">
-            <div class="panel-head">
-              <div><div class="panel-title">Selected case</div><div class="panel-sub">Queue item opens details in-place; Resources is a deliberate escape hatch.</div></div>
-              <span class="count-badge">Ingress</span>
-            </div>
-            <div class="case-scroll">
-              <section class="case-hero">
-                <div class="case-heading">
-                  <div>
-                    <h3>Ingress/payments-api has no healthy backend target.</h3>
-                    <p class="body-copy">Highest priority because traffic entry is degraded and the warning is recent.</p>
-                  </div>
-                  <div class="status-stack"><span class="chip red">Degraded</span><span class="chip amber">2m warning</span><span class="chip">Argo shop</span></div>
-                </div>
-                <div class="summary-sentence">The cockpit knows the failing object, owner grouping, namespace, latest warning, and related status tags. The details panel should answer whether the backend Service/Pod path confirms the failure.</div>
-                <div class="fact-grid">
-                  <div class="fact"><div class="fact-label">Namespace</div><div class="fact-value">payments</div></div>
-                  <div class="fact"><div class="fact-label">Owner</div><div class="fact-value">Argo shop</div></div>
-                  <div class="fact"><div class="fact-label">Signal</div><div class="fact-value">MissingBackend</div></div>
-                  <div class="fact"><div class="fact-label">Warning age</div><div class="fact-value">2m</div></div>
-                </div>
-              </section>
-
-              <section class="triage-grid" aria-label="Triage story">
-                <div class="story"><h4>Known</h4><p>Ingress reports MissingBackend. It is in `payments` and grouped under the `shop` GitOps application.</p></div>
-                <div class="story"><h4>Missing</h4><p>Need target Service endpoints and recent events before blaming the ingress controller.</p></div>
-                <div class="story"><h4>Next</h4><p>Inspect details, then jump to Events. If no event explains it, open related resources.</p></div>
-              </section>
-
-              <section class="steps" aria-label="Guided checks">
-                <div class="step"><span class="step-num">1</span><span class="step-title">Details</span><div class="step-body">Read resource status, labels, owner, and incident summary.</div></div>
-                <div class="step"><span class="step-num">2</span><span class="step-title">Events</span><div class="step-body">Confirm MissingBackend reason and repeat count.</div></div>
-                <div class="step"><span class="step-num">3</span><span class="step-title">Related resources</span><div class="step-body">Open Service, Endpoints, and backing Pods in Resources.</div></div>
-                <div class="step"><span class="step-num">4</span><span class="step-title">Logs when pod-backed</span><div class="step-body">Use Logs only for selected Pods; do not show dead controls for non-Pods.</div></div>
-              </section>
-
-              <section class="section-card" style="padding:12px;display:grid;gap:10px">
-                <div class="panel-title">Read-only pivots</div>
-                <div class="pivot-row"><button class="btn primary">Inspect in details</button><button class="btn">Events tab</button><button class="btn">Open in Resources</button><button class="btn">YAML</button></div>
-              </section>
-
-              <div class="footer-callout">Interaction rule: selecting a queue item calls the inspect path, keeps `viewMode=incidents`, highlights the queue card, and opens the existing selected-details sidebar. “Open in Resources” is the only path that navigates away.</div>
-            </div>
-          </section>
-        </section>
-      </div>
-    </section>
-
-    <aside class="details-panel" aria-label="Existing selected details">
-      <header class="detail-head">
-        <div><div class="detail-name">Ingress/payments-api</div><div class="detail-meta">Ingress / payments</div></div>
-        <button class="close">x</button>
-      </header>
-      <div class="detail-body">
-        <div class="tabs"><span class="tab active">Details</span><span class="tab">YAML</span><span class="tab">Events</span><span class="tab">Logs</span><span class="tab">Port Forward</span></div>
-        <section class="detail-card">
-          <h4>Incident summary</h4>
-          <div class="signal"><div class="signal-title">Warning events</div><div class="signal-body">MissingBackend: service has no healthy endpoints.</div></div>
-          <div class="signal blue"><div class="signal-title">Current state</div><div class="signal-body">Ingress object is loaded; backend path needs verification.</div></div>
-          <div class="signal green"><div class="signal-title">Owner context</div><div class="signal-body">Grouped under Argo CD application `shop`.</div></div>
-        </section>
-        <section class="detail-card">
-          <h4>Timeline</h4>
-          <div class="timeline">
-            <div class="time-item"><div class="time">2m</div><div><div class="time-title">Warning MissingBackend</div><div class="time-body">Ingress controller cannot route to backend.</div></div></div>
-            <div class="time-item"><div class="time">now</div><div><div class="time-title">Details selected</div><div class="time-body">Operator can switch tabs without losing incident queue.</div></div></div>
-            <div class="time-item"><div class="time">next</div><div><div class="time-title">Open Events tab</div><div class="time-body">Use existing detail tab rather than a duplicate incident-specific event list.</div></div></div>
-          </div>
-        </section>
-        <section class="detail-card">
-          <h4>Tabs stay existing</h4>
-          <div class="signal"><div class="signal-title">No duplicate panel</div><div class="signal-body">This sidebar is `ResourceDetailPanel`; incident view only chooses which resource and optional tab to inspect.</div></div>
-        </section>
-      </div>
-    </aside>
-  </main>
-
+  <section class="variant" id="list">
+    <div class="note"><div><b>Refined target · List</b><span>Three rows confirm the locked dense-list rhythm; two entries are preview-only samples.</span></div><div><b>Density</b><span>Status remains colored; secondary metadata gets quieter instead of disappearing.</span></div><div><b>Behavior</b><span>List preference persists globally on this device.</span></div></div>
+    <div class="screen"><div class="app">
+    <div class="topbar"><div class="top-left"><div class="cluster"><span class="cluster-label">CLUSTER CONTEXT:</span><span class="select">kind-kubecove-argo⌄</span></div><span class="chev">›</span><span>GitOps</span></div><div class="top-right"><span class="top-ico">⟳ 1</span><span class="top-ico">▱</span><span class="top-ico">⚙</span><span class="search">⌕&nbsp; Search resources… <span class="kbd">Ctrl K</span></span></div></div>
+    <main class="content">
+      <section class="context-card">
+        <div class="context-top"><div><div class="context-name"><svg class="branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="6" cy="4" r="2"/><circle cx="6" cy="20" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 6v12M8 12c5 0 4-4 8-4"/></svg><h2>GitOps</h2></div><div class="chips"><span class="chip blue">Read-only</span><span class="chip green">● Argo CD detected</span></div></div><div class="context-count"><strong>4</strong><span>GitOps objects</span></div></div>
+        <div class="summary-grid"><div class="summary-field"><small>Applications</small><strong>3</strong></div><div class="summary-field"><small>ApplicationSets</small><strong>0</strong></div><div class="summary-field"><small>AppProjects</small><strong>1</strong></div><div class="summary-field"><small>Synced</small><strong class="green">2</strong></div><div class="summary-field"><small>Degraded</small><strong class="red">1</strong></div></div>
+      </section>
+      <div class="work"><aside class="rail"><div class="rail-label">Argo CD</div><div class="rail-item active"><span>Applications</span><span class="count">3</span></div><div class="rail-item"><span>ApplicationSets</span><span class="count">0</span></div><div class="rail-item"><span>AppProjects</span><span class="count">1</span></div></aside>
+      <section class="main"><div class="section-head"><div><h3>Applications</h3><p>Delivery state, source, destination, and revision.</p></div><div class="head-actions"><span class="item-count">3 applications</span><div class="view-switch" aria-label="GitOps view mode"><button class="mode " data-mode="cards">▦ Cards</button><button class="mode active" data-mode="list">☷ List</button></div></div></div>
+    <div class="table">
+      <div class="table-head"><span>Application</span><span>Status</span><span>Repository</span><span>Revision</span><span>Destination</span><span>Age</span><span>Actions</span></div>
+      <article class="table-row" tabindex="0"><i class="tone"></i>
+        <div><div class="row-name">todo</div><div class="row-sub">default · argocd</div></div>
+        <div class="row-status"><span class="badge green">Synced</span><span class="badge red">Degraded</span></div>
+        <div class="cell"><span class="clip mono">http://10.89.1.50:8000/gitops-fixtures.git/cluster</span><small>Git repository</small></div>
+        <div class="cell"><span class="clip mono">main</span><small>revision</small></div>
+        <div class="cell"><span class="clip">todo</span><small>namespace</small></div>
+        <div class="cell"><span class="clip">4d</span></div>
+        <div class="row-actions"><button class="btn">Details</button><button class="btn primary">Resources</button></div>
+      </article>
+      <article class="table-row" tabindex="0"><i class="tone green"></i>
+        <div><div class="row-name">payments-api</div><div class="row-sub">platform · argocd</div></div>
+        <div class="row-status"><span class="badge green">Synced</span><span class="badge green">Healthy</span></div>
+        <div class="cell"><span class="clip mono">https://github.com/acme/platform-config.git</span><small>Git repository</small></div>
+        <div class="cell"><span class="clip mono">v2.8.1</span><small>revision</small></div>
+        <div class="cell"><span class="clip">production</span><small>payments</small></div>
+        <div class="cell"><span class="clip">18d</span></div>
+        <div class="row-actions"><button class="btn">Details</button><button class="btn primary">Resources</button></div>
+      </article>
+      <article class="table-row" tabindex="0"><i class="tone amber"></i>
+        <div><div class="row-name">nightly-jobs</div><div class="row-sub">operations · argocd</div></div>
+        <div class="row-status"><span class="badge amber">OutOfSync</span><span class="badge amber">Progressing</span></div>
+        <div class="cell"><span class="clip mono">https://github.com/acme/operations.git</span><small>Git repository</small></div>
+        <div class="cell"><span class="clip mono">main</span><small>revision</small></div>
+        <div class="cell"><span class="clip">staging</span><small>jobs-lab</small></div>
+        <div class="cell"><span class="clip">6h</span></div>
+        <div class="row-actions"><button class="btn">Details</button><button class="btn primary">Resources</button></div>
+      </article>
+    </div></section></div>
+    </main><footer class="footer">⌁ CPU 7.4% · Memory 489 MB · 7 processes</footer>
+  </div></div>
+  </section>
 </div>
+<script>
+const tabs=[...document.querySelectorAll('.tab')];
+function show(target){
+  tabs.forEach(t=>t.classList.toggle('active',t.dataset.target===target));
+  document.querySelectorAll('.variant').forEach(v=>v.classList.toggle('active',v.id===target));
+  if(target==='cards'||target==='list'){try{localStorage.setItem('kubecove-gitops-preview-mode',target)}catch{}}
+}
+tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.target)));
+document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>show(b.dataset.mode)));
+</script>
 </body>
 </html>

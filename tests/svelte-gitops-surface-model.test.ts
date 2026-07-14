@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	buildGitOpsRailItems,
 	buildGitOpsSelections,
+	buildGitOpsSummary,
 	buildGitOpsTable,
 	gitOpsDetailsActionKey,
 	gitOpsSelectionAgeTooltip,
@@ -103,6 +104,36 @@ const data = {
 };
 
 describe("svelte GitOps surface model", () => {
+	test("summarizes Argo CD objects and application delivery state", () => {
+		expect(buildGitOpsSummary(data, "argo:applications")).toEqual({
+		activeProvider: "Argo CD",
+		detectedProviders: ["Argo CD", "Flux"],
+		totalObjects: 4,
+		facts: [
+			{ label: "Applications", value: 1 },
+			{ label: "ApplicationSets", value: 1 },
+			{ label: "AppProjects", value: 1 },
+			{ label: "Synced", value: 1, tone: "healthy" },
+			{ label: "Degraded", value: 0, tone: "unhealthy" },
+		],
+	});
+	});
+
+	test("summarizes Flux readiness for Flux selections", () => {
+		expect(buildGitOpsSummary(data, "flux:Kustomization")).toEqual({
+		activeProvider: "Flux",
+		detectedProviders: ["Argo CD", "Flux"],
+		totalObjects: 4,
+		facts: [
+			{ label: "Resources", value: 1 },
+			{ label: "Kinds", value: 1 },
+			{ label: "Ready", value: 1, tone: "healthy" },
+			{ label: "Not Ready", value: 0, tone: "unhealthy" },
+			{ label: "Unknown", value: 0 },
+		],
+	});
+	});
+
 	test("builds provider rail counts for Argo CD and Flux groups", () => {
 		expect(buildGitOpsRailItems(data)).toEqual([
 			{

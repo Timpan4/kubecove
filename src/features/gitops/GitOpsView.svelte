@@ -8,15 +8,19 @@
 		EmptyDescription,
 		EmptyHeader,
 		EmptyTitle,
+		SegmentedControl,
 		Tooltip,
 		TooltipContent,
 		TooltipProvider,
 		TooltipTrigger,
 	} from "@/components/ui/svelte";
 	import { formatStatusLabel } from "@/lib/utils";
+	import { settingsStore } from "@/lib/settings-store";
+	import type { GitOpsViewMode } from "@/lib/settings";
 	import type { ResourceSummary } from "@/lib/types";
 	import {
 		gitOpsDetailsActionKey,
+		buildGitOpsSummary,
 		gitOpsSelectionAgeTooltip,
 		gitOpsSelectionKey,
 		gitOpsSelectionPrimaryAction,
@@ -107,6 +111,15 @@
 		gitOpsStatusClass: (status: string | null | undefined) => string;
 	} = $props();
 
+	const gitOpsViewOptions: { value: GitOpsViewMode; label: string }[] = [
+		{ value: "cards", label: "Cards" },
+		{ value: "list", label: "List" },
+	];
+	const gitOpsViewMode = $derived($settingsStore.gitOpsViewMode);
+	const gitOpsSummary = $derived(
+		gitOpsQuery.data ? buildGitOpsSummary(gitOpsQuery.data, gitOpsActiveRailKey) : null,
+	);
+
 	function railItemsFor(provider: GitOpsRailItem["provider"]): GitOpsRailItem[] {
 		return gitOpsRailItems.filter((item: GitOpsRailItem) => item.provider === provider);
 	}
@@ -132,6 +145,11 @@
 		onResourceInspect(gitOpsSelectionResource(selection));
 	}
 
+	function openGitOpsResources(event: MouseEvent, selection: GitOpsSelection) {
+		event.stopPropagation();
+		openSelectedArgoApplicationResources(selection);
+	}
+
 	function stopTooltipEvent(event: Event) {
 		event.stopPropagation();
 	}
@@ -146,6 +164,19 @@
 		if (selection.type === "flux") return selection.item.resourceKind.kind;
 		if (selection.type === "argoProject") return selection.item.description ?? "AppProject";
 		return selection.item.project ?? "default";
+	}
+
+	function gitOpsSelectionDestination(selection: GitOpsSelection): string {
+		if (selection.type === "flux" || selection.type === "argoProject") {
+			return selection.item.namespace ?? "-";
+		}
+		return selection.item.destinationNamespace ?? selection.item.destinationServer ?? "-";
+	}
+
+	function gitOpsSummaryValueClass(tone: "healthy" | "unhealthy" | undefined): string {
+		if (tone === "healthy") return "text-emerald-600 dark:text-emerald-300";
+		if (tone === "unhealthy") return "text-destructive";
+		return "text-foreground";
 	}
 
 	function gitOpsCardBadges(selection: GitOpsSelection): [string, string][] {
@@ -334,14 +365,47 @@
 					</EmptyHeader>
 				</Empty>
 			{:else if gitOpsTable}
-				<div class="grid gap-5 lg:grid-cols-[14rem_minmax(0,1fr)]">
-				<aside class="space-y-5 border-r pr-4">
+				<div class="@container space-y-4">
+					{#if gitOpsSummary}
+						<section
+							class="rounded-lg border bg-surface-1 px-3 py-2.5 shadow-sm"
+							aria-label="GitOps provider overview"
+						>
+							<div class="flex flex-wrap items-start justify-between gap-3">
+								<div class="min-w-0">
+									<h2 class="font-heading text-base font-semibold">{gitOpsSummary.activeProvider}</h2>
+									<div class="mt-2 flex flex-wrap gap-1.5">
+										{#each gitOpsSummary.detectedProviders as provider}
+											<Badge variant="outline" class="border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+												{provider} detected
+											</Badge>
+										{/each}
+									</div>
+								</div>
+								<div class="text-right">
+									<div class="font-semibold tabular-nums">{gitOpsSummary.totalObjects}</div>
+									<div class="text-xs text-muted-foreground">GitOps objects</div>
+								</div>
+							</div>
+							<div class="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 @min-[42rem]:grid-cols-5">
+								{#each gitOpsSummary.facts as fact}
+									<div class="min-w-0">
+										<div class="text-[0.62rem] font-semibold uppercase tracking-wide text-muted-foreground">{fact.label}</div>
+										<div class={`mt-0.5 font-semibold tabular-nums ${gitOpsSummaryValueClass(fact.tone)}`}>{fact.value}</div>
+									</div>
+								{/each}
+							</div>
+						</section>
+					{/if}
+
+					<div class="grid gap-4 @min-[64rem]:grid-cols-[14rem_minmax(0,1fr)]">
+				<aside class="flex gap-5 overflow-x-auto border-b pb-3 @min-[64rem]:block @min-[64rem]:space-y-5 @min-[64rem]:overflow-visible @min-[64rem]:border-b-0 @min-[64rem]:border-r @min-[64rem]:pb-0 @min-[64rem]:pr-4">
 					{#each ["Argo CD", "Flux"] as provider}
 						{@const providerItems = railItemsFor(provider as GitOpsRailItem["provider"])}
 						{#if providerItems.length > 0}
-							<section class="space-y-2">
-								<p class="px-1 text-xs font-semibold uppercase text-muted-foreground">{provider}</p>
-								<div class="grid gap-1">
+							<section class="flex shrink-0 items-center gap-2 @min-[64rem]:block @min-[64rem]:space-y-2">
+								<p class="whitespace-nowrap px-1 text-xs font-semibold uppercase text-muted-foreground">{provider}</p>
+								<div class="flex gap-1 @min-[64rem]:grid">
 									{#each providerItems as item (item.key)}
 										<div
 											class={item.key === gitOpsActiveRailKey
@@ -362,9 +426,20 @@
 				</aside>
 
 				<section class="min-w-0 space-y-4">
-					<div class="border-b pb-3">
-						<h2 class="text-lg font-semibold">{gitOpsTable.title}</h2>
-						<p class="text-sm text-muted-foreground">Read-only resource cards for detected GitOps providers.</p>
+					<div class="flex flex-wrap items-end justify-between gap-3 border-b pb-3">
+						<div>
+							<h2 class="text-lg font-semibold">{gitOpsTable.title}</h2>
+							<p class="text-sm text-muted-foreground">Delivery state, source, destination, and revision.</p>
+						</div>
+						<div class="flex items-center gap-2">
+							<span class="text-xs text-muted-foreground tabular-nums">{gitOpsSelections.length} item{gitOpsSelections.length === 1 ? "" : "s"}</span>
+							<SegmentedControl
+								value={gitOpsViewMode}
+								options={gitOpsViewOptions}
+								onChange={$settingsStore.setGitOpsViewMode}
+								ariaLabel="GitOps view mode"
+							/>
+						</div>
 					</div>
 
 					{#if gitOpsSelections.length === 0}
@@ -375,7 +450,8 @@
 							</EmptyHeader>
 						</Empty>
 					{:else}
-						<div class="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-3">
+						{#if gitOpsViewMode === "cards"}
+							<div class="grid grid-cols-1 gap-3 @min-[35rem]:grid-cols-2 @min-[64rem]:grid-cols-[repeat(auto-fit,minmax(18.75rem,26.25rem))]">
 							{#each gitOpsSelections as item (gitOpsSelectionKey(item))}
 								{@const sourceMode = gitOpsSelectionSourceMode(item)}
 								{@const SourceIcon = gitOpsSourceIcon(sourceMode)}
@@ -386,8 +462,8 @@
 								{@const sourceLine = gitOpsSelectionSourceLine(item)}
 								<div
 									class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-										? "group flex min-h-60 cursor-pointer overflow-hidden rounded-lg border border-primary/60 bg-accent/40 text-xs/relaxed shadow-sm transition-all hover:-translate-y-px hover:border-primary/70 hover:bg-accent/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-										: "group flex min-h-60 cursor-pointer overflow-hidden rounded-lg border bg-surface-1 text-xs/relaxed transition-all hover:-translate-y-px hover:border-primary/50 hover:bg-accent/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"}
+										? "group flex h-[18.5rem] cursor-pointer overflow-hidden rounded-lg border border-primary/60 bg-accent/40 text-xs/relaxed shadow-sm transition-all hover:-translate-y-px hover:border-primary/70 hover:bg-accent/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+										: "group flex h-[18.5rem] cursor-pointer overflow-hidden rounded-lg border bg-surface-1 text-xs/relaxed transition-all hover:-translate-y-px hover:border-primary/50 hover:bg-accent/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"}
 									role="button"
 									tabindex="0"
 									aria-label={gitOpsCardActionLabel(item)}
@@ -444,7 +520,7 @@
 											</TooltipContent>
 											</Tooltip>
 										{/if}
-										<div class="mt-3 grid grid-cols-1 gap-1.5">
+									<div class="mt-3 grid grid-cols-2 gap-1.5">
 											{#each gitOpsCardFacts(item) as fact}
 												{#if hasFactTooltip(fact)}
 													<Tooltip>
@@ -497,23 +573,123 @@
 												type="button"
 												variant="ghost"
 												size="sm"
-												data-details-key={gitOpsDetailsActionKey(item)}
-												onclick={(event: MouseEvent) => openGitOpsDetails(event, item)}
+											data-details-key={gitOpsDetailsActionKey(item)}
+											onclick={(event: MouseEvent) => openGitOpsDetails(event, item)}
+											onkeydown={stopTooltipEvent}
 											>
 												Details
 											</Button>
-											{#if gitOpsSelectionPrimaryAction(item) === "openResources"}
-												<span class="ml-auto text-[0.68rem] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-													Card opens resources
-												</span>
-											{/if}
+										{#if gitOpsSelectionPrimaryAction(item) === "openResources"}
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+											class="ml-auto"
+											onclick={(event: MouseEvent) => openGitOpsResources(event, item)}
+											onkeydown={stopTooltipEvent}
+											>
+												View resources
+											</Button>
+										{/if}
 										</div>
 									</div>
 								</div>
 							{/each}
-						</div>
+							</div>
+						{:else}
+							<div class="overflow-x-auto rounded-lg border bg-surface-1">
+								<div
+									class="grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_minmax(9rem,auto)_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_auto] items-center gap-3 border-b bg-muted/30 px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground"
+								>
+									<span>Name</span>
+									<span>Status</span>
+									<span>Source</span>
+									<span>Revision</span>
+									<span>Destination/Namespace</span>
+									<span>Age</span>
+									<span class="text-right">Actions</span>
+								</div>
+								{#each gitOpsSelections as item (gitOpsSelectionKey(item))}
+									{@const sourceMode = gitOpsSelectionSourceMode(item)}
+									{@const sourceLabel = gitOpsSelectionSourceLabel(sourceMode, argoSourceCount(item))}
+									{@const sourceTooltip = gitOpsSelectionSourceTooltip(item)}
+									{@const sourceTooltipTitle = gitOpsSelectionSourceTooltipTitle(item)}
+									{@const sourceTooltipGroups = gitOpsSelectionSourceTooltipGroups(item)}
+									{@const sourceLine = gitOpsSelectionSourceLine(item)}
+									<div
+										class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
+											? "relative grid min-w-[68rem] cursor-pointer grid-cols-[minmax(12rem,1fr)_minmax(9rem,auto)_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_auto] items-center gap-3 border-b bg-accent/40 px-3 py-2.5 text-sm last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 motion-reduce:transition-none"
+											: "relative grid min-w-[68rem] cursor-pointer grid-cols-[minmax(12rem,1fr)_minmax(9rem,auto)_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_auto] items-center gap-3 border-b px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 motion-reduce:transition-none"}
+										role="button"
+										tabindex="0"
+										aria-label={gitOpsCardActionLabel(item)}
+										aria-pressed={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
+										onclick={() => openGitOpsSelection(item)}
+										onkeydown={(event: KeyboardEvent) => handleGitOpsCardKeydown(event, item)}
+									>
+										<div class={`absolute inset-y-0 left-0 w-1 ${gitOpsCardTone(item)}`}></div>
+										<div class="min-w-0 pl-1">
+											<div class="truncate font-medium">{item.item.name}</div>
+											<div class="truncate text-xs text-muted-foreground">{gitOpsCardSubtitle(item)}</div>
+										</div>
+										<div class="flex min-w-0 flex-wrap gap-1">
+											{#each gitOpsCardBadges(item) as [, value]}
+												<Badge variant="outline" class={gitOpsStatusClass(value)}>
+													{formatStatusLabel(value)}
+												</Badge>
+											{/each}
+										</div>
+										{#if sourceLine}
+											<Tooltip>
+												<TooltipTrigger
+													type="button"
+													class="min-w-0 truncate text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+													aria-label={sourceTooltip}
+													onclick={stopTooltipEvent}
+													onkeydown={stopTooltipEvent}
+												>
+													{sourceLine}
+												</TooltipTrigger>
+												<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
+													{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
+												</TooltipContent>
+											</Tooltip>
+										{:else}
+											<span class="text-muted-foreground">-</span>
+										{/if}
+										<span class="truncate font-medium">{gitOpsSelectionRevisionLabel(item)}</span>
+										<span class="truncate text-muted-foreground">{gitOpsSelectionDestination(item)}</span>
+										<span class="tabular-nums text-muted-foreground">{item.item.age ?? "-"}</span>
+										<div class="flex justify-end gap-1">
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												data-details-key={gitOpsDetailsActionKey(item)}
+												onclick={(event: MouseEvent) => openGitOpsDetails(event, item)}
+												onkeydown={stopTooltipEvent}
+											>
+												Details
+											</Button>
+											{#if gitOpsSelectionPrimaryAction(item) === "openResources"}
+												<Button
+													type="button"
+													variant="outline"
+													size="sm"
+													onclick={(event: MouseEvent) => openGitOpsResources(event, item)}
+													onkeydown={stopTooltipEvent}
+												>
+													Resources
+												</Button>
+											{/if}
+										</div>
+									</div>
+								{/each}
+							</div>
+						{/if}
 					{/if}
 				</section>
+				</div>
 				</div>
 			{/if}
 		{/if}
