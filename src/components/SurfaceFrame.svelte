@@ -37,7 +37,6 @@
 		<Icon class="size-5 text-muted-foreground" />
 		<div>
 			<h2 class="font-heading text-lg font-semibold">{title}</h2>
-			<p class="text-xs text-muted-foreground">Read-only data from existing Tauri commands.</p>
 		</div>
 	</header>
 	{#if query.isPending}

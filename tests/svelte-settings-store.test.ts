@@ -11,6 +11,7 @@ afterEach(() => {
 	useSettingsState.getState().setShowUsageFooter(false);
 	useSettingsState.getState().setShowUnavailableGitOpsProviders(false);
 	useSettingsState.getState().setShowFullTopologyOnSelection(false);
+	useSettingsState.getState().setGitOpsViewMode("cards");
 });
 
 describe("svelte settings store", () => {
@@ -29,6 +30,14 @@ describe("svelte settings store", () => {
 		useSettingsState.getState().setShowFullTopologyOnSelection(true);
 
 		expect(getSettingsSnapshot().showFullTopologyOnSelection).toBe(true);
+	});
+
+	test("exposes the persisted GitOps view mode to Svelte surfaces", () => {
+		expect(get(settingsStore).gitOpsViewMode).toBe("cards");
+
+		useSettingsState.getState().setGitOpsViewMode("list");
+
+		expect(getSettingsSnapshot().gitOpsViewMode).toBe("list");
 	});
 
 	test("updates Svelte subscribers when shared settings change", () => {

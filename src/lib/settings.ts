@@ -8,6 +8,7 @@ import type {
 
 export type TimestampTimezone = "local" | "utc";
 export type YamlDiffStyle = "clean" | "git";
+export type GitOpsViewMode = "cards" | "list";
 export const DEFAULT_KUBECONFIG_ENV_VAR = "KUBECONFIG";
 const DEFAULT_KUBECONFIG_SOURCE_KEY = "kubeconfigSource=default";
 
@@ -17,6 +18,7 @@ export interface SettingsState {
 	showOwnershipMapByDefault: boolean;
 	showFullTopologyOnSelection: boolean;
 	showUnavailableGitOpsProviders: boolean;
+	gitOpsViewMode: GitOpsViewMode;
 	showCustomResources: boolean;
 	debugModeEnabled: boolean;
 	autoStartSavedPortForwards: boolean;
@@ -36,6 +38,7 @@ export interface SettingsState {
 	setShowOwnershipMapByDefault: (show: boolean) => void;
 	setShowFullTopologyOnSelection: (show: boolean) => void;
 	setShowUnavailableGitOpsProviders: (show: boolean) => void;
+	setGitOpsViewMode: (mode: GitOpsViewMode) => void;
 	setShowCustomResources: (show: boolean) => void;
 	setDebugModeEnabled: (enabled: boolean) => void;
 	setAutoStartSavedPortForwards: (autoStart: boolean) => void;
@@ -65,6 +68,64 @@ function isYamlDiffStyle(style: unknown): style is YamlDiffStyle {
 	return style === "clean" || style === "git";
 }
 
+export function normalizeGitOpsViewMode(mode: unknown): GitOpsViewMode {
+	return mode === "list" ? "list" : "cards";
+}
+
+export function mergePersistedSettings(persisted: unknown, current: SettingsState): SettingsState {
+	const saved =
+		typeof persisted === "object" && persisted !== null
+			? (persisted as Partial<SettingsState>)
+			: {};
+	return {
+		...current,
+		showExactTimestamps: saved.showExactTimestamps ?? current.showExactTimestamps,
+		showUsageFooter: saved.showUsageFooter ?? current.showUsageFooter,
+		showOwnershipMapByDefault:
+			saved.showOwnershipMapByDefault ?? current.showOwnershipMapByDefault,
+		showFullTopologyOnSelection:
+			saved.showFullTopologyOnSelection ?? current.showFullTopologyOnSelection,
+		showUnavailableGitOpsProviders:
+			saved.showUnavailableGitOpsProviders ?? current.showUnavailableGitOpsProviders,
+		gitOpsViewMode: normalizeGitOpsViewMode(saved.gitOpsViewMode),
+		showCustomResources: saved.showCustomResources ?? current.showCustomResources,
+		debugModeEnabled: saved.debugModeEnabled ?? current.debugModeEnabled,
+		autoStartSavedPortForwards:
+			saved.autoStartSavedPortForwards ?? current.autoStartSavedPortForwards,
+		keepLiveSessionsOnWorkspaceSwitch:
+			saved.keepLiveSessionsOnWorkspaceSwitch ?? current.keepLiveSessionsOnWorkspaceSwitch,
+		allowYamlForceConflicts: saved.allowYamlForceConflicts ?? current.allowYamlForceConflicts,
+		timestampTimezone: saved.timestampTimezone ?? current.timestampTimezone,
+		yamlViewModeDefault: saved.yamlViewModeDefault ?? current.yamlViewModeDefault,
+		yamlEncodingDefault: saved.yamlEncodingDefault ?? current.yamlEncodingDefault,
+		yamlDiffStyle: isYamlDiffStyle(saved.yamlDiffStyle)
+			? saved.yamlDiffStyle
+			: current.yamlDiffStyle,
+		yamlErrorLensEnabled: saved.yamlErrorLensEnabled ?? current.yamlErrorLensEnabled,
+	};
+}
+
+export function partializeSettings(state: SettingsState): Partial<SettingsState> {
+	return {
+		showExactTimestamps: state.showExactTimestamps,
+		showUsageFooter: state.showUsageFooter,
+		showOwnershipMapByDefault: state.showOwnershipMapByDefault,
+		showFullTopologyOnSelection: state.showFullTopologyOnSelection,
+		showUnavailableGitOpsProviders: state.showUnavailableGitOpsProviders,
+		gitOpsViewMode: state.gitOpsViewMode,
+		showCustomResources: state.showCustomResources,
+		debugModeEnabled: state.debugModeEnabled,
+		autoStartSavedPortForwards: state.autoStartSavedPortForwards,
+		keepLiveSessionsOnWorkspaceSwitch: state.keepLiveSessionsOnWorkspaceSwitch,
+		allowYamlForceConflicts: state.allowYamlForceConflicts,
+		timestampTimezone: state.timestampTimezone,
+		yamlViewModeDefault: state.yamlViewModeDefault,
+		yamlEncodingDefault: state.yamlEncodingDefault,
+		yamlDiffStyle: state.yamlDiffStyle,
+		yamlErrorLensEnabled: state.yamlErrorLensEnabled,
+	};
+}
+
 export const useSettingsState = create<SettingsState>()(
 	persist(
 		(set) => ({
@@ -73,6 +134,7 @@ export const useSettingsState = create<SettingsState>()(
 			showOwnershipMapByDefault: true,
 			showFullTopologyOnSelection: false,
 			showUnavailableGitOpsProviders: false,
+			gitOpsViewMode: "cards",
 			showCustomResources: true,
 			debugModeEnabled: false,
 			autoStartSavedPortForwards: false,
@@ -96,6 +158,7 @@ export const useSettingsState = create<SettingsState>()(
 				set({ showFullTopologyOnSelection: show }),
 			setShowUnavailableGitOpsProviders: (show: boolean) =>
 				set({ showUnavailableGitOpsProviders: show }),
+			setGitOpsViewMode: (gitOpsViewMode: GitOpsViewMode) => set({ gitOpsViewMode }),
 			setShowCustomResources: (show: boolean) => set({ showCustomResources: show }),
 			setDebugModeEnabled: (debugModeEnabled: boolean) =>
 				set({ debugModeEnabled }),
@@ -129,70 +192,8 @@ export const useSettingsState = create<SettingsState>()(
 		}),
 		{
 			name: "kubecove-settings",
-			merge: (persisted, current) => {
-				const saved =
-					typeof persisted === "object" && persisted !== null
-						? (persisted as Partial<SettingsState>)
-						: {};
-				return {
-					...current,
-					showExactTimestamps:
-						saved.showExactTimestamps ?? current.showExactTimestamps,
-					showUsageFooter: saved.showUsageFooter ?? current.showUsageFooter,
-					showOwnershipMapByDefault:
-						saved.showOwnershipMapByDefault ??
-						current.showOwnershipMapByDefault,
-					showFullTopologyOnSelection:
-						saved.showFullTopologyOnSelection ??
-						current.showFullTopologyOnSelection,
-				showUnavailableGitOpsProviders:
-					saved.showUnavailableGitOpsProviders ??
-					current.showUnavailableGitOpsProviders,
-				showCustomResources:
-					saved.showCustomResources ?? current.showCustomResources,
-				debugModeEnabled:
-					saved.debugModeEnabled ?? current.debugModeEnabled,
-				autoStartSavedPortForwards:
-					saved.autoStartSavedPortForwards ??
-					current.autoStartSavedPortForwards,
-					keepLiveSessionsOnWorkspaceSwitch:
-						saved.keepLiveSessionsOnWorkspaceSwitch ??
-						current.keepLiveSessionsOnWorkspaceSwitch,
-					allowYamlForceConflicts:
-						saved.allowYamlForceConflicts ??
-						current.allowYamlForceConflicts,
-					timestampTimezone:
-						saved.timestampTimezone ?? current.timestampTimezone,
-					yamlViewModeDefault:
-						saved.yamlViewModeDefault ?? current.yamlViewModeDefault,
-					yamlEncodingDefault:
-						saved.yamlEncodingDefault ?? current.yamlEncodingDefault,
-					yamlDiffStyle: isYamlDiffStyle(saved.yamlDiffStyle)
-						? saved.yamlDiffStyle
-						: current.yamlDiffStyle,
-					yamlErrorLensEnabled:
-						saved.yamlErrorLensEnabled ?? current.yamlErrorLensEnabled,
-				};
-			},
-			partialize: (state) => ({
-				showExactTimestamps: state.showExactTimestamps,
-				showUsageFooter: state.showUsageFooter,
-				showOwnershipMapByDefault: state.showOwnershipMapByDefault,
-				showFullTopologyOnSelection: state.showFullTopologyOnSelection,
-				showUnavailableGitOpsProviders:
-					state.showUnavailableGitOpsProviders,
-				showCustomResources: state.showCustomResources,
-				debugModeEnabled: state.debugModeEnabled,
-				autoStartSavedPortForwards: state.autoStartSavedPortForwards,
-				keepLiveSessionsOnWorkspaceSwitch:
-					state.keepLiveSessionsOnWorkspaceSwitch,
-				allowYamlForceConflicts: state.allowYamlForceConflicts,
-				timestampTimezone: state.timestampTimezone,
-				yamlViewModeDefault: state.yamlViewModeDefault,
-				yamlEncodingDefault: state.yamlEncodingDefault,
-				yamlDiffStyle: state.yamlDiffStyle,
-				yamlErrorLensEnabled: state.yamlErrorLensEnabled,
-			}),
+			merge: mergePersistedSettings,
+			partialize: partializeSettings,
 		},
 	),
 );
