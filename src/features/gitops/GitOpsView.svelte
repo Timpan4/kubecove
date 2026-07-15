@@ -640,31 +640,29 @@
 												</Badge>
 											{/each}
 										</div>
-										<div class="flex min-w-0 items-center gap-2">
-											{#if SourceIcon}
-												<span class={gitOpsSourceIconClass(sourceMode)} aria-hidden="true">
-													<SourceIcon class="size-3.5" />
-												</span>
-											{/if}
-											{#if sourceLine}
-												<Tooltip>
-													<TooltipTrigger
-														type="button"
-														class="min-w-0 flex-1 truncate text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-														aria-label={sourceTooltip}
-														onclick={stopTooltipEvent}
-														onkeydown={stopTooltipEvent}
-													>
-														{sourceLine}
-													</TooltipTrigger>
-													<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
-														{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
-													</TooltipContent>
-												</Tooltip>
-											{:else}
-												<span class="text-muted-foreground">-</span>
-											{/if}
-										</div>
+										{#if SourceIcon || sourceLine}
+											<Tooltip>
+												<TooltipTrigger
+													type="button"
+													class="flex min-w-0 items-center gap-2 text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+													aria-label={sourceTooltip}
+													onclick={stopTooltipEvent}
+													onkeydown={stopTooltipEvent}
+												>
+													{#if SourceIcon}
+														<span class={gitOpsSourceIconClass(sourceMode)} aria-hidden="true">
+															<SourceIcon class="size-3.5" />
+														</span>
+													{/if}
+													<span class="min-w-0 flex-1 truncate">{sourceLine ?? "-"}</span>
+												</TooltipTrigger>
+												<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
+													{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
+												</TooltipContent>
+											</Tooltip>
+										{:else}
+											<span class="text-muted-foreground">-</span>
+										{/if}
 										<span class="truncate font-medium">{gitOpsSelectionRevisionLabel(item)}</span>
 										<span class="truncate text-muted-foreground">{gitOpsSelectionDestination(item)}</span>
 										<span class="tabular-nums text-muted-foreground">{item.item.age ?? "-"}</span>
