@@ -1,4 +1,7 @@
+import { win32 } from "node:path";
+
 const DEFAULT_DEVTOOLS_PORT = "9222";
+const CARGO_TARGET_DIR = "CARGO_TARGET_DIR";
 const WEBVIEW2_ARGUMENTS = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
 
 export function tauriEnvironment(
@@ -8,6 +11,15 @@ export function tauriEnvironment(
 ): Record<string, string | undefined> {
 	const environment = { ...baseEnvironment };
 	if (platform !== "win32" || args[0] !== "dev") return environment;
+
+	const localAppData = environment.LOCALAPPDATA?.trim();
+	if (!environment[CARGO_TARGET_DIR]?.trim() && localAppData) {
+		environment[CARGO_TARGET_DIR] = win32.join(
+			localAppData,
+			"KubeCove",
+			"cargo-target",
+		);
+	}
 
 	const currentArguments = environment[WEBVIEW2_ARGUMENTS]?.trim() ?? "";
 	if (/(?:^|\s)--remote-debugging-port(?:=|\s)/.test(currentArguments)) {

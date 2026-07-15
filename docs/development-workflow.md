@@ -33,6 +33,11 @@ Playwright, or another CDP client to inspect the real frontend console, network,
 DOM, and runtime state. Set `KUBECOVE_DEVTOOLS_PORT` before launch to use a
 different port. The endpoint is not enabled by `tauri build` or packaged apps.
 
+On Windows, the same launcher stores Cargo development output under
+`%LOCALAPPDATA%\KubeCove\cargo-target`. This keeps Rust incremental state off
+ReFS Dev Drives, where transient file handles can prevent rustc from finalizing
+an incremental compilation session. An explicit `CARGO_TARGET_DIR` still wins.
+
 The browser tab does not receive kubeconfig contents, does not call a
 local Rust bridge, and does not access a real cluster. Treat all browser data as
 fake, even when a saved workspace name matches a real context.
