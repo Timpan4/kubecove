@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { tauriEnvironment } from "../scripts/tauri";
 
 const webviewArguments = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+const cargoTargetDirectory = "CARGO_TARGET_DIR";
 
 describe("Tauri development launcher", () => {
 	test("enables a localhost WebView2 debug endpoint for Windows development", () => {
@@ -42,11 +43,38 @@ describe("Tauri development launcher", () => {
 	});
 
 	test("does not enable WebView2 debugging for builds or other platforms", () => {
-		expect(
-			tauriEnvironment(["build"], {}, "win32")[webviewArguments],
-		).toBeUndefined();
-		expect(
-			tauriEnvironment(["dev"], {}, "linux")[webviewArguments],
-		).toBeUndefined();
+		const localAppData = { LOCALAPPDATA: "C:\\Users\\operator\\AppData\\Local" };
+		const buildEnvironment = tauriEnvironment(["build"], localAppData, "win32");
+		const linuxEnvironment = tauriEnvironment(["dev"], localAppData, "linux");
+
+		expect(buildEnvironment[webviewArguments]).toBeUndefined();
+		expect(buildEnvironment[cargoTargetDirectory]).toBeUndefined();
+		expect(linuxEnvironment[webviewArguments]).toBeUndefined();
+		expect(linuxEnvironment[cargoTargetDirectory]).toBeUndefined();
+	});
+
+	test("keeps Windows dev incremental state off the workspace drive", () => {
+		const environment = tauriEnvironment(
+			["dev"],
+			{ LOCALAPPDATA: "C:\\Users\\operator\\AppData\\Local" },
+			"win32",
+		);
+
+		expect(environment[cargoTargetDirectory]).toBe(
+			"C:\\Users\\operator\\AppData\\Local\\KubeCove\\cargo-target",
+		);
+	});
+
+	test("keeps an explicitly configured Cargo target directory", () => {
+		const environment = tauriEnvironment(
+			["dev"],
+			{
+				LOCALAPPDATA: "C:\\Users\\operator\\AppData\\Local",
+				[cargoTargetDirectory]: "E:\\cargo-target",
+			},
+			"win32",
+		);
+
+		expect(environment[cargoTargetDirectory]).toBe("E:\\cargo-target");
 	});
 });

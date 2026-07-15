@@ -9,6 +9,7 @@ import type {
 export type TimestampTimezone = "local" | "utc";
 export type YamlDiffStyle = "clean" | "git";
 export type GitOpsViewMode = "cards" | "list";
+export type HelmViewMode = "cards" | "list";
 export const DEFAULT_KUBECONFIG_ENV_VAR = "KUBECONFIG";
 const DEFAULT_KUBECONFIG_SOURCE_KEY = "kubeconfigSource=default";
 
@@ -19,6 +20,7 @@ export interface SettingsState {
 	showFullTopologyOnSelection: boolean;
 	showUnavailableGitOpsProviders: boolean;
 	gitOpsViewMode: GitOpsViewMode;
+	helmViewMode: HelmViewMode;
 	showCustomResources: boolean;
 	debugModeEnabled: boolean;
 	autoStartSavedPortForwards: boolean;
@@ -39,6 +41,7 @@ export interface SettingsState {
 	setShowFullTopologyOnSelection: (show: boolean) => void;
 	setShowUnavailableGitOpsProviders: (show: boolean) => void;
 	setGitOpsViewMode: (mode: GitOpsViewMode) => void;
+	setHelmViewMode: (mode: HelmViewMode) => void;
 	setShowCustomResources: (show: boolean) => void;
 	setDebugModeEnabled: (enabled: boolean) => void;
 	setAutoStartSavedPortForwards: (autoStart: boolean) => void;
@@ -72,6 +75,10 @@ export function normalizeGitOpsViewMode(mode: unknown): GitOpsViewMode {
 	return mode === "list" ? "list" : "cards";
 }
 
+export function normalizeHelmViewMode(mode: unknown): HelmViewMode {
+	return mode === "list" ? "list" : "cards";
+}
+
 export function mergePersistedSettings(persisted: unknown, current: SettingsState): SettingsState {
 	const saved =
 		typeof persisted === "object" && persisted !== null
@@ -88,6 +95,7 @@ export function mergePersistedSettings(persisted: unknown, current: SettingsStat
 		showUnavailableGitOpsProviders:
 			saved.showUnavailableGitOpsProviders ?? current.showUnavailableGitOpsProviders,
 		gitOpsViewMode: normalizeGitOpsViewMode(saved.gitOpsViewMode),
+		helmViewMode: normalizeHelmViewMode(saved.helmViewMode),
 		showCustomResources: saved.showCustomResources ?? current.showCustomResources,
 		debugModeEnabled: saved.debugModeEnabled ?? current.debugModeEnabled,
 		autoStartSavedPortForwards:
@@ -113,6 +121,7 @@ export function partializeSettings(state: SettingsState): Partial<SettingsState>
 		showFullTopologyOnSelection: state.showFullTopologyOnSelection,
 		showUnavailableGitOpsProviders: state.showUnavailableGitOpsProviders,
 		gitOpsViewMode: state.gitOpsViewMode,
+		helmViewMode: state.helmViewMode,
 		showCustomResources: state.showCustomResources,
 		debugModeEnabled: state.debugModeEnabled,
 		autoStartSavedPortForwards: state.autoStartSavedPortForwards,
@@ -135,6 +144,7 @@ export const useSettingsState = create<SettingsState>()(
 			showFullTopologyOnSelection: false,
 			showUnavailableGitOpsProviders: false,
 			gitOpsViewMode: "cards",
+			helmViewMode: "cards",
 			showCustomResources: true,
 			debugModeEnabled: false,
 			autoStartSavedPortForwards: false,
@@ -159,6 +169,7 @@ export const useSettingsState = create<SettingsState>()(
 			setShowUnavailableGitOpsProviders: (show: boolean) =>
 				set({ showUnavailableGitOpsProviders: show }),
 			setGitOpsViewMode: (gitOpsViewMode: GitOpsViewMode) => set({ gitOpsViewMode }),
+			setHelmViewMode: (helmViewMode: HelmViewMode) => set({ helmViewMode }),
 			setShowCustomResources: (show: boolean) => set({ showCustomResources: show }),
 			setDebugModeEnabled: (debugModeEnabled: boolean) =>
 				set({ debugModeEnabled }),

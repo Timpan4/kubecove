@@ -23,6 +23,7 @@
 	import HelmView from "./HelmView.svelte";
 	import {
 		buildHelmReleaseState,
+		resolveHelmNamespace,
 		resolveTargetHelmRelease,
 		selectedHelmReleaseExists,
 	} from "./surfaceState";
@@ -48,6 +49,7 @@
 	} = $props();
 
 	const client = createTauriClient();
+	let helmNamespace = $state<string | null>(null);
 	const context = $derived(workspace.scope.clusterContext);
 	const helmQuery = createQuery<HelmReleaseSummary[]>(() => ({
 		queryKey: queryKeys.helmReleases(context, kubeconfigSourceKey),
@@ -100,14 +102,21 @@
 		enabled: sourceReady && Boolean(selectedHelmRelease),
 		staleTime: 30_000,
 	}));
-	const releaseState = $derived(buildHelmReleaseState(helmQuery.data ?? [], helmSearch));
+	const activeHelmNamespace = $derived(
+		resolveHelmNamespace(helmQuery.data ?? [], helmNamespace),
+	);
+	const releaseState = $derived(
+		buildHelmReleaseState(helmQuery.data ?? [], helmSearch, activeHelmNamespace),
+	);
 	const helmReconciliationRows = $derived(
 		sortHelmReconciliationResources(helmReconciliationQuery.data?.resources ?? []),
 	);
 
 	$effect(() => {
+		if (helmNamespace !== activeHelmNamespace) helmNamespace = activeHelmNamespace;
 		const target = resolveTargetHelmRelease(helmQuery.data, targetHelmRelease);
 		if (target) {
+			helmNamespace = target.namespace;
 			selectedHelmRelease = target;
 			onTargetHelmReleaseResolved();
 			return;
@@ -116,6 +125,13 @@
 			selectedHelmRelease = null;
 		}
 	});
+
+	function selectHelmNamespace(namespace: string | null) {
+		helmNamespace = namespace;
+		if (namespace && selectedHelmRelease?.namespace !== namespace) {
+			selectedHelmRelease = null;
+		}
+	}
 
 	function helmStatusVariant(status: string | undefined) {
 		return helmStatusTone(status) === "error" ? "destructive" : "outline";
@@ -142,6 +158,8 @@
 		query: helmQuery,
 		groups: releaseState.groups,
 		filtered: releaseState.filtered,
+		activeNamespace: activeHelmNamespace,
+		selectNamespace: selectHelmNamespace,
 		search: helmSearch,
 		setSearch: (search) => (helmSearch = search),
 		selected: selectedHelmRelease,

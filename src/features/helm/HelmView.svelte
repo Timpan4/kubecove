@@ -10,13 +10,16 @@
 		Card,
 		CardContent,
 		CardDescription,
+		CardFooter,
 		CardHeader,
 		CardTitle,
 		Empty,
+		EmptyContent,
 		EmptyDescription,
 		EmptyHeader,
 		EmptyTitle,
 		Input,
+		SegmentedControl,
 		Spinner,
 		Table,
 		TableBody,
@@ -29,7 +32,10 @@
 		helmReconciliationResourceLabel,
 		helmReconciliationStatusLabel,
 		helmReleaseKey,
+		helmStatusTone,
 	} from "@/features/helm/helpers";
+	import { settingsStore } from "@/lib/settings-store";
+	import type { HelmViewMode } from "@/lib/settings";
 	import type {
 		HelmManifestResourceSummary,
 		HelmReconciliationResource,
@@ -37,9 +43,8 @@
 		HelmReleaseReconciliation,
 		HelmReleaseSummary,
 	} from "@/lib/types";
-	import { formatStatusLabel } from "@/lib/utils";
+	import { cn, formatStatusLabel } from "@/lib/utils";
 	import SimpleTable from "@/components/SimpleTable.svelte";
-	import StatGrid from "@/components/StatGrid.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
 
 	type QueryState<T> = {
@@ -54,6 +59,8 @@
 			query: QueryState<HelmReleaseSummary[]>;
 			groups: Array<{ namespace: string; releases: HelmReleaseSummary[] }>;
 			filtered: HelmReleaseSummary[];
+			activeNamespace: string | null;
+			selectNamespace: (namespace: string | null) => void;
 			search: string;
 			setSearch: (search: string) => void;
 			selected: HelmReleaseSummary | null;
@@ -75,6 +82,7 @@
 	const helmQuery = $derived(list.query);
 	const groupedHelmReleases = $derived(list.groups);
 	const filteredHelmReleases = $derived(list.filtered);
+	const activeHelmNamespace = $derived(list.activeNamespace);
 	const helmSearch = $derived(list.search);
 	const selectedHelmRelease = $derived(list.selected);
 	const selectedHelmReleaseKey = $derived(list.selectedKey);
@@ -85,106 +93,324 @@
 	const helmStatusVariant = $derived(actions.statusVariant);
 	const helmReconciliationClass = $derived(reconciliation.classFor);
 	const helmReconciliationSource = $derived(reconciliation.sourceFor);
+	const helmViewOptions: { value: HelmViewMode; label: string }[] = [
+		{ value: "cards", label: "Cards" },
+		{ value: "list", label: "List" },
+	];
+	const helmViewMode = $derived($settingsStore.helmViewMode);
+	const helmReleases = $derived(helmQuery.data ?? []);
+	const deployedReleaseCount = $derived(
+		helmReleases.filter((release) => release.status === "deployed").length,
+	);
+	const pendingReleaseCount = $derived(
+		helmReleases.filter((release) => release.status?.startsWith("pending-")).length,
+	);
+	const failedReleaseCount = $derived(
+		helmReleases.filter((release) => release.status === "failed").length,
+	);
+
+	function helmStatusClass(status: string | undefined): string {
+		const tone = helmStatusTone(status);
+		if (tone === "success") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+		if (tone === "warning") return "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+		if (tone === "error") return "border-destructive/40 bg-destructive/10 text-destructive";
+		return "";
+	}
+
+	function helmStatusRailClass(status: string | undefined): string {
+		const tone = helmStatusTone(status);
+		if (tone === "success") return "bg-emerald-500";
+		if (tone === "warning") return "bg-amber-500";
+		if (tone === "error") return "bg-destructive";
+		return "bg-muted-foreground/45";
+	}
 </script>
 
-<SurfaceFrame icon={Package} title="Helm Releases" query={helmQuery} errorLabel="Helm releases unavailable">
-		<StatGrid
-			stats={[
-				["Releases", helmQuery.data?.length ?? 0],
-				["Namespaces", groupedHelmReleases.length],
-				["Filtered", filteredHelmReleases.length],
-			]}
-		/>
-		<div class="flex items-center gap-2">
-			<div class="relative min-w-0 flex-1">
-				<Search
-					class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-				/>
-				<Input
-					class="h-8 pl-8"
-					value={helmSearch}
-					oninput={(event: Event & { currentTarget: HTMLInputElement }) =>
-						list.setSearch(event.currentTarget.value)}
-					placeholder="Search by release, namespace, chart, app version..."
-					aria-label="Search Helm releases"
-				/>
+<SurfaceFrame icon={Package} title="Helm" query={helmQuery} errorLabel="Helm releases unavailable" wide>
+	<div class="@container flex flex-col gap-4">
+		<section
+			class="rounded-lg border bg-surface-1 px-3 py-2.5 shadow-sm"
+			aria-label="Helm overview"
+		>
+			<div class="flex flex-wrap items-start justify-between gap-3">
+				<div class="min-w-0">
+					<h2 class="font-heading text-base font-semibold">Helm</h2>
+					{#if helmReleases.length > 0}
+						<div class="mt-2">
+							<Badge variant="outline" class="border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+								Helm storage detected
+							</Badge>
+						</div>
+					{/if}
+				</div>
+				<div class="text-right">
+					<div class="font-semibold tabular-nums">{helmReleases.length}</div>
+					<div class="text-xs text-muted-foreground">Helm releases</div>
+				</div>
 			</div>
-			{#if helmSearch}
-				<Button type="button" variant="outline" size="sm" onclick={() => list.setSearch("")}>
-					<X data-icon="inline-start" />
-					Clear
-				</Button>
-			{/if}
-		</div>
-		<Card size="sm" elevation="flat">
-			<CardContent class="p-0">
-				<Table class="min-w-[900px] table-fixed text-sm">
-					<TableHeader>
-						<TableRow>
-							{#each ["Release", "Namespace", "Chart", "App Version", "Revision", "Status", "Storage", "Updated"] as header}
-								<TableHead class="px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
-									{header}
-								</TableHead>
-							{/each}
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{#if filteredHelmReleases.length === 0}
-							<TableRow>
-								<TableCell class="px-3 py-8 text-center text-muted-foreground" colspan="8">
-									No Helm releases found
-								</TableCell>
-							</TableRow>
-						{:else}
-							{#each groupedHelmReleases as group (group.namespace)}
-								<TableRow class="bg-muted/35 hover:bg-muted/35">
-									<TableCell
-										class="px-3 py-2 text-xs font-semibold uppercase text-muted-foreground"
-										colspan="8"
-									>
-										{group.namespace} ({group.releases.length})
-									</TableCell>
-								</TableRow>
-								{#each group.releases as release (helmReleaseKey(release))}
-									<TableRow
-										class={helmReleaseKey(release) === selectedHelmReleaseKey
-											? "bg-accent hover:bg-accent"
-											: "cursor-pointer hover:bg-accent/60"}
-										tabindex="0"
-										role="button"
-										aria-pressed={helmReleaseKey(release) === selectedHelmReleaseKey}
-										onclick={() => list.select(release)}
-										onkeydown={(event: KeyboardEvent) => {
-											if (event.key === "Enter" || event.key === " ") {
-												event.preventDefault();
-											list.select(release);
-											}
-											}}
-									>
-										<TableCell class="truncate px-3 py-2 font-medium">{release.name}</TableCell>
-										<TableCell class="truncate px-3 py-2">{release.namespace}</TableCell>
-										<TableCell class="truncate px-3 py-2">{release.chart ?? "-"}</TableCell>
-										<TableCell class="truncate px-3 py-2">{release.appVersion ?? "-"}</TableCell>
-										<TableCell class="truncate px-3 py-2">{release.revision ?? "-"}</TableCell>
-										<TableCell class="truncate px-3 py-2">
-											{#if release.status}
-												<Badge variant={helmStatusVariant(release.status)}>
-													{formatStatusLabel(release.status)}
-												</Badge>
-											{:else}
-												-
-											{/if}
-										</TableCell>
-										<TableCell class="truncate px-3 py-2">{release.storageKind}</TableCell>
-										<TableCell class="truncate px-3 py-2">{release.age}</TableCell>
-									</TableRow>
-								{/each}
-							{/each}
+			<div class="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 @min-[42rem]:grid-cols-5">
+				<div class="min-w-0">
+					<div class="text-[0.62rem] font-semibold uppercase tracking-wide text-muted-foreground">Releases</div>
+					<div class="mt-0.5 font-semibold tabular-nums">{helmReleases.length}</div>
+				</div>
+				<div class="min-w-0">
+					<div class="text-[0.62rem] font-semibold uppercase tracking-wide text-muted-foreground">Namespaces</div>
+					<div class="mt-0.5 font-semibold tabular-nums">{groupedHelmReleases.length}</div>
+				</div>
+				<div class="min-w-0">
+					<div class="text-[0.62rem] font-semibold uppercase tracking-wide text-muted-foreground">Deployed</div>
+					<div class="mt-0.5 font-semibold text-emerald-700 tabular-nums dark:text-emerald-300">{deployedReleaseCount}</div>
+				</div>
+				<div class="min-w-0">
+					<div class="text-[0.62rem] font-semibold uppercase tracking-wide text-muted-foreground">Pending</div>
+					<div class="mt-0.5 font-semibold text-amber-700 tabular-nums dark:text-amber-300">{pendingReleaseCount}</div>
+				</div>
+				<div class="min-w-0">
+					<div class="text-[0.62rem] font-semibold uppercase tracking-wide text-muted-foreground">Failed</div>
+					<div class="mt-0.5 font-semibold text-destructive tabular-nums">{failedReleaseCount}</div>
+				</div>
+			</div>
+		</section>
+
+		<div class="grid gap-4 @min-[64rem]:grid-cols-[14rem_minmax(0,1fr)]">
+			<aside class="flex gap-5 overflow-x-auto border-b pb-3 @min-[64rem]:block @min-[64rem]:overflow-visible @min-[64rem]:border-b-0 @min-[64rem]:border-r @min-[64rem]:pb-0 @min-[64rem]:pr-4">
+				<section class="flex shrink-0 items-center gap-2 @min-[64rem]:block">
+					<p class="whitespace-nowrap px-1 text-xs font-semibold uppercase text-muted-foreground">Namespaces</p>
+					<div class="flex gap-1 @min-[64rem]:mt-2 @min-[64rem]:grid">
+						<button
+							type="button"
+							class={cn(
+								"flex items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+								activeHelmNamespace === null
+									? "bg-accent font-medium"
+									: "text-muted-foreground hover:bg-accent/60",
+							)}
+							aria-current={activeHelmNamespace === null ? "true" : undefined}
+							onclick={() => list.selectNamespace(null)}
+						>
+							<span class="min-w-0 truncate">All releases</span>
+							<span class="rounded bg-muted px-1.5 py-0.5 text-xs leading-none tabular-nums">{helmReleases.length}</span>
+						</button>
+						{#each groupedHelmReleases as group (group.namespace)}
+							<button
+								type="button"
+								class={cn(
+									"flex items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+									activeHelmNamespace === group.namespace
+										? "bg-accent font-medium"
+										: "text-muted-foreground hover:bg-accent/60",
+								)}
+								aria-current={activeHelmNamespace === group.namespace ? "true" : undefined}
+								onclick={() => list.selectNamespace(group.namespace)}
+							>
+								<span class="min-w-0 truncate">{group.namespace}</span>
+								<span class="rounded bg-muted px-1.5 py-0.5 text-xs leading-none tabular-nums">{group.releases.length}</span>
+							</button>
+						{/each}
+					</div>
+				</section>
+			</aside>
+
+			<section class="flex min-w-0 flex-col gap-4">
+				<div class="flex flex-wrap items-end justify-between gap-3 border-b pb-3">
+					<div>
+						<h2 class="text-lg font-semibold">Helm Releases</h2>
+						<p class="text-sm text-muted-foreground">Chart, namespace, revision, and storage source.</p>
+					</div>
+					<div class="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+						<div class="relative min-w-56 flex-1 @min-[48rem]:max-w-sm">
+							<Search
+								class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+								aria-hidden="true"
+							/>
+							<Input
+								class="h-8 pl-8"
+								value={helmSearch}
+								oninput={(event: Event & { currentTarget: HTMLInputElement }) =>
+									list.setSearch(event.currentTarget.value)}
+								placeholder="Search releases..."
+								aria-label="Search Helm releases"
+							/>
+						</div>
+						{#if helmSearch}
+							<Button type="button" variant="outline" size="sm" onclick={() => list.setSearch("")}>
+								<X data-icon="inline-start" />
+								Clear
+							</Button>
 						{/if}
-					</TableBody>
-				</Table>
-			</CardContent>
-		</Card>
+						<span class="text-xs text-muted-foreground tabular-nums">
+							{filteredHelmReleases.length} item{filteredHelmReleases.length === 1 ? "" : "s"}
+						</span>
+						<SegmentedControl
+							value={helmViewMode}
+							options={helmViewOptions}
+							onChange={$settingsStore.setHelmViewMode}
+							ariaLabel="Helm view mode"
+						/>
+					</div>
+				</div>
+
+				{#if filteredHelmReleases.length === 0}
+					<Empty>
+						<EmptyHeader>
+							<EmptyTitle>{helmReleases.length === 0 ? "No Helm releases" : "No matching releases"}</EmptyTitle>
+							<EmptyDescription>
+								{helmReleases.length === 0
+									? "No Helm release storage objects were found in this cluster."
+									: "Clear the search or choose another namespace."}
+							</EmptyDescription>
+						</EmptyHeader>
+						{#if helmReleases.length > 0}
+							<EmptyContent>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onclick={() => {
+										list.setSearch("");
+										list.selectNamespace(null);
+									}}
+								>
+									Clear filters
+								</Button>
+							</EmptyContent>
+						{/if}
+					</Empty>
+				{:else if helmViewMode === "cards"}
+					<div class="grid grid-cols-1 gap-3 @min-[35rem]:grid-cols-2 @min-[64rem]:grid-cols-[repeat(auto-fit,minmax(18.75rem,26.25rem))]">
+						{#each filteredHelmReleases as release (helmReleaseKey(release))}
+							<Card
+								size="sm"
+								elevation="raised"
+								class={cn(
+									"relative h-[18.5rem] overflow-hidden p-0",
+									helmReleaseKey(release) === selectedHelmReleaseKey && "ring-2 ring-ring/40",
+								)}
+							>
+								<div class={cn("absolute inset-y-0 left-0 w-1", helmStatusRailClass(release.status))}></div>
+								<CardHeader class="flex flex-row items-start justify-between gap-3 pb-0 pl-4">
+									<div class="min-w-0">
+										<CardTitle class="truncate">{release.name}</CardTitle>
+										<CardDescription class="truncate">{release.namespace}</CardDescription>
+									</div>
+									<div class="grid size-7 shrink-0 place-items-center rounded-md border text-muted-foreground">
+										<Package class="size-3.5" aria-hidden="true" />
+									</div>
+								</CardHeader>
+								<CardContent class="flex min-h-0 flex-1 flex-col gap-3 pl-4">
+									<div class="flex min-h-5 flex-wrap gap-1.5">
+										{#if release.status}
+											<Badge variant={helmStatusVariant(release.status)} class={helmStatusClass(release.status)}>
+												{formatStatusLabel(release.status)}
+											</Badge>
+										{/if}
+									</div>
+									<div
+										class="truncate rounded-md border bg-surface-0 px-2.5 py-2 text-xs text-muted-foreground"
+										title={release.storageKind + ":" + release.storageName}
+									>
+										{release.storageKind} · {release.storageName}
+									</div>
+									<div class="grid grid-cols-2 gap-1.5">
+										<div class="min-w-0 rounded-md border bg-surface-0 px-2.5 py-1.5">
+											<div class="text-[0.62rem] text-muted-foreground">Chart</div>
+											<div class="truncate text-xs font-medium" title={release.chart ?? "-"}>{release.chart ?? "-"}</div>
+										</div>
+										<div class="min-w-0 rounded-md border bg-surface-0 px-2.5 py-1.5">
+											<div class="text-[0.62rem] text-muted-foreground">App version</div>
+											<div class="truncate text-xs font-medium" title={release.appVersion ?? "-"}>{release.appVersion ?? "-"}</div>
+										</div>
+										<div class="min-w-0 rounded-md border bg-surface-0 px-2.5 py-1.5">
+											<div class="text-[0.62rem] text-muted-foreground">Revision</div>
+											<div class="truncate text-xs font-medium tabular-nums">{release.revision ?? "-"}</div>
+										</div>
+										<div class="min-w-0 rounded-md border bg-surface-0 px-2.5 py-1.5">
+											<div class="text-[0.62rem] text-muted-foreground">Age</div>
+											<div class="truncate text-xs font-medium tabular-nums">{release.age}</div>
+										</div>
+									</div>
+								</CardContent>
+								<CardFooter class="mt-auto flex items-center gap-2 pl-4">
+									<Button type="button" variant="ghost" size="sm" onclick={() => list.select(release)}>
+										Details
+									</Button>
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										class="ml-auto"
+										onclick={() => onOpenResources(release.namespace, release.name)}
+									>
+										View resources
+									</Button>
+								</CardFooter>
+							</Card>
+						{/each}
+					</div>
+				{:else}
+					<div class="overflow-x-auto rounded-lg border">
+						<div class="grid min-w-[76rem] grid-cols-[minmax(12rem,1.1fr)_8rem_minmax(14rem,1.2fr)_minmax(9rem,0.9fr)_minmax(7rem,0.7fr)_5rem_5rem_9rem] items-center gap-3 border-b bg-muted/30 px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+							<span>Name</span>
+							<span>Status</span>
+							<span>Storage</span>
+							<span>Chart</span>
+							<span>App version</span>
+							<span>Revision</span>
+							<span>Age</span>
+							<span class="text-right">Actions</span>
+						</div>
+						{#each filteredHelmReleases as release (helmReleaseKey(release))}
+							<div
+								class={cn(
+									"relative grid min-w-[76rem] grid-cols-[minmax(12rem,1.1fr)_8rem_minmax(14rem,1.2fr)_minmax(9rem,0.9fr)_minmax(7rem,0.7fr)_5rem_5rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 last:border-b-0",
+									helmReleaseKey(release) === selectedHelmReleaseKey
+										? "bg-accent ring-1 ring-ring"
+										: "hover:bg-accent/40",
+								)}
+							>
+								<div class={cn("absolute inset-y-0 left-0 w-1", helmStatusRailClass(release.status))}></div>
+								<div class="min-w-0 pl-1">
+									<div class="truncate font-heading text-sm font-medium">{release.name}</div>
+									<div class="truncate text-xs text-muted-foreground">{release.namespace}</div>
+								</div>
+								<div>
+									{#if release.status}
+										<Badge variant={helmStatusVariant(release.status)} class={helmStatusClass(release.status)}>
+											{formatStatusLabel(release.status)}
+										</Badge>
+									{:else}
+										<span class="text-muted-foreground">-</span>
+									{/if}
+								</div>
+								<div class="min-w-0">
+									<div class="truncate text-sm">{release.storageKind}</div>
+									<div class="truncate text-xs text-muted-foreground" title={release.storageName}>{release.storageName}</div>
+								</div>
+								<span class="truncate" title={release.chart ?? "-"}>{release.chart ?? "-"}</span>
+								<span class="truncate" title={release.appVersion ?? "-"}>{release.appVersion ?? "-"}</span>
+								<span class="tabular-nums">{release.revision ?? "-"}</span>
+								<span class="tabular-nums">{release.age}</span>
+								<div class="flex justify-end gap-1">
+									<Button type="button" variant="ghost" size="sm" onclick={() => list.select(release)}>
+										Details
+									</Button>
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onclick={() => onOpenResources(release.namespace, release.name)}
+									>
+										Resources
+									</Button>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</section>
+		</div>
+
+		{#if selectedHelmRelease}
 		<Card size="sm" elevation="flat">
 			<CardHeader class="flex flex-row items-start justify-between gap-3">
 				<div class="min-w-0">
@@ -210,14 +436,7 @@
 				{/if}
 			</CardHeader>
 			<CardContent>
-				{#if !selectedHelmRelease}
-					<Empty>
-						<EmptyHeader>
-							<EmptyTitle>No release selected</EmptyTitle>
-							<EmptyDescription>Use the Helm table to open release details.</EmptyDescription>
-						</EmptyHeader>
-			</Empty>
-		{:else if helmDetailsQuery.isPending}
+				{#if helmDetailsQuery.isPending}
 			<p class="inline-flex items-center gap-2 text-sm text-muted-foreground">
 				<Spinner class="size-4" />
 				Loading Helm release details...
@@ -377,4 +596,6 @@
 				{/if}
 			</CardContent>
 		</Card>
-	</SurfaceFrame>
+			{/if}
+	</div>
+</SurfaceFrame>

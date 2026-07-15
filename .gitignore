@@ -9,6 +9,7 @@ src-tauri/target/
 dist/
 build/
 .vite/
+design-preview-plan.html
 
 # Logs
 *.log
