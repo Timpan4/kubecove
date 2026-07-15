@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
 	mergePersistedSettings,
 	normalizeGitOpsViewMode,
+	normalizeHelmViewMode,
 	partializeSettings,
 	useSettingsState,
 } from "../src/lib/settings";
@@ -10,6 +11,7 @@ afterEach(() => {
 	useSettingsState.getState().setDebugModeEnabled(false);
 	useSettingsState.getState().setShowFullTopologyOnSelection(false);
 	useSettingsState.getState().setGitOpsViewMode("cards");
+	useSettingsState.getState().setHelmViewMode("cards");
 });
 
 describe("settings", () => {
@@ -55,6 +57,23 @@ describe("settings", () => {
 		});
 		expect(mergePersistedSettings({ gitOpsViewMode: "grid" }, current)).toMatchObject({
 			gitOpsViewMode: "cards",
+		});
+	});
+
+	test("defaults Helm to cards and persists only valid view modes", () => {
+		expect(useSettingsState.getState().helmViewMode).toBe("cards");
+		useSettingsState.getState().setHelmViewMode("list");
+		expect(useSettingsState.getState().helmViewMode).toBe("list");
+		expect(normalizeHelmViewMode("list")).toBe("list");
+		expect(normalizeHelmViewMode("grid")).toBe("cards");
+
+		const current = useSettingsState.getState();
+		expect(partializeSettings(current)).toMatchObject({ helmViewMode: "list" });
+		expect(mergePersistedSettings({ helmViewMode: "list" }, current)).toMatchObject({
+			helmViewMode: "list",
+		});
+		expect(mergePersistedSettings({ helmViewMode: "grid" }, current)).toMatchObject({
+			helmViewMode: "cards",
 		});
 	});
 });

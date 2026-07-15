@@ -11,7 +11,7 @@ export function helmReleaseKey(release: HelmReleaseSummary): string {
 export function helmStatusTone(status: string | undefined) {
 	if (status === "deployed" || status === "superseded") return "success";
 	if (status === "failed" || status === "uninstalled") return "error";
-	if (status === "pending-install" || status === "pending-upgrade") return "warning";
+	if (status?.startsWith("pending-")) return "warning";
 	return "neutral";
 }
 
