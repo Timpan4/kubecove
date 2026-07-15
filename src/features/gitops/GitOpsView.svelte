@@ -599,11 +599,11 @@
 						{:else}
 							<div class="overflow-x-auto rounded-lg border">
 								<div
-									class="grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_minmax(9rem,auto)_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_auto] items-center gap-3 border-b bg-muted/30 px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground"
+									class="grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-muted/30 px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground"
 								>
 									<span>Name</span>
 									<span>Status</span>
-									<span>Source</span>
+									<span>Source(s)</span>
 									<span>Revision</span>
 									<span>Destination/Namespace</span>
 									<span>Age</span>
@@ -619,8 +619,8 @@
 									{@const sourceLine = gitOpsSelectionSourceLine(item)}
 									<div
 										class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-											? "relative grid min-w-[68rem] cursor-pointer grid-cols-[minmax(12rem,1fr)_minmax(9rem,auto)_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_auto] items-center gap-3 border-b bg-accent/40 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 motion-reduce:transition-none"
-											: "relative grid min-w-[68rem] cursor-pointer grid-cols-[minmax(12rem,1fr)_minmax(9rem,auto)_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_auto] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 motion-reduce:transition-none"}
+											? "relative grid min-w-[68rem] cursor-pointer grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-accent/40 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 motion-reduce:transition-none"
+											: "relative grid min-w-[68rem] cursor-pointer grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 motion-reduce:transition-none"}
 										role="button"
 										tabindex="0"
 										aria-label={gitOpsCardActionLabel(item)}
