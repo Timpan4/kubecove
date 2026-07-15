@@ -76,7 +76,17 @@ button{font:inherit;color:inherit}.page{min-height:100vh;padding:22px;background
   .card-inner{padding:12px 12px 10px 15px}.source{margin-top:9px}.facts{gap:6px}.fact{padding:6px 7px}
   .card-actions .btn{padding:4px 7px}
 }
-@container (max-width:560px){.card-grid{grid-template-columns:1fr}}
+@container (max-width:560px){
+  .card-grid{grid-template-columns:1fr}
+  .main{overflow-x:auto}
+  .table{min-width:72rem}
+}
+@media(max-width:560px){
+  .page{padding:12px}
+  .preview-head{align-items:flex-start;flex-direction:column;gap:12px}
+  .tabs{max-width:100%;overflow-x:auto}.tab{flex:none}
+  .note{grid-template-columns:1fr}
+}
 @media(prefers-reduced-motion:reduce){.app-card,.table-row{transition:none}.app-card:hover{transform:none}}
 </style>
 </head>
@@ -94,7 +104,7 @@ button{font:inherit;color:inherit}.page{min-height:100vh;padding:22px;background
 
   <section class="variant" id="reference">
     <div class="note"><div><b>Reference language</b><span>Strong context card first, then dense operational content below.</span></div><div><b>Borrow</b><span>Surface, compact facts, quiet borders, clear status.</span></div><div><b>Do not copy</b><span>Resources-specific controls and topology/table split remain out.</span></div></div>
-    <div class="screen"><img class="ref-img" src="file:///C:/Users/timpa/AppData/Local/Temp/codex-clipboard-684a7522-ca38-487f-9e9a-d0413713460d.png" alt="Resources view reference"></div>
+    <div class="screen"><img class="ref-img" src="docs/assets/resources-view.png" alt="Resources view reference"></div>
   </section>
 
   <section class="variant active" id="cards">
@@ -220,13 +230,20 @@ button{font:inherit;color:inherit}.page{min-height:100vh;padding:22px;background
 </div>
 <script>
 const tabs=[...document.querySelectorAll('.tab')];
+const modeKey='kubecove-gitops-preview-mode';
 function show(target){
   tabs.forEach(t=>t.classList.toggle('active',t.dataset.target===target));
   document.querySelectorAll('.variant').forEach(v=>v.classList.toggle('active',v.id===target));
-  if(target==='cards'||target==='list'){try{localStorage.setItem('kubecove-gitops-preview-mode',target)}catch{}}
+  if(target==='cards'||target==='list'){try{localStorage.setItem(modeKey,target)}catch{}}
 }
 tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.target)));
 document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>show(b.dataset.mode)));
+let initialMode='cards';
+try {
+  const storedMode=localStorage.getItem(modeKey);
+  if(storedMode==='cards'||storedMode==='list') initialMode=storedMode;
+} catch {}
+show(initialMode);
 </script>
 </body>
 </html>

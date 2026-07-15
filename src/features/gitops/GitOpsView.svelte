@@ -147,6 +147,7 @@
 
 	function openGitOpsResources(event: MouseEvent, selection: GitOpsSelection) {
 		event.stopPropagation();
+		selectedGitOpsItem = selection;
 		openSelectedArgoApplicationResources(selection);
 	}
 
@@ -619,20 +620,20 @@
 									{@const sourceLine = gitOpsSelectionSourceLine(item)}
 									<div
 										class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-											? "relative grid min-w-[68rem] cursor-pointer grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-accent/40 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 motion-reduce:transition-none"
-											: "relative grid min-w-[68rem] cursor-pointer grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 motion-reduce:transition-none"}
-										role="button"
-										tabindex="0"
-										aria-label={gitOpsCardActionLabel(item)}
-										aria-pressed={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
-										onclick={() => openGitOpsSelection(item)}
-										onkeydown={(event: KeyboardEvent) => handleGitOpsCardKeydown(event, item)}
+											? "relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-accent/40 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/50 motion-reduce:transition-none"
+											: "relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/30 motion-reduce:transition-none"}
 									>
 										<div class={`absolute inset-y-0 left-0 w-1 ${gitOpsCardTone(item)}`}></div>
-										<div class="min-w-0 pl-1">
+										<button
+											type="button"
+											class="min-w-0 rounded-sm pl-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+											aria-label={gitOpsCardActionLabel(item)}
+											aria-pressed={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
+											onclick={() => openGitOpsSelection(item)}
+										>
 											<div class="truncate font-medium">{item.item.name}</div>
 											<div class="truncate text-xs text-muted-foreground">{gitOpsCardSubtitle(item)}</div>
-										</div>
+										</button>
 										<div class="flex min-w-0 flex-wrap gap-1">
 											{#each gitOpsCardBadges(item) as [, value]}
 												<Badge variant="outline" class={gitOpsStatusClass(value)}>
