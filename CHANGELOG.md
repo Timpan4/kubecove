@@ -6,19 +6,33 @@ should mirror the matching version section.
 ## 0.9.0 - 2026-07-15
 ### Added
 
-- add guarded resource operations (#233)
-- add deployment revision history (#232)
-- add pinned and recent workspace entry points (#234)
+- Added guarded scale for Deployments and StatefulSets, rollout restart for
+  Deployments, StatefulSets, and DaemonSets, and exact delete for Pods and
+  ConfigMaps. Each operation uses typed targets, a dry-run preview, and explicit
+  confirmation (#233).
+- Added Deployment revision history backed by owned ReplicaSets, including
+  side-by-side pod-template comparison (#232).
+- Added pinned resources and recent namespace, application, and resource entry
+  points while keeping persisted workspace state identity-only (#234).
 
 ### Improved
 
-- Redesign GitOps cards and list (#238)
-- workspace feature modules and responsive shell (#231)
+- Reorganized Workspace Overview around health, operations, and return-to-work
+  entry points, and rebuilt Resources as a responsive GitOps-aware workbench
+  (#237).
+- Made the workspace shell usable at narrow desktop and mobile widths with
+  drawer navigation, bounded content, and a full-width resource detail overlay
+  (#231).
+- Redesigned GitOps with provider-aware summary counts, a persisted Cards/List
+  preference, responsive fixed-height cards, and a dense aligned list (#238).
 
 ### Fixed
 
-- cancel Kubernetes requests on workspace switch (#236)
-- Repair automated release chain (#228)
+- Cancelled in-flight Kubernetes queries and backend work before workspace or
+  context changes, preventing stale results from the previous scope and
+  coalescing rapid transitions to the newest destination (#236).
+- Repaired automated releases by validating versioned macOS updater assets and
+  explicitly dispatching the release workflow after tag creation (#228).
 
 ## 0.8.0 - 2026-07-11
 ### Added
