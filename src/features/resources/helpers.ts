@@ -423,8 +423,6 @@ export function formatResourceGroupLabel(resource: ResourceSummary): string {
 }
 
 export function formatResourceTypeGroupLabel(resource: ResourceSummary): string {
-	if (resource.kind.endsWith("s")) return `${resource.kind}es`;
-	if (resource.kind.endsWith("y")) return `${resource.kind.slice(0, -1)}ies`;
 	return `${resource.kind}s`;
 }
 

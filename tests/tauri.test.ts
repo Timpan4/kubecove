@@ -625,10 +625,12 @@ describe("resource browser presentation helpers", () => {
     ).toEqual(["alpha", "zeta"]);
   });
 
-  test("uses readable type subgroup labels", () => {
+  test("appends s to type subgroup labels", () => {
     expect(formatResourceTypeGroupLabel({ ...baseResource, kind: "Pod" })).toBe("Pods");
-    expect(formatResourceTypeGroupLabel({ ...baseResource, kind: "Ingress" })).toBe("Ingresses");
     expect(formatResourceTypeGroupLabel({ ...baseResource, kind: "ConfigMap" })).toBe("ConfigMaps");
+    expect(formatResourceTypeGroupLabel({ ...baseResource, kind: "Gateway" })).toBe("Gateways");
+    expect(formatResourceTypeGroupLabel({ ...baseResource, kind: "Policy" })).toBe("Policys");
+    expect(formatResourceTypeGroupLabel({ ...baseResource, kind: "Ingress" })).toBe("Ingresss");
   });
 
   test("builds stable collapse keys for app and type groups", () => {
