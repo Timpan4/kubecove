@@ -116,6 +116,7 @@
 		if (helmNamespace !== activeHelmNamespace) helmNamespace = activeHelmNamespace;
 		const target = resolveTargetHelmRelease(helmQuery.data, targetHelmRelease);
 		if (target) {
+			helmNamespace = target.namespace;
 			selectedHelmRelease = target;
 			onTargetHelmReleaseResolved();
 			return;
