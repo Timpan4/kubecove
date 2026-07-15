@@ -3,6 +3,23 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.9.0 - 2026-07-15
+### Added
+
+- add guarded resource operations (#233)
+- add deployment revision history (#232)
+- add pinned and recent workspace entry points (#234)
+
+### Improved
+
+- Redesign GitOps cards and list (#238)
+- workspace feature modules and responsive shell (#231)
+
+### Fixed
+
+- cancel Kubernetes requests on workspace switch (#236)
+- Repair automated release chain (#228)
+
 ## 0.8.0 - 2026-07-11
 ### Added
 
