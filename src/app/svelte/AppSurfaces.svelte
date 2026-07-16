@@ -31,7 +31,6 @@
 		selectedNode,
 		targetHelmRelease,
 		targetGitOpsApplication,
-		selectedResource,
 		initialIncidentFilter = "all",
 		initialPathState = null,
 		onOpenResources,
@@ -47,7 +46,6 @@
 		selectedNode: TreeNodeId | null;
 		targetHelmRelease?: { name: string; namespace?: string | null } | null;
 		targetGitOpsApplication?: string | null;
-		selectedResource?: ResourceSummary | null;
 		initialIncidentFilter?: IncidentFilter;
 		initialPathState?: PathStateSurfacesState | null;
 		onOpenResources: (
@@ -148,7 +146,6 @@
 			{sourceReady}
 			{kubeconfigSourceKey}
 			bind:incidentFilter
-			{selectedResource}
 			{onOpenResources}
 			{onResourceInspect}
 			onResourceSelect={(resource) => onResourceSelect(resource, treeNodeForResource(resource))}
