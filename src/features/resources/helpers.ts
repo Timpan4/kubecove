@@ -423,6 +423,8 @@ export function formatResourceGroupLabel(resource: ResourceSummary): string {
 }
 
 export function formatResourceTypeGroupLabel(resource: ResourceSummary): string {
+	if (resource.kind === "Policy") return "Policies";
+	if (resource.kind === "Ingress") return "Ingresses";
 	return `${resource.kind}s`;
 }
 
