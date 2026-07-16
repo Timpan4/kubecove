@@ -9,6 +9,16 @@ function readPrimitive(file: string) {
 }
 
 describe("svelte ui primitives", () => {
+	test("maps semantic z-index utilities to runtime stacking tokens", () => {
+		const appCss = readFileSync(join(import.meta.dir, "..", "src", "App.css"), "utf8");
+		const theme = appCss.match(/@theme inline \{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+		for (const token of ["base", "content", "sticky", "overlay", "popover", "toast", "dialog"]) {
+			expect(theme).toContain(`--z-index-${token}: var(--z-${token});`);
+		}
+		expect(readPrimitive("PopoverContent.svelte")).toContain("z-popover");
+	});
+
 	test("exports launcher and mirror primitives", () => {
 		const index = readPrimitive("index.ts");
 		for (const name of [
