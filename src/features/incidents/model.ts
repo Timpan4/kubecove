@@ -1,7 +1,6 @@
-import { gitOpsOwnerLabel } from "@/features/resources/helpers";
 import type { HealthFilter } from "@/features/resources";
+import { gitOpsOwnerLabel } from "@/features/resources/helpers";
 import { buildWorkspaceFetchKeys, buildWorkspaceFetchPlans } from "@/features/workspaces";
-import type { PathStateDetailTab } from "@/lib/path-state";
 import { queryKeys } from "@/lib/queryKeys";
 import type {
 	IncidentCockpitItem,
@@ -9,8 +8,8 @@ import type {
 	ResourceSummary,
 } from "@/lib/types";
 import {
-	workspaceScopeContexts,
 	type SavedWorkspace,
+	workspaceScopeContexts,
 } from "@/lib/workspace-model";
 
 export type IncidentFilter = "all" | "unhealthy" | IncidentSeverity;
@@ -130,23 +129,34 @@ export function buildIncidentQueryState(
 export function buildIncidentSurfaceState(
 	items: IncidentCockpitItem[],
 	filter: IncidentFilter,
-	selectedResource?: ResourceSummary | null,
+	selectedKey?: string | null,
 ) {
 	const counts = countIncidentItems(items);
-	const visibleItems = filterIncidentItems(items, filter);
+	const visibleItems = sortIncidentItems(filterIncidentItems(items, filter));
 	const groups = groupIncidentItems(visibleItems);
+	const resolvedSelectedKey = reconcileIncidentSelection(visibleItems, selectedKey);
 	return {
 		counts,
 		filterOptions: buildIncidentFilterOptions(counts),
 		groups,
+		visibleItems,
 		visibleCount: visibleItems.length,
-		selectedIncident:
-			visibleItems.find((item) =>
-				isIncidentResourceSelected(item, selectedResource),
-			) ?? null,
+		selectedKey: resolvedSelectedKey,
+		selectedIncident: visibleItems.find((item) => incidentItemKey(item) === resolvedSelectedKey) ?? null,
 		emptyState:
 			counts.total === 0 ? "clean" : groups.length === 0 ? "filtered" : "ready",
 	} as const;
+}
+
+export function reconcileIncidentSelection(
+	items: IncidentCockpitItem[],
+	selectedKey: string | null | undefined,
+): string | null {
+	if (selectedKey && items.some((item) => incidentItemKey(item) === selectedKey)) {
+		return selectedKey;
+	}
+	const first = sortIncidentItems(items)[0];
+	return first ? incidentItemKey(first) : null;
 }
 
 export interface IncidentFilterOption {
@@ -205,13 +215,6 @@ export function incidentSignalSummary(item: IncidentCockpitItem): string {
 	return hiddenCount > 0 ? `${summary} | +${hiddenCount} more` : summary;
 }
 
-export function incidentWarningSummary(item: IncidentCockpitItem): string {
-	const event = item.latestWarningEvent;
-	if (!event) return "-";
-	const extra = item.warningEventCount > 1 ? `, ${item.warningEventCount} warnings` : "";
-	return `${event.reason} (${event.lastSeen}${extra})`;
-}
-
 export function incidentResourceKey(resource: ResourceSummary): string {
 	return [
 		resource.cluster,
@@ -226,13 +229,6 @@ export function incidentItemKey(item: IncidentCockpitItem): string {
 	return incidentResourceKey(item.resource);
 }
 
-export function isIncidentResourceSelected(
-	item: IncidentCockpitItem,
-	selectedResource: ResourceSummary | null | undefined,
-): boolean {
-	return selectedResource ? incidentResourceKey(item.resource) === incidentResourceKey(selectedResource) : false;
-}
-
 export function incidentCaseTitle(item: IncidentCockpitItem): string {
 	const resource = `${item.resource.kind}/${item.resource.name}`;
 	const signal = item.signals[0]?.label ?? item.latestWarningEvent?.reason ?? incidentSeverityLabel(item);
@@ -244,45 +240,4 @@ export function incidentCaseSummary(item: IncidentCockpitItem): string {
 	if (signal?.message) return signal.message;
 	if (item.latestWarningEvent?.message) return item.latestWarningEvent.message;
 	return `${incidentSeverityLabel(item)} signal in ${incidentScopeLabel(item)}.`;
-}
-
-export function incidentKnownSummary(item: IncidentCockpitItem): string {
-	const status = [
-		item.resource.status,
-		item.resource.ready ? `Ready ${item.resource.ready}` : undefined,
-		item.resource.restarts && item.resource.restarts > 0 ? `${item.resource.restarts} restarts` : undefined,
-	]
-		.filter(Boolean)
-		.join(", ");
-	return status || incidentSignalSummary(item);
-}
-
-export function incidentMissingSummary(item: IncidentCockpitItem): string {
-	if (item.latestWarningEvent) return "Check Events for repeat count and source details.";
-	if (item.resource.kind === "Pod") return "Open Logs if status and events do not explain the signal.";
-	return "Open related resources if owner context is not enough.";
-}
-
-export function incidentNextSummary(item: IncidentCockpitItem): string {
-	if (item.resource.kind === "Pod") return "Inspect details, then Events or Logs.";
-	if (item.latestWarningEvent) return "Inspect details, then Events.";
-	return "Inspect details, then open Resources for neighbors.";
-}
-
-export interface IncidentDetailPivot {
-	id: "details" | "events" | "logs" | "yaml";
-	label: string;
-	tab: PathStateDetailTab;
-	enabled: boolean;
-}
-
-export function incidentDetailPivots(item: IncidentCockpitItem): IncidentDetailPivot[] {
-	const hasEvents = item.warningEventCount > 0 || item.signals.some((signal) => signal.kind === "event");
-	const canShowLogs = item.resource.kind === "Pod" && Boolean(item.resource.namespace);
-	return [
-		{ id: "details", label: "Inspect", tab: "details", enabled: true },
-		{ id: "events", label: "Events", tab: "events", enabled: hasEvents },
-		{ id: "logs", label: "Logs", tab: "logs", enabled: canShowLogs },
-		{ id: "yaml", label: "YAML", tab: "yaml", enabled: true },
-	];
 }

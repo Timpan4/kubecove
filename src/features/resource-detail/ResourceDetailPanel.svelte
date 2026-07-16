@@ -186,6 +186,8 @@
 		cancelPendingBackendScope(cancelScope);
 		const timer = setTimeout(() => {
 			pendingCancelTimers.delete(cancelScope);
+			const query = queryClient.getQueryCache().find({ queryKey, exact: true });
+			if ((query?.getObserversCount() ?? 0) > 0) return;
 			void queryClient.cancelQueries({ queryKey, exact: true });
 			void cancelBackendRequests(client, cancelScope)
 				.then((result) => {

@@ -5,11 +5,11 @@ import {
 	countIncidentItems,
 	filterIncidentItems,
 	groupIncidentItems,
+	type IncidentFilter,
 	incidentCaseSummary,
-	incidentDetailPivots,
 	incidentItemKey,
 	incidentResourcesHealthFilter,
-	type IncidentFilter,
+	reconcileIncidentSelection,
 } from "./model";
 
 declare function describe(name: string, fn: () => void): void;
@@ -50,7 +50,7 @@ describe("incident presentation model", () => {
 		const state = buildIncidentSurfaceState(
 			[restarted, degraded],
 			"unhealthy",
-			degraded.resource,
+			incidentItemKey(degraded),
 		);
 
 		expect(state.counts).toEqual({
@@ -64,6 +64,17 @@ describe("incident presentation model", () => {
 		expect(state.groups[0]?.items).toEqual([degraded]);
 		expect(state.selectedIncident).toEqual(degraded);
 		expect(state.emptyState).toBe("ready");
+	});
+
+	test("selects highest severity then preserves or reconciles the local key", () => {
+		const degraded = item("api", "degraded");
+		const restarted = item("worker", "restarted");
+		const restartedKey = incidentItemKey(restarted);
+
+		expect(reconcileIncidentSelection([restarted, degraded], null)).toBe(incidentItemKey(degraded));
+		expect(reconcileIncidentSelection([degraded, restarted], restartedKey)).toBe(restartedKey);
+		expect(reconcileIncidentSelection([degraded], restartedKey)).toBe(incidentItemKey(degraded));
+		expect(reconcileIncidentSelection([], restartedKey)).toBe(null);
 	});
 
 	test("owns filters counts options and resource handoff mapping", () => {
@@ -80,19 +91,13 @@ describe("incident presentation model", () => {
 		expect(incidentResourcesHealthFilter("attention")).toBe("attention");
 	});
 
-	test("preserves presentation fallbacks without inventing signals", () => {
+	test("preserves summary fallbacks without inventing signals", () => {
 		const quiet = item("api", "warning");
 
 		expect(incidentCaseSummary(quiet)).toBe(
 			"Warning signal in payments / kind-dev.",
 		);
 		expect(incidentItemKey(quiet)).toBe("kind-dev::Pod:payments:api");
-		expect(incidentDetailPivots(quiet).map((pivot) => pivot.enabled)).toEqual([
-			true,
-			false,
-			true,
-			true,
-		]);
 	});
 
 	test("groups by ownership and orders by severity then recency", () => {

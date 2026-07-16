@@ -148,7 +148,6 @@
 			{sourceReady}
 			{kubeconfigSourceKey}
 			bind:incidentFilter
-			{selectedResource}
 			{onOpenResources}
 			{onResourceInspect}
 			onResourceSelect={(resource) => onResourceSelect(resource, treeNodeForResource(resource))}
