@@ -27,7 +27,10 @@ pub(crate) fn extract_owner_ref_summary(
     metadata
         .owner_references
         .as_ref()
-        .and_then(|refs| refs.iter().next())
+        .and_then(|refs| {
+            refs.iter()
+                .find(|reference| reference.controller == Some(true))
+        })
         .map(|r| OwnerReferenceSummary {
             api_version: r.api_version.clone(),
             kind: r.kind.clone(),
@@ -202,6 +205,7 @@ mod tests {
                 kind: "Deployment".to_string(),
                 name: "api".to_string(),
                 uid: "uid-1".to_string(),
+                controller: Some(true),
                 ..Default::default()
             }]),
             ..Default::default()
@@ -241,6 +245,60 @@ mod tests {
             ..Default::default()
         };
 
+        assert_eq!(extract_owner_ref_summary(&metadata), None);
+    }
+
+    #[test]
+    fn owner_ref_summary_selects_controller_reference() {
+        let metadata = ObjectMeta {
+            owner_references: Some(vec![
+                OwnerReference {
+                    api_version: "example/v1".to_string(),
+                    kind: "Observer".to_string(),
+                    name: "audit".to_string(),
+                    uid: "uid-observer".to_string(),
+                    controller: Some(false),
+                    ..Default::default()
+                },
+                OwnerReference {
+                    api_version: "apps/v1".to_string(),
+                    kind: "ReplicaSet".to_string(),
+                    name: "api-abc".to_string(),
+                    uid: "uid-controller".to_string(),
+                    controller: Some(true),
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        };
+
+        assert_eq!(extract_owner_ref(&metadata), Some("audit".to_string()));
+        assert_eq!(
+            extract_owner_ref_summary(&metadata),
+            Some(crate::models::OwnerReferenceSummary {
+                api_version: "apps/v1".to_string(),
+                kind: "ReplicaSet".to_string(),
+                name: "api-abc".to_string(),
+                uid: "uid-controller".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn owner_ref_summary_is_absent_without_controller_reference() {
+        let metadata = ObjectMeta {
+            owner_references: Some(vec![OwnerReference {
+                api_version: "example/v1".to_string(),
+                kind: "Observer".to_string(),
+                name: "audit".to_string(),
+                uid: "uid-observer".to_string(),
+                controller: Some(false),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+
+        assert_eq!(extract_owner_ref(&metadata), Some("audit".to_string()));
         assert_eq!(extract_owner_ref_summary(&metadata), None);
     }
 
