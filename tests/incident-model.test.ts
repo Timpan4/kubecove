@@ -7,17 +7,12 @@ import {
 	buildIncidentSurfaceState,
 	incidentCaseSummary,
 	incidentCaseTitle,
-	incidentDetailPivots,
 	incidentItemKey,
-	incidentKnownSummary,
-	incidentMissingSummary,
-	incidentNextSummary,
 	incidentResourcesHealthFilter,
 	incidentScopeLabel,
 	incidentSeverityLabel,
 	incidentSignalSummary,
-	incidentWarningSummary,
-	isIncidentResourceSelected,
+	reconcileIncidentSelection,
 } from "../src/features/incidents/model";
 
 const item: IncidentCockpitItem = {
@@ -78,7 +73,7 @@ describe("incident surface model", () => {
 			...item,
 			resource: { ...item.resource, name: `api-${index}` },
 		}));
-		const ready = buildIncidentSurfaceState(items, "attention", items[87].resource);
+		const ready = buildIncidentSurfaceState(items, "attention", incidentItemKey(items[87]));
 		const filtered = buildIncidentSurfaceState(items, "degraded", null);
 		const clean = buildIncidentSurfaceState([], "all", null);
 
@@ -122,27 +117,18 @@ describe("incident surface model", () => {
 		expect(incidentSignalSummary(item)).toBe(
 			"Waiting: CrashLoopBackOff | Restarts: 4 restarts | Ready: 0/1 ready | +1 more",
 		);
-		expect(incidentWarningSummary(item)).toBe("BackOff (2m, 2 warnings)");
 	});
 
-	test("matches selected resources by stable incident key", () => {
-		expect(incidentItemKey(item)).toBe("kind-dev::Pod:default:api-7c9");
-		expect(isIncidentResourceSelected(item, item.resource)).toBe(true);
-		expect(isIncidentResourceSelected(item, { ...item.resource, name: "api-other" })).toBe(false);
-		expect(isIncidentResourceSelected(item, null)).toBe(false);
+	test("reconciles selected resources by stable incident key", () => {
+		const key = incidentItemKey(item);
+		expect(key).toBe("kind-dev::Pod:default:api-7c9");
+		expect(reconcileIncidentSelection([item], key)).toBe(key);
+		expect(reconcileIncidentSelection([item], "missing")).toBe(key);
+		expect(reconcileIncidentSelection([], key)).toBeNull();
 	});
 
-	test("derives selected incident case copy and detail pivots", () => {
+	test("derives selected incident case copy", () => {
 		expect(incidentCaseTitle(item)).toBe("Pod/api-7c9: Waiting");
 		expect(incidentCaseSummary(item)).toBe("CrashLoopBackOff");
-		expect(incidentKnownSummary(item)).toBe("CrashLoopBackOff, Ready 0/1, 4 restarts");
-		expect(incidentMissingSummary(item)).toBe("Check Events for repeat count and source details.");
-		expect(incidentNextSummary(item)).toBe("Inspect details, then Events or Logs.");
-		expect(incidentDetailPivots(item)).toEqual([
-			{ id: "details", label: "Inspect", tab: "details", enabled: true },
-			{ id: "events", label: "Events", tab: "events", enabled: true },
-			{ id: "logs", label: "Logs", tab: "logs", enabled: true },
-			{ id: "yaml", label: "YAML", tab: "yaml", enabled: true },
-		]);
 	});
 });
