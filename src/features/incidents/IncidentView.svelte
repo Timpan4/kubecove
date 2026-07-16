@@ -140,13 +140,7 @@
 					type="button"
 					variant="outline"
 					size="sm"
-					onclick={() =>
-						onOpenResources(
-							undefined,
-							"",
-							"",
-							incidentResourcesHealthFilterFor(incidentFilter),
-						)}
+					onclick={() => onOpenResources(undefined, "", "", incidentResourcesHealthFilterFor(incidentFilter))}
 				>
 					<ExternalLink data-icon="inline-start" />
 					Open resources
