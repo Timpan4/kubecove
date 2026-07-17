@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.9.1 - 2026-07-17
+### Fixed
+
+- popover stacking and resource group labels (#242)
+
 ## 0.9.0 - 2026-07-15
 ### Added
 
