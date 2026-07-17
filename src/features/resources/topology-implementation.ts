@@ -23,8 +23,6 @@ import {
 	topologyLayoutOrder,
 } from "./topology-layout";
 
-type OwnershipMapViewportSize = { width: number; height: number };
-
 import { buildStandaloneGroups } from "./topology-standalone-groups";
 import type {
 	BuildFlowTopologyOptions,
@@ -33,6 +31,7 @@ import type {
 	FlowTopologyEdge,
 	FlowTopologyNode,
 	FlowTopologySelectionIndex,
+	OwnershipMapViewportSize,
 } from "./topology-types";
 
 export { resourceTopologyNodeId } from "./topology-graph";

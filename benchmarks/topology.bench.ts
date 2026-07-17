@@ -75,10 +75,11 @@ const selectedIds = topology.nodes
 
 const layout = buildFlowTopologyLayout(topology, null);
 const selectionIndex = buildFlowTopologySelectionIndex(topology);
+const emptyExpandedKinds = new Set<string>();
 const layoutState = buildFlowTopologyLayoutState(
 	topology,
 	"ownership",
-	new Set(),
+	emptyExpandedKinds,
 	null,
 );
 const viewports = [
@@ -113,7 +114,7 @@ describe("ownership flow topology (500 apps / 1k nodes)", () => {
 				mode: "ownership",
 				selectedNodeId: selectedId,
 				showFullTopologyOnSelection: index % 2 === 0,
-				expandedStandaloneKinds: new Set(),
+				expandedStandaloneKinds: emptyExpandedKinds,
 				viewportSize: viewports[index % viewports.length],
 			});
 		}
@@ -125,7 +126,7 @@ describe("ownership flow topology (500 apps / 1k nodes)", () => {
 				mode: "ownership",
 				selectedNodeId: selectedId,
 				showFullTopologyOnSelection: index % 2 === 0,
-				expandedStandaloneKinds: new Set(),
+				expandedStandaloneKinds: emptyExpandedKinds,
 				viewportSize: viewports[index % viewports.length],
 			});
 		}

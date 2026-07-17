@@ -17,6 +17,7 @@
 	import {
 		buildFlowTopologyLayoutState,
 		buildFlowTopologyViewFromLayoutState,
+		selectedStandaloneExpansionId as resolveSelectedStandaloneExpansionId,
 		type FlowTopologyNode,
 	} from "./topology";
 	import OwnershipMapViewport from "./OwnershipMapViewport.svelte";
@@ -60,15 +61,9 @@
 	let viewportHeight = $state(0);
 	let expandedStandaloneKinds = $state<Set<string>>(new Set());
 	const hasViewportSize = $derived(viewportWidth > 0 && viewportHeight > 0);
-	const selectedStandaloneExpansionId = $derived.by(() => {
-		if (!topology || !selectedNodeId) return null;
-		if (!topology.nodes.some((node) => node.id === selectedNodeId)) return null;
-		return topology.edges.some(
-			(edge) => edge.source === selectedNodeId || edge.target === selectedNodeId,
-		)
-			? null
-			: selectedNodeId;
-	});
+	const selectedStandaloneExpansionId = $derived(
+		topology ? resolveSelectedStandaloneExpansionId(topology, selectedNodeId) : null,
+	);
 	const topologyLayoutState = $derived(
 		topology
 			? buildFlowTopologyLayoutState(

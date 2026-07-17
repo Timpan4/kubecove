@@ -17,6 +17,7 @@ export type {
 	FlowTopologyEdge,
 	FlowTopologyNode,
 	FlowTopologyNodeData,
+	OwnershipMapViewportSize,
 	TopologyStoplightTone,
 } from "./topology-types";
 export type {
@@ -28,4 +29,5 @@ export {
 	buildFlowTopologyLayoutState,
 	buildFlowTopologyView,
 	buildFlowTopologyViewFromLayoutState,
+	selectedStandaloneExpansionId,
 } from "./topology-view";

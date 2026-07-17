@@ -11,6 +11,7 @@ import type {
 import type { TopologyGraph } from "./topology-graph";
 
 export type TopologyStoplightTone = "success" | "warning" | "error" | "neutral";
+export type OwnershipMapViewportSize = { width: number; height: number };
 
 export interface FlowTopologyNodeData extends Record<string, unknown> {
 	node?: TopologyNode;

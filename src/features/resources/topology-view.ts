@@ -7,9 +7,13 @@ import {
 	filterFlowTopologyToSelectedRoot,
 	getTopologyTranslateExtent,
 } from "./topology-implementation";
-import type { FlowTopology, FlowTopologySelectionIndex } from "./topology-types";
+import type {
+	FlowTopology,
+	FlowTopologySelectionIndex,
+	OwnershipMapViewportSize,
+} from "./topology-types";
 
-type OwnershipMapViewportSize = { width: number; height: number };
+export type { OwnershipMapViewportSize } from "./topology-types";
 
 export interface FlowTopologyViewOptions {
 	mode: TopologyMode;
@@ -30,7 +34,7 @@ export interface FlowTopologyLayoutState {
 	selectionIndex: FlowTopologySelectionIndex;
 }
 
-function selectedStandaloneExpansionId(
+export function selectedStandaloneExpansionId(
 	topology: ResourceTopology,
 	selectedNodeId: string | null,
 ): string | null {
