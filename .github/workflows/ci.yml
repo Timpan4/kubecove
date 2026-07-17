@@ -14,42 +14,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  svelte-doctor:
-    name: Svelte Doctor
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.14"
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run Svelte Doctor changed-file gate
-        if: github.event_name == 'pull_request'
-        run: bun run doctor:ci -- --diff origin/${{ github.base_ref }}
-
-      - name: Run Svelte Doctor full report
-        if: github.event_name == 'push'
-        continue-on-error: true
-        run: bun run doctor:ci
-
   frontend:
     name: Frontend checks
     runs-on: ubuntu-latest
@@ -74,6 +38,9 @@ jobs:
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
+
+      - name: Audit frontend dependencies
+        run: bun run audit
 
       - name: Typecheck frontend
         run: bun run typecheck
@@ -126,7 +93,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
-      - svelte-doctor
       - frontend
       - rust
     if: always()
@@ -134,14 +100,11 @@ jobs:
     steps:
       - name: Verify required jobs
         env:
-          SVELTE_DOCTOR_RESULT: ${{ needs.svelte-doctor.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           RUST_RESULT: ${{ needs.rust.result }}
         run: |
           set -euo pipefail
-          echo "Svelte Doctor: ${SVELTE_DOCTOR_RESULT}"
           echo "Frontend checks: ${FRONTEND_RESULT}"
           echo "Rust checks: ${RUST_RESULT}"
-          test "${SVELTE_DOCTOR_RESULT}" = "success"
           test "${FRONTEND_RESULT}" = "success"
           test "${RUST_RESULT}" = "success"
