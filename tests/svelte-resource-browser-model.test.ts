@@ -8,6 +8,8 @@ import {
 import {
 	allKindOptions,
 	buildResourceTableModel,
+	initialOwnershipMapOpen,
+	shouldLoadOwnershipMap,
 	syncedTopologyNodeId,
 } from "../src/features/resources/resourceBrowserModel";
 import {
@@ -72,6 +74,16 @@ const widget: DiscoveredResourceKind = {
 };
 
 describe("svelte resource browser model", () => {
+	test("does not request the ownership map for restored closed state", () => {
+		const mapPanelOpen = initialOwnershipMapOpen({ mapPanelOpen: false }, true);
+		let loadCalls = 0;
+		if (shouldLoadOwnershipMap(mapPanelOpen, false, false)) loadCalls += 1;
+
+		expect(mapPanelOpen).toBe(false);
+		expect(loadCalls).toBe(0);
+		expect(shouldLoadOwnershipMap(true, false, false)).toBe(true);
+	});
+
 	test("shared resource table state stays independent from table runtime imports", () => {
 		const tableStateSource = readFileSync(
 			"src/features/resources/table-state.ts",
@@ -556,7 +568,7 @@ describe("svelte resource browser model", () => {
 		);
 
 		expect(source).toContain(
-			"let mapPanelOpen = $state(getSettingsSnapshot().showOwnershipMapByDefault)",
+			"initialOwnershipMapOpen(initialPathState, getSettingsSnapshot().showOwnershipMapByDefault)",
 		);
 		expect(source).toContain("settingsStore");
 		expect(source).toContain("$settingsStore.showFullTopologyOnSelection");

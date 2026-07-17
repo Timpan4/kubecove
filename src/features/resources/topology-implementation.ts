@@ -1,28 +1,28 @@
 import {
+	type CoordinateExtent,
 	MarkerType,
 	Position,
-	type CoordinateExtent,
 } from "@xyflow/system";
 import type {
 	ResourceTopology,
 	TopologyMode,
 } from "@/lib/types";
 import {
-	CANVAS_PADDING,
-	EDGE_PATH_OPTIONS,
-	NODE_HEIGHT,
-	NODE_WIDTH,
-	buildTopologyPositions,
-	compareNodesByLayoutOrder,
-	topologyColumnDepth,
-	topologyLayoutOrder,
-} from "./topology-layout";
-import {
 	buildTopologyGraph,
 	selectedTopologyPath,
 	selectedTopologyRootSubtree,
 } from "./topology-graph";
-type OwnershipMapViewportSize = { width: number; height: number };
+import {
+	buildTopologyPositions,
+	CANVAS_PADDING,
+	compareNodesByLayoutOrder,
+	EDGE_PATH_OPTIONS,
+	NODE_HEIGHT,
+	NODE_WIDTH,
+	topologyColumnDepth,
+	topologyLayoutOrder,
+} from "./topology-layout";
+
 import { buildStandaloneGroups } from "./topology-standalone-groups";
 import type {
 	BuildFlowTopologyOptions,
@@ -31,7 +31,9 @@ import type {
 	FlowTopologyEdge,
 	FlowTopologyNode,
 	FlowTopologySelectionIndex,
+	OwnershipMapViewportSize,
 } from "./topology-types";
+
 export { resourceTopologyNodeId } from "./topology-graph";
 export type {
 	BuildFlowTopologyOptions,
@@ -42,6 +44,7 @@ export type {
 	FlowTopologyNodeData,
 	FlowTopologySelectionIndex,
 } from "./topology-types";
+
 const SVELTE_TOPOLOGY_LAYOUT = {
 	nodeWidth: 408,
 	nodeHeight: 98,
@@ -185,57 +188,6 @@ export function buildFlowTopology(
 		buildFlowTopologySelectionIndex(topology),
 		selectedNodeId,
 	);
-}
-
-export interface FlowTopologyViewOptions {
-	mode: TopologyMode;
-	selectedNodeId: string | null;
-	showFullTopologyOnSelection: boolean;
-	expandedStandaloneKinds: ReadonlySet<string>;
-	viewportSize?: OwnershipMapViewportSize;
-}
-
-export interface FlowTopologyView {
-	graph: FlowTopology;
-	translateExtent?: CoordinateExtent;
-}
-
-function selectedStandaloneExpansionId(
-	topology: ResourceTopology,
-	selectedNodeId: string | null,
-): string | null {
-	if (!selectedNodeId) return null;
-	const selectedNode = topology.nodes.find((node) => node.id === selectedNodeId);
-	if (!selectedNode) return null;
-	const hasRelation = topology.edges.some(
-		(edge) => edge.source === selectedNodeId || edge.target === selectedNodeId,
-	);
-	return hasRelation ? null : selectedNodeId;
-}
-
-export function buildFlowTopologyView(
-	topology: ResourceTopology,
-	options: FlowTopologyViewOptions,
-): FlowTopologyView {
-	const index = buildFlowTopologySelectionIndex(topology);
-	const layout = buildFlowTopologyLayout(
-		topology,
-		selectedStandaloneExpansionId(topology, options.selectedNodeId),
-		options.mode,
-		{ expandedStandaloneKinds: options.expandedStandaloneKinds },
-	);
-	const visible = options.showFullTopologyOnSelection
-		? layout
-		: filterFlowTopologyToSelectedRoot(layout, index, options.selectedNodeId);
-	const graph = applyFlowTopologySelectionWithIndex(visible, index, options.selectedNodeId);
-	const viewportSize = options.viewportSize;
-	return {
-		graph,
-		translateExtent:
-			viewportSize && viewportSize.width > 0 && viewportSize.height > 0
-				? getTopologyTranslateExtent(graph.nodes, viewportSize)
-				: undefined,
-	};
 }
 
 export function buildFlowTopologyLayout(

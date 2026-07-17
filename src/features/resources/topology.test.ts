@@ -1,6 +1,8 @@
 import type { ResourceSummary, ResourceTopology, TopologyNode } from "@/lib/types";
 import {
+	buildFlowTopologyLayoutState,
 	buildFlowTopologyView,
+	buildFlowTopologyViewFromLayoutState,
 	topologyRailTone,
 	topologyReadyText,
 	topologyReadyTone,
@@ -11,6 +13,10 @@ import {
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
 declare function expect(actual: unknown): {
+	not: {
+		toBe(expected: unknown): void;
+		toEqual(expected: unknown): void;
+	};
 	toBe(expected: unknown): void;
 	toEqual(expected: unknown): void;
 };
@@ -168,6 +174,69 @@ describe("topology selection", () => {
 });
 
 describe("Svelte topology layout", () => {
+	test("retains one layout state across connected selections and viewport sizes", () => {
+		const topology: ResourceTopology = {
+			nodes: [
+				node("Deployment", "api"),
+				node("Pod", "api-1"),
+				node("ConfigMap", "standalone"),
+			],
+			edges: [
+				{
+					id: "deployment-to-pod",
+					source: "Deployment:api",
+					target: "Pod:api-1",
+					relation: "owns",
+				},
+			],
+			warnings: [],
+		};
+		const layoutState = buildFlowTopologyLayoutState(topology, "ownership", new Set(), null);
+		const cases = [
+			{ selectedNodeId: null, showFullTopologyOnSelection: true, viewportSize: { width: 1280, height: 800 } },
+			{ selectedNodeId: "Pod:api-1", showFullTopologyOnSelection: false, viewportSize: { width: 1440, height: 900 } },
+		];
+
+		for (const options of cases) {
+			const viewOptions = {
+				mode: "ownership" as const,
+				expandedStandaloneKinds: new Set<string>(),
+				...options,
+			};
+			expect(buildFlowTopologyViewFromLayoutState(layoutState, viewOptions)).toEqual(
+				buildFlowTopologyView(topology, viewOptions),
+			);
+		}
+	});
+
+	test("builds separate layouts for mode and standalone expansion changes", () => {
+		const topology: ResourceTopology = {
+			nodes: [node("Deployment", "api"), node("Pod", "api-1"), node("ConfigMap", "standalone")],
+			edges: [
+				{
+					id: "deployment-to-pod",
+					source: "Deployment:api",
+					target: "Pod:api-1",
+					relation: "owns",
+				},
+			],
+			warnings: [],
+		};
+		const ownershipState = buildFlowTopologyLayoutState(topology, "ownership", new Set(), null);
+		const networkFlowState = buildFlowTopologyLayoutState(topology, "networkFlow", new Set(), null);
+		const expandedStandaloneState = buildFlowTopologyLayoutState(
+			topology,
+			"ownership",
+			new Set(["ConfigMap"]),
+			"ConfigMap:standalone",
+		);
+
+		expect(networkFlowState).not.toBe(ownershipState);
+		expect(expandedStandaloneState).not.toBe(ownershipState);
+		expect(networkFlowState.layout).not.toEqual(ownershipState.layout);
+		expect(expandedStandaloneState.layout).not.toEqual(ownershipState.layout);
+	});
+
 	test("compacts direct Job to Pod ownership edges without empty columns", () => {
 		const topology: ResourceTopology = {
 			nodes: [
