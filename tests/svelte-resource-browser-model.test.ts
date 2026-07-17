@@ -349,7 +349,10 @@ describe("svelte resource browser model", () => {
 			"utf8",
 		);
 
-		expect(source).toContain("mergeTopologyMetrics(topologyQuery.data, metricsQuery.data)");
+		expect(source).toContain("resourceMetricIndex(metricsQuery.data)");
+		expect(source).toContain(
+			"mergeTopologyMetrics(topologyQuery.data, metricsQuery.data, metricsIndex)",
+		);
 		expect(source).toContain("topology={topologyWithMetrics}");
 		expect(source).toContain("topologyNodes: topologyWithMetrics?.nodes");
 	});

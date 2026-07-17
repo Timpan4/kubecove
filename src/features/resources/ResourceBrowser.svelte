@@ -43,6 +43,7 @@
 		formatMemoryBytes,
 		mergeResourceMetrics,
 		mergeTopologyMetrics,
+		resourceMetricIndex,
 	} from "@/lib/resource-metrics";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { cnfast } from "@/lib/utils";
@@ -445,12 +446,13 @@
 	);
 	const selectedNamespaceSet = $derived(new Set(selectedNamespaces));
 	const selectedKindSet = $derived(new Set(selectedKinds.map(kindSelectionKey)));
+	const metricsIndex = $derived(resourceMetricIndex(metricsQuery.data));
 	const rowsWithMetrics = $derived(
-		mergeResourceMetrics(resourcesQuery.data ?? [], metricsQuery.data),
+		mergeResourceMetrics(resourcesQuery.data ?? [], metricsQuery.data, metricsIndex),
 	);
 	const resourceSearchIndex = $derived(buildResourceSearchIndex(rowsWithMetrics));
 	const topologyWithMetrics = $derived(
-		mergeTopologyMetrics(topologyQuery.data, metricsQuery.data),
+		mergeTopologyMetrics(topologyQuery.data, metricsQuery.data, metricsIndex),
 	);
 	const tableModel = $derived(
 		buildResourceTableModel(

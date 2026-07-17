@@ -6,6 +6,7 @@ import {
 	formatMemoryBytes,
 	mergeResourceMetrics,
 	mergeTopologyMetrics,
+	resourceMetricIndex,
 } from "../src/lib/resource-metrics";
 import type {
 	ResourceMetricsSummary,
@@ -95,6 +96,42 @@ describe("resource metrics helpers", () => {
 
 		expect(merged?.nodes[0].metrics?.memoryBytes).toBe(64 * 1024 * 1024);
 		expect(merged?.nodes[0].summary.metrics?.cpuMillicores).toBe(125);
+	});
+
+	test("shared metric index matches default table and topology merges", () => {
+		const topology: ResourceTopology = {
+			nodes: [
+				{
+					id: "pod",
+					kind: "Pod",
+					name: "api-0",
+					namespace: "payments",
+					health: "healthy",
+					selectable: true,
+					summary: pod,
+				},
+			],
+			edges: [],
+			warnings: [],
+		};
+		const rows = [pod, { ...pod, kind: "ReplicaSet", name: "api-7d9" }];
+		const index = resourceMetricIndex(metrics);
+
+		expect(mergeResourceMetrics(rows, metrics, index)).toEqual(
+			mergeResourceMetrics(rows, metrics),
+		);
+		expect(mergeTopologyMetrics(topology, metrics, index)).toEqual(
+			mergeTopologyMetrics(topology, metrics),
+		);
+	});
+
+	test("keeps inputs when metrics index is empty", () => {
+		const rows = [pod];
+		const topology: ResourceTopology = { nodes: [], edges: [], warnings: [] };
+		const emptyIndex = resourceMetricIndex(undefined);
+
+		expect(mergeResourceMetrics(rows, undefined, emptyIndex)).toBe(rows);
+		expect(mergeTopologyMetrics(topology, undefined, emptyIndex)).toBe(topology);
 	});
 
 	test("describes unavailable metrics states without failing the resource view", () => {
