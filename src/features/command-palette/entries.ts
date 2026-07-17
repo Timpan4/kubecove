@@ -5,6 +5,10 @@ import {
 	type TreeNodeId,
 } from "@/lib/tree-nav";
 import type { ResourceSummary } from "@/lib/types";
+import {
+	buildResourceSearchIndex,
+	type ResourceSearchEntry,
+} from "@/features/resources/helpers";
 
 export type PaletteAction = "settings" | "launcher";
 
@@ -109,4 +113,20 @@ export function dedupeResources(rows: ResourceSummary[]): ResourceSummary[] {
 		result.push(row);
 	}
 	return result;
+}
+
+export function buildDedupedResourceSearchIndex(
+	resourceSets: ResourceSummary[][],
+): ResourceSearchEntry[] {
+	const seen = new Set<string>();
+	const unique: ResourceSummary[] = [];
+	for (const rows of resourceSets) {
+		for (const resource of rows) {
+			const key = resourceEntryKey(resource);
+			if (seen.has(key)) continue;
+			seen.add(key);
+			unique.push(resource);
+		}
+	}
+	return buildResourceSearchIndex(unique);
 }

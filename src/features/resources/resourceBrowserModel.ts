@@ -16,6 +16,7 @@ import {
 	resourceTypeGroupCollapseKey,
 	uniqueGitOpsFilters,
 	type HealthFilter,
+	type ResourceSearchEntry,
 } from "./helpers";
 import { pageGitOpsGroupCounts, pageTypeGroupCounts } from "./grouping";
 import type {
@@ -356,8 +357,8 @@ function effectiveCollapsedGroups({
 export function buildResourceTableModel(
 	rows: ResourceSummary[],
 	state: ResourceTableState,
+	searchIndex: ResourceSearchEntry[] = buildResourceSearchIndex(rows),
 ): ResourceTableModel {
-	const searchIndex = buildResourceSearchIndex(rows);
 	const scopedRows = filterResourceSearchIndex(
 		searchIndex,
 		state.search,

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import type { ResourceSummary } from "../src/lib/types";
+import { buildResourceSearchIndex } from "../src/features/resources/helpers";
 import {
+	buildDedupedResourceSearchIndex,
 	buildNavigationEntries,
 	dedupeResources,
 	filterNamespaces,
@@ -91,7 +93,8 @@ describe("command palette entries", () => {
 		expect(source).toContain("queryKeys.resources(");
 		expect(source).toContain('queryKey: ["resources", normalizedSourceKey, workspace.scope.clusterContext]');
 		expect(source).toContain("queryClient.getQueriesData<ResourceSummary[]>");
-		expect(source).toContain("buildResourceSearchIndex(dedupeResources(merged))");
+		expect(source).toContain("buildDedupedResourceSearchIndex([");
+		expect(source).not.toContain("cached.flatMap");
 		expect(source).toContain('filterResourceSearchIndex(resourceSearchIndex, query, "")');
 		expect(source).not.toContain('"svelte-command-resources"');
 		expect(source).not.toContain('"svelte-command-namespaces"');
@@ -116,5 +119,17 @@ describe("command palette entries", () => {
 		const rows = dedupeResources([a, resource({ name: "a" }), resource({ name: "b" })]);
 		expect(rows).toHaveLength(2);
 		expect(resourceEntryKey(rows[0])).toBe(resourceEntryKey(a));
+	});
+
+	test("deduped resource index matches merged route and keeps warmed rows first", () => {
+		const warmed = resource({ name: "checkout", status: "Running" });
+		const cachedDuplicate = resource({ name: "checkout", status: "Pending" });
+		const cachedOnly = resource({ name: "payments", namespace: "billing" });
+		const resourceSets = [[warmed], [cachedDuplicate, cachedOnly]];
+
+		expect(buildDedupedResourceSearchIndex(resourceSets)).toEqual(
+			buildResourceSearchIndex(dedupeResources(resourceSets.flat())),
+		);
+		expect(buildDedupedResourceSearchIndex(resourceSets)[0]?.resource).toBe(warmed);
 	});
 });

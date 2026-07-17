@@ -84,6 +84,7 @@
 	} from "./constants";
 	import {
 		buildFetchKeys,
+		buildResourceSearchIndex,
 		resourceReadyChip,
 		resourceIdentityKey,
 		resourceSelectionKey,
@@ -447,19 +448,24 @@
 	const rowsWithMetrics = $derived(
 		mergeResourceMetrics(resourcesQuery.data ?? [], metricsQuery.data),
 	);
+	const resourceSearchIndex = $derived(buildResourceSearchIndex(rowsWithMetrics));
 	const topologyWithMetrics = $derived(
 		mergeTopologyMetrics(topologyQuery.data, metricsQuery.data),
 	);
 	const tableModel = $derived(
-		buildResourceTableModel(rowsWithMetrics, {
-			search,
-			gitOpsFilter,
-			healthFilter,
-			sort: { id: sortColumn, desc: sortDesc },
-			pageIndex,
-			collapsedGroups,
-			selectedResource,
-		}),
+		buildResourceTableModel(
+			rowsWithMetrics,
+			{
+				search,
+				gitOpsFilter,
+				healthFilter,
+				sort: { id: sortColumn, desc: sortDesc },
+				pageIndex,
+				collapsedGroups,
+				selectedResource,
+			},
+			resourceSearchIndex,
+		),
 	);
 	const pinnedResourceKeySet = $derived(new Set(pinnedResourceKeys));
 	const tableVisibleColumnCount = $derived(
