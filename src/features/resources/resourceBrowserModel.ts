@@ -96,6 +96,21 @@ export interface ResourceTableModel {
 	};
 }
 
+export function initialOwnershipMapOpen(
+	restoredState: { mapPanelOpen: boolean } | null | undefined,
+	showByDefault: boolean,
+): boolean {
+	return restoredState?.mapPanelOpen ?? showByDefault;
+}
+
+export function shouldLoadOwnershipMap(
+	mapPanelOpen: boolean,
+	componentLoaded: boolean,
+	loadFailed: boolean,
+): boolean {
+	return mapPanelOpen && !componentLoaded && !loadFailed;
+}
+
 export function kindSelectionKey(kind: ResourceKindSelection): string {
 	return resourceKindFetchKey(kind);
 }

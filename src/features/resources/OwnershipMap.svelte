@@ -15,7 +15,8 @@
 	} from "@/components/ui/svelte";
 	import type { ResourceSummary, ResourceTopology, TopologyMode } from "@/lib/types";
 	import {
-		buildFlowTopologyView,
+		buildFlowTopologyLayoutState,
+		buildFlowTopologyViewFromLayoutState,
 		type FlowTopologyNode,
 	} from "./topology";
 	import OwnershipMapViewport from "./OwnershipMapViewport.svelte";
@@ -59,9 +60,28 @@
 	let viewportHeight = $state(0);
 	let expandedStandaloneKinds = $state<Set<string>>(new Set());
 	const hasViewportSize = $derived(viewportWidth > 0 && viewportHeight > 0);
-	const topologyView = $derived(
+	const selectedStandaloneExpansionId = $derived.by(() => {
+		if (!topology || !selectedNodeId) return null;
+		if (!topology.nodes.some((node) => node.id === selectedNodeId)) return null;
+		return topology.edges.some(
+			(edge) => edge.source === selectedNodeId || edge.target === selectedNodeId,
+		)
+			? null
+			: selectedNodeId;
+	});
+	const topologyLayoutState = $derived(
 		topology
-			? buildFlowTopologyView(topology, {
+			? buildFlowTopologyLayoutState(
+					topology,
+					mode,
+					expandedStandaloneKinds,
+					selectedStandaloneExpansionId,
+				)
+			: null,
+	);
+	const topologyView = $derived(
+		topologyLayoutState
+			? buildFlowTopologyViewFromLayoutState(topologyLayoutState, {
 					mode,
 					selectedNodeId,
 					showFullTopologyOnSelection,

@@ -1,6 +1,29 @@
+<script module lang="ts">
+	let resourceYamlPaneImport: Promise<typeof import("./ResourceYamlPane.svelte")> | undefined;
+	let execTabImport: Promise<typeof import("./ExecTab.svelte")> | undefined;
+
+	function loadResourceYamlPane() {
+		return (resourceYamlPaneImport ??= import("./ResourceYamlPane.svelte"));
+	}
+
+	function loadExecTab() {
+		return (execTabImport ??= import("./ExecTab.svelte"));
+	}
+
+	function retryResourceYamlPaneLoad() {
+		resourceYamlPaneImport = undefined;
+		return loadResourceYamlPane();
+	}
+
+	function retryExecTabLoad() {
+		execTabImport = undefined;
+		return loadExecTab();
+	}
+</script>
+
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
-	import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/svelte";
+	import { Button, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/svelte";
 	import {
 		formatExactTimeOnly,
 		formatExactTimestamp,
@@ -50,11 +73,9 @@
 	import DetailsTab from "./DetailsTab.svelte";
 	import DeploymentRevisionsTab from "./DeploymentRevisionsTab.svelte";
 	import EventsTab from "./EventsTab.svelte";
-	import ExecTab from "./ExecTab.svelte";
 	import PortForwardTab from "./PortForwardTab.svelte";
 	import OperationsTab from "./OperationsTab.svelte";
 	import ResourceLogsPane from "./ResourceLogsPane.svelte";
-	import ResourceYamlPane from "./ResourceYamlPane.svelte";
 	import { sortIncidentEvents } from "./incident-events";
 	import {
 		buildIncidentTimeline,
@@ -119,6 +140,10 @@
 	let parsedLogLines = $state<ParsedLogLine[]>([]);
 	let yamlShowFullDiff = $state(initialDetailState?.yamlShowFullDiff ?? false);
 	let resourceRefreshVersion = $state(0);
+	let ResourceYamlPaneComponent = $state<typeof import("./ResourceYamlPane.svelte").default | null>(null);
+	let resourceYamlPaneLoadError = $state<unknown>(null);
+	let ExecTabComponent = $state<typeof import("./ExecTab.svelte").default | null>(null);
+	let execTabLoadError = $state<unknown>(null);
 
 	const resourceKey = $derived(
 		`${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`,
@@ -141,6 +166,50 @@
 	const canShowPortForward = $derived(
 		(resource.kind === "Pod" || resource.kind === "Service") && Boolean(resource.namespace),
 	);
+
+	$effect(() => {
+		if (activeTab !== "yaml" || ResourceYamlPaneComponent || resourceYamlPaneLoadError) return;
+		void loadResourceYamlPane()
+			.then((module) => {
+				ResourceYamlPaneComponent = module.default;
+			})
+			.catch((error: unknown) => {
+				resourceYamlPaneLoadError = error;
+			});
+	});
+
+	$effect(() => {
+		if (activeTab !== "exec" || ExecTabComponent || execTabLoadError) return;
+		void loadExecTab()
+			.then((module) => {
+				ExecTabComponent = module.default;
+			})
+			.catch((error: unknown) => {
+				execTabLoadError = error;
+			});
+	});
+
+	function retryResourceYamlPane() {
+		resourceYamlPaneLoadError = null;
+		void retryResourceYamlPaneLoad()
+			.then((module) => {
+				ResourceYamlPaneComponent = module.default;
+			})
+			.catch((error: unknown) => {
+				resourceYamlPaneLoadError = error;
+			});
+	}
+
+	function retryExecTab() {
+		execTabLoadError = null;
+		void retryExecTabLoad()
+			.then((module) => {
+				ExecTabComponent = module.default;
+			})
+			.catch((error: unknown) => {
+				execTabLoadError = error;
+			});
+	}
 	const detailsQueryKey = $derived(
 		queryKeys.resourceDetails(resource, dynamicKindKey, kubeconfigSourceKey, yamlViewMode, yamlEncoding),
 	);
@@ -635,20 +704,36 @@
 		{containerStateLabel}
 	/>
 
-	<ResourceYamlPane
-		{client}
-		{resource}
-		{dynamicKind}
-		{kubeconfigSourceKey}
-		detailsYaml={resourceYaml}
-		{detailsQueryKey}
-		{detailsEnabled}
-		active={activeTab === "yaml"}
-		refreshVersion={resourceRefreshVersion}
-		bind:yamlViewMode
-		bind:yamlEncoding
-		bind:yamlShowFullDiff
-	/>
+	{#if ResourceYamlPaneComponent}
+		<ResourceYamlPaneComponent
+			{client}
+			{resource}
+			{dynamicKind}
+			{kubeconfigSourceKey}
+			detailsYaml={resourceYaml}
+			{detailsQueryKey}
+			{detailsEnabled}
+			active={activeTab === "yaml"}
+			refreshVersion={resourceRefreshVersion}
+			bind:yamlViewMode
+			bind:yamlEncoding
+			bind:yamlShowFullDiff
+		/>
+	{:else if activeTab === "yaml"}
+		<TabsContent value="yaml" class="min-h-0">
+			{#if resourceYamlPaneLoadError}
+				<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
+					<span>Failed to load YAML.</span>
+					<Button type="button" variant="outline" size="sm" onclick={retryResourceYamlPane}>Retry</Button>
+				</div>
+			{:else}
+				<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
+					<Spinner />
+					<span>Loading YAML</span>
+				</div>
+			{/if}
+		</TabsContent>
+	{/if}
 
 	<EventsTab
 		{eventsQuery}
@@ -677,14 +762,26 @@
 	{/if}
 
 	{#if canShowExec}<TabsContent value="exec">
-		<ExecTab
-			{client}
-			{resource}
-			containers={containerRows}
-			bind:selectedContainer
-			{kubeconfigSourceKey}
-			active={activeTab === "exec"}
-		/>
+		{#if ExecTabComponent}
+			<ExecTabComponent
+				{client}
+				{resource}
+				containers={containerRows}
+				bind:selectedContainer
+				{kubeconfigSourceKey}
+				active={activeTab === "exec"}
+			/>
+		{:else if activeTab === "exec" && execTabLoadError}
+			<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
+				<span>Failed to load Exec.</span>
+				<Button type="button" variant="outline" size="sm" onclick={retryExecTab}>Retry</Button>
+			</div>
+		{:else if activeTab === "exec"}
+			<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
+				<Spinner />
+				<span>Loading Exec</span>
+			</div>
+		{/if}
 	</TabsContent>{/if}
 
 	{#if canShowPortForward}<TabsContent value="portForward">

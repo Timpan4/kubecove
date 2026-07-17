@@ -1,3 +1,16 @@
+<script module lang="ts">
+	let ownershipMapImport: Promise<typeof import("./OwnershipMap.svelte")> | undefined;
+
+	function loadOwnershipMap() {
+		return (ownershipMapImport ??= import("./OwnershipMap.svelte"));
+	}
+
+	function retryOwnershipMapLoad() {
+		ownershipMapImport = undefined;
+		return loadOwnershipMap();
+	}
+</script>
+
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import {
@@ -96,12 +109,13 @@
 	} from "./helpers";
 	import type { HealthFilter } from "./helpers";
 	import { fetchResourcePage } from "./query";
-	import OwnershipMap from "./OwnershipMap.svelte";
 	import ResourceBrowserTopBar from "./ResourceBrowserTopBar.svelte";
 	import {
 		allKindOptions,
 		buildResourceTableModel,
+		initialOwnershipMapOpen,
 		kindSelectionKey,
+		shouldLoadOwnershipMap,
 		syncedTopologyNodeId as resolveSyncedTopologyNodeId,
 		type ResourceSortColumn,
 	} from "./resourceBrowserModel";
@@ -167,7 +181,12 @@
 	let selectedTopologyNodeId = $state<string | null>(null);
 	let topologyMode = $state<TopologyMode>("ownership");
 	let appliedAvailableKindsKey = $state("");
-	let mapPanelOpen = $state(getSettingsSnapshot().showOwnershipMapByDefault);
+	// svelte-ignore state_referenced_locally
+	let mapPanelOpen = $state(
+		initialOwnershipMapOpen(initialPathState, getSettingsSnapshot().showOwnershipMapByDefault),
+	);
+	let OwnershipMapComponent = $state<typeof import("./OwnershipMap.svelte").default | null>(null);
+	let ownershipMapLoadError = $state<unknown>(null);
 	let tablePanelOpen = $state(true);
 	let appliedTargetResourceKey = $state("");
 	let appliedMetricsScopeKey = $state("");
@@ -179,6 +198,34 @@
 	let tableViewportElement = $state<HTMLDivElement | null>(null);
 	let initialPathStateConsumed = $state(false);
 	const showFullTopologyOnSelection = $derived($settingsStore.showFullTopologyOnSelection);
+
+	$effect(() => {
+		if (
+			!shouldLoadOwnershipMap(
+				mapPanelOpen,
+				Boolean(OwnershipMapComponent),
+				Boolean(ownershipMapLoadError),
+			)
+		) return;
+		void loadOwnershipMap()
+			.then((module) => {
+				OwnershipMapComponent = module.default;
+			})
+			.catch((error: unknown) => {
+				ownershipMapLoadError = error;
+			});
+	});
+
+	function retryOwnershipMap() {
+		ownershipMapLoadError = null;
+		void retryOwnershipMapLoad()
+			.then((module) => {
+				OwnershipMapComponent = module.default;
+			})
+			.catch((error: unknown) => {
+				ownershipMapLoadError = error;
+			});
+	}
 
 	const incomingScopeKey = $derived(
 		JSON.stringify({
@@ -954,22 +1001,34 @@
 		>
 			{#if mapPanelOpen}
 				<div class="h-full min-h-[400px] min-w-0">
-					<OwnershipMap
-						topology={topologyWithMetrics}
-						isLoading={topologyQuery.isPending && !topologyQuery.data}
-						isError={topologyQuery.isError && !topologyQuery.data}
-						error={topologyQuery.error}
-						mode={topologyMode}
-						selectedNodeId={syncedTopologyNodeId}
-						{showFullTopologyOnSelection}
-						fitViewKey={topologyFitViewKey}
-						onModeChange={(mode) => {
-							topologyMode = mode;
-							selectedTopologyNodeId = null;
-						}}
-						onNodeSelect={selectTopologyResource}
-						onMapToggle={closeMapPanel}
-					/>
+					{#if OwnershipMapComponent}
+						<OwnershipMapComponent
+							topology={topologyWithMetrics}
+							isLoading={topologyQuery.isPending && !topologyQuery.data}
+							isError={topologyQuery.isError && !topologyQuery.data}
+							error={topologyQuery.error}
+							mode={topologyMode}
+							selectedNodeId={syncedTopologyNodeId}
+							{showFullTopologyOnSelection}
+							fitViewKey={topologyFitViewKey}
+							onModeChange={(mode) => {
+								topologyMode = mode;
+								selectedTopologyNodeId = null;
+							}}
+							onNodeSelect={selectTopologyResource}
+							onMapToggle={closeMapPanel}
+						/>
+					{:else if ownershipMapLoadError}
+						<div class="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
+							<span>Failed to load ownership map.</span>
+							<Button type="button" variant="outline" size="sm" onclick={retryOwnershipMap}>Retry</Button>
+						</div>
+					{:else}
+						<div class="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
+							<Spinner />
+							<span>Loading ownership map</span>
+						</div>
+					{/if}
 				</div>
 			{:else}
 				<aside

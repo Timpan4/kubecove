@@ -6,6 +6,11 @@ import {
 	buildFlowTopologySelectionIndex,
 	resourceTopologyNodeId,
 } from "@/features/resources/topology-implementation";
+import {
+	buildFlowTopologyLayoutState,
+	buildFlowTopologyView,
+	buildFlowTopologyViewFromLayoutState,
+} from "@/features/resources/topology-view";
 import type {
 	ResourceSummary,
 	ResourceTopology,
@@ -70,6 +75,16 @@ const selectedIds = topology.nodes
 
 const layout = buildFlowTopologyLayout(topology, null);
 const selectionIndex = buildFlowTopologySelectionIndex(topology);
+const layoutState = buildFlowTopologyLayoutState(
+	topology,
+	"ownership",
+	new Set(),
+	null,
+);
+const viewports = [
+	{ width: 1280, height: 800 },
+	{ width: 1440, height: 900 },
+] as const;
 
 // The full-rebuild path is the most expensive code path, so a smaller slice of
 // selections keeps the instrumented run reasonable while staying representative.
@@ -89,6 +104,30 @@ describe("ownership flow topology (500 apps / 1k nodes)", () => {
 	bench("applyFlowTopologySelectionWithIndex (indexed selection)", () => {
 		for (const selectedId of selectedIds) {
 			applyFlowTopologySelectionWithIndex(layout, selectionIndex, selectedId);
+		}
+	});
+
+	bench("selection + resize (rebuild view)", () => {
+		for (const [index, selectedId] of selectedIds.entries()) {
+			buildFlowTopologyView(topology, {
+				mode: "ownership",
+				selectedNodeId: selectedId,
+				showFullTopologyOnSelection: index % 2 === 0,
+				expandedStandaloneKinds: new Set(),
+				viewportSize: viewports[index % viewports.length],
+			});
+		}
+	});
+
+	bench("selection + resize (retained layout)", () => {
+		for (const [index, selectedId] of selectedIds.entries()) {
+			buildFlowTopologyViewFromLayoutState(layoutState, {
+				mode: "ownership",
+				selectedNodeId: selectedId,
+				showFullTopologyOnSelection: index % 2 === 0,
+				expandedStandaloneKinds: new Set(),
+				viewportSize: viewports[index % viewports.length],
+			});
 		}
 	});
 });
