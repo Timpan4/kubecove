@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
+	buildResourceSearchIndex,
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,
 } from "../src/features/resources/helpers";
@@ -123,6 +124,45 @@ describe("svelte resource browser model", () => {
 				(entry) => entry.type === "resource" && entry.resource.name === "api",
 			),
 		).toBe(false);
+	});
+
+	test("matches default and prebuilt search indexes across table states", () => {
+		const owned = resource("api", {
+			gitOpsOwner: {
+				provider: "argo",
+				kind: "Application",
+				name: "payments",
+				namespace: "argocd",
+			},
+		});
+		const restarted = resource("worker", { health: "restarted", restarts: 2 });
+		const rows = [owned, restarted];
+		const searchIndex = buildResourceSearchIndex(rows);
+		const states = [
+			{
+				search: "",
+				gitOpsFilter: "",
+				healthFilter: "all" as const,
+				sort: { id: "name" as const, desc: false },
+				pageIndex: 0,
+				collapsedGroups: new Set<string>(),
+			},
+			{
+				search: "api",
+				gitOpsFilter: "argo:Application:argocd:payments",
+				healthFilter: "healthy" as const,
+				sort: { id: "restarts" as const, desc: true },
+				pageIndex: 1,
+				collapsedGroups: new Set([resourceGroupCollapseKey(owned)]),
+				selectedResource: owned,
+			},
+		];
+
+		for (const state of states) {
+			expect(buildResourceTableModel(rows, state, searchIndex)).toEqual(
+				buildResourceTableModel(rows, state),
+			);
+		}
 	});
 
 	test("inherits GitOps table grouping through Kubernetes owner chains", () => {

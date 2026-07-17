@@ -69,6 +69,13 @@ const gitOpsState: ResourceTableState = {
 	healthFilter: "all",
 };
 
+const stateVariants: ResourceTableState[] = [
+	state,
+	gitOpsState,
+	{ ...state, search: "checkout-42", healthFilter: "all", pageIndex: 2 },
+	{ ...state, search: "", healthFilter: "healthy", sort: { id: "name", desc: false } },
+];
+
 describe("resource table model (10k rows)", () => {
 	bench("buildResourceSearchIndex", () => {
 		buildResourceSearchIndex(rows);
@@ -84,5 +91,15 @@ describe("resource table model (10k rows)", () => {
 
 	bench("buildResourceTableModel (gitops owner filtered)", () => {
 		buildResourceTableModel(rows, gitOpsState);
+	});
+
+	bench("buildResourceTableModel repeated variants (default index rebuild)", () => {
+		for (const variant of stateVariants) buildResourceTableModel(rows, variant);
+	});
+
+	bench("buildResourceTableModel repeated variants (reused index)", () => {
+		for (const variant of stateVariants) {
+			buildResourceTableModel(rows, variant, searchIndex);
+		}
 	});
 });

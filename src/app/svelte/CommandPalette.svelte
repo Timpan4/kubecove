@@ -11,8 +11,8 @@
 		CommandList,
 	} from "@/components/ui/svelte";
 	import {
+		buildDedupedResourceSearchIndex,
 		buildNavigationEntries,
-		dedupeResources,
 		filterNamespaces,
 		filterNavigationEntries,
 		resourceEntryKey,
@@ -21,7 +21,6 @@
 	import { shouldToggleCommandPaletteShortcut } from "@/features/command-palette/shortcut";
 	import {
 		buildFetchKeys,
-		buildResourceSearchIndex,
 		fetchResourcePage,
 		filterResourceSearchIndex,
 	} from "@/features/resources";
@@ -130,11 +129,10 @@
 		const cached = queryClient.getQueriesData<ResourceSummary[]>({
 			queryKey: ["resources", normalizedSourceKey, workspace.scope.clusterContext],
 		});
-		const merged = [
-			...warmedRows,
-			...cached.flatMap(([, rows]) => rows ?? []),
-		];
-		return buildResourceSearchIndex(dedupeResources(merged));
+		return buildDedupedResourceSearchIndex([
+			warmedRows,
+			...cached.map(([, rows]) => rows ?? []),
+		]);
 	});
 	const visibleResources = $derived(
 		hasQuery
