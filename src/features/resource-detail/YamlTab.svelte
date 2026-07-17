@@ -17,6 +17,9 @@
 		SelectValue,
 		Spinner,
 		TabsContent,
+		Tooltip,
+		TooltipContent,
+		TooltipTrigger,
 	} from "@/components/ui/svelte";
 	import { diffLineClassName } from "./yamlTabDiff";
 
@@ -161,29 +164,33 @@
 								{#if yamlPreparing}<Spinner data-icon="inline-start" />{/if}
 								Dry run
 							</Button>
-							<span
-								class="group relative inline-flex"
-								title={!yamlPreview ? "Run a dry run before applying." : undefined}
-							>
+							{#if !yamlPreview}
+								<Tooltip>
+									<TooltipTrigger>
+										{#snippet child({ props }: { props: Record<string, unknown> })}
+											<span {...props} class="inline-flex">
 								<Button
 									type="button"
-									disabled={!yamlPreview || yamlApplying}
-									aria-describedby={!yamlPreview ? "yaml-apply-disabled-tooltip" : undefined}
+									disabled
+									aria-describedby="yaml-apply-disabled-tooltip"
 									onclick={applyYamlPreview}
 								>
 									{#if yamlApplying}<Spinner data-icon="inline-start" />{/if}
 									Apply
 								</Button>
-								{#if !yamlPreview}
-									<span
-										id="yaml-apply-disabled-tooltip"
-										role="tooltip"
-										class="pointer-events-none absolute right-0 top-full z-50 mt-1 hidden w-max max-w-xs rounded-md bg-foreground px-2 py-1 text-xs text-background shadow group-hover:block"
-									>
+											</span>
+										{/snippet}
+									</TooltipTrigger>
+									<TooltipContent id="yaml-apply-disabled-tooltip">
 										Run a dry run before applying.
-									</span>
-								{/if}
-							</span>
+									</TooltipContent>
+								</Tooltip>
+							{:else}
+								<Button type="button" disabled={yamlApplying} onclick={applyYamlPreview}>
+									{#if yamlApplying}<Spinner data-icon="inline-start" />{/if}
+									Apply
+								</Button>
+							{/if}
 						</div>
 					{/if}
 				</div>

@@ -2,7 +2,7 @@
 	import { onMount, tick } from "svelte";
 	import { useQueryClient } from "@tanstack/svelte-query";
 	import { FolderOpen, Settings } from "lucide-svelte";
-	import { Button } from "@/components/ui/svelte";
+	import { Button, TooltipProvider } from "@/components/ui/svelte";
 	import AppUsageFooter from "./AppUsageFooter.svelte";
 	import SettingsSurface from "./SettingsSurface.svelte";
 	import UpdateStatusButton from "./UpdateStatusButton.svelte";
@@ -232,7 +232,8 @@
 	<title>KubeCove</title>
 </svelte:head>
 
-{#if workspaceTransitionPending}
+<TooltipProvider>
+	{#if workspaceTransitionPending}
 	<div class="flex h-screen w-full items-center justify-center bg-background text-sm text-muted-foreground">
 		Switching workspace…
 	</div>
@@ -299,4 +300,5 @@
 		</main>
 		<AppUsageFooter />
 	</div>
-{/if}
+	{/if}
+</TooltipProvider>

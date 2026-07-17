@@ -7,7 +7,7 @@
 		RotateCw,
 		X,
 	} from "lucide-svelte";
-	import { Badge, Button } from "@/components/ui/svelte";
+	import { Badge, Button, Popover, PopoverContent, PopoverTrigger, buttonClass } from "@/components/ui/svelte";
 	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import { cnfast } from "@/lib/utils";
 	import type { AppUpdateState } from "@/features/app-updates/store";
@@ -19,8 +19,8 @@
 	});
 	const updatesEnabled = isAppUpdatesEnabled();
 	const update = $derived($appUpdateStore);
-	let manualOpen = $state(false);
 	let autoOpenedVersion = $state<string | null>(null);
+	let panelOpen = $state(false);
 
 	const hasUpdate = $derived(update.status === "available" || update.status === "downloading");
 	const autoOpenVersion = $derived(
@@ -31,10 +31,11 @@
 			? update.availableVersion
 			: null,
 	);
-	const panelOpen = $derived(
-		manualOpen || (autoOpenVersion !== null && autoOpenedVersion !== autoOpenVersion),
-	);
 	const tooltip = $derived(updateTooltip(update));
+
+	$effect(() => {
+		if (autoOpenVersion !== null && autoOpenedVersion !== autoOpenVersion) panelOpen = true;
+	});
 
 	function formatCheckedAt(value: string | null): string {
 		if (!value) return "Not checked yet";
@@ -52,8 +53,12 @@
 	}
 
 	function closePanel() {
-		manualOpen = false;
-		if (autoOpenVersion !== null) autoOpenedVersion = autoOpenVersion;
+		panelOpen = false;
+		if (update.availableVersion !== null) autoOpenedVersion = update.availableVersion;
+	}
+
+	function handlePanelOpenChange(open: boolean) {
+		if (!open && update.availableVersion !== null) autoOpenedVersion = update.availableVersion;
 	}
 
 	function dismissAvailableUpdate() {
@@ -64,25 +69,27 @@
 
 {#if updatesEnabled}
 	<div class="relative mr-1 [-webkit-app-region:no-drag]">
-		<Button
+		<Popover bind:open={panelOpen} onOpenChange={handlePanelOpenChange}>
+			<PopoverTrigger
 			type="button"
-			variant="ghost"
-			size="icon"
-			class="relative size-8 text-muted-foreground"
+			class={buttonClass({
+				variant: "ghost",
+				size: "icon",
+				className: "relative size-8 text-muted-foreground",
+			})}
 			title={tooltip}
 			aria-label={tooltip}
 			aria-expanded={panelOpen}
-			onclick={() => (manualOpen = !manualOpen)}
 		>
 			<RotateCw class={cnfast(update.status === "checking" && "animate-spin")} />
 			{#if hasUpdate || update.status === "installed"}
 				<span class="absolute right-1 top-1 size-2 rounded-full bg-primary"></span>
 			{/if}
-		</Button>
+			</PopoverTrigger>
 
-		{#if panelOpen}
-			<div
-				class="absolute right-0 top-[calc(100%+0.375rem)] z-popover flex w-80 max-w-[calc(100vw-1rem)] flex-col gap-3 rounded-md border bg-surface-2 p-4 text-popover-foreground shadow-xl"
+			<PopoverContent
+				align="end"
+				class="flex w-80 max-w-[calc(100vw-1rem)] flex-col gap-3"
 				role="dialog"
 				aria-label="App updates"
 			>
@@ -177,7 +184,7 @@
 						Check
 					</Button>
 				</div>
-			</div>
-		{/if}
+			</PopoverContent>
+		</Popover>
 	</div>
 {/if}
