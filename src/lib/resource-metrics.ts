@@ -7,21 +7,21 @@ import type {
 	TopologyNode,
 } from "./types";
 
+export type ResourceMetricIndex = ReadonlyMap<string, ResourceMetricSummary>;
+
 function metricKey(kind: string, namespace: string | null | undefined, name: string) {
 	return `${kind}:${namespace ?? ""}:${name}`;
 }
 
 export function resourceMetricIndex(
 	summary: ResourceMetricsSummary | undefined,
-): Map<string, ResourceMetricSummary> {
+): ResourceMetricIndex {
 	const index = new Map<string, ResourceMetricSummary>();
 	if (!summary) return index;
-	for (const metric of [
-		...summary.pods,
-		...summary.nodes,
-		...summary.workloads,
-	]) {
-		index.set(metricKey(metric.kind, metric.namespace, metric.name), metric);
+	for (const metrics of [summary.pods, summary.nodes, summary.workloads]) {
+		for (const metric of metrics) {
+			index.set(metricKey(metric.kind, metric.namespace, metric.name), metric);
+		}
 	}
 	return index;
 }
@@ -29,8 +29,8 @@ export function resourceMetricIndex(
 export function mergeResourceMetrics(
 	resources: ResourceSummary[],
 	metrics: ResourceMetricsSummary | undefined,
+	index: ResourceMetricIndex = resourceMetricIndex(metrics),
 ): ResourceSummary[] {
-	const index = resourceMetricIndex(metrics);
 	if (index.size === 0) return resources;
 	return resources.map((resource) => {
 		const metric = index.get(
@@ -42,7 +42,7 @@ export function mergeResourceMetrics(
 
 function mergeTopologyNodeMetrics(
 	node: TopologyNode,
-	index: Map<string, ResourceMetricSummary>,
+	index: ResourceMetricIndex,
 ): TopologyNode {
 	const metric = index.get(metricKey(node.kind, node.namespace, node.name));
 	if (!metric) return node;
@@ -56,8 +56,8 @@ function mergeTopologyNodeMetrics(
 export function mergeTopologyMetrics(
 	topology: ResourceTopology | undefined,
 	metrics: ResourceMetricsSummary | undefined,
+	index: ResourceMetricIndex = resourceMetricIndex(metrics),
 ): ResourceTopology | undefined {
-	const index = resourceMetricIndex(metrics);
 	if (!topology || index.size === 0) return topology;
 	return {
 		...topology,

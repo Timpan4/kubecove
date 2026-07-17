@@ -1,4 +1,9 @@
 import {
+	QueryClient,
+	type TimeoutCallback,
+	timeoutManager,
+} from "@tanstack/svelte-query";
+import {
 	buildNamespaceTreeNode,
 	buildShallowNamespaceTreeNode,
 } from "../src/components/sidebar-tree-helpers";
@@ -9,8 +14,19 @@ import {
 	buildFlowTopologySelectionIndex,
 	resourceTopologyNodeId,
 } from "../src/features/resources/topology-implementation";
+import {
+	configureLargeQueryRetention,
+	LARGE_QUERY_ROOTS,
+} from "../src/lib/query-retention";
+import {
+	mergeResourceMetrics,
+	mergeTopologyMetrics,
+	resourceMetricIndex,
+} from "../src/lib/resource-metrics";
 import type {
 	DiscoveredResourceKind,
+	ResourceMetricSummary,
+	ResourceMetricsSummary,
 	ResourceSummary,
 	ResourceTopology,
 	TopologyNode,
@@ -73,6 +89,34 @@ function countTreeNodes(nodes: unknown): number {
 	return count;
 }
 
+class VirtualTimeouts {
+	#now = 0;
+	#nextId = 0;
+	#timers = new Map<number, { callback: TimeoutCallback; dueAt: number }>();
+
+	setTimeout = (callback: TimeoutCallback, delay: number): number => {
+		const id = this.#nextId++;
+		this.#timers.set(id, { callback, dueAt: this.#now + delay });
+		return id;
+	};
+
+	clearTimeout = (id: number | undefined): void => {
+		if (id !== undefined) this.#timers.delete(id);
+	};
+
+	setInterval = this.setTimeout;
+	clearInterval = this.clearTimeout;
+
+	advanceBy(milliseconds: number): void {
+		this.#now += milliseconds;
+		for (const [id, timer] of [...this.#timers]) {
+			if (timer.dueAt > this.#now) continue;
+			this.#timers.delete(id);
+			timer.callback();
+		}
+	}
+}
+
 function summary(kind: string, name: string, namespace: string): ResourceSummary {
 	return {
 		cluster: "prod",
@@ -123,6 +167,40 @@ function buildTopology(apps: number): ResourceTopology {
 	return { nodes, edges, warnings: [] };
 }
 
+function buildMetrics(total: number): ResourceMetricsSummary {
+	const pods: ResourceMetricSummary[] = [];
+	const nodes: ResourceMetricSummary[] = [];
+	const workloads: ResourceMetricSummary[] = [];
+	for (let index = 0; index < total; index += 1) {
+		const kind = index % 3 === 0 ? "Pod" : index % 3 === 1 ? "Node" : "Deployment";
+		const metric: ResourceMetricSummary = {
+			kind,
+			cluster: "prod",
+			name: `${kind.toLowerCase()}-${index}`,
+			namespace: kind === "Node" ? null : `namespace-${index % 100}`,
+			cpuMillicores: index % 1_000,
+			memoryBytes: (index % 512) * 1024 * 1024,
+			sourcePods: [],
+		};
+		if (kind === "Pod") pods.push(metric);
+		else if (kind === "Node") nodes.push(metric);
+		else workloads.push(metric);
+	}
+	return {
+		cluster: "prod",
+		availability: { status: "available" },
+		pods,
+		nodes,
+		workloads,
+		warnings: [],
+	};
+}
+
+function percentile(values: number[], percentile: number) {
+	const sorted = [...values].sort((left, right) => left - right);
+	return sorted[Math.floor((sorted.length - 1) * percentile)] ?? 0;
+}
+
 const sidebarStartMemory = memorySample();
 let started = performance.now();
 const eagerNamespaceNodes = namespaces.map((namespace) =>
@@ -164,6 +242,70 @@ for (const selectedId of selectedIds) {
 const indexedSelectionMs = performance.now() - started;
 const afterIndexedSelectionMemory = memorySample();
 
+const metricTotal = 10_000;
+const metrics = buildMetrics(metricTotal);
+const metricResources = Array.from({ length: metricTotal }, (_, index) => {
+	const kind = index % 3 === 0 ? "Pod" : index % 3 === 1 ? "Node" : "Deployment";
+	return summary(kind, `${kind.toLowerCase()}-${index}`, kind === "Node" ? "" : `namespace-${index % 100}`);
+});
+const metricTopology: ResourceTopology = {
+	nodes: metricResources.map((summary, index) => ({
+		id: `metric-node-${index}`,
+		kind: summary.kind,
+		name: summary.name,
+		namespace: summary.namespace,
+		health: "healthy",
+		selectable: true,
+		summary,
+	})),
+	edges: [],
+	warnings: [],
+};
+const metricSamples = { duplicateIndexMs: [] as number[], sharedIndexMs: [] as number[] };
+for (let index = 0; index < 20; index += 1) {
+	started = performance.now();
+	mergeResourceMetrics(metricResources, metrics);
+	mergeTopologyMetrics(metricTopology, metrics);
+	metricSamples.duplicateIndexMs.push(performance.now() - started);
+
+	started = performance.now();
+	const metricIndex = resourceMetricIndex(metrics);
+	mergeResourceMetrics(metricResources, metrics, metricIndex);
+	mergeTopologyMetrics(metricTopology, metrics, metricIndex);
+	metricSamples.sharedIndexMs.push(performance.now() - started);
+}
+
+const queryTimeouts = new VirtualTimeouts();
+timeoutManager.setTimeoutProvider(queryTimeouts);
+const queryClient = new QueryClient();
+configureLargeQueryRetention(queryClient);
+for (const root of LARGE_QUERY_ROOTS) {
+	queryClient.setQueryData(
+		[root, "memory-measurement"],
+		Array.from({ length: 25_000 }, (_, index) => ({
+			id: `${root}-${index}-${"x".repeat(64)}`,
+			name: `resource-${index}`,
+			status: index % 2 === 0 ? "Ready" : "Pending",
+		})),
+	);
+}
+const retainedPayloadRows = LARGE_QUERY_ROOTS.reduce(
+	(total, root) =>
+		total +
+		(queryClient.getQueryData<unknown[]>([root, "memory-measurement"])?.length ?? 0),
+	0,
+);
+const retainedPayloadBytes = LARGE_QUERY_ROOTS.reduce(
+	(total, root) =>
+		total +
+		JSON.stringify(queryClient.getQueryData([root, "memory-measurement"])).length,
+	0,
+);
+queryTimeouts.advanceBy(89_999);
+const retainedQueriesBeforeExpiry = queryClient.getQueryCache().getAll().length;
+queryTimeouts.advanceBy(1);
+const retainedQueriesAfterExpiry = queryClient.getQueryCache().getAll().length;
+
 console.log(
 	JSON.stringify(
 		{
@@ -197,6 +339,23 @@ console.log(
 					afterIndexedSelectionMemory,
 					afterLayoutMemory,
 				),
+			},
+			resourceMetrics: {
+				metrics: metricTotal,
+				samples: metricSamples.duplicateIndexMs.length,
+				duplicateIndexP75Ms: Number(percentile(metricSamples.duplicateIndexMs, 0.75).toFixed(2)),
+				sharedIndexP75Ms: Number(percentile(metricSamples.sharedIndexMs, 0.75).toFixed(2)),
+				sharedIndexP75Speedup: Number(
+					(percentile(metricSamples.duplicateIndexMs, 0.75) / percentile(metricSamples.sharedIndexMs, 0.75)).toFixed(2),
+				),
+			},
+			largeQueryRetention: {
+				queries: LARGE_QUERY_ROOTS.length,
+				payloadRowsPerQuery: 25_000,
+				retainedPayloadRows,
+				retainedPayloadMiB: formatMiB(retainedPayloadBytes),
+				retainedQueriesAt89_999Ms: retainedQueriesBeforeExpiry,
+				retainedQueriesAt90_000Ms: retainedQueriesAfterExpiry,
 			},
 		},
 		null,
