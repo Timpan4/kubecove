@@ -853,7 +853,6 @@
 						{selectedNode}
 						{targetHelmRelease}
 						{targetGitOpsApplication}
-						selectedResource={focusedResource}
 						{initialIncidentFilter}
 						initialPathState={initialSurfacesPathState}
 					onOpenResources={openResources}

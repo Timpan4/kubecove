@@ -2,8 +2,11 @@ import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 
-const host = (globalThis as { process?: { env?: { TAURI_DEV_HOST?: string } } }).process?.env
-	?.TAURI_DEV_HOST;
+const runtime = (globalThis as {
+	process?: { env?: { TAURI_DEV_HOST?: string }; platform?: string };
+}).process;
+const host = runtime?.env?.TAURI_DEV_HOST;
+const usePolling = runtime?.platform === "win32";
 const devServerPort = 1430;
 const hmrPort = 1431;
 
@@ -46,6 +49,9 @@ export default defineConfig(() => ({
 		watch: {
 			// 3. tell Vite to ignore watching `src-tauri`
 			ignored: ["**/src-tauri/**"],
+			// Windows file events can miss agent/editor writes and leave Vite's module graph stale.
+			usePolling,
+			interval: 250,
 		},
 	},
 }));
