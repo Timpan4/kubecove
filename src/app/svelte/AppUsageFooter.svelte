@@ -2,13 +2,16 @@
 	import { createQuery } from "@tanstack/svelte-query";
 	import { Activity, CircleAlert } from "lucide-svelte";
 	import {
-		Button,
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
 		Table,
 		TableBody,
 		TableCell,
 		TableHead,
 		TableHeader,
 		TableRow,
+		buttonClass,
 	} from "@/components/ui/svelte";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { createTauriClient, getAppUsageMetrics } from "@/lib/tauri";
@@ -60,22 +63,21 @@
 				<span class="truncate">{label}</span>
 			</span>
 		{:else}
-			<Button
+			<Popover bind:open>
+				<PopoverTrigger
 				type="button"
-				variant="ghost"
-				size="sm"
-				class="h-6 min-w-0 px-2 text-xs font-normal text-muted-foreground hover:text-foreground"
+				class={buttonClass({
+					variant: "ghost",
+					size: "sm",
+					className: "h-6 min-w-0 px-2 text-xs font-normal text-muted-foreground hover:text-foreground",
+				})}
 				aria-label="Show app process tree"
 				aria-expanded={open}
-				onclick={() => (open = !open)}
 			>
 				<Activity data-icon="inline-start" class="size-3.5 shrink-0" />
 				<span class="truncate">{label}</span>
-			</Button>
-		{/if}
-
-		{#if open && metrics}
-			<div class="absolute bottom-8 right-4 z-popover w-[31rem] max-w-[calc(100vw-2rem)] rounded-md border bg-popover p-2 text-popover-foreground shadow-xl">
+				</PopoverTrigger>
+				<PopoverContent side="top" align="end" class="w-[31rem] max-w-[calc(100vw-2rem)] p-2">
 				<div class="px-1 pb-1 text-xs font-semibold uppercase text-muted-foreground">
 					App process tree
 				</div>
@@ -122,7 +124,8 @@
 						</TableBody>
 					</Table>
 				</div>
-			</div>
+				</PopoverContent>
+			</Popover>
 		{/if}
 	</footer>
 {/if}

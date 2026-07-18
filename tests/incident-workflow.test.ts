@@ -340,13 +340,13 @@ describe("incident workflow helpers", () => {
 		expect(source).toContain('<SelectItem value="kyaml" label="KYAML">KYAML</SelectItem>');
 		expect(source).toContain('onclick={() => void previewYamlApply()}');
 		expect(source).toContain(
-			'title={!yamlPreview ? "Run a dry run before applying." : undefined}',
+			'aria-describedby="yaml-apply-disabled-tooltip"',
 		);
-		expect(source).toContain(
-			'aria-describedby={!yamlPreview ? "yaml-apply-disabled-tooltip" : undefined}',
-		);
-		expect(source).toContain('role="tooltip"');
-		expect(source).toContain("group-hover:block");
+		expect(source).toContain("<Tooltip>");
+		expect(source).toContain("<TooltipTrigger>");
+		expect(source).toContain("{#snippet child({ props }: { props: Record<string, unknown> })}");
+		expect(source).toContain("<TooltipContent id=\"yaml-apply-disabled-tooltip\">");
+		expect(source).toContain("<span {...props} class=\"inline-flex\">");
 		expect(source).toContain(
 			'<div class="overflow-x-auto py-1 font-mono text-xs leading-relaxed">',
 		);
