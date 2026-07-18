@@ -61,6 +61,13 @@ export type PathStateIncidentFilter =
 	| "attention"
 	| "restarted"
 	| "warning";
+export type PathStateRbacRiskBucket =
+	| "all"
+	| "high"
+	| "medium"
+	| "low"
+	| "none"
+	| "unknown";
 
 export interface PathStateResourceRef {
 	cluster: string;
@@ -111,6 +118,10 @@ export interface PathStateSurfacesState {
 	helmSearch: string;
 	selectedHelmRelease: { name: string; namespace?: string | null } | null;
 	selectedGitOpsApplication: string | null;
+	rbac: {
+		riskBucket: PathStateRbacRiskBucket;
+		selectedObjectKey: string | null;
+	} | null;
 }
 
 export interface PathStateWorkspaceSnapshot {
@@ -320,6 +331,16 @@ function sanitizeDetailState(value: unknown): PathStateResourceDetailState | nul
 
 function sanitizeSurfacesState(value: unknown): PathStateSurfacesState | null {
 	if (!isRecord(value)) return null;
+	const rbac = isRecord(value.rbac)
+		? {
+				riskBucket: pickString(
+					value.rbac.riskBucket,
+					["all", "high", "medium", "low", "none", "unknown"] as const,
+					"all",
+				),
+				selectedObjectKey: nullableString(value.rbac.selectedObjectKey),
+			}
+		: null;
 	return {
 		incidentFilter: pickString(
 			value.incidentFilter,
@@ -329,6 +350,7 @@ function sanitizeSurfacesState(value: unknown): PathStateSurfacesState | null {
 		helmSearch: stringValue(value.helmSearch),
 		selectedHelmRelease: sanitizeTargetRef(value.selectedHelmRelease),
 		selectedGitOpsApplication: nullableString(value.selectedGitOpsApplication),
+		rbac,
 	};
 }
 

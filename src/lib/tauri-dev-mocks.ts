@@ -22,6 +22,7 @@ import {
 	source,
 } from "./tauri-dev-mock-data";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
+import { rbacInspectionMock, rbacReviewMock } from "./tauri-dev-mock-rbac";
 import type { TauriClient } from "./tauri-runtime";
 import type {
 	AppUsageMetrics,
@@ -42,7 +43,6 @@ import type {
 	IncidentCockpitSummary,
 	IncidentSeverity,
 	LiveSessionCleanupResult,
-	RbacInspectionSummary,
 	ResourceDetailsFull,
 	ResourceEventSummary,
 	ResourceListRequest,
@@ -124,7 +124,8 @@ const handlers: Record<string, MockHandler> = {
 	list_helm_releases: () => helmReleases,
 	get_helm_release_details: (args) => helmDetails(args),
 	get_helm_release_reconciliation: (args) => helmReconciliation(args),
-	list_rbac_inspection: () => rbac(),
+	list_rbac_inspection: (args) => rbacInspectionMock(args?.clusterContext as string | undefined),
+	review_rbac_access: (args) => rbacReviewMock(args),
 	list_incident_cockpit: (args) => incidents(args?.clusterContext as string | undefined),
 	set_backend_diagnostics_enabled: () => true,
 	get_backend_diagnostics: () => [] satisfies BackendDiagnosticEvent[],
@@ -509,37 +510,6 @@ function helmReconciliation(args: MockArgs): HelmReleaseReconciliation {
 	const tracked: HelmReconciliationResource[] = resources.filter((row) => row.helmRelease === "metrics-gateway").map((row) => ({ apiVersion: row.apiVersion, kind: row.kind, namespace: row.namespace ?? undefined, name: row.name, status: "tracked", statusMessage: "Tracked in mock Helm release", inManifest: true, explicitHelmLabel: true, liveResource: row }));
 	const ciliumSecret = resources.find((row) => row.kind === "Secret" && row.name === "sh.helm.release.v1.cilium.v2");
 	return { summary, totals: { tracked: 4, unlabeledLive: 1, missing: 1, labelOnly: 0, unavailable: 0 }, resources: tracked.concat([{ apiVersion: "v1", kind: "ConfigMap", namespace: "platform", name: "metrics-gateway-dashboard", status: "missing", statusMessage: "Manifest resource is not present in mock live state.", inManifest: true, explicitHelmLabel: false }, { apiVersion: "v1", kind: "Secret", namespace: "kube-system", name: "sh.helm.release.v1.cilium.v2", status: "unlabeledLive", statusMessage: "Live Helm storage Secret is outside the selected release manifest.", inManifest: false, explicitHelmLabel: false, liveResource: ciliumSecret }]), warnings: [] };
-}
-
-function rbac(): RbacInspectionSummary {
-	return {
-		cluster: "mock-dev",
-		warnings: [],
-		serviceAccounts: [
-			{ cluster: "mock-dev", name: "payments-api", namespace: "payments", age: "18d", createdAt: "2026-06-11T08:00:00Z", automountToken: true, secretsCount: 1, imagePullSecretsCount: 0, risks: [{ level: "medium", label: "Mounted token", reason: "Service account token is mounted." }] },
-			{ cluster: "mock-dev", name: "grafana", namespace: "monitoring", age: "31d", createdAt: "2026-05-29T08:00:00Z", automountToken: false, secretsCount: 0, imagePullSecretsCount: 1, risks: [] },
-			{ cluster: "mock-dev", name: "argocd-application-controller", namespace: "argocd", age: "36d", createdAt: "2026-05-24T08:00:00Z", automountToken: true, secretsCount: 2, imagePullSecretsCount: 0, risks: [{ level: "high", label: "Broad app access", reason: "Mock controller can update application resources." }] },
-		],
-		roles: [
-			{ cluster: "mock-dev", kind: "Role", name: "payments-reader", namespace: "payments", age: "18d", createdAt: "2026-06-11T08:00:00Z", rulesCount: 1, risks: [], rules: [{ verbs: ["get", "list", "watch"], apiGroups: [""], resources: ["pods", "services", "configmaps"], resourceNames: [], nonResourceUrls: [], risks: [] }] },
-			{ cluster: "mock-dev", kind: "Role", name: "grafana-config", namespace: "monitoring", age: "31d", createdAt: "2026-05-29T08:00:00Z", rulesCount: 1, risks: [], rules: [{ verbs: ["get"], apiGroups: [""], resources: ["secrets", "configmaps"], resourceNames: ["grafana"], nonResourceUrls: [], risks: [] }] },
-		],
-		clusterRoles: [
-			{ cluster: "mock-dev", kind: "ClusterRole", name: "argocd-app-controller", age: "36d", createdAt: "2026-05-24T08:00:00Z", rulesCount: 2, risks: [{ level: "high", label: "Can update apps", reason: "Can update Argo CD Application resources." }], rules: [{ verbs: ["get", "list", "watch", "update"], apiGroups: ["argoproj.io"], resources: ["applications"], resourceNames: [], nonResourceUrls: [], risks: [{ level: "high", label: "Write access", reason: "Can update GitOps application state." }] }] },
-		],
-		roleBindings: [
-			{ cluster: "mock-dev", kind: "RoleBinding", name: "payments-api-reader", namespace: "payments", age: "18d", createdAt: "2026-06-11T08:00:00Z", roleRefKind: "Role", roleRefName: "payments-reader", subjects: [{ kind: "ServiceAccount", name: "payments-api", namespace: "payments" }], risks: [] },
-			{ cluster: "mock-dev", kind: "RoleBinding", name: "grafana-config", namespace: "monitoring", age: "31d", createdAt: "2026-05-29T08:00:00Z", roleRefKind: "Role", roleRefName: "grafana-config", subjects: [{ kind: "ServiceAccount", name: "grafana", namespace: "monitoring" }], risks: [] },
-		],
-		clusterRoleBindings: [
-			{ cluster: "mock-dev", kind: "ClusterRoleBinding", name: "argocd-application-controller", age: "36d", createdAt: "2026-05-24T08:00:00Z", roleRefKind: "ClusterRole", roleRefName: "argocd-app-controller", subjects: [{ kind: "ServiceAccount", name: "argocd-application-controller", namespace: "argocd" }], risks: [{ level: "high", label: "Cluster-wide GitOps", reason: "Controller binding reaches all namespaces in mock data." }] },
-		],
-		namespaceAccess: [
-			{ cluster: "mock-dev", namespace: "payments", serviceAccounts: 1, roles: 1, roleBindings: 1, boundSubjects: [{ kind: "ServiceAccount", name: "payments-api", namespace: "payments" }], risks: [] },
-			{ cluster: "mock-dev", namespace: "monitoring", serviceAccounts: 1, roles: 1, roleBindings: 1, boundSubjects: [{ kind: "ServiceAccount", name: "grafana", namespace: "monitoring" }], risks: [] },
-			{ cluster: "mock-dev", namespace: "argocd", serviceAccounts: 1, roles: 0, roleBindings: 0, boundSubjects: [{ kind: "ServiceAccount", name: "argocd-application-controller", namespace: "argocd" }], risks: [{ level: "high", label: "ClusterRoleBinding", reason: "Bound to cluster-wide application-controller role." }] },
-		],
-	};
 }
 
 function incidents(cluster = "mock-dev"): IncidentCockpitSummary {

@@ -1,4 +1,16 @@
-export type RbacRiskLevel = "low" | "medium" | "high";
+export type RbacRiskLevel = "low" | "medium" | "high" | "unknown";
+export type RbacCoverageStatus = "complete" | "partial" | "unavailable";
+export type RbacFamily = "serviceAccounts" | "roles" | "clusterRoles" | "roleBindings" | "clusterRoleBindings";
+export type RbacRequestMode = "allNamespaces" | "cluster";
+
+export interface RbacCoverage {
+	family: RbacFamily;
+	status: RbacCoverageStatus;
+	requestMode: RbacRequestMode;
+	count: number;
+	namespaces?: string[];
+	message?: string;
+}
 
 export interface RbacRiskIndicator {
 	level: RbacRiskLevel;
@@ -70,11 +82,45 @@ export interface RbacNamespaceAccessSummary {
 
 export interface RbacInspectionSummary {
 	cluster: string;
+	refreshedAt?: string;
 	warnings: string[];
+	coverage: RbacCoverage[];
 	serviceAccounts: ServiceAccountSummary[];
 	roles: RbacRoleSummary[];
 	clusterRoles: RbacRoleSummary[];
 	roleBindings: RbacBindingSummary[];
 	clusterRoleBindings: RbacBindingSummary[];
 	namespaceAccess: RbacNamespaceAccessSummary[];
+}
+
+export type RbacAccessReviewIdentity =
+	| { kind: "serviceAccount"; name: string; namespace: string }
+	| { kind: "user"; username: string; groups: string[] }
+	| { kind: "group"; group: string };
+
+export type RbacAccessReviewTarget =
+	| {
+		kind: "resource";
+		verb: string;
+		resource: string;
+		apiGroup?: string;
+		namespace: string | null;
+		subresource?: string;
+		name?: string;
+	}
+	| { kind: "nonResource"; verb: string; nonResourceUrl: string };
+
+export interface RbacAccessReviewRequest {
+	clusterContext: string;
+	identity: RbacAccessReviewIdentity;
+	target: RbacAccessReviewTarget;
+	kubeconfigEnvVar?: string;
+	requestId?: string;
+	cancelScope?: string;
+}
+
+export interface RbacAccessReviewResult {
+	outcome: "allowed" | "denied" | "noOpinion";
+	reason?: string;
+	evaluationError?: string;
 }

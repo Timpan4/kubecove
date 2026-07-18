@@ -1,0 +1,69 @@
+import { describe, expect, test } from "bun:test";
+import { requiredPermissionForFriendlyError } from "../src/lib/friendly-errors";
+import { requiredPermissionForResource } from "../src/features/rbac/handoff";
+
+const target = {
+	kind: "resource" as const,
+	verb: "get",
+	apiGroup: "",
+	resource: "pods",
+	namespace: "prod",
+};
+
+describe("RBAC denied-action handoff", () => {
+	test("uses only explicit attributes from a forbidden error", () => {
+		expect(
+			requiredPermissionForFriendlyError(
+				{ kind: "forbidden", message: "pods is forbidden" },
+				{ requiredPermission: target },
+			),
+		).toEqual(target);
+	});
+
+	test("never guesses attributes for generic or non-forbidden errors", () => {
+		expect(
+			requiredPermissionForFriendlyError(
+				{ kind: "forbidden", message: "forbidden" },
+				{},
+			),
+		).toBeNull();
+		expect(
+			requiredPermissionForFriendlyError(
+				{ kind: "network", message: "timed out" },
+				{ requiredPermission: target },
+			),
+		).toBeNull();
+	});
+
+	test("builds a target only from explicit resource API identity", () => {
+		expect(
+			requiredPermissionForResource(
+				{
+					cluster: "dev",
+					kind: "Widget",
+					name: "api",
+					namespace: "prod",
+					age: "",
+					health: "unknown",
+					group: "example.io",
+					plural: "widgets",
+					namespaced: true,
+				},
+				"get",
+			),
+		).toEqual({
+			kind: "resource",
+			verb: "get",
+			apiGroup: "example.io",
+			resource: "widgets",
+			namespace: "prod",
+			name: "api",
+		});
+		expect(
+			requiredPermissionForResource(
+				{ cluster: "dev", kind: "Pod", name: "api", namespace: "prod", age: "", health: "unknown" },
+				"get",
+			),
+		).toBeNull();
+	});
+});

@@ -35,6 +35,7 @@
 		topIncidentSignals,
 		incidentTimeline,
 		onOpenHelmRelease,
+		requiredPermission,
 		metadataLabelsExpanded = $bindable(false),
 		metadataAnnotationsExpanded = $bindable(false),
 		detailStatusLabel,
@@ -63,7 +64,12 @@
 		{:else if detailsQuery.isError}
 			<FriendlyError
 				error={detailsQuery.error}
-				context={{ operation: "detailsLoad", fallbackTitle: "Failed to load details" }}
+				context={{
+					operation: "detailsLoad",
+					fallbackTitle: "Failed to load details",
+					requiredPermission: requiredPermission ?? undefined,
+					permissionSourceLabel: "Resource details",
+				}}
 			/>
 		{:else}
 				<div class="flex flex-col gap-3">

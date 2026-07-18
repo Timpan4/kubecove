@@ -1,4 +1,5 @@
 import type { AppError } from "./types";
+import type { RbacAccessReviewTarget } from "./rbac-types";
 
 export type FriendlyErrorMode = "full" | "compact";
 
@@ -36,6 +37,8 @@ export interface FriendlyErrorContext {
 	fallbackTitle?: string;
 	target?: string;
 	partial?: boolean;
+	requiredPermission?: RbacAccessReviewTarget;
+	permissionSourceLabel?: string;
 }
 
 export interface FriendlyErrorPresentation {
@@ -129,6 +132,15 @@ export function friendlyErrorBucket(error: unknown): FriendlyErrorBucket {
 		if (pattern.test(message)) return bucket;
 	}
 	return "unknown";
+}
+
+export function requiredPermissionForFriendlyError(
+	error: unknown,
+	context: FriendlyErrorContext,
+): RbacAccessReviewTarget | null {
+	return friendlyErrorBucket(error) === "forbiddenRbac"
+		? (context.requiredPermission ?? null)
+		: null;
 }
 
 function operationSubject(operation: FriendlyErrorOperation | undefined): string {

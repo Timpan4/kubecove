@@ -39,19 +39,6 @@ fn flags_privilege_escalation_verbs() {
 }
 
 #[test]
-fn identifies_forbidden_cluster_scope_errors() {
-    assert!(is_forbidden_app_error(&AppError::kube(
-        "ApiError: clusterroles.rbac.authorization.k8s.io is forbidden"
-    )));
-    assert!(is_forbidden_app_error(&AppError::kube(
-        "request failed with status 403"
-    )));
-    assert!(!is_forbidden_app_error(&AppError::kube(
-        "request failed with status 500"
-    )));
-}
-
-#[test]
 fn summarizes_namespace_subjects_without_duplicates() {
     let binding = RbacBindingSummary {
         cluster: "kind-dev".to_string(),

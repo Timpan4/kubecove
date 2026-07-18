@@ -8,7 +8,7 @@
 	import { HelmSurface, selectedHelmReleasePath } from "@/features/helm";
 	import { IncidentSurface, type IncidentFilter } from "@/features/incidents";
 	import { LiveSessionsSurface } from "@/features/live-sessions";
-	import { RbacSurface } from "@/features/rbac";
+	import { RbacSurface, type RbacCockpitState } from "@/features/rbac";
 	import type { HealthFilter } from "@/features/resources";
 	import {
 		createTauriClient,
@@ -22,6 +22,7 @@
 	import type { TreeNodeId } from "@/lib/tree-nav";
 	import type { PathStateDetailTab, PathStateSurfacesState } from "@/lib/path-state";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
+import type { RbacVerifierHandoff } from "@/features/rbac";
 	import SettingsSurface from "./SettingsSurface.svelte";
 	import { treeNodeForResource, type WorkspaceViewMode } from "./workspaceNavigation";
 
@@ -39,6 +40,10 @@
 		onTargetHelmReleaseResolved,
 		onTargetGitOpsApplicationResolved,
 		onPathStateChange = () => {},
+		rbacVerifierHandoff,
+		onRbacVerifierHandoffConsumed,
+		onRbacVerifierReturn,
+		rbacVerifierReturnLabel,
 		onCloseSettings = () => {},
 	}: {
 		workspace: SavedWorkspace;
@@ -60,6 +65,10 @@
 		onTargetHelmReleaseResolved?: () => void;
 		onTargetGitOpsApplicationResolved?: () => void;
 		onPathStateChange?: (state: PathStateSurfacesState) => void;
+		rbacVerifierHandoff?: RbacVerifierHandoff;
+		onRbacVerifierHandoffConsumed?: () => void;
+		onRbacVerifierReturn?: () => void;
+		rbacVerifierReturnLabel?: string;
 		onCloseSettings?: () => void;
 	} = $props();
 
@@ -76,6 +85,15 @@
 	let selectedGitOpsItem = $state<GitOpsSelection | null>(null);
 	let helmSearch = $state(initialHelmSearchValue());
 	let selectedHelmRelease = $state<HelmReleaseSummary | null>(null);
+	function initialRbacStateValue(): RbacCockpitState | undefined {
+		return initialPathState?.rbac
+			? {
+				riskBucket: initialPathState.rbac.riskBucket,
+				selectedObjectKey: initialPathState.rbac.selectedObjectKey ?? undefined,
+			}
+			: undefined;
+	}
+	let rbacState = $state<RbacCockpitState | undefined>(initialRbacStateValue());
 
 	const sourceQuery = createQuery(() => ({
 		queryKey: ["kubeconfig-sources"],
@@ -102,6 +120,12 @@
 			helmSearch,
 			selectedHelmRelease: selectedHelmReleasePath(selectedHelmRelease),
 			selectedGitOpsApplication: selectedGitOpsApplicationName(selectedGitOpsItem),
+			rbac: rbacState
+				? {
+					riskBucket: rbacState.riskBucket ?? "all",
+					selectedObjectKey: rbacState.selectedObjectKey ?? null,
+				}
+				: null,
 		});
 	});
 
@@ -136,8 +160,19 @@
 		/>
 	{/key}
 {:else if viewMode === "rbac"}
-	{#key workspace.id}
-		<RbacSurface {workspace} {sourceReady} {kubeconfigSourceKey} {selectedNode} />
+	{#key `${workspace.id}:${workspace.scope.clusterContext}:${kubeconfigSourceKey ?? ""}`}
+		<RbacSurface
+			{workspace}
+			{sourceReady}
+			{kubeconfigSourceKey}
+			{selectedNode}
+			initialState={rbacState}
+			onStateChange={(state) => (rbacState = state)}
+			verifierHandoff={rbacVerifierHandoff}
+			onVerifierHandoffConsumed={onRbacVerifierHandoffConsumed}
+			onVerifierReturn={onRbacVerifierReturn}
+			verifierReturnLabel={rbacVerifierReturnLabel}
+		/>
 	{/key}
 {:else if viewMode === "incidents"}
 	{#key workspace.id}

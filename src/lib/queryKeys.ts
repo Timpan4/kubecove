@@ -275,14 +275,17 @@ export const queryKeys = {
 		["helm-releases", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
 	rbacInspection: (
 		clusterContext: string,
-		namespaces: string[],
-		kubeconfigEnvVar?: string,
+		sourceOrLegacyNamespaces?: string | string[],
+		legacyKubeconfigEnvVar?: string,
 	) =>
 		[
 			"rbac-inspection",
-			kubeconfigSourceKey(kubeconfigEnvVar),
+			kubeconfigSourceKey(
+				typeof sourceOrLegacyNamespaces === "string"
+					? sourceOrLegacyNamespaces
+					: legacyKubeconfigEnvVar,
+			),
 			clusterContext,
-			sortedNamespaces(namespaces),
 		] as const,
 	incidentCockpit: (
 		clusterContext: string,

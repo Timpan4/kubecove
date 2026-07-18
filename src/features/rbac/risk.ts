@@ -12,11 +12,13 @@ const LEVEL_WEIGHT: Record<RbacRiskLevel, number> = {
 	low: 1,
 	medium: 2,
 	high: 3,
+	unknown: 0,
 };
 
 export function riskTone(level: RbacRiskLevel): StatusTone {
 	if (level === "high") return "error";
 	if (level === "medium") return "warning";
+	if (level === "unknown") return "neutral";
 	return "neutral";
 }
 

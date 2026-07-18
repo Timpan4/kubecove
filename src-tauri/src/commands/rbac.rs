@@ -1,22 +1,31 @@
 use crate::commands::{
-    helpers::{k8s_creation_timestamp_to_rfc3339, list_params, resource_age},
+    helpers::{k8s_creation_timestamp_to_rfc3339, resource_age},
     kubeconfig::KubeconfigSource,
 };
 use crate::models::{
-    AppError, RbacBindingSummary, RbacInspectionSummary, RbacNamespaceAccessSummary,
-    RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary, ServiceAccountSummary,
+    AppError, RbacBindingSummary, RbacCoverageStatus, RbacFamily, RbacFamilyCoverage,
+    RbacInspectionSummary, RbacNamespaceAccessSummary, RbacRequestMode, RbacRiskIndicator,
+    RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary, ServiceAccountSummary,
 };
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::{
     core::v1::ServiceAccount,
-    rbac::v1::{ClusterRole, ClusterRoleBinding, PolicyRule, Role, RoleBinding, Subject},
+    rbac::v1::{PolicyRule, Subject},
 };
-use kube::{api::Api, Client};
+use kube::Client;
 use std::collections::{BTreeMap, BTreeSet};
+use tauri::State;
 
 #[path = "rbac_risk.rs"]
 mod rbac_risk;
 use rbac_risk::{binding_risks, dedupe_risks, dedupe_subjects, rule_risks, service_account_risks};
+
+#[path = "rbac_inventory.rs"]
+mod rbac_inventory;
+use rbac_inventory::{
+    list_cluster_role_bindings, list_cluster_roles, list_role_bindings, list_roles,
+    list_service_accounts, InventoryLoad,
+};
 
 #[cfg(test)]
 #[path = "rbac_tests.rs"]
@@ -25,40 +34,61 @@ mod rbac_tests;
 #[tauri::command]
 pub async fn list_rbac_inspection(
     cluster_context: String,
-    namespaces: Vec<String>,
     kubeconfig_env_var: Option<String>,
+    request_id: Option<String>,
+    cancel_scope: Option<String>,
+    cancellations: State<'_, crate::commands::BackendCancellationRegistry>,
 ) -> Result<RbacInspectionSummary, AppError> {
-    rbac_inspection_from(cluster_context, namespaces, kubeconfig_env_var).await
+    let cancellation = cancellations.register(cancel_scope, request_id);
+    cancellation
+        .run(rbac_inspection_from(cluster_context, kubeconfig_env_var))
+        .await
 }
 
 pub async fn rbac_inspection_from(
     cluster_context: String,
-    namespaces: Vec<String>,
     kubeconfig_env_var: Option<String>,
 ) -> Result<RbacInspectionSummary, AppError> {
     let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
-    let namespaces = clean_namespaces(namespaces);
-    let service_accounts =
-        list_service_accounts(client.clone(), &cluster_context, &namespaces).await?;
-    let roles = list_roles(client.clone(), &cluster_context, &namespaces).await?;
-    let role_bindings = list_role_bindings(client.clone(), &cluster_context, &namespaces).await?;
+    // RBAC is a cluster-security review; workspace namespace filters never narrow inventory.
+    let namespaces = Vec::new();
+    let (
+        service_accounts_result,
+        roles_result,
+        cluster_roles_result,
+        role_bindings_result,
+        cluster_role_bindings_result,
+    ) = tokio::join!(
+        list_service_accounts(client.clone(), &cluster_context),
+        list_roles(client.clone(), &cluster_context),
+        list_cluster_roles(client.clone(), &cluster_context),
+        list_role_bindings(client.clone(), &cluster_context),
+        list_cluster_role_bindings(client, &cluster_context),
+    );
     let mut warnings = Vec::new();
-    let cluster_roles = match list_cluster_roles(client.clone(), &cluster_context).await {
-        Ok(items) => items,
-        Err(err) if is_forbidden_app_error(&err) => {
-            warnings.push("ClusterRoles unavailable: forbidden by RBAC.".to_string());
-            Vec::new()
-        }
-        Err(err) => return Err(err),
-    };
-    let cluster_role_bindings = match list_cluster_role_bindings(client, &cluster_context).await {
-        Ok(items) => items,
-        Err(err) if is_forbidden_app_error(&err) => {
-            warnings.push("ClusterRoleBindings unavailable: forbidden by RBAC.".to_string());
-            Vec::new()
-        }
-        Err(err) => return Err(err),
-    };
+    let (service_accounts, service_accounts_coverage) = family(
+        RbacFamily::ServiceAccounts,
+        service_accounts_result,
+        &mut warnings,
+    );
+    let (roles, roles_coverage) = family(RbacFamily::Roles, roles_result, &mut warnings);
+    let (cluster_roles, cluster_roles_coverage) = family(
+        RbacFamily::ClusterRoles,
+        cluster_roles_result,
+        &mut warnings,
+    );
+    let (mut role_bindings, role_bindings_coverage) = family(
+        RbacFamily::RoleBindings,
+        role_bindings_result,
+        &mut warnings,
+    );
+    let (mut cluster_role_bindings, cluster_role_bindings_coverage) = family(
+        RbacFamily::ClusterRoleBindings,
+        cluster_role_bindings_result,
+        &mut warnings,
+    );
+    inherit_binding_risks(&mut role_bindings, &roles, &cluster_roles);
+    inherit_binding_risks(&mut cluster_role_bindings, &roles, &cluster_roles);
     let namespace_access = namespace_access_summary(
         &cluster_context,
         &namespaces,
@@ -70,7 +100,15 @@ pub async fn rbac_inspection_from(
 
     Ok(RbacInspectionSummary {
         cluster: cluster_context,
+        refreshed_at: Utc::now().to_rfc3339(),
         warnings,
+        coverage: vec![
+            service_accounts_coverage,
+            roles_coverage,
+            cluster_roles_coverage,
+            role_bindings_coverage,
+            cluster_role_bindings_coverage,
+        ],
         service_accounts,
         roles,
         cluster_roles,
@@ -78,6 +116,109 @@ pub async fn rbac_inspection_from(
         cluster_role_bindings,
         namespace_access,
     })
+}
+
+fn family<T>(
+    family: RbacFamily,
+    result: InventoryLoad<T>,
+    warnings: &mut Vec<String>,
+) -> (Vec<T>, RbacFamilyCoverage) {
+    match result.error {
+        None => {
+            let coverage = coverage(
+                family,
+                result.items.len(),
+                RbacCoverageStatus::Complete,
+                None,
+            );
+            (result.items, coverage)
+        }
+        Some(error) => {
+            let partial = !result.items.is_empty();
+            let loaded_count = result.items.len();
+            let message = format!(
+                "{} {}: {}",
+                family_label(family),
+                if partial {
+                    "partially loaded"
+                } else {
+                    "unavailable"
+                },
+                error.message
+            );
+            warnings.push(message.clone());
+            let status = if partial {
+                RbacCoverageStatus::Partial
+            } else {
+                RbacCoverageStatus::Unavailable
+            };
+            (
+                result.items,
+                coverage(family, loaded_count, status, Some(message)),
+            )
+        }
+    }
+}
+
+fn coverage(
+    family: RbacFamily,
+    loaded_count: usize,
+    status: RbacCoverageStatus,
+    message: Option<String>,
+) -> RbacFamilyCoverage {
+    RbacFamilyCoverage {
+        family,
+        status,
+        request_mode: if matches!(
+            family,
+            RbacFamily::ClusterRoles | RbacFamily::ClusterRoleBindings
+        ) {
+            RbacRequestMode::Cluster
+        } else {
+            RbacRequestMode::AllNamespaces
+        },
+        count: loaded_count,
+        namespaces: Vec::new(),
+        message,
+    }
+}
+
+fn family_label(family: RbacFamily) -> &'static str {
+    match family {
+        RbacFamily::ServiceAccounts => "ServiceAccounts",
+        RbacFamily::Roles => "Roles",
+        RbacFamily::ClusterRoles => "ClusterRoles",
+        RbacFamily::RoleBindings => "RoleBindings",
+        RbacFamily::ClusterRoleBindings => "ClusterRoleBindings",
+    }
+}
+
+fn inherit_binding_risks(
+    bindings: &mut [RbacBindingSummary],
+    roles: &[RbacRoleSummary],
+    cluster_roles: &[RbacRoleSummary],
+) {
+    for binding in bindings {
+        let referenced = match binding.role_ref_kind.as_str() {
+            "Role" => roles.iter().find(|role| {
+                role.name == binding.role_ref_name && role.namespace == binding.namespace
+            }),
+            "ClusterRole" => cluster_roles
+                .iter()
+                .find(|role| role.name == binding.role_ref_name),
+            _ => None,
+        };
+        if let Some(role) = referenced {
+            binding.risks.extend(role.risks.clone());
+        } else {
+            binding.risks.push(RbacRiskIndicator {
+                level: RbacRiskLevel::Unknown,
+                label: "Referenced role unavailable".to_string(),
+                reason: "The referenced role was not loaded, so this binding cannot be classified as no flags.".to_string(),
+            });
+        }
+        binding.risks = dedupe_risks(std::mem::take(&mut binding.risks));
+    }
 }
 
 async fn client_for_context(
@@ -88,180 +229,7 @@ async fn client_for_context(
     source.client_for_context(cluster_context).await
 }
 
-fn clean_namespaces(namespaces: Vec<String>) -> Vec<String> {
-    namespaces
-        .into_iter()
-        .map(|namespace| namespace.trim().to_string())
-        .filter(|namespace| !namespace.is_empty())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect()
-}
-
-fn is_forbidden_app_error(error: &AppError) -> bool {
-    let message = error.message.to_ascii_lowercase();
-    message.contains("forbidden") || message.contains("403")
-}
-
-async fn list_service_accounts(
-    client: Client,
-    cluster_context: &str,
-    namespaces: &[String],
-) -> Result<Vec<ServiceAccountSummary>, AppError> {
-    if namespaces.is_empty() {
-        let api: Api<ServiceAccount> = Api::all(client);
-        return api
-            .list(&list_params())
-            .await
-            .map_err(AppError::from)
-            .map(|items| {
-                items
-                    .items
-                    .into_iter()
-                    .map(|item| service_account_summary(cluster_context, item))
-                    .collect()
-            });
-    }
-
-    let mut summaries = Vec::new();
-    for namespace in namespaces {
-        let api: Api<ServiceAccount> = Api::namespaced(client.clone(), namespace);
-        let items = api.list(&list_params()).await.map_err(AppError::from)?;
-        summaries.extend(
-            items
-                .items
-                .into_iter()
-                .map(|item| service_account_summary(cluster_context, item)),
-        );
-    }
-    Ok(summaries)
-}
-
-async fn list_roles(
-    client: Client,
-    cluster_context: &str,
-    namespaces: &[String],
-) -> Result<Vec<RbacRoleSummary>, AppError> {
-    if namespaces.is_empty() {
-        let api: Api<Role> = Api::all(client);
-        return api
-            .list(&list_params())
-            .await
-            .map_err(AppError::from)
-            .map(|items| {
-                items
-                    .items
-                    .into_iter()
-                    .map(|item| role_summary(cluster_context, "Role", item.metadata, item.rules))
-                    .collect()
-            });
-    }
-
-    let mut summaries = Vec::new();
-    for namespace in namespaces {
-        let api: Api<Role> = Api::namespaced(client.clone(), namespace);
-        let items = api.list(&list_params()).await.map_err(AppError::from)?;
-        summaries.extend(
-            items
-                .items
-                .into_iter()
-                .map(|item| role_summary(cluster_context, "Role", item.metadata, item.rules)),
-        );
-    }
-    Ok(summaries)
-}
-
-async fn list_cluster_roles(
-    client: Client,
-    cluster_context: &str,
-) -> Result<Vec<RbacRoleSummary>, AppError> {
-    let api: Api<ClusterRole> = Api::all(client);
-    api.list(&list_params())
-        .await
-        .map_err(AppError::from)
-        .map(|items| {
-            items
-                .items
-                .into_iter()
-                .map(|item| role_summary(cluster_context, "ClusterRole", item.metadata, item.rules))
-                .collect()
-        })
-}
-
-async fn list_role_bindings(
-    client: Client,
-    cluster_context: &str,
-    namespaces: &[String],
-) -> Result<Vec<RbacBindingSummary>, AppError> {
-    if namespaces.is_empty() {
-        let api: Api<RoleBinding> = Api::all(client);
-        return api
-            .list(&list_params())
-            .await
-            .map_err(AppError::from)
-            .map(|items| {
-                items
-                    .items
-                    .into_iter()
-                    .map(|item| {
-                        binding_summary(
-                            cluster_context,
-                            "RoleBinding",
-                            item.metadata,
-                            item.role_ref.kind,
-                            item.role_ref.name,
-                            item.subjects,
-                        )
-                    })
-                    .collect()
-            });
-    }
-
-    let mut summaries = Vec::new();
-    for namespace in namespaces {
-        let api: Api<RoleBinding> = Api::namespaced(client.clone(), namespace);
-        let items = api.list(&list_params()).await.map_err(AppError::from)?;
-        summaries.extend(items.items.into_iter().map(|item| {
-            binding_summary(
-                cluster_context,
-                "RoleBinding",
-                item.metadata,
-                item.role_ref.kind,
-                item.role_ref.name,
-                item.subjects,
-            )
-        }));
-    }
-    Ok(summaries)
-}
-
-async fn list_cluster_role_bindings(
-    client: Client,
-    cluster_context: &str,
-) -> Result<Vec<RbacBindingSummary>, AppError> {
-    let api: Api<ClusterRoleBinding> = Api::all(client);
-    api.list(&list_params())
-        .await
-        .map_err(AppError::from)
-        .map(|items| {
-            items
-                .items
-                .into_iter()
-                .map(|item| {
-                    binding_summary(
-                        cluster_context,
-                        "ClusterRoleBinding",
-                        item.metadata,
-                        item.role_ref.kind,
-                        item.role_ref.name,
-                        item.subjects,
-                    )
-                })
-                .collect()
-        })
-}
-
-fn service_account_summary(
+pub(super) fn service_account_summary(
     cluster_context: &str,
     service_account: ServiceAccount,
 ) -> ServiceAccountSummary {
@@ -287,7 +255,7 @@ fn service_account_summary(
     }
 }
 
-fn role_summary(
+pub(super) fn role_summary(
     cluster_context: &str,
     kind: &str,
     metadata: kube::api::ObjectMeta,
@@ -317,7 +285,7 @@ fn role_summary(
     }
 }
 
-fn binding_summary(
+pub(super) fn binding_summary(
     cluster_context: &str,
     kind: &str,
     metadata: kube::api::ObjectMeta,

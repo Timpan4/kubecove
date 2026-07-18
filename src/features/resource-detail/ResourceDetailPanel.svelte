@@ -55,6 +55,7 @@
 	} from "@/lib/types";
 	import type { PathStateResourceDetailState } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
+import { requiredPermissionForResource } from "@/features/rbac";
 	import {
 		getSettingsSnapshot,
 		settingsStore,
@@ -154,6 +155,7 @@
 			? `${dynamicKind.group}/${dynamicKind.version}/${dynamicKind.kind}/${dynamicKind.plural}/${dynamicKind.namespaced}`
 			: "",
 	);
+	const detailReadPermission = $derived(requiredPermissionForResource(resource, "get"));
 	const detailsEnabled = $derived(shouldFetchResourceDetails(resource));
 	const eventsEnabled = $derived(shouldFetchResourceEvents(resource));
 	const isPod = $derived(resource.kind === "Pod" && Boolean(resource.namespace));
@@ -690,6 +692,7 @@
 		{topIncidentSignals}
 		{incidentTimeline}
 		{onOpenHelmRelease}
+		requiredPermission={detailReadPermission}
 		bind:metadataLabelsExpanded
 		bind:metadataAnnotationsExpanded
 		{detailStatusLabel}

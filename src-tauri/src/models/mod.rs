@@ -50,8 +50,11 @@ pub use operations::{
     RolloutRestartRequest, ScaleWorkloadRequest,
 };
 pub use rbac::{
-    RbacBindingSummary, RbacInspectionSummary, RbacNamespaceAccessSummary, RbacRiskIndicator,
-    RbacRiskLevel, RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary, ServiceAccountSummary,
+    RbacAccessReviewIdentity, RbacAccessReviewOutcome, RbacAccessReviewRequest,
+    RbacAccessReviewResult, RbacAccessReviewTarget, RbacBindingSummary, RbacCoverageStatus,
+    RbacFamily, RbacFamilyCoverage, RbacInspectionSummary, RbacNamespaceAccessSummary,
+    RbacRequestMode, RbacRiskIndicator, RbacRiskLevel, RbacRoleSummary, RbacRuleSummary,
+    RbacSubjectSummary, ServiceAccountSummary,
 };
 pub use resource::{
     DeploymentRevision, GitOpsOwnerSummary, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult,
