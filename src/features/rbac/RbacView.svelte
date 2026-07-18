@@ -48,7 +48,7 @@
 	let identityGroups = $state("system:authenticated");
 	let verifierError = $state("");
 	let submitted = $state<{ timestamp: string; fingerprint: string; identity: string; target: string } | null>(null);
-	let requestVersion = $state(0);
+	let requestVersion = 0;
 
 	$effect(() => {
 		if (!initialState) return;
