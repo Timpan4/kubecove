@@ -32,10 +32,96 @@ export function cockpitItems(data: RbacInspectionSummary, category: RbacView): R
 			: category === "Service Accounts" ? data.serviceAccounts
 			: data.namespaceAccess;
 	return rows.map((item) => {
-		const risks = item.risks;
+		const risks = resolvedRisks(data, category, item);
 		const name = "name" in item ? item.name : item.namespace;
-		return { category, key: objectKey(category, { kind: "kind" in item ? item.kind : "Namespace", name, namespace: "namespace" in item ? item.namespace : undefined }), name, namespace: "namespace" in item ? item.namespace : undefined, kind: "kind" in item ? item.kind : "Namespace", risks, findings: risks.length, item };
+		const kind = category === "Service Accounts"
+			? "ServiceAccount"
+			: "kind" in item
+				? item.kind
+				: "Namespace";
+		return { category, key: objectKey(category, { kind, name, namespace: "namespace" in item ? item.namespace : undefined }), name, namespace: "namespace" in item ? item.namespace : undefined, kind, risks, findings: risks.length, item };
 	}).sort((a, b) => riskWeight(b.risks) - riskWeight(a.risks) || b.findings - a.findings || `${a.namespace ?? ""}/${a.name}`.localeCompare(`${b.namespace ?? ""}/${b.name}`));
+}
+
+function resolvedRisks(
+	data: RbacInspectionSummary,
+	category: RbacView,
+	item: ServiceAccountSummary | RbacRoleSummary | RbacBindingSummary | RbacNamespaceAccessRow,
+): RbacRiskIndicator[] {
+	if (category === "Bindings") {
+		const binding = item as RbacBindingSummary;
+		return uniqueRisks([
+			...binding.risks,
+			...referencedRoleRisks(data, binding),
+		]);
+	}
+	if (category !== "Service Accounts") return item.risks;
+	const account = item as ServiceAccountSummary;
+	const bindings = [...data.roleBindings, ...data.clusterRoleBindings].filter(
+		(binding) => bindingMatchesServiceAccount(binding, account),
+	);
+	const inherited = bindings.flatMap((binding) => [
+		...binding.risks,
+		...referencedRoleRisks(data, binding),
+	]);
+	const incomplete = data.coverage.filter(
+		(entry) =>
+			entry.status !== "complete" &&
+			entry.family !== "serviceAccounts",
+	);
+	return uniqueRisks([
+		...account.risks,
+		...inherited,
+		...(incomplete.length
+			? [{
+				level: "unknown" as const,
+				label: "Incomplete RBAC coverage",
+				reason: `Coverage is ${incomplete.map((entry) => `${entry.family} ${entry.status}`).join(", ")}.`,
+			}]
+			: []),
+	]);
+}
+
+function referencedRoleRisks(
+	data: RbacInspectionSummary,
+	binding: RbacBindingSummary,
+): RbacRiskIndicator[] {
+	const roles = binding.roleRefKind === "Role" ? data.roles : data.clusterRoles;
+	const role = roles.find(
+		(candidate) =>
+			candidate.name === binding.roleRefName &&
+			(binding.roleRefKind !== "Role" || candidate.namespace === binding.namespace),
+	);
+	if (role) return role.risks;
+	return [{
+		level: "unknown",
+		label: "Missing role reference",
+		reason: `${binding.kind}/${binding.name} references ${binding.roleRefKind}/${binding.roleRefName}, which was not loaded.`,
+	}];
+}
+
+function bindingMatchesServiceAccount(
+	binding: RbacBindingSummary,
+	account: ServiceAccountSummary,
+): boolean {
+	const automaticGroups = new Set(automaticServiceAccountGroups(account.namespace));
+	return binding.subjects.some(
+		(subject) =>
+			(subject.kind === "ServiceAccount" &&
+				subject.name === account.name &&
+				subject.namespace === account.namespace) ||
+			(subject.kind === "Group" && automaticGroups.has(subject.name)),
+	);
+}
+
+function uniqueRisks(risks: RbacRiskIndicator[]): RbacRiskIndicator[] {
+	const seen = new Set<string>();
+	return risks.filter((risk) => {
+		const key = `${risk.level}:${risk.label}:${risk.reason}`;
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
 }
 
 export function filterCockpitItems(items: RbacCockpitItem[], bucket: RbacRiskBucket, search: string): RbacCockpitItem[] {

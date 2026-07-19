@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { cockpitItems } from "../src/features/rbac/cockpitModel";
 import {
 	buildRbacStats,
 	buildRbacTable,
-	selectedRbacView,
 	rbacWarningSummary,
+	selectedRbacView,
 } from "../src/features/rbac/surfaceModel";
 import type { RbacInspectionSummary } from "../src/lib/types";
 
@@ -82,7 +83,7 @@ describe("svelte RBAC surface model", () => {
 			}),
 		).toBe("Service Accounts");
 		expect(selectedRbacView({ type: "section", section: "rbac" })).toBe(
-			"Namespace Access",
+			"Service Accounts",
 		);
 	});
 
@@ -115,6 +116,37 @@ describe("svelte RBAC surface model", () => {
 	test("summarizes RBAC warnings", () => {
 		expect(rbacWarningSummary(["a", "b", "c", "d", "e"])).toBe(
 			"a b c 2 more warnings.",
+		);
+	});
+
+	test("inherits referenced role risk into bindings and service accounts", () => {
+		const inherited: RbacInspectionSummary = {
+			...summary,
+			coverage: [
+				{ family: "serviceAccounts", status: "complete", requestMode: "allNamespaces", count: 1 },
+				{ family: "roles", status: "complete", requestMode: "allNamespaces", count: 1 },
+				{ family: "clusterRoles", status: "complete", requestMode: "cluster", count: 1 },
+				{ family: "roleBindings", status: "complete", requestMode: "allNamespaces", count: 1 },
+				{ family: "clusterRoleBindings", status: "complete", requestMode: "cluster", count: 0 },
+			],
+			roles: [{
+				...summary.roles[0],
+				risks: [{ level: "high", label: "secrets-access", reason: "reads Secrets" }],
+			}],
+		};
+
+		expect(cockpitItems(inherited, "Bindings")[0]?.risks).toContainEqual({
+			level: "high",
+			label: "secrets-access",
+			reason: "reads Secrets",
+		});
+		expect(cockpitItems(inherited, "Service Accounts")[0]?.risks).toContainEqual({
+			level: "high",
+			label: "secrets-access",
+			reason: "reads Secrets",
+		});
+		expect(cockpitItems(inherited, "Service Accounts")[0]?.kind).toBe(
+			"ServiceAccount",
 		);
 	});
 });

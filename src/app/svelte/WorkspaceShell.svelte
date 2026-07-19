@@ -165,6 +165,12 @@
 				? [nodeIdToString(initialNavigation.selectedNode)]
 				: []),
 	);
+	const rbacSectionId = nodeIdToString({ type: "section", section: "rbac" });
+	$effect(() => {
+		if (viewMode === "rbac" && !expandedSections.includes(rbacSectionId)) {
+			expandedSections = [...expandedSections, rbacSectionId];
+		}
+	});
 	let commandOpen = $state(false);
 	let navigationOpen = $state(false);
 	let resourceDetailPathState = $state<PathStateResourceDetailState | null>(
@@ -889,6 +895,8 @@
 						onPathStateChange={(state) => (surfacesPathState = state)}
 						rbacVerifierHandoff={rbacVerifierHandoff}
 						onRbacVerifierHandoffConsumed={() => (rbacVerifierHandoff = undefined)}
+						onRbacViewChange={(rbacView) =>
+							selectNode({ type: "kind", section: "rbac", kind: rbacView })}
 						onRbacVerifierReturn={rbacVerifierReturnNavigation ? returnFromRbacVerifier : undefined}
 						rbacVerifierReturnLabel={rbacVerifierReturnLabel}
 						onCloseSettings={closeSettings}

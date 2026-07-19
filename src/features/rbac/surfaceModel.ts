@@ -1,10 +1,10 @@
+import type { TreeNodeId } from "@/lib/tree-nav";
 import type {
 	RbacBindingSummary,
 	RbacInspectionSummary,
 	RbacRiskIndicator,
 	RbacSubjectSummary,
 } from "@/lib/types";
-import type { TreeNodeId } from "@/lib/tree-nav";
 import { collectInspectionRisks, riskyCount } from "./risk";
 
 export type RbacView =
@@ -40,7 +40,7 @@ export function selectedRbacView(
 	) {
 		return selectedNode.kind as RbacView;
 	}
-	return "Namespace Access";
+	return "Service Accounts";
 }
 
 export function buildRbacTable(

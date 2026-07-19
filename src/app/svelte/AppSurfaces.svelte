@@ -8,7 +8,7 @@
 	import { HelmSurface, selectedHelmReleasePath } from "@/features/helm";
 	import { IncidentSurface, type IncidentFilter } from "@/features/incidents";
 	import { LiveSessionsSurface } from "@/features/live-sessions";
-	import { RbacSurface, type RbacCockpitState } from "@/features/rbac";
+	import { RbacSurface, type RbacCockpitState, type RbacView } from "@/features/rbac";
 	import type { HealthFilter } from "@/features/resources";
 	import {
 		createTauriClient,
@@ -42,6 +42,7 @@ import type { RbacVerifierHandoff } from "@/features/rbac";
 		onPathStateChange = () => {},
 		rbacVerifierHandoff,
 		onRbacVerifierHandoffConsumed,
+		onRbacViewChange,
 		onRbacVerifierReturn,
 		rbacVerifierReturnLabel,
 		onCloseSettings = () => {},
@@ -67,6 +68,7 @@ import type { RbacVerifierHandoff } from "@/features/rbac";
 		onPathStateChange?: (state: PathStateSurfacesState) => void;
 		rbacVerifierHandoff?: RbacVerifierHandoff;
 		onRbacVerifierHandoffConsumed?: () => void;
+		onRbacViewChange?: (view: RbacView) => void;
 		onRbacVerifierReturn?: () => void;
 		rbacVerifierReturnLabel?: string;
 		onCloseSettings?: () => void;
@@ -168,6 +170,7 @@ import type { RbacVerifierHandoff } from "@/features/rbac";
 			{selectedNode}
 			initialState={rbacState}
 			onStateChange={(state) => (rbacState = state)}
+			onViewChange={onRbacViewChange}
 			verifierHandoff={rbacVerifierHandoff}
 			onVerifierHandoffConsumed={onRbacVerifierHandoffConsumed}
 			onVerifierReturn={onRbacVerifierReturn}

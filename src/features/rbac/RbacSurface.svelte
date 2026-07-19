@@ -18,6 +18,7 @@
 		selectedNode,
 		initialState,
 		onStateChange,
+		onViewChange,
 		verifierHandoff,
 		onVerifierHandoffConsumed,
 		onVerifierReturn,
@@ -29,6 +30,7 @@
 		selectedNode: TreeNodeId | null;
 		initialState?: RbacCockpitState;
 		onStateChange?: (state: RbacCockpitState) => void;
+		onViewChange?: (view: import("./surfaceModel").RbacView) => void;
 		verifierHandoff?: RbacVerifierHandoff;
 		onVerifierHandoffConsumed?: () => void;
 		onVerifierReturn?: () => void;
@@ -65,4 +67,4 @@
 	const view = $derived(selectedRbacView(selectedNode));
 </script>
 
-<RbacView query={rbacQuery} {view} warningSummary={rbacWarningSummary} {initialState} {onStateChange} {verifierHandoff} {onVerifierHandoffConsumed} {onVerifierReturn} {verifierReturnLabel} />
+<RbacView query={rbacQuery} {view} warningSummary={rbacWarningSummary} {initialState} {onStateChange} {onViewChange} {verifierHandoff} {onVerifierHandoffConsumed} {onVerifierReturn} {verifierReturnLabel} />
