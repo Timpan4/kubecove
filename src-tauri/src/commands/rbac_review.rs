@@ -31,7 +31,7 @@ async fn review_rbac_access_from(
         .await?;
     let (user, groups) = review_identity(&request.identity)?;
     let review = SubjectAccessReview {
-        metadata: Default::default(),
+        metadata: k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta::default(),
         spec: SubjectAccessReviewSpec {
             extra: None,
             groups: (!groups.is_empty()).then_some(groups),

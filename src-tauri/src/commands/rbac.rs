@@ -31,6 +31,10 @@ use rbac_inventory::{
 #[path = "rbac_tests.rs"]
 mod rbac_tests;
 
+#[expect(
+    clippy::large_futures,
+    reason = "RBAC inspection intentionally loads five Kubernetes families concurrently"
+)]
 #[tauri::command]
 pub async fn list_rbac_inspection(
     cluster_context: String,
