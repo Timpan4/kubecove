@@ -166,7 +166,7 @@ describe("app update store", () => {
 			"utf8",
 		);
 
-		expect(buttonSource).toContain("let manualOpen = $state(false)");
+		expect(buttonSource).toContain("let panelOpen = $state(false)");
 		expect(buttonSource).toContain("let autoOpenedVersion = $state<string | null>(null)");
 		expect(buttonSource).toContain("update.dismissedVersion !== update.availableVersion");
 		expect(buttonSource).toContain("update.releaseNotes");
@@ -177,5 +177,10 @@ describe("app update store", () => {
 		expect(buttonSource).toContain("update.checkForUpdates({ manual: true })");
 		expect(buttonSource).toContain("update.downloadProgress ?? 12");
 		expect(buttonSource).toContain('role="dialog"');
+		expect(buttonSource).toContain("<Popover bind:open={panelOpen}");
+		expect(buttonSource).toContain("onOpenChange={handlePanelOpenChange}");
+		expect(buttonSource).toContain("if (!open && update.availableVersion !== null) autoOpenedVersion = update.availableVersion");
+		expect(buttonSource).toContain("<PopoverContent");
+		expect(buttonSource).toContain("buttonClass({");
 	});
 });
