@@ -91,8 +91,20 @@ pub async fn rbac_inspection_from(
         cluster_role_bindings_result,
         &mut warnings,
     );
-    inherit_binding_risks(&mut role_bindings, &roles, &cluster_roles);
-    inherit_binding_risks(&mut cluster_role_bindings, &roles, &cluster_roles);
+    inherit_binding_risks(
+        &mut role_bindings,
+        &roles,
+        &cluster_roles,
+        &roles_coverage.status,
+        &cluster_roles_coverage.status,
+    );
+    inherit_binding_risks(
+        &mut cluster_role_bindings,
+        &roles,
+        &cluster_roles,
+        &roles_coverage.status,
+        &cluster_roles_coverage.status,
+    );
     let namespace_access = namespace_access_summary(
         &cluster_context,
         &namespaces,
@@ -201,24 +213,43 @@ fn inherit_binding_risks(
     bindings: &mut [RbacBindingSummary],
     roles: &[RbacRoleSummary],
     cluster_roles: &[RbacRoleSummary],
+    roles_coverage: &RbacCoverageStatus,
+    cluster_roles_coverage: &RbacCoverageStatus,
 ) {
     for binding in bindings {
-        let referenced = match binding.role_ref_kind.as_str() {
-            "Role" => roles.iter().find(|role| {
-                role.name == binding.role_ref_name && role.namespace == binding.namespace
-            }),
-            "ClusterRole" => cluster_roles
-                .iter()
-                .find(|role| role.name == binding.role_ref_name),
-            _ => None,
+        let (referenced, coverage) = match binding.role_ref_kind.as_str() {
+            "Role" => (
+                roles.iter().find(|role| {
+                    role.name == binding.role_ref_name && role.namespace == binding.namespace
+                }),
+                roles_coverage,
+            ),
+            "ClusterRole" => (
+                cluster_roles
+                    .iter()
+                    .find(|role| role.name == binding.role_ref_name),
+                cluster_roles_coverage,
+            ),
+            _ => (None, roles_coverage),
         };
         if let Some(role) = referenced {
             binding.risks.extend(role.risks.clone());
         } else {
+            let coverage_complete = *coverage == RbacCoverageStatus::Complete;
             binding.risks.push(RbacRiskIndicator {
                 level: RbacRiskLevel::Unknown,
-                label: "Referenced role unavailable".to_string(),
-                reason: "The referenced role was not loaded, so this binding cannot be classified as no flags.".to_string(),
+                label: if coverage_complete {
+                    "Dangling role reference"
+                } else {
+                    "Referenced role unavailable"
+                }
+                .to_string(),
+                reason: if coverage_complete {
+                    "The referenced role does not exist in complete inventory, so this binding cannot be classified as no flags."
+                } else {
+                    "The referenced role was not loaded, so this binding cannot be classified as no flags."
+                }
+                .to_string(),
             });
         }
         binding.risks = dedupe_risks(std::mem::take(&mut binding.risks));

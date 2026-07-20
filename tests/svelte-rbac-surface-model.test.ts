@@ -11,6 +11,7 @@ import type { RbacInspectionSummary } from "../src/lib/types";
 const summary: RbacInspectionSummary = {
 	cluster: "kind-dev",
 	warnings: [],
+	coverage: [],
 	serviceAccounts: [
 		{
 			cluster: "kind-dev",

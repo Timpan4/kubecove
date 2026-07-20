@@ -236,3 +236,38 @@ fn cluster_role_binding_group_subjects_roll_up_to_scoped_namespaces() {
             .any(|subject| subject.name == "system:masters")
     }));
 }
+
+#[test]
+fn missing_role_reason_tracks_inventory_coverage() {
+    let binding = RbacBindingSummary {
+        cluster: "kind-dev".to_string(),
+        kind: "RoleBinding".to_string(),
+        name: "readers".to_string(),
+        namespace: Some("payments".to_string()),
+        age: "1h".to_string(),
+        created_at: None,
+        role_ref_kind: "Role".to_string(),
+        role_ref_name: "missing".to_string(),
+        subjects: Vec::new(),
+        risks: Vec::new(),
+    };
+    let mut complete = vec![binding.clone()];
+    inherit_binding_risks(
+        &mut complete,
+        &[],
+        &[],
+        &RbacCoverageStatus::Complete,
+        &RbacCoverageStatus::Complete,
+    );
+    assert_eq!(complete[0].risks[0].label, "Dangling role reference");
+
+    let mut partial = vec![binding];
+    inherit_binding_risks(
+        &mut partial,
+        &[],
+        &[],
+        &RbacCoverageStatus::Partial,
+        &RbacCoverageStatus::Complete,
+    );
+    assert_eq!(partial[0].risks[0].label, "Referenced role unavailable");
+}

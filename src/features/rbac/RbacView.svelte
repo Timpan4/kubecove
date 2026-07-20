@@ -594,7 +594,7 @@
 		<div class="flex min-h-0 flex-col gap-3">
 			<div class="flex flex-wrap items-center gap-2">
 				<Badge variant="outline" class="border-emerald-500/35 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
-					{completeCoverage === coverage.length ? "Coverage complete" : "Coverage partial"}
+					{coverage.length > 0 && completeCoverage === coverage.length ? "Coverage complete" : "Coverage partial"}
 				</Badge>
 				<Badge variant="outline">Entire cluster</Badge>
 			</div>
