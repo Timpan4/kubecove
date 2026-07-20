@@ -28,7 +28,7 @@
 		formatExactTimeOnly,
 		formatExactTimestamp,
 	} from "@/components/timestamp-format";
-	import { createCancellableRequest, createCancelScope } from "@/lib/cancellable-loads";
+	import { createCancellableRequest } from "@/lib/cancellable-loads";
 	import { diagnosticLog, diagnosticResultSummary } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
 	import {
@@ -49,27 +49,23 @@
 		ResourceEventSummary,
 		ResourceSummary,
 		StreamMessage,
-		WatchResourceKey,
 		YamlEncoding,
 		YamlViewMode,
 	} from "@/lib/types";
 	import type { PathStateResourceDetailState } from "@/lib/path-state";
-	import { queryKeys } from "@/lib/queryKeys";
-import { requiredPermissionForResource } from "@/features/rbac";
+	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
 		getSettingsSnapshot,
 		settingsStore,
 	} from "@/lib/settings-store";
 	import {
 		buildIncidentSignals,
-		dynamicResourceKindFromSummary,
 		getConditionRows,
 		getContainerStatusRows,
 		isCleanCompletedContainer,
-		shouldFetchResourceDetails,
-		shouldFetchResourceEvents,
 		type ContainerStatusRow,
 	} from "./helpers";
+	import { buildResourceDetailReadSpec } from "./resourceDetailReadSpec";
 	import { CHIP_BADGE_STYLES, type ChipVariant } from "./constants";
 	import DetailsTab from "./DetailsTab.svelte";
 	import DeploymentRevisionsTab from "./DeploymentRevisionsTab.svelte";
@@ -102,20 +98,21 @@ import { requiredPermissionForResource } from "@/features/rbac";
 	let {
 		client,
 		resource,
-		kubeconfigSourceKey,
+		workspaceReadContext,
 		onOpenHelmRelease,
 		initialPathState = null,
 		onPathStateChange = () => {},
 	}: {
 		client: TauriClient;
 		resource: ResourceSummary;
-		kubeconfigSourceKey?: string;
+		workspaceReadContext: WorkspaceReadContext;
 		onOpenHelmRelease?: (releaseName: string, namespace?: string | null) => void;
 		initialPathState?: PathStateResourceDetailState | null;
 		onPathStateChange?: (state: PathStateResourceDetailState) => void;
 	} = $props();
 
 	const queryClient = useQueryClient();
+	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
 	const timestampTimezone = $derived($settingsStore.timestampTimezone);
 	function initialDetailSnapshot(): PathStateResourceDetailState | null {
 		return initialPathState;
@@ -146,18 +143,14 @@ import { requiredPermissionForResource } from "@/features/rbac";
 	let ExecTabComponent = $state<typeof import("./ExecTab.svelte").default | null>(null);
 	let execTabLoadError = $state<unknown>(null);
 
-	const resourceKey = $derived(
-		`${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`,
+	const readSpec = $derived(
+		buildResourceDetailReadSpec(resource, kubeconfigSourceKey, yamlViewMode, yamlEncoding),
 	);
-	const dynamicKind = $derived(dynamicResourceKindFromSummary(resource));
-	const dynamicKindKey = $derived(
-		dynamicKind
-			? `${dynamicKind.group}/${dynamicKind.version}/${dynamicKind.kind}/${dynamicKind.plural}/${dynamicKind.namespaced}`
-			: "",
-	);
-	const detailReadPermission = $derived(requiredPermissionForResource(resource, "get"));
-	const detailsEnabled = $derived(shouldFetchResourceDetails(resource));
-	const eventsEnabled = $derived(shouldFetchResourceEvents(resource));
+	const resourceKey = $derived(readSpec.identity.key);
+	const dynamicKind = $derived(readSpec.dynamicKind);
+	const detailReadPermission = $derived(readSpec.detailReadPermission);
+	const detailsEnabled = $derived(readSpec.detailsEnabled);
+	const eventsEnabled = $derived(readSpec.eventsEnabled);
 	const isPod = $derived(resource.kind === "Pod" && Boolean(resource.namespace));
 	const canShowLogs = $derived(
 		Boolean(resource.namespace) &&
@@ -212,12 +205,10 @@ import { requiredPermissionForResource } from "@/features/rbac";
 				execTabLoadError = error;
 			});
 	}
-	const detailsQueryKey = $derived(
-		queryKeys.resourceDetails(resource, dynamicKindKey, kubeconfigSourceKey, yamlViewMode, yamlEncoding),
-	);
-	const eventsQueryKey = $derived(queryKeys.resourceEvents(resource, kubeconfigSourceKey));
-	const detailsCancelScope = $derived(createCancelScope("resource-details", detailsQueryKey));
-	const eventsCancelScope = $derived(createCancelScope("resource-events", eventsQueryKey));
+	const detailsQueryKey = $derived(readSpec.detailsQueryKey);
+	const eventsQueryKey = $derived(readSpec.eventsQueryKey);
+	const detailsCancelScope = $derived(readSpec.detailsCancelScope);
+	const eventsCancelScope = $derived(readSpec.eventsCancelScope);
 	const pendingCancelTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	$effect(() => {
@@ -444,22 +435,7 @@ import { requiredPermissionForResource } from "@/features/rbac";
 		let cancelled = false;
 		let streamId: string | null = null;
 		let debounce: ReturnType<typeof setTimeout> | null = null;
-		const watchKey: WatchResourceKey = dynamicKind
-			? {
-					resourceKind: {
-						kind: dynamicKind.kind,
-						group: dynamicKind.group,
-						version: dynamicKind.version,
-						apiVersion: dynamicKind.apiVersion,
-						plural: dynamicKind.plural,
-						namespaced: dynamicKind.namespaced,
-					},
-					namespace: resource.namespace ?? undefined,
-				}
-			: {
-					resourceKind: { kind: resource.kind },
-					namespace: resource.namespace ?? undefined,
-				};
+		const watchKey = readSpec.resourceWatchKey;
 		const invalidateSoon = () => {
 			if (debounce) clearTimeout(debounce);
 			debounce = setTimeout(() => {
@@ -520,10 +496,10 @@ import { requiredPermissionForResource } from "@/features/rbac";
 		});
 		void startResourceEventWatch(
 			client,
-			resource.cluster,
-			resource.kind,
-			resource.name,
-			resource.namespace ?? undefined,
+			readSpec.eventWatch.cluster,
+			readSpec.eventWatch.kind,
+			readSpec.eventWatch.name,
+			readSpec.eventWatch.namespace,
 			channel,
 			kubeconfigSourceKey,
 		)

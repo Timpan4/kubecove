@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { createQuery } from "@tanstack/svelte-query";
 	import {
 		GitOpsSurface,
 		selectedGitOpsApplicationName,
@@ -10,10 +9,6 @@
 	import { LiveSessionsSurface } from "@/features/live-sessions";
 	import { RbacSurface, type RbacCockpitState, type RbacView } from "@/features/rbac";
 	import type { HealthFilter } from "@/features/resources";
-	import {
-		createTauriClient,
-		getKubeconfigSources,
-	} from "@/lib/tauri";
 	import type {
 		ArgoApplicationSummary,
 		HelmReleaseSummary,
@@ -22,12 +17,14 @@
 	import type { TreeNodeId } from "@/lib/tree-nav";
 	import type { PathStateDetailTab, PathStateSurfacesState } from "@/lib/path-state";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
-import type { RbacVerifierHandoff } from "@/features/rbac";
+	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
+	import type { RbacVerifierHandoff } from "@/features/rbac";
 	import SettingsSurface from "./SettingsSurface.svelte";
 	import { treeNodeForResource, type WorkspaceViewMode } from "./workspaceNavigation";
 
 	let {
 		workspace,
+		workspaceReadContext,
 		viewMode,
 		selectedNode,
 		targetHelmRelease,
@@ -48,6 +45,7 @@ import type { RbacVerifierHandoff } from "@/features/rbac";
 		onCloseSettings = () => {},
 	}: {
 		workspace: SavedWorkspace;
+		workspaceReadContext: WorkspaceReadContext;
 		viewMode: WorkspaceViewMode;
 		selectedNode: TreeNodeId | null;
 		targetHelmRelease?: { name: string; namespace?: string | null } | null;
@@ -74,7 +72,6 @@ import type { RbacVerifierHandoff } from "@/features/rbac";
 		onCloseSettings?: () => void;
 	} = $props();
 
-	const client = createTauriClient();
 	function initialIncidentFilterValue(): IncidentFilter {
 		return initialPathState?.incidentFilter ?? initialIncidentFilter;
 	}
@@ -97,14 +94,11 @@ import type { RbacVerifierHandoff } from "@/features/rbac";
 	}
 	let rbacState = $state<RbacCockpitState | undefined>(initialRbacStateValue());
 
-	const sourceQuery = createQuery(() => ({
-		queryKey: ["kubeconfig-sources"],
-		queryFn: () => getKubeconfigSources(client),
-		staleTime: 30_000,
-	}));
-	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);
-	const kubeconfigSourceKey = $derived(sourceQuery.data?.sourceKey);
-	const showKubeconfigSourceLabels = $derived(sourceQuery.data?.showSourceLabels ?? false);
+	const sourceReady = $derived(workspaceReadContext.sourceReady);
+	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
+	const showKubeconfigSourceLabels = $derived(
+		workspaceReadContext.showKubeconfigSourceLabels,
+	);
 
 	$effect(() => {
 		if (viewMode === "incidents") incidentFilter = initialIncidentFilter;

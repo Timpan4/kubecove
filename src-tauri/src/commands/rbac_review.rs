@@ -1,5 +1,7 @@
 use crate::{
-    commands::kubeconfig::KubeconfigSource,
+    commands::{
+        diagnostic_field, diagnostics::record_backend_result, kubeconfig::KubeconfigSource,
+    },
     models::{
         AppError, RbacAccessReviewIdentity, RbacAccessReviewOutcome, RbacAccessReviewRequest,
         RbacAccessReviewResult, RbacAccessReviewTarget,
@@ -10,6 +12,7 @@ use k8s_openapi::api::authorization::v1::{
     SubjectAccessReviewStatus,
 };
 use kube::api::{Api, PostParams};
+use std::time::Instant;
 use tauri::State;
 
 #[tauri::command]
@@ -19,8 +22,14 @@ pub async fn review_rbac_access(
     cancel_scope: Option<String>,
     cancellations: State<'_, crate::commands::BackendCancellationRegistry>,
 ) -> Result<RbacAccessReviewResult, AppError> {
-    let cancellation = cancellations.register(cancel_scope, request_id);
-    cancellation.run(review_rbac_access_from(request)).await
+    let started = Instant::now();
+    let result = cancellations
+        .execute(cancel_scope, request_id, review_rbac_access_from(request))
+        .await;
+    record_backend_result("review_rbac_access", started, &result, |result| {
+        vec![diagnostic_field("outcome", format!("{:?}", result.outcome))]
+    });
+    result
 }
 
 async fn review_rbac_access_from(

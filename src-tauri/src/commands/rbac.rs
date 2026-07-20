@@ -1,4 +1,6 @@
+use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
+    diagnostic_field,
     helpers::{k8s_creation_timestamp_to_rfc3339, resource_age},
     kubeconfig::KubeconfigSource,
 };
@@ -14,6 +16,7 @@ use k8s_openapi::api::{
 };
 use kube::Client;
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
 use tauri::State;
 
 #[path = "rbac_risk.rs"]
@@ -43,10 +46,25 @@ pub async fn list_rbac_inspection(
     cancel_scope: Option<String>,
     cancellations: State<'_, crate::commands::BackendCancellationRegistry>,
 ) -> Result<RbacInspectionSummary, AppError> {
-    let cancellation = cancellations.register(cancel_scope, request_id);
-    cancellation
-        .run(rbac_inspection_from(cluster_context, kubeconfig_env_var))
-        .await
+    let started = Instant::now();
+    let result = cancellations
+        .execute(
+            cancel_scope,
+            request_id,
+            rbac_inspection_from(cluster_context, kubeconfig_env_var),
+        )
+        .await;
+    record_backend_result("list_rbac_inspection", started, &result, |summary| {
+        vec![
+            diagnostic_field("service_accounts", summary.service_accounts.len()),
+            diagnostic_field("roles", summary.roles.len()),
+            diagnostic_field("cluster_roles", summary.cluster_roles.len()),
+            diagnostic_field("role_bindings", summary.role_bindings.len()),
+            diagnostic_field("cluster_role_bindings", summary.cluster_role_bindings.len()),
+            diagnostic_field("warnings", summary.warnings.len()),
+        ]
+    });
+    result
 }
 
 pub async fn rbac_inspection_from(
