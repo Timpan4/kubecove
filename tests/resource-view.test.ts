@@ -20,7 +20,7 @@ describe("resource view safeguards", () => {
 		expect(browserSource).toContain("mapPanelOpen");
 		expect(browserSource).toContain("tablePanelOpen");
 		expect(readSpecsSource).toContain(
-			"topologyEnabled: Boolean(clusterContext && mapPanelOpen)",
+			"topologyEnabled: Boolean(clusterContext && mapPanelOpen) && sourceReady",
 		);
 		expect(ownershipMapSource).toContain("aria-pressed={true}");
 		expect(ownershipMapSource).toContain("onclick={onMapToggle}");

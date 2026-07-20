@@ -70,6 +70,6 @@ export function buildResourceBrowserReadSpecs({
 			customResourcesEnabled && Boolean(clusterContext) && sourceReady,
 		resourcesEnabled:
 			Boolean(clusterContext) && fetchKeys.length > 0 && sourceReady,
-		topologyEnabled: Boolean(clusterContext && mapPanelOpen),
+		topologyEnabled: Boolean(clusterContext && mapPanelOpen) && sourceReady,
 	};
 }

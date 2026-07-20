@@ -159,7 +159,7 @@ test("builds immutable ResourceBrowser read identities and enablement", () => {
 	expect(waitingForSource.namespacesEnabled).toBe(false);
 	expect(waitingForSource.resourceKindsEnabled).toBe(false);
 	expect(waitingForSource.resourcesEnabled).toBe(false);
-	expect(waitingForSource.topologyEnabled).toBe(true);
+	expect(waitingForSource.topologyEnabled).toBe(false);
 });
 
 describe("svelte resource browser model", () => {
