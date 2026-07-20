@@ -226,7 +226,7 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 - deployment-aware port-forwarding
 - expanded exec scopes
 - richer Helm workflows
-- deeper RBAC and security inspection
+- [x] Deeper RBAC and security inspection.
 - customizable workspace layout
 - custom density modes
 - adaptive defaults for explicit workspace types

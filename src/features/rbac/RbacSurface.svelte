@@ -1,50 +1,71 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
+	import { onDestroy } from "svelte";
+	import { createCancelScope, createCancellableRequest } from "@/lib/cancellable-loads";
 	import { queryKeys } from "@/lib/queryKeys";
-	import { createTauriClient, listRbacInspection } from "@/lib/tauri";
+	import { cancelBackendRequests, createTauriClient, listRbacInspection } from "@/lib/tauri";
 	import type { RbacInspectionSummary } from "@/lib/types";
 	import type { TreeNodeId } from "@/lib/tree-nav";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
 	import RbacView from "./RbacView.svelte";
-	import {
-		buildRbacStats,
-		buildRbacTable,
-		selectedRbacView,
-		rbacWarningSummary,
-	} from "./surfaceModel";
+	import { selectedRbacView, rbacWarningSummary } from "./surfaceModel";
+	import type { RbacCockpitState, RbacVerifierHandoff } from "./cockpitModel";
 
 	let {
 		workspace,
 		sourceReady,
 		kubeconfigSourceKey,
 		selectedNode,
+		initialState,
+		onStateChange,
+		onViewChange,
+		verifierHandoff,
+		onVerifierHandoffConsumed,
+		onVerifierReturn,
+		verifierReturnLabel,
 	}: {
 		workspace: SavedWorkspace;
 		sourceReady: boolean;
 		kubeconfigSourceKey?: string;
 		selectedNode: TreeNodeId | null;
+		initialState?: RbacCockpitState;
+		onStateChange?: (state: RbacCockpitState) => void;
+		onViewChange?: (view: import("./surfaceModel").RbacView) => void;
+		verifierHandoff?: RbacVerifierHandoff;
+		onVerifierHandoffConsumed?: () => void;
+		onVerifierReturn?: () => void;
+		verifierReturnLabel?: string;
 	} = $props();
 
 	const client = createTauriClient();
+	function cancelScopeValue(): string {
+		return createCancelScope("rbac-inspection", [
+			workspace.id,
+			workspace.scope.clusterContext,
+			kubeconfigSourceKey ?? "default",
+		]);
+	}
+	const cancelScope = cancelScopeValue();
+	onDestroy(() => {
+		void cancelBackendRequests(client, cancelScope).catch(() => {});
+		void cancelBackendRequests(client, "rbac-review").catch(() => {});
+	});
 	const rbacQuery = createQuery<RbacInspectionSummary>(() => ({
 		queryKey: queryKeys.rbacInspection(
 			workspace.scope.clusterContext,
-			workspace.scope.namespaces,
 			kubeconfigSourceKey,
 		),
 		queryFn: () =>
 			listRbacInspection(
 				client,
 				workspace.scope.clusterContext,
-				workspace.scope.namespaces,
 				kubeconfigSourceKey,
+				createCancellableRequest(cancelScope, "rbac"),
 			),
 		enabled: sourceReady,
 		staleTime: 30_000,
 	}));
 	const view = $derived(selectedRbacView(selectedNode));
-	const table = $derived(rbacQuery.data ? buildRbacTable(rbacQuery.data, view) : null);
-	const stats = $derived(rbacQuery.data ? buildRbacStats(rbacQuery.data) : []);
 </script>
 
-<RbacView query={rbacQuery} {stats} {table} {view} warningSummary={rbacWarningSummary} />
+<RbacView query={rbacQuery} {view} warningSummary={rbacWarningSummary} {initialState} {onStateChange} {onViewChange} {verifierHandoff} {onVerifierHandoffConsumed} {onVerifierReturn} {verifierReturnLabel} />

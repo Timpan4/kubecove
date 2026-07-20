@@ -22,3 +22,12 @@ _Avoid_ using it for Pod exec or durable background tunnels.
 
 **Pod Exec Lifecycle** means confirming, starting, interacting with, observing, and stopping a guarded exact-Pod exec session.
 _Avoid_ using it for local shell execution or owner-backed resource targets.
+
+**Observed RBAC grants** means permissions derived from the RBAC policy objects KubeCove could inspect, with their role and binding provenance.
+_Avoid_ presenting them as an API-server authorization verdict or as complete when coverage is partial.
+
+**Permission verification** means an explicit, user-submitted SubjectAccessReview for one identity scenario and one exact resource or non-resource target.
+_Avoid_ treating a missing, failed, or no-opinion review as a denial.
+
+**Unknown risk** means KubeCove cannot classify an RBAC object safely because required inventory or referenced policy is unavailable.
+_Avoid_ merging Unknown into No flags.

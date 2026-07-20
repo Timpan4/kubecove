@@ -29,6 +29,7 @@ import {
 	listPortForwards,
 	listPresentCustomResourceKinds,
 	listRbacInspection,
+	reviewRbacAccess,
 	listResourceMetrics,
 	listResourceScope,
 	listResourceTopology,
@@ -228,7 +229,7 @@ describe("createMockTauriClient", () => {
 			fluxDetection.kinds.map((kind) => listFluxResources(client, "mock-dev", kind)),
 		)).flat();
 		const incidents = await listIncidentCockpit(client, "docker-desktop", []);
-		const rbac = await listRbacInspection(client, "mock-dev", ["payments", "monitoring", "argocd"]);
+		const rbac = await listRbacInspection(client, "mock-dev");
 
 		expect(await listArgoApplications(client, "mock-dev")).toHaveLength(2);
 		expect(await listArgoApplicationSets(client, "mock-dev")).toHaveLength(2);
@@ -910,7 +911,7 @@ describe("typed Tauri wrappers", () => {
 		]);
 	});
 
-	test("passes RBAC inspection scope through typed wrappers", async () => {
+	test("loads full-cluster RBAC inspection through typed wrappers", async () => {
 		const inspection: RbacInspectionSummary = {
 			cluster: "kind-dev",
 			warnings: [],
@@ -929,13 +930,24 @@ describe("typed Tauri wrappers", () => {
 			},
 		};
 
-		expect(await listRbacInspection(client, "kind-dev", ["payments"])).toEqual(inspection);
+		expect(await listRbacInspection(client, "kind-dev")).toEqual(inspection);
 		expect(calls).toEqual([
 			{
 				cmd: "list_rbac_inspection",
-				args: { clusterContext: "kind-dev", namespaces: ["payments"] },
+				args: { clusterContext: "kind-dev" },
 			},
 		]);
+	});
+
+	test("passes typed RBAC access reviews through the client", async () => {
+		const client = createMockTauriClient({
+			review_rbac_access: { outcome: "allowed", reason: "mock" },
+		});
+		expect(await reviewRbacAccess(client, {
+			clusterContext: "kind-dev",
+			identity: { kind: "group", group: "operators" },
+			target: { kind: "nonResource", verb: "get", nonResourceUrl: "/healthz" },
+		})).toMatchObject({ outcome: "allowed" });
 	});
 
 	test("passes port-forward requests through typed wrappers", async () => {

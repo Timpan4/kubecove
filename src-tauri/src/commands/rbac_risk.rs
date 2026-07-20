@@ -61,6 +61,33 @@ pub(super) fn rule_risks(verbs: &[String], resources: &[String]) -> Vec<RbacRisk
             "Rule can change RBAC policy resources.",
         ));
     }
+    if resource_set.iter().any(|resource| {
+        matches!(
+            *resource,
+            "pods/exec" | "pods/attach" | "pods/portforward" | "pods/proxy" | "services/proxy"
+        )
+    }) && (has_wildcard_verb
+        || verb_set
+            .iter()
+            .any(|verb| matches!(*verb, "create" | "get")))
+    {
+        risks.push(risk(
+            "high",
+            "Workload interactive access",
+            "Rule grants exec, attach, port-forward, or proxy access.",
+        ));
+    }
+    if resource_set
+        .iter()
+        .any(|resource| matches!(*resource, "serviceaccounts/token" | "serviceaccounts"))
+        && (has_wildcard_verb || verb_set.contains("create"))
+    {
+        risks.push(risk(
+            "high",
+            "ServiceAccount token issuance",
+            "Rule can request ServiceAccount tokens.",
+        ));
+    }
 
     dedupe_risks(risks)
 }

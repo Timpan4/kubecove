@@ -1,6 +1,8 @@
+import { cancellableArg } from "./cancellable-loads";
 import { kubeconfigArg, type TauriClient } from "./tauri";
 import type {
 	ArgoApplicationDetails,
+	CancellableRequest,
 	ArgoApplicationSetDetails,
 	ArgoApplicationSetSummary,
 	ArgoApplicationSummary,
@@ -14,6 +16,8 @@ import type {
 	HelmReleaseReconciliation,
 	HelmReleaseSummary,
 	IncidentCockpitSummary,
+	RbacAccessReviewRequest,
+	RbacAccessReviewResult,
 	RbacInspectionSummary,
 	ResourceListRequest,
 	YamlEncoding,
@@ -224,13 +228,29 @@ export async function getHelmReleaseReconciliation(
 export async function listRbacInspection(
 	client: TauriClient,
 	clusterContext: string,
-	namespaces: string[],
 	kubeconfigEnvVar?: string,
+	cancellable?: CancellableRequest,
 ): Promise<RbacInspectionSummary> {
 	return client.invoke<RbacInspectionSummary>("list_rbac_inspection", {
 		clusterContext,
-		namespaces,
 		...kubeconfigArg(kubeconfigEnvVar),
+		...cancellableArg(cancellable),
+	});
+}
+
+export async function reviewRbacAccess(
+	client: TauriClient,
+	request: RbacAccessReviewRequest,
+): Promise<RbacAccessReviewResult> {
+	return client.invoke<RbacAccessReviewResult>("review_rbac_access", {
+		requestId: request.requestId,
+		cancelScope: request.cancelScope,
+		request: {
+			clusterContext: request.clusterContext,
+			identity: request.identity,
+			target: request.target,
+			...kubeconfigArg(request.kubeconfigEnvVar),
+		},
 	});
 }
 

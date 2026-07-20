@@ -81,6 +81,10 @@
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
 	import { resourceSelectionKey, type HealthFilter } from "@/features/resources/helpers";
 	import type { IncidentFilter } from "@/features/incidents";
+	import {
+		onOpenRbacVerifier,
+		type RbacVerifierHandoff,
+	} from "@/features/rbac";
 	import WorkspaceOverview from "@/features/workspaces/WorkspaceOverview.svelte";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import AppSurfaces from "./AppSurfaces.svelte";
@@ -161,6 +165,12 @@
 				? [nodeIdToString(initialNavigation.selectedNode)]
 				: []),
 	);
+	const rbacSectionId = nodeIdToString({ type: "section", section: "rbac" });
+	$effect(() => {
+		if (viewMode === "rbac" && !expandedSections.includes(rbacSectionId)) {
+			expandedSections = [...expandedSections, rbacSectionId];
+		}
+	});
 	let commandOpen = $state(false);
 	let navigationOpen = $state(false);
 	let resourceDetailPathState = $state<PathStateResourceDetailState | null>(
@@ -169,6 +179,9 @@
 	let surfacesPathState = $state<PathStateSurfacesState | null>(
 		initialSurfacesPathState,
 	);
+	let rbacVerifierHandoff = $state<RbacVerifierHandoff | undefined>();
+	let rbacVerifierReturnNavigation = $state<WorkspaceNavigationState | null>(null);
+	let rbacVerifierReturnLabel = $state<string | undefined>();
 	let dismissedPortForwardRestoreWorkspaceId = $state<string | null>(null);
 	let startingSavedPortForwards = $state(false);
 	let savedPortForwardRestoreError = $state<unknown>(null);
@@ -292,12 +305,31 @@
 
 	onMount(() => {
 		if (initialPathSnapshot) onPathStateConsumed();
+		const stopRbacHandoff = onOpenRbacVerifier((handoff) => {
+			rbacVerifierReturnNavigation = { ...navigation };
+			rbacVerifierReturnLabel = `Return to ${title}`;
+			rbacVerifierHandoff = handoff;
+			applyWorkspaceNavigation({
+				type: "selectNode",
+				node: { type: "kind", section: "rbac", kind: "Bindings" },
+			});
+		});
 		const closeNarrowNavigation = () => {
 			if (window.matchMedia("(min-width: 80rem)").matches) navigationOpen = false;
 		};
 		window.addEventListener("resize", closeNarrowNavigation);
-		return () => window.removeEventListener("resize", closeNarrowNavigation);
+		return () => {
+			stopRbacHandoff();
+			window.removeEventListener("resize", closeNarrowNavigation);
+		};
 	});
+
+	function returnFromRbacVerifier() {
+		if (rbacVerifierReturnNavigation) navigation = rbacVerifierReturnNavigation;
+		rbacVerifierHandoff = undefined;
+		rbacVerifierReturnNavigation = null;
+		rbacVerifierReturnLabel = undefined;
+	}
 
 	function applyWorkspaceNavigation(intent: WorkspaceNavigationIntent) {
 		navigation = navigateWorkspace(navigation, intent);
@@ -861,6 +893,12 @@
 						onTargetHelmReleaseResolved={clearTargetHelmRelease}
 						onTargetGitOpsApplicationResolved={clearTargetGitOpsApplication}
 						onPathStateChange={(state) => (surfacesPathState = state)}
+						rbacVerifierHandoff={rbacVerifierHandoff}
+						onRbacVerifierHandoffConsumed={() => (rbacVerifierHandoff = undefined)}
+						onRbacViewChange={(rbacView) =>
+							selectNode({ type: "kind", section: "rbac", kind: rbacView })}
+						onRbacVerifierReturn={rbacVerifierReturnNavigation ? returnFromRbacVerifier : undefined}
+						rbacVerifierReturnLabel={rbacVerifierReturnLabel}
 						onCloseSettings={closeSettings}
 					/>
 				{:else}

@@ -234,4 +234,40 @@ describe("path state", () => {
 			(safe?.workspace?.resources as Record<string, unknown> | undefined)?.fetchedRows,
 		).toBeUndefined();
 	});
+
+	test("restores only safe RBAC cockpit state", () => {
+		const safe = sanitizePathStateSnapshot({
+			...snapshot(),
+			workspace: workspaceSnapshot({
+				viewMode: "rbac",
+				selectedNode: { type: "kind", section: "rbac", kind: "Bindings" },
+				surfaces: {
+					incidentFilter: "all",
+					helmSearch: "",
+					selectedHelmRelease: null,
+					selectedGitOpsApplication: null,
+					rbac: {
+						riskBucket: "unknown",
+						selectedObjectKey: "RoleBinding:prod:readers",
+						search: "oidc:admins",
+						identity: { kind: "group", group: "oidc:admins" },
+						verifierResult: { outcome: "allowed" },
+					},
+				},
+			}),
+		});
+
+		expect(safe?.workspace?.surfaces?.rbac).toEqual({
+			riskBucket: "unknown",
+			selectedObjectKey: "RoleBinding:prod:readers",
+		});
+		expect(safe?.workspace?.selectedNode).toEqual({
+			type: "kind",
+			section: "rbac",
+			kind: "Bindings",
+		});
+		expect(safe?.workspace?.surfaces?.rbac).not.toHaveProperty("search");
+		expect(safe?.workspace?.surfaces?.rbac).not.toHaveProperty("identity");
+		expect(safe?.workspace?.surfaces?.rbac).not.toHaveProperty("verifierResult");
+	});
 });

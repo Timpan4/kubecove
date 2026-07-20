@@ -20,6 +20,7 @@ mod namespaces;
 mod operations;
 mod pod_exec;
 mod rbac;
+mod rbac_review;
 mod resources;
 mod sessions;
 mod streams;
@@ -67,6 +68,7 @@ pub use pod_exec::{
     stop_pod_exec_session, write_pod_exec_stdin, PodExecRegistry,
 };
 pub use rbac::{list_rbac_inspection, rbac_inspection_from};
+pub use rbac_review::review_rbac_access;
 pub use resources::{
     apply_yaml, dynamic_resource_details_from, dynamic_resources_summary_from,
     get_dynamic_resource_details, get_resource_details, get_resource_yaml, lint_kubernetes_yaml,

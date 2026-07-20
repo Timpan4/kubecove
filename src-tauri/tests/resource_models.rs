@@ -489,7 +489,9 @@ fn test_rbac_models_serde() {
     };
     let inspection = RbacInspectionSummary {
         cluster: "kind-dev".to_string(),
+        refreshed_at: "2026-07-18T00:00:00Z".to_string(),
         warnings: vec!["ClusterRoles unavailable: forbidden by RBAC.".to_string()],
+        coverage: Vec::new(),
         service_accounts: vec![service_account],
         roles: vec![role],
         cluster_roles: Vec::new(),

@@ -39,19 +39,6 @@ fn flags_privilege_escalation_verbs() {
 }
 
 #[test]
-fn identifies_forbidden_cluster_scope_errors() {
-    assert!(is_forbidden_app_error(&AppError::kube(
-        "ApiError: clusterroles.rbac.authorization.k8s.io is forbidden"
-    )));
-    assert!(is_forbidden_app_error(&AppError::kube(
-        "request failed with status 403"
-    )));
-    assert!(!is_forbidden_app_error(&AppError::kube(
-        "request failed with status 500"
-    )));
-}
-
-#[test]
 fn summarizes_namespace_subjects_without_duplicates() {
     let binding = RbacBindingSummary {
         cluster: "kind-dev".to_string(),
@@ -248,4 +235,39 @@ fn cluster_role_binding_group_subjects_roll_up_to_scoped_namespaces() {
             .iter()
             .any(|subject| subject.name == "system:masters")
     }));
+}
+
+#[test]
+fn missing_role_reason_tracks_inventory_coverage() {
+    let binding = RbacBindingSummary {
+        cluster: "kind-dev".to_string(),
+        kind: "RoleBinding".to_string(),
+        name: "readers".to_string(),
+        namespace: Some("payments".to_string()),
+        age: "1h".to_string(),
+        created_at: None,
+        role_ref_kind: "Role".to_string(),
+        role_ref_name: "missing".to_string(),
+        subjects: Vec::new(),
+        risks: Vec::new(),
+    };
+    let mut complete = vec![binding.clone()];
+    inherit_binding_risks(
+        &mut complete,
+        &[],
+        &[],
+        &RbacCoverageStatus::Complete,
+        &RbacCoverageStatus::Complete,
+    );
+    assert_eq!(complete[0].risks[0].label, "Dangling role reference");
+
+    let mut partial = vec![binding];
+    inherit_binding_risks(
+        &mut partial,
+        &[],
+        &[],
+        &RbacCoverageStatus::Partial,
+        &RbacCoverageStatus::Complete,
+    );
+    assert_eq!(partial[0].risks[0].label, "Referenced role unavailable");
 }

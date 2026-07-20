@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Check, CircleAlert, Copy } from "lucide-svelte";
+	import { Check, CircleAlert, Copy, KeyRound } from "lucide-svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -8,9 +8,11 @@
 	} from "@/components/ui/svelte";
 	import {
 		friendlyError,
+		requiredPermissionForFriendlyError,
 		type FriendlyErrorContext,
 		type FriendlyErrorMode,
 	} from "@/lib/friendly-errors";
+import { openRbacVerifier } from "@/features/rbac";
 	import { cnfast } from "@/lib/utils";
 
 	let {
@@ -29,6 +31,7 @@
 	let copyFailed = $state(false);
 	const presentation = $derived(friendlyError(error, context));
 	const compact = $derived(mode === "compact");
+	const requiredPermission = $derived(requiredPermissionForFriendlyError(error, context));
 	const alertClass = $derived(
 		cnfast(
 			presentation.tone === "warning"
@@ -51,6 +54,14 @@
 			copyFailed = true;
 		}
 	}
+
+	function inspectRequiredPermission() {
+		if (!requiredPermission) return;
+		openRbacVerifier({
+			target: requiredPermission,
+			sourceLabel: context.permissionSourceLabel ?? presentation.title,
+		});
+	}
 </script>
 
 <Alert variant={presentation.tone === "destructive" ? "destructive" : "default"} class={alertClass}>
@@ -70,6 +81,12 @@
 		{/if}
 		{#if !compact && presentation.next}
 			<p>{presentation.next}</p>
+		{/if}
+		{#if requiredPermission}
+			<Button type="button" variant="outline" size="xs" onclick={inspectRequiredPermission}>
+				<KeyRound data-icon="inline-start" />
+				Inspect required permission
+			</Button>
 		{/if}
 		<details class="rounded-md border bg-background/55 px-2 py-1.5">
 			<summary class="cursor-pointer text-xs font-medium text-muted-foreground">
