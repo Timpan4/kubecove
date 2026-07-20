@@ -40,7 +40,6 @@
 		createTauriClient,
 		detectArgoCD,
 		detectFlux,
-		getKubeconfigSources,
 		listArgoApplications,
 		listFluxResources,
 		listKubeContexts,
@@ -66,9 +65,11 @@
 	} from "@/lib/workspaces";
 	import type { HealthFilter } from "@/features/resources/helpers";
 	import type { IncidentFilter } from "@/features/incidents";
+	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 
 	let {
 		workspace,
+		workspaceReadContext,
 		onOpenResources,
 		onOpenResource,
 		onReconcileEntryPoints,
@@ -78,6 +79,7 @@
 		onOpenLauncher,
 	}: {
 		workspace: SavedWorkspace;
+		workspaceReadContext: WorkspaceReadContext;
 		onOpenResources: (
 			namespace?: string,
 			initialSearch?: string,
@@ -97,13 +99,8 @@
 
 	const client = createTauriClient();
 
-	const sourceQuery = createQuery(() => ({
-		queryKey: ["kubeconfig-sources"],
-		queryFn: () => getKubeconfigSources(client),
-		staleTime: 30_000,
-	}));
-	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);
-	const kubeconfigSourceKey = $derived(sourceQuery.data?.sourceKey);
+	const sourceReady = $derived(workspaceReadContext.sourceReady);
+	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
 	const workspaceContextKey = $derived(workspaceScopeContexts(workspace.scope).join("|"));
 
 	const contextsQuery = createQuery(() => ({

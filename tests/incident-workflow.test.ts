@@ -9,6 +9,7 @@ import {
 import { buildIncidentTimeline } from "../src/features/resource-detail/incident-timeline";
 import { sortIncidentEvents } from "../src/features/resource-detail/incident-events";
 import { parseLogLine } from "../src/features/resource-detail/log-helpers";
+import { buildResourceDetailReadSpec } from "../src/features/resource-detail/resourceDetailReadSpec";
 import { filterResourcesByHealth } from "../src/features/resources/helpers";
 
 function resource(overrides: Partial<ResourceSummary> = {}): ResourceSummary {
@@ -42,6 +43,7 @@ function event(overrides: Partial<ResourceEventSummary>): ResourceEventSummary {
 function svelteDetailSource(): string {
 	return [
 		"src/features/resource-detail/ResourceDetailPanel.svelte",
+		"src/features/resource-detail/resourceDetailReadSpec.ts",
 		"src/features/resource-detail/DetailsTab.svelte",
 		"src/features/resource-detail/EventsTab.svelte",
 		"src/features/resource-detail/YamlTab.svelte",
@@ -53,6 +55,53 @@ function svelteDetailSource(): string {
 }
 
 describe("incident workflow helpers", () => {
+	test("resource detail read spec keeps finite reads distinct and watch scope exact", () => {
+		const spec = buildResourceDetailReadSpec(
+			resource({
+				dynamic: true,
+				apiVersion: "apps.example.io/v1",
+				group: "apps.example.io",
+				version: "v1",
+				plural: "widgets",
+				namespaced: true,
+			}),
+			"KUBECONFIG",
+			"applyClean",
+			"kyaml",
+		);
+
+		expect(spec.identity.key).toBe("kind-dev:apps.example.io/v1:Pod:default:api-0");
+		expect(spec.detailsEnabled).toBe(true);
+		expect(spec.eventsEnabled).toBe(true);
+		expect(spec.detailsQueryKey).not.toEqual(spec.eventsQueryKey);
+		expect(spec.detailsCancelScope).not.toBe(spec.eventsCancelScope);
+		expect(spec.detailReadPermission).toEqual({
+			kind: "resource",
+			verb: "get",
+			apiGroup: "apps.example.io",
+			resource: "widgets",
+			namespace: "default",
+			name: "api-0",
+		});
+		expect(spec.resourceWatchKey).toEqual({
+			resourceKind: {
+				kind: "Pod",
+				group: "apps.example.io",
+				version: "v1",
+				apiVersion: "apps.example.io/v1",
+				plural: "widgets",
+				namespaced: true,
+			},
+			namespace: "default",
+		});
+		expect(spec.eventWatch).toEqual({
+			cluster: "kind-dev",
+			kind: "Pod",
+			name: "api-0",
+			namespace: "default",
+		});
+	});
+
 	test("unhealthy filtering includes degraded and attention resources", () => {
 		const rows = [
 			resource({ name: "healthy", status: "Running", ready: "true", health: "healthy" }),

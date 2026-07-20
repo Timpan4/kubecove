@@ -49,6 +49,7 @@
 		type SavedWorkspace,
 	} from "@/lib/workspace-model";
 	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
+	import { buildWorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
 		type DiscoveredResourceKind,
 		type ResourceKindSelection,
@@ -62,7 +63,12 @@
 		normalizeEntryPoints,
 		resourceFromEntryPoint,
 	} from "@/lib/workspace-entry-points";
-	import { createTauriClient, listPresentCustomResourceKinds } from "@/lib/tauri";
+	import {
+		createTauriClient,
+		getKubeconfigSources,
+		listPresentCustomResourceKinds,
+	} from "@/lib/tauri";
+	import type { KubeconfigSourcesSummary } from "@/lib/types";
 	import {
 		writePathState,
 		type PathStateDetailTab,
@@ -134,6 +140,20 @@
 
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
+	const workspaceSourceQuery = createQuery<KubeconfigSourcesSummary>(() => ({
+		queryKey: ["kubeconfig-sources"] as const,
+		queryFn: () => getKubeconfigSources(client),
+		staleTime: 30_000,
+	}));
+	const workspaceReadContext = $derived(
+		buildWorkspaceReadContext({
+			workspace,
+			sources: workspaceSourceQuery.data,
+			sourceSucceeded: workspaceSourceQuery.isSuccess,
+			sourceFailed: workspaceSourceQuery.isError,
+			sourceError: workspaceSourceQuery.error,
+		}),
+	);
 	function initialPathSnapshotForWorkspace() {
 		return workspacePathForWorkspace(workspace, initialPathState);
 	}
@@ -585,7 +605,7 @@
 		</div>
 		<SidebarContent>
 			<SidebarTree
-				clusterContext={workspace.scope.clusterContext}
+				{workspaceReadContext}
 				{selectedNode}
 				{expandedSections}
 				onNodeSelect={selectNode}
@@ -611,7 +631,7 @@
 			</div>
 			<SidebarContent>
 				<SidebarTree
-					clusterContext={workspace.scope.clusterContext}
+					{workspaceReadContext}
 					{selectedNode}
 					{expandedSections}
 					onNodeSelect={selectNode}
@@ -817,7 +837,7 @@
 									<ResourceDetailPanel
 										{client}
 										resource={focusedResource}
-										{kubeconfigSourceKey}
+										{workspaceReadContext}
 										onOpenHelmRelease={openHelmReleaseFromResource}
 										initialPathState={resourceDetailPathState}
 										onPathStateChange={(state) => (resourceDetailPathState = state)}
@@ -831,6 +851,7 @@
 				{#if isOverview}
 					<WorkspaceOverview
 						{workspace}
+						{workspaceReadContext}
 						onOpenResources={openResources}
 						onOpenResource={openEntryPoint}
 						onReconcileEntryPoints={(resources, coverage) =>
@@ -848,14 +869,14 @@
 								<CardDescription>{scopeSummary}</CardDescription>
 							</CardHeader>
 							<CardContent>
-								<NamespaceList clusterContext={workspace.scope.clusterContext} />
+								<NamespaceList {workspaceReadContext} />
 							</CardContent>
 						</Card>
 					</section>
 				{:else if resourceBrowserScope.canQuery}
 					<section class="flex h-full min-h-0 w-full flex-col gap-3 p-3 xl:p-4">
 						<ResourceBrowser
-							clusterContext={workspace.scope.clusterContext}
+							{workspaceReadContext}
 							initialNamespaces={resourceBrowserNamespaces}
 							initialKinds={resourceBrowserInitialKinds}
 							availableKinds={resourceBrowserKinds}
@@ -881,15 +902,16 @@
 				{:else if viewMode === "argo" || viewMode === "helm" || viewMode === "rbac" || viewMode === "incidents" || viewMode === "portForwards" || viewMode === "settings"}
 					<AppSurfaces
 						{workspace}
+						{workspaceReadContext}
 						{viewMode}
 						{selectedNode}
 						{targetHelmRelease}
 						{targetGitOpsApplication}
 						{initialIncidentFilter}
 						initialPathState={initialSurfacesPathState}
-					onOpenResources={openResources}
-					onResourceInspect={inspectResource}
-					onResourceSelect={selectResource}
+						onOpenResources={openResources}
+						onResourceInspect={inspectResource}
+						onResourceSelect={selectResource}
 						onTargetHelmReleaseResolved={clearTargetHelmRelease}
 						onTargetGitOpsApplicationResolved={clearTargetGitOpsApplication}
 						onPathStateChange={(state) => (surfacesPathState = state)}
@@ -921,6 +943,7 @@
 <CommandPalette
 	bind:open={commandOpen}
 	{workspace}
+	{workspaceReadContext}
 	onNodeSelect={selectNode}
 	onResourceSelect={selectResource}
 	onOpenLauncher={openLauncher}

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
+	buildFetchKeys,
 	buildResourceSearchIndex,
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,
@@ -12,6 +13,7 @@ import {
 	shouldLoadOwnershipMap,
 	syncedTopologyNodeId,
 } from "../src/features/resources/resourceBrowserModel";
+import { buildResourceBrowserReadSpecs } from "../src/features/resources/resourceBrowserReadSpecs";
 import {
 	buildFlowTopologyFitPlan,
 	buildFlowTopologyView,
@@ -22,6 +24,8 @@ import type {
 	ResourceTopology,
 	TopologyNode,
 } from "../src/lib/types";
+import type { SavedWorkspace } from "../src/lib/workspace-model";
+import { buildWorkspaceReadContext } from "../src/lib/workspaceReadContext";
 
 function resource(name: string, patch: Partial<ResourceSummary> = {}): ResourceSummary {
 	return {
@@ -72,6 +76,91 @@ const widget: DiscoveredResourceKind = {
 	plural: "widgets",
 	namespaced: true,
 };
+
+test("builds safe active-workspace read metadata from one source result", () => {
+	const workspace: SavedWorkspace = {
+		id: "workspace-a",
+		name: "Ops",
+		createdAt: "2026-07-20T00:00:00.000Z",
+		updatedAt: "2026-07-20T00:00:00.000Z",
+		scope: {
+			clusterContext: "kind-dev",
+			namespaces: ["default"],
+			kinds: ["Pod"],
+			argoAppFilter: "",
+			layout: "resources",
+		},
+		shortcuts: [],
+		portForwards: [],
+	};
+	const context = buildWorkspaceReadContext({
+		workspace,
+		sources: {
+			kubeconfigEnvVar: "KUBECONFIG",
+			paths: [],
+			sourceKey: "source-a",
+			sourceLabel: "Source A",
+			showSourceLabels: true,
+			warnings: [],
+		},
+		sourceSucceeded: true,
+		sourceFailed: false,
+		sourceError: null,
+	});
+
+	expect(context).toEqual({
+		workspaceId: "workspace-a",
+		clusterContext: "kind-dev",
+		namespaceScope: ["default"],
+		kubeconfigSourceKey: "source-a",
+		sourceReady: true,
+		sourceError: null,
+		showKubeconfigSourceLabels: true,
+	});
+});
+
+test("builds immutable ResourceBrowser read identities and enablement", () => {
+	const fetchKeys = buildFetchKeys(["default", "kube-system"], ["Pod", widget]);
+	const specs = buildResourceBrowserReadSpecs({
+		clusterContext: "kind-dev",
+		kubeconfigSourceKey: "source-a",
+		fetchKeys,
+		namespaces: ["kube-system", "default", "default"],
+		topologyMode: "ownership",
+		mapPanelOpen: false,
+		sourceReady: true,
+		customResourcesEnabled: true,
+	});
+
+	expect(specs.topologyNamespaces).toEqual(["default", "kube-system"]);
+	expect(specs.resourceQueryKey[0]).toBe("resources");
+	expect(specs.topologyQueryKey).toEqual([
+		"resource-topology",
+		"kubeconfigEnv=source-a",
+		"kind-dev",
+		"default,kube-system",
+		"ownership",
+		"dynamic:example.com/v1:widgets:Widget",
+	]);
+	expect(specs.resourcesEnabled).toBe(true);
+	expect(specs.topologyEnabled).toBe(false);
+	expect(specs.resourceKindsEnabled).toBe(true);
+
+	const waitingForSource = buildResourceBrowserReadSpecs({
+		clusterContext: "kind-dev",
+		kubeconfigSourceKey: undefined,
+		fetchKeys: [],
+		namespaces: ["default"],
+		topologyMode: "ownership",
+		mapPanelOpen: true,
+		sourceReady: false,
+		customResourcesEnabled: false,
+	});
+	expect(waitingForSource.namespacesEnabled).toBe(false);
+	expect(waitingForSource.resourceKindsEnabled).toBe(false);
+	expect(waitingForSource.resourcesEnabled).toBe(false);
+	expect(waitingForSource.topologyEnabled).toBe(true);
+});
 
 describe("svelte resource browser model", () => {
 	test("does not request the ownership map for restored closed state", () => {
@@ -545,7 +634,7 @@ describe("svelte resource browser model", () => {
 		);
 
 		expect(source).toContain('withForegroundLoad("resource-topology"');
-		expect(source).toContain("enabled: Boolean(clusterContext && mapPanelOpen)");
+		expect(source).toContain("enabled: readSpecs.topologyEnabled");
 	});
 
 	test("keeps Svelte topology mode copy and warnings aligned", () => {
@@ -671,7 +760,7 @@ describe("svelte resource browser model", () => {
 		expect(resizedKey).not.toBe(baseKey);
 		expect(movedKey).not.toBe(baseKey);
 		expect(browserSource).toContain("const topologyFitViewKey = $derived(JSON.stringify(topologyBaseQueryKey))");
-		expect(browserSource).toContain("[...topologyBaseQueryKey, topologyCustomResourceKey]");
+		expect(browserSource).toContain("const topologyQueryKey = $derived(readSpecs.topologyQueryKey)");
 		expect(browserSource).toContain("fitViewKey={topologyFitViewKey}");
 	});
 
@@ -715,9 +804,9 @@ describe("svelte resource browser model", () => {
 			"utf8",
 		);
 
-		expect(source).toContain('createCancelScope("resources", resourceQueryKey)');
-		expect(source).toContain('createCancelScope("resource-topology", topologyQueryKey)');
-		expect(source).toContain('createCancelScope("resource-metrics", metricsQueryKey)');
+		expect(source).toContain("const resourceCancelScope = $derived(readSpecs.resourceCancelScope)");
+		expect(source).toContain("const topologyCancelScope = $derived(readSpecs.topologyCancelScope)");
+		expect(source).toContain("const metricsCancelScope = $derived(readSpecs.metricsCancelScope)");
 		expect(source).toContain("fetchResourcePage(clusterContext, fetchKeys, kubeconfigSourceKey, resourceCancelScope)");
 		expect(source).toContain('createCancellableRequest(topologyCancelScope, "topology")');
 		expect(source).toContain('createCancellableRequest(metricsCancelScope, "metrics")');

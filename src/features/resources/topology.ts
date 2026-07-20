@@ -3,7 +3,10 @@ export type {
 	FlowTopologyFitPlan,
 } from "./topology-implementation";
 export {
+	buildFlowTopology,
 	buildFlowTopologyFitPlan,
+	getFlowTopologyBounds,
+	getTopologyTranslateExtent,
 } from "./topology-implementation";
 export {
 	topologyRailTone,

@@ -1,8 +1,8 @@
 use super::{dynamic_resources_summary_from, resources_summary_from};
+use crate::commands::diagnostics::record_backend_result;
 use crate::{
     commands::{
-        diagnostic_field, kubeconfig::kubeconfig_source_key, record_backend_cancelled,
-        record_backend_error, record_backend_success, BackendCancellationRegistry,
+        diagnostic_field, kubeconfig::kubeconfig_source_key, BackendCancellationRegistry,
         ClusterLiveStore,
     },
     models::{AppError, DiscoveredResourceKind, ResourceListRequest, ResourceSummary},
@@ -215,14 +215,17 @@ pub async fn list_resource_scope(
     eprintln!(
         "[kubecove:backend] list_resource_scope start context={cluster_context} requests={request_count}",
     );
-    let cancellation = cancellations.register(cancel_scope, request_id);
-    let result = cancellation
-        .run(resource_scope_from(
-            cluster_context.clone(),
-            requests,
-            live_store.inner().clone(),
-            kubeconfig_env_var,
-        ))
+    let result = cancellations
+        .execute(
+            cancel_scope,
+            request_id,
+            resource_scope_from(
+                cluster_context.clone(),
+                requests,
+                live_store.inner().clone(),
+                kubeconfig_env_var,
+            ),
+        )
         .await;
     match &result {
         Ok(rows) => {
@@ -232,15 +235,6 @@ pub async fn list_resource_scope(
                 rows.len(),
                 started.elapsed().as_millis()
             );
-            record_backend_success(
-                "list_resource_scope",
-                started,
-                vec![
-                    diagnostic_field("requests", request_count),
-                    diagnostic_field("namespaces", namespace_count),
-                    diagnostic_field("rows", rows.len()),
-                ],
-            );
         }
         Err(err) if err.kind == "cancelled" => {
             eprintln!(
@@ -248,7 +242,6 @@ pub async fn list_resource_scope(
                 cluster_context,
                 started.elapsed().as_millis()
             );
-            record_backend_cancelled("list_resource_scope", started);
         }
         Err(err) => {
             eprintln!(
@@ -258,9 +251,15 @@ pub async fn list_resource_scope(
                 err.message,
                 started.elapsed().as_millis()
             );
-            record_backend_error("list_resource_scope", started, &err.kind);
         }
     }
+    record_backend_result("list_resource_scope", started, &result, |rows| {
+        vec![
+            diagnostic_field("requests", request_count),
+            diagnostic_field("namespaces", namespace_count),
+            diagnostic_field("rows", rows.len()),
+        ]
+    });
     result
 }
 

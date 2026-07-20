@@ -1,8 +1,8 @@
+use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
     diagnostic_field,
     helpers::{k8s_timestamp_to_datetime, list_params, resource_age},
     kubeconfig::KubeconfigSource,
-    record_backend_cancelled, record_backend_error, record_backend_success,
     BackendCancellationRegistry,
 };
 use crate::models::{AppError, ResourceEventSummary};
@@ -128,15 +128,18 @@ pub async fn list_resource_events(
     eprintln!(
         "[kubecove:backend] list_resource_events start context={cluster_context} kind={kind} namespace={namespace_label} name={name}"
     );
-    let cancellation = cancellations.register(cancel_scope, request_id);
-    let result = cancellation
-        .run(resource_events_from(
-            cluster_context.clone(),
-            kind.clone(),
-            name.clone(),
-            namespace.clone(),
-            kubeconfig_env_var,
-        ))
+    let result = cancellations
+        .execute(
+            cancel_scope,
+            request_id,
+            resource_events_from(
+                cluster_context.clone(),
+                kind.clone(),
+                name.clone(),
+                namespace.clone(),
+                kubeconfig_env_var,
+            ),
+        )
         .await;
     match &result {
         Ok(events) => {
@@ -149,14 +152,6 @@ pub async fn list_resource_events(
                 events.len(),
                 started.elapsed().as_millis()
             );
-            record_backend_success(
-                "list_resource_events",
-                started,
-                vec![
-                    diagnostic_field("kind", &kind),
-                    diagnostic_field("rows", events.len()),
-                ],
-            );
         }
         Err(err) if err.kind == "cancelled" => {
             eprintln!(
@@ -167,7 +162,6 @@ pub async fn list_resource_events(
                 name,
                 started.elapsed().as_millis()
             );
-            record_backend_cancelled("list_resource_events", started);
         }
         Err(err) => {
             eprintln!(
@@ -180,9 +174,14 @@ pub async fn list_resource_events(
                 err.message,
                 started.elapsed().as_millis()
             );
-            record_backend_error("list_resource_events", started, &err.kind);
         }
     }
+    record_backend_result("list_resource_events", started, &result, |events| {
+        vec![
+            diagnostic_field("kind", &kind),
+            diagnostic_field("rows", events.len()),
+        ]
+    });
     result
 }
 

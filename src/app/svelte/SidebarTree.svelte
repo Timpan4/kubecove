@@ -6,7 +6,6 @@
 		createTauriClient,
 		detectArgoCD,
 		detectFlux,
-		getKubeconfigSources,
 		listNamespaces,
 		listPresentCustomResourceKinds,
 		listResourceKinds,
@@ -15,9 +14,9 @@
 	import type {
 		DiscoveredResourceKind,
 		FluxDetectionSummary,
-		KubeconfigSourcesSummary,
 		NamespaceSummary,
 	} from "@/lib/types";
+	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import { nodeIdToString, type TreeNode, type TreeNodeId } from "@/lib/tree-nav";
 	import { settingsStore } from "@/lib/settings-store";
 	import { buildNamespaceTreeNode } from "@/components/sidebar-tree-helpers";
@@ -25,13 +24,13 @@
 	import SidebarTreeNode from "./SidebarTreeNode.svelte";
 
 	let {
-		clusterContext,
+		workspaceReadContext,
 		selectedNode,
 		expandedSections,
 		onNodeSelect,
 		onSectionToggle,
 	}: {
-		clusterContext: string;
+		workspaceReadContext: WorkspaceReadContext;
 		selectedNode: TreeNodeId | null;
 		expandedSections: string[];
 		onNodeSelect: (id: TreeNodeId) => void;
@@ -43,15 +42,9 @@
 		$settingsStore.showUnavailableGitOpsProviders,
 	);
 	const showCustomResources = $derived($settingsStore.showCustomResources);
-
-	const sourceQuery = createQuery<KubeconfigSourcesSummary>(() => ({
-		queryKey: ["kubeconfig-sources"] as const,
-		queryFn: () => getKubeconfigSources(client),
-		staleTime: 60_000,
-	}));
-
-	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);
-	const kubeconfigSourceKey = $derived(sourceQuery.data?.sourceKey);
+	const clusterContext = $derived(workspaceReadContext.clusterContext);
+	const sourceReady = $derived(workspaceReadContext.sourceReady);
+	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
 
 	const namespacesQuery = createQuery<NamespaceSummary[]>(() => ({
 		queryKey: queryKeys.namespaces(clusterContext, kubeconfigSourceKey),
