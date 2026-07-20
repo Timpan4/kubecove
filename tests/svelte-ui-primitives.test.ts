@@ -17,6 +17,10 @@ describe("svelte ui primitives", () => {
 			expect(theme).toContain(`--z-index-${token}: var(--z-${token});`);
 		}
 		expect(readPrimitive("PopoverContent.svelte")).toContain("z-popover");
+		expect(readPrimitive("TooltipContent.svelte")).toContain("z-popover");
+		expect(readPrimitive("SelectContent.svelte")).toContain("z-popover");
+		expect(readPrimitive("SheetContent.svelte")).toContain("z-dialog");
+		expect(readPrimitive("SheetContent.svelte")).not.toContain("z-50");
 	});
 
 	test("exports launcher and mirror primitives", () => {
