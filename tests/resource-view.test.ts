@@ -12,11 +12,15 @@ describe("resource view safeguards", () => {
 			"src/features/resources/ResourceBrowser.svelte",
 			"utf8",
 		);
+		const readSpecsSource = readFileSync(
+			"src/features/resources/resourceBrowserReadSpecs.ts",
+			"utf8",
+		);
 
 		expect(browserSource).toContain("mapPanelOpen");
 		expect(browserSource).toContain("tablePanelOpen");
-		expect(browserSource).toContain(
-			"enabled: Boolean(clusterContext && mapPanelOpen)",
+		expect(readSpecsSource).toContain(
+			"topologyEnabled: Boolean(clusterContext && mapPanelOpen)",
 		);
 		expect(ownershipMapSource).toContain("aria-pressed={true}");
 		expect(ownershipMapSource).toContain("onclick={onMapToggle}");

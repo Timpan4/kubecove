@@ -177,13 +177,13 @@ mod tests {
             "tracked_cancelled",
             Instant::now(),
             &Err(AppError::cancelled()),
-            |_| Vec::new(),
+            |()| Vec::new(),
         );
         record_backend_result::<()>(
             "tracked_error",
             Instant::now(),
             &Err(AppError::new("boom", "transport")),
-            |_| Vec::new(),
+            |()| Vec::new(),
         );
         let events = get_backend_diagnostics();
         assert_eq!(events.len(), 3);

@@ -11,6 +11,10 @@ describe("pod exec UI", () => {
 			"src/features/resource-detail/ResourceYamlPane.svelte",
 			"utf8",
 		);
+		const readSpecSource = readFileSync(
+			"src/features/resource-detail/resourceDetailReadSpec.ts",
+			"utf8",
+		);
 
 		expect(source).toContain('const canShowExec = $derived(isPod)');
 		expect(source).toContain('const canShowPortForward = $derived(');
@@ -34,7 +38,7 @@ describe("pod exec UI", () => {
 			"{resource.name}",
 			"`",
 		].join("");
-		expect(source).toContain(resourceKeySnippet);
+		expect(readSpecSource).toContain(resourceKeySnippet);
 		expect(source).toContain('diagnosticLog("detail.mount", { key })');
 		expect(source).toContain('diagnosticLog("detail.unmount", { key })');
 		expect(source).toContain('diagnosticLog("detail.tab.click", { key: resourceKey, tab: nextTab })');
