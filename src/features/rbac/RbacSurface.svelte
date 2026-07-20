@@ -48,6 +48,7 @@
 	const cancelScope = cancelScopeValue();
 	onDestroy(() => {
 		void cancelBackendRequests(client, cancelScope).catch(() => {});
+		void cancelBackendRequests(client, "rbac-review").catch(() => {});
 	});
 	const rbacQuery = createQuery<RbacInspectionSummary>(() => ({
 		queryKey: queryKeys.rbacInspection(

@@ -41,7 +41,7 @@
 		type RbacRiskBucket,
 	} from "./cockpitModel";
 	import type { RbacVerifierHandoff } from "./handoff";
-	import { observedPermissions, identityDefaults } from "./observedPermissions";
+	import { observedPermissions, identityDefaults, inspectorIdentity } from "./observedPermissions";
 	import { riskSummaryLabel, subjectListLabel } from "./risk";
 	import type { RbacView } from "./surfaceModel";
 
@@ -144,18 +144,7 @@
 		if (handoffKey === nextKey) return;
 		handoffKey = nextKey;
 		handoffPromoted = true;
-		drillIdentity =
-			handoff.identity?.kind === "serviceAccount"
-				? {
-					kind: "serviceAccount",
-					name: handoff.identity.name,
-					namespace: handoff.identity.namespace,
-				}
-				: handoff.identity?.kind === "group"
-					? { kind: "group", name: handoff.identity.group }
-					: handoff.identity?.kind === "user"
-						? { kind: "user", name: handoff.identity.username }
-						: null;
+		drillIdentity = inspectorIdentity(handoff.identity);
 		manualIdentity = drillIdentity === null;
 		if (handoff.target.kind === "resource") {
 			targetKind = "resource";
@@ -376,7 +365,7 @@
 			clusterContext: data.cluster,
 			identity,
 			target,
-			requestId: `rbac-review-${requestVersion}`,
+			requestId: "rbac-review",
 			cancelScope: "rbac-review",
 		};
 		const requestFingerprint = fingerprint;

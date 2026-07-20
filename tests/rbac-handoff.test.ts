@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { requiredPermissionForFriendlyError } from "../src/lib/friendly-errors";
 import { requiredPermissionForResource } from "../src/features/rbac/handoff";
 
@@ -65,5 +66,14 @@ describe("RBAC denied-action handoff", () => {
 				"get",
 			),
 		).toBeNull();
+	});
+
+	test("uses one cancellable verifier request slot and cancels it on surface teardown", async () => {
+		const [view, surface] = await Promise.all([
+			readFile(new URL("../src/features/rbac/RbacView.svelte", import.meta.url), "utf8"),
+			readFile(new URL("../src/features/rbac/RbacSurface.svelte", import.meta.url), "utf8"),
+		]);
+		expect(view).toContain('requestId: "rbac-review"');
+		expect(surface).toContain('cancelBackendRequests(client, "rbac-review")');
 	});
 });

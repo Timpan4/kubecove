@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { identityDefaults, observedPermissions } from "../src/features/rbac/observedPermissions";
+import { identityDefaults, inspectorIdentity, observedPermissions } from "../src/features/rbac/observedPermissions";
 import type { RbacInspectionSummary } from "../src/lib/types";
 
 const base = (): RbacInspectionSummary => ({
@@ -36,6 +36,26 @@ describe("observed RBAC permissions", () => {
 		inspection.coverage[0].status = "partial";
 		expect(observedPermissions(inspection, { kind: "group", name: "ops" })).toMatchObject({ unknown: true, grants: [{ scope: "cluster" }] });
 	});
+	test("omits non-resource URLs from namespaced ClusterRole grants", () => {
+		const inspection = base();
+		const [roleBinding] = inspection.roleBindings;
+		if (!roleBinding) throw new Error("expected RoleBinding fixture");
+		inspection.roleBindings[0] = {
+			...roleBinding,
+			roleRefKind: "ClusterRole",
+			roleRefName: "viewer",
+		};
+		const grant = observedPermissions(inspection, {
+			kind: "serviceAccount",
+			name: "api",
+			namespace: "team",
+		}).grants.find((item) => item.bindings.includes("RoleBinding/team/read"));
+		expect(grant).toEqual(expect.objectContaining({
+			scope: "namespace",
+			resources: ["nodes"],
+			nonResourceUrls: [],
+		}));
+	});
 	test("matches submitted user groups and automatic ServiceAccount groups", () => {
 		const inspection = base();
 		expect(
@@ -56,5 +76,12 @@ describe("observed RBAC permissions", () => {
 	test("uses safe user defaults", () => {
 		expect(identityDefaults("user", "alex")).toEqual(["system:authenticated"]);
 		expect(identityDefaults("user", "system:anonymous")).toEqual(["system:unauthenticated"]);
+	});
+	test("preserves handoff user groups for inspection and review", () => {
+		expect(inspectorIdentity({ kind: "user", username: "mira", groups: ["ops", "developers"] })).toEqual({
+			kind: "user",
+			name: "mira",
+			groups: ["ops", "developers"],
+		});
 	});
 });

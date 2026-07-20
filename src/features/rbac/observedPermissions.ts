@@ -1,4 +1,4 @@
-import type { RbacBindingSummary, RbacInspectionSummary, RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary } from "@/lib/types";
+import type { RbacAccessReviewIdentity, RbacBindingSummary, RbacInspectionSummary, RbacRoleSummary, RbacRuleSummary, RbacSubjectSummary } from "@/lib/types";
 
 export interface ObservedGrant {
 	verbs: string[];
@@ -34,7 +34,10 @@ export function observedPermissions(
 		const role = roles.get(roleKey(binding.roleRefKind, binding.roleRefName, binding.roleRefKind === "Role" ? binding.namespace : undefined));
 		if (!role) { missing = true; continue; }
 		const scope = binding.kind === "ClusterRoleBinding" ? "cluster" : "namespace";
-		for (const rule of role.rules) grants.push(grant(rule, scope, binding.namespace, role, binding));
+		for (const rule of role.rules) {
+			const observed = grant(rule, scope, binding.namespace, role, binding);
+			if (observed) grants.push(observed);
+		}
 	}
 	const reasons = [
 		incomplete.length ? `Coverage is partial or unavailable for ${incomplete.join(", ")}.` : "",
@@ -45,6 +48,18 @@ export function observedPermissions(
 
 export function identityDefaults(kind: "serviceAccount" | "user" | "group", name = ""): string[] {
 	return kind === "user" ? [name === "system:anonymous" ? "system:unauthenticated" : "system:authenticated"] : [];
+}
+
+export function inspectorIdentity(identity: RbacAccessReviewIdentity | undefined): {
+	kind: "serviceAccount" | "user" | "group";
+	name: string;
+	namespace?: string;
+	groups?: string[];
+} | null {
+	if (!identity) return null;
+	if (identity.kind === "serviceAccount") return { kind: "serviceAccount", name: identity.name, namespace: identity.namespace };
+	if (identity.kind === "group") return { kind: "group", name: identity.group };
+	return { kind: "user", name: identity.username, groups: identity.groups };
 }
 
 function matchesSubject(subject: RbacSubjectSummary, identity: { kind: string; name: string; namespace?: string; groups?: string[] }): boolean {
@@ -65,8 +80,10 @@ function matchesSubject(subject: RbacSubjectSummary, identity: { kind: string; n
 	}
 	return subject.kind === "Group" && subject.name === identity.name;
 }
-function grant(rule: RbacRuleSummary, scope: "cluster" | "namespace", namespace: string | undefined, role: RbacRoleSummary, binding: RbacBindingSummary): ObservedGrant {
-	return { verbs: rule.verbs, apiGroups: rule.apiGroups, resources: rule.resources, resourceNames: rule.resourceNames, nonResourceUrls: rule.nonResourceUrls, scope, namespace: scope === "namespace" ? namespace : undefined, roles: [roleKey(role.kind, role.name, role.namespace)], bindings: [bindingKey(binding)] };
+function grant(rule: RbacRuleSummary, scope: "cluster" | "namespace", namespace: string | undefined, role: RbacRoleSummary, binding: RbacBindingSummary): ObservedGrant | null {
+	const nonResourceUrls = scope === "namespace" ? [] : rule.nonResourceUrls;
+	if (rule.resources.length === 0 && nonResourceUrls.length === 0) return null;
+	return { verbs: rule.verbs, apiGroups: rule.apiGroups, resources: rule.resources, resourceNames: rule.resourceNames, nonResourceUrls, scope, namespace: scope === "namespace" ? namespace : undefined, roles: [roleKey(role.kind, role.name, role.namespace)], bindings: [bindingKey(binding)] };
 }
 function merge(grants: ObservedGrant[]): ObservedGrant[] {
 	const merged = new Map<string, ObservedGrant>();
