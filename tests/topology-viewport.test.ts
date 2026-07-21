@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { ResourceSummary, ResourceTopology, TopologyNode } from "../src/lib/types";
-import type { FlowTopologyNode } from "../src/features/resources/topology";
 import {
 	buildFlowTopology,
+	type FlowTopologyNode,
 	getFlowTopologyBounds,
 	getTopologyTranslateExtent,
-} from "../src/features/resources/topology-implementation";
+} from "../src/features/resources/topology";
+import type { ResourceSummary, ResourceTopology, TopologyNode } from "../src/lib/types";
 
 function graphNode(
 	id: string,

@@ -1,3 +1,4 @@
+use crate::commands::diagnostics::record_backend_result;
 use crate::commands::helpers::{
     extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
     k8s_creation_timestamp_to_rfc3339, list_params, normalize_k8s_yaml_value, resource_age,
@@ -6,8 +7,7 @@ use crate::commands::helpers::{
 use crate::commands::{
     diagnostic_field,
     kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-    record_backend_cancelled, record_backend_error, record_backend_success,
-    BackendCancellationRegistry, ClusterLiveStore,
+    record_backend_error, record_backend_success, BackendCancellationRegistry, ClusterLiveStore,
 };
 use crate::models::{
     AppError, DiscoveredResourceKind, ResourceDetailsFull, ResourceHealth, ResourceSummary,
@@ -316,17 +316,20 @@ pub async fn get_dynamic_resource_details(
         "[kubecove:backend] get_dynamic_resource_details start context={} kind={} api_version={} namespace={} name={}",
         cluster_context, resource_kind.kind, resource_kind.api_version, namespace_label, name
     );
-    let cancellation = cancellations.register(cancel_scope, request_id);
-    let result = cancellation
-        .run(dynamic_resource_details_from(
-            cluster_context.clone(),
-            resource_kind.clone(),
-            name.clone(),
-            namespace.clone(),
-            kubeconfig_env_var,
-            yaml_view_mode,
-            yaml_encoding,
-        ))
+    let result = cancellations
+        .execute(
+            cancel_scope,
+            request_id,
+            dynamic_resource_details_from(
+                cluster_context.clone(),
+                resource_kind.clone(),
+                name.clone(),
+                namespace.clone(),
+                kubeconfig_env_var,
+                yaml_view_mode,
+                yaml_encoding,
+            ),
+        )
         .await;
     match &result {
         Ok(details) => {
@@ -340,15 +343,6 @@ pub async fn get_dynamic_resource_details(
                 details.status.is_some(),
                 started.elapsed().as_millis()
             );
-            record_backend_success(
-                "get_dynamic_resource_details",
-                started,
-                vec![
-                    diagnostic_field("kind", &resource_kind.kind),
-                    diagnostic_field("yamlBytes", details.yaml.len()),
-                    diagnostic_field("hasStatus", details.status.is_some()),
-                ],
-            );
         }
         Err(err) if err.kind == "cancelled" => {
             eprintln!(
@@ -359,7 +353,6 @@ pub async fn get_dynamic_resource_details(
                 name,
                 started.elapsed().as_millis()
             );
-            record_backend_cancelled("get_dynamic_resource_details", started);
         }
         Err(err) => {
             eprintln!(
@@ -372,9 +365,20 @@ pub async fn get_dynamic_resource_details(
                 err.message,
                 started.elapsed().as_millis()
             );
-            record_backend_error("get_dynamic_resource_details", started, &err.kind);
         }
     }
+    record_backend_result(
+        "get_dynamic_resource_details",
+        started,
+        &result,
+        |details| {
+            vec![
+                diagnostic_field("kind", &resource_kind.kind),
+                diagnostic_field("yamlBytes", details.yaml.len()),
+                diagnostic_field("hasStatus", details.status.is_some()),
+            ]
+        },
+    );
     result
 }
 

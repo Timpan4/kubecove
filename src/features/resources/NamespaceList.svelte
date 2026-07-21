@@ -16,23 +16,16 @@
 		TableRow,
 	} from "@/components/ui/svelte";
 	import { queryKeys } from "@/lib/queryKeys";
-	import {
-		createTauriClient,
-		getKubeconfigSources,
-		listNamespaces,
-	} from "@/lib/tauri";
-	import type { KubeconfigSourcesSummary, NamespaceSummary } from "@/lib/types";
+	import { createTauriClient, listNamespaces } from "@/lib/tauri";
+	import type { NamespaceSummary } from "@/lib/types";
+	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 
-	let { clusterContext }: { clusterContext: string } = $props();
+	let { workspaceReadContext }: { workspaceReadContext: WorkspaceReadContext } = $props();
 
 	const client = createTauriClient();
-	const sourceQuery = createQuery<KubeconfigSourcesSummary>(() => ({
-		queryKey: ["kubeconfig-sources"] as const,
-		queryFn: () => getKubeconfigSources(client),
-		staleTime: 60_000,
-	}));
-	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);
-	const kubeconfigSourceKey = $derived(sourceQuery.data?.sourceKey);
+	const clusterContext = $derived(workspaceReadContext.clusterContext);
+	const sourceReady = $derived(workspaceReadContext.sourceReady);
+	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
 	const namespacesQuery = createQuery<NamespaceSummary[]>(() => ({
 		queryKey: queryKeys.namespaces(clusterContext, kubeconfigSourceKey),
 		queryFn: () => listNamespaces(client, clusterContext, kubeconfigSourceKey),
@@ -42,8 +35,8 @@
 
 	const namespaces = $derived(namespacesQuery.data ?? []);
 	const namespaceError = $derived(
-		sourceQuery.isError
-			? sourceQuery.error
+		workspaceReadContext.sourceError
+			? workspaceReadContext.sourceError
 			: namespacesQuery.isError
 				? namespacesQuery.error
 				: null,

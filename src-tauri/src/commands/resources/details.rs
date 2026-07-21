@@ -2,9 +2,9 @@ mod cluster;
 mod core;
 mod workloads;
 
+use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
-    diagnostic_field, kubeconfig::KubeconfigSource, record_backend_cancelled, record_backend_error,
-    record_backend_success, BackendCancellationRegistry,
+    diagnostic_field, kubeconfig::KubeconfigSource, BackendCancellationRegistry,
 };
 use crate::models::{AppError, ResourceDetailsFull, YamlEncoding, YamlViewMode};
 use std::time::Instant;
@@ -71,37 +71,36 @@ pub async fn get_resource_details(
     eprintln!(
         "[kubecove:backend] get_resource_details start context={cluster_context} kind={kind} namespace={namespace_label} name={name}"
     );
-    let cancellation = cancellations.register(cancel_scope, request_id);
-    let result = cancellation
-        .run(resource_details_from(
-            cluster_context.clone(),
-            kind.clone(),
-            name.clone(),
-            namespace.clone(),
-            kubeconfig_env_var,
-        ))
+    let result = cancellations
+        .execute(
+            cancel_scope,
+            request_id,
+            resource_details_from(
+                cluster_context.clone(),
+                kind.clone(),
+                name.clone(),
+                namespace.clone(),
+                kubeconfig_env_var,
+            ),
+        )
         .await;
     match &result {
         Ok(details) => {
             eprintln!("[kubecove:backend] get_resource_details done context={} kind={} namespace={} name={} yaml_bytes={} status={} ms={}", cluster_context, kind, namespace_label, name, details.yaml.len(), details.status.is_some(), started.elapsed().as_millis());
-            record_backend_success(
-                "get_resource_details",
-                started,
-                vec![
-                    diagnostic_field("kind", &kind),
-                    diagnostic_field("yamlBytes", details.yaml.len()),
-                    diagnostic_field("hasStatus", details.status.is_some()),
-                ],
-            );
         }
         Err(err) if err.kind == "cancelled" => {
             eprintln!("[kubecove:backend] get_resource_details cancelled context={} kind={} namespace={} name={} ms={}", cluster_context, kind, namespace_label, name, started.elapsed().as_millis());
-            record_backend_cancelled("get_resource_details", started);
         }
         Err(err) => {
             eprintln!("[kubecove:backend] get_resource_details error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis());
-            record_backend_error("get_resource_details", started, &err.kind);
         }
     }
+    record_backend_result("get_resource_details", started, &result, |details| {
+        vec![
+            diagnostic_field("kind", &kind),
+            diagnostic_field("yamlBytes", details.yaml.len()),
+            diagnostic_field("hasStatus", details.status.is_some()),
+        ]
+    });
     result
 }

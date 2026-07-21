@@ -1,4 +1,6 @@
-use crate::models::{BackendDiagnosticEvent, BackendDiagnosticField, BackendDiagnosticStatus};
+use crate::models::{
+    AppError, BackendDiagnosticEvent, BackendDiagnosticField, BackendDiagnosticStatus,
+};
 use chrono::Utc;
 use std::{
     collections::VecDeque,
@@ -94,6 +96,19 @@ pub fn record_backend_cancelled(command: &str, started: Instant) {
     );
 }
 
+pub fn record_backend_result<T>(
+    command: &str,
+    started: Instant,
+    result: &Result<T, AppError>,
+    success_summary: impl FnOnce(&T) -> Vec<BackendDiagnosticField>,
+) {
+    match result {
+        Ok(value) => record_backend_success(command, started, success_summary(value)),
+        Err(error) if error.kind == "cancelled" => record_backend_cancelled(command, started),
+        Err(error) => record_backend_error(command, started, &error.kind),
+    }
+}
+
 #[tauri::command]
 pub fn set_backend_diagnostics_enabled(enabled: bool) -> bool {
     with_state(|state| {
@@ -151,6 +166,36 @@ mod tests {
 
         clear_backend_diagnostics();
         assert!(get_backend_diagnostics().is_empty());
+
+        record_backend_result(
+            "tracked_success",
+            Instant::now(),
+            &Ok::<_, AppError>(5),
+            |rows| vec![diagnostic_field("rows", rows)],
+        );
+        record_backend_result::<()>(
+            "tracked_cancelled",
+            Instant::now(),
+            &Err(AppError::cancelled()),
+            |()| Vec::new(),
+        );
+        record_backend_result::<()>(
+            "tracked_error",
+            Instant::now(),
+            &Err(AppError::new("boom", "transport")),
+            |()| Vec::new(),
+        );
+        let events = get_backend_diagnostics();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].status, BackendDiagnosticStatus::Ok);
+        assert_eq!(events[1].status, BackendDiagnosticStatus::Cancelled);
+        assert_eq!(events[2].status, BackendDiagnosticStatus::Error);
+        assert_eq!(
+            events[2].summary,
+            vec![diagnostic_field("errorKind", "transport")]
+        );
+
+        clear_backend_diagnostics();
         set_backend_diagnostics_enabled(false);
     }
 }

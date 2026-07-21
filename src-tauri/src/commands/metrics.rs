@@ -1,6 +1,7 @@
+use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
-    diagnostic_field, helpers::list_params, kubeconfig::KubeconfigSource, record_backend_cancelled,
-    record_backend_error, record_backend_success, BackendCancellationRegistry,
+    diagnostic_field, helpers::list_params, kubeconfig::KubeconfigSource,
+    BackendCancellationRegistry,
 };
 use crate::models::{
     AppError, ResourceMetricSummary, ResourceMetricsAvailability,
@@ -530,13 +531,12 @@ pub async fn list_resource_metrics(
     eprintln!(
         "[kubecove:backend] list_resource_metrics start context={cluster_context} namespaces={namespace_count}",
     );
-    let cancellation = cancellations.register(cancel_scope, request_id);
-    let result = cancellation
-        .run(resource_metrics_from(
-            cluster_context.clone(),
-            namespaces,
-            kubeconfig_env_var,
-        ))
+    let result = cancellations
+        .execute(
+            cancel_scope,
+            request_id,
+            resource_metrics_from(cluster_context.clone(), namespaces, kubeconfig_env_var),
+        )
         .await;
     match &result {
         Ok(summary) => {
@@ -549,17 +549,6 @@ pub async fn list_resource_metrics(
                 summary.workloads.len(),
                 started.elapsed().as_millis()
             );
-            record_backend_success(
-                "list_resource_metrics",
-                started,
-                vec![
-                    diagnostic_field("status", format!("{:?}", summary.availability.status)),
-                    diagnostic_field("namespaces", namespace_count),
-                    diagnostic_field("pods", summary.pods.len()),
-                    diagnostic_field("nodes", summary.nodes.len()),
-                    diagnostic_field("workloads", summary.workloads.len()),
-                ],
-            );
         }
         Err(err) if err.kind == "cancelled" => {
             eprintln!(
@@ -567,7 +556,6 @@ pub async fn list_resource_metrics(
                 cluster_context,
                 started.elapsed().as_millis()
             );
-            record_backend_cancelled("list_resource_metrics", started);
         }
         Err(err) => {
             eprintln!(
@@ -577,9 +565,17 @@ pub async fn list_resource_metrics(
                 err.message,
                 started.elapsed().as_millis()
             );
-            record_backend_error("list_resource_metrics", started, &err.kind);
         }
     }
+    record_backend_result("list_resource_metrics", started, &result, |summary| {
+        vec![
+            diagnostic_field("status", format!("{:?}", summary.availability.status)),
+            diagnostic_field("namespaces", namespace_count),
+            diagnostic_field("pods", summary.pods.len()),
+            diagnostic_field("nodes", summary.nodes.len()),
+            diagnostic_field("workloads", summary.workloads.len()),
+        ]
+    });
     result
 }
 

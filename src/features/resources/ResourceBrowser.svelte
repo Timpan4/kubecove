@@ -45,7 +45,7 @@
 		getResourceGroupVisual,
 		getResourceKindVisual,
 	} from "@/app/svelte/resourceVisuals";
-	import { createCancellableRequest, createCancelScope } from "@/lib/cancellable-loads";
+	import { createCancellableRequest } from "@/lib/cancellable-loads";
 	import { diagnosticLog } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
@@ -58,7 +58,6 @@
 		mergeTopologyMetrics,
 		resourceMetricIndex,
 	} from "@/lib/resource-metrics";
-	import { queryKeys } from "@/lib/queryKeys";
 	import { cnfast } from "@/lib/utils";
 	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
@@ -68,7 +67,6 @@
 		cancelBackendRequests,
 		createStreamChannel,
 		createTauriClient,
-		getKubeconfigSources,
 		isAppError,
 		listNamespaces,
 		listResourceKinds,
@@ -79,7 +77,6 @@
 	} from "@/lib/tauri";
 	import type {
 		DiscoveredResourceKind,
-		KubeconfigSourcesSummary,
 		NamespaceSummary,
 		ResourceKindSelection,
 		ResourceMetricsSummary,
@@ -87,6 +84,7 @@
 		ResourceTopology,
 		TopologyMode,
 	} from "@/lib/types";
+	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
 		EMPTY_PAGE_CLASS,
 		PAGE_SIZE,
@@ -119,12 +117,13 @@
 		syncedTopologyNodeId as resolveSyncedTopologyNodeId,
 		type ResourceSortColumn,
 	} from "./resourceBrowserModel";
+	import { buildResourceBrowserReadSpecs } from "./resourceBrowserReadSpecs";
 
 	const BACKGROUND_METRICS_DELAY_MS = 1_500;
 	const EMPTY_CELL = "—";
 
 	let {
-		clusterContext,
+		workspaceReadContext,
 		initialNamespaces,
 		initialKinds,
 		availableKinds = initialKinds,
@@ -144,7 +143,7 @@
 		onResourceClose = () => {},
 		onPathStateChange = () => {},
 	}: {
-		clusterContext: string;
+		workspaceReadContext: WorkspaceReadContext;
 		initialNamespaces: string[];
 		initialKinds: ResourceKindSelection[];
 		availableKinds?: ResourceKindSelection[];
@@ -273,60 +272,50 @@
 		if (additions.length > 0) selectedKinds = [...selectedKinds, ...additions];
 	});
 
-	const sourceQuery = createQuery<KubeconfigSourcesSummary>(() => ({
-		queryKey: ["kubeconfig-sources"] as const,
-		queryFn: () => getKubeconfigSources(client),
-		staleTime: 60_000,
-	}));
-	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);
-	const kubeconfigSourceKey = $derived(sourceQuery.data?.sourceKey);
+	const clusterContext = $derived(workspaceReadContext.clusterContext);
+	const sourceReady = $derived(workspaceReadContext.sourceReady);
+	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
+	const fetchKeys = $derived(buildFetchKeys(selectedNamespaces, selectedKinds));
+	const readSpecs = $derived(
+		buildResourceBrowserReadSpecs({
+			clusterContext,
+			kubeconfigSourceKey,
+			fetchKeys,
+			namespaces: selectedNamespaces,
+			topologyMode,
+			mapPanelOpen,
+			sourceReady,
+			customResourcesEnabled,
+		}),
+	);
 	const namespacesQuery = createQuery<NamespaceSummary[]>(() => ({
-		queryKey: queryKeys.namespaces(clusterContext, kubeconfigSourceKey),
+		queryKey: readSpecs.namespacesQueryKey,
 		queryFn: () => listNamespaces(client, clusterContext, kubeconfigSourceKey),
-		enabled: Boolean(clusterContext) && sourceReady,
+		enabled: readSpecs.namespacesEnabled,
 		staleTime: 30_000,
 		retry: false,
 	}));
 	const resourceKindsQuery = createQuery<DiscoveredResourceKind[]>(() => ({
-		queryKey: queryKeys.resourceKinds(clusterContext, kubeconfigSourceKey),
+		queryKey: readSpecs.resourceKindsQueryKey,
 		queryFn: () => listResourceKinds(client, clusterContext, kubeconfigSourceKey),
-		enabled: customResourcesEnabled && Boolean(clusterContext) && sourceReady,
+		enabled: readSpecs.resourceKindsEnabled,
 		staleTime: 30_000,
 		retry: false,
 	}));
-	const fetchKeys = $derived(buildFetchKeys(selectedNamespaces, selectedKinds));
-	const resourceQueryKey = $derived(
-		queryKeys.resources(clusterContext, fetchKeys, kubeconfigSourceKey),
-	);
-	const topologyNamespaces = $derived([...new Set(selectedNamespaces)].sort());
-	const topologyCustomResourceKey = $derived(
-		selectedKinds
-			.filter((kind) => typeof kind !== "string")
-			.map(kindSelectionKey)
-			.sort()
-			.join(","),
-	);
-	const topologyBaseQueryKey = $derived(
-		queryKeys.resourceTopology(
-			clusterContext,
-			topologyNamespaces,
-			topologyMode,
-			kubeconfigSourceKey,
-		),
-	);
-	const topologyQueryKey = $derived([...topologyBaseQueryKey, topologyCustomResourceKey] as const);
+	const resourceQueryKey = $derived(readSpecs.resourceQueryKey);
+	const topologyNamespaces = $derived(readSpecs.topologyNamespaces);
+	const topologyBaseQueryKey = $derived(readSpecs.topologyBaseQueryKey);
+	const topologyQueryKey = $derived(readSpecs.topologyQueryKey);
 	const topologyFitViewKey = $derived(JSON.stringify(topologyBaseQueryKey));
-	const metricsQueryKey = $derived(
-		queryKeys.resourceMetrics(clusterContext, topologyNamespaces, kubeconfigSourceKey),
-	);
-	const resourceCancelScope = $derived(createCancelScope("resources", resourceQueryKey));
-	const topologyCancelScope = $derived(createCancelScope("resource-topology", topologyQueryKey));
-	const metricsCancelScope = $derived(createCancelScope("resource-metrics", metricsQueryKey));
+	const metricsQueryKey = $derived(readSpecs.metricsQueryKey);
+	const resourceCancelScope = $derived(readSpecs.resourceCancelScope);
+	const topologyCancelScope = $derived(readSpecs.topologyCancelScope);
+	const metricsCancelScope = $derived(readSpecs.metricsCancelScope);
 	const pendingCancelTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	const resourcesQuery = createQuery<ResourceSummary[]>(() => ({
 		queryKey: resourceQueryKey,
 		queryFn: () => fetchResourcePage(clusterContext, fetchKeys, kubeconfigSourceKey, resourceCancelScope),
-		enabled: Boolean(clusterContext && fetchKeys.length > 0 && sourceReady),
+		enabled: readSpecs.resourcesEnabled,
 		placeholderData: (previousData) => previousData,
 		staleTime: 30_000,
 	}));
@@ -372,7 +361,7 @@
 					throw error;
 				}),
 			),
-		enabled: Boolean(clusterContext && mapPanelOpen),
+		enabled: readSpecs.topologyEnabled,
 		placeholderData: (previousData) => previousData,
 		staleTime: 30_000,
 		retry: false,
@@ -576,8 +565,8 @@
 			(!sourceReady || (resourcesQuery.isPending && !resourcesQuery.isPlaceholderData)),
 	);
 	const resourceError = $derived(
-		sourceQuery.isError
-			? sourceQuery.error
+		workspaceReadContext.sourceError
+			? workspaceReadContext.sourceError
 			: resourcesQuery.isError
 				? resourcesQuery.error
 				: null,

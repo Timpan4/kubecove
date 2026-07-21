@@ -28,7 +28,6 @@
 		createTauriClient,
 		detectArgoCD,
 		detectFlux,
-		getKubeconfigSources,
 		listNamespaces,
 	} from "@/lib/tauri";
 	import { queryKeys } from "@/lib/queryKeys";
@@ -39,6 +38,7 @@
 	} from "@/lib/tree-nav";
 	import type { ResourceSummary } from "@/lib/types";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
+	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import { settingsStore } from "@/lib/settings-store";
 	import { treeNodeForResource } from "./workspaceNavigation";
 
@@ -46,8 +46,9 @@
 	const NAMESPACE_RESULT_CAP = 8;
 
 	let {
-		open = $bindable(false),
+	open = $bindable(false),
 	workspace,
+	workspaceReadContext,
 	onNodeSelect,
 	onResourceSelect,
 	onOpenLauncher,
@@ -55,6 +56,7 @@
 }: {
 	open: boolean;
 	workspace: SavedWorkspace;
+	workspaceReadContext: WorkspaceReadContext;
 	onNodeSelect: (id: TreeNodeId) => void;
 	onResourceSelect: (resource: ResourceSummary, id: TreeNodeId) => void;
 	onOpenLauncher: () => void;
@@ -68,13 +70,8 @@
 		$settingsStore.showUnavailableGitOpsProviders,
 	);
 
-	const sourceQuery = createQuery(() => ({
-		queryKey: ["kubeconfig-sources"],
-		queryFn: () => getKubeconfigSources(client),
-		staleTime: 30_000,
-	}));
-	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);
-	const kubeconfigSourceKey = $derived(sourceQuery.data?.sourceKey);
+	const sourceReady = $derived(workspaceReadContext.sourceReady);
+	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
 	const normalizedSourceKey = $derived(normalizeKubeconfigSourceKey(kubeconfigSourceKey));
 	const fetchKeys = $derived(buildFetchKeys(workspace.scope.namespaces, workspace.scope.kinds));
 

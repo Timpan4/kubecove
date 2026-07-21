@@ -120,6 +120,15 @@ impl BackendCancellationRegistry {
         count
     }
 
+    pub async fn execute<T>(
+        &self,
+        cancel_scope: Option<String>,
+        request_id: Option<String>,
+        future: impl Future<Output = Result<T, AppError>>,
+    ) -> Result<T, AppError> {
+        self.register(cancel_scope, request_id).run(future).await
+    }
+
     fn unregister(&self, scope: &str, request_id: &str, generation: u64) {
         let mut state = self
             .inner
@@ -239,5 +248,20 @@ mod tests {
 
         let error = result.expect_err("pending request should be cancelled");
         assert_eq!(error.kind, "cancelled");
+    }
+
+    #[tokio::test]
+    async fn execute_unregisters_completed_requests() {
+        let registry = BackendCancellationRegistry::default();
+        let result = registry
+            .execute(
+                Some("scope-a".to_string()),
+                Some("one".to_string()),
+                async { Ok::<_, AppError>(42) },
+            )
+            .await;
+
+        assert_eq!(result.expect("completed request"), 42);
+        assert_eq!(registry.cancel_scope("scope-a"), 0);
     }
 }
