@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { bench, describe } from "vitest";
 import {
 	applyFlowTopologySelectionWithIndex,
@@ -91,6 +92,21 @@ const viewports = [
 // selections keeps the instrumented run reasonable while staying representative.
 const rebuildSelectedIds = selectedIds.slice(0, 10);
 
+const largeTopology = buildTopology(2_000);
+const largeSelectedIds = largeTopology.nodes
+	.filter((node) => node.kind === "Pod")
+	.slice(0, 20)
+	.map((node) => node.id);
+const largeLayoutState = buildFlowTopologyLayoutState(
+	largeTopology,
+	"ownership",
+	emptyExpandedKinds,
+	null,
+);
+
+assert.equal(largeTopology.nodes.length, 4_000);
+assert.equal(largeSelectedIds.length, 20);
+
 describe("ownership flow topology (500 apps / 1k nodes)", () => {
 	bench("buildFlowTopology per selection (rebuild)", () => {
 		for (const selectedId of rebuildSelectedIds) {
@@ -123,6 +139,29 @@ describe("ownership flow topology (500 apps / 1k nodes)", () => {
 	bench("selection + resize (retained layout)", () => {
 		for (const [index, selectedId] of selectedIds.entries()) {
 			buildFlowTopologyViewFromLayoutState(layoutState, {
+				mode: "ownership",
+				selectedNodeId: selectedId,
+				showFullTopologyOnSelection: index % 2 === 0,
+				expandedStandaloneKinds: emptyExpandedKinds,
+				viewportSize: viewports[index % viewports.length],
+			});
+		}
+	});
+});
+
+describe("ownership flow topology (2k apps / 4k nodes)", () => {
+	bench("buildFlowTopologyLayoutState (build once)", () => {
+		buildFlowTopologyLayoutState(
+			largeTopology,
+			"ownership",
+			emptyExpandedKinds,
+			null,
+		);
+	});
+
+	bench("selection + resize (retained layout, 20 updates)", () => {
+		for (const [index, selectedId] of largeSelectedIds.entries()) {
+			buildFlowTopologyViewFromLayoutState(largeLayoutState, {
 				mode: "ownership",
 				selectedNodeId: selectedId,
 				showFullTopologyOnSelection: index % 2 === 0,
