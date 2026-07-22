@@ -1,4 +1,12 @@
+import type {
+	DiscoveredResourceKind,
+	ResourceKindSelection,
+	ResourceSummary,
+	TopologyNode,
+} from "@/lib/types";
+import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "@/lib/types";
 import { PAGE_SIZE } from "./constants";
+import { pageGitOpsGroupCounts, pageTypeGroupCounts } from "./grouping";
 import {
 	buildResourceHealthSummary,
 	buildResourceSearchIndex,
@@ -6,7 +14,9 @@ import {
 	filterResourcesByHealth,
 	formatResourceGroupLabel,
 	formatResourceTypeGroupLabel,
+	type HealthFilter,
 	hasResourceListGitOpsOwner,
+	type ResourceSearchEntry,
 	resourceGroupCollapseKey,
 	resourceGroupKindRank,
 	resourceIdentityKey,
@@ -15,17 +25,7 @@ import {
 	resourceSelectionKey,
 	resourceTypeGroupCollapseKey,
 	uniqueGitOpsFilters,
-	type HealthFilter,
-	type ResourceSearchEntry,
 } from "./helpers";
-import { pageGitOpsGroupCounts, pageTypeGroupCounts } from "./grouping";
-import type {
-	DiscoveredResourceKind,
-	ResourceKindSelection,
-	ResourceSummary,
-	TopologyNode,
-} from "@/lib/types";
-import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "@/lib/types";
 
 export type ResourceSortColumn =
 	| "name"
@@ -119,14 +119,30 @@ export function kindSelectionLabel(kind: ResourceKindSelection): string {
 	return resourceKindLabel(kind);
 }
 
-export function filterKindOptions(
-	kinds: ResourceKindSelection[],
+export interface ResourceScopeOption {
+	key: string;
+	label: string;
+}
+
+export function filterResourceScopeOptions(
+	options: ResourceScopeOption[],
 	search: string,
-): ResourceKindSelection[] {
+): ResourceScopeOption[] {
 	const query = search.trim().toLowerCase();
 	return query
-		? kinds.filter((kind) => kindSelectionLabel(kind).toLowerCase().includes(query))
-		: kinds;
+		? options.filter((option) => option.label.toLowerCase().includes(query))
+		: options;
+}
+
+export function nextNamespaceSelection(
+	selectedNamespaces: string[],
+	availableNamespaces: string[],
+	namespace: string,
+	checked: boolean,
+): string[] {
+	if (checked) return Array.from(new Set([...selectedNamespaces, namespace])).sort();
+	const currentSelection = selectedNamespaces.length > 0 ? selectedNamespaces : availableNamespaces;
+	return currentSelection.filter((item) => item !== namespace);
 }
 
 export function allKindOptions(

@@ -9,8 +9,9 @@ import {
 import {
 	allKindOptions,
 	buildResourceTableModel,
-	filterKindOptions,
+	filterResourceScopeOptions,
 	initialOwnershipMapOpen,
+	nextNamespaceSelection,
 	shouldLoadOwnershipMap,
 	syncedTopologyNodeId,
 } from "../src/features/resources/resourceBrowserModel";
@@ -164,12 +165,22 @@ test("builds immutable ResourceBrowser read identities and enablement", () => {
 });
 
 describe("svelte resource browser model", () => {
-	test("filters kind options by label", () => {
-		const kinds = ["Pod", "StorageClass", widget] as const;
+	test("filters resource scope options by label", () => {
+		const options = [
+			{ key: "default", label: "default" },
+			{ key: "kube-system", label: "kube-system" },
+			{ key: "storage-class", label: "StorageClass" },
+		];
 
-		expect(filterKindOptions([...kinds], " storage ")).toEqual(["StorageClass"]);
-		expect(filterKindOptions([...kinds], "WIDGET")).toEqual([widget]);
-		expect(filterKindOptions([...kinds], "")).toEqual(kinds);
+		expect(filterResourceScopeOptions(options, " KUBE ")).toEqual([options[1]]);
+		expect(filterResourceScopeOptions(options, "storage")).toEqual([options[2]]);
+		expect(filterResourceScopeOptions(options, "")).toEqual(options);
+	});
+
+	test("deselects one namespace from the implicit all selection", () => {
+		expect(nextNamespaceSelection([], ["default", "kube-system"], "default", false)).toEqual([
+			"kube-system",
+		]);
 	});
 
 	test("does not request the ownership map for restored closed state", () => {

@@ -49,15 +49,23 @@ describe("resource view safeguards", () => {
 		expect(topBarSource).not.toContain(" xl:grid-cols-[minmax(12rem");
 	});
 
-	test("uses one-way select-all action for resource kinds", () => {
+	test("reuses one searchable selector for namespace and kind scope", () => {
 		const topBarSource = readFileSync(
 			"src/features/resources/ResourceBrowserTopBar.svelte",
 			"utf8",
 		);
+		const selectorSource = readFileSync(
+			"src/features/resources/ResourceScopeSelector.svelte",
+			"utf8",
+		);
 
+		expect(topBarSource.match(/<ResourceScopeSelector/g)).toHaveLength(2);
+		expect(topBarSource).toContain("Select all namespaces");
 		expect(topBarSource).toContain("Select all kinds");
-		expect(topBarSource).toContain("disabled={allKindsSelected}");
-		expect(topBarSource).toContain("onclick={onAllKindsSelect}");
-		expect(topBarSource).not.toContain("checked={allKindsSelected}");
+		expect(topBarSource).toContain('searchAriaLabel="Search namespaces"');
+		expect(topBarSource).toContain('searchAriaLabel="Search resource kinds"');
+		expect(selectorSource).toContain("disabled={allSelected}");
+		expect(selectorSource).toContain("onclick={onSelectAll}");
+		expect(selectorSource).toContain('class="flex flex-col gap-1 p-1"');
 	});
 });
