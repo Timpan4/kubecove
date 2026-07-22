@@ -88,6 +88,7 @@
   "overrides": {
     "@codemirror/state": "6.7.1",
     "@codemirror/view": "6.43.6",
-    "@wdio/native-utils": "2.5.0"
+    "@wdio/native-utils": "2.5.0",
+    "serialize-javascript": "7.0.7"
   }
 }
