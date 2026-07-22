@@ -134,6 +134,17 @@ export function filterResourceScopeOptions(
 		: options;
 }
 
+export function nextNamespaceSelection(
+	selectedNamespaces: string[],
+	availableNamespaces: string[],
+	namespace: string,
+	checked: boolean,
+): string[] {
+	if (checked) return Array.from(new Set([...selectedNamespaces, namespace])).sort();
+	const currentSelection = selectedNamespaces.length > 0 ? selectedNamespaces : availableNamespaces;
+	return currentSelection.filter((item) => item !== namespace);
+}
+
 export function allKindOptions(
 	discoveredKinds: DiscoveredResourceKind[],
 ): ResourceKindSelection[] {

@@ -11,6 +11,7 @@ import {
 	buildResourceTableModel,
 	filterResourceScopeOptions,
 	initialOwnershipMapOpen,
+	nextNamespaceSelection,
 	shouldLoadOwnershipMap,
 	syncedTopologyNodeId,
 } from "../src/features/resources/resourceBrowserModel";
@@ -174,6 +175,12 @@ describe("svelte resource browser model", () => {
 		expect(filterResourceScopeOptions(options, " KUBE ")).toEqual([options[1]]);
 		expect(filterResourceScopeOptions(options, "storage")).toEqual([options[2]]);
 		expect(filterResourceScopeOptions(options, "")).toEqual(options);
+	});
+
+	test("deselects one namespace from the implicit all selection", () => {
+		expect(nextNamespaceSelection([], ["default", "kube-system"], "default", false)).toEqual([
+			"kube-system",
+		]);
 	});
 
 	test("does not request the ownership map for restored closed state", () => {

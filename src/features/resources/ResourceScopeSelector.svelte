@@ -94,7 +94,7 @@
 				{#each filteredOptions as option (option.key)}
 					<Label class="cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted/50">
 						<Checkbox
-							checked={selectedKeys.has(option.key)}
+							checked={allSelected || selectedKeys.has(option.key)}
 							onCheckedChange={(checked) => onToggle(option.key, checked)}
 						/>
 						<span class="truncate">{option.label}</span>

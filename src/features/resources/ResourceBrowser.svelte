@@ -113,6 +113,7 @@
 		buildResourceTableModel,
 		initialOwnershipMapOpen,
 		kindSelectionKey,
+		nextNamespaceSelection,
 		shouldLoadOwnershipMap,
 		syncedTopologyNodeId as resolveSyncedTopologyNodeId,
 		type ResourceSortColumn,
@@ -750,9 +751,12 @@
 	});
 
 	function toggleNamespace(namespace: string, checked: boolean) {
-		selectedNamespaces = checked
-			? Array.from(new Set([...selectedNamespaces, namespace])).sort()
-			: selectedNamespaces.filter((item) => item !== namespace);
+		selectedNamespaces = nextNamespaceSelection(
+			selectedNamespaces,
+			namespaceOptions.map((option) => option.name),
+			namespace,
+			checked,
+		);
 		pageIndex = 0;
 		onResourceClose();
 		selectedTopologyNodeId = null;
