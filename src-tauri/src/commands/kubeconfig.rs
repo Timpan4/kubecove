@@ -80,6 +80,16 @@ pub struct KubeconfigSource {
 
 impl KubeconfigSource {
     pub fn new(env_var: Option<String>) -> Result<Self, AppError> {
+        #[cfg(feature = "e2e")]
+        if crate::e2e::is_enabled() {
+            return Self::from_settings(
+                Some("KUBECOVE_E2E_KUBECONFIG_SOURCE"),
+                vec![crate::e2e::kubeconfig_path()?
+                    .to_string_lossy()
+                    .into_owned()],
+                false,
+            );
+        }
         let settings = load_persisted_sources()?;
         let env_var = env_var
             .as_deref()
@@ -249,6 +259,14 @@ impl KubeconfigSource {
 
         if loaded > 0 {
             return Ok((merged, warnings));
+        }
+
+        #[cfg(feature = "e2e")]
+        if crate::e2e::is_enabled() {
+            return Err(AppError::new(
+                "the isolated E2E kubeconfig became unavailable",
+                "validation",
+            ));
         }
 
         read_default_kubeconfig_without_env()

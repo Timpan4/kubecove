@@ -71,6 +71,16 @@ bun run rust:check
 bun run check
 ```
 
+Deterministic app checks:
+
+```sh
+bun run e2e:fast
+bun run e2e:real -- --kubernetes 1.35 --provider auto
+bun run dev:kind
+```
+
+`e2e:fast` uses Chrome and typed browser mocks. `e2e:real` creates one isolated Kind cluster and runs the E2E-only native Tauri flavor. `dev:kind` creates or reuses this workspace's lab cluster and launches the normal development app; remove that exact cluster with `bun run dev:kind:down`.
+
 Build a desktop bundle:
 
 ```sh
@@ -84,6 +94,8 @@ bun run release:dry-run
 ```
 
 Create releases from GitHub Actions with the `Prepare Release PR` workflow.
+
+KubeCove's tested Kubernetes support window is 1.34–1.36. See [ADR 0011](docs/decisions/0011-rolling-kubernetes-support.md).
 
 ## Safety Model
 

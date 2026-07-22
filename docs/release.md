@@ -64,9 +64,15 @@ bun run typecheck
 bun test
 bun run rust:test
 bun run rust:check
+bun run e2e:fast
+bun run e2e:real -- --kubernetes 1.34 --provider docker
+bun run e2e:real -- --kubernetes 1.35 --provider docker
+bun run e2e:real -- --kubernetes 1.36 --provider docker
 ```
 
-The release workflow also verifies macOS, Windows, and Linux installer assets, updater signatures, `latest.json`, and final updater platform coverage before publishing.
+The full Kubernetes matrix must pass before installer builds begin. The release workflow also verifies macOS, Windows, and Linux installer assets, updater signatures, `latest.json`, and final updater platform coverage before publishing.
+
+The official tested Kubernetes support window is 1.34–1.36. It advances only through a maintainer PR after matching digest-pinned Kind images exist and the replacement matrix passes, as defined by [ADR 0011](decisions/0011-rolling-kubernetes-support.md).
 
 ## Manual Smoke Test
 

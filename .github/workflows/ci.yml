@@ -54,6 +54,9 @@ jobs:
       - name: Test frontend
         run: bun test
 
+      - name: Run fast end-to-end suite
+        run: bun run e2e:fast
+
   rust:
     name: Rust checks
     runs-on: ubuntu-latest

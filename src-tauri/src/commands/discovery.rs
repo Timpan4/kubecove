@@ -302,6 +302,24 @@ pub async fn list_present_custom_resource_kinds(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use http::{header::CONTENT_TYPE, Request, Response};
+    use kube::{client::Body, Client};
+    use serde_json::json;
+
+    type MockHandle = tower_test::mock::Handle<Request<Body>, Response<Body>>;
+
+    fn mock_client() -> (Client, MockHandle) {
+        let (service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+        (Client::new(service, "default"), handle)
+    }
+
+    fn response(status: u16, body: impl Into<Body>) -> Response<Body> {
+        Response::builder()
+            .status(status)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.into())
+            .expect("response")
+    }
 
     fn crd(
         name: &str,
@@ -414,5 +432,49 @@ mod tests {
             &namespaced_kind,
             &[String::from("default")]
         ));
+    }
+
+    #[tokio::test]
+    async fn malformed_discovery_response_is_reported() {
+        let (client, mut handle) = mock_client();
+        let operation = crd_resource_kinds(client);
+        let responder = async move {
+            let (_, send) = handle.next_request().await.expect("CRD list request");
+            send.send_response(response(200, Body::from(b"{not-json".to_vec())));
+        };
+
+        let (result, ()) = tokio::join!(operation, responder);
+        let error = result.expect_err("malformed response must fail");
+
+        assert_eq!(error.kind, "cluster");
+    }
+
+    #[tokio::test]
+    async fn forbidden_discovery_response_preserves_permission_kind() {
+        let (client, mut handle) = mock_client();
+        let operation = crd_resource_kinds(client);
+        let responder = async move {
+            let (_, send) = handle.next_request().await.expect("CRD list request");
+            send.send_response(response(
+                403,
+                Body::from(
+                    serde_json::to_vec(&json!({
+                        "apiVersion": "v1",
+                        "kind": "Status",
+                        "status": "Failure",
+                        "reason": "Forbidden",
+                        "message": "customresourcedefinitions is forbidden",
+                        "code": 403
+                    }))
+                    .expect("status JSON"),
+                ),
+            ));
+        };
+
+        let (result, ()) = tokio::join!(operation, responder);
+        let error = result.expect_err("forbidden response must fail");
+
+        assert_eq!(error.kind, "forbidden");
+        assert!(error.message.contains("forbidden"));
     }
 }

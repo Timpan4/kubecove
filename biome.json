@@ -6,7 +6,7 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"includes": ["src/**", "scripts/**", "tests/**", "!src/**/*.svelte"]
+		"includes": ["src/**", "scripts/**", "tests/**", "e2e/**", "!src/**/*.svelte"]
 	},
 	"formatter": {
 		"enabled": false

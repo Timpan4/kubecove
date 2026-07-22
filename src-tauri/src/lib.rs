@@ -20,6 +20,8 @@
 )]
 
 pub mod commands;
+#[cfg(feature = "e2e")]
+mod e2e;
 pub mod models;
 
 use commands::{
@@ -45,16 +47,54 @@ use commands::{
     BackendCancellationRegistry, ClusterLiveStore, PodExecRegistry, PortForwardRegistry,
     StreamRegistry,
 };
+#[cfg(not(feature = "e2e"))]
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    #[cfg(feature = "e2e")]
+    let e2e_config = e2e::startup_config().expect("invalid KubeCove E2E environment");
+    #[cfg(not(feature = "e2e"))]
+    if std::env::var("KUBECOVE_E2E").as_deref() == Ok("1") {
+        panic!("KUBECOVE_E2E=1 requires the e2e Cargo feature");
+    }
+
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|app| {
-            init_kubeconfig_settings_path(app.path().app_config_dir()?);
+        .plugin(tauri_plugin_updater::Builder::new().build());
+    #[cfg(feature = "e2e")]
+    let builder = builder
+        .plugin(tauri_plugin_wdio::init())
+        .plugin(tauri_plugin_wdio_webdriver::init());
+
+    builder
+        .setup(move |app| {
+            #[cfg(feature = "e2e")]
+            {
+                let _ = app;
+                init_kubeconfig_settings_path(e2e_config.data_dir);
+            }
+            #[cfg(not(feature = "e2e"))]
+            {
+                #[cfg(debug_assertions)]
+                let app_config_dir = if std::env::var("KUBECOVE_DEV_KIND").as_deref() == Ok("1") {
+                    let path = std::env::var_os("KUBECOVE_DATA_DIR")
+                        .map(std::path::PathBuf::from)
+                        .ok_or("KUBECOVE_DATA_DIR is required for dev:kind")?;
+                    if !path.is_absolute() || !path.is_dir() {
+                        return Err(
+                            "KUBECOVE_DATA_DIR must be an existing absolute directory".into()
+                        );
+                    }
+                    path
+                } else {
+                    app.path().app_config_dir()?
+                };
+                #[cfg(not(debug_assertions))]
+                let app_config_dir = app.path().app_config_dir()?;
+                init_kubeconfig_settings_path(app_config_dir);
+            }
             Ok(())
         })
         .manage(ClusterLiveStore::default())

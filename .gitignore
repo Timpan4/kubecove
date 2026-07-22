@@ -31,3 +31,7 @@ Thumbs.db
 .sisyphus/
 .claude/
 .pi-lens
+
+# Local E2E tools, kubeconfigs, diagnostics, and ownership records
+.e2e/
+e2e/artifacts/
