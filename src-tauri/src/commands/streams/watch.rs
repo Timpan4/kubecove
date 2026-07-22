@@ -49,6 +49,19 @@ fn watch_status_message(status: &Status) -> String {
     }
 }
 
+fn reset_resource_version_for_error<K>(
+    resource_version: &mut String,
+    event: &WatchEvent<K>,
+) -> Option<String> {
+    let WatchEvent::Error(status) = event else {
+        return None;
+    };
+    if status.code == 410 {
+        *resource_version = "0".to_string();
+    }
+    Some(watch_status_message(status))
+}
+
 fn dynamic_event_target(
     cluster_context: &str,
     kind: &str,
@@ -156,9 +169,10 @@ pub(super) async fn run_resource_watch(
                 while let Some(event) = stream.next().await {
                     match event {
                         Ok(event) => {
-                            if let WatchEvent::Error(status) = event {
-                                resource_version = "0".to_string();
-                                if !broadcaster.error(watch_status_message(&status)) {
+                            if let Some(message) =
+                                reset_resource_version_for_error(&mut resource_version, &event)
+                            {
+                                if !broadcaster.error(message) {
                                     return;
                                 }
                                 break;
@@ -264,9 +278,10 @@ pub(super) async fn run_event_watch(
                 while let Some(event) = stream.next().await {
                     match event {
                         Ok(event) => {
-                            if let WatchEvent::Error(status) = event {
-                                resource_version = "0".to_string();
-                                if !broadcaster.error(watch_status_message(&status)) {
+                            if let Some(message) =
+                                reset_resource_version_for_error(&mut resource_version, &event)
+                            {
+                                if !broadcaster.error(message) {
                                     return;
                                 }
                                 break;
@@ -310,6 +325,29 @@ pub(super) async fn run_event_watch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use http::{header::CONTENT_TYPE, Request, Response};
+    use kube::{api::ApiResource, client::Body};
+    use serde_json::json;
+
+    fn watch_error_response() -> Response<Body> {
+        let line = serde_json::to_vec(&json!({
+            "type": "ERROR",
+            "object": {
+                "apiVersion": "v1",
+                "kind": "Status",
+                "status": "Failure",
+                "reason": "Expired",
+                "message": "too old resource version",
+                "code": 410
+            }
+        }))
+        .expect("watch event");
+        Response::builder()
+            .status(200)
+            .header(CONTENT_TYPE, "application/json")
+            .body(Body::from([line, vec![b'\n']].concat()))
+            .expect("response")
+    }
 
     #[test]
     fn watch_status_message_includes_api_error_context() {
@@ -324,5 +362,70 @@ mod tests {
             watch_status_message(&status),
             "Kubernetes watch error 410 (Expired): too old resource version",
         );
+    }
+
+    #[test]
+    fn non_gone_error_preserves_resource_version() {
+        let event = WatchEvent::<DynamicObject>::Error(Box::new(Status {
+            code: 403,
+            reason: "Forbidden".to_string(),
+            message: "watch is forbidden".to_string(),
+            ..Status::default()
+        }));
+        let mut resource_version = "55".to_string();
+
+        assert!(reset_resource_version_for_error(&mut resource_version, &event).is_some());
+        assert_eq!(resource_version, "55");
+    }
+
+    #[tokio::test]
+    async fn gone_response_resets_and_reconnects_from_zero() {
+        let (service, mut handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+        let client = Client::new(service, "default");
+        let resource = ApiResource {
+            group: String::new(),
+            version: "v1".to_string(),
+            api_version: "v1".to_string(),
+            kind: "ConfigMap".to_string(),
+            plural: "configmaps".to_string(),
+        };
+        let api: Api<DynamicObject> = Api::namespaced_with(client, "e2e-watch", &resource);
+        let operation = async move {
+            let mut resource_version = "55".to_string();
+            for _ in 0..2 {
+                let stream = api
+                    .watch(&WatchParams::default().timeout(30), &resource_version)
+                    .await
+                    .expect("watch response");
+                let event = stream
+                    .boxed()
+                    .next()
+                    .await
+                    .expect("watch item")
+                    .expect("decoded event");
+                assert!(reset_resource_version_for_error(&mut resource_version, &event).is_some());
+            }
+            resource_version
+        };
+        let responder = async move {
+            let (first, send) = handle.next_request().await.expect("first watch");
+            assert!(first
+                .uri()
+                .query()
+                .unwrap_or_default()
+                .contains("resourceVersion=55"));
+            send.send_response(watch_error_response());
+            let (second, send) = handle.next_request().await.expect("reconnect watch");
+            assert!(second
+                .uri()
+                .query()
+                .unwrap_or_default()
+                .contains("resourceVersion=0"));
+            send.send_response(watch_error_response());
+        };
+
+        let (resource_version, ()) = tokio::join!(operation, responder);
+
+        assert_eq!(resource_version, "0");
     }
 }

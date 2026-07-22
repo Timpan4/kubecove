@@ -220,6 +220,19 @@ Tracked in detail in [agent-skills.md](agent-skills.md). Create in this order:
 
 - [x] Add read-only Deployment ReplicaSet revision history and pod-template comparison.
 
+## Milestone 11: Deterministic E2E Lab
+
+Goal: make browser behavior, native Tauri boundaries, and the supported Kubernetes range reproducible without touching user clusters.
+
+- [x] Add the WDIO fast Chrome path over existing typed DEV mocks.
+- [x] Add the E2E-only native Tauri flavor and fail-closed kubeconfig boundary.
+- [x] Add the Kind lifecycle runner, deterministic fixtures, exact cleanup, and redacted diagnostics.
+- [x] Add workspace-specific `dev:kind` and exact `dev:kind:down` commands.
+- [x] Add ADR 0010 for the E2E-only WDIO security boundary.
+- [x] Add ADR 0011 for rolling latest-three-minor Kubernetes support, initially 1.34–1.36.
+- [x] Add fast PR coverage, probationary 1.35 coverage, nightly/manual matrices, native desktop smoke, and the release matrix.
+- [ ] Promote the Ubuntu 1.35 real suite into the required aggregate check after 10 consecutive green default-branch or nightly runs.
+
 ## Later Product Areas
 
 - guarded YAML edit/apply

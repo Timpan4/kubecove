@@ -42,6 +42,45 @@ The browser tab does not receive kubeconfig contents, does not call a
 local Rust bridge, and does not access a real cluster. Treat all browser data as
 fake, even when a saved workspace name matches a real context.
 
+## Deterministic E2E and Kind Lab
+
+Use the fast suite while changing frontend behavior:
+
+```sh
+bun run e2e:fast
+```
+
+It starts Vite, opens Chrome through WDIO, and reuses the typed DEV browser mocks. It does not build Rust or contact Kubernetes.
+
+Use the real suite for native command and cluster behavior:
+
+```sh
+bun run e2e:real -- --kubernetes 1.35 --provider auto
+bun run e2e:real -- --keep
+bun run e2e:cleanup -- --run-id <id>
+```
+
+The runner downloads checksum-verified pinned tools into its cache, creates a uniquely named Kind cluster through Docker or Podman, applies the deterministic lab, builds the E2E-only Tauri flavor, and runs native WDIO serially. It gathers redacted diagnostics before deleting its exact cluster on success, failure, SIGINT, or SIGTERM. Local `--keep` skips automatic cleanup so the exact run can be inspected; `--keep` is rejected in CI. Cleanup always needs an exact recorded run ID; it never deletes clusters by prefix.
+
+The generated real-suite kubeconfig contains only dedicated admin and restricted contexts. E2E startup rejects non-absolute paths, unexpected contexts, non-loopback API servers, cluster-name mismatches, persisted sources, and fallback to the user's default kubeconfig. Artifacts never include raw kubeconfig, tokens, keys, or certificate data.
+
+For manual development against the same fixtures:
+
+```sh
+bun run dev:kind
+bun run dev:kind:down
+```
+
+`dev:kind` creates or reuses a cluster named from a hash of the workspace path, reapplies fixtures idempotently, and launches normal Tauri development with a temporary settings/WebView profile. The app profile disappears when the command exits; the cluster remains until `dev:kind:down`. An existing Podman machine may be started, but the command does not stop it.
+
+Native desktop launch/settings smoke without Kind is available through:
+
+```sh
+bun run e2e:desktop-smoke
+```
+
+Kubernetes 1.34–1.36 is the current rolling, tested three-minor window. Advancing it requires digest-pinned Kind images and a green full matrix as defined by [ADR 0011](decisions/0011-rolling-kubernetes-support.md). The E2E-only desktop permission boundary is defined by [ADR 0010](decisions/0010-e2e-only-wdio-security-boundary.md).
+
 `bun run check` runs the current local verification bundle:
 
 ```sh

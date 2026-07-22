@@ -24,6 +24,7 @@ Use this index as the map for product, engineering, release, and governance work
 - [Product Inspiration](product-inspiration.md) - public product benchmarks and the design/legal boundary.
 - [Helm Reconciliation Design](helm-reconciliation-design.md) - inspection-only release intent versus live state comparison.
 - [Browser Dev Mock Checklist](browser-dev-mock-checklist.md) - Chrome sweep notes for browser-only mock gaps and thin surfaces.
+- [Deterministic E2E Lab](development-workflow.md#deterministic-e2e-and-kind-lab) - fast mocks, isolated real Kind runs, and the reusable development cluster.
 
 ## Governance
 
@@ -35,6 +36,8 @@ Use this index as the map for product, engineering, release, and governance work
 - [ADR 0007: GitOps Providers Are Kubernetes-API-First And Inspection-Only By Default](decisions/0007-gitops-providers-kubernetes-api-first.md)
 - [ADR 0008: Parallel Svelte Frontend Migration](decisions/0008-svelte-frontend-migration.md)
 - [ADR 0009: Workspace-Scoped Kubernetes Request Cancellation](decisions/0009-workspace-request-cancellation.md)
+- [ADR 0010: E2E-Only WDIO Security Boundary](decisions/0010-e2e-only-wdio-security-boundary.md)
+- [ADR 0011: Rolling Three-Minor Kubernetes Support](decisions/0011-rolling-kubernetes-support.md)
 
 New work that changes the frontend/backend security boundary, Kubernetes access path, Tauri permissions, cluster-changing behavior, or GitOps provider API/CLI integration needs an ADR before implementation.
 
