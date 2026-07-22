@@ -48,4 +48,16 @@ describe("resource view safeguards", () => {
 		expect(topBarSource).toContain("@7xl:grid-cols-6");
 		expect(topBarSource).not.toContain(" xl:grid-cols-[minmax(12rem");
 	});
+
+	test("uses one-way select-all action for resource kinds", () => {
+		const topBarSource = readFileSync(
+			"src/features/resources/ResourceBrowserTopBar.svelte",
+			"utf8",
+		);
+
+		expect(topBarSource).toContain("Select all kinds");
+		expect(topBarSource).toContain("disabled={allKindsSelected}");
+		expect(topBarSource).toContain("onclick={onAllKindsSelect}");
+		expect(topBarSource).not.toContain("checked={allKindsSelected}");
+	});
 });

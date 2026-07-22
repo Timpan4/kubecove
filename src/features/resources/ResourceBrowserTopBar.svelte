@@ -22,7 +22,11 @@
 	} from "@/components/ui/svelte";
 	import type { NamespaceSummary, ResourceKindSelection } from "@/lib/types";
 	import type { GitOpsFilterOption, HealthFilter, HealthSummary } from "./helpers";
-	import { kindSelectionKey, kindSelectionLabel } from "./resourceBrowserModel";
+	import {
+		filterKindOptions,
+		kindSelectionKey,
+		kindSelectionLabel,
+	} from "./resourceBrowserModel";
 
 	let {
 		selectedNamespaces,
@@ -41,6 +45,7 @@
 		realtimeStatus,
 		realtimeMessage,
 		onAllNamespacesSelect,
+		onAllKindsSelect,
 		onNamespaceToggle,
 		onKindToggle,
 		onHealthSelect,
@@ -64,6 +69,7 @@
 		realtimeStatus: string;
 		realtimeMessage: string;
 		onAllNamespacesSelect: () => void;
+		onAllKindsSelect: () => void;
 		onNamespaceToggle: (namespace: string, checked: boolean) => void;
 		onKindToggle: (kind: ResourceKindSelection, checked: boolean) => void;
 		onHealthSelect: (filter: HealthFilter) => void;
@@ -74,6 +80,7 @@
 
 	let namespacePopoverOpen = $state(false);
 	let kindPopoverOpen = $state(false);
+	let kindSearch = $state("");
 
 	const hasFilters = $derived(Boolean(search || gitOpsFilter || healthFilter !== "all"));
 	const namespaceLabel = $derived(
@@ -87,6 +94,11 @@
 		selectedKinds.length <= 3
 			? selectedKinds.map(kindSelectionLabel).join(", ")
 			: `${selectedKinds.slice(0, 3).map(kindSelectionLabel).join(", ")} +${selectedKinds.length - 3}`,
+	);
+	const filteredKindOptions = $derived(filterKindOptions(kindOptions, kindSearch));
+	const allKindsSelected = $derived(
+		kindOptions.length > 0 &&
+		kindOptions.every((kind) => selectedKindSet.has(kindSelectionKey(kind))),
 	);
 
 	function healthButtonClass(active: boolean) {
@@ -160,13 +172,33 @@
 					<strong class="min-w-0 truncate font-semibold text-foreground">{kindsLabel}</strong>
 					<ChevronDown class="size-3.5 shrink-0" />
 				</PopoverTrigger>
-				<PopoverContent align="start" class="w-[min(32rem,calc(100vw-1rem))] p-2">
+				<PopoverContent align="start" class="w-[min(22rem,calc(100vw-1rem))] p-2">
 					<div class="mb-2 px-1 text-[0.625rem] font-semibold uppercase text-muted-foreground">
 						Kinds
 					</div>
-					<ScrollArea class="h-56 rounded-md border bg-background/30">
-						<div class="grid gap-1 p-1 sm:grid-cols-2">
-							{#each kindOptions as kind (kindSelectionKey(kind))}
+					<Button
+						variant="outline"
+						size="sm"
+						class="h-8 w-full justify-start"
+						disabled={allKindsSelected}
+						onclick={onAllKindsSelect}
+					>
+						Select all kinds
+					</Button>
+					<InputGroup class="mt-1 h-8 border bg-background/70">
+						<InputGroupAddon align="inline-start">
+							<InputGroupText><Search class="size-4" /></InputGroupText>
+						</InputGroupAddon>
+						<InputGroupInput
+							aria-label="Search resource kinds"
+							class="h-7 text-xs"
+							bind:value={kindSearch}
+							placeholder="Search kinds..."
+						/>
+					</InputGroup>
+					<ScrollArea class="mt-2 h-56 rounded-md border bg-background/30">
+						<div class="flex flex-col gap-1 p-1">
+							{#each filteredKindOptions as kind (kindSelectionKey(kind))}
 								<Label class="cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted/50">
 									<Checkbox
 										checked={selectedKindSet.has(kindSelectionKey(kind))}
@@ -175,7 +207,9 @@
 									<span class="truncate">{kindSelectionLabel(kind)}</span>
 								</Label>
 							{:else}
-								<div class="px-2 py-1.5 text-xs text-muted-foreground">No kinds found</div>
+								<div class="px-2 py-1.5 text-xs text-muted-foreground">
+									{kindOptions.length > 0 ? "No matching kinds" : "No kinds found"}
+								</div>
 							{/each}
 						</div>
 					</ScrollArea>
