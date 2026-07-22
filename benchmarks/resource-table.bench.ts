@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { bench, describe } from "vitest";
 import {
 	buildResourceTableModel,
@@ -76,6 +77,89 @@ const stateVariants: ResourceTableState[] = [
 	{ ...state, search: "", healthFilter: "healthy", sort: { id: "name", desc: false } },
 ];
 
+const ownershipRows = Array.from({ length: 2_500 }, (_, index) => {
+	const namespace = `namespace-${index % 100}`;
+	const app = `checkout-${index}`;
+	const unhealthy = index % 5 === 0;
+	const shared = {
+		cluster: "prod",
+		namespace,
+		age: "1m",
+		status: unhealthy ? "CrashLoopBackOff" : "Running",
+		health: unhealthy ? "degraded" : "healthy",
+		ready: unhealthy ? "False" : "True",
+		metrics: {
+			cpuMillicores: (index % 64) * 10,
+			memoryBytes: (index % 512) * 1024 * 1024,
+		},
+	};
+	const deploymentName = `${app}-deployment`;
+	const replicaSetName = `${app}-replicaset`;
+	return [
+		{
+			...shared,
+			apiVersion: "apps/v1",
+			kind: "Deployment",
+			name: deploymentName,
+			argoApp: app,
+			gitOpsOwner: {
+				provider: "argo" as const,
+				kind: "Application",
+				name: app,
+				namespace: "argocd",
+			},
+		},
+		{
+			...shared,
+			apiVersion: "apps/v1",
+			kind: "ReplicaSet",
+			name: replicaSetName,
+			ownerRef: deploymentName,
+		},
+		{
+			...shared,
+			apiVersion: "v1",
+			kind: "Pod",
+			name: `${app}-pod`,
+			ownerRef: replicaSetName,
+			restarts: unhealthy ? 5 : 0,
+		},
+		{
+			...shared,
+			apiVersion: "v1",
+			kind: "Service",
+			name: `${app}-service`,
+			ownerRef: deploymentName,
+		},
+	] satisfies ResourceSummary[];
+}).flat();
+const ownershipSearchIndex = buildResourceSearchIndex(ownershipRows);
+const ownershipState: ResourceTableState = {
+	search: "checkout",
+	gitOpsFilter: "",
+	healthFilter: "unhealthy",
+	sort: { id: "memory", desc: true },
+	pageIndex: 0,
+	collapsedGroups: new Set(),
+	selectedResource: ownershipRows[0],
+};
+const ownershipFixtureModel = buildResourceTableModel(
+	ownershipRows,
+	ownershipState,
+	ownershipSearchIndex,
+);
+
+assert.equal(ownershipRows.length, 10_000);
+assert.equal(
+	ownershipRows.filter((row) => row.ownerRef).length,
+	7_500,
+);
+assert(
+	ownershipFixtureModel.filteredRows.some(
+		(row) => row.kind === "Pod" && row.gitOpsOwner?.name === "checkout-0",
+	),
+);
+
 describe("resource table model (10k rows)", () => {
 	bench("buildResourceSearchIndex", () => {
 		buildResourceSearchIndex(rows);
@@ -101,5 +185,13 @@ describe("resource table model (10k rows)", () => {
 		for (const variant of stateVariants) {
 			buildResourceTableModel(rows, variant, searchIndex);
 		}
+	});
+
+	bench("buildResourceTableModel (10k multi-hop ownership)", () => {
+		buildResourceTableModel(
+			ownershipRows,
+			ownershipState,
+			ownershipSearchIndex,
+		);
 	});
 });
