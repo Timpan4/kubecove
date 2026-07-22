@@ -51,10 +51,11 @@
 	} = $props();
 
 	let search = $state("");
+	let open = $state(false);
 	const filteredOptions = $derived(filterResourceScopeOptions(options, search));
 </script>
 
-<Popover>
+<Popover bind:open>
 	<PopoverTrigger
 		type="button"
 		class="inline-flex h-8 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md border bg-background/70 px-2.5 text-xs text-muted-foreground hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
