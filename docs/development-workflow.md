@@ -93,7 +93,11 @@ CodSpeed is the preferred performance signal for deterministic hot-path logic. C
 bun run bench
 ```
 
-Existing frontend suites cover resource table modeling, sidebar tree building, topology selection/layout, and YAML dry-run diff generation.
+Existing frontend suites cover resource table modeling and ownership inheritance,
+sidebar tree building, topology selection and layout at 1k and 4k nodes, resource
+metric merging, command-palette indexing, YAML dry-run diff generation, resource
+detail logs/events/timelines, RBAC cockpit shaping, GitOps tables and summaries,
+and Helm grouping and reconciliation sorting.
 
 Backend CodSpeed coverage runs through `codspeed-divan-compat`:
 
