@@ -176,15 +176,15 @@
 					<div class="mb-2 px-1 text-[0.625rem] font-semibold uppercase text-muted-foreground">
 						Kinds
 					</div>
-					<Label class="cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted/50">
-						<Checkbox
-							checked={allKindsSelected}
-							onCheckedChange={() => {
-								if (!allKindsSelected) onAllKindsSelect();
-							}}
-						/>
-						<span>All kinds</span>
-					</Label>
+					<Button
+						variant="outline"
+						size="sm"
+						class="h-8 w-full justify-start"
+						disabled={allKindsSelected}
+						onclick={onAllKindsSelect}
+					>
+						Select all kinds
+					</Button>
 					<InputGroup class="mt-1 h-8 border bg-background/70">
 						<InputGroupAddon align="inline-start">
 							<InputGroupText><Search class="size-4" /></InputGroupText>
