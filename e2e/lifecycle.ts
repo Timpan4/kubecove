@@ -72,8 +72,11 @@ async function attempt(cmd: string, commandArgs: string[], extra: Record<string,
 async function runWdio(config: string, extra: Record<string, string | undefined>, logFile?: string) {
 	const cli = join(root, "node_modules", "@wdio", "cli", "bin", "wdio.js");
 	const version = await execute("node", ["--version"], {}, true);
-	const major = Number.parseInt(version.stdout.slice(1).split(".")[0], 10);
-	if (major <= 24) return execute("node", [cli, "run", config], extra, false, logFile);
+	const match = /^v(\d+)\.(\d+)\.(\d+)/.exec(version.stdout.trim());
+	if (!match) throw new Error(`could not parse Node version ${version.stdout.trim()}`);
+	const [major, minor] = match.slice(1, 3).map(Number);
+	if ((major === 18 && minor >= 20) || (major > 18 && major <= 24)) return execute("node", [cli, "run", config], extra, false, logFile);
+	if (major < 18 || (major === 18 && minor < 20)) throw new Error(`WDIO requires Node 18.20-24; found ${version.stdout.trim()}`);
 	const fnm = Bun.which("fnm");
 	if (!fnm) throw new Error(`WDIO requires Node 18-24; found ${version.stdout.trim()} and no fnm fallback`);
 	return execute(fnm, ["exec", "--using", "24", "node", cli, "run", config], extra, false, logFile);
@@ -110,7 +113,7 @@ function tools() {
 	return toolPromise;
 }
 
-function providerBinary(name: Provider) { return Bun.which(name) ?? (name === "podman" && existsSync("/opt/podman/bin/podman") ? "/opt/podman/bin/podman" : undefined); }
+function providerBinary(name: Provider) { return Bun.which(name); }
 async function providerEnvironment(name: Provider) { const binary = providerBinary(name); if (!binary) throw new Error(`${name} is unavailable`); return { binary, env: { KIND_EXPERIMENTAL_PROVIDER: name, PATH: `${dirname(binary)}${delimiter}${process.env.PATH ?? ""}` } }; }
 async function ensureProvider(name: Provider) { const selected = await providerEnvironment(name); if (await attempt(selected.binary, ["info"])) return selected; if (name === "podman") await execute(selected.binary, ["machine", "start"]); if (!await attempt(selected.binary, ["info"])) throw new Error(`${name} is installed but unavailable`); return selected; }
 async function selectProvider() {

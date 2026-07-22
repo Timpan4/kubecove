@@ -60,7 +60,7 @@ bun run e2e:real -- --keep
 bun run e2e:cleanup -- --run-id <id>
 ```
 
-The runner downloads checksum-verified pinned tools into its cache, creates a uniquely named Kind cluster through Docker or Podman, applies the deterministic lab, builds the E2E-only Tauri flavor, and runs native WDIO serially. It gathers redacted diagnostics before deleting its exact cluster on success, failure, SIGINT, or SIGTERM. `--keep` is rejected in CI. Cleanup always needs an exact recorded run ID; it never deletes clusters by prefix.
+The runner downloads checksum-verified pinned tools into its cache, creates a uniquely named Kind cluster through Docker or Podman, applies the deterministic lab, builds the E2E-only Tauri flavor, and runs native WDIO serially. It gathers redacted diagnostics before deleting its exact cluster on success, failure, SIGINT, or SIGTERM. Local `--keep` skips automatic cleanup so the exact run can be inspected; `--keep` is rejected in CI. Cleanup always needs an exact recorded run ID; it never deletes clusters by prefix.
 
 The generated real-suite kubeconfig contains only dedicated admin and restricted contexts. E2E startup rejects non-absolute paths, unexpected contexts, non-loopback API servers, cluster-name mismatches, persisted sources, and fallback to the user's default kubeconfig. Artifacts never include raw kubeconfig, tokens, keys, or certificate data.
 

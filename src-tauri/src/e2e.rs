@@ -44,6 +44,14 @@ fn required_value(name: &str) -> Result<String, AppError> {
 
 fn required_absolute_path(name: &str, directory: bool) -> Result<PathBuf, AppError> {
     let path = PathBuf::from(required_value(name)?);
+    canonical_existing_path(name, path, directory)
+}
+
+fn canonical_existing_path(
+    name: &str,
+    path: PathBuf,
+    directory: bool,
+) -> Result<PathBuf, AppError> {
     if !path.is_absolute() {
         return Err(AppError::new(
             format!("{name} must be an absolute path"),
@@ -65,12 +73,6 @@ fn required_absolute_path(name: &str, directory: bool) -> Result<PathBuf, AppErr
     }
     let canonical = fs::canonicalize(&path)
         .map_err(|_| AppError::new(format!("{name} path is unavailable"), "validation"))?;
-    if canonical != path {
-        return Err(AppError::new(
-            format!("{name} must be canonical"),
-            "validation",
-        ));
-    }
     Ok(canonical)
 }
 
@@ -192,5 +194,22 @@ mod tests {
         config.clusters[0].cluster.as_mut().expect("cluster").server =
             Some("https://example.com".into());
         assert!(validate_kubeconfig(&config, "run").is_err());
+    }
+
+    #[test]
+    fn canonicalizes_existing_absolute_path() {
+        let root = env::temp_dir().join(format!("kubecove-e2e-path-{}", std::process::id()));
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("temporary directory");
+        let file = root.join("kubeconfig");
+        fs::write(&file, "test").expect("temporary file");
+
+        let result =
+            canonical_existing_path(KUBECONFIG_ENV, nested.join("..").join("kubeconfig"), false)
+                .expect("canonical path");
+        let expected = fs::canonicalize(&file).expect("expected canonical path");
+
+        let _ = fs::remove_dir_all(root);
+        assert_eq!(result, expected);
     }
 }

@@ -19,6 +19,8 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 
 pub const DEFAULT_KUBECONFIG_ENV_VAR: &str = "KUBECONFIG";
 const SETTINGS_FILE_NAME: &str = "kubeconfig-sources.json";
+#[cfg(any(feature = "e2e", test))]
+const E2E_KUBECONFIG_SOURCE_ENV_VAR: &str = "KUBECOVE_E2E_KUBECONFIG_SOURCE";
 pub(super) const FINITE_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 static SETTINGS_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -76,19 +78,14 @@ pub struct KubeconfigSource {
     env_var: String,
     app_paths: Vec<PathBuf>,
     show_source_labels: bool,
+    read_env: bool,
 }
 
 impl KubeconfigSource {
     pub fn new(env_var: Option<String>) -> Result<Self, AppError> {
         #[cfg(feature = "e2e")]
         if crate::e2e::is_enabled() {
-            return Self::from_settings(
-                Some("KUBECOVE_E2E_KUBECONFIG_SOURCE"),
-                vec![crate::e2e::kubeconfig_path()?
-                    .to_string_lossy()
-                    .into_owned()],
-                false,
-            );
+            return Ok(Self::from_e2e_path(crate::e2e::kubeconfig_path()?));
         }
         let settings = load_persisted_sources()?;
         let env_var = env_var
@@ -116,15 +113,28 @@ impl KubeconfigSource {
                 .map(PathBuf::from)
                 .collect(),
             show_source_labels,
+            read_env: true,
         })
+    }
+
+    #[cfg(any(feature = "e2e", test))]
+    fn from_e2e_path(path: PathBuf) -> Self {
+        Self {
+            env_var: E2E_KUBECONFIG_SOURCE_ENV_VAR.to_string(),
+            app_paths: vec![path],
+            show_source_labels: false,
+            read_env: false,
+        }
     }
 
     pub fn key(&self) -> String {
         let mut hasher = DefaultHasher::new();
         self.env_var.hash(&mut hasher);
-        env::var_os(&self.env_var)
-            .map(|value| value.to_string_lossy().into_owned())
-            .hash(&mut hasher);
+        if self.read_env {
+            env::var_os(&self.env_var)
+                .map(|value| value.to_string_lossy().into_owned())
+                .hash(&mut hasher);
+        }
         for path in &self.app_paths {
             path.to_string_lossy().hash(&mut hasher);
         }
@@ -154,7 +164,10 @@ impl KubeconfigSource {
     }
 
     fn configured_path_count(&self) -> usize {
-        let env_count = env::var_os(&self.env_var)
+        let env_count = self
+            .read_env
+            .then(|| env::var_os(&self.env_var))
+            .flatten()
             .and_then(split_non_empty_paths)
             .map_or(0, |paths| paths.len());
         env_count + self.app_paths.len()
@@ -203,6 +216,9 @@ impl KubeconfigSource {
     }
 
     fn custom_env_value_paths(&self) -> Result<Option<Vec<PathBuf>>, AppError> {
+        if !self.read_env {
+            return Ok(None);
+        }
         let Some(value) = env::var_os(&self.env_var) else {
             return Ok(None);
         };
@@ -764,5 +780,21 @@ kind: Config
 
         assert_eq!(err.kind, "validation");
         assert!(err.message.contains("kubeconfig env var name"));
+    }
+
+    #[test]
+    fn e2e_source_ignores_inherited_override() {
+        let expected = write_kubeconfig("expected-e2e-context");
+        let override_path = write_kubeconfig("inherited-context");
+        env::set_var(E2E_KUBECONFIG_SOURCE_ENV_VAR, &override_path);
+
+        let source = KubeconfigSource::from_e2e_path(expected.clone());
+        let contexts = cluster_contexts_from_source(&source).expect("contexts");
+
+        env::remove_var(E2E_KUBECONFIG_SOURCE_ENV_VAR);
+        let _ = fs::remove_file(expected);
+        let _ = fs::remove_file(override_path);
+        assert_eq!(contexts.len(), 1);
+        assert_eq!(contexts[0].name, "expected-e2e-context");
     }
 }

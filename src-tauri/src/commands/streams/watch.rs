@@ -56,7 +56,9 @@ fn reset_resource_version_for_error<K>(
     let WatchEvent::Error(status) = event else {
         return None;
     };
-    *resource_version = "0".to_string();
+    if status.code == 410 {
+        *resource_version = "0".to_string();
+    }
     Some(watch_status_message(status))
 }
 
@@ -360,6 +362,20 @@ mod tests {
             watch_status_message(&status),
             "Kubernetes watch error 410 (Expired): too old resource version",
         );
+    }
+
+    #[test]
+    fn non_gone_error_preserves_resource_version() {
+        let event = WatchEvent::<DynamicObject>::Error(Box::new(Status {
+            code: 403,
+            reason: "Forbidden".to_string(),
+            message: "watch is forbidden".to_string(),
+            ..Status::default()
+        }));
+        let mut resource_version = "55".to_string();
+
+        assert!(reset_resource_version_for_error(&mut resource_version, &event).is_some());
+        assert_eq!(resource_version, "55");
     }
 
     #[tokio::test]
