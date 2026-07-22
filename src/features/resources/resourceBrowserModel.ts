@@ -119,6 +119,16 @@ export function kindSelectionLabel(kind: ResourceKindSelection): string {
 	return resourceKindLabel(kind);
 }
 
+export function filterKindOptions(
+	kinds: ResourceKindSelection[],
+	search: string,
+): ResourceKindSelection[] {
+	const query = search.trim().toLocaleLowerCase();
+	return query
+		? kinds.filter((kind) => kindSelectionLabel(kind).toLocaleLowerCase().includes(query))
+		: kinds;
+}
+
 export function allKindOptions(
 	discoveredKinds: DiscoveredResourceKind[],
 ): ResourceKindSelection[] {

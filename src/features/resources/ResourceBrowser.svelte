@@ -958,6 +958,12 @@
 				onResourceClose();
 				selectedTopologyNodeId = null;
 			}}
+			onAllKindsSelect={() => {
+				selectedKinds = [...kindOptions];
+				pageIndex = 0;
+				onResourceClose();
+				selectedTopologyNodeId = null;
+			}}
 			onNamespaceToggle={toggleNamespace}
 			onKindToggle={toggleKind}
 			onHealthSelect={selectHealth}

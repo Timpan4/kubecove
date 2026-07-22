@@ -9,6 +9,7 @@ import {
 import {
 	allKindOptions,
 	buildResourceTableModel,
+	filterKindOptions,
 	initialOwnershipMapOpen,
 	shouldLoadOwnershipMap,
 	syncedTopologyNodeId,
@@ -163,6 +164,14 @@ test("builds immutable ResourceBrowser read identities and enablement", () => {
 });
 
 describe("svelte resource browser model", () => {
+	test("filters kind options by label", () => {
+		const kinds = ["Pod", "StorageClass", widget] as const;
+
+		expect(filterKindOptions([...kinds], " storage ")).toEqual(["StorageClass"]);
+		expect(filterKindOptions([...kinds], "WIDGET")).toEqual([widget]);
+		expect(filterKindOptions([...kinds], "")).toEqual(kinds);
+	});
+
 	test("does not request the ownership map for restored closed state", () => {
 		const mapPanelOpen = initialOwnershipMapOpen({ mapPanelOpen: false }, true);
 		let loadCalls = 0;
