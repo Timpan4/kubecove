@@ -1,18 +1,12 @@
 <script lang="ts">
-	import { ChevronDown, Search, X } from "lucide-svelte";
+	import { Search, X } from "lucide-svelte";
 	import {
 		Badge,
 		Button,
-		Checkbox,
 		InputGroup,
 		InputGroupAddon,
 		InputGroupInput,
 		InputGroupText,
-		Label,
-		Popover,
-		PopoverContent,
-		PopoverTrigger,
-		ScrollArea,
 		Select,
 		SelectContent,
 		SelectGroup,
@@ -22,11 +16,8 @@
 	} from "@/components/ui/svelte";
 	import type { NamespaceSummary, ResourceKindSelection } from "@/lib/types";
 	import type { GitOpsFilterOption, HealthFilter, HealthSummary } from "./helpers";
-	import {
-		filterKindOptions,
-		kindSelectionKey,
-		kindSelectionLabel,
-	} from "./resourceBrowserModel";
+	import ResourceScopeSelector from "./ResourceScopeSelector.svelte";
+	import { kindSelectionKey, kindSelectionLabel } from "./resourceBrowserModel";
 
 	let {
 		selectedNamespaces,
@@ -78,10 +69,6 @@
 		onClearFilters: () => void;
 	} = $props();
 
-	let namespacePopoverOpen = $state(false);
-	let kindPopoverOpen = $state(false);
-	let kindSearch = $state("");
-
 	const hasFilters = $derived(Boolean(search || gitOpsFilter || healthFilter !== "all"));
 	const namespaceLabel = $derived(
 		selectedNamespaces.length === 0
@@ -95,7 +82,15 @@
 			? selectedKinds.map(kindSelectionLabel).join(", ")
 			: `${selectedKinds.slice(0, 3).map(kindSelectionLabel).join(", ")} +${selectedKinds.length - 3}`,
 	);
-	const filteredKindOptions = $derived(filterKindOptions(kindOptions, kindSearch));
+	const namespaceScopeOptions = $derived(
+		namespaceOptions.map((namespace) => ({ key: namespace.name, label: namespace.name })),
+	);
+	const kindScopeOptions = $derived(
+		kindOptions.map((kind) => ({
+			key: kindSelectionKey(kind),
+			label: kindSelectionLabel(kind),
+		})),
+	);
 	const allKindsSelected = $derived(
 		kindOptions.length > 0 &&
 		kindOptions.every((kind) => selectedKindSet.has(kindSelectionKey(kind))),
@@ -121,100 +116,42 @@
 <section class="@container rounded-lg border bg-surface-1 p-2 shadow-sm" aria-label="Resource controls">
 	<div class="grid gap-2 @5xl:grid-cols-[auto_minmax(18rem,1fr)_auto] @5xl:items-center">
 		<div class="flex min-w-0 flex-wrap items-center gap-2" aria-label="Current resource scope">
-			<Popover bind:open={namespacePopoverOpen}>
-				<PopoverTrigger
-					type="button"
-					class="inline-flex h-8 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md border bg-background/70 px-2.5 text-xs text-muted-foreground hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-					aria-label="Edit namespace scope"
-				>
-					Namespace
-					<strong class="min-w-0 truncate font-semibold text-foreground">{namespaceLabel}</strong>
-					<ChevronDown class="size-3.5 shrink-0" />
-				</PopoverTrigger>
-				<PopoverContent align="start" class="w-72 p-2">
-					<div class="mb-2 px-1 text-[0.625rem] font-semibold uppercase text-muted-foreground">
-						Namespaces
-					</div>
-					<Label class="cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted/50">
-						<Checkbox
-							checked={selectedNamespaces.length === 0}
-							onCheckedChange={(checked) => {
-								if (checked || selectedNamespaces.length > 0) onAllNamespacesSelect();
-							}}
-						/>
-						All namespaces
-					</Label>
-					<ScrollArea class="mt-1 h-40 rounded-md border bg-background/30">
-						<div class="flex flex-col gap-1 p-1">
-							{#each namespaceOptions as namespace (namespace.name)}
-								<Label class="cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted/50">
-									<Checkbox
-										checked={selectedNamespaceSet.has(namespace.name)}
-										onCheckedChange={(checked) => onNamespaceToggle(namespace.name, checked)}
-									/>
-									<span class="truncate">{namespace.name}</span>
-								</Label>
-							{:else}
-								<div class="px-2 py-1.5 text-xs text-muted-foreground">No namespaces found</div>
-							{/each}
-						</div>
-					</ScrollArea>
-				</PopoverContent>
-			</Popover>
+			<ResourceScopeSelector
+				triggerLabel="Namespace"
+				triggerValue={namespaceLabel}
+				triggerAriaLabel="Edit namespace scope"
+				heading="Namespaces"
+				selectAllLabel="Select all namespaces"
+				searchAriaLabel="Search namespaces"
+				searchPlaceholder="Search namespaces..."
+				emptyLabel="No namespaces found"
+				noMatchesLabel="No matching namespaces"
+				options={namespaceScopeOptions}
+				selectedKeys={selectedNamespaceSet}
+				allSelected={selectedNamespaces.length === 0}
+				onSelectAll={onAllNamespacesSelect}
+				onToggle={onNamespaceToggle}
+			/>
 
-			<Popover bind:open={kindPopoverOpen}>
-				<PopoverTrigger
-					type="button"
-					class="inline-flex h-8 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md border bg-background/70 px-2.5 text-xs text-muted-foreground hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-					aria-label="Edit resource kinds"
-				>
-					Kinds
-					<strong class="min-w-0 truncate font-semibold text-foreground">{kindsLabel}</strong>
-					<ChevronDown class="size-3.5 shrink-0" />
-				</PopoverTrigger>
-				<PopoverContent align="start" class="w-[min(22rem,calc(100vw-1rem))] p-2">
-					<div class="mb-2 px-1 text-[0.625rem] font-semibold uppercase text-muted-foreground">
-						Kinds
-					</div>
-					<Button
-						variant="outline"
-						size="sm"
-						class="h-8 w-full justify-start"
-						disabled={allKindsSelected}
-						onclick={onAllKindsSelect}
-					>
-						Select all kinds
-					</Button>
-					<InputGroup class="mt-1 h-8 border bg-background/70">
-						<InputGroupAddon align="inline-start">
-							<InputGroupText><Search class="size-4" /></InputGroupText>
-						</InputGroupAddon>
-						<InputGroupInput
-							aria-label="Search resource kinds"
-							class="h-7 text-xs"
-							bind:value={kindSearch}
-							placeholder="Search kinds..."
-						/>
-					</InputGroup>
-					<ScrollArea class="mt-2 h-56 rounded-md border bg-background/30">
-						<div class="flex flex-col gap-1 p-1">
-							{#each filteredKindOptions as kind (kindSelectionKey(kind))}
-								<Label class="cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted/50">
-									<Checkbox
-										checked={selectedKindSet.has(kindSelectionKey(kind))}
-										onCheckedChange={(checked) => onKindToggle(kind, checked)}
-									/>
-									<span class="truncate">{kindSelectionLabel(kind)}</span>
-								</Label>
-							{:else}
-								<div class="px-2 py-1.5 text-xs text-muted-foreground">
-									{kindOptions.length > 0 ? "No matching kinds" : "No kinds found"}
-								</div>
-							{/each}
-						</div>
-					</ScrollArea>
-				</PopoverContent>
-			</Popover>
+			<ResourceScopeSelector
+				triggerLabel="Kinds"
+				triggerValue={kindsLabel}
+				triggerAriaLabel="Edit resource kinds"
+				heading="Kinds"
+				selectAllLabel="Select all kinds"
+				searchAriaLabel="Search resource kinds"
+				searchPlaceholder="Search kinds..."
+				emptyLabel="No kinds found"
+				noMatchesLabel="No matching kinds"
+				options={kindScopeOptions}
+				selectedKeys={selectedKindSet}
+				allSelected={allKindsSelected}
+				onSelectAll={onAllKindsSelect}
+				onToggle={(key, checked) => {
+					const kind = kindOptions.find((option) => kindSelectionKey(option) === key);
+					if (kind) onKindToggle(kind, checked);
+				}}
+			/>
 		</div>
 
 		<InputGroup class="h-8 min-w-0 border bg-background/70">
