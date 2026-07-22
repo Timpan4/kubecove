@@ -123,9 +123,9 @@ export function filterKindOptions(
 	kinds: ResourceKindSelection[],
 	search: string,
 ): ResourceKindSelection[] {
-	const query = search.trim().toLocaleLowerCase();
+	const query = search.trim().toLowerCase();
 	return query
-		? kinds.filter((kind) => kindSelectionLabel(kind).toLocaleLowerCase().includes(query))
+		? kinds.filter((kind) => kindSelectionLabel(kind).toLowerCase().includes(query))
 		: kinds;
 }
 
