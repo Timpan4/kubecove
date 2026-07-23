@@ -61,6 +61,10 @@ export const namespaces: NamespaceSummary[] = [
 	{ name: "jobs-lab", age: "5d", createdAt: "2026-06-24T08:00:00Z" },
 	{ name: "payments", age: "18d", createdAt: "2026-06-11T08:00:00Z" },
 	{ name: "platform", age: "31d", createdAt: "2026-05-29T08:00:00Z" },
+	{ name: "local-path-storage", age: "12d", createdAt: "2026-06-17T08:00:00Z" },
+	{ name: "tenant-catalog", age: "12d", createdAt: "2026-06-17T08:00:00Z" },
+	{ name: "tenant-ledger", age: "12d", createdAt: "2026-06-17T08:00:00Z" },
+	{ name: "operations", age: "12d", createdAt: "2026-06-17T08:00:00Z" },
 ];
 
 export const kinds: DiscoveredResourceKind[] = [
@@ -77,6 +81,8 @@ export const kinds: DiscoveredResourceKind[] = [
 	kind("storage.k8s.io", "v1", "StorageClass", "storageclasses", false),
 	kind("argoproj.io", "v1alpha1", "Application", "applications", true),
 	kind("argoproj.io", "v1alpha1", "ApplicationSet", "applicationsets", true),
+	kind("autoscaling", "v2", "HorizontalPodAutoscaler", "horizontalpodautoscalers", true),
+	kind("cilium.io", "v2", "CiliumNetworkPolicy", "ciliumnetworkpolicies", true),
 	kind("kustomize.toolkit.fluxcd.io", "v1", "Kustomization", "kustomizations", true),
 	kind("helm.toolkit.fluxcd.io", "v2", "HelmRelease", "helmreleases", true),
 ];
@@ -166,6 +172,12 @@ export const resources: ResourceSummary[] = [
 		dynamic: true,
 		gitOpsOwner: { provider: "flux", kind: "HelmRelease", name: "metrics-gateway", namespace: "flux-system", confidence: "inventory" },
 	}),
+	res("Deployment", "catalog", "tenant-catalog", "healthy", "2/2", "Ready", 0, "tenant-catalog"),
+	res("HorizontalPodAutoscaler", "catalog", "tenant-catalog", "healthy", "2/2", "Active", 0, "tenant-catalog", { apiVersion: "autoscaling/v2" }),
+	res("StatefulSet", "ledger", "tenant-ledger", "healthy", "1/1", "Ready", 0, "tenant-ledger", { apiVersion: "apps/v1" }),
+	res("PersistentVolumeClaim", "data-ledger-0", "tenant-ledger", "healthy", "Bound", "Bound", 0, "tenant-ledger"),
+	res("Deployment", "operations", "operations", "healthy", "1/1", "Ready", 0, "operations"),
+	res("Pod", "operations-crashloop-7f468cd8b8-lab01", "operations", "degraded", "0/1", "CrashLoopBackOff", 7, "operations"),
 	res("Node", "dev-control-plane", null, "healthy", "Ready", "Ready"),
 ];
 
@@ -252,44 +264,35 @@ export const networkIngressTargets: Array<{
 	{ namespace: "todo", ingress: "todo-web", service: "todo-web" },
 ];
 
-export const argoApps: ArgoApplicationSummary[] = [
-	{
-		name: "shop",
-		cluster: "mock-dev",
-		namespace: "argocd",
-		project: "default",
-		syncStatus: "OutOfSync",
-		healthStatus: "Progressing",
-		destinationNamespace: "payments",
-		destinationServer: "https://kubernetes.default.svc",
-		sourceRepo: "https://github.com/example/shop",
-		sourceRevision: "main",
-		sourceMode: "git",
-		sourceCount: 1,
-		resourceNamespaces: ["payments"],
-		trackedResourceCount: 8,
-		age: "18d",
-		createdAt: "2026-06-11T08:00:00Z",
-	},
-	{
-		name: "observability",
-		cluster: "mock-dev",
-		namespace: "argocd",
-		project: "platform",
-		syncStatus: "Synced",
-		healthStatus: "Healthy",
-		destinationNamespace: "monitoring",
-		destinationServer: "https://kubernetes.default.svc",
-		sourceRepo: "https://github.com/example/observability",
-		sourceRevision: "release-2026.06",
-		sourceMode: "multi",
-		sourceCount: 2,
-		resourceNamespaces: ["monitoring", "opensearch"],
-		trackedResourceCount: 9,
-		age: "31d",
-		createdAt: "2026-05-29T08:00:00Z",
-	},
-];
+const labArgoApplications = [
+	["root-application", "e2e-root", "argocd"],
+	["platform-argocd", "e2e-platform", "argocd"],
+	["platform-cilium", "e2e-platform", "kube-system"],
+	["platform-metrics", "e2e-platform", "kube-system"],
+	["platform-storage", "e2e-platform", "local-path-storage"],
+	["platform-ingress", "e2e-platform", "traefik"],
+	["tenant-catalog", "e2e-tenants", "tenant-catalog"],
+	["tenant-ledger", "e2e-tenants", "tenant-ledger"],
+] as const;
+
+export const argoApps: ArgoApplicationSummary[] = labArgoApplications.map(([name, project, destinationNamespace]) => ({
+	name,
+	cluster: "mock-dev",
+	namespace: "argocd",
+	project,
+	syncStatus: "Synced",
+	healthStatus: "Healthy",
+	destinationNamespace,
+	destinationServer: "https://kubernetes.default.svc",
+	sourceRepo: name.startsWith("platform-") ? "pinned Helm or internal Git" : "git://git-server.e2e-system.svc.cluster.local:9418/fixtures.git",
+	sourceRevision: "main",
+	sourceMode: "git",
+	sourceCount: 1,
+	resourceNamespaces: [destinationNamespace],
+	trackedResourceCount: name.startsWith("tenant-") ? 12 : 8,
+	age: "12d",
+	createdAt: "2026-06-17T08:00:00Z",
+}));
 
 export const fluxKind: FluxResourceKind = {
 	group: "kustomize.toolkit.fluxcd.io",
@@ -349,6 +352,20 @@ export const fluxResources: FluxResourceSummary[] = [
 ];
 
 export const helmReleases: HelmReleaseSummary[] = [
+	{
+		cluster: "mock-dev",
+		name: "operations",
+		namespace: "operations",
+		age: "12d",
+		updatedAt: now,
+		createdAt: "2026-06-17T08:00:00Z",
+		chart: "kubecove-operations-0.1.0",
+		appVersion: "1.0.0",
+		revision: 1,
+		status: "deployed",
+		storageKind: "Secret",
+		storageName: "sh.helm.release.v1.operations.v1",
+	},
 	{
 		cluster: "mock-dev",
 		name: "metrics-gateway",

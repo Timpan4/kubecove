@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: catalog, namespace: tenant-catalog}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: catalog-config-reader, namespace: tenant-catalog}
+rules: [{apiGroups: [''], resources: [configmaps], resourceNames: [catalog-config], verbs: [get]}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: catalog-config-reader, namespace: tenant-catalog}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: catalog-config-reader}
+subjects: [{kind: ServiceAccount, name: catalog, namespace: tenant-catalog}]
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata: {name: catalog-quota, namespace: tenant-catalog}
+spec: {hard: {requests.cpu: '1', requests.memory: 1Gi, limits.cpu: '2', limits.memory: 2Gi, pods: '10'}}
+---
+apiVersion: v1
+kind: LimitRange
+metadata: {name: catalog-limits, namespace: tenant-catalog}
+spec: {limits: [{type: Container, defaultRequest: {cpu: 20m, memory: 32Mi}, default: {cpu: 250m, memory: 256Mi}}]}

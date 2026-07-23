@@ -231,14 +231,14 @@ describe("createMockTauriClient", () => {
 		const incidents = await listIncidentCockpit(client, "docker-desktop", []);
 		const rbac = await listRbacInspection(client, "mock-dev");
 
-		expect(await listArgoApplications(client, "mock-dev")).toHaveLength(2);
+		expect(await listArgoApplications(client, "mock-dev")).toHaveLength(8);
 		expect(await listArgoApplicationSets(client, "mock-dev")).toHaveLength(2);
 		expect(await listArgoAppProjects(client, "mock-dev")).toHaveLength(2);
 		expect(fluxResources.map((row) => row.resourceKind.kind)).toEqual([
 			"Kustomization",
 			"HelmRelease",
 		]);
-		expect(await listHelmReleases(client, "mock-dev")).toHaveLength(2);
+		expect(await listHelmReleases(client, "mock-dev")).toHaveLength(3);
 		expect(rbac.serviceAccounts).toHaveLength(3);
 		expect(rbac.roles.length).toBeGreaterThan(0);
 		expect(rbac.clusterRoleBindings.length).toBeGreaterThan(0);
