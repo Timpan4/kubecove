@@ -198,7 +198,6 @@
 								yamlViewMode,
 								yamlEncoding,
 								createCancellableRequest(yamlCancelScope, "yaml"),
-								true,
 							)
 						).yaml;
 					}
