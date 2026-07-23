@@ -7,8 +7,9 @@ use crate::models::{
 use k8s_openapi::api::authorization::v1::{
     ResourceAttributes, SelfSubjectAccessReview, SelfSubjectAccessReviewSpec,
 };
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
-    api::{Api, Patch, PatchParams},
+    api::{Api, Patch, PatchParams, PostParams},
     core::DynamicObject,
 };
 use serde_json::{json, Value};
@@ -119,12 +120,7 @@ async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(), AppError
                 "argoOperationUnavailable",
             )
         })?;
-    if request
-        .resource_version
-        .as_deref()
-        .filter(|v| !v.is_empty())
-        .is_none()
-    {
+    if request.resource_version.as_deref().is_none_or(str::is_empty) {
         return Err(AppError::new(
             "resourceVersion required for Kubernetes fallback",
             "argoOperationUnavailable",
@@ -132,7 +128,7 @@ async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(), AppError
     }
     let client = client_for_context(context, request.kubeconfig_env_var.clone()).await?;
     let review = SelfSubjectAccessReview {
-        metadata: Default::default(),
+        metadata: ObjectMeta::default(),
         spec: SelfSubjectAccessReviewSpec {
             resource_attributes: Some(ResourceAttributes {
                 group: Some("argoproj.io".into()),
@@ -150,7 +146,7 @@ async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(), AppError
         status: None,
     };
     let status = Api::<SelfSubjectAccessReview>::all(client)
-        .create(&Default::default(), &review)
+        .create(&PostParams::default(), &review)
         .await?
         .status;
     if !status.is_some_and(|value| value.allowed && !value.denied.unwrap_or(false)) {
@@ -336,8 +332,7 @@ async fn validate_resource_action(
         .as_ref()
         .and_then(Value::as_object);
     if request.resource_action_parameters.is_some()
-        && (parameters.is_none()
-            || parameters.is_some_and(|values| values.values().any(|value| !value.is_string())))
+        && parameters.is_none_or(|values| values.values().any(|value| !value.is_string()))
     {
         return Err(AppError::new(
             "resource action parameters must be string values",
