@@ -7,10 +7,7 @@ use std::time::Duration;
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
-pub(crate) async fn api_get(
-    connection: &ConnectedArgo,
-    path: &str,
-) -> Result<Value, AppError> {
+pub(crate) async fn api_get(connection: &ConnectedArgo, path: &str) -> Result<Value, AppError> {
     let response = connection
         .client
         .get(url(&connection.profile.url, path)?)
@@ -43,10 +40,7 @@ pub(crate) async fn api_post(
     response_json(response).await
 }
 
-pub(crate) async fn api_delete(
-    connection: &ConnectedArgo,
-    path: &str,
-) -> Result<Value, AppError> {
+pub(crate) async fn api_delete(connection: &ConnectedArgo, path: &str) -> Result<Value, AppError> {
     let response = connection
         .client
         .delete(url(&connection.profile.url, path)?)

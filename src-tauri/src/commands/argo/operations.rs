@@ -120,7 +120,11 @@ async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(), AppError
                 "argoOperationUnavailable",
             )
         })?;
-    if request.resource_version.as_deref().is_none_or(str::is_empty) {
+    if request
+        .resource_version
+        .as_deref()
+        .is_none_or(str::is_empty)
+    {
         return Err(AppError::new(
             "resourceVersion required for Kubernetes fallback",
             "argoOperationUnavailable",

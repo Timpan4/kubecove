@@ -107,7 +107,7 @@
 	]);
 	const yamlCancelScope = $derived(createCancelScope("resource-yaml", yamlQueryKey));
 	const yamlEnabled = $derived(detailsEnabled && active);
-	const hasUnredactedSecret = $derived(
+	const showSecretDataViewer = $derived(
 		resource.kind === "Secret" && !$settingsStore.redactSecrets,
 	);
 	const yamlApplyDisabledReason = $derived(isYamlApplyDisabled(resource));
@@ -186,7 +186,7 @@
 			try {
 				return await runYamlFetch("resource-yaml", async () => {
 					if (dynamicKind) {
-						if (!hasUnredactedSecret && detailsYaml) return detailsYaml;
+						if (!showSecretDataViewer && detailsYaml) return detailsYaml;
 						return (
 							await getDynamicResourceDetails(
 								client,
@@ -198,7 +198,7 @@
 								yamlViewMode,
 								yamlEncoding,
 								createCancellableRequest(yamlCancelScope, "yaml"),
-								$settingsStore.redactSecrets,
+								true,
 							)
 						).yaml;
 					}
@@ -212,7 +212,6 @@
 						yamlViewMode,
 						yamlEncoding,
 						createCancellableRequest(yamlCancelScope, "yaml"),
-						$settingsStore.redactSecrets,
 					);
 				});
 			} catch (error) {
@@ -225,10 +224,10 @@
 		enabled: yamlEnabled,
 		retry: false,
 		staleTime: 30_000,
-		gcTime: hasUnredactedSecret ? 0 : undefined,
+		gcTime: showSecretDataViewer ? 0 : undefined,
 	}));
 	const yamlText = $derived(
-		yamlQuery.data ?? (hasUnredactedSecret ? "" : detailsYaml),
+		yamlQuery.data ?? (showSecretDataViewer ? "" : detailsYaml),
 	);
 
 	$effect(() => {
@@ -309,7 +308,6 @@
 				"applyClean",
 				yamlEncoding,
 				undefined,
-				$settingsStore.redactSecrets,
 			);
 			yamlEditing = true;
 		} catch (error) {
@@ -427,8 +425,13 @@
 	}
 </script>
 
-{#if hasUnredactedSecret}
+{#if showSecretDataViewer}
 	<SecretDataViewer
+		{client}
+		clusterContext={resource.cluster}
+		name={resource.name}
+		namespace={resource.namespace}
+		{kubeconfigSourceKey}
 		yamlText={yamlText}
 		contextKey={`${resourceKey()}:${kubeconfigSourceKey ?? ""}:${$settingsStore.redactSecrets}`}
 		{active}

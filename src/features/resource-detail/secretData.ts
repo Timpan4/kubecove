@@ -32,6 +32,10 @@ export function isMaskedSecretValue(value: string): boolean {
 	);
 }
 
+export function maskedSecretValue(): string {
+	return "••••••";
+}
+
 export function decodeSecretDataValue(value: string): SecretDataDecodeResult {
 	if (!isValidBase64(value)) return { error: "invalid-base64" };
 	try {

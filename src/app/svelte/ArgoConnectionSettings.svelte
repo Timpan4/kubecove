@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createQuery } from "@tanstack/svelte-query";
+	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { AlertCircle, Link2, ShieldAlert } from "lucide-svelte";
 	import {
 		Alert,
@@ -28,6 +28,7 @@
 		kubeconfigEnvVar?: string;
 	} = $props();
 	const client = createTauriClient();
+	const queryClient = useQueryClient();
 	const settings = $derived($settingsStore);
 	let url = $state("");
 	let token = $state("");
@@ -78,6 +79,7 @@
 				]);
 			}
 			connected = result.profile?.id ?? id;
+			void queryClient.invalidateQueries({ queryKey: ["argo-connection-status"] });
 		} catch (caught) {
 			error = caught instanceof Error ? caught.message : String(caught);
 		} finally {
@@ -88,6 +90,12 @@
 			customCa = "";
 			busy = false;
 		}
+	}
+
+	async function disconnect(id: string) {
+		await disconnectArgoServer(client, id);
+		if (connected === id) connected = null;
+		void queryClient.invalidateQueries({ queryKey: ["argo-connection-status"] });
 	}
 </script>
 
@@ -118,7 +126,7 @@
 
 {#if settings.argoProfiles.length > 0}
 		<div class="mt-4 flex flex-col gap-2"><p class="text-sm font-medium">Saved server profiles</p>{#each settings.argoProfiles.filter((profile) => !clusterContext || profile.clusterContext === clusterContext) as profile}
-			<div class="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"><span class="truncate">{profile.url}</span><div class="flex items-center gap-2"><Button size="sm" type="button" onclick={() => connect(profile)}>{connected === profile.id ? "Connected" : "Reconnect"}</Button><Button size="sm" variant="ghost" type="button" onclick={() => disconnectArgoServer(client, profile.id)}>Disconnect</Button><Button size="sm" variant="ghost" type="button" onclick={async () => { await forgetArgoCredential(client, { ...profile, transport: "connected" }); settings.setArgoProfiles(settings.argoProfiles.filter((item) => item.id !== profile.id)); }}>Forget</Button></div></div>
+			<div class="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"><span class="truncate">{profile.url}</span><div class="flex items-center gap-2"><Button size="sm" type="button" onclick={() => connect(profile)}>{connected === profile.id ? "Connected" : "Reconnect"}</Button><Button size="sm" variant="ghost" type="button" onclick={() => disconnect(profile.id)}>Disconnect</Button><Button size="sm" variant="ghost" type="button" onclick={async () => { await forgetArgoCredential(client, { ...profile, transport: "connected" }); settings.setArgoProfiles(settings.argoProfiles.filter((item) => item.id !== profile.id)); }}>Forget</Button></div></div>
 	{/each}</div>
 {/if}
 

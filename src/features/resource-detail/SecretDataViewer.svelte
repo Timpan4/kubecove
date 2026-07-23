@@ -2,25 +2,43 @@
 	import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/svelte";
 	import {
 		decodeSecretDataValue,
+		maskedSecretValue,
 		parseSecretData,
 		type SecretDataEntry,
 	} from "./secretData";
+	import { revealSecretDataValue, type TauriClient } from "@/lib/tauri";
 
-	let { yamlText, contextKey, active }: { yamlText: string; contextKey: string; active: boolean } = $props();
+	let { client, clusterContext, name, namespace, kubeconfigSourceKey, yamlText, contextKey, active }: { client: TauriClient; clusterContext: string; name: string; namespace: string | null; kubeconfigSourceKey?: string; yamlText: string; contextKey: string; active: boolean } = $props();
 	let entries = $derived(parseSecretData(yamlText));
 	let revealedValues = $state<Record<string, string>>({});
+	let revealErrors = $state<Record<string, string>>({});
+	let revealEpoch = 0;
 	const revealTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	function clearReveals() {
 		for (const timer of revealTimers.values()) clearTimeout(timer);
 		revealTimers.clear();
 		revealedValues = {};
+		revealErrors = {};
+		revealEpoch += 1;
 	}
 
-	function reveal(entry: SecretDataEntry) {
-		if (entry.masked) return;
-		const result = entry.source === "data" ? decodeSecretDataValue(entry.value) : { value: entry.value };
-		if (result.value === undefined) return;
+	async function reveal(entry: SecretDataEntry) {
+		if (entry.source !== "data" || !namespace) return;
+		const epoch = revealEpoch;
+		let encodedValue: string;
+		try {
+			encodedValue = await revealSecretDataValue(client, clusterContext, name, namespace, entry.key, kubeconfigSourceKey);
+		} catch (error) {
+			if (epoch === revealEpoch) revealErrors = { ...revealErrors, [entry.id]: error instanceof Error ? error.message : "Unable to reveal value" };
+			return;
+		}
+		if (epoch !== revealEpoch) return;
+		const result = decodeSecretDataValue(encodedValue);
+		if (result.value === undefined) {
+			revealErrors = { ...revealErrors, [entry.id]: "Binary value cannot be shown as UTF-8" };
+			return;
+		}
 		revealedValues = { ...revealedValues, [entry.id]: result.value };
 		const existingTimer = revealTimers.get(entry.id);
 		if (existingTimer) clearTimeout(existingTimer);
@@ -63,19 +81,19 @@
 						<div class="flex flex-col gap-2 rounded-md border p-3">
 							<div class="flex flex-wrap items-center justify-between gap-2">
 								<dt class="font-medium">{entry.key} <span class="font-normal text-muted-foreground">({entry.source})</span></dt>
-								{#if entry.masked}
-									<span class="text-muted-foreground">Masked by source</span>
-								{:else if revealedValues[entry.id] !== undefined}
+								{#if revealedValues[entry.id] !== undefined}
 									<Button type="button" variant="outline" size="sm" onclick={() => hide(entry.id)}>Hide</Button>
+								{:else if entry.source !== "data" || !namespace}
+									<span class="text-muted-foreground">Unavailable</span>
 								{:else}
 									<Button type="button" variant="outline" size="sm" onclick={() => reveal(entry)}>Reveal</Button>
 								{/if}
 							</div>
-							<dd class="min-w-0 break-all rounded bg-muted px-2 py-1 font-mono text-xs">{entry.value}</dd>
-							{#if !entry.masked && revealedValues[entry.id] !== undefined}
+							<dd class="min-w-0 break-all rounded bg-muted px-2 py-1 font-mono text-xs">{maskedSecretValue()}</dd>
+							{#if revealedValues[entry.id] !== undefined}
 								<dd class="min-w-0 whitespace-pre-wrap break-words rounded bg-muted px-2 py-1 font-mono text-xs">{revealedValues[entry.id]}</dd>
-							{:else if !entry.masked && entry.source === "data" && !("value" in decodeSecretDataValue(entry.value))}
-								<dd class="text-muted-foreground">{decodeSecretDataValue(entry.value).error === "invalid-base64" ? "Invalid base64 value" : "Binary value cannot be shown as UTF-8"}</dd>
+							{:else if revealErrors[entry.id]}
+								<dd class="text-muted-foreground">{revealErrors[entry.id]}</dd>
 							{/if}
 						</div>
 					{/each}

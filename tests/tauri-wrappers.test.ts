@@ -4,17 +4,21 @@ import { kubeconfigSourceKey } from "../src/lib/settings";
 import {
 	addKubeconfigPaths,
 	clearBackendDiagnostics,
+	connectArgoServer,
 	createMockChannel,
 	createMockTauriClient,
 	deleteResource,
+	disconnectArgoServer,
 	detectFlux,
 	getAppUsageMetrics,
+	getArgoConnectionStatus,
 	getBackendDiagnostics,
 	getFluxResourceDetails,
 	getHelmReleaseDetails,
 	getHelmReleaseReconciliation,
 	getKubeconfigSources,
 	getResourceYaml,
+	revealSecretDataValue,
 	isAppError,
 	isTauriRuntime,
 	listArgoApplicationSets,
@@ -522,6 +526,35 @@ describe("typed Tauri wrappers", () => {
 		expect(
 			await getResourceYaml(client, "minikube", "Pod", "test-pod", "default"),
 		).toBe(mockYaml);
+	});
+
+	test("keeps broad Secret YAML redacted and reveals only selected keys", async () => {
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				return (cmd === "reveal_secret_data_value" ? "c2VjcmV0" : "data:\n  token: <redacted>") as T;
+			},
+		};
+
+		await getResourceYaml(client, "minikube", "Secret", "api", "default");
+		expect(await revealSecretDataValue(client, "minikube", "api", "default", "token")).toBe("c2VjcmV0");
+		expect(calls).toEqual([
+			{ cmd: "get_resource_yaml", args: { clusterContext: "minikube", kind: "Secret", name: "api", namespace: "default", yamlViewMode: undefined, yamlEncoding: undefined } },
+			{ cmd: "reveal_secret_data_value", args: { clusterContext: "minikube", name: "api", namespace: "default", key: "token" } },
+		]);
+	});
+
+	test("browser mock retains Argo connection status through disconnect", async () => {
+		const client = createDevMockTauriClient();
+		await connectArgoServer(client, {
+			id: "argo:mock",
+			serverUrl: "https://argocd.mock",
+			rememberCredential: false,
+		});
+		expect((await getArgoConnectionStatus(client, "argo:mock")).connected).toBe(true);
+		await disconnectArgoServer(client, "argo:mock");
+		expect((await getArgoConnectionStatus(client, "argo:mock")).connected).toBe(false);
 	});
 
 	test("passes topology scope through the typed client", async () => {

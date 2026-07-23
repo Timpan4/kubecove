@@ -1,6 +1,6 @@
 use super::scope::scoped_connection;
-use super::transport::{canonical_url, http_client, response_json, safe_http_error, url};
 pub(crate) use super::transport::{api_delete, api_get, api_post, redact_secret_fields};
+use super::transport::{canonical_url, http_client, response_json, safe_http_error, url};
 use crate::commands::gitops_crd::{client_for_context, find_api_resource, get_crd_object};
 use crate::models::{
     AppError, ArgoApplicationHistory, ArgoApplicationInspector, ArgoApplicationRef,

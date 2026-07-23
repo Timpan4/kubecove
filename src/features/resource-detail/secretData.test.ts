@@ -1,6 +1,7 @@
 import {
 	decodeSecretDataValue,
 	isMaskedSecretValue,
+	maskedSecretValue,
 	parseSecretData,
 } from "./secretData";
 
@@ -26,6 +27,10 @@ describe("secretData", () => {
 		expect(isMaskedSecretValue("REDACTED")).toBe(true);
 		expect(isMaskedSecretValue("******")).toBe(true);
 		expect(isMaskedSecretValue("c2VjcmV0")).toBe(false);
+	});
+
+	test("never displays encoded Secret data before explicit reveal", () => {
+		expect(maskedSecretValue()).toBe("••••••");
 	});
 
 	test("rejects invalid base64 and decodes valid UTF-8", () => {

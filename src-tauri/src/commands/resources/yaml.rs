@@ -9,8 +9,34 @@ use crate::commands::{
     BackendCancellationRegistry,
 };
 use crate::models::{AppError, YamlEncoding, YamlViewMode};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use kube::Api;
 use std::time::Instant;
 use tauri::State;
+
+#[tauri::command]
+pub async fn reveal_secret_data_value(
+    cluster_context: String,
+    name: String,
+    namespace: String,
+    key: String,
+    kubeconfig_env_var: Option<String>,
+) -> Result<String, AppError> {
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let secret = Api::<k8s_openapi::api::core::v1::Secret>::namespaced(
+        source.client_for_context(&cluster_context).await?,
+        &namespace,
+    )
+    .get(&name)
+    .await
+    .map_err(|error| AppError::kube(error.to_string()))?;
+    let value = secret
+        .data
+        .as_ref()
+        .and_then(|data| data.get(&key))
+        .ok_or_else(|| AppError::new("selected Secret key was not found", "cluster"))?;
+    Ok(STANDARD.encode(&value.0))
+}
 
 pub async fn resource_yaml_from(
     cluster_context: String,
@@ -20,7 +46,6 @@ pub async fn resource_yaml_from(
     kubeconfig_env_var: Option<String>,
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
-    redact_secrets: Option<bool>,
 ) -> Result<String, AppError> {
     let source = KubeconfigSource::new(kubeconfig_env_var)?;
     let client = source.client_for_context(&cluster_context).await?;
@@ -89,9 +114,7 @@ pub async fn resource_yaml_from(
                 client, namespace.as_deref(), &name, mode, encoding
             )
             .await?;
-            if redact_secrets.unwrap_or(true) {
-                redact_secret(&mut sec);
-            }
+            redact_secret(&mut sec);
             let yaml = serialize_resource_document(&sec, mode, encoding)?;
             Ok(yaml)
         }
@@ -158,7 +181,6 @@ pub async fn get_resource_yaml(
     kubeconfig_env_var: Option<String>,
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
-    redact_secrets: Option<bool>,
     request_id: Option<String>,
     cancel_scope: Option<String>,
     cancellations: State<'_, BackendCancellationRegistry>,
@@ -180,7 +202,6 @@ pub async fn get_resource_yaml(
                 kubeconfig_env_var,
                 yaml_view_mode,
                 yaml_encoding,
-                redact_secrets,
             ),
         )
         .await;

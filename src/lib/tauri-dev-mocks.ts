@@ -55,6 +55,7 @@ import type {
 
 type MockArgs = Record<string, unknown> | undefined;
 type MockHandler = (args?: MockArgs, options?: InvokeOptions) => unknown | Promise<unknown>;
+const argoConnections = new Map<string, Record<string, unknown>>();
 
 export function createDevMockTauriClient(): TauriClient {
 	return {
@@ -113,9 +114,19 @@ const handlers: Record<string, MockHandler> = {
 	list_resource_metrics: () => metrics(),
 	detect_argocd: () => true,
 	discover_argo_servers: () => [{ id: "service:argocd:argocd-server", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", unavailableReason: "service tunnel is not available in this build; use manual URL" }],
-	connect_argo_server: (args) => ({ profile: { id: args?.id, url: args?.serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, transport: "connected", insecureTls: Boolean(args?.insecureTls), rememberCredential: Boolean(args?.rememberCredential) }, connected: true, username: args?.username ?? "mock-user", unavailableReason: null }),
-	get_argo_connection_status: () => ({ profile: null, connected: false, username: null, unavailableReason: null }),
-	disconnect_argo_server: () => undefined,
+	connect_argo_server: (args) => {
+		const profile = { id: args?.id, url: args?.serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, transport: "connected", insecureTls: Boolean(args?.insecureTls), rememberCredential: Boolean(args?.rememberCredential) };
+		if (typeof profile.id === "string") argoConnections.set(profile.id, profile);
+		return { profile, connected: true, username: args?.username ?? "mock-user", unavailableReason: null };
+	},
+	get_argo_connection_status: (args) => {
+		const profile = typeof args?.id === "string" ? argoConnections.get(args.id) ?? null : null;
+		return { profile, connected: profile !== null, username: profile ? "mock-user" : null, unavailableReason: profile ? null : "Profile is not connected" };
+	},
+	disconnect_argo_server: (args) => {
+		if (typeof args?.id === "string") argoConnections.delete(args.id);
+	},
+	reveal_secret_data_value: () => "c2VjcmV0",
 	forget_argo_credential: () => undefined,
 	get_argo_application_inspector: (args) => ({ application: args?.application, status: { sync: { status: "Synced" }, health: { status: "Healthy" } }, history: [], resources: [], conditions: [], operationState: null, connected: false }),
 	get_argo_application_resources: () => [],
