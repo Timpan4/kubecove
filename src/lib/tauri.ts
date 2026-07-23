@@ -391,7 +391,6 @@ export async function getDynamicResourceDetails(
 	yamlViewMode?: YamlViewMode,
 	yamlEncoding?: YamlEncoding,
 	cancellable?: CancellableRequest,
-	redactSecrets?: boolean,
 ): Promise<ResourceDetailsFull> {
 	return client.invoke<ResourceDetailsFull>("get_dynamic_resource_details", {
 		clusterContext,
@@ -401,7 +400,6 @@ export async function getDynamicResourceDetails(
 		...kubeconfigArg(kubeconfigEnvVar),
 		yamlViewMode,
 		yamlEncoding,
-		redactSecrets,
 		...cancellableArg(cancellable),
 	});
 }

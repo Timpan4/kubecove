@@ -13,6 +13,7 @@ import {
 	getAppUsageMetrics,
 	getArgoConnectionStatus,
 	getBackendDiagnostics,
+	getDynamicResourceDetails,
 	getFluxResourceDetails,
 	getHelmReleaseDetails,
 	getHelmReleaseReconciliation,
@@ -543,6 +544,26 @@ describe("typed Tauri wrappers", () => {
 			{ cmd: "get_resource_yaml", args: { clusterContext: "minikube", kind: "Secret", name: "api", namespace: "default", yamlViewMode: undefined, yamlEncoding: undefined } },
 			{ cmd: "reveal_secret_data_value", args: { clusterContext: "minikube", name: "api", namespace: "default", key: "token" } },
 		]);
+	});
+
+	test("does not send caller-controlled Secret redaction for dynamic details", async () => {
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+				calls.push({ cmd, args });
+				return {} as T;
+			},
+		};
+
+		await getDynamicResourceDetails(client, "minikube", {
+			group: "",
+			version: "v1",
+			apiVersion: "v1",
+			kind: "Secret",
+			plural: "secrets",
+			namespaced: true,
+		}, "api", "default");
+		expect(calls[0]?.args).not.toHaveProperty("redactSecrets");
 	});
 
 	test("browser mock retains Argo connection status through disconnect", async () => {
