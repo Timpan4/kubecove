@@ -1,0 +1,8 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ledger-default-deny, namespace: tenant-ledger}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: ledger}
+  policyTypes: [Ingress]
+

@@ -60,7 +60,11 @@ bun run e2e:real -- --keep
 bun run e2e:cleanup -- --run-id <id>
 ```
 
-The runner downloads checksum-verified pinned tools into its cache, creates a uniquely named Kind cluster through Docker or Podman, applies the deterministic lab, builds the E2E-only Tauri flavor, and runs native WDIO serially. It gathers redacted diagnostics before deleting its exact cluster on success, failure, SIGINT, or SIGTERM. Local `--keep` skips automatic cleanup so the exact run can be inspected; `--keep` is rejected in CI. Cleanup always needs an exact recorded run ID; it never deletes clusters by prefix.
+The runner downloads checksum-verified tools and platform assets, creates a uniquely named one-node Kind cluster through Docker or Podman, builds the E2E-only Tauri flavor, and runs native WDIO serially. Kind's default CNI is disabled; Cilium provides pod networking and policy while kube-proxy remains enabled.
+
+The runner bootstraps Cilium, a cluster-internal read-only Git source, and Argo CD. Argo then manages itself, adopts Cilium, installs metrics-server, dynamic local storage, and Traefik, and generates two healthy tenant applications. A separate Helm release provides direct Helm ownership and one declared CrashLoop incident. Fake GitOps CRDs and fabricated status are not fixtures.
+
+The runner gathers allowlisted redacted diagnostics before deleting its exact cluster on success, failure, SIGINT, or SIGTERM. Local `--keep` skips automatic cleanup so the exact run can be inspected; `--keep` is rejected in CI. Cleanup always needs an exact recorded run ID; it never deletes clusters by prefix or reads the user's kubeconfig.
 
 The generated real-suite kubeconfig contains only dedicated admin and restricted contexts. E2E startup rejects non-absolute paths, unexpected contexts, non-loopback API servers, cluster-name mismatches, persisted sources, and fallback to the user's default kubeconfig. Artifacts never include raw kubeconfig, tokens, keys, or certificate data.
 
@@ -71,7 +75,7 @@ bun run dev:kind
 bun run dev:kind:down
 ```
 
-`dev:kind` creates or reuses a cluster named from a hash of the workspace path, reapplies fixtures idempotently, and launches normal Tauri development with a temporary settings/WebView profile. The app profile disappears when the command exits; the cluster remains until `dev:kind:down`. An existing Podman machine may be started, but the command does not stop it.
+`dev:kind` creates or reuses a cluster named from a hash of the workspace path, reconciles the same full lab as `e2e:real`, and launches normal Tauri development with a temporary settings/WebView profile. The app profile disappears when the command exits; the cluster remains until `dev:kind:down`. An existing Podman machine may be started, but the command does not stop it.
 
 Native desktop launch/settings smoke without Kind is available through:
 
@@ -79,7 +83,7 @@ Native desktop launch/settings smoke without Kind is available through:
 bun run e2e:desktop-smoke
 ```
 
-Kubernetes 1.34–1.36 is the current rolling, tested three-minor window. Advancing it requires digest-pinned Kind images and a green full matrix as defined by [ADR 0011](decisions/0011-rolling-kubernetes-support.md). The E2E-only desktop permission boundary is defined by [ADR 0010](decisions/0010-e2e-only-wdio-security-boundary.md).
+Kubernetes 1.34–1.36 is the current rolling, tested three-minor window. Advancing it requires digest-pinned Kind images and a green full matrix as defined by [ADR 0011](decisions/0011-rolling-kubernetes-support.md). Cilium 1.19.6 officially tests through Kubernetes 1.34; KubeCove validates 1.35 and 1.36 without claiming upstream support. Lab ownership is defined by [ADR 0012](decisions/0012-production-shaped-e2e-lab.md), and the desktop permission boundary by [ADR 0010](decisions/0010-e2e-only-wdio-security-boundary.md).
 
 `bun run check` runs the current local verification bundle:
 

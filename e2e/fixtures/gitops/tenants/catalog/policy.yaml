@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: catalog-default-deny, namespace: tenant-catalog}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: catalog}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: catalog-declared-path, namespace: tenant-catalog}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: catalog}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {kubecove.io/network-role: declared-client}
+      ports: [{protocol: TCP, port: 8080}]
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports: [{protocol: TCP, port: 8080}]
+

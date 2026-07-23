@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: git-server
+  namespace: e2e-system
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/name: git-server}
+  ports: [{name: git, port: 9418, targetPort: git}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: git-server
+  namespace: e2e-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: git-server}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: git-server}
+      annotations: {kubecove.io/seed-commit: __KUBECOVE_SEED_COMMIT__}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      initContainers:
+        - name: seed
+          image: alpine/git:v2.47.2@sha256:062a01ad7a0eb17cff382bc5e26086b4d710e56dfdfdf001109a49b6d9bd378c
+          command: [sh, -ec]
+          args:
+            - git clone --bare /seed/repository.bundle /srv/git/fixtures.git && git --git-dir=/srv/git/fixtures.git symbolic-ref HEAD refs/heads/main && touch /srv/git/fixtures.git/git-daemon-export-ok
+          volumeMounts:
+            - {name: seed, mountPath: /seed, readOnly: true}
+            - {name: repository, mountPath: /srv/git}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+      containers:
+        - name: git
+          image: alpine/git:v2.47.2@sha256:062a01ad7a0eb17cff382bc5e26086b4d710e56dfdfdf001109a49b6d9bd378c
+          command: [sh, -ec]
+          args:
+            - mkdir /tmp/git-daemon && tar -xzf /package/git-daemon.apk -C /tmp/git-daemon && exec /tmp/git-daemon/usr/libexec/git-core/git-daemon --reuseaddr --base-path=/srv/git --export-all --verbose
+          ports: [{name: git, containerPort: 9418}]
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+          volumeMounts:
+            - {name: repository, mountPath: /srv/git, readOnly: true}
+            - {name: package, mountPath: /package, readOnly: true}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+        - name: editor
+          image: alpine/git:v2.47.2@sha256:062a01ad7a0eb17cff382bc5e26086b4d710e56dfdfdf001109a49b6d9bd378c
+          command: [sh, -c, 'trap : TERM INT; sleep infinity & wait']
+          resources:
+            requests: {cpu: 5m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 64Mi}
+          volumeMounts: [{name: repository, mountPath: /srv/git}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+      volumes:
+        - name: seed
+          configMap: {name: gitops-repository}
+        - name: repository
+          emptyDir: {}
+        - name: package
+          configMap: {name: git-daemon-package}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: git-server
+  namespace: e2e-system
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: git-server}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: argocd
+      ports: [{protocol: TCP, port: 9418}]
