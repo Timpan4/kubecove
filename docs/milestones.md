@@ -203,7 +203,7 @@ Goal: add opt-in Argo CD API precision without weakening Kubernetes-first browsi
 - [x] Add Argo server discovery, explicit connection profiles, memory-only credentials by default, optional native credential storage, custom CA support, and session-only insecure TLS.
 - [x] Add connected application inspection, managed resources, and target/live/normalized/predicted resource comparison.
 - [x] Add preflighted refresh, sync, recorded-sync retry, rollback, terminate, and server-reported resource actions.
-- [x] Keep Kubernetes fallback limited to refresh, sync, and recorded-sync retry patches.
+- [x] Keep Kubernetes transport limited to refresh, sync, and recorded-sync retry patches.
 - [x] Add ADR 0014 and transient per-key Secret reveal while redacting connected Argo Secret payloads in Rust.
 - [x] Add ADR 0015 to keep Flux Kubernetes-API-first and inspection-only.
 - [ ] Run manual connected-Argo smoke against a readable Argo CD 3.4 server before the next release.

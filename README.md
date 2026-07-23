@@ -104,7 +104,7 @@ KubeCove's tested Kubernetes support window is 1.34–1.36. See [ADR 0011](docs/
 
 ## Safety Model
 
-KubeCove keeps Kubernetes access behind Rust-side Tauri commands. Normal list, get, discovery, watch, logs, events, metrics, Argo CD, Helm, and RBAC flows use `kube-rs` and frontend-safe serde contracts.
+KubeCove keeps Kubernetes access behind Rust-side Tauri commands. Kubernetes transport, including Argo CD CRD inspection and guarded CRD operations, uses `kube-rs` and frontend-safe serde contracts; connected Argo CD transport uses its versioned HTTP API.
 
 Pod and selector-backed Service port-forwarding follows [ADR 0003](docs/decisions/0003-guarded-live-sessions.md): exact targets, local-only listeners, visible sessions, and Rust-side Kubernetes access.
 
