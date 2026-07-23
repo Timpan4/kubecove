@@ -20,6 +20,7 @@ pub async fn resource_yaml_from(
     kubeconfig_env_var: Option<String>,
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
+    redact_secrets: Option<bool>,
 ) -> Result<String, AppError> {
     let source = KubeconfigSource::new(kubeconfig_env_var)?;
     let client = source.client_for_context(&cluster_context).await?;
@@ -88,7 +89,9 @@ pub async fn resource_yaml_from(
                 client, namespace.as_deref(), &name, mode, encoding
             )
             .await?;
-            redact_secret(&mut sec);
+            if redact_secrets.unwrap_or(true) {
+                redact_secret(&mut sec);
+            }
             let yaml = serialize_resource_document(&sec, mode, encoding)?;
             Ok(yaml)
         }
@@ -155,6 +158,7 @@ pub async fn get_resource_yaml(
     kubeconfig_env_var: Option<String>,
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
+    redact_secrets: Option<bool>,
     request_id: Option<String>,
     cancel_scope: Option<String>,
     cancellations: State<'_, BackendCancellationRegistry>,
@@ -176,6 +180,7 @@ pub async fn get_resource_yaml(
                 kubeconfig_env_var,
                 yaml_view_mode,
                 yaml_encoding,
+                redact_secrets,
             ),
         )
         .await;

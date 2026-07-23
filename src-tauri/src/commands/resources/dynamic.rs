@@ -131,11 +131,12 @@ fn serialize_dynamic_resource_document(
     object: &DynamicObject,
     mode: YamlViewMode,
     encoding: YamlEncoding,
+    redact_secrets: bool,
 ) -> Result<String, AppError> {
     let mut value =
         serde_json::to_value(object).map_err(|e| AppError::new(e.to_string(), "serialization"))?;
     normalize_k8s_yaml_value(&mut value, mode);
-    if is_core_v1_secret(resource_kind) {
+    if redact_secrets && is_core_v1_secret(resource_kind) {
         redact_dynamic_secret_fields(&mut value);
     }
     serialize_json_value_document(&value, encoding)
@@ -255,6 +256,7 @@ pub async fn dynamic_resource_details_from(
     kubeconfig_env_var: Option<String>,
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
+    redact_secrets: Option<bool>,
 ) -> Result<ResourceDetailsFull, AppError> {
     if resource_kind.namespaced && namespace.is_none() {
         return Err(AppError::new(
@@ -283,6 +285,7 @@ pub async fn dynamic_resource_details_from(
         &object,
         yaml_view_mode.unwrap_or_default(),
         yaml_encoding.unwrap_or_default(),
+        redact_secrets.unwrap_or(true),
     )?;
     let metadata = serde_json::to_value(&object.metadata)
         .map_err(|e| AppError::new(e.to_string(), "serialization"))?;
@@ -306,6 +309,7 @@ pub async fn get_dynamic_resource_details(
     kubeconfig_env_var: Option<String>,
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
+    redact_secrets: Option<bool>,
     request_id: Option<String>,
     cancel_scope: Option<String>,
     cancellations: State<'_, BackendCancellationRegistry>,
@@ -328,6 +332,7 @@ pub async fn get_dynamic_resource_details(
                 kubeconfig_env_var,
                 yaml_view_mode,
                 yaml_encoding,
+                redact_secrets,
             ),
         )
         .await;
@@ -486,6 +491,7 @@ mod tests {
             &object,
             YamlViewMode::Kubectl,
             YamlEncoding::Yaml,
+            true,
         )
         .unwrap();
 

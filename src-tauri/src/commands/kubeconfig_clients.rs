@@ -118,6 +118,13 @@ impl KubeconfigSource {
 mod tests {
     use super::*;
 
+    #[test]
+    fn rustls_provider_is_unambiguous() {
+        let config = kube::Config::new("https://127.0.0.1".parse().expect("valid test URL"));
+
+        ClientBuilder::try_from(config).expect("Rustls should select exactly one crypto provider");
+    }
+
     #[tokio::test]
     async fn cancellation_interrupts_pending_config_resolution() {
         let cancellation = CancellationToken::new();

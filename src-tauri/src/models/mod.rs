@@ -18,9 +18,11 @@ mod streams;
 mod usage;
 
 pub use argo::{
-    ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails,
-    ArgoApplicationSetDetails, ArgoApplicationSetSummary, ArgoApplicationSourceSummary,
-    ArgoApplicationSummary,
+    ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails, ArgoApplicationHistory,
+    ArgoApplicationInspector, ArgoApplicationRef, ArgoApplicationSetDetails,
+    ArgoApplicationSetSummary, ArgoApplicationSourceSummary, ArgoApplicationSummary,
+    ArgoConnectionProfile, ArgoConnectionStatus, ArgoManagedResource, ArgoOperationPreflight,
+    ArgoOperationRequest, ArgoOperationResult, ArgoResourceComparison, ArgoServerCapability,
 };
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;

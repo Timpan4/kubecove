@@ -26,26 +26,29 @@ pub mod models;
 
 use commands::{
     add_kubeconfig_paths, apply_yaml, cancel_backend_requests, cancel_workspace_requests,
-    clear_backend_diagnostics, delete_resource, detect_argocd, detect_flux, get_app_usage_metrics,
-    get_argocd_application_details, get_argocd_appproject_details, get_argocd_appset_details,
-    get_backend_diagnostics, get_dynamic_resource_details, get_flux_resource_details,
-    get_helm_release_details, get_helm_release_reconciliation, get_kubeconfig_sources,
-    get_resource_details, get_resource_yaml, init_kubeconfig_settings_path, lint_kubernetes_yaml,
-    list_argocd_applications, list_argocd_appprojects, list_argocd_appsets,
+    clear_backend_diagnostics, connect_argo_server, delete_resource, detect_argocd, detect_flux,
+    disconnect_argo_server, discover_argo_servers, forget_argo_credential, get_app_usage_metrics,
+    get_argo_application_inspector, get_argo_application_resources, get_argo_connection_status,
+    get_argo_resource_comparison, get_argocd_application_details, get_argocd_appproject_details,
+    get_argocd_appset_details, get_backend_diagnostics, get_dynamic_resource_details,
+    get_flux_resource_details, get_helm_release_details, get_helm_release_reconciliation,
+    get_kubeconfig_sources, get_resource_details, get_resource_yaml, init_kubeconfig_settings_path,
+    lint_kubernetes_yaml, list_argocd_applications, list_argocd_appprojects, list_argocd_appsets,
     list_deployment_revisions, list_dynamic_resources, list_flux_resources, list_helm_releases,
     list_incident_cockpit, list_kube_contexts, list_namespaces, list_pod_exec_sessions,
     list_port_forwards, list_present_custom_resource_kinds, list_rbac_inspection,
     list_resource_events, list_resource_kinds, list_resource_metrics, list_resource_scope,
     list_resource_topology, list_resources, pick_kubeconfig_paths, pick_workspace_import_json,
-    prepare_yaml_apply, preview_delete_resource, preview_rollout_restart, preview_scale_workload,
-    remove_kubeconfig_path, reorder_kubeconfig_paths, resize_pod_exec_terminal, review_rbac_access,
-    rollout_restart, save_workspace_export_json, scale_workload, set_backend_diagnostics_enabled,
+    preflight_argo_operation, prepare_yaml_apply, preview_delete_resource, preview_rollout_restart,
+    preview_scale_workload, remove_kubeconfig_path, reorder_kubeconfig_paths,
+    resize_pod_exec_terminal, review_rbac_access, rollout_restart, run_argo_operation,
+    save_workspace_export_json, scale_workload, set_backend_diagnostics_enabled,
     set_kubeconfig_env_var, set_show_kubeconfig_source_labels, start_aggregated_log_stream,
     start_pod_exec_session, start_pod_log_stream, start_pod_port_forward,
     start_resource_event_watch, start_resource_watch, stop_live_sessions_outside_scope,
     stop_pod_exec_session, stop_port_forward, stop_stream, write_pod_exec_stdin, AppUsageMonitor,
-    BackendCancellationRegistry, ClusterLiveStore, PodExecRegistry, PortForwardRegistry,
-    StreamRegistry,
+    ArgoConnectionStore, BackendCancellationRegistry, ClusterLiveStore, PodExecRegistry,
+    PortForwardRegistry, StreamRegistry,
 };
 #[cfg(not(feature = "e2e"))]
 use tauri::Manager;
@@ -103,6 +106,7 @@ pub fn run() {
         .manage(PortForwardRegistry::default())
         .manage(PodExecRegistry::default())
         .manage(AppUsageMonitor::default())
+        .manage(ArgoConnectionStore::default())
         .invoke_handler(tauri::generate_handler![
             list_kube_contexts,
             list_namespaces,
@@ -134,6 +138,16 @@ pub fn run() {
             list_argocd_appprojects,
             get_argocd_appset_details,
             get_argocd_appproject_details,
+            discover_argo_servers,
+            connect_argo_server,
+            get_argo_connection_status,
+            disconnect_argo_server,
+            forget_argo_credential,
+            get_argo_application_inspector,
+            get_argo_application_resources,
+            get_argo_resource_comparison,
+            preflight_argo_operation,
+            run_argo_operation,
             detect_flux,
             list_flux_resources,
             get_flux_resource_details,
