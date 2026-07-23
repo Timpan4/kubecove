@@ -27,6 +27,7 @@
 	} from "@/lib/types";
 	import { formatYamlDocument } from "@/lib/yamlFormat";
 	import { getErrorMessage } from "./helpers";
+	import SecretDataViewer from "./SecretDataViewer.svelte";
 	import YamlTab from "./YamlTab.svelte";
 	import {
 		buildYamlDryRunDiff,
@@ -100,11 +101,15 @@
 			kubeconfigSourceKey,
 			yamlViewMode,
 			yamlEncoding,
+			$settingsStore.redactSecrets,
 		),
 		refreshVersion,
 	]);
 	const yamlCancelScope = $derived(createCancelScope("resource-yaml", yamlQueryKey));
 	const yamlEnabled = $derived(detailsEnabled && active);
+	const hasUnredactedSecret = $derived(
+		resource.kind === "Secret" && !$settingsStore.redactSecrets,
+	);
 	const yamlApplyDisabledReason = $derived(isYamlApplyDisabled(resource));
 	const yamlApplyTarget = $derived(yamlApplyTargetLabel(resource));
 	const canAllowYamlForceConflicts = $derived(
@@ -181,22 +186,21 @@
 			try {
 				return await runYamlFetch("resource-yaml", async () => {
 					if (dynamicKind) {
+						if (!hasUnredactedSecret && detailsYaml) return detailsYaml;
 						return (
-							detailsYaml ||
-							(
-								await getDynamicResourceDetails(
-									client,
-									resource.cluster,
-									dynamicKind,
-									resource.name,
-									resource.namespace ?? undefined,
-									kubeconfigSourceKey,
-									yamlViewMode,
-									yamlEncoding,
-									createCancellableRequest(yamlCancelScope, "yaml"),
-								)
-							).yaml
-						);
+							await getDynamicResourceDetails(
+								client,
+								resource.cluster,
+								dynamicKind,
+								resource.name,
+								resource.namespace ?? undefined,
+								kubeconfigSourceKey,
+								yamlViewMode,
+								yamlEncoding,
+								createCancellableRequest(yamlCancelScope, "yaml"),
+								$settingsStore.redactSecrets,
+							)
+						).yaml;
 					}
 					return await getResourceYaml(
 						client,
@@ -208,6 +212,7 @@
 						yamlViewMode,
 						yamlEncoding,
 						createCancellableRequest(yamlCancelScope, "yaml"),
+						$settingsStore.redactSecrets,
 					);
 				});
 			} catch (error) {
@@ -220,14 +225,20 @@
 		enabled: yamlEnabled,
 		retry: false,
 		staleTime: 30_000,
+		gcTime: hasUnredactedSecret ? 0 : undefined,
 	}));
-	const yamlText = $derived(yamlQuery.data ?? detailsYaml);
+	const yamlText = $derived(
+		yamlQuery.data ?? (hasUnredactedSecret ? "" : detailsYaml),
+	);
 
 	$effect(() => {
 		resource.cluster;
 		resource.kind;
 		resource.name;
 		resource.namespace;
+		kubeconfigSourceKey;
+		dynamicKindKey;
+		$settingsStore.redactSecrets;
 		resetYamlApply();
 	});
 
@@ -297,6 +308,8 @@
 				kubeconfigSourceKey,
 				"applyClean",
 				yamlEncoding,
+				undefined,
+				$settingsStore.redactSecrets,
 			);
 			yamlEditing = true;
 		} catch (error) {
@@ -413,6 +426,14 @@
 		}
 	}
 </script>
+
+{#if hasUnredactedSecret}
+	<SecretDataViewer
+		yamlText={yamlText}
+		contextKey={`${resourceKey()}:${kubeconfigSourceKey ?? ""}:${$settingsStore.redactSecrets}`}
+		{active}
+	/>
+{/if}
 
 <YamlTab
 	{yamlQuery}

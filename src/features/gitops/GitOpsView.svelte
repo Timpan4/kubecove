@@ -18,6 +18,7 @@
 	import { settingsStore } from "@/lib/settings-store";
 	import type { GitOpsViewMode } from "@/lib/settings";
 	import type { ResourceSummary } from "@/lib/types";
+	import type { PathStateDetailTab } from "@/lib/path-state";
 	import {
 		gitOpsDetailsActionKey,
 		buildGitOpsSummary,
@@ -107,7 +108,7 @@
 		selectedGitOpsItem?: GitOpsSelection | null;
 		selectedGitOpsItemKey: string;
 		openSelectedArgoApplicationResources: (selection?: GitOpsSelection) => void;
-		onResourceInspect: (resource: ResourceSummary) => void;
+		onResourceInspect: (resource: ResourceSummary, detailTab?: PathStateDetailTab) => void;
 		gitOpsStatusClass: (status: string | null | undefined) => string;
 	} = $props();
 
@@ -142,7 +143,10 @@
 
 	function openGitOpsDetails(event: MouseEvent, selection: GitOpsSelection) {
 		event.stopPropagation();
-		onResourceInspect(gitOpsSelectionResource(selection));
+		onResourceInspect(
+			gitOpsSelectionResource(selection),
+			selection.type === "argoApp" ? "argo" : undefined,
+		);
 	}
 
 	function openGitOpsResources(event: MouseEvent, selection: GitOpsSelection) {

@@ -92,6 +92,7 @@
 		type RbacVerifierHandoff,
 	} from "@/features/rbac";
 	import WorkspaceOverview from "@/features/workspaces/WorkspaceOverview.svelte";
+	import { gitOpsSelectionResource } from "@/features/gitops";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import AppSurfaces from "./AppSurfaces.svelte";
 	import ActiveLiveSessionsButton from "./ActiveLiveSessionsButton.svelte";
@@ -897,6 +898,8 @@
 							onResourcePinToggle={togglePinnedResource}
 							onResourceClose={() =>
 								applyWorkspaceNavigation({ type: "clearResource" })}
+							onArgoApplicationInspect={(app) =>
+								inspectResource(gitOpsSelectionResource({ type: "argoApp", item: app }), "argo")}
 						/>
 					</section>
 				{:else if viewMode === "argo" || viewMode === "helm" || viewMode === "rbac" || viewMode === "incidents" || viewMode === "portForwards" || viewMode === "settings"}

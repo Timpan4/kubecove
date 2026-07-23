@@ -53,7 +53,8 @@ export type PathStateDetailTab =
 	| "exec"
 	| "portForward"
 	| "revisions"
-	| "operations";
+	| "operations"
+	| "argo";
 export type PathStateIncidentFilter =
 	| "all"
 	| "unhealthy"
@@ -313,6 +314,8 @@ function sanitizeDetailState(value: unknown): PathStateResourceDetailState | nul
 				"exec",
 				"portForward",
 				"revisions",
+				"operations",
+				"argo",
 			] as const,
 			"details",
 		),

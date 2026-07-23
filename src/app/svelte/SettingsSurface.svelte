@@ -21,6 +21,7 @@
 	import KubeconfigSettings from "./KubeconfigSettings.svelte";
 	import SettingsRow from "./SettingsRow.svelte";
 	import UpdatesSettings from "./UpdatesSettings.svelte";
+	import ArgoConnectionSettings from "./ArgoConnectionSettings.svelte";
 	import { settingsStore } from "@/lib/settings-store";
 
 	type SettingsCategoryId =
@@ -29,7 +30,8 @@
 		| "yaml"
 		| "kubeconfig"
 		| "updates"
-		| "diagnostics";
+		| "diagnostics"
+		| "argo";
 	type SettingsRowMeta = { title: string; description: string };
 
 	const GENERAL_ROWS = {
@@ -63,6 +65,10 @@
 		title: "Show Custom Resources",
 		description:
 			"Loads Custom Resources after native Kubernetes resources are visible.",
+	},
+	redactSecrets: {
+		title: "Redact secrets",
+		description: "Keeps Secret values hidden by default. Connected Argo Secret values stay provider masked.",
 	},
 } satisfies Record<string, SettingsRowMeta>;
 
@@ -158,6 +164,7 @@
 		kubeconfig: Object.values(KUBECONFIG_ROWS),
 		updates: Object.values(UPDATES_ROWS),
 		diagnostics: Object.values(DIAGNOSTICS_ROWS),
+		argo: [{ title: "Argo CD connection", description: "Connect to Argo CD without storing credentials in settings." }],
 	};
 
 	const categories: Array<{ id: SettingsCategoryId; label: string }> = [
@@ -167,6 +174,7 @@
 		{ id: "kubeconfig", label: "Kubeconfig" },
 		{ id: "updates", label: "Updates" },
 		{ id: "diagnostics", label: "Diagnostics" },
+		{ id: "argo", label: "Argo CD" },
 	];
 
 	let activeCategory = $state<SettingsCategoryId>("general");
@@ -250,7 +258,7 @@
 					{:else if category.id === "yaml"}<FileCode2 data-icon="inline-start" />
 					{:else if category.id === "kubeconfig"}<FolderCog data-icon="inline-start" />
 					{:else if category.id === "updates"}<RefreshCw data-icon="inline-start" />
-					{:else}<Bug data-icon="inline-start" />{/if}
+					{:else if category.id === "diagnostics"}<Bug data-icon="inline-start" />{:else}<Cable data-icon="inline-start" />{/if}
 					<span>{category.label}</span>
 				</Button>
 			{/each}
@@ -301,6 +309,9 @@
 					aria-label={GENERAL_ROWS.ownershipMap.title}
 				/>
 			</SettingsRow>
+			<SettingsRow {...GENERAL_ROWS.redactSecrets}>
+				<Switch checked={settings.redactSecrets} onCheckedChange={settings.setRedactSecrets} aria-label={GENERAL_ROWS.redactSecrets.title} />
+			</SettingsRow>
 			<SettingsRow {...GENERAL_ROWS.fullTopologyOnSelection}>
 				<Switch
 					checked={settings.showFullTopologyOnSelection}
@@ -324,6 +335,7 @@
 			</SettingsRow>
 		</FieldGroup>
 		{/if}
+		{#if showCategory("argo")}<ArgoConnectionSettings />{/if}
 
 		{#if showCategory("sessions")}
 		<FieldGroup>

@@ -66,6 +66,7 @@
 		type ContainerStatusRow,
 	} from "./helpers";
 	import { buildResourceDetailReadSpec } from "./resourceDetailReadSpec";
+	import ArgoApplicationDetails from "@/features/gitops/ArgoApplicationDetails.svelte";
 	import { CHIP_BADGE_STYLES, type ChipVariant } from "./constants";
 	import DetailsTab from "./DetailsTab.svelte";
 	import DeploymentRevisionsTab from "./DeploymentRevisionsTab.svelte";
@@ -92,7 +93,8 @@
 		| "exec"
 		| "portForward"
 		| "revisions"
-		| "operations";
+		| "operations"
+		| "argo";
 	type DetailFetchKind = "details" | "events";
 
 	let {
@@ -160,6 +162,9 @@
 	const canShowRevisions = $derived(resource.kind === "Deployment" && Boolean(resource.namespace));
 	const canShowPortForward = $derived(
 		(resource.kind === "Pod" || resource.kind === "Service") && Boolean(resource.namespace),
+	);
+	const isArgoApplication = $derived(
+		resource.kind === "Application" && resource.group === "argoproj.io",
 	);
 
 	$effect(() => {
@@ -638,6 +643,7 @@
 		if (tab === "portForward") return canShowPortForward;
 		if (tab === "revisions") return canShowRevisions;
 		if (tab === "operations") return true;
+		if (tab === "argo") return isArgoApplication;
 		return true;
 	}
 </script>
@@ -650,6 +656,7 @@
 		{#if canShowExec}<TabsTrigger value="exec">Exec</TabsTrigger>{/if}
 		{#if canShowPortForward}<TabsTrigger value="portForward">Forward</TabsTrigger>{/if}
 		{#if canShowRevisions}<TabsTrigger value="revisions">Revisions</TabsTrigger>{/if}
+		{#if isArgoApplication}<TabsTrigger value="argo">Argo CD</TabsTrigger>{/if}
 		<TabsTrigger value="operations">Actions</TabsTrigger>
 		<TabsTrigger value="yaml">YAML</TabsTrigger>
 	</TabsList>
@@ -779,6 +786,11 @@
 			{kubeconfigSourceKey}
 			active={activeTab === "revisions"}
 		/>
+	{/if}
+	{#if isArgoApplication}
+		<TabsContent value="argo" class="min-h-0">
+			<ArgoApplicationDetails resourceSummary={resource} {workspaceReadContext} active={activeTab === "argo"} />
+		</TabsContent>
 	{/if}
 	<TabsContent value="operations">
 		<OperationsTab {client} resource={detailResource} {kubeconfigSourceKey} />
