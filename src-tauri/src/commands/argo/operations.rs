@@ -280,6 +280,9 @@ fn kubernetes_sync_payload(request: &ArgoOperationRequest) -> Value {
         .remove("syncOptions")
         .and_then(|value| value.get("items").and_then(Value::as_array).cloned())
         .unwrap_or_default();
+    if let Some(strategy) = value.remove("strategy") {
+        value.insert("syncStrategy".into(), strategy);
+    }
     value.insert("syncOptions".into(), Value::Array(options));
     Value::Object(value)
 }
@@ -704,6 +707,23 @@ mod tests {
         );
         assert!(recorded_sync_payload(json!({"source":{"repoURL":"secret"}})).is_err());
         assert!(recorded_sync_payload(json!({"autoHealAttemptsCount":1})).is_err());
+    }
+
+    #[test]
+    fn fallback_retry_keeps_recorded_crd_sync_strategy() {
+        let retry = recorded_retry(
+            &ArgoOperationRequest {
+                action: "retry".into(),
+                transport: "kubernetes".into(),
+                ..Default::default()
+            },
+            json!({"syncStrategy":{"apply":{"force":true}}}),
+        )
+        .unwrap();
+        assert_eq!(
+            kubernetes_sync_payload(&retry)["syncStrategy"],
+            json!({"apply":{"force":true}})
+        );
     }
 
     #[test]

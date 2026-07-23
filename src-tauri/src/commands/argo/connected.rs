@@ -252,8 +252,11 @@ fn http_client(insecure_tls: bool, custom_ca_pem: Option<Vec<u8>>) -> Result<Htt
 }
 
 pub(crate) fn url(base: &str, path: &str) -> Result<String, AppError> {
-    let base = canonical_url(base)?;
-    base.join(path)
+    let mut base = canonical_url(base)?;
+    if !base.path().ends_with('/') {
+        base.set_path(&format!("{}/", base.path()));
+    }
+    base.join(path.trim_start_matches('/'))
         .map(|value| value.to_string())
         .map_err(|_| AppError::new("invalid Argo CD API path", "argoConnection"))
 }
@@ -326,12 +329,16 @@ fn delete_credential(profile: &ArgoConnectionProfile) -> Result<(), AppError> {
                 "credentialUnavailable",
             )
         })?;
-    entry.delete_credential().map_err(|_| {
-        AppError::new(
+    credential_deleted(entry.delete_credential())
+}
+fn credential_deleted(result: Result<(), keyring::Error>) -> Result<(), AppError> {
+    match result {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(_) => Err(AppError::new(
             "native credential storage unavailable",
             "credentialUnavailable",
-        )
-    })
+        )),
+    }
 }
 
 #[tauri::command]
@@ -790,4 +797,22 @@ pub async fn get_argo_application_resources(
         .await?,
     )?
     .resources)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn url_preserves_configured_base_path() {
+        assert_eq!(
+            url("https://argo.example/argo-cd", "/api/v1/applications").unwrap(),
+            "https://argo.example/argo-cd/api/v1/applications"
+        );
+    }
+
+    #[test]
+    fn missing_credential_is_already_deleted() {
+        assert!(credential_deleted(Err(keyring::Error::NoEntry)).is_ok());
+    }
 }

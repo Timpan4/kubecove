@@ -21,7 +21,6 @@
 	import KubeconfigSettings from "./KubeconfigSettings.svelte";
 	import SettingsRow from "./SettingsRow.svelte";
 	import UpdatesSettings from "./UpdatesSettings.svelte";
-	import ArgoConnectionSettings from "./ArgoConnectionSettings.svelte";
 	import { settingsStore } from "@/lib/settings-store";
 
 	type SettingsCategoryId =
@@ -335,8 +334,6 @@
 			</SettingsRow>
 		</FieldGroup>
 		{/if}
-		{#if showCategory("argo")}<ArgoConnectionSettings />{/if}
-
 		{#if showCategory("sessions")}
 		<FieldGroup>
 			<SettingsRow {...SESSION_ROWS.autoStartPortForwards}>

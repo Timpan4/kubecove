@@ -306,6 +306,8 @@ fn test_argo_application_models_serde() {
         name: "payments".to_string(),
         age: "1h".to_string(),
         created_at: Some("2026-05-15T10:00:00Z".to_string()),
+        resource_version: None,
+        uid: None,
         namespace: Some("argocd".to_string()),
         project: Some("default".to_string()),
         sync_status: Some("Synced".to_string()),

@@ -48,7 +48,7 @@
 	}));
 
 	function profileId(serverUrl: string) {
-		return `argo:${clusterContext ?? "global"}:${serverUrl.trim().toLowerCase()}`;
+		return `argo:${workspaceId ?? "global"}:${clusterContext ?? "global"}:${serverUrl.trim().toLowerCase()}`;
 	}
 
 	async function connect(saved?: (typeof settings.argoProfiles)[number]) {
