@@ -24,6 +24,8 @@ The fast Chrome suite is different by design. It opens the normal Vite developme
 
 The lifecycle runner owns each real run. It records an exact generated cluster name before cleanup becomes eligible, gathers redacted diagnostics, then deletes only that cluster and its own temporary directory. Raw kubeconfig contents, tokens, keys, certificates, and environment dumps are never artifacts. `--keep` is local-only and rejected in CI.
 
+The lab topology, real-controller requirement, and bootstrap-to-GitOps ownership transfer are defined by [ADR 0012](0012-production-shaped-e2e-lab.md). Those cluster fixtures do not broaden the E2E-only desktop permission boundary.
+
 `dev:kind` does not enable the E2E feature. It uses normal application code with a generated kubeconfig and temporary application/WebView profile. Users may add another source manually during that disposable session. Its workspace-specific cluster persists until `dev:kind:down`, which deletes only the exact hashed cluster name.
 
 ## Consequences

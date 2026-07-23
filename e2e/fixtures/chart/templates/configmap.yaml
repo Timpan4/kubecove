@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: fixture-chart
-data:
-  source: repository-chart

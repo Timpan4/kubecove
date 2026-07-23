@@ -79,7 +79,7 @@ bun run e2e:real -- --kubernetes 1.35 --provider auto
 bun run dev:kind
 ```
 
-`e2e:fast` uses Chrome and typed browser mocks. `e2e:real` creates one isolated Kind cluster and runs the E2E-only native Tauri flavor. `dev:kind` creates or reuses this workspace's lab cluster and launches the normal development app; remove that exact cluster with `bun run dev:kind:down`.
+`e2e:fast` uses Chrome and typed browser mocks. `e2e:real` creates one isolated Kind cluster with real Cilium, Argo CD, metrics, storage, ingress, GitOps-managed tenants, and a direct Helm release, then runs the E2E-only native Tauri flavor. `dev:kind` creates or reuses the same full workspace lab and launches the normal development app; remove that exact cluster with `bun run dev:kind:down`.
 
 Build a desktop bundle:
 

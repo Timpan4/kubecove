@@ -231,6 +231,7 @@ Goal: make browser behavior, native Tauri boundaries, and the supported Kubernet
 - [x] Add ADR 0010 for the E2E-only WDIO security boundary.
 - [x] Add ADR 0011 for rolling latest-three-minor Kubernetes support, initially 1.34–1.36.
 - [x] Add fast PR coverage, probationary 1.35 coverage, nightly/manual matrices, native desktop smoke, and the release matrix.
+- [x] Replace static GitOps placeholders with the production-shaped Cilium, Argo CD, metrics, storage, ingress, tenant, Helm, and incident lab from ADR 0012.
 - [ ] Promote the Ubuntu 1.35 real suite into the required aggregate check after 10 consecutive green default-branch or nightly runs.
 
 ## Later Product Areas

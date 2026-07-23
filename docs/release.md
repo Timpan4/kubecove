@@ -72,7 +72,7 @@ bun run e2e:real -- --kubernetes 1.36 --provider docker
 
 The full Kubernetes matrix must pass before installer builds begin. The release workflow also verifies macOS, Windows, and Linux installer assets, updater signatures, `latest.json`, and final updater platform coverage before publishing.
 
-The official tested Kubernetes support window is 1.34–1.36. It advances only through a maintainer PR after matching digest-pinned Kind images exist and the replacement matrix passes, as defined by [ADR 0011](decisions/0011-rolling-kubernetes-support.md).
+The official tested Kubernetes support window is 1.34–1.36. It advances only through a maintainer PR after matching digest-pinned Kind images exist and the replacement matrix passes, as defined by [ADR 0011](decisions/0011-rolling-kubernetes-support.md). The release matrix uses the full production-shaped lab from [ADR 0012](decisions/0012-production-shaped-e2e-lab.md). Its stable Cilium pin has upstream-tested coverage through Kubernetes 1.34; the 1.35 and 1.36 jobs provide KubeCove's compatibility evidence without extending Cilium's upstream claim.
 
 ## Manual Smoke Test
 

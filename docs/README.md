@@ -38,6 +38,7 @@ Use this index as the map for product, engineering, release, and governance work
 - [ADR 0009: Workspace-Scoped Kubernetes Request Cancellation](decisions/0009-workspace-request-cancellation.md)
 - [ADR 0010: E2E-Only WDIO Security Boundary](decisions/0010-e2e-only-wdio-security-boundary.md)
 - [ADR 0011: Rolling Three-Minor Kubernetes Support](decisions/0011-rolling-kubernetes-support.md)
+- [ADR 0012: Production-Shaped E2E Lab](decisions/0012-production-shaped-e2e-lab.md)
 
 New work that changes the frontend/backend security boundary, Kubernetes access path, Tauri permissions, cluster-changing behavior, or GitOps provider API/CLI integration needs an ADR before implementation.
 

@@ -1,9 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { arch, platform } from "node:os";
-import { basename, delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
+import { sha256, verifyAsset } from "./harness/assets";
+import { kindConfig, kindDeleteArgs } from "./harness/cluster";
+import { safeDiagnosticCommands, safeDiagnosticText } from "./harness/diagnostics";
+import { gitSeedIdentity, prepareGitSeed } from "./harness/git-seed";
+import { gitRepositoryUrl, platformApplicationNames, tenantApplicationNames } from "./harness/lab";
+import { assertOwned, expectedCluster, ownershipFromDisk, type Ownership, type Provider } from "./harness/ownership";
+import { chartPins, fixturePaths, gitDaemonPins, validateImmutablePins } from "./harness/platform";
 
 const root = resolve(process.cwd());
 const stateDir = join(root, ".e2e");
@@ -26,6 +33,7 @@ const suffix = os === "windows" ? ".exe" : "";
 
 if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,47}$/.test(runId)) throw new Error("run ID must be 1-48 letters, digits, or hyphens");
 if (!(["1.34", "1.35", "1.36"] as const).includes(kubernetes as "1.34")) throw new Error("--kubernetes must be 1.34, 1.35, or 1.36");
+validateImmutablePins();
 
 const images: Record<string, string> = {
 	"1.34": "kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256",
@@ -38,14 +46,10 @@ const pins = {
 	helm: { "darwin-amd64": "1376ea697140e4db316736e760d5a47d12afc1524dce704476ef06fd7fdeddc6", "darwin-arm64": "f13f959015447b6bc309f9fd506509926543988a39035c088b52522ec95e2acb", "linux-amd64": "97dbeb971be4ac4b27e3839976d9564c0fb35c6f3b1da89dd1e292d236af4096", "linux-arm64": "1f8de130dfbd04de64978e7b852a7a547be1404956a366608276d2520b678670", "windows-amd64": "614f68ddc567ac9bfb0c205f869b1f83ba4e0a9aacd26cbae47743ae6082a579" },
 } as const;
 
-type Provider = "docker" | "podman";
-type Ownership = { kind: "run" | "dev"; runId: string; cluster: string; dir: string; raw: string; kubeconfig: string; dataDir: string; provider: Provider; kubernetes: string };
 const runDir = (id = runId) => join(stateDir, "runs", id);
 const devDir = join(stateDir, "dev", workspaceHash);
 const recordPath = (dir: string) => join(dir, "ownership.json");
 const key = () => `${os}-${cpu}` as keyof typeof pins.kind;
-const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
-const contained = (path: string, parent: string) => { const value = relative(parent, path); return value === "" || (!value.startsWith("..") && !isAbsolute(value)); };
 
 const children = new Set<ReturnType<typeof Bun.spawn>>();
 function cleanEnvironment(extra: Record<string, string | undefined> = {}) {
@@ -84,12 +88,12 @@ async function runWdio(config: string, extra: Record<string, string | undefined>
 async function verified(name: string, url: string, expected: string) {
 	const target = join(stateDir, "tools", name);
 	await mkdir(dirname(target), { recursive: true });
-	if (existsSync(target) && hash(new Uint8Array(await readFile(target))) === expected) return target;
+	if (existsSync(target) && sha256(new Uint8Array(await readFile(target))) === expected) return target;
 	await rm(target, { force: true });
 	const response = await fetch(url);
 	if (!response.ok) throw new Error(`download failed: ${name}`);
 	const bytes = new Uint8Array(await response.arrayBuffer());
-	if (hash(bytes) !== expected) throw new Error(`checksum mismatch: ${name}`);
+	verifyAsset(name, bytes, expected);
 	const temporary = `${target}.${process.pid}.part`;
 	await writeFile(temporary, bytes); await rename(temporary, target);
 	if (os !== "windows") await chmod(target, 0o755);
@@ -123,17 +127,21 @@ async function selectProvider() {
 	throw new Error("no usable Docker or Podman provider found");
 }
 
-function expectedCluster(kind: Ownership["kind"], id: string) { return kind === "run" ? `kubecove-e2e-${id}` : `kubecove-dev-${workspaceHash}`; }
-function assertOwned(record: Ownership, kind: Ownership["kind"], dir: string, id: string) {
-	if (record.kind !== kind || record.runId !== id || record.cluster !== expectedCluster(kind, id) || record.dir !== dir || ![record.raw, record.kubeconfig, record.dataDir].every((path) => contained(path, dir))) throw new Error("refuse operation outside exact ownership record");
-}
-async function readOwnership(file: string, kind: Ownership["kind"], dir: string, id: string) { const record = parse(await readFile(file, "utf8")) as Ownership; assertOwned(record, kind, dir, id); return record; }
+async function readOwnership(file: string, kind: Ownership["kind"], dir: string, id: string) { return ownershipFromDisk(parse(await readFile(file, "utf8")), kind, dir, id, workspaceHash); }
 async function clusterExists(kind: string, cluster: string, provider: Awaited<ReturnType<typeof ensureProvider>>) { const result = await attempt(kind, ["get", "clusters"], provider.env); return result?.stdout.split(/\r?\n/).includes(cluster) ?? false; }
-async function removeCluster(record: Ownership) {
-	const dir = record.kind === "run" ? runDir(record.runId) : devDir; assertOwned(record, record.kind, dir, record.runId);
+const removals = new Map<string, Promise<void>>();
+async function removeOwnedCluster(record: Ownership) {
+	const dir = record.kind === "run" ? runDir(record.runId) : devDir; assertOwned(record, record.kind, dir, record.runId, workspaceHash);
 	const { kind } = await tools(); const provider = await ensureProvider(record.provider);
-	if (await clusterExists(kind, record.cluster, provider)) await execute(kind, ["delete", "cluster", "--name", record.cluster], provider.env);
+	if (await clusterExists(kind, record.cluster, provider)) await execute(kind, kindDeleteArgs(record.cluster, record.raw), provider.env);
 	await rm(dir, { recursive: true, force: true });
+}
+async function removeCluster(record: Ownership) {
+	const pending = removals.get(record.dir);
+	if (pending) return pending;
+	const removal = removeOwnedCluster(record);
+	removals.set(record.dir, removal);
+	try { await removal; } finally { removals.delete(record.dir); }
 }
 
 function finalKubeconfig(raw: unknown, record: Ownership, token: string) {
@@ -150,18 +158,125 @@ function validateGeneratedConfig(value: unknown, record: Ownership) {
 }
 async function bootstrap(record: Ownership, kubectl: string) {
 	const rawEnv = { KUBECONFIG: record.raw };
-	await execute(kubectl, ["apply", "-f", "e2e/fixtures/rbac.yaml"], rawEnv);
-	const token = (await execute(kubectl, ["create", "token", "restricted", "-n", "e2e-system", "--duration=1h"], rawEnv, true)).stdout.trim();
+	await execute(kubectl, ["apply", "-f", fixturePaths.rbac], rawEnv);
+	const token = (await execute(kubectl, ["create", "token", "restricted", "-n", "e2e-system", "--duration=2h"], rawEnv, true)).stdout.trim();
 	const config = finalKubeconfig(parse(await readFile(record.raw, "utf8")), record, token); validateGeneratedConfig(config, record);
 	await writeFile(record.kubeconfig, stringify(config)); if (os !== "windows") await chmod(record.kubeconfig, 0o600);
 }
+
+async function applyFile(kubectl: string, file: string, env: Record<string, string | undefined>, serverSide = false) {
+	await execute(kubectl, ["apply", ...(serverSide ? ["--server-side", "--force-conflicts"] : []), "-f", file], env);
+}
+async function verifyPlatformSources() {
+	for (const [name, pin] of Object.entries(chartPins)) await verified(`platform-${name}-${pin.version}`, "repository" in pin ? pin.repository : pin.manifest, pin.sha256);
+}
+async function applyTemplate(record: Ownership, helm: string, kubectl: string, name: string, pin: typeof chartPins.cilium | typeof chartPins.argocd | typeof chartPins.traefik, namespace: string, values: string) {
+	const chart = await verified(`${name}-${pin.version}.tgz`, pin.repository, pin.sha256);
+	const rendered = await execute(helm, ["template", name, chart, "--namespace", namespace, "--values", values, "--include-crds"], { KUBECONFIG: record.kubeconfig }, true);
+	const output = join(record.dir, `${name}.yaml`); await writeFile(output, rendered.stdout);
+	await applyFile(kubectl, output, { KUBECONFIG: record.kubeconfig }, true);
+}
+async function materialize(record: Ownership, name: string, source: string, seedCommit = "") {
+	const target = join(record.dir, name); const text = await readFile(source, "utf8");
+	await writeFile(target, text.replaceAll("__KUBECOVE_GIT_REPO_URL__", gitRepositoryUrl).replaceAll("__KUBECOVE_SEED_COMMIT__", seedCommit));
+	return target;
+}
+async function namespaceFile(record: Ownership, name: string) {
+	const target = join(record.dir, `namespace-${name}.yaml`);
+	await writeFile(target, `apiVersion: v1\nkind: Namespace\nmetadata:\n  name: ${name}\n`);
+	return target;
+}
+async function seedRepository(record: Ownership, kubectl: string, env: Record<string, string | undefined>) {
+	const metrics = await verified(`platform-metricsServer-${chartPins.metricsServer.version}`, chartPins.metricsServer.manifest, chartPins.metricsServer.sha256);
+	const storage = await verified(`platform-localPath-${chartPins.localPath.version}`, chartPins.localPath.manifest, chartPins.localPath.sha256);
+	const gitDaemonPin = gitDaemonPins[cpu];
+	const gitDaemonPackage = await verified(`git-daemon-${gitDaemonPin.version}-${cpu}.apk`, gitDaemonPin.url, gitDaemonPin.sha256);
+	const worktree = join(record.dir, "git-seed");
+	await prepareGitSeed({ source: fixturePaths.gitops, destination: worktree, repositoryUrl: gitRepositoryUrl, metricsManifest: await readFile(metrics, "utf8"), storageManifest: await readFile(storage, "utf8") });
+	for (const [name, pin] of [["argocd", chartPins.argocd], ["cilium", chartPins.cilium], ["traefik", chartPins.traefik]] as const) {
+		const archive = await verified(`platform-${name}-${pin.version}`, pin.repository, pin.sha256);
+		const destination = join(worktree, "vendor", name);
+		await mkdir(destination, { recursive: true });
+		await execute("tar", ["-xzf", archive, "-C", destination, "--strip-components=1"]);
+	}
+	for (const path of ["bootstrap", "platform/metrics", "platform/storage", "tenants/catalog", "tenants/ledger"]) await execute(kubectl, ["kustomize", join(worktree, path)], env, true);
+	await execute("git", ["-C", worktree, "init", "--initial-branch=main"], {}, true);
+	await execute("git", ["-C", worktree, "config", "user.name", gitSeedIdentity.name]);
+	await execute("git", ["-C", worktree, "config", "user.email", gitSeedIdentity.email]);
+	await execute("git", ["-C", worktree, "add", "."]);
+	const gitDates = { GIT_AUTHOR_DATE: "2000-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2000-01-01T00:00:00Z" };
+	await execute("git", ["-C", worktree, "commit", "--no-gpg-sign", "-m", "Seed KubeCove production-shaped lab"], gitDates, true);
+	const commit = (await execute("git", ["-C", worktree, "rev-parse", "HEAD"], {}, true)).stdout.trim();
+	const bundle = join(record.dir, "repository.bundle");
+	await execute("git", ["-C", worktree, "bundle", "create", bundle, "main"], {}, true);
+	if ((await stat(bundle)).size > 1_000_000) throw new Error("verified Git seed exceeds the Kubernetes ConfigMap limit");
+	const configMap = await execute(kubectl, ["create", "configmap", "gitops-repository", "-n", "e2e-system", `--from-file=repository.bundle=${bundle}`, "--dry-run=client", "-o", "yaml"], env, true);
+	const configMapFile = join(record.dir, "gitops-repository.yaml");
+	await writeFile(configMapFile, configMap.stdout);
+	await writeFile(join(record.dir, "seed-commit.txt"), `${commit}\n`);
+	await applyFile(kubectl, configMapFile, env, true);
+	const packageConfigMap = await execute(kubectl, ["create", "configmap", "git-daemon-package", "-n", "e2e-system", `--from-file=git-daemon.apk=${gitDaemonPackage}`, "--dry-run=client", "-o", "yaml"], env, true);
+	const packageConfigMapFile = join(record.dir, "git-daemon-package.yaml");
+	await writeFile(packageConfigMapFile, packageConfigMap.stdout);
+	await applyFile(kubectl, packageConfigMapFile, env, true);
+	return commit;
+}
+async function waitApplication(kubectl: string, name: string, env: Record<string, string | undefined>) {
+	await execute(kubectl, ["wait", "--for=jsonpath={.status.sync.status}=Synced", `application/${name}`, "-n", "argocd", "--timeout=300s"], env);
+	await execute(kubectl, ["wait", "--for=jsonpath={.status.health.status}=Healthy", `application/${name}`, "-n", "argocd", "--timeout=300s"], env);
+}
+async function poll(description: string, timeoutMs: number, check: () => Promise<boolean>) {
+	const deadline = Date.now() + timeoutMs;
+	do {
+		if (await check()) return;
+		await Bun.sleep(1_000);
+	} while (Date.now() < deadline);
+	throw new Error(`timed out waiting for ${description}`);
+}
 async function applyLab(record: Ownership) {
 	const { kubectl, helm } = await tools(); const env = { KUBECONFIG: record.kubeconfig };
-	await execute(kubectl, ["apply", "-f", "e2e/fixtures/argocd-crd.yaml"], env);
-	for (const name of ["applications.argoproj.io", "applicationsets.argoproj.io", "appprojects.argoproj.io"]) await execute(kubectl, ["wait", "--for=condition=Established", `crd/${name}`, "--timeout=120s"], env);
-	await execute(kubectl, ["apply", "-f", "e2e/fixtures/all.yaml"], env);
-	await execute(kubectl, ["rollout", "status", "deployment/fixture-api", "-n", "e2e-sessions", "--timeout=120s"], env);
-	await execute(helm, ["upgrade", "--install", "fixture-chart", "e2e/fixtures/chart", "-n", "e2e-integrations", "--create-namespace", "--wait", "--timeout", "2m"], env);
+	await verifyPlatformSources();
+	await applyTemplate(record, helm, kubectl, "cilium", chartPins.cilium, "kube-system", fixturePaths.ciliumValues);
+	await execute(kubectl, ["rollout", "status", "daemonset/cilium", "-n", "kube-system", "--timeout=240s"], env);
+	await execute(kubectl, ["rollout", "status", "deployment/cilium-operator", "-n", "kube-system", "--timeout=240s"], env);
+	await execute(kubectl, ["wait", "--for=condition=Ready", "node", "--all", "--timeout=240s"], env);
+	await execute(kubectl, ["rollout", "status", "deployment/coredns", "-n", "kube-system", "--timeout=240s"], env);
+	await applyFile(kubectl, fixturePaths.all, env);
+	await applyFile(kubectl, await namespaceFile(record, "argocd"), env);
+	const seedCommit = await seedRepository(record, kubectl, env);
+	await applyFile(kubectl, await materialize(record, "git-server.yaml", fixturePaths.gitServer, seedCommit), env);
+	await execute(kubectl, ["rollout", "status", "deployment/git-server", "-n", "e2e-system", "--timeout=120s"], env);
+	await attempt(kubectl, ["delete", "pod", "git-probe", "-n", "argocd", "--ignore-not-found"], env);
+	await execute(kubectl, ["run", "git-probe", "-n", "argocd", "--image=alpine/git:v2.47.2@sha256:062a01ad7a0eb17cff382bc5e26086b4d710e56dfdfdf001109a49b6d9bd378c", "--restart=Never", "--command", "--", "git", "ls-remote", gitRepositoryUrl], env);
+	await execute(kubectl, ["wait", "--for=jsonpath={.status.phase}=Succeeded", "pod/git-probe", "-n", "argocd", "--timeout=120s"], env);
+	await execute(kubectl, ["delete", "pod", "git-probe", "-n", "argocd", "--wait=true"], env);
+	await applyTemplate(record, helm, kubectl, "argocd", chartPins.argocd, "argocd", fixturePaths.argoCdValues);
+	for (const deployment of ["argocd-server", "argocd-repo-server", "argocd-applicationset-controller"]) await execute(kubectl, ["rollout", "status", `deployment/${deployment}`, "-n", "argocd", "--timeout=240s"], env);
+	await execute(kubectl, ["rollout", "status", "statefulset/argocd-application-controller", "-n", "argocd", "--timeout=240s"], env);
+	await applyFile(kubectl, await materialize(record, "root-application.yaml", fixturePaths.rootApplication), env);
+	await waitApplication(kubectl, "root-application", env);
+	for (const name of platformApplicationNames) await waitApplication(kubectl, name, env);
+	for (const name of tenantApplicationNames) await waitApplication(kubectl, name, env);
+	await execute(kubectl, ["rollout", "status", "deployment/metrics-server", "-n", "kube-system", "--timeout=180s"], env);
+	await poll("metrics API", 180_000, async () => Boolean(await attempt(kubectl, ["get", "--raw", "/apis/metrics.k8s.io/v1beta1/nodes"], env)));
+	await poll("HPA metrics", 180_000, async () => (await attempt(kubectl, ["get", "hpa", "catalog", "-n", "tenant-catalog", "-o", "jsonpath={.status.conditions[?(@.type=='ScalingActive')].status}"], env))?.stdout === "True");
+	await execute(kubectl, ["wait", "--for=jsonpath={.status.phase}=Bound", "pvc/data-ledger-0", "-n", "tenant-ledger", "--timeout=180s"], env);
+	await execute(kubectl, ["rollout", "status", "statefulset/ledger", "-n", "tenant-ledger", "--timeout=180s"], env);
+	await execute(kubectl, ["wait", "--for=condition=Ready", "pod/declared-client", "pod/isolated-client", "-n", "tenant-catalog", "--timeout=120s"], env);
+	await execute(kubectl, ["exec", "-n", "tenant-catalog", "declared-client", "--", "wget", "-qO-", "--timeout=3", "http://catalog"], env, true);
+	if (await attempt(kubectl, ["exec", "-n", "tenant-catalog", "isolated-client", "--", "wget", "-qO-", "--timeout=3", "http://catalog"], env)) throw new Error("Cilium failed to deny the isolated client");
+	await attempt(kubectl, ["delete", "pod", "ingress-probe", "-n", "tenant-catalog", "--ignore-not-found"], env);
+	await execute(kubectl, ["run", "ingress-probe", "-n", "tenant-catalog", "--image=busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662", "--restart=Never", "--command", "--", "sh", "-ec", "wget -qO- --header='Host: catalog.e2e.local' http://traefik.traefik.svc.cluster.local | grep catalog-ingress-marker"], env);
+	await execute(kubectl, ["wait", "--for=jsonpath={.status.phase}=Succeeded", "pod/ingress-probe", "-n", "tenant-catalog", "--timeout=120s"], env);
+	await execute(kubectl, ["delete", "pod", "ingress-probe", "-n", "tenant-catalog", "--wait=true"], env);
+	await execute(helm, ["upgrade", "--install", "operations", fixturePaths.chart, "-n", "operations", "--create-namespace"], env);
+	await execute(kubectl, ["rollout", "status", "deployment/operations", "-n", "operations", "--timeout=120s"], env);
+	await poll("expected CrashLoop incident", 120_000, async () => {
+		const restarts = await attempt(kubectl, ["get", "pods", "-n", "operations", "-l", "app.kubernetes.io/name=operations-crashloop", "-o", "jsonpath={.items[0].status.containerStatuses[0].restartCount}"], env);
+		const backoff = await attempt(kubectl, ["get", "events", "-n", "operations", "--field-selector=reason=BackOff", "-o", "name"], env);
+		const logs = await attempt(kubectl, ["logs", "-n", "operations", "-l", "app.kubernetes.io/name=operations-crashloop", "--tail=5"], env);
+		return Number(restarts?.stdout ?? "0") >= 2 && Boolean(backoff?.stdout.trim()) && logs?.stdout.includes("kubecove-crashloop-marker") === true;
+	});
 }
 
 let current: Ownership | undefined;
@@ -169,23 +284,28 @@ async function create(kindName: Ownership["kind"]) {
 	const dir = kindName === "run" ? runDir() : devDir; const id = kindName === "run" ? runId : workspaceHash; const file = recordPath(dir);
 	if (kindName === "dev" && existsSync(file)) { const owned = await readOwnership(file, "dev", dir, id); const selected = await ensureProvider(owned.provider); const { kind, kubectl } = await tools(); if (await clusterExists(kind, owned.cluster, selected)) { current = owned; await bootstrap(owned, kubectl); await applyLab(owned); return owned; } await rm(dir, { recursive: true, force: true }); }
 	if (existsSync(file)) throw new Error(`run ${runId} already exists`);
-	const selected = await selectProvider(); const { kind, kubectl } = await tools(); const record: Ownership = { kind: kindName, runId: id, cluster: expectedCluster(kindName, id), dir, raw: join(dir, "kind.raw.kubeconfig"), kubeconfig: join(dir, "kubeconfig"), dataDir: join(dir, "data"), provider: basename(selected.binary).startsWith("podman") ? "podman" : "docker", kubernetes };
-	await mkdir(record.dataDir, { recursive: true }); await execute(kind, ["create", "cluster", "--name", record.cluster, "--image", images[kubernetes], "--kubeconfig", record.raw], selected.env);
-	await writeFile(file, stringify(record)); current = record;
-	try { await bootstrap(record, kubectl); await applyLab(record); return record; } catch (error) { if (kindName === "run") await diagnostics(record).catch((failure) => console.error("diagnostics failed", failure)); await removeCluster(record); current = undefined; throw error; }
+	const selected = await selectProvider(); const { kind, kubectl } = await tools(); const record: Ownership = { kind: kindName, runId: id, cluster: expectedCluster(kindName, id, workspaceHash), dir, raw: join(dir, "kind.raw.kubeconfig"), kubeconfig: join(dir, "kubeconfig"), dataDir: join(dir, "data"), kindConfig: join(dir, "kind.yaml"), provider: basename(selected.binary).startsWith("podman") ? "podman" : "docker", kubernetes };
+	assertOwned(record, kindName, dir, id, workspaceHash); await mkdir(record.dataDir, { recursive: true }); await writeFile(record.kindConfig, kindConfig()); await writeFile(file, stringify(record)); current = record;
+	try { await execute(kind, ["create", "cluster", "--name", record.cluster, "--image", images[kubernetes], "--config", record.kindConfig, "--kubeconfig", record.raw], selected.env); await bootstrap(record, kubectl); await applyLab(record); return record; } catch (error) { if (kindName === "run") await diagnostics(record).catch((failure) => console.error("diagnostics failed", failure)); await removeCluster(record); current = undefined; throw error; }
 }
 
 async function safeArtifact(path: string, work: () => Promise<{ stdout: string; stderr: string } | undefined>) { try { const result = await work(); await writeFile(path, `${result?.stdout ?? ""}${result?.stderr ?? ""}`); } catch (error) { await writeFile(path, `diagnostic unavailable: ${String(error)}\n`); } }
 async function diagnostics(record: Ownership) {
 	if (!existsSync(record.kubeconfig)) return;
 	const artifacts = join(root, "e2e", "artifacts", record.runId); await mkdir(artifacts, { recursive: true }); const { kind, kubectl, helm } = await tools(); const env = { KUBECONFIG: record.kubeconfig };
-	await safeArtifact(join(artifacts, "inventory.txt"), () => attempt(kubectl, ["get", "all,configmaps,namespaces,applications.argoproj.io,applicationsets.argoproj.io,appprojects.argoproj.io", "-A", "-o", "wide"], env));
-	await safeArtifact(join(artifacts, "events.txt"), () => attempt(kubectl, ["get", "events", "-A"], env));
-	await safeArtifact(join(artifacts, "fixture-pod.log"), () => attempt(kubectl, ["logs", "-n", "e2e-sessions", "deployment/fixture-api"], env));
-	const provider = await ensureProvider(record.provider); await attempt(kind, ["export", "logs", join(artifacts, "kind"), "--name", record.cluster], provider.env);
+	for (const [index, command] of safeDiagnosticCommands.entries()) await safeArtifact(join(artifacts, `status-${index}.txt`), async () => {
+		const result = await attempt(kubectl, [...command], env);
+		return result && { ...result, stdout: safeDiagnosticText(result.stdout), stderr: safeDiagnosticText(result.stderr) };
+	});
+	await safeArtifact(join(artifacts, "helm-releases.json"), async () => {
+		const result = await attempt(helm, ["list", "--all-namespaces", "--output", "json"], env);
+		return result && { ...result, stdout: safeDiagnosticText(result.stdout), stderr: safeDiagnosticText(result.stderr) };
+	});
 	const bytes = new Uint8Array(await readFile(record.kubeconfig)); const config = parse(new TextDecoder().decode(bytes)) as { contexts: Array<{ name: string }>; clusters: Array<{ cluster: { server: string } }> };
-	await writeFile(join(artifacts, "kubeconfig-summary.json"), JSON.stringify({ contexts: config.contexts.map(({ name }) => name), endpoint: new URL(config.clusters[0].cluster.server).host, loopback: true, sha256: hash(bytes) }, null, 2));
+	await writeFile(join(artifacts, "kubeconfig-summary.json"), JSON.stringify({ contexts: config.contexts.map(({ name }) => name), endpoint: new URL(config.clusters[0].cluster.server).host, loopback: true, sha256: sha256(bytes) }, null, 2));
+	if (existsSync(join(record.dir, "seed-commit.txt"))) await writeFile(join(artifacts, "seed-commit.txt"), await readFile(join(record.dir, "seed-commit.txt")));
 	const versions = await Promise.all([attempt(kind, ["version"]), attempt(kubectl, ["version", "--client", "-o", "yaml"]), attempt(helm, ["version", "--short"])]); await writeFile(join(artifacts, "versions.txt"), `${versions.map((value) => value?.stdout ?? "unavailable").join("\n")}\nimage ${images[record.kubernetes]}\n`);
+	await writeFile(join(artifacts, "verified-assets.json"), JSON.stringify({ ...Object.fromEntries(Object.entries(chartPins).map(([name, pin]) => [name, { version: pin.version, appVersion: "appVersion" in pin ? pin.appVersion : undefined, sha256: pin.sha256 }])), gitDaemon: { version: gitDaemonPins[cpu].version, architecture: cpu, sha256: gitDaemonPins[cpu].sha256 } }, null, 2));
 }
 
 let shuttingDown = false;
