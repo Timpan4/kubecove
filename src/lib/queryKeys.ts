@@ -131,6 +131,7 @@ export const queryKeys = {
 		kubeconfigEnvVar?: string,
 		yamlViewMode: YamlViewMode = "kubectl",
 		yamlEncoding: YamlEncoding = "yaml",
+		redactSecrets = true,
 	) =>
 		[
 			"resource-details",
@@ -143,6 +144,7 @@ export const queryKeys = {
 			resource.name,
 			yamlViewMode,
 			yamlEncoding,
+			redactSecrets,
 		] as const,
 	resourceYaml: (
 		resource: ResourceSummary,
@@ -150,6 +152,7 @@ export const queryKeys = {
 		kubeconfigEnvVar?: string,
 		yamlViewMode: YamlViewMode = "kubectl",
 		yamlEncoding: YamlEncoding = "yaml",
+		redactSecrets = true,
 	) =>
 		[
 			"resource-yaml",
@@ -162,6 +165,7 @@ export const queryKeys = {
 			resource.name,
 			yamlViewMode,
 			yamlEncoding,
+			redactSecrets,
 		] as const,
 	resourceEvents: (
 		resource: ResourceSummary,

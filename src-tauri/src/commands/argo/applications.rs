@@ -11,7 +11,7 @@ use chrono::{TimeZone, Utc};
 use kube::core::DynamicObject;
 use std::collections::BTreeSet;
 
-fn application_summary_from_object(
+pub(super) fn application_summary_from_object(
     cluster_context: &str,
     obj: &DynamicObject,
 ) -> Option<ArgoApplicationSummary> {
@@ -61,6 +61,8 @@ fn application_summary_from_object(
         source_revision: primary_source_revision(&sources),
         source_mode: application_source_mode(&sources),
         source_count: application_source_count(&sources),
+        resource_version: obj.metadata.resource_version.clone(),
+        uid: obj.metadata.uid.clone(),
         resource_namespaces: application_resource_namespaces(
             data,
             destination_namespace.as_deref(),

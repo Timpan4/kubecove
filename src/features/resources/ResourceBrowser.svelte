@@ -142,6 +142,7 @@
 		onResourceSelect = () => {},
 		onResourcePinToggle = () => {},
 		onResourceClose = () => {},
+		onArgoApplicationInspect = () => {},
 		onPathStateChange = () => {},
 	}: {
 		workspaceReadContext: WorkspaceReadContext;
@@ -162,6 +163,7 @@
 		onResourceSelect?: (resource: ResourceSummary, source?: "explicit" | "restore") => void;
 		onResourcePinToggle?: (resource: ResourceSummary) => void;
 		onResourceClose?: () => void;
+		onArgoApplicationInspect?: (app: ArgoApplicationSummary) => void;
 		onPathStateChange?: (state: PathStateResourceBrowserState) => void;
 	} = $props();
 
@@ -911,6 +913,11 @@
 					app.resourceNamespaces.length > 0 ? app.resourceNamespaces.join(", ") : undefined,
 				)}
 				{@render SummaryField("Created", app.age, app.createdAt)}
+			</div>
+			<div class="mt-2 flex justify-end">
+				<Button type="button" size="sm" variant="outline" onclick={() => onArgoApplicationInspect(app)}>
+					Details
+				</Button>
 			</div>
 		</section>
 	{/if}

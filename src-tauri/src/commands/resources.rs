@@ -28,4 +28,4 @@ pub use revisions::list_deployment_revisions;
 pub use scope::{list_resource_scope, resource_scope_from};
 pub use summary::{list_resources, resources_summary_from};
 pub use topology::{list_resource_topology, resource_topology_from};
-pub use yaml::{get_resource_yaml, resource_yaml_from};
+pub use yaml::{get_resource_yaml, resource_yaml_from, reveal_secret_data_value};

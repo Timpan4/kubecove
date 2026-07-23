@@ -55,6 +55,7 @@ import type {
 
 type MockArgs = Record<string, unknown> | undefined;
 type MockHandler = (args?: MockArgs, options?: InvokeOptions) => unknown | Promise<unknown>;
+const argoConnections = new Map<string, Record<string, unknown>>();
 
 export function createDevMockTauriClient(): TauriClient {
 	return {
@@ -112,6 +113,29 @@ const handlers: Record<string, MockHandler> = {
 	get_app_usage_metrics: () => usage(),
 	list_resource_metrics: () => metrics(),
 	detect_argocd: () => true,
+	discover_argo_servers: () => [{ id: "service:argocd:argocd-server", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", unavailableReason: "service tunnel is not available in this build; use manual URL" }],
+	connect_argo_server: (args) => {
+		const profile = { id: args?.id, url: args?.serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, transport: "connected", insecureTls: Boolean(args?.insecureTls), rememberCredential: Boolean(args?.rememberCredential) };
+		if (typeof profile.id === "string") argoConnections.set(profile.id, profile);
+		return { profile, connected: true, username: args?.username ?? "mock-user", unavailableReason: null };
+	},
+	get_argo_connection_status: (args) => {
+		const profile = typeof args?.id === "string" ? argoConnections.get(args.id) ?? null : null;
+		return { profile, connected: profile !== null, username: profile ? "mock-user" : null, unavailableReason: profile ? null : "Profile is not connected" };
+	},
+	disconnect_argo_server: (args) => {
+		if (typeof args?.id === "string") argoConnections.delete(args.id);
+	},
+	reveal_secret_data_value: () => "c2VjcmV0",
+	forget_argo_credential: () => undefined,
+	get_argo_application_inspector: (args) => ({ application: args?.application, status: { sync: { status: "Synced" }, health: { status: "Healthy" } }, history: [], resources: [], conditions: [], operationState: null, connected: false }),
+	get_argo_application_resources: () => [],
+	get_argo_resource_comparison: (args) => ({ resource: args?.resource, targetState: null, liveState: null, normalizedLiveState: null, predictedLiveState: null, modified: false, exact: false, provenance: "application-crd", availableActions: [] }),
+	preflight_argo_operation: (args) => {
+		const request = args?.request as Record<string, unknown> | undefined;
+		return { allowed: request?.action === "refresh", transport: request?.transport, action: request?.action, reason: request?.action === "refresh" ? null : "operation unavailable in browser mock", preflightToken: request?.action === "refresh" ? "mock-preflight" : null, resolvedRequest: request?.action === "refresh" ? request : null };
+	},
+	run_argo_operation: () => ({ accepted: true, transport: "kubernetes", message: "Mock operation accepted", operation: null }),
 	list_argocd_applications: () => argoApps,
 	get_argocd_application_details: (args) => argoDetails(args),
 	list_argocd_appsets: () => appSets(),

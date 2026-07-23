@@ -10,6 +10,13 @@ export type TimestampTimezone = "local" | "utc";
 export type YamlDiffStyle = "clean" | "git";
 export type GitOpsViewMode = "cards" | "list";
 export type HelmViewMode = "cards" | "list";
+export interface SavedArgoProfile {
+	id: string;
+	url: string;
+	clusterContext?: string;
+	workspaceId?: string;
+	rememberCredential: boolean;
+}
 export const DEFAULT_KUBECONFIG_ENV_VAR = "KUBECONFIG";
 const DEFAULT_KUBECONFIG_SOURCE_KEY = "kubeconfigSource=default";
 
@@ -19,6 +26,8 @@ export interface SettingsState {
 	showOwnershipMapByDefault: boolean;
 	showFullTopologyOnSelection: boolean;
 	showUnavailableGitOpsProviders: boolean;
+	redactSecrets: boolean;
+	argoProfiles: SavedArgoProfile[];
 	gitOpsViewMode: GitOpsViewMode;
 	helmViewMode: HelmViewMode;
 	showCustomResources: boolean;
@@ -40,6 +49,8 @@ export interface SettingsState {
 	setShowOwnershipMapByDefault: (show: boolean) => void;
 	setShowFullTopologyOnSelection: (show: boolean) => void;
 	setShowUnavailableGitOpsProviders: (show: boolean) => void;
+	setRedactSecrets: (redact: boolean) => void;
+	setArgoProfiles: (profiles: SavedArgoProfile[]) => void;
 	setGitOpsViewMode: (mode: GitOpsViewMode) => void;
 	setHelmViewMode: (mode: HelmViewMode) => void;
 	setShowCustomResources: (show: boolean) => void;
@@ -94,6 +105,13 @@ export function mergePersistedSettings(persisted: unknown, current: SettingsStat
 			saved.showFullTopologyOnSelection ?? current.showFullTopologyOnSelection,
 		showUnavailableGitOpsProviders:
 			saved.showUnavailableGitOpsProviders ?? current.showUnavailableGitOpsProviders,
+		redactSecrets: saved.redactSecrets ?? current.redactSecrets,
+		argoProfiles: Array.isArray(saved.argoProfiles)
+			? saved.argoProfiles.flatMap((profile) => {
+					if (!isSavedArgoProfile(profile)) return [];
+					return [{ ...profile, rememberCredential: Boolean(profile.rememberCredential) }];
+				})
+			: current.argoProfiles,
 		gitOpsViewMode: normalizeGitOpsViewMode(saved.gitOpsViewMode),
 		helmViewMode: normalizeHelmViewMode(saved.helmViewMode),
 		showCustomResources: saved.showCustomResources ?? current.showCustomResources,
@@ -113,6 +131,18 @@ export function mergePersistedSettings(persisted: unknown, current: SettingsStat
 	};
 }
 
+function isSavedArgoProfile(value: unknown): value is SavedArgoProfile {
+	if (typeof value !== "object" || value === null) return false;
+	const profile = value as Partial<SavedArgoProfile>;
+	if (typeof profile.id !== "string" || !profile.id.trim()) return false;
+	if (typeof profile.url !== "string") return false;
+	try {
+		return new URL(profile.url).protocol === "https:";
+	} catch {
+		return false;
+	}
+}
+
 export function partializeSettings(state: SettingsState): Partial<SettingsState> {
 	return {
 		showExactTimestamps: state.showExactTimestamps,
@@ -120,6 +150,8 @@ export function partializeSettings(state: SettingsState): Partial<SettingsState>
 		showOwnershipMapByDefault: state.showOwnershipMapByDefault,
 		showFullTopologyOnSelection: state.showFullTopologyOnSelection,
 		showUnavailableGitOpsProviders: state.showUnavailableGitOpsProviders,
+		redactSecrets: state.redactSecrets,
+		argoProfiles: state.argoProfiles,
 		gitOpsViewMode: state.gitOpsViewMode,
 		helmViewMode: state.helmViewMode,
 		showCustomResources: state.showCustomResources,
@@ -143,6 +175,8 @@ export const useSettingsState = create<SettingsState>()(
 			showOwnershipMapByDefault: true,
 			showFullTopologyOnSelection: false,
 			showUnavailableGitOpsProviders: false,
+			redactSecrets: true,
+			argoProfiles: [],
 			gitOpsViewMode: "cards",
 			helmViewMode: "cards",
 			showCustomResources: true,
@@ -168,6 +202,8 @@ export const useSettingsState = create<SettingsState>()(
 				set({ showFullTopologyOnSelection: show }),
 			setShowUnavailableGitOpsProviders: (show: boolean) =>
 				set({ showUnavailableGitOpsProviders: show }),
+			setRedactSecrets: (redactSecrets: boolean) => set({ redactSecrets }),
+			setArgoProfiles: (argoProfiles: SavedArgoProfile[]) => set({ argoProfiles }),
 			setGitOpsViewMode: (gitOpsViewMode: GitOpsViewMode) => set({ gitOpsViewMode }),
 			setHelmViewMode: (helmViewMode: HelmViewMode) => set({ helmViewMode }),
 			setShowCustomResources: (show: boolean) => set({ showCustomResources: show }),

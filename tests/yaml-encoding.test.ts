@@ -134,6 +134,7 @@ describe("YAML encoding", () => {
 			"argocd-server-abc",
 			"kubectl",
 			"yaml",
+			true,
 		]);
 		expect(yamlKey).toContain("applyClean");
 		expect(yamlKey).toContain("kyaml");

@@ -9,8 +9,34 @@ use crate::commands::{
     BackendCancellationRegistry,
 };
 use crate::models::{AppError, YamlEncoding, YamlViewMode};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use kube::Api;
 use std::time::Instant;
 use tauri::State;
+
+#[tauri::command]
+pub async fn reveal_secret_data_value(
+    cluster_context: String,
+    name: String,
+    namespace: String,
+    key: String,
+    kubeconfig_env_var: Option<String>,
+) -> Result<String, AppError> {
+    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let secret = Api::<k8s_openapi::api::core::v1::Secret>::namespaced(
+        source.client_for_context(&cluster_context).await?,
+        &namespace,
+    )
+    .get(&name)
+    .await
+    .map_err(|error| AppError::kube(error.to_string()))?;
+    let value = secret
+        .data
+        .as_ref()
+        .and_then(|data| data.get(&key))
+        .ok_or_else(|| AppError::new("selected Secret key was not found", "cluster"))?;
+    Ok(STANDARD.encode(&value.0))
+}
 
 pub async fn resource_yaml_from(
     cluster_context: String,

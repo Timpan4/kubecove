@@ -29,9 +29,12 @@ mod usage_webview;
 mod workspace_files;
 
 pub use argo::{
-    detect_argocd, get_argocd_application_details, get_argocd_appproject_details,
-    get_argocd_appset_details, list_argocd_applications, list_argocd_appprojects,
-    list_argocd_appsets,
+    connect_argo_server, detect_argocd, disconnect_argo_server, discover_argo_servers,
+    forget_argo_credential, get_argo_application_inspector, get_argo_application_resources,
+    get_argo_connection_status, get_argo_resource_comparison, get_argocd_application_details,
+    get_argocd_appproject_details, get_argocd_appset_details, list_argocd_applications,
+    list_argocd_appprojects, list_argocd_appsets, preflight_argo_operation, run_argo_operation,
+    ArgoConnectionStore,
 };
 pub use cancellation::{
     cancel_backend_requests, cancel_workspace_requests, BackendCancellationRegistry,
@@ -74,7 +77,7 @@ pub use resources::{
     get_dynamic_resource_details, get_resource_details, get_resource_yaml, lint_kubernetes_yaml,
     list_deployment_revisions, list_dynamic_resources, list_resource_scope, list_resource_topology,
     list_resources, prepare_yaml_apply, resource_details_from, resource_scope_from,
-    resource_topology_from, resource_yaml_from, resources_summary_from,
+    resource_topology_from, resource_yaml_from, resources_summary_from, reveal_secret_data_value,
 };
 pub use sessions::{
     list_port_forwards, start_pod_port_forward, stop_port_forward, PortForwardRegistry,

@@ -40,6 +40,7 @@ export {
 } from "./tauri-runtime";
 export type { TauriClient } from "./tauri-runtime";
 export { kubeconfigArg } from "./tauri-args";
+export * from "./tauri-argo";
 export * from "./tauri-streams";
 import { shouldUseBrowserDevMocks } from "./tauri-runtime";
 import type { TauriClient } from "./tauri-runtime";
@@ -337,6 +338,23 @@ export async function getResourceYaml(
 		yamlViewMode,
 		yamlEncoding,
 		...cancellableArg(cancellable),
+	});
+}
+
+export function revealSecretDataValue(
+	client: TauriClient,
+	clusterContext: string,
+	name: string,
+	namespace: string,
+	key: string,
+	kubeconfigEnvVar?: string,
+): Promise<string> {
+	return client.invoke<string>("reveal_secret_data_value", {
+		clusterContext,
+		name,
+		namespace,
+		key,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 
