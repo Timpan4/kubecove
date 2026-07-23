@@ -15,12 +15,10 @@ use reqwest::Client as HttpClient;
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Mutex,
-    },
+    sync::Mutex,
     time::{Duration, Instant},
 };
+use uuid::Uuid;
 
 const ARGO_SERVICE_NAMES: [&str; 2] = ["argocd-server", "argo-cd-argocd-server"];
 
@@ -29,7 +27,6 @@ pub struct ArgoConnectionStore {
     pub(crate) connections: Mutex<HashMap<String, ConnectedArgo>>,
     preflights: Mutex<HashMap<String, (String, Instant)>>,
 }
-static PREFLIGHT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone)]
 pub(crate) struct ConnectedArgo {
@@ -43,26 +40,18 @@ pub(crate) fn issue_preflight(
     store: &ArgoConnectionStore,
     request: &crate::models::ArgoOperationRequest,
 ) -> Result<String, AppError> {
-    let token = format!(
-        "{}-{}",
-        Instant::now().elapsed().as_nanos(),
-        PREFLIGHT_SEQUENCE.fetch_add(1, Ordering::Relaxed)
-    );
+    let token = Uuid::new_v4().to_string();
     let request = serde_json::to_string(request)
         .map_err(|_| AppError::new("invalid operation request", "argoOperationUnavailable"))?;
-    store
-        .preflights
-        .lock()
-        .map_err(|_| {
-            AppError::new(
-                "Argo CD operation state unavailable",
-                "argoOperationUnavailable",
-            )
-        })?
-        .insert(
-            token.clone(),
-            (request, Instant::now() + Duration::from_mins(1)),
-        );
+    let now = Instant::now();
+    let mut preflights = store.preflights.lock().map_err(|_| {
+        AppError::new(
+            "Argo CD operation state unavailable",
+            "argoOperationUnavailable",
+        )
+    })?;
+    preflights.retain(|_, (_, expires)| *expires > now);
+    preflights.insert(token.clone(), (request, now + Duration::from_secs(60)));
     Ok(token)
 }
 pub(crate) fn consume_preflight(
@@ -634,5 +623,24 @@ mod tests {
     #[test]
     fn missing_credential_is_already_deleted() {
         assert!(credential_deleted(Err(keyring::Error::NoEntry)).is_ok());
+    }
+
+    #[test]
+    fn preflight_tokens_are_random_and_expired_entries_are_swept() {
+        let store = ArgoConnectionStore::default();
+        store.preflights.lock().unwrap().insert(
+            "expired".to_string(),
+            ("request".to_string(), Instant::now()),
+        );
+
+        let first =
+            issue_preflight(&store, &crate::models::ArgoOperationRequest::default()).unwrap();
+        let second =
+            issue_preflight(&store, &crate::models::ArgoOperationRequest::default()).unwrap();
+        let preflights = store.preflights.lock().unwrap();
+
+        assert_ne!(first, second);
+        assert!(!preflights.contains_key("expired"));
+        assert_eq!(preflights.len(), 2);
     }
 }

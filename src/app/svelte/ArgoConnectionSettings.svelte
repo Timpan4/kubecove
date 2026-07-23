@@ -20,6 +20,7 @@
 		disconnectArgoServer,
 		discoverArgoServers,
 		forgetArgoCredential,
+		getArgoConnectionStatus,
 	} from "@/lib/tauri";
 
 	let { clusterContext, workspaceId, kubeconfigEnvVar }: {
@@ -41,12 +42,23 @@
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let connected = $state<string | null>(null);
+	const matchingProfiles = $derived(settings.argoProfiles.filter((profile) => !clusterContext || profile.clusterContext === clusterContext));
+	const connectionStatuses = createQuery(() => ({
+		queryKey: ["argo-connection-status", clusterContext ?? "", workspaceId ?? "", matchingProfiles.map((profile) => profile.id).join(",")],
+		queryFn: () => Promise.all(matchingProfiles.map(async (profile) => [profile.id, await getArgoConnectionStatus(client, profile.id)] as const)),
+		enabled: matchingProfiles.length > 0,
+		staleTime: 5_000,
+	}));
 	const discovered = createQuery(() => ({
 		queryKey: ["argo-server-discovery", clusterContext ?? "", kubeconfigEnvVar ?? ""],
 		queryFn: () => discoverArgoServers(client, clusterContext!, kubeconfigEnvVar),
 		enabled: Boolean(clusterContext),
 		staleTime: 60_000,
 	}));
+
+	$effect(() => {
+		connected = connectionStatuses.data?.find(([, status]) => status.connected)?.[0] ?? null;
+	});
 
 	function profileId(serverUrl: string) {
 		return `argo:${workspaceId ?? "global"}:${clusterContext ?? "global"}:${serverUrl.trim().toLowerCase()}`;
@@ -93,9 +105,26 @@
 	}
 
 	async function disconnect(id: string) {
-		await disconnectArgoServer(client, id);
-		if (connected === id) connected = null;
-		void queryClient.invalidateQueries({ queryKey: ["argo-connection-status"] });
+		error = null;
+		try {
+			await disconnectArgoServer(client, id);
+			if (connected === id) connected = null;
+			void queryClient.invalidateQueries({ queryKey: ["argo-connection-status"] });
+		} catch (caught) {
+			error = caught instanceof Error ? caught.message : String(caught);
+		}
+	}
+
+	async function forget(profile: (typeof settings.argoProfiles)[number]) {
+		error = null;
+		try {
+			await forgetArgoCredential(client, { ...profile, transport: "connected" });
+			settings.setArgoProfiles(settings.argoProfiles.filter((item) => item.id !== profile.id));
+			if (connected === profile.id) connected = null;
+			void queryClient.invalidateQueries({ queryKey: ["argo-connection-status"] });
+		} catch (caught) {
+			error = caught instanceof Error ? caught.message : String(caught);
+		}
 	}
 </script>
 
@@ -124,9 +153,9 @@
 	<Button type="button" disabled={busy || !url.trim()} onclick={() => connect()}><Link2 />{busy ? "Connecting…" : "Connect"}</Button>
 </FieldGroup>
 
-{#if settings.argoProfiles.length > 0}
-		<div class="mt-4 flex flex-col gap-2"><p class="text-sm font-medium">Saved server profiles</p>{#each settings.argoProfiles.filter((profile) => !clusterContext || profile.clusterContext === clusterContext) as profile}
-			<div class="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"><span class="truncate">{profile.url}</span><div class="flex items-center gap-2"><Button size="sm" type="button" onclick={() => connect(profile)}>{connected === profile.id ? "Connected" : "Reconnect"}</Button><Button size="sm" variant="ghost" type="button" onclick={() => disconnect(profile.id)}>Disconnect</Button><Button size="sm" variant="ghost" type="button" onclick={async () => { await forgetArgoCredential(client, { ...profile, transport: "connected" }); settings.setArgoProfiles(settings.argoProfiles.filter((item) => item.id !== profile.id)); }}>Forget</Button></div></div>
+{#if matchingProfiles.length > 0}
+		<div class="mt-4 flex flex-col gap-2"><p class="text-sm font-medium">Saved server profiles</p>{#each matchingProfiles as profile}
+			<div class="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"><span class="truncate">{profile.url}</span><div class="flex items-center gap-2"><Button size="sm" type="button" onclick={() => connect(profile)}>{connected === profile.id ? "Connected" : "Reconnect"}</Button><Button size="sm" variant="ghost" type="button" onclick={() => disconnect(profile.id)}>Disconnect</Button><Button size="sm" variant="ghost" type="button" onclick={() => forget(profile)}>Forget</Button></div></div>
 	{/each}</div>
 {/if}
 
