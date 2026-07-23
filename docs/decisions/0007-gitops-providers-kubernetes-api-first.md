@@ -24,11 +24,13 @@ GitOps provider support is Kubernetes-API-first:
 - Add Flux detection, list, and detail commands that read Flux CRDs directly.
 - Enrich resource summaries with optional GitOps ownership metadata.
 
-GitOps provider support is inspection-only by default:
+At time of this decision, GitOps provider support was inspection-only by default:
 
 - No Flux reconcile, suspend, resume, or Git-writing action is part of this decision.
 - No Argo CD sync, rollback, diff, API, or CLI action is added by this decision.
 - Any future cluster-changing GitOps workflow needs a focused ADR and must satisfy the guarded operation model in ADR 0004.
+
+[ADR 0013](0013-argocd-connected-inspection-and-operations.md) now provides an explicit connected Argo CD HTTP transport for inspection and guarded operations. It is a selected transport, never a fallback. Flux remains governed by [ADR 0015](0015-flux-inspection-roadmap.md).
 
 ## Consequences
 
@@ -36,4 +38,4 @@ The frontend can present a single GitOps area while preserving provider-specific
 
 Flux ownership can be inferred from `Kustomization.status.inventory`, `HelmRelease.status.inventory`, and Flux labels where inventory is not available.
 
-The Kubernetes API remains the core data path. Flux CLI, Argo CD CLI, Helm CLI, and provider APIs remain optional future sidecars or fallbacks, not the default architecture.
+The Kubernetes API remains the core data path. The connected Argo CD HTTP transport from ADR 0013 is explicit, not a fallback. At time of this decision, Flux CLI, Argo CD CLI, Helm CLI, and other provider integrations remained future.

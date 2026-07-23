@@ -122,6 +122,7 @@ Future operations outside these contracts require focused design. Argo CD CLI, F
 
 - Tauri 2
 - Svelte 5, TypeScript 7, and Vite 8
+- Project compiler checks use TypeScript 7. `svelte:check` intentionally resolves TypeScript 6 through `scripts/svelte-check-with-typescript6.cjs` for compatibility.
 - Bun for JavaScript package management and scripts
 - Rust backend
 - `kube-rs` 4 for Kubernetes API access
