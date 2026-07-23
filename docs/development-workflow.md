@@ -4,6 +4,8 @@
 
 Use Bun for frontend dependencies, scripts, and scaffolding.
 
+Use the Bun version pinned by CI. Exact frontend and Rust dependency versions live in `package.json`, `bun.lock`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock`; docs do not duplicate patch-version inventories.
+
 Common commands:
 
 ```sh
@@ -83,7 +85,7 @@ Native desktop launch/settings smoke without Kind is available through:
 bun run e2e:desktop-smoke
 ```
 
-Kubernetes 1.34–1.36 is the current rolling, tested three-minor window. Advancing it requires digest-pinned Kind images and a green full matrix as defined by [ADR 0011](decisions/0011-rolling-kubernetes-support.md). Cilium 1.19.6 officially tests through Kubernetes 1.34; KubeCove validates 1.35 and 1.36 without claiming upstream support. Lab ownership is defined by [ADR 0012](decisions/0012-production-shaped-e2e-lab.md), and the desktop permission boundary by [ADR 0010](decisions/0010-e2e-only-wdio-security-boundary.md).
+Kubernetes 1.34–1.36 is the current rolling, tested three-minor window. Advancing it requires digest-pinned Kind images and a green full matrix as defined by [ADR 0011](decisions/0011-rolling-kubernetes-support.md). [Cilium 1.19.6](https://docs.cilium.io/en/stable/network/kubernetes/requirements/) officially tests through Kubernetes 1.34, and [Argo CD 3.4](https://argo-cd.readthedocs.io/en/stable/operator-manual/installation/#tested-versions) officially tests through Kubernetes 1.35. KubeCove's later-minor jobs are project compatibility evidence, not extensions of upstream support claims. Lab ownership is defined by [ADR 0012](decisions/0012-production-shaped-e2e-lab.md), and the desktop permission boundary by [ADR 0010](decisions/0010-e2e-only-wdio-security-boundary.md).
 
 `bun run check` runs the current local verification bundle:
 

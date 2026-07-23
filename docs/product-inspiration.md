@@ -35,14 +35,14 @@ Reference links:
 - Start inspection-first and require ADR-backed guardrails for live sessions and cluster-changing workflows.
 - Keep kubeconfig and Kubernetes API access behind Rust-side Tauri commands.
 - Avoid arbitrary frontend shell execution.
-- Treat `kubectl`, Helm CLI, Argo CD CLI, and terminals as optional future sidecars or fallbacks.
-- Build Argo CD awareness through Kubernetes API resources before considering the Argo CD API or CLI.
+- Keep `kubectl`, Helm CLI, Argo CD CLI, Flux CLI, and terminals outside core data paths.
+- Keep Kubernetes CRD inspection as default Argo CD transport; make connected HTTP API use explicit and guarded.
 
 ## Argo CD Direction
 
 Argo CD should be native product context, not just a badge.
 
-The first-class path remains Kubernetes-API-first:
+The default path remains Kubernetes-API-first:
 
 - detect Argo-managed resources from labels and annotations
 - list `Application`, `ApplicationSet`, and `AppProject` resources when CRDs exist
@@ -50,11 +50,12 @@ The first-class path remains Kubernetes-API-first:
 - group Kubernetes resources under their Argo application when tracking metadata exists
 - show YAML, metadata, sync/health summaries, and related resources
 
-Later Argo CD API support may add richer history, diff, sync, rollback, and auth-aware flows. Those features require explicit ADRs and permission-gated UX.
+An explicit connected transport adds managed resources, target/live comparison, refresh, sync/retry, rollback, terminate, and server-reported resource actions under ADR 0013. There is no automatic fallback between Kubernetes and connected transports. Argo CD CLI, arbitrary manifests, deletes, and spec editing remain outside this path.
 
 Reference links:
 
-- Argo CD Application CRD: https://argo-cd.readthedocs.io/en/release-2.2/operator-manual/declarative-setup/#applications
+- Argo CD Application CRD: https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#applications
+- Argo CD API: https://argo-cd.readthedocs.io/en/stable/developer-guide/api-docs/
 - Argo CD labels and annotations: https://argo-cd.readthedocs.io/en/latest/user-guide/annotations-and-labels/
 - Argo CD resource health: https://argo-cd.readthedocs.io/en/stable/operator-manual/health/
 

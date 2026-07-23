@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted. Extended for Argo CD only by [ADR 0013](0013-argocd-connected-inspection-and-operations.md); Flux remains Kubernetes-API-first and inspection-only under [ADR 0015](0015-flux-inspection-roadmap.md).
 
 ## Context
 

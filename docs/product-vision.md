@@ -4,7 +4,7 @@
 
 KubeCove is a local desktop Kubernetes workspace for operators and app developers who need fast, safe cluster work. It is not a thin `kubectl` wrapper and not a free-form mutation console. Its product stance is focused clarity under load: keep context visible, make resource state easy to scan, and move from symptoms to detail without losing the namespace or app boundary.
 
-The current beta is inspection-first with governed live sessions beginning with Pod and selector-backed Service port-forwarding. The architecture is designed for guarded cluster operations when those workflows have typed Rust-side commands, clear target scope, confirmation, and permission-aware UX.
+Current source is inspection-first with governed exceptions for port-forwarding, exact-Pod exec, selected-resource YAML apply, narrow scale/restart/delete operations, and opt-in connected Argo CD operations. Every operation keeps target scope visible and crosses a typed Rust-side boundary.
 
 K8Studio and Aptakube are public benchmarks for capability breadth and low-friction desktop UX. KubeCove borrows product lessons, not code, branding, assets, layouts, or marketing text.
 
@@ -68,7 +68,7 @@ Density controls, adaptive workspace defaults, and customizable layouts are late
 
 GitOps and package metadata are enrichment layers, not the backbone. The Kubernetes browser must work without Argo CD, Flux, or Helm.
 
-GitOps support starts Kubernetes-API-first:
+GitOps browsing starts Kubernetes-API-first:
 
 - detect Argo CD CRDs and tracking metadata
 - list Applications, ApplicationSets, and AppProjects
@@ -79,20 +79,22 @@ GitOps support starts Kubernetes-API-first:
 - show Flux Ready/Reconciling/Stalled conditions, source references, revisions, suspension state, and inventory
 - group and filter resources by Flux Kustomization or Flux HelmRelease when inventory or labels identify ownership
 
-The GitOps landing view should summarize detected providers first, then link into provider-specific resource groups. Provider groups are hidden when their CRDs are not detected unless the user enables the global "Show unavailable GitOps providers" setting.
+The GitOps landing view summarizes detected providers first, then links into provider-specific resource groups. Provider groups are hidden when their CRDs are not detected unless the user enables the global "Show unavailable GitOps providers" setting.
 
 Helm support follows the same inspection-first principle: inspect release metadata and related resources without turning Helm into the core data path.
 
-Argo CD API, Flux CLI, Argo CD CLI, Helm CLI, sync, reconcile, rollback, diff, Git-writing, and other cluster-changing workflows require ADR-backed guardrails before they become product paths.
+Argo CD can also use an explicit connected transport backed by its HTTP API. Connected inspection provides managed resources and target/live comparisons. Allowlisted operations cover refresh, sync, recorded-sync retry, rollback, terminate, and server-reported resource actions. Kubernetes and connected transports are explicit choices; there is no automatic fallback. Credentials, TLS, redaction, request limits, preflight tokens, and execution stay Rust-side under [ADR 0013](decisions/0013-argocd-connected-inspection-and-operations.md).
+
+Flux remains Kubernetes-API-first and inspection-only. Argo CD CLI, Flux CLI or mutations, Helm CLI or mutations, Git-writing, and arbitrary GitOps operations remain outside the product path.
 
 ## Safety
 
-KubeCove is inspection-first today and mutation-ready only through governed operations. Pod and selector-backed Service port-forwarding are the first live-session workflows and follow [ADR 0003](decisions/0003-guarded-live-sessions.md). No create, update, delete, scale, restart, sync, rollback, or exec workflow should be exposed as a normal path until it satisfies [ADR 0004](decisions/0004-guarded-cluster-operations.md) or a focused ADR.
+KubeCove is inspection-first with governed operations. Port-forwarding follows [ADR 0003](decisions/0003-guarded-live-sessions.md); exact-Pod exec follows [ADR 0005](decisions/0005-guarded-pod-exec-sessions.md); selected-resource YAML apply follows [ADR 0006](decisions/0006-guarded-selected-resource-yaml-apply.md); narrow scale/restart/delete operations follow [ADR 0004](decisions/0004-guarded-cluster-operations.md); connected Argo CD operations follow [ADR 0013](decisions/0013-argocd-connected-inspection-and-operations.md).
 
-Future operations must be deliberate, permission-aware, reversible where possible, and clearly separated from browsing.
+New operations must be deliberate, permission-aware, reversible where possible, and clearly separated from browsing.
 
 ## Roadmap Shape
 
 Near-term work should harden the current inspection workflow: workspace restore, resource tables, topology, GitOps, Helm, RBAC, metrics, events, logs, and release readiness.
 
-Later product areas can include guarded YAML apply, deployment-aware port-forwarding, pod exec, richer Helm workflows, deeper RBAC/security inspection, AI-assisted troubleshooting, and durable local workspace history.
+Later product areas can include deployment-aware port-forwarding, broader exec scopes, richer Helm workflows, guarded Flux operations, AI-assisted troubleshooting, and durable local workspace history.

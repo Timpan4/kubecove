@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted. Extended by [ADR 0013](0013-argocd-connected-inspection-and-operations.md) for explicit connected HTTP API inspection and guarded operations.
 
 ## Context
 

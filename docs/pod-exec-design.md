@@ -25,5 +25,6 @@ KubeCove includes a narrow Pod exec workflow for troubleshooting a selected cont
 
 - Service, Deployment, Job, and owner-backed exec.
 - Saved exec commands or auto-start behavior.
-- YAML apply, delete, scale, restart, Argo CD sync/rollback/diff, and Helm actions.
 - Durable terminal transcript history.
+
+Selected-resource YAML apply, guarded resource operations, connected Argo CD operations, and future Helm actions remain separate workflows; they do not expand the Pod exec command boundary.

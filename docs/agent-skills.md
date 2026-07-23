@@ -57,7 +57,7 @@ Rules:
 - Keep selected context and namespace scope visible.
 - Treat persistent global filters as core product behavior.
 - Use dense, fast tables for repeated resource work.
-- Keep inspection surfaces separate from future operation surfaces.
+- Keep inspection and operation surfaces visibly separate, with exact operation targets.
 - Avoid marketing-page patterns inside the app shell.
 
 Triggers:
@@ -70,15 +70,16 @@ Triggers:
 
 ### `argocd-awareness`
 
-Use when adding Argo CD detection, grouping, filtering, Application views, ApplicationSet views, AppProject views, or future Argo CD API/CLI behavior.
+Use when changing Argo CD detection, grouping, filtering, CRD views, connected inspection, resource comparison, or guarded operations.
 
 Rules:
 
 - Start with Kubernetes API access to Argo CD CRDs and tracking metadata.
 - Detect ownership from `argocd.argoproj.io/instance`, `argocd.argoproj.io/tracking-id`, `app.kubernetes.io/instance`, and related annotations/labels.
-- Treat Argo CD API, CLI, sync, rollback, and diff as future features that need ADR-backed guardrails.
-- Warn before future operations against Argo-managed resources.
-- Keep first-class Argo support inspection-first unless an ADR says otherwise.
+- Keep Kubernetes and connected transports explicit; never add automatic fallback.
+- Apply ADR 0013 to connected credentials, TLS, Secret redaction, comparison, preflight, and allowlisted operations.
+- Keep Argo CD CLI, arbitrary manifests, deletes, and spec editing outside the connected path.
+- Keep Flux inspection-only unless a focused ADR adds guarded operations.
 
 Triggers:
 
@@ -102,7 +103,7 @@ Expected scope:
 
 ### `safe-k8s-mutations`
 
-Create before apply, delete, scale, restart, sync, rollback, exec, terminal-backed actions, or live-session expansion beyond ADR 0003 port-forwarding.
+Create when repeated work expands or reviews guarded mutations beyond current ADR 0003–0006 and ADR 0013 contracts.
 
 Expected scope:
 
@@ -110,7 +111,8 @@ Expected scope:
 - Server-side dry-run where available.
 - Diff before apply.
 - Explicit confirmation UX.
-- Argo and Helm ownership warnings.
+- Exact resource or provider target scope.
+- Argo, Flux, and Helm ownership warnings.
 - Local audit trail or event log.
 
 ### `agent-task-discipline`
