@@ -51,7 +51,7 @@ pub(crate) fn issue_preflight(
         )
     })?;
     preflights.retain(|_, (_, expires)| *expires > now);
-    preflights.insert(token.clone(), (request, now + Duration::from_secs(60)));
+    preflights.insert(token.clone(), (request, now + Duration::from_mins(1)));
     Ok(token)
 }
 pub(crate) fn consume_preflight(
