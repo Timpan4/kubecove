@@ -26,7 +26,7 @@ Before making implementation changes, skim the [docs index](docs/README.md). The
 - Use `kube-rs` and the Kubernetes API for core list/get/discovery/watch flows.
 - Pod and selector-backed Service port-forwarding follow ADR 0003. Broader cluster-changing workflows must follow ADR 0004: typed Rust-side commands, visible target scope, confirmation where needed, and permission-aware UX.
 - Treat `kubectl`, Helm, and Argo CD CLIs as future optional sidecars or fallbacks, not as the core data path.
-- Treat Argo CD as a native product area, starting with Kubernetes API access to Argo CD CRDs and tracking metadata.
+- Treat Argo CD as a native product area. Kubernetes CRDs and tracking metadata remain the default inspection path; opt-in connected HTTP API inspection and operations follow ADR 0013.
 - Keep modules small and typed so future agent work can target focused files.
 
 ## Preferred Architecture
@@ -46,6 +46,8 @@ Rust-side Tauri commands own Kubernetes access. Current command families include
 - `list_resource_metrics`
 - stream commands for watches, events, and pod logs
 - live-session commands for Pod and selector-backed Service port-forwarding
+- guarded selected-resource YAML apply plus typed scale, rollout-restart, and exact-delete commands
+- explicit connected Argo CD discovery, connection, inspection, comparison, preflight, and operation commands
 - Argo CD, Helm, RBAC, and usage commands
 
 The frontend apps should call only typed Tauri command wrappers. Kubernetes credentials and kubeconfig parsing belong in Rust modules under `src-tauri/src`.
@@ -113,7 +115,7 @@ Write an ADR before changing:
 - the Kubernetes access path
 - Tauri plugin permissions or capabilities
 - guarded operation support for Kubernetes objects
-- Argo CD API, CLI, sync, rollback, or diff integration
+- Argo CD API, CLI, sync, rollback, or diff integration beyond ADR 0013
 - long-lived local persistence of cluster-derived data
 
 ## Product Inspiration
@@ -130,6 +132,7 @@ Write an ADR before changing:
 - Run the relevant checks before claiming work is complete.
 - Frontend changes should pass `bun run typecheck` and `bun run lint` (Biome).
 - Rust backend changes should pass `cargo check --manifest-path src-tauri/Cargo.toml`.
+- Kubernetes 1.34–1.36 is the tested rolling support window. ADR 0011 and the E2E/release workflow matrices are authoritative.
 - If a check cannot run, state the exact blocker and what remains unverified.
 - When completing scoped work, check off the corresponding items in `docs/milestones.md`.
 

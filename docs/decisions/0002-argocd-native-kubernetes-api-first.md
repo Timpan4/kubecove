@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted. Extended by [ADR 0013](0013-argocd-connected-inspection-and-operations.md) for explicit connected HTTP API inspection and guarded operations.
 
 ## Context
 
@@ -20,7 +20,7 @@ Initial support:
 - group related Kubernetes resources by Argo application when tracking metadata exists
 - expose Argo inspection details through typed Tauri commands
 
-The Argo CD API, Argo CD CLI, sync, rollback, diff, and mutation workflows are future features. Each requires a focused ADR or an explicit ADR 0004-compatible design with permission-aware UX guardrails.
+At time of this decision, the Argo CD API, Argo CD CLI, sync, rollback, diff, and mutation workflows were future features. [ADR 0013](0013-argocd-connected-inspection-and-operations.md) now adds explicit connected HTTP API inspection and guarded operations; the Argo CD CLI remains future. Each future workflow requires a focused ADR or an explicit ADR 0004-compatible design with permission-aware UX guardrails.
 
 ## Consequences
 

@@ -2,17 +2,17 @@
 
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/Timpan4/kubecove?utm_source=badge)
 
-KubeCove is a local desktop workspace for Kubernetes operations. It is built for operators and app developers who need to move from cluster scope to namespace, application, resource state, topology, events, logs, metrics, YAML, Helm metadata, Argo CD signals, and RBAC context without losing their place.
+KubeCove is a local desktop workspace for Kubernetes operations. It is built for operators and app developers who need to move from cluster scope to namespace, application, resource state, topology, events, logs, metrics, YAML, Helm metadata, GitOps signals, and RBAC context without losing their place.
 
-The current beta is inspection-first with governed Pod and selector-backed Service port-forward sessions, exact-Pod guarded exec sessions, and selected-resource YAML apply. KubeCove does not deploy agents into clusters, does not expose raw kubeconfig contents to the frontend, and does not let the frontend run arbitrary shell commands. The architecture is ready for guarded cluster operations, but broad apply, delete, scale, sync, and rollback workflows are not shipped unless a typed Rust-side command and explicit UX guardrails exist.
+Current source is inspection-first with explicitly governed exceptions: Pod and selector-backed Service port-forwarding, exact-Pod exec, selected-resource YAML apply, exact guarded scale/restart/delete operations, and opt-in connected Argo CD operations. KubeCove does not deploy agents into clusters, expose raw kubeconfig contents to the frontend, or let frontend code run arbitrary shell commands.
 
-Current version metadata: `0.9.1`.
+Latest published release: [`0.9.1`](https://github.com/Timpan4/kubecove/releases/tag/app-v0.9.1). Source changes after that tag are unreleased until the normal release PR updates version metadata and the changelog.
 
 ![Kubernetes resources view with the ownership map and live resource table](docs/assets/resources-view.png)
 
 ## Get KubeCove
 
-Use the beta installers from [GitHub Releases](https://github.com/Timpan4/kubecove/releases) when you want to test the app.
+Use the `0.9.1` beta installers from [GitHub Releases](https://github.com/Timpan4/kubecove/releases) when you want to test the published app. Current-source capabilities listed below may require a source build until the next release.
 
 - macOS: `.dmg`
 - Windows: NSIS setup executable
@@ -29,7 +29,7 @@ Beta installers are unsigned at the OS package level, so macOS Gatekeeper or Win
 
 ![Workspace overview with health summary and Argo CD inventory](docs/assets/workspace-overview.png)
 
-## Current Capabilities
+## Current Source Capabilities
 
 - Local kubeconfig context discovery without sending raw kubeconfig data to the frontend.
 - Saved workspaces for context, namespace, kind, filter, shortcut, and layout scope.
@@ -37,11 +37,16 @@ Beta installers are unsigned at the OS package level, so macOS Gatekeeper or Win
 - Fast resource tables with namespace, kind, health, search, Argo CD app, and owner filters.
 - Resource inspection through details, YAML, events, logs, metrics, and topology views.
 - Argo CD CRD detection with Application, ApplicationSet, and AppProject browsing.
+- Opt-in connected Argo CD inspection with managed resources, target/live comparison, refresh, sync and recorded-sync retry, rollback, terminate, and server-reported resource actions.
+- Explicit Kubernetes or connected Argo CD transport selection without automatic fallback.
+- Kubernetes API-first Flux inspection; Flux mutations and CLI integration remain unshipped.
 - Helm release detection, details, and reconciliation from cluster metadata.
-- RBAC summaries and risk indicators.
+- RBAC cockpit summaries, observed-grant provenance, risk indicators, and explicit permission verification.
 - Guarded Pod and selector-backed Service port-forward sessions with local-only listeners.
 - Guarded exact-Pod exec sessions with explicit target and command confirmation.
 - Guarded selected-resource YAML apply with dry-run diff, Secret protection, and explicit confirmation.
+- Guarded scale for Deployments and StatefulSets, rollout restart for Deployments, StatefulSets, and DaemonSets, and exact delete for Pods and ConfigMaps.
+- Transient per-key Secret data reveal while tokens, credentials, and connected Argo Secret payloads remain backend-protected.
 - Unsigned beta desktop installers for macOS, Windows, and Linux.
 
 ![Resource inspection with the guarded YAML editor](docs/assets/resource-yaml.png)
@@ -99,7 +104,7 @@ KubeCove's tested Kubernetes support window is 1.34–1.36. See [ADR 0011](docs/
 
 ## Safety Model
 
-KubeCove keeps Kubernetes access behind Rust-side Tauri commands. Normal list, get, discovery, watch, logs, events, metrics, Argo CD, Helm, and RBAC flows use `kube-rs` and frontend-safe serde contracts.
+KubeCove keeps Kubernetes access behind Rust-side Tauri commands. Kubernetes transport, including Argo CD CRD inspection and guarded CRD operations, uses `kube-rs` and frontend-safe serde contracts; connected Argo CD transport uses its versioned HTTP API.
 
 Pod and selector-backed Service port-forwarding follows [ADR 0003](docs/decisions/0003-guarded-live-sessions.md): exact targets, local-only listeners, visible sessions, and Rust-side Kubernetes access.
 
@@ -107,15 +112,20 @@ Pod exec follows [ADR 0005](docs/decisions/0005-guarded-pod-exec-sessions.md): e
 
 Selected-resource YAML apply follows [ADR 0006](docs/decisions/0006-guarded-selected-resource-yaml-apply.md): the edited object must match the selected resource, multi-document YAML and redacted Secrets are blocked, dry-run diff runs before apply, and the final apply needs explicit confirmation.
 
-Future cluster-changing workflows must follow [ADR 0004](docs/decisions/0004-guarded-cluster-operations.md): typed commands, visible target scope, confirmation, user-visible errors, and permission-aware UX. CLI-backed, Argo CD API, sync, rollback, broad apply, or broad filesystem workflows need focused design before they become product paths.
+Guarded scale, rollout restart, and exact delete follow [ADR 0004](docs/decisions/0004-guarded-cluster-operations.md): typed targets, server-side previews, explicit confirmation, user-visible errors, and permission-aware UX.
+
+Connected Argo CD inspection and operations follow [ADR 0013](docs/decisions/0013-argocd-connected-inspection-and-operations.md). Users explicitly select either Kubernetes CRD access or an Argo CD HTTP API connection; KubeCove never silently falls back between them. Rust owns credentials, TLS, response limits, redaction, preflight tokens, and allowlisted operation execution. [ADR 0014](docs/decisions/0014-runtime-secret-disclosure.md) keeps Secret reveal transient and connected Argo Secret payloads redacted before Tauri IPC.
+
+Future operations outside these contracts require focused design. Argo CD CLI, Flux mutations or CLI integration, Helm mutations, broad apply/delete, and broad filesystem workflows remain unshipped.
 
 ## Stack
 
-- Tauri v2
-- Svelte and TypeScript
+- Tauri 2
+- Svelte 5, TypeScript 7, and Vite 8
+- Project compiler checks use TypeScript 7. `svelte:check` intentionally resolves TypeScript 6 through `scripts/svelte-check-with-typescript6.cjs` for compatibility.
 - Bun for JavaScript package management and scripts
 - Rust backend
-- `kube-rs` for Kubernetes API access
+- `kube-rs` 4 for Kubernetes API access
 - TanStack Svelte Query
 - Zustand for local UI state
 - Tailwind CSS and local Svelte UI primitives

@@ -2,6 +2,8 @@
 
 This is the goal-level progress tracker. Keep it factual: check a box only when the app behavior exists and the relevant verification has run or is clearly recorded elsewhere.
 
+Latest published release is `0.9.1`. Current source includes unreleased work completed after that tag; version metadata changes only through the release PR flow.
+
 ## Milestone 0: Repository Foundation
 
 Goal: create the project container for implementation work.
@@ -109,48 +111,6 @@ Goal: make the current inspection-first incident workflow a reliable beta baseli
 - [x] Add release diagnostics mode for local frontend/backend latency reports.
 - [ ] Run a manual Tauri smoke test against a readable cluster before the next beta release.
 
-## 0.3.0 Smoke Test Findings - 2026-05-26
-
-Test target: local Tauri dev app backed by the `admin@solid-k8s` context after KubeCove 0.3.0 was released. The installed Windows app was also launched, but deeper click-through used the dev window because it was easier to foreground and capture.
-
-- [x] Pass: workspace launcher loaded saved workspace `admin@solid-k8s` and listed namespaces without exposing kubeconfig contents.
-- [x] Pass: opening the saved workspace restored the overview for all namespaces and showed live cluster counts, incident shortcuts, Argo CD summary, and CPU/memory footer.
-- [x] Pass: resource browser opened from the overview.
-- [ ] Issue: Pod resource listing remained on `Loading all namespaces` for more than 20 seconds, blocking table, detail, YAML, event, log, metrics, and topology smoke coverage in this run.
-- [x] Fixed: KubeCove dev mode uses ports 1430/1431 so it can run alongside another Tauri project on the default 1420/1421 ports.
-- [x] Fixed in 0.4.3: the Resources shortcut opens the saved workspace resource scope directly instead of an empty browser state.
-- [x] Fixed in 0.4.3: sidebar group disclosure chevrons now select the same row they expand so selection and expansion feel aligned.
-- [x] Fixed in 0.4.3: workspace card keyboard order reaches Open before Edit and Delete.
-- [x] Documented in 0.4.3: Windows smoke automation needs the Tauri window explicitly foregrounded; the WebView exposes only an opaque `WRY_WEBVIEW` pane through UI Automation.
-
-## 0.4.3 Release-Hardening Checks - 2026-06-06
-
-Target: patch beta 0.4.3 using the existing readable `admin@solid-k8s` context before publishing.
-
-- [x] Version metadata bumped to 0.4.3 in frontend, Tauri, Rust, and lockfile metadata.
-- [x] README and release docs describe guarded exact-Pod exec as a shipped feature and keep apply/delete/scale/sync/rollback out of release claims.
-- [x] Overview Resources shortcut remains pinned to the saved workspace scope with regression coverage.
-- [x] Sidebar chevron clicks select the same node they expand with regression coverage.
-- [x] Workspace card action order keeps Open before Edit and Delete with regression coverage.
-- [x] Windows smoke guidance records that the Tauri window must be foregrounded before click-through because the WebView is exposed as an opaque `WRY_WEBVIEW` pane.
-- [x] Run local automated baseline: `bun run typecheck`, `bun test`, `bun run rust:test`, and `bun run rust:check`.
-- [ ] Rerun `bun run release:dry-run` after the 0.4.3 bump reaches `origin/main`; the 2026-06-06 pre-merge dry run correctly failed because `origin/main` still reports 0.4.2, equal to latest tag `app-v0.4.2`.
-- [x] Run partial manual Tauri smoke on `admin@solid-k8s`: launcher context and namespace loading, workspace restore, overview resource scope, resource browser, topology, metrics, and selected-resource details/events.
-- [x] Confirm saved workspace resource listing no longer remains stuck on `Loading all namespaces`; backend `list_resource_scope` completed with 293-313 rows in 315-642 ms during the 2026-06-06 smoke.
-- [ ] Complete manual Pod detail/YAML/logs and guarded Pod exec click-through from exact Pod detail before claiming 0.4.3 release readiness; Windows WebView capture became opaque during this pass.
-- [ ] Rerun port-forward manager smoke before publishing 0.4.3.
-
-## 0.5.0 Release-Hardening Checks - 2026-06-08
-
-Target: beta 0.5.0 after selected-resource YAML apply and Helm reconciliation reached `origin/main`.
-
-- [x] Version metadata bumped to 0.5.0 in frontend, Tauri, Rust, and lockfile metadata.
-- [x] README and release docs describe selected-resource YAML apply as shipped while keeping broad apply/delete/scale/sync/rollback out of release claims.
-- [x] Changelog records selected-resource YAML apply, Helm reconciliation, ownership flow animation, and WebView process-tree fixes.
-- [x] Run local automated baseline: `bun run typecheck`, `bun test`, `bun run rust:test`, and `bun run rust:check`.
-- [ ] Run `bun run release:dry-run` after the 0.5.0 bump reaches `origin/main`.
-- [ ] Run manual Tauri smoke on `admin@solid-k8s`: workspace restore, resource browser, Pod details/YAML/logs, guarded Pod exec, selected-resource YAML apply, Helm reconciliation, and port-forward manager.
-
 ## Milestone 8: Guarded Live Sessions
 
 Goal: introduce live operational sessions without turning KubeCove into a shell wrapper.
@@ -193,10 +153,11 @@ Goal: finish the Svelte cutover and keep the frontend path simple.
 
 - [x] Verify frontend cannot invoke arbitrary shell commands.
 - [x] Keep kubeconfig secrets Rust-side.
-- [x] Keep the current beta inspection-first except for explicitly governed live sessions.
+- [x] Keep the product inspection-first except for explicitly governed live sessions and operations.
 - [x] Add ADR 0004 for guarded cluster operations.
 - [x] Implement guarded scale (Deployment/StatefulSet), rollout restart (Deployment/StatefulSet/DaemonSet), and exact delete (Pod/ConfigMap) as explicit, typed, permission-aware workflows.
-- [ ] Add focused ADR coverage before GitOps provider API, CLI, sync, reconcile, rollback, diff, or Git-writing support.
+- [x] Add ADR 0013 for connected Argo CD inspection and allowlisted guarded operations.
+- [ ] Add focused ADR coverage before Flux mutation, provider CLI integration, Git-writing, or Helm mutation support.
 
 ### Helm Reconciliation
 
@@ -234,13 +195,25 @@ Goal: make browser behavior, native Tauri boundaries, and the supported Kubernet
 - [x] Replace static GitOps placeholders with the production-shaped Cilium, Argo CD, metrics, storage, ingress, tenant, Helm, and incident lab from ADR 0012.
 - [ ] Promote the Ubuntu 1.35 real suite into the required aggregate check after 10 consecutive green default-branch or nightly runs.
 
+## Milestone 12: Connected Argo CD Inspection and Operations
+
+Goal: add opt-in Argo CD API precision without weakening Kubernetes-first browsing or backend security boundaries.
+
+- [x] Add ADR 0013 for explicit Kubernetes and connected transports with no automatic fallback.
+- [x] Add Argo server discovery, explicit connection profiles, memory-only credentials by default, optional native credential storage, custom CA support, and session-only insecure TLS.
+- [x] Add connected application inspection, managed resources, and target/live/normalized/predicted resource comparison.
+- [x] Add preflighted refresh, sync, recorded-sync retry, rollback, terminate, and server-reported resource actions.
+- [x] Keep Kubernetes transport limited to refresh, sync, and recorded-sync retry patches.
+- [x] Add ADR 0014 and transient per-key Secret reveal while redacting connected Argo Secret payloads in Rust.
+- [x] Add ADR 0015 to keep Flux Kubernetes-API-first and inspection-only.
+- [ ] Run manual connected-Argo smoke against a readable Argo CD 3.4 server before the next release.
+
 ## Later Product Areas
 
-- guarded YAML edit/apply
 - deployment-aware port-forwarding
 - expanded exec scopes
 - richer Helm workflows
-- [x] Deeper RBAC and security inspection.
+- guarded Flux operations
 - customizable workspace layout
 - custom density modes
 - adaptive defaults for explicit workspace types

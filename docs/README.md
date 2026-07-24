@@ -1,6 +1,6 @@
 # KubeCove Docs
 
-Use this index as the map for product, engineering, release, and governance work. Historical specs stay under `superpowers/`; current rules live in the product, architecture, handbook, ADR, and release docs below.
+Use this index as the map for current product, engineering, release, and governance work. Latest published release is `0.9.1`; product and architecture docs describe current source and label post-release behavior as unreleased.
 
 ## Users and Testers
 
@@ -19,11 +19,8 @@ Use this index as the map for product, engineering, release, and governance work
 
 - [Product Vision](product-vision.md) - audience, workflow model, product direction, and safety posture.
 - [Architecture Blueprint](architecture-blueprint.md) - frontend/backend shape, Tauri command boundary, and extension points.
-- [Architecture Deepening Review](architecture-review-2026-07-10.md) - current deep-module candidates and recommended first refactor.
-- [Svelte Frontend Migration Plan](svelte-frontend-migration-plan.md) - cutover status, cleanup notes, and verification.
 - [Product Inspiration](product-inspiration.md) - public product benchmarks and the design/legal boundary.
 - [Helm Reconciliation Design](helm-reconciliation-design.md) - inspection-only release intent versus live state comparison.
-- [Browser Dev Mock Checklist](browser-dev-mock-checklist.md) - Chrome sweep notes for browser-only mock gaps and thin surfaces.
 - [Deterministic E2E Lab](development-workflow.md#deterministic-e2e-and-kind-lab) - fast mocks, isolated real Kind runs, and the reusable development cluster.
 
 ## Governance
@@ -33,18 +30,15 @@ Use this index as the map for product, engineering, release, and governance work
 - [ADR 0003: Guarded Live Kubernetes Sessions](decisions/0003-guarded-live-sessions.md)
 - [ADR 0004: Guarded Cluster Operations](decisions/0004-guarded-cluster-operations.md)
 - [ADR 0005: Guarded Pod Exec Sessions](decisions/0005-guarded-pod-exec-sessions.md)
+- [ADR 0006: Guarded Selected-Resource YAML Apply](decisions/0006-guarded-selected-resource-yaml-apply.md)
 - [ADR 0007: GitOps Providers Are Kubernetes-API-First And Inspection-Only By Default](decisions/0007-gitops-providers-kubernetes-api-first.md)
 - [ADR 0008: Parallel Svelte Frontend Migration](decisions/0008-svelte-frontend-migration.md)
 - [ADR 0009: Workspace-Scoped Kubernetes Request Cancellation](decisions/0009-workspace-request-cancellation.md)
 - [ADR 0010: E2E-Only WDIO Security Boundary](decisions/0010-e2e-only-wdio-security-boundary.md)
 - [ADR 0011: Rolling Three-Minor Kubernetes Support](decisions/0011-rolling-kubernetes-support.md)
 - [ADR 0012: Production-Shaped E2E Lab](decisions/0012-production-shaped-e2e-lab.md)
+- [ADR 0013: Argo CD Connected Inspection And Operations](decisions/0013-argocd-connected-inspection-and-operations.md)
+- [ADR 0014: Runtime Secret Disclosure](decisions/0014-runtime-secret-disclosure.md)
+- [ADR 0015: Flux Inspection Roadmap](decisions/0015-flux-inspection-roadmap.md)
 
-New work that changes the frontend/backend security boundary, Kubernetes access path, Tauri permissions, cluster-changing behavior, or GitOps provider API/CLI integration needs an ADR before implementation.
-
-## Historical Specs
-
-- [superpowers/specs/](superpowers/specs/) - dated design specs.
-- [superpowers/plans/](superpowers/plans/) - dated implementation plans.
-
-These files explain earlier decisions and should not be treated as the current contract when they differ from the docs above.
+New work that changes the frontend/backend security boundary, Kubernetes access path, Tauri permissions, cluster-changing behavior, or GitOps provider API/CLI integration beyond accepted ADRs needs a focused decision before implementation.
