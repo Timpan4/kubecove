@@ -1,0 +1,132 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: platform-argocd, namespace: argocd}
+spec:
+  project: e2e-platform
+  source:
+    repoURL: __KUBECOVE_GIT_REPO_URL__
+    targetRevision: main
+    path: vendor/argocd
+    helm:
+      releaseName: argocd
+      values: |
+        global:
+          domain: argocd.e2e.local
+        configs:
+          cm:
+            timeout.reconciliation: 10s
+          params:
+            server.insecure: true
+        controller:
+          replicas: 1
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+        server:
+          replicas: 1
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+        repoServer:
+          replicas: 1
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+        applicationSet:
+          replicas: 1
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+        redis:
+          enabled: true
+        redis-ha:
+          enabled: false
+        notifications:
+          enabled: false
+        dex:
+          enabled: false
+  destination: {server: https://kubernetes.default.svc, namespace: argocd}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [ServerSideApply=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: platform-cilium, namespace: argocd}
+spec:
+  project: e2e-platform
+  source:
+    repoURL: __KUBECOVE_GIT_REPO_URL__
+    targetRevision: main
+    path: vendor/cilium
+    helm:
+      releaseName: cilium
+      values: |
+        kubeProxyReplacement: false
+        ipam:
+          mode: kubernetes
+        operator:
+          replicas: 1
+        hubble:
+          enabled: false
+  destination: {server: https://kubernetes.default.svc, namespace: kube-system}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [ServerSideApply=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: platform-metrics, namespace: argocd}
+spec:
+  project: e2e-platform
+  source: {repoURL: __KUBECOVE_GIT_REPO_URL__, targetRevision: main, path: platform/metrics}
+  destination: {server: https://kubernetes.default.svc, namespace: kube-system}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [ServerSideApply=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: platform-storage, namespace: argocd}
+spec:
+  project: e2e-platform
+  source: {repoURL: __KUBECOVE_GIT_REPO_URL__, targetRevision: main, path: platform/storage}
+  destination: {server: https://kubernetes.default.svc, namespace: local-path-storage}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [ServerSideApply=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: platform-ingress, namespace: argocd}
+spec:
+  project: e2e-platform
+  source:
+    repoURL: __KUBECOVE_GIT_REPO_URL__
+    targetRevision: main
+    path: vendor/traefik
+    helm:
+      releaseName: traefik
+      values: |
+        deployment:
+          replicas: 1
+        service:
+          spec:
+            type: ClusterIP
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 250m, memory: 256Mi}
+        ports:
+          web:
+            expose:
+              default: true
+        providers:
+          kubernetesIngress:
+            publishedService:
+              enabled: false
+            ingressEndpoint:
+              hostname: traefik.e2e.local
+  destination: {server: https://kubernetes.default.svc, namespace: traefik}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

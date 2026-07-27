@@ -1,0 +1,194 @@
+import { structuredPatch } from "diff";
+import type { YamlDiffStyle } from "@/lib/settings";
+
+export interface UnifiedDiffLine {
+	type: "header" | "hunk" | "add" | "remove" | "context" | "empty" | "meta";
+	text: string;
+}
+
+const DIFF_CONTEXT_LINES = 3;
+
+export function buildCompactUnifiedDiff(
+	currentYaml: string,
+	dryRunYaml: string,
+): UnifiedDiffLine[] {
+	return buildUnifiedDiff(currentYaml, dryRunYaml, DIFF_CONTEXT_LINES);
+}
+
+export function buildArgoResourceDiff(
+	targetYaml: string,
+	liveYaml: string,
+): UnifiedDiffLine[] {
+	return buildUnifiedDiff(targetYaml, liveYaml, DIFF_CONTEXT_LINES, {
+		oldName: "target",
+		newName: "live",
+		emptyMessage: "Target and live state match.",
+	});
+}
+
+export function buildYamlDryRunDiff({
+	currentYaml,
+	dryRunYaml,
+	style,
+	full,
+	forceConflicts,
+}: {
+	currentYaml: string;
+	dryRunYaml: string;
+	style: YamlDiffStyle;
+	full: boolean;
+	forceConflicts: boolean;
+}): UnifiedDiffLine[] {
+	if (style === "git") {
+		return buildUnifiedDiff(currentYaml, dryRunYaml, diffContext(currentYaml, dryRunYaml, full));
+	}
+	return buildCleanDiff(currentYaml, dryRunYaml, full, forceConflicts);
+}
+
+function buildUnifiedDiff(
+	currentYaml: string,
+	dryRunYaml: string,
+	context: number,
+	labels: { oldName: string; newName: string; emptyMessage: string } = {
+		oldName: "current",
+		newName: "dry-run",
+		emptyMessage: "No server-side dry-run changes.",
+	},
+): UnifiedDiffLine[] {
+	const patch = structuredPatch(
+		labels.oldName,
+		labels.newName,
+		currentYaml,
+		dryRunYaml,
+		"",
+		"",
+		{ context },
+	);
+	const lines: UnifiedDiffLine[] = [
+		{ type: "header", text: `--- ${labels.oldName}` },
+		{ type: "header", text: `+++ ${labels.newName}` },
+	];
+
+	for (const hunk of patch.hunks) {
+		lines.push({
+			type: "hunk",
+			text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+		});
+		for (const line of hunk.lines) {
+			if (line.startsWith("+")) {
+				lines.push({ type: "add", text: line });
+			} else if (line.startsWith("-")) {
+				lines.push({ type: "remove", text: line });
+			} else if (line.startsWith("\\")) {
+				lines.push({ type: "empty", text: line });
+			} else {
+				lines.push({ type: "context", text: line });
+			}
+		}
+	}
+
+	if (patch.hunks.length === 0) {
+		lines.push({ type: "empty", text: labels.emptyMessage });
+	}
+
+	return lines;
+}
+
+function buildCleanDiff(
+	currentYaml: string,
+	dryRunYaml: string,
+	full: boolean,
+	forceConflicts: boolean,
+): UnifiedDiffLine[] {
+	const patch = structuredPatch(
+		"current",
+		"dry-run",
+		currentYaml,
+		dryRunYaml,
+		"",
+		"",
+		{ context: diffContext(currentYaml, dryRunYaml, full) },
+	);
+	const lines: UnifiedDiffLine[] = [];
+
+	for (const hunk of patch.hunks) {
+		for (const line of hunk.lines) {
+			if (line.startsWith("+")) {
+				lines.push({ type: "add", text: line });
+			} else if (line.startsWith("-")) {
+				lines.push({ type: "remove", text: line });
+			} else if (line.startsWith("\\")) {
+				lines.push({ type: "empty", text: line });
+			} else {
+				lines.push({ type: "context", text: line });
+			}
+		}
+	}
+
+	if (patch.hunks.length === 0) {
+		lines.push({ type: "empty", text: "No server-side dry-run changes." });
+	}
+
+	lines.push(
+		{ type: "meta", text: "  apply gate: dry-run succeeded" },
+		{ type: "meta", text: `  force-conflicts: ${forceConflicts ? "true" : "false"}` },
+	);
+
+	return lines;
+}
+
+function diffContext(currentYaml: string, dryRunYaml: string, full: boolean): number {
+	if (!full) return DIFF_CONTEXT_LINES;
+	return Math.max(
+		currentYaml.split("\n").length,
+		dryRunYaml.split("\n").length,
+		DIFF_CONTEXT_LINES,
+	);
+}
+
+export function diffLineClassName(type: UnifiedDiffLine["type"]): string {
+	switch (type) {
+		case "add":
+			return "bg-emerald-500/12 text-emerald-300";
+		case "remove":
+			return "bg-destructive/12 text-red-300";
+		case "hunk":
+			return "bg-primary/10 text-primary";
+		case "header":
+			return "bg-muted/35 font-semibold text-muted-foreground";
+		case "meta":
+		case "empty":
+			return "text-muted-foreground";
+		default:
+			return "text-muted-foreground";
+	}
+}
+
+export function findYamlFieldRange(
+	value: string,
+	fieldPath?: string,
+): { from: number; to: number } {
+	if (!fieldPath) return { from: 0, to: Math.min(value.length, 1) };
+	const key = fieldPath.split(".").at(-1);
+	if (!key) return { from: 0, to: Math.min(value.length, 1) };
+
+	const lines = value.split("\n");
+	let offset = 0;
+	const keyPattern = new RegExp(
+		`(?:^|\\s)(?:"${escapeRegExp(key)}"|${escapeRegExp(key)})\\s*:`,
+	);
+	for (const line of lines) {
+		const match = keyPattern.exec(line);
+		if (match?.index !== undefined) {
+			const from = offset + match.index + (match[0].startsWith(" ") ? 1 : 0);
+			return { from, to: Math.min(value.length, from + match[0].trim().length) };
+		}
+		offset += line.length + 1;
+	}
+
+	return { from: 0, to: Math.min(value.length, 1) };
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

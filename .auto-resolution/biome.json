@@ -1,0 +1,39 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"includes": ["src/**", "scripts/**", "tests/**", "e2e/**", "!src/**/*.svelte"]
+	},
+	"formatter": {
+		"enabled": false
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"correctness": {
+				"useExhaustiveDependencies": "off",
+				"noUnsafeFinally": "off"
+			},
+			"suspicious": {
+				"noArrayIndexKey": "off"
+			},
+			"a11y": {
+				"useSemanticElements": "off",
+				"useAriaPropsSupportedByRole": "off",
+				"noNoninteractiveTabindex": "off",
+				"noNoninteractiveElementToInteractiveRole": "off",
+				"useKeyWithClickEvents": "off"
+			}
+		}
+	}
+}

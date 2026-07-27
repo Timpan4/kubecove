@@ -1,0 +1,470 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "app-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release-draft: ${{ steps.release.outputs.release-draft }}
+      release-exists: ${{ steps.release.outputs.release-exists }}
+
+    steps:
+      - name: Detect existing release state
+        id: release
+        shell: bash
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if release_draft="$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft' 2>release-error.txt)"; then
+            echo "release-draft=$release_draft" >> "$GITHUB_OUTPUT"
+            echo "release-exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -qiE "not found|404" release-error.txt; then
+            echo "release-draft=true" >> "$GITHUB_OUTPUT"
+            echo "release-exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat release-error.txt >&2
+            exit 1
+          fi
+
+  metadata:
+    name: Release metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      release-body: ${{ steps.release_body.outputs.body }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Validate release tag and versions
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: bun scripts/validate-release-tag.ts
+
+      - name: Read release notes
+        id: release_body
+        shell: bash
+        run: |
+          {
+            echo "body<<EOF"
+            bun scripts/release-body.ts
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  frontend:
+    name: Frontend release checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check documentation
+        run: bun run docs:check
+
+      - name: Typecheck frontend
+        run: bun run typecheck
+
+      - name: Lint frontend
+        run: bun run lint
+
+      - name: Test frontend
+        run: bun test
+
+  rust:
+    name: Rust release checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install Linux Tauri dependencies
+        uses: awalsh128/cache-apt-pkgs-action@0e3c11464a8cfae52ee6ceb2b33777bcc9187892 # v1
+        with:
+          packages: >-
+            build-essential
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            libssl-dev
+            libwebkit2gtk-4.1-dev
+            patchelf
+          version: release-verify-tauri-linux-v1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: kubecove-rust-release-verify
+          workspaces: "./src-tauri -> target"
+
+      - name: Test Rust
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Lint Rust
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+
+  e2e:
+    name: Kubernetes ${{ matrix.kubernetes }} release E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        kubernetes: ["1.34", "1.35", "1.36"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install Tauri Linux dependencies
+        uses: awalsh128/cache-apt-pkgs-action@0e3c11464a8cfae52ee6ceb2b33777bcc9187892 # v1
+        with:
+          packages: >-
+            build-essential
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            libssl-dev
+            libwebkit2gtk-4.1-dev
+            patchelf
+            xvfb
+          version: release-e2e-tauri-linux-v1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run fast suite
+        run: bun run e2e:fast
+
+      - name: Run real suite
+        run: xvfb-run -a bun run e2e:real -- --kubernetes ${{ matrix.kubernetes }} --provider docker
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-e2e-${{ matrix.kubernetes }}-${{ github.run_id }}
+          path: |
+            e2e/artifacts/**
+            .artifacts/e2e/**
+          if-no-files-found: ignore
+
+  verify:
+    name: Verify release inputs
+    needs:
+      - metadata
+      - frontend
+      - rust
+      - e2e
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Verify required jobs
+        env:
+          METADATA_RESULT: ${{ needs.metadata.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          RUST_RESULT: ${{ needs.rust.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        run: |
+          set -euo pipefail
+          echo "Release metadata: ${METADATA_RESULT}"
+          echo "Frontend release checks: ${FRONTEND_RESULT}"
+          echo "Rust release checks: ${RUST_RESULT}"
+          echo "Kubernetes E2E matrix: ${E2E_RESULT}"
+          test "${METADATA_RESULT}" = "success"
+          test "${FRONTEND_RESULT}" = "success"
+          test "${RUST_RESULT}" = "success"
+          test "${E2E_RESULT}" = "success"
+
+  draft:
+    name: Create draft release
+    needs:
+      - prepare
+      - metadata
+      - verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Create release before asset builds
+        if: needs.prepare.outputs.release-draft == 'true' && needs.prepare.outputs.release-exists != 'true'
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ needs.metadata.outputs.release-body }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG_NAME#app-v}"
+          printf '%s\n' "$RELEASE_BODY" > release-notes.md
+          gh release create "$TAG_NAME" \
+            --title "KubeCove v${version}" \
+            --notes-file release-notes.md \
+            --draft \
+            --verify-tag
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs:
+      - prepare
+      - metadata
+      - verify
+      - draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS universal
+            platform: macos-latest
+            args: "--target universal-apple-darwin --bundles app,dmg"
+            rust-targets: "aarch64-apple-darwin x86_64-apple-darwin"
+            expected-updater-assets: "KubeCove___VERSION___universal.app.tar.gz KubeCove___VERSION___universal.app.tar.gz.sig"
+          - label: Windows x64
+            platform: windows-latest
+            args: "--target x86_64-pc-windows-msvc"
+            rust-targets: "x86_64-pc-windows-msvc"
+            expected-updater-assets: "KubeCove___VERSION___x64-setup.exe KubeCove___VERSION___x64-setup.exe.sig"
+          - label: Linux x64
+            platform: ubuntu-latest
+            args: "--target x86_64-unknown-linux-gnu"
+            rust-targets: "x86_64-unknown-linux-gnu"
+            expected-updater-assets: "KubeCove___VERSION___amd64.AppImage KubeCove___VERSION___amd64.AppImage.sig"
+
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install Linux Tauri dependencies
+        if: matrix.platform == 'ubuntu-latest'
+        uses: awalsh128/cache-apt-pkgs-action@0e3c11464a8cfae52ee6ceb2b33777bcc9187892 # v1
+        with:
+          packages: >-
+            build-essential
+            file
+            libayatana-appindicator3-dev
+            libfuse2
+            librsvg2-dev
+            libssl-dev
+            libwebkit2gtk-4.1-dev
+            patchelf
+            rpm
+          version: release-build-tauri-linux-v1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install Rust targets
+        run: rustup target add ${{ matrix.rust-targets }}
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: kubecove-rust-release-build
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare universal kubeconform sidecar
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          lipo -create \
+            src-tauri/bin/kubeconform-aarch64-apple-darwin \
+            src-tauri/bin/kubeconform-x86_64-apple-darwin \
+            -output src-tauri/bin/kubeconform-universal-apple-darwin
+          chmod 755 src-tauri/bin/kubeconform-universal-apple-darwin
+
+      - name: Build and upload release assets
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_KUBECOVE_RELEASE_CHANNEL: stable
+        with:
+          tagName: app-v__VERSION__
+          releaseName: "KubeCove v__VERSION__"
+          releaseBody: ${{ needs.metadata.outputs.release-body }}
+          releaseDraft: ${{ needs.prepare.outputs.release-draft }}
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: ${{ matrix.args }}
+
+      - name: Verify release assets
+        shell: bash
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          EXPECTED_UPDATER_ASSETS: ${{ matrix.expected-updater-assets }}
+        run: |
+          set -euo pipefail
+          version="${TAG_NAME#app-v}"
+          gh release view "$TAG_NAME" --json assets --jq '.assets[].name' > release-assets.txt
+
+          for asset_template in $EXPECTED_UPDATER_ASSETS; do
+            asset="${asset_template//__VERSION__/$version}"
+            grep -qx "$asset" release-assets.txt
+          done
+
+  publish:
+    name: Publish release
+    needs:
+      - prepare
+      - verify
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+
+      - name: Verify final updater platform coverage
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG_NAME#app-v}"
+          tmp="$(mktemp -d)"
+          gh release view "$TAG_NAME" --json assets --jq '.assets[].name' > "$tmp/assets.txt"
+          gh release download "$TAG_NAME" --pattern latest.json --clobber --dir "$tmp"
+          UPDATER_CHECK_DIR="$tmp" RELEASE_VERSION="$version" node <<'EOF'
+          const { readFileSync } = require("node:fs");
+
+          const dir = process.env.UPDATER_CHECK_DIR;
+          const version = process.env.RELEASE_VERSION;
+          const assets = new Set(readFileSync(`${dir}/assets.txt`, "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean));
+          const latest = JSON.parse(readFileSync(`${dir}/latest.json`, "utf8"));
+          const platforms = latest.platforms ?? {};
+
+          const requiredAssets = [
+            `KubeCove_${version}_universal.app.tar.gz`,
+            `KubeCove_${version}_universal.app.tar.gz.sig`,
+            `KubeCove_${version}_amd64.AppImage`,
+            `KubeCove_${version}_amd64.AppImage.sig`,
+            `KubeCove_${version}_x64-setup.exe`,
+            `KubeCove_${version}_x64-setup.exe.sig`,
+            "latest.json",
+          ];
+          const requiredPlatforms = [
+            "darwin-aarch64",
+            "darwin-x86_64",
+            "linux-x86_64",
+            "linux-x86_64-appimage",
+            "windows-x86_64",
+            "windows-x86_64-nsis",
+          ];
+
+          const missingAssets = requiredAssets.filter((asset) => !assets.has(asset));
+          const missingPlatforms = requiredPlatforms.filter((platform) => !platforms[platform]);
+
+          if (missingAssets.length > 0 || missingPlatforms.length > 0) {
+            throw new Error([
+              missingAssets.length ? `missing assets: ${missingAssets.join(", ")}` : null,
+              missingPlatforms.length ? `missing platforms: ${missingPlatforms.join(", ")}` : null,
+            ].filter(Boolean).join("; "));
+          }
+          EOF
+
+      - name: Publish completed release
+        if: needs.prepare.outputs.release-draft == 'true'
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: gh release edit "$TAG_NAME" --draft=false --prerelease=false

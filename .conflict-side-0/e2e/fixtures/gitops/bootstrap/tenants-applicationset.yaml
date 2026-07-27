@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata: {name: tenants, namespace: argocd}
+spec:
+  generators:
+    - list:
+        elements:
+          - {name: catalog}
+          - {name: ledger}
+  template:
+    metadata: {name: 'tenant-{{name}}'}
+    spec:
+      project: e2e-tenants
+      source: {repoURL: __KUBECOVE_GIT_REPO_URL__, targetRevision: main, path: 'tenants/{{name}}'}
+      destination: {server: https://kubernetes.default.svc, namespace: 'tenant-{{name}}'}
+      syncPolicy: {automated: {prune: true, selfHeal: true}, syncOptions: [CreateNamespace=true]}

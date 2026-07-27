@@ -1,0 +1,12 @@
+{
+  "deadCode": false,
+  "ignore": {
+    "files": [
+      "dist/**",
+      "build/**",
+      ".vite/**",
+      "target/**",
+      "src-tauri/target/**"
+    ]
+  }
+}

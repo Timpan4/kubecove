@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "KubeCove",
+  "version": "0.9.1",
+  "identifier": "com.timpan.kubecove",
+  "build": {
+    "beforeDevCommand": "bun run tauri:dev-server",
+    "devUrl": "http://localhost:1430",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "KubeCove",
+        "width": 1024,
+        "height": 720,
+        "minWidth": 1024,
+        "minHeight": 720
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost http://localhost:1430 ws://localhost:1431"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": [
+      "dmg",
+      "nsis",
+      "appimage",
+      "deb",
+      "rpm"
+    ],
+    "externalBin": [
+      "bin/kubeconform"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQxQUE3Rjc1NTNBQjVFMkEKUldRcVhxdFRkWCtxMFkxMWQzUkRhUlJkc2lwenFYdzFjT1NSa1ZMS3FQMlV1WTNrT2U2S1VQK1AK",
+      "endpoints": [
+        "https://github.com/Timpan4/kubecove/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

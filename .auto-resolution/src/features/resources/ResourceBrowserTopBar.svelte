@@ -1,0 +1,337 @@
+<script lang="ts">
+	import { Search, X } from "lucide-svelte";
+	import {
+		Badge,
+		Button,
+		InputGroup,
+		InputGroupAddon,
+		InputGroupInput,
+		InputGroupText,
+		Select,
+		SelectContent,
+		SelectGroup,
+		SelectItem,
+		SelectTrigger,
+		SelectValue,
+	} from "@/components/ui/svelte";
+	import type {
+		ArgoResourceCounts,
+		ArgoResourceFilter,
+	} from "@/features/gitops/argo-workspace-model";
+	import type { GitOpsOwnershipFilter } from "@/lib/gitops-ownership-evidence";
+	import type { NamespaceSummary, ResourceKindSelection } from "@/lib/types";
+	import type { HealthFilter, HealthSummary } from "./helpers";
+	import ResourceScopeSelector from "./ResourceScopeSelector.svelte";
+	import { kindSelectionKey, kindSelectionLabel } from "./resourceBrowserModel";
+
+	let {
+		selectedNamespaces,
+		selectedKinds,
+		namespaceOptions,
+		kindOptions,
+		selectedNamespaceSet,
+		selectedKindSet,
+		healthSummary,
+		healthFilter,
+		argoSummary = null,
+		argoFilter = "none",
+		search = $bindable(""),
+		gitOpsFilter,
+		gitOpsFilters,
+		metricsMessage,
+		customResourcesStatus,
+		realtimeStatus,
+		realtimeMessage,
+		onAllNamespacesSelect,
+		onAllKindsSelect,
+		onNamespaceToggle,
+		onKindToggle,
+		onHealthSelect,
+		onArgoFilterSelect = () => {},
+		onGitOpsFilterChange,
+		onSearchInput,
+		onClearFilters,
+	}: {
+		selectedNamespaces: string[];
+		selectedKinds: ResourceKindSelection[];
+		namespaceOptions: NamespaceSummary[];
+		kindOptions: ResourceKindSelection[];
+		selectedNamespaceSet: Set<string>;
+		selectedKindSet: Set<string>;
+		healthSummary: HealthSummary;
+		healthFilter: HealthFilter;
+		argoSummary?: ArgoResourceCounts | null;
+		argoFilter?: ArgoResourceFilter;
+		search?: string;
+		gitOpsFilter: string;
+		gitOpsFilters: GitOpsOwnershipFilter[];
+		metricsMessage: string | null;
+		customResourcesStatus?: string | null;
+		realtimeStatus: string;
+		realtimeMessage: string;
+		onAllNamespacesSelect: () => void;
+		onAllKindsSelect: () => void;
+		onNamespaceToggle: (namespace: string, checked: boolean) => void;
+		onKindToggle: (kind: ResourceKindSelection, checked: boolean) => void;
+		onHealthSelect: (filter: HealthFilter) => void;
+		onArgoFilterSelect?: (filter: ArgoResourceFilter) => void;
+		onGitOpsFilterChange: (value: string) => void;
+		onSearchInput: () => void;
+		onClearFilters: () => void;
+	} = $props();
+
+	const hasFilters = $derived(Boolean(search || gitOpsFilter || healthFilter !== "all" || argoFilter !== "none"));
+	const namespaceLabel = $derived(
+		selectedNamespaces.length === 0
+			? "All"
+			: selectedNamespaces.length <= 2
+				? selectedNamespaces.join(", ")
+				: `${selectedNamespaces.slice(0, 2).join(", ")} +${selectedNamespaces.length - 2}`,
+	);
+	const kindsLabel = $derived(
+		selectedKinds.length <= 3
+			? selectedKinds.map(kindSelectionLabel).join(", ")
+			: `${selectedKinds.slice(0, 3).map(kindSelectionLabel).join(", ")} +${selectedKinds.length - 3}`,
+	);
+	const namespaceScopeOptions = $derived(
+		namespaceOptions.map((namespace) => ({ key: namespace.name, label: namespace.name })),
+	);
+	const kindScopeOptions = $derived(
+		kindOptions.map((kind) => ({
+			key: kindSelectionKey(kind),
+			label: kindSelectionLabel(kind),
+		})),
+	);
+	const allKindsSelected = $derived(
+		kindOptions.length > 0 &&
+		kindOptions.every((kind) => selectedKindSet.has(kindSelectionKey(kind))),
+	);
+
+	function healthButtonClass(active: boolean) {
+		return [
+			"h-auto min-h-12 w-full flex-col items-start justify-center gap-0.5 bg-background/30 px-2.5 py-1.5 text-left font-normal hover:bg-background/50",
+			active ? "border-primary/50 bg-primary/10" : "",
+		].join(" ");
+	}
+
+	function argoButtonClass(active: boolean) {
+		return [
+			"h-7 gap-1.5 bg-background/30 px-2 text-[0.6875rem] font-normal hover:bg-background/50",
+			active ? "border-primary/50 bg-primary/10" : "",
+		].join(" ");
+	}
+
+	function countClass(value: number, tone?: "success" | "warning" | "danger" | "info") {
+		if (value === 0) return "text-muted-foreground/70";
+		if (tone === "success") return "text-emerald-300";
+		if (tone === "warning") return "text-amber-300";
+		if (tone === "danger") return "text-red-300";
+		if (tone === "info") return "text-sky-300";
+		return "text-foreground";
+	}
+</script>
+
+{#snippet ArgoFilterButton(filter: ArgoResourceFilter, label: string, count: number, dotClass: string)}
+	<Button type="button" variant="outline" size="sm" class={argoButtonClass(argoFilter === filter)} aria-pressed={argoFilter === filter} onclick={() => onArgoFilterSelect(filter)}><span class={`size-1.5 rounded-full ${dotClass}`}></span><span>{label}</span><strong class="tabular-nums">{count}</strong></Button>
+{/snippet}
+
+<section class="@container rounded-lg border bg-surface-1 p-2 shadow-sm" aria-label="Resource controls">
+	<div class="grid gap-2 @5xl:grid-cols-[auto_minmax(18rem,1fr)_auto] @5xl:items-center">
+		<div class="flex min-w-0 flex-wrap items-center gap-2" aria-label="Current resource scope">
+			<ResourceScopeSelector
+				triggerLabel="Namespace"
+				triggerValue={namespaceLabel}
+				triggerAriaLabel="Edit namespace scope"
+				heading="Namespaces"
+				selectAllLabel="Select all namespaces"
+				searchAriaLabel="Search namespaces"
+				searchPlaceholder="Search namespaces..."
+				emptyLabel="No namespaces found"
+				noMatchesLabel="No matching namespaces"
+				options={namespaceScopeOptions}
+				selectedKeys={selectedNamespaceSet}
+				allSelected={selectedNamespaces.length === 0}
+				onSelectAll={onAllNamespacesSelect}
+				onToggle={onNamespaceToggle}
+			/>
+
+			<ResourceScopeSelector
+				triggerLabel="Kinds"
+				triggerValue={kindsLabel}
+				triggerAriaLabel="Edit resource kinds"
+				heading="Kinds"
+				selectAllLabel="Select all kinds"
+				searchAriaLabel="Search resource kinds"
+				searchPlaceholder="Search kinds..."
+				emptyLabel="No kinds found"
+				noMatchesLabel="No matching kinds"
+				options={kindScopeOptions}
+				selectedKeys={selectedKindSet}
+				allSelected={allKindsSelected}
+				onSelectAll={onAllKindsSelect}
+				onToggle={(key, checked) => {
+					const kind = kindOptions.find((option) => kindSelectionKey(option) === key);
+					if (kind) onKindToggle(kind, checked);
+				}}
+			/>
+		</div>
+
+		<InputGroup class="h-8 min-w-0 border bg-background/70">
+			<InputGroupAddon align="inline-start">
+				<InputGroupText><Search class="size-4" /></InputGroupText>
+			</InputGroupAddon>
+			<InputGroupInput
+				aria-label="Search resources"
+				class="h-7 text-xs"
+				bind:value={search}
+				placeholder="Search by name, namespace, kind, owner, GitOps owner, Helm release..."
+				oninput={onSearchInput}
+			/>
+		</InputGroup>
+
+		<div class="flex min-w-0 flex-wrap items-center gap-2 @5xl:justify-end">
+			{#if gitOpsFilters.length > 0}
+				<Select
+					value={gitOpsFilter || "__all"}
+					items={[
+						{ value: "__all", label: "All GitOps owners" },
+						...gitOpsFilters.map((filter) => ({
+							value: filter.key,
+							label: filter.label,
+						})),
+					]}
+					onValueChange={onGitOpsFilterChange}
+				>
+					<SelectTrigger class="h-8 max-w-56 border bg-background/70">
+						<SelectValue placeholder="All GitOps owners" />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectGroup>
+							<SelectItem value="__all">All GitOps owners</SelectItem>
+							{#each gitOpsFilters as filter (filter.key)}
+								<SelectItem value={filter.key}>{filter.label}</SelectItem>
+							{/each}
+						</SelectGroup>
+					</SelectContent>
+				</Select>
+			{/if}
+			{#if hasFilters}
+				<Button variant="outline" size="sm" class="h-8 bg-background/70" onclick={onClearFilters}>
+					<X data-icon="inline-start" />
+					Clear
+				</Button>
+			{/if}
+		</div>
+	</div>
+
+	<div class="mt-2 grid gap-2 border-t pt-2 @5xl:grid-cols-2 @5xl:items-stretch">
+		<div class="grid grid-cols-2 gap-2 @3xl:grid-cols-3 @7xl:grid-cols-6" aria-label="Resource health summary">
+			<Button
+				type="button"
+				variant="outline"
+				class={healthButtonClass(healthFilter === "all")}
+				aria-pressed={healthFilter === "all"}
+				onclick={() => onHealthSelect("all")}
+			>
+				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Total</span>
+				<span class="flex items-baseline gap-1.5">
+					<strong class={`tabular-nums ${countClass(healthSummary.total)}`}>{healthSummary.total}</strong>
+					<span class="text-[0.625rem] text-muted-foreground">{healthSummary.untracked} unchecked</span>
+				</span>
+			</Button>
+			<Button
+				type="button"
+				variant="outline"
+				class={healthButtonClass(healthFilter === "healthy")}
+				aria-pressed={healthFilter === "healthy"}
+				onclick={() => onHealthSelect("healthy")}
+			>
+				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Healthy</span>
+				<strong class={`tabular-nums ${countClass(healthSummary.healthy, "success")}`}>
+					{healthSummary.healthy}
+				</strong>
+			</Button>
+			<Button
+				type="button"
+				variant="outline"
+				class={healthButtonClass(healthFilter === "unhealthy")}
+				aria-pressed={healthFilter === "unhealthy"}
+				onclick={() => onHealthSelect("unhealthy")}
+			>
+				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Unhealthy</span>
+				<strong
+					class={`tabular-nums ${countClass(healthSummary.attention + healthSummary.degraded, "warning")}`}
+				>
+					{healthSummary.attention + healthSummary.degraded}
+				</strong>
+			</Button>
+			<Button
+				type="button"
+				variant="outline"
+				class={healthButtonClass(healthFilter === "attention")}
+				aria-pressed={healthFilter === "attention"}
+				onclick={() => onHealthSelect("attention")}
+			>
+				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Needs attention</span>
+				<strong class={`tabular-nums ${countClass(healthSummary.attention, "warning")}`}>
+					{healthSummary.attention}
+				</strong>
+			</Button>
+			<Button
+				type="button"
+				variant="outline"
+				class={healthButtonClass(healthFilter === "degraded")}
+				aria-pressed={healthFilter === "degraded"}
+				onclick={() => onHealthSelect("degraded")}
+			>
+				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Degraded</span>
+				<strong class={`tabular-nums ${countClass(healthSummary.degraded, "danger")}`}>
+					{healthSummary.degraded}
+				</strong>
+			</Button>
+			<Button
+				type="button"
+				variant="outline"
+				class={healthButtonClass(healthFilter === "restarted")}
+				aria-pressed={healthFilter === "restarted"}
+				onclick={() => onHealthSelect("restarted")}
+			>
+				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Restarted</span>
+				<strong class={`tabular-nums ${countClass(healthSummary.restarted, "info")}`}>
+					{healthSummary.restarted}
+				</strong>
+			</Button>
+		</div>
+
+		<div class="grid min-w-0 gap-2 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] @5xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)] @7xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(12rem,auto)]">
+			<div class="rounded-md border bg-background/30 px-3 py-2 text-xs">
+				<div class="font-semibold text-foreground">Resource metrics</div>
+				<div class="text-muted-foreground">{metricsMessage ?? "metrics available"}</div>
+			</div>
+
+			<div class="rounded-md border bg-background/30 px-3 py-2 text-xs">
+				<div class="font-semibold text-foreground">Custom Resources</div>
+				<div class="text-muted-foreground">{customResourcesStatus ?? "available"}</div>
+			</div>
+
+			<div class="flex min-w-0 items-center gap-2 rounded-md border bg-background/30 px-3 py-2 text-xs">
+				<Badge variant={realtimeStatus === "error" ? "destructive" : "outline"} class="shrink-0">
+					Realtime: {realtimeStatus}
+				</Badge>
+				<span class="min-w-0 truncate text-muted-foreground">{realtimeMessage}</span>
+			</div>
+		</div>
+	</div>
+
+	{#if argoSummary}
+		<div class="mt-2 flex min-w-0 flex-wrap items-center gap-2 border-t pt-2" aria-label="Argo CD resource filters">
+			<div class="mr-1 flex items-center gap-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground"><span class="size-1.5 rounded-full bg-sky-400"></span>Argo CD resources</div>
+			{@render ArgoFilterButton("allManaged", "All managed", argoSummary.total, "bg-muted-foreground")}
+			{@render ArgoFilterButton("needsSync", "Needs sync", argoSummary.needsSync, "bg-amber-400")}
+			{@render ArgoFilterButton("healthy", "Healthy", argoSummary.healthy, "bg-emerald-400")}
+			{@render ArgoFilterButton("degraded", "Degraded", argoSummary.degraded, "bg-red-400")}
+			{@render ArgoFilterButton("progressing", "Progressing", argoSummary.progressing, "bg-amber-400")}
+			{@render ArgoFilterButton("prune", "Prune", argoSummary.prune, "bg-red-400")}
+		</div>
+	{/if}
+</section>
