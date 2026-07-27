@@ -18,7 +18,7 @@ export function assertOwned(record: Ownership, kind: Ownership["kind"], dir: str
 	if (record.kind !== kind || record.runId !== id || record.cluster !== expectedCluster(kind, id, workspaceHash) || record.dir !== dir || ![record.raw, record.kubeconfig, record.dataDir, record.kindConfig].every((path) => contained(path, dir))) throw new Error("refuse operation outside exact ownership record");
 }
 
-async function assertRealPathOwned(path: string, dir: string) {
+export async function assertOwnedPathOnDisk(path: string, dir: string) {
 	const ownedDir = await realpath(dir);
 	if (!(await lstat(dir)).isDirectory()) throw new Error("refuse symlinked ownership path");
 	let current = dir;
@@ -42,7 +42,7 @@ async function assertRealPathOwned(path: string, dir: string) {
 
 export async function assertOwnedOnDisk(record: Ownership, kind: Ownership["kind"], dir: string, id: string, workspaceHash: string) {
 	assertOwned(record, kind, dir, id, workspaceHash);
-	for (const path of [record.raw, record.kubeconfig, record.dataDir, record.kindConfig]) await assertRealPathOwned(path, dir);
+	for (const path of [record.raw, record.kubeconfig, record.dataDir, record.kindConfig]) await assertOwnedPathOnDisk(path, dir);
 }
 
 export function ownershipFromDisk(value: unknown, kind: Ownership["kind"], dir: string, id: string, workspaceHash: string, requireDefaultCni = kind === "dev") {

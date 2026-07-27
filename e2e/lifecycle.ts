@@ -9,7 +9,7 @@ import { kindConfig, kindDeleteArgs } from "./harness/cluster";
 import { safeDiagnosticCommands, safeDiagnosticText } from "./harness/diagnostics";
 import { gitSeedIdentity, prepareGitSeed } from "./harness/git-seed";
 import { gitRepositoryUrl, platformApplicationNames, tenantApplicationNames } from "./harness/lab";
-import { assertOwned, assertOwnedOnDisk, expectedCluster, ownershipFromDisk, type Ownership, type Provider } from "./harness/ownership";
+import { assertOwned, assertOwnedOnDisk, assertOwnedPathOnDisk, expectedCluster, ownershipFromDisk, type Ownership, type Provider } from "./harness/ownership";
 import { chartPins, fixturePaths, gitDaemonPins, validateImmutablePins } from "./harness/platform";
 
 const root = resolve(process.cwd());
@@ -127,7 +127,7 @@ async function selectProvider() {
 	throw new Error("no usable Docker or Podman provider found");
 }
 
-async function readOwnership(file: string, kind: Ownership["kind"], dir: string, id: string, requireDefaultCni = kind === "dev") { const record = ownershipFromDisk(parse(await readFile(file, "utf8")), kind, dir, id, workspaceHash, requireDefaultCni); await assertOwnedOnDisk(record, kind, dir, id, workspaceHash); return record; }
+async function readOwnership(file: string, kind: Ownership["kind"], dir: string, id: string, requireDefaultCni = kind === "dev") { await assertOwnedPathOnDisk(file, dir); const record = ownershipFromDisk(parse(await readFile(file, "utf8")), kind, dir, id, workspaceHash, requireDefaultCni); await assertOwnedOnDisk(record, kind, dir, id, workspaceHash); return record; }
 async function clusterExists(kind: string, cluster: string, provider: Awaited<ReturnType<typeof ensureProvider>>) { const result = await attempt(kind, ["get", "clusters"], provider.env); return result?.stdout.split(/\r?\n/).includes(cluster) ?? false; }
 const removals = new Map<string, Promise<void>>();
 async function removeOwnedCluster(record: Ownership) {
@@ -293,8 +293,8 @@ async function create(kindName: Ownership["kind"]) {
 
 async function safeArtifact(path: string, work: () => Promise<{ stdout: string; stderr: string } | undefined>) { try { const result = await work(); await writeFile(path, `${result?.stdout ?? ""}${result?.stderr ?? ""}`); } catch (error) { await writeFile(path, `diagnostic unavailable: ${String(error)}\n`); } }
 async function diagnostics(record: Ownership) {
-	if (!existsSync(record.kubeconfig)) return;
 	await assertOwnedOnDisk(record, record.kind, record.dir, record.runId, workspaceHash);
+	if (!existsSync(record.kubeconfig)) return;
 	const artifacts = join(root, "e2e", "artifacts", record.runId); await mkdir(artifacts, { recursive: true }); const { kind, kubectl, helm } = await tools(); const env = { KUBECONFIG: record.kubeconfig };
 	for (const [index, command] of safeDiagnosticCommands.entries()) await safeArtifact(join(artifacts, `status-${index}.txt`), async () => {
 		const result = await attempt(kubectl, [...command], env);

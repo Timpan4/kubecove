@@ -41,7 +41,7 @@ describe("Kind harness", () => {
 		const { kindConfig: _, ...legacy } = record;
 		expect(ownershipFromDisk(legacy, "run", record.dir, record.runId, "workspace").kindConfig).toBe(record.kindConfig);
 	});
-	test("refuses symlinked ownership paths", async () => {
+	test.skipIf(process.platform === "win32")("refuses symlinked ownership paths", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "kubecove-owned-"));
 		const outside = await mkdtemp(join(tmpdir(), "kubecove-outside-"));
 		const owned = { ...record, dir, raw: join(dir, "kind.raw.kubeconfig"), kubeconfig: join(dir, "kubeconfig"), dataDir: join(dir, "data"), kindConfig: join(dir, "kind.yaml") };
