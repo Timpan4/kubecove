@@ -9,7 +9,7 @@ import { kindConfig, kindDeleteArgs } from "./harness/cluster";
 import { safeDiagnosticCommands, safeDiagnosticText } from "./harness/diagnostics";
 import { gitSeedIdentity, prepareGitSeed } from "./harness/git-seed";
 import { gitRepositoryUrl, platformApplicationNames, tenantApplicationNames } from "./harness/lab";
-import { assertOwned, expectedCluster, ownershipFromDisk, type Ownership, type Provider } from "./harness/ownership";
+import { assertOwned, assertOwnedOnDisk, expectedCluster, ownershipFromDisk, type Ownership, type Provider } from "./harness/ownership";
 import { chartPins, fixturePaths, gitDaemonPins, validateImmutablePins } from "./harness/platform";
 
 const root = resolve(process.cwd());
@@ -127,11 +127,11 @@ async function selectProvider() {
 	throw new Error("no usable Docker or Podman provider found");
 }
 
-async function readOwnership(file: string, kind: Ownership["kind"], dir: string, id: string) { return ownershipFromDisk(parse(await readFile(file, "utf8")), kind, dir, id, workspaceHash); }
+async function readOwnership(file: string, kind: Ownership["kind"], dir: string, id: string, requireDefaultCni = kind === "dev") { const record = ownershipFromDisk(parse(await readFile(file, "utf8")), kind, dir, id, workspaceHash, requireDefaultCni); await assertOwnedOnDisk(record, kind, dir, id, workspaceHash); return record; }
 async function clusterExists(kind: string, cluster: string, provider: Awaited<ReturnType<typeof ensureProvider>>) { const result = await attempt(kind, ["get", "clusters"], provider.env); return result?.stdout.split(/\r?\n/).includes(cluster) ?? false; }
 const removals = new Map<string, Promise<void>>();
 async function removeOwnedCluster(record: Ownership) {
-	const dir = record.kind === "run" ? runDir(record.runId) : devDir; assertOwned(record, record.kind, dir, record.runId, workspaceHash);
+	const dir = record.kind === "run" ? runDir(record.runId) : devDir; await assertOwnedOnDisk(record, record.kind, dir, record.runId, workspaceHash);
 	const { kind } = await tools(); const provider = await ensureProvider(record.provider);
 	if (await clusterExists(kind, record.cluster, provider)) await execute(kind, kindDeleteArgs(record.cluster, record.raw), provider.env);
 	await rm(dir, { recursive: true, force: true });
@@ -157,6 +157,7 @@ function validateGeneratedConfig(value: unknown, record: Ownership) {
 	const server = new URL(config.clusters[0].cluster.server ?? ""); if (!["127.0.0.1", "localhost", "::1"].includes(server.hostname)) throw new Error("generated API server is not loopback");
 }
 async function bootstrap(record: Ownership, kubectl: string) {
+	await assertOwnedOnDisk(record, record.kind, record.dir, record.runId, workspaceHash);
 	const rawEnv = { KUBECONFIG: record.raw };
 	await execute(kubectl, ["apply", "-f", fixturePaths.rbac], rawEnv);
 	const token = (await execute(kubectl, ["create", "token", "restricted", "-n", "e2e-system", "--duration=2h"], rawEnv, true)).stdout.trim();
@@ -234,6 +235,7 @@ async function poll(description: string, timeoutMs: number, check: () => Promise
 	throw new Error(`timed out waiting for ${description}`);
 }
 async function applyLab(record: Ownership) {
+	await assertOwnedOnDisk(record, record.kind, record.dir, record.runId, workspaceHash);
 	const { kubectl, helm } = await tools(); const env = { KUBECONFIG: record.kubeconfig };
 	await verifyPlatformSources();
 	await applyTemplate(record, helm, kubectl, "cilium", chartPins.cilium, "kube-system", fixturePaths.ciliumValues);
@@ -284,14 +286,15 @@ async function create(kindName: Ownership["kind"]) {
 	const dir = kindName === "run" ? runDir() : devDir; const id = kindName === "run" ? runId : workspaceHash; const file = recordPath(dir);
 	if (kindName === "dev" && existsSync(file)) { const owned = await readOwnership(file, "dev", dir, id); const selected = await ensureProvider(owned.provider); const { kind, kubectl } = await tools(); if (await clusterExists(kind, owned.cluster, selected)) { current = owned; await bootstrap(owned, kubectl); await applyLab(owned); return owned; } await rm(dir, { recursive: true, force: true }); }
 	if (existsSync(file)) throw new Error(`run ${runId} already exists`);
-	const selected = await selectProvider(); const { kind, kubectl } = await tools(); const record: Ownership = { kind: kindName, runId: id, cluster: expectedCluster(kindName, id, workspaceHash), dir, raw: join(dir, "kind.raw.kubeconfig"), kubeconfig: join(dir, "kubeconfig"), dataDir: join(dir, "data"), kindConfig: join(dir, "kind.yaml"), provider: basename(selected.binary).startsWith("podman") ? "podman" : "docker", kubernetes };
-	assertOwned(record, kindName, dir, id, workspaceHash); await mkdir(record.dataDir, { recursive: true }); await writeFile(record.kindConfig, kindConfig()); await writeFile(file, stringify(record)); current = record;
+	const selected = await selectProvider(); const { kind, kubectl } = await tools(); const record: Ownership = { kind: kindName, runId: id, cluster: expectedCluster(kindName, id, workspaceHash), dir, raw: join(dir, "kind.raw.kubeconfig"), kubeconfig: join(dir, "kubeconfig"), dataDir: join(dir, "data"), kindConfig: join(dir, "kind.yaml"), disableDefaultCNI: true, provider: basename(selected.binary).startsWith("podman") ? "podman" : "docker", kubernetes };
+	assertOwned(record, kindName, dir, id, workspaceHash); await mkdir(record.dataDir, { recursive: true }); await writeFile(record.kindConfig, kindConfig()); await writeFile(file, stringify(record)); await assertOwnedOnDisk(record, kindName, dir, id, workspaceHash); current = record;
 	try { await execute(kind, ["create", "cluster", "--name", record.cluster, "--image", images[kubernetes], "--config", record.kindConfig, "--kubeconfig", record.raw], selected.env); await bootstrap(record, kubectl); await applyLab(record); return record; } catch (error) { if (kindName === "run") await diagnostics(record).catch((failure) => console.error("diagnostics failed", failure)); await removeCluster(record); current = undefined; throw error; }
 }
 
 async function safeArtifact(path: string, work: () => Promise<{ stdout: string; stderr: string } | undefined>) { try { const result = await work(); await writeFile(path, `${result?.stdout ?? ""}${result?.stderr ?? ""}`); } catch (error) { await writeFile(path, `diagnostic unavailable: ${String(error)}\n`); } }
 async function diagnostics(record: Ownership) {
 	if (!existsSync(record.kubeconfig)) return;
+	await assertOwnedOnDisk(record, record.kind, record.dir, record.runId, workspaceHash);
 	const artifacts = join(root, "e2e", "artifacts", record.runId); await mkdir(artifacts, { recursive: true }); const { kind, kubectl, helm } = await tools(); const env = { KUBECONFIG: record.kubeconfig };
 	for (const [index, command] of safeDiagnosticCommands.entries()) await safeArtifact(join(artifacts, `status-${index}.txt`), async () => {
 		const result = await attempt(kubectl, [...command], env);
@@ -328,5 +331,5 @@ else if (action === "run") await real();
 else if (action === "desktop-smoke") await desktopSmoke();
 else if (action === "cleanup") { if (!requestedRunId) throw new Error("cleanup requires --run-id <id>"); const dir = runDir(requestedRunId); if (existsSync(recordPath(dir))) await removeCluster(await readOwnership(recordPath(dir), "run", dir, requestedRunId)); }
 else if (action === "dev-up") await dev();
-else if (action === "dev-down") { if (existsSync(recordPath(devDir))) await removeCluster(await readOwnership(recordPath(devDir), "dev", devDir, workspaceHash)); }
+else if (action === "dev-down") { if (existsSync(recordPath(devDir))) await removeCluster(await readOwnership(recordPath(devDir), "dev", devDir, workspaceHash, false)); }
 else throw new Error("use fast, run, desktop-smoke, cleanup, dev-up, or dev-down");
