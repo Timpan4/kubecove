@@ -1,14 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { safeDiagnosticCommands, safeDiagnosticText } from "./diagnostics";
 import { verifyAsset } from "./assets";
 import { kindConfig, kindDeleteArgs } from "./cluster";
 import { gitSeedIdentity, kindMetricsManifest } from "./git-seed";
 import { bootstrapOrder, platformApplicationNames, readinessPhase, tenantApplicationNames } from "./lab";
-import { assertOwned, expectedCluster, ownershipFromDisk, type Ownership } from "./ownership";
+import { assertOwned, assertOwnedOnDisk, expectedCluster, ownershipFromDisk, type Ownership } from "./ownership";
 import { chartPins, validateImmutablePins } from "./platform";
 
-const record: Ownership = { kind: "run", runId: "run-1", cluster: "kubecove-e2e-run-1", dir: "/tmp/run-1", raw: "/tmp/run-1/kind.raw.kubeconfig", kubeconfig: "/tmp/run-1/kubeconfig", dataDir: "/tmp/run-1/data", kindConfig: "/tmp/run-1/kind.yaml", provider: "docker", kubernetes: "1.35" };
+const record: Ownership = { kind: "run", runId: "run-1", cluster: "kubecove-e2e-run-1", dir: "/tmp/run-1", raw: "/tmp/run-1/kind.raw.kubeconfig", kubeconfig: "/tmp/run-1/kubeconfig", dataDir: "/tmp/run-1/data", kindConfig: "/tmp/run-1/kind.yaml", disableDefaultCNI: true, provider: "docker", kubernetes: "1.35" };
 
 describe("Kind harness", () => {
 	test("uses Cilium instead of Kind default CNI while retaining kube-proxy", () => {
@@ -37,6 +40,21 @@ describe("Kind harness", () => {
 	test("upgrades ownership records written before kindConfig existed", () => {
 		const { kindConfig: _, ...legacy } = record;
 		expect(ownershipFromDisk(legacy, "run", record.dir, record.runId, "workspace").kindConfig).toBe(record.kindConfig);
+	});
+	test.skipIf(process.platform === "win32")("refuses symlinked ownership paths", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "kubecove-owned-"));
+		const outside = await mkdtemp(join(tmpdir(), "kubecove-outside-"));
+		const owned = { ...record, dir, raw: join(dir, "kind.raw.kubeconfig"), kubeconfig: join(dir, "kubeconfig"), dataDir: join(dir, "data"), kindConfig: join(dir, "kind.yaml") };
+		try {
+			await writeFile(owned.raw, "raw"); await writeFile(owned.kubeconfig, "config"); await writeFile(owned.kindConfig, "kind"); await mkdir(owned.dataDir);
+			await rm(owned.kubeconfig); await writeFile(join(outside, "kubeconfig"), "config"); await symlink(join(outside, "kubeconfig"), owned.kubeconfig);
+			await expect(assertOwnedOnDisk(owned, "run", dir, owned.runId, "workspace")).rejects.toThrow("refuse symlinked ownership path");
+		} finally { await rm(dir, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+	});
+	test("refuses legacy dev records without CNI proof but permits explicit cleanup", () => {
+		const legacy = { ...record, kind: "dev" as const, runId: "workspace", cluster: expectedCluster("dev", "workspace", "workspace"), disableDefaultCNI: undefined };
+		expect(() => ownershipFromDisk(legacy, "dev", legacy.dir, legacy.runId, "workspace")).toThrow("run bun run dev:kind:down");
+		expect(() => ownershipFromDisk(legacy, "dev", legacy.dir, legacy.runId, "workspace", false)).not.toThrow();
 	});
 	test("preserves immutable selectors used by persistent dev labs", () => {
 		const fixtures = readFileSync(new URL("../fixtures/all.yaml", import.meta.url), "utf8");
