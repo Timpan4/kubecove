@@ -59,8 +59,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
-    "@codspeed/vitest-plugin": "^5.7.1",
-    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@codspeed/vitest-plugin": "5.7.1",
+    "@fontsource-variable/geist-mono": "5.3.0",
     "@sveltejs/vite-plugin-svelte": "7.2.0",
     "@tailwindcss/vite": "4.3.3",
     "@tauri-apps/cli": "2.11.4",
@@ -82,14 +82,14 @@
     "typescript": "7.0.2",
     "typescript-6": "npm:typescript@6.0.3",
     "vite": "8.1.5",
-    "vitest": "^4.1.10",
+    "vitest": "4.1.10",
     "webdriverio": "9.30.0"
   },
   "overrides": {
     "@codemirror/state": "6.7.1",
-    "@codemirror/view": "6.43.6",
+    "@codemirror/view": "6.43.7",
     "@wdio/native-utils": "2.5.0",
-    "postcss": "8.5.24",
+    "postcss": "8.5.25",
     "serialize-javascript": "7.0.7"
   }
 }
