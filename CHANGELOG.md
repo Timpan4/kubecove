@@ -6,10 +6,15 @@ should mirror the matching version section.
 ## 0.10.0 - 2026-07-29
 ### Added
 
+- inspect and operate Argo CD applications through guarded Kubernetes and connected transports (#271)
+- reveal individual Secret keys transiently while keeping credentials and connected Argo payloads backend-protected (#271)
+- add an RBAC security cockpit with observed-grant provenance and exact permission verification (#257)
 - add Argo resource workspace
 
 ### Improved
 
+- validate releases against a production-shaped Kind lab (#272)
+- share resource scope selection across navigation surfaces (#270)
 - Improve resource kind selector (#269)
 - expand frontend CodSpeed coverage (#266)
 - Kubernetes read seams (#258)
