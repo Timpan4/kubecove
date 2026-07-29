@@ -59,6 +59,10 @@ import {
 	stopPodPortForward,
 	writePodExecStdin,
 } from "../src/lib/tauri";
+import {
+	getArgoApplicationInspector,
+	getArgoApplicationResources,
+} from "../src/lib/tauri-argo";
 import { createDevMockTauriClient } from "../src/lib/tauri-dev-mocks";
 import type {
 	AppUsageMetrics,
@@ -264,6 +268,34 @@ describe("createMockTauriClient", () => {
 			"ingress-nginx-controller",
 			"ingress-nginx-controller-7bdbf967f9-dk4nc",
 		]);
+	});
+
+	test("browser dev mock keeps Argo application status and managed resources consistent", async () => {
+		const client = createDevMockTauriClient();
+		const apps = await listArgoApplications(client, "mock-dev");
+		const app = apps.find((candidate) => candidate.name === "platform-argocd");
+		const request = {
+			clusterContext: "mock-dev",
+			transport: "kubernetes" as const,
+			application: { name: app?.name ?? "platform-argocd" },
+		};
+		const [inspector, managed, cilium, metrics, catalog] = await Promise.all([
+			getArgoApplicationInspector(client, request),
+			getArgoApplicationResources(client, request),
+			getArgoApplicationResources(client, { ...request, application: { name: "platform-cilium" } }),
+			getArgoApplicationResources(client, { ...request, application: { name: "platform-metrics" } }),
+			getArgoApplicationResources(client, { ...request, application: { name: "tenant-catalog" } }),
+		]);
+
+		expect(inspector.status).toMatchObject({
+			sync: { status: app?.syncStatus },
+			health: { status: app?.healthStatus },
+		});
+		expect(managed.map((resource) => resource.name)).not.toContain("kube-root-ca.crt");
+		expect(cilium.map((resource) => resource.name)).toContain("coredns");
+		expect(metrics.map((resource) => resource.name)).toContain("metrics-gateway");
+		expect(metrics.every((resource) => resource.namespace !== "kube-system")).toBe(true);
+		expect(catalog.map((resource) => resource.kind)).toContain("HorizontalPodAutoscaler");
 	});
 
 	test("browser dev mock previews and confirms guarded operations", async () => {

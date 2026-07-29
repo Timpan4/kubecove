@@ -1,6 +1,7 @@
 import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
 import {
 	argoApps,
+	argoManagedResourceRefs,
 	deploymentRevisions,
 	dockerResources,
 	fluxHelmKind,
@@ -130,12 +131,13 @@ const handlers: Record<string, MockHandler> = {
 	reveal_secret_data_value: () => "c2VjcmV0",
 	forget_argo_credential: () => undefined,
 	get_argo_application_inspector: (args) => {
+		const app = argoApplication(args);
 		const managedResources = argoManagedResources(args);
 		return {
 			application: args?.application,
 			status: {
-				sync: { status: managedResources.some((resource) => resource.status === "OutOfSync") ? "OutOfSync" : "Synced", revision: "8f4c2d1" },
-				health: { status: managedResources.some((resource) => resource.health === "Degraded") ? "Degraded" : "Healthy" },
+				sync: { status: app.syncStatus ?? "Unknown", revision: "8f4c2d1" },
+				health: { status: app.healthStatus ?? "Unknown" },
 				reconciledAt: now,
 			},
 			history: [],
@@ -495,14 +497,23 @@ function usage(): AppUsageMetrics {
 	return { cpuPercent: 3.8, memoryBytes: 388_000_000, processCount: 3, sampledAt: now, breakdown: [{ label: "KubeCove browser mock", description: "Vite tab with fake Tauri responses", cpuPercent: 3.8, memoryBytes: 388_000_000, processCount: 3, children: [] }] };
 }
 
-function argoManagedResources(args: MockArgs): ArgoManagedResource[] {
+function argoApplication(args: MockArgs) {
 	const application = args?.application as { name?: string } | undefined;
-	const app = argoApps.find((candidate) => candidate.name === application?.name) ?? argoApps[0];
+	return argoApps.find((candidate) => candidate.name === application?.name) ?? argoApps[0];
+}
+
+function argoManagedResources(args: MockArgs): ArgoManagedResource[] {
+	const app = argoApplication(args);
+	const refs = argoManagedResourceRefs[app.name] ?? [];
 	const rows = resources.filter(
 		(row) =>
-			row.namespace === app.destinationNamespace &&
-			["Deployment", "Service", "ConfigMap", "Secret"].includes(row.kind) &&
-			row.name !== "kube-root-ca.crt",
+			row.name !== "kube-root-ca.crt" &&
+			refs.some(
+				(ref) =>
+					ref.kind === row.kind &&
+					ref.name === row.name &&
+					ref.namespace === row.namespace,
+			),
 	);
 	return rows.map((row) => {
 		const progressing = row.kind === "ConfigMap";

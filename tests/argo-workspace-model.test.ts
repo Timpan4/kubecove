@@ -54,14 +54,26 @@ const workspaceResources = [
 ];
 
 describe("Argo managed-resource workspace model", () => {
-	test("matches identities consistently by kind, namespace, and name", () => {
+	test("matches identities consistently by API group, kind, namespace, and name", () => {
 		expect(
-			argoResourceIdentityKey({ kind: " Deployment ", namespace: "SHOP", name: "Api" }),
-		).toBe("deployment:shop:api");
-		expect(argoResourceIdentityKey({ kind: "Deployment", namespace: null, name: "api" })).toBe(
-			"deployment::api",
+			argoResourceIdentityKey({ group: " APPS ", kind: " Deployment ", namespace: "SHOP", name: "Api" }),
+		).toBe("apps:deployment:shop:api");
+		expect(argoResourceIdentityKey({ group: "", kind: "Deployment", namespace: null, name: "api" })).toBe(
+			":deployment::api",
 		);
 		expect(argoResourceIdentityKey({ kind: null, namespace: "shop", name: "api" })).toBeNull();
+	});
+
+	test("does not collide resources from different API groups", () => {
+		const managed = [{ group: "apps", kind: "Deployment", namespace: "shop", name: "api" }];
+		const workspace = [
+			{ apiVersion: "v1", kind: "Deployment", namespace: "shop", name: "api" },
+			{ apiVersion: "apps/v1", kind: "Deployment", namespace: "shop", name: "api" },
+		];
+
+		expect(filterWorkspaceResourcesByArgo(workspace, managed, "allManaged")).toEqual([
+			workspace[1],
+		]);
 	});
 
 	test("filters every Argo state independently", () => {

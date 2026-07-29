@@ -19,7 +19,9 @@ export type ArgoResourceFilter =
 	| "progressing"
 	| "prune";
 
-type ArgoResourceIdentity = Pick<ArgoManagedResource, "kind" | "namespace" | "name">;
+type ArgoResourceIdentity = Pick<ArgoManagedResource, "group" | "kind" | "namespace" | "name"> & {
+	apiVersion?: string | null;
+};
 
 export function argoResourceCounts(resources: ArgoManagedResource[]): ArgoResourceCounts {
 	const total = resources.length;
@@ -41,7 +43,7 @@ export function argoResourceIdentityKey(resource: ArgoResourceIdentity): string 
 	const kind = normalized(resource.kind);
 	const name = normalized(resource.name);
 	if (!kind || !name) return null;
-	return `${kind}:${normalized(resource.namespace)}:${name}`;
+	return `${normalizedGroup(resource)}:${kind}:${normalized(resource.namespace)}:${name}`;
 }
 
 export function argoResourceMatchesFilter(
@@ -70,6 +72,12 @@ export function filterWorkspaceResourcesByArgo<T extends ArgoResourceIdentity>(
 		const key = argoResourceIdentityKey(resource);
 		return key !== null && managedKeys.has(key);
 	});
+}
+
+function normalizedGroup(resource: ArgoResourceIdentity): string {
+	if (resource.group !== undefined && resource.group !== null) return normalized(resource.group);
+	const apiVersion = resource.apiVersion;
+	return normalized(apiVersion?.includes("/") ? apiVersion.split("/", 1)[0] : "");
 }
 
 function normalized(value: string | null | undefined): string {
