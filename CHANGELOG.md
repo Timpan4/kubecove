@@ -3,6 +3,28 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.10.0 - 2026-07-29
+### Added
+
+- add Argo resource workspace
+
+### Improved
+
+- Improve resource kind selector (#269)
+- expand frontend CodSpeed coverage (#266)
+- Kubernetes read seams (#258)
+- Speed up topology and lazy-load heavy surfaces (#252)
+- Reduce frontend memory retention (#251)
+- Speed up frontend resource search (#250)
+
+### Fixed
+
+- resolve Argo review findings
+- declare actual Rust MSRV
+- unblock dependency audit checks (#280)
+- load YAML pane eagerly (#274)
+- overlay stacking across floating surfaces (#253)
+
 ## 0.9.1 - 2026-07-17
 ### Fixed
 
