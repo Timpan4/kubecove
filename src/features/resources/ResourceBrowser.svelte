@@ -49,7 +49,13 @@
 	import { diagnosticLog } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
-	import { healthStatusVariant, syncStatusVariant, type ChipVariant } from "@/features/argo/status";
+	import type { ChipVariant } from "@/features/argo/status";
+	import ArgoApplicationWorkspaceHeader from "@/features/gitops/ArgoApplicationWorkspaceHeader.svelte";
+	import {
+		argoResourceCounts,
+		filterWorkspaceResourcesByArgo,
+		type ArgoResourceFilter,
+	} from "@/features/gitops/argo-workspace-model";
 	import {
 		describeMetricsAvailability,
 		formatCpuMillicores,
@@ -59,7 +65,11 @@
 		resourceMetricIndex,
 	} from "@/lib/resource-metrics";
 	import { cnfast } from "@/lib/utils";
-	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
+	import type {
+		ArgoApplicationInspector,
+		ArgoApplicationSummary,
+		ArgoManagedResource,
+	} from "@/lib/gitops-types";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import type { PathStateResourceBrowserState } from "@/lib/path-state";
 	import {
@@ -67,6 +77,8 @@
 		cancelBackendRequests,
 		createStreamChannel,
 		createTauriClient,
+		getArgoApplicationInspector,
+		getArgoApplicationResources,
 		isAppError,
 		listNamespaces,
 		listResourceKinds,
@@ -175,6 +187,7 @@
 	let search = $state("");
 	let gitOpsFilter = $state("");
 	let healthFilter = $state<HealthFilter>("all");
+	let argoResourceFilter = $state<ArgoResourceFilter>("none");
 	let sortColumn = $state<ResourceSortColumn>("name");
 	let sortDesc = $state(false);
 	let pageIndex = $state(0);
@@ -236,6 +249,9 @@
 			search: initialSearch,
 			gitOpsFilter: initialGitOpsFilter,
 			healthFilter: initialHealthFilter,
+			argoApplication: gitOpsFocusApplication
+				? `${gitOpsFocusApplication.namespace ?? ""}:${gitOpsFocusApplication.name}`
+				: null,
 		}),
 	);
 	$effect(() => {
@@ -248,6 +264,7 @@
 		search = pathState?.search ?? initialSearch;
 		gitOpsFilter = pathState?.gitOpsFilter ?? initialGitOpsFilter;
 		healthFilter = pathState?.healthFilter ?? initialHealthFilter;
+		argoResourceFilter = "none";
 		sortColumn = pathState?.sortColumn ?? "name";
 		sortDesc = pathState?.sortDesc ?? false;
 		pageIndex = pathState?.pageIndex ?? 0;
@@ -291,6 +308,49 @@
 			customResourcesEnabled,
 		}),
 	);
+	const focusedArgoReadRequest = $derived(
+		gitOpsFocusApplication
+			? {
+					clusterContext,
+					kubeconfigEnvVar: kubeconfigSourceKey,
+					transport: "kubernetes" as const,
+					application: {
+						name: gitOpsFocusApplication.name,
+						namespace: gitOpsFocusApplication.namespace,
+						project: gitOpsFocusApplication.project,
+						resourceVersion: gitOpsFocusApplication.resourceVersion ?? null,
+						uid: gitOpsFocusApplication.uid ?? null,
+						apiVersion: "argoproj.io/v1alpha1",
+						context: clusterContext,
+						workspaceId: workspaceReadContext.workspaceId,
+					},
+					redactSecrets: $settingsStore.redactSecrets,
+				}
+			: null,
+	);
+	const focusedArgoQueryKey = $derived([
+		"argo-workspace",
+		clusterContext,
+		kubeconfigSourceKey,
+		workspaceReadContext.workspaceId,
+		gitOpsFocusApplication?.namespace ?? "",
+		gitOpsFocusApplication?.name ?? "",
+		$settingsStore.redactSecrets,
+	]);
+	const focusedArgoInspectorQuery = createQuery<ArgoApplicationInspector>(() => ({
+		queryKey: [...focusedArgoQueryKey, "inspector"],
+		queryFn: () => getArgoApplicationInspector(client, focusedArgoReadRequest!),
+		enabled: sourceReady && focusedArgoReadRequest !== null,
+		staleTime: 30_000,
+		retry: false,
+	}));
+	const focusedArgoResourcesQuery = createQuery<ArgoManagedResource[]>(() => ({
+		queryKey: [...focusedArgoQueryKey, "managed-resources"],
+		queryFn: () => getArgoApplicationResources(client, focusedArgoReadRequest!),
+		enabled: sourceReady && focusedArgoReadRequest !== null,
+		staleTime: 30_000,
+		retry: false,
+	}));
 	const namespacesQuery = createQuery<NamespaceSummary[]>(() => ({
 		queryKey: readSpecs.namespacesQueryKey,
 		queryFn: () => listNamespaces(client, clusterContext, kubeconfigSourceKey),
@@ -489,7 +549,36 @@
 	const rowsWithMetrics = $derived(
 		mergeResourceMetrics(resourcesQuery.data ?? [], metricsQuery.data, metricsIndex),
 	);
-	const resourceSearchIndex = $derived(buildResourceSearchIndex(rowsWithMetrics));
+	const focusedArgoResources = $derived(focusedArgoResourcesQuery.data ?? []);
+	const focusedArgoFilterSummary = $derived(
+		gitOpsFocusApplication && focusedArgoResourcesQuery.data
+			? argoResourceCounts(focusedArgoResources)
+			: null,
+	);
+	const tableRows = $derived(
+		gitOpsFocusApplication
+			? filterWorkspaceResourcesByArgo(
+					rowsWithMetrics,
+					focusedArgoResources,
+					argoResourceFilter,
+				)
+			: rowsWithMetrics,
+	);
+	const argoResourceSearchIndex = $derived(buildResourceSearchIndex(tableRows));
+	const focusedArgoError = $derived(
+		focusedArgoInspectorQuery.isError
+			? focusedArgoInspectorQuery.error
+			: focusedArgoResourcesQuery.isError
+				? focusedArgoResourcesQuery.error
+				: null,
+	);
+	const focusedArgoLoading = $derived(
+		focusedArgoInspectorQuery.isPending || focusedArgoResourcesQuery.isPending,
+	);
+	const focusedArgoRefreshing = $derived(
+		!focusedArgoLoading &&
+			(focusedArgoInspectorQuery.isFetching || focusedArgoResourcesQuery.isFetching),
+	);
 	const topologyWithMetrics = $derived(
 		mergeTopologyMetrics(topologyQuery.data, metricsQuery.data, metricsIndex),
 	);
@@ -505,7 +594,7 @@
 				collapsedGroups,
 				selectedResource,
 			},
-			resourceSearchIndex,
+			argoResourceSearchIndex,
 		),
 	);
 	const pinnedResourceKeySet = $derived(new Set(pinnedResourceKeys));
@@ -795,10 +884,23 @@
 		pageIndex = 0;
 	}
 
+	async function refreshFocusedArgo() {
+		await Promise.all([
+			focusedArgoInspectorQuery.refetch(),
+			focusedArgoResourcesQuery.refetch(),
+		]);
+	}
+
+	function selectArgoResource(filter: ArgoResourceFilter) {
+		argoResourceFilter = argoResourceFilter === filter ? "none" : filter;
+		pageIndex = 0;
+	}
+
 	function clearFilters() {
 		search = "";
 		gitOpsFilter = "";
 		healthFilter = "all";
+		argoResourceFilter = "none";
 		pageIndex = 0;
 	}
 
@@ -855,12 +957,6 @@
 		);
 	}
 
-	function compactNamespaceList(values: string[]): string {
-		if (values.length === 0) return "All namespaces";
-		if (values.length <= 3) return values.join(", ");
-		return `${values.slice(0, 3).join(", ")} +${values.length - 3}`;
-	}
-
 	function statusBadgeVariant(tone: ChipVariant) {
 		return STATUS_BADGE_STYLES[tone].variant;
 	}
@@ -872,54 +968,16 @@
 
 <div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
 	{#if gitOpsFocusApplication}
-		{@const app = gitOpsFocusApplication}
-		{@const destination = app.destinationNamespace ?? app.destinationServer}
-		<section class="rounded-lg border border-sidebar-border bg-surface-1 px-3 py-2.5 shadow-sm">
-			<div class="flex flex-wrap items-start justify-between gap-3">
-				<div class="min-w-0">
-					<div class="flex min-w-0 items-center gap-2">
-						<GitBranch class="size-4 shrink-0 text-[var(--resource-argo)]" />
-						<h2 class="truncate text-base font-semibold">{app.name}</h2>
-					</div>
-					<div class="mt-2 flex flex-wrap gap-1.5">
-						{#if app.healthStatus}
-							{@const healthTone = healthStatusVariant(app.healthStatus)}
-							<Badge variant={statusBadgeVariant(healthTone)} class={statusBadgeClass(healthTone)}>
-								{app.healthStatus}
-							</Badge>
-						{/if}
-						{#if app.syncStatus}
-							{@const syncTone = syncStatusVariant(app.syncStatus)}
-							<Badge variant={statusBadgeVariant(syncTone)} class={statusBadgeClass(syncTone)}>
-								{app.syncStatus}
-							</Badge>
-						{/if}
-					</div>
-				</div>
-				<div class="text-right text-sm">
-					<div class="font-semibold text-foreground">{app.trackedResourceCount ?? "-"}</div>
-					<div class="text-xs text-muted-foreground">tracked resources</div>
-				</div>
-			</div>
-			<div class="mt-2.5 grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
-				{@render SummaryField("Project", app.project)}
-				{@render SummaryField("Repo", app.sourceRepo, app.sourceRepo ?? undefined)}
-				{@render SummaryField("Revision", app.sourceRevision)}
-				{@render SummaryField("Destination", destination)}
-				{@render SummaryField("App namespace", app.namespace)}
-				{@render SummaryField(
-					"Resource namespaces",
-					compactNamespaceList(app.resourceNamespaces),
-					app.resourceNamespaces.length > 0 ? app.resourceNamespaces.join(", ") : undefined,
-				)}
-				{@render SummaryField("Created", app.age, app.createdAt)}
-			</div>
-			<div class="mt-2 flex justify-end">
-				<Button type="button" size="sm" variant="outline" onclick={() => onArgoApplicationInspect(app)}>
-					Details
-				</Button>
-			</div>
-		</section>
+		<ArgoApplicationWorkspaceHeader
+			app={gitOpsFocusApplication}
+			inspector={focusedArgoInspectorQuery.data ?? null}
+			managedResources={focusedArgoResources}
+			loading={focusedArgoLoading}
+			refreshing={focusedArgoRefreshing}
+			error={focusedArgoError}
+			onRefresh={refreshFocusedArgo}
+			onInspect={onArgoApplicationInspect}
+		/>
 	{/if}
 
 	{#if !clusterContext}
@@ -959,6 +1017,8 @@
 			bind:search
 			{gitOpsFilter}
 			gitOpsFilters={tableModel.gitOpsFilters}
+			argoSummary={focusedArgoFilterSummary}
+			argoFilter={argoResourceFilter}
 			{metricsMessage}
 			{customResourcesStatus}
 			{realtimeStatus}
@@ -978,6 +1038,7 @@
 			onNamespaceToggle={toggleNamespace}
 			onKindToggle={toggleKind}
 			onHealthSelect={selectHealth}
+			onArgoFilterSelect={selectArgoResource}
 			onGitOpsFilterChange={setGitOpsFilter}
 			onSearchInput={() => (pageIndex = 0)}
 			onClearFilters={clearFilters}
@@ -1349,13 +1410,6 @@
 		</div>
 	{/if}
 </div>
-
-{#snippet SummaryField(label: string, value: string | number | null | undefined, title: string | undefined = undefined)}
-	<div class="min-w-0">
-		<div class="text-[11px] font-medium uppercase text-muted-foreground">{label}</div>
-		<div class="min-w-0 truncate text-sm text-foreground" {title}>{value ?? "-"}</div>
-	</div>
-{/snippet}
 
 {#snippet SortButton(column: ResourceSortColumn, label: string)}
 	<Button

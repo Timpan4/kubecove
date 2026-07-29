@@ -288,11 +288,65 @@ export const argoApps: ArgoApplicationSummary[] = labArgoApplications.map(([name
 	sourceRevision: "main",
 	sourceMode: "git",
 	sourceCount: 1,
+	sources: [
+		{
+			repoUrl: name.startsWith("platform-")
+				? "pinned Helm or internal Git"
+				: "git://git-server.e2e-system.svc.cluster.local:9418/fixtures.git",
+			targetRevision: "main",
+			resolvedRevision: "8f4c2d1",
+			path: `apps/${name}`,
+			chart: null,
+			reference: null,
+		},
+	],
 	resourceNamespaces: [destinationNamespace],
 	trackedResourceCount: name.startsWith("tenant-") ? 12 : 8,
 	age: "12d",
 	createdAt: "2026-06-17T08:00:00Z",
 }));
+
+export const argoManagedResourceRefs: Readonly<Record<string, readonly Pick<ResourceSummary, "kind" | "name" | "namespace">[]>> = {
+	"root-application": [{ kind: "Application", name: "shop", namespace: "argocd" }],
+	"platform-argocd": [
+		{ kind: "Deployment", name: "argocd-server", namespace: "argocd" },
+		{ kind: "Pod", name: "argocd-server-8c9869674-xj9p", namespace: "argocd" },
+		{ kind: "Service", name: "argocd-server", namespace: "argocd" },
+		{ kind: "ConfigMap", name: "argocd-cm", namespace: "argocd" },
+		{ kind: "Secret", name: "argocd-secret", namespace: "argocd" },
+	],
+	"platform-cilium": [
+		{ kind: "Deployment", name: "coredns", namespace: "kube-system" },
+		{ kind: "Pod", name: "coredns-7859998f6-lf7hm", namespace: "kube-system" },
+		{ kind: "Service", name: "kube-dns", namespace: "kube-system" },
+		{ kind: "ConfigMap", name: "coredns", namespace: "kube-system" },
+		{ kind: "Secret", name: "sh.helm.release.v1.cilium.v2", namespace: "kube-system" },
+	],
+	"platform-metrics": [
+		{ kind: "Deployment", name: "metrics-gateway", namespace: "platform" },
+		{ kind: "Service", name: "metrics-gateway", namespace: "platform" },
+		{ kind: "Pod", name: "metrics-gateway-9f6d4f7c9-7j2p4", namespace: "platform" },
+		{ kind: "PersistentVolumeClaim", name: "metrics-gateway-cache", namespace: "platform" },
+	],
+	"platform-storage": [
+		{ kind: "PersistentVolume", name: "pv-metrics-gateway-cache", namespace: null },
+		{ kind: "StorageClass", name: "local-path", namespace: null },
+	],
+	"platform-ingress": [
+		{ kind: "Deployment", name: "traefik", namespace: "traefik" },
+		{ kind: "Pod", name: "traefik-6d89b8d6f8-mk7r5", namespace: "traefik" },
+		{ kind: "Service", name: "traefik", namespace: "traefik" },
+		{ kind: "Secret", name: "traefik-gateway-tls", namespace: "traefik" },
+	],
+	"tenant-catalog": [
+		{ kind: "Deployment", name: "catalog", namespace: "tenant-catalog" },
+		{ kind: "HorizontalPodAutoscaler", name: "catalog", namespace: "tenant-catalog" },
+	],
+	"tenant-ledger": [
+		{ kind: "StatefulSet", name: "ledger", namespace: "tenant-ledger" },
+		{ kind: "PersistentVolumeClaim", name: "data-ledger-0", namespace: "tenant-ledger" },
+	],
+};
 
 export const fluxKind: FluxResourceKind = {
 	group: "kustomize.toolkit.fluxcd.io",
