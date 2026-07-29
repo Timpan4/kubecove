@@ -5,7 +5,7 @@ description = "A context-first desktop workspace for Kubernetes operations"
 license = "AGPL-3.0-or-later"
 authors = ["timpan"]
 edition = "2021"
-rust-version = "1.89"
+rust-version = "1.91"
 
 [features]
 bench-support = []
