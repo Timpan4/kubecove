@@ -31,6 +31,7 @@ import type {
 	ArgoApplicationSetSummary,
 	ArgoAppProjectDetails,
 	ArgoAppProjectSummary,
+	ArgoManagedResource,
 	BackendDiagnosticEvent,
 	DiscoveredResourceKind,
 	FluxDetectionSummary,
@@ -128,8 +129,23 @@ const handlers: Record<string, MockHandler> = {
 	},
 	reveal_secret_data_value: () => "c2VjcmV0",
 	forget_argo_credential: () => undefined,
-	get_argo_application_inspector: (args) => ({ application: args?.application, status: { sync: { status: "Synced" }, health: { status: "Healthy" } }, history: [], resources: [], conditions: [], operationState: null, connected: false }),
-	get_argo_application_resources: () => [],
+	get_argo_application_inspector: (args) => {
+		const managedResources = argoManagedResources(args);
+		return {
+			application: args?.application,
+			status: {
+				sync: { status: managedResources.some((resource) => resource.status === "OutOfSync") ? "OutOfSync" : "Synced", revision: "8f4c2d1" },
+				health: { status: managedResources.some((resource) => resource.health === "Degraded") ? "Degraded" : "Healthy" },
+				reconciledAt: now,
+			},
+			history: [],
+			resources: managedResources,
+			conditions: [],
+			operationState: null,
+			connected: false,
+		};
+	},
+	get_argo_application_resources: (args) => argoManagedResources(args),
 	get_argo_resource_comparison: (args) => ({ resource: args?.resource, targetState: null, liveState: null, normalizedLiveState: null, predictedLiveState: null, modified: false, exact: false, provenance: "application-crd", availableActions: [] }),
 	preflight_argo_operation: (args) => {
 		const request = args?.request as Record<string, unknown> | undefined;
@@ -477,6 +493,37 @@ function metrics(): ResourceMetricsSummary {
 
 function usage(): AppUsageMetrics {
 	return { cpuPercent: 3.8, memoryBytes: 388_000_000, processCount: 3, sampledAt: now, breakdown: [{ label: "KubeCove browser mock", description: "Vite tab with fake Tauri responses", cpuPercent: 3.8, memoryBytes: 388_000_000, processCount: 3, children: [] }] };
+}
+
+function argoManagedResources(args: MockArgs): ArgoManagedResource[] {
+	const application = args?.application as { name?: string } | undefined;
+	const app = argoApps.find((candidate) => candidate.name === application?.name) ?? argoApps[0];
+	const rows = resources.filter(
+		(row) =>
+			row.namespace === app.destinationNamespace &&
+			["Deployment", "Service", "ConfigMap", "Secret"].includes(row.kind) &&
+			row.name !== "kube-root-ca.crt",
+	);
+	return rows.map((row) => {
+		const progressing = row.kind === "ConfigMap";
+		const degraded = row.kind === "Deployment";
+		const prune = row.kind === "Secret";
+		const apiVersion = row.apiVersion ?? "v1";
+		const [group = "", version = "v1"] = apiVersion.includes("/")
+			? apiVersion.split("/", 2)
+			: ["", apiVersion];
+		return {
+			group,
+			version,
+			kind: row.kind,
+			namespace: row.namespace,
+			name: row.name,
+			status: row.kind === "Service" ? "Synced" : "OutOfSync",
+			health: degraded ? "Degraded" : progressing ? "Progressing" : prune ? "Missing" : "Healthy",
+			hook: false,
+			requiresPruning: prune,
+		};
+	});
 }
 
 function argoDetails(args: MockArgs): ArgoApplicationDetails {

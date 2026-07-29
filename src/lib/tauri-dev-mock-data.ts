@@ -288,6 +288,18 @@ export const argoApps: ArgoApplicationSummary[] = labArgoApplications.map(([name
 	sourceRevision: "main",
 	sourceMode: "git",
 	sourceCount: 1,
+	sources: [
+		{
+			repoUrl: name.startsWith("platform-")
+				? "pinned Helm or internal Git"
+				: "git://git-server.e2e-system.svc.cluster.local:9418/fixtures.git",
+			targetRevision: "main",
+			resolvedRevision: "8f4c2d1",
+			path: `apps/${name}`,
+			chart: null,
+			reference: null,
+		},
+	],
 	resourceNamespaces: [destinationNamespace],
 	trackedResourceCount: name.startsWith("tenant-") ? 12 : 8,
 	age: "12d",

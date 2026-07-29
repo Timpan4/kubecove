@@ -15,6 +15,10 @@
 		SelectValue,
 	} from "@/components/ui/svelte";
 	import type { NamespaceSummary, ResourceKindSelection } from "@/lib/types";
+	import type {
+		ArgoResourceCounts,
+		ArgoResourceFilter,
+	} from "@/features/gitops/argo-workspace-model";
 	import type { GitOpsFilterOption, HealthFilter, HealthSummary } from "./helpers";
 	import ResourceScopeSelector from "./ResourceScopeSelector.svelte";
 	import { kindSelectionKey, kindSelectionLabel } from "./resourceBrowserModel";
@@ -28,6 +32,8 @@
 		selectedKindSet,
 		healthSummary,
 		healthFilter,
+		argoSummary = null,
+		argoFilter = "none",
 		search = $bindable(""),
 		gitOpsFilter,
 		gitOpsFilters,
@@ -40,6 +46,7 @@
 		onNamespaceToggle,
 		onKindToggle,
 		onHealthSelect,
+		onArgoFilterSelect = () => {},
 		onGitOpsFilterChange,
 		onSearchInput,
 		onClearFilters,
@@ -52,6 +59,8 @@
 		selectedKindSet: Set<string>;
 		healthSummary: HealthSummary;
 		healthFilter: HealthFilter;
+		argoSummary?: ArgoResourceCounts | null;
+		argoFilter?: ArgoResourceFilter;
 		search?: string;
 		gitOpsFilter: string;
 		gitOpsFilters: GitOpsFilterOption[];
@@ -64,12 +73,13 @@
 		onNamespaceToggle: (namespace: string, checked: boolean) => void;
 		onKindToggle: (kind: ResourceKindSelection, checked: boolean) => void;
 		onHealthSelect: (filter: HealthFilter) => void;
+		onArgoFilterSelect?: (filter: ArgoResourceFilter) => void;
 		onGitOpsFilterChange: (value: string) => void;
 		onSearchInput: () => void;
 		onClearFilters: () => void;
 	} = $props();
 
-	const hasFilters = $derived(Boolean(search || gitOpsFilter || healthFilter !== "all"));
+	const hasFilters = $derived(Boolean(search || gitOpsFilter || healthFilter !== "all" || argoFilter !== "none"));
 	const namespaceLabel = $derived(
 		selectedNamespaces.length === 0
 			? "All"
@@ -103,6 +113,13 @@
 		].join(" ");
 	}
 
+	function argoButtonClass(active: boolean) {
+		return [
+			"h-7 gap-1.5 bg-background/30 px-2 text-[0.6875rem] font-normal hover:bg-background/50",
+			active ? "border-primary/50 bg-primary/10" : "",
+		].join(" ");
+	}
+
 	function countClass(value: number, tone?: "success" | "warning" | "danger" | "info") {
 		if (value === 0) return "text-muted-foreground/70";
 		if (tone === "success") return "text-emerald-300";
@@ -112,6 +129,10 @@
 		return "text-foreground";
 	}
 </script>
+
+{#snippet ArgoFilterButton(filter: ArgoResourceFilter, label: string, count: number, dotClass: string)}
+	<Button type="button" variant="outline" size="sm" class={argoButtonClass(argoFilter === filter)} aria-pressed={argoFilter === filter} onclick={() => onArgoFilterSelect(filter)}><span class={`size-1.5 rounded-full ${dotClass}`}></span><span>{label}</span><strong class="tabular-nums">{count}</strong></Button>
+{/snippet}
 
 <section class="@container rounded-lg border bg-surface-1 p-2 shadow-sm" aria-label="Resource controls">
 	<div class="grid gap-2 @5xl:grid-cols-[auto_minmax(18rem,1fr)_auto] @5xl:items-center">
@@ -300,4 +321,16 @@
 			</div>
 		</div>
 	</div>
+
+	{#if argoSummary}
+		<div class="mt-2 flex min-w-0 flex-wrap items-center gap-2 border-t pt-2" aria-label="Argo CD resource filters">
+			<div class="mr-1 flex items-center gap-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground"><span class="size-1.5 rounded-full bg-sky-400"></span>Argo CD resources</div>
+			{@render ArgoFilterButton("allManaged", "All managed", argoSummary.total, "bg-muted-foreground")}
+			{@render ArgoFilterButton("needsSync", "Needs sync", argoSummary.needsSync, "bg-amber-400")}
+			{@render ArgoFilterButton("healthy", "Healthy", argoSummary.healthy, "bg-emerald-400")}
+			{@render ArgoFilterButton("degraded", "Degraded", argoSummary.degraded, "bg-red-400")}
+			{@render ArgoFilterButton("progressing", "Progressing", argoSummary.progressing, "bg-amber-400")}
+			{@render ArgoFilterButton("prune", "Prune", argoSummary.prune, "bg-red-400")}
+		</div>
+	{/if}
 </section>
