@@ -4,11 +4,6 @@ All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
 ## 0.10.2 - 2026-07-30
-### Fixed
-
-- remove unreliable previous-log check
-
-## 0.10.1 - 2026-07-30
 ### Added
 
 - inspect and operate Argo CD applications through guarded Kubernetes and connected transports (#271)
@@ -29,12 +24,18 @@ should mirror the matching version section.
 
 ### Fixed
 
+- keep release E2E focused on the app's current-log contract (#287)
 - use supported YAML encoding in the release E2E command contract (#285)
 - resolve Argo review findings
 - declare actual Rust MSRV
 - unblock dependency audit checks (#280)
 - load YAML pane eagerly (#274)
 - overlay stacking across floating surfaces (#253)
+
+## 0.10.1 - 2026-07-30 (unpublished)
+### Release
+
+- Release gates stopped before installer builds; superseded by `0.10.2`.
 
 ## 0.10.0 - 2026-07-29 (unpublished)
 ### Release
