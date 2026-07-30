@@ -128,7 +128,8 @@
 	}
 </script>
 
-<FieldGroup>
+{#if clusterContext}
+	<FieldGroup>
 	<Field>
 		<FieldLabel>Argo CD server URL</FieldLabel>
 		<Input bind:value={url} type="url" placeholder="https://argocd.example.com" />
@@ -144,18 +145,21 @@
 		<Field><FieldLabel>Password</FieldLabel><Input bind:value={password} type="password" autocomplete="current-password" /></Field>
 	{/if}
 	<Field><FieldLabel>Custom CA PEM (session only)</FieldLabel><Textarea bind:value={customCa} rows={3} autocomplete="off" /></Field>
-	<Field class="flex-row items-center justify-between"><FieldLabel>Remember credential in native keyring</FieldLabel><Switch checked={rememberCredential} onCheckedChange={(value) => (rememberCredential = value)} /></Field>
-	<Field class="flex-row items-center justify-between"><FieldLabel>Accept invalid TLS certificate for this session</FieldLabel><Switch checked={insecureTls} onCheckedChange={(value) => (insecureTls = value)} /></Field>
+	<Field orientation="horizontal"><FieldLabel>Remember credential in native keyring</FieldLabel><Switch checked={rememberCredential} onCheckedChange={(value) => (rememberCredential = value)} /></Field>
+	<Field orientation="horizontal"><FieldLabel>Accept invalid TLS certificate for this session</FieldLabel><Switch checked={insecureTls} onCheckedChange={(value) => (insecureTls = value)} /></Field>
 	{#if insecureTls}
 		<Alert variant="destructive"><ShieldAlert /><AlertTitle>Insecure session</AlertTitle><AlertDescription>Certificate validation is disabled and never saved.</AlertDescription></Alert>
 	{/if}
 	{#if error}<Alert variant="destructive"><AlertCircle /><AlertTitle>Connection failed</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>{/if}
 	<Button type="button" disabled={busy || !url.trim()} onclick={() => connect()}><Link2 />{busy ? "Connecting…" : "Connect"}</Button>
-</FieldGroup>
+	</FieldGroup>
+{:else}
+	<p class="text-sm text-muted-foreground">Open Settings from a workspace to discover or connect an Argo CD server.</p>
+{/if}
 
 {#if matchingProfiles.length > 0}
 		<div class="mt-4 flex flex-col gap-2"><p class="text-sm font-medium">Saved server profiles</p>{#each matchingProfiles as profile}
-			<div class="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"><span class="truncate">{profile.url}</span><div class="flex items-center gap-2"><Button size="sm" type="button" onclick={() => connect(profile)}>{connected === profile.id ? "Connected" : "Reconnect"}</Button><Button size="sm" variant="ghost" type="button" onclick={() => disconnect(profile.id)}>Disconnect</Button><Button size="sm" variant="ghost" type="button" onclick={() => forget(profile)}>Forget</Button></div></div>
+			<div class="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"><span class="truncate">{profile.url}</span><div class="flex items-center gap-2">{#if clusterContext}<Button size="sm" type="button" onclick={() => connect(profile)}>{connected === profile.id ? "Connected" : "Reconnect"}</Button>{/if}<Button size="sm" variant="ghost" type="button" onclick={() => disconnect(profile.id)}>Disconnect</Button><Button size="sm" variant="ghost" type="button" onclick={() => forget(profile)}>Forget</Button></div></div>
 	{/each}</div>
 {/if}
 

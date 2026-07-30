@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { get } from "svelte/store";
+import { useSettingsState } from "../src/lib/settings";
 import {
 	getSettingsSnapshot,
 	settingsStore,
 } from "../src/lib/settings-store";
-import { useSettingsState } from "../src/lib/settings";
 
 afterEach(() => {
 	useSettingsState.getState().setShowUsageFooter(false);
@@ -108,5 +108,24 @@ describe("svelte settings store", () => {
 			identifier: "opener:allow-open-url",
 			allow: [{ url: "https://github.com/Timpan4/kubecove/wiki" }],
 		});
+	});
+
+	test("owns Argo connection management and receives workspace context", () => {
+		const settingsSource = readFileSync("src/app/svelte/SettingsSurface.svelte", "utf8");
+		const surfacesSource = readFileSync("src/app/svelte/AppSurfaces.svelte", "utf8");
+		const appSource = readFileSync("src/app/svelte/App.svelte", "utf8");
+		const connectionSource = readFileSync(
+			"src/app/svelte/ArgoConnectionSettings.svelte",
+			"utf8",
+		);
+
+		expect(settingsSource).toContain('import ArgoConnectionSettings from "./ArgoConnectionSettings.svelte"');
+		expect(settingsSource).toContain('<ArgoConnectionSettings {clusterContext} {workspaceId} {kubeconfigEnvVar} />');
+		expect(surfacesSource).toContain("clusterContext={workspace.scope.clusterContext}");
+		expect(surfacesSource).toContain("workspaceId={workspace.id}");
+		expect(surfacesSource).toContain("kubeconfigEnvVar={workspaceReadContext.kubeconfigSourceKey}");
+		expect(appSource).toContain("<SettingsSurface onBack={openWorkspaceLauncher} />");
+		expect(connectionSource).toContain("Open Settings from a workspace to discover or connect an Argo CD server.");
+		expect(connectionSource.match(/<Field orientation="horizontal">/g)).toHaveLength(2);
 	});
 });
