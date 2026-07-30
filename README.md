@@ -6,7 +6,7 @@ KubeCove is a local desktop workspace for Kubernetes operations. It is built for
 
 Current source is inspection-first with explicitly governed exceptions: Pod and selector-backed Service port-forwarding, exact-Pod exec, selected-resource YAML apply, exact guarded scale/restart/delete operations, and opt-in connected Argo CD operations. KubeCove does not deploy agents into clusters, expose raw kubeconfig contents to the frontend, or let frontend code run arbitrary shell commands.
 
-Current version metadata: `0.10.1`. [GitHub Releases](https://github.com/Timpan4/kubecove/releases) is authoritative for successfully published installers. Source changes remain unreleased until the matching tag completes all release gates.
+Current version metadata: `0.10.2`. [GitHub Releases](https://github.com/Timpan4/kubecove/releases) is authoritative for successfully published installers. Source changes remain unreleased until the matching tag completes all release gates.
 
 ![Kubernetes resources view with the ownership map and live resource table](docs/assets/resources-view.png)
 
