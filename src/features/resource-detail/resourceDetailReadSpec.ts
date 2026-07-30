@@ -1,5 +1,5 @@
 import { requiredPermissionForResource } from "@/features/rbac";
-import { createCancelScope } from "@/lib/cancellable-loads";
+import { createCancelScope } from "@/lib/finite-read-lifecycle";
 import { queryKeys } from "@/lib/queryKeys";
 import type {
 	DiscoveredResourceKind,

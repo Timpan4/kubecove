@@ -1,7 +1,11 @@
 <script lang="ts">
-	import { createQuery } from "@tanstack/svelte-query";
+	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { onDestroy } from "svelte";
-	import { createCancelScope, createCancellableRequest } from "@/lib/cancellable-loads";
+	import {
+		createCancelScope,
+		createFiniteReadCleanup,
+		createFiniteReadRequest,
+	} from "@/lib/finite-read-lifecycle";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { cancelBackendRequests, createTauriClient, listRbacInspection } from "@/lib/tauri";
 	import type { RbacInspectionSummary } from "@/lib/types";
@@ -38,29 +42,32 @@
 	} = $props();
 
 	const client = createTauriClient();
-	function cancelScopeValue(): string {
-		return createCancelScope("rbac-inspection", [
+	const queryClient = useQueryClient();
+	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (scope) =>
+		cancelBackendRequests(client, scope),
+	);
+	const queryKey = $derived(
+		queryKeys.rbacInspection(workspace.scope.clusterContext, kubeconfigSourceKey),
+	);
+	const cancelScope = $derived(
+		createCancelScope("rbac-inspection", [
 			workspace.id,
 			workspace.scope.clusterContext,
 			kubeconfigSourceKey ?? "default",
-		]);
-	}
-	const cancelScope = cancelScopeValue();
+		]),
+	);
 	onDestroy(() => {
-		void cancelBackendRequests(client, cancelScope).catch(() => {});
+		finiteReadCleanup.schedule(cancelScope, queryKey);
 		void cancelBackendRequests(client, "rbac-review").catch(() => {});
 	});
 	const rbacQuery = createQuery<RbacInspectionSummary>(() => ({
-		queryKey: queryKeys.rbacInspection(
-			workspace.scope.clusterContext,
-			kubeconfigSourceKey,
-		),
+		queryKey,
 		queryFn: () =>
 			listRbacInspection(
 				client,
 				workspace.scope.clusterContext,
 				kubeconfigSourceKey,
-				createCancellableRequest(cancelScope, "rbac"),
+				createFiniteReadRequest(cancelScope, "rbac"),
 			),
 		enabled: sourceReady,
 		staleTime: 30_000,

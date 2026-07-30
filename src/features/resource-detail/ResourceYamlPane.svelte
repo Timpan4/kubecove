@@ -11,7 +11,11 @@
 		prepareYamlApply,
 		type TauriClient,
 	} from "@/lib/tauri";
-	import { createCancellableRequest, createCancelScope } from "@/lib/cancellable-loads";
+	import {
+		createCancelScope,
+		createFiniteReadCleanup,
+		createFiniteReadRequest,
+	} from "@/lib/finite-read-lifecycle";
 	import { diagnosticLog, diagnosticResultSummary } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
 	import { queryKeys } from "@/lib/queryKeys";
@@ -70,6 +74,9 @@
 	} = $props();
 
 	const queryClient = useQueryClient();
+	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
+		cancelBackendRequests(client, cancelScope),
+	);
 	let yamlEditing = $state(false);
 	let yamlDraft = $state("");
 	let yamlLoadingDraft = $state(false);
@@ -87,7 +94,6 @@
 	let yamlApplyRawError = $state<unknown>(null);
 	let yamlApplyError = $state("");
 	let yamlAppliedMessage = $state("");
-	const pendingCancelTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	const dynamicKindKey = $derived(
 		dynamicKind
@@ -152,32 +158,18 @@
 		return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
 	}
 
-	function cancelPendingBackendScope(cancelScope: string) {
-		const timer = pendingCancelTimers.get(cancelScope);
-		if (!timer) return;
-		clearTimeout(timer);
-		pendingCancelTimers.delete(cancelScope);
-	}
-
-	function scheduleBackendScopeCancel(cancelScope: string, queryKey: readonly unknown[]) {
-		cancelPendingBackendScope(cancelScope);
-		const timer = setTimeout(() => {
-			pendingCancelTimers.delete(cancelScope);
-			void queryClient.cancelQueries({ queryKey, exact: true });
-			void cancelBackendRequests(client, cancelScope).catch((error: unknown) => {
-				diagnosticLog("detail.yaml.cancel.error", {
-					error: error instanceof Error ? error.message : String(error),
-				});
-			});
-		}, 0);
-		pendingCancelTimers.set(cancelScope, timer);
-	}
-
 	$effect(() => {
 		const currentYamlCancelScope = yamlCancelScope;
 		const currentYamlQueryKey = yamlQueryKey;
-		cancelPendingBackendScope(currentYamlCancelScope);
-		return () => scheduleBackendScopeCancel(currentYamlCancelScope, currentYamlQueryKey);
+		finiteReadCleanup.cancelPending(currentYamlCancelScope);
+		return () =>
+			finiteReadCleanup.schedule(currentYamlCancelScope, currentYamlQueryKey, {
+				onError: (error) => {
+					diagnosticLog("detail.yaml.cancel.error", {
+						error: error instanceof Error ? error.message : String(error),
+					});
+				},
+			});
 	});
 
 	const yamlQuery = createQuery<string>(() => ({
@@ -197,7 +189,7 @@
 								kubeconfigSourceKey,
 								yamlViewMode,
 								yamlEncoding,
-								createCancellableRequest(yamlCancelScope, "yaml"),
+								createFiniteReadRequest(yamlCancelScope, "yaml"),
 							)
 						).yaml;
 					}
@@ -210,7 +202,7 @@
 						kubeconfigSourceKey,
 						yamlViewMode,
 						yamlEncoding,
-						createCancellableRequest(yamlCancelScope, "yaml"),
+						createFiniteReadRequest(yamlCancelScope, "yaml"),
 					);
 				});
 			} catch (error) {

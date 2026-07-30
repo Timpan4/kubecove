@@ -45,7 +45,10 @@
 		getResourceGroupVisual,
 		getResourceKindVisual,
 	} from "@/app/svelte/resourceVisuals";
-	import { createCancellableRequest } from "@/lib/cancellable-loads";
+	import {
+		createFiniteReadCleanup,
+		createFiniteReadRequest,
+	} from "@/lib/finite-read-lifecycle";
 	import { diagnosticLog } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
@@ -182,6 +185,9 @@
 
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
+	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
+		cancelBackendRequests(client, cancelScope),
+	);
 	let selectedNamespaces = $state<string[]>([]);
 	let selectedKinds = $state<ResourceKindSelection[]>([]);
 	let appliedScopeKey = $state("");
@@ -388,7 +394,6 @@
 	const resourceCancelScope = $derived(readSpecs.resourceCancelScope);
 	const topologyCancelScope = $derived(readSpecs.topologyCancelScope);
 	const metricsCancelScope = $derived(readSpecs.metricsCancelScope);
-	const pendingCancelTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	const resourcesQuery = createQuery<ResourceSummary[]>(() => ({
 		queryKey: resourceQueryKey,
 		queryFn: () => fetchResourcePage(clusterContext, fetchKeys, kubeconfigSourceKey, resourceCancelScope),
@@ -428,7 +433,7 @@
 					topologyNamespaces,
 					topologyMode,
 					kubeconfigSourceKey,
-					createCancellableRequest(topologyCancelScope, "topology"),
+					createFiniteReadRequest(topologyCancelScope, "topology"),
 				).catch((error: unknown) => {
 					if (isAppError(error) && error.kind === "cancelled") {
 						diagnosticLog("resources.topology.cancel", {
@@ -444,35 +449,6 @@
 		retry: false,
 	}));
 
-	function cancelPendingBackendScope(cancelScope: string) {
-		const timer = pendingCancelTimers.get(cancelScope);
-		if (!timer) return;
-		clearTimeout(timer);
-		pendingCancelTimers.delete(cancelScope);
-	}
-
-	function scheduleBackendScopeCancel(
-		cancelScope: string,
-		queryKey: readonly unknown[],
-		event: string,
-	) {
-		cancelPendingBackendScope(cancelScope);
-		const timer = setTimeout(() => {
-			pendingCancelTimers.delete(cancelScope);
-			void queryClient.cancelQueries({ queryKey, exact: true });
-			void cancelBackendRequests(client, cancelScope)
-				.then((result) => {
-					if (result.cancelled > 0) diagnosticLog(event, { cancelled: result.cancelled });
-				})
-				.catch((error: unknown) => {
-					diagnosticLog(`${event}.error`, {
-						error: error instanceof Error ? error.message : String(error),
-					});
-				});
-		}, 0);
-		pendingCancelTimers.set(cancelScope, timer);
-	}
-
 	$effect(() => {
 		const currentResourceCancelScope = resourceCancelScope;
 		const currentResourceQueryKey = resourceQueryKey;
@@ -480,25 +456,30 @@
 		const currentTopologyQueryKey = topologyQueryKey;
 		const currentMetricsCancelScope = metricsCancelScope;
 		const currentMetricsQueryKey = metricsQueryKey;
-		cancelPendingBackendScope(currentResourceCancelScope);
-		cancelPendingBackendScope(currentTopologyCancelScope);
-		cancelPendingBackendScope(currentMetricsCancelScope);
+		for (const cancelScope of [
+			currentResourceCancelScope,
+			currentTopologyCancelScope,
+			currentMetricsCancelScope,
+		]) {
+			finiteReadCleanup.cancelPending(cancelScope);
+		}
 		return () => {
-			scheduleBackendScopeCancel(
-				currentResourceCancelScope,
-				currentResourceQueryKey,
-				"resources.scope.cancel",
-			);
-			scheduleBackendScopeCancel(
-				currentTopologyCancelScope,
-				currentTopologyQueryKey,
-				"resources.topology.cancel",
-			);
-			scheduleBackendScopeCancel(
-				currentMetricsCancelScope,
-				currentMetricsQueryKey,
-				"resources.metrics.cancel",
-			);
+			for (const [cancelScope, queryKey, event] of [
+				[currentResourceCancelScope, currentResourceQueryKey, "resources.scope.cancel"],
+				[currentTopologyCancelScope, currentTopologyQueryKey, "resources.topology.cancel"],
+				[currentMetricsCancelScope, currentMetricsQueryKey, "resources.metrics.cancel"],
+			] as const) {
+				finiteReadCleanup.schedule(cancelScope, queryKey, {
+					onCancelled: (result) => {
+						if (result.cancelled > 0) diagnosticLog(event, { cancelled: result.cancelled });
+					},
+					onError: (error) => {
+						diagnosticLog(`${event}.error`, {
+							error: error instanceof Error ? error.message : String(error),
+						});
+					},
+				});
+			}
 		};
 	});
 	$effect(() => {
@@ -539,7 +520,7 @@
 				clusterContext,
 				topologyNamespaces,
 				kubeconfigSourceKey,
-				createCancellableRequest(metricsCancelScope, "metrics"),
+				createFiniteReadRequest(metricsCancelScope, "metrics"),
 			).catch((error: unknown) => {
 				if (isAppError(error) && error.kind === "cancelled") {
 					diagnosticLog("resources.metrics.cancel", {

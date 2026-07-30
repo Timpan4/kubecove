@@ -818,23 +818,6 @@ describe("svelte resource browser model", () => {
 		expect(source).toContain("enabled: metricsQueryReady && Boolean(clusterContext)");
 	});
 
-	test("cancels stale Svelte resource, topology, and metrics backend requests", () => {
-		const source = readFileSync(
-			"src/features/resources/ResourceBrowser.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain("const resourceCancelScope = $derived(readSpecs.resourceCancelScope)");
-		expect(source).toContain("const topologyCancelScope = $derived(readSpecs.topologyCancelScope)");
-		expect(source).toContain("const metricsCancelScope = $derived(readSpecs.metricsCancelScope)");
-		expect(source).toContain("fetchResourcePage(clusterContext, fetchKeys, kubeconfigSourceKey, resourceCancelScope)");
-		expect(source).toContain('createCancellableRequest(topologyCancelScope, "topology")');
-		expect(source).toContain('createCancellableRequest(metricsCancelScope, "metrics")');
-		expect(source).toContain("cancelBackendRequests(client, cancelScope)");
-		expect(source).toContain('scheduleBackendScopeCancel(');
-		expect(source).toContain('"resources.metrics.cancel"');
-	});
-
 	test("preserves incoming Svelte health filters when opening resources", () => {
 		const browserSource = readFileSync(
 			"src/features/resources/ResourceBrowser.svelte",

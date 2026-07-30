@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { QueryClient, QueryClientProvider } from "@tanstack/svelte-query";
 	import App from "./App.svelte";
+	import { configureFiniteReadQueryDefaults } from "@/lib/finite-read-lifecycle";
 	import { configureLargeQueryRetention } from "@/lib/query-retention";
 	import { queryRetry } from "@/lib/query-retry";
 
@@ -12,6 +13,7 @@
 			},
 		},
 	});
+	configureFiniteReadQueryDefaults(queryClient);
 	configureLargeQueryRetention(queryClient);
 </script>
 
