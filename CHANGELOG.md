@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.10.3 - 2026-07-30
+### Added
+
+- add Argo application details briefing (#290)
+
 ## 0.10.2 - 2026-07-30
 ### Added
 
