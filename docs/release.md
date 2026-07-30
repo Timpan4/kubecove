@@ -6,9 +6,7 @@ https://github.com/Timpan4/kubecove/releases
 
 Use a release installer when testing the app. Build from source only for development work.
 
-Latest published release: [`0.10.1`](https://github.com/Timpan4/kubecove/releases/tag/app-v0.10.1).
-
-Current `main` keeps `0.10.1` metadata until a release PR prepares the next version. Features merged after the `0.10.1` tag are not present in those installers.
+Current version metadata: `0.10.1`. [GitHub Releases](https://github.com/Timpan4/kubecove/releases) is authoritative for successfully published installers. Source features are not released until the matching tag completes all release gates.
 
 ## Installer Guide
 
@@ -20,11 +18,11 @@ Installers contain the app and normal Tauri runtime/installer files. They do not
 
 Windows releases intentionally publish the NSIS setup executable, not MSI, so in-app updates stay on one installer path. Users who installed an older MSI build may see one prompt to uninstall that MSI; after uninstalling it once and installing the NSIS setup executable, future in-app updates should not require that migration step.
 
-## Published 0.10.1 Product Safety
+## 0.10.1 Product Safety
 
-Published `0.10.1` is inspection-first and includes guarded Pod and selector-backed Service port-forward sessions, exact-Pod guarded exec sessions, selected-resource YAML apply, scale for Deployments and StatefulSets, rollout restart for Deployments, StatefulSets, and DaemonSets, exact delete for Pods and ConfigMaps, connected Argo CD inspection and allowlisted operations, transient per-key Secret reveal, deeper RBAC inspection, and the production-shaped E2E lab. It also supports local cluster browsing, resource details, YAML, events, logs, metrics, topology, Kubernetes-API-first Argo CD and Flux inspection, Helm release inspection and reconciliation, and pinned and recent workspace entry points.
+Version `0.10.1` is inspection-first and includes guarded Pod and selector-backed Service port-forward sessions, exact-Pod guarded exec sessions, selected-resource YAML apply, scale for Deployments and StatefulSets, rollout restart for Deployments, StatefulSets, and DaemonSets, exact delete for Pods and ConfigMaps, connected Argo CD inspection and allowlisted operations, transient per-key Secret reveal, deeper RBAC inspection, and the production-shaped E2E lab. It also supports local cluster browsing, resource details, YAML, events, logs, metrics, topology, Kubernetes-API-first Argo CD and Flux inspection, Helm release inspection and reconciliation, and pinned and recent workspace entry points.
 
-Published `0.10.1` does not include Argo CD CLI integration, Flux mutations or CLI integration, Helm mutations, broad apply/delete, or broad filesystem workflows. Pod and selector-backed Service port-forwarding follows [ADR 0003](decisions/0003-guarded-live-sessions.md), guarded resource operations follow [ADR 0004](decisions/0004-guarded-cluster-operations.md), exact-Pod exec follows [ADR 0005](decisions/0005-guarded-pod-exec-sessions.md), selected-resource YAML apply follows [ADR 0006](decisions/0006-guarded-selected-resource-yaml-apply.md), connected Argo CD follows [ADR 0013](decisions/0013-argocd-connected-inspection-and-operations.md), and runtime Secret disclosure follows [ADR 0014](decisions/0014-runtime-secret-disclosure.md).
+Version `0.10.1` does not include Argo CD CLI integration, Flux mutations or CLI integration, Helm mutations, broad apply/delete, or broad filesystem workflows. Pod and selector-backed Service port-forwarding follows [ADR 0003](decisions/0003-guarded-live-sessions.md), guarded resource operations follow [ADR 0004](decisions/0004-guarded-cluster-operations.md), exact-Pod exec follows [ADR 0005](decisions/0005-guarded-pod-exec-sessions.md), selected-resource YAML apply follows [ADR 0006](decisions/0006-guarded-selected-resource-yaml-apply.md), connected Argo CD follows [ADR 0013](decisions/0013-argocd-connected-inspection-and-operations.md), and runtime Secret disclosure follows [ADR 0014](decisions/0014-runtime-secret-disclosure.md).
 
 ## Current Main Release Metadata
 
@@ -82,7 +80,7 @@ The official tested Kubernetes support window is 1.34–1.36. It advances only t
 
 ## Manual Smoke Test
 
-Published `0.10.1` baseline:
+`0.10.1` baseline:
 
 1. Install and start the release artifact for the target platform. Use `bun run tauri dev` only for development smoke before a release PR.
 2. Confirm the workspace launcher lists local kube contexts without exposing raw kubeconfig contents.
