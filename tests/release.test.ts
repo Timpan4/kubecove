@@ -177,17 +177,17 @@ example = "9.9.9"
 
 	test("classifies release notes from existing commit prefixes", () => {
 		const sections = classifyReleaseSubjects([
-			"✨ feat kubeconfig env var selection",
+			"✨ feat kubeconfig env var selection (#291)",
 			"🐛 fix saved forward kubeconfig matching",
 			"🚀 Improve GitHub Actions dependency caching",
 			"🔧 chore dependency refresh",
 			"🔧 Prepare KubeCove v0.4.2 release",
 		]);
 
-		expect(sections.added).toEqual(["kubeconfig env var selection"]);
-		expect(sections.fixed).toEqual(["saved forward kubeconfig matching"]);
-		expect(sections.improved).toEqual(["Improve GitHub Actions dependency caching"]);
-		expect(sections.release).toEqual(["Prepare KubeCove v0.4.2 release"]);
+		expect(sections.added).toEqual(["Kubeconfig env var selection (#291)."]);
+		expect(sections.fixed).toEqual(["Saved forward kubeconfig matching."]);
+		expect(sections.improved).toEqual(["Improve GitHub Actions dependency caching."]);
+		expect(sections.release).toEqual(["Prepare KubeCove v0.4.2 release."]);
 	});
 
 	test("inserts and replaces generated changelog sections", () => {

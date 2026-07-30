@@ -1,45 +1,17 @@
 # Security Policy
 
-## Supported Versions
+## Report a vulnerability
 
-KubeCove is in beta. Security fixes are prepared for the latest published beta
-release line and `main`.
+Use [GitHub private vulnerability reporting](https://github.com/Timpan4/kubecove/security/advisories/new).
 
-| Version | Supported |
-| ------- | --------- |
-| Latest published beta | Yes |
-| Older beta releases | No |
-| Local source builds | No; update to a fixed release or `main` |
+If private reporting is unavailable, open a public issue asking for a private contact path. Do not post exploit details, credentials, kubeconfig contents, tokens, certificates, or cluster-specific sensitive data publicly.
 
-## Reporting a Vulnerability
+Include affected version or commit, operating system, impact, and minimal reproduction steps. State whether credentials or Kubernetes resources may be exposed or modified.
 
-Report vulnerabilities through GitHub private vulnerability reporting:
+## Support and handling
 
-https://github.com/Timpan4/kubecove/security/advisories/new
+Security fixes target latest release and `main`. Older releases and local source builds are unsupported.
 
-If private reporting is unavailable, open a public issue that asks for a private
-contact path. Do not include exploit details, credentials, kubeconfig contents,
-tokens, certificates, or cluster-specific sensitive data in a public issue.
+Reports are triaged privately. Public details wait for a fix or mitigation.
 
-Useful reports include:
-
-- affected KubeCove version or commit
-- operating system
-- a short impact summary
-- minimal reproduction steps
-- whether real cluster credentials, kubeconfig data, or Kubernetes resources are
-  exposed or modified
-
-Security-sensitive areas include kubeconfig handling, token or certificate
-exposure, frontend access to shell or filesystem capabilities, Kubernetes
-operation guardrails, updater signing, and installer or local privilege issues.
-
-Expected handling:
-
-- The report is triaged privately.
-- Accepted vulnerabilities get a fix on `main` and, when practical, a beta patch
-  release.
-- Declined reports get a brief reason, such as intended local-only behavior,
-  required Kubernetes RBAC, unsupported old beta, or no demonstrated security
-  impact.
-- Public details should wait until a fix or mitigation is available.
+Read [safety, data handling, and architecture](https://github.com/Timpan4/kubecove/wiki/Safety-Data-and-Architecture) for product safety guidance.

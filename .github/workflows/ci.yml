@@ -42,6 +42,9 @@ jobs:
       - name: Audit frontend dependencies
         run: bun run audit
 
+      - name: Check documentation
+        run: bun run docs:check
+
       - name: Typecheck frontend
         run: bun run typecheck
 

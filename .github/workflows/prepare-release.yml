@@ -54,7 +54,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH_NAME"
-          git add package.json bun.lock README.md CHANGELOG.md docs/release.md src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+          git add package.json bun.lock CHANGELOG.md src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
           git commit -m "$RELEASE_TITLE"
           git push --force-with-lease origin "$BRANCH_NAME"
 

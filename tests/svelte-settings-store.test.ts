@@ -80,4 +80,33 @@ describe("svelte settings store", () => {
 		expect(svelteSource).toContain("Keep full map visible during selection");
 		expect(svelteSource).toContain("Large namespaces may render slower");
 	});
+
+	test("opens documentation through an exact Tauri URL permission", () => {
+		const settingsSource = readFileSync("src/app/svelte/SettingsSurface.svelte", "utf8");
+		const tauriSource = readFileSync("src-tauri/src/lib.rs", "utf8");
+		const capability = JSON.parse(
+			readFileSync("src-tauri/capabilities/default.json", "utf8"),
+		);
+
+		expect(settingsSource).toContain('import { openUrl } from "@tauri-apps/plugin-opener"');
+		expect(settingsSource).toContain(
+			'const WIKI_URL = "https://github.com/Timpan4/kubecove/wiki"',
+		);
+		expect(settingsSource).toContain("if (!isTauriRuntime()) return");
+		expect(settingsSource).toContain("await openUrl(WIKI_URL)");
+		expect(settingsSource).toContain("documentationError = error");
+		expect(settingsSource).toContain(
+			'fallbackTitle: "KubeCove could not open the documentation"',
+		);
+		expect(settingsSource).toMatch(
+			/<a\s+[\s\S]*?href=\{WIKI_URL\}[\s\S]*?onclick=\{openDocumentation\}[\s\S]*?>/,
+		);
+		expect(settingsSource).toContain('target="_blank"');
+		expect(settingsSource).toContain('rel="noreferrer"');
+		expect(tauriSource).toContain(".plugin(tauri_plugin_opener::init())");
+		expect(capability.permissions).toContainEqual({
+			identifier: "opener:allow-open-url",
+			allow: [{ url: "https://github.com/Timpan4/kubecove/wiki" }],
+		});
+	});
 });
