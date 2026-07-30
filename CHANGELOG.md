@@ -3,6 +3,17 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.10.4 - 2026-07-30
+### Improved
+
+- Moved Argo CD connection management to Settings and automatically selected a healthy profile for the active workspace (#294).
+- Published user-first Wiki documentation (#293).
+
+### Fixed
+
+- Scoped saved Argo CD profiles and selections to the active workspace (#294).
+- Fixed Argo CD connection switches overflowing their settings pane (#294).
+
 ## 0.10.3 - 2026-07-30
 ### Added
 
