@@ -21,6 +21,7 @@
 	import type { TimestampTimezone, YamlDiffStyle } from "@/lib/settings";
 	import { isTauriRuntime } from "@/lib/tauri-runtime";
 	import type { YamlEncoding, YamlViewMode } from "@/lib/types";
+	import ArgoConnectionSettings from "./ArgoConnectionSettings.svelte";
 	import DiagnosticsSettings from "./DiagnosticsSettings.svelte";
 	import KubeconfigSettings from "./KubeconfigSettings.svelte";
 	import SettingsRow from "./SettingsRow.svelte";
@@ -191,8 +192,14 @@
 	let documentationError = $state<unknown>(null);
 	let {
 		onBack,
+		clusterContext,
+		workspaceId,
+		kubeconfigEnvVar,
 	}: {
 		onBack?: () => void;
+		clusterContext?: string;
+		workspaceId?: string;
+		kubeconfigEnvVar?: string;
 	} = $props();
 	const settings = $derived($settingsStore);
 
@@ -455,6 +462,10 @@
 
 		{#if showCategory("diagnostics")}
 			<DiagnosticsSettings />
+		{/if}
+
+		{#if showCategory("argo")}
+			<ArgoConnectionSettings {clusterContext} {workspaceId} {kubeconfigEnvVar} />
 		{/if}
 
 	</section>

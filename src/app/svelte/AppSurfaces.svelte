@@ -193,5 +193,10 @@
 		/>
 	{/key}
 {:else if viewMode === "settings"}
-	<SettingsSurface onBack={onCloseSettings} />
+	<SettingsSurface
+		onBack={onCloseSettings}
+		clusterContext={workspace.scope.clusterContext}
+		workspaceId={workspace.id}
+		kubeconfigEnvVar={workspaceReadContext.kubeconfigSourceKey}
+	/>
 {/if}

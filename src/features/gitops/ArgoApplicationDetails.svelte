@@ -12,7 +12,6 @@
 		TriangleAlert,
 	} from "lucide-svelte";
 	import { parse, stringify } from "yaml";
-	import ArgoConnectionSettings from "@/app/svelte/ArgoConnectionSettings.svelte";
 	import YamlCodeEditor from "@/components/YamlCodeEditor.svelte";
 	import {
 		Alert,
@@ -162,12 +161,12 @@
 
 	let transport = $state<"connected" | "kubernetes">("kubernetes");
 	let connectionId = $state("");
+	let transportSelectedByUser = $state(false);
 	let selectedResource = $state<ArgoManagedResource | null>(null);
 	let comparisonSlots = $state.raw<(ArgoManagedResource | null)[]>([]);
 	let selectedHistoryKey = $state<string | null>(null);
 	let diffView = $state<DiffView>("changes");
 	let expandedRemovalKeys = $state<string[]>([]);
-	let connectionSettingsOpen = $state(false);
 	let refreshMenuOpen = $state(false);
 	let syncMenuOpen = $state(false);
 	let advancedSync = $state<ArgoSyncSettings>({ ...defaultArgoSyncSettings });
@@ -401,6 +400,20 @@
 	);
 
 	$effect(() => {
+		if (connectionId && !matchingProfiles.some((profile) => profile.id === connectionId)) {
+			connectionId = "";
+			transport = "kubernetes";
+			transportSelectedByUser = false;
+			return;
+		}
+		if (transportSelectedByUser || transport !== "kubernetes" || connectionId) return;
+		const healthyProfileId = statuses.data?.find(([, status]) => status.connected)?.[0];
+		if (!healthyProfileId) return;
+		connectionId = healthyProfileId;
+		transport = "connected";
+	});
+
+	$effect(() => {
 		const next = comparableResources;
 		const slotCount = Math.max(comparisonSlots.length, next.length);
 		const padded = Array.from({ length: slotCount }, (_, index) => next[index] ?? null);
@@ -412,6 +425,9 @@
 	$effect(() => {
 		const nextScopeKey = scopeKey;
 		if (appliedScopeKey && appliedScopeKey !== nextScopeKey) {
+			transport = "kubernetes";
+			connectionId = "";
+			transportSelectedByUser = false;
 			selectedResource = null;
 			selectedHistoryKey = null;
 			diffView = "changes";
@@ -453,6 +469,7 @@
 	});
 
 	function setTransport(value: string) {
+		transportSelectedByUser = true;
 		transport = value === "connected" ? "connected" : "kubernetes";
 		operationError = null;
 		operationMessage = null;
@@ -460,6 +477,7 @@
 	}
 
 	function setConnection(value: string) {
+		transportSelectedByUser = true;
 		connectionId = value;
 		transport = "connected";
 		operationError = null;
@@ -800,7 +818,6 @@
 				<SelectContent><SelectGroup>{#each matchingProfiles as profile}<SelectItem value={profile.id} label={profile.url}>{profile.url}</SelectItem>{/each}</SelectGroup></SelectContent>
 			</Select>
 		{/if}
-		<Button size="sm" type="button" variant="outline" onclick={() => (connectionSettingsOpen = true)}>Connection settings</Button>
 		<div class="min-w-0 flex-1 text-xs text-muted-foreground">
 			{transport === "kubernetes" ? "Argo RBAC is not evaluated. Exact manifests require a connected profile." : connectionId && !selectedStatus?.connected ? selectedStatus?.unavailableReason ?? "Reconnect this profile." : "Connected Argo CD authorization is evaluated during operation preflight."}
 		</div>
@@ -925,10 +942,6 @@
 		</div>
 	</section>
 </div>
-
-<Dialog open={connectionSettingsOpen} onOpenChange={(value: boolean) => (connectionSettingsOpen = value)}>
-	<DialogContent class="max-w-2xl"><DialogHeader><DialogTitle>Argo CD connection settings</DialogTitle><DialogDescription>Manage connection profiles for this workspace.</DialogDescription></DialogHeader><ArgoConnectionSettings {clusterContext} {workspaceId} {kubeconfigEnvVar} /></DialogContent>
-</Dialog>
 
 <Dialog open={confirmationOpen} onOpenChange={(open: boolean) => { confirmationOpen = open; if (!open) { pendingSync = null; confirmationName = ""; } }}>
 	<DialogContent>
