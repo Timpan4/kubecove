@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.10.1 - 2026-07-30
+### Fixed
+
+- use supported YAML encoding
+
 ## 0.10.0 - 2026-07-29
 ### Added
 
