@@ -53,6 +53,12 @@
 	import { queryKeys } from "@/lib/queryKeys";
 	import { settingsStore } from "@/lib/settings-store";
 	import {
+		argoConnectionPreferenceValue,
+		eligibleArgoProfiles,
+		normalizeArgoConnectionPreference,
+		resolveArgoConnectionPolicy,
+	} from "@/lib/argo-connection-policy";
+	import {
 		createTauriClient,
 		getArgoApplicationInspector,
 		getArgoApplicationResources,
@@ -151,17 +157,14 @@
 		context: clusterContext,
 		workspaceId,
 	});
-	const matchingProfiles = $derived(
-		$settingsStore.argoProfiles.filter(
-			(profile) =>
-				profile.clusterContext === clusterContext &&
-				(!profile.workspaceId || profile.workspaceId === workspaceId),
+	const argoProfiles = $derived(
+		eligibleArgoProfiles($settingsStore.argoProfiles, clusterContext, workspaceId),
+	);
+	const preference = $derived(
+		normalizeArgoConnectionPreference(
+			$settingsStore.argoConnectionPreferences[workspaceId],
 		),
 	);
-
-	let transport = $state<"connected" | "kubernetes">("kubernetes");
-	let connectionId = $state("");
-	let transportSelectedByUser = $state(false);
 	let selectedResource = $state<ArgoManagedResource | null>(null);
 	let comparisonSlots = $state.raw<(ArgoManagedResource | null)[]>([]);
 	let selectedHistoryKey = $state<string | null>(null);
@@ -187,19 +190,40 @@
 			"argo-connection-status",
 			clusterContext,
 			workspaceId,
-			matchingProfiles.map((profile) => profile.id).join(","),
+			argoProfiles.map((profile) => profile.id).join(","),
 		],
 		queryFn: () =>
 			Promise.all(
-				matchingProfiles.map(
+				argoProfiles.map(
 					async (profile) => [profile.id, await getArgoConnectionStatus(client, profile.id)] as const,
 				),
 			),
-		enabled: active && matchingProfiles.length > 0,
+		enabled: active && argoProfiles.length > 0,
 		staleTime: 5_000,
 	}));
-	const selectedStatus = $derived(statuses.data?.find(([id]) => id === connectionId)?.[1]);
-	const selectedProfile = $derived(matchingProfiles.find((profile) => profile.id === connectionId) ?? null);
+	const connectionPolicy = $derived(
+		resolveArgoConnectionPolicy({
+			profiles: $settingsStore.argoProfiles,
+			statuses: statuses.data,
+			clusterContext,
+			workspaceId,
+			preference,
+		}),
+	);
+	const transport = $derived(connectionPolicy.transport);
+	const connectionId = $derived(connectionPolicy.connectionId ?? "");
+	const connectionPolicyReady = $derived(
+		preference.kind !== "automatic" || argoProfiles.length === 0 || !statuses.isPending,
+	);
+	const connectionReady = $derived(
+		connectionPolicyReady &&
+			(transport === "kubernetes" || !connectionPolicy.unavailable),
+	);
+	const preferenceValue = $derived(
+		argoConnectionPreferenceValue(connectionPolicy.preference),
+	);
+	const selectedStatus = $derived(statuses.data?.find(([id]) => id === connectionPolicy.connectionId)?.[1]);
+	const selectedProfile = $derived(connectionPolicy.selectedProfile);
 	const request = $derived({
 		clusterContext,
 		kubeconfigEnvVar,
@@ -224,7 +248,7 @@
 		enabled:
 			active &&
 			workspaceReadContext.sourceReady &&
-			(transport === "kubernetes" || Boolean(connectionId)),
+			connectionReady,
 		staleTime: 30_000,
 		retry: false,
 		gcTime: redactSecrets ? undefined : 0,
@@ -245,7 +269,7 @@
 		enabled:
 			active &&
 			workspaceReadContext.sourceReady &&
-			(transport === "kubernetes" || Boolean(connectionId)),
+			connectionReady,
 		staleTime: 30_000,
 		retry: false,
 		gcTime: redactSecrets ? undefined : 0,
@@ -286,7 +310,7 @@
 				Boolean(item) &&
 				active &&
 				workspaceReadContext.sourceReady &&
-				(transport === "kubernetes" || Boolean(connectionId)),
+				connectionReady,
 			staleTime: 30_000,
 			retry: false,
 			gcTime: redactSecrets ? undefined : 0,
@@ -395,23 +419,10 @@
 	);
 	const canOperate = $derived(
 		active &&
-		workspaceReadContext.sourceReady &&
-		(transport === "kubernetes" || Boolean(connectionId && selectedStatus?.connected)),
+			workspaceReadContext.sourceReady &&
+			connectionReady &&
+			(transport === "kubernetes" || selectedStatus?.connected === true),
 	);
-
-	$effect(() => {
-		if (connectionId && !matchingProfiles.some((profile) => profile.id === connectionId)) {
-			connectionId = "";
-			transport = "kubernetes";
-			transportSelectedByUser = false;
-			return;
-		}
-		if (transportSelectedByUser || transport !== "kubernetes" || connectionId) return;
-		const healthyProfileId = statuses.data?.find(([, status]) => status.connected)?.[0];
-		if (!healthyProfileId) return;
-		connectionId = healthyProfileId;
-		transport = "connected";
-	});
 
 	$effect(() => {
 		const next = comparableResources;
@@ -425,9 +436,6 @@
 	$effect(() => {
 		const nextScopeKey = scopeKey;
 		if (appliedScopeKey && appliedScopeKey !== nextScopeKey) {
-			transport = "kubernetes";
-			connectionId = "";
-			transportSelectedByUser = false;
 			selectedResource = null;
 			selectedHistoryKey = null;
 			diffView = "changes";
@@ -468,18 +476,11 @@
 		}
 	});
 
-	function setTransport(value: string) {
-		transportSelectedByUser = true;
-		transport = value === "connected" ? "connected" : "kubernetes";
-		operationError = null;
-		operationMessage = null;
-		operationPhase = "idle";
-	}
-
-	function setConnection(value: string) {
-		transportSelectedByUser = true;
-		connectionId = value;
-		transport = "connected";
+	function setConnectionPreference(value: string) {
+		$settingsStore.setArgoConnectionPreference(
+			workspaceId,
+			normalizeArgoConnectionPreference(value),
+		);
 		operationError = null;
 		operationMessage = null;
 		operationPhase = "idle";
@@ -808,18 +809,34 @@
 	</section>
 
 	<div class="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border bg-surface-1 p-3">
-		<Select value={transport} onValueChange={setTransport}>
-			<SelectTrigger class="w-56 max-w-full" ariaLabel="Argo CD access path"><SelectValue>{transport === "connected" ? "Connected Argo CD profile" : "Kubernetes fallback"}</SelectValue></SelectTrigger>
-			<SelectContent><SelectGroup><SelectItem value="kubernetes" label="Kubernetes fallback">Kubernetes fallback</SelectItem><SelectItem value="connected" label="Connected Argo CD profile">Connected Argo CD profile</SelectItem></SelectGroup></SelectContent>
+		<Select value={preferenceValue} onValueChange={setConnectionPreference}>
+			<SelectTrigger class="w-72 max-w-full" ariaLabel="Argo CD inspection preference">
+				<SelectValue>
+					{connectionPolicy.preference.kind === "automatic"
+						? !connectionPolicyReady
+							? "Automatic · Checking profiles"
+							: `Automatic · ${selectedProfile?.url ?? "Kubernetes"}`
+						: connectionPolicy.preference.kind === "kubernetes"
+							? "Kubernetes"
+							: selectedProfile?.url ?? connectionPolicy.preference.profileId}
+				</SelectValue>
+			</SelectTrigger>
+			<SelectContent>
+				<SelectGroup>
+					<SelectItem value="automatic" label="Automatic">Automatic</SelectItem>
+					<SelectItem value="kubernetes" label="Kubernetes">Kubernetes</SelectItem>
+					{#each argoProfiles as profile}
+						<SelectItem value={`connected:${profile.id}`} label={profile.url}>{profile.url}</SelectItem>
+					{/each}
+				</SelectGroup>
+			</SelectContent>
 		</Select>
-		{#if transport === "connected"}
-			<Select value={connectionId} onValueChange={setConnection}>
-				<SelectTrigger class="w-56 max-w-full" ariaLabel="Connected Argo CD profile"><SelectValue>{selectedProfile?.url ?? "Select connected profile"}</SelectValue></SelectTrigger>
-				<SelectContent><SelectGroup>{#each matchingProfiles as profile}<SelectItem value={profile.id} label={profile.url}>{profile.url}</SelectItem>{/each}</SelectGroup></SelectContent>
-			</Select>
-		{/if}
 		<div class="min-w-0 flex-1 text-xs text-muted-foreground">
-			{transport === "kubernetes" ? "Argo RBAC is not evaluated. Exact manifests require a connected profile." : connectionId && !selectedStatus?.connected ? selectedStatus?.unavailableReason ?? "Reconnect this profile." : "Connected Argo CD authorization is evaluated during operation preflight."}
+			{connectionPolicy.unavailable
+				? selectedStatus?.unavailableReason ?? "Reconnect this exact workspace profile."
+				: transport === "kubernetes"
+					? "Argo RBAC is not evaluated. Exact manifests require a connected profile."
+					: "Connected Argo CD authorization is evaluated during operation preflight."}
 		</div>
 	</div>
 

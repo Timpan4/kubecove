@@ -60,6 +60,39 @@ describe("settings", () => {
 		});
 	});
 
+	test("persists and validates workspace Argo connection preferences", () => {
+		const current = useSettingsState.getState();
+		const saved = {
+			...current,
+			argoConnectionPreferences: {
+				"workspace-a": { kind: "connected", profileId: "profile-a" },
+			},
+		} as typeof current;
+
+		expect(partializeSettings(saved)).toMatchObject({
+			argoConnectionPreferences: {
+				"workspace-a": { kind: "connected", profileId: "profile-a" },
+			},
+		});
+		expect(
+			mergePersistedSettings(
+				{
+					argoConnectionPreferences: {
+						"workspace-a": { kind: "kubernetes" },
+						"workspace-b": { kind: "connected", profileId: "profile-b" },
+						"workspace-c": { kind: "connected", profileId: " " },
+						"": { kind: "connected", profileId: "ignored" },
+					},
+				},
+				current,
+			).argoConnectionPreferences,
+		).toEqual({
+			"workspace-a": { kind: "kubernetes" },
+			"workspace-b": { kind: "connected", profileId: "profile-b" },
+			"workspace-c": { kind: "automatic" },
+		});
+	});
+
 	test("defaults Helm to cards and persists only valid view modes", () => {
 		expect(useSettingsState.getState().helmViewMode).toBe("cards");
 		useSettingsState.getState().setHelmViewMode("list");

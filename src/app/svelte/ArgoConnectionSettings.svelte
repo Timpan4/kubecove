@@ -13,6 +13,10 @@
 		Switch,
 		Textarea,
 	} from "@/components/ui/svelte";
+	import {
+		eligibleArgoProfiles,
+		upsertArgoProfileInSavedOrder,
+	} from "@/lib/argo-connection-policy";
 	import { settingsStore } from "@/lib/settings-store";
 	import {
 		connectArgoServer,
@@ -43,12 +47,9 @@
 	let error = $state<string | null>(null);
 	let connected = $state<string | null>(null);
 	const matchingProfiles = $derived(
-		settings.argoProfiles.filter(
-			(profile) =>
-				!clusterContext ||
-				(profile.clusterContext === clusterContext &&
-					(!profile.workspaceId || profile.workspaceId === workspaceId)),
-		),
+		clusterContext && workspaceId
+			? eligibleArgoProfiles(settings.argoProfiles, clusterContext, workspaceId)
+			: settings.argoProfiles,
 	);
 	const connectionStatuses = createQuery(() => ({
 		queryKey: ["argo-connection-status", clusterContext ?? "", workspaceId ?? "", matchingProfiles.map((profile) => profile.id).join(",")],
@@ -92,10 +93,19 @@
 			});
 			if (result.profile) {
 				const profile = result.profile;
-				settings.setArgoProfiles([
-					...settings.argoProfiles.filter((item) => item.id !== profile.id && item.id !== saved?.id),
-					{ id: profile.id, url: profile.url, clusterContext: profile.clusterContext ?? undefined, workspaceId: profile.workspaceId ?? undefined, rememberCredential: profile.rememberCredential },
-				]);
+				settings.setArgoProfiles(
+					upsertArgoProfileInSavedOrder(
+						settings.argoProfiles,
+						{
+							id: profile.id,
+							url: profile.url,
+							clusterContext: profile.clusterContext ?? undefined,
+							workspaceId: profile.workspaceId ?? undefined,
+							rememberCredential: profile.rememberCredential,
+						},
+						saved?.id,
+					),
+				);
 			}
 			connected = result.profile?.id ?? id;
 			void queryClient.invalidateQueries({ queryKey: ["argo-connection-status"] });
