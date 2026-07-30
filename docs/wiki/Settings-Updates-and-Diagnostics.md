@@ -46,7 +46,7 @@ If a check fails, retry after confirming network access to GitHub release downlo
 
 ## Diagnostics
 
-![Diagnostics latency report in Settings](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/settings-diagnostics-report.png)
+![KubeCove Settings diagnostics view showing local latency report controls](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/settings-diagnostics-report.png)
 
 Diagnostics are off by default. Enable them to collect frontend and backend latency timings, render counters, and bounded trace events in memory. They are intended for local investigation; disable them when finished.
 

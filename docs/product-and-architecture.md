@@ -1,6 +1,6 @@
 # Product and architecture
 
-This document records KubeCove's current product principles, system boundary, and module shape. User procedures belong in the [KubeCove Wiki](https://github.com/Timpan4/kubecove/wiki). Decisions with durable architectural consequences belong in [ADRs](decisions/).
+KubeCove is a local Kubernetes desktop GUI for cluster inspection, GitOps context, and guarded troubleshooting workflows. This document records KubeCove's current product principles, system boundary, and module shape. User procedures belong in the [KubeCove Wiki](https://github.com/Timpan4/kubecove/wiki). Decisions with durable architectural consequences belong in [ADRs](decisions/).
 
 ## Product identity
 

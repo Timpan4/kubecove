@@ -3,8 +3,30 @@ import { resolve } from "node:path";
 import { expect, test } from "bun:test";
 
 const root = resolve(import.meta.dir, "..");
+const readme = readFileSync(resolve(root, "README.md"), "utf8");
 const workflow = readFileSync(resolve(root, ".github/workflows/publish-wiki.yml"), "utf8");
 const issueForm = readFileSync(resolve(root, ".github/ISSUE_TEMPLATE/documentation.yml"), "utf8");
+
+test("README exposes the primary product and discovery terms", () => {
+	expect(readme).toMatch(/local Kubernetes desktop (?:UI|GUI)/i);
+	expect(readme).toMatch(/Kubernetes GUI/i);
+	expect(readme).toMatch(/cluster inspection/i);
+	expect(readme).toMatch(/Kubernetes troubleshooting/i);
+	expect(readme).toMatch(/Argo CD/i);
+	expect(readme).toMatch(/Flux/i);
+	expect(readme).toMatch(/Helm/i);
+	expect(readme).toMatch(/guarded cluster operations/i);
+	expect(readme).toContain("https://github.com/Timpan4/kubecove/releases/latest");
+	expect(readme).toContain("https://github.com/Timpan4/kubecove/wiki");
+});
+
+test("README screenshots use descriptive alt text", () => {
+	const altTexts = [...readme.matchAll(/!\[([^\]]+)\]\(docs\/assets\/[^\n)]+\)/g)].map((match) => match[1]);
+
+	expect(altTexts.length).toBeGreaterThanOrEqual(3);
+	expect(altTexts.every((alt) => alt.length >= 40)).toBe(true);
+	expect(altTexts.some((alt) => /Kubernetes desktop UI/i.test(alt))).toBe(true);
+});
 
 test("Wiki publishing workflow syncs only canonical Wiki source", () => {
 	expect(workflow).toMatch(/branches:\s*\n\s*- main/);

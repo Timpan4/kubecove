@@ -4,7 +4,7 @@ Guarded Operations changes one selected Kubernetes resource through a fixed, typ
 
 Related: [Resource Details](https://github.com/Timpan4/kubecove/wiki/Resource-Details) · [GitOps](https://github.com/Timpan4/kubecove/wiki/GitOps-Argo-CD-and-Flux) · [Helm](https://github.com/Timpan4/kubecove/wiki/Helm-Reconciliation) · [RBAC](https://github.com/Timpan4/kubecove/wiki/RBAC-and-Permissions)
 
-![Guarded scale preview for one Deployment](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/guarded-operation-preview.png)
+![KubeCove guarded Kubernetes operation preview for scaling and restarting one Deployment](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/guarded-operation-preview.png)
 
 ## Prerequisites
 

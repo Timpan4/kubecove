@@ -2,7 +2,7 @@
 
 The overview is the starting surface for an open workspace. It keeps the saved context or cluster group, namespace scope, and resource kinds visible while fetching live cluster state.
 
-![Workspace overview](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/workspace-overview.png)
+![KubeCove Kubernetes desktop UI showing workspace health, resource scope, and Argo CD status](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/workspace-overview.png)
 
 ## Read health first
 
