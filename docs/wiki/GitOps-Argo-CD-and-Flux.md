@@ -2,7 +2,7 @@
 
 Use the GitOps screen to inspect provider CRDs in the selected Kubernetes context. See the [KubeCove Wiki](https://github.com/Timpan4/kubecove/wiki) for related guides.
 
-![GitOps provider overview](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/gitops-overview.png)
+![KubeCove GitOps view showing Argo CD applications, Flux detection, and Helm-related resources](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/gitops-overview.png)
 
 ## Detect providers and inventory
 

@@ -39,7 +39,7 @@ Use **Format** to reformat the one document in the selected encoding. Editor dia
 3. Review the server-side dry-run diff. It compares the live Apply clean resource with Kubernetes' dry-run result. Use **Show full diff** when the compact view omits relevant context.
 4. Confirm by selecting the now-enabled **Apply** button. It is unavailable until a successful dry run; changing the draft clears the preview and requires another dry run.
 
-![Server dry-run diff before Apply](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/yaml-dry-run-diff.png)
+![KubeCove selected-resource YAML editor showing a server dry-run diff before apply](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/yaml-dry-run-diff.png)
 
 The operation uses server-side apply with field manager `kubecove`. **Apply** performs the same request without dry-run.
 

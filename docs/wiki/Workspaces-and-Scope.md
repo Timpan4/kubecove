@@ -2,7 +2,7 @@
 
 A workspace is a locally saved inspection scope: context or cluster group, namespaces, resource kinds, shortcuts, saved Service port-forward presets, and layout. It is not a kubeconfig copy.
 
-![Workspace launcher](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/workspace-launcher.png)
+![KubeCove workspace launcher showing context, cluster group, and namespace scope](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/wiki/workspace-launcher.png)
 
 ## Discover a kubeconfig
 

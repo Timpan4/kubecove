@@ -1,6 +1,14 @@
 # Engineering and Governance
 
-User documentation starts in [public Wiki](https://github.com/Timpan4/kubecove/wiki).
+User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kubecove/wiki). This directory contains engineering references, governance, and the source used to publish Wiki pages.
+
+## Public product documentation
+
+- [Getting started and downloading](https://github.com/Timpan4/kubecove/wiki/Install-and-Update)
+- [Kubernetes resource browser and topology](https://github.com/Timpan4/kubecove/wiki/Resource-Browser)
+- [Argo CD and Flux integration](https://github.com/Timpan4/kubecove/wiki/GitOps-Argo-CD-and-Flux)
+- [Helm inspection and reconciliation](https://github.com/Timpan4/kubecove/wiki/Helm-Reconciliation)
+- [Security, data handling, and architecture](https://github.com/Timpan4/kubecove/wiki/Safety-Data-and-Architecture)
 
 ## Engineering
 

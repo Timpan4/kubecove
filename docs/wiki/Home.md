@@ -1,10 +1,10 @@
 # KubeCove
 
-KubeCove is a local desktop workspace for Kubernetes-aware operators and application developers. Start with inspection: keep context, namespace, application ownership, resource state, events, logs, metrics, YAML, topology, GitOps, Helm, and RBAC in view before taking action.
+KubeCove is a fast, local Kubernetes desktop GUI for cluster inspection and troubleshooting. It gives Kubernetes-aware operators and application developers a visual resource browser for context, namespace, application ownership, resource state, events, logs, metrics, YAML, topology, GitOps, Helm, and RBAC before taking action.
 
 Kubernetes credentials remain on the Rust side of the desktop boundary. KubeCove does not deploy cluster agents, expose raw kubeconfig contents to the frontend, or provide arbitrary shell execution. Operations are narrow, typed, target-scoped, and explicitly confirmed.
 
-![KubeCove resource browser with ownership map](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/resources-view.png)
+![KubeCove Kubernetes resource browser showing ownership map, resource health, and topology](https://raw.githubusercontent.com/Timpan4/kubecove/main/docs/assets/resources-view.png)
 
 ## Start
 
