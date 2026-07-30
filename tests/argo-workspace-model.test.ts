@@ -1,12 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import {
+	type ArgoResourceFilter,
+	applyArgoSyncDefaults,
+	argoComparisonDocument,
+	argoHistoryKey,
+	argoReconciliationResources,
 	argoResourceCounts,
 	argoResourceIdentityKey,
 	argoResourceMatchesFilter,
+	argoSyncNeedsConfirmation,
+	defaultArgoSyncSettings,
 	filterWorkspaceResourcesByArgo,
-	type ArgoResourceFilter,
+	preserveArgoHistorySelection,
+	preserveArgoResourceSelection,
+	withArgoSyncSettings,
 } from "../src/features/gitops/argo-workspace-model";
-import type { ArgoManagedResource } from "../src/lib/gitops-types";
+import type { ArgoApplicationHistory, ArgoManagedResource } from "../src/lib/gitops-types";
 
 const managedResources: ArgoManagedResource[] = [
 	{
@@ -142,6 +151,87 @@ describe("Argo managed-resource workspace model", () => {
 			degraded: 0,
 			progressing: 0,
 			prune: 0,
+		});
+	});
+});
+
+describe("Argo briefing helpers", () => {
+	const application = { name: "shop", namespace: "argocd" };
+
+	test("groups all resources needing reconciliation, including removals", () => {
+		expect(argoReconciliationResources(managedResources).map(({ name }) => name)).toEqual([
+			"api",
+			"api-config",
+			"legacy",
+		]);
+		expect(
+			argoReconciliationResources([
+				{ kind: "ConfigMap", name: "remove", status: "Synced", health: "Healthy", requiresPruning: true },
+			]),
+		).toHaveLength(1);
+	});
+
+	test("keeps selection only while matching identity exists", () => {
+		const selected = { group: "apps", kind: "Deployment", namespace: "shop", name: "api" };
+		const refreshed = [{ ...selected, status: "Synced" }];
+		expect(preserveArgoResourceSelection(selected, refreshed)).toBe(refreshed[0]);
+		expect(preserveArgoResourceSelection(selected, [])).toBeNull();
+		expect(preserveArgoResourceSelection(null, refreshed)).toBeNull();
+	});
+
+	test("keys history by application and falls back to newest entry", () => {
+		const entries: ArgoApplicationHistory[] = [
+			{ id: 3, revision: "new", revisions: [], sources: [] },
+			{ revision: "old", revisions: [], sources: [] },
+		];
+		const selected = argoHistoryKey(application, entries[1]);
+		expect(argoHistoryKey(application, entries[0])).toBe("argocd:shop:id:3");
+		expect(preserveArgoHistorySelection(application, entries, selected)).toBe(selected);
+		expect(preserveArgoHistorySelection(application, entries, "missing")).toBe("argocd:shop:id:3");
+		expect(preserveArgoHistorySelection(application, [], selected)).toBeNull();
+		expect(argoHistoryKey(application, { revisions: [], sources: [] })).toBe("argocd:shop:revision:unknown");
+	});
+
+	test("uses comparison data with managed-state fallbacks", () => {
+		const resource = { kind: "Deployment", name: "api", targetState: { desired: 1 }, liveState: { live: 1 } };
+		expect(argoComparisonDocument(resource)).toEqual({
+			target: { desired: 1 }, desired: { desired: 1 }, live: { live: 1 }, normalizedLive: { live: 1 }, modified: undefined, exact: undefined, provenance: undefined,
+		});
+		expect(argoComparisonDocument(resource, {
+			resource, targetState: { desired: 2 }, liveState: { live: 2 }, normalizedLiveState: { normalized: 2 }, modified: true, exact: true, provenance: "Argo", availableActions: [],
+		})).toEqual({
+			target: { desired: 2 }, desired: { desired: 2 }, live: { live: 2 }, normalizedLive: { normalized: 2 }, modified: true, exact: true, provenance: "Argo",
+		});
+	});
+
+	test("defaults and applies application-wide sync settings", () => {
+		const request = { transport: "connected" as const, application, action: "sync" as const, resources: managedResources };
+		expect(defaultArgoSyncSettings).toEqual({ revision: "", prune: false, dryRun: false, force: false });
+		expect(argoSyncNeedsConfirmation(defaultArgoSyncSettings)).toBe(false);
+		for (const settings of [
+			{ ...defaultArgoSyncSettings, revision: "main" },
+			{ ...defaultArgoSyncSettings, prune: true },
+			{ ...defaultArgoSyncSettings, dryRun: true },
+			{ ...defaultArgoSyncSettings, force: true },
+		]) expect(argoSyncNeedsConfirmation(settings)).toBe(true);
+		const applicationDefaults = { ...defaultArgoSyncSettings, prune: true };
+		expect(argoSyncNeedsConfirmation(applicationDefaults, applicationDefaults)).toBe(false);
+		expect(
+			applyArgoSyncDefaults(
+				defaultArgoSyncSettings,
+				defaultArgoSyncSettings,
+				applicationDefaults,
+			),
+		).toEqual(applicationDefaults);
+		const editedSettings = { ...defaultArgoSyncSettings, revision: "release" };
+		expect(
+			applyArgoSyncDefaults(editedSettings, defaultArgoSyncSettings, applicationDefaults),
+		).toBe(editedSettings);
+		expect(
+			argoSyncNeedsConfirmation({ ...applicationDefaults, prune: false }, applicationDefaults),
+		).toBe(true);
+		expect(withArgoSyncSettings(request, { revision: " main ", prune: true, dryRun: true, force: true })).toMatchObject({
+			revision: "main", resources: [], prune: true, dryRun: true, force: true,
 		});
 	});
 });

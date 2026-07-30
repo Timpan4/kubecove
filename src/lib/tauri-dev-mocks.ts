@@ -134,24 +134,33 @@ const handlers: Record<string, MockHandler> = {
 		const app = argoApplication(args);
 		const managedResources = argoManagedResources(args);
 		return {
-			application: args?.application,
+			application: {
+				...(args?.application as Record<string, unknown> | undefined),
+				project: app.project,
+				resourceVersion: "42",
+				uid: `mock-${app.name}`,
+			},
 			status: {
 				sync: { status: app.syncStatus ?? "Unknown", revision: "8f4c2d1" },
 				health: { status: app.healthStatus ?? "Unknown" },
 				reconciledAt: now,
 			},
-			history: [],
+			history: [
+				{ id: 18, revision: "8f4c2d1", revisions: [], deployedAt: now, initiatedBy: "mock-dev", source: null, sources: [] },
+				{ id: 17, revision: "3d91a7b", revisions: [], deployedAt: "2026-06-28T09:30:00Z", initiatedBy: "automation", source: null, sources: [] },
+			],
 			resources: managedResources,
-			conditions: [],
+			conditions: [{ type: "ComparisonError", message: "Mock drift requires review before sync.", lastTransitionTime: now }],
 			operationState: null,
-			connected: false,
+			connected: args?.transport === "connected",
 		};
 	},
 	get_argo_application_resources: (args) => argoManagedResources(args),
-	get_argo_resource_comparison: (args) => ({ resource: args?.resource, targetState: null, liveState: null, normalizedLiveState: null, predictedLiveState: null, modified: false, exact: false, provenance: "application-crd", availableActions: [] }),
+	get_argo_resource_comparison: (args) => argoComparison(args),
 	preflight_argo_operation: (args) => {
 		const request = args?.request as Record<string, unknown> | undefined;
-		return { allowed: request?.action === "refresh", transport: request?.transport, action: request?.action, reason: request?.action === "refresh" ? null : "operation unavailable in browser mock", preflightToken: request?.action === "refresh" ? "mock-preflight" : null, resolvedRequest: request?.action === "refresh" ? request : null };
+		const allowed = ["refresh", "hardRefresh", "sync", "retry"].includes(String(request?.action));
+		return { allowed, transport: request?.transport, action: request?.action, reason: allowed ? null : "operation unavailable in browser mock", preflightToken: allowed ? "mock-preflight" : null, resolvedRequest: allowed ? request : null };
 	},
 	run_argo_operation: () => ({ accepted: true, transport: "kubernetes", message: "Mock operation accepted", operation: null }),
 	list_argocd_applications: () => argoApps,
@@ -228,8 +237,32 @@ function listScope(requests: ResourceListRequest[] = [], cluster = "mock-dev"): 
 
 function resourceFromArgs(args: MockArgs): ResourceSummary {
 	const rows = resourcesForCluster(args?.clusterContext as string | undefined);
-	const match = rows.find((row) => row.kind === args?.kind && row.name === args?.name && (args?.namespace === undefined || row.namespace === args.namespace));
-	return match ?? rows[0];
+	const dynamicKind = (args?.resourceKind as DiscoveredResourceKind | undefined)?.kind;
+	const kind = (args?.kind as string | undefined) ?? dynamicKind;
+	const match = rows.find((row) => row.kind === kind && row.name === args?.name && (args?.namespace === undefined || row.namespace === args.namespace));
+	if (match) return match;
+	if (kind === "Application" && typeof args?.name === "string") {
+		const application = argoApps.find((candidate) => candidate.name === args.name);
+		if (application) {
+			return {
+				kind: "Application",
+				cluster: application.cluster,
+				name: application.name,
+				namespace: application.namespace ?? null,
+				age: application.age ?? "unknown",
+				apiVersion: "argoproj.io/v1alpha1",
+				group: "argoproj.io",
+				version: "v1alpha1",
+				plural: "applications",
+				namespaced: true,
+				dynamic: true,
+				health: "healthy",
+				createdAt: application.createdAt,
+				...(application.syncStatus ? { status: application.syncStatus } : {}),
+			};
+		}
+	}
+	return rows[0];
 }
 
 function detailsFor(args: MockArgs): ResourceDetailsFull {
@@ -244,7 +277,15 @@ function detailsFor(args: MockArgs): ResourceDetailsFull {
 
 function yamlFor(args: MockArgs): string {
 	const row = resourceFromArgs(args);
+	if (row.kind === "Application") {
+		const app = argoApps.find((candidate) => candidate.name === row.name) ?? argoApps[0];
+		return argoApplicationYaml(app);
+	}
 	return genericYaml(row.kind, row.name, row.namespace, row.apiVersion);
+}
+
+function argoApplicationYaml(app: (typeof argoApps)[number]): string {
+	return `apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: ${app.name}\n  namespace: ${app.namespace ?? "argocd"}\nspec:\n  project: ${app.project ?? "default"}\n  source:\n    repoURL: ${app.sourceRepo ?? "https://github.com/example/platform-config.git"}\n    path: environments/mock-dev\n    targetRevision: ${app.sourceRevision ?? "main"}\n  destination:\n    server: ${app.destinationServer ?? "https://kubernetes.default.svc"}\n    namespace: ${app.destinationNamespace ?? "default"}\n  syncPolicy:\n    automated:\n      prune: true\n      selfHeal: true\n`;
 }
 
 function genericYaml(kindName: string, name: string, namespace?: string | null, apiVersion = "v1"): string {
@@ -523,6 +564,8 @@ function argoManagedResources(args: MockArgs): ArgoManagedResource[] {
 		const [group = "", version = "v1"] = apiVersion.includes("/")
 			? apiVersion.split("/", 2)
 			: ["", apiVersion];
+		const targetState = prune ? undefined : argoManifest(row, true);
+		const liveState = argoManifest(row, false);
 		return {
 			group,
 			version,
@@ -533,13 +576,53 @@ function argoManagedResources(args: MockArgs): ArgoManagedResource[] {
 			health: degraded ? "Degraded" : progressing ? "Progressing" : prune ? "Missing" : "Healthy",
 			hook: false,
 			requiresPruning: prune,
+			...(args?.transport === "connected" ? { targetState, liveState } : {}),
 		};
 	});
 }
 
+function argoComparison(args: MockArgs) {
+	const requested = args?.resource as ArgoManagedResource | undefined;
+	const resource = argoManagedResources({ ...args, transport: "connected" }).find(
+		(candidate) =>
+			candidate.group === requested?.group &&
+			candidate.kind === requested?.kind &&
+			candidate.namespace === requested?.namespace &&
+			candidate.name === requested?.name,
+	) ?? requested ?? {};
+	if (args?.transport !== "connected") {
+		return { resource, targetState: null, liveState: null, normalizedLiveState: null, predictedLiveState: null, modified: null, exact: false, provenance: "kubernetes-status-no-diff", availableActions: [] };
+	}
+	return {
+		resource,
+		targetState: resource.targetState ?? null,
+		liveState: resource.liveState ?? null,
+		normalizedLiveState: resource.liveState ?? null,
+		predictedLiveState: resource.targetState ?? null,
+		modified: resource.requiresPruning === true || JSON.stringify(resource.targetState) !== JSON.stringify(resource.liveState),
+		exact: true,
+		provenance: "argocd-managed-resource",
+		availableActions: [],
+	};
+}
+
+function argoManifest(row: ResourceSummary, desired: boolean) {
+	return {
+		apiVersion: row.apiVersion ?? "v1",
+		kind: row.kind,
+		metadata: {
+			name: row.name,
+			namespace: row.namespace,
+			labels: { "app.kubernetes.io/managed-by": "argocd", "kubecove.dev/state": desired ? "desired" : "live" },
+		},
+		spec: row.kind === "Deployment" ? { replicas: desired ? 3 : 2 } : undefined,
+		data: row.kind === "ConfigMap" ? { release: desired ? "8f4c2d1" : "3d91a7b" } : undefined,
+	};
+}
+
 function argoDetails(args: MockArgs): ArgoApplicationDetails {
 	const summary = argoApps.find((app) => app.name === args?.name) ?? argoApps[0];
-	return { summary, yaml: genericYaml("Application", summary.name, summary.namespace, "argoproj.io/v1alpha1"), metadata: { labels: { "argocd.argoproj.io/instance": summary.name } }, status: { sync: { status: summary.syncStatus }, health: { status: summary.healthStatus } } };
+	return { summary, yaml: argoApplicationYaml(summary), metadata: { labels: { "argocd.argoproj.io/instance": summary.name } }, status: { sync: { status: summary.syncStatus }, health: { status: summary.healthStatus } } };
 }
 
 function appSets(): ArgoApplicationSetSummary[] {

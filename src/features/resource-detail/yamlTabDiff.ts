@@ -15,6 +15,17 @@ export function buildCompactUnifiedDiff(
 	return buildUnifiedDiff(currentYaml, dryRunYaml, DIFF_CONTEXT_LINES);
 }
 
+export function buildArgoResourceDiff(
+	targetYaml: string,
+	liveYaml: string,
+): UnifiedDiffLine[] {
+	return buildUnifiedDiff(targetYaml, liveYaml, DIFF_CONTEXT_LINES, {
+		oldName: "target",
+		newName: "live",
+		emptyMessage: "Target and live state match.",
+	});
+}
+
 export function buildYamlDryRunDiff({
 	currentYaml,
 	dryRunYaml,
@@ -38,10 +49,15 @@ function buildUnifiedDiff(
 	currentYaml: string,
 	dryRunYaml: string,
 	context: number,
+	labels: { oldName: string; newName: string; emptyMessage: string } = {
+		oldName: "current",
+		newName: "dry-run",
+		emptyMessage: "No server-side dry-run changes.",
+	},
 ): UnifiedDiffLine[] {
 	const patch = structuredPatch(
-		"current",
-		"dry-run",
+		labels.oldName,
+		labels.newName,
 		currentYaml,
 		dryRunYaml,
 		"",
@@ -49,8 +65,8 @@ function buildUnifiedDiff(
 		{ context },
 	);
 	const lines: UnifiedDiffLine[] = [
-		{ type: "header", text: "--- current" },
-		{ type: "header", text: "+++ dry-run" },
+		{ type: "header", text: `--- ${labels.oldName}` },
+		{ type: "header", text: `+++ ${labels.newName}` },
 	];
 
 	for (const hunk of patch.hunks) {
@@ -72,7 +88,7 @@ function buildUnifiedDiff(
 	}
 
 	if (patch.hunks.length === 0) {
-		lines.push({ type: "empty", text: "No server-side dry-run changes." });
+		lines.push({ type: "empty", text: labels.emptyMessage });
 	}
 
 	return lines;

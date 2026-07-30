@@ -1,4 +1,10 @@
-import type { ArgoManagedResource } from "@/lib/gitops-types";
+import type {
+	ArgoApplicationHistory,
+	ArgoApplicationRef,
+	ArgoManagedResource,
+	ArgoOperationRequest,
+	ArgoResourceComparison,
+} from "@/lib/gitops-types";
 
 export interface ArgoResourceCounts {
 	total: number;
@@ -72,6 +78,120 @@ export function filterWorkspaceResourcesByArgo<T extends ArgoResourceIdentity>(
 		const key = argoResourceIdentityKey(resource);
 		return key !== null && managedKeys.has(key);
 	});
+}
+
+export function argoReconciliationResources(resources: ArgoManagedResource[]): ArgoManagedResource[] {
+	return resources.filter(
+		(resource) =>
+			normalized(resource.status) !== "synced" ||
+			normalized(resource.health) === "degraded" ||
+			normalized(resource.health) === "progressing" ||
+			resource.requiresPruning === true,
+	);
+}
+
+export function preserveArgoResourceSelection<T extends ArgoResourceIdentity>(
+	selected: T | null,
+	resources: T[],
+): T | null {
+	if (!selected) return null;
+	const key = argoResourceIdentityKey(selected);
+	return key === null ? null : resources.find((resource) => argoResourceIdentityKey(resource) === key) ?? null;
+}
+
+export function argoHistoryKey(application: ArgoApplicationRef, entry: ArgoApplicationHistory): string {
+	const applicationKey = `${normalized(application.namespace)}:${normalized(application.name)}`;
+	if (typeof entry.id === "number" && Number.isFinite(entry.id)) return `${applicationKey}:id:${entry.id}`;
+	const revision = normalized(entry.revision) || entry.revisions?.map(normalized).filter(Boolean).join(",") || "unknown";
+	return `${applicationKey}:revision:${revision}`;
+}
+
+export function preserveArgoHistorySelection(
+	application: ArgoApplicationRef,
+	history: ArgoApplicationHistory[],
+	selected: string | null,
+): string | null {
+	if (!history.length) return null;
+	const keys = history.map((entry) => argoHistoryKey(application, entry));
+	return selected && keys.includes(selected) ? selected : keys[0];
+}
+
+export interface ArgoComparisonDocument {
+	target: unknown;
+	desired: unknown;
+	live: unknown;
+	normalizedLive: unknown;
+	modified: boolean | null | undefined;
+	exact: boolean | null | undefined;
+	provenance: string | null | undefined;
+}
+
+export function argoComparisonDocument(
+	resource: ArgoManagedResource,
+	comparison?: ArgoResourceComparison | null,
+): ArgoComparisonDocument {
+	const target = comparison?.targetState ?? resource.targetState;
+	const live = comparison?.liveState ?? resource.liveState;
+	return {
+		target,
+		desired: target,
+		live,
+		normalizedLive: comparison?.normalizedLiveState ?? live,
+		modified: comparison?.modified,
+		exact: comparison?.exact,
+		provenance: comparison?.provenance,
+	};
+}
+
+export interface ArgoSyncSettings {
+	revision: string;
+	prune: boolean;
+	dryRun: boolean;
+	force: boolean;
+}
+
+export const defaultArgoSyncSettings: ArgoSyncSettings = {
+	revision: "",
+	prune: false,
+	dryRun: false,
+	force: false,
+};
+
+export function argoSyncNeedsConfirmation(
+	settings: ArgoSyncSettings,
+	defaults: ArgoSyncSettings = defaultArgoSyncSettings,
+): boolean {
+	return (
+		settings.revision.trim() !== defaults.revision.trim() ||
+		settings.prune !== defaults.prune ||
+		settings.dryRun !== defaults.dryRun ||
+		settings.force !== defaults.force
+	);
+}
+
+export function applyArgoSyncDefaults(
+	settings: ArgoSyncSettings,
+	previousDefaults: ArgoSyncSettings,
+	nextDefaults: ArgoSyncSettings,
+): ArgoSyncSettings {
+	return argoSyncNeedsConfirmation(settings, previousDefaults)
+		? settings
+		: { ...nextDefaults };
+}
+
+export function withArgoSyncSettings(
+	request: ArgoOperationRequest,
+	settings: ArgoSyncSettings,
+): ArgoOperationRequest {
+	return {
+		...request,
+		action: "sync",
+		revision: settings.revision.trim() || null,
+		resources: [],
+		prune: settings.prune,
+		dryRun: settings.dryRun,
+		force: settings.force,
+	};
 }
 
 function normalizedGroup(resource: ArgoResourceIdentity): string {

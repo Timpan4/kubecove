@@ -35,6 +35,7 @@
 		type TauriClient,
 	} from "@/lib/tauri";
 	import type {
+		ArgoApplicationSummary,
 		ResourceDetailsFull,
 		ResourceEventSummary,
 		ResourceSummary,
@@ -92,6 +93,7 @@
 		client,
 		resource,
 		workspaceReadContext,
+		argoApplicationSummary = null,
 		onOpenHelmRelease,
 		initialPathState = null,
 		onPathStateChange = () => {},
@@ -99,6 +101,7 @@
 		client: TauriClient;
 		resource: ResourceSummary;
 		workspaceReadContext: WorkspaceReadContext;
+		argoApplicationSummary?: ArgoApplicationSummary | null;
 		onOpenHelmRelease?: (releaseName: string, namespace?: string | null) => void;
 		initialPathState?: PathStateResourceDetailState | null;
 		onPathStateChange?: (state: PathStateResourceDetailState) => void;
@@ -740,7 +743,13 @@
 	{/if}
 	{#if isArgoApplication}
 		<TabsContent value="argo" class="min-h-0">
-			<ArgoApplicationDetails resourceSummary={resource} {workspaceReadContext} active={activeTab === "argo"} />
+			<ArgoApplicationDetails
+					resourceSummary={resource}
+					applicationSummary={argoApplicationSummary}
+					applicationDetails={detailsQuery.data ?? null}
+					{workspaceReadContext}
+					active={activeTab === "argo"}
+				/>
 		</TabsContent>
 	{/if}
 	<TabsContent value="operations">
