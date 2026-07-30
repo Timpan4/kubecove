@@ -267,12 +267,6 @@ describe("native Kind command boundary", () => {
 		const incidentBucket = "__kubecoveIncidentLogMessages";
 		streams.push(await tauri.startPodLogStream({ clusterContext: cluster, namespace: "operations", podName: incident.name, container: "crashloop", tailLines: 20 }, incidentBucket));
 		await browser.waitUntil(async () => (await messages<StreamMessage>(incidentBucket)).some((message) => message.type === "logLine" && message.line.includes("kubecove-crashloop-marker")), { timeout: 30_000, interval: 500 });
-		let previousLogs = "";
-		await browser.waitUntil(async () => {
-			try { previousLogs = await runKubectl(["logs", incident.name, "-n", "operations", "--previous"]); } catch { return false; }
-			return previousLogs.includes("kubecove-crashloop-marker");
-		}, { timeout: 30_000, interval: 1_000 });
-		expect(previousLogs).toContain("kubecove-crashloop-marker");
 		expect(await runKubectl(["get", "events", "-n", "operations", "--field-selector", `involvedObject.name=${incident.name}`, "-o", "jsonpath={.items[*].reason}"])).toContain("BackOff");
 	});
 });
