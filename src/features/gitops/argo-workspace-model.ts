@@ -2,8 +2,8 @@ import type {
 	ArgoApplicationHistory,
 	ArgoApplicationRef,
 	ArgoManagedResource,
-	ArgoResourceComparison,
 	ArgoOperationRequest,
+	ArgoResourceComparison,
 } from "@/lib/gitops-types";
 
 export interface ArgoResourceCounts {
@@ -167,6 +167,16 @@ export function argoSyncNeedsConfirmation(
 		settings.dryRun !== defaults.dryRun ||
 		settings.force !== defaults.force
 	);
+}
+
+export function applyArgoSyncDefaults(
+	settings: ArgoSyncSettings,
+	previousDefaults: ArgoSyncSettings,
+	nextDefaults: ArgoSyncSettings,
+): ArgoSyncSettings {
+	return argoSyncNeedsConfirmation(settings, previousDefaults)
+		? settings
+		: { ...nextDefaults };
 }
 
 export function withArgoSyncSettings(

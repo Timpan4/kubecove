@@ -74,8 +74,12 @@
 		ResourceSummary,
 	} from "@/lib/types";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
-	import { runArgoOperationLifecycle } from "./argo-operation-lifecycle";
 	import {
+		ArgoOperationRefreshError,
+		runArgoOperationLifecycle,
+	} from "./argo-operation-lifecycle";
+	import {
+		applyArgoSyncDefaults,
 		argoComparisonDocument,
 		argoHistoryKey,
 		argoReconciliationResources,
@@ -167,6 +171,7 @@
 	let refreshMenuOpen = $state(false);
 	let syncMenuOpen = $state(false);
 	let advancedSync = $state<ArgoSyncSettings>({ ...defaultArgoSyncSettings });
+	let appliedSyncDefaults = $state<ArgoSyncSettings>({ ...defaultArgoSyncSettings });
 	let appliedSyncDefaultsKey = $state("");
 	let confirmationOpen = $state(false);
 	let confirmationName = $state("");
@@ -174,6 +179,7 @@
 	let operationPhase = $state<OperationPhase>("idle");
 	let operationMessage = $state<string | null>(null);
 	let operationError = $state<string | null>(null);
+	let acceptedRefreshPending = $state(false);
 	let lastOperationRequest = $state<ArgoOperationRequest | null>(null);
 	let appliedScopeKey = $state("");
 
@@ -413,6 +419,7 @@
 			operationPhase = "idle";
 			operationMessage = null;
 			operationError = null;
+			acceptedRefreshPending = false;
 			lastOperationRequest = null;
 			pendingSync = null;
 			confirmationOpen = false;
@@ -434,9 +441,13 @@
 		if (next !== selectedHistoryKey) selectedHistoryKey = next;
 	});
 	$effect(() => {
-		const key = JSON.stringify(applicationSyncDefaults);
+		const next = { ...applicationSyncDefaults };
+		const key = JSON.stringify(next);
 		if (appliedSyncDefaultsKey !== key) {
-			advancedSync = { ...applicationSyncDefaults };
+			advancedSync = appliedSyncDefaultsKey
+				? applyArgoSyncDefaults(advancedSync, appliedSyncDefaults, next)
+				: next;
+			appliedSyncDefaults = next;
 			appliedSyncDefaultsKey = key;
 		}
 	});
@@ -476,8 +487,28 @@
 		};
 	}
 
+	async function refreshApplicationState() {
+		await Promise.all([
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.argoWorkspaceApplication(
+					clusterContext,
+					workspaceId,
+					resourceSummary.name,
+					resourceSummary.namespace,
+					applicationRequest.uid,
+					redactSecrets,
+					kubeconfigEnvVar,
+				),
+			}),
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.argoApps(clusterContext, kubeconfigEnvVar),
+			}),
+		]);
+	}
+
 	async function executeOperation(requested: ArgoOperationRequest) {
 		lastOperationRequest = requested;
+		acceptedRefreshPending = false;
 		operationError = null;
 		operationMessage = "Checking authorization and operation scope…";
 		operationPhase = "authorizing";
@@ -493,29 +524,35 @@
 				refresh: async () => {
 					operationPhase = "refreshing";
 					operationMessage = `${operationLabel(requested.action)} accepted; refreshing Application state…`;
-					await Promise.all([
-						queryClient.invalidateQueries({
-							queryKey: queryKeys.argoWorkspaceApplication(
-								clusterContext,
-								workspaceId,
-								resourceSummary.name,
-								resourceSummary.namespace,
-								applicationRequest.uid,
-								redactSecrets,
-								kubeconfigEnvVar,
-							),
-						}),
-						queryClient.invalidateQueries({
-							queryKey: queryKeys.argoApps(clusterContext, kubeconfigEnvVar),
-						}),
-					]);
+					await refreshApplicationState();
 				},
 			});
 			operationPhase = "accepted";
 			operationMessage = `${operationLabel(requested.action)} accepted; latest Application state loaded. Completion follows Argo CD operation state.`;
 		} catch (error) {
 			operationPhase = "error";
+			acceptedRefreshPending = error instanceof ArgoOperationRefreshError;
 			operationError = error instanceof Error ? error.message : String(error);
+			operationMessage = null;
+		}
+	}
+
+	async function retryAcceptedRefresh() {
+		if (!acceptedRefreshPending || busy) return;
+		const label = lastOperationRequest
+			? operationLabel(lastOperationRequest.action)
+			: "Operation";
+		operationError = null;
+		operationPhase = "refreshing";
+		operationMessage = `${label} accepted; retrying Application state refresh…`;
+		try {
+			await refreshApplicationState();
+			acceptedRefreshPending = false;
+			operationPhase = "accepted";
+			operationMessage = `${label} accepted; latest Application state loaded. Completion follows Argo CD operation state.`;
+		} catch (error) {
+			operationPhase = "error";
+			operationError = new ArgoOperationRefreshError(error).message;
 			operationMessage = null;
 		}
 	}
@@ -564,11 +601,17 @@
 		selectedResource = null;
 	}
 
+	function resourceSelected(item: ArgoManagedResource): boolean {
+		if (!selectedResource) return false;
+		const selectedKey = argoResourceIdentityKey(selectedResource);
+		return selectedKey !== null && selectedKey === argoResourceIdentityKey(item);
+	}
+
 	function comparisonQuery(item: ArgoManagedResource) {
 		const key = argoResourceIdentityKey(item);
 		if (!key) return null;
-		const index = comparableResources.findIndex(
-			(resource) => argoResourceIdentityKey(resource) === key,
+		const index = comparisonSlots.findIndex(
+			(slot) => slot !== null && argoResourceIdentityKey(slot) === key,
 		);
 		return index < 0 ? null : comparisonQueries[index];
 	}
@@ -770,8 +813,8 @@
 	{/if}
 	{#if operationError}
 		<Alert variant="destructive">
-			<AlertTitle>Operation failed</AlertTitle>
-			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{operationError}</span>{#if lastOperationRequest}<Button type="button" size="sm" variant="outline" disabled={busy} onclick={retryOperation}>Retry</Button>{/if}</AlertDescription>
+			<AlertTitle>{acceptedRefreshPending ? "Application refresh failed" : "Operation failed"}</AlertTitle>
+			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{operationError}</span>{#if acceptedRefreshPending}<Button type="button" size="sm" variant="outline" disabled={busy} onclick={() => void retryAcceptedRefresh()}>Retry state refresh</Button>{:else if lastOperationRequest}<Button type="button" size="sm" variant="outline" disabled={busy} onclick={retryOperation}>Retry operation</Button>{/if}</AlertDescription>
 		</Alert>
 	{/if}
 	{#if dataError}
@@ -793,7 +836,7 @@
 		<div class="mt-3 flex gap-2 overflow-x-auto pb-1">
 			<Button type="button" size="sm" variant={selectedResource ? "outline" : "secondary"} class="shrink-0" aria-pressed={!selectedResource} onclick={showAllChanges}>All changes</Button>
 			{#each reconciliationResources as item (argoResourceIdentityKey(item) ?? resourceLabel(item))}
-				<Button type="button" size="sm" variant={argoResourceIdentityKey(selectedResource ?? {}) === argoResourceIdentityKey(item) ? "secondary" : "outline"} class="h-auto min-w-36 max-w-56 shrink-0 justify-start p-2 text-left" aria-pressed={argoResourceIdentityKey(selectedResource ?? {}) === argoResourceIdentityKey(item)} onclick={() => selectResource(item)}>
+				<Button type="button" size="sm" variant={resourceSelected(item) ? "secondary" : "outline"} class="h-auto min-w-36 max-w-56 shrink-0 justify-start p-2 text-left" aria-pressed={resourceSelected(item)} onclick={() => selectResource(item)}>
 					<span class="min-w-0"><span class="block truncate text-xs font-medium">{item.kind ?? "Resource"} · {item.name ?? "unknown"}</span><span class="mt-0.5 flex flex-wrap gap-1"><Badge variant="outline">{item.status ?? "Unknown"}</Badge>{#if item.requiresPruning}<Badge variant="destructive">Prune</Badge>{/if}</span></span>
 				</Button>
 			{/each}

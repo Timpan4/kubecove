@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { runArgoOperationLifecycle } from "../src/features/gitops/argo-operation-lifecycle";
+import {
+	ArgoOperationRefreshError,
+	runArgoOperationLifecycle,
+} from "../src/features/gitops/argo-operation-lifecycle";
 import type { ArgoOperationRequest } from "../src/lib/gitops-types";
 
 const request: ArgoOperationRequest = {
@@ -47,6 +50,23 @@ describe("Argo operation lifecycle", () => {
 		});
 		expect(received).toEqual({ ...resolvedRequest, preflightToken: "token" });
 		expect(events).toEqual(["preflight", "run", "refresh"]);
+	});
+
+	test("distinguishes an accepted operation from a failed state refresh", async () => {
+		let runs = 0;
+		const lifecycle = runArgoOperationLifecycle({
+			request,
+			preflight: async () => ({ allowed: true, preflightToken: "token", resolvedRequest }),
+			run: async () => {
+				runs += 1;
+				return { accepted: true };
+			},
+			refresh: async () => {
+				throw new Error("Network unavailable");
+			},
+		});
+		await expect(lifecycle).rejects.toBeInstanceOf(ArgoOperationRefreshError);
+		expect(runs).toBe(1);
 	});
 
 	test("rejects backend refusal and permits retry", async () => {

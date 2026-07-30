@@ -12,6 +12,16 @@ interface Result {
 	message?: unknown;
 }
 
+export class ArgoOperationRefreshError extends Error {
+	constructor(error: unknown) {
+		const detail = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+		super(
+			`Operation accepted, but latest Application state could not be loaded${detail ? `: ${detail}` : "."}`,
+		);
+		this.name = "ArgoOperationRefreshError";
+	}
+}
+
 export async function runArgoOperationLifecycle({
 	request,
 	preflight,
@@ -36,7 +46,11 @@ export async function runArgoOperationLifecycle({
 	if (operation?.accepted !== true) {
 		throw new Error(typeof operation?.message === "string" ? operation.message : "Operation rejected");
 	}
-	await refresh();
+	try {
+		await refresh();
+	} catch (error) {
+		throw new ArgoOperationRefreshError(error);
+	}
 }
 
 function isRequest(value: unknown): value is ArgoOperationRequest {

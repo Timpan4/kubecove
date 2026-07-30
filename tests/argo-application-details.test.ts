@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 const detailsSource = readFileSync(
 	"src/features/gitops/ArgoApplicationDetails.svelte",
@@ -50,6 +50,18 @@ describe("Argo Application Briefing contract", () => {
 		expect(detailsSource).toMatch(
 			/function syncWithDefaults\(\)[\s\S]*?withArgoSyncSettings\(\s*operation\("sync"\),\s*applicationSyncDefaults/,
 		);
+	});
+
+	test("keeps accepted refresh retry separate from operation retry", () => {
+		expect(detailsSource).toContain("ArgoOperationRefreshError");
+		expect(detailsSource).toContain("Retry state refresh");
+		expect(detailsSource).toContain("acceptedRefreshPending");
+	});
+
+	test("matches comparisons and navigator selection by valid identity", () => {
+		expect(detailsSource).toContain("comparisonSlots.findIndex");
+		expect(detailsSource).toContain("resourceSelected(item)");
+		expect(detailsSource).not.toContain("comparableResources.findIndex");
 	});
 
 	test("keeps removal explanation, read-only YAML, and accessible progress", () => {

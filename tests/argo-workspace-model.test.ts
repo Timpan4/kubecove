@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+	type ArgoResourceFilter,
+	applyArgoSyncDefaults,
 	argoComparisonDocument,
 	argoHistoryKey,
 	argoReconciliationResources,
@@ -12,7 +14,6 @@ import {
 	preserveArgoHistorySelection,
 	preserveArgoResourceSelection,
 	withArgoSyncSettings,
-	type ArgoResourceFilter,
 } from "../src/features/gitops/argo-workspace-model";
 import type { ArgoApplicationHistory, ArgoManagedResource } from "../src/lib/gitops-types";
 
@@ -215,6 +216,17 @@ describe("Argo briefing helpers", () => {
 		]) expect(argoSyncNeedsConfirmation(settings)).toBe(true);
 		const applicationDefaults = { ...defaultArgoSyncSettings, prune: true };
 		expect(argoSyncNeedsConfirmation(applicationDefaults, applicationDefaults)).toBe(false);
+		expect(
+			applyArgoSyncDefaults(
+				defaultArgoSyncSettings,
+				defaultArgoSyncSettings,
+				applicationDefaults,
+			),
+		).toEqual(applicationDefaults);
+		const editedSettings = { ...defaultArgoSyncSettings, revision: "release" };
+		expect(
+			applyArgoSyncDefaults(editedSettings, defaultArgoSyncSettings, applicationDefaults),
+		).toBe(editedSettings);
 		expect(
 			argoSyncNeedsConfirmation({ ...applicationDefaults, prune: false }, applicationDefaults),
 		).toBe(true);
