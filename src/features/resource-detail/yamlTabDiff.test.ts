@@ -1,4 +1,4 @@
-import { buildYamlDryRunDiff } from "./yamlTabDiff";
+import { buildArgoResourceDiff, buildYamlDryRunDiff } from "./yamlTabDiff";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
@@ -49,6 +49,14 @@ describe("buildYamlDryRunDiff", () => {
 		expect(texts).toContain("--- current");
 		expect(texts).toContain("+++ dry-run");
 		expect(texts.some((text) => text.startsWith("@@ "))).toBe(true);
+	});
+
+	test("labels Argo target and live YAML", () => {
+		const texts = buildArgoResourceDiff(currentYaml, dryRunYaml).map((line) => line.text);
+		expect(texts).toContain("--- target");
+		expect(texts).toContain("+++ live");
+		expect(texts).toContain("-  replicas: 1");
+		expect(texts).toContain("+  replicas: 2");
 	});
 
 	test("expands context in full mode", () => {

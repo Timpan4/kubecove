@@ -838,6 +838,7 @@
 									<ResourceDetailPanel
 										{client}
 										resource={focusedResource}
+										argoApplicationSummary={resourceGitOpsFocusApplication}
 										{workspaceReadContext}
 										onOpenHelmRelease={openHelmReleaseFromResource}
 										initialPathState={resourceDetailPathState}

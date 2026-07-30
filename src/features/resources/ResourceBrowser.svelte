@@ -71,6 +71,7 @@
 		ArgoManagedResource,
 	} from "@/lib/gitops-types";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
+	import { queryKeys } from "@/lib/queryKeys";
 	import type { PathStateResourceBrowserState } from "@/lib/path-state";
 	import {
 		closeStreamChannel,
@@ -328,28 +329,41 @@
 				}
 			: null,
 	);
-	const focusedArgoQueryKey = $derived([
-		"argo-workspace",
-		clusterContext,
-		kubeconfigSourceKey,
-		workspaceReadContext.workspaceId,
-		gitOpsFocusApplication?.namespace ?? "",
-		gitOpsFocusApplication?.name ?? "",
-		$settingsStore.redactSecrets,
-	]);
 	const focusedArgoInspectorQuery = createQuery<ArgoApplicationInspector>(() => ({
-		queryKey: [...focusedArgoQueryKey, "inspector"],
+		queryKey: queryKeys.argoWorkspaceInspector(
+			clusterContext,
+			workspaceReadContext.workspaceId,
+			gitOpsFocusApplication?.name ?? "",
+			gitOpsFocusApplication?.namespace,
+			gitOpsFocusApplication?.uid,
+			$settingsStore.redactSecrets,
+			"kubernetes",
+			undefined,
+			kubeconfigSourceKey,
+		),
 		queryFn: () => getArgoApplicationInspector(client, focusedArgoReadRequest!),
 		enabled: sourceReady && focusedArgoReadRequest !== null,
 		staleTime: 30_000,
 		retry: false,
+		gcTime: $settingsStore.redactSecrets ? undefined : 0,
 	}));
 	const focusedArgoResourcesQuery = createQuery<ArgoManagedResource[]>(() => ({
-		queryKey: [...focusedArgoQueryKey, "managed-resources"],
+		queryKey: queryKeys.argoWorkspaceManagedResources(
+			clusterContext,
+			workspaceReadContext.workspaceId,
+			gitOpsFocusApplication?.name ?? "",
+			gitOpsFocusApplication?.namespace,
+			gitOpsFocusApplication?.uid,
+			$settingsStore.redactSecrets,
+			"kubernetes",
+			undefined,
+			kubeconfigSourceKey,
+		),
 		queryFn: () => getArgoApplicationResources(client, focusedArgoReadRequest!),
 		enabled: sourceReady && focusedArgoReadRequest !== null,
 		staleTime: 30_000,
 		retry: false,
+		gcTime: $settingsStore.redactSecrets ? undefined : 0,
 	}));
 	const namespacesQuery = createQuery<NamespaceSummary[]>(() => ({
 		queryKey: readSpecs.namespacesQueryKey,
