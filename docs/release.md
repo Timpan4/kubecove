@@ -6,7 +6,7 @@ https://github.com/Timpan4/kubecove/releases
 
 Use a release installer when testing the app. Build from source only for development work.
 
-Current version metadata: `0.10.1`. [GitHub Releases](https://github.com/Timpan4/kubecove/releases) is authoritative for successfully published installers. Source features are not released until the matching tag completes all release gates.
+Current version metadata: `0.10.2`. [GitHub Releases](https://github.com/Timpan4/kubecove/releases) is authoritative for successfully published installers. Source features are not released until the matching tag completes all release gates.
 
 ## Installer Guide
 

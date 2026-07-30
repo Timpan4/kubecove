@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.10.2 - 2026-07-30
+### Fixed
+
+- remove unreliable previous-log check
+
 ## 0.10.1 - 2026-07-30
 ### Added
 
