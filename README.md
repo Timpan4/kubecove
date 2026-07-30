@@ -6,13 +6,13 @@ KubeCove is a local desktop workspace for Kubernetes operations. It is built for
 
 Current source is inspection-first with explicitly governed exceptions: Pod and selector-backed Service port-forwarding, exact-Pod exec, selected-resource YAML apply, exact guarded scale/restart/delete operations, and opt-in connected Argo CD operations. KubeCove does not deploy agents into clusters, expose raw kubeconfig contents to the frontend, or let frontend code run arbitrary shell commands.
 
-Latest published release: [`0.9.1`](https://github.com/Timpan4/kubecove/releases/tag/app-v0.9.1). Source changes after that tag are unreleased until the normal release PR updates version metadata and the changelog.
+Latest published release: [`0.10.0`](https://github.com/Timpan4/kubecove/releases/tag/app-v0.10.0). Source changes after that tag are unreleased until the normal release PR updates version metadata and the changelog.
 
 ![Kubernetes resources view with the ownership map and live resource table](docs/assets/resources-view.png)
 
 ## Get KubeCove
 
-Use the `0.9.1` beta installers from [GitHub Releases](https://github.com/Timpan4/kubecove/releases) when you want to test the published app. Current-source capabilities listed below may require a source build until the next release.
+Use the `0.10.0` beta installers from [GitHub Releases](https://github.com/Timpan4/kubecove/releases) when you want to test the published app. Current-source capabilities listed below may require a source build until the next release.
 
 - macOS: `.dmg`
 - Windows: NSIS setup executable
