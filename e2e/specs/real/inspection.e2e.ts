@@ -21,6 +21,7 @@ import type {
 	YamlApplyPreview,
 	YamlApplyRequest,
 	YamlApplyResult,
+	YamlEncoding,
 } from "../../../src/lib/types";
 
 type CommandMap = {
@@ -37,7 +38,7 @@ type CommandMap = {
 	stop_stream: { args: { streamId: string }; result: boolean };
 	list_argocd_applications: { args: { clusterContext: string }; result: ArgoApplicationSummary[] };
 	list_helm_releases: { args: { clusterContext: string }; result: HelmReleaseSummary[] };
-	get_helm_release_details: { args: { clusterContext: string; namespace: string; storageKind: string; storageName: string; yamlViewMode: "applyClean"; yamlEncoding: "plain" }; result: HelmReleaseDetails };
+	get_helm_release_details: { args: { clusterContext: string; namespace: string; storageKind: string; storageName: string; yamlViewMode: "applyClean"; yamlEncoding: YamlEncoding }; result: HelmReleaseDetails };
 };
 type ChannelCommandMap = {
 	start_resource_watch: { args: { clusterContext: string; keys: WatchResourceKey[] }; result: string };
@@ -211,7 +212,7 @@ describe("native Kind command boundary", () => {
 		const releases = await tauri.listHelmReleases(cluster);
 		const operations = releases.find(({ name }) => name === "operations");
 		if (!operations) throw new Error("operations Helm release was not discovered");
-		const details = await tauri.getHelmReleaseDetails({ clusterContext: cluster, namespace: operations.namespace, storageKind: operations.storageKind, storageName: operations.storageName, yamlViewMode: "applyClean", yamlEncoding: "plain" });
+		const details = await tauri.getHelmReleaseDetails({ clusterContext: cluster, namespace: operations.namespace, storageKind: operations.storageKind, storageName: operations.storageName, yamlViewMode: "applyClean", yamlEncoding: "yaml" });
 		for (const name of ["operations", "operations-crashloop"]) expect(details.manifestSummary.resources.map((resource) => resource.name)).toContain(name);
 	});
 
