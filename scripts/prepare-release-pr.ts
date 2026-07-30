@@ -7,7 +7,7 @@ import {
 	latestReleaseTagVersionFromRefs,
 	updateWorkspaceReleaseVersions,
 } from "./release-versions";
-import { updateChangelog, updateReleaseDocsVersion } from "./release-notes";
+import { updateChangelog } from "./release-notes";
 
 const bump = Bun.argv[2] as ReleaseBump | undefined;
 const validBumps = new Set<ReleaseBump>(["patch", "minor", "major"]);
@@ -26,7 +26,6 @@ const subjects = readReleaseSubjects(latestTag);
 const today = new Date().toISOString().slice(0, 10);
 
 updateWorkspaceReleaseVersions(nextVersion);
-updateReleaseDocsVersion(nextVersion);
 updateChangelog(nextVersion, today, subjects);
 
 const tagName = `${RELEASE_TAG_PREFIX}${nextVersion}`;

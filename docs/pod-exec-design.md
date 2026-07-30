@@ -1,30 +1,33 @@
 # Guarded Pod Exec Design
 
-## Goal
+## Scope
 
-KubeCove includes a narrow Pod exec workflow for troubleshooting a selected container without adding a generic shell runner or broad mutation surface.
+KubeCove provides exact-Pod exec for troubleshooting selected namespaced Pods. It is not generic shell runner or broad Kubernetes-operation API.
 
-## V1 Behavior
+## Current Lifecycle
 
-- Entry point: Pod detail panel only.
-- Target: selected cluster context, namespace, Pod name, and optional container.
-- Commands: `/bin/sh`, `/bin/bash`, or custom argv entered one item per line.
-- Confirmation: user must acknowledge the exact target and command before start.
-- Runtime: Rust opens `kube-rs` `pods/exec`, streams terminal output over a typed Tauri channel, accepts stdin and resize through typed commands, and stores only in-memory session summaries.
-- Lifecycle: sessions can be stopped by the user, are aborted on app shutdown, and are not restored or saved.
+Svelte `ExecTab` is available only from selected Pod detail. It builds request from selected context, namespace, Pod name, optional container, terminal size, and argv. User chooses `/bin/sh`, `/bin/bash`, or custom argv entered one item per line, then acknowledges exact target and serialized command.
 
-## Safety Contract
+Svelte creates terminal and typed Tauri channel on mount; terminal input and resize send only active session's typed commands. Starting a new session closes channel and stops prior active session. Status, output, errors, exit, and stop messages update terminal and session query. Unmount closes channel, stops active session, and disposes terminal. Sessions are listed by polling and filtered to selected exact resource.
 
-- No kubeconfig, token, certificate, or raw credential material reaches the frontend.
-- The frontend cannot execute local shell commands.
-- The backend exposes only Pod-scoped exec commands, not a generic Kubernetes operation API.
-- RBAC failures, missing shells, disconnected sessions, and validation errors are shown as user-facing errors.
-- Output is not written to durable workspace state.
+Rust validates non-empty context, namespace, Pod, and command; terminal dimensions; TTY/stdin compatibility; acknowledgement; and confirmation target and command equality. It opens `kube-rs` `pods/exec`, streams through typed channel, and accepts only typed stdin, resize, and stop requests.
 
-## Deferred Work
+## Narrow Safety Boundary
 
-- Service, Deployment, Job, and owner-backed exec.
-- Saved exec commands or auto-start behavior.
-- Durable terminal transcript history.
+- Frontend cannot execute local shell commands or generic Kubernetes operations.
+- Backend exposes Pod-scoped exec commands only.
+- Kubeconfig, tokens, certificates, and raw credentials never reach frontend.
+- RBAC failures, missing shells, disconnects, and validation errors are user-facing.
+- Output and session summaries are in memory only; sessions stop on app shutdown and are never restored.
 
-Selected-resource YAML apply, guarded resource operations, connected Argo CD operations, and future Helm actions remain separate workflows; they do not expand the Pod exec command boundary.
+See [ADR 0005](decisions/0005-guarded-pod-exec-sessions.md).
+
+## Deferred
+
+Not current Pod exec scope:
+
+- Service, Deployment, Job, or owner-backed target resolution.
+- Saved commands, auto-start, or durable transcripts.
+- YAML apply, other guarded resource operations, connected Argo CD operations, and Helm actions.
+
+Deferred workflows require their own narrow contracts; they do not expand Pod exec boundary.

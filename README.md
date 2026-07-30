@@ -2,145 +2,24 @@
 
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/Timpan4/kubecove?utm_source=badge)
 
-KubeCove is a local desktop workspace for Kubernetes operations. It is built for operators and app developers who need to move from cluster scope to namespace, application, resource state, topology, events, logs, metrics, YAML, Helm metadata, GitOps signals, and RBAC context without losing their place.
+KubeCove is a calm desktop cockpit for Kubernetes: see what is running, what owns it, and what is broken, then act with guardrails.
 
-Current source is inspection-first with explicitly governed exceptions: Pod and selector-backed Service port-forwarding, exact-Pod exec, selected-resource YAML apply, exact guarded scale/restart/delete operations, and opt-in connected Argo CD operations. KubeCove does not deploy agents into clusters, expose raw kubeconfig contents to the frontend, or let frontend code run arbitrary shell commands.
+[Get latest release](https://github.com/Timpan4/kubecove/releases/latest) · [First use: public Wiki](https://github.com/Timpan4/kubecove/wiki)
 
-Current version metadata: `0.10.3`. [GitHub Releases](https://github.com/Timpan4/kubecove/releases) is authoritative for successfully published installers. Source changes remain unreleased until the matching tag completes all release gates.
+![KubeCove workspace overview](docs/assets/workspace-overview.png)
 
-![Kubernetes resources view with the ownership map and live resource table](docs/assets/resources-view.png)
+## Safety
 
-## Get KubeCove
+KubeCove works locally with your kubeconfig. Credentials stay behind desktop boundary, and cluster-changing actions require explicit confirmation. Read [safety, data handling, and architecture](https://github.com/Timpan4/kubecove/wiki/Safety-Data-and-Architecture).
 
-Use the latest beta installers from [GitHub Releases](https://github.com/Timpan4/kubecove/releases) when you want to test the published app. Current-source capabilities listed below may require a source build until the matching release succeeds.
+## Contributing and security
 
-- macOS: `.dmg`
-- Windows: NSIS setup executable
-- Linux: `.AppImage`, `.deb`, or `.rpm` when present
-
-Beta installers are unsigned at the OS package level, so macOS Gatekeeper or Windows SmartScreen may require an explicit approval step. In-app updater artifacts are signed through the Tauri updater key.
-
-## Getting Started
-
-1. Install KubeCove from a release installer and approve the Gatekeeper or SmartScreen prompt if your OS shows one.
-2. Make sure a kubeconfig with at least one readable context exists. KubeCove discovers contexts from `$KUBECONFIG` and the default kubeconfig location without sending their contents to the UI.
-3. Launch KubeCove and create a workspace: pick a context, optionally narrow it to specific namespaces and kinds, and open it.
-4. Browse from the workspace overview into resources, topology, events, logs, metrics, YAML, Argo CD, Helm, and RBAC views. Cluster-changing actions stay behind explicit confirmation.
-
-![Workspace overview with health summary and Argo CD inventory](docs/assets/workspace-overview.png)
-
-## Current Source Capabilities
-
-- Local kubeconfig context discovery without sending raw kubeconfig data to the frontend.
-- Saved workspaces for context, namespace, kind, filter, shortcut, and layout scope.
-- Namespace-first and context-first resource browsing across discovered Kubernetes kinds.
-- Fast resource tables with namespace, kind, health, search, Argo CD app, and owner filters.
-- Resource inspection through details, YAML, events, logs, metrics, and topology views.
-- Argo CD CRD detection with Application, ApplicationSet, and AppProject browsing.
-- Opt-in connected Argo CD inspection with managed resources, target/live comparison, refresh, sync and recorded-sync retry, rollback, terminate, and server-reported resource actions.
-- Explicit Kubernetes or connected Argo CD transport selection without automatic fallback.
-- Kubernetes API-first Flux inspection; Flux mutations and CLI integration remain unshipped.
-- Helm release detection, details, and reconciliation from cluster metadata.
-- RBAC cockpit summaries, observed-grant provenance, risk indicators, and explicit permission verification.
-- Guarded Pod and selector-backed Service port-forward sessions with local-only listeners.
-- Guarded exact-Pod exec sessions with explicit target and command confirmation.
-- Guarded selected-resource YAML apply with dry-run diff, Secret protection, and explicit confirmation.
-- Guarded scale for Deployments and StatefulSets, rollout restart for Deployments, StatefulSets, and DaemonSets, and exact delete for Pods and ConfigMaps.
-- Transient per-key Secret data reveal while tokens, credentials, and connected Argo Secret payloads remain backend-protected.
-- Unsigned beta desktop installers for macOS, Windows, and Linux.
-
-![Resource inspection with the guarded YAML editor](docs/assets/resource-yaml.png)
-
-## Development
-
-Requirements:
-
-- Bun
-- Rust and Cargo
-- Tauri v2 system prerequisites for your OS
-- A local kubeconfig with at least one readable context
-
-Run the desktop app:
-
-```sh
-bun install
-bun run tauri dev
-```
-
-Useful checks:
-
-```sh
-bun run typecheck
-bun test
-bun run rust:check
-bun run check
-```
-
-Deterministic app checks:
-
-```sh
-bun run e2e:fast
-bun run e2e:real -- --kubernetes 1.35 --provider auto
-bun run dev:kind
-```
-
-`e2e:fast` uses Chrome and typed browser mocks. `e2e:real` creates one isolated Kind cluster with real Cilium, Argo CD, metrics, storage, ingress, GitOps-managed tenants, and a direct Helm release, then runs the E2E-only native Tauri flavor. `dev:kind` creates or reuses the same full workspace lab and launches the normal development app; remove that exact cluster with `bun run dev:kind:down`.
-
-Build a desktop bundle:
-
-```sh
-bun run tauri build
-```
-
-Validate the current `origin/main` release metadata:
-
-```sh
-bun run release:dry-run
-```
-
-Create releases from GitHub Actions with the `Prepare Release PR` workflow.
-
-KubeCove's tested Kubernetes support window is 1.34–1.36. See [ADR 0011](docs/decisions/0011-rolling-kubernetes-support.md).
-
-## Safety Model
-
-KubeCove keeps Kubernetes access behind Rust-side Tauri commands. Kubernetes transport, including Argo CD CRD inspection and guarded CRD operations, uses `kube-rs` and frontend-safe serde contracts; connected Argo CD transport uses its versioned HTTP API.
-
-Pod and selector-backed Service port-forwarding follows [ADR 0003](docs/decisions/0003-guarded-live-sessions.md): exact targets, local-only listeners, visible sessions, and Rust-side Kubernetes access.
-
-Pod exec follows [ADR 0005](docs/decisions/0005-guarded-pod-exec-sessions.md): exact Pod targets, explicit argv, visible sessions, and no frontend shell bridge.
-
-Selected-resource YAML apply follows [ADR 0006](docs/decisions/0006-guarded-selected-resource-yaml-apply.md): the edited object must match the selected resource, multi-document YAML and redacted Secrets are blocked, dry-run diff runs before apply, and the final apply needs explicit confirmation.
-
-Guarded scale, rollout restart, and exact delete follow [ADR 0004](docs/decisions/0004-guarded-cluster-operations.md): typed targets, server-side previews, explicit confirmation, user-visible errors, and permission-aware UX.
-
-Connected Argo CD inspection and operations follow [ADR 0013](docs/decisions/0013-argocd-connected-inspection-and-operations.md). Users explicitly select either Kubernetes CRD access or an Argo CD HTTP API connection; KubeCove never silently falls back between them. Rust owns credentials, TLS, response limits, redaction, preflight tokens, and allowlisted operation execution. [ADR 0014](docs/decisions/0014-runtime-secret-disclosure.md) keeps Secret reveal transient and connected Argo Secret payloads redacted before Tauri IPC.
-
-Future operations outside these contracts require focused design. Argo CD CLI, Flux mutations or CLI integration, Helm mutations, broad apply/delete, and broad filesystem workflows remain unshipped.
+[Contributing guide](CONTRIBUTING.md) · [Security policy](SECURITY.md)
 
 ## Stack
 
-- Tauri 2
-- Svelte 5, TypeScript 7, and Vite 8
-- Project compiler checks use TypeScript 7. `svelte:check` intentionally resolves TypeScript 6 through `scripts/svelte-check-with-typescript6.cjs` for compatibility.
-- Bun for JavaScript package management and scripts
-- Rust backend
-- `kube-rs` 4 for Kubernetes API access
-- TanStack Svelte Query
-- Zustand for local UI state
-- Tailwind CSS and local Svelte UI primitives
-- Svelte Flow for topology surfaces
-
-## Docs
-
-Start with the [docs index](docs/README.md). High-signal entry points:
-
-- [Product Vision](docs/product-vision.md)
-- [Architecture Blueprint](docs/architecture-blueprint.md)
-- [Milestones](docs/milestones.md)
-- [Release Guide](docs/release.md)
-- [Agent Guide](AGENTS.md)
+[Product and architecture](docs/product-and-architecture.md) covers product principles, the desktop trust boundary, and the engineering stack.
 
 ## License
 
-KubeCove is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
+KubeCove is licensed under [GNU Affero General Public License v3.0 or later](LICENSE).

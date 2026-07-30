@@ -8,14 +8,18 @@
 		Search,
 		SlidersHorizontal,
 	} from "lucide-svelte";
+	import { openUrl } from "@tauri-apps/plugin-opener";
 	import {
 		Button,
+		buttonClass,
 		FieldGroup,
 		Input,
 		SegmentedControl,
 		Switch,
 	} from "@/components/ui/svelte";
+	import FriendlyError from "@/components/FriendlyError.svelte";
 	import type { TimestampTimezone, YamlDiffStyle } from "@/lib/settings";
+	import { isTauriRuntime } from "@/lib/tauri-runtime";
 	import type { YamlEncoding, YamlViewMode } from "@/lib/types";
 	import DiagnosticsSettings from "./DiagnosticsSettings.svelte";
 	import KubeconfigSettings from "./KubeconfigSettings.svelte";
@@ -33,7 +37,13 @@
 		| "argo";
 	type SettingsRowMeta = { title: string; description: string };
 
+	const WIKI_URL = "https://github.com/Timpan4/kubecove/wiki";
+
 	const GENERAL_ROWS = {
+		documentation: {
+			title: "KubeCove documentation",
+			description: "Opens user guides and reference documentation in your browser.",
+		},
 		exactTimestamps: {
 			title: "Show exact timestamps",
 			description: "Adds exact timestamps next to relative ages.",
@@ -178,6 +188,7 @@
 
 	let activeCategory = $state<SettingsCategoryId>("general");
 	let query = $state("");
+	let documentationError = $state<unknown>(null);
 	let {
 		onBack,
 	}: {
@@ -210,6 +221,17 @@
 	function showCategory(id: SettingsCategoryId): boolean {
 		if (!searching) return activeCategory === id;
 		return categoryRows[id].some((row) => matchesSettingsQuery(query, row));
+	}
+
+	async function openDocumentation(event: MouseEvent): Promise<void> {
+		if (!isTauriRuntime()) return;
+		event.preventDefault();
+		try {
+			await openUrl(WIKI_URL);
+			documentationError = null;
+		} catch (error) {
+			documentationError = error;
+		}
 	}
 
 </script>
@@ -275,6 +297,24 @@
 
 		{#if showCategory("general")}
 		<FieldGroup>
+			<SettingsRow {...GENERAL_ROWS.documentation}>
+				<a
+					href={WIKI_URL}
+					target="_blank"
+					rel="noreferrer"
+					class={buttonClass({ variant: "outline", size: "sm" })}
+					onclick={openDocumentation}
+				>
+					Open Wiki
+				</a>
+			</SettingsRow>
+			{#if documentationError}
+				<FriendlyError
+					error={documentationError}
+					mode="compact"
+					context={{ fallbackTitle: "KubeCove could not open the documentation" }}
+				/>
+			{/if}
 			<SettingsRow {...GENERAL_ROWS.exactTimestamps}>
 				<Switch
 					checked={settings.showExactTimestamps}

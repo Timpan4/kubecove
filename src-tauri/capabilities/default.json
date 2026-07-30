@@ -5,6 +5,14 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://github.com/Timpan4/kubecove/wiki"
+        }
+      ]
+    },
     "process:allow-restart",
     "updater:default"
   ]

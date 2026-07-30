@@ -1,21 +1,20 @@
 # Engineering Handbook
 
-The handbook is the repo's source of truth for code organization, file size, and hygiene. If another doc contradicts it, fix the other doc or open an issue.
+Handbook defines code organization, file size, hygiene, and design conventions.
 
 ## Pages
 
-- [code-organization.md](code-organization.md) - where files and folders belong.
-- [file-size-and-split.md](file-size-and-split.md) - soft/hard caps and how to split oversized files.
-- [hygiene.md](hygiene.md) - orphan files, superseded files, duplicates, and dead code.
-- [design-system.md](design-system.md) - shared token layer (color, surface, elevation, z-index, typography) for both runtimes.
-- [pr-checklist.md](pr-checklist.md) - final checks before opening a PR or marking agent work complete.
+- [code-organization.md](code-organization.md) — current Svelte structure and placement.
+- [file-size-and-split.md](file-size-and-split.md) — soft/hard caps and splits.
+- [hygiene.md](hygiene.md) — orphan, superseded, duplicate, and dead code.
+- [design-system.md](design-system.md) — Svelte UI tokens and primitives.
+- [pr-checklist.md](pr-checklist.md) — final work checks.
 
 ## Boundaries
 
-This handbook is not the product vision, architecture blueprint, or ADR log. Use:
+Handbook is not product or ADR source. Use:
 
-- [Product Vision](../product-vision.md) for product direction.
-- [Architecture Blueprint](../architecture-blueprint.md) for app shape and Tauri command boundary.
-- [decisions/](../decisions/) for locked-in decisions, including guarded cluster operations.
+- [Product and architecture](../product-and-architecture.md) for product direction and app shape.
+- [decisions/](../decisions/) for locked decisions and guarded-operation contracts.
 
-Keep handbook pages short enough to reread during routine work.
+Keep handbook pages short enough for routine rereads.

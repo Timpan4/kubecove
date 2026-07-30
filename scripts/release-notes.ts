@@ -80,17 +80,6 @@ export function upsertChangelogSection(
 	].join("\n");
 }
 
-export function updateReleaseDocsVersion(version: string, root = "."): void {
-	for (const path of ["README.md", "docs/release.md"]) {
-		const fullPath = join(root, path);
-		const next = readFileSync(fullPath, "utf8").replace(
-			/Current version metadata: `[^`]+`\./,
-			`Current version metadata: \`${version}\`.`,
-		);
-		writeFileSync(fullPath, next);
-	}
-}
-
 export function updateChangelog(
 	version: string,
 	date: string,
@@ -143,10 +132,12 @@ function categoryForSubject(subject: string): keyof ChangelogSections | null {
 }
 
 function normalizeSubject(subject: string): string {
-	return subject
+	const normalized = subject
 		.replace(/^(?:✨|🐛|🚀|♻️|🎨|🔧|✅)\s*/u, "")
 		.replace(/^(feat|fix|perf|refactor|style|chore|release)(\([^)]+\))?:\s*/i, "")
 		.replace(/^(feat|fix|perf|refactor|style|chore|release)\s+/i, "")
 		.trim()
 		.replace(/\.$/, "");
+	if (!normalized) return "";
+	return `${normalized.replace(/^./u, (character) => character.toUpperCase())}.`;
 }

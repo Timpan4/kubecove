@@ -1,43 +1,41 @@
 # Domain Docs
 
-How agent skills should consume this repo's domain documentation when exploring the codebase.
+How agent skills consume domain docs before code exploration.
 
-## Before exploring, read these
+## Read First
 
-- `AGENTS.md` for agent-facing implementation rules, safety constraints, and GitButler workflow.
-- `docs/product-vision.md` for product direction, workflow model, and safety posture.
-- `docs/architecture-blueprint.md` for the frontend/backend shape, Tauri command boundary, and extension points.
-- `docs/milestones.md` for current milestone status and completion tracking.
-- `docs/development-workflow.md` for workflow conventions and verification commands.
-- Relevant ADRs in `docs/decisions/` before changing Kubernetes access, Tauri command boundaries, guarded operations, Argo CD behavior, or other security-sensitive paths.
-- `CONTEXT.md` at the repo root if it exists.
+- `AGENTS.md` for implementation rules and safety constraints.
+- `docs/product-and-architecture.md` for consolidated product direction and app shape.
+- `docs/development-workflow.md` for commands and verification.
+- `docs/agents/issue-tracker.md` for GitHub Issues tracking.
+- Relevant `docs/decisions/` before Kubernetes access, Tauri boundaries, guarded operations, Argo CD, or security-sensitive paths.
+- `CONTEXT.md` at repo root when present.
 
-If `CONTEXT.md` does not exist, proceed silently. Do not flag its absence or suggest creating it upfront. The producer skill (`/grill-with-docs`) creates it lazily when terms or decisions actually get resolved.
+If `CONTEXT.md` is absent, proceed silently. Do not suggest creating it before unresolved terms or decisions need it.
 
-## File structure
+## Tracking
 
-This is a single-context repo:
+Use GitHub Issues for planned work, follow-ups, and issue status. Use GitHub Milestones for delivery grouping. Do not treat repository markdown checklists as issue tracker.
+
+## File Structure
+
+This is single-context repo:
 
 ```text
 /
 |-- AGENTS.md
 |-- docs/
-|   |-- product-vision.md
-|   |-- architecture-blueprint.md
-|   |-- milestones.md
+|   |-- product-and-architecture.md
 |   |-- development-workflow.md
+|   |-- agents/issue-tracker.md
 |   `-- decisions/
 `-- src/
 ```
 
-## Use project vocabulary
+## Vocabulary and ADRs
 
-When your output names a domain concept, use the terms from `AGENTS.md`, the product docs, architecture docs, ADRs, and `CONTEXT.md` if present. Do not drift to synonyms where the docs already define a term.
+Use terms defined by `AGENTS.md`, product and architecture docs, ADRs, and `CONTEXT.md` when present. If concept is undocumented, reconsider term or record gap in GitHub Issue.
 
-If the concept you need is not documented yet, either reconsider the terminology or note the gap for `/grill-with-docs`.
-
-## Flag ADR conflicts
-
-If your output contradicts an existing ADR, surface it explicitly instead of silently overriding it:
+Surface ADR conflicts instead of silently overriding them:
 
 > Contradicts ADR 0004 (Guarded Cluster Operations), but worth reopening because...
