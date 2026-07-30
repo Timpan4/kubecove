@@ -3,6 +3,7 @@ import {
 	type ArgoResourceFilter,
 	applyArgoSyncDefaults,
 	argoComparisonDocument,
+	argoComparisonForResource,
 	argoHistoryKey,
 	argoReconciliationResources,
 	argoResourceCounts,
@@ -15,7 +16,11 @@ import {
 	preserveArgoResourceSelection,
 	withArgoSyncSettings,
 } from "../src/features/gitops/argo-workspace-model";
-import type { ArgoApplicationHistory, ArgoManagedResource } from "../src/lib/gitops-types";
+import type {
+	ArgoApplicationHistory,
+	ArgoManagedResource,
+	ArgoResourceComparison,
+} from "../src/lib/gitops-types";
 
 const managedResources: ArgoManagedResource[] = [
 	{
@@ -190,6 +195,29 @@ describe("Argo briefing helpers", () => {
 		expect(preserveArgoHistorySelection(application, entries, "missing")).toBe("argocd:shop:id:3");
 		expect(preserveArgoHistorySelection(application, [], selected)).toBeNull();
 		expect(argoHistoryKey(application, { revisions: [], sources: [] })).toBe("argocd:shop:revision:unknown");
+	});
+
+	test("matches eager comparisons by stable resource identity", () => {
+		const deployment = managedResources[0];
+		const comparison: ArgoResourceComparison = {
+			resource: { ...deployment, group: "apps" },
+			exact: true,
+			provenance: "argocd-managed-resource",
+			availableActions: [],
+		};
+
+		expect(
+			argoComparisonForResource(
+				[comparison],
+				{ ...deployment, group: "APPS" },
+			),
+		).toBe(comparison);
+		expect(
+			argoComparisonForResource(
+				[comparison],
+				{ ...deployment, group: "batch" },
+			),
+		).toBeNull();
 	});
 
 	test("uses comparison data with managed-state fallbacks", () => {

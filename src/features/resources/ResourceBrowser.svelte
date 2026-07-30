@@ -46,6 +46,7 @@
 		getResourceKindVisual,
 	} from "@/app/svelte/resourceVisuals";
 	import {
+		createCancelScope,
 		createFiniteReadCleanup,
 		createFiniteReadRequest,
 	} from "@/lib/finite-read-lifecycle";
@@ -71,7 +72,6 @@
 	import type {
 		ArgoApplicationInspector,
 		ArgoApplicationSummary,
-		ArgoManagedResource,
 	} from "@/lib/gitops-types";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import { queryKeys } from "@/lib/queryKeys";
@@ -82,7 +82,6 @@
 		createStreamChannel,
 		createTauriClient,
 		getArgoApplicationInspector,
-		getArgoApplicationResources,
 		isAppError,
 		listNamespaces,
 		listResourceKinds,
@@ -335,37 +334,33 @@
 				}
 			: null,
 	);
+	const focusedArgoInspectorQueryKey = $derived(
+		queryKeys.argoWorkspaceInspector(
+			clusterContext,
+			workspaceReadContext.workspaceId,
+			gitOpsFocusApplication?.name ?? "",
+			gitOpsFocusApplication?.namespace,
+			gitOpsFocusApplication?.uid,
+			$settingsStore.redactSecrets,
+			"kubernetes",
+			undefined,
+			kubeconfigSourceKey,
+		),
+	);
+	const focusedArgoInspectorCancelScope = $derived(
+		createCancelScope("argo-application-inspection", focusedArgoInspectorQueryKey),
+	);
 	const focusedArgoInspectorQuery = createQuery<ArgoApplicationInspector>(() => ({
-		queryKey: queryKeys.argoWorkspaceInspector(
-			clusterContext,
-			workspaceReadContext.workspaceId,
-			gitOpsFocusApplication?.name ?? "",
-			gitOpsFocusApplication?.namespace,
-			gitOpsFocusApplication?.uid,
-			$settingsStore.redactSecrets,
-			"kubernetes",
-			undefined,
-			kubeconfigSourceKey,
-		),
-		queryFn: () => getArgoApplicationInspector(client, focusedArgoReadRequest!),
-		enabled: sourceReady && focusedArgoReadRequest !== null,
-		staleTime: 30_000,
-		retry: false,
-		gcTime: $settingsStore.redactSecrets ? undefined : 0,
-	}));
-	const focusedArgoResourcesQuery = createQuery<ArgoManagedResource[]>(() => ({
-		queryKey: queryKeys.argoWorkspaceManagedResources(
-			clusterContext,
-			workspaceReadContext.workspaceId,
-			gitOpsFocusApplication?.name ?? "",
-			gitOpsFocusApplication?.namespace,
-			gitOpsFocusApplication?.uid,
-			$settingsStore.redactSecrets,
-			"kubernetes",
-			undefined,
-			kubeconfigSourceKey,
-		),
-		queryFn: () => getArgoApplicationResources(client, focusedArgoReadRequest!),
+		queryKey: focusedArgoInspectorQueryKey,
+		queryFn: () =>
+			getArgoApplicationInspector(
+				client,
+				focusedArgoReadRequest!,
+				createFiniteReadRequest(
+					focusedArgoInspectorCancelScope,
+					"argo-inspection",
+				),
+			),
 		enabled: sourceReady && focusedArgoReadRequest !== null,
 		staleTime: 30_000,
 		retry: false,
@@ -456,10 +451,13 @@
 		const currentTopologyQueryKey = topologyQueryKey;
 		const currentMetricsCancelScope = metricsCancelScope;
 		const currentMetricsQueryKey = metricsQueryKey;
+		const currentFocusedArgoCancelScope = focusedArgoInspectorCancelScope;
+		const currentFocusedArgoQueryKey = focusedArgoInspectorQueryKey;
 		for (const cancelScope of [
 			currentResourceCancelScope,
 			currentTopologyCancelScope,
 			currentMetricsCancelScope,
+			currentFocusedArgoCancelScope,
 		]) {
 			finiteReadCleanup.cancelPending(cancelScope);
 		}
@@ -468,6 +466,11 @@
 				[currentResourceCancelScope, currentResourceQueryKey, "resources.scope.cancel"],
 				[currentTopologyCancelScope, currentTopologyQueryKey, "resources.topology.cancel"],
 				[currentMetricsCancelScope, currentMetricsQueryKey, "resources.metrics.cancel"],
+				[
+					currentFocusedArgoCancelScope,
+					currentFocusedArgoQueryKey,
+					"resources.argo-inspection.cancel",
+				],
 			] as const) {
 				finiteReadCleanup.schedule(cancelScope, queryKey, {
 					onCancelled: (result) => {
@@ -544,9 +547,11 @@
 	const rowsWithMetrics = $derived(
 		mergeResourceMetrics(resourcesQuery.data ?? [], metricsQuery.data, metricsIndex),
 	);
-	const focusedArgoResources = $derived(focusedArgoResourcesQuery.data ?? []);
+	const focusedArgoResources = $derived(
+		focusedArgoInspectorQuery.data?.resources ?? [],
+	);
 	const focusedArgoFilterSummary = $derived(
-		gitOpsFocusApplication && focusedArgoResourcesQuery.data
+		gitOpsFocusApplication && focusedArgoInspectorQuery.data
 			? argoResourceCounts(focusedArgoResources)
 			: null,
 	);
@@ -561,18 +566,11 @@
 	);
 	const argoResourceSearchIndex = $derived(buildResourceSearchIndex(tableRows));
 	const focusedArgoError = $derived(
-		focusedArgoInspectorQuery.isError
-			? focusedArgoInspectorQuery.error
-			: focusedArgoResourcesQuery.isError
-				? focusedArgoResourcesQuery.error
-				: null,
+		focusedArgoInspectorQuery.isError ? focusedArgoInspectorQuery.error : null,
 	);
-	const focusedArgoLoading = $derived(
-		focusedArgoInspectorQuery.isPending || focusedArgoResourcesQuery.isPending,
-	);
+	const focusedArgoLoading = $derived(focusedArgoInspectorQuery.isPending);
 	const focusedArgoRefreshing = $derived(
-		!focusedArgoLoading &&
-			(focusedArgoInspectorQuery.isFetching || focusedArgoResourcesQuery.isFetching),
+		!focusedArgoLoading && focusedArgoInspectorQuery.isFetching,
 	);
 	const topologyWithMetrics = $derived(
 		mergeTopologyMetrics(topologyQuery.data, metricsQuery.data, metricsIndex),
@@ -880,10 +878,7 @@
 	}
 
 	async function refreshFocusedArgo() {
-		await Promise.all([
-			focusedArgoInspectorQuery.refetch(),
-			focusedArgoResourcesQuery.refetch(),
-		]);
+		await focusedArgoInspectorQuery.refetch();
 	}
 
 	function selectArgoResource(filter: ArgoResourceFilter) {

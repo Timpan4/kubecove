@@ -121,14 +121,28 @@ export interface ArgoResourceAction {
 	params?: ArgoResourceActionParameter[];
 }
 
+export interface ArgoInspectionFailure {
+	kind: string;
+	message: string;
+}
+
+export interface ArgoConnectedFallback {
+	transport: "connected";
+	failure: ArgoInspectionFailure;
+}
+
 export interface ArgoApplicationInspector {
 	application: ArgoApplicationRef;
-	status?: unknown;
+	status: unknown | null;
 	history: ArgoApplicationHistory[];
 	resources: ArgoManagedResource[];
+	comparisons: ArgoResourceComparison[];
 	conditions: unknown[];
-	operationState?: unknown;
+	operationState: unknown | null;
 	connected: boolean;
+	transport: "connected" | "kubernetes";
+	provenance: string;
+	connectedFallback?: ArgoConnectedFallback;
 }
 
 export type ArgoOperationAction =

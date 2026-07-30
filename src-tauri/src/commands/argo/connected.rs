@@ -1,10 +1,14 @@
 use super::scope::scoped_connection;
 pub(crate) use super::transport::{api_delete, api_get, api_post, redact_secret_fields};
 use super::transport::{canonical_url, http_client, response_json, safe_http_error, url};
-use crate::commands::gitops_crd::{client_for_context, find_api_resource, get_crd_object};
+use crate::commands::{
+    gitops_crd::{client_for_context, find_api_resource, get_crd_object},
+    BackendCancellationRegistry,
+};
 use crate::models::{
     AppError, ArgoApplicationHistory, ArgoApplicationInspector, ArgoApplicationRef,
-    ArgoConnectionProfile, ArgoConnectionStatus, ArgoManagedResource, ArgoServerCapability,
+    ArgoConnectionProfile, ArgoConnectionStatus, ArgoManagedResource, ArgoResourceComparison,
+    ArgoServerCapability,
 };
 use k8s_openapi::api::core::v1::Service;
 use kube::{
@@ -408,11 +412,18 @@ pub(crate) fn inspector_from_application(
         .ok_or_else(|| AppError::new("invalid Application data", "serialization"))?;
     let status = data.get("status").cloned();
     let source = status.as_ref();
+    let resources: Vec<_> = source
+        .and_then(|value| value.get("resources"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(managed_resource)
+        .collect();
     Ok(ArgoApplicationInspector {
         application: ArgoApplicationRef {
             name: application.metadata.name.clone().unwrap_or_default(),
             namespace: application.metadata.namespace.clone(),
-            project: data.get("spec").and_then(|v| text(v, "project")),
+            project: data.get("spec").and_then(|value| text(value, "project")),
             resource_version: application.metadata.resource_version.clone(),
             uid: application.metadata.uid.clone(),
             api_version: application
@@ -423,88 +434,78 @@ pub(crate) fn inspector_from_application(
             workspace_id: None,
         },
         history: source
-            .and_then(|v| v.get("history"))
+            .and_then(|value| value.get("history"))
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
             .map(history)
             .collect(),
-        resources: source
-            .and_then(|v| v.get("resources"))
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .map(managed_resource)
+        comparisons: resources
+            .iter()
+            .cloned()
+            .map(kubernetes_comparison)
             .collect(),
+        resources,
         conditions: source
-            .and_then(|v| v.get("conditions"))
+            .and_then(|value| value.get("conditions"))
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default(),
-        operation_state: source.and_then(|v| v.get("operationState")).cloned(),
+        operation_state: source
+            .and_then(|value| value.get("operationState"))
+            .cloned(),
         status,
         connected: false,
+        transport: "kubernetes".into(),
+        provenance: "kubernetes-status-no-diff".into(),
+        connected_fallback: None,
     })
 }
 
-pub(crate) async fn kubernetes_application(
-    cluster_context: &str,
-    namespace: Option<&str>,
-    name: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<DynamicObject, AppError> {
-    let client = client_for_context(cluster_context, kubeconfig_env_var).await?;
-    let ar = find_api_resource(&client, "argoproj.io", "Application")
-        .await?
-        .ok_or_else(|| AppError::new("Application CRD not found", "cluster"))?;
-    get_crd_object(client, &ar, name, namespace).await
+fn kubernetes_comparison(resource: ArgoManagedResource) -> ArgoResourceComparison {
+    ArgoResourceComparison {
+        resource,
+        exact: Some(false),
+        provenance: Some("kubernetes-status-no-diff".into()),
+        ..Default::default()
+    }
 }
 
-#[tauri::command]
-pub async fn get_argo_application_inspector(
-    store: tauri::State<'_, ArgoConnectionStore>,
-    cluster_context: String,
-    kubeconfig_env_var: Option<String>,
-    connection_id: Option<String>,
-    transport: String,
+fn connected_comparison(value: &Value) -> ArgoResourceComparison {
+    ArgoResourceComparison {
+        resource: managed_resource(value),
+        target_state: state(value.get("targetState"), true),
+        live_state: state(value.get("liveState"), true),
+        normalized_live_state: state(value.get("normalizedLiveState"), true),
+        predicted_live_state: state(value.get("predictedLiveState"), true),
+        modified: value.get("modified").and_then(Value::as_bool),
+        exact: Some(true),
+        provenance: Some("argocd-managed-resource".into()),
+        ..Default::default()
+    }
+}
+
+fn connected_inspector(
     application: ArgoApplicationRef,
-    _redact_secrets: Option<bool>,
-) -> Result<ArgoApplicationInspector, AppError> {
-    if transport == "kubernetes" {
-        return inspector_from_application(
-            &kubernetes_application(
-                &cluster_context,
-                application.namespace.as_deref(),
-                &application.name,
-                kubeconfig_env_var,
-            )
-            .await?,
-        );
-    }
-    if transport != "connected" {
-        return Err(AppError::new("invalid Argo CD transport", "argoConnection"));
-    }
-    let connection = scoped_connection(
-        &store,
-        &connection_id
-            .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?,
-        &cluster_context,
-        application.workspace_id.as_deref(),
-    )?;
-    let namespace = application.namespace.clone().unwrap_or_default();
-    let mut response = api_get(
-        &connection,
-        &format!(
-            "/api/v1/applications/{}?appNamespace={}&project={}",
-            application.name,
-            namespace,
-            application.project.clone().unwrap_or_default()
-        ),
-    )
-    .await?;
+    mut response: Value,
+    mut managed: Value,
+) -> ArgoApplicationInspector {
     redact_secret_fields(&mut response);
+    redact_secret_fields(&mut managed);
     let status = response.get("status").cloned();
-    Ok(ArgoApplicationInspector {
+    let comparisons: Vec<_> = managed
+        .get("items")
+        .or_else(|| managed.get("managedResources"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(connected_comparison)
+        .collect();
+    let resources = comparisons
+        .iter()
+        .map(|comparison| comparison.resource.clone())
+        .collect();
+    ArgoApplicationInspector {
         application: ArgoApplicationRef {
             resource_version: response
                 .pointer("/metadata/resourceVersion")
@@ -527,85 +528,214 @@ pub async fn get_argo_application_inspector(
         },
         history: status
             .as_ref()
-            .and_then(|v| v.get("history"))
+            .and_then(|value| value.get("history"))
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
             .map(history)
             .collect(),
-        resources: status
-            .as_ref()
-            .and_then(|v| v.get("resources"))
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .map(managed_resource)
-            .collect(),
+        resources,
+        comparisons,
         conditions: status
             .as_ref()
-            .and_then(|v| v.get("conditions"))
+            .and_then(|value| value.get("conditions"))
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default(),
         operation_state: status
             .as_ref()
-            .and_then(|v| v.get("operationState"))
+            .and_then(|value| value.get("operationState"))
             .cloned(),
         status,
         connected: true,
-    })
+        transport: "connected".into(),
+        provenance: "argocd-api".into(),
+        connected_fallback: None,
+    }
+}
+
+pub(crate) async fn kubernetes_application(
+    cluster_context: &str,
+    namespace: Option<&str>,
+    name: &str,
+    kubeconfig_env_var: Option<String>,
+) -> Result<DynamicObject, AppError> {
+    let client = client_for_context(cluster_context, kubeconfig_env_var).await?;
+    let ar = find_api_resource(&client, "argoproj.io", "Application")
+        .await?
+        .ok_or_else(|| AppError::new("Application CRD not found", "cluster"))?;
+    get_crd_object(client, &ar, name, namespace).await
+}
+
+async fn kubernetes_inspector(
+    cluster_context: &str,
+    application: &ArgoApplicationRef,
+    kubeconfig_env_var: Option<String>,
+) -> Result<ArgoApplicationInspector, AppError> {
+    let workspace_id = application.workspace_id.clone();
+    let mut object = kubernetes_application(
+        cluster_context,
+        application.namespace.as_deref(),
+        &application.name,
+        kubeconfig_env_var,
+    )
+    .await?;
+    redact_secret_fields(&mut object.data);
+    let mut inspector = inspector_from_application(&object)?;
+    inspector.application.context = Some(cluster_context.to_string());
+    inspector.application.workspace_id = workspace_id;
+    Ok(inspector)
+}
+
+async fn connected_inspector_read(
+    store: &ArgoConnectionStore,
+    cluster_context: &str,
+    connection_id: Option<&str>,
+    application: ArgoApplicationRef,
+) -> Result<ArgoApplicationInspector, AppError> {
+    let connection = scoped_connection(
+        store,
+        connection_id
+            .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?,
+        cluster_context,
+        application.workspace_id.as_deref(),
+    )?;
+    let namespace = application.namespace.clone().unwrap_or_default();
+    let response = api_get(
+        &connection,
+        &format!(
+            "/api/v1/applications/{}?appNamespace={}&project={}",
+            application.name,
+            namespace,
+            application.project.clone().unwrap_or_default()
+        ),
+    )
+    .await?;
+    let managed = api_get(
+        &connection,
+        &format!(
+            "/api/v1/applications/{}/managed-resources?appNamespace={}",
+            application.name, namespace
+        ),
+    )
+    .await?;
+    Ok(connected_inspector(application, response, managed))
+}
+
+fn inspection_failure(error: &AppError) -> crate::models::ArgoInspectionFailure {
+    let kind = match error.kind.as_str() {
+        "argoApi"
+        | "argoConnection"
+        | "cancelled"
+        | "cluster"
+        | "forbidden"
+        | "kubeconfig"
+        | "network"
+        | "notFound"
+        | "providerDiscoveryUnavailable"
+        | "serialization" => error.kind.clone(),
+        _ => "inspection".into(),
+    };
+    let message = match kind.as_str() {
+        "forbidden" => "access denied",
+        "notFound" => "Application not found",
+        "cancelled" => "request cancelled",
+        "kubeconfig" => "cluster configuration unavailable",
+        "network" => "network unavailable",
+        "argoConnection" => "connection unavailable",
+        "argoApi" => "Argo CD API request failed",
+        "providerDiscoveryUnavailable" => "Application API unavailable",
+        "serialization" => "invalid response",
+        _ => "read failed",
+    };
+    crate::models::ArgoInspectionFailure {
+        kind,
+        message: message.into(),
+    }
+}
+
+fn with_connected_fallback(
+    mut inspector: ArgoApplicationInspector,
+    error: &AppError,
+) -> ArgoApplicationInspector {
+    inspector.connected_fallback = Some(crate::models::ArgoConnectedFallback {
+        transport: "connected".into(),
+        failure: inspection_failure(error),
+    });
+    inspector
+}
+
+fn inspection_error(connected: &AppError, kubernetes: &AppError) -> AppError {
+    let connected = inspection_failure(connected);
+    let kubernetes = inspection_failure(kubernetes);
+    AppError::new(
+        format!(
+            "Connected inspection failed ({}) {}; Kubernetes inspection failed ({}) {}",
+            connected.kind, connected.message, kubernetes.kind, kubernetes.message
+        ),
+        "argoInspection",
+    )
+}
+
+async fn application_inspector(
+    store: &ArgoConnectionStore,
+    cluster_context: String,
+    kubeconfig_env_var: Option<String>,
+    connection_id: Option<String>,
+    transport: String,
+    application: ArgoApplicationRef,
+) -> Result<ArgoApplicationInspector, AppError> {
+    if transport == "kubernetes" {
+        return kubernetes_inspector(&cluster_context, &application, kubeconfig_env_var).await;
+    }
+    if transport != "connected" {
+        return Err(AppError::new("invalid Argo CD transport", "argoConnection"));
+    }
+    match connected_inspector_read(
+        store,
+        &cluster_context,
+        connection_id.as_deref(),
+        application.clone(),
+    )
+    .await
+    {
+        Ok(inspector) => Ok(inspector),
+        Err(connected_error) => {
+            match kubernetes_inspector(&cluster_context, &application, kubeconfig_env_var).await {
+                Ok(inspector) => Ok(with_connected_fallback(inspector, &connected_error)),
+                Err(kubernetes_error) => Err(inspection_error(&connected_error, &kubernetes_error)),
+            }
+        }
+    }
 }
 
 #[tauri::command]
-pub async fn get_argo_application_resources(
+pub async fn get_argo_application_inspector(
     store: tauri::State<'_, ArgoConnectionStore>,
+    cancellations: tauri::State<'_, BackendCancellationRegistry>,
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
     connection_id: Option<String>,
     transport: String,
     application: ArgoApplicationRef,
     _redact_secrets: Option<bool>,
-) -> Result<Vec<ArgoManagedResource>, AppError> {
-    if transport == "connected" {
-        let connection = scoped_connection(
-            &store,
-            &connection_id
-                .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?,
-            &cluster_context,
-            application.workspace_id.as_deref(),
-        )?;
-        let mut value = api_get(
-            &connection,
-            &format!(
-                "/api/v1/applications/{}/managed-resources?appNamespace={}",
-                application.name,
-                application.namespace.clone().unwrap_or_default()
+    request_id: Option<String>,
+    cancel_scope: Option<String>,
+) -> Result<ArgoApplicationInspector, AppError> {
+    cancellations
+        .execute(
+            cancel_scope,
+            request_id,
+            application_inspector(
+                &store,
+                cluster_context,
+                kubeconfig_env_var,
+                connection_id,
+                transport,
+                application,
             ),
         )
-        .await?;
-        redact_secret_fields(&mut value);
-        return Ok(value
-            .get("items")
-            .or_else(|| value.get("managedResources"))
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .map(managed_resource)
-            .collect());
-    }
-    if transport != "kubernetes" {
-        return Err(AppError::new("invalid Argo CD transport", "argoConnection"));
-    }
-    Ok(inspector_from_application(
-        &kubernetes_application(
-            &cluster_context,
-            application.namespace.as_deref(),
-            &application.name,
-            kubeconfig_env_var,
-        )
-        .await?,
-    )?
-    .resources)
+        .await
 }
 
 #[cfg(test)]
@@ -642,5 +772,109 @@ mod tests {
         assert_ne!(first, second);
         assert!(!preflights.contains_key("expired"));
         assert_eq!(preflights.len(), 2);
+    }
+
+    #[test]
+    fn connected_inspection_eagerly_compares_and_redacts_nested_secrets() {
+        let inspector = connected_inspector(
+            ArgoApplicationRef {
+                name: "demo".into(),
+                namespace: Some("argocd".into()),
+                ..Default::default()
+            },
+            serde_json::json!({
+                "status": {
+                    "conditions": [{"nested": {"kind": "Secret", "data": {"key": "value"}}}]
+                }
+            }),
+            serde_json::json!({
+                "items": [{
+                    "group": "", "version": "v1", "kind": "Secret", "namespace": "default", "name": "db",
+                    "targetState": "{\"kind\":\"Secret\",\"data\":{\"password\":\"plaintext\"}}",
+                    "liveState": {"kind": "Secret", "stringData": {"password": "plaintext"}},
+                    "modified": true
+                }]
+            }),
+        );
+        let value = serde_json::to_value(&inspector).unwrap();
+
+        assert_eq!(value["transport"], "connected");
+        assert_eq!(value["provenance"], "argocd-api");
+        assert_eq!(value["comparisons"][0]["exact"], true);
+        assert_eq!(
+            value["comparisons"][0]["availableActions"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            value["comparisons"][0]["targetState"]["data"]["password"],
+            "[REDACTED]"
+        );
+        assert_eq!(
+            value["conditions"][0]["nested"]["data"]["key"],
+            "[REDACTED]"
+        );
+    }
+
+    #[test]
+    fn kubernetes_comparisons_do_not_imply_desired_state() {
+        let comparison = kubernetes_comparison(ArgoManagedResource {
+            kind: Some("Deployment".into()),
+            name: Some("api".into()),
+            ..Default::default()
+        });
+
+        assert_eq!(comparison.exact, Some(false));
+        assert_eq!(
+            comparison.provenance.as_deref(),
+            Some("kubernetes-status-no-diff")
+        );
+        assert!(comparison.target_state.is_none());
+        assert!(comparison.live_state.is_none());
+        assert!(comparison.available_actions.is_empty());
+    }
+
+    #[test]
+    fn fallback_keeps_complete_kubernetes_provenance_visible() {
+        let inspector = ArgoApplicationInspector {
+            transport: "kubernetes".into(),
+            provenance: "kubernetes-status-no-diff".into(),
+            resources: vec![ArgoManagedResource {
+                kind: Some("Deployment".into()),
+                name: Some("api".into()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let fallback = with_connected_fallback(
+            inspector,
+            &AppError::new("token=plaintext", "argoConnection"),
+        );
+
+        assert_eq!(fallback.transport, "kubernetes");
+        assert_eq!(fallback.provenance, "kubernetes-status-no-diff");
+        assert_eq!(fallback.resources.len(), 1);
+        let connected = fallback.connected_fallback.expect("fallback metadata");
+        assert_eq!(connected.transport, "connected");
+        assert_eq!(connected.failure.kind, "argoConnection");
+        assert_eq!(connected.failure.message, "connection unavailable");
+    }
+
+    #[test]
+    fn fallback_and_combined_errors_are_sanitized() {
+        let connected = AppError::new(
+            "token=plaintext https://user:password@argo.example/api kubeconfig /tmp/config",
+            "argoConnection",
+        );
+        let kubernetes = AppError::new("Secret data: plaintext", "cluster");
+        let fallback = inspection_failure(&connected);
+        let error = inspection_error(&connected, &kubernetes);
+
+        assert_eq!(fallback.kind, "argoConnection");
+        assert_eq!(fallback.message, "connection unavailable");
+        assert_eq!(error.kind, "argoInspection");
+        assert!(error.message.contains("argoConnection"));
+        assert!(error.message.contains("cluster"));
+        assert!(!error.message.contains("plaintext"));
+        assert!(!error.message.contains("https://"));
     }
 }

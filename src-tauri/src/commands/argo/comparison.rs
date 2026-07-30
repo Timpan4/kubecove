@@ -6,19 +6,20 @@ use super::{
     },
     ArgoConnectionStore,
 };
-use crate::models::{AppError, ArgoApplicationRef, ArgoManagedResource, ArgoResourceComparison};
+use crate::{
+    commands::BackendCancellationRegistry,
+    models::{AppError, ArgoApplicationRef, ArgoManagedResource, ArgoResourceComparison},
+};
 use serde_json::Value;
 
-#[tauri::command]
-pub async fn get_argo_resource_comparison(
-    store: tauri::State<'_, ArgoConnectionStore>,
+async fn argo_resource_comparison(
+    store: &ArgoConnectionStore,
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
     connection_id: Option<String>,
     transport: String,
     application: ArgoApplicationRef,
     resource: ArgoManagedResource,
-    _redact_secrets: Option<bool>,
 ) -> Result<ArgoResourceComparison, AppError> {
     if transport == "kubernetes" {
         let inspector = inspector_from_application(
@@ -52,7 +53,7 @@ pub async fn get_argo_resource_comparison(
         return Err(AppError::new("invalid Argo CD transport", "argoConnection"));
     }
     let connection = scoped_connection(
-        &store,
+        store,
         &connection_id
             .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?,
         &cluster_context,
@@ -100,6 +101,38 @@ pub async fn get_argo_resource_comparison(
         available_actions,
     })
 }
+
+#[tauri::command]
+pub async fn get_argo_resource_comparison(
+    store: tauri::State<'_, ArgoConnectionStore>,
+    cancellations: tauri::State<'_, BackendCancellationRegistry>,
+    cluster_context: String,
+    kubeconfig_env_var: Option<String>,
+    connection_id: Option<String>,
+    transport: String,
+    application: ArgoApplicationRef,
+    resource: ArgoManagedResource,
+    _redact_secrets: Option<bool>,
+    request_id: Option<String>,
+    cancel_scope: Option<String>,
+) -> Result<ArgoResourceComparison, AppError> {
+    cancellations
+        .execute(
+            cancel_scope,
+            request_id,
+            argo_resource_comparison(
+                &store,
+                cluster_context,
+                kubeconfig_env_var,
+                connection_id,
+                transport,
+                application,
+                resource,
+            ),
+        )
+        .await
+}
+
 fn actions_path(application: &ArgoApplicationRef, resource: &ArgoManagedResource) -> String {
     let mut url =
         reqwest::Url::parse("https://argo.invalid/api/v1/applications").expect("static URL");
