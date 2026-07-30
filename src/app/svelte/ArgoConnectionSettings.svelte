@@ -42,7 +42,14 @@
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let connected = $state<string | null>(null);
-	const matchingProfiles = $derived(settings.argoProfiles.filter((profile) => !clusterContext || profile.clusterContext === clusterContext));
+	const matchingProfiles = $derived(
+		settings.argoProfiles.filter(
+			(profile) =>
+				!clusterContext ||
+				(profile.clusterContext === clusterContext &&
+					(!profile.workspaceId || profile.workspaceId === workspaceId)),
+		),
+	);
 	const connectionStatuses = createQuery(() => ({
 		queryKey: ["argo-connection-status", clusterContext ?? "", workspaceId ?? "", matchingProfiles.map((profile) => profile.id).join(",")],
 		queryFn: () => Promise.all(matchingProfiles.map(async (profile) => [profile.id, await getArgoConnectionStatus(client, profile.id)] as const)),

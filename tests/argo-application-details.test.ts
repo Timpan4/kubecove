@@ -79,6 +79,10 @@ describe("Argo Application Briefing contract", () => {
 		expect(detailsSource).not.toContain("Connection settings");
 		expect(detailsSource).toContain('transport = $state<"connected" | "kubernetes">("kubernetes")');
 		expect(detailsSource).toContain("transportSelectedByUser");
+		expect(detailsSource).toContain("matchingProfiles.some((profile) => profile.id === connectionId)");
+		expect(detailsSource).toMatch(
+			/if \(appliedScopeKey && appliedScopeKey !== nextScopeKey\) \{[\s\S]*?transport = "kubernetes";[\s\S]*?connectionId = "";[\s\S]*?transportSelectedByUser = false;/,
+		);
 		expect(detailsSource).toContain("status.connected");
 		expect(detailsSource).toContain('transport = "connected"');
 	});

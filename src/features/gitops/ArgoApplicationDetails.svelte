@@ -400,6 +400,12 @@
 	);
 
 	$effect(() => {
+		if (connectionId && !matchingProfiles.some((profile) => profile.id === connectionId)) {
+			connectionId = "";
+			transport = "kubernetes";
+			transportSelectedByUser = false;
+			return;
+		}
 		if (transportSelectedByUser || transport !== "kubernetes" || connectionId) return;
 		const healthyProfileId = statuses.data?.find(([, status]) => status.connected)?.[0];
 		if (!healthyProfileId) return;
@@ -419,6 +425,9 @@
 	$effect(() => {
 		const nextScopeKey = scopeKey;
 		if (appliedScopeKey && appliedScopeKey !== nextScopeKey) {
+			transport = "kubernetes";
+			connectionId = "";
+			transportSelectedByUser = false;
 			selectedResource = null;
 			selectedHistoryKey = null;
 			diffView = "changes";

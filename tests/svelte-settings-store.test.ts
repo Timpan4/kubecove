@@ -125,6 +125,9 @@ describe("svelte settings store", () => {
 		expect(surfacesSource).toContain("workspaceId={workspace.id}");
 		expect(surfacesSource).toContain("kubeconfigEnvVar={workspaceReadContext.kubeconfigSourceKey}");
 		expect(appSource).toContain("<SettingsSurface onBack={openWorkspaceLauncher} />");
+		expect(connectionSource).toContain(
+			"(!profile.workspaceId || profile.workspaceId === workspaceId)",
+		);
 		expect(connectionSource).toContain("Open Settings from a workspace to discover or connect an Argo CD server.");
 		expect(connectionSource.match(/<Field orientation="horizontal">/g)).toHaveLength(2);
 	});
