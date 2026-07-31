@@ -24,7 +24,7 @@ Workspace export is user-directed through native file dialogs. Treat exported wo
 
 ## Credentials and Argo CD
 
-Argo CD connection setup belongs in Application details. A server profile can be saved without credential. Selecting **Remember credential in native keyring** stores credential in operating-system keyring; otherwise credential is session-only. Custom CA material and invalid-certificate acceptance are session-only. Enabling invalid-certificate acceptance disables certificate validation for that session; use only for trusted diagnosis, then disconnect.
+Argo CD connection setup belongs in the Argo CD category in **Settings**. Open Settings from an active workspace and cluster context to discover or connect a server. Application details uses matching profiles and the selected transport; it does not manage connection profiles. A server profile can be saved without credential. Selecting **Remember credential in native keyring** stores credential in operating-system keyring; otherwise credential is session-only. Custom CA material and invalid-certificate acceptance are session-only. Enabling invalid-certificate acceptance disables certificate validation for that session; use only for trusted diagnosis, then disconnect.
 
 Argo API and Kubernetes CRD access are separate transports. Neither silently falls back to other.
 

@@ -57,7 +57,7 @@ Connected operations require an active profile. Kubernetes operations require th
 
 ## Connect Argo CD safely
 
-Connected access is opt-in. Enter a manual HTTPS server URL and authenticate with a token or local login credentials. A discovered in-cluster Argo server may be shown as unavailable because this release has no service tunnel; use a reachable manual URL.
+Connected access is opt-in. Open the Argo CD category in **Settings** from an active workspace and cluster context to discover or connect a server. Select or reconnect a matching profile when available. For a new connection or unavailable discovery, enter a reachable manual HTTPS server URL and authenticate with a token or local login credentials. Application details lets you choose among matching profiles and transports; it no longer manages connection profiles. A healthy matching profile is selected automatically unless you explicitly choose another. A discovered in-cluster Argo server may be shown as unavailable because this release has no service tunnel; use a reachable manual URL.
 
 - Tokens, passwords, TLS configuration, and custom CA material stay in the Rust backend. The frontend receives typed summaries, not credentials.
 - Without **Remember credential**, the token is memory-only. With it, KubeCove uses the native keyring; it has no plaintext credential fallback.
