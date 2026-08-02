@@ -170,7 +170,6 @@ export interface ArgoOperationRequest {
 	resourceVersion?: string | null;
 	clusterContext?: string | null;
 	kubeconfigEnvVar?: string | null;
-	preflightToken?: string | null;
 	syncPayload?: unknown;
 }
 
@@ -179,8 +178,14 @@ export interface ArgoOperationPreflight {
 	transport: string;
 	action: string;
 	reason?: string | null;
-	preflightToken?: string | null;
-	resolvedRequest?: ArgoOperationRequest | null;
+	sessionId?: string | null;
+	expiresAt?: number | null;
+	reviewedRequest?: ArgoOperationRequest | null;
+}
+
+export interface ArgoOperationConfirmation {
+	sessionId: string;
+	confirmation: string;
 }
 
 export interface ArgoOperationResult {

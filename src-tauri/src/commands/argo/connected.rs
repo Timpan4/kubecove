@@ -17,11 +17,7 @@ use kube::{
 };
 use reqwest::Client as HttpClient;
 use serde_json::{json, Value};
-use std::{
-    collections::HashMap,
-    sync::Mutex,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Mutex};
 use uuid::Uuid;
 
 const ARGO_SERVICE_NAMES: [&str; 2] = ["argocd-server", "argo-cd-argocd-server"];
@@ -29,7 +25,7 @@ const ARGO_SERVICE_NAMES: [&str; 2] = ["argocd-server", "argo-cd-argocd-server"]
 #[derive(Default)]
 pub struct ArgoConnectionStore {
     pub(crate) connections: Mutex<HashMap<String, ConnectedArgo>>,
-    preflights: Mutex<HashMap<String, (String, Instant)>>,
+    pub(crate) sessions: super::session::SessionStore,
 }
 
 #[derive(Clone)]
@@ -38,62 +34,9 @@ pub(crate) struct ConnectedArgo {
     pub(crate) token: String,
     pub(crate) username: Option<String>,
     pub(crate) client: HttpClient,
+    pub(crate) generation: String,
 }
 
-pub(crate) fn issue_preflight(
-    store: &ArgoConnectionStore,
-    request: &crate::models::ArgoOperationRequest,
-) -> Result<String, AppError> {
-    let token = Uuid::new_v4().to_string();
-    let request = serde_json::to_string(request)
-        .map_err(|_| AppError::new("invalid operation request", "argoOperationUnavailable"))?;
-    let now = Instant::now();
-    let mut preflights = store.preflights.lock().map_err(|_| {
-        AppError::new(
-            "Argo CD operation state unavailable",
-            "argoOperationUnavailable",
-        )
-    })?;
-    preflights.retain(|_, (_, expires)| *expires > now);
-    preflights.insert(token.clone(), (request, now + Duration::from_mins(1)));
-    Ok(token)
-}
-pub(crate) fn consume_preflight(
-    store: &ArgoConnectionStore,
-    request: &crate::models::ArgoOperationRequest,
-) -> Result<(), AppError> {
-    let token = request
-        .preflight_token
-        .as_deref()
-        .ok_or_else(|| AppError::new("operation preflight required", "argoOperationUnavailable"))?;
-    let (expected, expires) = store
-        .preflights
-        .lock()
-        .map_err(|_| {
-            AppError::new(
-                "Argo CD operation state unavailable",
-                "argoOperationUnavailable",
-            )
-        })?
-        .remove(token)
-        .ok_or_else(|| {
-            AppError::new(
-                "operation preflight expired or already used",
-                "argoOperationUnavailable",
-            )
-        })?;
-    let mut actual = request.clone();
-    actual.preflight_token = None;
-    let actual = serde_json::to_string(&actual)
-        .map_err(|_| AppError::new("invalid operation request", "argoOperationUnavailable"))?;
-    if expires < Instant::now() || expected != actual {
-        return Err(AppError::new(
-            "operation changed since preflight",
-            "argoOperationUnavailable",
-        ));
-    }
-    Ok(())
-}
 fn credential_key(profile: &ArgoConnectionProfile) -> String {
     format!(
         "{}:{}:{}:{}",
@@ -292,6 +235,7 @@ pub async fn connect_argo_server(
                 token,
                 username: user.clone(),
                 client,
+                generation: Uuid::new_v4().to_string(),
             },
         );
     Ok(ArgoConnectionStatus {
@@ -753,25 +697,6 @@ mod tests {
     #[test]
     fn missing_credential_is_already_deleted() {
         assert!(credential_deleted(Err(keyring::Error::NoEntry)).is_ok());
-    }
-
-    #[test]
-    fn preflight_tokens_are_random_and_expired_entries_are_swept() {
-        let store = ArgoConnectionStore::default();
-        store.preflights.lock().unwrap().insert(
-            "expired".to_string(),
-            ("request".to_string(), Instant::now()),
-        );
-
-        let first =
-            issue_preflight(&store, &crate::models::ArgoOperationRequest::default()).unwrap();
-        let second =
-            issue_preflight(&store, &crate::models::ArgoOperationRequest::default()).unwrap();
-        let preflights = store.preflights.lock().unwrap();
-
-        assert_ne!(first, second);
-        assert!(!preflights.contains_key("expired"));
-        assert_eq!(preflights.len(), 2);
     }
 
     #[test]

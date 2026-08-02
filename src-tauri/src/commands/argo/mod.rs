@@ -5,6 +5,7 @@ mod comparison;
 mod connected;
 mod operations;
 mod scope;
+mod session;
 mod transport;
 
 use crate::{commands::gitops_crd, models::AppError};

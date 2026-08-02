@@ -7,6 +7,7 @@ import type {
 	ArgoConnectionProfile,
 	ArgoConnectionStatus,
 	ArgoManagedResource,
+	ArgoOperationConfirmation,
 	ArgoOperationPreflight,
 	ArgoOperationRequest,
 	ArgoOperationResult,
@@ -108,7 +109,7 @@ export function preflightArgoOperation(
 
 export function runArgoOperation(
 	client: TauriClient,
-	request: ArgoOperationRequest,
+	confirmation: ArgoOperationConfirmation,
 ): Promise<ArgoOperationResult> {
-	return client.invoke<ArgoOperationResult>("run_argo_operation", { request });
+	return client.invoke<ArgoOperationResult>("run_argo_operation", { confirmation });
 }

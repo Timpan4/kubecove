@@ -242,7 +242,6 @@ pub struct ArgoOperationRequest {
     pub resource_version: Option<String>,
     pub cluster_context: Option<String>,
     pub kubeconfig_env_var: Option<String>,
-    pub preflight_token: Option<String>,
     pub sync_payload: Option<Value>,
 }
 
@@ -253,8 +252,16 @@ pub struct ArgoOperationPreflight {
     pub transport: String,
     pub action: String,
     pub reason: Option<String>,
-    pub preflight_token: Option<String>,
-    pub resolved_request: Option<ArgoOperationRequest>,
+    pub session_id: Option<String>,
+    pub expires_at: Option<u64>,
+    pub reviewed_request: Option<ArgoOperationRequest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ArgoOperationConfirmation {
+    pub session_id: String,
+    pub confirmation: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
