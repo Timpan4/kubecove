@@ -99,6 +99,7 @@ pub(crate) fn dynamic_resource_summary(
         argo_app: extract_argo_app(&object.metadata),
         helm_release: extract_helm_release(&object.metadata),
         git_ops_owner: extract_git_ops_owner(&object.metadata),
+        git_ops_ownership_partial: false,
     };
     update_resource_health(&mut summary);
     summary

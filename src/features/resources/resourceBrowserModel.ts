@@ -1,3 +1,9 @@
+import {
+	gitOpsOwnership,
+	gitOpsOwnershipFilters,
+	gitOpsOwnershipGroupLabel,
+	inheritGitOpsOwnership,
+} from "@/lib/gitops-ownership-evidence";
 import type {
 	DiscoveredResourceKind,
 	ResourceKindSelection,
@@ -12,10 +18,8 @@ import {
 	buildResourceSearchIndex,
 	filterResourceSearchIndex,
 	filterResourcesByHealth,
-	formatResourceGroupLabel,
 	formatResourceTypeGroupLabel,
 	type HealthFilter,
-	hasResourceListGitOpsOwner,
 	type ResourceSearchEntry,
 	resourceGroupCollapseKey,
 	resourceGroupKindRank,
@@ -24,7 +28,6 @@ import {
 	resourceKindLabel,
 	resourceSelectionKey,
 	resourceTypeGroupCollapseKey,
-	uniqueGitOpsFilters,
 } from "./helpers";
 
 export type ResourceSortColumn =
@@ -85,7 +88,7 @@ export interface ResourceTableModel {
 	pageCount: number;
 	safePageIndex: number;
 	groupedByGitOps: boolean;
-	gitOpsFilters: ReturnType<typeof uniqueGitOpsFilters>;
+	gitOpsFilters: ReturnType<typeof gitOpsOwnershipFilters>;
 	healthSummary: ReturnType<typeof buildResourceHealthSummary>;
 	columnVisibility: {
 		ready: boolean;
@@ -232,8 +235,8 @@ function sortedResourceRows(
 
 function gitOpsGroupedRows(rows: ResourceSummary[]): ResourceSummary[] {
 	return rows.toSorted((left, right) => {
-		const groupCompare = formatResourceGroupLabel(left).localeCompare(
-			formatResourceGroupLabel(right),
+		const groupCompare = gitOpsOwnershipGroupLabel(left).localeCompare(
+			gitOpsOwnershipGroupLabel(right),
 		);
 		if (groupCompare !== 0) return groupCompare;
 		const rankCompare =
@@ -256,58 +259,6 @@ function typeGroupedRows(rows: ResourceSummary[]): ResourceSummary[] {
 	});
 }
 
-function ownerLookupKey(resource: ResourceSummary): string {
-	return `${resource.namespace ?? ""}/${resource.name}`;
-}
-
-function resourcesWithInheritedGitOpsOwners(
-	rows: ResourceSummary[],
-): ResourceSummary[] {
-	const ownerKeys = new Set<string>();
-	for (const row of rows) {
-		if (row.ownerRef) ownerKeys.add(`${row.namespace ?? ""}/${row.ownerRef}`);
-	}
-	if (ownerKeys.size === 0) return rows;
-
-	const resourcesByName = new Map<string, ResourceSummary>();
-	for (const row of rows) {
-		const key = ownerLookupKey(row);
-		if (ownerKeys.has(key)) resourcesByName.set(key, row);
-	}
-	if (resourcesByName.size === 0) return rows;
-	const ownerCache = new Map<ResourceSummary, ResourceSummary | null>();
-
-	const owningResource = (resource: ResourceSummary): ResourceSummary | null => {
-		if (ownerCache.has(resource)) return ownerCache.get(resource) ?? null;
-		if (hasResourceListGitOpsOwner(resource)) return resource;
-		const seen = new Set<ResourceSummary>([resource]);
-		let current: ResourceSummary | undefined = resource;
-		while (current?.ownerRef) {
-			const owner = resourcesByName.get(`${current.namespace ?? ""}/${current.ownerRef}`);
-			if (!owner || seen.has(owner)) break;
-			if (hasResourceListGitOpsOwner(owner)) {
-				ownerCache.set(resource, owner);
-				return owner;
-			}
-			seen.add(owner);
-			current = owner;
-		}
-		ownerCache.set(resource, null);
-		return null;
-	};
-
-	return rows.map((row) => {
-		if (hasResourceListGitOpsOwner(row)) return row;
-		const owner = owningResource(row);
-		if (!owner) return row;
-		return {
-			...row,
-			argoApp: row.argoApp ?? owner.argoApp,
-			gitOpsOwner: row.gitOpsOwner ?? owner.gitOpsOwner,
-		};
-	});
-}
-
 function buildEntries({
 	pageRows,
 	groupedByGitOps,
@@ -324,7 +275,7 @@ function buildEntries({
 	const entries: ResourceTableEntry[] = [];
 	let previous: ResourceSummary | null = null;
 	for (const resource of pageRows) {
-		const groupLabel = formatResourceGroupLabel(resource);
+		const groupLabel = gitOpsOwnershipGroupLabel(resource);
 		const typeLabel = formatResourceTypeGroupLabel(resource);
 		const groupKey = resourceGroupCollapseKey(resource);
 		const typeKey = resourceTypeGroupCollapseKey(resource);
@@ -332,10 +283,10 @@ function buildEntries({
 		const typeCollapsed = collapsedGroups.has(typeKey);
 		const showGroup =
 			groupedByGitOps &&
-			(!previous || formatResourceGroupLabel(previous) !== groupLabel);
+			(!previous || gitOpsOwnershipGroupLabel(previous) !== groupLabel);
 		const showType =
 			!previous ||
-			(groupedByGitOps && formatResourceGroupLabel(previous) !== groupLabel) ||
+			(groupedByGitOps && gitOpsOwnershipGroupLabel(previous) !== groupLabel) ||
 			formatResourceTypeGroupLabel(previous) !== typeLabel;
 		if (showGroup) {
 			entries.push({
@@ -405,11 +356,11 @@ export function buildResourceTableModel(
 		state.search,
 		state.gitOpsFilter,
 	);
-	const filteredRows = resourcesWithInheritedGitOpsOwners(
+	const filteredRows = inheritGitOpsOwnership(
 		filterResourcesByHealth(scopedRows, state.healthFilter),
 	);
 	const sortedRows = sortedResourceRows(filteredRows, state.sort);
-	const groupedByGitOps = filteredRows.some(hasResourceListGitOpsOwner);
+	const groupedByGitOps = filteredRows.some((row) => gitOpsOwnership(row) !== null);
 	const displayRows = groupedByGitOps
 		? gitOpsGroupedRows(sortedRows)
 		: typeGroupedRows(sortedRows);
@@ -438,19 +389,14 @@ export function buildResourceTableModel(
 		pageCount,
 		safePageIndex,
 		groupedByGitOps,
-		gitOpsFilters: uniqueGitOpsFilters(rows),
+		gitOpsFilters: gitOpsOwnershipFilters(rows),
 		healthSummary: buildResourceHealthSummary(scopedRows),
 		columnVisibility: {
 			ready: pageRows.some((row) => Boolean(row.ready)),
 			restarts: pageRows.some((row) => row.restarts !== undefined),
 			cpu: pageRows.some((row) => row.metrics?.cpuMillicores !== undefined),
 			memory: pageRows.some((row) => row.metrics?.memoryBytes !== undefined),
-			gitOps: pageRows.some(
-				(row) =>
-					Boolean(row.gitOpsOwner) ||
-					Boolean(row.argoApp) ||
-					Boolean(row.helmRelease),
-			),
+			gitOps: pageRows.some((row) => gitOpsOwnership(row) !== null),
 		},
 	};
 }

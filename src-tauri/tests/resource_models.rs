@@ -74,6 +74,7 @@ fn test_resource_summary_serde() {
         owner_ref: None,
         argo_app: None,
         git_ops_owner: None,
+        git_ops_ownership_partial: false,
         helm_release: None,
     };
     let json_str = serde_json::to_string(&rs).unwrap();
@@ -136,6 +137,7 @@ fn test_resource_details_full_serde() {
         owner_ref: None,
         argo_app: None,
         git_ops_owner: None,
+        git_ops_ownership_partial: false,
         helm_release: None,
     };
     let rdf = ResourceDetailsFull {
@@ -285,6 +287,7 @@ fn test_dynamic_resource_summary_fields_serde() {
         owner_ref: Some("sample-owner".to_string()),
         argo_app: None,
         git_ops_owner: None,
+        git_ops_ownership_partial: false,
         helm_release: None,
     };
 

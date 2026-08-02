@@ -63,6 +63,7 @@ pub(super) async fn node_details(
         argo_app: None,
         helm_release: None,
         git_ops_owner: None,
+        git_ops_ownership_partial: false,
     };
     update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {
@@ -109,6 +110,7 @@ pub(super) async fn storageclass_details(
         argo_app: None,
         helm_release: None,
         git_ops_owner: None,
+        git_ops_ownership_partial: false,
     };
     Ok(ResourceDetailsFull {
         summary,
@@ -158,6 +160,7 @@ pub(super) async fn pv_details(
         argo_app: None,
         helm_release: None,
         git_ops_owner: None,
+        git_ops_ownership_partial: false,
     };
     update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {

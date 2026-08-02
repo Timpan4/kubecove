@@ -52,6 +52,7 @@ fn resource(kind: &str, name: &str, namespace: &str, uid: &str) -> TopologyInput
             argo_app: None,
             helm_release: None,
             git_ops_owner: None,
+            git_ops_ownership_partial: false,
         },
     }
 }
@@ -234,6 +235,8 @@ fn scoped_topology_keeps_only_owned_cluster_scoped_inputs() {
         name: "cinder-csi".to_string(),
         namespace: Some("argocd".to_string()),
         confidence: "explicit".to_string(),
+        provenance: "test-fixture".to_string(),
+        partial: false,
     });
 
     assert!(!cluster_scoped_input_visible_in_scope(
@@ -257,7 +260,7 @@ fn sanitized_pod_fixture_normalizes_to_topology_contract() {
     assert_eq!(node.health, ResourceHealth::Healthy);
     assert_eq!(node.summary.ready.as_deref(), Some("True"));
     assert_eq!(node.summary.owner_ref.as_deref(), Some("payments-api-7d9"));
-    assert_eq!(node.summary.argo_app.as_deref(), Some("payments"));
+    assert_eq!(node.summary.argo_app, None);
     assert_eq!(node.summary.helm_release.as_deref(), Some("payments-api"));
     assert!(!summary_json.contains("token"));
     assert!(!summary_json.contains("client-certificate-data"));

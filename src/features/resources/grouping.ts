@@ -1,5 +1,6 @@
+import { gitOpsOwnershipGroupLabel } from "@/lib/gitops-ownership-evidence";
 import type { ResourceSummary } from "@/lib/types";
-import { formatResourceGroupLabel, formatResourceTypeGroupLabel } from "./helpers";
+import { formatResourceTypeGroupLabel } from "./helpers";
 
 export function pageGitOpsGroupCounts(
 	rows: ResourceSummary[],
@@ -8,7 +9,7 @@ export function pageGitOpsGroupCounts(
 	const counts = new Map<string, number>();
 	if (!groupedByGitOps) return counts;
 	for (const row of rows) {
-		const label = formatResourceGroupLabel(row);
+		const label = gitOpsOwnershipGroupLabel(row);
 		counts.set(label, (counts.get(label) ?? 0) + 1);
 	}
 	return counts;
@@ -21,7 +22,7 @@ export function pageTypeGroupCounts(
 	const counts = new Map<string, number>();
 	if (!groupedByGitOps) return counts;
 	for (const row of rows) {
-		const key = `${formatResourceGroupLabel(row)}::${formatResourceTypeGroupLabel(row)}`;
+		const key = `${gitOpsOwnershipGroupLabel(row)}::${formatResourceTypeGroupLabel(row)}`;
 		counts.set(key, (counts.get(key) ?? 0) + 1);
 	}
 	return counts;

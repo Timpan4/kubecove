@@ -265,6 +265,7 @@ export interface FluxResourceSummary {
 	lastAppliedRevision?: string;
 	message?: string;
 	inventory: FluxInventoryResource[];
+	inventoryPartial?: boolean;
 }
 
 export interface FluxResourceDetails {

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { ResourceSummary } from "../src/lib/types";
 import {
 	pageGitOpsGroupCounts,
 	pageTypeGroupCounts,
 } from "../src/features/resources/grouping";
+import type { ResourceSummary } from "../src/lib/types";
 
 describe("resource grouping helpers", () => {
 	const baseResource: ResourceSummary = {
@@ -24,8 +24,8 @@ describe("resource grouping helpers", () => {
 
 		expect(pageGitOpsGroupCounts(rows, true)).toEqual(
 			new Map([
-				["Owned by Argo CD: payments", 2],
-				["Unmanaged resources", 2],
+				["Owned by Argo CD: payments (partial evidence)", 2],
+				["No GitOps ownership evidence", 2],
 			]),
 		);
 	});
@@ -40,10 +40,10 @@ describe("resource grouping helpers", () => {
 
 		expect(pageTypeGroupCounts(rows, true)).toEqual(
 			new Map([
-				["Owned by Argo CD: payments::Pods", 1],
-				["Owned by Argo CD: payments::Services", 1],
-				["Unmanaged resources::Pods", 1],
-				["Unmanaged resources::ConfigMaps", 1],
+				["Owned by Argo CD: payments (partial evidence)::Pods", 1],
+				["Owned by Argo CD: payments (partial evidence)::Services", 1],
+				["No GitOps ownership evidence::Pods", 1],
+				["No GitOps ownership evidence::ConfigMaps", 1],
 			]),
 		);
 	});

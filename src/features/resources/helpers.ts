@@ -1,3 +1,10 @@
+import type { StatusTone } from "@/components/status-badge-styles";
+import {
+	gitOpsOwnership,
+	gitOpsOwnershipFilterValue,
+	gitOpsOwnershipGroupLabel,
+} from "@/lib/gitops-ownership-evidence";
+import { classifyResourceHealth } from "@/lib/resource-health";
 import type {
 	ArgoApplicationSummary,
 	ClusterScopedKind,
@@ -6,8 +13,6 @@ import type {
 	ResourceSummary,
 	WatchResourceKey,
 } from "@/lib/types";
-import type { StatusTone } from "@/components/status-badge-styles";
-import { classifyResourceHealth } from "@/lib/resource-health";
 import { CLUSTER_SCOPED_KINDS } from "@/lib/types";
 import type { ResourceSortingState } from "./table-state";
 
@@ -43,16 +48,8 @@ export interface ScopePill {
 export interface ResourceSearchEntry {
 	resource: ResourceSummary;
 	searchText: string;
-	argoApp: string;
-	gitOpsFilterKey: string;
+	gitOpsFilterKeys: string[];
 }
-
-export interface GitOpsFilterOption {
-	key: string;
-	label: string;
-}
-
-const LIST_OWNING_FLUX_KINDS = new Set(["Kustomization", "HelmRelease"]);
 const SUCCESS_STATUS_VALUES = new Set([
 	"running",
 	"succeeded",
@@ -102,10 +99,6 @@ export function resourceReadyChip(
 	return null;
 }
 
-export function argoApplicationGitOpsFilterKey(name: string): string {
-	return ["argo", "Application", "", name].join(":");
-}
-
 export function argoApplicationResourceNamespaces(
 	app: Pick<ArgoApplicationSummary, "destinationNamespace" | "resourceNamespaces">,
 ): string[] {
@@ -115,12 +108,6 @@ export function argoApplicationResourceNamespaces(
 	if (namespaces.length > 0) return namespaces;
 	const destination = app.destinationNamespace?.trim();
 	return destination ? [destination] : [];
-}
-
-function argoApplicationNameFromGitOpsFilter(filter: string): string | null {
-	const [provider, kind, , name] = filter.split(":");
-	if (provider !== "argo" || kind !== "Application" || !name) return null;
-	return name;
 }
 
 const TOPOLOGY_WATCH_KINDS = [
@@ -303,29 +290,27 @@ export function filterResources(
 export function buildResourceSearchIndex(
 	data: ResourceSummary[],
 ): ResourceSearchEntry[] {
-	return data.map((resource) => ({
-		resource,
-		argoApp: resource.argoApp ?? "",
-		gitOpsFilterKey: gitOpsFilterKey(resource),
-		searchText: [
-			resource.name,
-			resource.namespace,
-			resource.kind,
-			resource.apiVersion,
-			resource.group,
-			resource.plural,
-			resource.ownerRef,
-			resource.argoApp,
-			resource.gitOpsOwner?.provider,
-			resource.gitOpsOwner?.kind,
-			resource.gitOpsOwner?.name,
-			resource.gitOpsOwner?.namespace,
-			resource.helmRelease,
-		]
-			.filter((value): value is string => Boolean(value))
-			.join("\n")
-			.toLowerCase(),
-	}));
+	return data.map((resource) => {
+		const ownership = gitOpsOwnership(resource);
+		return {
+			resource,
+			gitOpsFilterKeys: ownership?.filterKeys ?? [],
+			searchText: [
+				resource.name,
+				resource.namespace,
+				resource.kind,
+				resource.apiVersion,
+				resource.group,
+				resource.plural,
+				resource.ownerRef,
+				resource.helmRelease,
+				...(ownership?.searchTerms ?? []),
+			]
+				.filter((value): value is string => Boolean(value))
+				.join("\n")
+				.toLowerCase(),
+		};
+	});
 }
 
 export function filterResourceSearchIndex(
@@ -336,90 +321,14 @@ export function filterResourceSearchIndex(
 	const term = search.trim().toLowerCase();
 	const rows: ResourceSummary[] = [];
 	for (const entry of index) {
-		if (argoAppFilter) {
-			const argoApplicationName =
-				argoApplicationNameFromGitOpsFilter(argoAppFilter);
-			const matchesLegacyArgo =
-				entry.argoApp === argoAppFilter ||
-				(argoApplicationName !== null && entry.argoApp === argoApplicationName);
-			const matchesGitOpsOwner = entry.gitOpsFilterKey === argoAppFilter;
-			if (!matchesLegacyArgo && !matchesGitOpsOwner) continue;
+		if (argoAppFilter && !entry.gitOpsFilterKeys.includes(argoAppFilter)) {
+			continue;
 		}
 		if (!term || entry.searchText.includes(term)) {
 			rows.push(entry.resource);
 		}
 	}
 	return rows;
-}
-
-export function uniqueArgoApps(data: ResourceSummary[]): string[] {
-	return Array.from(
-		new Set(
-			data.map((resource) => resource.argoApp).filter((app): app is string =>
-				Boolean(app),
-			),
-		),
-	).sort((a, b) => a.localeCompare(b));
-}
-
-export function gitOpsFilterKey(resource: ResourceSummary): string {
-	const owner = resource.gitOpsOwner;
-	if (owner?.provider === "argo" && owner.kind === "Application") {
-		return [
-			owner.provider,
-			owner.kind,
-			owner.namespace ?? "",
-			owner.name,
-		].join(":");
-	}
-	if (owner?.provider === "flux" && LIST_OWNING_FLUX_KINDS.has(owner.kind)) {
-		return [
-			owner.provider,
-			owner.kind,
-			owner.namespace ?? "",
-			owner.name,
-		].join(":");
-	}
-	return resource.argoApp ?? "";
-}
-
-export function gitOpsOwnerLabel(resource: ResourceSummary): string {
-	const owner = resource.gitOpsOwner;
-	if (owner?.provider === "flux" && LIST_OWNING_FLUX_KINDS.has(owner.kind)) {
-		const scopedName = owner.namespace
-			? `${owner.namespace}/${owner.name}`
-			: owner.name;
-		return `Owned by Flux ${owner.kind}: ${scopedName}`;
-	}
-	if (owner?.provider === "argo" && owner.kind === "Application") {
-		return `Owned by Argo CD: ${owner.name}`;
-	}
-	if (resource.argoApp) return `Owned by Argo CD: ${resource.argoApp}`;
-	return "";
-}
-
-export function hasResourceListGitOpsOwner(resource: ResourceSummary): boolean {
-	return Boolean(gitOpsOwnerLabel(resource));
-}
-
-export function uniqueGitOpsFilters(
-	data: ResourceSummary[],
-): GitOpsFilterOption[] {
-	const filters = new Map<string, string>();
-	for (const resource of data) {
-		const key = gitOpsFilterKey(resource);
-		if (!key) continue;
-		filters.set(key, gitOpsOwnerLabel(resource) || key);
-	}
-	return Array.from(filters, ([key, label]) => ({ key, label })).sort((a, b) =>
-		a.label.localeCompare(b.label),
-	);
-}
-
-export function formatResourceGroupLabel(resource: ResourceSummary): string {
-	const gitOpsLabel = gitOpsOwnerLabel(resource);
-	if (gitOpsLabel) return gitOpsLabel;
-	return "Unmanaged resources";
 }
 
 export function formatResourceTypeGroupLabel(resource: ResourceSummary): string {
@@ -449,7 +358,7 @@ export function resourceGroupKindRank(kind: string): number {
 }
 
 export function resourceGroupCollapseKey(resource: ResourceSummary): string {
-	return `group:${formatResourceGroupLabel(resource)}`;
+	return `group:${gitOpsOwnershipGroupLabel(resource)}`;
 }
 
 export function resourceTypeGroupCollapseKey(
@@ -490,9 +399,7 @@ export function describeResourceScope(
 		pills.push({
 			kind: "gitOpsOwner",
 			label: "GitOps",
-			value:
-				argoApplicationNameFromGitOpsFilter(argoAppFilter) ??
-				argoAppFilter,
+			value: gitOpsOwnershipFilterValue(argoAppFilter),
 		});
 	}
 	return pills;

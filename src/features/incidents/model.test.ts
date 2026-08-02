@@ -7,6 +7,7 @@ import {
 	groupIncidentItems,
 	type IncidentFilter,
 	incidentCaseSummary,
+	incidentGroupLabel,
 	incidentItemKey,
 	incidentResourcesHealthFilter,
 	reconcileIncidentSelection,
@@ -109,6 +110,12 @@ describe("incident presentation model", () => {
 		});
 		const attention = item("attention", "attention");
 
+		expect(incidentGroupLabel({ ...item("helm", "warning").resource, helmRelease: "payments" })).toBe(
+			"Helm release: payments",
+		);
+		expect(groupIncidentItems([attention, older, newer])[0]?.label).toBe(
+			"No GitOps ownership evidence",
+		);
 		expect(groupIncidentItems([attention, older, newer])[0]?.items).toEqual([
 			newer,
 			older,

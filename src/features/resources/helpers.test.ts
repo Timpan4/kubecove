@@ -1,17 +1,18 @@
+import {
+	gitOpsOwnership,
+	gitOpsOwnershipFilters,
+	gitOpsOwnershipGroupLabel,
+} from "@/lib/gitops-ownership-evidence";
 import type { ResourceSummary } from "@/lib/types";
 import {
-	argoApplicationGitOpsFilterKey,
 	argoApplicationResourceNamespaces,
 	buildResourceHealthSummary,
 	buildResourceSearchIndex,
 	describeResourceScope,
-	filterResourcesByHealth,
 	filterResourceSearchIndex,
-	formatResourceGroupLabel,
-	hasResourceListGitOpsOwner,
+	filterResourcesByHealth,
 	resourceReadyChip,
 	resourceStatusTone,
-	uniqueGitOpsFilters,
 } from "./helpers";
 
 declare function describe(name: string, fn: () => void): void;
@@ -56,7 +57,7 @@ describe("resource GitOps filters", () => {
 		const rows = filterResourceSearchIndex(
 			buildResourceSearchIndex([api, worker]),
 			"",
-			argoApplicationGitOpsFilterKey("payments"),
+			"argo:Application::payments",
 		);
 
 		expect(rows).toEqual([api]);
@@ -91,7 +92,7 @@ describe("resource GitOps filters", () => {
 	});
 
 	test("builds provider-specific GitOps filter labels", () => {
-		const filters = uniqueGitOpsFilters([
+		const filters = gitOpsOwnershipFilters([
 			resource("api", { argoApp: "payments" }),
 			resource("worker", {
 				gitOpsOwner: {
@@ -105,23 +106,26 @@ describe("resource GitOps filters", () => {
 		]);
 
 		expect(filters).toEqual([
-			{ key: "payments", label: "Owned by Argo CD: payments" },
+			{
+				key: "argo:Application::payments",
+				label: "Owned by Argo CD: payments (partial evidence)",
+			},
 			{
 				key: "flux:HelmRelease:default:worker",
-				label: "Owned by Flux HelmRelease: default/worker",
+				label: "Owned by Flux HelmRelease: default/worker (partial evidence)",
 			},
 		]);
 	});
 
 	test("uses owned-by group labels for Argo resources", () => {
-		expect(formatResourceGroupLabel(resource("api", { argoApp: "payments" }))).toBe(
-			"Owned by Argo CD: payments",
+		expect(gitOpsOwnershipGroupLabel(resource("api", { argoApp: "payments" }))).toBe(
+			"Owned by Argo CD: payments (partial evidence)",
 		);
 	});
 
 	test("uses owned-by group labels for Flux Kustomizations", () => {
 		expect(
-			formatResourceGroupLabel(
+			gitOpsOwnershipGroupLabel(
 				resource("api", {
 					gitOpsOwner: {
 						provider: "flux",
@@ -132,7 +136,7 @@ describe("resource GitOps filters", () => {
 					},
 				}),
 			),
-		).toBe("Owned by Flux Kustomization: flux-system/apps");
+		).toBe("Owned by Flux Kustomization: flux-system/apps (partial evidence)");
 	});
 
 	test("does not use raw Kubernetes owner refs as list owners", () => {
@@ -141,8 +145,14 @@ describe("resource GitOps filters", () => {
 			ownerRef: "api-795b",
 		});
 
-		expect(hasResourceListGitOpsOwner(pod)).toBe(false);
-		expect(formatResourceGroupLabel(pod)).toBe("Unmanaged resources");
+		expect(gitOpsOwnership(pod)).toBe(null);
+		expect(gitOpsOwnershipGroupLabel(pod)).toBe("No GitOps ownership evidence");
+	});
+
+	test("preserves Helm release fallback when GitOps evidence is absent", () => {
+		expect(gitOpsOwnershipGroupLabel(resource("helm", { helmRelease: "payments" }))).toBe(
+			"Helm release: payments",
+		);
 	});
 
 	test("keeps raw Kubernetes owner refs searchable when hidden from the list", () => {
@@ -171,9 +181,9 @@ describe("resource GitOps filters", () => {
 			},
 		});
 
-		expect(hasResourceListGitOpsOwner(sourceBacked)).toBe(false);
-		expect(uniqueGitOpsFilters([sourceBacked])).toEqual([]);
-		expect(formatResourceGroupLabel(sourceBacked)).toBe("Unmanaged resources");
+		expect(gitOpsOwnership(sourceBacked)).toBe(null);
+		expect(gitOpsOwnershipFilters([sourceBacked])).toEqual([]);
+		expect(gitOpsOwnershipGroupLabel(sourceBacked)).toBe("No GitOps ownership evidence");
 	});
 
 	test("uses readable scope labels for Argo Application GitOps filters", () => {
@@ -181,7 +191,7 @@ describe("resource GitOps filters", () => {
 			describeResourceScope(
 				[],
 				["Pod"],
-				argoApplicationGitOpsFilterKey("payments"),
+				"argo:Application::payments",
 			).at(-1),
 		).toEqual({ kind: "gitOpsOwner", label: "GitOps", value: "payments" });
 	});

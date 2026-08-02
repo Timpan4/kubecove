@@ -14,12 +14,13 @@
 		SelectTrigger,
 		SelectValue,
 	} from "@/components/ui/svelte";
-	import type { NamespaceSummary, ResourceKindSelection } from "@/lib/types";
 	import type {
 		ArgoResourceCounts,
 		ArgoResourceFilter,
 	} from "@/features/gitops/argo-workspace-model";
-	import type { GitOpsFilterOption, HealthFilter, HealthSummary } from "./helpers";
+	import type { GitOpsOwnershipFilter } from "@/lib/gitops-ownership-evidence";
+	import type { NamespaceSummary, ResourceKindSelection } from "@/lib/types";
+	import type { HealthFilter, HealthSummary } from "./helpers";
 	import ResourceScopeSelector from "./ResourceScopeSelector.svelte";
 	import { kindSelectionKey, kindSelectionLabel } from "./resourceBrowserModel";
 
@@ -63,7 +64,7 @@
 		argoFilter?: ArgoResourceFilter;
 		search?: string;
 		gitOpsFilter: string;
-		gitOpsFilters: GitOpsFilterOption[];
+		gitOpsFilters: GitOpsOwnershipFilter[];
 		metricsMessage: string | null;
 		customResourcesStatus?: string | null;
 		realtimeStatus: string;

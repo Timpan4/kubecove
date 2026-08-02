@@ -1,15 +1,14 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { DiscoveredResourceKind, ResourceSummary } from "../src/lib/types";
+import { groupHelmReleasesByNamespace } from "../src/features/helm/helpers";
 import {
 	buildFetchKeys,
 	buildResourceHealthSummary,
 	buildResourceSearchIndex,
 	describeResourceScope,
-	filterResources,
 	filterResourceSearchIndex,
+	filterResources,
 	filterResourcesByHealth,
-	formatResourceGroupLabel,
 	formatResourceTypeGroupLabel,
 	resourceGroupCollapseKey,
 	resourceIdentityKey,
@@ -18,10 +17,13 @@ import {
 	sortedRows,
 	tableTooltipText,
 	topologyWatchKeys,
-	uniqueArgoApps,
 	watchKeysFromFetchKeys,
 } from "../src/features/resources/helpers";
-import { groupHelmReleasesByNamespace } from "../src/features/helm/helpers";
+import {
+	gitOpsOwnershipFilters,
+	gitOpsOwnershipGroupLabel,
+} from "../src/lib/gitops-ownership-evidence";
+import type { DiscoveredResourceKind, ResourceSummary } from "../src/lib/types";
 
 describe("resource browser presentation helpers", () => {
   const baseResource: ResourceSummary = {
@@ -271,20 +273,21 @@ describe("resource browser presentation helpers", () => {
   });
 
   test("uses readable group labels for Argo-managed and unmanaged resources", () => {
-    expect(formatResourceGroupLabel({ ...baseResource, argoApp: "argocd" })).toBe("Owned by Argo CD: argocd");
-    expect(formatResourceGroupLabel({ ...baseResource, ownerRef: "api" })).toBe("Unmanaged resources");
-    expect(formatResourceGroupLabel(baseResource)).toBe("Unmanaged resources");
+    expect(gitOpsOwnershipGroupLabel({ ...baseResource, argoApp: "argocd" })).toBe("Owned by Argo CD: argocd (partial evidence)");
+    expect(gitOpsOwnershipGroupLabel({ ...baseResource, ownerRef: "api" })).toBe("No GitOps ownership evidence");
+    expect(gitOpsOwnershipGroupLabel({ ...baseResource, gitOpsOwnershipPartial: true })).toBe("No GitOps ownership evidence (partial coverage)");
+    expect(gitOpsOwnershipGroupLabel(baseResource)).toBe("No GitOps ownership evidence");
   });
 
-  test("returns sorted unique Argo apps", () => {
+  test("returns sorted unique Argo ownership filters", () => {
     expect(
-      uniqueArgoApps([
+      gitOpsOwnershipFilters([
         { ...baseResource, argoApp: "zeta" },
         { ...baseResource, argoApp: "alpha" },
         { ...baseResource, argoApp: "zeta" },
         baseResource,
-      ]),
-    ).toEqual(["alpha", "zeta"]);
+      ]).map((filter) => filter.label),
+    ).toEqual(["Owned by Argo CD: alpha (partial evidence)", "Owned by Argo CD: zeta (partial evidence)"]);
   });
 
   test("pluralizes type subgroup labels", () => {
@@ -298,8 +301,8 @@ describe("resource browser presentation helpers", () => {
   test("builds stable collapse keys for app and type groups", () => {
     const resource = { ...baseResource, kind: "ConfigMap", argoApp: "argocd" };
 
-    expect(resourceGroupCollapseKey(resource)).toBe("group:Owned by Argo CD: argocd");
-    expect(resourceTypeGroupCollapseKey(resource)).toBe("group:Owned by Argo CD: argocd::type:ConfigMaps");
+    expect(resourceGroupCollapseKey(resource)).toBe("group:Owned by Argo CD: argocd (partial evidence)");
+    expect(resourceTypeGroupCollapseKey(resource)).toBe("group:Owned by Argo CD: argocd (partial evidence)::type:ConfigMaps");
   });
 
   test("normalizes tooltip values for table display", () => {

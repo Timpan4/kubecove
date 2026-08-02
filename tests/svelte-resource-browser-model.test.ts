@@ -234,7 +234,7 @@ describe("svelte resource browser model", () => {
 		expect(model.healthSummary.restarted).toBe(1);
 		expect(model.groupedByGitOps).toBe(true);
 		expect(model.gitOpsFilters.map((filter) => filter.label)).toEqual([
-			"Owned by Argo CD: payments",
+			"Owned by Argo CD: payments (partial evidence)",
 		]);
 		expect(model.entries.some((entry) => entry.type === "group")).toBe(true);
 		expect(model.entries).toContainEqual(
@@ -326,12 +326,12 @@ describe("svelte resource browser model", () => {
 		expect(model.entries).toContainEqual(
 			expect.objectContaining({
 				type: "group",
-				label: "Owned by Argo CD: todo",
+				label: "Owned by Argo CD: todo (partial evidence)",
 				count: 6,
 			}),
 		);
 		expect(model.entries).not.toContainEqual(
-			expect.objectContaining({ type: "group", label: "Unmanaged resources" }),
+			expect.objectContaining({ type: "group", label: "No GitOps ownership evidence" }),
 		);
 		expect(
 			model.pageRows
