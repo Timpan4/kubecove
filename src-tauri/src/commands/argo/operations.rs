@@ -785,6 +785,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn operation_paths_encode_application_and_resource_identity() {
+        let application = ArgoApplicationRef {
+            name: "app/a?#".into(),
+            namespace: Some("app ns/&?#".into()),
+            project: Some("project/&?#".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            application_path(&application, "/sync", None),
+            "/api/v1/applications/app%2Fa%3F%23/sync?appNamespace=app+ns%2F%26%3F%23&project=project%2F%26%3F%23"
+        );
+        let path = resource_action_path(&ArgoOperationRequest {
+            application,
+            resources: vec![crate::models::ArgoManagedResource {
+                group: Some("apps/&?#".into()),
+                version: Some("v1/?.".into()),
+                kind: Some("Deployment/#".into()),
+                namespace: Some("ns/&?#".into()),
+                name: Some("resource/&?#".into()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        assert_eq!(
+            path,
+            "/api/v1/applications/app%2Fa%3F%23/resource/actions?appNamespace=app+ns%2F%26%3F%23&project=project%2F%26%3F%23&group=apps%2F%26%3F%23&version=v1%2F%3F.&kind=Deployment%2F%23&namespace=ns%2F%26%3F%23&resourceName=resource%2F%26%3F%23"
+        );
+    }
+
+    #[test]
     fn absent_optional_identity_fields_are_not_mismatches() {
         let mut expected = ArgoApplicationRef {
             name: "app".into(),

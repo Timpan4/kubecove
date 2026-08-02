@@ -46,58 +46,119 @@ fn credential_key(profile: &ArgoConnectionProfile) -> String {
         profile.workspace_id.clone().unwrap_or_default()
     )
 }
-fn load_credential(profile: &ArgoConnectionProfile) -> Result<Option<String>, AppError> {
-    let entry =
-        keyring::Entry::new("KubeCove Argo CD", &credential_key(profile)).map_err(|_| {
-            AppError::new(
-                "native credential storage unavailable",
-                "credentialUnavailable",
-            )
-        })?;
-    match entry.get_password() {
-        Ok(token) => Ok((!token.is_empty()).then_some(token)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(_) => Err(AppError::new(
-            "native credential storage unavailable",
-            "credentialUnavailable",
-        )),
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct StoredCredential {
+    token: String,
+    generation: String,
+}
+
+trait CredentialStore {
+    fn read(&self, key: &str) -> Result<Option<String>, ()>;
+    fn write(&self, key: &str, value: &str) -> Result<(), ()>;
+    fn delete(&self, key: &str) -> Result<(), ()>;
+}
+
+struct KeyringCredentialStore;
+impl CredentialStore for KeyringCredentialStore {
+    fn read(&self, key: &str) -> Result<Option<String>, ()> {
+        let entry = keyring::Entry::new("KubeCove Argo CD", key).map_err(|_| ())?;
+        match entry.get_password() {
+            Ok(value) => Ok(Some(value)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(_) => Err(()),
+        }
+    }
+    fn write(&self, key: &str, value: &str) -> Result<(), ()> {
+        keyring::Entry::new("KubeCove Argo CD", key)
+            .map_err(|_| ())?
+            .set_password(value)
+            .map_err(|_| ())
+    }
+    fn delete(&self, key: &str) -> Result<(), ()> {
+        let entry = keyring::Entry::new("KubeCove Argo CD", key).map_err(|_| ())?;
+        match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(_) => Err(()),
+        }
     }
 }
-fn save_credential(profile: &ArgoConnectionProfile, token: &str) -> Result<(), AppError> {
-    let entry =
-        keyring::Entry::new("KubeCove Argo CD", &credential_key(profile)).map_err(|_| {
-            AppError::new(
-                "native credential storage unavailable",
-                "credentialUnavailable",
-            )
-        })?;
-    entry.set_password(token).map_err(|_| {
+
+fn load_credential(
+    store: &dyn CredentialStore,
+    profile: &ArgoConnectionProfile,
+) -> Result<Option<StoredCredential>, AppError> {
+    let value = store.read(&credential_key(profile)).map_err(|_| {
+        AppError::new(
+            "native credential storage unavailable",
+            "credentialUnavailable",
+        )
+    })?;
+    let Some(value) = value else { return Ok(None) };
+    let record = match serde_json::from_str::<StoredCredential>(&value) {
+        Ok(record) => record,
+        Err(_) if !value.is_empty() => {
+            let record = StoredCredential {
+                token: value,
+                generation: Uuid::new_v4().to_string(),
+            };
+            save_credential(store, profile, &record.token, record.generation.clone())?;
+            record
+        }
+        Err(_) => return Ok(None),
+    };
+    Ok((!record.token.is_empty()).then_some(record))
+}
+
+fn save_credential(
+    store: &dyn CredentialStore,
+    profile: &ArgoConnectionProfile,
+    token: &str,
+    generation: String,
+) -> Result<(), AppError> {
+    let value = serde_json::to_string(&StoredCredential {
+        token: token.into(),
+        generation,
+    })
+    .map_err(|_| {
+        AppError::new(
+            "native credential storage unavailable",
+            "credentialUnavailable",
+        )
+    })?;
+    store.write(&credential_key(profile), &value).map_err(|_| {
         AppError::new(
             "native credential storage unavailable",
             "credentialUnavailable",
         )
     })
 }
-fn delete_credential(profile: &ArgoConnectionProfile) -> Result<(), AppError> {
-    let entry =
-        keyring::Entry::new("KubeCove Argo CD", &credential_key(profile)).map_err(|_| {
-            AppError::new(
-                "native credential storage unavailable",
-                "credentialUnavailable",
-            )
-        })?;
-    credential_deleted(entry.delete_credential())
-}
-fn credential_deleted(result: Result<(), keyring::Error>) -> Result<(), AppError> {
-    match result {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(_) => Err(AppError::new(
-            "native credential storage unavailable",
-            "credentialUnavailable",
-        )),
+
+fn connection_generation(
+    stored: Option<&StoredCredential>,
+    submitted_token: bool,
+    remember_credential: bool,
+    insecure_tls: bool,
+    custom_ca_pem: Option<&[u8]>,
+) -> String {
+    if !submitted_token && remember_credential && !insecure_tls && custom_ca_pem.is_none() {
+        if let Some(generation) = stored.map(|record| record.generation.clone()) {
+            return generation;
+        }
     }
+    Uuid::new_v4().to_string()
 }
 
+fn delete_credential(
+    store: &dyn CredentialStore,
+    profile: &ArgoConnectionProfile,
+) -> Result<(), AppError> {
+    store.delete(&credential_key(profile)).map_err(|_| {
+        AppError::new(
+            "native credential storage unavailable",
+            "credentialUnavailable",
+        )
+    })
+}
 #[tauri::command]
 pub async fn discover_argo_servers(
     cluster_context: String,
@@ -159,14 +220,16 @@ pub async fn connect_argo_server(
         transport: "connected".into(),
         remember_credential,
     };
-    let client = http_client(insecure_tls, custom_ca_pem)?;
+    let client = http_client(insecure_tls, custom_ca_pem.clone())?;
+    let credential_store = KeyringCredentialStore;
     let submitted_token = token.filter(|value| !value.is_empty());
-    let stored_token = if submitted_token.is_none() && remember_credential {
-        load_credential(&profile)?
+    let stored = if remember_credential {
+        load_credential(&credential_store, &profile)?
     } else {
         None
     };
-    let token = if let Some(token) = submitted_token.or(stored_token) {
+    let stored_token = stored.as_ref().map(|record| record.token.clone());
+    let token = if let Some(token) = submitted_token.clone().or(stored_token) {
         token
     } else {
         let user = username.ok_or_else(|| {
@@ -218,11 +281,18 @@ pub async fn connect_argo_server(
         .or_else(|| userinfo.get("sub"))
         .and_then(Value::as_str)
         .map(str::to_owned);
-    if remember_credential {
-        save_credential(&profile, &token)?;
-    } else {
+    let generation = connection_generation(
+        stored.as_ref(),
+        submitted_token.is_some(),
+        remember_credential,
+        insecure_tls,
+        custom_ca_pem.as_deref(),
+    );
+    if remember_credential && (submitted_token.is_some() || stored.is_none()) {
+        save_credential(&credential_store, &profile, &token, generation.clone())?;
+    } else if !remember_credential {
         // A stale remembered credential must not revive on a later reconnect.
-        delete_credential(&profile)?;
+        delete_credential(&credential_store, &profile)?;
     }
     store
         .connections
@@ -235,7 +305,7 @@ pub async fn connect_argo_server(
                 token,
                 username: user.clone(),
                 client,
-                generation: Uuid::new_v4().to_string(),
+                generation,
             },
         );
     Ok(ArgoConnectionStatus {
@@ -288,7 +358,7 @@ pub fn disconnect_argo_server(
 
 #[tauri::command]
 pub fn forget_argo_credential(profile: ArgoConnectionProfile) -> Result<(), AppError> {
-    delete_credential(&profile)
+    delete_credential(&KeyringCredentialStore, &profile)
 }
 
 pub(crate) fn text(object: &Value, field: &str) -> Option<String> {
@@ -531,6 +601,40 @@ async fn kubernetes_inspector(
     Ok(inspector)
 }
 
+pub(crate) fn connected_application_path(
+    base: &str,
+    name: &str,
+    namespace: Option<&str>,
+    project: Option<&str>,
+    managed_resources: bool,
+) -> Result<String, AppError> {
+    let mut base = canonical_url(base)?;
+    {
+        let mut segments = base
+            .path_segments_mut()
+            .map_err(|_| AppError::new("invalid Argo CD API path", "argoConnection"))?;
+        segments.extend(["api", "v1", "applications"]).push(name);
+        if managed_resources {
+            segments.push("managed-resources");
+        }
+    }
+    let mut query = base.query_pairs_mut();
+    if let Some(value) = namespace {
+        query.append_pair("appNamespace", value);
+    }
+    if let Some(value) = project {
+        query.append_pair("project", value);
+    }
+    drop(query);
+    Ok(format!(
+        "{}{}",
+        base.path(),
+        base.query()
+            .map(|value| format!("?{value}"))
+            .unwrap_or_default()
+    ))
+}
+
 async fn connected_inspector_read(
     store: &ArgoConnectionStore,
     cluster_context: &str,
@@ -547,20 +651,24 @@ async fn connected_inspector_read(
     let namespace = application.namespace.clone().unwrap_or_default();
     let response = api_get(
         &connection,
-        &format!(
-            "/api/v1/applications/{}?appNamespace={}&project={}",
-            application.name,
-            namespace,
-            application.project.clone().unwrap_or_default()
-        ),
+        &connected_application_path(
+            &connection.profile.url,
+            &application.name,
+            Some(&namespace),
+            application.project.as_deref(),
+            false,
+        )?,
     )
     .await?;
     let managed = api_get(
         &connection,
-        &format!(
-            "/api/v1/applications/{}/managed-resources?appNamespace={}",
-            application.name, namespace
-        ),
+        &connected_application_path(
+            &connection.profile.url,
+            &application.name,
+            Some(&namespace),
+            None,
+            true,
+        )?,
     )
     .await?;
     Ok(connected_inspector(application, response, managed))
@@ -694,9 +802,135 @@ mod tests {
         );
     }
 
+    #[derive(Default)]
+    struct MemoryCredentialStore(Mutex<HashMap<String, String>>);
+    impl CredentialStore for MemoryCredentialStore {
+        fn read(&self, key: &str) -> Result<Option<String>, ()> {
+            Ok(self.0.lock().unwrap().get(key).cloned())
+        }
+        fn write(&self, key: &str, value: &str) -> Result<(), ()> {
+            self.0.lock().unwrap().insert(key.into(), value.into());
+            Ok(())
+        }
+        fn delete(&self, key: &str) -> Result<(), ()> {
+            self.0.lock().unwrap().remove(key);
+            Ok(())
+        }
+    }
+
+    fn profile() -> ArgoConnectionProfile {
+        ArgoConnectionProfile {
+            id: "server".into(),
+            url: "https://argo.example/argo-cd".into(),
+            cluster_context: Some("cluster".into()),
+            workspace_id: Some("workspace".into()),
+            transport: "connected".into(),
+            remember_credential: true,
+        }
+    }
+
     #[test]
-    fn missing_credential_is_already_deleted() {
-        assert!(credential_deleted(Err(keyring::Error::NoEntry)).is_ok());
+    fn persisted_credential_generation_survives_restart_and_rotates_on_change() {
+        let store = MemoryCredentialStore::default();
+        let profile = profile();
+        let first = Uuid::new_v4().to_string();
+        save_credential(&store, &profile, "token-a", first.clone()).unwrap();
+        let restarted = load_credential(&store, &profile).unwrap().unwrap();
+        assert_eq!(restarted.token, "token-a");
+        assert_eq!(restarted.generation, first);
+        let rotated = Uuid::new_v4().to_string();
+        save_credential(&store, &profile, "token-b", rotated.clone()).unwrap();
+        assert_ne!(rotated, restarted.generation);
+    }
+
+    #[test]
+    fn legacy_raw_token_is_migrated() {
+        let store = MemoryCredentialStore::default();
+        let profile = profile();
+        store
+            .0
+            .lock()
+            .unwrap()
+            .insert(credential_key(&profile), "legacy-token".into());
+
+        let migrated = load_credential(&store, &profile).unwrap().unwrap();
+
+        assert_eq!(migrated.token, "legacy-token");
+        let stored = store.0.lock().unwrap()[&credential_key(&profile)].clone();
+        assert_eq!(
+            serde_json::from_str::<StoredCredential>(&stored)
+                .unwrap()
+                .token,
+            "legacy-token"
+        );
+    }
+
+    #[test]
+    fn generation_policy_is_ephemeral_for_submitted_or_tls_credentials() {
+        let stored = StoredCredential {
+            token: "token".into(),
+            generation: "saved-generation".into(),
+        };
+        assert_eq!(
+            connection_generation(Some(&stored), false, true, false, None),
+            "saved-generation"
+        );
+        assert_ne!(
+            connection_generation(Some(&stored), true, true, false, None),
+            "saved-generation"
+        );
+        assert_ne!(
+            connection_generation(Some(&stored), false, true, true, None),
+            "saved-generation"
+        );
+        assert_ne!(
+            connection_generation(Some(&stored), false, true, false, Some(b"ca")),
+            "saved-generation"
+        );
+    }
+
+    #[test]
+    fn serialized_credential_contains_no_tls_material() {
+        let value = serde_json::to_value(StoredCredential {
+            token: "token".into(),
+            generation: "generation".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({"token": "token", "generation": "generation"})
+        );
+    }
+
+    #[test]
+    fn connected_paths_encode_application_and_query_identity() {
+        let path = connected_application_path(
+            "https://argo.example/argo-cd",
+            "a/b?#",
+            Some("ns &/#?"),
+            Some("project&?#/"),
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            path,
+            "/argo-cd/api/v1/applications/a%2Fb%3F%23?appNamespace=ns+%26%2F%23%3F&project=project%26%3F%23%2F"
+        );
+    }
+
+    #[test]
+    fn connected_paths_preserve_base_path_for_managed_resources() {
+        assert_eq!(
+            connected_application_path(
+                "https://argo.example/argo-cd",
+                "demo",
+                Some("argocd"),
+                None,
+                true,
+            )
+            .unwrap(),
+            "/argo-cd/api/v1/applications/demo/managed-resources?appNamespace=argocd"
+        );
     }
 
     #[test]

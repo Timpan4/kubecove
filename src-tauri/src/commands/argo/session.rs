@@ -346,6 +346,8 @@ mod tests {
         let reviewed = peek(&store, &id, Some(10)).unwrap();
         *memory.fail_write.lock().unwrap() = true;
         assert!(consume(&store, &id, &reviewed).is_err());
+        assert!(peek(&store, &id, Some(10)).is_err());
+        assert!(memory.values.lock().unwrap().contains_key(&id));
     }
 
     #[test]
