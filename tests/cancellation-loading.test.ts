@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { shouldDropWarmupWatchEvent } from "../src/features/resources/helpers";
 import {
-	createCancellableRequest,
-	createCancelScope,
-} from "../src/lib/cancellable-loads";
-import {
 	beginForegroundLoad,
 	getForegroundLoadingSnapshot,
 	withForegroundLoad,
@@ -24,19 +20,6 @@ import type {
 } from "../src/lib/types";
 
 describe("cancellable resource loads", () => {
-	test("creates stable scope strings and unique request ids", () => {
-		const parts = ["kind-dev", ["default"], ["Pod"]];
-		const scope = createCancelScope("resources", parts);
-		const first = createCancellableRequest(scope, "resources");
-		const second = createCancellableRequest(scope, "resources");
-
-		expect(scope).toBe('resources:["kind-dev",["default"],["Pod"]]');
-		expect(first.cancelScope).toBe(scope);
-		expect(second.cancelScope).toBe(scope);
-		expect(first.requestId).not.toBe(second.requestId);
-		expect(first.requestId.startsWith("resources-")).toBe(true);
-	});
-
 	test("passes cancellable metadata through resource wrappers", async () => {
 		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
 		const metrics: ResourceMetricsSummary = {

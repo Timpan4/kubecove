@@ -18,7 +18,10 @@
 		formatExactTimeOnly,
 		formatExactTimestamp,
 	} from "@/components/timestamp-format";
-	import { createCancellableRequest } from "@/lib/cancellable-loads";
+	import {
+		createFiniteReadCleanup,
+		createFiniteReadRequest,
+	} from "@/lib/finite-read-lifecycle";
 	import { diagnosticLog, diagnosticResultSummary } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
 	import {
@@ -108,6 +111,9 @@
 	} = $props();
 
 	const queryClient = useQueryClient();
+	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
+		cancelBackendRequests(client, cancelScope),
+	);
 	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
 	const timestampTimezone = $derived($settingsStore.timestampTimezone);
 	function initialDetailSnapshot(): PathStateResourceDetailState | null {
@@ -184,7 +190,6 @@
 	const eventsQueryKey = $derived(readSpec.eventsQueryKey);
 	const detailsCancelScope = $derived(readSpec.detailsCancelScope);
 	const eventsCancelScope = $derived(readSpec.eventsCancelScope);
-	const pendingCancelTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	$effect(() => {
 		const key = resourceKey;
@@ -208,55 +213,29 @@
 		return result;
 	}
 
-	function cancelPendingBackendScope(cancelScope: string) {
-		const timer = pendingCancelTimers.get(cancelScope);
-		if (!timer) return;
-		clearTimeout(timer);
-		pendingCancelTimers.delete(cancelScope);
-	}
-
-	function scheduleBackendScopeCancel(
-		cancelScope: string,
-		queryKey: readonly unknown[],
-		event: string,
-	) {
-		cancelPendingBackendScope(cancelScope);
-		const timer = setTimeout(() => {
-			pendingCancelTimers.delete(cancelScope);
-			const query = queryClient.getQueryCache().find({ queryKey, exact: true });
-			if ((query?.getObserversCount() ?? 0) > 0) return;
-			void queryClient.cancelQueries({ queryKey, exact: true });
-			void cancelBackendRequests(client, cancelScope)
-				.then((result) => {
-					if (result.cancelled > 0) diagnosticLog(event, { cancelled: result.cancelled });
-				})
-				.catch((error: unknown) => {
-					diagnosticLog(`${event}.error`, {
-						error: error instanceof Error ? error.message : String(error),
-					});
-				});
-		}, 0);
-		pendingCancelTimers.set(cancelScope, timer);
-	}
-
 	$effect(() => {
 		const currentDetailsCancelScope = detailsCancelScope;
 		const currentDetailsQueryKey = detailsQueryKey;
 		const currentEventsCancelScope = eventsCancelScope;
 		const currentEventsQueryKey = eventsQueryKey;
-		cancelPendingBackendScope(currentDetailsCancelScope);
-		cancelPendingBackendScope(currentEventsCancelScope);
+		finiteReadCleanup.cancelPending(currentDetailsCancelScope);
+		finiteReadCleanup.cancelPending(currentEventsCancelScope);
 		return () => {
-			scheduleBackendScopeCancel(
-				currentDetailsCancelScope,
-				currentDetailsQueryKey,
-				"detail.details.cancel",
-			);
-			scheduleBackendScopeCancel(
-				currentEventsCancelScope,
-				currentEventsQueryKey,
-				"detail.events.cancel",
-			);
+			for (const [cancelScope, queryKey, event] of [
+				[currentDetailsCancelScope, currentDetailsQueryKey, "detail.details.cancel"],
+				[currentEventsCancelScope, currentEventsQueryKey, "detail.events.cancel"],
+			] as const) {
+				finiteReadCleanup.schedule(cancelScope, queryKey, {
+					onCancelled: (result) => {
+						if (result.cancelled > 0) diagnosticLog(event, { cancelled: result.cancelled });
+					},
+					onError: (error) => {
+						diagnosticLog(`${event}.error`, {
+							error: error instanceof Error ? error.message : String(error),
+						});
+					},
+				});
+			}
 		};
 	});
 
@@ -275,7 +254,7 @@
 							kubeconfigSourceKey,
 							yamlViewMode,
 							yamlEncoding,
-							createCancellableRequest(detailsCancelScope, "details"),
+							createFiniteReadRequest(detailsCancelScope, "details"),
 						)
 						: getResourceDetails(
 							client,
@@ -286,7 +265,7 @@
 							kubeconfigSourceKey,
 							yamlViewMode,
 							yamlEncoding,
-							createCancellableRequest(detailsCancelScope, "details"),
+							createFiniteReadRequest(detailsCancelScope, "details"),
 						),
 				);
 			} catch (error) {
@@ -312,7 +291,7 @@
 						resource.name,
 						resource.namespace ?? undefined,
 						kubeconfigSourceKey,
-						createCancellableRequest(eventsCancelScope, "events"),
+						createFiniteReadRequest(eventsCancelScope, "events"),
 					),
 				);
 			} catch (error) {

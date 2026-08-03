@@ -5,7 +5,11 @@
 		shouldFetchResourceDetails,
 	} from "@/features/resource-detail";
 	import type { HealthFilter } from "@/features/resources";
-	import { createCancellableRequest, createCancelScope } from "@/lib/cancellable-loads";
+	import {
+		createCancelScope,
+		createFiniteReadCleanup,
+		createFiniteReadRequest,
+	} from "@/lib/finite-read-lifecycle";
 	import { diagnosticLog } from "@/lib/diagnostics";
 	import type { PathStateDetailTab } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
@@ -64,6 +68,9 @@
 
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
+	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
+		cancelBackendRequests(client, cancelScope),
+	);
 	const settings = getSettingsSnapshot();
 	const yamlViewMode = settings.yamlViewModeDefault;
 	const yamlEncoding = settings.yamlEncodingDefault;
@@ -144,53 +151,27 @@
 	const topologyCancelScope = $derived(
 		createCancelScope("resource-topology", topologyQueryKey),
 	);
-	const pendingCancelTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-	function cancelPendingBackendScope(cancelScope: string) {
-		const timer = pendingCancelTimers.get(cancelScope);
-		if (!timer) return;
-		clearTimeout(timer);
-		pendingCancelTimers.delete(cancelScope);
-	}
-
-	function scheduleBackendScopeCancel(
-		cancelScope: string,
-		queryKey: readonly unknown[],
-		event: string,
-	) {
-		cancelPendingBackendScope(cancelScope);
-		const timer = setTimeout(() => {
-			pendingCancelTimers.delete(cancelScope);
-			const query = queryClient.getQueryCache().find({ queryKey, exact: true });
-			if ((query?.getObserversCount() ?? 0) > 0) return;
-			void queryClient.cancelQueries({ queryKey, exact: true });
-			void cancelBackendRequests(client, cancelScope).catch((error: unknown) => {
-				diagnosticLog(`${event}.error`, {
-					error: error instanceof Error ? error.message : String(error),
-				});
-			});
-		}, 0);
-		pendingCancelTimers.set(cancelScope, timer);
-	}
 
 	$effect(() => {
 		const currentDetailsCancelScope = detailsCancelScope;
 		const currentDetailsQueryKey = detailsQueryKey;
 		const currentTopologyCancelScope = topologyCancelScope;
 		const currentTopologyQueryKey = topologyQueryKey;
-		cancelPendingBackendScope(currentDetailsCancelScope);
-		cancelPendingBackendScope(currentTopologyCancelScope);
+		finiteReadCleanup.cancelPending(currentDetailsCancelScope);
+		finiteReadCleanup.cancelPending(currentTopologyCancelScope);
 		return () => {
-			scheduleBackendScopeCancel(
-				currentDetailsCancelScope,
-				currentDetailsQueryKey,
-				"incidents.details.cancel",
-			);
-			scheduleBackendScopeCancel(
-				currentTopologyCancelScope,
-				currentTopologyQueryKey,
-				"incidents.topology.cancel",
-			);
+			for (const [cancelScope, queryKey, event] of [
+				[currentDetailsCancelScope, currentDetailsQueryKey, "incidents.details.cancel"],
+				[currentTopologyCancelScope, currentTopologyQueryKey, "incidents.topology.cancel"],
+			] as const) {
+				finiteReadCleanup.schedule(cancelScope, queryKey, {
+					onError: (error) => {
+						diagnosticLog(`${event}.error`, {
+							error: error instanceof Error ? error.message : String(error),
+						});
+					},
+				});
+			}
 		};
 	});
 
@@ -210,7 +191,7 @@
 							kubeconfigSourceKey,
 							yamlViewMode,
 							yamlEncoding,
-							createCancellableRequest(detailsCancelScope, "details"),
+							createFiniteReadRequest(detailsCancelScope, "details"),
 						)
 					: await getResourceDetails(
 							client,
@@ -221,7 +202,7 @@
 							kubeconfigSourceKey,
 							yamlViewMode,
 							yamlEncoding,
-							createCancellableRequest(detailsCancelScope, "details"),
+							createFiniteReadRequest(detailsCancelScope, "details"),
 						);
 			} catch (error) {
 				if (isAppError(error) && error.kind === "cancelled") {
@@ -248,7 +229,7 @@
 					[resource.namespace],
 					"ownership",
 					kubeconfigSourceKey,
-					createCancellableRequest(topologyCancelScope, "topology"),
+					createFiniteReadRequest(topologyCancelScope, "topology"),
 				);
 			} catch (error) {
 				if (isAppError(error) && error.kind === "cancelled") {

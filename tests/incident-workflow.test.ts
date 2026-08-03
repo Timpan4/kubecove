@@ -1,16 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { ResourceEventSummary, ResourceSummary } from "../src/lib/types";
 import {
 	buildIncidentSignals,
 	type ConditionRow,
 	type ContainerStatusRow,
 } from "../src/features/resource-detail/helpers";
-import { buildIncidentTimeline } from "../src/features/resource-detail/incident-timeline";
 import { sortIncidentEvents } from "../src/features/resource-detail/incident-events";
+import { buildIncidentTimeline } from "../src/features/resource-detail/incident-timeline";
 import { parseLogLine } from "../src/features/resource-detail/log-helpers";
 import { buildResourceDetailReadSpec } from "../src/features/resource-detail/resourceDetailReadSpec";
 import { filterResourcesByHealth } from "../src/features/resources/helpers";
+import type { ResourceEventSummary, ResourceSummary } from "../src/lib/types";
 
 function resource(overrides: Partial<ResourceSummary> = {}): ResourceSummary {
 	return {
@@ -343,24 +343,6 @@ describe("incident workflow helpers", () => {
 		expect(source).toContain("datetime={container.lastFinishedAt}");
 		expect(source).toContain("formatFullTimestamp(container.lastFinishedAt)");
 		expect(source).not.toContain("Sampled {formatLogTime(detailResource.metrics.sampledAt)}");
-	});
-
-	test("Svelte resource detail cancels stale backend requests", () => {
-		const source = svelteDetailSource();
-
-		expect(source).toContain('createCancelScope("resource-details", detailsQueryKey)');
-		expect(source).toContain('createCancelScope("resource-yaml", yamlQueryKey)');
-		expect(source).toContain('createCancelScope("resource-events", eventsQueryKey)');
-		expect(source).toContain('createCancellableRequest(detailsCancelScope, "details")');
-		expect(source).toContain('createCancellableRequest(yamlCancelScope, "yaml")');
-		expect(source).toContain('createCancellableRequest(eventsCancelScope, "events")');
-		expect(source).toContain("cancelBackendRequests(client, cancelScope)");
-		expect(source).toContain("queryKeys.resourceDetails(");
-		expect(source).toContain("queryKeys.resourceYaml(");
-		expect(source).toContain("queryKeys.resourceEvents(");
-		expect(source).toContain('"detail.details.cancel"');
-		expect(source).toContain('"detail.yaml.cancel"');
-		expect(source).toContain('"detail.events.cancel"');
 	});
 
 	test("Svelte resource detail honors YAML defaults and exposes YAML mode controls", () => {

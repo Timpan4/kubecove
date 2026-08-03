@@ -1,5 +1,5 @@
 import { diagnosticLog } from "@/lib/diagnostics";
-import { createCancellableRequest } from "@/lib/cancellable-loads";
+import { createFiniteReadRequest } from "@/lib/finite-read-lifecycle";
 import { withForegroundLoad } from "@/lib/foreground-loading";
 import { createTauriClient, isAppError, listResourceScope } from "@/lib/tauri";
 import type {
@@ -8,9 +8,9 @@ import type {
 	ResourceSummary,
 } from "@/lib/types";
 import {
+	type FetchKey,
 	isDiscoveredResourceKind,
 	resourceKindLabel,
-	type FetchKey,
 } from "./helpers";
 
 function fetchKeyRequest({ kind, namespace }: FetchKey): ResourceListRequest {
@@ -29,7 +29,7 @@ export async function fetchResourcePage(
 ): Promise<ResourceSummary[]> {
 	const started = performance.now();
 	const cancellable: CancellableRequest | undefined = cancelScope
-		? createCancellableRequest(cancelScope, "resources")
+		? createFiniteReadRequest(cancelScope, "resources")
 		: undefined;
 	diagnosticLog("resources.fetch.start", {
 		cluster: clusterContext,

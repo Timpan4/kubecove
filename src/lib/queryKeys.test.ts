@@ -1,5 +1,4 @@
-import { isFiniteKubernetesQuery, queryKeys } from "./queryKeys";
-import type { ResourceSummary } from "./types";
+import { queryKeys } from "./queryKeys";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
@@ -8,17 +7,8 @@ declare function expect<T>(actual: T): {
 	toEqual(expected: unknown): void;
 };
 
-const resource: ResourceSummary = {
-	kind: "Pod",
-	cluster: "kind-dev",
-	name: "api",
-	namespace: "default",
-	age: "1m",
-	health: "healthy",
-};
-
-describe("finite Kubernetes query classification", () => {
-	test("includes workspace Kubernetes reads", () => {
+describe("query key identity", () => {
+	test("keeps workspace and Application identity in Argo keys", () => {
 		const argoWorkspaceScope = queryKeys.argoWorkspaceApplication(
 			"kind-dev",
 			"workspace-1",
@@ -37,30 +27,8 @@ describe("finite Kubernetes query classification", () => {
 			true,
 			"KUBECONFIG",
 		);
-		const keys = [
-			queryKeys.namespaces("kind-dev"),
-			queryKeys.resourceKinds("kind-dev"),
-			queryKeys.resources("kind-dev", [{ kind: "Pod" }]),
-			queryKeys.resourceDetails(resource),
-			queryKeys.argoApps("kind-dev"),
-			queryKeys.argoWorkspaceInspector(
-				"kind-dev",
-				"workspace-1",
-				"guestbook",
-				"argocd",
-				"uid-1",
-				true,
-				"kubernetes",
-				undefined,
-				"KUBECONFIG",
-			),
-			queryKeys.fluxDetect("kind-dev"),
-			queryKeys.helmReleases("kind-dev"),
-			queryKeys.rbacInspection("kind-dev", ["default"]),
-		];
 
 		expect(JSON.stringify(argoWorkspaceScope) === JSON.stringify(recreatedArgoWorkspaceScope)).toBe(false);
-		expect(keys.every(isFiniteKubernetesQuery)).toBe(true);
 		expect(
 			queryKeys.argoWorkspaceManagedResources(
 				"kind-dev",
@@ -91,18 +59,5 @@ describe("finite Kubernetes query classification", () => {
 				"KUBECONFIG",
 			).slice(0, argoWorkspaceScope.length),
 		).toEqual(argoWorkspaceScope);
-	});
-
-	test("excludes live sessions and local app queries", () => {
-		const keys = [
-			queryKeys.portForwards(),
-			queryKeys.podExecSessions(),
-			queryKeys.appUsageMetrics(),
-			queryKeys.backendDiagnostics(),
-			queryKeys.kubeContexts(),
-			["kubeconfig-sources"],
-		];
-
-		expect(keys.some(isFiniteKubernetesQuery)).toBe(false);
 	});
 });

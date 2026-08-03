@@ -1,13 +1,13 @@
-import { cancellableArg } from "./cancellable-loads";
+import { cancellableArg } from "./finite-read-lifecycle";
 import { kubeconfigArg, type TauriClient } from "./tauri";
 import type {
 	ArgoApplicationDetails,
-	CancellableRequest,
 	ArgoApplicationSetDetails,
 	ArgoApplicationSetSummary,
 	ArgoApplicationSummary,
 	ArgoAppProjectDetails,
 	ArgoAppProjectSummary,
+	CancellableRequest,
 	FluxDetectionSummary,
 	FluxResourceDetails,
 	FluxResourceKind,

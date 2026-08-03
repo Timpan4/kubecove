@@ -30,7 +30,7 @@
 	} from "@/lib/path-state";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import { workspaceScopeContexts, type CreateWorkspaceInput } from "@/lib/workspace-model";
-	import { isFiniteKubernetesQuery } from "@/lib/queryKeys";
+	import { isFiniteReadQuery } from "@/lib/finite-read-lifecycle";
 	import {
 		cancelWorkspaceWork,
 		createWorkspaceTransitionCoordinator,
@@ -64,9 +64,7 @@
 		cancel: () =>
 			cancelWorkspaceWork(
 				() =>
-					queryClient.cancelQueries({
-						predicate: (query) => isFiniteKubernetesQuery(query.queryKey),
-					}),
+					queryClient.cancelQueries({ predicate: isFiniteReadQuery }),
 				() => cancelWorkspaceRequests(workspaceTransitionClient),
 			),
 		apply: (destination) => {

@@ -10,6 +10,7 @@
 		listPresentCustomResourceKinds,
 		listResourceKinds,
 	} from "@/lib/tauri";
+	import { finiteReadMeta } from "@/lib/finite-read-lifecycle";
 	import { queryKeys } from "@/lib/queryKeys";
 	import type {
 		DiscoveredResourceKind,
@@ -105,7 +106,7 @@
 			enabled: showCustomResources && Boolean(clusterContext) && sourceReady,
 			staleTime: 30_000,
 			retry: false,
-			meta: { namespace },
+			meta: finiteReadMeta({ namespace }),
 		})),
 	}));
 	const customResourcesByNamespace = $derived.by(() => {
