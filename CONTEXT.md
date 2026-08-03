@@ -41,7 +41,7 @@ _Avoid_ treating it as an Argo CD CLI session, as eligible outside its workspace
 **Argo inspection preference** means a workspace's persisted choice of automatic transport selection, Kubernetes transport, or one Connected Argo CD profile. Automatic selection uses the first healthy exact-workspace profile in saved order.
 _Avoid_ treating connection response order or a profile from another workspace as user intent.
 
-**Argo inspection fallback** means visibly replacing a failed Connected Argo CD inspection with one complete Kubernetes transport result while preserving the Connected failure and result provenance.
+**Argo inspection fallback** means, when Kubernetes inspection succeeds, visibly replacing a failed Connected Argo CD inspection with one complete Kubernetes transport result while preserving the Connected failure and result provenance. If both transports fail, the result preserves both safe failure classifications.
 _Avoid_ mixing data from both transports, hiding the fallback, or using it during operation execution.
 
 **Argo operation review** means a short-lived, single-use review that binds one exact Application action and one visible transport before confirmation. A supported Kubernetes transport may be chosen before review, but execution never changes the reviewed transport.
