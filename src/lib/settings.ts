@@ -1,5 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import {
+	type ArgoConnectionPreference,
+	normalizeArgoConnectionPreference,
+} from "./argo-connection-policy";
 import type {
 	KubeconfigSourcesSummary,
 	YamlEncoding,
@@ -28,6 +32,7 @@ export interface SettingsState {
 	showUnavailableGitOpsProviders: boolean;
 	redactSecrets: boolean;
 	argoProfiles: SavedArgoProfile[];
+	argoConnectionPreferences: Record<string, ArgoConnectionPreference>;
 	gitOpsViewMode: GitOpsViewMode;
 	helmViewMode: HelmViewMode;
 	showCustomResources: boolean;
@@ -51,6 +56,7 @@ export interface SettingsState {
 	setShowUnavailableGitOpsProviders: (show: boolean) => void;
 	setRedactSecrets: (redact: boolean) => void;
 	setArgoProfiles: (profiles: SavedArgoProfile[]) => void;
+	setArgoConnectionPreference: (workspaceId: string, preference: ArgoConnectionPreference) => void;
 	setGitOpsViewMode: (mode: GitOpsViewMode) => void;
 	setHelmViewMode: (mode: HelmViewMode) => void;
 	setShowCustomResources: (show: boolean) => void;
@@ -112,6 +118,10 @@ export function mergePersistedSettings(persisted: unknown, current: SettingsStat
 					return [{ ...profile, rememberCredential: Boolean(profile.rememberCredential) }];
 				})
 			: current.argoProfiles,
+		argoConnectionPreferences: normalizeArgoConnectionPreferences(
+			saved.argoConnectionPreferences,
+			current.argoConnectionPreferences,
+		),
 		gitOpsViewMode: normalizeGitOpsViewMode(saved.gitOpsViewMode),
 		helmViewMode: normalizeHelmViewMode(saved.helmViewMode),
 		showCustomResources: saved.showCustomResources ?? current.showCustomResources,
@@ -129,6 +139,18 @@ export function mergePersistedSettings(persisted: unknown, current: SettingsStat
 			: current.yamlDiffStyle,
 		yamlErrorLensEnabled: saved.yamlErrorLensEnabled ?? current.yamlErrorLensEnabled,
 	};
+}
+
+function normalizeArgoConnectionPreferences(
+	value: unknown,
+	fallback: Record<string, ArgoConnectionPreference>,
+): Record<string, ArgoConnectionPreference> {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return fallback;
+	return Object.fromEntries(
+		Object.entries(value).flatMap(([workspaceId, preference]) =>
+			workspaceId.trim() ? [[workspaceId, normalizeArgoConnectionPreference(preference)]] : [],
+		),
+	);
 }
 
 function isSavedArgoProfile(value: unknown): value is SavedArgoProfile {
@@ -152,6 +174,7 @@ export function partializeSettings(state: SettingsState): Partial<SettingsState>
 		showUnavailableGitOpsProviders: state.showUnavailableGitOpsProviders,
 		redactSecrets: state.redactSecrets,
 		argoProfiles: state.argoProfiles,
+		argoConnectionPreferences: state.argoConnectionPreferences,
 		gitOpsViewMode: state.gitOpsViewMode,
 		helmViewMode: state.helmViewMode,
 		showCustomResources: state.showCustomResources,
@@ -177,6 +200,7 @@ export const useSettingsState = create<SettingsState>()(
 			showUnavailableGitOpsProviders: false,
 			redactSecrets: true,
 			argoProfiles: [],
+			argoConnectionPreferences: {},
 			gitOpsViewMode: "cards",
 			helmViewMode: "cards",
 			showCustomResources: true,
@@ -204,6 +228,13 @@ export const useSettingsState = create<SettingsState>()(
 				set({ showUnavailableGitOpsProviders: show }),
 			setRedactSecrets: (redactSecrets: boolean) => set({ redactSecrets }),
 			setArgoProfiles: (argoProfiles: SavedArgoProfile[]) => set({ argoProfiles }),
+			setArgoConnectionPreference: (workspaceId, preference) =>
+				set((state) => ({
+					argoConnectionPreferences: {
+						...state.argoConnectionPreferences,
+						[workspaceId]: normalizeArgoConnectionPreference(preference),
+					},
+				})),
 			setGitOpsViewMode: (gitOpsViewMode: GitOpsViewMode) => set({ gitOpsViewMode }),
 			setHelmViewMode: (helmViewMode: HelmViewMode) => set({ helmViewMode }),
 			setShowCustomResources: (show: boolean) => set({ showCustomResources: show }),
