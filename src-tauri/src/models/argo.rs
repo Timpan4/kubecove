@@ -195,14 +195,33 @@ pub struct ArgoResourceComparison {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+pub struct ArgoInspectionFailure {
+    pub kind: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ArgoConnectedFallback {
+    pub transport: String,
+    pub failure: ArgoInspectionFailure,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ArgoApplicationInspector {
     pub application: ArgoApplicationRef,
     pub status: Option<Value>,
     pub history: Vec<ArgoApplicationHistory>,
     pub resources: Vec<ArgoManagedResource>,
+    pub comparisons: Vec<ArgoResourceComparison>,
     pub conditions: Vec<Value>,
     pub operation_state: Option<Value>,
     pub connected: bool,
+    pub transport: String,
+    pub provenance: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connected_fallback: Option<ArgoConnectedFallback>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

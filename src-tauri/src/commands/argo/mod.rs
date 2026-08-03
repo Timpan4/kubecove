@@ -15,8 +15,7 @@ pub use appsets::{get_argocd_appset_details, list_argocd_appsets};
 pub use comparison::get_argo_resource_comparison;
 pub use connected::{
     connect_argo_server, disconnect_argo_server, discover_argo_servers, forget_argo_credential,
-    get_argo_application_inspector, get_argo_application_resources, get_argo_connection_status,
-    ArgoConnectionStore,
+    get_argo_application_inspector, get_argo_connection_status, ArgoConnectionStore,
 };
 pub use operations::{preflight_argo_operation, run_argo_operation};
 

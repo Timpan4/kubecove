@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { yamlLanguage } from "@codemirror/lang-yaml";
 	import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
-	import { createQueries, createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import {
 		ChevronDown,
 		CircleDot,
@@ -50,6 +50,11 @@
 		diffLineClassName,
 		type UnifiedDiffLine,
 	} from "@/features/resource-detail/yamlTabDiff";
+	import {
+		createCancelScope,
+		createFiniteReadCleanup,
+		createFiniteReadRequest,
+	} from "@/lib/finite-read-lifecycle";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { settingsStore } from "@/lib/settings-store";
 	import {
@@ -59,9 +64,9 @@
 		resolveArgoConnectionPolicy,
 	} from "@/lib/argo-connection-policy";
 	import {
+		cancelBackendRequests,
 		createTauriClient,
 		getArgoApplicationInspector,
-		getArgoApplicationResources,
 		getArgoConnectionStatus,
 		getArgoResourceComparison,
 		preflightArgoOperation,
@@ -86,6 +91,7 @@
 	import {
 		applyArgoSyncDefaults,
 		argoComparisonDocument,
+		argoComparisonForResource,
 		argoHistoryKey,
 		argoReconciliationResources,
 		argoResourceCounts,
@@ -118,6 +124,9 @@
 
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
+	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
+		cancelBackendRequests(client, cancelScope),
+	);
 	const diffViewOptions: { value: DiffView; label: string }[] = [
 		{ value: "changes", label: "Changes" },
 		{ value: "target", label: "Desired" },
@@ -166,7 +175,6 @@
 		),
 	);
 	let selectedResource = $state<ArgoManagedResource | null>(null);
-	let comparisonSlots = $state.raw<(ArgoManagedResource | null)[]>([]);
 	let selectedHistoryKey = $state<string | null>(null);
 	let diffView = $state<DiffView>("changes");
 	let expandedRemovalKeys = $state<string[]>([]);
@@ -232,40 +240,30 @@
 		application: applicationRequest,
 		redactSecrets,
 	});
+	const inspectorQueryKey = $derived(
+		queryKeys.argoWorkspaceInspector(
+			clusterContext,
+			workspaceId,
+			resourceSummary.name,
+			resourceSummary.namespace,
+			applicationRequest.uid,
+			redactSecrets,
+			transport,
+			connectionId,
+			kubeconfigEnvVar,
+		),
+	);
+	const inspectorCancelScope = $derived(
+		createCancelScope("argo-application-inspection", inspectorQueryKey),
+	);
 	const inspector = createQuery(() => ({
-		queryKey: queryKeys.argoWorkspaceInspector(
-			clusterContext,
-			workspaceId,
-			resourceSummary.name,
-			resourceSummary.namespace,
-			applicationRequest.uid,
-			redactSecrets,
-			transport,
-			connectionId,
-			kubeconfigEnvVar,
-		),
-		queryFn: () => getArgoApplicationInspector(client, request),
-		enabled:
-			active &&
-			workspaceReadContext.sourceReady &&
-			connectionReady,
-		staleTime: 30_000,
-		retry: false,
-		gcTime: redactSecrets ? undefined : 0,
-	}));
-	const resources = createQuery(() => ({
-		queryKey: queryKeys.argoWorkspaceManagedResources(
-			clusterContext,
-			workspaceId,
-			resourceSummary.name,
-			resourceSummary.namespace,
-			applicationRequest.uid,
-			redactSecrets,
-			transport,
-			connectionId,
-			kubeconfigEnvVar,
-		),
-		queryFn: () => getArgoApplicationResources(client, request),
+		queryKey: inspectorQueryKey,
+		queryFn: () =>
+			getArgoApplicationInspector(
+				client,
+				request,
+				createFiniteReadRequest(inspectorCancelScope, "argo-inspection"),
+			),
 		enabled:
 			active &&
 			workspaceReadContext.sourceReady &&
@@ -280,42 +278,70 @@
 		context: clusterContext,
 		workspaceId,
 	});
-	const managedResources = $derived(resources.data ?? inspector.data?.resources ?? []);
+	const managedResources = $derived(inspector.data?.resources ?? []);
 	const reconciliationResources = $derived(argoReconciliationResources(managedResources));
-	const comparableResources = $derived(
-		reconciliationResources.filter((item) => argoResourceIdentityKey(item) !== null),
+	const selectedResourceKey = $derived(
+		selectedResource ? argoResourceIdentityKey(selectedResource) : null,
 	);
-	const comparisonQueries = createQueries(() => ({
-		queries: comparisonSlots.map((item, index) => ({
-			queryKey: queryKeys.argoWorkspaceComparison(
-				clusterContext,
-				workspaceId,
-				resourceSummary.name,
-				resourceSummary.namespace,
-				applicationRequest.uid,
-				redactSecrets,
-				transport,
-				connectionId,
-				item?.group,
-				item?.kind ?? "Disabled",
-				item?.namespace,
-				item?.name ?? `slot-${index}`,
-				kubeconfigEnvVar,
-			),
-			queryFn: () => {
-				if (!item) throw new Error("Comparison slot is disabled");
-				return getArgoResourceComparison(client, { ...request, resource: item });
-			},
-			enabled:
-				Boolean(item) &&
-				active &&
-				workspaceReadContext.sourceReady &&
-				connectionReady,
-			staleTime: 30_000,
-			retry: false,
-			gcTime: redactSecrets ? undefined : 0,
-		})),
+	const lazyComparisonEnabled = $derived(
+		Boolean(selectedResourceKey) &&
+			active &&
+			workspaceReadContext.sourceReady &&
+			connectionReady &&
+			transport === "connected" &&
+			inspector.data?.transport === "connected",
+	);
+	const selectedComparisonQueryKey = $derived(
+		queryKeys.argoWorkspaceSelectedResource(
+			clusterContext,
+			workspaceId,
+			resourceSummary.name,
+			resourceSummary.namespace,
+			applicationRequest.uid,
+			redactSecrets,
+			transport,
+			connectionId,
+			selectedResource?.group,
+			selectedResource?.kind,
+			selectedResource?.namespace,
+			selectedResource?.name,
+			kubeconfigEnvVar,
+		),
+	);
+	const selectedComparisonCancelScope = $derived(
+		createCancelScope("argo-resource-actions", selectedComparisonQueryKey),
+	);
+	const selectedComparison = createQuery(() => ({
+		queryKey: selectedComparisonQueryKey,
+		queryFn: () => {
+			if (!selectedResource) throw new Error("No selected resource");
+			return getArgoResourceComparison(
+				client,
+				{ ...request, resource: selectedResource },
+				createFiniteReadRequest(
+					selectedComparisonCancelScope,
+					"argo-resource-actions",
+				),
+			);
+		},
+		enabled: lazyComparisonEnabled,
+		staleTime: 30_000,
+		retry: false,
+		gcTime: redactSecrets ? undefined : 0,
 	}));
+
+	$effect(() => {
+		const reads = [
+			[inspectorCancelScope, inspectorQueryKey],
+			[selectedComparisonCancelScope, selectedComparisonQueryKey],
+		] as const;
+		for (const [cancelScope] of reads) finiteReadCleanup.cancelPending(cancelScope);
+		return () => {
+			for (const [cancelScope, queryKey] of reads) {
+				finiteReadCleanup.schedule(cancelScope, queryKey);
+			}
+		};
+	});
 
 	const scopeKey = $derived(
 		[
@@ -410,10 +436,8 @@
 				booleanAt(applicationSpec, "syncPolicy", "automated", "selfHeal") ? "self-heal" : null,
 			].filter(Boolean).join(" · "),
 	);
-	const loading = $derived(inspector.isPending || resources.isPending);
-	const dataError = $derived(
-		inspector.isError ? inspector.error : resources.isError ? resources.error : null,
-	);
+	const loading = $derived(inspector.isPending);
+	const dataError = $derived(inspector.isError ? inspector.error : null);
 	const busy = $derived(
 		operationPhase === "authorizing" || operationPhase === "submitting" || operationPhase === "refreshing",
 	);
@@ -424,15 +448,6 @@
 			(transport === "kubernetes" || selectedStatus?.connected === true),
 	);
 
-	$effect(() => {
-		const next = comparableResources;
-		const slotCount = Math.max(comparisonSlots.length, next.length);
-		const padded = Array.from({ length: slotCount }, (_, index) => next[index] ?? null);
-		if (padded.some((item, index) => item !== comparisonSlots[index])) {
-			// TanStack's Svelte adapter cannot safely shrink createQueries results; keep surplus observers disabled.
-			comparisonSlots = padded;
-		}
-	});
 	$effect(() => {
 		const nextScopeKey = scopeKey;
 		if (appliedScopeKey && appliedScopeKey !== nextScopeKey) {
@@ -626,17 +641,20 @@
 		return selectedKey !== null && selectedKey === argoResourceIdentityKey(item);
 	}
 
-	function comparisonQuery(item: ArgoManagedResource) {
-		const key = argoResourceIdentityKey(item);
-		if (!key) return null;
-		const index = comparisonSlots.findIndex(
-			(slot) => slot !== null && argoResourceIdentityKey(slot) === key,
-		);
-		return index < 0 ? null : comparisonQueries[index];
-	}
-
 	function comparisonFor(item: ArgoManagedResource): ArgoResourceComparison | null {
-		return (comparisonQuery(item)?.data as ArgoResourceComparison | undefined) ?? null;
+		const eager = argoComparisonForResource(
+			inspector.data?.comparisons ?? [],
+			item,
+		);
+		if (
+			inspector.data?.transport === "connected" &&
+			selectedResourceKey === argoResourceIdentityKey(item) &&
+			selectedComparison.data &&
+			argoResourceIdentityKey(selectedComparison.data.resource) === selectedResourceKey
+		) {
+			return selectedComparison.data;
+		}
+		return eager;
 	}
 
 	function removalExpanded(item: ArgoManagedResource): boolean {
@@ -753,7 +771,13 @@
 				<div class="min-w-0">
 					<div class="flex min-w-0 flex-wrap items-center gap-1.5">
 						<h2 class="max-w-full truncate font-heading text-sm font-semibold">{resourceSummary.name}</h2>
-						<Badge variant="ghost"><CircleDot class="size-2.5 text-primary" /> {inspector.data?.connected ? "Argo CD API" : "Application CRD"}</Badge>
+						<Badge variant="ghost">
+							<CircleDot class="size-2.5 text-primary" />
+							{inspector.data?.transport === "connected"
+								? "Connected Argo CD API"
+								: "Kubernetes Application status"}
+							{#if inspector.data?.provenance} · {inspector.data.provenance}{/if}
+						</Badge>
 					</div>
 					<div class="mt-2 flex flex-wrap items-center gap-2">
 						<div class="font-heading text-2xl font-semibold tracking-tight">{healthStatus}</div>
@@ -808,6 +832,17 @@
 		</div>
 	</section>
 
+	{#if inspector.data?.connectedFallback}
+		<Alert>
+			<AlertTitle>Connected inspection unavailable</AlertTitle>
+			<AlertDescription>
+				Complete Kubernetes result shown. Connected
+				{inspector.data.connectedFallback.failure.kind}:
+				{inspector.data.connectedFallback.failure.message}.
+			</AlertDescription>
+		</Alert>
+	{/if}
+
 	<div class="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border bg-surface-1 p-3">
 		<Select value={preferenceValue} onValueChange={setConnectionPreference}>
 			<SelectTrigger class="w-72 max-w-full" ariaLabel="Argo CD inspection preference">
@@ -854,7 +889,7 @@
 	{#if dataError}
 		<Alert variant="destructive">
 			<AlertTitle>Argo Application data unavailable</AlertTitle>
-			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{dataError instanceof Error ? dataError.message : String(dataError)}</span><Button type="button" size="sm" variant="outline" onclick={() => void Promise.all([inspector.refetch(), resources.refetch()])}>Retry</Button></AlertDescription>
+			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{dataError instanceof Error ? dataError.message : String(dataError)}</span><Button type="button" size="sm" variant="outline" onclick={() => void inspector.refetch()}>Retry</Button></AlertDescription>
 		</Alert>
 	{/if}
 
@@ -916,7 +951,6 @@
 				<Empty><EmptyHeader><EmptyTitle>Change stream unavailable</EmptyTitle><EmptyDescription>Retry Application data before evaluating reconciliation state.</EmptyDescription></EmptyHeader></Empty>
 			{:else}
 				{#each diffResources as item (argoResourceIdentityKey(item) ?? resourceLabel(item))}
-				{@const query = comparisonQuery(item)}
 				{@const comparison = comparisonFor(item)}
 				{@const documents = argoComparisonDocument(item, comparison)}
 				{@const removal = item.requiresPruning === true}
@@ -930,11 +964,7 @@
 					{#if removal}
 						<div class="bg-destructive/10 p-3 font-sans text-xs leading-relaxed"><div class="font-medium text-destructive">Live-only resource</div><div class="mt-1 text-muted-foreground">This resource is no longer present in desired revision. Sync with prune removes live object. Live YAML stays collapsed until Show diff is selected.</div></div>
 					{/if}
-					{#if query?.isError}
-						<div class="flex flex-wrap items-center justify-between gap-2 border-t p-3 text-xs text-destructive"><span>{query.error instanceof Error ? query.error.message : String(query.error)}</span><Button type="button" size="xs" variant="outline" onclick={() => void query?.refetch()}>Retry comparison</Button></div>
-					{:else if query?.isPending}
-						<div class="flex items-center gap-2 border-t p-3 text-xs text-muted-foreground"><Spinner /> Loading comparison</div>
-					{:else if removal && diffView !== "target" && !removalExpanded(item)}
+					{#if removal && diffView !== "target" && !removalExpanded(item)}
 						<span class="sr-only">Live YAML collapsed.</span>
 					{:else if diffView === "target" && removal}
 						<div class="border-t p-3 font-sans text-xs leading-relaxed"><div class="font-medium">No desired manifest</div><div class="mt-1 text-muted-foreground">Selected revision no longer contains this resource.</div></div>

@@ -29,7 +29,6 @@ describe("Argo Application Briefing contract", () => {
 	test("uses production data and operation contracts without prototype simulation", () => {
 		for (const contract of [
 			"getArgoApplicationInspector",
-			"getArgoApplicationResources",
 			"getArgoResourceComparison",
 			"preflightArgoOperation",
 			"runArgoOperationLifecycle",
@@ -56,12 +55,6 @@ describe("Argo Application Briefing contract", () => {
 		expect(detailsSource).toContain("ArgoOperationRefreshError");
 		expect(detailsSource).toContain("Retry state refresh");
 		expect(detailsSource).toContain("acceptedRefreshPending");
-	});
-
-	test("matches comparisons and navigator selection by valid identity", () => {
-		expect(detailsSource).toContain("comparisonSlots.findIndex");
-		expect(detailsSource).toContain("resourceSelected(item)");
-		expect(detailsSource).not.toContain("comparableResources.findIndex");
 	});
 
 	test("keeps removal explanation, read-only YAML, and accessible progress", () => {

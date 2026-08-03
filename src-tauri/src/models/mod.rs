@@ -21,8 +21,9 @@ pub use argo::{
     ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails, ArgoApplicationHistory,
     ArgoApplicationInspector, ArgoApplicationRef, ArgoApplicationSetDetails,
     ArgoApplicationSetSummary, ArgoApplicationSourceSummary, ArgoApplicationSummary,
-    ArgoConnectionProfile, ArgoConnectionStatus, ArgoManagedResource, ArgoOperationPreflight,
-    ArgoOperationRequest, ArgoOperationResult, ArgoResourceComparison, ArgoServerCapability,
+    ArgoConnectedFallback, ArgoConnectionProfile, ArgoConnectionStatus, ArgoInspectionFailure,
+    ArgoManagedResource, ArgoOperationPreflight, ArgoOperationRequest, ArgoOperationResult,
+    ArgoResourceComparison, ArgoServerCapability,
 };
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;

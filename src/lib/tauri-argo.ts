@@ -1,3 +1,4 @@
+import { cancellableArg } from "./finite-read-lifecycle";
 import { kubeconfigArg } from "./tauri-args";
 import type { TauriClient } from "./tauri-runtime";
 import type {
@@ -11,6 +12,7 @@ import type {
 	ArgoOperationResult,
 	ArgoResourceComparison,
 	ArgoServerCapability,
+	CancellableRequest,
 } from "./types";
 
 export async function discoverArgoServers(
@@ -70,22 +72,12 @@ export function getArgoApplicationInspector(
 		application: ArgoApplicationRef;
 		redactSecrets?: boolean;
 	},
+	cancellable?: CancellableRequest,
 ): Promise<ArgoApplicationInspector> {
-	return client.invoke<ArgoApplicationInspector>("get_argo_application_inspector", request);
-}
-
-export function getArgoApplicationResources(
-	client: TauriClient,
-	request: {
-		clusterContext: string;
-		kubeconfigEnvVar?: string;
-		connectionId?: string;
-		transport: "connected" | "kubernetes";
-		application: ArgoApplicationRef;
-		redactSecrets?: boolean;
-	},
-): Promise<ArgoManagedResource[]> {
-	return client.invoke<ArgoManagedResource[]>("get_argo_application_resources", request);
+	return client.invoke<ArgoApplicationInspector>("get_argo_application_inspector", {
+		...request,
+		...cancellableArg(cancellable),
+	});
 }
 
 export function getArgoResourceComparison(
@@ -99,8 +91,12 @@ export function getArgoResourceComparison(
 		resource: ArgoManagedResource;
 		redactSecrets?: boolean;
 	},
+	cancellable?: CancellableRequest,
 ): Promise<ArgoResourceComparison> {
-	return client.invoke<ArgoResourceComparison>("get_argo_resource_comparison", request);
+	return client.invoke<ArgoResourceComparison>("get_argo_resource_comparison", {
+		...request,
+		...cancellableArg(cancellable),
+	});
 }
 
 export function preflightArgoOperation(

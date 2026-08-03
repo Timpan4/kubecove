@@ -8,8 +8,8 @@ import {
 	createMockChannel,
 	createMockTauriClient,
 	deleteResource,
-	disconnectArgoServer,
 	detectFlux,
+	disconnectArgoServer,
 	getAppUsageMetrics,
 	getArgoConnectionStatus,
 	getBackendDiagnostics,
@@ -19,7 +19,6 @@ import {
 	getHelmReleaseReconciliation,
 	getKubeconfigSources,
 	getResourceYaml,
-	revealSecretDataValue,
 	isAppError,
 	isTauriRuntime,
 	listArgoApplicationSets,
@@ -34,7 +33,6 @@ import {
 	listPortForwards,
 	listPresentCustomResourceKinds,
 	listRbacInspection,
-	reviewRbacAccess,
 	listResourceMetrics,
 	listResourceScope,
 	listResourceTopology,
@@ -44,6 +42,8 @@ import {
 	removeKubeconfigPath,
 	reorderKubeconfigPaths,
 	resizePodExecTerminal,
+	revealSecretDataValue,
+	reviewRbacAccess,
 	rolloutRestart,
 	scaleWorkload,
 	setBackendDiagnosticsEnabled,
@@ -61,7 +61,7 @@ import {
 } from "../src/lib/tauri";
 import {
 	getArgoApplicationInspector,
-	getArgoApplicationResources,
+	getArgoResourceComparison,
 } from "../src/lib/tauri-argo";
 import { createDevMockTauriClient } from "../src/lib/tauri-dev-mocks";
 import type {
@@ -270,7 +270,40 @@ describe("createMockTauriClient", () => {
 		]);
 	});
 
-	test("browser dev mock keeps Argo application status and managed resources consistent", async () => {
+	test("passes cancellation identity through Argo inspection reads", async () => {
+		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const client = {
+			invoke: async <T>(cmd: string, args?: Record<string, unknown>) => {
+				calls.push({ cmd, args });
+				return {} as T;
+			},
+		};
+		const request = {
+			clusterContext: "kind-dev",
+			transport: "connected" as const,
+			connectionId: "profile-1",
+			application: { name: "demo", workspaceId: "workspace-1" },
+		};
+		const cancellation = { cancelScope: "argo:demo", requestId: "request-1" };
+
+		await getArgoApplicationInspector(client, request, cancellation);
+		await getArgoResourceComparison(
+			client,
+			{ ...request, resource: { kind: "Deployment", name: "api" } },
+			cancellation,
+		);
+
+		expect(calls.map((call) => call.args)).toEqual([
+			{ ...request, ...cancellation },
+			{
+				...request,
+				resource: { kind: "Deployment", name: "api" },
+				...cancellation,
+			},
+		]);
+	});
+
+	test("browser dev mock returns coherent Argo application inspection", async () => {
 		const client = createDevMockTauriClient();
 		const apps = await listArgoApplications(client, "mock-dev");
 		const app = apps.find((candidate) => candidate.name === "platform-argocd");
@@ -279,23 +312,45 @@ describe("createMockTauriClient", () => {
 			transport: "kubernetes" as const,
 			application: { name: app?.name ?? "platform-argocd" },
 		};
-		const [inspector, managed, cilium, metrics, catalog] = await Promise.all([
+		const [inspector, cilium, metrics, catalog] = await Promise.all([
 			getArgoApplicationInspector(client, request),
-			getArgoApplicationResources(client, request),
-			getArgoApplicationResources(client, { ...request, application: { name: "platform-cilium" } }),
-			getArgoApplicationResources(client, { ...request, application: { name: "platform-metrics" } }),
-			getArgoApplicationResources(client, { ...request, application: { name: "tenant-catalog" } }),
+			getArgoApplicationInspector(client, {
+				...request,
+				application: { name: "platform-cilium" },
+			}),
+			getArgoApplicationInspector(client, {
+				...request,
+				application: { name: "platform-metrics" },
+			}),
+			getArgoApplicationInspector(client, {
+				...request,
+				application: { name: "tenant-catalog" },
+			}),
 		]);
 
 		expect(inspector.status).toMatchObject({
 			sync: { status: app?.syncStatus },
 			health: { status: app?.healthStatus },
 		});
-		expect(managed.map((resource) => resource.name)).not.toContain("kube-root-ca.crt");
-		expect(cilium.map((resource) => resource.name)).toContain("coredns");
-		expect(metrics.map((resource) => resource.name)).toContain("metrics-gateway");
-		expect(metrics.every((resource) => resource.namespace !== "kube-system")).toBe(true);
-		expect(catalog.map((resource) => resource.kind)).toContain("HorizontalPodAutoscaler");
+		expect(inspector.transport).toBe("kubernetes");
+		expect(inspector.provenance).toBe("kubernetes-status-no-diff");
+		expect(inspector.comparisons).toHaveLength(inspector.resources.length);
+		expect(inspector.comparisons.every((comparison) => comparison.exact === false)).toBe(
+			true,
+		);
+		expect(inspector.resources.map((resource) => resource.name)).not.toContain(
+			"kube-root-ca.crt",
+		);
+		expect(cilium.resources.map((resource) => resource.name)).toContain("coredns");
+		expect(metrics.resources.map((resource) => resource.name)).toContain(
+			"metrics-gateway",
+		);
+		expect(metrics.resources.every((resource) => resource.namespace !== "kube-system")).toBe(
+			true,
+		);
+		expect(catalog.resources.map((resource) => resource.kind)).toContain(
+			"HorizontalPodAutoscaler",
+		);
 	});
 
 	test("browser dev mock previews and confirms guarded operations", async () => {

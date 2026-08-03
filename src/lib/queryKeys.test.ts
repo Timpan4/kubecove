@@ -30,7 +30,7 @@ describe("query key identity", () => {
 
 		expect(JSON.stringify(argoWorkspaceScope) === JSON.stringify(recreatedArgoWorkspaceScope)).toBe(false);
 		expect(
-			queryKeys.argoWorkspaceManagedResources(
+			queryKeys.argoWorkspaceInspector(
 				"kind-dev",
 				"workspace-1",
 				"guestbook",
@@ -43,7 +43,7 @@ describe("query key identity", () => {
 			).slice(0, argoWorkspaceScope.length),
 		).toEqual(argoWorkspaceScope);
 		expect(
-			queryKeys.argoWorkspaceComparison(
+			queryKeys.argoWorkspaceSelectedResource(
 				"kind-dev",
 				"workspace-1",
 				"guestbook",

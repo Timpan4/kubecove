@@ -150,12 +150,19 @@ const handlers: Record<string, MockHandler> = {
 				{ id: 17, revision: "3d91a7b", revisions: [], deployedAt: "2026-06-28T09:30:00Z", initiatedBy: "automation", source: null, sources: [] },
 			],
 			resources: managedResources,
+			comparisons: managedResources.map((resource) =>
+				argoComparison({ ...args, resource }),
+			),
 			conditions: [{ type: "ComparisonError", message: "Mock drift requires review before sync.", lastTransitionTime: now }],
 			operationState: null,
 			connected: args?.transport === "connected",
+			transport: args?.transport === "connected" ? "connected" : "kubernetes",
+			provenance:
+				args?.transport === "connected"
+					? "argocd-api"
+					: "kubernetes-status-no-diff",
 		};
 	},
-	get_argo_application_resources: (args) => argoManagedResources(args),
 	get_argo_resource_comparison: (args) => argoComparison(args),
 	preflight_argo_operation: (args) => {
 		const request = args?.request as Record<string, unknown> | undefined;

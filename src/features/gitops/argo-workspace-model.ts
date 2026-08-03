@@ -126,6 +126,16 @@ export interface ArgoComparisonDocument {
 	provenance: string | null | undefined;
 }
 
+export function argoComparisonForResource(
+	comparisons: ArgoResourceComparison[],
+	resource: ArgoManagedResource,
+): ArgoResourceComparison | null {
+	const key = argoResourceIdentityKey(resource);
+	return key === null
+		? null
+		: comparisons.find((comparison) => argoResourceIdentityKey(comparison.resource) === key) ?? null;
+}
+
 export function argoComparisonDocument(
 	resource: ArgoManagedResource,
 	comparison?: ArgoResourceComparison | null,
