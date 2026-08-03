@@ -27,6 +27,7 @@ fn resource(name: &str, namespace: &str) -> ResourceSummary {
         argo_app: None,
         helm_release: None,
         git_ops_owner: None,
+        git_ops_ownership_partial: false,
     }
 }
 

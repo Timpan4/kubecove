@@ -120,6 +120,7 @@ pub fn build_bench_topology(inputs: &[BenchTopologyInput]) -> ResourceTopology {
                 argo_app: None,
                 helm_release: None,
                 git_ops_owner: None,
+                git_ops_ownership_partial: false,
             },
         })
         .collect();
@@ -307,6 +308,7 @@ fn resource_summary(
         argo_app: None,
         helm_release: None,
         git_ops_owner: None,
+        git_ops_ownership_partial: false,
     }
 }
 

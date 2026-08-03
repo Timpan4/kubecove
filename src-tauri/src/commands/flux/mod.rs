@@ -12,6 +12,8 @@ use kube::api::{ApiResource, DynamicObject};
 use kube::Client;
 use serde_json::Value;
 
+pub(crate) const MAX_FLUX_INVENTORY_ENTRIES: usize = 2048;
+
 pub(crate) const FLUX_KINDS: &[(&str, &str, &str, &str, bool, &str)] = &[
     (
         "source.toolkit.fluxcd.io",
@@ -196,7 +198,7 @@ pub async fn get_flux_resource_details(
         summary,
         yaml,
         metadata,
-        status: resource_status(&object),
+        status: bounded_status(&object),
     })
 }
 
@@ -271,6 +273,18 @@ pub(crate) fn ready_status(data: &Value) -> Option<String> {
         })
 }
 
+fn bounded_status(object: &DynamicObject) -> Option<Value> {
+    let mut status = resource_status(object)?;
+    if let Some(entries) = status
+        .get_mut("inventory")
+        .and_then(|inventory| inventory.get_mut("entries"))
+        .and_then(Value::as_array_mut)
+    {
+        entries.truncate(MAX_FLUX_INVENTORY_ENTRIES);
+    }
+    Some(status)
+}
+
 pub(crate) fn inventory(data: &Value) -> Vec<FluxInventoryResource> {
     data.get("status")
         .and_then(|status| status.get("inventory"))
@@ -279,9 +293,10 @@ pub(crate) fn inventory(data: &Value) -> Vec<FluxInventoryResource> {
         .map(|entries| {
             entries
                 .iter()
+                .take(MAX_FLUX_INVENTORY_ENTRIES)
                 .filter_map(|entry| {
-                    let id = entry.get("id").and_then(Value::as_str)?;
-                    Some(FluxInventoryResource {
+                    let id = entry.get("id").and_then(Value::as_str)?.trim();
+                    (!id.is_empty()).then(|| FluxInventoryResource {
                         id: id.to_string(),
                         version: entry
                             .get("v")
@@ -293,6 +308,14 @@ pub(crate) fn inventory(data: &Value) -> Vec<FluxInventoryResource> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn inventory_partial(data: &Value) -> bool {
+    data.get("status")
+        .and_then(|status| status.get("inventory"))
+        .and_then(|inventory| inventory.get("entries"))
+        .and_then(Value::as_array)
+        .is_some_and(|entries| entries.len() > MAX_FLUX_INVENTORY_ENTRIES)
 }
 
 fn flux_summary(
@@ -329,6 +352,7 @@ fn flux_summary(
         last_applied_revision: revision(&object.data),
         message: ready_message(&object.data),
         inventory: inventory(&object.data),
+        inventory_partial: inventory_partial(&object.data),
     }
 }
 
@@ -403,9 +427,34 @@ mod tests {
 
         assert_eq!(ready_status(&data), Some("True".to_string()));
         assert_eq!(inventory(&data).len(), 1);
+        assert!(!inventory_partial(&data));
         assert_eq!(
             ready_message(&data),
             Some("Applied revision main@sha1:abc".to_string())
+        );
+    }
+
+    #[test]
+    fn reports_bounded_inventory_as_partial() {
+        let entries = (0..=MAX_FLUX_INVENTORY_ENTRIES)
+            .map(|index| json!({ "id": format!("default_resource-{index}__ConfigMap") }))
+            .collect::<Vec<_>>();
+        let data = json!({ "status": { "inventory": { "entries": entries } } });
+        let object: DynamicObject = serde_json::from_value(json!({
+            "apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+            "kind": "Kustomization",
+            "metadata": { "name": "apps", "namespace": "flux-system" },
+            "status": data["status"].clone()
+        }))
+        .expect("dynamic object");
+
+        assert_eq!(inventory(&data).len(), MAX_FLUX_INVENTORY_ENTRIES);
+        assert!(inventory_partial(&data));
+        assert_eq!(
+            bounded_status(&object)
+                .and_then(|status| status.pointer("/inventory/entries").cloned())
+                .and_then(|entries| entries.as_array().map(Vec::len)),
+            Some(MAX_FLUX_INVENTORY_ENTRIES)
         );
     }
 }

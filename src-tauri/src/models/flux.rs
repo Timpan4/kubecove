@@ -48,6 +48,8 @@ pub struct FluxResourceSummary {
     pub message: Option<String>,
     #[serde(default)]
     pub inventory: Vec<FluxInventoryResource>,
+    #[serde(default)]
+    pub inventory_partial: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

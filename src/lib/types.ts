@@ -15,6 +15,8 @@ export interface GitOpsOwnerSummary {
 	name: string;
 	namespace?: string | null;
 	confidence: "metadata" | "label" | "inventory" | string;
+	provenance?: string;
+	partial?: boolean;
 }
 
 export interface ResourceSummary {
@@ -37,6 +39,7 @@ export interface ResourceSummary {
 	ownerRef?: string;
 	argoApp?: string;
 	helmRelease?: string;
+	gitOpsOwnershipPartial?: boolean;
 	gitOpsOwner?: GitOpsOwnerSummary;
 	metrics?: ResourceMetricSummary;
 }

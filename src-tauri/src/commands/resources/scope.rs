@@ -1,9 +1,13 @@
 use super::{dynamic_resources_summary_from, resources_summary_from};
 use crate::commands::diagnostics::record_backend_result;
+use crate::commands::helpers::{
+    enrich_resource_summaries_with_flux_inventory, read_flux_ownership_index,
+};
 use crate::{
     commands::{
-        diagnostic_field, kubeconfig::kubeconfig_source_key, BackendCancellationRegistry,
-        ClusterLiveStore,
+        diagnostic_field,
+        kubeconfig::{kubeconfig_source_key, KubeconfigSource},
+        BackendCancellationRegistry, ClusterLiveStore,
     },
     models::{AppError, DiscoveredResourceKind, ResourceListRequest, ResourceSummary},
 };
@@ -90,6 +94,17 @@ fn fetch_namespaces(group: &ResourceScopeGroup) -> Vec<Option<String>> {
     group.namespaces.iter().cloned().map(Some).collect()
 }
 
+fn ownership_namespaces(groups: &BTreeMap<String, ResourceScopeGroup>) -> Vec<String> {
+    if groups.values().any(should_promote_to_all) {
+        Vec::new()
+    } else {
+        groups
+            .values()
+            .flat_map(|group| group.namespaces.iter().cloned())
+            .collect()
+    }
+}
+
 fn dedupe_rows(rows: Vec<ResourceSummary>) -> Vec<ResourceSummary> {
     let mut by_key = BTreeMap::new();
     for row in rows {
@@ -115,7 +130,11 @@ pub async fn resource_scope_from(
     live_store: ClusterLiveStore,
     kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
+    if requests.is_empty() {
+        return Ok(Vec::new());
+    }
     let groups = group_requests(requests)?;
+    let requested_namespaces = ownership_namespaces(&groups);
     let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let futures = groups.into_values().map(|group| {
         let live_store = live_store.clone();
@@ -191,6 +210,11 @@ pub async fn resource_scope_from(
     for result in results {
         rows.extend(result?);
     }
+    let client = KubeconfigSource::new(kubeconfig_env_var)?
+        .client_for_context(&cluster_context)
+        .await?;
+    let index = read_flux_ownership_index(client, &requested_namespaces).await?;
+    enrich_resource_summaries_with_flux_inventory(&mut rows, &index);
     Ok(dedupe_rows(rows))
 }
 
@@ -275,6 +299,19 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn empty_requests_return_without_kubeconfig_access() {
+        let result = resource_scope_from(
+            "missing-context".to_string(),
+            Vec::new(),
+            ClusterLiveStore::default(),
+            Some("missing-kubeconfig".to_string()),
+        )
+        .await;
+
+        assert!(result.expect("empty scope").is_empty());
+    }
+
     #[test]
     fn groups_multiple_namespaces_for_one_kind_without_promoting_to_all() {
         let groups = group_requests(vec![
@@ -330,6 +367,14 @@ mod tests {
 
         assert!(should_promote_to_all(group));
         assert_eq!(fetch_namespaces(group), vec![None]);
+    }
+
+    #[test]
+    fn all_namespace_group_keeps_ownership_read_cluster_wide() {
+        let groups =
+            group_requests(vec![pod_request(None), pod_request(Some("default"))]).expect("groups");
+
+        assert!(ownership_namespaces(&groups).is_empty());
     }
 
     #[test]

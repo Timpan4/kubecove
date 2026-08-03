@@ -1,6 +1,6 @@
 import type { HealthFilter } from "@/features/resources";
-import { gitOpsOwnerLabel } from "@/features/resources/helpers";
 import { buildWorkspaceFetchKeys, buildWorkspaceFetchPlans } from "@/features/workspaces";
+import { gitOpsOwnershipGroupLabel } from "@/lib/gitops-ownership-evidence";
 import { queryKeys } from "@/lib/queryKeys";
 import type {
 	IncidentCockpitItem,
@@ -37,10 +37,7 @@ function latestSignalTime(item: IncidentCockpitItem): number {
 }
 
 export function incidentGroupLabel(resource: ResourceSummary): string {
-	const gitOpsLabel = gitOpsOwnerLabel(resource);
-	if (gitOpsLabel) return gitOpsLabel;
-	if (resource.helmRelease) return `Helm release: ${resource.helmRelease}`;
-	return "Unmanaged resources";
+	return gitOpsOwnershipGroupLabel(resource);
 }
 
 export function filterIncidentItems(

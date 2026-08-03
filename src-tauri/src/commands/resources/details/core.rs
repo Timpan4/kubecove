@@ -62,6 +62,7 @@ pub(super) async fn pod_details(
         argo_app: extract_argo_app(&pod.metadata),
         helm_release: extract_helm_release(&pod.metadata),
         git_ops_owner: extract_git_ops_owner(&pod.metadata),
+        git_ops_ownership_partial: false,
     };
     update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {
@@ -115,6 +116,7 @@ pub(super) async fn service_details(
         argo_app: extract_argo_app(&svc.metadata),
         helm_release: extract_helm_release(&svc.metadata),
         git_ops_owner: extract_git_ops_owner(&svc.metadata),
+        git_ops_ownership_partial: false,
     };
     Ok(ResourceDetailsFull {
         summary,
@@ -163,6 +165,7 @@ pub(super) async fn configmap_details(
         argo_app: extract_argo_app(&cm.metadata),
         helm_release: extract_helm_release(&cm.metadata),
         git_ops_owner: extract_git_ops_owner(&cm.metadata),
+        git_ops_ownership_partial: false,
     };
     Ok(ResourceDetailsFull {
         summary,
@@ -214,6 +217,7 @@ pub(super) async fn secret_details(
         argo_app: extract_argo_app(&sec.metadata),
         helm_release: extract_helm_release(&sec.metadata),
         git_ops_owner: extract_git_ops_owner(&sec.metadata),
+        git_ops_ownership_partial: false,
     };
     Ok(ResourceDetailsFull {
         summary,
@@ -268,6 +272,7 @@ pub(super) async fn pvc_details(
         argo_app: extract_argo_app(&pvc.metadata),
         helm_release: extract_helm_release(&pvc.metadata),
         git_ops_owner: extract_git_ops_owner(&pvc.metadata),
+        git_ops_ownership_partial: false,
     };
     update_resource_health(&mut summary);
     Ok(ResourceDetailsFull {

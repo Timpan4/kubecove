@@ -203,7 +203,10 @@
 			return compactFacts([
 				revisionFact(selection),
 				{ label: "Namespace", value: item.namespace ?? "-" },
-				{ label: "Inventory", value: String(item.inventory.length) },
+				{
+						label: "Inventory",
+						value: `${item.inventory.length}${item.inventoryPartial ? "+" : ""}`,
+					},
 				ageFact(selection),
 			]);
 		}

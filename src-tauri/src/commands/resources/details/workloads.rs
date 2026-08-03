@@ -52,6 +52,7 @@ pub(super) async fn deployment_details(
         argo_app: extract_argo_app(&deploy.metadata),
         helm_release: extract_helm_release(&deploy.metadata),
         git_ops_owner: extract_git_ops_owner(&deploy.metadata),
+        git_ops_ownership_partial: false,
     };
     if let Some(ref s) = deploy.status {
         summary.ready = Some(format!(
@@ -112,6 +113,7 @@ pub(super) async fn statefulset_details(
         argo_app: extract_argo_app(&ss.metadata),
         helm_release: extract_helm_release(&ss.metadata),
         git_ops_owner: extract_git_ops_owner(&ss.metadata),
+        git_ops_ownership_partial: false,
     };
     if let Some(ref s) = ss.status {
         summary.ready = Some(fmt_ready(s.ready_replicas, s.replicas));
@@ -168,6 +170,7 @@ pub(super) async fn daemonset_details(
         argo_app: extract_argo_app(&ds.metadata),
         helm_release: extract_helm_release(&ds.metadata),
         git_ops_owner: extract_git_ops_owner(&ds.metadata),
+        git_ops_ownership_partial: false,
     };
     if let Some(ref s) = ds.status {
         summary.ready = Some(format!("{}/{}", s.number_ready, s.desired_number_scheduled));
@@ -224,6 +227,7 @@ pub(super) async fn ingress_details(
         argo_app: extract_argo_app(&ing.metadata),
         helm_release: extract_helm_release(&ing.metadata),
         git_ops_owner: extract_git_ops_owner(&ing.metadata),
+        git_ops_ownership_partial: false,
     };
     apply_ingress_status(&mut summary, ing.status.as_ref());
     update_resource_health(&mut summary);
@@ -278,6 +282,7 @@ pub(super) async fn job_details(
         argo_app: extract_argo_app(&job.metadata),
         helm_release: extract_helm_release(&job.metadata),
         git_ops_owner: extract_git_ops_owner(&job.metadata),
+        git_ops_ownership_partial: false,
     };
     if let Some(ref s) = job.status {
         summary.ready = Some(format!(
@@ -350,6 +355,7 @@ pub(super) async fn cronjob_details(
         argo_app: extract_argo_app(&cj.metadata),
         helm_release: extract_helm_release(&cj.metadata),
         git_ops_owner: extract_git_ops_owner(&cj.metadata),
+        git_ops_ownership_partial: false,
     };
     if let Some(ref s) = cj.status {
         if let Some(ref active) = s.active {

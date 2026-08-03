@@ -5,7 +5,10 @@ use super::{
         NetworkEndpointSlice, NetworkIngressBackend, NetworkService, NetworkTopologyInputs,
     },
 };
-use crate::commands::helpers::{fmt_ready, list_params, update_resource_health};
+use crate::commands::helpers::{
+    enrich_resource_summaries_with_flux_inventory, fmt_ready, list_params,
+    read_flux_ownership_index, update_resource_health,
+};
 use crate::models::{AppError, DiscoveredResourceKind};
 use futures_util::{stream, StreamExt};
 use k8s_openapi::api::{
@@ -182,7 +185,7 @@ pub(super) async fn collect_topology_inputs(
         collect_workload_topology_inputs(client.clone(), cluster_context, namespaces),
         collect_support_topology_inputs(client.clone(), cluster_context, namespaces),
         collect_custom_topology_inputs(
-            client,
+            client.clone(),
             cluster_context,
             namespaces,
             custom_resource_kinds,
@@ -200,6 +203,20 @@ pub(super) async fn collect_topology_inputs(
         .warnings
         .append(&mut support_inputs.warnings);
     workload_inputs.warnings.append(&mut custom_inputs.warnings);
+    let index = read_flux_ownership_index(client, namespaces).await?;
+    let mut summary_rows = workload_inputs
+        .resources
+        .iter()
+        .map(|input| input.summary.clone())
+        .collect::<Vec<_>>();
+    enrich_resource_summaries_with_flux_inventory(&mut summary_rows, &index);
+    for (input, summary) in workload_inputs.resources.iter_mut().zip(summary_rows) {
+        input.summary = summary;
+    }
+    workload_inputs.resources.retain(|input| {
+        input.summary.kind != "StorageClass"
+            || cluster_scoped_input_visible_in_scope(input, namespaces)
+    });
     Ok(workload_inputs)
 }
 
@@ -376,11 +393,7 @@ async fn collect_support_topology_inputs(
     inputs.extend(inputs_from_metadata(cluster_context, ingresses));
     inputs.extend(inputs_from_metadata(cluster_context, configmaps));
     inputs.extend(inputs_from_metadata(cluster_context, secrets));
-    inputs.extend(
-        inputs_from_metadata(cluster_context, storageclasses)
-            .into_iter()
-            .filter(|input| cluster_scoped_input_visible_in_scope(input, namespaces)),
-    );
+    inputs.extend(inputs_from_metadata(cluster_context, storageclasses));
 
     Ok(TopologyInputCollection {
         resources: inputs,

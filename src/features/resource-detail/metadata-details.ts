@@ -1,3 +1,4 @@
+import { gitOpsOwnership } from "../../lib/gitops-ownership-evidence";
 import type { ResourceSummary } from "../../lib/types";
 
 export interface CuratedMetadataField {
@@ -77,9 +78,8 @@ export function buildCuratedMetadata(
 		ownership: compactFields([
 			...owner,
 			field("Owner", owner.length === 0 ? resource.ownerRef : undefined),
-			field("Argo", resource.argoApp),
+			...(gitOpsOwnership(resource)?.details ?? []),
 			field("Helm", resource.helmRelease),
-			field("GitOps", resource.gitOpsOwner?.name),
 		]),
 		labels,
 		annotations,

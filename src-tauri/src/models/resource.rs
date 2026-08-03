@@ -31,6 +31,8 @@ pub struct GitOpsOwnerSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub namespace: Option<String>,
     pub confidence: String,
+    pub provenance: String,
+    pub partial: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +71,8 @@ pub struct ResourceSummary {
     pub argo_app: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub helm_release: Option<String>,
+    #[serde(default)]
+    pub git_ops_ownership_partial: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git_ops_owner: Option<GitOpsOwnerSummary>,
 }

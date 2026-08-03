@@ -68,7 +68,11 @@
 		mergeTopologyMetrics,
 		resourceMetricIndex,
 	} from "@/lib/resource-metrics";
-	import { cnfast } from "@/lib/utils";
+	import {
+		gitOpsOwnership,
+		inheritGitOpsOwnership,
+	} from "@/lib/gitops-ownership-evidence";
+		import { cnfast } from "@/lib/utils";
 	import type {
 		ArgoApplicationInspector,
 		ArgoApplicationSummary,
@@ -564,7 +568,7 @@
 				)
 			: rowsWithMetrics,
 	);
-	const argoResourceSearchIndex = $derived(buildResourceSearchIndex(tableRows));
+	const argoResourceSearchIndex = $derived(buildResourceSearchIndex(inheritGitOpsOwnership(tableRows)));
 	const focusedArgoError = $derived(
 		focusedArgoInspectorQuery.isError ? focusedArgoInspectorQuery.error : null,
 	);
@@ -1312,7 +1316,7 @@
 												{#if tableModel.columnVisibility.gitOps}
 													<TableCell>
 														<span class="block min-w-0 truncate">
-															{row.gitOpsOwner?.name ?? row.argoApp ?? row.helmRelease ?? EMPTY_CELL}
+															{gitOpsOwnership(row)?.ownerName ?? row.helmRelease ?? EMPTY_CELL}
 														</span>
 													</TableCell>
 												{/if}
