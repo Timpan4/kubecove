@@ -545,11 +545,9 @@ async fn resolve_request(
         .await?;
         let metadata = value.get("metadata").unwrap_or(&value);
         let mut application = request.application.clone();
-        application.name = metadata
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or(&application.name)
-            .to_owned();
+        if let Some(name) = metadata.get("name").and_then(Value::as_str) {
+            name.clone_into(&mut application.name);
+        }
         application.namespace = metadata
             .get("namespace")
             .and_then(Value::as_str)
@@ -566,10 +564,14 @@ async fn resolve_request(
             .get("resourceVersion")
             .and_then(Value::as_str)
             .map(str::to_owned);
-        application.workspace_id = connection.profile.workspace_id.clone();
+        application
+            .workspace_id
+            .clone_from(&connection.profile.workspace_id);
         let mut resolved = request.clone();
         resolved.application = application;
-        resolved.cluster_context = connection.profile.cluster_context.clone();
+        resolved
+            .cluster_context
+            .clone_from(&connection.profile.cluster_context);
         (resolved, Some(connection.generation))
     } else {
         (request.clone(), None)

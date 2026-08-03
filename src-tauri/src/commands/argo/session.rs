@@ -7,7 +7,7 @@ use std::{
 };
 use uuid::Uuid;
 
-pub const SESSION_TTL: Duration = Duration::from_secs(5 * 60);
+pub const SESSION_TTL: Duration = Duration::from_mins(5);
 const SERVICE: &str = "KubeCove Argo operation sessions";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,7 +134,7 @@ pub(crate) fn issue(
     store
         .secure
         .write(&id, &serialized)
-        .map_err(|_| unavailable())?;
+        .map_err(|()| unavailable())?;
     store
         .records
         .lock()
@@ -165,7 +165,7 @@ fn load(store: &SessionStore, id: &str) -> Result<(OperationSession, String), Ap
     let serialized = store
         .secure
         .read(id)
-        .map_err(|_| unavailable())?
+        .map_err(|()| unavailable())?
         .ok_or_else(|| {
             AppError::new(
                 "operation session expired or already used",
@@ -228,7 +228,7 @@ pub(crate) fn consume(
         if store
             .secure
             .read(id)
-            .map_err(|_| unavailable())?
+            .map_err(|()| unavailable())?
             .is_some_and(|value| value != fingerprint)
         {
             return Err(AppError::new(
@@ -241,7 +241,7 @@ pub(crate) fn consume(
         let serialized = store
             .secure
             .read(id)
-            .map_err(|_| unavailable())?
+            .map_err(|()| unavailable())?
             .ok_or_else(|| {
                 AppError::new(
                     "operation session expired or already used",

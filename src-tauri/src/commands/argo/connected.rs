@@ -87,7 +87,7 @@ fn load_credential(
     store: &dyn CredentialStore,
     profile: &ArgoConnectionProfile,
 ) -> Result<Option<StoredCredential>, AppError> {
-    let value = store.read(&credential_key(profile)).map_err(|_| {
+    let value = store.read(&credential_key(profile)).map_err(|()| {
         AppError::new(
             "native credential storage unavailable",
             "credentialUnavailable",
@@ -125,7 +125,7 @@ fn save_credential(
             "credentialUnavailable",
         )
     })?;
-    store.write(&credential_key(profile), &value).map_err(|_| {
+    store.write(&credential_key(profile), &value).map_err(|()| {
         AppError::new(
             "native credential storage unavailable",
             "credentialUnavailable",
@@ -152,7 +152,7 @@ fn delete_credential(
     store: &dyn CredentialStore,
     profile: &ArgoConnectionProfile,
 ) -> Result<(), AppError> {
-    store.delete(&credential_key(profile)).map_err(|_| {
+    store.delete(&credential_key(profile)).map_err(|()| {
         AppError::new(
             "native credential storage unavailable",
             "credentialUnavailable",
@@ -612,7 +612,7 @@ pub(crate) fn connected_application_path(
     {
         let mut segments = base
             .path_segments_mut()
-            .map_err(|_| AppError::new("invalid Argo CD API path", "argoConnection"))?;
+            .map_err(|()| AppError::new("invalid Argo CD API path", "argoConnection"))?;
         segments.extend(["api", "v1", "applications"]).push(name);
         if managed_resources {
             segments.push("managed-resources");
