@@ -12,7 +12,7 @@ The product is inspection-first. Its governed exceptions are:
 - exact-Pod exec;
 - selected-resource YAML apply;
 - narrow scale, rollout-restart, and delete actions;
-- explicit connected Argo CD refresh and sync operations.
+- reviewed Argo CD refresh and sync operations.
 
 These are typed workflows with visible targets. KubeCove is not a free-form mutation console or a wrapper around arbitrary shell commands.
 
@@ -20,7 +20,7 @@ These are typed workflows with visible targets. KubeCove is not a free-form muta
 
 ### Keep scope explicit
 
-A workspace stores local navigation scope: contexts, cluster-group members, namespaces, kinds, shortcuts, saved Service port-forward presets, and layout preferences. It does not copy kubeconfig credentials or persist selected Kubernetes objects as authoritative state.
+A workspace stores local navigation scope: contexts, cluster-group members, namespaces, kinds, shortcuts, saved Service port-forward presets, and layout preferences. It does not copy kubeconfig credentials or persist selected Kubernetes objects as authoritative state. [ADR 0013](decisions/0013-argocd-connected-inspection-and-operations.md) accepts a future workspace-scoped Argo inspection preference.
 
 ```text
 Cluster group -> Cluster/context -> Namespace -> App/owner -> Resource
@@ -45,7 +45,7 @@ The resource browser works without Argo CD, Flux, or Helm. GitOps and package in
 - Argo CD and Flux discovery starts from installed Kubernetes Custom Resource Definitions.
 - Flux remains Kubernetes-API-first and inspection-only.
 - Helm reconciliation compares decoded release manifest references with live Kubernetes evidence and remains inspection-only.
-- Connected Argo CD is an explicit HTTPS transport for bounded inspection and reviewed operations; it never becomes an automatic fallback.
+- Connected Argo CD currently uses an explicit HTTPS profile for bounded inspection and reviewed operations. ADR 0013 accepts deterministic workspace preference and visible whole-result read fallback; implementation is pending under [ADR 0016](decisions/0016-deepen-gitops-and-finite-read-modules.md).
 
 ### Guard every operation
 
@@ -57,7 +57,7 @@ New operation families require an ADR. Existing contracts are defined by:
 - [ADR 0004](decisions/0004-guarded-cluster-operations.md) for scale, restart, and delete;
 - [ADR 0005](decisions/0005-guarded-pod-exec-sessions.md) for Pod exec;
 - [ADR 0006](decisions/0006-guarded-selected-resource-yaml-apply.md) for YAML apply;
-- [ADR 0013](decisions/0013-argocd-connected-inspection-and-operations.md) for connected Argo CD.
+- [ADR 0013](decisions/0013-argocd-connected-inspection-and-operations.md) for Argo CD inspection and operations.
 
 ## Trust boundary
 
@@ -66,7 +66,7 @@ The Svelte frontend is untrusted relative to the Rust backend.
 - Raw kubeconfig contents, tokens, client keys, and certificate data stay backend-side.
 - The frontend cannot run arbitrary shell commands.
 - Kubernetes access crosses typed Tauri commands and normally uses `kube-rs`.
-- Connected Argo CD credentials, TLS handling, request limits, Secret redaction, preflight tokens, and execution stay backend-side.
+- Connected Argo CD credentials, TLS handling, request limits, Secret redaction, preflight or operation-session state, and execution stay backend-side.
 - Frontend responses are bounded, serialized summaries, details, YAML, stream events, results, or typed errors.
 - Secret disclosure is explicit and transient. Connected Argo Secret payloads are redacted before crossing the boundary.
 
@@ -135,17 +135,17 @@ Priority evidence surfaces include metadata, owner references, conditions, event
 Argo CD, Flux, and Helm keep distinct capability boundaries:
 
 - Argo Kubernetes transport reads CRDs and can submit only the reviewed Application operations supported by that transport.
-- Connected Argo transport provides bounded API-backed inspection, comparison, refresh, and sync after explicit connection and preflight.
+- Connected Argo transport provides bounded HTTP inspection, comparison, and reviewed operations after explicit connection and preflight.
 - Flux reads installed provider CRDs and does not mutate them.
 - Helm reads release and live-object evidence and does not install, upgrade, rollback, or uninstall.
 
-There is no automatic transport fallback and no inferred permission verdict. RBAC inventory is observed policy evidence; exact authorization uses an explicit live access review.
+Current implementation does not automatically fall back between inspection transports. ADR 0013 accepts deterministic workspace selection, visible whole-result read fallback, and operation-transport selection before review; [ADR 0016](decisions/0016-deepen-gitops-and-finite-read-modules.md) records the pending module replacement. RBAC inventory is observed policy evidence; exact authorization uses an explicit live access review.
 
 ## Visual and interaction direction
 
 KubeCove uses balanced IDE density: compact enough for operational tables, calm enough for incident work. Context and target identity must stay visible. Tables prioritize scanning, details use structured sections, and topology must clarify relationships rather than decorate the screen.
 
-Future changes should preserve explicit workspace defaults. Adaptive behavior must not silently hide scope, choose credentials, or broaden an operation target.
+Future changes should preserve explicit workspace defaults. Adaptive behavior must not silently hide scope, select a profile outside workspace policy, or broaden an operation target.
 
 ## Direction and tracking
 
