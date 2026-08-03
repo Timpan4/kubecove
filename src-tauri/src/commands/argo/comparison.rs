@@ -1,8 +1,8 @@
 use super::scope::scoped_connection;
 use super::{
     connected::{
-        api_get, inspector_from_application, kubernetes_application, managed_resource,
-        redact_secret_fields, state, text,
+        api_get, connected_application_path, inspector_from_application, kubernetes_application,
+        managed_resource, redact_secret_fields, state, text,
     },
     ArgoConnectionStore,
 };
@@ -61,11 +61,13 @@ async fn argo_resource_comparison(
     )?;
     let mut value = api_get(
         &connection,
-        &format!(
-            "/api/v1/applications/{}/managed-resources?appNamespace={}",
-            application.name,
-            application.namespace.clone().unwrap_or_default()
-        ),
+        &connected_application_path(
+            &connection.profile.url,
+            &application.name,
+            application.namespace.as_deref(),
+            None,
+            true,
+        )?,
     )
     .await?;
     redact_secret_fields(&mut value);
@@ -156,4 +158,33 @@ fn actions_path(application: &ArgoApplicationRef, resource: &ArgoManagedResource
     }
     drop(query);
     format!("{}?{}", url.path(), url.query().unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn actions_path_encodes_application_and_resource_identity() {
+        let path = actions_path(
+            &ArgoApplicationRef {
+                name: "app/a?#".into(),
+                namespace: Some("app ns/&?#".into()),
+                project: Some("project/&?#".into()),
+                ..Default::default()
+            },
+            &ArgoManagedResource {
+                group: Some("apps/&?#".into()),
+                version: Some("v1/?.".into()),
+                kind: Some("Deployment/#".into()),
+                namespace: Some("ns/&?#".into()),
+                name: Some("resource/&?#".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            path,
+            "/api/v1/applications/app%2Fa%3F%23/resource/actions?appNamespace=app+ns%2F%26%3F%23&project=project%2F%26%3F%23&group=apps%2F%26%3F%23&version=v1%2F%3F.&kind=Deployment%2F%23&namespace=ns%2F%26%3F%23&resourceName=resource%2F%26%3F%23"
+        );
+    }
 }

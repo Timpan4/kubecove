@@ -3,7 +3,7 @@ import {
 	ArgoOperationRefreshError,
 	runArgoOperationLifecycle,
 } from "../src/features/gitops/argo-operation-lifecycle";
-import type { ArgoOperationRequest } from "../src/lib/gitops-types";
+import type { ArgoOperationConfirmation, ArgoOperationRequest } from "../src/lib/gitops-types";
 
 const request: ArgoOperationRequest = {
 	transport: "connected",
@@ -12,15 +12,15 @@ const request: ArgoOperationRequest = {
 	resources: [],
 };
 
-const resolvedRequest: ArgoOperationRequest = { ...request, revision: "main" };
+const reviewedRequest: ArgoOperationRequest = { ...request, revision: "main" };
 
 describe("Argo operation lifecycle", () => {
 	test("rejects denied and malformed preflight", async () => {
 		for (const result of [
 			{ allowed: false, reason: "Denied" },
-			{ allowed: true, preflightToken: "token" },
-			{ allowed: true, resolvedRequest },
-			{ allowed: true, preflightToken: "token", resolvedRequest: {} },
+			{ allowed: true, sessionId: "token", expiresAt: 1 },
+			{ allowed: true, reviewedRequest },
+			{ allowed: true, sessionId: "token", expiresAt: 1, reviewedRequest: {} },
 		]) {
 			await expect(runArgoOperationLifecycle({
 				request,
@@ -33,13 +33,13 @@ describe("Argo operation lifecycle", () => {
 
 	test("runs resolved request then refreshes after acceptance", async () => {
 		const events: string[] = [];
-		let received: ArgoOperationRequest | undefined;
+		let received: ArgoOperationConfirmation | undefined;
 		await runArgoOperationLifecycle({
 			request,
 			preflight: async (value) => {
 				expect(value).toBe(request);
 				events.push("preflight");
-				return { allowed: true, preflightToken: "token", resolvedRequest };
+				return { allowed: true, sessionId: "token", expiresAt: 1, reviewedRequest };
 			},
 			run: async (value) => {
 				received = value;
@@ -48,7 +48,7 @@ describe("Argo operation lifecycle", () => {
 			},
 			refresh: async () => { events.push("refresh"); },
 		});
-		expect(received).toEqual({ ...resolvedRequest, preflightToken: "token" });
+		expect(received).toEqual({ sessionId: "token", confirmation: "token" });
 		expect(events).toEqual(["preflight", "run", "refresh"]);
 	});
 
@@ -56,7 +56,7 @@ describe("Argo operation lifecycle", () => {
 		let runs = 0;
 		const lifecycle = runArgoOperationLifecycle({
 			request,
-			preflight: async () => ({ allowed: true, preflightToken: "token", resolvedRequest }),
+			preflight: async () => ({ allowed: true, sessionId: "token", expiresAt: 1, reviewedRequest }),
 			run: async () => {
 				runs += 1;
 				return { accepted: true };
@@ -73,7 +73,7 @@ describe("Argo operation lifecycle", () => {
 		let attempts = 0;
 		const invoke = () => runArgoOperationLifecycle({
 			request,
-			preflight: async () => ({ allowed: true, preflightToken: "token", resolvedRequest }),
+			preflight: async () => ({ allowed: true, sessionId: "token", expiresAt: 1, reviewedRequest }),
 			run: async () => ({ accepted: ++attempts > 1, message: "Not accepted" }),
 			refresh: async () => undefined,
 		});

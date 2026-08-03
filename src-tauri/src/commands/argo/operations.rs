@@ -1,16 +1,19 @@
-use super::connected::{api_delete, api_get, api_post, consume_preflight, issue_preflight};
+use super::connected::{api_delete, api_get, api_post, ConnectedArgo};
 use super::scope::scoped_connection;
+use super::session::{consume, issue, peek, OperationSession};
 use crate::commands::gitops_crd::{client_for_context, find_api_resource};
 use crate::models::{
-    AppError, ArgoApplicationRef, ArgoOperationPreflight, ArgoOperationRequest, ArgoOperationResult,
+    AppError, ArgoApplicationRef, ArgoOperationConfirmation, ArgoOperationPreflight,
+    ArgoOperationRequest, ArgoOperationResult,
 };
 use k8s_openapi::api::authorization::v1::{
     ResourceAttributes, SelfSubjectAccessReview, SelfSubjectAccessReviewSpec,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
-    api::{Api, Patch, PatchParams, PostParams},
+    api::{Api, ApiResource, Patch, PatchParams, PostParams},
     core::DynamicObject,
+    Client,
 };
 use serde_json::{json, Value};
 
@@ -60,21 +63,7 @@ pub async fn preflight_argo_operation(
     request: ArgoOperationRequest,
 ) -> Result<ArgoOperationPreflight, AppError> {
     valid(&request)?;
-    if request.transport == "connected" {
-        let id = request
-            .connection_id
-            .as_deref()
-            .filter(|id| !id.is_empty())
-            .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?;
-        let _ = scoped_connection(
-            &store,
-            id,
-            request.cluster_context.as_deref().ok_or_else(|| {
-                AppError::new("clusterContext required", "argoOperationUnavailable")
-            })?,
-            request.application.workspace_id.as_deref(),
-        )?;
-    } else {
+    if request.transport == "kubernetes" {
         if !matches!(
             request.action.as_str(),
             "refresh" | "hardRefresh" | "sync" | "retry"
@@ -86,15 +75,30 @@ pub async fn preflight_argo_operation(
         }
         fallback_allowed(&request).await?;
     }
-    let resolved_request = resolve_request(&store, &request).await?;
-    let token = issue_preflight(&store, &resolved_request)?;
+    let (resolved_request, connection_generation) = resolve_request(&store, &request).await?;
+    if resolved_request.transport == "connected" && resolved_request.action == "resourceAction" {
+        let connection = scoped_connection(
+            &store,
+            resolved_request
+                .connection_id
+                .as_deref()
+                .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?,
+            resolved_request.cluster_context.as_deref().ok_or_else(|| {
+                AppError::new("clusterContext required", "argoOperationUnavailable")
+            })?,
+            resolved_request.application.workspace_id.as_deref(),
+        )?;
+        validate_resource_action(&connection, &resolved_request).await?;
+    }
+    let (session_id, session) = issue(&store.sessions, resolved_request, connection_generation)?;
     Ok(ArgoOperationPreflight {
         allowed: true,
-        transport: request.transport.clone(),
-        action: request.action.clone(),
+        transport: session.transport,
+        action: session.request.action.clone(),
         reason: None,
-        preflight_token: Some(token),
-        resolved_request: Some(resolved_request),
+        session_id: Some(session_id),
+        expires_at: Some(session.expires_at),
+        reviewed_request: Some(session.request),
     })
 }
 
@@ -162,48 +166,157 @@ async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(), AppError
     Ok(())
 }
 
+enum ExecutionBinding {
+    Connected(ConnectedArgo),
+    Kubernetes {
+        client: Client,
+        resource: ApiResource,
+    },
+}
+
 #[tauri::command]
 pub async fn run_argo_operation(
     store: tauri::State<'_, super::ArgoConnectionStore>,
-    request: ArgoOperationRequest,
+    confirmation: ArgoOperationConfirmation,
 ) -> Result<ArgoOperationResult, AppError> {
-    valid(&request)?;
-    consume_preflight(&store, &request)?;
-    if request.transport == "kubernetes" {
-        return kubernetes_operation(request).await;
+    if confirmation.confirmation != confirmation.session_id {
+        return Err(AppError::new(
+            "operation confirmation does not match reviewed session",
+            "argoOperationUnavailable",
+        ));
     }
-    let connection = scoped_connection(
-        &store,
-        request
+    let reviewed = peek(&store.sessions, &confirmation.session_id, None)?;
+    valid(&reviewed.session.request)?;
+    let binding = revalidate_session(&store, &reviewed.session).await?;
+    let session = consume(&store.sessions, &confirmation.session_id, &reviewed)?;
+    let request = session.request;
+    match binding {
+        ExecutionBinding::Kubernetes { client, resource } => {
+            kubernetes_operation(request, client, resource).await
+        }
+        ExecutionBinding::Connected(connection) => {
+            let path = match request.action.as_str() {
+                "refresh" => application_path(&request.application, "", Some("normal")),
+                "hardRefresh" => application_path(&request.application, "", Some("hard")),
+                "sync" | "retry" => application_path(&request.application, "/sync", None),
+                "rollback" => application_path(&request.application, "/rollback", None),
+                "terminate" => application_path(&request.application, "/operation", None),
+                "resourceAction" => {
+                    application_path(&request.application, "/resource/actions/v2", None)
+                }
+                _ => unreachable!(),
+            };
+            let value = if request.action == "refresh" || request.action == "hardRefresh" {
+                api_get(&connection, &path).await?
+            } else if request.action == "terminate" {
+                api_delete(&connection, &path).await?
+            } else {
+                api_post(&connection, &path, connected_payload(&request)).await?
+            };
+            accepted("connected", value)
+        }
+    }
+}
+
+async fn revalidate_session(
+    store: &super::ArgoConnectionStore,
+    session: &OperationSession,
+) -> Result<ExecutionBinding, AppError> {
+    let request = &session.request;
+    if request.transport == "connected" {
+        let connection = scoped_connection(
+            store,
+            request
+                .connection_id
+                .as_deref()
+                .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?,
+            request.cluster_context.as_deref().ok_or_else(|| {
+                AppError::new("clusterContext required", "argoOperationUnavailable")
+            })?,
+            session.workspace_id.as_deref(),
+        )?;
+        let connection_id = request
             .connection_id
             .as_deref()
-            .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?,
-        request
-            .cluster_context
-            .as_deref()
-            .ok_or_else(|| AppError::new("clusterContext required", "argoOperationUnavailable"))?,
-        request.application.workspace_id.as_deref(),
-    )?;
-    if request.action == "resourceAction" {
-        validate_resource_action(&connection, &request).await?;
+            .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?;
+        if session.connection_id.as_deref() != Some(connection_id)
+            || session.connection_generation.as_deref() != Some(connection.generation.as_str())
+        {
+            return Err(AppError::new(
+                "Argo CD connection was replaced",
+                "argoOperationUnavailable",
+            ));
+        }
+        let current = api_get(
+            &connection,
+            &application_path(&session.application, "", None),
+        )
+        .await?;
+        verify_application_identity(&current, &session.application)?;
+        if request.action == "resourceAction" {
+            validate_resource_action(&connection, request).await?;
+        }
+        return Ok(ExecutionBinding::Connected(connection));
     }
-    let path = match request.action.as_str() {
-        "refresh" => application_path(&request.application, "", Some("normal")),
-        "hardRefresh" => application_path(&request.application, "", Some("hard")),
-        "sync" | "retry" => application_path(&request.application, "/sync", None),
-        "rollback" => application_path(&request.application, "/rollback", None),
-        "terminate" => application_path(&request.application, "/operation", None),
-        "resourceAction" => application_path(&request.application, "/resource/actions/v2", None),
-        _ => unreachable!(),
-    };
-    let value = if request.action == "refresh" || request.action == "hardRefresh" {
-        api_get(&connection, &path).await?
-    } else if request.action == "terminate" {
-        api_delete(&connection, &path).await?
-    } else {
-        api_post(&connection, &path, connected_payload(&request)).await?
-    };
-    accepted("connected", value)
+    fallback_allowed(request).await?;
+    let context = request.cluster_context.as_deref().expect("validated");
+    let client = client_for_context(context, request.kubeconfig_env_var.clone()).await?;
+    let resource = find_api_resource(&client, "argoproj.io", "Application")
+        .await?
+        .ok_or_else(|| AppError::new("Application CRD not found", "cluster"))?;
+    let current = Api::<DynamicObject>::namespaced_with(
+        client.clone(),
+        request.application.namespace.as_deref().expect("validated"),
+        &resource,
+    )
+    .get(&request.application.name)
+    .await?;
+    verify_application_identity(&current.data, &session.application)?;
+    Ok(ExecutionBinding::Kubernetes { client, resource })
+}
+
+fn verify_application_identity(
+    value: &Value,
+    expected: &ArgoApplicationRef,
+) -> Result<(), AppError> {
+    let metadata = value.get("metadata").unwrap_or(value);
+    let actual = [
+        (
+            "name",
+            metadata.get("name").and_then(Value::as_str),
+            Some(expected.name.as_str()),
+        ),
+        (
+            "namespace",
+            metadata.get("namespace").and_then(Value::as_str),
+            expected.namespace.as_deref(),
+        ),
+        (
+            "project",
+            value.pointer("/spec/project").and_then(Value::as_str),
+            expected.project.as_deref(),
+        ),
+        (
+            "uid",
+            metadata.get("uid").and_then(Value::as_str),
+            expected.uid.as_deref(),
+        ),
+        (
+            "resourceVersion",
+            metadata.get("resourceVersion").and_then(Value::as_str),
+            expected.resource_version.as_deref(),
+        ),
+    ];
+    if actual
+        .into_iter()
+        .any(|(_, current, expected)| expected.is_some_and(|expected| current != Some(expected)))
+    {
+        return Err(AppError::new(
+            "Application changed since operation review",
+            "argoOperationUnavailable",
+        ));
+    }
+    Ok(())
 }
 
 fn accepted(transport: &str, operation: Value) -> Result<ArgoOperationResult, AppError> {
@@ -371,25 +484,27 @@ async fn validate_resource_action(
 }
 async fn kubernetes_operation(
     request: ArgoOperationRequest,
+    client: Client,
+    resource: ApiResource,
 ) -> Result<ArgoOperationResult, AppError> {
-    fallback_allowed(&request).await?;
-    let context = request.cluster_context.as_deref().expect("validated");
-    let client = client_for_context(context, request.kubeconfig_env_var.clone()).await?;
-    let ar = find_api_resource(&client, "argoproj.io", "Application")
-        .await?
-        .ok_or_else(|| AppError::new("Application CRD not found", "cluster"))?;
     let api = Api::<DynamicObject>::namespaced_with(
         client,
         request.application.namespace.as_deref().expect("validated"),
-        &ar,
+        &resource,
     );
-    let version = request.resource_version.clone().expect("validated");
+    let mut metadata = json!({
+        "resourceVersion": request.resource_version.clone().expect("validated")
+    });
+    if let Some(uid) = &request.application.uid {
+        metadata["uid"] = Value::String(uid.clone());
+    }
     let patch = match request.action.as_str() {
         "refresh" | "hardRefresh" => {
-            json!({"metadata":{"resourceVersion":version,"annotations":{"argocd.argoproj.io/refresh":if request.action == "hardRefresh" { "hard" } else { "normal" }}}})
+            metadata["annotations"] = json!({"argocd.argoproj.io/refresh":if request.action == "hardRefresh" { "hard" } else { "normal" }});
+            json!({"metadata":metadata})
         }
         "sync" | "retry" => {
-            json!({"metadata":{"resourceVersion":version},"operation":{"sync":kubernetes_sync_payload(&request)}})
+            json!({"metadata":metadata,"operation":{"sync":kubernetes_sync_payload(&request)}})
         }
         _ => unreachable!(),
     };
@@ -410,29 +525,78 @@ async fn kubernetes_operation(
 async fn resolve_request(
     store: &super::ArgoConnectionStore,
     request: &ArgoOperationRequest,
-) -> Result<ArgoOperationRequest, AppError> {
-    if request.action != "retry" {
-        let mut resolved = request.clone();
-        if request.action == "sync" {
-            resolved.sync_payload = Some(sync_payload(request));
+) -> Result<(ArgoOperationRequest, Option<String>), AppError> {
+    let (mut resolved, generation) = if request.transport == "connected" {
+        let connection = scoped_connection(
+            store,
+            request
+                .connection_id
+                .as_deref()
+                .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?,
+            request.cluster_context.as_deref().ok_or_else(|| {
+                AppError::new("clusterContext required", "argoOperationUnavailable")
+            })?,
+            request.application.workspace_id.as_deref(),
+        )?;
+        let value = api_get(
+            &connection,
+            &application_path(&request.application, "", None),
+        )
+        .await?;
+        let metadata = value.get("metadata").unwrap_or(&value);
+        let mut application = request.application.clone();
+        if let Some(name) = metadata.get("name").and_then(Value::as_str) {
+            name.clone_into(&mut application.name);
         }
-        return Ok(resolved);
+        application.namespace = metadata
+            .get("namespace")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        application.project = value
+            .pointer("/spec/project")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        application.uid = metadata
+            .get("uid")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        application.resource_version = metadata
+            .get("resourceVersion")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        application
+            .workspace_id
+            .clone_from(&connection.profile.workspace_id);
+        let mut resolved = request.clone();
+        resolved.application = application;
+        resolved
+            .cluster_context
+            .clone_from(&connection.profile.cluster_context);
+        (resolved, Some(connection.generation))
+    } else {
+        (request.clone(), None)
+    };
+    if resolved.action != "retry" {
+        if resolved.action == "sync" {
+            resolved.sync_payload = Some(sync_payload(&resolved));
+        }
+        return Ok((resolved, generation));
     }
     let sync =
-        if request.transport == "connected" {
+        if resolved.transport == "connected" {
             let connection = scoped_connection(
                 store,
-                request.connection_id.as_deref().ok_or_else(|| {
+                resolved.connection_id.as_deref().ok_or_else(|| {
                     AppError::new("Argo CD connection required", "argoConnection")
                 })?,
-                request.cluster_context.as_deref().ok_or_else(|| {
+                resolved.cluster_context.as_deref().ok_or_else(|| {
                     AppError::new("clusterContext required", "argoOperationUnavailable")
                 })?,
-                request.application.workspace_id.as_deref(),
+                resolved.application.workspace_id.as_deref(),
             )?;
             api_get(
                 &connection,
-                &application_path(&request.application, "", None),
+                &application_path(&resolved.application, "", None),
             )
             .await?
             .pointer("/status/operationState/operation/sync")
@@ -464,7 +628,7 @@ async fn resolve_request(
                 "argoOperationUnavailable",
             )
         })?;
-    recorded_retry(request, sync)
+    Ok((recorded_retry(&resolved, sync)?, generation))
 }
 
 fn recorded_retry(
@@ -622,6 +786,64 @@ fn recorded_sync_payload(sync: Value) -> Result<Value, AppError> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn operation_paths_encode_application_and_resource_identity() {
+        let application = ArgoApplicationRef {
+            name: "app/a?#".into(),
+            namespace: Some("app ns/&?#".into()),
+            project: Some("project/&?#".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            application_path(&application, "/sync", None),
+            "/api/v1/applications/app%2Fa%3F%23/sync?appNamespace=app+ns%2F%26%3F%23&project=project%2F%26%3F%23"
+        );
+        let path = resource_action_path(&ArgoOperationRequest {
+            application,
+            resources: vec![crate::models::ArgoManagedResource {
+                group: Some("apps/&?#".into()),
+                version: Some("v1/?.".into()),
+                kind: Some("Deployment/#".into()),
+                namespace: Some("ns/&?#".into()),
+                name: Some("resource/&?#".into()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        assert_eq!(
+            path,
+            "/api/v1/applications/app%2Fa%3F%23/resource/actions?appNamespace=app+ns%2F%26%3F%23&project=project%2F%26%3F%23&group=apps%2F%26%3F%23&version=v1%2F%3F.&kind=Deployment%2F%23&namespace=ns%2F%26%3F%23&resourceName=resource%2F%26%3F%23"
+        );
+    }
+
+    #[test]
+    fn absent_optional_identity_fields_are_not_mismatches() {
+        let mut expected = ArgoApplicationRef {
+            name: "app".into(),
+            ..Default::default()
+        };
+        let current = json!({"metadata": {"name": "app"}});
+
+        assert!(verify_application_identity(&current, &expected).is_ok());
+        expected.uid = Some("reviewed-uid".into());
+        assert!(verify_application_identity(&current, &expected).is_err());
+    }
+
+    #[test]
+    fn connected_refresh_is_allowed_into_review_gate() {
+        let request = ArgoOperationRequest {
+            transport: "connected".into(),
+            action: "refresh".into(),
+            application: ArgoApplicationRef {
+                name: "app".into(),
+                workspace_id: Some("workspace".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(valid(&request).is_ok());
+        assert_eq!(request.transport, "connected");
+    }
     #[test]
     fn sync_payload_matches_argocd_request_contract() {
         let request = ArgoOperationRequest {

@@ -550,10 +550,10 @@
 			await runArgoOperationLifecycle({
 				request: requested,
 				preflight: (request) => preflightArgoOperation(client, request),
-				run: async (request) => {
+				run: async (confirmation) => {
 					operationPhase = "submitting";
-					operationMessage = `Submitting ${operationLabel(request.action)}…`;
-					return runArgoOperation(client, request);
+					operationMessage = `Submitting ${operationLabel(requested.action)}…`;
+					return runArgoOperation(client, confirmation);
 				},
 				refresh: async () => {
 					operationPhase = "refreshing";
