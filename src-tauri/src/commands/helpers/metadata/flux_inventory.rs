@@ -253,7 +253,7 @@ mod tests {
 
         enrich_resource_summaries_with_flux_inventory(&mut summaries, &index);
 
-        assert_eq!(summaries[0].git_ops_owner.as_ref().unwrap().partial, false);
+        assert!(!summaries[0].git_ops_owner.as_ref().unwrap().partial);
         assert_eq!(summaries[1].git_ops_owner, None);
         assert!(!summaries.iter().any(|row| row.git_ops_ownership_partial));
 
