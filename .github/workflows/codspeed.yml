@@ -70,7 +70,7 @@ jobs:
         run: cargo codspeed build --features bench-support --bench backend_hot_paths --locked
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v5
+        uses: CodSpeedHQ/action@v5.0.1
         with:
           mode: simulation
           run: bunx vitest bench --run && cd src-tauri && cargo codspeed run --bench backend_hot_paths
