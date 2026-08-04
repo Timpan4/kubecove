@@ -20,6 +20,7 @@ export type SavedArgoProfile = {
 	endpoint: ArgoServerEndpoint;
 	clusterContext?: string;
 	workspaceId?: string;
+	kubeconfigSourceKey?: string | null;
 	rememberCredential: boolean;
 };
 export const DEFAULT_KUBECONFIG_ENV_VAR = "KUBECONFIG";
@@ -170,6 +171,11 @@ export function normalizeSavedArgoProfile(value: unknown): SavedArgoProfile | nu
 		...(typeof profile.workspaceId === "string" && profile.workspaceId.trim()
 			? { workspaceId: profile.workspaceId }
 			: {}),
+		...(typeof profile.kubeconfigSourceKey === "string" && profile.kubeconfigSourceKey.trim()
+			? { kubeconfigSourceKey: profile.kubeconfigSourceKey.trim() }
+			: profile.kubeconfigSourceKey === null
+				? { kubeconfigSourceKey: null }
+				: {}),
 		rememberCredential: Boolean(profile.rememberCredential),
 	};
 }

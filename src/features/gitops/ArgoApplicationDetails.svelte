@@ -168,7 +168,12 @@
 		workspaceId,
 	});
 	const argoProfiles = $derived(
-		eligibleArgoProfiles($settingsStore.argoProfiles, clusterContext, workspaceId),
+		eligibleArgoProfiles(
+			$settingsStore.argoProfiles,
+			clusterContext,
+			workspaceId,
+			kubeconfigEnvVar ?? "",
+		),
 	);
 	const preference = $derived(
 		normalizeArgoConnectionPreference(
@@ -216,6 +221,7 @@
 			statuses: statuses.data,
 			clusterContext,
 			workspaceId,
+			kubeconfigSourceKey: kubeconfigEnvVar ?? "",
 			preference,
 		}),
 	);

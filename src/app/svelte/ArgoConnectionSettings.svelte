@@ -56,7 +56,12 @@
 	let connected = $state<string | null>(null);
 	const matchingProfiles = $derived(
 		clusterContext && workspaceId
-			? eligibleArgoProfiles(settings.argoProfiles, clusterContext, workspaceId)
+			? eligibleArgoProfiles(
+					settings.argoProfiles,
+					clusterContext,
+					workspaceId,
+					kubeconfigEnvVar ?? "",
+				)
 			: settings.argoProfiles,
 	);
 	const connectionStatuses = createQuery(() => ({
@@ -117,7 +122,7 @@
 	}
 
 	function profileId(endpoint: ArgoServerEndpoint) {
-		return `argo:${workspaceId ?? "global"}:${clusterContext ?? "global"}:${argoEndpointIdentity(endpoint)}`;
+		return `argo:${workspaceId ?? "global"}:${clusterContext ?? "global"}:${kubeconfigEnvVar ?? "global"}:${argoEndpointIdentity(endpoint)}`;
 	}
 
 	async function connect(saved?: (typeof settings.argoProfiles)[number]) {
@@ -151,6 +156,7 @@
 							endpoint: profile.endpoint,
 							clusterContext: profile.clusterContext ?? undefined,
 							workspaceId: profile.workspaceId ?? undefined,
+							kubeconfigSourceKey: profile.kubeconfigSourceKey,
 							rememberCredential: profile.rememberCredential,
 						},
 						saved?.id,

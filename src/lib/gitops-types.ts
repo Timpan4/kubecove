@@ -55,6 +55,7 @@ export interface ArgoConnectionProfile {
 	url: string;
 	clusterContext?: string | null;
 	workspaceId?: string | null;
+	kubeconfigSourceKey?: string | null;
 	transport: "connected" | string;
 	rememberCredential: boolean;
 }

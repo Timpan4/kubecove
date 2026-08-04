@@ -118,6 +118,35 @@ describe("settings", () => {
 		);
 	});
 
+	test("preserves canonical Argo kubeconfig source identity", () => {
+		const profile = normalizeSavedArgoProfile({
+			id: "source-bound",
+			endpoint: { kind: "externalHttps", url: "https://argo.example.com" },
+			clusterContext: "kind-dev",
+			workspaceId: "workspace-a",
+			kubeconfigSourceKey: "  kubeconfigSource=source-a  ",
+			rememberCredential: false,
+		});
+
+		if (!profile) throw new Error("source-bound profile should normalize");
+		expect(profile.kubeconfigSourceKey).toBe("kubeconfigSource=source-a");
+		expect(
+			partializeSettings({
+				...useSettingsState.getState(),
+				argoProfiles: [profile],
+			}).argoProfiles,
+		).toEqual([profile]);
+		expect(
+			normalizeSavedArgoProfile({
+				id: "legacy-source",
+				url: "https://argo.example.com",
+				clusterContext: "kind-dev",
+				workspaceId: "workspace-a",
+				rememberCredential: false,
+			}),
+		).not.toHaveProperty("kubeconfigSourceKey");
+	});
+
 	test("defaults Helm to cards and persists only valid view modes", () => {
 		expect(useSettingsState.getState().helmViewMode).toBe("cards");
 		useSettingsState.getState().setHelmViewMode("list");

@@ -15,23 +15,40 @@ const profiles: ArgoConnectionProfilePolicyInput[] = [
 		url: "https://first.example.com",
 		clusterContext: "kind-dev",
 		workspaceId: "workspace-a",
+		kubeconfigSourceKey: "source-a",
 	},
 	{
 		id: "second",
 		url: "https://second.example.com",
 		clusterContext: "kind-dev",
 		workspaceId: "workspace-a",
+		kubeconfigSourceKey: "source-a",
 	},
 	{
 		id: "other-workspace",
 		url: "https://other.example.com",
 		clusterContext: "kind-dev",
 		workspaceId: "workspace-b",
+		kubeconfigSourceKey: "source-a",
 	},
 	{
 		id: "other-cluster",
 		url: "https://cluster.example.com",
 		clusterContext: "production",
+		workspaceId: "workspace-a",
+		kubeconfigSourceKey: "source-a",
+	},
+	{
+		id: "other-source",
+		url: "https://source.example.com",
+		clusterContext: "kind-dev",
+		workspaceId: "workspace-a",
+		kubeconfigSourceKey: "source-b",
+	},
+	{
+		id: "legacy-source",
+		url: "https://legacy-source.example.com",
+		clusterContext: "kind-dev",
 		workspaceId: "workspace-a",
 	},
 	{
@@ -44,14 +61,18 @@ const profiles: ArgoConnectionProfilePolicyInput[] = [
 const scope = {
 	clusterContext: "kind-dev",
 	workspaceId: "workspace-a",
+	kubeconfigSourceKey: "source-a",
 };
 
 describe("Argo connection policy", () => {
 	test("requires exact workspace and cluster eligibility in saved order", () => {
 		expect(
-			eligibleArgoProfiles(profiles, scope.clusterContext, scope.workspaceId).map(
-				(profile) => profile.id,
-			),
+			eligibleArgoProfiles(
+				profiles,
+				scope.clusterContext,
+				scope.workspaceId,
+				scope.kubeconfigSourceKey,
+			).map((profile) => profile.id),
 		).toEqual(["first", "second"]);
 	});
 
