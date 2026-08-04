@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { createQueries, createQuery } from "@tanstack/svelte-query";
+	import { createQueries, createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import type { HealthFilter } from "@/features/resources";
 	import type { PathStateDetailTab } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
+		closeStreamChannel,
+		createStreamChannel,
 		createTauriClient,
 		detectArgoCD,
 		detectFlux,
@@ -11,6 +13,8 @@
 		listArgoApplications,
 		listArgoAppProjects,
 		listFluxResources,
+		startResourceWatch,
+		stopStream,
 	} from "@/lib/tauri";
 	import type {
 		ArgoApplicationSetSummary,
@@ -20,6 +24,7 @@
 	} from "@/lib/types";
 	import type { TreeNodeId } from "@/lib/tree-nav";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
+	import { createArgoListFreshness } from "./argo-application-freshness";
 	import GitOpsView from "./GitOpsView.svelte";
 	import {
 		buildGitOpsRailItems,
@@ -65,6 +70,7 @@
 	} = $props();
 
 	const client = createTauriClient();
+	const queryClient = useQueryClient();
 	const context = $derived(workspace.scope.clusterContext);
 	const argoDetectionQuery = createQuery<boolean>(() => ({
 		queryKey: queryKeys.argoDetect(context, kubeconfigSourceKey),
@@ -145,6 +151,42 @@
 		) {
 			selectedGitOpsItem = null;
 		}
+	});
+
+	$effect(() => {
+		if (!sourceReady || argoDetectionQuery.data !== true) return;
+		let cancelled = false;
+		let streamId: string | null = null;
+		const freshness = createArgoListFreshness(
+			(queryKey) => void queryClient.invalidateQueries({ queryKey }),
+			kubeconfigSourceKey,
+		);
+		const channel = createStreamChannel(freshness.handle);
+		void startResourceWatch(
+			client,
+			context,
+			[
+				{ resourceKind: { kind: "Application", apiVersion: "argoproj.io/v1alpha1", plural: "applications", namespaced: true } },
+				{ resourceKind: { kind: "ApplicationSet", apiVersion: "argoproj.io/v1alpha1", plural: "applicationsets", namespaced: true } },
+				{ resourceKind: { kind: "AppProject", apiVersion: "argoproj.io/v1alpha1", plural: "appprojects", namespaced: true } },
+			],
+			channel,
+			kubeconfigSourceKey,
+		)
+			.then((id) => {
+				if (cancelled) {
+					void stopStream(client, id);
+					return;
+				}
+				streamId = id;
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+			freshness.dispose();
+			if (streamId) void stopStream(client, streamId);
+			closeStreamChannel(channel);
+		};
 	});
 
 	function openSelectedArgoApplicationResources(selectionOverride?: GitOpsSelection) {

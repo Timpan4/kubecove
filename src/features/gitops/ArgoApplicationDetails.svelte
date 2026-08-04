@@ -121,6 +121,11 @@
 
 	type DiffView = "changes" | "target" | "live";
 	type OperationPhase = "idle" | "authorizing" | "submitting" | "refreshing" | "accepted" | "error";
+	type ApplicationRefreshKeys = {
+		scopeKey: string;
+		applicationScope: readonly unknown[];
+		applicationList: readonly unknown[];
+	};
 	type YamlDiffSegment = { text: string; className: string };
 
 	const client = createTauriClient();
@@ -198,6 +203,7 @@
 	let acceptedRefreshPending = $state(false);
 	let lastOperationRequest = $state<ArgoOperationRequest | null>(null);
 	let appliedScopeKey = $state("");
+	let operationUiToken = 0;
 
 	const statuses = createQuery(() => ({
 		queryKey: [
@@ -276,6 +282,11 @@
 			workspaceReadContext.sourceReady &&
 			connectionReady,
 		staleTime: 30_000,
+		refetchInterval: (query) =>
+			active && transport === "connected" && query.state.data?.transport === "connected"
+				? 15_000
+				: false,
+		refetchIntervalInBackground: false,
 		retry: false,
 		gcTime: redactSecrets ? undefined : 0,
 	}));
@@ -333,6 +344,8 @@
 		},
 		enabled: lazyComparisonEnabled,
 		staleTime: 30_000,
+		refetchInterval: lazyComparisonEnabled ? 15_000 : false,
+		refetchIntervalInBackground: false,
 		retry: false,
 		gcTime: redactSecrets ? undefined : 0,
 	}));
@@ -445,6 +458,13 @@
 	);
 	const loading = $derived(inspector.isPending);
 	const dataError = $derived(inspector.isError ? inspector.error : null);
+	const snapshotFreshness = $derived(
+		inspector.data?.connectedFallback
+			? "Connected Argo CD is unavailable; Kubernetes watch refreshes this fallback snapshot."
+			: inspector.data?.transport === "connected"
+				? "Connected Argo CD refreshes this snapshot every 15 seconds while visible."
+				: "Kubernetes watch refreshes this snapshot while visible.",
+	);
 	const busy = $derived(
 		operationPhase === "authorizing" || operationPhase === "submitting" || operationPhase === "refreshing",
 	);
@@ -458,6 +478,7 @@
 	$effect(() => {
 		const nextScopeKey = scopeKey;
 		if (appliedScopeKey && appliedScopeKey !== nextScopeKey) {
+			operationUiToken += 1;
 			selectedResource = null;
 			selectedHistoryKey = null;
 			diffView = "changes";
@@ -534,70 +555,86 @@
 		};
 	}
 
-	async function refreshApplicationState() {
+	function captureApplicationRefreshKeys(
+		requested: ArgoOperationRequest,
+		mountedScopeKey: string,
+	): ApplicationRefreshKeys {
+		const { application } = requested;
+		const cluster = requested.clusterContext ?? application.context ?? "";
+		const workspace = application.workspaceId ?? "";
+		const source = requested.kubeconfigEnvVar ?? undefined;
+		return {
+			scopeKey: mountedScopeKey,
+			applicationScope: queryKeys.argoWorkspaceApplicationScope(
+				cluster,
+				workspace,
+				application.name,
+				application.namespace,
+				source,
+			),
+			applicationList: queryKeys.argoApps(cluster, source),
+		};
+	}
+
+	async function refreshApplicationState(keys: ApplicationRefreshKeys) {
 		await Promise.all([
-			queryClient.invalidateQueries({
-				queryKey: queryKeys.argoWorkspaceApplication(
-					clusterContext,
-					workspaceId,
-					resourceSummary.name,
-					resourceSummary.namespace,
-					applicationRequest.uid,
-					redactSecrets,
-					kubeconfigEnvVar,
-				),
-			}),
-			queryClient.invalidateQueries({
-				queryKey: queryKeys.argoApps(clusterContext, kubeconfigEnvVar),
-			}),
+			queryClient.invalidateQueries({ queryKey: keys.applicationScope }),
+			queryClient.invalidateQueries({ queryKey: keys.applicationList }),
 		]);
 	}
 
 	async function executeOperation(requested: ArgoOperationRequest) {
-		lastOperationRequest = requested;
-		acceptedRefreshPending = false;
-		operationError = null;
-		operationMessage = "Checking authorization and operation scope…";
-		operationPhase = "authorizing";
-		try {
-			await runArgoOperationLifecycle({
-				request: requested,
-				preflight: (request) => preflightArgoOperation(client, request),
-				run: async (confirmation) => {
-					operationPhase = "submitting";
+		const mountedScopeKey = scopeKey;
+		const refreshKeys = captureApplicationRefreshKeys(requested, mountedScopeKey);
+		const uiToken = ++operationUiToken;
+		const isCurrent = () => operationUiToken === uiToken && scopeKey === refreshKeys.scopeKey;
+		await runArgoOperationLifecycle({
+			request: requested,
+			preflight: (request) => preflightArgoOperation(client, request),
+			run: (confirmation) => runArgoOperation(client, confirmation),
+			refresh: () => refreshApplicationState(refreshKeys),
+			isCurrent,
+			onPhase: (phase, error) => {
+				operationPhase = phase;
+				if (phase === "authorizing") {
+					lastOperationRequest = requested;
+					acceptedRefreshPending = false;
+					operationError = null;
+					operationMessage = "Checking authorization and operation scope…";
+				} else if (phase === "submitting") {
 					operationMessage = `Submitting ${operationLabel(requested.action)}…`;
-					return runArgoOperation(client, confirmation);
-				},
-				refresh: async () => {
-					operationPhase = "refreshing";
+				} else if (phase === "refreshing") {
 					operationMessage = `${operationLabel(requested.action)} accepted; refreshing Application state…`;
-					await refreshApplicationState();
-				},
-			});
-			operationPhase = "accepted";
-			operationMessage = `${operationLabel(requested.action)} accepted; latest Application state loaded. Completion follows Argo CD operation state.`;
-		} catch (error) {
-			operationPhase = "error";
-			acceptedRefreshPending = error instanceof ArgoOperationRefreshError;
-			operationError = error instanceof Error ? error.message : String(error);
-			operationMessage = null;
-		}
+				} else if (phase === "accepted") {
+					operationMessage = `${operationLabel(requested.action)} accepted; latest Application state loaded. Completion follows Argo CD operation state.`;
+				} else if (phase === "error") {
+					acceptedRefreshPending = error instanceof ArgoOperationRefreshError;
+					operationError = error instanceof Error ? error.message : String(error);
+					operationMessage = null;
+				}
+			},
+		}).catch(() => {});
 	}
 
 	async function retryAcceptedRefresh() {
-		if (!acceptedRefreshPending || busy) return;
-		const label = lastOperationRequest
-			? operationLabel(lastOperationRequest.action)
-			: "Operation";
+		if (!acceptedRefreshPending || busy || !lastOperationRequest) return;
+		const requested = lastOperationRequest;
+		const mountedScopeKey = scopeKey;
+		const refreshKeys = captureApplicationRefreshKeys(requested, mountedScopeKey);
+		const uiToken = ++operationUiToken;
+		const isCurrent = () => operationUiToken === uiToken && scopeKey === refreshKeys.scopeKey;
+		const label = operationLabel(requested.action);
 		operationError = null;
 		operationPhase = "refreshing";
 		operationMessage = `${label} accepted; retrying Application state refresh…`;
 		try {
-			await refreshApplicationState();
+			await refreshApplicationState(refreshKeys);
+			if (!isCurrent()) return;
 			acceptedRefreshPending = false;
 			operationPhase = "accepted";
 			operationMessage = `${label} accepted; latest Application state loaded. Completion follows Argo CD operation state.`;
 		} catch (error) {
+			if (!isCurrent()) return;
 			operationPhase = "error";
 			operationError = new ArgoOperationRefreshError(error).message;
 			operationMessage = null;
@@ -849,9 +886,9 @@
 		<Alert>
 			<AlertTitle>Connected inspection unavailable</AlertTitle>
 			<AlertDescription>
-				Complete Kubernetes result shown. Connected
+				Kubernetes fallback snapshot shown. Connected
 				{inspector.data.connectedFallback.failure.kind}:
-				{inspector.data.connectedFallback.failure.message}.
+				{inspector.data.connectedFallback.failure.message}. Kubernetes watch keeps this snapshot fresh.
 			</AlertDescription>
 		</Alert>
 	{/if}
@@ -903,8 +940,8 @@
 	{/if}
 	{#if dataError}
 		<Alert variant="destructive">
-			<AlertTitle>Argo Application data unavailable</AlertTitle>
-			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{dataError instanceof Error ? dataError.message : String(dataError)}</span><Button type="button" size="sm" variant="outline" onclick={() => void inspector.refetch()}>Retry</Button></AlertDescription>
+			<AlertTitle>{transport === "connected" ? "Connected Argo CD snapshot unavailable" : "Kubernetes Application snapshot unavailable"}</AlertTitle>
+			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{dataError instanceof Error ? dataError.message : String(dataError)}</span><Button type="button" size="sm" variant="outline" onclick={() => void inspector.refetch()}>Retry snapshot</Button></AlertDescription>
 		</Alert>
 	{/if}
 
@@ -916,7 +953,7 @@
 	{/each}
 
 	<section class="rounded-lg border bg-surface-1 p-3">
-		<div class="flex items-center justify-between gap-2"><div><div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Change navigator</div><div class="mt-0.5 text-xs text-muted-foreground">Focus one reconciliation item or keep complete stream.</div></div><Badge variant="outline">{reconciliationResources.length}</Badge></div>
+		<div class="flex items-center justify-between gap-2"><div><div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Change navigator</div><div class="mt-0.5 text-xs text-muted-foreground">Focus one reconciliation item or keep the complete snapshot.</div></div><Badge variant="outline">{reconciliationResources.length}</Badge></div>
 		<div class="mt-3 flex gap-2 overflow-x-auto pb-1">
 			<Button type="button" size="sm" variant={selectedResource ? "outline" : "secondary"} class="shrink-0" aria-pressed={!selectedResource} onclick={showAllChanges}>All changes</Button>
 			{#each reconciliationResources as item (argoResourceIdentityKey(item) ?? resourceLabel(item))}
@@ -956,14 +993,14 @@
 
 	<section class="min-w-0 rounded-lg border bg-surface-1 p-3">
 		<div class="flex flex-wrap items-start justify-between gap-2">
-			<div><div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><GitCompareArrows class="size-3.5" /> {selectedResource ? "Focused reconciliation" : "Continuous change stream"}</div><div class="mt-1 break-all text-xs text-muted-foreground">{selectedResource ? resourceLabel(selectedResource) : `${diffResources.length} reconciliation items shown.`}</div></div>
+			<div><div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><GitCompareArrows class="size-3.5" /> {selectedResource ? "Focused reconciliation" : "Application snapshot"}</div><div class="mt-1 break-all text-xs text-muted-foreground">{selectedResource ? resourceLabel(selectedResource) : `${diffResources.length} reconciliation items in this snapshot.`} {snapshotFreshness}</div></div>
 			<div class="flex max-w-full flex-wrap items-center gap-2">{#if selectedResource}<Button type="button" size="xs" variant="outline" onclick={showAllChanges}>All changes</Button>{/if}<SegmentedControl value={diffView} options={diffViewOptions} onChange={(value) => (diffView = value)} ariaLabel="Reconciliation document view" size="sm" /></div>
 		</div>
 		<div class="mt-3 space-y-4">
 			{#if loading}
-				<div class="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground" role="status"><Spinner /> Loading reconciliation stream</div>
+				<div class="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground" role="status"><Spinner /> Loading Application snapshot</div>
 			{:else if dataError}
-				<Empty><EmptyHeader><EmptyTitle>Change stream unavailable</EmptyTitle><EmptyDescription>Retry Application data before evaluating reconciliation state.</EmptyDescription></EmptyHeader></Empty>
+				<Empty><EmptyHeader><EmptyTitle>Application snapshot unavailable</EmptyTitle><EmptyDescription>Retry Application data before evaluating reconciliation state.</EmptyDescription></EmptyHeader></Empty>
 			{:else}
 				{#each diffResources as item (argoResourceIdentityKey(item) ?? resourceLabel(item))}
 				{@const comparison = comparisonFor(item)}

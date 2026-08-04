@@ -23,35 +23,58 @@ export class ArgoOperationRefreshError extends Error {
 	}
 }
 
+export type ArgoOperationPhase =
+	| "authorizing"
+	| "submitting"
+	| "refreshing"
+	| "accepted"
+	| "error";
+
 export async function runArgoOperationLifecycle({
 	request,
 	preflight,
 	run,
 	refresh,
+	isCurrent = () => true,
+	onPhase,
 }: {
 	request: ArgoOperationRequest;
 	preflight: (request: ArgoOperationRequest) => Promise<Preflight>;
 	run: (confirmation: ArgoOperationConfirmation) => Promise<Result>;
 	refresh: () => Promise<unknown>;
+	isCurrent?: () => boolean;
+	onPhase?: (phase: ArgoOperationPhase, error?: unknown) => void;
 }): Promise<void> {
-	const result = await preflight(request);
-	if (
-		result?.allowed !== true ||
-		typeof result.sessionId !== "string" ||
-		!result.sessionId ||
-		typeof result.expiresAt !== "number" ||
-		!isRequest(result.reviewedRequest)
-	) {
-		throw new Error(typeof result?.reason === "string" ? result.reason : "Operation unavailable");
-	}
-	const operation = await run({ sessionId: result.sessionId, confirmation: result.sessionId });
-	if (operation?.accepted !== true) {
-		throw new Error(typeof operation?.message === "string" ? operation.message : "Operation rejected");
-	}
+	const phase = (next: ArgoOperationPhase, error?: unknown) => {
+		if (isCurrent()) onPhase?.(next, error);
+	};
 	try {
-		await refresh();
+		phase("authorizing");
+		const result = await preflight(request);
+		if (
+			result?.allowed !== true ||
+			typeof result.sessionId !== "string" ||
+			!result.sessionId ||
+			typeof result.expiresAt !== "number" ||
+			!isRequest(result.reviewedRequest)
+		) {
+			throw new Error(typeof result?.reason === "string" ? result.reason : "Operation unavailable");
+		}
+		phase("submitting");
+		const operation = await run({ sessionId: result.sessionId, confirmation: result.sessionId });
+		if (operation?.accepted !== true) {
+			throw new Error(typeof operation?.message === "string" ? operation.message : "Operation rejected");
+		}
+		phase("refreshing");
+		try {
+			await refresh();
+		} catch (error) {
+			throw new ArgoOperationRefreshError(error);
+		}
+		phase("accepted");
 	} catch (error) {
-		throw new ArgoOperationRefreshError(error);
+		phase("error", error);
+		throw error;
 	}
 }
 

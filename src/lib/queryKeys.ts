@@ -207,6 +207,21 @@ export const queryKeys = {
 			yamlViewMode,
 			yamlEncoding,
 		] as const,
+	argoWorkspaceApplicationScope: (
+		clusterContext: string,
+		workspaceId: string,
+		name: string,
+		namespace: string | null | undefined,
+		kubeconfigEnvVar?: string,
+	) =>
+		[
+			"argo-workspace",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			workspaceId,
+			namespace ?? "",
+			name,
+		] as const,
 	argoWorkspaceApplication: (
 		clusterContext: string,
 		workspaceId: string,
@@ -217,12 +232,13 @@ export const queryKeys = {
 		kubeconfigEnvVar?: string,
 	) =>
 		[
-			"argo-workspace",
-			kubeconfigSourceKey(kubeconfigEnvVar),
-			clusterContext,
-			workspaceId,
-			namespace ?? "",
-			name,
+			...queryKeys.argoWorkspaceApplicationScope(
+				clusterContext,
+				workspaceId,
+				name,
+				namespace,
+				kubeconfigEnvVar,
+			),
 			uid ?? "",
 			redactSecrets,
 		] as const,

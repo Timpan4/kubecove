@@ -8,6 +8,51 @@ declare function expect<T>(actual: T): {
 };
 
 describe("query key identity", () => {
+	test("scopes every Argo Application variant by source, cluster, workspace, namespace, and name", () => {
+		const variants = (
+			cluster = "kind-dev",
+			workspace = "workspace-1",
+			name = "guestbook",
+			namespace = "argocd",
+			source = "KUBECONFIG",
+		) => [
+			queryKeys.argoWorkspaceApplication(cluster, workspace, name, namespace, "uid-1", true, source),
+			queryKeys.argoWorkspaceApplication(cluster, workspace, name, namespace, "uid-2", false, source),
+			queryKeys.argoWorkspaceInspector(cluster, workspace, name, namespace, "uid-1", true, "connected", "connection-1", source),
+			queryKeys.argoWorkspaceInspector(cluster, workspace, name, namespace, "uid-2", false, "kubernetes", "ignored", source),
+			queryKeys.argoWorkspaceSelectedResource(cluster, workspace, name, namespace, "uid-1", true, "connected", "connection-1", "apps", "Deployment", "default", "guestbook", source),
+			queryKeys.argoWorkspaceSelectedResource(cluster, workspace, name, namespace, "uid-2", false, "kubernetes", "ignored", "apps", "Deployment", "default", "guestbook", source),
+		];
+		const scope = queryKeys.argoWorkspaceApplicationScope(
+			"kind-dev",
+			"workspace-1",
+			"guestbook",
+			"argocd",
+			"KUBECONFIG",
+		);
+
+		expect(scope).toEqual([
+			"argo-workspace",
+			"kubeconfigEnv=KUBECONFIG",
+			"kind-dev",
+			"workspace-1",
+			"argocd",
+			"guestbook",
+		]);
+		for (const variant of variants()) expect(variant.slice(0, scope.length)).toEqual(scope);
+		for (const [cluster, workspace, name, namespace, source] of [
+			["kind-dev", "workspace-1", "guestbook", "argocd", "SECOND_KUBECONFIG"],
+			["kind-prod", "workspace-1", "guestbook", "argocd", "KUBECONFIG"],
+			["kind-dev", "workspace-2", "guestbook", "argocd", "KUBECONFIG"],
+			["kind-dev", "workspace-1", "guestbook", "other", "KUBECONFIG"],
+			["kind-dev", "workspace-1", "other", "argocd", "KUBECONFIG"],
+		] as const) {
+			for (const variant of variants(cluster, workspace, name, namespace, source)) {
+				expect(JSON.stringify(variant.slice(0, scope.length)) === JSON.stringify(scope)).toBe(false);
+			}
+		}
+	});
+
 	test("keeps workspace and Application identity in Argo keys", () => {
 		const argoWorkspaceScope = queryKeys.argoWorkspaceApplication(
 			"kind-dev",
