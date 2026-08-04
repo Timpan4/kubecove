@@ -115,9 +115,14 @@ const handlers: Record<string, MockHandler> = {
 	get_app_usage_metrics: () => usage(),
 	list_resource_metrics: () => metrics(),
 	detect_argocd: () => true,
-	discover_argo_servers: () => [{ id: "service:argocd:argocd-server", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", unavailableReason: "service tunnel is not available in this build; use manual URL" }],
+	discover_argo_servers: () => [
+		{ id: "service:argocd:argocd-server:443", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 443, scheme: "https" }, unavailableReason: null },
+		{ id: "service:argocd:argocd-server:80", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 80, scheme: "https" }, unavailableReason: null },
+		{ id: "service:argocd:external", name: "argocd-external", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: null, unavailableReason: "ExternalName Services cannot be port-forwarded" },
+	],
 	connect_argo_server: (args) => {
-		const profile = { id: args?.id, url: args?.serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, transport: "connected", insecureTls: Boolean(args?.insecureTls), rememberCredential: Boolean(args?.rememberCredential) };
+		const endpoint = args?.endpoint ?? { kind: "externalHttps", url: args?.serverUrl };
+		const profile = { id: args?.id, endpoint, url: args?.serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, transport: "connected", rememberCredential: Boolean(args?.rememberCredential) };
 		if (typeof profile.id === "string") argoConnections.set(profile.id, profile);
 		return { profile, connected: true, username: args?.username ?? "mock-user", unavailableReason: null };
 	},

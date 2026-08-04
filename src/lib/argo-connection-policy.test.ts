@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	type ArgoConnectionProfilePolicyInput,
 	argoConnectionPreferenceValue,
+	argoEndpointIdentity,
 	eligibleArgoProfiles,
 	normalizeArgoConnectionPreference,
 	resolveArgoConnectionPolicy,
@@ -133,6 +134,23 @@ describe("Argo connection policy", () => {
 		);
 		expect(reconnected[0]?.url).toBe("https://updated.example.com");
 		expect(added.at(-1)?.id).toBe("third");
+	});
+
+	test("identifies external and private service endpoints stably", () => {
+		expect(argoEndpointIdentity({ kind: "externalHttps", url: " HTTPS://ARGO.EXAMPLE.COM " })).toBe(
+			"https://argo.example.com",
+		);
+		expect(
+			argoEndpointIdentity({
+				kind: "serviceTunnel",
+				namespace: " ArgoCD ",
+				serviceName: " ArgoCD-Server ",
+				servicePort: 443,
+				scheme: "https",
+				rootPath: " /argo-cd ",
+				tlsServerName: " ARGO.INTERNAL ",
+			}),
+		).toBe("serviceTunnel:argocd:argocd-server:443:https:/argo-cd:argo.internal");
 	});
 
 	test("serializes and validates stable Connected profile IDs", () => {

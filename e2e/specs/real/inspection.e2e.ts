@@ -3,7 +3,19 @@ import { get } from "node:http";
 import { promisify } from "node:util";
 import { browser, expect } from "@wdio/globals";
 import { after, describe, it } from "mocha";
-import type { ArgoApplicationSummary } from "../../../src/lib/gitops-types";
+import type {
+	ArgoApplicationInspector,
+	ArgoApplicationRef,
+	ArgoApplicationSummary,
+	ArgoConnectionStatus,
+	ArgoOperationConfirmation,
+	ArgoOperationPreflight,
+	ArgoOperationRequest,
+	ArgoOperationResult,
+	ArgoResourceComparison,
+	ArgoServerCapability,
+	ArgoServerEndpoint,
+} from "../../../src/lib/gitops-types";
 import type { HelmReleaseDetails, HelmReleaseSummary } from "../../../src/lib/helm-types";
 import type {
 	ClusterContext,
@@ -37,6 +49,14 @@ type CommandMap = {
 	stop_pod_exec_session: { args: { sessionId: string }; result: boolean };
 	stop_stream: { args: { streamId: string }; result: boolean };
 	list_argocd_applications: { args: { clusterContext: string }; result: ArgoApplicationSummary[] };
+	discover_argo_servers: { args: { clusterContext: string; kubeconfigEnvVar?: string }; result: ArgoServerCapability[] };
+	connect_argo_server: { args: { id: string; serverUrl: string; endpoint: ArgoServerEndpoint; username?: string; password?: string; insecureTls: boolean; rememberCredential: boolean; clusterContext: string; kubeconfigEnvVar?: string; workspaceId: string }; result: ArgoConnectionStatus };
+	get_argo_connection_status: { args: { id: string }; result: ArgoConnectionStatus };
+	disconnect_argo_server: { args: { id: string }; result: void };
+	get_argo_application_inspector: { args: { clusterContext: string; kubeconfigEnvVar?: string; connectionId: string; transport: "connected"; application: ArgoApplicationRef; redactSecrets: boolean }; result: ArgoApplicationInspector };
+	get_argo_resource_comparison: { args: { clusterContext: string; kubeconfigEnvVar?: string; connectionId: string; transport: "connected"; application: ArgoApplicationRef; resource: ArgoResourceComparison["resource"]; redactSecrets: boolean }; result: ArgoResourceComparison };
+	preflight_argo_operation: { args: { request: ArgoOperationRequest }; result: ArgoOperationPreflight };
+	run_argo_operation: { args: { confirmation: ArgoOperationConfirmation }; result: ArgoOperationResult };
 	list_helm_releases: { args: { clusterContext: string }; result: HelmReleaseSummary[] };
 	get_helm_release_details: { args: { clusterContext: string; namespace: string; storageKind: string; storageName: string; yamlViewMode: "applyClean"; yamlEncoding: YamlEncoding }; result: HelmReleaseDetails };
 };
@@ -54,6 +74,8 @@ const kubeconfig = process.env.KUBECOVE_KUBECONFIG;
 const streams: string[] = [];
 const sessions: string[] = [];
 const execSessions: string[] = [];
+const argoConnections: string[] = [];
+const e2eKubeconfigSource = "KUBECOVE_KUBECONFIG";
 const execFileAsync = promisify(execFile);
 
 async function invokeTauri<K extends keyof CommandMap>(command: K, args: CommandMap[K]["args"]): Promise<CommandMap[K]["result"]> {
@@ -116,6 +138,14 @@ const tauri = {
 	stopPodExecSession: (sessionId: string) => invokeTauri("stop_pod_exec_session", { sessionId }),
 	stopStream: (streamId: string) => invokeTauri("stop_stream", { streamId }),
 	listArgoCdApplications: (clusterContext: string) => invokeTauri("list_argocd_applications", { clusterContext }),
+	discoverArgoServers: (clusterContext: string) => invokeTauri("discover_argo_servers", { clusterContext, kubeconfigEnvVar: e2eKubeconfigSource }),
+	connectArgoServer: (args: CommandMap["connect_argo_server"]["args"]) => invokeTauri("connect_argo_server", args),
+	argoConnectionStatus: (id: string) => invokeTauri("get_argo_connection_status", { id }),
+	disconnectArgoServer: (id: string) => invokeTauri("disconnect_argo_server", { id }),
+	argoApplicationInspector: (args: CommandMap["get_argo_application_inspector"]["args"]) => invokeTauri("get_argo_application_inspector", args),
+	argoResourceComparison: (args: CommandMap["get_argo_resource_comparison"]["args"]) => invokeTauri("get_argo_resource_comparison", args),
+	preflightArgoOperation: (request: ArgoOperationRequest) => invokeTauri("preflight_argo_operation", { request }),
+	runArgoOperation: (confirmation: ArgoOperationConfirmation) => invokeTauri("run_argo_operation", { confirmation }),
 	listHelmReleases: (clusterContext: string) => invokeTauri("list_helm_releases", { clusterContext }),
 	getHelmReleaseDetails: (args: CommandMap["get_helm_release_details"]["args"]) => invokeTauri("get_helm_release_details", args),
 	startResourceWatch: (clusterContext: string, keys: WatchResourceKey[], bucket: string) => invokeChannel("start_resource_watch", { clusterContext, keys }, bucket),
@@ -128,6 +158,7 @@ describe("native Kind command boundary", () => {
 		for (const id of streams) await tauri.stopStream(id).catch(() => undefined);
 		for (const id of execSessions) await tauri.stopPodExecSession(id).catch(() => undefined);
 		for (const id of sessions) await tauri.stopPortForward(id).catch(() => undefined);
+		for (const id of argoConnections) await tauri.disconnectArgoServer(id).catch(() => undefined);
 	});
 
 	it("discovers the empty-profile contexts, namespaces, and dynamic kinds", async () => {
@@ -214,6 +245,57 @@ describe("native Kind command boundary", () => {
 		if (!operations) throw new Error("operations Helm release was not discovered");
 		const details = await tauri.getHelmReleaseDetails({ clusterContext: cluster, namespace: operations.namespace, storageKind: operations.storageKind, storageName: operations.storageName, yamlViewMode: "applyClean", yamlEncoding: "yaml" });
 		for (const name of ["operations", "operations-crashloop"]) expect(details.manifestSummary.resources.map((resource) => resource.name)).toContain(name);
+	});
+
+	it("inspects and refreshes tenant-catalog through the private Argo CD Service tunnel", async () => {
+		const server = (await tauri.discoverArgoServers(cluster)).find(({ endpoint }) => endpoint?.kind === "serviceTunnel" && endpoint.namespace === "argocd" && endpoint.serviceName === "argocd-server");
+		if (!server?.endpoint || server.endpoint.kind !== "serviceTunnel") throw new Error("argocd-server Service tunnel was not discovered");
+		expect(server.url).toBeNull();
+		expect(server.unavailableReason).toBeNull();
+		expect(server.endpoint.servicePort).toBeGreaterThan(0);
+
+		const password = Buffer.from(await runKubectl(["get", "secret", "argocd-initial-admin-secret", "-n", "argocd", "-o", "jsonpath={.data.password}"]), "base64").toString("utf8");
+		if (!password) throw new Error("Argo CD initial admin password is empty");
+		const connectionId = "e2e-private-argocd";
+		const workspaceId = "e2e-private-argocd";
+		const application = { name: "tenant-catalog", namespace: "argocd", project: "e2e-tenants", workspaceId };
+		const connected = await tauri.connectArgoServer({
+			id: connectionId,
+			serverUrl: "",
+			endpoint: { ...server.endpoint, scheme: "http" },
+			username: "admin",
+			password,
+			insecureTls: false,
+			rememberCredential: false,
+			clusterContext: cluster,
+			kubeconfigEnvVar: e2eKubeconfigSource,
+			workspaceId,
+		});
+		argoConnections.push(connectionId);
+		expect(connected).toMatchObject({ connected: true, profile: { rememberCredential: false, endpoint: { kind: "serviceTunnel", serviceName: "argocd-server", servicePort: server.endpoint.servicePort, scheme: "http" } } });
+
+		const inspector = await tauri.argoApplicationInspector({ clusterContext: cluster, kubeconfigEnvVar: e2eKubeconfigSource, connectionId, transport: "connected", application, redactSecrets: true });
+		expect(inspector).toMatchObject({ connected: true, transport: "connected", provenance: "argocd-api", application: { name: application.name, namespace: application.namespace } });
+		expect(inspector.comparisons).toHaveLength(17);
+		const secret = inspector.comparisons.find(({ resource }) => resource.kind === "Secret" && resource.name === "catalog-fixture");
+		if (!secret) throw new Error("catalog Secret comparison was not returned");
+		const comparison = await tauri.argoResourceComparison({ clusterContext: cluster, kubeconfigEnvVar: e2eKubeconfigSource, connectionId, transport: "connected", application, resource: secret.resource, redactSecrets: true });
+		expect(comparison).toMatchObject({ exact: true, provenance: "argocd-managed-resource" });
+		const secretState = comparison.targetState as { data?: { fixture?: string }; stringData?: { fixture?: string } };
+		expect(secretState.data?.fixture ?? secretState.stringData?.fixture).toBe("[REDACTED]");
+
+		const preflight = await tauri.preflightArgoOperation({ connectionId, transport: "connected", application, action: "refresh", resources: [], clusterContext: cluster, kubeconfigEnvVar: e2eKubeconfigSource });
+		expect(preflight).toMatchObject({ allowed: true, transport: "connected", action: "refresh" });
+		if (!preflight.sessionId) throw new Error("Argo refresh preflight returned no session");
+		expect(await tauri.runArgoOperation({ sessionId: preflight.sessionId, confirmation: preflight.sessionId })).toMatchObject({ accepted: true, transport: "connected" });
+		let replayRejected = false;
+		try { await tauri.runArgoOperation({ sessionId: preflight.sessionId, confirmation: preflight.sessionId }); } catch { replayRejected = true; }
+		expect(replayRejected).toBe(true);
+		expect(inspector.application.uid).toBe(await runKubectl(["get", "application", application.name, "-n", application.namespace, "-o", "jsonpath={.metadata.uid}"]));
+
+		await tauri.disconnectArgoServer(connectionId);
+		argoConnections.splice(argoConnections.indexOf(connectionId), 1);
+		expect(await tauri.argoConnectionStatus(connectionId)).toMatchObject({ connected: false, profile: null });
 	});
 
 	it("reconciles a Git commit and restores manual drift", async function () {

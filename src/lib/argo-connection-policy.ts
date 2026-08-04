@@ -1,3 +1,5 @@
+import type { ArgoServerEndpoint } from "./gitops-types";
+
 export type ArgoConnectionPreference =
 	| { kind: "automatic" }
 	| { kind: "kubernetes" }
@@ -5,9 +7,23 @@ export type ArgoConnectionPreference =
 
 export interface ArgoConnectionProfilePolicyInput {
 	id: string;
-	url: string;
+	endpoint?: ArgoServerEndpoint;
+	url?: string;
 	clusterContext?: string | null;
 	workspaceId?: string | null;
+}
+
+export function argoEndpointIdentity(endpoint: ArgoServerEndpoint): string {
+	if (endpoint.kind === "externalHttps") return endpoint.url.trim().toLowerCase();
+	return [
+		"serviceTunnel",
+		endpoint.namespace.trim().toLowerCase(),
+		endpoint.serviceName.trim().toLowerCase(),
+		endpoint.servicePort,
+		endpoint.scheme,
+		endpoint.rootPath?.trim() || "/",
+		endpoint.tlsServerName?.trim().toLowerCase() || "",
+	].join(":");
 }
 
 interface ArgoConnectionStatusPolicyInput {

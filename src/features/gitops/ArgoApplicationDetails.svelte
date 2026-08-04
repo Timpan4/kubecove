@@ -80,6 +80,7 @@
 		ArgoOperationAction,
 		ArgoOperationRequest,
 		ArgoResourceComparison,
+		ArgoServerEndpoint,
 		ResourceDetailsFull,
 		ResourceSummary,
 	} from "@/lib/types";
@@ -491,6 +492,12 @@
 		}
 	});
 
+	function argoEndpointLabel(endpoint: ArgoServerEndpoint): string {
+		return endpoint.kind === "externalHttps"
+			? endpoint.url
+			: `${endpoint.namespace}/${endpoint.serviceName}:${endpoint.servicePort}`;
+	}
+
 	function setConnectionPreference(value: string) {
 		$settingsStore.setArgoConnectionPreference(
 			workspaceId,
@@ -850,10 +857,12 @@
 					{connectionPolicy.preference.kind === "automatic"
 						? !connectionPolicyReady
 							? "Automatic · Checking profiles"
-							: `Automatic · ${selectedProfile?.url ?? "Kubernetes"}`
+							: `Automatic · ${selectedProfile ? argoEndpointLabel(selectedProfile.endpoint) : "Kubernetes"}`
 						: connectionPolicy.preference.kind === "kubernetes"
 							? "Kubernetes"
-							: selectedProfile?.url ?? connectionPolicy.preference.profileId}
+							: selectedProfile
+									? argoEndpointLabel(selectedProfile.endpoint)
+									: connectionPolicy.preference.profileId}
 				</SelectValue>
 			</SelectTrigger>
 			<SelectContent>
@@ -861,7 +870,7 @@
 					<SelectItem value="automatic" label="Automatic">Automatic</SelectItem>
 					<SelectItem value="kubernetes" label="Kubernetes">Kubernetes</SelectItem>
 					{#each argoProfiles as profile}
-						<SelectItem value={`connected:${profile.id}`} label={profile.url}>{profile.url}</SelectItem>
+						<SelectItem value={`connected:${profile.id}`} label={argoEndpointLabel(profile.endpoint)}>{argoEndpointLabel(profile.endpoint)}</SelectItem>
 					{/each}
 				</SelectGroup>
 			</SelectContent>
