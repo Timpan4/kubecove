@@ -3,7 +3,7 @@
 const Module = require("node:module");
 const path = require("node:path");
 
-const typescript6Root = path.dirname(require.resolve("typescript-6/package.json"));
+const typescript6Root = path.dirname(require.resolve("@typescript/typescript6/package.json"));
 const resolveFilename = Module._resolveFilename;
 
 Module._resolveFilename = function resolveWithTypescript6(
@@ -13,7 +13,7 @@ Module._resolveFilename = function resolveWithTypescript6(
 	options,
 ) {
 	if (request === "typescript") {
-		return resolveFilename.call(this, "typescript-6", parent, isMain, options);
+		return resolveFilename.call(this, "@typescript/typescript6", parent, isMain, options);
 	}
 
 	if (request.startsWith("typescript/")) {
