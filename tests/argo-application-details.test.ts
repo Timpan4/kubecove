@@ -19,7 +19,7 @@ describe("Argo Application Briefing contract", () => {
 			"Change navigator",
 			"Delivery",
 			"Recent deployment",
-			"Continuous change stream",
+			"Application snapshot",
 			"Changes",
 			"Desired",
 			"Live",
