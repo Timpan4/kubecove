@@ -1,4 +1,4 @@
-use super::connected::{ArgoConnectionStore, ConnectedArgo};
+use super::connected::{kubeconfig_source_key, ArgoConnectionStore, ConnectedArgo};
 use crate::models::AppError;
 use std::sync::Arc;
 use tokio::sync::OwnedMutexGuard;
@@ -19,9 +19,18 @@ fn required_workspace_id(workspace_id: Option<&str>) -> Result<&str, AppError> {
         })
 }
 
-fn in_scope(connection: &ConnectedArgo, cluster_context: &str, workspace_id: &str) -> bool {
-    connection.profile.cluster_context.as_deref() == Some(cluster_context)
-        && connection.profile.workspace_id.as_deref() == Some(workspace_id)
+fn in_scope(
+    connection: &ConnectedArgo,
+    cluster_context: &str,
+    workspace_id: &str,
+    kubeconfig_env_var: Option<&str>,
+) -> Result<bool, AppError> {
+    Ok(
+        connection.profile.cluster_context.as_deref() == Some(cluster_context)
+            && connection.profile.workspace_id.as_deref() == Some(workspace_id)
+            && connection.profile.kubeconfig_source_key.as_deref()
+                == Some(kubeconfig_source_key(kubeconfig_env_var)?.as_str()),
+    )
 }
 
 fn scope_error() -> AppError {
@@ -36,6 +45,7 @@ pub(crate) fn scoped_connection(
     id: &str,
     cluster_context: &str,
     workspace_id: Option<&str>,
+    kubeconfig_env_var: Option<&str>,
 ) -> Result<Arc<ConnectedArgo>, AppError> {
     let workspace_id = required_workspace_id(workspace_id)?;
     let connection = store
@@ -45,7 +55,12 @@ pub(crate) fn scoped_connection(
         .get(id)
         .cloned()
         .ok_or_else(|| AppError::new("Argo CD connection not found", "argoConnection"))?;
-    if !in_scope(&connection, cluster_context, workspace_id) {
+    if !in_scope(
+        &connection,
+        cluster_context,
+        workspace_id,
+        kubeconfig_env_var,
+    )? {
         return Err(scope_error());
     }
     Ok(connection)
@@ -57,6 +72,7 @@ pub(crate) async fn acquire_connection_lease(
     connection: Arc<ConnectedArgo>,
     cluster_context: &str,
     workspace_id: Option<&str>,
+    kubeconfig_env_var: Option<&str>,
     expected_generation: &str,
     expected_instance_id: &str,
 ) -> Result<ConnectionLease, AppError> {
@@ -69,7 +85,12 @@ pub(crate) async fn acquire_connection_lease(
         .get(id)
         .cloned();
     let current_matches = current.is_some_and(|current| Arc::ptr_eq(&current, &connection));
-    let scope_matches = in_scope(&connection, cluster_context, workspace_id);
+    let scope_matches = in_scope(
+        &connection,
+        cluster_context,
+        workspace_id,
+        kubeconfig_env_var,
+    )?;
     let generation_matches = connection.generation == expected_generation;
     let instance_matches = connection.instance_id == expected_instance_id;
     if !current_matches || !generation_matches || !instance_matches {

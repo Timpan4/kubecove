@@ -89,6 +89,7 @@ pub async fn preflight_argo_operation(
                 AppError::new("clusterContext required", "argoOperationUnavailable")
             })?,
             resolved_request.application.workspace_id.as_deref(),
+            resolved_request.kubeconfig_env_var.as_deref(),
         )?;
         validate_resource_action(&connection, &resolved_request).await?;
     }
@@ -213,6 +214,7 @@ async fn lease_connection(
         connection,
         cluster_context,
         session.workspace_id.as_deref(),
+        session.request.kubeconfig_env_var.as_deref(),
         generation,
         instance_id,
     )
@@ -312,6 +314,7 @@ async fn revalidate_session(
                 AppError::new("clusterContext required", "argoOperationUnavailable")
             })?,
             session.workspace_id.as_deref(),
+            request.kubeconfig_env_var.as_deref(),
         )?;
         let connection_id = request
             .connection_id
@@ -616,6 +619,7 @@ async fn resolve_request(
                 AppError::new("clusterContext required", "argoOperationUnavailable")
             })?,
             request.application.workspace_id.as_deref(),
+            request.kubeconfig_env_var.as_deref(),
         )?;
         let value = api_get(
             &connection,
@@ -676,6 +680,7 @@ async fn resolve_request(
                     AppError::new("clusterContext required", "argoOperationUnavailable")
                 })?,
                 resolved.application.workspace_id.as_deref(),
+                resolved.kubeconfig_env_var.as_deref(),
             )?;
             api_get(
                 &connection,
@@ -870,7 +875,10 @@ mod tests {
     use super::super::session::SecureStore;
     use super::*;
     use crate::models::{ArgoConnectionProfile, ArgoServerEndpoint};
-    use std::{collections::HashMap, sync::Mutex};
+    use std::{
+        collections::HashMap,
+        sync::{atomic::AtomicU64, Mutex},
+    };
 
     #[derive(Default)]
     struct MemorySessionStore(Mutex<HashMap<String, String>>);
@@ -899,6 +907,7 @@ mod tests {
                 },
                 cluster_context: Some("cluster".into()),
                 workspace_id: Some("workspace".into()),
+                kubeconfig_source_key: Some("kubeconfigSource=test".into()),
                 transport: "connected".into(),
                 remember_credential: true,
             },
@@ -918,11 +927,19 @@ mod tests {
             sessions: super::super::session::SessionStore::with_secure(Arc::new(
                 MemorySessionStore::default(),
             )),
+            cleanup_epoch: AtomicU64::default(),
         }
     }
 
     fn reviewed(store: &super::super::ArgoConnectionStore) -> (String, SessionSnapshot) {
-        let connection = scoped_connection(store, "server", "cluster", Some("workspace")).unwrap();
+        let connection = scoped_connection(
+            store,
+            "server",
+            "cluster",
+            Some("workspace"),
+            Some("kubeconfigSource=test"),
+        )
+        .unwrap();
         let (id, _) = issue(
             &store.sessions,
             ArgoOperationRequest {
@@ -930,6 +947,7 @@ mod tests {
                 action: "refresh".into(),
                 connection_id: Some("server".into()),
                 cluster_context: Some("cluster".into()),
+                kubeconfig_env_var: Some("kubeconfigSource=test".into()),
                 application: ArgoApplicationRef {
                     name: "app".into(),
                     workspace_id: Some("workspace".into()),

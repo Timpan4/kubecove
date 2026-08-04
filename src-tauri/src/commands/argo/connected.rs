@@ -5,6 +5,7 @@ use super::transport::{
 use super::{scope::scoped_connection, tunnel::ArgoServiceTunnel};
 use crate::commands::{
     gitops_crd::{client_for_context, find_api_resource, get_crd_object},
+    kubeconfig::KubeconfigSource,
     BackendCancellationRegistry,
 };
 use crate::models::{
@@ -22,7 +23,10 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
 };
 use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
@@ -33,6 +37,7 @@ const ARGO_SERVICE_NAMES: [&str; 2] = ["argocd-server", "argo-cd-argocd-server"]
 pub struct ArgoConnectionStore {
     pub(crate) connections: Mutex<HashMap<String, Arc<ConnectedArgo>>>,
     pub(crate) sessions: super::session::SessionStore,
+    pub(crate) cleanup_epoch: AtomicU64,
 }
 
 pub(crate) struct ConnectedArgo {
@@ -54,11 +59,40 @@ impl ConnectedArgo {
     }
 }
 
+pub(crate) fn kubeconfig_source_key(value: Option<&str>) -> Result<String, AppError> {
+    if let Some(key) = value.filter(|value| value.starts_with("kubeconfigSource=")) {
+        return Ok(key.to_string());
+    }
+    Ok(KubeconfigSource::new(value.map(str::to_string))?.key())
+}
+
+fn cleanup_error() -> AppError {
+    AppError::new(
+        "Argo CD connection was cancelled by workspace cleanup",
+        "argoConnection",
+    )
+}
+
 impl ArgoConnectionStore {
+    pub(crate) fn connection_epoch(&self) -> u64 {
+        self.cleanup_epoch.load(Ordering::Acquire)
+    }
+
+    #[cfg(test)]
     pub(crate) async fn replace_connection(
         &self,
         id: String,
         connection: Arc<ConnectedArgo>,
+    ) -> Result<(), AppError> {
+        self.replace_connection_at(id, connection, self.connection_epoch())
+            .await
+    }
+
+    pub(crate) async fn replace_connection_at(
+        &self,
+        id: String,
+        connection: Arc<ConnectedArgo>,
+        expected_epoch: u64,
     ) -> Result<(), AppError> {
         loop {
             let old = self
@@ -73,6 +107,9 @@ impl ArgoConnectionStore {
                 let mut connections = self.connections.lock().map_err(|_| {
                     AppError::new("Argo CD connection state unavailable", "argoConnection")
                 })?;
+                if self.connection_epoch() != expected_epoch {
+                    return Err(cleanup_error());
+                }
                 if connections.contains_key(&id) {
                     continue;
                 }
@@ -83,6 +120,9 @@ impl ArgoConnectionStore {
             let mut connections = self.connections.lock().map_err(|_| {
                 AppError::new("Argo CD connection state unavailable", "argoConnection")
             })?;
+            if self.connection_epoch() != expected_epoch {
+                return Err(cleanup_error());
+            }
             if connections
                 .get(&id)
                 .is_some_and(|current| Arc::ptr_eq(current, &old))
@@ -96,6 +136,7 @@ impl ArgoConnectionStore {
     }
 
     pub(crate) async fn close_all(&self) -> Result<(), AppError> {
+        self.cleanup_epoch.fetch_add(1, Ordering::AcqRel);
         let ids = self
             .connections
             .lock()
@@ -163,7 +204,7 @@ fn credential_key(profile: &ArgoConnectionProfile) -> String {
             root_path,
             tls_server_name,
         } => format!(
-            "{}:serviceTunnel:{}:{}:{}:{}:{}:{}:{}",
+            "{}:serviceTunnel:{}:{}:{}:{}:{}:{}:{}:{}",
             profile.id,
             namespace,
             service_name,
@@ -172,6 +213,7 @@ fn credential_key(profile: &ArgoConnectionProfile) -> String {
             root_path.as_deref().unwrap_or("/"),
             tls_server_name.as_deref().unwrap_or_default(),
             scope,
+            profile.kubeconfig_source_key.as_deref().unwrap_or_default(),
         ),
     }
 }
@@ -456,6 +498,8 @@ pub async fn connect_argo_server(
     kubeconfig_env_var: Option<String>,
     workspace_id: Option<String>,
 ) -> Result<ArgoConnectionStatus, AppError> {
+    let connection_epoch = store.connection_epoch();
+    let kubeconfig_source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
     let (endpoint, normalized_url) = normalize_endpoint(
         endpoint.unwrap_or(ArgoServerEndpoint::ExternalHttps { url: server_url }),
     )?;
@@ -465,6 +509,7 @@ pub async fn connect_argo_server(
         endpoint,
         cluster_context,
         workspace_id,
+        kubeconfig_source_key: Some(kubeconfig_source_key.clone()),
         transport: "connected".into(),
         remember_credential,
     };
@@ -581,7 +626,7 @@ pub async fn connect_argo_server(
         delete_credential(&credential_store, &profile)?;
     }
     store
-        .replace_connection(
+        .replace_connection_at(
             profile.id.clone(),
             Arc::new(ConnectedArgo {
                 profile: profile.clone(),
@@ -593,6 +638,7 @@ pub async fn connect_argo_server(
                 instance_id: Uuid::new_v4().to_string(),
                 gate: Arc::new(AsyncMutex::new(())),
             }),
+            connection_epoch,
         )
         .await?;
     Ok(ArgoConnectionStatus {
@@ -922,6 +968,7 @@ pub(crate) fn connected_application_path(
 async fn connected_inspector_read(
     store: &ArgoConnectionStore,
     cluster_context: &str,
+    kubeconfig_env_var: Option<&str>,
     connection_id: Option<&str>,
     application: ArgoApplicationRef,
 ) -> Result<ArgoApplicationInspector, AppError> {
@@ -931,6 +978,7 @@ async fn connected_inspector_read(
             .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?,
         cluster_context,
         application.workspace_id.as_deref(),
+        kubeconfig_env_var,
     )?;
     let namespace = application.namespace.clone().unwrap_or_default();
     let response = api_get(
@@ -1030,6 +1078,7 @@ async fn application_inspector(
     match connected_inspector_read(
         store,
         &cluster_context,
+        kubeconfig_env_var.as_deref(),
         connection_id.as_deref(),
         application.clone(),
     )
@@ -1112,6 +1161,7 @@ mod tests {
             },
             cluster_context: Some("cluster".into()),
             workspace_id: Some("workspace".into()),
+            kubeconfig_source_key: Some("kubeconfigSource=test".into()),
             transport: "connected".into(),
             remember_credential: true,
         }
@@ -1146,7 +1196,14 @@ mod tests {
             .replace_connection("server".into(), old)
             .await
             .unwrap();
-        let selected = scoped_connection(&store, "server", "cluster", Some("workspace")).unwrap();
+        let selected = scoped_connection(
+            &store,
+            "server",
+            "cluster",
+            Some("workspace"),
+            Some("kubeconfigSource=test"),
+        )
+        .unwrap();
         let replacement = connection("replacement");
         store
             .replace_connection("server".into(), replacement.clone())
@@ -1159,6 +1216,7 @@ mod tests {
             selected,
             "cluster",
             Some("workspace"),
+            Some("kubeconfigSource=test"),
             "old",
             "old-instance",
         )
@@ -1171,7 +1229,14 @@ mod tests {
             &replacement
         ));
 
-        let selected = scoped_connection(&store, "server", "cluster", Some("workspace")).unwrap();
+        let selected = scoped_connection(
+            &store,
+            "server",
+            "cluster",
+            Some("workspace"),
+            Some("kubeconfigSource=test"),
+        )
+        .unwrap();
         store.remove_connection("server").await.unwrap();
         let error = acquire_connection_lease(
             &store,
@@ -1179,6 +1244,7 @@ mod tests {
             selected,
             "cluster",
             Some("workspace"),
+            Some("kubeconfigSource=test"),
             "replacement",
             "replacement-instance",
         )
@@ -1200,9 +1266,17 @@ mod tests {
         let lease = acquire_connection_lease(
             &store,
             "server",
-            scoped_connection(&store, "server", "cluster", Some("workspace")).unwrap(),
+            scoped_connection(
+                &store,
+                "server",
+                "cluster",
+                Some("workspace"),
+                Some("kubeconfigSource=test"),
+            )
+            .unwrap(),
             "cluster",
             Some("workspace"),
+            Some("kubeconfigSource=test"),
             "old",
             &old.instance_id,
         )
@@ -1230,9 +1304,17 @@ mod tests {
         let lease = acquire_connection_lease(
             &store,
             "server",
-            scoped_connection(&store, "server", "cluster", Some("workspace")).unwrap(),
+            scoped_connection(
+                &store,
+                "server",
+                "cluster",
+                Some("workspace"),
+                Some("kubeconfigSource=test"),
+            )
+            .unwrap(),
             "cluster",
             Some("workspace"),
+            Some("kubeconfigSource=test"),
             "old",
             &old.instance_id,
         )
@@ -1317,6 +1399,68 @@ mod tests {
         assert!(store.connections.lock().unwrap().is_empty());
         assert!(first_closed.await.is_ok());
         assert!(second_closed.await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn source_scope_rejects_same_context_from_another_kubeconfig() {
+        let store = ArgoConnectionStore::default();
+        store
+            .replace_connection("server".into(), connection("generation"))
+            .await
+            .unwrap();
+
+        let error = scoped_connection(
+            &store,
+            "server",
+            "cluster",
+            Some("workspace"),
+            Some("kubeconfigSource=other"),
+        )
+        .err()
+        .expect("another kubeconfig source must not reuse the connection");
+
+        assert_eq!(
+            error.message,
+            "Argo CD connection is outside current workspace scope"
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_cleanup_rejects_connection_started_before_cleanup() {
+        let store = ArgoConnectionStore::default();
+        let started_epoch = store.connection_epoch();
+        let (shutdown, closed) = tokio::sync::oneshot::channel();
+        let late = connection_with_tunnel("late", Some(ArgoServiceTunnel::test_tunnel(shutdown)));
+
+        store.close_all().await.unwrap();
+        let error = store
+            .replace_connection_at("late".into(), late, started_epoch)
+            .await
+            .expect_err("cleanup must reject a connection that started earlier");
+
+        assert_eq!(
+            error.message,
+            "Argo CD connection was cancelled by workspace cleanup"
+        );
+        assert!(store.connections.lock().unwrap().is_empty());
+        assert!(closed.await.is_ok());
+    }
+
+    #[test]
+    fn service_tunnel_credentials_are_scoped_to_kubeconfig_source() {
+        let mut first = profile();
+        first.endpoint = ArgoServerEndpoint::ServiceTunnel {
+            namespace: "argocd".into(),
+            service_name: "argocd-server".into(),
+            service_port: 443,
+            scheme: "https".into(),
+            root_path: None,
+            tls_server_name: None,
+        };
+        let mut second = first.clone();
+        second.kubeconfig_source_key = Some("kubeconfigSource=other".into());
+
+        assert_ne!(credential_key(&first), credential_key(&second));
     }
 
     #[test]

@@ -131,6 +131,8 @@ pub struct ArgoConnectionProfile {
     pub cluster_context: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubeconfig_source_key: Option<String>,
     pub transport: String,
     pub remember_credential: bool,
 }
@@ -147,6 +149,8 @@ struct ArgoConnectionProfileWire {
     cluster_context: Option<String>,
     #[serde(default)]
     workspace_id: Option<String>,
+    #[serde(default)]
+    kubeconfig_source_key: Option<String>,
     transport: String,
     remember_credential: bool,
 }
@@ -184,6 +188,7 @@ impl<'de> Deserialize<'de> for ArgoConnectionProfile {
             endpoint,
             cluster_context: wire.cluster_context,
             workspace_id: wire.workspace_id,
+            kubeconfig_source_key: wire.kubeconfig_source_key,
             transport: wire.transport,
             remember_credential: wire.remember_credential,
         })
@@ -198,6 +203,7 @@ impl Default for ArgoConnectionProfile {
             endpoint: ArgoServerEndpoint::ExternalHttps { url: String::new() },
             cluster_context: None,
             workspace_id: None,
+            kubeconfig_source_key: None,
             transport: String::new(),
             remember_credential: false,
         }
