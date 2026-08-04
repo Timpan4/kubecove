@@ -24,7 +24,7 @@ pub(super) fn should_retry_accept(consecutive_failures: u32) -> bool {
     consecutive_failures < MAX_CONSECUTIVE_ACCEPT_FAILURES
 }
 
-fn port_forward_error_message(err: kube::Error) -> String {
+pub(crate) fn port_forward_error_message(err: kube::Error) -> String {
     let message = err.to_string();
     if message.to_ascii_lowercase().contains("forbidden") {
         return format!("port-forward forbidden by Kubernetes RBAC: {message}");
@@ -50,20 +50,22 @@ async fn verify_pod_port_forward(
     Ok(())
 }
 
-async fn forward_connection(
+pub(crate) async fn forward_pod_connection(
     client: Client,
-    target: PortForwardTarget,
+    namespace: String,
+    pod_name: String,
+    pod_port: u16,
     mut local_stream: TcpStream,
 ) -> Result<(), String> {
-    let pods: Api<Pod> = Api::namespaced(client, &target.namespace);
+    let pods: Api<Pod> = Api::namespaced(client, &namespace);
     let mut forwarder = pods
-        .portforward(&target.pod_name, &[target.pod_port])
+        .portforward(&pod_name, &[pod_port])
         .await
         .map_err(port_forward_error_message)?;
     let mut pod_stream = forwarder
-        .take_stream(target.pod_port)
-        .ok_or_else(|| format!("remote port {} did not open", target.pod_port))?;
-    let error_future = forwarder.take_error(target.pod_port);
+        .take_stream(pod_port)
+        .ok_or_else(|| format!("remote port {pod_port} did not open"))?;
+    let error_future = forwarder.take_error(pod_port);
 
     let result = if let Some(error_future) = error_future {
         tokio::pin!(error_future);
@@ -87,6 +89,21 @@ async fn forward_connection(
 
     forwarder.abort();
     result
+}
+
+async fn forward_connection(
+    client: Client,
+    target: PortForwardTarget,
+    local_stream: TcpStream,
+) -> Result<(), String> {
+    forward_pod_connection(
+        client,
+        target.namespace,
+        target.pod_name,
+        target.pod_port,
+        local_stream,
+    )
+    .await
 }
 
 async fn resolve_and_forward_connection(

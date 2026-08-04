@@ -7,19 +7,27 @@ use k8s_openapi::{
     api::core::v1::{Pod, Service, ServicePort},
     apimachinery::pkg::util::intstr::IntOrString,
 };
-use kube::api::{Api, ListParams};
+use kube::{
+    api::{Api, ListParams},
+    Client,
+};
 use std::collections::BTreeMap;
 
-pub(super) async fn resolve_service_target(
-    request: ValidatedPortForwardRequest,
-) -> Result<PortForwardTarget, AppError> {
-    let client =
-        client_for_context(&request.cluster_context, request.kubeconfig_env_var.clone()).await?;
-    let services: Api<Service> = Api::namespaced(client.clone(), &request.namespace);
-    let service = services
-        .get(&request.target_name)
-        .await
-        .map_err(AppError::from)?;
+#[derive(Debug, Clone)]
+pub(crate) struct ServiceTarget {
+    pub(crate) namespace: String,
+    pub(crate) pod_name: String,
+    pub(crate) pod_port: u16,
+}
+
+pub(crate) async fn resolve_service_target(
+    client: Client,
+    namespace: &str,
+    service_name: &str,
+    service_port: u16,
+) -> Result<ServiceTarget, AppError> {
+    let services: Api<Service> = Api::namespaced(client.clone(), namespace);
+    let service = services.get(service_name).await.map_err(AppError::from)?;
     let service_spec = service
         .spec
         .ok_or_else(|| AppError::new("service spec is unavailable", "session"))?;
@@ -30,9 +38,9 @@ pub(super) async fn resolve_service_target(
         ));
     }
 
-    let service_port = select_service_port(
+    let selected_port = select_service_port(
         service_spec.ports.as_deref().unwrap_or_default(),
-        request.remote_port,
+        service_port,
     )?;
     let selector = service_spec
         .selector
@@ -44,32 +52,44 @@ pub(super) async fn resolve_service_target(
             )
         })?;
 
-    let pods: Api<Pod> = Api::namespaced(client, &request.namespace);
+    let pods: Api<Pod> = Api::namespaced(client, namespace);
     let pod_list = pods
         .list(&ListParams::default().labels(&label_selector(&selector)))
         .await
         .map_err(AppError::from)?;
-    let pod = select_ready_pod(pod_list.items).ok_or_else(|| {
-        AppError::new(
-            "no ready Pods matched this Service selector",
-            "liveSessionTargetUnavailable",
-        )
-    })?;
-    let pod_name = pod_name(&pod)
-        .ok_or_else(|| AppError::new("resolved Service target Pod is missing a name", "session"))?;
-    let pod_port = resolve_service_target_port(&pod, service_port)?;
+    let (pod_name, pod_port) = resolve_ready_service_target(pod_list.items, selected_port)?;
+
+    Ok(ServiceTarget {
+        namespace: namespace.to_string(),
+        pod_name,
+        pod_port,
+    })
+}
+
+pub(super) async fn resolve_service_request_target(
+    request: ValidatedPortForwardRequest,
+) -> Result<PortForwardTarget, AppError> {
+    let client =
+        client_for_context(&request.cluster_context, request.kubeconfig_env_var.clone()).await?;
+    let resolved = resolve_service_target(
+        client,
+        &request.namespace,
+        &request.target_name,
+        request.remote_port,
+    )
+    .await?;
 
     Ok(PortForwardTarget {
         cluster_context: request.cluster_context,
         kubeconfig_env_var: request.kubeconfig_env_var,
         kubeconfig_source_key: request.kubeconfig_source_key,
         kubeconfig_source_label: request.kubeconfig_source_label,
-        namespace: request.namespace,
+        namespace: resolved.namespace,
         target_kind: PortForwardTargetKind::Service,
         target_name: request.target_name,
-        pod_name,
+        pod_name: resolved.pod_name,
         remote_port: request.remote_port,
-        pod_port,
+        pod_port: resolved.pod_port,
     })
 }
 
@@ -111,6 +131,39 @@ fn select_service_port(
     Ok(port)
 }
 
+fn resolve_ready_service_target(
+    mut pods: Vec<Pod>,
+    service_port: &ServicePort,
+) -> Result<(String, u16), AppError> {
+    if let Some(IntOrString::String(port_name)) = service_port.target_port.as_ref() {
+        pods.sort_by_key(pod_name);
+        for pod in pods.into_iter().filter(is_ready_running_pod) {
+            if let Some(port) = named_container_port(&pod, port_name) {
+                return Ok((
+                    pod_name(&pod).ok_or_else(|| {
+                        AppError::new("resolved Service target Pod is missing a name", "session")
+                    })?,
+                    validate_port(i64::from(port), "container port")?,
+                ));
+            }
+        }
+        return Err(AppError::new(
+            format!("Service targetPort '{port_name}' was not found on the resolved Pod"),
+            "session",
+        ));
+    }
+
+    let pod = select_ready_pod(pods).ok_or_else(|| {
+        AppError::new(
+            "no ready Pods matched this Service selector",
+            "liveSessionTargetUnavailable",
+        )
+    })?;
+    let pod_name = pod_name(&pod)
+        .ok_or_else(|| AppError::new("resolved Service target Pod is missing a name", "session"))?;
+    Ok((pod_name, resolve_service_target_port(&pod, service_port)?))
+}
+
 fn select_ready_pod(mut pods: Vec<Pod>) -> Option<Pod> {
     pods.sort_by_key(pod_name);
     pods.into_iter().find(is_ready_running_pod)
@@ -149,19 +202,19 @@ fn resolve_service_target_port(pod: &Pod, service_port: &ServicePort) -> Result<
     }
 }
 
-fn find_named_container_port(pod: &Pod, port_name: &str) -> Result<u16, AppError> {
-    let Some(spec) = &pod.spec else {
-        return Err(AppError::new(
-            "resolved Service target Pod is missing a spec",
-            "session",
-        ));
-    };
-
-    spec.containers
+fn named_container_port(pod: &Pod, port_name: &str) -> Option<i32> {
+    pod.spec
+        .as_ref()?
+        .containers
         .iter()
         .flat_map(|container| container.ports.iter().flatten())
         .find(|port| port.name.as_deref() == Some(port_name))
-        .map(|port| validate_port(i64::from(port.container_port), "container port"))
+        .map(|port| port.container_port)
+}
+
+fn find_named_container_port(pod: &Pod, port_name: &str) -> Result<u16, AppError> {
+    named_container_port(pod, port_name)
+        .map(|port| validate_port(i64::from(port), "container port"))
         .transpose()?
         .ok_or_else(|| {
             AppError::new(
@@ -247,6 +300,34 @@ mod tests {
             resolve_service_target_port(&pod, &service_port).expect("target port"),
             8080,
         );
+    }
+
+    #[test]
+    fn named_target_port_uses_ready_pod_that_declares_it() {
+        let service_port = ServicePort {
+            port: 80,
+            target_port: Some(IntOrString::String("http".to_string())),
+            ..Default::default()
+        };
+        let (pod_name, pod_port) = resolve_ready_service_target(
+            vec![
+                pod("api-a", true, vec![]),
+                pod(
+                    "api-b",
+                    true,
+                    vec![ContainerPort {
+                        name: Some("http".to_string()),
+                        container_port: 8080,
+                        ..Default::default()
+                    }],
+                ),
+            ],
+            &service_port,
+        )
+        .expect("resolved target");
+
+        assert_eq!(pod_name, "api-b");
+        assert_eq!(pod_port, 8080);
     }
 
     #[test]

@@ -2,9 +2,9 @@ use crate::models::{AppError, PortForwardRequest, PortForwardSessionSummary};
 use tauri::State;
 
 mod registry;
-mod runner;
-mod service;
-mod target;
+pub(crate) mod runner;
+pub(crate) mod service;
+pub(crate) mod target;
 
 pub use registry::PortForwardRegistry;
 #[cfg(test)]

@@ -133,11 +133,11 @@ pub(super) async fn resolve_port_forward_target(
             remote_port: request.remote_port,
             pod_port: request.remote_port,
         }),
-        PortForwardTargetKind::Service => service::resolve_service_target(request).await,
+        PortForwardTargetKind::Service => service::resolve_service_request_target(request).await,
     }
 }
 
-pub(super) async fn client_for_context(
+pub(crate) async fn client_for_context(
     cluster_context: &str,
     kubeconfig_env_var: Option<String>,
 ) -> Result<Client, AppError> {

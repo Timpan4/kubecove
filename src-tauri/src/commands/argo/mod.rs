@@ -7,6 +7,7 @@ mod operations;
 mod scope;
 mod session;
 mod transport;
+mod tunnel;
 
 use crate::{commands::gitops_crd, models::AppError};
 

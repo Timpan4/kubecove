@@ -23,7 +23,8 @@ pub use argo::{
     ArgoApplicationSetSummary, ArgoApplicationSourceSummary, ArgoApplicationSummary,
     ArgoConnectedFallback, ArgoConnectionProfile, ArgoConnectionStatus, ArgoInspectionFailure,
     ArgoManagedResource, ArgoOperationConfirmation, ArgoOperationPreflight, ArgoOperationRequest,
-    ArgoOperationResult, ArgoResourceComparison, ArgoServerCapability,
+    ArgoOperationResult, ArgoResourceComparison, ArgoServerCapability, ArgoServerEndpoint,
+    ArgoServiceTunnelUnavailableReason,
 };
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;

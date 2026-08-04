@@ -102,17 +102,106 @@ pub struct ArgoAppProjectDetails {
     pub metadata: serde_json::Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ArgoServerEndpoint {
+    ExternalHttps {
+        url: String,
+    },
+    ServiceTunnel {
+        namespace: String,
+        service_name: String,
+        service_port: u16,
+        scheme: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        root_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tls_server_name: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArgoConnectionProfile {
     pub id: String,
+    // Kept during the frontend migration so saved external profiles still display correctly.
     pub url: String,
+    pub endpoint: ArgoServerEndpoint,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cluster_context: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<String>,
     pub transport: String,
     pub remember_credential: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ArgoConnectionProfileWire {
+    id: String,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    endpoint: Option<ArgoServerEndpoint>,
+    #[serde(default)]
+    cluster_context: Option<String>,
+    #[serde(default)]
+    workspace_id: Option<String>,
+    transport: String,
+    remember_credential: bool,
+}
+
+impl<'de> Deserialize<'de> for ArgoConnectionProfile {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = ArgoConnectionProfileWire::deserialize(deserializer)?;
+        let endpoint = wire
+            .endpoint
+            .unwrap_or_else(|| ArgoServerEndpoint::ExternalHttps {
+                url: wire.url.clone(),
+            });
+        let url = match &endpoint {
+            ArgoServerEndpoint::ExternalHttps { url } => url.clone(),
+            ArgoServerEndpoint::ServiceTunnel {
+                namespace,
+                service_name,
+                scheme,
+                root_path,
+                tls_server_name,
+                ..
+            } => {
+                let host = tls_server_name
+                    .clone()
+                    .unwrap_or_else(|| format!("{service_name}.{namespace}.svc"));
+                format!("{scheme}://{host}{}", root_path.as_deref().unwrap_or("/"))
+            }
+        };
+        Ok(Self {
+            id: wire.id,
+            url,
+            endpoint,
+            cluster_context: wire.cluster_context,
+            workspace_id: wire.workspace_id,
+            transport: wire.transport,
+            remember_credential: wire.remember_credential,
+        })
+    }
+}
+
+impl Default for ArgoConnectionProfile {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            url: String::new(),
+            endpoint: ArgoServerEndpoint::ExternalHttps { url: String::new() },
+            cluster_context: None,
+            workspace_id: None,
+            transport: String::new(),
+            remember_credential: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -124,6 +213,16 @@ pub struct ArgoConnectionStatus {
     pub unavailable_reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ArgoServiceTunnelUnavailableReason {
+    ExternalName,
+    SelectorRequired,
+    NoTcpPorts,
+    NoReadyPod,
+    TargetUnavailable,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ArgoServerCapability {
@@ -132,7 +231,11 @@ pub struct ArgoServerCapability {
     pub namespace: Option<String>,
     pub url: Option<String>,
     pub transport: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<ArgoServerEndpoint>,
     pub unavailable_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable: Option<ArgoServiceTunnelUnavailableReason>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

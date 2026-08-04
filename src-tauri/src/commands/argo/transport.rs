@@ -1,9 +1,9 @@
 use super::connected::ConnectedArgo;
-use crate::models::AppError;
+use crate::models::{AppError, ArgoServerEndpoint};
 use futures_util::StreamExt;
 use reqwest::{Certificate, Client as HttpClient};
 use serde_json::Value;
-use std::time::Duration;
+use std::{net::SocketAddr, time::Duration};
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -154,11 +154,16 @@ pub(super) fn safe_http_error(error: reqwest::Error) -> AppError {
 pub(super) fn http_client(
     insecure_tls: bool,
     custom_ca_pem: Option<Vec<u8>>,
+    resolved_host: Option<(&str, SocketAddr)>,
 ) -> Result<HttpClient, AppError> {
     let mut builder = HttpClient::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(15))
         .connect_timeout(Duration::from_secs(8));
+    if let Some((host, address)) = resolved_host {
+        // The URL still contains `host`, so reqwest keeps its Host header and HTTPS SNI.
+        builder = builder.resolve(host, address).no_proxy();
+    }
     if insecure_tls {
         builder = builder.danger_accept_invalid_certs(true);
     }
@@ -170,14 +175,157 @@ pub(super) fn http_client(
     builder.build().map_err(safe_http_error)
 }
 
+fn required_dns_label(value: &str, field: &str) -> Result<String, AppError> {
+    let value = value.trim();
+    let valid = !value.is_empty()
+        && value.len() <= 63
+        && value.bytes().enumerate().all(|(index, byte)| match byte {
+            b'a'..=b'z' | b'0'..=b'9' => true,
+            b'-' => index != 0 && index + 1 != value.len(),
+            _ => false,
+        });
+    if valid {
+        Ok(value.to_string())
+    } else {
+        Err(AppError::new(
+            format!("invalid Argo CD Service {field}"),
+            "argoConnection",
+        ))
+    }
+}
+
+fn normalized_root_path(value: Option<&str>) -> Result<String, AppError> {
+    let value = value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("/");
+    if !value.starts_with('/') {
+        return Err(AppError::new(
+            "Argo CD root path must start with '/'",
+            "argoConnection",
+        ));
+    }
+    let url = reqwest::Url::parse(&format!("https://argo.invalid{value}"))
+        .map_err(|_| AppError::new("invalid Argo CD root path", "argoConnection"))?;
+    if url.query().is_some() || url.fragment().is_some() {
+        return Err(AppError::new(
+            "Argo CD root path must not contain a query or fragment",
+            "argoConnection",
+        ));
+    }
+    Ok(match url.path().trim_end_matches('/') {
+        "" => "/".into(),
+        path => path.into(),
+    })
+}
+
+fn normalized_tls_server_name(
+    value: Option<&str>,
+    service_name: &str,
+    namespace: &str,
+) -> Result<String, AppError> {
+    let value = value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map_or_else(|| format!("{service_name}.{namespace}.svc"), str::to_string);
+    let url = reqwest::Url::parse(&format!("https://{value}"))
+        .map_err(|_| AppError::new("invalid Argo CD TLS server name", "argoConnection"))?;
+    if url.host_str().is_none()
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+    {
+        return Err(AppError::new(
+            "invalid Argo CD TLS server name",
+            "argoConnection",
+        ));
+    }
+    Ok(url.host_str().expect("validated host").to_string())
+}
+
+pub(crate) fn normalize_endpoint(
+    endpoint: ArgoServerEndpoint,
+) -> Result<(ArgoServerEndpoint, String), AppError> {
+    match endpoint {
+        ArgoServerEndpoint::ExternalHttps { url } => {
+            let url = canonical_url(&url)?
+                .to_string()
+                .trim_end_matches('/')
+                .to_string();
+            Ok((ArgoServerEndpoint::ExternalHttps { url: url.clone() }, url))
+        }
+        ArgoServerEndpoint::ServiceTunnel {
+            namespace,
+            service_name,
+            service_port,
+            scheme,
+            root_path,
+            tls_server_name,
+        } => {
+            let namespace = required_dns_label(&namespace, "namespace")?;
+            let service_name = required_dns_label(&service_name, "name")?;
+            if service_port == 0 {
+                return Err(AppError::new(
+                    "invalid Argo CD Service port",
+                    "argoConnection",
+                ));
+            }
+            let scheme = scheme.trim().to_ascii_lowercase();
+            if !matches!(scheme.as_str(), "http" | "https") {
+                return Err(AppError::new(
+                    "Argo CD Service tunnel must use HTTP or HTTPS",
+                    "argoConnection",
+                ));
+            }
+            let root_path = normalized_root_path(root_path.as_deref())?;
+            let tls_server_name =
+                normalized_tls_server_name(tls_server_name.as_deref(), &service_name, &namespace)?;
+            let url = reqwest::Url::parse(&format!("{scheme}://{tls_server_name}{root_path}"))
+                .map_err(|_| AppError::new("invalid Argo CD Service endpoint", "argoConnection"))?
+                .to_string()
+                .trim_end_matches('/')
+                .to_string();
+            Ok((
+                ArgoServerEndpoint::ServiceTunnel {
+                    namespace,
+                    service_name,
+                    service_port,
+                    scheme,
+                    root_path: (root_path != "/").then_some(root_path),
+                    tls_server_name: Some(tls_server_name),
+                },
+                url,
+            ))
+        }
+    }
+}
+
 pub(super) fn url(base: &str, path: &str) -> Result<String, AppError> {
-    let mut base = canonical_url(base)?;
+    let mut base = argo_url(base)?;
     if !base.path().ends_with('/') {
         base.set_path(&format!("{}/", base.path()));
     }
     base.join(path.trim_start_matches('/'))
         .map(|value| value.to_string())
         .map_err(|_| AppError::new("invalid Argo CD API path", "argoConnection"))
+}
+
+pub(super) fn argo_url(value: &str) -> Result<reqwest::Url, AppError> {
+    let mut base = reqwest::Url::parse(value.trim())
+        .map_err(|_| AppError::new("invalid Argo CD URL", "argoConnection"))?;
+    if !matches!(base.scheme(), "http" | "https") {
+        return Err(AppError::new("invalid Argo CD URL", "argoConnection"));
+    }
+    if !base.username().is_empty() || base.password().is_some() {
+        return Err(AppError::new(
+            "Argo CD URL must not contain credentials",
+            "argoConnection",
+        ));
+    }
+    base.set_query(None);
+    base.set_fragment(None);
+    Ok(base)
 }
 
 pub(super) fn canonical_url(value: &str) -> Result<reqwest::Url, AppError> {
