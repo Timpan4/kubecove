@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { argoResourceIdentityKey } from "../src/features/gitops/argo-workspace-model";
+import { PAGE_SIZE } from "../src/features/resources/constants";
 import {
 	buildFetchKeys,
 	buildResourceSearchIndex,
@@ -338,6 +340,68 @@ describe("svelte resource browser model", () => {
 				.filter((row) => row.kind === "Pod")
 				.map((row) => row.gitOpsOwner?.name),
 		).toEqual(["todo", "todo"]);
+	});
+
+	test("prioritizes the exact focused GitOps owner before namespace collisions", () => {
+		const focused = resource("zz-focused", {
+			gitOpsOwner: {
+				provider: "argo",
+				kind: "Application",
+				name: "payments",
+				namespace: "argocd",
+				confidence: "inventory",
+			},
+		});
+		const sameNameOtherNamespaceRows = Array.from({ length: PAGE_SIZE }, (_, index) =>
+			resource(`aa-other-${index}`, {
+				gitOpsOwner: {
+					provider: "argo",
+					kind: "Application",
+					name: "payments",
+					namespace: "other",
+					confidence: "inventory",
+				},
+			}),
+		);
+		const rows = [...sameNameOtherNamespaceRows, focused];
+		const focusedKey = argoResourceIdentityKey(focused);
+		const otherNamespaceKeys = new Set(
+			sameNameOtherNamespaceRows
+				.map(argoResourceIdentityKey)
+				.filter((key): key is string => key !== null),
+		);
+		if (focusedKey === null) throw new Error("focused resource identity missing");
+		const state = {
+			search: "",
+			gitOpsFilter: "",
+			healthFilter: "all" as const,
+			sort: { id: "name" as const, desc: false },
+			pageIndex: 0,
+			collapsedGroups: new Set<string>(),
+			preferredGitOpsResourceKeys: new Set([focusedKey]),
+		};
+
+		const preferredModel = buildResourceTableModel(rows, state);
+		expect(preferredModel.pageRows[0]).toBe(focused);
+		expect(
+			buildResourceTableModel(rows, {
+				...state,
+				preferredGitOpsResourceKeys: otherNamespaceKeys,
+			}).pageRows,
+		).not.toContain(focused);
+		expect(
+			buildResourceTableModel(rows, {
+				...state,
+				preferredGitOpsResourceKeys: undefined,
+			}).pageRows,
+		).not.toContain(focused);
+		expect(
+			buildResourceTableModel(rows, {
+				...state,
+				preferredGitOpsResourceKeys: undefined,
+				pageIndex: 1,
+			}).pageRows,
+		).toContain(focused);
 	});
 
 	test("groups unmanaged Svelte table rows by resource type", () => {

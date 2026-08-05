@@ -1,3 +1,4 @@
+import { argoResourceIdentityKey } from "@/features/gitops/argo-workspace-model";
 import {
 	gitOpsOwnership,
 	gitOpsOwnershipFilters,
@@ -54,6 +55,7 @@ export interface ResourceTableState {
 	pageIndex: number;
 	collapsedGroups: Set<string>;
 	selectedResource?: ResourceSummary | null;
+	preferredGitOpsResourceKeys?: ReadonlySet<string>;
 }
 
 export type ResourceTableEntry =
@@ -233,8 +235,15 @@ function sortedResourceRows(
 	});
 }
 
-function gitOpsGroupedRows(rows: ResourceSummary[]): ResourceSummary[] {
+function gitOpsGroupedRows(
+	rows: ResourceSummary[],
+	preferredGitOpsResourceKeys?: ReadonlySet<string>,
+): ResourceSummary[] {
 	return rows.toSorted((left, right) => {
+		const preferredPriority =
+			Number(isPreferredGitOpsResource(left, preferredGitOpsResourceKeys)) -
+			Number(isPreferredGitOpsResource(right, preferredGitOpsResourceKeys));
+		if (preferredPriority !== 0) return -preferredPriority;
 		const groupCompare = gitOpsOwnershipGroupLabel(left).localeCompare(
 			gitOpsOwnershipGroupLabel(right),
 		);
@@ -246,6 +255,14 @@ function gitOpsGroupedRows(rows: ResourceSummary[]): ResourceSummary[] {
 		if (kindCompare !== 0) return kindCompare;
 		return left.name.localeCompare(right.name);
 	});
+}
+
+function isPreferredGitOpsResource(
+	row: ResourceSummary,
+	preferredKeys?: ReadonlySet<string>,
+): boolean {
+	const key = argoResourceIdentityKey(row);
+	return key !== null && preferredKeys?.has(key) === true;
 }
 
 function typeGroupedRows(rows: ResourceSummary[]): ResourceSummary[] {
@@ -362,7 +379,7 @@ export function buildResourceTableModel(
 	const sortedRows = sortedResourceRows(filteredRows, state.sort);
 	const groupedByGitOps = filteredRows.some((row) => gitOpsOwnership(row) !== null);
 	const displayRows = groupedByGitOps
-		? gitOpsGroupedRows(sortedRows)
+		? gitOpsGroupedRows(sortedRows, state.preferredGitOpsResourceKeys)
 		: typeGroupedRows(sortedRows);
 	const visibleCollapsedGroups = effectiveCollapsedGroups({
 		collapsedGroups: state.collapsedGroups,

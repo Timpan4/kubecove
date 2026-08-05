@@ -57,6 +57,7 @@
 	import ArgoApplicationWorkspaceHeader from "@/features/gitops/ArgoApplicationWorkspaceHeader.svelte";
 	import {
 		argoResourceCounts,
+		argoResourceIdentityKey,
 		filterWorkspaceResourcesByArgo,
 		type ArgoResourceFilter,
 	} from "@/features/gitops/argo-workspace-model";
@@ -586,6 +587,13 @@
 			? argoResourceCounts(focusedArgoResources)
 			: null,
 	);
+	const focusedArgoResourceKeys = $derived(
+		new Set(
+			focusedArgoResources
+				.map(argoResourceIdentityKey)
+				.filter((key): key is string => key !== null),
+		),
+	);
 	const tableRows = $derived(
 		gitOpsFocusApplication
 			? filterWorkspaceResourcesByArgo(
@@ -617,6 +625,9 @@
 				pageIndex,
 				collapsedGroups,
 				selectedResource,
+				preferredGitOpsResourceKeys: gitOpsFocusApplication
+					? focusedArgoResourceKeys
+					: undefined,
 			},
 			argoResourceSearchIndex,
 		),
