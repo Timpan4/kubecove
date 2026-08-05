@@ -119,6 +119,7 @@
 		resourceReadyChip,
 		resourceIdentityKey,
 		resourceSelectionKey,
+		mergeWatchKeys,
 		resourceStatusTone,
 		shouldDropWarmupWatchEvent,
 		topologyWatchKeys,
@@ -350,6 +351,32 @@
 			undefined,
 			kubeconfigSourceKey,
 		),
+	);
+	const focusedArgoApplicationScope = $derived(
+		gitOpsFocusApplication
+			? queryKeys.argoWorkspaceApplicationScope(
+					clusterContext,
+					workspaceReadContext.workspaceId,
+					gitOpsFocusApplication.name,
+					gitOpsFocusApplication.namespace,
+					kubeconfigSourceKey,
+				)
+			: null,
+	);
+	const focusedArgoWatchKeys = $derived(
+		gitOpsFocusApplication
+			? [
+					{
+						resourceKind: {
+							kind: "Application",
+							apiVersion: "argoproj.io/v1alpha1",
+							plural: "applications",
+							namespaced: true,
+						},
+						namespace: gitOpsFocusApplication.namespace ?? undefined,
+					},
+				]
+			: [],
 	);
 	const focusedArgoInspectorCancelScope = $derived(
 		createCancelScope("argo-application-inspection", focusedArgoInspectorQueryKey),
@@ -751,12 +778,11 @@
 			!resourcesQuery.isPlaceholderData &&
 			fetchKeys.length > 0 &&
 			!resourceError;
-		const watchKeyMap = new Map(
-			[...watchKeysFromFetchKeys(fetchKeys), ...topologyWatchKeys(topologyNamespaces)].map(
-				(key) => [JSON.stringify(key), key],
-			),
+		const watchKeys = mergeWatchKeys(
+			watchKeysFromFetchKeys(fetchKeys),
+			topologyWatchKeys(topologyNamespaces),
+			focusedArgoWatchKeys,
 		);
-		const watchKeys = Array.from(watchKeyMap.values());
 		if (!enabled || watchKeys.length === 0) {
 			realtimeStatus = "idle";
 			realtimeMessage = "Realtime idle";
@@ -766,15 +792,21 @@
 		let cancelled = false;
 		let streamId: string | null = null;
 		let debounce: ReturnType<typeof setTimeout> | null = null;
+		let invalidateFocusedArgo = false;
 		const startedAt = performance.now();
 		realtimeStatus = "connecting";
 		realtimeMessage = "Starting realtime watch";
 		realtimeError = "";
-		const invalidateSoon = () => {
+		const invalidateSoon = (focusedArgoChanged: boolean) => {
+			invalidateFocusedArgo ||= focusedArgoChanged;
 			if (debounce) clearTimeout(debounce);
 			debounce = setTimeout(() => {
 				void queryClient.invalidateQueries({ queryKey: resourceQueryKey });
 				void queryClient.invalidateQueries({ queryKey: topologyQueryKey });
+				if (invalidateFocusedArgo && focusedArgoApplicationScope) {
+					void queryClient.invalidateQueries({ queryKey: focusedArgoApplicationScope });
+				}
+				invalidateFocusedArgo = false;
 			}, 250);
 		};
 		const channel = createStreamChannel((event) => {
@@ -795,7 +827,12 @@
 				realtimeMessage = `Realtime ${event.action}`;
 				realtimeError = "";
 				if (shouldDropWarmupWatchEvent(event.action, performance.now() - startedAt)) return;
-				invalidateSoon();
+				invalidateSoon(
+					event.target.kind === "Application" &&
+					event.target.cluster === clusterContext &&
+					event.target.name === gitOpsFocusApplication?.name &&
+					(event.target.namespace ?? "") === (gitOpsFocusApplication?.namespace ?? ""),
+				);
 				return;
 			}
 			if (event.type === "error") {

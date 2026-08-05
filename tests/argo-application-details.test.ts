@@ -19,7 +19,7 @@ describe("Argo Application Briefing contract", () => {
 			"Change navigator",
 			"Delivery",
 			"Recent deployment",
-			"Continuous change stream",
+			"Application snapshot",
 			"Changes",
 			"Desired",
 			"Live",
@@ -56,8 +56,11 @@ describe("Argo Application Briefing contract", () => {
 		expect(detailsSource).toContain("Retry state refresh");
 		expect(detailsSource).toContain("acceptedRefreshPending");
 	});
+		test("pluralizes reconciliation summary", () => {
+			expect(detailsSource).toContain('diffResources.length === 1 ? "item" : "items"');
+		});
 
-	test("keeps removal explanation, read-only YAML, and accessible progress", () => {
+		test("keeps removal explanation, read-only YAML, and accessible progress", () => {
 		expect(detailsSource).toContain("Live-only resource");
 		expect(detailsSource).toContain("Live YAML stays collapsed until Show diff is selected.");
 		expect(detailsSource).toContain('editable={false}');

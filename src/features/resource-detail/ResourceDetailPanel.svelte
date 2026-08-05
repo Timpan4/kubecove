@@ -47,6 +47,7 @@
 		YamlViewMode,
 	} from "@/lib/types";
 	import type { PathStateResourceDetailState } from "@/lib/path-state";
+	import { queryKeys } from "@/lib/queryKeys";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
 		getSettingsSnapshot,
@@ -163,6 +164,17 @@
 	);
 	const isArgoApplication = $derived(
 		resource.kind === "Application" && resource.group === "argoproj.io",
+	);
+	const argoApplicationScope = $derived(
+		isArgoApplication
+			? queryKeys.argoWorkspaceApplicationScope(
+					workspaceReadContext.clusterContext,
+					workspaceReadContext.workspaceId,
+					resource.name,
+					resource.namespace,
+					kubeconfigSourceKey,
+				)
+			: null,
 	);
 
 	$effect(() => {
@@ -390,10 +402,14 @@
 		let streamId: string | null = null;
 		let debounce: ReturnType<typeof setTimeout> | null = null;
 		const watchKey = readSpec.resourceWatchKey;
+		const currentArgoApplicationScope = argoApplicationScope;
 		const invalidateSoon = () => {
 			if (debounce) clearTimeout(debounce);
 			debounce = setTimeout(() => {
 				void queryClient.invalidateQueries({ queryKey: detailsQueryKey });
+				if (currentArgoApplicationScope) {
+					void queryClient.invalidateQueries({ queryKey: currentArgoApplicationScope });
+				}
 				if (activeTab === "yaml") {
 					resourceRefreshVersion += 1;
 				}
