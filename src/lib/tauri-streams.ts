@@ -67,6 +67,43 @@ export async function startResourceWatch(
 	});
 }
 
+export function startResourceWatchWithRetry(
+	client: TauriClient,
+	clusterContext: string,
+	keys: WatchResourceKey[],
+	channel: Channel<StreamMessage>,
+	kubeconfigEnvVar?: string,
+): () => void {
+	let disposed = false;
+	let streamId: string | null = null;
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	let attempts = 0;
+
+	const attempt = () => {
+		if (disposed) return;
+		void startResourceWatch(client, clusterContext, keys, channel, kubeconfigEnvVar)
+			.then((id) => {
+				if (disposed) {
+					void stopStream(client, id);
+					return;
+				}
+				streamId = id;
+			})
+			.catch(() => {
+				if (disposed || attempts >= 3) return;
+				const delay = 250 * 2 ** attempts++;
+				timer = setTimeout(attempt, delay);
+			});
+	};
+
+	attempt();
+	return () => {
+		disposed = true;
+		if (timer) clearTimeout(timer);
+		if (streamId) void stopStream(client, streamId);
+	};
+}
+
 export async function startResourceEventWatch(
 	client: TauriClient,
 	clusterContext: string,

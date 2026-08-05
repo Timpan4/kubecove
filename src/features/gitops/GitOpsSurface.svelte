@@ -13,8 +13,7 @@
 		listArgoApplications,
 		listArgoAppProjects,
 		listFluxResources,
-		startResourceWatch,
-		stopStream,
+		startResourceWatchWithRetry,
 	} from "@/lib/tauri";
 	import type {
 		ArgoApplicationSetSummary,
@@ -155,14 +154,12 @@
 
 	$effect(() => {
 		if (!sourceReady || argoDetectionQuery.data !== true) return;
-		let cancelled = false;
-		let streamId: string | null = null;
 		const freshness = createArgoListFreshness(
 			(queryKey) => void queryClient.invalidateQueries({ queryKey }),
 			kubeconfigSourceKey,
 		);
 		const channel = createStreamChannel(freshness.handle);
-		void startResourceWatch(
+		const stopWatchRetry = startResourceWatchWithRetry(
 			client,
 			context,
 			[
@@ -172,19 +169,10 @@
 			],
 			channel,
 			kubeconfigSourceKey,
-		)
-			.then((id) => {
-				if (cancelled) {
-					void stopStream(client, id);
-					return;
-				}
-				streamId = id;
-			})
-			.catch(() => {});
+		);
 		return () => {
-			cancelled = true;
 			freshness.dispose();
-			if (streamId) void stopStream(client, streamId);
+			stopWatchRetry();
 			closeStreamChannel(channel);
 		};
 	});
