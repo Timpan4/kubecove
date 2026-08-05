@@ -1,6 +1,8 @@
 use crate::{
     commands::sessions::{
-        runner::forward_pod_connection, service::resolve_service_target, target::client_for_context,
+        runner::{forward_pod_connection, should_retry_accept, ACCEPT_RETRY_DELAY},
+        service::resolve_service_target,
+        target::client_for_context,
     },
     models::AppError,
 };
@@ -159,11 +161,13 @@ async fn run_tunnel(
     route: Arc<ServiceRoute>,
 ) {
     let mut connections = JoinSet::new();
+    let mut consecutive_accept_failures = 0;
     loop {
         tokio::select! {
             _ = &mut shutdown => break,
             accept = listener.accept() => match accept {
                 Ok((stream, _)) => {
+                    consecutive_accept_failures = 0;
                     let client = client.clone();
                     let route = route.clone();
                     connections.spawn(async move {
@@ -185,9 +189,27 @@ async fn run_tunnel(
                         .await
                     });
                 }
-                Err(_) => break,
+                Err(error) => {
+                    consecutive_accept_failures += 1;
+                    if !should_retry_accept(consecutive_accept_failures) {
+                        eprintln!("[kubecove:backend] Argo Service tunnel accept failed: {error}");
+                        break;
+                    }
+                    eprintln!("[kubecove:backend] Argo Service tunnel accept retry {consecutive_accept_failures}: {error}");
+                    tokio::time::sleep(ACCEPT_RETRY_DELAY).await;
+                }
             },
-            _ = connections.join_next(), if !connections.is_empty() => {},
+            connection = connections.join_next(), if !connections.is_empty() => {
+                match connection {
+                    Some(Ok(Err(error))) => {
+                        eprintln!("[kubecove:backend] Argo Service tunnel forward failed: {error}");
+                    }
+                    Some(Err(error)) => {
+                        eprintln!("[kubecove:backend] Argo Service tunnel task failed: {error}");
+                    }
+                    _ => {}
+                }
+            },
         }
     }
     connections.abort_all();
@@ -217,10 +239,12 @@ mod tests {
 
     #[test]
     fn forbidden_port_forward_is_actionable_and_redacted() {
-        let error = AppError::new(
-            "Kubernetes RBAC denies pods/portforward for this Argo CD Service",
-            "argoTunnelForbidden",
-        );
+        let error = port_forward_error(kube::Error::Api(Box::new(kube::core::Status {
+            code: 403,
+            reason: "Forbidden".into(),
+            message: "pods/portforward is forbidden".into(),
+            ..Default::default()
+        })));
         assert_eq!(error.kind, "argoTunnelForbidden");
         assert!(!error.message.contains("token"));
     }

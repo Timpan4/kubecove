@@ -132,12 +132,22 @@ fn select_service_port(
 }
 
 fn resolve_ready_service_target(
-    mut pods: Vec<Pod>,
+    pods: Vec<Pod>,
     service_port: &ServicePort,
 ) -> Result<(String, u16), AppError> {
     if let Some(IntOrString::String(port_name)) = service_port.target_port.as_ref() {
-        pods.sort_by_key(pod_name);
-        for pod in pods.into_iter().filter(is_ready_running_pod) {
+        let mut ready_pods = pods
+            .into_iter()
+            .filter(is_ready_running_pod)
+            .collect::<Vec<_>>();
+        if ready_pods.is_empty() {
+            return Err(AppError::new(
+                "no ready Pods matched this Service selector",
+                "liveSessionTargetUnavailable",
+            ));
+        }
+        ready_pods.sort_by_key(pod_name);
+        for pod in ready_pods {
             if let Some(port) = named_container_port(&pod, port_name) {
                 return Ok((
                     pod_name(&pod).ok_or_else(|| {
@@ -328,6 +338,21 @@ mod tests {
 
         assert_eq!(pod_name, "api-b");
         assert_eq!(pod_port, 8080);
+    }
+
+    #[test]
+    fn named_target_port_without_ready_pods_is_unavailable() {
+        let service_port = ServicePort {
+            port: 80,
+            target_port: Some(IntOrString::String("http".to_string())),
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_ready_service_target(vec![pod("api-0", false, vec![])], &service_port)
+                .expect_err("missing ready pod")
+                .kind,
+            "liveSessionTargetUnavailable",
+        );
     }
 
     #[test]

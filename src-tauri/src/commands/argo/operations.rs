@@ -227,10 +227,8 @@ fn reject_reviewed_operation(
     reviewed: &SessionSnapshot,
     error: AppError,
 ) -> AppError {
-    match consume(store, id, reviewed) {
-        Ok(_) => error,
-        Err(error) => error,
-    }
+    let _ = consume(store, id, reviewed);
+    error
 }
 
 async fn run_connected_operation(

@@ -18,9 +18,9 @@ use super::target::{
 };
 
 const MAX_CONSECUTIVE_ACCEPT_FAILURES: u32 = 5;
-const ACCEPT_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
+pub(crate) const ACCEPT_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 
-pub(super) fn should_retry_accept(consecutive_failures: u32) -> bool {
+pub(crate) fn should_retry_accept(consecutive_failures: u32) -> bool {
     consecutive_failures < MAX_CONSECUTIVE_ACCEPT_FAILURES
 }
 

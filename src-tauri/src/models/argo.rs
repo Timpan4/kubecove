@@ -1,6 +1,6 @@
+use super::error::AppError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArgoApplicationSourceSummary {
@@ -103,7 +103,11 @@ pub struct ArgoAppProjectDetails {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum ArgoServerEndpoint {
     ExternalHttps {
         url: String,
@@ -118,6 +122,114 @@ pub enum ArgoServerEndpoint {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tls_server_name: Option<String>,
     },
+}
+
+pub(crate) fn normalize_service_tunnel_endpoint(
+    namespace: String,
+    service_name: String,
+    service_port: u16,
+    scheme: String,
+    root_path: Option<String>,
+    tls_server_name: Option<String>,
+) -> Result<(ArgoServerEndpoint, String), AppError> {
+    let namespace = required_dns_label(&namespace, "namespace")?;
+    let service_name = required_dns_label(&service_name, "name")?;
+    if service_port == 0 {
+        return Err(AppError::new(
+            "invalid Argo CD Service port",
+            "argoConnection",
+        ));
+    }
+    let scheme = scheme.trim().to_ascii_lowercase();
+    if !matches!(scheme.as_str(), "http" | "https") {
+        return Err(AppError::new(
+            "Argo CD Service tunnel must use HTTP or HTTPS",
+            "argoConnection",
+        ));
+    }
+    let root_path = normalized_root_path(root_path.as_deref())?;
+    let tls_server_name =
+        normalized_tls_server_name(tls_server_name.as_deref(), &service_name, &namespace)?;
+    let url = reqwest::Url::parse(&format!("{scheme}://{tls_server_name}{root_path}"))
+        .map_err(|_| AppError::new("invalid Argo CD Service endpoint", "argoConnection"))?
+        .to_string()
+        .trim_end_matches('/')
+        .to_string();
+    Ok((
+        ArgoServerEndpoint::ServiceTunnel {
+            namespace,
+            service_name,
+            service_port,
+            scheme,
+            root_path: (root_path != "/").then_some(root_path),
+            tls_server_name: Some(tls_server_name),
+        },
+        url,
+    ))
+}
+
+fn required_dns_label(value: &str, field: &str) -> Result<String, AppError> {
+    let value = value.trim().to_string();
+    let valid = !value.is_empty()
+        && value.len() <= 63
+        && value.bytes().enumerate().all(|(index, byte)| match byte {
+            b'a'..=b'z' | b'0'..=b'9' => true,
+            b'-' => index != 0 && index + 1 != value.len(),
+            _ => false,
+        });
+    valid
+        .then_some(value)
+        .ok_or_else(|| AppError::new(format!("invalid Argo CD Service {field}"), "argoConnection"))
+}
+
+fn normalized_root_path(value: Option<&str>) -> Result<String, AppError> {
+    let value = value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("/");
+    if !value.starts_with('/') {
+        return Err(AppError::new(
+            "Argo CD root path must start with '/'",
+            "argoConnection",
+        ));
+    }
+    let url = reqwest::Url::parse(&format!("https://argo.invalid{value}"))
+        .map_err(|_| AppError::new("invalid Argo CD root path", "argoConnection"))?;
+    if url.query().is_some() || url.fragment().is_some() {
+        return Err(AppError::new(
+            "Argo CD root path must not contain a query or fragment",
+            "argoConnection",
+        ));
+    }
+    Ok(match url.path().trim_end_matches('/') {
+        "" => "/".into(),
+        path => path.into(),
+    })
+}
+
+fn normalized_tls_server_name(
+    value: Option<&str>,
+    service_name: &str,
+    namespace: &str,
+) -> Result<String, AppError> {
+    let value = value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map_or_else(|| format!("{service_name}.{namespace}.svc"), str::to_string);
+    let url = reqwest::Url::parse(&format!("https://{value}"))
+        .map_err(|_| AppError::new("invalid Argo CD TLS server name", "argoConnection"))?;
+    if url.host_str().is_none()
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+    {
+        return Err(AppError::new(
+            "invalid Argo CD TLS server name",
+            "argoConnection",
+        ));
+    }
+    Ok(url.host_str().expect("validated host").to_string())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -166,21 +278,26 @@ impl<'de> Deserialize<'de> for ArgoConnectionProfile {
             .unwrap_or_else(|| ArgoServerEndpoint::ExternalHttps {
                 url: wire.url.clone(),
             });
-        let url = match &endpoint {
-            ArgoServerEndpoint::ExternalHttps { url } => url.clone(),
+        let (endpoint, url) = match endpoint {
+            ArgoServerEndpoint::ExternalHttps { url } => {
+                (ArgoServerEndpoint::ExternalHttps { url: url.clone() }, url)
+            }
             ArgoServerEndpoint::ServiceTunnel {
                 namespace,
                 service_name,
+                service_port,
                 scheme,
                 root_path,
                 tls_server_name,
-                ..
-            } => {
-                let host = tls_server_name
-                    .clone()
-                    .unwrap_or_else(|| format!("{service_name}.{namespace}.svc"));
-                format!("{scheme}://{host}{}", root_path.as_deref().unwrap_or("/"))
-            }
+            } => normalize_service_tunnel_endpoint(
+                namespace,
+                service_name,
+                service_port,
+                scheme,
+                root_path,
+                tls_server_name,
+            )
+            .map_err(|error| serde::de::Error::custom(error.message))?,
         };
         Ok(Self {
             id: wire.id,
@@ -380,4 +497,45 @@ pub struct ArgoOperationResult {
     pub transport: String,
     pub message: String,
     pub operation: Option<Value>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn tunnel(overrides: Value) -> Value {
+        let mut value = json!({"id":"test","endpoint":{"kind":"serviceTunnel","namespace":"argocd","serviceName":"argocd-server","servicePort":443,"scheme":"https"},"transport":"connected","rememberCredential":false});
+        if let (Some(base), Some(extra)) = (value.get_mut("endpoint"), overrides.as_object()) {
+            base.as_object_mut().unwrap().extend(extra.clone());
+        }
+        value
+    }
+
+    #[test]
+    fn service_tunnel_deserialization_rejects_invalid_endpoint_values() {
+        for overrides in [
+            json!({"scheme":"ftp"}),
+            json!({"tlsServerName":"user@argo.example"}),
+            json!({"tlsServerName":"argo.example/path"}),
+            json!({"rootPath":"/argo?token=secret"}),
+        ] {
+            assert!(serde_json::from_value::<ArgoConnectionProfile>(tunnel(overrides)).is_err());
+        }
+    }
+
+    #[test]
+    fn service_tunnel_deserialization_normalizes_valid_endpoint() {
+        let profile =
+            serde_json::from_value::<ArgoConnectionProfile>(tunnel(json!({"rootPath":"/argo/"})))
+                .expect("valid service tunnel");
+        assert_eq!(profile.url, "https://argocd-server.argocd.svc/argo");
+        let endpoint =
+            serde_json::to_value(profile).expect("serialize profile")["endpoint"].clone();
+        assert!(endpoint.get("serviceName").is_some());
+        assert!(endpoint.get("servicePort").is_some());
+        assert!(endpoint.get("rootPath").is_some());
+        assert!(endpoint.get("tlsServerName").is_some());
+        assert!(endpoint.get("service_name").is_none());
+    }
 }
