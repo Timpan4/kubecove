@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Revised on 2026-07-30; revised behavior is pending implementation through [ADR 0016](0016-deepen-gitops-and-finite-read-modules.md).
+Accepted. Revised on 2026-08-04; private Service tunnels follow [ADR 0017](0017-private-argocd-service-tunnels.md).
 
 ## Decision
 
@@ -24,7 +24,7 @@ Read-only Application inspection remains useful when a configured Argo CD server
 
 Operation review can recover through the existing Kubernetes adapter before confirmation, but execution cannot change what user reviewed. Persisted sessions can survive a short restart without persisting credentials or weakening live revalidation. Native secure storage failure makes operation review unavailable rather than reducing storage safety.
 
-Manual external URLs work first. Discovered cluster Services may be presented as unavailable until a safe tunnel seam exists.
+Manual external HTTPS URLs work first. Discovered eligible cluster Services can use a private tunnel under ADR 0017; unavailable discovery remains explicit.
 
 ## Connected operation contracts
 

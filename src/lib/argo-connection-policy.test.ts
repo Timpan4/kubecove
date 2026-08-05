@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	type ArgoConnectionProfilePolicyInput,
 	argoConnectionPreferenceValue,
+	argoEndpointIdentity,
 	eligibleArgoProfiles,
 	normalizeArgoConnectionPreference,
 	resolveArgoConnectionPolicy,
@@ -14,23 +15,40 @@ const profiles: ArgoConnectionProfilePolicyInput[] = [
 		url: "https://first.example.com",
 		clusterContext: "kind-dev",
 		workspaceId: "workspace-a",
+		kubeconfigSourceKey: "source-a",
 	},
 	{
 		id: "second",
 		url: "https://second.example.com",
 		clusterContext: "kind-dev",
 		workspaceId: "workspace-a",
+		kubeconfigSourceKey: "source-a",
 	},
 	{
 		id: "other-workspace",
 		url: "https://other.example.com",
 		clusterContext: "kind-dev",
 		workspaceId: "workspace-b",
+		kubeconfigSourceKey: "source-a",
 	},
 	{
 		id: "other-cluster",
 		url: "https://cluster.example.com",
 		clusterContext: "production",
+		workspaceId: "workspace-a",
+		kubeconfigSourceKey: "source-a",
+	},
+	{
+		id: "other-source",
+		url: "https://source.example.com",
+		clusterContext: "kind-dev",
+		workspaceId: "workspace-a",
+		kubeconfigSourceKey: "source-b",
+	},
+	{
+		id: "legacy-source",
+		url: "https://legacy-source.example.com",
+		clusterContext: "kind-dev",
 		workspaceId: "workspace-a",
 	},
 	{
@@ -43,14 +61,18 @@ const profiles: ArgoConnectionProfilePolicyInput[] = [
 const scope = {
 	clusterContext: "kind-dev",
 	workspaceId: "workspace-a",
+	kubeconfigSourceKey: "source-a",
 };
 
 describe("Argo connection policy", () => {
 	test("requires exact workspace and cluster eligibility in saved order", () => {
 		expect(
-			eligibleArgoProfiles(profiles, scope.clusterContext, scope.workspaceId).map(
-				(profile) => profile.id,
-			),
+			eligibleArgoProfiles(
+				profiles,
+				scope.clusterContext,
+				scope.workspaceId,
+				scope.kubeconfigSourceKey,
+			).map((profile) => profile.id),
 		).toEqual(["first", "second"]);
 	});
 
@@ -133,6 +155,23 @@ describe("Argo connection policy", () => {
 		);
 		expect(reconnected[0]?.url).toBe("https://updated.example.com");
 		expect(added.at(-1)?.id).toBe("third");
+	});
+
+	test("identifies external and private service endpoints stably", () => {
+		expect(argoEndpointIdentity({ kind: "externalHttps", url: " HTTPS://ARGO.EXAMPLE.COM " })).toBe(
+			"https://argo.example.com",
+		);
+		expect(
+			argoEndpointIdentity({
+				kind: "serviceTunnel",
+				namespace: " ArgoCD ",
+				serviceName: " ArgoCD-Server ",
+				servicePort: 443,
+				scheme: "https",
+				rootPath: " /argo-cd ",
+				tlsServerName: " ARGO.INTERNAL ",
+			}),
+		).toBe("serviceTunnel:argocd:argocd-server:443:https:/argo-cd:argo.internal");
 	});
 
 	test("serializes and validates stable Connected profile IDs", () => {

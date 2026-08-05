@@ -4,6 +4,7 @@ import {
 	type ArgoConnectionPreference,
 	normalizeArgoConnectionPreference,
 } from "./argo-connection-policy";
+import type { ArgoServerEndpoint } from "./gitops-types";
 import type {
 	KubeconfigSourcesSummary,
 	YamlEncoding,
@@ -14,13 +15,14 @@ export type TimestampTimezone = "local" | "utc";
 export type YamlDiffStyle = "clean" | "git";
 export type GitOpsViewMode = "cards" | "list";
 export type HelmViewMode = "cards" | "list";
-export interface SavedArgoProfile {
+export type SavedArgoProfile = {
 	id: string;
-	url: string;
+	endpoint: ArgoServerEndpoint;
 	clusterContext?: string;
 	workspaceId?: string;
+	kubeconfigSourceKey?: string | null;
 	rememberCredential: boolean;
-}
+};
 export const DEFAULT_KUBECONFIG_ENV_VAR = "KUBECONFIG";
 const DEFAULT_KUBECONFIG_SOURCE_KEY = "kubeconfigSource=default";
 
@@ -114,8 +116,8 @@ export function mergePersistedSettings(persisted: unknown, current: SettingsStat
 		redactSecrets: saved.redactSecrets ?? current.redactSecrets,
 		argoProfiles: Array.isArray(saved.argoProfiles)
 			? saved.argoProfiles.flatMap((profile) => {
-					if (!isSavedArgoProfile(profile)) return [];
-					return [{ ...profile, rememberCredential: Boolean(profile.rememberCredential) }];
+					const normalized = normalizeSavedArgoProfile(profile);
+					return normalized ? [normalized] : [];
 				})
 			: current.argoProfiles,
 		argoConnectionPreferences: normalizeArgoConnectionPreferences(
@@ -153,15 +155,73 @@ function normalizeArgoConnectionPreferences(
 	);
 }
 
-function isSavedArgoProfile(value: unknown): value is SavedArgoProfile {
-	if (typeof value !== "object" || value === null) return false;
-	const profile = value as Partial<SavedArgoProfile>;
-	if (typeof profile.id !== "string" || !profile.id.trim()) return false;
-	if (typeof profile.url !== "string") return false;
+export function normalizeSavedArgoProfile(value: unknown): SavedArgoProfile | null {
+	if (typeof value !== "object" || value === null) return null;
+	const profile = value as Record<string, unknown>;
+	const id = typeof profile.id === "string" ? profile.id.trim() : "";
+	if (!id) return null;
+	const endpoint = normalizeArgoEndpoint(profile.endpoint, profile.url);
+	if (!endpoint) return null;
+	return {
+		id,
+		endpoint,
+		...(typeof profile.clusterContext === "string" && profile.clusterContext.trim()
+			? { clusterContext: profile.clusterContext }
+			: {}),
+		...(typeof profile.workspaceId === "string" && profile.workspaceId.trim()
+			? { workspaceId: profile.workspaceId }
+			: {}),
+		...(typeof profile.kubeconfigSourceKey === "string" && profile.kubeconfigSourceKey.trim()
+			? { kubeconfigSourceKey: profile.kubeconfigSourceKey.trim() }
+			: profile.kubeconfigSourceKey === null
+				? { kubeconfigSourceKey: null }
+				: {}),
+		rememberCredential: Boolean(profile.rememberCredential),
+	};
+}
+
+function normalizeArgoEndpoint(endpoint: unknown, legacyUrl: unknown): ArgoServerEndpoint | null {
+	if (typeof endpoint !== "object" || endpoint === null) {
+		return externalHttpsEndpoint(legacyUrl);
+	}
+	const value = endpoint as Record<string, unknown>;
+	if (value.kind === "externalHttps") return externalHttpsEndpoint(value.url);
+	if (value.kind !== "serviceTunnel") return null;
+	const namespace = typeof value.namespace === "string" ? value.namespace.trim() : "";
+	const serviceName = typeof value.serviceName === "string" ? value.serviceName.trim() : "";
+	const servicePort = value.servicePort;
+	if (
+		!namespace ||
+		!serviceName ||
+		!Number.isInteger(servicePort) ||
+		typeof servicePort !== "number" ||
+		servicePort < 1 ||
+		servicePort > 65535 ||
+		(value.scheme !== "https" && value.scheme !== "http")
+	) {
+		return null;
+	}
+	const rootPath = typeof value.rootPath === "string" ? value.rootPath.trim() : "";
+	const tlsServerName = typeof value.tlsServerName === "string" ? value.tlsServerName.trim() : "";
+	return {
+		kind: "serviceTunnel",
+		namespace,
+		serviceName,
+		servicePort,
+		scheme: value.scheme,
+		...(rootPath ? { rootPath } : {}),
+		...(tlsServerName ? { tlsServerName } : {}),
+	};
+}
+
+function externalHttpsEndpoint(value: unknown): ArgoServerEndpoint | null {
+	if (typeof value !== "string") return null;
 	try {
-		return new URL(profile.url).protocol === "https:";
+		return new URL(value).protocol === "https:"
+			? { kind: "externalHttps", url: value }
+			: null;
 	} catch {
-		return false;
+		return null;
 	}
 }
 

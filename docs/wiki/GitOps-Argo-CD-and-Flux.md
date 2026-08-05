@@ -57,7 +57,7 @@ Connected operations require an active profile. Kubernetes operations require th
 
 ## Connect Argo CD safely
 
-Connected access is opt-in. Open the Argo CD category in **Settings** from an active workspace and cluster context to discover or connect a server. Select or reconnect a matching profile when available. For a new connection or unavailable discovery, enter a reachable manual HTTPS server URL and authenticate with a token or local login credentials. Application details lets you choose among matching profiles and transports; it no longer manages connection profiles. A healthy matching profile is selected automatically unless you explicitly choose another. A discovered in-cluster Argo server may be shown as unavailable because this release has no service tunnel; use a reachable manual URL.
+Connected access is opt-in. Open the Argo CD category in **Settings** from an active workspace and cluster context to discover or connect a server. Select or reconnect a matching profile when available. For a new connection, enter a reachable manual HTTPS server URL or select an eligible discovered Kubernetes Service port for a private tunnel, then authenticate with a token or local login credentials. Application details lets you choose among matching profiles and transports; it no longer manages connection profiles. A healthy matching profile is selected automatically unless you explicitly choose another. A discovered Service with an unavailable reason cannot be tunneled; use a reachable manual URL or fix its stated prerequisite.
 
 - Tokens, passwords, TLS configuration, and custom CA material stay in the Rust backend. The frontend receives typed summaries, not credentials.
 - Without **Remember credential**, the token is memory-only. With it, KubeCove uses the native keyring; it has no plaintext credential fallback.
@@ -76,7 +76,7 @@ Flux reconcile, suspend, resume, Git-writing actions, CLI integration, a connect
 | Symptom | What to check |
 | --- | --- |
 | Argo CD or Flux is unavailable | Select the intended cluster context and confirm the provider CRDs are installed and readable. Argo detection requires the `argoproj.io` Application CRD. |
-| A discovered Argo server is unavailable | Service tunneling is not in this release. Use a reachable manual HTTPS URL. |
+| A discovered Argo server is unavailable | Read its stated Service prerequisite. Private tunneling requires a selector-backed Service, TCP port, and ready target Pod; otherwise use a reachable manual HTTPS URL. |
 | Connected inspection or an operation is unavailable | Connect a profile for the current workspace and cluster context. Recheck the URL, credentials, TLS settings, and server response. |
 | Kubernetes operation is unavailable or unauthorized | Confirm Kubernetes RBAC allows patching the target Application, and that its namespace and current `resourceVersion` are present. This is separate from Argo CD RBAC. |
 | Connected operation is denied | Check the authenticated Argo CD user's authorization for that Application and action, then preflight again. |

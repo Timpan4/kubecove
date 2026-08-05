@@ -13,6 +13,7 @@ import type {
 	ArgoOperationResult,
 	ArgoResourceComparison,
 	ArgoServerCapability,
+	ArgoServerEndpoint,
 	CancellableRequest,
 } from "./types";
 
@@ -32,6 +33,7 @@ export async function connectArgoServer(
 	request: {
 		id: string;
 		serverUrl: string;
+		endpoint: ArgoServerEndpoint;
 		token?: string;
 		username?: string;
 		password?: string;
@@ -39,10 +41,15 @@ export async function connectArgoServer(
 		customCaPem?: number[];
 		rememberCredential: boolean;
 		clusterContext?: string;
+		kubeconfigEnvVar?: string;
 		workspaceId?: string;
 	},
 ): Promise<ArgoConnectionStatus> {
-	return client.invoke<ArgoConnectionStatus>("connect_argo_server", request);
+	const { kubeconfigEnvVar, ...args } = request;
+	return client.invoke<ArgoConnectionStatus>("connect_argo_server", {
+		...args,
+		...kubeconfigArg(kubeconfigEnvVar),
+	});
 }
 
 export function getArgoConnectionStatus(

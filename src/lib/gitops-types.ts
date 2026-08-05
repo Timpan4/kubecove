@@ -37,11 +37,25 @@ export interface ArgoApplicationDetails {
 	status?: Record<string, unknown>;
 }
 
+export type ArgoServerEndpoint =
+	| { kind: "externalHttps"; url: string }
+	| {
+			kind: "serviceTunnel";
+			namespace: string;
+			serviceName: string;
+			servicePort: number;
+			scheme: "https" | "http";
+			rootPath?: string;
+			tlsServerName?: string;
+		};
+
 export interface ArgoConnectionProfile {
 	id: string;
+	endpoint: ArgoServerEndpoint;
 	url: string;
 	clusterContext?: string | null;
 	workspaceId?: string | null;
+	kubeconfigSourceKey?: string | null;
 	transport: "connected" | string;
 	rememberCredential: boolean;
 }
@@ -53,13 +67,22 @@ export interface ArgoConnectionStatus {
 	unavailableReason: string | null;
 }
 
+export type ArgoServiceTunnelUnavailableReason =
+	| "externalName"
+	| "selectorRequired"
+	| "noTcpPorts"
+	| "noReadyPod"
+	| "targetUnavailable";
+
 export interface ArgoServerCapability {
 	id: string;
 	name: string;
 	namespace: string | null;
 	url: string | null;
-	transport: string;
+	transport: "serviceTunnel" | string;
+	endpoint: ArgoServerEndpoint | null;
 	unavailableReason: string | null;
+	unavailable?: ArgoServiceTunnelUnavailableReason | null;
 }
 
 export interface ArgoApplicationRef {

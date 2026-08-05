@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
 	mergePersistedSettings,
+	normalizeSavedArgoProfile,
 	normalizeGitOpsViewMode,
 	normalizeHelmViewMode,
 	partializeSettings,
@@ -91,6 +92,59 @@ describe("settings", () => {
 			"workspace-b": { kind: "connected", profileId: "profile-b" },
 			"workspace-c": { kind: "automatic" },
 		});
+	});
+
+	test("migrates legacy Argo URLs to endpoint-only nonsecret profiles", () => {
+		const profile = normalizeSavedArgoProfile({
+			id: "legacy-argo",
+			url: "https://argo.example.com/argo-cd",
+			clusterContext: "kind-dev",
+			workspaceId: "workspace-a",
+			rememberCredential: true,
+			token: "must-not-persist",
+			customCaPem: [1, 2, 3],
+			insecureTls: true,
+		});
+
+		expect(profile).toEqual({
+			id: "legacy-argo",
+			endpoint: { kind: "externalHttps", url: "https://argo.example.com/argo-cd" },
+			clusterContext: "kind-dev",
+			workspaceId: "workspace-a",
+			rememberCredential: true,
+		});
+		expect(JSON.stringify(partializeSettings({ ...useSettingsState.getState(), argoProfiles: [profile!] }))).not.toMatch(
+			/token|customCaPem|insecureTls/,
+		);
+	});
+
+	test("preserves canonical Argo kubeconfig source identity", () => {
+		const profile = normalizeSavedArgoProfile({
+			id: "source-bound",
+			endpoint: { kind: "externalHttps", url: "https://argo.example.com" },
+			clusterContext: "kind-dev",
+			workspaceId: "workspace-a",
+			kubeconfigSourceKey: "  kubeconfigSource=source-a  ",
+			rememberCredential: false,
+		});
+
+		if (!profile) throw new Error("source-bound profile should normalize");
+		expect(profile.kubeconfigSourceKey).toBe("kubeconfigSource=source-a");
+		expect(
+			partializeSettings({
+				...useSettingsState.getState(),
+				argoProfiles: [profile],
+			}).argoProfiles,
+		).toEqual([profile]);
+		expect(
+			normalizeSavedArgoProfile({
+				id: "legacy-source",
+				url: "https://argo.example.com",
+				clusterContext: "kind-dev",
+				workspaceId: "workspace-a",
+				rememberCredential: false,
+			}),
+		).not.toHaveProperty("kubeconfigSourceKey");
 	});
 
 	test("defaults Helm to cards and persists only valid view modes", () => {

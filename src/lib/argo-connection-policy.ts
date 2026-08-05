@@ -1,3 +1,5 @@
+import type { ArgoServerEndpoint } from "./gitops-types";
+
 export type ArgoConnectionPreference =
 	| { kind: "automatic" }
 	| { kind: "kubernetes" }
@@ -5,9 +7,24 @@ export type ArgoConnectionPreference =
 
 export interface ArgoConnectionProfilePolicyInput {
 	id: string;
-	url: string;
+	endpoint?: ArgoServerEndpoint;
+	url?: string;
 	clusterContext?: string | null;
 	workspaceId?: string | null;
+	kubeconfigSourceKey?: string | null;
+}
+
+export function argoEndpointIdentity(endpoint: ArgoServerEndpoint): string {
+	if (endpoint.kind === "externalHttps") return endpoint.url.trim().toLowerCase();
+	return [
+		"serviceTunnel",
+		endpoint.namespace.trim().toLowerCase(),
+		endpoint.serviceName.trim().toLowerCase(),
+		endpoint.servicePort,
+		endpoint.scheme,
+		endpoint.rootPath?.trim() || "/",
+		endpoint.tlsServerName?.trim().toLowerCase() || "",
+	].join(":");
 }
 
 interface ArgoConnectionStatusPolicyInput {
@@ -60,10 +77,13 @@ export function eligibleArgoProfiles<T extends ArgoConnectionProfilePolicyInput>
 	profiles: readonly T[],
 	clusterContext: string,
 	workspaceId: string,
+	kubeconfigSourceKey: string,
 ): T[] {
 	return profiles.filter(
 		(profile) =>
-			profile.clusterContext === clusterContext && profile.workspaceId === workspaceId,
+			profile.clusterContext === clusterContext &&
+			profile.workspaceId === workspaceId &&
+			profile.kubeconfigSourceKey === kubeconfigSourceKey,
 	);
 }
 
@@ -87,6 +107,7 @@ export function resolveArgoConnectionPolicy<
 	statuses,
 	clusterContext,
 	workspaceId,
+	kubeconfigSourceKey,
 	preference,
 }: {
 	profiles: readonly T[];
@@ -95,9 +116,15 @@ export function resolveArgoConnectionPolicy<
 		| readonly (readonly [string, ArgoConnectionStatusPolicyInput])[];
 	clusterContext: string;
 	workspaceId: string;
+	kubeconfigSourceKey: string;
 	preference?: unknown;
 }): ArgoConnectionChoice<T> {
-	const eligibleProfiles = eligibleArgoProfiles(profiles, clusterContext, workspaceId);
+	const eligibleProfiles = eligibleArgoProfiles(
+		profiles,
+		clusterContext,
+		workspaceId,
+		kubeconfigSourceKey,
+	);
 	const normalized = normalizeArgoConnectionPreference(preference);
 	const statusMap = statuses instanceof Map ? statuses : new Map(statuses ?? []);
 	const healthy = (profile: T) => statusMap.get(profile.id)?.connected === true;

@@ -671,9 +671,14 @@ describe("typed Tauri wrappers", () => {
 		await connectArgoServer(client, {
 			id: "argo:mock",
 			serverUrl: "https://argocd.mock",
+			endpoint: { kind: "externalHttps", url: "https://argocd.mock" },
+			kubeconfigEnvVar: "KUBECONFIG",
 			rememberCredential: false,
 		});
-		expect((await getArgoConnectionStatus(client, "argo:mock")).connected).toBe(true);
+		expect((await getArgoConnectionStatus(client, "argo:mock")).profile?.endpoint).toEqual({
+			kind: "externalHttps",
+			url: "https://argocd.mock",
+		});
 		await disconnectArgoServer(client, "argo:mock");
 		expect((await getArgoConnectionStatus(client, "argo:mock")).connected).toBe(false);
 	});
