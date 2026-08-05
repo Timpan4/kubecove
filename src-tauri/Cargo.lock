@@ -2611,6 +2611,7 @@ dependencies = [
  "kube",
  "proptest",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "sysinfo",

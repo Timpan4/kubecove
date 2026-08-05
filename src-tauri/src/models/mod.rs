@@ -17,13 +17,15 @@ mod sessions;
 mod streams;
 mod usage;
 
+pub(crate) use argo::normalize_service_tunnel_endpoint;
 pub use argo::{
     ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails, ArgoApplicationHistory,
     ArgoApplicationInspector, ArgoApplicationRef, ArgoApplicationSetDetails,
     ArgoApplicationSetSummary, ArgoApplicationSourceSummary, ArgoApplicationSummary,
     ArgoConnectedFallback, ArgoConnectionProfile, ArgoConnectionStatus, ArgoInspectionFailure,
     ArgoManagedResource, ArgoOperationConfirmation, ArgoOperationPreflight, ArgoOperationRequest,
-    ArgoOperationResult, ArgoResourceComparison, ArgoServerCapability,
+    ArgoOperationResult, ArgoResourceComparison, ArgoServerCapability, ArgoServerEndpoint,
+    ArgoServiceTunnelUnavailableReason,
 };
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;

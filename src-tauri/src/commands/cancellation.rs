@@ -1,5 +1,5 @@
 use crate::{
-    commands::{helpers::client_cache, ClusterLiveStore},
+    commands::{helpers::client_cache, ArgoConnectionStore, ClusterLiveStore},
     models::{AppError, CancelBackendRequestsResult, CancelWorkspaceRequestsResult},
 };
 use std::{
@@ -182,18 +182,20 @@ pub fn cancel_backend_requests(
 }
 
 #[tauri::command]
-pub fn cancel_workspace_requests(
+pub async fn cancel_workspace_requests(
     registry: State<'_, BackendCancellationRegistry>,
     live_store: State<'_, ClusterLiveStore>,
-) -> CancelWorkspaceRequestsResult {
+    argo_connections: State<'_, ArgoConnectionStore>,
+) -> Result<CancelWorkspaceRequestsResult, AppError> {
     let cancelled_requests = registry.cancel_all();
     let client_generation = client_cache::rotate_client_generation();
     let cancelled_loads = live_store.cancel_loading();
-    CancelWorkspaceRequestsResult {
+    argo_connections.close_all().await?;
+    Ok(CancelWorkspaceRequestsResult {
         cancelled_requests,
         cancelled_loads,
         client_generation,
-    }
+    })
 }
 
 #[cfg(test)]

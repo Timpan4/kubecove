@@ -58,6 +58,7 @@ async fn argo_resource_comparison(
             .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?,
         &cluster_context,
         application.workspace_id.as_deref(),
+        kubeconfig_env_var.as_deref(),
     )?;
     let mut value = api_get(
         &connection,

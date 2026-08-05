@@ -1,6 +1,6 @@
 use super::connected::{api_delete, api_get, api_post, ConnectedArgo};
-use super::scope::scoped_connection;
-use super::session::{consume, issue, peek, OperationSession};
+use super::scope::{acquire_connection_lease, scoped_connection, ConnectionLease};
+use super::session::{consume, issue, peek, OperationSession, SessionSnapshot};
 use crate::commands::gitops_crd::{client_for_context, find_api_resource};
 use crate::models::{
     AppError, ArgoApplicationRef, ArgoOperationConfirmation, ArgoOperationPreflight,
@@ -16,6 +16,7 @@ use kube::{
     Client,
 };
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 fn valid(request: &ArgoOperationRequest) -> Result<(), AppError> {
     if !matches!(request.transport.as_str(), "connected" | "kubernetes") {
@@ -75,7 +76,8 @@ pub async fn preflight_argo_operation(
         }
         fallback_allowed(&request).await?;
     }
-    let (resolved_request, connection_generation) = resolve_request(&store, &request).await?;
+    let (resolved_request, connection_generation, connection_instance_id) =
+        resolve_request(&store, &request).await?;
     if resolved_request.transport == "connected" && resolved_request.action == "resourceAction" {
         let connection = scoped_connection(
             &store,
@@ -87,10 +89,16 @@ pub async fn preflight_argo_operation(
                 AppError::new("clusterContext required", "argoOperationUnavailable")
             })?,
             resolved_request.application.workspace_id.as_deref(),
+            resolved_request.kubeconfig_env_var.as_deref(),
         )?;
         validate_resource_action(&connection, &resolved_request).await?;
     }
-    let (session_id, session) = issue(&store.sessions, resolved_request, connection_generation)?;
+    let (session_id, session) = issue(
+        &store.sessions,
+        resolved_request,
+        connection_generation,
+        connection_instance_id,
+    )?;
     Ok(ArgoOperationPreflight {
         allowed: true,
         transport: session.transport,
@@ -167,16 +175,93 @@ async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(), AppError
 }
 
 enum ExecutionBinding {
-    Connected(ConnectedArgo),
+    Connected(Arc<ConnectedArgo>),
     Kubernetes {
         client: Client,
         resource: ApiResource,
     },
 }
 
-#[tauri::command]
-pub async fn run_argo_operation(
-    store: tauri::State<'_, super::ArgoConnectionStore>,
+async fn lease_connection(
+    store: &super::ArgoConnectionStore,
+    session: &OperationSession,
+    connection: Arc<ConnectedArgo>,
+) -> Result<ConnectionLease, AppError> {
+    let connection_id = session
+        .connection_id
+        .as_deref()
+        .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?;
+    let cluster_context = session
+        .request
+        .cluster_context
+        .as_deref()
+        .ok_or_else(|| AppError::new("clusterContext required", "argoOperationUnavailable"))?;
+    let generation = session.connection_generation.as_deref().ok_or_else(|| {
+        AppError::new(
+            "Argo CD connection was replaced",
+            "argoOperationUnavailable",
+        )
+    })?;
+    let instance_id = session.connection_instance_id.as_deref().ok_or_else(|| {
+        AppError::new(
+            "Argo CD connection was replaced",
+            "argoOperationUnavailable",
+        )
+    })?;
+    acquire_connection_lease(
+        store,
+        connection_id,
+        connection,
+        cluster_context,
+        session.workspace_id.as_deref(),
+        session.request.kubeconfig_env_var.as_deref(),
+        generation,
+        instance_id,
+    )
+    .await
+}
+
+fn reject_reviewed_operation(
+    store: &super::session::SessionStore,
+    id: &str,
+    reviewed: &SessionSnapshot,
+    error: AppError,
+) -> AppError {
+    let _ = consume(store, id, reviewed);
+    error
+}
+
+async fn run_connected_operation(
+    store: &super::ArgoConnectionStore,
+    id: &str,
+    reviewed: &SessionSnapshot,
+    connection: Arc<ConnectedArgo>,
+) -> Result<ArgoOperationResult, AppError> {
+    let lease = lease_connection(store, &reviewed.session, connection)
+        .await
+        .map_err(|error| reject_reviewed_operation(&store.sessions, id, reviewed, error))?;
+    let request = consume(&store.sessions, id, reviewed)?.request;
+    let path = match request.action.as_str() {
+        "refresh" => application_path(&request.application, "", Some("normal")),
+        "hardRefresh" => application_path(&request.application, "", Some("hard")),
+        "sync" | "retry" => application_path(&request.application, "/sync", None),
+        "rollback" => application_path(&request.application, "/rollback", None),
+        "terminate" => application_path(&request.application, "/operation", None),
+        "resourceAction" => application_path(&request.application, "/resource/actions/v2", None),
+        _ => unreachable!(),
+    };
+    let value = if request.action == "refresh" || request.action == "hardRefresh" {
+        api_get(&lease.connection, &path).await?
+    } else if request.action == "terminate" {
+        api_delete(&lease.connection, &path).await?
+    } else {
+        api_post(&lease.connection, &path, connected_payload(&request)).await?
+    };
+    accepted("connected", value)
+}
+
+async fn run_argo_operation_for_store(
+    store: &super::ArgoConnectionStore,
     confirmation: ArgoOperationConfirmation,
 ) -> Result<ArgoOperationResult, AppError> {
     if confirmation.confirmation != confirmation.session_id {
@@ -187,35 +272,28 @@ pub async fn run_argo_operation(
     }
     let reviewed = peek(&store.sessions, &confirmation.session_id, None)?;
     valid(&reviewed.session.request)?;
-    let binding = revalidate_session(&store, &reviewed.session).await?;
-    let session = consume(&store.sessions, &confirmation.session_id, &reviewed)?;
-    let request = session.request;
+    let binding = revalidate_session(store, &reviewed.session)
+        .await
+        .map_err(|error| {
+            reject_reviewed_operation(&store.sessions, &confirmation.session_id, &reviewed, error)
+        })?;
     match binding {
         ExecutionBinding::Kubernetes { client, resource } => {
+            let request = consume(&store.sessions, &confirmation.session_id, &reviewed)?.request;
             kubernetes_operation(request, client, resource).await
         }
         ExecutionBinding::Connected(connection) => {
-            let path = match request.action.as_str() {
-                "refresh" => application_path(&request.application, "", Some("normal")),
-                "hardRefresh" => application_path(&request.application, "", Some("hard")),
-                "sync" | "retry" => application_path(&request.application, "/sync", None),
-                "rollback" => application_path(&request.application, "/rollback", None),
-                "terminate" => application_path(&request.application, "/operation", None),
-                "resourceAction" => {
-                    application_path(&request.application, "/resource/actions/v2", None)
-                }
-                _ => unreachable!(),
-            };
-            let value = if request.action == "refresh" || request.action == "hardRefresh" {
-                api_get(&connection, &path).await?
-            } else if request.action == "terminate" {
-                api_delete(&connection, &path).await?
-            } else {
-                api_post(&connection, &path, connected_payload(&request)).await?
-            };
-            accepted("connected", value)
+            run_connected_operation(store, &confirmation.session_id, &reviewed, connection).await
         }
     }
+}
+
+#[tauri::command]
+pub async fn run_argo_operation(
+    store: tauri::State<'_, super::ArgoConnectionStore>,
+    confirmation: ArgoOperationConfirmation,
+) -> Result<ArgoOperationResult, AppError> {
+    run_argo_operation_for_store(&store, confirmation).await
 }
 
 async fn revalidate_session(
@@ -234,6 +312,7 @@ async fn revalidate_session(
                 AppError::new("clusterContext required", "argoOperationUnavailable")
             })?,
             session.workspace_id.as_deref(),
+            request.kubeconfig_env_var.as_deref(),
         )?;
         let connection_id = request
             .connection_id
@@ -241,6 +320,7 @@ async fn revalidate_session(
             .ok_or_else(|| AppError::new("Argo CD connection required", "argoConnection"))?;
         if session.connection_id.as_deref() != Some(connection_id)
             || session.connection_generation.as_deref() != Some(connection.generation.as_str())
+            || session.connection_instance_id.as_deref() != Some(connection.instance_id.as_str())
         {
             return Err(AppError::new(
                 "Argo CD connection was replaced",
@@ -525,8 +605,8 @@ async fn kubernetes_operation(
 async fn resolve_request(
     store: &super::ArgoConnectionStore,
     request: &ArgoOperationRequest,
-) -> Result<(ArgoOperationRequest, Option<String>), AppError> {
-    let (mut resolved, generation) = if request.transport == "connected" {
+) -> Result<(ArgoOperationRequest, Option<String>, Option<String>), AppError> {
+    let (mut resolved, generation, instance_id) = if request.transport == "connected" {
         let connection = scoped_connection(
             store,
             request
@@ -537,6 +617,7 @@ async fn resolve_request(
                 AppError::new("clusterContext required", "argoOperationUnavailable")
             })?,
             request.application.workspace_id.as_deref(),
+            request.kubeconfig_env_var.as_deref(),
         )?;
         let value = api_get(
             &connection,
@@ -572,15 +653,19 @@ async fn resolve_request(
         resolved
             .cluster_context
             .clone_from(&connection.profile.cluster_context);
-        (resolved, Some(connection.generation))
+        (
+            resolved,
+            Some(connection.generation.clone()),
+            Some(connection.instance_id.clone()),
+        )
     } else {
-        (request.clone(), None)
+        (request.clone(), None, None)
     };
     if resolved.action != "retry" {
         if resolved.action == "sync" {
             resolved.sync_payload = Some(sync_payload(&resolved));
         }
-        return Ok((resolved, generation));
+        return Ok((resolved, generation, instance_id));
     }
     let sync =
         if resolved.transport == "connected" {
@@ -593,6 +678,7 @@ async fn resolve_request(
                     AppError::new("clusterContext required", "argoOperationUnavailable")
                 })?,
                 resolved.application.workspace_id.as_deref(),
+                resolved.kubeconfig_env_var.as_deref(),
             )?;
             api_get(
                 &connection,
@@ -628,7 +714,7 @@ async fn resolve_request(
                 "argoOperationUnavailable",
             )
         })?;
-    Ok((recorded_retry(&resolved, sync)?, generation))
+    Ok((recorded_retry(&resolved, sync)?, generation, instance_id))
 }
 
 fn recorded_retry(
@@ -784,7 +870,160 @@ fn recorded_sync_payload(sync: Value) -> Result<Value, AppError> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::session::SecureStore;
     use super::*;
+    use crate::models::{ArgoConnectionProfile, ArgoServerEndpoint};
+    use std::{
+        collections::HashMap,
+        sync::{atomic::AtomicU64, Mutex},
+    };
+
+    #[derive(Default)]
+    struct MemorySessionStore(Mutex<HashMap<String, String>>);
+    impl SecureStore for MemorySessionStore {
+        fn read(&self, id: &str) -> Result<Option<String>, ()> {
+            Ok(self.0.lock().unwrap().get(id).cloned())
+        }
+        fn write(&self, id: &str, value: &str) -> Result<(), ()> {
+            self.0.lock().unwrap().insert(id.into(), value.into());
+            Ok(())
+        }
+        fn delete(&self, id: &str) -> Result<(), ()> {
+            self.0.lock().unwrap().remove(id);
+            Ok(())
+        }
+    }
+
+    fn connection(generation: &str) -> Arc<ConnectedArgo> {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        Arc::new(ConnectedArgo {
+            profile: ArgoConnectionProfile {
+                id: "server".into(),
+                url: "https://argo.example".into(),
+                endpoint: ArgoServerEndpoint::ExternalHttps {
+                    url: "https://argo.example".into(),
+                },
+                cluster_context: Some("cluster".into()),
+                workspace_id: Some("workspace".into()),
+                kubeconfig_source_key: Some("kubeconfigSource=test".into()),
+                transport: "connected".into(),
+                remember_credential: true,
+            },
+            token: "token".into(),
+            username: None,
+            client: reqwest::Client::new(),
+            tunnel: None,
+            generation: generation.into(),
+            instance_id: uuid::Uuid::new_v4().to_string(),
+            gate: Arc::new(tokio::sync::Mutex::new(())),
+        })
+    }
+
+    fn store() -> super::super::ArgoConnectionStore {
+        super::super::ArgoConnectionStore {
+            connections: Mutex::new(HashMap::new()),
+            sessions: super::super::session::SessionStore::with_secure(Arc::new(
+                MemorySessionStore::default(),
+            )),
+            cleanup_epoch: AtomicU64::default(),
+        }
+    }
+
+    fn reviewed(store: &super::super::ArgoConnectionStore) -> (String, SessionSnapshot) {
+        let connection = scoped_connection(
+            store,
+            "server",
+            "cluster",
+            Some("workspace"),
+            Some("kubeconfigSource=test"),
+        )
+        .unwrap();
+        let (id, _) = issue(
+            &store.sessions,
+            ArgoOperationRequest {
+                transport: "connected".into(),
+                action: "refresh".into(),
+                connection_id: Some("server".into()),
+                cluster_context: Some("cluster".into()),
+                kubeconfig_env_var: Some("kubeconfigSource=test".into()),
+                application: ArgoApplicationRef {
+                    name: "app".into(),
+                    workspace_id: Some("workspace".into()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            Some(connection.generation.clone()),
+            Some(connection.instance_id.clone()),
+        )
+        .unwrap();
+        let reviewed = peek(&store.sessions, &id, None).unwrap();
+        (id, reviewed)
+    }
+
+    #[tokio::test]
+    async fn reconnect_with_same_generation_rejects_and_tombstones_reviewed_session() {
+        let store = store();
+        let first = connection("remembered-generation");
+        store
+            .replace_connection("server".into(), first.clone())
+            .await
+            .unwrap();
+        let (id, _reviewed) = reviewed(&store);
+
+        let replacement = connection("remembered-generation");
+        assert_ne!(first.instance_id, replacement.instance_id);
+        store
+            .replace_connection("server".into(), replacement)
+            .await
+            .unwrap();
+        let error = run_argo_operation_for_store(
+            &store,
+            ArgoOperationConfirmation {
+                session_id: id.clone(),
+                confirmation: id.clone(),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.message, "Argo CD connection was replaced");
+        assert!(peek(&store.sessions, &id, None).is_err());
+
+        let (id, _reviewed) = reviewed(&store);
+        store.remove_connection("server").await.unwrap();
+        let error = run_argo_operation_for_store(
+            &store,
+            ArgoOperationConfirmation {
+                session_id: id.clone(),
+                confirmation: id.clone(),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.message, "Argo CD connection not found");
+        assert!(peek(&store.sessions, &id, None).is_err());
+    }
+
+    #[tokio::test]
+    async fn rejected_lease_tombstones_the_reviewed_session() {
+        let store = store();
+        let old = connection("old");
+        store
+            .replace_connection("server".into(), old.clone())
+            .await
+            .unwrap();
+        let (id, reviewed) = reviewed(&store);
+        store
+            .replace_connection("server".into(), connection("replacement"))
+            .await
+            .unwrap();
+
+        let error = run_connected_operation(&store, &id, &reviewed, old)
+            .await
+            .unwrap_err();
+        assert_eq!(error.message, "Argo CD connection was replaced");
+        assert!(peek(&store.sessions, &id, None).is_err());
+    }
 
     #[test]
     fn operation_paths_encode_application_and_resource_identity() {

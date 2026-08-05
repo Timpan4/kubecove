@@ -21,6 +21,7 @@ pub(crate) struct OperationSession {
     pub(crate) application: ArgoApplicationRef,
     pub(crate) connection_id: Option<String>,
     pub(crate) connection_generation: Option<String>,
+    pub(crate) connection_instance_id: Option<String>,
 }
 
 pub(crate) trait SecureStore: Send + Sync {
@@ -104,7 +105,7 @@ fn unavailable() -> AppError {
 
 impl SessionStore {
     #[cfg(test)]
-    fn with_secure(secure: Arc<dyn SecureStore>) -> Self {
+    pub(crate) fn with_secure(secure: Arc<dyn SecureStore>) -> Self {
         Self {
             records: Mutex::new(HashMap::new()),
             consumed: Mutex::new(std::collections::HashSet::new()),
@@ -117,12 +118,14 @@ pub(crate) fn issue(
     store: &SessionStore,
     request: ArgoOperationRequest,
     connection_generation: Option<String>,
+    connection_instance_id: Option<String>,
 ) -> Result<(String, OperationSession), AppError> {
     let issued_at = now();
     let session = OperationSession {
         application: request.application.clone(),
         connection_id: request.connection_id.clone(),
         connection_generation,
+        connection_instance_id,
         workspace_id: request.application.workspace_id.clone(),
         transport: request.transport.clone(),
         request,
@@ -319,6 +322,7 @@ mod tests {
             application: request.application.clone(),
             connection_id: None,
             connection_generation: None,
+            connection_instance_id: None,
             workspace_id: None,
             transport: request.transport.clone(),
             request,
@@ -335,14 +339,35 @@ mod tests {
     }
 
     #[test]
+    fn legacy_kubernetes_session_without_connection_instance_id_remains_usable() {
+        let memory = Arc::new(Memory::default());
+        let store = SessionStore::with_secure(memory.clone());
+        let mut legacy = serde_json::to_value(session()).unwrap();
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("connectionInstanceId");
+        let serialized = serde_json::to_string(&legacy).unwrap();
+        memory
+            .values
+            .lock()
+            .unwrap()
+            .insert("legacy".into(), serialized);
+
+        let snapshot = peek(&store, "legacy", Some(10)).unwrap();
+        assert_eq!(snapshot.session.transport, "kubernetes");
+        assert_eq!(snapshot.session.connection_instance_id, None);
+    }
+
+    #[test]
     fn consume_requires_durable_write_and_is_single_use() {
         let memory = Arc::new(Memory::default());
         let store = SessionStore::with_secure(memory.clone());
-        let (id, _) = issue(&store, session().request.clone(), None).unwrap();
+        let (id, _) = issue(&store, session().request.clone(), None, None).unwrap();
         let reviewed = peek(&store, &id, Some(10)).unwrap();
         assert!(consume(&store, &id, &reviewed).is_ok());
         assert!(consume(&store, &id, &reviewed).is_err());
-        let (id, _) = issue(&store, session().request, None).unwrap();
+        let (id, _) = issue(&store, session().request, None, None).unwrap();
         let reviewed = peek(&store, &id, Some(10)).unwrap();
         *memory.fail_write.lock().unwrap() = true;
         assert!(consume(&store, &id, &reviewed).is_err());
@@ -354,7 +379,7 @@ mod tests {
     fn consume_rechecks_expiry_after_review() {
         let memory = Arc::new(Memory::default());
         let store = SessionStore::with_secure(memory.clone());
-        let (id, _) = issue(&store, session().request, None).unwrap();
+        let (id, _) = issue(&store, session().request, None, None).unwrap();
         let mut expired = store.records.lock().unwrap().get(&id).unwrap().clone();
         expired.expires_at = now();
         let fingerprint = serde_json::to_string(&expired).unwrap();
@@ -383,7 +408,7 @@ mod tests {
     fn changed_session_cannot_be_consumed() {
         let memory = Arc::new(Memory::default());
         let store = SessionStore::with_secure(memory);
-        let (id, _) = issue(&store, session().request, None).unwrap();
+        let (id, _) = issue(&store, session().request, None, None).unwrap();
         let reviewed = peek(&store, &id, Some(10)).unwrap();
         store
             .records
@@ -399,12 +424,37 @@ mod tests {
     }
 
     #[test]
-    fn consumed_tombstone_rejects_after_restart() {
+    fn concurrent_consumers_have_one_winner_and_tombstone_blocks_restart_replay() {
         let memory = Arc::new(Memory::default());
-        let store = SessionStore::with_secure(memory.clone());
-        let (id, _) = issue(&store, session().request, None).unwrap();
+        let store = Arc::new(SessionStore::with_secure(memory.clone()));
+        let (id, _) = issue(&store, session().request, None, None).unwrap();
         let reviewed = peek(&store, &id, Some(10)).unwrap();
-        consume(&store, &id, &reviewed).unwrap();
+        let start = Arc::new(std::sync::Barrier::new(3));
+        let (left, right) = std::thread::scope(|scope| {
+            let left_store = store.clone();
+            let left_id = id.clone();
+            let left_reviewed = reviewed.clone();
+            let left_start = start.clone();
+            let left = scope.spawn(move || {
+                left_start.wait();
+                consume(&left_store, &left_id, &left_reviewed).is_ok()
+            });
+            let right_store = store.clone();
+            let right_id = id.clone();
+            let right_reviewed = reviewed.clone();
+            let right_start = start.clone();
+            let right = scope.spawn(move || {
+                right_start.wait();
+                consume(&right_store, &right_id, &right_reviewed).is_ok()
+            });
+            start.wait();
+            (left.join().unwrap(), right.join().unwrap())
+        });
+
+        assert_eq!(
+            [left, right].into_iter().filter(|result| *result).count(),
+            1
+        );
         let restarted = SessionStore::with_secure(memory);
         assert!(peek(&restarted, &id, Some(10)).is_err());
     }
