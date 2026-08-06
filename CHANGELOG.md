@@ -3,6 +3,25 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.10.5 - 2026-08-05
+### Added
+
+- Add private Argo tunnel UI (#312).
+- Add private Argo transport core (#311).
+- Add ownership evidence (#302).
+- Deepen Argo inspection (#301).
+- Add workspace Argo policy (#300).
+
+### Improved
+
+- Deepen finite-read lifecycle (#299).
+
+### Fixed
+
+- Prioritize focused inventory resources (#315).
+- Make Argo state live (#310).
+- Use official TypeScript 6 package (#309).
+
 ## 0.10.4 - 2026-07-30
 ### Improved
 
