@@ -174,10 +174,13 @@ jobs:
         with:
           packages: >-
             build-essential
+            dbus
+            dbus-x11
             libayatana-appindicator3-dev
             librsvg2-dev
             libssl-dev
             libwebkit2gtk-4.1-dev
+            gnome-keyring
             patchelf
             xvfb
           version: release-e2e-tauri-linux-v1
@@ -197,7 +200,10 @@ jobs:
         run: bun run e2e:fast
 
       - name: Run real suite
-        run: xvfb-run -a bun run e2e:real -- --kubernetes ${{ matrix.kubernetes }} --provider docker
+        run: |
+          eval "$(dbus-launch --sh-syntax)"
+          eval "$(gnome-keyring-daemon --start --components=secrets)"
+          xvfb-run -a bun run e2e:real -- --kubernetes ${{ matrix.kubernetes }} --provider docker
 
       - name: Upload failure artifacts
         if: failure()

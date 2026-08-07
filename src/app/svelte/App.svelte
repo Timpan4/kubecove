@@ -3,6 +3,7 @@
 	import { useQueryClient } from "@tanstack/svelte-query";
 	import { FolderOpen, Settings } from "lucide-svelte";
 	import { Button, TooltipProvider } from "@/components/ui/svelte";
+	import ToastViewport from "@/components/ToastViewport.svelte";
 	import AppUsageFooter from "./AppUsageFooter.svelte";
 	import SettingsSurface from "./SettingsSurface.svelte";
 	import UpdateStatusButton from "./UpdateStatusButton.svelte";
@@ -299,4 +300,5 @@
 		<AppUsageFooter />
 	</div>
 	{/if}
+	<ToastViewport />
 </TooltipProvider>

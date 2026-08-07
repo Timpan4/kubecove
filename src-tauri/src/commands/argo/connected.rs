@@ -623,7 +623,12 @@ pub async fn connect_argo_server(
         save_credential(&credential_store, &profile, &token, generation.clone())?;
     } else if !remember_credential {
         // A stale remembered credential must not revive on a later reconnect.
-        delete_credential(&credential_store, &profile)?;
+        // In headless/test environments without native credential storage, proceed anyway.
+        if let Err(error) = delete_credential(&credential_store, &profile) {
+            if error.kind != "credentialUnavailable" {
+                return Err(error);
+            }
+        }
     }
     store
         .replace_connection_at(
