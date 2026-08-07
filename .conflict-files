@@ -1,3 +1,0 @@
-ancestorEntries = ["src/features/gitops/ArgoApplicationDetails.svelte", "src/features/resources/ResourceBrowser.svelte"]
-ourEntries = ["src/features/gitops/ArgoApplicationDetails.svelte", "src/features/gitops/ArgoApplicationWorkspaceHeader.svelte", "src/features/gitops/argo-workspace-model.ts", "src/features/resources/ResourceBrowser.svelte", "tests/argo-workspace-model.test.ts"]
-theirEntries = ["src/features/gitops/ArgoApplicationDetails.svelte", "src/features/gitops/ArgoApplicationWorkspaceHeader.svelte", "src/features/gitops/argo-workspace-model.ts", "src/features/resources/ResourceBrowser.svelte", "tests/argo-workspace-model.test.ts"]

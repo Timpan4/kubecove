@@ -1,4 +1,0 @@
-resources:
-  - projects.yaml
-  - platform-applications.yaml
-  - tenants-applicationset.yaml
