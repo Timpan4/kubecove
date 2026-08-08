@@ -61,7 +61,11 @@ jobs:
         run: |
           dbus-run-session -- bash -euc '
             set -o pipefail
-            eval "$(gnome-keyring-daemon --start --components=secrets)"
+            if ! keyring_env="$(gnome-keyring-daemon --start --components=secrets)"; then
+              echo "Failed to start gnome-keyring-daemon"
+              exit 1
+            fi
+            eval "$keyring_env"
             exec xvfb-run -a bun run e2e:real -- --kubernetes 1.35 --provider docker
           '
 
@@ -123,7 +127,11 @@ jobs:
         run: |
           dbus-run-session -- bash -euc '
             set -o pipefail
-            eval "$(gnome-keyring-daemon --start --components=secrets)"
+            if ! keyring_env="$(gnome-keyring-daemon --start --components=secrets)"; then
+              echo "Failed to start gnome-keyring-daemon"
+              exit 1
+            fi
+            eval "$keyring_env"
             exec xvfb-run -a bun run e2e:real -- --kubernetes "${{ matrix.kubernetes }}" --provider docker
           '
 
