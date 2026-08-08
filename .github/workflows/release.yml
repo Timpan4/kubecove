@@ -174,13 +174,17 @@ jobs:
         with:
           packages: >-
             build-essential
+            dbus
+            dbus-x11
+            gnome-keyring
             libayatana-appindicator3-dev
+            libsecret-1-0
+            libwebkit2gtk-4.1-dev
             librsvg2-dev
             libssl-dev
-            libwebkit2gtk-4.1-dev
             patchelf
             xvfb
-          version: release-e2e-tauri-linux-v1
+          version: release-e2e-tauri-linux-v2
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -197,7 +201,16 @@ jobs:
         run: bun run e2e:fast
 
       - name: Run real suite
-        run: xvfb-run -a bun run e2e:real -- --kubernetes ${{ matrix.kubernetes }} --provider docker
+        run: |
+          dbus-run-session -- bash -euc '
+            set -o pipefail
+            if ! keyring_env="$(gnome-keyring-daemon --start --components=secrets)"; then
+              echo "Failed to start gnome-keyring-daemon"
+              exit 1
+            fi
+            eval "$keyring_env"
+            exec xvfb-run -a bun run e2e:real -- --kubernetes "${{ matrix.kubernetes }}" --provider docker
+          '
 
       - name: Upload failure artifacts
         if: failure()
