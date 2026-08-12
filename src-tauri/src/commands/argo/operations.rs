@@ -46,14 +46,25 @@ fn valid(request: &ArgoOperationRequest) -> Result<(), AppError> {
             "argoOperationUnavailable",
         ));
     }
-    if request.action == "resourceAction"
-        && (request.resource_action.as_deref().is_none_or(str::is_empty)
-            || request.resources.len() != 1)
-    {
-        return Err(AppError::new(
-            "one server-reported resource action and resource required",
-            "argoOperationUnavailable",
-        ));
+    if request.action == "resourceAction" {
+        let resource = request.resources.first();
+        if request.resource_action.as_deref().is_none_or(str::is_empty)
+            || request.resources.len() != 1
+            || resource.is_none_or(|resource| {
+                [
+                    resource.version.as_deref(),
+                    resource.kind.as_deref(),
+                    resource.name.as_deref(),
+                ]
+                .into_iter()
+                .any(|value| value.is_none_or(|value| value.trim().is_empty()))
+            })
+        {
+            return Err(AppError::new(
+                "one server-reported resource action and complete resource identity required",
+                "argoOperationUnavailable",
+            ));
+        }
     }
     Ok(())
 }
@@ -1053,6 +1064,46 @@ mod tests {
             path,
             "/api/v1/applications/app%2Fa%3F%23/resource/actions?appNamespace=app+ns%2F%26%3F%23&project=project%2F%26%3F%23&group=apps%2F%26%3F%23&version=v1%2F%3F.&kind=Deployment%2F%23&namespace=ns%2F%26%3F%23&resourceName=resource%2F%26%3F%23"
         );
+    }
+
+    #[test]
+    fn resource_action_requires_complete_server_identity() {
+        let complete = crate::models::ArgoManagedResource {
+            version: Some("v1".into()),
+            kind: Some("ConfigMap".into()),
+            name: Some("settings".into()),
+            ..Default::default()
+        };
+        let request = |resource| ArgoOperationRequest {
+            transport: "connected".into(),
+            action: "resourceAction".into(),
+            application: ArgoApplicationRef {
+                name: "app".into(),
+                ..Default::default()
+            },
+            resource_action: Some("restart".into()),
+            resources: vec![resource],
+            ..Default::default()
+        };
+
+        assert!(valid(&request(complete.clone())).is_ok());
+        for incomplete in [
+            crate::models::ArgoManagedResource {
+                version: None,
+                ..complete.clone()
+            },
+            crate::models::ArgoManagedResource {
+                kind: Some(" ".into()),
+                ..complete.clone()
+            },
+            crate::models::ArgoManagedResource {
+                name: Some(String::new()),
+                ..complete
+            },
+        ] {
+            let error = valid(&request(incomplete)).unwrap_err();
+            assert_eq!(error.kind, "argoOperationUnavailable");
+        }
     }
 
     #[test]

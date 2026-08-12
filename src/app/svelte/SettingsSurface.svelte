@@ -160,11 +160,15 @@
 			description:
 				"Shows frontend and backend timing summaries, with redacted copy output by default.",
 		},
-		topologySpike: {
-			title: "Topology spike",
-			description:
-				"Opens the Svelte topology benchmark harness with synthetic 4,000-node data, compact nodes, selected edges, and a focused viewport.",
-		},
+		...(import.meta.env.DEV
+			? {
+					topologySpike: {
+						title: "Topology spike",
+						description:
+							"Opens the Svelte topology benchmark harness with synthetic 4,000-node data, compact nodes, selected edges, and a focused viewport.",
+					},
+				}
+			: {}),
 	} satisfies Record<string, SettingsRowMeta>;
 
 	const categoryRows: Record<SettingsCategoryId, SettingsRowMeta[]> = {

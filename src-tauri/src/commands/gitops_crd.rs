@@ -42,10 +42,6 @@ pub(crate) fn find_discovered_api_resource(
         .cloned()
 }
 
-pub(crate) fn has_api_resource(resources: &[ApiResource], group: &str, kind: &str) -> bool {
-    find_discovered_api_resource(resources, group, kind).is_some()
-}
-
 pub(crate) async fn find_api_resource(
     client: &Client,
     group: &str,
@@ -137,8 +133,8 @@ mod tests {
             test_api_resource("argoproj.io", "Application"),
         ];
 
-        assert!(has_api_resource(&resources, "argoproj.io", "Application"));
-        assert!(!has_api_resource(&resources, "argoproj.io", "Missing"));
+        assert!(find_discovered_api_resource(&resources, "argoproj.io", "Application").is_some());
+        assert!(find_discovered_api_resource(&resources, "argoproj.io", "Missing").is_none());
     }
 
     #[test]

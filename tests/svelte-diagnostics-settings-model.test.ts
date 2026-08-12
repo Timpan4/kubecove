@@ -64,6 +64,24 @@ describe("svelte diagnostics settings model", () => {
 		expect(source).not.toContain("backendRefreshPending");
 		expect(source).not.toContain("let backendEvents = $state");
 	});
+
+	test("keeps the standalone topology benchmark development-only", () => {
+		const diagnosticsSource = readFileSync(
+			"src/app/svelte/DiagnosticsSettings.svelte",
+			"utf8",
+		);
+		const settingsSource = readFileSync(
+			"src/app/svelte/SettingsSurface.svelte",
+			"utf8",
+		);
+
+		expect(diagnosticsSource).toMatch(
+			/\{#if import\.meta\.env\.DEV\}[\s\S]*?Open 4k LOD[\s\S]*?\{\/if\}/,
+		);
+		expect(settingsSource).toMatch(
+			/import\.meta\.env\.DEV[\s\S]*?topologySpike/,
+		);
+	});
 });
 
 function event(command: string, durationMs: number): BackendDiagnosticEvent {

@@ -19,7 +19,6 @@ jobs:
   real-primary:
     name: Real Kubernetes 1.35 probation
     if: github.event_name == 'push'
-    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
