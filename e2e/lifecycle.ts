@@ -4,12 +4,12 @@ import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/pro
 import { arch, platform } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
-import { sha256, verifyAsset } from "./harness/assets";
+import { downloadAsset, sha256, verifyAsset } from "./harness/assets";
 import { kindConfig, kindDeleteArgs } from "./harness/cluster";
 import { safeDiagnosticCommands, safeDiagnosticText } from "./harness/diagnostics";
 import { gitSeedIdentity, prepareGitSeed } from "./harness/git-seed";
 import { gitRepositoryUrl, platformApplicationNames, tenantApplicationNames } from "./harness/lab";
-import { assertOwned, assertOwnedOnDisk, assertOwnedPathOnDisk, expectedCluster, ownershipFromDisk, type Ownership, type Provider } from "./harness/ownership";
+import { assertOwned, assertOwnedOnDisk, assertOwnedPathOnDisk, expectedCluster, type Ownership, ownershipFromDisk, type Provider } from "./harness/ownership";
 import { chartPins, fixturePaths, gitDaemonPins, validateImmutablePins } from "./harness/platform";
 
 const root = resolve(process.cwd());
@@ -90,9 +90,7 @@ async function verified(name: string, url: string, expected: string) {
 	await mkdir(dirname(target), { recursive: true });
 	if (existsSync(target) && sha256(new Uint8Array(await readFile(target))) === expected) return target;
 	await rm(target, { force: true });
-	const response = await fetch(url);
-	if (!response.ok) throw new Error(`download failed: ${name}`);
-	const bytes = new Uint8Array(await response.arrayBuffer());
+	const bytes = await downloadAsset(name, url);
 	verifyAsset(name, bytes, expected);
 	const temporary = `${target}.${process.pid}.part`;
 	await writeFile(temporary, bytes); await rename(temporary, target);
