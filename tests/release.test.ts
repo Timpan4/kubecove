@@ -1,21 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	assertVersionGreaterThanLatestTag,
-	assertMatchingReleaseVersions,
-	computeNextReleaseVersion,
-	compareSemverVersions,
-	latestReleaseTagVersionFromRefs,
-	parseCargoPackageVersion,
-	updateWorkspaceReleaseVersions,
-} from "../scripts/release-versions";
 import {
 	buildChangelogSection,
 	classifyReleaseSubjects,
 	upsertChangelogSection,
 } from "../scripts/release-notes";
+import {
+	assertMatchingReleaseVersions,
+	assertVersionGreaterThanLatestTag,
+	compareSemverVersions,
+	computeNextReleaseVersion,
+	latestReleaseTagVersionFromRefs,
+	parseCargoPackageVersion,
+	updateWorkspaceReleaseVersions,
+} from "../scripts/release-versions";
 
 describe("release version helpers", () => {
 	test("keeps release dispatch and macOS asset checks aligned", () => {
@@ -30,6 +30,37 @@ describe("release version helpers", () => {
 		);
 		expect(tagWorkflow).toContain("actions: write");
 		expect(tagWorkflow).toContain('gh workflow run release.yml --ref "$tag_name"');
+	});
+
+	test("uses an unlocked session collection for Linux desktop E2E", () => {
+		const e2eWorkflow = readFileSync(".github/workflows/e2e.yml", "utf8");
+		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
+		const sessionAlias = [
+			"org.freedesktop.Secret.Service.SetAlias",
+			"string:default",
+			"objpath:/org/freedesktop/secrets/collection/session",
+		].join(" ");
+
+		const jobs = [
+			e2eWorkflow.match(
+				/\n {2}real-primary:\n[\s\S]*?(?=\n {2}real-matrix:\n)/,
+			)?.[0],
+			e2eWorkflow.match(
+				/\n {2}real-matrix:\n[\s\S]*?(?=\n {2}desktop-smoke:\n)/,
+			)?.[0],
+			releaseWorkflow.match(
+				/\n {2}e2e:\n[\s\S]*?(?=\n {2}verify:\n)/,
+			)?.[0],
+		];
+
+		expect(jobs).not.toContain(undefined);
+		for (const job of jobs) {
+			expect(
+				job?.replaceAll(/\\\r?\n/g, " ").replaceAll(/\s+/g, " "),
+			).toContain(sessionAlias);
+		}
+		expect(e2eWorkflow).not.toContain("gnome-keyring-daemon --unlock");
+		expect(releaseWorkflow).not.toContain("gnome-keyring-daemon --unlock");
 	});
 
 	test("reads the package version from Cargo.toml", () => {
