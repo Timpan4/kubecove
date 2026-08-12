@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { safeDiagnosticCommands, safeDiagnosticText } from "./diagnostics";
-import { verifyAsset } from "./assets";
+import { downloadAsset, verifyAsset } from "./assets";
 import { kindConfig, kindDeleteArgs } from "./cluster";
+import { safeDiagnosticCommands, safeDiagnosticText } from "./diagnostics";
 import { gitSeedIdentity, kindMetricsManifest } from "./git-seed";
 import { bootstrapOrder, platformApplicationNames, readinessPhase, tenantApplicationNames } from "./lab";
-import { assertOwned, assertOwnedOnDisk, expectedCluster, ownershipFromDisk, type Ownership } from "./ownership";
+import { assertOwned, assertOwnedOnDisk, expectedCluster, type Ownership, ownershipFromDisk } from "./ownership";
 import { chartPins, validateImmutablePins } from "./platform";
 
 const record: Ownership = { kind: "run", runId: "run-1", cluster: "kubecove-e2e-run-1", dir: "/tmp/run-1", raw: "/tmp/run-1/kind.raw.kubeconfig", kubeconfig: "/tmp/run-1/kubeconfig", dataDir: "/tmp/run-1/data", kindConfig: "/tmp/run-1/kind.yaml", disableDefaultCNI: true, provider: "docker", kubernetes: "1.35" };
@@ -22,6 +22,31 @@ describe("Kind harness", () => {
 		expect(() => validateImmutablePins()).not.toThrow();
 		expect(chartPins.argocd).toMatchObject({ version: "10.1.4", appVersion: "3.4.5" });
 		expect(chartPins.traefik).toMatchObject({ version: "41.0.2", appVersion: "3.7.6" });
+	});
+	test("retries transient asset downloads twice", async () => {
+		const responses: Array<Response | Error> = [
+			new Error("connection reset"),
+			new Response(null, { status: 503 }),
+			new Response("fixture"),
+		];
+		const bytes = await downloadAsset("fixture", "https://example.invalid", async () => {
+			const response = responses.shift();
+			if (response instanceof Error) throw response;
+			if (!response) throw new Error("unexpected retry");
+			return response;
+		});
+		expect(new TextDecoder().decode(bytes)).toBe("fixture");
+		expect(responses).toHaveLength(0);
+	});
+	test("does not retry deterministic asset download failures", async () => {
+		let calls = 0;
+		await expect(
+			downloadAsset("fixture", "https://example.invalid", async () => {
+				calls += 1;
+				return new Response(null, { status: 404 });
+			}),
+		).rejects.toThrow("download failed: fixture (404)");
+		expect(calls).toBe(1);
 	});
 	test("verifies asset bytes and Kind metrics arguments", () => {
 		expect(verifyAsset("fixture", new TextEncoder().encode("fixture"), "f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d")).toHaveLength(64);
