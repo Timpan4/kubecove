@@ -121,20 +121,22 @@
 		/>
 	</SettingsRow>
 
-	<SettingsRow
-		title="Topology spike"
-		description="Opens the Svelte topology benchmark harness with synthetic 4,000-node data."
-	>
-		<Button
-			type="button"
-			variant="outline"
-			size="sm"
-			onclick={() => window.location.assign(TOPOLOGY_SPIKE_URL)}
+	{#if import.meta.env.DEV}
+		<SettingsRow
+			title="Topology spike"
+			description="Opens the Svelte topology benchmark harness with synthetic 4,000-node data."
 		>
-			<ExternalLink data-icon="inline-start" />
-			Open 4k LOD
-		</Button>
-	</SettingsRow>
+			<Button
+				type="button"
+				variant="outline"
+				size="sm"
+				onclick={() => window.location.assign(TOPOLOGY_SPIKE_URL)}
+			>
+				<ExternalLink data-icon="inline-start" />
+				Open 4k LOD
+			</Button>
+		</SettingsRow>
+	{/if}
 
 	<div class="rounded-md border bg-card p-3">
 		<div class="flex flex-wrap items-start justify-between gap-3">

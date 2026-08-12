@@ -1,6 +1,6 @@
 use crate::commands::gitops_crd::{
-    client_for_context, discover_api_resources, get_crd_object, has_api_resource, list_crd_objects,
-    resource_metadata, resource_status, resource_yaml,
+    client_for_context, discover_api_resources, find_discovered_api_resource, get_crd_object,
+    list_crd_objects, resource_metadata, resource_status, resource_yaml,
 };
 use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
 use crate::models::{
@@ -151,9 +151,9 @@ pub async fn list_flux_resources(
     kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<FluxResourceSummary>, AppError> {
     let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
-    if !flux_kind_exists(&client, &resource_kind).await? {
+    let Some(resource_kind) = installed_flux_kind(&client, &resource_kind).await? else {
         return Ok(vec![]);
-    }
+    };
     let api_resource = api_resource_from_flux_kind(&resource_kind);
     let items = list_crd_objects(client, &api_resource).await?;
 
@@ -174,9 +174,9 @@ pub async fn get_flux_resource_details(
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<FluxResourceDetails, AppError> {
     let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
-    if !flux_kind_exists(&client, &resource_kind).await? {
-        return Err(AppError::new("Flux resource kind not found", "cluster"));
-    }
+    let resource_kind = installed_flux_kind(&client, &resource_kind)
+        .await?
+        .ok_or_else(|| AppError::new("Flux resource kind not found", "cluster"))?;
     let api_resource = api_resource_from_flux_kind(&resource_kind);
     let namespace = if resource_kind.namespaced {
         Some(namespace.as_deref().ok_or_else(|| {
@@ -219,19 +219,38 @@ pub(crate) fn flux_kinds() -> Vec<FluxResourceKind> {
         .collect()
 }
 
-async fn installed_flux_kinds(client: &Client) -> Result<Vec<FluxResourceKind>, AppError> {
-    let resources = discover_api_resources(client).await?;
-    Ok(flux_kinds()
+fn installed_flux_kinds_from_resources(resources: &[ApiResource]) -> Vec<FluxResourceKind> {
+    flux_kinds()
         .into_iter()
-        .filter(|kind| has_api_resource(&resources, &kind.group, &kind.kind))
-        .collect())
+        .filter_map(|catalog_kind| {
+            let resource =
+                find_discovered_api_resource(resources, &catalog_kind.group, &catalog_kind.kind)?;
+            Some(FluxResourceKind {
+                group: resource.group,
+                version: resource.version,
+                api_version: resource.api_version,
+                kind: resource.kind,
+                plural: resource.plural,
+                namespaced: catalog_kind.namespaced,
+                category: catalog_kind.category,
+            })
+        })
+        .collect()
 }
 
-async fn flux_kind_exists(client: &Client, kind: &FluxResourceKind) -> Result<bool, AppError> {
+async fn installed_flux_kinds(client: &Client) -> Result<Vec<FluxResourceKind>, AppError> {
+    let resources = discover_api_resources(client).await?;
+    Ok(installed_flux_kinds_from_resources(&resources))
+}
+
+async fn installed_flux_kind(
+    client: &Client,
+    kind: &FluxResourceKind,
+) -> Result<Option<FluxResourceKind>, AppError> {
     Ok(installed_flux_kinds(client)
         .await?
-        .iter()
-        .any(|candidate| same_flux_kind(candidate, kind)))
+        .into_iter()
+        .find(|candidate| same_flux_kind(candidate, kind)))
 }
 
 fn same_flux_kind(left: &FluxResourceKind, right: &FluxResourceKind) -> bool {
@@ -408,6 +427,48 @@ mod tests {
         assert!(kinds
             .iter()
             .any(|kind| kind.kind == "ImageUpdateAutomation"));
+    }
+
+    #[test]
+    fn installed_flux_kinds_preserve_discovered_api_identity() {
+        let resources = vec![
+            ApiResource {
+                group: "source.toolkit.fluxcd.io".into(),
+                version: "v1beta2".into(),
+                api_version: "source.toolkit.fluxcd.io/v1beta2".into(),
+                kind: "GitRepository".into(),
+                plural: "gitrepositories-v1beta2".into(),
+            },
+            ApiResource {
+                group: "example.com".into(),
+                version: "v1".into(),
+                api_version: "example.com/v1".into(),
+                kind: "Unknown".into(),
+                plural: "unknowns".into(),
+            },
+        ];
+
+        let installed = installed_flux_kinds_from_resources(&resources);
+        assert_eq!(installed.len(), 1);
+        assert_eq!(
+            installed[0],
+            FluxResourceKind {
+                group: "source.toolkit.fluxcd.io".into(),
+                version: "v1beta2".into(),
+                api_version: "source.toolkit.fluxcd.io/v1beta2".into(),
+                kind: "GitRepository".into(),
+                plural: "gitrepositories-v1beta2".into(),
+                namespaced: true,
+                category: "Sources".into(),
+            }
+        );
+        assert!(same_flux_kind(
+            &installed[0],
+            &flux_kinds()
+                .into_iter()
+                .find(|kind| kind.kind == "GitRepository")
+                .expect("catalog kind")
+        ));
     }
 
     #[test]
