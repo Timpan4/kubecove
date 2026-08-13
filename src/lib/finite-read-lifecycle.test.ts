@@ -36,10 +36,15 @@ describe("finite read lifecycle", () => {
 			queryFn: async () => [],
 			meta: finiteReadMeta({ namespace: "default" }),
 		});
+		queryClient.setQueryData(["argo-server-discovery", "default", "kind-dev"], []);
 		queryClient.setQueryData(["port-forwards"], []);
 
 		const finite = queryClient.getQueryCache().find({
 			queryKey: ["resources", "default"],
+			exact: true,
+		});
+		const discovery = queryClient.getQueryCache().find({
+			queryKey: ["argo-server-discovery", "default", "kind-dev"],
 			exact: true,
 		});
 		const live = queryClient.getQueryCache().find({
@@ -48,6 +53,7 @@ describe("finite read lifecycle", () => {
 		});
 
 		expect(finite && isFiniteReadQuery(finite)).toBe(true);
+		expect(discovery && isFiniteReadQuery(discovery)).toBe(true);
 		expect(finite?.options.meta?.namespace).toBe("default");
 		expect(live && isFiniteReadQuery(live)).toBe(false);
 	});

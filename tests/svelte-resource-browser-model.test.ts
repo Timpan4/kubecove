@@ -4,13 +4,13 @@ import { argoResourceIdentityKey } from "../src/features/gitops/argo-workspace-m
 import { PAGE_SIZE } from "../src/features/resources/constants";
 import {
 	buildFetchKeys,
-	buildResourceSearchIndex,
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,
 } from "../src/features/resources/helpers";
 import {
 	allKindOptions,
-	buildResourceTableModel,
+	buildResourceTableModel as buildProjectedResourceTableModel,
+	buildResourceTableProjection,
 	filterResourceScopeOptions,
 	initialOwnershipMapOpen,
 	nextNamespaceSelection,
@@ -43,6 +43,13 @@ function resource(name: string, patch: Partial<ResourceSummary> = {}): ResourceS
 		ready: "1/1",
 		...patch,
 	};
+}
+
+function buildResourceTableModel(
+	rows: ResourceSummary[],
+	state: Parameters<typeof buildProjectedResourceTableModel>[1],
+) {
+	return buildProjectedResourceTableModel(buildResourceTableProjection(rows), state);
 }
 
 function topologyNode(id: string, summary: ResourceSummary): TopologyNode {
@@ -249,7 +256,7 @@ describe("svelte resource browser model", () => {
 		).toBe(false);
 	});
 
-	test("matches default and prebuilt search indexes across table states", () => {
+	test("reuses one resource projection across table states", () => {
 		const owned = resource("api", {
 			gitOpsOwner: {
 				provider: "argo",
@@ -260,7 +267,7 @@ describe("svelte resource browser model", () => {
 		});
 		const restarted = resource("worker", { health: "restarted", restarts: 2 });
 		const rows = [owned, restarted];
-		const searchIndex = buildResourceSearchIndex(rows);
+		const projection = buildResourceTableProjection(rows);
 		const states = [
 			{
 				search: "",
@@ -282,13 +289,40 @@ describe("svelte resource browser model", () => {
 		];
 
 		for (const state of states) {
-			expect(buildResourceTableModel(rows, state, searchIndex)).toEqual(
+			expect(buildProjectedResourceTableModel(projection, state)).toEqual(
 				buildResourceTableModel(rows, state),
 			);
 		}
 	});
 
-	test("inherits GitOps table grouping through Kubernetes owner chains", () => {
+	test("keeps narrowed rows and GitOps filters in one projection", () => {
+			const focused = resource("api", {
+				gitOpsOwner: {
+					provider: "argo",
+					kind: "Application",
+					name: "payments",
+					namespace: "argocd",
+				},
+			});
+			const projection = buildResourceTableProjection([focused]);
+			const model = buildProjectedResourceTableModel(projection, {
+				search: "",
+				gitOpsFilter: "",
+				healthFilter: "all",
+				sort: { id: "name", desc: false },
+				pageIndex: 0,
+				collapsedGroups: new Set(),
+			});
+
+			expect(model.displayRows).toEqual([focused]);
+			expect(model.gitOpsFilters.map((filter) => filter.label)).toEqual([
+				"Owned by Argo CD: payments (partial evidence)",
+			]);
+			expect(model.totalRows).toBe(1);
+			expect(model.healthSummary.total).toBe(1);
+		});
+
+		test("inherits GitOps table grouping through Kubernetes owner chains", () => {
 		const argoOwner = {
 			provider: "argo",
 			kind: "Application",

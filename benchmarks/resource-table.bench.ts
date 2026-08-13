@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { bench, describe } from "vitest";
 import {
 	buildResourceTableModel,
+	buildResourceTableProjection,
 	type ResourceTableState,
 } from "@/features/resources/resourceBrowserModel";
 import {
@@ -52,6 +53,7 @@ const rows = Array.from({ length: 10_000 }, (_, index) =>
 	resourceSummary(index),
 );
 const searchIndex = buildResourceSearchIndex(rows);
+const projection = buildResourceTableProjection(rows);
 const gitOpsFilter = "argo:Application:argocd:checkout-42";
 const state: ResourceTableState = {
 	search: "checkout",
@@ -133,7 +135,7 @@ const ownershipRows = Array.from({ length: 2_500 }, (_, index) => {
 		},
 	] satisfies ResourceSummary[];
 }).flat();
-const ownershipSearchIndex = buildResourceSearchIndex(ownershipRows);
+const ownershipProjection = buildResourceTableProjection(ownershipRows);
 const ownershipState: ResourceTableState = {
 	search: "checkout",
 	gitOpsFilter: "",
@@ -144,9 +146,8 @@ const ownershipState: ResourceTableState = {
 	selectedResource: ownershipRows[0],
 };
 const ownershipFixtureModel = buildResourceTableModel(
-	ownershipRows,
+	ownershipProjection,
 	ownershipState,
-	ownershipSearchIndex,
 );
 
 assert.equal(ownershipRows.length, 10_000);
@@ -170,28 +171,25 @@ describe("resource table model (10k rows)", () => {
 	});
 
 	bench("buildResourceTableModel (search + health + sort + groups)", () => {
-		buildResourceTableModel(rows, state);
+		buildResourceTableModel(projection, state);
 	});
 
 	bench("buildResourceTableModel (gitops owner filtered)", () => {
-		buildResourceTableModel(rows, gitOpsState);
+		buildResourceTableModel(projection, gitOpsState);
 	});
 
-	bench("buildResourceTableModel repeated variants (default index rebuild)", () => {
-		for (const variant of stateVariants) buildResourceTableModel(rows, variant);
+	bench("buildResourceTableProjection", () => {
+		buildResourceTableProjection(rows);
 	});
 
-	bench("buildResourceTableModel repeated variants (reused index)", () => {
-		for (const variant of stateVariants) {
-			buildResourceTableModel(rows, variant, searchIndex);
-		}
+	bench("buildResourceTableModel repeated variants (reused projection)", () => {
+		for (const variant of stateVariants) buildResourceTableModel(projection, variant);
 	});
 
 	bench("buildResourceTableModel (10k multi-hop ownership)", () => {
 		buildResourceTableModel(
-			ownershipRows,
+			ownershipProjection,
 			ownershipState,
-			ownershipSearchIndex,
 		);
 	});
 });
