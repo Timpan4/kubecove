@@ -3,6 +3,14 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.10.6 - 2026-08-12
+### Fixed
+
+- Use session keyring for E2E.
+- Retry transient asset downloads.
+- Restore release validation paths.
+- Bootstrap Linux keyring for E2E.
+
 ## 0.10.5 - 2026-08-05
 ### Added
 
