@@ -198,8 +198,8 @@ impl KubeconfigSource {
     }
 
     // The kubeconfig files that back this source, in the same order
-    // config_for_context resolves them: configured env/app paths when present,
-    // otherwise kube's default discovery (KUBECONFIG, then ~/.kube/config).
+    // config_for_context resolves them: selected env paths, or standard
+    // discovery when that selection is empty, followed by app-added paths.
     pub(super) fn effective_kubeconfig_paths(&self) -> Result<Vec<PathBuf>, AppError> {
         if let Some(paths) = self.configured_paths()? {
             return Ok(paths
@@ -207,12 +207,10 @@ impl KubeconfigSource {
                 .map(|configured| configured.path)
                 .collect());
         }
-        if let Some(value) = env::var_os(DEFAULT_KUBECONFIG_ENV_VAR) {
-            if let Some(paths) = split_non_empty_paths(value) {
-                return Ok(paths);
-            }
-        }
-        Ok(default_kubeconfig_path().into_iter().collect())
+        Ok(standard_kubeconfig_paths()
+            .into_iter()
+            .map(|configured| configured.path)
+            .collect())
     }
 
     fn custom_env_value_paths(&self) -> Result<Option<Vec<PathBuf>>, AppError> {
@@ -229,9 +227,11 @@ impl KubeconfigSource {
         let mut paths = Vec::new();
         if let Some(env_paths) = self.custom_env_value_paths()? {
             paths.extend(env_paths.into_iter().map(|path| ConfiguredKubeconfigPath {
-                source: ConfiguredKubeconfigPathSource::Env,
+                source: ConfiguredKubeconfigPathSource::Env(self.env_var.clone()),
                 path,
             }));
+        } else if self.read_env && !self.app_paths.is_empty() {
+            paths.extend(standard_kubeconfig_paths());
         }
         paths.extend(
             self.app_paths
@@ -269,7 +269,11 @@ impl KubeconfigSource {
                     })?;
                     loaded += 1;
                 }
-                Err(err) => warnings.push(configured.warning(&self.env_var, err)),
+                Err(err) => {
+                    if let Some(warning) = configured.warning(err) {
+                        warnings.push(warning);
+                    }
+                }
             }
         }
 
@@ -446,6 +450,25 @@ fn split_non_empty_paths(value: OsString) -> Option<Vec<PathBuf>> {
     }
 }
 
+fn standard_kubeconfig_paths() -> Vec<ConfiguredKubeconfigPath> {
+    if let Some(paths) = env::var_os(DEFAULT_KUBECONFIG_ENV_VAR).and_then(split_non_empty_paths) {
+        return paths
+            .into_iter()
+            .map(|path| ConfiguredKubeconfigPath {
+                source: ConfiguredKubeconfigPathSource::Env(DEFAULT_KUBECONFIG_ENV_VAR.to_string()),
+                path,
+            })
+            .collect();
+    }
+    default_kubeconfig_path()
+        .into_iter()
+        .map(|path| ConfiguredKubeconfigPath {
+            source: ConfiguredKubeconfigPathSource::Default,
+            path,
+        })
+        .collect()
+}
+
 fn format_kubeconfig_error(env_var: &str, _err: kube::config::KubeconfigError) -> String {
     format!("failed to load kubeconfig from {env_var}")
 }
@@ -612,189 +635,36 @@ struct ConfiguredKubeconfigPath {
     path: PathBuf,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum ConfiguredKubeconfigPathSource {
-    Env,
+    Env(String),
+    Default,
     AppPath,
 }
 
 impl ConfiguredKubeconfigPath {
-    fn warning(
-        &self,
-        env_var: &str,
-        _err: kube::config::KubeconfigError,
-    ) -> KubeconfigSourceWarning {
-        match self.source {
-            ConfiguredKubeconfigPathSource::Env => KubeconfigSourceWarning {
+    fn warning(&self, _err: kube::config::KubeconfigError) -> Option<KubeconfigSourceWarning> {
+        match &self.source {
+            ConfiguredKubeconfigPathSource::Env(env_var) => Some(KubeconfigSourceWarning {
                 source: "env".to_string(),
                 path: None,
                 message: format!("A kubeconfig path from {env_var} could not be loaded."),
-            },
-            ConfiguredKubeconfigPathSource::AppPath => KubeconfigSourceWarning {
+            }),
+            ConfiguredKubeconfigPathSource::Default if !self.path.exists() => None,
+            ConfiguredKubeconfigPathSource::Default => Some(KubeconfigSourceWarning {
+                source: "default".to_string(),
+                path: None,
+                message: "The default kubeconfig could not be loaded.".to_string(),
+            }),
+            ConfiguredKubeconfigPathSource::AppPath => Some(KubeconfigSourceWarning {
                 source: "path".to_string(),
                 path: Some(self.path.to_string_lossy().into_owned()),
                 message: "This kubeconfig path could not be loaded.".to_string(),
-            },
+            }),
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::{
-        fs,
-        time::{SystemTime, UNIX_EPOCH},
-    };
-
-    fn unique_env_var(suffix: &str) -> String {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock")
-            .as_nanos();
-        format!("KUBECOVE_TEST_{suffix}_{nanos}")
-    }
-
-    fn write_kubeconfig(context: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock")
-            .as_nanos();
-        let path = env::temp_dir().join(format!("kubecove-{context}-{nanos}.yaml"));
-        let current_context_key = ["current", "-context"].concat();
-        let clusters_key = ["cluster", "s"].concat();
-        let contexts_key = ["context", "s"].concat();
-        let users_key = ["user", "s"].concat();
-        let credential_key = ["to", "ken"].concat();
-        let credential_value = ["test-", &credential_key].concat();
-        let yaml = format!(
-            r"apiVersion: v1
-kind: Config
-{current_context_key}: {context}
-{clusters_key}:
-- name: cluster-{context}
-  cluster:
-    server: https://127.0.0.1
-{contexts_key}:
-- name: {context}
-  context:
-    cluster: cluster-{context}
-    user: user-{context}
-{users_key}:
-- name: user-{context}
-  user:
-    {credential_key}: {credential_value}
-"
-        );
-        fs::write(&path, yaml).expect("write kubeconfig");
-        path
-    }
-
-    #[test]
-    fn custom_env_var_reads_selected_kubeconfig() {
-        let env_var = unique_env_var("CUSTOM");
-        let path = write_kubeconfig("custom-env-context");
-        env::set_var(&env_var, &path);
-
-        let source = KubeconfigSource::new(Some(env_var.clone())).expect("source");
-        let contexts = cluster_contexts_from_source(&source).expect("contexts");
-
-        env::remove_var(&env_var);
-        let _ = fs::remove_file(path);
-        assert_eq!(source.env_var(), env_var);
-        assert_eq!(contexts.len(), 1);
-        assert_eq!(contexts[0].name, "custom-env-context");
-        assert!(contexts[0].is_current);
-    }
-
-    #[test]
-    fn unset_custom_env_var_uses_default_loader_key_without_path_leak() {
-        let env_var = unique_env_var("UNSET");
-        env::remove_var(&env_var);
-
-        let source = KubeconfigSource::new(Some(env_var.clone())).expect("source");
-
-        assert!(source.key().starts_with("kubeconfigSource="));
-        assert!(!source.key().contains(&env_var));
-        assert!(!source.key().contains('/'));
-        assert!(source.custom_env_value_paths().expect("paths").is_none());
-    }
-
-    #[test]
-    fn env_and_app_paths_merge_in_order_without_key_path_leak() {
-        let env_var = unique_env_var("MERGE");
-        let env_path = write_kubeconfig("env-context");
-        let app_path = write_kubeconfig("app-context");
-        env::set_var(&env_var, &env_path);
-
-        let source = KubeconfigSource::from_settings(
-            Some(&env_var),
-            vec![app_path.to_string_lossy().into_owned()],
-            true,
-        )
-        .expect("source");
-        let contexts = cluster_contexts_from_source(&source).expect("contexts");
-        let label = source.label();
-
-        env::remove_var(&env_var);
-        let _ = fs::remove_file(&env_path);
-        let _ = fs::remove_file(&app_path);
-
-        assert_eq!(label, format!("{env_var} + 2 paths"));
-        assert!(!source
-            .key()
-            .contains(&env_path.to_string_lossy().into_owned()));
-        assert!(!source
-            .key()
-            .contains(&app_path.to_string_lossy().into_owned()));
-        assert_eq!(
-            contexts
-                .iter()
-                .map(|context| context.name.as_str())
-                .collect::<Vec<_>>(),
-            vec!["env-context", "app-context"]
-        );
-    }
-
-    #[test]
-    fn missing_app_path_warns_and_falls_back_when_default_exists() {
-        let missing = env::temp_dir().join("kubecove-missing-kubeconfig.yaml");
-        let source = KubeconfigSource::from_settings(
-            Some(DEFAULT_KUBECONFIG_ENV_VAR),
-            vec![missing.to_string_lossy().into_owned()],
-            true,
-        )
-        .expect("source");
-
-        let result = source.read_configured_kubeconfig();
-
-        assert!(result.is_ok() || result.is_err());
-        if let Ok((_, warnings)) = result {
-            assert!(warnings.iter().any(|warning| warning.path.is_some()));
-        }
-    }
-
-    #[test]
-    fn invalid_env_var_returns_validation_error() {
-        let err = KubeconfigSource::new(Some("bad-name".to_string())).expect_err("invalid");
-
-        assert_eq!(err.kind, "validation");
-        assert!(err.message.contains("kubeconfig env var name"));
-    }
-
-    #[test]
-    fn e2e_source_ignores_inherited_override() {
-        let expected = write_kubeconfig("expected-e2e-context");
-        let override_path = write_kubeconfig("inherited-context");
-        env::set_var(E2E_KUBECONFIG_SOURCE_ENV_VAR, &override_path);
-
-        let source = KubeconfigSource::from_e2e_path(expected.clone());
-        let contexts = cluster_contexts_from_source(&source).expect("contexts");
-
-        env::remove_var(E2E_KUBECONFIG_SOURCE_ENV_VAR);
-        let _ = fs::remove_file(expected);
-        let _ = fs::remove_file(override_path);
-        assert_eq!(contexts.len(), 1);
-        assert_eq!(contexts[0].name, "expected-e2e-context");
-    }
-}
+#[path = "kubeconfig_tests.rs"]
+mod tests;
