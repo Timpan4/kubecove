@@ -30,7 +30,7 @@ Read-only comparison between decoded Helm release intent and live Kubernetes obj
 
 ## Kubeconfig source
 
-Ordered inputs used to discover contexts: selected environment variable plus application-added kubeconfig paths. Standard default discovery applies when configured paths are absent.
+Context discovery reads ordered inputs from the selected environment variable, or from standard `KUBECONFIG` when set and the platform-default kubeconfig otherwise, followed by application-added kubeconfig paths.
 
 ## Live session
 

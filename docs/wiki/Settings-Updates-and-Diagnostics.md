@@ -34,7 +34,7 @@ Open **Settings** from app navigation. Most settings are global preferences. Whe
 
 ## Kubeconfig
 
-Kubeconfig sources default to `KUBECONFIG`; when it is unset, standard default discovery applies. Source labels are on by default. Add files with file picker or pasted paths, then order them deliberately: sources are read in configured order. Full paths appear only in this Settings section.
+Kubeconfig sources default to `KUBECONFIG`. Paths from the selected environment variable are read first; when it is unset or empty, standard `KUBECONFIG` provides the base when set, otherwise the platform-default kubeconfig does. App-added paths are read afterward in their configured order, so they augment rather than replace the base source. Source labels are on by default, and full paths appear only in this Settings section.
 
 Changing source, paths, or order changes contexts available to workspaces. Remove stale paths rather than leaving them to generate load warnings.
 
