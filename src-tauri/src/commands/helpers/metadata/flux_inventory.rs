@@ -93,8 +93,13 @@ pub(crate) async fn read_flux_ownership_index(
                     index.partial |= has_continuation_token(rows.metadata.continue_.as_deref());
                     objects.extend(rows.items);
                 }
-                Err(kube::Error::Api(e)) if e.code == 403 || e.code == 404 => index.partial = true,
-                Err(e) => return Err(AppError::kube(e.to_string())),
+                Err(e) => {
+                    let error = AppError::from(e);
+                    if error.kind == "cancelled" {
+                        return Err(error);
+                    }
+                    index.partial = true;
+                }
             }
         }
         if objects.len() >= MAX_FLUX_OWNER_OBJECTS {
@@ -196,7 +201,84 @@ pub(crate) fn enrich_resource_summaries_with_flux_inventory(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use http::{header::CONTENT_TYPE, Request, Response};
+    use kube::client::Body;
     use serde_json::json;
+
+    type MockHandle = tower_test::mock::Handle<Request<Body>, Response<Body>>;
+
+    fn mock_client() -> (Client, MockHandle) {
+        let (service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+        (Client::new(service, "default"), handle)
+    }
+
+    fn json_response(status: u16, body: serde_json::Value) -> Response<Body> {
+        Response::builder()
+            .status(status)
+            .header(CONTENT_TYPE, "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap()
+    }
+
+    fn inventory_list() -> serde_json::Value {
+        json!({
+            "apiVersion": "v1",
+            "items": [{
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "metadata": {"name": "api", "namespace": "default"},
+                "status": {
+                    "inventory": {
+                        "entries": [{"id": "default_api_apps_Deployment", "version": "v1"}]
+                    }
+                }
+            }]
+        })
+    }
+
+    #[tokio::test]
+    async fn provider_list_failure_preserves_evidence_from_next_kind() {
+        let (client, mut handle) = mock_client();
+        let read = read_flux_ownership_index(client, &[]);
+        let respond = async move {
+            let (_, send) = handle.next_request().await.expect("Kustomization request");
+            send.send_response(json_response(
+                500,
+                json!({
+                    "apiVersion": "v1", "kind": "Status", "message": "provider unavailable"
+                }),
+            ));
+
+            let (_, send) = handle.next_request().await.expect("HelmRelease request");
+            send.send_response(json_response(200, inventory_list()));
+        };
+
+        let (index, ()) = tokio::join!(read, respond);
+        let index = index.expect("partial index");
+        assert!(index.partial);
+        assert!(index.owners.contains_key(&ResourceKey {
+            namespace: Some("default".into()),
+            api_version: "apps/v1".into(),
+            kind: "Deployment".into(),
+            name: "api".into(),
+        }));
+    }
+
+    #[tokio::test]
+    async fn cancelled_provider_list_failure_is_fatal() {
+        let (client, mut handle) = mock_client();
+        let read = read_flux_ownership_index(client, &[]);
+        let respond = async move {
+            let (_, send) = handle.next_request().await.expect("Kustomization request");
+            send.send_error(std::io::Error::other("workspace request cancelled"));
+        };
+
+        let (result, ()) = tokio::join!(read, respond);
+        assert_eq!(
+            result.expect_err("cancellation should be fatal").kind,
+            "cancelled"
+        );
+    }
 
     #[test]
     fn continuation_token_marks_inventory_partial() {

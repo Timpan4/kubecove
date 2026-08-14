@@ -148,6 +148,25 @@ export const queryKeys = {
 			resource.namespace ?? "",
 			resource.name,
 		] as const,
+	argoConnectionStatuses: (
+		clusterContext: string,
+		workspaceId: string,
+		profileIds: readonly string[],
+		kubeconfigEnvVar?: string,
+	) =>
+		[
+			"argo-connection-status",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+			workspaceId,
+			profileIds,
+		] as const,
+	argoServerDiscovery: (clusterContext: string, kubeconfigEnvVar?: string) =>
+		[
+			"argo-server-discovery",
+			kubeconfigSourceKey(kubeconfigEnvVar),
+			clusterContext,
+		] as const,
 	argoDetect: (clusterContext: string, kubeconfigEnvVar?: string) =>
 		["argo-detect", kubeconfigSourceKey(kubeconfigEnvVar), clusterContext] as const,
 	argoApps: (clusterContext: string, kubeconfigEnvVar?: string) =>

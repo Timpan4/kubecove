@@ -46,10 +46,16 @@
 		getResourceKindVisual,
 	} from "@/app/svelte/resourceVisuals";
 	import {
-		createCancelScope,
 		createFiniteReadCleanup,
 		createFiniteReadRequest,
 	} from "@/lib/finite-read-lifecycle";
+	import {
+		argoApplicationInspectionQueryOptions,
+		argoConnectionStatusQueryOptions,
+		buildArgoApplicationInspectionReadSpec,
+		buildArgoConnectionStatusReadSpec,
+	} from "@/lib/argo-application-inspection";
+	import { normalizeArgoConnectionPreference } from "@/lib/argo-connection-policy";
 	import { diagnosticLog } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
@@ -69,15 +75,9 @@
 		mergeTopologyMetrics,
 		resourceMetricIndex,
 	} from "@/lib/resource-metrics";
-	import {
-		gitOpsOwnership,
-		inheritGitOpsOwnership,
-	} from "@/lib/gitops-ownership-evidence";
+	import { gitOpsOwnership } from "@/lib/gitops-ownership-evidence";
 		import { cnfast } from "@/lib/utils";
-	import type {
-		ArgoApplicationInspector,
-		ArgoApplicationSummary,
-	} from "@/lib/gitops-types";
+	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import { queryKeys } from "@/lib/queryKeys";
 	import type { PathStateResourceBrowserState } from "@/lib/path-state";
@@ -86,7 +86,6 @@
 		cancelBackendRequests,
 		createStreamChannel,
 		createTauriClient,
-		getArgoApplicationInspector,
 		isAppError,
 		listNamespaces,
 		listResourceKinds,
@@ -116,7 +115,6 @@
 	} from "./constants";
 	import {
 		buildFetchKeys,
-		buildResourceSearchIndex,
 		resourceReadyChip,
 		resourceIdentityKey,
 		resourceSelectionKey,
@@ -132,6 +130,7 @@
 	import {
 		allKindOptions,
 		buildResourceTableModel,
+		buildResourceTableProjection,
 		initialOwnershipMapOpen,
 		kindSelectionKey,
 		nextNamespaceSelection,
@@ -320,38 +319,51 @@
 			customResourcesEnabled,
 		}),
 	);
-	const focusedArgoReadRequest = $derived(
-		gitOpsFocusApplication
-			? {
-					clusterContext,
-					kubeconfigEnvVar: kubeconfigSourceKey,
-					transport: "kubernetes" as const,
-					application: {
-						name: gitOpsFocusApplication.name,
-						namespace: gitOpsFocusApplication.namespace,
-						project: gitOpsFocusApplication.project,
-						resourceVersion: gitOpsFocusApplication.resourceVersion ?? null,
-						uid: gitOpsFocusApplication.uid ?? null,
-						apiVersion: "argoproj.io/v1alpha1",
-						context: clusterContext,
-						workspaceId: workspaceReadContext.workspaceId,
-					},
-					redactSecrets: $settingsStore.redactSecrets,
-				}
-			: null,
+	const focusedArgoApplicationRequest = $derived({
+		name: gitOpsFocusApplication?.name ?? "",
+		namespace: gitOpsFocusApplication?.namespace ?? null,
+		project: gitOpsFocusApplication?.project ?? null,
+		resourceVersion: gitOpsFocusApplication?.resourceVersion ?? null,
+		uid: gitOpsFocusApplication?.uid ?? null,
+		apiVersion: "argoproj.io/v1alpha1",
+		context: clusterContext,
+		workspaceId: workspaceReadContext.workspaceId,
+	});
+	const focusedArgoStatusReadSpec = $derived(
+		buildArgoConnectionStatusReadSpec({
+			profiles: $settingsStore.argoProfiles,
+			clusterContext,
+			workspaceId: workspaceReadContext.workspaceId,
+			kubeconfigEnvVar: kubeconfigSourceKey,
+		}),
+	);
+	const focusedArgoStatuses = createQuery(() =>
+		argoConnectionStatusQueryOptions(client, {
+			...focusedArgoStatusReadSpec,
+			enabled:
+				sourceReady &&
+				gitOpsFocusApplication !== null &&
+				focusedArgoStatusReadSpec.enabled,
+		}),
+	);
+	const focusedArgoInspectionReadSpec = $derived(
+		buildArgoApplicationInspectionReadSpec({
+			profiles: $settingsStore.argoProfiles,
+			statuses: focusedArgoStatuses.data,
+			statusesPending: focusedArgoStatuses.isPending,
+			preference: normalizeArgoConnectionPreference(
+				$settingsStore.argoConnectionPreferences[workspaceReadContext.workspaceId],
+			),
+			application: focusedArgoApplicationRequest,
+			clusterContext,
+			workspaceId: workspaceReadContext.workspaceId,
+			kubeconfigEnvVar: kubeconfigSourceKey,
+			redactSecrets: $settingsStore.redactSecrets,
+			enabled: sourceReady && gitOpsFocusApplication !== null,
+		}),
 	);
 	const focusedArgoInspectorQueryKey = $derived(
-		queryKeys.argoWorkspaceInspector(
-			clusterContext,
-			workspaceReadContext.workspaceId,
-			gitOpsFocusApplication?.name ?? "",
-			gitOpsFocusApplication?.namespace,
-			gitOpsFocusApplication?.uid,
-			$settingsStore.redactSecrets,
-			"kubernetes",
-			undefined,
-			kubeconfigSourceKey,
-		),
+		focusedArgoInspectionReadSpec.queryKey,
 	);
 	const focusedArgoApplicationScope = $derived(
 		gitOpsFocusApplication
@@ -380,24 +392,11 @@
 			: [],
 	);
 	const focusedArgoInspectorCancelScope = $derived(
-		createCancelScope("argo-application-inspection", focusedArgoInspectorQueryKey),
+		focusedArgoInspectionReadSpec.cancelScope,
 	);
-	const focusedArgoInspectorQuery = createQuery<ArgoApplicationInspector>(() => ({
-		queryKey: focusedArgoInspectorQueryKey,
-		queryFn: () =>
-			getArgoApplicationInspector(
-				client,
-				focusedArgoReadRequest!,
-				createFiniteReadRequest(
-					focusedArgoInspectorCancelScope,
-					"argo-inspection",
-				),
-			),
-		enabled: sourceReady && focusedArgoReadRequest !== null,
-		staleTime: 30_000,
-		retry: false,
-		gcTime: $settingsStore.redactSecrets ? undefined : 0,
-	}));
+	const focusedArgoInspectorQuery = createQuery(() =>
+		argoApplicationInspectionQueryOptions(client, focusedArgoInspectionReadSpec),
+	);
 	const namespacesQuery = createQuery<NamespaceSummary[]>(() => ({
 		queryKey: readSpecs.namespacesQueryKey,
 		queryFn: () => listNamespaces(client, clusterContext, kubeconfigSourceKey),
@@ -603,11 +602,13 @@
 				)
 			: rowsWithMetrics,
 	);
-	const argoResourceSearchIndex = $derived(buildResourceSearchIndex(inheritGitOpsOwnership(tableRows)));
+	const tableProjection = $derived(buildResourceTableProjection(tableRows));
 	const focusedArgoError = $derived(
 		focusedArgoInspectorQuery.isError ? focusedArgoInspectorQuery.error : null,
 	);
-	const focusedArgoLoading = $derived(focusedArgoInspectorQuery.isPending);
+	const focusedArgoLoading = $derived(
+		focusedArgoInspectionReadSpec.enabled && focusedArgoInspectorQuery.isPending,
+	);
 	const focusedArgoRefreshing = $derived(
 		!focusedArgoLoading && focusedArgoInspectorQuery.isFetching,
 	);
@@ -616,7 +617,7 @@
 	);
 	const tableModel = $derived(
 		buildResourceTableModel(
-			rowsWithMetrics,
+			tableProjection,
 			{
 				search,
 				gitOpsFilter,
@@ -629,7 +630,6 @@
 					? focusedArgoResourceKeys
 					: undefined,
 			},
-			argoResourceSearchIndex,
 		),
 	);
 	const pinnedResourceKeySet = $derived(new Set(pinnedResourceKeys));
@@ -1016,6 +1016,7 @@
 			managedResources={focusedArgoResources}
 			loading={focusedArgoLoading}
 			refreshing={focusedArgoRefreshing}
+			refreshDisabled={!focusedArgoInspectionReadSpec.ready}
 			error={focusedArgoError}
 			onRefresh={refreshFocusedArgo}
 			onInspect={onArgoApplicationInspect}

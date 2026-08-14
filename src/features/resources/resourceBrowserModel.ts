@@ -80,6 +80,11 @@ export type ResourceTableEntry =
 			resource: ResourceSummary;
 	  };
 
+export interface ResourceTableProjection {
+	searchIndex: ResourceSearchEntry[];
+	gitOpsFilters: ReturnType<typeof gitOpsOwnershipFilters>;
+}
+
 export interface ResourceTableModel {
 	scopedRows: ResourceSummary[];
 	filteredRows: ResourceSummary[];
@@ -363,19 +368,26 @@ function effectiveCollapsedGroups({
 	return next;
 }
 
-export function buildResourceTableModel(
+export function buildResourceTableProjection(
 	rows: ResourceSummary[],
+): ResourceTableProjection {
+	const inheritedRows = inheritGitOpsOwnership(rows);
+	return {
+		searchIndex: buildResourceSearchIndex(inheritedRows),
+		gitOpsFilters: gitOpsOwnershipFilters(inheritedRows),
+	};
+}
+
+export function buildResourceTableModel(
+	projection: ResourceTableProjection,
 	state: ResourceTableState,
-	searchIndex: ResourceSearchEntry[] = buildResourceSearchIndex(rows),
 ): ResourceTableModel {
 	const scopedRows = filterResourceSearchIndex(
-		searchIndex,
+		projection.searchIndex,
 		state.search,
 		state.gitOpsFilter,
 	);
-	const filteredRows = inheritGitOpsOwnership(
-		filterResourcesByHealth(scopedRows, state.healthFilter),
-	);
+	const filteredRows = filterResourcesByHealth(scopedRows, state.healthFilter);
 	const sortedRows = sortedResourceRows(filteredRows, state.sort);
 	const groupedByGitOps = filteredRows.some((row) => gitOpsOwnership(row) !== null);
 	const displayRows = groupedByGitOps
@@ -406,7 +418,7 @@ export function buildResourceTableModel(
 		pageCount,
 		safePageIndex,
 		groupedByGitOps,
-		gitOpsFilters: gitOpsOwnershipFilters(rows),
+		gitOpsFilters: projection.gitOpsFilters,
 		healthSummary: buildResourceHealthSummary(scopedRows),
 		columnVisibility: {
 			ready: pageRows.some((row) => Boolean(row.ready)),
