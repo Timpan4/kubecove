@@ -84,14 +84,14 @@ kind: Config
 
 #[test]
 fn custom_env_var_reads_selected_kubeconfig() {
+    let _env_lock = ENV_LOCK.lock().expect("environment lock");
     let env_var = unique_env_var("CUSTOM");
     let path = write_kubeconfig("custom-env-context");
-    env::set_var(&env_var, &path);
+    let _selected_env = EnvVarGuard::set(env_var.clone(), &path);
 
     let source = KubeconfigSource::new(Some(env_var.clone())).expect("source");
     let contexts = cluster_contexts_from_source(&source).expect("contexts");
 
-    env::remove_var(&env_var);
     let _ = fs::remove_file(path);
     assert_eq!(source.env_var(), env_var);
     assert_eq!(contexts.len(), 1);
@@ -101,8 +101,9 @@ fn custom_env_var_reads_selected_kubeconfig() {
 
 #[test]
 fn unset_custom_env_var_uses_default_loader_key_without_path_leak() {
+    let _env_lock = ENV_LOCK.lock().expect("environment lock");
     let env_var = unique_env_var("UNSET");
-    env::remove_var(&env_var);
+    let _selected_env = EnvVarGuard::unset(env_var.clone());
 
     let source = KubeconfigSource::new(Some(env_var.clone())).expect("source");
 
@@ -151,10 +152,11 @@ fn unset_custom_env_uses_standard_kubeconfig_for_key_and_warnings() {
 
 #[test]
 fn env_and_app_paths_merge_in_order_without_key_path_leak() {
+    let _env_lock = ENV_LOCK.lock().expect("environment lock");
     let env_var = unique_env_var("MERGE");
     let env_path = write_kubeconfig("env-context");
     let app_path = write_kubeconfig("app-context");
-    env::set_var(&env_var, &env_path);
+    let _selected_env = EnvVarGuard::set(env_var.clone(), &env_path);
 
     let source = KubeconfigSource::from_settings(
         Some(&env_var),
@@ -165,7 +167,6 @@ fn env_and_app_paths_merge_in_order_without_key_path_leak() {
     let contexts = cluster_contexts_from_source(&source).expect("contexts");
     let label = source.label();
 
-    env::remove_var(&env_var);
     let _ = fs::remove_file(&env_path);
     let _ = fs::remove_file(&app_path);
 
@@ -240,7 +241,15 @@ fn unset_env_and_app_paths_merge_platform_default_in_order() {
 #[test]
 fn missing_app_path_warns_and_falls_back_when_default_exists() {
     let _env_lock = ENV_LOCK.lock().expect("environment lock");
-    let missing = env::temp_dir().join("kubecove-missing-kubeconfig.yaml");
+    let home = env::temp_dir().join(unique_env_var("MISSING_APP_HOME"));
+    let default_path = home.join(".kube").join("config");
+    fs::create_dir_all(default_path.parent().expect("default kubeconfig parent"))
+        .expect("create default kubeconfig directory");
+    let default_source = write_kubeconfig("default-context");
+    fs::copy(&default_source, &default_path).expect("copy default kubeconfig");
+    let missing = env::temp_dir().join(unique_env_var("MISSING_APP"));
+    let _kubeconfig = EnvVarGuard::unset(DEFAULT_KUBECONFIG_ENV_VAR);
+    let _home = EnvVarGuard::set("HOME", &home);
     let source = KubeconfigSource::from_settings(
         Some(DEFAULT_KUBECONFIG_ENV_VAR),
         vec![missing.to_string_lossy().into_owned()],
@@ -248,12 +257,20 @@ fn missing_app_path_warns_and_falls_back_when_default_exists() {
     )
     .expect("source");
 
-    let result = source.read_configured_kubeconfig();
+    let (kubeconfig, warnings) = source
+        .read_configured_kubeconfig()
+        .expect("default fallback");
 
-    assert!(result.is_ok() || result.is_err());
-    if let Ok((_, warnings)) = result {
-        assert!(warnings.iter().any(|warning| warning.path.is_some()));
-    }
+    assert_eq!(
+        kubeconfig.current_context.as_deref(),
+        Some("default-context")
+    );
+    assert!(warnings
+        .iter()
+        .any(|warning| warning.path.as_deref() == Some(missing.to_string_lossy().as_ref())));
+
+    let _ = fs::remove_dir_all(home);
+    let _ = fs::remove_file(default_source);
 }
 
 #[test]
