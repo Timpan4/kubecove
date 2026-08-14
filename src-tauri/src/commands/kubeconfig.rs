@@ -130,10 +130,20 @@ impl KubeconfigSource {
     pub fn key(&self) -> String {
         let mut hasher = DefaultHasher::new();
         self.env_var.hash(&mut hasher);
-        if self.read_env {
-            env::var_os(&self.env_var)
-                .map(|value| value.to_string_lossy().into_owned())
-                .hash(&mut hasher);
+        let selected_env_value = self.read_env.then(|| env::var_os(&self.env_var)).flatten();
+        selected_env_value
+            .as_ref()
+            .map(|value| value.to_string_lossy().into_owned())
+            .hash(&mut hasher);
+        if self.read_env
+            && selected_env_value
+                .clone()
+                .and_then(split_non_empty_paths)
+                .is_none()
+        {
+            for configured in standard_kubeconfig_paths() {
+                configured.path.hash(&mut hasher);
+            }
         }
         for path in &self.app_paths {
             path.to_string_lossy().hash(&mut hasher);

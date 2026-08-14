@@ -30,7 +30,7 @@ Read-only comparison between decoded Helm release intent and live Kubernetes obj
 
 ## Kubeconfig source
 
-Context discovery reads ordered inputs from the selected environment variable, or standard `KUBECONFIG` and platform-default discovery when that variable is empty, followed by application-added kubeconfig paths.
+Context discovery reads ordered inputs from the selected environment variable, or from standard `KUBECONFIG` when set and the platform-default kubeconfig otherwise, followed by application-added kubeconfig paths.
 
 ## Live session
 

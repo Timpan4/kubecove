@@ -1,4 +1,3 @@
-
 use super::*;
 use std::{
     ffi::OsStr,
@@ -111,6 +110,43 @@ fn unset_custom_env_var_uses_default_loader_key_without_path_leak() {
     assert!(!source.key().contains(&env_var));
     assert!(!source.key().contains('/'));
     assert!(source.custom_env_value_paths().expect("paths").is_none());
+}
+
+#[test]
+fn unset_custom_env_uses_standard_kubeconfig_for_key_and_warnings() {
+    let _env_lock = ENV_LOCK.lock().expect("environment lock");
+    let selected_env_var = unique_env_var("UNSET_WITH_STANDARD");
+    let missing_standard = env::temp_dir().join(unique_env_var("MISSING_STANDARD"));
+    let standard_path = write_kubeconfig("standard-context");
+    let app_path = write_kubeconfig("app-context");
+    let _selected_env = EnvVarGuard::unset(selected_env_var.clone());
+    let _standard = EnvVarGuard::set(DEFAULT_KUBECONFIG_ENV_VAR, &missing_standard);
+    let source = KubeconfigSource::from_settings(
+        Some(&selected_env_var),
+        vec![app_path.to_string_lossy().into_owned()],
+        true,
+    )
+    .expect("source");
+
+    let missing_key = source.key();
+    let (_, warnings) = source.read_configured_kubeconfig().expect("app fallback");
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].source, "env");
+    assert!(warnings[0].message.contains(DEFAULT_KUBECONFIG_ENV_VAR));
+
+    env::set_var(DEFAULT_KUBECONFIG_ENV_VAR, &standard_path);
+    assert_ne!(source.key(), missing_key);
+    let contexts = cluster_contexts_from_source(&source).expect("contexts");
+    assert_eq!(
+        contexts
+            .iter()
+            .map(|context| context.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["standard-context", "app-context"]
+    );
+
+    let _ = fs::remove_file(standard_path);
+    let _ = fs::remove_file(app_path);
 }
 
 #[test]
