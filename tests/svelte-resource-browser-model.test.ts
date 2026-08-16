@@ -11,6 +11,8 @@ import {
 import {
 	allKindOptions,
 	buildResourceTableModel,
+	filterResourcesByKinds,
+	filterTopologyByKinds,
 	filterResourceScopeOptions,
 	initialOwnershipMapOpen,
 	nextNamespaceSelection,
@@ -30,6 +32,7 @@ import type {
 } from "../src/lib/types";
 import type { SavedWorkspace } from "../src/lib/workspace-model";
 import { buildWorkspaceReadContext } from "../src/lib/workspaceReadContext";
+import { resourceBrowserAvailableKinds } from "../src/app/svelte/workspaceShellModel";
 
 function resource(name: string, patch: Partial<ResourceSummary> = {}): ResourceSummary {
 	return {
@@ -80,6 +83,49 @@ const widget: DiscoveredResourceKind = {
 	plural: "widgets",
 	namespaced: true,
 };
+
+test("keeps cluster-kind leaf rows, counts, and topology on the selected kind", () => {
+	const rows = [
+		resource("worker-a", { apiVersion: "v1", kind: "Node", namespace: undefined }),
+		resource("fast", { apiVersion: "storage.k8s.io/v1", kind: "StorageClass", namespace: undefined }),
+		resource("data", { apiVersion: "v1", kind: "PersistentVolume", namespace: undefined }),
+		resource("checkout", { apiVersion: "argoproj.io/v1alpha1", kind: "Application" }),
+		resource("default", { apiVersion: "cilium.io/v2", kind: "CiliumClusterwideNetworkPolicy", namespace: undefined }),
+	];
+	const topology: ResourceTopology = {
+		nodes: rows.map((row) => topologyNode(`${row.kind}:${row.name}`, row)),
+		edges: [
+			{ id: "node-to-app", source: "Node:worker-a", target: "Application:checkout", relation: "targets" },
+			{ id: "storage-to-pv", source: "StorageClass:fast", target: "PersistentVolume:data", relation: "groups" },
+		],
+		warnings: [],
+	};
+	const tableState = {
+		search: "",
+		gitOpsFilter: "",
+		healthFilter: "all" as const,
+		sort: { id: "name" as const, desc: false },
+		pageIndex: 0,
+		collapsedGroups: new Set<string>(),
+	};
+
+	for (const kind of ["Node", "StorageClass", "PersistentVolume"] as const) {
+		const scopedRows = filterResourcesByKinds(rows, [kind]);
+		const table = buildResourceTableModel(scopedRows, tableState);
+		const scopedTopology = filterTopologyByKinds(topology, [kind]);
+
+		expect(resourceBrowserAvailableKinds([kind], [widget], true)).toEqual([kind]);
+		expect(table.totalRows).toBe(1);
+		expect(table.scopedRows.map((row) => row.kind)).toEqual([kind]);
+		expect(
+			table.entries
+				.filter((entry) => entry.type === "resource")
+				.map((entry) => entry.resource.kind),
+		).toEqual([kind]);
+		expect(scopedTopology?.nodes.map((node) => node.kind)).toEqual([kind]);
+		expect(scopedTopology?.edges).toEqual([]);
+	}
+});
 
 test("builds safe active-workspace read metadata from one source result", () => {
 	const workspace: SavedWorkspace = {
@@ -528,16 +574,15 @@ describe("svelte resource browser model", () => {
 		expect(source).toContain("!exactMatchExists && resourceIdentityKey(resource) === identityKey");
 	});
 
-	test("passes metrics-enriched topology into the Svelte ownership map", () => {
+	test("passes kind-scoped, metrics-enriched topology into the Svelte ownership map", () => {
 		const source = readFileSync(
 			"src/features/resources/ResourceBrowser.svelte",
 			"utf8",
 		);
 
 		expect(source).toContain("resourceMetricIndex(metricsQuery.data)");
-		expect(source).toContain(
-			"mergeTopologyMetrics(topologyQuery.data, metricsQuery.data, metricsIndex)",
-		);
+		expect(source).toContain("mergeTopologyMetrics(");
+		expect(source).toContain("filterTopologyByKinds(topologyQuery.data, selectedKinds)");
 		expect(source).toContain("topology={topologyWithMetrics}");
 		expect(source).toContain("topologyNodes: topologyWithMetrics?.nodes");
 	});
