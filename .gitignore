@@ -11,6 +11,9 @@ build/
 .vite/
 design-preview-plan.html
 
+# Nix
+/result
+
 # Logs
 *.log
 npm-debug.log*

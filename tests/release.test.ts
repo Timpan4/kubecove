@@ -32,6 +32,24 @@ describe("release version helpers", () => {
 		expect(tagWorkflow).toContain('gh workflow run release.yml --ref "$tag_name"');
 	});
 
+	test("requires native Nix builds before publishing a release", () => {
+		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
+		const nixJob = releaseWorkflow.match(
+			/\n {2}nix:\n[\s\S]*?(?=\n {2}verify:\n)/,
+		)?.[0];
+		const verifyJob = releaseWorkflow.match(
+			/\n {2}verify:\n[\s\S]*?(?=\n {2}draft:\n)/,
+		)?.[0];
+
+		expect(nixJob).toBeDefined();
+		expect(nixJob).toContain("platform: ubuntu-latest");
+		expect(nixJob).toContain("platform: ubuntu-24.04-arm");
+		expect(nixJob).toContain("nix build .#kubecove");
+		expect(verifyJob).toContain("- nix");
+		expect(verifyJob).toContain("NIX_RESULT: $" + "{{ needs.nix.result }}");
+		expect(verifyJob).toContain('test "$' + '{NIX_RESULT}" = "success"');
+	});
+
 	test("uses an unlocked session collection for Linux desktop E2E", () => {
 		const e2eWorkflow = readFileSync(".github/workflows/e2e.yml", "utf8");
 		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
