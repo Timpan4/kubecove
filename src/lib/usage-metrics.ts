@@ -60,8 +60,18 @@ export function flattenUsageMetricsBreakdown(
 	items: AppUsageMetricsBreakdown[],
 	depth = 0,
 ): FlattenedUsageMetricsBreakdown[] {
-	return items.flatMap((item) => [
-		{ item, depth },
-		...flattenUsageMetricsBreakdown(item.children, depth + 1),
-	]);
+	const flattened: FlattenedUsageMetricsBreakdown[] = [];
+	const pending: FlattenedUsageMetricsBreakdown[] = [];
+	for (let index = items.length - 1; index >= 0; index -= 1) {
+		pending.push({ item: items[index], depth });
+	}
+	while (pending.length > 0) {
+		const current = pending.pop();
+		if (!current) continue;
+		flattened.push(current);
+		for (let index = current.item.children.length - 1; index >= 0; index -= 1) {
+			pending.push({ item: current.item.children[index], depth: current.depth + 1 });
+		}
+	}
+	return flattened;
 }

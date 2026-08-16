@@ -128,9 +128,10 @@ function compactDirectEdgeDepths(
 	for (const node of nodesByDepth) {
 		const parentIds = graph.parents.get(node.id) ?? [];
 		if (parentIds.length === 0) continue;
-		const directDepth = Math.max(
-			...parentIds.map((id) => (compacted.get(id) ?? 0) + 1),
-		);
+		let directDepth = 0;
+		for (const parentId of parentIds) {
+			directDepth = Math.max(directDepth, (compacted.get(parentId) ?? 0) + 1);
+		}
 		const currentDepth = compacted.get(node.id) ?? directDepth;
 		if (directDepth < currentDepth) compacted.set(node.id, directDepth);
 	}

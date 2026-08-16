@@ -150,4 +150,49 @@ describe("svelte RBAC surface model", () => {
 			"ServiceAccount",
 		);
 	});
+
+	test("indexes automatic service-account group bindings without duplicating risks", () => {
+		const grouped: RbacInspectionSummary = {
+			...summary,
+			roleBindings: [{
+				...summary.roleBindings[0],
+				subjects: [
+					{ kind: "ServiceAccount", name: "builder", namespace: "default" },
+					{ kind: "Group", name: "system:serviceaccounts:default" },
+				],
+			}],
+		};
+
+		const risks = cockpitItems(grouped, "Service Accounts")[0]?.risks;
+		expect(risks).toEqual(summary.serviceAccounts[0].risks);
+	});
+
+	test("preserves namespace presence and non-Role ClusterRole lookup semantics", () => {
+		const bindingRisk = { level: "high" as const, label: "binding", reason: "matched" };
+		const emptyNamespace: RbacInspectionSummary = {
+			...summary,
+			serviceAccounts: [{ ...summary.serviceAccounts[0], namespace: "" }],
+			roleBindings: [{
+				...summary.roleBindings[0],
+				namespace: "",
+				risks: [bindingRisk],
+				subjects: [{ kind: "ServiceAccount", name: "builder" }],
+			}],
+		};
+		expect(cockpitItems(emptyNamespace, "Service Accounts")[0]?.risks).toEqual(
+			summary.serviceAccounts[0].risks,
+		);
+
+		const nonstandardRoleKind: RbacInspectionSummary = {
+			...summary,
+			roleBindings: [{
+				...summary.roleBindings[0],
+				roleRefKind: "UnexpectedClusterRoleKind",
+				roleRefName: "admin",
+			}],
+		};
+		expect(cockpitItems(nonstandardRoleKind, "Bindings")[0]?.risks).toContainEqual(
+			summary.clusterRoles[0].risks[0],
+		);
+	});
 });

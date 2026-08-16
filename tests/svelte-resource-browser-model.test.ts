@@ -127,6 +127,15 @@ test("keeps cluster-kind leaf rows, counts, and topology on the selected kind", 
 	}
 });
 
+test("matches discovered kinds by API version without rescanning selections", () => {
+	const v1 = resource("v1", { apiVersion: "example.com/v1", kind: "Widget" });
+	const v2 = resource("v2", { apiVersion: "example.com/v2", kind: "Widget" });
+	const builtIn = resource("pod", { apiVersion: "v2", kind: "Pod" });
+
+	expect(filterResourcesByKinds([v1, v2, builtIn], [widget])).toEqual([v1]);
+	expect(filterResourcesByKinds([v1, v2, builtIn], ["Pod"])).toEqual([builtIn]);
+});
+
 test("builds safe active-workspace read metadata from one source result", () => {
 	const workspace: SavedWorkspace = {
 		id: "workspace-a",

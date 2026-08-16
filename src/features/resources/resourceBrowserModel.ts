@@ -21,6 +21,7 @@ import {
 	filterResourceSearchIndex,
 	filterResourcesByHealth,
 	formatResourceTypeGroupLabel,
+	isDiscoveredResourceKind,
 	type HealthFilter,
 	type ResourceSearchEntry,
 	resourceGroupCollapseKey,
@@ -159,22 +160,39 @@ export function allKindOptions(
 	return [...SUPPORTED_KINDS, ...CLUSTER_SCOPED_KINDS, ...discovered];
 }
 
-function resourceMatchesKind(
+function exactResourceKindKey(kind: string, apiVersion: string | undefined): string {
+	return `${kind}\0${apiVersion ?? ""}`;
+}
+
+function indexKindSelections(kinds: ResourceKindSelection[]) {
+	const builtInKinds = new Set<string>();
+	const exactKinds = new Set<string>();
+	for (const kind of kinds) {
+		if (isDiscoveredResourceKind(kind)) {
+			exactKinds.add(exactResourceKindKey(kind.kind, kind.apiVersion));
+		} else {
+			builtInKinds.add(kind);
+		}
+	}
+	return { builtInKinds, exactKinds };
+}
+
+function resourceMatchesKindIndex(
 	resource: ResourceSummary,
-	kind: ResourceKindSelection,
+	index: ReturnType<typeof indexKindSelections>,
 ): boolean {
-	return typeof kind === "string"
-		? resource.kind === kind
-		: resource.kind === kind.kind && resource.apiVersion === kind.apiVersion;
+	return (
+		index.builtInKinds.has(resource.kind) ||
+		index.exactKinds.has(exactResourceKindKey(resource.kind, resource.apiVersion))
+	);
 }
 
 export function filterResourcesByKinds(
 	resources: ResourceSummary[],
 	kinds: ResourceKindSelection[],
 ): ResourceSummary[] {
-	return resources.filter((resource) =>
-		kinds.some((kind) => resourceMatchesKind(resource, kind)),
-	);
+	const index = indexKindSelections(kinds);
+	return resources.filter((resource) => resourceMatchesKindIndex(resource, index));
 }
 
 export function filterTopologyByKinds(
@@ -182,9 +200,8 @@ export function filterTopologyByKinds(
 	kinds: ResourceKindSelection[],
 ): ResourceTopology | undefined {
 	if (!topology) return undefined;
-	const nodes = topology.nodes.filter((node) =>
-		kinds.some((kind) => resourceMatchesKind(node.summary, kind)),
-	);
+	const index = indexKindSelections(kinds);
+	const nodes = topology.nodes.filter((node) => resourceMatchesKindIndex(node.summary, index));
 	const nodeIds = new Set(nodes.map((node) => node.id));
 	return {
 		...topology,

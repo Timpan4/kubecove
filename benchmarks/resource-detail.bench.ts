@@ -11,10 +11,12 @@ import type {
 import { sortIncidentEvents } from "@/features/resource-detail/incident-events";
 import { buildIncidentTimeline } from "@/features/resource-detail/incident-timeline";
 import {
+	appendParsedLogLine,
 	logLineSearchText,
+	MAX_RETAINED_LOG_LINES,
 	orderedLogLines,
 } from "@/features/resource-detail/log-helpers";
-import type { LogLineInput } from "@/features/resource-detail/log-helpers";
+import type { LogLineInput, ParsedLogLine } from "@/features/resource-detail/log-helpers";
 import type { ResourceEventSummary, ResourceSummary } from "@/lib/types";
 
 const startedAt = Date.UTC(2026, 0, 1);
@@ -92,6 +94,16 @@ assert.equal(events.filter((event) => event.eventType === "Warning").length, 500
 assert(events.some((event) => event.lastSeenAt === undefined));
 
 describe("resource detail", () => {
+	bench("append and retain parsed log lines", () => {
+		const retained: ParsedLogLine[] = [];
+		for (let pass = 0; pass < 2; pass += 1) {
+			for (const [index, line] of logLines.entries()) {
+				appendParsedLogLine(retained, line, pass * logLines.length + index);
+			}
+		}
+		assert.equal(retained.length, MAX_RETAINED_LOG_LINES);
+	});
+
 	bench("parse + order + search 1k log lines", () => {
 		orderedLogLines(logLines, true).filter((line) =>
 			logLineSearchText(line).includes("error"),

@@ -20,7 +20,7 @@
 		Spinner,
 		TabsContent,
 	} from "@/components/ui/svelte";
-	import type { LogLineEntry, ParsedLogLine } from "./log-helpers";
+	import type { ParsedLogLine } from "./log-helpers";
 
 	const sinceOptions = [
 		{ value: "all", label: "Any time", seconds: undefined },
@@ -44,7 +44,8 @@
 		logWrapLines = $bindable(true),
 		logAutoFollow = $bindable(true),
 		logLatestFirst = $bindable(false),
-		logLines = $bindable<LogLineEntry[]>([]),
+		lineCount,
+		onClear,
 		logViewport = $bindable<HTMLElement | null>(null),
 		logTailLines = $bindable(200),
 		logSinceSeconds = $bindable<number | undefined>(undefined),
@@ -68,7 +69,8 @@
 		logWrapLines: boolean;
 		logAutoFollow: boolean;
 		logLatestFirst: boolean;
-		logLines: LogLineEntry[];
+		lineCount: number;
+		onClear: () => void;
 		logViewport: HTMLElement | null;
 		logTailLines: number;
 		logSinceSeconds?: number;
@@ -232,7 +234,7 @@
 					<ArrowDownUp data-icon="inline-start" />
 					{logLatestFirst ? "Latest top" : "Oldest top"}
 				</Button>
-				<Button variant="outline" size="sm" onclick={() => (logLines = [])}>
+				<Button variant="outline" size="sm" onclick={onClear}>
 					<RotateCcw data-icon="inline-start" />
 					Clear
 				</Button>
@@ -252,7 +254,7 @@
 				bind:this={logViewport}
 				class="min-h-0 flex-1 overflow-auto rounded-md border bg-background/50"
 			>
-				{#if logLines.length === 0}
+				{#if lineCount === 0}
 					<div class="flex items-center gap-2 p-3 text-sm text-muted-foreground">
 						{#if logStatus === "connecting"}<Spinner class="size-3.5" />{/if}
 						<span>{logMessage || "Waiting for log lines..."}</span>
