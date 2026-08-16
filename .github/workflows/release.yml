@@ -228,6 +228,31 @@ jobs:
             .artifacts/e2e/**
           if-no-files-found: ignore
 
+  nix:
+    name: Nix ${{ matrix.label }} release build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux x64
+            platform: ubuntu-latest
+          - label: Linux arm64
+            platform: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      - name: Build KubeCove
+        run: nix build .#kubecove
+
   verify:
     name: Verify release inputs
     needs:
@@ -235,6 +260,7 @@ jobs:
       - frontend
       - rust
       - e2e
+      - nix
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -246,16 +272,19 @@ jobs:
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           RUST_RESULT: ${{ needs.rust.result }}
           E2E_RESULT: ${{ needs.e2e.result }}
+          NIX_RESULT: ${{ needs.nix.result }}
         run: |
           set -euo pipefail
           echo "Release metadata: ${METADATA_RESULT}"
           echo "Frontend release checks: ${FRONTEND_RESULT}"
           echo "Rust release checks: ${RUST_RESULT}"
           echo "Kubernetes E2E matrix: ${E2E_RESULT}"
+          echo "Nix release build matrix: ${NIX_RESULT}"
           test "${METADATA_RESULT}" = "success"
           test "${FRONTEND_RESULT}" = "success"
           test "${RUST_RESULT}" = "success"
           test "${E2E_RESULT}" = "success"
+          test "${NIX_RESULT}" = "success"
 
   draft:
     name: Create draft release
