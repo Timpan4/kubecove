@@ -12,6 +12,7 @@
 	} from "@/components/ui/svelte";
 	import {
 		buildDedupedResourceSearchIndex,
+		buildGlobalSearchFetchKeys,
 		buildNavigationEntries,
 		filterNamespaces,
 		filterNavigationEntries,
@@ -20,7 +21,6 @@
 	} from "@/features/command-palette/entries";
 	import { shouldToggleCommandPaletteShortcut } from "@/features/command-palette/shortcut";
 	import {
-		buildFetchKeys,
 		fetchResourcePage,
 		filterResourceSearchIndex,
 	} from "@/features/resources";
@@ -36,7 +36,7 @@
 		makeNamespaceNode,
 		type TreeNodeId,
 	} from "@/lib/tree-nav";
-	import type { ResourceSummary } from "@/lib/types";
+	import type { DiscoveredResourceKind, ResourceSummary } from "@/lib/types";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import { settingsStore } from "@/lib/settings-store";
@@ -49,6 +49,7 @@
 	open = $bindable(false),
 	workspace,
 	workspaceReadContext,
+	presentCustomResourceKinds,
 	onNodeSelect,
 	onResourceSelect,
 	onOpenLauncher,
@@ -57,6 +58,7 @@
 	open: boolean;
 	workspace: SavedWorkspace;
 	workspaceReadContext: WorkspaceReadContext;
+	presentCustomResourceKinds: DiscoveredResourceKind[];
 	onNodeSelect: (id: TreeNodeId) => void;
 	onResourceSelect: (resource: ResourceSummary, id: TreeNodeId) => void;
 	onOpenLauncher: () => void;
@@ -73,8 +75,6 @@
 	const sourceReady = $derived(workspaceReadContext.sourceReady);
 	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
 	const normalizedSourceKey = $derived(normalizeKubeconfigSourceKey(kubeconfigSourceKey));
-	const fetchKeys = $derived(buildFetchKeys(workspace.scope.namespaces, workspace.scope.kinds));
-
 	const namespacesQuery = createQuery<string[]>(() => ({
 		queryKey: queryKeys.namespaces(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: async () =>
@@ -84,13 +84,6 @@
 		enabled: open && sourceReady,
 		staleTime: 30_000,
 		retry: false,
-	}));
-
-	const resourcesQuery = createQuery<ResourceSummary[]>(() => ({
-		queryKey: queryKeys.resources(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey),
-		queryFn: () => fetchResourcePage(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey),
-		enabled: open && sourceReady && fetchKeys.length > 0,
-		staleTime: 30_000,
 	}));
 
 	const argoDetectionQuery = createQuery<boolean>(() => ({
@@ -105,6 +98,23 @@
 		queryFn: () => detectFlux(client, workspace.scope.clusterContext, kubeconfigSourceKey),
 		enabled: open && sourceReady,
 		staleTime: 60_000,
+	}));
+	const gitOpsDetectionReady = $derived(
+		!argoDetectionQuery.isPending && !fluxDetectionQuery.isPending,
+	);
+	const fetchKeys = $derived(
+		buildGlobalSearchFetchKeys(
+			workspace.scope.namespaces,
+			presentCustomResourceKinds,
+			argoDetectionQuery.data === true,
+			fluxDetectionQuery.data?.kinds ?? [],
+		),
+	);
+	const resourcesQuery = createQuery<ResourceSummary[]>(() => ({
+		queryKey: queryKeys.resources(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey),
+		queryFn: () => fetchResourcePage(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey),
+		enabled: open && sourceReady && gitOpsDetectionReady && fetchKeys.length > 0,
+		staleTime: 30_000,
 	}));
 
 	const gitOpsNavigationVisible = $derived(
@@ -205,6 +215,7 @@
 						<Box class="shrink-0 text-muted-foreground" />
 						<span class="truncate">{resource.name}</span>
 						<span class="ml-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+							<span>{resource.cluster}</span>
 							{#if resource.namespace}<span>{resource.namespace}</span>{/if}
 							<span>{resource.kind}</span>
 						</span>

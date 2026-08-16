@@ -4,9 +4,17 @@ import {
 	type SectionName,
 	type TreeNodeId,
 } from "@/lib/tree-nav";
-import type { ResourceSummary } from "@/lib/types";
 import {
+	CLUSTER_SCOPED_KINDS,
+	SUPPORTED_KINDS,
+	type DiscoveredResourceKind,
+	type ResourceKindSelection,
+	type ResourceSummary,
+} from "@/lib/types";
+import {
+	buildFetchKeys,
 	buildResourceSearchIndex,
+	type FetchKey,
 	type ResourceSearchEntry,
 } from "@/features/resources/helpers";
 
@@ -18,6 +26,71 @@ export interface PaletteNavigationEntry {
 	searchText: string;
 	nodeId: TreeNodeId | null;
 	action?: PaletteAction;
+}
+
+const ARGO_RESOURCE_KINDS: DiscoveredResourceKind[] = [
+	{
+		group: "argoproj.io",
+		version: "v1alpha1",
+		apiVersion: "argoproj.io/v1alpha1",
+		kind: "Application",
+		plural: "applications",
+		namespaced: true,
+	},
+	{
+		group: "argoproj.io",
+		version: "v1alpha1",
+		apiVersion: "argoproj.io/v1alpha1",
+		kind: "ApplicationSet",
+		plural: "applicationsets",
+		namespaced: true,
+	},
+	{
+		group: "argoproj.io",
+		version: "v1alpha1",
+		apiVersion: "argoproj.io/v1alpha1",
+		kind: "AppProject",
+		plural: "appprojects",
+		namespaced: true,
+	},
+];
+
+function resourceKindKey(kind: ResourceKindSelection): string {
+	return typeof kind === "string"
+		? `native:${kind}`
+		: `dynamic:${kind.apiVersion}:${kind.plural}:${kind.kind}`;
+}
+
+function dedupeKinds(kinds: ResourceKindSelection[]): ResourceKindSelection[] {
+	const seen = new Set<string>();
+	return kinds.filter((kind) => {
+		const key = resourceKindKey(kind);
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+}
+
+export function buildGlobalSearchFetchKeys(
+	namespaces: string[],
+	customResourceKinds: DiscoveredResourceKind[],
+	argoDetected: boolean,
+	fluxResourceKinds: DiscoveredResourceKind[],
+): FetchKey[] {
+	const providerKinds = dedupeKinds([
+		...(argoDetected ? ARGO_RESOURCE_KINDS : []),
+		...fluxResourceKinds,
+	]);
+	const providerKeys = new Set(providerKinds.map(resourceKindKey));
+	const scopedKinds = dedupeKinds([
+		...SUPPORTED_KINDS,
+		...CLUSTER_SCOPED_KINDS,
+		...customResourceKinds.filter((kind) => !providerKeys.has(resourceKindKey(kind))),
+	]);
+	return [
+		...buildFetchKeys(namespaces, scopedKinds),
+		...buildFetchKeys([], providerKinds),
+	];
 }
 
 function sectionEntry(section: SectionName): PaletteNavigationEntry {

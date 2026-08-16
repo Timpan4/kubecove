@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import type { ResourceSummary } from "../src/lib/types";
 import { buildResourceSearchIndex } from "../src/features/resources/helpers";
+import { filterResourceSearchIndex } from "../src/features/resources/helpers";
 import {
 	buildDedupedResourceSearchIndex,
+	buildGlobalSearchFetchKeys,
 	buildNavigationEntries,
 	dedupeResources,
 	filterNamespaces,
@@ -94,11 +96,74 @@ describe("command palette entries", () => {
 		expect(source).toContain('queryKey: ["resources", normalizedSourceKey, workspace.scope.clusterContext]');
 		expect(source).toContain("queryClient.getQueriesData<ResourceSummary[]>");
 		expect(source).toContain("buildDedupedResourceSearchIndex([");
+		expect(source).toContain("buildGlobalSearchFetchKeys(");
+		expect(source).toContain("<span>{resource.cluster}</span>");
 		expect(source).not.toContain("cached.flatMap");
 		expect(source).toContain('filterResourceSearchIndex(resourceSearchIndex, query, "")');
 		expect(source).not.toContain('"svelte-command-resources"');
 		expect(source).not.toContain('"svelte-command-namespaces"');
 		expect(source).not.toContain("function filterResources(");
+	});
+
+	test("search scope covers native and discovered resources across provider namespaces", () => {
+		const applicationKind = {
+			group: "argoproj.io",
+			version: "v1alpha1",
+			apiVersion: "argoproj.io/v1alpha1",
+			kind: "Application",
+			plural: "applications",
+			namespaced: true,
+		};
+		const widgetKind = {
+			group: "example.com",
+			version: "v1",
+			apiVersion: "example.com/v1",
+			kind: "Widget",
+			plural: "widgets",
+			namespaced: true,
+		};
+		const keys = buildGlobalSearchFetchKeys(
+			["team-a"],
+			[applicationKind, widgetKind],
+			true,
+			[],
+		);
+
+		expect(keys).toContainEqual({ kind: "Deployment", namespace: "team-a" });
+		expect(keys).toContainEqual({ kind: "Node", namespace: undefined });
+		expect(keys).toContainEqual({ kind: widgetKind, namespace: "team-a" });
+		expect(
+			keys.filter(
+				(key) => typeof key.kind !== "string" && key.kind.kind === "Application",
+			),
+		).toEqual([{ kind: applicationKind, namespace: undefined }]);
+	});
+
+	test("finds a known Argo CD Application by partial name with scope context", () => {
+		const application = resource({
+			kind: "Application",
+			name: "spotify-weekly-update",
+			namespace: "argocd",
+			apiVersion: "argoproj.io/v1alpha1",
+			group: "argoproj.io",
+			version: "v1alpha1",
+			plural: "applications",
+			namespaced: true,
+			dynamic: true,
+		});
+		const matches = filterResourceSearchIndex(
+			buildDedupedResourceSearchIndex([[application]]),
+			"spotify",
+			"",
+		);
+
+		expect(matches).toEqual([application]);
+		expect(matches[0]).toMatchObject({
+			cluster: "ctx",
+			kind: "Application",
+			name: "spotify-weekly-update",
+			namespace: "argocd",
+		});
 	});
 
 	test("filterNavigationEntries matches case-insensitively", () => {
