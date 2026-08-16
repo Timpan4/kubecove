@@ -3,6 +3,16 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.10.8 - 2026-08-16
+### Added
+
+- Add Nix packaging (#358).
+
+### Fixed
+
+- Namespace resource-kind navigation scope (#357).
+- Scope cluster kind navigation (#356).
+
 ## 0.10.7 - 2026-08-14
 ### Fixed
 
