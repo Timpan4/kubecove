@@ -2,6 +2,8 @@ import { defineRule } from "@oxlint/plugins";
 
 import type { ESTree } from "@oxlint/plugins";
 
+import { lexicalTypeParameterNames } from "../shared/lexical-type-parameters.ts";
+
 function referencedAliasName(type: ESTree.TSType): string | null {
 	if (type.type === "TSParenthesizedType") return referencedAliasName(type.typeAnnotation);
 	if (type.type !== "TSTypeReference" || type.typeName.type !== "Identifier") return null;
@@ -28,12 +30,16 @@ export const noUnknownTypeAliasesRule = defineRule({
 	createOnce(context) {
 		const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
 
-		const resolvesToUnknown = (type: ESTree.TSType, visited = new Set<string>()): boolean => {
+		const resolvesToUnknown = (
+			type: ESTree.TSType,
+			shadowedAliases: ReadonlySet<string>,
+			visited = new Set<string>(),
+		): boolean => {
 			if (type.type === "TSUnknownKeyword") return true;
 			if (type.type === "TSParenthesizedType")
-				return resolvesToUnknown(type.typeAnnotation, visited);
+				return resolvesToUnknown(type.typeAnnotation, shadowedAliases, visited);
 			const name = referencedAliasName(type);
-			if (name === null || visited.has(name)) return false;
+			if (name === null || visited.has(name) || shadowedAliases.has(name)) return false;
 			const alias = aliases.get(name);
 			if (
 				alias === undefined ||
@@ -43,7 +49,7 @@ export const noUnknownTypeAliasesRule = defineRule({
 			}
 			const nextVisited = new Set(visited);
 			nextVisited.add(name);
-			return resolvesToUnknown(alias.typeAnnotation, nextVisited);
+			return resolvesToUnknown(alias.typeAnnotation, shadowedAliases, nextVisited);
 		};
 
 		return {
@@ -57,7 +63,19 @@ export const noUnknownTypeAliasesRule = defineRule({
 					}
 				}
 				for (const alias of aliases.values()) {
-					if (!resolvesToUnknown(alias.typeAnnotation, new Set([alias.id.name]))) continue;
+					const shadowedAliases = lexicalTypeParameterNames(
+						alias,
+						context.sourceCode.visitorKeys,
+					);
+					if (
+						!resolvesToUnknown(
+							alias.typeAnnotation,
+							shadowedAliases,
+							new Set([alias.id.name]),
+						)
+					) {
+						continue;
+					}
 					context.report({
 						node: alias.id,
 						messageId: "unknownAlias",

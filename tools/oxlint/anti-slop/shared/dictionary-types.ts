@@ -95,12 +95,18 @@ export function createTypeEnvironment(program: ESTree.Program): TypeEnvironment 
 	return { aliases, interfaces, shadowedBuiltIns };
 }
 
-function typeReferenceName(type: ESTree.TSTypeReference): string | null {
+export function typeReferenceName(type: ESTree.TSTypeReference): string | null {
 	return type.typeName.type === "Identifier" ? type.typeName.name : null;
 }
 
-function isBuiltIn(name: string, environment: TypeEnvironment): boolean {
+export function isBuiltIn(name: string, environment: TypeEnvironment): boolean {
 	return BUILT_INS.has(name) && !environment.shadowedBuiltIns.has(name);
+}
+
+export function unwrapTypeParentheses(type: ESTree.TSType): ESTree.TSType {
+	let current = type;
+	while (current.type === "TSParenthesizedType") current = current.typeAnnotation;
+	return current;
 }
 
 function isUnappliedReferenceTo(type: ESTree.TSType, name: string): boolean {
@@ -115,12 +121,12 @@ function isUnappliedReferenceTo(type: ESTree.TSType, name: string): boolean {
 }
 
 function unwrapTransparentType(type: ESTree.TSType): ESTree.TSType {
-	let current = type;
+	let current = unwrapTypeParentheses(type);
 	while (
-		current.type === "TSParenthesizedType" ||
-		(current.type === "TSTypeOperator" && current.operator === "readonly")
+		current.type === "TSTypeOperator" &&
+		current.operator === "readonly"
 	) {
-		current = current.typeAnnotation;
+		current = unwrapTypeParentheses(current.typeAnnotation);
 	}
 	return current;
 }
@@ -211,8 +217,11 @@ function unsafeDirectValue(
 			unsafeDirectValue(member, environment, substitutions, resolvingAliases),
 		);
 		if (unsafeMembers.includes("any")) return "any";
-		return unsafeMembers.length > 0 && unsafeMembers.every((member) => member !== null)
-			? unsafeMembers[0]
+		const [first] = unsafeMembers;
+		return first !== undefined &&
+			first !== null &&
+			unsafeMembers.every((member) => member !== null)
+			? first
 			: null;
 	}
 	if (unwrapped.type !== "TSTypeReference") return null;
