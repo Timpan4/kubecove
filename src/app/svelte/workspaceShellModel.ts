@@ -58,6 +58,16 @@ export function appendPresentCustomResourceKinds(
 	);
 }
 
+export function resourceBrowserAvailableKinds(
+	kinds: ResourceKindSelection[],
+	customResourceKinds: DiscoveredResourceKind[],
+	fixedKindScope: boolean,
+): ResourceKindSelection[] {
+	return fixedKindScope
+		? [...kinds]
+		: appendPresentCustomResourceKinds(kinds, customResourceKinds);
+}
+
 function buildArgoProviderNode(disabled: boolean): TreeNode {
 	return {
 		id: { type: "group", section: "argo", group: ARGO_PROVIDER_GROUP_ID },

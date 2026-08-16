@@ -27,6 +27,7 @@
 	let {
 		selectedNamespaces,
 		selectedKinds,
+		kindScopeLocked = false,
 		namespaceOptions,
 		kindOptions,
 		selectedNamespaceSet,
@@ -54,6 +55,7 @@
 	}: {
 		selectedNamespaces: string[];
 		selectedKinds: ResourceKindSelection[];
+		kindScopeLocked?: boolean;
 		namespaceOptions: NamespaceSummary[];
 		kindOptions: ResourceKindSelection[];
 		selectedNamespaceSet: Set<string>;
@@ -155,25 +157,29 @@
 				onToggle={onNamespaceToggle}
 			/>
 
-			<ResourceScopeSelector
-				triggerLabel="Kinds"
-				triggerValue={kindsLabel}
-				triggerAriaLabel="Edit resource kinds"
-				heading="Kinds"
-				selectAllLabel="Select all kinds"
-				searchAriaLabel="Search resource kinds"
-				searchPlaceholder="Search kinds..."
-				emptyLabel="No kinds found"
-				noMatchesLabel="No matching kinds"
-				options={kindScopeOptions}
-				selectedKeys={selectedKindSet}
-				allSelected={allKindsSelected}
-				onSelectAll={onAllKindsSelect}
-				onToggle={(key, checked) => {
-					const kind = kindOptions.find((option) => kindSelectionKey(option) === key);
-					if (kind) onKindToggle(kind, checked);
-				}}
-			/>
+			{#if kindScopeLocked}
+				<Badge variant="outline">Kind {kindsLabel}</Badge>
+			{:else}
+				<ResourceScopeSelector
+					triggerLabel="Kinds"
+					triggerValue={kindsLabel}
+					triggerAriaLabel="Edit resource kinds"
+					heading="Kinds"
+					selectAllLabel="Select all kinds"
+					searchAriaLabel="Search resource kinds"
+					searchPlaceholder="Search kinds..."
+					emptyLabel="No kinds found"
+					noMatchesLabel="No matching kinds"
+					options={kindScopeOptions}
+					selectedKeys={selectedKindSet}
+					allSelected={allKindsSelected}
+					onSelectAll={onAllKindsSelect}
+					onToggle={(key, checked) => {
+						const kind = kindOptions.find((option) => kindSelectionKey(option) === key);
+						if (kind) onKindToggle(kind, checked);
+					}}
+				/>
+			{/if}
 		</div>
 
 		<InputGroup class="h-8 min-w-0 border bg-background/70">

@@ -55,7 +55,7 @@
 		type ResourceKindSelection,
 		type ResourceSummary,
 	} from "@/lib/types";
-	import { nodeIdToString, type TreeNodeId } from "@/lib/tree-nav";
+	import { nodeIdToString, resolveTreeScope, type TreeNodeId } from "@/lib/tree-nav";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
 		entryPointFromResource,
@@ -104,7 +104,7 @@
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import {
 		GITOPS_RESOURCE_KINDS,
-		appendPresentCustomResourceKinds,
+		resourceBrowserAvailableKinds,
 	} from "./workspaceShellModel";
 	import {
 		buildWorkspaceNavigationModel,
@@ -224,6 +224,9 @@
 	const isNamespaceList = $derived(navigationModel.isNamespaceList);
 	const resourceBrowserScope = $derived(navigationModel.resourceBrowserScope);
 	const resourceBrowserNamespaces = $derived(resourceBrowserScope.namespaces);
+	const fixedResourceKindScope = $derived(
+		selectedNode?.type === "kind" && resolveTreeScope(selectedNode).clusterScoped,
+	);
 	const workspaceCustomResourcePrewarmQuery = createQuery<DiscoveredResourceKind[]>(() => ({
 		queryKey: queryKeys.presentCustomResourceKinds(
 			workspace.scope.clusterContext,
@@ -296,9 +299,10 @@
 			: resourceBrowserScope.kinds,
 	);
 	const resourceBrowserKinds = $derived<ResourceKindSelection[]>(
-		appendPresentCustomResourceKinds(
+		resourceBrowserAvailableKinds(
 			resourceBrowserInitialKinds,
 			presentCustomResourceKinds,
+			fixedResourceKindScope,
 		),
 	);
 	const showPortForwardRestorePrompt = $derived(
@@ -882,6 +886,7 @@
 							initialNamespaces={resourceBrowserNamespaces}
 							initialKinds={resourceBrowserInitialKinds}
 							availableKinds={resourceBrowserKinds}
+							kindScopeLocked={fixedResourceKindScope}
 							customResourcesEnabled={showCustomResources}
 							{customResourcesStatus}
 							initialSearch={resourceInitialSearch}

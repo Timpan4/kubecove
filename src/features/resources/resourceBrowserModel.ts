@@ -9,6 +9,7 @@ import type {
 	DiscoveredResourceKind,
 	ResourceKindSelection,
 	ResourceSummary,
+	ResourceTopology,
 	TopologyNode,
 } from "@/lib/types";
 import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "@/lib/types";
@@ -156,6 +157,42 @@ export function allKindOptions(
 	const discovered = discoveredKinds
 		.toSorted((left, right) => left.kind.localeCompare(right.kind))
 	return [...SUPPORTED_KINDS, ...CLUSTER_SCOPED_KINDS, ...discovered];
+}
+
+function resourceMatchesKind(
+	resource: ResourceSummary,
+	kind: ResourceKindSelection,
+): boolean {
+	return typeof kind === "string"
+		? resource.kind === kind
+		: resource.kind === kind.kind && resource.apiVersion === kind.apiVersion;
+}
+
+export function filterResourcesByKinds(
+	resources: ResourceSummary[],
+	kinds: ResourceKindSelection[],
+): ResourceSummary[] {
+	return resources.filter((resource) =>
+		kinds.some((kind) => resourceMatchesKind(resource, kind)),
+	);
+}
+
+export function filterTopologyByKinds(
+	topology: ResourceTopology | undefined,
+	kinds: ResourceKindSelection[],
+): ResourceTopology | undefined {
+	if (!topology) return undefined;
+	const nodes = topology.nodes.filter((node) =>
+		kinds.some((kind) => resourceMatchesKind(node.summary, kind)),
+	);
+	const nodeIds = new Set(nodes.map((node) => node.id));
+	return {
+		...topology,
+		nodes,
+		edges: topology.edges.filter(
+			(edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target),
+		),
+	};
 }
 
 export function syncedTopologyNodeId({

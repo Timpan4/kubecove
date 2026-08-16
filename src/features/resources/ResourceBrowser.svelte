@@ -132,6 +132,8 @@
 	import {
 		allKindOptions,
 		buildResourceTableModel,
+		filterResourcesByKinds,
+		filterTopologyByKinds,
 		initialOwnershipMapOpen,
 		kindSelectionKey,
 		nextNamespaceSelection,
@@ -149,6 +151,7 @@
 		initialNamespaces,
 		initialKinds,
 		availableKinds = initialKinds,
+		kindScopeLocked = false,
 		customResourcesEnabled = true,
 		customResourcesStatus = null,
 		initialSearch = "",
@@ -170,6 +173,7 @@
 		initialNamespaces: string[];
 		initialKinds: ResourceKindSelection[];
 		availableKinds?: ResourceKindSelection[];
+		kindScopeLocked?: boolean;
 		customResourcesEnabled?: boolean;
 		customResourcesStatus?: string | null;
 		initialSearch?: string;
@@ -268,7 +272,7 @@
 	);
 	$effect(() => {
 		if (appliedScopeKey === incomingScopeKey) return;
-		const pathState = initialPathStateConsumed ? null : initialPathState;
+		const pathState = initialPathStateConsumed || kindScopeLocked ? null : initialPathState;
 		selectedNamespaces = pathState ? [...pathState.selectedNamespaces] : [...initialNamespaces];
 		selectedKinds = pathState ? [...pathState.selectedKinds] : [...initialKinds];
 		appliedScopeKey = incomingScopeKey;
@@ -429,6 +433,11 @@
 		staleTime: 30_000,
 	}));
 	$effect(() => {
+		if (kindScopeLocked) {
+			selectedKinds = [...initialKinds];
+			appliedAvailableKindsKey = availableKindsKey;
+			return;
+		}
 		if (!customResourcesEnabled) {
 			const nativeKinds = selectedKinds.filter((kind) => typeof kind === "string");
 			if (nativeKinds.length !== selectedKinds.length) selectedKinds = nativeKinds;
@@ -571,13 +580,18 @@
 
 	const namespaceOptions = $derived(namespacesQuery.data ?? []);
 	const kindOptions = $derived(
-		allKindOptions(customResourcesEnabled ? (resourceKindsQuery.data ?? []) : []),
+		kindScopeLocked
+			? [...initialKinds]
+			: allKindOptions(customResourcesEnabled ? (resourceKindsQuery.data ?? []) : []),
 	);
 	const selectedNamespaceSet = $derived(new Set(selectedNamespaces));
 	const selectedKindSet = $derived(new Set(selectedKinds.map(kindSelectionKey)));
 	const metricsIndex = $derived(resourceMetricIndex(metricsQuery.data));
+	const scopedRows = $derived(
+		filterResourcesByKinds(resourcesQuery.data ?? [], selectedKinds),
+	);
 	const rowsWithMetrics = $derived(
-		mergeResourceMetrics(resourcesQuery.data ?? [], metricsQuery.data, metricsIndex),
+		mergeResourceMetrics(scopedRows, metricsQuery.data, metricsIndex),
 	);
 	const focusedArgoResources = $derived(
 		focusedArgoInspectorQuery.data?.resources ?? [],
@@ -612,7 +626,11 @@
 		!focusedArgoLoading && focusedArgoInspectorQuery.isFetching,
 	);
 	const topologyWithMetrics = $derived(
-		mergeTopologyMetrics(topologyQuery.data, metricsQuery.data, metricsIndex),
+		mergeTopologyMetrics(
+			filterTopologyByKinds(topologyQuery.data, selectedKinds),
+			metricsQuery.data,
+			metricsIndex,
+		),
 	);
 	const tableModel = $derived(
 		buildResourceTableModel(
@@ -1048,6 +1066,7 @@
 		</div>
 	{:else}
 		<ResourceBrowserTopBar
+			{kindScopeLocked}
 			selectedNamespaces={selectedNamespaces}
 			selectedKinds={selectedKinds}
 			namespaceOptions={namespaceOptions}
