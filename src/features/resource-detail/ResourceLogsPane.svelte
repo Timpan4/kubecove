@@ -15,9 +15,8 @@
 	} from "@/lib/types";
 	import LogsTab from "./LogsTab.svelte";
 	import {
+		appendParsedLogLine,
 		logLineSearchText,
-		orderedLogLines,
-		type LogLineEntry,
 		type ParsedLogLine,
 	} from "./log-helpers";
 
@@ -58,7 +57,7 @@
 		formatLogTime: (timestamp: string | undefined) => string;
 	} = $props();
 
-	let logLines = $state<LogLineEntry[]>([]);
+	let nextLogLineIndex = 0;
 	let logStatus = $state("idle");
 	let logMessage = $state("Log stream idle");
 	let logError = $state<unknown>(null);
@@ -103,9 +102,8 @@
 				: null,
 	);
 	const logSignature = $derived(logRequest ? JSON.stringify(logRequest) : "");
-	const currentParsedLogLines = $derived(orderedLogLines(logLines, false));
 	const orderedVisibleLogLines = $derived(
-		logLatestFirst ? [...currentParsedLogLines].reverse() : currentParsedLogLines,
+		logLatestFirst ? [...parsedLogLines].reverse() : parsedLogLines,
 	);
 	const logFilterTerm = $derived(logFilter.trim().toLowerCase());
 	const visibleLogLines = $derived(
@@ -115,10 +113,6 @@
 				)
 			: orderedVisibleLogLines,
 	);
-
-	$effect(() => {
-		parsedLogLines = currentParsedLogLines;
-	});
 
 	$effect(() => {
 		if (!isPod) {
@@ -133,13 +127,14 @@
 
 	$effect(() => {
 		logSignature;
-		logLines = [];
+		parsedLogLines = [];
+		nextLogLineIndex = 0;
 		logError = null;
 	});
 
 	$effect(() => {
 		active;
-		logLines.length;
+		parsedLogLines.length;
 		visibleLogLines.length;
 		logAutoFollow;
 		logLatestFirst;
@@ -151,6 +146,11 @@
 		});
 		return () => window.cancelAnimationFrame(frame);
 	});
+
+	function clearLogLines() {
+		parsedLogLines = [];
+		nextLogLineIndex = 0;
+	}
 
 	$effect(() => {
 		if (!active || !logRequest || logPaused) {
@@ -178,7 +178,12 @@
 			if (event.type === "logLine") {
 				logStatus = "connected";
 				logMessage = logRequest.mode === "aggregate" ? "Aggregated logs connected" : "Log stream connected";
-				logLines = [...logLines, { line: event.line, source: event.source }].slice(-1_000);
+				appendParsedLogLine(
+					parsedLogLines,
+					{ line: event.line, source: event.source },
+					nextLogLineIndex,
+				);
+				nextLogLineIndex += 1;
 				return;
 			}
 			if (event.type === "error") {
@@ -233,13 +238,14 @@
 	bind:logWrapLines
 	bind:logAutoFollow
 	bind:logLatestFirst
-	bind:logLines
+	lineCount={parsedLogLines.length}
+	onClear={clearLogLines}
 	bind:logViewport
 	bind:logTailLines
 	bind:logSinceSeconds
 	bind:logPaused
 	{visibleLogLines}
-	parsedLogLines={currentParsedLogLines}
+	{parsedLogLines}
 	{formatFullTimestamp}
 	{formatLogTime}
 />

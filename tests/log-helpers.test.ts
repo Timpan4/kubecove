@@ -5,10 +5,13 @@ import {
 	formatExactTimestamp,
 } from "../src/components/timestamp-format";
 import {
+	appendParsedLogLine,
 	latestTimestampedLogLine,
 	logLineSearchText,
+	MAX_RETAINED_LOG_LINES,
 	orderedLogLines,
 	parseLogLine,
+	type ParsedLogLine,
 } from "../src/features/resource-detail/log-helpers";
 
 function extractFunctionSource(source: string, name: string): string | undefined {
@@ -107,6 +110,17 @@ describe("log presentation helpers", () => {
 			message: "second",
 			timestamp: "2026-05-18T09:01:35Z",
 		});
+	});
+
+	test("retains the newest parsed log lines without reparsing the buffer", () => {
+		const lines: ParsedLogLine[] = [];
+		for (let index = 0; index <= MAX_RETAINED_LOG_LINES; index += 1) {
+			appendParsedLogLine(lines, `line ${index}`, index);
+		}
+
+		expect(lines).toHaveLength(MAX_RETAINED_LOG_LINES);
+		expect(lines[0]?.index).toBe(1);
+		expect(lines.at(-1)?.index).toBe(MAX_RETAINED_LOG_LINES);
 	});
 
 	test("formats log timestamps through the shared timestamp formatter", () => {

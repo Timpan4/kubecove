@@ -98,4 +98,26 @@ describe("usage metrics formatting", () => {
 			["WebView", 1],
 		]);
 	});
+
+	test("flattens sibling and deep usage rows in preorder", () => {
+		const leaf = (label: string) => ({
+			label,
+			description: label,
+			cpuPercent: 0,
+			memoryBytes: 0,
+			processCount: 1,
+			children: [],
+		});
+		const rows = [
+			{ ...leaf("host"), children: [{ ...leaf("webview"), children: [leaf("renderer")] }] },
+			leaf("sidecar"),
+		];
+
+		expect(flattenUsageMetricsBreakdown(rows).map(({ item, depth }) => [item.label, depth])).toEqual([
+			["host", 0],
+			["webview", 1],
+			["renderer", 2],
+			["sidecar", 0],
+		]);
+	});
 });

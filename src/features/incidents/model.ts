@@ -22,12 +22,12 @@ export interface IncidentCounts {
 	warning: number;
 }
 
-const SEVERITY_WEIGHT: Record<IncidentSeverity, number> = {
+const SEVERITY_WEIGHT = {
 	degraded: 4,
 	attention: 3,
 	restarted: 2,
 	warning: 1,
-};
+} satisfies Record<IncidentSeverity, number>;
 
 function latestSignalTime(item: IncidentCockpitItem): number {
 	const value = item.latestSignalAt ?? item.latestWarningEvent?.lastSeenAt;
@@ -93,8 +93,14 @@ export function sortIncidentItems(
 export function groupIncidentItems(
 	items: IncidentCockpitItem[],
 ): Array<{ label: string; items: IncidentCockpitItem[] }> {
+	return groupSortedIncidentItems(sortIncidentItems(items));
+}
+
+function groupSortedIncidentItems(
+	items: IncidentCockpitItem[],
+): Array<{ label: string; items: IncidentCockpitItem[] }> {
 	const groups = new Map<string, IncidentCockpitItem[]>();
-	for (const item of sortIncidentItems(items)) {
+	for (const item of items) {
 		const label = incidentGroupLabel(item.resource);
 		const group = groups.get(label);
 		if (group) group.push(item);
@@ -130,8 +136,11 @@ export function buildIncidentSurfaceState(
 ) {
 	const counts = countIncidentItems(items);
 	const visibleItems = sortIncidentItems(filterIncidentItems(items, filter));
-	const groups = groupIncidentItems(visibleItems);
-	const resolvedSelectedKey = reconcileIncidentSelection(visibleItems, selectedKey);
+	const groups = groupSortedIncidentItems(visibleItems);
+	const selectedIncident = selectedKey
+		? visibleItems.find((item) => incidentItemKey(item) === selectedKey) ?? visibleItems[0] ?? null
+		: visibleItems[0] ?? null;
+	const resolvedSelectedKey = selectedIncident ? incidentItemKey(selectedIncident) : null;
 	return {
 		counts,
 		filterOptions: buildIncidentFilterOptions(counts),
@@ -139,7 +148,7 @@ export function buildIncidentSurfaceState(
 		visibleItems,
 		visibleCount: visibleItems.length,
 		selectedKey: resolvedSelectedKey,
-		selectedIncident: visibleItems.find((item) => incidentItemKey(item) === resolvedSelectedKey) ?? null,
+		selectedIncident,
 		emptyState:
 			counts.total === 0 ? "clean" : groups.length === 0 ? "filtered" : "ready",
 	} as const;

@@ -23,7 +23,7 @@ export function resourceTopologyNodeId(
 	return `${cluster}:${apiVersion}:${kind}:${namespace ?? ""}:${name}`;
 }
 
-function pushMapValue<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+export function pushMapValue<K, V>(map: Map<K, V[]>, key: K, value: V): void {
 	const values = map.get(key);
 	if (values) {
 		values.push(value);

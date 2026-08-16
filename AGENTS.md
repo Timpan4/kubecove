@@ -84,6 +84,7 @@ Run through [docs/handbook/pr-checklist.md](docs/handbook/pr-checklist.md) befor
 - Do not benchmark live Kubernetes API calls directly in CodSpeed. Use Settings -> Diagnostics latency reports for real Tauri command, cluster, network, and webview paths.
 - Frontend pure hot paths continue to use `bun run bench` and the existing CodSpeed Vitest benchmark suites.
 - For perf-sensitive changes, measure the relevant path before and after, optimize one measured bottleneck at a time, and re-measure the same benchmark or diagnostic path.
+- Do not copy iteration syntax blindly. In measured or repeated hot paths, inspect collection size, call frequency, allocation, and early-exit behavior; prefer one `for...of` pass over allocation-heavy spread or chained `map`/`filter`/`flatMap` when behavior stays exact. Keep `some`/`find`/`every` where their short-circuit semantics improve clarity, and never use `for...in` for arrays.
 - Add a new benchmark only when the changed hot path is not covered by existing benchmarks or diagnostics.
 
 ## Cross-Platform
