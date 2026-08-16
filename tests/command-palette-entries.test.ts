@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { ResourceSummary } from "../src/lib/types";
-import { buildResourceSearchIndex } from "../src/features/resources/helpers";
-import { filterResourceSearchIndex } from "../src/features/resources/helpers";
+import type { ArgoApplicationSummary, ResourceSummary } from "../src/lib/types";
 import {
+	buildResourceSearchIndex,
+	filterResourceSearchIndex,
+} from "../src/features/resources";
+import {
+	buildArgoSearchResources,
 	buildDedupedResourceSearchIndex,
 	buildGlobalSearchFetchKeys,
 	buildNavigationEntries,
@@ -106,12 +109,12 @@ describe("command palette entries", () => {
 	});
 
 	test("search scope covers native and discovered resources across provider namespaces", () => {
-		const applicationKind = {
-			group: "argoproj.io",
-			version: "v1alpha1",
-			apiVersion: "argoproj.io/v1alpha1",
-			kind: "Application",
-			plural: "applications",
+		const fluxKind = {
+			group: "kustomize.toolkit.fluxcd.io",
+			version: "v1",
+			apiVersion: "kustomize.toolkit.fluxcd.io/v1",
+			kind: "Kustomization",
+			plural: "kustomizations",
 			namespaced: true,
 		};
 		const widgetKind = {
@@ -122,42 +125,42 @@ describe("command palette entries", () => {
 			plural: "widgets",
 			namespaced: true,
 		};
-		const keys = buildGlobalSearchFetchKeys(
-			["team-a"],
-			[applicationKind, widgetKind],
-			true,
-			[],
-		);
+		const keys = buildGlobalSearchFetchKeys(["team-a"], [widgetKind], [fluxKind]);
 
 		expect(keys).toContainEqual({ kind: "Deployment", namespace: "team-a" });
 		expect(keys).toContainEqual({ kind: "Node", namespace: undefined });
 		expect(keys).toContainEqual({ kind: widgetKind, namespace: "team-a" });
 		expect(
 			keys.filter(
-				(key) => typeof key.kind !== "string" && key.kind.kind === "Application",
+				(key) => typeof key.kind !== "string" && key.kind.kind === "Kustomization",
 			),
-		).toEqual([{ kind: applicationKind, namespace: undefined }]);
+		).toEqual([{ kind: fluxKind, namespace: undefined }]);
 	});
 
 	test("finds a known Argo CD Application by partial name with scope context", () => {
-		const application = resource({
-			kind: "Application",
+		const application: ArgoApplicationSummary = {
 			name: "spotify-weekly-update",
+			cluster: "ctx",
 			namespace: "argocd",
-			apiVersion: "argoproj.io/v1alpha1",
-			group: "argoproj.io",
-			version: "v1alpha1",
-			plural: "applications",
-			namespaced: true,
-			dynamic: true,
-		});
+			project: "default",
+			syncStatus: "Synced",
+			healthStatus: "Healthy",
+			destinationNamespace: "spotify",
+			destinationServer: "https://kubernetes.default.svc",
+			sourceRepo: "https://github.com/example/spotify.git",
+			sourceRevision: "main",
+			resourceNamespaces: ["spotify"],
+			age: "1d",
+		};
 		const matches = filterResourceSearchIndex(
-			buildDedupedResourceSearchIndex([[application]]),
+			buildDedupedResourceSearchIndex([
+				buildArgoSearchResources([application], [], []),
+			]),
 			"spotify",
 			"",
 		);
 
-		expect(matches).toEqual([application]);
+		expect(matches).toHaveLength(1);
 		expect(matches[0]).toMatchObject({
 			cluster: "ctx",
 			kind: "Application",

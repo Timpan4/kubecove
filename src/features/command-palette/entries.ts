@@ -7,6 +7,9 @@ import {
 import {
 	CLUSTER_SCOPED_KINDS,
 	SUPPORTED_KINDS,
+	type ArgoApplicationSetSummary,
+	type ArgoApplicationSummary,
+	type ArgoAppProjectSummary,
 	type DiscoveredResourceKind,
 	type ResourceKindSelection,
 	type ResourceSummary,
@@ -14,9 +17,11 @@ import {
 import {
 	buildFetchKeys,
 	buildResourceSearchIndex,
+	resourceKindFetchKey,
 	type FetchKey,
 	type ResourceSearchEntry,
-} from "@/features/resources/helpers";
+} from "@/features/resources";
+import { gitOpsSelectionResource } from "@/features/gitops";
 
 export type PaletteAction = "settings" | "launcher";
 
@@ -28,43 +33,10 @@ export interface PaletteNavigationEntry {
 	action?: PaletteAction;
 }
 
-const ARGO_RESOURCE_KINDS: DiscoveredResourceKind[] = [
-	{
-		group: "argoproj.io",
-		version: "v1alpha1",
-		apiVersion: "argoproj.io/v1alpha1",
-		kind: "Application",
-		plural: "applications",
-		namespaced: true,
-	},
-	{
-		group: "argoproj.io",
-		version: "v1alpha1",
-		apiVersion: "argoproj.io/v1alpha1",
-		kind: "ApplicationSet",
-		plural: "applicationsets",
-		namespaced: true,
-	},
-	{
-		group: "argoproj.io",
-		version: "v1alpha1",
-		apiVersion: "argoproj.io/v1alpha1",
-		kind: "AppProject",
-		plural: "appprojects",
-		namespaced: true,
-	},
-];
-
-function resourceKindKey(kind: ResourceKindSelection): string {
-	return typeof kind === "string"
-		? `native:${kind}`
-		: `dynamic:${kind.apiVersion}:${kind.plural}:${kind.kind}`;
-}
-
 function dedupeKinds(kinds: ResourceKindSelection[]): ResourceKindSelection[] {
 	const seen = new Set<string>();
 	return kinds.filter((kind) => {
-		const key = resourceKindKey(kind);
+		const key = resourceKindFetchKey(kind);
 		if (seen.has(key)) return false;
 		seen.add(key);
 		return true;
@@ -74,22 +46,38 @@ function dedupeKinds(kinds: ResourceKindSelection[]): ResourceKindSelection[] {
 export function buildGlobalSearchFetchKeys(
 	namespaces: string[],
 	customResourceKinds: DiscoveredResourceKind[],
-	argoDetected: boolean,
 	fluxResourceKinds: DiscoveredResourceKind[],
 ): FetchKey[] {
-	const providerKinds = dedupeKinds([
-		...(argoDetected ? ARGO_RESOURCE_KINDS : []),
-		...fluxResourceKinds,
-	]);
-	const providerKeys = new Set(providerKinds.map(resourceKindKey));
+	const providerKinds = dedupeKinds(fluxResourceKinds);
+	const providerKeys = new Set(providerKinds.map(resourceKindFetchKey));
 	const scopedKinds = dedupeKinds([
 		...SUPPORTED_KINDS,
 		...CLUSTER_SCOPED_KINDS,
-		...customResourceKinds.filter((kind) => !providerKeys.has(resourceKindKey(kind))),
+		...customResourceKinds.filter(
+			(kind) => !providerKeys.has(resourceKindFetchKey(kind)),
+		),
 	]);
 	return [
 		...buildFetchKeys(namespaces, scopedKinds),
 		...buildFetchKeys([], providerKinds),
+	];
+}
+
+export function buildArgoSearchResources(
+	applications: ArgoApplicationSummary[],
+	applicationSets: ArgoApplicationSetSummary[],
+	projects: ArgoAppProjectSummary[],
+): ResourceSummary[] {
+	return [
+		...applications.map((item) =>
+			gitOpsSelectionResource({ type: "argoApp", item }),
+		),
+		...applicationSets.map((item) =>
+			gitOpsSelectionResource({ type: "argoAppSet", item }),
+		),
+		...projects.map((item) =>
+			gitOpsSelectionResource({ type: "argoProject", item }),
+		),
 	];
 }
 

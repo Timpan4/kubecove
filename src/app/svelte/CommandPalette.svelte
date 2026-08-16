@@ -11,6 +11,7 @@
 		CommandList,
 	} from "@/components/ui/svelte";
 	import {
+		buildArgoSearchResources,
 		buildDedupedResourceSearchIndex,
 		buildGlobalSearchFetchKeys,
 		buildNavigationEntries,
@@ -28,6 +29,9 @@
 		createTauriClient,
 		detectArgoCD,
 		detectFlux,
+		listArgoApplicationSets,
+		listArgoApplications,
+		listArgoAppProjects,
 		listNamespaces,
 	} from "@/lib/tauri";
 	import { queryKeys } from "@/lib/queryKeys";
@@ -36,7 +40,13 @@
 		makeNamespaceNode,
 		type TreeNodeId,
 	} from "@/lib/tree-nav";
-	import type { DiscoveredResourceKind, ResourceSummary } from "@/lib/types";
+	import type {
+		ArgoApplicationSetSummary,
+		ArgoApplicationSummary,
+		ArgoAppProjectSummary,
+		DiscoveredResourceKind,
+		ResourceSummary,
+	} from "@/lib/types";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import { settingsStore } from "@/lib/settings-store";
@@ -92,6 +102,27 @@
 		enabled: open && sourceReady,
 		staleTime: 60_000,
 	}));
+	const argoAppsQuery = createQuery<ArgoApplicationSummary[]>(() => ({
+		queryKey: queryKeys.argoApps(workspace.scope.clusterContext, kubeconfigSourceKey),
+		queryFn: () =>
+			listArgoApplications(client, workspace.scope.clusterContext, kubeconfigSourceKey),
+		enabled: open && sourceReady && argoDetectionQuery.data === true,
+		staleTime: 15_000,
+	}));
+	const argoAppSetsQuery = createQuery<ArgoApplicationSetSummary[]>(() => ({
+		queryKey: queryKeys.argoAppSets(workspace.scope.clusterContext, kubeconfigSourceKey),
+		queryFn: () =>
+			listArgoApplicationSets(client, workspace.scope.clusterContext, kubeconfigSourceKey),
+		enabled: open && sourceReady && argoDetectionQuery.data === true,
+		staleTime: 15_000,
+	}));
+	const argoProjectsQuery = createQuery<ArgoAppProjectSummary[]>(() => ({
+		queryKey: queryKeys.argoAppProjects(workspace.scope.clusterContext, kubeconfigSourceKey),
+		queryFn: () =>
+			listArgoAppProjects(client, workspace.scope.clusterContext, kubeconfigSourceKey),
+		enabled: open && sourceReady && argoDetectionQuery.data === true,
+		staleTime: 15_000,
+	}));
 
 	const fluxDetectionQuery = createQuery(() => ({
 		queryKey: queryKeys.fluxDetect(workspace.scope.clusterContext, kubeconfigSourceKey),
@@ -106,7 +137,6 @@
 		buildGlobalSearchFetchKeys(
 			workspace.scope.namespaces,
 			presentCustomResourceKinds,
-			argoDetectionQuery.data === true,
 			fluxDetectionQuery.data?.kinds ?? [],
 		),
 	);
@@ -116,6 +146,13 @@
 		enabled: open && sourceReady && gitOpsDetectionReady && fetchKeys.length > 0,
 		staleTime: 30_000,
 	}));
+	const argoSearchResources = $derived(
+		buildArgoSearchResources(
+			argoAppsQuery.data ?? [],
+			argoAppSetsQuery.data ?? [],
+			argoProjectsQuery.data ?? [],
+		),
+	);
 
 	const gitOpsNavigationVisible = $derived(
 		argoDetectionQuery.data === true ||
@@ -138,6 +175,7 @@
 		});
 		return buildDedupedResourceSearchIndex([
 			warmedRows,
+			argoSearchResources,
 			...cached.map(([, rows]) => rows ?? []),
 		]);
 	});
