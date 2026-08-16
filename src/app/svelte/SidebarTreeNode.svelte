@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ChevronRight } from "lucide-svelte";
 	import { Button } from "@/components/ui/svelte";
+	import { toggleTreeNode } from "@/components/sidebar-tree-helpers";
 	import { cnfast } from "@/lib/utils";
 	import { nodeIdToString, type TreeNode, type TreeNodeId } from "@/lib/tree-nav";
 	import SidebarTreeNode from "./SidebarTreeNode.svelte";
@@ -71,8 +72,7 @@
 
 	function toggleNode(event: MouseEvent) {
 		event.stopPropagation();
-		if (!isDisabled) onNodeSelect(node.id);
-		if (hasChildren) onSectionToggle(id);
+		toggleTreeNode(hasChildren, id, onSectionToggle);
 	}
 
 	function handleKeydown(event: KeyboardEvent) {

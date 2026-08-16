@@ -1,10 +1,11 @@
 import type { DiscoveredResourceKind } from "@/lib/types";
-import { buildNamespaceTreeNode } from "./sidebar-tree-helpers";
+import { buildNamespaceTreeNode, toggleTreeNode } from "./sidebar-tree-helpers";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
 declare function expect(actual: unknown): {
 	toBe(expected: unknown): void;
+	toEqual(expected: unknown): void;
 };
 
 const widget: DiscoveredResourceKind = {
@@ -17,6 +18,16 @@ const widget: DiscoveredResourceKind = {
 };
 
 describe("namespace custom resources", () => {
+	test("expands a tree node without a selection callback", () => {
+		const expanded: string[] = [];
+
+		toggleTreeNode(true, "namespace::namespaces::payments", (id) => {
+			expanded.push(id);
+		});
+
+		expect(expanded).toEqual(["namespace::namespaces::payments"]);
+	});
+
 	test("omits custom resources group when none are present", () => {
 		const node = buildNamespaceTreeNode("payments", []);
 

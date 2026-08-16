@@ -228,6 +228,26 @@ describe("workspace navigation", () => {
 		]);
 	});
 
+	test("keeps namespace and kind scopes paired for a namespace leaf", () => {
+		const navigation = navigateWorkspace(createWorkspaceNavigation(workspace), {
+			type: "selectNode",
+			node: {
+				type: "kind",
+				section: "namespaces",
+				namespace: "payments",
+				group: "Workloads",
+				kind: "Pod",
+			},
+		});
+		const scope = buildWorkspaceNavigationModel(
+			workspace,
+			navigation,
+		).resourceBrowserScope;
+
+		expect(scope.namespaces).toEqual(["payments"]);
+		expect(scope.kinds).toEqual(["Pod"]);
+	});
+
 	test("preserves stale serialized state for a matching workspace", () => {
 		const restored = createWorkspaceNavigation(workspace, {
 			workspaceId: workspace.id,
