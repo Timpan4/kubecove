@@ -953,6 +953,7 @@
 	bind:open={commandOpen}
 	{workspace}
 	{workspaceReadContext}
+	{presentCustomResourceKinds}
 	onNodeSelect={selectNode}
 	onResourceSelect={selectResource}
 	onOpenLauncher={openLauncher}

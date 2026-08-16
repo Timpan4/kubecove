@@ -1,14 +1,27 @@
 import {
+	buildFetchKeys,
+	buildResourceSearchIndex,
+	type FetchKey,
+	type ResourceSearchEntry,
+	resourceKindFetchKey,
+} from "@/features/resources";
+import { gitOpsSelectionResource } from "@/lib/gitops-resource";
+import {
 	SECTIONS,
-	STATIC_SECTION_NAMES,
 	type SectionName,
+	STATIC_SECTION_NAMES,
 	type TreeNodeId,
 } from "@/lib/tree-nav";
-import type { ResourceSummary } from "@/lib/types";
 import {
-	buildResourceSearchIndex,
-	type ResourceSearchEntry,
-} from "@/features/resources/helpers";
+	type ArgoApplicationSetSummary,
+	type ArgoApplicationSummary,
+	type ArgoAppProjectSummary,
+	CLUSTER_SCOPED_KINDS,
+	type DiscoveredResourceKind,
+	type ResourceKindSelection,
+	type ResourceSummary,
+	SUPPORTED_KINDS,
+} from "@/lib/types";
 
 export type PaletteAction = "settings" | "launcher";
 
@@ -18,6 +31,54 @@ export interface PaletteNavigationEntry {
 	searchText: string;
 	nodeId: TreeNodeId | null;
 	action?: PaletteAction;
+}
+
+function dedupeKinds(kinds: ResourceKindSelection[]): ResourceKindSelection[] {
+	const seen = new Set<string>();
+	return kinds.filter((kind) => {
+		const key = resourceKindFetchKey(kind);
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+}
+
+export function buildGlobalSearchFetchKeys(
+	namespaces: string[],
+	customResourceKinds: DiscoveredResourceKind[],
+	fluxResourceKinds: DiscoveredResourceKind[],
+): FetchKey[] {
+	const providerKinds = dedupeKinds(fluxResourceKinds);
+	const providerKeys = new Set(providerKinds.map(resourceKindFetchKey));
+	const scopedKinds = dedupeKinds([
+		...SUPPORTED_KINDS,
+		...CLUSTER_SCOPED_KINDS,
+		...customResourceKinds.filter(
+			(kind) => !providerKeys.has(resourceKindFetchKey(kind)),
+		),
+	]);
+	return [
+		...buildFetchKeys(namespaces, scopedKinds),
+		...buildFetchKeys([], providerKinds),
+	];
+}
+
+export function buildArgoSearchResources(
+	applications: ArgoApplicationSummary[],
+	applicationSets: ArgoApplicationSetSummary[],
+	projects: ArgoAppProjectSummary[],
+): ResourceSummary[] {
+	return [
+		...applications.map((item) =>
+			gitOpsSelectionResource({ type: "argoApp", item }),
+		),
+		...applicationSets.map((item) =>
+			gitOpsSelectionResource({ type: "argoAppSet", item }),
+		),
+		...projects.map((item) =>
+			gitOpsSelectionResource({ type: "argoProject", item }),
+		),
+	];
 }
 
 function sectionEntry(section: SectionName): PaletteNavigationEntry {

@@ -3,6 +3,7 @@ export {
 	buildFetchKeys,
 	buildResourceSearchIndex,
 	filterResourceSearchIndex,
+	resourceKindFetchKey,
 	type FetchKey,
 	type HealthFilter,
 	type ResourceSearchEntry,
