@@ -7,14 +7,6 @@ import {
 	type TreeNodeId,
 } from "@/lib/tree-nav";
 
-export function toggleTreeNode(
-	hasChildren: boolean,
-	id: string,
-	onSectionToggle: (id: string) => void,
-): void {
-	if (hasChildren) onSectionToggle(id);
-}
-
 export function buildShallowNamespaceTreeNode(namespace: string): TreeNode {
 	return {
 		id: { type: "namespace", section: "namespaces", namespace },
