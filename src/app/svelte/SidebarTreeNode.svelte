@@ -71,7 +71,6 @@
 
 	function toggleNode(event: MouseEvent) {
 		event.stopPropagation();
-		if (!isDisabled) onNodeSelect(node.id);
 		if (hasChildren) onSectionToggle(id);
 	}
 

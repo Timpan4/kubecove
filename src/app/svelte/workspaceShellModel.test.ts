@@ -3,6 +3,7 @@ import {
 	GITOPS_RESOURCE_KINDS,
 	appendPresentCustomResourceKinds,
 	buildSidebarTree,
+	resourceBrowserAvailableKinds,
 } from "./workspaceShellModel";
 
 declare function describe(name: string, fn: () => void): void;
@@ -60,6 +61,12 @@ describe("Custom Resources tree model", () => {
 		expect(appendPresentCustomResourceKinds(["Pod", widget], [widget])).toEqual([
 			"Pod",
 			widget,
+		]);
+	});
+
+	test("keeps a fixed namespace kind scope from adding discovered kinds", () => {
+		expect(resourceBrowserAvailableKinds(["Pod"], [widget], true)).toEqual([
+			"Pod",
 		]);
 	});
 

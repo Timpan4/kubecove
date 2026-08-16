@@ -55,7 +55,7 @@
 		type ResourceKindSelection,
 		type ResourceSummary,
 	} from "@/lib/types";
-	import { nodeIdToString, resolveTreeScope, type TreeNodeId } from "@/lib/tree-nav";
+	import { nodeIdToString, type TreeNodeId } from "@/lib/tree-nav";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
 		entryPointFromResource,
@@ -225,7 +225,7 @@
 	const resourceBrowserScope = $derived(navigationModel.resourceBrowserScope);
 	const resourceBrowserNamespaces = $derived(resourceBrowserScope.namespaces);
 	const fixedResourceKindScope = $derived(
-		selectedNode?.type === "kind" && resolveTreeScope(selectedNode).clusterScoped,
+		selectedNode?.type === "kind",
 	);
 	const workspaceCustomResourcePrewarmQuery = createQuery<DiscoveredResourceKind[]>(() => ({
 		queryKey: queryKeys.presentCustomResourceKinds(
