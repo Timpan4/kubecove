@@ -1,27 +1,27 @@
 import {
+	buildFetchKeys,
+	buildResourceSearchIndex,
+	type FetchKey,
+	type ResourceSearchEntry,
+	resourceKindFetchKey,
+} from "@/features/resources";
+import { gitOpsSelectionResource } from "@/lib/gitops-resource";
+import {
 	SECTIONS,
-	STATIC_SECTION_NAMES,
 	type SectionName,
+	STATIC_SECTION_NAMES,
 	type TreeNodeId,
 } from "@/lib/tree-nav";
 import {
-	CLUSTER_SCOPED_KINDS,
-	SUPPORTED_KINDS,
 	type ArgoApplicationSetSummary,
 	type ArgoApplicationSummary,
 	type ArgoAppProjectSummary,
+	CLUSTER_SCOPED_KINDS,
 	type DiscoveredResourceKind,
 	type ResourceKindSelection,
 	type ResourceSummary,
+	SUPPORTED_KINDS,
 } from "@/lib/types";
-import {
-	buildFetchKeys,
-	buildResourceSearchIndex,
-	resourceKindFetchKey,
-	type FetchKey,
-	type ResourceSearchEntry,
-} from "@/features/resources";
-import { gitOpsSelectionResource } from "@/features/gitops";
 
 export type PaletteAction = "settings" | "launcher";
 
