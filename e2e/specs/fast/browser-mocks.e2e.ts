@@ -24,14 +24,20 @@ describe("browser mock inspection", () => {
 		const navigation = await $('[data-slot="sheet-content"]');
 		await navigation.$('[role="treeitem"]*=GitOps').click();
 
-		const firstDetails = await $('button[aria-label="Open details for platform-argocd"]');
+		const firstDetails = await $('button[aria-label="Open details for Application platform-argocd in argocd"]');
 		await firstDetails.click();
 		await expect($('button[aria-label="Pin Application platform-argocd"]')).toBeDisplayed();
 		await $('button[aria-label="Close resource details"]').click();
 
-		const secondDetails = await $('button[aria-label="Open details for platform-cilium"]');
-		await browser.execute((element: HTMLElement) => element.focus(), secondDetails);
+		const keyboardDetails = await $('button[aria-label="Open details for Application platform-argocd in argocd"]');
+		await keyboardDetails.scrollIntoView();
+		await browser.execute((element: HTMLElement) => element.focus(), keyboardDetails);
 		await browser.keys("Enter");
+		await expect($('button[aria-label="Pin Application platform-argocd"]')).toBeDisplayed();
+		await $('button[aria-label="Close resource details"]').click();
+
+		const secondDetails = await $('button[aria-label="Open details for Application platform-cilium in argocd"]');
+		await secondDetails.click();
 		await expect($('button[aria-label="Pin Application platform-cilium"]')).toBeDisplayed();
 	});
 

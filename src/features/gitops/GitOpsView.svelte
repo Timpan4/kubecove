@@ -141,6 +141,11 @@
 		return `Open details for ${selection.item.name}`;
 	}
 
+	function gitOpsDetailsActionLabel(selection: GitOpsSelection): string {
+		const resource = gitOpsSelectionResource(selection);
+		return `Open details for ${resource.kind} ${resource.name} ${resource.namespace ? `in ${resource.namespace}` : "at cluster scope"}`;
+	}
+
 	function openGitOpsDetails(event: MouseEvent, selection: GitOpsSelection) {
 		event.stopPropagation();
 		onResourceInspect(
@@ -581,7 +586,7 @@
 												type="button"
 												variant="ghost"
 												size="sm"
-												aria-label={`Open details for ${item.item.name}`}
+												aria-label={gitOpsDetailsActionLabel(item)}
 											data-details-key={gitOpsDetailsActionKey(item)}
 											onclick={(event: MouseEvent) => openGitOpsDetails(event, item)}
 											onkeydown={stopTooltipEvent}
@@ -680,7 +685,7 @@
 												type="button"
 												variant="ghost"
 												size="sm"
-												aria-label={`Open details for ${item.item.name}`}
+												aria-label={gitOpsDetailsActionLabel(item)}
 												data-details-key={gitOpsDetailsActionKey(item)}
 												onclick={(event: MouseEvent) => openGitOpsDetails(event, item)}
 												onkeydown={stopTooltipEvent}
