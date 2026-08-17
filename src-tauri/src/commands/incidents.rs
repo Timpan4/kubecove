@@ -387,8 +387,7 @@ fn incident_item(
         signals
             .iter()
             .find(|signal| signal.kind == "restart")
-            .map(|signal| signal.state)
-            .unwrap_or(IncidentSignalState::Active)
+            .map_or(IncidentSignalState::Active, |signal| signal.state)
     };
     let latest_signal_at = latest_signal_at(&signals);
 
@@ -448,7 +447,7 @@ fn status_message(resource: &ResourceSummary) -> String {
     .join(" · ")
 }
 
-fn severity_weight(severity: &IncidentSeverity) -> u8 {
+fn severity_weight(severity: IncidentSeverity) -> u8 {
     match severity {
         IncidentSeverity::Degraded => 4,
         IncidentSeverity::Attention => 3,
@@ -468,7 +467,7 @@ fn state_weight(state: IncidentSignalState) -> u8 {
 fn incident_item_sort(a: &IncidentCockpitItem, b: &IncidentCockpitItem) -> std::cmp::Ordering {
     state_weight(b.state)
         .cmp(&state_weight(a.state))
-        .then_with(|| severity_weight(&b.severity).cmp(&severity_weight(&a.severity)))
+        .then_with(|| severity_weight(b.severity).cmp(&severity_weight(a.severity)))
         .then_with(|| latest_item_signal_time_ms(b).cmp(&latest_item_signal_time_ms(a)))
         .then_with(|| a.resource.namespace.cmp(&b.resource.namespace))
         .then_with(|| a.resource.kind.cmp(&b.resource.kind))
