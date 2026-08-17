@@ -19,6 +19,22 @@ describe("browser mock inspection", () => {
 		await expect($("body")).toHaveText(expect.stringContaining("payments-api"));
 	});
 
+	it("opens adjacent Argo Application details by accessible name", async () => {
+		await $('button[aria-label="Open workspace navigation"]').click();
+		const navigation = await $('[data-slot="sheet-content"]');
+		await navigation.$('[role="treeitem"]*=GitOps').click();
+
+		const firstDetails = await $('button[aria-label="Open details for platform-argocd"]');
+		await firstDetails.click();
+		await expect($('button[aria-label="Pin Application platform-argocd"]')).toBeDisplayed();
+		await $('button[aria-label="Close resource details"]').click();
+
+		const secondDetails = await $('button[aria-label="Open details for platform-cilium"]');
+		await browser.execute((element: HTMLElement) => element.focus(), secondDetails);
+		await browser.keys("Enter");
+		await expect($('button[aria-label="Pin Application platform-cilium"]')).toBeDisplayed();
+	});
+
 	it("identifies the typed browser-only source", async () => {
 		await $('button[aria-label="Open settings"]').click();
 		await $("button=Kubeconfig").click();

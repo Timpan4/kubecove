@@ -581,6 +581,7 @@
 												type="button"
 												variant="ghost"
 												size="sm"
+												aria-label={`Open details for ${item.item.name}`}
 											data-details-key={gitOpsDetailsActionKey(item)}
 											onclick={(event: MouseEvent) => openGitOpsDetails(event, item)}
 											onkeydown={stopTooltipEvent}
@@ -679,6 +680,7 @@
 												type="button"
 												variant="ghost"
 												size="sm"
+												aria-label={`Open details for ${item.item.name}`}
 												data-details-key={gitOpsDetailsActionKey(item)}
 												onclick={(event: MouseEvent) => openGitOpsDetails(event, item)}
 												onkeydown={stopTooltipEvent}
