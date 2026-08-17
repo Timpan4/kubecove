@@ -236,17 +236,21 @@ export type IncidentSeverity =
 	| "restarted"
 	| "warning";
 
+export type IncidentSignalState = "active" | "resolved" | "historical";
+
 export interface IncidentSignalSummary {
 	kind: string;
 	label: string;
 	message: string;
 	source: string;
+	state?: IncidentSignalState;
 	lastSeenAt?: string;
 }
 
 export interface IncidentCockpitItem {
 	resource: ResourceSummary;
 	severity: IncidentSeverity;
+	state?: IncidentSignalState;
 	signals: IncidentSignalSummary[];
 	warningEventCount: number;
 	latestSignalAt?: string;

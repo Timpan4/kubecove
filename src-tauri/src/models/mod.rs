@@ -43,7 +43,8 @@ pub use helm::{
     HelmReleaseReconciliation, HelmReleaseSummary, HelmValuesSummary,
 };
 pub use incidents::{
-    IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalSummary,
+    IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalState,
+    IncidentSignalSummary,
 };
 pub use metrics::{
     ResourceMetricSummary, ResourceMetricsAvailability, ResourceMetricsAvailabilityStatus,

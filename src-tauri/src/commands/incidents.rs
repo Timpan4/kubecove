@@ -1,11 +1,14 @@
+mod restarts;
+
 use super::{resource_scope_from, ClusterLiveStore};
 use crate::commands::{
-    helpers::{k8s_timestamp_to_datetime, list_params, resource_age},
+    helpers::{k8s_timestamp_to_datetime, list_params, resource_age, update_resource_health},
     kubeconfig::KubeconfigSource,
 };
 use crate::models::{
-    AppError, IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalSummary,
-    ResourceEventSummary, ResourceHealth, ResourceListRequest, ResourceSummary,
+    AppError, IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalState,
+    IncidentSignalSummary, ResourceEventSummary, ResourceHealth, ResourceListRequest,
+    ResourceSummary,
 };
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::core::v1::Event;
@@ -13,6 +16,11 @@ use kube::{api::Api, Client};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 use tauri::State;
+
+use restarts::{
+    list_restart_evidence, resource_key, restart_signal_label, restart_signal_message,
+    RestartEvidence,
+};
 
 const MAX_WARNING_EVENTS_PER_RESOURCE: usize = 3;
 const MAX_WARNING_EVENTS_TOTAL: usize = 500;
@@ -69,17 +77,18 @@ pub async fn incident_cockpit_from(
         kubeconfig_env_var.clone(),
     )
     .await?;
+    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let restart_result = list_restart_evidence(client.clone(), &resources).await?;
     let event_scope = event_namespace_scope(&requests, &resources);
     let mut warnings = Vec::new();
-    let event_result =
-        match list_warning_events(&cluster_context, event_scope, kubeconfig_env_var).await {
-            Ok(result) => result,
-            Err(err) if is_forbidden_app_error(&err) => {
-                warnings.push("Warning events unavailable: forbidden by RBAC.".to_string());
-                WarningEventList::default()
-            }
-            Err(err) => return Err(err),
-        };
+    let event_result = match list_warning_events(client, event_scope).await {
+        Ok(result) => result,
+        Err(err) if is_forbidden_app_error(&err) => {
+            warnings.push("Warning events unavailable: forbidden by RBAC.".to_string());
+            WarningEventList::default()
+        }
+        Err(err) => return Err(err),
+    };
     if !event_result.denied_namespaces.is_empty() {
         warnings.push(format!(
             "Warning events unavailable in namespaces: {}.",
@@ -97,7 +106,7 @@ pub async fn incident_cockpit_from(
         cluster: cluster_context,
         generated_at: Utc::now().to_rfc3339(),
         requested_scope: requests,
-        items: build_incident_items(resources, events),
+        items: build_incident_items(resources, events, restart_result.by_resource),
         warnings,
     })
 }
@@ -143,11 +152,9 @@ async fn client_for_context(
 }
 
 async fn list_warning_events(
-    cluster_context: &str,
+    client: Client,
     scope: EventNamespaceScope,
-    kubeconfig_env_var: Option<String>,
 ) -> Result<WarningEventList, AppError> {
-    let client = client_for_context(cluster_context, kubeconfig_env_var).await?;
     let namespace_scopes = match scope {
         EventNamespaceScope::All => vec![None],
         EventNamespaceScope::Namespaces(namespaces) => namespaces.into_iter().map(Some).collect(),
@@ -295,18 +302,10 @@ fn resource_match_key(
     )
 }
 
-fn resource_key(resource: &ResourceSummary) -> String {
-    resource_match_key(
-        &resource.kind,
-        resource.api_version.as_deref(),
-        resource.namespace.as_deref(),
-        &resource.name,
-    )
-}
-
 fn build_incident_items(
     resources: Vec<ResourceSummary>,
     warning_events: Vec<ResourceEventMatch>,
+    restart_evidence: BTreeMap<String, RestartEvidence>,
 ) -> Vec<IncidentCockpitItem> {
     let mut events_by_resource: BTreeMap<String, Vec<ResourceEventSummary>> = BTreeMap::new();
     for event in warning_events {
@@ -321,7 +320,7 @@ fn build_incident_items(
         .filter_map(|resource| {
             let key = resource_key(&resource);
             let events = events_by_resource.remove(&key).unwrap_or_default();
-            incident_item(resource, events)
+            incident_item(resource, events, restart_evidence.get(&key))
         })
         .collect::<Vec<_>>();
     items.sort_by(incident_item_sort);
@@ -331,35 +330,37 @@ fn build_incident_items(
 fn incident_item(
     resource: ResourceSummary,
     warning_events: Vec<ResourceEventSummary>,
+    restart_evidence: Option<&RestartEvidence>,
 ) -> Option<IncidentCockpitItem> {
     let mut signals = Vec::new();
-    if is_degraded(&resource) {
+    let status_severity = current_status_severity(&resource);
+    if status_severity == Some(IncidentSeverity::Degraded) {
         signals.push(IncidentSignalSummary {
             kind: "status".to_string(),
             label: "Degraded".to_string(),
             message: status_message(&resource),
             source: "status".to_string(),
+            state: IncidentSignalState::Active,
             last_seen_at: resource.created_at.clone(),
         });
-    } else if is_attention(&resource) {
+    } else if status_severity == Some(IncidentSeverity::Attention) {
         signals.push(IncidentSignalSummary {
             kind: "status".to_string(),
             label: "Needs attention".to_string(),
             message: status_message(&resource),
             source: "status".to_string(),
+            state: IncidentSignalState::Active,
             last_seen_at: resource.created_at.clone(),
         });
     }
-    if resource.restarts.unwrap_or_default() > 0 {
+    if let Some(evidence) = restart_evidence.cloned() {
         signals.push(IncidentSignalSummary {
             kind: "restart".to_string(),
-            label: "Restarted".to_string(),
-            message: format!(
-                "{} restarts observed in summary data.",
-                resource.restarts.unwrap_or_default()
-            ),
+            label: restart_signal_label(evidence.state).to_string(),
+            message: restart_signal_message(&resource, &evidence),
             source: "status".to_string(),
-            last_seen_at: resource.created_at.clone(),
+            state: evidence.state,
+            last_seen_at: evidence.last_seen_at,
         });
     }
     for event in warning_events.iter().take(MAX_WARNING_EVENTS_PER_RESOURCE) {
@@ -368,18 +369,33 @@ fn incident_item(
             label: event.reason.clone(),
             message: event.message.clone(),
             source: event.source.clone(),
+            state: IncidentSignalState::Active,
             last_seen_at: event.last_seen_at.clone(),
         });
     }
 
     let warning_event_count = warning_events.len();
     let latest_warning_event = warning_events.first().cloned();
-    let severity = severity_for(&resource, latest_warning_event.is_some())?;
+    let severity = severity_for(
+        status_severity,
+        latest_warning_event.is_some(),
+        restart_evidence.is_some(),
+    )?;
+    let state = if status_severity.is_some() || latest_warning_event.is_some() {
+        IncidentSignalState::Active
+    } else {
+        signals
+            .iter()
+            .find(|signal| signal.kind == "restart")
+            .map(|signal| signal.state)
+            .unwrap_or(IncidentSignalState::Active)
+    };
     let latest_signal_at = latest_signal_at(&signals);
 
     Some(IncidentCockpitItem {
         resource,
         severity,
+        state,
         signals,
         warning_event_count,
         latest_signal_at,
@@ -387,25 +403,32 @@ fn incident_item(
     })
 }
 
-fn severity_for(resource: &ResourceSummary, has_warning: bool) -> Option<IncidentSeverity> {
-    match resource.health {
-        ResourceHealth::Degraded => return Some(IncidentSeverity::Degraded),
-        ResourceHealth::Attention => return Some(IncidentSeverity::Attention),
-        ResourceHealth::Restarted => return Some(IncidentSeverity::Restarted),
-        ResourceHealth::Healthy | ResourceHealth::Unknown => {}
+fn severity_for(
+    status_severity: Option<IncidentSeverity>,
+    has_warning: bool,
+    has_restart: bool,
+) -> Option<IncidentSeverity> {
+    if status_severity.is_some() {
+        return status_severity;
     }
     if has_warning {
         return Some(IncidentSeverity::Warning);
     }
+    if has_restart {
+        return Some(IncidentSeverity::Restarted);
+    }
     None
 }
 
-fn is_degraded(resource: &ResourceSummary) -> bool {
-    resource.health == ResourceHealth::Degraded
-}
-
-fn is_attention(resource: &ResourceSummary) -> bool {
-    resource.health == ResourceHealth::Attention
+fn current_status_severity(resource: &ResourceSummary) -> Option<IncidentSeverity> {
+    let mut current = resource.clone();
+    current.restarts = None;
+    update_resource_health(&mut current);
+    match current.health {
+        ResourceHealth::Degraded => Some(IncidentSeverity::Degraded),
+        ResourceHealth::Attention => Some(IncidentSeverity::Attention),
+        ResourceHealth::Healthy | ResourceHealth::Restarted | ResourceHealth::Unknown => None,
+    }
 }
 
 fn status_message(resource: &ResourceSummary) -> String {
@@ -418,10 +441,6 @@ fn status_message(resource: &ResourceSummary) -> String {
             .ready
             .as_ref()
             .map(|ready| format!("Ready {ready}")),
-        resource
-            .restarts
-            .filter(|restarts| *restarts > 0)
-            .map(|restarts| format!("{restarts} restarts")),
     ]
     .into_iter()
     .flatten()
@@ -438,9 +457,18 @@ fn severity_weight(severity: &IncidentSeverity) -> u8 {
     }
 }
 
+fn state_weight(state: IncidentSignalState) -> u8 {
+    match state {
+        IncidentSignalState::Active => 3,
+        IncidentSignalState::Resolved => 2,
+        IncidentSignalState::Historical => 1,
+    }
+}
+
 fn incident_item_sort(a: &IncidentCockpitItem, b: &IncidentCockpitItem) -> std::cmp::Ordering {
-    severity_weight(&b.severity)
-        .cmp(&severity_weight(&a.severity))
+    state_weight(b.state)
+        .cmp(&state_weight(a.state))
+        .then_with(|| severity_weight(&b.severity).cmp(&severity_weight(&a.severity)))
         .then_with(|| latest_item_signal_time_ms(b).cmp(&latest_item_signal_time_ms(a)))
         .then_with(|| a.resource.namespace.cmp(&b.resource.namespace))
         .then_with(|| a.resource.kind.cmp(&b.resource.kind))
@@ -519,6 +547,13 @@ mod tests {
         }
     }
 
+    fn build_items(
+        resources: Vec<ResourceSummary>,
+        warning_events: Vec<ResourceEventMatch>,
+    ) -> Vec<IncidentCockpitItem> {
+        build_incident_items(resources, warning_events, BTreeMap::new())
+    }
+
     #[test]
     fn degraded_status_wins_over_warning_event() {
         let mut pod = resource("api-0");
@@ -526,7 +561,7 @@ mod tests {
         pod.ready = Some("false".to_string());
         update_resource_health(&mut pod);
 
-        let items = build_incident_items(
+        let items = build_items(
             vec![pod],
             vec![warning("api-0", "BackOff", "2026-06-04T10:01:00Z")],
         );
@@ -543,7 +578,7 @@ mod tests {
 
     #[test]
     fn warning_only_resource_becomes_warning_item() {
-        let items = build_incident_items(
+        let items = build_items(
             vec![resource("api-0")],
             vec![warning("api-0", "FailedMount", "2026-06-04T10:01:00Z")],
         );
@@ -563,7 +598,7 @@ mod tests {
 
     #[test]
     fn healthy_resource_without_warning_is_omitted() {
-        let items = build_incident_items(vec![resource("api-0")], Vec::new());
+        let items = build_items(vec![resource("api-0")], Vec::new());
 
         assert!(items.is_empty());
     }
@@ -575,7 +610,7 @@ mod tests {
         pod.ready = Some("False".to_string());
         update_resource_health(&mut pod);
 
-        let items = build_incident_items(vec![pod], Vec::new());
+        let items = build_items(vec![pod], Vec::new());
 
         assert!(items.is_empty());
     }
@@ -590,7 +625,7 @@ mod tests {
         deployment.ready = Some("0/3".to_string());
         update_resource_health(&mut deployment);
 
-        let items = build_incident_items(vec![deployment], Vec::new());
+        let items = build_items(vec![deployment], Vec::new());
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].severity, IncidentSeverity::Attention);
@@ -612,7 +647,7 @@ mod tests {
         failed.status = Some("Failed".to_string());
         update_resource_health(&mut failed);
 
-        let items = build_incident_items(
+        let items = build_items(
             vec![restarted, failed, resource("api-2"), resource("api-3")],
             vec![
                 warning("api-2", "BackOff", "2026-06-04T10:00:00Z"),
@@ -621,14 +656,14 @@ mod tests {
         );
 
         assert_eq!(items[0].resource.name, "api-0");
-        assert_eq!(items[1].resource.name, "api-1");
-        assert_eq!(items[2].resource.name, "api-3");
-        assert_eq!(items[3].resource.name, "api-2");
+        assert_eq!(items[1].resource.name, "api-3");
+        assert_eq!(items[2].resource.name, "api-2");
+        assert_eq!(items.len(), 3);
     }
 
     #[test]
     fn warning_event_count_preserves_all_matched_events() {
-        let items = build_incident_items(
+        let items = build_items(
             vec![resource("api-0")],
             vec![
                 warning("api-0", "BackOff", "2026-06-04T10:03:00Z"),
@@ -688,7 +723,7 @@ mod tests {
             },
         }];
 
-        let items = build_incident_items(vec![apps, batch], events);
+        let items = build_items(vec![apps, batch], events);
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].resource.api_version.as_deref(), Some("batch/v1"));

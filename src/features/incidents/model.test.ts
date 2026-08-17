@@ -36,6 +36,7 @@ function item(
 			health: severity === "warning" ? "attention" : severity,
 		},
 		severity,
+		state: "active",
 		signals: [],
 		warningEventCount: 0,
 		...overrides,
@@ -120,6 +121,16 @@ describe("incident presentation model", () => {
 			newer,
 			older,
 			attention,
+		]);
+	});
+
+	test("orders active warnings before historical restart evidence", () => {
+		const historical = item("old-restart", "restarted", { state: "historical" });
+		const warning = item("current-warning", "warning");
+
+		expect(groupIncidentItems([historical, warning])[0]?.items).toEqual([
+			warning,
+			historical,
 		]);
 	});
 
