@@ -3,6 +3,7 @@ import type {
 	ResourceSummary,
 	ResourceTopology,
 } from "@/lib/types";
+import { incidentState } from "./model";
 
 export type IncidentEnrichmentState = "idle" | "loading" | "ready" | "error";
 
@@ -152,6 +153,7 @@ export function buildIncidentAvailableActions(
 	ownerResolution: IncidentOwnerResolution,
 	topologyState: IncidentEnrichmentState,
 ): IncidentAvailableAction[] {
+	if (incidentState(item) !== "active") return [];
 	if (item.resource.kind !== "Pod") {
 		return workloadActions(item.resource, "selected");
 	}

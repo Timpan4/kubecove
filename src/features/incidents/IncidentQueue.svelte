@@ -7,6 +7,7 @@
 		incidentScopeLabel,
 		incidentSeverityLabel,
 		incidentSignalSummary,
+		incidentState,
 	} from "./model";
 
 	let {
@@ -26,9 +27,11 @@
 	}
 
 	function severityClass(item: IncidentCockpitItem): string {
+		if (incidentState(item) === "historical") return "border-l-muted-foreground";
+		if (incidentState(item) === "resolved") return "border-l-sky-500";
 		if (item.severity === "degraded") return "border-l-destructive";
 		if (item.severity === "attention") return "border-l-amber-500";
-		if (item.severity === "restarted") return "border-l-sky-500";
+		if (item.severity === "restarted") return "border-l-amber-500";
 		return "border-l-muted-foreground";
 	}
 </script>

@@ -85,7 +85,7 @@
 		{ label: "All", value: incidentCounts.total, tone: "" },
 		{ label: "Degraded", value: incidentCounts.degraded, tone: "text-destructive" },
 		{ label: "Attention", value: incidentCounts.attention, tone: "text-amber-600 dark:text-amber-400" },
-		{ label: "Restarted", value: incidentCounts.restarted, tone: "text-sky-600 dark:text-sky-400" },
+		{ label: "Restart evidence", value: incidentCounts.restarted, tone: "text-sky-600 dark:text-sky-400" },
 		{ label: "Warnings", value: incidentCounts.warning, tone: "text-muted-foreground" },
 	]);
 </script>
@@ -192,7 +192,7 @@
 			<Empty class="min-h-40 border border-dashed bg-surface-1/50">
 				<EmptyHeader>
 					<EmptyTitle>No matching incident signals</EmptyTitle>
-					<EmptyDescription>Change severity filter to see other active signals.</EmptyDescription>
+					<EmptyDescription>Change severity filter to see other signals.</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
 		{:else}

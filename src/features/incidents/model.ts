@@ -29,6 +29,16 @@ const SEVERITY_WEIGHT = {
 	warning: 1,
 } satisfies Record<IncidentSeverity, number>;
 
+const STATE_WEIGHT = {
+	active: 3,
+	resolved: 2,
+	historical: 1,
+} as const;
+
+export function incidentState(item: IncidentCockpitItem) {
+	return item.state ?? (item.severity === "restarted" ? "historical" : "active");
+}
+
 function latestSignalTime(item: IncidentCockpitItem): number {
 	const value = item.latestSignalAt ?? item.latestWarningEvent?.lastSeenAt;
 	if (!value) return 0;
@@ -75,6 +85,8 @@ export function sortIncidentItems(
 	items: IncidentCockpitItem[],
 ): IncidentCockpitItem[] {
 	return [...items].sort((a, b) => {
+		const stateDelta = STATE_WEIGHT[incidentState(b)] - STATE_WEIGHT[incidentState(a)];
+		if (stateDelta !== 0) return stateDelta;
 		const severityDelta =
 			SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity];
 		if (severityDelta !== 0) return severityDelta;
@@ -179,7 +191,7 @@ export function buildIncidentFilterOptions(
 		{ id: "unhealthy", label: "Unhealthy", count: counts.degraded + counts.attention },
 		{ id: "degraded", label: "Degraded", count: counts.degraded },
 		{ id: "attention", label: "Needs attention", count: counts.attention },
-		{ id: "restarted", label: "Restarted", count: counts.restarted },
+		{ id: "restarted", label: "Restart evidence", count: counts.restarted },
 		{ id: "warning", label: "Warnings", count: counts.warning },
 	];
 }
@@ -198,7 +210,11 @@ export function incidentResourcesHealthFilter(
 export function incidentSeverityLabel(item: IncidentCockpitItem): string {
 	if (item.severity === "degraded") return "Degraded";
 	if (item.severity === "attention") return "Needs attention";
-	if (item.severity === "restarted") return "Restarted";
+	if (item.severity === "restarted") {
+		if (incidentState(item) === "historical") return "Historical restart";
+		if (incidentState(item) === "resolved") return "Resolved restart";
+		return "Active restart";
+	}
 	return "Warning";
 }
 
