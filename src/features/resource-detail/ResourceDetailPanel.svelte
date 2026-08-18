@@ -548,10 +548,6 @@
 		}
 	}
 
-	function detailStatusLabel(summary: ResourceSummary): string | undefined {
-		return summary.status ?? summary.health;
-	}
-
 	function toneBadgeVariant(tone: ChipVariant): "secondary" | "destructive" | "outline" {
 		return CHIP_BADGE_STYLES[tone].variant;
 	}
@@ -643,7 +639,6 @@
 		requiredPermission={detailReadPermission}
 		bind:metadataLabelsExpanded
 		bind:metadataAnnotationsExpanded
-		{detailStatusLabel}
 		{toneBadgeVariant}
 		{compactToneBadgeClass}
 		{restartsTone}

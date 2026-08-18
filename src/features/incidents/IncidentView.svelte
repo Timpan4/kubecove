@@ -84,7 +84,7 @@
 	const overviewMetrics = $derived([
 		{ label: "All", value: incidentCounts.total, tone: "" },
 		{ label: "Degraded", value: incidentCounts.degraded, tone: "text-destructive" },
-		{ label: "Attention", value: incidentCounts.attention, tone: "text-amber-600 dark:text-amber-400" },
+		{ label: "Needs attention", value: incidentCounts.attention, tone: "text-amber-600 dark:text-amber-400" },
 		{ label: "Restart evidence", value: incidentCounts.restarted, tone: "text-sky-600 dark:text-sky-400" },
 		{ label: "Warnings", value: incidentCounts.warning, tone: "text-muted-foreground" },
 	]);

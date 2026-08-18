@@ -5,6 +5,9 @@ import type {
 	DiscoveredResourceKind,
 	FluxResourceKind,
 	FluxResourceSummary,
+	HealthAssessment,
+	HealthAssessmentSource,
+	HealthAssessmentState,
 	HelmReleaseSummary,
 	KubeconfigSourcesSummary,
 	NamespaceSummary,
@@ -15,6 +18,32 @@ import type {
 
 
 export const now = "2026-06-29T10:00:00Z";
+
+export function mockHealthAssessment(
+	state: HealthAssessmentState,
+	raw: string,
+	source: HealthAssessmentSource = "kubernetes",
+): HealthAssessment {
+	const reason = `Mock ${source} state is ${raw}`;
+	return {
+		state,
+		completeness: "complete",
+		winningSources: [source],
+		reasons: [reason],
+		evidence: [{ source, raw, state, current: true, reason }],
+	};
+}
+
+export const mockArgoHealthyAssessment: HealthAssessment = {
+	state: "healthy",
+	completeness: "complete",
+	winningSources: ["argoHealth", "argoSync"],
+	reasons: ["Mock Argo CD health is Healthy", "Mock Argo CD sync is Synced"],
+	evidence: [
+		{ source: "argoHealth", raw: "Healthy", state: "healthy", current: true, reason: "Mock Argo CD health is Healthy" },
+		{ source: "argoSync", raw: "Synced", state: "healthy", current: true, reason: "Mock Argo CD sync is Synced" },
+	],
+};
 
 export const deploymentRevisions: DeploymentRevision[] = [
 	{
@@ -282,6 +311,7 @@ export const argoApps: ArgoApplicationSummary[] = labArgoApplications.map(([name
 	project,
 	syncStatus: "Synced",
 	healthStatus: "Healthy",
+	healthAssessment: mockArgoHealthyAssessment,
 	destinationNamespace,
 	destinationServer: "https://kubernetes.default.svc",
 	sourceRepo: name.startsWith("platform-") ? "pinned Helm or internal Git" : "git://git-server.e2e-system.svc.cluster.local:9418/fixtures.git",
@@ -376,6 +406,7 @@ export const fluxResources: FluxResourceSummary[] = [
 		age: "31d",
 		createdAt: "2026-05-29T08:00:00Z",
 		resourceKind: fluxKind,
+		healthAssessment: mockHealthAssessment("healthy", "True"),
 		readyStatus: "True",
 		suspended: false,
 		sourceKind: "GitRepository",
@@ -393,6 +424,7 @@ export const fluxResources: FluxResourceSummary[] = [
 		age: "12d",
 		createdAt: "2026-06-17T08:00:00Z",
 		resourceKind: fluxHelmKind,
+		healthAssessment: mockHealthAssessment("healthy", "True"),
 		readyStatus: "True",
 		suspended: false,
 		sourceKind: "HelmRepository",
@@ -507,6 +539,13 @@ function kind(group: string, version: string, k: string, plural: string, namespa
 }
 
 export function res(kindName: string, name: string, namespace: string | null, health: ResourceSummary["health"], ready?: string, status?: string, restarts = 0, app = "platform", extra: Partial<ResourceSummary> = {}): ResourceSummary {
+	const assessmentState: HealthAssessmentState = health === "degraded"
+		? "degraded"
+		: health === "attention"
+			? "needsAttention"
+			: health === "unknown"
+				? "unknown"
+				: "healthy";
 	return {
 		kind: kindName,
 		cluster: "mock-dev",
@@ -516,6 +555,7 @@ export function res(kindName: string, name: string, namespace: string | null, he
 		apiVersion: extra.apiVersion ?? (kindName === "Deployment" ? "apps/v1" : "v1"),
 		namespaced: namespace !== null,
 		health,
+		healthAssessment: extra.healthAssessment ?? mockHealthAssessment(assessmentState, health),
 		status,
 		ready,
 		restarts,

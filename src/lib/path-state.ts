@@ -1,3 +1,4 @@
+import type { TreeNodeId } from "./tree-nav";
 import type {
 	DiscoveredResourceKind,
 	ResourceKindSelection,
@@ -6,7 +7,6 @@ import type {
 	YamlEncoding,
 	YamlViewMode,
 } from "./types";
-import type { TreeNodeId } from "./tree-nav";
 
 export const PATH_STATE_SESSION_KEY = "kubecove-path-state-v1";
 
@@ -25,9 +25,10 @@ export const PATH_STATE_WORKSPACE_VIEW_MODES = [
 export const PATH_STATE_HEALTH_FILTERS = [
 	"all",
 	"healthy",
-	"unhealthy",
 	"attention",
 	"degraded",
+	"unknown",
+	"notEvaluated",
 	"restarted",
 ] as const;
 
@@ -57,7 +58,6 @@ export type PathStateDetailTab =
 	| "argo";
 export type PathStateIncidentFilter =
 	| "all"
-	| "unhealthy"
 	| "degraded"
 	| "attention"
 	| "restarted"
@@ -347,7 +347,7 @@ function sanitizeSurfacesState(value: unknown): PathStateSurfacesState | null {
 	return {
 		incidentFilter: pickString(
 			value.incidentFilter,
-			["all", "unhealthy", "degraded", "attention", "restarted", "warning"] as const,
+			["all", "degraded", "attention", "restarted", "warning"] as const,
 			"all",
 		),
 		helmSearch: stringValue(value.helmSearch),
@@ -440,6 +440,7 @@ export function resourceSummaryFromRef(ref: PathStateResourceRef): ResourceSumma
 		namespace: ref.namespace,
 		age: "",
 		health: "unknown",
+		healthAssessment: null,
 		apiVersion: ref.apiVersion,
 		group: ref.group,
 		version: ref.version,

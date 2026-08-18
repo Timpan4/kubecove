@@ -32,7 +32,7 @@ export interface ResourceSummary {
 	namespaced?: boolean;
 	dynamic?: boolean;
 	health: ResourceHealth;
-	healthAssessment?: import("./health-types").HealthAssessment;
+	healthAssessment?: import("./health-types").HealthAssessment | null;
 	createdAt?: string;
 	status?: string;
 	ready?: string;

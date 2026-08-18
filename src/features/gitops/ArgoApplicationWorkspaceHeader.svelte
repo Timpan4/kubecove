@@ -8,6 +8,7 @@
 		Wifi,
 	} from "lucide-svelte";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
+	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import { Badge, Button, Spinner } from "@/components/ui/svelte";
 	import { healthStatusVariant, syncStatusVariant, type ChipVariant } from "@/features/argo/status";
 	import type {
@@ -107,6 +108,10 @@
 			<div class="min-w-0">
 				<div class="flex min-w-0 flex-wrap items-center gap-1.5">
 					<h2 class="truncate font-heading text-sm font-semibold">{app.name}</h2>
+					<HealthAssessmentBadge assessment={app.healthAssessment} {loading} />
+				</div>
+				<div class="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+					<span class="text-[0.6875rem] text-muted-foreground">Raw Argo:</span>
 					<Badge variant={statusBadgeVariant(healthTone)} class={statusBadgeClass(healthTone)}>{healthStatus}</Badge>
 					<Badge variant={statusBadgeVariant(syncTone)} class={statusBadgeClass(syncTone)}>{syncStatus}</Badge>
 				</div>

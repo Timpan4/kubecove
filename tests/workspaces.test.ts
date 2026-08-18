@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
+	buildWorkspaceFetchKeys,
+	buildWorkspaceFetchPlans,
+} from "../src/features/workspaces/query";
+import type {
+	ClusterContext,
+	ResourceKindSelection,
+	ResourceSummary,
+} from "../src/lib/types";
+import {
 	buildWorkspaceCompareEntries,
 	buildWorkspaceCompareSummaries,
 	buildWorkspaceHealthSummary,
@@ -12,15 +21,6 @@ import {
 	useWorkspaceStore,
 	workspaceScopeContexts,
 } from "../src/lib/workspaces";
-import {
-	buildWorkspaceFetchKeys,
-	buildWorkspaceFetchPlans,
-} from "../src/features/workspaces/query";
-import type {
-	ClusterContext,
-	ResourceKindSelection,
-	ResourceSummary,
-} from "../src/lib/types";
 
 const clusterContexts: ClusterContext[] = [
 	{ name: "kind-dev", isCurrent: true },
@@ -264,10 +264,12 @@ describe("workspace helpers", () => {
 		);
 		expect(buildWorkspaceHealthSummary(rows)).toEqual({
 			total: 4,
-			healthy: 1,
+			healthy: 2,
 			attention: 1,
 			degraded: 1,
-			restarted: 1,
+			unknown: 0,
+			notEvaluated: 0,
+			restartEvidence: 1,
 		});
 	});
 
@@ -408,6 +410,13 @@ describe("workspace helpers", () => {
 });
 
 function resource(overrides: Partial<ResourceSummary>): ResourceSummary {
+	const state = overrides.health === "degraded"
+		? "degraded"
+		: overrides.health === "attention"
+			? "needsAttention"
+		: overrides.health === "unknown" || overrides.health === undefined
+				? "unknown"
+				: "healthy";
 	return {
 		kind: "Pod",
 		cluster: "kind-dev",
@@ -415,6 +424,13 @@ function resource(overrides: Partial<ResourceSummary>): ResourceSummary {
 		namespace: "default",
 		age: "1m",
 		health: "unknown",
+		healthAssessment: {
+			state,
+			completeness: "complete",
+			winningSources: ["kubernetes"],
+			reasons: [`Test Kubernetes state is ${state}`],
+			evidence: [{ source: "kubernetes", raw: state, state, current: true, reason: `Test Kubernetes state is ${state}` }],
+		},
 		...overrides,
 	};
 }

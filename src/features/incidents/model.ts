@@ -12,7 +12,7 @@ import {
 	workspaceScopeContexts,
 } from "@/lib/workspace-model";
 
-export type IncidentFilter = "all" | "unhealthy" | IncidentSeverity;
+export type IncidentFilter = "all" | IncidentSeverity;
 
 export interface IncidentCounts {
 	total: number;
@@ -55,13 +55,29 @@ export function filterIncidentItems(
 	filter: IncidentFilter,
 ): IncidentCockpitItem[] {
 	if (filter === "all") return items;
-	if (filter === "unhealthy") {
-		return items.filter(
-			(item) =>
-				item.severity === "degraded" || item.severity === "attention",
-		);
+	return items.filter((item) => incidentMatchesFilter(item, filter));
+}
+
+function incidentMatchesFilter(
+	item: IncidentCockpitItem,
+	filter: Exclude<IncidentFilter, "all">,
+): boolean {
+	if (filter === "restarted") {
+		return item.severity === "restarted" ||
+			item.signals.some((signal) => signal.kind === "restart") ||
+			item.resource.healthAssessment?.evidence.some(
+				(evidence) => evidence.source === "containerRestart",
+			) === true;
 	}
-	return items.filter((item) => item.severity === filter);
+	if (filter === "warning") {
+		return item.severity === "warning" ||
+			item.warningEventCount > 0 ||
+			item.signals.some((signal) => signal.kind === "event") ||
+			item.resource.healthAssessment?.evidence.some(
+				(evidence) => evidence.source === "warningEvent",
+			) === true;
+	}
+	return item.severity === filter;
 }
 
 export function countIncidentItems(
@@ -76,7 +92,10 @@ export function countIncidentItems(
 	};
 	for (const item of items) {
 		counts.total += 1;
-		counts[item.severity] += 1;
+		if (item.severity === "degraded") counts.degraded += 1;
+		if (item.severity === "attention") counts.attention += 1;
+		if (incidentMatchesFilter(item, "restarted")) counts.restarted += 1;
+		if (incidentMatchesFilter(item, "warning")) counts.warning += 1;
 	}
 	return counts;
 }
@@ -188,7 +207,6 @@ export function buildIncidentFilterOptions(
 ): IncidentFilterOption[] {
 	return [
 		{ id: "all", label: "All", count: counts.total },
-		{ id: "unhealthy", label: "Unhealthy", count: counts.degraded + counts.attention },
 		{ id: "degraded", label: "Degraded", count: counts.degraded },
 		{ id: "attention", label: "Needs attention", count: counts.attention },
 		{ id: "restarted", label: "Restart evidence", count: counts.restarted },
@@ -201,8 +219,7 @@ export function incidentResourcesHealthFilter(
 ): HealthFilter {
 	return filter === "degraded" ||
 		filter === "attention" ||
-		filter === "restarted" ||
-		filter === "unhealthy"
+		filter === "restarted"
 		? filter
 		: "all";
 }

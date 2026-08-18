@@ -1,14 +1,14 @@
+mod health;
 mod restarts;
 
 use super::{resource_scope_from, ClusterLiveStore};
 use crate::commands::{
-    helpers::{k8s_timestamp_to_datetime, list_params, resource_age, update_resource_health},
+    helpers::{k8s_timestamp_to_datetime, list_params, resource_age},
     kubeconfig::KubeconfigSource,
 };
 use crate::models::{
     AppError, IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalState,
-    IncidentSignalSummary, ResourceEventSummary, ResourceHealth, ResourceListRequest,
-    ResourceSummary,
+    IncidentSignalSummary, ResourceEventSummary, ResourceListRequest, ResourceSummary,
 };
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::core::v1::Event;
@@ -17,6 +17,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 use tauri::State;
 
+use health::{
+    apply_incident_health_evidence, current_status_severity, has_current_kubernetes_concern,
+    severity_for,
+};
 use restarts::{
     list_restart_evidence, resource_key, restart_signal_label, restart_signal_message,
     RestartEvidence,
@@ -328,10 +332,11 @@ fn build_incident_items(
 }
 
 fn incident_item(
-    resource: ResourceSummary,
+    mut resource: ResourceSummary,
     warning_events: Vec<ResourceEventSummary>,
     restart_evidence: Option<&RestartEvidence>,
 ) -> Option<IncidentCockpitItem> {
+    apply_incident_health_evidence(&mut resource, &warning_events, restart_evidence);
     let mut signals = Vec::new();
     let status_severity = current_status_severity(&resource);
     if status_severity == Some(IncidentSeverity::Degraded) {
@@ -363,13 +368,18 @@ fn incident_item(
             last_seen_at: evidence.last_seen_at,
         });
     }
+    let warning_state = if has_current_kubernetes_concern(&resource) {
+        IncidentSignalState::Active
+    } else {
+        IncidentSignalState::Historical
+    };
     for event in warning_events.iter().take(MAX_WARNING_EVENTS_PER_RESOURCE) {
         signals.push(IncidentSignalSummary {
             kind: "event".to_string(),
             label: event.reason.clone(),
             message: event.message.clone(),
             source: event.source.clone(),
-            state: IncidentSignalState::Active,
+            state: warning_state,
             last_seen_at: event.last_seen_at.clone(),
         });
     }
@@ -381,14 +391,11 @@ fn incident_item(
         latest_warning_event.is_some(),
         restart_evidence.is_some(),
     )?;
-    let state = if status_severity.is_some() || latest_warning_event.is_some() {
-        IncidentSignalState::Active
-    } else {
-        signals
-            .iter()
-            .find(|signal| signal.kind == "restart")
-            .map_or(IncidentSignalState::Active, |signal| signal.state)
-    };
+    let state = signals
+        .iter()
+        .map(|signal| signal.state)
+        .max_by_key(|state| state_weight(*state))
+        .unwrap_or(IncidentSignalState::Historical);
     let latest_signal_at = latest_signal_at(&signals);
 
     Some(IncidentCockpitItem {
@@ -400,34 +407,6 @@ fn incident_item(
         latest_signal_at,
         latest_warning_event,
     })
-}
-
-fn severity_for(
-    status_severity: Option<IncidentSeverity>,
-    has_warning: bool,
-    has_restart: bool,
-) -> Option<IncidentSeverity> {
-    if status_severity.is_some() {
-        return status_severity;
-    }
-    if has_warning {
-        return Some(IncidentSeverity::Warning);
-    }
-    if has_restart {
-        return Some(IncidentSeverity::Restarted);
-    }
-    None
-}
-
-fn current_status_severity(resource: &ResourceSummary) -> Option<IncidentSeverity> {
-    let mut current = resource.clone();
-    current.restarts = None;
-    update_resource_health(&mut current);
-    match current.health {
-        ResourceHealth::Degraded => Some(IncidentSeverity::Degraded),
-        ResourceHealth::Attention => Some(IncidentSeverity::Attention),
-        ResourceHealth::Healthy | ResourceHealth::Restarted | ResourceHealth::Unknown => None,
-    }
 }
 
 fn status_message(resource: &ResourceSummary) -> String {
@@ -503,9 +482,10 @@ fn latest_signal_at(signals: &[IncidentSignalSummary]) -> Option<String> {
 mod tests {
     use super::*;
     use crate::commands::helpers::update_resource_health;
+    use crate::models::{HealthAssessmentState, ResourceHealth};
 
     fn resource(name: &str) -> ResourceSummary {
-        ResourceSummary {
+        let mut resource = ResourceSummary {
             kind: "Pod".to_string(),
             cluster: "kind-admin".to_string(),
             name: name.to_string(),
@@ -528,7 +508,9 @@ mod tests {
             helm_release: None,
             git_ops_owner: None,
             git_ops_ownership_partial: false,
-        }
+        };
+        update_resource_health(&mut resource);
+        resource
     }
 
     fn warning(key_name: &str, reason: &str, at: &str) -> ResourceEventMatch {
@@ -554,6 +536,13 @@ mod tests {
         build_incident_items(resources, warning_events, BTreeMap::new())
     }
 
+    fn build_items_with_restarts(
+        resources: Vec<ResourceSummary>,
+        restart_evidence: BTreeMap<String, RestartEvidence>,
+    ) -> Vec<IncidentCockpitItem> {
+        build_incident_items(resources, Vec::new(), restart_evidence)
+    }
+
     #[test]
     fn degraded_status_wins_over_warning_event() {
         let mut pod = resource("api-0");
@@ -577,7 +566,7 @@ mod tests {
     }
 
     #[test]
-    fn warning_only_resource_becomes_warning_item() {
+    fn uncorroborated_warning_stays_healthy_and_historical() {
         let items = build_items(
             vec![resource("api-0")],
             vec![warning("api-0", "FailedMount", "2026-06-04T10:01:00Z")],
@@ -585,6 +574,12 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].severity, IncidentSeverity::Warning);
+        assert_eq!(items[0].state, IncidentSignalState::Historical);
+        assert_eq!(
+            items[0].resource.health_assessment.state,
+            HealthAssessmentState::Healthy
+        );
+        assert_eq!(items[0].resource.health, ResourceHealth::Healthy);
         assert_eq!(items[0].warning_event_count, 1);
         assert_eq!(
             items[0].latest_signal_at.as_deref(),
@@ -594,6 +589,57 @@ mod tests {
             items[0].latest_warning_event.as_ref().unwrap().reason,
             "FailedMount"
         );
+    }
+
+    #[test]
+    fn active_restart_worsens_healthy_resource_to_needs_attention() {
+        let resource = resource("api-0");
+        let mut restarts = BTreeMap::new();
+        restarts.insert(
+            resource_key(&resource),
+            RestartEvidence {
+                state: IncidentSignalState::Active,
+                last_seen_at: Some("2026-06-04T10:01:00Z".to_string()),
+                container: Some("api".to_string()),
+                reason: Some("CrashLoopBackOff".to_string()),
+                exit_code: Some(1),
+            },
+        );
+
+        let items = build_items_with_restarts(vec![resource], restarts);
+
+        assert_eq!(items[0].severity, IncidentSeverity::Attention);
+        assert_eq!(
+            items[0].resource.health_assessment.state,
+            HealthAssessmentState::NeedsAttention
+        );
+        assert_eq!(items[0].resource.health, ResourceHealth::Attention);
+    }
+
+    #[test]
+    fn resolved_restart_does_not_worsen_healthy_resource() {
+        let resource = resource("api-0");
+        let mut restarts = BTreeMap::new();
+        restarts.insert(
+            resource_key(&resource),
+            RestartEvidence {
+                state: IncidentSignalState::Resolved,
+                last_seen_at: Some("2026-06-04T10:01:00Z".to_string()),
+                container: Some("api".to_string()),
+                reason: Some("Error".to_string()),
+                exit_code: Some(1),
+            },
+        );
+
+        let items = build_items_with_restarts(vec![resource], restarts);
+
+        assert_eq!(items[0].severity, IncidentSeverity::Restarted);
+        assert_eq!(items[0].state, IncidentSignalState::Resolved);
+        assert_eq!(
+            items[0].resource.health_assessment.state,
+            HealthAssessmentState::Healthy
+        );
+        assert_eq!(items[0].resource.health, ResourceHealth::Healthy);
     }
 
     #[test]
