@@ -4,7 +4,8 @@ use crate::commands::gitops_crd::{
 };
 use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
 use crate::models::{
-    AppError, ArgoApplicationSetDetails, ArgoApplicationSetSummary, YamlEncoding, YamlViewMode,
+    argo_application_set_health_assessment, AppError, ArgoApplicationSetDetails,
+    ArgoApplicationSetSummary, YamlEncoding, YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
 use kube::core::DynamicObject;
@@ -19,6 +20,18 @@ fn application_set_summary_from_object(
         .and_then(|spec| spec.get("generatorParams"))
         .and_then(|params| params.as_array())
         .and_then(|params| params.first());
+
+    let health_status = data
+        .get("status")
+        .and_then(|status| status.get("health"))
+        .and_then(|health| health.get("status"))
+        .and_then(|status| status.as_str());
+    let conditions = data
+        .get("status")
+        .and_then(|status| status.get("conditions"))
+        .and_then(|conditions| conditions.as_array());
+    let health_assessment =
+        argo_application_set_health_assessment(health_status, conditions.map(Vec::as_slice));
 
     Some(ArgoApplicationSetSummary {
         cluster: cluster_context.to_string(),
@@ -43,18 +56,9 @@ fn application_set_summary_from_object(
             .and_then(|condition| condition.get("type"))
             .and_then(|kind| kind.as_str())
             .map(String::from),
-        sync_status: data
-            .get("status")
-            .and_then(|status| status.get("sync"))
-            .and_then(|sync| sync.get("status"))
-            .and_then(|status| status.as_str())
-            .map(String::from),
-        health_status: data
-            .get("status")
-            .and_then(|status| status.get("health"))
-            .and_then(|health| health.get("status"))
-            .and_then(|status| status.as_str())
-            .map(String::from),
+        sync_status: None,
+        health_status: health_status.map(String::from),
+        health_assessment,
         destination_namespace: generator_param
             .and_then(|param| param.get("dest-namespace"))
             .and_then(|namespace| namespace.as_str())
@@ -159,7 +163,10 @@ mod tests {
                 "generatorParams": [{ "dest-namespace": "tenant-a", "dest-server": "in-cluster" }],
                 "source": { "repoURL": "https://git.example/platform", "targetRevision": "main" }
             },
-            "status": { "conditions": [{ "type": "ResourcesUpToDate" }] }
+            "status": {
+                "health": { "status": "Healthy" },
+                "conditions": [{ "type": "ResourcesUpToDate", "status": "True" }]
+            }
         }));
 
         let summary = application_set_summary_from_object("kind-dev", &object).expect("summary");
@@ -167,6 +174,11 @@ mod tests {
         assert_eq!(summary.cluster, "kind-dev");
         assert_eq!(summary.project.as_deref(), Some("platform"));
         assert_eq!(summary.status.as_deref(), Some("ResourcesUpToDate"));
+        assert_eq!(
+            summary.health_assessment.state,
+            crate::models::HealthAssessmentState::Healthy
+        );
+        assert_eq!(summary.sync_status, None);
         assert_eq!(summary.destination_namespace.as_deref(), Some("tenant-a"));
         assert_eq!(
             summary.source_repo.as_deref(),

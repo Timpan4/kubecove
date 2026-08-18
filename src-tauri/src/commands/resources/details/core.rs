@@ -39,6 +39,7 @@ pub(super) async fn pod_details(
         namespaced: None,
         dynamic: None,
         health: ResourceHealth::default(),
+        health_assessment: crate::models::HealthAssessment::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&pod.metadata.creation_timestamp),
         status: pod.status.as_ref().and_then(|s| s.phase.clone()),
         ready: pod.status.as_ref().and_then(|s| {
@@ -108,6 +109,7 @@ pub(super) async fn service_details(
         namespaced: None,
         dynamic: None,
         health: ResourceHealth::default(),
+        health_assessment: crate::models::HealthAssessment::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&svc.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -157,6 +159,7 @@ pub(super) async fn configmap_details(
         namespaced: None,
         dynamic: None,
         health: ResourceHealth::default(),
+        health_assessment: crate::models::HealthAssessment::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&cm.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -209,6 +212,7 @@ pub(super) async fn secret_details(
         namespaced: None,
         dynamic: None,
         health: ResourceHealth::default(),
+        health_assessment: crate::models::HealthAssessment::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&sec.metadata.creation_timestamp),
         status: None,
         ready: None,
@@ -262,6 +266,7 @@ pub(super) async fn pvc_details(
         namespaced: None,
         dynamic: None,
         health: ResourceHealth::default(),
+        health_assessment: crate::models::HealthAssessment::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&pvc.metadata.creation_timestamp),
         status: status
             .as_ref()

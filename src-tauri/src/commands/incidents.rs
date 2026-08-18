@@ -518,6 +518,7 @@ mod tests {
             namespaced: Some(true),
             dynamic: None,
             health: ResourceHealth::Healthy,
+            health_assessment: crate::models::HealthAssessment::default(),
             created_at: Some("2026-06-04T10:00:00Z".to_string()),
             status: Some("Running".to_string()),
             ready: Some("true".to_string()),

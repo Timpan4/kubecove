@@ -6,6 +6,7 @@ mod discovery;
 mod error;
 mod events;
 mod flux;
+mod health;
 mod helm;
 mod incidents;
 mod metrics;
@@ -36,6 +37,11 @@ pub use events::ResourceEventSummary;
 pub use flux::{
     FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails, FluxResourceKind,
     FluxResourceSummary,
+};
+pub use health::{
+    argo_application_set_health_assessment, argo_health_assessment, evaluate_health,
+    HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentEvidence,
+    HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState,
 };
 pub use helm::{
     HelmManifestResourceSummary, HelmManifestSummary, HelmReconciliationResource,
