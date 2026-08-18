@@ -32,6 +32,7 @@ export interface ResourceSummary {
 	namespaced?: boolean;
 	dynamic?: boolean;
 	health: ResourceHealth;
+	healthAssessment?: import("./health-types").HealthAssessment;
 	createdAt?: string;
 	status?: string;
 	ready?: string;
@@ -182,6 +183,7 @@ export type ResourceHealth =
 	| "degraded"
 	| "restarted"
 	| "unknown";
+
 export type TopologyHealth = ResourceHealth;
 
 export type TopologyMode = "ownership" | "networkFlow";
@@ -585,6 +587,7 @@ export type AnyKind = SupportedKind | ClusterScopedKind;
 export type ResourceKindSelection = AnyKind | DiscoveredResourceKind;
 
 export type * from "./gitops-types";
+export type * from "./health-types";
 export type * from "./helm-types";
 
 export type * from "./rbac-types";

@@ -47,6 +47,7 @@ mod tests {
             namespaced: Some(true),
             dynamic: None,
             health: ResourceHealth::Unknown,
+            health_assessment: Default::default(),
             created_at: None,
             status: None,
             ready: None,

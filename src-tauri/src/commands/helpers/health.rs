@@ -1,7 +1,48 @@
-use crate::models::{ResourceHealth, ResourceSummary};
+use crate::models::{
+    evaluate_health, HealthAssessmentEvidence, HealthAssessmentInput, HealthAssessmentSource,
+    HealthAssessmentState, ResourceHealth, ResourceSummary,
+};
+use serde_json::json;
 
 pub(crate) fn update_resource_health(summary: &mut ResourceSummary) {
-    summary.health = classify_resource_health(summary);
+    let state = classify_resource_health(summary);
+    summary.health_assessment = evaluate_health(HealthAssessmentInput {
+        recognized_semantics: summary.status.is_some() || summary.ready.is_some(),
+        provider_available: true,
+        evidence: vec![
+            HealthAssessmentEvidence {
+                source: HealthAssessmentSource::Kubernetes,
+                raw: json!({ "status": summary.status, "ready": summary.ready }),
+                state: resource_health_state(state),
+                current: true,
+                reason: "Kubernetes status and readiness".to_string(),
+            },
+            HealthAssessmentEvidence {
+                source: HealthAssessmentSource::ContainerRestart,
+                raw: json!(summary.restarts),
+                state: None,
+                current: false,
+                reason: "Container restart count is evidence, not health state".to_string(),
+            },
+        ],
+    });
+    summary.health = match summary.health_assessment.state {
+        HealthAssessmentState::Healthy => ResourceHealth::Healthy,
+        HealthAssessmentState::NeedsAttention => ResourceHealth::Attention,
+        HealthAssessmentState::Degraded => ResourceHealth::Degraded,
+        HealthAssessmentState::Unknown | HealthAssessmentState::NotEvaluated => {
+            ResourceHealth::Unknown
+        }
+    };
+}
+
+fn resource_health_state(health: ResourceHealth) -> Option<HealthAssessmentState> {
+    match health {
+        ResourceHealth::Healthy => Some(HealthAssessmentState::Healthy),
+        ResourceHealth::Attention => Some(HealthAssessmentState::NeedsAttention),
+        ResourceHealth::Degraded => Some(HealthAssessmentState::Degraded),
+        ResourceHealth::Restarted | ResourceHealth::Unknown => Some(HealthAssessmentState::Unknown),
+    }
 }
 
 pub(crate) fn classify_resource_health(summary: &ResourceSummary) -> ResourceHealth {
@@ -9,7 +50,7 @@ pub(crate) fn classify_resource_health(summary: &ResourceSummary) -> ResourceHea
     let ready = normalized(summary.ready.as_deref());
     let successful_terminal = is_successful_terminal_status(&status);
 
-    if matches!(status.as_str(), "pending" | "terminating" | "unknown") {
+    if matches!(status.as_str(), "pending" | "terminating") {
         return ResourceHealth::Attention;
     }
     if is_degraded_status(&status) || (!successful_terminal && ready == "false") {
@@ -17,9 +58,6 @@ pub(crate) fn classify_resource_health(summary: &ResourceSummary) -> ResourceHea
     }
     if !successful_terminal && has_incomplete_ready_ratio(&ready) {
         return ResourceHealth::Attention;
-    }
-    if summary.restarts.unwrap_or_default() > 0 {
-        return ResourceHealth::Restarted;
     }
     if successful_terminal
         || matches!(
@@ -85,6 +123,7 @@ mod tests {
             namespaced: Some(true),
             dynamic: None,
             health: ResourceHealth::Unknown,
+            health_assessment: Default::default(),
             created_at: None,
             status: Some(status.to_string()),
             ready: Some(ready.to_string()),
@@ -106,10 +145,10 @@ mod tests {
     }
 
     #[test]
-    fn succeeded_pod_with_restarts_is_restarted_not_degraded() {
+    fn succeeded_pod_with_restart_history_is_healthy() {
         assert_eq!(
             classify_resource_health(&summary("Succeeded", "False", Some(2))),
-            ResourceHealth::Restarted
+            ResourceHealth::Healthy
         );
     }
 
@@ -126,6 +165,14 @@ mod tests {
         assert_eq!(
             classify_resource_health(&summary("Pending", "False", None)),
             ResourceHealth::Attention
+        );
+    }
+
+    #[test]
+    fn unknown_status_stays_unknown() {
+        assert_eq!(
+            classify_resource_health(&summary("Unknown", "", None)),
+            ResourceHealth::Unknown
         );
     }
 

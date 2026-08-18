@@ -44,6 +44,7 @@ fn resource(kind: &str, name: &str, namespace: &str, uid: &str) -> TopologyInput
             namespaced: Some(true),
             dynamic: None,
             health: ResourceHealth::Healthy,
+            health_assessment: Default::default(),
             created_at: None,
             status: Some("Running".to_string()),
             ready: Some("true".to_string()),

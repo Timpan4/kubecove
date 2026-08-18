@@ -83,6 +83,7 @@ pub(crate) fn base_resource_summary(
         namespaced: None,
         dynamic: None,
         health: ResourceHealth::Unknown,
+        health_assessment: Default::default(),
         created_at: metadata
             .creation_timestamp
             .as_ref()

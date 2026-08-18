@@ -4,7 +4,8 @@ use crate::commands::gitops_crd::{
 };
 use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
 use crate::models::{
-    AppError, ArgoApplicationSetDetails, ArgoApplicationSetSummary, YamlEncoding, YamlViewMode,
+    argo_health_assessment, AppError, ArgoApplicationSetDetails, ArgoApplicationSetSummary,
+    YamlEncoding, YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
 use kube::core::DynamicObject;
@@ -19,6 +20,18 @@ fn application_set_summary_from_object(
         .and_then(|spec| spec.get("generatorParams"))
         .and_then(|params| params.as_array())
         .and_then(|params| params.first());
+
+    let health_status = data
+        .get("status")
+        .and_then(|status| status.get("health"))
+        .and_then(|health| health.get("status"))
+        .and_then(|status| status.as_str());
+    let sync_status = data
+        .get("status")
+        .and_then(|status| status.get("sync"))
+        .and_then(|sync| sync.get("status"))
+        .and_then(|status| status.as_str());
+    let health_assessment = argo_health_assessment(health_status, sync_status);
 
     Some(ArgoApplicationSetSummary {
         cluster: cluster_context.to_string(),
@@ -43,18 +56,9 @@ fn application_set_summary_from_object(
             .and_then(|condition| condition.get("type"))
             .and_then(|kind| kind.as_str())
             .map(String::from),
-        sync_status: data
-            .get("status")
-            .and_then(|status| status.get("sync"))
-            .and_then(|sync| sync.get("status"))
-            .and_then(|status| status.as_str())
-            .map(String::from),
-        health_status: data
-            .get("status")
-            .and_then(|status| status.get("health"))
-            .and_then(|health| health.get("status"))
-            .and_then(|status| status.as_str())
-            .map(String::from),
+        sync_status: sync_status.map(String::from),
+        health_status: health_status.map(String::from),
+        health_assessment,
         destination_namespace: generator_param
             .and_then(|param| param.get("dest-namespace"))
             .and_then(|namespace| namespace.as_str())
