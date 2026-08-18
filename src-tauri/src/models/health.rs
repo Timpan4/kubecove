@@ -210,7 +210,75 @@ pub fn argo_health_assessment(
     }
     evaluate_health(HealthAssessmentInput {
         recognized_semantics: true,
-        provider_available: true,
+        provider_available: health_status.is_some() && sync_status.is_some(),
+        evidence,
+    })
+}
+
+pub fn argo_application_set_health_assessment(
+    health_status: Option<&str>,
+    conditions: Option<&[Value]>,
+) -> HealthAssessment {
+    let mut evidence = vec![];
+    let has_current_condition = conditions.is_some_and(|conditions| {
+        conditions.iter().any(|condition| {
+            condition.get("type").and_then(Value::as_str).is_some()
+                && condition.get("status").and_then(Value::as_str).is_some()
+        })
+    });
+    let resources_up_to_date = conditions.is_some_and(|conditions| {
+        conditions.iter().any(|condition| {
+            condition.get("type").and_then(Value::as_str) == Some("ResourcesUpToDate")
+                && condition.get("status").and_then(Value::as_str) == Some("True")
+        })
+    });
+    let fully_healthy = health_status == Some("Healthy") && resources_up_to_date;
+    if let Some(status) = health_status {
+        evidence.push(HealthAssessmentEvidence {
+            source: HealthAssessmentSource::ArgoHealth,
+            raw: Value::String(status.to_string()),
+            state: match status {
+                "Missing" | "Degraded" => Some(HealthAssessmentState::Degraded),
+                "Progressing" => Some(HealthAssessmentState::NeedsAttention),
+                "Healthy" if fully_healthy => Some(HealthAssessmentState::Healthy),
+                _ => Some(HealthAssessmentState::Unknown),
+            },
+            current: true,
+            reason: format!("Argo CD ApplicationSet health is {status}"),
+        });
+    }
+    if let Some(conditions) = conditions {
+        for condition in conditions {
+            let condition_type = condition.get("type").and_then(Value::as_str);
+            let condition_status = condition.get("status").and_then(Value::as_str);
+            evidence.push(HealthAssessmentEvidence {
+                source: HealthAssessmentSource::ArgoHealth,
+                raw: condition.clone(),
+                state: if condition_status == Some("True") {
+                    match condition_type {
+                        Some("ErrorOccurred") => Some(HealthAssessmentState::Degraded),
+                        Some("RolloutProgressing") => Some(HealthAssessmentState::NeedsAttention),
+                        Some("ResourcesUpToDate") if fully_healthy => {
+                            Some(HealthAssessmentState::Healthy)
+                        }
+                        Some("ResourcesUpToDate") => Some(HealthAssessmentState::Unknown),
+                        _ => None,
+                    }
+                } else {
+                    None
+                },
+                current: true,
+                reason: format!(
+                    "Argo CD ApplicationSet condition {} is {}",
+                    condition_type.unwrap_or("unknown"),
+                    condition_status.unwrap_or("unknown")
+                ),
+            });
+        }
+    }
+    evaluate_health(HealthAssessmentInput {
+        recognized_semantics: true,
+        provider_available: health_status.is_some() && has_current_condition,
         evidence,
     })
 }
@@ -337,13 +405,53 @@ mod tests {
 
     #[test]
     fn incomplete_argo_healthy_pair_stays_unknown() {
+        let missing_sync = argo_health_assessment(Some("Healthy"), None);
+        let missing_health = argo_health_assessment(None, Some("Synced"));
+
+        assert_eq!(missing_sync.state, HealthAssessmentState::Unknown);
+        assert_eq!(missing_health.state, HealthAssessmentState::Unknown);
         assert_eq!(
-            argo_health_assessment(Some("Healthy"), None).state,
-            HealthAssessmentState::Unknown
+            missing_sync.completeness,
+            HealthAssessmentCompleteness::Partial
         );
         assert_eq!(
-            argo_health_assessment(None, Some("Synced")).state,
-            HealthAssessmentState::Unknown
+            missing_health.completeness,
+            HealthAssessmentCompleteness::Partial
+        );
+    }
+
+    #[test]
+    fn application_set_uses_health_and_current_conditions_without_sync() {
+        let healthy_conditions = [json!({
+            "type": "ResourcesUpToDate",
+            "status": "True"
+        })];
+        let error_conditions = [json!({
+            "type": "ErrorOccurred",
+            "status": "True",
+            "message": "generator failed"
+        })];
+
+        let healthy =
+            argo_application_set_health_assessment(Some("Healthy"), Some(&healthy_conditions));
+        let fallback = argo_application_set_health_assessment(None, Some(&error_conditions));
+        let missing_health =
+            argo_application_set_health_assessment(None, Some(&healthy_conditions));
+        let missing_condition = argo_application_set_health_assessment(Some("Healthy"), None);
+
+        assert_eq!(healthy.state, HealthAssessmentState::Healthy);
+        assert_eq!(healthy.completeness, HealthAssessmentCompleteness::Complete);
+        assert_eq!(fallback.state, HealthAssessmentState::Degraded);
+        assert_eq!(fallback.completeness, HealthAssessmentCompleteness::Partial);
+        assert_eq!(missing_health.state, HealthAssessmentState::Unknown);
+        assert_eq!(
+            missing_health.completeness,
+            HealthAssessmentCompleteness::Partial
+        );
+        assert_eq!(missing_condition.state, HealthAssessmentState::Unknown);
+        assert_eq!(
+            missing_condition.completeness,
+            HealthAssessmentCompleteness::Partial
         );
     }
 

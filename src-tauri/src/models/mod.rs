@@ -39,8 +39,9 @@ pub use flux::{
     FluxResourceSummary,
 };
 pub use health::{
-    argo_health_assessment, evaluate_health, HealthAssessment, HealthAssessmentCompleteness,
-    HealthAssessmentEvidence, HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState,
+    argo_application_set_health_assessment, argo_health_assessment, evaluate_health,
+    HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentEvidence,
+    HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState,
 };
 pub use helm::{
     HelmManifestResourceSummary, HelmManifestSummary, HelmReconciliationResource,
