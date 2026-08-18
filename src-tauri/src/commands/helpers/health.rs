@@ -127,7 +127,7 @@ mod tests {
             namespaced: Some(true),
             dynamic: None,
             health: ResourceHealth::Unknown,
-            health_assessment: Default::default(),
+            health_assessment: crate::models::HealthAssessment::default(),
             created_at: None,
             status: Some(status.to_string()),
             ready: Some(ready.to_string()),

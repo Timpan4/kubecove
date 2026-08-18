@@ -92,7 +92,7 @@ pub(crate) fn dynamic_resource_summary(
         namespaced: Some(resource_kind.namespaced),
         dynamic: Some(true),
         health: ResourceHealth::default(),
-        health_assessment: Default::default(),
+        health_assessment: crate::models::HealthAssessment::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&object.metadata.creation_timestamp),
         status: dynamic_status_from_data(&object.data),
         ready: None,
@@ -131,11 +131,11 @@ fn dynamic_health_assessment(data: &Value) -> HealthAssessment {
             let kind = condition.get("type")?.as_str()?;
             let status = condition.get("status")?.as_str()?;
             let state = match (kind, status) {
-                ("Stalled", "True") | ("Ready", "False") | ("Healthy", "False") => {
+                ("Stalled", "True") | ("Ready" | "Healthy", "False") => {
                     HealthAssessmentState::Degraded
                 }
                 ("Reconciling", "True") => HealthAssessmentState::NeedsAttention,
-                ("Ready", "True") | ("Healthy", "True") | ("Reconciling", "False") => {
+                ("Ready" | "Healthy", "True") | ("Reconciling", "False") => {
                     HealthAssessmentState::Healthy
                 }
                 _ => HealthAssessmentState::Unknown,
