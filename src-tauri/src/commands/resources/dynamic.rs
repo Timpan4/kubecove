@@ -1,8 +1,8 @@
 use crate::commands::diagnostics::record_backend_result;
 use crate::commands::helpers::{
     extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
-    k8s_creation_timestamp_to_rfc3339, list_params, normalize_k8s_yaml_value, resource_age,
-    serialize_json_value_document,
+    k8s_creation_timestamp_to_rfc3339, legacy_resource_health, list_params,
+    normalize_k8s_yaml_value, resource_age, serialize_json_value_document,
 };
 use crate::commands::{
     diagnostic_field,
@@ -156,17 +156,6 @@ fn dynamic_health_assessment(data: &Value) -> HealthAssessment {
         provider_available: true,
         evidence,
     })
-}
-
-fn legacy_resource_health(state: HealthAssessmentState) -> ResourceHealth {
-    match state {
-        HealthAssessmentState::Healthy => ResourceHealth::Healthy,
-        HealthAssessmentState::NeedsAttention => ResourceHealth::Attention,
-        HealthAssessmentState::Degraded => ResourceHealth::Degraded,
-        HealthAssessmentState::Unknown | HealthAssessmentState::NotEvaluated => {
-            ResourceHealth::Unknown
-        }
-    }
 }
 
 fn is_core_v1_secret(resource_kind: &DiscoveredResourceKind) -> bool {

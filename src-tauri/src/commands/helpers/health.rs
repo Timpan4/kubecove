@@ -26,14 +26,18 @@ pub(crate) fn update_resource_health(summary: &mut ResourceSummary) {
             },
         ],
     });
-    summary.health = match summary.health_assessment.state {
+    summary.health = legacy_resource_health(summary.health_assessment.state);
+}
+
+pub(crate) fn legacy_resource_health(state: HealthAssessmentState) -> ResourceHealth {
+    match state {
         HealthAssessmentState::Healthy => ResourceHealth::Healthy,
         HealthAssessmentState::NeedsAttention => ResourceHealth::Attention,
         HealthAssessmentState::Degraded => ResourceHealth::Degraded,
         HealthAssessmentState::Unknown | HealthAssessmentState::NotEvaluated => {
             ResourceHealth::Unknown
         }
-    };
+    }
 }
 
 fn resource_health_state(health: ResourceHealth) -> Option<HealthAssessmentState> {

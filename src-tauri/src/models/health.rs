@@ -180,6 +180,7 @@ pub fn argo_health_assessment(
     sync_status: Option<&str>,
 ) -> HealthAssessment {
     let mut evidence = vec![];
+    let fully_healthy = health_status == Some("Healthy") && sync_status == Some("Synced");
     if let Some(status) = health_status {
         evidence.push(HealthAssessmentEvidence {
             source: HealthAssessmentSource::ArgoHealth,
@@ -187,7 +188,7 @@ pub fn argo_health_assessment(
             state: match status {
                 "Missing" | "Degraded" => Some(HealthAssessmentState::Degraded),
                 "Progressing" => Some(HealthAssessmentState::NeedsAttention),
-                "Healthy" => Some(HealthAssessmentState::Healthy),
+                "Healthy" if fully_healthy => Some(HealthAssessmentState::Healthy),
                 _ => Some(HealthAssessmentState::Unknown),
             },
             current: true,
@@ -200,7 +201,7 @@ pub fn argo_health_assessment(
             raw: Value::String(status.to_string()),
             state: match status {
                 "OutOfSync" => Some(HealthAssessmentState::NeedsAttention),
-                "Synced" => Some(HealthAssessmentState::Healthy),
+                "Synced" if fully_healthy => Some(HealthAssessmentState::Healthy),
                 _ => Some(HealthAssessmentState::Unknown),
             },
             current: true,
@@ -320,9 +321,30 @@ mod tests {
     fn argo_conflicts_follow_contract() {
         let missing = argo_health_assessment(Some("Missing"), Some("OutOfSync"));
         let progressing = argo_health_assessment(Some("Healthy"), Some("OutOfSync"));
+        let healthy = argo_health_assessment(Some("Healthy"), Some("Synced"));
 
         assert_eq!(missing.state, HealthAssessmentState::Degraded);
         assert_eq!(progressing.state, HealthAssessmentState::NeedsAttention);
+        assert_eq!(healthy.state, HealthAssessmentState::Healthy);
+        assert_eq!(
+            healthy.winning_sources,
+            vec![
+                HealthAssessmentSource::ArgoHealth,
+                HealthAssessmentSource::ArgoSync
+            ]
+        );
+    }
+
+    #[test]
+    fn incomplete_argo_healthy_pair_stays_unknown() {
+        assert_eq!(
+            argo_health_assessment(Some("Healthy"), None).state,
+            HealthAssessmentState::Unknown
+        );
+        assert_eq!(
+            argo_health_assessment(None, Some("Synced")).state,
+            HealthAssessmentState::Unknown
+        );
     }
 
     #[test]
