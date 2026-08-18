@@ -45,7 +45,7 @@ describe("resource view safeguards", () => {
 
 		expect(topBarSource).toContain('class="@container rounded-lg');
 		expect(topBarSource).toContain("@5xl:grid-cols-2");
-		expect(topBarSource).toContain("@7xl:grid-cols-6");
+		expect(topBarSource).toContain("@7xl:grid-cols-7");
 		expect(topBarSource).not.toContain(" xl:grid-cols-[minmax(12rem");
 	});
 
