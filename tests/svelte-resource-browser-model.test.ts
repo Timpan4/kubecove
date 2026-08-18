@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { resourceBrowserAvailableKinds } from "../src/app/svelte/workspaceShellModel";
 import { argoResourceIdentityKey } from "../src/features/gitops/argo-workspace-model";
 import { PAGE_SIZE } from "../src/features/resources/constants";
 import {
@@ -11,9 +12,9 @@ import {
 import {
 	allKindOptions,
 	buildResourceTableModel,
+	filterResourceScopeOptions,
 	filterResourcesByKinds,
 	filterTopologyByKinds,
-	filterResourceScopeOptions,
 	initialOwnershipMapOpen,
 	nextNamespaceSelection,
 	shouldLoadOwnershipMap,
@@ -32,9 +33,13 @@ import type {
 } from "../src/lib/types";
 import type { SavedWorkspace } from "../src/lib/workspace-model";
 import { buildWorkspaceReadContext } from "../src/lib/workspaceReadContext";
-import { resourceBrowserAvailableKinds } from "../src/app/svelte/workspaceShellModel";
 
 function resource(name: string, patch: Partial<ResourceSummary> = {}): ResourceSummary {
+	const state = patch.health === "degraded"
+		? "degraded"
+		: patch.health === "attention"
+			? "needsAttention"
+			: "healthy";
 	return {
 		cluster: "kind-dev",
 		kind: "Pod",
@@ -42,6 +47,13 @@ function resource(name: string, patch: Partial<ResourceSummary> = {}): ResourceS
 		namespace: "default",
 		age: "1d",
 		health: "healthy",
+		healthAssessment: {
+			state,
+			completeness: "complete",
+			winningSources: ["kubernetes"],
+			reasons: [`Test Kubernetes state is ${state}`],
+			evidence: [{ source: "kubernetes", raw: state, state, current: true, reason: `Test Kubernetes state is ${state}` }],
+		},
 		status: "Running",
 		ready: "1/1",
 		...patch,
@@ -287,8 +299,8 @@ describe("svelte resource browser model", () => {
 		});
 
 		expect(model.healthSummary.total).toBe(2);
-		expect(model.healthSummary.healthy).toBe(1);
-		expect(model.healthSummary.restarted).toBe(1);
+		expect(model.healthSummary.healthy).toBe(2);
+		expect(model.healthSummary.restartEvidence).toBe(1);
 		expect(model.groupedByGitOps).toBe(true);
 		expect(model.gitOpsFilters.map((filter) => filter.label)).toEqual([
 			"Owned by Argo CD: payments (partial evidence)",

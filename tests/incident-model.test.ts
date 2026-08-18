@@ -95,7 +95,6 @@ describe("incident surface model", () => {
 			warning: 1,
 		})).toEqual([
 			{ id: "all", label: "All", count: 4 },
-			{ id: "unhealthy", label: "Unhealthy", count: 2 },
 			{ id: "degraded", label: "Degraded", count: 1 },
 			{ id: "attention", label: "Needs attention", count: 1 },
 			{ id: "restarted", label: "Restart evidence", count: 1 },
@@ -106,7 +105,6 @@ describe("incident surface model", () => {
 	test("maps incident resource jumps without hiding warning-only rows", () => {
 		expect(incidentResourcesHealthFilter("all")).toBe("all");
 		expect(incidentResourcesHealthFilter("warning")).toBe("all");
-		expect(incidentResourcesHealthFilter("unhealthy")).toBe("unhealthy");
 		expect(incidentResourcesHealthFilter("degraded")).toBe("degraded");
 		expect(incidentResourcesHealthFilter("attention")).toBe("attention");
 		expect(incidentResourcesHealthFilter("restarted")).toBe("restarted");

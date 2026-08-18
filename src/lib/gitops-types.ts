@@ -287,6 +287,7 @@ export interface FluxResourceSummary {
 	age: string;
 	createdAt?: string;
 	resourceKind: FluxResourceKind;
+	healthAssessment: import("./health-types").HealthAssessment;
 	readyStatus?: string;
 	suspended?: boolean;
 	sourceKind?: string;

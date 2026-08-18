@@ -3,7 +3,7 @@ import type { GitOpsData } from "./surfaceModel";
 export interface GitOpsSummaryFact {
 	label: string;
 	value: number;
-	tone?: "healthy" | "unhealthy";
+	tone?: "healthy" | "degraded";
 }
 
 export interface GitOpsSummary {
@@ -27,8 +27,15 @@ export function buildGitOpsSummary(data: GitOpsData, activeRailKey: string): Git
 
 	const totalObjects = data.apps.length + data.appSets.length + data.projects.length + data.flux.length;
 	if (activeRailKey.startsWith("flux:")) {
-		const ready = data.flux.filter((item) => item.readyStatus === "True").length;
-		const notReady = data.flux.filter((item) => item.readyStatus === "False").length;
+		const healthy = data.flux.filter((item) => item.healthAssessment.state === "healthy").length;
+		const degraded = data.flux.filter((item) => item.healthAssessment.state === "degraded").length;
+		const attention = data.flux.filter(
+			(item) => item.healthAssessment.state === "needsAttention",
+		).length;
+		const unknown = data.flux.filter((item) => item.healthAssessment.state === "unknown").length;
+		const notEvaluated = data.flux.filter(
+			(item) => item.healthAssessment.state === "notEvaluated",
+		).length;
 		return {
 			activeProvider: "Flux",
 			detectedProviders,
@@ -36,12 +43,15 @@ export function buildGitOpsSummary(data: GitOpsData, activeRailKey: string): Git
 			facts: [
 				{ label: "Resources", value: data.flux.length },
 				{ label: "Kinds", value: new Set(data.flux.map((item) => item.resourceKind.kind)).size },
-				{ label: "Ready", value: ready, tone: "healthy" },
-				{ label: "Not Ready", value: notReady, tone: "unhealthy" },
-				{ label: "Unknown", value: data.flux.length - ready - notReady },
+				{ label: "Healthy", value: healthy, tone: "healthy" },
+				{ label: "Needs attention", value: attention },
+				{ label: "Degraded", value: degraded, tone: "degraded" },
+				{ label: "Unknown", value: unknown },
+				{ label: "Not evaluated", value: notEvaluated },
 			],
 		};
 	}
+	const argoItems = [...data.apps, ...data.appSets, ...data.projects];
 
 	return {
 		activeProvider: "Argo CD",
@@ -51,16 +61,11 @@ export function buildGitOpsSummary(data: GitOpsData, activeRailKey: string): Git
 			{ label: "Applications", value: data.apps.length },
 			{ label: "ApplicationSets", value: data.appSets.length },
 			{ label: "AppProjects", value: data.projects.length },
-			{
-				label: "Synced",
-				value: data.apps.filter((item) => item.syncStatus === "Synced").length,
-				tone: "healthy",
-			},
-			{
-				label: "Degraded",
-				value: data.apps.filter((item) => item.healthStatus === "Degraded").length,
-				tone: "unhealthy",
-			},
+			{ label: "Healthy", value: argoItems.filter((item) => item.healthAssessment?.state === "healthy").length, tone: "healthy" },
+			{ label: "Needs attention", value: argoItems.filter((item) => item.healthAssessment?.state === "needsAttention").length },
+			{ label: "Degraded", value: argoItems.filter((item) => item.healthAssessment?.state === "degraded").length, tone: "degraded" },
+			{ label: "Unknown", value: argoItems.filter((item) => !item.healthAssessment || item.healthAssessment.state === "unknown").length },
+			{ label: "Not evaluated", value: argoItems.filter((item) => item.healthAssessment?.state === "notEvaluated").length },
 		],
 	};
 }

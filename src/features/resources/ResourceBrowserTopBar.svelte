@@ -231,7 +231,7 @@
 	</div>
 
 	<div class="mt-2 grid gap-2 border-t pt-2 @5xl:grid-cols-2 @5xl:items-stretch">
-		<div class="grid grid-cols-2 gap-2 @3xl:grid-cols-3 @7xl:grid-cols-6" aria-label="Resource health summary">
+		<div class="grid grid-cols-2 gap-2 @3xl:grid-cols-4 @7xl:grid-cols-7" aria-label="Resource health summary">
 			<Button
 				type="button"
 				variant="outline"
@@ -240,10 +240,7 @@
 				onclick={() => onHealthSelect("all")}
 			>
 				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Total</span>
-				<span class="flex items-baseline gap-1.5">
-					<strong class={`tabular-nums ${countClass(healthSummary.total)}`}>{healthSummary.total}</strong>
-					<span class="text-[0.625rem] text-muted-foreground">{healthSummary.untracked} unchecked</span>
-				</span>
+				<strong class={`tabular-nums ${countClass(healthSummary.total)}`}>{healthSummary.total}</strong>
 			</Button>
 			<Button
 				type="button"
@@ -260,15 +257,25 @@
 			<Button
 				type="button"
 				variant="outline"
-				class={healthButtonClass(healthFilter === "unhealthy")}
-				aria-pressed={healthFilter === "unhealthy"}
-				onclick={() => onHealthSelect("unhealthy")}
+				class={healthButtonClass(healthFilter === "unknown")}
+				aria-pressed={healthFilter === "unknown"}
+				onclick={() => onHealthSelect("unknown")}
 			>
-				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Unhealthy</span>
-				<strong
-					class={`tabular-nums ${countClass(healthSummary.attention + healthSummary.degraded, "warning")}`}
-				>
-					{healthSummary.attention + healthSummary.degraded}
+				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Unknown</span>
+				<strong class={`tabular-nums ${countClass(healthSummary.unknown)}`}>
+					{healthSummary.unknown}
+				</strong>
+			</Button>
+			<Button
+				type="button"
+				variant="outline"
+				class={healthButtonClass(healthFilter === "notEvaluated")}
+				aria-pressed={healthFilter === "notEvaluated"}
+				onclick={() => onHealthSelect("notEvaluated")}
+			>
+				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Not evaluated</span>
+				<strong class={`tabular-nums ${countClass(healthSummary.notEvaluated)}`}>
+					{healthSummary.notEvaluated}
 				</strong>
 			</Button>
 			<Button
@@ -302,9 +309,9 @@
 				aria-pressed={healthFilter === "restarted"}
 				onclick={() => onHealthSelect("restarted")}
 			>
-				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Restarted</span>
-				<strong class={`tabular-nums ${countClass(healthSummary.restarted, "info")}`}>
-					{healthSummary.restarted}
+				<span class="text-[0.625rem] font-semibold uppercase text-muted-foreground">Restart evidence</span>
+				<strong class={`tabular-nums ${countClass(healthSummary.restartEvidence, "info")}`}>
+					{healthSummary.restartEvidence}
 				</strong>
 			</Button>
 		</div>

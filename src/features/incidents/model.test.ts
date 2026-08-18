@@ -51,7 +51,7 @@ describe("incident presentation model", () => {
 		const restarted = item("worker", "restarted");
 		const state = buildIncidentSurfaceState(
 			[restarted, degraded],
-			"unhealthy",
+			"degraded",
 			incidentItemKey(degraded),
 		);
 
@@ -85,9 +85,9 @@ describe("incident presentation model", () => {
 
 		expect(filterIncidentItems(rows, "warning")).toEqual([rows[1]]);
 		expect(buildIncidentFilterOptions(counts)[1]).toEqual({
-			id: "unhealthy",
-			label: "Unhealthy",
-			count: 1,
+			id: "degraded",
+			label: "Degraded",
+			count: 0,
 		});
 		expect(incidentResourcesHealthFilter("warning")).toBe("all");
 		expect(incidentResourcesHealthFilter("attention")).toBe("attention");
@@ -134,15 +134,34 @@ describe("incident presentation model", () => {
 		]);
 	});
 
+	test("counts warning and restart evidence independently from canonical severity", () => {
+		const mixed = item("api", "degraded", {
+			warningEventCount: 1,
+			signals: [
+				{ kind: "restart", label: "Restart", message: "Container restarted", source: "pod", state: "active" },
+				{ kind: "event", label: "FailedMount", message: "Volume unavailable", source: "kubelet", state: "active" },
+			],
+		});
+
+		expect(countIncidentItems([mixed])).toEqual({
+			total: 1,
+			degraded: 1,
+			attention: 0,
+			restarted: 1,
+			warning: 1,
+		});
+		expect(filterIncidentItems([mixed], "restarted")).toEqual([mixed]);
+		expect(filterIncidentItems([mixed], "warning")).toEqual([mixed]);
+	});
+
 	test("exports the complete filter vocabulary", () => {
 		const filters: IncidentFilter[] = [
 			"all",
-			"unhealthy",
 			"degraded",
 			"attention",
 			"restarted",
 			"warning",
 		];
-		expect(filters).toHaveLength(6);
+		expect(filters).toHaveLength(5);
 	});
 });

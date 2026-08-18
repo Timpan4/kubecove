@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::HealthAssessment;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FluxResourceKind {
@@ -30,6 +32,7 @@ pub struct FluxResourceSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
     pub resource_kind: FluxResourceKind,
+    pub health_assessment: HealthAssessment,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ready_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
