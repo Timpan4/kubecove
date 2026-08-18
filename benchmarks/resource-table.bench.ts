@@ -8,14 +8,33 @@ import {
 	buildResourceSearchIndex,
 	filterResourceSearchIndex,
 } from "@/features/resources/helpers";
-import type { ResourceSummary } from "@/lib/types";
+import type { HealthAssessment, ResourceSummary } from "@/lib/types";
 
 const kinds = ["Deployment", "Pod", "Service", "ConfigMap", "Ingress"];
+
+function healthAssessment(state: "degraded" | "healthy"): HealthAssessment {
+	return {
+		state,
+		completeness: "complete",
+		winningSources: ["kubernetes"],
+		reasons: [state === "healthy" ? "Ready=True" : "Ready=False"],
+		evidence: [
+			{
+				source: "kubernetes",
+				raw: { type: "Ready", status: state === "healthy" ? "True" : "False" },
+				state,
+				current: true,
+				reason: state === "healthy" ? "Ready=True" : "Ready=False",
+			},
+		],
+	};
+}
 
 function resourceSummary(index: number): ResourceSummary {
 	const kind = kinds[index % kinds.length] ?? "Pod";
 	const namespace = `namespace-${index % 100}`;
 	const app = `checkout-${index % 250}`;
+	const healthState = index % 17 === 0 ? "degraded" : "healthy";
 	return {
 		cluster: "prod",
 		apiVersion:
@@ -28,6 +47,7 @@ function resourceSummary(index: number): ResourceSummary {
 		age: `${index % 60}m`,
 		createdAt: `2026-01-${String((index % 28) + 1).padStart(2, "0")}T00:00:00Z`,
 		status: index % 17 === 0 ? "CrashLoopBackOff" : "Running",
+		healthAssessment: healthAssessment(healthState),
 		ready: index % 17 === 0 ? "False" : "True",
 		restarts: index % 17 === 0 ? 5 : index % 3,
 		ownerRef: kind === "Pod" ? `${app}-deployment` : undefined,
@@ -56,7 +76,7 @@ const gitOpsFilter = "argo:Application:argocd:checkout-42";
 const state: ResourceTableState = {
 	search: "checkout",
 	gitOpsFilter: "",
-	healthFilter: "unhealthy",
+	healthFilter: "degraded",
 	sort: { id: "memory", desc: true },
 	pageIndex: 0,
 	collapsedGroups: new Set(),
@@ -87,6 +107,7 @@ const ownershipRows = Array.from({ length: 2_500 }, (_, index) => {
 		age: "1m",
 		status: unhealthy ? "CrashLoopBackOff" : "Running",
 		health: unhealthy ? "degraded" : "healthy",
+		healthAssessment: healthAssessment(unhealthy ? "degraded" : "healthy"),
 		ready: unhealthy ? "False" : "True",
 		metrics: {
 			cpuMillicores: (index % 64) * 10,
@@ -137,7 +158,7 @@ const ownershipSearchIndex = buildResourceSearchIndex(ownershipRows);
 const ownershipState: ResourceTableState = {
 	search: "checkout",
 	gitOpsFilter: "",
-	healthFilter: "unhealthy",
+	healthFilter: "degraded",
 	sort: { id: "memory", desc: true },
 	pageIndex: 0,
 	collapsedGroups: new Set(),
