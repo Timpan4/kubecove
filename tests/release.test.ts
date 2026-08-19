@@ -96,6 +96,7 @@ describe("release version helpers", () => {
 				"!contains(github.event.pull_request.labels.*.name, 'release')",
 			);
 		}
+		expect(benchmarkJob).not.toContain("timeout-minutes:");
 
 		for (const workflow of [ciWorkflow, codspeedWorkflow]) {
 			expect(workflow).toContain(releaseTrigger);
