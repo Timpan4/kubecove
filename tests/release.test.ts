@@ -29,6 +29,12 @@ describe("release version helpers", () => {
 			"`KubeCove_$" + "{version}_universal.app.tar.gz`",
 		);
 		expect(tagWorkflow).toContain("actions: write");
+		expect(tagWorkflow).toContain("types: [closed]");
+		expect(tagWorkflow).toContain("github.event.pull_request.merged == true");
+		expect(tagWorkflow).toContain(
+			"ref: $" + "{{ github.event.pull_request.merge_commit_sha }}",
+		);
+		expect(tagWorkflow).not.toContain("Find associated release PR");
 		expect(tagWorkflow).toContain('gh workflow run release.yml --ref "$tag_name"');
 	});
 
