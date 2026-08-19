@@ -71,21 +71,55 @@ describe("release version helpers", () => {
 			".github/workflows/codspeed.yml",
 			"utf8",
 		);
-		const trustedReleaseChecks = [
-			"github.event.pull_request.head.repo.full_name == github.repository",
-			"startsWith(github.head_ref, 'release/app-v')",
-			"contains(github.event.pull_request.labels.*.name, 'release')",
+		const ciJobs = [
+			ciWorkflow.match(/\n {2}frontend:\n[\s\S]*?(?=\n {2}rust:\n)/)?.[0],
+			ciWorkflow.match(/\n {2}rust:\n[\s\S]*?(?=\n {2}nix:\n)/)?.[0],
+			ciWorkflow.match(/\n {2}nix:\n[\s\S]*?(?=\n {2}check:\n)/)?.[0],
 		];
+		const ciCheckJob = ciWorkflow.match(/\n {2}check:\n[\s\S]*$/)?.[0];
+		const benchmarkJob = codspeedWorkflow.match(
+			/\n {2}benchmarks:\n[\s\S]*?(?=\n {2}check:\n)/,
+		)?.[0];
+		const codspeedCheckJob = codspeedWorkflow.match(
+			/\n {2}check:\n[\s\S]*$/,
+		)?.[0];
+		const releaseTrigger =
+			"types: [opened, synchronize, reopened, labeled, unlabeled]";
 
-		for (const check of trustedReleaseChecks) {
-			expect(ciWorkflow).toContain(check);
-			expect(codspeedWorkflow).toContain(check);
+		expect(ciJobs).not.toContain(undefined);
+		for (const job of [...ciJobs, benchmarkJob]) {
+			expect(job).toContain(
+				"github.event.pull_request.head.repo.full_name != github.repository",
+			);
+			expect(job).toContain("!startsWith(github.head_ref, 'release/app-v')");
+			expect(job).toContain(
+				"!contains(github.event.pull_request.labels.*.name, 'release')",
+			);
 		}
-		expect(ciWorkflow).toContain(
+
+		for (const workflow of [ciWorkflow, codspeedWorkflow]) {
+			expect(workflow).toContain(releaseTrigger);
+		}
+		for (const checkJob of [ciCheckJob, codspeedCheckJob]) {
+			expect(checkJob).toContain(
+				"github.event.pull_request.head.repo.full_name == github.repository",
+			);
+			expect(checkJob).toContain("startsWith(github.head_ref, 'release/app-v')");
+			expect(checkJob).toContain(
+				"contains(github.event.pull_request.labels.*.name, 'release')",
+			);
+		}
+		expect(ciCheckJob).toContain(
 			'test "$' + '{FRONTEND_RESULT}" = "skipped"',
 		);
-		expect(codspeedWorkflow).toContain("name: CodSpeed Performance Analysis");
-		expect(codspeedWorkflow).toContain(
+		expect(ciCheckJob).toContain(
+			'test "$' + '{NIX_RESULT}" = "skipped"',
+		);
+		expect(ciCheckJob).toContain(
+			'test "$' + '{RUST_RESULT}" = "skipped"',
+		);
+		expect(codspeedCheckJob).toContain("name: CodSpeed Performance Analysis");
+		expect(codspeedCheckJob).toContain(
 			'test "$' + '{BENCHMARK_RESULT}" = "skipped"',
 		);
 	});
