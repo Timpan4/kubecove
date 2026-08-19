@@ -18,6 +18,7 @@ concurrency:
 jobs:
   benchmarks:
     name: Run benchmarks
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -73,3 +74,25 @@ jobs:
         with:
           mode: simulation
           run: bunx vitest bench --run && cd src-tauri && cargo codspeed run --bench backend_hot_paths
+
+  check:
+    name: CodSpeed Performance Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - benchmarks
+    if: always()
+
+    steps:
+      - name: Verify benchmark result
+        env:
+          BENCHMARK_RESULT: ${{ needs.benchmarks.result }}
+          RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
+        run: |
+          set -euo pipefail
+          echo "Benchmark result: ${BENCHMARK_RESULT}"
+          if [[ "${RELEASE_PR}" == "true" ]]; then
+            test "${BENCHMARK_RESULT}" = "skipped"
+          else
+            test "${BENCHMARK_RESULT}" = "success"
+          fi

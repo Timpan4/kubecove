@@ -22,6 +22,8 @@ KubeCove is inspection-first outside ADR-approved live sessions and guarded oper
 2. Review version metadata, generated `CHANGELOG.md` section, `bun run docs:check`, and release claims against implemented guarded-operation contracts.
 3. Merge release PR to `main`.
 
+Trusted release PRs skip pull-request CI and CodSpeed. The exemption requires the same-repository `release/app-v*` branch and `release` label. Tag builds still run every automated release gate below before publishing.
+
 After merge, GitHub Actions finds merged `release` PR, creates matching annotated `app-vX.Y.Z` tag, runs release workflow, builds installers, verifies updater assets, and publishes release.
 
 Manual release-workflow dispatch only reruns an existing `app-v*` tag and preserves release visibility.

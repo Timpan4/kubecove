@@ -65,6 +65,29 @@ describe("release version helpers", () => {
 		expect(checkJob).toContain('test "$' + '{NIX_RESULT}" = "success"');
 	});
 
+	test("skips PR checks only for trusted release branches", () => {
+		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+		const codspeedWorkflow = readFileSync(
+			".github/workflows/codspeed.yml",
+			"utf8",
+		);
+		const trustedReleaseChecks = [
+			"github.event.pull_request.head.repo.full_name == github.repository",
+			"startsWith(github.head_ref, 'release/app-v')",
+			"contains(github.event.pull_request.labels.*.name, 'release')",
+		];
+
+		for (const check of trustedReleaseChecks) {
+			expect(ciWorkflow).toContain(check);
+			expect(codspeedWorkflow).toContain(check);
+		}
+		expect(ciWorkflow).toContain('test "${FRONTEND_RESULT}" = "skipped"');
+		expect(codspeedWorkflow).toContain("name: CodSpeed Performance Analysis");
+		expect(codspeedWorkflow).toContain(
+			'test "${BENCHMARK_RESULT}" = "skipped"',
+		);
+	});
+
 	test("uses an unlocked session collection for Linux desktop E2E", () => {
 		const e2eWorkflow = readFileSync(".github/workflows/e2e.yml", "utf8");
 		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
