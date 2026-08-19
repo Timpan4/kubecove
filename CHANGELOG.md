@@ -3,6 +3,18 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.10.9 - 2026-08-19
+### Improved
+
+- Reduce frontend hot-path allocations (#361).
+
+### Fixed
+
+- Gate releases on Nix build (#375).
+- Preserve resource table sorting through grouping (#374).
+- Resource details accessibility targets (#366).
+- Global resource search coverage (#359).
+
 ## 0.10.8 - 2026-08-16
 ### Added
 
