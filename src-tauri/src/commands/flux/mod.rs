@@ -4,8 +4,10 @@ use crate::commands::gitops_crd::{
 };
 use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
 use crate::models::{
-    AppError, FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails, FluxResourceKind,
-    FluxResourceSummary, YamlEncoding, YamlViewMode,
+    evaluate_health, AppError, FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails,
+    FluxResourceKind, FluxResourceSummary, HealthAssessment, HealthAssessmentEvidence,
+    HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState, YamlEncoding,
+    YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
 use kube::api::{ApiResource, DynamicObject};
@@ -342,6 +344,7 @@ fn flux_summary(
     resource_kind: &FluxResourceKind,
     object: &DynamicObject,
 ) -> FluxResourceSummary {
+    let ready_status = ready_status(&object.data);
     FluxResourceSummary {
         cluster: cluster_context.to_string(),
         name: object.metadata.name.clone().unwrap_or_default(),
@@ -353,7 +356,8 @@ fn flux_summary(
         })),
         created_at: k8s_creation_timestamp_to_rfc3339(&object.metadata.creation_timestamp),
         resource_kind: resource_kind.clone(),
-        ready_status: ready_status(&object.data),
+        health_assessment: flux_health_assessment(ready_status.as_deref()),
+        ready_status,
         suspended: object
             .data
             .get("spec")
@@ -373,6 +377,28 @@ fn flux_summary(
         inventory: inventory(&object.data),
         inventory_partial: inventory_partial(&object.data),
     }
+}
+
+fn flux_health_assessment(ready_status: Option<&str>) -> HealthAssessment {
+    let evidence = ready_status
+        .map(|status| HealthAssessmentEvidence {
+            source: HealthAssessmentSource::Kubernetes,
+            raw: Value::String(status.to_string()),
+            state: Some(match status {
+                "True" => HealthAssessmentState::Healthy,
+                "False" => HealthAssessmentState::Degraded,
+                _ => HealthAssessmentState::Unknown,
+            }),
+            current: true,
+            reason: format!("Flux Ready condition is {status}"),
+        })
+        .into_iter()
+        .collect();
+    evaluate_health(HealthAssessmentInput {
+        recognized_semantics: true,
+        provider_available: true,
+        evidence,
+    })
 }
 
 fn source_field(data: &Value, field: &str) -> Option<String> {
@@ -492,6 +518,21 @@ mod tests {
         assert_eq!(
             ready_message(&data),
             Some("Applied revision main@sha1:abc".to_string())
+        );
+    }
+
+    #[test]
+    fn classifies_flux_ready_condition_as_kubernetes_health_evidence() {
+        let healthy = flux_health_assessment(Some("True"));
+        let degraded = flux_health_assessment(Some("False"));
+        let unknown = flux_health_assessment(None);
+
+        assert_eq!(healthy.state, HealthAssessmentState::Healthy);
+        assert_eq!(degraded.state, HealthAssessmentState::Degraded);
+        assert_eq!(unknown.state, HealthAssessmentState::Unknown);
+        assert_eq!(
+            healthy.winning_sources,
+            vec![HealthAssessmentSource::Kubernetes]
         );
     }
 

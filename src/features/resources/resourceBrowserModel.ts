@@ -5,6 +5,7 @@ import {
 	gitOpsOwnershipGroupLabel,
 	inheritGitOpsOwnership,
 } from "@/lib/gitops-ownership-evidence";
+import { resourceHealthAssessment } from "@/lib/resource-health";
 import type {
 	DiscoveredResourceKind,
 	ResourceKindSelection,
@@ -21,8 +22,8 @@ import {
 	filterResourceSearchIndex,
 	filterResourcesByHealth,
 	formatResourceTypeGroupLabel,
-	isDiscoveredResourceKind,
 	type HealthFilter,
+	isDiscoveredResourceKind,
 	type ResourceSearchEntry,
 	resourceGroupCollapseKey,
 	resourceGroupKindRank,
@@ -249,7 +250,7 @@ function valueForSort(
 		case "kind":
 			return row.kind;
 		case "status":
-			return row.status ?? row.health;
+			return resourceHealthAssessment(row)?.state ?? "assessmentUnavailable";
 		case "ready":
 			return row.ready ?? "";
 		case "restarts":

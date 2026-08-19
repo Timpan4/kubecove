@@ -26,6 +26,7 @@
 		Table2,
 	} from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
+	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import {
 		Badge,
 		Button,
@@ -52,6 +53,7 @@
 	} from "@/lib/finite-read-lifecycle";
 	import { diagnosticLog } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
+	import { resourceHealthAssessment } from "@/lib/resource-health";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
 	import type { ChipVariant } from "@/features/argo/status";
 	import ArgoApplicationWorkspaceHeader from "@/features/gitops/ArgoApplicationWorkspaceHeader.svelte";
@@ -121,7 +123,6 @@
 		resourceIdentityKey,
 		resourceSelectionKey,
 		mergeWatchKeys,
-		resourceStatusTone,
 		shouldDropWarmupWatchEvent,
 		topologyWatchKeys,
 		watchKeysFromFetchKeys,
@@ -1337,13 +1338,11 @@
 												<TableCell>{row.namespace ?? EMPTY_CELL}</TableCell>
 												<TableCell>{row.kind}</TableCell>
 												<TableCell>
+													<HealthAssessmentBadge assessment={resourceHealthAssessment(row)} />
 													{#if row.status}
-														{@const statusTone = resourceStatusTone(row.status)}
-														<Badge variant={statusBadgeVariant(statusTone)} class={statusBadgeClass(statusTone)}>
-															{row.status}
-														</Badge>
-													{:else}
-														{EMPTY_CELL}
+														<div class="mt-1 truncate text-[0.6875rem] text-muted-foreground" title={row.status}>
+															Raw: {row.status}
+														</div>
 													{/if}
 												</TableCell>
 												{#if tableModel.columnVisibility.ready}

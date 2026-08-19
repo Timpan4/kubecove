@@ -123,7 +123,9 @@ export interface WorkspaceHealthSummary {
 	healthy: number;
 	attention: number;
 	degraded: number;
-	restarted: number;
+	unknown: number;
+	notEvaluated: number;
+	restartEvidence: number;
 }
 
 export interface CreateWorkspaceInput {
@@ -466,10 +468,20 @@ export function buildWorkspaceHealthSummary(
 				healthy: summary.healthy + (health.healthy ? 1 : 0),
 				attention: summary.attention + (health.attention ? 1 : 0),
 				degraded: summary.degraded + (health.degraded ? 1 : 0),
-				restarted: summary.restarted + (health.restarted ? 1 : 0),
+				unknown: summary.unknown + (health.unknown ? 1 : 0),
+				notEvaluated: summary.notEvaluated + (health.notEvaluated ? 1 : 0),
+				restartEvidence: summary.restartEvidence + (health.restarted ? 1 : 0),
 			};
 		},
-		{ total: 0, healthy: 0, attention: 0, degraded: 0, restarted: 0 },
+		{
+			total: 0,
+			healthy: 0,
+			attention: 0,
+			degraded: 0,
+			unknown: 0,
+			notEvaluated: 0,
+			restartEvidence: 0,
+		},
 	);
 }
 

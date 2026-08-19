@@ -1,8 +1,8 @@
 use crate::commands::diagnostics::record_backend_result;
 use crate::commands::helpers::{
     extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
-    k8s_creation_timestamp_to_rfc3339, list_params, normalize_k8s_yaml_value, resource_age,
-    serialize_json_value_document, update_resource_health,
+    k8s_creation_timestamp_to_rfc3339, legacy_resource_health, list_params,
+    normalize_k8s_yaml_value, resource_age, serialize_json_value_document,
 };
 use crate::commands::{
     diagnostic_field,
@@ -10,8 +10,9 @@ use crate::commands::{
     record_backend_error, record_backend_success, BackendCancellationRegistry, ClusterLiveStore,
 };
 use crate::models::{
-    AppError, DiscoveredResourceKind, ResourceDetailsFull, ResourceHealth, ResourceSummary,
-    YamlEncoding, YamlViewMode,
+    argo_health_assessment, evaluate_health, AppError, DiscoveredResourceKind, HealthAssessment,
+    HealthAssessmentEvidence, HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState,
+    ResourceDetailsFull, ResourceHealth, ResourceSummary, YamlEncoding, YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
 use kube::{
@@ -91,6 +92,7 @@ pub(crate) fn dynamic_resource_summary(
         namespaced: Some(resource_kind.namespaced),
         dynamic: Some(true),
         health: ResourceHealth::default(),
+        health_assessment: crate::models::HealthAssessment::default(),
         created_at: k8s_creation_timestamp_to_rfc3339(&object.metadata.creation_timestamp),
         status: dynamic_status_from_data(&object.data),
         ready: None,
@@ -101,8 +103,59 @@ pub(crate) fn dynamic_resource_summary(
         git_ops_owner: extract_git_ops_owner(&object.metadata),
         git_ops_ownership_partial: false,
     };
-    update_resource_health(&mut summary);
+    if resource_kind.group == "argoproj.io" && resource_kind.kind == "Application" {
+        summary.health_assessment = argo_health_assessment(
+            object
+                .data
+                .pointer("/status/health/status")
+                .and_then(Value::as_str),
+            object
+                .data
+                .pointer("/status/sync/status")
+                .and_then(Value::as_str),
+        );
+        summary.health = legacy_resource_health(summary.health_assessment.state);
+    } else {
+        summary.health_assessment = dynamic_health_assessment(&object.data);
+        summary.health = legacy_resource_health(summary.health_assessment.state);
+    }
     summary
+}
+
+fn dynamic_health_assessment(data: &Value) -> HealthAssessment {
+    let conditions = data.pointer("/status/conditions").and_then(Value::as_array);
+    let evidence: Vec<HealthAssessmentEvidence> = conditions
+        .into_iter()
+        .flatten()
+        .filter_map(|condition| {
+            let kind = condition.get("type")?.as_str()?;
+            let status = condition.get("status")?.as_str()?;
+            let state = match (kind, status) {
+                ("Stalled", "True") | ("Ready" | "Healthy", "False") => {
+                    HealthAssessmentState::Degraded
+                }
+                ("Reconciling", "True") => HealthAssessmentState::NeedsAttention,
+                ("Ready" | "Healthy", "True") | ("Reconciling", "False") => {
+                    HealthAssessmentState::Healthy
+                }
+                _ => HealthAssessmentState::Unknown,
+            };
+            matches!(kind, "Ready" | "Healthy" | "Reconciling" | "Stalled").then(|| {
+                HealthAssessmentEvidence {
+                    source: HealthAssessmentSource::Kubernetes,
+                    raw: condition.clone(),
+                    state: Some(state),
+                    current: true,
+                    reason: format!("Kubernetes {kind} condition is {status}"),
+                }
+            })
+        })
+        .collect();
+    evaluate_health(HealthAssessmentInput {
+        recognized_semantics: !evidence.is_empty(),
+        provider_available: true,
+        evidence,
+    })
 }
 
 fn is_core_v1_secret(resource_kind: &DiscoveredResourceKind) -> bool {
@@ -464,6 +517,45 @@ mod tests {
         assert_eq!(summary.plural, Some("widgets".to_string()));
         assert_eq!(summary.namespaced, Some(true));
         assert_eq!(summary.dynamic, Some(true));
+        assert_eq!(
+            summary.health_assessment.state,
+            HealthAssessmentState::NotEvaluated
+        );
+    }
+
+    #[test]
+    fn assesses_argocd_application_with_same_argo_contract() {
+        let mut resource_kind = widget_kind();
+        resource_kind.group = "argoproj.io".to_string();
+        resource_kind.kind = "Application".to_string();
+        let api_resource = api_resource_from_discovered(&resource_kind).unwrap();
+        let object = DynamicObject::new("payments", &api_resource).data(json!({
+            "status": { "health": { "status": "Missing" }, "sync": { "status": "OutOfSync" } }
+        }));
+
+        let summary = dynamic_resource_summary("kind-kind", &resource_kind, &object);
+
+        assert_eq!(
+            summary.health_assessment.state,
+            HealthAssessmentState::Degraded
+        );
+        assert_eq!(summary.health, ResourceHealth::Degraded);
+    }
+
+    #[test]
+    fn ignores_unrecognized_dynamic_conditions() {
+        let resource_kind = widget_kind();
+        let api_resource = api_resource_from_discovered(&resource_kind).unwrap();
+        let object = DynamicObject::new("sample-widget", &api_resource).data(json!({
+            "status": { "conditions": [{ "type": "ObservedGeneration", "status": "False" }] }
+        }));
+
+        assert_eq!(
+            dynamic_resource_summary("kind-kind", &resource_kind, &object)
+                .health_assessment
+                .state,
+            HealthAssessmentState::NotEvaluated
+        );
     }
 
     #[test]

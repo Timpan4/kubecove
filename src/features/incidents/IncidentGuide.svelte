@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import { ArrowRight, ExternalLink, ShieldAlert } from "lucide-svelte";
 	import {
 		Badge,
@@ -76,6 +77,9 @@
 				</div>
 			</div>
 			<p class="mt-3 max-w-4xl text-sm leading-relaxed">{guidance.summary}</p>
+			<div class="mt-3">
+				<HealthAssessmentBadge assessment={selectedIncident.resource.healthAssessment} details />
+			</div>
 		</header>
 
 		<div class="grid gap-3 p-4">

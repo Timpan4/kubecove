@@ -4,8 +4,8 @@ use crate::commands::gitops_crd::{
 };
 use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
 use crate::models::{
-    AppError, ArgoApplicationDetails, ArgoApplicationSourceSummary, ArgoApplicationSummary,
-    YamlEncoding, YamlViewMode,
+    argo_health_assessment, AppError, ArgoApplicationDetails, ArgoApplicationSourceSummary,
+    ArgoApplicationSummary, YamlEncoding, YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
 use kube::core::DynamicObject;
@@ -24,6 +24,18 @@ pub(super) fn application_summary_from_object(
         .map(String::from);
     let sources = application_sources(data);
 
+    let health_status = data
+        .get("status")
+        .and_then(|status| status.get("health"))
+        .and_then(|health| health.get("status"))
+        .and_then(|status| status.as_str());
+    let sync_status = data
+        .get("status")
+        .and_then(|status| status.get("sync"))
+        .and_then(|sync| sync.get("status"))
+        .and_then(|status| status.as_str());
+    let health_assessment = argo_health_assessment(health_status, sync_status);
+
     Some(ArgoApplicationSummary {
         cluster: cluster_context.to_string(),
         name: obj.metadata.name.clone().unwrap_or_default(),
@@ -39,18 +51,9 @@ pub(super) fn application_summary_from_object(
             .and_then(|spec| spec.get("project"))
             .and_then(|project| project.as_str())
             .map(String::from),
-        sync_status: data
-            .get("status")
-            .and_then(|status| status.get("sync"))
-            .and_then(|sync| sync.get("status"))
-            .and_then(|status| status.as_str())
-            .map(String::from),
-        health_status: data
-            .get("status")
-            .and_then(|status| status.get("health"))
-            .and_then(|health| health.get("status"))
-            .and_then(|status| status.as_str())
-            .map(String::from),
+        sync_status: sync_status.map(String::from),
+        health_status: health_status.map(String::from),
+        health_assessment,
         destination_server: data
             .get("spec")
             .and_then(|spec| spec.get("destination"))

@@ -4,7 +4,8 @@ use crate::commands::gitops_crd::{
 };
 use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
 use crate::models::{
-    AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, YamlEncoding, YamlViewMode,
+    evaluate_health, AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, HealthAssessmentInput,
+    YamlEncoding, YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
 use kube::core::DynamicObject;
@@ -14,6 +15,11 @@ fn app_project_summary_from_object(
     obj: &DynamicObject,
 ) -> Option<ArgoAppProjectSummary> {
     let data = obj.data.as_object()?;
+    let health_assessment = evaluate_health(HealthAssessmentInput {
+        recognized_semantics: false,
+        provider_available: true,
+        evidence: vec![],
+    });
 
     Some(ArgoAppProjectSummary {
         cluster: cluster_context.to_string(),
@@ -38,6 +44,7 @@ fn app_project_summary_from_object(
             .and_then(|condition| condition.get("type"))
             .and_then(|kind| kind.as_str())
             .map(String::from),
+        health_assessment,
     })
 }
 

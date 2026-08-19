@@ -1,4 +1,5 @@
 use super::error::AppError;
+use super::HealthAssessment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +26,7 @@ pub struct ArgoApplicationSummary {
     pub project: Option<String>,
     pub sync_status: Option<String>,
     pub health_status: Option<String>,
+    pub health_assessment: HealthAssessment,
     pub destination_namespace: Option<String>,
     pub destination_server: Option<String>,
     pub source_repo: Option<String>,
@@ -67,6 +69,7 @@ pub struct ArgoApplicationSetSummary {
     pub status: Option<String>,
     pub sync_status: Option<String>,
     pub health_status: Option<String>,
+    pub health_assessment: HealthAssessment,
     pub destination_namespace: Option<String>,
     pub destination_server: Option<String>,
     pub source_repo: Option<String>,
@@ -92,6 +95,7 @@ pub struct ArgoAppProjectSummary {
     pub namespace: Option<String>,
     pub description: Option<String>,
     pub status: Option<String>,
+    pub health_assessment: HealthAssessment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

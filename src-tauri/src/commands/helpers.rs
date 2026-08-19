@@ -5,7 +5,7 @@ mod metadata;
 mod serialization;
 mod time;
 
-pub(crate) use health::update_resource_health;
+pub(crate) use health::{legacy_resource_health, update_resource_health};
 pub(crate) use metadata::{
     base_resource_summary, enrich_resource_summaries_with_flux_inventory, extract_argo_app,
     extract_git_ops_owner, extract_helm_release, extract_owner_ref, extract_owner_ref_summary,

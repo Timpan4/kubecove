@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::DiscoveredResourceKind;
+use super::{DiscoveredResourceKind, HealthAssessment};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +57,8 @@ pub struct ResourceSummary {
     pub dynamic: Option<bool>,
     #[serde(default)]
     pub health: ResourceHealth,
+    #[serde(default)]
+    pub health_assessment: HealthAssessment,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

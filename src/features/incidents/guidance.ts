@@ -18,14 +18,15 @@ import {
 import {
 	incidentCaseSummary,
 	incidentCaseTitle,
+	incidentState,
 } from "./model";
 
 export {
 	buildIncidentAvailableActions,
-	resolveIncidentOwner,
 	type IncidentAvailableAction,
 	type IncidentEnrichmentState,
 	type IncidentOwnerResolution,
+	resolveIncidentOwner,
 } from "./incident-actions";
 export type IncidentEvidenceTone = "error" | "warning" | "info" | "neutral";
 
@@ -79,7 +80,13 @@ function snapshotEvidence(item: IncidentCockpitItem): IncidentEvidence[] {
 		label: signal.label,
 		detail: signal.message || signal.source,
 		timestamp: signal.lastSeenAt,
-		tone: item.severity === "degraded" ? "error" as const : "warning" as const,
+		tone: (signal.state ?? incidentState(item)) === "historical"
+			? "neutral" as const
+			: (signal.state ?? incidentState(item)) === "resolved"
+				? "info" as const
+				: item.severity === "degraded"
+					? "error" as const
+					: "warning" as const,
 	}));
 	if (
 		item.latestWarningEvent &&
@@ -119,7 +126,8 @@ function mergeEvidence(
 	snapshot: IncidentEvidence[],
 ): IncidentEvidence[] {
 	const seen = new Set<string>();
-	return [...detail, ...snapshot].filter((entry) => {
+	const restartSnapshot = snapshot.filter((entry) => entry.id.endsWith(":restart"));
+	return [...restartSnapshot, ...detail, ...snapshot].filter((entry) => {
 		const key = `${entry.label.trim().toLowerCase()}\u0000${entry.detail.trim().toLowerCase()}\u0000${entry.timestamp ?? ""}`;
 		if (seen.has(key)) return false;
 		seen.add(key);
@@ -183,6 +191,7 @@ export function buildIncidentGuidance(
 	detailsState: IncidentEnrichmentState,
 	topologyState: IncidentEnrichmentState,
 ): IncidentGuidance {
+	const state = incidentState(item);
 	const ownershipConfirmed = topologyState === "ready" && ownerResolution.complete;
 	const owner = ownershipConfirmed
 		? ownerResolution.workloadOwner ?? ownerResolution.directOwner
@@ -215,8 +224,10 @@ export function buildIncidentGuidance(
 		facts: [
 			{
 				label: "Impact",
-				value: resourceLabel(item.resource),
-				detail: "Current signal is scoped to this exact resource.",
+				value: state === "active" ? resourceLabel(item.resource) : "No active impact",
+				detail: state === "active"
+					? "Current signal is scoped to this exact resource."
+					: `${state === "resolved" ? "Resolved" : "Historical"} evidence is retained for this exact resource.`,
 			},
 			{
 				label: "Confidence",

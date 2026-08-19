@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ExternalLink } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
+	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import {
 		Badge,
 		Button,
@@ -38,7 +39,6 @@
 		requiredPermission,
 		metadataLabelsExpanded = $bindable(false),
 		metadataAnnotationsExpanded = $bindable(false),
-		detailStatusLabel,
 		toneBadgeVariant,
 		compactToneBadgeClass,
 		restartsTone,
@@ -76,14 +76,7 @@
 					<div class="flex flex-wrap gap-2">
 						<Badge variant="outline">{detailResource.kind}</Badge>
 						<Badge variant="outline">{detailResource.namespace ?? "cluster"}</Badge>
-						{#if detailStatusLabel(detailResource)}
-							<Badge
-								variant={toneBadgeVariant(resourceStatusTone(detailStatusLabel(detailResource)))}
-								class={compactToneBadgeClass(resourceStatusTone(detailStatusLabel(detailResource)))}
-							>
-								{detailStatusLabel(detailResource)}
-							</Badge>
-						{/if}
+						<HealthAssessmentBadge assessment={detailResource.healthAssessment} details />
 						{#if resourceReadyLabel(detailResource)}
 							<Badge
 								variant={toneBadgeVariant(resourceReadyTone(detailResource))}

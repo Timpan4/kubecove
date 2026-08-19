@@ -26,17 +26,18 @@ export interface HealthSummary {
 	healthy: number;
 	attention: number;
 	degraded: number;
-	restarted: number;
-	/** Rows with no health semantics (ConfigMaps, Services, …). */
-	untracked: number;
+	unknown: number;
+	notEvaluated: number;
+	restartEvidence: number;
 }
 
 export type HealthFilter =
 	| "all"
 	| "healthy"
-	| "unhealthy"
 	| "attention"
 	| "degraded"
+	| "unknown"
+	| "notEvaluated"
 	| "restarted";
 
 export interface ScopePill {
@@ -412,7 +413,6 @@ export function filterResourcesByHealth(
 	if (filter === "all") return rows;
 	return rows.filter((row) => {
 		const health = classifyResourceHealth(row);
-		if (filter === "unhealthy") return health.degraded || health.attention;
 		return health[filter];
 	});
 }
@@ -424,17 +424,25 @@ export function buildResourceHealthSummary(
 		(summary, row) => {
 			const flags = classifyResourceHealth(row);
 
-			const untracked = row.health === "unknown";
 			return {
 				total: summary.total + 1,
 				healthy: summary.healthy + (flags.healthy ? 1 : 0),
 				attention: summary.attention + (flags.attention ? 1 : 0),
 				degraded: summary.degraded + (flags.degraded ? 1 : 0),
-				restarted: summary.restarted + (flags.restarted ? 1 : 0),
-				untracked: summary.untracked + (untracked ? 1 : 0),
+				unknown: summary.unknown + (flags.unknown ? 1 : 0),
+				notEvaluated: summary.notEvaluated + (flags.notEvaluated ? 1 : 0),
+				restartEvidence: summary.restartEvidence + (flags.restarted ? 1 : 0),
 			};
 		},
-		{ total: 0, healthy: 0, attention: 0, degraded: 0, restarted: 0, untracked: 0 },
+		{
+			total: 0,
+			healthy: 0,
+			attention: 0,
+			degraded: 0,
+			unknown: 0,
+			notEvaluated: 0,
+			restartEvidence: 0,
+		},
 	);
 }
 

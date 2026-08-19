@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import { Badge } from "@/components/ui/svelte";
 	import type { IncidentCockpitItem } from "@/lib/types";
 	import { cnfast } from "@/lib/utils";
@@ -7,6 +8,7 @@
 		incidentScopeLabel,
 		incidentSeverityLabel,
 		incidentSignalSummary,
+		incidentState,
 	} from "./model";
 
 	let {
@@ -26,9 +28,11 @@
 	}
 
 	function severityClass(item: IncidentCockpitItem): string {
+		if (incidentState(item) === "historical") return "border-l-muted-foreground";
+		if (incidentState(item) === "resolved") return "border-l-sky-500";
 		if (item.severity === "degraded") return "border-l-destructive";
 		if (item.severity === "attention") return "border-l-amber-500";
-		if (item.severity === "restarted") return "border-l-sky-500";
+		if (item.severity === "restarted") return "border-l-amber-500";
 		return "border-l-muted-foreground";
 	}
 </script>
@@ -78,6 +82,9 @@
 								<Badge variant={item.severity === "degraded" ? "destructive" : "outline"}>
 									{incidentSeverityLabel(item)}
 								</Badge>
+							</div>
+							<div class="mt-2">
+								<HealthAssessmentBadge assessment={item.resource.healthAssessment} />
 							</div>
 							<div class="mt-2 flex flex-wrap gap-1.5">
 								{#if item.resource.status}<Badge variant="outline">{item.resource.status}</Badge>{/if}
