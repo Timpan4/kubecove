@@ -45,12 +45,13 @@ describe("release version helpers", () => {
 		expect(nixJob).toContain("platform: ubuntu-latest");
 		expect(nixJob).toContain("platform: ubuntu-24.04-arm");
 		expect(nixJob).toContain("nix build .#kubecove");
+		expect(nixJob).not.toContain("timeout-minutes:");
 		expect(verifyJob).toContain("- nix");
 		expect(verifyJob).toContain("NIX_RESULT: $" + "{{ needs.nix.result }}");
 		expect(verifyJob).toContain('test "$' + '{NIX_RESULT}" = "success"');
 	});
 
-	test("gates pull requests on the Nix release build", () => {
+	test("gates pull requests on the locked Nix Rust vendor tree", () => {
 		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 		const nixJob = ciWorkflow.match(
 			/\n {2}nix:\n[\s\S]*?(?=\n {2}check:\n)/,
@@ -58,7 +59,7 @@ describe("release version helpers", () => {
 		const checkJob = ciWorkflow.match(/\n {2}check:\n[\s\S]*$/)?.[0];
 
 		expect(nixJob).toBeDefined();
-		expect(nixJob).toContain("nix build .#kubecove");
+		expect(nixJob).toContain("nix build .#kubecove.cargoDeps");
 		expect(checkJob).toContain("- nix");
 		expect(checkJob).toContain("NIX_RESULT: $" + "{{ needs.nix.result }}");
 		expect(checkJob).toContain('test "$' + '{NIX_RESULT}" = "success"');

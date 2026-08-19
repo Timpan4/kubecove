@@ -105,7 +105,7 @@ jobs:
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 
   nix:
-    name: Nix release build
+    name: Nix Rust vendor build
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -116,8 +116,8 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
 
-      - name: Build KubeCove
-        run: nix build .#kubecove
+      - name: Build Rust vendor tree
+        run: nix build .#kubecove.cargoDeps
 
   check:
     name: Typecheck and test
@@ -138,7 +138,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Frontend checks: ${FRONTEND_RESULT}"
-          echo "Nix release build: ${NIX_RESULT}"
+          echo "Nix Rust vendor build: ${NIX_RESULT}"
           echo "Rust checks: ${RUST_RESULT}"
           test "${FRONTEND_RESULT}" = "success"
           test "${NIX_RESULT}" = "success"
