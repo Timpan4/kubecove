@@ -36,7 +36,7 @@ These tools remain useful. KubeCove is a local Kubernetes workspace for the part
 | Integration | Current scope |
 | --- | --- |
 | Kubernetes | Uses the Kubernetes API through selected kubeconfig contexts. Resource kinds and custom resources are discovered from the cluster when needed. |
-| Argo CD | Inspects Argo CD resources through Kubernetes CRDs. An optional connected transport supports manual external HTTPS URLs and private tunnels to discovered eligible Kubernetes Services for bounded application inspection plus supported refresh and sync operations. The transports are explicit and do not silently fall back to each other. |
+| Argo CD | Inspects Argo CD resources through Kubernetes CRDs. An optional connected transport supports manual external HTTPS URLs and private tunnels to discovered eligible Kubernetes Services for bounded application inspection plus supported refresh and sync operations. Connected inspection can visibly fall back to a complete Kubernetes view when required connected reads fail; reviewed operations stay bound to the transport selected at confirmation. |
 | Flux | Inspects installed Flux CRDs, status, source references, revisions, and inventory. Flux workflows are inspection-only in the current release. |
 | Helm | Inspects Helm release storage, decoded manifest references, and conservative live-resource reconciliation evidence. Helm install, upgrade, rollback, uninstall, and release mutation are not provided. |
 
@@ -55,18 +55,6 @@ KubeCove is a Tauri desktop application. The Svelte frontend reaches Kubernetes 
 2. Make a readable Kubernetes context available through `$KUBECONFIG` or the standard default kubeconfig location.
 3. Launch KubeCove, create a workspace, choose a context, and narrow namespaces or resource kinds when useful.
 4. Follow the [installation and first-use guide](https://github.com/Timpan4/kubecove/wiki/Install-and-Update) for platform notes and the [public Wiki](https://github.com/Timpan4/kubecove/wiki) for task guides.
-
-On Linux with Nix, run a checkout directly:
-
-```sh
-nix run
-```
-
-Run a tagged release by replacing `X.Y.Z` with its version:
-
-```sh
-nix run github:Timpan4/kubecove/app-vX.Y.Z
-```
 
 Installers are beta builds and may show platform trust prompts. KubeCove does not include your cluster credentials, `kubectl`, Helm, or GitOps CLIs.
 

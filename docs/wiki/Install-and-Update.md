@@ -17,22 +17,6 @@ chmod +x KubeCove_*.AppImage
 
 The installers include the application and runtime only. Provide your own kubeconfig and Kubernetes tooling where needed; installers do not include cluster credentials, `kubectl`, Helm, or GitOps CLIs.
 
-### Nix
-
-On Linux with Nix, run a checkout from its repository root:
-
-```sh
-nix run
-```
-
-Run a tagged release by replacing `X.Y.Z` with its version:
-
-```sh
-nix run github:Timpan4/kubecove/app-vX.Y.Z
-```
-
-Nix builds do not use the in-app updater. Select a newer release tag to update.
-
 ### Windows installer migration
 
 Windows releases use the NSIS setup executable so manual installation and in-app updates use the same installer path. If an older MSI installation is present, Windows can prompt once to remove it. Uninstall that MSI, install the NSIS setup executable, and later updates do not need the migration.
