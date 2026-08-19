@@ -50,6 +50,20 @@ describe("release version helpers", () => {
 		expect(verifyJob).toContain('test "$' + '{NIX_RESULT}" = "success"');
 	});
 
+	test("gates pull requests on the Nix release build", () => {
+		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+		const nixJob = ciWorkflow.match(
+			/\n {2}nix:\n[\s\S]*?(?=\n {2}check:\n)/,
+		)?.[0];
+		const checkJob = ciWorkflow.match(/\n {2}check:\n[\s\S]*$/)?.[0];
+
+		expect(nixJob).toBeDefined();
+		expect(nixJob).toContain("nix build .#kubecove");
+		expect(checkJob).toContain("- nix");
+		expect(checkJob).toContain("NIX_RESULT: $" + "{{ needs.nix.result }}");
+		expect(checkJob).toContain('test "$' + '{NIX_RESULT}" = "success"');
+	});
+
 	test("uses an unlocked session collection for Linux desktop E2E", () => {
 		const e2eWorkflow = readFileSync(".github/workflows/e2e.yml", "utf8");
 		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
