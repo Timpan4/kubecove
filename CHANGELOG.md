@@ -4,6 +4,10 @@ All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
 ## 0.10.9 - 2026-08-19
+### Added
+
+- Add sourced health assessments across Kubernetes, GitOps, Argo CD, incident, and workspace surfaces (#370, #371).
+
 ### Improved
 
 - Reduce frontend hot-path allocations (#361).
@@ -11,6 +15,7 @@ should mirror the matching version section.
 ### Fixed
 
 - Gate releases on Nix build (#375).
+- Keep historical container restarts below active incidents (#368).
 - Preserve resource table sorting through grouping (#374).
 - Resource details accessibility targets (#366).
 - Global resource search coverage (#359).
