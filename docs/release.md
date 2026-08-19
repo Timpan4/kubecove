@@ -22,6 +22,8 @@ KubeCove is inspection-first outside ADR-approved live sessions and guarded oper
 2. Review version metadata, generated `CHANGELOG.md` section, `bun run docs:check`, and release claims against implemented guarded-operation contracts.
 3. Merge release PR to `main`.
 
+Trusted release PRs skip pull-request CI and CodSpeed. The exemption requires the same-repository `release/app-v*` branch and `release` label. Tag builds still run every automated release gate below before publishing.
+
 After merge, GitHub Actions finds merged `release` PR, creates matching annotated `app-vX.Y.Z` tag, runs release workflow, builds installers, verifies updater assets, and publishes release.
 
 Manual release-workflow dispatch only reruns an existing `app-v*` tag and preserves release visibility.
@@ -44,7 +46,7 @@ Release notes mirror matching [CHANGELOG.md](../CHANGELOG.md) section.
 
 ## Automated Release Gates
 
-Release tags run type checks, unit tests, Rust tests and checks, deterministic fast E2E, real E2E across the supported Kubernetes matrix, and native Nix builds for `x86_64-linux` and `aarch64-linux` before installers build. Workflow verifies installer assets, updater signatures, `latest.json`, and updater platform coverage before publishing. Nix users run the tagged source flake; releases do not attach a separate Nix archive.
+Release tags run type checks, unit tests, Rust tests and checks, deterministic fast E2E, and real E2E across the supported Kubernetes matrix before installers build. Native Nix builds for `x86_64-linux` and `aarch64-linux` run in parallel as advisory checks, use the GitHub Actions Nix cache, and do not delay or block publishing. Workflow verifies installer assets, updater signatures, `latest.json`, and updater platform coverage before publishing. Nix users run the tagged source flake; releases do not attach a separate Nix archive.
 
 Support window and matrix changes follow [ADR 0011](decisions/0011-rolling-kubernetes-support.md). Real E2E uses [ADR 0012](decisions/0012-production-shaped-e2e-lab.md).
 
