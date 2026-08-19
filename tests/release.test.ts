@@ -81,10 +81,12 @@ describe("release version helpers", () => {
 			expect(ciWorkflow).toContain(check);
 			expect(codspeedWorkflow).toContain(check);
 		}
-		expect(ciWorkflow).toContain('test "${FRONTEND_RESULT}" = "skipped"');
+		expect(ciWorkflow).toContain(
+			'test "$' + '{FRONTEND_RESULT}" = "skipped"',
+		);
 		expect(codspeedWorkflow).toContain("name: CodSpeed Performance Analysis");
 		expect(codspeedWorkflow).toContain(
-			'test "${BENCHMARK_RESULT}" = "skipped"',
+			'test "$' + '{BENCHMARK_RESULT}" = "skipped"',
 		);
 	});
 
