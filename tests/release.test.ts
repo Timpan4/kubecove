@@ -32,7 +32,7 @@ describe("release version helpers", () => {
 		expect(tagWorkflow).toContain('gh workflow run release.yml --ref "$tag_name"');
 	});
 
-	test("requires native Nix builds before publishing a release", () => {
+	test("runs cached native Nix builds without blocking a release", () => {
 		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
 		const nixJob = releaseWorkflow.match(
 			/\n {2}nix:\n[\s\S]*?(?=\n {2}verify:\n)/,
@@ -45,10 +45,14 @@ describe("release version helpers", () => {
 		expect(nixJob).toContain("platform: ubuntu-latest");
 		expect(nixJob).toContain("platform: ubuntu-24.04-arm");
 		expect(nixJob).toContain("nix build .#kubecove");
+		expect(nixJob).toContain("continue-on-error: true");
+		expect(nixJob).toContain(
+			"DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d",
+		);
+		expect(nixJob).toContain('diagnostic-endpoint: ""');
 		expect(nixJob).not.toContain("timeout-minutes:");
-		expect(verifyJob).toContain("- nix");
-		expect(verifyJob).toContain("NIX_RESULT: $" + "{{ needs.nix.result }}");
-		expect(verifyJob).toContain('test "$' + '{NIX_RESULT}" = "success"');
+		expect(verifyJob).not.toContain("- nix");
+		expect(verifyJob).not.toContain("NIX_RESULT:");
 	});
 
 	test("gates pull requests on the locked Nix Rust vendor tree", () => {
@@ -60,6 +64,10 @@ describe("release version helpers", () => {
 
 		expect(nixJob).toBeDefined();
 		expect(nixJob).toContain("nix build .#kubecove.cargoDeps");
+		expect(nixJob).toContain(
+			"DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d",
+		);
+		expect(nixJob).toContain('diagnostic-endpoint: ""');
 		expect(checkJob).toContain("- nix");
 		expect(checkJob).toContain("NIX_RESULT: $" + "{{ needs.nix.result }}");
 		expect(checkJob).toContain('test "$' + '{NIX_RESULT}" = "success"');

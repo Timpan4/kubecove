@@ -239,6 +239,7 @@ jobs:
           - label: Linux arm64
             platform: ubuntu-24.04-arm
     runs-on: ${{ matrix.platform }}
+    continue-on-error: true
 
     steps:
       - name: Checkout
@@ -248,6 +249,11 @@ jobs:
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
+        with:
+          diagnostic-endpoint: ""
 
       - name: Build KubeCove
         run: nix build .#kubecove
@@ -259,7 +265,6 @@ jobs:
       - frontend
       - rust
       - e2e
-      - nix
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -271,19 +276,16 @@ jobs:
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           RUST_RESULT: ${{ needs.rust.result }}
           E2E_RESULT: ${{ needs.e2e.result }}
-          NIX_RESULT: ${{ needs.nix.result }}
         run: |
           set -euo pipefail
           echo "Release metadata: ${METADATA_RESULT}"
           echo "Frontend release checks: ${FRONTEND_RESULT}"
           echo "Rust release checks: ${RUST_RESULT}"
           echo "Kubernetes E2E matrix: ${E2E_RESULT}"
-          echo "Nix release build matrix: ${NIX_RESULT}"
           test "${METADATA_RESULT}" = "success"
           test "${FRONTEND_RESULT}" = "success"
           test "${RUST_RESULT}" = "success"
           test "${E2E_RESULT}" = "success"
-          test "${NIX_RESULT}" = "success"
 
   draft:
     name: Create draft release

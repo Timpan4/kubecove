@@ -46,7 +46,7 @@ Release notes mirror matching [CHANGELOG.md](../CHANGELOG.md) section.
 
 ## Automated Release Gates
 
-Release tags run type checks, unit tests, Rust tests and checks, deterministic fast E2E, real E2E across the supported Kubernetes matrix, and native Nix builds for `x86_64-linux` and `aarch64-linux` before installers build. Workflow verifies installer assets, updater signatures, `latest.json`, and updater platform coverage before publishing. Nix users run the tagged source flake; releases do not attach a separate Nix archive.
+Release tags run type checks, unit tests, Rust tests and checks, deterministic fast E2E, and real E2E across the supported Kubernetes matrix before installers build. Native Nix builds for `x86_64-linux` and `aarch64-linux` run in parallel as advisory checks, use the GitHub Actions Nix cache, and do not delay or block publishing. Workflow verifies installer assets, updater signatures, `latest.json`, and updater platform coverage before publishing. Nix users run the tagged source flake; releases do not attach a separate Nix archive.
 
 Support window and matrix changes follow [ADR 0011](decisions/0011-rolling-kubernetes-support.md). Real E2E uses [ADR 0012](decisions/0012-production-shaped-e2e-lab.md).
 
