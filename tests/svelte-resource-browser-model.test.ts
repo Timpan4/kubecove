@@ -471,6 +471,115 @@ describe("svelte resource browser model", () => {
 		).toContain(focused);
 	});
 
+	test("sorts GitOps groups by Name before paginating", () => {
+		const owner = {
+			provider: "argo",
+			kind: "Application",
+			name: "payments",
+			namespace: "argocd",
+			confidence: "metadata",
+		} as const;
+		const rows = [
+			...Array.from({ length: PAGE_SIZE + 1 }, (_, index) =>
+				resource(`pod-${index}`, { gitOpsOwner: owner }),
+			),
+			resource("z-deployment", { kind: "Deployment", gitOpsOwner: owner }),
+		];
+		const state = {
+			search: "",
+			gitOpsFilter: "",
+			healthFilter: "all" as const,
+			sort: { id: "name" as const, desc: false },
+			pageIndex: 1,
+			collapsedGroups: new Set<string>(),
+		};
+
+		expect(buildResourceTableModel(rows, state).pageRows.map((row) => row.name)).toEqual([
+			"pod-50",
+			"z-deployment",
+		]);
+		expect(
+			buildResourceTableModel(rows, {
+				...state,
+				sort: { id: "name", desc: true },
+			}).pageRows.map((row) => row.name),
+		).toEqual(["pod-1", "pod-0"]);
+	});
+
+	test("keeps GitOps ownership groups contiguous across resource types", () => {
+		const owner = (name: string) => ({
+			provider: "argo" as const,
+			kind: "Application",
+			name,
+			namespace: "argocd",
+			confidence: "metadata" as const,
+		});
+		const model = buildResourceTableModel(
+			[
+				resource("a-pod", { gitOpsOwner: owner("alpha") }),
+				resource("b-pod", { gitOpsOwner: owner("bravo") }),
+				resource("c-deployment", {
+					kind: "Deployment",
+					gitOpsOwner: owner("alpha"),
+				}),
+			],
+			{
+				search: "",
+				gitOpsFilter: "",
+				healthFilter: "all",
+				sort: { id: "name", desc: false },
+				pageIndex: 0,
+				collapsedGroups: new Set(),
+			},
+		);
+
+		expect(model.pageRows.map((row) => row.name)).toEqual([
+			"a-pod",
+			"c-deployment",
+			"b-pod",
+		]);
+		expect(
+			model.entries
+				.filter((entry) => entry.type === "group")
+				.map((entry) => entry.label),
+		).toEqual([
+			"Owned by Argo CD: alpha (partial evidence)",
+			"Owned by Argo CD: bravo (partial evidence)",
+		]);
+	});
+
+	test("sorts resource type groups by Age in both directions", () => {
+		const rows = [
+			resource("newer", {
+				kind: "Deployment",
+				createdAt: "2026-08-19T00:00:00Z",
+			}),
+			resource("older", {
+				kind: "Pod",
+				createdAt: "2026-08-18T00:00:00Z",
+			}),
+		];
+		const state = {
+			search: "",
+			gitOpsFilter: "",
+			healthFilter: "all" as const,
+			sort: { id: "age" as const, desc: false },
+			pageIndex: 0,
+			collapsedGroups: new Set<string>(),
+		};
+
+		expect(buildResourceTableModel(rows, state).pageRows.map((row) => row.name)).toEqual([
+			"older",
+			"newer",
+		]);
+		expect(
+			buildResourceTableModel(rows, {
+				...state,
+				sort: { id: "age", desc: true },
+			}).pageRows.map((row) => row.name),
+		).toEqual(["newer", "older"]);
+	});
+
 	test("groups unmanaged Svelte table rows by resource type", () => {
 		const deployment = resource("argocd-applicationset-controller", {
 			kind: "Deployment",
@@ -502,8 +611,8 @@ describe("svelte resource browser model", () => {
 					collapsed: entry.collapsed,
 				})),
 		).toEqual([
-			{ kind: "Deployment", label: "Deployments", count: 1, collapsed: false },
 			{ kind: "Pod", label: "Pods", count: 1, collapsed: true },
+			{ kind: "Deployment", label: "Deployments", count: 1, collapsed: false },
 			{ kind: "Service", label: "Services", count: 1, collapsed: false },
 		]);
 		expect(
