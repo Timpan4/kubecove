@@ -79,7 +79,7 @@ describe("release version helpers", () => {
 		expect(checkJob).toContain('test "$' + '{NIX_RESULT}" = "success"');
 	});
 
-	test("skips PR checks only for trusted release branches", () => {
+	test("skips expensive PR checks only for trusted release branches", () => {
 		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 		const codspeedWorkflow = readFileSync(
 			".github/workflows/codspeed.yml",
@@ -88,7 +88,6 @@ describe("release version helpers", () => {
 		const ciJobs = [
 			ciWorkflow.match(/\n {2}frontend:\n[\s\S]*?(?=\n {2}rust:\n)/)?.[0],
 			ciWorkflow.match(/\n {2}rust:\n[\s\S]*?(?=\n {2}nix:\n)/)?.[0],
-			ciWorkflow.match(/\n {2}nix:\n[\s\S]*?(?=\n {2}check:\n)/)?.[0],
 		];
 		const ciCheckJob = ciWorkflow.match(/\n {2}check:\n[\s\S]*$/)?.[0];
 		const benchmarkJob = codspeedWorkflow.match(
@@ -128,7 +127,7 @@ describe("release version helpers", () => {
 			'test "$' + '{FRONTEND_RESULT}" = "skipped"',
 		);
 		expect(ciCheckJob).toContain(
-			'test "$' + '{NIX_RESULT}" = "skipped"',
+			'test "$' + '{NIX_RESULT}" = "success"',
 		);
 		expect(ciCheckJob).toContain(
 			'test "$' + '{RUST_RESULT}" = "skipped"',
