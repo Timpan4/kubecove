@@ -239,7 +239,6 @@ jobs:
           - label: Linux arm64
             platform: ubuntu-24.04-arm
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: 60
 
     steps:
       - name: Checkout
