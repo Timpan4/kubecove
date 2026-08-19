@@ -3,6 +3,12 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.10.10 - 2026-08-19
+### Fixed
+
+- Retain release vendor hash gate (#380).
+- Skip trusted release PR checks (#377).
+
 ## 0.10.9 - 2026-08-19
 ### Added
 
