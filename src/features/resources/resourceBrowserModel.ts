@@ -26,7 +26,6 @@ import {
 	isDiscoveredResourceKind,
 	type ResourceSearchEntry,
 	resourceGroupCollapseKey,
-	resourceGroupKindRank,
 	resourceIdentityKey,
 	resourceKindFetchKey,
 	resourceKindLabel,
@@ -290,26 +289,42 @@ function sortedResourceRows(
 	});
 }
 
+function groupedRows(
+	rows: ResourceSummary[],
+	keyForRow: (row: ResourceSummary) => string,
+): ResourceSummary[] {
+	const groups = new Map<string, ResourceSummary[]>();
+	for (const row of rows) {
+		const key = keyForRow(row);
+		const group = groups.get(key);
+		if (group) group.push(row);
+		else groups.set(key, [row]);
+	}
+	return Array.from(groups.values()).flat();
+}
+
 function gitOpsGroupedRows(
 	rows: ResourceSummary[],
 	preferredGitOpsResourceKeys?: ReadonlySet<string>,
 ): ResourceSummary[] {
-	return rows.toSorted((left, right) => {
+	const preferredRows = rows.toSorted((left, right) => {
 		const preferredPriority =
 			Number(isPreferredGitOpsResource(left, preferredGitOpsResourceKeys)) -
 			Number(isPreferredGitOpsResource(right, preferredGitOpsResourceKeys));
-		if (preferredPriority !== 0) return -preferredPriority;
-		const groupCompare = gitOpsOwnershipGroupLabel(left).localeCompare(
-			gitOpsOwnershipGroupLabel(right),
-		);
-		if (groupCompare !== 0) return groupCompare;
-		const rankCompare =
-			resourceGroupKindRank(left.kind) - resourceGroupKindRank(right.kind);
-		if (rankCompare !== 0) return rankCompare;
-		const kindCompare = left.kind.localeCompare(right.kind);
-		if (kindCompare !== 0) return kindCompare;
-		return left.name.localeCompare(right.name);
+		return -preferredPriority;
 	});
+	const ownershipGroups = new Map<string, ResourceSummary[]>();
+	for (const row of preferredRows) {
+		const key = gitOpsOwnershipGroupLabel(row);
+		const group = ownershipGroups.get(key);
+		if (group) group.push(row);
+		else ownershipGroups.set(key, [row]);
+	}
+	const grouped: ResourceSummary[] = [];
+	for (const ownershipRows of ownershipGroups.values()) {
+		grouped.push(...groupedRows(ownershipRows, (row) => row.kind));
+	}
+	return grouped;
 }
 
 function isPreferredGitOpsResource(
@@ -321,14 +336,7 @@ function isPreferredGitOpsResource(
 }
 
 function typeGroupedRows(rows: ResourceSummary[]): ResourceSummary[] {
-	return rows.toSorted((left, right) => {
-		const rankCompare =
-			resourceGroupKindRank(left.kind) - resourceGroupKindRank(right.kind);
-		if (rankCompare !== 0) return rankCompare;
-		const kindCompare = left.kind.localeCompare(right.kind);
-		if (kindCompare !== 0) return kindCompare;
-		return 0;
-	});
+	return groupedRows(rows, (row) => row.kind);
 }
 
 function buildEntries({
