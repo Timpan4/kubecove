@@ -30,12 +30,14 @@
 		expandedSections,
 		onNodeSelect,
 		onSectionToggle,
+		scrollTop = $bindable(0),
 	}: {
 		workspaceReadContext: WorkspaceReadContext;
 		selectedNode: TreeNodeId | null;
 		expandedSections: string[];
 		onNodeSelect: (id: TreeNodeId) => void;
 		onSectionToggle: (id: string) => void;
+		scrollTop?: number;
 	} = $props();
 
 	const client = createTauriClient();
@@ -201,7 +203,7 @@
 			}}
 		/>
 	{/if}
-	<ScrollArea class="min-h-0 flex-1">
+	<ScrollArea class="min-h-0 flex-1" bind:scrollTop>
 		<nav class="py-2" aria-label="Kubernetes resource tree">
 			<ul class="m-0 list-none p-0" role="tree">
 				{#each nodes as node (nodeIdToString(node.id))}
