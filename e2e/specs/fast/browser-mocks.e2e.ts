@@ -132,21 +132,21 @@ describe("browser mock inspection", () => {
 					summaryContainsActions: true,
 					summaryHasNoHorizontalOverflow: true,
 				});
-			}
 
-			for (const action of [refresh, investigate]) {
-				await browser.keys("Tab");
-				const focus = await browser.execute((element: HTMLElement) => {
-					element.focus();
-					return {
-						active: document.activeElement === element,
-						focusVisible: element.matches(":focus-visible"),
-						boxShadow: getComputedStyle(element).boxShadow,
-					};
-				}, action);
-				expect(focus.active).toBe(true);
-				expect(focus.focusVisible).toBe(true);
-				expect(focus.boxShadow).not.toBe("none");
+				for (const action of [refresh, investigate]) {
+					await browser.keys("Tab");
+					const focus = await browser.execute((element: HTMLElement) => {
+						element.focus();
+						return {
+							active: document.activeElement === element,
+							focusVisible: element.matches(":focus-visible"),
+							boxShadow: getComputedStyle(element).boxShadow,
+						};
+					}, action);
+					expect(focus.active).toBe(true);
+					expect(focus.focusVisible).toBe(true);
+					expect(focus.boxShadow).not.toBe("none");
+				}
 			}
 		} finally {
 			await browser.sendCommandAndGetResult("Emulation.clearDeviceMetricsOverride", {});
