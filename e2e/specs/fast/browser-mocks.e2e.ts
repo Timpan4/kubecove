@@ -20,36 +20,41 @@ describe("browser mock inspection", () => {
 	});
 
 	it("lets page scrolling bypass the resource graph", async () => {
-		await $("button=Resources").click();
-		const graph = await $(".svelte-flow");
-		await graph.waitForDisplayed();
 		const originalSize = await browser.getWindowSize();
+		await browser.sendCommandAndGetResult("Emulation.setEmulatedMedia", {
+			features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+		});
 
 		try {
+			expect(
+				await browser.execute(() =>
+					window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+				),
+			).toBe(true);
+			await $("button=Resources").click();
+			const graph = await $(".svelte-flow");
+			await graph.waitForDisplayed();
+
 			for (const [width, height] of [
-				[1100, 800],
-				[1440, 900],
+				[1100, 600],
+				[1440, 600],
 			] as const) {
 				await browser.setWindowSize(width, height);
-				const wheelResult = await browser.execute((element: HTMLElement) => {
-					const viewport = element.querySelector<HTMLElement>(".svelte-flow__viewport");
-					const transform = viewport?.style.transform;
-					const wheel = new WheelEvent("wheel", {
-						bubbles: true,
-						cancelable: true,
-						deltaY: 300,
-					});
-					return {
-						dispatched: element.dispatchEvent(wheel),
-						defaultPrevented: wheel.defaultPrevented,
-						transformUnchanged: viewport?.style.transform === transform,
-					};
-				}, graph);
-				expect(wheelResult).toEqual({
-					dispatched: true,
-					defaultPrevented: false,
-					transformUnchanged: true,
-				});
+				const pageScroller = await $(".overflow-auto.h-full:not(.scrollbar-classic)");
+				await browser.execute((element: HTMLElement) => {
+					element.scrollTop = 0;
+				}, pageScroller);
+				await browser
+					.action("wheel")
+					.scroll({ origin: graph, deltaX: 0, deltaY: 300, duration: 0 })
+					.perform();
+				await browser.waitUntil(
+					async () =>
+						(await browser.execute(
+							(element: HTMLElement) => element.scrollTop,
+							pageScroller,
+						)) > 0,
+				);
 			}
 
 			await $("button=skip graph").click();
@@ -58,6 +63,7 @@ describe("browser mock inspection", () => {
 			).toBe("-1");
 		} finally {
 			await browser.setWindowSize(originalSize.width, originalSize.height);
+			await browser.sendCommandAndGetResult("Emulation.setEmulatedMedia", { features: [] });
 		}
 	});
 
