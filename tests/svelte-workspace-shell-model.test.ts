@@ -12,8 +12,13 @@ import {
 	buildSidebarTree,
 	extraDiscoveredKinds,
 	GITOPS_RESOURCE_KINDS,
+	toggleCompactSidebarSection,
 } from "../src/app/svelte/workspaceShellModel";
-import type { TreeNode, TreeNodeId } from "../src/lib/tree-nav";
+import {
+	nodeIdToString,
+	type TreeNode,
+	type TreeNodeId,
+} from "../src/lib/tree-nav";
 import type {
 	DiscoveredResourceKind,
 	FluxDetectionSummary,
@@ -163,6 +168,11 @@ describe("svelte workspace shell model", () => {
 
 		expect(nodes.map((node) => node.label)).toEqual([
 			"Workspace Overview",
+			"Incidents",
+			"Port Forwards",
+			"GitOps",
+			"Helm",
+			"RBAC",
 			"Cluster Overview",
 			"Namespaces",
 			"Workloads",
@@ -170,11 +180,6 @@ describe("svelte workspace shell model", () => {
 			"Config",
 			"Storage",
 			"Custom Resources",
-			"GitOps",
-			"Helm",
-			"Incidents",
-			"Port Forwards",
-			"RBAC",
 		]);
 		expect(findNode(nodes, "Namespaces").children?.map((node) => node.label)).toEqual([
 			"default",
@@ -187,6 +192,44 @@ describe("svelte workspace shell model", () => {
 			"Argo CD",
 			"Flux",
 		]);
+	});
+
+	test("keeps one broad resource branch open in compact navigation", () => {
+		const namespacesId = nodeIdToString({ type: "section", section: "namespaces" });
+		const workloadsId = nodeIdToString({ type: "section", section: "workloads" });
+		const nestedNamespaceId = nodeIdToString({
+			type: "namespace",
+			section: "namespaces",
+			namespace: "default",
+		});
+
+		expect(
+			toggleCompactSidebarSection([namespacesId, nestedNamespaceId], workloadsId),
+		).toEqual([nestedNamespaceId, workloadsId]);
+		expect(
+			toggleCompactSidebarSection([nestedNamespaceId, workloadsId], workloadsId),
+		).toEqual([nestedNamespaceId]);
+	});
+
+	test("binds compact drawer scroll position through the sidebar tree", () => {
+		const scrollArea = readFileSync("src/components/ui/svelte/ScrollArea.svelte", "utf8");
+		const sidebar = readFileSync("src/app/svelte/SidebarTree.svelte", "utf8");
+		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
+		const compactStart = shell.indexOf("{#if navigationOpen}");
+		const compactEnd = shell.indexOf("{/if}", compactStart);
+		const desktopSidebar = shell.slice(0, compactStart);
+		const compactSidebar = shell.slice(compactStart, compactEnd);
+
+		expect(scrollArea).toContain("scrollTop = $bindable(0)");
+		expect(scrollArea).toContain("scrollElement.scrollTop = scrollTop");
+		expect(scrollArea).toContain("scrollTop = event.currentTarget.scrollTop");
+		expect(sidebar).toContain("scrollTop = $bindable(0)");
+		expect(sidebar).toContain("bind:scrollTop");
+		expect(shell).toContain("let compactSidebarScrollTop = $state(0)");
+		expect(desktopSidebar).toContain("onSectionToggle={toggleSection}");
+		expect(desktopSidebar).not.toContain("bind:scrollTop={compactSidebarScrollTop}");
+		expect(compactSidebar).toContain("onSectionToggle={toggleCompactSection}");
+		expect(compactSidebar).toContain("bind:scrollTop={compactSidebarScrollTop}");
 	});
 
 	test("keeps namespace sidebar children lazy", () => {

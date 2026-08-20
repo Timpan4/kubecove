@@ -105,6 +105,7 @@
 	import {
 		GITOPS_RESOURCE_KINDS,
 		resourceBrowserAvailableKinds,
+		toggleCompactSidebarSection,
 	} from "./workspaceShellModel";
 	import {
 		buildWorkspaceNavigationModel,
@@ -194,6 +195,7 @@
 	});
 	let commandOpen = $state(false);
 	let navigationOpen = $state(false);
+	let compactSidebarScrollTop = $state(0);
 	let resourceDetailPathState = $state<PathStateResourceDetailState | null>(
 		initialDetailPathState,
 	);
@@ -591,6 +593,10 @@
 			: [...expandedSections, id];
 	}
 
+	function toggleCompactSection(id: string) {
+		expandedSections = toggleCompactSidebarSection(expandedSections, id);
+	}
+
 </script>
 
 <SidebarProvider class="h-screen overflow-hidden bg-background text-foreground xl:gap-2 xl:p-2">
@@ -640,7 +646,8 @@
 					{selectedNode}
 					{expandedSections}
 					onNodeSelect={selectNode}
-					onSectionToggle={toggleSection}
+					onSectionToggle={toggleCompactSection}
+					bind:scrollTop={compactSidebarScrollTop}
 				/>
 			</SidebarContent>
 		</SheetContent>
