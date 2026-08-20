@@ -94,14 +94,30 @@ describe("browser mock inspection", () => {
 					(refreshButton: HTMLElement, investigateButton: HTMLElement) => {
 						const actions = investigateButton.parentElement;
 						const summary = actions?.parentElement;
+						const summaryBounds = summary?.getBoundingClientRect();
+						const viewport = {
+							width: document.documentElement.clientWidth,
+							height: document.documentElement.clientHeight,
+						};
+						const insideViewport = (element: HTMLElement) => {
+							const bounds = element.getBoundingClientRect();
+							return bounds.left >= 0 && bounds.right <= viewport.width && bounds.top >= 0 && bounds.bottom <= viewport.height;
+						};
+						const metricCells = ["Identities", "Roles", "Bindings", "High", "Unknown"].map((label) =>
+							Array.from(summary?.querySelectorAll("p") ?? []).find((element) => element.textContent?.trim() === label)?.parentElement,
+						);
 						const investigateBounds = investigateButton.getBoundingClientRect();
 						return {
-							metricsVisible: ["Identities", "Roles", "Bindings", "High", "Unknown"].every(
-								(label) => summary?.textContent?.includes(label),
+							metricsVisible: metricCells.every(
+								(cell) =>
+									cell &&
+									insideViewport(cell) &&
+									cell.getBoundingClientRect().left >= (summaryBounds?.left ?? 1) &&
+									cell.getBoundingClientRect().right <= (summaryBounds?.right ?? 0),
 							),
-							refreshInsideViewport: refreshButton.getBoundingClientRect().right <= document.documentElement.clientWidth,
-							investigateInsideViewport: investigateBounds.right <= document.documentElement.clientWidth,
-							summaryContainsActions: investigateBounds.right <= (summary?.getBoundingClientRect().right ?? 0),
+							refreshInsideViewport: insideViewport(refreshButton),
+							investigateInsideViewport: insideViewport(investigateButton),
+							summaryContainsActions: investigateBounds.right <= (summaryBounds?.right ?? 0),
 							summaryHasNoHorizontalOverflow: (summary?.scrollWidth ?? 1) <= (summary?.clientWidth ?? 0),
 						};
 					},
