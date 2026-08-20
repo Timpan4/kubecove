@@ -955,10 +955,20 @@ describe("svelte resource browser model", () => {
 			"utf8",
 		);
 
+		expect(mapSource).toContain("preventScrolling={false}");
+		expect(mapSource).toContain("zoomOnScroll={false}");
+		expect(mapSource).toContain("panOnScroll={false}");
+		expect(mapSource).toContain("let afterGraphElement = $state<HTMLDivElement>()");
+		expect(mapSource).toContain("onclick={() => afterGraphElement?.focus()}");
+		expect(mapSource).toContain("bind:this={afterGraphElement}");
+		expect(mapSource).toContain('tabindex="-1"');
+		expect(mapSource).toContain("Drag to pan. Use controls to zoom.");
 		expect(mapSource).toContain("<OwnershipMapViewport");
 		expect(viewportSource).toContain("useSvelteFlow<FlowTopologyNode, FlowTopologyEdge>()");
 		expect(viewportSource).toContain("fitPlan?.focused");
 		expect(viewportSource).toContain("flow.setViewport");
+		expect(viewportSource).toContain('import { prefersReducedMotion } from "svelte/motion"');
+		expect(viewportSource).toContain("prefersReducedMotion.current ? 0 : fitDuration");
 		expect(viewportSource).toContain("buildFlowTopologyFitPlan");
 		expect(viewportSource).toContain("FIT_VIEW_DURATION_MS");
 		expect(viewportSource).toContain("SELECTED_FIT_VIEW_DURATION_MS");

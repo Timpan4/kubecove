@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tick } from "svelte";
+	import { prefersReducedMotion } from "svelte/motion";
 	import { useSvelteFlow } from "@xyflow/svelte";
 	import {
 		buildFlowTopologyFitPlan,
@@ -37,6 +38,7 @@
 	const fitDuration = $derived(
 		fitPlan?.focused ? SELECTED_FIT_VIEW_DURATION_MS : FIT_VIEW_DURATION_MS,
 	);
+	const viewportDuration = $derived(prefersReducedMotion.current ? 0 : fitDuration);
 
 	$effect(() => {
 		if (
@@ -49,7 +51,7 @@
 		const firstFrame = window.requestAnimationFrame(() => {
 			secondFrame = window.requestAnimationFrame(() => {
 				void tick().then(() =>
-					flow.setViewport(fitPlan.viewport, { duration: fitDuration }),
+					flow.setViewport(fitPlan.viewport, { duration: viewportDuration }),
 				);
 			});
 		});
