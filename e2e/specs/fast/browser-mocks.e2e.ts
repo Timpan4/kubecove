@@ -19,6 +19,48 @@ describe("browser mock inspection", () => {
 		await expect($("body")).toHaveText(expect.stringContaining("payments-api"));
 	});
 
+	it("lets page scrolling bypass the resource graph", async () => {
+		await $("button=Resources").click();
+		const graph = await $(".svelte-flow");
+		await graph.waitForDisplayed();
+		const originalSize = await browser.getWindowSize();
+
+		try {
+			for (const [width, height] of [
+				[1100, 800],
+				[1440, 900],
+			] as const) {
+				await browser.setWindowSize(width, height);
+				const wheelResult = await browser.execute((element: HTMLElement) => {
+					const viewport = element.querySelector<HTMLElement>(".svelte-flow__viewport");
+					const transform = viewport?.style.transform;
+					const wheel = new WheelEvent("wheel", {
+						bubbles: true,
+						cancelable: true,
+						deltaY: 300,
+					});
+					return {
+						dispatched: element.dispatchEvent(wheel),
+						defaultPrevented: wheel.defaultPrevented,
+						transformUnchanged: viewport?.style.transform === transform,
+					};
+				}, graph);
+				expect(wheelResult).toEqual({
+					dispatched: true,
+					defaultPrevented: false,
+					transformUnchanged: true,
+				});
+			}
+
+			await $("button=skip graph").click();
+			expect(
+				await browser.execute(() => document.activeElement?.getAttribute("tabindex")),
+			).toBe("-1");
+		} finally {
+			await browser.setWindowSize(originalSize.width, originalSize.height);
+		}
+	});
+
 	it("opens adjacent Argo Application details by accessible name", async () => {
 		await $('button[aria-label="Open workspace navigation"]').click();
 		const navigation = await $('[data-slot="sheet-content"]');
