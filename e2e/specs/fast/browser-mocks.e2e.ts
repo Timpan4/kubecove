@@ -67,6 +67,93 @@ describe("browser mock inspection", () => {
 		}
 	});
 
+	it("keeps RBAC summary actions visible at compact and wide sizes", async () => {
+		const originalSize = await browser.getWindowSize();
+
+		try {
+			await $('button[aria-label="Open workspace navigation"]').click();
+			const navigation = await $('[data-slot="sheet-content"]');
+			await navigation.$('[role="treeitem"]*=RBAC').click();
+			const refresh = await $("button=Refresh");
+			const investigate = await $("button=Investigate identity");
+
+			for (const [width, height] of [
+				[1026, 752],
+				[1440, 900],
+			] as const) {
+				await browser.sendCommandAndGetResult("Emulation.setDeviceMetricsOverride", {
+					width,
+					height,
+					deviceScaleFactor: 1,
+					mobile: false,
+				});
+				await expect(refresh).toBeDisplayed();
+				await expect(investigate).toBeDisplayed();
+
+				const layout = await browser.execute(
+					(refreshButton: HTMLElement, investigateButton: HTMLElement) => {
+						const actions = investigateButton.parentElement;
+						const summary = actions?.parentElement;
+						const summaryBounds = summary?.getBoundingClientRect();
+						const viewport = {
+							width: document.documentElement.clientWidth,
+							height: document.documentElement.clientHeight,
+						};
+						const insideViewport = (element: HTMLElement) => {
+							const bounds = element.getBoundingClientRect();
+							return bounds.left >= 0 && bounds.right <= viewport.width && bounds.top >= 0 && bounds.bottom <= viewport.height;
+						};
+						const metricCells = ["Identities", "Roles", "Bindings", "High", "Unknown"].map((label) =>
+							Array.from(summary?.querySelectorAll("p") ?? []).find((element) => element.textContent?.trim() === label)?.parentElement,
+						);
+						const investigateBounds = investigateButton.getBoundingClientRect();
+						return {
+							metricsVisible: metricCells.every(
+								(cell) =>
+									cell &&
+									insideViewport(cell) &&
+									cell.getBoundingClientRect().left >= (summaryBounds?.left ?? 1) &&
+									cell.getBoundingClientRect().right <= (summaryBounds?.right ?? 0),
+							),
+							refreshInsideViewport: insideViewport(refreshButton),
+							investigateInsideViewport: insideViewport(investigateButton),
+							summaryContainsActions: investigateBounds.right <= (summaryBounds?.right ?? 0),
+							summaryHasNoHorizontalOverflow: (summary?.scrollWidth ?? 1) <= (summary?.clientWidth ?? 0),
+						};
+					},
+					refresh,
+					investigate,
+				);
+
+				expect(layout).toEqual({
+					metricsVisible: true,
+					refreshInsideViewport: true,
+					investigateInsideViewport: true,
+					summaryContainsActions: true,
+					summaryHasNoHorizontalOverflow: true,
+				});
+
+				for (const action of [refresh, investigate]) {
+					await browser.keys("Tab");
+					const focus = await browser.execute((element: HTMLElement) => {
+						element.focus();
+						return {
+							active: document.activeElement === element,
+							focusVisible: element.matches(":focus-visible"),
+							boxShadow: getComputedStyle(element).boxShadow,
+						};
+					}, action);
+					expect(focus.active).toBe(true);
+					expect(focus.focusVisible).toBe(true);
+					expect(focus.boxShadow).not.toBe("none");
+				}
+			}
+		} finally {
+			await browser.sendCommandAndGetResult("Emulation.clearDeviceMetricsOverride", {});
+			await browser.setWindowSize(originalSize.width, originalSize.height);
+		}
+	});
+
 	it("opens adjacent Argo Application details by accessible name", async () => {
 		await $('button[aria-label="Open workspace navigation"]').click();
 		const navigation = await $('[data-slot="sheet-content"]');
