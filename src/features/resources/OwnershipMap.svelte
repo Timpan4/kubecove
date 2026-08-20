@@ -59,6 +59,7 @@
 
 	let viewportWidth = $state(0);
 	let viewportHeight = $state(0);
+	let afterGraphElement = $state<HTMLDivElement>();
 	let expandedStandaloneKinds = $state<Set<string>>(new Set());
 	const hasViewportSize = $derived(viewportWidth > 0 && viewportHeight > 0);
 	const selectedStandaloneExpansionId = $derived(
@@ -215,6 +216,15 @@
 			</EmptyHeader>
 		</Empty>
 	{:else}
+		<p class="border-b px-3 py-1.5 text-[0.6875rem] text-muted-foreground">
+			Drag to pan. Use controls to zoom. Press Tab to reach graph nodes, or
+			<Button
+				variant="link"
+				size="xs"
+				class="h-auto px-0 align-baseline"
+				onclick={() => afterGraphElement?.focus()}
+			>skip graph</Button>.
+		</p>
 		<div
 			class="min-h-80 flex-1"
 			bind:clientWidth={viewportWidth}
@@ -232,8 +242,11 @@
 					nodesDraggable={false}
 					nodesConnectable={false}
 					panOnDrag={true}
+					panOnScroll={false}
+					preventScrolling={false}
 					edgesFocusable={false}
 					zoomOnDoubleClick={false}
+					zoomOnScroll={false}
 					{onlyRenderVisibleElements}
 					proOptions={{ hideAttribution: true }}
 					onnodeclick={handleNodeClick}
@@ -250,6 +263,7 @@
 				</SvelteFlow>
 			{/if}
 		</div>
+		<div bind:this={afterGraphElement} tabindex="-1"></div>
 		{#if topology.warnings.length > 0}
 			<div class="flex flex-col gap-1 border-t px-3 py-2 text-[0.6875rem] text-muted-foreground">
 				<div class="font-semibold text-foreground">Topology warnings</div>
