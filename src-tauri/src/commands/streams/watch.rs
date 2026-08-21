@@ -16,10 +16,6 @@ use kube::{
 };
 use std::time::Duration;
 
-async fn sleep(duration: Duration) {
-    let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(duration)).await;
-}
-
 fn event_action<K>(event: &WatchEvent<K>) -> String {
     match event {
         WatchEvent::Added(_) => "added",
@@ -152,7 +148,7 @@ pub(super) async fn run_resource_watch(
                 if !broadcaster.error(err.message) {
                     return;
                 }
-                sleep(Duration::from_secs(5)).await;
+                tokio::time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
         };
@@ -216,7 +212,7 @@ pub(super) async fn run_resource_watch(
         if !broadcaster.status("reconnecting", format!("Reconnecting {kind_label}")) {
             return;
         }
-        sleep(Duration::from_secs(2)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
 
@@ -257,7 +253,7 @@ pub(super) async fn run_event_watch(
                 if !broadcaster.error(err.message) {
                     return;
                 }
-                sleep(Duration::from_secs(5)).await;
+                tokio::time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
         };
@@ -318,7 +314,7 @@ pub(super) async fn run_event_watch(
         if !broadcaster.status("reconnecting", "Reconnecting events".to_string()) {
             return;
         }
-        sleep(Duration::from_secs(2)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
 
