@@ -79,14 +79,21 @@ describe("friendlyError", () => {
 
 	test("redacts credentials from technical and copied detail", () => {
 		const detail = messageFromFriendlyError(
-			"request https://admin:secret@api.example.test?token=abc&x-amz-signature=deadbeef Authorization: Bearer eyJ.secret",
+			"request https://admin:secret@api.example.test?token=abc&x-amz-signature=deadbeef Authorization: Bearer eyJ.secret X-Api-Key: api-secret",
 		);
 
 		expect(detail.includes("admin:secret")).toBe(false);
 		expect(detail.includes("token=abc")).toBe(false);
 		expect(detail.includes("deadbeef")).toBe(false);
 		expect(detail.includes("eyJ.secret")).toBe(false);
+		expect(detail.includes("api-secret")).toBe(false);
 		expect(detail.includes("[REDACTED]")).toBe(true);
+	});
+
+	test("redacts basic authorization credentials", () => {
+		const detail = messageFromFriendlyError("Authorization: Basic dXNlcjpwYXNz");
+
+		expect(detail).toBe("Authorization: Basic [REDACTED]");
 	});
 
 	test("uses neutral recovery guidance for mixed workspace failures", () => {

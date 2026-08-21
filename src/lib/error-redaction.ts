@@ -1,5 +1,6 @@
 const SENSITIVE_DETAIL_PATTERNS: Array<[RegExp, string]> = [
-	[/(\bauthorization\s*:\s*bearer\s+)[^\s,;]+/gi, "$1[REDACTED]"],
+	[/(\bauthorization\s*:\s*(?:basic|bearer)\s+)[^\s,;]+/gi, "$1[REDACTED]"],
+	[/(\b(?:x-api-key|api-key)\s*:\s*)[^\s,;]+/gi, "$1[REDACTED]"],
 	[/(\bbearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[REDACTED]"],
 	[/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/gi, "$1[REDACTED]@"],
 	[
