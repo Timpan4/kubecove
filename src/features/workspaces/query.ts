@@ -48,10 +48,14 @@ export class WorkspaceResourceLoadError extends Error {
 		this.clusterContexts = failures.map(({ clusterContext }) => clusterContext);
 		this.failureBuckets = failures.map(({ reason }) => friendlyErrorBucket(reason));
 		const uniqueBuckets = new Set(this.failureBuckets);
-		this.kind =
-			uniqueBuckets.size === 1
-				? (this.failureBuckets[0] ?? "unknown")
-				: "mixedWorkspaceConnection";
+		const onlyConnectionFailures = this.failureBuckets.every(
+			(bucket) => bucket === "authentication" || bucket === "networkTransient",
+		);
+		this.kind = uniqueBuckets.size === 1
+			? (this.failureBuckets[0] ?? "unknown")
+			: onlyConnectionFailures
+				? "mixedWorkspaceConnection"
+				: "unknown";
 	}
 }
 

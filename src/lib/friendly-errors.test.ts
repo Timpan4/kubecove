@@ -96,6 +96,15 @@ describe("friendlyError", () => {
 		expect(detail).toBe("Authorization: Basic [REDACTED]");
 	});
 
+	test("redacts API key query parameters from technical and copied detail", () => {
+		const presentation = friendlyError(
+			"request failed for https://api.example.test?api_key=query-secret",
+		);
+
+		expect(presentation.technicalDetail.includes("query-secret")).toBe(false);
+		expect(presentation.copyText.includes("query-secret")).toBe(false);
+	});
+
 	test("uses neutral recovery guidance for mixed workspace failures", () => {
 		const presentation = friendlyError(
 			{

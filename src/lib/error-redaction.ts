@@ -4,11 +4,11 @@ const SENSITIVE_DETAIL_PATTERNS: Array<[RegExp, string]> = [
 	[/(\bbearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[REDACTED]"],
 	[/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/gi, "$1[REDACTED]@"],
 	[
-		/([?&](?:access[_-]?token|id[_-]?token|token|password|client[_-]?secret|x-amz-credential|x-amz-security-token|x-amz-signature|sig|signature)=)[^&#\s]+/gi,
+		/([?&](?:access[_-]?token|id[_-]?token|token|password|client[_-]?secret|x-amz-credential|x-amz-security-token|x-amz-signature|sig|signature|(?:x[-_])?api[-_]?key)=)[^&#\s]+/gi,
 		"$1[REDACTED]",
 	],
 	[
-		/(["']?(?:access[_-]?token|id[_-]?token|token|password|client[_-]?secret)["']?\s*[:=]\s*["']?)[^"',\s}]+/gi,
+		/(["']?(?:access[_-]?token|id[_-]?token|token|password|client[_-]?secret|(?:x[-_])?api[-_]?key)["']?\s*[:=]\s*["']?)[^"',\s}]+/gi,
 		"$1[REDACTED]",
 	],
 ];

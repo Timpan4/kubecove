@@ -145,9 +145,13 @@
 	const workspaceFetchCoverage = $derived(
 		buildWorkspaceFetchPlans(workspace.scope, availableNamespaces),
 	);
+	const resourceQueryKey = $derived(
+		queryKeys.resources(workspaceContextKey, workspaceFetchKeys, kubeconfigSourceKey),
+	);
+	const resourceQueryIdentity = $derived(JSON.stringify(resourceQueryKey));
 
 	const resourcesQuery = createQuery(() => ({
-		queryKey: queryKeys.resources(workspaceContextKey, workspaceFetchKeys, kubeconfigSourceKey),
+		queryKey: resourceQueryKey,
 		queryFn: () => fetchWorkspaceResources(workspace.scope, availableNamespaces, kubeconfigSourceKey),
 		enabled:
 			sourceReady &&
@@ -165,10 +169,10 @@
 			: `context "${workspace.scope.clusterContext}"`,
 	);
 	async function retryWorkspaceResources() {
-		const retryKey = workspaceContextKey;
+		const retryKey = resourceQueryIdentity;
 		successfulResourceRetryKey = null;
 		const result = await resourcesQuery.refetch();
-		if (result.isSuccess && workspaceContextKey === retryKey) {
+		if (result.isSuccess && resourceQueryIdentity === retryKey) {
 			successfulResourceRetryKey = retryKey;
 		}
 	}
@@ -342,7 +346,7 @@
 						{resourcesQuery.isFetching ? "Retrying workspace resources..." : "Retry workspace resources"}
 					</Button>
 				</div>
-			{:else if successfulResourceRetryKey === workspaceContextKey}
+			{:else if successfulResourceRetryKey === resourceQueryIdentity}
 				<p role="status" class="text-xs text-emerald-300">
 					Workspace resources loaded successfully after retry.
 				</p>

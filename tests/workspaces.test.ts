@@ -295,6 +295,22 @@ describe("workspace helpers", () => {
 		expect(error.failureBuckets).toEqual(["authentication", "networkTransient"]);
 	});
 
+	test("unrelated mixed workspace failures use generic guidance", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-dev",
+				reason: { kind: "forbidden", message: "pods is forbidden" },
+			},
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "validation", message: "namespace is required" },
+			},
+		]);
+
+		expect(error.kind).toBe("unknown");
+		expect(error.failureBuckets).toEqual(["forbiddenRbac", "validation"]);
+	});
+
 	test("uses an explicit height for the workspace namespace scroll area", () => {
 		const source = readFileSync(
 			"src/features/workspaces/WorkspaceLauncher.svelte",
