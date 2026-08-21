@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
 	buildWorkspaceFetchKeys,
 	buildWorkspaceFetchPlans,
+	WorkspaceResourceLoadError,
 } from "../src/features/workspaces/query";
 import type {
 	ClusterContext,
@@ -261,6 +262,53 @@ describe("workspace helpers", () => {
 				requests: [{ kind: "Pod", namespace: "missing" }, { kind: "Node" }],
 			},
 		]);
+	});
+
+	test("workspace resource failures retain context, operation, and technical detail", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "cluster", message: "ServiceError: client error (Connect)" },
+			},
+		]);
+
+		expect(error.clusterContexts).toEqual(["kind-prod"]);
+		expect(error.kind).toBe("networkTransient");
+		expect(error.message).toBe(
+			'Context "kind-prod", operation "resource discovery": ServiceError: client error (Connect)',
+		);
+	});
+
+	test("workspace resource failures keep mixed context guidance neutral", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-dev",
+				reason: { kind: "cluster", message: "Unauthorized: authentication required" },
+			},
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "cluster", message: "ServiceError: client error (Connect)" },
+			},
+		]);
+
+		expect(error.kind).toBe("mixedWorkspaceConnection");
+		expect(error.failureBuckets).toEqual(["authentication", "networkTransient"]);
+	});
+
+	test("unrelated mixed workspace failures use generic guidance", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-dev",
+				reason: { kind: "forbidden", message: "pods is forbidden" },
+			},
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "validation", message: "namespace is required" },
+			},
+		]);
+
+		expect(error.kind).toBe("unknown");
+		expect(error.failureBuckets).toEqual(["forbiddenRbac", "validation"]);
 	});
 
 	test("uses an explicit height for the workspace namespace scroll area", () => {

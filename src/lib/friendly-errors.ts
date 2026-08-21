@@ -1,10 +1,13 @@
-import type { AppError } from "./types";
+import { messageFromError } from "./error-redaction";
 import type { RbacAccessReviewTarget } from "./rbac-types";
+import type { AppError } from "./types";
 
 export type FriendlyErrorMode = "full" | "compact";
 
 export type FriendlyErrorBucket =
 	| "kubeconfigConfig"
+	| "authentication"
+	| "mixedWorkspaceConnection"
 	| "forbiddenRbac"
 	| "notFoundStale"
 	| "validation"
@@ -65,6 +68,10 @@ const MESSAGE_BUCKETS: Array<[FriendlyErrorBucket, RegExp]> = [
 		"admissionPolicy",
 		/admission webhook|denied the request|podsecurity|policy.*denied|violates/i,
 	],
+	[
+		"authentication",
+		/\bunauthorized\b|\b401\b|authentication (?:failed|required)|invalid credentials?|expired (?:token|credential)|token has expired|exec (?:credential )?plugin.*(?:failed|error)/i,
+	],
 	["forbiddenRbac", /\bforbidden\b|\b403\b|cannot (?:get|list|watch|create|patch|update|delete)\b/i],
 	["notFoundStale", /\bnot ?found\b|\b404\b|no such resource/i],
 	[
@@ -81,7 +88,7 @@ const MESSAGE_BUCKETS: Array<[FriendlyErrorBucket, RegExp]> = [
 	],
 	[
 		"networkTransient",
-		/timed? out|connection refused|connection reset|unreachable|temporarily unavailable|transport|tls|certificate|dns|i\/o timeout/i,
+		/serviceerror|client error \(connect\)|failed to connect|timed? out|connection refused|connection reset|unreachable|temporarily unavailable|transport|tls|certificate|dns|i\/o timeout/i,
 	],
 	["serialization", /serialize|serialization|deserialize|json|yaml.*format|parse/i],
 	["validation", /validation|invalid|required|must be|missing/i],
@@ -89,6 +96,7 @@ const MESSAGE_BUCKETS: Array<[FriendlyErrorBucket, RegExp]> = [
 
 const KIND_BUCKETS: Record<string, FriendlyErrorBucket> = {
 	admissionDenied: "admissionPolicy",
+	authentication: "authentication",
 	applyImmutableField: "immutableField",
 	fieldManagerConflict: "fieldManagerConflict",
 	forbidden: "forbiddenRbac",
@@ -103,19 +111,16 @@ const KIND_BUCKETS: Record<string, FriendlyErrorBucket> = {
 	providerDiscoveryUnavailable: "providerDiscoveryUnavailable",
 	providerUnavailable: "providerDiscoveryUnavailable",
 	serialization: "serialization",
+	unauthorized: "authentication",
 	validation: "validation",
+	mixedWorkspaceConnection: "mixedWorkspaceConnection",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
 
-export function messageFromFriendlyError(error: unknown): string {
-	if (error instanceof Error) return error.message;
-	if (typeof error === "string") return error;
-	if (isRecord(error) && typeof error.message === "string") return error.message;
-	return "Unknown error";
-}
+export const messageFromFriendlyError = messageFromError;
 
 function appErrorKind(error: unknown): string | null {
 	if (!isRecord(error)) return null;
@@ -201,6 +206,20 @@ export function friendlyError(
 	>;
 
 	switch (bucket) {
+		case "authentication":
+			return {
+				...base,
+				title: partialTitle(context, "Kubernetes authentication failed"),
+				summary: `KubeCove could not authenticate while loading ${subject}${target}.`,
+				next: "Sign in through the selected context's credential provider or refresh its credentials, then retry.",
+			};
+		case "mixedWorkspaceConnection":
+			return {
+				...base,
+				title: partialTitle(context, "Workspace contexts failed for different reasons"),
+				summary: `KubeCove could not load ${subject}${target}; each context's cause is listed in the technical detail.`,
+				next: "Refresh credentials for authentication failures. Check API endpoints, network or VPN access, and TLS certificate trust for connection failures, then retry.",
+			};
 		case "kubeconfigConfig":
 			return {
 				...base,
@@ -279,7 +298,7 @@ export function friendlyError(
 				...base,
 				title: partialTitle(context, "KubeCove could not reach the Kubernetes API"),
 				summary: `The connection failed while loading ${subject}${target}.`,
-				next: "Check the cluster connection or VPN, then retry.",
+				next: "Check the selected context's API endpoint, network or VPN path, and TLS certificate trust, then retry.",
 			};
 		case "unknown":
 			return {

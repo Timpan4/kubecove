@@ -1,4 +1,8 @@
-import { friendlyError, friendlyErrorBucket } from "./friendly-errors";
+import {
+	friendlyError,
+	friendlyErrorBucket,
+	messageFromFriendlyError,
+} from "./friendly-errors";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void | Promise<void>): void;
@@ -46,6 +50,16 @@ describe("friendlyError", () => {
 			{ kind: "cluster", message: "connection refused while connecting to API server" },
 			"networkTransient",
 		],
+		[
+			"service connect",
+			{ kind: "cluster", message: "ServiceError: client error (Connect)" },
+			"networkTransient",
+		],
+		[
+			"authentication",
+			{ kind: "cluster", message: "Unauthorized: authentication required" },
+			"authentication",
+		],
 	];
 
 	for (const [name, error, bucket] of cases) {
@@ -63,6 +77,50 @@ describe("friendlyError", () => {
 		expect(presentation.copyText).toBe(message);
 	});
 
+	test("redacts credentials from technical and copied detail", () => {
+		const detail = messageFromFriendlyError(
+			"request https://admin:secret@api.example.test?token=abc&x-amz-signature=deadbeef Authorization: Bearer eyJ.secret X-Api-Key: api-secret",
+		);
+
+		expect(detail.includes("admin:secret")).toBe(false);
+		expect(detail.includes("token=abc")).toBe(false);
+		expect(detail.includes("deadbeef")).toBe(false);
+		expect(detail.includes("eyJ.secret")).toBe(false);
+		expect(detail.includes("api-secret")).toBe(false);
+		expect(detail.includes("[REDACTED]")).toBe(true);
+	});
+
+	test("redacts basic authorization credentials", () => {
+		const detail = messageFromFriendlyError("Authorization: Basic dXNlcjpwYXNz");
+
+		expect(detail).toBe("Authorization: Basic [REDACTED]");
+	});
+
+	test("redacts API key query parameters from technical and copied detail", () => {
+		const presentation = friendlyError(
+			"request failed for https://api.example.test?api_key=query-secret",
+		);
+
+		expect(presentation.technicalDetail.includes("query-secret")).toBe(false);
+		expect(presentation.copyText.includes("query-secret")).toBe(false);
+	});
+
+	test("uses neutral recovery guidance for mixed workspace failures", () => {
+		const presentation = friendlyError(
+			{
+				kind: "mixedWorkspaceConnection",
+				message:
+					'Context "dev": Unauthorized\nContext "prod": ServiceError: client error (Connect)',
+			},
+			{ operation: "resourcesLoad", target: "saved contexts" },
+		);
+
+		expect(presentation.bucket).toBe("mixedWorkspaceConnection");
+		expect(presentation.summary).toBe(
+			"KubeCove could not load resources for saved contexts; each context's cause is listed in the technical detail.",
+		);
+	});
+
 	test("uses compact partial tone", () => {
 		const presentation = friendlyError(
 			{ kind: "forbidden", message: "events is forbidden" },
@@ -71,6 +129,20 @@ describe("friendlyError", () => {
 
 		expect(presentation.tone).toBe("warning");
 		expect(presentation.title).toBe("Some events could not load");
+	});
+
+	test("names connection target and recovery path", () => {
+		const presentation = friendlyError(
+			{ kind: "cluster", message: "ServiceError: client error (Connect)" },
+			{ operation: "resourcesLoad", target: 'context "kind-prod"' },
+		);
+
+		expect(presentation.summary).toBe(
+			'The connection failed while loading resources for context "kind-prod".',
+		);
+		expect(presentation.next).toBe(
+			"Check the selected context's API endpoint, network or VPN path, and TLS certificate trust, then retry.",
+		);
 	});
 
 	test("component keeps technical detail collapsed and copyable", async () => {
