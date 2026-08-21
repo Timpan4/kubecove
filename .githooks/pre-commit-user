@@ -49,6 +49,7 @@ src/app/svelte/WorkspaceShell.svelte
 src/features/rbac/RbacView.svelte
 src/features/resource-detail/ResourceDetailPanel.svelte
 src/features/gitops/GitOpsView.svelte
+src/features/workspaces/WorkspaceLauncher.svelte
 "
 
 soft_cap_for() {

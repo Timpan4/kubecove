@@ -34,7 +34,8 @@ fn ensure_kubernetes_transport_action(action: &str) -> Result<(), AppError> {
     }
 }
 
-fn valid(request: &ArgoOperationRequest) -> Result<(), AppError> {    if !matches!(request.transport.as_str(), "connected" | "kubernetes") {
+fn valid(request: &ArgoOperationRequest) -> Result<(), AppError> {
+    if !matches!(request.transport.as_str(), "connected" | "kubernetes") {
         return Err(AppError::new(
             "invalid Argo CD transport",
             "argoOperationUnavailable",
