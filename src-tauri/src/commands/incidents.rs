@@ -11,6 +11,7 @@ use crate::models::{
     IncidentSignalSummary, ResourceEventSummary, ResourceListRequest, ResourceSummary,
 };
 use chrono::{DateTime, Utc};
+use futures_util::future::join_all;
 use k8s_openapi::api::core::v1::Event;
 use kube::{api::Api, Client};
 use std::collections::{BTreeMap, BTreeSet};
@@ -82,10 +83,14 @@ pub async fn incident_cockpit_from(
     )
     .await?;
     let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
-    let restart_result = list_restart_evidence(client.clone(), &resources).await?;
     let event_scope = event_namespace_scope(&requests, &resources);
     let mut warnings = Vec::new();
-    let event_result = match list_warning_events(client, event_scope).await {
+    let (restart_result, event_result) = tokio::join!(
+        list_restart_evidence(client.clone(), &resources),
+        list_warning_events(client, event_scope),
+    );
+    let restart_result = restart_result?;
+    let event_result = match event_result {
         Ok(result) => result,
         Err(err) if is_forbidden_app_error(&err) => {
             warnings.push("Warning events unavailable: forbidden by RBAC.".to_string());
@@ -166,13 +171,19 @@ async fn list_warning_events(
     };
     let mut events = Vec::new();
     let mut denied_namespaces = Vec::new();
-    for namespace in namespace_scopes {
-        let api: Api<Event> = if let Some(namespace) = &namespace {
-            Api::namespaced(client.clone(), namespace)
-        } else {
-            Api::all(client.clone())
-        };
-        let list = match api.list(&list_params()).await {
+    let fetches = namespace_scopes.into_iter().map(|namespace| {
+        let client = client.clone();
+        async move {
+            let api: Api<Event> = if let Some(namespace) = &namespace {
+                Api::namespaced(client, namespace)
+            } else {
+                Api::all(client)
+            };
+            (namespace, api.list(&list_params()).await)
+        }
+    });
+    for (namespace, result) in join_all(fetches).await {
+        let list = match result {
             Ok(list) => list,
             Err(err) => {
                 let app_error = AppError::from(err);
@@ -185,8 +196,7 @@ async fn list_warning_events(
                 return Err(app_error);
             }
         };
-        let mut namespace_events = list.into_iter().filter_map(event_match).collect::<Vec<_>>();
-        events.append(&mut namespace_events);
+        events.extend(list.into_iter().filter_map(event_match));
     }
     events.sort_by(event_match_sort);
     events.truncate(MAX_WARNING_EVENTS_TOTAL);
