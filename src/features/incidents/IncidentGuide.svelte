@@ -52,7 +52,7 @@
 	}
 </script>
 
-<section class="min-w-0 rounded-md border bg-surface-1 @4xl:h-full @4xl:min-h-0 @4xl:overflow-y-auto">
+<section data-incident-guide class="min-w-0 rounded-md border bg-surface-1 @5xl:h-full @5xl:min-h-0 @5xl:overflow-y-auto">
 	{#if selectedIncident && guidance}
 		<header class="border-b px-4 py-3">
 			<div class="flex flex-wrap items-start justify-between gap-3">
