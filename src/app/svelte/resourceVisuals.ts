@@ -1,7 +1,7 @@
 /**
  * Svelte resource visual map.
  *
- * Tone class strings (`text-[var(--resource-*)]`, `resource-tone-*-surface/badge`)
+ * Tone class strings use resource CSS variables plus matching surface and badge helpers.
  * resolve against the shared OKLCH tokens in App.css.
  */
 import {

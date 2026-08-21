@@ -19,6 +19,7 @@
 	} from "@/components/ui/svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import type { TimestampTimezone, YamlDiffStyle } from "@/lib/settings";
+	import { IS_DEV_BUILD } from "@/lib/build-env";
 	import { isTauriRuntime } from "@/lib/tauri-runtime";
 	import type { YamlEncoding, YamlViewMode } from "@/lib/types";
 	import ArgoConnectionSettings from "./ArgoConnectionSettings.svelte";
@@ -160,7 +161,7 @@
 			description:
 				"Shows frontend and backend timing summaries, with redacted copy output by default.",
 		},
-		...(import.meta.env.DEV
+		...(IS_DEV_BUILD
 			? {
 					topologySpike: {
 						title: "Topology spike",

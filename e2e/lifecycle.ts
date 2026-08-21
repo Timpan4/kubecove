@@ -315,9 +315,9 @@ if (["run", "dev-up"].includes(action)) for (const signal of ["SIGINT", "SIGTERM
 
 async function fast() {
 	if (!(await Array.fromAsync(new Bun.Glob("e2e/specs/fast/**/*.e2e.ts").scan({ cwd: root }))).length) throw new Error("fast suite has no specs");
-	const vite = Bun.spawn(["bun", "run", "dev", "--host", "127.0.0.1", "--port", "1420", "--strictPort"], { cwd: root, stdout: "inherit", stderr: "inherit" });
-	try { for (let count = 0; count < 80; count++) { try { if ((await fetch("http://127.0.0.1:1420")).ok) break; } catch {} if (count === 79) throw new Error("Vite did not become ready"); await Bun.sleep(250); } await runWdio("e2e/wdio.fast.conf.ts", { KUBECOVE_E2E_ARTIFACTS: join(root, "e2e", "artifacts", "fast") }); }
-	finally { vite.kill(); await vite.exited; }
+	const frontend = Bun.spawn(["bun", "run", "dev", "--host", "127.0.0.1", "--port", "1420"], { cwd: root, stdout: "inherit", stderr: "inherit" });
+	try { for (let count = 0; count < 80; count++) { try { if ((await fetch("http://127.0.0.1:1420")).ok) break; } catch {} if (count === 79) throw new Error("Bun frontend did not become ready"); await Bun.sleep(250); } await runWdio("e2e/wdio.fast.conf.ts", { KUBECOVE_E2E_ARTIFACTS: join(root, "e2e", "artifacts", "fast") }); }
+	finally { frontend.kill(); await frontend.exited; }
 }
 async function buildAndDrive(env: Record<string, string | undefined>, smoke = false) { const artifacts = env.KUBECOVE_E2E_ARTIFACTS as string; await execute("bun", ["run", "tauri", "build", "--debug", "--no-bundle", "--config", "src-tauri/tauri.e2e.conf.json", "--features", "e2e"], env, false, join(artifacts, "build.log")); await runWdio("e2e/wdio.real.conf.ts", { ...env, KUBECOVE_E2E_BINARY: join(root, "src-tauri", "target", "debug", `kubecove${suffix}`), KUBECOVE_E2E_SMOKE: smoke ? "1" : undefined }, join(artifacts, "wdio.log")); }
 async function real() { if (keep && process.env.CI) throw new Error("--keep is forbidden in CI"); const record = await create("run"); const artifacts = join(root, "e2e", "artifacts", record.runId); const env = { KUBECOVE_E2E: "1", KUBECOVE_KUBECONFIG: record.kubeconfig, KUBECOVE_DATA_DIR: record.dataDir, KUBECOVE_E2E_CLUSTER: record.cluster, KUBECOVE_E2E_KUBECTL: (await tools()).kubectl, KUBECOVE_E2E_ARTIFACTS: artifacts }; try { await buildAndDrive(env); } finally { await diagnostics(record).catch((failure) => console.error("diagnostics failed", failure)); if (!keep) await removeCluster(record); current = undefined; } }
