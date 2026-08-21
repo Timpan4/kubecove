@@ -9,6 +9,7 @@ Large files are hard to review and easy to misuse. These caps are the working ba
 | `.rs`     | 500 lines | 800 lines |
 | `.tsx`    | 400 lines | 700 lines |
 | `.ts`     | 300 lines | 600 lines |
+| `.svelte` | 400 lines | 700 lines |
 | `.css`    | no cap yet | no cap yet |
 
 Exempt:
