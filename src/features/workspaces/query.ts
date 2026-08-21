@@ -1,4 +1,8 @@
-import { messageFromFriendlyError } from "@/lib/friendly-errors";
+import {
+	type FriendlyErrorBucket,
+	friendlyErrorBucket,
+	messageFromFriendlyError,
+} from "@/lib/friendly-errors";
 import {
 	createTauriClient,
 	listResourceScope,
@@ -29,7 +33,8 @@ interface WorkspaceResourceFailure {
 
 export class WorkspaceResourceLoadError extends Error {
 	readonly clusterContexts: string[];
-	readonly kind?: string;
+	readonly failureBuckets: FriendlyErrorBucket[];
+	readonly kind: FriendlyErrorBucket;
 
 	constructor(failures: WorkspaceResourceFailure[]) {
 		const detail = failures
@@ -41,16 +46,12 @@ export class WorkspaceResourceLoadError extends Error {
 		super(detail);
 		this.name = "WorkspaceResourceLoadError";
 		this.clusterContexts = failures.map(({ clusterContext }) => clusterContext);
-
-		const firstReason = failures[0]?.reason;
-		if (
-			typeof firstReason === "object" &&
-			firstReason !== null &&
-			"kind" in firstReason &&
-			typeof firstReason.kind === "string"
-		) {
-			this.kind = firstReason.kind;
-		}
+		this.failureBuckets = failures.map(({ reason }) => friendlyErrorBucket(reason));
+		const uniqueBuckets = new Set(this.failureBuckets);
+		this.kind =
+			uniqueBuckets.size === 1
+				? (this.failureBuckets[0] ?? "unknown")
+				: "mixedWorkspaceConnection";
 	}
 }
 

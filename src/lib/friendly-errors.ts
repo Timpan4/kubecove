@@ -1,3 +1,4 @@
+import { messageFromError } from "./error-redaction";
 import type { RbacAccessReviewTarget } from "./rbac-types";
 import type { AppError } from "./types";
 
@@ -6,6 +7,7 @@ export type FriendlyErrorMode = "full" | "compact";
 export type FriendlyErrorBucket =
 	| "kubeconfigConfig"
 	| "authentication"
+	| "mixedWorkspaceConnection"
 	| "forbiddenRbac"
 	| "notFoundStale"
 	| "validation"
@@ -111,18 +113,14 @@ const KIND_BUCKETS: Record<string, FriendlyErrorBucket> = {
 	serialization: "serialization",
 	unauthorized: "authentication",
 	validation: "validation",
+	mixedWorkspaceConnection: "mixedWorkspaceConnection",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
 
-export function messageFromFriendlyError(error: unknown): string {
-	if (error instanceof Error) return error.message;
-	if (typeof error === "string") return error;
-	if (isRecord(error) && typeof error.message === "string") return error.message;
-	return "Unknown error";
-}
+export const messageFromFriendlyError = messageFromError;
 
 function appErrorKind(error: unknown): string | null {
 	if (!isRecord(error)) return null;
@@ -214,6 +212,13 @@ export function friendlyError(
 				title: partialTitle(context, "Kubernetes authentication failed"),
 				summary: `KubeCove could not authenticate while loading ${subject}${target}.`,
 				next: "Sign in through the selected context's credential provider or refresh its credentials, then retry.",
+			};
+		case "mixedWorkspaceConnection":
+			return {
+				...base,
+				title: partialTitle(context, "Workspace contexts failed for different reasons"),
+				summary: `KubeCove could not load ${subject}${target}; each context's cause is listed in the technical detail.`,
+				next: "Refresh credentials for authentication failures. Check API endpoints, network or VPN access, and TLS certificate trust for connection failures, then retry.",
 			};
 		case "kubeconfigConfig":
 			return {

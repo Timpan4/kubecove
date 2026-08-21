@@ -273,10 +273,26 @@ describe("workspace helpers", () => {
 		]);
 
 		expect(error.clusterContexts).toEqual(["kind-prod"]);
-		expect(error.kind).toBe("cluster");
+		expect(error.kind).toBe("networkTransient");
 		expect(error.message).toBe(
 			'Context "kind-prod", operation "resource discovery": ServiceError: client error (Connect)',
 		);
+	});
+
+	test("workspace resource failures keep mixed context guidance neutral", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-dev",
+				reason: { kind: "cluster", message: "Unauthorized: authentication required" },
+			},
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "cluster", message: "ServiceError: client error (Connect)" },
+			},
+		]);
+
+		expect(error.kind).toBe("mixedWorkspaceConnection");
+		expect(error.failureBuckets).toEqual(["authentication", "networkTransient"]);
 	});
 
 	test("uses an explicit height for the workspace namespace scroll area", () => {

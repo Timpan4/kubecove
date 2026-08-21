@@ -1,4 +1,8 @@
-import { friendlyError, friendlyErrorBucket } from "./friendly-errors";
+import {
+	friendlyError,
+	friendlyErrorBucket,
+	messageFromFriendlyError,
+} from "./friendly-errors";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void | Promise<void>): void;
@@ -71,6 +75,34 @@ describe("friendlyError", () => {
 		expect(presentation.bucket).toBe("unknown");
 		expect(presentation.title).toBe("KubeCove could not simplify this error yet");
 		expect(presentation.copyText).toBe(message);
+	});
+
+	test("redacts credentials from technical and copied detail", () => {
+		const detail = messageFromFriendlyError(
+			"request https://admin:secret@api.example.test?token=abc&x-amz-signature=deadbeef Authorization: Bearer eyJ.secret",
+		);
+
+		expect(detail.includes("admin:secret")).toBe(false);
+		expect(detail.includes("token=abc")).toBe(false);
+		expect(detail.includes("deadbeef")).toBe(false);
+		expect(detail.includes("eyJ.secret")).toBe(false);
+		expect(detail.includes("[REDACTED]")).toBe(true);
+	});
+
+	test("uses neutral recovery guidance for mixed workspace failures", () => {
+		const presentation = friendlyError(
+			{
+				kind: "mixedWorkspaceConnection",
+				message:
+					'Context "dev": Unauthorized\nContext "prod": ServiceError: client error (Connect)',
+			},
+			{ operation: "resourcesLoad", target: "saved contexts" },
+		);
+
+		expect(presentation.bucket).toBe("mixedWorkspaceConnection");
+		expect(presentation.summary).toBe(
+			"KubeCove could not load resources for saved contexts; each context's cause is listed in the technical detail.",
+		);
 	});
 
 	test("uses compact partial tone", () => {
