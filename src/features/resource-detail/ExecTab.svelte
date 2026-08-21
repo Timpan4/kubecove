@@ -249,8 +249,13 @@
 					channel: nextChannel,
 					invalidateQueries: (options) => queryClient.invalidateQueries(options),
 				});
-				sessionId = summary.id;
-				status = summary.status;
+				// Channel messages may have advanced or torn down the session
+				// while the start call was in flight; never regress their state.
+				if (channel !== nextChannel) return;
+				if (!sessionId) {
+					sessionId = summary.id;
+					status = summary.status;
+				}
 			} catch (err) {
 				closePodExecChannel(nextChannel);
 				if (channel === nextChannel) channel = null;
