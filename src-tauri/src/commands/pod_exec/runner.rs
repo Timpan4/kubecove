@@ -31,6 +31,25 @@ fn exit_code_from_status(status: &Status) -> Option<i32> {
     })
 }
 
+/// Decodes the longest valid UTF-8 prefix out of `pending`, draining consumed
+/// bytes. Bytes belonging to a not-yet-complete multibyte sequence stay
+/// buffered for the next read; genuinely invalid bytes become one U+FFFD.
+fn take_utf8_prefix(pending: &mut Vec<u8>) -> Option<String> {
+    let (valid_up_to, invalid_len) = match std::str::from_utf8(pending) {
+        Ok(_) => (pending.len(), 0),
+        Err(err) => (err.valid_up_to(), err.error_len().unwrap_or(0)),
+    };
+    if valid_up_to == 0 && invalid_len == 0 {
+        return None;
+    }
+    let mut data = String::from_utf8_lossy(&pending[..valid_up_to]).into_owned();
+    if invalid_len > 0 {
+        data.push('\u{FFFD}');
+    }
+    pending.drain(..valid_up_to + invalid_len);
+    Some(data)
+}
+
 async fn read_exec_output(
     session_id: String,
     stream: &'static str,
@@ -38,20 +57,36 @@ async fn read_exec_output(
     channel: Channel<PodExecSessionMessage>,
 ) {
     let mut buffer = [0_u8; 4096];
+    let mut pending = Vec::new();
     loop {
         match reader.read(&mut buffer).await {
-            Ok(0) => break,
+            Ok(0) => {
+                if !pending.is_empty() {
+                    let data = String::from_utf8_lossy(&pending).into_owned();
+                    send(
+                        &channel,
+                        PodExecSessionMessage::Output {
+                            session_id: session_id.clone(),
+                            stream: stream.to_string(),
+                            data,
+                        },
+                    );
+                }
+                break;
+            }
             Ok(size) => {
-                let data = String::from_utf8_lossy(&buffer[..size]).to_string();
-                if !send(
-                    &channel,
-                    PodExecSessionMessage::Output {
-                        session_id: session_id.clone(),
-                        stream: stream.to_string(),
-                        data,
-                    },
-                ) {
-                    break;
+                pending.extend_from_slice(&buffer[..size]);
+                while let Some(data) = take_utf8_prefix(&mut pending) {
+                    if !send(
+                        &channel,
+                        PodExecSessionMessage::Output {
+                            session_id: session_id.clone(),
+                            stream: stream.to_string(),
+                            data,
+                        },
+                    ) {
+                        return;
+                    }
                 }
             }
             Err(err) => {
@@ -274,4 +309,48 @@ pub(super) async fn start_pod_exec_session_in_registry(
     ));
     registry.set_handle(&session_id, handle);
     Ok(summary)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::take_utf8_prefix;
+
+    #[test]
+    fn keeps_incomplete_multibyte_tail_for_next_chunk() {
+        let mut pending = "héllo".as_bytes().to_vec();
+        let split = 2; // 'h' plus the first byte of 'é'
+        let mut remainder = pending.split_off(split);
+
+        let first = take_utf8_prefix(&mut pending).expect("first chunk");
+        assert_eq!(first, "h");
+        assert!(!pending.is_empty());
+
+        pending.append(&mut remainder);
+        assert_eq!(take_utf8_prefix(&mut pending).expect("rest"), "éllo");
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn replaces_invalid_bytes_with_replacement_char() {
+        let mut pending = vec![b'a', 0xFF, b'b'];
+
+        assert_eq!(
+            take_utf8_prefix(&mut pending).expect("chunk"),
+            "a\u{FFFD}"
+        );
+        assert_eq!(take_utf8_prefix(&mut pending).expect("rest"), "b");
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn buffers_entire_incomplete_sequence() {
+        let mut pending = "é".as_bytes().to_vec()[..1].to_vec();
+
+        assert!(take_utf8_prefix(&mut pending).is_none());
+        assert_eq!(pending.len(), 1);
+
+        pending.push(0xA9);
+        assert_eq!(take_utf8_prefix(&mut pending).expect("complete"), "é");
+        assert!(pending.is_empty());
+    }
 }
