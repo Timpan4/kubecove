@@ -203,57 +203,60 @@
 	}
 
 	async function startSession() {
-		error = null;
-		await tick();
-		fitTerminal();
-		const request = buildPodExecRequest(
-			resource,
-			{
-				preset,
-				customArgv,
-				container: selectedContainer,
-				cols: terminal?.cols ?? DEFAULT_COLS,
-				rows: terminal?.rows ?? DEFAULT_ROWS,
-				confirmed,
-			},
-			kubeconfigSourceKey,
-		);
-		if (typeof request === "string") {
-			error = request;
-			return;
-		}
-		const previous = sessionId;
-		closeChannelOnly();
-		if (previous) {
-			await stopPodExec({
-				client,
-				sessionId: previous,
-				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
-		}
-		const nextChannel = createPodExecChannel(handleMessage);
-		channel = nextChannel;
+		if (starting) return;
 		starting = true;
-		status = "starting";
-		message = "Starting exec session";
-		terminal?.clear();
-		terminal?.writeln(
-			`Starting ${commandText} on ${podExecTarget(resource, selectedContainer)}\r\n`,
-		);
 		try {
-			const summary = await startPodExec({
-				client,
-				request,
-				channel: nextChannel,
-				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
-			sessionId = summary.id;
-			status = summary.status;
-		} catch (err) {
-			closePodExecChannel(nextChannel);
-			if (channel === nextChannel) channel = null;
-			status = "error";
-			error = err;
+			error = null;
+			await tick();
+			fitTerminal();
+			const request = buildPodExecRequest(
+				resource,
+				{
+					preset,
+					customArgv,
+					container: selectedContainer,
+					cols: terminal?.cols ?? DEFAULT_COLS,
+					rows: terminal?.rows ?? DEFAULT_ROWS,
+					confirmed,
+				},
+				kubeconfigSourceKey,
+			);
+			if (typeof request === "string") {
+				error = request;
+				return;
+			}
+			const previous = sessionId;
+			closeChannelOnly();
+			if (previous) {
+				await stopPodExec({
+					client,
+					sessionId: previous,
+					invalidateQueries: (options) => queryClient.invalidateQueries(options),
+				});
+			}
+			const nextChannel = createPodExecChannel(handleMessage);
+			channel = nextChannel;
+			status = "starting";
+			message = "Starting exec session";
+			terminal?.clear();
+			terminal?.writeln(
+				`Starting ${commandText} on ${podExecTarget(resource, selectedContainer)}\r\n`,
+			);
+			try {
+				const summary = await startPodExec({
+					client,
+					request,
+					channel: nextChannel,
+					invalidateQueries: (options) => queryClient.invalidateQueries(options),
+				});
+				sessionId = summary.id;
+				status = summary.status;
+			} catch (err) {
+				closePodExecChannel(nextChannel);
+				if (channel === nextChannel) channel = null;
+				status = "error";
+				error = err;
+			}
 		} finally {
 			starting = false;
 		}
