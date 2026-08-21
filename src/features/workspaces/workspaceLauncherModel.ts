@@ -39,6 +39,16 @@ export function getWorkspaceCreationAvailability(
 	return { canCreate: true, disabledReason: null };
 }
 
+export function submitWorkspaceIfAvailable(
+	canCreate: boolean,
+	buildInput: () => CreateWorkspaceInput,
+	submit: (input: CreateWorkspaceInput) => void,
+): boolean {
+	if (!canCreate) return false;
+	submit(buildInput());
+	return true;
+}
+
 export function pickEffectiveContext(
 	selectedContext: string,
 	availableContexts: ClusterContext[],

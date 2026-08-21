@@ -60,6 +60,7 @@
 		buildWorkspaceInput,
 		getWorkspaceCreationAvailability,
 		pickEffectiveContext,
+		submitWorkspaceIfAvailable,
 		uniqueWorkspaceContexts,
 	} from "./workspaceLauncherModel";
 	import { workspaceStore as workspaceStore } from "./workspaceStore";
@@ -295,21 +296,25 @@
 
 	function handleSubmit(event: SubmitEvent) {
 		event.preventDefault();
-		if (!canCreate) return;
-		const input = buildWorkspaceInput({
-			name,
-			effectiveContext,
-			selectedClusterContexts,
-			selectedNamespaces,
-			editingWorkspace,
-		});
-		if (editingWorkspace) {
-			workspaceStore.updateWorkspace(editingWorkspace.id, input);
-			resetForm();
-			return;
-		}
-		createWorkspace(input);
-		resetForm();
+		const submitted = submitWorkspaceIfAvailable(
+			canCreate,
+			() =>
+				buildWorkspaceInput({
+					name,
+					effectiveContext,
+					selectedClusterContexts,
+					selectedNamespaces,
+					editingWorkspace,
+				}),
+			(input) => {
+				if (editingWorkspace) {
+					workspaceStore.updateWorkspace(editingWorkspace.id, input);
+					return;
+				}
+				createWorkspace(input);
+			},
+		);
+		if (submitted) resetForm();
 	}
 
 	function deleteWorkspace(workspace: SavedWorkspace) {
