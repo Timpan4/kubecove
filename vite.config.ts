@@ -39,6 +39,12 @@ export default defineConfig(() => ({
 		port: devServerPort,
 		strictPort: true,
 		host: host || false,
+		// Tauri does not inject devCsp into pages loaded from this external
+		// devUrl, so the dev server carries the development CSP itself.
+		headers: {
+			"Content-Security-Policy":
+				"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' asset: http://asset.localhost data:; connect-src 'self' ipc: http://ipc.localhost http://localhost:1430 ws://localhost:1430 ws://localhost:1431",
+		},
 		hmr: host
 			? {
 					protocol: "ws",

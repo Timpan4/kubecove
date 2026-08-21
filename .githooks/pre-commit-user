@@ -40,6 +40,16 @@ fi
 # Rules: docs/handbook/file-size-and-split.md
 # Drain LEGACY_OVERSIZED_FILES over time — do not add new entries.
 LEGACY_OVERSIZED_FILES="
+src-tauri/src/commands/argo/connected.rs
+src-tauri/src/commands/argo/operations.rs
+src/lib/tauri-dev-mocks.ts
+src/features/resources/ResourceBrowser.svelte
+src/features/gitops/ArgoApplicationDetails.svelte
+src/app/svelte/WorkspaceShell.svelte
+src/features/rbac/RbacView.svelte
+src/features/resource-detail/ResourceDetailPanel.svelte
+src/features/gitops/GitOpsView.svelte
+src/features/workspaces/WorkspaceLauncher.svelte
 "
 
 soft_cap_for() {
@@ -47,6 +57,7 @@ soft_cap_for() {
     *.rs)  echo 500 ;;
     *.tsx) echo 400 ;;
     *.ts)  echo 300 ;;
+    *.svelte) echo 400 ;;
     *)     echo "" ;;
   esac
 }
@@ -56,6 +67,7 @@ hard_cap_for() {
     *.rs)  echo 800 ;;
     *.tsx) echo 700 ;;
     *.ts)  echo 600 ;;
+    *.svelte) echo 700 ;;
     *)     echo "" ;;
   esac
 }

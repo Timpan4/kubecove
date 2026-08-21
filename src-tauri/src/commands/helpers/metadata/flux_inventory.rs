@@ -69,6 +69,16 @@ pub(crate) async fn read_flux_ownership_index(
     client: Client,
     namespaces: &[String],
 ) -> Result<FluxOwnershipIndex, AppError> {
+    let index = fetch_flux_ownership_index(client).await?;
+    Ok(filter_flux_ownership_index(index, namespaces))
+}
+
+/// Lists Flux owner objects cluster-wide. Namespace scoping happens later in
+/// [`filter_flux_ownership_index`] so callers can cache the fetched index and
+/// re-scope it per request without re-listing.
+pub(crate) async fn fetch_flux_ownership_index(
+    client: Client,
+) -> Result<FluxOwnershipIndex, AppError> {
     let mut index = FluxOwnershipIndex::default();
     for (group, version, kind, plural, _, _) in FLUX_KINDS
         .iter()
@@ -158,6 +168,15 @@ pub(crate) async fn read_flux_ownership_index(
             }
         }
     }
+    Ok(index)
+}
+
+/// Restricts a fetched index to owners whose inventoried targets live in the
+/// requested namespaces and stamps owner visibility with index partialness.
+pub(crate) fn filter_flux_ownership_index(
+    mut index: FluxOwnershipIndex,
+    namespaces: &[String],
+) -> FluxOwnershipIndex {
     if !namespaces.is_empty() {
         index
             .owners
@@ -166,7 +185,7 @@ pub(crate) async fn read_flux_ownership_index(
     for owner in index.owners.values_mut() {
         owner.partial = index.partial;
     }
-    Ok(index)
+    index
 }
 
 pub(crate) fn enrich_resource_summaries_with_flux_inventory(

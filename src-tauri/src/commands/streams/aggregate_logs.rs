@@ -14,6 +14,7 @@ use kube::{
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 use tauri::{async_runtime::JoinHandle, ipc::Channel};
@@ -35,6 +36,13 @@ struct LogSourceKey {
 #[derive(Default)]
 struct SourceStreams {
     handles: HashMap<LogSourceKey, JoinHandle<()>>,
+    /// Sources whose task has exited (stream ended, errored, or channel
+    /// closed). Reconcile drains this so dead sources respawn on the next
+    /// pod list instead of staying dead forever.
+    finished: Arc<Mutex<BTreeSet<LogSourceKey>>>,
+    /// Sources ever spawned. Respawns after a break follow live output only,
+    /// so a completed container does not re-replay its tail every relist.
+    attached: BTreeSet<LogSourceKey>,
 }
 
 impl Drop for SourceStreams {
@@ -43,6 +51,26 @@ impl Drop for SourceStreams {
             handle.abort();
         }
     }
+}
+
+fn spawn_log_source(
+    source_streams: &SourceStreams,
+    client: Client,
+    namespace: String,
+    source: LogSourceKey,
+    options: LogStreamOptions,
+    channel: Channel<StreamMessage>,
+    stream_id: String,
+) -> JoinHandle<()> {
+    let finished = Arc::clone(&source_streams.finished);
+    let finished_source = source.clone();
+    tauri::async_runtime::spawn(async move {
+        stream_log_source(client, namespace, source, options, channel, stream_id).await;
+        finished
+            .lock()
+            .expect("aggregated log source finish lock")
+            .insert(finished_source);
+    })
 }
 
 pub(super) async fn run_aggregated_log_stream(
@@ -325,28 +353,51 @@ fn reconcile_sources(
     stream_id: String,
 ) {
     let desired = sources.into_iter().collect::<BTreeSet<_>>();
-    source_streams.handles.retain(|source, handle| {
-        if desired.contains(source) {
-            true
-        } else {
+    let stale = source_streams
+        .handles
+        .keys()
+        .filter(|source| !desired.contains(*source))
+        .cloned()
+        .collect::<Vec<_>>();
+    for source in stale {
+        if let Some(handle) = source_streams.handles.remove(&source) {
             handle.abort();
-            false
         }
-    });
+        source_streams.attached.remove(&source);
+    }
+    let finished = {
+        let mut finished = source_streams
+            .finished
+            .lock()
+            .expect("aggregated log source finish lock");
+        std::mem::take(&mut *finished)
+    };
+    for source in finished {
+        source_streams.handles.remove(&source);
+    }
     for source in desired {
-        source_streams
-            .handles
-            .entry(source.clone())
-            .or_insert_with(|| {
-                tauri::async_runtime::spawn(stream_log_source(
-                    client.clone(),
-                    namespace.clone(),
-                    source,
-                    options.clone(),
-                    channel.clone(),
-                    stream_id.clone(),
-                ))
-            });
+        if source_streams.handles.contains_key(&source) {
+            continue;
+        }
+        let mut spawn_options = options.clone();
+        if source_streams.attached.contains(&source) {
+            // Respawn after a stream break: follow new output only. Omitting
+            // tailLines would replay the container's full history, and a
+            // repeated tail would replay the same lines every relist.
+            spawn_options.tail_lines = Some(0);
+        } else {
+            source_streams.attached.insert(source.clone());
+        }
+        let handle = spawn_log_source(
+            source_streams,
+            client.clone(),
+            namespace.clone(),
+            source.clone(),
+            spawn_options,
+            channel.clone(),
+            stream_id.clone(),
+        );
+        source_streams.handles.insert(source, handle);
     }
 }
 
