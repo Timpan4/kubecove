@@ -353,16 +353,6 @@ fn reconcile_sources(
     stream_id: String,
 ) {
     let desired = sources.into_iter().collect::<BTreeSet<_>>();
-    let finished = {
-        let mut finished = source_streams
-            .finished
-            .lock()
-            .expect("aggregated log source finish lock");
-        std::mem::take(&mut *finished)
-    };
-    for source in finished {
-        source_streams.handles.remove(&source);
-    }
     let stale = source_streams
         .handles
         .keys()
@@ -375,15 +365,26 @@ fn reconcile_sources(
         }
         source_streams.attached.remove(&source);
     }
+    let finished = {
+        let mut finished = source_streams
+            .finished
+            .lock()
+            .expect("aggregated log source finish lock");
+        std::mem::take(&mut *finished)
+    };
+    for source in finished {
+        source_streams.handles.remove(&source);
+    }
     for source in desired {
         if source_streams.handles.contains_key(&source) {
             continue;
         }
         let mut spawn_options = options.clone();
         if source_streams.attached.contains(&source) {
-            // Respawn after a stream break: follow from the live tail instead
-            // of replaying history again for an unchanged container.
-            spawn_options.tail_lines = None;
+            // Respawn after a stream break: follow new output only. Omitting
+            // tailLines would replay the container's full history, and a
+            // repeated tail would replay the same lines every relist.
+            spawn_options.tail_lines = Some(0);
         } else {
             source_streams.attached.insert(source.clone());
         }
