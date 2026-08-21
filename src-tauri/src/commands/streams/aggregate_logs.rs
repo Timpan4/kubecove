@@ -40,6 +40,9 @@ struct SourceStreams {
     /// closed). Reconcile drains this so dead sources respawn on the next
     /// pod list instead of staying dead forever.
     finished: Arc<Mutex<BTreeSet<LogSourceKey>>>,
+    /// Sources ever spawned. Respawns after a break follow live output only,
+    /// so a completed container does not re-replay its tail every relist.
+    attached: BTreeSet<LogSourceKey>,
 }
 
 impl Drop for SourceStreams {
@@ -360,24 +363,36 @@ fn reconcile_sources(
     for source in finished {
         source_streams.handles.remove(&source);
     }
-    source_streams.handles.retain(|source, handle| {
-        if desired.contains(source) {
-            true
-        } else {
+    let stale = source_streams
+        .handles
+        .keys()
+        .filter(|source| !desired.contains(*source))
+        .cloned()
+        .collect::<Vec<_>>();
+    for source in stale {
+        if let Some(handle) = source_streams.handles.remove(&source) {
             handle.abort();
-            false
         }
-    });
+        source_streams.attached.remove(&source);
+    }
     for source in desired {
         if source_streams.handles.contains_key(&source) {
             continue;
+        }
+        let mut spawn_options = options.clone();
+        if source_streams.attached.contains(&source) {
+            // Respawn after a stream break: follow from the live tail instead
+            // of replaying history again for an unchanged container.
+            spawn_options.tail_lines = None;
+        } else {
+            source_streams.attached.insert(source.clone());
         }
         let handle = spawn_log_source(
             source_streams,
             client.clone(),
             namespace.clone(),
             source.clone(),
-            options.clone(),
+            spawn_options,
             channel.clone(),
             stream_id.clone(),
         );
