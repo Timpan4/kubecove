@@ -451,7 +451,6 @@
 					return;
 				}
 				streamId = id;
-				realtimeWatchError = null;
 			})
 			.catch((error: unknown) => {
 				if (cancelled) return;
@@ -503,7 +502,6 @@
 					return;
 				}
 				streamId = id;
-				realtimeEventsWatchError = null;
 			})
 			.catch((error: unknown) => {
 				if (cancelled) return;
