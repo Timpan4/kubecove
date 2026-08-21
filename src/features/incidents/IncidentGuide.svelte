@@ -172,6 +172,7 @@
 								</div>
 								<Button
 									type="button"
+									data-incident-investigation-step
 									variant="outline"
 									size="sm"
 									class="self-start"
@@ -184,6 +185,7 @@
 						{:else}
 							<Button
 								type="button"
+								data-incident-investigation-step
 								variant="outline"
 								size="sm"
 								onclick={() => onResourceInspect(step.target, step.tab)}
@@ -221,6 +223,7 @@
 								</div>
 								<Button
 									type="button"
+									data-incident-remediation
 									variant={action.tone === "destructive" ? "destructive" : "outline"}
 									size="sm"
 									class="self-start"

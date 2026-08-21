@@ -234,19 +234,40 @@ describe("browser mock inspection", () => {
 				),
 			).toBe(longResourceName);
 
-			const investigation = await $("button=Show context");
-			await browser.keys("Tab");
-			const keyboard = await browser.execute((element: HTMLElement) => {
+			await resource.click();
+			const keyboardStart = await $("button=Show context");
+			const remediation = await $("[data-incident-remediation]");
+			await remediation.waitForDisplayed();
+			const started = await browser.execute((element: HTMLElement) => {
 				const outerScroller = element.closest('[data-slot="scroll-area"]') as HTMLElement | null;
-				if (outerScroller) outerScroller.scrollTop = 0;
 				element.focus();
+				if (outerScroller) outerScroller.scrollTop = 0;
+				return document.activeElement === element;
+			}, keyboardStart);
+			expect(started).toBe(true);
+
+			await browser.keys("Tab");
+			const investigationStep = await $("[data-incident-investigation-step]");
+			expect(
+				await browser.execute(
+					(element: HTMLElement) => document.activeElement === element && element.matches(":focus-visible"),
+					investigationStep,
+				),
+			).toBe(true);
+
+			const investigationStepCount = await $$('[data-incident-investigation-step]').length;
+			for (let index = 0; index < investigationStepCount; index++) await browser.keys("Tab");
+			const keyboardResult = await browser.execute((element: HTMLElement) => {
+				const bounds = element.getBoundingClientRect();
+				const outerScroller = element.closest('[data-slot="scroll-area"]') as HTMLElement | null;
 				return {
 					active: document.activeElement === element,
 					focusVisible: element.matches(":focus-visible"),
 					outerScrolled: (outerScroller?.scrollTop ?? 0) > 0,
+					visible: bounds.top >= 0 && bounds.bottom <= document.documentElement.clientHeight,
 				};
-			}, investigation);
-			expect(keyboard).toEqual({ active: true, focusVisible: true, outerScrolled: true });
+			}, remediation);
+			expect(keyboardResult).toEqual({ active: true, focusVisible: true, outerScrolled: true, visible: true });
 		} finally {
 			await browser.sendCommandAndGetResult("Emulation.clearDeviceMetricsOverride", {});
 			await browser.setWindowSize(originalSize.width, originalSize.height);
