@@ -1,11 +1,12 @@
+import { messageFromFriendlyError } from "@/lib/friendly-errors";
 import {
 	createTauriClient,
 	listResourceScope,
 } from "@/lib/tauri";
 import {
 	CLUSTER_SCOPED_KINDS,
-	type ResourceListRequest,
 	type ResourceKindSelection,
+	type ResourceListRequest,
 	type ResourceSummary,
 } from "@/lib/types";
 import type { WorkspaceScope } from "@/lib/workspaces";
@@ -19,6 +20,38 @@ export interface WorkspaceFetchKey {
 export interface WorkspaceFetchPlan {
 	clusterContext: string;
 	requests: ResourceListRequest[];
+}
+
+interface WorkspaceResourceFailure {
+	clusterContext: string;
+	reason: unknown;
+}
+
+export class WorkspaceResourceLoadError extends Error {
+	readonly clusterContexts: string[];
+	readonly kind?: string;
+
+	constructor(failures: WorkspaceResourceFailure[]) {
+		const detail = failures
+			.map(
+				({ clusterContext, reason }) =>
+					`Context "${clusterContext}", operation "resource discovery": ${messageFromFriendlyError(reason)}`,
+			)
+			.join("\n");
+		super(detail);
+		this.name = "WorkspaceResourceLoadError";
+		this.clusterContexts = failures.map(({ clusterContext }) => clusterContext);
+
+		const firstReason = failures[0]?.reason;
+		if (
+			typeof firstReason === "object" &&
+			firstReason !== null &&
+			"kind" in firstReason &&
+			typeof firstReason.kind === "string"
+		) {
+			this.kind = firstReason.kind;
+		}
+	}
 }
 
 function isClusterScopedKind(kind: ResourceKindSelection): boolean {
@@ -87,13 +120,13 @@ export async function fetchWorkspaceResources(
 			),
 		),
 	);
-	const failedContexts = results.flatMap((result, index) =>
-		result.status === "rejected" ? [plans[index].clusterContext] : [],
+	const failures = results.flatMap((result, index) =>
+		result.status === "rejected"
+			? [{ clusterContext: plans[index].clusterContext, reason: result.reason }]
+			: [],
 	);
-	if (failedContexts.length > 0) {
-		throw new Error(
-			`Workspace resources unavailable for ${failedContexts.join(", ")}`,
-		);
+	if (failures.length > 0) {
+		throw new WorkspaceResourceLoadError(failures);
 	}
 	const rows = results.flatMap((result) =>
 		result.status === "fulfilled" ? result.value : [],

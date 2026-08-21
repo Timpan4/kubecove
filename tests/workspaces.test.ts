@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
 	buildWorkspaceFetchKeys,
 	buildWorkspaceFetchPlans,
+	WorkspaceResourceLoadError,
 } from "../src/features/workspaces/query";
 import type {
 	ClusterContext,
@@ -261,6 +262,21 @@ describe("workspace helpers", () => {
 				requests: [{ kind: "Pod", namespace: "missing" }, { kind: "Node" }],
 			},
 		]);
+	});
+
+	test("workspace resource failures retain context, operation, and technical detail", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "cluster", message: "ServiceError: client error (Connect)" },
+			},
+		]);
+
+		expect(error.clusterContexts).toEqual(["kind-prod"]);
+		expect(error.kind).toBe("cluster");
+		expect(error.message).toBe(
+			'Context "kind-prod", operation "resource discovery": ServiceError: client error (Connect)',
+		);
 	});
 
 	test("uses an explicit height for the workspace namespace scroll area", () => {

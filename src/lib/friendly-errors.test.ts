@@ -46,6 +46,16 @@ describe("friendlyError", () => {
 			{ kind: "cluster", message: "connection refused while connecting to API server" },
 			"networkTransient",
 		],
+		[
+			"service connect",
+			{ kind: "cluster", message: "ServiceError: client error (Connect)" },
+			"networkTransient",
+		],
+		[
+			"authentication",
+			{ kind: "cluster", message: "Unauthorized: authentication required" },
+			"authentication",
+		],
 	];
 
 	for (const [name, error, bucket] of cases) {
@@ -71,6 +81,20 @@ describe("friendlyError", () => {
 
 		expect(presentation.tone).toBe("warning");
 		expect(presentation.title).toBe("Some events could not load");
+	});
+
+	test("names connection target and recovery path", () => {
+		const presentation = friendlyError(
+			{ kind: "cluster", message: "ServiceError: client error (Connect)" },
+			{ operation: "resourcesLoad", target: 'context "kind-prod"' },
+		);
+
+		expect(presentation.summary).toBe(
+			'The connection failed while loading resources for context "kind-prod".',
+		);
+		expect(presentation.next).toBe(
+			"Check the selected context's API endpoint, network or VPN path, and TLS certificate trust, then retry.",
+		);
 	});
 
 	test("component keeps technical detail collapsed and copyable", async () => {

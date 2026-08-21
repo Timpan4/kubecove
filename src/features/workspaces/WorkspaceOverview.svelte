@@ -34,6 +34,7 @@
 		buildWorkspaceFetchKeys,
 		buildWorkspaceFetchPlans,
 		fetchWorkspaceResources,
+		WorkspaceResourceLoadError,
 	} from "@/features/workspaces/query";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
@@ -155,6 +156,22 @@
 			!kindsQuery.isPending,
 		staleTime: 30_000,
 	}));
+	let successfulResourceRetryKey = $state<string | null>(null);
+	const failedResourceTarget = $derived(
+		resourcesQuery.error instanceof WorkspaceResourceLoadError
+			? resourcesQuery.error.clusterContexts
+					.map((context) => `context "${context}"`)
+					.join(", ")
+			: `context "${workspace.scope.clusterContext}"`,
+	);
+	async function retryWorkspaceResources() {
+		const retryKey = workspaceContextKey;
+		successfulResourceRetryKey = null;
+		const result = await resourcesQuery.refetch();
+		if (result.isSuccess && workspaceContextKey === retryKey) {
+			successfulResourceRetryKey = retryKey;
+		}
+	}
 	const rows = $derived(resourcesQuery.data ?? []);
 	const entryPoints = $derived(normalizeEntryPoints(workspace.entryPoints));
 	$effect(() => {
@@ -305,15 +322,30 @@
 					<Spinner class="size-4" /> Loading workspace health...
 				</div>
 			{:else if resourcesQuery.isError}
-				<FriendlyError
-					mode="compact"
-					error={resourcesQuery.error}
-					context={{
-						operation: "resourcesLoad",
-						fallbackTitle: "Failed to refresh workspace resources",
-						partial: true,
-					}}
-				/>
+				<div class="grid gap-2">
+					<FriendlyError
+						error={resourcesQuery.error}
+						context={{
+							operation: "resourcesLoad",
+							fallbackTitle: "Failed to refresh workspace resources",
+							target: failedResourceTarget,
+							partial: true,
+						}}
+					/>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={resourcesQuery.isFetching}
+						onclick={() => void retryWorkspaceResources()}
+					>
+						{resourcesQuery.isFetching ? "Retrying workspace resources..." : "Retry workspace resources"}
+					</Button>
+				</div>
+			{:else if successfulResourceRetryKey === workspaceContextKey}
+				<p role="status" class="text-xs text-emerald-300">
+					Workspace resources loaded successfully after retry.
+				</p>
 			{/if}
 
 			{#if hasIncidentShortcuts}
