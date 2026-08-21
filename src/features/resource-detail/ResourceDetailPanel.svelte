@@ -139,6 +139,8 @@
 	let logLatestFirst = $state(initialDetailState?.logLatestFirst ?? false);
 	let logAutoFollow = $state(initialDetailState?.logAutoFollow ?? true);
 	let parsedLogLines = $state<ParsedLogLine[]>([]);
+	let realtimeWatchError = $state<string | null>(null);
+	let realtimeEventsWatchError = $state<string | null>(null);
 	let yamlShowFullDiff = $state(initialDetailState?.yamlShowFullDiff ?? false);
 	let resourceRefreshVersion = $state(0);
 	let ExecTabComponent = $state<typeof import("./ExecTab.svelte").default | null>(null);
@@ -440,8 +442,12 @@
 					return;
 				}
 				streamId = id;
+				realtimeWatchError = null;
 			})
-			.catch(() => {});
+			.catch((error: unknown) => {
+				if (cancelled) return;
+				realtimeWatchError = error instanceof Error ? error.message : String(error);
+			});
 		return () => {
 			cancelled = true;
 			if (debounce) clearTimeout(debounce);
@@ -479,8 +485,12 @@
 					return;
 				}
 				streamId = id;
+				realtimeEventsWatchError = null;
 			})
-			.catch(() => {});
+			.catch((error: unknown) => {
+				if (cancelled) return;
+				realtimeEventsWatchError = error instanceof Error ? error.message : String(error);
+			});
 		return () => {
 			cancelled = true;
 			if (debounce) clearTimeout(debounce);
@@ -621,6 +631,12 @@
 		<TabsTrigger value="operations">Actions</TabsTrigger>
 		<TabsTrigger value="yaml">YAML</TabsTrigger>
 	</TabsList>
+
+	{#if realtimeWatchError || realtimeEventsWatchError}
+		<p class="text-muted-foreground text-xs">
+			Realtime watch failed{#if realtimeWatchError}: {realtimeWatchError}{/if}{#if realtimeEventsWatchError}{#if realtimeWatchError} · {/if}events: {realtimeEventsWatchError}{/if}. Showing the last loaded data.
+		</p>
+	{/if}
 
 	<DetailsTab
 		{detailsQuery}
