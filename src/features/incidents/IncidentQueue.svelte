@@ -46,9 +46,6 @@
 		} catch {
 			copyStatus = { key, state: "failed" };
 		}
-		setTimeout(() => {
-			if (copyStatus?.key === key) copyStatus = null;
-		}, 1500);
 	}
 </script>
 
