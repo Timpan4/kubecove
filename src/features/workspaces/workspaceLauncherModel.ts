@@ -1,9 +1,43 @@
+import type { ClusterContext } from "@/lib/types";
 import {
-	DEFAULT_WORKSPACE_KINDS,
 	type CreateWorkspaceInput,
+	DEFAULT_WORKSPACE_KINDS,
 	type SavedWorkspace,
 } from "@/lib/workspace-model";
-import type { ClusterContext } from "@/lib/types";
+
+type NamespaceDiscoveryStatus = "loading" | "failed" | "ready";
+
+export function getWorkspaceCreationAvailability(
+	effectiveContext: string,
+	selectedContextMissing: boolean,
+	namespaceDiscovery: NamespaceDiscoveryStatus,
+): { canCreate: boolean; disabledReason: string | null } {
+	if (!effectiveContext) {
+		return {
+			canCreate: false,
+			disabledReason: "Select a context before creating this workspace.",
+		};
+	}
+	if (selectedContextMissing) {
+		return {
+			canCreate: false,
+			disabledReason: "Select an available context before creating this workspace.",
+		};
+	}
+	if (namespaceDiscovery === "failed") {
+		return {
+			canCreate: false,
+			disabledReason: "Retry namespace discovery before creating this workspace.",
+		};
+	}
+	if (namespaceDiscovery === "loading") {
+		return {
+			canCreate: false,
+			disabledReason: "Wait for namespace discovery to finish.",
+		};
+	}
+	return { canCreate: true, disabledReason: null };
+}
 
 export function pickEffectiveContext(
 	selectedContext: string,
