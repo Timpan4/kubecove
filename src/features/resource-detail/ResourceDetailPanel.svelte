@@ -418,7 +418,16 @@
 			}, 250);
 		};
 		const channel = createStreamChannel((event: StreamMessage) => {
-			if (cancelled || event.type !== "resourceChanged") return;
+			if (cancelled) return;
+			if (event.type === "error") {
+				realtimeWatchError = event.message;
+				return;
+			}
+			if (event.type === "status") {
+				if (event.status === "connected") realtimeWatchError = null;
+				return;
+			}
+			if (event.type !== "resourceChanged") return;
 			if (event.target.name && event.target.name !== resource.name) return;
 			if (
 				resource.namespace &&
@@ -468,7 +477,16 @@
 			}, 250);
 		};
 		const channel = createStreamChannel((event: StreamMessage) => {
-			if (!cancelled && event.type === "resourceEventsChanged") invalidateSoon();
+			if (cancelled) return;
+			if (event.type === "error") {
+				realtimeEventsWatchError = event.message;
+				return;
+			}
+			if (event.type === "status") {
+				if (event.status === "connected") realtimeEventsWatchError = null;
+				return;
+			}
+			if (event.type === "resourceEventsChanged") invalidateSoon();
 		});
 		void startResourceEventWatch(
 			client,
@@ -634,7 +652,7 @@
 
 	{#if realtimeWatchError || realtimeEventsWatchError}
 		<p class="text-muted-foreground text-xs">
-			Realtime watch failed{#if realtimeWatchError}: {realtimeWatchError}{/if}{#if realtimeEventsWatchError}{#if realtimeWatchError} · {/if}events: {realtimeEventsWatchError}{/if}. Showing the last loaded data.
+			Realtime watch failed{#if realtimeWatchError}: {realtimeWatchError}{/if}{#if realtimeEventsWatchError}{#if realtimeWatchError} · {:else}: {/if}events: {realtimeEventsWatchError}{/if}. Showing the last loaded data.
 		</p>
 	{/if}
 
