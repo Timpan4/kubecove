@@ -56,6 +56,9 @@ jobs:
       - name: Lint frontend
         run: bun run lint
 
+      - name: Lint frontend anti-slop rules
+        run: bun run lint:anti-slop
+
       - name: Test frontend
         run: bun test
 
