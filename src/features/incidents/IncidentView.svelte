@@ -196,7 +196,10 @@
 				</EmptyHeader>
 			</Empty>
 		{:else}
-			<div class="grid min-w-0 gap-3 @4xl:h-[calc(100dvh-20rem)] @4xl:min-h-[32rem] @4xl:grid-cols-[minmax(18rem,0.42fr)_minmax(0,0.58fr)]">
+			<div
+				data-incident-layout
+				class="grid min-w-0 gap-3 @5xl:h-[calc(100dvh-20rem)] @5xl:min-h-[32rem] @5xl:grid-cols-[minmax(18rem,0.42fr)_minmax(0,0.58fr)]"
+			>
 				<IncidentQueue
 					groups={incidentGroups}
 					{selectedKey}
