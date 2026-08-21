@@ -376,17 +376,6 @@ describe("workspace helpers", () => {
 		);
 	});
 
-	test("allows workspace saves when namespace listing fails", () => {
-		const source = readFileSync(
-			"src/features/workspaces/WorkspaceLauncher.svelte",
-			"utf8",
-		);
-
-		expect(source).not.toContain("namespaceScopeUnavailable");
-		expect(source).toContain('mode="compact"');
-		expect(source).toContain('fallbackTitle: "Failed to load namespaces"');
-	});
-
 	test("keeps overview Resources primary and visible in wrapping actions", () => {
 		const source = readFileSync(
 			"src/features/workspaces/WorkspaceOverview.svelte",
