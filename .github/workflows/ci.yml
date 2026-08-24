@@ -15,9 +15,111 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: Detect CI changes
+    runs-on: ubuntu-latest
+    outputs:
+      docs: ${{ steps.detect.outputs.docs }}
+      frontend: ${{ steps.detect.outputs.frontend }}
+      nix: ${{ steps.detect.outputs.nix }}
+      rust: ${{ steps.detect.outputs.rust }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect relevant changes
+        id: detect
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]]; then
+            echo "No usable base commit; running every CI job."
+            echo "docs=true" >> "${GITHUB_OUTPUT}"
+            echo "frontend=true" >> "${GITHUB_OUTPUT}"
+            echo "nix=true" >> "${GITHUB_OUTPUT}"
+            echo "rust=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          git diff --name-only --no-renames "${BASE_SHA}" "${HEAD_SHA}" | tee /tmp/kubecove-changed-files.txt
+
+          if grep -Eiq '\.md$|^docs/' /tmp/kubecove-changed-files.txt; then
+            echo "docs=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "docs=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+          if grep -Eiq '\.(css|html|js|jsx|json|mjs|cjs|svelte|ts|tsx|mts|cts)$|(^|/)(bun\.lock|package\.json)$' /tmp/kubecove-changed-files.txt; then
+            echo "frontend=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "frontend=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+          if grep -Eiq '\.rs$|(^|/)(Cargo\.lock|Cargo\.toml)$' /tmp/kubecove-changed-files.txt; then
+            echo "rust=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "rust=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+          if grep -Eiq '\.nix$|(^|/)(Cargo\.lock|Cargo\.toml|flake\.lock)$' /tmp/kubecove-changed-files.txt; then
+            echo "nix=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "nix=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+  docs:
+    name: Documentation checks
+    needs:
+      - changes
+    if: ${{ needs.changes.outputs.docs == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check documentation
+        run: bun run docs:check
+
+      - name: Check diff whitespace
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: git diff --check "${BASE_SHA}" "${HEAD_SHA}"
+
   frontend:
     name: Frontend checks
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release') }}
+    needs:
+      - changes
+    if: ${{ needs.changes.outputs.frontend == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -70,7 +172,9 @@ jobs:
 
   rust:
     name: Rust checks
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release') }}
+    needs:
+      - changes
+    if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -115,6 +219,9 @@ jobs:
 
   nix:
     name: Nix Rust vendor build
+    needs:
+      - changes
+    if: ${{ needs.changes.outputs.nix == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -140,6 +247,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
+      - changes
+      - docs
       - frontend
       - nix
       - rust
@@ -148,21 +257,43 @@ jobs:
     steps:
       - name: Verify required jobs
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DOCS_REQUIRED: ${{ needs.changes.outputs.docs }}
+          DOCS_RESULT: ${{ needs.docs.result }}
+          FRONTEND_REQUIRED: ${{ needs.changes.outputs.frontend }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
+          NIX_REQUIRED: ${{ needs.changes.outputs.nix }}
           NIX_RESULT: ${{ needs.nix.result }}
           RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
+          RUST_REQUIRED: ${{ needs.changes.outputs.rust }}
           RUST_RESULT: ${{ needs.rust.result }}
         run: |
           set -euo pipefail
+          echo "Change detection: ${CHANGES_RESULT}"
+          echo "Documentation checks: ${DOCS_RESULT}"
           echo "Frontend checks: ${FRONTEND_RESULT}"
           echo "Nix Rust vendor build: ${NIX_RESULT}"
           echo "Rust checks: ${RUST_RESULT}"
+          test "${CHANGES_RESULT}" = "success"
           if [[ "${RELEASE_PR}" == "true" ]]; then
+            test "${DOCS_RESULT}" = "skipped"
             test "${FRONTEND_RESULT}" = "skipped"
             test "${NIX_RESULT}" = "success"
             test "${RUST_RESULT}" = "skipped"
           else
-            test "${FRONTEND_RESULT}" = "success"
-            test "${NIX_RESULT}" = "success"
-            test "${RUST_RESULT}" = "success"
+            verify_result() {
+              local required="$1"
+              local result="$2"
+              if [[ "${required}" == "true" ]]; then
+                test "${result}" = "success"
+              else
+                test "${required}" = "false"
+                test "${result}" = "skipped"
+              fi
+            }
+
+            verify_result "${DOCS_REQUIRED}" "${DOCS_RESULT}"
+            verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
+            verify_result "${NIX_REQUIRED}" "${NIX_RESULT}"
+            verify_result "${RUST_REQUIRED}" "${RUST_RESULT}"
           fi
