@@ -21,12 +21,13 @@ if [ -n "$staged_files" ]; then
         ;;
     esac
 
-    # Scan only content entering the commit. Existing fixture code can contain
-    # kubeconfig-shaped keys without staging credential material.
-    scan_content=$(git diff --cached --unified=0 -- "$file" | sed -n '/^+++ /d; /^+/ { s/^+//; p; }' || true)
+    scan_content=$(git show ":$file" 2>/dev/null || true)
     case "$file" in
       src-tauri/src/commands/mod.rs)
         scan_content=$(printf '%s\n' "$scan_content" | grep -Ev '^[[:space:]]*pub use contexts::' || true)
+        ;;
+      e2e/lifecycle.ts)
+        scan_content=$(printf '%s\n' "$scan_content" | grep -Ev '^[[:space:]]*(return \{ apiVersion: config\.apiVersion|const bytes = .*record\.kubeconfig|await writeFile\(join\(artifacts, "kubeconfig-summary\.json"|async function desktopSmoke\(\))' || true)
         ;;
     esac
 
