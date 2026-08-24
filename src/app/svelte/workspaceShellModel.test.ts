@@ -1,8 +1,9 @@
 import type { DiscoveredResourceKind } from "@/lib/types";
 import {
-	GITOPS_RESOURCE_KINDS,
 	appendPresentCustomResourceKinds,
 	buildSidebarTree,
+	filterCustomResourceKinds,
+	GITOPS_RESOURCE_KINDS,
 	resourceBrowserAvailableKinds,
 } from "./workspaceShellModel";
 
@@ -19,6 +20,7 @@ const widget: DiscoveredResourceKind = {
 	apiVersion: "example.com/v1",
 	kind: "Widget",
 	plural: "widgets",
+	shortNames: ["wdg"],
 	namespaced: true,
 };
 
@@ -38,7 +40,8 @@ describe("Custom Resources tree model", () => {
 		const customResources = nodes.find((node) => node.id.section === "discovered");
 
 		expect(customResources?.label).toBe("Custom Resources");
-		expect(customResources?.children?.[0]?.label).toBe("Widget");
+		expect(customResources?.children?.[0]?.label).toBe("example.com");
+		expect(customResources?.children?.[0]?.children?.[0]?.label).toBe("Widget");
 	});
 
 	test("omits Custom Resources when disabled", () => {
@@ -55,6 +58,30 @@ describe("Custom Resources tree model", () => {
 		});
 
 		expect(nodes.some((node) => node.id.section === "discovered")).toBe(false);
+	});
+
+	test("filters custom resources by CRD names and API metadata", () => {
+		expect(filterCustomResourceKinds([widget], "WDG")).toEqual([widget]);
+		expect(filterCustomResourceKinds([widget], "example.com/v1")).toEqual([widget]);
+		expect(filterCustomResourceKinds([widget], "missing")).toEqual([]);
+	});
+
+	test("shows an explicit empty search result", () => {
+		const nodes = buildSidebarTree({
+			namespaces: [],
+			resourceKinds: [widget],
+			argoDetected: false,
+			fluxDetection: undefined,
+			detectingGitOps: false,
+			resourceKindsPending: false,
+			resourceKindsError: "",
+			showUnavailableGitOpsProviders: false,
+			customResourceSearch: "missing",
+		});
+
+		expect(nodes.find((node) => node.id.section === "discovered")?.children?.[0]?.label).toBe(
+			"No custom resources match search",
+		);
 	});
 
 	test("appends present custom resources without duplicates", () => {

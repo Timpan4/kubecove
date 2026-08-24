@@ -49,7 +49,8 @@ describe("sidebar namespace tree helpers", () => {
 
 		expect(countTreeNodes([deep])).toBeGreaterThan(20);
 		expect(deep.children?.at(-1)?.label).toBe("Custom Resources");
-		expect(deep.children?.at(-1)?.children?.length).toBe(10);
+		expect(deep.children?.at(-1)?.children?.[0]?.label).toBe("example.com");
+		expect(deep.children?.at(-1)?.children?.[0]?.children?.length).toBe(10);
 	});
 
 	test("expands chevrons without replacing the selected scope", () => {

@@ -13,7 +13,15 @@ const widget: DiscoveredResourceKind = {
 	apiVersion: "example.com/v1",
 	kind: "Widget",
 	plural: "widgets",
+	shortNames: ["wdg"],
 	namespaced: true,
+};
+
+const gadget: DiscoveredResourceKind = {
+	...widget,
+	group: "another.example.com",
+	kind: "Gadget",
+	plural: "gadgets",
 };
 
 describe("namespace custom resources", () => {
@@ -24,10 +32,13 @@ describe("namespace custom resources", () => {
 	});
 
 	test("shows present custom resources", () => {
-		const node = buildNamespaceTreeNode("payments", [widget]);
+		const node = buildNamespaceTreeNode("payments", [widget, gadget]);
 
 		const group = node.children?.find((child) => child.label === "Custom Resources");
 
-		expect(group?.children?.[0]?.label).toBe("Widget");
+		expect(group?.children?.[0]?.label).toBe("another.example.com");
+		expect(group?.children?.[1]?.label).toBe("example.com");
+		expect(group?.children?.[1]?.children?.[0]?.label).toBe("Widget");
+		expect(group?.children?.[1]?.children?.[0]?.id.resourceKind).toBe(widget);
 	});
 });

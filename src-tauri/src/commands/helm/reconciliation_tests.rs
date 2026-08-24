@@ -9,6 +9,7 @@ fn deployment_kind() -> DiscoveredResourceKind {
         api_version: "apps/v1".to_string(),
         kind: "Deployment".to_string(),
         plural: "deployments".to_string(),
+        short_names: Vec::new(),
         namespaced: true,
     }
 }
@@ -20,6 +21,7 @@ fn cluster_role_kind() -> DiscoveredResourceKind {
         api_version: "rbac.authorization.k8s.io/v1".to_string(),
         kind: "ClusterRole".to_string(),
         plural: "clusterroles".to_string(),
+        short_names: Vec::new(),
         namespaced: false,
     }
 }
@@ -137,6 +139,7 @@ fn conservative_label_scan_includes_common_namespaced_and_manifest_kinds() {
         api_version: "example.com/v1".to_string(),
         kind: "Widget".to_string(),
         plural: "widgets".to_string(),
+        short_names: Vec::new(),
         namespaced: true,
     };
     let cluster_role = cluster_role_kind();

@@ -212,9 +212,10 @@ function sanitizeDiscoveredResourceKind(value: unknown): DiscoveredResourceKind 
 	const apiVersion = stringValue(value.apiVersion);
 	const kind = stringValue(value.kind);
 	const plural = stringValue(value.plural);
+	const shortNames = sanitizePathStateStringArray(value.shortNames);
 	const namespaced = typeof value.namespaced === "boolean" ? value.namespaced : null;
 	if (!version || !apiVersion || !kind || !plural || namespaced === null) return null;
-	return { group, version, apiVersion, kind, plural, namespaced };
+	return { group, version, apiVersion, kind, plural, shortNames, namespaced };
 }
 
 function sanitizeResourceKindSelection(value: unknown): ResourceKindSelection | null {

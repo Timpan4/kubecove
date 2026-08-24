@@ -1,14 +1,17 @@
 import {
+	buildCustomResourceGroupNodes,
+	buildShallowNamespaceTreeNode,
+} from "@/components/sidebar-tree-helpers";
+import {
 	ARGO_NAV_KINDS,
 	ARGO_PROVIDER_GROUP_ID,
 	FLUX_FAMILIES,
 	FLUX_PROVIDER_GROUP_ID,
 } from "@/features/gitops/gitops-nav";
-import { buildShallowNamespaceTreeNode } from "@/components/sidebar-tree-helpers";
 import {
 	discoveredResourceKindKey,
-	SECTIONS,
 	nodeIdToString,
+	SECTIONS,
 	type TreeNode,
 } from "@/lib/tree-nav";
 import type {
@@ -71,6 +74,23 @@ export function extraDiscoveredKinds(
 				left.plural.localeCompare(right.plural)
 			);
 		});
+}
+
+export function filterCustomResourceKinds(
+	resourceKinds: DiscoveredResourceKind[],
+	search: string,
+): DiscoveredResourceKind[] {
+	const query = search.trim().toLowerCase();
+	if (!query) return resourceKinds;
+	return resourceKinds.filter((resourceKind) =>
+		[
+			resourceKind.kind,
+			resourceKind.plural,
+			...(resourceKind.shortNames ?? []),
+			resourceKind.group,
+			resourceKind.apiVersion,
+		].some((value) => value.toLowerCase().includes(query)),
+	);
 }
 
 export function appendPresentCustomResourceKinds(
@@ -190,6 +210,7 @@ export function buildSidebarTree({
 	resourceKindsError,
 	showUnavailableGitOpsProviders,
 	showCustomResources = true,
+	customResourceSearch = "",
 }: {
 	namespaces: NamespaceSummary[];
 	resourceKinds: DiscoveredResourceKind[];
@@ -200,8 +221,11 @@ export function buildSidebarTree({
 	resourceKindsError: string;
 	showUnavailableGitOpsProviders: boolean;
 	showCustomResources?: boolean;
+	customResourceSearch?: string;
 }): TreeNode[] {
-	const extraKinds = extraDiscoveredKinds(resourceKinds);
+	const extraKinds = extraDiscoveredKinds(
+		filterCustomResourceKinds(resourceKinds, customResourceSearch),
+	);
 	const namespaceNode: TreeNode = {
 		id: { type: "section", section: "namespaces" },
 		label: SECTIONS.namespaces.label,
@@ -227,22 +251,13 @@ export function buildSidebarTree({
 					},
 				]
 			: extraKinds.length > 0
-				? extraKinds.map((resourceKind) => ({
-						id: {
-							type: "kind",
-							section: "discovered",
-							kind: discoveredResourceKindKey(resourceKind),
-							resourceKind,
-						},
-						label: resourceKind.kind,
-						description: `${resourceKind.apiVersion} / ${resourceKind.plural} / ${
-							resourceKind.namespaced ? "namespaced" : "cluster-scoped"
-						}`,
-					}))
+				? buildCustomResourceGroupNodes({ section: "discovered", extraKinds })
 				: [
 						{
 							id: { type: "kind", section: "discovered", kind: "__empty" },
-							label: "No custom resources",
+							label: customResourceSearch.trim()
+								? "No custom resources match search"
+								: "No custom resources",
 							disabled: true,
 						},
 					];

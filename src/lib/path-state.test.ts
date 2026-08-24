@@ -15,6 +15,23 @@ describe("path state sanitization", () => {
 		expect(sanitizePathStateTreeNode({ type: "kind", kind: "Pod" })).toBe(null);
 	});
 
+	test("restores legacy discovered resource kinds without short names", () => {
+		expect(
+			sanitizePathStateTreeNode({
+				type: "kind",
+				section: "discovered",
+				resourceKind: {
+					group: "example.com",
+					version: "v1",
+					apiVersion: "example.com/v1",
+					kind: "Widget",
+					plural: "widgets",
+					namespaced: true,
+				},
+			})?.resourceKind?.shortNames,
+		).toEqual([]);
+	});
+
 	test("preserves the revision detail tab", () => {
 		const snapshot = decodePathStateSnapshot(
 			JSON.stringify({
