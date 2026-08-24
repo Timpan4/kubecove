@@ -24,6 +24,7 @@
 		managedResources = [],
 		loading = false,
 		refreshing = false,
+		refreshDisabled = false,
 		error = null,
 		onRefresh = async () => {},
 		onInspect = () => {},
@@ -33,6 +34,7 @@
 		managedResources?: ArgoManagedResource[];
 		loading?: boolean;
 		refreshing?: boolean;
+		refreshDisabled?: boolean;
 		error?: unknown;
 		onRefresh?: () => Promise<unknown>;
 		onInspect?: (app: ArgoApplicationSummary) => void;
@@ -76,7 +78,9 @@
 			? "Loading Application and managed resources…"
 			: errorMessage
 				? `Argo data unavailable: ${errorMessage}`
-				: reconciledAt
+				: inspector?.connectedFallback
+						? `Kubernetes fallback after Connected ${inspector.connectedFallback.failure.kind}: ${inspector.connectedFallback.failure.message}`
+						: reconciledAt
 					? `Reconciled ${reconciledAt}`
 					: `${inspector?.connected ? "Argo CD API" : "Application CRD"} managed-resource state`,
 	);
@@ -123,7 +127,7 @@
 		</div>
 		<div class="max-w-full shrink-0 overflow-x-auto">
 			<div class="flex w-max items-center gap-1.5">
-				<Button type="button" size="sm" variant="outline" disabled={loading || refreshing} onclick={() => void onRefresh()}>
+				<Button type="button" size="sm" variant="outline" disabled={loading || refreshing || refreshDisabled} onclick={() => void onRefresh()}>
 					{#if refreshing}<Spinner />{:else}<RefreshCw data-icon="inline-start" />{/if}
 					Refresh
 				</Button>

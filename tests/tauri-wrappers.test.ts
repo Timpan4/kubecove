@@ -60,6 +60,7 @@ import {
 	writePodExecStdin,
 } from "../src/lib/tauri";
 import {
+	discoverArgoServers,
 	getArgoApplicationInspector,
 	getArgoResourceComparison,
 } from "../src/lib/tauri-argo";
@@ -286,6 +287,7 @@ describe("createMockTauriClient", () => {
 		};
 		const cancellation = { cancelScope: "argo:demo", requestId: "request-1" };
 
+		await discoverArgoServers(client, "kind-dev", "KUBECONFIG", cancellation);
 		await getArgoApplicationInspector(client, request, cancellation);
 		await getArgoResourceComparison(
 			client,
@@ -294,6 +296,11 @@ describe("createMockTauriClient", () => {
 		);
 
 		expect(calls.map((call) => call.args)).toEqual([
+			{
+				clusterContext: "kind-dev",
+				kubeconfigEnvVar: "KUBECONFIG",
+				...cancellation,
+			},
 			{ ...request, ...cancellation },
 			{
 				...request,

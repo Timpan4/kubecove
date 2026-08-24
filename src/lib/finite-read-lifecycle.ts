@@ -12,6 +12,7 @@ const FINITE_READ_QUERY_ROOTS = [
 	"resource-details",
 	"resource-yaml",
 	"resource-events",
+	"argo-server-discovery",
 	"argo-detect",
 	"argo-apps",
 	"argo-appsets",

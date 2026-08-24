@@ -59,16 +59,15 @@
 	import { queryKeys } from "@/lib/queryKeys";
 	import { settingsStore } from "@/lib/settings-store";
 	import {
-		argoConnectionPreferenceValue,
-		eligibleArgoProfiles,
-		normalizeArgoConnectionPreference,
-		resolveArgoConnectionPolicy,
-	} from "@/lib/argo-connection-policy";
+		argoApplicationInspectionQueryOptions,
+		argoConnectionStatusQueryOptions,
+		buildArgoApplicationInspectionReadSpec,
+		buildArgoConnectionStatusReadSpec,
+	} from "@/lib/argo-application-inspection";
+	import { argoConnectionPreferenceValue, normalizeArgoConnectionPreference } from "@/lib/argo-connection-policy";
 	import {
 		cancelBackendRequests,
 		createTauriClient,
-		getArgoApplicationInspector,
-		getArgoConnectionStatus,
 		getArgoResourceComparison,
 		preflightArgoOperation,
 		runArgoOperation,
@@ -173,13 +172,13 @@
 		context: clusterContext,
 		workspaceId,
 	});
-	const argoProfiles = $derived(
-		eligibleArgoProfiles(
-			$settingsStore.argoProfiles,
+	const statusReadSpec = $derived(
+		buildArgoConnectionStatusReadSpec({
+			profiles: $settingsStore.argoProfiles,
 			clusterContext,
 			workspaceId,
-			kubeconfigEnvVar ?? "",
-		),
+			kubeconfigEnvVar,
+		}),
 	);
 	const preference = $derived(
 		normalizeArgoConnectionPreference(
@@ -206,91 +205,45 @@
 	let appliedScopeKey = $state("");
 	let operationUiToken = 0;
 
-	const statuses = createQuery(() => ({
-		queryKey: [
-			"argo-connection-status",
-			clusterContext,
-			workspaceId,
-			argoProfiles.map((profile) => profile.id).join(","),
-		],
-		queryFn: () =>
-			Promise.all(
-				argoProfiles.map(
-					async (profile) => [profile.id, await getArgoConnectionStatus(client, profile.id)] as const,
-				),
-			),
-		enabled: active && argoProfiles.length > 0,
-		staleTime: 5_000,
-	}));
-	const connectionPolicy = $derived(
-		resolveArgoConnectionPolicy({
-			profiles: $settingsStore.argoProfiles,
-			statuses: statuses.data,
-			clusterContext,
-			workspaceId,
-			kubeconfigSourceKey: kubeconfigEnvVar ?? "",
-			preference,
+	const statuses = createQuery(() =>
+		argoConnectionStatusQueryOptions(client, {
+			...statusReadSpec,
+			enabled: active && statusReadSpec.enabled,
 		}),
 	);
-	const transport = $derived(connectionPolicy.transport);
-	const connectionId = $derived(connectionPolicy.connectionId ?? "");
+	const inspectionReadSpec = $derived(
+		buildArgoApplicationInspectionReadSpec({
+			profiles: $settingsStore.argoProfiles,
+			statuses: statuses.data,
+			statusesPending: statuses.isPending,
+			preference,
+			application: applicationRequest,
+			clusterContext,
+			workspaceId,
+			kubeconfigEnvVar,
+			redactSecrets,
+			enabled: active && workspaceReadContext.sourceReady,
+		}),
+	);
+	const connectionPolicy = $derived(inspectionReadSpec.policy);
+	const argoProfiles = $derived(statusReadSpec.profiles);
 	const connectionPolicyReady = $derived(
 		preference.kind !== "automatic" || argoProfiles.length === 0 || !statuses.isPending,
 	);
-	const connectionReady = $derived(
-		connectionPolicyReady &&
-			(transport === "kubernetes" || !connectionPolicy.unavailable),
-	);
+	const transport = $derived(connectionPolicy.transport);
+	const connectionId = $derived(connectionPolicy.connectionId ?? "");
+	const connectionReady = $derived(inspectionReadSpec.ready);
 	const preferenceValue = $derived(
 		argoConnectionPreferenceValue(connectionPolicy.preference),
 	);
 	const selectedStatus = $derived(statuses.data?.find(([id]) => id === connectionPolicy.connectionId)?.[1]);
 	const selectedProfile = $derived(connectionPolicy.selectedProfile);
-	const request = $derived({
-		clusterContext,
-		kubeconfigEnvVar,
-		connectionId: transport === "connected" ? connectionId : undefined,
-		transport,
-		application: applicationRequest,
-		redactSecrets,
-	});
-	const inspectorQueryKey = $derived(
-		queryKeys.argoWorkspaceInspector(
-			clusterContext,
-			workspaceId,
-			resourceSummary.name,
-			resourceSummary.namespace,
-			applicationRequest.uid,
-			redactSecrets,
-			transport,
-			connectionId,
-			kubeconfigEnvVar,
-		),
+	const request = $derived(inspectionReadSpec.request);
+	const inspectorQueryKey = $derived(inspectionReadSpec.queryKey);
+	const inspectorCancelScope = $derived(inspectionReadSpec.cancelScope);
+	const inspector = createQuery(() =>
+		argoApplicationInspectionQueryOptions(client, inspectionReadSpec),
 	);
-	const inspectorCancelScope = $derived(
-		createCancelScope("argo-application-inspection", inspectorQueryKey),
-	);
-	const inspector = createQuery(() => ({
-		queryKey: inspectorQueryKey,
-		queryFn: () =>
-			getArgoApplicationInspector(
-				client,
-				request,
-				createFiniteReadRequest(inspectorCancelScope, "argo-inspection"),
-			),
-		enabled:
-			active &&
-			workspaceReadContext.sourceReady &&
-			connectionReady,
-		staleTime: 30_000,
-		refetchInterval: (query) =>
-			active && transport === "connected" && query.state.data?.transport === "connected"
-				? 15_000
-				: false,
-		refetchIntervalInBackground: false,
-		retry: false,
-		gcTime: redactSecrets ? undefined : 0,
-	}));
 	const application = $derived<ArgoApplicationRef>({
 		...applicationRequest,
 		...(inspector.data?.application ?? {}),
@@ -460,7 +413,10 @@
 				booleanAt(applicationSpec, "syncPolicy", "automated", "selfHeal") ? "self-heal" : null,
 			].filter(Boolean).join(" · "),
 	);
-	const loading = $derived(inspector.isPending);
+	const loading = $derived(
+		(active && statusReadSpec.enabled && statuses.isPending) ||
+			(inspectionReadSpec.enabled && inspector.isPending),
+	);
 	const dataError = $derived(inspector.isError ? inspector.error : null);
 	const snapshotFreshness = $derived(
 		inspector.data?.connectedFallback
