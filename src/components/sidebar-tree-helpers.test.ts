@@ -18,10 +18,13 @@ const widget: DiscoveredResourceKind = {
 };
 
 const gadget: DiscoveredResourceKind = {
-	...widget,
 	group: "another.example.com",
+	version: "v1",
+	apiVersion: "another.example.com/v1",
 	kind: "Gadget",
 	plural: "gadgets",
+	shortNames: ["gdt"],
+	namespaced: true,
 };
 
 describe("namespace custom resources", () => {

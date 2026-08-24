@@ -1,8 +1,8 @@
+import { filterCustomResourceKinds } from "@/components/sidebar-tree-helpers";
 import type { DiscoveredResourceKind } from "@/lib/types";
 import {
 	appendPresentCustomResourceKinds,
 	buildSidebarTree,
-	filterCustomResourceKinds,
 	GITOPS_RESOURCE_KINDS,
 	resourceBrowserAvailableKinds,
 } from "./workspaceShellModel";

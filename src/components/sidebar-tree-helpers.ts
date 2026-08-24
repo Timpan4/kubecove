@@ -14,6 +14,36 @@ export function buildShallowNamespaceTreeNode(namespace: string): TreeNode {
 	};
 }
 
+export function extraDiscoveredKinds(
+	resourceKinds: DiscoveredResourceKind[],
+): DiscoveredResourceKind[] {
+	return resourceKinds
+		.toSorted((left, right) => {
+			return (
+				left.kind.localeCompare(right.kind) ||
+				left.apiVersion.localeCompare(right.apiVersion) ||
+				left.plural.localeCompare(right.plural)
+			);
+		});
+}
+
+export function filterCustomResourceKinds(
+	resourceKinds: DiscoveredResourceKind[],
+	search: string,
+): DiscoveredResourceKind[] {
+	const query = search.trim().toLowerCase();
+	if (!query) return resourceKinds;
+	return resourceKinds.filter((resourceKind) =>
+		[
+			resourceKind.kind,
+			resourceKind.plural,
+			...(resourceKind.shortNames ?? []),
+			resourceKind.group,
+			resourceKind.apiVersion,
+		].some((value) => value.toLowerCase().includes(query)),
+	);
+}
+
 export function buildCustomResourceGroupNodes({
 	section,
 	namespace,

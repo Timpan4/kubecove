@@ -10,11 +10,13 @@ import {
 import {
 	appendPresentCustomResourceKinds,
 	buildSidebarTree,
-	extraDiscoveredKinds,
-	filterCustomResourceKinds,
 	GITOPS_RESOURCE_KINDS,
 	toggleCompactSidebarSection,
 } from "../src/app/svelte/workspaceShellModel";
+import {
+	extraDiscoveredKinds,
+	filterCustomResourceKinds,
+} from "../src/components/sidebar-tree-helpers";
 import {
 	nodeIdToString,
 	type TreeNode,

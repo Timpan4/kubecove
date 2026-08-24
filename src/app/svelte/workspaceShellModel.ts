@@ -1,6 +1,8 @@
 import {
 	buildCustomResourceGroupNodes,
 	buildShallowNamespaceTreeNode,
+	extraDiscoveredKinds,
+	filterCustomResourceKinds,
 } from "@/components/sidebar-tree-helpers";
 import {
 	ARGO_NAV_KINDS,
@@ -61,36 +63,6 @@ function resourceKindSelectionKey(kind: ResourceKindSelection): string {
 	return typeof kind === "string"
 		? `typed:${kind}`
 		: `dynamic:${discoveredResourceKindKey(kind)}`;
-}
-
-export function extraDiscoveredKinds(
-	resourceKinds: DiscoveredResourceKind[],
-): DiscoveredResourceKind[] {
-	return resourceKinds
-		.toSorted((left, right) => {
-			return (
-				left.kind.localeCompare(right.kind) ||
-				left.apiVersion.localeCompare(right.apiVersion) ||
-				left.plural.localeCompare(right.plural)
-			);
-		});
-}
-
-export function filterCustomResourceKinds(
-	resourceKinds: DiscoveredResourceKind[],
-	search: string,
-): DiscoveredResourceKind[] {
-	const query = search.trim().toLowerCase();
-	if (!query) return resourceKinds;
-	return resourceKinds.filter((resourceKind) =>
-		[
-			resourceKind.kind,
-			resourceKind.plural,
-			...(resourceKind.shortNames ?? []),
-			resourceKind.group,
-			resourceKind.apiVersion,
-		].some((value) => value.toLowerCase().includes(query)),
-	);
 }
 
 export function appendPresentCustomResourceKinds(
