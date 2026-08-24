@@ -226,10 +226,6 @@
 	});
 </script>
 
-<svelte:head>
-	<title>KubeCove</title>
-</svelte:head>
-
 <TooltipProvider>
 	{#if workspaceTransitionPending}
 	<div class="flex h-screen w-full items-center justify-center bg-background text-sm text-muted-foreground">

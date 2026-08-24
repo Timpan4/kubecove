@@ -26,6 +26,9 @@ if [ -n "$staged_files" ]; then
       src-tauri/src/commands/mod.rs)
         scan_content=$(printf '%s\n' "$scan_content" | grep -Ev '^[[:space:]]*pub use contexts::' || true)
         ;;
+      e2e/lifecycle.ts)
+        scan_content=$(printf '%s\n' "$scan_content" | grep -Ev '^[[:space:]]*(return \{ apiVersion: config\.apiVersion|const bytes = .*record\.kubeconfig|await writeFile\(join\(artifacts, "kubeconfig-summary\.json"|async function desktopSmoke\(\))' || true)
+        ;;
     esac
 
     if printf '%s\n' "$scan_content" | grep -Eiq '(^|[[:space:]])(client-key-data|client-certificate-data|certificate-authority-data|current-context|clusters|contexts|users):'; then
