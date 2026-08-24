@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Copy, Link2, Pencil, Play, Plus, RotateCcw, Square, Trash2 } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
+	import TimestampText from "@/components/TimestampText.svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -393,7 +394,7 @@
 								<TableCell class="truncate px-3 py-2">{session.namespace}</TableCell>
 								<TableCell class="truncate px-3 py-2">{podExecCommandText(session.command)}</TableCell>
 									<TableCell class="truncate px-3 py-2">{session.status}</TableCell>
-									<TableCell class="truncate px-3 py-2">{session.startedAt}</TableCell>
+									<TableCell class="truncate px-3 py-2"><TimestampText value={session.startedAt} precision="second" /></TableCell>
 									<TableCell class="px-3 py-2">
 										<Button
 											type="button"

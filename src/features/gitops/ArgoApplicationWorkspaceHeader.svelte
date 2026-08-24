@@ -10,12 +10,14 @@
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import { Badge, Button, Spinner } from "@/components/ui/svelte";
+	import { formatExactTimestamp } from "@/components/timestamp-format";
 	import { healthStatusVariant, syncStatusVariant, type ChipVariant } from "@/features/argo/status";
 	import type {
 		ArgoApplicationInspector,
 		ArgoApplicationSummary,
 		ArgoManagedResource,
 	} from "@/lib/gitops-types";
+	import { settingsStore } from "@/lib/settings-store";
 	import { argoResourceCounts } from "./argo-workspace-model";
 
 	let {
@@ -67,6 +69,9 @@
 		statusValue(inspector?.status, "sync", "status") ?? app.syncStatus ?? "Unknown",
 	);
 	const reconciledAt = $derived(statusValue(inspector?.status, "reconciledAt"));
+	const formattedReconciledAt = $derived(
+		formatExactTimestamp(reconciledAt, $settingsStore.timestampTimezone, "second") ?? reconciledAt,
+	);
 	const resourceCounts = $derived(argoResourceCounts(managedResources));
 	const healthTone = $derived(healthStatusVariant(healthStatus));
 	const syncTone = $derived(syncStatusVariant(syncStatus));
@@ -81,7 +86,7 @@
 				: inspector?.connectedFallback
 						? `Kubernetes fallback after Connected ${inspector.connectedFallback.failure.kind}: ${inspector.connectedFallback.failure.message}`
 						: reconciledAt
-					? `Reconciled ${reconciledAt}`
+					? `Reconciled ${formattedReconciledAt}`
 					: `${inspector?.connected ? "Argo CD API" : "Application CRD"} managed-resource state`,
 	);
 

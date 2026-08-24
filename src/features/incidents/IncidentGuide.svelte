@@ -1,5 +1,6 @@
 <script lang="ts">
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
+	import TimestampText from "@/components/TimestampText.svelte";
 	import { ArrowRight, ExternalLink, ShieldAlert } from "lucide-svelte";
 	import {
 		Badge,
@@ -120,7 +121,7 @@
 								<div class="flex flex-wrap items-start justify-between gap-2">
 									<div class="text-xs font-semibold">{evidence.label}</div>
 									{#if evidence.timestamp}
-										<span class="text-[0.625rem] tabular-nums text-muted-foreground">{evidence.timestamp}</span>
+										<TimestampText value={evidence.timestamp} precision="second" class="text-[0.625rem] tabular-nums text-muted-foreground" />
 									{/if}
 								</div>
 								<p class="mt-1 break-words text-xs leading-relaxed text-muted-foreground">{evidence.detail}</p>

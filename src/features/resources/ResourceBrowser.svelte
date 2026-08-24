@@ -16,9 +16,11 @@
 	import {
 		ArrowDown,
 		ArrowUp,
+		Check,
 		ChevronDown,
 		ChevronRight,
 		ChevronsUpDown,
+		Copy,
 		GitBranch,
 		PanelRightClose,
 		PanelRightOpen,
@@ -27,6 +29,7 @@
 	} from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
+	import TimestampText from "@/components/TimestampText.svelte";
 	import {
 		Badge,
 		Button,
@@ -41,6 +44,9 @@
 		TableHead,
 		TableHeader,
 		TableRow,
+		Tooltip,
+		TooltipContent,
+		TooltipTrigger,
 	} from "@/components/ui/svelte";
 	import {
 		getResourceGroupVisual,
@@ -228,6 +234,8 @@
 	let realtimeStatus = $state("idle");
 	let realtimeMessage = $state("Realtime idle");
 	let realtimeError = $state("");
+	let copiedResourceNameKey = $state<string | null>(null);
+	let copyResourceNameMessage = $state("");
 	let tableViewportElement = $state<HTMLDivElement | null>(null);
 	let initialPathStateConsumed = $state(false);
 	const showFullTopologyOnSelection = $derived($settingsStore.showFullTopologyOnSelection);
@@ -986,6 +994,20 @@
 		onResourceSelect(resource, "explicit");
 	}
 
+	async function copyResourceName(event: MouseEvent, resource: ResourceSummary) {
+		event.stopPropagation();
+		const key = resourceSelectionKey(resource);
+		try {
+			if (!navigator.clipboard) throw new Error("Clipboard API unavailable");
+			await navigator.clipboard.writeText(resource.name);
+			copiedResourceNameKey = key;
+			copyResourceNameMessage = `Copied resource name ${resource.name}.`;
+		} catch {
+			copiedResourceNameKey = null;
+			copyResourceNameMessage = `Could not copy resource name ${resource.name}.`;
+		}
+	}
+
 	function selectTopologyResource(nodeId: string, resource: ResourceSummary | null) {
 		selectedTopologyNodeId = nodeId;
 		if (resource) onResourceSelect(resource, "explicit");
@@ -1253,8 +1275,8 @@
 									<TableHead>{@render SortButton("status", "Status")}</TableHead>
 									{#if tableModel.columnVisibility.ready}<TableHead>{@render SortButton("ready", "Ready")}</TableHead>{/if}
 									{#if tableModel.columnVisibility.restarts}<TableHead>{@render SortButton("restarts", "Restarts")}</TableHead>{/if}
-									{#if tableModel.columnVisibility.cpu}<TableHead>{@render SortButton("cpu", "CPU")}</TableHead>{/if}
-									{#if tableModel.columnVisibility.memory}<TableHead>{@render SortButton("memory", "Memory")}</TableHead>{/if}
+									{#if tableModel.columnVisibility.cpu}<TableHead>{@render SortButton("cpu", "CPU", "CPU usage in millicores; 1000m equals one CPU core.")}</TableHead>{/if}
+									{#if tableModel.columnVisibility.memory}<TableHead>{@render SortButton("memory", "Memory", "Memory usage in binary units such as Ki, Mi, and Gi.")}</TableHead>{/if}
 									{#if tableModel.columnVisibility.gitOps}<TableHead>Owner</TableHead>{/if}
 									<TableHead>{@render SortButton("age", "Age")}</TableHead>
 									<TableHead><span class="sr-only">Pin</span></TableHead>
@@ -1347,7 +1369,21 @@
 												}}
 											>
 												<TableCell class="font-medium">
-													<span class="block min-w-0 truncate" title={row.name}>{row.name}</span>
+												<div class="flex min-w-0 items-center gap-1">
+													<span class="block min-w-0 flex-1 truncate" title={row.name}>{row.name}</span>
+													<Tooltip>
+														<TooltipTrigger
+															type="button"
+															class="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+															aria-label={`Copy resource name ${row.name}`}
+															onclick={(event: MouseEvent) => void copyResourceName(event, row)}
+															onkeydown={(event: KeyboardEvent) => event.stopPropagation()}
+														>
+															{#if copiedResourceNameKey === resourceSelectionKey(row)}<Check aria-hidden="true" />{:else}<Copy aria-hidden="true" />{/if}
+														</TooltipTrigger>
+														<TooltipContent class="max-w-sm break-all">{row.name}</TooltipContent>
+													</Tooltip>
+													</div>
 												</TableCell>
 												<TableCell>{row.namespace ?? EMPTY_CELL}</TableCell>
 												<TableCell>{row.kind}</TableCell>
@@ -1367,14 +1403,14 @@
 																{ready.value}
 															</Badge>
 														{:else}
-															{row.ready ?? EMPTY_CELL}
+															<span title="Readiness not reported" aria-label="Readiness not reported">{row.ready ?? EMPTY_CELL}</span>
 														{/if}
 													</TableCell>
 												{/if}
 												{#if tableModel.columnVisibility.restarts}
 													<TableCell>
 														{#if row.restarts === undefined || row.restarts === null}
-															<span class="flex justify-center">{EMPTY_CELL}</span>
+															<span class="flex justify-center" title="Restart count not reported" aria-label="Restart count not reported">{EMPTY_CELL}</span>
 														{:else if row.restarts === 0}
 															<span class="flex justify-center">{row.restarts}</span>
 														{:else}
@@ -1388,10 +1424,10 @@
 													</TableCell>
 												{/if}
 												{#if tableModel.columnVisibility.cpu}
-													<TableCell>{formatCpuMillicores(row.metrics?.cpuMillicores)}</TableCell>
+													<TableCell title="CPU usage in millicores; 1000m equals one CPU core." aria-label={`CPU usage ${formatCpuMillicores(row.metrics?.cpuMillicores)}`}>{formatCpuMillicores(row.metrics?.cpuMillicores)}</TableCell>
 												{/if}
 												{#if tableModel.columnVisibility.memory}
-													<TableCell>{formatMemoryBytes(row.metrics?.memoryBytes)}</TableCell>
+													<TableCell title="Memory usage in binary units such as Ki, Mi, and Gi." aria-label={`Memory usage ${formatMemoryBytes(row.metrics?.memoryBytes)}`}>{formatMemoryBytes(row.metrics?.memoryBytes)}</TableCell>
 												{/if}
 												{#if tableModel.columnVisibility.gitOps}
 													<TableCell>
@@ -1400,7 +1436,7 @@
 														</span>
 													</TableCell>
 												{/if}
-												<TableCell>{row.age}</TableCell>
+												<TableCell><TimestampText value={row.createdAt} relative={row.age} /></TableCell>
 												<TableCell>
 													<Button
 														type="button"
@@ -1425,6 +1461,7 @@
 								{/if}
 							</TableBody>
 						</Table>
+						<span class="sr-only" role="status" aria-live="polite">{copyResourceNameMessage}</span>
 					</div>
 					<div class="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-t px-3 py-2 text-xs text-muted-foreground">
 						<Button
@@ -1485,14 +1522,15 @@
 	{/if}
 </div>
 
-{#snippet SortButton(column: ResourceSortColumn, label: string)}
+{#snippet SortButton(column: ResourceSortColumn, label: string, description?: string)}
 	<Button
 		type="button"
 		variant="ghost"
 		size="xs"
 		class="h-auto gap-1 border-0 bg-transparent p-0 text-left text-inherit hover:bg-transparent"
 		onclick={() => toggleSort(column)}
-		aria-label={`Sort by ${label}`}
+		aria-label={`Sort by ${label}${description ? `. ${description}` : ""}`}
+		title={description}
 	>
 		{label}
 		{#if sortColumn === column && sortDesc}<ArrowDown class="size-3" aria-hidden="true" />{:else if sortColumn === column}<ArrowUp class="size-3" aria-hidden="true" />{:else}<ChevronsUpDown class="size-3" aria-hidden="true" />{/if}
