@@ -1,5 +1,5 @@
 use super::{
-    topology::{input_from_metadata, TopologyInputResource},
+    topology::{input_from_metadata, TopologyInputResource, DEPLOYMENT_REVISION_LABEL},
     topology_dynamic::{list_crd_definition_inputs, list_dynamic_topology_inputs},
     topology_network::{
         NetworkEndpointSlice, NetworkIngressBackend, NetworkService, NetworkTopologyInputs,
@@ -24,6 +24,20 @@ use k8s_openapi::{ClusterResourceScope, NamespaceResourceScope};
 use kube::{Api, Client, Error as KubeError};
 
 const MAX_TOPOLOGY_LIST_CONCURRENCY: usize = 16;
+const DEPLOYMENT_REVISION_ANNOTATION: &str = "deployment.kubernetes.io/revision";
+
+fn attach_deployment_revision(input: &mut TopologyInputResource, metadata: &ObjectMeta) {
+    let Some(revision) = metadata
+        .annotations
+        .as_ref()
+        .and_then(|annotations| annotations.get(DEPLOYMENT_REVISION_ANNOTATION))
+    else {
+        return;
+    };
+    input
+        .labels
+        .insert(DEPLOYMENT_REVISION_LABEL.to_string(), revision.clone());
+}
 
 pub(super) struct TopologyInputCollection {
     pub resources: Vec<TopologyInputResource>,
@@ -256,6 +270,7 @@ async fn collect_workload_topology_inputs(
     for deploy in deployments {
         let mut input =
             input_from_metadata(cluster_context, "Deployment", "apps/v1", &deploy.metadata);
+        attach_deployment_revision(&mut input, &deploy.metadata);
         if let Some(status) = deploy.status {
             let ready = status.ready_replicas.unwrap_or(0);
             let desired = status.replicas.unwrap_or(0);
@@ -287,6 +302,7 @@ async fn collect_workload_topology_inputs(
 
     for rs in replicasets {
         let mut input = input_from_metadata(cluster_context, "ReplicaSet", "apps/v1", &rs.metadata);
+        attach_deployment_revision(&mut input, &rs.metadata);
         if let Some(status) = rs.status {
             input.summary.ready = Some(fmt_ready(status.ready_replicas, status.replicas));
             input.summary.status = Some(format!(

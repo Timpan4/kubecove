@@ -12,9 +12,11 @@ import {
 	allKindOptions,
 	buildResourceTableModel as buildProjectedResourceTableModel,
 	buildResourceTableProjection,
+	filterHistoricalReplicaSets,
 	filterResourceScopeOptions,
 	filterResourcesByKinds,
 	filterTopologyByKinds,
+	filterTopologyByTableRows,
 	initialOwnershipMapOpen,
 	nextNamespaceSelection,
 	shouldLoadOwnershipMap,
@@ -261,13 +263,105 @@ describe("svelte resource browser model", () => {
 	});
 
 	test("does not request the ownership map for restored closed state", () => {
-		const mapPanelOpen = initialOwnershipMapOpen({ mapPanelOpen: false }, true);
+		const mapPanelOpen = initialOwnershipMapOpen({ mapPanelOpen: false });
 		let loadCalls = 0;
 		if (shouldLoadOwnershipMap(mapPanelOpen, false, false)) loadCalls += 1;
 
 		expect(mapPanelOpen).toBe(false);
 		expect(loadCalls).toBe(0);
 		expect(shouldLoadOwnershipMap(true, false, false)).toBe(true);
+	});
+
+	test("opens fresh scopes table-first but restores an opened map", () => {
+		expect(initialOwnershipMapOpen(null)).toBe(false);
+		expect(initialOwnershipMapOpen({ mapPanelOpen: true })).toBe(true);
+	});
+
+	test("filters topology to table matches and ownership connectors", () => {
+		const application = topologyNode("Application:api", resource("api-app", { kind: "Application" }));
+		const deployment = { ...topologyNode("Deployment:api", resource("api", { kind: "Deployment" })), deploymentRevision: 2 };
+		const replicaSet = topologyNode("ReplicaSet:api-2", resource("api-2", { kind: "ReplicaSet" }));
+		const job = topologyNode("Job:api-2", resource("api-2-job", { kind: "Job" }));
+		const pod = topologyNode("Pod:api-2-pod", resource("api-2-pod"));
+		const unrelated = topologyNode("Pod:other", resource("other"));
+		const filtered = filterTopologyByTableRows(
+			{ nodes: [application, deployment, replicaSet, job, pod, unrelated], edges: [
+				{ id: "application-deployment", source: application.id, target: deployment.id, relation: "owns" },
+				{ id: "deployment-rs", source: deployment.id, target: replicaSet.id, relation: "owns" },
+				{ id: "rs-job", source: replicaSet.id, target: job.id, relation: "owns" },
+				{ id: "job-pod", source: job.id, target: pod.id, relation: "owns" },
+			], warnings: [] },
+			[pod.summary],
+		);
+		expect(filtered?.nodes.map((node) => node.id)).toEqual([
+			application.id,
+			deployment.id,
+			replicaSet.id,
+			job.id,
+			pod.id,
+		]);
+		expect(filtered?.edges.map((edge) => edge.id)).toEqual([
+			"application-deployment",
+			"deployment-rs",
+			"rs-job",
+			"job-pod",
+		]);
+	});
+
+	test("handles cyclic and missing topology connectors", () => {
+		const deployment = topologyNode("Deployment:api", resource("api", { kind: "Deployment" }));
+		const replicaSet = topologyNode("ReplicaSet:api", resource("api-rs", { kind: "ReplicaSet" }));
+		const pod = topologyNode("Pod:api", resource("api-pod"));
+		const filtered = filterTopologyByTableRows(
+			{
+				nodes: [deployment, replicaSet, pod],
+				edges: [
+					{ id: "deployment-rs", source: deployment.id, target: replicaSet.id, relation: "owns" },
+					{ id: "rs-deployment", source: replicaSet.id, target: deployment.id, relation: "owns" },
+					{ id: "rs-pod", source: replicaSet.id, target: pod.id, relation: "owns" },
+					{ id: "missing-pod", source: "missing", target: pod.id, relation: "owns" },
+				],
+				warnings: [],
+			},
+			[pod.summary],
+		);
+
+		expect(filtered?.nodes.map((node) => node.id)).toEqual([
+			deployment.id,
+			replicaSet.id,
+			pod.id,
+		]);
+		expect(filtered?.edges.map((edge) => edge.id)).toEqual([
+			"deployment-rs",
+			"rs-deployment",
+			"rs-pod",
+		]);
+	});
+
+	test("hides only inactive older Deployment ReplicaSets", () => {
+		const deployment = {
+			...topologyNode("Deployment:api", resource("api", { kind: "Deployment" })),
+			deploymentRevision: 2,
+		};
+		const old = { ...topologyNode("ReplicaSet:api-1", resource("api-1", { kind: "ReplicaSet" })), deploymentRevision: 1 };
+		const current = { ...topologyNode("ReplicaSet:api-2", resource("api-2", { kind: "ReplicaSet" })), deploymentRevision: 2 };
+		const retained = { ...topologyNode("ReplicaSet:api-0", resource("api-0", { kind: "ReplicaSet" })), deploymentRevision: 0 };
+		const pod = topologyNode("Pod:api-0-pod", resource("api-0-pod"));
+		const filtered = filterHistoricalReplicaSets({ nodes: [deployment, old, current, retained, pod], edges: [
+			{ id: "deployment-old", source: deployment.id, target: old.id, relation: "owns" },
+			{ id: "deployment-current", source: deployment.id, target: current.id, relation: "owns" },
+			{ id: "deployment-retained", source: deployment.id, target: retained.id, relation: "owns" },
+			{ id: "retained-pod", source: retained.id, target: pod.id, relation: "owns" },
+		], warnings: [] }, true);
+		expect(filtered?.nodes.map((node) => node.id)).toEqual([deployment.id, current.id, retained.id, pod.id]);
+
+		const unknownCurrent = { ...deployment, deploymentRevision: undefined };
+		const safeFallback = filterHistoricalReplicaSets({
+			nodes: [unknownCurrent, old],
+			edges: [{ id: "deployment-old", source: unknownCurrent.id, target: old.id, relation: "owns" }],
+			warnings: [],
+		}, true);
+		expect(safeFallback?.nodes.map((node) => node.id)).toEqual([unknownCurrent.id, old.id]);
 	});
 
 	test("shared resource table state stays independent from table runtime imports", () => {
@@ -739,7 +833,7 @@ describe("svelte resource browser model", () => {
 		expect(source).toContain("!exactMatchExists && resourceIdentityKey(resource) === identityKey");
 	});
 
-	test("passes kind-scoped, metrics-enriched topology into the Svelte ownership map", () => {
+	test("passes filtered, metrics-enriched topology into the Svelte ownership map", () => {
 		const source = readFileSync(
 			"src/features/resources/ResourceBrowser.svelte",
 			"utf8",
@@ -747,7 +841,9 @@ describe("svelte resource browser model", () => {
 
 		expect(source).toContain("resourceMetricIndex(metricsQuery.data)");
 		expect(source).toContain("mergeTopologyMetrics(");
-		expect(source).toContain("filterTopologyByKinds(topologyQuery.data, selectedKinds)");
+		expect(source).toContain("filterTopologyByTableRows(");
+		expect(source).toContain("tableModel.filteredRows");
+		expect(source).toContain("filterHistoricalReplicaSets(");
 		expect(source).toContain("topology={topologyWithMetrics}");
 		expect(source).toContain("topologyNodes: topologyWithMetrics?.nodes");
 	});
@@ -950,9 +1046,7 @@ describe("svelte resource browser model", () => {
 			"utf8",
 		);
 
-		expect(source).toContain(
-			"initialOwnershipMapOpen(initialPathState, getSettingsSnapshot().showOwnershipMapByDefault)",
-		);
+		expect(source).toContain("initialOwnershipMapOpen(initialPathState)");
 		expect(source).toContain("settingsStore");
 		expect(source).toContain("$settingsStore.showFullTopologyOnSelection");
 		expect(source).toContain("{showFullTopologyOnSelection}");

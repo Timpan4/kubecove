@@ -297,7 +297,7 @@ function sanitizeBrowserState(value: unknown): PathStateResourceBrowserState | n
 		collapsedGroups: sanitizePathStateStringArray(value.collapsedGroups),
 		topologyMode: pickString(value.topologyMode, ["ownership", "networkFlow"] as const, "ownership"),
 		selectedTopologyNodeId: nullableString(value.selectedTopologyNodeId),
-		mapPanelOpen: booleanValue(value.mapPanelOpen, true),
+		mapPanelOpen: booleanValue(value.mapPanelOpen, false),
 		tablePanelOpen: booleanValue(value.tablePanelOpen, true),
 	};
 }

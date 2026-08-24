@@ -32,6 +32,7 @@ describe("browser mock inspection", () => {
 				),
 			).toBe(true);
 			await $("button=Resources").click();
+			await $('button[aria-label="Show ownership map"]').click();
 			const graph = await $(".svelte-flow");
 			await graph.waitForDisplayed();
 
