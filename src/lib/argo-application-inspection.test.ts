@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	argoApplicationInspectionQueryOptions,
+	argoConnectionStatusQueryOptions,
 	buildArgoApplicationInspectionReadSpec,
 	buildArgoConnectionStatusReadSpec,
 } from "./argo-application-inspection";
@@ -69,6 +70,26 @@ describe("Argo Application inspection read spec", () => {
 		expect(spec.queryKey.at(-1)).toEqual(["primary", "backup"]);
 	});
 
+	test("keeps healthy profile statuses when another profile fails", async () => {
+		const spec = buildArgoConnectionStatusReadSpec({
+			profiles,
+			clusterContext: "kind-dev",
+			workspaceId: "workspace-1",
+			kubeconfigEnvVar: "KUBECONFIG",
+		});
+		const options = argoConnectionStatusQueryOptions(
+			{
+				invoke: async <T>(_command: string, args?: Record<string, unknown>) => {
+					if (args?.id === "primary") throw new Error("profile unavailable");
+					return status(true) as T;
+				},
+			},
+			spec,
+		);
+
+		expect(await options.queryFn()).toEqual([["backup", status(true)]]);
+	});
+
 	test("waits for automatic status resolution before inspection", () => {
 		const spec = inspectionSpec({ statuses: undefined, statusesPending: true });
 
@@ -117,5 +138,6 @@ describe("Argo Application inspection read spec", () => {
 		expect(options.queryKey).toBe(spec.queryKey);
 		expect(options.gcTime).toBe(0);
 		expect(options.refetchInterval({ state: { data: { transport: "kubernetes" } as never } })).toBe(false);
+		expect(options.refetchInterval({ state: { data: { transport: "connected" } as never } })).toBe(15_000);
 	});
 });

@@ -5,7 +5,8 @@ mod flux_inventory;
 mod ownership;
 
 pub(crate) use flux_inventory::{
-    enrich_resource_summaries_with_flux_inventory, read_flux_ownership_index,
+    enrich_resource_summaries_with_flux_inventory, fetch_flux_ownership_index,
+    filter_flux_ownership_index, FluxOwnershipIndex, read_flux_ownership_index,
 };
 pub(crate) use ownership::{extract_argo_app, extract_git_ops_owner};
 
@@ -83,6 +84,7 @@ pub(crate) fn base_resource_summary(
         namespaced: None,
         dynamic: None,
         health: ResourceHealth::Unknown,
+        health_assessment: crate::models::HealthAssessment::default(),
         created_at: metadata
             .creation_timestamp
             .as_ref()

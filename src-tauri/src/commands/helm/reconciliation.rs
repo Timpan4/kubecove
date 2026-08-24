@@ -100,6 +100,7 @@ async fn discovered_resources(client: Client) -> Result<Vec<DiscoveredResourceKi
                 api_version: api_resource.api_version,
                 kind: api_resource.kind,
                 plural: api_resource.plural,
+                short_names: Vec::new(),
                 namespaced: matches!(capabilities.scope, Scope::Namespaced),
             });
         }

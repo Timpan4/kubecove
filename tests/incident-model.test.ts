@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { IncidentCockpitItem } from "../src/lib/types";
-import { createWorkspaceRecord } from "../src/lib/workspace-model";
 import {
 	buildIncidentFilterOptions,
 	buildIncidentQueryState,
@@ -14,6 +12,8 @@ import {
 	incidentSignalSummary,
 	reconcileIncidentSelection,
 } from "../src/features/incidents/model";
+import type { IncidentCockpitItem } from "../src/lib/types";
+import { createWorkspaceRecord } from "../src/lib/workspace-model";
 
 const item: IncidentCockpitItem = {
 	resource: {
@@ -28,11 +28,12 @@ const item: IncidentCockpitItem = {
 		restarts: 4,
 	},
 	severity: "attention",
+	state: "active",
 	signals: [
-		{ kind: "container", label: "Waiting", message: "CrashLoopBackOff", source: "pod" },
-		{ kind: "restart", label: "Restarts", message: "4 restarts", source: "pod" },
-		{ kind: "ready", label: "Ready", message: "0/1 ready", source: "pod" },
-		{ kind: "event", label: "Warning", message: "Back-off", source: "event" },
+		{ kind: "container", label: "Waiting", message: "CrashLoopBackOff", source: "pod", state: "active" },
+		{ kind: "restart", label: "Restarts", message: "4 restarts", source: "pod", state: "active" },
+		{ kind: "ready", label: "Ready", message: "0/1 ready", source: "pod", state: "active" },
+		{ kind: "event", label: "Warning", message: "Back-off", source: "event", state: "active" },
 	],
 	warningEventCount: 2,
 	latestSignalAt: "2026-06-04T10:02:00Z",
@@ -94,10 +95,9 @@ describe("incident surface model", () => {
 			warning: 1,
 		})).toEqual([
 			{ id: "all", label: "All", count: 4 },
-			{ id: "unhealthy", label: "Unhealthy", count: 2 },
 			{ id: "degraded", label: "Degraded", count: 1 },
 			{ id: "attention", label: "Needs attention", count: 1 },
-			{ id: "restarted", label: "Restarted", count: 1 },
+			{ id: "restarted", label: "Restart evidence", count: 1 },
 			{ id: "warning", label: "Warnings", count: 1 },
 		]);
 	});
@@ -105,7 +105,6 @@ describe("incident surface model", () => {
 	test("maps incident resource jumps without hiding warning-only rows", () => {
 		expect(incidentResourcesHealthFilter("all")).toBe("all");
 		expect(incidentResourcesHealthFilter("warning")).toBe("all");
-		expect(incidentResourcesHealthFilter("unhealthy")).toBe("unhealthy");
 		expect(incidentResourcesHealthFilter("degraded")).toBe("degraded");
 		expect(incidentResourcesHealthFilter("attention")).toBe("attention");
 		expect(incidentResourcesHealthFilter("restarted")).toBe("restarted");

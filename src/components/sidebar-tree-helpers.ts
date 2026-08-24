@@ -1,4 +1,3 @@
-import type { DiscoveredResourceKind } from "@/lib/types";
 import {
 	discoveredResourceKindKey,
 	KIND_GROUPS,
@@ -6,12 +5,88 @@ import {
 	type TreeNode,
 	type TreeNodeId,
 } from "@/lib/tree-nav";
+import type { DiscoveredResourceKind } from "@/lib/types";
 
 export function buildShallowNamespaceTreeNode(namespace: string): TreeNode {
 	return {
 		id: { type: "namespace", section: "namespaces", namespace },
 		label: namespace,
 	};
+}
+
+export function extraDiscoveredKinds(
+	resourceKinds: DiscoveredResourceKind[],
+): DiscoveredResourceKind[] {
+	return resourceKinds
+		.toSorted((left, right) => {
+			return (
+				left.kind.localeCompare(right.kind) ||
+				left.apiVersion.localeCompare(right.apiVersion) ||
+				left.plural.localeCompare(right.plural)
+			);
+		});
+}
+
+export function filterCustomResourceKinds(
+	resourceKinds: DiscoveredResourceKind[],
+	search: string,
+): DiscoveredResourceKind[] {
+	const query = search.trim().toLowerCase();
+	if (!query) return resourceKinds;
+	return resourceKinds.filter((resourceKind) =>
+		[
+			resourceKind.kind,
+			resourceKind.plural,
+			...(resourceKind.shortNames ?? []),
+			resourceKind.group,
+			resourceKind.apiVersion,
+		].some((value) => value.toLowerCase().includes(query)),
+	);
+}
+
+export function buildCustomResourceGroupNodes({
+	section,
+	namespace,
+	extraKinds,
+}: {
+	section: string;
+	namespace?: string;
+	extraKinds: DiscoveredResourceKind[];
+}): TreeNode[] {
+	const kindsByGroup = new Map<string, DiscoveredResourceKind[]>();
+	for (const resourceKind of extraKinds) {
+		const groupKinds = kindsByGroup.get(resourceKind.group) ?? [];
+		groupKinds.push(resourceKind);
+		kindsByGroup.set(resourceKind.group, groupKinds);
+	}
+	return [...kindsByGroup.entries()]
+		.toSorted(([left], [right]) => left.localeCompare(right))
+		.map(([group, kinds]) => ({
+			id: { type: "group", section, namespace, group } as TreeNodeId,
+			label: group,
+			selectable: false,
+			children: kinds
+				.toSorted((left, right) => left.kind.localeCompare(right.kind))
+				.map((resourceKind) => {
+					const shortNames = resourceKind.shortNames ?? [];
+					return {
+						id: {
+							type: "kind",
+							section,
+							namespace,
+							group,
+							kind: discoveredResourceKindKey(resourceKind),
+							resourceKind,
+						} as TreeNodeId,
+						label: resourceKind.kind,
+						description: `${resourceKind.apiVersion} / ${resourceKind.plural}${
+							shortNames.length > 0
+								? ` / ${shortNames.join(", ")}`
+								: ""
+						}`,
+					};
+				}),
+		}));
 }
 
 export function buildNamespaceTreeNode(
@@ -54,18 +129,12 @@ export function buildNamespaceTreeNode(
 				group: "Custom Resources",
 			} as TreeNodeId,
 			label: "Custom Resources",
-			children: namespaceDiscoveredKinds.map((resourceKind) => ({
-				id: {
-					type: "kind",
-					section: "namespaces",
-					namespace,
-					group: "Custom Resources",
-					kind: discoveredResourceKindKey(resourceKind),
-					resourceKind,
-				} as TreeNodeId,
-				label: resourceKind.kind,
-				description: `${resourceKind.apiVersion} / ${resourceKind.plural}`,
-			})),
+			selectable: false,
+			children: buildCustomResourceGroupNodes({
+				section: "namespaces",
+				namespace,
+				extraKinds: namespaceDiscoveredKinds,
+			}),
 		});
 	}
 

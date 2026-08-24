@@ -12,7 +12,7 @@ import {
 	workspaceScopeContexts,
 } from "@/lib/workspace-model";
 
-export type IncidentFilter = "all" | "unhealthy" | IncidentSeverity;
+export type IncidentFilter = "all" | IncidentSeverity;
 
 export interface IncidentCounts {
 	total: number;
@@ -22,12 +22,22 @@ export interface IncidentCounts {
 	warning: number;
 }
 
-const SEVERITY_WEIGHT: Record<IncidentSeverity, number> = {
+const SEVERITY_WEIGHT = {
 	degraded: 4,
 	attention: 3,
 	restarted: 2,
 	warning: 1,
-};
+} satisfies Record<IncidentSeverity, number>;
+
+const STATE_WEIGHT = {
+	active: 3,
+	resolved: 2,
+	historical: 1,
+} as const;
+
+export function incidentState(item: IncidentCockpitItem) {
+	return item.state ?? (item.severity === "restarted" ? "historical" : "active");
+}
 
 function latestSignalTime(item: IncidentCockpitItem): number {
 	const value = item.latestSignalAt ?? item.latestWarningEvent?.lastSeenAt;
@@ -45,13 +55,29 @@ export function filterIncidentItems(
 	filter: IncidentFilter,
 ): IncidentCockpitItem[] {
 	if (filter === "all") return items;
-	if (filter === "unhealthy") {
-		return items.filter(
-			(item) =>
-				item.severity === "degraded" || item.severity === "attention",
-		);
+	return items.filter((item) => incidentMatchesFilter(item, filter));
+}
+
+function incidentMatchesFilter(
+	item: IncidentCockpitItem,
+	filter: Exclude<IncidentFilter, "all">,
+): boolean {
+	if (filter === "restarted") {
+		return item.severity === "restarted" ||
+			item.signals.some((signal) => signal.kind === "restart") ||
+			item.resource.healthAssessment?.evidence.some(
+				(evidence) => evidence.source === "containerRestart",
+			) === true;
 	}
-	return items.filter((item) => item.severity === filter);
+	if (filter === "warning") {
+		return item.severity === "warning" ||
+			item.warningEventCount > 0 ||
+			item.signals.some((signal) => signal.kind === "event") ||
+			item.resource.healthAssessment?.evidence.some(
+				(evidence) => evidence.source === "warningEvent",
+			) === true;
+	}
+	return item.severity === filter;
 }
 
 export function countIncidentItems(
@@ -66,7 +92,10 @@ export function countIncidentItems(
 	};
 	for (const item of items) {
 		counts.total += 1;
-		counts[item.severity] += 1;
+		if (item.severity === "degraded") counts.degraded += 1;
+		if (item.severity === "attention") counts.attention += 1;
+		if (incidentMatchesFilter(item, "restarted")) counts.restarted += 1;
+		if (incidentMatchesFilter(item, "warning")) counts.warning += 1;
 	}
 	return counts;
 }
@@ -75,6 +104,8 @@ export function sortIncidentItems(
 	items: IncidentCockpitItem[],
 ): IncidentCockpitItem[] {
 	return [...items].sort((a, b) => {
+		const stateDelta = STATE_WEIGHT[incidentState(b)] - STATE_WEIGHT[incidentState(a)];
+		if (stateDelta !== 0) return stateDelta;
 		const severityDelta =
 			SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity];
 		if (severityDelta !== 0) return severityDelta;
@@ -93,8 +124,14 @@ export function sortIncidentItems(
 export function groupIncidentItems(
 	items: IncidentCockpitItem[],
 ): Array<{ label: string; items: IncidentCockpitItem[] }> {
+	return groupSortedIncidentItems(sortIncidentItems(items));
+}
+
+function groupSortedIncidentItems(
+	items: IncidentCockpitItem[],
+): Array<{ label: string; items: IncidentCockpitItem[] }> {
 	const groups = new Map<string, IncidentCockpitItem[]>();
-	for (const item of sortIncidentItems(items)) {
+	for (const item of items) {
 		const label = incidentGroupLabel(item.resource);
 		const group = groups.get(label);
 		if (group) group.push(item);
@@ -130,8 +167,11 @@ export function buildIncidentSurfaceState(
 ) {
 	const counts = countIncidentItems(items);
 	const visibleItems = sortIncidentItems(filterIncidentItems(items, filter));
-	const groups = groupIncidentItems(visibleItems);
-	const resolvedSelectedKey = reconcileIncidentSelection(visibleItems, selectedKey);
+	const groups = groupSortedIncidentItems(visibleItems);
+	const selectedIncident = selectedKey
+		? visibleItems.find((item) => incidentItemKey(item) === selectedKey) ?? visibleItems[0] ?? null
+		: visibleItems[0] ?? null;
+	const resolvedSelectedKey = selectedIncident ? incidentItemKey(selectedIncident) : null;
 	return {
 		counts,
 		filterOptions: buildIncidentFilterOptions(counts),
@@ -139,7 +179,7 @@ export function buildIncidentSurfaceState(
 		visibleItems,
 		visibleCount: visibleItems.length,
 		selectedKey: resolvedSelectedKey,
-		selectedIncident: visibleItems.find((item) => incidentItemKey(item) === resolvedSelectedKey) ?? null,
+		selectedIncident,
 		emptyState:
 			counts.total === 0 ? "clean" : groups.length === 0 ? "filtered" : "ready",
 	} as const;
@@ -167,10 +207,9 @@ export function buildIncidentFilterOptions(
 ): IncidentFilterOption[] {
 	return [
 		{ id: "all", label: "All", count: counts.total },
-		{ id: "unhealthy", label: "Unhealthy", count: counts.degraded + counts.attention },
 		{ id: "degraded", label: "Degraded", count: counts.degraded },
 		{ id: "attention", label: "Needs attention", count: counts.attention },
-		{ id: "restarted", label: "Restarted", count: counts.restarted },
+		{ id: "restarted", label: "Restart evidence", count: counts.restarted },
 		{ id: "warning", label: "Warnings", count: counts.warning },
 	];
 }
@@ -180,8 +219,7 @@ export function incidentResourcesHealthFilter(
 ): HealthFilter {
 	return filter === "degraded" ||
 		filter === "attention" ||
-		filter === "restarted" ||
-		filter === "unhealthy"
+		filter === "restarted"
 		? filter
 		: "all";
 }
@@ -189,7 +227,11 @@ export function incidentResourcesHealthFilter(
 export function incidentSeverityLabel(item: IncidentCockpitItem): string {
 	if (item.severity === "degraded") return "Degraded";
 	if (item.severity === "attention") return "Needs attention";
-	if (item.severity === "restarted") return "Restarted";
+	if (item.severity === "restarted") {
+		if (incidentState(item) === "historical") return "Historical restart";
+		if (incidentState(item) === "resolved") return "Resolved restart";
+		return "Active restart";
+	}
 	return "Warning";
 }
 

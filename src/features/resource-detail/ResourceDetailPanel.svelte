@@ -139,6 +139,8 @@
 	let logLatestFirst = $state(initialDetailState?.logLatestFirst ?? false);
 	let logAutoFollow = $state(initialDetailState?.logAutoFollow ?? true);
 	let parsedLogLines = $state<ParsedLogLine[]>([]);
+	let realtimeWatchError = $state<string | null>(null);
+	let realtimeEventsWatchError = $state<string | null>(null);
 	let yamlShowFullDiff = $state(initialDetailState?.yamlShowFullDiff ?? false);
 	let resourceRefreshVersion = $state(0);
 	let ExecTabComponent = $state<typeof import("./ExecTab.svelte").default | null>(null);
@@ -416,7 +418,16 @@
 			}, 250);
 		};
 		const channel = createStreamChannel((event: StreamMessage) => {
-			if (cancelled || event.type !== "resourceChanged") return;
+			if (cancelled) return;
+			if (event.type === "error") {
+				realtimeWatchError = event.message;
+				return;
+			}
+			if (event.type === "status") {
+				if (event.status === "connected") realtimeWatchError = null;
+				return;
+			}
+			if (event.type !== "resourceChanged") return;
 			if (event.target.name && event.target.name !== resource.name) return;
 			if (
 				resource.namespace &&
@@ -441,7 +452,10 @@
 				}
 				streamId = id;
 			})
-			.catch(() => {});
+			.catch((error: unknown) => {
+				if (cancelled) return;
+				realtimeWatchError = error instanceof Error ? error.message : String(error);
+			});
 		return () => {
 			cancelled = true;
 			if (debounce) clearTimeout(debounce);
@@ -462,7 +476,16 @@
 			}, 250);
 		};
 		const channel = createStreamChannel((event: StreamMessage) => {
-			if (!cancelled && event.type === "resourceEventsChanged") invalidateSoon();
+			if (cancelled) return;
+			if (event.type === "error") {
+				realtimeEventsWatchError = event.message;
+				return;
+			}
+			if (event.type === "status") {
+				if (event.status === "connected") realtimeEventsWatchError = null;
+				return;
+			}
+			if (event.type === "resourceEventsChanged") invalidateSoon();
 		});
 		void startResourceEventWatch(
 			client,
@@ -480,7 +503,10 @@
 				}
 				streamId = id;
 			})
-			.catch(() => {});
+			.catch((error: unknown) => {
+				if (cancelled) return;
+				realtimeEventsWatchError = error instanceof Error ? error.message : String(error);
+			});
 		return () => {
 			cancelled = true;
 			if (debounce) clearTimeout(debounce);
@@ -546,10 +572,6 @@
 			case "neutral":
 				return "border-l-muted bg-background/50";
 		}
-	}
-
-	function detailStatusLabel(summary: ResourceSummary): string | undefined {
-		return summary.status ?? summary.health;
 	}
 
 	function toneBadgeVariant(tone: ChipVariant): "secondary" | "destructive" | "outline" {
@@ -626,6 +648,12 @@
 		<TabsTrigger value="yaml">YAML</TabsTrigger>
 	</TabsList>
 
+	{#if realtimeWatchError || realtimeEventsWatchError}
+		<p class="text-muted-foreground text-xs">
+			Realtime watch failed{#if realtimeWatchError}: {realtimeWatchError}{/if}{#if realtimeEventsWatchError}{#if realtimeWatchError} · {:else}: {/if}events: {realtimeEventsWatchError}{/if}. Showing the last loaded data.
+		</p>
+	{/if}
+
 	<DetailsTab
 		{detailsQuery}
 		{eventsQuery}
@@ -643,7 +671,6 @@
 		requiredPermission={detailReadPermission}
 		bind:metadataLabelsExpanded
 		bind:metadataAnnotationsExpanded
-		{detailStatusLabel}
 		{toneBadgeVariant}
 		{compactToneBadgeClass}
 		{restartsTone}

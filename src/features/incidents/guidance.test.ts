@@ -16,6 +16,7 @@ declare function expect<T>(actual: T): {
 	toBe(expected: unknown): void;
 	toEqual(expected: unknown): void;
 	toContain(expected: unknown): void;
+	toHaveLength(expected: number): void;
 };
 
 function resource(kind: string, name: string): ResourceSummary {
@@ -33,7 +34,8 @@ function incident(subject = resource("Pod", "api-123")): IncidentCockpitItem {
 	return {
 		resource: subject,
 		severity: "degraded",
-		signals: [{ kind: "status", label: "Failed", message: "Ready False", source: "status" }],
+		state: "active",
+		signals: [{ kind: "status", label: "Failed", message: "Ready False", source: "status", state: "active" }],
 		warningEventCount: 0,
 	};
 }
@@ -120,6 +122,28 @@ describe("incident guidance", () => {
 
 		expect(actions[0]?.label).toBe("Delete this Pod");
 		expect(actions[0]?.description).toContain("will not be recreated automatically");
+	});
+
+	test("withholds mutating actions for historical restart evidence", () => {
+		const historical = incident();
+		historical.severity = "restarted";
+		historical.state = "historical";
+		historical.signals = [{
+			kind: "restart",
+			label: "Historical restart",
+			message: "Current status Running, Ready True, makes this restart history only.",
+			source: "status",
+			state: "historical",
+			lastSeenAt: "2026-06-04T10:00:00Z",
+		}];
+
+		expect(buildIncidentAvailableActions(historical, {
+			directOwner: null,
+			workloadOwner: null,
+			chain: [],
+			subjectFound: true,
+			complete: true,
+		}, "ready")).toEqual([]);
 	});
 
 	test("offers StatefulSet and DaemonSet owner actions without inventing scale", () => {
@@ -228,9 +252,10 @@ describe("incident guidance", () => {
 				label: "BackOff",
 				message: "Back-off restarting container",
 				source: "events",
+				state: "active",
 				lastSeenAt: "2026-07-16T09:00:00Z",
 			},
-			{ kind: "status", label: "Failed", message: "Ready False", source: "status" },
+			{ kind: "status", label: "Failed", message: "Ready False", source: "status", state: "active" },
 		];
 		item.latestWarningEvent = {
 			eventType: "Warning",
@@ -269,5 +294,39 @@ describe("incident guidance", () => {
 			"Failed",
 		]);
 		expect(guidance.evidence.filter((entry) => entry.label === "BackOff").length).toBe(1);
+	});
+
+	test("keeps restart snapshot evidence in visible guidance rows", () => {
+		const item = incident();
+		item.signals = [{
+			kind: "restart",
+			label: "Resolved restart",
+			message: "Last termination: api Error (exit 1).",
+			source: "status",
+			state: "resolved",
+			lastSeenAt: "2026-07-16T09:00:00Z",
+		}];
+		const details: ResourceDetailsFull = {
+			summary: item.resource,
+			yaml: "",
+			metadata: {},
+			status: {
+				conditions: Array.from({ length: 7 }, (_, index) => ({
+					type: `Condition${index}`,
+					status: "False",
+				})),
+			},
+		};
+
+		const guidance = buildIncidentGuidance(
+			item,
+			details,
+			{ directOwner: null, workloadOwner: null, chain: [], subjectFound: true, complete: true },
+			"ready",
+			"ready",
+		);
+
+		expect(guidance.evidence).toHaveLength(6);
+		expect(guidance.evidence.some((entry) => entry.label === "Resolved restart")).toBe(true);
 	});
 });

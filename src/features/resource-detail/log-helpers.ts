@@ -15,6 +15,8 @@ export interface ParsedLogLine {
 	timestamp?: string;
 }
 
+export const MAX_RETAINED_LOG_LINES = 1_000;
+
 const LEADING_TIMESTAMP_RE =
 	/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)\s+(.*)$/;
 const EMBEDDED_TIME_RE = /\btime=(?:"([^"]+)"|([^\s]+))/;
@@ -47,6 +49,15 @@ export function parseLogLine(input: LogLineInput, index = 0): ParsedLogLine {
 		source: entry.source,
 		timestamp: embeddedTime?.[1] ?? embeddedTime?.[2],
 	};
+}
+
+export function appendParsedLogLine(
+	lines: ParsedLogLine[],
+	input: LogLineInput,
+	index: number,
+): void {
+	lines.push(parseLogLine(input, index));
+	if (lines.length > MAX_RETAINED_LOG_LINES) lines.shift();
 }
 
 export function orderedLogLines(

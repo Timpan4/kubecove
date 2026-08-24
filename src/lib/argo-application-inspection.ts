@@ -56,13 +56,17 @@ export function argoConnectionStatusQueryOptions(
 ) {
 	return {
 		queryKey: spec.queryKey,
-		queryFn: () =>
-			Promise.all(
+		queryFn: async () => {
+			const results = await Promise.allSettled(
 				spec.profiles.map(
 					async (profile) =>
 						[profile.id, await getArgoConnectionStatus(client, profile.id)] as const,
 				),
-			),
+			);
+			return results.flatMap((result) =>
+				result.status === "fulfilled" ? [result.value] : [],
+			);
+		},
 		enabled: spec.enabled,
 		staleTime: 5_000,
 	};

@@ -1,6 +1,6 @@
 import type { SmoothStepPathOptions } from "@xyflow/system";
 import type { ResourceTopology, TopologyNode } from "@/lib/types";
-import { type TopologyGraph, uniqueNodes } from "./topology-graph";
+import { pushMapValue, type TopologyGraph, uniqueNodes } from "./topology-graph";
 
 export const NODE_WIDTH = 190;
 export const NODE_HEIGHT = 78;
@@ -93,7 +93,7 @@ export function topologyColumnDepth(
 	const parents = new Map<string, string[]>();
 	for (const edge of topology.edges) {
 		if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) continue;
-		parents.set(edge.target, [...(parents.get(edge.target) ?? []), edge.source]);
+		pushMapValue(parents, edge.target, edge.source);
 	}
 
 	const depthById = new Map<string, number>();
@@ -109,11 +109,11 @@ export function topologyColumnDepth(
 			visiting.delete(node.id);
 			return 0;
 		}
-		const parentDepths = parentIds
-			.map((id) => nodesById.get(id))
-			.filter((parent): parent is TopologyNode => Boolean(parent))
-			.map((parent) => resolve(parent) + 1);
-		const edgeDepth = Math.max(...parentDepths);
+		let edgeDepth = 0;
+		for (const parentId of parentIds) {
+			const parent = nodesById.get(parentId);
+			if (parent) edgeDepth = Math.max(edgeDepth, resolve(parent) + 1);
+		}
 		const depth = Math.max(edgeDepth, kindRank(node.kind));
 		depthById.set(node.id, depth);
 		visiting.delete(node.id);
@@ -129,7 +129,7 @@ function topologyIncomingParents(topology: ResourceTopology): Map<string, string
 	const parents = new Map<string, string[]>();
 	for (const edge of topology.edges) {
 		if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
-		parents.set(edge.target, [...(parents.get(edge.target) ?? []), edge.source]);
+		pushMapValue(parents, edge.target, edge.source);
 	}
 	return parents;
 }

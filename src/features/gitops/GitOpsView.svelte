@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { CircleHelp, GitBranch, Layers, Package, Plug } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
+	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import {
 		Badge,
 		Button,
@@ -141,6 +142,11 @@
 		return `Open details for ${selection.item.name}`;
 	}
 
+	function gitOpsDetailsActionLabel(selection: GitOpsSelection): string {
+		const resource = gitOpsSelectionResource(selection);
+		return `Open details for ${resource.kind} ${resource.name} ${resource.namespace ? `in ${resource.namespace}` : "at cluster scope"}`;
+	}
+
 	function openGitOpsDetails(event: MouseEvent, selection: GitOpsSelection) {
 		event.stopPropagation();
 		onResourceInspect(
@@ -178,9 +184,9 @@
 		return selection.item.destinationNamespace ?? selection.item.destinationServer ?? "-";
 	}
 
-	function gitOpsSummaryValueClass(tone: "healthy" | "unhealthy" | undefined): string {
+	function gitOpsSummaryValueClass(tone: "healthy" | "degraded" | undefined): string {
 		if (tone === "healthy") return "text-emerald-600 dark:text-emerald-300";
-		if (tone === "unhealthy") return "text-destructive";
+		if (tone === "degraded") return "text-destructive";
 		return "text-foreground";
 	}
 
@@ -252,21 +258,10 @@
 	}
 
 	function gitOpsCardTone(selection: GitOpsSelection): string {
-		const values = gitOpsCardBadges(selection).map(([, value]) => value);
-		if (values.some((value) => value === "Degraded" || value === "Missing" || value === "False")) {
-			return "bg-destructive";
-		}
-		if (
-			values.some((value) => value === "OutOfSync" || value === "Progressing" || value === "Unknown")
-		) {
-			return "bg-amber-400";
-		}
-		if (values.some((value) => value === "Synced" || value === "Healthy" || value === "True")) {
-			return "bg-emerald-400";
-		}
-		if (values.some((value) => value === "Active" || value === "Ready")) {
-			return "bg-emerald-400";
-		}
+		const state = selection.item.healthAssessment?.state;
+		if (state === "degraded") return "bg-destructive";
+		if (state === "needsAttention") return "bg-amber-400";
+		if (state === "healthy") return "bg-emerald-400";
 		return "bg-muted";
 	}
 
@@ -503,11 +498,14 @@
 												</Tooltip>
 											{/if}
 										</div>
+										<div class="mt-3">
+											<HealthAssessmentBadge assessment={item.item.healthAssessment} />
+										</div>
 										{#if gitOpsCardBadges(item).length > 0}
 											<div class="mt-3 flex flex-wrap gap-1.5">
-												{#each gitOpsCardBadges(item) as [, value]}
+												{#each gitOpsCardBadges(item) as [label, value]}
 													<Badge variant="outline" class={gitOpsStatusClass(value)}>
-														{formatStatusLabel(value)}
+														Raw {label}: {formatStatusLabel(value)}
 													</Badge>
 												{/each}
 											</div>
@@ -581,6 +579,7 @@
 												type="button"
 												variant="ghost"
 												size="sm"
+												aria-label={gitOpsDetailsActionLabel(item)}
 											data-details-key={gitOpsDetailsActionKey(item)}
 											onclick={(event: MouseEvent) => openGitOpsDetails(event, item)}
 											onkeydown={stopTooltipEvent}
@@ -641,10 +640,11 @@
 											<div class="truncate font-medium">{item.item.name}</div>
 											<div class="truncate text-xs text-muted-foreground">{gitOpsCardSubtitle(item)}</div>
 										</button>
-										<div class="flex min-w-0 flex-wrap gap-1">
-											{#each gitOpsCardBadges(item) as [, value]}
+										<div class="flex min-w-0 flex-col items-start gap-1">
+											<HealthAssessmentBadge assessment={item.item.healthAssessment} />
+											{#each gitOpsCardBadges(item) as [label, value]}
 												<Badge variant="outline" class={gitOpsStatusClass(value)}>
-													{formatStatusLabel(value)}
+													Raw {label}: {formatStatusLabel(value)}
 												</Badge>
 											{/each}
 										</div>
@@ -679,6 +679,7 @@
 												type="button"
 												variant="ghost"
 												size="sm"
+												aria-label={gitOpsDetailsActionLabel(item)}
 												data-details-key={gitOpsDetailsActionKey(item)}
 												onclick={(event: MouseEvent) => openGitOpsDetails(event, item)}
 												onkeydown={stopTooltipEvent}

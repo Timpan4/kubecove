@@ -3,6 +3,45 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.10.10 - 2026-08-19
+### Fixed
+
+- Retain release vendor hash gate (#380).
+- Skip trusted release PR checks (#377).
+
+## 0.10.9 - 2026-08-19
+### Added
+
+- Add sourced health assessments across Kubernetes, GitOps, Argo CD, incident, and workspace surfaces (#370, #371).
+
+### Improved
+
+- Reduce frontend hot-path allocations (#361).
+
+### Fixed
+
+- Gate releases on Nix build (#375).
+- Keep historical container restarts below active incidents (#368).
+- Preserve resource table sorting through grouping (#374).
+- Resource details accessibility targets (#366).
+- Global resource search coverage (#359).
+
+## 0.10.8 - 2026-08-16
+### Added
+
+- Add Nix packaging (#358).
+
+### Fixed
+
+- Namespace resource-kind navigation scope (#357).
+- Scope cluster kind navigation (#356).
+
+## 0.10.7 - 2026-08-14
+### Fixed
+
+- Refresh fallback kubeconfig source keys.
+- Merge default kubeconfig with added paths.
+
 ## 0.10.6 - 2026-08-12
 ### Fixed
 

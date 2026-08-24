@@ -600,14 +600,14 @@
 			</div>
 
 			<Card size="sm" elevation="flat">
-				<CardContent class="grid gap-3 p-0 lg:grid-cols-[minmax(14rem,1.1fr)_minmax(30rem,2.4fr)_auto] lg:items-stretch">
+				<CardContent class="grid gap-3 p-0 xl:grid-cols-[minmax(14rem,1.1fr)_minmax(30rem,2.4fr)_auto] xl:items-stretch">
 					<div class="px-3 py-2.5">
 						<p class="text-sm font-semibold">Access posture</p>
 						<p class="mt-0.5 text-xs text-muted-foreground">
 							{inspection.cluster} · {completeCoverage}/{coverage.length || 5} RBAC families · {freshnessLabel(inspection.refreshedAt)}
 						</p>
 					</div>
-					<div class="grid grid-cols-2 border-y border-border sm:grid-cols-5 lg:border-x lg:border-y-0">
+					<div class="grid grid-cols-2 border-y border-border sm:grid-cols-5 xl:border-x xl:border-y-0">
 						{#each [
 							["Identities", inspection.serviceAccounts.length],
 							["Roles", inspection.roles.length + inspection.clusterRoles.length],

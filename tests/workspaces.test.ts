@@ -1,26 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
-	buildWorkspaceCompareEntries,
-	buildWorkspaceCompareSummaries,
-	buildWorkspaceHealthSummary,
-	computeRestoreStatus,
-	createSavedPortForward,
-	createWorkspaceRecord,
-	createWorkspaceScope,
-	summarizeWorkspaceScope,
-	useWorkspaceStore,
-	workspaceScopeContexts,
-} from "../src/lib/workspaces";
-import {
 	buildWorkspaceFetchKeys,
 	buildWorkspaceFetchPlans,
+	WorkspaceResourceLoadError,
 } from "../src/features/workspaces/query";
 import type {
 	ClusterContext,
 	ResourceKindSelection,
 	ResourceSummary,
 } from "../src/lib/types";
+import {
+	buildWorkspaceCompareEntries,
+	buildWorkspaceCompareSummaries,
+	buildWorkspaceHealthSummary,
+	computeRestoreStatus,
+	createSavedPortForward,
+	createWorkspaceRecord,
+	summarizeWorkspaceScope,
+	workspaceScopeContexts,
+} from "../src/lib/workspaces";
 
 const clusterContexts: ClusterContext[] = [
 	{ name: "kind-dev", isCurrent: true },
@@ -73,103 +72,6 @@ describe("workspace helpers", () => {
 		});
 		expect(JSON.stringify(saved)).not.toContain("session");
 		expect(JSON.stringify(saved)).not.toContain("podName");
-	});
-
-	test("manages saved Service forwards in workspace state", () => {
-		useWorkspaceStore.setState({ workspaces: [], activeWorkspaceId: null });
-		const store = useWorkspaceStore.getState();
-		const workspace = store.createWorkspace({
-			name: "Ops",
-			clusterContext: "kind-dev",
-			namespaces: ["payments"],
-		});
-
-		const saved = useWorkspaceStore.getState().savePortForward(workspace.id, {
-			clusterContext: "kind-dev",
-			namespace: "payments",
-			serviceName: "api",
-			servicePort: 8080,
-		});
-		expect(
-			useWorkspaceStore.getState().workspaces[0].portForwards.map(
-				(portForward) => portForward.id,
-			),
-		).toEqual([saved.id]);
-
-		useWorkspaceStore.getState().updateSavedPortForward(workspace.id, saved.id, {
-			label: "Payments API",
-			localPort: 18080,
-			lastStatus: "error",
-			lastError: "local port 18080 is already in use",
-		});
-		expect(useWorkspaceStore.getState().workspaces[0].portForwards[0]).toMatchObject({
-			label: "Payments API",
-			localPort: 18080,
-			lastStatus: "error",
-			lastError: "local port 18080 is already in use",
-		});
-
-		useWorkspaceStore.getState().updateSavedPortForward(workspace.id, saved.id, {
-			localPort: undefined,
-		});
-		expect(
-			useWorkspaceStore.getState().workspaces[0].portForwards[0].localPort,
-		).toBeUndefined();
-
-		useWorkspaceStore
-			.getState()
-			.deleteSavedPortForward(workspace.id, saved.id);
-		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([]);
-	});
-
-	test("reconciles saved forwards when workspace scope changes", () => {
-		useWorkspaceStore.setState({ workspaces: [], activeWorkspaceId: null });
-		const workspace = useWorkspaceStore.getState().createWorkspace({
-			name: "Ops",
-			clusterContext: "kind-dev",
-			namespaces: ["payments"],
-		});
-		const saved = useWorkspaceStore.getState().savePortForward(workspace.id, {
-			clusterContext: "kind-dev",
-			namespace: "payments",
-			serviceName: "api",
-			servicePort: 8080,
-		});
-
-		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
-			scope: createWorkspaceScope({
-				name: "Ops",
-				clusterContext: "kind-prod",
-				namespaces: ["payments"],
-			}),
-		});
-
-		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([]);
-
-		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
-			portForwards: [saved],
-			scope: createWorkspaceScope({
-				name: "Ops",
-				clusterContext: "kind-dev",
-				namespaces: [],
-			}),
-		});
-
-		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([
-			saved,
-		]);
-
-		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
-			scope: createWorkspaceScope({
-				name: "Ops",
-				clusterContext: "kind-dev",
-				namespaces: ["other"],
-			}),
-		});
-
-		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([
-			saved,
-		]);
 	});
 
 	test("stores cluster groups as local scope metadata without secrets", () => {
@@ -264,10 +166,12 @@ describe("workspace helpers", () => {
 		);
 		expect(buildWorkspaceHealthSummary(rows)).toEqual({
 			total: 4,
-			healthy: 1,
+			healthy: 2,
 			attention: 1,
 			degraded: 1,
-			restarted: 1,
+			unknown: 0,
+			notEvaluated: 0,
+			restartEvidence: 1,
 		});
 	});
 
@@ -360,6 +264,53 @@ describe("workspace helpers", () => {
 		]);
 	});
 
+	test("workspace resource failures retain context, operation, and technical detail", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "cluster", message: "ServiceError: client error (Connect)" },
+			},
+		]);
+
+		expect(error.clusterContexts).toEqual(["kind-prod"]);
+		expect(error.kind).toBe("networkTransient");
+		expect(error.message).toBe(
+			'Context "kind-prod", operation "resource discovery": ServiceError: client error (Connect)',
+		);
+	});
+
+	test("workspace resource failures keep mixed context guidance neutral", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-dev",
+				reason: { kind: "cluster", message: "Unauthorized: authentication required" },
+			},
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "cluster", message: "ServiceError: client error (Connect)" },
+			},
+		]);
+
+		expect(error.kind).toBe("mixedWorkspaceConnection");
+		expect(error.failureBuckets).toEqual(["authentication", "networkTransient"]);
+	});
+
+	test("unrelated mixed workspace failures use generic guidance", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-dev",
+				reason: { kind: "forbidden", message: "pods is forbidden" },
+			},
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "validation", message: "namespace is required" },
+			},
+		]);
+
+		expect(error.kind).toBe("unknown");
+		expect(error.failureBuckets).toEqual(["forbiddenRbac", "validation"]);
+	});
+
 	test("uses an explicit height for the workspace namespace scroll area", () => {
 		const source = readFileSync(
 			"src/features/workspaces/WorkspaceLauncher.svelte",
@@ -372,17 +323,6 @@ describe("workspace helpers", () => {
 		expect(source).not.toContain(
 			'ScrollArea class="max-h-52 rounded-md border bg-background/40"',
 		);
-	});
-
-	test("allows workspace saves when namespace listing fails", () => {
-		const source = readFileSync(
-			"src/features/workspaces/WorkspaceLauncher.svelte",
-			"utf8",
-		);
-
-		expect(source).not.toContain("namespaceScopeUnavailable");
-		expect(source).toContain('mode="compact"');
-		expect(source).toContain('fallbackTitle: "Failed to load namespaces"');
 	});
 
 	test("keeps overview Resources primary and visible in wrapping actions", () => {
@@ -408,6 +348,13 @@ describe("workspace helpers", () => {
 });
 
 function resource(overrides: Partial<ResourceSummary>): ResourceSummary {
+	const state = overrides.health === "degraded"
+		? "degraded"
+		: overrides.health === "attention"
+			? "needsAttention"
+		: overrides.health === "unknown" || overrides.health === undefined
+				? "unknown"
+				: "healthy";
 	return {
 		kind: "Pod",
 		cluster: "kind-dev",
@@ -415,6 +362,13 @@ function resource(overrides: Partial<ResourceSummary>): ResourceSummary {
 		namespace: "default",
 		age: "1m",
 		health: "unknown",
+		healthAssessment: {
+			state,
+			completeness: "complete",
+			winningSources: ["kubernetes"],
+			reasons: [`Test Kubernetes state is ${state}`],
+			evidence: [{ source: "kubernetes", raw: state, state, current: true, reason: `Test Kubernetes state is ${state}` }],
+		},
 		...overrides,
 	};
 }

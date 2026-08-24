@@ -13,6 +13,11 @@ import { filterResourcesByHealth } from "../src/features/resources/helpers";
 import type { ResourceEventSummary, ResourceSummary } from "../src/lib/types";
 
 function resource(overrides: Partial<ResourceSummary> = {}): ResourceSummary {
+	const state = overrides.health === "degraded"
+		? "degraded"
+		: overrides.health === "attention"
+			? "needsAttention"
+			: "healthy";
 	return {
 		cluster: "kind-dev",
 		kind: "Pod",
@@ -22,6 +27,13 @@ function resource(overrides: Partial<ResourceSummary> = {}): ResourceSummary {
 		status: "Running",
 		ready: "true",
 		health: "healthy",
+		healthAssessment: {
+			state,
+			completeness: "complete",
+			winningSources: ["kubernetes"],
+			reasons: [`Test Kubernetes state is ${state}`],
+			evidence: [{ source: "kubernetes", raw: state, state, current: true, reason: `Test Kubernetes state is ${state}` }],
+		},
 		...overrides,
 	};
 }
@@ -102,7 +114,7 @@ describe("incident workflow helpers", () => {
 		});
 	});
 
-	test("unhealthy filtering includes degraded and attention resources", () => {
+	test("canonical filters keep degraded and needs-attention separate", () => {
 		const rows = [
 			resource({ name: "healthy", status: "Running", ready: "true", health: "healthy" }),
 			resource({ name: "pending", status: "Pending", health: "attention" }),
@@ -110,12 +122,10 @@ describe("incident workflow helpers", () => {
 			resource({ name: "restarted", restarts: 2, health: "restarted" }),
 		];
 
-		expect(filterResourcesByHealth(rows, "unhealthy").map((row) => row.name)).toEqual([
-			"pending",
-			"failed",
-		]);
+		expect(filterResourcesByHealth(rows, "attention").map((row) => row.name)).toEqual(["pending"]);
 		expect(filterResourcesByHealth(rows, "healthy").map((row) => row.name)).toEqual([
 			"healthy",
+			"restarted",
 		]);
 		expect(filterResourcesByHealth(rows, "degraded").map((row) => row.name)).toEqual([
 			"failed",

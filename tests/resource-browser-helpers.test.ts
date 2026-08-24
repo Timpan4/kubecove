@@ -23,9 +23,16 @@ import {
 	gitOpsOwnershipFilters,
 	gitOpsOwnershipGroupLabel,
 } from "../src/lib/gitops-ownership-evidence";
-import type { DiscoveredResourceKind, ResourceSummary } from "../src/lib/types";
+import type { DiscoveredResourceKind, HealthAssessment, ResourceSummary } from "../src/lib/types";
 
 describe("resource browser presentation helpers", () => {
+  const assessment = (state: HealthAssessment["state"]): HealthAssessment => ({
+    state,
+    completeness: "complete",
+    winningSources: ["kubernetes"],
+    reasons: [`Test Kubernetes state is ${state}`],
+    evidence: [{ source: "kubernetes", raw: state, state, current: true, reason: `Test Kubernetes state is ${state}` }],
+  });
   const baseResource: ResourceSummary = {
     cluster: "kind-prod",
     kind: "Pod",
@@ -40,6 +47,7 @@ describe("resource browser presentation helpers", () => {
     apiVersion: "example.com/v1",
     kind: "Widget",
     plural: "widgets",
+    shortNames: ["wdg"],
     namespaced: true,
   };
   const clusterWidgetKind: DiscoveredResourceKind = {
@@ -51,9 +59,9 @@ describe("resource browser presentation helpers", () => {
 
   test("summarizes resource health for the active filter", () => {
     const summary = buildResourceHealthSummary([
-      { ...baseResource, name: "api-0", status: "Running", ready: "True", health: "healthy", restarts: 0 },
-      { ...baseResource, name: "worker-0", status: "Pending", health: "attention", restarts: 0 },
-      { ...baseResource, name: "job-0", status: "Failed", ready: "False", health: "degraded", restarts: 1 },
+      { ...baseResource, name: "api-0", status: "Running", ready: "True", health: "healthy", healthAssessment: assessment("healthy"), restarts: 0 },
+      { ...baseResource, name: "worker-0", status: "Pending", health: "attention", healthAssessment: assessment("needsAttention"), restarts: 0 },
+      { ...baseResource, name: "job-0", status: "Failed", ready: "False", health: "degraded", healthAssessment: assessment("degraded"), restarts: 1 },
     ]);
 
     expect(summary).toEqual({
@@ -61,24 +69,25 @@ describe("resource browser presentation helpers", () => {
       healthy: 1,
       attention: 1,
       degraded: 1,
-      restarted: 0,
-      untracked: 0,
+      unknown: 0,
+      notEvaluated: 0,
+      restartEvidence: 1,
     });
   });
 
   test("filters resources by transient health filter", () => {
     const resources: ResourceSummary[] = [
-      { ...baseResource, name: "api-0", status: "Running", ready: "True", health: "healthy", restarts: 0 },
-      { ...baseResource, name: "worker-0", status: "Pending", health: "attention", restarts: 0 },
-      { ...baseResource, name: "job-0", status: "Failed", ready: "False", health: "degraded", restarts: 1 },
-      { ...baseResource, name: "cache-0", status: "Running", ready: "True", health: "restarted", restarts: 2 },
+      { ...baseResource, name: "api-0", status: "Running", ready: "True", health: "healthy", healthAssessment: assessment("healthy"), restarts: 0 },
+      { ...baseResource, name: "worker-0", status: "Pending", health: "attention", healthAssessment: assessment("needsAttention"), restarts: 0 },
+      { ...baseResource, name: "job-0", status: "Failed", ready: "False", health: "degraded", healthAssessment: assessment("degraded"), restarts: 1 },
+      { ...baseResource, name: "cache-0", status: "Running", ready: "True", health: "restarted", healthAssessment: assessment("healthy"), restarts: 2 },
     ];
 
     expect(filterResourcesByHealth(resources, "all")).toEqual(resources);
-    expect(filterResourcesByHealth(resources, "healthy").map((r) => r.name)).toEqual(["api-0"]);
+    expect(filterResourcesByHealth(resources, "healthy").map((r) => r.name)).toEqual(["api-0", "cache-0"]);
     expect(filterResourcesByHealth(resources, "attention").map((r) => r.name)).toEqual(["worker-0"]);
     expect(filterResourcesByHealth(resources, "degraded").map((r) => r.name)).toEqual(["job-0"]);
-    expect(filterResourcesByHealth(resources, "restarted").map((r) => r.name)).toEqual(["cache-0"]);
+    expect(filterResourcesByHealth(resources, "restarted").map((r) => r.name)).toEqual(["job-0", "cache-0"]);
   });
 
   test("builds fetch keys for namespaced and cluster-scoped kinds", () => {

@@ -13,6 +13,7 @@
 	} from "lucide-svelte";
 	import { parse, stringify } from "yaml";
 	import YamlCodeEditor from "@/components/YamlCodeEditor.svelte";
+	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -344,6 +345,9 @@
 			matchingSummary?.syncStatus ??
 			"Unknown",
 	);
+	const healthAssessment = $derived(
+		matchingSummary?.healthAssessment ?? resourceSummary.healthAssessment,
+	);
 	const resolvedRevision = $derived(
 		statusValue(inspector.data?.status, "sync", "revision") ??
 			matchingSummary?.sources?.[0]?.resolvedRevision ??
@@ -409,7 +413,10 @@
 				booleanAt(applicationSpec, "syncPolicy", "automated", "selfHeal") ? "self-heal" : null,
 			].filter(Boolean).join(" · "),
 	);
-	const loading = $derived(inspectionReadSpec.enabled && inspector.isPending);
+	const loading = $derived(
+		(active && statusReadSpec.enabled && statuses.isPending) ||
+			(inspectionReadSpec.enabled && inspector.isPending),
+	);
 	const dataError = $derived(inspector.isError ? inspector.error : null);
 	const snapshotFreshness = $derived(
 		inspector.data?.connectedFallback
@@ -782,9 +789,13 @@
 							{#if inspector.data?.provenance} · {inspector.data.provenance}{/if}
 						</Badge>
 					</div>
+					<div class="mt-2">
+						<HealthAssessmentBadge assessment={healthAssessment} {loading} details />
+					</div>
 					<div class="mt-2 flex flex-wrap items-center gap-2">
-						<div class="font-heading text-2xl font-semibold tracking-tight">{healthStatus}</div>
-						<Badge variant="outline">{syncStatus}</Badge>
+						<span class="text-xs text-muted-foreground">Raw Argo:</span>
+						<Badge variant="outline">Health {healthStatus}</Badge>
+						<Badge variant="outline">Sync {syncStatus}</Badge>
 						{#if operationStateMessage}<Badge variant="secondary">{operationStateMessage}</Badge>{/if}
 					</div>
 					<div class="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
@@ -829,7 +840,7 @@
 			</div>
 			<div class="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-md border bg-border">
 				{@render SignalCard(counts.needsSync, "Out of sync", "Needs reconciliation")}
-				{@render SignalCard(counts.degraded + counts.progressing, "Attention", "Health is not settled")}
+				{@render SignalCard(counts.degraded + counts.progressing, "Needs attention", "Health is not settled")}
 				{@render SignalCard(counts.prune, "Prune", "No longer in target")}
 			</div>
 		</div>
@@ -988,7 +999,7 @@
 					{/if}
 				</article>
 				{:else}
-					<Empty><EmptyHeader><EmptyTitle>No pending changes</EmptyTitle><EmptyDescription>Inspector reports no out-of-sync, unhealthy, progressing, or removal resources.</EmptyDescription></EmptyHeader></Empty>
+					<Empty><EmptyHeader><EmptyTitle>No pending changes</EmptyTitle><EmptyDescription>Inspector reports no out-of-sync, degraded, progressing, or removal resources.</EmptyDescription></EmptyHeader></Empty>
 				{/each}
 			{/if}
 		</div>

@@ -49,16 +49,21 @@ describe("sidebar namespace tree helpers", () => {
 
 		expect(countTreeNodes([deep])).toBeGreaterThan(20);
 		expect(deep.children?.at(-1)?.label).toBe("Custom Resources");
-		expect(deep.children?.at(-1)?.children?.length).toBe(10);
+		expect(deep.children?.at(-1)?.children?.[0]?.label).toBe("example.com");
+		expect(deep.children?.at(-1)?.children?.[0]?.children?.length).toBe(10);
 	});
 
-	test("uses the same selection path for sidebar rows and chevrons", () => {
+	test("expands chevrons without replacing the selected scope", () => {
 		const source = readFileSync("src/app/svelte/SidebarTreeNode.svelte", "utf8");
+		const selectStart = source.indexOf("function selectNode");
 		const toggleStart = source.indexOf("function toggleNode");
+		const selectSource = source.slice(selectStart, toggleStart);
 		const toggleEnd = source.indexOf("function handleKeydown", toggleStart);
 		const toggleSource = source.slice(toggleStart, toggleEnd);
 
-		expect(toggleSource).toContain("onNodeSelect(node.id)");
+		expect(selectSource).toContain("if (node.selectable !== false) onNodeSelect(node.id)");
+		expect(selectSource).toContain("if (hasChildren) onSectionToggle(id)");
+		expect(toggleSource).not.toContain("onNodeSelect(node.id)");
 		expect(toggleSource).toContain("onSectionToggle(id)");
 		expect(source).toContain("onclick={selectNode}");
 		expect(source).toContain("onclick={toggleNode}");

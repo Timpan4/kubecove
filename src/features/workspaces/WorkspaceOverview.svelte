@@ -34,6 +34,7 @@
 		buildWorkspaceFetchKeys,
 		buildWorkspaceFetchPlans,
 		fetchWorkspaceResources,
+		WorkspaceResourceLoadError,
 	} from "@/features/workspaces/query";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
@@ -144,9 +145,13 @@
 	const workspaceFetchCoverage = $derived(
 		buildWorkspaceFetchPlans(workspace.scope, availableNamespaces),
 	);
+	const resourceQueryKey = $derived(
+		queryKeys.resources(workspaceContextKey, workspaceFetchKeys, kubeconfigSourceKey),
+	);
+	const resourceQueryIdentity = $derived(JSON.stringify(resourceQueryKey));
 
 	const resourcesQuery = createQuery(() => ({
-		queryKey: queryKeys.resources(workspaceContextKey, workspaceFetchKeys, kubeconfigSourceKey),
+		queryKey: resourceQueryKey,
 		queryFn: () => fetchWorkspaceResources(workspace.scope, availableNamespaces, kubeconfigSourceKey),
 		enabled:
 			sourceReady &&
@@ -155,6 +160,22 @@
 			!kindsQuery.isPending,
 		staleTime: 30_000,
 	}));
+	let successfulResourceRetryKey = $state<string | null>(null);
+	const failedResourceTarget = $derived(
+		resourcesQuery.error instanceof WorkspaceResourceLoadError
+			? resourcesQuery.error.clusterContexts
+					.map((context) => `context "${context}"`)
+					.join(", ")
+			: `context "${workspace.scope.clusterContext}"`,
+	);
+	async function retryWorkspaceResources() {
+		const retryKey = resourceQueryIdentity;
+		successfulResourceRetryKey = null;
+		const result = await resourcesQuery.refetch();
+		if (result.isSuccess && resourceQueryIdentity === retryKey) {
+			successfulResourceRetryKey = retryKey;
+		}
+	}
 	const rows = $derived(resourcesQuery.data ?? []);
 	const entryPoints = $derived(normalizeEntryPoints(workspace.entryPoints));
 	$effect(() => {
@@ -163,9 +184,8 @@
 		}
 	});
 	const health = $derived(buildWorkspaceHealthSummary(rows));
-	const unhealthyCount = $derived(health.attention + health.degraded);
 	const hasIncidentShortcuts = $derived(
-		unhealthyCount > 0 || health.attention > 0 || health.restarted > 0,
+		health.attention > 0 || health.degraded > 0 || health.restartEvidence > 0,
 	);
 
 	const argoDetectedQuery = createQuery(() => ({
@@ -292,12 +312,13 @@
 			<CardDescription>Live status across saved workspace scope.</CardDescription>
 		</CardHeader>
 		<CardContent class="grid gap-3 pt-3">
-			<div class="grid grid-cols-2 gap-2 md:grid-cols-5">
+			<div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
 				{@render Metric("Total", health.total)}
 				{@render Metric("Healthy", health.healthy, "text-emerald-300")}
 				{@render Metric("Needs attention", health.attention, "text-amber-300")}
 				{@render Metric("Degraded", health.degraded, "text-red-300")}
-				{@render Metric("Restarted", health.restarted, "text-sky-300")}
+				{@render Metric("Unknown", health.unknown)}
+				{@render Metric("Not evaluated", health.notEvaluated)}
 			</div>
 
 			{#if resourcesQuery.isPending}
@@ -305,23 +326,38 @@
 					<Spinner class="size-4" /> Loading workspace health...
 				</div>
 			{:else if resourcesQuery.isError}
-				<FriendlyError
-					mode="compact"
-					error={resourcesQuery.error}
-					context={{
-						operation: "resourcesLoad",
-						fallbackTitle: "Failed to refresh workspace resources",
-						partial: true,
-					}}
-				/>
+				<div class="grid gap-2">
+					<FriendlyError
+						error={resourcesQuery.error}
+						context={{
+							operation: "resourcesLoad",
+							fallbackTitle: "Failed to refresh workspace resources",
+							target: failedResourceTarget,
+							partial: true,
+						}}
+					/>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={resourcesQuery.isFetching}
+						onclick={() => void retryWorkspaceResources()}
+					>
+						{resourcesQuery.isFetching ? "Retrying workspace resources..." : "Retry workspace resources"}
+					</Button>
+				</div>
+			{:else if successfulResourceRetryKey === resourceQueryIdentity}
+				<p role="status" class="text-xs text-emerald-300">
+					Workspace resources loaded successfully after retry.
+				</p>
 			{/if}
 
 			{#if hasIncidentShortcuts}
 				<div class="flex flex-wrap items-center gap-2 border-t pt-3">
 					<span class="mr-1 text-xs font-medium text-muted-foreground">Incident shortcuts</span>
-				{@render IncidentShortcutButton("Unhealthy", unhealthyCount, "unhealthy", onOpenIncidents)}
-				{@render IncidentShortcutButton("Warnings", health.attention, "attention", onOpenIncidents)}
-				{@render IncidentShortcutButton("Restarted", health.restarted, "restarted", onOpenIncidents)}
+				{@render IncidentShortcutButton("Degraded", health.degraded, "degraded", onOpenIncidents)}
+				{@render IncidentShortcutButton("Needs attention", health.attention, "attention", onOpenIncidents)}
+				{@render IncidentShortcutButton("Restart evidence", health.restartEvidence, "restarted", onOpenIncidents)}
 				</div>
 			{/if}
 		</CardContent>
@@ -519,12 +555,20 @@
 
 {#snippet CompareSide(
 	label: string,
-	health: { total: number; healthy: number; attention: number; degraded: number; restarted: number },
+	health: {
+		total: number;
+		healthy: number;
+		attention: number;
+		degraded: number;
+		unknown: number;
+		notEvaluated: number;
+		restartEvidence: number;
+	},
 )}
 	<div class="rounded border bg-background p-2">
 		<div class="truncate font-medium">{label}</div>
 		<div class="mt-1 text-muted-foreground">
-			{health.total} total / {health.healthy} healthy / {health.degraded + health.attention} flagged
+			{health.total} total / {health.healthy} healthy / {health.degraded} degraded / {health.attention} need attention
 		</div>
 	</div>
 {/snippet}

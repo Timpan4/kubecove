@@ -166,6 +166,7 @@ export function resourceFromEntryPoint(entry: WorkspaceEntryPoint): ResourceSumm
 		namespace: entry.namespace ?? null,
 		age: "",
 		health: "unknown",
+		healthAssessment: null,
 		apiVersion: entry.apiVersion,
 	};
 }

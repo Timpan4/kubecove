@@ -30,12 +30,14 @@
 		expandedSections,
 		onNodeSelect,
 		onSectionToggle,
+		scrollTop = $bindable(0),
 	}: {
 		workspaceReadContext: WorkspaceReadContext;
 		selectedNode: TreeNodeId | null;
 		expandedSections: string[];
 		onNodeSelect: (id: TreeNodeId) => void;
 		onSectionToggle: (id: string) => void;
+		scrollTop?: number;
 	} = $props();
 
 	const client = createTauriClient();
@@ -140,6 +142,7 @@
 		}
 		return pending;
 	});
+	let customResourceSearch = $state("");
 	function getLazyChildren(node: TreeNode) {
 		if (node.id.type !== "namespace" || !node.id.namespace) return node.children;
 		if (!showCustomResources) return node.children;
@@ -181,6 +184,7 @@
 		resourceKindsError,
 		showUnavailableGitOpsProviders,
 		showCustomResources,
+		customResourceSearch,
 	}));
 </script>
 
@@ -201,7 +205,7 @@
 			}}
 		/>
 	{/if}
-	<ScrollArea class="min-h-0 flex-1">
+	<ScrollArea class="min-h-0 flex-1" bind:scrollTop>
 		<nav class="py-2" aria-label="Kubernetes resource tree">
 			<ul class="m-0 list-none p-0" role="tree">
 				{#each nodes as node (nodeIdToString(node.id))}
@@ -213,6 +217,8 @@
 						{onNodeSelect}
 						{onSectionToggle}
 						{getLazyChildren}
+						{customResourceSearch}
+						onCustomResourceSearchChange={(value) => (customResourceSearch = value)}
 					/>
 				{/each}
 			</ul>

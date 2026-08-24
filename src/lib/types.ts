@@ -32,6 +32,7 @@ export interface ResourceSummary {
 	namespaced?: boolean;
 	dynamic?: boolean;
 	health: ResourceHealth;
+	healthAssessment?: import("./health-types").HealthAssessment | null;
 	createdAt?: string;
 	status?: string;
 	ready?: string;
@@ -182,6 +183,7 @@ export type ResourceHealth =
 	| "degraded"
 	| "restarted"
 	| "unknown";
+
 export type TopologyHealth = ResourceHealth;
 
 export type TopologyMode = "ownership" | "networkFlow";
@@ -236,17 +238,21 @@ export type IncidentSeverity =
 	| "restarted"
 	| "warning";
 
+export type IncidentSignalState = "active" | "resolved" | "historical";
+
 export interface IncidentSignalSummary {
 	kind: string;
 	label: string;
 	message: string;
 	source: string;
+	state?: IncidentSignalState;
 	lastSeenAt?: string;
 }
 
 export interface IncidentCockpitItem {
 	resource: ResourceSummary;
 	severity: IncidentSeverity;
+	state?: IncidentSignalState;
 	signals: IncidentSignalSummary[];
 	warningEventCount: number;
 	latestSignalAt?: string;
@@ -267,6 +273,7 @@ export interface DiscoveredResourceKind {
 	apiVersion: string;
 	kind: string;
 	plural: string;
+	shortNames?: string[];
 	namespaced: boolean;
 }
 
@@ -581,6 +588,7 @@ export type AnyKind = SupportedKind | ClusterScopedKind;
 export type ResourceKindSelection = AnyKind | DiscoveredResourceKind;
 
 export type * from "./gitops-types";
+export type * from "./health-types";
 export type * from "./helm-types";
 
 export type * from "./rbac-types";

@@ -26,6 +26,7 @@
 		Table2,
 	} from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
+	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import {
 		Badge,
 		Button,
@@ -58,6 +59,7 @@
 	import { normalizeArgoConnectionPreference } from "@/lib/argo-connection-policy";
 	import { diagnosticLog } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
+	import { resourceHealthAssessment } from "@/lib/resource-health";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
 	import type { ChipVariant } from "@/features/argo/status";
 	import ArgoApplicationWorkspaceHeader from "@/features/gitops/ArgoApplicationWorkspaceHeader.svelte";
@@ -119,7 +121,6 @@
 		resourceIdentityKey,
 		resourceSelectionKey,
 		mergeWatchKeys,
-		resourceStatusTone,
 		shouldDropWarmupWatchEvent,
 		topologyWatchKeys,
 		watchKeysFromFetchKeys,
@@ -131,6 +132,8 @@
 		allKindOptions,
 		buildResourceTableModel,
 		buildResourceTableProjection,
+		filterResourcesByKinds,
+		filterTopologyByKinds,
 		initialOwnershipMapOpen,
 		kindSelectionKey,
 		nextNamespaceSelection,
@@ -148,6 +151,7 @@
 		initialNamespaces,
 		initialKinds,
 		availableKinds = initialKinds,
+		kindScopeLocked = false,
 		customResourcesEnabled = true,
 		customResourcesStatus = null,
 		initialSearch = "",
@@ -169,6 +173,7 @@
 		initialNamespaces: string[];
 		initialKinds: ResourceKindSelection[];
 		availableKinds?: ResourceKindSelection[];
+		kindScopeLocked?: boolean;
 		customResourcesEnabled?: boolean;
 		customResourcesStatus?: string | null;
 		initialSearch?: string;
@@ -267,7 +272,7 @@
 	);
 	$effect(() => {
 		if (appliedScopeKey === incomingScopeKey) return;
-		const pathState = initialPathStateConsumed ? null : initialPathState;
+		const pathState = initialPathStateConsumed || kindScopeLocked ? null : initialPathState;
 		selectedNamespaces = pathState ? [...pathState.selectedNamespaces] : [...initialNamespaces];
 		selectedKinds = pathState ? [...pathState.selectedKinds] : [...initialKinds];
 		appliedScopeKey = incomingScopeKey;
@@ -428,6 +433,11 @@
 		staleTime: 30_000,
 	}));
 	$effect(() => {
+		if (kindScopeLocked) {
+			selectedKinds = [...initialKinds];
+			appliedAvailableKindsKey = availableKindsKey;
+			return;
+		}
 		if (!customResourcesEnabled) {
 			const nativeKinds = selectedKinds.filter((kind) => typeof kind === "string");
 			if (nativeKinds.length !== selectedKinds.length) selectedKinds = nativeKinds;
@@ -570,13 +580,18 @@
 
 	const namespaceOptions = $derived(namespacesQuery.data ?? []);
 	const kindOptions = $derived(
-		allKindOptions(customResourcesEnabled ? (resourceKindsQuery.data ?? []) : []),
+		kindScopeLocked
+			? [...initialKinds]
+			: allKindOptions(customResourcesEnabled ? (resourceKindsQuery.data ?? []) : []),
 	);
 	const selectedNamespaceSet = $derived(new Set(selectedNamespaces));
 	const selectedKindSet = $derived(new Set(selectedKinds.map(kindSelectionKey)));
 	const metricsIndex = $derived(resourceMetricIndex(metricsQuery.data));
+	const scopedRows = $derived(
+		filterResourcesByKinds(resourcesQuery.data ?? [], selectedKinds),
+	);
 	const rowsWithMetrics = $derived(
-		mergeResourceMetrics(resourcesQuery.data ?? [], metricsQuery.data, metricsIndex),
+		mergeResourceMetrics(scopedRows, metricsQuery.data, metricsIndex),
 	);
 	const focusedArgoResources = $derived(
 		focusedArgoInspectorQuery.data?.resources ?? [],
@@ -607,13 +622,21 @@
 		focusedArgoInspectorQuery.isError ? focusedArgoInspectorQuery.error : null,
 	);
 	const focusedArgoLoading = $derived(
-		focusedArgoInspectionReadSpec.enabled && focusedArgoInspectorQuery.isPending,
+		(sourceReady &&
+			gitOpsFocusApplication !== null &&
+			focusedArgoStatusReadSpec.enabled &&
+			focusedArgoStatuses.isPending) ||
+			(focusedArgoInspectionReadSpec.enabled && focusedArgoInspectorQuery.isPending),
 	);
 	const focusedArgoRefreshing = $derived(
 		!focusedArgoLoading && focusedArgoInspectorQuery.isFetching,
 	);
 	const topologyWithMetrics = $derived(
-		mergeTopologyMetrics(topologyQuery.data, metricsQuery.data, metricsIndex),
+		mergeTopologyMetrics(
+			filterTopologyByKinds(topologyQuery.data, selectedKinds),
+			metricsQuery.data,
+			metricsIndex,
+		),
 	);
 	const tableModel = $derived(
 		buildResourceTableModel(
@@ -1049,6 +1072,7 @@
 		</div>
 	{:else}
 		<ResourceBrowserTopBar
+			{kindScopeLocked}
 			selectedNamespaces={selectedNamespaces}
 			selectedKinds={selectedKinds}
 			namespaceOptions={namespaceOptions}
@@ -1319,13 +1343,11 @@
 												<TableCell>{row.namespace ?? EMPTY_CELL}</TableCell>
 												<TableCell>{row.kind}</TableCell>
 												<TableCell>
+													<HealthAssessmentBadge assessment={resourceHealthAssessment(row)} />
 													{#if row.status}
-														{@const statusTone = resourceStatusTone(row.status)}
-														<Badge variant={statusBadgeVariant(statusTone)} class={statusBadgeClass(statusTone)}>
-															{row.status}
-														</Badge>
-													{:else}
-														{EMPTY_CELL}
+														<div class="mt-1 truncate text-[0.6875rem] text-muted-foreground" title={row.status}>
+															Raw: {row.status}
+														</div>
 													{/if}
 												</TableCell>
 												{#if tableModel.columnVisibility.ready}

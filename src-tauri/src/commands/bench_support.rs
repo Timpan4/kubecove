@@ -112,6 +112,7 @@ pub fn build_bench_topology(inputs: &[BenchTopologyInput]) -> ResourceTopology {
                 namespaced: Some(true),
                 dynamic: None,
                 health: ResourceHealth::Healthy,
+                health_assessment: crate::models::HealthAssessment::default(),
                 created_at: None,
                 status: Some("Running".to_string()),
                 ready: Some("True".to_string()),
@@ -138,6 +139,7 @@ pub fn sample_custom_resource_kinds(count: usize) -> Vec<DiscoveredResourceKind>
             api_version: format!("{group}/v1"),
             kind: kind.clone(),
             plural: format!("managedthings{index}"),
+            short_names: vec![format!("mt{index}")],
             namespaced: index % 7 != 0,
         };
         kinds.push(resource_kind.clone());
@@ -300,6 +302,7 @@ fn resource_summary(
         namespaced: Some(namespaced),
         dynamic: Some(dynamic),
         health: ResourceHealth::Healthy,
+        health_assessment: crate::models::HealthAssessment::default(),
         created_at: None,
         status: Some("Running".to_string()),
         ready: Some("True".to_string()),

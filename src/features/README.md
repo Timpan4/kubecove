@@ -7,12 +7,13 @@ Current areas:
 - `app-updates/`
 - `argo/`
 - `command-palette/`
+- `gitops/`
 - `helm/`
+- `incidents/`
 - `live-sessions/`
 - `rbac/`
 - `resource-detail/`
 - `resources/`
-- `settings/`
 - `workspaces/`
 
 Import across features only through a public entry point when one exists. Do not deep-import private helpers from another feature.

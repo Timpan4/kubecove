@@ -26,6 +26,13 @@ function resource(
 	name: string,
 	owner?: Partial<ResourceSummary>,
 ): ResourceSummary {
+	const state = owner?.health === "degraded"
+		? "degraded"
+		: owner?.health === "attention"
+			? "needsAttention"
+			: owner?.health === "unknown"
+				? "unknown"
+				: "healthy";
 	return {
 		kind: "Deployment",
 		cluster: "kind-kind",
@@ -34,6 +41,13 @@ function resource(
 		age: "1m",
 		apiVersion: "apps/v1",
 		health: "healthy",
+		healthAssessment: {
+			state,
+			completeness: "complete",
+			winningSources: ["kubernetes"],
+			reasons: [`Test Kubernetes state is ${state}`],
+			evidence: [{ source: "kubernetes", raw: state, state, current: true, reason: `Test Kubernetes state is ${state}` }],
+		},
 		...owner,
 	};
 }
@@ -242,7 +256,7 @@ describe("resource health helpers", () => {
 		expect(filterResourcesByHealth([pod], "healthy")).toEqual([pod]);
 	});
 
-	test("keeps restarted as tracked but outside unhealthy filters", () => {
+	test("keeps restart evidence separate from canonical health", () => {
 		const pod = resource("api-0", {
 			kind: "Pod",
 			apiVersion: "v1",
@@ -252,9 +266,8 @@ describe("resource health helpers", () => {
 
 		const summary = buildResourceHealthSummary([pod]);
 
-		expect(summary.restarted).toBe(1);
-		expect(summary.untracked).toBe(0);
-		expect(filterResourcesByHealth([pod], "unhealthy")).toEqual([]);
+		expect(summary.restartEvidence).toBe(1);
+		expect(summary.healthy).toBe(1);
 		expect(filterResourcesByHealth([pod], "restarted")).toEqual([pod]);
 	});
 
@@ -269,8 +282,8 @@ describe("resource health helpers", () => {
 		const summary = buildResourceHealthSummary([pod]);
 
 		expect(summary.degraded).toBe(1);
-		expect(summary.restarted).toBe(0);
-		expect(filterResourcesByHealth([pod], "restarted")).toEqual([]);
+		expect(summary.restartEvidence).toBe(1);
+		expect(filterResourcesByHealth([pod], "restarted")).toEqual([pod]);
 	});
 });
 

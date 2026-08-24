@@ -18,6 +18,22 @@ use kube::{
 use serde_json::{json, Value};
 use std::sync::Arc;
 
+/// Kubernetes-transport fallback only supports a subset of the connected
+/// actions; enforced at preflight and again at execution so a stale or
+/// forged session can never reach the patch builder.
+const KUBERNETES_TRANSPORT_ACTIONS: [&str; 4] = ["refresh", "hardRefresh", "sync", "retry"];
+
+fn ensure_kubernetes_transport_action(action: &str) -> Result<(), AppError> {
+    if KUBERNETES_TRANSPORT_ACTIONS.contains(&action) {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            "operation unavailable in Kubernetes fallback",
+            "argoOperationUnavailable",
+        ))
+    }
+}
+
 fn valid(request: &ArgoOperationRequest) -> Result<(), AppError> {
     if !matches!(request.transport.as_str(), "connected" | "kubernetes") {
         return Err(AppError::new(
@@ -76,15 +92,7 @@ pub async fn preflight_argo_operation(
 ) -> Result<ArgoOperationPreflight, AppError> {
     valid(&request)?;
     if request.transport == "kubernetes" {
-        if !matches!(
-            request.action.as_str(),
-            "refresh" | "hardRefresh" | "sync" | "retry"
-        ) {
-            return Err(AppError::new(
-                "operation unavailable in Kubernetes fallback",
-                "argoOperationUnavailable",
-            ));
-        }
+        ensure_kubernetes_transport_action(&request.action)?;
         fallback_allowed(&request).await?;
     }
     let (resolved_request, connection_generation, connection_instance_id) =
@@ -259,7 +267,12 @@ async fn run_connected_operation(
         "rollback" => application_path(&request.application, "/rollback", None),
         "terminate" => application_path(&request.application, "/operation", None),
         "resourceAction" => application_path(&request.application, "/resource/actions/v2", None),
-        _ => unreachable!(),
+        _ => {
+            return Err(AppError::new(
+                "operation is not allowlisted",
+                "argoOperationUnavailable",
+            ))
+        }
     };
     let value = if request.action == "refresh" || request.action == "hardRefresh" {
         api_get(&lease.connection, &path).await?
@@ -578,6 +591,7 @@ async fn kubernetes_operation(
     client: Client,
     resource: ApiResource,
 ) -> Result<ArgoOperationResult, AppError> {
+    ensure_kubernetes_transport_action(&request.action)?;
     let api = Api::<DynamicObject>::namespaced_with(
         client,
         request.application.namespace.as_deref().expect("validated"),
@@ -597,7 +611,12 @@ async fn kubernetes_operation(
         "sync" | "retry" => {
             json!({"metadata":metadata,"operation":{"sync":kubernetes_sync_payload(&request)}})
         }
-        _ => unreachable!(),
+        _ => {
+            return Err(AppError::new(
+                "operation unavailable in Kubernetes fallback",
+                "argoOperationUnavailable",
+            ))
+        }
     };
     api.patch(
         &request.application.name,
@@ -1266,5 +1285,21 @@ mod tests {
             connected_payload(&request),
             json!({"name":"app","appNamespace":"argo","project":"default","id":4,"prune":true,"dryRun":false})
         );
+    }
+}
+
+#[cfg(test)]
+mod kubernetes_transport_gate_tests {
+    use super::*;
+
+    #[test]
+    fn kubernetes_transport_allows_only_fallback_actions() {
+        for action in KUBERNETES_TRANSPORT_ACTIONS {
+            assert!(ensure_kubernetes_transport_action(action).is_ok());
+        }
+        for action in ["rollback", "terminate", "resourceAction", ""] {
+            let error = ensure_kubernetes_transport_action(action).unwrap_err();
+            assert_eq!(error.kind, "argoOperationUnavailable");
+        }
     }
 }

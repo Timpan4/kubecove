@@ -20,6 +20,7 @@ import type {
 	ArgoApplicationSummary,
 	ArgoAppProjectSummary,
 	FluxResourceSummary,
+	HealthAssessment,
 	HelmReconciliationResource,
 	HelmReleaseSummary,
 	RbacBindingSummary,
@@ -29,6 +30,25 @@ import type {
 	ResourceSummary,
 	ServiceAccountSummary,
 } from "@/lib/types";
+
+function fluxHealthAssessment(readyStatus: "False" | "True"): HealthAssessment {
+	const state = readyStatus === "True" ? "healthy" : "degraded";
+	return {
+		state,
+		completeness: "complete",
+		winningSources: ["kubernetes"],
+		reasons: [`Ready=${readyStatus}`],
+		evidence: [
+			{
+				source: "kubernetes",
+				raw: { type: "Ready", status: readyStatus },
+				state,
+				current: true,
+				reason: `Ready=${readyStatus}`,
+			},
+		],
+	};
+}
 
 function risks(index: number): RbacRiskIndicator[] {
 	return index % 7 === 0
@@ -149,27 +169,31 @@ const projects: ArgoAppProjectSummary[] = Array.from(
 );
 const flux: FluxResourceSummary[] = Array.from(
 	{ length: 2_500 },
-	(_, index) => ({
-		cluster: "prod",
-		name: `kustomization-${index}`,
-		namespace: `namespace-${index % 100}`,
-		age: "1m",
-		resourceKind: {
-			group: "kustomize.toolkit.fluxcd.io",
-			version: "v1",
-			apiVersion: "kustomize.toolkit.fluxcd.io/v1",
-			kind: "Kustomization",
-			plural: "kustomizations",
-			namespaced: true,
-			category: "Kustomize",
-		},
-		readyStatus: index % 9 === 0 ? "False" : "True",
-		sourceKind: "GitRepository",
-		sourceName: `repository-${index % 100}`,
-		lastAppliedRevision: `revision-${index}`,
-		message: index % 9 === 0 ? "Reconciliation failed" : "Applied",
-		inventory: [],
-	}),
+	(_, index) => {
+		const readyStatus = index % 9 === 0 ? "False" : "True";
+		return {
+			cluster: "prod",
+			name: `kustomization-${index}`,
+			namespace: `namespace-${index % 100}`,
+			age: "1m",
+			resourceKind: {
+				group: "kustomize.toolkit.fluxcd.io",
+				version: "v1",
+				apiVersion: "kustomize.toolkit.fluxcd.io/v1",
+				kind: "Kustomization",
+				plural: "kustomizations",
+				namespaced: true,
+				category: "Kustomize",
+			},
+			healthAssessment: fluxHealthAssessment(readyStatus),
+			readyStatus,
+			sourceKind: "GitRepository",
+			sourceName: `repository-${index % 100}`,
+			lastAppliedRevision: `revision-${index}`,
+			message: index % 9 === 0 ? "Reconciliation failed" : "Applied",
+			inventory: [],
+		};
+	},
 );
 const gitOpsData: GitOpsData = {
 	argoDetected: true,

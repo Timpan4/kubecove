@@ -19,6 +19,7 @@ fn resource(name: &str, namespace: &str) -> ResourceSummary {
         namespaced: None,
         dynamic: None,
         health: crate::models::ResourceHealth::Unknown,
+        health_assessment: crate::models::HealthAssessment::default(),
         created_at: None,
         status: None,
         ready: None,
@@ -38,6 +39,7 @@ fn custom_kind(kind: &str) -> DiscoveredResourceKind {
         api_version: "example.com/v1".to_string(),
         kind: kind.to_string(),
         plural: format!("{}s", kind.to_lowercase()),
+        short_names: Vec::new(),
         namespaced: true,
     }
 }

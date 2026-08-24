@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import { ArrowRight, ExternalLink, ShieldAlert } from "lucide-svelte";
 	import {
 		Badge,
@@ -51,7 +52,7 @@
 	}
 </script>
 
-<section class="min-w-0 rounded-md border bg-surface-1 @4xl:h-full @4xl:min-h-0 @4xl:overflow-y-auto">
+<section data-incident-guide class="min-w-0 rounded-md border bg-surface-1 @5xl:h-full @5xl:min-h-0 @5xl:overflow-y-auto">
 	{#if selectedIncident && guidance}
 		<header class="border-b px-4 py-3">
 			<div class="flex flex-wrap items-start justify-between gap-3">
@@ -76,6 +77,9 @@
 				</div>
 			</div>
 			<p class="mt-3 max-w-4xl text-sm leading-relaxed">{guidance.summary}</p>
+			<div class="mt-3">
+				<HealthAssessmentBadge assessment={selectedIncident.resource.healthAssessment} details />
+			</div>
 		</header>
 
 		<div class="grid gap-3 p-4">
@@ -168,6 +172,7 @@
 								</div>
 								<Button
 									type="button"
+									data-incident-investigation-step
 									variant="outline"
 									size="sm"
 									class="self-start"
@@ -180,6 +185,7 @@
 						{:else}
 							<Button
 								type="button"
+								data-incident-investigation-step
 								variant="outline"
 								size="sm"
 								onclick={() => onResourceInspect(step.target, step.tab)}
@@ -217,6 +223,7 @@
 								</div>
 								<Button
 									type="button"
+									data-incident-remediation
 									variant={action.tone === "destructive" ? "destructive" : "outline"}
 									size="sm"
 									class="self-start"

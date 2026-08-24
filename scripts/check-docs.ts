@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, extname, relative, resolve } from "node:path";
+import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
 
 type Source = { path: string; text: string };
 type Link = { target: string; anchor: string; index: number };
@@ -66,6 +66,11 @@ function decoded(path: string): string {
 	}
 }
 
+function isWithin(directory: string, path: string): boolean {
+	const fromDirectory = relative(directory, path);
+	return fromDirectory !== "" && fromDirectory !== ".." && !fromDirectory.startsWith(`..${sep}`) && !isAbsolute(fromDirectory);
+}
+
 function targetPath(root: string, source: string, target: string): string | undefined {
 	if (!target) return source;
 	const wiki = target.match(wikiUrl);
@@ -103,10 +108,10 @@ export function checkDocs(root = process.cwd()): string[] {
 	for (const source of sources) {
 		const sourceLabel = relative(root, source.path);
 		const h1s = [...withoutFences(source.text).matchAll(/^#\s+.+$/gm)];
-		if (source.path.startsWith(`${wikiDirectory}/`) && h1s.length !== 1) {
+		if (isWithin(wikiDirectory, source.path) && h1s.length !== 1) {
 			errors.push(`${sourceLabel}: expected exactly one H1, found ${h1s.length}`);
 		}
-		const versionedPage = source.path === resolve(root, "README.md") || source.path.startsWith(`${wikiDirectory}/`);
+		const versionedPage = source.path === resolve(root, "README.md") || isWithin(wikiDirectory, source.path);
 		const currentSource = source.text.match(/\bcurrent[- ]source\b/i);
 		if (versionedPage && currentSource) {
 			errors.push(`${sourceLabel}:${lineAt(source.text, currentSource.index ?? 0)}: remove "current source" wording`);
@@ -139,10 +144,10 @@ export function checkDocs(root = process.cwd()): string[] {
 					errors.push(`${label}: missing anchor #${link.anchor} in ${relative(root, path)}`);
 				}
 			}
-			if (path.startsWith(`${resolve(root, "docs/assets/wiki")}/`)) {
+			if (isWithin(resolve(root, "docs/assets/wiki"), path)) {
 				assetReferences.add(relative(root, path));
 			}
-			if (source.path === sidebar && path.startsWith(`${wikiDirectory}/`) && path.endsWith(".md") && path !== sidebar) {
+			if (source.path === sidebar && isWithin(wikiDirectory, path) && path.endsWith(".md") && path !== sidebar) {
 				sidebarReferences.set(path, (sidebarReferences.get(path) ?? 0) + 1);
 			}
 		}

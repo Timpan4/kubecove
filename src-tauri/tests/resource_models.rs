@@ -67,6 +67,7 @@ fn test_resource_summary_serde() {
         namespaced: None,
         dynamic: None,
         health: ResourceHealth::Unknown,
+        health_assessment: Default::default(),
         created_at: None,
         status: None,
         ready: None,
@@ -130,6 +131,7 @@ fn test_resource_details_full_serde() {
         namespaced: None,
         dynamic: None,
         health: ResourceHealth::Unknown,
+        health_assessment: Default::default(),
         created_at: None,
         status: None,
         ready: None,
@@ -237,13 +239,22 @@ fn test_discovered_resource_kind_serde() {
         api_version: "apps/v1".to_string(),
         kind: "Deployment".to_string(),
         plural: "deployments".to_string(),
+        short_names: vec!["deploy".to_string()],
         namespaced: true,
     };
     let json_val = serde_json::to_value(&kind).unwrap();
     assert_eq!(json_val["apiVersion"], "apps/v1");
+    assert_eq!(json_val["shortNames"], json!(["deploy"]));
     assert_eq!(json_val["namespaced"], true);
-    let parsed: DiscoveredResourceKind = serde_json::from_value(json_val).unwrap();
+    let parsed: DiscoveredResourceKind = serde_json::from_value(json_val.clone()).unwrap();
     assert_eq!(parsed.kind, "Deployment");
+    let mut legacy = json_val;
+    legacy
+        .as_object_mut()
+        .expect("discovered kind object")
+        .remove("shortNames");
+    let parsed: DiscoveredResourceKind = serde_json::from_value(legacy).unwrap();
+    assert!(parsed.short_names.is_empty());
 }
 
 #[test]
@@ -254,6 +265,7 @@ fn test_crd_discovered_resource_kind_serde() {
         api_version: "apiextensions.k8s.io/v1".to_string(),
         kind: "CustomResourceDefinition".to_string(),
         plural: "customresourcedefinitions".to_string(),
+        short_names: vec!["crd".to_string()],
         namespaced: false,
     };
     let json_val = serde_json::to_value(&kind).unwrap();
@@ -280,6 +292,7 @@ fn test_dynamic_resource_summary_fields_serde() {
         namespaced: Some(true),
         dynamic: Some(true),
         health: ResourceHealth::Healthy,
+        health_assessment: Default::default(),
         created_at: None,
         status: Some("Running".to_string()),
         ready: None,
@@ -315,6 +328,7 @@ fn test_argo_application_models_serde() {
         project: Some("default".to_string()),
         sync_status: Some("Synced".to_string()),
         health_status: Some("Healthy".to_string()),
+        health_assessment: Default::default(),
         destination_namespace: Some("payments".to_string()),
         destination_server: Some("https://kubernetes.default.svc".to_string()),
         source_repo: Some("https://example.invalid/repo.git".to_string()),
@@ -363,6 +377,7 @@ fn test_argo_appset_models_serde() {
         status: Some("ResourcesUpToDate".to_string()),
         sync_status: Some("Synced".to_string()),
         health_status: Some("Healthy".to_string()),
+        health_assessment: Default::default(),
         destination_namespace: Some("payments".to_string()),
         destination_server: Some("https://kubernetes.default.svc".to_string()),
         source_repo: Some("https://example.invalid/repo.git".to_string()),
@@ -390,6 +405,7 @@ fn test_argo_appproject_models_serde() {
         namespace: Some("argocd".to_string()),
         description: Some("default project".to_string()),
         status: Some("Healthy".to_string()),
+        health_assessment: Default::default(),
     };
     let details = ArgoAppProjectDetails {
         summary,

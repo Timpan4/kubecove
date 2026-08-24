@@ -15,7 +15,7 @@ bun run check
 
 ## Browser Dev Mock Mode
 
-`bun run tauri dev` starts Vite at `http://localhost:1430`. Opening it in a normal browser runs Svelte with browser-only mock Tauri responses for frontend inspection and automation.
+`bun run tauri dev` starts Bun's frontend dev server at `http://localhost:1430`. Opening it in a normal browser runs Svelte with browser-only mock Tauri responses for frontend inspection and automation.
 
 Tauri webview uses real IPC and Rust Kubernetes commands. On Windows, development exposes Chrome DevTools Protocol at `http://127.0.0.1:9222`; set `KUBECOVE_DEVTOOLS_PORT` before launch to change it. Packaged apps do not expose this endpoint.
 
@@ -29,7 +29,7 @@ Use fast E2E while changing frontend behavior:
 bun run e2e:fast
 ```
 
-It starts Vite, opens Chrome through WDIO, and uses typed development-browser mocks. It neither builds Rust nor contacts Kubernetes.
+It starts Bun's frontend dev server, opens Chrome through WDIO, and uses typed development-browser mocks. It neither builds Rust nor contacts Kubernetes.
 
 Use real E2E for native-command and cluster behavior:
 

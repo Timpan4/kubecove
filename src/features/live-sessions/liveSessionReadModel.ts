@@ -43,16 +43,17 @@ export function buildLiveSessionReadModel(
 				options.kubeconfigSource,
 			)
 		: podExecSessions;
-	const items: LiveSessionReadItem[] = [
-		...visiblePortForwards.map((session) => ({ kind: "portForward" as const, session })),
-		...visiblePodExecSessions.map((session) => ({ kind: "podExec" as const, session })),
-	].toSorted((a, b) => a.session.startedAt.localeCompare(b.session.startedAt));
-	const sortedPortForwards = items.flatMap((item) =>
-		item.kind === "portForward" ? [item.session] : [],
-	);
-	const sortedPodExecSessions = items.flatMap((item) =>
-		item.kind === "podExec" ? [item.session] : [],
-	);
+	const items: LiveSessionReadItem[] = [];
+	for (const session of visiblePortForwards) items.push({ kind: "portForward", session });
+	for (const session of visiblePodExecSessions) items.push({ kind: "podExec", session });
+	items.sort((a, b) => a.session.startedAt.localeCompare(b.session.startedAt));
+
+	const sortedPortForwards: PortForwardSessionSummary[] = [];
+	const sortedPodExecSessions: PodExecSessionSummary[] = [];
+	for (const item of items) {
+		if (item.kind === "portForward") sortedPortForwards.push(item.session);
+		else sortedPodExecSessions.push(item.session);
+	}
 
 	return {
 		portForwards: sortedPortForwards,

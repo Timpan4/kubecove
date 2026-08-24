@@ -15,6 +15,7 @@ export interface ArgoApplicationSummary {
 	project: string | null;
 	syncStatus: string | null;
 	healthStatus: string | null;
+	healthAssessment?: import("./health-types").HealthAssessment;
 	destinationNamespace: string | null;
 	destinationServer: string | null;
 	sourceRepo: string | null;
@@ -228,6 +229,7 @@ export interface ArgoApplicationSetSummary {
 	status: string | null;
 	syncStatus: string | null;
 	healthStatus: string | null;
+	healthAssessment?: import("./health-types").HealthAssessment;
 	destinationNamespace: string | null;
 	destinationServer: string | null;
 	sourceRepo: string | null;
@@ -248,6 +250,7 @@ export interface ArgoAppProjectSummary {
 	createdAt?: string;
 	description: string | null;
 	status: string | null;
+	healthAssessment?: import("./health-types").HealthAssessment;
 }
 
 export interface ArgoAppProjectDetails {
@@ -284,6 +287,7 @@ export interface FluxResourceSummary {
 	age: string;
 	createdAt?: string;
 	resourceKind: FluxResourceKind;
+	healthAssessment: import("./health-types").HealthAssessment;
 	readyStatus?: string;
 	suspended?: boolean;
 	sourceKind?: string;

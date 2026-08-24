@@ -28,6 +28,13 @@ function app(name: string): ArgoApplicationSummary {
 		project: "default",
 		syncStatus: "Synced",
 		healthStatus: "Healthy",
+		healthAssessment: {
+			state: "healthy",
+			completeness: "complete",
+			winningSources: ["argoHealth", "argoSync"],
+			reasons: ["Healthy and synced"],
+			evidence: [],
+		},
 		destinationNamespace: "default",
 		destinationServer: "https://kubernetes.default.svc",
 		sourceRepo: "https://example.test/repo.git",
@@ -48,6 +55,13 @@ function appset(name: string): ArgoApplicationSetSummary {
 		status: "Ready",
 		syncStatus: "Synced",
 		healthStatus: "Healthy",
+		healthAssessment: {
+			state: "healthy",
+			completeness: "complete",
+			winningSources: ["argoHealth", "argoSync"],
+			reasons: ["Healthy and synced"],
+			evidence: [],
+		},
 		destinationNamespace: "default",
 		destinationServer: "https://kubernetes.default.svc",
 		sourceRepo: "https://example.test/repo.git",
@@ -63,6 +77,13 @@ function project(name: string): ArgoAppProjectSummary {
 		age: "1h",
 		description: null,
 		status: "Ready",
+		healthAssessment: {
+			state: "unknown",
+			completeness: "complete",
+			winningSources: ["argoHealth"],
+			reasons: ["Project status is Ready"],
+			evidence: [],
+		},
 	};
 }
 
@@ -85,6 +106,13 @@ function fluxRow(kind: FluxResourceKind, name: string): FluxResourceSummary {
 		namespace: "flux-system",
 		age: "1h",
 		resourceKind: kind,
+		healthAssessment: {
+			state: "healthy",
+			completeness: "complete",
+			winningSources: ["kubernetes"],
+			reasons: ["Flux Ready condition is True"],
+			evidence: [{ source: "kubernetes", raw: "True", state: "healthy", current: true, reason: "Flux Ready condition is True" }],
+		},
 		readyStatus: "True",
 		suspended: false,
 		sourceKind: "GitRepository",

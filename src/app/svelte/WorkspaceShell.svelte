@@ -104,7 +104,8 @@
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import {
 		GITOPS_RESOURCE_KINDS,
-		appendPresentCustomResourceKinds,
+		resourceBrowserAvailableKinds,
+		toggleCompactSidebarSection,
 	} from "./workspaceShellModel";
 	import {
 		buildWorkspaceNavigationModel,
@@ -194,6 +195,7 @@
 	});
 	let commandOpen = $state(false);
 	let navigationOpen = $state(false);
+	let compactSidebarScrollTop = $state(0);
 	let resourceDetailPathState = $state<PathStateResourceDetailState | null>(
 		initialDetailPathState,
 	);
@@ -224,6 +226,9 @@
 	const isNamespaceList = $derived(navigationModel.isNamespaceList);
 	const resourceBrowserScope = $derived(navigationModel.resourceBrowserScope);
 	const resourceBrowserNamespaces = $derived(resourceBrowserScope.namespaces);
+	const fixedResourceKindScope = $derived(
+		selectedNode?.type === "kind",
+	);
 	const workspaceCustomResourcePrewarmQuery = createQuery<DiscoveredResourceKind[]>(() => ({
 		queryKey: queryKeys.presentCustomResourceKinds(
 			workspace.scope.clusterContext,
@@ -296,9 +301,10 @@
 			: resourceBrowserScope.kinds,
 	);
 	const resourceBrowserKinds = $derived<ResourceKindSelection[]>(
-		appendPresentCustomResourceKinds(
+		resourceBrowserAvailableKinds(
 			resourceBrowserInitialKinds,
 			presentCustomResourceKinds,
+			fixedResourceKindScope,
 		),
 	);
 	const showPortForwardRestorePrompt = $derived(
@@ -587,6 +593,10 @@
 			: [...expandedSections, id];
 	}
 
+	function toggleCompactSection(id: string) {
+		expandedSections = toggleCompactSidebarSection(expandedSections, id);
+	}
+
 </script>
 
 <SidebarProvider class="h-screen overflow-hidden bg-background text-foreground xl:gap-2 xl:p-2">
@@ -636,7 +646,8 @@
 					{selectedNode}
 					{expandedSections}
 					onNodeSelect={selectNode}
-					onSectionToggle={toggleSection}
+					onSectionToggle={toggleCompactSection}
+					bind:scrollTop={compactSidebarScrollTop}
 				/>
 			</SidebarContent>
 		</SheetContent>
@@ -882,6 +893,7 @@
 							initialNamespaces={resourceBrowserNamespaces}
 							initialKinds={resourceBrowserInitialKinds}
 							availableKinds={resourceBrowserKinds}
+							kindScopeLocked={fixedResourceKindScope}
 							customResourcesEnabled={showCustomResources}
 							{customResourcesStatus}
 							initialSearch={resourceInitialSearch}
@@ -948,6 +960,7 @@
 	bind:open={commandOpen}
 	{workspace}
 	{workspaceReadContext}
+	{presentCustomResourceKinds}
 	onNodeSelect={selectNode}
 	onResourceSelect={selectResource}
 	onOpenLauncher={openLauncher}

@@ -5,10 +5,12 @@ import {
 	gitOpsOwnershipGroupLabel,
 	inheritGitOpsOwnership,
 } from "@/lib/gitops-ownership-evidence";
+import { resourceHealthAssessment } from "@/lib/resource-health";
 import type {
 	DiscoveredResourceKind,
 	ResourceKindSelection,
 	ResourceSummary,
+	ResourceTopology,
 	TopologyNode,
 } from "@/lib/types";
 import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "@/lib/types";
@@ -21,9 +23,9 @@ import {
 	filterResourcesByHealth,
 	formatResourceTypeGroupLabel,
 	type HealthFilter,
+	isDiscoveredResourceKind,
 	type ResourceSearchEntry,
 	resourceGroupCollapseKey,
-	resourceGroupKindRank,
 	resourceIdentityKey,
 	resourceKindFetchKey,
 	resourceKindLabel,
@@ -163,6 +165,58 @@ export function allKindOptions(
 	return [...SUPPORTED_KINDS, ...CLUSTER_SCOPED_KINDS, ...discovered];
 }
 
+function exactResourceKindKey(kind: string, apiVersion: string | undefined): string {
+	return `${kind}\0${apiVersion ?? ""}`;
+}
+
+function indexKindSelections(kinds: ResourceKindSelection[]) {
+	const builtInKinds = new Set<string>();
+	const exactKinds = new Set<string>();
+	for (const kind of kinds) {
+		if (isDiscoveredResourceKind(kind)) {
+			exactKinds.add(exactResourceKindKey(kind.kind, kind.apiVersion));
+		} else {
+			builtInKinds.add(kind);
+		}
+	}
+	return { builtInKinds, exactKinds };
+}
+
+function resourceMatchesKindIndex(
+	resource: ResourceSummary,
+	index: ReturnType<typeof indexKindSelections>,
+): boolean {
+	return (
+		index.builtInKinds.has(resource.kind) ||
+		index.exactKinds.has(exactResourceKindKey(resource.kind, resource.apiVersion))
+	);
+}
+
+export function filterResourcesByKinds(
+	resources: ResourceSummary[],
+	kinds: ResourceKindSelection[],
+): ResourceSummary[] {
+	const index = indexKindSelections(kinds);
+	return resources.filter((resource) => resourceMatchesKindIndex(resource, index));
+}
+
+export function filterTopologyByKinds(
+	topology: ResourceTopology | undefined,
+	kinds: ResourceKindSelection[],
+): ResourceTopology | undefined {
+	if (!topology) return undefined;
+	const index = indexKindSelections(kinds);
+	const nodes = topology.nodes.filter((node) => resourceMatchesKindIndex(node.summary, index));
+	const nodeIds = new Set(nodes.map((node) => node.id));
+	return {
+		...topology,
+		nodes,
+		edges: topology.edges.filter(
+			(edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target),
+		),
+	};
+}
+
 export function syncedTopologyNodeId({
 	selectedTopologyNodeId,
 	selectedResource,
@@ -200,7 +254,7 @@ function valueForSort(
 		case "kind":
 			return row.kind;
 		case "status":
-			return row.status ?? row.health;
+			return resourceHealthAssessment(row)?.state ?? "assessmentUnavailable";
 		case "ready":
 			return row.ready ?? "";
 		case "restarts":
@@ -240,26 +294,42 @@ function sortedResourceRows(
 	});
 }
 
+function groupedRows(
+	rows: ResourceSummary[],
+	keyForRow: (row: ResourceSummary) => string,
+): ResourceSummary[] {
+	const groups = new Map<string, ResourceSummary[]>();
+	for (const row of rows) {
+		const key = keyForRow(row);
+		const group = groups.get(key);
+		if (group) group.push(row);
+		else groups.set(key, [row]);
+	}
+	return Array.from(groups.values()).flat();
+}
+
 function gitOpsGroupedRows(
 	rows: ResourceSummary[],
 	preferredGitOpsResourceKeys?: ReadonlySet<string>,
 ): ResourceSummary[] {
-	return rows.toSorted((left, right) => {
+	const preferredRows = rows.toSorted((left, right) => {
 		const preferredPriority =
 			Number(isPreferredGitOpsResource(left, preferredGitOpsResourceKeys)) -
 			Number(isPreferredGitOpsResource(right, preferredGitOpsResourceKeys));
-		if (preferredPriority !== 0) return -preferredPriority;
-		const groupCompare = gitOpsOwnershipGroupLabel(left).localeCompare(
-			gitOpsOwnershipGroupLabel(right),
-		);
-		if (groupCompare !== 0) return groupCompare;
-		const rankCompare =
-			resourceGroupKindRank(left.kind) - resourceGroupKindRank(right.kind);
-		if (rankCompare !== 0) return rankCompare;
-		const kindCompare = left.kind.localeCompare(right.kind);
-		if (kindCompare !== 0) return kindCompare;
-		return left.name.localeCompare(right.name);
+		return -preferredPriority;
 	});
+	const ownershipGroups = new Map<string, ResourceSummary[]>();
+	for (const row of preferredRows) {
+		const key = gitOpsOwnershipGroupLabel(row);
+		const group = ownershipGroups.get(key);
+		if (group) group.push(row);
+		else ownershipGroups.set(key, [row]);
+	}
+	const grouped: ResourceSummary[] = [];
+	for (const ownershipRows of ownershipGroups.values()) {
+		grouped.push(...groupedRows(ownershipRows, (row) => row.kind));
+	}
+	return grouped;
 }
 
 function isPreferredGitOpsResource(
@@ -271,14 +341,7 @@ function isPreferredGitOpsResource(
 }
 
 function typeGroupedRows(rows: ResourceSummary[]): ResourceSummary[] {
-	return rows.toSorted((left, right) => {
-		const rankCompare =
-			resourceGroupKindRank(left.kind) - resourceGroupKindRank(right.kind);
-		if (rankCompare !== 0) return rankCompare;
-		const kindCompare = left.kind.localeCompare(right.kind);
-		if (kindCompare !== 0) return kindCompare;
-		return 0;
-	});
+	return groupedRows(rows, (row) => row.kind);
 }
 
 function buildEntries({

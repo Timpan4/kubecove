@@ -1,7 +1,6 @@
 const DEV_PORT = 1430;
 const DEV_ORIGIN = `http://localhost:${DEV_PORT}`;
-const VITE_CLIENT_URL = `${DEV_ORIGIN}/@vite/client`;
-const VITE_CLIENT_MARKERS = ["import.meta.hot", "createHotContext", "/@vite/client"];
+const BUN_SERVER_MARKER = '<meta name="kubecove-dev-server" content="bun"';
 
 async function fetchText(url: string): Promise<string | null> {
 	const controller = new AbortController();
@@ -17,13 +16,10 @@ async function fetchText(url: string): Promise<string | null> {
 	}
 }
 
-async function hasKubeCoveViteServer(): Promise<boolean> {
-	const [rootHtml, viteClient] = await Promise.all([
-		fetchText(DEV_ORIGIN),
-		fetchText(VITE_CLIENT_URL),
-	]);
+async function hasKubeCoveBunServer(): Promise<boolean> {
+	const rootHtml = await fetchText(DEV_ORIGIN);
 	return rootHtml?.includes("<title>KubeCove</title>") === true &&
-		VITE_CLIENT_MARKERS.some((marker) => viteClient?.includes(marker));
+		rootHtml.includes(BUN_SERVER_MARKER);
 }
 
 async function hasAnyServer(): Promise<boolean> {
@@ -35,14 +31,14 @@ async function stayAlive(): Promise<never> {
 	throw new Error("unreachable");
 }
 
-if (await hasKubeCoveViteServer()) {
-	console.log(`[kubecove:dev] Reusing existing Vite server at ${DEV_ORIGIN}.`);
+if (await hasKubeCoveBunServer()) {
+	console.log(`[kubecove:dev] Reusing existing Bun server at ${DEV_ORIGIN}.`);
 	await stayAlive();
 }
 
 if (await hasAnyServer()) {
 	console.error(
-		`[kubecove:dev] Port ${DEV_PORT} is already in use, but ${DEV_ORIGIN} does not look like the KubeCove Vite dev server.`,
+		`[kubecove:dev] Port ${DEV_PORT} is already in use, but ${DEV_ORIGIN} does not look like the KubeCove Bun dev server.`,
 	);
 	console.error("[kubecove:dev] Stop that process, then run bun run tauri dev again.");
 	process.exit(1);

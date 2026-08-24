@@ -2,6 +2,7 @@ use crate::models::{
     AppError, DiscoveredResourceKind, NamespaceSummary, ResourceSummary, ResourceTopology,
     WatchResourceKind,
 };
+use crate::commands::helpers::FluxOwnershipIndex;
 use futures_util::future::{BoxFuture, FutureExt, Shared};
 use std::{
     collections::HashMap,
@@ -16,6 +17,9 @@ use tokio_util::sync::CancellationToken;
 
 const COMPLETED_GRACE: Duration = Duration::from_millis(500);
 const RESOURCE_FRESHNESS: Duration = Duration::from_secs(30);
+/// Flux ownership comes from cluster-wide lists with no watch feed; a short
+/// freshness window bounds staleness while absorbing per-request refetches.
+const FLUX_INDEX_FRESHNESS: Duration = Duration::from_secs(30);
 const MAX_CACHE_ENTRIES: usize = 128;
 
 type SharedLoad<T> = Shared<BoxFuture<'static, Result<T, AppError>>>;
@@ -297,6 +301,7 @@ pub struct ClusterLiveStore {
     present_custom_resource_kinds: Arc<SharedCache<Vec<DiscoveredResourceKind>>>,
     resources: Arc<SharedCache<Vec<ResourceSummary>>>,
     topologies: Arc<SharedCache<ResourceTopology>>,
+    flux_ownership_indexes: Arc<SharedCache<FluxOwnershipIndex>>,
 }
 
 impl Default for ClusterLiveStore {
@@ -309,6 +314,7 @@ impl Default for ClusterLiveStore {
             )),
             resources: Arc::new(SharedCache::new("resources")),
             topologies: Arc::new(SharedCache::new("topologies")),
+            flux_ownership_indexes: Arc::new(SharedCache::new("flux_ownership_indexes")),
         }
     }
 }
@@ -320,6 +326,30 @@ impl ClusterLiveStore {
             + self.present_custom_resource_kinds.cancel_loading()
             + self.resources.cancel_loading()
             + self.topologies.cancel_loading()
+            + self.flux_ownership_indexes.cancel_loading()
+    }
+
+    /// Caches the cluster-wide Flux ownership index per kubeconfig source and
+    /// context. The index comes from two cluster-wide lists, so it is reused
+    /// across scope requests within `FLUX_INDEX_FRESHNESS` and re-scoped to
+    /// the requested namespaces by the caller.
+    pub(crate) async fn flux_ownership_index<F, Fut>(
+        &self,
+        source_key: String,
+        cluster_context: String,
+        loader: F,
+    ) -> Result<FluxOwnershipIndex, AppError>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = Result<FluxOwnershipIndex, AppError>> + Send + 'static,
+    {
+        self.flux_ownership_indexes
+            .get_or_load(
+                context_cache_key(&source_key, &cluster_context),
+                CacheMode::LiveFor(FLUX_INDEX_FRESHNESS),
+                loader,
+            )
+            .await
     }
 
     pub async fn namespaces<F, Fut>(
