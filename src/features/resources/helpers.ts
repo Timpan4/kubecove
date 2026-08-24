@@ -335,8 +335,8 @@ export function filterResourceSearchIndex(
 export function formatResourceTypeGroupLabel(resource: ResourceSummary): string {
 	const plural = resource.plural?.trim();
 	if (plural) {
-		const kindLower = resource.kind.toLocaleLowerCase();
-		const pluralLower = plural.toLocaleLowerCase();
+		const kindLower = resource.kind.toLowerCase();
+		const pluralLower = plural.toLowerCase();
 		let sharedPrefix = 0;
 		while (
 			sharedPrefix < kindLower.length &&
@@ -347,7 +347,7 @@ export function formatResourceTypeGroupLabel(resource: ResourceSummary): string 
 		}
 		return sharedPrefix > 0
 			? `${resource.kind.slice(0, sharedPrefix)}${plural.slice(sharedPrefix)}`
-			: `${plural[0]?.toLocaleUpperCase() ?? ""}${plural.slice(1)}`;
+			: `${plural[0]?.toUpperCase() ?? ""}${plural.slice(1)}`;
 	}
 	if (/[^aeiou]y$/i.test(resource.kind)) return `${resource.kind.slice(0, -1)}ies`;
 	if (/(s|x|z|ch|sh)$/i.test(resource.kind)) return `${resource.kind}es`;

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Check, Copy } from "lucide-svelte";
-	import { copyText } from "./copy-text";
+	import { copyTextWithAnnouncement } from "./copy-text";
 	import Tooltip from "./ui/svelte/Tooltip.svelte";
 	import TooltipContent from "./ui/svelte/TooltipContent.svelte";
 	import TooltipTrigger from "./ui/svelte/TooltipTrigger.svelte";
@@ -28,8 +28,13 @@
 
 	async function handleCopy(event: MouseEvent) {
 		event.stopPropagation();
-		message = await copyText(navigator.clipboard, value, label);
-		copied = message.startsWith("Copied ");
+		const result = await copyTextWithAnnouncement(
+			(nextMessage) => (message = nextMessage),
+			navigator.clipboard,
+			value,
+			label,
+		);
+		copied = result.startsWith("Copied ");
 	}
 </script>
 

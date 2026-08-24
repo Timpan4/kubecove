@@ -3,7 +3,7 @@ import type { BunPlugin } from "bun";
 import type { Component } from "svelte";
 import { compile, compileModule } from "svelte/compiler";
 import { render } from "svelte/server";
-import { copyText } from "../src/components/copy-text";
+import { copyText, copyTextWithAnnouncement } from "../src/components/copy-text";
 import { formatRelativeTimestamp } from "../src/components/timestamp-format";
 import {
 	CPU_USAGE_DESCRIPTION,
@@ -94,18 +94,29 @@ describe("operational data clarity", () => {
 			active: true,
 		});
 		const writes: string[] = [];
-		const message = await copyText(
-			{ writeText: async (text) => void writes.push(text) },
+		const announcements: string[] = [];
+		const clipboard = { writeText: async (text: string) => void writes.push(text) };
+		const announce = (message: string) => void announcements.push(message);
+		const message = await copyTextWithAnnouncement(
+			announce,
+			clipboard,
 			value,
 			"resource name",
 		);
+		await copyTextWithAnnouncement(announce, clipboard, value, "resource name");
 
 		expect(body).toContain(`title="${value}"`);
 		expect(body).toContain(`aria-label="Open resource ${value}" aria-pressed="true"`);
 		expect(body).toContain(`aria-label="Copy resource name: ${value}"`);
 		expect(body.match(/<button/g)).toHaveLength(2);
 		expect(body).toContain('role="status" aria-live="polite"');
-		expect(writes).toEqual([value]);
+		expect(writes).toEqual([value, value]);
+		expect(announcements).toEqual([
+			"",
+			"Copied resource name.",
+			"",
+			"Copied resource name.",
+		]);
 		expect(message).toBe("Copied resource name.");
 		expect(await copyText(undefined, value, "resource name")).toBe(
 			"Could not copy resource name.",

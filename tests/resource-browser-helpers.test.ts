@@ -322,6 +322,13 @@ describe("resource browser presentation helpers", () => {
     expect(
       formatResourceTypeGroupLabel({ ...baseResource, kind: "Person", plural: "people" }),
     ).toBe("People");
+    expect(
+      formatResourceTypeGroupLabel({
+        ...baseResource,
+        kind: "IPAddress",
+        plural: "ipaddresses",
+      }),
+    ).toBe("IPAddresses");
   });
 
   test("builds stable collapse keys for app and type groups", () => {

@@ -3,7 +3,7 @@
 	import CopyableText from "@/components/CopyableText.svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
-	import { copyText } from "@/components/copy-text";
+	import { copyTextWithAnnouncement } from "@/components/copy-text";
 	import { formatExactTimestamp } from "@/components/timestamp-format";
 	import {
 		Badge,
@@ -191,7 +191,12 @@
 
 	async function copyRevealedValue(event: Event, value: string, label: string) {
 		event.stopPropagation();
-		copyRevealMessage = await copyText(navigator.clipboard, value, label);
+		await copyTextWithAnnouncement(
+			(nextMessage) => (copyRevealMessage = nextMessage),
+			navigator.clipboard,
+			value,
+			label,
+		);
 	}
 
 	function gitOpsCardSubtitle(selection: GitOpsSelection): string {
