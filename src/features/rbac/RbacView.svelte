@@ -42,6 +42,9 @@
 	} from "./cockpitModel";
 	import type { RbacVerifierHandoff } from "./handoff";
 	import { observedPermissions, identityDefaults, inspectorIdentity } from "./observedPermissions";
+	import RbacReviewBadge from "./RbacReviewBadge.svelte";
+	import RbacReviewPanel from "./RbacReviewPanel.svelte";
+	import type { RbacReviewRecord } from "./reviewModel";
 	import { riskSummaryLabel, subjectListLabel } from "./risk";
 	import type { RbacView } from "./surfaceModel";
 
@@ -79,6 +82,8 @@
 		onVerifierHandoffConsumed,
 		onVerifierReturn,
 		verifierReturnLabel,
+		reviewRecords,
+		onReviewRecordsChange,
 	}: {
 		query: {
 			data?: RbacInspectionSummary;
@@ -96,6 +101,8 @@
 		onVerifierHandoffConsumed?: () => void;
 		onVerifierReturn?: () => void;
 		verifierReturnLabel?: string;
+		reviewRecords: RbacReviewRecord[];
+		onReviewRecordsChange: (records: RbacReviewRecord[]) => void;
 	} = $props();
 
 	const client = createTauriClient();
@@ -707,7 +714,10 @@
 										<p class="truncate text-sm font-semibold">{item.kind}/{item.name}</p>
 										<p class="truncate text-xs text-muted-foreground">{item.namespace ?? "cluster scope"}</p>
 									</div>
-									<Badge variant="outline" class={riskBadgeClass(item.risks)}>{riskSummaryLabel(item.risks)}</Badge>
+									<div class="flex shrink-0 flex-col items-end gap-1">
+										<Badge variant="outline" class={riskBadgeClass(item.risks)}>{riskSummaryLabel(item.risks)}</Badge>
+										<RbacReviewBadge {inspection} entry={item} records={reviewRecords} />
+									</div>
 								</div>
 								<div class="mt-2 flex flex-wrap gap-1">
 									{#each queueTags(inspection, item) as tag}
@@ -736,7 +746,10 @@
 								{selected ? `${selected.namespace ?? "Cluster scope"} · ${identityLabel(activeIdentity)}` : "Exact evidence, policy findings, and permission sources"}
 							</p>
 						</div>
-						{#if selected}<Badge variant="outline" class={riskBadgeClass(selected.risks)}>{riskSummaryLabel(selected.risks)}</Badge>{/if}
+						{#if selected}
+							<Badge variant="outline" class={riskBadgeClass(selected.risks)}>{riskSummaryLabel(selected.risks)}</Badge>
+							<RbacReviewBadge {inspection} entry={selected} records={reviewRecords} />
+						{/if}
 						<Button size="sm" variant="outline" onclick={copyEvidence} disabled={!selected}>
 							{#if copied}<Check data-icon /> Copied{:else}<Clipboard data-icon /> Copy evidence{/if}
 						</Button>
@@ -857,6 +870,12 @@
 								</div>
 
 								<aside class="min-w-0 space-y-3 lg:sticky lg:top-0 lg:self-start">
+									<RbacReviewPanel
+										{inspection}
+										entry={selected}
+										records={reviewRecords}
+										onRecordsChange={onReviewRecordsChange}
+									/>
 									<section class={cnfast("rounded-md border bg-card", handoffPromoted && "border-amber-500/50 ring-1 ring-amber-500/20")}>
 										<div class="border-b border-border px-3 py-2.5">
 											<div class="flex items-center gap-2">

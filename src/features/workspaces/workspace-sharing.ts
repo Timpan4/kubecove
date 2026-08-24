@@ -1,22 +1,21 @@
 import {
 	createSavedPortForward,
 	createWorkspaceRecord,
-	workspaceScopeContexts,
-	type SavePortForwardInput,
 	type SavedWorkspace,
+	type SavePortForwardInput,
+	workspaceScopeContexts,
 } from "@/lib/workspace-model";
 import { cloneScope, cloneShortcut, parseWorkspaceImport } from "./workspace-sharing-parse";
 import {
-	WORKSPACE_EXPORT_API_VERSION,
 	type SharedWorkspaceDocument,
 	type SharedWorkspaceListDocument,
+	WORKSPACE_EXPORT_API_VERSION,
 	type WorkspaceImportDecisions,
 	type WorkspaceImportItem,
 	type WorkspaceImportPreview,
 	type WorkspaceImportResult,
 } from "./workspace-sharing-schema";
 
-export { WORKSPACE_EXPORT_API_VERSION } from "./workspace-sharing-schema";
 export type {
 	SharedWorkspaceDocument,
 	SharedWorkspaceListDocument,
@@ -26,6 +25,7 @@ export type {
 	WorkspaceImportPreview,
 	WorkspaceImportResult,
 } from "./workspace-sharing-schema";
+export { WORKSPACE_EXPORT_API_VERSION } from "./workspace-sharing-schema";
 
 export function slugifyWorkspaceName(name: string): string {
 	const slug = name
@@ -150,11 +150,12 @@ function sharedToSavedWorkspace(
 	const name = replace ? workspace.name : uniqueName(workspace.name, others);
 	const sharedKey = replace ? workspace.sharedKey : uniqueKey(workspace.sharedKey, new Set(others.map((item) => item.sharedKey).filter(Boolean) as string[]));
 	const scope = cloneScope(workspace.scope);
+	const clusterContexts = workspaceScopeContexts(scope);
 	const base = createWorkspaceRecord(
 		{
 			name,
 			clusterContext: scope.clusterContext,
-			clusterContexts: workspaceScopeContexts(scope),
+			clusterContexts,
 			clusterGroupName: scope.clusterGroup?.name,
 			namespaces: scope.namespaces,
 			kinds: scope.kinds,
@@ -171,6 +172,9 @@ function sharedToSavedWorkspace(
 		updatedAt: now,
 		scope,
 		shortcuts: workspace.shortcuts.map(cloneShortcut),
+		rbacReviews: (replace?.rbacReviews ?? []).filter((review) =>
+			clusterContexts.includes(review.clusterContext),
+		),
 		portForwards: workspace.portForwards.map((forward) =>
 			createSavedPortForward(forward satisfies SavePortForwardInput, now),
 		),

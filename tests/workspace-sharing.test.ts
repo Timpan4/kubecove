@@ -107,7 +107,27 @@ describe("workspace sharing", () => {
 	});
 
 	test("lets import choose skip, replace, or copy for collisions", () => {
-		const existing = workspace("Ops");
+		const existing = {
+			...workspace("Ops"),
+			rbacReviews: [
+				{
+					clusterContext: "kind-dev",
+					objectKey: "ServiceAccount:payments:api",
+					evidenceFingerprint: "rbac-v1-kept",
+					disposition: "expected" as const,
+					note: "Reviewed local controller identity",
+					reviewedAt: "2026-07-01T02:00:00.000Z",
+				},
+				{
+					clusterContext: "removed-cluster",
+					objectKey: "ServiceAccount:default:old",
+					evidenceFingerprint: "rbac-v1-pruned",
+					disposition: "anomalous" as const,
+					note: "Outside replacement scope",
+					reviewedAt: "2026-07-01T03:00:00.000Z",
+				},
+			],
+		};
 		const imported = {
 			...workspace("Ops from Git"),
 			scope: { ...existing.scope, namespaces: ["platform"] },
@@ -134,6 +154,7 @@ describe("workspace sharing", () => {
 		expect(replaced.id).toBe(existing.id);
 		expect(replaced.name).toBe("Ops from Git");
 		expect(replaced.scope.namespaces).toEqual(["platform"]);
+		expect(replaced.rbacReviews).toEqual([existing.rbacReviews[0]]);
 
 		const copied = applyWorkspaceImport(
 			[existing],

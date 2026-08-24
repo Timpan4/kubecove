@@ -21,6 +21,7 @@ import {
 	type SavedWorkspace,
 	type SavePortForwardInput,
 	updateWorkspaceRecord,
+	type WorkspaceRbacReview,
 } from "@/lib/workspace-model";
 import {
 	applyWorkspaceImport,
@@ -66,6 +67,7 @@ export interface WorkspaceStore {
 		updates: SavedPortForwardUpdates,
 	) => void;
 	deleteSavedPortForward: (workspaceId: string, portForwardId: string) => void;
+	setRbacReviews: (workspaceId: string, reviews: WorkspaceRbacReview[]) => void;
 	togglePinnedResource: (workspaceId: string, resource: ResourceSummary) => void;
 	recordRecentNamespace: (workspaceId: string, clusterContext: string, namespace: string) => void;
 	recordRecentApplication: (
@@ -144,7 +146,35 @@ function sanitizePersistedWorkspace(value: unknown): SavedWorkspace | null {
 	) {
 		return null;
 	}
-	return record as unknown as SavedWorkspace;
+	return {
+		...(record as unknown as SavedWorkspace),
+		rbacReviews: sanitizeRbacReviews(record.rbacReviews),
+	};
+}
+
+function sanitizeRbacReviews(value: unknown): WorkspaceRbacReview[] {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((item) => {
+		if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
+		const review = item as Record<string, unknown>;
+		if (
+			typeof review.clusterContext !== "string" || !review.clusterContext ||
+			typeof review.objectKey !== "string" || !review.objectKey ||
+			typeof review.evidenceFingerprint !== "string" ||
+			!/^rbac-v1-[a-z0-9]+$/.test(review.evidenceFingerprint) ||
+			(review.disposition !== "expected" && review.disposition !== "anomalous") ||
+			typeof review.note !== "string" || !review.note.trim() ||
+			typeof review.reviewedAt !== "string" || Number.isNaN(Date.parse(review.reviewedAt))
+		) return [];
+		return [{
+			clusterContext: review.clusterContext,
+			objectKey: review.objectKey,
+			evidenceFingerprint: review.evidenceFingerprint,
+			disposition: review.disposition,
+			note: review.note.trim(),
+			reviewedAt: review.reviewedAt,
+		}];
+	});
 }
 
 function isStringArray(value: unknown): boolean {
@@ -318,6 +348,19 @@ export function createWorkspaceStore(
 									),
 									updatedAt: now,
 								}
+							: workspace,
+					),
+				};
+			});
+		},
+		setRbacReviews: (workspaceId, reviews) => {
+			updateAndPersist((current) => {
+				const now = new Date().toISOString();
+				return {
+					...current,
+					workspaces: current.workspaces.map((workspace) =>
+						workspace.id === workspaceId
+							? { ...workspace, rbacReviews: reviews, updatedAt: now }
 							: workspace,
 					),
 				};

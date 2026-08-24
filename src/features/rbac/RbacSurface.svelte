@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { onDestroy } from "svelte";
+	import { workspaceStore } from "@/features/workspaces";
 	import {
 		createCancelScope,
 		createFiniteReadCleanup,
@@ -75,4 +76,17 @@
 	const view = $derived(selectedRbacView(selectedNode));
 </script>
 
-<RbacView query={rbacQuery} {view} warningSummary={rbacWarningSummary} {initialState} {onStateChange} {onViewChange} {verifierHandoff} {onVerifierHandoffConsumed} {onVerifierReturn} {verifierReturnLabel} />
+<RbacView
+	query={rbacQuery}
+	{view}
+	warningSummary={rbacWarningSummary}
+	{initialState}
+	{onStateChange}
+	{onViewChange}
+	{verifierHandoff}
+	{onVerifierHandoffConsumed}
+	{onVerifierReturn}
+	{verifierReturnLabel}
+	reviewRecords={workspace.rbacReviews ?? []}
+	onReviewRecordsChange={(records) => workspaceStore.setRbacReviews(workspace.id, records)}
+/>

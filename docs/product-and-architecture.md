@@ -20,7 +20,7 @@ These are typed workflows with visible targets. KubeCove is not a free-form muta
 
 ### Keep scope explicit
 
-A workspace stores local navigation scope: contexts, cluster-group members, namespaces, kinds, shortcuts, saved Service port-forward presets, and layout preferences. It does not copy kubeconfig credentials or persist selected Kubernetes objects as authoritative state. It also persists one Argo inspection preference: Automatic, Kubernetes, or one Connected profile. Automatic selection uses the first healthy profile in saved order whose cluster context and workspace ID exactly match.
+A workspace stores local navigation scope: contexts, cluster-group members, namespaces, kinds, shortcuts, saved Service port-forward presets, layout preferences, and reviewed RBAC risk context under [ADR 0019](decisions/0019-reviewed-rbac-risk-context.md). It does not copy kubeconfig credentials or persist selected Kubernetes objects as authoritative state. RBAC reviews contain only scoped annotations and evidence fingerprints; they never replace live policy evidence. A workspace also persists one Argo inspection preference: Automatic, Kubernetes, or one Connected profile. Automatic selection uses the first healthy profile in saved order whose cluster context and workspace ID exactly match.
 
 ```text
 Cluster group -> Cluster/context -> Namespace -> App/owner -> Resource
