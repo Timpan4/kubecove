@@ -37,6 +37,8 @@ describe("namespace custom resources", () => {
 		const group = node.children?.find((child) => child.label === "Custom Resources");
 
 		expect(group?.children?.[0]?.label).toBe("another.example.com");
+		expect(group?.selectable).toBe(false);
+		expect(group?.children?.[0]?.selectable).toBe(false);
 		expect(group?.children?.[1]?.label).toBe("example.com");
 		expect(group?.children?.[1]?.children?.[0]?.label).toBe("Widget");
 		expect(group?.children?.[1]?.children?.[0]?.id.resourceKind).toBe(widget);

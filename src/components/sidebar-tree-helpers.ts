@@ -34,6 +34,7 @@ export function buildCustomResourceGroupNodes({
 		.map(([group, kinds]) => ({
 			id: { type: "group", section, namespace, group } as TreeNodeId,
 			label: group,
+			selectable: false,
 			children: kinds
 				.toSorted((left, right) => left.kind.localeCompare(right.kind))
 				.map((resourceKind) => {
@@ -98,6 +99,7 @@ export function buildNamespaceTreeNode(
 				group: "Custom Resources",
 			} as TreeNodeId,
 			label: "Custom Resources",
+			selectable: false,
 			children: buildCustomResourceGroupNodes({
 				section: "namespaces",
 				namespace,

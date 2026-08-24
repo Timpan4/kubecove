@@ -69,7 +69,7 @@
 
 	function selectNode() {
 		if (isDisabled) return;
-		onNodeSelect(node.id);
+		if (node.selectable !== false) onNodeSelect(node.id);
 		if (hasChildren) onSectionToggle(id);
 	}
 

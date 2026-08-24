@@ -8,9 +8,9 @@ import type { DiscoveredResourceKind } from "@/lib/types";
 
 const namespaces = Array.from({ length: 1_000 }, (_, index) => `namespace-${index}`);
 const extraKinds: DiscoveredResourceKind[] = Array.from({ length: 100 }, (_, index) => ({
-	group: "example.com",
+	group: `operator-${index % 40}.example.com`,
 	version: "v1",
-	apiVersion: "example.com/v1",
+	apiVersion: `operator-${index % 40}.example.com/v1`,
 	kind: `Widget${index}`,
 	plural: `widgets${index}`,
 	shortNames: [`wdg${index}`],
@@ -40,7 +40,7 @@ describe("sidebar tree", () => {
 			resourceKindsPending: false,
 			resourceKindsError: "",
 			showUnavailableGitOpsProviders: false,
-			customResourceSearch: "wdg50",
+			customResourceSearch: "operator-",
 		});
 	});
 });

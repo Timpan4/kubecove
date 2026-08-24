@@ -61,7 +61,8 @@ describe("sidebar namespace tree helpers", () => {
 		const toggleEnd = source.indexOf("function handleKeydown", toggleStart);
 		const toggleSource = source.slice(toggleStart, toggleEnd);
 
-		expect(selectSource).toContain("onNodeSelect(node.id)");
+		expect(selectSource).toContain("if (node.selectable !== false) onNodeSelect(node.id)");
+		expect(selectSource).toContain("if (hasChildren) onSectionToggle(id)");
 		expect(toggleSource).not.toContain("onNodeSelect(node.id)");
 		expect(toggleSource).toContain("onSectionToggle(id)");
 		expect(source).toContain("onclick={selectNode}");
