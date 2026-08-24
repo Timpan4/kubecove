@@ -25,7 +25,7 @@ export type RbacReviewRecord = WorkspaceRbacReview;
 export type RbacReviewRecordInput = RbacReviewRecord;
 
 export function isReviewableRbacCategory(category: RbacView): category is ReviewableRbacCategory {
-	return category !== "Namespace Access";
+	return (REVIEWABLE_RBAC_CATEGORIES as readonly RbacView[]).includes(category);
 }
 
 export function buildRbacEvidenceFingerprint(
@@ -208,7 +208,9 @@ function normalizedRisks(risks: RbacRiskIndicator[]): unknown[] {
 }
 
 function compareJson(left: unknown, right: unknown): number {
-	return JSON.stringify(left).localeCompare(JSON.stringify(right));
+	const leftJson = JSON.stringify(left);
+	const rightJson = JSON.stringify(right);
+	return leftJson < rightJson ? -1 : leftJson > rightJson ? 1 : 0;
 }
 
 function fnv1a(value: string): string {

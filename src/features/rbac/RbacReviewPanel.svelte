@@ -99,8 +99,15 @@
 					Evidence changed after this review. Re-review before treating its disposition as active.
 				</p>
 			{/if}
-			<Textarea bind:value={note} aria-label="RBAC review note" placeholder="Why is this access expected or anomalous?" rows={3} />
-			{#if error}<p class="text-xs text-destructive">{error}</p>{/if}
+			<Textarea
+				bind:value={note}
+				aria-label="RBAC review note"
+				aria-invalid={error ? "true" : undefined}
+				aria-describedby={error ? "rbac-review-note-error" : undefined}
+				placeholder="Why is this access expected or anomalous?"
+				rows={3}
+			/>
+			{#if error}<p id="rbac-review-note-error" role="alert" class="text-xs text-destructive">{error}</p>{/if}
 			<div class="flex flex-wrap gap-2">
 				<Button size="sm" variant="outline" onclick={() => save("expected")}>Mark expected</Button>
 				<Button size="sm" variant="destructive" onclick={() => save("anomalous")}>Mark anomalous</Button>
