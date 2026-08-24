@@ -36,6 +36,7 @@
 		healthFilter,
 		argoSummary = null,
 		argoFilter = "none",
+		hideHistoricalReplicaSets = false,
 		search = $bindable(""),
 		gitOpsFilter,
 		gitOpsFilters,
@@ -49,6 +50,7 @@
 		onKindToggle,
 		onHealthSelect,
 		onArgoFilterSelect = () => {},
+		onHideHistoricalReplicaSetsChange = () => {},
 		onGitOpsFilterChange,
 		onSearchInput,
 		onClearFilters,
@@ -64,6 +66,7 @@
 		healthFilter: HealthFilter;
 		argoSummary?: ArgoResourceCounts | null;
 		argoFilter?: ArgoResourceFilter;
+		hideHistoricalReplicaSets?: boolean;
 		search?: string;
 		gitOpsFilter: string;
 		gitOpsFilters: GitOpsOwnershipFilter[];
@@ -77,6 +80,7 @@
 		onKindToggle: (kind: ResourceKindSelection, checked: boolean) => void;
 		onHealthSelect: (filter: HealthFilter) => void;
 		onArgoFilterSelect?: (filter: ArgoResourceFilter) => void;
+		onHideHistoricalReplicaSetsChange?: (hide: boolean) => void;
 		onGitOpsFilterChange: (value: string) => void;
 		onSearchInput: () => void;
 		onClearFilters: () => void;
@@ -347,4 +351,13 @@
 			{@render ArgoFilterButton("prune", "Prune", argoSummary.prune, "bg-red-400")}
 		</div>
 	{/if}
+
+	<label class="mt-2 flex w-fit items-center gap-2 border-t pt-2 text-xs text-muted-foreground">
+		<input
+			type="checkbox"
+			checked={hideHistoricalReplicaSets}
+			onchange={(event) => onHideHistoricalReplicaSetsChange(event.currentTarget.checked)}
+		/>
+		Hide historical ReplicaSets
+	</label>
 </section>

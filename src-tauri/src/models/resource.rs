@@ -247,6 +247,8 @@ pub struct TopologyNode {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub port_hints: Vec<String>,
     pub selectable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deployment_revision: Option<u64>,
     pub summary: ResourceSummary,
 }
 

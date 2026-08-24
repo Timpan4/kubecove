@@ -58,10 +58,6 @@
 			title: "Show CPU and memory footer",
 			description: "Shows compact app process CPU and memory usage.",
 		},
-		ownershipMap: {
-			title: "Show ownership map by default",
-			description: "Opens the ownership map when entering resource views.",
-		},
 		fullTopologyOnSelection: {
 			title: "Keep full map visible during selection",
 			description:
@@ -351,13 +347,6 @@
 					checked={settings.showUsageFooter}
 					onCheckedChange={settings.setShowUsageFooter}
 					aria-label={GENERAL_ROWS.usageFooter.title}
-				/>
-			</SettingsRow>
-			<SettingsRow {...GENERAL_ROWS.ownershipMap}>
-				<Switch
-					checked={settings.showOwnershipMapByDefault}
-					onCheckedChange={settings.setShowOwnershipMapByDefault}
-					aria-label={GENERAL_ROWS.ownershipMap.title}
 				/>
 			</SettingsRow>
 			<SettingsRow {...GENERAL_ROWS.redactSecrets}>

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { ResourceSummary } from "../src/lib/types";
 import {
-	PATH_STATE_SESSION_KEY,
 	decodePathStateSnapshot,
 	defaultPathStateSnapshot,
+	PATH_STATE_SESSION_KEY,
+	type PathStateSnapshot,
+	type PathStateWorkspaceSnapshot,
 	parsePathStateHash,
 	pathForPathState,
 	readPathState,
@@ -11,9 +12,8 @@ import {
 	resourceSummaryFromRef,
 	sanitizePathStateSnapshot,
 	writePathState,
-	type PathStateSnapshot,
-	type PathStateWorkspaceSnapshot,
 } from "../src/lib/path-state";
+import type { ResourceSummary } from "../src/lib/types";
 
 function makeStorage(): Storage {
 	const values = new Map<string, string>();
@@ -139,6 +139,18 @@ describe("path state", () => {
 
 		installWindow("#/settings").sessionStorage.setItem(PATH_STATE_SESSION_KEY, "{");
 		expect(readPathState()).toEqual(defaultPathStateSnapshot("settings"));
+	});
+
+	test("defaults missing and invalid restored resource scopes to table-first", () => {
+		for (const resources of [{}, { mapPanelOpen: "true" }, { mapPanelOpen: 1 }]) {
+			const safe = sanitizePathStateSnapshot({
+				...snapshot(),
+				workspace: { ...workspaceSnapshot(), resources },
+			});
+
+			expect(safe?.workspace?.resources?.mapPanelOpen).toBe(false);
+			expect(safe?.workspace?.resources?.tablePanelOpen).toBe(true);
+		}
 	});
 
 	test("round-trips resource identity only", () => {

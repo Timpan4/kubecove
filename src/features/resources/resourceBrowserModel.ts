@@ -110,9 +110,8 @@ export interface ResourceTableModel {
 
 export function initialOwnershipMapOpen(
 	restoredState: { mapPanelOpen: boolean } | null | undefined,
-	showByDefault: boolean,
 ): boolean {
-	return restoredState?.mapPanelOpen ?? showByDefault;
+	return restoredState?.mapPanelOpen ?? false;
 }
 
 export function shouldLoadOwnershipMap(
@@ -214,6 +213,74 @@ export function filterTopologyByKinds(
 		edges: topology.edges.filter(
 			(edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target),
 		),
+	};
+}
+
+/** Keeps matching resources and their ownership explanation. */
+export function filterTopologyByTableRows(
+	topology: ResourceTopology | undefined,
+	rows: ResourceSummary[],
+): ResourceTopology | undefined {
+	if (!topology) return undefined;
+	const rowKeys = new Set(rows.map(resourceIdentityKey));
+	const nodesById = new Map(topology.nodes.map((node) => [node.id, node]));
+	const incoming = new Map<string, string[]>();
+	for (const edge of topology.edges) {
+		const sources = incoming.get(edge.target) ?? [];
+		sources.push(edge.source);
+		incoming.set(edge.target, sources);
+	}
+	const nodeIds = new Set(
+		topology.nodes
+			.filter((node) => rowKeys.has(resourceIdentityKey(node.summary)))
+			.map((node) => node.id),
+	);
+	const pending = [...nodeIds];
+	for (let index = 0; index < pending.length; index += 1) {
+		for (const parentId of incoming.get(pending[index]) ?? []) {
+			if (nodeIds.has(parentId) || !nodesById.has(parentId)) continue;
+			nodeIds.add(parentId);
+			pending.push(parentId);
+		}
+	}
+	return {
+		...topology,
+		nodes: topology.nodes.filter((node) => nodeIds.has(node.id)),
+		edges: topology.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)),
+	};
+}
+
+export function filterHistoricalReplicaSets(
+	topology: ResourceTopology | undefined,
+	hide: boolean,
+): ResourceTopology | undefined {
+	if (!topology || !hide) return topology;
+	const incoming = new Map<string, TopologyNode[]>();
+	const nodesById = new Map(topology.nodes.map((node) => [node.id, node]));
+	const podOwners = new Set<string>();
+	for (const edge of topology.edges) {
+		const source = nodesById.get(edge.source);
+		const target = nodesById.get(edge.target);
+		if (source && target) {
+			const parents = incoming.get(target.id) ?? [];
+			parents.push(source);
+			incoming.set(target.id, parents);
+			if (source.kind === "ReplicaSet" && target.kind === "Pod") podOwners.add(source.id);
+		}
+	}
+	const hidden = new Set(
+		topology.nodes
+			.filter((node) => {
+				if (node.kind !== "ReplicaSet" || podOwners.has(node.id) || node.deploymentRevision === undefined) return false;
+				const deployment = incoming.get(node.id)?.find((parent) => parent.kind === "Deployment");
+				return deployment?.deploymentRevision !== undefined && node.deploymentRevision < deployment.deploymentRevision;
+			})
+			.map((node) => node.id),
+	);
+	return {
+		...topology,
+		nodes: topology.nodes.filter((node) => !hidden.has(node.id)),
+		edges: topology.edges.filter((edge) => !hidden.has(edge.source) && !hidden.has(edge.target)),
 	};
 }
 

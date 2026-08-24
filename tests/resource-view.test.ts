@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 describe("resource view safeguards", () => {
-	test("keeps the ownership map default-visible but unmountable", () => {
+	test("keeps the ownership map user-requested and unmountable", () => {
 		const shellSource = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
 		const ownershipMapSource = readFileSync(
 			"src/features/resources/OwnershipMap.svelte",
@@ -14,6 +14,11 @@ describe("resource view safeguards", () => {
 		);
 		const readSpecsSource = readFileSync(
 			"src/features/resources/resourceBrowserReadSpecs.ts",
+			"utf8",
+		);
+		const settingsSource = readFileSync("src/lib/settings.ts", "utf8");
+		const settingsSurfaceSource = readFileSync(
+			"src/app/svelte/SettingsSurface.svelte",
 			"utf8",
 		);
 
@@ -35,6 +40,8 @@ describe("resource view safeguards", () => {
 		expect(browserSource).toContain("Collapse resource table");
 		expect(browserSource).not.toContain('resourceView === "map"');
 		expect(browserSource).not.toContain('resourceView === "table"');
+		expect(settingsSource).not.toContain("showOwnershipMapByDefault");
+		expect(settingsSurfaceSource).not.toContain("Show ownership map by default");
 	});
 
 	test("sizes resource controls from their pane instead of the viewport", () => {

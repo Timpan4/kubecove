@@ -205,6 +205,7 @@ export interface TopologyNode {
 	portHints?: string[];
 	metrics?: ResourceMetricSummary;
 	selectable: boolean;
+	deploymentRevision?: number;
 	summary: ResourceSummary;
 }
 

@@ -29,6 +29,8 @@ pub(crate) struct TopologyInputResource {
     pub summary: ResourceSummary,
 }
 
+pub(super) const DEPLOYMENT_REVISION_LABEL: &str = "kubecove.dev/deployment-revision";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TopologyMode {
     Ownership,
@@ -135,6 +137,10 @@ pub(super) fn node_from_input(input: &TopologyInputResource) -> TopologyNode {
         health: input.summary.health,
         port_hints: input.port_hints.clone(),
         selectable: selectable_kind(&input.summary.kind),
+        deployment_revision: input
+            .labels
+            .get(DEPLOYMENT_REVISION_LABEL)
+            .and_then(|revision| revision.parse().ok()),
         summary: input.summary.clone(),
     }
 }

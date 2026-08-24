@@ -80,7 +80,7 @@
 	import { gitOpsOwnership } from "@/lib/gitops-ownership-evidence";
 		import { cnfast } from "@/lib/utils";
 	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
-	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
+	import { settingsStore } from "@/lib/settings-store";
 	import { queryKeys } from "@/lib/queryKeys";
 	import type { PathStateResourceBrowserState } from "@/lib/path-state";
 	import {
@@ -133,7 +133,8 @@
 		buildResourceTableModel,
 		buildResourceTableProjection,
 		filterResourcesByKinds,
-		filterTopologyByKinds,
+		filterTopologyByTableRows,
+		filterHistoricalReplicaSets,
 		initialOwnershipMapOpen,
 		kindSelectionKey,
 		nextNamespaceSelection,
@@ -214,8 +215,9 @@
 	let appliedAvailableKindsKey = $state("");
 	// svelte-ignore state_referenced_locally
 	let mapPanelOpen = $state(
-		initialOwnershipMapOpen(initialPathState, getSettingsSnapshot().showOwnershipMapByDefault),
+		initialOwnershipMapOpen(initialPathState),
 	);
+	let hideHistoricalReplicaSets = $state(false);
 	let OwnershipMapComponent = $state<typeof import("./OwnershipMap.svelte").default | null>(null);
 	let ownershipMapLoadError = $state<unknown>(null);
 	let tablePanelOpen = $state(true);
@@ -288,8 +290,7 @@
 		collapsedGroups = new Set(pathState?.collapsedGroups ?? []);
 		selectedTopologyNodeId = pathState?.selectedTopologyNodeId ?? null;
 		topologyMode = pathState?.topologyMode ?? "ownership";
-		mapPanelOpen =
-			pathState?.mapPanelOpen ?? getSettingsSnapshot().showOwnershipMapByDefault;
+		mapPanelOpen = pathState?.mapPanelOpen ?? false;
 		tablePanelOpen = pathState?.tablePanelOpen ?? true;
 		initialPathStateConsumed = true;
 	});
@@ -631,13 +632,6 @@
 	const focusedArgoRefreshing = $derived(
 		!focusedArgoLoading && focusedArgoInspectorQuery.isFetching,
 	);
-	const topologyWithMetrics = $derived(
-		mergeTopologyMetrics(
-			filterTopologyByKinds(topologyQuery.data, selectedKinds),
-			metricsQuery.data,
-			metricsIndex,
-		),
-	);
 	const tableModel = $derived(
 		buildResourceTableModel(
 			tableProjection,
@@ -653,6 +647,19 @@
 					? focusedArgoResourceKeys
 					: undefined,
 			},
+		),
+	);
+	const topologyWithMetrics = $derived(
+		mergeTopologyMetrics(
+			filterTopologyByTableRows(
+				filterHistoricalReplicaSets(
+					topologyQuery.data,
+					hideHistoricalReplicaSets,
+				),
+				tableModel.filteredRows,
+			),
+			metricsQuery.data,
+			metricsIndex,
 		),
 	);
 	const pinnedResourceKeySet = $derived(new Set(pinnedResourceKeys));
@@ -1086,6 +1093,7 @@
 			gitOpsFilters={tableModel.gitOpsFilters}
 			argoSummary={focusedArgoFilterSummary}
 			argoFilter={argoResourceFilter}
+			{hideHistoricalReplicaSets}
 			{metricsMessage}
 			{customResourcesStatus}
 			{realtimeStatus}
@@ -1106,6 +1114,7 @@
 			onKindToggle={toggleKind}
 			onHealthSelect={selectHealth}
 			onArgoFilterSelect={selectArgoResource}
+			onHideHistoricalReplicaSetsChange={(hide) => (hideHistoricalReplicaSets = hide)}
 			onGitOpsFilterChange={setGitOpsFilter}
 			onSearchInput={() => (pageIndex = 0)}
 			onClearFilters={clearFilters}
