@@ -448,6 +448,7 @@ mod tests {
             api_version: "example.com/v1".to_string(),
             kind: "Widget".to_string(),
             plural: "widgets".to_string(),
+            short_names: Vec::new(),
             namespaced: true,
         }
     }
@@ -459,6 +460,7 @@ mod tests {
             api_version: "v1".to_string(),
             kind: "Secret".to_string(),
             plural: "secrets".to_string(),
+            short_names: Vec::new(),
             namespaced: true,
         }
     }

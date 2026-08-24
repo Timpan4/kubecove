@@ -1,0 +1,3 @@
+[serve.static]
+plugins = ["./scripts/bun-svelte-plugin.ts", "bun-plugin-tailwind"]
+env = "KUBECOVE_PUBLIC_*"

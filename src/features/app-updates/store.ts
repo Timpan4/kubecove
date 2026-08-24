@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { createStore } from "zustand/vanilla";
 import {
 	createJSONStorage,
 	persist,
@@ -72,7 +72,7 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-export const useAppUpdateStore = create<AppUpdateState>()(
+export const useAppUpdateStore = createStore<AppUpdateState>()(
 	persist(
 		(set, get) => ({
 			...initialState,

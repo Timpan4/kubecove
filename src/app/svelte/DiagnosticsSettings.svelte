@@ -2,6 +2,7 @@
 	import { onDestroy, onMount } from "svelte";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { Copy, ExternalLink, RefreshCcw, Trash2 } from "lucide-svelte";
+	import { IS_DEV_BUILD } from "@/lib/build-env";
 	import { Button, Checkbox, Field, FieldGroup, FieldLabel, Switch } from "@/components/ui/svelte";
 	import {
 		clearDiagnostics,
@@ -121,7 +122,7 @@
 		/>
 	</SettingsRow>
 
-	{#if import.meta.env.DEV}
+	{#if IS_DEV_BUILD}
 		<SettingsRow
 			title="Topology spike"
 			description="Opens the Svelte topology benchmark harness with synthetic 4,000-node data."

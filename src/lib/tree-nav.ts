@@ -3,8 +3,8 @@
  * for the IDE-style sidebar tree.
  */
 
-import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "./types";
 import type { DiscoveredResourceKind, ResourceKindSelection } from "./types";
+import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "./types";
 
 // ─── Tree Node Types ───────────────────────────────────────────────────────────
 
@@ -29,6 +29,7 @@ export interface TreeNode {
   label: string;
   description?: string;
   disabled?: boolean;
+  selectable?: boolean;
   children?: TreeNode[];
 }
 

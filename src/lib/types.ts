@@ -273,6 +273,7 @@ export interface DiscoveredResourceKind {
 	apiVersion: string;
 	kind: string;
 	plural: string;
+	shortNames?: string[];
 	namespaced: boolean;
 }
 

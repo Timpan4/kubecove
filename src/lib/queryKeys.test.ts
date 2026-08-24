@@ -53,6 +53,44 @@ describe("query key identity", () => {
 		}
 	});
 
+	test("keeps Argo status order and discovery scope canonical", () => {
+		expect(
+			queryKeys.argoConnectionStatuses(
+				"kind-dev",
+				"workspace-1",
+				["primary", "backup"],
+				"KUBECONFIG",
+			),
+		).toEqual([
+			"argo-connection-status",
+			"kubeconfigEnv=KUBECONFIG",
+			"kind-dev",
+			"workspace-1",
+			["primary", "backup"],
+		]);
+		expect(
+			JSON.stringify(
+				queryKeys.argoConnectionStatuses(
+					"kind-dev",
+					"workspace-1",
+					["primary", "backup"],
+				),
+			) ===
+				JSON.stringify(
+					queryKeys.argoConnectionStatuses(
+						"kind-dev",
+						"workspace-1",
+						["backup", "primary"],
+					),
+				),
+		).toBe(false);
+		expect(queryKeys.argoServerDiscovery("kind-dev", "KUBECONFIG")).toEqual([
+			"argo-server-discovery",
+			"kubeconfigEnv=KUBECONFIG",
+			"kind-dev",
+		]);
+	});
+
 	test("keeps workspace and Application identity in Argo keys", () => {
 		const argoWorkspaceScope = queryKeys.argoWorkspaceApplication(
 			"kind-dev",

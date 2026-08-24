@@ -139,6 +139,7 @@ pub fn sample_custom_resource_kinds(count: usize) -> Vec<DiscoveredResourceKind>
             api_version: format!("{group}/v1"),
             kind: kind.clone(),
             plural: format!("managedthings{index}"),
+            short_names: vec![format!("mt{index}")],
             namespaced: index % 7 != 0,
         };
         kinds.push(resource_kind.clone());

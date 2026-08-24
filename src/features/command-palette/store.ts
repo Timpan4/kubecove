@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { createStore } from "zustand/vanilla";
 
 interface CommandPaletteState {
 	open: boolean;
@@ -6,7 +6,7 @@ interface CommandPaletteState {
 	toggle: () => void;
 }
 
-export const useCommandPaletteStore = create<CommandPaletteState>((set) => ({
+export const useCommandPaletteStore = createStore<CommandPaletteState>((set) => ({
 	open: false,
 	setOpen: (open) => set({ open }),
 	toggle: () => set((state) => ({ open: !state.open })),
