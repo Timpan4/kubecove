@@ -56,6 +56,18 @@ KubeCove is a Tauri desktop application. The Svelte frontend reaches Kubernetes 
 3. Launch KubeCove, create a workspace, choose a context, and narrow namespaces or resource kinds when useful.
 4. Follow the [installation and first-use guide](https://github.com/Timpan4/kubecove/wiki/Install-and-Update) for platform notes and the [public Wiki](https://github.com/Timpan4/kubecove/wiki) for task guides.
 
+On Linux with Nix, run a checkout directly:
+
+```sh
+nix run
+```
+
+Run a tagged release by replacing `X.Y.Z` with its version:
+
+```sh
+nix run github:Timpan4/kubecove/app-vX.Y.Z
+```
+
 Installers are beta builds and may show platform trust prompts. KubeCove does not include your cluster credentials, `kubectl`, Helm, or GitOps CLIs.
 
 ## Screenshots

@@ -4,6 +4,8 @@
 
 Accepted. Superseded by the completed Svelte cutover: Svelte is now the only frontend runtime.
 
+The stack below records the migration-era decision. Current frontend development and production builds use Bun's native bundler.
+
 ## Context
 
 KubeCove is a Tauri desktop app whose frontend is stateful: workspaces, selected cluster scope, resource inspection, YAML, topology, GitOps, Helm, RBAC, incidents, settings, live sessions, and diagnostics all share local UI state and typed Tauri command wrappers.

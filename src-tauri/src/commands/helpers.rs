@@ -9,7 +9,8 @@ pub(crate) use health::{legacy_resource_health, update_resource_health};
 pub(crate) use metadata::{
     base_resource_summary, enrich_resource_summaries_with_flux_inventory, extract_argo_app,
     extract_git_ops_owner, extract_helm_release, extract_owner_ref, extract_owner_ref_summary,
-    fmt_ready, read_flux_ownership_index,
+    fetch_flux_ownership_index, filter_flux_ownership_index, fmt_ready,
+    read_flux_ownership_index, FluxOwnershipIndex,
 };
 pub(crate) use serialization::{
     fetch_and_serialize, fetch_and_serialize_cluster, fetch_and_serialize_cluster_with_encoding,

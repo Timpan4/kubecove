@@ -1,4 +1,5 @@
-import { Channel, type InvokeOptions } from "@tauri-apps/api/core";
+import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
+import { IS_DEV_BUILD } from "./build-env";
 
 interface BrowserDevEnv {
 	DEV?: boolean;
@@ -34,10 +35,6 @@ interface MockChannel<T> {
 
 let nextMockChannelId = 1;
 
-function importMetaEnv(): BrowserDevEnv {
-	return ((import.meta as { env?: BrowserDevEnv }).env ?? {}) as BrowserDevEnv;
-}
-
 export function isTauriRuntime(
 	scope: TauriRuntimeGlobal = globalThis as TauriRuntimeGlobal,
 ): boolean {
@@ -45,7 +42,7 @@ export function isTauriRuntime(
 }
 
 export function shouldUseBrowserDevMocks(
-	env: BrowserDevEnv = importMetaEnv(),
+	env: BrowserDevEnv = { DEV: IS_DEV_BUILD },
 	scope: TauriRuntimeGlobal = globalThis as TauriRuntimeGlobal,
 ): boolean {
 	return env.DEV === true && !isTauriRuntime(scope);

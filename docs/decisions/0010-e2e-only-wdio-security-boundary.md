@@ -20,7 +20,7 @@ Startup is symmetric and fail closed:
 - the generated kubeconfig must contain only the expected admin and restricted contexts, both targeting a loopback API server for that run cluster;
 - E2E mode ignores persisted kubeconfig sources, user `KUBECONFIG`, and default kubeconfig discovery.
 
-The fast Chrome suite is different by design. It opens the normal Vite development frontend and uses the existing typed browser mocks. It does not inject Tauri globals or load Rust.
+The fast Chrome suite is different by design. It opens the normal Bun development frontend and uses the existing typed browser mocks. It does not inject Tauri globals or load Rust.
 
 The lifecycle runner owns each real run. It records an exact generated cluster name before cleanup becomes eligible, gathers redacted diagnostics, then deletes only that cluster and its own temporary directory. Raw kubeconfig contents, tokens, keys, certificates, and environment dumps are never artifacts. `--keep` is local-only and rejected in CI.
 

@@ -102,11 +102,71 @@ export function readPersistedWorkspaces(
 	try {
 		const parsed = JSON.parse(raw) as PersistedWorkspaceState;
 		return Array.isArray(parsed.state?.workspaces)
-			? (parsed.state.workspaces as SavedWorkspace[])
+			? parsed.state.workspaces.flatMap((workspace) => {
+					const sanitized = sanitizePersistedWorkspace(workspace);
+					return sanitized ? [sanitized] : [];
+				})
 			: [];
 	} catch {
 		return [];
 	}
+}
+
+/// localStorage content is untrusted input: drop entries whose required shape
+/// does not match instead of casting them into the store.
+function sanitizePersistedWorkspace(value: unknown): SavedWorkspace | null {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return null;
+	}
+	const record = value as Record<string, unknown>;
+	const scope = record.scope;
+	if (
+		typeof record.id !== "string" ||
+		record.id.length === 0 ||
+		typeof record.name !== "string" ||
+		typeof record.createdAt !== "string" ||
+		typeof record.updatedAt !== "string" ||
+		typeof scope !== "object" ||
+		scope === null ||
+		Array.isArray(scope)
+	) {
+		return null;
+	}
+	const scopeRecord = scope as Record<string, unknown>;
+	if (
+		typeof scopeRecord.clusterContext !== "string" ||
+		!isStringArray(scopeRecord.namespaces) ||
+		!isValidKindSelections(scopeRecord.kinds) ||
+		typeof scopeRecord.argoAppFilter !== "string" ||
+		(scopeRecord.layout !== "overview" && scopeRecord.layout !== "resources") ||
+		!isRecordArray(record.shortcuts) ||
+		!isRecordArray(record.portForwards)
+	) {
+		return null;
+	}
+	return record as unknown as SavedWorkspace;
+}
+
+function isStringArray(value: unknown): boolean {
+	return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isRecordArray(value: unknown): boolean {
+	return (
+		Array.isArray(value) &&
+		value.every((item) => typeof item === "object" && item !== null)
+	);
+}
+
+function isValidKindSelections(value: unknown): boolean {
+	return (
+		Array.isArray(value) &&
+		value.every(
+			(item) =>
+				typeof item === "string" ||
+				(typeof item === "object" && item !== null),
+		)
+	);
 }
 
 export function writePersistedWorkspaces(

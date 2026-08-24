@@ -15,7 +15,7 @@ pub async fn preview_scale_workload(
     let api = resource_api(client, &target)?;
     api.patch(
         &target.name,
-        &PatchParams::default().dry_run(),
+        &preview_patch_params(),
         &Patch::Merge(json!({ "spec": { "replicas": request.replicas } })),
     )
     .await?;
@@ -59,12 +59,7 @@ pub async fn preview_rollout_restart(
 ) -> Result<ClusterOperationPreview, AppError> {
     let target = validate_restart(&request)?;
     let client = client_for(&target, request.kubeconfig_env_var).await?;
-    restart_with_params(
-        resource_api(client, &target)?,
-        &target,
-        PatchParams::default().dry_run(),
-    )
-    .await?;
+    restart_with_params(resource_api(client, &target)?, &target, preview_patch_params()).await?;
     Ok(ClusterOperationPreview {
         effect: format!(
             "Restart {} by updating its pod template",
@@ -100,7 +95,7 @@ pub async fn preview_delete_resource(
     let target = validate_delete(&request)?;
     let client = client_for(&target, request.kubeconfig_env_var).await?;
     resource_api(client, &target)?
-        .delete(&target.name, &DeleteParams::default().dry_run())
+        .delete(&target.name, &preview_delete_params())
         .await?;
     Ok(ClusterOperationPreview {
         effect: format!("Delete {}", target_label(&target)),
@@ -122,6 +117,16 @@ pub async fn delete_resource(
         effect: format!("Delete requested for {}", target_label(&target)),
         target,
     })
+}
+
+/// Previews must never persist: every preview request goes to the API server
+/// with `dryRun=All`. Centralized here so tests can pin the behavior.
+fn preview_patch_params() -> PatchParams {
+    PatchParams::default().dry_run()
+}
+
+fn preview_delete_params() -> DeleteParams {
+    DeleteParams::default().dry_run()
 }
 
 async fn operation_client_for(
@@ -197,7 +202,16 @@ fn resource_api(
     client: kube::Client,
     target: &ClusterOperationTarget,
 ) -> Result<Api<DynamicObject>, AppError> {
-    let (group, plural) = match target.kind.as_str() {
+    let resource = api_resource_for_kind(&target.kind)?;
+    Ok(Api::namespaced_with(
+        client,
+        target.namespace.as_deref().expect("validated namespace"),
+        &resource,
+    ))
+}
+
+fn api_resource_for_kind(kind: &str) -> Result<ApiResource, AppError> {
+    let (group, plural) = match kind {
         "Deployment" => ("apps", "deployments"),
         "StatefulSet" => ("apps", "statefulsets"),
         "DaemonSet" => ("apps", "daemonsets"),
@@ -210,7 +224,7 @@ fn resource_api(
             ))
         }
     };
-    let resource = ApiResource {
+    Ok(ApiResource {
         group: group.to_string(),
         version: "v1".to_string(),
         api_version: if group.is_empty() {
@@ -218,14 +232,9 @@ fn resource_api(
         } else {
             format!("{group}/v1")
         },
-        kind: target.kind.clone(),
+        kind: kind.to_string(),
         plural: plural.to_string(),
-    };
-    Ok(Api::namespaced_with(
-        client,
-        target.namespace.as_deref().expect("validated namespace"),
-        &resource,
-    ))
+    })
 }
 
 async fn restart_with_params(
@@ -288,5 +297,34 @@ mod tests {
             require_confirmation(false).unwrap_err().kind,
             "confirmationRequired"
         );
+    }
+
+    #[test]
+    fn preview_params_are_always_dry_run() {
+        assert!(preview_patch_params().dry_run);
+        assert!(preview_delete_params().dry_run);
+        assert!(!PatchParams::default().dry_run);
+        assert!(!DeleteParams::default().dry_run);
+    }
+
+    #[test]
+    fn api_resource_mapping_covers_supported_kinds() {
+        let expected = [
+            ("Deployment", "apps", "apps/v1", "deployments"),
+            ("StatefulSet", "apps", "apps/v1", "statefulsets"),
+            ("DaemonSet", "apps", "apps/v1", "daemonsets"),
+            ("Pod", "", "v1", "pods"),
+            ("ConfigMap", "", "v1", "configmaps"),
+        ];
+        for (kind, group, api_version, plural) in expected {
+            let resource = api_resource_for_kind(kind).expect("supported kind");
+            assert_eq!(resource.group, group);
+            assert_eq!(resource.api_version, api_version);
+            assert_eq!(resource.version, "v1");
+            assert_eq!(resource.kind, kind);
+            assert_eq!(resource.plural, plural);
+        }
+        let error = api_resource_for_kind("Secret").unwrap_err();
+        assert_eq!(error.kind, "unsupportedOperation");
     }
 }

@@ -76,10 +76,10 @@ describe("svelte diagnostics settings model", () => {
 		);
 
 		expect(diagnosticsSource).toMatch(
-			/\{#if import\.meta\.env\.DEV\}[\s\S]*?Open 4k LOD[\s\S]*?\{\/if\}/,
+			/\{#if IS_DEV_BUILD\}[\s\S]*?Open 4k LOD[\s\S]*?\{\/if\}/,
 		);
 		expect(settingsSource).toMatch(
-			/import\.meta\.env\.DEV[\s\S]*?topologySpike/,
+			/IS_DEV_BUILD[\s\S]*?topologySpike/,
 		);
 	});
 });

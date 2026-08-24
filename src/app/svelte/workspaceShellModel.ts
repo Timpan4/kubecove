@@ -1,12 +1,18 @@
 import {
+	buildCustomResourceGroupNodes,
+	buildShallowNamespaceTreeNode,
+	extraDiscoveredKinds,
+	filterCustomResourceKinds,
+} from "@/components/sidebar-tree-helpers";
+import {
 	ARGO_NAV_KINDS,
 	ARGO_PROVIDER_GROUP_ID,
 	FLUX_FAMILIES,
 	FLUX_PROVIDER_GROUP_ID,
 } from "@/features/gitops/gitops-nav";
-import { buildShallowNamespaceTreeNode } from "@/components/sidebar-tree-helpers";
 import {
 	discoveredResourceKindKey,
+	nodeIdToString,
 	SECTIONS,
 	type TreeNode,
 } from "@/lib/tree-nav";
@@ -24,23 +30,39 @@ export const GITOPS_RESOURCE_KINDS: ResourceKindSelection[] = [
 	"CustomResourceDefinition",
 ];
 
+const COMPACT_RESOURCE_SECTION_IDS = new Set(
+	(
+		[
+			"clusterOverview",
+			"namespaces",
+			"workloads",
+			"network",
+			"config",
+			"storage",
+			"discovered",
+		] as const
+	).map(
+		(section) => nodeIdToString({ type: "section", section }),
+	),
+);
+
+export function toggleCompactSidebarSection(
+	expandedSections: string[],
+	id: string,
+): string[] {
+	if (expandedSections.includes(id)) {
+		return expandedSections.filter((item) => item !== id);
+	}
+	if (!COMPACT_RESOURCE_SECTION_IDS.has(id)) return [...expandedSections, id];
+	return expandedSections
+		.filter((item) => !COMPACT_RESOURCE_SECTION_IDS.has(item))
+		.concat(id);
+}
+
 function resourceKindSelectionKey(kind: ResourceKindSelection): string {
 	return typeof kind === "string"
 		? `typed:${kind}`
 		: `dynamic:${discoveredResourceKindKey(kind)}`;
-}
-
-export function extraDiscoveredKinds(
-	resourceKinds: DiscoveredResourceKind[],
-): DiscoveredResourceKind[] {
-	return resourceKinds
-		.toSorted((left, right) => {
-			return (
-				left.kind.localeCompare(right.kind) ||
-				left.apiVersion.localeCompare(right.apiVersion) ||
-				left.plural.localeCompare(right.plural)
-			);
-		});
 }
 
 export function appendPresentCustomResourceKinds(
@@ -160,6 +182,7 @@ export function buildSidebarTree({
 	resourceKindsError,
 	showUnavailableGitOpsProviders,
 	showCustomResources = true,
+	customResourceSearch = "",
 }: {
 	namespaces: NamespaceSummary[];
 	resourceKinds: DiscoveredResourceKind[];
@@ -170,8 +193,11 @@ export function buildSidebarTree({
 	resourceKindsError: string;
 	showUnavailableGitOpsProviders: boolean;
 	showCustomResources?: boolean;
+	customResourceSearch?: string;
 }): TreeNode[] {
-	const extraKinds = extraDiscoveredKinds(resourceKinds);
+	const extraKinds = extraDiscoveredKinds(
+		filterCustomResourceKinds(resourceKinds, customResourceSearch),
+	);
 	const namespaceNode: TreeNode = {
 		id: { type: "section", section: "namespaces" },
 		label: SECTIONS.namespaces.label,
@@ -197,22 +223,13 @@ export function buildSidebarTree({
 					},
 				]
 			: extraKinds.length > 0
-				? extraKinds.map((resourceKind) => ({
-						id: {
-							type: "kind",
-							section: "discovered",
-							kind: discoveredResourceKindKey(resourceKind),
-							resourceKind,
-						},
-						label: resourceKind.kind,
-						description: `${resourceKind.apiVersion} / ${resourceKind.plural} / ${
-							resourceKind.namespaced ? "namespaced" : "cluster-scoped"
-						}`,
-					}))
+				? buildCustomResourceGroupNodes({ section: "discovered", extraKinds })
 				: [
 						{
 							id: { type: "kind", section: "discovered", kind: "__empty" },
-							label: "No custom resources",
+							label: customResourceSearch.trim()
+								? "No custom resources match search"
+								: "No custom resources",
 							disabled: true,
 						},
 					];
@@ -221,6 +238,33 @@ export function buildSidebarTree({
 		{
 			id: { type: "section", section: "workspaceOverview" },
 			label: SECTIONS.workspaceOverview.label,
+		},
+		{ id: { type: "section", section: "incidents" }, label: SECTIONS.incidents.label },
+		{
+			id: { type: "section", section: "portForwards" },
+			label: SECTIONS.portForwards.label,
+		},
+		buildGitOpsNode({
+			argoDetected,
+			fluxDetection,
+			detecting: detectingGitOps,
+			showUnavailableGitOpsProviders,
+		}),
+		{
+			id: { type: "section", section: "helm" },
+			label: SECTIONS.helm.label,
+			children: SECTIONS.helm.children.map((kind) => ({
+				id: { type: "kind", section: "helm", kind },
+				label: kind,
+			})),
+		},
+		{
+			id: { type: "section", section: "rbac" },
+			label: SECTIONS.rbac.label,
+			children: SECTIONS.rbac.children.map((kind) => ({
+				id: { type: "kind", section: "rbac", kind },
+				label: kind,
+			})),
 		},
 		{
 			id: { type: "section", section: "clusterOverview" },
@@ -250,32 +294,5 @@ export function buildSidebarTree({
 					},
 				]
 			: []),
-		buildGitOpsNode({
-			argoDetected,
-			fluxDetection,
-			detecting: detectingGitOps,
-			showUnavailableGitOpsProviders,
-		}),
-		{
-			id: { type: "section", section: "helm" },
-			label: SECTIONS.helm.label,
-			children: SECTIONS.helm.children.map((kind) => ({
-				id: { type: "kind", section: "helm", kind },
-				label: kind,
-			})),
-		},
-		{ id: { type: "section", section: "incidents" }, label: SECTIONS.incidents.label },
-		{
-			id: { type: "section", section: "portForwards" },
-			label: SECTIONS.portForwards.label,
-		},
-		{
-			id: { type: "section", section: "rbac" },
-			label: SECTIONS.rbac.label,
-			children: SECTIONS.rbac.children.map((kind) => ({
-				id: { type: "kind", section: "rbac", kind },
-				label: kind,
-			})),
-		},
 	];
 }

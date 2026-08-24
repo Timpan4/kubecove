@@ -29,10 +29,16 @@ describe("release version helpers", () => {
 			"`KubeCove_$" + "{version}_universal.app.tar.gz`",
 		);
 		expect(tagWorkflow).toContain("actions: write");
+		expect(tagWorkflow).toContain("types: [closed]");
+		expect(tagWorkflow).toContain("github.event.pull_request.merged == true");
+		expect(tagWorkflow).toContain(
+			"ref: $" + "{{ github.event.pull_request.merge_commit_sha }}",
+		);
+		expect(tagWorkflow).not.toContain("Find associated release PR");
 		expect(tagWorkflow).toContain('gh workflow run release.yml --ref "$tag_name"');
 	});
 
-	test("requires native Nix builds before publishing a release", () => {
+	test("runs cached native Nix builds without blocking a release", () => {
 		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
 		const nixJob = releaseWorkflow.match(
 			/\n {2}nix:\n[\s\S]*?(?=\n {2}verify:\n)/,
@@ -45,9 +51,91 @@ describe("release version helpers", () => {
 		expect(nixJob).toContain("platform: ubuntu-latest");
 		expect(nixJob).toContain("platform: ubuntu-24.04-arm");
 		expect(nixJob).toContain("nix build .#kubecove");
-		expect(verifyJob).toContain("- nix");
-		expect(verifyJob).toContain("NIX_RESULT: $" + "{{ needs.nix.result }}");
-		expect(verifyJob).toContain('test "$' + '{NIX_RESULT}" = "success"');
+		expect(nixJob).toContain("continue-on-error: true");
+		expect(nixJob).toContain(
+			"DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d",
+		);
+		expect(nixJob).toContain('diagnostic-endpoint: ""');
+		expect(nixJob).not.toContain("timeout-minutes:");
+		expect(verifyJob).not.toContain("- nix");
+		expect(verifyJob).not.toContain("NIX_RESULT:");
+	});
+
+	test("gates pull requests on the locked Nix Rust vendor tree", () => {
+		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+		const nixJob = ciWorkflow.match(
+			/\n {2}nix:\n[\s\S]*?(?=\n {2}check:\n)/,
+		)?.[0];
+		const checkJob = ciWorkflow.match(/\n {2}check:\n[\s\S]*$/)?.[0];
+
+		expect(nixJob).toBeDefined();
+		expect(nixJob).toContain("nix build .#kubecove.cargoDeps");
+		expect(nixJob).toContain(
+			"DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d",
+		);
+		expect(nixJob).toContain('diagnostic-endpoint: ""');
+		expect(checkJob).toContain("- nix");
+		expect(checkJob).toContain("NIX_RESULT: $" + "{{ needs.nix.result }}");
+		expect(checkJob).toContain('test "$' + '{NIX_RESULT}" = "success"');
+	});
+
+	test("skips expensive PR checks only for trusted release branches", () => {
+		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+		const codspeedWorkflow = readFileSync(
+			".github/workflows/codspeed.yml",
+			"utf8",
+		);
+		const ciJobs = [
+			ciWorkflow.match(/\n {2}frontend:\n[\s\S]*?(?=\n {2}rust:\n)/)?.[0],
+			ciWorkflow.match(/\n {2}rust:\n[\s\S]*?(?=\n {2}nix:\n)/)?.[0],
+		];
+		const ciCheckJob = ciWorkflow.match(/\n {2}check:\n[\s\S]*$/)?.[0];
+		const benchmarkJob = codspeedWorkflow.match(
+			/\n {2}benchmarks:\n[\s\S]*?(?=\n {2}check:\n)/,
+		)?.[0];
+		const codspeedCheckJob = codspeedWorkflow.match(
+			/\n {2}check:\n[\s\S]*$/,
+		)?.[0];
+		const releaseTrigger =
+			"types: [opened, synchronize, reopened, labeled, unlabeled]";
+
+		expect(ciJobs).not.toContain(undefined);
+		for (const job of [...ciJobs, benchmarkJob]) {
+			expect(job).toContain(
+				"github.event.pull_request.head.repo.full_name != github.repository",
+			);
+			expect(job).toContain("!startsWith(github.head_ref, 'release/app-v')");
+			expect(job).toContain(
+				"!contains(github.event.pull_request.labels.*.name, 'release')",
+			);
+		}
+		expect(benchmarkJob).not.toContain("timeout-minutes:");
+
+		for (const workflow of [ciWorkflow, codspeedWorkflow]) {
+			expect(workflow).toContain(releaseTrigger);
+		}
+		for (const checkJob of [ciCheckJob, codspeedCheckJob]) {
+			expect(checkJob).toContain(
+				"github.event.pull_request.head.repo.full_name == github.repository",
+			);
+			expect(checkJob).toContain("startsWith(github.head_ref, 'release/app-v')");
+			expect(checkJob).toContain(
+				"contains(github.event.pull_request.labels.*.name, 'release')",
+			);
+		}
+		expect(ciCheckJob).toContain(
+			'test "$' + '{FRONTEND_RESULT}" = "skipped"',
+		);
+		expect(ciCheckJob).toContain(
+			'test "$' + '{NIX_RESULT}" = "success"',
+		);
+		expect(ciCheckJob).toContain(
+			'test "$' + '{RUST_RESULT}" = "skipped"',
+		);
+		expect(codspeedCheckJob).toContain("name: CodSpeed Performance Analysis");
+		expect(codspeedCheckJob).toContain(
+			'test "$' + '{BENCHMARK_RESULT}" = "skipped"',
+		);
 	});
 
 	test("uses an unlocked session collection for Linux desktop E2E", () => {

@@ -47,6 +47,7 @@ describe("resource browser presentation helpers", () => {
     apiVersion: "example.com/v1",
     kind: "Widget",
     plural: "widgets",
+    shortNames: ["wdg"],
     namespaced: true,
   };
   const clusterWidgetKind: DiscoveredResourceKind = {

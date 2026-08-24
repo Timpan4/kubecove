@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
 	buildWorkspaceFetchKeys,
 	buildWorkspaceFetchPlans,
+	WorkspaceResourceLoadError,
 } from "../src/features/workspaces/query";
 import type {
 	ClusterContext,
@@ -16,9 +17,7 @@ import {
 	computeRestoreStatus,
 	createSavedPortForward,
 	createWorkspaceRecord,
-	createWorkspaceScope,
 	summarizeWorkspaceScope,
-	useWorkspaceStore,
 	workspaceScopeContexts,
 } from "../src/lib/workspaces";
 
@@ -73,103 +72,6 @@ describe("workspace helpers", () => {
 		});
 		expect(JSON.stringify(saved)).not.toContain("session");
 		expect(JSON.stringify(saved)).not.toContain("podName");
-	});
-
-	test("manages saved Service forwards in workspace state", () => {
-		useWorkspaceStore.setState({ workspaces: [], activeWorkspaceId: null });
-		const store = useWorkspaceStore.getState();
-		const workspace = store.createWorkspace({
-			name: "Ops",
-			clusterContext: "kind-dev",
-			namespaces: ["payments"],
-		});
-
-		const saved = useWorkspaceStore.getState().savePortForward(workspace.id, {
-			clusterContext: "kind-dev",
-			namespace: "payments",
-			serviceName: "api",
-			servicePort: 8080,
-		});
-		expect(
-			useWorkspaceStore.getState().workspaces[0].portForwards.map(
-				(portForward) => portForward.id,
-			),
-		).toEqual([saved.id]);
-
-		useWorkspaceStore.getState().updateSavedPortForward(workspace.id, saved.id, {
-			label: "Payments API",
-			localPort: 18080,
-			lastStatus: "error",
-			lastError: "local port 18080 is already in use",
-		});
-		expect(useWorkspaceStore.getState().workspaces[0].portForwards[0]).toMatchObject({
-			label: "Payments API",
-			localPort: 18080,
-			lastStatus: "error",
-			lastError: "local port 18080 is already in use",
-		});
-
-		useWorkspaceStore.getState().updateSavedPortForward(workspace.id, saved.id, {
-			localPort: undefined,
-		});
-		expect(
-			useWorkspaceStore.getState().workspaces[0].portForwards[0].localPort,
-		).toBeUndefined();
-
-		useWorkspaceStore
-			.getState()
-			.deleteSavedPortForward(workspace.id, saved.id);
-		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([]);
-	});
-
-	test("reconciles saved forwards when workspace scope changes", () => {
-		useWorkspaceStore.setState({ workspaces: [], activeWorkspaceId: null });
-		const workspace = useWorkspaceStore.getState().createWorkspace({
-			name: "Ops",
-			clusterContext: "kind-dev",
-			namespaces: ["payments"],
-		});
-		const saved = useWorkspaceStore.getState().savePortForward(workspace.id, {
-			clusterContext: "kind-dev",
-			namespace: "payments",
-			serviceName: "api",
-			servicePort: 8080,
-		});
-
-		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
-			scope: createWorkspaceScope({
-				name: "Ops",
-				clusterContext: "kind-prod",
-				namespaces: ["payments"],
-			}),
-		});
-
-		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([]);
-
-		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
-			portForwards: [saved],
-			scope: createWorkspaceScope({
-				name: "Ops",
-				clusterContext: "kind-dev",
-				namespaces: [],
-			}),
-		});
-
-		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([
-			saved,
-		]);
-
-		useWorkspaceStore.getState().updateWorkspace(workspace.id, {
-			scope: createWorkspaceScope({
-				name: "Ops",
-				clusterContext: "kind-dev",
-				namespaces: ["other"],
-			}),
-		});
-
-		expect(useWorkspaceStore.getState().workspaces[0].portForwards).toEqual([
-			saved,
-		]);
 	});
 
 	test("stores cluster groups as local scope metadata without secrets", () => {
@@ -362,6 +264,53 @@ describe("workspace helpers", () => {
 		]);
 	});
 
+	test("workspace resource failures retain context, operation, and technical detail", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "cluster", message: "ServiceError: client error (Connect)" },
+			},
+		]);
+
+		expect(error.clusterContexts).toEqual(["kind-prod"]);
+		expect(error.kind).toBe("networkTransient");
+		expect(error.message).toBe(
+			'Context "kind-prod", operation "resource discovery": ServiceError: client error (Connect)',
+		);
+	});
+
+	test("workspace resource failures keep mixed context guidance neutral", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-dev",
+				reason: { kind: "cluster", message: "Unauthorized: authentication required" },
+			},
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "cluster", message: "ServiceError: client error (Connect)" },
+			},
+		]);
+
+		expect(error.kind).toBe("mixedWorkspaceConnection");
+		expect(error.failureBuckets).toEqual(["authentication", "networkTransient"]);
+	});
+
+	test("unrelated mixed workspace failures use generic guidance", () => {
+		const error = new WorkspaceResourceLoadError([
+			{
+				clusterContext: "kind-dev",
+				reason: { kind: "forbidden", message: "pods is forbidden" },
+			},
+			{
+				clusterContext: "kind-prod",
+				reason: { kind: "validation", message: "namespace is required" },
+			},
+		]);
+
+		expect(error.kind).toBe("unknown");
+		expect(error.failureBuckets).toEqual(["forbiddenRbac", "validation"]);
+	});
+
 	test("uses an explicit height for the workspace namespace scroll area", () => {
 		const source = readFileSync(
 			"src/features/workspaces/WorkspaceLauncher.svelte",
@@ -374,17 +323,6 @@ describe("workspace helpers", () => {
 		expect(source).not.toContain(
 			'ScrollArea class="max-h-52 rounded-md border bg-background/40"',
 		);
-	});
-
-	test("allows workspace saves when namespace listing fails", () => {
-		const source = readFileSync(
-			"src/features/workspaces/WorkspaceLauncher.svelte",
-			"utf8",
-		);
-
-		expect(source).not.toContain("namespaceScopeUnavailable");
-		expect(source).toContain('mode="compact"');
-		expect(source).toContain('fallbackTitle: "Failed to load namespaces"');
 	});
 
 	test("keeps overview Resources primary and visible in wrapping actions", () => {

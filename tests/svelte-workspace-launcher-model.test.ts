@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { createWorkspaceRecord } from "../src/lib/workspace-model";
 import {
 	buildWorkspaceInput,
+	getWorkspaceCreationAvailability,
 	pickEffectiveContext,
+	submitWorkspaceIfAvailable,
 	uniqueWorkspaceContexts,
 } from "../src/features/workspaces/workspaceLauncherModel";
 import type { ClusterContext } from "../src/lib/types";
+import { createWorkspaceRecord } from "../src/lib/workspace-model";
 
 const availableContexts: ClusterContext[] = [
 	{ name: "kind-dev", isCurrent: false },
@@ -61,6 +63,54 @@ describe("svelte workspace launcher model", () => {
 		expect(input.name).toBe("kind-prod");
 		expect(input.kinds).toBe(workspace.scope.kinds);
 		expect(input.shortcutPreferences).toBe(workspace.scope.shortcutPreferences);
+	});
+
+	test("requires successful namespace discovery before workspace creation", () => {
+		expect(
+			getWorkspaceCreationAvailability("kind-dev", false, "loading"),
+		).toEqual({
+			canCreate: false,
+			disabledReason: "Wait for namespace discovery to finish.",
+		});
+		expect(
+			getWorkspaceCreationAvailability("kind-dev", false, "failed"),
+		).toEqual({
+			canCreate: false,
+			disabledReason: "Retry namespace discovery before creating this workspace.",
+		});
+		expect(
+			getWorkspaceCreationAvailability("kind-dev", false, "ready"),
+		).toEqual({ canCreate: true, disabledReason: null });
+	});
+
+	test("does not submit workspace input after namespace discovery fails", () => {
+		let buildCalls = 0;
+		let createCalls = 0;
+		const availability = getWorkspaceCreationAvailability(
+			"kind-dev",
+			false,
+			"failed",
+		);
+
+		const submitted = submitWorkspaceIfAvailable(
+			availability.canCreate,
+			() => {
+				buildCalls += 1;
+				return buildWorkspaceInput({
+					name: "Recovery Lab",
+					effectiveContext: "kind-dev",
+					selectedClusterContexts: ["kind-dev"],
+					selectedNamespaces: ["default"],
+				});
+			},
+			() => {
+				createCalls += 1;
+			},
+		);
+
+		expect(submitted).toBe(false);
+		expect(buildCalls).toBe(0);
+		expect(createCalls).toBe(0);
 	});
 
 	test("Svelte launcher keeps backend context and namespace state in svelte-query", () => {

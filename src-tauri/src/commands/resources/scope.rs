@@ -1,7 +1,8 @@
 use super::{dynamic_resources_summary_from, resources_summary_from};
 use crate::commands::diagnostics::record_backend_result;
 use crate::commands::helpers::{
-    enrich_resource_summaries_with_flux_inventory, read_flux_ownership_index,
+    enrich_resource_summaries_with_flux_inventory, fetch_flux_ownership_index,
+    filter_flux_ownership_index,
 };
 use crate::{
     commands::{
@@ -213,7 +214,13 @@ pub async fn resource_scope_from(
     let client = KubeconfigSource::new(kubeconfig_env_var)?
         .client_for_context(&cluster_context)
         .await?;
-    let index = read_flux_ownership_index(client, &requested_namespaces).await?;
+    let index = live_store
+        .flux_ownership_index(source_key, cluster_context.clone(), {
+            let client = client.clone();
+            move || fetch_flux_ownership_index(client)
+        })
+        .await?;
+    let index = filter_flux_ownership_index(index, &requested_namespaces);
     enrich_resource_summaries_with_flux_inventory(&mut rows, &index);
     Ok(dedupe_rows(rows))
 }

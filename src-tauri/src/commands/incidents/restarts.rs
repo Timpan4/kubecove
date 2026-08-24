@@ -1,6 +1,7 @@
 use crate::commands::helpers::{k8s_timestamp_to_datetime, list_params};
 use crate::models::{AppError, IncidentSignalState, ResourceSummary};
 use chrono::DateTime;
+use futures_util::future::join_all;
 use k8s_openapi::api::core::v1::{ContainerStatus, Pod};
 use kube::{api::Api, Client};
 use std::collections::BTreeMap;
@@ -44,11 +45,18 @@ pub(super) async fn list_restart_evidence(
     }
 
     let mut result = RestartEvidenceList::default();
-    for (namespace, restarted_resources) in by_namespace {
-        let pods = Api::<Pod>::namespaced(client.clone(), namespace)
-            .list(&list_params())
-            .await
-            .map_err(AppError::from)?;
+    let fetches = by_namespace.into_iter().map(|(namespace, restarted)| {
+        let client = client.clone();
+        async move {
+            let pods = Api::<Pod>::namespaced(client, namespace)
+                .list(&list_params())
+                .await
+                .map_err(AppError::from)?;
+            Ok::<_, AppError>((restarted, pods))
+        }
+    });
+    for fetch in join_all(fetches).await {
+        let (restarted_resources, pods) = fetch?;
         let pods_by_name = pods
             .into_iter()
             .filter_map(|pod| pod.metadata.name.clone().map(|name| (name, pod)))

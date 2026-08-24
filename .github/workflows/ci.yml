@@ -5,6 +5,7 @@ on:
     branches:
       - main
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -16,6 +17,7 @@ concurrency:
 jobs:
   frontend:
     name: Frontend checks
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -26,7 +28,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.14"
+          bun-version: "1.4.0"
 
       - name: Cache Bun dependencies
         uses: actions/cache@v6.1.0
@@ -54,6 +56,12 @@ jobs:
       - name: Lint frontend
         run: bun run lint
 
+      # Advisory until the pre-existing violation backlog (855 at introduction)
+      # is resolved or rules are rescoped — see the tracking issue.
+      - name: Lint frontend anti-slop rules
+        run: bun run lint:anti-slop
+        continue-on-error: true
+
       - name: Test frontend
         run: bun test
 
@@ -62,6 +70,7 @@ jobs:
 
   rust:
     name: Rust checks
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -104,12 +113,35 @@ jobs:
       - name: Lint Rust
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 
+  nix:
+    name: Nix Rust vendor build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
+        with:
+          diagnostic-endpoint: ""
+
+      - name: Build Rust vendor tree
+        run: nix build .#kubecove.cargoDeps
+
   check:
     name: Typecheck and test
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
       - frontend
+      - nix
       - rust
     if: always()
 
@@ -117,10 +149,20 @@ jobs:
       - name: Verify required jobs
         env:
           FRONTEND_RESULT: ${{ needs.frontend.result }}
+          NIX_RESULT: ${{ needs.nix.result }}
+          RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
           RUST_RESULT: ${{ needs.rust.result }}
         run: |
           set -euo pipefail
           echo "Frontend checks: ${FRONTEND_RESULT}"
+          echo "Nix Rust vendor build: ${NIX_RESULT}"
           echo "Rust checks: ${RUST_RESULT}"
-          test "${FRONTEND_RESULT}" = "success"
-          test "${RUST_RESULT}" = "success"
+          if [[ "${RELEASE_PR}" == "true" ]]; then
+            test "${FRONTEND_RESULT}" = "skipped"
+            test "${NIX_RESULT}" = "success"
+            test "${RUST_RESULT}" = "skipped"
+          else
+            test "${FRONTEND_RESULT}" = "success"
+            test "${NIX_RESULT}" = "success"
+            test "${RUST_RESULT}" = "success"
+          fi

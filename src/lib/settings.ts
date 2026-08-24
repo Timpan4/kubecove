@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { createStore } from "zustand/vanilla";
 import { persist } from "zustand/middleware";
 import {
 	type ArgoConnectionPreference,
@@ -250,7 +250,7 @@ export function partializeSettings(state: SettingsState): Partial<SettingsState>
 	};
 }
 
-export const useSettingsState = create<SettingsState>()(
+export const useSettingsState = createStore<SettingsState>()(
 	persist(
 		(set) => ({
 			showExactTimestamps: false,
