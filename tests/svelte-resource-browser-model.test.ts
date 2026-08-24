@@ -93,6 +93,7 @@ const widget: DiscoveredResourceKind = {
 	apiVersion: "example.com/v1",
 	kind: "Widget",
 	plural: "widgets",
+	shortNames: ["wdg"],
 	namespaced: true,
 };
 

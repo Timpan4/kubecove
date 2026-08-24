@@ -49,7 +49,8 @@ describe("sidebar namespace tree helpers", () => {
 
 		expect(countTreeNodes([deep])).toBeGreaterThan(20);
 		expect(deep.children?.at(-1)?.label).toBe("Custom Resources");
-		expect(deep.children?.at(-1)?.children?.length).toBe(10);
+		expect(deep.children?.at(-1)?.children?.[0]?.label).toBe("example.com");
+		expect(deep.children?.at(-1)?.children?.[0]?.children?.length).toBe(10);
 	});
 
 	test("expands chevrons without replacing the selected scope", () => {
@@ -60,7 +61,8 @@ describe("sidebar namespace tree helpers", () => {
 		const toggleEnd = source.indexOf("function handleKeydown", toggleStart);
 		const toggleSource = source.slice(toggleStart, toggleEnd);
 
-		expect(selectSource).toContain("onNodeSelect(node.id)");
+		expect(selectSource).toContain("if (node.selectable !== false) onNodeSelect(node.id)");
+		expect(selectSource).toContain("if (hasChildren) onSectionToggle(id)");
 		expect(toggleSource).not.toContain("onNodeSelect(node.id)");
 		expect(toggleSource).toContain("onSectionToggle(id)");
 		expect(source).toContain("onclick={selectNode}");

@@ -115,6 +115,7 @@ describe("tree navigation scope helpers", () => {
 			apiVersion: "example.com/v1",
 			kind: "Widget",
 			plural: "widgets",
+			shortNames: ["wdg"],
 			namespaced: true,
 		};
 
