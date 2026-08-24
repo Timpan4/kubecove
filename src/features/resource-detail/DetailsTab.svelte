@@ -89,7 +89,7 @@
 							variant={toneBadgeVariant(restartsTone(detailResource.restarts))}
 							class={compactToneBadgeClass(restartsTone(detailResource.restarts))}
 						>
-							Restarts {detailResource.restarts ?? 0}
+							Restarts {detailResource.restarts ?? "not reported"}
 						</Badge>
 						{#if detailResource.ownerRef}
 							<Badge variant="outline" class="max-w-full truncate rounded-full px-2 py-0 text-[0.6875rem] shadow-none">

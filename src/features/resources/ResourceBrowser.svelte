@@ -27,6 +27,8 @@
 	} from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
+	import CopyableText from "@/components/CopyableText.svelte";
+	import TimestampText from "@/components/TimestampText.svelte";
 	import {
 		Badge,
 		Button,
@@ -46,6 +48,12 @@
 		getResourceGroupVisual,
 		getResourceKindVisual,
 	} from "@/app/svelte/resourceVisuals";
+	import {
+		CPU_USAGE_DESCRIPTION,
+		MEMORY_USAGE_DESCRIPTION,
+		READINESS_NOT_REPORTED,
+		RESTART_COUNT_NOT_REPORTED,
+	} from "./operational-data";
 	import {
 		createFiniteReadCleanup,
 		createFiniteReadRequest,
@@ -1253,8 +1261,8 @@
 									<TableHead>{@render SortButton("status", "Status")}</TableHead>
 									{#if tableModel.columnVisibility.ready}<TableHead>{@render SortButton("ready", "Ready")}</TableHead>{/if}
 									{#if tableModel.columnVisibility.restarts}<TableHead>{@render SortButton("restarts", "Restarts")}</TableHead>{/if}
-									{#if tableModel.columnVisibility.cpu}<TableHead>{@render SortButton("cpu", "CPU")}</TableHead>{/if}
-									{#if tableModel.columnVisibility.memory}<TableHead>{@render SortButton("memory", "Memory")}</TableHead>{/if}
+									{#if tableModel.columnVisibility.cpu}<TableHead>{@render SortButton("cpu", "CPU", CPU_USAGE_DESCRIPTION)}</TableHead>{/if}
+									{#if tableModel.columnVisibility.memory}<TableHead>{@render SortButton("memory", "Memory", MEMORY_USAGE_DESCRIPTION)}</TableHead>{/if}
 									{#if tableModel.columnVisibility.gitOps}<TableHead>Owner</TableHead>{/if}
 									<TableHead>{@render SortButton("age", "Age")}</TableHead>
 									<TableHead><span class="sr-only">Pin</span></TableHead>
@@ -1335,19 +1343,15 @@
 											<TableRow
 												data-resource-selected={rowSelected ? "true" : undefined}
 												class={cnfast(ROW_CLASS, rowSelected && SELECTED_ROW_CLASS)}
-												tabindex="0"
-												role="button"
-												aria-pressed={rowSelected}
-												onclick={() => selectResource(row)}
-												onkeydown={(event: KeyboardEvent) => {
-													if (event.key === "Enter" || event.key === " ") {
-														event.preventDefault();
-														selectResource(row);
-													}
-												}}
 											>
 												<TableCell class="font-medium">
-													<span class="block min-w-0 truncate" title={row.name}>{row.name}</span>
+													<CopyableText
+														value={row.name}
+														label="resource name"
+														onActivate={() => selectResource(row)}
+														actionLabel={`Open resource ${row.name}`}
+														active={rowSelected}
+													/>
 												</TableCell>
 												<TableCell>{row.namespace ?? EMPTY_CELL}</TableCell>
 												<TableCell>{row.kind}</TableCell>
@@ -1367,14 +1371,14 @@
 																{ready.value}
 															</Badge>
 														{:else}
-															{row.ready ?? EMPTY_CELL}
+															<span title={READINESS_NOT_REPORTED} aria-label={READINESS_NOT_REPORTED}>{row.ready ?? EMPTY_CELL}</span>
 														{/if}
 													</TableCell>
 												{/if}
 												{#if tableModel.columnVisibility.restarts}
 													<TableCell>
 														{#if row.restarts === undefined || row.restarts === null}
-															<span class="flex justify-center">{EMPTY_CELL}</span>
+															<span class="flex justify-center" title={RESTART_COUNT_NOT_REPORTED} aria-label={RESTART_COUNT_NOT_REPORTED}>{EMPTY_CELL}</span>
 														{:else if row.restarts === 0}
 															<span class="flex justify-center">{row.restarts}</span>
 														{:else}
@@ -1388,10 +1392,10 @@
 													</TableCell>
 												{/if}
 												{#if tableModel.columnVisibility.cpu}
-													<TableCell>{formatCpuMillicores(row.metrics?.cpuMillicores)}</TableCell>
+														<TableCell title={CPU_USAGE_DESCRIPTION} aria-label={`CPU usage ${formatCpuMillicores(row.metrics?.cpuMillicores)}`}>{formatCpuMillicores(row.metrics?.cpuMillicores)}</TableCell>
 												{/if}
 												{#if tableModel.columnVisibility.memory}
-													<TableCell>{formatMemoryBytes(row.metrics?.memoryBytes)}</TableCell>
+														<TableCell title={MEMORY_USAGE_DESCRIPTION} aria-label={`Memory usage ${formatMemoryBytes(row.metrics?.memoryBytes)}`}>{formatMemoryBytes(row.metrics?.memoryBytes)}</TableCell>
 												{/if}
 												{#if tableModel.columnVisibility.gitOps}
 													<TableCell>
@@ -1400,7 +1404,7 @@
 														</span>
 													</TableCell>
 												{/if}
-												<TableCell>{row.age}</TableCell>
+												<TableCell><TimestampText value={row.createdAt} relative={row.age} /></TableCell>
 												<TableCell>
 													<Button
 														type="button"
@@ -1485,14 +1489,15 @@
 	{/if}
 </div>
 
-{#snippet SortButton(column: ResourceSortColumn, label: string)}
+{#snippet SortButton(column: ResourceSortColumn, label: string, description?: string)}
 	<Button
 		type="button"
 		variant="ghost"
 		size="xs"
 		class="h-auto gap-1 border-0 bg-transparent p-0 text-left text-inherit hover:bg-transparent"
 		onclick={() => toggleSort(column)}
-		aria-label={`Sort by ${label}`}
+		aria-label={`Sort by ${label}${description ? `. ${description}` : ""}`}
+		title={description}
 	>
 		{label}
 		{#if sortColumn === column && sortDesc}<ArrowDown class="size-3" aria-hidden="true" />{:else if sortColumn === column}<ArrowUp class="size-3" aria-hidden="true" />{:else}<ChevronsUpDown class="size-3" aria-hidden="true" />{/if}

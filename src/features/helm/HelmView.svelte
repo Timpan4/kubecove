@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ExternalLink, Package, Search, X } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
+	import TimestampText from "@/components/TimestampText.svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -472,7 +473,7 @@
 								</div>
 								<div>
 									<p class="text-xs uppercase text-muted-foreground">Updated</p>
-									<p class="truncate font-medium">{details.summary.updatedAt ?? details.summary.age}</p>
+									<p class="truncate font-medium"><TimestampText value={details.summary.updatedAt} relative={details.summary.age} /></p>
 								</div>
 								<div>
 									<p class="text-xs uppercase text-muted-foreground">Values</p>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import TimestampText from "@/components/TimestampText.svelte";
 	import { Badge, Button, Textarea } from "@/components/ui/svelte";
 	import type { RbacInspectionSummary } from "@/lib/types";
 	import type { RbacCockpitItem } from "./cockpitModel";
@@ -114,7 +115,7 @@
 				{#if record}<Button size="sm" variant="ghost" onclick={clearReview}>Clear review</Button>{/if}
 			</div>
 			{#if record}
-				<p class="text-xs text-muted-foreground">Reviewed {new Date(record.reviewedAt).toLocaleString()}.</p>
+				<p class="text-xs text-muted-foreground">Reviewed <TimestampText value={record.reviewedAt} precision="second" />.</p>
 			{/if}
 		</div>
 	</section>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import TimestampText from "@/components/TimestampText.svelte";
 	import {
 		AlertTriangle,
 		Check,
@@ -942,7 +943,7 @@
 												{#if review.evaluationError}<p class="mt-1 text-xs text-destructive">{review.evaluationError}</p>{/if}
 											{/if}
 											{#if verifierError}<p class="mt-2 text-xs text-destructive">Verifier unavailable · {verifierError}</p>{/if}
-											{#if submitted}<p class="mt-2 break-words text-[0.625rem] text-muted-foreground">{inspection.cluster} · {submitted.timestamp}<br />{submitted.identity}<br />{submitted.target}</p>{/if}
+											{#if submitted}<p class="mt-2 break-words text-[0.625rem] text-muted-foreground">{inspection.cluster} · <TimestampText value={submitted.timestamp} precision="second" /><br />{submitted.identity}<br />{submitted.target}</p>{/if}
 										</section>
 									{/if}
 

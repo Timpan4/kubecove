@@ -305,6 +305,30 @@ describe("resource browser presentation helpers", () => {
     expect(formatResourceTypeGroupLabel({ ...baseResource, kind: "Gateway" })).toBe("Gateways");
     expect(formatResourceTypeGroupLabel({ ...baseResource, kind: "Policy" })).toBe("Policies");
     expect(formatResourceTypeGroupLabel({ ...baseResource, kind: "Ingress" })).toBe("Ingresses");
+    expect(
+      formatResourceTypeGroupLabel({
+        ...baseResource,
+        kind: "CiliumIdentity",
+        plural: "ciliumidentities",
+      }),
+    ).toBe("CiliumIdentities");
+    expect(
+      formatResourceTypeGroupLabel({
+        ...baseResource,
+        kind: "GatewayClass",
+        plural: "gatewayclasses",
+      }),
+    ).toBe("GatewayClasses");
+    expect(
+      formatResourceTypeGroupLabel({ ...baseResource, kind: "Person", plural: "people" }),
+    ).toBe("People");
+    expect(
+      formatResourceTypeGroupLabel({
+        ...baseResource,
+        kind: "IPAddress",
+        plural: "ipaddresses",
+      }),
+    ).toBe("IPAddresses");
   });
 
   test("builds stable collapse keys for app and type groups", () => {

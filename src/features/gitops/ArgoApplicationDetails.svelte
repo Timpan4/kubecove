@@ -14,6 +14,7 @@
 	import { parse, stringify } from "yaml";
 	import YamlCodeEditor from "@/components/YamlCodeEditor.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
+	import TimestampText from "@/components/TimestampText.svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -948,7 +949,7 @@
 						<SelectContent><SelectGroup>{#each inspector.data.history as entry}<SelectItem value={argoHistoryKey(application, entry)} label={historyRevision(entry)}>{historyRevision(entry)}</SelectItem>{/each}</SelectGroup></SelectContent>
 					</Select>
 				{/if}
-				{#if selectedHistory}<div class="mt-3 break-all text-sm font-semibold">{historyRevision(selectedHistory)}</div><div class="mt-1 text-xs leading-relaxed text-muted-foreground">{selectedHistory.deployedAt ?? "No deployment timestamp"} by {selectedHistory.initiatedBy ?? "unknown"}</div>{/if}
+				{#if selectedHistory}<div class="mt-3 break-all text-sm font-semibold">{historyRevision(selectedHistory)}</div><div class="mt-1 text-xs leading-relaxed text-muted-foreground"><TimestampText value={selectedHistory.deployedAt} fallback="No deployment timestamp" precision="second" /> by {selectedHistory.initiatedBy ?? "unknown"}</div>{/if}
 			{:else}
 				<div class="mt-3 text-xs text-muted-foreground">No deployment history reported.</div>
 			{/if}

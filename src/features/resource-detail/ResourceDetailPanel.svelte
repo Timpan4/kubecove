@@ -606,7 +606,7 @@
 
 	function containerReadyLabel(container: ContainerStatusRow): string {
 		if (isCleanCompletedContainer(container)) return "Completed";
-		if (container.ready === undefined) return "-";
+		if (container.ready === undefined) return "Not reported";
 		return container.ready ? "Yes" : "No";
 	}
 

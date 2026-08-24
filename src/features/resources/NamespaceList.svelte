@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createQuery } from "@tanstack/svelte-query";
 	import FriendlyError from "@/components/FriendlyError.svelte";
+	import TimestampText from "@/components/TimestampText.svelte";
 	import {
 		Badge,
 		Empty,
@@ -87,7 +88,7 @@
 					<TableRow>
 						<TableCell class="font-medium">{namespace.name}</TableCell>
 						<TableCell>{namespace.age}</TableCell>
-						<TableCell>{namespace.createdAt ?? "-"}</TableCell>
+						<TableCell><TimestampText value={namespace.createdAt} relative={namespace.age} /></TableCell>
 					</TableRow>
 				{/each}
 			</TableBody>

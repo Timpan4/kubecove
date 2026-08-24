@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { CircleHelp, GitBranch, Layers, Package, Plug } from "lucide-svelte";
+	import CopyableText from "@/components/CopyableText.svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
+	import { copyTextWithAnnouncement } from "@/components/copy-text";
+	import { formatExactTimestamp } from "@/components/timestamp-format";
 	import {
 		Badge,
 		Button,
@@ -121,6 +124,7 @@
 	const gitOpsSummary = $derived(
 		gitOpsQuery.data ? buildGitOpsSummary(gitOpsQuery.data, gitOpsActiveRailKey) : null,
 	);
+	let copyRevealMessage = $state("");
 
 	function railItemsFor(provider: GitOpsRailItem["provider"]): GitOpsRailItem[] {
 		return gitOpsRailItems.filter((item: GitOpsRailItem) => item.provider === provider);
@@ -165,10 +169,34 @@
 		event.stopPropagation();
 	}
 
-	function handleGitOpsCardKeydown(event: KeyboardEvent, selection: GitOpsSelection) {
-		if (event.key !== "Enter" && event.key !== " ") return;
-		event.preventDefault();
-		openGitOpsSelection(selection);
+	function revisionCopyValue(selection: GitOpsSelection): string {
+		const rows = gitOpsSelectionRevisionTooltipRows(selection);
+		const values = rows.flatMap((row) =>
+			row.fields.map((field) => `${row.name} ${field.label}: ${field.value}`),
+		);
+		return values.length > 0
+			? values.join("\n")
+			: (gitOpsSelectionRevisionLabel(selection) ?? "Revision unavailable");
+	}
+
+	function factCopyValue(fact: GitOpsCardFact): string {
+		const values = [
+			...(fact.revisionRows?.flatMap((row) =>
+				row.fields.map((field) => `${row.name} ${field.label}: ${field.value}`),
+			) ?? []),
+			...(fact.tooltipFields?.map((field) => `${field.label}: ${field.value}`) ?? []),
+		];
+		return values.length > 0 ? values.join("\n") : fact.value;
+	}
+
+	async function copyRevealedValue(event: Event, value: string, label: string) {
+		event.stopPropagation();
+		await copyTextWithAnnouncement(
+			(nextMessage) => (copyRevealMessage = nextMessage),
+			navigator.clipboard,
+			value,
+			label,
+		);
 	}
 
 	function gitOpsCardSubtitle(selection: GitOpsSelection): string {
@@ -245,11 +273,16 @@
 
 	function ageFact(selection: GitOpsSelection): MaybeGitOpsCardFact {
 		const createdAt = gitOpsSelectionAgeTooltip(selection);
+		const createdLabel = formatExactTimestamp(
+			createdAt,
+			$settingsStore.timestampTimezone,
+			"second",
+		);
 		return {
 			label: "Age",
 			value: selection.item.age,
-			tooltipTitle: createdAt ? "Age" : undefined,
-			tooltipFields: createdAt ? [{ label: "created", value: createdAt }] : undefined,
+			tooltipTitle: createdLabel ? "Age" : undefined,
+			tooltipFields: createdLabel ? [{ label: "created", value: createdLabel }] : undefined,
 		};
 	}
 
@@ -327,6 +360,7 @@
 {/snippet}
 
 <TooltipProvider delayDuration={400} skipDelayDuration={0}>
+	<span class="sr-only" role="status" aria-live="polite">{copyRevealMessage}</span>
 	<SurfaceFrame icon={GitBranch} title="GitOps" query={gitOpsQuery} errorLabel="GitOps data unavailable" wide>
 		{@const data = gitOpsQuery.data}
 		{#if data}
@@ -465,20 +499,21 @@
 								{@const sourceLine = gitOpsSelectionSourceLine(item)}
 								<div
 									class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-										? "group flex h-[18.5rem] cursor-pointer overflow-hidden rounded-lg border border-primary/60 bg-accent/40 text-xs/relaxed shadow-sm transition-all hover:-translate-y-px hover:border-primary/70 hover:bg-accent/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-										: "group flex h-[18.5rem] cursor-pointer overflow-hidden rounded-lg border bg-surface-1 text-xs/relaxed transition-all hover:-translate-y-px hover:border-primary/50 hover:bg-accent/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"}
-									role="button"
-									tabindex="0"
-									aria-label={gitOpsCardActionLabel(item)}
-									aria-pressed={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
-									onclick={() => openGitOpsSelection(item)}
-									onkeydown={(event: KeyboardEvent) => handleGitOpsCardKeydown(event, item)}
+										? "group flex h-[18.5rem] overflow-hidden rounded-lg border border-primary/60 bg-accent/40 text-xs/relaxed shadow-sm transition-all hover:-translate-y-px hover:border-primary/70 hover:bg-accent/50 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+										: "group flex h-[18.5rem] overflow-hidden rounded-lg border bg-surface-1 text-xs/relaxed transition-all hover:-translate-y-px hover:border-primary/50 hover:bg-accent/30 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0"}
 								>
 									<div class={`w-1 shrink-0 ${gitOpsCardTone(item)}`}></div>
 									<div class="flex min-w-0 flex-1 flex-col p-3">
 										<div class="flex items-start justify-between gap-3">
-											<div class="min-w-0 space-y-0.5">
-												<div class="truncate font-heading text-sm font-medium">{item.item.name}</div>
+											<div class="min-w-0 flex-1 space-y-0.5">
+												<CopyableText
+													value={item.item.name}
+													label="GitOps resource name"
+													textClass="font-heading text-sm font-medium"
+													onActivate={() => openGitOpsSelection(item)}
+													actionLabel={gitOpsCardActionLabel(item)}
+													active={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
+												/>
 												<div class="truncate text-xs/relaxed text-muted-foreground">{gitOpsCardSubtitle(item)}</div>
 											</div>
 											{#if SourceIcon}
@@ -486,15 +521,15 @@
 													<TooltipTrigger
 														type="button"
 														class={gitOpsSourceIconClass(sourceMode)}
-														aria-label={sourceTooltip}
-														onclick={stopTooltipEvent}
+														aria-label={`${sourceTooltip}. Activate to copy source details.`}
+														onclick={(event: MouseEvent) => void copyRevealedValue(event, sourceTooltip, "source details")}
 														onkeydown={stopTooltipEvent}
 													>
 														<SourceIcon class="size-3.5" aria-hidden="true" />
 													</TooltipTrigger>
-											<TooltipContent side="top" align="end" sideOffset={8} class={gitOpsTooltipClass}>
-												{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
-											</TooltipContent>
+													<TooltipContent side="top" align="end" sideOffset={8} class={gitOpsTooltipClass}>
+														{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
+													</TooltipContent>
 												</Tooltip>
 											{/if}
 										</div>
@@ -515,26 +550,26 @@
 												<TooltipTrigger
 													type="button"
 													class={`${gitOpsSourceLineClass} hover:border-primary/40`}
-													aria-label={sourceTooltip}
-													onclick={stopTooltipEvent}
+													aria-label={`${sourceTooltip}. Activate to copy source details.`}
+													onclick={(event: MouseEvent) => void copyRevealedValue(event, sourceTooltip, "source details")}
 													onkeydown={stopTooltipEvent}
 												>
 													{sourceLine}
 												</TooltipTrigger>
-											<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
-												{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine)}
-											</TooltipContent>
+												<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
+													{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine)}
+												</TooltipContent>
 											</Tooltip>
 										{/if}
-									<div class="mt-3 grid grid-cols-2 gap-1.5">
+										<div class="mt-3 grid grid-cols-2 gap-1.5">
 											{#each gitOpsCardFacts(item) as fact}
 												{#if hasFactTooltip(fact)}
 													<Tooltip>
 														<TooltipTrigger
 															type="button"
 															class={`${gitOpsFactFieldClass} w-full cursor-help transition-colors hover:border-primary/40`}
-															aria-label={`${fact.label}: ${fact.value}`}
-															onclick={stopTooltipEvent}
+															aria-label={`${fact.label}: ${factCopyValue(fact)}. Activate to copy.`}
+															onclick={(event: MouseEvent) => void copyRevealedValue(event, factCopyValue(fact), fact.label.toLocaleLowerCase())}
 															onkeydown={stopTooltipEvent}
 														>
 															<span class={gitOpsFactLabelClass}>{fact.label}</span>
@@ -630,16 +665,17 @@
 											: "group relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/30 motion-reduce:transition-none"}
 									>
 										<div class={`absolute inset-y-0 left-0 w-1 ${gitOpsCardTone(item)}`}></div>
-										<button
-											type="button"
-											class="min-w-0 rounded-sm pl-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-											aria-label={gitOpsCardActionLabel(item)}
-											aria-pressed={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
-											onclick={() => openGitOpsSelection(item)}
-										>
-											<div class="truncate font-medium">{item.item.name}</div>
+										<div class="min-w-0 pl-1">
+											<CopyableText
+												value={item.item.name}
+												label="GitOps resource name"
+												textClass="font-medium"
+												onActivate={() => openGitOpsSelection(item)}
+												actionLabel={gitOpsCardActionLabel(item)}
+												active={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
+											/>
 											<div class="truncate text-xs text-muted-foreground">{gitOpsCardSubtitle(item)}</div>
-										</button>
+										</div>
 										<div class="flex min-w-0 flex-col items-start gap-1">
 											<HealthAssessmentBadge assessment={item.item.healthAssessment} />
 											{#each gitOpsCardBadges(item) as [label, value]}
@@ -653,8 +689,8 @@
 												<TooltipTrigger
 													type="button"
 													class="flex min-w-0 items-center gap-2 text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-													aria-label={sourceTooltip}
-													onclick={stopTooltipEvent}
+													aria-label={`${sourceTooltip}. Activate to copy source details.`}
+													onclick={(event: MouseEvent) => void copyRevealedValue(event, sourceTooltip, "source details")}
 													onkeydown={stopTooltipEvent}
 												>
 													{#if SourceIcon}
@@ -671,7 +707,20 @@
 										{:else}
 											<span class="text-muted-foreground">-</span>
 										{/if}
-										<span class="truncate font-medium">{gitOpsSelectionRevisionLabel(item)}</span>
+										<Tooltip>
+											<TooltipTrigger
+												type="button"
+												class="truncate text-left font-medium underline-offset-4 hover:underline"
+												aria-label={`Revision: ${revisionCopyValue(item)}. Activate to copy.`}
+												onclick={(event: MouseEvent) => void copyRevealedValue(event, revisionCopyValue(item), "revision")}
+												onkeydown={stopTooltipEvent}
+											>
+												{gitOpsSelectionRevisionLabel(item)}
+											</TooltipTrigger>
+											<TooltipContent side="top" align="start" sideOffset={8} class="max-w-[34rem] break-all">
+												{revisionCopyValue(item)}
+											</TooltipContent>
+										</Tooltip>
 										<span class="truncate text-muted-foreground">{gitOpsSelectionDestination(item)}</span>
 										<span class="tabular-nums text-muted-foreground">{item.item.age ?? "-"}</span>
 										<div
