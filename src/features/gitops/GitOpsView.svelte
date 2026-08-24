@@ -614,7 +614,7 @@
 									<span>Revision</span>
 									<span>Destination/Namespace</span>
 									<span>Age</span>
-									<span class="text-right">Actions</span>
+									<span class="sticky right-0 flex self-stretch items-center justify-end bg-muted text-right">Actions</span>
 								</div>
 								{#each gitOpsSelections as item (gitOpsSelectionKey(item))}
 									{@const sourceMode = gitOpsSelectionSourceMode(item)}
@@ -626,8 +626,8 @@
 									{@const sourceLine = gitOpsSelectionSourceLine(item)}
 									<div
 										class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-											? "relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-accent/40 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/50 motion-reduce:transition-none"
-											: "relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/30 motion-reduce:transition-none"}
+											? "group relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-accent/40 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/50 motion-reduce:transition-none"
+											: "group relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/30 motion-reduce:transition-none"}
 									>
 										<div class={`absolute inset-y-0 left-0 w-1 ${gitOpsCardTone(item)}`}></div>
 										<button
@@ -674,7 +674,11 @@
 										<span class="truncate font-medium">{gitOpsSelectionRevisionLabel(item)}</span>
 										<span class="truncate text-muted-foreground">{gitOpsSelectionDestination(item)}</span>
 										<span class="tabular-nums text-muted-foreground">{item.item.age ?? "-"}</span>
-										<div class="flex justify-end gap-1">
+										<div
+											class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
+												? "sticky right-0 flex h-full items-center justify-end gap-1 bg-accent group-hover:bg-accent"
+												: "sticky right-0 flex h-full items-center justify-end gap-1 bg-surface-1 group-hover:bg-accent"}
+										>
 											<Button
 												type="button"
 												variant="ghost"

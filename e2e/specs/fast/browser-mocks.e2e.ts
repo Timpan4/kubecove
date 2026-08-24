@@ -155,6 +155,130 @@ describe("browser mock inspection", () => {
 		}
 	});
 
+	it("adapts shared layouts at compact and wide sizes", async () => {
+		const originalSize = await browser.getWindowSize();
+
+		try {
+			await browser.setWindowSize(1026, 752);
+
+			const clusterSelect = await $("#cluster-select");
+			await clusterSelect.waitForDisplayed();
+			const compactScope = await browser.execute((select: HTMLElement) => {
+				const label = document.getElementById("cluster-select-label");
+				const header = select.closest("header");
+				const selectBounds = select.getBoundingClientRect();
+				const headerBounds = header?.getBoundingClientRect();
+				return {
+					fullValue: select.getAttribute("title"),
+					insideHeader:
+						selectBounds.left >= (headerBounds?.left ?? 1) &&
+						selectBounds.right <= (headerBounds?.right ?? 0),
+					labelVisuallyHidden: label?.getBoundingClientRect().width === 1,
+				};
+			}, clusterSelect);
+			expect(compactScope).toEqual({
+				fullValue: "mock-dev",
+				insideHeader: true,
+				labelVisuallyHidden: true,
+			});
+
+			await $('button[aria-label="Open settings"]').click();
+			const settingsNav = await $('nav[aria-label="Settings sections"]');
+			await settingsNav.waitForDisplayed();
+			const compactSettings = await browser.execute((nav: HTMLElement) => {
+				const aside = nav.parentElement;
+				const content = aside?.nextElementSibling;
+				const asideBounds = aside?.getBoundingClientRect();
+				const contentBounds = content?.getBoundingClientRect();
+				return {
+					navigationAboveContent:
+						(asideBounds?.bottom ?? 1) <= (contentBounds?.top ?? 0),
+				};
+			}, settingsNav);
+			expect(compactSettings.navigationAboveContent).toBe(true);
+
+			await browser.setWindowSize(1440, 900);
+			const wideSettings = await browser.execute((nav: HTMLElement) => {
+				const aside = nav.parentElement;
+				const layout = aside?.parentElement;
+				const content = aside?.nextElementSibling;
+				const asideBounds = aside?.getBoundingClientRect();
+				const layoutBounds = layout?.getBoundingClientRect();
+				const contentBounds = content?.getBoundingClientRect();
+				return {
+					contentWidth: contentBounds?.width ?? Number.POSITIVE_INFINITY,
+					layoutWidth: layoutBounds?.width ?? 0,
+					navigationBesideContent:
+						(asideBounds?.right ?? 1) <= (contentBounds?.left ?? 0),
+				};
+			}, settingsNav);
+			expect(wideSettings.navigationBesideContent).toBe(true);
+			expect(wideSettings.layoutWidth).toBeGreaterThan(1024);
+			expect(wideSettings.contentWidth).toBeLessThanOrEqual(1024);
+
+			await $("button=Back to app").click();
+			await browser.setWindowSize(1026, 752);
+			await $('button[aria-label="Open workspace navigation"]').click();
+			const navigation = await $('[data-slot="sheet-content"]');
+			await navigation.$('[role="treeitem"]*=GitOps').click();
+			await $("button=List").click();
+			const details = await $('button[aria-label="Open details for Application platform-argocd in argocd"]');
+			await details.waitForDisplayed();
+			const compactActions = await browser.execute((button: HTMLElement) => {
+				const scroller = button.closest(".overflow-x-auto");
+				const scrollerBounds = scroller?.getBoundingClientRect();
+				const actions = Array.from(button.parentElement?.querySelectorAll("button") ?? []);
+				return {
+					insideScroller: actions.every((action) => {
+						const bounds = action.getBoundingClientRect();
+						return (
+							bounds.left >= (scrollerBounds?.left ?? 1) &&
+							bounds.right <= (scrollerBounds?.right ?? 0)
+						);
+					}),
+					scrollLeft: scroller?.scrollLeft ?? -1,
+				};
+			}, details);
+			expect(compactActions).toEqual({ insideScroller: true, scrollLeft: 0 });
+
+			await browser.execute((button: HTMLElement) => {
+				const scroller = button.closest(".overflow-x-auto");
+				if (scroller) scroller.scrollLeft = 200;
+			}, details);
+			await details.moveTo();
+			const scrolledActions = await browser.execute((button: HTMLElement) => {
+				const scroller = button.closest(".overflow-x-auto");
+				const scrollerBounds = scroller?.getBoundingClientRect();
+				const actionArea = button.parentElement;
+				const actions = Array.from(actionArea?.querySelectorAll("button") ?? []);
+				const canvas = document.createElement("canvas");
+				canvas.width = 1;
+				canvas.height = 1;
+				const context = canvas.getContext("2d");
+				if (context && actionArea) {
+					context.fillStyle = getComputedStyle(actionArea).backgroundColor;
+					context.fillRect(0, 0, 1, 1);
+				}
+				return {
+					insideScroller: actions.every((action) => {
+						const bounds = action.getBoundingClientRect();
+						return (
+							bounds.left >= (scrollerBounds?.left ?? 1) &&
+							bounds.right <= (scrollerBounds?.right ?? 0)
+						);
+					}),
+					opaqueHover: context?.getImageData(0, 0, 1, 1).data[3] === 255,
+					scrollLeft: scroller?.scrollLeft ?? 0,
+				};
+			}, details);
+			expect(scrolledActions.insideScroller).toBe(true);
+			expect(scrolledActions.opaqueHover).toBe(true);
+			expect(scrolledActions.scrollLeft).toBeGreaterThan(0);
+		} finally {
+			await browser.setWindowSize(originalSize.width, originalSize.height);
+		}
+	});
+
 	it("opens adjacent Argo Application details by accessible name", async () => {
 		await $('button[aria-label="Open workspace navigation"]').click();
 		const navigation = await $('[data-slot="sheet-content"]');

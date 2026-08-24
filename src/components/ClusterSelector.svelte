@@ -60,10 +60,10 @@
 {:else if contexts.length === 0}
 	<div class="text-xs text-muted-foreground">No contexts found</div>
 {:else}
-	<div class="flex flex-row items-center gap-2">
+	<div class="flex min-w-0 flex-row items-center gap-2">
 		<span
 			id="cluster-select-label"
-			class="whitespace-nowrap text-xs font-bold uppercase tracking-wide text-muted-foreground"
+			class="sr-only xl:not-sr-only xl:whitespace-nowrap xl:text-xs xl:font-bold xl:uppercase xl:tracking-wide xl:text-muted-foreground"
 		>
 			Cluster Context:
 		</span>
@@ -71,7 +71,8 @@
 			<SelectTrigger
 				id="cluster-select"
 				aria-labelledby="cluster-select-label"
-				class="h-8 min-w-40 bg-background/50 text-xs"
+				title={selectedValue}
+				class="h-8 min-w-0 max-w-full bg-background/50 text-xs"
 			>
 				<SelectValue placeholder="Select a context..." />
 			</SelectTrigger>
