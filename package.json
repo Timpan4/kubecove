@@ -62,7 +62,7 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.9",
+    "@biomejs/biome": "2.5.10",
     "@codspeed/vitest-plugin": "5.7.1",
     "@fontsource-variable/geist-mono": "5.3.0",
     "@oxlint/plugins": "1.79.0",
