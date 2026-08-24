@@ -194,12 +194,6 @@
 		copyRevealMessage = await copyText(navigator.clipboard, value, label);
 	}
 
-	function handleGitOpsCardKeydown(event: KeyboardEvent, selection: GitOpsSelection) {
-		if (event.key !== "Enter" && event.key !== " ") return;
-		event.preventDefault();
-		openGitOpsSelection(selection);
-	}
-
 	function gitOpsCardSubtitle(selection: GitOpsSelection): string {
 		if (selection.type === "flux") return selection.item.resourceKind.kind;
 		if (selection.type === "argoProject") return selection.item.description ?? "AppProject";
@@ -500,14 +494,8 @@
 								{@const sourceLine = gitOpsSelectionSourceLine(item)}
 								<div
 									class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-										? "group flex h-[18.5rem] cursor-pointer overflow-hidden rounded-lg border border-primary/60 bg-accent/40 text-xs/relaxed shadow-sm transition-all hover:-translate-y-px hover:border-primary/70 hover:bg-accent/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-										: "group flex h-[18.5rem] cursor-pointer overflow-hidden rounded-lg border bg-surface-1 text-xs/relaxed transition-all hover:-translate-y-px hover:border-primary/50 hover:bg-accent/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"}
-									role="button"
-									tabindex="0"
-									aria-label={gitOpsCardActionLabel(item)}
-									aria-pressed={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
-									onclick={() => openGitOpsSelection(item)}
-									onkeydown={(event: KeyboardEvent) => handleGitOpsCardKeydown(event, item)}
+										? "group flex h-[18.5rem] overflow-hidden rounded-lg border border-primary/60 bg-accent/40 text-xs/relaxed shadow-sm transition-all hover:-translate-y-px hover:border-primary/70 hover:bg-accent/50 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+										: "group flex h-[18.5rem] overflow-hidden rounded-lg border bg-surface-1 text-xs/relaxed transition-all hover:-translate-y-px hover:border-primary/50 hover:bg-accent/30 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0"}
 								>
 									<div class={`w-1 shrink-0 ${gitOpsCardTone(item)}`}></div>
 									<div class="flex min-w-0 flex-1 flex-col p-3">
