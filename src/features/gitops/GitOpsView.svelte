@@ -614,7 +614,7 @@
 									<span>Revision</span>
 									<span>Destination/Namespace</span>
 									<span>Age</span>
-									<span class="sticky right-0 flex self-stretch items-center justify-end bg-muted px-3 text-right">Actions</span>
+									<span class="sticky right-0 flex self-stretch items-center justify-end bg-muted text-right">Actions</span>
 								</div>
 								{#each gitOpsSelections as item (gitOpsSelectionKey(item))}
 									{@const sourceMode = gitOpsSelectionSourceMode(item)}
@@ -676,8 +676,8 @@
 										<span class="tabular-nums text-muted-foreground">{item.item.age ?? "-"}</span>
 										<div
 											class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-												? "sticky right-0 flex h-full items-center justify-end gap-1 bg-accent px-3 group-hover:bg-accent/50"
-												: "sticky right-0 flex h-full items-center justify-end gap-1 bg-surface-1 px-3 group-hover:bg-accent/30"}
+												? "sticky right-0 flex h-full items-center justify-end gap-1 bg-accent group-hover:bg-accent/50"
+												: "sticky right-0 flex h-full items-center justify-end gap-1 bg-surface-1 group-hover:bg-accent/30"}
 										>
 											<Button
 												type="button"

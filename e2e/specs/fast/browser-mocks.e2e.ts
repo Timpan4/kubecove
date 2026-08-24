@@ -226,12 +226,16 @@ describe("browser mock inspection", () => {
 			await details.waitForDisplayed();
 			const compactActions = await browser.execute((button: HTMLElement) => {
 				const scroller = button.closest(".overflow-x-auto");
-				const buttonBounds = button.getBoundingClientRect();
 				const scrollerBounds = scroller?.getBoundingClientRect();
+				const actions = Array.from(button.parentElement?.querySelectorAll("button") ?? []);
 				return {
-					insideScroller:
-						buttonBounds.left >= (scrollerBounds?.left ?? 1) &&
-						buttonBounds.right <= (scrollerBounds?.right ?? 0),
+					insideScroller: actions.every((action) => {
+						const bounds = action.getBoundingClientRect();
+						return (
+							bounds.left >= (scrollerBounds?.left ?? 1) &&
+							bounds.right <= (scrollerBounds?.right ?? 0)
+						);
+					}),
 					scrollLeft: scroller?.scrollLeft ?? -1,
 				};
 			}, details);
