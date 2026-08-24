@@ -19,14 +19,21 @@
 		eligibleArgoProfiles,
 		upsertArgoProfileInSavedOrder,
 	} from "@/lib/argo-connection-policy";
+	import { argoConnectionStatusQueryOptions } from "@/lib/argo-application-inspection";
+	import {
+		createCancelScope,
+		createFiniteReadCleanup,
+		createFiniteReadRequest,
+	} from "@/lib/finite-read-lifecycle";
+	import { queryKeys } from "@/lib/queryKeys";
 	import { settingsStore } from "@/lib/settings-store";
 	import {
+		cancelBackendRequests,
 		connectArgoServer,
 		createTauriClient,
 		disconnectArgoServer,
 		discoverArgoServers,
 		forgetArgoCredential,
-		getArgoConnectionStatus,
 	} from "@/lib/tauri";
 	import type { ArgoServerEndpoint } from "@/lib/types";
 
@@ -37,6 +44,9 @@
 	} = $props();
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
+	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
+		cancelBackendRequests(client, cancelScope),
+	);
 	const settings = $derived($settingsStore);
 	let connectionMode = $state<"external" | "serviceTunnel">("external");
 	let url = $state("");
@@ -64,15 +74,34 @@
 				)
 			: settings.argoProfiles,
 	);
-	const connectionStatuses = createQuery(() => ({
-		queryKey: ["argo-connection-status", clusterContext ?? "", workspaceId ?? "", matchingProfiles.map((profile) => profile.id).join(",")],
-		queryFn: () => Promise.all(matchingProfiles.map(async (profile) => [profile.id, await getArgoConnectionStatus(client, profile.id)] as const)),
+	const connectionStatusSpec = $derived({
+		profiles: matchingProfiles,
+		queryKey: queryKeys.argoConnectionStatuses(
+			clusterContext ?? "",
+			workspaceId ?? "",
+			matchingProfiles.map((profile) => profile.id),
+			kubeconfigEnvVar,
+		),
 		enabled: matchingProfiles.length > 0,
-		staleTime: 5_000,
-	}));
+	});
+	const connectionStatuses = createQuery(() =>
+		argoConnectionStatusQueryOptions(client, connectionStatusSpec),
+	);
+	const discoveryQueryKey = $derived(
+		queryKeys.argoServerDiscovery(clusterContext ?? "", kubeconfigEnvVar),
+	);
+	const discoveryCancelScope = $derived(
+		createCancelScope("argo-server-discovery", discoveryQueryKey),
+	);
 	const discovered = createQuery(() => ({
-		queryKey: ["argo-server-discovery", clusterContext ?? "", kubeconfigEnvVar ?? ""],
-		queryFn: () => discoverArgoServers(client, clusterContext!, kubeconfigEnvVar),
+		queryKey: discoveryQueryKey,
+		queryFn: () =>
+			discoverArgoServers(
+				client,
+				clusterContext!,
+				kubeconfigEnvVar,
+				createFiniteReadRequest(discoveryCancelScope, "argo-discovery"),
+			),
 		enabled: Boolean(clusterContext),
 		staleTime: 60_000,
 	}));
@@ -104,6 +133,13 @@
 				: null
 			: tunnelEndpoint,
 	);
+
+	$effect(() => {
+		const cancelScope = discoveryCancelScope;
+		const queryKey = discoveryQueryKey;
+		finiteReadCleanup.cancelPending(cancelScope);
+		return () => finiteReadCleanup.schedule(cancelScope, queryKey);
+	});
 
 	$effect(() => {
 		connected = connectionStatuses.data?.find(([, status]) => status.connected)?.[0] ?? null;

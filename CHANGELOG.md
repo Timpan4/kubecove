@@ -53,6 +53,7 @@ should mirror the matching version section.
 ## 0.10.5 - 2026-08-05
 ### Added
 
+- Add five-minute, single-use Argo operation sessions that survive an app restart during their lifetime and revalidate exact scope, Application identity, credentials, authorization, and transport before execution (#303).
 - Add private Argo tunnel UI (#312).
 - Add private Argo transport core (#311).
 - Add ownership evidence (#302).

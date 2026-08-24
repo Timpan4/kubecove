@@ -39,6 +39,7 @@ fn custom_kind(kind: &str) -> DiscoveredResourceKind {
         api_version: "example.com/v1".to_string(),
         kind: kind.to_string(),
         plural: format!("{}s", kind.to_lowercase()),
+        short_names: Vec::new(),
         namespaced: true,
     }
 }

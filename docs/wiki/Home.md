@@ -17,7 +17,7 @@ Kubernetes credentials remain on the Rust side of the desktop boundary. KubeCove
 
 Inspection is default. Guarded workflows include Pod and selector-backed Service port forwarding, exact-Pod exec, selected-resource YAML apply, narrow scale/restart/delete actions, and reviewed Argo CD refresh and sync operations.
 
-YAML apply is limited to selected resources, validates identity, dry-runs before final confirmation, and blocks v1 Secret apply. Argo CD transport is an explicit choice: Kubernetes CRD browsing and a connected Argo CD API session never silently fall back between each other. Flux remains inspection-only.
+YAML apply is limited to selected resources, validates identity, dry-runs before final confirmation, and blocks v1 Secret apply. Argo CD operations use the reviewed transport, while connected inspection can visibly fall back to a complete Kubernetes view when a required connected read fails. Flux remains inspection-only.
 
 ## Start and navigate
 

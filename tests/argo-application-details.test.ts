@@ -28,7 +28,7 @@ describe("Argo Application Briefing contract", () => {
 
 	test("uses production data and operation contracts without prototype simulation", () => {
 		for (const contract of [
-			"getArgoApplicationInspector",
+			"argoApplicationInspectionQueryOptions",
 			"getArgoResourceComparison",
 			"preflightArgoOperation",
 			"runArgoOperationLifecycle",

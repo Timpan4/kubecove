@@ -8,5 +8,7 @@ pub struct DiscoveredResourceKind {
     pub api_version: String,
     pub kind: String,
     pub plural: String,
+    #[serde(default)]
+    pub short_names: Vec<String>,
     pub namespaced: bool,
 }
