@@ -240,6 +240,40 @@ describe("browser mock inspection", () => {
 				};
 			}, details);
 			expect(compactActions).toEqual({ insideScroller: true, scrollLeft: 0 });
+
+			await browser.execute((button: HTMLElement) => {
+				const scroller = button.closest(".overflow-x-auto");
+				if (scroller) scroller.scrollLeft = 200;
+			}, details);
+			await details.moveTo();
+			const scrolledActions = await browser.execute((button: HTMLElement) => {
+				const scroller = button.closest(".overflow-x-auto");
+				const scrollerBounds = scroller?.getBoundingClientRect();
+				const actionArea = button.parentElement;
+				const actions = Array.from(actionArea?.querySelectorAll("button") ?? []);
+				const canvas = document.createElement("canvas");
+				canvas.width = 1;
+				canvas.height = 1;
+				const context = canvas.getContext("2d");
+				if (context && actionArea) {
+					context.fillStyle = getComputedStyle(actionArea).backgroundColor;
+					context.fillRect(0, 0, 1, 1);
+				}
+				return {
+					insideScroller: actions.every((action) => {
+						const bounds = action.getBoundingClientRect();
+						return (
+							bounds.left >= (scrollerBounds?.left ?? 1) &&
+							bounds.right <= (scrollerBounds?.right ?? 0)
+						);
+					}),
+					opaqueHover: context?.getImageData(0, 0, 1, 1).data[3] === 255,
+					scrollLeft: scroller?.scrollLeft ?? 0,
+				};
+			}, details);
+			expect(scrolledActions.insideScroller).toBe(true);
+			expect(scrolledActions.opaqueHover).toBe(true);
+			expect(scrolledActions.scrollLeft).toBeGreaterThan(0);
 		} finally {
 			await browser.setWindowSize(originalSize.width, originalSize.height);
 		}

@@ -676,8 +676,8 @@
 										<span class="tabular-nums text-muted-foreground">{item.item.age ?? "-"}</span>
 										<div
 											class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-												? "sticky right-0 flex h-full items-center justify-end gap-1 bg-accent group-hover:bg-accent/50"
-												: "sticky right-0 flex h-full items-center justify-end gap-1 bg-surface-1 group-hover:bg-accent/30"}
+												? "sticky right-0 flex h-full items-center justify-end gap-1 bg-accent group-hover:bg-accent"
+												: "sticky right-0 flex h-full items-center justify-end gap-1 bg-surface-1 group-hover:bg-accent"}
 										>
 											<Button
 												type="button"
