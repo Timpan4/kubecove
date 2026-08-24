@@ -37,7 +37,12 @@
 </script>
 
 {#if value}
-	<time datetime={value} title={exactTimestamp ?? value} class={className}>{display}</time>
+	<time
+		datetime={value}
+		title={value}
+		aria-label={`${display}. Exact timestamp ${value}`}
+		class={className}
+	>{display}</time>
 {:else}
 	<span class={className}>{relative ?? fallback}</span>
 {/if}

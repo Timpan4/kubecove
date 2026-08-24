@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { CircleHelp, GitBranch, Layers, Package, Plug } from "lucide-svelte";
+	import CopyableText from "@/components/CopyableText.svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
+	import { copyText } from "@/components/copy-text";
 	import { formatExactTimestamp } from "@/components/timestamp-format";
 	import {
 		Badge,
@@ -189,13 +191,7 @@
 
 	async function copyRevealedValue(event: Event, value: string, label: string) {
 		event.stopPropagation();
-		try {
-			if (!navigator.clipboard) throw new Error("Clipboard API unavailable");
-			await navigator.clipboard.writeText(value);
-			copyRevealMessage = `Copied ${label}.`;
-		} catch {
-			copyRevealMessage = `Could not copy ${label}.`;
-		}
+		copyRevealMessage = await copyText(navigator.clipboard, value, label);
 	}
 
 	function handleGitOpsCardKeydown(event: KeyboardEvent, selection: GitOpsSelection) {
@@ -516,8 +512,8 @@
 									<div class={`w-1 shrink-0 ${gitOpsCardTone(item)}`}></div>
 									<div class="flex min-w-0 flex-1 flex-col p-3">
 										<div class="flex items-start justify-between gap-3">
-											<div class="min-w-0 space-y-0.5">
-												<div class="truncate font-heading text-sm font-medium">{item.item.name}</div>
+											<div class="min-w-0 flex-1 space-y-0.5">
+												<CopyableText value={item.item.name} label="GitOps resource name" textClass="font-heading text-sm font-medium" />
 												<div class="truncate text-xs/relaxed text-muted-foreground">{gitOpsCardSubtitle(item)}</div>
 											</div>
 											{#if SourceIcon}

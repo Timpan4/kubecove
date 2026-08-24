@@ -1,57 +1,109 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import type { BunPlugin } from "bun";
+import type { Component } from "svelte";
+import { compile, compileModule } from "svelte/compiler";
+import { render } from "svelte/server";
+import { copyText } from "../src/components/copy-text";
+import { formatRelativeTimestamp } from "../src/components/timestamp-format";
+import {
+	CPU_USAGE_DESCRIPTION,
+	MEMORY_USAGE_DESCRIPTION,
+	READINESS_NOT_REPORTED,
+	RESTART_COUNT_NOT_REPORTED,
+} from "../src/features/resources/operational-data";
 
-const source = (path: string) => readFileSync(path, "utf8");
+async function renderSvelte(path: string, props: Record<string, unknown>): Promise<string> {
+	const plugin: BunPlugin = {
+		name: "svelte-server-test",
+		setup(builder) {
+			builder.onLoad({ filter: /\.svelte$/ }, async ({ path: componentPath }) => ({
+				contents: compile(await Bun.file(componentPath).text(), {
+					filename: componentPath,
+					generate: "server",
+					css: "injected",
+				}).js.code,
+				loader: "js",
+			}));
+			builder.onLoad({ filter: /\.svelte\.js$/ }, async ({ path: modulePath }) => ({
+				contents: compileModule(await Bun.file(modulePath).text(), {
+					filename: modulePath,
+					generate: "server",
+				}).js.code,
+				loader: "js",
+			}));
+		},
+	};
+	const result = await Bun.build({
+		entrypoints: [path],
+		target: "bun",
+		format: "esm",
+		conditions: ["svelte"],
+		plugins: [plugin],
+		external: ["svelte", "svelte/*"],
+		write: false,
+	});
+	if (!result.success || !result.outputs[0]) {
+		throw new Error(result.logs.map(String).join("\n") || `Could not build ${path}`);
+	}
+	const code = `${await result.outputs[0].text()}\n//# sourceURL=${crypto.randomUUID()}.js`;
+	const module = (await import(
+		`data:text/javascript;base64,${Buffer.from(code).toString("base64")}`
+	)) as { default: Component };
+	return render(module.default, { props }).body;
+}
 
 describe("operational data clarity", () => {
-	test("uses one readable timestamp component with exact values available", () => {
-		const timestamp = source("src/components/TimestampText.svelte");
-		const resources = source("src/features/resources/ResourceBrowser.svelte");
-		const namespaces = source("src/features/resources/NamespaceList.svelte");
+	test("renders readable timestamps while preserving the exact source value", async () => {
+		const timestamp = "2026-08-24T12:34:56.789Z";
+		const body = await renderSvelte("src/components/TimestampText.svelte", {
+			value: timestamp,
+			relative: "2m",
+			precision: "millisecond",
+		});
 
-		expect(timestamp).toContain("formatRelativeTimestamp");
-		expect(timestamp).toContain("title={exactTimestamp ?? value}");
-		expect(resources).toContain("<TimestampText value={row.createdAt} relative={row.age}");
-		expect(namespaces).toContain(
-			"<TimestampText value={namespace.createdAt} relative={namespace.age}",
+		expect(body).toContain(`datetime="${timestamp}"`);
+		expect(body).toContain(`title="${timestamp}"`);
+		expect(body).toContain(`Exact timestamp ${timestamp}`);
+		expect(body).toContain(">2m</time>");
+		expect(formatRelativeTimestamp("2m", timestamp, false, "utc", "millisecond")).toBe(
+			"2m",
 		);
-		expect(source("src/features/live-sessions/LiveSessionsView.svelte")).toContain(
-			"<TimestampText value={session.startedAt}",
-		);
-		expect(source("src/features/incidents/IncidentGuide.svelte")).toContain(
-			"<TimestampText value={evidence.timestamp}",
-		);
-		expect(source("src/features/gitops/ArgoApplicationDetails.svelte")).toContain(
-			"<TimestampText value={selectedHistory.deployedAt}",
-		);
-		expect(source("src/features/helm/HelmView.svelte")).toContain(
-			"<TimestampText value={details.summary.updatedAt} relative={details.summary.age}",
-		);
-		expect(source("src/features/rbac/RbacReviewPanel.svelte")).toContain(
-			"<TimestampText value={record.reviewedAt}",
+		expect(formatRelativeTimestamp("2m", timestamp, true, "utc", "millisecond")).toBe(
+			"2m (2026-08-24 12:34:56.789 UTC)",
 		);
 	});
 
 	test("explains metric units and unavailable resource state", () => {
-		const resources = source("src/features/resources/ResourceBrowser.svelte");
-		const details = source("src/features/resource-detail/DetailsTab.svelte");
-		const detailPanel = source("src/features/resource-detail/ResourceDetailPanel.svelte");
-
-		expect(resources).toContain("1000m equals one CPU core");
-		expect(resources).toContain("binary units such as Ki, Mi, and Gi");
-		expect(resources).toContain("Readiness not reported");
-		expect(resources).toContain("Restart count not reported");
-		expect(details).toContain('Restarts {detailResource.restarts ?? "not reported"}');
-		expect(detailPanel).toContain('if (container.ready === undefined) return "Not reported"');
+		expect(CPU_USAGE_DESCRIPTION).toBe(
+			"CPU usage in millicores; 1000m equals one CPU core.",
+		);
+		expect(MEMORY_USAGE_DESCRIPTION).toBe(
+			"Memory usage in binary units such as Ki, Mi, and Gi.",
+		);
+		expect(READINESS_NOT_REPORTED).toBe("Readiness not reported");
+		expect(RESTART_COUNT_NOT_REPORTED).toBe("Restart count not reported");
 	});
 
-	test("makes truncated resource and GitOps identifiers copyable", () => {
-		const resources = source("src/features/resources/ResourceBrowser.svelte");
-		const gitOps = source("src/features/gitops/GitOpsView.svelte");
+	test("renders copyable full values and writes the untruncated value", async () => {
+		const value = "very-long-resource-name-that-is-visually-truncated";
+		const body = await renderSvelte("tests/fixtures/CopyableTextHost.svelte", {
+			value,
+			label: "resource name",
+		});
+		const writes: string[] = [];
+		const message = await copyText(
+			{ writeText: async (text) => void writes.push(text) },
+			value,
+			"resource name",
+		);
 
-		expect(resources).toContain("copyResourceName");
-		expect(resources).toContain(["Copy resource name ", "{row.name}"].join("$"));
-		expect(gitOps).toContain("copyRevealedValue");
-		expect(gitOps).toContain("Activate to copy");
+		expect(body).toContain(`title="${value}"`);
+		expect(body).toContain(`aria-label="Copy resource name: ${value}"`);
+		expect(body).toContain('role="status" aria-live="polite"');
+		expect(writes).toEqual([value]);
+		expect(message).toBe("Copied resource name.");
+		expect(await copyText(undefined, value, "resource name")).toBe(
+			"Could not copy resource name.",
+		);
 	});
 });

@@ -7,17 +7,17 @@
 		RotateCcw,
 		Wifi,
 	} from "lucide-svelte";
+	import CopyableText from "@/components/CopyableText.svelte";
+	import TimestampText from "@/components/TimestampText.svelte";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import { Badge, Button, Spinner } from "@/components/ui/svelte";
-	import { formatExactTimestamp } from "@/components/timestamp-format";
 	import { healthStatusVariant, syncStatusVariant, type ChipVariant } from "@/features/argo/status";
 	import type {
 		ArgoApplicationInspector,
 		ArgoApplicationSummary,
 		ArgoManagedResource,
 	} from "@/lib/gitops-types";
-	import { settingsStore } from "@/lib/settings-store";
 	import { argoResourceCounts } from "./argo-workspace-model";
 
 	let {
@@ -69,9 +69,6 @@
 		statusValue(inspector?.status, "sync", "status") ?? app.syncStatus ?? "Unknown",
 	);
 	const reconciledAt = $derived(statusValue(inspector?.status, "reconciledAt"));
-	const formattedReconciledAt = $derived(
-		formatExactTimestamp(reconciledAt, $settingsStore.timestampTimezone, "second") ?? reconciledAt,
-	);
 	const resourceCounts = $derived(argoResourceCounts(managedResources));
 	const healthTone = $derived(healthStatusVariant(healthStatus));
 	const syncTone = $derived(syncStatusVariant(syncStatus));
@@ -86,8 +83,8 @@
 				: inspector?.connectedFallback
 						? `Kubernetes fallback after Connected ${inspector.connectedFallback.failure.kind}: ${inspector.connectedFallback.failure.message}`
 						: reconciledAt
-					? `Reconciled ${formattedReconciledAt}`
-					: `${inspector?.connected ? "Argo CD API" : "Application CRD"} managed-resource state`,
+							? null
+							: `${inspector?.connected ? "Argo CD API" : "Application CRD"} managed-resource state`,
 	);
 
 	function statusBadgeVariant(tone: ChipVariant) {
@@ -116,7 +113,9 @@
 			</div>
 			<div class="min-w-0">
 				<div class="flex min-w-0 flex-wrap items-center gap-1.5">
-					<h2 class="truncate font-heading text-sm font-semibold">{app.name}</h2>
+					<h2 class="min-w-0 flex-1 font-heading text-sm font-semibold">
+						<CopyableText value={app.name} label="application name" />
+					</h2>
 					<HealthAssessmentBadge assessment={app.healthAssessment} {loading} />
 				</div>
 				<div class="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
@@ -126,7 +125,11 @@
 				</div>
 				<div class="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground" role="status" aria-live="polite">
 					<Wifi class={`size-3 shrink-0 ${errorMessage ? "text-red-400" : "text-emerald-400"}`} />
-					<span class="truncate">{connectionMessage}</span>
+					{#if reconciledAt && !connectionMessage}
+						<span class="truncate">Reconciled <TimestampText value={reconciledAt} precision="millisecond" /></span>
+					{:else}
+						<span class="truncate">{connectionMessage}</span>
+					{/if}
 				</div>
 			</div>
 		</div>
@@ -191,7 +194,7 @@
 			<span class="grid size-5 shrink-0 place-items-center rounded-full resource-tone-argo-surface text-[0.625rem] font-semibold text-[var(--resource-argo)]">{step}</span>
 			<div class="text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
 		</div>
-		<div class="mt-1 truncate text-sm font-semibold" title={value}>{value}</div>
-		<div class="truncate text-[0.6875rem] text-muted-foreground" title={detail}>{detail}</div>
+		<CopyableText class="mt-1" textClass="text-sm font-semibold" {value} label={`${label.toLocaleLowerCase()} value`} />
+		<CopyableText textClass="text-[0.6875rem] text-muted-foreground" value={detail} label={`${label.toLocaleLowerCase()} detail`} />
 	</div>
 {/snippet}
