@@ -75,6 +75,15 @@ export interface SavedPortForward {
 	lastError?: string;
 }
 
+export interface WorkspaceRbacReview {
+	clusterContext: string;
+	objectKey: string;
+	evidenceFingerprint: string;
+	disposition: "expected" | "anomalous";
+	note: string;
+	reviewedAt: string;
+}
+
 export interface SavePortForwardInput {
 	clusterContext: string;
 	namespace: string;
@@ -108,6 +117,7 @@ export interface SavedWorkspace {
 	scope: WorkspaceScope;
 	shortcuts: WorkspaceShortcut[];
 	portForwards: SavedPortForward[];
+	rbacReviews?: WorkspaceRbacReview[];
 	entryPoints?: WorkspaceEntryPoints;
 }
 
@@ -356,6 +366,7 @@ export function createWorkspaceRecord(
 		scope,
 		shortcuts: makeWorkspaceShortcuts(scope.namespaces, undefined, shortcutPreferences, scope),
 		portForwards: [],
+		rbacReviews: [],
 		entryPoints: normalizeEntryPoints(),
 	};
 }
@@ -419,6 +430,9 @@ export function updateWorkspaceRecord(
 		portForwards: reconcileSavedPortForwardsForScope(
 			workspace.portForwards ?? [],
 			nextScope,
+		),
+		rbacReviews: (workspace.rbacReviews ?? []).filter((review) =>
+			workspaceScopeContexts(nextScope).includes(review.clusterContext),
 		),
 		updatedAt: now,
 	};

@@ -134,6 +134,54 @@ describe("svelte workspace store", () => {
 		});
 	});
 
+	test("persists validated workspace-local RBAC reviews", () => {
+		const storage = makeStorage();
+		const store = createWorkspaceStore(storage);
+		const workspace = store.createWorkspace({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: [],
+		});
+		const review = {
+			clusterContext: "kind-dev",
+			objectKey: "Roles:Role:team:reader",
+			evidenceFingerprint: "rbac-v1-abc123",
+			disposition: "expected" as const,
+			note: "Platform controller access",
+			reviewedAt: "2026-08-24T10:00:00.000Z",
+		};
+
+		store.setRbacReviews(workspace.id, [review]);
+
+		expect(readPersistedWorkspaces(storage)[0]?.rbacReviews).toEqual([review]);
+	});
+
+	test("drops malformed persisted RBAC reviews", () => {
+		const storage = makeStorage();
+		const workspace = createWorkspaceRecord({
+			name: "Ops",
+			clusterContext: "kind-dev",
+			namespaces: [],
+		});
+		storage.setItem("kubecove-workspaces", JSON.stringify({
+			state: {
+				workspaces: [{
+					...workspace,
+					rbacReviews: [{
+						clusterContext: "kind-dev",
+						objectKey: "Roles:Role:team:reader",
+						evidenceFingerprint: "raw-policy-data",
+						disposition: "trusted",
+						note: "",
+						reviewedAt: "not-a-date",
+					}],
+				}],
+			},
+		}));
+
+		expect(readPersistedWorkspaces(storage)[0]?.rbacReviews).toEqual([]);
+	});
+
 	test("adds and deletes saved port-forwards in workspace storage", () => {
 		const storage = makeStorage();
 		const store = createWorkspaceStore(storage);

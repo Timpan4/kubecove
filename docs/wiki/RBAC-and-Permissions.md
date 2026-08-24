@@ -18,9 +18,20 @@ This inventory is cluster-wide regardless of workspace namespace filters. Your c
 2. Search or filter by **All**, **High**, **Medium**, **Low**, **No flags**, or **Unknown**.
 3. Select an object and inspect **Exact rules**, **Subjects**, and binding evidence.
 4. For an identity, inspect **Observed RBAC grants** and its **Source chain**.
-5. Select **Copy evidence** only after reviewing the output for sensitive identifiers.
+5. Record reviewed context when an exact object is expected or anomalous.
+6. Select **Copy evidence** only after reviewing the output for sensitive identifiers.
 
 Risk levels are policy heuristics that highlight broad verbs, resources, or binding patterns. They are not Kubernetes admission or authorization decisions. **Coverage complete** means the supported inventory requests completed; it does not prove that every external authorizer or authorization source is represented.
+
+## Record reviewed context
+
+Roles, ClusterRoles, bindings, and ServiceAccounts can carry an independent **Expected** or **Anomalous** review. Enter a note, then choose the matching disposition. **Unreviewed** means no record exists for the exact object.
+
+Review context never changes risk severity, removes a finding, or hides it from the default queue. KubeCove does not trust controller names, labels, owner references, or GitOps metadata automatically. Related objects keep independent review states, so reviewing a ClusterRole does not review its bindings or ServiceAccounts.
+
+KubeCove binds each review to the workspace, cluster context, object identity, permission evidence, affected scope, binding path, and subjects. A policy change marks the review **Stale**. The old note remains visible, but Expected or Anomalous becomes inactive until you review the current evidence again.
+
+Review records stay in local workspace storage and are not included in shared workspace exports. They contain a compact evidence fingerprint and review note, not raw RBAC objects or live authorization results.
 
 ## Verify one exact action
 
