@@ -34,7 +34,7 @@ Choose one transport for each Argo Application view:
 - **Kubernetes** reads the Argo Application CRD and its reported status through the selected cluster context. It can show status resources and history, but cannot claim an exact desired state or diff.
 - **Connected Argo CD** uses the configured Argo CD HTTPS API for that workspace and cluster context. It returns Argo-managed resources and authoritative target, live, normalized-live, and predicted-live state for a resource comparison.
 
-These are explicit transports. KubeCove does not automatically switch between them when one fails or lacks a capability.
+Connected inspection can visibly fall back to one complete Kubernetes inspection when a required connected read fails. KubeCove preserves the sanitized connected failure, identifies Kubernetes provenance, and never mixes the two transports. Operations stay bound to the transport reviewed at preflight and do not switch after confirmation.
 
 ## Run Argo CD operations
 
@@ -50,7 +50,7 @@ Use this sequence:
 1. Review the Application, transport, target revision, selected resources, and sync options.
 2. Start refresh or sync. KubeCove preflights the exact request before submitting it.
 3. For sync choices beyond the Application defaults, type the exact Application name to enable confirmation.
-4. Run the reviewed request immediately. The preflight token is single-use, expires after one minute, and binds the run to the exact request reviewed at preflight.
+4. Run the reviewed request immediately. The preflight session is single-use, expires after five minutes, and binds the run to the exact request reviewed at preflight. Its native secure-storage record can survive an app restart during that lifetime; before execution, KubeCove revalidates scope, Application identity, credentials, authorization, and the selected transport.
 5. Refresh the Application state after Argo CD accepts the operation. Acceptance is not proof that reconciliation has completed.
 
 Connected operations require an active profile. Kubernetes operations require the Application namespace, current `resourceVersion`, and Kubernetes permission to patch the Application CRD. That check does not evaluate Argo CD RBAC. Exact target/live comparison requires a connected Argo CD profile.
