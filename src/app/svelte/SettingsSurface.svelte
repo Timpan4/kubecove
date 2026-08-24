@@ -244,7 +244,7 @@
 
 </script>
 
-<div class="mx-auto grid w-full max-w-5xl gap-7 p-4 md:grid-cols-[240px_minmax(0,1fr)] md:p-6">
+<div class="mx-auto grid w-full max-w-7xl gap-5 p-4 md:p-6 xl:grid-cols-[240px_minmax(0,1fr)]">
 	<aside class="flex min-w-0 flex-col gap-3">
 		{#if onBack}
 			<Button
@@ -268,7 +268,7 @@
 				aria-label="Search settings"
 			/>
 		</div>
-		<nav class="grid gap-1" aria-label="Settings sections">
+		<nav class="flex flex-wrap gap-1 xl:grid" aria-label="Settings sections">
 			{#each categories as category}
 				<Button
 					type="button"
@@ -294,7 +294,7 @@
 		</nav>
 	</aside>
 
-	<section class="flex min-w-0 flex-col gap-4">
+	<section class="flex w-full max-w-5xl min-w-0 flex-col gap-4">
 		<h2 class="font-heading text-xl font-semibold">{heading}</h2>
 
 		{#if searching && !hasMatches}

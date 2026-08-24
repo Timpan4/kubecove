@@ -155,6 +155,92 @@ describe("browser mock inspection", () => {
 		}
 	});
 
+	it("adapts shared layouts at compact and wide sizes", async () => {
+		const originalSize = await browser.getWindowSize();
+
+		try {
+			await browser.setWindowSize(1026, 752);
+
+			const clusterSelect = await $("#cluster-select");
+			await clusterSelect.waitForDisplayed();
+			const compactScope = await browser.execute((select: HTMLElement) => {
+				const label = document.getElementById("cluster-select-label");
+				const header = select.closest("header");
+				const selectBounds = select.getBoundingClientRect();
+				const headerBounds = header?.getBoundingClientRect();
+				return {
+					fullValue: select.getAttribute("title"),
+					insideHeader:
+						selectBounds.left >= (headerBounds?.left ?? 1) &&
+						selectBounds.right <= (headerBounds?.right ?? 0),
+					labelVisuallyHidden: label?.getBoundingClientRect().width === 1,
+				};
+			}, clusterSelect);
+			expect(compactScope).toEqual({
+				fullValue: "mock-dev",
+				insideHeader: true,
+				labelVisuallyHidden: true,
+			});
+
+			await $('button[aria-label="Open settings"]').click();
+			const settingsNav = await $('nav[aria-label="Settings sections"]');
+			await settingsNav.waitForDisplayed();
+			const compactSettings = await browser.execute((nav: HTMLElement) => {
+				const aside = nav.parentElement;
+				const content = aside?.nextElementSibling;
+				const asideBounds = aside?.getBoundingClientRect();
+				const contentBounds = content?.getBoundingClientRect();
+				return {
+					navigationAboveContent:
+						(asideBounds?.bottom ?? 1) <= (contentBounds?.top ?? 0),
+				};
+			}, settingsNav);
+			expect(compactSettings.navigationAboveContent).toBe(true);
+
+			await browser.setWindowSize(1440, 900);
+			const wideSettings = await browser.execute((nav: HTMLElement) => {
+				const aside = nav.parentElement;
+				const layout = aside?.parentElement;
+				const content = aside?.nextElementSibling;
+				const asideBounds = aside?.getBoundingClientRect();
+				const layoutBounds = layout?.getBoundingClientRect();
+				const contentBounds = content?.getBoundingClientRect();
+				return {
+					contentWidth: contentBounds?.width ?? Number.POSITIVE_INFINITY,
+					layoutWidth: layoutBounds?.width ?? 0,
+					navigationBesideContent:
+						(asideBounds?.right ?? 1) <= (contentBounds?.left ?? 0),
+				};
+			}, settingsNav);
+			expect(wideSettings.navigationBesideContent).toBe(true);
+			expect(wideSettings.layoutWidth).toBeGreaterThan(1024);
+			expect(wideSettings.contentWidth).toBeLessThanOrEqual(1024);
+
+			await $("button=Back to app").click();
+			await browser.setWindowSize(1026, 752);
+			await $('button[aria-label="Open workspace navigation"]').click();
+			const navigation = await $('[data-slot="sheet-content"]');
+			await navigation.$('[role="treeitem"]*=GitOps').click();
+			await $("button=List").click();
+			const details = await $('button[aria-label="Open details for Application platform-argocd in argocd"]');
+			await details.waitForDisplayed();
+			const compactActions = await browser.execute((button: HTMLElement) => {
+				const scroller = button.closest(".overflow-x-auto");
+				const buttonBounds = button.getBoundingClientRect();
+				const scrollerBounds = scroller?.getBoundingClientRect();
+				return {
+					insideScroller:
+						buttonBounds.left >= (scrollerBounds?.left ?? 1) &&
+						buttonBounds.right <= (scrollerBounds?.right ?? 0),
+					scrollLeft: scroller?.scrollLeft ?? -1,
+				};
+			}, details);
+			expect(compactActions).toEqual({ insideScroller: true, scrollLeft: 0 });
+		} finally {
+			await browser.setWindowSize(originalSize.width, originalSize.height);
+		}
+	});
+
 	it("opens adjacent Argo Application details by accessible name", async () => {
 		await $('button[aria-label="Open workspace navigation"]').click();
 		const navigation = await $('[data-slot="sheet-content"]');
