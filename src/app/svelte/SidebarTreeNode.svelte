@@ -18,6 +18,8 @@
 		onNodeSelect,
 		onSectionToggle,
 		getLazyChildren,
+		customResourceSearch = "",
+		onCustomResourceSearchChange,
 	}: {
 		node: TreeNode;
 		depth: number;
@@ -26,6 +28,8 @@
 		onNodeSelect: (id: TreeNodeId) => void;
 		onSectionToggle: (id: string) => void;
 		getLazyChildren?: (node: TreeNode) => TreeNode[] | undefined;
+		customResourceSearch?: string;
+		onCustomResourceSearchChange?: (value: string) => void;
 	} = $props();
 
 	const id = $derived(nodeIdToString(node.id));
@@ -65,7 +69,7 @@
 
 	function selectNode() {
 		if (isDisabled) return;
-		onNodeSelect(node.id);
+		if (node.selectable !== false) onNodeSelect(node.id);
 		if (hasChildren) onSectionToggle(id);
 	}
 
@@ -141,6 +145,17 @@
 		/>
 		<span class="min-w-0 flex-1 truncate leading-none">{node.label}</span>
 	</div>
+	{#if node.id.type === "section" && node.id.section === "discovered" && isExpanded}
+		<div class="px-2 py-1 pl-6">
+			<input
+				class="h-7 w-full rounded-sm border border-border bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground"
+				value={customResourceSearch}
+				placeholder="Search custom resources"
+				aria-label="Search custom resources"
+				oninput={(event) => onCustomResourceSearchChange?.(event.currentTarget.value)}
+			/>
+		</div>
+	{/if}
 	{#if hasChildren && isExpanded && children}
 		<ul class="m-0 list-none p-0" role="group">
 			{#each children as child (nodeIdToString(child.id))}
@@ -152,6 +167,8 @@
 					{onNodeSelect}
 					{onSectionToggle}
 					{getLazyChildren}
+					{customResourceSearch}
+					{onCustomResourceSearchChange}
 				/>
 			{/each}
 		</ul>

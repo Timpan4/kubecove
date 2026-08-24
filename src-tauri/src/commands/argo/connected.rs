@@ -445,41 +445,53 @@ fn tunnel_target_unavailable(error: &AppError) -> ArgoServiceTunnelUnavailableRe
 
 #[tauri::command]
 pub async fn discover_argo_servers(
+    cancellations: tauri::State<'_, BackendCancellationRegistry>,
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
+    request_id: Option<String>,
+    cancel_scope: Option<String>,
 ) -> Result<Vec<ArgoServerCapability>, AppError> {
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
-    let services: Api<Service> = Api::all(client.clone());
-    let list = services
-        .list(&ListParams::default())
-        .await
-        .map_err(AppError::from)?;
-    let mut capabilities = Vec::new();
-    for service in list.items {
-        for mut capability in servicetunnel_capabilities(&service) {
-            if let Some(ArgoServerEndpoint::ServiceTunnel {
-                namespace,
-                service_name,
-                service_port,
-                ..
-            }) = capability.endpoint.as_ref()
-            {
-                if let Err(error) = crate::commands::sessions::service::resolve_service_target(
-                    client.clone(),
-                    namespace,
-                    service_name,
-                    *service_port,
-                )
-                .await
-                {
-                    capability.unavailable = Some(tunnel_target_unavailable(&error));
-                    capability.unavailable_reason = Some(error.message);
+    cancellations
+        .execute(
+            cancel_scope,
+            request_id,
+            Box::pin(async move {
+                let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+                let services: Api<Service> = Api::all(client.clone());
+                let list = services
+                    .list(&ListParams::default())
+                    .await
+                    .map_err(AppError::from)?;
+                let mut capabilities = Vec::new();
+                for service in list.items {
+                    for mut capability in servicetunnel_capabilities(&service) {
+                        if let Some(ArgoServerEndpoint::ServiceTunnel {
+                            namespace,
+                            service_name,
+                            service_port,
+                            ..
+                        }) = capability.endpoint.as_ref()
+                        {
+                            if let Err(error) =
+                                crate::commands::sessions::service::resolve_service_target(
+                                    client.clone(),
+                                    namespace,
+                                    service_name,
+                                    *service_port,
+                                )
+                                .await
+                            {
+                                capability.unavailable = Some(tunnel_target_unavailable(&error));
+                                capability.unavailable_reason = Some(error.message);
+                            }
+                        }
+                        capabilities.push(capability);
+                    }
                 }
-            }
-            capabilities.push(capability);
-        }
-    }
-    Ok(capabilities)
+                Ok(capabilities)
+            }),
+        )
+        .await
 }
 
 #[tauri::command]

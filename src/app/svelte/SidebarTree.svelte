@@ -142,6 +142,7 @@
 		}
 		return pending;
 	});
+	let customResourceSearch = $state("");
 	function getLazyChildren(node: TreeNode) {
 		if (node.id.type !== "namespace" || !node.id.namespace) return node.children;
 		if (!showCustomResources) return node.children;
@@ -183,6 +184,7 @@
 		resourceKindsError,
 		showUnavailableGitOpsProviders,
 		showCustomResources,
+		customResourceSearch,
 	}));
 </script>
 
@@ -215,6 +217,8 @@
 						{onNodeSelect}
 						{onSectionToggle}
 						{getLazyChildren}
+						{customResourceSearch}
+						onCustomResourceSearchChange={(value) => (customResourceSearch = value)}
 					/>
 				{/each}
 			</ul>

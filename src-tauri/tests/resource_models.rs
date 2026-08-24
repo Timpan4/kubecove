@@ -239,13 +239,22 @@ fn test_discovered_resource_kind_serde() {
         api_version: "apps/v1".to_string(),
         kind: "Deployment".to_string(),
         plural: "deployments".to_string(),
+        short_names: vec!["deploy".to_string()],
         namespaced: true,
     };
     let json_val = serde_json::to_value(&kind).unwrap();
     assert_eq!(json_val["apiVersion"], "apps/v1");
+    assert_eq!(json_val["shortNames"], json!(["deploy"]));
     assert_eq!(json_val["namespaced"], true);
-    let parsed: DiscoveredResourceKind = serde_json::from_value(json_val).unwrap();
+    let parsed: DiscoveredResourceKind = serde_json::from_value(json_val.clone()).unwrap();
     assert_eq!(parsed.kind, "Deployment");
+    let mut legacy = json_val;
+    legacy
+        .as_object_mut()
+        .expect("discovered kind object")
+        .remove("shortNames");
+    let parsed: DiscoveredResourceKind = serde_json::from_value(legacy).unwrap();
+    assert!(parsed.short_names.is_empty());
 }
 
 #[test]
@@ -256,6 +265,7 @@ fn test_crd_discovered_resource_kind_serde() {
         api_version: "apiextensions.k8s.io/v1".to_string(),
         kind: "CustomResourceDefinition".to_string(),
         plural: "customresourcedefinitions".to_string(),
+        short_names: vec!["crd".to_string()],
         namespaced: false,
     };
     let json_val = serde_json::to_value(&kind).unwrap();

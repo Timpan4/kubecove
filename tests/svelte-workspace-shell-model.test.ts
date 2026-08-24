@@ -10,10 +10,13 @@ import {
 import {
 	appendPresentCustomResourceKinds,
 	buildSidebarTree,
-	extraDiscoveredKinds,
 	GITOPS_RESOURCE_KINDS,
 	toggleCompactSidebarSection,
 } from "../src/app/svelte/workspaceShellModel";
+import {
+	extraDiscoveredKinds,
+	filterCustomResourceKinds,
+} from "../src/components/sidebar-tree-helpers";
 import {
 	nodeIdToString,
 	type TreeNode,
@@ -39,6 +42,7 @@ const widgets: DiscoveredResourceKind = {
 	apiVersion: "example.com/v1",
 	kind: "Widget",
 	plural: "widgets",
+	shortNames: ["wdg"],
 	namespaced: true,
 };
 
@@ -48,6 +52,7 @@ const clusterThings: DiscoveredResourceKind = {
 	apiVersion: "example.com/v1",
 	kind: "ClusterThing",
 	plural: "clusterthings",
+	shortNames: ["ct"],
 	namespaced: false,
 };
 
@@ -57,6 +62,7 @@ const deployment: DiscoveredResourceKind = {
 	apiVersion: "apps/v1",
 	kind: "Deployment",
 	plural: "deployments",
+	shortNames: ["deploy"],
 	namespaced: true,
 };
 
@@ -187,11 +193,19 @@ describe("svelte workspace shell model", () => {
 		]);
 		expect(
 			findNode(nodes, "Custom Resources").children?.map((node) => node.label),
-		).toEqual(["ClusterThing", "Deployment", "Widget"]);
+		).toEqual(["apps", "example.com"]);
+		expect(
+			findNode(nodes, "Custom Resources").children?.[1]?.children?.map((node) => node.label),
+		).toEqual(["ClusterThing", "Widget"]);
 		expect(findNode(nodes, "GitOps").children?.map((node) => node.label)).toEqual([
 			"Argo CD",
 			"Flux",
 		]);
+	});
+
+	test("filters custom resources by short name and API group", () => {
+		expect(filterCustomResourceKinds([widgets, deployment], "WDG")).toEqual([widgets]);
+		expect(filterCustomResourceKinds([widgets, deployment], "APPS")).toEqual([deployment]);
 	});
 
 	test("keeps one broad resource branch open in compact navigation", () => {

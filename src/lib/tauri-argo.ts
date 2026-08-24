@@ -21,10 +21,12 @@ export async function discoverArgoServers(
 	client: TauriClient,
 	clusterContext: string,
 	kubeconfigEnvVar?: string,
+	cancellable?: CancellableRequest,
 ): Promise<ArgoServerCapability[]> {
 	return client.invoke<ArgoServerCapability[]>("discover_argo_servers", {
 		clusterContext,
 		...kubeconfigArg(kubeconfigEnvVar),
+		...cancellableArg(cancellable),
 	});
 }
 
