@@ -5,9 +5,15 @@
 	import TooltipProvider from "../../src/components/ui/svelte/TooltipProvider.svelte";
 
 	// biome-ignore lint/correctness/noUnusedVariables: The server-rendered Svelte markup forwards these props.
-	let { value, label }: { value: string; label: string } = $props();
+	let props: {
+		value: string;
+		label: string;
+		onActivate?: () => void;
+		actionLabel?: string;
+		active?: boolean;
+	} = $props();
 </script>
 
 <TooltipProvider>
-	<CopyableText {value} {label} />
+	<CopyableText {...props} />
 </TooltipProvider>

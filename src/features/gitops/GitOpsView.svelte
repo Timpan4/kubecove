@@ -501,7 +501,14 @@
 									<div class="flex min-w-0 flex-1 flex-col p-3">
 										<div class="flex items-start justify-between gap-3">
 											<div class="min-w-0 flex-1 space-y-0.5">
-												<CopyableText value={item.item.name} label="GitOps resource name" textClass="font-heading text-sm font-medium" />
+												<CopyableText
+													value={item.item.name}
+													label="GitOps resource name"
+													textClass="font-heading text-sm font-medium"
+													onActivate={() => openGitOpsSelection(item)}
+													actionLabel={gitOpsCardActionLabel(item)}
+													active={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
+												/>
 												<div class="truncate text-xs/relaxed text-muted-foreground">{gitOpsCardSubtitle(item)}</div>
 											</div>
 											{#if SourceIcon}
@@ -653,16 +660,17 @@
 											: "group relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/30 motion-reduce:transition-none"}
 									>
 										<div class={`absolute inset-y-0 left-0 w-1 ${gitOpsCardTone(item)}`}></div>
-										<button
-											type="button"
-											class="min-w-0 rounded-sm pl-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-											aria-label={gitOpsCardActionLabel(item)}
-											aria-pressed={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
-											onclick={() => openGitOpsSelection(item)}
-										>
-											<div class="truncate font-medium">{item.item.name}</div>
+										<div class="min-w-0 pl-1">
+											<CopyableText
+												value={item.item.name}
+												label="GitOps resource name"
+												textClass="font-medium"
+												onActivate={() => openGitOpsSelection(item)}
+												actionLabel={gitOpsCardActionLabel(item)}
+												active={gitOpsSelectionKey(item) === selectedGitOpsItemKey}
+											/>
 											<div class="truncate text-xs text-muted-foreground">{gitOpsCardSubtitle(item)}</div>
-										</button>
+										</div>
 										<div class="flex min-w-0 flex-col items-start gap-1">
 											<HealthAssessmentBadge assessment={item.item.healthAssessment} />
 											{#each gitOpsCardBadges(item) as [label, value]}

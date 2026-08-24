@@ -1343,19 +1343,15 @@
 											<TableRow
 												data-resource-selected={rowSelected ? "true" : undefined}
 												class={cnfast(ROW_CLASS, rowSelected && SELECTED_ROW_CLASS)}
-												tabindex="0"
-												role="button"
-												aria-pressed={rowSelected}
-												onclick={() => selectResource(row)}
-												onkeydown={(event: KeyboardEvent) => {
-													if (event.key === "Enter" || event.key === " ") {
-														event.preventDefault();
-														selectResource(row);
-													}
-												}}
 											>
 												<TableCell class="font-medium">
-													<CopyableText value={row.name} label="resource name" />
+													<CopyableText
+														value={row.name}
+														label="resource name"
+														onActivate={() => selectResource(row)}
+														actionLabel={`Open resource ${row.name}`}
+														active={rowSelected}
+													/>
 												</TableCell>
 												<TableCell>{row.namespace ?? EMPTY_CELL}</TableCell>
 												<TableCell>{row.kind}</TableCell>

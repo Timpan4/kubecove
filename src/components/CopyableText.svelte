@@ -10,11 +10,17 @@
 		label,
 		class: className = "",
 		textClass = "",
+		onActivate,
+		actionLabel,
+		active,
 	}: {
 		value: string;
 		label: string;
 		class?: string;
 		textClass?: string;
+		onActivate?: () => void;
+		actionLabel?: string;
+		active?: boolean;
 	} = $props();
 
 	let copied = $state(false);
@@ -28,7 +34,21 @@
 </script>
 
 <span class={`flex min-w-0 items-center gap-1 ${className}`}>
-	<span class={`min-w-0 flex-1 truncate ${textClass}`} title={value}>{value}</span>
+	{#if onActivate}
+		<button
+			type="button"
+			class={`min-w-0 flex-1 truncate rounded-sm bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${textClass}`}
+			title={value}
+			aria-label={actionLabel ?? `Open ${label}: ${value}`}
+			aria-pressed={active}
+			onclick={(event: MouseEvent) => {
+				event.stopPropagation();
+				onActivate();
+			}}
+		>{value}</button>
+	{:else}
+		<span class={`min-w-0 flex-1 truncate ${textClass}`} title={value}>{value}</span>
+	{/if}
 	<Tooltip>
 		<TooltipTrigger
 			type="button"

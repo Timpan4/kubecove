@@ -89,6 +89,9 @@ describe("operational data clarity", () => {
 		const body = await renderSvelte("tests/fixtures/CopyableTextHost.svelte", {
 			value,
 			label: "resource name",
+			onActivate: () => {},
+			actionLabel: `Open resource ${value}`,
+			active: true,
 		});
 		const writes: string[] = [];
 		const message = await copyText(
@@ -98,7 +101,9 @@ describe("operational data clarity", () => {
 		);
 
 		expect(body).toContain(`title="${value}"`);
+		expect(body).toContain(`aria-label="Open resource ${value}" aria-pressed="true"`);
 		expect(body).toContain(`aria-label="Copy resource name: ${value}"`);
+		expect(body.match(/<button/g)).toHaveLength(2);
 		expect(body).toContain('role="status" aria-live="polite"');
 		expect(writes).toEqual([value]);
 		expect(message).toBe("Copied resource name.");
