@@ -12,9 +12,10 @@ The overview is the starting surface for an open workspace. It keeps the saved c
 - Healthy
 - Needs attention
 - Degraded
-- Restarted
+- Unknown
+- Not evaluated
 
-When attention, degraded, or restarted resources exist, use the incident shortcuts to open the matching [incident queue](https://github.com/Timpan4/kubecove/wiki/Incidents). A resource-load failure is shown as partial data rather than treated as healthy.
+When needs-attention, degraded, or restart evidence exists, use the incident shortcuts to open the matching [incident queue](https://github.com/Timpan4/kubecove/wiki/Incidents). Restart evidence is separate from the health-state counts. A resource-load failure is shown as partial data rather than treated as healthy.
 
 If saved scope is no longer available, the overview identifies the missing primary context, cluster-group members, namespaces, or kinds. It does not silently widen a namespace-scoped workspace; available scope continues to load.
 
