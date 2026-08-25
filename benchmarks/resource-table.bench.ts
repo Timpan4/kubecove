@@ -4,7 +4,7 @@ import {
 	buildResourceTableModel,
 	buildResourceTableProjection,
 	type ResourceTableState,
-} from "@/features/resources/resourceBrowserModel";
+} from "@/features/resources/resourceTableModel";
 import {
 	buildResourceSearchIndex,
 	filterResourceSearchIndex,

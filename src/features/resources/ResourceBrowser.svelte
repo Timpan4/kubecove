@@ -138,8 +138,6 @@
 	import ResourceBrowserTopBar from "./ResourceBrowserTopBar.svelte";
 	import {
 		allKindOptions,
-		buildResourceTableModel,
-		buildResourceTableProjection,
 		filterResourcesByKinds,
 		filterTopologyByTableRows,
 		filterHistoricalReplicaSets,
@@ -148,9 +146,13 @@
 		nextNamespaceSelection,
 		shouldLoadOwnershipMap,
 		syncedTopologyNodeId as resolveSyncedTopologyNodeId,
-		type ResourceSortColumn,
 	} from "./resourceBrowserModel";
 	import { buildResourceBrowserReadSpecs } from "./resourceBrowserReadSpecs";
+	import {
+		buildResourceTableModel,
+		buildResourceTableProjection,
+		type ResourceSortColumn,
+	} from "./resourceTableModel";
 
 	const BACKGROUND_METRICS_DELAY_MS = 1_500;
 	const EMPTY_CELL = "—";
