@@ -14,6 +14,7 @@
 	import { parse, stringify } from "yaml";
 	import YamlCodeEditor from "@/components/YamlCodeEditor.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
+	import OperationScopeCard from "@/components/OperationScopeCard.svelte";
 	import TimestampText from "@/components/TimestampText.svelte";
 	import {
 		Alert,
@@ -811,17 +812,16 @@
 					<div class="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
 						{loading ? "Loading Application and managed resources…" : `Revision ${resolvedRevision}`}
 					</div>
-					<div class="mt-3 grid gap-1 rounded-md border bg-background/50 p-3 font-mono text-xs sm:grid-cols-2">
-						<div>Operation scope: {operationTarget.operationScope}</div><div>Transport: {operationTarget.transport}</div>
-						<div>Context: {operationTarget.context}</div><div>Namespace: {operationTarget.namespace}</div>
-						<div>Kind: {operationTarget.kind}</div><div>Resource: {operationTarget.resource}</div>
-						<p class="sm:col-span-2 font-sans text-muted-foreground">
-							{operationAvailability.available
-								? operationAvailability.reason
-								: `Unavailable, ${operationAvailability.blocker}: ${operationAvailability.reason}`}
-							These operations target the Argo CD Application, not a selected managed Kubernetes resource.
-						</p>
-					</div>
+					<OperationScopeCard
+						class="mt-3"
+						context={operationTarget.context}
+						namespace={operationTarget.namespace}
+						kind={operationTarget.kind}
+						resource={operationTarget.resource}
+						operationScope={operationTarget.operationScope}
+						transport={operationTarget.transport}
+						description={`${operationAvailability.available ? operationAvailability.reason : `Unavailable, ${operationAvailability.blocker}: ${operationAvailability.reason}`} These operations target the Argo CD Application, not a selected managed Kubernetes resource.`}
+					/>
 				</div>
 				<div class="flex max-w-full shrink-0 flex-wrap gap-1.5">
 					<div class="inline-flex shrink-0">

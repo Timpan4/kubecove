@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Pencil, WandSparkles, X } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
+	import OperationScopeCard from "@/components/OperationScopeCard.svelte";
 	import YamlCodeEditor from "@/components/YamlCodeEditor.svelte";
 	import {
 		Alert,
@@ -22,12 +23,16 @@
 		TooltipTrigger,
 	} from "@/components/ui/svelte";
 	import { diffLineClassName } from "./yamlTabDiff";
+	import {
+		yamlForceConflictsReview,
+		yamlForceConflictsSource,
+	} from "./yamlApplyModel";
 
 	let {
 		yamlQuery,
+		resource,
 		yamlText,
 		yamlApplyTarget,
-		yamlApplyScope,
 		yamlAppliedMessage,
 		yamlEditing,
 		yamlViewMode,
@@ -48,7 +53,7 @@
 		yamlPreview,
 		yamlPreviewForceConflicts,
 		yamlForceConflictsEnabled,
-		forceConflictsReview,
+		yamlGlobalForceConflicts,
 		yamlShowFullDiff = $bindable(false),
 		visibleYamlDiffLines,
 		hiddenYamlDiffCount,
@@ -149,14 +154,17 @@
 						</div>
 					</div>
 				{#if yamlEditing}
-					<div class="grid gap-1 rounded-md border bg-background/50 p-3 font-mono text-xs sm:grid-cols-2">
-						<div>Operation scope: {yamlApplyScope.operationScope}</div>
-						<div>Context: {yamlApplyScope.context}</div>
-						<div>Namespace: {yamlApplyScope.namespace}</div>
-						<div>Kind: {yamlApplyScope.kind}</div>
-						<div>Resource: {yamlApplyScope.resource}</div>
+					<OperationScopeCard
+						context={resource.cluster}
+						namespace={resource.namespace}
+						kind={resource.kind}
+						resource={resource.name}
+						operationScope="Selected Kubernetes resource YAML"
+					/>
+					<div class="grid gap-1 rounded-md border bg-background/50 p-3 text-xs sm:grid-cols-2">
 						<div>Force-conflicts: {yamlPreview ? yamlPreviewForceConflicts ? "enabled" : "disabled" : yamlForceConflictsEnabled ? "enabled for next dry run" : "disabled"}</div>
-						<p class="sm:col-span-2 font-sans text-muted-foreground">{forceConflictsReview}</p>
+						<div>Preference source: {yamlForceConflictsSource(yamlGlobalForceConflicts, yamlForceConflictsEnabled)}</div>
+						<p class="text-muted-foreground sm:col-span-2">{yamlForceConflictsReview(yamlPreview ? yamlPreviewForceConflicts : yamlForceConflictsEnabled)}</p>
 					</div>
 						<div class="flex flex-wrap items-center justify-end gap-2">
 							<Button

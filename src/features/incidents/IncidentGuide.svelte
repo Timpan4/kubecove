@@ -1,5 +1,6 @@
 <script lang="ts">
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
+	import OperationScopeCard from "@/components/OperationScopeCard.svelte";
 	import TimestampText from "@/components/TimestampText.svelte";
 	import { ArrowRight, ExternalLink, ShieldAlert } from "lucide-svelte";
 	import {
@@ -221,13 +222,15 @@
 								<div>
 									<div class="text-xs font-semibold">{action.label}</div>
 									<p class="mt-1 text-xs leading-relaxed text-muted-foreground">{action.description}</p>
-									<div class="mt-2 font-mono text-xs text-muted-foreground">
-										<div>Context: {action.target.cluster}</div>
-										<div>Namespace: {action.target.namespace ?? "cluster-scoped"}</div>
-										<div>Kind: {action.target.kind}</div>
-										<div>Resource: {action.target.name}</div>
-										<div>Operation scope: Handoff to Actions for this exact Kubernetes resource only. No action runs from this card.</div>
-									</div>
+									<OperationScopeCard
+										class="mt-2"
+										context={action.target.cluster}
+										namespace={action.target.namespace}
+										kind={action.target.kind}
+										resource={action.target.name}
+										operationScope="Handoff to Actions for this exact Kubernetes resource only"
+										description="No action runs from this card."
+									/>
 								</div>
 								<Button
 									type="button"

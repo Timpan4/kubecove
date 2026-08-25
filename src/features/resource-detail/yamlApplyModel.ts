@@ -61,3 +61,12 @@ export function yamlForceConflictsReview(forceConflicts: boolean): string {
 		? "Enabled. If fields conflict, applying this reviewed result takes ownership of those fields from other field managers."
 		: "Disabled. Existing field ownership remains enforced.";
 }
+
+export function yamlForceConflictsSource(
+	globalEnabled: boolean,
+	forceConflictsEnabled: boolean,
+): string {
+	if (globalEnabled) return "Global YAML setting";
+	if (forceConflictsEnabled) return "Current-resource override";
+	return "Not enabled";
+}

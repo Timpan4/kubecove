@@ -36,6 +36,9 @@ describe("guarded operations", () => {
 	});
 
 	test("classifies permission failures returned by operation preview", () => {
-		expect(guardedOperationBlocker("deployments.apps is forbidden")).toBe("permission");
+		expect(guardedOperationBlocker({
+			kind: "forbidden",
+			message: "deployments.apps is forbidden",
+		})).toBe("permission");
 	});
 });

@@ -4,6 +4,7 @@ import {
 	isYamlApplyDisabled,
 	yamlAppliedMessage,
 	yamlForceConflictsReview,
+	yamlForceConflictsSource,
 	yamlApplyTargetLabel,
 } from "../src/features/resource-detail/yamlApplyModel";
 import type { ResourceSummary, YamlApplyResult } from "../src/lib/types";
@@ -81,5 +82,8 @@ describe("svelte YAML apply model", () => {
 		expect(yamlForceConflictsReview(false)).toBe(
 			"Disabled. Existing field ownership remains enforced.",
 		);
+		expect(yamlForceConflictsSource(true, true)).toBe("Global YAML setting");
+		expect(yamlForceConflictsSource(false, true)).toBe("Current-resource override");
+		expect(yamlForceConflictsSource(false, false)).toBe("Not enabled");
 	});
 });

@@ -43,7 +43,6 @@
 		resolveYamlForceConflicts,
 		yamlAppliedMessage as formatYamlAppliedMessage,
 		yamlApplyTargetLabel,
-		yamlForceConflictsReview,
 	} from "./yamlApplyModel";
 
 	let {
@@ -119,13 +118,6 @@
 	);
 	const yamlApplyDisabledReason = $derived(isYamlApplyDisabled(resource));
 	const yamlApplyTarget = $derived(yamlApplyTargetLabel(resource));
-	const yamlApplyScope = $derived({
-		context: resource.cluster,
-		namespace: resource.namespace ?? "cluster-scoped",
-		kind: resource.kind,
-		resource: resource.name,
-		operationScope: "Selected Kubernetes resource YAML",
-	});
 	const yamlForceConflictsEnabled = $derived(
 		$settingsStore.allowYamlForceConflicts || yamlForceConflictsForResource,
 	);
@@ -442,9 +434,9 @@
 
 <YamlTab
 	{yamlQuery}
+	{resource}
 	{yamlText}
 	{yamlApplyTarget}
-	{yamlApplyScope}
 	{yamlAppliedMessage}
 	{yamlEditing}
 	{yamlViewMode}
@@ -465,9 +457,7 @@
 	{yamlPreview}
 	{yamlPreviewForceConflicts}
 	{yamlForceConflictsEnabled}
-	forceConflictsReview={yamlForceConflictsReview(
-		yamlPreview ? yamlPreviewForceConflicts : yamlForceConflictsEnabled,
-	)}
+	yamlGlobalForceConflicts={$settingsStore.allowYamlForceConflicts}
 	bind:yamlShowFullDiff
 	{visibleYamlDiffLines}
 	{hiddenYamlDiffCount}
