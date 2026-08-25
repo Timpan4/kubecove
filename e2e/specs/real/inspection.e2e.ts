@@ -34,6 +34,7 @@ import type {
 	YamlApplyRequest,
 	YamlApplyResult,
 	YamlEncoding,
+	JsonValue,
 } from "../../../src/lib/types";
 
 type CommandMap = {
@@ -52,7 +53,7 @@ type CommandMap = {
 	discover_argo_servers: { args: { clusterContext: string; kubeconfigEnvVar?: string }; result: ArgoServerCapability[] };
 	connect_argo_server: { args: { id: string; serverUrl: string; endpoint: ArgoServerEndpoint; username?: string; password?: string; insecureTls: boolean; rememberCredential: boolean; clusterContext: string; kubeconfigEnvVar?: string; workspaceId: string }; result: ArgoConnectionStatus };
 	get_argo_connection_status: { args: { id: string }; result: ArgoConnectionStatus };
-	disconnect_argo_server: { args: { id: string }; result: void };
+	disconnect_argo_server: { args: { id: string }; result: undefined };
 	get_argo_application_inspector: { args: { clusterContext: string; kubeconfigEnvVar?: string; connectionId: string; transport: "connected"; application: ArgoApplicationRef; redactSecrets: boolean }; result: ArgoApplicationInspector };
 	get_argo_resource_comparison: { args: { clusterContext: string; kubeconfigEnvVar?: string; connectionId: string; transport: "connected"; application: ArgoApplicationRef; resource: ArgoResourceComparison["resource"]; redactSecrets: boolean }; result: ArgoResourceComparison };
 	preflight_argo_operation: { args: { request: ArgoOperationRequest }; result: ArgoOperationPreflight };
@@ -65,6 +66,13 @@ type ChannelCommandMap = {
 	start_pod_log_stream: { args: { request: PodLogStreamRequest }; result: string };
 	start_pod_exec_session: { args: { request: PodExecSessionRequest }; result: PodExecSessionSummary };
 };
+type E2eMessage = StreamMessage | PodExecSessionMessage;
+
+declare global {
+	interface Window {
+		__kubecoveE2eMessages: Record<string, E2eMessage[]>;
+	}
+}
 
 const clusterName = process.env.KUBECOVE_E2E_CLUSTER;
 if (!clusterName) throw new Error("runner did not provide KUBECOVE_E2E_CLUSTER");
@@ -78,14 +86,19 @@ const argoConnections: string[] = [];
 const e2eKubeconfigSource = "KUBECOVE_KUBECONFIG";
 const execFileAsync = promisify(execFile);
 
+function commandResult<Result>(value: JsonValue): Result {
+	// SAFETY: each caller couples this browser-returned JSON value to the exact command result in CommandMap.
+	return value as Result;
+}
+
 async function invokeTauri<K extends keyof CommandMap>(command: K, args: CommandMap[K]["args"]): Promise<CommandMap[K]["result"]> {
-	return await browser.execute(
-		async (payload) => {
-			const tauri = (window as unknown as { __TAURI__: { core: { invoke: (name: string, value: unknown) => Promise<unknown> } } }).__TAURI__;
-			return await tauri.core.invoke(payload.command, payload.args);
+	// SAFETY: `CommandMap` couples each tested command to its exact request and result contract.
+	return commandResult<CommandMap[K]["result"]>(await browser.execute(
+		async (payload: { command: K; args: CommandMap[K]["args"] }) => {
+			return await window.__TAURI__.core.invoke<JsonValue, typeof payload.args>(payload.command, payload.args);
 		},
 		{ command, args },
-	) as CommandMap[K]["result"];
+	));
 }
 
 async function runKubectl(args: string[]) {
@@ -108,21 +121,23 @@ async function getWithHost(url: string, host: string) {
 }
 
 async function invokeChannel<K extends keyof ChannelCommandMap>(command: K, args: ChannelCommandMap[K]["args"], bucket: string): Promise<ChannelCommandMap[K]["result"]> {
-	return await browser.execute(
-		async (payload) => {
-			const tauri = (window as unknown as { __TAURI__: { core: { Channel: new () => { onmessage: (message: unknown) => void }; invoke: (name: string, value: unknown) => Promise<unknown> } } }).__TAURI__;
-			const target = window as unknown as Record<string, unknown>;
-			target[payload.bucket] = [];
-			const channel = new tauri.core.Channel();
-			channel.onmessage = (message) => (target[payload.bucket] as unknown[]).push(message);
-			return await tauri.core.invoke(payload.command, { ...payload.args, channel });
+	// SAFETY: `ChannelCommandMap` couples each tested streaming command to its exact request and result contract.
+	return commandResult<ChannelCommandMap[K]["result"]>(await browser.execute(
+		async (payload: { command: K; args: ChannelCommandMap[K]["args"]; bucket: string }) => {
+			window.__kubecoveE2eMessages ??= {};
+			window.__kubecoveE2eMessages[payload.bucket] = [];
+			const channel = new window.__TAURI__.core.Channel<E2eMessage>();
+			channel.onmessage = (message) => window.__kubecoveE2eMessages[payload.bucket]?.push(message);
+			const commandPayload = { ...payload.args, channel };
+			return await window.__TAURI__.core.invoke<JsonValue, typeof commandPayload>(payload.command, commandPayload);
 		},
 		{ command, args, bucket },
-	) as ChannelCommandMap[K]["result"];
+	));
 }
 
 async function messages<T extends StreamMessage | PodExecSessionMessage>(bucket: string): Promise<T[]> {
-	return await browser.execute((name) => ((window as unknown as Record<string, unknown>)[name] ?? []) as unknown[], bucket) as T[];
+	// SAFETY: each bucket receives only `E2eMessage` values from the typed Tauri channel above; caller chooses its command-specific subtype.
+	return await browser.execute((name: string) => window.__kubecoveE2eMessages?.[name] ?? [], bucket) as T[];
 }
 
 const tauri = {
@@ -223,8 +238,10 @@ describe("native Kind command boundary", () => {
 		await browser.waitUntil(async () => JSON.stringify(await messages<PodExecSessionMessage>(execBucket)).includes("kubecove-exec-marker"), { timeout: 20_000, interval: 200 });
 		const forward = await tauri.startPodPortForward({ clusterContext: cluster, namespace: "e2e-sessions", targetKind: "Service", targetName: "fixture-api", remotePort: 8080 });
 		sessions.push(forward.id);
-		await browser.waitUntil(async () => (await fetch(forward.localUrl as string)).ok, { timeout: 20_000, interval: 200 });
-		expect(await (await fetch(forward.localUrl as string)).text()).toContain("kubecove-http-marker");
+		const localUrl = forward.localUrl;
+		if (!localUrl) throw new Error("fixture-api port forward returned no local URL");
+		await browser.waitUntil(async () => (await fetch(localUrl)).ok, { timeout: 20_000, interval: 200 });
+		expect(await (await fetch(localUrl)).text()).toContain("kubecove-http-marker");
 		expect(await tauri.stopPortForward(forward.id)).toBe(true);
 		sessions.splice(sessions.indexOf(forward.id), 1);
 	});
@@ -249,7 +266,7 @@ describe("native Kind command boundary", () => {
 
 	it("inspects and refreshes tenant-catalog through the private Argo CD Service tunnel", async () => {
 		const server = (await tauri.discoverArgoServers(cluster)).find(({ endpoint }) => endpoint?.kind === "serviceTunnel" && endpoint.namespace === "argocd" && endpoint.serviceName === "argocd-server");
-		if (!server?.endpoint || server.endpoint.kind !== "serviceTunnel") throw new Error("argocd-server Service tunnel was not discovered");
+		if (server?.endpoint?.kind !== "serviceTunnel") throw new Error("argocd-server Service tunnel was not discovered");
 		expect(server.url).toBeNull();
 		expect(server.unavailableReason).toBeNull();
 		expect(server.endpoint.servicePort).toBeGreaterThan(0);
@@ -281,6 +298,7 @@ describe("native Kind command boundary", () => {
 		if (!secret) throw new Error("catalog Secret comparison was not returned");
 		const comparison = await tauri.argoResourceComparison({ clusterContext: cluster, kubeconfigEnvVar: e2eKubeconfigSource, connectionId, transport: "connected", application, resource: secret.resource, redactSecrets: true });
 		expect(comparison).toMatchObject({ exact: true, provenance: "argocd-managed-resource" });
+		// SAFETY: fixture comparison target state is validated immediately for the only redacted Secret fields this test reads.
 		const secretState = comparison.targetState as { data?: { fixture?: string }; stringData?: { fixture?: string } };
 		expect(secretState.data?.fixture ?? secretState.stringData?.fixture).toBe("[REDACTED]");
 
@@ -340,8 +358,10 @@ describe("native Kind command boundary", () => {
 	it("routes through Traefik and exposes the controlled incident", async () => {
 		const forward = await tauri.startPodPortForward({ clusterContext: cluster, namespace: "traefik", targetKind: "Service", targetName: "traefik", remotePort: 80 });
 		sessions.push(forward.id);
-		await browser.waitUntil(async () => (await getWithHost(forward.localUrl as string, "catalog.e2e.local").catch(() => ({ status: 0, body: "" }))).status === 200, { timeout: 20_000, interval: 200 });
-		expect((await getWithHost(forward.localUrl as string, "catalog.e2e.local")).body).toContain("catalog-ingress-marker");
+		const localUrl = forward.localUrl;
+		if (!localUrl) throw new Error("Traefik port forward returned no local URL");
+		await browser.waitUntil(async () => (await getWithHost(localUrl, "catalog.e2e.local").catch(() => ({ status: 0, body: "" }))).status === 200, { timeout: 20_000, interval: 200 });
+		expect((await getWithHost(localUrl, "catalog.e2e.local")).body).toContain("catalog-ingress-marker");
 		const pods = await tauri.listResources({ clusterContext: cluster, kind: "Pod", namespace: "operations" });
 		const incident = pods.find(({ name }) => name.startsWith("operations-crashloop-"));
 		if (!incident) throw new Error("controlled incident Pod was not discovered");

@@ -83,6 +83,8 @@
 		ArgoOperationRequest,
 		ArgoResourceComparison,
 		ArgoServerEndpoint,
+		JsonObject,
+		JsonValue,
 		ResourceDetailsFull,
 		ResourceSummary,
 	} from "@/lib/types";
@@ -253,7 +255,7 @@
 	);
 	const application = $derived<ArgoApplicationRef>({
 		...applicationRequest,
-		...(inspector.data?.application ?? {}),
+		...inspector.data?.application,
 		context: clusterContext,
 		workspaceId,
 	});
@@ -699,7 +701,7 @@
 
 	function resourceModified(item: ArgoManagedResource): boolean {
 		const comparison = argoComparisonDocument(item, comparisonFor(item));
-		if (typeof comparison.modified === "boolean") return comparison.modified;
+		if (comparison.modified === true || comparison.modified === false) return comparison.modified;
 		return documentText(comparison.desired) !== documentText(comparison.normalizedLive);
 	}
 
@@ -729,33 +731,31 @@
 		return entry.revision ?? (entry.revisions.join(", ") || "Unknown revision");
 	}
 
-	function documentText(value: unknown): string {
-		if (typeof value === "string") return value.trimEnd();
+	function documentText(value: JsonValue | undefined): string {
+		if (isString(value)) return value.trimEnd();
 		return value === undefined || value === null ? "" : stringify(value).trimEnd();
 	}
 
-	function statusValue(value: unknown, ...path: string[]): string | null {
-		let current = value;
+	function statusValue(value: JsonValue | undefined, ...path: string[]): string | null {
+		let current: JsonValue | undefined = value;
 		for (const key of path) {
-			if (!current || typeof current !== "object") return null;
-			current = (current as Record<string, unknown>)[key];
+			if (!isRecord(current)) return null;
+			current = current[key];
 		}
-		return typeof current === "string" && current.trim() ? current : null;
+		return isString(current) && current.trim() ? current : null;
 	}
 
-	function applicationSpecFromYaml(yaml: string | undefined): Record<string, unknown> {
+	function applicationSpecFromYaml(yaml: string | undefined): JsonObject {
 		if (!yaml) return {};
 		try {
-			const value = parse(yaml);
-			return value && typeof value === "object" && !Array.isArray(value)
-				? ((value as Record<string, unknown>).spec as Record<string, unknown>) ?? {}
-				: {};
+			const value: JsonValue = parse(yaml);
+			return isRecord(value) && isRecord(value.spec) ? value.spec : {};
 		} catch {
 			return {};
 		}
 	}
 
-	function valueAt(value: unknown, ...path: string[]): unknown {
+	function valueAt(value: JsonValue | undefined, ...path: string[]): JsonValue | undefined {
 		let current = value;
 		for (const key of path) {
 			if (Array.isArray(current)) {
@@ -764,20 +764,28 @@
 				current = current[index];
 				continue;
 			}
-			if (!current || typeof current !== "object") return undefined;
-			current = (current as Record<string, unknown>)[key];
+			if (!isRecord(current)) return undefined;
+			current = current[key];
 		}
 		return current;
 	}
 
-	function stringAt(value: unknown, ...path: string[]): string | null {
+	function stringAt(value: JsonValue | undefined, ...path: string[]): string | null {
 		const current = valueAt(value, ...path);
-		return typeof current === "string" && current.trim() ? current : null;
+		return isString(current) && current.trim() ? current : null;
 	}
 
-	function booleanAt(value: unknown, ...path: string[]): boolean | null {
+	function booleanAt(value: JsonValue | undefined, ...path: string[]): boolean | null {
 		const current = valueAt(value, ...path);
-		return typeof current === "boolean" ? current : null;
+		return current === true || current === false ? current : null;
+	}
+
+	function isRecord(value: JsonValue | undefined): value is JsonObject {
+		return value !== null && !Array.isArray(value) && Object(value) === value;
+	}
+
+	function isString(value: JsonValue | undefined): value is string {
+		return String(value) === value;
 	}
 
 	function operationLabel(action: ArgoOperationAction): string {

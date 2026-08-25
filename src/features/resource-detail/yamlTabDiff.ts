@@ -6,6 +6,11 @@ export interface UnifiedDiffLine {
 	text: string;
 }
 
+export interface YamlFieldRange {
+	from: number;
+	to: number;
+}
+
 const DIFF_CONTEXT_LINES = 3;
 
 export function buildCompactUnifiedDiff(
@@ -167,7 +172,7 @@ export function diffLineClassName(type: UnifiedDiffLine["type"]): string {
 export function findYamlFieldRange(
 	value: string,
 	fieldPath?: string,
-): { from: number; to: number } {
+): YamlFieldRange {
 	if (!fieldPath) return { from: 0, to: Math.min(value.length, 1) };
 	const key = fieldPath.split(".").at(-1);
 	if (!key) return { from: 0, to: Math.min(value.length, 1) };

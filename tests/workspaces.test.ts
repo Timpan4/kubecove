@@ -103,7 +103,7 @@ describe("workspace helpers", () => {
 	});
 
 	test("reports missing restore scopes", () => {
-		const unknownKind = "NotARealKind" as unknown as ResourceKindSelection;
+		const unknownKind: ResourceKindSelection = "NotARealKind";
 		const workspace = createWorkspaceRecord(
 			{
 				name: "Ops",

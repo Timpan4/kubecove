@@ -260,7 +260,11 @@ export const ownershipDependencyHints: Array<{
 	{ ownerKind: "Deployment", ownerName: "traefik", ownerNamespace: "traefik", resourceKind: "Secret", resourceName: "traefik-gateway-tls", resourceNamespace: "traefik" },
 ];
 
-export const networkServicePodMap: Record<string, string[]> = {
+interface NetworkServicePods {
+	[serviceKey: string]: string[];
+}
+
+export const networkServicePodMap: NetworkServicePods = {
 	"argocd:argocd-server": ["argocd-server-8c9869674-xj9p"],
 	"kube-system:kube-dns": ["coredns-7859998f6-lf7hm"],
 	"monitoring:grafana": ["grafana-5d7864bb9c-4twqz"],
@@ -271,7 +275,11 @@ export const networkServicePodMap: Record<string, string[]> = {
 	"platform:metrics-gateway": ["metrics-gateway-9f6d4f7c9-7j2p4"],
 };
 
-export const networkServiceFallbackSelectors: Record<string, string> = {
+interface NetworkServiceSelectors {
+	[serviceKey: string]: string;
+}
+
+export const networkServiceFallbackSelectors: NetworkServiceSelectors = {
 	"argocd:argocd-server": "app.kubernetes.io/name=argocd-server",
 	"kube-system:kube-dns": "k8s-app=kube-dns",
 	"monitoring:grafana": "app.kubernetes.io/name=grafana",
@@ -336,7 +344,14 @@ export const argoApps: ArgoApplicationSummary[] = labArgoApplications.map(([name
 	createdAt: "2026-06-17T08:00:00Z",
 }));
 
-export const argoManagedResourceRefs: Readonly<Record<string, readonly Pick<ResourceSummary, "kind" | "name" | "namespace">[]>> = {
+interface ArgoManagedResources {
+	[applicationName: string]: readonly Pick<
+		ResourceSummary,
+		"kind" | "name" | "namespace"
+	>[];
+}
+
+export const argoManagedResourceRefs: ArgoManagedResources = {
 	"root-application": [{ kind: "Application", name: "shop", namespace: "argocd" }],
 	"platform-argocd": [
 		{ kind: "Deployment", name: "argocd-server", namespace: "argocd" },

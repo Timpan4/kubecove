@@ -93,7 +93,7 @@
 	} satisfies Record<string, SettingsRowMeta>;
 
 	const YAML_ROWS = {
-		cleanupShape: {
+		viewMode: {
 			title: "YAML shape",
 			description:
 				"Controls whether YAML opens as Kubectl view or Apply clean output.",
@@ -146,37 +146,37 @@
 		},
 	} satisfies Record<string, SettingsRowMeta>;
 
-	const DIAGNOSTICS_ROWS = {
-		debugMode: {
+	const DIAGNOSTICS_ROWS: SettingsRowMeta[] = [
+		{
 			title: "Enable diagnostics",
 			description:
 				"Collects local latency timings for release smoke testing. Trace data stays in memory.",
 		},
-		report: {
+		{
 			title: "Latency report",
 			description:
 				"Shows frontend and backend timing summaries, with redacted copy output by default.",
 		},
-		...(IS_DEV_BUILD
-			? {
-					topologySpike: {
-						title: "Topology spike",
-						description:
-							"Opens the Svelte topology benchmark harness with synthetic 4,000-node data, compact nodes, selected edges, and a focused viewport.",
-					},
-				}
-			: {}),
-	} satisfies Record<string, SettingsRowMeta>;
+	];
 
-	const categoryRows: Record<SettingsCategoryId, SettingsRowMeta[]> = {
+	if (IS_DEV_BUILD) {
+		const topologySpike: SettingsRowMeta = {
+			title: "Topology spike",
+			description:
+				"Opens the Svelte topology benchmark harness with synthetic 4,000-node data, compact nodes, selected edges, and a focused viewport.",
+		};
+		DIAGNOSTICS_ROWS.push(topologySpike);
+	}
+
+	const categoryRows = {
 		general: Object.values(GENERAL_ROWS),
 		sessions: Object.values(SESSION_ROWS),
 		yaml: Object.values(YAML_ROWS),
 		kubeconfig: Object.values(KUBECONFIG_ROWS),
 		updates: Object.values(UPDATES_ROWS),
-		diagnostics: Object.values(DIAGNOSTICS_ROWS),
+		diagnostics: DIAGNOSTICS_ROWS,
 		argo: [{ title: "Argo CD connection", description: "Connect to Argo CD without storing credentials in settings." }],
-	};
+	} satisfies Record<SettingsCategoryId, SettingsRowMeta[]>;
 
 	const categories: Array<{ id: SettingsCategoryId; label: string }> = [
 		{ id: "general", label: "General" },
@@ -396,7 +396,7 @@
 
 		{#if showCategory("yaml")}
 		<FieldGroup>
-			<SettingsRow {...YAML_ROWS.cleanupShape}>
+			<SettingsRow {...YAML_ROWS.viewMode}>
 				<SegmentedControl
 					value={settings.yamlViewModeDefault}
 					options={[
@@ -404,7 +404,7 @@
 						{ value: "applyClean", label: "Apply clean" },
 					]}
 					onChange={(value: YamlViewMode) => settings.setYamlViewModeDefault(value)}
-					ariaLabel={YAML_ROWS.cleanupShape.title}
+					ariaLabel={YAML_ROWS.viewMode.title}
 				/>
 			</SettingsRow>
 			<SettingsRow {...YAML_ROWS.encoding}>

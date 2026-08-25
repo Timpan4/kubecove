@@ -5,7 +5,7 @@ import {
 	buildArgoApplicationInspectionReadSpec,
 	buildArgoConnectionStatusReadSpec,
 } from "./argo-application-inspection";
-import type { ArgoConnectionStatus } from "./gitops-types";
+import type { ArgoApplicationInspector, ArgoConnectionStatus } from "./gitops-types";
 import type { SavedArgoProfile } from "./settings";
 
 const profiles: SavedArgoProfile[] = [
@@ -34,6 +34,26 @@ function status(connected: boolean): ArgoConnectionStatus {
 		username: null,
 		unavailableReason: null,
 	};
+}
+
+function inspection(transport: "connected" | "kubernetes"): ArgoApplicationInspector {
+	return {
+		application: { name: "guestbook", namespace: "argocd", uid: "uid-1" },
+		status: null,
+		history: [],
+		resources: [],
+		comparisons: [],
+		conditions: [],
+		operationState: null,
+		connected: transport === "connected",
+		transport,
+		provenance: "test",
+	};
+}
+
+function mockInvokeResult<T>(value: ArgoConnectionStatus | ArgoApplicationInspector): T {
+	// SAFETY: each mock returns the exact status or inspection result selected by its query-wrapper test.
+	return value as T;
 }
 
 function inspectionSpec(
@@ -79,9 +99,9 @@ describe("Argo Application inspection read spec", () => {
 		});
 		const options = argoConnectionStatusQueryOptions(
 			{
-				invoke: async <T>(_command: string, args?: Record<string, unknown>) => {
-					if (args?.id === "primary") throw new Error("profile unavailable");
-					return status(true) as T;
+				invoke: async <T, Args extends object>(_command: string, args?: Args) => {
+					if (args && "id" in args && args.id === "primary") throw new Error("profile unavailable");
+					return mockInvokeResult<T>(status(true));
 				},
 			},
 			spec,
@@ -131,13 +151,13 @@ describe("Argo Application inspection read spec", () => {
 	test("keeps fallback under attempted Connected identity and redaction retention", () => {
 		const spec = inspectionSpec({ redactSecrets: false });
 		const options = argoApplicationInspectionQueryOptions(
-			{ invoke: async <T>() => ({ transport: "kubernetes" }) as T },
+			{ invoke: async <T, Args extends object>(_command: string, _args?: Args) => mockInvokeResult<T>(inspection("kubernetes")) },
 			spec,
 		);
 
 		expect(options.queryKey).toBe(spec.queryKey);
 		expect(options.gcTime).toBe(0);
-		expect(options.refetchInterval({ state: { data: { transport: "kubernetes" } as never } })).toBe(false);
-		expect(options.refetchInterval({ state: { data: { transport: "connected" } as never } })).toBe(15_000);
+		expect(options.refetchInterval({ state: { data: inspection("kubernetes") } })).toBe(false);
+		expect(options.refetchInterval({ state: { data: inspection("connected") } })).toBe(15_000);
 	});
 });

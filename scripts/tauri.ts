@@ -8,7 +8,7 @@ export function tauriEnvironment(
 	args: string[],
 	baseEnvironment: Record<string, string | undefined> = process.env,
 	platform = process.platform,
-): Record<string, string | undefined> {
+) {
 	const environment = { ...baseEnvironment };
 	if (platform !== "win32" || args[0] !== "dev") return environment;
 

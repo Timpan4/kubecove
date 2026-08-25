@@ -1,4 +1,4 @@
-import type { QueryClient } from "@tanstack/svelte-query";
+import type { Query, QueryClient } from "@tanstack/svelte-query";
 import type { CancellableRequest } from "./types";
 
 const FINITE_READ_QUERY_ROOTS = [
@@ -33,6 +33,11 @@ const FINITE_READ_QUERY_ROOTS = [
 
 const FINITE_READ_META = { finiteRead: true } as const;
 
+interface FiniteReadMetadata extends Record<string, unknown> {
+	finiteRead: true;
+	namespace?: string;
+}
+
 let requestSequence = 0;
 
 export function createCancelScope(label: string, queryKey: readonly unknown[]): string {
@@ -57,8 +62,8 @@ export function cancellableArg(
 }
 
 export function finiteReadMeta(
-	meta: Record<string, unknown> = {},
-): Record<string, unknown> {
+	meta: Omit<FiniteReadMetadata, "finiteRead"> = {},
+): FiniteReadMetadata {
 	return { ...meta, ...FINITE_READ_META };
 }
 
@@ -68,15 +73,13 @@ export function configureFiniteReadQueryDefaults(queryClient: QueryClient): void
 	}
 }
 
-export function isFiniteReadQuery(query: {
-	options: { meta?: Record<string, unknown> };
-}): boolean {
+export function isFiniteReadQuery(query: Query): boolean {
 	return query.options.meta?.finiteRead === true;
 }
 
 interface CleanupHooks<T> {
 	onCancelled?: (result: T) => void;
-	onError?: (error: unknown) => void;
+	onError?: (cause: unknown) => void;
 }
 
 export interface FiniteReadCleanup<T> {

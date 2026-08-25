@@ -64,7 +64,7 @@ describe("Kind harness", () => {
 	});
 	test("upgrades ownership records written before kindConfig existed", () => {
 		const { kindConfig: _, ...legacy } = record;
-		expect(ownershipFromDisk(legacy, "run", record.dir, record.runId, "workspace").kindConfig).toBe(record.kindConfig);
+		expect(ownershipFromDisk(legacy, "run", record.dir, record.runId, "workspace").kindConfig).toBe(join(record.dir, "kind.yaml"));
 	});
 	test.skipIf(process.platform === "win32")("refuses symlinked ownership paths", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "kubecove-owned-"));

@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parse } from "svelte/compiler";
 
-type AstNode = Record<string, unknown>;
+type AstValue = AstNode | AstValue[] | string | number | boolean | null;
+type AstNode = Record<string, AstValue>;
 
-function parseComponent(path: string): unknown {
-	return parse(readFileSync(path, "utf8"), { modern: true });
+function parseComponent(path: string): AstNode {
+	// SAFETY: Svelte compiler's modern AST is traversed here only as nested JSON-like nodes and scalar fields.
+	return parse(readFileSync(path, "utf8"), { modern: true }) as AstNode;
 }
 
 describe("Incident surface component contract", () => {
@@ -35,17 +37,17 @@ describe("Incident surface component contract", () => {
 	});
 });
 
-function asNode(value: unknown): AstNode | null {
-	return value !== null && typeof value === "object" && !Array.isArray(value)
-		? (value as AstNode)
-		: null;
+function asNode(value: AstValue): AstNode | null {
+	if (Array.isArray(value) || !(value instanceof Object)) return null;
+	// SAFETY: non-array objects in the compiler AST are nodes with scalar, node, or node-array fields.
+	return value as AstNode;
 }
 
-function nodeArray(value: unknown): AstNode[] {
+function nodeArray(value: AstValue | undefined): AstNode[] {
 	return Array.isArray(value) ? value.flatMap((item) => asNode(item) ?? []) : [];
 }
 
-function findNode(root: unknown, matches: (node: AstNode) => boolean): AstNode | null {
+function findNode(root: AstValue, matches: (node: AstNode) => boolean): AstNode | null {
 	const node = asNode(root);
 	if (!node) return null;
 	if (matches(node)) return node;
@@ -53,7 +55,7 @@ function findNode(root: unknown, matches: (node: AstNode) => boolean): AstNode |
 		const found = Array.isArray(child)
 			? child.map((item) => findNode(item, matches)).find(Boolean)
 			: findNode(child, matches);
-		if (found) return found as AstNode;
+	if (found) return found;
 	}
 	return null;
 }

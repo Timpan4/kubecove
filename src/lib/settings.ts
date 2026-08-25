@@ -6,6 +6,7 @@ import {
 } from "./argo-connection-policy";
 import type { ArgoServerEndpoint } from "./gitops-types";
 import type {
+	JsonObject,
 	KubeconfigSourcesSummary,
 	YamlEncoding,
 	YamlViewMode,
@@ -84,32 +85,45 @@ export function kubeconfigSourceKey(envVar: string | undefined): string {
 	return `kubeconfigEnv=${normalizeKubeconfigEnvVar(envVar)}`;
 }
 
-function isYamlDiffStyle(style: unknown): style is YamlDiffStyle {
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
+}
+
+function isString<Value>(value: Value): value is Value & string {
+	return String(value) === value;
+}
+
+function booleanValue<Value>(value: Value, fallback: boolean): boolean {
+	return Boolean(value) === value ? Boolean(value) : fallback;
+}
+
+function isYamlDiffStyle<Value>(style: Value): style is Value & YamlDiffStyle {
 	return style === "clean" || style === "git";
 }
 
-export function normalizeGitOpsViewMode(mode: unknown): GitOpsViewMode {
+export function normalizeGitOpsViewMode<Value>(mode: Value): GitOpsViewMode {
 	return mode === "list" ? "list" : "cards";
 }
 
-export function normalizeHelmViewMode(mode: unknown): HelmViewMode {
+export function normalizeHelmViewMode<Value>(mode: Value): HelmViewMode {
 	return mode === "list" ? "list" : "cards";
 }
 
-export function mergePersistedSettings(persisted: unknown, current: SettingsState): SettingsState {
-	const saved =
-		typeof persisted === "object" && persisted !== null
-			? (persisted as Partial<SettingsState>)
-			: {};
+export function mergePersistedSettings<Persisted>(
+	persisted: Persisted,
+	current: SettingsState,
+): SettingsState {
+	if (!isRecord(persisted)) return current;
+	const saved = persisted;
 	return {
 		...current,
-		showExactTimestamps: saved.showExactTimestamps ?? current.showExactTimestamps,
-		showUsageFooter: saved.showUsageFooter ?? current.showUsageFooter,
+		showExactTimestamps: booleanValue(saved.showExactTimestamps, current.showExactTimestamps),
+		showUsageFooter: booleanValue(saved.showUsageFooter, current.showUsageFooter),
 		showFullTopologyOnSelection:
-			saved.showFullTopologyOnSelection ?? current.showFullTopologyOnSelection,
+			booleanValue(saved.showFullTopologyOnSelection, current.showFullTopologyOnSelection),
 		showUnavailableGitOpsProviders:
-			saved.showUnavailableGitOpsProviders ?? current.showUnavailableGitOpsProviders,
-		redactSecrets: saved.redactSecrets ?? current.redactSecrets,
+			booleanValue(saved.showUnavailableGitOpsProviders, current.showUnavailableGitOpsProviders),
+		redactSecrets: booleanValue(saved.redactSecrets, current.redactSecrets),
 		argoProfiles: Array.isArray(saved.argoProfiles)
 			? saved.argoProfiles.flatMap((profile) => {
 					const normalized = normalizeSavedArgoProfile(profile);
@@ -122,28 +136,40 @@ export function mergePersistedSettings(persisted: unknown, current: SettingsStat
 		),
 		gitOpsViewMode: normalizeGitOpsViewMode(saved.gitOpsViewMode),
 		helmViewMode: normalizeHelmViewMode(saved.helmViewMode),
-		showCustomResources: saved.showCustomResources ?? current.showCustomResources,
-		debugModeEnabled: saved.debugModeEnabled ?? current.debugModeEnabled,
+		showCustomResources: booleanValue(saved.showCustomResources, current.showCustomResources),
+		debugModeEnabled: booleanValue(saved.debugModeEnabled, current.debugModeEnabled),
 		autoStartSavedPortForwards:
-			saved.autoStartSavedPortForwards ?? current.autoStartSavedPortForwards,
+			booleanValue(saved.autoStartSavedPortForwards, current.autoStartSavedPortForwards),
 		keepLiveSessionsOnWorkspaceSwitch:
-			saved.keepLiveSessionsOnWorkspaceSwitch ?? current.keepLiveSessionsOnWorkspaceSwitch,
-		allowYamlForceConflicts: saved.allowYamlForceConflicts ?? current.allowYamlForceConflicts,
-		timestampTimezone: saved.timestampTimezone ?? current.timestampTimezone,
-		yamlViewModeDefault: saved.yamlViewModeDefault ?? current.yamlViewModeDefault,
-		yamlEncodingDefault: saved.yamlEncodingDefault ?? current.yamlEncodingDefault,
+			booleanValue(saved.keepLiveSessionsOnWorkspaceSwitch, current.keepLiveSessionsOnWorkspaceSwitch),
+		allowYamlForceConflicts: booleanValue(
+			saved.allowYamlForceConflicts,
+			current.allowYamlForceConflicts,
+		),
+		timestampTimezone:
+			saved.timestampTimezone === "local" || saved.timestampTimezone === "utc"
+				? saved.timestampTimezone
+				: current.timestampTimezone,
+		yamlViewModeDefault:
+			saved.yamlViewModeDefault === "kubectl" || saved.yamlViewModeDefault === "applyClean"
+				? saved.yamlViewModeDefault
+				: current.yamlViewModeDefault,
+		yamlEncodingDefault:
+			saved.yamlEncodingDefault === "yaml" || saved.yamlEncodingDefault === "kyaml"
+				? saved.yamlEncodingDefault
+				: current.yamlEncodingDefault,
 		yamlDiffStyle: isYamlDiffStyle(saved.yamlDiffStyle)
 			? saved.yamlDiffStyle
 			: current.yamlDiffStyle,
-		yamlErrorLensEnabled: saved.yamlErrorLensEnabled ?? current.yamlErrorLensEnabled,
+		yamlErrorLensEnabled: booleanValue(saved.yamlErrorLensEnabled, current.yamlErrorLensEnabled),
 	};
 }
 
-function normalizeArgoConnectionPreferences(
-	value: unknown,
+function normalizeArgoConnectionPreferences<Value>(
+	value: Value,
 	fallback: Record<string, ArgoConnectionPreference>,
 ): Record<string, ArgoConnectionPreference> {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) return fallback;
+	if (!isRecord(value)) return fallback;
 	return Object.fromEntries(
 		Object.entries(value).flatMap(([workspaceId, preference]) =>
 			workspaceId.trim() ? [[workspaceId, normalizeArgoConnectionPreference(preference)]] : [],
@@ -151,67 +177,72 @@ function normalizeArgoConnectionPreferences(
 	);
 }
 
-export function normalizeSavedArgoProfile(value: unknown): SavedArgoProfile | null {
-	if (typeof value !== "object" || value === null) return null;
-	const profile = value as Record<string, unknown>;
-	const id = typeof profile.id === "string" ? profile.id.trim() : "";
+export function normalizeSavedArgoProfile<Value>(value: Value): SavedArgoProfile | null {
+	if (!isRecord(value)) return null;
+	const profile = value;
+	const id = isString(profile.id) ? profile.id.trim() : "";
 	if (!id) return null;
 	const endpoint = normalizeArgoEndpoint(profile.endpoint, profile.url);
 	if (!endpoint) return null;
-	return {
+	const saved: SavedArgoProfile = {
 		id,
 		endpoint,
-		...(typeof profile.clusterContext === "string" && profile.clusterContext.trim()
-			? { clusterContext: profile.clusterContext }
-			: {}),
-		...(typeof profile.workspaceId === "string" && profile.workspaceId.trim()
-			? { workspaceId: profile.workspaceId }
-			: {}),
-		...(typeof profile.kubeconfigSourceKey === "string" && profile.kubeconfigSourceKey.trim()
-			? { kubeconfigSourceKey: profile.kubeconfigSourceKey.trim() }
-			: profile.kubeconfigSourceKey === null
-				? { kubeconfigSourceKey: null }
-				: {}),
 		rememberCredential: Boolean(profile.rememberCredential),
 	};
+	if (isString(profile.clusterContext) && profile.clusterContext.trim()) {
+		saved.clusterContext = profile.clusterContext;
+	}
+	if (isString(profile.workspaceId) && profile.workspaceId.trim()) {
+		saved.workspaceId = profile.workspaceId;
+	}
+	if (isString(profile.kubeconfigSourceKey) && profile.kubeconfigSourceKey.trim()) {
+		saved.kubeconfigSourceKey = profile.kubeconfigSourceKey.trim();
+	} else if (profile.kubeconfigSourceKey === null) {
+		saved.kubeconfigSourceKey = null;
+	}
+	return saved;
 }
 
-function normalizeArgoEndpoint(endpoint: unknown, legacyUrl: unknown): ArgoServerEndpoint | null {
-	if (typeof endpoint !== "object" || endpoint === null) {
+function normalizeArgoEndpoint<Endpoint, LegacyUrl>(
+	endpoint: Endpoint,
+	legacyUrl: LegacyUrl,
+): ArgoServerEndpoint | null {
+	if (!isRecord(endpoint)) {
 		return externalHttpsEndpoint(legacyUrl);
 	}
-	const value = endpoint as Record<string, unknown>;
+	const value = endpoint;
 	if (value.kind === "externalHttps") return externalHttpsEndpoint(value.url);
 	if (value.kind !== "serviceTunnel") return null;
-	const namespace = typeof value.namespace === "string" ? value.namespace.trim() : "";
-	const serviceName = typeof value.serviceName === "string" ? value.serviceName.trim() : "";
-	const servicePort = value.servicePort;
+	const namespace = isString(value.namespace) ? value.namespace.trim() : "";
+	const serviceName = isString(value.serviceName) ? value.serviceName.trim() : "";
+	const servicePort = Number(value.servicePort);
 	if (
 		!namespace ||
 		!serviceName ||
 		!Number.isInteger(servicePort) ||
-		typeof servicePort !== "number" ||
+		!Object.is(servicePort, value.servicePort) ||
 		servicePort < 1 ||
 		servicePort > 65535 ||
 		(value.scheme !== "https" && value.scheme !== "http")
 	) {
 		return null;
 	}
-	const rootPath = typeof value.rootPath === "string" ? value.rootPath.trim() : "";
-	const tlsServerName = typeof value.tlsServerName === "string" ? value.tlsServerName.trim() : "";
-	return {
+	const rootPath = isString(value.rootPath) ? value.rootPath.trim() : "";
+	const tlsServerName = isString(value.tlsServerName) ? value.tlsServerName.trim() : "";
+	const normalized: ArgoServerEndpoint = {
 		kind: "serviceTunnel",
 		namespace,
 		serviceName,
 		servicePort,
 		scheme: value.scheme,
-		...(rootPath ? { rootPath } : {}),
-		...(tlsServerName ? { tlsServerName } : {}),
 	};
+	if (rootPath) normalized.rootPath = rootPath;
+	if (tlsServerName) normalized.tlsServerName = tlsServerName;
+	return normalized;
 }
 
-function externalHttpsEndpoint(value: unknown): ArgoServerEndpoint | null {
-	if (typeof value !== "string") return null;
+function externalHttpsEndpoint<Value>(value: Value): ArgoServerEndpoint | null {
+	if (!isString(value)) return null;
 	try {
 		return new URL(value).protocol === "https:"
 			? { kind: "externalHttps", url: value }

@@ -8,12 +8,12 @@ import type {
 } from "@/lib/types";
 import type { StatusTone } from "@/components/status-badge-styles";
 
-const LEVEL_WEIGHT: Record<RbacRiskLevel, number> = {
+const LEVEL_WEIGHT = {
 	low: 1,
 	medium: 2,
 	high: 3,
 	unknown: 0,
-};
+} satisfies Record<RbacRiskLevel, number>;
 
 export function riskTone(level: RbacRiskLevel): StatusTone {
 	if (level === "high") return "error";

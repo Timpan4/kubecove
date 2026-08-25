@@ -66,9 +66,10 @@
 	let logSinceSeconds = $state<number | undefined>(undefined);
 	let logPaused = $state(false);
 
-	const isAggregateTarget = $derived(
-		(resource.kind === "Deployment" || resource.kind === "Service") && Boolean(resource.namespace),
+	const aggregateTargetKind = $derived(
+		resource.kind === "Deployment" || resource.kind === "Service" ? resource.kind : null,
 	);
+	const isAggregateTarget = $derived(aggregateTargetKind !== null && Boolean(resource.namespace));
 	const normalizedTailLines = $derived(
 		Math.max(0, Math.floor(Number.isFinite(logTailLines) ? logTailLines : 0)),
 	);
@@ -93,7 +94,8 @@
 							clusterContext: resource.cluster,
 							kubeconfigEnvVar: kubeconfigSourceKey,
 							namespace: resource.namespace ?? "",
-							targetKind: resource.kind as "Deployment" | "Service",
+							// SAFETY: isAggregateTarget requires aggregateTargetKind to be Deployment or Service.
+							targetKind: aggregateTargetKind as "Deployment" | "Service",
 							targetName: resource.name,
 							tailLines: normalizedTailLines,
 							sinceSeconds: logSinceSeconds,
@@ -126,19 +128,19 @@
 	});
 
 	$effect(() => {
-		logSignature;
+		void logSignature;
 		parsedLogLines = [];
 		nextLogLineIndex = 0;
 		logError = null;
 	});
 
 	$effect(() => {
-		active;
-		parsedLogLines.length;
-		visibleLogLines.length;
-		logAutoFollow;
-		logLatestFirst;
-		logWrapLines;
+		void active;
+		void parsedLogLines.length;
+		void visibleLogLines.length;
+		void logAutoFollow;
+		void logLatestFirst;
+		void logWrapLines;
 		if (!active || !logAutoFollow || !logViewport) return;
 		const frame = window.requestAnimationFrame(() => {
 			if (!logViewport) return;
@@ -209,11 +211,11 @@
 				}
 				streamId = id;
 			})
-			.catch((error: unknown) => {
+			.catch((cause: unknown) => {
 				if (cancelled) return;
 				logStatus = "error";
 				logMessage = "Log stream failed";
-				logError = error;
+				logError = cause;
 			});
 		return () => {
 			cancelled = true;

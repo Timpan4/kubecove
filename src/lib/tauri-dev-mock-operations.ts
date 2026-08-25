@@ -6,7 +6,9 @@ import type {
 	ScaleWorkloadRequest,
 } from "./types";
 
-type MockArgs = Record<string, unknown> | undefined;
+interface MockArgs {
+	request?: object;
+}
 
 type OperationRequest =
 	| DeleteResourceRequest
@@ -28,11 +30,12 @@ export const operationMockHandlers = {
 		deleteOperationResult(operationRequest<DeleteResourceRequest>(args)),
 };
 
-function operationRequest<T>(args?: MockArgs): T {
+function operationRequest<T extends OperationRequest>(args?: MockArgs): T {
 	const request = args?.request;
-	if (!request || typeof request !== "object") {
+	if (!request) {
 		throw new Error("Operation request is required.");
 	}
+	// SAFETY: each handler is called through its matching typed operation wrapper.
 	return request as T;
 }
 

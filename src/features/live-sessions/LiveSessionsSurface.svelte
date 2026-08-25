@@ -152,7 +152,7 @@
 
 	function submitSavedPortForwardForm() {
 		const parsed = parseSavedPortForwardForWorkspace(savedPortForwardForm, workspace);
-		if (typeof parsed === "string") {
+		if (isValidationMessage(parsed)) {
 			savedPortForwardFormError = parsed;
 			return;
 		}
@@ -175,6 +175,10 @@
 		workspaceStore.deleteSavedPortForward(workspace.id, portForward.id);
 		if (editingSavedPortForwardId === portForward.id) resetSavedPortForwardForm();
 		savedPortForwardActionMessage = `Deleted ${savedPortForwardLabel(portForward)}.`;
+	}
+
+	function isValidationMessage<Value>(value: Value): value is Extract<Value, string> {
+		return Object(value) !== value;
 	}
 
 	async function copyPortForwardUrl(session: PortForwardSessionSummary) {

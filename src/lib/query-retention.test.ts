@@ -5,11 +5,24 @@ import {
 	LARGE_QUERY_ROOTS,
 } from "./query-retention";
 
+interface AssertionObject {
+	readonly [key: string]: AssertionValue;
+}
+
+type AssertionValue =
+	| AssertionObject
+	| boolean
+	| number
+	| readonly AssertionValue[]
+	| string
+	| null
+	| undefined;
+
 declare function afterEach(fn: () => void): void;
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
 declare function expect<T>(actual: T): {
-	toBe(expected: unknown): void;
+	toBe(expected: AssertionValue): void;
 };
 declare const jest: {
 	useFakeTimers(): void;

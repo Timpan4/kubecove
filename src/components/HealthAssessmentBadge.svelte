@@ -29,8 +29,12 @@
 				: "",
 	);
 
-	function raw(value: unknown): string {
-		return typeof value === "string" ? value : JSON.stringify(value);
+	function raw<Value>(value: Value): string {
+		return isString(value) ? value : (JSON.stringify(value) ?? String(value));
+	}
+
+	function isString<Value>(value: Value): value is Value & string {
+		return String(value) === value;
 	}
 </script>
 

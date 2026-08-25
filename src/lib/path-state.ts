@@ -1,8 +1,12 @@
 import type { TreeNodeId } from "./tree-nav";
+import { SUPPORTED_KINDS } from "./types";
 import type {
 	DiscoveredResourceKind,
+	JsonObject,
+	JsonValue,
 	ResourceKindSelection,
 	ResourceSummary,
+	SupportedKind,
 	TopologyMode,
 	YamlEncoding,
 	YamlViewMode,
@@ -150,62 +154,63 @@ export interface PathStateSnapshot {
 	workspace: PathStateWorkspaceSnapshot | null;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
 }
 
-function stringValue(value: unknown, fallback = ""): string {
-	return typeof value === "string" ? value : fallback;
+function isString<Value>(value: Value): value is Value & string {
+	return String(value) === value;
 }
 
-function nullableString(value: unknown): string | null {
-	return typeof value === "string" ? value : null;
+function stringValue<Value>(value: Value, fallback = ""): string {
+	return isString(value) ? value : fallback;
 }
 
-function optionalString(value: unknown): string | undefined {
-	return typeof value === "string" ? value : undefined;
+function nullableString<Value>(value: Value): string | null {
+	return isString(value) ? value : null;
 }
 
-export function sanitizePathStateStringArray(
-	value: unknown,
+function optionalString<Value>(value: Value): string | undefined {
+	return isString(value) ? value : undefined;
+}
+
+export function sanitizePathStateStringArray<Value>(
+	value: Value,
 	fallback: string[] = [],
 ): string[] {
-	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : fallback;
+	return Array.isArray(value) ? value.filter(isString) : fallback;
 }
 
-function booleanValue(value: unknown, fallback: boolean): boolean {
-	return typeof value === "boolean" ? value : fallback;
+function isBoolean<Value>(value: Value): value is Value & boolean {
+	return Boolean(value) === value;
 }
 
-function nonNegativeInteger(value: unknown, fallback = 0): number {
-	return typeof value === "number" && Number.isInteger(value) && value >= 0
-		? value
+function booleanValue<Value>(value: Value, fallback: boolean): boolean {
+	return isBoolean(value) ? value : fallback;
+}
+
+function nonNegativeInteger<Value>(value: Value, fallback = 0): number {
+	const number = Number(value);
+	return Object.is(number, value) && Number.isInteger(number) && number >= 0
+		? number
 		: fallback;
 }
 
-function pickString<T extends string>(value: unknown, values: readonly T[], fallback: T): T {
-	return typeof value === "string" && (values as readonly string[]).includes(value)
-		? (value as T)
-		: fallback;
+function pickString<T extends string, Value>(value: Value, values: readonly T[], fallback: T): T {
+	return values.find((candidate) => Object.is(candidate, value)) ?? fallback;
 }
 
-export function isPathStateWorkspaceViewMode(
-	value: unknown,
-): value is PathStateWorkspaceViewMode {
-	return (
-		typeof value === "string" &&
-		(PATH_STATE_WORKSPACE_VIEW_MODES as readonly string[]).includes(value)
-	);
+export function isPathStateWorkspaceViewMode<Value>(
+	value: Value,
+): value is Value & PathStateWorkspaceViewMode {
+	return PATH_STATE_WORKSPACE_VIEW_MODES.some((mode) => Object.is(mode, value));
 }
 
-export function isPathStateHealthFilter(value: unknown): value is PathStateHealthFilter {
-	return (
-		typeof value === "string" &&
-		(PATH_STATE_HEALTH_FILTERS as readonly string[]).includes(value)
-	);
+export function isPathStateHealthFilter<Value>(value: Value): value is Value & PathStateHealthFilter {
+	return PATH_STATE_HEALTH_FILTERS.some((filter) => Object.is(filter, value));
 }
 
-function sanitizeDiscoveredResourceKind(value: unknown): DiscoveredResourceKind | null {
+function sanitizeDiscoveredResourceKind<Value>(value: Value): DiscoveredResourceKind | null {
 	if (!isRecord(value)) return null;
 	const group = stringValue(value.group);
 	const version = stringValue(value.version);
@@ -213,17 +218,22 @@ function sanitizeDiscoveredResourceKind(value: unknown): DiscoveredResourceKind 
 	const kind = stringValue(value.kind);
 	const plural = stringValue(value.plural);
 	const shortNames = sanitizePathStateStringArray(value.shortNames);
-	const namespaced = typeof value.namespaced === "boolean" ? value.namespaced : null;
+	const namespaced = isBoolean(value.namespaced) ? value.namespaced : null;
 	if (!version || !apiVersion || !kind || !plural || namespaced === null) return null;
 	return { group, version, apiVersion, kind, plural, shortNames, namespaced };
 }
 
-function sanitizeResourceKindSelection(value: unknown): ResourceKindSelection | null {
-	if (typeof value === "string" && value.trim()) return value as ResourceKindSelection;
+function sanitizeResourceKindSelection<Value>(value: Value): ResourceKindSelection | null {
+	const kind = stringValue(value);
+	if (isSupportedKind(kind)) return kind;
 	return sanitizeDiscoveredResourceKind(value);
 }
 
-function sanitizeResourceKinds(value: unknown): ResourceKindSelection[] {
+function isSupportedKind(value: string): value is SupportedKind {
+	return SUPPORTED_KINDS.some((kind) => kind === value);
+}
+
+function sanitizeResourceKinds<Value>(value: Value): ResourceKindSelection[] {
 	if (!Array.isArray(value)) return [];
 	return value.flatMap((item) => {
 		const kind = sanitizeResourceKindSelection(item);
@@ -231,23 +241,24 @@ function sanitizeResourceKinds(value: unknown): ResourceKindSelection[] {
 	});
 }
 
-export function sanitizePathStateTreeNode(value: unknown): TreeNodeId | null {
+export function sanitizePathStateTreeNode<Value>(value: Value): TreeNodeId | null {
 	if (!isRecord(value)) return null;
 	const type = pickString(value.type, ["section", "namespace", "group", "kind"] as const, "section");
 	const section = stringValue(value.section);
 	if (!section) return null;
 	const resourceKind = sanitizeDiscoveredResourceKind(value.resourceKind);
-	return {
+	const node: TreeNodeId = {
 		type,
 		section,
 		namespace: optionalString(value.namespace),
 		group: optionalString(value.group),
 		kind: optionalString(value.kind),
-		...(resourceKind ? { resourceKind } : {}),
 	};
+	if (resourceKind) node.resourceKind = resourceKind;
+	return node;
 }
 
-function sanitizeResourceRef(value: unknown): PathStateResourceRef | null {
+function sanitizeResourceRef<Value>(value: Value): PathStateResourceRef | null {
 	if (!isRecord(value)) return null;
 	const cluster = stringValue(value.cluster);
 	const kind = stringValue(value.kind);
@@ -262,19 +273,19 @@ function sanitizeResourceRef(value: unknown): PathStateResourceRef | null {
 		group: optionalString(value.group),
 		version: optionalString(value.version),
 		plural: optionalString(value.plural),
-		namespaced: typeof value.namespaced === "boolean" ? value.namespaced : undefined,
-		dynamic: typeof value.dynamic === "boolean" ? value.dynamic : undefined,
+		namespaced: isBoolean(value.namespaced) ? value.namespaced : undefined,
+		dynamic: isBoolean(value.dynamic) ? value.dynamic : undefined,
 	};
 }
 
-function sanitizeTargetRef(value: unknown): { name: string; namespace?: string | null } | null {
+function sanitizeTargetRef<Value>(value: Value): { name: string; namespace?: string | null } | null {
 	if (!isRecord(value)) return null;
 	const name = stringValue(value.name);
 	if (!name) return null;
 	return { name, namespace: nullableString(value.namespace) };
 }
 
-function sanitizeBrowserState(value: unknown): PathStateResourceBrowserState | null {
+function sanitizeBrowserState<Value>(value: Value): PathStateResourceBrowserState | null {
 	if (!isRecord(value)) return null;
 	return {
 		selectedNamespaces: sanitizePathStateStringArray(value.selectedNamespaces),
@@ -302,7 +313,7 @@ function sanitizeBrowserState(value: unknown): PathStateResourceBrowserState | n
 	};
 }
 
-function sanitizeDetailState(value: unknown): PathStateResourceDetailState | null {
+function sanitizeDetailState<Value>(value: Value): PathStateResourceDetailState | null {
 	if (!isRecord(value)) return null;
 	return {
 		activeTab: pickString(
@@ -333,7 +344,7 @@ function sanitizeDetailState(value: unknown): PathStateResourceDetailState | nul
 	};
 }
 
-function sanitizeSurfacesState(value: unknown): PathStateSurfacesState | null {
+function sanitizeSurfacesState<Value>(value: Value): PathStateSurfacesState | null {
 	if (!isRecord(value)) return null;
 	const rbac = isRecord(value.rbac)
 		? {
@@ -358,7 +369,7 @@ function sanitizeSurfacesState(value: unknown): PathStateSurfacesState | null {
 	};
 }
 
-function sanitizeWorkspaceSnapshot(value: unknown): PathStateWorkspaceSnapshot | null {
+function sanitizeWorkspaceSnapshot<Value>(value: Value): PathStateWorkspaceSnapshot | null {
 	if (!isRecord(value)) return null;
 	const workspaceId = stringValue(value.workspaceId);
 	if (!workspaceId) return null;
@@ -393,7 +404,7 @@ function sanitizeWorkspaceSnapshot(value: unknown): PathStateWorkspaceSnapshot |
 	};
 }
 
-export function sanitizePathStateSnapshot(value: unknown): PathStateSnapshot | null {
+export function sanitizePathStateSnapshot<Value>(value: Value): PathStateSnapshot | null {
 	if (!isRecord(value) || value.version !== PATH_STATE_VERSION || value.runtime !== "svelte") {
 		return null;
 	}
@@ -412,7 +423,8 @@ export function encodePathStateSnapshot(snapshot: PathStateSnapshot): string {
 export function decodePathStateSnapshot(value: string | null | undefined): PathStateSnapshot | null {
 	if (!value) return null;
 	try {
-		return sanitizePathStateSnapshot(JSON.parse(value));
+		const parsed: JsonValue = JSON.parse(value);
+		return sanitizePathStateSnapshot(parsed);
 	} catch {
 		return null;
 	}
@@ -480,7 +492,7 @@ export function parsePathStateHash(hash: string): PathStateSnapshot | null {
 }
 
 export function readPathState(): PathStateSnapshot | null {
-	const hashSnapshot = typeof window === "undefined" ? null : parsePathStateHash(window.location.hash);
+	const hashSnapshot = globalThis.window === undefined ? null : parsePathStateHash(window.location.hash);
 	const storageSnapshot = decodePathStateSnapshot(readSessionValue(PATH_STATE_SESSION_KEY));
 	if (!hashSnapshot) return storageSnapshot;
 	if (!hashSnapshot.workspace) return hashSnapshot;
@@ -528,7 +540,7 @@ function defaultWorkspaceSnapshot(workspaceId: string): PathStateWorkspaceSnapsh
 
 function readSessionValue(key: string): string | null {
 	try {
-		return typeof window === "undefined" ? null : window.sessionStorage.getItem(key);
+		return globalThis.window === undefined ? null : window.sessionStorage.getItem(key);
 	} catch {
 		return null;
 	}
@@ -536,14 +548,14 @@ function readSessionValue(key: string): string | null {
 
 function writeSessionValue(key: string, value: string): void {
 	try {
-		if (typeof window !== "undefined") window.sessionStorage.setItem(key, value);
+		if (globalThis.window !== undefined) window.sessionStorage.setItem(key, value);
 	} catch {
 		// sessionStorage can be unavailable in hardened WebViews; hash still carries coarse route.
 	}
 }
 
 function replaceBrowserHash(hash: string): void {
-	if (typeof window === "undefined" || window.location.hash === hash) return;
+	if (globalThis.window === undefined || window.location.hash === hash) return;
 	try {
 		window.history.replaceState(null, "", hash);
 	} catch {

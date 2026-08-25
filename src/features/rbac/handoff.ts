@@ -9,6 +9,12 @@ export interface RbacVerifierHandoff {
 	sourceLabel?: string;
 }
 
+declare global {
+	interface WindowEventMap {
+		"kubecove:open-rbac-verifier": CustomEvent<RbacVerifierHandoff>;
+	}
+}
+
 export function requiredPermissionForResource(resource: ResourceSummary, verb: string): RbacAccessReviewTarget | null {
 	const plural = resource.plural?.trim();
 	const operation = verb.trim();
@@ -20,13 +26,13 @@ export function requiredPermissionForResource(resource: ResourceSummary, verb: s
 }
 
 export function openRbacVerifier(handoff: RbacVerifierHandoff): void {
-	if (typeof window === "undefined") return;
+	if (globalThis.window === undefined) return;
 	window.dispatchEvent(new CustomEvent<RbacVerifierHandoff>(OPEN_RBAC_VERIFIER_EVENT, { detail: handoff }));
 }
 
 export function onOpenRbacVerifier(listener: (handoff: RbacVerifierHandoff) => void): () => void {
-	if (typeof window === "undefined") return () => {};
-	const handle = (event: Event) => { if (event instanceof CustomEvent) listener(event.detail as RbacVerifierHandoff); };
+	if (globalThis.window === undefined) return () => {};
+	const handle = (event: CustomEvent<RbacVerifierHandoff>) => listener(event.detail);
 	window.addEventListener(OPEN_RBAC_VERIFIER_EVENT, handle);
 	return () => window.removeEventListener(OPEN_RBAC_VERIFIER_EVENT, handle);
 }

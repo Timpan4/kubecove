@@ -5,6 +5,7 @@ import { argoResourceIdentityKey } from "../src/features/gitops/argo-workspace-m
 import { PAGE_SIZE } from "../src/features/resources/constants";
 import {
 	buildFetchKeys,
+	isDiscoveredResourceKind,
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,
 } from "../src/features/resources/helpers";
@@ -754,12 +755,12 @@ describe("svelte resource browser model", () => {
 	});
 
 	test("keeps built-in, cluster-scoped, and discovered kinds editable", () => {
-		expect(allKindOptions([widget]).map((kind) => (typeof kind === "string" ? kind : kind.kind))).toContain(
-			"Node",
+		const kindNames = allKindOptions([widget]).map((kind) =>
+			isDiscoveredResourceKind(kind) ? kind.kind : kind,
 		);
-		expect(allKindOptions([widget]).map((kind) => (typeof kind === "string" ? kind : kind.kind))).toContain(
-			"Widget",
-		);
+
+		expect(kindNames).toContain("Node");
+		expect(kindNames).toContain("Widget");
 	});
 
 	test("keeps selected Svelte resource visible inside collapsed groups", () => {

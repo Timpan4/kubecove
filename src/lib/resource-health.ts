@@ -37,7 +37,7 @@ export function healthStateLabel(state: HealthAssessmentState): string {
 }
 
 export function healthSourceLabel(source: HealthAssessmentSource): string {
-	const labels: Record<HealthAssessmentSource, string> = {
+	const labels = {
 		kubernetes: "Kubernetes status/conditions",
 		argoHealth: "Argo CD health",
 		argoSync: "Argo CD sync",
@@ -45,7 +45,7 @@ export function healthSourceLabel(source: HealthAssessmentSource): string {
 		containerRestart: "Container restart",
 		provider: "Provider availability",
 		healthContract: "Health contract",
-	};
+	} satisfies Record<HealthAssessmentSource, string>;
 	return labels[source];
 }
 

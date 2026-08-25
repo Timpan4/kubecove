@@ -63,6 +63,10 @@ function sanitizeValue(value: DiagnosticValue): string {
 	return String(value);
 }
 
+function isString<Value>(value: Value): value is Value & string {
+	return String(value) === value;
+}
+
 function serializeData(data: DiagnosticData | undefined): string {
 	if (!data) return "";
 	return Object.entries(data)
@@ -78,13 +82,14 @@ function pushBounded<T>(items: T[], item: T, max: number): void {
 }
 
 function setWindowTrace(lines: string[]): void {
-	if (typeof window === "undefined") return;
+	if (globalThis.window === undefined) return;
+	// SAFETY: browser diagnostics intentionally attach this optional debug-only trace property.
 	const debugWindow = window as DebugWindow;
 	debugWindow.__K8S_DEBUG_TRACE__ = [...lines];
 }
 
 function durationFromData(data: DiagnosticData | undefined): number | undefined {
-	return typeof data?.ms === "number" ? data.ms : undefined;
+	return Object.is(Number(data?.ms), data?.ms) ? Number(data?.ms) : undefined;
 }
 
 function rounded(value: number): number {
@@ -107,8 +112,8 @@ export function summarizeDurations(
 	for (const entry of entries) {
 		const group = groups.get(entry.name) ?? { count: 0, durations: [] };
 		group.count += 1;
-		if (typeof entry.durationMs === "number") {
-			group.durations.push(entry.durationMs);
+		if (Object.is(Number(entry.durationMs), entry.durationMs)) {
+			group.durations.push(Number(entry.durationMs));
 		}
 		groups.set(entry.name, group);
 	}
@@ -154,7 +159,7 @@ export function clearDiagnostics(): void {
 export function getDiagnosticsSnapshot(): DiagnosticsSnapshot {
 	const counterSnapshot = Object.fromEntries(counters.entries());
 	const timedEvents = frontendEvents.filter(
-		(event) => typeof event.durationMs === "number",
+		(event) => Object.is(Number(event.durationMs), event.durationMs),
 	);
 	return {
 		enabled,
@@ -177,6 +182,7 @@ export function diagnosticLog(event: string, data?: DiagnosticData): void {
 	const count = (counters.get(event) ?? 0) + 1;
 	counters.set(event, count);
 
+	// SAFETY: Chromium exposes optional performance.memory; other webviews leave it absent.
 	const memory = (performance as PerformanceWithMemory).memory;
 	const heapMb = formatBytes(memory?.usedJSHeapSize);
 	const delta = Math.round(now - previousTimestamp);
@@ -208,9 +214,25 @@ export function diagnosticLog(event: string, data?: DiagnosticData): void {
 	}
 }
 
-export function diagnosticResultSummary(value: unknown): string {
+export function diagnosticResultSummary<Value>(value: Value): string {
 	if (Array.isArray(value)) return `array:${value.length}`;
-	if (typeof value === "string") return `string:${value.length}`;
-	if (value && typeof value === "object") return "object";
-	return typeof value;
+	if (isString(value)) return `string:${value.length}`;
+	if (value !== null && Object(value) === value) {
+		return value instanceof Function ? "function" : "object";
+	}
+	const tag = Object.prototype.toString.call(value);
+	switch (tag) {
+		case "[object Undefined]":
+			return "undefined";
+		case "[object Boolean]":
+			return "boolean";
+		case "[object Number]":
+			return "number";
+		case "[object BigInt]":
+			return "bigint";
+		case "[object Symbol]":
+			return "symbol";
+		default:
+			return "object";
+	}
 }

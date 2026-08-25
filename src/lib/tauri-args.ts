@@ -1,8 +1,10 @@
 import type { CancellableRequest } from "./types";
 
-export function kubeconfigArg(kubeconfigEnvVar?: string): {
+interface KubeconfigArg {
 	kubeconfigEnvVar?: string;
-} {
+}
+
+export function kubeconfigArg(kubeconfigEnvVar?: string): KubeconfigArg {
 	if (
 		kubeconfigEnvVar === undefined ||
 		kubeconfigEnvVar.startsWith("kubeconfigSource=")
@@ -23,6 +25,7 @@ export function sanitizeKubeconfigRequest<T extends { kubeconfigEnvVar?: string 
 	request: T,
 ): T {
 	if (!request.kubeconfigEnvVar?.startsWith("kubeconfigSource=")) return request;
-	const { kubeconfigEnvVar: _ignored, ...rest } = request;
-	return rest as T;
+	const sanitized = { ...request };
+	delete sanitized.kubeconfigEnvVar;
+	return sanitized;
 }

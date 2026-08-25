@@ -8,8 +8,7 @@ export function expectedCluster(kind: Ownership["kind"], id: string, workspaceHa
 	return kind === "run" ? `kubecove-e2e-${id}` : `kubecove-dev-${workspaceHash}`;
 }
 
-export function contained(path: unknown, parent: string) {
-	if (typeof path !== "string") return false;
+export function contained(path: string, parent: string) {
 	const value = relative(parent, path);
 	return value === "" || (!value.startsWith("..") && !isAbsolute(value));
 }
@@ -28,6 +27,7 @@ export async function assertOwnedPathOnDisk(path: string, dir: string) {
 			if ((await lstat(current)).isSymbolicLink()) throw new Error("refuse symlinked ownership path");
 		} catch (error) {
 			if (error instanceof Error && error.message === "refuse symlinked ownership path") throw error;
+			// SAFETY: Node filesystem errors expose `code`; only ENOENT permits a missing final path.
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
 			throw error;
 		}
@@ -36,6 +36,7 @@ export async function assertOwnedPathOnDisk(path: string, dir: string) {
 		if (!contained(await realpath(path), ownedDir)) throw new Error("refuse operation outside real ownership directory");
 	} catch (error) {
 		if (error instanceof Error && error.message === "refuse operation outside real ownership directory") throw error;
+		// SAFETY: Node filesystem errors expose `code`; any result besides ENOENT is unsafe to ignore.
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 	}
 }
@@ -45,8 +46,8 @@ export async function assertOwnedOnDisk(record: Ownership, kind: Ownership["kind
 	for (const path of [record.raw, record.kubeconfig, record.dataDir, record.kindConfig]) await assertOwnedPathOnDisk(path, dir);
 }
 
-export function ownershipFromDisk(value: unknown, kind: Ownership["kind"], dir: string, id: string, workspaceHash: string, requireDefaultCni = kind === "dev") {
-	const stored = value && typeof value === "object" ? value as Partial<Ownership> : {};
+export function ownershipFromDisk(stored: Partial<Ownership>, kind: Ownership["kind"], dir: string, id: string, workspaceHash: string, requireDefaultCni = kind === "dev") {
+	// SAFETY: caller parses persisted ownership into this partial record, then `assertOwned` validates every required field.
 	const record = { ...stored, kindConfig: stored.kindConfig ?? join(dir, "kind.yaml") } as Ownership;
 	assertOwned(record, kind, dir, id, workspaceHash);
 	if (requireDefaultCni && record.disableDefaultCNI !== true) throw new Error("legacy dev Kind ownership record lacks disableDefaultCNI proof; run bun run dev:kind:down before starting a new dev Kind lab");

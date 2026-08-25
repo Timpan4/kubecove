@@ -6,9 +6,9 @@ import {
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
-declare function expect(actual: unknown): {
-	toBe(expected: unknown): void;
-	toEqual(expected: unknown): void;
+declare function expect<T>(actual: T): {
+	toBe<Expected>(expected: Expected): void;
+	toEqual<Expected>(expected: Expected): void;
 };
 
 describe("GitOps tree scope", () => {

@@ -118,8 +118,7 @@
 		type WorkspaceNavigationState,
 	} from "./workspaceNavigation";
 
-	const IS_MAC =
-		typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
+	const IS_MAC = /Mac/i.test(globalThis.navigator?.userAgent ?? "");
 	const SEARCH_SHORTCUT_HINT = IS_MAC ? "⌘K" : "Ctrl K";
 
 	let {
@@ -426,7 +425,7 @@
 		initialHealthFilter: HealthFilter = "all",
 		gitOpsFocusApplication: ArgoApplicationSummary | null = null,
 	) {
-		if (typeof namespace === "string") {
+		if (namespace && !Array.isArray(namespace)) {
 			workspaceStore.recordRecentNamespace(
 				workspace.id,
 				workspace.scope.clusterContext,

@@ -2,6 +2,11 @@ import type { DeploymentRevision } from "@/lib/types";
 
 export type DeploymentRevisionViewState = "loading" | "error" | "empty" | "single" | "compare";
 
+export interface DeploymentRevisionSelection {
+	selectedName: string | null;
+	comparisonName: string | null;
+}
+
 export function deploymentRevisionViewState(
 	isPending: boolean,
 	isError: boolean,
@@ -22,7 +27,7 @@ export function reconcileRevisionSelection(
 	revisions: DeploymentRevision[],
 	selectedName: string | null,
 	comparisonName: string | null,
-): { selectedName: string | null; comparisonName: string | null } {
+): DeploymentRevisionSelection {
 	const selected = revisions.some((revision) => revision.name === selectedName)
 		? selectedName
 		: (revisions[0]?.name ?? null);

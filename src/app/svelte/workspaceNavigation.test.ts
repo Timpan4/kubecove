@@ -12,9 +12,9 @@ import {
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
 declare function expect<T>(actual: T): {
-	toBe(expected: unknown): void;
-	toEqual(expected: unknown): void;
-	toMatchObject(expected: unknown): void;
+	toBe<Expected>(expected: Expected): void;
+	toEqual<Expected>(expected: Expected): void;
+	toMatchObject<Expected>(expected: Expected): void;
 };
 
 const workspace = createWorkspaceRecord({
@@ -32,12 +32,20 @@ const resource: ResourceSummary = {
 	health: "healthy",
 };
 
-const argoApplication = {
+const argoApplication: ArgoApplicationSummary = {
 	cluster: "kind-dev",
 	name: "checkout",
 	age: "1d",
 	namespace: "argocd",
-} as ArgoApplicationSummary;
+	project: null,
+	syncStatus: null,
+	healthStatus: null,
+	destinationNamespace: null,
+	destinationServer: null,
+	sourceRepo: null,
+	sourceRevision: null,
+	resourceNamespaces: [],
+};
 
 describe("workspace navigation", () => {
 	test("restores only a matching workspace path", () => {

@@ -22,7 +22,7 @@ export interface PodExecQuerySettings {
 
 export type InvalidatePodExecQueries = (options: {
 	queryKey: readonly unknown[];
-}) => Promise<unknown>;
+}) => Promise<void>;
 
 export function podExecQueryOptions(
 	client: TauriClient,

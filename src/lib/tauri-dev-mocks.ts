@@ -24,6 +24,12 @@ import {
 } from "./tauri-dev-mock-data";
 import { operationMockHandlers } from "./tauri-dev-mock-operations";
 import { rbacInspectionMock, rbacReviewMock } from "./tauri-dev-mock-rbac";
+import type {
+	ArgoApplicationRef,
+	ArgoConnectionProfile,
+	ArgoOperationRequest,
+	ArgoServerEndpoint,
+} from "./gitops-types";
 import type { TauriClient } from "./tauri-runtime";
 import type {
 	AppUsageMetrics,
@@ -52,25 +58,63 @@ import type {
 	ResourceSummary,
 	ResourceTopology,
 	StreamMessage,
+	TopologyMode,
+	YamlApplyRequest,
 	YamlApplyPreview,
 } from "./types";
 
-type MockArgs = Record<string, unknown> | undefined;
-type MockHandler = (args?: MockArgs, options?: InvokeOptions) => unknown | Promise<unknown>;
-const argoConnections = new Map<string, Record<string, unknown>>();
+type MockRequest = Partial<ArgoOperationRequest & YamlApplyRequest>;
+interface MockArgs {
+	application?: Partial<ArgoApplicationRef>;
+	channel?: Pick<Channel<StreamMessage>, "onmessage">;
+	clusterContext?: string;
+	endpoint?: ArgoServerEndpoint;
+	id?: string;
+	kind?: string;
+	mode?: TopologyMode;
+	name?: string;
+	namespace?: string | null;
+	namespaces?: string[];
+	rememberCredential?: boolean;
+	request?: MockRequest;
+	requests?: ResourceListRequest[];
+	resource?: ArgoManagedResource;
+	resourceKind?: DiscoveredResourceKind | FluxResourceKind;
+	serverUrl?: string;
+	storageName?: string;
+	transport?: "connected" | "kubernetes";
+	username?: string;
+	workspaceId?: string;
+}
+
+type MockResult = boolean | number | object | string | null | undefined;
+type MockHandler = (args: MockArgs, options?: InvokeOptions) => MockResult | Promise<MockResult>;
+const argoConnections = new Map<string, ArgoConnectionProfile>();
+
+function readMockArgs<Args extends object>(args: Args | undefined): MockArgs {
+	if (args === undefined) return {};
+	// SAFETY: browser mocks are called only through typed Tauri wrappers whose command arguments
+	// match the corresponding handler fields declared by MockArgs.
+	return args as MockArgs;
+}
 
 export function createDevMockTauriClient(): TauriClient {
 	return {
-		invoke: async <T>(cmd: string, args?: MockArgs, options?: InvokeOptions): Promise<T> => {
+		invoke: async <T, Args extends object = object>(
+			cmd: string,
+			args?: Args,
+			options?: InvokeOptions,
+		): Promise<T> => {
 			await delay(35);
-			const handler = handlers[cmd];
+			const handler = findMockHandler(cmd);
 			if (!handler) throw new Error(`No browser dev mock for command: ${cmd}`);
-			return (await handler(args, options)) as T;
+			// SAFETY: caller's typed wrapper owns result T; each mock handler mirrors that command.
+			return (await handler(readMockArgs(args), options)) as T;
 		},
 	};
 }
 
-const handlers: Record<string, MockHandler> = {
+const handlers = {
 	get_kubeconfig_sources: () => source,
 	set_kubeconfig_env_var: () => source,
 	set_show_kubeconfig_source_labels: () => source,
@@ -84,12 +128,12 @@ const handlers: Record<string, MockHandler> = {
 	list_namespaces: () => namespaces,
 	list_resource_kinds: () => customResourceKinds(),
 	list_present_custom_resource_kinds: (args) =>
-		presentCustomResourceKinds(args?.namespaces as string[] | undefined),
-	list_resources: (args) => filterResources(args?.kind as string | undefined, args?.namespace as string | undefined, args?.clusterContext as string | undefined),
+		presentCustomResourceKinds(args?.namespaces),
+	list_resources: (args) => filterResources(args?.kind, args?.namespace ?? undefined, args?.clusterContext),
 	list_deployment_revisions: () => deploymentRevisions,
 	...operationMockHandlers,
-	list_dynamic_resources: (args) => filterResources((args?.resourceKind as DiscoveredResourceKind | undefined)?.kind, args?.namespace as string | undefined, args?.clusterContext as string | undefined),
-	list_resource_scope: (args) => listScope(args?.requests as ResourceListRequest[] | undefined, args?.clusterContext as string | undefined),
+	list_dynamic_resources: (args) => filterResources(args?.resourceKind?.kind, args?.namespace ?? undefined, args?.clusterContext),
+	list_resource_scope: (args) => listScope(args?.requests, args?.clusterContext),
 	get_resource_yaml: (args) => yamlFor(args),
 	get_resource_details: (args) => detailsFor(args),
 	get_dynamic_resource_details: (args) => detailsFor(args),
@@ -121,17 +165,18 @@ const handlers: Record<string, MockHandler> = {
 		{ id: "service:argocd:external", name: "argocd-external", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: null, unavailableReason: "ExternalName Services cannot be port-forwarded" },
 	],
 	connect_argo_server: (args) => {
-		const endpoint = args?.endpoint ?? { kind: "externalHttps", url: args?.serverUrl };
-		const profile = { id: args?.id, endpoint, url: args?.serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, transport: "connected", rememberCredential: Boolean(args?.rememberCredential) };
-		if (typeof profile.id === "string") argoConnections.set(profile.id, profile);
+		const serverUrl = args?.serverUrl ?? "https://argocd.example.test";
+		const endpoint = args?.endpoint ?? { kind: "externalHttps", url: serverUrl };
+		const profile: ArgoConnectionProfile = { id: args?.id ?? "mock-profile", endpoint, url: serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, transport: "connected", rememberCredential: Boolean(args?.rememberCredential) };
+		argoConnections.set(profile.id, profile);
 		return { profile, connected: true, username: args?.username ?? "mock-user", unavailableReason: null };
 	},
 	get_argo_connection_status: (args) => {
-		const profile = typeof args?.id === "string" ? argoConnections.get(args.id) ?? null : null;
+		const profile = args?.id ? argoConnections.get(args.id) ?? null : null;
 		return { profile, connected: profile !== null, username: profile ? "mock-user" : null, unavailableReason: profile ? null : "Profile is not connected" };
 	},
 	disconnect_argo_server: (args) => {
-		if (typeof args?.id === "string") argoConnections.delete(args.id);
+		if (args?.id) argoConnections.delete(args.id);
 	},
 	reveal_secret_data_value: () => "c2VjcmV0",
 	forget_argo_credential: () => undefined,
@@ -140,7 +185,7 @@ const handlers: Record<string, MockHandler> = {
 		const managedResources = argoManagedResources(args);
 		return {
 			application: {
-				...(args?.application as Record<string, unknown> | undefined),
+				...args?.application,
 				project: app.project,
 				resourceVersion: "42",
 				uid: `mock-${app.name}`,
@@ -170,7 +215,7 @@ const handlers: Record<string, MockHandler> = {
 	},
 	get_argo_resource_comparison: (args) => argoComparison(args),
 	preflight_argo_operation: (args) => {
-		const request = args?.request as Record<string, unknown> | undefined;
+		const request = args?.request;
 		const allowed = ["refresh", "hardRefresh", "sync", "retry"].includes(String(request?.action));
 		return { allowed, transport: request?.transport, action: request?.action, reason: allowed ? null : "operation unavailable in browser mock", sessionId: allowed ? "mock-session" : null, expiresAt: allowed ? Date.now() + 300_000 : null, reviewedRequest: allowed ? request : null };
 	},
@@ -182,14 +227,14 @@ const handlers: Record<string, MockHandler> = {
 	get_argocd_appset_details: (args) => appSetDetails(args),
 	get_argocd_appproject_details: (args) => projectDetails(args),
 	detect_flux: () => ({ detected: true, kinds: [fluxKind, fluxHelmKind], missingKinds: [] }) satisfies FluxDetectionSummary,
-	list_flux_resources: (args) => fluxResources.filter((row) => row.resourceKind.kind === (args?.resourceKind as FluxResourceKind | undefined)?.kind),
+	list_flux_resources: (args) => fluxResources.filter((row) => row.resourceKind.kind === args?.resourceKind?.kind),
 	get_flux_resource_details: (args) => fluxDetails(args),
 	list_helm_releases: () => helmReleases,
 	get_helm_release_details: (args) => helmDetails(args),
 	get_helm_release_reconciliation: (args) => helmReconciliation(args),
-	list_rbac_inspection: (args) => rbacInspectionMock(args?.clusterContext as string | undefined),
+	list_rbac_inspection: (args) => rbacInspectionMock(args?.clusterContext),
 	review_rbac_access: (args) => rbacReviewMock(args),
-	list_incident_cockpit: (args) => incidents(args?.clusterContext as string | undefined),
+	list_incident_cockpit: (args) => incidents(args?.clusterContext),
 	set_backend_diagnostics_enabled: () => true,
 	get_backend_diagnostics: () => [] satisfies BackendDiagnosticEvent[],
 	clear_backend_diagnostics: () => undefined,
@@ -199,7 +244,11 @@ const handlers: Record<string, MockHandler> = {
 		cancelledLoads: 0,
 		clientGeneration: 1,
 	}),
-};
+} satisfies Record<string, MockHandler>;
+
+function findMockHandler(command: string): MockHandler | undefined {
+	return Object.entries(handlers).find(([registeredCommand]) => registeredCommand === command)?.[1];
+}
 
 function resourcesForCluster(cluster = "mock-dev"): ResourceSummary[] {
 	const rows = cluster === "docker-desktop" ? dockerResources : resources;
@@ -248,15 +297,15 @@ function listScope(requests: ResourceListRequest[] = [], cluster = "mock-dev"): 
 }
 
 function resourceFromArgs(args: MockArgs): ResourceSummary {
-	const rows = resourcesForCluster(args?.clusterContext as string | undefined);
-	const dynamicKind = (args?.resourceKind as DiscoveredResourceKind | undefined)?.kind;
-	const kind = (args?.kind as string | undefined) ?? dynamicKind;
+	const rows = resourcesForCluster(args?.clusterContext);
+	const dynamicKind = args?.resourceKind?.kind;
+	const kind = args?.kind ?? dynamicKind;
 	const match = rows.find((row) => row.kind === kind && row.name === args?.name && (args?.namespace === undefined || row.namespace === args.namespace));
 	if (match) return match;
-	if (kind === "Application" && typeof args?.name === "string") {
+	if (kind === "Application" && args?.name !== undefined) {
 		const application = argoApps.find((candidate) => candidate.name === args.name);
 		if (application) {
-			return {
+			const summary: ResourceSummary = {
 				kind: "Application",
 				cluster: application.cluster,
 				name: application.name,
@@ -270,8 +319,9 @@ function resourceFromArgs(args: MockArgs): ResourceSummary {
 				dynamic: true,
 				health: "healthy",
 				createdAt: application.createdAt,
-				...(application.syncStatus ? { status: application.syncStatus } : {}),
 			};
+			if (application.syncStatus) summary.status = application.syncStatus;
+			return summary;
 		}
 	}
 	return rows[0];
@@ -306,7 +356,7 @@ function genericYaml(kindName: string, name: string, namespace?: string | null, 
 }
 
 function applyPreview(args: MockArgs): YamlApplyPreview {
-	const request = args?.request as { clusterContext?: string; kind?: string; name?: string; namespace?: string | null; yaml?: string } | undefined;
+	const request = args?.request;
 	return {
 		target: { clusterContext: request?.clusterContext ?? "mock-dev", kind: request?.kind ?? "Deployment", name: request?.name ?? "payments-api", namespace: request?.namespace },
 		currentYaml: request?.yaml ?? genericYaml("Deployment", "payments-api", "payments", "apps/v1"),
@@ -323,8 +373,8 @@ function eventsFor(args: MockArgs): ResourceEventSummary[] {
 }
 
 function topologyFor(args: MockArgs): ResourceTopology {
-	const cluster = (args?.clusterContext as string | undefined) ?? "mock-dev";
-	const namespaces = new Set((args?.namespaces as string[] | undefined) ?? []);
+	const cluster = args?.clusterContext ?? "mock-dev";
+	const namespaces = new Set(args?.namespaces ?? []);
 	const mode = args?.mode === "networkFlow" ? "networkFlow" : "ownership";
 	return mode === "networkFlow"
 		? networkTopology(cluster, namespaces, resourcesForCluster(cluster))
@@ -542,8 +592,11 @@ function networkPortHints(row: ResourceSummary): string[] {
 }
 
 function metrics(): ResourceMetricsSummary {
-	const podMetrics = resources.filter((row) => row.kind === "Pod").map((row) => row.metrics).filter(Boolean) as ResourceMetricsSummary["pods"];
-	return { cluster: "mock-dev", availability: { status: "available" }, pods: podMetrics, nodes: [{ kind: "Node", cluster: "mock-dev", name: "dev-control-plane", namespace: null, cpuMillicores: 620, memoryBytes: 2_400_000_000, sampledAt: now, sourcePods: [] }], workloads: resources.map((row) => row.metrics).filter(Boolean) as ResourceMetricsSummary["workloads"], warnings: [] };
+	const podMetrics = resources
+		.filter((row) => row.kind === "Pod")
+		.flatMap((row) => (row.metrics ? [row.metrics] : []));
+	const workloads = resources.flatMap((row) => (row.metrics ? [row.metrics] : []));
+	return { cluster: "mock-dev", availability: { status: "available" }, pods: podMetrics, nodes: [{ kind: "Node", cluster: "mock-dev", name: "dev-control-plane", namespace: null, cpuMillicores: 620, memoryBytes: 2_400_000_000, sampledAt: now, sourcePods: [] }], workloads, warnings: [] };
 }
 
 function usage(): AppUsageMetrics {
@@ -551,7 +604,7 @@ function usage(): AppUsageMetrics {
 }
 
 function argoApplication(args: MockArgs) {
-	const application = args?.application as { name?: string } | undefined;
+	const application = args?.application;
 	return argoApps.find((candidate) => candidate.name === application?.name) ?? argoApps[0];
 }
 
@@ -578,7 +631,7 @@ function argoManagedResources(args: MockArgs): ArgoManagedResource[] {
 			: ["", apiVersion];
 		const targetState = prune ? undefined : argoManifest(row, true);
 		const liveState = argoManifest(row, false);
-		return {
+		const resource: ArgoManagedResource = {
 			group,
 			version,
 			kind: row.kind,
@@ -588,13 +641,17 @@ function argoManagedResources(args: MockArgs): ArgoManagedResource[] {
 			health: degraded ? "Degraded" : progressing ? "Progressing" : prune ? "Missing" : "Healthy",
 			hook: false,
 			requiresPruning: prune,
-			...(args?.transport === "connected" ? { targetState, liveState } : {}),
 		};
+		if (args?.transport === "connected") {
+			resource.targetState = targetState;
+			resource.liveState = liveState;
+		}
+		return resource;
 	});
 }
 
 function argoComparison(args: MockArgs) {
-	const requested = args?.resource as ArgoManagedResource | undefined;
+	const requested = args?.resource;
 	const resource = argoManagedResources({ ...args, transport: "connected" }).find(
 		(candidate) =>
 			candidate.group === requested?.group &&
@@ -662,7 +719,7 @@ function projectDetails(args: MockArgs): ArgoAppProjectDetails {
 }
 
 function fluxDetails(args: MockArgs): FluxResourceDetails {
-	const summary = fluxResources.find((resource) => resource.name === args?.name && resource.resourceKind.kind === (args?.resourceKind as FluxResourceKind | undefined)?.kind) ?? fluxResources[0];
+	const summary = fluxResources.find((resource) => resource.name === args?.name && resource.resourceKind.kind === args?.resourceKind?.kind) ?? fluxResources[0];
 	return { summary, yaml: genericYaml(summary.resourceKind.kind, summary.name, summary.namespace, summary.resourceKind.apiVersion), metadata: { labels: { "kustomize.toolkit.fluxcd.io/name": summary.name } }, status: { conditions: [{ type: "Ready", status: summary.readyStatus ?? "Unknown", message: summary.message }] } };
 }
 
@@ -698,14 +755,21 @@ function incidents(cluster = "mock-dev"): IncidentCockpitSummary {
 	return { cluster, generatedAt: now, requestedScope: [], items, warnings: [] };
 }
 
-function startStream(channel: unknown, idPrefix: string, message: string): string {
+function startStream(
+	channel: Pick<Channel<StreamMessage>, "onmessage"> | undefined,
+	idPrefix: string,
+	message: string,
+): string {
 	const streamId = `${idPrefix}-${Date.now()}`;
 	send(channel, { type: "started", streamId, label: message });
 	send(channel, { type: "status", streamId, status: "connected", message });
 	return streamId;
 }
 
-function startLogStream(channel: unknown, aggregate = false): string {
+function startLogStream(
+	channel: Pick<Channel<StreamMessage>, "onmessage"> | undefined,
+	aggregate = false,
+): string {
 	const streamId = `mock-logs-${Date.now()}`;
 	send(channel, { type: "started", streamId, label: aggregate ? "Mock aggregate logs" : "Mock pod logs" });
 	send(channel, { type: "status", streamId, status: "connected", message: aggregate ? "Streaming 2 pod containers" : "Mock log stream connected" });
@@ -721,9 +785,11 @@ function startLogStream(channel: unknown, aggregate = false): string {
 	return streamId;
 }
 
-function send(channel: unknown, message: StreamMessage): void {
-	const target = channel as Pick<Channel<StreamMessage>, "onmessage"> | undefined;
-	setTimeout(() => target?.onmessage?.(message), 10);
+function send(
+	channel: Pick<Channel<StreamMessage>, "onmessage"> | undefined,
+	message: StreamMessage,
+): void {
+	setTimeout(() => channel?.onmessage?.(message), 10);
 }
 
 function unavailable(message: string): MockHandler {

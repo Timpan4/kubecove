@@ -1,4 +1,4 @@
-import type { ResourceSummary } from "./types";
+import type { JsonObject, ResourceSummary } from "./types";
 
 export interface HelmReleaseSummary {
 	cluster: string;
@@ -18,10 +18,10 @@ export interface HelmReleaseSummary {
 export interface HelmReleaseDetails {
 	summary: HelmReleaseSummary;
 	yaml: string;
-	metadata: Record<string, unknown>;
+	metadata: JsonObject;
 	valuesSummary: HelmValuesSummary;
 	manifestSummary: HelmManifestSummary;
-	release?: Record<string, unknown>;
+	release?: JsonObject;
 }
 
 export type HelmReconciliationStatus =

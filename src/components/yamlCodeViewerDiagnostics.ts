@@ -1,7 +1,6 @@
 import { HighlightStyle } from "@codemirror/language";
 import type { Diagnostic } from "@codemirror/lint";
 import { tags } from "@lezer/highlight";
-import type { YAMLError } from "yaml";
 import { parseYamlErrors } from "@/lib/yamlFormat";
 
 export const yamlHighlightStyle = HighlightStyle.define([
@@ -29,23 +28,31 @@ export function yamlDiagnostics(value: string): Diagnostic[] {
 	}
 }
 
-function yamlErrorDiagnostic(error: unknown, documentLength: number): Diagnostic {
-	const yamlError = error as Partial<YAMLError>;
-	const from = clampOffset(yamlError.pos?.[0] ?? 0, documentLength);
-	const rawTo = clampOffset(yamlError.pos?.[1] ?? from + 1, documentLength);
+function yamlErrorDiagnostic<Cause>(cause: Cause, documentLength: number): Diagnostic {
+	const yamlError = cause instanceof Error ? cause : null;
+	const positions =
+		yamlError && "pos" in yamlError && Array.isArray(yamlError.pos)
+			? yamlError.pos
+			: [];
+	const from = clampOffset(numberValue(positions[0]) ?? 0, documentLength);
+	const rawTo = clampOffset(numberValue(positions[1]) ?? from + 1, documentLength);
 	const to =
 		rawTo > from ? rawTo : documentLength > from ? Math.min(from + 1, documentLength) : from;
 
 	return {
 		from,
 		to,
-		severity: yamlError.name === "YAMLWarning" ? "warning" : "error",
+		severity: yamlError?.name === "YAMLWarning" ? "warning" : "error",
 		source: "YAML",
 		message:
-			typeof yamlError.message === "string" && yamlError.message.length > 0
+			yamlError && yamlError.message.length > 0
 				? yamlError.message
 				: "Invalid YAML.",
 	};
+}
+
+function numberValue<Value>(value: Value): number | null {
+	return Number(value) === value ? Number(value) : null;
 }
 
 function clampOffset(offset: number, documentLength: number): number {

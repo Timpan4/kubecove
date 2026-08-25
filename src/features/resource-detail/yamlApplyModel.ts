@@ -36,11 +36,15 @@ export function buildYamlApplyRequest({
 	};
 }
 
-export function resolveYamlForceConflicts(
-	override: unknown,
+export function resolveYamlForceConflicts<Override>(
+	override: Override,
 	fallback: boolean,
 ): boolean {
-	return typeof override === "boolean" ? override : fallback;
+	return isBoolean(override) ? override : fallback;
+}
+
+function isBoolean<Value>(value: Value): value is Value & boolean {
+	return Boolean(value) === value;
 }
 
 export function yamlApplyTargetLabel(resource: ResourceSummary): string {

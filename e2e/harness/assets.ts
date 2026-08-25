@@ -7,21 +7,21 @@ export async function downloadAsset(
 	url: string,
 	fetcher: (url: string) => Promise<Response> = fetch,
 ): Promise<Uint8Array> {
-	let lastError: unknown;
+	let lastError = new Error(`download failed: ${name}`);
 	for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
 		let response: Response;
 		try {
 			response = await fetcher(url);
 			if (response.ok) return new Uint8Array(await response.arrayBuffer());
-		} catch (error) {
-			lastError = error;
+		} catch (cause) {
+			lastError = cause instanceof Error ? cause : new Error(String(cause));
 			continue;
 		}
 		const error = new Error(`download failed: ${name} (${response.status})`);
 		if (response.status !== 429 && response.status < 500) throw error;
 		lastError = error;
 	}
-	throw lastError instanceof Error ? lastError : new Error(`download failed: ${name}`);
+	throw lastError;
 }
 
 export function sha256(bytes: Uint8Array) {
@@ -33,4 +33,3 @@ export function verifyAsset(name: string, bytes: Uint8Array, expected: string) {
 	if (actual !== expected) throw new Error(`checksum mismatch: ${name}`);
 	return actual;
 }
-

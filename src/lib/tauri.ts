@@ -1,4 +1,4 @@
-import { invoke, type InvokeOptions } from "@tauri-apps/api/core";
+import { invoke, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
 import { createDevMockTauriClient } from "./tauri-dev-mocks";
 import { cancellableArg, kubeconfigArg } from "./tauri-args";
 import type {
@@ -62,7 +62,10 @@ function coalescedInvoke<T>(
 		inFlightInvokes.set(client, clientInvokes);
 	}
 	const existing = clientInvokes.get(key);
-	if (existing) return existing as Promise<T>;
+	if (existing) {
+		// SAFETY: this key stores only promises created by this invocation's result contract T.
+		return existing as Promise<T>;
+	}
 
 	const request = invokeCommand().finally(() => {
 		clientInvokes.delete(key);
@@ -71,27 +74,27 @@ function coalescedInvoke<T>(
 	return request;
 }
 
-function errorMessage(error: unknown): string {
-	if (error instanceof Error) return error.message;
-	if (typeof error === "string") return error;
-	if (
-		typeof error === "object" &&
-		error !== null &&
-		"message" in error &&
-		typeof error.message === "string"
-	) {
-		return error.message;
+function errorMessage(cause: unknown): string {
+	if (cause instanceof Error) return cause.message;
+	if (String(cause) === cause) return cause;
+	if (hasMessage(cause)) {
+		const message = cause.message;
+		if (String(message) === message) return message;
 	}
-	return String(error);
+	return String(cause);
+}
+
+function hasMessage<Value>(value: Value): value is Value & { message?: string } {
+	return value !== null && Object(value) === value && "message" in Object(value);
 }
 
 export function createTauriClient(): TauriClient {
 	if (shouldUseBrowserDevMocks()) return createDevMockTauriClient();
 
 	return {
-		invoke: async <T>(
+		invoke: async <T, Args extends object = object>(
 			cmd: string,
-			args?: Record<string, unknown>,
+			args?: Args,
 			options?: InvokeOptions,
 		): Promise<T> => {
 			const started = performance.now();
@@ -100,7 +103,8 @@ export function createTauriClient(): TauriClient {
 				args: args ? Object.keys(args).join(",") : "",
 			});
 			try {
-				const result = await invoke<T>(cmd, args, options);
+				// SAFETY: typed wrappers pass Tauri-serializable command objects; Tauri validates IPC encoding.
+				const result = await invoke<T>(cmd, args as InvokeArgs | undefined, options);
 				diagnosticLog("tauri.invoke.done", {
 					cmd,
 					ms: Math.round(performance.now() - started),
@@ -539,12 +543,12 @@ export async function listResourceMetrics(
 	});
 }
 
-export function isAppError(value: unknown): value is AppError {
+export function isAppError<Value>(value: Value): value is Value & AppError {
 	return (
-		typeof value === "object" &&
 		value !== null &&
-		"message" in value &&
-		"kind" in value
+		Object(value) === value &&
+		"message" in Object(value) &&
+		"kind" in Object(value)
 	);
 }
 

@@ -73,13 +73,17 @@ function redactData(
 			redacted[key] = "[redacted]";
 			continue;
 		}
-		if (typeof value === "string" && REDACT_KEYS.has(key)) {
+		if (isString(value) && REDACT_KEYS.has(key)) {
 			redacted[key] = aliasFor(aliasKindFor(key), value);
 			continue;
 		}
 		redacted[key] = value;
 	}
 	return redacted;
+}
+
+function isString<Value>(value: Value): value is Value & string {
+	return String(value) === value;
 }
 
 function redactFrontendEvents(

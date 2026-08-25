@@ -139,17 +139,18 @@ export function buildArgoApplicationInspectionReadSpec({
 		!statusesPending;
 	const connectionReady =
 		policyReady && (policy.transport === "kubernetes" || !policy.unavailable);
+	const request: ArgoApplicationInspectionReadSpec["request"] = {
+		clusterContext,
+		kubeconfigEnvVar,
+		transport: policy.transport,
+		application,
+		redactSecrets,
+	};
+	if (policy.transport === "connected") request.connectionId = connectionId;
 
 	return {
 		policy,
-		request: {
-			clusterContext,
-			kubeconfigEnvVar,
-			...(policy.transport === "connected" ? { connectionId } : {}),
-			transport: policy.transport,
-			application,
-			redactSecrets,
-		},
+		request,
 		queryKey,
 		cancelScope: createCancelScope("argo-application-inspection", queryKey),
 		ready: connectionReady,

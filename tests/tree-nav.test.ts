@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
 	emptyStateMessage,
 	resolveTreeScope,
-	type TreeNodeId,
 } from "../src/lib/tree-nav";
 import type { DiscoveredResourceKind } from "../src/lib/types";
 
@@ -144,19 +143,19 @@ describe("tree navigation scope helpers", () => {
 				resolveTreeScope({
 					type: "section",
 					section: "namespaces",
-				} as TreeNodeId),
+				}),
 				true,
 			),
 		).toBe("Loading all namespaces");
 		expect(
 			emptyStateMessage(
-				resolveTreeScope({ type: "section", section: "argo" } as TreeNodeId),
+				resolveTreeScope({ type: "section", section: "argo" }),
 				true,
 			),
 		).toBe("Select a GitOps resource type");
 		expect(
 			emptyStateMessage(
-				resolveTreeScope({ type: "section", section: "helm" } as TreeNodeId),
+				resolveTreeScope({ type: "section", section: "helm" }),
 				true,
 			),
 		).toBe("Select a Helm resource type");
@@ -165,13 +164,13 @@ describe("tree navigation scope helpers", () => {
 				resolveTreeScope({
 					type: "section",
 					section: "incidents",
-				} as TreeNodeId),
+				}),
 				true,
 			),
 		).toBe("Use the Incident Cockpit");
 		expect(
 			emptyStateMessage(
-				resolveTreeScope({ type: "section", section: "rbac" } as TreeNodeId),
+				resolveTreeScope({ type: "section", section: "rbac" }),
 				true,
 			),
 		).toBe("Select an RBAC inspection view");
@@ -180,7 +179,7 @@ describe("tree navigation scope helpers", () => {
 				resolveTreeScope({
 					type: "section",
 					section: "discovered",
-				} as TreeNodeId),
+				}),
 				true,
 			),
 		).toBe("Select a custom resource kind");

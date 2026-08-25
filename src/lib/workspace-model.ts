@@ -172,15 +172,15 @@ export const DEFAULT_WORKSPACE_SHORTCUT_PREFERENCES: WorkspaceShortcutPreference
 };
 
 function newWorkspaceId(): string {
-	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-		return crypto.randomUUID();
+	if (globalThis.crypto !== undefined && "randomUUID" in globalThis.crypto) {
+		return globalThis.crypto.randomUUID();
 	}
 	return `workspace-${Date.now().toString(36)}`;
 }
 
 function newSavedPortForwardId(): string {
-	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-		return crypto.randomUUID();
+	if (globalThis.crypto !== undefined && "randomUUID" in globalThis.crypto) {
+		return globalThis.crypto.randomUUID();
 	}
 	return `port-forward-${Date.now().toString(36)}`;
 }
@@ -246,12 +246,14 @@ export function reconcileSavedPortForwardsForScope(
 }
 
 export function resourceKindKey(kind: ResourceKindSelection): string {
-	if (typeof kind === "string") return `builtin:${kind}`;
-	return `dynamic:${kind.group}:${kind.version}:${kind.plural}:${kind.kind}`;
+	if (kind instanceof Object) {
+		return `dynamic:${kind.group}:${kind.version}:${kind.plural}:${kind.kind}`;
+	}
+	return `builtin:${kind}`;
 }
 
 export function resourceKindLabel(kind: ResourceKindSelection): string {
-	return typeof kind === "string" ? kind : kind.kind;
+	return kind instanceof Object ? kind.kind : kind;
 }
 
 export function workspaceClusterGroupLabel(scope: WorkspaceScope): string {
@@ -440,8 +442,8 @@ export function updateWorkspaceRecord(
 
 function knownKindKeys(discoveredKinds: DiscoveredResourceKind[]): Set<string> {
 	return new Set([
-		...(SUPPORTED_KINDS as readonly string[]).map((kind) => `builtin:${kind}`),
-		...(CLUSTER_SCOPED_KINDS as readonly string[]).map((kind) => `builtin:${kind}`),
+		...SUPPORTED_KINDS.map((kind) => `builtin:${kind}`),
+		...CLUSTER_SCOPED_KINDS.map((kind) => `builtin:${kind}`),
 		...discoveredKinds.map(resourceKindKey),
 	]);
 }

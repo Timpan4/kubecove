@@ -3,6 +3,11 @@ export interface ClusterContext {
 	isCurrent: boolean;
 }
 
+export type JsonPrimitive = boolean | number | string | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+export interface JsonObject {
+	[key: string]: JsonValue | undefined;
+}
 export interface NamespaceSummary {
 	name: string;
 	age: string;
@@ -76,8 +81,8 @@ export interface ResourceDetails {
 export interface ResourceDetailsFull {
 	summary: ResourceSummary;
 	yaml: string;
-	metadata: Record<string, unknown>;
-	status?: Record<string, unknown>;
+	metadata: JsonObject;
+	status?: JsonObject;
 }
 
 export type {

@@ -11,10 +11,9 @@ function hasClosest(
 	target: EventTarget | null,
 ): target is EventTarget & { closest: (selector: string) => Element | null } {
 	return (
-		typeof target === "object" &&
-		target !== null &&
+		target instanceof Object &&
 		"closest" in target &&
-		typeof (target as { closest?: unknown }).closest === "function"
+		target.closest instanceof Function
 	);
 }
 

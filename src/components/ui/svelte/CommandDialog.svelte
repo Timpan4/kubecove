@@ -12,10 +12,14 @@
 		class: className = "",
 		title = "Command Palette",
 		description = "Search for a command to run...",
-		commandProps = {},
+		shouldFilter,
 		children,
 		...rest
-	}: UiProps & { title?: string; description?: string; commandProps?: Record<string, unknown> } = $props();
+	}: UiProps & {
+		title?: string;
+		description?: string;
+		shouldFilter?: boolean;
+	} = $props();
 </script>
 
 <Dialog {...rest}>
@@ -26,7 +30,7 @@
 		</DialogHeader>
 		<Command
 			class="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]]:px-2 [&_[data-cmdk-input-wrapper]_svg]:h-4 [&_[data-cmdk-input-wrapper]_svg]:w-4 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-2 [&_[cmdk-item]_svg]:h-4 [&_[cmdk-item]_svg]:w-4"
-			{...commandProps}
+			{shouldFilter}
 		>
 			{@render children?.()}
 		</Command>

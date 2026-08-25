@@ -22,23 +22,24 @@ export interface RbacTable {
 
 export type RbacStat = [label: string, value: number];
 
-const RBAC_VIEWS = new Set<RbacView>([
+const RBAC_VIEWS: RbacView[] = [
 	"Namespace Access",
 	"Roles",
 	"Cluster Roles",
 	"Bindings",
 	"Service Accounts",
-]);
+];
 
 export function selectedRbacView(
 	selectedNode: TreeNodeId | null,
 ): RbacView {
+	const selectedView = RBAC_VIEWS.find((view) => view === selectedNode?.kind);
 	if (
 		selectedNode?.type === "kind" &&
 		selectedNode.section === "rbac" &&
-		RBAC_VIEWS.has(selectedNode.kind as RbacView)
+		selectedView
 	) {
-		return selectedNode.kind as RbacView;
+		return selectedView;
 	}
 	return "Service Accounts";
 }

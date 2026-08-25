@@ -116,7 +116,10 @@
 		if (!showCustomResources) return rows;
 		for (const [index, query] of namespaceCustomResourceQueries.entries()) {
 			const namespace = expandedNamespaces[index];
-			if (namespace && query.data) rows.set(namespace, query.data as DiscoveredResourceKind[]);
+			if (!namespace || !query.data) continue;
+			// SAFETY: every generated query calls listPresentCustomResourceKinds, which returns this array type.
+			const data = query.data as DiscoveredResourceKind[];
+			rows.set(namespace, data);
 		}
 		return rows;
 	});

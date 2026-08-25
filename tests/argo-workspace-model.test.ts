@@ -91,18 +91,18 @@ describe("Argo managed-resource workspace model", () => {
 	});
 
 	test("filters every Argo state independently", () => {
-		const expected: Record<Exclude<ArgoResourceFilter, "none">, number> = {
-			allManaged: 5,
-			needsSync: 3,
-			healthy: 2,
-			degraded: 1,
-			progressing: 1,
-			prune: 2,
-		};
-		for (const [filter, count] of Object.entries(expected)) {
+		const expected: Array<[Exclude<ArgoResourceFilter, "none">, number]> = [
+			["allManaged", 5],
+			["needsSync", 3],
+			["healthy", 2],
+			["degraded", 1],
+			["progressing", 1],
+			["prune", 2],
+		];
+		for (const [filter, count] of expected) {
 			expect(
 				managedResources.filter((resource) =>
-					argoResourceMatchesFilter(resource, filter as ArgoResourceFilter),
+					argoResourceMatchesFilter(resource, filter),
 				),
 			).toHaveLength(count);
 		}

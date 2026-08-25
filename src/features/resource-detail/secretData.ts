@@ -1,4 +1,5 @@
 import { parseDocument } from "yaml";
+import type { JsonObject, JsonValue } from "@/lib/types";
 
 export type SecretDataEntry = {
 	id: string;
@@ -14,8 +15,9 @@ export type SecretDataDecodeResult =
 
 export function parseSecretData(yamlText: string): SecretDataEntry[] {
 	const document = parseDocument(yamlText, { prettyErrors: false, strict: true });
-	if (document.errors.length > 0 || !isRecord(document.toJSON())) return [];
-	const secret = document.toJSON() as Record<string, unknown>;
+	const raw: JsonValue = document.toJSON();
+	if (document.errors.length > 0 || !isRecord(raw)) return [];
+	const secret = raw;
 	return [
 		...entriesFrom(secret.data, "data"),
 		...entriesFrom(secret.stringData, "stringData"),
@@ -46,7 +48,7 @@ export function decodeSecretDataValue(value: string): SecretDataDecodeResult {
 	}
 }
 
-function entriesFrom(value: unknown, source: SecretDataEntry["source"]): SecretDataEntry[] {
+function entriesFrom(value: JsonValue | undefined, source: SecretDataEntry["source"]): SecretDataEntry[] {
 	if (!isRecord(value)) return [];
 	return Object.entries(value).map(([key, entryValue]) => {
 		const entry = String(entryValue);
@@ -60,8 +62,8 @@ function entriesFrom(value: unknown, source: SecretDataEntry["source"]): SecretD
 	});
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
 }
 
 function isValidBase64(value: string): boolean {

@@ -12,13 +12,13 @@ import {
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
-declare function expect(actual: unknown): {
+declare function expect<T>(actual: T): {
 	not: {
-		toBe(expected: unknown): void;
-		toEqual(expected: unknown): void;
+		toBe<Expected>(expected: Expected): void;
+		toEqual<Expected>(expected: Expected): void;
 	};
-	toBe(expected: unknown): void;
-	toEqual(expected: unknown): void;
+	toBe<Expected>(expected: Expected): void;
+	toEqual<Expected>(expected: Expected): void;
 };
 
 function summary(kind: string, name: string): ResourceSummary {

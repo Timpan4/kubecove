@@ -2,9 +2,9 @@ import { buildArgoResourceDiff, buildYamlDryRunDiff } from "./yamlTabDiff";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
-declare function expect(actual: unknown): {
-	toBe(expected: unknown): void;
-	toContain(expected: unknown): void;
+declare function expect<T>(actual: T): {
+	toBe<Expected>(expected: Expected): void;
+	toContain<Expected>(expected: Expected): void;
 };
 
 describe("buildYamlDryRunDiff", () => {

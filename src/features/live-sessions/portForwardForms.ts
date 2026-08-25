@@ -26,7 +26,9 @@ export interface SavedPortForwardFormValues {
 	label: string;
 }
 
-function parsePort(value: string, label: string): number | string {
+type ParsedPort = number | string;
+
+function parsePort(value: string, label: string): ParsedPort {
 	const trimmed = value.trim();
 	if (!trimmed) return `${label} is required`;
 	if (!/^\d+$/.test(trimmed)) return `${label} must be a number`;
@@ -105,7 +107,7 @@ export function extractServicePortOptions(yaml: string | undefined): ServicePort
 	return ports
 		.filter((port): port is ServicePortOption => {
 			const protocol = port.protocol?.toUpperCase() ?? "TCP";
-			return typeof port.port === "number" && port.port > 0 && protocol === "TCP";
+			return isNumber(port.port) && port.port > 0 && protocol === "TCP";
 		})
 		.toSorted((a, b) => a.port - b.port || (a.name ?? "").localeCompare(b.name ?? ""));
 }
@@ -115,13 +117,13 @@ export function parsePortForwardForm(
 	options: { remotePortLabel?: string } = {},
 ): ParsedPortForwardForm | string {
 	const remotePort = parsePort(values.remotePort, options.remotePortLabel ?? "Remote port");
-	if (typeof remotePort === "string") return remotePort;
+	if (isPortError(remotePort)) return remotePort;
 
 	const localPortText = values.localPort.trim();
 	if (!localPortText) return { remotePort };
 
 	const localPort = parsePort(localPortText, "Local port");
-	if (typeof localPort === "string") return localPort;
+	if (isPortError(localPort)) return localPort;
 	if (localPort < 1024) return "Local port must be 1024 or higher";
 	return { remotePort, localPort };
 }
@@ -138,7 +140,7 @@ export function parseSavedPortForwardForm(
 	if (!serviceName) return "Service name is required";
 
 	const servicePort = parsePort(values.servicePort, "Service port");
-	if (typeof servicePort === "string") return servicePort;
+	if (isPortError(servicePort)) return servicePort;
 	const localPortText = values.localPort.trim();
 	if (!localPortText) {
 		return {
@@ -152,7 +154,7 @@ export function parseSavedPortForwardForm(
 	}
 
 	const localPort = parsePort(localPortText, "Local port");
-	if (typeof localPort === "string") return localPort;
+	if (isPortError(localPort)) return localPort;
 	if (localPort < 1024) return "Local port must be 1024 or higher";
 	return {
 		clusterContext,
@@ -162,4 +164,12 @@ export function parseSavedPortForwardForm(
 		localPort,
 		label: label || undefined,
 	};
+}
+
+function isPortError(value: ParsedPort): value is string {
+	return String(value) === value;
+}
+
+function isNumber<Value>(value: Value): value is Value & number {
+	return Number(value) === value;
 }

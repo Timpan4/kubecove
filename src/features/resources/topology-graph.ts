@@ -13,6 +13,11 @@ export interface TopologyGraph {
 	outgoingEdges: Map<string, TopologyRelationEdge[]>;
 }
 
+export interface TopologySelection {
+	nodeIds: Set<string>;
+	edgeIds: Set<string>;
+}
+
 export function resourceTopologyNodeId(
 	cluster: string,
 	apiVersion: string,
@@ -70,7 +75,7 @@ export function buildTopologyGraph(topology: ResourceTopology): TopologyGraph {
 export function selectedTopologyPath(
 	graph: TopologyGraph,
 	selectedNodeId: string | null,
-): { nodeIds: Set<string>; edgeIds: Set<string> } {
+): TopologySelection {
 	const nodeIds = new Set<string>();
 	const edgeIds = new Set<string>();
 	if (!selectedNodeId || !graph.nodeIds.has(selectedNodeId)) {
@@ -107,7 +112,7 @@ export function selectedTopologyPath(
 export function selectedTopologyRootSubtree(
 	graph: TopologyGraph,
 	selectedNodeId: string | null,
-): { nodeIds: Set<string>; edgeIds: Set<string> } {
+): TopologySelection {
 	const nodeIds = new Set<string>();
 	const edgeIds = new Set<string>();
 	if (!selectedNodeId || !graph.nodeIds.has(selectedNodeId)) {

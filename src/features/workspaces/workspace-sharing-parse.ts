@@ -4,7 +4,13 @@ import type {
 	WorkspaceShortcut,
 	WorkspaceShortcutPreferences,
 } from "@/lib/workspace-model";
-import type { DiscoveredResourceKind, ResourceKindSelection } from "@/lib/types";
+import {
+	CLUSTER_SCOPED_KINDS,
+	type JsonObject,
+	type JsonValue,
+	type ResourceKindSelection,
+	SUPPORTED_KINDS,
+} from "@/lib/types";
 import {
 	WORKSPACE_EXPORT_API_VERSION,
 	type SharedWorkspacePortForward,
@@ -12,7 +18,7 @@ import {
 } from "./workspace-sharing-schema";
 
 export function parseWorkspaceImport(raw: string): WorkspaceImportItem["workspace"][] {
-	let parsed: unknown;
+	let parsed: JsonValue;
 	try {
 		parsed = JSON.parse(raw);
 	} catch {
@@ -38,14 +44,16 @@ export function parseWorkspaceImport(raw: string): WorkspaceImportItem["workspac
 }
 
 export function cloneScope(scope: WorkspaceScope): WorkspaceScope {
-	return parseScope(scope);
+	const serialized: JsonValue = JSON.parse(JSON.stringify(scope));
+	return parseScope(serialized);
 }
 
 export function cloneShortcut(shortcut: WorkspaceShortcut): WorkspaceShortcut {
-	return parseShortcut(shortcut);
+	const serialized: JsonValue = JSON.parse(JSON.stringify(shortcut));
+	return parseShortcut(serialized);
 }
 
-function parseWorkspaceDocument(value: unknown): WorkspaceImportItem["workspace"] {
+function parseWorkspaceDocument(value: JsonValue | undefined): WorkspaceImportItem["workspace"] {
 	const document = object(value, "Workspace");
 	if (document.apiVersion !== WORKSPACE_EXPORT_API_VERSION || document.kind !== "Workspace") {
 		throw new Error("Workspace item must use kubecove.dev/workspace/v1 Workspace.");
@@ -62,7 +70,7 @@ function parseWorkspaceDocument(value: unknown): WorkspaceImportItem["workspace"
 	};
 }
 
-function parseScope(value: unknown): WorkspaceScope {
+function parseScope(value: JsonValue | undefined): WorkspaceScope {
 	const scope = object(value, "spec.scope");
 	const clusterGroup =
 		scope.clusterGroup === undefined ? undefined : object(scope.clusterGroup, "scope.clusterGroup");
@@ -87,23 +95,23 @@ function parseScope(value: unknown): WorkspaceScope {
 	};
 }
 
-function parseShortcut(value: unknown): WorkspaceShortcut {
+function parseShortcut(value: JsonValue | undefined): WorkspaceShortcut {
 	const shortcut = object(value, "shortcut");
 	const kind = requiredString(shortcut.kind, "shortcut.kind");
-	if (!["resources", "namespace", "argo", "compare"].includes(kind)) {
+	if (kind !== "resources" && kind !== "namespace" && kind !== "argo" && kind !== "compare") {
 		throw new Error(`Unsupported shortcut kind: ${kind}`);
 	}
 	return {
 		id: requiredString(shortcut.id, "shortcut.id"),
 		label: requiredString(shortcut.label, "shortcut.label"),
-		kind: kind as WorkspaceShortcut["kind"],
+		kind,
 		namespace: optionalString(shortcut.namespace),
 		argoApp: optionalString(shortcut.argoApp),
 		compare: shortcut.compare === undefined ? undefined : parseCompare(shortcut.compare),
 	};
 }
 
-function parsePortForward(value: unknown): SharedWorkspacePortForward {
+function parsePortForward(value: JsonValue | undefined): SharedWorkspacePortForward {
 	const forward = object(value, "portForward");
 	return {
 		clusterContext: requiredString(forward.clusterContext, "portForward.clusterContext"),
@@ -115,10 +123,15 @@ function parsePortForward(value: unknown): SharedWorkspacePortForward {
 	};
 }
 
-function parseKind(value: unknown): ResourceKindSelection {
-	if (typeof value === "string" && value.trim()) return value as ResourceKindSelection;
-	const kind = object(value, "scope.kind") as unknown as DiscoveredResourceKind;
-	if (typeof kind.namespaced !== "boolean") {
+function parseKind(value: JsonValue | undefined): ResourceKindSelection {
+	if (isString(value) && value.trim()) {
+		const supportedKind = [...SUPPORTED_KINDS, ...CLUSTER_SCOPED_KINDS].find(
+			(kind) => kind === value,
+		);
+		if (supportedKind) return supportedKind;
+	}
+	const kind = object(value, "scope.kind");
+	if (!isBoolean(kind.namespaced)) {
 		throw new Error("kind.namespaced must be a boolean.");
 	}
 	return {
@@ -131,7 +144,7 @@ function parseKind(value: unknown): ResourceKindSelection {
 	};
 }
 
-function parseCompare(value: unknown): WorkspaceCompareEntry {
+function parseCompare(value: JsonValue | undefined): WorkspaceCompareEntry {
 	const compare = object(value, "shortcut.compare");
 	if (compare.kind !== "contexts" && compare.kind !== "namespaces") {
 		throw new Error("compare.kind must be contexts or namespaces.");
@@ -147,7 +160,7 @@ function parseCompare(value: unknown): WorkspaceCompareEntry {
 	};
 }
 
-function parseShortcutPreferences(value: unknown): WorkspaceShortcutPreferences | undefined {
+function parseShortcutPreferences(value: JsonValue | undefined): WorkspaceShortcutPreferences | undefined {
 	if (value === undefined) return undefined;
 	const preferences = object(value, "scope.shortcutPreferences");
 	return {
@@ -167,43 +180,57 @@ function parseShortcutPreferences(value: unknown): WorkspaceShortcutPreferences 
 	};
 }
 
-function object(value: unknown, label: string): Record<string, unknown> {
-	if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-		return value as Record<string, unknown>;
-	}
+function object(value: JsonValue | undefined, label: string): JsonObject {
+	if (isRecord(value)) return value;
 	throw new Error(`${label} must be an object.`);
 }
 
-function array(value: unknown, label: string): unknown[] {
+function array(value: JsonValue | undefined, label: string): JsonValue[] {
 	if (Array.isArray(value)) return value;
 	throw new Error(`${label} must be an array.`);
 }
 
-function stringArray(value: unknown, label: string): string[] {
+function stringArray(value: JsonValue | undefined, label: string): string[] {
 	return array(value ?? [], label).map((item) => requiredString(item, label));
 }
 
-function requiredString(value: unknown, label: string): string {
-	if (typeof value === "string" && value.trim()) return value.trim();
+function requiredString(value: JsonValue | undefined, label: string): string {
+	if (isString(value) && value.trim()) return value.trim();
 	throw new Error(`${label} must be a non-empty string.`);
 }
 
-function optionalString(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+function optionalString(value: JsonValue | undefined): string | undefined {
+	return isString(value) && value.trim() ? value.trim() : undefined;
 }
 
-function booleanValue(value: unknown, label: string): boolean {
-	if (typeof value === "boolean") return value;
+function booleanValue(value: JsonValue | undefined, label: string): boolean {
+	if (isBoolean(value)) return value;
 	throw new Error(`${label} must be a boolean.`);
 }
 
-function portValue(value: unknown, label: string): number {
-	if (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 65_535) {
+function portValue(value: JsonValue | undefined, label: string): number {
+	if (isNumber(value) && Number.isInteger(value) && value >= 1 && value <= 65_535) {
 		return value;
 	}
 	throw new Error(`${label} must be an integer from 1 to 65535.`);
 }
 
-function optionalPort(value: unknown): number | undefined {
+function optionalPort(value: JsonValue | undefined): number | undefined {
 	return value === undefined ? undefined : portValue(value, "portForward.localPort");
+}
+
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
+}
+
+function isString<Value>(value: Value): value is Value & string {
+	return String(value) === value;
+}
+
+function isBoolean<Value>(value: Value): value is Value & boolean {
+	return Boolean(value) === value;
+}
+
+function isNumber<Value>(value: Value): value is Value & number {
+	return Number(value) === value;
 }

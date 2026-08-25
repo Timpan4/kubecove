@@ -6,8 +6,8 @@ import {
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
-declare function expect(actual: unknown): {
-	toEqual(expected: unknown): void;
+declare function expect<T>(actual: T): {
+	toEqual<Expected>(expected: Expected): void;
 };
 
 describe("reconcileSavedPortForwardsForScope", () => {

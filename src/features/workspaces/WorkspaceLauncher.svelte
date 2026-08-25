@@ -63,7 +63,7 @@
 		submitWorkspaceIfAvailable,
 		uniqueWorkspaceContexts,
 	} from "./workspaceLauncherModel";
-	import { workspaceStore as workspaceStore } from "./workspaceStore";
+	import { workspaceStore } from "./workspaceStore";
 
 	const workspaces = workspaceStore.workspaces;
 	let {
@@ -208,8 +208,8 @@
 		return "kubecove-workspaces.json";
 	}
 
-	function errorText(error: unknown): string {
-		return error instanceof Error ? error.message : String(error);
+	function errorText(cause: unknown): string {
+		return cause instanceof Error ? cause.message : String(cause);
 	}
 
 	async function exportWorkspaces(workspaces: SavedWorkspace[]) {

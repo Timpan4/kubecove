@@ -4,12 +4,12 @@ import { runArgoOperationLifecycle } from "./argo-operation-lifecycle";
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void | Promise<void>): void;
 declare function expect<T>(actual: T): {
-	toEqual(expected: unknown): void;
+	toEqual(expected: Readonly<T>): void;
 };
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
-	let reject!: (error: unknown) => void;
+	let reject!: (error: Error) => void;
 	const promise = new Promise<T>((next, fail) => {
 		resolve = next;
 		reject = fail;

@@ -24,12 +24,12 @@ const ERROR_STATUSES = new Set([
 	"not ready",
 	"notready",
 ]);
-const TONE_RANK: Record<TopologyStoplightTone, number> = {
+const TONE_RANK = {
 	neutral: 0,
 	success: 1,
 	warning: 2,
 	error: 3,
-};
+} satisfies Record<TopologyStoplightTone, number>;
 
 function normalized(value: string | undefined): string {
 	return value?.trim().toLowerCase() ?? "";

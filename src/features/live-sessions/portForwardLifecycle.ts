@@ -50,7 +50,7 @@ export function parseSavedPortForwardForWorkspace(
 	workspace: SavedWorkspace,
 ): SavePortForwardInput | string {
 	const parsed = parseSavedPortForwardForm(values);
-	if (typeof parsed === "string") return parsed;
+	if (!(parsed instanceof Object)) return parsed;
 	if (!workspaceScopeContexts(workspace.scope).includes(parsed.clusterContext)) {
 		return "Cluster context must be in the current workspace scope.";
 	}
@@ -109,7 +109,7 @@ export interface PortForwardQuerySettings {
 
 export type InvalidatePortForwardQueries = (options: {
 	queryKey: readonly unknown[];
-}) => Promise<unknown>;
+}) => Promise<void>;
 
 export function portForwardQueryOptions(
 	client: TauriClient,

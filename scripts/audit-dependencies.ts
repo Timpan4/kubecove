@@ -51,6 +51,7 @@ async function runAudit(productionOnly: boolean): Promise<AuditReport> {
 	if (stderr) process.stderr.write(stderr);
 	if (!stdout.trim()) process.exit(exitCode);
 	try {
+		// SAFETY: `bun audit --json` owns this versioned report payload.
 		return JSON.parse(stdout) as AuditReport;
 	} catch {
 		process.stderr.write(stdout);

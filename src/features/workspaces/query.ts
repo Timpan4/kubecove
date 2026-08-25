@@ -9,6 +9,7 @@ import {
 } from "@/lib/tauri";
 import {
 	CLUSTER_SCOPED_KINDS,
+	type DiscoveredResourceKind,
 	type ResourceKindSelection,
 	type ResourceListRequest,
 	type ResourceSummary,
@@ -60,7 +61,8 @@ export class WorkspaceResourceLoadError extends Error {
 }
 
 function isClusterScopedKind(kind: ResourceKindSelection): boolean {
-	if (typeof kind !== "string") return !kind.namespaced;
+	if (isDiscoveredResourceKind(kind)) return !kind.namespaced;
+	// SAFETY: CLUSTER_SCOPED_KINDS contains only resource-kind strings.
 	return (CLUSTER_SCOPED_KINDS as readonly string[]).includes(kind);
 }
 
@@ -85,10 +87,15 @@ export function workspaceFetchKeyRequest({
 	kind,
 	namespace,
 }: WorkspaceFetchKey): ResourceListRequest {
-	if (typeof kind === "string") {
-		return { kind, namespace };
-	}
-	return { resourceKind: kind, namespace };
+	return isDiscoveredResourceKind(kind)
+		? { resourceKind: kind, namespace }
+		: { kind, namespace };
+}
+
+function isDiscoveredResourceKind(
+	kind: ResourceKindSelection,
+): kind is DiscoveredResourceKind {
+	return Object(kind) === kind;
 }
 
 export function buildWorkspaceFetchPlans(

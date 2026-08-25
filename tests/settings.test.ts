@@ -63,12 +63,12 @@ describe("settings", () => {
 
 	test("persists and validates workspace Argo connection preferences", () => {
 		const current = useSettingsState.getState();
-		const saved = {
+		const saved: typeof current = {
 			...current,
 			argoConnectionPreferences: {
 				"workspace-a": { kind: "connected", profileId: "profile-a" },
 			},
-		} as typeof current;
+		};
 
 		expect(partializeSettings(saved)).toMatchObject({
 			argoConnectionPreferences: {
@@ -105,6 +105,7 @@ describe("settings", () => {
 			customCaPem: [1, 2, 3],
 			insecureTls: true,
 		});
+		if (!profile) throw new Error("Expected the legacy Argo profile to normalize");
 
 		expect(profile).toEqual({
 			id: "legacy-argo",
@@ -113,7 +114,7 @@ describe("settings", () => {
 			workspaceId: "workspace-a",
 			rememberCredential: true,
 		});
-		expect(JSON.stringify(partializeSettings({ ...useSettingsState.getState(), argoProfiles: [profile!] }))).not.toMatch(
+		expect(JSON.stringify(partializeSettings({ ...useSettingsState.getState(), argoProfiles: [profile] }))).not.toMatch(
 			/token|customCaPem|insecureTls/,
 		);
 	});

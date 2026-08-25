@@ -48,10 +48,7 @@ type ResourceTone =
 	| "storage"
 	| "workload";
 
-const RESOURCE_TONE_CLASSES: Record<
-	ResourceTone,
-	Omit<ResourceVisual, "icon">
-> = {
+const RESOURCE_TONE_CLASSES = {
 	argo: {
 		className: "text-[var(--resource-argo)]",
 		surfaceClassName: "resource-tone-argo-surface",
@@ -107,7 +104,7 @@ const RESOURCE_TONE_CLASSES: Record<
 		surfaceClassName: "resource-tone-workload-surface",
 		badgeClassName: "resource-tone-workload-badge",
 	},
-};
+} satisfies Record<ResourceTone, Omit<ResourceVisual, "icon">>;
 
 function resourceVisual(
 	icon: ComponentType<SvelteComponent>,
@@ -123,7 +120,7 @@ const STORAGE_VISUAL = resourceVisual(HardDrive, "storage");
 const ARGO_VISUAL = resourceVisual(GitBranch, "argo");
 const DEFAULT_VISUAL = resourceVisual(Package, "default");
 
-const KIND_VISUALS: Record<string, ResourceVisual> = {
+const KIND_VISUALS = {
 	Pod: resourceVisual(Box, "pod"),
 	Deployment: resourceVisual(Rocket, "deployment"),
 	ReplicaSet: resourceVisual(Box, "replicaset"),
@@ -167,9 +164,9 @@ const KIND_VISUALS: Record<string, ResourceVisual> = {
 	"Cluster Roles": resourceVisual(Shield, "secret"),
 	Bindings: resourceVisual(Workflow, "secret"),
 	"Service Accounts": resourceVisual(KeyRound, "secret"),
-};
+} satisfies Record<string, ResourceVisual>;
 
-const GROUP_VISUALS: Record<string, ResourceVisual> = {
+const GROUP_VISUALS = {
 	"Cluster Overview": resourceVisual(Server, "cluster"),
 	Namespaces: resourceVisual(FolderTree, "default"),
 	Workloads: WORKLOAD_VISUAL,
@@ -190,18 +187,25 @@ const GROUP_VISUALS: Record<string, ResourceVisual> = {
 	"Owned by Flux": DEFAULT_VISUAL,
 	"Tracked by Argo CD": ARGO_VISUAL,
 	"Unmanaged resources": DEFAULT_VISUAL,
-};
+} satisfies Record<string, ResourceVisual>;
 
 export function getResourceKindVisual(kind: string): ResourceVisual {
-	return KIND_VISUALS[kind] ?? DEFAULT_VISUAL;
+	return visualFromMap(KIND_VISUALS, kind) ?? DEFAULT_VISUAL;
 }
 
 export function getResourceGroupVisual(label: string): ResourceVisual {
 	if (label.startsWith("Owned by Argo CD:"))
-		return GROUP_VISUALS["Owned by Argo CD"];
+		return visualFromMap(GROUP_VISUALS, "Owned by Argo CD") ?? DEFAULT_VISUAL;
 	if (label.startsWith("Owned by Flux "))
-		return GROUP_VISUALS["Owned by Flux"];
+		return visualFromMap(GROUP_VISUALS, "Owned by Flux") ?? DEFAULT_VISUAL;
 	if (label.startsWith("Tracked by Argo CD:"))
-		return GROUP_VISUALS["Tracked by Argo CD"];
-	return GROUP_VISUALS[label] ?? DEFAULT_VISUAL;
+		return visualFromMap(GROUP_VISUALS, "Tracked by Argo CD") ?? DEFAULT_VISUAL;
+	return visualFromMap(GROUP_VISUALS, label) ?? DEFAULT_VISUAL;
+}
+
+function visualFromMap(
+	visuals: Record<string, ResourceVisual>,
+	key: string,
+): ResourceVisual | undefined {
+	return visuals[key];
 }

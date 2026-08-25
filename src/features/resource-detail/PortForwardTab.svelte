@@ -102,7 +102,7 @@
 			{ remotePort, localPort },
 			{ remotePortLabel: resource.kind === "Service" ? "Service port" : "Pod port" },
 		);
-		if (typeof parsed === "string") {
+		if (isValidationMessage(parsed)) {
 			error = parsed;
 			return;
 		}
@@ -142,7 +142,7 @@
 			{ remotePort, localPort },
 			{ remotePortLabel: "Service port" },
 		);
-		if (typeof parsed === "string") {
+		if (isValidationMessage(parsed)) {
 			error = parsed;
 			return;
 		}
@@ -202,6 +202,10 @@
 
 	function sessionTitle(session: PortForwardSessionSummary): string {
 		return `${session.localAddress}:${session.localPort} -> ${session.targetKind}/${session.targetName}:${session.remotePort}`;
+	}
+
+	function isValidationMessage<Value>(value: Value): value is Extract<Value, string> {
+		return Object(value) !== value;
 	}
 
 	function sessionResolution(session: PortForwardSessionSummary): string {

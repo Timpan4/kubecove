@@ -3,7 +3,7 @@ export interface WorkspaceTransitionHooks<T> {
 	cancel: () => Promise<void>;
 	apply: (destination: T) => void;
 	resume: () => void;
-	onCancelError?: (error: unknown) => void;
+	onCancelError?: (error: Error) => void;
 }
 
 export interface WorkspaceTransitionCoordinator<T> {
@@ -12,8 +12,8 @@ export interface WorkspaceTransitionCoordinator<T> {
 }
 
 export async function cancelWorkspaceWork(
-	cancelQueries: () => Promise<unknown>,
-	cancelBackend: () => Promise<unknown>,
+	cancelQueries: () => Promise<void>,
+	cancelBackend: () => Promise<void>,
 ): Promise<void> {
 	try {
 		void cancelQueries().catch(() => undefined);
@@ -35,12 +35,16 @@ export function createWorkspaceTransitionCoordinator<T>(
 				try {
 					await hooks.suspend();
 				} catch (error) {
-					hooks.onCancelError?.(error);
+					hooks.onCancelError?.(
+						error instanceof Error ? error : new Error(String(error)),
+					);
 				}
 				try {
 					await hooks.cancel();
 				} catch (error) {
-					hooks.onCancelError?.(error);
+					hooks.onCancelError?.(
+						error instanceof Error ? error : new Error(String(error)),
+					);
 				}
 				const destination = latest;
 				latest = undefined;
@@ -48,7 +52,9 @@ export function createWorkspaceTransitionCoordinator<T>(
 					try {
 						hooks.apply(destination);
 					} catch (error) {
-						hooks.onCancelError?.(error);
+						hooks.onCancelError?.(
+							error instanceof Error ? error : new Error(String(error)),
+						);
 					}
 				}
 			} finally {

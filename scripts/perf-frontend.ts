@@ -31,6 +31,7 @@ import type {
 	ResourceTopology,
 	TopologyNode,
 } from "../src/lib/types";
+import type { TreeNode } from "../src/lib/tree-nav";
 
 const namespaces = Array.from({ length: 1_000 }, (_, index) => `namespace-${index}`);
 const extraKinds: DiscoveredResourceKind[] = Array.from({ length: 100 }, (_, index) => ({
@@ -74,17 +75,14 @@ function memoryDelta(after: ReturnType<typeof memorySample>, before: ReturnType<
 	};
 }
 
-function countTreeNodes(nodes: unknown): number {
-	if (!Array.isArray(nodes)) return 0;
+function countTreeNodes(nodes: TreeNode[]): number {
 	let count = 0;
-	const stack = [...nodes] as Array<{ children?: unknown }>;
+	const stack = [...nodes];
 	while (stack.length > 0) {
 		const node = stack.pop();
 		if (!node) continue;
 		count += 1;
-		if (Array.isArray(node.children)) {
-			stack.push(...(node.children as Array<{ children?: unknown }>));
-		}
+		if (node.children) stack.push(...node.children);
 	}
 	return count;
 }
@@ -109,7 +107,7 @@ class VirtualTimeouts {
 
 	advanceBy(milliseconds: number): void {
 		this.#now += milliseconds;
-		for (const [id, timer] of [...this.#timers]) {
+		for (const [id, timer] of Array.from(this.#timers)) {
 			if (timer.dueAt > this.#now) continue;
 			this.#timers.delete(id);
 			timer.callback();
@@ -261,7 +259,8 @@ const metricTopology: ResourceTopology = {
 	edges: [],
 	warnings: [],
 };
-const metricSamples = { duplicateIndexMs: [] as number[], sharedIndexMs: [] as number[] };
+type MetricSamples = { duplicateIndexMs: number[]; sharedIndexMs: number[] };
+const metricSamples: MetricSamples = { duplicateIndexMs: [], sharedIndexMs: [] };
 for (let index = 0; index < 20; index += 1) {
 	started = performance.now();
 	mergeResourceMetrics(metricResources, metrics);

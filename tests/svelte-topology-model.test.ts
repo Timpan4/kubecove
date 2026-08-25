@@ -6,12 +6,12 @@ import {
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
-declare function expect(actual: unknown): {
-	not: { toContain(expected: unknown): void };
-	toBe(expected: unknown): void;
+declare function expect<T>(actual: T): {
+	not: { toContain<Expected>(expected: Expected): void };
+	toBe<Expected>(expected: Expected): void;
 	toBeGreaterThan(expected: number): void;
-	toEqual(expected: unknown): void;
-	toContain(expected: unknown): void;
+	toEqual<Expected>(expected: Expected): void;
+	toContain<Expected>(expected: Expected): void;
 };
 
 function summary(kind: string, name: string): ResourceSummary {

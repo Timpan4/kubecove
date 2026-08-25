@@ -2,7 +2,7 @@ import type { DiagnosticMetricSummary } from "@/lib/diagnostics";
 import type { BackendDiagnosticEvent } from "@/lib/types";
 
 export function formatDiagnosticMs(value: number | undefined): string {
-	return typeof value === "number" ? `${value} ms` : "-";
+	return value === undefined ? "-" : `${value} ms`;
 }
 
 export function visibleDiagnosticRows(
@@ -10,7 +10,7 @@ export function visibleDiagnosticRows(
 	maxRows = 10,
 ): DiagnosticMetricSummary[] {
 	return [...rows]
-		.filter((row) => row.count > 0 && typeof row.maxMs === "number")
+		.filter((row) => row.count > 0 && row.maxMs !== undefined)
 		.sort((a, b) => {
 			const aScore = a.p95Ms ?? a.maxMs ?? a.p50Ms ?? 0;
 			const bScore = b.p95Ms ?? b.maxMs ?? b.p50Ms ?? 0;

@@ -25,7 +25,7 @@ export type RbacReviewRecord = WorkspaceRbacReview;
 export type RbacReviewRecordInput = RbacReviewRecord;
 
 export function isReviewableRbacCategory(category: RbacView): category is ReviewableRbacCategory {
-	return (REVIEWABLE_RBAC_CATEGORIES as readonly RbacView[]).includes(category);
+	return REVIEWABLE_RBAC_CATEGORIES.some((reviewable) => reviewable === category);
 }
 
 export function buildRbacEvidenceFingerprint(
@@ -55,13 +55,13 @@ export function rbacReviewSubjectLabels(
 	entry: RbacCockpitItem,
 ): string[] {
 	if (!isReviewableRbacCategory(entry.category)) return [];
-	if (entry.category === "Service Accounts") {
-		const account = entry.item as ServiceAccountSummary;
+	if (entry.category === "Service Accounts" && isServiceAccountSummary(entry.item)) {
+		const account = entry.item;
 		return [subjectLabel({ kind: "ServiceAccount", name: account.name, namespace: account.namespace })];
 	}
-	const bindings = entry.category === "Bindings"
-		? [entry.item as RbacBindingSummary]
-		: relevantBindings(inspection, entry.item as RbacRoleSummary);
+	const bindings = entry.category === "Bindings" && isRbacBindingSummary(entry.item)
+		? [entry.item]
+		: isRbacRoleSummary(entry.item) ? relevantBindings(inspection, entry.item) : [];
 	return Array.from(new Set(bindings.flatMap((binding) => binding.subjects.map(subjectLabel)))).sort();
 }
 
@@ -91,7 +91,7 @@ function normalizedReviewRecord(input: RbacReviewRecordInput): RbacReviewRecord 
 	return { ...input, note };
 }
 
-function evidenceFor(inspection: RbacInspectionSummary, entry: RbacCockpitItem): unknown {
+function evidenceFor(inspection: RbacInspectionSummary, entry: RbacCockpitItem) {
 	const common = {
 		cluster: inspection.cluster,
 		objectKey: entry.key,
@@ -100,8 +100,8 @@ function evidenceFor(inspection: RbacInspectionSummary, entry: RbacCockpitItem):
 		scope: entry.namespace ?? "cluster",
 		risks: normalizedRisks(entry.risks),
 	};
-	if (entry.category === "Roles" || entry.category === "Cluster Roles") {
-		const role = entry.item as RbacRoleSummary;
+	if ((entry.category === "Roles" || entry.category === "Cluster Roles") && isRbacRoleSummary(entry.item)) {
+		const role = entry.item;
 		return {
 			...common,
 			role: normalizedRole(role),
@@ -110,12 +110,12 @@ function evidenceFor(inspection: RbacInspectionSummary, entry: RbacCockpitItem):
 				.sort(compareJson),
 		};
 	}
-	if (entry.category === "Bindings") {
-		const binding = entry.item as RbacBindingSummary;
+	if (entry.category === "Bindings" && isRbacBindingSummary(entry.item)) {
+		const binding = entry.item;
 		return { ...common, binding: normalizedBinding(binding, roleForBinding(inspection, binding)) };
 	}
-	if (entry.category === "Service Accounts") {
-		const account = entry.item as ServiceAccountSummary;
+	if (entry.category === "Service Accounts" && isServiceAccountSummary(entry.item)) {
+		const account = entry.item;
 		return {
 			...common,
 			serviceAccount: {
@@ -129,7 +129,7 @@ function evidenceFor(inspection: RbacInspectionSummary, entry: RbacCockpitItem):
 	return common;
 }
 
-function inheritedPaths(inspection: RbacInspectionSummary, account: ServiceAccountSummary): unknown[] {
+function inheritedPaths(inspection: RbacInspectionSummary, account: ServiceAccountSummary) {
 	return relevantBindings(inspection, account)
 		.map((binding) => normalizedBinding(binding, roleForBinding(inspection, binding)))
 		.sort(compareJson);
@@ -166,7 +166,7 @@ function roleForBinding(inspection: RbacInspectionSummary, binding: RbacBindingS
 	);
 }
 
-function normalizedBinding(binding: RbacBindingSummary, role: RbacRoleSummary | undefined): unknown {
+function normalizedBinding(binding: RbacBindingSummary, role: RbacRoleSummary | undefined) {
 	return {
 		identity: { kind: binding.kind, namespace: binding.namespace ?? null, name: binding.name },
 		roleRef: { kind: binding.roleRefKind, name: binding.roleRefName },
@@ -176,7 +176,7 @@ function normalizedBinding(binding: RbacBindingSummary, role: RbacRoleSummary | 
 	};
 }
 
-function normalizedRole(role: RbacRoleSummary): unknown {
+function normalizedRole(role: RbacRoleSummary) {
 	return {
 		identity: { kind: role.kind, namespace: role.namespace ?? null, name: role.name },
 		rules: role.rules.map(normalizedRule).sort(compareJson),
@@ -184,7 +184,7 @@ function normalizedRole(role: RbacRoleSummary): unknown {
 	};
 }
 
-function normalizedRule(rule: RbacRuleSummary): unknown {
+function normalizedRule(rule: RbacRuleSummary) {
 	return {
 		verbs: [...rule.verbs].sort(),
 		apiGroups: [...rule.apiGroups].sort(),
@@ -195,7 +195,7 @@ function normalizedRule(rule: RbacRuleSummary): unknown {
 	};
 }
 
-function normalizedSubject(subject: RbacSubjectSummary): unknown {
+function normalizedSubject(subject: RbacSubjectSummary) {
 	return { kind: subject.kind, namespace: subject.namespace ?? null, name: subject.name };
 }
 
@@ -203,14 +203,32 @@ function subjectLabel(subject: RbacSubjectSummary): string {
 	return subject.namespace ? `${subject.kind}:${subject.namespace}/${subject.name}` : `${subject.kind}:${subject.name}`;
 }
 
-function normalizedRisks(risks: RbacRiskIndicator[]): unknown[] {
+function normalizedRisks(risks: RbacRiskIndicator[]) {
 	return risks.map((risk) => ({ level: risk.level, label: risk.label, reason: risk.reason })).sort(compareJson);
 }
 
-function compareJson(left: unknown, right: unknown): number {
+function compareJson<Left, Right>(left: Left, right: Right): number {
 	const leftJson = JSON.stringify(left);
 	const rightJson = JSON.stringify(right);
 	return leftJson < rightJson ? -1 : leftJson > rightJson ? 1 : 0;
+}
+
+function isRbacRoleSummary(
+	item: RbacCockpitItem["item"],
+): item is RbacRoleSummary {
+	return "rules" in item;
+}
+
+function isRbacBindingSummary(
+	item: RbacCockpitItem["item"],
+): item is RbacBindingSummary {
+	return "roleRefKind" in item;
+}
+
+function isServiceAccountSummary(
+	item: RbacCockpitItem["item"],
+): item is ServiceAccountSummary {
+	return "automountToken" in item || "imagePullSecretsCount" in item;
 }
 
 function fnv1a(value: string): string {

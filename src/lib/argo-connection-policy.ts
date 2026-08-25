@@ -1,4 +1,5 @@
 import type { ArgoServerEndpoint } from "./gitops-types";
+import type { JsonObject } from "./types";
 
 export type ArgoConnectionPreference =
 	| { kind: "automatic" }
@@ -43,21 +44,23 @@ export interface ArgoConnectionChoice<T extends ArgoConnectionProfilePolicyInput
 export const automaticArgoConnection: ArgoConnectionPreference = { kind: "automatic" };
 export const kubernetesArgoConnection: ArgoConnectionPreference = { kind: "kubernetes" };
 
-export function normalizeArgoConnectionPreference(value: unknown): ArgoConnectionPreference {
+export function normalizeArgoConnectionPreference<Value>(
+	value: Value,
+): ArgoConnectionPreference {
 	if (value === "automatic" || (isRecord(value) && value.kind === "automatic")) {
 		return automaticArgoConnection;
 	}
 	if (value === "kubernetes" || (isRecord(value) && value.kind === "kubernetes")) {
 		return kubernetesArgoConnection;
 	}
-	if (typeof value === "string" && value.startsWith("connected:")) {
+	if (isString(value) && value.startsWith("connected:")) {
 		const profileId = value.slice("connected:".length).trim();
 		if (profileId) return { kind: "connected", profileId };
 	}
 	if (
 		isRecord(value) &&
 		value.kind === "connected" &&
-		typeof value.profileId === "string" &&
+		isString(value.profileId) &&
 		value.profileId.trim()
 	) {
 		return { kind: "connected", profileId: value.profileId.trim() };
@@ -173,6 +176,10 @@ function result<T extends ArgoConnectionProfilePolicyInput>(
 	};
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value instanceof Object && !Array.isArray(value);
+}
+
+function isString<Value>(value: Value): value is Value & string {
+	return String(value) === value;
 }

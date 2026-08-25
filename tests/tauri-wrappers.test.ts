@@ -84,7 +84,14 @@ import type {
 	RbacInspectionSummary,
 	ResourceMetricsSummary,
 	ResourceTopology,
+	JsonObject,
+	JsonValue,
 } from "../src/lib/types";
+
+function mockInvokeResult<T>(value: JsonValue): T {
+	// SAFETY: each test provides JSON-shaped mock data for the exact wrapper result asserted below.
+	return value as T;
+}
 
 describe("createMockTauriClient", () => {
 	test("returns mock response for known command", async () => {
@@ -136,6 +143,7 @@ describe("createMockTauriClient", () => {
 
 	test("mock channel stops forwarding after cleanup", () => {
 		const messages: string[] = [];
+		// SAFETY: `createMockChannel` installs `cleanupCallback`; this test calls it to prove post-cleanup messages are ignored.
 		const channel = createMockChannel<string>((message) => messages.push(message)) as ReturnType<
 			typeof createMockChannel<string>
 		> & { cleanupCallback: () => void };
@@ -272,11 +280,11 @@ describe("createMockTauriClient", () => {
 	});
 
 	test("passes cancellation identity through Argo inspection reads", async () => {
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>) => {
+			invoke: async <T>(cmd: string, args?: JsonObject) => {
 				calls.push({ cmd, args });
-				return {} as T;
+				return mockInvokeResult<T>({});
 			},
 		};
 		const request = {
@@ -411,15 +419,16 @@ describe("createMockTauriClient", () => {
 			status: "running",
 			startedAt: "2026-06-01T10:00:00Z",
 		};
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				if (cmd === "start_pod_exec_session") return session as T;
-				if (cmd === "list_pod_exec_sessions") return [session] as T;
-				return true as T;
+				if (cmd === "start_pod_exec_session") return mockInvokeResult<T>(session);
+				if (cmd === "list_pod_exec_sessions") return mockInvokeResult<T>([session]);
+				return mockInvokeResult<T>(true);
 			},
 		};
+		// SAFETY: this wrapper test verifies serialized request arguments only; mocked invoke never reads channel.
 		const channel = {} as never;
 		const request = {
 			clusterContext: "kind-dev",
@@ -475,11 +484,11 @@ describe("createMockTauriClient", () => {
 			stoppedPortForwards: 1,
 			stoppedPodExecSessions: 1,
 		};
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				return result as T;
+				return mockInvokeResult<T>(result);
 			},
 		};
 		const request = {
@@ -499,11 +508,11 @@ describe("createMockTauriClient", () => {
 
 describe("typed Tauri wrappers", () => {
 	test("passes kubeconfig env var through cluster wrappers", async () => {
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				return [] as T;
+				return mockInvokeResult<T>([]);
 			},
 		};
 
@@ -526,11 +535,11 @@ describe("typed Tauri wrappers", () => {
 	});
 
 	test("omits backend source keys from kubeconfig env var args", async () => {
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				return [] as T;
+				return mockInvokeResult<T>([]);
 			},
 		};
 
@@ -581,11 +590,11 @@ describe("typed Tauri wrappers", () => {
 			showSourceLabels: true,
 			warnings: [],
 		};
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				return sources as T;
+				return mockInvokeResult<T>(sources);
 			},
 		};
 
@@ -637,11 +646,11 @@ describe("typed Tauri wrappers", () => {
 	});
 
 	test("keeps broad Secret YAML redacted and reveals only selected keys", async () => {
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				return (cmd === "reveal_secret_data_value" ? "c2VjcmV0" : "data:\n  token: <redacted>") as T;
+				return mockInvokeResult<T>(cmd === "reveal_secret_data_value" ? "c2VjcmV0" : "data:\n  token: <redacted>");
 			},
 		};
 
@@ -654,11 +663,11 @@ describe("typed Tauri wrappers", () => {
 	});
 
 	test("does not send caller-controlled Secret redaction for dynamic details", async () => {
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				return {} as T;
+				return mockInvokeResult<T>({});
 			},
 		};
 
@@ -692,11 +701,11 @@ describe("typed Tauri wrappers", () => {
 
 	test("passes topology scope through the typed client", async () => {
 		const topology: ResourceTopology = { nodes: [], edges: [], warnings: [] };
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				return topology as T;
+				return mockInvokeResult<T>(topology);
 			},
 		};
 
@@ -720,7 +729,7 @@ describe("typed Tauri wrappers", () => {
 			invoke: async <T>(): Promise<T> => {
 				calls += 1;
 				await new Promise((resolve) => setTimeout(resolve, 1));
-				return topology as T;
+				return mockInvokeResult<T>(topology);
 			},
 		};
 
@@ -736,13 +745,13 @@ describe("typed Tauri wrappers", () => {
 
 	test("does not coalesce cancellable topology requests", async () => {
 		let calls = 0;
-		const seen: Record<string, unknown>[] = [];
+		const seen: JsonObject[] = [];
 		const client = {
-			invoke: async <T>(_cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(_cmd: string, args?: JsonObject): Promise<T> => {
 				calls += 1;
 				if (args) seen.push(args);
 				await new Promise((resolve) => setTimeout(resolve, 1));
-				return { nodes: [], edges: [], warnings: [] } as T;
+				return mockInvokeResult<T>({ nodes: [], edges: [], warnings: [] });
 			},
 		};
 
@@ -777,7 +786,7 @@ describe("typed Tauri wrappers", () => {
 			invoke: async <T>(): Promise<T> => {
 				calls += 1;
 				await new Promise((resolve) => setTimeout(resolve, 1));
-				return kinds as T;
+				return mockInvokeResult<T>(kinds);
 			},
 		};
 
@@ -831,13 +840,13 @@ describe("typed Tauri wrappers", () => {
 			durationMs: 42,
 			summary: [{ key: "rows", value: "12" }],
 		};
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				if (cmd === "get_backend_diagnostics") return [event] as T;
-				if (cmd === "set_backend_diagnostics_enabled") return true as T;
-				return undefined as T;
+				if (cmd === "get_backend_diagnostics") return mockInvokeResult<T>([event]);
+				if (cmd === "set_backend_diagnostics_enabled") return mockInvokeResult<T>(true);
+				return mockInvokeResult<T>(null);
 			},
 		};
 
@@ -874,11 +883,11 @@ describe("typed Tauri wrappers", () => {
 			workloads: [],
 			warnings: [],
 		};
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				return metrics as T;
+				return mockInvokeResult<T>(metrics);
 			},
 		};
 
@@ -950,15 +959,15 @@ describe("typed Tauri wrappers", () => {
 			],
 			warnings: [],
 		};
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				if (cmd === "list_helm_releases") return [release] as T;
+				if (cmd === "list_helm_releases") return mockInvokeResult<T>([release]);
 				if (cmd === "get_helm_release_reconciliation") {
-					return reconciliation as T;
+					return mockInvokeResult<T>(reconciliation);
 				}
-				return details as T;
+				return mockInvokeResult<T>(details);
 			},
 		};
 
@@ -1023,13 +1032,13 @@ describe("typed Tauri wrappers", () => {
 			metadata: { name: "apps" },
 			status: { conditions: [] },
 		};
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				if (cmd === "detect_flux") return detection as T;
-				if (cmd === "list_flux_resources") return [summary] as T;
-				return details as T;
+				if (cmd === "detect_flux") return mockInvokeResult<T>(detection);
+				if (cmd === "list_flux_resources") return mockInvokeResult<T>([summary]);
+				return mockInvokeResult<T>(details);
 			},
 		};
 
@@ -1088,11 +1097,11 @@ describe("typed Tauri wrappers", () => {
 			clusterRoleBindings: [],
 			namespaceAccess: [],
 		};
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				return inspection as T;
+				return mockInvokeResult<T>(inspection);
 			},
 		};
 
@@ -1133,13 +1142,13 @@ describe("typed Tauri wrappers", () => {
 			status: "listening",
 			startedAt: "2026-05-31T00:00:00Z",
 		};
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				if (cmd === "start_pod_port_forward") return session as T;
-				if (cmd === "list_port_forwards") return [session] as T;
-				return true as T;
+				if (cmd === "start_pod_port_forward") return mockInvokeResult<T>(session);
+				if (cmd === "list_port_forwards") return mockInvokeResult<T>([session]);
+				return mockInvokeResult<T>(true);
 			},
 		};
 		const request = {
@@ -1190,12 +1199,12 @@ describe("typed Tauri wrappers", () => {
 	});
 
 	test("strips backend source keys from stream and live-session requests", async () => {
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+			invoke: async <T>(cmd: string, args?: JsonObject): Promise<T> => {
 				calls.push({ cmd, args });
-				if (cmd === "start_pod_log_stream") return "stream-1" as T;
-				return {
+				if (cmd === "start_pod_log_stream") return mockInvokeResult<T>("stream-1");
+				return mockInvokeResult<T>({
 					id: "session-1",
 					clusterContext: "kind-dev",
 					namespace: "payments",
@@ -1210,9 +1219,10 @@ describe("typed Tauri wrappers", () => {
 					localUrl: "http://127.0.0.1:18080",
 					status: "listening",
 					startedAt: "2026-05-31T00:00:00Z",
-				} as T;
+				});
 			},
 		};
+		// SAFETY: this wrapper test verifies serialized request arguments only; mocked invoke never reads channel.
 		const channel = {} as never;
 
 		await startPodLogStream(

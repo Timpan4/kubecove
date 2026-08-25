@@ -35,14 +35,14 @@
 		isError: boolean;
 		error: unknown;
 		isFetching: boolean;
-		refetch: () => Promise<unknown>;
+		refetch: () => void;
 	};
 
 	let {
 		workspace,
 		incidentsQuery,
 		incidentCounts,
-		incidentFilter = $bindable("all" as IncidentFilter),
+		incidentFilter = $bindable<IncidentFilter>("all"),
 		incidentFilterOptions,
 		incidentGroups,
 		selectedKey,
