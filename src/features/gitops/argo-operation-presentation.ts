@@ -4,9 +4,13 @@ import type { ResourceSummary } from "@/lib/types";
 type ArgoTransport = "connected" | "kubernetes";
 export type ArgoOperationBlocker = "permission" | "provider connection" | "operation support";
 
-export function argoOperationTarget(resource: ResourceSummary, transport: ArgoTransport) {
+export function argoOperationTarget(
+	resource: ResourceSummary,
+	context: string,
+	transport: ArgoTransport,
+) {
 	return {
-		context: resource.cluster,
+		context,
 		namespace: resource.namespace ?? "cluster-scoped",
 		kind: resource.kind,
 		resource: resource.name,

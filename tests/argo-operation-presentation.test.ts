@@ -16,8 +16,8 @@ const application: ResourceSummary = {
 
 describe("Argo operation presentation", () => {
 	test("identifies the exact Application operation target", () => {
-		expect(argoOperationTarget(application, "connected")).toEqual({
-			context: "kind-demo",
+		expect(argoOperationTarget(application, "prod-admin", "connected")).toEqual({
+			context: "prod-admin",
 			namespace: "argocd",
 			kind: "Application",
 			resource: "shop",

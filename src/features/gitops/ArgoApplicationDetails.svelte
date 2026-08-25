@@ -435,7 +435,9 @@
 	const busy = $derived(
 		operationPhase === "authorizing" || operationPhase === "submitting" || operationPhase === "refreshing",
 	);
-	const operationTarget = $derived(argoOperationTarget(resourceSummary, transport));
+	const operationTarget = $derived(
+		argoOperationTarget(resourceSummary, clusterContext, transport),
+	);
 	const operationAvailability = $derived(argoOperationAvailability({
 		sourceReady: workspaceReadContext.sourceReady,
 		connectionReady,

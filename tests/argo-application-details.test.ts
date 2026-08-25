@@ -51,6 +51,12 @@ describe("Argo Application Briefing contract", () => {
 		);
 	});
 
+	test("shows the same context submitted by Argo operations", () => {
+		expect(detailsSource).toContain(
+			"argoOperationTarget(resourceSummary, clusterContext, transport)",
+		);
+	});
+
 	test("keeps accepted refresh retry separate from operation retry", () => {
 		expect(detailsSource).toContain("ArgoOperationRefreshError");
 		expect(detailsSource).toContain("Retry state refresh");
