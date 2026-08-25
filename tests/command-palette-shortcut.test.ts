@@ -33,8 +33,10 @@ describe("command palette shortcut", () => {
 	});
 
 	test("allows focused inputs but leaves xterm sessions alone", () => {
-		const input = { closest: () => null } as unknown as EventTarget;
-		const terminal = { closest: (selector: string) => (selector === ".xterm" ? {} : null) } as unknown as EventTarget;
+		const input = Object.assign(new EventTarget(), { closest: () => null });
+		const terminal = Object.assign(new EventTarget(), {
+			closest: (selector: string) => (selector === ".xterm" ? new EventTarget() : null),
+		});
 
 		expect(shortcut({ target: input })).toBe(true);
 		expect(shortcut({ target: terminal })).toBe(false);

@@ -233,8 +233,7 @@ export function gitOpsUnavailableProvider(
 function isFluxSelection(selectedNode: TreeNodeId | null): boolean {
 	return (
 		selectedNode?.section === "argo" &&
-		typeof selectedNode.group === "string" &&
-		selectedNode.group.startsWith("gitops:flux")
+		selectedNode.group?.startsWith("gitops:flux") === true
 	);
 }
 

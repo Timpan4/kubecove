@@ -42,21 +42,21 @@ export interface WorkspaceNavigationModel {
 	resourceBrowserScope: ResourceBrowserScope;
 }
 
-const SECTION_LABELS: Record<string, string> = {
-	workspaceOverview: "Workspace Overview",
-	clusterOverview: "Cluster Overview",
-	namespaces: "Namespaces",
-	workloads: "Workloads",
-	network: "Network",
-	config: "Config",
-	storage: "Storage",
-	discovered: "Custom Resources",
-	argo: "GitOps",
-	helm: "Helm",
-	incidents: "Incidents",
-	portForwards: "Port Forwards",
-	rbac: "RBAC",
-};
+const SECTION_LABELS = new Map<string, string>([
+	["workspaceOverview", "Workspace Overview"],
+	["clusterOverview", "Cluster Overview"],
+	["namespaces", "Namespaces"],
+	["workloads", "Workloads"],
+	["network", "Network"],
+	["config", "Config"],
+	["storage", "Storage"],
+	["discovered", "Custom Resources"],
+	["argo", "GitOps"],
+	["helm", "Helm"],
+	["incidents", "Incidents"],
+	["portForwards", "Port Forwards"],
+	["rbac", "RBAC"],
+]);
 
 function gitOpsGroupLabel(group: string | undefined): string | null {
 	if (group === ARGO_PROVIDER_GROUP_ID) return "Argo CD";
@@ -136,7 +136,7 @@ function workspaceTitle(
 	if (scope.kinds.length === 1) {
 		return `${resourceKindLabel(scope.kinds[0])} Resources`;
 	}
-	return SECTION_LABELS[scope.section] ?? scope.section;
+	return SECTION_LABELS.get(scope.section) ?? scope.section;
 }
 
 function workspacePlaceholder(state: WorkspaceNavigationState): string {
@@ -324,7 +324,7 @@ export function navigateWorkspace(
 			resourceBrowserPathState: null,
 			resourceNamespaceOverride: Array.isArray(namespaces) ? namespaces : null,
 			selectedNode:
-				typeof namespaces === "string"
+				namespaces !== undefined && !Array.isArray(namespaces)
 					? { type: "namespace", section: "namespaces", namespace: namespaces }
 					: null,
 			viewMode: "resources",
@@ -444,10 +444,12 @@ export function treeNodeForResource(resource: ResourceSummary): TreeNodeId {
 }
 
 function sectionForKind(kind: string): SectionName {
-	for (const [section, config] of Object.entries(SECTIONS) as Array<
-		[SectionName, (typeof SECTIONS)[SectionName]]
-	>) {
-		if ((config.children as readonly string[]).includes(kind)) return section;
+	for (const section of Object.keys(SECTIONS).filter(isSectionName)) {
+		if (SECTIONS[section].children.some((child) => child === kind)) return section;
 	}
 	return "discovered";
+}
+
+function isSectionName(value: string): value is SectionName {
+	return value in SECTIONS;
 }

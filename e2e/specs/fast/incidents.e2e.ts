@@ -1,6 +1,12 @@
 import { $, $$, browser, expect } from "@wdio/globals";
 import { beforeEach, describe, it } from "mocha";
 
+declare global {
+	interface Window {
+		copiedIncidentName?: string;
+	}
+}
+
 describe("Incident Cockpit", () => {
 	beforeEach(async () => {
 		await browser.url("/");
@@ -77,7 +83,7 @@ describe("Incident Cockpit", () => {
 					configurable: true,
 					value: {
 						writeText: async (text: string) => {
-							(window as Window & { copiedIncidentName?: string }).copiedIncidentName = text;
+							window.copiedIncidentName = text;
 						},
 					},
 				});
@@ -86,7 +92,7 @@ describe("Incident Cockpit", () => {
 			await expect(copy).toHaveText(expect.stringContaining("Copied"));
 			expect(
 				await browser.execute(
-					() => (window as Window & { copiedIncidentName?: string }).copiedIncidentName,
+					() => window.copiedIncidentName,
 				),
 			).toBe(longResourceName);
 
@@ -95,9 +101,9 @@ describe("Incident Cockpit", () => {
 			const remediation = await $("[data-incident-remediation]");
 			await remediation.waitForDisplayed();
 			const started = await browser.execute((element: HTMLElement) => {
-				const outerScroller = element.closest('[data-slot="scroll-area"]') as HTMLElement | null;
+				const outerScroller = element.closest('[data-slot="scroll-area"]');
 				element.focus();
-				if (outerScroller) outerScroller.scrollTop = 0;
+				if (outerScroller instanceof HTMLElement) outerScroller.scrollTop = 0;
 				return document.activeElement === element;
 			}, keyboardStart);
 			expect(started).toBe(true);
@@ -115,11 +121,11 @@ describe("Incident Cockpit", () => {
 			for (let index = 0; index < investigationStepCount; index++) await browser.keys("Tab");
 			const keyboardResult = await browser.execute((element: HTMLElement) => {
 				const bounds = element.getBoundingClientRect();
-				const outerScroller = element.closest('[data-slot="scroll-area"]') as HTMLElement | null;
+				const outerScroller = element.closest('[data-slot="scroll-area"]');
 				return {
 					active: document.activeElement === element,
 					focusVisible: element.matches(":focus-visible"),
-					outerScrolled: (outerScroller?.scrollTop ?? 0) > 0,
+					outerScrolled: outerScroller instanceof HTMLElement && outerScroller.scrollTop > 0,
 					visible: bounds.top >= 0 && bounds.bottom <= document.documentElement.clientHeight,
 				};
 			}, remediation);

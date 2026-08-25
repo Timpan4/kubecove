@@ -59,9 +59,18 @@ const PAN_PADDING_RATIO = 0.42;
 const MIN_PAN_PADDING = 180;
 const MAX_PAN_PADDING = 720;
 
+interface TopologyPoint {
+	x: number;
+	y: number;
+}
+
+interface TopologyViewport extends TopologyPoint {
+	zoom: number;
+}
+
 function ownershipMapBoundaryPadding(
 	viewportSize: OwnershipMapViewportSize,
-): { x: number; y: number } {
+): TopologyPoint {
 	return {
 		x: Math.min(
 			MAX_PAN_PADDING,
@@ -78,9 +87,10 @@ const ZERO_TRANSLATE_EXTENT: CoordinateExtent = [
 	[0, 0],
 ];
 
-function finitePositiveNumber(value: unknown): number | null {
-	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
-	return value;
+function finitePositiveNumber<Value>(value: Value): number | null {
+	const numericValue = Number(value);
+	if (numericValue !== value || !Number.isFinite(numericValue) || numericValue <= 0) return null;
+	return numericValue;
 }
 
 function nodeDimension(node: FlowTopologyNode, dimension: "width" | "height"): number {
@@ -94,7 +104,7 @@ function nodeDimension(node: FlowTopologyNode, dimension: "width" | "height"): n
 function absoluteTopologyNodePosition(
 	nodesById: ReadonlyMap<string, FlowTopologyNode>,
 	node: FlowTopologyNode,
-): { x: number; y: number } {
+): TopologyPoint {
 	let x = node.position.x;
 	let y = node.position.y;
 	let parentId = node.parentId;
@@ -165,7 +175,7 @@ export function getFlowTopologyBounds(
 export function widthFitFlowTopologyViewport(
 	bounds: FlowTopologyBounds,
 	viewportSize: OwnershipMapViewportSize,
-): { x: number; y: number; zoom: number } {
+): TopologyViewport {
 	const usableWidth = Math.max(1, viewportSize.width * (1 - WIDTH_FIT_PADDING * 2));
 	const zoom = clampMapZoom(usableWidth / Math.max(1, bounds.width));
 	const centerX = bounds.left + bounds.width / 2;

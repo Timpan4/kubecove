@@ -158,11 +158,8 @@ jobs:
       - name: Lint frontend
         run: bun run lint
 
-      # Advisory until the pre-existing violation backlog (855 at introduction)
-      # is resolved or rules are rescoped — see the tracking issue.
       - name: Lint frontend anti-slop rules
         run: bun run lint:anti-slop
-        continue-on-error: true
 
       - name: Test frontend
         run: bun test

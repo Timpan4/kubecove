@@ -62,17 +62,13 @@
 		if (intervalId !== null) window.clearInterval(intervalId);
 	});
 
-	function errorStatus(prefix: string, error: unknown): string {
-		return `${prefix}: ${error instanceof Error ? error.message : String(error)}`;
-	}
-
 	async function refreshBackend(setStatus = true) {
 		try {
 			const result = await backendDiagnosticsQuery.refetch();
 			if (result.error) throw result.error;
 			if (setStatus) status = "Trace refreshed.";
 		} catch (error) {
-			status = errorStatus("Could not refresh diagnostics", error);
+			status = `Could not refresh diagnostics: ${error instanceof Error ? error.message : String(error)}`;
 		}
 	}
 
@@ -89,7 +85,7 @@
 			queryClient.setQueryData(queryKeys.backendDiagnostics(), []);
 			status = "Trace cleared.";
 		} catch (error) {
-			status = errorStatus("Could not clear diagnostics", error);
+			status = `Could not clear diagnostics: ${error instanceof Error ? error.message : String(error)}`;
 		}
 	}
 
@@ -105,7 +101,7 @@
 			await navigator.clipboard.writeText(report);
 			status = includeIdentifiers ? "Report copied." : "Redacted report copied.";
 		} catch (error) {
-			status = errorStatus("Could not copy diagnostics report", error);
+			status = `Could not copy diagnostics report: ${error instanceof Error ? error.message : String(error)}`;
 		}
 	}
 </script>

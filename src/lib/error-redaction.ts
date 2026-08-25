@@ -20,17 +20,23 @@ export function redactSensitiveErrorDetail(detail: string): string {
 	);
 }
 
-export function messageFromError(error: unknown): string {
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && Object(value) === value;
+}
+
+function isString<Value>(value: Value): value is Value & string {
+	return String(value) === value;
+}
+
+export function messageFromError(cause: unknown): string {
 	const detail =
-		error instanceof Error
-			? error.message
-			: typeof error === "string"
-				? error
-				: typeof error === "object" &&
-					  error !== null &&
-					  "message" in error &&
-					  typeof error.message === "string"
-					? error.message
+		cause instanceof Error
+			? cause.message
+			: isString(cause)
+				? cause
+				: isRecord(cause) && isString(cause.message)
+					? cause.message
 					: "Unknown error";
 	return redactSensitiveErrorDetail(detail);
 }
+import type { JsonObject } from "./types";

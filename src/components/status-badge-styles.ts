@@ -1,12 +1,6 @@
 export type StatusTone = "neutral" | "success" | "warning" | "error" | "info";
 
-export const STATUS_BADGE_STYLES: Record<
-	StatusTone,
-	{
-		variant: "secondary" | "destructive" | "outline";
-		className: string;
-	}
-> = {
+export const STATUS_BADGE_STYLES = {
 	neutral: {
 		variant: "secondary",
 		className: "",
@@ -30,4 +24,10 @@ export const STATUS_BADGE_STYLES: Record<
 		className:
 			"border-sky-500/30 bg-sky-500/10 text-sky-300 dark:bg-sky-500/15",
 	},
-};
+} satisfies Record<
+	StatusTone,
+	{
+		variant: "secondary" | "destructive" | "outline";
+		className: string;
+	}
+>;

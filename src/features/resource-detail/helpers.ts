@@ -1,5 +1,7 @@
 import type {
 	DiscoveredResourceKind,
+	JsonObject,
+	JsonValue,
 	ResourceEventSummary,
 	ResourceSummary,
 } from "../../lib/types";
@@ -80,36 +82,31 @@ export function dynamicResourceKindFromSummary(
 	};
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
 }
 
 export function getConditionRows(
-	status: Record<string, unknown> | undefined,
+	status: JsonObject | undefined,
 ): ConditionRow[] {
 	if (!status || !Array.isArray(status.conditions)) return [];
 	return status.conditions.filter(isRecord).map((condition) => ({
 		type: String(condition.type ?? "Condition"),
 		status: String(condition.status ?? "Unknown"),
-		reason:
-			typeof condition.reason === "string" ? condition.reason : undefined,
-		message:
-			typeof condition.message === "string" ? condition.message : undefined,
-		lastTransitionTime:
-			typeof condition.lastTransitionTime === "string"
-				? condition.lastTransitionTime
-				: undefined,
+		reason: isString(condition.reason) ? condition.reason : undefined,
+		message: isString(condition.message) ? condition.message : undefined,
+		lastTransitionTime: isString(condition.lastTransitionTime) ? condition.lastTransitionTime : undefined,
 	}));
 }
 
-function stringField(record: Record<string, unknown>, key: string): string | undefined {
+function stringField(record: JsonObject, key: string): string | undefined {
 	const value = record[key];
-	return typeof value === "string" ? value : undefined;
+	return isString(value) ? value : undefined;
 }
 
-function numberField(record: Record<string, unknown>, key: string): number | undefined {
+function numberField(record: JsonObject, key: string): number | undefined {
 	const value = record[key];
-	return typeof value === "number" ? value : undefined;
+	return isNumber(value) ? value : undefined;
 }
 
 interface ParsedContainerState {
@@ -121,7 +118,7 @@ interface ParsedContainerState {
 	exitCode?: number;
 }
 
-function parseStateFields(state: unknown): ParsedContainerState {
+function parseStateFields(state: JsonValue | undefined): ParsedContainerState {
 	if (!isRecord(state)) return {};
 	const stateEntry = Object.entries(state).find(([, value]) => isRecord(value));
 	if (!stateEntry) return {};
@@ -138,13 +135,13 @@ function parseStateFields(state: unknown): ParsedContainerState {
 	};
 }
 
-function getStatusList(status: Record<string, unknown>, key: string): Record<string, unknown>[] {
+function getStatusList(status: JsonObject, key: string): JsonObject[] {
 	const value = status[key];
 	return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
 export function getContainerStatusRows(
-	status: Record<string, unknown> | undefined,
+	status: JsonObject | undefined,
 ): ContainerStatusRow[] {
 	if (!status) return [];
 	const containers = [
@@ -167,9 +164,8 @@ export function getContainerStatusRows(
 		return {
 			name: String(container.name ?? "container"),
 			type,
-			ready: typeof container.ready === "boolean" ? container.ready : undefined,
-			restartCount:
-				typeof container.restartCount === "number" ? container.restartCount : 0,
+			ready: container.ready === true || container.ready === false ? container.ready : undefined,
+			restartCount: isNumber(container.restartCount) ? container.restartCount : 0,
 			state: currentState.state,
 			reason: currentState.reason,
 			message: currentState.message,
@@ -563,9 +559,9 @@ export function buildIncidentSignals(
 }
 
 export const formatMetadata = (
-	metadata: Record<string, unknown>,
-): Array<{ key: string; value: unknown }> => {
-	const entries: Array<{ key: string; value: unknown }> = [];
+	metadata: JsonObject,
+): Array<{ key: string; value: JsonValue | undefined }> => {
+	const entries: Array<{ key: string; value: JsonValue | undefined }> = [];
 	if (metadata.name) entries.push({ key: "Name", value: metadata.name });
 	if (metadata.namespace)
 		entries.push({ key: "Namespace", value: metadata.namespace });
@@ -590,9 +586,13 @@ export const formatMetadata = (
 	return entries;
 };
 
-export const getErrorMessage = (err: unknown): string => {
-	if (err instanceof Error) return err.message;
-	if (typeof err === "string") return err;
-	if (isRecord(err) && typeof err.message === "string") return err.message;
+export const getErrorMessage = (cause: unknown): string => {
+	if (cause instanceof Error) return cause.message;
+	if (isString(cause)) return cause;
+	if (isRecord(cause) && isString(cause.message)) return cause.message;
 	return "Unknown error";
 };
+
+function isString<Value>(value: Value): value is Value & string { return String(value) === value; }
+
+function isNumber<Value>(value: Value): value is Value & number { return Number(value) === value; }

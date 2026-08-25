@@ -4,9 +4,9 @@ import { guardedOperationBlocker, guardedOperations } from "./operations-model";
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
 declare function expect<T>(actual: T): {
-	toBe(expected: unknown): void;
-	toEqual(expected: unknown): void;
-	toContain(expected: unknown): void;
+	toBe<Expected>(expected: Expected): void;
+	toEqual<Expected>(expected: Expected): void;
+	toContain<Expected>(expected: Expected): void;
 };
 
 function resource(kind: string): ResourceSummary {

@@ -46,7 +46,7 @@ export function buildPodExecRequest(
 	if (resource.kind !== "Pod") return "Pod exec starts from an exact Pod";
 	if (!resource.namespace) return "Pod exec requires a namespace";
 	const command = commandForPreset(draft.preset, draft.customArgv);
-	if (typeof command === "string") return command;
+	if (!Array.isArray(command)) return command;
 	if (draft.cols < 1 || draft.rows < 1 || draft.cols > 500 || draft.rows > 500) {
 		return "Terminal size must be between 1 and 500 columns and rows";
 	}

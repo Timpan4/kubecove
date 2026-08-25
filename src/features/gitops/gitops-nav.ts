@@ -176,6 +176,7 @@ export const FLUX_KIND_LABELS: Record<string, string> = FLUX_NAV_KINDS.reduce(
 		}
 		return labels;
 	},
+	// SAFETY: reducer inserts only string labels and kind names into initially empty label map.
 	{} as Record<string, string>,
 );
 

@@ -18,6 +18,7 @@
 		ArgoApplicationSummary,
 		ArgoManagedResource,
 	} from "@/lib/gitops-types";
+	import type { JsonObject, JsonValue } from "@/lib/types";
 	import { argoResourceCounts } from "./argo-workspace-model";
 
 	let {
@@ -38,7 +39,7 @@
 		refreshing?: boolean;
 		refreshDisabled?: boolean;
 		error?: unknown;
-		onRefresh?: () => Promise<unknown>;
+		onRefresh?: () => Promise<void>;
 		onInspect?: (app: ArgoApplicationSummary) => void;
 	} = $props();
 
@@ -95,13 +96,21 @@
 		return `rounded-full px-2 py-0 text-[0.6875rem] shadow-none ${STATUS_BADGE_STYLES[tone].className}`;
 	}
 
-	function statusValue(value: unknown, ...path: string[]): string | null {
-		let current = value;
+	function statusValue(value: JsonValue | undefined, ...path: string[]): string | null {
+		let current: JsonValue | undefined = value;
 		for (const key of path) {
-			if (!current || typeof current !== "object" || Array.isArray(current)) return null;
-			current = (current as Record<string, unknown>)[key];
+			if (!isRecord(current)) return null;
+			current = current[key];
 		}
-		return typeof current === "string" && current.trim() ? current : null;
+		return isString(current) && current.trim() ? current : null;
+	}
+
+	function isRecord(value: JsonValue | undefined): value is JsonObject {
+		return value !== null && !Array.isArray(value) && Object(value) === value;
+	}
+
+	function isString(value: JsonValue | undefined): value is string {
+		return String(value) === value;
 	}
 </script>
 

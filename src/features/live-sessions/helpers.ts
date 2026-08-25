@@ -2,22 +2,26 @@ import type {
 	PortForwardRequest,
 	PortForwardSessionSummary,
 	ResourceSummary,
+	JsonObject,
 } from "@/lib/types";
 import { normalizeKubeconfigEnvVar } from "@/lib/settings";
 import type { SavedPortForward } from "@/lib/workspaces";
 
-export function portForwardErrorMessage(error: unknown): string {
-	if (error instanceof Error) return error.message;
-	if (typeof error === "string") return error;
-	if (
-		typeof error === "object" &&
-		error !== null &&
-		"message" in error &&
-		typeof error.message === "string"
-	) {
-		return error.message;
+export function portForwardErrorMessage(cause: unknown): string {
+	if (cause instanceof Error) return cause.message;
+	if (isString(cause)) return cause;
+	if (isRecord(cause) && isString(cause.message)) {
+		return cause.message;
 	}
 	return "Unknown error";
+}
+
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
+}
+
+function isString<Value>(value: Value): value is Value & string {
+	return String(value) === value;
 }
 
 export function portForwardLocalUrl(session: PortForwardSessionSummary): string {

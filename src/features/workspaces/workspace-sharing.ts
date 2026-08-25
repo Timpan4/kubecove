@@ -148,6 +148,7 @@ function sharedToSavedWorkspace(
 	others: SavedWorkspace[] = [],
 ): SavedWorkspace {
 	const name = replace ? workspace.name : uniqueName(workspace.name, others);
+	// SAFETY: filter(Boolean) removes null and undefined shared keys before uniqueKey uses them.
 	const sharedKey = replace ? workspace.sharedKey : uniqueKey(workspace.sharedKey, new Set(others.map((item) => item.sharedKey).filter(Boolean) as string[]));
 	const scope = cloneScope(workspace.scope);
 	const clusterContexts = workspaceScopeContexts(scope);

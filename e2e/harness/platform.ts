@@ -26,8 +26,8 @@ export const gitDaemonPins = {
 export function validateImmutablePins(pins = chartPins) {
 	for (const pin of Object.values(pins)) {
 		const source = "repository" in pin ? pin.repository : pin.manifest;
-		if (!/^\d+\.\d+\.\d+$/.test(pin.version) || !/^https:\/\//.test(source) || !/^[a-f0-9]{64}$/.test(pin.sha256)) throw new Error("invalid immutable platform pin");
+		if (!/^\d+\.\d+\.\d+$/.test(pin.version) || !source.startsWith('https://') || !/^[a-f0-9]{64}$/.test(pin.sha256)) throw new Error("invalid immutable platform pin");
 		if ("appVersion" in pin && !/^\d+\.\d+\.\d+$/.test(pin.appVersion)) throw new Error("invalid immutable app pin");
 	}
-	for (const pin of Object.values(gitDaemonPins)) if (!/^\d+\.\d+\.\d+-r\d+$/.test(pin.version) || !/^https:\/\//.test(pin.url) || !/^[a-f0-9]{64}$/.test(pin.sha256)) throw new Error("invalid immutable Git daemon pin");
+	for (const pin of Object.values(gitDaemonPins)) if (!/^\d+\.\d+\.\d+-r\d+$/.test(pin.version) || !pin.url.startsWith('https://') || !/^[a-f0-9]{64}$/.test(pin.sha256)) throw new Error("invalid immutable Git daemon pin");
 }

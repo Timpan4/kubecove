@@ -47,7 +47,7 @@
 		workspace,
 		sourceReady,
 		kubeconfigSourceKey,
-		incidentFilter = $bindable("all" as IncidentFilter),
+		incidentFilter = $bindable<IncidentFilter>("all"),
 		onOpenResources,
 		onResourceInspect,
 		onResourceSelect,

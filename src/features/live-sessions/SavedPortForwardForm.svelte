@@ -21,6 +21,7 @@
 	} = $props();
 
 	function inputValue(event: Event): string {
+		// SAFETY: this handler is attached only to Input elements in this form.
 		return (event.currentTarget as HTMLInputElement).value;
 	}
 </script>

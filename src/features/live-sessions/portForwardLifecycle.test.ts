@@ -1,5 +1,5 @@
 import { createMockTauriClient } from "@/lib/tauri";
-import type { PortForwardSessionSummary } from "@/lib/types";
+import type { JsonObject, PortForwardSessionSummary } from "@/lib/types";
 import { createWorkspaceRecord } from "@/lib/workspace-model";
 import {
 	parseSavedPortForwardForWorkspace,
@@ -17,8 +17,8 @@ import {
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void | Promise<void>): void;
 declare function expect<T>(actual: T): {
-	toBe(expected: unknown): void;
-	toEqual(expected: unknown): void;
+	toBe<Expected>(expected: Expected): void;
+	toEqual<Expected>(expected: Expected): void;
 };
 
 function session(
@@ -87,7 +87,7 @@ describe("port forward lifecycle", () => {
 	test("invalidates the shared query after stopping", async () => {
 		const calls: string[] = [];
 		const client = createMockTauriClient({
-			stop_port_forward: ({ sessionId }: Record<string, unknown>) => {
+			stop_port_forward: ({ sessionId }: JsonObject) => {
 				calls.push(String(sessionId));
 				return true;
 			},
@@ -109,7 +109,7 @@ describe("port forward lifecycle", () => {
 	test("invalidates the shared query when reconnecting fails after stop", async () => {
 		const calls: string[] = [];
 		const client = createMockTauriClient({
-			stop_port_forward: ({ sessionId }: Record<string, unknown>) => {
+			stop_port_forward: ({ sessionId }: JsonObject) => {
 				calls.push(`stop:${String(sessionId)}`);
 				return true;
 			},
@@ -119,7 +119,7 @@ describe("port forward lifecycle", () => {
 			},
 		});
 		let invalidated: readonly unknown[] | null = null;
-		let error: unknown = null;
+		let error = "";
 
 		try {
 			await reconnectPortForward({
@@ -130,11 +130,11 @@ describe("port forward lifecycle", () => {
 				},
 			});
 		} catch (caught) {
-			error = caught;
+			error = caught instanceof Error ? caught.message : String(caught);
 		}
 
 		expect(calls).toEqual(["stop:port-forward-1", "start"]);
-		expect(error instanceof Error ? error.message : error).toBe("restart failed");
+		expect(error).toBe("restart failed");
 		expect(invalidated).toEqual(["port-forwards"]);
 	});
 
@@ -252,7 +252,7 @@ describe("port forward lifecycle", () => {
 			status: "listening" as const,
 		};
 		const client = createMockTauriClient({
-			stop_port_forward: ({ sessionId }: Record<string, unknown>) => {
+			stop_port_forward: ({ sessionId }: JsonObject) => {
 				calls.push(`stop:${String(sessionId)}`);
 				return true;
 			},
@@ -302,7 +302,7 @@ describe("port forward lifecycle", () => {
 			clusterContext: "kind-dev",
 			namespaces: ["payments"],
 		});
-		let error: unknown = null;
+		let error = "";
 
 		try {
 			await startSavedPortForward({
@@ -321,10 +321,10 @@ describe("port forward lifecycle", () => {
 				invalidateQueries: async () => {},
 			});
 		} catch (caught) {
-			error = caught;
+			error = caught instanceof Error ? caught.message : String(caught);
 		}
 
-		expect(error instanceof Error ? error.message : error).toBe(
+		expect(error).toBe(
 			"session list unavailable",
 		);
 	});
@@ -351,7 +351,7 @@ describe("port forward lifecycle", () => {
 				updatedAt: "2026-07-10T00:00:00Z",
 			},
 		];
-		let error: unknown = null;
+		let error = "";
 
 		try {
 			await startSavedPortForwards({
@@ -361,10 +361,10 @@ describe("port forward lifecycle", () => {
 				invalidateQueries: async () => {},
 			});
 		} catch (caught) {
-			error = caught;
+			error = caught instanceof Error ? caught.message : String(caught);
 		}
 
-		expect(error instanceof Error ? error.message : error).toBe(
+		expect(error).toBe(
 			"session list unavailable",
 		);
 	});

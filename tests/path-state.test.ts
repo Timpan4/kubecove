@@ -26,17 +26,25 @@ function makeStorage(): Storage {
 		key: (index) => Array.from(values.keys())[index] ?? null,
 		removeItem: (key) => values.delete(key),
 		setItem: (key, value) => values.set(key, value),
-	} as Storage;
+	} satisfies Storage;
 }
 
 const originalWindow = globalThis.window;
 
+type FakeWindow = {
+	sessionStorage: Storage;
+	location: { hash: string };
+	history: {
+		replaceState: (_data: null, _title: string, url?: string | URL | null) => void;
+	};
+};
+
 function installWindow(hash = "") {
-	const fakeWindow = {
+	const fakeWindow: FakeWindow = {
 		sessionStorage: makeStorage(),
 		location: { hash },
 		history: {
-			replaceState: (_data: unknown, _title: string, url?: string | URL | null) => {
+			replaceState: (_data, _title, url) => {
 				fakeWindow.location.hash = String(url ?? "");
 			},
 		},
@@ -236,15 +244,9 @@ describe("path state", () => {
 			yamlViewMode: "applyClean",
 			yamlEncoding: "kyaml",
 		});
-		expect(
-			(safe?.workspace?.detail as Record<string, unknown> | undefined)?.yamlDraft,
-		).toBeUndefined();
-		expect(
-			(safe?.workspace?.detail as Record<string, unknown> | undefined)?.logLines,
-		).toBeUndefined();
-		expect(
-			(safe?.workspace?.resources as Record<string, unknown> | undefined)?.fetchedRows,
-		).toBeUndefined();
+		expect("yamlDraft" in (safe?.workspace?.detail ?? {})).toBe(false);
+		expect("logLines" in (safe?.workspace?.detail ?? {})).toBe(false);
+		expect("fetchedRows" in (safe?.workspace?.resources ?? {})).toBe(false);
 	});
 
 	test("restores only safe RBAC cockpit state", () => {

@@ -71,6 +71,11 @@
 		["none", "No flags"],
 		["unknown", "Unknown"],
 	];
+	const identityOptions: Array<[InspectorIdentity["kind"], string]> = [
+		["serviceAccount", "ServiceAccount"],
+		["user", "User"],
+		["group", "Group"],
+	];
 
 	let {
 		query,
@@ -199,11 +204,11 @@
 			.length,
 	);
 	const selectedIdentity = $derived<InspectorIdentity | null>(
-		selected?.category === "Service Accounts"
+		selected?.category === "Service Accounts" && isServiceAccountSummary(selected.item)
 			? {
 					kind: "serviceAccount",
-					name: (selected.item as ServiceAccountSummary).name,
-					namespace: (selected.item as ServiceAccountSummary).namespace,
+					name: selected.item.name,
+					namespace: selected.item.namespace,
 				}
 			: null,
 	);
@@ -238,7 +243,7 @@
 	);
 
 	$effect(() => {
-		fingerprint;
+		void fingerprint;
 		review = null;
 		verifierError = "";
 		submitted = null;
@@ -416,29 +421,30 @@
 		inspection: RbacInspectionSummary,
 		entry: RbacCockpitItem,
 	): string[] {
-		if (entry.category === "Service Accounts") {
-			const account = entry.item as ServiceAccountSummary;
+		if (entry.category === "Service Accounts" && isServiceAccountSummary(entry.item)) {
+			const account = entry.item;
 			return [
 				`${bindingSources(inspection, entry).length} bindings`,
 				`${account.secretsCount} secrets`,
 				account.automountToken === false ? "token off" : "token posture",
 			];
 		}
-		if (entry.category === "Roles" || entry.category === "Cluster Roles") {
-			const role = entry.item as RbacRoleSummary;
+		if ((entry.category === "Roles" || entry.category === "Cluster Roles") && isRbacRoleSummary(entry.item)) {
+			const role = entry.item;
 			return [
 				`${role.rulesCount} rules`,
 				role.namespace ?? "cluster-wide",
 			];
 		}
-		if (entry.category === "Bindings") {
-			const binding = entry.item as RbacBindingSummary;
+		if (entry.category === "Bindings" && isRbacBindingSummary(entry.item)) {
+			const binding = entry.item;
 			return [
 				`${binding.subjects.length} subjects`,
 				`${binding.roleRefKind}/${binding.roleRefName}`,
 			];
 		}
-		const namespaceAccess = entry.item as RbacNamespaceAccessSummary;
+		if (!isRbacNamespaceAccessSummary(entry.item)) return [];
+		const namespaceAccess = entry.item;
 		return [
 			`${namespaceAccess.serviceAccounts} identities`,
 			`${namespaceAccess.roleBindings} bindings`,
@@ -461,8 +467,8 @@
 		entry: RbacCockpitItem,
 	): RbacBindingSummary[] {
 		const bindings = [...inspection.roleBindings, ...inspection.clusterRoleBindings];
-		if (entry.category === "Service Accounts") {
-			const account = entry.item as ServiceAccountSummary;
+		if (entry.category === "Service Accounts" && isServiceAccountSummary(entry.item)) {
+			const account = entry.item;
 			const groups = new Set([
 				"system:serviceaccounts",
 				`system:serviceaccounts:${account.namespace}`,
@@ -478,8 +484,8 @@
 				),
 			);
 		}
-		if (entry.category === "Roles" || entry.category === "Cluster Roles") {
-			const role = entry.item as RbacRoleSummary;
+		if ((entry.category === "Roles" || entry.category === "Cluster Roles") && isRbacRoleSummary(entry.item)) {
+			const role = entry.item;
 			return bindings.filter(
 				(binding) =>
 					binding.roleRefKind === role.kind &&
@@ -487,7 +493,7 @@
 					(role.kind !== "Role" || binding.namespace === role.namespace),
 			);
 		}
-		if (entry.category === "Bindings") return [entry.item as RbacBindingSummary];
+		if (entry.category === "Bindings" && isRbacBindingSummary(entry.item)) return [entry.item];
 		return bindings.filter((binding) => binding.namespace === entry.namespace);
 	}
 
@@ -521,26 +527,42 @@
 		return "namespace access investigation";
 	}
 
-	function policyShapeLabel(entry: RbacCockpitItem): string {
+	function policyEvidenceLabel(entry: RbacCockpitItem): string {
 		return entry.category === "Service Accounts" ? "Token posture" : "Policy shape";
 	}
 
-	function policyShapeValue(entry: RbacCockpitItem): string {
-		if (entry.category === "Service Accounts") {
-			const account = entry.item as ServiceAccountSummary;
+	function policyEvidenceValue(entry: RbacCockpitItem): string {
+		if (entry.category === "Service Accounts" && isServiceAccountSummary(entry.item)) {
+			const account = entry.item;
 			return account.automountToken === true
 				? "Automount on"
 				: account.automountToken === false
 					? "Automount off"
 					: "Not reported";
 		}
-		if (entry.category === "Roles" || entry.category === "Cluster Roles") {
-			return `${(entry.item as RbacRoleSummary).rulesCount} rules`;
+		if ((entry.category === "Roles" || entry.category === "Cluster Roles") && isRbacRoleSummary(entry.item)) {
+			return `${entry.item.rulesCount} rules`;
 		}
-		if (entry.category === "Bindings") {
-			return `${(entry.item as RbacBindingSummary).subjects.length} subjects`;
+		if (entry.category === "Bindings" && isRbacBindingSummary(entry.item)) {
+			return `${entry.item.subjects.length} subjects`;
 		}
-		return `${(entry.item as RbacNamespaceAccessSummary).roles} roles`;
+		return isRbacNamespaceAccessSummary(entry.item) ? `${entry.item.roles} roles` : "No loaded evidence";
+	}
+
+	function isRbacRoleSummary(item: RbacCockpitItem["item"]): item is RbacRoleSummary {
+		return "rules" in item;
+	}
+
+	function isRbacBindingSummary(item: RbacCockpitItem["item"]): item is RbacBindingSummary {
+		return "roleRefKind" in item;
+	}
+
+	function isServiceAccountSummary(item: RbacCockpitItem["item"]): item is ServiceAccountSummary {
+		return "imagePullSecretsCount" in item;
+	}
+
+	function isRbacNamespaceAccessSummary(item: RbacCockpitItem["item"]): item is RbacNamespaceAccessSummary {
+		return "roleBindings" in item;
 	}
 
 	function riskRailClass(risks: RbacRiskIndicator[]): string {
@@ -773,10 +795,10 @@
 										</div>
 										<div class="rounded-md border bg-muted/20 p-2.5">
 											<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">
-												{policyShapeLabel(selected)}
+											{policyEvidenceLabel(selected)}
 											</p>
 											<p class="mt-1 text-sm font-semibold">
-												{policyShapeValue(selected)}
+											{policyEvidenceValue(selected)}
 											</p>
 											<p class="mt-0.5 text-xs text-muted-foreground">Exact loaded evidence</p>
 										</div>
@@ -894,8 +916,8 @@
 												</div>
 											{:else}
 												<div class="flex flex-wrap gap-1">
-													{#each [["serviceAccount", "ServiceAccount"], ["user", "User"], ["group", "Group"]] as identityOption}
-														<Button size="xs" variant={identityKind === identityOption[0] ? "default" : "outline"} onclick={() => beginIdentity(identityOption[0] as "serviceAccount" | "user" | "group")}>{identityOption[1]}</Button>
+												{#each identityOptions as identityOption}
+													<Button size="xs" variant={identityKind === identityOption[0] ? "default" : "outline"} onclick={() => beginIdentity(identityOption[0])}>{identityOption[1]}</Button>
 													{/each}
 												</div>
 												<Input bind:value={identityName} aria-label="Identity name" placeholder={identityKind === "group" ? "Group" : "Identity name"} />

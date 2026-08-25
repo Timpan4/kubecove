@@ -39,6 +39,8 @@
 	} from "@/lib/tauri";
 	import type {
 		ArgoApplicationSummary,
+		JsonObject,
+		JsonValue,
 		ResourceDetailsFull,
 		ResourceEventSummary,
 		ResourceSummary,
@@ -91,6 +93,9 @@
 		| "revisions"
 		| "operations"
 		| "argo";
+	const DETAIL_TABS: DetailTab[] = [
+		"details", "yaml", "events", "logs", "exec", "portForward", "revisions", "operations", "argo",
+	];
 	type DetailFetchKind = "details" | "events";
 
 	let {
@@ -185,8 +190,8 @@
 			.then((module) => {
 				ExecTabComponent = module.default;
 			})
-			.catch((error: unknown) => {
-				execTabLoadError = error;
+			.catch((cause: unknown) => {
+				execTabLoadError = cause;
 			});
 	});
 
@@ -196,8 +201,8 @@
 			.then((module) => {
 				ExecTabComponent = module.default;
 			})
-			.catch((error: unknown) => {
-				execTabLoadError = error;
+			.catch((cause: unknown) => {
+				execTabLoadError = cause;
 			});
 	}
 	const detailsQueryKey = $derived(readSpec.detailsQueryKey);
@@ -452,9 +457,9 @@
 				}
 				streamId = id;
 			})
-			.catch((error: unknown) => {
+			.catch((cause: unknown) => {
 				if (cancelled) return;
-				realtimeWatchError = error instanceof Error ? error.message : String(error);
+				realtimeWatchError = cause instanceof Error ? cause.message : String(cause);
 			});
 		return () => {
 			cancelled = true;
@@ -503,9 +508,9 @@
 				}
 				streamId = id;
 			})
-			.catch((error: unknown) => {
+			.catch((cause: unknown) => {
 				if (cancelled) return;
-				realtimeEventsWatchError = error instanceof Error ? error.message : String(error);
+				realtimeEventsWatchError = cause instanceof Error ? cause.message : String(cause);
 			});
 		return () => {
 			cancelled = true;
@@ -515,14 +520,14 @@
 		};
 	});
 
-	function formatUnknown(value: unknown): string {
+	function formatUnknown(value: JsonValue | undefined): string {
 		if (value === undefined || value === null) return "-";
-		if (typeof value === "string") return value;
-		if (typeof value === "number" || typeof value === "boolean") return String(value);
+		if (String(value) === value) return value;
+		if (Number(value) === value || value === true || value === false) return String(value);
 		return JSON.stringify(value, null, 2);
 	}
 
-	function formatObjectRows(value: Record<string, unknown>) {
+	function formatObjectRows(value: JsonObject) {
 		return Object.entries(value).map(([key, item]) => ({ key, value: formatUnknown(item) }));
 	}
 
@@ -617,7 +622,8 @@
 	}
 
 	function tabChanged(value: string) {
-		const nextTab = value as DetailTab;
+		const nextTab = DETAIL_TABS.find((tab) => tab === value);
+		if (!nextTab) return;
 		if (isDetailTabAvailable(nextTab)) {
 			diagnosticLog("detail.tab.click", { key: resourceKey, tab: nextTab });
 			activeTab = nextTab;

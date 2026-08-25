@@ -23,6 +23,13 @@ export interface StandaloneGroupLayoutOptions {
 	standaloneNodeWidth?: number;
 }
 
+export interface StandaloneGroups {
+	groupNodes: StandaloneKindGroupGraphNode[];
+	positionsById: Map<string, { x: number; y: number }>;
+	standaloneIds: Set<string>;
+	groupIdByNodeId: Map<string, string>;
+}
+
 const STANDALONE_GROUP_COLUMNS = 3;
 export const STANDALONE_NODE_WIDTH = 260;
 const STANDALONE_GROUP_HEADER_HEIGHT = 38;
@@ -66,12 +73,7 @@ export function buildStandaloneGroups(
 	expandedStandaloneKinds: ReadonlySet<string>,
 	selectedNodeId: string | null,
 	layout: StandaloneGroupLayoutOptions = {},
-): {
-	groupNodes: StandaloneKindGroupGraphNode[];
-	positionsById: Map<string, { x: number; y: number }>;
-	standaloneIds: Set<string>;
-	groupIdByNodeId: Map<string, string>;
-} {
+): StandaloneGroups {
 	const nodeHeight = layout.nodeHeight ?? NODE_HEIGHT;
 	const standaloneNodeWidth = layout.standaloneNodeWidth ?? STANDALONE_NODE_WIDTH;
 	const standaloneNodes = graph.nodes

@@ -23,9 +23,11 @@ export function computeNextReleaseVersion(
 }
 
 export function readWorkspaceReleaseVersions(root = "."): ReleaseVersions {
+	// SAFETY: release metadata only reads optional `version`, validated by `requireVersion` before use.
 	const packageJson = JSON.parse(
 		readFileSync(join(root, "package.json"), "utf8"),
 	) as { version?: string };
+	// SAFETY: release metadata only reads optional `version`, validated by `requireVersion` before use.
 	const tauriConfig = JSON.parse(
 		readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8"),
 	) as { version?: string };
@@ -153,12 +155,14 @@ export function updateWorkspaceReleaseVersions(
 	const cargoPath = join(root, "src-tauri", "Cargo.toml");
 	const cargoLockPath = join(root, "src-tauri", "Cargo.lock");
 
+	// SAFETY: release writer changes only optional `version` in JSON it owns.
 	const packageJson = JSON.parse(readFileSync(packagePath, "utf8")) as {
 		version?: string;
 	};
 	packageJson.version = targetVersion;
 	writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
 
+	// SAFETY: release writer changes only optional `version` in JSON it owns.
 	const tauriConfig = JSON.parse(readFileSync(tauriPath, "utf8")) as {
 		version?: string;
 	};
@@ -231,7 +235,7 @@ function replaceCargoLockPackageVersion(
 
 		for (let cursor = index + 2; cursor < lines.length; cursor += 2) {
 			const nextLine = lines[cursor] ?? "";
-			if (/^\[\[package\]\]/.test(nextLine.trim())) break;
+			if (nextLine.trim().startsWith('[[package]]')) break;
 			if (/^\s*version\s*=\s*"[^"]+"/.test(nextLine)) {
 				lines[cursor] = nextLine.replace(
 					/^(\s*version\s*=\s*)"[^"]+"/,
@@ -251,12 +255,7 @@ function compareNumber(left: number, right: number): number {
 	return left === right ? 0 : left > right ? 1 : -1;
 }
 
-function parseSemver(version: string): {
-	major: number;
-	minor: number;
-	patch: number;
-	prerelease: string[];
-} {
+function parseSemver(version: string) {
 	const cleanVersion = requireVersion("semver", version).split("+")[0] ?? version;
 	const hyphenIndex = cleanVersion.indexOf("-");
 	const core =

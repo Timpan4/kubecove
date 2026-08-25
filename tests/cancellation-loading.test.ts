@@ -17,11 +17,18 @@ import type {
 	ResourceListRequest,
 	ResourceMetricsSummary,
 	ResourceTopology,
+	JsonObject,
+	JsonValue,
 } from "../src/lib/types";
+
+function mockInvokeResult<T>(value: JsonValue): T {
+	// SAFETY: test mock provides JSON-shaped responses for exact wrapper results asserted below.
+	return value as T;
+}
 
 describe("cancellable resource loads", () => {
 	test("passes cancellable metadata through resource wrappers", async () => {
-		const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const metrics: ResourceMetricsSummary = {
 			cluster: "kind-dev",
 			availability: { status: "available", message: "metrics available" },
@@ -32,19 +39,19 @@ describe("cancellable resource loads", () => {
 		};
 		const topology: ResourceTopology = { nodes: [], edges: [], warnings: [] };
 		const client: TauriClient = {
-			invoke: async <T>(cmd: string, args?: Record<string, unknown>) => {
+			invoke: async <T>(cmd: string, args?: JsonObject) => {
 				calls.push({ cmd, args });
-				if (cmd === "list_resource_metrics") return metrics as T;
-				if (cmd === "list_resource_topology") return topology as T;
-				if (cmd === "cancel_backend_requests") return { cancelled: 2 } as T;
+				if (cmd === "list_resource_metrics") return mockInvokeResult<T>(metrics);
+				if (cmd === "list_resource_topology") return mockInvokeResult<T>(topology);
+				if (cmd === "cancel_backend_requests") return mockInvokeResult<T>({ cancelled: 2 });
 				if (cmd === "cancel_workspace_requests") {
-					return {
+					return mockInvokeResult<T>({
 						cancelledRequests: 3,
 						cancelledLoads: 1,
 						clientGeneration: 7,
-					} as T;
+					});
 				}
-				return [] as T;
+				return mockInvokeResult<T>([]);
 			},
 		};
 		const cancellable = {

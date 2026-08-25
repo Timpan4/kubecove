@@ -44,7 +44,7 @@
 		if (
 			!fitPlan ||
 			fitPlan.key === lastFitKey ||
-			typeof window === "undefined"
+			globalThis.window === undefined
 		) return;
 		lastFitKey = fitPlan.key;
 		let secondFrame: number | null = null;

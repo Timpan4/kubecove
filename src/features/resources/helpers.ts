@@ -136,13 +136,13 @@ export function resourceIdentityKey(resource: ResourceSummary): string {
 }
 
 export function isClusterScopedKind(kind: string): kind is ClusterScopedKind {
-	return (CLUSTER_SCOPED_KINDS as readonly string[]).includes(kind);
+	return CLUSTER_SCOPED_KINDS.some((clusterScopedKind) => clusterScopedKind === kind);
 }
 
 export function isDiscoveredResourceKind(
 	kind: ResourceKindSelection,
 ): kind is DiscoveredResourceKind {
-	return typeof kind !== "string";
+	return Object(kind) === kind;
 }
 
 export function resourceKindLabel(kind: ResourceKindSelection): string {
@@ -258,13 +258,13 @@ export function sortedRows(
 	if (sorting.length === 0) return data;
 	return [...data].sort((a, b) => {
 		for (const { id, desc } of sorting) {
-			const av = (a as unknown as Record<string, unknown>)[id];
-			const bv = (b as unknown as Record<string, unknown>)[id];
+			const av = resourceSortValue(a, id);
+			const bv = resourceSortValue(b, id);
 			if (av == null && bv == null) continue;
 			if (av == null) return desc ? 1 : -1;
 			if (bv == null) return desc ? -1 : 1;
 			const cmp =
-				typeof av === "number" && typeof bv === "number"
+				isNumber(av) && isNumber(bv)
 					? av - bv
 					: String(av).localeCompare(String(bv), undefined, {
 							numeric: true,
@@ -274,6 +274,15 @@ export function sortedRows(
 		}
 		return 0;
 	});
+}
+
+function resourceSortValue(resource: ResourceSummary, id: string): string | number | undefined {
+	const value = Object.entries(resource).find(([key]) => key === id)?.[1];
+	return isNumber(value) ? value : value === undefined || value === null ? undefined : String(value);
+}
+
+function isNumber<Value>(value: Value): value is Value & number {
+	return Number(value) === value;
 }
 
 export function filterResources(
@@ -354,7 +363,7 @@ export function formatResourceTypeGroupLabel(resource: ResourceSummary): string 
 	return `${resource.kind}s`;
 }
 
-const RESOURCE_GROUP_KIND_RANK: Record<string, number> = {
+const RESOURCE_GROUP_KIND_RANK = {
 	Deployment: 10,
 	StatefulSet: 11,
 	DaemonSet: 12,
@@ -368,10 +377,14 @@ const RESOURCE_GROUP_KIND_RANK: Record<string, number> = {
 	PersistentVolumeClaim: 50,
 	ConfigMap: 80,
 	Secret: 81,
-};
+} satisfies Record<string, number>;
 
 export function resourceGroupKindRank(kind: string): number {
-	return RESOURCE_GROUP_KIND_RANK[kind] ?? 70;
+	return resourceKindRank(RESOURCE_GROUP_KIND_RANK, kind) ?? 70;
+}
+
+function resourceKindRank(ranks: Record<string, number>, kind: string): number | undefined {
+	return ranks[kind];
 }
 
 export function resourceGroupCollapseKey(resource: ResourceSummary): string {

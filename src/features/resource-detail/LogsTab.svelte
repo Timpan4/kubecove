@@ -91,6 +91,7 @@
 	}
 
 	function setTailLines(event: Event) {
+		// SAFETY: this handler is attached only to the Tail numeric Input element.
 		const value = Number((event.currentTarget as HTMLInputElement).value);
 		logTailLines = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 	}

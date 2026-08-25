@@ -28,7 +28,7 @@ export function buildResourceBrowserReadSpecs({
 	const topologyNamespaces = [...new Set(namespaces)].sort();
 	const topologyCustomResourceKey = [...new Set(
 		fetchKeys
-			.filter((key) => typeof key.kind !== "string")
+			.filter((key) => key.kind instanceof Object)
 			.map((key) => resourceKindFetchKey(key.kind)),
 	)]
 		.toSorted()

@@ -5,6 +5,7 @@ import type {
 	ArgoOperationRequest,
 	ArgoResourceComparison,
 } from "@/lib/gitops-types";
+import type { JsonValue } from "@/lib/types";
 
 export interface ArgoResourceCounts {
 	total: number;
@@ -101,7 +102,10 @@ export function preserveArgoResourceSelection<T extends ArgoResourceIdentity>(
 
 export function argoHistoryKey(application: ArgoApplicationRef, entry: ArgoApplicationHistory): string {
 	const applicationKey = `${normalized(application.namespace)}:${normalized(application.name)}`;
-	if (typeof entry.id === "number" && Number.isFinite(entry.id)) return `${applicationKey}:id:${entry.id}`;
+	const operationId = entry.id;
+	if (operationId !== null && operationId !== undefined && Number.isFinite(operationId)) {
+		return `${applicationKey}:id:${operationId}`;
+	}
 	const revision = normalized(entry.revision) || entry.revisions?.map(normalized).filter(Boolean).join(",") || "unknown";
 	return `${applicationKey}:revision:${revision}`;
 }
@@ -117,10 +121,10 @@ export function preserveArgoHistorySelection(
 }
 
 export interface ArgoComparisonDocument {
-	target: unknown;
-	desired: unknown;
-	live: unknown;
-	normalizedLive: unknown;
+	target: JsonValue | undefined;
+	desired: JsonValue | undefined;
+	live: JsonValue | undefined;
+	normalizedLive: JsonValue | undefined;
 	modified: boolean | null | undefined;
 	exact: boolean | null | undefined;
 	provenance: string | null | undefined;

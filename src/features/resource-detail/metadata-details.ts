@@ -1,5 +1,5 @@
 import { gitOpsOwnership } from "../../lib/gitops-ownership-evidence";
-import type { ResourceSummary } from "../../lib/types";
+import type { JsonObject, JsonValue, ResourceSummary } from "../../lib/types";
 
 export interface CuratedMetadataField {
 	label: string;
@@ -9,6 +9,11 @@ export interface CuratedMetadataField {
 export interface CuratedMetadataBadge {
 	key: string;
 	value: string;
+}
+
+export interface VisibleMetadataBadges {
+	badges: CuratedMetadataBadge[];
+	hiddenCount: number;
 }
 
 export interface CuratedMetadataModel {
@@ -26,7 +31,7 @@ export function visibleMetadataBadges(
 	badges: CuratedMetadataBadge[],
 	expanded: boolean,
 	limit = 4,
-): { badges: CuratedMetadataBadge[]; hiddenCount: number } {
+): VisibleMetadataBadges {
 	if (expanded || badges.length <= limit) return { badges, hiddenCount: 0 };
 	return {
 		badges: badges.slice(0, limit),
@@ -35,7 +40,7 @@ export function visibleMetadataBadges(
 }
 
 export function buildCuratedMetadata(
-	metadata: Record<string, unknown>,
+	metadata: JsonObject,
 	resource: ResourceSummary,
 ): CuratedMetadataModel {
 	const owner = ownerReferenceFields(metadata.ownerReferences);
@@ -105,21 +110,21 @@ function compactFields(
 	return fields.filter((item): item is CuratedMetadataField => Boolean(item));
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
 }
 
-function stringValue(value: unknown): string | undefined {
-	return typeof value === "string" && value.length > 0 ? value : undefined;
+function stringValue(value: JsonValue | undefined): string | undefined {
+	return isString(value) && value.length > 0 ? value : undefined;
 }
 
-function primitiveValue(value: unknown): string | undefined {
-	if (typeof value === "string") return value || undefined;
-	if (typeof value === "number" || typeof value === "boolean") return String(value);
+function primitiveValue(value: JsonValue | undefined): string | undefined {
+	if (isString(value)) return value || undefined;
+	if (isNumber(value) || value === true || value === false) return String(value);
 	return undefined;
 }
 
-function metadataBadgeEntries(value: unknown): CuratedMetadataBadge[] {
+function metadataBadgeEntries(value: JsonValue | undefined): CuratedMetadataBadge[] {
 	if (!isRecord(value)) return [];
 	return Object.entries(value)
 		.map(([key, item]) => ({ key, value: primitiveValue(item) ?? "" }))
@@ -138,13 +143,13 @@ function isInlineAnnotationValue(value: string): boolean {
 	);
 }
 
-function finalizersLabel(value: unknown): string | undefined {
+function finalizersLabel(value: JsonValue | undefined): string | undefined {
 	if (!Array.isArray(value)) return "none";
-	const finalizers = value.filter((item): item is string => typeof item === "string");
+	const finalizers = value.filter(isString);
 	return finalizers.length === 0 ? "none" : finalizers.join(", ");
 }
 
-function ownerReferenceFields(value: unknown): CuratedMetadataField[] {
+function ownerReferenceFields(value: JsonValue | undefined): CuratedMetadataField[] {
 	if (!Array.isArray(value)) return [];
 	const owners = value.filter(isRecord);
 	const owner =
@@ -157,7 +162,7 @@ function ownerReferenceFields(value: unknown): CuratedMetadataField[] {
 	]);
 }
 
-function managedFieldsSummary(value: unknown): string | undefined {
+function managedFieldsSummary(value: JsonValue | undefined): string | undefined {
 	if (!Array.isArray(value)) return undefined;
 	const managers = [
 		...new Set(
@@ -170,4 +175,12 @@ function managedFieldsSummary(value: unknown): string | undefined {
 	if (managers.length === 0) return undefined;
 	const visible = managers.slice(0, 4).join(", ");
 	return managers.length > 4 ? `${visible} +${managers.length - 4} more` : visible;
+}
+
+function isString<Value>(value: Value): value is Value & string {
+	return String(value) === value;
+}
+
+function isNumber<Value>(value: Value): value is Value & number {
+	return Number(value) === value;
 }

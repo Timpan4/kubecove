@@ -18,10 +18,10 @@ export interface GuardedOperations {
 	blocker: string | null;
 }
 
-export function guardedOperationBlocker(
-	error: unknown,
+export function guardedOperationBlocker<Cause>(
+	cause: Cause,
 ): "permission" | "provider connection" | "operation support" {
-	const bucket = friendlyErrorBucket(error);
+	const bucket = friendlyErrorBucket(cause);
 	if (bucket === "forbiddenRbac") return "permission";
 	if (
 		bucket === "authentication" ||

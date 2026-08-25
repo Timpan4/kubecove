@@ -23,12 +23,19 @@ export function createStreamChannel(
 	return new Channel<StreamMessage>(onMessage);
 }
 
+interface DisposableChannel<T> {
+	id: number;
+	onmessage: (message: T) => void;
+	cleanupCallback?: () => void;
+	unregister?: () => Promise<void>;
+}
+
 function closeChannel<T>(channel: Channel<T>): void {
-	const disposableChannel = channel as unknown as {
-		cleanupCallback?: () => void;
-		unregister?: () => Promise<void>;
-	};
-	if (typeof disposableChannel.unregister === "function") {
+	// SAFETY: Tauri channels and browser mock channels share id/onmessage; cleanup is the
+	// private v2 runtime hook, while unregister is supplied by the browser mock.
+	// @ts-expect-error: Tauri Channel has private runtime members not needed for cleanup.
+	const disposableChannel = channel as DisposableChannel<T>;
+	if (disposableChannel.unregister instanceof Function) {
 		void disposableChannel.unregister();
 		return;
 	}

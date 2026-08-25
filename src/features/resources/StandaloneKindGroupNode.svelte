@@ -8,6 +8,7 @@
 
 	let { data }: NodeProps<FlowTopologyNode> = $props();
 
+	// SAFETY: OwnershipMap registers this component only for typed standaloneKindGroup nodes.
 	const nodeData = $derived(data as FlowTopologyNodeData);
 	const visual = $derived(getResourceKindVisual(nodeData.kind ?? "Resource"));
 	const Icon = $derived(visual.icon);

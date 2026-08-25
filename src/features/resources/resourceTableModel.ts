@@ -65,13 +65,17 @@ function valueForSort(
 }
 
 function compareValues(left: string | number, right: string | number): number {
-	if (typeof left === "number" && typeof right === "number") {
+	if (isNumber(left) && isNumber(right)) {
 		return left - right;
 	}
 	return String(left).localeCompare(String(right), undefined, {
 		numeric: true,
 		sensitivity: "base",
 	});
+}
+
+function isNumber<Value>(value: Value): value is Value & number {
+	return Number(value) === value;
 }
 
 function sortedResourceRows(

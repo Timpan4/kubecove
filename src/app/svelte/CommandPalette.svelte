@@ -233,7 +233,7 @@
 	}}
 	title="Search"
 	description="Search views, namespaces, and resources"
-	commandProps={{ shouldFilter: false }}
+	shouldFilter={false}
 >
 	<CommandInput
 		value={query}

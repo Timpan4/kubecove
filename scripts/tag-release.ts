@@ -63,7 +63,7 @@ function run(
 	command: string,
 	args: string[],
 	options: { allowFailure?: boolean; inherit?: boolean } = {},
-): { stdout: string; stderr: string; status: number | null } {
+) {
 	const result = spawnSync(command, args, {
 		encoding: "utf8",
 		stdio: options.inherit ? "inherit" : "pipe",

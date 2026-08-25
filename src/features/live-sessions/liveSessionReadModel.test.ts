@@ -2,9 +2,22 @@ import type { PodExecSessionSummary, PortForwardSessionSummary } from "@/lib/typ
 import { createWorkspaceRecord } from "@/lib/workspace-model";
 import { buildLiveSessionReadModel } from "./liveSessionReadModel";
 
+interface AssertionObject {
+	readonly [key: string]: AssertionValue;
+}
+
+type AssertionValue =
+	| AssertionObject
+	| boolean
+	| number
+	| readonly AssertionValue[]
+	| string
+	| null
+	| undefined;
+
 declare function test(name: string, fn: () => void): void;
 declare function expect<T>(actual: T): {
-	toEqual(expected: unknown): void;
+	toEqual(expected: AssertionValue): void;
 };
 
 test("builds discriminated sorted live-session counts", () => {

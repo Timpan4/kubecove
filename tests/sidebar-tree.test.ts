@@ -4,6 +4,7 @@ import {
 	buildNamespaceTreeNode,
 	buildShallowNamespaceTreeNode,
 } from "../src/components/sidebar-tree-helpers";
+import type { TreeNode } from "../src/lib/tree-nav";
 import type { DiscoveredResourceKind } from "../src/lib/types";
 
 function widgetKind(index: number): DiscoveredResourceKind {
@@ -17,16 +18,14 @@ function widgetKind(index: number): DiscoveredResourceKind {
 	};
 }
 
-function countTreeNodes(nodes: unknown[]): number {
+function countTreeNodes(nodes: TreeNode[]): number {
 	let count = 0;
-	const stack = [...nodes] as Array<{ children?: unknown[] }>;
+	const stack = [...nodes];
 	while (stack.length > 0) {
 		const node = stack.pop();
 		if (!node) continue;
 		count += 1;
-		if (Array.isArray(node.children)) {
-			stack.push(...(node.children as Array<{ children?: unknown[] }>));
-		}
+		if (node.children) stack.push(...node.children);
 	}
 	return count;
 }

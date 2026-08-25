@@ -7,11 +7,16 @@ import {
 
 type NamespaceDiscoveryStatus = "loading" | "failed" | "ready";
 
+export interface WorkspaceCreationAvailability {
+	canCreate: boolean;
+	disabledReason: string | null;
+}
+
 export function getWorkspaceCreationAvailability(
 	effectiveContext: string,
 	selectedContextMissing: boolean,
 	namespaceDiscovery: NamespaceDiscoveryStatus,
-): { canCreate: boolean; disabledReason: string | null } {
+): WorkspaceCreationAvailability {
 	if (!effectiveContext) {
 		return {
 			canCreate: false,

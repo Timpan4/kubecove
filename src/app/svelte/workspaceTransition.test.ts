@@ -7,8 +7,8 @@ import {
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void | Promise<void>): void;
 declare function expect<T>(actual: T): {
-	toBe(expected: unknown): void;
-	toEqual(expected: unknown): void;
+	toBe<Expected>(expected: Expected): void;
+	toEqual<Expected>(expected: Expected): void;
 	toHaveLength(expected: number): void;
 };
 

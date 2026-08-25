@@ -72,6 +72,8 @@
 		yamlEncoding: YamlEncoding;
 		yamlShowFullDiff: boolean;
 	} = $props();
+	const YAML_VIEW_MODES: YamlViewMode[] = ["kubectl", "applyClean"];
+	const YAML_ENCODINGS: YamlEncoding[] = ["yaml", "kyaml"];
 
 	const queryClient = useQueryClient();
 	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
@@ -225,23 +227,27 @@
 	);
 
 	$effect(() => {
-		resource.cluster;
-		resource.kind;
-		resource.name;
-		resource.namespace;
-		kubeconfigSourceKey;
-		dynamicKindKey;
-		$settingsStore.redactSecrets;
+		void resource.cluster;
+		void resource.kind;
+		void resource.name;
+		void resource.namespace;
+		void kubeconfigSourceKey;
+		void dynamicKindKey;
+		void $settingsStore.redactSecrets;
 		resetYamlApply();
 	});
 
 	function setYamlViewMode(value: string) {
-		yamlViewMode = value as YamlViewMode;
+		const mode = YAML_VIEW_MODES.find((candidate) => candidate === value);
+		if (!mode) return;
+		yamlViewMode = mode;
 		resetYamlApply();
 	}
 
 	function setYamlEncoding(value: string) {
-		yamlEncoding = value as YamlEncoding;
+		const encoding = YAML_ENCODINGS.find((candidate) => candidate === value);
+		if (!encoding) return;
+		yamlEncoding = encoding;
 		resetYamlApply();
 	}
 
@@ -312,7 +318,7 @@
 		}
 	}
 
-	async function previewYamlApply(forceConflictsOverride?: unknown) {
+	async function previewYamlApply(forceConflictsOverride?: boolean) {
 		if (!yamlEditing || yamlPreparing) return;
 		yamlPreparing = true;
 		yamlLintError = "";

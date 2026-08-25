@@ -4,6 +4,8 @@
  * instead of dumping raw JSON.
  */
 
+import type { JsonObject, JsonValue } from "@/lib/types";
+
 export interface ArgoStatusCondition {
 	type: string;
 	message: string | null;
@@ -26,18 +28,20 @@ export interface ArgoStatusInsights {
 	unhealthyResources: ArgoResourceHealth[];
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return typeof value === "object" && value !== null && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: null;
+function asRecord<Value>(value: Value): (Value & JsonObject) | null {
+	return isRecord(value) ? value : null;
 }
 
-function asString(value: unknown): string | null {
-	return typeof value === "string" && value.length > 0 ? value : null;
+function asString(value: JsonValue | undefined): string | null {
+	return String(value) === value && value.length > 0 ? value : null;
+}
+
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
 }
 
 export function extractArgoStatusInsights(
-	status: Record<string, unknown> | null | undefined,
+	status: JsonObject | null | undefined,
 ): ArgoStatusInsights {
 	const health = asRecord(status?.health);
 	const conditions: ArgoStatusCondition[] = [];

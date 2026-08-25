@@ -1,7 +1,9 @@
 import type { RbacAccessReviewResult, RbacInspectionSummary } from "./types";
 import { now } from "./tauri-dev-mock-data";
 
-type MockArgs = Record<string, unknown> | undefined;
+interface MockArgs {
+	request?: object;
+}
 
 export function rbacInspectionMock(cluster = "mock-dev"): RbacInspectionSummary {
 	const partial = cluster === "docker-desktop";
@@ -40,8 +42,13 @@ export function rbacInspectionMock(cluster = "mock-dev"): RbacInspectionSummary 
 }
 
 export function rbacReviewMock(args?: MockArgs): RbacAccessReviewResult {
-	const request = args?.request as { target?: { verb?: string } } | undefined;
-	const verb = request?.target?.verb?.trim().toLowerCase();
+	const request = args?.request;
+	const target = request && "target" in request && request.target instanceof Object
+		? request.target
+		: null;
+	const verb = target && "verb" in target && String(target.verb) === target.verb
+		? target.verb.trim().toLowerCase()
+		: undefined;
 	if (verb === "impersonate") throw new Error("Browser mock verifier unavailable.");
 	if (verb === "delete") return { outcome: "denied", reason: "Browser mock explicit denial." };
 	if (verb === "watch") return { outcome: "noOpinion", reason: "Browser mock authorizer has no opinion." };

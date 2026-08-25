@@ -1,3 +1,5 @@
+import type { JsonObject, JsonValue } from "./types";
+
 export interface ArgoApplicationSourceSummary {
 	repoUrl: string | null;
 	targetRevision: string | null;
@@ -34,8 +36,8 @@ export interface ArgoApplicationSummary {
 export interface ArgoApplicationDetails {
 	summary: ArgoApplicationSummary;
 	yaml: string;
-	metadata: Record<string, unknown>;
-	status?: Record<string, unknown>;
+	metadata: JsonObject;
+	status?: JsonObject;
 }
 
 export type ArgoServerEndpoint =
@@ -103,8 +105,8 @@ export interface ArgoApplicationHistory {
 	revisions: string[];
 	deployedAt?: string | null;
 	initiatedBy?: string | null;
-	source?: unknown;
-	sources: unknown[];
+	source?: JsonValue;
+	sources: JsonValue[];
 }
 
 export interface ArgoManagedResource {
@@ -117,16 +119,16 @@ export interface ArgoManagedResource {
 	health?: string | null;
 	hook?: boolean | null;
 	requiresPruning?: boolean | null;
-	targetState?: unknown;
-	liveState?: unknown;
+	targetState?: JsonValue;
+	liveState?: JsonValue;
 }
 
 export interface ArgoResourceComparison {
 	resource: ArgoManagedResource;
-	targetState?: unknown;
-	liveState?: unknown;
-	normalizedLiveState?: unknown;
-	predictedLiveState?: unknown;
+	targetState?: JsonValue;
+	liveState?: JsonValue;
+	normalizedLiveState?: JsonValue;
+	predictedLiveState?: JsonValue;
 	modified?: boolean | null;
 	exact?: boolean | null;
 	provenance?: string | null;
@@ -157,12 +159,12 @@ export interface ArgoConnectedFallback {
 
 export interface ArgoApplicationInspector {
 	application: ArgoApplicationRef;
-	status: unknown | null;
+	status: JsonValue;
 	history: ArgoApplicationHistory[];
 	resources: ArgoManagedResource[];
 	comparisons: ArgoResourceComparison[];
-	conditions: unknown[];
-	operationState: unknown | null;
+	conditions: JsonValue[];
+	operationState: JsonValue;
 	connected: boolean;
 	transport: "connected" | "kubernetes";
 	provenance: string;
@@ -239,7 +241,7 @@ export interface ArgoApplicationSetSummary {
 export interface ArgoApplicationSetDetails {
 	summary: ArgoApplicationSetSummary;
 	yaml: string;
-	metadata: Record<string, unknown>;
+	metadata: JsonObject;
 }
 
 export interface ArgoAppProjectSummary {
@@ -256,7 +258,7 @@ export interface ArgoAppProjectSummary {
 export interface ArgoAppProjectDetails {
 	summary: ArgoAppProjectSummary;
 	yaml: string;
-	metadata: Record<string, unknown>;
+	metadata: JsonObject;
 }
 
 export interface FluxResourceKind {
@@ -303,6 +305,6 @@ export interface FluxResourceSummary {
 export interface FluxResourceDetails {
 	summary: FluxResourceSummary;
 	yaml: string;
-	metadata: Record<string, unknown>;
-	status?: Record<string, unknown>;
+	metadata: JsonObject;
+	status?: JsonObject;
 }

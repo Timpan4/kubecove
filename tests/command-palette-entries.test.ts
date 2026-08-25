@@ -81,13 +81,13 @@ describe("command palette entries", () => {
 		const palette = readFileSync("src/app/svelte/CommandPalette.svelte", "utf8");
 		const dialog = readFileSync("src/components/ui/svelte/CommandDialog.svelte", "utf8");
 
-		expect(palette).toContain("commandProps={{ shouldFilter: false }}");
+		expect(palette).toContain("shouldFilter={false}");
 		expect(palette).toContain("onSelect={() => selectResource(resource)}");
 		expect(palette).toContain("onSelect={() => selectNamespace(namespace)}");
 		expect(palette).toContain("onSelect={() => selectNavigation(entry)}");
 		expect(palette).not.toContain("<CommandItem value={entry.id} onclick=");
-		expect(dialog).toContain("commandProps");
-		expect(dialog).toContain("{...commandProps}");
+		expect(dialog).toContain("shouldFilter?: boolean");
+		expect(dialog).toContain("{shouldFilter}");
 	});
 
 	test("Svelte command palette uses shared resource search parity", () => {
@@ -131,9 +131,7 @@ describe("command palette entries", () => {
 		expect(keys).toContainEqual({ kind: "Node", namespace: undefined });
 		expect(keys).toContainEqual({ kind: widgetKind, namespace: "team-a" });
 		expect(
-			keys.filter(
-				(key) => typeof key.kind !== "string" && key.kind.kind === "Kustomization",
-			),
+			keys.filter((key) => key.kind === fluxKind),
 		).toEqual([{ kind: fluxKind, namespace: undefined }]);
 	});
 

@@ -85,7 +85,9 @@
 		$settingsStore.showKubeconfigSourceLabels,
 	);
 	const command = $derived(commandForPreset(preset, customArgv));
-	const commandText = $derived(typeof command === "string" ? "" : podExecCommandText(command));
+	const commandText = $derived(
+		isValidationMessage(command) ? "" : podExecCommandText(command),
+	);
 
 	const sessionsQuery = createQuery<PodExecSessionSummary[]>(() =>
 		podExecQueryOptions(client, {
@@ -149,6 +151,10 @@
 
 	function fitTerminal() {
 		terminal?.fit();
+	}
+
+	function isValidationMessage<Value>(value: Value): value is Extract<Value, string> {
+		return Object(value) !== value;
 	}
 
 	function appendOutput(text: string) {
@@ -221,7 +227,7 @@
 				},
 				kubeconfigSourceKey,
 			);
-			if (typeof request === "string") {
+			if (isValidationMessage(request)) {
 				error = request;
 				return;
 			}

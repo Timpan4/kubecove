@@ -55,8 +55,8 @@ export function argoOperationAvailability({
 	};
 }
 
-export function argoOperationBlocker(error: unknown): ArgoOperationBlocker {
-	const bucket = friendlyErrorBucket(error);
+export function argoOperationBlocker(cause: unknown): ArgoOperationBlocker {
+	const bucket = friendlyErrorBucket(cause);
 	if (bucket === "forbiddenRbac") return "permission";
 	if (
 		bucket === "authentication" ||

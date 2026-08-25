@@ -60,9 +60,9 @@ export function toggleCompactSidebarSection(
 }
 
 function resourceKindSelectionKey(kind: ResourceKindSelection): string {
-	return typeof kind === "string"
-		? `typed:${kind}`
-		: `dynamic:${discoveredResourceKindKey(kind)}`;
+	return kind instanceof Object
+		? `dynamic:${discoveredResourceKindKey(kind)}`
+		: `typed:${kind}`;
 }
 
 export function appendPresentCustomResourceKinds(

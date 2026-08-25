@@ -116,16 +116,20 @@
 	const selectedCapability = $derived(
 		tunnelCapabilities.find((server) => server.id === selectedCapabilityId),
 	);
-	const tunnelEndpoint = $derived(
-		selectedCapability?.endpoint?.kind === "serviceTunnel"
-			? {
-					...selectedCapability.endpoint,
-					scheme: tunnelScheme,
-					...(rootPath.trim() ? { rootPath: rootPath.trim() } : {}),
-					...(tlsServerName.trim() ? { tlsServerName: tlsServerName.trim() } : {}),
-				}
-			: null,
-	);
+	function buildTunnelEndpoint() {
+		if (selectedCapability?.endpoint?.kind !== "serviceTunnel") return null;
+		const endpoint = {
+			...selectedCapability.endpoint,
+			scheme: tunnelScheme,
+		};
+		const trimmedRootPath = rootPath.trim();
+		if (trimmedRootPath) endpoint.rootPath = trimmedRootPath;
+		const trimmedTlsServerName = tlsServerName.trim();
+		if (trimmedTlsServerName) endpoint.tlsServerName = trimmedTlsServerName;
+		return endpoint;
+	}
+
+	const tunnelEndpoint = $derived(buildTunnelEndpoint());
 	const draftEndpoint = $derived(
 		connectionMode === "external"
 			? url.trim()

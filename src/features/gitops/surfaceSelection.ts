@@ -5,6 +5,11 @@ import type {
 export type { GitOpsSelection } from "@/lib/gitops-resource";
 export { gitOpsSelectionResource } from "@/lib/gitops-resource";
 
+export interface TargetGitOpsSelection {
+	selection: GitOpsSelection | null;
+	shouldResolve: boolean;
+}
+
 import { argoApplicationResourceNamespaces } from "@/features/resources";
 
 export function selectedGitOpsApplicationName(selection: GitOpsSelection | null): string | null {
@@ -15,7 +20,7 @@ export function resolveTargetGitOpsSelection(
 	selections: GitOpsSelection[],
 	targetApplication: string | null | undefined,
 	dataReady: boolean,
-): { selection: GitOpsSelection | null; shouldResolve: boolean } {
+): TargetGitOpsSelection {
 	if (!targetApplication) return { selection: null, shouldResolve: false };
 	const selection =
 		selections.find(

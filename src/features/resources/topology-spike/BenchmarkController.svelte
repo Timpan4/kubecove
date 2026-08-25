@@ -4,9 +4,15 @@
 	import type { TopologySpikeRunResult } from "./benchmark-types";
 	import type { TopologySpikeGraph } from "./synthetic-topology";
 
-	export let graph: TopologySpikeGraph;
-	export let onSelect: (id: string | null) => void;
-	export let startedAt: number;
+	let {
+		graph,
+		onSelect,
+		startedAt,
+	}: {
+		graph: TopologySpikeGraph;
+		onSelect: (id: string | null) => void;
+		startedAt: number;
+	} = $props();
 
 	const flow = useSvelteFlow();
 
@@ -21,10 +27,9 @@
 	}
 
 	function jsHeapBytes(): number | null {
-		const memory = (
-			performance as Performance & { memory?: { usedJSHeapSize?: number } }
-		).memory;
-		return typeof memory?.usedJSHeapSize === "number"
+		// SAFETY: Chrome exposes optional non-standard performance.memory with numeric usedJSHeapSize.
+		const memory = (performance as Performance & { memory?: { usedJSHeapSize?: number } }).memory;
+		return Number(memory?.usedJSHeapSize) === memory?.usedJSHeapSize
 			? memory.usedJSHeapSize
 			: null;
 	}

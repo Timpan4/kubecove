@@ -6,6 +6,13 @@
 import type { DiscoveredResourceKind, ResourceKindSelection } from "./types";
 import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "./types";
 
+const CLUSTER_SCOPED_KIND_SET = new Set<string>(CLUSTER_SCOPED_KINDS);
+
+function isNativeResourceKind(kind: string): kind is Extract<ResourceKindSelection, string> {
+  return SUPPORTED_KINDS.some((candidate) => candidate === kind) ||
+    CLUSTER_SCOPED_KINDS.some((candidate) => candidate === kind);
+}
+
 // ─── Tree Node Types ───────────────────────────────────────────────────────────
 
 export type TreeNodeType =
@@ -46,11 +53,14 @@ export type KindGroupName = keyof typeof KIND_GROUPS;
 
 // ─── Section Definitions ───────────────────────────────────────────────────────
 
+// SAFETY: readonly assertions preserve literal section configuration while empty child lists
+// intentionally share the same readonly string contract as populated lists.
 export const SECTIONS = {
   /** Workspace Overview: saved workspace scope, shortcuts, and status summary. */
   workspaceOverview: {
     id: "workspaceOverview",
     label: "Workspace Overview",
+    // SAFETY: empty section has same readonly child-name contract as populated sections.
     children: [] as readonly string[],
   },
   /** Cluster Overview: cluster-scoped resources (Node, StorageClass, PersistentVolume) */
@@ -63,6 +73,7 @@ export const SECTIONS = {
   namespaces: {
     id: "namespaces",
     label: "Namespaces",
+    // SAFETY: namespaces are populated dynamically, so static child-name list is empty.
     children: [] as readonly string[], // populated dynamically
   },
   /** Workloads: Pod, Deployment, ReplicaSet, StatefulSet, DaemonSet, Job, CronJob */
@@ -93,6 +104,7 @@ export const SECTIONS = {
   discovered: {
     id: "discovered",
     label: "Custom Resources",
+    // SAFETY: custom resource kinds come from discovery rather than static child names.
     children: [] as readonly string[],
   },
   /** GitOps: Argo CD and Flux provider resources. */
@@ -128,12 +140,14 @@ export const SECTIONS = {
   incidents: {
     id: "incidents",
     label: "Incidents",
+    // SAFETY: incident surface has no static child-name navigation entries.
     children: [] as readonly string[],
   },
   /** Port Forwards: workspace-level live tunnel management. */
   portForwards: {
     id: "portForwards",
     label: "Port Forwards",
+    // SAFETY: port-forward surface has no static child-name navigation entries.
     children: [] as readonly string[],
   },
   /** RBAC: read-only security inspection across namespaced and cluster-scoped RBAC. */
@@ -171,8 +185,8 @@ export function sectionKinds(section: SectionName): readonly string[] {
 }
 
 export function isNamespacedKind(kind: string): boolean {
-  return (SUPPORTED_KINDS as readonly string[]).includes(kind) &&
-    !(CLUSTER_SCOPED_KINDS as readonly string[]).includes(kind);
+  return SUPPORTED_KINDS.some((candidate) => candidate === kind) &&
+    !CLUSTER_SCOPED_KINDS.some((candidate) => candidate === kind);
 }
 
 // ─── TreeNodeId Helpers ────────────────────────────────────────────────────────
@@ -192,12 +206,26 @@ export function discoveredResourceKindKey(resourceKind: DiscoveredResourceKind):
 export function stringToNodeId(s: string): TreeNodeId {
   const parts = s.split("::");
   return {
-    type: parts[0] as TreeNodeId["type"],
+    type: treeNodeType(parts[0]),
     section: parts[1],
     namespace: parts[2],
     group: parts[3],
     kind: parts[4],
   };
+}
+
+function treeNodeType(value: string | undefined): TreeNodeType {
+  return value === "namespace" || value === "group" || value === "kind"
+    ? value
+    : "section";
+}
+
+function isSectionName(value: string): value is SectionName {
+  return Object.hasOwn(SECTIONS, value);
+}
+
+function isKindGroupName(value: string | undefined): value is KindGroupName {
+  return value !== undefined && Object.hasOwn(KIND_GROUPS, value);
 }
 
 export function makeSectionNode(section: SectionName): TreeNode {
@@ -268,7 +296,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
         section: "clusterOverview",
         namespace: null,
         group: null,
-        kinds: [...CLUSTER_SCOPED_KINDS] as ResourceKindSelection[],
+        kinds: [...CLUSTER_SCOPED_KINDS],
         clusterScoped: true,
         argoMode: false,
         helmMode: false,
@@ -278,9 +306,9 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       };
     }
     if (nodeId.section === "namespaces") {
-      const namespacedKinds = (SUPPORTED_KINDS as readonly string[]).filter(
-        (k) => !(CLUSTER_SCOPED_KINDS as readonly string[]).includes(k)
-      ) as ResourceKindSelection[];
+      const namespacedKinds = SUPPORTED_KINDS.filter(
+        (kind) => !CLUSTER_SCOPED_KIND_SET.has(kind)
+      );
       return {
         section: "namespaces",
         namespace: null,
@@ -295,8 +323,11 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       };
     }
     // Section selected without namespace — no kinds yet
+    if (!isSectionName(nodeId.section)) {
+      return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, incidentMode: false, portForwardMode: false, rbacMode: false };
+    }
     return {
-      section: nodeId.section as SectionName,
+      section: nodeId.section,
       namespace: null,
       group: null,
       kinds: [],
@@ -311,9 +342,9 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
 
   if (nodeId.type === "namespace") {
     // Namespace selected — return all namespaced kinds for that namespace
-    const namespacedKinds = (SUPPORTED_KINDS as readonly string[]).filter(
-      (k) => !(CLUSTER_SCOPED_KINDS as readonly string[]).includes(k)
-    ) as ResourceKindSelection[];
+    const namespacedKinds = SUPPORTED_KINDS.filter(
+      (kind) => !CLUSTER_SCOPED_KIND_SET.has(kind)
+    );
     return {
       section: "namespaces",
       namespace: nodeId.namespace ?? null,
@@ -329,12 +360,14 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
   }
 
   if (nodeId.type === "group") {
-    const groupName = nodeId.group as KindGroupName;
+    if (!isKindGroupName(nodeId.group) || !isSectionName(nodeId.section)) {
+      return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, incidentMode: false, portForwardMode: false, rbacMode: false };
+    }
+    const groupName = nodeId.group;
     const groupKinds = KIND_GROUPS[groupName];
-    if (!groupKinds) return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, incidentMode: false, portForwardMode: false, rbacMode: false };
-    const kinds = [...groupKinds] as ResourceKindSelection[];
+    const kinds: ResourceKindSelection[] = [...groupKinds];
     return {
-      section: nodeId.section as SectionName,
+      section: nodeId.section,
       namespace: nodeId.namespace ?? null,
       group: groupName,
       kinds,
@@ -348,19 +381,22 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
   }
 
   if (nodeId.type === "kind") {
+    if (!isSectionName(nodeId.section)) {
+      return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, incidentMode: false, portForwardMode: false, rbacMode: false };
+    }
     return {
-      section: nodeId.section as SectionName,
+      section: nodeId.section,
       namespace: nodeId.namespace ?? null,
       group: nodeId.group ?? null,
       kinds: nodeId.resourceKind
         ? [nodeId.resourceKind]
-        : nodeId.kind
-          ? ([nodeId.kind] as ResourceKindSelection[])
+        : nodeId.kind && isNativeResourceKind(nodeId.kind)
+          ? [nodeId.kind]
           : [],
       clusterScoped: nodeId.resourceKind
         ? !nodeId.resourceKind.namespaced
         : nodeId.kind
-          ? (CLUSTER_SCOPED_KINDS as readonly string[]).includes(nodeId.kind)
+          ? CLUSTER_SCOPED_KINDS.some((candidate) => candidate === nodeId.kind)
           : false,
       argoMode: nodeId.section === "argo",
       helmMode: nodeId.section === "helm",
@@ -392,14 +428,14 @@ export function emptyStateMessage(scope: TreeScope, hasClusterContext: boolean):
 
 // ─── Argo Section Helpers ─────────────────────────────────────────────────────
 
-export const ARGO_CHILDREN_LABELS: Record<string, string> = {
+export const ARGO_CHILDREN_LABELS = {
   Applications: "Argo CD Applications",
   ApplicationSets: "Argo CD ApplicationSets",
   AppProjects: "Argo CD AppProjects",
   "Argo CD Applications": "Argo CD Applications",
   "Argo CD ApplicationSets": "Argo CD ApplicationSets",
   "Argo CD AppProjects": "Argo CD AppProjects",
-};
+} satisfies Readonly<Record<string, string>>;
 
 export function isArgoSection(section: SectionName | string): boolean {
   return section === "argo";

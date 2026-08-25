@@ -16,6 +16,7 @@ type CommandResult = {
 	status: number | null;
 };
 
+// SAFETY: `validModes` rejects any CLI value outside this closed release-mode union before it is used.
 const mode = (Bun.argv[2] ?? "check") as Mode;
 const validModes = new Set<Mode>(["check", "dry-run", "release"]);
 
@@ -27,7 +28,9 @@ fetchReleaseRefs();
 
 const originMainSha = run("git", ["rev-parse", "origin/main"]).stdout.trim();
 const latestReleaseTagVersion = readLatestRemoteReleaseTagVersion();
+// SAFETY: remote release metadata only reads optional `version`, validated by `requireVersion` before use.
 const packageJson = JSON.parse(readRemoteFile("package.json")) as { version?: string };
+// SAFETY: remote release metadata only reads optional `version`, validated by `requireVersion` before use.
 const tauriConfig = JSON.parse(readRemoteFile("src-tauri/tauri.conf.json")) as { version?: string };
 const cargoToml = readRemoteFile("src-tauri/Cargo.toml");
 
@@ -103,11 +106,7 @@ function readRemoteFile(path: string): string {
 	return run("git", ["show", `origin/main:${path}`]).stdout;
 }
 
-function parseRemoteVersions(): {
-	packageVersion: string;
-	tauriVersion: string;
-	cargoVersion: string;
-} {
+function parseRemoteVersions() {
 	try {
 		return {
 			packageVersion: requireVersion("origin/main:package.json", packageJson.version),

@@ -14,9 +14,9 @@ interface ResourceFetchKey {
 }
 
 function resourceKindKey(kind: ResourceKindSelection): string {
-	return typeof kind === "string"
-		? `typed:${kind}`
-		: `dynamic:${kind.apiVersion}:${kind.plural}:${kind.kind}`;
+	return kind instanceof Object
+		? `dynamic:${kind.apiVersion}:${kind.plural}:${kind.kind}`
+		: `typed:${kind}`;
 }
 
 function sortedNamespaces(namespaces: string[]): string {
@@ -363,9 +363,9 @@ export const queryKeys = {
 		[
 			"rbac-inspection",
 			kubeconfigSourceKey(
-				typeof sourceOrLegacyNamespaces === "string"
-					? sourceOrLegacyNamespaces
-					: legacyKubeconfigEnvVar,
+				Array.isArray(sourceOrLegacyNamespaces)
+					? legacyKubeconfigEnvVar
+					: sourceOrLegacyNamespaces,
 			),
 			clusterContext,
 		] as const,

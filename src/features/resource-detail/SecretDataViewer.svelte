@@ -61,9 +61,9 @@
 	}
 
 	$effect(() => {
-		yamlText;
-		contextKey;
-		active;
+		void yamlText;
+		void contextKey;
+		void active;
 		clearReveals();
 		return clearReveals;
 	});

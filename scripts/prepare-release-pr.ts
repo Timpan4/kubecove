@@ -9,6 +9,7 @@ import {
 } from "./release-versions";
 import { updateChangelog } from "./release-notes";
 
+// SAFETY: `validBumps` rejects any CLI value outside the release-bump union before it is used.
 const bump = Bun.argv[2] as ReleaseBump | undefined;
 const validBumps = new Set<ReleaseBump>(["patch", "minor", "major"]);
 
@@ -64,7 +65,7 @@ function writeOutput(key: string, value: string): void {
 	console.log(`${key}=${value}`);
 }
 
-function run(command: string, args: string[]): { stdout: string; stderr: string } {
+function run(command: string, args: string[]) {
 	const result = spawnSync(command, args, { encoding: "utf8", stdio: "pipe" });
 	if (result.status !== 0) {
 		fail(`Command failed: ${[command, ...args].join(" ")}\n${result.stderr || result.stdout}`);

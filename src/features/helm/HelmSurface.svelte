@@ -72,14 +72,16 @@
 					"yaml",
 				)
 			: ["helm-release-details", "idle"],
-		queryFn: () =>
-			getHelmReleaseDetails(
+		queryFn: () => {
+			if (!selectedHelmRelease) throw new Error("Helm release selection is required.");
+			return getHelmReleaseDetails(
 				client,
-				selectedHelmRelease as HelmReleaseSummary,
+				selectedHelmRelease,
 				kubeconfigSourceKey,
 				"kubectl",
 				"yaml",
-			),
+			);
+		},
 		enabled: sourceReady && Boolean(selectedHelmRelease),
 		staleTime: 15_000,
 	}));
@@ -93,12 +95,14 @@
 					kubeconfigSourceKey,
 				)
 			: ["helm-release-reconciliation", "idle"],
-		queryFn: () =>
-			getHelmReleaseReconciliation(
+		queryFn: () => {
+			if (!selectedHelmRelease) throw new Error("Helm release selection is required.");
+			return getHelmReleaseReconciliation(
 				client,
-				selectedHelmRelease as HelmReleaseSummary,
+				selectedHelmRelease,
 				kubeconfigSourceKey,
-			),
+			);
+		},
 		enabled: sourceReady && Boolean(selectedHelmRelease),
 		staleTime: 30_000,
 	}));

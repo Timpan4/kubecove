@@ -65,7 +65,9 @@
 			cancelWorkspaceWork(
 				() =>
 					queryClient.cancelQueries({ predicate: isFiniteReadQuery }),
-				() => cancelWorkspaceRequests(workspaceTransitionClient),
+				async () => {
+					await cancelWorkspaceRequests(workspaceTransitionClient);
+				},
 			),
 		apply: (destination) => {
 			switch (destination.type) {
@@ -215,7 +217,7 @@
 					liveSessionCleanupMessage = `Stopped ${result.stoppedPortForwards} port ${result.stoppedPortForwards === 1 ? "forward" : "forwards"} and ${result.stoppedPodExecSessions} exec ${result.stoppedPodExecSessions === 1 ? "session" : "sessions"} outside this workspace.`;
 				}
 			})
-			.catch((error: unknown) => {
+			.catch((error) => {
 				if (cancelled) return;
 				liveSessionCleanupMessage = `Live session cleanup failed: ${error instanceof Error ? error.message : String(error)}`;
 			});

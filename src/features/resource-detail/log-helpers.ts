@@ -22,7 +22,7 @@ const LEADING_TIMESTAMP_RE =
 const EMBEDDED_TIME_RE = /\btime=(?:"([^"]+)"|([^\s]+))/;
 
 function entryFromLogLine(input: LogLineInput): LogLineEntry {
-	return typeof input === "string" ? { line: input } : input;
+	return input instanceof Object ? input : { line: input };
 }
 
 export function parseLogLine(input: LogLineInput, index = 0): ParsedLogLine {

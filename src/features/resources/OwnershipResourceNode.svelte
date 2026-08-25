@@ -21,6 +21,7 @@
 		sourcePosition = Position.Right,
 	}: NodeProps<FlowTopologyNode> = $props();
 
+	// SAFETY: OwnershipMap renders this component only for FlowTopologyNode layout data.
 	const nodeData = $derived(data as FlowTopologyNodeData);
 	const node = $derived(nodeData.node);
 	const visual = $derived(getResourceKindVisual(node?.kind ?? nodeData.kind ?? "Resource"));

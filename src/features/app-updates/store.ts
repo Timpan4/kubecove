@@ -40,7 +40,7 @@ let updateApi: AppUpdateApi = tauriAppUpdateApi;
 let pendingUpdate: AppUpdate | null = null;
 
 const initialState = {
-	status: "idle" as AppUpdateStatus,
+	status: "idle",
 	currentVersion: APP_VERSION,
 	availableVersion: null,
 	releaseNotes: null,
@@ -50,7 +50,19 @@ const initialState = {
 	lastCheckedAt: null,
 	errorMessage: null,
 	dismissedVersion: null,
-};
+} satisfies Pick<
+	AppUpdateState,
+	| "status"
+	| "currentVersion"
+	| "availableVersion"
+	| "releaseNotes"
+	| "downloadProgress"
+	| "downloadedBytes"
+	| "totalBytes"
+	| "lastCheckedAt"
+	| "errorMessage"
+	| "dismissedVersion"
+>;
 
 const memoryStorage = new Map<string, string>();
 
@@ -65,11 +77,7 @@ const fallbackStorage: StateStorage = {
 };
 
 function appUpdateStorage(): StateStorage {
-	return typeof localStorage === "undefined" ? fallbackStorage : localStorage;
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
+	return globalThis.localStorage ?? fallbackStorage;
 }
 
 export const useAppUpdateStore = createStore<AppUpdateState>()(
@@ -132,15 +140,16 @@ export const useAppUpdateStore = createStore<AppUpdateState>()(
 						version: update.version,
 					});
 				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
 					pendingUpdate = null;
 					set({
 						status: "error",
 						lastCheckedAt: new Date().toISOString(),
 						availableVersion: null,
 						releaseNotes: null,
-						errorMessage: errorMessage(error),
+						errorMessage: message,
 					});
-					diagnosticLog("updates.check.error", { error: errorMessage(error) });
+					diagnosticLog("updates.check.error", { error: message });
 				}
 			},
 			installUpdate: async () => {
@@ -199,20 +208,22 @@ export const useAppUpdateStore = createStore<AppUpdateState>()(
 					});
 					diagnosticLog("updates.install.done");
 				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
 					set({
 						status: "error",
-						errorMessage: errorMessage(error),
+						errorMessage: message,
 					});
-					diagnosticLog("updates.install.error", { error: errorMessage(error) });
+					diagnosticLog("updates.install.error", { error: message });
 				}
 			},
-			relaunchApp: async () => {
-				try {
-					await updateApi.relaunch();
-				} catch (error) {
-					set({
-						status: "error",
-						errorMessage: errorMessage(error),
+				relaunchApp: async () => {
+					try {
+						await updateApi.relaunch();
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error);
+						set({
+							status: "error",
+							errorMessage: message,
 					});
 				}
 			},

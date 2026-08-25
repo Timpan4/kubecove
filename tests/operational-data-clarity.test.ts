@@ -12,7 +12,9 @@ import {
 	RESTART_COUNT_NOT_REPORTED,
 } from "../src/features/resources/operational-data";
 
-async function renderSvelte(path: string, props: Record<string, unknown>): Promise<string> {
+type SvelteTestProps = Record<string, string | boolean | (() => void)>;
+
+async function renderSvelte(path: string, props: SvelteTestProps): Promise<string> {
 	const plugin: BunPlugin = {
 		name: "svelte-server-test",
 		setup(builder) {
@@ -46,9 +48,10 @@ async function renderSvelte(path: string, props: Record<string, unknown>): Promi
 		throw new Error(result.logs.map(String).join("\n") || `Could not build ${path}`);
 	}
 	const code = `${await result.outputs[0].text()}\n//# sourceURL=${crypto.randomUUID()}.js`;
+	// SAFETY: Bun compiles each supplied .svelte entrypoint as an ESM module whose default export is a Svelte component.
 	const module = (await import(
 		`data:text/javascript;base64,${Buffer.from(code).toString("base64")}`
-	)) as { default: Component };
+	)) as { default: Component<SvelteTestProps> };
 	return render(module.default, { props }).body;
 }
 

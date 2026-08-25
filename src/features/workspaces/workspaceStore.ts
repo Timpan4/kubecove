@@ -1,5 +1,5 @@
 import { derived, get, type Readable, writable } from "svelte/store";
-import type { ResourceSummary } from "@/lib/types";
+import type { JsonObject, JsonValue, ResourceSummary } from "@/lib/types";
 import {
 	entryPointFromApplication,
 	entryPointFromNamespace,
@@ -35,13 +35,6 @@ const WORKSPACE_STORAGE_KEY = "kubecove-workspaces";
 interface StorageLike {
 	getItem: (key: string) => string | null;
 	setItem: (key: string, value: string) => void;
-}
-
-interface PersistedWorkspaceState {
-	state?: {
-		workspaces?: unknown;
-	};
-	version?: unknown;
 }
 
 interface WorkspaceState {
@@ -92,7 +85,7 @@ export interface WorkspaceStore {
 }
 
 function browserStorage(): StorageLike | null {
-	return typeof localStorage === "undefined" ? null : localStorage;
+	return globalThis.localStorage ?? null;
 }
 
 export function readPersistedWorkspaces(
@@ -102,9 +95,10 @@ export function readPersistedWorkspaces(
 	const raw = storage.getItem(WORKSPACE_STORAGE_KEY);
 	if (!raw) return [];
 	try {
-		const parsed = JSON.parse(raw) as PersistedWorkspaceState;
-		return Array.isArray(parsed.state?.workspaces)
-			? parsed.state.workspaces.flatMap((workspace) => {
+		const parsed: JsonValue = JSON.parse(raw);
+		const state = isRecord(parsed) && isRecord(parsed.state) ? parsed.state : null;
+		return Array.isArray(state?.workspaces)
+			? state.workspaces.flatMap((workspace) => {
 					const sanitized = sanitizePersistedWorkspace(workspace);
 					return sanitized ? [sanitized] : [];
 				})
@@ -116,55 +110,56 @@ export function readPersistedWorkspaces(
 
 /// localStorage content is untrusted input: drop entries whose required shape
 /// does not match instead of casting them into the store.
-function sanitizePersistedWorkspace(value: unknown): SavedWorkspace | null {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+function sanitizePersistedWorkspace(value: JsonValue): SavedWorkspace | null {
+	if (!isRecord(value)) {
 		return null;
 	}
-	const record = value as Record<string, unknown>;
+	const record = value;
 	const scope = record.scope;
 	if (
-		typeof record.id !== "string" ||
+		!isString(record.id) ||
 		record.id.length === 0 ||
-		typeof record.name !== "string" ||
-		typeof record.createdAt !== "string" ||
-		typeof record.updatedAt !== "string" ||
-		typeof scope !== "object" ||
-		scope === null ||
-		Array.isArray(scope)
+		!isString(record.name) ||
+		!isString(record.createdAt) ||
+		!isString(record.updatedAt) ||
+		!isRecord(scope)
 	) {
 		return null;
 	}
-	const scopeRecord = scope as Record<string, unknown>;
+	const scopeRecord = scope;
 	if (
-		typeof scopeRecord.clusterContext !== "string" ||
+		!isString(scopeRecord.clusterContext) ||
 		!isStringArray(scopeRecord.namespaces) ||
 		!isValidKindSelections(scopeRecord.kinds) ||
-		typeof scopeRecord.argoAppFilter !== "string" ||
+		!isString(scopeRecord.argoAppFilter) ||
 		(scopeRecord.layout !== "overview" && scopeRecord.layout !== "resources") ||
 		!isRecordArray(record.shortcuts) ||
 		!isRecordArray(record.portForwards)
 	) {
 		return null;
 	}
+	// SAFETY: required workspace, scope, shortcut, and port-forward containers are validated above.
+	// @ts-expect-error: validated JsonObject does not structurally expose the persisted workspace fields.
+	const persistedWorkspace = record as SavedWorkspace;
 	return {
-		...(record as unknown as SavedWorkspace),
+		...persistedWorkspace,
 		rbacReviews: sanitizeRbacReviews(record.rbacReviews),
 	};
 }
 
-function sanitizeRbacReviews(value: unknown): WorkspaceRbacReview[] {
+function sanitizeRbacReviews(value: JsonValue | undefined): WorkspaceRbacReview[] {
 	if (!Array.isArray(value)) return [];
 	return value.flatMap((item) => {
-		if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
-		const review = item as Record<string, unknown>;
+		if (!isRecord(item)) return [];
+		const review = item;
 		if (
-			typeof review.clusterContext !== "string" || !review.clusterContext ||
-			typeof review.objectKey !== "string" || !review.objectKey ||
-			typeof review.evidenceFingerprint !== "string" ||
+			!isString(review.clusterContext) || !review.clusterContext ||
+			!isString(review.objectKey) || !review.objectKey ||
+			!isString(review.evidenceFingerprint) ||
 			!/^rbac-v1-[a-z0-9]+$/.test(review.evidenceFingerprint) ||
 			(review.disposition !== "expected" && review.disposition !== "anomalous") ||
-			typeof review.note !== "string" || !review.note.trim() ||
-			typeof review.reviewedAt !== "string" || Number.isNaN(Date.parse(review.reviewedAt))
+			!isString(review.note) || !review.note.trim() ||
+			!isString(review.reviewedAt) || Number.isNaN(Date.parse(review.reviewedAt))
 		) return [];
 		return [{
 			clusterContext: review.clusterContext,
@@ -177,26 +172,30 @@ function sanitizeRbacReviews(value: unknown): WorkspaceRbacReview[] {
 	});
 }
 
-function isStringArray(value: unknown): boolean {
-	return Array.isArray(value) && value.every((item) => typeof item === "string");
+function isStringArray(value: JsonValue | undefined): boolean {
+	return Array.isArray(value) && value.every(isString);
 }
 
-function isRecordArray(value: unknown): boolean {
-	return (
-		Array.isArray(value) &&
-		value.every((item) => typeof item === "object" && item !== null)
-	);
+function isRecordArray(value: JsonValue | undefined): boolean {
+	return Array.isArray(value) && value.every(isRecord);
 }
 
-function isValidKindSelections(value: unknown): boolean {
+function isValidKindSelections(value: JsonValue | undefined): boolean {
 	return (
 		Array.isArray(value) &&
 		value.every(
 			(item) =>
-				typeof item === "string" ||
-				(typeof item === "object" && item !== null),
+				isString(item) || isRecord(item),
 		)
 	);
+}
+
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
+}
+
+function isString<Value>(value: Value): value is Value & string {
+	return String(value) === value;
 }
 
 export function writePersistedWorkspaces(

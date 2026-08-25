@@ -31,7 +31,11 @@ export const EDGE_PATH_OPTIONS: SmoothStepPathOptions = {
 	stepPosition: 0.42,
 };
 
-const KIND_RANK: Record<string, number> = {
+interface KindRanks {
+	[kind: string]: number;
+}
+
+const KIND_RANK: KindRanks = {
 	Deployment: 0,
 	DaemonSet: 0,
 	StatefulSet: 0,

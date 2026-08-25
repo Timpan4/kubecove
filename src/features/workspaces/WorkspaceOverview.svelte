@@ -47,7 +47,7 @@
 		listNamespaces,
 		listResourceKinds,
 	} from "@/lib/tauri";
-	import type { FluxResourceSummary, ResourceSummary } from "@/lib/types";
+	import type { ResourceSummary } from "@/lib/types";
 	import {
 		normalizeEntryPoints,
 		resourceFromEntryPoint,
@@ -222,11 +222,9 @@
 	);
 	const fluxDetected = $derived(fluxDetectedQuery.data?.detected === true);
 	const fluxRows = $derived(
-		fluxResourceQueries.flatMap((query) => (query.data as FluxResourceSummary[] | undefined) ?? []),
+		fluxResourceQueries.flatMap((query) => query.data ?? []),
 	);
-	const fluxPending = $derived(
-		fluxResourceQueries.length > 0 && fluxResourceQueries.some((query) => query.isPending),
-	);
+	const fluxPending = $derived(fluxResourceQueries.some((query) => query.isPending));
 	const fluxError = $derived(fluxResourceQueries.find((query) => query.isError)?.error ?? null);
 	const gitOpsInventoryError = $derived(argoAppsQuery.error ?? fluxError);
 	const gitOpsDetected = $derived(argoDetectedQuery.data === true || fluxDetected);

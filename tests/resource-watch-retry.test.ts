@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { startResourceWatchWithRetry } from "../src/lib/tauri-streams";
 import type { TauriClient } from "../src/lib/tauri-runtime";
 
+// SAFETY: retry tests assert only invoke counts; mocked client never reads channel callbacks.
 const channel = {} as Parameters<typeof startResourceWatchWithRetry>[3];
 const keys = [{
 	resourceKind: {
@@ -22,8 +23,10 @@ describe("resource watch retry", () => {
 				if (command === "start_resource_watch") {
 					starts += 1;
 					if (starts === 1) throw new Error("startup failed");
+					// SAFETY: this branch models the stream id requested by this test's typed wrapper.
 					return "stream-1" as T;
 				}
+				// SAFETY: cleanup branch models the successful boolean wrapper result asserted by this test.
 				return true as T;
 			},
 		};
@@ -42,6 +45,7 @@ describe("resource watch retry", () => {
 					starts += 1;
 					throw new Error("startup failed");
 				}
+				// SAFETY: cleanup branch models the successful boolean wrapper result asserted by this test.
 				return true as T;
 			},
 		};

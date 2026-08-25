@@ -2,11 +2,21 @@ import { $, browser, expect } from "@wdio/globals";
 import { describe, it } from "mocha";
 import type { ClusterContext } from "../../../src/lib/types";
 
+type TauriBridge = {
+	core: {
+		invoke: <Result, Payload = undefined>(name: string, payload?: Payload) => Promise<Result>;
+		Channel: new <Message>() => { onmessage: (message: Message) => void };
+	};
+};
+
+declare global {
+	interface Window {
+		__TAURI__: TauriBridge;
+	}
+}
+
 async function listKubeContexts(): Promise<ClusterContext[]> {
-	return await browser.execute(async () => {
-		const tauri = (window as unknown as { __TAURI__: { core: { invoke: (name: "list_kube_contexts") => Promise<ClusterContext[]> } } }).__TAURI__;
-		return await tauri.core.invoke("list_kube_contexts");
-	}) as ClusterContext[];
+	return browser.execute(() => window.__TAURI__.core.invoke<ClusterContext[]>("list_kube_contexts"));
 }
 
 describe("native desktop smoke", () => {

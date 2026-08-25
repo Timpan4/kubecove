@@ -3,7 +3,6 @@ import {
 	KIND_GROUPS,
 	type KindGroupName,
 	type TreeNode,
-	type TreeNodeId,
 } from "@/lib/tree-nav";
 import type { DiscoveredResourceKind } from "@/lib/types";
 
@@ -61,13 +60,13 @@ export function buildCustomResourceGroupNodes({
 	}
 	return [...kindsByGroup.entries()]
 		.toSorted(([left], [right]) => left.localeCompare(right))
-		.map(([group, kinds]) => ({
-			id: { type: "group", section, namespace, group } as TreeNodeId,
+		.map(([group, kinds]): TreeNode => ({
+			id: { type: "group", section, namespace, group },
 			label: group,
 			selectable: false,
 			children: kinds
 				.toSorted((left, right) => left.kind.localeCompare(right.kind))
-				.map((resourceKind) => {
+				.map((resourceKind): TreeNode => {
 					const shortNames = resourceKind.shortNames ?? [];
 					return {
 						id: {
@@ -77,7 +76,7 @@ export function buildCustomResourceGroupNodes({
 							group,
 							kind: discoveredResourceKindKey(resourceKind),
 							resourceKind,
-						} as TreeNodeId,
+						},
 						label: resourceKind.kind,
 						description: `${resourceKind.apiVersion} / ${resourceKind.plural}${
 							shortNames.length > 0
@@ -93,7 +92,10 @@ export function buildNamespaceTreeNode(
 	namespace: string,
 	extraKinds: DiscoveredResourceKind[],
 ): TreeNode {
-	const groups: TreeNode[] = (Object.keys(KIND_GROUPS) as KindGroupName[]).map(
+	const kindGroupNames = Object.keys(KIND_GROUPS).filter(
+		(groupName): groupName is KindGroupName => groupName in KIND_GROUPS,
+	);
+	const groups: TreeNode[] = kindGroupNames.map(
 		(groupName) => {
 			const kinds = KIND_GROUPS[groupName];
 			return {
@@ -102,16 +104,16 @@ export function buildNamespaceTreeNode(
 					section: "namespaces",
 					namespace,
 					group: groupName,
-				} as TreeNodeId,
+				},
 				label: groupName,
-				children: kinds.map((kind) => ({
+				children: kinds.map((kind): TreeNode => ({
 					id: {
 						type: "kind",
 						section: "namespaces",
 						namespace,
 						group: groupName,
 						kind,
-					} as TreeNodeId,
+					},
 					label: kind,
 				})),
 			};
@@ -127,7 +129,7 @@ export function buildNamespaceTreeNode(
 				section: "namespaces",
 				namespace,
 				group: "Custom Resources",
-			} as TreeNodeId,
+			},
 			label: "Custom Resources",
 			selectable: false,
 			children: buildCustomResourceGroupNodes({

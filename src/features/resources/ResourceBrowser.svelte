@@ -125,6 +125,7 @@
 	} from "./constants";
 	import {
 		buildFetchKeys,
+		isDiscoveredResourceKind,
 		resourceReadyChip,
 		resourceIdentityKey,
 		resourceSelectionKey,
@@ -254,8 +255,8 @@
 			.then((module) => {
 				OwnershipMapComponent = module.default;
 			})
-			.catch((error: unknown) => {
-				ownershipMapLoadError = error;
+			.catch((cause: unknown) => {
+				ownershipMapLoadError = cause;
 			});
 	});
 
@@ -265,8 +266,8 @@
 			.then((module) => {
 				OwnershipMapComponent = module.default;
 			})
-			.catch((error: unknown) => {
-				ownershipMapLoadError = error;
+			.catch((cause: unknown) => {
+				ownershipMapLoadError = cause;
 			});
 	}
 
@@ -450,7 +451,7 @@
 			return;
 		}
 		if (!customResourcesEnabled) {
-			const nativeKinds = selectedKinds.filter((kind) => typeof kind === "string");
+			const nativeKinds = selectedKinds.filter((kind) => !isDiscoveredResourceKind(kind));
 			if (nativeKinds.length !== selectedKinds.length) selectedKinds = nativeKinds;
 			appliedAvailableKindsKey = availableKindsKey;
 			return;
@@ -481,13 +482,13 @@
 					topologyMode,
 					kubeconfigSourceKey,
 					createFiniteReadRequest(topologyCancelScope, "topology"),
-				).catch((error: unknown) => {
-					if (isAppError(error) && error.kind === "cancelled") {
+				).catch((cause: unknown) => {
+					if (isAppError(cause) && cause.kind === "cancelled") {
 						diagnosticLog("resources.topology.cancel", {
 							namespaces: topologyNamespaces.length,
 						});
 					}
-					throw error;
+					throw cause;
 				}),
 			),
 		enabled: readSpecs.topologyEnabled,
@@ -528,9 +529,9 @@
 					onCancelled: (result) => {
 						if (result.cancelled > 0) diagnosticLog(event, { cancelled: result.cancelled });
 					},
-					onError: (error) => {
-						diagnosticLog(`${event}.error`, {
-							error: error instanceof Error ? error.message : String(error),
+						onError: (cause) => {
+							diagnosticLog(`${event}.error`, {
+								error: cause instanceof Error ? cause.message : String(cause),
 						});
 					},
 				});
@@ -551,7 +552,7 @@
 			!resourcesQuery.isSuccess ||
 			resourcesQuery.isPlaceholderData ||
 			(mapPanelOpen && topologyQuery.isPending) ||
-			typeof window === "undefined"
+			!globalThis.window
 		) return;
 		diagnosticLog("resources.metrics.defer", {
 			ms: BACKGROUND_METRICS_DELAY_MS,
@@ -576,13 +577,13 @@
 				topologyNamespaces,
 				kubeconfigSourceKey,
 				createFiniteReadRequest(metricsCancelScope, "metrics"),
-			).catch((error: unknown) => {
-				if (isAppError(error) && error.kind === "cancelled") {
+			).catch((cause: unknown) => {
+				if (isAppError(cause) && cause.kind === "cancelled") {
 					diagnosticLog("resources.metrics.cancel", {
 						namespaces: topologyNamespaces.length,
 					});
 				}
-				throw error;
+				throw cause;
 			}),
 		enabled: metricsQueryReady && Boolean(clusterContext),
 		retry: false,
@@ -764,8 +765,9 @@
 		if (!tablePanelOpen || !viewport || !measureKey) return;
 		const measure = () => measureTableStickyOffsets(viewport);
 		const frame = window.requestAnimationFrame(measure);
-		const resizeObserver =
-			typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+		const resizeObserver = "ResizeObserver" in globalThis
+			? new ResizeObserver(measure)
+			: null;
 		resizeObserver?.observe(viewport);
 		return () => {
 			window.cancelAnimationFrame(frame);
@@ -912,11 +914,11 @@
 				}
 				streamId = id;
 			})
-			.catch((error: unknown) => {
+			.catch((cause: unknown) => {
 				if (cancelled) return;
 				realtimeStatus = "error";
 				realtimeMessage = "Realtime watch failed";
-				realtimeError = error instanceof Error ? error.message : String(error);
+				realtimeError = cause instanceof Error ? cause.message : String(cause);
 			});
 		return () => {
 			cancelled = true;

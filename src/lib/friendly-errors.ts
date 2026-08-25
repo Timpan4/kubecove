@@ -1,6 +1,6 @@
 import { messageFromError } from "./error-redaction";
 import type { RbacAccessReviewTarget } from "./rbac-types";
-import type { AppError } from "./types";
+import type { JsonObject } from "./types";
 
 export type FriendlyErrorMode = "full" | "compact";
 
@@ -94,7 +94,7 @@ const MESSAGE_BUCKETS: Array<[FriendlyErrorBucket, RegExp]> = [
 	["validation", /validation|invalid|required|must be|missing/i],
 ];
 
-const KIND_BUCKETS: Record<string, FriendlyErrorBucket> = {
+const KIND_BUCKETS = {
 	admissionDenied: "admissionPolicy",
 	authentication: "authentication",
 	applyImmutableField: "immutableField",
@@ -114,36 +114,47 @@ const KIND_BUCKETS: Record<string, FriendlyErrorBucket> = {
 	unauthorized: "authentication",
 	validation: "validation",
 	mixedWorkspaceConnection: "mixedWorkspaceConnection",
-};
+} satisfies Readonly<Record<string, FriendlyErrorBucket>>;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && Object(value) === value;
 }
 
 export const messageFromFriendlyError = messageFromError;
 
-function appErrorKind(error: unknown): string | null {
-	if (!isRecord(error)) return null;
-	const candidate = error as Partial<AppError>;
-	return typeof candidate.kind === "string" ? candidate.kind : null;
+function appErrorKind(cause: unknown): string | null {
+	if (!isRecord(cause)) return null;
+	return String(cause.kind) === cause.kind ? cause.kind : null;
 }
 
-export function friendlyErrorBucket(error: unknown): FriendlyErrorBucket {
-	const kind = appErrorKind(error);
-	if (kind && KIND_BUCKETS[kind]) return KIND_BUCKETS[kind];
+export function friendlyErrorBucket(cause: unknown): FriendlyErrorBucket {
+	const kind = appErrorKind(cause);
+	const kindBucket = kindBucketFor(kind);
+	if (kindBucket) return kindBucket;
 
-	const message = messageFromFriendlyError(error);
+	const message = messageFromFriendlyError(cause);
 	for (const [bucket, pattern] of MESSAGE_BUCKETS) {
 		if (pattern.test(message)) return bucket;
 	}
 	return "unknown";
 }
 
+function kindBucketFor(kind: string | null): FriendlyErrorBucket | undefined {
+	return kind ? bucketFromMap(KIND_BUCKETS, kind) : undefined;
+}
+
+function bucketFromMap(
+	buckets: Record<string, FriendlyErrorBucket>,
+	kind: string,
+): FriendlyErrorBucket | undefined {
+	return buckets[kind];
+}
+
 export function requiredPermissionForFriendlyError(
-	error: unknown,
+	cause: unknown,
 	context: FriendlyErrorContext,
 ): RbacAccessReviewTarget | null {
-	return friendlyErrorBucket(error) === "forbiddenRbac"
+	return friendlyErrorBucket(cause) === "forbiddenRbac"
 		? (context.requiredPermission ?? null)
 		: null;
 }
@@ -185,11 +196,11 @@ function partialTitle(context: FriendlyErrorContext, fallback: string): string {
 }
 
 export function friendlyError(
-	error: unknown,
+	cause: unknown,
 	context: FriendlyErrorContext = {},
 ): FriendlyErrorPresentation {
-	const bucket = friendlyErrorBucket(error);
-	const technicalDetail = messageFromFriendlyError(error);
+	const bucket = friendlyErrorBucket(cause);
+	const technicalDetail = messageFromFriendlyError(cause);
 	const target = context.target ? ` for ${context.target}` : "";
 	const subject = operationSubject(context.operation);
 	const partial = context.partial === true;

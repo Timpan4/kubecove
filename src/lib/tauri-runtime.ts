@@ -11,19 +11,20 @@ interface TauriRuntimeGlobal {
 }
 
 export interface TauriClient {
-	invoke<T>(
+	invoke<T, Args extends object = object>(
 		cmd: string,
-		args?: Record<string, unknown>,
+		args?: Args,
 		options?: InvokeOptions,
 	): Promise<T>;
 }
 
-type MockInvokeHandler = (
-	args?: Record<string, unknown>,
+type MockInvokeResult = boolean | number | object | string | null | undefined;
+type MockInvokeHandler = <Args extends object = object>(
+	args?: Args,
 	options?: InvokeOptions,
-) => unknown | Promise<unknown>;
+) => MockInvokeResult | Promise<MockInvokeResult>;
 
-type MockInvokeResponse = MockInvokeHandler | unknown;
+type MockInvokeResponse = MockInvokeHandler | MockInvokeResult;
 
 interface MockChannel<T> {
 	id: number;
@@ -36,6 +37,7 @@ interface MockChannel<T> {
 let nextMockChannelId = 1;
 
 export function isTauriRuntime(
+	// SAFETY: globalThis is the runtime object whose optional Tauri markers this function reads.
 	scope: TauriRuntimeGlobal = globalThis as TauriRuntimeGlobal,
 ): boolean {
 	return scope.__TAURI_INTERNALS__ !== undefined || scope.isTauri === true;
@@ -43,6 +45,7 @@ export function isTauriRuntime(
 
 export function shouldUseBrowserDevMocks(
 	env: BrowserDevEnv = { DEV: IS_DEV_BUILD },
+	// SAFETY: globalThis is the runtime object whose optional Tauri markers this function reads.
 	scope: TauriRuntimeGlobal = globalThis as TauriRuntimeGlobal,
 ): boolean {
 	return env.DEV === true && !isTauriRuntime(scope);
@@ -69,23 +72,29 @@ export function createMockChannel<T>(
 		},
 		toJSON: () => `__MOCK_CHANNEL__:${channel.id}`,
 	};
-	return channel as unknown as Channel<T>;
+	// SAFETY: browser mock implements every Channel member used by frontend stream wrappers.
+	// @ts-expect-error: Tauri Channel has private runtime members absent from the browser mock.
+	return channel as Channel<T>;
 }
 
-export function createMockTauriClient(
-	mockResponses: Record<string, MockInvokeResponse>,
+export function createMockTauriClient<Responses extends object>(
+	mockResponses: Responses,
 ): TauriClient {
 	return {
-		invoke: async <T>(
+		invoke: async <T, Args extends object = object>(
 			cmd: string,
-			args?: Record<string, unknown>,
+			args?: Args,
 			options?: InvokeOptions,
 		): Promise<T> => {
-			if (cmd in mockResponses) {
-				const response = mockResponses[cmd];
-				if (typeof response === "function") {
-					return (await (response as MockInvokeHandler)(args, options)) as T;
+			if (Object.hasOwn(mockResponses, cmd)) {
+				const response: MockInvokeResponse = Object.entries(mockResponses).find(
+					([command]) => command === cmd,
+				)?.[1];
+				if (response instanceof Function) {
+					// SAFETY: caller's typed wrapper owns result T; mock handler mirrors that command contract.
+					return (await response(args, options)) as T;
 				}
+				// SAFETY: caller's typed wrapper owns result T; fixture mirrors that command contract.
 				return response as T;
 			}
 			throw new Error(`No mock response for command: ${cmd}`);

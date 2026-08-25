@@ -1,5 +1,5 @@
 import { parse, parseDocument, stringify, type YAMLError } from "yaml";
-import type { YamlEncoding } from "@/lib/types";
+import type { JsonObject, JsonValue, YamlEncoding } from "@/lib/types";
 
 const YAML_PARSE_OPTIONS = {
 	prettyErrors: false,
@@ -12,6 +12,8 @@ const YAML_FORMAT_OPTIONS = {
 	lineWidth: 0,
 } as const;
 
+type FormattableYamlValue = JsonValue | undefined;
+
 export function formatYamlDocument(
 	value: string,
 	encoding: YamlEncoding = "yaml",
@@ -21,23 +23,40 @@ export function formatYamlDocument(
 		throw new Error(document.errors[0]?.message ?? "YAML parse failed.");
 	}
 	if (encoding === "kyaml") {
-		return `${formatKyamlValue(parse(value), 0)}\n`;
+		const parsed: JsonValue = parse(value);
+		return `${formatKyamlValue(parsed, 0)}\n`;
 	}
 	return stringify(parse(value), YAML_FORMAT_OPTIONS);
 }
 
-function formatKyamlValue(value: unknown, indent: number): string {
+function isBoolean(value: FormattableYamlValue): value is boolean {
+	return Boolean(value) === value;
+}
+
+function isNumber(value: FormattableYamlValue): value is number {
+	return Object.is(Number(value), value);
+}
+
+function isString(value: FormattableYamlValue): value is string {
+	return String(value) === value;
+}
+
+function isJsonObject(value: FormattableYamlValue): value is JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
+}
+
+function formatKyamlValue(value: FormattableYamlValue, indent: number): string {
 	if (value === null || value === undefined) return "null";
-	if (typeof value === "boolean" || typeof value === "number") return String(value);
-	if (typeof value === "string") return JSON.stringify(value);
+	if (isBoolean(value) || isNumber(value)) return String(value);
+	if (isString(value)) return JSON.stringify(value);
 	if (Array.isArray(value)) return formatKyamlArray(value, indent);
-	if (typeof value === "object") {
-		return formatKyamlObject(value as Record<string, unknown>, indent);
+	if (isJsonObject(value)) {
+		return formatKyamlObject(value, indent);
 	}
 	return JSON.stringify(String(value));
 }
 
-function formatKyamlArray(values: unknown[], indent: number): string {
+function formatKyamlArray(values: JsonValue[], indent: number): string {
 	if (values.length === 0) return "[]";
 	const childIndent = indent + 2;
 	const lines = values.map(
@@ -46,7 +65,7 @@ function formatKyamlArray(values: unknown[], indent: number): string {
 	return `[\n${lines.join("\n")}\n${" ".repeat(indent)}]`;
 }
 
-function formatKyamlObject(value: Record<string, unknown>, indent: number): string {
+function formatKyamlObject(value: JsonObject, indent: number): string {
 	const entries = Object.entries(value);
 	if (entries.length === 0) return "{}";
 	const childIndent = indent + 2;
@@ -63,9 +82,12 @@ function formatKyamlKey(key: string): string {
 		: JSON.stringify(key);
 }
 
-export function parseYamlErrors(
-	value: string,
-): { errors: YAMLError[]; warnings: YAMLError[] } {
+export interface YamlParseDiagnostics {
+	errors: YAMLError[];
+	warnings: YAMLError[];
+}
+
+export function parseYamlErrors(value: string): YamlParseDiagnostics {
 	const document = parseDocument(value, YAML_PARSE_OPTIONS);
 	return {
 		errors: [...document.errors],
