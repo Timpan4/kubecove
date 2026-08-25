@@ -10,8 +10,6 @@ import {
 } from "../src/features/resources/helpers";
 import {
 	allKindOptions,
-	buildResourceTableModel as buildProjectedResourceTableModel,
-	buildResourceTableProjection,
 	filterHistoricalReplicaSets,
 	filterResourceScopeOptions,
 	filterResourcesByKinds,
@@ -23,6 +21,10 @@ import {
 	syncedTopologyNodeId,
 } from "../src/features/resources/resourceBrowserModel";
 import { buildResourceBrowserReadSpecs } from "../src/features/resources/resourceBrowserReadSpecs";
+import {
+	buildResourceTableModel as buildProjectedResourceTableModel,
+	buildResourceTableProjection,
+} from "../src/features/resources/resourceTableModel";
 import {
 	buildFlowTopologyFitPlan,
 	buildFlowTopologyView,
