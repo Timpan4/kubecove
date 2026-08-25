@@ -27,6 +27,7 @@
 		yamlQuery,
 		yamlText,
 		yamlApplyTarget,
+		yamlApplyScope,
 		yamlAppliedMessage,
 		yamlEditing,
 		yamlViewMode,
@@ -45,6 +46,9 @@
 		yamlApplyError,
 		canAllowYamlForceConflicts,
 		yamlPreview,
+		yamlPreviewForceConflicts,
+		yamlForceConflictsEnabled,
+		forceConflictsReview,
 		yamlShowFullDiff = $bindable(false),
 		visibleYamlDiffLines,
 		hiddenYamlDiffCount,
@@ -144,7 +148,16 @@
 							{/if}
 						</div>
 					</div>
-					{#if yamlEditing}
+				{#if yamlEditing}
+					<div class="grid gap-1 rounded-md border bg-background/50 p-3 font-mono text-xs sm:grid-cols-2">
+						<div>Operation scope: {yamlApplyScope.operationScope}</div>
+						<div>Context: {yamlApplyScope.context}</div>
+						<div>Namespace: {yamlApplyScope.namespace}</div>
+						<div>Kind: {yamlApplyScope.kind}</div>
+						<div>Resource: {yamlApplyScope.resource}</div>
+						<div>Force-conflicts: {yamlPreview ? yamlPreviewForceConflicts ? "enabled" : "disabled" : yamlForceConflictsEnabled ? "enabled for next dry run" : "disabled"}</div>
+						<p class="sm:col-span-2 font-sans text-muted-foreground">{forceConflictsReview}</p>
+					</div>
 						<div class="flex flex-wrap items-center justify-end gap-2">
 							<Button
 								type="button"

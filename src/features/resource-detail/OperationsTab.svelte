@@ -10,6 +10,11 @@
 		type TauriClient,
 	} from "@/lib/tauri";
 	import type { ResourceSummary } from "@/lib/types";
+	import {
+		guardedOperationBlocker,
+		guardedOperations,
+		type GuardedOperationId,
+	} from "./operations-model";
 
 	let { client, resource, kubeconfigSourceKey }: { client: TauriClient; resource: ResourceSummary; kubeconfigSourceKey?: string } = $props();
 	let replicas = $state("1");
@@ -20,16 +25,15 @@
 	let error = $state("");
 	let busy = $state(false);
 	const target = $derived({ clusterContext: resource.cluster, namespace: resource.namespace, kind: resource.kind, name: resource.name });
-	const canScale = $derived(resource.kind === "Deployment" || resource.kind === "StatefulSet");
-	const canRestart = $derived(canScale || resource.kind === "DaemonSet");
-	const canDelete = $derived(resource.kind === "Pod" || resource.kind === "ConfigMap");
+	const operations = $derived(guardedOperations(resource));
+	const errorBlocker = $derived(error ? guardedOperationBlocker(error) : null);
 
 	function clearFeedback() { preview = ""; previewFingerprint = ""; result = ""; error = ""; }
 	function reset() { confirmed = false; clearFeedback(); }
-	function fingerprint(action: "scale" | "restart" | "delete") {
+	function fingerprint(action: GuardedOperationId) {
 		return JSON.stringify({ action, target, replicas: action === "scale" ? Number(replicas) : undefined });
 	}
-	async function run(action: "scale" | "restart" | "delete", execute: boolean) {
+	async function run(action: GuardedOperationId, execute: boolean) {
 		const requestFingerprint = fingerprint(action);
 		if (execute && (!confirmed || previewFingerprint !== requestFingerprint)) {
 			error = "Preview this exact operation before confirming it.";
@@ -63,19 +67,32 @@
 </script>
 
 <div class="space-y-4 rounded-md border bg-muted/20 p-4 text-sm">
-	<div><h3 class="font-medium">Guarded operations</h3><p class="mt-1 text-xs text-muted-foreground">Operations are limited to this exact selected resource.</p></div>
+	<div><h3 class="font-medium">Guarded operations</h3><p class="mt-1 text-xs text-muted-foreground">Each action targets only the exact resource shown below. Kubernetes permission is checked during preview; any returned error appears here.</p></div>
 	<div class="rounded border bg-background p-3 font-mono text-xs">
-		<div>Context: {target.clusterContext}</div><div>Namespace: {target.namespace ?? "cluster-scoped"}</div><div>Kind: {target.kind}</div><div>Name: {target.name}</div>
+		<div>Context: {target.clusterContext}</div><div>Namespace: {target.namespace ?? "cluster-scoped"}</div><div>Kind: {target.kind}</div><div>Resource: {target.name}</div>
 	</div>
-	{#if canScale}
-		<div class="space-y-2"><Label for="operation-replicas">Desired replicas</Label><Input id="operation-replicas" type="number" min="0" bind:value={replicas} oninput={reset} />
-			<div class="flex gap-2"><Button variant="outline" disabled={busy} onclick={() => run("scale", false)}>Preview scale</Button><Button disabled={busy || !confirmed || !previewFingerprint} onclick={() => run("scale", true)}>Scale workload</Button></div></div>
-	{/if}
-	{#if canRestart}<div class="flex gap-2"><Button variant="outline" disabled={busy} onclick={() => run("restart", false)}>Preview restart</Button><Button disabled={busy || !confirmed || !previewFingerprint} onclick={() => run("restart", true)}>Rollout restart</Button></div>{/if}
-	{#if canDelete}<div class="flex gap-2"><Button variant="outline" disabled={busy} onclick={() => run("delete", false)}>Preview delete</Button><Button variant="destructive" disabled={busy || !confirmed || !previewFingerprint} onclick={() => run("delete", true)}>Delete resource</Button></div>{/if}
-	{#if !canScale && !canRestart && !canDelete}<p class="text-xs text-muted-foreground">No guarded operation is supported for this kind.</p>{/if}
-	{#if canScale || canRestart || canDelete}<Label class="gap-2 rounded border bg-background p-3 text-xs text-muted-foreground"><Checkbox checked={confirmed} onCheckedChange={(value) => (confirmed = value)} />I understand the shown effect will change this exact resource.</Label>{/if}
+	{#each operations.available as operation (operation.id)}
+		<div class="space-y-2 rounded border bg-background p-3">
+			<div class="text-xs font-semibold">{operation.label}</div>
+			<div class="font-mono text-xs text-muted-foreground">
+				<div>Context: {target.clusterContext}</div>
+				<div>Namespace: {target.namespace ?? "cluster-scoped"}</div>
+				<div>Kind: {target.kind}</div>
+				<div>Resource: {target.name}</div>
+				<div>Operation scope: {operation.scope}</div>
+			</div>
+			{#if operation.requiresReplicas}<Label for="operation-replicas">Desired replicas</Label><Input id="operation-replicas" type="number" min="0" bind:value={replicas} oninput={reset} />{/if}
+			<div class="flex gap-2">
+				<Button variant="outline" disabled={busy} onclick={() => run(operation.id, false)}>{operation.previewLabel}</Button>
+				<Button variant={operation.destructive ? "destructive" : "default"} disabled={busy || !confirmed || previewFingerprint !== fingerprint(operation.id)} onclick={() => run(operation.id, true)}>{operation.executeLabel}</Button>
+			</div>
+		</div>
+	{/each}
+	{#if operations.blocker}<p class="text-xs text-muted-foreground">{operations.blocker}</p>{/if}
+	{#if operations.available.length > 0}<Label class="gap-2 rounded border bg-background p-3 text-xs text-muted-foreground"><Checkbox checked={confirmed} onCheckedChange={(value) => (confirmed = value)} />I understand the shown effect will change this exact resource.</Label>{/if}
 	{#if preview}<p class="rounded border border-sky-500/40 bg-sky-500/10 p-3 text-xs">Preview: {preview}</p>{/if}
 	{#if result}<p class="rounded border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs">{result}</p>{/if}
-	{#if error}<p class="rounded border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">{error}</p>{/if}
+	{#if error}
+		<p class="rounded border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">Blocker: {errorBlocker}. {error}</p>
+	{/if}
 </div>

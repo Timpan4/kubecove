@@ -221,6 +221,13 @@
 								<div>
 									<div class="text-xs font-semibold">{action.label}</div>
 									<p class="mt-1 text-xs leading-relaxed text-muted-foreground">{action.description}</p>
+									<div class="mt-2 font-mono text-xs text-muted-foreground">
+										<div>Context: {action.target.cluster}</div>
+										<div>Namespace: {action.target.namespace ?? "cluster-scoped"}</div>
+										<div>Kind: {action.target.kind}</div>
+										<div>Resource: {action.target.name}</div>
+										<div>Operation scope: Handoff to Actions for this exact Kubernetes resource only. No action runs from this card.</div>
+									</div>
 								</div>
 								<Button
 									type="button"

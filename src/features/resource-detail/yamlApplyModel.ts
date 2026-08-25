@@ -55,3 +55,9 @@ export function yamlApplyTargetLabel(resource: ResourceSummary): string {
 export function yamlAppliedMessage(result: YamlApplyResult, forceConflicts: boolean): string {
 	return `${result.target.kind}/${result.target.name} applied${forceConflicts ? " with force-conflicts" : ""}.`;
 }
+
+export function yamlForceConflictsReview(forceConflicts: boolean): string {
+	return forceConflicts
+		? "Enabled. If fields conflict, applying this reviewed result takes ownership of those fields from other field managers."
+		: "Disabled. Existing field ownership remains enforced.";
+}
