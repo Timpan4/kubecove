@@ -118,6 +118,9 @@
 	);
 	const yamlApplyDisabledReason = $derived(isYamlApplyDisabled(resource));
 	const yamlApplyTarget = $derived(yamlApplyTargetLabel(resource));
+	const yamlForceConflictsEnabled = $derived(
+		$settingsStore.allowYamlForceConflicts || yamlForceConflictsForResource,
+	);
 	const canAllowYamlForceConflicts = $derived(
 		!$settingsStore.allowYamlForceConflicts &&
 			!yamlForceConflictsForResource &&
@@ -431,6 +434,7 @@
 
 <YamlTab
 	{yamlQuery}
+	{resource}
 	{yamlText}
 	{yamlApplyTarget}
 	{yamlAppliedMessage}
@@ -451,6 +455,9 @@
 	{yamlApplyError}
 	{canAllowYamlForceConflicts}
 	{yamlPreview}
+	{yamlPreviewForceConflicts}
+	{yamlForceConflictsEnabled}
+	yamlGlobalForceConflicts={$settingsStore.allowYamlForceConflicts}
 	bind:yamlShowFullDiff
 	{visibleYamlDiffLines}
 	{hiddenYamlDiffCount}

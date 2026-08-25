@@ -3,6 +3,8 @@ import {
 	buildYamlApplyRequest,
 	isYamlApplyDisabled,
 	yamlAppliedMessage,
+	yamlForceConflictsReview,
+	yamlForceConflictsSource,
 	yamlApplyTargetLabel,
 } from "../src/features/resource-detail/yamlApplyModel";
 import type { ResourceSummary, YamlApplyResult } from "../src/lib/types";
@@ -71,5 +73,17 @@ describe("svelte YAML apply model", () => {
 		expect(yamlAppliedMessage(result, true)).toBe(
 			"Deployment/web applied with force-conflicts.",
 		);
+	});
+
+	test("explains force-conflict effect in guarded apply review", () => {
+		expect(yamlForceConflictsReview(true)).toBe(
+			"Enabled. If fields conflict, applying this reviewed result takes ownership of those fields from other field managers.",
+		);
+		expect(yamlForceConflictsReview(false)).toBe(
+			"Disabled. Existing field ownership remains enforced.",
+		);
+		expect(yamlForceConflictsSource(true, true)).toBe("Global YAML setting");
+		expect(yamlForceConflictsSource(false, true)).toBe("Current-resource override");
+		expect(yamlForceConflictsSource(false, false)).toBe("Not enabled");
 	});
 });

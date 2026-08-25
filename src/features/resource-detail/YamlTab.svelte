@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Pencil, WandSparkles, X } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
+	import OperationScopeCard from "@/components/OperationScopeCard.svelte";
 	import YamlCodeEditor from "@/components/YamlCodeEditor.svelte";
 	import {
 		Alert,
@@ -22,9 +23,14 @@
 		TooltipTrigger,
 	} from "@/components/ui/svelte";
 	import { diffLineClassName } from "./yamlTabDiff";
+	import {
+		yamlForceConflictsReview,
+		yamlForceConflictsSource,
+	} from "./yamlApplyModel";
 
 	let {
 		yamlQuery,
+		resource,
 		yamlText,
 		yamlApplyTarget,
 		yamlAppliedMessage,
@@ -45,6 +51,9 @@
 		yamlApplyError,
 		canAllowYamlForceConflicts,
 		yamlPreview,
+		yamlPreviewForceConflicts,
+		yamlForceConflictsEnabled,
+		yamlGlobalForceConflicts,
 		yamlShowFullDiff = $bindable(false),
 		visibleYamlDiffLines,
 		hiddenYamlDiffCount,
@@ -144,7 +153,19 @@
 							{/if}
 						</div>
 					</div>
-					{#if yamlEditing}
+				{#if yamlEditing}
+					<OperationScopeCard
+						context={resource.cluster}
+						namespace={resource.namespace}
+						kind={resource.kind}
+						resource={resource.name}
+						operationScope="Selected Kubernetes resource YAML"
+					/>
+					<div class="grid gap-1 rounded-md border bg-background/50 p-3 text-xs sm:grid-cols-2">
+						<div>Force-conflicts: {yamlPreview ? yamlPreviewForceConflicts ? "enabled" : "disabled" : yamlForceConflictsEnabled ? "enabled for next dry run" : "disabled"}</div>
+						<div>Preference source: {yamlForceConflictsSource(yamlGlobalForceConflicts, yamlForceConflictsEnabled)}</div>
+						<p class="text-muted-foreground sm:col-span-2">{yamlForceConflictsReview(yamlPreview ? yamlPreviewForceConflicts : yamlForceConflictsEnabled)}</p>
+					</div>
 						<div class="flex flex-wrap items-center justify-end gap-2">
 							<Button
 								type="button"

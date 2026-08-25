@@ -14,6 +14,7 @@
 	import { parse, stringify } from "yaml";
 	import YamlCodeEditor from "@/components/YamlCodeEditor.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
+	import OperationScopeCard from "@/components/OperationScopeCard.svelte";
 	import TimestampText from "@/components/TimestampText.svelte";
 	import {
 		Alert,
@@ -90,6 +91,11 @@
 		ArgoOperationRefreshError,
 		runArgoOperationLifecycle,
 	} from "./argo-operation-lifecycle";
+	import {
+		argoOperationAvailability,
+		argoOperationBlocker,
+		argoOperationTarget,
+	} from "./argo-operation-presentation";
 	import {
 		applyArgoSyncDefaults,
 		argoComparisonDocument,
@@ -429,12 +435,18 @@
 	const busy = $derived(
 		operationPhase === "authorizing" || operationPhase === "submitting" || operationPhase === "refreshing",
 	);
-	const canOperate = $derived(
-		active &&
-			workspaceReadContext.sourceReady &&
-			connectionReady &&
-			(transport === "kubernetes" || selectedStatus?.connected === true),
+	const operationTarget = $derived(
+		argoOperationTarget(resourceSummary, clusterContext, transport),
 	);
+	const operationAvailability = $derived(argoOperationAvailability({
+		sourceReady: workspaceReadContext.sourceReady,
+		connectionReady,
+		transport,
+		connected: selectedStatus?.connected === true,
+		unavailableReason: selectedStatus?.unavailableReason ?? undefined,
+	}));
+	const canOperate = $derived(active && operationAvailability.available);
+	const operationBlocker = $derived(operationError ? argoOperationBlocker(operationError) : null);
 
 	$effect(() => {
 		const nextScopeKey = scopeKey;
@@ -802,6 +814,16 @@
 					<div class="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
 						{loading ? "Loading Application and managed resources…" : `Revision ${resolvedRevision}`}
 					</div>
+					<OperationScopeCard
+						class="mt-3"
+						context={operationTarget.context}
+						namespace={operationTarget.namespace}
+						kind={operationTarget.kind}
+						resource={operationTarget.resource}
+						operationScope={operationTarget.operationScope}
+						transport={operationTarget.transport}
+						description={`${operationAvailability.available ? operationAvailability.reason : `Unavailable, ${operationAvailability.blocker}: ${operationAvailability.reason}`} These operations target the Argo CD Application, not a selected managed Kubernetes resource.`}
+					/>
 				</div>
 				<div class="flex max-w-full shrink-0 flex-wrap gap-1.5">
 					<div class="inline-flex shrink-0">
@@ -899,7 +921,15 @@
 	{/if}
 	{#if operationError}
 		<Alert variant="destructive">
-			<AlertTitle>{acceptedRefreshPending ? "Application refresh failed" : "Operation failed"}</AlertTitle>
+			<AlertTitle>
+				{acceptedRefreshPending
+					? "Application refresh failed"
+					: operationBlocker === "permission"
+						? "Permission blocker"
+						: operationBlocker === "provider connection"
+							? "Provider connection blocker"
+							: "Operation support blocker"}
+			</AlertTitle>
 			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{operationError}</span>{#if acceptedRefreshPending}<Button type="button" size="sm" variant="outline" disabled={busy} onclick={() => void retryAcceptedRefresh()}>Retry state refresh</Button>{:else if lastOperationRequest}<Button type="button" size="sm" variant="outline" disabled={busy} onclick={retryOperation}>Retry operation</Button>{/if}</AlertDescription>
 		</Alert>
 	{/if}
