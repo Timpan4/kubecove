@@ -5,7 +5,7 @@
 ## Investigate a signal
 
 1. Open **Incidents** for the intended workspace and context.
-2. Select **All**, **Degraded**, **Attention**, **Restarted**, or **Warnings**.
+2. Select **All**, **Degraded**, **Needs attention**, **Restart evidence**, or **Warnings**.
 3. Select a signal and verify its context, namespace, kind, and object name.
 4. Review the displayed status, conditions, events, and container evidence.
 5. For Pods, inspect ownership topology to follow the signal toward its controller.
@@ -20,8 +20,8 @@ Signals are assembled from the Kubernetes evidence KubeCove can read. A warning 
 | --- | --- |
 | **All** | Every active signal found in loaded scope. |
 | **Degraded** | Available evidence showing degraded state. |
-| **Attention** | Incomplete or warning evidence worth inspection. |
-| **Restarted** | Container restart-related signals. |
+| **Needs attention** | Incomplete or warning evidence worth inspection. |
+| **Restart evidence** | Container restart-related signals. |
 | **Warnings** | Warning events or conditions found in available data. |
 
 Counts can change as objects, conditions, and events update. Kubernetes events also expire. The cockpit is therefore an investigation starting point, not a durable incident record.
