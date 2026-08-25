@@ -21,10 +21,11 @@ The table can show **Name**, **Namespace**, **Kind**, **Status**, **Ready**, **R
 | --- | --- |
 | **Total** | All objects collected for the current scope. |
 | **Healthy** | Objects whose observed state matches KubeCove's healthy rules. |
-| **Unhealthy** | Objects with a clear unhealthy state. |
+| **Unknown** | Objects with a recognized health semantic that current evidence cannot classify. |
+| **Not evaluated** | Objects for which KubeCove has no health semantic. |
 | **Needs attention** | Objects with warning or incomplete signals that deserve inspection. |
 | **Degraded** | Objects whose available condition or workload signals indicate degradation. |
-| **Restarted** | Objects associated with container restart signals. |
+| **Restart evidence** | Objects associated with container restart signals. Restarts are evidence, not a health state. |
 
 These labels summarize available evidence. They are not Kubernetes authorization decisions, root-cause diagnoses, or proof that unlisted objects are healthy.
 
