@@ -12,6 +12,7 @@
 </script>
 
 <script lang="ts">
+	import { markStartup } from "@/lib/startup-marks";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import {
 		ArrowDown,
@@ -428,6 +429,11 @@
 		staleTime: 30_000,
 		retry: false,
 	}));
+	$effect(() => {
+		if (sourceReady && namespacesQuery.isSuccess && resourceKindsQuery.isSuccess) {
+			markStartup("base-scope-ready");
+		}
+	});
 	const resourceQueryKey = $derived(readSpecs.resourceQueryKey);
 	const topologyNamespaces = $derived(readSpecs.topologyNamespaces);
 	const topologyBaseQueryKey = $derived(readSpecs.topologyBaseQueryKey);
@@ -629,6 +635,14 @@
 				)
 			: rowsWithMetrics,
 	);
+	let firstResourceRowsMarked = false;
+	$effect(() => {
+		if (firstResourceRowsMarked) return;
+		if (tablePanelOpen && resourcesQuery.isSuccess && !resourcesQuery.isPlaceholderData && tableModel.entries.some((entry) => entry.type === "resource")) {
+			markStartup("first-resource-rows");
+			firstResourceRowsMarked = true;
+		}
+	});
 	const tableProjection = $derived(buildResourceTableProjection(tableRows));
 	const focusedArgoError = $derived(
 		focusedArgoInspectorQuery.isError ? focusedArgoInspectorQuery.error : null,

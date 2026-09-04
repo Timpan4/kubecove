@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
+	import { markStartup } from "@/lib/startup-marks";
 	import { useQueryClient } from "@tanstack/svelte-query";
 	import { FolderOpen, Settings } from "lucide-svelte";
 	import { Button, TooltipProvider } from "@/components/ui/svelte";
@@ -128,6 +129,7 @@
 			launcherView = pathState.launcherView;
 		}
 		pathStateReady = true;
+		markStartup("path-restored");
 	});
 
 	onMount(() => {

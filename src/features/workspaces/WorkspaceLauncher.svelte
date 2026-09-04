@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { markStartup } from "@/lib/startup-marks";
 	import { createQuery } from "@tanstack/svelte-query";
 	import { Download, FolderOpen, Pencil, Plus, Trash2, Upload, X } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
@@ -110,6 +111,9 @@
 		staleTime: 30_000,
 	}));
 	const contexts = $derived(contextsQuery.data ?? []);
+	$effect(() => {
+		if (sourceQuery.isSuccess && contextsQuery.isSuccess) markStartup("launcher-ready");
+	});
 	const contextsPending = $derived(!sourceReady || contextsQuery.isPending);
 	const contextsError = $derived(
 		sourceQuery.isError

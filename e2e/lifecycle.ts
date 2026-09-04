@@ -4,6 +4,7 @@ import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/pro
 import { arch, platform } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
+import { assertDesktopProfileIdle, stopOwnedProfileProcess } from "./harness/desktop-profile";
 import { downloadAsset, sha256, verifyAsset } from "./harness/assets";
 import { kindConfig, kindDeleteArgs } from "./harness/cluster";
 import { safeDiagnosticCommands, safeDiagnosticText } from "./harness/diagnostics";
@@ -27,6 +28,7 @@ const option = (name: string) => {
 	return index >= 0 ? args[index + 1] : undefined;
 };
 const action = Bun.argv[2];
+const profiling = action === "desktop-profile";
 const keep = args.includes("--keep");
 const requestedRunId = option("--run-id") ?? process.env.E2E_RUN_ID;
 const generatedRunId = `${Date.now()}-${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -81,7 +83,7 @@ function cleanEnvironment(extra: Record<string, string | undefined> = {}) {
 	return env;
 }
 async function execute(cmd: string, commandArgs: string[], extra: Record<string, string | undefined> = {}, capture = false, logFile?: string) {
-	const child = Bun.spawn([cmd, ...commandArgs], { cwd: root, env: cleanEnvironment(extra), stdout: capture || logFile ? "pipe" : "inherit", stderr: capture || logFile ? "pipe" : "inherit" });
+	const child = Bun.spawn([cmd, ...commandArgs], { cwd: root, detached: profiling && os !== "windows", env: cleanEnvironment(extra), stdout: capture || logFile ? "pipe" : "inherit", stderr: capture || logFile ? "pipe" : "inherit" });
 	children.add(child);
 	const [code, stdout, stderr] = await Promise.all([child.exited, child.stdout ? new Response(child.stdout).text() : "", child.stderr ? new Response(child.stderr).text() : ""]);
 	children.delete(child);
@@ -336,8 +338,11 @@ async function diagnostics(record: Ownership) {
 }
 
 let shuttingDown = false;
-async function shutdown(signal: "SIGINT" | "SIGTERM") { if (shuttingDown) return; shuttingDown = true; for (const child of children) child.kill(signal); if (current?.kind === "run") { await diagnostics(current).catch((failure) => console.error("diagnostics failed", failure)); if (!keep) await removeCluster(current); } else if (current) await rm(current.dataDir, { recursive: true, force: true }); process.exit(signal === "SIGINT" ? 130 : 143); }
-if (["run", "dev-up"].includes(action)) for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => void shutdown(signal));
+async function shutdown(signal: "SIGINT" | "SIGTERM") { if (shuttingDown) return; shuttingDown = true; for (const child of children) {
+	if (profiling) await stopOwnedProfileProcess(child, signal);
+	else child.kill(signal);
+	} if (current?.kind === "run") { await diagnostics(current).catch((failure) => console.error("diagnostics failed", failure)); if (!keep) await removeCluster(current); } else if (current) await rm(current.dataDir, { recursive: true, force: true }); process.exit(signal === "SIGINT" ? 130 : 143); }
+if (["run", "dev-up", "desktop-profile"].includes(action)) for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => void shutdown(signal));
 
 async function fast() {
 	if (!(await Array.fromAsync(new Bun.Glob("e2e/specs/fast/**/*.e2e.ts").scan({ cwd: root }))).length) throw new Error("fast suite has no specs");
@@ -345,15 +350,30 @@ async function fast() {
 	try { for (let count = 0; count < 80; count++) { try { if ((await fetch("http://127.0.0.1:1420")).ok) break; } catch {} if (count === 79) throw new Error("Bun frontend did not become ready"); await Bun.sleep(250); } await runWdio("e2e/wdio.fast.conf.ts", { KUBECOVE_E2E_ARTIFACTS: join(root, "e2e", "artifacts", "fast") }); }
 	finally { frontend.kill(); await frontend.exited; }
 }
-async function buildAndDrive(env: Record<string, string | undefined>, smoke = false) { const artifacts = env.KUBECOVE_E2E_ARTIFACTS; if (!artifacts) throw new Error("E2E artifacts directory is required"); await execute("bun", ["run", "tauri", "build", "--debug", "--no-bundle", "--config", "src-tauri/tauri.e2e.conf.json", "--features", "e2e"], env, false, join(artifacts, "build.log")); await runWdio("e2e/wdio.real.conf.ts", { ...env, KUBECOVE_E2E_BINARY: join(root, "src-tauri", "target", "debug", `kubecove${suffix}`), KUBECOVE_E2E_SMOKE: smoke ? "1" : undefined }, join(artifacts, "wdio.log")); }
+async function buildAndDrive(env: Record<string, string | undefined>, smoke = false) {
+	const artifacts = env.KUBECOVE_E2E_ARTIFACTS;
+	if (!artifacts) throw new Error("E2E artifacts directory is required");
+	const targetDir = profiling ? join(stateDir, "profile-target") : join(root, "src-tauri", "target");
+	const buildEnv = profiling ? { ...env, CARGO_TARGET_DIR: targetDir, KUBECOVE_PUBLIC_PROFILE: "true", KUBECOVE_PROFILE: "1" } : env;
+	await execute("bun", ["run", "tauri", "build", ...(profiling ? [] : ["--debug"]), "--no-bundle", "--config", "src-tauri/tauri.e2e.conf.json", "--features", "e2e"], buildEnv, false, profiling ? undefined : join(artifacts, "build.log"));
+	if (profiling) {
+		await assertDesktopProfileIdle();
+		await mkdir(artifacts, { recursive: true });
+		await writeFile(join(artifacts, "frontend-bundle.json"), await readFile(join(stateDir, "reports", "frontend-bundle.json")));
+		const sha = (await execute("git", ["rev-parse", "HEAD"], {}, true)).stdout.trim();
+		buildEnv.KUBECOVE_PROFILE_SHA = /^[a-f0-9]{40,64}$/.test(sha) ? sha : undefined;
+		buildEnv.KUBECOVE_PROFILE_DIRTY = (await execute("git", ["status", "--porcelain"], {}, true)).stdout.trim() ? "true" : "false";
+	}
+	await runWdio("e2e/wdio.real.conf.ts", { ...buildEnv, KUBECOVE_E2E_BINARY: join(targetDir, profiling ? "release" : "debug", `kubecove${suffix}`), KUBECOVE_E2E_SMOKE: smoke ? "1" : undefined }, profiling ? undefined : join(artifacts, "wdio.log"));
+}
 async function real() { if (keep && process.env.CI) throw new Error("--keep is forbidden in CI"); const record = await create("run"); const artifacts = join(root, "e2e", "artifacts", record.runId); const env = { KUBECOVE_E2E: "1", KUBECOVE_KUBECONFIG: record.kubeconfig, KUBECOVE_DATA_DIR: record.dataDir, KUBECOVE_E2E_CLUSTER: record.cluster, KUBECOVE_E2E_KUBECTL: (await tools()).kubectl, KUBECOVE_E2E_ARTIFACTS: artifacts }; try { await buildAndDrive(env); } finally { await diagnostics(record).catch((failure) => console.error("diagnostics failed", failure)); if (!keep) await removeCluster(record); current = undefined; } }
-async function desktopSmoke() { const dir = join(stateDir, "desktop-smoke", runId); const cluster = `kubecove-e2e-smoke-${runId}`; const kubeconfig = join(dir, "kubeconfig"); const dataDir = join(dir, "data"); const artifacts = join(root, "e2e", "artifacts", `desktop-${runId}`); await mkdir(dataDir, { recursive: true }); const config = { apiVersion: "v1", kind: "Config", clusters: [{ name: cluster, cluster: { server: "https://127.0.0.1:65535" } }], contexts: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, context: { cluster, user: `${cluster}-${role}` } })), "current-context": `${cluster}-admin`, users: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, user: { token: "redacted-smoke-value" } })) }; await writeFile(kubeconfig, stringify(config)); const env = { KUBECOVE_E2E: "1", KUBECOVE_KUBECONFIG: kubeconfig, KUBECOVE_DATA_DIR: dataDir, KUBECOVE_E2E_CLUSTER: cluster, KUBECOVE_E2E_ARTIFACTS: artifacts }; try { await buildAndDrive(env, true); } finally { await rm(dir, { recursive: true, force: true }); } }
+async function desktopSmoke() { if (profiling) await assertDesktopProfileIdle(); const dir = join(stateDir, "desktop-smoke", runId); const cluster = `kubecove-e2e-smoke-${runId}`; const kubeconfig = join(dir, "kubeconfig"); const dataDir = join(dir, "data"); const artifacts = join(root, "e2e", "artifacts", `desktop-${runId}`); if (profiling && (existsSync(dir) || existsSync(artifacts))) throw new Error("Profile run already exists; use a new run ID"); await mkdir(dataDir, { recursive: true }); const config = { apiVersion: "v1", kind: "Config", clusters: [{ name: cluster, cluster: { server: "https://127.0.0.1:65535" } }], contexts: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, context: { cluster, user: `${cluster}-${role}` } })), "current-context": `${cluster}-admin`, users: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, user: { token: "redacted-smoke-value" } })) }; await writeFile(kubeconfig, stringify(config)); const env = { KUBECOVE_E2E: "1", KUBECOVE_KUBECONFIG: kubeconfig, KUBECOVE_DATA_DIR: dataDir, KUBECOVE_E2E_CLUSTER: cluster, KUBECOVE_E2E_ARTIFACTS: artifacts }; try { await buildAndDrive(env, true); } finally { await rm(dir, { recursive: true, force: true }); } }
 async function dev() { try { if ((await fetch("http://127.0.0.1:1430")).ok) throw new Error("an existing KubeCove dev server is running; dev:kind will not restart it"); } catch (error) { if (error instanceof Error && error.message.startsWith("an existing")) throw error; } const record = await create("dev"); await rm(record.dataDir, { recursive: true, force: true }); await mkdir(record.dataDir, { recursive: true }); try { await execute("bun", ["run", "tauri", "dev", "--config", "src-tauri/tauri.dev-kind.conf.json"], { KUBECONFIG: record.kubeconfig, KUBECOVE_DEV_KIND: "1", KUBECOVE_DATA_DIR: record.dataDir }); } finally { await rm(record.dataDir, { recursive: true, force: true }); current = undefined; } }
 
 if (action === "fast") await fast();
 else if (action === "run") await real();
-else if (action === "desktop-smoke") await desktopSmoke();
+else if (action === "desktop-smoke" || action === "desktop-profile") await desktopSmoke();
 else if (action === "cleanup") { if (!requestedRunId) throw new Error("cleanup requires --run-id <id>"); const dir = runDir(requestedRunId); if (existsSync(recordPath(dir))) await removeCluster(await readOwnership(recordPath(dir), "run", dir, requestedRunId)); }
 else if (action === "dev-up") await dev();
 else if (action === "dev-down") { if (existsSync(recordPath(devDir))) await removeCluster(await readOwnership(recordPath(devDir), "dev", devDir, workspaceHash, false)); }
-else throw new Error("use fast, run, desktop-smoke, cleanup, dev-up, or dev-down");
+else throw new Error("use fast, run, desktop-smoke, desktop-profile, cleanup, dev-up, or dev-down");
