@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { markStartup } from "@/lib/startup-marks";
 	import { onMount } from "svelte";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import {
@@ -330,6 +331,7 @@
 	const resourceInspectorMinSize = $derived(viewMode === "argo" ? 25 : 33);
 
 	onMount(() => {
+		markStartup("workspace-ready");
 		if (initialPathSnapshot) onPathStateConsumed();
 		const stopRbacHandoff = onOpenRbacVerifier((handoff) => {
 			rbacVerifierReturnNavigation = { ...navigation };

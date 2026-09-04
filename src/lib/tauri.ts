@@ -30,6 +30,7 @@ import type {
 	DeploymentRevision,
 } from "./types";
 import { diagnosticLog, diagnosticResultSummary } from "./diagnostics";
+import { markProfileIpc, markStartup } from "./startup-marks";
 
 export {
 	createMockChannel,
@@ -105,6 +106,8 @@ export function createTauriClient(): TauriClient {
 			try {
 				// SAFETY: typed wrappers pass Tauri-serializable command objects; Tauri validates IPC encoding.
 				const result = await invoke<T>(cmd, args as InvokeArgs | undefined, options);
+				markProfileIpc(cmd, started, true);
+				if (cmd === "get_kubeconfig_sources") markStartup("kubeconfig-ready");
 				diagnosticLog("tauri.invoke.done", {
 					cmd,
 					ms: Math.round(performance.now() - started),
@@ -112,6 +115,7 @@ export function createTauriClient(): TauriClient {
 				});
 				return result;
 			} catch (error) {
+				markProfileIpc(cmd, started, false);
 				diagnosticLog("tauri.invoke.error", {
 					cmd,
 					ms: Math.round(performance.now() - started),

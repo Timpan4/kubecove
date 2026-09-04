@@ -1,4 +1,5 @@
 import "./App.css";
+import { markStartup } from "./lib/startup-marks";
 import { mount } from "svelte";
 import Root from "./app/svelte/Root.svelte";
 
@@ -10,3 +11,5 @@ if (!target) {
 }
 
 mount(Root, { target });
+
+markStartup("svelte-mount");
