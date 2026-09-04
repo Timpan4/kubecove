@@ -17,10 +17,10 @@
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import { diagnosticLog, setDiagnosticsEnabled } from "@/lib/diagnostics";
 	import { isAppUpdatesEnabled } from "@/lib/release-channel";
+	import { kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
 	import {
 		createTauriClient,
 		cancelWorkspaceRequests,
-		getKubeconfigSources,
 		setBackendDiagnosticsEnabled,
 		stopLiveSessionsOutsideScope,
 	} from "@/lib/tauri";
@@ -36,7 +36,7 @@
 		cancelWorkspaceWork,
 		createWorkspaceTransitionCoordinator,
 	} from "./workspaceTransition";
-	import { appUpdateActions } from "./appUpdateStore";
+	import { scheduleAutomaticUpdateCheck } from "./appUpdateStore";
 
 	const selectedWorkspace = workspaceStore.selectedWorkspace;
 	const diagnosticsClient = createTauriClient();
@@ -133,7 +133,7 @@
 	});
 
 	onMount(() => {
-		void getKubeconfigSources(liveSessionClient)
+		void queryClient.fetchQuery(kubeconfigSourcesQueryOptions(liveSessionClient))
 			.then((sources) => {
 				getSettingsSnapshot().setKubeconfigSources(sources);
 			})
@@ -146,7 +146,7 @@
 
 	onMount(() => {
 		if (!isAppUpdatesEnabled()) return;
-		void appUpdateActions.checkForUpdates({ manual: false });
+		return scheduleAutomaticUpdateCheck();
 	});
 
 	function syncDiagnostics(enabled: boolean) {

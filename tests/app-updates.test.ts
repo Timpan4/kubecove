@@ -8,6 +8,8 @@ import {
 } from "../src/features/app-updates/store";
 import type { AppUpdate, AppUpdateApi } from "../src/features/app-updates/types";
 import { setAppUpdatesEnabledForTests } from "../src/lib/release-channel";
+import { tick } from "svelte";
+import { scheduleAutomaticUpdateCheck } from "../src/app/svelte/appUpdateStore";
 
 function mockApi(update: AppUpdate | null): AppUpdateApi {
 	return {
@@ -17,6 +19,62 @@ function mockApi(update: AppUpdate | null): AppUpdateApi {
 }
 
 describe("app update store", () => {
+	test("automatic checks wait for the DOM flush and animation frame", async () => {
+		resetAppUpdateStateForTests();
+		let checks = 0;
+		setAppUpdateApiForTests({ check: async () => { checks += 1; return null; }, relaunch: async () => {} });
+		const originalRequest = globalThis.requestAnimationFrame;
+		const originalCancel = globalThis.cancelAnimationFrame;
+		const frames: FrameRequestCallback[] = [];
+		globalThis.requestAnimationFrame = (callback) => frames.push(callback) - 1;
+		globalThis.cancelAnimationFrame = () => {};
+		const cancel = scheduleAutomaticUpdateCheck();
+		try {
+			expect(frames).toHaveLength(0);
+			expect(checks).toBe(0);
+			await tick();
+			await Promise.resolve();
+			expect(frames).toHaveLength(1);
+			expect(checks).toBe(0);
+			frames[0]?.(0);
+			expect(checks).toBe(1);
+		} finally {
+			cancel();
+			globalThis.requestAnimationFrame = originalRequest;
+			globalThis.cancelAnimationFrame = originalCancel;
+			resetAppUpdateStateForTests();
+		}
+	});
+
+	for (const afterDomFlush of [false, true]) {
+		test(`unmount cancels automatic checks, after DOM flush: ${afterDomFlush}`, async () => {
+			resetAppUpdateStateForTests();
+			let checks = 0;
+			setAppUpdateApiForTests({ check: async () => { checks += 1; return null; }, relaunch: async () => {} });
+			const originalRequest = globalThis.requestAnimationFrame;
+			const originalCancel = globalThis.cancelAnimationFrame;
+			const frames: FrameRequestCallback[] = [];
+			const cancelled: number[] = [];
+			globalThis.requestAnimationFrame = (callback) => frames.push(callback) - 1;
+			globalThis.cancelAnimationFrame = (frame) => { cancelled.push(frame); };
+			try {
+				const cancel = scheduleAutomaticUpdateCheck();
+				if (afterDomFlush) { await tick(); await Promise.resolve(); }
+				cancel();
+				await tick();
+				await Promise.resolve();
+				for (const frame of frames) frame(0);
+				expect(checks).toBe(0);
+				expect(cancelled).toEqual(afterDomFlush ? [0] : []);
+				expect(frames).toHaveLength(afterDomFlush ? 1 : 0);
+			} finally {
+				globalThis.requestAnimationFrame = originalRequest;
+				globalThis.cancelAnimationFrame = originalCancel;
+				resetAppUpdateStateForTests();
+			}
+		});
+	}
+
 	test("launch check transitions to available when an update exists", async () => {
 		resetAppUpdateStateForTests();
 		setAppUpdateApiForTests(
@@ -141,7 +199,7 @@ describe("app update store", () => {
 
 		expect(appSource).toContain("isAppUpdatesEnabled()");
 		expect(appSource).toContain(
-			"appUpdateActions.checkForUpdates({ manual: false })",
+			"return scheduleAutomaticUpdateCheck()",
 		);
 		expect(buttonSource).toContain("isAppUpdatesEnabled()");
 		expect(buttonSource).toContain("{#if updatesEnabled}");

@@ -191,12 +191,12 @@
 	const argoDetectedQuery = createQuery(() => ({
 		queryKey: queryKeys.argoDetect(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () => detectArgoCD(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: sourceReady && restoreStatus.clusterAvailable,
+		enabled: sourceReady && restoreStatus.clusterAvailable && !namespacesQuery.isPending,
 	}));
 	const fluxDetectedQuery = createQuery(() => ({
 		queryKey: queryKeys.fluxDetect(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () => detectFlux(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: sourceReady && restoreStatus.clusterAvailable,
+		enabled: sourceReady && restoreStatus.clusterAvailable && !namespacesQuery.isPending,
 		staleTime: 60_000,
 	}));
 	const argoAppsQuery = createQuery(() => ({

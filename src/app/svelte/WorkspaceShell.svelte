@@ -66,10 +66,9 @@
 	} from "@/lib/workspace-entry-points";
 	import {
 		createTauriClient,
-		getKubeconfigSources,
 		listPresentCustomResourceKinds,
 	} from "@/lib/tauri";
-	import type { KubeconfigSourcesSummary } from "@/lib/types";
+	import { kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
 	import {
 		writePathState,
 		type PathStateDetailTab,
@@ -142,11 +141,7 @@
 
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
-	const workspaceSourceQuery = createQuery<KubeconfigSourcesSummary>(() => ({
-		queryKey: ["kubeconfig-sources"] as const,
-		queryFn: () => getKubeconfigSources(client),
-		staleTime: 30_000,
-	}));
+	const workspaceSourceQuery = createQuery(() => kubeconfigSourcesQueryOptions(client));
 	const workspaceReadContext = $derived(
 		buildWorkspaceReadContext({
 			workspace,
@@ -242,7 +237,7 @@
 			workspace.scope.namespaces,
 			kubeconfigSourceKey,
 		),
-		enabled: showCustomResources && Boolean(workspace.scope.clusterContext),
+		enabled: showCustomResources && workspaceReadContext.sourceReady && Boolean(workspace.scope.clusterContext),
 		staleTime: 30_000,
 		retry: false,
 	}));
@@ -267,6 +262,7 @@
 		),
 		enabled:
 			showCustomResources &&
+			workspaceReadContext.sourceReady &&
 			Boolean(workspace.scope.clusterContext) &&
 			includePresentCustomResources,
 		staleTime: 30_000,

@@ -49,13 +49,13 @@
 	} from "./workspace-sharing";
 	import {
 		createTauriClient,
-		getKubeconfigSources,
 		listKubeContexts,
 		listNamespaces,
 		pickWorkspaceImportJson,
 		saveWorkspaceExportJson,
 	} from "@/lib/tauri";
 	import { queryKeys } from "@/lib/queryKeys";
+	import { kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
 	import type { ClusterContext, NamespaceSummary } from "@/lib/types";
 	import {
 		buildWorkspaceInput,
@@ -97,11 +97,7 @@
 	];
 
 	const client = createTauriClient();
-	const sourceQuery = createQuery(() => ({
-		queryKey: ["kubeconfig-sources"] as const,
-		queryFn: () => getKubeconfigSources(client),
-		staleTime: 60_000,
-	}));
+	const sourceQuery = createQuery(() => kubeconfigSourcesQueryOptions(client));
 	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);
 	const kubeconfigSourceKey = $derived(sourceQuery.data?.sourceKey);
 	const contextsQuery = createQuery<ClusterContext[]>(() => ({

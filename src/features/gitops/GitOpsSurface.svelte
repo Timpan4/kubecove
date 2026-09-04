@@ -9,6 +9,7 @@
 		createTauriClient,
 		detectArgoCD,
 		detectFlux,
+		listNamespaces,
 		listArgoApplicationSets,
 		listArgoApplications,
 		listArgoAppProjects,
@@ -71,16 +72,22 @@
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
 	const context = $derived(workspace.scope.clusterContext);
+	const namespacesQuery = createQuery(() => ({
+		queryKey: queryKeys.namespaces(context, kubeconfigSourceKey),
+		queryFn: () => listNamespaces(client, context, kubeconfigSourceKey),
+		enabled: sourceReady,
+		retry: false,
+	}));
 	const argoDetectionQuery = createQuery<boolean>(() => ({
 		queryKey: queryKeys.argoDetect(context, kubeconfigSourceKey),
 		queryFn: () => detectArgoCD(client, context, kubeconfigSourceKey),
-		enabled: sourceReady,
+		enabled: sourceReady && !namespacesQuery.isPending,
 		staleTime: 60_000,
 	}));
 	const fluxDetectionQuery = createQuery(() => ({
 		queryKey: queryKeys.fluxDetect(context, kubeconfigSourceKey),
 		queryFn: () => detectFlux(client, context, kubeconfigSourceKey),
-		enabled: sourceReady,
+		enabled: sourceReady && !namespacesQuery.isPending,
 		staleTime: 60_000,
 	}));
 	const argoAppsQuery = createQuery<ArgoApplicationSummary[]>(() => ({

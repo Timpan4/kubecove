@@ -66,14 +66,14 @@
 	const argoDetectionQuery = createQuery<boolean>(() => ({
 		queryKey: queryKeys.argoDetect(clusterContext, kubeconfigSourceKey),
 		queryFn: () => detectArgoCD(client, clusterContext, kubeconfigSourceKey),
-		enabled: Boolean(clusterContext) && sourceReady,
+		enabled: Boolean(clusterContext) && sourceReady && !namespacesQuery.isPending,
 		staleTime: 60_000,
 	}));
 
 	const fluxDetectionQuery = createQuery<FluxDetectionSummary>(() => ({
 		queryKey: queryKeys.fluxDetect(clusterContext, kubeconfigSourceKey),
 		queryFn: () => detectFlux(client, clusterContext, kubeconfigSourceKey),
-		enabled: Boolean(clusterContext) && sourceReady,
+		enabled: Boolean(clusterContext) && sourceReady && !namespacesQuery.isPending,
 		staleTime: 60_000,
 	}));
 

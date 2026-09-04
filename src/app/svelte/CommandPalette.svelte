@@ -85,12 +85,10 @@
 	const sourceReady = $derived(workspaceReadContext.sourceReady);
 	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
 	const normalizedSourceKey = $derived(normalizeKubeconfigSourceKey(kubeconfigSourceKey));
-	const namespacesQuery = createQuery<string[]>(() => ({
+	const namespacesQuery = createQuery(() => ({
 		queryKey: queryKeys.namespaces(workspace.scope.clusterContext, kubeconfigSourceKey),
-		queryFn: async () =>
-			(await listNamespaces(client, workspace.scope.clusterContext, kubeconfigSourceKey)).map(
-				(namespace) => namespace.name,
-			),
+		queryFn: () => listNamespaces(client, workspace.scope.clusterContext, kubeconfigSourceKey),
+		select: (namespaces) => namespaces.map((namespace) => namespace.name),
 		enabled: open && sourceReady,
 		staleTime: 30_000,
 		retry: false,
@@ -99,7 +97,7 @@
 	const argoDetectionQuery = createQuery<boolean>(() => ({
 		queryKey: queryKeys.argoDetect(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () => detectArgoCD(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: open && sourceReady,
+		enabled: open && sourceReady && !namespacesQuery.isPending,
 		staleTime: 60_000,
 	}));
 	const argoAppsQuery = createQuery<ArgoApplicationSummary[]>(() => ({
@@ -127,7 +125,7 @@
 	const fluxDetectionQuery = createQuery(() => ({
 		queryKey: queryKeys.fluxDetect(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () => detectFlux(client, workspace.scope.clusterContext, kubeconfigSourceKey),
-		enabled: open && sourceReady,
+		enabled: open && sourceReady && !namespacesQuery.isPending,
 		staleTime: 60_000,
 	}));
 	const gitOpsDetectionReady = $derived(

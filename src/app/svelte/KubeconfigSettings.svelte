@@ -26,7 +26,6 @@
 	import {
 		addKubeconfigPaths,
 		createTauriClient,
-		getKubeconfigSources,
 		pickKubeconfigPaths,
 		removeKubeconfigPath,
 		reorderKubeconfigPaths,
@@ -36,8 +35,8 @@
 	import type { KubeconfigSourcesSummary } from "@/lib/types";
 	import SettingsRow from "./SettingsRow.svelte";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
+	import { KUBECONFIG_SOURCES_QUERY_KEY, kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
 
-	const KUBECONFIG_SOURCES_QUERY_KEY = ["kubeconfig-sources"] as const;
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
 	let envDraft = $state(getSettingsSnapshot().kubeconfigEnvVar);
@@ -45,11 +44,7 @@
 	let sourceActionBusy = $state(false);
 	let sourceActionError = $state<unknown>(null);
 	const settings = $derived($settingsStore);
-	const sourceQuery = createQuery<KubeconfigSourcesSummary>(() => ({
-		queryKey: KUBECONFIG_SOURCES_QUERY_KEY,
-		queryFn: () => getKubeconfigSources(client),
-		staleTime: 60_000,
-	}));
+	const sourceQuery = createQuery(() => kubeconfigSourcesQueryOptions(client));
 	const sources = $derived(sourceQuery.data ?? null);
 	const sourceBusy = $derived(sourceActionBusy || sourceQuery.isFetching);
 	const sourceError = $derived(

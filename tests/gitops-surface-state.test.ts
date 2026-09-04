@@ -98,4 +98,38 @@ describe("GitOps surface state", () => {
 		expect(state.query.isError).toBe(false);
 		expect(state.query.data?.apps).toHaveLength(1);
 	});
+
+	test("distinguishes deferred, failed, unavailable, and retried provider probes", () => {
+		const error = new Error("Provider discovery forbidden");
+		const deferred = { isSuccess: false, isError: false, isPending: true, error: null };
+		const failed = { isSuccess: false, isError: true, isPending: false, error };
+		const snapshots = {
+			argoApps: emptyList,
+			argoAppSets: emptyList,
+			argoProjects: emptyList,
+			fluxResources: [],
+		};
+		const pending = buildGitOpsReadState({ ...snapshots, argoDetection: deferred, fluxDetection: deferred });
+		expect(pending.query.isPending).toBe(true);
+		expect(pending.query.data).toBeUndefined();
+		const unavailable = buildGitOpsReadState({
+			...snapshots,
+			argoDetection: { ...readyDetection, data: false },
+			fluxDetection: { ...readyDetection, data: { detected: false } },
+		});
+		expect(unavailable.query.isPending).toBe(false);
+		expect(unavailable.providerError).toBeNull();
+		expect(unavailable.query.data?.argoDetected).toBe(false);
+		const failure = buildGitOpsReadState({ ...snapshots, argoDetection: failed, fluxDetection: failed });
+		expect(failure.query.isPending).toBe(false);
+		expect(failure.providerError).toBe(error);
+		const retried = buildGitOpsReadState({
+			...snapshots,
+			argoDetection: { ...readyDetection, data: true },
+			fluxDetection: { ...readyDetection, data: { detected: true } },
+		});
+		expect(retried.providerError).toBeNull();
+		expect(retried.query.data?.argoDetected).toBe(true);
+		expect(retried.query.data?.fluxDetected).toBe(true);
+	});
 });

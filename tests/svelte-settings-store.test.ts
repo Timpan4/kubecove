@@ -68,8 +68,7 @@ describe("svelte settings store", () => {
 		);
 
 		expect(source).toContain('import { createQuery, useQueryClient } from "@tanstack/svelte-query";');
-		expect(source).toContain('queryKey: KUBECONFIG_SOURCES_QUERY_KEY');
-		expect(source).toContain("queryFn: () => getKubeconfigSources(client)");
+		expect(source).toContain("createQuery(() => kubeconfigSourcesQueryOptions(client))");
 		expect(source).toContain("queryClient.setQueryData(KUBECONFIG_SOURCES_QUERY_KEY, next)");
 		expect(source).not.toContain("onMount");
 	});
