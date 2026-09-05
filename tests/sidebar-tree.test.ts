@@ -77,7 +77,7 @@ describe("sidebar namespace tree helpers", () => {
 		);
 		expect(sidebar).toContain("if (!showCustomResources) return node.children");
 		expect(shell).toContain(
-			"enabled: showCustomResources && Boolean(workspace.scope.clusterContext)",
+			"enabled: showCustomResources && workspaceReadContext.sourceReady && Boolean(workspace.scope.clusterContext)",
 		);
 		expect(shell).toContain("showCustomResources &&");
 		expect(shell).toContain("includePresentCustomResources");
