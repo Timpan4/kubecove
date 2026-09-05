@@ -46,6 +46,7 @@ describe("release-shaped startup profile", () => {
 		for (const name of ["frontend-entry", "svelte-mount", "path-restored", "kubeconfig-ready", "launcher-ready"]) {
 			expect(report.milestones.find((milestone) => milestone.name === name)?.atMs).not.toBeNull();
 		}
-		expect(report.ipc.commands.some((entry) => entry.command === "get_kubeconfig_sources")).toBe(true);
+		expect(report.ipc.commands.find((entry) => entry.command === "get_kubeconfig_sources")?.count).toBe(1);
+		expect(report.ipc.limitReached).toBe(false);
 	});
 });

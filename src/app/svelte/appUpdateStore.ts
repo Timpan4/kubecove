@@ -1,3 +1,4 @@
+import { tick } from "svelte";
 import { readable } from "svelte/store";
 import {
 	type AppUpdateState,
@@ -16,3 +17,18 @@ export const appUpdateActions = {
 	relaunchApp: () => useAppUpdateStore.getState().relaunchApp(),
 	dismissUpdate: (version: string) => useAppUpdateStore.getState().dismissUpdate(version),
 };
+
+export function scheduleAutomaticUpdateCheck(): () => void {
+	let cancelled = false;
+	let frame: number | undefined;
+	void tick().then(() => {
+		if (cancelled) return;
+		frame = requestAnimationFrame(() => {
+			if (!cancelled) void appUpdateActions.checkForUpdates({ manual: false });
+		});
+	});
+	return () => {
+		cancelled = true;
+		if (frame !== undefined) cancelAnimationFrame(frame);
+	};
+}
