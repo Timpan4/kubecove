@@ -9,6 +9,11 @@ updates:
       timezone: "Europe/Stockholm"
     commit-message:
       prefix: "chore(deps)"
+    # Re-enable after CodSpeed supports Vitest 5's rewritten benchmark API.
+    ignore:
+      - dependency-name: "vitest"
+        update-types:
+          - "version-update:semver-major"
     groups:
       bun-production-minor-patch:
         dependency-type: "production"
