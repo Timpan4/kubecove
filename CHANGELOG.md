@@ -3,6 +3,33 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.11.0 - 2026-09-11
+### Added
+
+- Add reviewed RBAC risk context (#398).
+
+### Improved
+
+- Split resource table model (#404).
+- Improve compact shared layouts (#400).
+- Skip irrelevant CI jobs (#396).
+- Deepen GitOps and resource reads (#334).
+
+### Fixed
+
+- Preserve structured watch error details (#439).
+- Open ReplicaSet details from topology (#438).
+- Load ReplicaSet details and YAML (#436).
+- Move health status details into badge tooltips (#435).
+- Preserve Rust error contracts and resource lifecycles (#431).
+- Show actionable workspace connection errors (#391).
+- Correctness, security, and performance findings from /improve audit (#389).
+- Incident Cockpit layout in compact windows (#387).
+- RBAC cockpit actions in compact windows (#385).
+- Preserve compact navigation state (#384).
+- Prevent resource graph scroll trapping (#383).
+- Update v0.10.10 Nix vendor hash (#382).
+
 ## 0.10.10 - 2026-08-19
 ### Fixed
 
