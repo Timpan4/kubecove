@@ -1,7 +1,7 @@
 {
   "name": "kubecove",
   "private": true,
-  "version": "0.10.10",
+  "version": "0.11.0",
   "packageManager": "bun@1.4.0",
   "license": "AGPL-3.0-or-later",
   "type": "module",
