@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ArgoOperationMonitor from "@/features/gitops/ArgoOperationMonitor.svelte";
 	import { markStartup } from "@/lib/startup-marks";
 	import { onMount } from "svelte";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
@@ -595,6 +596,8 @@
 	}
 
 </script>
+
+<ArgoOperationMonitor context={workspaceReadContext} />
 
 <SidebarProvider class="h-screen overflow-hidden bg-background text-foreground xl:gap-2 xl:p-2">
 	<Sidebar

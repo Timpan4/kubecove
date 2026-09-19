@@ -82,7 +82,7 @@ pub use sessions::{
     PortForwardRequest, PortForwardSessionSummary,
 };
 pub use streams::{
-    AggregatedLogStreamRequest, LogLineSource, PodLogStreamRequest, StreamMessage,
-    WatchResourceKey, WatchResourceKind, WatchResourceTarget,
+    AggregatedLogStreamRequest, LogLineSource, PodLogStreamRequest, ResourceCacheRefreshResult,
+    StreamMessage, WatchResourceKey, WatchResourceKind, WatchResourceTarget,
 };
 pub use usage::{AppUsageMetrics, AppUsageMetricsBreakdown};

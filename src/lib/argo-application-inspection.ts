@@ -173,11 +173,7 @@ export function argoApplicationInspectionQueryOptions(
 			),
 		enabled: spec.enabled,
 		staleTime: 30_000,
-		refetchInterval: (query: { state: { data?: ArgoApplicationInspector } }) =>
-			spec.request.transport === "connected" &&
-			query.state.data?.transport === "connected"
-				? 15_000
-				: false,
+		refetchInterval: (_query: { state: { data?: ArgoApplicationInspector } }) => 15_000,
 		refetchIntervalInBackground: false,
 		retry: false,
 		gcTime: spec.redactSecrets ? undefined : 0,

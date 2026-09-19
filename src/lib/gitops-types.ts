@@ -11,6 +11,8 @@ export interface ArgoApplicationSourceSummary {
 }
 
 export interface ArgoApplicationSummary {
+	operationPhase?: string | null;
+	refreshRequested?: string | null;
 	name: string;
 	cluster: string;
 	namespace: string | null;
@@ -158,6 +160,8 @@ export interface ArgoConnectedFallback {
 }
 
 export interface ArgoApplicationInspector {
+	operationRequested?: boolean;
+	refreshRequested?: string | null;
 	application: ArgoApplicationRef;
 	status: JsonValue;
 	history: ArgoApplicationHistory[];

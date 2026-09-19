@@ -1,11 +1,12 @@
 <script lang="ts">
+	import ResourceRefreshButton from "@/components/ResourceRefreshButton.svelte";
+	import { observeResourceScope } from "@/lib/resource-watch";
+	import { refreshCurrentView } from "@/lib/resource-refresh";
 	import { createQueries, createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import type { HealthFilter } from "@/features/resources";
 	import type { PathStateDetailTab } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
-		closeStreamChannel,
-		createStreamChannel,
 		createTauriClient,
 		detectArgoCD,
 		detectFlux,
@@ -14,7 +15,6 @@
 		listArgoApplications,
 		listArgoAppProjects,
 		listFluxResources,
-		startResourceWatchWithRetry,
 	} from "@/lib/tauri";
 	import type {
 		ArgoApplicationSetSummary,
@@ -25,6 +25,7 @@
 	import type { TreeNodeId } from "@/lib/tree-nav";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
 	import { createArgoListFreshness } from "./argo-application-freshness";
+	import { argoTrackingKey, getArgoOperationTracker } from "./argo-operation-tracker";
 	import GitOpsView from "./GitOpsView.svelte";
 	import {
 		buildGitOpsRailItems,
@@ -71,7 +72,18 @@
 
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
+	const tracker = getArgoOperationTracker(queryClient);
+	function trackedOperationLabel(selection: GitOpsSelection): string | null {
+		if (selection.type !== "argoApp") return null;
+		const operation = $tracker.get(argoTrackingKey({ name: selection.item.name, namespace: selection.item.namespace, context, workspaceId: workspace.id }, kubeconfigSourceKey));
+		if (!operation) return null;
+		const action = operation.request.action === "hardRefresh" ? "Hard refresh" : operation.request.action === "sync" ? "Sync" : "Refresh";
+		return `${action}: ${operation.phase}`;
+	}
 	const context = $derived(workspace.scope.clusterContext);
+	let realtimeMessage = $state("Starting live updates");
+	let realtimeError = $state<string | null>(null);
+
 	const namespacesQuery = createQuery(() => ({
 		queryKey: queryKeys.namespaces(context, kubeconfigSourceKey),
 		queryFn: () => listNamespaces(client, context, kubeconfigSourceKey),
@@ -90,6 +102,17 @@
 		enabled: sourceReady && !namespacesQuery.isPending,
 		staleTime: 60_000,
 	}));
+	const watchKeys = $derived([
+		...(argoDetectionQuery.data === true ? [
+			{ resourceKind: { kind: "Application", apiVersion: "argoproj.io/v1alpha1", plural: "applications", namespaced: true } },
+			{ resourceKind: { kind: "ApplicationSet", apiVersion: "argoproj.io/v1alpha1", plural: "applicationsets", namespaced: true } },
+			{ resourceKind: { kind: "AppProject", apiVersion: "argoproj.io/v1alpha1", plural: "appprojects", namespaced: true } },
+		] : []),
+		...(fluxDetectionQuery.data?.kinds ?? []).map((kind) => ({ resourceKind: kind })),
+	]);
+	function refreshView() {
+		return refreshCurrentView({ client, queryClient, clusterContext: context, kubeconfigEnvVar: kubeconfigSourceKey, keys: watchKeys, namespaces: [] });
+	}
 	const argoAppsQuery = createQuery<ArgoApplicationSummary[]>(() => ({
 		queryKey: queryKeys.argoApps(context, kubeconfigSourceKey),
 		queryFn: () => listArgoApplications(client, context, kubeconfigSourceKey),
@@ -160,28 +183,26 @@
 	});
 
 	$effect(() => {
-		if (!sourceReady || argoDetectionQuery.data !== true) return;
-		const freshness = createArgoListFreshness(
-			(queryKey) => void queryClient.invalidateQueries({ queryKey }),
-			kubeconfigSourceKey,
-		);
-		const channel = createStreamChannel(freshness.handle);
-		const stopWatchRetry = startResourceWatchWithRetry(
-			client,
-			context,
-			[
-				{ resourceKind: { kind: "Application", apiVersion: "argoproj.io/v1alpha1", plural: "applications", namespaced: true } },
-				{ resourceKind: { kind: "ApplicationSet", apiVersion: "argoproj.io/v1alpha1", plural: "applicationsets", namespaced: true } },
-				{ resourceKind: { kind: "AppProject", apiVersion: "argoproj.io/v1alpha1", plural: "appprojects", namespaced: true } },
-			],
-			channel,
-			kubeconfigSourceKey,
-		);
-		return () => {
-			freshness.dispose();
-			stopWatchRetry();
-			closeStreamChannel(channel);
-		};
+		if (!sourceReady || watchKeys.length === 0) return;
+		const clusterContext = context;
+		const source = kubeconfigSourceKey;
+		const keys = watchKeys;
+		const freshness = createArgoListFreshness((queryKey) => void queryClient.invalidateQueries({ queryKey }), source);
+		const stop = observeResourceScope({ client, clusterContext, keys, kubeconfigEnvVar: source,
+			onState: (state) => { realtimeMessage = state.message; realtimeError = state.error; },
+			reload: () => refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: source, keys, namespaces: [] }),
+			onChange: (event) => {
+				freshness.handle(event);
+				if (event.type === "resourceChanged") {
+					for (const kind of keys) {
+						if (kind.resourceKind.kind === event.target.kind && kind.resourceKind.apiVersion !== "argoproj.io/v1alpha1") {
+							void queryClient.invalidateQueries({ queryKey: ["flux-resources", queryKeys.argoApps(clusterContext, source)[1], clusterContext] });
+						}
+					}
+				}
+			},
+		});
+		return () => { stop(); freshness.dispose(); };
 	});
 
 	function openSelectedArgoApplicationResources(selectionOverride?: GitOpsSelection) {
@@ -211,6 +232,10 @@
 	}
 </script>
 
+<div class="flex flex-wrap items-center justify-between gap-2 pb-2">
+	<span class="text-xs text-muted-foreground" role="status">{realtimeMessage}{realtimeError ? ': ' + realtimeError : ''}</span>
+	{#key context + kubeconfigSourceKey}<ResourceRefreshButton onRefresh={refreshView} disabled={!sourceReady} />{/key}
+</div>
 <GitOpsView
 	{gitOpsQuery}
 	{gitOpsProviderError}
@@ -225,4 +250,5 @@
 	{openSelectedArgoApplicationResources}
 	{onResourceInspect}
 	{gitOpsStatusClass}
+	{trackedOperationLabel}
 />

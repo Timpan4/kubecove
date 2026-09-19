@@ -22,6 +22,9 @@ const RESOURCE_FRESHNESS: Duration = Duration::from_secs(30);
 const FLUX_INDEX_FRESHNESS: Duration = Duration::from_secs(30);
 const MAX_CACHE_ENTRIES: usize = 128;
 
+#[path = "live_store_refresh.rs"]
+mod refresh;
+
 type SharedLoad<T> = Shared<BoxFuture<'static, Result<T, AppError>>>;
 
 #[derive(Clone, Copy)]
@@ -671,7 +674,10 @@ pub(crate) fn present_custom_resource_kinds_cache_key(
 }
 
 fn is_cluster_scoped_kind(kind: &str) -> bool {
-    matches!(kind, "Node" | "StorageClass" | "PersistentVolume")
+    matches!(
+        kind,
+        "Node" | "StorageClass" | "PersistentVolume" | "CustomResourceDefinition"
+    )
 }
 
 fn is_known_typed_kind(kind: &str) -> bool {
@@ -692,6 +698,7 @@ fn is_known_typed_kind(kind: &str) -> bool {
             | "Node"
             | "StorageClass"
             | "PersistentVolume"
+            | "CustomResourceDefinition"
     )
 }
 

@@ -142,6 +142,7 @@ const handlers = {
 	lint_kubernetes_yaml: () => ({ diagnostics: [], notes: [] }),
 	list_resource_events: (args) => eventsFor(args),
 	list_resource_topology: (args) => topologyFor(args),
+	refresh_resource_cache: () => ({ clearedEntries: 1 }),
 	start_resource_watch: (args) => startStream(args?.channel, "mock-watch", "Resource watch connected"),
 	start_resource_event_watch: (args) => startStream(args?.channel, "mock-events", "Event watch connected"),
 	start_pod_log_stream: (args) => startLogStream(args?.channel),

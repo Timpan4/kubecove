@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { getArgoOperationTracker, argoTrackingKey } from "./argo-operation-tracker";
+	import { argoOperationProgress } from "./argo-operation-progress";
+	import ArgoOperationProgress from "./ArgoOperationProgress.svelte";
 	import { yamlLanguage } from "@codemirror/lang-yaml";
 	import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
@@ -71,8 +74,6 @@
 		cancelBackendRequests,
 		createTauriClient,
 		getArgoResourceComparison,
-		preflightArgoOperation,
-		runArgoOperation,
 	} from "@/lib/tauri";
 	import type {
 		ArgoApplicationHistory,
@@ -89,10 +90,6 @@
 		ResourceSummary,
 	} from "@/lib/types";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
-	import {
-		ArgoOperationRefreshError,
-		runArgoOperationLifecycle,
-	} from "./argo-operation-lifecycle";
 	import {
 		argoOperationAvailability,
 		argoOperationBlocker,
@@ -129,16 +126,12 @@
 	} = $props();
 
 	type DiffView = "changes" | "target" | "live";
-	type OperationPhase = "idle" | "authorizing" | "submitting" | "refreshing" | "accepted" | "error";
-	type ApplicationRefreshKeys = {
-		scopeKey: string;
-		applicationScope: readonly unknown[];
-		applicationList: readonly unknown[];
-	};
 	type YamlDiffSegment = { text: string; className: string };
 
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
+	const tracker = getArgoOperationTracker(queryClient);
+
 	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
 		cancelBackendRequests(client, cancelScope),
 	);
@@ -181,6 +174,14 @@
 		context: clusterContext,
 		workspaceId,
 	});
+	const trackingKey = $derived(argoTrackingKey(applicationRequest, kubeconfigEnvVar));
+	const trackedOperation = $derived($tracker.get(trackingKey));
+	const operationPhase = $derived(trackedOperation?.phase === "pending" ? "refreshing" : trackedOperation?.phase ?? "idle");
+	const operationMessage = $derived(trackedOperation?.message ?? null);
+	const operationError = $derived(trackedOperation?.error ?? null);
+	const acceptedRefreshPending = $derived(trackedOperation?.phase === "unknown");
+	const lastOperationRequest = $derived(trackedOperation?.request ?? null);
+
 	const statusReadSpec = $derived(
 		buildArgoConnectionStatusReadSpec({
 			profiles: $settingsStore.argoProfiles,
@@ -206,13 +207,7 @@
 	let confirmationOpen = $state(false);
 	let confirmationName = $state("");
 	let pendingSync = $state<ArgoSyncSettings | null>(null);
-	let operationPhase = $state<OperationPhase>("idle");
-	let operationMessage = $state<string | null>(null);
-	let operationError = $state<string | null>(null);
-	let acceptedRefreshPending = $state(false);
-	let lastOperationRequest = $state<ArgoOperationRequest | null>(null);
 	let appliedScopeKey = $state("");
-	let operationUiToken = 0;
 
 	const statuses = createQuery(() =>
 		argoConnectionStatusQueryOptions(client, {
@@ -429,13 +424,13 @@
 	const dataError = $derived(inspector.isError ? inspector.error : null);
 	const snapshotFreshness = $derived(
 		inspector.data?.connectedFallback
-			? "Connected Argo CD is unavailable; Kubernetes watch refreshes this fallback snapshot."
+			? "Connected Argo CD is unavailable; Kubernetes refreshes this fallback snapshot every 15 seconds while visible."
 			: inspector.data?.transport === "connected"
 				? "Connected Argo CD refreshes this snapshot every 15 seconds while visible."
-				: "Kubernetes watch refreshes this snapshot while visible.",
+				: "Kubernetes refreshes this snapshot every 15 seconds while visible.",
 	);
 	const busy = $derived(
-		operationPhase === "authorizing" || operationPhase === "submitting" || operationPhase === "refreshing",
+		Boolean(trackedOperation?.busy || (inspector.data && (argoOperationProgress(inspector.data).active || inspector.data.refreshRequested))),
 	);
 	const operationTarget = $derived(
 		argoOperationTarget(resourceSummary, clusterContext, transport),
@@ -453,16 +448,10 @@
 	$effect(() => {
 		const nextScopeKey = scopeKey;
 		if (appliedScopeKey && appliedScopeKey !== nextScopeKey) {
-			operationUiToken += 1;
 			selectedResource = null;
 			selectedHistoryKey = null;
 			diffView = "changes";
 			expandedRemovalKeys = [];
-			operationPhase = "idle";
-			operationMessage = null;
-			operationError = null;
-			acceptedRefreshPending = false;
-			lastOperationRequest = null;
 			pendingSync = null;
 			confirmationOpen = false;
 			confirmationName = "";
@@ -505,9 +494,6 @@
 			workspaceId,
 			normalizeArgoConnectionPreference(value),
 		);
-		operationError = null;
-		operationMessage = null;
-		operationPhase = "idle";
 	}
 
 	function operation(action: ArgoOperationAction): ArgoOperationRequest {
@@ -530,90 +516,12 @@
 		};
 	}
 
-	function captureApplicationRefreshKeys(
-		requested: ArgoOperationRequest,
-		mountedScopeKey: string,
-	): ApplicationRefreshKeys {
-		const { application } = requested;
-		const cluster = requested.clusterContext ?? application.context ?? "";
-		const workspace = application.workspaceId ?? "";
-		const source = requested.kubeconfigEnvVar ?? undefined;
-		return {
-			scopeKey: mountedScopeKey,
-			applicationScope: queryKeys.argoWorkspaceApplicationScope(
-				cluster,
-				workspace,
-				application.name,
-				application.namespace,
-				source,
-			),
-			applicationList: queryKeys.argoApps(cluster, source),
-		};
-	}
-
-	async function refreshApplicationState(keys: ApplicationRefreshKeys) {
-		await Promise.all([
-			queryClient.invalidateQueries({ queryKey: keys.applicationScope }),
-			queryClient.invalidateQueries({ queryKey: keys.applicationList }),
-		]);
-	}
-
 	async function executeOperation(requested: ArgoOperationRequest) {
-		const mountedScopeKey = scopeKey;
-		const refreshKeys = captureApplicationRefreshKeys(requested, mountedScopeKey);
-		const uiToken = ++operationUiToken;
-		const isCurrent = () => operationUiToken === uiToken && scopeKey === refreshKeys.scopeKey;
-		await runArgoOperationLifecycle({
-			request: requested,
-			preflight: (request) => preflightArgoOperation(client, request),
-			run: (confirmation) => runArgoOperation(client, confirmation),
-			refresh: () => refreshApplicationState(refreshKeys),
-			isCurrent,
-			onPhase: (phase, error) => {
-				operationPhase = phase;
-				if (phase === "authorizing") {
-					lastOperationRequest = requested;
-					acceptedRefreshPending = false;
-					operationError = null;
-					operationMessage = "Checking authorization and operation scope…";
-				} else if (phase === "submitting") {
-					operationMessage = `Submitting ${operationLabel(requested.action)}…`;
-				} else if (phase === "refreshing") {
-					operationMessage = `${operationLabel(requested.action)} accepted; refreshing Application state…`;
-				} else if (phase === "accepted") {
-					operationMessage = `${operationLabel(requested.action)} accepted; latest Application state loaded. Completion follows Argo CD operation state.`;
-				} else if (phase === "error") {
-					acceptedRefreshPending = error instanceof ArgoOperationRefreshError;
-					operationError = error instanceof Error ? error.message : String(error);
-					operationMessage = null;
-				}
-			},
-		}).catch(() => {});
+		if (!busy) await tracker.run(requested);
 	}
 
 	async function retryAcceptedRefresh() {
-		if (!acceptedRefreshPending || busy || !lastOperationRequest) return;
-		const requested = lastOperationRequest;
-		const mountedScopeKey = scopeKey;
-		const refreshKeys = captureApplicationRefreshKeys(requested, mountedScopeKey);
-		const uiToken = ++operationUiToken;
-		const isCurrent = () => operationUiToken === uiToken && scopeKey === refreshKeys.scopeKey;
-		const label = operationLabel(requested.action);
-		operationError = null;
-		operationPhase = "refreshing";
-		operationMessage = `${label} accepted; retrying Application state refresh…`;
-		try {
-			await refreshApplicationState(refreshKeys);
-			if (!isCurrent()) return;
-			acceptedRefreshPending = false;
-			operationPhase = "accepted";
-			operationMessage = `${label} accepted; latest Application state loaded. Completion follows Argo CD operation state.`;
-		} catch (error) {
-			if (!isCurrent()) return;
-			operationPhase = "error";
-			operationError = new ArgoOperationRefreshError(error).message;
-			operationMessage = null;
-		}
+		await tracker.observe(trackingKey);
 	}
 
 	function refresh(hard = false) {
@@ -788,11 +696,6 @@
 		return String(value) === value;
 	}
 
-	function operationLabel(action: ArgoOperationAction): string {
-		if (action === "hardRefresh") return "Hard refresh";
-		if (action === "sync") return "Sync";
-		return "Refresh";
-	}
 </script>
 
 <div class="@container flex min-h-0 min-w-0 flex-col gap-3 [&_button]:motion-reduce:transition-none" data-active={active}>
@@ -922,6 +825,7 @@
 		</div>
 	</div>
 
+	{#if inspector.data}<ArgoOperationProgress inspector={inspector.data} />{/if}
 	{#if operationMessage}
 		<div class="flex items-center gap-2 rounded-lg border bg-surface-1 p-3 text-xs" role="status" aria-live="polite" aria-atomic="true">
 			{#if busy}<Spinner class="size-3.5" />{/if}<span>{operationMessage}</span>
@@ -938,7 +842,7 @@
 							? "Provider connection blocker"
 							: "Operation support blocker"}
 			</AlertTitle>
-			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{operationError}</span>{#if acceptedRefreshPending}<Button type="button" size="sm" variant="outline" disabled={busy} onclick={() => void retryAcceptedRefresh()}>Retry state refresh</Button>{:else if lastOperationRequest}<Button type="button" size="sm" variant="outline" disabled={busy} onclick={retryOperation}>Retry operation</Button>{/if}</AlertDescription>
+			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{operationError}</span>{#if acceptedRefreshPending}<Button type="button" size="sm" variant="outline" onclick={() => void retryAcceptedRefresh()}>Retry state refresh</Button>{:else if lastOperationRequest}<Button type="button" size="sm" variant="outline" disabled={busy} onclick={retryOperation}>Retry operation</Button>{/if}</AlertDescription>
 		</Alert>
 	{/if}
 	{#if dataError}
