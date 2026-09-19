@@ -1,4 +1,4 @@
-use super::*;
+use super::{context_cache_key, watch_kind_keys, CacheEntry, ClusterLiveStore, SharedCache};
 use crate::models::WatchResourceKey;
 
 impl<T> SharedCache<T> {
@@ -72,6 +72,9 @@ impl ClusterLiveStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::live_store::{resource_cache_key, CacheMode, ScopeNamespace};
+    use crate::models::{AppError, WatchResourceKind};
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn refresh_evicts_covered_scope_without_clearing_other_namespaces_or_contexts() {
@@ -96,7 +99,7 @@ mod tests {
         let key = WatchResourceKey {
             resource_kind: WatchResourceKind {
                 kind: "Pod".into(),
-                group: Some("".into()),
+                group: Some(String::new()),
                 version: Some("v1".into()),
                 api_version: Some("v1".into()),
                 plural: Some("pods".into()),
