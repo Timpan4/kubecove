@@ -179,7 +179,7 @@
 	const operationPhase = $derived(trackedOperation?.phase === "pending" ? "refreshing" : trackedOperation?.phase ?? "idle");
 	const operationMessage = $derived(trackedOperation?.message ?? null);
 	const operationError = $derived(trackedOperation?.error ?? null);
-	const acceptedRefreshPending = $derived(trackedOperation?.phase === "unknown");
+	const observationPending = $derived(trackedOperation?.phase === "unknown");
 	const lastOperationRequest = $derived(trackedOperation?.request ?? null);
 
 	const statusReadSpec = $derived(
@@ -834,15 +834,15 @@
 	{#if operationError}
 		<Alert variant="destructive">
 			<AlertTitle>
-				{acceptedRefreshPending
-					? "Application refresh failed"
+				{observationPending
+					? "Operation status unavailable"
 					: operationBlocker === "permission"
 						? "Permission blocker"
 						: operationBlocker === "provider connection"
 							? "Provider connection blocker"
 							: "Operation support blocker"}
 			</AlertTitle>
-			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{operationError}</span>{#if acceptedRefreshPending}<Button type="button" size="sm" variant="outline" onclick={() => void retryAcceptedRefresh()}>Retry state refresh</Button>{:else if lastOperationRequest}<Button type="button" size="sm" variant="outline" disabled={busy} onclick={retryOperation}>Retry operation</Button>{/if}</AlertDescription>
+			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{operationError}</span>{#if observationPending}<Button type="button" size="sm" variant="outline" onclick={() => void retryAcceptedRefresh()}>Retry state refresh</Button>{:else if lastOperationRequest}<Button type="button" size="sm" variant="outline" disabled={busy} onclick={retryOperation}>Retry operation</Button>{/if}</AlertDescription>
 		</Alert>
 	{/if}
 	{#if dataError}

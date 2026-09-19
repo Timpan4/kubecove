@@ -187,6 +187,7 @@
 		const clusterContext = context;
 		const source = kubeconfigSourceKey;
 		const keys = watchKeys;
+		const fluxKinds = fluxDetectionQuery.data?.kinds ?? [];
 		const freshness = createArgoListFreshness((queryKey) => void queryClient.invalidateQueries({ queryKey }), source);
 		const stop = observeResourceScope({ client, clusterContext, keys, kubeconfigEnvVar: source,
 			onState: (state) => { realtimeMessage = state.message; realtimeError = state.error; },
@@ -194,9 +195,9 @@
 			onChange: (event) => {
 				freshness.handle(event);
 				if (event.type === "resourceChanged") {
-					for (const kind of keys) {
-						if (kind.resourceKind.kind === event.target.kind && kind.resourceKind.apiVersion !== "argoproj.io/v1alpha1") {
-							void queryClient.invalidateQueries({ queryKey: ["flux-resources", queryKeys.argoApps(clusterContext, source)[1], clusterContext] });
+					for (const kind of fluxKinds) {
+						if (kind.kind === event.target.kind && kind.apiVersion !== "argoproj.io/v1alpha1") {
+							void queryClient.invalidateQueries({ queryKey: queryKeys.fluxResources(clusterContext, kind, source) });
 						}
 					}
 				}
