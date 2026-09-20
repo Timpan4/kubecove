@@ -84,6 +84,7 @@
 	let realtimeMessage = $state("Starting live updates");
 	let realtimeStatus = $state("connecting");
 	let realtimeError = $state<string | null>(null);
+	let reloadError = $state<string | null>(null);
 
 	const namespacesQuery = createQuery(() => ({
 		queryKey: queryKeys.namespaces(context, kubeconfigSourceKey),
@@ -191,10 +192,11 @@
 		const fluxKinds = fluxDetectionQuery.data?.kinds ?? [];
 		const freshness = createArgoListFreshness((queryKey) => void queryClient.invalidateQueries({ queryKey }), source);
 		const stop = observeResourceScope({ client, clusterContext, keys, kubeconfigEnvVar: source,
-			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; },
+			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; },
 			reload: () => refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: source, keys, namespaces: [] }),
 			onChange: (event) => {
-				freshness.handle(event);
+				// The workspace monitor keeps Application lists fresh across navigation.
+				if (event.type !== "resourceChanged" || event.target.kind !== "Application") freshness.handle(event);
 				if (event.type === "resourceChanged") {
 					for (const kind of fluxKinds) {
 						if (kind.kind === event.target.kind && kind.apiVersion !== "argoproj.io/v1alpha1") {
@@ -239,7 +241,8 @@
 		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady}
 			status={watchKeys.length ? realtimeStatus : "idle"}
 			message={watchKeys.length ? realtimeMessage : "No live resource watches in this view."}
-			connectionError={realtimeError} />
+			connectionError={watchKeys.length ? realtimeError : null}
+			reloadError={watchKeys.length ? reloadError : null} />
 	{/key}
 {/snippet}
 <GitOpsView

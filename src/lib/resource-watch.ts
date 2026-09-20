@@ -15,6 +15,7 @@ export interface ResourceWatchState {
 	status: "connecting" | "connected" | "reconnecting";
 	message: string;
 	error: string | null;
+	reloadError?: string | null;
 }
 
 interface WatchRegistration {
@@ -48,7 +49,8 @@ export function observeResourceScope({
 	let disposed = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let reloading = false;
-	let wasConnected = false;
+	let needsCatchUp = false;
+	let reloadError: string | null = null;
 	const watches: WatchRegistration[] = keys.map((key) => ({
 		key,
 		id: null,
@@ -63,15 +65,12 @@ export function observeResourceScope({
 		reloading = true;
 		try {
 			await reload();
+			reloadError = null;
 		} catch (error) {
-			if (!disposed)
-				onState({
-					status: "reconnecting",
-					message: "Automatic reload failed; retrying",
-					error: messageFromError(error),
-				});
+			reloadError = messageFromError(error);
 		} finally {
 			reloading = false;
+			publish();
 		}
 	}
 	function publish() {
@@ -84,9 +83,12 @@ export function observeResourceScope({
 				? "Live updates connected"
 				: "Reconnecting; periodically reloading this view",
 			error: watches.find((watch) => watch.error)?.error ?? null,
+			reloadError,
 		});
-		if (connected && !wasConnected) void refresh();
-		wasConnected = connected;
+		if (connected && needsCatchUp) {
+			needsCatchUp = false;
+			void refresh();
+		}
 	}
 	function start(watch: (typeof watches)[number]) {
 		if (disposed || watch.opening || watch.id) return;
@@ -95,13 +97,16 @@ export function observeResourceScope({
 			if (disposed || watch.channel !== channel) return;
 			if (event.type === "status") {
 				watch.connected = event.status === "connected";
+				if (!watch.connected) needsCatchUp = true;
 				if (watch.connected) watch.error = null;
 			} else if (event.type === "error") {
 				watch.connected = false;
 				watch.error = event.message;
+				needsCatchUp = true;
 			} else if (event.type === "stopped") {
 				watch.connected = false;
 				watch.id = null;
+				needsCatchUp = true;
 				closeStreamChannel(channel);
 			} else if (event.type === "resourceChanged") {
 				onChange(event);
@@ -128,6 +133,7 @@ export function observeResourceScope({
 				watch.opening = false;
 				watch.error = messageFromError(error);
 				watch.connected = false;
+				needsCatchUp = true;
 				closeStreamChannel(channel);
 				publish();
 			});
@@ -135,13 +141,15 @@ export function observeResourceScope({
 	function tick() {
 		if (disposed) return;
 		for (const watch of watches) start(watch);
-		if (!watches.every((watch) => watch.connected)) void refresh();
+		if (!watches.every((watch) => watch.connected)) needsCatchUp = true;
+		if (needsCatchUp || reloadError) void refresh();
 		timer = setTimeout(tick, RESOURCE_RECOVERY_INTERVAL);
 	}
 	onState({
 		status: "connecting",
 		message: "Starting live updates",
 		error: null,
+		reloadError: null,
 	});
 	for (const watch of watches) start(watch);
 	timer = setTimeout(tick, RESOURCE_RECOVERY_INTERVAL);

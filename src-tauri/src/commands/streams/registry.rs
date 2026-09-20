@@ -11,16 +11,40 @@ use tauri::{async_runtime::JoinHandle, ipc::Channel};
 #[derive(Clone)]
 pub(super) struct StreamBroadcaster {
     subscribers: Arc<Mutex<HashMap<String, Channel<StreamMessage>>>>,
+    connection: Arc<Mutex<ConnectionState>>,
+}
+
+#[derive(Default)]
+struct ConnectionState {
+    status: Option<(String, String)>,
+    error: Option<String>,
 }
 
 impl StreamBroadcaster {
     fn new() -> Self {
         Self {
             subscribers: Arc::new(Mutex::new(HashMap::new())),
+            connection: Arc::new(Mutex::new(ConnectionState::default())),
         }
     }
 
     fn add(&self, stream_id: String, channel: Channel<StreamMessage>) {
+        // Serialize replay with status changes so a late subscriber cannot receive
+        // an older connection state after a newer broadcast.
+        let connection = self.connection.lock().expect("stream connection lock");
+        if let Some(message) = &connection.error {
+            let _ = channel.send(StreamMessage::Error {
+                stream_id: stream_id.clone(),
+                message: message.clone(),
+            });
+        }
+        if let Some((status, message)) = &connection.status {
+            let _ = channel.send(StreamMessage::Status {
+                stream_id: stream_id.clone(),
+                status: status.clone(),
+                message: message.clone(),
+            });
+        }
         self.subscribers
             .lock()
             .expect("stream subscribers lock")
@@ -70,6 +94,11 @@ impl StreamBroadcaster {
     }
 
     pub(super) fn status(&self, status: &str, message: String) -> bool {
+        let mut connection = self.connection.lock().expect("stream connection lock");
+        connection.status = Some((status.to_string(), message.clone()));
+        if status == "connected" {
+            connection.error = None;
+        }
         let status = status.to_string();
         self.send(move |stream_id| StreamMessage::Status {
             stream_id: stream_id.to_string(),
@@ -79,6 +108,9 @@ impl StreamBroadcaster {
     }
 
     pub(super) fn error(&self, message: String) -> bool {
+        let mut connection = self.connection.lock().expect("stream connection lock");
+        connection.status = None;
+        connection.error = Some(message.clone());
         self.send(move |stream_id| StreamMessage::Error {
             stream_id: stream_id.to_string(),
             message: message.clone(),
@@ -374,6 +406,51 @@ fn event_watch_key(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn late_subscribers_receive_current_connection_and_clear_recovered_errors() {
+        use tauri::ipc::InvokeResponseBody;
+        let broadcaster = StreamBroadcaster::new();
+        let messages = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+        let observed = messages.clone();
+        let channel = Channel::new(move |body| {
+            let InvokeResponseBody::Json(body) = body else {
+                panic!("expected JSON")
+            };
+            observed
+                .lock()
+                .unwrap()
+                .push(serde_json::from_str(&body).unwrap());
+            Ok(())
+        });
+        broadcaster.status("connected", "watching".into());
+        broadcaster.add("first".into(), channel.clone());
+        assert_eq!(messages.lock().unwrap()[0]["status"], "connected");
+        broadcaster.error("offline".into());
+        broadcaster.status("reconnecting", "retrying".into());
+        broadcaster.add("second".into(), channel.clone());
+        let second: Vec<_> = messages
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m["streamId"] == "second")
+            .cloned()
+            .collect();
+        assert_eq!(second.len(), 2);
+        assert_eq!(second[0]["message"], "offline");
+        assert_eq!(second[1]["status"], "reconnecting");
+        broadcaster.status("connected", "recovered".into());
+        broadcaster.add("third".into(), channel);
+        let third: Vec<_> = messages
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m["streamId"] == "third")
+            .cloned()
+            .collect();
+        assert_eq!(third.len(), 1);
+        assert_eq!(third[0]["status"], "connected");
+    }
 
     fn pending_task() -> (JoinHandle<()>, tokio::sync::oneshot::Receiver<()>) {
         let (sender, receiver) = tokio::sync::oneshot::channel();

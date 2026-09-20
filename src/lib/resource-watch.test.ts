@@ -9,6 +9,60 @@ import type { StreamMessage } from "./types";
 
 afterEach(() => jest.useRealTimers());
 
+test("healthy startup and watch renewals do not reload the view", async () => {
+	jest.useFakeTimers();
+	let channel!: ReturnType<typeof createMockChannel<StreamMessage>>;
+	let reloads = 0;
+	const stop = observeResourceScope({
+		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
+		clusterContext: "dev",
+		keys: [{ resourceKind: { kind: "Pod" } }],
+		onState: () => {},
+		onChange: () => {},
+		reload: async () => { reloads++; },
+		openChannel: (handler) => { channel = createMockChannel(handler); return channel; },
+	});
+	await Promise.resolve();
+	try {
+		channel.onmessage({ type: "status", streamId: "watch", status: "connected", message: "connected" });
+		await Promise.resolve();
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		channel.onmessage({ type: "status", streamId: "watch", status: "connected", message: "renewed" });
+		expect(reloads).toBe(0);
+	} finally { stop(); }
+});
+
+test("a failed reload cannot mark a recovered watch as disconnected and clears after retry", async () => {
+	jest.useFakeTimers();
+	let channel!: ReturnType<typeof createMockChannel<StreamMessage>>;
+	const states: ResourceWatchState[] = [];
+	let rejectReload!: (error: Error) => void;
+	let reloads = 0;
+	const stop = observeResourceScope({
+		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
+		clusterContext: "dev",
+		keys: [{ resourceKind: { kind: "Pod" } }],
+		onState: (state) => states.push(state),
+		onChange: () => {},
+		reload: () => ++reloads === 1 ? new Promise<void>((_, reject) => { rejectReload = reject; }) : Promise.resolve(),
+		openChannel: (handler) => { channel = createMockChannel(handler); return channel; },
+	});
+	await Promise.resolve();
+	try {
+		channel.onmessage({ type: "error", streamId: "watch", message: "offline" });
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		channel.onmessage({ type: "status", streamId: "watch", status: "connected", message: "recovered" });
+		rejectReload(new Error("list unavailable"));
+		await Promise.resolve();
+		expect(states.at(-1)).toMatchObject({ status: "connected", error: null, reloadError: "list unavailable" });
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		await Promise.resolve();
+		expect(states.at(-1)).toMatchObject({ status: "connected", error: null, reloadError: null });
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		expect(reloads).toBe(2);
+	} finally { stop(); }
+});
+
 test("a healthy kind cannot hide a failed watch; fallback reloads stop after recovery", async () => {
 	jest.useFakeTimers();
 	const channels: Array<ReturnType<typeof createMockChannel<StreamMessage>>> =

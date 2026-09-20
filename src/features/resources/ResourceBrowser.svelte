@@ -238,6 +238,7 @@
 	let realtimeStatus = $state("idle");
 	let realtimeMessage = $state("Realtime idle");
 	let realtimeError = $state<unknown>("");
+	let reloadError = $state<string | null>(null);
 	let tableViewportElement = $state<HTMLDivElement | null>(null);
 	let initialPathStateConsumed = $state(false);
 	const showFullTopologyOnSelection = $derived($settingsStore.showFullTopologyOnSelection);
@@ -855,7 +856,7 @@
 		let debounce: ReturnType<typeof setTimeout> | null = null;
 		const reload = () => refreshCurrentView({ client, queryClient, clusterContext: context, kubeconfigEnvVar: source, keys: watchKeys, namespaces });
 		const stop = observeResourceScope({ client, clusterContext: context, keys: watchKeys, kubeconfigEnvVar: source,
-			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; },
+			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; },
 			reload,
 			onChange: () => {
 				if (debounce) return;
@@ -995,7 +996,7 @@
 {#snippet refreshControls()}
 	{#key clusterContext + kubeconfigSourceKey}
 		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady || !clusterContext}
-			status={realtimeStatus} message={realtimeMessage} connectionError={realtimeError} />
+			status={realtimeStatus} message={realtimeMessage} connectionError={realtimeError} {reloadError} />
 	{/key}
 {/snippet}
 
