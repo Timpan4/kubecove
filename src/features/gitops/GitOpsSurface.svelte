@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ResourceRefreshButton from "@/components/ResourceRefreshButton.svelte";
+	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
 	import { observeResourceScope } from "@/lib/resource-watch";
 	import { refreshCurrentView } from "@/lib/resource-refresh";
 	import { createQueries, createQuery, useQueryClient } from "@tanstack/svelte-query";
@@ -82,6 +82,7 @@
 	}
 	const context = $derived(workspace.scope.clusterContext);
 	let realtimeMessage = $state("Starting live updates");
+	let realtimeStatus = $state("connecting");
 	let realtimeError = $state<string | null>(null);
 
 	const namespacesQuery = createQuery(() => ({
@@ -190,7 +191,7 @@
 		const fluxKinds = fluxDetectionQuery.data?.kinds ?? [];
 		const freshness = createArgoListFreshness((queryKey) => void queryClient.invalidateQueries({ queryKey }), source);
 		const stop = observeResourceScope({ client, clusterContext, keys, kubeconfigEnvVar: source,
-			onState: (state) => { realtimeMessage = state.message; realtimeError = state.error; },
+			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; },
 			reload: () => refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: source, keys, namespaces: [] }),
 			onChange: (event) => {
 				freshness.handle(event);
@@ -233,11 +234,16 @@
 	}
 </script>
 
-<div class="flex flex-wrap items-center justify-between gap-2 pb-2">
-	<span class="text-xs text-muted-foreground" role="status">{realtimeMessage}{realtimeError ? ': ' + realtimeError : ''}</span>
-	{#key context + kubeconfigSourceKey}<ResourceRefreshButton onRefresh={refreshView} disabled={!sourceReady} />{/key}
-</div>
+{#snippet refreshControls()}
+	{#key context + kubeconfigSourceKey}
+		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady}
+			status={watchKeys.length ? realtimeStatus : "idle"}
+			message={watchKeys.length ? realtimeMessage : "No live resource watches in this view."}
+			connectionError={realtimeError} />
+	{/key}
+{/snippet}
 <GitOpsView
+	{refreshControls}
 	{gitOpsQuery}
 	{gitOpsProviderError}
 	{gitOpsListError}

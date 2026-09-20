@@ -17,6 +17,7 @@
 		errorLabel,
 		wide = false,
 		children,
+		headerActions,
 	}: {
 		icon: LucideComponent;
 		title: string;
@@ -24,6 +25,7 @@
 		errorLabel: string;
 		wide?: boolean;
 		children: Snippet;
+		headerActions?: Snippet;
 	} = $props();
 
 </script>
@@ -38,6 +40,7 @@
 		<div>
 			<h2 class="font-heading text-lg font-semibold">{title}</h2>
 		</div>
+		{@render headerActions?.()}
 	</header>
 	{#if query.isPending}
 		<div class="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">

@@ -12,7 +12,7 @@
 </script>
 
 <script lang="ts">
-	import ResourceRefreshButton from "@/components/ResourceRefreshButton.svelte";
+	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
 	import { refreshCurrentView } from "@/lib/resource-refresh";
 	import { observeResourceScope } from "@/lib/resource-watch";
 	import { markStartup } from "@/lib/startup-marks";
@@ -992,10 +992,17 @@
 	}
 </script>
 
-<div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
+{#snippet refreshControls()}
 	{#key clusterContext + kubeconfigSourceKey}
-		<ResourceRefreshButton onRefresh={refreshView} disabled={!sourceReady || !clusterContext} />
+		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady || !clusterContext}
+			status={realtimeStatus} message={realtimeMessage} connectionError={realtimeError} />
 	{/key}
+{/snippet}
+
+<div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
+	{#if !clusterContext || fetchKeys.length === 0 || resourceError || loading}
+		<div class="flex justify-end">{@render refreshControls()}</div>
+	{/if}
 	{#if gitOpsFocusApplication}
 		<ArgoApplicationWorkspaceHeader
 			app={gitOpsFocusApplication}
@@ -1053,8 +1060,7 @@
 			{hideHistoricalReplicaSets}
 			{metricsMessage}
 			{customResourcesStatus}
-			{realtimeStatus}
-			{realtimeMessage}
+			{refreshControls}
 			onAllNamespacesSelect={() => {
 				selectedNamespaces = [];
 				pageIndex = 0;
@@ -1076,17 +1082,6 @@
 			onSearchInput={() => (pageIndex = 0)}
 			onClearFilters={clearFilters}
 		/>
-		{#if realtimeError}
-			<FriendlyError
-				mode="compact"
-				error={realtimeError}
-				context={{
-					operation: "resourcesLoad",
-					fallbackTitle: "Realtime watch failed",
-					partial: true,
-				}}
-			/>
-		{/if}
 
 		<div
 			class={inspectorOpen && mapPanelOpen && tablePanelOpen
