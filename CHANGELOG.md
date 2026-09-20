@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.11.1 - 2026-09-20
+### Fixed
+
+- Live updates, cache refresh, and Argo CD operation tracking (#457).
+
 ## 0.11.0 - 2026-09-11
 ### Added
 
