@@ -28,6 +28,7 @@ import type {
 	KubeconfigSourcesSummary,
 	CancellableRequest,
 	DeploymentRevision,
+	WatchResourceKey,
 } from "./types";
 import { diagnosticLog, diagnosticResultSummary } from "./diagnostics";
 import { markProfileIpc, markStartup } from "./startup-marks";
@@ -47,6 +48,7 @@ import { shouldUseBrowserDevMocks } from "./tauri-runtime";
 import type { TauriClient } from "./tauri-runtime";
 
 const inFlightInvokes = new WeakMap<TauriClient, Map<string, Promise<unknown>>>();
+const readGenerations = new Map<string, number>();
 
 function sortedScopeKey(values: string[]): string {
 	return [...new Set(values)].sort((a, b) => a.localeCompare(b)).join(",");
@@ -57,6 +59,7 @@ function coalescedInvoke<T>(
 	key: string,
 	invokeCommand: () => Promise<T>,
 ): Promise<T> {
+	key = `${readGenerations.get(key) ?? 0}:${key}`;
 	let clientInvokes = inFlightInvokes.get(client);
 	if (!clientInvokes) {
 		clientInvokes = new Map();
@@ -73,6 +76,20 @@ function coalescedInvoke<T>(
 	});
 	clientInvokes.set(key, request);
 	return request;
+}
+
+export function refreshResourceCache(
+	client: TauriClient,
+	clusterContext: string,
+	keys: WatchResourceKey[],
+	namespaces: string[],
+	kubeconfigEnvVar?: string,
+): Promise<{ clearedEntries: number }> {
+	const scope = `${kubeconfigEnvVar ?? ""}:${clusterContext}`;
+	for (const key of [`list_namespaces:${scope}`, `list_resource_kinds:${scope}`, `list_present_custom_resource_kinds:${scope}:${sortedScopeKey(namespaces)}`]) {
+		readGenerations.set(key, (readGenerations.get(key) ?? 0) + 1);
+	}
+	return client.invoke("refresh_resource_cache", { clusterContext, keys, namespaces, ...kubeconfigArg(kubeconfigEnvVar) });
 }
 
 function errorMessage(cause: unknown): string {

@@ -53,6 +53,20 @@ pub(super) fn application_summary_from_object(
             .and_then(|project| project.as_str())
             .map(String::from),
         sync_status: sync_status.map(String::from),
+        operation_phase: if data.get("operation").is_some_and(|value| !value.is_null()) {
+            Some("Running".into())
+        } else {
+            obj.data
+                .pointer("/status/operationState/phase")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        },
+        refresh_requested: obj
+            .metadata
+            .annotations
+            .as_ref()
+            .and_then(|annotations| annotations.get("argocd.argoproj.io/refresh"))
+            .cloned(),
         health_status: health_status.map(String::from),
         health_assessment,
         destination_server: data
@@ -365,6 +379,24 @@ mod tests {
             Some("https://git.example/apps")
         );
         assert_eq!(summary.resource_namespaces, vec!["payments"]);
+    }
+
+    #[test]
+    fn exposes_external_operation_and_refresh_state() {
+        let mut object = application(json!({
+            "operation": { "sync": {} },
+            "status": { "operationState": { "phase": "Succeeded" } }
+        }));
+        object.metadata.annotations = Some(std::collections::BTreeMap::from([(
+            "argocd.argoproj.io/refresh".into(),
+            "hard".into(),
+        )]));
+        let summary = application_summary_from_object("dev", &object).unwrap();
+        assert_eq!(summary.operation_phase.as_deref(), Some("Running"));
+        assert_eq!(summary.refresh_requested.as_deref(), Some("hard"));
+        object.data.as_object_mut().unwrap().remove("operation");
+        let completed = application_summary_from_object("dev", &object).unwrap();
+        assert_eq!(completed.operation_phase.as_deref(), Some("Succeeded"));
     }
 
     #[test]

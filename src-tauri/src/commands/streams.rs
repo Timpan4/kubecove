@@ -125,6 +125,34 @@ fn validate_aggregated_log_stream_request(
 }
 
 #[tauri::command]
+pub async fn refresh_resource_cache(
+    cluster_context: String,
+    mut keys: Vec<WatchResourceKey>,
+    namespaces: Vec<String>,
+    kubeconfig_env_var: Option<String>,
+    live_store: State<'_, ClusterLiveStore>,
+) -> Result<crate::models::ResourceCacheRefreshResult, AppError> {
+    if cluster_context.trim().is_empty() {
+        return Err(AppError::new(
+            "resource context is required",
+            AppErrorKind::Validation,
+        ));
+    }
+    for key in &mut keys {
+        crate::commands::helpers::validate_namespace(key.namespace.as_deref())?;
+        kinds::api_resource_from_kind(&key.resource_kind)?;
+        key.resource_kind = kinds::normalize_resource_kind(&key.resource_kind)?;
+    }
+    for namespace in &namespaces {
+        crate::commands::helpers::validate_namespace(Some(namespace))?;
+    }
+    let source = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+    Ok(crate::models::ResourceCacheRefreshResult {
+        cleared_entries: live_store.refresh_view(&source, &cluster_context, &keys, &namespaces),
+    })
+}
+
+#[tauri::command]
 pub async fn start_resource_watch(
     cluster_context: String,
     keys: Vec<WatchResourceKey>,

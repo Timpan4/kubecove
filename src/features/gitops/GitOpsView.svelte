@@ -100,6 +100,7 @@
 		openSelectedArgoApplicationResources,
 		onResourceInspect,
 		gitOpsStatusClass,
+		trackedOperationLabel = () => null,
 	}: {
 		gitOpsQuery: GitOpsQuery;
 		gitOpsProviderError: unknown;
@@ -114,6 +115,7 @@
 		openSelectedArgoApplicationResources: (selection?: GitOpsSelection) => void;
 		onResourceInspect: (resource: ResourceSummary, detailTab?: PathStateDetailTab) => void;
 		gitOpsStatusClass: (status: string | null | undefined) => string;
+		trackedOperationLabel?: (selection: GitOpsSelection) => string | null;
 	} = $props();
 
 	const gitOpsViewOptions: { value: GitOpsViewMode; label: string }[] = [
@@ -226,6 +228,8 @@
 			return selection.item.status ? [["Status", selection.item.status]] : [];
 		}
 		return [
+			["Last request", trackedOperationLabel(selection)],
+			["Operation", selection.type === "argoApp" ? selection.item.refreshRequested ? "Refreshing" : selection.item.operationPhase : null],
 			["Sync", selection.item.syncStatus],
 			["Health", selection.item.healthStatus],
 		].filter((entry): entry is [string, string] => Boolean(entry[1]));
