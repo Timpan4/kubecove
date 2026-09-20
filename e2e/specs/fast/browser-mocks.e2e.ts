@@ -23,13 +23,15 @@ describe("browser mock inspection", () => {
 		await $("button=Resources").click();
 		const search = await $('input[aria-label="Search resources"]');
 		await search.setValue("payments-api");
+		await $('button[aria-label="Live updates and refresh options"]').click();
 		const refresh = await $("button=Refresh (clear cache)");
 		await refresh.waitForEnabled();
 		await refresh.click();
 		await $("button=Refresh (clear cache)").waitForEnabled();
+		await expect($("body")).not.toHaveText(expect.stringContaining("Refresh failed:"));
+		await browser.keys("Escape");
 		await expect(search).toHaveValue("payments-api");
 		await expect($("body")).toHaveText(expect.stringContaining("payments-api"));
-		await expect($("body")).not.toHaveText(expect.stringContaining("Refresh failed:"));
 	});
 
 	it("lets page scrolling bypass the resource graph", async () => {
@@ -295,6 +297,7 @@ describe("browser mock inspection", () => {
 		await $('button[aria-label="Open workspace navigation"]').click();
 		const navigation = await $('[data-slot="sheet-content"]');
 		await navigation.$('[role="treeitem"]*=GitOps').click();
+		await $('button[aria-label="Live updates and refresh options"]').click();
 		const refresh = await $("button=Refresh (clear cache)");
 		await refresh.waitForEnabled();
 		await refresh.click();
@@ -302,6 +305,7 @@ describe("browser mock inspection", () => {
 		await expect($("body")).not.toHaveText(expect.stringContaining("Refresh failed:"));
 
 		const firstDetails = await $('button[aria-label="Open details for Application platform-argocd in argocd"]');
+		await browser.keys("Escape");
 		await firstDetails.click();
 		await expect($('button[aria-label="Pin Application platform-argocd"]')).toBeDisplayed();
 		await $('button[aria-label="Close resource details"]').click();

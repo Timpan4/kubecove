@@ -129,6 +129,28 @@ pub(super) async fn run_resource_watch(
     broadcaster: StreamBroadcaster,
     live_store: ClusterLiveStore,
 ) {
+    run_resource_watch_with_client(
+        source_key,
+        cluster_context.clone(),
+        key,
+        broadcaster,
+        live_store,
+        || client_for_context(&cluster_context, kubeconfig_env_var.clone()),
+    )
+    .await;
+}
+
+async fn run_resource_watch_with_client<F, Fut>(
+    source_key: String,
+    cluster_context: String,
+    key: WatchResourceKey,
+    broadcaster: StreamBroadcaster,
+    live_store: ClusterLiveStore,
+    client_for_watch: F,
+) where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<Client, crate::models::AppError>>,
+{
     let normalized_kind = match normalize_resource_kind(&key.resource_kind) {
         Ok(kind) => kind,
         Err(err) => {
@@ -147,8 +169,8 @@ pub(super) async fn run_resource_watch(
     let kind_label = normalized_kind.kind.clone();
     let mut resource_version = "0".to_string();
 
-    loop {
-        let client = match client_for_context(&cluster_context, kubeconfig_env_var.clone()).await {
+    'watch: loop {
+        let client = match client_for_watch().await {
             Ok(client) => client,
             Err(err) => {
                 if !broadcaster.error(err.message) {
@@ -167,7 +189,12 @@ pub(super) async fn run_resource_watch(
                     return;
                 }
                 let mut stream = stream.boxed();
-                while let Some(event) = stream.next().await {
+                loop {
+                    let Some(event) = stream.next().await else {
+                        // Kubernetes ends watches normally at timeoutSeconds. Resume from
+                        // the last version without reporting an outage or delaying renewal.
+                        continue 'watch;
+                    };
                     match event {
                         Ok(event) => {
                             if let Some(message) =
@@ -326,6 +353,10 @@ pub(super) async fn run_event_watch(
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
+
+#[cfg(test)]
+#[path = "watch_renewal_tests.rs"]
+mod renewal_tests;
 
 #[cfg(test)]
 mod tests {

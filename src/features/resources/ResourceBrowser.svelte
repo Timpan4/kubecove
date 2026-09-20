@@ -12,7 +12,7 @@
 </script>
 
 <script lang="ts">
-	import ResourceRefreshButton from "@/components/ResourceRefreshButton.svelte";
+	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
 	import { refreshCurrentView } from "@/lib/resource-refresh";
 	import { observeResourceScope } from "@/lib/resource-watch";
 	import { markStartup } from "@/lib/startup-marks";
@@ -238,6 +238,7 @@
 	let realtimeStatus = $state("idle");
 	let realtimeMessage = $state("Realtime idle");
 	let realtimeError = $state<unknown>("");
+	let reloadError = $state<string | null>(null);
 	let tableViewportElement = $state<HTMLDivElement | null>(null);
 	let initialPathStateConsumed = $state(false);
 	const showFullTopologyOnSelection = $derived($settingsStore.showFullTopologyOnSelection);
@@ -855,7 +856,7 @@
 		let debounce: ReturnType<typeof setTimeout> | null = null;
 		const reload = () => refreshCurrentView({ client, queryClient, clusterContext: context, kubeconfigEnvVar: source, keys: watchKeys, namespaces });
 		const stop = observeResourceScope({ client, clusterContext: context, keys: watchKeys, kubeconfigEnvVar: source,
-			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; },
+			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; },
 			reload,
 			onChange: () => {
 				if (debounce) return;
@@ -992,10 +993,17 @@
 	}
 </script>
 
-<div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
+{#snippet refreshControls()}
 	{#key clusterContext + kubeconfigSourceKey}
-		<ResourceRefreshButton onRefresh={refreshView} disabled={!sourceReady || !clusterContext} />
+		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady || !clusterContext}
+			status={realtimeStatus} message={realtimeMessage} connectionError={realtimeError} {reloadError} />
 	{/key}
+{/snippet}
+
+<div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
+	{#if !clusterContext || fetchKeys.length === 0 || resourceError || loading}
+		<div class="flex justify-end">{@render refreshControls()}</div>
+	{/if}
 	{#if gitOpsFocusApplication}
 		<ArgoApplicationWorkspaceHeader
 			app={gitOpsFocusApplication}
@@ -1053,8 +1061,7 @@
 			{hideHistoricalReplicaSets}
 			{metricsMessage}
 			{customResourcesStatus}
-			{realtimeStatus}
-			{realtimeMessage}
+			{refreshControls}
 			onAllNamespacesSelect={() => {
 				selectedNamespaces = [];
 				pageIndex = 0;
@@ -1076,17 +1083,6 @@
 			onSearchInput={() => (pageIndex = 0)}
 			onClearFilters={clearFilters}
 		/>
-		{#if realtimeError}
-			<FriendlyError
-				mode="compact"
-				error={realtimeError}
-				context={{
-					operation: "resourcesLoad",
-					fallbackTitle: "Realtime watch failed",
-					partial: true,
-				}}
-			/>
-		{/if}
 
 		<div
 			class={inspectorOpen && mapPanelOpen && tablePanelOpen

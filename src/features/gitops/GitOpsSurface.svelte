@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ResourceRefreshButton from "@/components/ResourceRefreshButton.svelte";
+	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
 	import { observeResourceScope } from "@/lib/resource-watch";
 	import { refreshCurrentView } from "@/lib/resource-refresh";
 	import { createQueries, createQuery, useQueryClient } from "@tanstack/svelte-query";
@@ -82,7 +82,9 @@
 	}
 	const context = $derived(workspace.scope.clusterContext);
 	let realtimeMessage = $state("Starting live updates");
+	let realtimeStatus = $state("connecting");
 	let realtimeError = $state<string | null>(null);
+	let reloadError = $state<string | null>(null);
 
 	const namespacesQuery = createQuery(() => ({
 		queryKey: queryKeys.namespaces(context, kubeconfigSourceKey),
@@ -190,10 +192,11 @@
 		const fluxKinds = fluxDetectionQuery.data?.kinds ?? [];
 		const freshness = createArgoListFreshness((queryKey) => void queryClient.invalidateQueries({ queryKey }), source);
 		const stop = observeResourceScope({ client, clusterContext, keys, kubeconfigEnvVar: source,
-			onState: (state) => { realtimeMessage = state.message; realtimeError = state.error; },
+			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; },
 			reload: () => refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: source, keys, namespaces: [] }),
 			onChange: (event) => {
-				freshness.handle(event);
+				// The workspace monitor keeps Application lists fresh across navigation.
+				if (event.type !== "resourceChanged" || event.target.kind !== "Application") freshness.handle(event);
 				if (event.type === "resourceChanged") {
 					for (const kind of fluxKinds) {
 						if (kind.kind === event.target.kind && kind.apiVersion !== "argoproj.io/v1alpha1") {
@@ -233,11 +236,17 @@
 	}
 </script>
 
-<div class="flex flex-wrap items-center justify-between gap-2 pb-2">
-	<span class="text-xs text-muted-foreground" role="status">{realtimeMessage}{realtimeError ? ': ' + realtimeError : ''}</span>
-	{#key context + kubeconfigSourceKey}<ResourceRefreshButton onRefresh={refreshView} disabled={!sourceReady} />{/key}
-</div>
+{#snippet refreshControls()}
+	{#key context + kubeconfigSourceKey}
+		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady}
+			status={watchKeys.length ? realtimeStatus : "idle"}
+			message={watchKeys.length ? realtimeMessage : "No live resource watches in this view."}
+			connectionError={watchKeys.length ? realtimeError : null}
+			reloadError={watchKeys.length ? reloadError : null} />
+	{/key}
+{/snippet}
 <GitOpsView
+	{refreshControls}
 	{gitOpsQuery}
 	{gitOpsProviderError}
 	{gitOpsListError}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from "svelte";
 	import { Search, X } from "lucide-svelte";
 	import {
 		Badge,
@@ -42,8 +43,7 @@
 		gitOpsFilters,
 		metricsMessage,
 		customResourcesStatus,
-		realtimeStatus,
-		realtimeMessage,
+		refreshControls,
 		onAllNamespacesSelect,
 		onAllKindsSelect,
 		onNamespaceToggle,
@@ -72,8 +72,7 @@
 		gitOpsFilters: GitOpsOwnershipFilter[];
 		metricsMessage: string | null;
 		customResourcesStatus?: string | null;
-		realtimeStatus: string;
-		realtimeMessage: string;
+		refreshControls: Snippet;
 		onAllNamespacesSelect: () => void;
 		onAllKindsSelect: () => void;
 		onNamespaceToggle: (namespace: string, checked: boolean) => void;
@@ -331,12 +330,7 @@
 				<div class="text-muted-foreground">{customResourcesStatus ?? "available"}</div>
 			</div>
 
-			<div class="flex min-w-0 items-center gap-2 rounded-md border bg-background/30 px-3 py-2 text-xs">
-				<Badge variant={realtimeStatus === "error" ? "destructive" : "outline"} class="shrink-0">
-					Realtime: {realtimeStatus}
-				</Badge>
-				<span class="min-w-0 truncate text-muted-foreground">{realtimeMessage}</span>
-			</div>
+			<div class="flex items-center justify-end">{@render refreshControls()}</div>
 		</div>
 	</div>
 

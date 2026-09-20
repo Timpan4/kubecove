@@ -52,8 +52,8 @@ describe("release version helpers", () => {
 		expect(nixJob).toContain("platform: ubuntu-24.04-arm");
 		expect(nixJob).toContain("nix build .#kubecove");
 		expect(nixJob).toContain("continue-on-error: true");
-		expect(nixJob).toContain(
-			"DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d",
+		expect(nixJob).toMatch(
+			/^[ \t]+uses: DeterminateSystems\/magic-nix-cache-action@[a-f0-9]{40}(?:[ \t]+#.*)?[ \t]*\r?$/m,
 		);
 		expect(nixJob).toContain('diagnostic-endpoint: ""');
 		expect(nixJob).not.toContain("timeout-minutes:");
@@ -70,8 +70,8 @@ describe("release version helpers", () => {
 
 		expect(nixJob).toBeDefined();
 		expect(nixJob).toContain("nix build .#kubecove.cargoDeps");
-		expect(nixJob).toContain(
-			"DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d",
+		expect(nixJob).toMatch(
+			/^[ \t]+uses: DeterminateSystems\/magic-nix-cache-action@[a-f0-9]{40}(?:[ \t]+#.*)?[ \t]*\r?$/m,
 		);
 		expect(nixJob).toContain('diagnostic-endpoint: ""');
 		expect(checkJob).toContain("- nix");

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from "svelte";
 	import { CircleHelp, GitBranch, Layers, Package, Plug } from "lucide-svelte";
 	import CopyableText from "@/components/CopyableText.svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
@@ -101,6 +102,7 @@
 		onResourceInspect,
 		gitOpsStatusClass,
 		trackedOperationLabel = () => null,
+		refreshControls,
 	}: {
 		gitOpsQuery: GitOpsQuery;
 		gitOpsProviderError: unknown;
@@ -116,6 +118,7 @@
 		onResourceInspect: (resource: ResourceSummary, detailTab?: PathStateDetailTab) => void;
 		gitOpsStatusClass: (status: string | null | undefined) => string;
 		trackedOperationLabel?: (selection: GitOpsSelection) => string | null;
+		refreshControls: Snippet;
 	} = $props();
 
 	const gitOpsViewOptions: { value: GitOpsViewMode; label: string }[] = [
@@ -365,7 +368,7 @@
 
 <TooltipProvider delayDuration={400} skipDelayDuration={0}>
 	<span class="sr-only" role="status" aria-live="polite">{copyRevealMessage}</span>
-	<SurfaceFrame icon={GitBranch} title="GitOps" query={gitOpsQuery} errorLabel="GitOps data unavailable" wide>
+	<SurfaceFrame icon={GitBranch} title="GitOps" query={gitOpsQuery} errorLabel="GitOps data unavailable" headerActions={refreshControls} wide>
 		{@const data = gitOpsQuery.data}
 		{#if data}
 			{#if gitOpsProviderError}
