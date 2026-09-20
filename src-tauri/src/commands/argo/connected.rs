@@ -801,6 +801,13 @@ pub(crate) fn inspector_from_application(
         .map(managed_resource)
         .collect();
     Ok(ArgoApplicationInspector {
+        refresh_requested: application
+            .metadata
+            .annotations
+            .as_ref()
+            .and_then(|annotations| annotations.get("argocd.argoproj.io/refresh"))
+            .cloned(),
+        operation_requested: data.get("operation").is_some_and(|value| !value.is_null()),
         application: ArgoApplicationRef {
             name: application.metadata.name.clone().unwrap_or_default(),
             namespace: application.metadata.namespace.clone(),
@@ -887,6 +894,13 @@ fn connected_inspector(
         .map(|comparison| comparison.resource.clone())
         .collect();
     ArgoApplicationInspector {
+        refresh_requested: response
+            .pointer("/metadata/annotations/argocd.argoproj.io~1refresh")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        operation_requested: response
+            .get("operation")
+            .is_some_and(|value| !value.is_null()),
         application: ArgoApplicationRef {
             resource_version: response
                 .pointer("/metadata/resourceVersion")

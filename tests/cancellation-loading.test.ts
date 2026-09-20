@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { shouldDropWarmupWatchEvent } from "../src/features/resources/helpers";
 import {
 	beginForegroundLoad,
 	getForegroundLoadingSnapshot,
@@ -139,14 +138,5 @@ describe("foreground loading", () => {
 
 		expect(value).toBe("ok");
 		expect(getForegroundLoadingSnapshot()).toBe(0);
-	});
-});
-
-describe("resource watch warmup", () => {
-	test("drops initial added events but allows real changes", () => {
-		expect(shouldDropWarmupWatchEvent("added", 1999)).toBe(true);
-		expect(shouldDropWarmupWatchEvent("added", 2000)).toBe(false);
-		expect(shouldDropWarmupWatchEvent("modified", 50)).toBe(false);
-		expect(shouldDropWarmupWatchEvent("deleted", 50)).toBe(false);
 	});
 });

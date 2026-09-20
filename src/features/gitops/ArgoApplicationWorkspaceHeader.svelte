@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { argoOperationProgress } from "./argo-operation-progress";
 	import {
 		ArrowRight,
 		GitBranch,
@@ -43,6 +44,7 @@
 		onInspect?: (app: ArgoApplicationSummary) => void;
 	} = $props();
 
+	const operationProgress = $derived(inspector ? argoOperationProgress(inspector) : null);
 	const primarySource = $derived(app.sources?.[0] ?? null);
 	const repository = $derived(primarySource?.repoUrl ?? app.sourceRepo ?? "Repository unavailable");
 	const sourceDetail = $derived(
@@ -129,6 +131,7 @@
 				</div>
 				<div class="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
 					<span class="text-[0.6875rem] text-muted-foreground">Raw Argo:</span>
+					{#if operationProgress?.refreshing || operationProgress?.phase}<Badge variant="secondary">{operationProgress.refreshing ? "Refreshing" : `Operation: ${operationProgress.phase}`}</Badge>{/if}
 					<Badge variant={statusBadgeVariant(healthTone)} class={statusBadgeClass(healthTone)}>{healthStatus}</Badge>
 					<Badge variant={statusBadgeVariant(syncTone)} class={statusBadgeClass(syncTone)}>{syncStatus}</Badge>
 				</div>

@@ -319,6 +319,8 @@ fn test_dynamic_resource_summary_fields_serde() {
 #[test]
 fn test_argo_application_models_serde() {
     let summary = ArgoApplicationSummary {
+        operation_phase: None,
+        refresh_requested: None,
         cluster: "kind-prod".to_string(),
         name: "payments".to_string(),
         age: "1h".to_string(),
