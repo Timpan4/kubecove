@@ -39,6 +39,13 @@ fn known_resource_kind(kind: &str) -> Option<WatchResourceKind> {
             "storageclasses",
             false,
         ),
+        "CustomResourceDefinition" => (
+            "apiextensions.k8s.io/v1",
+            "apiextensions.k8s.io",
+            "v1",
+            "customresourcedefinitions",
+            false,
+        ),
         _ => return None,
     };
 
@@ -62,12 +69,9 @@ pub(super) fn normalize_resource_kind(
         ));
     }
 
-    if let (Some(version), Some(api_version), Some(plural), Some(namespaced)) = (
-        &kind.version,
-        &kind.api_version,
-        &kind.plural,
-        kind.namespaced,
-    ) {
+    if let (Some(api_version), Some(plural), Some(namespaced)) =
+        (&kind.api_version, &kind.plural, kind.namespaced)
+    {
         let group = kind
             .group
             .clone()
@@ -75,7 +79,13 @@ pub(super) fn normalize_resource_kind(
         return Ok(WatchResourceKind {
             kind: kind.kind.clone(),
             group: Some(group),
-            version: Some(version.clone()),
+            version: Some(kind.version.clone().unwrap_or_else(|| {
+                api_version
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(api_version)
+                    .to_string()
+            })),
             api_version: Some(api_version.clone()),
             plural: Some(plural.clone()),
             namespaced: Some(namespaced),
@@ -119,6 +129,37 @@ pub(super) fn api_resource_from_kind(kind: &WatchResourceKind) -> Result<ApiReso
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_resource_definition_watch_has_cluster_scoped_metadata() {
+        let kind = normalize_resource_kind(&WatchResourceKind {
+            kind: "CustomResourceDefinition".into(),
+            group: None,
+            version: None,
+            api_version: None,
+            plural: None,
+            namespaced: None,
+        })
+        .expect("CRD watch metadata");
+        assert_eq!(kind.api_version.as_deref(), Some("apiextensions.k8s.io/v1"));
+        assert_eq!(kind.plural.as_deref(), Some("customresourcedefinitions"));
+        assert_eq!(kind.namespaced, Some(false));
+    }
+
+    #[test]
+    fn gitops_watch_derives_version_from_api_version() {
+        let kind = api_resource_from_kind(&WatchResourceKind {
+            kind: "Application".into(),
+            group: None,
+            version: None,
+            api_version: Some("argoproj.io/v1alpha1".into()),
+            plural: Some("applications".into()),
+            namespaced: Some(true),
+        })
+        .expect("GitOps watch metadata");
+        assert_eq!(kind.group, "argoproj.io");
+        assert_eq!(kind.version, "v1alpha1");
+    }
 
     #[test]
     fn known_resource_kind_fills_watch_metadata() {

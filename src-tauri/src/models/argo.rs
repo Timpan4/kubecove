@@ -26,6 +26,10 @@ pub struct ArgoApplicationSummary {
     pub namespace: Option<String>,
     pub project: Option<String>,
     pub sync_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_phase: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_requested: Option<String>,
     pub health_status: Option<String>,
     pub health_assessment: HealthAssessment,
     pub destination_namespace: Option<String>,
@@ -463,6 +467,10 @@ pub struct ArgoApplicationInspector {
     pub comparisons: Vec<ArgoResourceComparison>,
     pub conditions: Vec<Value>,
     pub operation_state: Option<Value>,
+    #[serde(default)]
+    pub operation_requested: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_requested: Option<String>,
     pub connected: bool,
     pub transport: String,
     pub provenance: String,

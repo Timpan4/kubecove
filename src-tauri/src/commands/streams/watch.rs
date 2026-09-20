@@ -161,12 +161,11 @@ pub(super) async fn run_resource_watch(
         let api = scoped_dynamic_api(client, &key, namespaced, &api_resource);
         let params = WatchParams::default().timeout(30);
 
-        if !broadcaster.status("connected", format!("Watching {kind_label}")) {
-            return;
-        }
-
         match api.watch(&params, &resource_version).await {
             Ok(stream) => {
+                if !broadcaster.status("connected", format!("Watching {kind_label}")) {
+                    return;
+                }
                 let mut stream = stream.boxed();
                 while let Some(event) = stream.next().await {
                     match event {

@@ -30,9 +30,9 @@ describe("Argo Application Briefing contract", () => {
 		for (const contract of [
 			"argoApplicationInspectionQueryOptions",
 			"getArgoResourceComparison",
-			"preflightArgoOperation",
-			"runArgoOperationLifecycle",
-			"queryKeys.argoWorkspaceApplication",
+			"getArgoOperationTracker",
+			"tracker.run",
+			"buildArgoApplicationInspectionReadSpec",
 		]) expect(detailsSource).toContain(contract);
 		for (const forbidden of [
 			"createArgoPrototypeFixture",
@@ -57,10 +57,11 @@ describe("Argo Application Briefing contract", () => {
 		);
 	});
 
-	test("keeps accepted refresh retry separate from operation retry", () => {
-		expect(detailsSource).toContain("ArgoOperationRefreshError");
+	test("keeps observation retry separate from operation retry", () => {
+		expect(detailsSource).toContain("tracker.observe(trackingKey)");
 		expect(detailsSource).toContain("Retry state refresh");
-		expect(detailsSource).toContain("acceptedRefreshPending");
+		expect(detailsSource).toContain("observationPending");
+		expect(detailsSource).toContain("Operation status unavailable");
 	});
 		test("pluralizes reconciliation summary", () => {
 			expect(detailsSource).toContain('diffResources.length === 1 ? "item" : "items"');

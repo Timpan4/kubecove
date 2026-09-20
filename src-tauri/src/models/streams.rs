@@ -2,6 +2,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ResourceCacheRefreshResult {
+    pub cleared_entries: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WatchResourceKind {
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

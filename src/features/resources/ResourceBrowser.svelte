@@ -12,6 +12,9 @@
 </script>
 
 <script lang="ts">
+	import ResourceRefreshButton from "@/components/ResourceRefreshButton.svelte";
+	import { refreshCurrentView } from "@/lib/resource-refresh";
+	import { observeResourceScope } from "@/lib/resource-watch";
 	import { markStartup } from "@/lib/startup-marks";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import {
@@ -93,17 +96,13 @@
 	import { queryKeys } from "@/lib/queryKeys";
 	import type { PathStateResourceBrowserState } from "@/lib/path-state";
 	import {
-		closeStreamChannel,
 		cancelBackendRequests,
-		createStreamChannel,
 		createTauriClient,
 		isAppError,
 		listNamespaces,
 		listResourceKinds,
 		listResourceMetrics,
 		listResourceTopology,
-		startResourceWatch,
-		stopStream,
 	} from "@/lib/tauri";
 	import type {
 		DiscoveredResourceKind,
@@ -131,7 +130,6 @@
 		resourceIdentityKey,
 		resourceSelectionKey,
 		mergeWatchKeys,
-		shouldDropWarmupWatchEvent,
 		topologyWatchKeys,
 		watchKeysFromFetchKeys,
 	} from "./helpers";
@@ -838,108 +836,38 @@
 		appliedTargetResourceKey = targetResourceKey;
 	});
 
-	$effect(() => {
-		const enabled =
-			Boolean(clusterContext) &&
-			resourcesQuery.isSuccess &&
-			!resourcesQuery.isPlaceholderData &&
-			fetchKeys.length > 0 &&
-			!resourceError;
-		const watchKeys = mergeWatchKeys(
-			watchKeysFromFetchKeys(fetchKeys),
-			topologyWatchKeys(topologyNamespaces),
-			focusedArgoWatchKeys,
-		);
-		if (!enabled || watchKeys.length === 0) {
-			realtimeStatus = "idle";
-			realtimeMessage = "Realtime idle";
-			realtimeError = "";
-			return;
-		}
-		let cancelled = false;
-		let streamId: string | null = null;
-		let debounce: ReturnType<typeof setTimeout> | null = null;
-		let invalidateFocusedArgo = false;
-		const startedAt = performance.now();
-		realtimeStatus = "connecting";
-		realtimeMessage = "Starting realtime watch";
-		realtimeError = "";
-		const invalidateSoon = (focusedArgoChanged: boolean) => {
-			invalidateFocusedArgo ||= focusedArgoChanged;
-			if (debounce) clearTimeout(debounce);
-			debounce = setTimeout(() => {
-				void queryClient.invalidateQueries({ queryKey: resourceQueryKey });
-				void queryClient.invalidateQueries({ queryKey: topologyQueryKey });
-				if (invalidateFocusedArgo && focusedArgoApplicationScope) {
-					void queryClient.invalidateQueries({ queryKey: focusedArgoApplicationScope });
-				}
-				invalidateFocusedArgo = false;
-			}, 250);
-		};
-		const channel = createStreamChannel((event) => {
-			if (cancelled) return;
-			if (event.type === "started") {
-				streamId = event.streamId;
-				realtimeMessage = "Realtime watch starting";
-				return;
-			}
-			if (event.type === "status") {
-				realtimeStatus = event.status;
-				realtimeMessage = event.message;
-				realtimeError = "";
-				return;
-			}
-			if (event.type === "resourceChanged") {
-				realtimeStatus = "connected";
-				realtimeMessage = `Realtime ${event.action}`;
-				realtimeError = "";
-				if (shouldDropWarmupWatchEvent(event.action, performance.now() - startedAt)) return;
-				invalidateSoon(
-					event.target.kind === "Application" &&
-					event.target.cluster === clusterContext &&
-					event.target.name === gitOpsFocusApplication?.name &&
-					(event.target.namespace ?? "") === (gitOpsFocusApplication?.namespace ?? ""),
-				);
-				return;
-			}
-			if (event.type === "error") {
-				realtimeStatus = "error";
-				realtimeMessage = "Realtime watch error";
-				realtimeError = event.message;
-				return;
-			}
-			if (event.type === "stopped") {
-				realtimeStatus = "stopped";
-				realtimeMessage = "Realtime stopped";
-				realtimeError = "";
-			}
+	async function refreshView() {
+		await refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: kubeconfigSourceKey,
+			keys: mergeWatchKeys(watchKeysFromFetchKeys(fetchKeys), topologyWatchKeys(topologyNamespaces), focusedArgoWatchKeys),
+			namespaces: selectedNamespaces,
 		});
-		void startResourceWatch(
-			client,
-			clusterContext,
-			watchKeys,
-			channel,
-			kubeconfigSourceKey,
-		)
-			.then((id) => {
-				if (cancelled) {
-					void stopStream(client, id);
-					return;
-				}
-				streamId = id;
-			})
-			.catch((cause: unknown) => {
-				if (cancelled) return;
-				realtimeStatus = "error";
-				realtimeMessage = "Realtime watch failed";
-				realtimeError = cause;
-			});
-		return () => {
-			cancelled = true;
-			if (debounce) clearTimeout(debounce);
-			if (streamId) void stopStream(client, streamId);
-			closeStreamChannel(channel);
-		};
+	}
+
+	$effect(() => {
+		if (!sourceReady || !clusterContext || fetchKeys.length === 0) return;
+		const watchKeys = mergeWatchKeys(watchKeysFromFetchKeys(fetchKeys), topologyWatchKeys(topologyNamespaces), focusedArgoWatchKeys);
+		const resourceKey = resourceQueryKey;
+		const topologyKey = topologyQueryKey;
+		const argoScope = focusedArgoApplicationScope;
+		const context = clusterContext;
+		const source = kubeconfigSourceKey;
+		const namespaces = [...selectedNamespaces];
+		let debounce: ReturnType<typeof setTimeout> | null = null;
+		const reload = () => refreshCurrentView({ client, queryClient, clusterContext: context, kubeconfigEnvVar: source, keys: watchKeys, namespaces });
+		const stop = observeResourceScope({ client, clusterContext: context, keys: watchKeys, kubeconfigEnvVar: source,
+			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; },
+			reload,
+			onChange: () => {
+				if (debounce) return;
+				debounce = setTimeout(() => {
+					debounce = null;
+					void queryClient.invalidateQueries({ queryKey: resourceKey });
+					void queryClient.invalidateQueries({ queryKey: topologyKey });
+					if (argoScope) void queryClient.invalidateQueries({ queryKey: argoScope });
+				}, 250);
+			},
+		});
+		return () => { stop(); if (debounce) clearTimeout(debounce); };
 	});
 
 	function toggleNamespace(namespace: string, checked: boolean) {
@@ -1065,6 +993,9 @@
 </script>
 
 <div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
+	{#key clusterContext + kubeconfigSourceKey}
+		<ResourceRefreshButton onRefresh={refreshView} disabled={!sourceReady || !clusterContext} />
+	{/key}
 	{#if gitOpsFocusApplication}
 		<ArgoApplicationWorkspaceHeader
 			app={gitOpsFocusApplication}

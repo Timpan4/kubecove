@@ -236,10 +236,6 @@ export function mergeWatchKeys(
 	return Array.from(merged.values());
 }
 
-export function shouldDropWarmupWatchEvent(action: string, elapsedMs: number): boolean {
-	return action === "added" && elapsedMs < 2_000;
-}
-
 export function topologyWatchKeys(namespaces: string[]): WatchResourceKey[] {
 	const namespaceScopes: Array<string | undefined> =
 		namespaces.length === 0 ? [undefined] : namespaces;

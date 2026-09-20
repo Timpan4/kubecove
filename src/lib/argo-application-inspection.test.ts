@@ -157,7 +157,7 @@ describe("Argo Application inspection read spec", () => {
 
 		expect(options.queryKey).toBe(spec.queryKey);
 		expect(options.gcTime).toBe(0);
-		expect(options.refetchInterval({ state: { data: inspection("kubernetes") } })).toBe(false);
+		expect(options.refetchInterval({ state: { data: inspection("kubernetes") } })).toBe(15_000);
 		expect(options.refetchInterval({ state: { data: inspection("connected") } })).toBe(15_000);
 	});
 });
