@@ -18,7 +18,7 @@ function job(name) {
   const start = lines.indexOf(`  ${name}:`);
   assert.notEqual(start, -1, `Missing job: ${name}`);
   let end = start + 1;
-  while (end < lines.length && !/^  [\w-]+:$/.test(lines[end])) end++;
+  while (end < lines.length && !/^ {2}[\w-]+:$/.test(lines[end])) end++;
   return lines.slice(start, end).join("\n");
 }
 function block(text, key, indent) {
@@ -48,7 +48,7 @@ async function detect(paths, options = {}) {
     if (Object.hasOwn(options, "error")) throw options.error;
     return { data: {
       base_commit: { sha: base }, merge_base_commit: { sha: base }, status: "ahead",
-      files: paths.map((path) => typeof path === "string" ? { filename: path, status: "modified" } : path),
+      files: paths.map((filename) => ({ filename, status: "modified" })),
       ...options.data,
     } };
   } };
@@ -83,11 +83,11 @@ for (const [path, selected] of [
   test(`classifies ${path}`, async () => assert.deepEqual((await detect([path])).output, flags(...selected)));
 }
 test("combines scopes and both sides of a cross-domain rename", async () => {
-  const result = await detect([{ filename: "docs/example.md", previous_filename: "src/example.ts", status: "renamed" }]);
+  const result = await detect([], { data: { files: [{ filename: "docs/example.md", previous_filename: "src/example.ts", status: "renamed" }] } });
   assert.deepEqual(result.output, flags("docs", "frontend"));
 });
 test("removed files still select their checks", async () => {
-  assert.deepEqual((await detect([{ filename: "src-tauri/src/removed.rs", status: "removed" }])).output, flags("rust"));
+  assert.deepEqual((await detect([], { data: { files: [{ filename: "src-tauri/src/removed.rs", status: "removed" }] } })).output, flags("rust"));
 });
 test("filenames are data, including newlines and shell metacharacters", async () => {
   assert.deepEqual((await detect(["public/odd\n$(echo bad).svg"])).output, flags("frontend"));
