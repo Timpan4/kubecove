@@ -24,56 +24,69 @@ jobs:
       nix: ${{ steps.detect.outputs.nix }}
       rust: ${{ steps.detect.outputs.rust }}
 
+    # No working tree or full-history fetch on the critical path.
+    timeout-minutes: 3
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
       - name: Detect relevant changes
         id: detect
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const required = { docs: false, frontend: false, nix: false, rust: false };
+            const all = () => Object.keys(required).forEach((key) => { required[key] = true; });
+            try {
+              const pr = context.payload.pull_request;
+              const base = pr?.base?.sha ?? context.payload.before;
+              const head = pr?.head?.sha ?? context.sha;
+              const sha = /^[a-f0-9]{40}$/i;
+              if (!['pull_request', 'push'].includes(context.eventName) ||
+                  !sha.test(base ?? '') || /^0+$/.test(base) || !sha.test(head ?? '') || /^0+$/.test(head) ||
+                  context.payload.forced) {
+                throw new Error('No safe immutable comparison; running all checks.');
+              }
 
-          if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]]; then
-            echo "No usable base commit; running every CI job."
-            echo "docs=true" >> "${GITHUB_OUTPUT}"
-            echo "frontend=true" >> "${GITHUB_OUTPUT}"
-            echo "nix=true" >> "${GITHUB_OUTPUT}"
-            echo "rust=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
+              // Immutable SHAs avoid races with new pushes or a changing PR file list.
+              // Page 1 contains ALL changed files (up to 300), even with per_page: 1.
+              const { data } = await github.request('GET /repos/{owner}/{repo}/compare/{basehead}', {
+                ...context.repo, basehead: `${base}...${head}`, per_page: 1, page: 1,
+                request: { timeout: 15000 },
+              });
+              if (data.base_commit?.sha !== base || !sha.test(data.merge_base_commit?.sha ?? '') ||
+                  !['ahead', 'identical', 'diverged'].includes(data.status) ||
+                  !Array.isArray(data.files) || data.files.length >= 300 ||
+                  (data.status === 'identical' && (base !== head || data.files.length !== 0))) {
+                throw new Error('Comparison is incomplete or unverified; running all checks.');
+              }
+              // PRs use their merge base. Pushes must compare the exact before/after trees.
+              if (!pr && data.merge_base_commit.sha !== base) {
+                throw new Error('Non-fast-forward push; running all checks.');
+              }
 
-          git diff --name-only --no-renames "${BASE_SHA}" "${HEAD_SHA}" | tee /tmp/kubecove-changed-files.txt
-
-          if grep -Eiq '\.md$|^docs/' /tmp/kubecove-changed-files.txt; then
-            echo "docs=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "docs=false" >> "${GITHUB_OUTPUT}"
-          fi
-
-          if grep -Eiq '\.(css|html|js|jsx|json|mjs|cjs|svelte|ts|tsx|mts|cts)$|(^|/)(bun\.lock|package\.json)$' /tmp/kubecove-changed-files.txt; then
-            echo "frontend=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "frontend=false" >> "${GITHUB_OUTPUT}"
-          fi
-
-          if grep -Eiq '\.rs$|(^|/)(Cargo\.lock|Cargo\.toml)$' /tmp/kubecove-changed-files.txt; then
-            echo "rust=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "rust=false" >> "${GITHUB_OUTPUT}"
-          fi
-
-          if grep -Eiq '\.nix$|(^|/)(Cargo\.lock|Cargo\.toml|flake\.lock)$' /tmp/kubecove-changed-files.txt; then
-            echo "nix=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "nix=false" >> "${GITHUB_OUTPUT}"
-          fi
+              for (const file of data.files) {
+                if (!file || typeof file.filename !== 'string' || !file.filename ||
+                    (file.status === 'renamed' && !file.previous_filename)) {
+                  throw new Error('Incomplete file metadata; running all checks.');
+                }
+                for (const path of [file.filename, file.previous_filename].filter((value) => value !== undefined)) {
+                  if (typeof path !== 'string' || !path) throw new Error('Invalid changed path.');
+                  // Workflow and shared action changes must validate the pipeline itself.
+                  if (path.startsWith('.github/')) { all(); continue; }
+                  const scope = {
+                    docs: /\.md$|^docs\//i.test(path),
+                    frontend: /\.(css|html|js|jsx|json|mjs|cjs|svelte|ts|tsx|mts|cts)$|(^|\/)bun\.lock$|^(src|public|e2e|scripts)\//i.test(path),
+                    rust: /\.rs$|(^|\/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$|(^|\/)\.cargo\/|^src-tauri\//i.test(path),
+                    nix: /\.nix$|(^|\/)(Cargo\.(lock|toml)|flake\.lock)$/i.test(path),
+                  };
+                  // Unknown paths fail toward more coverage, never a silently green gate.
+                  if (!Object.values(scope).some(Boolean)) all();
+                  for (const key of Object.keys(required)) required[key] ||= scope[key];
+                }
+              }
+            } catch (error) {
+              core.warning(`Change detection fallback: ${error instanceof Error ? error.message : "comparison failed"}`);
+              all();
+            }
+            for (const [key, value] of Object.entries(required)) core.setOutput(key, String(value));
 
   docs:
     name: Documentation checks
@@ -95,17 +108,7 @@ jobs:
         with:
           bun-version: "1.4.0"
 
-      - name: Cache Bun dependencies
-        uses: actions/cache@v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
-
+      # check-docs.ts uses only built-in modules; no dependency install/cache.
       - name: Check documentation
         run: bun run docs:check
 
@@ -113,7 +116,13 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: git diff --check "${BASE_SHA}" "${HEAD_SHA}"
+        run: |
+          set -euo pipefail
+          if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "No available base commit; checking the entire tree for whitespace."
+            BASE_SHA=$(git hash-object -w -t tree /dev/null)
+          fi
+          git diff --check "${BASE_SHA}" "${HEAD_SHA}"
 
   frontend:
     name: Frontend checks
@@ -126,6 +135,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Test CI orchestration
+        run: node --test scripts/ci-workflow-regression.test.mjs
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
