@@ -6,6 +6,7 @@ import {
 	resourceKindFetchKey,
 } from "@/features/resources";
 import { gitOpsSelectionResource } from "@/lib/gitops-resource";
+import { resourceKey } from "@/lib/resource-identity";
 import {
 	SECTIONS,
 	type SectionName,
@@ -154,21 +155,11 @@ export function filterNamespaces(namespaces: string[], query: string): string[] 
 	);
 }
 
-export function resourceEntryKey(resource: ResourceSummary): string {
-	return [
-		resource.cluster,
-		resource.apiVersion ?? "",
-		resource.kind,
-		resource.namespace ?? "",
-		resource.name,
-	].join("::");
-}
-
 export function dedupeResources(rows: ResourceSummary[]): ResourceSummary[] {
 	const seen = new Set<string>();
 	const result: ResourceSummary[] = [];
 	for (const row of rows) {
-		const key = resourceEntryKey(row);
+		const key = resourceKey(row);
 		if (seen.has(key)) continue;
 		seen.add(key);
 		result.push(row);
@@ -183,7 +174,7 @@ export function buildDedupedResourceSearchIndex(
 	const unique: ResourceSummary[] = [];
 	for (const rows of resourceSets) {
 		for (const resource of rows) {
-			const key = resourceEntryKey(resource);
+			const key = resourceKey(resource);
 			if (seen.has(key)) continue;
 			seen.add(key);
 			unique.push(resource);

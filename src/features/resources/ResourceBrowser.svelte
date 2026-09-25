@@ -114,6 +114,7 @@
 		TopologyMode,
 	} from "@/lib/types";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
+	import { findResourceIndex, resourceKey } from "@/lib/resource-identity";
 	import {
 		EMPTY_PAGE_CLASS,
 		PAGE_SIZE,
@@ -127,8 +128,6 @@
 		buildFetchKeys,
 		isDiscoveredResourceKind,
 		resourceReadyChip,
-		resourceIdentityKey,
-		resourceSelectionKey,
 		mergeWatchKeys,
 		topologyWatchKeys,
 		watchKeysFromFetchKeys,
@@ -712,14 +711,12 @@
 		`${tablePanelOpen}:${tableModel.entries.length}:${tableVisibleColumnCount}`,
 	);
 	const selectedResourceKey = $derived(
-		selectedResource ? resourceSelectionKey(selectedResource) : "",
+		selectedResource ? resourceKey(selectedResource) : "",
 	);
-	const selectedResourceIdentityKey = $derived(
-		selectedResource ? resourceIdentityKey(selectedResource) : "",
-	);
-	const hasExactSelectedResource = $derived(
-		Boolean(selectedResourceKey) &&
-			tableModel.pageRows.some((row) => resourceSelectionKey(row) === selectedResourceKey),
+	const selectedPageRow = $derived(
+		selectedResource
+			? tableModel.pageRows[findResourceIndex(tableModel.pageRows, selectedResource, (row) => row)]
+			: undefined,
 	);
 	const inspectorOpen = $derived(Boolean(selectedResource));
 	const syncedTopologyNodeId = $derived(
@@ -730,10 +727,7 @@
 		}),
 	);
 	const targetResourceKey = $derived(
-		targetResource ? resourceSelectionKey(targetResource) : "",
-	);
-	const targetResourceIdentityKey = $derived(
-		targetResource ? resourceIdentityKey(targetResource) : "",
+		targetResource ? resourceKey(targetResource) : "",
 	);
 	const metricsMessage = $derived(
 		metricsQuery.isError
@@ -790,16 +784,14 @@
 
 	$effect(() => {
 		const viewport = tableViewportElement;
-		const selectionKey = selectedResourceKey;
-		const identityKey = selectedResourceIdentityKey;
-		const scrollKey = `${selectionKey}:${identityKey}`;
-		if (!selectionKey && !identityKey) {
+		const scrollKey = selectedResourceKey;
+		if (!scrollKey) {
 			appliedSelectionScrollKey = "";
 			return;
 		}
 		if (appliedSelectionScrollKey === scrollKey) return;
 		const entries = tableModel.entries;
-		if (!tablePanelOpen || !viewport || (!selectionKey && !identityKey) || entries.length === 0) {
+		if (!tablePanelOpen || !viewport || entries.length === 0) {
 			return;
 		}
 		appliedSelectionScrollKey = scrollKey;
@@ -824,13 +816,10 @@
 			!resourcesQuery.isSuccess ||
 			resourcesQuery.isPlaceholderData
 		) return;
-		const matchedResource = tableModel.displayRows.find(
-			(row) => resourceMatchesKeys(row, targetResourceKey, targetResourceIdentityKey, false),
-		);
-		if (!matchedResource) return;
-		const rowIndex = tableModel.displayRows.findIndex(
-			(row) => resourceMatchesKeys(row, targetResourceKey, targetResourceIdentityKey, false),
-		);
+		if (!targetResource) return;
+		const rowIndex = findResourceIndex(tableModel.displayRows, targetResource, (row) => row);
+		if (rowIndex < 0) return;
+		const matchedResource = tableModel.displayRows[rowIndex];
 		onResourceSelect(matchedResource, "restore");
 		selectedTopologyNodeId = null;
 		pageIndex = Math.max(0, Math.floor(rowIndex / PAGE_SIZE));
@@ -949,18 +938,6 @@
 	function closeMapPanel() {
 		mapPanelOpen = false;
 		selectedTopologyNodeId = null;
-	}
-
-	function resourceMatchesKeys(
-		resource: ResourceSummary,
-		selectionKey: string,
-		identityKey: string,
-		exactMatchExists: boolean,
-	): boolean {
-		return (
-			resourceSelectionKey(resource) === selectionKey ||
-			(!exactMatchExists && resourceIdentityKey(resource) === identityKey)
-		);
 	}
 
 	function scrollSelectedTableRowIntoView(viewport: HTMLDivElement) {
@@ -1284,7 +1261,7 @@
 											</TableRow>
 										{:else}
 											{@const row = entry.resource}
-											{@const rowSelected = resourceMatchesKeys(row, selectedResourceKey, selectedResourceIdentityKey, hasExactSelectedResource)}
+											{@const rowSelected = row === selectedPageRow}
 											<TableRow
 												data-resource-selected={rowSelected ? "true" : undefined}
 												class={cnfast(ROW_CLASS, rowSelected && SELECTED_ROW_CLASS)}
@@ -1351,7 +1328,7 @@
 														variant="ghost"
 														size="icon"
 														class="size-7"
-														aria-label={`${pinnedResourceKeySet.has(resourceSelectionKey(row)) ? "Unpin" : "Pin"} ${row.kind} ${row.name}`}
+														aria-label={`${pinnedResourceKeySet.has(resourceKey(row)) ? "Unpin" : "Pin"} ${row.kind} ${row.name}`}
 														onclick={(event: MouseEvent) => {
 															event.stopPropagation();
 															onResourcePinToggle(row);
@@ -1359,7 +1336,7 @@
 														onkeydown={(event: KeyboardEvent) => event.stopPropagation()}
 													>
 														<Pin
-															class={pinnedResourceKeySet.has(resourceSelectionKey(row)) ? "fill-current" : ""}
+															class={pinnedResourceKeySet.has(resourceKey(row)) ? "fill-current" : ""}
 														/>
 													</Button>
 												</TableCell>

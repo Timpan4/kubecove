@@ -5,13 +5,12 @@ import type {
 	ResourceTopology,
 	TopologyNode,
 } from "@/lib/types";
+import { findResourceIndex, looseResourceKey } from "@/lib/resource-identity";
 import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "@/lib/types";
 import {
 	isDiscoveredResourceKind,
-	resourceIdentityKey,
 	resourceKindFetchKey,
 	resourceKindLabel,
-	resourceSelectionKey,
 } from "./helpers";
 
 export function initialOwnershipMapOpen(
@@ -129,7 +128,7 @@ export function filterTopologyByTableRows(
 	rows: ResourceSummary[],
 ): ResourceTopology | undefined {
 	if (!topology) return undefined;
-	const rowKeys = new Set(rows.map(resourceIdentityKey));
+	const rowKeys = new Set(rows.map(looseResourceKey));
 	const nodesById = new Map(topology.nodes.map((node) => [node.id, node]));
 	const incoming = new Map<string, string[]>();
 	for (const edge of topology.edges) {
@@ -139,7 +138,7 @@ export function filterTopologyByTableRows(
 	}
 	const nodeIds = new Set(
 		topology.nodes
-			.filter((node) => rowKeys.has(resourceIdentityKey(node.summary)))
+			.filter((node) => rowKeys.has(looseResourceKey(node.summary)))
 			.map((node) => node.id),
 	);
 	const pending = [...nodeIds];
@@ -208,12 +207,7 @@ export function syncedTopologyNodeId({
 		return null;
 	}
 	if (!selectedResource) return selectedTopologyNodeId;
-	const selectedKey = resourceSelectionKey(selectedResource);
-	const selectedIdentityKey = resourceIdentityKey(selectedResource);
 	const selectedFromTable =
-		topologyNodes.find((node) => resourceSelectionKey(node.summary) === selectedKey) ??
-		topologyNodes.find(
-			(node) => resourceIdentityKey(node.summary) === selectedIdentityKey,
-		);
+		topologyNodes[findResourceIndex(topologyNodes, selectedResource, (node) => node.summary)];
 	return selectedFromTable?.id ?? selectedTopologyNodeId;
 }

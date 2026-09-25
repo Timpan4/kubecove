@@ -13,6 +13,7 @@
 	import { diagnosticLog } from "@/lib/diagnostics";
 	import type { PathStateDetailTab } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
+	import { dynamicKindKey } from "@/lib/resource-identity";
 	import { getSettingsSnapshot } from "@/lib/settings-store";
 	import {
 		cancelBackendRequests,
@@ -107,11 +108,7 @@
 	const dynamicKind = $derived(
 		selectedResource ? dynamicResourceKindFromSummary(selectedResource) : null,
 	);
-	const dynamicKindKey = $derived(
-		dynamicKind
-			? `${dynamicKind.group}/${dynamicKind.version}/${dynamicKind.kind}/${dynamicKind.plural}/${dynamicKind.namespaced}`
-			: "",
-	);
+	const selectedDynamicKindKey = $derived(dynamicKindKey(dynamicKind));
 	const detailsEnabled = $derived(
 		Boolean(
 			sourceReady &&
@@ -130,7 +127,7 @@
 		selectedResource
 			? queryKeys.resourceDetails(
 					selectedResource,
-					dynamicKindKey,
+					selectedDynamicKindKey,
 					kubeconfigSourceKey,
 					yamlViewMode,
 					yamlEncoding,
