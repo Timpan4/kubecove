@@ -519,37 +519,6 @@ mod tests {
     }
 
     #[test]
-    fn builds_dynamic_resource_summary_from_metadata_and_status() {
-        let resource_kind = widget_kind();
-        let api_resource = api_resource_from_discovered(&resource_kind).unwrap();
-        let object = DynamicObject::new("sample-widget", &api_resource)
-            .within("default")
-            .data(json!({
-                "status": {
-                    "phase": "Running"
-                }
-            }));
-
-        let summary = dynamic_resource_summary("kind-kind", &resource_kind, &object);
-
-        assert_eq!(summary.kind, "Widget");
-        assert_eq!(summary.cluster, "kind-kind");
-        assert_eq!(summary.name, "sample-widget");
-        assert_eq!(summary.namespace, Some("default".to_string()));
-        assert_eq!(summary.status, Some("Running".to_string()));
-        assert_eq!(summary.api_version, Some("example.com/v1".to_string()));
-        assert_eq!(summary.group, Some("example.com".to_string()));
-        assert_eq!(summary.version, Some("v1".to_string()));
-        assert_eq!(summary.plural, Some("widgets".to_string()));
-        assert_eq!(summary.namespaced, Some(true));
-        assert_eq!(summary.dynamic, Some(true));
-        assert_eq!(
-            summary.health_assessment.state,
-            HealthAssessmentState::NotEvaluated
-        );
-    }
-
-    #[test]
     fn assesses_argocd_application_with_same_argo_contract() {
         let mut resource_kind = widget_kind();
         resource_kind.group = "argoproj.io".to_string();

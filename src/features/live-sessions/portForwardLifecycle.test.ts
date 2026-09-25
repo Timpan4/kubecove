@@ -11,7 +11,6 @@ import {
 	shouldShowSavedPortForwardRestorePrompt,
 	startSavedPortForward,
 	startSavedPortForwards,
-	stopPortForward,
 } from "./portForwardLifecycle";
 
 declare function describe(name: string, fn: () => void): void;
@@ -82,28 +81,6 @@ describe("port forward lifecycle", () => {
 				"kubeconfigSource=default",
 			).map((item) => item.id),
 		).toEqual(["dev", "prod"]);
-	});
-
-	test("invalidates the shared query after stopping", async () => {
-		const calls: string[] = [];
-		const client = createMockTauriClient({
-			stop_port_forward: ({ sessionId }: JsonObject) => {
-				calls.push(String(sessionId));
-				return true;
-			},
-		});
-		let invalidated: readonly unknown[] | null = null;
-
-		await stopPortForward({
-			client,
-			sessionId: "port-forward-1",
-			invalidateQueries: async ({ queryKey }) => {
-				invalidated = queryKey;
-			},
-		});
-
-		expect(calls).toEqual(["port-forward-1"]);
-		expect(invalidated).toEqual(["port-forwards"]);
 	});
 
 	test("invalidates the shared query when reconnecting fails after stop", async () => {

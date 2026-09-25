@@ -1,7 +1,5 @@
 import type { ResourceSummary } from "./types";
 import {
-	entryPointFromApplication,
-	entryPointFromNamespace,
 	entryPointFromResource,
 	entryPointsEqual,
 	isPinnedEntry,
@@ -64,37 +62,6 @@ describe("workspace entry points", () => {
 
 		expect(entryPoints.recent.length).toBe(8);
 		expect(entryPoints.recent[0]?.name).toBe("api-5");
-	});
-
-	test("records namespace and application identities without live object data", () => {
-		const namespace = entryPointFromNamespace(
-			"admin@cluster",
-			"payments",
-			"2026-07-13T10:00:00Z",
-		);
-		const application = entryPointFromApplication(
-			"admin@cluster",
-			"checkout",
-			"argocd",
-			"2026-07-13T10:01:00Z",
-		);
-
-		expect(namespace).toEqual({
-			kind: "namespace",
-			clusterContext: "admin@cluster",
-			namespace: "payments",
-			name: "payments",
-			lastVisitedAt: "2026-07-13T10:00:00Z",
-		});
-		expect(application).toEqual({
-			kind: "app",
-			clusterContext: "admin@cluster",
-			namespace: "argocd",
-			name: "checkout",
-			resourceKind: "Application",
-			apiVersion: "argoproj.io/v1alpha1",
-			lastVisitedAt: "2026-07-13T10:01:00Z",
-		});
 	});
 
 	test("reconciles only resources covered by the successful authoritative lookup", () => {

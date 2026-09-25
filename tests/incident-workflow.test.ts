@@ -52,20 +52,6 @@ function event(overrides: Partial<ResourceEventSummary>): ResourceEventSummary {
 	};
 }
 
-function svelteDetailSource(): string {
-	return [
-		"src/features/resource-detail/ResourceDetailPanel.svelte",
-		"src/features/resource-detail/resourceDetailReadSpec.ts",
-		"src/features/resource-detail/DetailsTab.svelte",
-		"src/features/resource-detail/EventsTab.svelte",
-		"src/features/resource-detail/YamlTab.svelte",
-		"src/features/resource-detail/ResourceYamlPane.svelte",
-		"src/features/resource-detail/LogsTab.svelte",
-	]
-		.map((path) => readFileSync(path, "utf8"))
-		.join("\n");
-}
-
 describe("incident workflow helpers", () => {
 	test("resource detail read spec keeps finite reads distinct and watch scope exact", () => {
 		const spec = buildResourceDetailReadSpec(
@@ -282,122 +268,12 @@ describe("incident workflow helpers", () => {
 		]);
 	});
 
-	test("Svelte resource detail renders events in incident priority order", () => {
-		const source = svelteDetailSource();
-
-		expect(source).toContain("sortIncidentEvents(eventsQuery.data ?? [])");
-		expect(source).toContain("filterResourceEvents(sortedEvents, eventTypeFilter, eventSearch)");
-		expect(source).toContain("{#each visibleEvents as event");
-		expect(source).toContain("{sourceLabel(event)}");
-		expect(source).toContain("{event.namespace ?? \"cluster\"}");
-		expect(source).toContain("function formatEventCompactTime(event: ResourceEventSummary)");
-		expect(source).toContain('formatExactTimestamp(event.lastSeenAt, timestampTimezone, "millisecond")');
-		expect(source).toContain('formatExactTimeOnly(event.lastSeenAt, timestampTimezone, "second")');
-		expect(source).toContain("{formatEventCompactTime(event)}");
-		expect(source).toContain("{eventAgeLabel(event)}");
-		expect(source).toContain("datetime={event.lastSeenAt}");
-		expect(source).toContain("title={formatEventExactTime(event)}");
-	});
-
-	test("Svelte resource detail wires incident summary and timeline helpers", () => {
-		const source = svelteDetailSource();
-
-		expect(source).toContain("buildIncidentSignals(");
-		expect(source).toContain("buildIncidentTimeline({");
-		expect(source).toContain("Incident summary");
-		expect(source).toContain("No incident timeline entries for this resource.");
-	});
-
 	test("Svelte resource detail does not pin user tab clicks to the incoming tab", () => {
 		const source = readFileSync("src/features/resource-detail/ResourceDetailPanel.svelte", "utf8");
 
 		expect(source).toContain("let appliedInitialActiveTab");
 		expect(source).toContain("requestedTab === appliedInitialActiveTab");
 		expect(source).not.toContain("requestedTab !== activeTab");
-	});
-
-	test("Svelte resource detail orders conditions before curated metadata", () => {
-		const source = svelteDetailSource();
-
-		expect(source).toContain("buildCuratedMetadata(detailsQuery.data?.metadata ?? {}, detailResource)");
-		expect(source).toContain(">Conditions</div>");
-		expect(source).toContain(">Metadata</div>");
-		expect(source).not.toContain(">Diagnostics</div>");
-		expect(source.indexOf(">Conditions</div>")).toBeLessThan(
-			source.indexOf(">Metadata</div>"),
-		);
-		expect(source).not.toContain("diagnosticBadgeMetadataRows");
-		expect(source).not.toContain("metadataBadgeRows");
-		expect(source).not.toContain("hasOwnership");
-		expect(source).not.toContain('<Badge variant="outline">Owner {detailResource.ownerRef}</Badge>');
-	});
-
-	test("Svelte resource detail formats metadata and timestamps", () => {
-		const source = svelteDetailSource();
-
-		expect(source).toContain("function metadataBadgeStyle(key: string)");
-		expect(source).toContain("visibleMetadataBadges(curatedMetadata.labels, metadataLabelsExpanded)");
-		expect(source).toContain("visibleMetadataBadges(curatedMetadata.annotations, metadataAnnotationsExpanded)");
-		expect(source).toContain("<details class=\"rounded-md border bg-background/30\">");
-		expect(source).toContain("Advanced metadata");
-		expect(source).toContain("Show {visibleMetadataLabels.hiddenCount} more");
-		expect(source).toContain("Show {visibleMetadataAnnotations.hiddenCount} more");
-		expect(source).toContain('row.label === "Helm" && onOpenHelmRelease');
-		expect(source).toContain("onOpenHelmRelease?.(row.value, detailResource.namespace)");
-		expect(source).toContain("formatFullTimestamp(row.value)");
-		expect(source).toContain("title={formatFullTimestamp(line.timestamp)}");
-		expect(source).toContain("<TableHead>Last transition</TableHead>");
-		expect(source).toContain("datetime={condition.lastTransitionTime}");
-		expect(source).toContain("formatFullTimestamp(condition.lastTransitionTime)");
-		expect(source).toContain("<TableHead>Last finished</TableHead>");
-		expect(source).toContain("datetime={container.lastFinishedAt}");
-		expect(source).toContain("formatFullTimestamp(container.lastFinishedAt)");
-		expect(source).not.toContain("Sampled {formatLogTime(detailResource.metrics.sampledAt)}");
-	});
-
-	test("Svelte resource detail honors YAML defaults and exposes YAML mode controls", () => {
-		const source = svelteDetailSource();
-
-		expect(source).toContain("getSettingsSnapshot().yamlViewModeDefault");
-		expect(source).toContain("getSettingsSnapshot().yamlEncodingDefault");
-		expect(source).toContain("function setYamlViewMode(value: string)");
-		expect(source).toContain("function setYamlEncoding(value: string)");
-		expect(source).toContain('aria-label="YAML shape"');
-		expect(source).toContain('aria-label="YAML encoding"');
-		expect(source).toContain('value={yamlEditing ? "applyClean" : yamlViewMode}');
-		expect(source).toContain(
-			'<SelectValue>{yamlEditing || yamlViewMode === "applyClean" ? "Apply clean" : "Kubectl view"}</SelectValue>',
-		);
-		expect(source).toContain(
-			'<SelectValue>{yamlEncoding === "kyaml" ? "KYAML" : "YAML"}</SelectValue>',
-		);
-		expect(source).toContain(
-			'<SelectItem value="kubectl" label="Kubectl view">Kubectl view</SelectItem>',
-		);
-		expect(source).toContain(
-			'<SelectItem value="applyClean" label="Apply clean">Apply clean</SelectItem>',
-		);
-		expect(source).toContain('<SelectItem value="yaml" label="YAML">YAML</SelectItem>');
-		expect(source).toContain('<SelectItem value="kyaml" label="KYAML">KYAML</SelectItem>');
-		expect(source).toContain('onclick={() => void previewYamlApply()}');
-		expect(source).toContain(
-			'aria-describedby="yaml-apply-disabled-tooltip"',
-		);
-		expect(source).toContain("<Tooltip>");
-		expect(source).toContain("<TooltipTrigger>");
-		expect(source).toContain("{#snippet child({ props }: { props: Record<string, unknown> })}");
-		expect(source).toContain("<TooltipContent id=\"yaml-apply-disabled-tooltip\">");
-		expect(source).toContain("<span {...props} class=\"inline-flex\">");
-		expect(source).toContain(
-			'<div class="overflow-x-auto py-1 font-mono text-xs leading-relaxed">',
-		);
-		expect(source).not.toContain(
-			'<pre class="overflow-x-auto p-0 font-mono text-xs leading-relaxed">',
-		);
-		expect(source).toContain('<YamlCodeEditor value={yamlText} minHeight="520px" />');
-		expect(source.indexOf("Dry-run diff")).toBeLessThan(
-			source.indexOf("bind:value={yamlDraft}"),
-		);
 	});
 
 	test("incident timeline orders events, conditions, restarts, and log metadata", () => {

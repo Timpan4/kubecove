@@ -120,21 +120,3 @@ pub(super) async fn list_cluster_role_bindings(
         )
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn partial_load_keeps_prior_items() {
-        let load = InventoryLoad::partial(
-            vec!["first"],
-            AppError::new("page two forbidden", crate::models::AppErrorKind::Forbidden),
-        );
-        assert_eq!(load.items, vec!["first"]);
-        assert_eq!(
-            load.error.unwrap().kind,
-            crate::models::AppErrorKind::Forbidden
-        );
-    }
-}

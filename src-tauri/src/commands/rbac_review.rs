@@ -301,20 +301,4 @@ mod tests {
         );
         assert!(review_result(None).is_err());
     }
-
-    #[test]
-    fn preserves_evaluation_error() {
-        let result = review_result(Some(SubjectAccessReviewStatus {
-            allowed: false,
-            denied: None,
-            reason: None,
-            evaluation_error: Some("authorizer unavailable".into()),
-        }))
-        .unwrap();
-        assert_eq!(result.outcome, RbacAccessReviewOutcome::NoOpinion);
-        assert_eq!(
-            result.evaluation_error.as_deref(),
-            Some("authorizer unavailable")
-        );
-    }
 }

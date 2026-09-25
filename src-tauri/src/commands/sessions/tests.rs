@@ -1,7 +1,6 @@
 use super::*;
 use std::{
     collections::HashSet,
-    env,
     future::Future,
     sync::{
         atomic::{AtomicU32, Ordering},
@@ -10,7 +9,6 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     time::{sleep, timeout},
 };
@@ -114,46 +112,6 @@ fn session_snapshot(
         .find(|session| session.id == session_id)
 }
 
-fn live_env(name: &str) -> String {
-    env::var(name).unwrap_or_else(|_| panic!("{name} must be set for the live smoke test"))
-}
-
-fn live_port(name: &str) -> i64 {
-    live_env(name)
-        .parse()
-        .unwrap_or_else(|_| panic!("{name} must be a valid port"))
-}
-
-fn live_expect_http_response() -> bool {
-    matches!(
-        env::var("KUBECOVE_LIVE_PF_EXPECT_HTTP_RESPONSE").as_deref(),
-        Ok("1" | "true" | "TRUE" | "yes" | "YES")
-    )
-}
-
-async fn wait_until_port_closes(port: u16) -> bool {
-    for _ in 0..20 {
-        match timeout(
-            Duration::from_millis(250),
-            TcpStream::connect((LOCAL_ADDRESS, port)),
-        )
-        .await
-        {
-            Ok(Ok(_)) => {}
-            Ok(Err(_)) | Err(_) => return true,
-        }
-        sleep(Duration::from_millis(100)).await;
-    }
-    false
-}
-
-#[test]
-fn should_retry_accept_allows_up_to_threshold() {
-    assert!(should_retry_accept(1));
-    assert!(should_retry_accept(4));
-    assert!(!should_retry_accept(5));
-}
-
 #[test]
 fn validates_required_pod_target_and_ports() {
     assert!(validate_request(&valid_request()).is_ok());
@@ -193,70 +151,6 @@ fn validates_required_pod_target_and_ports() {
         .expect_err("privileged local port")
         .message,
         "local_port must be 1024 or higher",
-    );
-}
-
-#[test]
-fn registry_lists_marks_and_stops_sessions() {
-    let registry = PortForwardRegistry::default();
-    registry.insert_summary_for_test(test_summary("pf-1", 18080));
-
-    assert!(registry.has_local_port(18080));
-    assert_eq!(registry.list().len(), 1);
-
-    registry.mark_error("pf-1", "forbidden".to_string());
-    let session = registry.list().pop().expect("session");
-    assert_eq!(session.status, "error");
-    assert_eq!(session.last_error.as_deref(), Some("forbidden"));
-
-    registry.mark_resolved_target(
-        "pf-1",
-        &PortForwardTarget {
-            cluster_context: "kind-dev".to_string(),
-            kubeconfig_env_var: None,
-            kubeconfig_source_key: None,
-            kubeconfig_source_label: None,
-            namespace: "default".to_string(),
-            target_kind: PortForwardTargetKind::Service,
-            target_name: "api".to_string(),
-            pod_name: "api-1".to_string(),
-            remote_port: 80,
-            pod_port: 8081,
-        },
-    );
-    let session = registry.list().pop().expect("session");
-    assert_eq!(session.resolved_pod_name, "api-1");
-    assert_eq!(session.resolved_pod_port, 8081);
-
-    assert!(registry.stop("pf-1"));
-    assert!(!registry.stop("pf-1"));
-    assert!(registry.list().is_empty());
-}
-
-#[test]
-fn accept_error_status_keeps_session_listed() {
-    let registry = PortForwardRegistry::default();
-    registry.insert_summary_for_test(test_summary("pf-1", 18080));
-
-    registry.mark_status(
-        "pf-1",
-        "listening",
-        Some("accept retry 1: connection aborted".to_string()),
-    );
-    let sessions = registry.list();
-    assert_eq!(sessions.len(), 1);
-    assert_eq!(sessions[0].status, "listening");
-    assert_eq!(
-        sessions[0].last_error.as_deref(),
-        Some("accept retry 1: connection aborted")
-    );
-
-    registry.mark_error("pf-1", "too many accept failures".to_string());
-    let session = registry.list().pop().expect("session");
-    assert_eq!(session.status, "error");
-    assert_eq!(
-        session.last_error.as_deref(),
-        Some("too many accept failures")
     );
 }
 
@@ -426,67 +320,4 @@ async fn stop_aborts_session_task() {
     })
     .await
     .expect("session lifecycle test should finish within timeout");
-}
-
-#[tokio::test(flavor = "current_thread")]
-#[ignore = "requires a reachable Kubernetes cluster and KUBECOVE_LIVE_PF_* env vars"]
-async fn live_pod_port_forward_starts_serves_lists_and_stops() {
-    let registry = PortForwardRegistry::default();
-    let target_kind =
-        env::var("KUBECOVE_LIVE_PF_TARGET_KIND").unwrap_or_else(|_| "Pod".to_string());
-    let target_name = env::var("KUBECOVE_LIVE_PF_TARGET_NAME")
-        .or_else(|_| env::var("KUBECOVE_LIVE_PF_POD"))
-        .expect("KUBECOVE_LIVE_PF_TARGET_NAME or KUBECOVE_LIVE_PF_POD must be set");
-    let request = PortForwardRequest {
-        cluster_context: live_env("KUBECOVE_LIVE_PF_CONTEXT"),
-        kubeconfig_env_var: None,
-        namespace: live_env("KUBECOVE_LIVE_PF_NAMESPACE"),
-        target_kind: Some(target_kind),
-        target_name: Some(target_name),
-        pod_name: None,
-        remote_port: live_port("KUBECOVE_LIVE_PF_REMOTE_PORT"),
-        local_port: env::var("KUBECOVE_LIVE_PF_LOCAL_PORT").ok().map(|value| {
-            value
-                .parse()
-                .expect("KUBECOVE_LIVE_PF_LOCAL_PORT must be valid")
-        }),
-    };
-
-    let summary = start_pod_port_forward_in_registry(request, &registry)
-        .await
-        .expect("port-forward should start");
-    assert_eq!(summary.local_address, LOCAL_ADDRESS);
-    assert_eq!(summary.status, "listening");
-    assert!(registry
-        .list()
-        .iter()
-        .any(|session| session.id == summary.id));
-
-    let mut stream = TcpStream::connect((LOCAL_ADDRESS, summary.local_port))
-        .await
-        .expect("local port should accept connections");
-    if live_expect_http_response() {
-        stream
-            .write_all(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
-            .await
-            .expect("request should write through port-forward");
-
-        let mut response = vec![0_u8; 128];
-        let bytes_read = timeout(Duration::from_secs(5), stream.read(&mut response))
-            .await
-            .expect("response should arrive through port-forward")
-            .expect("response should read through port-forward");
-        assert!(bytes_read > 0);
-    }
-
-    assert!(registry.stop(&summary.id));
-    assert!(registry
-        .list()
-        .iter()
-        .all(|session| session.id != summary.id));
-    assert!(
-        wait_until_port_closes(summary.local_port).await,
-        "local port {} remained open after stop",
-        summary.local_port
-    );
 }

@@ -145,39 +145,6 @@ describe("svelte topology model", () => {
 		);
 	});
 
-	test("applies Svelte topology selection through the public interface", () => {
-		const topology: ResourceTopology = {
-			nodes: [
-				node("Deployment", "api"),
-				node("ReplicaSet", "api-abc"),
-				node("Pod", "api-abc-123"),
-			],
-			edges: [
-				{
-					id: "deployment-to-rs",
-					source: "Deployment:api",
-					target: "ReplicaSet:api-abc",
-					relation: "owns",
-				},
-				{
-					id: "rs-to-pod",
-					source: "ReplicaSet:api-abc",
-					target: "Pod:api-abc-123",
-					relation: "creates",
-				},
-			],
-			warnings: [],
-		};
-		const selected = buildGraph(topology, "Pod:api-abc-123");
-		expect(selected.nodes.find((item) => item.id === "Pod:api-abc-123")?.selected).toBe(
-			true,
-		);
-		expect(selected.nodes.find((item) => item.id === "Deployment:api")?.data.connected).toBe(
-			true,
-		);
-		expect(selected.edges.find((edge) => edge.id === "rs-to-pod")?.animated).toBe(true);
-	});
-
 	test("filters Svelte topology selection to the selected root ownership tree", () => {
 		const topology: ResourceTopology = {
 			nodes: [

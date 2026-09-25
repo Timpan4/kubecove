@@ -12,9 +12,9 @@ pub use registry::PortForwardRegistry;
 use registry::LOCAL_ADDRESS;
 use runner::start_pod_port_forward_in_registry;
 #[cfg(test)]
-use runner::{run_port_forward_session, should_retry_accept};
+use runner::run_port_forward_session;
 #[cfg(test)]
-use target::{validate_request, PortForwardTarget, PortForwardTargetKind};
+use target::validate_request;
 
 #[tauri::command]
 pub async fn start_pod_port_forward(

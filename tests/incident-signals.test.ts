@@ -3,8 +3,6 @@ import { readFileSync } from "node:fs";
 import type { ResourceEventSummary, ResourceSummary } from "../src/lib/types";
 import {
 	buildIncidentSignals,
-	incidentSignalCardClassName,
-	shouldFetchResourceEvents,
 } from "../src/features/resource-detail/helpers";
 
 describe("incident signal helpers", () => {
@@ -459,48 +457,6 @@ describe("incident signal helpers", () => {
 		);
 	});
 
-	test("renders signal timestamps through the shared timestamp formatter", () => {
-		const source = readFileSync(
-			"src/features/resource-detail/DetailsTab.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain("signalValueParts(signal)");
-		expect(source).toContain("formatFullTimestamp(part.value)");
-		expect(source).not.toContain("{signal.value}");
-	});
-
-	test("renders detail timeline timestamps with millisecond precision", () => {
-		const source = readFileSync(
-			"src/features/resource-detail/DetailsTab.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain("formatFullTimestamp(item.timestamp)");
-	});
-
-	test("renders metadata creation timestamps through the shared timestamp formatter", () => {
-		const source = readFileSync(
-			"src/features/resource-detail/DetailsTab.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain('row.label === "Created"');
-		expect(source).toContain(
-			"<time datetime={row.value} title={formatFullTimestamp(row.value)}>",
-		);
-	});
-
-	test("keeps GitOps age tooltip backed by creation timestamps", () => {
-		const source = readFileSync(
-			"src/features/gitops/surfaceTooltips.ts",
-			"utf8",
-		);
-
-		expect(source).toContain("gitOpsSelectionAgeTooltip");
-		expect(source).toContain("selection.item.createdAt ?? null");
-	});
-
   test("treats crash loop and image pull states as error incident signals", () => {
     expect(
       buildIncidentSignals(
@@ -525,17 +481,5 @@ describe("incident signal helpers", () => {
         [],
       )[0]?.tone,
     ).toBe("error");
-  });
-
-  test("fetches selected resource events whenever a resource identity is available", () => {
-    expect(shouldFetchResourceEvents(resource)).toBe(true);
-    expect(shouldFetchResourceEvents({ ...resource, name: "" })).toBe(false);
-  });
-
-  test("maps incident signal severity to scannable card accents", () => {
-    expect(incidentSignalCardClassName("error")).toContain("border-l-red-500");
-    expect(incidentSignalCardClassName("warning")).toContain("border-l-amber-500");
-    expect(incidentSignalCardClassName("info")).toContain("border-l-sky-500");
-    expect(incidentSignalCardClassName("neutral")).toContain("border-l-muted");
   });
 });

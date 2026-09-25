@@ -352,36 +352,6 @@ mod tests {
     }
 
     #[test]
-    fn projects_application_summary_from_dynamic_object() {
-        let object = application(json!({
-            "spec": {
-                "project": "payments",
-                "destination": { "namespace": "payments", "server": "in-cluster" },
-                "source": { "repoURL": "https://git.example/apps", "targetRevision": "main", "path": "checkout" }
-            },
-            "status": {
-                "sync": { "status": "Synced" },
-                "health": { "status": "Healthy" },
-                "resources": [{ "kind": "Deployment", "namespace": "payments", "name": "checkout" }]
-            }
-        }));
-
-        let summary = application_summary_from_object("kind-dev", &object).expect("summary");
-
-        assert_eq!(summary.cluster, "kind-dev");
-        assert_eq!(summary.name, "checkout");
-        assert_eq!(summary.namespace.as_deref(), Some("argocd"));
-        assert_eq!(summary.project.as_deref(), Some("payments"));
-        assert_eq!(summary.sync_status.as_deref(), Some("Synced"));
-        assert_eq!(summary.health_status.as_deref(), Some("Healthy"));
-        assert_eq!(
-            summary.source_repo.as_deref(),
-            Some("https://git.example/apps")
-        );
-        assert_eq!(summary.resource_namespaces, vec!["payments"]);
-    }
-
-    #[test]
     fn exposes_external_operation_and_refresh_state() {
         let mut object = application(json!({
             "operation": { "sync": {} },

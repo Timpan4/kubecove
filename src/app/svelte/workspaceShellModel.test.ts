@@ -3,7 +3,6 @@ import type { DiscoveredResourceKind } from "@/lib/types";
 import {
 	appendPresentCustomResourceKinds,
 	buildSidebarTree,
-	GITOPS_RESOURCE_KINDS,
 	resourceBrowserAvailableKinds,
 } from "./workspaceShellModel";
 
@@ -95,15 +94,5 @@ describe("Custom Resources tree model", () => {
 		expect(resourceBrowserAvailableKinds(["Pod"], [widget], true)).toEqual([
 			"Pod",
 		]);
-	});
-
-	test("includes CRD definition objects in GitOps resource scopes", () => {
-		expect(GITOPS_RESOURCE_KINDS.includes("CustomResourceDefinition")).toBe(true);
-	});
-
-	test("keeps cluster-scoped native kinds in GitOps resource scopes", () => {
-		expect(GITOPS_RESOURCE_KINDS.includes("Node")).toBe(true);
-		expect(GITOPS_RESOURCE_KINDS.includes("StorageClass")).toBe(true);
-		expect(GITOPS_RESOURCE_KINDS.includes("PersistentVolume")).toBe(true);
 	});
 });

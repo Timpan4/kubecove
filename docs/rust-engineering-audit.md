@@ -200,7 +200,7 @@ Paths below are relative to `src-tauri`. "Updated" includes typed-error migratio
 | [src/models/sessions.rs](../src-tauri/src/models/sessions.rs) | Read; unchanged |
 | [src/models/streams.rs](../src-tauri/src/models/streams.rs) | Read; unchanged |
 | [src/models/usage.rs](../src-tauri/src/models/usage.rs) | Read; unchanged |
-| [tests/list_kube_contexts.rs](../src-tauri/tests/list_kube_contexts.rs) | Read; updated |
-| [tests/resource_models.rs](../src-tauri/tests/resource_models.rs) | Read; updated |
+| tests/list_kube_contexts.rs | Read; updated; later deleted as low-signal |
+| tests/resource_models.rs | Read; updated; later deleted as low-signal |
 
 Also reviewed [Cargo.toml](../src-tauri/Cargo.toml), the changed [ExecTab.svelte](../src/features/resource-detail/ExecTab.svelte), and the added [execInput.ts](../src/features/resource-detail/execInput.ts) and [execInput.test.ts](../src/features/resource-detail/execInput.test.ts).
