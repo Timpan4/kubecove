@@ -1,4 +1,6 @@
 mod apply;
+#[cfg(test)]
+mod builtin_kind_read_tests;
 mod details;
 mod dynamic;
 mod ingress_status;
