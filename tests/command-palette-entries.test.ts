@@ -12,7 +12,6 @@ import {
 	dedupeResources,
 	filterNamespaces,
 	filterNavigationEntries,
-	resourceEntryKey,
 } from "../src/features/command-palette/entries";
 
 function resource(overrides: Partial<ResourceSummary>): ResourceSummary {
@@ -119,8 +118,8 @@ describe("command palette entries", () => {
 	test("dedupeResources keeps first occurrence by identity key", () => {
 		const a = resource({ name: "a" });
 		const rows = dedupeResources([a, resource({ name: "a" }), resource({ name: "b" })]);
-		expect(rows).toHaveLength(2);
-		expect(resourceEntryKey(rows[0])).toBe(resourceEntryKey(a));
+		expect(rows.map((row) => row.name)).toEqual(["a", "b"]);
+		expect(rows[0]).toBe(a);
 	});
 
 	test("deduped resource index matches merged route and keeps warmed rows first", () => {

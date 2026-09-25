@@ -127,14 +127,6 @@ const TOPOLOGY_WATCH_KINDS = [
 	"Secret",
 ] as const;
 
-export function resourceSelectionKey(resource: ResourceSummary): string {
-	return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
-}
-
-export function resourceIdentityKey(resource: ResourceSummary): string {
-	return `${resource.cluster}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
-}
-
 export function isClusterScopedKind(kind: string): kind is ClusterScopedKind {
 	return CLUSTER_SCOPED_KINDS.some((clusterScopedKind) => clusterScopedKind === kind);
 }

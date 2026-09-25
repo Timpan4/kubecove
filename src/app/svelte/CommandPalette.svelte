@@ -17,9 +17,9 @@
 		buildNavigationEntries,
 		filterNamespaces,
 		filterNavigationEntries,
-		resourceEntryKey,
 		type PaletteNavigationEntry,
 	} from "@/features/command-palette/entries";
+	import { resourceKey } from "@/lib/resource-identity";
 	import { shouldToggleCommandPaletteShortcut } from "@/features/command-palette/shortcut";
 	import {
 		fetchResourcePage,
@@ -247,7 +247,7 @@
 		{#if visibleResources.length > 0}
 			<CommandGroup heading="Resources">
 				{#each visibleResources as resource}
-					<CommandItem value={resourceEntryKey(resource)} onSelect={() => selectResource(resource)}>
+					<CommandItem value={`resource:${resourceKey(resource)}`} onSelect={() => selectResource(resource)}>
 						<Box class="shrink-0 text-muted-foreground" />
 						<span class="truncate">{resource.name}</span>
 						<span class="ml-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
