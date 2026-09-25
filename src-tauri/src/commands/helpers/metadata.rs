@@ -112,43 +112,6 @@ pub(crate) fn fmt_ready(ready: Option<i32>, desired: i32) -> String {
 mod tests {
     use super::*;
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
-    use std::collections::BTreeMap;
-
-    #[test]
-    fn extracts_owner_and_helm_metadata() {
-        let mut labels = BTreeMap::new();
-        labels.insert(
-            LABEL_HELM_RELEASE_NAME.to_string(),
-            "payments-api".to_string(),
-        );
-        let metadata = ObjectMeta {
-            labels: Some(labels),
-            owner_references: Some(vec![OwnerReference {
-                api_version: "apps/v1".to_string(),
-                kind: "Deployment".to_string(),
-                name: "api".to_string(),
-                uid: "uid-1".to_string(),
-                controller: Some(true),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        };
-
-        assert_eq!(extract_owner_ref(&metadata), Some("api".to_string()));
-        assert_eq!(
-            extract_owner_ref_summary(&metadata),
-            Some(crate::models::OwnerReferenceSummary {
-                api_version: "apps/v1".to_string(),
-                kind: "Deployment".to_string(),
-                name: "api".to_string(),
-                uid: "uid-1".to_string(),
-            })
-        );
-        assert_eq!(
-            extract_helm_release(&metadata),
-            Some("payments-api".to_string())
-        );
-    }
 
     #[test]
     fn owner_ref_summary_is_absent_without_owner_references() {

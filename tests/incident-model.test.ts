@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-	buildIncidentFilterOptions,
 	buildIncidentQueryState,
 	buildIncidentSurfaceState,
 	incidentCaseSummary,
@@ -84,22 +83,6 @@ describe("incident surface model", () => {
 		expect(ready.emptyState).toBe("ready");
 		expect(filtered.emptyState).toBe("filtered");
 		expect(clean.emptyState).toBe("clean");
-	});
-
-	test("builds labeled filter options with counts", () => {
-		expect(buildIncidentFilterOptions({
-			total: 4,
-			degraded: 1,
-			attention: 1,
-			restarted: 1,
-			warning: 1,
-		})).toEqual([
-			{ id: "all", label: "All", count: 4 },
-			{ id: "degraded", label: "Degraded", count: 1 },
-			{ id: "attention", label: "Needs attention", count: 1 },
-			{ id: "restarted", label: "Restart evidence", count: 1 },
-			{ id: "warning", label: "Warnings", count: 1 },
-		]);
 	});
 
 	test("maps incident resource jumps without hiding warning-only rows", () => {

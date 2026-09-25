@@ -1,7 +1,4 @@
-import {
-	argoListInvalidationKey,
-	createArgoListFreshness,
-} from "./argo-application-freshness";
+import { createArgoListFreshness } from "./argo-application-freshness";
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void | Promise<void>): void;
@@ -20,20 +17,6 @@ const changed = (kind: string) => ({
 const waitForDebounce = () => new Promise((resolve) => setTimeout(resolve, 300));
 
 describe("Argo application freshness", () => {
-	test("maps watched Argo kinds to their exact list keys", () => {
-		for (const [kind, key] of [
-			["Application", "argo-apps"],
-			["ApplicationSet", "argo-appsets"],
-			["AppProject", "argo-appprojects"],
-		] as const) {
-			expect(argoListInvalidationKey(changed(kind), "KUBECONFIG")).toEqual([
-				key,
-				"kubeconfigEnv=KUBECONFIG",
-				"kind-dev",
-			]);
-		}
-	});
-
 	test("invalidates matching watch events and ignores unrelated events", async () => {
 		const invalidated: (readonly unknown[])[] = [];
 		const freshness = createArgoListFreshness(

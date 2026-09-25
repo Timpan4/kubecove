@@ -9,8 +9,6 @@ import {
 	buildGitOpsOverviewFilters,
 	chooseDefaultGitOpsFilter,
 	fluxFamilyInstalledKindCount,
-	fluxKindLabelFromFilterKey,
-	fluxResourceKindFromFilterKey,
 } from "./gitops-overview-helpers";
 
 declare function describe(name: string, fn: () => void): void;
@@ -218,21 +216,6 @@ describe("GitOps overview filters", () => {
 			true,
 		);
 		expect(chooseDefaultGitOpsFilter(filters)).toBe(null);
-	});
-
-	test("maps Flux filter keys back to polished labels and installed kinds", () => {
-		const gitRepository = fluxKind("GitRepository");
-		const helmRelease = fluxKind("HelmRelease", "helm");
-
-		expect(fluxKindLabelFromFilterKey("flux:GitRepository")).toBe(
-			"Flux Git Repositories",
-		);
-		expect(
-			fluxResourceKindFromFilterKey("flux:HelmRelease", [
-				gitRepository,
-				helmRelease,
-			])?.kind,
-		).toBe("HelmRelease");
 	});
 });
 

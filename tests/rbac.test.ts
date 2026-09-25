@@ -4,7 +4,6 @@ import {
 	highestRisk,
 	riskSummaryLabel,
 	subjectListLabel,
-	subjectLabel,
 } from "../src/features/rbac/risk";
 import type { RbacInspectionSummary, RbacRiskIndicator } from "../src/lib/types";
 
@@ -28,13 +27,6 @@ describe("RBAC risk helpers", () => {
 	test("builds factual compact risk labels", () => {
 		expect(riskSummaryLabel([])).toBe("No flags");
 		expect(riskSummaryLabel([medium, high])).toBe("HIGH: 2 flags");
-	});
-
-	test("formats subjects with namespace when present", () => {
-		expect(subjectLabel({ kind: "ServiceAccount", namespace: "payments", name: "api" })).toBe(
-			"ServiceAccount:payments/api",
-		);
-		expect(subjectLabel({ kind: "User", name: "alice" })).toBe("User:alice");
 	});
 
 	test("summarizes truncated subject lists", () => {

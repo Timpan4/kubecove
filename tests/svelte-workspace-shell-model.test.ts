@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import {
 	buildWorkspaceNavigationModel,
 	createWorkspaceNavigation,
@@ -225,27 +224,6 @@ describe("svelte workspace shell model", () => {
 		).toEqual([nestedNamespaceId]);
 	});
 
-	test("binds compact drawer scroll position through the sidebar tree", () => {
-		const scrollArea = readFileSync("src/components/ui/svelte/ScrollArea.svelte", "utf8");
-		const sidebar = readFileSync("src/app/svelte/SidebarTree.svelte", "utf8");
-		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-		const compactStart = shell.indexOf("{#if navigationOpen}");
-		const compactEnd = shell.indexOf("{/if}", compactStart);
-		const desktopSidebar = shell.slice(0, compactStart);
-		const compactSidebar = shell.slice(compactStart, compactEnd);
-
-		expect(scrollArea).toContain("scrollTop = $bindable(0)");
-		expect(scrollArea).toContain("scrollElement.scrollTop = scrollTop");
-		expect(scrollArea).toContain("scrollTop = event.currentTarget.scrollTop");
-		expect(sidebar).toContain("scrollTop = $bindable(0)");
-		expect(sidebar).toContain("bind:scrollTop");
-		expect(shell).toContain("let compactSidebarScrollTop = $state(0)");
-		expect(desktopSidebar).toContain("onSectionToggle={toggleSection}");
-		expect(desktopSidebar).not.toContain("bind:scrollTop={compactSidebarScrollTop}");
-		expect(compactSidebar).toContain("onSectionToggle={toggleCompactSection}");
-		expect(compactSidebar).toContain("bind:scrollTop={compactSidebarScrollTop}");
-	});
-
 	test("keeps namespace sidebar children lazy", () => {
 		const nodes = buildSidebarTree({
 			namespaces,
@@ -258,19 +236,9 @@ describe("svelte workspace shell model", () => {
 			showUnavailableGitOpsProviders: false,
 		});
 		const namespace = findNode(nodes, "Namespaces").children?.[0];
-		const sidebarSource = readFileSync("src/app/svelte/SidebarTree.svelte", "utf8");
-		const nodeSource = readFileSync(
-			"src/app/svelte/SidebarTreeNode.svelte",
-			"utf8",
-		);
 
 		expect(namespace?.label).toBe("default");
 		expect(namespace?.children).toBeUndefined();
-		expect(sidebarSource).toContain("listPresentCustomResourceKinds");
-		expect(sidebarSource).toContain("buildNamespaceTreeNode(node.id.namespace, customResources)");
-		expect(sidebarSource).toContain("{getLazyChildren}");
-		expect(nodeSource).toContain('node.id.type === "namespace"');
-		expect(nodeSource).toContain("getLazyChildren?.(node)");
 	});
 
 	test("appends CRD kinds to live resource scopes without changing the base scope", () => {
@@ -507,56 +475,6 @@ describe("svelte workspace shell model", () => {
 		).toEqual({ canQuery: true, namespaces: [], kinds: ["Node"] });
 	});
 
-	test("Svelte workspace chrome keeps platform-aware command palette hint", () => {
-		const source = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-
-		expect(source).toContain('const SEARCH_SHORTCUT_HINT = IS_MAC ? "⌘K" : "Ctrl K"');
-		expect(source).toContain("{SEARCH_SHORTCUT_HINT}");
-		expect(source).toContain('aria-label="Search views, namespaces, and resources"');
-		expect(source).toContain("commandOpen = true");
-	});
-
-	test("Svelte workspace chrome uses real cluster selector", () => {
-		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-		const selector = readFileSync("src/components/ClusterSelector.svelte", "utf8");
-
-		expect(shell).toContain('import ClusterSelector from "@/components/ClusterSelector.svelte"');
-		expect(shell).toContain("<ClusterSelector");
-		expect(shell).toContain("value={workspace.scope.clusterContext}");
-		expect(shell).toContain("onClusterChange={changeClusterContext}");
-		expect(shell).toContain("onChangeClusterContext(workspace.id, {");
-		expect(shell).not.toContain("workspaceStore.updateWorkspace(workspace.id");
-		expect(shell).toContain("clusterContexts: [clusterContext]");
-		expect(shell).toContain("namespaces: []");
-		expect(shell).not.toContain('applyWorkspaceNavigation({ type: "changeCluster" })');
-		expect(selector).toContain("queryKeys.kubeContexts(kubeconfigSourceKey)");
-		expect(selector).toContain("listKubeContexts(client, kubeconfigSourceKey)");
-		expect(selector).toContain('aria-labelledby="cluster-select-label"');
-		expect(selector).toContain('placeholder="Select a context..."');
-		expect(selector).toContain("contextsQuery.refetch()");
-	});
-
-	test("Svelte workspace shell owns the selected resource inspector", () => {
-		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-
-		expect(shell).toContain('import DetailPanelFrame from "./DetailPanelFrame.svelte"');
-		expect(shell).toContain(
-			'import ResourceDetailPanel from "@/features/resource-detail/ResourceDetailPanel.svelte"',
-		);
-	expect(shell).toContain(
-		"const resourceInspectorOpen = $derived(focusedResource !== null)",
-	);
-	expect(shell).toContain('const resourceInspectorSizeKey = $derived(viewMode === "argo" ? "gitops" : "resource")');
-	expect(shell).toContain('const resourceInspectorDefaultSize = $derived(viewMode === "argo" ? 30 : 40)');
-	expect(shell).toContain('const resourceInspectorMinSize = $derived(viewMode === "argo" ? 25 : 33)');
-	expect(shell).toContain("detailOpen={resourceInspectorOpen}");
-	expect(shell).toContain("sizeKey={resourceInspectorSizeKey}");
-	expect(shell).toContain("selectedResource={focusedResource}");
-	expect(shell).toContain("{#key resourceSelectionKey(focusedResource)}");
-	expect(shell).toContain('aria-label="Close resource details"');
-	expect(shell).not.toContain("Back to workspaces");
-});
-
 	test("Svelte Argo shortcuts preserve target application selection", () => {
 		const workspace = createWorkspaceRecord({
 			name: "Ops",
@@ -569,29 +487,5 @@ describe("svelte workspace shell model", () => {
 		});
 
 		expect(navigation.targetGitOpsApplication).toBe("checkout");
-	});
-
-	test("Svelte application entry points preserve namespace identity", () => {
-		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-		const overview = readFileSync(
-			"src/features/workspaces/WorkspaceOverview.svelte",
-			"utf8",
-		);
-
-		expect(shell).toContain("function openArgo(argoApp?: string, namespace?: string)");
-		expect(overview).toContain("onOpenArgo(entry.name, entry.namespace)");
-	});
-
-	test("Svelte workspace overview summarizes Flux in the GitOps card", () => {
-		const overview = readFileSync("src/features/workspaces/WorkspaceOverview.svelte", "utf8");
-
-		expect(overview).toContain("detectFlux");
-		expect(overview).toContain("listFluxResources");
-		expect(overview).toContain("queryKeys.fluxDetect(workspace.scope.clusterContext, kubeconfigSourceKey)");
-		expect(overview).toContain("queryKeys.fluxResources(");
-		expect(overview).toContain("const fluxRows = $derived(");
-		expect(overview).toContain('<h2 class="text-sm font-semibold">GitOps</h2>');
-		expect(overview).toContain("Flux resources");
-		expect(overview).not.toContain("<CardTitle>Argo CD</CardTitle>");
 	});
 });

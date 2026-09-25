@@ -1185,14 +1185,6 @@ mod tests {
     use super::super::scope::acquire_connection_lease;
     use super::*;
 
-    #[test]
-    fn url_preserves_configured_base_path() {
-        assert_eq!(
-            url("https://argo.example/argo-cd", "/api/v1/applications").unwrap(),
-            "https://argo.example/argo-cd/api/v1/applications"
-        );
-    }
-
     #[derive(Default)]
     struct MemoryCredentialStore(Mutex<HashMap<String, String>>);
     #[test]

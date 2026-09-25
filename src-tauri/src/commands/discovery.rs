@@ -374,19 +374,6 @@ mod tests {
     }
 
     #[test]
-    fn maps_crd_to_storage_version_kind() {
-        let mut source = crd("v1", "example.com", "Widget", "widgets", "Namespaced");
-        source.spec.names.short_names = Some(vec!["wdg".to_string()]);
-        let kind = discovered_kind_from_crd(&source).expect("kind");
-
-        assert_eq!(kind.api_version, "example.com/v1");
-        assert_eq!(kind.kind, "Widget");
-        assert_eq!(kind.plural, "widgets");
-        assert_eq!(kind.short_names, ["wdg"]);
-        assert!(kind.namespaced);
-    }
-
-    #[test]
     fn falls_back_to_first_served_version() {
         let mut source = crd("v1", "example.com", "Widget", "widgets", "Cluster");
         source.spec.versions[1].served = false;

@@ -409,33 +409,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
   return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, incidentMode: false, portForwardMode: false, rbacMode: false };
 }
 
-// ─── Empty State Messages ─────────────────────────────────────────────────────
-
-export function emptyStateMessage(scope: TreeScope, hasClusterContext: boolean): string {
-  if (!hasClusterContext) return "Select a cluster context first";
-  if (scope.argoMode) return "Select a GitOps resource type";
-  if (scope.helmMode) return "Select a Helm resource type";
-  if (scope.incidentMode) return "Use the Incident Cockpit";
-  if (scope.portForwardMode) return "Use the Port Forwards page";
-  if (scope.rbacMode) return "Select an RBAC inspection view";
-  if (scope.section === "discovered") return "Select a custom resource kind";
-  if (!scope.section) return "Select a section from the sidebar";
-  if (scope.section === "clusterOverview" && scope.kinds.length > 0) return "Select a cluster context to view cluster-scoped resources";
-  if (scope.namespace && scope.kinds.length === 0) return "Select a resource kind";
-  if (scope.kinds.length > 0 && !scope.clusterScoped && !scope.namespace) return "Loading all namespaces";
-  return "Select a resource kind";
-}
-
 // ─── Argo Section Helpers ─────────────────────────────────────────────────────
-
-export const ARGO_CHILDREN_LABELS = {
-  Applications: "Argo CD Applications",
-  ApplicationSets: "Argo CD ApplicationSets",
-  AppProjects: "Argo CD AppProjects",
-  "Argo CD Applications": "Argo CD Applications",
-  "Argo CD ApplicationSets": "Argo CD ApplicationSets",
-  "Argo CD AppProjects": "Argo CD AppProjects",
-} satisfies Readonly<Record<string, string>>;
 
 export function isArgoSection(section: SectionName | string): boolean {
   return section === "argo";

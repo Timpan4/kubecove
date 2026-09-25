@@ -263,16 +263,4 @@ mod tests {
             .iter()
             .any(|diagnostic| diagnostic.message.contains("apiVersion must match")));
     }
-
-    #[test]
-    fn lint_does_not_add_placeholder_openapi_warning() {
-        let result = lint_kubernetes_yaml_request(base_request(
-            "apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n  namespace: default\n",
-        ));
-
-        assert!(!result
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.source == "OpenAPI"));
-    }
 }

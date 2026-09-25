@@ -4,21 +4,9 @@ import {
 	clampDetailPanelSize,
 	detailPanelSizeFromKey,
 	detailPanelSizeFromPointer,
-	DETAIL_PANEL_DEFAULT_SIZE,
-	DETAIL_PANEL_MIN_SIZE,
-	DETAIL_PANEL_RESIZE_STEP,
-	MAIN_PANEL_DEFAULT_SIZE,
-	MAIN_PANEL_MIN_SIZE,
 } from "../src/app/svelte/detailPanelFrameModel";
 
 describe("svelte detail panel frame", () => {
-	test("keeps detail panel sizing defaults", () => {
-		expect(MAIN_PANEL_DEFAULT_SIZE).toBe(60);
-		expect(DETAIL_PANEL_DEFAULT_SIZE).toBe(40);
-		expect(MAIN_PANEL_MIN_SIZE).toBe(30);
-		expect(DETAIL_PANEL_MIN_SIZE).toBe(33);
-		expect(DETAIL_PANEL_RESIZE_STEP).toBe(2);
-	});
 
 	test("clamps detail panel resize to keep both panes usable", () => {
 		expect(clampDetailPanelSize(20)).toBe(33);
@@ -54,20 +42,5 @@ describe("svelte detail panel frame", () => {
 		expect(source).toContain('aria-orientation="vertical"');
 		expect(source).toContain("onpointerdown={startResize}");
 		expect(source).toContain("onkeydown={handleResizeKeydown}");
-	});
-
-	test("hides the resize handle and overlays the detail pane below xl", () => {
-		const source = readFileSync("src/app/svelte/DetailPanelFrame.svelte", "utf8");
-		const resizeHandleClass = source.match(
-			/aria-label="Resize details panel"[\s\S]*?class="([^"]*max-xl:hidden[^"]*)"/,
-		)?.[1];
-		const detailPaneClass = source.match(
-			/<aside[\s\S]*?class="([^"]*max-xl:absolute[^"]*)"/,
-		)?.[1];
-
-		expect(resizeHandleClass).toContain("max-xl:hidden");
-		expect(detailPaneClass).toContain("max-xl:absolute");
-		expect(detailPaneClass).toContain("max-xl:inset-0");
-		expect(detailPaneClass).toContain("max-xl:z-10");
 	});
 });

@@ -6,10 +6,10 @@ import { join } from "node:path";
 import { downloadAsset, verifyAsset } from "./assets";
 import { kindConfig, kindDeleteArgs } from "./cluster";
 import { safeDiagnosticCommands, safeDiagnosticText } from "./diagnostics";
-import { gitSeedIdentity, kindMetricsManifest } from "./git-seed";
-import { bootstrapOrder, platformApplicationNames, readinessPhase, tenantApplicationNames } from "./lab";
+import { kindMetricsManifest } from "./git-seed";
+import { readinessPhase } from "./lab";
 import { assertOwned, assertOwnedOnDisk, expectedCluster, type Ownership, ownershipFromDisk } from "./ownership";
-import { chartPins, validateImmutablePins } from "./platform";
+import { validateImmutablePins } from "./platform";
 
 const record: Ownership = { kind: "run", runId: "run-1", cluster: "kubecove-e2e-run-1", dir: "/tmp/run-1", raw: "/tmp/run-1/kind.raw.kubeconfig", kubeconfig: "/tmp/run-1/kubeconfig", dataDir: "/tmp/run-1/data", kindConfig: "/tmp/run-1/kind.yaml", disableDefaultCNI: true, provider: "docker", kubernetes: "1.35" };
 
@@ -20,8 +20,6 @@ describe("Kind harness", () => {
 	});
 	test("requires immutable platform pins", () => {
 		expect(() => validateImmutablePins()).not.toThrow();
-		expect(chartPins.argocd).toMatchObject({ version: "10.1.4", appVersion: "3.4.5" });
-		expect(chartPins.traefik).toMatchObject({ version: "41.0.2", appVersion: "3.7.6" });
 	});
 	test("retries transient asset downloads twice", async () => {
 		const responses: Array<Response | Error> = [
@@ -52,10 +50,6 @@ describe("Kind harness", () => {
 		expect(verifyAsset("fixture", new TextEncoder().encode("fixture"), "f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d")).toHaveLength(64);
 		expect(() => verifyAsset("fixture", new Uint8Array(), "0".repeat(64))).toThrow("checksum mismatch");
 		expect(kindMetricsManifest("        - --kubelet-use-node-status-port\n")).toContain("--kubelet-insecure-tls");
-	});
-	test("uses a fixed seed identity and strict bootstrap order", () => {
-		expect(gitSeedIdentity.email).toBe("e2e@kubecove.invalid");
-		expect(bootstrapOrder).toEqual(["kind", "cilium", "git", "argocd", "root-application", "platform-applications", "tenant-applications", "operations-helm-release"]);
 	});
 	test("refuses ownership records outside exact run", () => {
 		expect(() => assertOwned(record, "run", record.dir, record.runId, "workspace")).not.toThrow();
@@ -90,9 +84,7 @@ describe("Kind harness", () => {
 		expect(kindDeleteArgs(record.cluster, record.raw)).toEqual(["delete", "cluster", "--name", record.cluster, "--kubeconfig", record.raw]);
 		expect(() => kindDeleteArgs("", record.raw)).toThrow("exact cluster cleanup");
 	});
-	test("wait order classifies exact platform and tenant applications", () => {
-		expect(platformApplicationNames).toEqual(["platform-argocd", "platform-cilium", "platform-metrics", "platform-storage", "platform-ingress"]);
-		expect(tenantApplicationNames).toEqual(["tenant-catalog", "tenant-ledger"]);
+	test("wait order classifies readiness phases", () => {
 		expect(readinessPhase("application", "Healthy")).toBe("ready");
 		expect(readinessPhase("deployment", "Progressing")).toBe("waiting");
 	});

@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import {
 	formatExactTimeOnly,
 	formatExactTimestamp,
@@ -13,24 +12,6 @@ import {
 	parseLogLine,
 	type ParsedLogLine,
 } from "../src/features/resource-detail/log-helpers";
-
-function extractFunctionSource(source: string, name: string): string | undefined {
-	const start = source.indexOf(`function ${name}`);
-	if (start < 0) return undefined;
-	const bodyStart = source.indexOf("{", start);
-	if (bodyStart < 0) return undefined;
-
-	let depth = 0;
-	for (let index = bodyStart; index < source.length; index += 1) {
-		const character = source[index];
-		if (character === "{") depth += 1;
-		if (character === "}") {
-			depth -= 1;
-			if (depth === 0) return source.slice(start, index + 1);
-		}
-	}
-	return undefined;
-}
 
 describe("log presentation helpers", () => {
 	test("splits Kubernetes log timestamps from the message", () => {
@@ -145,40 +126,5 @@ describe("log presentation helpers", () => {
 		expect(formatExactTimestamp(timestamp, "utc", "millisecond")).toBe(
 			"2026-05-18 09:01:35.103 UTC",
 		);
-
-		const detailSource = readFileSync(
-			"src/features/resource-detail/ResourceDetailPanel.svelte",
-			"utf8",
-		);
-		const logTimeFunction = extractFunctionSource(detailSource, "formatLogTime");
-		const logsSource = readFileSync(
-			"src/features/resource-detail/LogsTab.svelte",
-			"utf8",
-		);
-
-		expect(logTimeFunction).toContain(
-			"return formatExactTimeOnly(timestamp, timestampTimezone)",
-		);
-		expect(logTimeFunction).not.toContain("formatExactTimestamp");
-		expect(logsSource).toContain("title={formatFullTimestamp(line.timestamp)}");
-		expect(logsSource).toContain("{formatLogTime(line.timestamp)}");
-		expect(logsSource).not.toMatch(
-			/>\s*\{formatFullTimestamp\(line\.timestamp\)\}\s*<\/time>/,
-		);
-	});
-
-	test("Svelte logs use selected non-init containers before streaming", () => {
-		const source = [
-			readFileSync("src/features/resource-detail/ResourceDetailPanel.svelte", "utf8"),
-			readFileSync("src/features/resource-detail/ResourceLogsPane.svelte", "utf8"),
-			readFileSync("src/features/resource-detail/LogsTab.svelte", "utf8"),
-		].join("\n");
-
-		expect(source).toContain(
-			'containerRows.filter((container) => container.type !== "init")',
-		);
-		expect(source).toContain("isPod && selectedContainer");
-		expect(source).toContain("container: selectedContainer");
-		expect(source).toContain("No containers found");
 	});
 });

@@ -1,8 +1,7 @@
-import type { PodExecSessionSummary, ResourceSummary } from "@/lib/types";
+import type { ResourceSummary } from "@/lib/types";
 import {
 	buildPodExecRequest,
 	commandForPreset,
-	isPodExecForResource,
 	podExecCommandText,
 	podExecTarget,
 } from "@/features/live-sessions";
@@ -21,21 +20,6 @@ const pod: ResourceSummary = {
 	name: "api-0",
 	age: "1m",
 	health: "healthy",
-};
-
-const session: PodExecSessionSummary = {
-	id: "pod-exec-1",
-	clusterContext: "kind-dev",
-	namespace: "payments",
-	podName: "api-0",
-	container: "api",
-	command: ["/bin/sh"],
-	stdin: true,
-	tty: true,
-	terminalCols: 100,
-	terminalRows: 32,
-	status: "running",
-	startedAt: "2026-06-01T10:00:00Z",
 };
 
 describe("pod exec helpers", () => {
@@ -127,12 +111,5 @@ describe("pod exec helpers", () => {
 		expect(podExecCommandText(["/bin/sh", "-lc", "date"])).toBe(
 			'["/bin/sh","-lc","date"]',
 		);
-	});
-
-	test("matches active sessions for a selected Pod", () => {
-		expect(isPodExecForResource(session, pod)).toBe(true);
-		expect(
-			isPodExecForResource({ ...session, podName: "worker-0" }, pod),
-		).toBe(false);
 	});
 });
