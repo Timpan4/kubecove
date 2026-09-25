@@ -2,9 +2,17 @@ import { requiredPermissionForResource } from "@/features/rbac";
 import { createCancelScope } from "@/lib/finite-read-lifecycle";
 import { queryKeys } from "@/lib/queryKeys";
 import { dynamicKindKey, resourceKey } from "@/lib/resource-identity";
+import {
+	getDynamicResourceDetails,
+	getResourceDetails,
+	getResourceYaml,
+	type TauriClient,
+} from "@/lib/tauri";
 import type {
+	CancellableRequest,
 	DiscoveredResourceKind,
 	RbacAccessReviewTarget,
+	ResourceDetailsFull,
 	ResourceSummary,
 	WatchResourceKey,
 	YamlEncoding,
@@ -92,4 +100,37 @@ export function buildResourceDetailReadSpec(
 			namespace: resource.namespace ?? undefined,
 		},
 	};
+}
+
+export interface ResourceReadOptions {
+	kubeconfigSourceKey: string | undefined;
+	yamlViewMode: YamlViewMode;
+	yamlEncoding: YamlEncoding;
+	cancellable?: CancellableRequest;
+}
+
+/** Details from the built-in or discovered-kind command that serves this resource. */
+export function readResourceDetails(
+	client: TauriClient,
+	resource: ResourceSummary,
+	{ kubeconfigSourceKey, yamlViewMode, yamlEncoding, cancellable }: ResourceReadOptions,
+): Promise<ResourceDetailsFull> {
+	const namespace = resource.namespace ?? undefined;
+	const dynamicKind = dynamicResourceKindFromSummary(resource);
+	return dynamicKind
+		? getDynamicResourceDetails(client, resource.cluster, dynamicKind, resource.name, namespace, kubeconfigSourceKey, yamlViewMode, yamlEncoding, cancellable)
+		: getResourceDetails(client, resource.cluster, resource.kind, resource.name, namespace, kubeconfigSourceKey, yamlViewMode, yamlEncoding, cancellable);
+}
+
+/** YAML for this resource; discovered kinds have no YAML command and read it from their details. */
+export async function readResourceYaml(
+	client: TauriClient,
+	resource: ResourceSummary,
+	options: ResourceReadOptions,
+): Promise<string> {
+	if (dynamicResourceKindFromSummary(resource)) {
+		return (await readResourceDetails(client, resource, options)).yaml;
+	}
+	const { kubeconfigSourceKey, yamlViewMode, yamlEncoding, cancellable } = options;
+	return getResourceYaml(client, resource.cluster, resource.kind, resource.name, resource.namespace ?? undefined, kubeconfigSourceKey, yamlViewMode, yamlEncoding, cancellable);
 }

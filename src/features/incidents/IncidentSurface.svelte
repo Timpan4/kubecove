@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import {
-		dynamicResourceKindFromSummary,
-		shouldFetchResourceDetails,
+		buildResourceDetailReadSpec,
+		readResourceDetails,
 	} from "@/features/resource-detail";
 	import type { HealthFilter } from "@/features/resources";
 	import {
@@ -13,13 +13,10 @@
 	import { diagnosticLog } from "@/lib/diagnostics";
 	import type { PathStateDetailTab } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
-	import { dynamicKindKey } from "@/lib/resource-identity";
 	import { getSettingsSnapshot } from "@/lib/settings-store";
 	import {
 		cancelBackendRequests,
 		createTauriClient,
-		getDynamicResourceDetails,
-		getResourceDetails,
 		isAppError,
 		listIncidentCockpit,
 		listResourceTopology,
@@ -105,17 +102,17 @@
 		if (selectedIncidentKey !== selectedKey) selectedIncidentKey = selectedKey;
 	});
 
-	const dynamicKind = $derived(
-		selectedResource ? dynamicResourceKindFromSummary(selectedResource) : null,
+	const detailReadSpec = $derived(
+		selectedResource
+			? buildResourceDetailReadSpec(
+					selectedResource,
+					kubeconfigSourceKey,
+					yamlViewMode,
+					yamlEncoding,
+				)
+			: null,
 	);
-	const selectedDynamicKindKey = $derived(dynamicKindKey(dynamicKind));
-	const detailsEnabled = $derived(
-		Boolean(
-			sourceReady &&
-				selectedResource &&
-				shouldFetchResourceDetails(selectedResource),
-		),
-	);
+	const detailsEnabled = $derived(Boolean(sourceReady && detailReadSpec?.detailsEnabled));
 	const topologyEnabled = $derived(
 		Boolean(
 			sourceReady &&
@@ -124,15 +121,7 @@
 		),
 	);
 	const detailsQueryKey = $derived(
-		selectedResource
-			? queryKeys.resourceDetails(
-					selectedResource,
-					selectedDynamicKindKey,
-					kubeconfigSourceKey,
-					yamlViewMode,
-					yamlEncoding,
-				)
-			: (["resource-details", "incident-idle"] as const),
+		detailReadSpec?.detailsQueryKey ?? (["resource-details", "incident-idle"] as const),
 	);
 	const topologyQueryKey = $derived(
 		topologyEnabled && selectedResource?.namespace
@@ -178,29 +167,12 @@
 			const resource = selectedResource;
 			if (!resource) throw new Error("Incident detail requested without a selected resource.");
 			try {
-				return dynamicKind
-					? await getDynamicResourceDetails(
-							client,
-							resource.cluster,
-							dynamicKind,
-							resource.name,
-							resource.namespace ?? undefined,
-							kubeconfigSourceKey,
-							yamlViewMode,
-							yamlEncoding,
-							createFiniteReadRequest(detailsCancelScope, "details"),
-						)
-					: await getResourceDetails(
-							client,
-							resource.cluster,
-							resource.kind,
-							resource.name,
-							resource.namespace ?? undefined,
-							kubeconfigSourceKey,
-							yamlViewMode,
-							yamlEncoding,
-							createFiniteReadRequest(detailsCancelScope, "details"),
-						);
+				return await readResourceDetails(client, resource, {
+					kubeconfigSourceKey,
+					yamlViewMode,
+					yamlEncoding,
+					cancellable: createFiniteReadRequest(detailsCancelScope, "details"),
+				});
 			} catch (error) {
 				if (isAppError(error) && error.kind === "cancelled") {
 					diagnosticLog("incidents.details.cancel", { key: selectedKey });

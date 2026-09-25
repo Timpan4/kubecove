@@ -28,8 +28,6 @@
 		cancelBackendRequests,
 		closeStreamChannel,
 		createStreamChannel,
-		getDynamicResourceDetails,
-		getResourceDetails,
 		isAppError,
 		listResourceEvents,
 		startResourceEventWatch,
@@ -62,7 +60,7 @@
 		isCleanCompletedContainer,
 		type ContainerStatusRow,
 	} from "./helpers";
-	import { buildResourceDetailReadSpec } from "./resourceDetailReadSpec";
+	import { buildResourceDetailReadSpec, readResourceDetails } from "./resourceDetailReadSpec";
 	import ArgoApplicationDetails from "@/features/gitops/ArgoApplicationDetails.svelte";
 	import { CHIP_BADGE_STYLES, type ChipVariant } from "./constants";
 	import DetailsTab from "./DetailsTab.svelte";
@@ -263,29 +261,12 @@
 		queryFn: async () => {
 			try {
 				return await runDetailFetch("details", "resource-details", () =>
-					dynamicKind
-						? getDynamicResourceDetails(
-							client,
-							resource.cluster,
-							dynamicKind,
-							resource.name,
-							resource.namespace ?? undefined,
-							kubeconfigSourceKey,
-							yamlViewMode,
-							yamlEncoding,
-							createFiniteReadRequest(detailsCancelScope, "details"),
-						)
-						: getResourceDetails(
-							client,
-							resource.cluster,
-							resource.kind,
-							resource.name,
-							resource.namespace ?? undefined,
-							kubeconfigSourceKey,
-							yamlViewMode,
-							yamlEncoding,
-							createFiniteReadRequest(detailsCancelScope, "details"),
-						),
+					readResourceDetails(client, resource, {
+						kubeconfigSourceKey,
+						yamlViewMode,
+						yamlEncoding,
+						cancellable: createFiniteReadRequest(detailsCancelScope, "details"),
+					}),
 				);
 			} catch (error) {
 				if (isAppError(error) && error.kind === "cancelled") {

@@ -4,8 +4,6 @@
 	import {
 		applyYaml,
 		cancelBackendRequests,
-		getDynamicResourceDetails,
-		getResourceYaml,
 		isAppError,
 		lintKubernetesYaml,
 		prepareYamlApply,
@@ -32,6 +30,7 @@
 	} from "@/lib/types";
 	import { formatYamlDocument } from "@/lib/yamlFormat";
 	import { getErrorMessage } from "./helpers";
+	import { readResourceYaml } from "./resourceDetailReadSpec";
 	import SecretDataViewer from "./SecretDataViewer.svelte";
 	import YamlTab from "./YamlTab.svelte";
 	import {
@@ -176,33 +175,13 @@
 		queryFn: async () => {
 			try {
 				return await runYamlFetch("resource-yaml", async () => {
-					if (dynamicKind) {
-						if (!showSecretDataViewer && detailsYaml) return detailsYaml;
-						return (
-							await getDynamicResourceDetails(
-								client,
-								resource.cluster,
-								dynamicKind,
-								resource.name,
-								resource.namespace ?? undefined,
-								kubeconfigSourceKey,
-								yamlViewMode,
-								yamlEncoding,
-								createFiniteReadRequest(yamlCancelScope, "yaml"),
-							)
-						).yaml;
-					}
-					return await getResourceYaml(
-						client,
-						resource.cluster,
-						resource.kind,
-						resource.name,
-						resource.namespace ?? undefined,
+					if (dynamicKind && !showSecretDataViewer && detailsYaml) return detailsYaml;
+					return await readResourceYaml(client, resource, {
 						kubeconfigSourceKey,
 						yamlViewMode,
 						yamlEncoding,
-						createFiniteReadRequest(yamlCancelScope, "yaml"),
-					);
+						cancellable: createFiniteReadRequest(yamlCancelScope, "yaml"),
+					});
 				});
 			} catch (error) {
 				if (isAppError(error) && error.kind === "cancelled") {
@@ -292,17 +271,11 @@
 		yamlForceConflictsForResource = false;
 		yamlShowFullDiff = false;
 		try {
-			yamlDraft = await getResourceYaml(
-				client,
-				resource.cluster,
-				resource.kind,
-				resource.name,
-				resource.namespace ?? undefined,
+			yamlDraft = await readResourceYaml(client, resource, {
 				kubeconfigSourceKey,
-				"applyClean",
+				yamlViewMode: "applyClean",
 				yamlEncoding,
-				undefined,
-			);
+			});
 			yamlEditing = true;
 		} catch (error) {
 			yamlPrepareRawError = error;
