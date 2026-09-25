@@ -1,3 +1,4 @@
+use crate::commands::builtin_kinds::builtin_kind;
 use crate::commands::helpers::FluxOwnershipIndex;
 use crate::models::{
     AppError, DiscoveredResourceKind, NamespaceSummary, ResourceSummary, ResourceTopology,
@@ -674,32 +675,11 @@ pub(crate) fn present_custom_resource_kinds_cache_key(
 }
 
 fn is_cluster_scoped_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "Node" | "StorageClass" | "PersistentVolume" | "CustomResourceDefinition"
-    )
+    builtin_kind(kind).is_some_and(|entry| !entry.namespaced)
 }
 
 fn is_known_typed_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "Pod"
-            | "Deployment"
-            | "ReplicaSet"
-            | "StatefulSet"
-            | "DaemonSet"
-            | "Service"
-            | "Ingress"
-            | "ConfigMap"
-            | "Secret"
-            | "PersistentVolumeClaim"
-            | "Job"
-            | "CronJob"
-            | "Node"
-            | "StorageClass"
-            | "PersistentVolume"
-            | "CustomResourceDefinition"
-    )
+    builtin_kind(kind).is_some_and(|entry| entry.table)
 }
 
 #[cfg(test)]
