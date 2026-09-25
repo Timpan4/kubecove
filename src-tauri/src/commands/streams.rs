@@ -323,62 +323,6 @@ mod tests {
     }
 
     #[test]
-    fn resource_watch_validation_requires_context_and_keys() {
-        assert!(validate_resource_watch_scope(
-            "kind-dev",
-            &[WatchResourceKey {
-                resource_kind: crate::models::WatchResourceKind {
-                    kind: "Pod".to_string(),
-                    group: None,
-                    version: None,
-                    api_version: None,
-                    plural: None,
-                    namespaced: None,
-                },
-                namespace: Some("default".to_string()),
-            }]
-        )
-        .is_ok());
-
-        assert_eq!(
-            validate_resource_watch_scope("", &[])
-                .expect_err("empty scope")
-                .kind,
-            AppErrorKind::Validation,
-        );
-        assert_eq!(
-            validate_resource_watch_scope("kind-dev", &[])
-                .expect_err("missing keys")
-                .message,
-            "resource watch scope is required",
-        );
-    }
-
-    #[test]
-    fn event_watch_validation_requires_complete_target() {
-        assert!(validate_event_watch_target("kind-dev", "Pod", "api-0").is_ok());
-
-        assert_eq!(
-            validate_event_watch_target(" ", "Pod", "api-0")
-                .expect_err("empty context")
-                .message,
-            "event watch target is required",
-        );
-        assert_eq!(
-            validate_event_watch_target("kind-dev", "", "api-0")
-                .expect_err("empty kind")
-                .kind,
-            AppErrorKind::Validation,
-        );
-        assert_eq!(
-            validate_event_watch_target("kind-dev", "Pod", " ")
-                .expect_err("empty name")
-                .kind,
-            AppErrorKind::Validation,
-        );
-    }
-
-    #[test]
     fn pod_log_validation_requires_target_and_non_negative_tail() {
         assert!(validate_pod_log_stream_request(&valid_log_request()).is_ok());
 

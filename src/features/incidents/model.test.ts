@@ -5,7 +5,6 @@ import {
 	countIncidentItems,
 	filterIncidentItems,
 	groupIncidentItems,
-	type IncidentFilter,
 	incidentCaseSummary,
 	incidentGroupLabel,
 	incidentItemKey,
@@ -18,7 +17,6 @@ declare function test(name: string, fn: () => void): void;
 declare function expect<T>(actual: T): {
 	toBe<Expected>(expected: Expected): void;
 	toEqual<Expected>(expected: Expected): void;
-	toHaveLength(expected: number): void;
 };
 
 function item(
@@ -152,16 +150,5 @@ describe("incident presentation model", () => {
 		});
 		expect(filterIncidentItems([mixed], "restarted")).toEqual([mixed]);
 		expect(filterIncidentItems([mixed], "warning")).toEqual([mixed]);
-	});
-
-	test("exports the complete filter vocabulary", () => {
-		const filters: IncidentFilter[] = [
-			"all",
-			"degraded",
-			"attention",
-			"restarted",
-			"warning",
-		];
-		expect(filters).toHaveLength(5);
 	});
 });

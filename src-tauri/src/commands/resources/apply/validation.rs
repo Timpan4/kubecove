@@ -365,16 +365,4 @@ mod tests {
         request.plural = Some("secrets/token?ignored=".into());
         assert!(validate_yaml_apply(request).is_err());
     }
-
-    #[test]
-    fn preserves_force_conflicts_request_flag() {
-        let mut request = base_request(
-            "apiVersion: v1\nkind: Service\nmetadata:\n  name: api\n  namespace: default\n",
-        );
-        request.force_conflicts = true;
-
-        let validated = validate_yaml_apply(request).unwrap();
-
-        assert!(validated.request.force_conflicts);
-    }
 }

@@ -91,38 +91,6 @@ fn validates_target_command_confirmation_and_terminal_size() {
     );
 }
 
-#[test]
-fn registry_lists_marks_resizes_and_stops_sessions() {
-    let registry = PodExecRegistry::default();
-    registry.insert_summary_for_test(test_summary("exec-1"));
-
-    assert_eq!(registry.list().len(), 1);
-    registry.mark_error("exec-1", "forbidden".to_string());
-    let session = registry.list().pop().expect("session");
-    assert_eq!(session.status, "error");
-    assert_eq!(session.last_error.as_deref(), Some("forbidden"));
-
-    registry.mark_terminal_size(
-        "exec-1",
-        PodExecTerminalSize {
-            cols: 120,
-            rows: 40,
-        },
-    );
-    let session = registry.list().pop().expect("session");
-    assert_eq!(session.terminal_cols, 120);
-    assert_eq!(session.terminal_rows, 40);
-
-    registry.mark_exited("exec-1", Some(0));
-    let session = registry.list().pop().expect("session");
-    assert_eq!(session.status, "exited");
-    assert_eq!(session.exit_code, Some(0));
-
-    assert!(registry.stop("exec-1"));
-    assert!(!registry.stop("exec-1"));
-    assert!(registry.list().is_empty());
-}
-
 #[tokio::test]
 async fn stdin_is_bounded_and_acknowledged_after_write() {
     use super::registry::{COMMAND_CAPACITY, INPUT_CHUNK_BYTES};

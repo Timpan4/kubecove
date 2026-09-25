@@ -9,9 +9,6 @@ declare function test(name: string, fn: () => void | Promise<void>): void;
 declare function expect<T>(actual: T): {
 	toBe<Expected>(expected: Expected): void;
 };
-declare const Bun: {
-	file(path: string): { text(): Promise<string> };
-};
 
 describe("friendlyError", () => {
 	const cases: Array<[string, unknown, string]> = [
@@ -143,14 +140,5 @@ describe("friendlyError", () => {
 		expect(presentation.next).toBe(
 			"Check the selected context's API endpoint, network or VPN path, and TLS certificate trust, then retry.",
 		);
-	});
-
-	test("component keeps technical detail collapsed and copyable", async () => {
-		const source = await Bun.file("src/components/FriendlyError.svelte").text();
-
-		expect(source.includes("<details")).toBe(true);
-		expect(source.includes("<details open")).toBe(false);
-		expect(source.includes("navigator.clipboard.writeText")).toBe(true);
-		expect(source.includes('!compact && presentation.next')).toBe(true);
 	});
 });

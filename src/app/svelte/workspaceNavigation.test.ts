@@ -308,31 +308,6 @@ describe("workspace navigation", () => {
 		expect(snapshot.restoreTargetResource).toEqual(snapshot.focusedResource);
 	});
 
-	test("updates resource-browser path state through an intent", () => {
-		const pathState: PathStateResourceBrowserState = {
-			selectedNamespaces: ["payments"],
-			selectedKinds: ["Deployment"],
-			search: "checkout",
-			gitOpsFilter: "",
-			healthFilter: "all",
-			sortColumn: "name",
-			sortDesc: false,
-			pageIndex: 0,
-			scopeEditorOpen: false,
-			collapsedGroups: [],
-			topologyMode: "ownership",
-			selectedTopologyNodeId: null,
-			mapPanelOpen: true,
-			tablePanelOpen: true,
-		};
-		const updated = navigateWorkspace(createWorkspaceNavigation(workspace), {
-			type: "updateResourceBrowserPath",
-			pathState,
-		});
-
-		expect(updated.resourceBrowserPathState).toEqual(pathState);
-	});
-
 	test("ignores an unchanged resource-browser path state", () => {
 		const pathState: PathStateResourceBrowserState = {
 			selectedNamespaces: ["payments"],

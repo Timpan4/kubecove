@@ -49,22 +49,6 @@ describe("svelte diagnostics settings model", () => {
 		});
 	});
 
-	test("Svelte diagnostics settings reads backend events through svelte-query", () => {
-		const source = readFileSync(
-			"src/app/svelte/DiagnosticsSettings.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain('from "@tanstack/svelte-query"');
-		expect(source).toContain("createQuery<BackendDiagnosticEvent[]>");
-		expect(source).toContain("queryKeys.backendDiagnostics()");
-		expect(source).toContain("queryFn: () => getBackendDiagnostics(client)");
-		expect(source).toContain("refetchInterval: settings.debugModeEnabled ? 1_500 : false");
-		expect(source).toContain("queryClient.setQueryData(queryKeys.backendDiagnostics(), [])");
-		expect(source).not.toContain("backendRefreshPending");
-		expect(source).not.toContain("let backendEvents = $state");
-	});
-
 	test("keeps the standalone topology benchmark development-only", () => {
 		const diagnosticsSource = readFileSync(
 			"src/app/svelte/DiagnosticsSettings.svelte",

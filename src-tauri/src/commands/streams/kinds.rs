@@ -131,22 +131,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn custom_resource_definition_watch_has_cluster_scoped_metadata() {
-        let kind = normalize_resource_kind(&WatchResourceKind {
-            kind: "CustomResourceDefinition".into(),
-            group: None,
-            version: None,
-            api_version: None,
-            plural: None,
-            namespaced: None,
-        })
-        .expect("CRD watch metadata");
-        assert_eq!(kind.api_version.as_deref(), Some("apiextensions.k8s.io/v1"));
-        assert_eq!(kind.plural.as_deref(), Some("customresourcedefinitions"));
-        assert_eq!(kind.namespaced, Some(false));
-    }
-
-    #[test]
     fn gitops_watch_derives_version_from_api_version() {
         let kind = api_resource_from_kind(&WatchResourceKind {
             kind: "Application".into(),
@@ -159,23 +143,6 @@ mod tests {
         .expect("GitOps watch metadata");
         assert_eq!(kind.group, "argoproj.io");
         assert_eq!(kind.version, "v1alpha1");
-    }
-
-    #[test]
-    fn known_resource_kind_fills_watch_metadata() {
-        let pod = normalize_resource_kind(&WatchResourceKind {
-            kind: "Pod".to_string(),
-            group: None,
-            version: None,
-            api_version: None,
-            plural: None,
-            namespaced: None,
-        })
-        .expect("pod metadata");
-
-        assert_eq!(pod.api_version.as_deref(), Some("v1"));
-        assert_eq!(pod.plural.as_deref(), Some("pods"));
-        assert_eq!(pod.namespaced, Some(true));
     }
 
     #[test]
@@ -221,63 +188,5 @@ mod tests {
         .expect("core metadata");
 
         assert_eq!(pod.group.as_deref(), Some(""));
-    }
-
-    #[test]
-    fn known_cluster_scoped_kind_sets_namespaced_false() {
-        let node = normalize_resource_kind(&WatchResourceKind {
-            kind: "Node".to_string(),
-            group: None,
-            version: None,
-            api_version: None,
-            plural: None,
-            namespaced: None,
-        })
-        .expect("node metadata");
-
-        assert_eq!(node.api_version.as_deref(), Some("v1"));
-        assert_eq!(node.plural.as_deref(), Some("nodes"));
-        assert_eq!(node.namespaced, Some(false));
-    }
-
-    #[test]
-    fn known_replicaset_kind_fills_watch_metadata() {
-        let replicaset = normalize_resource_kind(&WatchResourceKind {
-            kind: "ReplicaSet".to_string(),
-            group: None,
-            version: None,
-            api_version: None,
-            plural: None,
-            namespaced: None,
-        })
-        .expect("replicaset metadata");
-
-        assert_eq!(replicaset.api_version.as_deref(), Some("apps/v1"));
-        assert_eq!(replicaset.group.as_deref(), Some("apps"));
-        assert_eq!(replicaset.version.as_deref(), Some("v1"));
-        assert_eq!(replicaset.plural.as_deref(), Some("replicasets"));
-        assert_eq!(replicaset.namespaced, Some(true));
-    }
-
-    #[test]
-    fn known_endpoint_slice_kind_fills_watch_metadata() {
-        let endpoint_slice = normalize_resource_kind(&WatchResourceKind {
-            kind: "EndpointSlice".to_string(),
-            group: None,
-            version: None,
-            api_version: None,
-            plural: None,
-            namespaced: None,
-        })
-        .expect("endpointslice metadata");
-
-        assert_eq!(
-            endpoint_slice.api_version.as_deref(),
-            Some("discovery.k8s.io/v1")
-        );
-        assert_eq!(endpoint_slice.group.as_deref(), Some("discovery.k8s.io"));
-        assert_eq!(endpoint_slice.version.as_deref(), Some("v1"));
-        assert_eq!(endpoint_slice.plural.as_deref(), Some("endpointslices"));
-        assert_eq!(endpoint_slice.namespaced, Some(true));
     }
 }

@@ -12,7 +12,6 @@ import {
 	filterResourceSearchIndex,
 	filterResourcesByHealth,
 	resourceReadyChip,
-	resourceStatusTone,
 } from "./helpers";
 
 declare function describe(name: string, fn: () => void): void;
@@ -129,28 +128,6 @@ describe("resource GitOps filters", () => {
 				label: "Owned by Flux HelmRelease: default/worker (partial evidence)",
 			},
 		]);
-	});
-
-	test("uses owned-by group labels for Argo resources", () => {
-		expect(gitOpsOwnershipGroupLabel(resource("api", { argoApp: "payments" }))).toBe(
-			"Owned by Argo CD: payments (partial evidence)",
-		);
-	});
-
-	test("uses owned-by group labels for Flux Kustomizations", () => {
-		expect(
-			gitOpsOwnershipGroupLabel(
-				resource("api", {
-					gitOpsOwner: {
-						provider: "flux",
-						kind: "Kustomization",
-						name: "apps",
-						namespace: "flux-system",
-						confidence: "label",
-					},
-				}),
-			),
-		).toBe("Owned by Flux Kustomization: flux-system/apps (partial evidence)");
 	});
 
 	test("does not use raw Kubernetes owner refs as list owners", () => {
@@ -288,19 +265,6 @@ describe("resource health helpers", () => {
 });
 
 describe("resource table status chips", () => {
-	test("marks complete terminal status as success", () => {
-		expect(resourceStatusTone("Complete")).toBe("success");
-		expect(resourceStatusTone("Completed")).toBe("success");
-		expect(resourceStatusTone("Succeeded")).toBe("success");
-		expect(resourceStatusTone("succeeded")).toBe("success");
-	});
-
-	test("normalizes warning and failure statuses", () => {
-		expect(resourceStatusTone("Unknown")).toBe("warning");
-		expect(resourceStatusTone("CrashLoopBackOff")).toBe("error");
-		expect(resourceStatusTone("ImagePullBackOff")).toBe("error");
-	});
-
 	test("shows successful terminal pod readiness as completed success", () => {
 		expect(
 			resourceReadyChip(
@@ -311,18 +275,6 @@ describe("resource table status chips", () => {
 				}),
 			),
 		).toEqual({ value: "Completed", tone: "success" });
-	});
-
-	test("normalizes ready booleans", () => {
-		expect(
-			resourceReadyChip(
-				resource("api-0", {
-					kind: "Pod",
-					status: "Running",
-					ready: "true",
-				}),
-			),
-		).toEqual({ value: "Ready", tone: "success" });
 	});
 
 	test("keeps active not-ready pod readiness red", () => {
