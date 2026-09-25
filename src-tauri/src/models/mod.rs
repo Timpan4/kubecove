@@ -46,7 +46,7 @@ pub use health::{
 };
 pub use helm::{
     HelmManifestResourceSummary, HelmManifestSummary, HelmReconciliationResource,
-    HelmReconciliationStatus, HelmReconciliationTotals, HelmReleaseDetails,
+    HelmReconciliationStatus, HelmReconciliationTotals, HelmReleaseDetails, HelmReleaseList,
     HelmReleaseReconciliation, HelmReleaseSummary, HelmValuesSummary,
 };
 pub use incidents::{
