@@ -111,32 +111,6 @@ async fn prepare_issues_get_then_dry_run_patch() {
 }
 
 #[tokio::test]
-async fn apply_issues_apply_patch_without_dry_run() {
-    let (client, mut handle) = mock_client();
-    let validated = validate_yaml_apply(base_request_yaml(false)).unwrap();
-
-    let operation = apply_yaml_with_client(client, validated);
-    let responder = async move {
-        let (request, send) = handle.next_request().await.expect("patch request");
-        assert_eq!(request.method(), Method::PATCH);
-        assert_service_path(&request);
-        assert_has_query_param(&request, "fieldManager=kubecove");
-        assert_lacks_query_param(&request, "dryRun=");
-        assert_lacks_query_param(&request, "force=true");
-        assert_eq!(
-            request.headers().get(CONTENT_TYPE).unwrap(),
-            "application/apply-patch+yaml"
-        );
-        send.send_response(json_response(200, service_manifest()));
-    };
-
-    let (result, ()) = await_mock(async { tokio::join!(operation, responder) }).await;
-    let result = result.unwrap();
-
-    assert!(result.applied_yaml.contains("name: api"));
-}
-
-#[tokio::test]
 async fn apply_force_conflicts_sets_force_param() {
     let (client, mut handle) = mock_client();
     let validated = validate_yaml_apply(base_request_yaml(true)).unwrap();

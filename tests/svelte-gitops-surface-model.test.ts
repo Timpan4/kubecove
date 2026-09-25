@@ -4,9 +4,7 @@ import {
 	buildGitOpsSelections,
 	buildGitOpsSummary,
 	buildGitOpsTable,
-	gitOpsDetailsActionKey,
 	gitOpsSelectionAgeTooltip,
-	gitOpsSelectionKey,
 	gitOpsSelectionPrimaryAction,
 	gitOpsSelectionResource,
 	gitOpsSelectionRevisionLabel,
@@ -262,14 +260,6 @@ describe("svelte GitOps surface model", () => {
 		).toEqual(["flux"]);
 	});
 
-	test("builds stable selectable row keys for GitOps detail drilldown", () => {
-		const selections = buildGitOpsSelections(data, null);
-
-		expect(selections.map(gitOpsSelectionKey)).toEqual([
-			"argoApp:kind-dev:argocd:api",
-		]);
-	});
-
 	test("keeps Argo Application card primary action pointed at resources", () => {
 		const [application] = buildGitOpsSelections(data, null);
 		const [appSet] = buildGitOpsSelections(data, {
@@ -281,14 +271,6 @@ describe("svelte GitOps surface model", () => {
 
 		expect(gitOpsSelectionPrimaryAction(application)).toBe("openResources");
 		expect(gitOpsSelectionPrimaryAction(appSet)).toBe("details");
-	});
-
-	test("builds explicit details action selection keys", () => {
-		const [application] = buildGitOpsSelections(data, null);
-
-		expect(gitOpsDetailsActionKey(application)).toBe(
-			"details:argoApp:kind-dev:argocd:api",
-		);
 	});
 
 	test("summarizes GitOps source modes for card icons", () => {

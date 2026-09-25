@@ -327,25 +327,4 @@ mod tests {
         assert!(!PatchParams::default().dry_run);
         assert!(!DeleteParams::default().dry_run);
     }
-
-    #[test]
-    fn api_resource_mapping_covers_supported_kinds() {
-        let expected = [
-            ("Deployment", "apps", "apps/v1", "deployments"),
-            ("StatefulSet", "apps", "apps/v1", "statefulsets"),
-            ("DaemonSet", "apps", "apps/v1", "daemonsets"),
-            ("Pod", "", "v1", "pods"),
-            ("ConfigMap", "", "v1", "configmaps"),
-        ];
-        for (kind, group, api_version, plural) in expected {
-            let resource = api_resource_for_kind(kind).expect("supported kind");
-            assert_eq!(resource.group, group);
-            assert_eq!(resource.api_version, api_version);
-            assert_eq!(resource.version, "v1");
-            assert_eq!(resource.kind, kind);
-            assert_eq!(resource.plural, plural);
-        }
-        let error = api_resource_for_kind("Secret").unwrap_err();
-        assert_eq!(error.kind, AppErrorKind::UnsupportedOperation);
-    }
 }

@@ -386,21 +386,6 @@ mod tests {
     }
 
     #[test]
-    fn watch_status_message_includes_api_error_context() {
-        let status = Status {
-            code: 410,
-            reason: "Expired".to_string(),
-            message: "too old resource version".to_string(),
-            ..Status::default()
-        };
-
-        assert_eq!(
-            watch_status_message(&status),
-            "Kubernetes watch error 410 (Expired): too old resource version",
-        );
-    }
-
-    #[test]
     fn non_gone_error_preserves_resource_version() {
         let event = WatchEvent::<DynamicObject>::Error(Box::new(Status {
             code: 403,

@@ -180,15 +180,6 @@ export const FLUX_KIND_LABELS: Record<string, string> = FLUX_NAV_KINDS.reduce(
 	{} as Record<string, string>,
 );
 
-export function fluxKindDefinitionFromLabel(
-	label: string | null,
-): FluxNavKind | null {
-	if (!label) return null;
-	const kindName = FLUX_KIND_LABELS[label];
-	if (!kindName) return null;
-	return FLUX_NAV_KINDS.find((kind) => kind.kind === kindName) ?? null;
-}
-
 export function fluxKindFromLabel(
 	label: string | null,
 	kinds: FluxResourceKind[],

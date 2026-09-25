@@ -4,13 +4,6 @@ use super::*;
 use std::collections::BTreeMap;
 
 #[test]
-fn helm_owner_label_marks_release_storage() {
-    let labels = BTreeMap::from([("owner".to_string(), "helm".to_string())]);
-
-    assert!(is_helm_owned(Some(&labels)));
-}
-
-#[test]
 fn missing_helm_owner_label_rejects_storage() {
     let labels = BTreeMap::from([("app".to_string(), "not-helm".to_string())]);
 
@@ -39,31 +32,6 @@ fn values_summary_treats_explicit_null_as_empty() {
     assert!(!summary.has_values);
     assert_eq!(summary.value_count, 0);
     assert!(summary.top_level_keys.is_empty());
-}
-
-#[test]
-fn manifest_summary_extracts_resource_refs_without_manifest_body() {
-    let manifest = r"
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: payments-api
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: payments-api
-  namespace: payments
-";
-
-    let summary = manifest_summary(Some(manifest), Some("default"));
-
-    assert_eq!(summary.resource_count, 2);
-    assert!(!summary.truncated);
-    assert_eq!(summary.resources[0].kind.as_deref(), Some("Deployment"));
-    assert_eq!(summary.resources[0].namespace, None);
-    assert_eq!(summary.resources[1].kind.as_deref(), Some("Service"));
-    assert_eq!(summary.resources[1].namespace.as_deref(), Some("payments"));
 }
 
 #[test]

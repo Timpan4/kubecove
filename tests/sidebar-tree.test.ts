@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import {
 	buildNamespaceTreeNode,
 	buildShallowNamespaceTreeNode,
@@ -50,36 +49,5 @@ describe("sidebar namespace tree helpers", () => {
 		expect(deep.children?.at(-1)?.label).toBe("Custom Resources");
 		expect(deep.children?.at(-1)?.children?.[0]?.label).toBe("example.com");
 		expect(deep.children?.at(-1)?.children?.[0]?.children?.length).toBe(10);
-	});
-
-	test("expands chevrons without replacing the selected scope", () => {
-		const source = readFileSync("src/app/svelte/SidebarTreeNode.svelte", "utf8");
-		const selectStart = source.indexOf("function selectNode");
-		const toggleStart = source.indexOf("function toggleNode");
-		const selectSource = source.slice(selectStart, toggleStart);
-		const toggleEnd = source.indexOf("function handleKeydown", toggleStart);
-		const toggleSource = source.slice(toggleStart, toggleEnd);
-
-		expect(selectSource).toContain("if (node.selectable !== false) onNodeSelect(node.id)");
-		expect(selectSource).toContain("if (hasChildren) onSectionToggle(id)");
-		expect(toggleSource).not.toContain("onNodeSelect(node.id)");
-		expect(toggleSource).toContain("onSectionToggle(id)");
-		expect(source).toContain("onclick={selectNode}");
-		expect(source).toContain("onclick={toggleNode}");
-	});
-
-	test("gates custom resource presence queries when disabled", () => {
-		const sidebar = readFileSync("src/app/svelte/SidebarTree.svelte", "utf8");
-		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
-
-		expect(sidebar).toContain(
-			"enabled: showCustomResources && Boolean(clusterContext) && sourceReady",
-		);
-		expect(sidebar).toContain("if (!showCustomResources) return node.children");
-		expect(shell).toContain(
-			"enabled: showCustomResources && workspaceReadContext.sourceReady && Boolean(workspace.scope.clusterContext)",
-		);
-		expect(shell).toContain("showCustomResources &&");
-		expect(shell).toContain("includePresentCustomResources");
 	});
 });

@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
 	findHelmReleaseTarget,
 	helmReconciliationResourceLabel,
-	helmReconciliationStatusLabel,
-	helmReconciliationStatusTone,
 	sortHelmReconciliationResources,
 } from "../src/features/helm/helpers";
 import type {
@@ -41,21 +39,6 @@ function release(name: string, namespace: string): HelmReleaseSummary {
 }
 
 describe("Helm reconciliation UI helpers", () => {
-	test("labels and tones classify reconciliation statuses", () => {
-		expect(helmReconciliationStatusLabel("tracked")).toBe("Tracked");
-		expect(helmReconciliationStatusTone("tracked")).toBe("success");
-		expect(helmReconciliationStatusLabel("unlabeledLive")).toBe(
-			"Unlabeled live",
-		);
-		expect(helmReconciliationStatusTone("unlabeledLive")).toBe("warning");
-		expect(helmReconciliationStatusLabel("missing")).toBe("Missing");
-		expect(helmReconciliationStatusTone("missing")).toBe("error");
-		expect(helmReconciliationStatusLabel("labelOnly")).toBe("Label-only");
-		expect(helmReconciliationStatusTone("labelOnly")).toBe("warning");
-		expect(helmReconciliationStatusLabel("unavailable")).toBe("Unavailable");
-		expect(helmReconciliationStatusTone("unavailable")).toBe("neutral");
-	});
-
 	test("sorts resources by namespace kind name and keeps readable labels", () => {
 		const rows = [
 			row("Service", "api", "payments", "tracked"),

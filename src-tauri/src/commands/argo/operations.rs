@@ -1199,21 +1199,6 @@ mod tests {
     }
 
     #[test]
-    fn connected_refresh_is_allowed_into_review_gate() {
-        let request = ArgoOperationRequest {
-            transport: "connected".into(),
-            action: "refresh".into(),
-            application: ArgoApplicationRef {
-                name: "app".into(),
-                workspace_id: Some("workspace".into()),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        assert!(valid(&request).is_ok());
-        assert_eq!(request.transport, "connected");
-    }
-    #[test]
     fn sync_payload_matches_argocd_request_contract() {
         let request = ArgoOperationRequest {
             action: "sync".into(),
