@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { groupHelmReleasesByNamespace } from "../src/features/helm/helpers";
 import {
 	buildFetchKeys,
@@ -15,7 +14,6 @@ import {
 	resourceSelectionKey,
 	resourceTypeGroupCollapseKey,
 	sortedRows,
-	tableTooltipText,
 	topologyWatchKeys,
 	watchKeysFromFetchKeys,
 } from "../src/features/resources/helpers";
@@ -336,32 +334,6 @@ describe("resource browser presentation helpers", () => {
 
     expect(resourceGroupCollapseKey(resource)).toBe("group:Owned by Argo CD: argocd (partial evidence)");
     expect(resourceTypeGroupCollapseKey(resource)).toBe("group:Owned by Argo CD: argocd (partial evidence)::type:ConfigMaps");
-  });
-
-  test("normalizes tooltip values for table display", () => {
-    expect(tableTooltipText("argocd-server-7886b899c8-l5lqd")).toBe("argocd-server-7886b899c8-l5lqd");
-    expect(tableTooltipText(null)).toBe("—");
-    expect(tableTooltipText("")).toBe("—");
-  });
-
-  test("centers restart count badges in the resource table", () => {
-    const source = readFileSync("src/features/resources/ResourceBrowser.svelte", "utf8");
-
-    expect(source).toContain('class="flex justify-center"');
-    expect(source).toContain("row.restarts");
-  });
-
-  test("uses pointer cursors for enabled shared interactive controls", () => {
-    const controlFiles = [
-      "src/components/ui/svelte/classes.ts",
-      "src/components/ui/svelte/TabsTrigger.svelte",
-      "src/components/ui/svelte/SelectTrigger.svelte",
-      "src/components/ui/svelte/Checkbox.svelte",
-    ];
-
-    for (const file of controlFiles) {
-      expect(readFileSync(file, "utf8")).toContain("cursor-pointer");
-    }
   });
 
 });

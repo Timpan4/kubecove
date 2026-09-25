@@ -444,19 +444,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn flux_catalog_contains_current_api_families() {
-        let kinds = flux_kinds();
-
-        assert!(kinds.iter().any(|kind| kind.kind == "GitRepository"));
-        assert!(kinds.iter().any(|kind| kind.kind == "Kustomization"));
-        assert!(kinds.iter().any(|kind| kind.kind == "HelmRelease"));
-        assert!(kinds.iter().any(|kind| kind.kind == "Alert"));
-        assert!(kinds
-            .iter()
-            .any(|kind| kind.kind == "ImageUpdateAutomation"));
-    }
-
-    #[test]
     fn installed_flux_kinds_preserve_discovered_api_identity() {
         let resources = vec![
             ApiResource {

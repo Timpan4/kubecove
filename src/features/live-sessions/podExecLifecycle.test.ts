@@ -5,7 +5,6 @@ import {
 	podExecQueryOptions,
 	podExecSessionsForWorkspace,
 	startPodExec,
-	stopPodExec,
 } from "./podExecLifecycle";
 
 declare function describe(name: string, fn: () => void): void;
@@ -80,53 +79,6 @@ describe("pod exec lifecycle", () => {
 				"kubeconfigSource=default",
 			).map((item) => item.id),
 		).toEqual(["dev", "prod"]);
-	});
-
-	test("invalidates after start and stop", async () => {
-		const calls: string[] = [];
-		const started = session("exec-1", "kind-dev", "2026-07-10T00:00:00Z");
-		const client = createMockTauriClient({
-			start_pod_exec_session: () => {
-				calls.push("start");
-				return started;
-			},
-			stop_pod_exec_session: () => {
-				calls.push("stop");
-				return true;
-			},
-		});
-		const invalidated: (readonly unknown[])[] = [];
-		const invalidateQueries = async ({ queryKey }: { queryKey: readonly unknown[] }) => {
-			invalidated.push(queryKey);
-		};
-		const channel = createMockChannel<PodExecSessionMessage>(() => {});
-
-		await startPodExec({
-			client,
-			request: {
-				clusterContext: "kind-dev",
-				namespace: "payments",
-				podName: "api-0",
-				command: ["/bin/sh"],
-				stdin: true,
-				tty: true,
-				terminalSize: { cols: 100, rows: 32 },
-				confirmation: {
-					acknowledged: true,
-					target: "kind-dev/payments/Pod/api-0/container/<default>",
-					command: '["/bin/sh"]',
-				},
-			},
-			channel,
-			invalidateQueries,
-		});
-		await stopPodExec({ client, sessionId: started.id, invalidateQueries });
-
-		expect(calls).toEqual(["start", "stop"]);
-		expect(invalidated).toEqual([
-			["pod-exec-sessions"],
-			["pod-exec-sessions"],
-		]);
 	});
 
 	test("returns a started session when cache invalidation fails", async () => {

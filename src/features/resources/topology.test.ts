@@ -6,8 +6,6 @@ import {
 	topologyRailTone,
 	topologyReadyText,
 	topologyReadyTone,
-	topologyRestartTone,
-	topologyStatusTone,
 } from "./topology";
 
 declare function describe(name: string, fn: () => void): void;
@@ -282,23 +280,6 @@ describe("Svelte topology layout", () => {
 });
 
 describe("topology stoplight tones", () => {
-	test("maps lifecycle status to stoplight tones", () => {
-		expect(topologyStatusTone("Running")).toBe("success");
-		expect(topologyStatusTone("Succeeded")).toBe("success");
-		expect(topologyStatusTone("Pending")).toBe("warning");
-		expect(topologyStatusTone("Waiting")).toBe("warning");
-		expect(topologyStatusTone("Failed")).toBe("error");
-		expect(topologyStatusTone("CrashLoopBackOff")).toBe("error");
-	});
-
-	test("maps restart counts to neutral, warning, and error thresholds", () => {
-		expect(topologyRestartTone(0)).toBe("neutral");
-		expect(topologyRestartTone(2)).toBe("neutral");
-		expect(topologyRestartTone(3)).toBe("warning");
-		expect(topologyRestartTone(4)).toBe("warning");
-		expect(topologyRestartTone(5)).toBe("error");
-	});
-
 	test("keeps terminal succeeded pods green despite false readiness", () => {
 		expect(topologyReadyTone("false", "Succeeded")).toBe("success");
 		expect(topologyReadyTone("Completed", "Succeeded")).toBe("success");

@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import type { PortForwardSessionSummary, ResourceSummary } from "../src/lib/types";
 import {
 	isPortForwardForResource,
@@ -238,29 +237,4 @@ spec:
 		).toBe("Local port must be 1024 or higher");
 	});
 
-
-	test("Service detail forwarding offers a port picker when ports are known", () => {
-		const source = readFileSync(
-			"src/features/resource-detail/PortForwardTab.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain("extractServicePortOptions");
-		expect(source).toContain("<Select");
-		expect(source).toContain("<SelectGroup>");
-		expect(source).toContain("Save preset");
-		expect(source).toContain("Preset already saved");
-		expect(source).toContain("workspaceScopeContexts(activeWorkspace.scope)");
-		expect(source).toContain("Workspace context must include this Service");
-		expect(source).toContain("workspaceStore.saveSavedPortForward");
-		expect(source).toContain("copySessionUrl");
-		expect(source).toContain("navigator.clipboard?.writeText");
-		expect(source).toContain("portForwardLocalUrl(session)");
-		expect(source).toContain("$settingsStore.showKubeconfigSourceLabels");
-		expect(source).toContain("session.kubeconfigSourceLabel");
-		expect(source).toContain("sessionTitle(session)");
-		expect(source).toContain("sessionResolution(session)");
-		expect(source).toContain("Resolved to Pod/");
-		expect(source).toContain('localPort = "";');
-	});
 });

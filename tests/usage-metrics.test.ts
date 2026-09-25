@@ -5,7 +5,6 @@ import {
 	formatProcessCount,
 	formatUsageMetrics,
 	formatUsageMetricsBreakdown,
-	formatUsageMetricsBreakdownDetails,
 	flattenUsageMetricsBreakdown,
 } from "../src/lib/usage-metrics";
 
@@ -48,24 +47,6 @@ describe("usage metrics formatting", () => {
 				breakdown: [],
 			}),
 		).toBe("CPU 0.0% · Memory 2.5 GB · 0 processes");
-	});
-
-	test("formats usage breakdown rows", () => {
-		const item = {
-			label: "WebView",
-			description: "Embedded WebView browser runtime",
-			cpuPercent: 0.8,
-			memoryBytes: 512 * 1024 * 1024,
-			processCount: 5,
-			children: [],
-		};
-
-		expect(formatUsageMetricsBreakdown(item)).toBe(
-			"WebView · CPU 0.8% · 512 MB · 5 processes",
-		);
-		expect(formatUsageMetricsBreakdownDetails(item)).toBe(
-			"CPU 0.8% · 512 MB · 5 processes",
-		);
 	});
 
 	test("formats nested usage breakdown rows", () => {

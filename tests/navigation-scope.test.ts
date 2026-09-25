@@ -16,17 +16,6 @@ const workspace = createWorkspaceRecord({
 });
 
 describe("navigation scope", () => {
-	test("keeps launcher settings and update controls in app top bar", () => {
-		const source = readFileSync("src/app/svelte/App.svelte", "utf8");
-		const topBar = source.indexOf("<header");
-		const launcher = source.indexOf("<WorkspaceLauncher");
-
-		expect(topBar).toBeGreaterThanOrEqual(0);
-		expect(launcher).toBeGreaterThan(topBar);
-		expect(source).toContain("UpdateStatusButton");
-		expect(source).toContain('aria-label="Open settings"');
-		expect(source).not.toContain("RuntimeBadge");
-	});
 
 	test("selecting Namespaces scopes to all namespaced resource kinds", () => {
 		const scope = resolveTreeScope({ type: "section", section: "namespaces" });

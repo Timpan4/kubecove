@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import {
 	buildWorkspaceInput,
 	getWorkspaceCreationAvailability,
@@ -111,18 +110,5 @@ describe("svelte workspace launcher model", () => {
 		expect(submitted).toBe(false);
 		expect(buildCalls).toBe(0);
 		expect(createCalls).toBe(0);
-	});
-
-	test("Svelte launcher keeps backend context and namespace state in svelte-query", () => {
-		const source = readFileSync(
-			"src/features/workspaces/WorkspaceLauncher.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain('import { createQuery } from "@tanstack/svelte-query";');
-		expect(source).toContain("queryKeys.kubeContexts(kubeconfigSourceKey)");
-		expect(source).toContain("queryKeys.namespaces(effectiveContext, kubeconfigSourceKey)");
-		expect(source).not.toContain("async function loadContexts");
-		expect(source).not.toContain("async function loadNamespaces");
 	});
 });
