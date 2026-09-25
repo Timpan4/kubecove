@@ -8,7 +8,6 @@ import type {
 import {
 	ARGO_NAV_KINDS,
 	FLUX_FAMILIES,
-	fluxKindDefinitionFromLabel,
 	type FluxFamilyKey,
 } from "./gitops-nav";
 
@@ -136,27 +135,4 @@ export function chooseDefaultGitOpsFilter(
 		filters.find((filter) => !filter.disabled)?.key ??
 		null
 	);
-}
-
-export function fluxKindLabelFromFilterKey(
-	filterKey: GitOpsOverviewFilterKey,
-): string | null {
-	if (!filterKey.startsWith("flux:")) return null;
-	const kind = filterKey.slice("flux:".length);
-	return (
-		FLUX_FAMILIES.flatMap((family) => family.kinds).find(
-			(candidate) => candidate.kind === kind,
-		)?.label ?? null
-	);
-}
-
-export function fluxResourceKindFromFilterKey(
-	filterKey: GitOpsOverviewFilterKey,
-	kinds: FluxResourceKind[],
-): FluxResourceKind | null {
-	const label = fluxKindLabelFromFilterKey(filterKey);
-	if (!label) return null;
-	const definition = fluxKindDefinitionFromLabel(label);
-	if (!definition) return null;
-	return kinds.find((kind) => kind.kind === definition.kind) ?? null;
 }

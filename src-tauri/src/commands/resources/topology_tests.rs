@@ -1,7 +1,6 @@
 use super::topology::{
     build_resource_topology, input_from_metadata, node_from_input, topology_node_id,
-    topology_root_kinds, topology_standalone_kinds, TopologyInputResource,
-    DEPLOYMENT_REVISION_LABEL,
+    TopologyInputResource, DEPLOYMENT_REVISION_LABEL,
 };
 use super::topology_collection::cluster_scoped_input_visible_in_scope;
 use super::topology_network::{
@@ -155,11 +154,6 @@ fn pod_fixture_input() -> TopologyInputResource {
 }
 
 #[test]
-fn topology_root_kinds_include_daemonset() {
-    assert!(topology_root_kinds().contains(&"DaemonSet"));
-}
-
-#[test]
 fn topology_node_exposes_deployment_revision() {
     let mut input = resource("Deployment", "api", "default", "deploy-1");
     input
@@ -167,14 +161,6 @@ fn topology_node_exposes_deployment_revision() {
         .insert(DEPLOYMENT_REVISION_LABEL.to_string(), "7".to_string());
 
     assert_eq!(node_from_input(&input).deployment_revision, Some(7));
-}
-
-#[test]
-fn topology_standalone_kinds_include_ownerless_resources() {
-    assert!(topology_standalone_kinds().contains(&"Service"));
-    assert!(topology_standalone_kinds().contains(&"Ingress"));
-    assert!(topology_standalone_kinds().contains(&"ConfigMap"));
-    assert!(topology_standalone_kinds().contains(&"Secret"));
 }
 
 #[test]

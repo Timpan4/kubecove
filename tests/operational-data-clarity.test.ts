@@ -5,12 +5,6 @@ import { compile, compileModule } from "svelte/compiler";
 import { render } from "svelte/server";
 import { copyText, copyTextWithAnnouncement } from "../src/components/copy-text";
 import { formatRelativeTimestamp } from "../src/components/timestamp-format";
-import {
-	CPU_USAGE_DESCRIPTION,
-	MEMORY_USAGE_DESCRIPTION,
-	READINESS_NOT_REPORTED,
-	RESTART_COUNT_NOT_REPORTED,
-} from "../src/features/resources/operational-data";
 
 type SvelteTestProps = Record<string, string | boolean | (() => void)>;
 
@@ -74,17 +68,6 @@ describe("operational data clarity", () => {
 		expect(formatRelativeTimestamp("2m", timestamp, true, "utc", "millisecond")).toBe(
 			"2m (2026-08-24 12:34:56.789 UTC)",
 		);
-	});
-
-	test("explains metric units and unavailable resource state", () => {
-		expect(CPU_USAGE_DESCRIPTION).toBe(
-			"CPU usage in millicores; 1000m equals one CPU core.",
-		);
-		expect(MEMORY_USAGE_DESCRIPTION).toBe(
-			"Memory usage in binary units such as Ki, Mi, and Gi.",
-		);
-		expect(READINESS_NOT_REPORTED).toBe("Readiness not reported");
-		expect(RESTART_COUNT_NOT_REPORTED).toBe("Restart count not reported");
 	});
 
 	test("omits full-value hover titles while copying the untruncated value", async () => {

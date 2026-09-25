@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import {
 	buildWorkspaceFetchKeys,
 	buildWorkspaceFetchPlans,
@@ -309,41 +308,6 @@ describe("workspace helpers", () => {
 
 		expect(error.kind).toBe("unknown");
 		expect(error.failureBuckets).toEqual(["forbiddenRbac", "validation"]);
-	});
-
-	test("uses an explicit height for the workspace namespace scroll area", () => {
-		const source = readFileSync(
-			"src/features/workspaces/WorkspaceLauncher.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain(
-			'ScrollArea class="h-52 rounded-md border bg-background/40"',
-		);
-		expect(source).not.toContain(
-			'ScrollArea class="max-h-52 rounded-md border bg-background/40"',
-		);
-	});
-
-	test("keeps overview Resources primary and visible in wrapping actions", () => {
-		const source = readFileSync(
-			"src/features/workspaces/WorkspaceOverview.svelte",
-			"utf8",
-		);
-		const headerActionsStart = source.indexOf("<CardTitle>Operations</CardTitle>");
-		const headerActionsEnd = source.indexOf("</Card>", headerActionsStart);
-		const headerActions = source.slice(headerActionsStart, headerActionsEnd);
-
-		expect(headerActionsStart).toBeGreaterThanOrEqual(0);
-		expect(headerActions.indexOf("Resources")).toBeLessThan(
-			headerActions.indexOf("Workspaces"),
-		);
-		expect(headerActions.indexOf("Resources")).toBeLessThan(
-			headerActions.indexOf("Port Forwards"),
-		);
-		expect(headerActions.indexOf("Resources")).toBeLessThan(
-			headerActions.indexOf("Incidents"),
-		);
 	});
 });
 

@@ -2,30 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
 	argoOperationAvailability,
 	argoOperationBlocker,
-	argoOperationTarget,
 } from "../src/features/gitops/argo-operation-presentation";
-import type { ResourceSummary } from "../src/lib/types";
-
-const application: ResourceSummary = {
-	cluster: "kind-demo",
-	kind: "Application",
-	name: "shop",
-	namespace: "argocd",
-	age: "1d",
-};
 
 describe("Argo operation presentation", () => {
-	test("identifies the exact Application operation target", () => {
-		expect(argoOperationTarget(application, "prod-admin", "connected")).toEqual({
-			context: "prod-admin",
-			namespace: "argocd",
-			kind: "Application",
-			resource: "shop",
-			operationScope: "Argo CD Application",
-			transport: "Connected Argo CD API",
-		});
-	});
-
 	test("distinguishes available operation review from provider blockers", () => {
 		expect(argoOperationAvailability({
 			sourceReady: true,

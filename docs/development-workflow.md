@@ -90,7 +90,7 @@ Run smallest checks matching work:
 - docs-only: `bun run docs:check` and `git diff --check`
 - frontend: `bun run typecheck` and nearest `bun test`
 - backend: `bun run rust:check` and nearest `bun run rust:test`
-- behavior change: nearest focused test
+- behavior change: nearest E2E spec (`bun run e2e:fast` or `bun run e2e:real`) or existing focused test; see the Testing rules in `AGENTS.md`
 - Tauri integration: `bun run tauri dev` or smoke test
 - release change: `bun run release:dry-run`
 - guarded operation: relevant ADR checklist plus nearest frontend/backend checks

@@ -216,17 +216,6 @@ describe("resource detail status tones", () => {
 		expect(resourceReadyTone(completedPod)).toBe("success");
 	});
 
-	test("renders complete phase chips as success", () => {
-		const source = readFileSync(
-			"src/features/resource-detail/resource-status.ts",
-			"utf8",
-		);
-
-		expect(source).toContain('"complete"');
-		expect(source).toContain('"completed"');
-		expect(source).toContain('"Completed"');
-	});
-
 	test("uses neutral condition chips for expected completed pod false conditions", () => {
 		expect(
 			conditionStatusTone(
@@ -334,14 +323,6 @@ describe("getContainerStatusRows", () => {
 });
 
 describe("sidebar source safeguards", () => {
-	test("uses query state for namespace loading", () => {
-		const source = readFileSync("src/features/resources/NamespaceList.svelte", "utf8");
-
-		expect(source).toContain("createQuery");
-		expect(source).toContain("queryKeys.namespaces");
-		expect(source).not.toContain("requestSeq");
-		expect(source).not.toContain("$effect");
-	});
 
 	test("uses non-submit button types for sidebar controls", () => {
 		const buttonSource = readFileSync("src/components/ui/svelte/Button.svelte", "utf8");

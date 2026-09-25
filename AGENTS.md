@@ -78,10 +78,16 @@ Run through [docs/handbook/pr-checklist.md](docs/handbook/pr-checklist.md) befor
 - Commit `bun.lock` when frontend dependencies exist.
 - Do not introduce duplicate router, table, state, styling, or command-wrapper libraries without an ADR.
 - Keep changes reviewable and scoped.
-- Add tests or checks where risk justifies them.
 - Use clear type names that match the docs unless there is a good reason to change them.
 - Add comments only for non-obvious architecture decisions.
 - Add TODOs for future features without implementing them early.
+
+## Testing
+
+- Never write unit tests after writing the code. They restate the implementation, always pass, and break on every refactor.
+- Prefer E2E tests (`e2e/specs/`, see `docs/development-workflow.md`) as the primary way to verify features. Each E2E run must end with a verifiable, repeatable artifact under `e2e/artifacts/` (WDIO spec report, cluster diagnostics, failure screenshots).
+- If a system must be tested in isolation (pure parsing, diff, topology, retry, or security-boundary logic), first write down every way it could fail, then write the code and tests against those failure modes.
+- Delete unit tests that would not catch a real bug the E2E suite misses.
 
 ## Performance Defaults
 

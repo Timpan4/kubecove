@@ -470,11 +470,3 @@ export function buildResourceHealthSummary(
 		},
 	);
 }
-
-export function tableTooltipText(
-	value: string | number | null | undefined,
-): string {
-	return value === undefined || value === null || value === ""
-		? "—"
-		: String(value);
-}

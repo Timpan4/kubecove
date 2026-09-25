@@ -1,6 +1,5 @@
 import type { FluxResourceKind } from "@/lib/types";
 import {
-	FLUX_FAMILIES,
 	fluxKindFromLabel,
 	isFluxKindLabel,
 	normalizeArgoKindLabel,
@@ -39,26 +38,6 @@ describe("GitOps navigation labels", () => {
 		);
 		expect(normalizeArgoKindLabel("Argo CD AppProjects")).toBe("appProjects");
 		expect(normalizeArgoKindLabel("AppProjects")).toBe("appProjects");
-	});
-
-	test("groups Flux resources by provider family", () => {
-		expect(FLUX_FAMILIES.map((family) => family.label)).toEqual([
-			"Sources",
-			"Workloads",
-			"Notifications",
-			"Image Automation",
-		]);
-		expect(
-			FLUX_FAMILIES.find((family) => family.label === "Sources")?.kinds.map(
-				(kind) => kind.label,
-			),
-		).toEqual([
-			"Flux Git Repositories",
-			"Flux OCI Repositories",
-			"Flux Helm Repositories",
-			"Flux Helm Charts",
-			"Flux Buckets",
-		]);
 	});
 
 	test("maps polished and legacy Flux labels to installed kinds", () => {
