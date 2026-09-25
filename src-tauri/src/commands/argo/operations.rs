@@ -2,6 +2,7 @@ use super::connected::{api_delete, api_get, api_post, ConnectedArgo};
 use super::scope::{acquire_connection_lease, scoped_connection, ConnectionLease};
 use super::session::{consume, issue, peek, OperationSession, SessionSnapshot};
 use crate::commands::gitops_crd::{client_for_context, find_api_resource};
+use crate::commands::kubeconfig::KubeconfigSource;
 use crate::models::AppErrorKind;
 use crate::models::{
     AppError, ArgoApplicationRef, ArgoOperationConfirmation, ArgoOperationPreflight,
@@ -14,7 +15,6 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
     api::{Api, ApiResource, Patch, PatchParams, PostParams},
     core::DynamicObject,
-    Client,
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -205,10 +205,7 @@ async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(), AppError
 
 enum ExecutionBinding {
     Connected(Arc<ConnectedArgo>),
-    Kubernetes {
-        client: Client,
-        resource: ApiResource,
-    },
+    Kubernetes { resource: ApiResource },
 }
 
 async fn lease_connection(
@@ -312,9 +309,9 @@ async fn run_argo_operation_for_store(
             reject_reviewed_operation(&store.sessions, &confirmation.session_id, &reviewed, error)
         })?;
     match binding {
-        ExecutionBinding::Kubernetes { client, resource } => {
+        ExecutionBinding::Kubernetes { resource } => {
             let request = consume(&store.sessions, &confirmation.session_id, &reviewed)?.request;
-            kubernetes_operation(request, client, resource).await
+            kubernetes_operation(request, resource).await
         }
         ExecutionBinding::Connected(connection) => {
             run_connected_operation(store, &confirmation.session_id, &reviewed, connection).await
@@ -387,7 +384,7 @@ async fn revalidate_session(
     .get(&request.application.name)
     .await?;
     verify_kubernetes_application_identity(&current, &session.application)?;
-    Ok(ExecutionBinding::Kubernetes { client, resource })
+    Ok(ExecutionBinding::Kubernetes { resource })
 }
 
 fn verify_kubernetes_application_identity(
@@ -613,10 +610,14 @@ async fn validate_resource_action(
 }
 async fn kubernetes_operation(
     request: ArgoOperationRequest,
-    client: Client,
     resource: ApiResource,
 ) -> Result<ArgoOperationResult, AppError> {
     ensure_kubernetes_transport_action(&request.action)?;
+    // ADR 0009: a confirmed write must not be cancelled by workspace client
+    // rotation after the API server may already have applied it.
+    let client = KubeconfigSource::new(request.kubeconfig_env_var.clone())?
+        .operation_client_for_context(request.cluster_context.as_deref().expect("validated"))
+        .await?;
     let api = Api::<DynamicObject>::namespaced_with(
         client,
         request.application.namespace.as_deref().expect("validated"),
@@ -932,6 +933,10 @@ fn recorded_sync_payload(sync: Value) -> Result<Value, AppError> {
     }
     Ok(Value::Object(payload))
 }
+
+#[cfg(test)]
+#[path = "operations_execution_tests.rs"]
+mod execution_tests;
 
 #[cfg(test)]
 mod tests {
