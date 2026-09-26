@@ -301,8 +301,12 @@
 			forceConflictsOverride,
 			$settingsStore.allowYamlForceConflicts || yamlForceConflictsForResource,
 		);
+		const reviewedDraft = yamlDraft;
 		try {
-			yamlPreview = await prepareYamlApply(client, buildYamlApplyRequest(forceConflicts));
+			const preview = await prepareYamlApply(client, buildYamlApplyRequest(forceConflicts, reviewedDraft));
+			// Apply sends the current draft, so a preview of an older draft must not enable it.
+			if (yamlDraft !== reviewedDraft) return;
+			yamlPreview = preview;
 			yamlPreviewForceConflicts = forceConflicts;
 		} catch (error) {
 			yamlPrepareRawError = error;
