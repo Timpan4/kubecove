@@ -175,6 +175,26 @@ async fn namespaces_skipped_by_the_fallback_are_reported() {
 }
 
 #[tokio::test]
+async fn fallback_without_namespace_discovery_is_reported() {
+    let listed = list_with_routes(|path| match path {
+        "/api/v1/namespaces/default/configmaps" => configmap_release(),
+        "/api/v1/namespaces/default/secrets" => list(serde_json::json!([])),
+        _ => forbidden("resources"),
+    })
+    .await
+    .expect("default namespace releases remain visible");
+
+    assert_eq!(listed.releases.len(), 1);
+    assert_eq!(
+        listed.warnings,
+        vec![
+            "Namespaces could not be listed; Helm storage was checked only in: default."
+                .to_string()
+        ]
+    );
+}
+
+#[tokio::test]
 async fn unreadable_storage_without_releases_stays_an_error() {
     let error = list_with_routes(|path| match path {
         "/api/v1/namespaces" => namespaces(),
