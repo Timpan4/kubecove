@@ -31,9 +31,18 @@ const options: ResourceReadOptions = {
 	cancellable: { requestId: "req-1", cancelScope: "scope-1" },
 };
 
+interface ReadCommandArgs {
+	kind?: string;
+	resourceKind?: Pick<ResourceSummary, "kind" | "plural" | "apiVersion">;
+	yamlViewMode?: string;
+	yamlEncoding?: string;
+	requestId?: string;
+	cancelScope?: string;
+}
+
 function recordingClient() {
-	const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
-	const record = (command: string, result: unknown) => (args: Record<string, unknown>) => {
+	const calls: Array<{ command: string; args: ReadCommandArgs }> = [];
+	const record = (command: string, result: string | { yaml: string }) => (args: ReadCommandArgs) => {
 		calls.push({ command, args });
 		return result;
 	};
