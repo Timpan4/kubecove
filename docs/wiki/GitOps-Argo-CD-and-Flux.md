@@ -51,7 +51,7 @@ Use this sequence:
 2. Start refresh or sync. KubeCove preflights the exact request before submitting it.
 3. For sync choices beyond the Application defaults, type the exact Application name to enable confirmation.
 4. Run the reviewed request immediately. The preflight session is single-use, expires after five minutes, and binds the run to the exact request reviewed at preflight. Its native secure-storage record can survive an app restart during that lifetime; before execution, KubeCove revalidates scope, Application identity, credentials, authorization, and the selected transport.
-5. KubeCove observes accepted and externally initiated operations and shows the reported phase and request status in the Application list. Application details can show per-resource phases and messages. Tracking continues while navigating within the same workspace and context. Acceptance is not proof that reconciliation has completed.
+5. The Application list shows Argo CD's reported operation phase and the local request status for operations submitted through KubeCove. Application details show the reported operation phase and per-resource phases and messages when Argo CD provides them, including operations initiated outside KubeCove. Tracking of submitted requests continues while navigating within the same workspace and context. Acceptance is not proof that reconciliation has completed.
 
 Use the status menu beside the GitOps heading to check live-watch state and reload errors. **Refresh (clear cache)** clears cached data for this view and reloads active reads while preserving filters and selection. This refreshes KubeCove's view; **Refresh** and **Hard refresh** in the operation table request Argo CD to refresh the Application.
 
