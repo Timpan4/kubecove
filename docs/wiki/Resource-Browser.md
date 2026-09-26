@@ -35,6 +35,8 @@ These labels summarize available evidence. They are not Kubernetes authorization
 
 **Map** visualizes ownership relationships for the loaded objects. Use it to follow a workload toward its controllers or related objects. Metrics and topology are supplementary: either can be missing when the API, scope, or access does not provide enough data.
 
+Use the status menu in the Resource browser header to check live-watch state and reload errors. Choose **Refresh (clear cache)** to clear cached data for this view and reload active reads; filters and selection are preserved. Health badges show their source and raw status in a tooltip on hover or keyboard focus. Partial-assessment badges remain visible.
+
 Custom Resources appear when their discovery and loading setting is enabled. KubeCove discovers the kinds exposed by the selected cluster rather than assuming every cluster has the same APIs.
 
 ## Understand loading and empty states
