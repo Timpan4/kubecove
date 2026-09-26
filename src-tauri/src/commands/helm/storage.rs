@@ -11,7 +11,7 @@ use crate::commands::{
 use crate::models::AppErrorKind;
 use crate::models::{
     AppError, HelmManifestResourceSummary, HelmManifestSummary, HelmReleaseDetails,
-    HelmReleaseSummary, HelmValuesSummary, YamlEncoding, YamlViewMode,
+    HelmReleaseList, HelmReleaseSummary, HelmValuesSummary, YamlEncoding, YamlViewMode,
 };
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use flate2::read::GzDecoder;
@@ -75,28 +75,77 @@ pub(super) struct HelmStorageRecord {
 pub async fn list_helm_releases(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
-) -> Result<Vec<HelmReleaseSummary>, AppError> {
+) -> Result<HelmReleaseList, AppError> {
     let (client, default_namespace) =
         client_for_context(&cluster_context, kubeconfig_env_var).await?;
-    let fallback_namespaces = helm_fallback_namespaces(client.clone(), &default_namespace).await;
+    list_helm_releases_with_client(client, &cluster_context, &default_namespace).await
+}
+
+async fn list_helm_releases_with_client(
+    client: Client,
+    cluster_context: &str,
+    default_namespace: &str,
+) -> Result<HelmReleaseList, AppError> {
+    let (fallback_namespaces, namespaces_discovered) =
+        helm_fallback_namespaces(client.clone(), default_namespace).await;
+    let secrets = list_secret_releases(client.clone(), cluster_context, &fallback_namespaces).await;
+    let configmaps = list_configmap_releases(client, cluster_context, &fallback_namespaces).await;
     let mut records = Vec::new();
     let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+    let mut fell_back = false;
 
-    match list_secret_releases(client.clone(), &cluster_context, &fallback_namespaces).await {
-        Ok(mut releases) => records.append(&mut releases),
-        Err(err) => errors.push(err),
+    for (storage_kind, listed) in [
+        (HELM_STORAGE_SECRET, secrets),
+        (HELM_STORAGE_CONFIGMAP, configmaps),
+    ] {
+        match listed {
+            Ok((mut releases, skipped_namespaces)) => {
+                records.append(&mut releases);
+                let Some(skipped_namespaces) = skipped_namespaces else {
+                    continue;
+                };
+                fell_back = true;
+                if !skipped_namespaces.is_empty() {
+                    warnings.push(format!(
+                        "Helm {storage_kind} storage unavailable in namespaces: {}.",
+                        skipped_namespaces.join(", ")
+                    ));
+                }
+            }
+            Err(err) => {
+                let reason = if err.kind == AppErrorKind::Forbidden {
+                    "forbidden by RBAC"
+                } else {
+                    &err.message
+                };
+                warnings.push(format!(
+                    "Helm {storage_kind} storage unavailable: {reason}."
+                ));
+                errors.push(err);
+            }
+        }
     }
 
-    match list_configmap_releases(client, &cluster_context, &fallback_namespaces).await {
-        Ok(mut releases) => records.append(&mut releases),
-        Err(err) => errors.push(err),
+    if fell_back && !namespaces_discovered {
+        warnings.push(format!(
+            "Namespaces could not be listed; Helm storage was checked only in: {}.",
+            if fallback_namespaces.is_empty() {
+                "no namespaces".to_string()
+            } else {
+                fallback_namespaces.join(", ")
+            }
+        ));
     }
 
     if records.is_empty() && !errors.is_empty() {
         return Err(storage_errors(errors));
     }
 
-    Ok(latest_releases(records))
+    Ok(HelmReleaseList {
+        releases: latest_releases(records),
+        warnings,
+    })
 }
 
 #[tauri::command]
@@ -218,7 +267,8 @@ pub(super) async fn client_for_context(
     source.client_and_default_namespace(cluster_context).await
 }
 
-async fn helm_fallback_namespaces(client: Client, default_namespace: &str) -> Vec<String> {
+/// Namespaces for the per-namespace fallback, and whether they were discovered.
+async fn helm_fallback_namespaces(client: Client, default_namespace: &str) -> (Vec<String>, bool) {
     let api: Api<Namespace> = Api::all(client);
     match api.list(&list_params()).await {
         Ok(items) => {
@@ -228,21 +278,27 @@ async fn helm_fallback_namespaces(client: Client, default_namespace: &str) -> Ve
                 .filter_map(|namespace| namespace.metadata.name)
                 .collect();
             if namespaces.is_empty() && !default_namespace.is_empty() {
-                vec![default_namespace.to_string()]
+                (vec![default_namespace.to_string()], true)
             } else {
-                namespaces
+                (namespaces, true)
             }
         }
-        Err(_) if !default_namespace.is_empty() => vec![default_namespace.to_string()],
-        Err(_) => Vec::new(),
+        Err(_) if !default_namespace.is_empty() => (vec![default_namespace.to_string()], false),
+        Err(_) => (Vec::new(), false),
     }
 }
+
+/// Records plus namespaces a partially successful fallback could not read.
+type ListedRecords = (Vec<HelmStorageRecord>, Vec<String>);
+
+/// Records plus, when the cluster-wide list failed, the namespaces the fallback skipped.
+type StorageListing = (Vec<HelmStorageRecord>, Option<Vec<String>>);
 
 async fn list_secret_releases(
     client: Client,
     cluster_context: &str,
     fallback_namespaces: &[String],
-) -> Result<Vec<HelmStorageRecord>, AppError> {
+) -> Result<StorageListing, AppError> {
     let api: Api<Secret> = Api::all(client.clone());
     let params = helm_list_params();
     let items = match api.list(&params).await {
@@ -250,23 +306,25 @@ async fn list_secret_releases(
         Err(all_error) => {
             return list_secret_releases_by_namespace(client, cluster_context, fallback_namespaces)
                 .await
+                .map(|(records, skipped)| (records, Some(skipped)))
                 .map_err(|namespace_error| {
                     storage_errors(vec![AppError::from(all_error), namespace_error])
                 });
         }
     };
-    items
+    let records = items
         .items
         .into_iter()
         .map(|mut secret| secret_record(cluster_context, &mut secret))
-        .collect()
+        .collect::<Result<_, _>>()?;
+    Ok((records, None))
 }
 
 async fn list_configmap_releases(
     client: Client,
     cluster_context: &str,
     fallback_namespaces: &[String],
-) -> Result<Vec<HelmStorageRecord>, AppError> {
+) -> Result<StorageListing, AppError> {
     let api: Api<ConfigMap> = Api::all(client.clone());
     let params = helm_list_params();
     let items = match api.list(&params).await {
@@ -278,27 +336,30 @@ async fn list_configmap_releases(
                 fallback_namespaces,
             )
             .await
+            .map(|(records, skipped)| (records, Some(skipped)))
             .map_err(|namespace_error| {
                 storage_errors(vec![AppError::from(all_error), namespace_error])
             });
         }
     };
-    items
+    let records = items
         .items
         .into_iter()
         .map(|mut configmap| configmap_record(cluster_context, &mut configmap))
-        .collect()
+        .collect::<Result<_, _>>()?;
+    Ok((records, None))
 }
 
 async fn list_secret_releases_by_namespace(
     client: Client,
     cluster_context: &str,
     namespaces: &[String],
-) -> Result<Vec<HelmStorageRecord>, AppError> {
+) -> Result<ListedRecords, AppError> {
     let params = helm_list_params();
     let mut records = Vec::new();
     let mut succeeded = false;
     let mut errors = Vec::new();
+    let mut skipped = Vec::new();
 
     for namespace in namespaces {
         let api: Api<Secret> = Api::namespaced(client.clone(), namespace);
@@ -313,6 +374,7 @@ async fn list_secret_releases_by_namespace(
                 let mut error = AppError::from(err);
                 error.message = format!("{namespace}: {}", error.message);
                 errors.push(error);
+                skipped.push(namespace.clone());
             }
         }
     }
@@ -320,7 +382,7 @@ async fn list_secret_releases_by_namespace(
     if !succeeded && !errors.is_empty() {
         Err(storage_errors(errors))
     } else {
-        Ok(records)
+        Ok((records, skipped))
     }
 }
 
@@ -328,11 +390,12 @@ async fn list_configmap_releases_by_namespace(
     client: Client,
     cluster_context: &str,
     namespaces: &[String],
-) -> Result<Vec<HelmStorageRecord>, AppError> {
+) -> Result<ListedRecords, AppError> {
     let params = helm_list_params();
     let mut records = Vec::new();
     let mut succeeded = false;
     let mut errors = Vec::new();
+    let mut skipped = Vec::new();
 
     for namespace in namespaces {
         let api: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
@@ -347,6 +410,7 @@ async fn list_configmap_releases_by_namespace(
                 let mut error = AppError::from(err);
                 error.message = format!("{namespace}: {}", error.message);
                 errors.push(error);
+                skipped.push(namespace.clone());
             }
         }
     }
@@ -354,7 +418,7 @@ async fn list_configmap_releases_by_namespace(
     if !succeeded && !errors.is_empty() {
         Err(storage_errors(errors))
     } else {
-        Ok(records)
+        Ok((records, skipped))
     }
 }
 

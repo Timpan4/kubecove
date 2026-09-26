@@ -10,6 +10,7 @@
 	import type {
 		HelmReconciliationResource,
 		HelmReleaseDetails,
+		HelmReleaseList,
 		HelmReleaseReconciliation,
 		HelmReleaseSummary,
 	} from "@/lib/types";
@@ -51,7 +52,7 @@
 	const client = createTauriClient();
 	let helmNamespace = $state<string | null>(null);
 	const context = $derived(workspace.scope.clusterContext);
-	const helmQuery = createQuery<HelmReleaseSummary[]>(() => ({
+	const helmQuery = createQuery<HelmReleaseList>(() => ({
 		queryKey: queryKeys.helmReleases(context, kubeconfigSourceKey),
 		queryFn: () => listHelmReleases(client, context, kubeconfigSourceKey),
 		enabled: sourceReady,
@@ -106,11 +107,12 @@
 		enabled: sourceReady && Boolean(selectedHelmRelease),
 		staleTime: 30_000,
 	}));
+	const helmReleases = $derived(helmQuery.data?.releases);
 	const activeHelmNamespace = $derived(
-		resolveHelmNamespace(helmQuery.data ?? [], helmNamespace),
+		resolveHelmNamespace(helmReleases ?? [], helmNamespace),
 	);
 	const releaseState = $derived(
-		buildHelmReleaseState(helmQuery.data ?? [], helmSearch, activeHelmNamespace),
+		buildHelmReleaseState(helmReleases ?? [], helmSearch, activeHelmNamespace),
 	);
 	const helmReconciliationRows = $derived(
 		sortHelmReconciliationResources(helmReconciliationQuery.data?.resources ?? []),
@@ -118,14 +120,14 @@
 
 	$effect(() => {
 		if (helmNamespace !== activeHelmNamespace) helmNamespace = activeHelmNamespace;
-		const target = resolveTargetHelmRelease(helmQuery.data, targetHelmRelease);
+		const target = resolveTargetHelmRelease(helmReleases, targetHelmRelease);
 		if (target) {
 			helmNamespace = target.namespace;
 			selectedHelmRelease = target;
 			onTargetHelmReleaseResolved();
 			return;
 		}
-		if (!selectedHelmReleaseExists(helmQuery.data, selectedHelmRelease)) {
+		if (!selectedHelmReleaseExists(helmReleases, selectedHelmRelease)) {
 			selectedHelmRelease = null;
 		}
 	});
