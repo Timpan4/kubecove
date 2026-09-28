@@ -94,6 +94,7 @@ async fn list_helm_releases_with_client(
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
     let mut fell_back = false;
+    let mut readable_storage = 0;
 
     for (storage_kind, listed) in [
         (HELM_STORAGE_SECRET, secrets),
@@ -101,6 +102,7 @@ async fn list_helm_releases_with_client(
     ] {
         match listed {
             Ok((mut releases, skipped_namespaces)) => {
+                readable_storage += 1;
                 records.append(&mut releases);
                 let Some(skipped_namespaces) = skipped_namespaces else {
                     continue;
@@ -138,7 +140,7 @@ async fn list_helm_releases_with_client(
         ));
     }
 
-    if records.is_empty() && !errors.is_empty() {
+    if readable_storage == 0 && !errors.is_empty() {
         return Err(storage_errors(errors));
     }
 
@@ -304,6 +306,9 @@ async fn list_secret_releases(
     let items = match api.list(&params).await {
         Ok(items) => items,
         Err(all_error) => {
+            if fallback_namespaces.is_empty() {
+                return Err(AppError::from(all_error));
+            }
             return list_secret_releases_by_namespace(client, cluster_context, fallback_namespaces)
                 .await
                 .map(|(records, skipped)| (records, Some(skipped)))
@@ -330,6 +335,9 @@ async fn list_configmap_releases(
     let items = match api.list(&params).await {
         Ok(items) => items,
         Err(all_error) => {
+            if fallback_namespaces.is_empty() {
+                return Err(AppError::from(all_error));
+            }
             return list_configmap_releases_by_namespace(
                 client,
                 cluster_context,
