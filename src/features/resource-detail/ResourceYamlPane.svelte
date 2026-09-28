@@ -275,6 +275,7 @@
 				kubeconfigSourceKey,
 				yamlViewMode: "applyClean",
 				yamlEncoding,
+				cancellable: createFiniteReadRequest(yamlCancelScope, "yaml-draft"),
 			});
 			yamlEditing = true;
 		} catch (error) {
