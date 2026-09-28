@@ -36,6 +36,27 @@ export function buildYamlApplyRequest({
 	};
 }
 
+export function sameYamlApplyRequest(
+	left: YamlApplyRequest,
+	right: YamlApplyRequest,
+): boolean {
+	return (
+		left.clusterContext === right.clusterContext &&
+		left.kubeconfigEnvVar === right.kubeconfigEnvVar &&
+		left.kind === right.kind &&
+		left.apiVersion === right.apiVersion &&
+		left.group === right.group &&
+		left.version === right.version &&
+		left.plural === right.plural &&
+		left.namespaced === right.namespaced &&
+		left.name === right.name &&
+		left.namespace === right.namespace &&
+		left.yaml === right.yaml &&
+		left.yamlEncoding === right.yamlEncoding &&
+		left.forceConflicts === right.forceConflicts
+	);
+}
+
 export function resolveYamlForceConflicts<Override>(
 	override: Override,
 	fallback: boolean,

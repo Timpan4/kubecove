@@ -41,9 +41,11 @@
 		buildYamlApplyRequest as createYamlApplyRequest,
 		isYamlApplyDisabled,
 		resolveYamlForceConflicts,
+		sameYamlApplyRequest,
 		yamlAppliedMessage as formatYamlAppliedMessage,
 		yamlApplyTargetLabel,
 	} from "./yamlApplyModel";
+	type YamlApplyRequest = ReturnType<typeof createYamlApplyRequest>;
 
 	let {
 		client,
@@ -83,6 +85,7 @@
 	let yamlDraft = $state("");
 	let yamlLoadingDraft = $state(false);
 	let yamlPreview = $state<YamlApplyPreview | null>(null);
+	let yamlPreviewRequest = $state<YamlApplyRequest | null>(null);
 	let yamlPreviewForceConflicts = $state(false);
 	let yamlForceConflictsForResource = $state(false);
 	let yamlLintDiagnostics = $state<KubernetesYamlLintDiagnostic[]>([]);
@@ -96,6 +99,7 @@
 	let yamlApplyRawError = $state<unknown>(null);
 	let yamlApplyError = $state("");
 	let yamlAppliedMessage = $state("");
+	let yamlApplyRevision = 0;
 
 	const selectedDynamicKindKey = $derived(dynamicKindKey(dynamicKind));
 	const yamlQueryKey = $derived([
@@ -204,6 +208,7 @@
 		void resource.kind;
 		void resource.name;
 		void resource.namespace;
+		void resource.apiVersion;
 		void kubeconfigSourceKey;
 		void selectedDynamicKindKey;
 		void $settingsStore.redactSecrets;
@@ -225,10 +230,12 @@
 	}
 
 	function resetYamlApply() {
+		yamlApplyRevision += 1;
 		yamlEditing = false;
 		yamlDraft = "";
 		yamlLoadingDraft = false;
 		yamlPreview = null;
+		yamlPreviewRequest = null;
 		yamlPreviewForceConflicts = false;
 		yamlForceConflictsForResource = false;
 		yamlLintDiagnostics = [];
@@ -257,6 +264,7 @@
 
 	async function startYamlApplyEdit() {
 		if (yamlApplyDisabledReason || yamlLoadingDraft) return;
+		const draftRevision = yamlApplyRevision;
 		yamlLoadingDraft = true;
 		yamlLintDiagnostics = [];
 		yamlLintNotes = [];
@@ -268,21 +276,25 @@
 		yamlApplyError = "";
 		yamlAppliedMessage = "";
 		yamlPreview = null;
+		yamlPreviewRequest = null;
 		yamlForceConflictsForResource = false;
 		yamlShowFullDiff = false;
 		try {
-			yamlDraft = await readResourceYaml(client, resource, {
+			const draft = await readResourceYaml(client, resource, {
 				kubeconfigSourceKey,
 				yamlViewMode: "applyClean",
 				yamlEncoding,
 				cancellable: createFiniteReadRequest(yamlCancelScope, "yaml-draft"),
 			});
+			if (draftRevision !== yamlApplyRevision) return;
+			yamlDraft = draft;
 			yamlEditing = true;
 		} catch (error) {
+			if (draftRevision !== yamlApplyRevision) return;
 			yamlPrepareRawError = error;
 			yamlPrepareError = getErrorMessage(error);
 		} finally {
-			yamlLoadingDraft = false;
+			if (draftRevision === yamlApplyRevision) yamlLoadingDraft = false;
 		}
 	}
 
@@ -297,19 +309,43 @@
 		yamlApplyError = "";
 		yamlAppliedMessage = "";
 		yamlPreview = null;
+		yamlPreviewRequest = null;
 		yamlShowFullDiff = false;
 		const forceConflicts = resolveYamlForceConflicts(
 			forceConflictsOverride,
 			$settingsStore.allowYamlForceConflicts || yamlForceConflictsForResource,
 		);
+		const reviewedRevision = yamlApplyRevision;
+		const reviewedDraft = yamlDraft;
+		const reviewedRequest = buildYamlApplyRequest(forceConflicts, reviewedDraft);
 		try {
-			yamlPreview = await prepareYamlApply(client, buildYamlApplyRequest(forceConflicts));
+			const preview = await prepareYamlApply(client, reviewedRequest);
+			if (
+				reviewedRevision !== yamlApplyRevision ||
+				!sameYamlApplyRequest(
+					reviewedRequest,
+					buildYamlApplyRequest(forceConflicts, reviewedDraft),
+				)
+			) {
+				return;
+			}
+			yamlPreview = preview;
+			yamlPreviewRequest = reviewedRequest;
 			yamlPreviewForceConflicts = forceConflicts;
 		} catch (error) {
+			if (reviewedRevision !== yamlApplyRevision) return;
+			if (
+				!sameYamlApplyRequest(
+					reviewedRequest,
+					buildYamlApplyRequest(forceConflicts, reviewedDraft),
+				)
+			) {
+				return;
+			}
 			yamlPrepareRawError = error;
 			yamlPrepareError = getErrorMessage(error);
 		} finally {
-			yamlPreparing = false;
+			if (reviewedRevision === yamlApplyRevision) yamlPreparing = false;
 		}
 	}
 
@@ -352,6 +388,8 @@
 	}
 
 	function clearYamlDraftFeedback() {
+		yamlApplyRevision += 1;
+		yamlPreparing = false;
 		yamlLintDiagnostics = [];
 		yamlLintNotes = [];
 		yamlLintError = "";
@@ -362,33 +400,46 @@
 		yamlApplyError = "";
 		yamlAppliedMessage = "";
 		yamlPreview = null;
+		yamlPreviewRequest = null;
 		yamlForceConflictsForResource = false;
 		yamlShowFullDiff = false;
 	}
 
 	async function applyYamlPreview() {
-		if (!yamlPreview || yamlApplying) return;
+		const reviewedRequest = yamlPreviewRequest;
+		if (
+			!yamlPreview ||
+			!reviewedRequest ||
+			yamlApplying ||
+			!sameYamlApplyRequest(
+				reviewedRequest,
+				buildYamlApplyRequest(yamlPreviewForceConflicts),
+			)
+		) {
+			return;
+		}
+		const applyRevision = yamlApplyRevision;
 		yamlApplying = true;
 		yamlApplyRawError = null;
 		yamlApplyError = "";
 		try {
-			const result = await applyYaml(
-				client,
-				buildYamlApplyRequest(yamlPreviewForceConflicts),
-			);
+			const result = await applyYaml(client, reviewedRequest);
+			if (applyRevision !== yamlApplyRevision) return;
 			yamlAppliedMessage = formatYamlAppliedMessage(
 				result,
 				yamlPreviewForceConflicts,
 			);
 			yamlEditing = false;
 			yamlPreview = null;
+			yamlPreviewRequest = null;
 			void queryClient.invalidateQueries({ queryKey: detailsQueryKey });
 			void queryClient.invalidateQueries({ queryKey: yamlQueryKey });
 		} catch (error) {
+			if (applyRevision !== yamlApplyRevision) return;
 			yamlApplyRawError = error;
 			yamlApplyError = getErrorMessage(error);
 		} finally {
-			yamlApplying = false;
+			if (applyRevision === yamlApplyRevision) yamlApplying = false;
 		}
 	}
 </script>
