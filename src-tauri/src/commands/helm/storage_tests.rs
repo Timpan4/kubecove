@@ -94,9 +94,16 @@ async fn serve(mut handle: MockHandle, route: fn(&str) -> (u16, serde_json::Valu
 async fn list_with_routes(
     route: fn(&str) -> (u16, serde_json::Value),
 ) -> Result<HelmReleaseList, AppError> {
+    list_with_default_namespace(route, "default").await
+}
+
+async fn list_with_default_namespace(
+    route: fn(&str) -> (u16, serde_json::Value),
+    default_namespace: &str,
+) -> Result<HelmReleaseList, AppError> {
     let (service, handle) = tower_test::mock::pair();
     let client = Client::new(service, "default");
-    let listing = list_helm_releases_with_client(client, "kind-dev", "default");
+    let listing = list_helm_releases_with_client(client, "kind-dev", default_namespace);
     let (result, ()) = tokio::time::timeout(std::time::Duration::from_secs(5), async {
         tokio::join!(listing, serve(handle, route))
     })
@@ -195,14 +202,45 @@ async fn fallback_without_namespace_discovery_is_reported() {
 }
 
 #[tokio::test]
-async fn unreadable_storage_without_releases_stays_an_error() {
-    let error = list_with_routes(|path| match path {
+async fn readable_empty_storage_beside_unreadable_storage_returns_warning() {
+    let listed = list_with_routes(|path| match path {
         "/api/v1/namespaces" => namespaces(),
         "/api/v1/configmaps" => list(serde_json::json!([])),
         _ => forbidden("secrets"),
     })
     .await
-    .expect_err("an empty list must not hide unreadable storage");
+    .expect("a readable empty source still returns partial results");
+
+    assert!(listed.releases.is_empty());
+    assert_eq!(
+        listed.warnings,
+        vec!["Helm Secret storage unavailable: forbidden by RBAC.".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn unreadable_storage_without_releases_stays_an_error() {
+    let error = list_with_routes(|path| match path {
+        "/api/v1/namespaces" => namespaces(),
+        _ => forbidden("storage"),
+    })
+    .await
+    .expect_err("when both storage kinds fail, the listing must stay an error");
+
+    assert!(error.message.contains("forbidden"));
+}
+
+#[tokio::test]
+async fn unreadable_storage_without_a_fallback_namespace_stays_an_error() {
+    let error = list_with_default_namespace(
+        |path| match path {
+            "/api/v1/namespaces" => forbidden("namespaces"),
+            _ => forbidden("storage"),
+        },
+        "",
+    )
+    .await
+    .expect_err("no storage can be read when namespace fallback has no target");
 
     assert!(error.message.contains("forbidden"));
 }
