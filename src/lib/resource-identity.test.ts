@@ -30,6 +30,13 @@ describe("resource identity", () => {
 		expect(resourceKey(candidates[1])).not.toBe(resourceKey(target));
 	});
 
+	test("does not loosely match resources with different known apiVersions", () => {
+		const target = resource({ apiVersion: "argoproj.io/v1alpha1" });
+		const candidates = [resource({ apiVersion: "app.k8s.io/v1beta1" })];
+
+		expect(findResourceIndex(candidates, target, self)).toBe(-1);
+	});
+
 	test("does not match another cluster, namespace, or name", () => {
 		const target = resource();
 		const candidates = [
