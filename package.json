@@ -94,8 +94,8 @@
     "webdriverio": "9.32.0"
   },
   "overrides": {
-    "@codemirror/state": "6.7.1",
-    "@codemirror/view": "6.43.7",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.13",
     "@puppeteer/browsers": "3.2.2",
     "@wdio/native-utils": "2.5.0",
     "deepmerge-ts": "8.0.1",
