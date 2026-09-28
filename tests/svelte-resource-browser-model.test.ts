@@ -800,7 +800,7 @@ describe("svelte resource browser model", () => {
 
 	test("syncs table selection into the Svelte topology selection", () => {
 		const selected = resource("api", { apiVersion: "v1" });
-		const topologySummary = resource("api", { apiVersion: "apps/v1" });
+		const topologySummary = resource("api");
 		const topologyNodes = [
 			topologyNode("Deployment:api", topologySummary),
 			topologyNode("Pod:worker", resource("worker")),
