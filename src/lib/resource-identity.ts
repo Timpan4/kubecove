@@ -25,7 +25,13 @@ export function findResourceIndex<T>(
 	for (const [index, candidate] of candidates.entries()) {
 		const summary = summaryOf(candidate);
 		if (resourceKey(summary) === exact) return index;
-		if (looseIndex < 0 && looseResourceKey(summary) === loose) looseIndex = index;
+		if (
+			looseIndex < 0 &&
+			(summary.apiVersion === undefined || target.apiVersion === undefined) &&
+			looseResourceKey(summary) === loose
+		) {
+			looseIndex = index;
+		}
 	}
 	return looseIndex;
 }
