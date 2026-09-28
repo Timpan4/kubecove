@@ -3,6 +3,31 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.11.2 - 2026-09-28
+### Improved
+
+- Read resource details and YAML through one module.
+- Read built-in kind metadata from one catalog.
+- Share resource identity and matching in one module.
+- Remove change-gate checkout and unnecessary docs setup (#463).
+
+### Fixed
+
+- Bind YAML previews to current request.
+- Compare reviewed YAML apply requests.
+- Cancel YAML draft reads on workspace change.
+- Reject mismatched API versions in resource lookup.
+- Bind Argo writes to the revalidated Application.
+- Distinguish readable empty Helm storage.
+- Update Nix cargo vendor hash.
+- Reject custom kinds on the YAML command like the backend.
+- Warn when the storage fallback could not discover namespaces.
+- Ignore a dry run whose draft changed before it returned.
+- Serve YAML for CustomResourceDefinition rows.
+- Execute confirmed Kubernetes-transport operations on the operation client.
+- Report unreadable Helm storage beside partial release lists.
+- Redact last-applied annotation on connected Secret payloads.
+
 ## 0.11.1 - 2026-09-20
 ### Fixed
 
