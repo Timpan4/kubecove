@@ -1,3 +1,4 @@
+use crate::commands::builtin_kinds::{builtin_kind, BuiltinKind};
 use crate::commands::kubeconfig::KubeconfigSource;
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -218,31 +219,16 @@ fn resource_api(
     ))
 }
 
+/// Callers restrict `target.kind` to each operation's allowlist in `validate_target`.
 fn api_resource_for_kind(kind: &str) -> Result<ApiResource, AppError> {
-    let (group, plural) = match kind {
-        "Deployment" => ("apps", "deployments"),
-        "StatefulSet" => ("apps", "statefulsets"),
-        "DaemonSet" => ("apps", "daemonsets"),
-        "Pod" => ("", "pods"),
-        "ConfigMap" => ("", "configmaps"),
-        _ => {
-            return Err(AppError::new(
+    builtin_kind(kind)
+        .map(BuiltinKind::api_resource)
+        .ok_or_else(|| {
+            AppError::new(
                 "unsupported operation target",
                 AppErrorKind::UnsupportedOperation,
-            ))
-        }
-    };
-    Ok(ApiResource {
-        group: group.to_string(),
-        version: "v1".to_string(),
-        api_version: if group.is_empty() {
-            "v1".to_string()
-        } else {
-            format!("{group}/v1")
-        },
-        kind: kind.to_string(),
-        plural: plural.to_string(),
-    })
+            )
+        })
 }
 
 async fn restart_with_params(

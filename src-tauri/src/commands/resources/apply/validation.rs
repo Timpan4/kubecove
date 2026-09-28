@@ -1,3 +1,4 @@
+use crate::commands::builtin_kinds::{builtin_kind, BuiltinKind};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, YamlApplyRequest, YamlApplyTarget};
 use kube::api::ApiResource;
@@ -165,26 +166,13 @@ pub(super) fn request_api_version(request: &YamlApplyRequest) -> Result<String, 
             .version
             .clone()
             .filter(|value| !value.trim().is_empty())
-            .or_else(|| builtin_api_version_for_kind(&request.kind).map(str::to_string))
+            .or_else(|| builtin_apply_kind(&request.kind).map(BuiltinKind::api_version))
             .ok_or_else(|| AppError::new("apiVersion is required", AppErrorKind::Validation)),
     }
 }
 
-fn builtin_api_version_for_kind(kind: &str) -> Option<&'static str> {
-    match kind {
-        "Pod"
-        | "Service"
-        | "ConfigMap"
-        | "Secret"
-        | "PersistentVolumeClaim"
-        | "Node"
-        | "PersistentVolume" => Some("v1"),
-        "Deployment" | "StatefulSet" | "DaemonSet" => Some("apps/v1"),
-        "Ingress" => Some("networking.k8s.io/v1"),
-        "Job" | "CronJob" => Some("batch/v1"),
-        "StorageClass" => Some("storage.k8s.io/v1"),
-        _ => None,
-    }
+fn builtin_apply_kind(kind: &str) -> Option<&'static BuiltinKind> {
+    builtin_kind(kind).filter(|entry| entry.apply)
 }
 
 fn api_resource_for_request(
@@ -216,39 +204,15 @@ fn api_resource_for_request(
 }
 
 fn builtin_api_resource(kind: &str, api_version: &str) -> Result<(ApiResource, bool), AppError> {
-    let (group, version, plural, namespaced) = match (kind, api_version) {
-        ("Pod", "v1") => ("", "v1", "pods", true),
-        ("Service", "v1") => ("", "v1", "services", true),
-        ("ConfigMap", "v1") => ("", "v1", "configmaps", true),
-        ("Secret", "v1") => ("", "v1", "secrets", true),
-        ("PersistentVolumeClaim", "v1") => ("", "v1", "persistentvolumeclaims", true),
-        ("Node", "v1") => ("", "v1", "nodes", false),
-        ("PersistentVolume", "v1") => ("", "v1", "persistentvolumes", false),
-        ("Deployment", "apps/v1") => ("apps", "v1", "deployments", true),
-        ("StatefulSet", "apps/v1") => ("apps", "v1", "statefulsets", true),
-        ("DaemonSet", "apps/v1") => ("apps", "v1", "daemonsets", true),
-        ("Ingress", "networking.k8s.io/v1") => ("networking.k8s.io", "v1", "ingresses", true),
-        ("Job", "batch/v1") => ("batch", "v1", "jobs", true),
-        ("CronJob", "batch/v1") => ("batch", "v1", "cronjobs", true),
-        ("StorageClass", "storage.k8s.io/v1") => ("storage.k8s.io", "v1", "storageclasses", false),
-        _ => {
-            return Err(AppError::new(
+    builtin_apply_kind(kind)
+        .filter(|entry| entry.api_version() == api_version)
+        .map(|entry| (entry.api_resource(), entry.namespaced))
+        .ok_or_else(|| {
+            AppError::new(
                 format!("unsupported apply target: {api_version} {kind}"),
                 AppErrorKind::Validation,
-            ));
-        }
-    };
-
-    Ok((
-        ApiResource {
-            group: group.to_string(),
-            version: version.to_string(),
-            api_version: api_version.to_string(),
-            kind: kind.to_string(),
-            plural: plural.to_string(),
-        },
-        namespaced,
-    ))
+            )
+        })
 }
 
 fn split_api_version(api_version: &str) -> (String, String) {

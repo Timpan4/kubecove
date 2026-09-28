@@ -1,3 +1,4 @@
+use crate::commands::builtin_kinds::{builtin_kind, BuiltinKind};
 use crate::commands::helpers::k8s_timestamp_to_datetime;
 use crate::models::{OwnerReferenceSummary, ResourceHealth, ResourceSummary};
 
@@ -56,21 +57,7 @@ pub(crate) fn base_resource_summary(
     metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
     age: String,
 ) -> ResourceSummary {
-    let api_version = match kind {
-        "Deployment" | "ReplicaSet" | "StatefulSet" | "DaemonSet" => Some("apps/v1"),
-        "Ingress" => Some("networking.k8s.io/v1"),
-        "Job" | "CronJob" => Some("batch/v1"),
-        "StorageClass" => Some("storage.k8s.io/v1"),
-        "Pod"
-        | "Service"
-        | "ConfigMap"
-        | "Secret"
-        | "PersistentVolumeClaim"
-        | "Node"
-        | "PersistentVolume" => Some("v1"),
-        _ => None,
-    }
-    .map(str::to_string);
+    let api_version = builtin_kind(kind).map(BuiltinKind::api_version);
     ResourceSummary {
         kind: kind.to_string(),
         cluster: cluster.to_string(),

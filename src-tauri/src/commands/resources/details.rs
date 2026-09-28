@@ -102,7 +102,7 @@ pub async fn resource_details_from(
     resource_details_with_client(client, cluster_context, kind, name, namespace).await
 }
 
-async fn resource_details_with_client(
+pub(super) async fn resource_details_with_client(
     client: kube::Client,
     cluster_context: String,
     kind: String,

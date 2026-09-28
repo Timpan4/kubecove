@@ -1,61 +1,16 @@
+use crate::commands::builtin_kinds::builtin_kind;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, WatchResourceKind};
 use kube::api::ApiResource;
 
 fn known_resource_kind(kind: &str) -> Option<WatchResourceKind> {
-    let (api_version, group, version, plural, namespaced) = match kind {
-        "Pod" => ("v1", "", "v1", "pods", true),
-        "Service" => ("v1", "", "v1", "services", true),
-        "ConfigMap" => ("v1", "", "v1", "configmaps", true),
-        "Secret" => ("v1", "", "v1", "secrets", true),
-        "PersistentVolumeClaim" => ("v1", "", "v1", "persistentvolumeclaims", true),
-        "Namespace" => ("v1", "", "v1", "namespaces", false),
-        "Node" => ("v1", "", "v1", "nodes", false),
-        "PersistentVolume" => ("v1", "", "v1", "persistentvolumes", false),
-        "Deployment" => ("apps/v1", "apps", "v1", "deployments", true),
-        "ReplicaSet" => ("apps/v1", "apps", "v1", "replicasets", true),
-        "StatefulSet" => ("apps/v1", "apps", "v1", "statefulsets", true),
-        "DaemonSet" => ("apps/v1", "apps", "v1", "daemonsets", true),
-        "Ingress" => (
-            "networking.k8s.io/v1",
-            "networking.k8s.io",
-            "v1",
-            "ingresses",
-            true,
-        ),
-        "EndpointSlice" => (
-            "discovery.k8s.io/v1",
-            "discovery.k8s.io",
-            "v1",
-            "endpointslices",
-            true,
-        ),
-        "Job" => ("batch/v1", "batch", "v1", "jobs", true),
-        "CronJob" => ("batch/v1", "batch", "v1", "cronjobs", true),
-        "StorageClass" => (
-            "storage.k8s.io/v1",
-            "storage.k8s.io",
-            "v1",
-            "storageclasses",
-            false,
-        ),
-        "CustomResourceDefinition" => (
-            "apiextensions.k8s.io/v1",
-            "apiextensions.k8s.io",
-            "v1",
-            "customresourcedefinitions",
-            false,
-        ),
-        _ => return None,
-    };
-
-    Some(WatchResourceKind {
-        kind: kind.to_string(),
-        group: Some(group.to_string()),
-        version: Some(version.to_string()),
-        api_version: Some(api_version.to_string()),
-        plural: Some(plural.to_string()),
-        namespaced: Some(namespaced),
+    builtin_kind(kind).map(|entry| WatchResourceKind {
+        kind: entry.kind.to_string(),
+        group: Some(entry.group.to_string()),
+        version: Some(entry.version.to_string()),
+        api_version: Some(entry.api_version()),
+        plural: Some(entry.plural.to_string()),
+        namespaced: Some(entry.namespaced),
     })
 }
 

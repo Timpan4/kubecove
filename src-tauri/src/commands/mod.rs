@@ -1,6 +1,7 @@
 mod argo;
 #[cfg(feature = "bench-support")]
 pub mod bench_support;
+mod builtin_kinds;
 mod cancellation;
 mod contexts;
 mod diagnostics;

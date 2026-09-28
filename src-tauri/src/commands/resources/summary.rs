@@ -21,7 +21,15 @@ pub async fn resources_summary_from(
     crate::commands::helpers::validate_namespace(namespace.as_deref())?;
     let source = KubeconfigSource::new(kubeconfig_env_var)?;
     let client = source.client_for_context(&cluster_context).await?;
+    resource_summaries_with_client(client, cluster_context, kind, namespace).await
+}
 
+pub(super) async fn resource_summaries_with_client(
+    client: kube::Client,
+    cluster_context: String,
+    kind: String,
+    namespace: Option<String>,
+) -> Result<Vec<ResourceSummary>, AppError> {
     if let Some(rows) = core_resource_summaries(
         client.clone(),
         &cluster_context,
