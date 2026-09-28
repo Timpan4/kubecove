@@ -135,7 +135,7 @@ const handlers = {
 	...operationMockHandlers,
 	list_dynamic_resources: (args) => filterResources(args?.resourceKind?.kind, args?.namespace ?? undefined, args?.clusterContext),
 	list_resource_scope: (args) => listScope(args?.requests, args?.clusterContext),
-	get_resource_yaml: (args) => yamlFor(args),
+	get_resource_yaml: (args) => builtInYamlFor(args),
 	get_resource_details: (args) => detailsFor(args),
 	get_dynamic_resource_details: (args) => detailsFor(args),
 	prepare_yaml_apply: (args) => applyPreview(args),
@@ -339,12 +339,17 @@ function detailsFor(args: MockArgs): ResourceDetailsFull {
 	};
 }
 
+// Mirrors the Rust YAML command, which serves only built-in kinds.
+function builtInYamlFor(args: MockArgs): string {
+	const row = resourceFromArgs(args);
+	if (row.dynamic) throw new Error(`unsupported resource kind: ${row.kind}`);
+	return yamlFor(args);
+}
+
 function yamlFor(args: MockArgs): string {
 	const row = resourceFromArgs(args);
-	if (row.kind === "Application") {
-		const app = argoApps.find((candidate) => candidate.name === row.name) ?? argoApps[0];
-		return argoApplicationYaml(app);
-	}
+	const app = row.kind === "Application" ? argoApps.find((candidate) => candidate.name === row.name) : undefined;
+	if (app) return argoApplicationYaml(app);
 	return genericYaml(row.kind, row.name, row.namespace, row.apiVersion);
 }
 
