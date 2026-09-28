@@ -3,6 +3,7 @@ import type {
 	ResourceSummary,
 	ResourceTopology,
 } from "@/lib/types";
+import { findResourceIndex, looseResourceKey } from "@/lib/resource-identity";
 import { incidentState } from "./model";
 
 export type IncidentEnrichmentState = "idle" | "loading" | "ready" | "error";
@@ -25,15 +26,6 @@ export interface IncidentAvailableAction {
 
 const ACTIONABLE_WORKLOAD_KINDS = new Set(["Deployment", "StatefulSet", "DaemonSet"]);
 
-function resourceIdentity(resource: ResourceSummary): string {
-	return [
-		resource.cluster,
-		resource.kind,
-		resource.namespace ?? "",
-		resource.name,
-	].join(":");
-}
-
 function resourceLabel(resource: ResourceSummary): string {
 	return `${resource.kind}/${resource.name}`;
 }
@@ -53,9 +45,8 @@ export function resolveIncidentOwner(
 	topology: ResourceTopology | undefined,
 ): IncidentOwnerResolution {
 	if (!topology) return emptyOwnerResolution();
-	const selectedNode = topology.nodes.find(
-		(node) => resourceIdentity(node.summary) === resourceIdentity(resource),
-	);
+	const selectedNode =
+		topology.nodes[findResourceIndex(topology.nodes, resource, (node) => node.summary)];
 	if (!selectedNode) return emptyOwnerResolution();
 
 	const nodesById = new Map(topology.nodes.map((node) => [node.id, node]));
@@ -83,7 +74,7 @@ export function resolveIncidentOwner(
 		const owners = (incoming.get(current.nodeId) ?? [])
 			.map((id) => nodesById.get(id))
 			.filter((node) => node !== undefined)
-			.sort((a, b) => resourceIdentity(a.summary).localeCompare(resourceIdentity(b.summary)));
+			.sort((a, b) => looseResourceKey(a.summary).localeCompare(looseResourceKey(b.summary)));
 
 		for (const ownerNode of owners) {
 			if (visited.has(ownerNode.id)) continue;

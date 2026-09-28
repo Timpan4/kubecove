@@ -800,7 +800,7 @@ describe("svelte resource browser model", () => {
 
 	test("syncs table selection into the Svelte topology selection", () => {
 		const selected = resource("api", { apiVersion: "v1" });
-		const topologySummary = resource("api", { apiVersion: "apps/v1" });
+		const topologySummary = resource("api");
 		const topologyNodes = [
 			topologyNode("Deployment:api", topologySummary),
 			topologyNode("Pod:worker", resource("worker")),
@@ -834,8 +834,6 @@ describe("svelte resource browser model", () => {
 		expect(source).toContain("secondFrame = window.requestAnimationFrame");
 		expect(source).toContain("appliedSelectionScrollKey === scrollKey");
 		expect(source).toContain("new ResizeObserver(measure)");
-		expect(source).toContain("hasExactSelectedResource");
-		expect(source).toContain("!exactMatchExists && resourceIdentityKey(resource) === identityKey");
 	});
 
 	test("passes filtered, metrics-enriched topology into the Svelte ownership map", () => {
@@ -903,7 +901,6 @@ describe("svelte resource browser model", () => {
 			"utf8",
 		);
 
-		expect(source).toContain("resourceIdentityKey(resource) === identityKey");
 		expect(source).toContain(
 			'selectedTopologyNodeId = null;\n\t\tonResourceSelect(resource, "explicit")',
 		);

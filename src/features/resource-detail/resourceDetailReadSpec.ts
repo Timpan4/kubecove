@@ -1,6 +1,7 @@
 import { requiredPermissionForResource } from "@/features/rbac";
 import { createCancelScope } from "@/lib/finite-read-lifecycle";
 import { queryKeys } from "@/lib/queryKeys";
+import { dynamicKindKey, resourceKey } from "@/lib/resource-identity";
 import type {
 	DiscoveredResourceKind,
 	RbacAccessReviewTarget,
@@ -32,16 +33,6 @@ export interface ResourceDetailReadSpec {
 		name: string;
 		namespace?: string;
 	};
-}
-
-function resourceIdentity(resource: ResourceSummary): string {
-	return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
-}
-
-function dynamicKindKey(dynamicKind: DiscoveredResourceKind | null): string {
-	return dynamicKind
-		? `${dynamicKind.group}/${dynamicKind.version}/${dynamicKind.kind}/${dynamicKind.plural}/${dynamicKind.namespaced}`
-		: "";
 }
 
 function resourceWatchKey(
@@ -84,7 +75,7 @@ export function buildResourceDetailReadSpec(
 	const eventsQueryKey = queryKeys.resourceEvents(resource, kubeconfigSourceKey);
 
 	return {
-		identity: { key: resourceIdentity(resource) },
+		identity: { key: resourceKey(resource) },
 		dynamicKind,
 		detailReadPermission: requiredPermissionForResource(resource, "get"),
 		detailsEnabled: shouldFetchResourceDetails(resource),

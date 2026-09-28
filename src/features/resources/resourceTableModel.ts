@@ -6,6 +6,7 @@ import {
 	inheritGitOpsOwnership,
 } from "@/lib/gitops-ownership-evidence";
 import { resourceHealthAssessment } from "@/lib/resource-health";
+import { findResourceIndex, resourceKey } from "@/lib/resource-identity";
 import type { ResourceSummary } from "@/lib/types";
 import { PAGE_SIZE } from "./constants";
 import { pageGitOpsGroupCounts, pageTypeGroupCounts } from "./grouping";
@@ -16,8 +17,6 @@ import {
 	filterResourcesByHealth,
 	formatResourceTypeGroupLabel,
 	resourceGroupCollapseKey,
-	resourceIdentityKey,
-	resourceSelectionKey,
 	resourceTypeGroupCollapseKey,
 } from "./helpers";
 import type {
@@ -193,7 +192,7 @@ function buildEntries({
 		if (!groupCollapsed && !typeCollapsed) {
 			entries.push({
 				type: "resource",
-				key: resourceSelectionKey(resource),
+				key: resourceKey(resource),
 				resource,
 			});
 		}
@@ -212,13 +211,8 @@ function effectiveCollapsedGroups({
 	selectedResource?: ResourceSummary | null;
 }): Set<string> {
 	if (!selectedResource) return collapsedGroups;
-	const selectedKey = resourceSelectionKey(selectedResource);
-	const selectedIdentityKey = resourceIdentityKey(selectedResource);
-	const selectedRow = displayRows.find(
-		(resource) =>
-			resourceSelectionKey(resource) === selectedKey ||
-			resourceIdentityKey(resource) === selectedIdentityKey,
-	);
+	const selectedRow =
+		displayRows[findResourceIndex(displayRows, selectedResource, (row) => row)];
 	if (!selectedRow) return collapsedGroups;
 	const groupKey = resourceGroupCollapseKey(selectedRow);
 	const typeKey = resourceTypeGroupCollapseKey(selectedRow);

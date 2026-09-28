@@ -86,7 +86,8 @@
 	import ResourceDetailPanel from "@/features/resource-detail/ResourceDetailPanel.svelte";
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
-	import { resourceSelectionKey, type HealthFilter } from "@/features/resources/helpers";
+	import type { HealthFilter } from "@/features/resources/helpers";
+	import { resourceKey } from "@/lib/resource-identity";
 	import type { IncidentFilter } from "@/features/incidents";
 	import {
 		onOpenRbacVerifier,
@@ -314,7 +315,7 @@
 	const pinnedResourceKeys = $derived(
 		normalizeEntryPoints(workspace.entryPoints).pinned.flatMap((entry) => {
 			const resource = resourceFromEntryPoint(entry);
-			return resource ? [resourceSelectionKey(resource)] : [];
+			return resource ? [resourceKey(resource)] : [];
 		}),
 	);
 	const focusedResourcePinned = $derived(
@@ -845,7 +846,7 @@
 								</div>
 							</header>
 							<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
-								{#key resourceSelectionKey(focusedResource)}
+								{#key resourceKey(focusedResource)}
 									<ResourceDetailPanel
 										{client}
 										resource={focusedResource}

@@ -2,6 +2,7 @@ import type { HealthFilter } from "@/features/resources";
 import { buildWorkspaceFetchKeys, buildWorkspaceFetchPlans } from "@/features/workspaces";
 import { gitOpsOwnershipGroupLabel } from "@/lib/gitops-ownership-evidence";
 import { queryKeys } from "@/lib/queryKeys";
+import { resourceKey } from "@/lib/resource-identity";
 import type {
 	IncidentCockpitItem,
 	IncidentSeverity,
@@ -254,18 +255,8 @@ export function incidentSignalSummary(item: IncidentCockpitItem): string {
 	return hiddenCount > 0 ? `${summary} | +${hiddenCount} more` : summary;
 }
 
-export function incidentResourceKey(resource: ResourceSummary): string {
-	return [
-		resource.cluster,
-		resource.apiVersion ?? "",
-		resource.kind,
-		resource.namespace ?? "",
-		resource.name,
-	].join(":");
-}
-
 export function incidentItemKey(item: IncidentCockpitItem): string {
-	return incidentResourceKey(item.resource);
+	return resourceKey(item.resource);
 }
 
 export function incidentCaseTitle(item: IncidentCockpitItem): string {

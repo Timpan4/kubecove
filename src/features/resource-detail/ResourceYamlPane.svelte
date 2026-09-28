@@ -19,6 +19,7 @@
 	import { diagnosticLog, diagnosticResultSummary } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
 	import { queryKeys } from "@/lib/queryKeys";
+	import { dynamicKindKey, resourceKey } from "@/lib/resource-identity";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import type {
 		DiscoveredResourceKind,
@@ -97,15 +98,11 @@
 	let yamlApplyError = $state("");
 	let yamlAppliedMessage = $state("");
 
-	const dynamicKindKey = $derived(
-		dynamicKind
-			? `${dynamicKind.group}/${dynamicKind.version}/${dynamicKind.kind}/${dynamicKind.plural}/${dynamicKind.namespaced}`
-			: "",
-	);
+	const selectedDynamicKindKey = $derived(dynamicKindKey(dynamicKind));
 	const yamlQueryKey = $derived([
 		...queryKeys.resourceYaml(
 			resource,
-			dynamicKindKey,
+			selectedDynamicKindKey,
 			kubeconfigSourceKey,
 			yamlViewMode,
 			yamlEncoding,
@@ -149,19 +146,16 @@
 
 	async function runYamlFetch<T>(loadLabel: string, task: () => Promise<T>): Promise<T> {
 		const started = performance.now();
-		diagnosticLog("detail.yaml.fetch.start", { key: resourceKey() });
+		diagnosticLog("detail.yaml.fetch.start", { key: resourceKey(resource) });
 		const result = await withForegroundLoad(loadLabel, task);
 		diagnosticLog("detail.yaml.fetch.done", {
-			key: resourceKey(),
+			key: resourceKey(resource),
 			ms: Math.round(performance.now() - started),
 			result: diagnosticResultSummary(result),
 		});
 		return result;
 	}
 
-	function resourceKey(): string {
-		return `${resource.cluster}:${resource.apiVersion ?? ""}:${resource.kind}:${resource.namespace ?? ""}:${resource.name}`;
-	}
 
 	$effect(() => {
 		const currentYamlCancelScope = yamlCancelScope;
@@ -212,7 +206,7 @@
 				});
 			} catch (error) {
 				if (isAppError(error) && error.kind === "cancelled") {
-					diagnosticLog("detail.yaml.cancel", { key: resourceKey() });
+					diagnosticLog("detail.yaml.cancel", { key: resourceKey(resource) });
 				}
 				throw error;
 			}
@@ -232,7 +226,7 @@
 		void resource.name;
 		void resource.namespace;
 		void kubeconfigSourceKey;
-		void dynamicKindKey;
+		void selectedDynamicKindKey;
 		void $settingsStore.redactSecrets;
 		resetYamlApply();
 	});
@@ -433,7 +427,7 @@
 		namespace={resource.namespace}
 		{kubeconfigSourceKey}
 		yamlText={yamlText}
-		contextKey={`${resourceKey()}:${kubeconfigSourceKey ?? ""}:${$settingsStore.redactSecrets}`}
+		contextKey={`${resourceKey(resource)}:${kubeconfigSourceKey ?? ""}:${$settingsStore.redactSecrets}`}
 		{active}
 	/>
 {/if}
