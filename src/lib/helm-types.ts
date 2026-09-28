@@ -15,6 +15,11 @@ export interface HelmReleaseSummary {
 	storageName: string;
 }
 
+export interface HelmReleaseList {
+	releases: HelmReleaseSummary[];
+	warnings: string[];
+}
+
 export interface HelmReleaseDetails {
 	summary: HelmReleaseSummary;
 	yaml: string;

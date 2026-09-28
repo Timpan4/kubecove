@@ -13,6 +13,7 @@ import type {
 	FluxResourceKind,
 	FluxResourceSummary,
 	HelmReleaseDetails,
+	HelmReleaseList,
 	HelmReleaseReconciliation,
 	HelmReleaseSummary,
 	IncidentCockpitSummary,
@@ -177,8 +178,8 @@ export async function listHelmReleases(
 	client: TauriClient,
 	clusterContext: string,
 	kubeconfigEnvVar?: string,
-): Promise<HelmReleaseSummary[]> {
-	return client.invoke<HelmReleaseSummary[]>("list_helm_releases", {
+): Promise<HelmReleaseList> {
+	return client.invoke<HelmReleaseList>("list_helm_releases", {
 		clusterContext,
 		...kubeconfigArg(kubeconfigEnvVar),
 	});

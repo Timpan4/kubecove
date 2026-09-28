@@ -41,6 +41,7 @@
 		HelmManifestResourceSummary,
 		HelmReconciliationResource,
 		HelmReleaseDetails,
+		HelmReleaseList,
 		HelmReleaseReconciliation,
 		HelmReleaseSummary,
 	} from "@/lib/types";
@@ -57,7 +58,7 @@
 
 	let { list, details, reconciliation, actions }: {
 		list: {
-			query: QueryState<HelmReleaseSummary[]>;
+			query: QueryState<HelmReleaseList>;
 			groups: Array<{ namespace: string; releases: HelmReleaseSummary[] }>;
 			filtered: HelmReleaseSummary[];
 			activeNamespace: string | null;
@@ -99,7 +100,8 @@
 		{ value: "list", label: "List" },
 	];
 	const helmViewMode = $derived($settingsStore.helmViewMode);
-	const helmReleases = $derived(helmQuery.data ?? []);
+	const helmReleases = $derived(helmQuery.data?.releases ?? []);
+	const helmStorageWarnings = $derived(helmQuery.data?.warnings ?? []);
 	const deployedReleaseCount = $derived(
 		helmReleases.filter((release) => release.status === "deployed").length,
 	);
@@ -172,6 +174,19 @@
 				</div>
 			</div>
 		</section>
+
+		{#if helmStorageWarnings.length > 0}
+			<Alert>
+				<AlertTitle>Some Helm releases may be missing</AlertTitle>
+				<AlertDescription>
+					<ul class="flex list-disc flex-col gap-1 pl-4">
+						{#each helmStorageWarnings as warning}
+							<li>{warning}</li>
+						{/each}
+					</ul>
+				</AlertDescription>
+			</Alert>
+		{/if}
 
 		<div class="grid gap-4 @min-[64rem]:grid-cols-[14rem_minmax(0,1fr)]">
 			<aside class="flex gap-5 overflow-x-auto border-b pb-3 @min-[64rem]:block @min-[64rem]:overflow-visible @min-[64rem]:border-b-0 @min-[64rem]:border-r @min-[64rem]:pb-0 @min-[64rem]:pr-4">

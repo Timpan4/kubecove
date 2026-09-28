@@ -16,7 +16,7 @@ import type {
 	ArgoServerCapability,
 	ArgoServerEndpoint,
 } from "../../../src/lib/gitops-types";
-import type { HelmReleaseDetails, HelmReleaseSummary } from "../../../src/lib/helm-types";
+import type { HelmReleaseDetails, HelmReleaseList } from "../../../src/lib/helm-types";
 import type {
 	ClusterContext,
 	DiscoveredResourceKind,
@@ -58,7 +58,7 @@ type CommandMap = {
 	get_argo_resource_comparison: { args: { clusterContext: string; kubeconfigEnvVar?: string; connectionId: string; transport: "connected"; application: ArgoApplicationRef; resource: ArgoResourceComparison["resource"]; redactSecrets: boolean }; result: ArgoResourceComparison };
 	preflight_argo_operation: { args: { request: ArgoOperationRequest }; result: ArgoOperationPreflight };
 	run_argo_operation: { args: { confirmation: ArgoOperationConfirmation }; result: ArgoOperationResult };
-	list_helm_releases: { args: { clusterContext: string }; result: HelmReleaseSummary[] };
+	list_helm_releases: { args: { clusterContext: string }; result: HelmReleaseList };
 	get_helm_release_details: { args: { clusterContext: string; namespace: string; storageKind: string; storageName: string; yamlViewMode: "applyClean"; yamlEncoding: YamlEncoding }; result: HelmReleaseDetails };
 };
 type ChannelCommandMap = {
@@ -257,7 +257,8 @@ describe("native Kind command boundary", () => {
 		expect(await runKubectl(["get", "applicationset", "tenants", "-n", "argocd", "-o", "jsonpath={.metadata.name}"])).toBe("tenants");
 		expect(await runKubectl(["get", "hpa", "catalog", "-n", "tenant-catalog", "-o", "jsonpath={.metadata.name}"])).toBe("catalog");
 		expect(await runKubectl(["get", "pvc", "data-ledger-0", "-n", "tenant-ledger", "-o", "jsonpath={.status.phase}"])).toBe("Bound");
-		const releases = await tauri.listHelmReleases(cluster);
+		const { releases, warnings } = await tauri.listHelmReleases(cluster);
+		expect(warnings).toEqual([]);
 		const operations = releases.find(({ name }) => name === "operations");
 		if (!operations) throw new Error("operations Helm release was not discovered");
 		const details = await tauri.getHelmReleaseDetails({ clusterContext: cluster, namespace: operations.namespace, storageKind: operations.storageKind, storageName: operations.storageName, yamlViewMode: "applyClean", yamlEncoding: "yaml" });

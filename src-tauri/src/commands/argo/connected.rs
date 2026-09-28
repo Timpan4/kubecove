@@ -1690,7 +1690,9 @@ mod tests {
                 "items": [{
                     "group": "", "version": "v1", "kind": "Secret", "namespace": "default", "name": "db",
                     "targetState": "{\"kind\":\"Secret\",\"data\":{\"password\":\"plaintext\"}}",
-                    "liveState": {"kind": "Secret", "stringData": {"password": "plaintext"}},
+                    "liveState": {"kind": "Secret", "stringData": {"password": "plaintext"}, "metadata": {"annotations": {
+                        "kubectl.kubernetes.io/last-applied-configuration": "{\"data\":{\"password\":\"plaintext\"}}"
+                    }}},
                     "modified": true
                 }]
             }),
@@ -1712,6 +1714,7 @@ mod tests {
             value["conditions"][0]["nested"]["data"]["key"],
             "[REDACTED]"
         );
+        assert!(!value.to_string().contains("plaintext"));
     }
 
     #[test]

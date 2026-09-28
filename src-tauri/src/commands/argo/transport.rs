@@ -133,6 +133,16 @@ pub(crate) fn redact_secret_fields(value: &mut Value) {
                         }
                     }
                 }
+                // kubectl stores the complete previous document, including Secret data.
+                if let Some(annotation) = map
+                    .get_mut("metadata")
+                    .and_then(|metadata| metadata.get_mut("annotations"))
+                    .and_then(|annotations| {
+                        annotations.get_mut("kubectl.kubernetes.io/last-applied-configuration")
+                    })
+                {
+                    *annotation = Value::String("[REDACTED]".into());
+                }
             }
             for child in map.values_mut() {
                 redact_secret_fields(child);

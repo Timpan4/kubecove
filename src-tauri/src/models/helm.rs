@@ -26,6 +26,13 @@ pub struct HelmReleaseSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct HelmReleaseList {
+    pub releases: Vec<HelmReleaseSummary>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HelmReleaseDetails {
     pub summary: HelmReleaseSummary,
     pub yaml: String,
