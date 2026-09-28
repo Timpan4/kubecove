@@ -205,7 +205,7 @@ async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(), AppError
 
 enum ExecutionBinding {
     Connected(Arc<ConnectedArgo>),
-    Kubernetes { resource: ApiResource },
+    Kubernetes { resource: ApiResource, uid: String },
 }
 
 async fn lease_connection(
@@ -309,9 +309,9 @@ async fn run_argo_operation_for_store(
             reject_reviewed_operation(&store.sessions, &confirmation.session_id, &reviewed, error)
         })?;
     match binding {
-        ExecutionBinding::Kubernetes { resource } => {
+        ExecutionBinding::Kubernetes { resource, uid } => {
             let request = consume(&store.sessions, &confirmation.session_id, &reviewed)?.request;
-            kubernetes_operation(request, resource).await
+            kubernetes_operation(request, resource, &uid).await
         }
         ExecutionBinding::Connected(connection) => {
             run_connected_operation(store, &confirmation.session_id, &reviewed, connection).await
@@ -384,7 +384,13 @@ async fn revalidate_session(
     .get(&request.application.name)
     .await?;
     verify_kubernetes_application_identity(&current, &session.application)?;
-    Ok(ExecutionBinding::Kubernetes { resource })
+    let uid = current.metadata.uid.ok_or_else(|| {
+        AppError::new(
+            "Application UID unavailable during operation revalidation",
+            AppErrorKind::ArgoOperationUnavailable,
+        )
+    })?;
+    Ok(ExecutionBinding::Kubernetes { resource, uid })
 }
 
 fn verify_kubernetes_application_identity(
@@ -611,6 +617,7 @@ async fn validate_resource_action(
 async fn kubernetes_operation(
     request: ArgoOperationRequest,
     resource: ApiResource,
+    expected_uid: &str,
 ) -> Result<ArgoOperationResult, AppError> {
     ensure_kubernetes_transport_action(&request.action)?;
     // ADR 0009: a confirmed write must not be cancelled by workspace client
@@ -623,12 +630,18 @@ async fn kubernetes_operation(
         request.application.namespace.as_deref().expect("validated"),
         &resource,
     );
+    let current = api.get(&request.application.name).await?;
+    if current.metadata.uid.as_deref() != Some(expected_uid) {
+        return Err(AppError::new(
+            "Application identity changed before Kubernetes operation",
+            AppErrorKind::ArgoOperationUnavailable,
+        ));
+    }
+    verify_kubernetes_application_identity(&current, &request.application)?;
     let mut metadata = json!({
         "resourceVersion": request.resource_version.clone().expect("validated")
     });
-    if let Some(uid) = &request.application.uid {
-        metadata["uid"] = Value::String(uid.clone());
-    }
+    metadata["uid"] = Value::String(expected_uid.into());
     let patch = match request.action.as_str() {
         "refresh" | "hardRefresh" => {
             metadata["annotations"] = json!({"argocd.argoproj.io/refresh":if request.action == "hardRefresh" { "hard" } else { "normal" }});
