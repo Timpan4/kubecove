@@ -6,6 +6,7 @@ import {
 	type DiagnosticMetricSummary,
 	type FrontendDiagnosticEvent,
 } from "./diagnostics";
+import type { BackendCacheDiagnosticSnapshot } from "./diagnostics-types";
 import type { BackendDiagnosticEvent } from "./types";
 
 export interface LatencyReport {
@@ -20,6 +21,7 @@ export interface LatencyReport {
 	backend: {
 		summaries: DiagnosticMetricSummary[];
 		events: BackendDiagnosticEvent[];
+		caches: BackendCacheDiagnosticSnapshot[];
 	};
 }
 
@@ -111,9 +113,11 @@ function backendSummaries(
 
 export function createLatencyReport({
 	backendEvents = [],
+	backendCaches = [],
 	includeIdentifiers = false,
 }: {
 	backendEvents?: BackendDiagnosticEvent[];
+	backendCaches?: BackendCacheDiagnosticSnapshot[];
 	includeIdentifiers?: boolean;
 } = {}): string {
 	const snapshot = getDiagnosticsSnapshot();
@@ -127,6 +131,7 @@ export function createLatencyReport({
 			events: redactFrontendEvents(snapshot.frontendEvents, includeIdentifiers),
 		},
 		backend: {
+			caches: backendCaches,
 			summaries: backendSummaries(backendEvents),
 			events: backendEvents,
 		},

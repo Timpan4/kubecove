@@ -2,7 +2,7 @@ import type {
 	CancelBackendRequestsResult,
 	CancelWorkspaceRequestsResult,
 } from "./cancellation-types";
-import type { BackendDiagnosticEvent } from "./diagnostics-types";
+import type { BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent } from "./diagnostics-types";
 import type { TauriClient } from "./tauri";
 
 export async function setBackendDiagnosticsEnabled(
@@ -16,6 +16,10 @@ export async function getBackendDiagnostics(
 	client: TauriClient,
 ): Promise<BackendDiagnosticEvent[]> {
 	return client.invoke<BackendDiagnosticEvent[]>("get_backend_diagnostics");
+}
+
+export async function getBackendCacheDiagnostics(client: TauriClient): Promise<BackendCacheDiagnosticSnapshot[]> {
+	return client.invoke<BackendCacheDiagnosticSnapshot[]>("get_backend_cache_diagnostics");
 }
 
 export async function clearBackendDiagnostics(

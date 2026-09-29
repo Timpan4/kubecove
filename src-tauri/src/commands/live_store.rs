@@ -26,6 +26,10 @@ const MAX_CACHE_ENTRIES: usize = 128;
 #[path = "live_store_refresh.rs"]
 mod refresh;
 
+#[path = "live_store_diagnostics.rs"]
+mod cache_diagnostics;
+use cache_diagnostics::CacheCounters;
+
 type SharedLoad<T> = Shared<BoxFuture<'static, Result<T, AppError>>>;
 
 #[derive(Clone, Copy)]
@@ -55,6 +59,7 @@ struct SharedCache<T> {
     label: &'static str,
     next_load_id: AtomicU64,
     entries: Mutex<HashMap<String, CacheEntry<T>>>,
+    counters: CacheCounters,
 }
 
 impl<T> SharedCache<T>
@@ -66,6 +71,7 @@ where
             label,
             next_load_id: AtomicU64::new(0),
             entries: Mutex::new(HashMap::new()),
+            counters: CacheCounters::default(),
         }
     }
 
@@ -92,6 +98,7 @@ where
         let entries = self.entries.lock().expect("live store cache lock");
         match entries.get(key) {
             Some(CacheEntry::Ready(ready)) if Self::can_reuse(ready, mode) => {
+                self.counters.hits.fetch_add(1, Ordering::Relaxed);
                 Some(ready.value.clone())
             }
             _ => None,
@@ -112,26 +119,17 @@ where
             let mut entries = self.entries.lock().expect("live store cache lock");
             match entries.get(&key) {
                 Some(CacheEntry::Ready(ready)) if Self::can_reuse(ready, mode) => {
-                    eprintln!(
-                        "[kubecove:backend] live_store cache_hit area={} key={}",
-                        self.label, key
-                    );
+                    self.counters.hits.fetch_add(1, Ordering::Relaxed);
                     return Ok(ready.value.clone());
                 }
                 Some(CacheEntry::Loading {
                     load_id, future, ..
                 }) => {
-                    eprintln!(
-                        "[kubecove:backend] live_store singleflight_join area={} key={}",
-                        self.label, key
-                    );
+                    self.counters.joins.fetch_add(1, Ordering::Relaxed);
                     (future.clone(), *load_id)
                 }
                 _ => {
-                    eprintln!(
-                        "[kubecove:backend] live_store cache_miss area={} key={}",
-                        self.label, key
-                    );
+                    self.counters.misses.fetch_add(1, Ordering::Relaxed);
                     let previous = entries.remove(&key).and_then(|entry| match entry {
                         CacheEntry::Ready(ready) => Some(ready),
                         CacheEntry::Loading { previous, .. } => previous,
@@ -180,7 +178,7 @@ where
             let mut ready = Self::ready_value(value.clone());
             ready.dirty = dirty_while_loading;
             entries.insert(key, CacheEntry::Ready(ready));
-            Self::trim_to_budget(&mut entries);
+            self.trim_to_budget(&mut entries);
         } else {
             let previous = entries.remove(&key).and_then(|entry| match entry {
                 CacheEntry::Loading {
@@ -192,8 +190,11 @@ where
                 CacheEntry::Ready(ready) => Some(ready),
             });
             if let Some(previous) = previous {
+                self.counters
+                    .restored_reload_failures
+                    .fetch_add(1, Ordering::Relaxed);
                 entries.insert(key, CacheEntry::Ready(previous));
-                Self::trim_to_budget(&mut entries);
+                self.trim_to_budget(&mut entries);
             }
         }
         result
@@ -249,7 +250,7 @@ where
         loading_keys.len()
     }
 
-    fn trim_to_budget(entries: &mut HashMap<String, CacheEntry<T>>) {
+    fn trim_to_budget(&self, entries: &mut HashMap<String, CacheEntry<T>>) {
         let mut ready_entries: Vec<(String, Instant, bool)> = entries
             .iter()
             .filter_map(|(key, entry)| match entry {
@@ -269,6 +270,7 @@ where
                 break;
             }
             if entries.remove(&key).is_some() {
+                self.counters.evictions.fetch_add(1, Ordering::Relaxed);
                 ready_count -= 1;
             }
         }
@@ -499,11 +501,6 @@ impl ClusterLiveStore {
                 .resources
                 .peek(&all_key, CacheMode::LiveFor(RESOURCE_FRESHNESS))
             {
-                eprintln!(
-                    "[kubecove:backend] live_store cache_hit area=resources key={} covered_by={}",
-                    resource_cache_key(&source_key, &cluster_context, &kind_key, &namespace_key),
-                    all_key
-                );
                 return Ok(rows
                     .into_iter()
                     .filter(|row| row.namespace.as_deref() == Some(namespace.as_str()))
@@ -685,3 +682,7 @@ fn is_known_typed_kind(kind: &str) -> bool {
 #[cfg(test)]
 #[path = "live_store_tests.rs"]
 mod live_store_tests;
+
+#[cfg(test)]
+#[path = "live_store_diagnostics_tests.rs"]
+mod live_store_diagnostics_tests;

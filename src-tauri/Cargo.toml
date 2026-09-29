@@ -56,3 +56,7 @@ tower-test = "=0.4.0"
 name = "backend_hot_paths"
 harness = false
 required-features = ["bench-support"]
+
+[[example]]
+name = "cache_diagnostics"
+required-features = ["bench-support"]

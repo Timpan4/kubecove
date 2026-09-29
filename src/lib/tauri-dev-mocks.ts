@@ -239,6 +239,7 @@ const handlers = {
 	list_incident_cockpit: (args) => incidents(args?.clusterContext),
 	set_backend_diagnostics_enabled: () => true,
 	get_backend_diagnostics: () => [] satisfies BackendDiagnosticEvent[],
+	get_backend_cache_diagnostics: () => [],
 	clear_backend_diagnostics: () => undefined,
 	cancel_backend_requests: () => ({ cancelled: 0 }),
 	cancel_workspace_requests: () => ({

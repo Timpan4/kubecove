@@ -126,6 +126,21 @@ fn main() {
     codspeed_divan_compat::main();
 }
 
+mod inspect_cached_payload_weights_500_apps {
+    use super::*;
+    use kubecove_lib::commands::bench_support::{
+        cache_diagnostic_payload_bytes, cached_topology_fixture,
+    };
+    static CACHE: LazyLock<kubecove_lib::commands::ClusterLiveStore> =
+        LazyLock::new(|| cached_topology_fixture(500));
+
+    #[codspeed_divan_compat::bench]
+    fn run(bencher: codspeed_divan_compat::Bencher<'_, '_>) {
+        let cache = LazyLock::force(&CACHE);
+        bencher.bench_local(|| black_box(cache_diagnostic_payload_bytes(black_box(cache))));
+    }
+}
+
 fn build_manifest(resources: usize) -> String {
     (0..resources)
         .map(|index| {

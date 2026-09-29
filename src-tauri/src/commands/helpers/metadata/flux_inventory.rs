@@ -24,6 +24,17 @@ struct ResourceKey {
     name: String,
 }
 
+impl FluxOwnershipIndex {
+    pub(crate) fn retained_item_count(&self) -> usize {
+        self.owners.len()
+    }
+
+    pub(crate) fn shallow_payload_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.owners.len() * std::mem::size_of::<(ResourceKey, GitOpsOwnerSummary)>()
+    }
+}
+
 pub(crate) fn parse_inventory_id(id: &str) -> Option<(Option<String>, String, String, String)> {
     let mut parts = id.split('_');
     let namespace = parts.next()?.trim();

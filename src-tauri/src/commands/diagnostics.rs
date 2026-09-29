@@ -1,6 +1,8 @@
+use super::live_store::ClusterLiveStore;
 use crate::models::AppErrorKind;
 use crate::models::{
-    AppError, BackendDiagnosticEvent, BackendDiagnosticField, BackendDiagnosticStatus,
+    AppError, BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent, BackendDiagnosticField,
+    BackendDiagnosticStatus,
 };
 use chrono::Utc;
 use std::{
@@ -120,17 +122,41 @@ pub fn set_backend_diagnostics_enabled(enabled: bool) -> bool {
     enabled
 }
 
-#[tauri::command]
-pub fn get_backend_diagnostics() -> Vec<BackendDiagnosticEvent> {
+fn stored_backend_diagnostics() -> Vec<BackendDiagnosticEvent> {
     with_state(|state| state.events.iter().cloned().collect())
 }
 
+fn cache_snapshots(store: &ClusterLiveStore) -> Vec<BackendCacheDiagnosticSnapshot> {
+    if with_state(|state| state.enabled) {
+        store.diagnostics()
+    } else {
+        Vec::new()
+    }
+}
+
 #[tauri::command]
-pub fn clear_backend_diagnostics() {
+pub fn get_backend_cache_diagnostics(
+    store: tauri::State<'_, ClusterLiveStore>,
+) -> Vec<BackendCacheDiagnosticSnapshot> {
+    cache_snapshots(&store)
+}
+
+#[tauri::command]
+pub fn get_backend_diagnostics() -> Vec<BackendDiagnosticEvent> {
+    stored_backend_diagnostics()
+}
+
+fn clear_stored_diagnostics() {
     with_state(|state| {
         state.events.clear();
         state.sequence = 0;
     });
+}
+
+#[tauri::command]
+pub fn clear_backend_diagnostics(store: tauri::State<'_, ClusterLiveStore>) {
+    store.clear_diagnostic_counters();
+    clear_stored_diagnostics();
 }
 
 #[cfg(test)]
@@ -139,7 +165,7 @@ mod tests {
 
     #[test]
     fn disabled_store_drops_events_then_records_bounded_events_and_clears() {
-        clear_backend_diagnostics();
+        clear_stored_diagnostics();
         set_backend_diagnostics_enabled(false);
         record_backend_timing(
             "list_resource_scope",
@@ -147,7 +173,7 @@ mod tests {
             12,
             vec![diagnostic_field("rows", 5)],
         );
-        assert!(get_backend_diagnostics().is_empty());
+        assert!(stored_backend_diagnostics().is_empty());
 
         set_backend_diagnostics_enabled(true);
         for index in 0..505 {
@@ -158,7 +184,7 @@ mod tests {
                 vec![diagnostic_field("rows", index)],
             );
         }
-        let events = get_backend_diagnostics();
+        let events = stored_backend_diagnostics();
         assert_eq!(events.len(), MAX_BACKEND_DIAGNOSTIC_EVENTS);
         assert_eq!(events.first().map(|event| event.id), Some(6));
         assert_eq!(events.last().map(|event| event.duration_ms), Some(504));
@@ -167,8 +193,8 @@ mod tests {
             Some(&diagnostic_field("rows", 504))
         );
 
-        clear_backend_diagnostics();
-        assert!(get_backend_diagnostics().is_empty());
+        clear_stored_diagnostics();
+        assert!(stored_backend_diagnostics().is_empty());
 
         record_backend_result(
             "tracked_success",
@@ -188,7 +214,7 @@ mod tests {
             &Err(AppError::new("boom", AppErrorKind::Transport)),
             |()| Vec::new(),
         );
-        let events = get_backend_diagnostics();
+        let events = stored_backend_diagnostics();
         assert_eq!(events.len(), 3);
         assert_eq!(events[0].status, BackendDiagnosticStatus::Ok);
         assert_eq!(events[1].status, BackendDiagnosticStatus::Cancelled);
@@ -198,7 +224,7 @@ mod tests {
             vec![diagnostic_field("errorKind", "transport")]
         );
 
-        clear_backend_diagnostics();
+        clear_stored_diagnostics();
         set_backend_diagnostics_enabled(false);
     }
 }

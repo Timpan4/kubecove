@@ -30,7 +30,10 @@ pub use argo::{
 };
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;
-pub use diagnostics::{BackendDiagnosticEvent, BackendDiagnosticField, BackendDiagnosticStatus};
+pub use diagnostics::{
+    BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent, BackendDiagnosticField,
+    BackendDiagnosticStatus,
+};
 pub use discovery::DiscoveredResourceKind;
 pub(crate) use error::{kube_error_kind, WorkspaceRequestCancelled};
 pub use error::{AppError, AppErrorKind};

@@ -41,8 +41,9 @@ pub use cancellation::{
 };
 pub use contexts::{get_cluster_contexts, list_kube_contexts};
 pub use diagnostics::{
-    clear_backend_diagnostics, diagnostic_field, get_backend_diagnostics, record_backend_cancelled,
-    record_backend_error, record_backend_success, set_backend_diagnostics_enabled,
+    clear_backend_diagnostics, diagnostic_field, get_backend_cache_diagnostics,
+    get_backend_diagnostics, record_backend_cancelled, record_backend_error,
+    record_backend_success, set_backend_diagnostics_enabled,
 };
 pub use discovery::{
     list_present_custom_resource_kinds, list_resource_kinds, present_custom_resource_kinds_from,

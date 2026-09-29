@@ -6,6 +6,54 @@ use crate::models::{
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+pub fn cached_topology_fixture(apps: usize) -> live_store::ClusterLiveStore {
+    let store = live_store::ClusterLiveStore::default();
+    let topology = build_bench_topology(&sample_topology_inputs(apps));
+    let resources = topology
+        .nodes
+        .iter()
+        .filter(|node| node.kind == "Pod")
+        .map(|node| node.summary.clone())
+        .collect::<Vec<_>>();
+    tauri::async_runtime::block_on(async {
+        store
+            .typed_resources(
+                "fixture".into(),
+                "fixture".into(),
+                "Pod".into(),
+                None,
+                || async move { Ok::<_, crate::models::AppError>(resources) },
+            )
+            .await
+            .expect("deterministic resource fixture");
+        store
+            .topology(
+                "fixture".into(),
+                "fixture".into(),
+                Vec::new(),
+                "ownership".into(),
+                || async move { Ok::<_, crate::models::AppError>(topology) },
+            )
+            .await
+            .expect("deterministic topology fixture");
+    });
+    store
+}
+
+pub fn cache_diagnostic_payload_bytes(store: &live_store::ClusterLiveStore) -> usize {
+    store
+        .diagnostics()
+        .iter()
+        .map(|snapshot| snapshot.shallow_payload_bytes)
+        .sum()
+}
+
+pub fn cache_diagnostic_report(
+    store: &live_store::ClusterLiveStore,
+) -> Vec<crate::models::BackendCacheDiagnosticSnapshot> {
+    store.diagnostics()
+}
+
 pub struct BenchTopologyInput {
     pub kind: &'static str,
     pub name: String,

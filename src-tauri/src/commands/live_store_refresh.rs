@@ -14,7 +14,12 @@ impl<T> SharedCache<T> {
             }
             false
         });
-        before - entries.len()
+        let removed = before - entries.len();
+        self.counters.evictions.fetch_add(
+            u64::try_from(removed).expect("cache entry count fits u64"),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        removed
     }
 }
 
