@@ -384,6 +384,7 @@ export const queryKeys = {
 	podExecSessions: () => ["pod-exec-sessions"] as const,
 	appUsageMetrics: () => ["app-usage-metrics"] as const,
 	backendDiagnostics: () => ["backend-diagnostics"] as const,
+	backendCacheDiagnostics: () => ["backend-cache-diagnostics"] as const,
 	helmReleaseDetails: (
 		clusterContext: string,
 		namespace: string,

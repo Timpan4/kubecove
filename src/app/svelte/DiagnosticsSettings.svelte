@@ -14,8 +14,10 @@
 		clearBackendDiagnostics,
 		createTauriClient,
 		getBackendDiagnostics,
+		getBackendCacheDiagnostics,
 	} from "@/lib/tauri";
 	import { queryKeys } from "@/lib/queryKeys";
+	import type { BackendCacheDiagnosticSnapshot } from "@/lib/diagnostics-types";
 	import type { BackendDiagnosticEvent } from "@/lib/types";
 	import SettingsRow from "./SettingsRow.svelte";
 	import SimpleTable from "@/components/SimpleTable.svelte";
@@ -43,6 +45,14 @@
 		refetchInterval: settings.debugModeEnabled ? 1_500 : false,
 		staleTime: 1_500,
 	}));
+	const cacheDiagnosticsQuery = createQuery<BackendCacheDiagnosticSnapshot[]>(() => ({
+		queryKey: queryKeys.backendCacheDiagnostics(),
+		queryFn: () => getBackendCacheDiagnostics(client),
+		enabled: settings.debugModeEnabled,
+		refetchInterval: settings.debugModeEnabled ? 1_500 : false,
+		staleTime: 1_500,
+	}));
+	const caches = $derived(cacheDiagnosticsQuery.data ?? []);
 
 	const backendEvents = $derived(backendDiagnosticsQuery.data ?? []);
 	const frontendRows = $derived(diagnosticMetricTableRows(snapshot.summaries));
@@ -62,10 +72,29 @@
 		if (intervalId !== null) window.clearInterval(intervalId);
 	});
 
+	function cacheMetricRows(cache: BackendCacheDiagnosticSnapshot): string[][] {
+		return [
+			["Ready", String(cache.ready)], ["Dirty", String(cache.dirty)],
+			["Loading", String(cache.loading)], ["Hits", String(cache.hits)],
+			["Misses", String(cache.misses)], ["Joins", String(cache.joins)],
+			["Evictions", String(cache.evictions)],
+			["Restored failures", String(cache.restoredReloadFailures)],
+			["Items", String(cache.retainedItems)], ["Shallow bytes", String(cache.shallowPayloadBytes)],
+		];
+	}
+
+	async function readBackend() {
+		const [events, caches] = await Promise.all([
+			backendDiagnosticsQuery.refetch(), cacheDiagnosticsQuery.refetch(),
+		]);
+		if (events.error) throw events.error;
+		if (caches.error) throw caches.error;
+		return { events: events.data ?? [], caches: caches.data ?? [] };
+	}
+
 	async function refreshBackend(setStatus = true) {
 		try {
-			const result = await backendDiagnosticsQuery.refetch();
-			if (result.error) throw result.error;
+			await readBackend();
 			if (setStatus) status = "Trace refreshed.";
 		} catch (error) {
 			status = `Could not refresh diagnostics: ${error instanceof Error ? error.message : String(error)}`;
@@ -81,8 +110,13 @@
 		clearDiagnostics();
 		snapshot = getDiagnosticsSnapshot();
 		try {
+			await Promise.all([
+				queryClient.cancelQueries({ queryKey: queryKeys.backendDiagnostics() }),
+				queryClient.cancelQueries({ queryKey: queryKeys.backendCacheDiagnostics() }),
+			]);
 			await clearBackendDiagnostics(client);
 			queryClient.setQueryData(queryKeys.backendDiagnostics(), []);
+			await readBackend();
 			status = "Trace cleared.";
 		} catch (error) {
 			status = `Could not clear diagnostics: ${error instanceof Error ? error.message : String(error)}`;
@@ -91,11 +125,10 @@
 
 	async function copyReport() {
 		try {
-			const result = await backendDiagnosticsQuery.refetch();
-			if (result.error) throw result.error;
-			const events = result.data ?? [];
+			const { events, caches } = await readBackend();
 			const report = createLatencyReport({
 				backendEvents: events,
+				backendCaches: caches,
 				includeIdentifiers,
 			});
 			await navigator.clipboard.writeText(report);
@@ -201,6 +234,23 @@
 					rows={backendRows}
 					empty="No backend timings yet."
 				/>
+			</div>
+
+			<div class="space-y-2">
+				<div class="text-xs font-medium text-foreground">Backend caches</div>
+				<p class="text-xs text-muted-foreground">
+					Counters since trace clear. Dirty includes previous values retained during reload.
+					Evictions include capacity removal and explicit refresh. Bytes are a shallow lower
+					bound, excluding nested allocations and cache overhead.
+				</p>
+				{#each caches as cache (cache.label)}
+					<div class="space-y-2">
+						<div class="font-mono text-xs text-foreground">{cache.label}</div>
+						<SimpleTable headers={["Metric", "Value"]} rows={cacheMetricRows(cache)} empty="No cache observations." />
+					</div>
+				{:else}
+					<p class="text-xs text-muted-foreground">Enable diagnostics to inspect backend caches.</p>
+				{/each}
 			</div>
 
 			{#if status}

@@ -14,6 +14,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 
 - [Development Workflow](development-workflow.md) — setup, local development, and checks.
 - [Engineering Handbook](handbook/README.md) — code organization, design system, hygiene, and pull request checklist.
+- [Backend cache diagnostics](backend-cache-diagnostics.md) — redacted cache states, counters, and retained payload measurements.
 - [Product and architecture](product-and-architecture.md) — current product principles, desktop architecture, and trust boundaries.
 - [Release Guide](release.md) — release preparation and publishing.
 
