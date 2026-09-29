@@ -3,6 +3,8 @@ import {
 	type TimeoutCallback,
 	timeoutManager,
 } from "@tanstack/svelte-query";
+import { characterizeMemoryFixtures } from "./perf-memory-fixtures";
+import { collectQueryMemory } from "../src/lib/memory-profile";
 import {
 	buildNamespaceTreeNode,
 	buildShallowNamespaceTreeNode,
@@ -275,6 +277,7 @@ for (let index = 0; index < 20; index += 1) {
 }
 
 const queryTimeouts = new VirtualTimeouts();
+const memoryFixtures = characterizeMemoryFixtures();
 timeoutManager.setTimeoutProvider(queryTimeouts);
 const queryClient = new QueryClient();
 configureLargeQueryRetention(queryClient);
@@ -302,12 +305,17 @@ const retainedPayloadBytes = LARGE_QUERY_ROOTS.reduce(
 );
 queryTimeouts.advanceBy(89_999);
 const retainedQueriesBeforeExpiry = queryClient.getQueryCache().getAll().length;
+const queryMemoryBeforeCollection = collectQueryMemory(queryClient);
+const processMemoryBeforeCollection = memorySample();
 queryTimeouts.advanceBy(1);
 const retainedQueriesAfterExpiry = queryClient.getQueryCache().getAll().length;
+const queryMemoryAfterCollection = collectQueryMemory(queryClient);
+const processMemoryAfterCollection = memorySample();
 
 console.log(
 	JSON.stringify(
 		{
+			memoryFixtures,
 			sidebar: {
 				namespaces: namespaces.length,
 				extraNamespacedKinds: extraKinds.length,
@@ -349,6 +357,8 @@ console.log(
 				),
 			},
 			largeQueryRetention: {
+				queryMemoryBeforeCollection, queryMemoryAfterCollection,
+				processMemoryBeforeCollection, processMemoryAfterCollection,
 				queries: LARGE_QUERY_ROOTS.length,
 				payloadRowsPerQuery: 25_000,
 				retainedPayloadRows,
