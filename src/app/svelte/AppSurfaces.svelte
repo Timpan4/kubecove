@@ -1,13 +1,21 @@
+<script module lang="ts">
+	const loadGitOps = () => import("@/features/gitops/GitOpsSurface.svelte");
+	const loadHelm = () => import("@/features/helm/HelmSurface.svelte");
+	const loadRbac = () => import("@/features/rbac/RbacSurface.svelte");
+	const loadIncidents = () => import("@/features/incidents/IncidentSurface.svelte");
+	const loadLiveSessions = () => import("@/features/live-sessions/LiveSessionsSurface.svelte");
+	const loadSettings = () => import("./SettingsSurface.svelte");
+</script>
+
 <script lang="ts">
 	import {
-		GitOpsSurface,
 		selectedGitOpsApplicationName,
 		type GitOpsSelection,
-	} from "@/features/gitops";
-	import { HelmSurface, selectedHelmReleasePath } from "@/features/helm";
-	import { IncidentSurface, type IncidentFilter } from "@/features/incidents";
-	import { LiveSessionsSurface } from "@/features/live-sessions";
-	import { RbacSurface, type RbacCockpitState, type RbacView } from "@/features/rbac";
+	} from "@/features/gitops/surfaceSelection";
+	import { selectedHelmReleasePath } from "@/features/helm/surfaceState";
+	import type { IncidentFilter } from "@/features/incidents/model";
+	import type { RbacCockpitState } from "@/features/rbac/cockpitModel";
+	import type { RbacView } from "@/features/rbac/surfaceModel";
 	import type { HealthFilter } from "@/features/resources";
 	import type {
 		ArgoApplicationSummary,
@@ -19,7 +27,7 @@
 	import type { SavedWorkspace } from "@/lib/workspace-model";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import type { RbacVerifierHandoff } from "@/features/rbac";
-	import SettingsSurface from "./SettingsSurface.svelte";
+	import DeferredSurface from "@/components/DeferredSurface.svelte";
 	import { treeNodeForResource, type WorkspaceViewMode } from "./workspaceNavigation";
 
 	let {
@@ -130,73 +138,97 @@
 
 {#if viewMode === "argo"}
 	{#key workspace.id}
-		<GitOpsSurface
-			{workspace}
-			{sourceReady}
-			{kubeconfigSourceKey}
-			{selectedNode}
-			{targetGitOpsApplication}
-			bind:selectedGitOpsItem
-			{onTargetGitOpsApplicationResolved}
-			{onOpenResources}
-			{onResourceInspect}
-		/>
+		<DeferredSurface load={loadGitOps} label="GitOps">
+			{#snippet children(GitOpsSurface)}
+				<GitOpsSurface
+					{workspace}
+					{sourceReady}
+					{kubeconfigSourceKey}
+					{selectedNode}
+					{targetGitOpsApplication}
+					bind:selectedGitOpsItem
+					{onTargetGitOpsApplicationResolved}
+					{onOpenResources}
+					{onResourceInspect}
+				/>
+			{/snippet}
+		</DeferredSurface>
 	{/key}
 {:else if viewMode === "helm"}
 	{#key workspace.id}
-		<HelmSurface
-			{workspace}
-			{sourceReady}
-			{kubeconfigSourceKey}
-			{targetHelmRelease}
-			bind:helmSearch
-			bind:selectedHelmRelease
-			{onTargetHelmReleaseResolved}
-			{onOpenResources}
-		/>
+		<DeferredSurface load={loadHelm} label="Helm">
+			{#snippet children(HelmSurface)}
+				<HelmSurface
+					{workspace}
+					{sourceReady}
+					{kubeconfigSourceKey}
+					{targetHelmRelease}
+					bind:helmSearch
+					bind:selectedHelmRelease
+					{onTargetHelmReleaseResolved}
+					{onOpenResources}
+				/>
+			{/snippet}
+		</DeferredSurface>
 	{/key}
 {:else if viewMode === "rbac"}
 	{#key `${workspace.id}:${workspace.scope.clusterContext}:${kubeconfigSourceKey ?? ""}`}
-		<RbacSurface
-			{workspace}
-			{sourceReady}
-			{kubeconfigSourceKey}
-			{selectedNode}
-			initialState={rbacState}
-			onStateChange={(state) => (rbacState = state)}
-			onViewChange={onRbacViewChange}
-			verifierHandoff={rbacVerifierHandoff}
-			onVerifierHandoffConsumed={onRbacVerifierHandoffConsumed}
-			onVerifierReturn={onRbacVerifierReturn}
-			verifierReturnLabel={rbacVerifierReturnLabel}
-		/>
+		<DeferredSurface load={loadRbac} label="RBAC">
+			{#snippet children(RbacSurface)}
+				<RbacSurface
+					{workspace}
+					{sourceReady}
+					{kubeconfigSourceKey}
+					{selectedNode}
+					initialState={rbacState}
+					onStateChange={(state) => (rbacState = state)}
+					onViewChange={onRbacViewChange}
+					verifierHandoff={rbacVerifierHandoff}
+					onVerifierHandoffConsumed={onRbacVerifierHandoffConsumed}
+					onVerifierReturn={onRbacVerifierReturn}
+					verifierReturnLabel={rbacVerifierReturnLabel}
+				/>
+			{/snippet}
+		</DeferredSurface>
 	{/key}
 {:else if viewMode === "incidents"}
 	{#key workspace.id}
-		<IncidentSurface
-			{workspace}
-			{sourceReady}
-			{kubeconfigSourceKey}
-			bind:incidentFilter
-			{onOpenResources}
-			{onResourceInspect}
-			onResourceSelect={(resource) => onResourceSelect(resource, treeNodeForResource(resource))}
-		/>
+		<DeferredSurface load={loadIncidents} label="incidents">
+			{#snippet children(IncidentSurface)}
+				<IncidentSurface
+					{workspace}
+					{sourceReady}
+					{kubeconfigSourceKey}
+					bind:incidentFilter
+					{onOpenResources}
+					{onResourceInspect}
+					onResourceSelect={(resource) => onResourceSelect(resource, treeNodeForResource(resource))}
+				/>
+			{/snippet}
+		</DeferredSurface>
 	{/key}
 {:else if viewMode === "portForwards"}
 	{#key workspace.id}
-		<LiveSessionsSurface
-			{workspace}
-			{sourceReady}
-			{kubeconfigSourceKey}
-			{showKubeconfigSourceLabels}
-		/>
+		<DeferredSurface load={loadLiveSessions} label="live sessions">
+			{#snippet children(LiveSessionsSurface)}
+				<LiveSessionsSurface
+					{workspace}
+					{sourceReady}
+					{kubeconfigSourceKey}
+					{showKubeconfigSourceLabels}
+				/>
+			{/snippet}
+		</DeferredSurface>
 	{/key}
 {:else if viewMode === "settings"}
-	<SettingsSurface
-		onBack={onCloseSettings}
-		clusterContext={workspace.scope.clusterContext}
-		workspaceId={workspace.id}
-		kubeconfigEnvVar={workspaceReadContext.kubeconfigSourceKey}
-	/>
+	<DeferredSurface load={loadSettings} label="settings">
+		{#snippet children(SettingsSurface)}
+			<SettingsSurface
+				onBack={onCloseSettings}
+				clusterContext={workspace.scope.clusterContext}
+				workspaceId={workspace.id}
+				kubeconfigEnvVar={workspaceReadContext.kubeconfigSourceKey}
+			/>
+		{/snippet}
+	</DeferredSurface>
 {/if}

@@ -1,3 +1,7 @@
+<script module lang="ts">
+	const loadResourceDetail = () => import("@/features/resource-detail/ResourceDetailPanel.svelte");
+</script>
+
 <script lang="ts">
 	import ArgoOperationMonitor from "@/features/gitops/ArgoOperationMonitor.svelte";
 	import { markStartup } from "@/lib/startup-marks";
@@ -82,8 +86,8 @@
 		shouldAutoStartSavedPortForwards,
 		shouldShowSavedPortForwardRestorePrompt,
 		startSavedPortForwards,
-	} from "@/features/live-sessions";
-	import ResourceDetailPanel from "@/features/resource-detail/ResourceDetailPanel.svelte";
+	} from "@/features/live-sessions/portForwardLifecycle";
+	import DeferredSurface from "@/components/DeferredSurface.svelte";
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
 	import type { HealthFilter } from "@/features/resources/helpers";
@@ -92,9 +96,9 @@
 	import {
 		onOpenRbacVerifier,
 		type RbacVerifierHandoff,
-	} from "@/features/rbac";
+	} from "@/features/rbac/handoff";
 	import WorkspaceOverview from "@/features/workspaces/WorkspaceOverview.svelte";
-	import { gitOpsSelectionResource } from "@/features/gitops";
+	import { gitOpsSelectionResource } from "@/lib/gitops-resource";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import AppSurfaces from "./AppSurfaces.svelte";
 	import ActiveLiveSessionsButton from "./ActiveLiveSessionsButton.svelte";
@@ -847,15 +851,19 @@
 							</header>
 							<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
 								{#key resourceKey(focusedResource)}
-									<ResourceDetailPanel
-										{client}
-										resource={focusedResource}
-										argoApplicationSummary={resourceGitOpsFocusApplication}
-										{workspaceReadContext}
-										onOpenHelmRelease={openHelmReleaseFromResource}
-										initialPathState={resourceDetailPathState}
-										onPathStateChange={(state) => (resourceDetailPathState = state)}
-									/>
+									<DeferredSurface load={loadResourceDetail} label="resource details">
+										{#snippet children(ResourceDetailPanel)}
+											<ResourceDetailPanel
+												{client}
+												resource={focusedResource}
+												argoApplicationSummary={resourceGitOpsFocusApplication}
+												{workspaceReadContext}
+												onOpenHelmRelease={openHelmReleaseFromResource}
+												initialPathState={resourceDetailPathState}
+												onPathStateChange={(state) => (resourceDetailPathState = state)}
+											/>
+										{/snippet}
+									</DeferredSurface>
 								{/key}
 							</div>
 						</section>

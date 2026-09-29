@@ -27,13 +27,17 @@
 	} from "@/components/ui/svelte";
 	import {
 		extractServicePortOptions,
-		isPortForwardForResource,
 		parsePortForwardForm,
+	} from "@/features/live-sessions/portForwardForms";
+	import {
+		isPortForwardForResource,
 		portForwardLocalUrl,
+	} from "@/features/live-sessions/helpers";
+	import {
 		portForwardQueryOptions,
 		startResourcePortForward,
 		stopPortForward,
-	} from "@/features/live-sessions";
+	} from "@/features/live-sessions/portForwardLifecycle";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import { settingsStore } from "@/lib/settings-store";
 	import type { TauriClient } from "@/lib/tauri";
