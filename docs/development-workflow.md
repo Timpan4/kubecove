@@ -47,6 +47,16 @@ Tauri webview uses real IPC and Rust Kubernetes commands. On Windows, developmen
 
 Browser mock mode never receives kubeconfig contents, calls a local Rust bridge, or accesses a real cluster. Treat all browser data as fake.
 
+For an optional Playwright smoke check against Obscura, install the rendering-enabled binary from the [Obscura releases](https://github.com/h4ckf0r0day/obscura/releases) and make `obscura` available on PATH. Start Obscura and Vite in separate terminals, then run the check:
+
+```sh
+obscura serve --port 9223 --allow-private-network
+bun run dev
+bun run e2e:obscura
+```
+
+The command uses Playwright's `chromium.connectOverCDP` to drive Obscura. It checks the rendered workspace form, mock context, and text input. It writes `page.txt` and `result.json` to a new ignored directory under `e2e/artifacts/`. Set `OBSCURA_CDP_URL` if Obscura runs on another local port. Port 9223 avoids KubeCove's development CDP port. This checks only the browser mock frontend. Use the WDIO suites below for desktop and Kubernetes behavior.
+
 ## Deterministic E2E and Kind Lab
 
 Use fast E2E while changing frontend behavior:
@@ -55,7 +65,7 @@ Use fast E2E while changing frontend behavior:
 bun run e2e:fast
 ```
 
-It starts Vite on Bun, opens Chrome through WDIO, and uses typed development-browser mocks. It neither builds Rust nor contacts Kubernetes.
+It starts Vite on Bun, runs the Playwright/Obscura smoke check, then runs the existing Chrome/WDIO scenarios with typed development-browser mocks. The runner downloads a checksum-verified Obscura release and stops only the Obscura process it started. Port 9223 must be free. Each run writes its result, Obscura server log, smoke results, and WDIO reports under a new `e2e/artifacts/fast-<run-id>/` directory. Startup failures also write a result artifact. It neither builds Rust nor contacts Kubernetes.
 
 Use real E2E for native-command and cluster behavior:
 
