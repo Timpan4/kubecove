@@ -12,16 +12,15 @@
 		Spinner,
 		buttonClass,
 	} from "@/components/ui/svelte";
+	import { buildLiveSessionReadModel } from "@/features/live-sessions/liveSessionReadModel";
+	import { podExecCommandText } from "@/features/live-sessions/podExecHelpers";
+	import { podExecQueryOptions, stopPodExec } from "@/features/live-sessions/podExecLifecycle";
+	import { portForwardLocalUrl } from "@/features/live-sessions/helpers";
 	import {
-		buildLiveSessionReadModel,
-		podExecCommandText,
-		podExecQueryOptions,
-		portForwardLocalUrl,
 		portForwardQueryOptions,
 		reconnectPortForward as reconnectPortForwardLifecycle,
-		stopPodExec,
 		stopPortForward as stopPortForwardLifecycle,
-	} from "@/features/live-sessions";
+	} from "@/features/live-sessions/portForwardLifecycle";
 	import { settingsStore } from "@/lib/settings-store";
 	import { createTauriClient } from "@/lib/tauri";
 	import type { PodExecSessionSummary, PortForwardSessionSummary } from "@/lib/types";

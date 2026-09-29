@@ -518,7 +518,7 @@ export function defaultPathStateSnapshot(
 	};
 }
 
-function defaultWorkspaceSnapshot(workspaceId: string): PathStateWorkspaceSnapshot {
+export function defaultWorkspaceSnapshot(workspaceId: string): PathStateWorkspaceSnapshot {
 	return {
 		workspaceId,
 		viewMode: "overview",

@@ -1,3 +1,8 @@
+<script module lang="ts">
+	const loadWorkspaceShell = () => import("./WorkspaceShell.svelte");
+	const loadSettings = () => import("./SettingsSurface.svelte");
+</script>
+
 <script lang="ts">
 	import { onMount, tick } from "svelte";
 	import CopyToast from "@/components/CopyToast.svelte";
@@ -6,14 +11,11 @@
 	import { FolderOpen, Settings } from "lucide-svelte";
 	import { Button, TooltipProvider } from "@/components/ui/svelte";
 	import AppUsageFooter from "./AppUsageFooter.svelte";
-	import SettingsSurface from "./SettingsSurface.svelte";
 	import UpdateStatusButton from "./UpdateStatusButton.svelte";
-	import WorkspaceShell from "./WorkspaceShell.svelte";
+	import DeferredSurface from "@/components/DeferredSurface.svelte";
 	import WorkspaceLauncher from "@/features/workspaces/WorkspaceLauncher.svelte";
-	import {
-		invalidatePodExecQueries,
-		invalidatePortForwardQueries,
-	} from "@/features/live-sessions";
+	import { invalidatePodExecQueries } from "@/features/live-sessions/podExecLifecycle";
+	import { invalidatePortForwardQueries } from "@/features/live-sessions/portForwardLifecycle";
 	import ForegroundLoadingBar from "./ForegroundLoadingBar.svelte";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import { diagnosticLog, setDiagnosticsEnabled } from "@/lib/diagnostics";
@@ -28,6 +30,7 @@
 	import {
 		readPathState,
 		writePathState,
+		defaultWorkspaceSnapshot,
 		type PathStateWorkspaceSnapshot,
 	} from "@/lib/path-state";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
@@ -119,6 +122,22 @@
 
 	function openWorkspaceLauncher() {
 		launcherView = "workspaces";
+	}
+
+	function retryWorkspaceLoad() {
+		const workspace = $selectedWorkspace;
+		if (workspace) {
+			const saved = readPathState();
+			writePathState({
+				version: 1,
+				runtime: "svelte",
+				launcherView: "workspaces",
+				workspace: saved?.workspace?.workspaceId === workspace.id
+					? saved.workspace
+					: defaultWorkspaceSnapshot(workspace.id),
+			});
+		}
+		window.location.reload();
 	}
 
 	onMount(() => {
@@ -240,17 +259,21 @@
 	</div>
 {:else if $selectedWorkspace}
 	<ForegroundLoadingBar />
-	<WorkspaceShell
-		workspace={$selectedWorkspace}
-		initialPathState={initialWorkspacePathState?.workspaceId === $selectedWorkspace.id
-			? initialWorkspacePathState
-			: null}
-		onPathStateConsumed={() => (initialWorkspacePathState = null)}
-		{liveSessionCleanupMessage}
-		onDismissLiveSessionCleanup={() => (liveSessionCleanupMessage = null)}
-		onOpenLauncher={closeWorkspace}
-		onChangeClusterContext={changeWorkspaceContext}
-	/>
+	<DeferredSurface load={loadWorkspaceShell} label="workspace" onRetry={retryWorkspaceLoad}>
+		{#snippet children(WorkspaceShell)}
+			<WorkspaceShell
+				workspace={$selectedWorkspace}
+				initialPathState={initialWorkspacePathState?.workspaceId === $selectedWorkspace.id
+				? initialWorkspacePathState
+				: null}
+				onPathStateConsumed={() => (initialWorkspacePathState = null)}
+				{liveSessionCleanupMessage}
+				onDismissLiveSessionCleanup={() => (liveSessionCleanupMessage = null)}
+				onOpenLauncher={closeWorkspace}
+				onChangeClusterContext={changeWorkspaceContext}
+			/>
+		{/snippet}
+	</DeferredSurface>
 {:else}
 	<div class="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
 		<ForegroundLoadingBar />
@@ -294,7 +317,11 @@
 
 		<main class="min-h-0 flex-1 overflow-y-auto">
 			{#if launcherView === "settings"}
-				<SettingsSurface onBack={openWorkspaceLauncher} />
+				<DeferredSurface load={loadSettings} label="settings">
+					{#snippet children(SettingsSurface)}
+						<SettingsSurface onBack={openWorkspaceLauncher} />
+					{/snippet}
+				</DeferredSurface>
 			{:else}
 				<WorkspaceLauncher {openWorkspace} {createWorkspace} />
 			{/if}

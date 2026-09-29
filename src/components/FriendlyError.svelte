@@ -12,7 +12,7 @@
 		type FriendlyErrorContext,
 		type FriendlyErrorMode,
 	} from "@/lib/friendly-errors";
-import { openRbacVerifier } from "@/features/rbac";
+	import { openRbacVerifier } from "@/features/rbac/handoff";
 	import { cnfast } from "@/lib/utils";
 
 	let {

@@ -1,4 +1,4 @@
-import { requiredPermissionForResource } from "@/features/rbac";
+import { requiredPermissionForResource } from "@/features/rbac/handoff";
 import { createCancelScope } from "@/lib/finite-read-lifecycle";
 import { queryKeys } from "@/lib/queryKeys";
 import { dynamicKindKey, resourceKey } from "@/lib/resource-identity";
