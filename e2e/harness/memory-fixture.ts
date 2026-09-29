@@ -66,7 +66,8 @@ export async function startMemoryFixture(size: MemoryFixture, directory: string)
 		fetch(request) {
 			if (request.method !== "GET") return Response.json({ kind: "Status", status: "Failure", reason: "MethodNotAllowed", code: 405 }, { status: 405 });
 			const url = new URL(request.url);
-			if ((url.pathname === "/api" || url.pathname === "/apis") && request.headers.get("accept")?.includes("apidiscovery.k8s.io")) return Response.json({ apiVersion: "apidiscovery.k8s.io/v2", kind: "APIGroupDiscoveryList", metadata: {}, items: aggregated[url.pathname] });
+			const aggregatedDiscovery = request.headers.get("accept")?.split(",").some((media) => media.split(";").some((parameter) => parameter.trim() === "g=apidiscovery.k8s.io"));
+			if ((url.pathname === "/api" || url.pathname === "/apis") && aggregatedDiscovery) return Response.json({ apiVersion: "apidiscovery.k8s.io/v2", kind: "APIGroupDiscoveryList", metadata: {}, items: aggregated[url.pathname] });
 			const apiDiscovery = discovery.get(url.pathname);
 			if (apiDiscovery) return Response.json(apiDiscovery);
 			if (url.searchParams.get("watch") === "true") {
