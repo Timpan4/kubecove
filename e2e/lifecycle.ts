@@ -4,6 +4,7 @@ import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/pro
 import { arch, platform } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
+import type { ViteDevServer } from "vite";
 import { assertDesktopProfileIdle, stopOwnedProfileProcess } from "./harness/desktop-profile";
 import { downloadAsset, sha256, verifyAsset } from "./harness/assets";
 import { kindConfig, kindDeleteArgs } from "./harness/cluster";
@@ -61,6 +62,14 @@ const pins = {
 	kubectl: { "darwin-amd64": "fa6b472ca1e542e171d7daedd9435b8e9650bc18d42a57eb930a51f48ca58874", "darwin-arm64": "1827b555615791c1c1065dd64870eb49a4e00e9dfd389a82a2ef1d31bb46d200", "linux-amd64": "5d11e2ba01ea68ffd053f56e27738e2b4330013ee67f7e46c6da6c585d3c9926", "linux-arm64": "c0f97f31c9ddc22d4951d543a1a7125a9af4b31e895ad4aa99899c4ba2a6ff0b", "windows-amd64": "ce1c21d0e0a64fa249fad3b6372c14479e7901fedf6d5a425d92c46c2bd87442" },
 	helm: { "darwin-amd64": "1376ea697140e4db316736e760d5a47d12afc1524dce704476ef06fd7fdeddc6", "darwin-arm64": "f13f959015447b6bc309f9fd506509926543988a39035c088b52522ec95e2acb", "linux-amd64": "97dbeb971be4ac4b27e3839976d9564c0fb35c6f3b1da89dd1e292d236af4096", "linux-arm64": "1f8de130dfbd04de64978e7b852a7a547be1404956a366608276d2520b678670", "windows-amd64": "614f68ddc567ac9bfb0c205f869b1f83ba4e0a9aacd26cbae47743ae6082a579" },
 } as const;
+const obscuraRelease = "v0.2.3";
+const obscuraArchives = {
+	"darwin-amd64": { name: "obscura-x86_64-macos.tar.gz", sha256: "d7c48122debc2ad9b24842df44560860dba765ea928b3f636b7f053225245116" },
+	"darwin-arm64": { name: "obscura-aarch64-macos.tar.gz", sha256: "45653cfad226f1c9b415603a2ed59477fcbd6335c742338ce133c05de0bdd056" },
+	"linux-amd64": { name: "obscura-x86_64-linux.tar.gz", sha256: "1534d1e6ddaf3d080ec4091eb41d0a4d8cc042a48b607d3c410fc13b482a9eec" },
+	"linux-arm64": { name: "obscura-aarch64-linux.tar.gz", sha256: "5ecf980bca3060236a7a86ec7ed83d943e6598ee87caa46d20325d90bc75f979" },
+	"windows-amd64": { name: "obscura-x86_64-windows.zip", sha256: "781a1b8bd12b65ec5aba95842e75e6f56b3101d360397506c0e35fe3f78536e8" },
+} as const;
 
 const runDir = (id = runId) => join(stateDir, "runs", id);
 const devDir = join(stateDir, "dev", workspaceHash);
@@ -117,6 +126,58 @@ async function verified(name: string, url: string, expected: string) {
 	await writeFile(temporary, bytes); await rename(temporary, target);
 	if (os !== "windows") await chmod(target, 0o755);
 	return target;
+}
+async function obscuraBinary() {
+	const asset = obscuraArchives[key()];
+	const archive = await verified(`${obscuraRelease}-${asset.name}`, `https://github.com/h4ckf0r0day/obscura/releases/download/${obscuraRelease}/${asset.name}`, asset.sha256);
+	const destination = join(stateDir, "tools", `obscura-${obscuraRelease}-${key()}`);
+	await mkdir(destination, { recursive: true });
+	if (os === "windows") {
+		const escapedArchive = archive.replaceAll("'", "''");
+		const escapedDestination = destination.replaceAll("'", "''");
+		await execute("powershell", ["-NoProfile", "-Command", `Expand-Archive -Force -LiteralPath '${escapedArchive}' -DestinationPath '${escapedDestination}'`]);
+	} else await execute("tar", ["-xzf", archive, "-C", destination]);
+	const binary = join(destination, `obscura${suffix}`);
+	if (!existsSync(binary)) throw new Error("Obscura archive did not contain the executable");
+	if (os !== "windows") await chmod(binary, 0o755);
+	return binary;
+}
+async function runObscuraFast(artifacts: string) {
+	const binary = await obscuraBinary();
+	const child = Bun.spawn([binary, "serve", "--port", "9223", "--allow-private-network"], { cwd: root, env: cleanEnvironment({ RUST_LOG: "obscura_cdp::server=info", OBSCURA_CDP_TOKEN: undefined }), stdout: "ignore", stderr: "pipe" });
+	children.add(child);
+	const log = Bun.file(join(artifacts, "obscura-server.log")).writer();
+	const listening = "Obscura CDP server listening on ws://127.0.0.1:9223";
+	let ready!: () => void;
+	let failed!: (error: Error) => void;
+	const readiness = new Promise<void>((resolve, reject) => { ready = resolve; failed = reject; });
+	// Match the existing fast suite's Mocha timeout, including a server that never binds.
+	const startupTimer = setTimeout(() => failed(new Error("Obscura did not start within the fast suite timeout")), 30_000);
+	const output = (async () => {
+		const decoder = new TextDecoder();
+		let tail = "";
+		try {
+			for await (const chunk of child.stderr) {
+				log.write(chunk);
+				tail += decoder.decode(chunk, { stream: true });
+				if (tail.includes(listening)) ready();
+				tail = tail.slice(-listening.length);
+			}
+			failed(new Error("Obscura exited before its CDP server was ready; see obscura-server.log"));
+		} catch (error) { failed(new Error("Could not read Obscura startup logs", { cause: error })); }
+		finally { await log.end(); }
+	})();
+	try {
+		await readiness;
+		clearTimeout(startupTimer);
+		await execute("bun", ["scripts/obscura-smoke.ts"], { OBSCURA_CDP_URL: "ws://127.0.0.1:9223/devtools/browser", E2E_FAST_URL: "http://127.0.0.1:1420", KUBECOVE_E2E_ARTIFACTS: artifacts });
+	} finally {
+		clearTimeout(startupTimer);
+		child.kill();
+		await child.exited;
+		await output;
+		children.delete(child);
+	}
 }
 let toolPromise: Promise<{ kind: string; kubectl: string; helm: string }> | undefined;
 function tools() {
@@ -338,21 +399,33 @@ async function diagnostics(record: Ownership) {
 }
 
 let shuttingDown = false;
-async function shutdown(signal: "SIGINT" | "SIGTERM") { if (shuttingDown) return; shuttingDown = true; for (const child of children) {
+async function shutdown(signal: "SIGINT" | "SIGTERM") { if (shuttingDown) return; shuttingDown = true;
+	if (action === "fast") await writeFile(join(root, "e2e", "artifacts", `fast-${runId}`, "result.json"), JSON.stringify({ passed: false, status: "interrupted", signal }, null, 2)).catch(() => {});
+	for (const child of children) {
 	if (profiling) await stopOwnedProfileProcess(child, signal);
 	else child.kill(signal);
 	} if (current?.kind === "run") { await diagnostics(current).catch((failure) => console.error("diagnostics failed", failure)); if (!keep) await removeCluster(current); } else if (current) await rm(current.dataDir, { recursive: true, force: true }); process.exit(signal === "SIGINT" ? 130 : 143); }
-if (["run", "dev-up", "desktop-profile"].includes(action)) for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => void shutdown(signal));
+if (["fast", "run", "dev-up", "desktop-profile"].includes(action)) for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => void shutdown(signal));
 
 async function fast() {
-	if (!(await Array.fromAsync(new Bun.Glob("e2e/specs/fast/**/*.e2e.ts").scan({ cwd: root }))).length) throw new Error("fast suite has no specs");
-	const { createServer } = await import("vite");
-	const frontend = await createServer({ root, server: { host: "127.0.0.1", port: 1420, strictPort: true } });
+	const artifacts = join(root, "e2e", "artifacts", `fast-${runId}`);
+	await mkdir(dirname(artifacts), { recursive: true });
+	await mkdir(artifacts);
+	await writeFile(join(artifacts, "result.json"), JSON.stringify({ passed: false, status: "started" }, null, 2));
+	let frontend: ViteDevServer | undefined;
 	try {
+		if (!(await Array.fromAsync(new Bun.Glob("e2e/specs/fast/**/*.e2e.ts").scan({ cwd: root }))).length) throw new Error("fast suite has no specs");
+		const { createServer } = await import("vite");
+		frontend = await createServer({ root, server: { host: "127.0.0.1", port: 1420, strictPort: true } });
 		// Wait for Vite itself; HTTP polling can connect to its temporary port-check socket.
 		await frontend.listen();
-		await runWdio("e2e/wdio.fast.conf.ts", { KUBECOVE_E2E_ARTIFACTS: join(root, "e2e", "artifacts", "fast") });
-	} finally { await frontend.close(); }
+		await runObscuraFast(artifacts);
+		await runWdio("e2e/wdio.fast.conf.ts", { E2E_FAST_URL: "http://127.0.0.1:1420", KUBECOVE_E2E_ARTIFACTS: artifacts }, join(artifacts, "wdio-report.txt"));
+		await writeFile(join(artifacts, "result.json"), JSON.stringify({ passed: true }, null, 2));
+	} catch (error) {
+		await writeFile(join(artifacts, "result.json"), JSON.stringify({ passed: false, error: String(error) }, null, 2));
+		throw error;
+	} finally { await frontend?.close(); }
 }
 async function buildAndDrive(env: Record<string, string | undefined>, smoke = false) {
 	const artifacts = env.KUBECOVE_E2E_ARTIFACTS;
