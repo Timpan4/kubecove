@@ -38,7 +38,9 @@ impl AppUsageMonitor {
         system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+            ProcessRefreshKind::nothing()
+                .without_tasks()
+                .with_cmd(UpdateKind::Always),
         );
 
         let pids = usage_process_pids(&system, current_pid);
@@ -48,6 +50,7 @@ impl AppUsageMonitor {
                 ProcessesToUpdate::Some(&pids_to_refresh),
                 true,
                 ProcessRefreshKind::nothing()
+                    .without_tasks()
                     .with_memory()
                     .with_cpu()
                     .with_cmd(UpdateKind::Always),
@@ -400,6 +403,44 @@ mod tests {
 
     fn pid(value: u32) -> Pid {
         Pid::from_u32(value)
+    }
+
+    // Linux thread tasks share their owning process's address space. Including
+    // them in the sample counts the same RSS once per thread.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn samples_processes_without_linux_thread_tasks() {
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
+        let worker = std::thread::spawn(move || {
+            let task_path = std::fs::read_link("/proc/thread-self").expect("Linux thread identity");
+            let task_pid = task_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("thread PID")
+                .parse::<u32>()
+                .expect("numeric thread PID");
+            started_tx
+                .send(Pid::from_u32(task_pid))
+                .expect("started receiver");
+            let _ = stop_rx.recv();
+        });
+        let task_pid = started_rx.recv().expect("worker identity");
+        let monitor = super::AppUsageMonitor::default();
+        let metrics = monitor.sample().expect("usage sample");
+        let includes_task = monitor
+            .system
+            .lock()
+            .expect("monitor lock")
+            .process(task_pid)
+            .is_some();
+        drop(stop_tx);
+        worker.join().expect("worker exit");
+        assert!(metrics.process_count >= 1);
+        assert!(
+            !includes_task,
+            "thread tasks must not be sampled as processes"
+        );
     }
 
     #[test]
