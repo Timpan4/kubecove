@@ -11,6 +11,20 @@ export default defineConfig(({ command }) => {
 	return {
 		plugins: [svelte(), tailwindcss(), frontendBundleReportPlugin(releaseChannel, profiling)],
 		resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+		// First opening a deferred screen must not trigger optimizer reloads.
+		optimizeDeps: {
+			include: [
+				"@tauri-apps/plugin-opener",
+				"@codemirror/lang-yaml",
+				"@codemirror/language",
+				"@codemirror/lint",
+				"@codemirror/state",
+				"@codemirror/view",
+				"@lezer/highlight",
+				"diff",
+				"yaml",
+			],
+		},
 		define: {
 			"process.env.KUBECOVE_PUBLIC_DEV": JSON.stringify(String(command === "serve")),
 			"process.env.KUBECOVE_PUBLIC_PROFILE": JSON.stringify(String(profiling)),
