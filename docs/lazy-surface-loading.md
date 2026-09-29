@@ -6,15 +6,15 @@ Each deferred area shows a loading status and an error with a reload action. Rel
 
 ## Production bundle comparison
 
-Both builds use Vite 8.3.1 on Bun 1.4.2, the same lockfile and build configuration, and the launcher entry path. The baseline is `3aa22398d02a056946651ae120d19517c7eff69a`; the comparison changes only the import graph and deferred rendering.
+Both builds use Vite 8.3.1 on Bun 1.4.2, the same lockfile and release-profile build configuration, and the launcher entry path. The table uses the bundle reports embedded in the native reports linked below, including the existing profiling instrumentation. The baseline is `3aa22398d02a056946651ae120d19517c7eff69a`; the comparison changes only the import graph and deferred rendering.
 
 Eager JavaScript is the transitive closure of static imports from the entry chunk. Compression is measured per file by the existing bundle reporter, not as one concatenated stream.
 
 | Eager JavaScript | Before | After |
 | --- | ---: | ---: |
-| Raw bytes | 1,579,718 | 539,099 |
-| Gzip bytes | 441,980 | 151,418 |
-| Brotli bytes | 360,779 | 130,645 |
+| Raw bytes | 1,579,932 | 539,300 |
+| Gzip bytes | 442,060 | 151,521 |
+| Brotli bytes | 360,868 | 130,753 |
 
 The workspace static graph no longer contains the inactive screen components or resource inspector. Opening the inspector does not load the live-sessions manager. Screen helpers use their existing focused modules so surface re-exports cannot pull inactive UI into the graph.
 
