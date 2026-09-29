@@ -424,7 +424,8 @@ async function fast() {
 		try {
 			await runWdio("e2e/wdio.fast.conf.ts", { E2E_FAST_URL: "http://127.0.0.1:1420", KUBECOVE_E2E_ARTIFACTS: artifacts }, wdioReport);
 		} catch (error) {
-			console.error(await readFile(wdioReport, "utf8"));
+			const report = await readFile(wdioReport, "utf8").catch(() => null);
+			if (report) console.error(report);
 			throw error;
 		}
 		await writeFile(join(artifacts, "result.json"), JSON.stringify({ passed: true }, null, 2));
