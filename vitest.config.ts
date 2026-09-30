@@ -15,7 +15,14 @@ export default defineConfig({
 	},
 	test: {
 		benchmark: {
-			include: ["benchmarks/**/*.bench.ts"],
+			include:
+				process.env.KUBECOVE_BENCHMARK_SUITE === "topology"
+					? ["benchmarks/topology.bench.ts"]
+					: ["benchmarks/**/*.bench.ts"],
+			exclude:
+				process.env.KUBECOVE_BENCHMARK_SUITE === "other"
+					? ["benchmarks/topology.bench.ts"]
+					: [],
 		},
 	},
 });
