@@ -30,7 +30,7 @@ export function inspectElfSections(output: string) {
 	return { sectionBytes, removableSymbolBytes, runtimeSymbolBytes };
 }
 
-export function summarizeFrontend(files: readonly FrontendFile[], requests: FontRequests = { launcher: [], workspace: [] }) {
+export function summarizeFrontend(files: readonly FrontendFile[], requests: FontRequests | null = null) {
 	const bytes = { javascript: 0, css: 0, fonts: 0, other: 0 };
 	const bundled: Array<{ file: string; bytes: number }> = [];
 	for (const file of files) {
@@ -47,11 +47,11 @@ export function summarizeFrontend(files: readonly FrontendFile[], requests: Font
 	const requested: MutableFontRequests = { launcher: [], workspace: [] };
 	const unmatchedRequests = { launcher: 0, workspace: 0 };
 	for (const stage of ["launcher", "workspace"] as const) {
-		for (const file of new Set(requests[stage])) {
+		for (const file of new Set(requests?.[stage] ?? [])) {
 			if (fontNames.has(file)) requested[stage].push(file);
 			else unmatchedRequests[stage] += 1;
 		}
 		requested[stage].sort();
 	}
-	return { bytes, totalBytes: bytes.javascript + bytes.css + bytes.fonts + bytes.other, fonts: { bundled, requested, unmatchedRequests } };
+	return { bytes, totalBytes: bytes.javascript + bytes.css + bytes.fonts + bytes.other, fonts: { bundled, requested: requests ? requested : null, unmatchedRequests: requests ? unmatchedRequests : null } };
 }

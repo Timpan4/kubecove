@@ -1,6 +1,15 @@
 import { expect, it } from "bun:test";
 import { inspectElfSections, summarizeFrontend } from "../scripts/release-footprint-report";
 
+it("marks font requests unavailable when only emitted assets were inspected", () => {
+	const result = summarizeFrontend([{ path: "dist/assets/local.woff2", rawBytes: 10 }]);
+	expect(result.fonts.requested).toBeNull();
+	expect(result.fonts.unmatchedRequests).toBeNull();
+	const observed = summarizeFrontend([], { launcher: [], workspace: [] });
+	expect(observed.fonts.requested).toEqual({ launcher: [], workspace: [] });
+	expect(observed.fonts.unmatchedRequests).toEqual({ launcher: 0, workspace: 0 });
+});
+
 it("partitions emitted frontend files without double counting embedded assets", () => {
 	const result = summarizeFrontend([
 		{ path: "dist/assets/app.js", rawBytes: 20 },
@@ -33,8 +42,8 @@ it("distinguishes bundled fonts from each startup stage's requests", () => {
 		{ path: "dist/assets/deferred.woff2", rawBytes: 20 },
 	], { launcher: ["used.woff2", "used.woff2"], workspace: ["used.woff2", "unknown-private-name"] });
 	expect(result.fonts.bundled.length).toBe(2);
-	expect(result.fonts.requested.launcher).toEqual(["used.woff2"]);
-	expect(result.fonts.requested.workspace).toEqual(["used.woff2"]);
-	expect(result.fonts.unmatchedRequests.workspace).toBe(1);
+	expect(result.fonts.requested?.launcher).toEqual(["used.woff2"]);
+	expect(result.fonts.requested?.workspace).toEqual(["used.woff2"]);
+	expect(result.fonts.unmatchedRequests?.workspace).toBe(1);
 	expect(JSON.stringify(result)).not.toContain("private");
 });
