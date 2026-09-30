@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -80,6 +79,9 @@ jobs:
 
   frontend:
     name: Run frontend benchmarks (${{ matrix.suite }})
+    permissions:
+      contents: read
+      id-token: write
     needs:
       - changes
     if: ${{ needs.changes.outputs.frontend == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
@@ -121,6 +123,9 @@ jobs:
 
   rust:
     name: Run Rust benchmarks
+    permissions:
+      contents: read
+      id-token: write
     needs:
       - changes
     if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
