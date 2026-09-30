@@ -21,17 +21,20 @@ jobs:
     name: Detect benchmark changes
     runs-on: ubuntu-latest
     outputs:
-      benchmarks: ${{ steps.detect.outputs.benchmarks }}
+      frontend: ${{ steps.detect.outputs.frontend }}
+      rust: ${{ steps.detect.outputs.rust }}
 
     steps:
       - name: Checkout
-        if: ${{ github.event_name != 'workflow_dispatch' }}
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Detect Rust, Svelte, or JavaScript changes
+      - name: Test benchmark orchestration
+        run: node --test scripts/codspeed-workflow-regression.test.mjs
+
+      - name: Detect frontend and Rust benchmark changes
         id: detect
         shell: bash
         env:
@@ -42,28 +45,85 @@ jobs:
           set -euo pipefail
 
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            echo "benchmarks=true" >> "${GITHUB_OUTPUT}"
+            echo "frontend=true" >> "${GITHUB_OUTPUT}"
+            echo "rust=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
           if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]]; then
             echo "No usable base commit; running benchmarks."
-            echo "benchmarks=true" >> "${GITHUB_OUTPUT}"
+            echo "frontend=true" >> "${GITHUB_OUTPUT}"
+            echo "rust=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
           git diff --name-only --no-renames "${BASE_SHA}" "${HEAD_SHA}" | tee /tmp/kubecove-changed-files.txt
-          if grep -Eiq '\.(rs|svelte|js|jsx|mjs|cjs|ts|tsx|mts|cts)$' /tmp/kubecove-changed-files.txt; then
-            echo "benchmarks=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "benchmarks=false" >> "${GITHUB_OUTPUT}"
-          fi
+          frontend=false
+          rust=false
+          while IFS= read -r path; do
+            if [[ "${path}" == .github/* ]]; then
+              frontend=true
+              rust=true
+            elif [[ "${path}" == src-tauri/* ]]; then
+              rust=true
+            else
+              if [[ "${path}" =~ \.(svelte|js|jsx|mjs|cjs|ts|tsx|mts|cts|json)$ || "${path}" =~ (^|/)bun\.lock$ || "${path}" == src/* || "${path}" == benchmarks/* ]]; then
+                frontend=true
+              fi
+              if [[ "${path}" =~ \.rs$ || "${path}" =~ (^|/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$ || "${path}" =~ (^|/)\.cargo/ ]]; then
+                rust=true
+              fi
+            fi
+          done < /tmp/kubecove-changed-files.txt
+          echo "frontend=${frontend}" >> "${GITHUB_OUTPUT}"
+          echo "rust=${rust}" >> "${GITHUB_OUTPUT}"
 
-  benchmarks:
-    name: Run benchmarks
+  frontend:
+    name: Run frontend benchmarks (${{ matrix.suite }})
     needs:
       - changes
-    if: ${{ needs.changes.outputs.benchmarks == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    if: ${{ needs.changes.outputs.frontend == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [topology, other]
+    env:
+      KUBECOVE_BENCHMARK_SUITE: ${{ matrix.suite }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@v5.2.1
+        with:
+          mode: simulation
+          run: bunx vitest bench --run
+
+  rust:
+    name: Run Rust benchmarks
+    needs:
+      - changes
+    if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
     runs-on: ubuntu-latest
 
     steps:
@@ -81,30 +141,14 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4.0"
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v6
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
 
       - name: Cache Rust
         uses: swatinem/rust-cache@v2
         with:
           shared-key: kubecove-rust-codspeed
           workspaces: "./src-tauri -> target"
-
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
 
       - name: Install cargo-codspeed
         run: cargo install cargo-codspeed --version 5.0.1 --locked
@@ -117,7 +161,7 @@ jobs:
         uses: CodSpeedHQ/action@v5.2.1
         with:
           mode: simulation
-          run: bunx vitest bench --run && cd src-tauri && cargo codspeed run --bench backend_hot_paths
+          run: cd src-tauri && cargo codspeed run --bench backend_hot_paths
 
   check:
     name: CodSpeed Performance Analysis
@@ -125,25 +169,39 @@ jobs:
     timeout-minutes: 5
     needs:
       - changes
-      - benchmarks
+      - frontend
+      - rust
     if: always()
 
     steps:
       - name: Verify benchmark result
         env:
-          BENCHMARK_RESULT: ${{ needs.benchmarks.result }}
           CHANGES_RESULT: ${{ needs.changes.result }}
+          FRONTEND_REQUIRED: ${{ needs.changes.outputs.frontend }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
           RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
-          SOURCE_CHANGES: ${{ needs.changes.outputs.benchmarks }}
+          RUST_REQUIRED: ${{ needs.changes.outputs.rust }}
+          RUST_RESULT: ${{ needs.rust.result }}
         run: |
           set -euo pipefail
           echo "Change detection: ${CHANGES_RESULT}"
-          echo "Benchmark-relevant changes: ${SOURCE_CHANGES}"
-          echo "Benchmark result: ${BENCHMARK_RESULT}"
+          echo "Frontend benchmarks: ${FRONTEND_RESULT} (required: ${FRONTEND_REQUIRED})"
+          echo "Rust benchmarks: ${RUST_RESULT} (required: ${RUST_REQUIRED})"
           test "${CHANGES_RESULT}" = "success"
-          if [[ "${RELEASE_PR}" == "true" || "${SOURCE_CHANGES}" == "false" ]]; then
-            test "${BENCHMARK_RESULT}" = "skipped"
+          if [[ "${RELEASE_PR}" == "true" ]]; then
+            test "${FRONTEND_RESULT}" = "skipped"
+            test "${RUST_RESULT}" = "skipped"
           else
-            test "${SOURCE_CHANGES}" = "true"
-            test "${BENCHMARK_RESULT}" = "success"
+            verify_result() {
+              local required="$1"
+              local result="$2"
+              if [[ "${required}" == "true" ]]; then
+                test "${result}" = "success"
+              else
+                test "${required}" = "false"
+                test "${result}" = "skipped"
+              fi
+            }
+            verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
+            verify_result "${RUST_REQUIRED}" "${RUST_RESULT}"
           fi
