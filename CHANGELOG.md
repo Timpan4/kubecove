@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.11.3 - 2026-09-30
+### Improved
+
+- Characterize frontend memory retention (#491).
+
 ## 0.11.2 - 2026-09-28
 ### Improved
 
