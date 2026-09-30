@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ExternalLink } from "lucide-svelte";
+	import ResourceTimeline from "./ResourceTimeline.svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import {
@@ -26,6 +27,7 @@
 		detailsQuery,
 		eventsQuery,
 		detailResource,
+		resourceKey,
 		conditionRows,
 		containerRows,
 		metadataRows,
@@ -183,46 +185,9 @@
 						{/if}
 					</div>
 				</section>
-				<section class="rounded-md border bg-background/30 p-3">
-					<div class="mb-2 text-xs font-semibold uppercase text-muted-foreground">Timeline</div>
-					{#if incidentTimeline.length === 0}
-						<div class="rounded-md border bg-background/70 px-3 py-2 text-xs text-muted-foreground">
-							No incident timeline entries for this resource.
-						</div>
-					{:else}
-						<div class="flex flex-col gap-2">
-							{#each incidentTimeline as item (item.id)}
-								<div
-									class={`rounded-md border border-l-4 px-2.5 py-2 ${incidentToneClass(item.tone)}`}
-								>
-									<div class="flex items-start justify-between gap-2">
-										<div class="min-w-0">
-											<div class="text-xs font-semibold">{item.title}</div>
-											{#if item.detail}
-												<div class="mt-1 break-words text-xs leading-snug text-muted-foreground">
-													{item.detail}
-												</div>
-											{/if}
-										</div>
-									<Badge
-										variant={toneBadgeVariant(item.tone)}
-										class={compactToneBadgeClass(item.tone)}
-									>
-										{item.source}
-									</Badge>
-								</div>
-								{#if item.timestamp}
-									<div class="mt-1 text-[0.6875rem] text-muted-foreground">
-										<time datetime={item.timestamp} title={formatFullTimestamp(item.timestamp)}>
-											{formatFullTimestamp(item.timestamp)}
-										</time>
-									</div>
-								{/if}
-								</div>
-							{/each}
-						</div>
-					{/if}
-				</section>
+				{#key resourceKey}
+					<ResourceTimeline items={incidentTimeline} resourceKind={detailResource.kind} />
+				{/key}
 				{#if conditionRows.length > 0}
 					<section class="flex flex-col gap-2">
 						<div class="text-xs font-semibold uppercase text-muted-foreground">Conditions</div>
