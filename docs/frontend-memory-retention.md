@@ -36,7 +36,7 @@ The deterministic normal fixture uses the existing mixed browser mock set of 65 
 
 Payload bytes are UTF-8 JSON estimates, not allocation sizes. Source, merged, projection, and topology estimates overlap because objects share references; do not add them. Bun's JavaScriptCore heap samples use explicit collection. WebView collection is not forced. Process RSS includes shared pages and allocator high-water marks. DOM events exercise application handlers; physical pointer input is unverified. Timings include driver, query probing, and process sampling overhead. These are single local observations, not cross-platform distributions.
 
-## Deterministic fixture observations
+## Historical 90-second deterministic fixture observations
 
 The isolated Bun run produced these counts and payload estimates:
 
@@ -61,7 +61,7 @@ After explicit Bun collection, the normal table sample held 1,751,849 heap bytes
 
 The existing inactive-query fixture retains 25,000 entries for each of three roots. Immediately before collection, `resources`, `resource-metrics`, and `resource-topology` weighed 3,277,781, 3,452,781, and 3,477,781 JSON bytes. All three queries existed at 89,999 ms and were absent at 90,000 ms. Explicit Bun collection reduced the process's reported JS heap from 58,765,109 to 42,409,529 bytes. RSS remained 270,041,088 bytes. Releasing queries therefore does not imply an immediate equivalent RSS reduction.
 
-## Native WebKitGTK observations
+## Historical 90-second native WebKitGTK observations
 
 Both runs passed in the same app session across launcher, rows, populated metrics, detail, YAML, topology open/close, launcher switching, warm navigation, the actual collection interval, and refetch. Source SHA was `efddb7b73bcca3fc80687ac31afadbe1dcf43b72` with `sourceDirty: true`; these are pre-commit working-tree measurements. Artifacts are `desktop-1790720161978-1117722-ad281301` (normal) and `desktop-1790720474267-1127098-1bf76824` (large).
 
@@ -120,6 +120,22 @@ The choice keeps cached payloads reachable longer than the former 90-second poli
 
 The table describes the former policy and alternatives; it does not measure the new five-minute interval. Shorter or different per-root retention and projection changes are not part of the selected implementation. Any recommendation to shorten retention should cite the specific root family and observed refetch cost. Any recommendation to change topology or table projections should first isolate the measured derived path rather than assign the entire process increase to cached JSON.
 
-## Verification
+## Historical 90-second verification
 
-The failure-mode tests, deterministic performance script, native normal and large scenarios, TypeScript, Svelte, Biome, anti-slop lint, and documentation checks passed. Final-source reruns also passed all 12 stages in `desktop-1790721907510-1168464-5a76ef77` (normal) and `desktop-1790722045258-1172980-f9f7af82` (large). These reruns verify the YAML active-tab assertion and the renamed DOM count with a recorded 800 by 553 CSS-pixel viewport. The tables above retain the earlier observations. The normal frontend build excludes the profile hook identifier. Native screenshots confirm the fixture overview and generated YAML; offscreen DOM actions and graph counts do not prove physical pointer or painted-frame performance. macOS and Windows native measurements remain unmeasured.
+The failure-mode tests, deterministic performance script, native normal and large scenarios, TypeScript, Svelte, Biome, anti-slop lint, and documentation checks passed for the former 90-second policy. Reruns of the final characterization source also passed all 12 stages in `desktop-1790721907510-1168464-5a76ef77` (normal) and `desktop-1790722045258-1172980-f9f7af82` (large). These reruns verify the YAML active-tab assertion and the renamed DOM count with a recorded 800 by 553 CSS-pixel viewport. The tables above retain the earlier observations. The normal frontend build excludes the profile hook identifier. Native screenshots confirm the fixture overview and generated YAML; offscreen DOM actions and graph counts do not prove physical pointer or painted-frame performance. macOS and Windows native measurements remain unmeasured.
+
+## Current 300-second verification
+
+Focused timer tests retain data at the former 90-second cutoff and at 299,999 ms, collect it at 300,000 ms, and verify that reopening resets the inactive window. Existing secret-retention tests still pass. `bun run perf:frontend` reports `gcTimeMs: 300000`, three queries before expiry, and zero after expiry using its virtual timer. TypeScript, Svelte, Biome, anti-slop lint, documentation checks, and the hook's native Cargo check passed.
+
+Fresh release-shaped native WebKitGTK runs passed all 12 stages with the five-minute setting. Artifacts are `desktop-1790744908211-1915143-9ec85bee` (normal) and `desktop-1790745297953-1925512-15a08820` (10,000 Pods). Both record application source `fa52c3add8d80a5f1f3ba6120c9bf9d6c29d3d78` and `sourceDirty: true`. At source capture, the normal run had only Cargo-generated executable-bit differences on the tracked sidecars; the large run had a documentation-only clarification. Neither changed application code relative to that commit. The frontend and native app were rebuilt for each run with the existing release profile.
+
+| Lifecycle observation | Native normal | Native large |
+| --- | ---: | ---: |
+| Inactive, unobserved queries across the three roots | 5 | 5 |
+| Queries remaining across those roots after collection | 0 | 0 |
+| Counts-only collection wait, ms | 300,015.08 | 299,814.85 |
+| Warm return, ms | 255.96 | 11,217.83 |
+| Rows after collection/refetch, ms | 300.46 | 18,030.83 |
+
+The polling wait starts after capturing the inactive checkpoint, so its elapsed time differs slightly from the configured timer. Both runs restore resource data after collection and record an 800 by 553 CSS-pixel viewport. Native screenshots show the resource overview and generated YAML; DOM assertions cover navigation, metrics, and topology. These are local lifecycle observations, not a measured five-minute freshness guarantee, heap attribution, or cross-platform performance result.
