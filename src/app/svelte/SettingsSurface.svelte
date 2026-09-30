@@ -67,6 +67,10 @@
 			title: "Show ownership map by default",
 			description: "Opens the ownership map in new resource views. Returning to a view restores its previous layout.",
 		},
+		timelineExpansion: {
+			title: "Expand timeline by default",
+			description: "Shows messages and facts in resource timelines. You can still collapse individual entries.",
+		},
 	unavailableGitOpsProviders: {
 		title: "Show unavailable GitOps providers",
 		description:
@@ -368,6 +372,13 @@
 					checked={settings.showOwnershipMapByDefault}
 					onCheckedChange={settings.setShowOwnershipMapByDefault}
 					aria-label={GENERAL_ROWS.ownershipMap.title}
+				/>
+			</SettingsRow>
+			<SettingsRow {...GENERAL_ROWS.timelineExpansion}>
+				<Switch
+					checked={settings.expandTimelineByDefault}
+					onCheckedChange={settings.setExpandTimelineByDefault}
+					aria-label={GENERAL_ROWS.timelineExpansion.title}
 				/>
 			</SettingsRow>
 			<SettingsRow {...GENERAL_ROWS.unavailableGitOpsProviders}>

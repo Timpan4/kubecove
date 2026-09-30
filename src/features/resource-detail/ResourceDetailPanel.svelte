@@ -642,6 +642,7 @@
 	{/if}
 
 	<DetailsTab
+		{resourceKey}
 		{detailsQuery}
 		{eventsQuery}
 		{detailResource}

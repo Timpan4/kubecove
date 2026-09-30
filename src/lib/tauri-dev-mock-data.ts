@@ -1,3 +1,4 @@
+import { evictedWorkerName } from "./tauri-dev-mock-incidents";
 import type {
 	ArgoApplicationSummary,
 	ClusterContext,
@@ -207,6 +208,7 @@ export const resources: ResourceSummary[] = [
 	res("PersistentVolumeClaim", "data-ledger-0", "tenant-ledger", "healthy", "Bound", "Bound", 0, "tenant-ledger"),
 	res("Deployment", "operations", "operations", "healthy", "1/1", "Ready", 0, "operations"),
 	res("Pod", "operations-crashloop-7f468cd8b8-lab01", "operations", "degraded", "0/1", "CrashLoopBackOff", 7, "operations"),
+	res("Pod", evictedWorkerName, "operations", "degraded", "0/1", "Evicted", 3, "operations", { metrics: undefined }),
 	res("Node", "dev-control-plane", null, "healthy", "Ready", "Ready"),
 ];
 
