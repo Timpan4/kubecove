@@ -18,6 +18,7 @@ import {
 } from "../src/features/resources/topology-implementation";
 import {
 	configureLargeQueryRetention,
+	LARGE_QUERY_GC_TIME_MS,
 	LARGE_QUERY_ROOTS,
 } from "../src/lib/query-retention";
 import {
@@ -303,7 +304,7 @@ const retainedPayloadBytes = LARGE_QUERY_ROOTS.reduce(
 		JSON.stringify(queryClient.getQueryData([root, "memory-measurement"])).length,
 	0,
 );
-queryTimeouts.advanceBy(89_999);
+queryTimeouts.advanceBy(LARGE_QUERY_GC_TIME_MS - 1);
 const retainedQueriesBeforeExpiry = queryClient.getQueryCache().getAll().length;
 const queryMemoryBeforeCollection = collectQueryMemory(queryClient);
 const processMemoryBeforeCollection = memorySample();
@@ -363,8 +364,9 @@ console.log(
 				payloadRowsPerQuery: 25_000,
 				retainedPayloadRows,
 				retainedPayloadMiB: formatMiB(retainedPayloadBytes),
-				retainedQueriesAt89_999Ms: retainedQueriesBeforeExpiry,
-				retainedQueriesAt90_000Ms: retainedQueriesAfterExpiry,
+				gcTimeMs: LARGE_QUERY_GC_TIME_MS,
+				retainedQueriesBeforeExpiry,
+				retainedQueriesAfterExpiry,
 			},
 		},
 		null,

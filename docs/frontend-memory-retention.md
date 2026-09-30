@@ -1,6 +1,6 @@
 # Frontend memory characterization
 
-Issue [#417](https://github.com/Timpan4/kubecove/issues/417) measures resource payloads, projections, topology, metrics, YAML, and inactive queries. Retention, payload contracts, visible counts, sorting, filtering, and selection are unchanged. Policy selection belongs to [#418](https://github.com/Timpan4/kubecove/issues/418).
+Issue [#417](https://github.com/Timpan4/kubecove/issues/417) measured resource payloads, projections, topology, metrics, YAML, and inactive queries under the former 90-second retention policy. Owner decision [#418](https://github.com/Timpan4/kubecove/issues/418) extends inactive resource, topology, and metrics retention to 300 seconds in [#493](https://github.com/Timpan4/kubecove/issues/493). Payload contracts, visible counts, sorting, filtering, and selection stay unchanged. The historical measurements below remain observations of the 90-second policy.
 
 ## Failure modes
 
@@ -32,7 +32,7 @@ The optional native fixture requires the OpenSSL CLI on PATH, including on Windo
 
 The deterministic normal fixture uses the existing mixed browser mock set of 65 resources. Its large fixture repeats those summaries as 10,000 Pod rows, matching the existing metrics workload size. The native fixtures instead generate 65 or 10,000 synthetic Pods, plus one Deployment, ReplicaSet, Service, Node, and Namespace. They share counts, but their shapes and payload sizes differ.
 
-`frontend-memory.json` is written under each native run's `e2e/artifacts/desktop-*/` directory after every stage. It records source SHA and dirty state. A dirty run describes the working tree, not just that commit. Heap bytes are sampled before payload serialization. Counts-only polling avoids JSON allocation during the real configured 90-second collection interval. An enabled observer makes a query active; a disabled observer can still keep an inactive query observed. The report records both distinctions.
+`frontend-memory.json` is written under each native run's `e2e/artifacts/desktop-*/` directory after every stage. It records source SHA and dirty state. A dirty run describes the working tree, not just that commit. Heap bytes are sampled before payload serialization. Counts-only polling avoids JSON allocation during the real configured collection interval. An enabled observer makes a query active; a disabled observer can still keep an inactive query observed. The report records both distinctions.
 
 Payload bytes are UTF-8 JSON estimates, not allocation sizes. Source, merged, projection, and topology estimates overlap because objects share references; do not add them. Bun's JavaScriptCore heap samples use explicit collection. WebView collection is not forced. Process RSS includes shared pages and allocator high-water marks. DOM events exercise application handlers; physical pointer input is unverified. Timings include driver, query probing, and process sampling overhead. These are single local observations, not cross-platform distributions.
 
@@ -107,7 +107,9 @@ Chrome's JS heap before the two inspections was 64,077,652 and 53,867,100 bytes.
 
 ## Decision note for #418
 
-No numeric budget or policy is selected. The measured path is launcher to Resources, inspection, launcher switching, and return. The policy choices have these supported tradeoffs:
+The owner selected 300 seconds of inactive retention for `resources`, `resource-topology`, and `resource-metrics` so operators can return to views during work. The interval starts when a query loses its last observer. Reopening cancels collection; leaving again starts a new five-minute window. Existing freshness, refetch, and watch behavior remains in place. Revealed secrets still use their explicit zero-retention settings. Backend cache budgets and the release profile are unchanged.
+
+The choice keeps cached payloads reachable longer than the former 90-second policy. It does not establish a whole-WebView memory budget or attribute the process RSS increase to queries. The measured path is launcher to Resources, inspection, launcher switching, and return. These historical comparisons informed the decision:
 
 | Choice | Measured memory or retained path | Refetch and UX cost |
 | --- | --- | --- |
@@ -116,7 +118,7 @@ No numeric budget or policy is selected. The measured path is launcher to Resour
 | Retain different root families differently | The native large topology estimate is larger than resources or metrics. Closing the map removes rendered flow elements while its raw query remains reachable. | Topology reopening took 95.20 ms normal and 19,271.58 ms large. Keeping resource rows warm while collecting topology changes map-return behavior and requires a separate accepted contract. |
 | Reduce derived work without changing retention | The deterministic large projection has 10,000 search entries and an 8,075,359-byte JSON representation, while the native page holds 50 row actions and can rebuild much larger topology source data. | Existing projection, repeated sort, and topology construction durations identify work to investigate. The probe has no whole-WebView heap attribution, so it cannot promise an RSS saving or justify a payload-contract change. |
 
-The first candidate preserves current behavior. The others are options for an owner decision, not authorized implementation changes. Any recommendation to shorten retention should cite the specific root family and observed refetch cost. Any recommendation to change topology or table projections should first isolate the measured derived path rather than assign the entire process increase to cached JSON.
+The table describes the former policy and alternatives; it does not measure the new five-minute interval. Shorter or different per-root retention and projection changes are not part of the selected implementation. Any recommendation to shorten retention should cite the specific root family and observed refetch cost. Any recommendation to change topology or table projections should first isolate the measured derived path rather than assign the entire process increase to cached JSON.
 
 ## Verification
 
