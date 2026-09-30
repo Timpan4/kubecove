@@ -15,6 +15,14 @@ Select a Resource browser row to open details for one exact Kubernetes object. A
 
 **No active incident signals** means none were found for this object from available evidence. It is not a complete forensic conclusion. Missing events, conditions, or fields can mean the API did not return them or the current identity cannot read them.
 
+## Read the timeline
+
+Timeline entries use compact, expandable cards with source labels on the card edge. Errors are red, warnings and restarts are yellow, and informational signals are blue. Select an entry to read its original message, condition and state or reported title, and timestamp. A separator divides messages from facts.
+
+Entries run oldest first without same-time groups. The date heading is hidden when all dated entries are from today. Evidence without a timestamp appears separately under **Time not reported**.
+
+Use **Expand all** or **Collapse all** for the current timeline. **Settings > General > Expand timeline by default** controls the initial state across resources and workspaces. It is off initially. Individual entries can still be opened or closed, and changing resources uses the saved default again.
+
 ## Choose the right tab
 
 | Tab | Use it for |

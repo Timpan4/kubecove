@@ -1,4 +1,6 @@
 import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
+import { stringify } from "yaml";
+import { evictedWorkerName, evictedWorkerStatus } from "./tauri-dev-mock-incidents";
 import {
 	argoApps,
 	argoManagedResourceRefs,
@@ -336,7 +338,9 @@ function detailsFor(args: MockArgs): ResourceDetailsFull {
 		summary,
 		yaml: yamlFor(args),
 		metadata: { labels: { "app.kubernetes.io/name": summary.name }, annotations: { "kubecove.dev/mock": "true" } },
-		status: { phase: summary.status, ready: summary.ready, restarts: summary.restarts },
+		status: summary.name === evictedWorkerName
+			? evictedWorkerStatus
+			: { phase: summary.status, ready: summary.ready, restarts: summary.restarts },
 	};
 }
 
@@ -351,6 +355,7 @@ function yamlFor(args: MockArgs): string {
 	const row = resourceFromArgs(args);
 	const app = row.kind === "Application" ? argoApps.find((candidate) => candidate.name === row.name) : undefined;
 	if (app) return argoApplicationYaml(app);
+	if (row.name === evictedWorkerName) return `${genericYaml(row.kind, row.name, row.namespace, row.apiVersion)}${stringify({ status: evictedWorkerStatus })}`;
 	return genericYaml(row.kind, row.name, row.namespace, row.apiVersion);
 }
 
@@ -374,6 +379,7 @@ function applyPreview(args: MockArgs): YamlApplyPreview {
 
 function eventsFor(args: MockArgs): ResourceEventSummary[] {
 	const row = resourceFromArgs(args);
+	if (row.name === evictedWorkerName) return [];
 	return [
 		{ eventType: "Warning", reason: "Unhealthy", message: `${row.kind}/${row.name} failed a readiness probe in mock data.`, count: row.health === "healthy" ? 0 : 3, lastSeen: "2m ago", lastSeenAt: now, source: "kubelet", namespace: row.namespace },
 		{ eventType: "Normal", reason: "Pulled", message: "Container image already present on machine.", count: 5, lastSeen: "8m ago", lastSeenAt: now, source: "kubelet", namespace: row.namespace },

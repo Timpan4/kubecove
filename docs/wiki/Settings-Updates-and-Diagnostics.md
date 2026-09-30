@@ -10,6 +10,7 @@ Open **Settings** from app navigation. Most settings are global preferences. Whe
 | Timestamp timezone | Local | Changes exact timestamps and tooltips to local time or UTC. |
 | CPU and memory footer | Off | Shows app-process usage only. |
 | Ownership map by default | On | Opens ownership map in resource views. |
+| Expand timeline by default | Off | Opens resource timeline messages and facts. Individual entries can still be collapsed. |
 | Redact secrets | On | Keeps Secret values hidden by default. Connected Argo Secret values remain masked. |
 | Full map during selection | Off | Keeps unrelated ownership branches visible; large namespaces can render more slowly. |
 | Unavailable GitOps providers | Off | Shows disabled Argo CD and Flux groups when their CRDs are absent. |
