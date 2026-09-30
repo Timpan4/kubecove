@@ -17,6 +17,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 - [Engineering Handbook](handbook/README.md) — code organization, design system, hygiene, and pull request checklist.
 - [Frontend memory characterization](frontend-memory-retention.md) — normal and large payload, retention, native process, and refetch measurements.
 - [Backend cache diagnostics](backend-cache-diagnostics.md) — redacted cache states, counters, and retained payload measurements.
+- [Release footprint variants](release-footprint-variants.md) — isolated stable Cargo comparisons and package, startup, font, benchmark, and crash evidence.
 - [Product and architecture](product-and-architecture.md) — current product principles, desktop architecture, and trust boundaries.
 - [Release Guide](release.md) — release preparation and publishing.
 

@@ -21,6 +21,7 @@
     "perf:startup": "bun e2e/lifecycle.ts desktop-profile",
     "perf:frontend": "bun scripts/perf-frontend.ts",
     "perf:resource-scope": "bun scripts/perf-resource-scope.ts",
+    "perf:release": "bun scripts/perf-release-footprint.ts",
     "rust:bench": "cargo bench --manifest-path src-tauri/Cargo.toml --features bench-support --bench backend_hot_paths",
     "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "rust:check": "cargo check --manifest-path src-tauri/Cargo.toml",
