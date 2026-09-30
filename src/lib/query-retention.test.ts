@@ -35,8 +35,11 @@ afterEach(() => {
 });
 
 describe("large query retention", () => {
-	test("expires inactive large queries at 90 seconds without changing stale or default retention", () => {
+	// Failure modes: the old 90-second window still collects data, the owner-approved
+	// five-minute boundary is missed, or unrelated freshness/defaults change.
+	test("expires inactive large queries at 300 seconds without changing stale or default retention", () => {
 		jest.useFakeTimers();
+		expect(LARGE_QUERY_GC_TIME_MS).toBe(300_000);
 		const queryClient = new QueryClient({
 			defaultOptions: { queries: { gcTime: 300_000, staleTime: 30_000 } },
 		});
@@ -56,7 +59,11 @@ describe("large query retention", () => {
 			30_000,
 		);
 		expect(queryClient.defaultQueryOptions({ queryKey: unrelatedKey }).gcTime).toBe(300_000);
-		jest.advanceTimersByTime(LARGE_QUERY_GC_TIME_MS - 1);
+		jest.advanceTimersByTime(90_000);
+		expect(inactiveKeys.every((key) => queryClient.getQueryData(key) === "inactive")).toBe(
+			true,
+		);
+		jest.advanceTimersByTime(299_999 - 90_000);
 		expect(inactiveKeys.every((key) => queryClient.getQueryData(key) === "inactive")).toBe(
 			true,
 		);
@@ -66,7 +73,7 @@ describe("large query retention", () => {
 		expect(inactiveKeys.every((key) => queryClient.getQueryData(key) === undefined)).toBe(
 			true,
 		);
-		expect(queryClient.getQueryData(unrelatedKey)).toBe("default");
+		expect(queryClient.getQueryData(unrelatedKey)).toBe(undefined);
 
 		queryClient.clear();
 	});
