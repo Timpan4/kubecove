@@ -80,19 +80,20 @@ describe("release version helpers", () => {
 	});
 
 	test("skips expensive PR checks only for trusted release branches", () => {
-		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8").replaceAll("\r\n", "\n");
 		const codspeedWorkflow = readFileSync(
 			".github/workflows/codspeed.yml",
 			"utf8",
-		);
+		).replaceAll("\r\n", "\n");
 		const ciJobs = [
 			ciWorkflow.match(/\n {2}frontend:\n[\s\S]*?(?=\n {2}rust:\n)/)?.[0],
 			ciWorkflow.match(/\n {2}rust:\n[\s\S]*?(?=\n {2}nix:\n)/)?.[0],
 		];
 		const ciCheckJob = ciWorkflow.match(/\n {2}check:\n[\s\S]*$/)?.[0];
-		const benchmarkJob = codspeedWorkflow.match(
-			/\n {2}benchmarks:\n[\s\S]*?(?=\n {2}check:\n)/,
-		)?.[0];
+		const benchmarkJobs = [
+			codspeedWorkflow.match(/\n {2}frontend:\n[\s\S]*?(?=\n {2}rust:\n)/)?.[0],
+			codspeedWorkflow.match(/\n {2}rust:\n[\s\S]*?(?=\n {2}check:\n)/)?.[0],
+		];
 		const codspeedCheckJob = codspeedWorkflow.match(
 			/\n {2}check:\n[\s\S]*$/,
 		)?.[0];
@@ -100,7 +101,8 @@ describe("release version helpers", () => {
 			"types: [opened, synchronize, reopened, labeled, unlabeled]";
 
 		expect(ciJobs).not.toContain(undefined);
-		for (const job of [...ciJobs, benchmarkJob]) {
+		expect(benchmarkJobs).not.toContain(undefined);
+		for (const job of [...ciJobs, ...benchmarkJobs]) {
 			expect(job).toContain(
 				"github.event.pull_request.head.repo.full_name != github.repository",
 			);
@@ -109,7 +111,9 @@ describe("release version helpers", () => {
 				"!contains(github.event.pull_request.labels.*.name, 'release')",
 			);
 		}
-		expect(benchmarkJob).not.toContain("timeout-minutes:");
+		for (const job of benchmarkJobs) {
+			expect(job).not.toContain("timeout-minutes:");
+		}
 
 		for (const workflow of [ciWorkflow, codspeedWorkflow]) {
 			expect(workflow).toContain(releaseTrigger);
@@ -134,7 +138,10 @@ describe("release version helpers", () => {
 		);
 		expect(codspeedCheckJob).toContain("name: CodSpeed Performance Analysis");
 		expect(codspeedCheckJob).toContain(
-			'test "$' + '{BENCHMARK_RESULT}" = "skipped"',
+			'test "$' + '{FRONTEND_RESULT}" = "skipped"',
+		);
+		expect(codspeedCheckJob).toContain(
+			'test "$' + '{RUST_RESULT}" = "skipped"',
 		);
 	});
 
