@@ -3,7 +3,7 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
-## 0.11.3 - 2026-09-30
+## 0.11.3 - 2026-10-01
 ### Added
 
 - Show redacted backend cache statistics in Settings diagnostics (#490).
