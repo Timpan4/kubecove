@@ -16,7 +16,7 @@ name = "kubecove_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "=2.6.3", features = [] }
+tauri-build = { version = "=2.7.0", features = [] }
 
 [dependencies]
 tauri = { version = "=2.11.6", features = [] }
