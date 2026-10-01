@@ -3,6 +3,29 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.11.3 - 2026-10-01
+### Added
+
+- Show redacted backend cache statistics in Settings diagnostics (#490).
+
+### Improved
+
+- Make resource incident timelines compact and expandable (#498).
+- Retain inactive resource, topology, and metrics data for five minutes (#497).
+- Load inactive screens and resource inspection on demand (#487).
+
+### Fixed
+
+- Exclude Linux thread tasks from application usage totals to avoid counting shared memory repeatedly (#488).
+- Align the Tauri JavaScript API with the Rust API (#489).
+- Update frontend dependencies and patch inherited security vulnerabilities (#485, #486, #497, #499).
+
+### Release
+
+- Run CodSpeed benchmark suites in parallel while preserving benchmark coverage (#499).
+- Record frontend memory retention and stable release footprint measurements (#491, #492).
+- Complete the Obscura browser smoke check used by the fast E2E suite (#485).
+
 ## 0.11.2 - 2026-09-28
 ### Improved
 
