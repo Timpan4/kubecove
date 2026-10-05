@@ -151,8 +151,12 @@
 		return () => finiteReadCleanup.schedule(cancelScope, queryKey);
 	});
 
+	// A confirmation belongs to one cluster scope; any scope or selection change discards it.
 	$effect(() => {
 		void selectedCapabilityId;
+		void clusterContext;
+		void kubeconfigEnvVar;
+		void workspaceId;
 		pendingConfirmation = null;
 	});
 
