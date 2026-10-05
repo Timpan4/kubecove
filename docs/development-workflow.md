@@ -43,7 +43,7 @@ bun run lint:anti-slop
 
 `bun run tauri dev` starts Vite on Bun at `http://localhost:1430`. Opening it in a normal browser runs Svelte with browser-only mock Tauri responses for frontend inspection and automation.
 
-Tauri webview uses real IPC and Rust Kubernetes commands. On Windows, development exposes Chrome DevTools Protocol at `http://127.0.0.1:9222`; set `KUBECOVE_DEVTOOLS_PORT` before launch to change it. Packaged apps do not expose this endpoint.
+Tauri webview uses real IPC and Rust Kubernetes commands. On Windows, development does not expose Chrome DevTools Protocol by default. Set `KUBECOVE_DEVTOOLS=1` before `tauri dev` to expose it at `http://127.0.0.1:9222`, and set `KUBECOVE_DEVTOOLS_PORT` to change the port. Packaged apps do not expose this endpoint.
 
 Browser mock mode never receives kubeconfig contents, calls a local Rust bridge, or accesses a real cluster. Treat all browser data as fake.
 
