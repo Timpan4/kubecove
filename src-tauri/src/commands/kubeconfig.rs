@@ -213,10 +213,21 @@ impl KubeconfigSource {
     // discovery when that selection is empty, followed by app-added paths.
     pub(super) fn effective_kubeconfig_paths(&self) -> Result<Vec<PathBuf>, AppError> {
         if let Some(paths) = self.configured_paths()? {
-            return Ok(paths
+            let mut paths = paths
                 .into_iter()
                 .map(|configured| configured.path)
-                .collect());
+                .collect::<Vec<_>>();
+            // read_configured_kubeconfig falls back to the default kubeconfig
+            // when no configured path loads, so changes to it must invalidate
+            // cached clients too.
+            if self.read_env {
+                if let Some(default) = default_kubeconfig_path() {
+                    if !paths.contains(&default) {
+                        paths.push(default);
+                    }
+                }
+            }
+            return Ok(paths);
         }
         Ok(standard_kubeconfig_paths()
             .into_iter()
