@@ -390,6 +390,7 @@
 	function clearYamlDraftFeedback() {
 		yamlApplyRevision += 1;
 		yamlPreparing = false;
+		yamlApplying = false;
 		yamlLintDiagnostics = [];
 		yamlLintNotes = [];
 		yamlLintError = "";
