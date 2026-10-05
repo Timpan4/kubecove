@@ -251,6 +251,8 @@
 			void queryClient.invalidateQueries({ queryKey: ["argo-connection-status"] });
 		} catch (caught) {
 			error = caught instanceof Error ? caught.message : String(caught);
+			// A rejected tunnel target is usually a replaced Pod; refetch so the next confirmation shows the current one.
+			if (confirmedTarget) void queryClient.invalidateQueries({ queryKey: discoveryQueryKey });
 		} finally {
 			// Credentials never persist in component state after submit.
 			token = "";
