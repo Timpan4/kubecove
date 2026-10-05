@@ -214,7 +214,7 @@
 
 	function sessionResolution(session: PortForwardSessionSummary): string {
 		if (session.targetKind === "Service") {
-			return `Resolved to Pod/${session.resolvedPodName}:${session.resolvedPodPort}`;
+			return `Latest Pod used: Pod/${session.resolvedPodName}:${session.resolvedPodPort} (each connection may use a different ready Pod)`;
 		}
 		return `Pod/${session.resolvedPodName}:${session.resolvedPodPort}`;
 	}
