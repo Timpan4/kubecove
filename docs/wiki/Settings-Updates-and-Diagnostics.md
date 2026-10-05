@@ -31,7 +31,7 @@ Open **Settings** from app navigation. Most settings are global preferences. Whe
 | YAML encoding | YAML | Select YAML or KYAML in YAML panels. |
 | YAML diff appearance | Clean | Select clean or Git-style rendering for selected-resource dry-run diffs. |
 | YAML error lens | On | Shows editor diagnostics below YAML lines. |
-| Allow YAML force-conflicts | On | Allows guarded YAML operations to take server-side field ownership. Review dry-run diff and confirmation target before force-applying. |
+| Allow YAML force-conflicts | Off | Allows guarded YAML operations to take server-side field ownership. Review dry-run diff and confirmation target before force-applying. |
 
 ## Kubeconfig
 
