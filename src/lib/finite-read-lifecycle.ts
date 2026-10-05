@@ -69,7 +69,10 @@ export function finiteReadMeta(
 
 export function configureFiniteReadQueryDefaults(queryClient: QueryClient): void {
 	for (const root of FINITE_READ_QUERY_ROOTS) {
-		queryClient.setQueryDefaults([root], { meta: finiteReadMeta() });
+		queryClient.setQueryDefaults([root], {
+			...queryClient.getQueryDefaults([root]),
+			meta: finiteReadMeta(),
+		});
 	}
 }
 
