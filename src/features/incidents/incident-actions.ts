@@ -5,6 +5,7 @@ import type {
 } from "@/lib/types";
 import { findResourceIndex, looseResourceKey } from "@/lib/resource-identity";
 import { incidentState } from "./model";
+import { isBuiltinOperationTarget } from "../resource-detail/operations-model";
 
 export type IncidentEnrichmentState = "idle" | "loading" | "ready" | "error";
 
@@ -82,7 +83,7 @@ export function resolveIncidentOwner(
 			const chain = [...current.chain, ownerNode.summary];
 			directOwner ??= ownerNode.summary;
 			if (firstChain.length === 0) firstChain = chain;
-			if (ACTIONABLE_WORKLOAD_KINDS.has(ownerNode.summary.kind)) {
+			if (ACTIONABLE_WORKLOAD_KINDS.has(ownerNode.summary.kind) && isBuiltinOperationTarget(ownerNode.summary)) {
 				return {
 					directOwner,
 					workloadOwner: ownerNode.summary,
@@ -110,6 +111,7 @@ function workloadActions(
 ): IncidentAvailableAction[] {
 	const subject = prefix === "owner" ? `owning ${resource.kind}` : `this ${resource.kind}`;
 	const actions: IncidentAvailableAction[] = [];
+	if (!isBuiltinOperationTarget(resource)) return actions;
 	if (resource.kind === "Deployment" || resource.kind === "StatefulSet") {
 		actions.push(
 			{

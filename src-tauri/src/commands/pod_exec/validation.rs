@@ -135,6 +135,6 @@ pub(super) async fn client_for_context(
     cluster_context: &str,
     kubeconfig_env_var: Option<String>,
 ) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let source = KubeconfigSource::new(kubeconfig_env_var)?.fail_closed();
     source.live_client_for_context(cluster_context).await
 }

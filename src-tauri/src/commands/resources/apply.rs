@@ -14,7 +14,7 @@ use validation::validate_yaml_apply;
 #[tauri::command]
 pub async fn prepare_yaml_apply(request: YamlApplyRequest) -> Result<YamlApplyPreview, AppError> {
     let validated = validate_yaml_apply(request)?;
-    let source = KubeconfigSource::new(validated.request.kubeconfig_env_var.clone())?;
+    let source = KubeconfigSource::new(validated.request.kubeconfig_env_var.clone())?.fail_closed();
     let client = source
         .client_for_context(&validated.request.cluster_context)
         .await?;
@@ -24,7 +24,7 @@ pub async fn prepare_yaml_apply(request: YamlApplyRequest) -> Result<YamlApplyPr
 #[tauri::command]
 pub async fn apply_yaml(request: YamlApplyRequest) -> Result<YamlApplyResult, AppError> {
     let validated = validate_yaml_apply(request)?;
-    let source = KubeconfigSource::new(validated.request.kubeconfig_env_var.clone())?;
+    let source = KubeconfigSource::new(validated.request.kubeconfig_env_var.clone())?.fail_closed();
     let client = source
         .operation_client_for_context(&validated.request.cluster_context)
         .await?;

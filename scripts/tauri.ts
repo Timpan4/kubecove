@@ -21,6 +21,8 @@ export function tauriEnvironment(
 		);
 	}
 
+	if (environment.KUBECOVE_DEVTOOLS !== "1") return environment;
+
 	const currentArguments = environment[WEBVIEW2_ARGUMENTS]?.trim() ?? "";
 	if (/(?:^|\s)--remote-debugging-port(?:=|\s)/.test(currentArguments)) {
 		return environment;

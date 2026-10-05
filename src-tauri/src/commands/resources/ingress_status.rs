@@ -21,9 +21,12 @@ fn has_load_balancer_address(status: &IngressStatus) -> bool {
         .as_ref()
         .and_then(|load_balancer| load_balancer.ingress.as_ref())
         .is_some_and(|ingress| {
-            ingress
-                .iter()
-                .any(|entry| entry.ip.is_some() || entry.hostname.is_some())
+            ingress.iter().any(|entry| {
+                [&entry.ip, &entry.hostname]
+                    .into_iter()
+                    .flatten()
+                    .any(|address| !address.trim().is_empty())
+            })
         })
 }
 
@@ -98,6 +101,25 @@ mod tests {
         let status = IngressStatus {
             load_balancer: Some(IngressLoadBalancerStatus {
                 ingress: Some(vec![IngressLoadBalancerIngress::default()]),
+            }),
+        };
+        let mut summary = summary();
+
+        apply_ingress_status(&mut summary, Some(&status));
+
+        assert_eq!(summary.status.as_deref(), Some("Pending"));
+        assert_eq!(summary.ready.as_deref(), Some("false"));
+    }
+
+    #[test]
+    fn ingress_with_blank_load_balancer_address_is_pending() {
+        let status = IngressStatus {
+            load_balancer: Some(IngressLoadBalancerStatus {
+                ingress: Some(vec![IngressLoadBalancerIngress {
+                    ip: Some(String::new()),
+                    hostname: Some("  ".to_string()),
+                    ..Default::default()
+                }]),
             }),
         };
         let mut summary = summary();

@@ -7,6 +7,7 @@ import type {
 	ArgoApplicationInspector,
 	ArgoApplicationRef,
 	ArgoApplicationSummary,
+	ArgoConfirmedTarget,
 	ArgoConnectionStatus,
 	ArgoOperationConfirmation,
 	ArgoOperationPreflight,
@@ -51,7 +52,7 @@ type CommandMap = {
 	stop_stream: { args: { streamId: string }; result: boolean };
 	list_argocd_applications: { args: { clusterContext: string }; result: ArgoApplicationSummary[] };
 	discover_argo_servers: { args: { clusterContext: string; kubeconfigEnvVar?: string }; result: ArgoServerCapability[] };
-	connect_argo_server: { args: { id: string; serverUrl: string; endpoint: ArgoServerEndpoint; username?: string; password?: string; insecureTls: boolean; rememberCredential: boolean; clusterContext: string; kubeconfigEnvVar?: string; workspaceId: string }; result: ArgoConnectionStatus };
+	connect_argo_server: { args: { id: string; serverUrl: string; endpoint: ArgoServerEndpoint; username?: string; password?: string; insecureTls: boolean; rememberCredential: boolean; clusterContext: string; kubeconfigEnvVar?: string; workspaceId: string; confirmedTarget?: ArgoConfirmedTarget }; result: ArgoConnectionStatus };
 	get_argo_connection_status: { args: { id: string }; result: ArgoConnectionStatus };
 	disconnect_argo_server: { args: { id: string }; result: undefined };
 	get_argo_application_inspector: { args: { clusterContext: string; kubeconfigEnvVar?: string; connectionId: string; transport: "connected"; application: ArgoApplicationRef; redactSecrets: boolean }; result: ArgoApplicationInspector };
@@ -271,6 +272,7 @@ describe("native Kind command boundary", () => {
 		expect(server.url).toBeNull();
 		expect(server.unavailableReason).toBeNull();
 		expect(server.endpoint.servicePort).toBeGreaterThan(0);
+		if (!server.targetPod) throw new Error("argocd-server Service tunnel has no discovered target Pod");
 
 		const password = Buffer.from(await runKubectl(["get", "secret", "argocd-initial-admin-secret", "-n", "argocd", "-o", "jsonpath={.data.password}"]), "base64").toString("utf8");
 		if (!password) throw new Error("Argo CD initial admin password is empty");
@@ -288,6 +290,7 @@ describe("native Kind command boundary", () => {
 			clusterContext: cluster,
 			kubeconfigEnvVar: e2eKubeconfigSource,
 			workspaceId,
+			confirmedTarget: { namespace: server.endpoint.namespace, serviceName: server.endpoint.serviceName, podName: server.targetPod },
 		});
 		argoConnections.push(connectionId);
 		expect(connected).toMatchObject({ connected: true, profile: { rememberCredential: false, endpoint: { kind: "serviceTunnel", serviceName: "argocd-server", servicePort: server.endpoint.servicePort, scheme: "http" } } });

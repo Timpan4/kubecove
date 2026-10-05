@@ -26,7 +26,7 @@
 	let result = $state("");
 	let error = $state<unknown>(null);
 	let busy = $state(false);
-	const target = $derived({ clusterContext: resource.cluster, namespace: resource.namespace, kind: resource.kind, name: resource.name });
+	const target = $derived({ clusterContext: resource.cluster, namespace: resource.namespace, kind: resource.kind, name: resource.name, apiVersion: resource.apiVersion });
 	const operations = $derived(guardedOperations(resource));
 	const errorBlocker = $derived(error ? guardedOperationBlocker(error) : null);
 

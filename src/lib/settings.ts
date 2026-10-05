@@ -303,7 +303,7 @@ export const useSettingsState = createStore<SettingsState>()(
 			debugModeEnabled: false,
 			autoStartSavedPortForwards: false,
 			keepLiveSessionsOnWorkspaceSwitch: false,
-			allowYamlForceConflicts: true,
+			allowYamlForceConflicts: false,
 			timestampTimezone: "local",
 			yamlViewModeDefault: "kubectl",
 			yamlEncodingDefault: "yaml",

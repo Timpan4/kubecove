@@ -1,4 +1,5 @@
 import { QueryClient, QueryObserver } from "@tanstack/svelte-query";
+import { configureFiniteReadQueryDefaults, isFiniteReadQuery } from "./finite-read-lifecycle";
 import {
 	configureLargeQueryRetention,
 	LARGE_QUERY_GC_TIME_MS,
@@ -99,6 +100,22 @@ describe("large query retention", () => {
 		jest.advanceTimersByTime(1);
 		expect(queryClient.getQueryData(key)).toBe(undefined);
 
+		queryClient.clear();
+	});
+});
+
+describe("large query retention with finite-read defaults", () => {
+	// Failure mode: setting gcTime replaces the finiteRead meta set earlier for the same root.
+	test("keeps finite-read metadata on large roots", () => {
+		const queryClient = new QueryClient();
+		configureFiniteReadQueryDefaults(queryClient);
+		configureLargeQueryRetention(queryClient);
+
+		for (const root of LARGE_QUERY_ROOTS) {
+			queryClient.setQueryData([root, "k"], "v");
+			const query = queryClient.getQueryCache().find({ queryKey: [root, "k"] });
+			expect(query ? isFiniteReadQuery(query) : false).toBe(true);
+		}
 		queryClient.clear();
 	});
 });

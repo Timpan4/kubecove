@@ -7,6 +7,8 @@ pub struct ClusterOperationTarget {
     pub kind: String,
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub namespace: Option<String>,
 }
 

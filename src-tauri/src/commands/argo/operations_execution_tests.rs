@@ -148,10 +148,8 @@ async fn confirmed_kubernetes_operation_survives_workspace_client_rotation() {
     env::remove_var(&env_var);
     let _ = fs::remove_file(&kubeconfig);
 
-    assert!(
-        received
-            .starts_with(b"PATCH /apis/argoproj.io/v1alpha1/namespaces/argocd/applications/demo")
-    );
+    assert!(received
+        .starts_with(b"PATCH /apis/argoproj.io/v1alpha1/namespaces/argocd/applications/demo"));
     assert!(
         result
             .expect("workspace rotation must not cancel a confirmed write")

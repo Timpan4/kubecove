@@ -179,7 +179,10 @@ async fn list_warning_events(
             } else {
                 Api::all(client)
             };
-            (namespace, api.list(&list_params()).await)
+            (
+                namespace,
+                api.list(&list_params().fields("type=Warning")).await,
+            )
         }
     });
     for (namespace, result) in join_all(fetches).await {

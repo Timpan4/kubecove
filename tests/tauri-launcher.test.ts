@@ -5,18 +5,23 @@ const webviewArguments = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
 const cargoTargetDirectory = "CARGO_TARGET_DIR";
 
 describe("Tauri development launcher", () => {
-	test("enables a localhost WebView2 debug endpoint for Windows development", () => {
-		const environment = tauriEnvironment(["dev"], {}, "win32");
+	test("enables a localhost WebView2 debug endpoint only when KUBECOVE_DEVTOOLS=1", () => {
+		const environment = tauriEnvironment(["dev"], { KUBECOVE_DEVTOOLS: "1" }, "win32");
 
 		expect(environment[webviewArguments]).toBe(
 			"--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --remote-allow-origins=http://127.0.0.1:9222,http://localhost:9222",
 		);
 	});
 
+	test("does not enable WebView2 debugging by default", () => {
+		expect(tauriEnvironment(["dev"], {}, "win32")[webviewArguments]).toBeUndefined();
+	});
+
 	test("keeps existing WebView2 arguments and supports a custom port", () => {
 		const environment = tauriEnvironment(
 			["dev"],
 			{
+				KUBECOVE_DEVTOOLS: "1",
 				KUBECOVE_DEVTOOLS_PORT: "9333",
 				[webviewArguments]: "--disable-features=ExampleFeature",
 			},
@@ -35,7 +40,7 @@ describe("Tauri development launcher", () => {
 		const existing = "--remote-debugging-port=9444 --disable-gpu";
 		const environment = tauriEnvironment(
 			["dev"],
-			{ [webviewArguments]: existing },
+			{ KUBECOVE_DEVTOOLS: "1", [webviewArguments]: existing },
 			"win32",
 		);
 

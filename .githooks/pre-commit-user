@@ -8,10 +8,17 @@ if ! git diff --cached --check; then
   exit 1
 fi
 
-staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+# -z disables path quoting so `git show` gets the exact index path.
+newline_count=$(git diff --cached --name-only -z --diff-filter=ACMR | tr -cd '\n' | wc -c)
+if [ "$newline_count" -ne 0 ]; then
+  echo "pre-commit: a staged path contains a newline; rename it so the credential scan can read it."
+  exit 1
+fi
+staged_files=$(git diff --cached --name-only -z --diff-filter=ACMR | tr '\0' '\n')
 
 if [ -n "$staged_files" ]; then
-  for file in $staged_files; do
+  # Read newline-separated paths so filenames with spaces are scanned.
+  while IFS= read -r file; do
     case "$file" in
       .githooks/pre-commit|.githooks/pre-commit-user)
         continue
@@ -36,7 +43,9 @@ if [ -n "$staged_files" ]; then
       echo "Move credentials out of the repo or add a narrow exception after review."
       exit 1
     fi
-  done
+  done <<EOF
+$staged_files
+EOF
 fi
 
 # File-size enforcement.

@@ -173,7 +173,7 @@ mod tests {
             12,
             vec![diagnostic_field("rows", 5)],
         );
-        assert!(stored_backend_diagnostics().is_empty());
+        assert_eq!(stored_backend_diagnostics().len(), 0);
 
         set_backend_diagnostics_enabled(true);
         for index in 0..505 {
@@ -194,7 +194,7 @@ mod tests {
         );
 
         clear_stored_diagnostics();
-        assert!(stored_backend_diagnostics().is_empty());
+        assert_eq!(stored_backend_diagnostics().len(), 0);
 
         record_backend_result(
             "tracked_success",

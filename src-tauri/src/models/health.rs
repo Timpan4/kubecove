@@ -81,6 +81,17 @@ pub struct HealthAssessmentInput {
     pub evidence: Vec<HealthAssessmentEvidence>,
 }
 
+/// Keeps only the fields health evidence needs from a status condition.
+pub fn condition_evidence(condition: &Value) -> Value {
+    let mut kept = serde_json::Map::new();
+    for key in ["type", "status", "reason", "message"] {
+        if let Some(value) = condition.get(key) {
+            kept.insert(key.to_string(), value.clone());
+        }
+    }
+    Value::Object(kept)
+}
+
 pub fn evaluate_health(mut input: HealthAssessmentInput) -> HealthAssessment {
     let completeness = if input.provider_available {
         HealthAssessmentCompleteness::Complete
@@ -253,7 +264,7 @@ pub fn argo_application_set_health_assessment(
             let condition_status = condition.get("status").and_then(Value::as_str);
             evidence.push(HealthAssessmentEvidence {
                 source: HealthAssessmentSource::ArgoHealth,
-                raw: condition.clone(),
+                raw: condition_evidence(condition),
                 state: if condition_status == Some("True") {
                     match condition_type {
                         Some("ErrorOccurred") => Some(HealthAssessmentState::Degraded),

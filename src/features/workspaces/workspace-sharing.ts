@@ -1,6 +1,7 @@
 import {
 	createSavedPortForward,
 	createWorkspaceRecord,
+	reconcileSavedPortForwardsForScope,
 	type SavedWorkspace,
 	type SavePortForwardInput,
 	workspaceScopeContexts,
@@ -176,8 +177,13 @@ function sharedToSavedWorkspace(
 		rbacReviews: (replace?.rbacReviews ?? []).filter((review) =>
 			clusterContexts.includes(review.clusterContext),
 		),
-		portForwards: workspace.portForwards.map((forward) =>
-			createSavedPortForward(forward satisfies SavePortForwardInput, now),
+		portForwards: reconcileSavedPortForwardsForScope(
+			workspace.portForwards
+				.filter(
+					({ namespace }) => scope.namespaces.length === 0 || scope.namespaces.includes(namespace),
+				)
+				.map((forward) => createSavedPortForward(forward satisfies SavePortForwardInput, now)),
+			scope,
 		),
 	};
 }

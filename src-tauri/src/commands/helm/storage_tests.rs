@@ -31,7 +31,7 @@ fn values_summary_treats_explicit_null_as_empty() {
 
     assert!(!summary.has_values);
     assert_eq!(summary.value_count, 0);
-    assert!(summary.top_level_keys.is_empty());
+    assert_eq!(summary.top_level_keys.len(), 0);
 }
 
 #[test]

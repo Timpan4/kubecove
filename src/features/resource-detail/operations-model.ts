@@ -32,9 +32,28 @@ export function guardedOperationBlocker<Cause>(
 	return "operation support";
 }
 
+const BUILTIN_API_VERSION = new Map([
+	["Deployment", "apps/v1"],
+	["StatefulSet", "apps/v1"],
+	["DaemonSet", "apps/v1"],
+	["Pod", "v1"],
+	["ConfigMap", "v1"],
+]);
+
+/** True only for the built-in resource the backend operates on, not a CRD sharing its kind. */
+export function isBuiltinOperationTarget(resource: ResourceSummary): boolean {
+	return (
+		!resource.dynamic &&
+		(resource.apiVersion === undefined || resource.apiVersion === BUILTIN_API_VERSION.get(resource.kind))
+	);
+}
+
 export function guardedOperations(resource: ResourceSummary): GuardedOperations {
 	const scope = (action: string) => `${action} this exact selected ${resource.kind} resource only.`;
 	const available: GuardedOperation[] = [];
+	if (!isBuiltinOperationTarget(resource)) {
+		return { available, blocker: `Blocker: ${resource.kind} resource is not a built-in Kubernetes workload or core resource.` };
+	}
 	if (resource.kind === "Deployment" || resource.kind === "StatefulSet") {
 		available.push(
 			{

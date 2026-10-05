@@ -502,12 +502,14 @@ export async function listResourceEvents(
 	namespace?: string,
 	kubeconfigEnvVar?: string,
 	cancellable?: CancellableRequest,
+	uid?: string,
 ): Promise<ResourceEventSummary[]> {
 	return client.invoke<ResourceEventSummary[]>("list_resource_events", {
 		clusterContext,
 		kind,
 		name,
 		namespace,
+		uid,
 		...kubeconfigArg(kubeconfigEnvVar),
 		...cancellableArg(cancellable),
 	});

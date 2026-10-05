@@ -148,11 +148,11 @@ describe("YAML encoding", () => {
 		]);
 	});
 
-	test("settings allow YAML force-conflicts by default and can disable them", () => {
-		expect(useSettingsState.getState().allowYamlForceConflicts).toBe(true);
-
-		useSettingsState.getState().setAllowYamlForceConflicts(false);
-
+	test("settings disallow YAML force-conflicts by default and can enable them", () => {
 		expect(useSettingsState.getState().allowYamlForceConflicts).toBe(false);
+
+		useSettingsState.getState().setAllowYamlForceConflicts(true);
+
+		expect(useSettingsState.getState().allowYamlForceConflicts).toBe(true);
 	});
 });

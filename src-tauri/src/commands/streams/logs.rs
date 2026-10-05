@@ -32,7 +32,7 @@ pub(super) async fn run_pod_log_stream(
     let params = LogParams {
         container: request.container.clone(),
         follow: true,
-        tail_lines: Some(request.tail_lines.unwrap_or(200)),
+        tail_lines: Some(super::clamp_tail_lines(request.tail_lines)),
         since_seconds: request.since_seconds,
         timestamps: true,
         ..LogParams::default()

@@ -234,7 +234,7 @@
 		const currentDetailsCancelScope = detailsCancelScope;
 		const currentDetailsQueryKey = detailsQueryKey;
 		const currentEventsCancelScope = eventsCancelScope;
-		const currentEventsQueryKey = eventsQueryKey;
+		const currentEventsQueryKey = scopedEventsQueryKey;
 		finiteReadCleanup.cancelPending(currentDetailsCancelScope);
 		finiteReadCleanup.cancelPending(currentEventsCancelScope);
 		return () => {
@@ -279,8 +279,18 @@
 		retry: false,
 		staleTime: 30_000,
 	}));
+	const eventsUid = $derived.by(() => {
+		const uid = detailsQuery.data?.metadata?.uid;
+		return String(uid) === uid ? uid : undefined;
+	});
+	// Keyed by UID so results fetched without one (or for a replaced resource) are never reused.
+	const scopedEventsQueryKey = $derived([...eventsQueryKey, eventsUid ?? ""] as const);
+	// Events are matched by UID, so wait for the details read that supplies it.
+	const eventsReady = $derived(
+		!detailsEnabled || detailsQuery.isSuccess || detailsQuery.isError,
+	);
 	const eventsQuery = createQuery<ResourceEventSummary[]>(() => ({
-		queryKey: eventsQueryKey,
+		queryKey: scopedEventsQueryKey,
 		queryFn: async () => {
 			try {
 				return await runDetailFetch("events", "resource-events", () =>
@@ -292,6 +302,7 @@
 						resource.namespace ?? undefined,
 						kubeconfigSourceKey,
 						createFiniteReadRequest(eventsCancelScope, "events"),
+						eventsUid,
 					),
 				);
 			} catch (error) {
@@ -301,14 +312,14 @@
 				throw error;
 			}
 		},
-		enabled: eventsEnabled,
+		enabled: eventsEnabled && eventsReady,
 		retry: false,
 		staleTime: 30_000,
 	}));
 
 	const detailResource = $derived(detailsQuery.data?.summary ?? resource);
 	const conditionRows = $derived(getConditionRows(detailsQuery.data?.status));
-	const containerRows = $derived(getContainerStatusRows(detailsQuery.data?.status));
+	const containerRows = $derived(getContainerStatusRows(detailsQuery.data?.status, detailResource.kind));
 	const containerOptions = $derived.by(() => {
 		const regularContainers = containerRows.filter((container) => container.type !== "init");
 		return (regularContainers.length > 0 ? regularContainers : containerRows).map(

@@ -11,9 +11,10 @@ use crate::commands::{
 };
 use crate::models::AppErrorKind;
 use crate::models::{
-    argo_health_assessment, evaluate_health, AppError, DiscoveredResourceKind, HealthAssessment,
-    HealthAssessmentEvidence, HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState,
-    ResourceDetailsFull, ResourceHealth, ResourceSummary, YamlEncoding, YamlViewMode,
+    argo_health_assessment, condition_evidence, evaluate_health, AppError, DiscoveredResourceKind,
+    HealthAssessment, HealthAssessmentEvidence, HealthAssessmentInput, HealthAssessmentSource,
+    HealthAssessmentState, ResourceDetailsFull, ResourceHealth, ResourceSummary, YamlEncoding,
+    YamlViewMode,
 };
 use chrono::{TimeZone, Utc};
 use kube::{
@@ -149,7 +150,7 @@ fn dynamic_health_assessment(data: &Value) -> HealthAssessment {
             matches!(kind, "Ready" | "Healthy" | "Reconciling" | "Stalled").then(|| {
                 HealthAssessmentEvidence {
                     source: HealthAssessmentSource::Kubernetes,
-                    raw: condition.clone(),
+                    raw: condition_evidence(condition),
                     state: Some(state),
                     current: true,
                     reason: format!("Kubernetes {kind} condition is {status}"),

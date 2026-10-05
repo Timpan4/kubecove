@@ -39,16 +39,31 @@ async fn deployment_revisions_from(
             AppErrorKind::Cluster,
         )
     })?;
+    let mut params = ListParams::default();
+    if let Some(selector) = deployment_selector(&deployment) {
+        params = params.labels(&selector);
+    }
     let replica_sets: Api<ReplicaSet> = Api::namespaced(client, namespace);
-    let replica_sets = replica_sets
-        .list(&ListParams::default())
-        .await
-        .map_err(AppError::from)?;
+    let replica_sets = replica_sets.list(&params).await.map_err(AppError::from)?;
 
     Ok(deployment_revisions_from_replica_sets(
         replica_sets.items,
         deployment_uid,
     ))
+}
+
+fn deployment_selector(deployment: &Deployment) -> Option<String> {
+    let labels = deployment.spec.as_ref()?.selector.match_labels.as_ref()?;
+    if labels.is_empty() {
+        return None;
+    }
+    Some(
+        labels
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>()
+            .join(","),
+    )
 }
 
 fn deployment_revisions_from_replica_sets(
@@ -158,6 +173,6 @@ mod tests {
         assert_eq!(revisions[2].revision, None);
         let serialized = serde_json::to_value(&revisions[2]).unwrap();
         assert!(serialized.get("revision").is_none());
-        assert!(!revisions[0].pod_template_yaml.is_empty());
+        assert_ne!(revisions[0].pod_template_yaml.len(), 0);
     }
 }

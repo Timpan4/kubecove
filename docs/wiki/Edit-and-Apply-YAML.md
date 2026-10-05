@@ -49,7 +49,7 @@ The **Allow YAML force-conflicts** setting controls whether dry-run and Apply ma
 
 - Leave it off for normal edits. A field-manager conflict stops the dry run.
 - After that conflict, **Allow force-conflicts for this resource** appears. Selecting it reruns the dry run with force enabled; review the new diff before selecting **Apply**.
-- When the global setting is on, both dry run and Apply use force-conflicts. Turn it off before editing resources whose existing manager should remain authoritative.
+- The setting is off by default. When you turn it on, both dry run and Apply use force-conflicts. Turn it off again before editing resources whose existing manager should remain authoritative.
 
 Force-conflicts can replace another manager's field ownership. It is not a way to bypass RBAC, admission, immutable fields, or invalid manifests.
 

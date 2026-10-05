@@ -111,7 +111,7 @@ function detailedEvidence(
 ): IncidentEvidence[] {
 	if (!details) return [];
 	const conditions = getConditionRows(details.status);
-	const containers = getContainerStatusRows(details.status);
+	const containers = getContainerStatusRows(details.status, details.summary.kind);
 	return buildIncidentSignals(details.summary, conditions, [], containers).map((signal) => ({
 		id: `detail:${signal.id}`,
 		label: signal.label,

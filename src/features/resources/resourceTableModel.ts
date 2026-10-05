@@ -109,7 +109,7 @@ function gitOpsGroupedRows(
 	rows: ResourceSummary[],
 	preferredGitOpsResourceKeys?: ReadonlySet<string>,
 ): ResourceSummary[] {
-	const preferredRows = rows.toSorted((left, right) => {
+	const preferredRows = [...rows].sort((left, right) => {
 		const preferredPriority =
 			Number(isPreferredGitOpsResource(left, preferredGitOpsResourceKeys)) -
 			Number(isPreferredGitOpsResource(right, preferredGitOpsResourceKeys));

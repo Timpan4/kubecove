@@ -303,7 +303,7 @@ describe("getContainerStatusRows", () => {
 						},
 					},
 				],
-			}),
+			}, "Pod"),
 		).toEqual([
 			{
 				name: "api",

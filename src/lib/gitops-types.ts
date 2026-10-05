@@ -88,6 +88,14 @@ export interface ArgoServerCapability {
 	endpoint: ArgoServerEndpoint | null;
 	unavailableReason: string | null;
 	unavailable?: ArgoServiceTunnelUnavailableReason | null;
+	targetPod?: string | null;
+	argoLabeled: boolean;
+}
+
+export interface ArgoConfirmedTarget {
+	namespace: string;
+	serviceName: string;
+	podName: string;
 }
 
 export interface ArgoApplicationRef {

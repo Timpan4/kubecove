@@ -21,7 +21,7 @@ use k8s_openapi::api::{
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use k8s_openapi::{ClusterResourceScope, NamespaceResourceScope};
-use kube::{Api, Client, Error as KubeError};
+use kube::{core::PartialObjectMeta, Api, Client, Error as KubeError};
 
 const MAX_TOPOLOGY_LIST_CONCURRENCY: usize = 16;
 const DEPLOYMENT_REVISION_ANNOTATION: &str = "deployment.kubernetes.io/revision";
@@ -153,6 +153,65 @@ where
     let mut warnings = Vec::new();
     let rows = list_namespaced::<T>(client, namespaces, &mut warnings).await?;
     Ok((rows, warnings))
+}
+
+/// Lists only object metadata so Secret/ConfigMap payloads never reach the backend.
+async fn list_namespaced_metadata_with_warnings<T>(
+    client: Client,
+    namespaces: &[String],
+) -> Result<(Vec<PartialObjectMeta<T>>, Vec<String>), AppError>
+where
+    T: Clone
+        + std::fmt::Debug
+        + serde::de::DeserializeOwned
+        + kube::Resource<DynamicType = (), Scope = NamespaceResourceScope>
+        + k8s_openapi::Resource
+        + Send
+        + Sync
+        + 'static,
+{
+    let scopes: Vec<Option<String>> = if namespaces.is_empty() {
+        vec![None]
+    } else {
+        namespaces.iter().cloned().map(Some).collect()
+    };
+    let outcomes = stream::iter(scopes)
+        .map(|namespace| {
+            let api: Api<T> = match &namespace {
+                Some(namespace) => Api::namespaced(client.clone(), namespace),
+                None => Api::all(client.clone()),
+            };
+            async move {
+                let rows = api.list_metadata(&list_params()).await;
+                (namespace, rows.map(|rows| rows.items))
+            }
+        })
+        .buffered(MAX_TOPOLOGY_LIST_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+
+    let mut out = Vec::new();
+    let mut warnings = Vec::new();
+    for (namespace, outcome) in outcomes {
+        match outcome {
+            Ok(rows) => out.extend(rows),
+            Err(error) if is_optional_topology_list_error(&error) => {
+                push_topology_list_warning::<T>(&mut warnings, namespace.as_deref(), &error);
+            }
+            Err(error) => return Err(AppError::from(error)),
+        }
+    }
+    Ok((out, warnings))
+}
+
+pub(super) fn inputs_from_partial_metadata<T: k8s_openapi::Resource>(
+    cluster_context: &str,
+    items: Vec<PartialObjectMeta<T>>,
+) -> Vec<TopologyInputResource> {
+    items
+        .iter()
+        .map(|item| input_from_metadata(cluster_context, T::KIND, T::API_VERSION, &item.metadata))
+        .collect()
 }
 
 async fn list_cluster_with_warnings<T>(client: Client) -> Result<(Vec<T>, Vec<String>), AppError>
@@ -390,8 +449,8 @@ async fn collect_support_topology_inputs(
         list_namespaced_with_warnings::<PersistentVolumeClaim>(client.clone(), namespaces),
         list_namespaced_with_warnings::<Service>(client.clone(), namespaces),
         list_namespaced_with_warnings::<Ingress>(client.clone(), namespaces),
-        list_namespaced_with_warnings::<ConfigMap>(client.clone(), namespaces),
-        list_namespaced_with_warnings::<Secret>(client.clone(), namespaces),
+        list_namespaced_metadata_with_warnings::<ConfigMap>(client.clone(), namespaces),
+        list_namespaced_metadata_with_warnings::<Secret>(client.clone(), namespaces),
         list_cluster_with_warnings::<StorageClass>(client),
     )?;
 
@@ -407,8 +466,8 @@ async fn collect_support_topology_inputs(
     inputs.extend(inputs_from_metadata(cluster_context, pvcs));
     inputs.extend(inputs_from_metadata(cluster_context, services));
     inputs.extend(inputs_from_metadata(cluster_context, ingresses));
-    inputs.extend(inputs_from_metadata(cluster_context, configmaps));
-    inputs.extend(inputs_from_metadata(cluster_context, secrets));
+    inputs.extend(inputs_from_partial_metadata(cluster_context, configmaps));
+    inputs.extend(inputs_from_partial_metadata(cluster_context, secrets));
     inputs.extend(inputs_from_metadata(cluster_context, storageclasses));
 
     Ok(TopologyInputCollection {

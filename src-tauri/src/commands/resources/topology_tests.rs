@@ -368,7 +368,7 @@ fn builds_deployment_to_replicaset_to_pod_edges_from_owner_uids() {
     assert!(topology.edges.iter().any(|edge| {
         edge.source == rs_id && edge.target == pod_id && edge.relation == TopologyRelation::Owns
     }));
-    assert!(topology.warnings.is_empty());
+    assert_eq!(topology.warnings.len(), 0);
 }
 
 #[test]
@@ -412,7 +412,7 @@ fn builds_custom_resource_to_workload_edges_from_owner_uids() {
             && edge.target == statefulset_id
             && edge.relation == TopologyRelation::Owns
     }));
-    assert!(topology.warnings.is_empty());
+    assert_eq!(topology.warnings.len(), 0);
 }
 
 #[test]
@@ -452,7 +452,7 @@ fn builds_daemonset_to_pod_edges_from_owner_uids() {
             && edge.target == pod_id
             && edge.relation == TopologyRelation::Owns
     }));
-    assert!(topology.warnings.is_empty());
+    assert_eq!(topology.warnings.len(), 0);
 }
 
 #[test]
@@ -503,7 +503,7 @@ fn builds_cronjob_to_job_to_pod_edges_from_owner_uids() {
     assert!(topology.edges.iter().any(|edge| {
         edge.source == job_id && edge.target == pod_id && edge.relation == TopologyRelation::Owns
     }));
-    assert!(topology.warnings.is_empty());
+    assert_eq!(topology.warnings.len(), 0);
 }
 
 #[test]
@@ -638,7 +638,7 @@ fn builds_network_flow_from_ingress_to_service_slice_and_pod() {
             && edge.target == pod_id
             && edge.relation == TopologyRelation::Targets
     }));
-    assert!(topology.warnings.is_empty());
+    assert_eq!(topology.warnings.len(), 0);
 }
 
 #[test]
@@ -699,7 +699,7 @@ fn network_flow_skips_missing_endpoint_warning_for_external_name_service() {
 
     assert_eq!(topology.nodes.len(), 1);
     assert_eq!(topology.nodes[0].kind, "Service");
-    assert!(topology.warnings.is_empty());
+    assert_eq!(topology.warnings.len(), 0);
 }
 
 #[test]
@@ -739,5 +739,5 @@ fn network_flow_skips_missing_pod_warning_for_selectorless_endpoint_slices() {
             && edge.target == slice_id
             && edge.relation == TopologyRelation::Targets
     }));
-    assert!(topology.warnings.is_empty());
+    assert_eq!(topology.warnings.len(), 0);
 }

@@ -52,7 +52,7 @@ export function portForwardSessionKey(
 export function sortPortForwardSessions(
 	sessions: PortForwardSessionSummary[],
 ): PortForwardSessionSummary[] {
-	return sessions.toSorted((a, b) => {
+	return [...sessions].sort((a, b) => {
 		const targetCompare = portForwardSessionKey(a).localeCompare(
 			portForwardSessionKey(b),
 		);

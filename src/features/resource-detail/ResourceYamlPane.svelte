@@ -93,6 +93,8 @@
 	let yamlLintError = $state("");
 	let yamlPreparing = $state(false);
 	let yamlApplying = $state(false);
+	// Only the apply that took the lock may release it, even after Cancel lets a newer apply start.
+	let yamlApplyLockOwner: object | null = null;
 	let yamlFormatError = $state("");
 	let yamlPrepareRawError = $state<unknown>(null);
 	let yamlPrepareError = $state("");
@@ -419,6 +421,8 @@
 			return;
 		}
 		const applyRevision = yamlApplyRevision;
+		const lockOwner = {};
+		yamlApplyLockOwner = lockOwner;
 		yamlApplying = true;
 		yamlApplyRawError = null;
 		yamlApplyError = "";
@@ -439,7 +443,11 @@
 			yamlApplyRawError = error;
 			yamlApplyError = getErrorMessage(error);
 		} finally {
-			if (applyRevision === yamlApplyRevision) yamlApplying = false;
+			// Released even when a mid-apply draft edit discarded the result, so the pane cannot stay stuck applying.
+			if (yamlApplyLockOwner === lockOwner) {
+				yamlApplyLockOwner = null;
+				yamlApplying = false;
+			}
 		}
 	}
 </script>

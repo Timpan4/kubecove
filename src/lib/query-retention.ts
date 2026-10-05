@@ -10,6 +10,9 @@ export const LARGE_QUERY_GC_TIME_MS = 300_000;
 
 export function configureLargeQueryRetention(queryClient: QueryClient): void {
 	for (const root of LARGE_QUERY_ROOTS) {
-		queryClient.setQueryDefaults([root], { gcTime: LARGE_QUERY_GC_TIME_MS });
+		queryClient.setQueryDefaults([root], {
+			...queryClient.getQueryDefaults([root]),
+			gcTime: LARGE_QUERY_GC_TIME_MS,
+		});
 	}
 }

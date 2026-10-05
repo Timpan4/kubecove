@@ -56,12 +56,17 @@ fn event_matches_resource(
     kind: &str,
     name: &str,
     namespace: Option<&str>,
+    uid: Option<&str>,
 ) -> bool {
     event.involved_object.kind.as_deref() == Some(kind)
         && event.involved_object.name.as_deref() == Some(name)
         && match namespace {
             Some(ns) => event.involved_object.namespace.as_deref() == Some(ns),
             None => true,
+        }
+        && match (uid, event.involved_object.uid.as_deref()) {
+            (Some(expected), Some(actual)) => expected == actual,
+            _ => true,
         }
 }
 
@@ -83,6 +88,7 @@ pub async fn resource_events_from(
     kind: String,
     name: String,
     namespace: Option<String>,
+    uid: Option<String>,
     kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ResourceEventSummary>, AppError> {
     let source = KubeconfigSource::new(kubeconfig_env_var)?;
@@ -104,7 +110,9 @@ pub async fn resource_events_from(
         .await
         .map_err(AppError::from)?
         .into_iter()
-        .filter(|event| event_matches_resource(event, &kind, &name, namespace.as_deref()))
+        .filter(|event| {
+            event_matches_resource(event, &kind, &name, namespace.as_deref(), uid.as_deref())
+        })
         .collect();
 
     events.sort_by_key(event_timestamp);
@@ -119,6 +127,7 @@ pub async fn list_resource_events(
     kind: String,
     name: String,
     namespace: Option<String>,
+    uid: Option<String>,
     kubeconfig_env_var: Option<String>,
     request_id: Option<String>,
     cancel_scope: Option<String>,
@@ -138,6 +147,7 @@ pub async fn list_resource_events(
                 kind.clone(),
                 name.clone(),
                 namespace.clone(),
+                uid,
                 kubeconfig_env_var,
             ),
         )
@@ -222,13 +232,15 @@ mod tests {
             &event,
             "Pod",
             "api-0",
-            Some("payments")
+            Some("payments"),
+            None
         ));
         assert!(!event_matches_resource(
             &event,
             "Pod",
             "api-1",
-            Some("payments")
+            Some("payments"),
+            None
         ));
         assert_eq!(event_source(&event), "deployment-controller");
         assert_eq!(event_timestamp(&event).unwrap().timestamp(), 1_700_000_100);
@@ -268,13 +280,49 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(event_matches_resource(&event, "Node", "kind-worker", None));
+        assert!(event_matches_resource(
+            &event,
+            "Node",
+            "kind-worker",
+            None,
+            None
+        ));
         assert!(!event_matches_resource(
             &event,
             "Node",
             "kind-worker",
             Some("default"),
+            None,
         ));
+    }
+
+    #[test]
+    fn event_matching_requires_matching_uid_when_both_present() {
+        let event = Event {
+            involved_object: ObjectReference {
+                kind: Some("Pod".to_string()),
+                name: Some("api-0".to_string()),
+                uid: Some("real".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert!(event_matches_resource(
+            &event,
+            "Pod",
+            "api-0",
+            None,
+            Some("real")
+        ));
+        assert!(!event_matches_resource(
+            &event,
+            "Pod",
+            "api-0",
+            None,
+            Some("forged")
+        ));
+        assert!(event_matches_resource(&event, "Pod", "api-0", None, None));
     }
 
     #[test]
