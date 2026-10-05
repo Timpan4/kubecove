@@ -11,7 +11,8 @@ fi
 staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
 
 if [ -n "$staged_files" ]; then
-  for file in $staged_files; do
+  # Read newline-separated paths so filenames with spaces are scanned.
+  while IFS= read -r file; do
     case "$file" in
       .githooks/pre-commit|.githooks/pre-commit-user)
         continue
@@ -36,7 +37,9 @@ if [ -n "$staged_files" ]; then
       echo "Move credentials out of the repo or add a narrow exception after review."
       exit 1
     fi
-  done
+  done <<EOF
+$staged_files
+EOF
 fi
 
 # File-size enforcement.
