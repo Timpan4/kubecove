@@ -777,8 +777,10 @@ pub(crate) fn managed_resource(value: &Value) -> ArgoManagedResource {
 pub(crate) fn state(value: Option<&Value>, redact: bool) -> Option<Value> {
     value
         .and_then(|state| match state {
-            Value::String(text) => serde_json::from_str(text)
+            Value::String(text) => serde_json::from_str::<Value>(text)
                 .ok()
+                // A JSON string literal is still unstructured text, so it takes the text path below.
+                .filter(|parsed| !parsed.is_string())
                 .or_else(|| {
                     serde_yaml::from_str::<Value>(text)
                         .ok()
