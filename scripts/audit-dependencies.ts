@@ -11,6 +11,8 @@ const ignoredAdvisories = new Map([
 	["GHSA-jmr9-qjv8-65gv", "extract-zip"],
 	// TODO(Timpan4): Remove once WebdriverIO accepts brace-expansion 5.0.8+.
 	["GHSA-mh99-v99m-4gvg", "brace-expansion"],
+	// TODO(Timpan4): Remove once braces ships a patch or WebdriverIO's mocha drops chokidar 3.
+	["GHSA-vfj7-8cjw-p6xm", "braces"],
 ]);
 
 function advisoryId(advisory: AuditAdvisory): string {
