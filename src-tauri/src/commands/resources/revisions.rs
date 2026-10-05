@@ -44,10 +44,7 @@ async fn deployment_revisions_from(
         params = params.labels(&selector);
     }
     let replica_sets: Api<ReplicaSet> = Api::namespaced(client, namespace);
-    let replica_sets = replica_sets
-        .list(&params)
-        .await
-        .map_err(AppError::from)?;
+    let replica_sets = replica_sets.list(&params).await.map_err(AppError::from)?;
 
     Ok(deployment_revisions_from_replica_sets(
         replica_sets.items,

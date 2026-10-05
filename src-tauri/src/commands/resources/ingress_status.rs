@@ -21,9 +21,7 @@ fn has_load_balancer_address(status: &IngressStatus) -> bool {
         .as_ref()
         .and_then(|load_balancer| load_balancer.ingress.as_ref())
         .is_some_and(|ingress| {
-            ingress
-                .iter()
-                .any(|entry| {
+            ingress.iter().any(|entry| {
                 [&entry.ip, &entry.hostname]
                     .into_iter()
                     .flatten()

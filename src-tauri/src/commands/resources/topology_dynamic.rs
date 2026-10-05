@@ -1,6 +1,5 @@
 use super::{
-    api_resource_from_discovered, dynamic_resource_summary,
-    topology::TopologyInputResource,
+    api_resource_from_discovered, dynamic_resource_summary, topology::TopologyInputResource,
 };
 use crate::commands::helpers::{extract_owner_ref_summary, list_params};
 use crate::models::AppErrorKind;
