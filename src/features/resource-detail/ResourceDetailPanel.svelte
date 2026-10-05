@@ -234,7 +234,7 @@
 		const currentDetailsCancelScope = detailsCancelScope;
 		const currentDetailsQueryKey = detailsQueryKey;
 		const currentEventsCancelScope = eventsCancelScope;
-		const currentEventsQueryKey = eventsQueryKey;
+		const currentEventsQueryKey = scopedEventsQueryKey;
 		finiteReadCleanup.cancelPending(currentDetailsCancelScope);
 		finiteReadCleanup.cancelPending(currentEventsCancelScope);
 		return () => {
@@ -282,12 +282,14 @@
 	const eventsUid = $derived(
 		typeof detailsQuery.data?.metadata?.uid === "string" ? detailsQuery.data.metadata.uid : undefined,
 	);
+	// Keyed by UID so results fetched without one (or for a replaced resource) are never reused.
+	const scopedEventsQueryKey = $derived([...eventsQueryKey, eventsUid ?? ""] as const);
 	// Events are matched by UID, so wait for the details read that supplies it.
 	const eventsReady = $derived(
 		!detailsEnabled || detailsQuery.isSuccess || detailsQuery.isError,
 	);
 	const eventsQuery = createQuery<ResourceEventSummary[]>(() => ({
-		queryKey: eventsQueryKey,
+		queryKey: scopedEventsQueryKey,
 		queryFn: async () => {
 			try {
 				return await runDetailFetch("events", "resource-events", () =>
