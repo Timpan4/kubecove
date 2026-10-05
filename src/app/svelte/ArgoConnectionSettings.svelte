@@ -66,6 +66,7 @@
 	let connected = $state<string | null>(null);
 	let pendingConfirmation = $state<{
 		saved?: (typeof settings.argoProfiles)[number];
+		endpoint: ArgoServerEndpoint;
 		target: ArgoConfirmedTarget;
 		argoLabeled: boolean;
 	} | null>(null);
@@ -195,6 +196,7 @@
 		error = null;
 		pendingConfirmation = {
 			saved,
+			endpoint,
 			target: {
 				namespace: endpoint.namespace,
 				serviceName: endpoint.serviceName,
@@ -207,8 +209,10 @@
 	async function connect(
 		saved?: (typeof settings.argoProfiles)[number],
 		confirmedTarget?: ArgoConfirmedTarget,
+		confirmedEndpoint?: ArgoServerEndpoint,
 	) {
-		const endpoint = saved?.endpoint ?? draftEndpoint;
+		// A confirmed tunnel connects only to the endpoint shown in the confirmation, even if the form changed since.
+		const endpoint = confirmedEndpoint ?? saved?.endpoint ?? draftEndpoint;
 		if (!endpoint) return;
 		pendingConfirmation = null;
 		busy = true;
@@ -365,7 +369,7 @@
 						<p class="font-medium">This Service does not carry the standard Argo CD label (app.kubernetes.io/part-of=argocd). Only continue if you recognise it as your Argo CD server.</p>
 					{/if}
 					<div class="mt-2 flex gap-2">
-						<Button type="button" size="sm" disabled={busy} onclick={() => connect(pending.saved, pending.target)}>Confirm and connect</Button>
+						<Button type="button" size="sm" disabled={busy} onclick={() => connect(pending.saved, pending.target, pending.endpoint)}>Confirm and connect</Button>
 						<Button type="button" size="sm" variant="outline" onclick={() => (pendingConfirmation = null)}>Cancel</Button>
 					</div>
 				</AlertDescription>
