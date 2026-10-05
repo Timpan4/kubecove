@@ -31,7 +31,7 @@ export function buildResourceBrowserReadSpecs({
 			.filter((key) => key.kind instanceof Object)
 			.map((key) => resourceKindFetchKey(key.kind)),
 	)]
-		.toSorted()
+		.sort()
 		.join(",");
 	const resourceQueryKey = queryKeys.resources(
 		clusterContext,

@@ -65,8 +65,8 @@ export function nextNamespaceSelection(
 export function allKindOptions(
 	discoveredKinds: DiscoveredResourceKind[],
 ): ResourceKindSelection[] {
-	const discovered = discoveredKinds
-		.toSorted((left, right) => left.kind.localeCompare(right.kind))
+	const discovered = [...discoveredKinds]
+		.sort((left, right) => left.kind.localeCompare(right.kind))
 	return [...SUPPORTED_KINDS, ...CLUSTER_SCOPED_KINDS, ...discovered];
 }
 

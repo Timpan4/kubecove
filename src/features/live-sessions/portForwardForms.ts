@@ -109,7 +109,7 @@ export function extractServicePortOptions(yaml: string | undefined): ServicePort
 			const protocol = port.protocol?.toUpperCase() ?? "TCP";
 			return isNumber(port.port) && port.port > 0 && protocol === "TCP";
 		})
-		.toSorted((a, b) => a.port - b.port || (a.name ?? "").localeCompare(b.name ?? ""));
+		.sort((a, b) => a.port - b.port || (a.name ?? "").localeCompare(b.name ?? ""));
 }
 
 export function parsePortForwardForm(

@@ -16,8 +16,8 @@ export function buildShallowNamespaceTreeNode(namespace: string): TreeNode {
 export function extraDiscoveredKinds(
 	resourceKinds: DiscoveredResourceKind[],
 ): DiscoveredResourceKind[] {
-	return resourceKinds
-		.toSorted((left, right) => {
+	return [...resourceKinds]
+		.sort((left, right) => {
 			return (
 				left.kind.localeCompare(right.kind) ||
 				left.apiVersion.localeCompare(right.apiVersion) ||
@@ -59,13 +59,13 @@ export function buildCustomResourceGroupNodes({
 		kindsByGroup.set(resourceKind.group, groupKinds);
 	}
 	return [...kindsByGroup.entries()]
-		.toSorted(([left], [right]) => left.localeCompare(right))
+		.sort(([left], [right]) => left.localeCompare(right))
 		.map(([group, kinds]): TreeNode => ({
 			id: { type: "group", section, namespace, group },
 			label: group,
 			selectable: false,
 			children: kinds
-				.toSorted((left, right) => left.kind.localeCompare(right.kind))
+				.sort((left, right) => left.kind.localeCompare(right.kind))
 				.map((resourceKind): TreeNode => {
 					const shortNames = resourceKind.shortNames ?? [];
 					return {
