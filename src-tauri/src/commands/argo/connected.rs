@@ -902,12 +902,18 @@ fn kubernetes_comparison(resource: ArgoManagedResource) -> ArgoResourceCompariso
 }
 
 fn connected_comparison(value: &Value) -> ArgoResourceComparison {
+    let is_secret = value.get("kind").and_then(Value::as_str) == Some("Secret");
+    // Unstructured Secret state cannot be redacted field by field, so it is withheld whole.
+    let redacted_state = |key: &str| match state(value.get(key), true) {
+        Some(Value::String(_)) if is_secret => Some(Value::String("[REDACTED]".into())),
+        other => other,
+    };
     ArgoResourceComparison {
         resource: managed_resource(value),
-        target_state: state(value.get("targetState"), true),
-        live_state: state(value.get("liveState"), true),
-        normalized_live_state: state(value.get("normalizedLiveState"), true),
-        predicted_live_state: state(value.get("predictedLiveState"), true),
+        target_state: redacted_state("targetState"),
+        live_state: redacted_state("liveState"),
+        normalized_live_state: redacted_state("normalizedLiveState"),
+        predicted_live_state: redacted_state("predictedLiveState"),
         modified: value.get("modified").and_then(Value::as_bool),
         exact: Some(true),
         provenance: Some("argocd-managed-resource".into()),
