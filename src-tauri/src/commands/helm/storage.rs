@@ -230,10 +230,10 @@ async fn release_storage_object(
                 ));
             }
             let record = secret_record(cluster_context, &mut secret)?;
+            redact_secret_release(&mut secret);
             let metadata = serde_json::to_value(&secret.metadata).map_err(|e| {
                 AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e)
             })?;
-            redact_secret_release(&mut secret);
             let yaml = serialize_resource_document(&secret, yaml_view_mode, yaml_encoding)?;
             Ok((record, metadata, yaml))
         }

@@ -1,7 +1,7 @@
 use super::{binding_summary, role_summary, service_account_summary};
 use crate::{
     commands::helpers::list_params,
-    models::{AppError, RbacBindingSummary, RbacRoleSummary, ServiceAccountSummary},
+    models::{AppError, AppErrorKind, RbacBindingSummary, RbacRoleSummary, ServiceAccountSummary},
 };
 use k8s_openapi::api::{
     core::v1::ServiceAccount,
@@ -49,8 +49,18 @@ where
         );
         match api.list(&params).await {
             Ok(page) => {
-                token = page.metadata.continue_;
+                let next = page.metadata.continue_;
                 items.extend(page.items);
+                if next.is_some() && next == token {
+                    return InventoryLoad::partial(
+                        items,
+                        AppError::new(
+                            "Kubernetes API returned a repeated continue token",
+                            AppErrorKind::Cluster,
+                        ),
+                    );
+                }
+                token = next;
             }
             Err(error) => return InventoryLoad::partial(items, AppError::from(error)),
         }

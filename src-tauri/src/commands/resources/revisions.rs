@@ -39,9 +39,13 @@ async fn deployment_revisions_from(
             AppErrorKind::Cluster,
         )
     })?;
+    let mut params = ListParams::default();
+    if let Some(selector) = deployment_selector(&deployment) {
+        params = params.labels(&selector);
+    }
     let replica_sets: Api<ReplicaSet> = Api::namespaced(client, namespace);
     let replica_sets = replica_sets
-        .list(&ListParams::default())
+        .list(&params)
         .await
         .map_err(AppError::from)?;
 
@@ -49,6 +53,20 @@ async fn deployment_revisions_from(
         replica_sets.items,
         deployment_uid,
     ))
+}
+
+fn deployment_selector(deployment: &Deployment) -> Option<String> {
+    let labels = deployment.spec.as_ref()?.selector.match_labels.as_ref()?;
+    if labels.is_empty() {
+        return None;
+    }
+    Some(
+        labels
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>()
+            .join(","),
+    )
 }
 
 fn deployment_revisions_from_replica_sets(
