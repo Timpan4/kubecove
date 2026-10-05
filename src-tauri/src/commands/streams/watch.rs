@@ -14,7 +14,9 @@ use kube::{
     core::Status,
     Client,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+const WATCH_TIMEOUT_SECS: u32 = 30;
 
 fn event_action<K>(event: &WatchEvent<K>) -> String {
     match event {
@@ -181,7 +183,8 @@ async fn run_resource_watch_with_client<F, Fut>(
             }
         };
         let api = scoped_dynamic_api(client, &key, namespaced, &api_resource);
-        let params = WatchParams::default().timeout(30);
+        let params = WatchParams::default().timeout(WATCH_TIMEOUT_SECS);
+        let watch_started = Instant::now();
 
         match api.watch(&params, &resource_version).await {
             Ok(stream) => {
@@ -192,7 +195,13 @@ async fn run_resource_watch_with_client<F, Fut>(
                 loop {
                     let Some(event) = stream.next().await else {
                         // Kubernetes ends watches normally at timeoutSeconds. Resume from
-                        // the last version without reporting an outage or delaying renewal.
+                        // the last version without reporting an outage. An earlier EOF keeps
+                        // the reconnect delay so a misbehaving server cannot cause a request loop.
+                        if watch_started.elapsed()
+                            < Duration::from_secs(u64::from(WATCH_TIMEOUT_SECS))
+                        {
+                            tokio::time::sleep(Duration::from_secs(2)).await;
+                        }
                         continue 'watch;
                     };
                     match event {
