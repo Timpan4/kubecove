@@ -828,14 +828,14 @@
 
 	async function refreshView() {
 		await refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: kubeconfigSourceKey,
-			keys: mergeWatchKeys(watchKeysFromFetchKeys(fetchKeys), topologyWatchKeys(topologyNamespaces), focusedArgoWatchKeys),
+			keys: mergeWatchKeys(watchKeysFromFetchKeys(fetchKeys), mapPanelOpen ? topologyWatchKeys(topologyNamespaces) : [], focusedArgoWatchKeys),
 			namespaces: selectedNamespaces,
 		});
 	}
 
 	$effect(() => {
 		if (!sourceReady || !clusterContext || fetchKeys.length === 0) return;
-		const watchKeys = mergeWatchKeys(watchKeysFromFetchKeys(fetchKeys), topologyWatchKeys(topologyNamespaces), focusedArgoWatchKeys);
+		const watchKeys = mergeWatchKeys(watchKeysFromFetchKeys(fetchKeys), mapPanelOpen ? topologyWatchKeys(topologyNamespaces) : [], focusedArgoWatchKeys);
 		const resourceKey = resourceQueryKey;
 		const topologyKey = topologyQueryKey;
 		const argoScope = focusedArgoApplicationScope;

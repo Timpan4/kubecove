@@ -218,10 +218,7 @@ function buildPrimaryChildren(
 			.sort(compareNodes);
 		const primaryParent = parentNodes[0];
 		if (!primaryParent) continue;
-		primaryChildren.set(primaryParent.id, [
-			...(primaryChildren.get(primaryParent.id) ?? []),
-			node.id,
-		]);
+		pushMapValue(primaryChildren, primaryParent.id, node.id);
 	}
 
 	for (const [parentId, childIds] of primaryChildren.entries()) {

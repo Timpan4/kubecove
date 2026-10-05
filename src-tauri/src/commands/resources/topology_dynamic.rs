@@ -1,13 +1,12 @@
 use super::{
     api_resource_from_discovered, dynamic_resource_summary,
-    topology::{input_from_metadata, TopologyInputResource},
+    topology::TopologyInputResource,
 };
 use crate::commands::helpers::{extract_owner_ref_summary, list_params};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, DiscoveredResourceKind};
 use futures_util::{stream, StreamExt};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
     api::{Api, DynamicObject},
     Client, Error as KubeError,
@@ -19,23 +18,6 @@ const MAX_TOPOLOGY_LIST_CONCURRENCY: usize = 16;
 const MAX_DYNAMIC_TOPOLOGY_KIND_CONCURRENCY: usize = 48;
 const MAX_DYNAMIC_TOPOLOGY_LIST_CONCURRENCY: usize = 32;
 type DynamicListLimiter = Arc<Semaphore>;
-
-fn inputs_from_metadata<T>(cluster_context: &str, items: Vec<T>) -> Vec<TopologyInputResource>
-where
-    T: k8s_openapi::Metadata<Ty = ObjectMeta>,
-{
-    items
-        .iter()
-        .map(|item| {
-            input_from_metadata(
-                cluster_context,
-                <T as k8s_openapi::Resource>::KIND,
-                <T as k8s_openapi::Resource>::API_VERSION,
-                item.metadata(),
-            )
-        })
-        .collect()
-}
 
 fn is_optional_app_error(error: &AppError) -> bool {
     matches!(error.kind, AppErrorKind::Forbidden | AppErrorKind::NotFound)
@@ -81,16 +63,19 @@ pub(super) async fn list_crd_definition_inputs(
     warnings: &mut Vec<String>,
 ) -> Result<Vec<TopologyInputResource>, AppError> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    match api.list(&list_params()).await {
-        Ok(rows) => Ok(inputs_from_metadata(cluster_context, rows.items)
-            .into_iter()
-            .filter(|input| {
-                namespaces.is_empty()
-                    || input.summary.git_ops_owner.is_some()
-                    || input.summary.helm_release.is_some()
-                    || input.owner.is_some()
-            })
-            .collect()),
+    match api.list_metadata(&list_params()).await {
+        Ok(rows) => Ok(super::topology_collection::inputs_from_partial_metadata(
+            cluster_context,
+            rows.items,
+        )
+        .into_iter()
+        .filter(|input| {
+            namespaces.is_empty()
+                || input.summary.git_ops_owner.is_some()
+                || input.summary.helm_release.is_some()
+                || input.owner.is_some()
+        })
+        .collect()),
         Err(error) if is_optional_topology_list_error(&error) => {
             warnings.push(format!(
                 "Skipped CustomResourceDefinition across namespaces in topology: {error}"
