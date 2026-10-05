@@ -751,7 +751,19 @@ pub(crate) fn state(value: Option<&Value>, redact: bool) -> Option<Value> {
         .and_then(|state| match state {
             Value::String(text) => serde_json::from_str(text)
                 .ok()
-                .or_else(|| Some(Value::String(text.clone()))),
+                .or_else(|| {
+                    serde_yaml::from_str::<Value>(text)
+                        .ok()
+                        .filter(|parsed| parsed.is_object() || parsed.is_array())
+                })
+                .or_else(|| {
+                    // Unparseable text cannot be redacted structurally; withhold it if it may be a Secret.
+                    Some(if redact && text.contains("Secret") {
+                        Value::String("[REDACTED]".into())
+                    } else {
+                        Value::String(text.clone())
+                    })
+                }),
             _ => Some(state.clone()),
         })
         .map(|mut state| {
@@ -1715,6 +1727,15 @@ mod tests {
             "[REDACTED]"
         );
         assert!(!value.to_string().contains("plaintext"));
+    }
+
+    #[test]
+    fn non_json_secret_state_is_redacted() {
+        let yaml = serde_json::json!("kind: Secret\ndata:\n  password: plaintext\n");
+        let redacted = state(Some(&yaml), true).unwrap();
+        assert_eq!(redacted["data"]["password"], "[REDACTED]");
+        let broken = serde_json::json!("kind: Secret\n\tdata: [plaintext");
+        assert_eq!(state(Some(&broken), true).unwrap(), "[REDACTED]");
     }
 
     #[test]
