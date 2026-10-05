@@ -173,6 +173,6 @@ mod tests {
         assert_eq!(revisions[2].revision, None);
         let serialized = serde_json::to_value(&revisions[2]).unwrap();
         assert!(serialized.get("revision").is_none());
-        assert!(!revisions[0].pod_template_yaml.is_empty());
+        assert_ne!(revisions[0].pod_template_yaml.len(), 0);
     }
 }

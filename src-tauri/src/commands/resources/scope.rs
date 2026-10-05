@@ -382,7 +382,7 @@ mod tests {
         let groups =
             group_requests(vec![pod_request(None), pod_request(Some("default"))]).expect("groups");
 
-        assert!(ownership_namespaces(&groups).is_empty());
+        assert_eq!(ownership_namespaces(&groups).len(), 0);
     }
 
     #[test]

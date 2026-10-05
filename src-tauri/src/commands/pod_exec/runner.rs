@@ -376,11 +376,11 @@ mod tests {
 
         let first = take_utf8_prefix(&mut pending).expect("first chunk");
         assert_eq!(first, "h");
-        assert!(!pending.is_empty());
+        assert_ne!(pending.len(), 0);
 
         pending.append(&mut remainder);
         assert_eq!(take_utf8_prefix(&mut pending).expect("rest"), "éllo");
-        assert!(pending.is_empty());
+        assert_eq!(pending.len(), 0);
     }
 
     #[test]
@@ -389,7 +389,7 @@ mod tests {
 
         assert_eq!(take_utf8_prefix(&mut pending).expect("chunk"), "a\u{FFFD}");
         assert_eq!(take_utf8_prefix(&mut pending).expect("rest"), "b");
-        assert!(pending.is_empty());
+        assert_eq!(pending.len(), 0);
     }
 
     #[test]
@@ -401,6 +401,6 @@ mod tests {
 
         pending.push(0xA9);
         assert_eq!(take_utf8_prefix(&mut pending).expect("complete"), "é");
-        assert!(pending.is_empty());
+        assert_eq!(pending.len(), 0);
     }
 }

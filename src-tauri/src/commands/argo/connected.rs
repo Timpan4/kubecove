@@ -1789,7 +1789,7 @@ mod tests {
         );
         assert!(comparison.target_state.is_none());
         assert!(comparison.live_state.is_none());
-        assert!(comparison.available_actions.is_empty());
+        assert_eq!(comparison.available_actions.len(), 0);
     }
 
     #[test]
