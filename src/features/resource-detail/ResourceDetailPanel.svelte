@@ -279,9 +279,10 @@
 		retry: false,
 		staleTime: 30_000,
 	}));
-	const eventsUid = $derived(
-		typeof detailsQuery.data?.metadata?.uid === "string" ? detailsQuery.data.metadata.uid : undefined,
-	);
+	const eventsUid = $derived.by(() => {
+		const uid = detailsQuery.data?.metadata?.uid;
+		return String(uid) === uid ? uid : undefined;
+	});
 	// Keyed by UID so results fetched without one (or for a replaced resource) are never reused.
 	const scopedEventsQueryKey = $derived([...eventsQueryKey, eventsUid ?? ""] as const);
 	// Events are matched by UID, so wait for the details read that supplies it.

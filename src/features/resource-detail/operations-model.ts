@@ -32,19 +32,19 @@ export function guardedOperationBlocker<Cause>(
 	return "operation support";
 }
 
-const BUILTIN_API_VERSION: Record<string, string> = {
-	Deployment: "apps/v1",
-	StatefulSet: "apps/v1",
-	DaemonSet: "apps/v1",
-	Pod: "v1",
-	ConfigMap: "v1",
-};
+const BUILTIN_API_VERSION = new Map([
+	["Deployment", "apps/v1"],
+	["StatefulSet", "apps/v1"],
+	["DaemonSet", "apps/v1"],
+	["Pod", "v1"],
+	["ConfigMap", "v1"],
+]);
 
 /** True only for the built-in resource the backend operates on, not a CRD sharing its kind. */
 export function isBuiltinOperationTarget(resource: ResourceSummary): boolean {
 	return (
 		!resource.dynamic &&
-		(resource.apiVersion === undefined || resource.apiVersion === BUILTIN_API_VERSION[resource.kind])
+		(resource.apiVersion === undefined || resource.apiVersion === BUILTIN_API_VERSION.get(resource.kind))
 	);
 }
 

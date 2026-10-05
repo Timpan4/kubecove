@@ -152,7 +152,7 @@
 	});
 
 	$effect(() => {
-		selectedCapabilityId;
+		void selectedCapabilityId;
 		pendingConfirmation = null;
 	});
 
