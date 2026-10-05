@@ -390,7 +390,6 @@
 	function clearYamlDraftFeedback() {
 		yamlApplyRevision += 1;
 		yamlPreparing = false;
-		yamlApplying = false;
 		yamlLintDiagnostics = [];
 		yamlLintNotes = [];
 		yamlLintError = "";
@@ -440,7 +439,8 @@
 			yamlApplyRawError = error;
 			yamlApplyError = getErrorMessage(error);
 		} finally {
-			if (applyRevision === yamlApplyRevision) yamlApplying = false;
+			// Always release the lock so a draft edited mid-apply cannot leave the pane stuck applying.
+			yamlApplying = false;
 		}
 	}
 </script>
