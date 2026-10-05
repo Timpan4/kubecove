@@ -279,6 +279,13 @@
 		retry: false,
 		staleTime: 30_000,
 	}));
+	const eventsUid = $derived(
+		typeof detailsQuery.data?.metadata?.uid === "string" ? detailsQuery.data.metadata.uid : undefined,
+	);
+	// Events are matched by UID, so wait for the details read that supplies it.
+	const eventsReady = $derived(
+		!detailsEnabled || detailsQuery.isSuccess || detailsQuery.isError,
+	);
 	const eventsQuery = createQuery<ResourceEventSummary[]>(() => ({
 		queryKey: eventsQueryKey,
 		queryFn: async () => {
@@ -292,6 +299,7 @@
 						resource.namespace ?? undefined,
 						kubeconfigSourceKey,
 						createFiniteReadRequest(eventsCancelScope, "events"),
+						eventsUid,
 					),
 				);
 			} catch (error) {
@@ -301,14 +309,14 @@
 				throw error;
 			}
 		},
-		enabled: eventsEnabled,
+		enabled: eventsEnabled && eventsReady,
 		retry: false,
 		staleTime: 30_000,
 	}));
 
 	const detailResource = $derived(detailsQuery.data?.summary ?? resource);
 	const conditionRows = $derived(getConditionRows(detailsQuery.data?.status));
-	const containerRows = $derived(getContainerStatusRows(detailsQuery.data?.status));
+	const containerRows = $derived(getContainerStatusRows(detailsQuery.data?.status, detailResource.kind));
 	const containerOptions = $derived.by(() => {
 		const regularContainers = containerRows.filter((container) => container.type !== "init");
 		return (regularContainers.length > 0 ? regularContainers : containerRows).map(

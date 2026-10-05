@@ -142,8 +142,9 @@ function getStatusList(status: JsonObject, key: string): JsonObject[] {
 
 export function getContainerStatusRows(
 	status: JsonObject | undefined,
+	kind: string,
 ): ContainerStatusRow[] {
-	if (!status) return [];
+	if (!status || kind !== "Pod") return [];
 	const containers = [
 		...getStatusList(status, "initContainerStatuses").map((container) => ({
 			container,

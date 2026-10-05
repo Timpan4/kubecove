@@ -23,10 +23,10 @@ pub use argo::{
     ArgoAppProjectDetails, ArgoAppProjectSummary, ArgoApplicationDetails, ArgoApplicationHistory,
     ArgoApplicationInspector, ArgoApplicationRef, ArgoApplicationSetDetails,
     ArgoApplicationSetSummary, ArgoApplicationSourceSummary, ArgoApplicationSummary,
-    ArgoConnectedFallback, ArgoConnectionProfile, ArgoConnectionStatus, ArgoInspectionFailure,
-    ArgoManagedResource, ArgoOperationConfirmation, ArgoOperationPreflight, ArgoOperationRequest,
-    ArgoOperationResult, ArgoResourceComparison, ArgoServerCapability, ArgoServerEndpoint,
-    ArgoServiceTunnelUnavailableReason,
+    ArgoConfirmedTarget, ArgoConnectedFallback, ArgoConnectionProfile, ArgoConnectionStatus,
+    ArgoInspectionFailure, ArgoManagedResource, ArgoOperationConfirmation, ArgoOperationPreflight,
+    ArgoOperationRequest, ArgoOperationResult, ArgoResourceComparison, ArgoServerCapability,
+    ArgoServerEndpoint, ArgoServiceTunnelUnavailableReason,
 };
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;
@@ -43,8 +43,8 @@ pub use flux::{
     FluxResourceSummary,
 };
 pub use health::{
-    argo_application_set_health_assessment, argo_health_assessment, evaluate_health,
-    HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentEvidence,
+    argo_application_set_health_assessment, argo_health_assessment, condition_evidence,
+    evaluate_health, HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentEvidence,
     HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState,
 };
 pub use helm::{

@@ -59,6 +59,14 @@ fn validate_event_watch_target(
     Ok(())
 }
 
+/// Mirrors `MAX_RETAINED_LOG_LINES` in `src/features/resource-detail/log-helpers.ts`;
+/// the frontend never keeps more lines than this, so the backend never requests more.
+const MAX_LOG_TAIL_LINES: i64 = 1_000;
+
+fn clamp_tail_lines(tail_lines: Option<i64>) -> i64 {
+    tail_lines.unwrap_or(200).min(MAX_LOG_TAIL_LINES)
+}
+
 fn validate_pod_log_stream_request(request: &PodLogStreamRequest) -> Result<(), AppError> {
     if request.cluster_context.trim().is_empty()
         || request.namespace.trim().is_empty()

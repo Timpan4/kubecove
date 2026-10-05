@@ -76,7 +76,7 @@ pub(super) async fn run_aggregated_log_stream(
     };
     let pods: Api<Pod> = Api::namespaced(client.clone(), &request.namespace);
     let options = LogStreamOptions {
-        tail_lines: Some(request.tail_lines.unwrap_or(200)),
+        tail_lines: Some(super::clamp_tail_lines(request.tail_lines)),
         since_seconds: request.since_seconds,
     };
     let mut source_streams = SourceStreams::default();
