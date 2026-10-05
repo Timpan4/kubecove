@@ -8,7 +8,13 @@ if ! git diff --cached --check; then
   exit 1
 fi
 
-staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+# -z disables path quoting so `git show` gets the exact index path.
+staged_files=$(git diff --cached --name-only -z --diff-filter=ACMR | tr '\0' '\n')
+staged_count=$(git diff --cached --name-only -z --diff-filter=ACMR | tr -cd '\0' | wc -c)
+if [ -n "$staged_files" ] && [ "$(printf '%s\n' "$staged_files" | wc -l)" -ne "$staged_count" ]; then
+  echo "pre-commit: a staged path contains a newline; rename it so the credential scan can read it."
+  exit 1
+fi
 
 if [ -n "$staged_files" ]; then
   # Read newline-separated paths so filenames with spaces are scanned.
