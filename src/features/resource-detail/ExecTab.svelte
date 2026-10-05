@@ -147,6 +147,12 @@
 		};
 	});
 
+	// Container or Pod changes from the Logs tab or detail loading must not reuse an earlier acknowledgement.
+	$effect(() => {
+		void [selectedContainer, resource.cluster, resource.namespace, resource.name, kubeconfigSourceKey];
+		confirmed = false;
+	});
+
 	$effect(() => {
 		if (!active) return;
 		const frame = window.requestAnimationFrame(() => fitTerminal());
