@@ -92,6 +92,7 @@ impl ArgoServiceTunnel {
                 namespace,
                 service_name,
                 service_port,
+                pod_name: pod_name.clone(),
             }),
         ));
         Ok(Self {
@@ -166,6 +167,8 @@ struct ServiceRoute {
     namespace: String,
     service_name: String,
     service_port: u16,
+    /// The Pod the user confirmed; credentials never reach any other Pod.
+    pod_name: String,
 }
 
 async fn verify_port_forward(
@@ -223,6 +226,12 @@ async fn run_tunnel(
                             route.service_port,
                         )
                         .await?;
+                        if target.pod_name != route.pod_name {
+                            return Err(AppError::new(
+                                "Argo CD Service now resolves to a different Pod than the confirmed one; reconnect and confirm the new target",
+                                AppErrorKind::ArgoTunnel,
+                            ));
+                        }
                         forward_pod_connection(
                             client,
                             target.namespace,
