@@ -42,6 +42,8 @@ where
 {
     let mut items = Vec::new();
     let mut token = None;
+    // Any recurring token means the server is cycling, not just repeating the last one.
+    let mut seen_tokens = std::collections::HashSet::new();
     loop {
         let params = token.as_deref().map_or_else(
             || list_params().limit(500),
@@ -51,7 +53,10 @@ where
             Ok(page) => {
                 let next = page.metadata.continue_;
                 items.extend(page.items);
-                if next.is_some() && next == token {
+                if next
+                    .as_deref()
+                    .is_some_and(|value| !value.is_empty() && !seen_tokens.insert(value.to_owned()))
+                {
                     return InventoryLoad::partial(
                         items,
                         AppError::new(
