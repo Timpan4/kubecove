@@ -383,6 +383,22 @@ pub struct ArgoServerCapability {
     pub unavailable_reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unavailable: Option<ArgoServiceTunnelUnavailableReason>,
+    /// Pod discovery resolved for the Service; shown to the user for target confirmation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_pod: Option<String>,
+    /// Whether the Service carries `app.kubernetes.io/part-of=argocd`. A hint, not identity.
+    #[serde(default)]
+    pub argo_labeled: bool,
+}
+
+/// Exact private tunnel target the user confirmed before credentials are sent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArgoConfirmedTarget {
+    pub namespace: String,
+    pub service_name: String,
+    #[serde(default)]
+    pub pod_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

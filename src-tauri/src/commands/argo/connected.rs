@@ -2,7 +2,10 @@ pub(crate) use super::transport::{api_delete, api_get, api_post, redact_secret_f
 use super::transport::{
     argo_url, http_client, normalize_endpoint, response_json, safe_http_error, url,
 };
-use super::{scope::scoped_connection, tunnel::ArgoServiceTunnel};
+use super::{
+    scope::scoped_connection,
+    tunnel::{verify_confirmed_target, ArgoServiceTunnel},
+};
 use crate::commands::{
     gitops_crd::{client_for_context, find_api_resource, get_crd_object},
     kubeconfig::KubeconfigSource,
@@ -11,8 +14,9 @@ use crate::commands::{
 use crate::models::AppErrorKind;
 use crate::models::{
     AppError, ArgoApplicationHistory, ArgoApplicationInspector, ArgoApplicationRef,
-    ArgoConnectionProfile, ArgoConnectionStatus, ArgoManagedResource, ArgoResourceComparison,
-    ArgoServerCapability, ArgoServerEndpoint, ArgoServiceTunnelUnavailableReason,
+    ArgoConfirmedTarget, ArgoConnectionProfile, ArgoConnectionStatus, ArgoManagedResource,
+    ArgoResourceComparison, ArgoServerCapability, ArgoServerEndpoint,
+    ArgoServiceTunnelUnavailableReason,
 };
 use k8s_openapi::api::core::v1::Service;
 use kube::{
@@ -365,6 +369,8 @@ fn unavailable_capability(
         endpoint: None,
         unavailable_reason: Some(message.into()),
         unavailable: Some(reason),
+        target_pod: None,
+        argo_labeled: false,
     }
 }
 
@@ -446,9 +452,20 @@ fn servicetunnel_capabilities(service: &Service) -> Vec<ArgoServerCapability> {
                 }),
                 unavailable_reason: None,
                 unavailable: None,
+                target_pod: None,
+                argo_labeled: false,
             }
         })
         .collect()
+}
+
+fn is_argo_labeled(service: &Service) -> bool {
+    service
+        .metadata
+        .labels
+        .as_ref()
+        .and_then(|labels| labels.get("app.kubernetes.io/part-of"))
+        .is_some_and(|value| value == "argocd")
 }
 
 fn tunnel_target_unavailable(error: &AppError) -> ArgoServiceTunnelUnavailableReason {
@@ -482,6 +499,7 @@ pub async fn discover_argo_servers(
                 let mut capabilities = Vec::new();
                 for service in list.items {
                     for mut capability in servicetunnel_capabilities(&service) {
+                        capability.argo_labeled = is_argo_labeled(&service);
                         if let Some(ArgoServerEndpoint::ServiceTunnel {
                             namespace,
                             service_name,
@@ -489,17 +507,20 @@ pub async fn discover_argo_servers(
                             ..
                         }) = capability.endpoint.as_ref()
                         {
-                            if let Err(error) =
-                                crate::commands::sessions::service::resolve_service_target(
-                                    client.clone(),
-                                    namespace,
-                                    service_name,
-                                    *service_port,
-                                )
-                                .await
+                            match crate::commands::sessions::service::resolve_service_target(
+                                client.clone(),
+                                namespace,
+                                service_name,
+                                *service_port,
+                            )
+                            .await
                             {
-                                capability.unavailable = Some(tunnel_target_unavailable(&error));
-                                capability.unavailable_reason = Some(error.message);
+                                Ok(target) => capability.target_pod = Some(target.pod_name),
+                                Err(error) => {
+                                    capability.unavailable =
+                                        Some(tunnel_target_unavailable(&error));
+                                    capability.unavailable_reason = Some(error.message);
+                                }
                             }
                         }
                         capabilities.push(capability);
@@ -526,6 +547,7 @@ pub async fn connect_argo_server(
     cluster_context: Option<String>,
     kubeconfig_env_var: Option<String>,
     workspace_id: Option<String>,
+    confirmed_target: Option<ArgoConfirmedTarget>,
 ) -> Result<ArgoConnectionStatus, AppError> {
     let connection_epoch = store.connection_epoch();
     let kubeconfig_source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
@@ -564,6 +586,12 @@ pub async fn connect_argo_server(
             *service_port,
         )
         .await?;
+        verify_confirmed_target(
+            confirmed_target.as_ref(),
+            namespace,
+            service_name,
+            started.pod_name(),
+        )?;
         let host = argo_url(&profile.url)?
             .host_str()
             .expect("normalized service endpoint has a host")

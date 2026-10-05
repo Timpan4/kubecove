@@ -5,7 +5,7 @@ use crate::{
         service::resolve_service_target,
         target::client_for_context,
     },
-    models::AppError,
+    models::{AppError, ArgoConfirmedTarget},
 };
 use k8s_openapi::api::core::v1::Pod;
 use kube::{api::Api, Client};
@@ -21,6 +21,7 @@ use tokio::{
 
 pub(crate) struct ArgoServiceTunnel {
     local_port: u16,
+    pod_name: String,
     state: Arc<TunnelState>,
 }
 
@@ -55,6 +56,7 @@ impl ArgoServiceTunnel {
         let client = client_for_context(cluster_context, kubeconfig_env_var).await?;
         let target =
             resolve_service_target(client.clone(), &namespace, &service_name, service_port).await?;
+        let pod_name = target.pod_name.clone();
         verify_port_forward(
             client.clone(),
             &target.namespace,
@@ -94,6 +96,7 @@ impl ArgoServiceTunnel {
         ));
         Ok(Self {
             local_port,
+            pod_name,
             state: Arc::new(TunnelState {
                 shutdown: std::sync::Mutex::new(Some(shutdown)),
                 task: std::sync::Mutex::new(Some(task)),
@@ -105,6 +108,10 @@ impl ArgoServiceTunnel {
         self.local_port
     }
 
+    pub(crate) fn pod_name(&self) -> &str {
+        &self.pod_name
+    }
+
     pub(crate) fn close(&self) {
         self.state.close();
     }
@@ -113,6 +120,7 @@ impl ArgoServiceTunnel {
     pub(crate) fn test_tunnel(shutdown: oneshot::Sender<()>) -> Self {
         Self {
             local_port: 0,
+            pod_name: String::new(),
             state: Arc::new(TunnelState {
                 shutdown: std::sync::Mutex::new(Some(shutdown)),
                 task: std::sync::Mutex::new(None),
@@ -125,6 +133,32 @@ impl Drop for ArgoServiceTunnel {
     fn drop(&mut self) {
         self.close();
     }
+}
+
+/// Credentials may only cross a tunnel whose resolved target is exactly what the user confirmed.
+pub(crate) fn verify_confirmed_target(
+    confirmed: Option<&ArgoConfirmedTarget>,
+    namespace: &str,
+    service_name: &str,
+    pod_name: &str,
+) -> Result<(), AppError> {
+    let confirmed = confirmed.ok_or_else(|| {
+        AppError::new(
+            "confirm the Argo CD Service tunnel target before sending credentials",
+            AppErrorKind::ArgoConnection,
+        )
+    })?;
+    let pod_matches = confirmed
+        .pod_name
+        .as_deref()
+        .is_some_and(|confirmed_pod| confirmed_pod == pod_name);
+    if confirmed.namespace == namespace && confirmed.service_name == service_name && pod_matches {
+        return Ok(());
+    }
+    Err(AppError::new(
+        "Argo CD Service tunnel target changed since it was confirmed; refresh discovery and confirm again",
+        AppErrorKind::ArgoConnection,
+    ))
 }
 
 #[derive(Clone)]
@@ -235,6 +269,7 @@ mod tests {
         let (shutdown, receiver) = oneshot::channel();
         let tunnel = ArgoServiceTunnel {
             local_port: 0,
+            pod_name: String::new(),
             state: Arc::new(TunnelState {
                 shutdown: std::sync::Mutex::new(Some(shutdown)),
                 task: std::sync::Mutex::new(None),
@@ -245,6 +280,40 @@ mod tests {
         tunnel.close();
         assert!(receiver.await.is_ok());
         state.close();
+    }
+
+    #[test]
+    fn credentials_require_the_exact_confirmed_target() {
+        let confirmed = |namespace: &str, service: &str, pod: Option<&str>| ArgoConfirmedTarget {
+            namespace: namespace.into(),
+            service_name: service.into(),
+            pod_name: pod.map(Into::into),
+        };
+        let check = |target: Option<ArgoConfirmedTarget>| {
+            verify_confirmed_target(target.as_ref(), "argocd", "argocd-server", "pod-a").is_ok()
+        };
+        assert!(check(Some(confirmed(
+            "argocd",
+            "argocd-server",
+            Some("pod-a")
+        ))));
+        assert!(!check(None));
+        assert!(!check(Some(confirmed(
+            "evil",
+            "argocd-server",
+            Some("pod-a")
+        ))));
+        assert!(!check(Some(confirmed(
+            "argocd",
+            "argo-cd-argocd-server",
+            Some("pod-a")
+        ))));
+        assert!(!check(Some(confirmed(
+            "argocd",
+            "argocd-server",
+            Some("pod-b")
+        ))));
+        assert!(!check(Some(confirmed("argocd", "argocd-server", None))));
     }
 
     #[test]

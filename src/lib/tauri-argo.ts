@@ -5,6 +5,7 @@ import type {
 	ArgoApplicationInspector,
 	ArgoApplicationRef,
 	ArgoConnectionProfile,
+	ArgoConfirmedTarget,
 	ArgoConnectionStatus,
 	ArgoManagedResource,
 	ArgoOperationConfirmation,
@@ -45,6 +46,7 @@ export async function connectArgoServer(
 		clusterContext?: string;
 		kubeconfigEnvVar?: string;
 		workspaceId?: string;
+		confirmedTarget?: ArgoConfirmedTarget;
 	},
 ): Promise<ArgoConnectionStatus> {
 	const { kubeconfigEnvVar, ...args } = request;

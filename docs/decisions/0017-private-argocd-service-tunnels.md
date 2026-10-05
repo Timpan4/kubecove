@@ -13,3 +13,14 @@ Discovery reports only eligible TCP Service ports and a bounded unavailable reas
 ## Consequences
 
 Manual external HTTPS profiles remain available. Saved profiles persist endpoint identity and scope but no credentials, TLS override, custom CA material, or tunnel address. Tunnel access is unavailable when discovery cannot prove the required Service target.
+
+## Amendment 2026-10-05: user-confirmed tunnel target
+
+Discovery matches Services by name (`argocd-server`, `argo-cd-argocd-server`) in any readable namespace, so a workload in any namespace can imitate Argo CD and receive a token or local login sent through a tunnel. Service names and labels are attacker-controllable and are not identity.
+
+Trust rule:
+
+- Discovery reports the Pod it resolved for each Service (`targetPod`) and whether the Service carries `app.kubernetes.io/part-of=argocd` (`argoLabeled`). The label is a hint only. Unlabelled Services stay selectable but are flagged in the selector and in a stronger warning.
+- Before credentials are sent through a Service tunnel, including reconnects of saved profiles that use a remembered credential, the UI shows the exact namespace, Service name, and Pod with a warning and requires explicit confirmation. The user confirmation is the control.
+- `connect_argo_server` takes the confirmed target (namespace, Service name, Pod). For a Service tunnel the backend starts the tunnel, resolves the target, and refuses to send any credential unless the confirmed target matches the resolved namespace, Service, and Pod. A missing confirmation or a target that changed between display and send is rejected, and the user must refresh discovery and confirm again.
+- The Pod is confirmed at connect time only. The tunnel continues to resolve Service endpoints per connection as before.

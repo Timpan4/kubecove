@@ -164,16 +164,16 @@ const handlers = {
 	list_resource_metrics: () => metrics(),
 	detect_argocd: () => true,
 	discover_argo_servers: () => [
-		{ id: "service:argocd:argocd-server:443", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 443, scheme: "https" }, unavailableReason: null },
-		{ id: "service:argocd:argocd-server:80", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 80, scheme: "https" }, unavailableReason: null },
-		{ id: "service:argocd:external", name: "argocd-external", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: null, unavailableReason: "ExternalName Services cannot be port-forwarded" },
+		{ id: "service:argocd:argocd-server:443", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 443, scheme: "https" }, unavailableReason: null, targetPod: "argocd-server-7d9f8b6c5-x2k4q", argoLabeled: true },
+		{ id: "service:argocd:argocd-server:80", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 80, scheme: "https" }, unavailableReason: null, targetPod: "argocd-server-7d9f8b6c5-x2k4q", argoLabeled: true },
+		{ id: "service:argocd:external", name: "argocd-external", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: null, unavailableReason: "ExternalName Services cannot be port-forwarded", argoLabeled: false },
 	],
 	connect_argo_server: (args) => {
 		const serverUrl = args?.serverUrl ?? "https://argocd.example.test";
 		const endpoint = args?.endpoint ?? { kind: "externalHttps", url: serverUrl };
 		const profile: ArgoConnectionProfile = { id: args?.id ?? "mock-profile", endpoint, url: serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, transport: "connected", rememberCredential: Boolean(args?.rememberCredential) };
 		argoConnections.set(profile.id, profile);
-		return { profile, connected: true, username: args?.username ?? "mock-user", unavailableReason: null };
+		return { profile, connected: true, username: args?.username ?? "mock-user", unavailableReason: null, targetPod: "argocd-server-7d9f8b6c5-x2k4q", argoLabeled: true };
 	},
 	get_argo_connection_status: (args) => {
 		const profile = args?.id ? argoConnections.get(args.id) ?? null : null;

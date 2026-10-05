@@ -35,7 +35,7 @@
 		discoverArgoServers,
 		forgetArgoCredential,
 	} from "@/lib/tauri";
-	import type { ArgoServerEndpoint } from "@/lib/types";
+	import type { ArgoConfirmedTarget, ArgoServerEndpoint } from "@/lib/types";
 
 	let { clusterContext, workspaceId, kubeconfigEnvVar }: {
 		clusterContext?: string;
@@ -64,6 +64,11 @@
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let connected = $state<string | null>(null);
+	let pendingConfirmation = $state<{
+		saved?: (typeof settings.argoProfiles)[number];
+		target: ArgoConfirmedTarget;
+		argoLabeled: boolean;
+	} | null>(null);
 	const matchingProfiles = $derived(
 		clusterContext && workspaceId
 			? eligibleArgoProfiles(
@@ -146,6 +151,11 @@
 	});
 
 	$effect(() => {
+		selectedCapabilityId;
+		pendingConfirmation = null;
+	});
+
+	$effect(() => {
 		connected = connectionStatuses.data?.find(([, status]) => status.connected)?.[0] ?? null;
 	});
 
@@ -165,9 +175,42 @@
 		return `argo:${workspaceId ?? "global"}:${clusterContext ?? "global"}:${kubeconfigEnvVar ?? "global"}:${argoEndpointIdentity(endpoint)}`;
 	}
 
-	async function connect(saved?: (typeof settings.argoProfiles)[number]) {
+	// Credentials never cross a private tunnel until the user confirms the exact discovered target.
+	function requestConnect(saved?: (typeof settings.argoProfiles)[number]) {
 		const endpoint = saved?.endpoint ?? draftEndpoint;
 		if (!endpoint) return;
+		if (endpoint.kind !== "serviceTunnel") return void connect(saved);
+		const capability = discovered.data?.find(
+			(server) =>
+				server.endpoint?.kind === "serviceTunnel" &&
+				server.endpoint.namespace === endpoint.namespace &&
+				server.endpoint.serviceName === endpoint.serviceName &&
+				server.endpoint.servicePort === endpoint.servicePort &&
+				!server.unavailableReason,
+		);
+		if (!capability?.targetPod) {
+			error = "This Service tunnel target was not discovered. Refresh discovery and try again.";
+			return;
+		}
+		error = null;
+		pendingConfirmation = {
+			saved,
+			target: {
+				namespace: endpoint.namespace,
+				serviceName: endpoint.serviceName,
+				podName: capability.targetPod,
+			},
+			argoLabeled: capability.argoLabeled,
+		};
+	}
+
+	async function connect(
+		saved?: (typeof settings.argoProfiles)[number],
+		confirmedTarget?: ArgoConfirmedTarget,
+	) {
+		const endpoint = saved?.endpoint ?? draftEndpoint;
+		if (!endpoint) return;
+		pendingConfirmation = null;
 		busy = true;
 		error = null;
 		try {
@@ -185,6 +228,7 @@
 				clusterContext,
 				kubeconfigEnvVar,
 				workspaceId,
+				confirmedTarget,
 			});
 			if (result.profile) {
 				const profile = result.profile;
@@ -272,7 +316,7 @@
 					<select id="argo-service-port" bind:value={selectedCapabilityId} class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm">
 						<option value="">Select a Service port</option>
 						{#each tunnelCapabilities as server}
-							<option value={server.id}>{server.namespace}/{server.name} — port {server.endpoint?.kind === "serviceTunnel" ? server.endpoint.servicePort : ""}</option>
+							<option value={server.id}>{server.namespace}/{server.name} — port {server.endpoint?.kind === "serviceTunnel" ? server.endpoint.servicePort : ""}{server.argoLabeled ? "" : " (no Argo CD label)"}</option>
 						{/each}
 					</select>
 					<FieldDescription>Only discovered selector-backed TCP Services can be connected.</FieldDescription>
@@ -303,8 +347,30 @@
 		{#if insecureTls}
 			<Alert variant="destructive"><ShieldAlert /><AlertTitle>Insecure session</AlertTitle><AlertDescription>Certificate validation is disabled and never saved.</AlertDescription></Alert>
 		{/if}
+		{#if pendingConfirmation}
+			{@const pending = pendingConfirmation}
+			<Alert variant="destructive">
+				<ShieldAlert />
+				<AlertTitle>Confirm tunnel target</AlertTitle>
+				<AlertDescription>
+					<p>Your Argo CD credentials will be sent to this cluster workload. Any workload with this name can capture them.</p>
+					<dl class="my-2 grid grid-cols-[auto_1fr] gap-x-3 font-mono text-xs">
+						<dt>Namespace</dt><dd>{pending.target.namespace}</dd>
+						<dt>Service</dt><dd>{pending.target.serviceName}</dd>
+						<dt>Pod</dt><dd>{pending.target.podName}</dd>
+					</dl>
+					{#if !pending.argoLabeled}
+						<p class="font-medium">This Service does not carry the standard Argo CD label (app.kubernetes.io/part-of=argocd). Only continue if you recognise it as your Argo CD server.</p>
+					{/if}
+					<div class="mt-2 flex gap-2">
+						<Button type="button" size="sm" disabled={busy} onclick={() => connect(pending.saved, pending.target)}>Confirm and connect</Button>
+						<Button type="button" size="sm" variant="outline" onclick={() => (pendingConfirmation = null)}>Cancel</Button>
+					</div>
+				</AlertDescription>
+			</Alert>
+		{/if}
 		{#if error}<Alert variant="destructive"><AlertCircle /><AlertTitle>Connection failed</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>{/if}
-		<Button type="button" disabled={busy || !draftEndpoint} onclick={() => connect()}><Link2 />{busy ? "Connecting…" : "Connect"}</Button>
+		<Button type="button" disabled={busy || !draftEndpoint} onclick={() => requestConnect()}><Link2 />{busy ? "Connecting…" : "Connect"}</Button>
 	</FieldGroup>
 {:else}
 	<p class="text-sm text-muted-foreground">Open Settings from a workspace to discover or connect an Argo CD server.</p>
@@ -312,7 +378,7 @@
 
 {#if matchingProfiles.length > 0}
 	<div class="mt-4 flex flex-col gap-2"><p class="text-sm font-medium">Saved server profiles</p>{#each matchingProfiles as profile}
-		<div class="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"><span class="truncate">{endpointLabel(profile.endpoint)}</span><div class="flex items-center gap-2">{#if clusterContext}<Button size="sm" type="button" onclick={() => connect(profile)}>{connected === profile.id ? "Connected" : "Reconnect"}</Button>{/if}<Button size="sm" variant="ghost" type="button" onclick={() => disconnect(profile.id)}>Disconnect</Button><Button size="sm" variant="ghost" type="button" onclick={() => forget(profile)}>Forget</Button></div></div>
+		<div class="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"><span class="truncate">{endpointLabel(profile.endpoint)}</span><div class="flex items-center gap-2">{#if clusterContext}<Button size="sm" type="button" onclick={() => requestConnect(profile)}>{connected === profile.id ? "Connected" : "Reconnect"}</Button>{/if}<Button size="sm" variant="ghost" type="button" onclick={() => disconnect(profile.id)}>Disconnect</Button><Button size="sm" variant="ghost" type="button" onclick={() => forget(profile)}>Forget</Button></div></div>
 	{/each}</div>
 {/if}
 
