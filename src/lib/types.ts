@@ -153,6 +153,7 @@ export interface ClusterOperationTarget {
 	clusterContext: string;
 	kind: string;
 	name: string;
+	apiVersion?: string;
 	namespace?: string | null;
 }
 
@@ -177,10 +178,7 @@ export interface ClusterOperationPreview {
 	effect: string;
 }
 
-export interface ClusterOperationResult {
-	target: ClusterOperationTarget;
-	effect: string;
-}
+export type ClusterOperationResult = ClusterOperationPreview;
 
 export type ResourceHealth =
 	| "healthy"

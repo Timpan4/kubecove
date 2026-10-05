@@ -193,6 +193,15 @@ fn validate_target(target: &ClusterOperationTarget, supported: &[&str]) -> Resul
             AppErrorKind::UnsupportedOperation,
         ));
     }
+    if let Some(api_version) = target.api_version.as_deref() {
+        let expected = builtin_kind(&target.kind).map(|kind| kind.api_version());
+        if expected.as_deref() != Some(api_version) {
+            return Err(AppError::new(
+                format!("{} is not the built-in {} resource", api_version, target.kind),
+                AppErrorKind::UnsupportedOperation,
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -274,6 +283,7 @@ mod tests {
             namespace: Some("default".to_string()),
             kind: kind.to_string(),
             name: "api".to_string(),
+            api_version: None,
         }
     }
 
