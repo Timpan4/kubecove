@@ -141,6 +141,7 @@ async fn operation_client_for(
     kubeconfig_env_var: Option<String>,
 ) -> Result<kube::Client, AppError> {
     KubeconfigSource::new(kubeconfig_env_var)?
+        .fail_closed()
         .operation_client_for_context(&target.cluster_context)
         .await
 }
@@ -150,6 +151,7 @@ async fn client_for(
     kubeconfig_env_var: Option<String>,
 ) -> Result<kube::Client, AppError> {
     KubeconfigSource::new(kubeconfig_env_var)?
+        .fail_closed()
         .client_for_context(&target.cluster_context)
         .await
 }
@@ -194,10 +196,13 @@ fn validate_target(target: &ClusterOperationTarget, supported: &[&str]) -> Resul
         ));
     }
     if let Some(api_version) = target.api_version.as_deref() {
-        let expected = builtin_kind(&target.kind).map(|kind| kind.api_version());
+        let expected = builtin_kind(&target.kind).map(BuiltinKind::api_version);
         if expected.as_deref() != Some(api_version) {
             return Err(AppError::new(
-                format!("{} is not the built-in {} resource", api_version, target.kind),
+                format!(
+                    "{} is not the built-in {} resource",
+                    api_version, target.kind
+                ),
                 AppErrorKind::UnsupportedOperation,
             ));
         }

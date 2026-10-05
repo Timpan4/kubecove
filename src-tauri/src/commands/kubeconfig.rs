@@ -80,6 +80,7 @@ pub struct KubeconfigSource {
     app_paths: Vec<PathBuf>,
     show_source_labels: bool,
     read_env: bool,
+    fail_closed: bool,
 }
 
 impl KubeconfigSource {
@@ -115,6 +116,7 @@ impl KubeconfigSource {
                 .collect(),
             show_source_labels,
             read_env: true,
+            fail_closed: false,
         })
     }
 
@@ -125,7 +127,25 @@ impl KubeconfigSource {
             app_paths: vec![path],
             show_source_labels: false,
             read_env: false,
+            fail_closed: false,
         }
+    }
+
+    /// Cluster-changing paths use this: when configured sources exist but none
+    /// load, they error instead of falling back to the default kubeconfig.
+    #[must_use]
+    pub fn fail_closed(mut self) -> Self {
+        self.fail_closed = true;
+        self
+    }
+
+    // Checked before client-cache lookups so a client cached from the default
+    // fallback is never reused by a fail-closed source.
+    pub(super) fn ensure_configured_sources_load(&self) -> Result<(), AppError> {
+        if self.fail_closed && self.configured_paths()?.is_some() {
+            self.read_configured_kubeconfig()?;
+        }
+        Ok(())
     }
 
     pub fn key(&self) -> String {
@@ -312,6 +332,20 @@ impl KubeconfigSource {
             return Err(AppError::new(
                 "the isolated E2E kubeconfig became unavailable",
                 AppErrorKind::Validation,
+            ));
+        }
+
+        if self.fail_closed {
+            return Err(AppError::new(
+                format!(
+                    "none of the configured kubeconfig sources could be loaded; refusing to fall back to the default kubeconfig for a cluster-changing action: {}",
+                    warnings
+                        .iter()
+                        .map(|warning| warning.message.as_str())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                ),
+                AppErrorKind::Kubeconfig,
             ));
         }
 

@@ -307,3 +307,39 @@ fn e2e_source_ignores_inherited_override() {
     let _ = fs::remove_file(override_path);
     let _ = fs::remove_file(standard_path);
 }
+
+#[test]
+fn missing_app_path_fails_closed_for_cluster_changing_sources() {
+    let _env_lock = ENV_LOCK.lock().expect("environment lock");
+    let home = env::temp_dir().join(unique_env_var("FAIL_CLOSED_HOME"));
+    let default_path = home.join(".kube").join("config");
+    fs::create_dir_all(default_path.parent().expect("default kubeconfig parent"))
+        .expect("create default kubeconfig directory");
+    let default_source = write_kubeconfig("default-context");
+    fs::copy(&default_source, &default_path).expect("copy default kubeconfig");
+    let missing = env::temp_dir().join(unique_env_var("FAIL_CLOSED_MISSING"));
+    let env_var = unique_env_var("FAIL_CLOSED_ENV");
+    let _kubeconfig = EnvVarGuard::set(&env_var, &missing);
+    let _home = EnvVarGuard::set("HOME", &home);
+    let source = KubeconfigSource::from_settings(Some(&env_var), Vec::new(), true).expect("source");
+
+    let (kubeconfig, _) = source
+        .read_configured_kubeconfig()
+        .expect("read-only paths fall back to the default kubeconfig");
+    assert_eq!(
+        kubeconfig.current_context.as_deref(),
+        Some("default-context")
+    );
+
+    let source = source.fail_closed();
+
+    let error = source
+        .read_configured_kubeconfig()
+        .expect_err("must not fall back to the default kubeconfig");
+    assert_eq!(error.kind, AppErrorKind::Kubeconfig);
+    assert!(error.message.contains("refusing to fall back"));
+    assert!(source.ensure_configured_sources_load().is_err());
+
+    let _ = fs::remove_dir_all(home);
+    let _ = fs::remove_file(default_source);
+}

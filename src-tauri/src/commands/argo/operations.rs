@@ -1,7 +1,7 @@
 use super::connected::{api_delete, api_get, api_post, ConnectedArgo};
 use super::scope::{acquire_connection_lease, scoped_connection, ConnectionLease};
 use super::session::{consume, issue, peek, OperationSession, SessionSnapshot};
-use crate::commands::gitops_crd::{client_for_context, find_api_resource};
+use crate::commands::gitops_crd::{fail_closed_client_for_context, find_api_resource};
 use crate::commands::kubeconfig::KubeconfigSource;
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -171,7 +171,8 @@ async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(), AppError
             AppErrorKind::ArgoOperationUnavailable,
         ));
     }
-    let client = client_for_context(context, request.kubeconfig_env_var.clone()).await?;
+    let client =
+        fail_closed_client_for_context(context, request.kubeconfig_env_var.clone()).await?;
     let review = SelfSubjectAccessReview {
         metadata: ObjectMeta::default(),
         spec: SelfSubjectAccessReviewSpec {
@@ -372,7 +373,8 @@ async fn revalidate_session(
     }
     fallback_allowed(request).await?;
     let context = request.cluster_context.as_deref().expect("validated");
-    let client = client_for_context(context, request.kubeconfig_env_var.clone()).await?;
+    let client =
+        fail_closed_client_for_context(context, request.kubeconfig_env_var.clone()).await?;
     let resource = find_api_resource(&client, "argoproj.io", "Application")
         .await?
         .ok_or_else(|| AppError::new("Application CRD not found", AppErrorKind::Cluster))?;
@@ -623,6 +625,7 @@ async fn kubernetes_operation(
     // ADR 0009: a confirmed write must not be cancelled by workspace client
     // rotation after the API server may already have applied it.
     let client = KubeconfigSource::new(request.kubeconfig_env_var.clone())?
+        .fail_closed()
         .operation_client_for_context(request.cluster_context.as_deref().expect("validated"))
         .await?;
     let api = Api::<DynamicObject>::namespaced_with(
@@ -767,7 +770,8 @@ async fn resolve_request(
                 AppErrorKind::ArgoOperationUnavailable,
             )
         })?;
-        let client = client_for_context(context, request.kubeconfig_env_var.clone()).await?;
+        let client =
+            fail_closed_client_for_context(context, request.kubeconfig_env_var.clone()).await?;
         let ar = find_api_resource(&client, "argoproj.io", "Application")
             .await?
             .ok_or_else(|| AppError::new("Application CRD not found", AppErrorKind::Cluster))?;

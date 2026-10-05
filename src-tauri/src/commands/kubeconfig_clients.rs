@@ -31,6 +31,7 @@ impl KubeconfigSource {
         &self,
         cluster_context: &str,
     ) -> Result<(Client, String), AppError> {
+        self.ensure_configured_sources_load()?;
         let fingerprint = client_cache::fingerprint_files(&self.effective_kubeconfig_paths()?);
         let source_key = self.key();
         let generation = client_cache::finite_client_generation();
@@ -65,6 +66,7 @@ impl KubeconfigSource {
         &self,
         cluster_context: &str,
     ) -> Result<Client, AppError> {
+        self.ensure_configured_sources_load()?;
         let fingerprint = client_cache::fingerprint_files(&self.effective_kubeconfig_paths()?);
         let source_key = self.key();
         if let Some(client) =
@@ -95,6 +97,7 @@ impl KubeconfigSource {
         &self,
         cluster_context: &str,
     ) -> Result<(Client, String), AppError> {
+        self.ensure_configured_sources_load()?;
         let fingerprint = client_cache::fingerprint_files(&self.effective_kubeconfig_paths()?);
         let source_key = self.key();
         if let Some(cached) =
