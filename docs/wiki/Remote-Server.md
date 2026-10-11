@@ -19,7 +19,7 @@ A browser port forward listens on `127.0.0.1` on the server. To reach it from a 
 
 The desktop app does not perform Cloudflare Access or OIDC sign-in. To use the desktop app against a server, run that server in token mode.
 
-Container releases provide `ghcr.io/timpan4/kubecove:<version>` with the browser app and `<version>-slim` with only the server API. Choose the full image for browser use, including OIDC. The slim variant supports the desktop remote client in token mode; it serves no browser assets. A separate browser frontend must share the API's exact origin through a reverse proxy. See the [container guide](https://github.com/Timpan4/kubecove/tree/main/deploy) for build and release availability.
+Releases provide full and slim variants of both archives and container images. Full includes the browser app. Slim includes only the server API, supports the desktop remote client in token mode, and serves no browser assets. A separate browser frontend must share the API's exact origin through a reverse proxy. See [Install the server](https://github.com/Timpan4/kubecove/wiki/Server-Installation#choose-full-or-slim).
 
 ## Choose an authentication mode
 
@@ -33,16 +33,9 @@ Cloudflare Access and OIDC modes create no startup token and ignore an old `serv
 
 ## Install and prepare the host
 
-1. Get a `kubecove-server` build. The release workflow attaches `kubecove-server_<version>_<target>.tar.gz` archives for Linux x64 (`x86_64-unknown-linux-gnu`), macOS x64 (`x86_64-apple-darwin`) and macOS arm64 (`aarch64-apple-darwin`). Check that the KubeCove release you choose lists these archives. Until a release includes them, build the server from source as described in the [server README](https://github.com/Timpan4/kubecove/tree/main/src-tauri/server). The archive holds the server executable with the browser app embedded and the kubeconform sidecar. Keep both executables in the same directory. The archive is not a desktop installer and does not self-update.
-2. Extract the archive and make the executable runnable if needed:
-
-   ```sh
-   tar -xzf kubecove-server_*.tar.gz
-   chmod +x kubecove-server
-   ```
-
-3. Run it as the OS user whose kubeconfig and cluster access KubeCove should use. Kubeconfig discovery uses that user's `KUBECONFIG`, then the standard kubeconfig path. Kubeconfig paths entered in the UI refer to files on the server, not on the laptop.
-4. Keep the listener on loopback. The default is `127.0.0.1:0`, where the OS picks a free port. For a predictable SSH target, set a port:
+1. Install `kubecove-server` from a native archive, a container image or a systemd service. [Install the server](https://github.com/Timpan4/kubecove/wiki/Server-Installation) compares the methods and gives step-by-step instructions. The archive is not a desktop installer and does not self-update. To build from source, see the [server README](https://github.com/Timpan4/kubecove/tree/main/src-tauri/server).
+2. Run it as the OS user whose kubeconfig and cluster access KubeCove should use. Kubeconfig discovery uses that user's `KUBECONFIG`, then the standard kubeconfig path. Kubeconfig paths entered in the UI refer to files on the server, not on the laptop.
+3. Keep the listener on loopback. The default is `127.0.0.1:0`, where the OS picks a free port. For a predictable SSH target, set a port:
 
    ```sh
    ./kubecove-server --listen 127.0.0.1:8080

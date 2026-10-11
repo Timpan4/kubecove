@@ -10,7 +10,7 @@ KubeCove installers publish through [GitHub Releases](https://github.com/Timpan4
 
 Installers contain the desktop app and normal Tauri runtime files. They do not bundle `kubectl`, Helm, Argo CD, kubeconfigs, tokens, or cluster credentials.
 
-The release workflow also builds standalone `kubecove-server` archives for Linux x64, macOS x64, and macOS arm64. Each contains the server executable with the browser assets embedded. The server runs without Tauri or webview GUI dependencies and is intended for a single OS user on a remote host, normally reached through SSH forwarding. See [the remote-host operations guide](wiki/Remote-Server.md). Server assets are available only after the matching release completes its publish gates.
+The release workflow also builds standalone `kubecove-server` archives for Linux x64, Linux arm64 and macOS arm64, each in a full variant with the browser assets embedded and a `-slim` API-only variant, with SHA-256 checksum files. Linux archives include a systemd unit. It also builds full and slim distroless container images for `linux/amd64` and `linux/arm64`, then publishes each tag as a multi-architecture image. The server runs without Tauri or webview GUI dependencies and is intended for a single OS user on a remote host, normally reached through SSH forwarding. See [the remote-host operations guide](wiki/Remote-Server.md) and [the install guide](wiki/Server-Installation.md). Server assets are available only after the matching release completes its publish gates.
 
 Windows releases use NSIS so in-app updates share one installer path. An older MSI install may require one uninstall before NSIS install.
 

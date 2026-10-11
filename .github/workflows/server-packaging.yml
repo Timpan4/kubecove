@@ -1,0 +1,154 @@
+name: Server packaging
+
+on:
+  workflow_call:
+    inputs:
+      release-tag:
+        type: string
+        required: true
+  # Packaging runs on main and release tags, not on pull requests.
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/server-packaging.yml
+      - .github/workflows/release.yml
+      - Dockerfile
+      - .dockerignore
+      - deploy/**
+      - scripts/container-smoke.sh
+      - scripts/package-server.sh
+      - src-tauri/server/**
+      - src-tauri/bin/**
+      - src-tauri/build.rs
+      - src-tauri/src/commands/resources/kubeconform.rs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server-build:
+    name: Build headless server ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux x64
+            platform: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - label: Linux arm64
+            platform: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - label: macOS arm64
+            platform: macos-latest
+            target: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Cache headless server Rust dependencies
+        uses: swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: kubecove-server-release-${{ matrix.target }}
+          workspaces: "./src-tauri/server -> target"
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build embedded web assets
+        run: bun --bun vite build
+        env:
+          KUBECOVE_PUBLIC_RUNTIME: web
+
+      - name: Build and package both native variants
+        shell: bash
+        env:
+          TAG_NAME: ${{ inputs.release-tag || 'app-v0.0.0-check' }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          for variant in full slim; do
+            build=(cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target "$TARGET")
+            if [[ "$variant" == slim ]]; then build+=(--no-default-features); fi
+            "${build[@]}"
+            bash scripts/package-server.sh "$TARGET" "$variant" "${TAG_NAME#app-v}"
+          done
+
+      - name: Upload server archive for release assembly
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kubecove-server-${{ matrix.target }}
+          path: kubecove-server_*
+
+          if-no-files-found: error
+
+  container-build:
+    name: Build container ${{ matrix.variant }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: ubuntu-latest
+            variant: full
+          - arch: amd64
+            platform: ubuntu-latest
+            variant: slim
+          - arch: arm64
+            platform: ubuntu-24.04-arm
+            variant: full
+          - arch: arm64
+            platform: ubuntu-24.04-arm
+            variant: slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Build and verify container
+        env:
+          VARIANT: ${{ matrix.variant }}
+          TAG_NAME: ${{ inputs.release-tag || 'app-v0.0.0-check' }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          image="kubecove:release-${VARIANT}-${ARCH}"
+          docker build --platform "linux/$ARCH" --target "$VARIANT" --tag "$image" --build-arg "VERSION=${TAG_NAME#app-v}" --build-arg "REVISION=$GITHUB_SHA" .
+          sudo bash scripts/container-smoke.sh "$image" "$VARIANT" | tee "kubecove-container-${VARIANT}-${ARCH}.txt"
+          docker save --output "kubecove-container-${VARIANT}-${ARCH}.tar" "$image"
+      - name: Upload verified container
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kubecove-container-${{ matrix.variant }}-${{ matrix.arch }}
+          path: |
+            kubecove-container-${{ matrix.variant }}-${{ matrix.arch }}.tar
+            kubecove-container-${{ matrix.variant }}-${{ matrix.arch }}.txt
+          if-no-files-found: error

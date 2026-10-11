@@ -1,13 +1,13 @@
 # Headless container deployment
 
-The root `Dockerfile` builds two variants of `kubecove-server`. Both run as Debian's unprivileged `nobody` user, UID/GID `65534`, and include CA certificates and the bundled kubeconform sidecar. Neither includes a compiler, Bun or a desktop runtime. Both target `linux/amd64`, matching the bundled Linux sidecar.
+The root `Dockerfile` builds two variants of `kubecove-server` on a distroless base. Both run as UID/GID `65534` and include glibc, CA certificates and the bundled kubeconform sidecar. Neither includes a shell, package manager, compiler, Bun or desktop runtime. Both build for `linux/amd64` and `linux/arm64`, each with the matching sidecar. For native archives and a systemd service, see [Install the server](../docs/wiki/Server-Installation.md).
 
 | Variant | Release image | Contents |
 | --- | --- | --- |
 | `full`, the default | `ghcr.io/timpan4/kubecove:<version>` | Rust server with the browser app embedded |
 | `slim` | `ghcr.io/timpan4/kubecove:<version>-slim` | Rust server API and WebSocket transport, without browser assets |
 
-Release tags such as `app-v0.11.3` produce image tags `0.11.3` and `0.11.3-slim`. Images become available after a release completes the container smoke checks, frontend and Rust checks, Kubernetes E2E and desktop/server builds. Publication loads the tested image artifacts rather than rebuilding them. No image has been published from this branch yet. Build locally until a release provides the images. GHCR package visibility is an operator setting; if the package is private, pulling requires registry credentials.
+Release tags such as `app-v0.12.0` produce image tags `0.12.0` and `0.12.0-slim`. From the release after v0.12.0, each tag is a multi-architecture image for amd64 and arm64. Images become available after a release completes the container smoke checks, frontend and Rust checks, Kubernetes E2E and desktop/server builds. Publication loads the tested per-architecture image artifacts rather than rebuilding them. GHCR package visibility is an operator setting; if the package is private, pulling requires registry credentials.
 
 For client behaviour, authentication modes and server options, see [Run KubeCove on a remote host](../docs/wiki/Remote-Server.md).
 
@@ -16,20 +16,22 @@ For client behaviour, authentication modes and server options, see [Run KubeCove
 From the repository root:
 
 ```sh
-docker build --pull --platform linux/amd64 -t kubecove-server:local .
+docker build --pull -t kubecove-server:local .
 docker run --rm kubecove-server:local --help
-docker build --pull --platform linux/amd64 --target slim -t kubecove-server:local-slim .
+docker build --pull --target slim -t kubecove-server:local-slim .
 ```
 
-The multi-stage build uses digest-pinned [Bun](https://bun.com/docs/installation#docker), [Rust](https://hub.docker.com/_/rust) and [Debian stable](https://hub.docker.com/_/debian) images. Frontend and Rust dependencies use the committed lockfiles. BuildKit caches Cargo downloads and compiled dependencies; the release binary is copied out of the cache into the runtime stage. Debug information is stripped. `.dockerignore` excludes local build caches and limits the build context to the required inputs. Update the pinned base digests as part of dependency maintenance.
+The build targets the host's architecture. Add `--platform linux/amd64` or `--platform linux/arm64` to choose one; building for another architecture needs emulation or a native builder.
+
+The multi-stage build uses digest-pinned [Bun](https://bun.com/docs/installation#docker) and [Rust](https://hub.docker.com/_/rust) build images and a digest-pinned [distroless `cc`](https://github.com/GoogleContainerTools/distroless/blob/main/cc/README.md) runtime. Frontend and Rust dependencies use the committed lockfiles. BuildKit caches Cargo downloads and compiled dependencies; the release binary is copied out of the cache into the runtime stage. Debug information is stripped. `.dockerignore` excludes local build caches and limits the build context to the required inputs. Update the pinned base digests as part of dependency maintenance.
 
 The slim target skips Bun, frontend compilation and the Rust asset-embedding dependencies. It has the same server options, authentication and Kubernetes behavior. Use it with the desktop remote client in token mode. A separately served browser UI must share the API's exact origin through a reverse proxy, including the OIDC callback path and WebSockets. The slim image alone supplies no browser login or OIDC completion page. It does not enable cross-origin access. Choose the full image for browser deployments, including the examples below. The embedded assets are small, so removing them saves less runtime space than removing the frontend build stage might suggest.
 
-On a Linux Docker host, verify either local image with `sudo bash scripts/container-smoke.sh kubecove-server:local full` or `sudo bash scripts/container-smoke.sh kubecove-server:local-slim slim`. This starts a disposable container with no network, a read-only root filesystem and a private temporary data mount. It checks UI selection, API authentication, CA certificates, the sidecar, non-root operation and graceful shutdown without contacting Kubernetes or printing credentials.
+On a Linux Docker host, verify either local image with `sudo bash scripts/container-smoke.sh kubecove-server:local full` or `sudo bash scripts/container-smoke.sh kubecove-server:local-slim slim`. This starts a disposable container with no network, a read-only root filesystem and a private temporary data mount. It checks UI selection, API authentication, CA certificates, the sidecar, non-root operation, the absence of a shell and build tools, quiet startup and graceful shutdown without contacting Kubernetes or printing credentials.
 
-The image's default command listens on container loopback, so Docker port publishing alone cannot reach it. On a standalone Docker host, either keep loopback and add a tunnel container in the same network namespace, or listen on `0.0.0.0:8443` with `--allow-remote`, `--tls-cert`, `--tls-key` and an exact HTTPS `--public-origin`. Mount certificate, key and kubeconfig files read-only. Persist `/data`; the server creates its private `0700` directory at `/data/kubecove`.
+The image's default command listens on container loopback, so Docker port publishing alone cannot reach it. On a standalone Linux Docker host, use host networking as shown in [Install the server](../docs/wiki/Server-Installation.md#docker), or listen on `0.0.0.0:8443` with `--allow-remote`, `--tls-cert`, `--tls-key` and an exact HTTPS `--public-origin`. Mount certificate, key and kubeconfig files read-only. Persist `/data`; the server creates its private `0700` directory at `/data/kubecove`.
 
-In token mode, startup stdout contains the login URL and token. Discard stdout when running the image, as the Kubernetes example does, and read `/data/kubecove/server-token` privately instead. Otherwise, treat persistent `docker logs` output as a credential.
+The default command and the Kubernetes example pass `--quiet`, so startup prints no login URL and container logs hold no token. Read `server-token` from the data directory instead. The image has no shell or `cat`, so read it from the host side of a Docker volume, or through a debug container in Kubernetes as shown below. `--quiet` cannot be combined with `--print-token`.
 
 ## Choose Kubernetes permissions
 
@@ -58,13 +60,16 @@ The [Kubernetes example](kubernetes/kubecove.yaml) runs the same server binary; 
    kubectl -n kubecove port-forward deployment/kubecove 8080:8080
    ```
 
-5. Read the current server token privately:
+5. Read the current server token privately. The image has no shell, so use an ephemeral debug container that mounts the data volume read-only with the [token reader profile](kubernetes/token-reader.json):
 
    ```sh
-   kubectl -n kubecove exec deployment/kubecove -c kubecove -- cat /data/kubecove/server-token
+   pod="$(kubectl -n kubecove get pod -l app.kubernetes.io/name=kubecove -o jsonpath='{.items[0].metadata.name}')"
+   kubectl -n kubecove debug "$pod" --quiet --attach --container token-reader \
+     --image busybox:1.37.0-musl@sha256:5cec3fc171c87218698e85a52af7087de727372aae264a787b8112901a5b0092 \
+     --custom deploy/kubernetes/token-reader.json -- cat /data/kubecove/server-token
    ```
 
-   Open `http://localhost:8080` and paste the token while the forward runs. Treat it as a password and keep it out of chat, shell history and diagnostic output. The token file uses mode `0600` and changes on every server restart. The deployment discards stdout because the startup line contains the token; stderr still shows errors.
+   This needs permission to create `pods/ephemeralcontainers`. The stopped debug container stays in the pod until the pod is replaced, so use a new `--container` name for each read. Open `http://localhost:8080` and paste the token while the forward runs. Treat it as a password and keep it out of chat, shell history and diagnostic output. The token file uses mode `0600` and changes on every server restart. The server runs with `--quiet`, so pod logs hold no token; stderr still shows errors.
 
 6. For the desktop app, open Settings → Remote server and use `http://localhost:8080` with the same token. Desktop port forwards listen on the laptop.
 

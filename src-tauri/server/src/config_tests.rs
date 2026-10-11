@@ -1,5 +1,13 @@
 use super::*;
 
+// Service and container startup must not leak tokens to persistent logs.
+#[test]
+fn quiet_startup_cannot_be_combined_with_print_token() {
+    assert!(config(&["--quiet"]).unwrap().quiet);
+    assert!(!config(&[]).unwrap().quiet);
+    assert!(config(&["--quiet", "--print-token"]).is_err());
+}
+
 fn config(args: &[&str]) -> Result<Config, String> {
     Config::parse(args.iter().map(std::ffi::OsString::from))
 }

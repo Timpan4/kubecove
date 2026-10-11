@@ -18,6 +18,7 @@ pub const HELP: &str = "kubecove-server [OPTIONS]\n\
   --oidc-client-secret-file <PATH>  Optional confidential-client secret\n\
   --oidc-login-timeout <TIME>  Required OIDC transaction and network deadline\n\
   --print-token          Also print the token on startup\n\
+  --quiet                Suppress the startup login URL in service logs\n\
   --help                 Show this help";
 
 pub struct Config {
@@ -30,6 +31,7 @@ pub struct Config {
     pub tls_key: Option<PathBuf>,
     pub public_origin: Option<String>,
     pub print_token: bool,
+    pub quiet: bool,
     pub access: Option<CloudflareAccess>,
     pub oidc: Option<OidcConfig>,
 }
@@ -47,6 +49,7 @@ impl Config {
             tls_key: None,
             public_origin: None,
             print_token: false,
+            quiet: false,
             access: None,
             oidc: None,
         };
@@ -62,6 +65,7 @@ impl Config {
             match flag {
                 "--allow-remote" => config.allow_remote = true,
                 "--print-token" => config.print_token = true,
+                "--quiet" => config.quiet = true,
                 "--listen" => {
                     config.listen = text(value(&mut args, flag)?)?
                         .parse()
@@ -113,6 +117,9 @@ impl Config {
     }
 
     fn validate(&mut self) -> Result<(), String> {
+        if self.quiet && self.print_token {
+            return Err("--quiet cannot be combined with --print-token".into());
+        }
         if self.oidc.is_some() && self.access.is_some() {
             return Err(
                 "OIDC and Cloudflare Access are mutually exclusive authentication modes".into(),
