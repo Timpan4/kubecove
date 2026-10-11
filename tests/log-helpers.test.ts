@@ -24,6 +24,7 @@ describe("log presentation helpers", () => {
 			message: 'time="2026-05-18T09:01:35Z" level=info msg="ok"',
 			raw: '2026-05-18T09:01:35.103840719Z time="2026-05-18T09:01:35Z" level=info msg="ok"',
 			timestamp: "2026-05-18T09:01:35.103840719Z",
+			structure: { level: "info", headline: "ok", fields: [] },
 		});
 	});
 
@@ -40,6 +41,7 @@ describe("log presentation helpers", () => {
 			message: "plain message",
 			raw: "plain message",
 			timestamp: undefined,
+			structure: { headline: "plain message", fields: [] },
 		});
 	});
 

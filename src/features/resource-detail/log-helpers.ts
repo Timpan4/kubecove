@@ -1,4 +1,5 @@
 import type { LogLineSource } from "@/lib/types";
+import { type LogStructure, parseLogStructure } from "./log-structure";
 
 export interface LogLineEntry {
 	line: string;
@@ -13,6 +14,7 @@ export interface ParsedLogLine {
 	raw: string;
 	source?: LogLineSource;
 	timestamp?: string;
+	structure: LogStructure;
 }
 
 export const MAX_RETAINED_LOG_LINES = 1_000;
@@ -37,6 +39,7 @@ export function parseLogLine(input: LogLineInput, index = 0): ParsedLogLine {
 			raw: line,
 			source: entry.source,
 			timestamp: leadingTimestamp[1],
+			structure: parseLogStructure(leadingTimestamp[2]),
 		};
 	}
 
@@ -48,6 +51,7 @@ export function parseLogLine(input: LogLineInput, index = 0): ParsedLogLine {
 		raw: line,
 		source: entry.source,
 		timestamp: embeddedTime?.[1] ?? embeddedTime?.[2],
+		structure: parseLogStructure(line),
 	};
 }
 

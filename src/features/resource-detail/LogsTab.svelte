@@ -1,16 +1,30 @@
 <script lang="ts">
-	import { ArrowDownUp, Pause, Play, RotateCcw, Search } from "lucide-svelte";
+	import {
+		ArrowDown,
+		ArrowDownUp,
+		ArrowUp,
+		ChevronDown,
+		ChevronsUpDown,
+		Pause,
+		Play,
+		RotateCcw,
+		Search,
+		WrapText,
+	} from "lucide-svelte";
+	import { SvelteSet } from "svelte/reactivity";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
-		Badge,
 		Button,
-		Checkbox,
+		buttonClass,
 		Empty,
 		EmptyDescription,
 		EmptyHeader,
 		EmptyTitle,
 		Input,
-		Label,
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
+		SegmentedControl,
 		Select,
 		SelectContent,
 		SelectGroup,
@@ -20,7 +34,10 @@
 		Spinner,
 		TabsContent,
 	} from "@/components/ui/svelte";
+	import type { LogLayout } from "@/lib/settings";
+	import LogEntry from "./LogEntry.svelte";
 	import type { ParsedLogLine } from "./log-helpers";
+	import type { LogLevel } from "./log-structure";
 
 	const sinceOptions = [
 		{ value: "all", label: "Any time", seconds: undefined },
@@ -28,12 +45,34 @@
 		{ value: "900", label: "15m", seconds: 900 },
 		{ value: "3600", label: "1h", seconds: 3600 },
 	] as const;
+	type SinceValue = (typeof sinceOptions)[number]["value"];
+
+	const levelChips: { level: LogLevel; label: string; activeClass: string }[] = [
+		{
+			level: "error",
+			label: "ERR",
+			activeClass: "border-red-500/45 bg-red-500/10 text-red-600 dark:text-red-400",
+		},
+		{
+			level: "warn",
+			label: "WRN",
+			activeClass: "border-amber-500/45 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+		},
+		{
+			level: "info",
+			label: "INF",
+			activeClass: "border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+		},
+		{
+			level: "debug",
+			label: "DBG",
+			activeClass: "border-border bg-muted text-foreground/80",
+		},
+	];
 
 	let {
 		isPod,
 		isAggregate,
-		targetKind,
-		targetName,
 		containerOptions,
 		selectedContainer = $bindable(""),
 		logStatus,
@@ -42,23 +81,26 @@
 		logFilter = $bindable(""),
 		logFilterTerm,
 		logWrapLines = $bindable(true),
-		logAutoFollow = $bindable(true),
 		logLatestFirst = $bindable(false),
+		logLayout,
 		lineCount,
 		onClear,
 		logViewport = $bindable<HTMLElement | null>(null),
 		logTailLines = $bindable(200),
 		logSinceSeconds = $bindable<number | undefined>(undefined),
-		logPaused = $bindable(false),
+		logPaused,
+		pendingCount,
+		onTogglePause,
+		unseenCount,
+		onJumpToLatest,
+		hiddenLevels,
+		levelCounts,
 		visibleLogLines,
-		parsedLogLines,
 		formatFullTimestamp,
 		formatLogTime,
 	}: {
 		isPod: boolean;
 		isAggregate: boolean;
-		targetKind: string;
-		targetName: string;
 		containerOptions: string[];
 		selectedContainer: string;
 		logStatus: string;
@@ -67,26 +109,60 @@
 		logFilter: string;
 		logFilterTerm: string;
 		logWrapLines: boolean;
-		logAutoFollow: boolean;
 		logLatestFirst: boolean;
+		logLayout: LogLayout;
 		lineCount: number;
 		onClear: () => void;
 		logViewport: HTMLElement | null;
 		logTailLines: number;
 		logSinceSeconds?: number;
 		logPaused: boolean;
+		pendingCount: number;
+		onTogglePause: () => void;
+		unseenCount: number;
+		onJumpToLatest: () => void;
+		hiddenLevels: SvelteSet<LogLevel>;
+		levelCounts: Record<LogLevel, number>;
 		visibleLogLines: ParsedLogLine[];
-		parsedLogLines: ParsedLogLine[];
 		formatFullTimestamp: (timestamp: string | null | undefined) => string;
 		formatLogTime: (timestamp: string | undefined) => string;
 	} = $props();
 
-	const sinceValue = $derived(String(logSinceSeconds ?? "all"));
-	const logTargetLabel = $derived(
-		isPod ? `Pod/${targetName}` : `${targetKind}/${targetName} pods`,
+	const openRows = new SvelteSet<string>();
+	let expandAll = $state(false);
+	let tailMenuOpen = $state(false);
+
+	const sinceOption = $derived(
+		sinceOptions.find((option) => option.seconds === logSinceSeconds) ?? sinceOptions[0],
+	);
+	const sinceValue = $derived(sinceOption.value);
+	const sinceLabel = $derived(sinceOption.label);
+	const tailLabel = $derived(
+		`${logTailLines > 0 ? `Last ${logTailLines}` : "New only"} · ${sinceLabel}`,
+	);
+	const hasLevels = $derived(
+		levelCounts.error + levelCounts.warn + levelCounts.info + levelCounts.debug > 0,
+	);
+	const filtering = $derived(Boolean(logFilterTerm) || hiddenLevels.size > 0);
+	const statusLabel = $derived.by(() => {
+		if (logPaused) return `Paused · ${pendingCount} buffered`;
+		if (logStatus === "connected") return "Live";
+		return logStatus.charAt(0).toUpperCase() + logStatus.slice(1);
+	});
+	const statusDotClass = $derived(
+		logPaused
+			? "bg-amber-500"
+			: logStatus === "connected"
+				? "bg-emerald-500"
+				: logStatus === "error"
+					? "bg-red-500"
+					: "bg-muted-foreground/50",
+	);
+	const connecting = $derived(
+		!logPaused && (logStatus === "connecting" || logStatus === "reconnecting"),
 	);
 
-	function setSinceSeconds(value: string) {
+	function setSinceSeconds(value: SinceValue) {
 		logSinceSeconds = sinceOptions.find((option) => option.value === value)?.seconds;
 	}
 
@@ -96,25 +172,28 @@
 		logTailLines = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 	}
 
-	function sourcePodName(line: ParsedLogLine): string {
-		return line.source?.podName ?? "";
+	function toggleLevel(level: LogLevel) {
+		if (hiddenLevels.has(level)) hiddenLevels.delete(level);
+		else hiddenLevels.add(level);
 	}
 
-	function sourceContainer(line: ParsedLogLine): string {
-		return line.source?.container ?? "";
+	function toggleRow(key: string) {
+		if (openRows.has(key)) openRows.delete(key);
+		else openRows.add(key);
 	}
 
-	function sourceStyle(line: ParsedLogLine): string {
-		const isContainer = sourceContainer(line).length > 0;
-		return [
-			`background-color: ${isContainer ? "hsl(154 58% 19% / 0.38)" : "hsl(142 56% 18% / 0.34)"}`,
-			`border-color: ${isContainer ? "hsl(154 62% 45% / 0.48)" : "hsl(142 64% 45% / 0.48)"}`,
-			`color: ${isContainer ? "hsl(154 78% 78%)" : "hsl(142 78% 78%)"}`,
-		].join("; ");
+	function toggleExpandAll() {
+		expandAll = !expandAll;
+		openRows.clear();
+	}
+
+	function clearLines() {
+		openRows.clear();
+		onClear();
 	}
 
 	function rowKey(line: ParsedLogLine): string {
-		return `${line.index}:${sourcePodName(line)}:${sourceContainer(line)}:${line.raw}`;
+		return `${line.index}:${line.source?.podName ?? ""}:${line.source?.container ?? ""}:${line.raw}`;
 	}
 </script>
 
@@ -134,9 +213,8 @@
 			</EmptyHeader>
 		</Empty>
 	{:else}
-		<div class="flex min-h-0 flex-1 flex-col gap-2">
-			<div class="flex shrink-0 flex-wrap items-center gap-2">
-				<Badge variant="outline" class="max-w-56 truncate">{logTargetLabel}</Badge>
+		<div class="flex min-h-0 flex-1 flex-col gap-1.5">
+			<div class="flex shrink-0 items-center gap-1.5">
 				{#if isPod}
 					<Select
 						value={selectedContainer}
@@ -146,7 +224,7 @@
 						}))}
 						onValueChange={(value: string) => (selectedContainer = value)}
 					>
-						<SelectTrigger class="h-8 w-44 max-w-64" aria-label="Log container">
+						<SelectTrigger class="h-7 w-40 max-w-64" aria-label="Log container">
 							<SelectValue placeholder="Container" />
 						</SelectTrigger>
 						<SelectContent>
@@ -158,13 +236,52 @@
 						</SelectContent>
 					</Select>
 				{/if}
-				<Badge variant={logStatus === "error" ? "destructive" : "outline"}>{logStatus}</Badge>
-				<span class="text-xs text-muted-foreground">{logMessage}</span>
-				<Button
-					variant={logPaused ? "default" : "outline"}
-					size="sm"
-					onclick={() => (logPaused = !logPaused)}
-				>
+				<span class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs" title={logMessage}>
+					{#if connecting}
+						<Spinner class="size-3" />
+					{:else}
+						<span class="size-[7px] shrink-0 rounded-full {statusDotClass}"></span>
+					{/if}
+					{statusLabel}
+					<span class="text-muted-foreground">· {lineCount} lines</span>
+				</span>
+				<span class="flex-1"></span>
+				<Popover bind:open={tailMenuOpen}>
+					<PopoverTrigger
+						type="button"
+						class={buttonClass({ variant: "outline", className: "font-normal" })}
+						aria-label="Log tail and time window"
+					>
+						{tailLabel}
+						<ChevronDown data-icon="inline-end" />
+					</PopoverTrigger>
+					<PopoverContent align="end" class="flex w-60 flex-col gap-2.5 p-3">
+						<label class="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+							Tail lines
+							<Input
+								class="h-7 w-24 text-xs"
+								type="number"
+								min="0"
+								value={String(logTailLines)}
+								oninput={setTailLines}
+								aria-label="Tail log lines"
+							/>
+						</label>
+						<div class="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+							Since
+							<SegmentedControl
+								value={sinceValue}
+								options={sinceOptions.map((option) => ({
+									value: option.value,
+									label: option.value === "all" ? "Any" : option.label,
+								}))}
+								onChange={setSinceSeconds}
+								ariaLabel="Log since window"
+							/>
+						</div>
+					</PopoverContent>
+				</Popover>
+				<Button variant={logPaused ? "default" : "outline"} onclick={onTogglePause}>
 					{#if logPaused}
 						<Play data-icon="inline-start" />
 						Resume
@@ -173,72 +290,92 @@
 						Pause
 					{/if}
 				</Button>
-				<Label class="h-8 gap-1.5 rounded-md border bg-background px-2 text-xs text-muted-foreground">
-					Tail
-				<Input
-					class="h-6 w-20 text-xs"
-					type="number"
-					min="0"
-					value={String(logTailLines)}
-					oninput={setTailLines}
-					aria-label="Tail log lines"
-				/>
-				</Label>
-				<Select value={sinceValue} onValueChange={setSinceSeconds}>
-					<SelectTrigger class="h-8 w-28" aria-label="Log since window">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectGroup>
-							{#each sinceOptions as option (option.value)}
-								<SelectItem value={option.value}>{option.label}</SelectItem>
-							{/each}
-						</SelectGroup>
-					</SelectContent>
-				</Select>
-				<div class="relative min-w-40">
+			</div>
+			<div class="flex shrink-0 flex-wrap items-center gap-1.5">
+				<div class="relative flex-[1_1_12rem]">
 					<Search
 						class="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground"
 					/>
 					<Input
-						class="h-7 pl-6 text-xs"
+						class="h-7 pl-6 pr-16 text-xs"
 						bind:value={logFilter}
 						placeholder="Filter logs..."
 						aria-label="Filter log lines"
 					/>
+					{#if filtering}
+						<span
+							class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground tabular-nums"
+						>
+							{visibleLogLines.length}/{lineCount}
+						</span>
+					{/if}
 				</div>
-				{#if logFilterTerm}
-					<Badge variant="outline">{visibleLogLines.length}/{parsedLogLines.length}</Badge>
-				{/if}
-				<Label class="h-7 gap-1.5 rounded-md border bg-background px-2 text-xs text-muted-foreground">
-					<Checkbox
-						class="size-3.5"
-						checked={logWrapLines}
-						onCheckedChange={(checked) => (logWrapLines = checked)}
-					/>
-					Wrap
-				</Label>
-				<Label class="h-7 gap-1.5 rounded-md border bg-background px-2 text-xs text-muted-foreground">
-					<Checkbox
-						class="size-3.5"
-						checked={logAutoFollow}
-						onCheckedChange={(checked) => (logAutoFollow = checked)}
-					/>
-					Auto-scroll
-				</Label>
-				<Button
-					variant="outline"
-					size="sm"
-					aria-pressed={logLatestFirst}
-					onclick={() => (logLatestFirst = !logLatestFirst)}
-				>
-					<ArrowDownUp data-icon="inline-start" />
-					{logLatestFirst ? "Latest top" : "Oldest top"}
-				</Button>
-				<Button variant="outline" size="sm" onclick={onClear}>
-					<RotateCcw data-icon="inline-start" />
-					Clear
-				</Button>
+				<div class="ml-auto flex shrink-0 items-center gap-1">
+					{#if hasLevels}
+						<div class="flex gap-1" role="group" aria-label="Filter by level">
+							{#each levelChips as chip (chip.level)}
+								{@const shown = !hiddenLevels.has(chip.level)}
+								<Button
+									variant="outline"
+									class="gap-1.5 px-1.5 font-mono text-[11px] font-semibold {shown
+										? chip.activeClass
+										: 'text-muted-foreground/70'}"
+									aria-pressed={shown}
+									onclick={() => toggleLevel(chip.level)}
+								>
+									{chip.label}
+									<span class="font-normal opacity-85">{levelCounts[chip.level]}</span>
+								</Button>
+							{/each}
+						</div>
+					{/if}
+					{#if logLayout === "oneLine"}
+						<Button
+							variant="outline"
+							size="icon"
+							class={expandAll ? "bg-muted text-foreground" : "text-muted-foreground"}
+							aria-pressed={expandAll}
+							aria-label={expandAll ? "Collapse all" : "Expand all"}
+							title={expandAll ? "Collapse all" : "Expand all"}
+							onclick={toggleExpandAll}
+						>
+							<ChevronsUpDown />
+						</Button>
+					{:else}
+						<Button
+							variant="outline"
+							size="icon"
+							class={logWrapLines ? "bg-muted text-foreground" : "text-muted-foreground"}
+							aria-pressed={logWrapLines}
+							aria-label="Wrap lines"
+							title="Wrap lines"
+							onclick={() => (logWrapLines = !logWrapLines)}
+						>
+							<WrapText />
+						</Button>
+					{/if}
+					<Button
+						variant="outline"
+						size="icon"
+						class={logLatestFirst ? "bg-muted text-foreground" : "text-muted-foreground"}
+						aria-pressed={logLatestFirst}
+						aria-label={logLatestFirst ? "Latest first" : "Oldest first"}
+						title={logLatestFirst ? "Latest first" : "Oldest first"}
+						onclick={() => (logLatestFirst = !logLatestFirst)}
+					>
+						<ArrowDownUp />
+					</Button>
+					<Button
+						variant="outline"
+						size="icon"
+						class="text-muted-foreground"
+						aria-label="Clear"
+						title="Clear"
+						onclick={clearLines}
+					>
+						<RotateCcw />
+					</Button>
+				</div>
 			</div>
 			{#if logError}
 				<FriendlyError
@@ -251,105 +388,49 @@
 					}}
 				/>
 			{/if}
-			<div
-				bind:this={logViewport}
-				class="min-h-0 flex-1 overflow-auto rounded-md border bg-background/50"
-			>
-				{#if lineCount === 0}
-					<div class="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-						{#if logStatus === "connecting"}<Spinner class="size-3.5" />{/if}
-						<span>{logMessage || "Waiting for log lines..."}</span>
-					</div>
-				{:else if visibleLogLines.length === 0}
-					<div class="p-3 text-sm text-muted-foreground">
-						No log lines match "{logFilter.trim()}".
-					</div>
-				{:else}
-				<div class="min-w-full font-mono text-xs leading-5 {logWrapLines ? '' : 'w-max'}">
-					{#if isAggregate}
-						<div class="sticky top-0 z-10 grid min-w-full grid-cols-[15rem_minmax(0,1fr)] border-b border-border bg-background text-[0.6875rem] uppercase text-muted-foreground">
-							<div class="border-r border-border/50 px-3 py-1">Source</div>
-							<div class="px-3 py-1">Message</div>
+			<div class="relative flex min-h-0 flex-1 flex-col">
+				<div
+					bind:this={logViewport}
+					class="relative min-h-0 flex-1 overflow-auto rounded-md border bg-background/50 [overflow-anchor:none]"
+				>
+					{#if lineCount === 0}
+						<div class="flex items-center gap-2 p-3 text-sm text-muted-foreground">
+							{#if connecting}<Spinner class="size-3.5" />{/if}
+							<span>{logPaused ? "Paused. New lines are held until you resume." : logMessage || "Waiting for log lines..."}</span>
 						</div>
+					{:else if visibleLogLines.length === 0}
+						<div class="p-3 text-sm text-muted-foreground">No log lines match the current filters.</div>
+					{:else}
+						{#each visibleLogLines as line (rowKey(line))}
+							{@const key = rowKey(line)}
+							<LogEntry
+								{line}
+								layout={logLayout}
+								wrap={logWrapLines}
+								open={expandAll || openRows.has(key)}
+								term={logFilterTerm}
+								levelColumn={hasLevels}
+								showSource={isAggregate}
+								onToggle={() => toggleRow(key)}
+								{formatFullTimestamp}
+								{formatLogTime}
+							/>
+						{/each}
 					{/if}
-					{#each visibleLogLines as line (rowKey(line))}
-						{#if isAggregate && line.source}
-							<div class="grid min-w-full grid-cols-[15rem_minmax(0,1fr)] items-start border-b border-border/50 last:border-b-0 {logWrapLines ? '' : 'w-max'}">
-								<div
-									class="min-w-0 space-y-1.5 border-r border-border/50 px-3 py-2"
-									title={`${sourcePodName(line)} / ${sourceContainer(line)}`}
-								>
-									<time
-										class="block h-4 whitespace-nowrap text-muted-foreground tabular-nums"
-										datetime={line.timestamp}
-										title={formatFullTimestamp(line.timestamp)}
-									>
-										{formatLogTime(line.timestamp)}
-									</time>
-									<Badge
-										variant="outline"
-										class="flex h-5 max-w-full justify-start truncate font-mono"
-										style={sourceStyle(line)}
-									>
-										<span class="min-w-0 truncate">{sourcePodName(line)}</span>
-									</Badge>
-									<Badge
-										variant="outline"
-										class="flex h-5 max-w-full justify-start truncate font-mono"
-										style={sourceStyle(line)}
-									>
-										<span class="min-w-0 truncate">{sourceContainer(line)}</span>
-									</Badge>
-								</div>
-								<code
-									class="block px-3 py-2 text-foreground {logWrapLines
-										? 'min-w-0 whitespace-pre-wrap break-words'
-										: 'whitespace-pre'}"
-								>
-									{line.message}
-								</code>
-							</div>
-						{:else}
-							<div class="flex min-w-full border-b border-border/50 last:border-b-0 {logWrapLines ? '' : 'w-max'}">
-								<time
-									class="w-32 shrink-0 whitespace-nowrap border-r border-border/50 px-3 py-1 text-muted-foreground tabular-nums"
-									datetime={line.timestamp}
-									title={formatFullTimestamp(line.timestamp)}
-								>
-									{formatLogTime(line.timestamp)}
-								</time>
-								{#if isAggregate && line.source}
-									<span
-										class="w-80 shrink-0 whitespace-nowrap border-r border-border/50 px-3 py-1 text-foreground"
-										title={sourcePodName(line)}
-									>
-										{sourcePodName(line)}
-									</span>
-									<span
-										class="w-44 shrink-0 truncate border-r border-border/50 px-3 py-1"
-										title={sourceContainer(line)}
-									>
-										<Badge
-											variant="outline"
-											class="max-w-full truncate font-mono"
-											style={sourceStyle(line)}
-										>
-											{sourceContainer(line)}
-										</Badge>
-									</span>
-								{/if}
-								<code
-									class="block px-3 py-1 text-foreground {logWrapLines
-										? 'min-w-0 flex-1 whitespace-pre-wrap break-words'
-										: 'whitespace-pre'}"
-								>
-									{line.message}
-								</code>
-							</div>
-						{/if}
-					{/each}
 				</div>
-			{/if}
+				{#if unseenCount > 0}
+					<Button
+						class="absolute left-1/2 z-10 -translate-x-1/2 rounded-full px-3 shadow-lg {logLatestFirst
+							? 'top-3'
+							: 'bottom-3'}"
+						onclick={onJumpToLatest}
+					>
+						{#if logLatestFirst}<ArrowUp data-icon="inline-start" />{:else}<ArrowDown
+								data-icon="inline-start"
+							/>{/if}
+						{unseenCount} new line{unseenCount === 1 ? "" : "s"}
+					</Button>
+				{/if}
 			</div>
 		</div>
 	{/if}

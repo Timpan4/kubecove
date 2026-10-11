@@ -555,7 +555,6 @@
 			logFilter: resourceDetailPathState?.logFilter ?? "",
 			logWrapLines: resourceDetailPathState?.logWrapLines ?? true,
 			logLatestFirst: resourceDetailPathState?.logLatestFirst ?? false,
-			logAutoFollow: resourceDetailPathState?.logAutoFollow ?? true,
 			yamlViewMode: resourceDetailPathState?.yamlViewMode ?? settings.yamlViewModeDefault,
 			yamlEncoding: resourceDetailPathState?.yamlEncoding ?? settings.yamlEncodingDefault,
 			yamlShowFullDiff: resourceDetailPathState?.yamlShowFullDiff ?? false,

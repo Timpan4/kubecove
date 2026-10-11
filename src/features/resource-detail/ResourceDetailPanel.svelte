@@ -139,7 +139,6 @@
 	let logFilter = $state(initialDetailState?.logFilter ?? "");
 	let logWrapLines = $state(initialDetailState?.logWrapLines ?? true);
 	let logLatestFirst = $state(initialDetailState?.logLatestFirst ?? false);
-	let logAutoFollow = $state(initialDetailState?.logAutoFollow ?? true);
 	let parsedLogLines = $state<ParsedLogLine[]>([]);
 	let realtimeWatchError = $state<string | null>(null);
 	let realtimeEventsWatchError = $state<string | null>(null);
@@ -387,7 +386,6 @@
 			logFilter,
 			logWrapLines,
 			logLatestFirst,
-			logAutoFollow,
 			yamlViewMode,
 			yamlEncoding,
 			yamlShowFullDiff,
@@ -702,7 +700,6 @@
 			bind:selectedContainer
 			bind:logFilter
 			bind:logWrapLines
-			bind:logAutoFollow
 			bind:logLatestFirst
 			bind:parsedLogLines
 			{formatFullTimestamp}

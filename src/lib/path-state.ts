@@ -112,7 +112,6 @@ export interface PathStateResourceDetailState {
 	logFilter: string;
 	logWrapLines: boolean;
 	logLatestFirst: boolean;
-	logAutoFollow: boolean;
 	yamlViewMode: YamlViewMode;
 	yamlEncoding: YamlEncoding;
 	yamlShowFullDiff: boolean;
@@ -337,7 +336,6 @@ function sanitizeDetailState<Value>(value: Value): PathStateResourceDetailState 
 		logFilter: stringValue(value.logFilter),
 		logWrapLines: booleanValue(value.logWrapLines, true),
 		logLatestFirst: booleanValue(value.logLatestFirst, false),
-		logAutoFollow: booleanValue(value.logAutoFollow, true),
 		yamlViewMode: pickString(value.yamlViewMode, ["kubectl", "applyClean"] as const, "kubectl"),
 		yamlEncoding: pickString(value.yamlEncoding, ["yaml", "kyaml"] as const, "yaml"),
 		yamlShowFullDiff: booleanValue(value.yamlShowFullDiff, false),
