@@ -102,3 +102,22 @@ test("refresh reports read errors instead of treating invalidation as successful
 		queryClient.clear();
 	}
 });
+
+test("refresh keeps permitted reads fresh and returns denied reads as warnings", async () => {
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+	configureFiniteReadQueryDefaults(queryClient);
+	const allowed = queryKeys.resources("dev", []);
+	const denied = queryKeys.argoApps("dev");
+	queryClient.setQueryData(allowed, "old");
+	queryClient.setQueryData(denied, []);
+	const stops = [
+		new QueryObserver(queryClient, { queryKey: allowed, queryFn: async () => "fresh" }).subscribe(() => {}),
+		new QueryObserver(queryClient, { queryKey: denied, queryFn: async () => { throw { kind: "forbidden", message: "applications: access denied" }; } }).subscribe(() => {}),
+	];
+	try {
+		const warnings = await refreshCurrentView({ queryClient, client: createMockTauriClient({ refresh_resource_cache: { clearedEntries: 0 } }), clusterContext: "dev", keys: [], namespaces: [] });
+		expect(warnings).toEqual(["applications: access denied"]);
+		expect(queryClient.getQueryData<string>(allowed)).toBe("fresh");
+		expect(queryClient.getQueryState(denied)?.error).toMatchObject({ kind: "forbidden" });
+	} finally { for (const stop of stops) stop(); queryClient.clear(); }
+});
