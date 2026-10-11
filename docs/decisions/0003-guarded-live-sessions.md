@@ -37,8 +37,8 @@ Port-forwarding becomes the first live operational workflow in KubeCove without 
 When the desktop app uses a remote `kubecove-server` ([ADR 0020](0020-headless-server-mode.md)), a port-forward may listen on the laptop instead of the server:
 
 - The desktop app binds the listener to `127.0.0.1` on the laptop under the port rules above. The server opens no TCP listener for a tunnelled forward.
-- Each accepted local connection opens a numbered stream on the owner's authenticated WebSocket. The server checks that the forward belongs to the current owner, resolves the target as it does for local forwards, Service re-resolution included, and relays bytes through the Kubernetes port-forward API.
-- Relay buffers are bounded by the existing session buffer sizes. A full buffer pauses reads from the sending side instead of dropping bytes. Frames for unknown, closed, or other-owner ids close that stream.
-- A tunnelled forward stops on explicit stop, session failure, scope changes as above, desktop app exit, owner takeover, or expiry of the server's reconnect grace window.
+- Each accepted local connection opens a numbered stream on that client session's authenticated WebSocket. The server checks that the forward belongs to that session, resolves the target as it does for local forwards, Service re-resolution included, and relays bytes through the Kubernetes port-forward API.
+- Relay buffers are bounded by the existing session buffer sizes. A full buffer pauses reads from the sending side instead of dropping bytes. Frames for unknown, closed, or other-session ids close that stream.
+- A tunnelled forward stops on explicit stop, session failure, scope changes as above, desktop app exit, explicit session closure, or expiry of that session's server reconnect grace window. Under ADR 0020's concurrent-session amendment of 2026-10-11, another sign-in opens an independent session and does not transfer or stop existing forwards.
 
 Browser clients cannot open local listeners, so their forwards keep listening on the server's `127.0.0.1`, and the UI labels them as remote.

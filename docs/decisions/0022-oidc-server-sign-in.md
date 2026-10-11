@@ -8,10 +8,12 @@ Accepted 2026-10-10. The product owner selected KubeCove sign-in only.
 
 The headless server supports one configured OpenID Connect issuer as an alternative
 to startup-token or Cloudflare Access authentication. These modes are mutually
-exclusive. OIDC authenticates browser users. Kubernetes requests continue to use
+exclusive. OIDC authenticates browser users. By default, Kubernetes requests use
 the server's configured credentials, including an operator-granted cluster-admin
 service account. This is shared operator configuration with independent browser
-sessions, as defined by ADR 0020's session amendment.
+sessions, as defined by ADR 0020's session amendment. The forwarded-credential
+amendment below enables per-user Kubernetes identity. Private-source provisioning
+and durable user state remain proposed in [ADR 0023](0023-multi-user-sessions-and-persistence.md).
 
 Use authorization code flow with PKCE S256 and a nonce. The operator registers
 `<public-origin>/api/v1/oidc/callback` as the exact redirect URI. OIDC requires native
@@ -60,7 +62,7 @@ flow and is outside this decision.
 
 ## Amendment: forwarded Kubernetes credentials
 
-Proposed 2026-10-11. This reverses two rules above for one opt-in flag:
+Proposed 2026-10-11. The opt-in flag below is implemented. This reverses two rules above:
 "do not refresh or retain access, ID or refresh tokens" and "do not
 implicitly grant Kubernetes permissions from OIDC claims". The default is
 unchanged.

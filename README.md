@@ -2,7 +2,7 @@
 
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/Timpan4/kubecove?utm_source=badge)
 
-KubeCove is a fast Kubernetes workspace for cluster inspection, GitOps, and troubleshooting. Use the desktop app locally, or run its single-user headless server on a remote host that already has kubeconfig access. It is built for application developers and cluster operators who want to browse resources across contexts and namespaces, understand ownership and topology, inspect Argo CD, Flux, and Helm state, and use guarded cluster operations.
+KubeCove is a fast Kubernetes workspace for cluster inspection, GitOps, and troubleshooting. Use the desktop app locally, or run its headless server with independent concurrent sessions on a remote host that already has kubeconfig access. It is built for application developers and cluster operators who want to browse resources across contexts and namespaces, understand ownership and topology, inspect Argo CD, Flux, and Helm state, and use guarded cluster operations.
 
 KubeCove is a calm, evidence-oriented workspace: see what is running, what owns it, and what is broken before acting.
 
@@ -42,13 +42,13 @@ These tools remain useful. KubeCove is a local Kubernetes workspace for the part
 
 ## Security and local operation
 
-KubeCove has a Tauri desktop app and a separate `kubecove-server` for single-user remote-host access. The Svelte frontend uses typed Tauri commands locally; remote clients use authenticated HTTP and WebSocket adapters over the same Rust command surface.
+KubeCove has a Tauri desktop app and a separate `kubecove-server` for concurrent remote-host sessions. The Svelte frontend uses typed Tauri commands locally; remote clients use authenticated HTTP and WebSocket adapters over the same Rust command surface.
 
 - Kubeconfig contents, tokens, client keys, and certificate data remain backend-side rather than becoming normal frontend state.
 - The application deploys no cluster agent and exposes no generic local-shell bridge. Pod exec is a specific, target-scoped workflow.
 - Cluster-changing actions identify one exact target and require explicit confirmation. Port forwards bind to loopback on the client or server host.
 - Connected Argo CD credentials and operation review sessions use native credential storage when available. The headless Unix server can use the protected encrypted file store in [ADR 0021](docs/decisions/0021-file-credential-store-without-keyring.md) when native storage is unavailable.
-- The headless server has one active owner. It can run on a remote host or as an operator-built container in Kubernetes. Each server uses one sign-in mode: a per-start token, Cloudflare Access, or OIDC. Browsers support all three; the desktop remote client supports token mode. Signed-in users share the server's Kubernetes credentials. Non-loopback TCP requires explicit remote mode and TLS. The [container and k0s example](deploy/README.md) uses a dedicated read-only account and private port forwarding.
+- The headless server runs independent concurrent sessions on a remote host or as an operator-built container in Kubernetes. Each server uses one sign-in mode: a per-start token, Cloudflare Access, or OIDC. Browsers support all three; the desktop remote client supports token mode. Kubernetes uses the server's credentials by default; opt-in OIDC forwarding uses each signed-in user's ID token. Kubeconfig sources remain operator-managed. Non-loopback TCP requires explicit remote mode and TLS. The [container and k0s example](deploy/README.md) uses a dedicated read-only account and private port forwarding.
 
 ## Getting started
 

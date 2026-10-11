@@ -4,6 +4,8 @@
 
 Accepted 2026-10-09.
 
+Concurrent sessions are implemented by the session amendment below. [ADR 0023](0023-multi-user-sessions-and-persistence.md) proposes the remaining private-source provisioning and persistent user workspaces and settings.
+
 ## Context
 
 Some users keep kubeconfig files, exec credential plugins, and network reach to their clusters on a remote development or operations host. The desktop app cannot use that host unless it runs there with a display. Tauri v2 has no supported web or server target, and its IPC reaches only the app's own webview.
@@ -81,7 +83,7 @@ the server's Kubernetes identity or the session rules above. Its amendment
 lets each session call Kubernetes as its own signed-in user.
 
 - In browser mode, port-forward listeners bind to `127.0.0.1` on the server, and the UI labels them as remote. Desktop remote mode tunnels forwards to the laptop under the ADR 0003 amendment of 2026-10-09.
-- Settings and kubeconfig source lists use `--data-dir`, which defaults to the platform config directory. Kubeconfig paths refer to server files, and Rust returns only summaries.
+- Server-side kubeconfig-source settings use `--data-dir`, which defaults to the platform config directory. Kubeconfig paths refer to server files, and Rust returns only summaries. Saved workspaces and UI settings currently use client `localStorage`; navigation snapshots use client `sessionStorage`. They are not yet a durable per-user server store.
 - Connected Argo CD credentials and operation review sessions use native credential storage when available, otherwise the file store in [ADR 0021](0021-file-credential-store-without-keyring.md).
 - Usage and diagnostics report the server process. The server does not self-update.
 
