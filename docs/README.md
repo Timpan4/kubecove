@@ -14,10 +14,12 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 ## Engineering
 
 - [Development Workflow](development-workflow.md) — setup, local development, and checks.
+- [CodSpeed benchmark catalog](codspeed-benchmark-catalog.md) — current coverage, benchmark candidates, fixtures, and measurement boundaries.
 - [Deferred Svelte surfaces](lazy-surface-loading.md) — import boundaries and before/after bundle and native launcher evidence.
 - [Engineering Handbook](handbook/README.md) — code organization, design system, hygiene, and pull request checklist.
 - [Frontend memory characterization](frontend-memory-retention.md) — normal and large payload, retention, native process, and refetch measurements.
 - [Backend cache diagnostics](backend-cache-diagnostics.md) — redacted cache states, counters, and retained payload measurements.
+- [Headless memory optimization](headless-memory-optimization.md) — CRD allocation cause, Linux replay, output parity, and decoder benchmarks.
 - [Release footprint variants](release-footprint-variants.md) — isolated stable Cargo comparisons and package, startup, font, benchmark, and crash evidence.
 - [Product and architecture](product-and-architecture.md) — current product principles, desktop architecture, and trust boundaries.
 - [Release Guide](release.md) — release preparation and publishing.
@@ -28,7 +30,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 
 - [Architecture decisions](decisions/) — accepted technical and safety decisions.
 - [Planning and milestones](milestones.md) — GitHub Issue and Milestone tracking direction.
-- [Multiple user sessions and persistence](decisions/0023-multi-user-sessions-and-persistence.md) — proposed next stage after the initial single-owner server, including shared and per-user Kubernetes credentials.
+- [Multiple user sessions and persistence](decisions/0023-multi-user-sessions-and-persistence.md) — implemented session baseline and proposed private-source provisioning, persistent user workspaces, settings and migration.
 - [Security Policy](../SECURITY.md) — vulnerability reporting and support.
 - [Contributing](../CONTRIBUTING.md) — contribution and documentation reporting process.
 - [License](../LICENSE) — AGPL-3.0-or-later terms.

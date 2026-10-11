@@ -1,4 +1,5 @@
 import type { ResourceListRequest, ResourceSummary } from "./types";
+import type { SavedWorkspace } from "./workspace-model";
 
 export const RECENT_ENTRY_LIMIT = 8;
 
@@ -155,6 +156,24 @@ export function reconcileEntryPoints(
 		pinned: normalized.pinned.filter(retained),
 		recent: normalized.recent.filter(retained),
 	};
+}
+
+export function updateWorkspaceEntryPointsInCollection(
+	workspaces: SavedWorkspace[],
+	workspaceId: string,
+	recipe: (entryPoints: WorkspaceEntryPoints, now: string) => WorkspaceEntryPoints,
+	now: string,
+): SavedWorkspace[] | null {
+	let changed = false;
+	const nextWorkspaces = workspaces.map((workspace) => {
+		if (workspace.id !== workspaceId) return workspace;
+		const currentEntryPoints = normalizeEntryPoints(workspace.entryPoints);
+		const nextEntryPoints = recipe(currentEntryPoints, now);
+		if (entryPointsEqual(currentEntryPoints, nextEntryPoints)) return workspace;
+		changed = true;
+		return { ...workspace, entryPoints: nextEntryPoints, updatedAt: now };
+	});
+	return changed ? nextWorkspaces : null;
 }
 
 export function resourceFromEntryPoint(entry: WorkspaceEntryPoint): ResourceSummary | null {

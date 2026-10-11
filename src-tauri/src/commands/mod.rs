@@ -60,6 +60,8 @@ pub use discovery::{
 pub use events::{list_resource_events, resource_events_from};
 pub use flux::{detect_flux, get_flux_resource_details, list_flux_resources};
 pub use helm::{get_helm_release_details, get_helm_release_reconciliation, list_helm_releases};
+pub use helpers::forwarded_bearer::enable_forwarded_bearer;
+pub use helpers::session_scope::SessionScope;
 pub use incidents::{incident_cockpit_from, list_incident_cockpit};
 #[cfg(feature = "desktop")]
 pub use kubeconfig::pick_kubeconfig_paths;

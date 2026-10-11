@@ -3,6 +3,13 @@ mod cluster;
 mod core;
 mod workloads;
 
+#[cfg(feature = "bench-support")]
+pub(crate) use cluster::crd_details_from_fetched;
+#[cfg(feature = "bench-support")]
+pub(crate) use core::{configmap_details_from_fetched, secret_details_from_fetched};
+#[cfg(feature = "bench-support")]
+pub(crate) use workloads::deployment_details_from_fetched;
+
 use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
     diagnostic_field, kubeconfig::KubeconfigSource, BackendCancellationRegistry,

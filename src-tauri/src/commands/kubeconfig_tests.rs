@@ -9,6 +9,15 @@ use std::{
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+#[test]
+fn server_sessions_cannot_write_shared_source_settings_without_forwarding() {
+    let scope = super::super::helpers::session_scope::SessionScope::new(None);
+    let error = scope
+        .run_sync(|| save_persisted_sources(&PersistedKubeconfigSources::default()))
+        .expect_err("server source settings belong to the operator");
+    assert_eq!(error.kind, AppErrorKind::UnsupportedOperation);
+}
+
 struct EnvVarGuard {
     name: String,
     previous: Option<OsString>,

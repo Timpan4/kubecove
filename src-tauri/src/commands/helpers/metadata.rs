@@ -9,6 +9,10 @@ pub(crate) use flux_inventory::{
     enrich_resource_summaries_with_flux_inventory, fetch_flux_ownership_index,
     filter_flux_ownership_index, read_flux_ownership_index, FluxOwnershipIndex,
 };
+#[cfg(feature = "bench-support")]
+pub(crate) use flux_inventory::{
+    flux_ownership_index_from_fetched_objects, MAX_FLUX_INVENTORY_ENTRIES, MAX_FLUX_OWNER_OBJECTS,
+};
 pub(crate) use ownership::{extract_argo_app, extract_git_ops_owner};
 
 const LABEL_HELM_RELEASE_NAME: &str = "helm.sh/release";

@@ -9,15 +9,16 @@ use crate::{
     },
     models::{AppError, DiscoveredResourceKind},
 };
-use futures_util::{stream, StreamExt};
-use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::{
-    CustomResourceDefinition, CustomResourceDefinitionVersion,
-};
+use futures_util::{io::AsyncReadExt, stream, StreamExt};
+use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::{
     api::{Api, ApiResource, DynamicObject},
     Client,
 };
 use std::time::Instant;
+
+pub(crate) mod crd_catalog;
+use crd_catalog::{CatalogCrd, CatalogVersion};
 
 const MAX_PRESENT_KIND_CONCURRENCY: usize = 48;
 
@@ -34,20 +35,42 @@ pub(crate) async fn crd_resource_kinds(
     client: Client,
 ) -> Result<Vec<DiscoveredResourceKind>, AppError> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    let mut kinds: Vec<_> = api
+    let mut request = kube::core::Request::new(api.resource_url())
         .list(&list_params())
+        .map_err(kube::Error::BuildRequest)?;
+    request.extensions_mut().insert("list");
+    let stream = api
+        .into_client()
+        .request_stream(request)
         .await
-        .map_err(AppError::from)?
-        .items
-        .into_iter()
-        .filter_map(|crd| discovered_kind_from_crd(&crd))
-        .collect();
-
-    sort_and_dedup_kinds(&mut kinds);
-    Ok(kinds)
+        .map_err(AppError::from)?;
+    futures_util::pin_mut!(stream);
+    // Consume HTTP chunks as they arrive, then reuse the buffer for UTF-8.
+    // request_text retains all chunks while collecting and copying the body.
+    let mut bytes = Vec::new();
+    stream
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(|error| kube::Error::Service(Box::new(error)))?;
+    let text = String::from_utf8(bytes).map_err(kube::Error::FromUtf8)?;
+    crd_catalog::decode(&text)
+        .map_err(kube::Error::SerdeError)
+        .map_err(AppError::from)
 }
 
-fn discovered_kind_from_crd(crd: &CustomResourceDefinition) -> Option<DiscoveredResourceKind> {
+#[cfg(feature = "bench-support")]
+pub(crate) fn crd_resource_kinds_from(
+    definitions: impl IntoIterator<Item = CustomResourceDefinition>,
+) -> Vec<DiscoveredResourceKind> {
+    let mut kinds = definitions
+        .into_iter()
+        .filter_map(|crd| discovered_kind_from_crd(&CatalogCrd::from(crd)))
+        .collect();
+    sort_and_dedup_kinds(&mut kinds);
+    kinds
+}
+
+fn discovered_kind_from_crd(crd: &CatalogCrd) -> Option<DiscoveredResourceKind> {
     let version = preferred_crd_version(&crd.spec.versions)?;
     let group = crd.spec.group.clone();
     let api_version = format!("{group}/{}", version.name);
@@ -62,9 +85,7 @@ fn discovered_kind_from_crd(crd: &CustomResourceDefinition) -> Option<Discovered
     })
 }
 
-fn preferred_crd_version(
-    versions: &[CustomResourceDefinitionVersion],
-) -> Option<&CustomResourceDefinitionVersion> {
+fn preferred_crd_version(versions: &[CatalogVersion]) -> Option<&CatalogVersion> {
     versions
         .iter()
         .find(|version| version.served && version.storage)
@@ -315,169 +336,4 @@ pub async fn list_present_custom_resource_kinds(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use http::{header::CONTENT_TYPE, Request, Response};
-    use kube::{client::Body, Client};
-    use serde_json::json;
-
-    type MockHandle = tower_test::mock::Handle<Request<Body>, Response<Body>>;
-
-    fn mock_client() -> (Client, MockHandle) {
-        let (service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
-        (Client::new(service, "default"), handle)
-    }
-
-    fn response(status: u16, body: impl Into<Body>) -> Response<Body> {
-        Response::builder()
-            .status(status)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.into())
-            .expect("response")
-    }
-
-    fn crd(
-        name: &str,
-        group: &str,
-        kind: &str,
-        plural: &str,
-        scope: &str,
-    ) -> CustomResourceDefinition {
-        CustomResourceDefinition {
-            metadata: k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta::default(),
-            spec: k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinitionSpec {
-                group: group.to_string(),
-                names: k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinitionNames {
-                    kind: kind.to_string(),
-                    plural: plural.to_string(),
-                    ..Default::default()
-                },
-                scope: scope.to_string(),
-                versions: vec![
-                    CustomResourceDefinitionVersion {
-                        name: "v1beta1".to_string(),
-                        served: true,
-                        storage: false,
-                        ..Default::default()
-                    },
-                    CustomResourceDefinitionVersion {
-                        name: name.to_string(),
-                        served: true,
-                        storage: true,
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
-            status: None,
-        }
-    }
-
-    #[test]
-    fn falls_back_to_first_served_version() {
-        let mut source = crd("v1", "example.com", "Widget", "widgets", "Cluster");
-        source.spec.versions[1].served = false;
-
-        let kind = discovered_kind_from_crd(&source).expect("kind");
-
-        assert_eq!(kind.version, "v1beta1");
-        assert!(!kind.namespaced);
-    }
-
-    #[test]
-    fn ignores_crd_with_no_served_version() {
-        let mut source = crd("v1", "example.com", "Widget", "widgets", "Namespaced");
-        for version in &mut source.spec.versions {
-            version.served = false;
-        }
-
-        assert!(discovered_kind_from_crd(&source).is_none());
-    }
-
-    #[test]
-    fn sorts_and_dedups_kinds() {
-        let mut kinds = vec![
-            discovered_kind_from_crd(&crd("v1", "z.example", "Zed", "zeds", "Namespaced")).unwrap(),
-            discovered_kind_from_crd(&crd("v1", "a.example", "Alpha", "alphas", "Namespaced"))
-                .unwrap(),
-            discovered_kind_from_crd(&crd("v1", "a.example", "Alpha", "alphas", "Namespaced"))
-                .unwrap(),
-        ];
-
-        sort_and_dedup_kinds(&mut kinds);
-
-        assert_eq!(kinds.len(), 2);
-        assert_eq!(kinds[0].kind, "Alpha");
-        assert_eq!(kinds[1].kind, "Zed");
-    }
-
-    #[test]
-    fn keeps_cluster_scoped_kinds_for_all_namespace_presence() {
-        let cluster_kind = discovered_kind_from_crd(&crd(
-            "v1",
-            "example.com",
-            "ClusterThing",
-            "clusterthings",
-            "Cluster",
-        ))
-        .unwrap();
-        let namespaced_kind =
-            discovered_kind_from_crd(&crd("v1", "example.com", "Widget", "widgets", "Namespaced"))
-                .unwrap();
-
-        assert!(should_probe_present_kind(&cluster_kind, &[]));
-        assert!(should_probe_present_kind(&namespaced_kind, &[]));
-        assert!(!should_probe_present_kind(
-            &cluster_kind,
-            &[String::from("default")]
-        ));
-        assert!(should_probe_present_kind(
-            &namespaced_kind,
-            &[String::from("default")]
-        ));
-    }
-
-    #[tokio::test]
-    async fn malformed_discovery_response_is_reported() {
-        let (client, mut handle) = mock_client();
-        let operation = crd_resource_kinds(client);
-        let responder = async move {
-            let (_, send) = handle.next_request().await.expect("CRD list request");
-            send.send_response(response(200, Body::from(b"{not-json".to_vec())));
-        };
-
-        let (result, ()) = tokio::join!(operation, responder);
-        let error = result.expect_err("malformed response must fail");
-
-        assert_eq!(error.kind, AppErrorKind::Serialization);
-    }
-
-    #[tokio::test]
-    async fn forbidden_discovery_response_preserves_permission_kind() {
-        let (client, mut handle) = mock_client();
-        let operation = crd_resource_kinds(client);
-        let responder = async move {
-            let (_, send) = handle.next_request().await.expect("CRD list request");
-            send.send_response(response(
-                403,
-                Body::from(
-                    serde_json::to_vec(&json!({
-                        "apiVersion": "v1",
-                        "kind": "Status",
-                        "status": "Failure",
-                        "reason": "Forbidden",
-                        "message": "customresourcedefinitions is forbidden",
-                        "code": 403
-                    }))
-                    .expect("status JSON"),
-                ),
-            ));
-        };
-
-        let (result, ()) = tokio::join!(operation, responder);
-        let error = result.expect_err("forbidden response must fail");
-
-        assert_eq!(error.kind, AppErrorKind::Forbidden);
-        assert!(error.message.contains("forbidden"));
-    }
-}
+mod tests;

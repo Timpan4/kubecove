@@ -99,6 +99,27 @@ fn fetch_namespaces(group: &ResourceScopeGroup) -> Vec<Option<String>> {
     group.namespaces.iter().cloned().map(Some).collect()
 }
 
+#[cfg(feature = "bench-support")]
+pub(crate) fn resource_scope_fetch_plan(
+    requests: Vec<ResourceListRequest>,
+) -> Result<Vec<(String, Option<String>)>, AppError> {
+    let groups = group_requests(requests)?;
+    Ok(groups
+        .into_values()
+        .flat_map(|group| {
+            let kind = match &group.kind {
+                ResourceScopeKind::Typed(kind) => format!("typed:{kind}"),
+                ResourceScopeKind::Dynamic(kind) => {
+                    format!("dynamic:{}:{}:{}", kind.api_version, kind.plural, kind.kind)
+                }
+            };
+            fetch_namespaces(&group)
+                .into_iter()
+                .map(move |namespace| (kind.clone(), namespace))
+        })
+        .collect())
+}
+
 fn ownership_namespaces(groups: &BTreeMap<String, ResourceScopeGroup>) -> Vec<String> {
     if groups.values().any(should_promote_to_all) {
         Vec::new()
@@ -127,6 +148,32 @@ fn dedupe_rows(rows: Vec<ResourceSummary>) -> Vec<ResourceSummary> {
         );
     }
     by_key.into_values().collect()
+}
+
+fn assemble_post_fetch_scope(
+    mut rows: Vec<ResourceSummary>,
+    index: crate::commands::helpers::FluxOwnershipIndex,
+    requested_namespaces: &[String],
+) -> Vec<ResourceSummary> {
+    let index = filter_flux_ownership_index(index, requested_namespaces);
+    enrich_resource_summaries_with_flux_inventory(&mut rows, &index);
+    dedupe_rows(rows)
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn resource_scope_post_fetch(
+    requests: Vec<ResourceListRequest>,
+    batches: Vec<Vec<ResourceSummary>>,
+    index: crate::commands::helpers::FluxOwnershipIndex,
+) -> Result<Vec<ResourceSummary>, AppError> {
+    let groups = group_requests(requests)?;
+    let requested_namespaces = ownership_namespaces(&groups);
+    let rows = batches.into_iter().flatten().collect();
+    Ok(assemble_post_fetch_scope(
+        rows,
+        index,
+        &requested_namespaces,
+    ))
 }
 
 pub async fn resource_scope_from(
@@ -267,9 +314,7 @@ async fn resource_scope_result_from(
             move || fetch_flux_ownership_index(client)
         })
         .await?;
-    let index = filter_flux_ownership_index(index, &requested_namespaces);
-    enrich_resource_summaries_with_flux_inventory(&mut scope.resources, &index);
-    scope.resources = dedupe_rows(scope.resources);
+    scope.resources = assemble_post_fetch_scope(scope.resources, index, &requested_namespaces);
     Ok(scope)
 }
 

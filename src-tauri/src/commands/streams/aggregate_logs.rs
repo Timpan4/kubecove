@@ -28,9 +28,9 @@ struct LogStreamOptions {
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-struct LogSourceKey {
-    pod_name: String,
-    container: String,
+pub(crate) struct LogSourceKey {
+    pub(crate) pod_name: String,
+    pub(crate) container: String,
 }
 
 #[derive(Default)]
@@ -296,6 +296,11 @@ fn log_sources_from_pods(pods: &[Pod]) -> (Vec<LogSourceKey>, usize) {
     let total = sources.len();
     sources.truncate(MAX_AGGREGATED_LOG_SOURCES);
     (sources, total)
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_log_sources_from_pods(pods: &[Pod]) -> (Vec<LogSourceKey>, usize) {
+    log_sources_from_pods(pods)
 }
 
 fn log_sources_from_pod(pod: &Pod) -> Vec<LogSourceKey> {

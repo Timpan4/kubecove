@@ -146,3 +146,72 @@ export function buildNamespaceTreeNode(
 		children: groups,
 	};
 }
+
+interface NamespaceCustomResourceQueryState {
+	data?: unknown;
+	error: unknown;
+	isError: boolean;
+	isPending: boolean;
+}
+
+export function customResourcesByExpandedNamespace(
+	expandedNamespaces: string[],
+	queries: readonly NamespaceCustomResourceQueryState[],
+): Map<string, DiscoveredResourceKind[]> {
+	const rows = new Map<string, DiscoveredResourceKind[]>();
+	for (const [index, query] of queries.entries()) {
+		const namespace = expandedNamespaces[index];
+		if (!namespace || !query.data) continue;
+		// SAFETY: the generated namespace query returns discovered resource kinds.
+		rows.set(namespace, query.data as DiscoveredResourceKind[]);
+	}
+	return rows;
+}
+
+export function customResourceErrorsByExpandedNamespace(
+	expandedNamespaces: string[],
+	queries: readonly NamespaceCustomResourceQueryState[],
+): Map<string, string> {
+	const errors = new Map<string, string>();
+	for (const [index, query] of queries.entries()) {
+		const namespace = expandedNamespaces[index];
+		if (!namespace || !query.isError) continue;
+		errors.set(namespace, query.error instanceof Error ? query.error.message : String(query.error));
+	}
+	return errors;
+}
+
+export function pendingCustomResourceNamespaces(
+	expandedNamespaces: string[],
+	queries: readonly NamespaceCustomResourceQueryState[],
+): Set<string> {
+	const pending = new Set<string>();
+	for (const [index, query] of queries.entries()) {
+		const namespace = expandedNamespaces[index];
+		if (namespace && query.isPending) pending.add(namespace);
+	}
+	return pending;
+}
+
+export function buildExpandedNamespaceChildren(
+	namespace: string,
+	resourceKinds: DiscoveredResourceKind[],
+	error: string | undefined,
+	pending: boolean,
+): TreeNode[] {
+	const children = buildNamespaceTreeNode(namespace, resourceKinds).children ?? [];
+	if (error) {
+		return children.concat({
+			id: { type: "group", section: "namespaces", namespace, group: "custom-resources-error" },
+			label: "Custom resources failed to load",
+			description: error,
+			disabled: true,
+		});
+	}
+	if (!pending) return children;
+	return children.concat({
+		id: { type: "group", section: "namespaces", namespace, group: "custom-resources-loading" },
+		label: "Loading custom resources...",
+		disabled: true,
+	});
+}

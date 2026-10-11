@@ -1,18 +1,136 @@
-use crate::commands::helpers::{
-    base_resource_summary, list_params, resource_age, update_resource_health,
-};
+use crate::commands::helpers::{base_resource_summary, list_params, update_resource_health};
 use crate::models::{AppError, ResourceSummary};
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use kube::{api::Api, Client};
 
-fn age_from_metadata(
+pub(crate) fn age_from_metadata_at(
     metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
+    now: DateTime<Utc>,
 ) -> String {
-    resource_age(metadata.creation_timestamp.clone().map(|t| {
-        Utc.timestamp_opt(t.0.as_second(), 0)
-            .single()
-            .unwrap_or_else(Utc::now)
-    }))
+    metadata
+        .creation_timestamp
+        .as_ref()
+        .map(|time| {
+            Utc.timestamp_opt(time.0.as_second(), 0)
+                .single()
+                .unwrap_or(now)
+        })
+        .map_or_else(
+            || "unknown".to_string(),
+            |time| crate::commands::helpers::resource_age_at(time, now),
+        )
+}
+
+pub(crate) fn pod_resource_summary(
+    cluster_context: &str,
+    pod: &k8s_openapi::api::core::v1::Pod,
+) -> ResourceSummary {
+    pod_resource_summary_at(cluster_context, pod, Utc::now())
+}
+
+pub(crate) fn pod_resource_summary_at(
+    cluster_context: &str,
+    pod: &k8s_openapi::api::core::v1::Pod,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    let mut summary = base_resource_summary(
+        "Pod",
+        cluster_context,
+        &pod.metadata,
+        age_from_metadata_at(&pod.metadata, now),
+    );
+    if let Some(ref status) = pod.status {
+        summary.status = status.phase.clone().filter(|phase| !phase.is_empty());
+        summary.ready = status
+            .conditions
+            .as_ref()
+            .and_then(|conds| conds.iter().find(|c| c.type_ == "Ready"))
+            .map(|c| c.status.clone());
+        summary.restarts =
+            crate::commands::helpers::pod_restarts(status.container_statuses.as_deref());
+    }
+    update_resource_health(&mut summary);
+    summary
+}
+
+pub(crate) fn service_resource_summary(
+    cluster_context: &str,
+    service: &k8s_openapi::api::core::v1::Service,
+) -> ResourceSummary {
+    service_resource_summary_at(cluster_context, service, Utc::now())
+}
+
+pub(crate) fn service_resource_summary_at(
+    cluster_context: &str,
+    service: &k8s_openapi::api::core::v1::Service,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    base_resource_summary(
+        "Service",
+        cluster_context,
+        &service.metadata,
+        age_from_metadata_at(&service.metadata, now),
+    )
+}
+
+pub(crate) fn config_map_resource_summary(
+    cluster_context: &str,
+    config_map: &k8s_openapi::api::core::v1::ConfigMap,
+) -> ResourceSummary {
+    config_map_resource_summary_at(cluster_context, config_map, Utc::now())
+}
+
+pub(crate) fn config_map_resource_summary_at(
+    cluster_context: &str,
+    config_map: &k8s_openapi::api::core::v1::ConfigMap,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    base_resource_summary(
+        "ConfigMap",
+        cluster_context,
+        &config_map.metadata,
+        age_from_metadata_at(&config_map.metadata, now),
+    )
+}
+
+pub(crate) fn secret_resource_summary(
+    cluster_context: &str,
+    secret: &k8s_openapi::api::core::v1::Secret,
+) -> ResourceSummary {
+    secret_resource_summary_at(cluster_context, secret, Utc::now())
+}
+
+pub(crate) fn secret_resource_summary_at(
+    cluster_context: &str,
+    secret: &k8s_openapi::api::core::v1::Secret,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    base_resource_summary(
+        "Secret",
+        cluster_context,
+        &secret.metadata,
+        age_from_metadata_at(&secret.metadata, now),
+    )
+}
+
+pub(crate) fn persistent_volume_claim_resource_summary(
+    cluster_context: &str,
+    claim: &k8s_openapi::api::core::v1::PersistentVolumeClaim,
+) -> ResourceSummary {
+    persistent_volume_claim_resource_summary_at(cluster_context, claim, Utc::now())
+}
+
+pub(crate) fn persistent_volume_claim_resource_summary_at(
+    cluster_context: &str,
+    claim: &k8s_openapi::api::core::v1::PersistentVolumeClaim,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    base_resource_summary(
+        "PersistentVolumeClaim",
+        cluster_context,
+        &claim.metadata,
+        age_from_metadata_at(&claim.metadata, now),
+    )
 }
 
 pub(super) async fn core_resource_summaries(
@@ -32,27 +150,7 @@ pub(super) async fn core_resource_summaries(
                 .await
                 .map_err(AppError::from)?
                 .iter()
-                .map(|pod| {
-                    let mut summary = base_resource_summary(
-                        "Pod",
-                        cluster_context,
-                        &pod.metadata,
-                        age_from_metadata(&pod.metadata),
-                    );
-                    if let Some(ref status) = pod.status {
-                        summary.status = status.phase.clone().filter(|phase| !phase.is_empty());
-                        summary.ready = status
-                            .conditions
-                            .as_ref()
-                            .and_then(|conds| conds.iter().find(|c| c.type_ == "Ready"))
-                            .map(|c| c.status.clone());
-                        summary.restarts = crate::commands::helpers::pod_restarts(
-                            status.container_statuses.as_deref(),
-                        );
-                    }
-                    update_resource_health(&mut summary);
-                    summary
-                })
+                .map(|pod| pod_resource_summary(cluster_context, pod))
                 .collect()
         }
         "Service" => {
@@ -65,14 +163,7 @@ pub(super) async fn core_resource_summaries(
                 .await
                 .map_err(AppError::from)?
                 .iter()
-                .map(|svc| {
-                    base_resource_summary(
-                        "Service",
-                        cluster_context,
-                        &svc.metadata,
-                        age_from_metadata(&svc.metadata),
-                    )
-                })
+                .map(|svc| service_resource_summary(cluster_context, svc))
                 .collect()
         }
         "ConfigMap" => {
@@ -85,14 +176,7 @@ pub(super) async fn core_resource_summaries(
                 .await
                 .map_err(AppError::from)?
                 .iter()
-                .map(|cm| {
-                    base_resource_summary(
-                        "ConfigMap",
-                        cluster_context,
-                        &cm.metadata,
-                        age_from_metadata(&cm.metadata),
-                    )
-                })
+                .map(|cm| config_map_resource_summary(cluster_context, cm))
                 .collect()
         }
         "Secret" => {
@@ -105,14 +189,7 @@ pub(super) async fn core_resource_summaries(
                 .await
                 .map_err(AppError::from)?
                 .iter()
-                .map(|sec| {
-                    base_resource_summary(
-                        "Secret",
-                        cluster_context,
-                        &sec.metadata,
-                        age_from_metadata(&sec.metadata),
-                    )
-                })
+                .map(|sec| secret_resource_summary(cluster_context, sec))
                 .collect()
         }
         "PersistentVolumeClaim" => {
@@ -126,14 +203,7 @@ pub(super) async fn core_resource_summaries(
                 .await
                 .map_err(AppError::from)?
                 .iter()
-                .map(|pvc| {
-                    base_resource_summary(
-                        "PersistentVolumeClaim",
-                        cluster_context,
-                        &pvc.metadata,
-                        age_from_metadata(&pvc.metadata),
-                    )
-                })
+                .map(|pvc| persistent_volume_claim_resource_summary(cluster_context, pvc))
                 .collect()
         }
         _ => return Ok(None),

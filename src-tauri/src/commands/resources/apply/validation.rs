@@ -6,15 +6,15 @@ use serde::Deserialize;
 use serde_json::Value;
 
 #[derive(Debug)]
-pub(super) struct ValidatedApply {
-    pub(super) request: YamlApplyRequest,
-    pub(super) manifest: Value,
-    pub(super) api_resource: ApiResource,
-    pub(super) namespaced: bool,
-    pub(super) target: YamlApplyTarget,
+pub(crate) struct ValidatedApply {
+    pub(crate) request: YamlApplyRequest,
+    pub(crate) manifest: Value,
+    pub(crate) api_resource: ApiResource,
+    pub(crate) namespaced: bool,
+    pub(crate) target: YamlApplyTarget,
 }
 
-pub(super) fn validate_yaml_apply(request: YamlApplyRequest) -> Result<ValidatedApply, AppError> {
+pub(crate) fn validate_yaml_apply(request: YamlApplyRequest) -> Result<ValidatedApply, AppError> {
     crate::commands::helpers::validate_path_segment(&request.name, "name")?;
     crate::commands::helpers::validate_namespace(request.namespace.as_deref())?;
     let expected_api_version = request_api_version(&request)?;
@@ -107,7 +107,7 @@ pub(super) fn validate_yaml_apply(request: YamlApplyRequest) -> Result<Validated
     })
 }
 
-pub(super) fn parse_single_document(yaml: &str) -> Result<Value, AppError> {
+pub(crate) fn parse_single_document(yaml: &str) -> Result<Value, AppError> {
     let mut manifest = None;
     for document in serde_yaml::Deserializer::from_str(yaml) {
         let yaml_value = serde_yaml::Value::deserialize(document)

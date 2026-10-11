@@ -76,6 +76,22 @@ export function logLineSearchText(line: ParsedLogLine): string {
 		.toLowerCase();
 }
 
+export function orderParsedLogLines(
+	lines: ParsedLogLine[],
+	latestFirst: boolean,
+): ParsedLogLine[] {
+	return latestFirst ? [...lines].reverse() : lines;
+}
+
+export function filterOrderedParsedLogLines(
+	lines: ParsedLogLine[],
+	filterTerm: string,
+): ParsedLogLine[] {
+	return filterTerm
+		? lines.filter((line) => logLineSearchText(line).includes(filterTerm))
+		: lines;
+}
+
 function validTimestampMs(value: string | undefined): number | undefined {
 	if (!value) return undefined;
 	const parsed = Date.parse(value);

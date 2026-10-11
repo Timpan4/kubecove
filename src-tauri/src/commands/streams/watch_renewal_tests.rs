@@ -20,11 +20,11 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
             })).into_bytes())).unwrap()
         } else {
             Response::builder()
-                .status(403)
+                .status(503)
                 .body(Body::from(
                     json!({
                         "kind": "Status", "apiVersion": "v1", "status": "Failure",
-                        "reason": "Forbidden", "message": "watch denied", "code": 403
+                        "reason": "ServiceUnavailable", "message": "watch unavailable", "code": 503
                     })
                     .to_string()
                     .into_bytes(),
@@ -79,6 +79,87 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
     assert!(messages[2]["message"]
         .as_str()
         .unwrap()
-        .contains("watch denied"));
+        .contains("watch unavailable"));
     assert_eq!(messages[3]["status"], "reconnecting");
+}
+
+#[tokio::test]
+async fn forbidden_watch_stops_and_replays_permission_status_to_new_subscribers() {
+    for in_stream in [false, true] {
+        let requests = Arc::new(Mutex::new(0));
+        let observed_requests = requests.clone();
+        let service = tower::service_fn(move |_: Request<Body>| {
+            *observed_requests.lock().unwrap() += 1;
+            let status = json!({ "kind": "Status", "apiVersion": "v1", "status": "Failure", "reason": "Forbidden", "message": "secrets watch denied", "code": 403 });
+            let body = if in_stream {
+                format!("{}\n", json!({ "type": "ERROR", "object": status }))
+            } else {
+                status.to_string()
+            };
+            std::future::ready(Ok::<_, std::convert::Infallible>(
+                Response::builder()
+                    .status(if in_stream { 200 } else { 403 })
+                    .body(Body::from(body.into_bytes()))
+                    .unwrap(),
+            ))
+        });
+        let client = Client::new(service, "default");
+        let messages = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let observed_messages = messages.clone();
+        let channel = Channel::<StreamMessage>::new(move |body| {
+            let InvokeResponseBody::Json(body) = body else {
+                panic!("expected JSON")
+            };
+            let message: Value = serde_json::from_str(&body).unwrap();
+            let reconnecting = message["status"] == "reconnecting";
+            observed_messages.lock().unwrap().push(message);
+            // Old behavior exits through this callback so the regression cannot hang.
+            if reconnecting {
+                Err(std::io::Error::other("consumer closed").into())
+            } else {
+                Ok(())
+            }
+        });
+        let key: WatchResourceKey = serde_json::from_value(
+            json!({ "resourceKind": { "kind": "Secret" }, "namespace": "cert-manager" }),
+        )
+        .unwrap();
+        let registry = StreamRegistry::default();
+        let (_, broadcaster, _) =
+            registry.subscribe_resource("test", "source", "dev", &key, channel);
+        run_resource_watch_with_client(
+            "source".into(),
+            "dev".into(),
+            key.clone(),
+            broadcaster,
+            ClusterLiveStore::default(),
+            || std::future::ready(Ok(client.clone())),
+        )
+        .await;
+        assert_eq!(*requests.lock().unwrap(), 1);
+        let messages = messages.lock().unwrap();
+        assert_eq!(messages.last().unwrap()["status"], "forbidden");
+        assert_eq!(messages.last().unwrap()["message"], "Secret in namespace cert-manager: watch access denied. Readable resources will refresh periodically.");
+        assert!(messages
+            .iter()
+            .all(|message| message["status"] != "reconnecting"));
+        drop(messages);
+        let replay = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let observed_replay = replay.clone();
+        let channel = Channel::<StreamMessage>::new(move |body| {
+            let InvokeResponseBody::Json(body) = body else {
+                panic!("expected JSON")
+            };
+            observed_replay
+                .lock()
+                .unwrap()
+                .push(serde_json::from_str(&body).unwrap());
+            Ok(())
+        });
+        let (_, _, started) = registry.subscribe_resource("late", "source", "dev", &key, channel);
+        assert!(!started);
+        assert_eq!(replay.lock().unwrap()[0]["status"], "forbidden");
+        registry.stop("late");
+        registry.stop("test");
+    }
 }

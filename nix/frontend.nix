@@ -1,6 +1,8 @@
 {
   lib,
   bun2nix,
+  # "web" builds the browser app kubecove-server embeds.
+  runtime ? "native",
 }:
 
 let
@@ -16,10 +18,10 @@ bun2nix.mkDerivation {
       ../index.html
       ../package.json
       ../public
+      ../scripts/frontend-bundle-report.ts
       ../src
       ../svelte.config.js
       ../tsconfig.json
-      ../tsconfig.node.json
       ../vite.config.ts
     ];
   };
@@ -36,6 +38,7 @@ bun2nix.mkDerivation {
   dontRunLifecycleScripts = true;
 
   VITE_KUBECOVE_RELEASE_CHANNEL = "dev";
+  KUBECOVE_PUBLIC_RUNTIME = runtime;
 
   buildPhase = ''
     runHook preBuild

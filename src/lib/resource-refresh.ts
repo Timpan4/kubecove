@@ -1,5 +1,7 @@
 import type { Query, QueryClient } from "@tanstack/svelte-query";
 import { isFiniteReadQuery } from "./finite-read-lifecycle";
+import { friendlyErrorBucket } from "./friendly-errors";
+import { messageFromError } from "./error-redaction";
 import { kubeconfigSourceKey } from "./settings";
 import { refreshResourceCache } from "./tauri";
 import type { TauriClient } from "./tauri";
@@ -35,7 +37,7 @@ export async function refreshCurrentView({
 	kubeconfigEnvVar?: string;
 	keys: WatchResourceKey[];
 	namespaces: string[];
-}): Promise<void> {
+}): Promise<string[]> {
 	// Capture the exact active reads. Navigation during refresh must not broaden its scope.
 	const queries = new Set(
 		queryClient
@@ -55,8 +57,17 @@ export async function refreshCurrentView({
 		kubeconfigEnvVar,
 	);
 	// Keep the last displayed data while making every selected cache entry stale.
-	await queryClient.invalidateQueries(
-		{ predicate, refetchType: "active" },
-		{ throwOnError: true },
-	);
+	const results = await Promise.allSettled([...queries].map((query) =>
+		queryClient.invalidateQueries(
+			{ predicate: (current) => current === query, refetchType: "active" },
+			{ throwOnError: true },
+		),
+	));
+	const warnings: string[] = [];
+	for (const result of results) {
+		if (result.status !== "rejected") continue;
+		if (friendlyErrorBucket(result.reason) !== "forbiddenRbac") throw result.reason;
+		warnings.push(messageFromError(result.reason));
+	}
+	return [...new Set(warnings)];
 }

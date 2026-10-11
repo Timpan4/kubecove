@@ -1,32 +1,26 @@
-use super::live_store::ClusterLiveStore;
+use super::{live_store::ClusterLiveStore, SessionScope};
 use crate::models::AppErrorKind;
 use crate::models::{
     AppError, BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent, BackendDiagnosticField,
     BackendDiagnosticStatus,
 };
 use chrono::Utc;
-use std::{
-    collections::VecDeque,
-    sync::{Mutex, OnceLock},
-    time::Instant,
-};
+use std::{collections::VecDeque, time::Instant};
 
 const MAX_BACKEND_DIAGNOSTIC_EVENTS: usize = 500;
 
+/// One session's recorded command diagnostics, held by its `SessionScope`.
 #[derive(Default)]
-struct BackendDiagnosticsState {
+pub(crate) struct BackendDiagnosticsState {
     enabled: bool,
     sequence: u64,
     events: VecDeque<BackendDiagnosticEvent>,
 }
 
-fn state() -> &'static Mutex<BackendDiagnosticsState> {
-    static STATE: OnceLock<Mutex<BackendDiagnosticsState>> = OnceLock::new();
-    STATE.get_or_init(|| Mutex::new(BackendDiagnosticsState::default()))
-}
-
 fn with_state<T>(callback: impl FnOnce(&mut BackendDiagnosticsState) -> T) -> T {
-    let mut guard = state()
+    let scope = SessionScope::current_or_process();
+    let mut guard = scope
+        .diagnostics
         .lock()
         .expect("backend diagnostics state mutex poisoned");
     callback(&mut guard)

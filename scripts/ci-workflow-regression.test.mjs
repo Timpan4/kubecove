@@ -66,7 +66,7 @@ for (const [path, selected] of [
   ["public/app-icon.svg", ["frontend"]],
   ["e2e/fixtures/resource.yaml", ["frontend"]],
   ["scripts/check-docs.ts", ["frontend"]],
-  ["bun.lock", ["frontend"]],
+  ["bun.lock", ["frontend", "nix"]],
   ["src-tauri/src/lib.rs", ["rust"]],
   ["src-tauri/capabilities/default.yaml", ["rust"]],
   ["src-tauri/tauri.conf.json", ["frontend", "rust"]],

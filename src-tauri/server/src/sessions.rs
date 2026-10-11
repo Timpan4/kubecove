@@ -4,7 +4,7 @@ use crate::{
     security::{equal_secret, random_token},
 };
 use kubecove_lib::{
-    commands::PortForwardRegistry,
+    commands::SessionScope,
     models::{AppError, AppErrorKind},
 };
 use serde::Serialize;
@@ -40,19 +40,17 @@ pub struct SessionInfo {
 }
 
 pub struct Sessions {
-    current: Mutex<Option<Arc<Owner>>>,
-    // Takeovers and expiry must not race cleanup against a new owner.
+    owners: Mutex<Vec<Arc<Owner>>>,
+    // Expiry, close and shutdown must not race one another's cleanup.
     transition: Mutex<()>,
-    port_forwards: PortForwardRegistry,
     pub grace: Duration,
 }
 
 impl Sessions {
     pub fn new(grace: Duration) -> Self {
         Self {
-            current: Mutex::new(None),
+            owners: Mutex::new(Vec::new()),
             transition: Mutex::new(()),
-            port_forwards: PortForwardRegistry::default(),
             grace,
         }
     }
@@ -64,6 +62,8 @@ impl Sessions {
         self.authenticate_as(resume, None).await
     }
 
+    /// Resumes the session `resume`, or opens a new one beside the sessions
+    /// already open.
     pub async fn authenticate_as(
         self: &Arc<Self>,
         resume: Option<&str>,
@@ -74,13 +74,7 @@ impl Sessions {
             let owner = self.owner_as(resume, subject).await?;
             return Ok(self.info(&owner));
         }
-        if let Some(old) = self.current.lock().await.take() {
-            old.ended.cancel();
-            old.channels.close();
-            let _requests = old.request_gate.write().await;
-            old.tunnels.close_all();
-            old.backend.cleanup(false).await?;
-        }
+        let mut owners = self.owners.lock().await;
         let owner = Arc::new(Owner {
             subject: subject.map(str::to_owned),
             resume_token: random_token().map_err(|_| {
@@ -89,10 +83,7 @@ impl Sessions {
                     AppErrorKind::Internal,
                 )
             })?,
-            backend: BackendState {
-                port_forwards: self.port_forwards.clone(),
-                ..BackendState::default()
-            },
+            backend: BackendState::new(SessionScope::new(subject.map(str::to_owned))),
             channels: Arc::new(ChannelHub::default()),
             tunnels: Arc::new(crate::tunnel::TunnelRegistry::default()),
             ended: CancellationToken::new(),
@@ -101,9 +92,17 @@ impl Sessions {
             socket: Mutex::new(SocketState::default()),
         });
         let info = self.info(&owner);
-        *self.current.lock().await = Some(Arc::clone(&owner));
+        owners.push(Arc::clone(&owner));
+        drop(owners);
         self.disconnected(owner, 0).await;
         Ok(info)
+    }
+
+    async fn remove(&self, owner: &Arc<Owner>) {
+        self.owners
+            .lock()
+            .await
+            .retain(|other| !Arc::ptr_eq(other, owner));
     }
 
     fn info(&self, owner: &Owner) -> SessionInfo {
@@ -115,17 +114,13 @@ impl Sessions {
     }
 
     pub async fn owner(&self, resume: &str) -> Result<Arc<Owner>, AppError> {
-        self.current
+        self.owners
             .lock()
             .await
-            .as_ref()
-            .filter(|owner| {
-                !owner.ended.is_cancelled() && equal_secret(&owner.resume_token, resume)
-            })
+            .iter()
+            .find(|owner| !owner.ended.is_cancelled() && equal_secret(&owner.resume_token, resume))
             .cloned()
-            .ok_or_else(|| {
-                AppError::new("session opened elsewhere or expired", AppErrorKind::Session)
-            })
+            .ok_or_else(|| AppError::new("session closed or expired", AppErrorKind::Session))
     }
 
     pub async fn owner_as(
@@ -173,54 +168,63 @@ impl Sessions {
                 () = owner.ended.cancelled() => return,
                 () = tokio::time::sleep(sessions.grace) => {}
             }
-            let _transition = sessions.transition.lock().await;
-            let socket = owner.socket.lock().await;
-            if socket.connected || socket.generation != generation || owner.ended.is_cancelled() {
-                return;
-            }
-            owner.ended.cancel();
-            owner.channels.close();
-            drop(socket);
-            let _requests = owner.request_gate.write().await;
-            owner.tunnels.close_all();
-            if let Err(error) = owner.backend.cleanup(true).await {
-                eprintln!("headless session cleanup failed: {}", error.kind.as_str());
-            }
-            let mut current = sessions.current.lock().await;
-            if current
-                .as_ref()
-                .is_some_and(|current| Arc::ptr_eq(current, &owner))
             {
-                *current = None;
+                let _transition = sessions.transition.lock().await;
+                let socket = owner.socket.lock().await;
+                if socket.connected || socket.generation != generation || owner.ended.is_cancelled()
+                {
+                    return;
+                }
+                owner.ended.cancel();
+                owner.channels.close();
+                drop(socket);
+                sessions.remove(&owner).await;
+            }
+            if let Err(error) = end(&owner).await {
+                eprintln!("headless session cleanup failed: {}", error.kind.as_str());
             }
         }));
     }
 
     pub async fn shutdown(&self) {
-        let _transition = self.transition.lock().await;
-        if let Some(owner) = self.current.lock().await.take() {
-            owner.ended.cancel();
-            owner.channels.close();
-            let _requests = owner.request_gate.write().await;
-            owner.tunnels.close_all();
-            if let Err(error) = owner.backend.cleanup(true).await {
+        let owners = {
+            let _transition = self.transition.lock().await;
+            let owners = std::mem::take(&mut *self.owners.lock().await);
+            for owner in &owners {
+                owner.ended.cancel();
+            }
+            owners
+        };
+        for owner in owners {
+            if let Err(error) = end(&owner).await {
                 eprintln!("headless shutdown cleanup failed: {}", error.kind.as_str());
             }
         }
-        self.port_forwards.stop_all();
     }
 
     pub async fn close(&self, resume: &str) -> Result<(), AppError> {
-        let _transition = self.transition.lock().await;
-        let owner = self.owner(resume).await?;
-        owner.ended.cancel();
-        owner.channels.close();
-        let _requests = owner.request_gate.write().await;
-        owner.tunnels.close_all();
-        let result = owner.backend.cleanup(true).await;
-        *self.current.lock().await = None;
-        result
+        let owner = {
+            let _transition = self.transition.lock().await;
+            let owner = self.owner(resume).await?;
+            owner.ended.cancel();
+            self.remove(&owner).await;
+            owner
+        };
+        end(&owner).await
     }
+}
+
+/// Stops everything the session runs, after its in-flight requests finish.
+/// Callers mark the session ended and remove it under `transition` first, and
+/// call this after releasing it: waiting here for one session's slow request
+/// must not hold up every other session's login, resume and close.
+async fn end(owner: &Owner) -> Result<(), AppError> {
+    owner.ended.cancel();
+    owner.channels.close();
+    let _requests = owner.request_gate.write().await;
+    owner.backend.scope.set_bearer(None);
+    owner.tunnels.close_all();
+    owner.backend.cleanup().await
 }
 
 #[cfg(test)]

@@ -1,8 +1,10 @@
 pub(crate) mod client_cache;
 pub(crate) mod client_cancellation;
+pub(crate) mod forwarded_bearer;
 mod health;
 mod metadata;
 mod serialization;
+pub(crate) mod session_scope;
 mod time;
 mod validation;
 pub(crate) use validation::{validate_api_resource, validate_namespace, validate_path_segment};
@@ -14,12 +16,18 @@ pub(crate) use metadata::{
     fetch_flux_ownership_index, filter_flux_ownership_index, fmt_ready, read_flux_ownership_index,
     FluxOwnershipIndex,
 };
+#[cfg(feature = "bench-support")]
+pub(crate) use metadata::{
+    flux_ownership_index_from_fetched_objects, MAX_FLUX_INVENTORY_ENTRIES, MAX_FLUX_OWNER_OBJECTS,
+};
 pub(crate) use serialization::{
     fetch_and_serialize, fetch_and_serialize_cluster, fetch_and_serialize_cluster_with_encoding,
-    fetch_and_serialize_with_encoding, normalize_k8s_yaml_value, redact_secret,
+    fetch_and_serialize_with_encoding, fetch_resource, normalize_k8s_yaml_value, redact_secret,
     redact_secret_metadata, serialize_json_value_document, serialize_resource_document,
 };
-pub(crate) use time::{k8s_creation_timestamp_to_rfc3339, k8s_timestamp_to_datetime, resource_age};
+pub(crate) use time::{
+    k8s_creation_timestamp_to_rfc3339, k8s_timestamp_to_datetime, resource_age, resource_age_at,
+};
 
 use kube::api::ListParams;
 

@@ -2,23 +2,29 @@
 	import { ChevronDown, RefreshCw } from "lucide-svelte";
 	import { Button, Popover, PopoverContent, PopoverTrigger, Spinner } from "@/components/ui/svelte";
 	import { messageFromError } from "@/lib/error-redaction";
-	let { onRefresh, disabled = false, status, message, connectionError = null, reloadError = null }: {
-		onRefresh: () => Promise<void>;
+	let { onRefresh, disabled = false, status, message, connectionError = null, reloadError = null, warnings = [] }: {
+		onRefresh: () => Promise<void> | Promise<string[]>;
 		disabled?: boolean;
 		status: string;
 		message: string;
 		connectionError?: unknown;
 		reloadError?: string | null;
+		warnings?: string[];
 	} = $props();
 	let open = $state(false);
 	let refreshing = $state(false);
 	let error = $state<string | null>(null);
+	let refreshWarnings = $state<string[]>([]);
+	const permissionWarnings = $derived([...new Set([...warnings, ...refreshWarnings])]);
 	const connectionProblem = $derived(Boolean(connectionError) || status === "reconnecting" || status === "error");
 	const label = $derived(
 		refreshing ? "Refreshing…"
 			: error || reloadError ? "Refresh failed"
 			: disabled ? "Unavailable"
 			: connectionProblem ? "Reconnecting"
+			: status === "polling" ? "Polling (limited)"
+			: status === "partial" || (status === "connected" && permissionWarnings.length) ? "Live (limited)"
+			: permissionWarnings.length ? "Limited access"
 			: status === "connected" ? "Live"
 			: status === "connecting" ? "Connecting" : "Not connected",
 	);
@@ -26,13 +32,14 @@
 		error || reloadError ? "bg-destructive"
 			: disabled ? "bg-muted-foreground"
 			: connectionProblem ? "bg-amber-400"
+			: status === "partial" || status === "polling" || permissionWarnings.length ? "bg-amber-400"
 			: status === "connected" ? "bg-emerald-400" : "bg-muted-foreground",
 	);
 	async function refresh() {
 		if (refreshing || disabled) return;
 		refreshing = true;
 		error = null;
-		try { await onRefresh(); } catch (cause) { error = messageFromError(cause); }
+		try { refreshWarnings = (await onRefresh()) ?? []; } catch (cause) { error = messageFromError(cause); }
 		finally { refreshing = false; }
 	}
 </script>
@@ -47,6 +54,12 @@
 		<p class="text-xs font-medium">Current view</p>
 		<p role="status" class="text-xs leading-relaxed text-muted-foreground">{message}</p>
 		{#if connectionError}<p class="break-words text-xs text-amber-700 dark:text-amber-300">{messageFromError(connectionError)}</p>{/if}
+		{#if permissionWarnings.length}
+			<p role="status" class="text-xs text-amber-700 dark:text-amber-300">Some data or live updates are unavailable with this account's permissions. Permitted resources remain usable.</p>
+			<ul class="space-y-1 text-xs text-amber-700 dark:text-amber-300">
+				{#each permissionWarnings as warning}<li class="break-words">{warning}</li>{/each}
+			</ul>
+		{/if}
 		{#if error}<p role="alert" class="break-words text-xs text-destructive">Refresh failed: {error}</p>{/if}
 		{#if reloadError}<p role="alert" class="break-words text-xs text-destructive">Automatic reload failed: {reloadError}. Retrying.</p>{/if}
 		<p class="text-xs leading-relaxed text-muted-foreground">Clear cached data for this view and fetch it again. Filters and selection are preserved.</p>

@@ -85,7 +85,10 @@ async fn run(
                     Message::Ping(bytes) => Some(Message::Pong(bytes)),
                     Message::Pong(_) => None,
                     Message::Text(text) => {
-                        let message = control(&owner, &responses, text.as_str()).await;
+                        let message = owner
+                            .backend
+                            .scoped(control(&owner, &responses, text.as_str()))
+                            .await;
                         Some(Message::Text(message.to_string().into()))
                     }
                     Message::Binary(frame) => match owner.tunnels.send_binary(&frame).await {

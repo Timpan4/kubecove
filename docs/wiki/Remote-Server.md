@@ -4,8 +4,8 @@
 
 ## Before you start
 
-- **One shared backend.** The server uses the Kubernetes credentials configured on its host or in its container. Everyone who can sign in to the server acts with those credentials. Sign-in does not map users to Kubernetes RBAC identities.
-- **One active owner in the current release.** Only one client owns live streams, Pod exec sessions and port forwards at a time. A new sign-in takes ownership. Concurrent user sessions are planned and are not available yet.
+- **Operator-managed sources.** Kubernetes uses the server's configured credentials by default. With `--oidc-kubernetes-credentials <AUD>`, requests use each signed-in user's verified ID token and Kubernetes RBAC evaluates that user. Client sessions cannot change the shared kubeconfig source settings.
+- **Independent sessions.** A new sign-in opens another session without taking over existing clients. Each session owns its live streams, Pod exec sessions and port forwards. Closing or expiring one session leaves the others active. Saved workspaces and UI settings still use client storage; durable per-user server storage remains proposed.
 - **One authentication mode per server.** Choose a per-start token, Cloudflare Access or OpenID Connect (OIDC) when starting the server. The modes cannot be combined.
 
 ## Choose a client
@@ -79,7 +79,7 @@ The remote desktop session uses the server's kubeconfig and cluster connectivity
 
 The operator starts the server with `--cloudflare-access-team` and `--cloudflare-access-aud`, native TLS and an exact HTTPS public origin. Open the public KubeCove URL and complete Cloudflare Access sign-in. KubeCove opens without a token form. The Access application policy decides who can sign in. KubeCove verifies the signed Access application JWT and does not trust email headers.
 
-If another client takes over, choose **Take over session** to reclaim it without a token. An expired Access session may require reloading the page and signing in again. See the [container deployment guide](https://github.com/Timpan4/kubecove/tree/main/deploy#cloudflare-tunnel-and-access) for tunnel setup and signing-key refresh requirements.
+Each client opens an independent session. An expired Access session may require reloading the page and signing in again. See the [container deployment guide](https://github.com/Timpan4/kubecove/tree/main/deploy#cloudflare-tunnel-and-access) for tunnel setup and signing-key refresh requirements.
 
 ## Sign in through OpenID Connect
 
@@ -87,7 +87,7 @@ Register a web application with your identity provider:
 
 - Redirect URI: exactly `https://<kubecove-host>/api/v1/oidc/callback`.
 - Grant type: authorization code. KubeCove uses PKCE S256, state and nonce.
-- Assignment: restrict the application to the people who should share this server's Kubernetes access.
+- Assignment: restrict the application to the people allowed to sign in to this server.
 
 Start the server with native TLS and the OIDC options:
 
@@ -102,29 +102,33 @@ Start the server with native TLS and the OIDC options:
 
 `--oidc-login-timeout` is required and has no default. It bounds the sign-in transaction and the server's requests to the provider. Durations accept seconds, `m` or `h`, for example `15m`. Omit `--oidc-client-secret-file` for a public client. For a confidential client, mount the secret as a private file. Never pass the secret value as an argument or place it in chat, logs or frontend configuration.
 
-The issuer must use HTTPS, and its discovery document must return the same issuer. Choose **Sign in**. The provider authenticates you and redirects back. The server validates the ID token and sets a private HttpOnly cookie that expires with the ID token. **Sign out** ends KubeCove access and that browser's owned sessions. It does not sign you out of the identity provider. A server restart requires a new sign-in.
+The issuer must use HTTPS, and its discovery document must return the same issuer. Choose **Sign in**. The provider authenticates you and redirects back. The server validates the ID token and sets a private HttpOnly cookie. By default, the sign-in expires with that token. A server restart requires a new sign-in.
+
+To forward each user's ID token to Kubernetes, add `--oidc-kubernetes-credentials <AUD>`. Kubernetes must accept the configured issuer and audience, and the ID token must contain that audience. Kubeconfig still selects the cluster and CA, but its authentication is removed from forwarded requests. Refresh tokens stay in server memory; renewal cannot extend the sign-in beyond 12 hours. An expired ID token stops credential forwarding during a provider outage while refresh remains retryable.
+
+**Sign out** revokes the current sign-in, clears its bound bearer slots and closes the session identified by a matching resume token. Other sockets using that sign-in close and follow the disconnect grace policy. Tabs sharing the cookie share its revocation; separate sign-ins remain valid, including another sign-in for the same user. Sign-out does not sign you out of the identity provider.
 
 For an Authentik example and Cloudflare Tunnel transport, see the [container deployment guide](https://github.com/Timpan4/kubecove/tree/main/deploy#openid-connect-with-authentik). The security contract is [ADR 0022](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0022-oidc-server-sign-in.md).
 
 ## Data and credential storage
 
-The server's settings, kubeconfig source list, startup token and connected Argo CD state live in its data directory. Kubeconfig responses contain summaries, not raw kubeconfig contents. On Unix, new data directories use mode `0700` and the startup token uses `0600`.
+The server's kubeconfig-source settings and token-mode startup token live in its data directory. Saved workspaces, UI settings and Argo profile metadata use client `localStorage`; navigation uses the URL hash and `sessionStorage`. Durable per-user server workspaces and settings remain proposed. Live Argo connections belong to each session. Kubeconfig responses contain summaries, not raw kubeconfig contents. On Unix, new data directories use mode `0700` and the startup token uses `0600`.
 
 When native credential storage is unavailable on a Unix host, `kubecove-server` uses an encrypted file store for remembered Argo CD credentials and short-lived operation review sessions. Remembering a credential remains opt-in. The store uses `credentials.enc` and `credentials.key` with private permissions in the `0700` data directory. Keep both files on the host and protect backups. The store stops other OS users from reading credentials. It does not protect against processes running as the same user, root, or a backup that holds both files. The desktop app does not use this fallback.
 
-## Takeover, reconnect and shutdown
+## Sessions, reconnect and shutdown
 
-Signing in from another browser or desktop client takes ownership. The previous client's streams, Pod exec sessions and laptop-tunnelled forwards stop. Server-bound browser forwards stay on the server and move to the new owner.
+Signing in from another browser or desktop client opens another session. Existing clients keep their streams, Pod exec sessions and port forwards. Both server-bound browser forwards and laptop-tunnelled desktop forwards remain owned by the session that created them.
 
-A disconnected owner can reconnect within the grace window, which defaults to five minutes. Set `--session-grace 0` to stop sessions immediately on disconnect, or a longer value such as `--session-grace 10m`. When the window expires, the server closes the owner's remaining sessions and forwards.
+A disconnected client can resume its matching session within the grace window, which defaults to five minutes. Set `--session-grace 0` to clean up immediately on disconnect, or a longer value such as `--session-grace 10m`. When the window expires, the server closes only that session's remaining live resources and forwards.
 
 Stop the server with Ctrl+C or the host's service manager. Shutdown closes live sessions and forwards. To upgrade, stop the server, replace the executable from a reviewed release, and start it again. Keep the data directory.
 
 ## Security and support boundaries
 
 - Non-loopback TCP requires `--allow-remote` and TLS. Unix sockets (`--socket`) use mode `0600`, cannot be combined with TLS or remote TCP, and need an exact `--public-origin` for browser access.
-- Anyone who can sign in, use the server's OS account or read its token gets the server's Kubernetes permissions, subject to KubeCove's guarded workflows.
-- OIDC and Cloudflare Access control who can sign in to KubeCove. Kubernetes still sees one identity: the server's configured credentials. Grant that identity only what every permitted user should have.
+- In shared-credential mode, anyone allowed to sign in gets the server's Kubernetes permissions, subject to KubeCove's guarded workflows. The server's OS account and startup token must remain trusted.
+- OIDC and Cloudflare Access control who can sign in to KubeCove. Kubernetes uses the server's configured credentials by default; grant that identity only what every permitted user should have. Opt-in OIDC forwarding uses each user's verified ID token and Kubernetes RBAC. Cloudflare Access does not forward its JWT to Kubernetes.
 - Kubernetes and Argo CD access follows the [safety and data-handling rules](https://github.com/Timpan4/kubecove/wiki/Safety-Data-and-Architecture). KubeCove does not run arbitrary shell commands or deploy an in-cluster agent.
 
 For engineering and security contracts, see [ADR 0020: Headless Server Mode](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0020-headless-server-mode.md), [ADR 0021: File Credential Store Without a Keyring](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0021-file-credential-store-without-keyring.md) and [ADR 0022: OIDC Server Sign-in](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0022-oidc-server-sign-in.md). Published release assets decide whether a server build is available for download.

@@ -987,6 +987,29 @@ fn connected_inspector(
     }
 }
 
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_connected_inspector(
+    application: ArgoApplicationRef,
+    response: Value,
+    managed: Value,
+) -> ArgoApplicationInspector {
+    connected_inspector(application, response, managed)
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_kubernetes_inspector(
+    mut object: DynamicObject,
+    cluster_context: &str,
+    application: &ArgoApplicationRef,
+) -> Result<ArgoApplicationInspector, AppError> {
+    let workspace_id = application.workspace_id.clone();
+    redact_secret_fields(&mut object.data);
+    let mut inspector = inspector_from_application(&object)?;
+    inspector.application.context = Some(cluster_context.to_string());
+    inspector.application.workspace_id = workspace_id;
+    Ok(inspector)
+}
+
 pub(crate) async fn kubernetes_application(
     cluster_context: &str,
     namespace: Option<&str>,

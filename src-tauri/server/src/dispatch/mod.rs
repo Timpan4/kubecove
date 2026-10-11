@@ -47,6 +47,17 @@ pub async fn dispatch(
     command: &str,
     args: &Value,
 ) -> Result<Value, AppError> {
+    state
+        .scoped(Box::pin(dispatch_unscoped(state, channels, command, args)))
+        .await
+}
+
+async fn dispatch_unscoped(
+    state: &BackendState,
+    channels: &Arc<ChannelHub>,
+    command: &str,
+    args: &Value,
+) -> Result<Value, AppError> {
     if !args.is_object() {
         return Err(AppError::new(
             "command arguments must be an object",

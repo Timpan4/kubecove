@@ -18,7 +18,7 @@ use axum::{
         rejection::{JsonRejection, QueryRejection},
         Path, Query, State,
     },
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -102,6 +102,17 @@ async fn guard(
     mut request: axum::extract::Request,
     next: Next,
 ) -> Response {
+    // HTTP/2 sends the host as `:authority`, which hyper puts in the URI,
+    // and no Host header (RFC 9113, section 8.3.1).
+    if !request.headers().contains_key(header::HOST) {
+        if let Some(host) = request
+            .uri()
+            .authority()
+            .and_then(|authority| HeaderValue::from_str(authority.as_str()).ok())
+        {
+            request.headers_mut().insert(header::HOST, host);
+        }
+    }
     let path = request.uri().path();
     let needs_origin = request.method() == axum::http::Method::POST || path == "/api/v1/channels";
     if ((state.access.is_some() || state.oidc.is_some())
@@ -131,6 +142,7 @@ async fn guard(
                     request
                         .extensions_mut()
                         .insert(AuthenticationRevoked(session.revoked));
+                    request.extensions_mut().insert(session.credential);
                 }
                 Err(error) => return error.into_response(),
             }
@@ -284,6 +296,7 @@ struct Login {
 async fn login(
     State(state): State<Arc<AppState>>,
     identity: Option<Extension<AccessIdentity>>,
+    credential: Option<Extension<oidc::OidcCredential>>,
     headers: HeaderMap,
     payload: Result<Json<Login>, JsonRejection>,
 ) -> Result<Response, ApiError> {
@@ -309,6 +322,47 @@ async fn login(
             access_subject(identity.as_ref()),
         )
         .await?;
+    // Cleared when this session ends for any reason. A resumed session is
+    // bound again; its sign-in may be a newer one from the same subject.
+    if let (Some(oidc), Some(Extension(credential))) = (&state.oidc, credential) {
+        if oidc.forwards_credentials() {
+            let opened = login.resume_token.is_none();
+            let owner = state.sessions.owner(&session.resume_token).await?;
+            let activation = async {
+                oidc.ensure_fresh(&credential.0).await?;
+                let _request = owner.request_gate.read().await;
+                if owner.ended.is_cancelled() {
+                    return Err(ApiError::new(
+                        StatusCode::CONFLICT,
+                        "session closed or expired",
+                        AppErrorKind::Session,
+                    ));
+                }
+                oidc.bind(
+                    &credential,
+                    &owner.resume_token,
+                    Arc::clone(&owner.backend.scope),
+                    &owner.ended,
+                )
+            }
+            .await;
+            if let Err(error) = activation {
+                // A session nobody can use must not hold a slot until it expires.
+                if opened {
+                    let _ = state.sessions.close(&owner.resume_token).await;
+                }
+                return Err(error);
+            }
+            // The first login's task covers every later resume of the session.
+            if opened {
+                let oidc = Arc::clone(oidc);
+                tokio::spawn(async move {
+                    owner.ended.cancelled().await;
+                    oidc.release_owner(&owner.resume_token);
+                });
+            }
+        }
+    }
     let mut session = serde_json::to_value(session).map_err(|_| {
         ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,

@@ -21,7 +21,7 @@ pub(super) async fn lint_kubernetes_yaml_with_kubeconform(
     Ok(result)
 }
 
-pub(super) fn lint_kubernetes_yaml_request(request: YamlApplyRequest) -> KubernetesYamlLintResult {
+pub(crate) fn lint_kubernetes_yaml_request(request: YamlApplyRequest) -> KubernetesYamlLintResult {
     let mut diagnostics = Vec::new();
 
     let manifest = match parse_single_document(&request.yaml) {

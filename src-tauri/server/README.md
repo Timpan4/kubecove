@@ -4,6 +4,9 @@ This crate builds the existing backend with its `desktop` feature disabled. It o
 
 The transport and lifecycle rules are defined by [ADR 0020](../../docs/decisions/0020-headless-server-mode.md).
 
+OIDC sign-in and token validation live in `src/oidc.rs`. Token renewal and session
+credential bindings live in `src/oidc_refresh.rs`.
+
 Build from the repository root. The web build must precede Cargo because the server embeds `dist`.
 
 ```sh
@@ -25,7 +28,7 @@ Open `http://127.0.0.1:8080` locally. If the local port differs, start the serve
 
 The default listener is `127.0.0.1:0`, which chooses an available port. Non-loopback TCP requires `--allow-remote`, `--tls-cert` and `--tls-key`. `--socket` accepts a Unix socket path and requires `--public-origin` for its forwarded browser origin. Run `kubecove-server --help` for the remaining options.
 
-One client owns the server session at a time. Reconnects retain that owner during `--session-grace`, which defaults to `5m`. Takeover stops the previous owner's streams, exec sessions and laptop tunnels. Server-loopback forwards transfer to the new owner. Explicit disconnect or grace expiry closes the remaining live sessions. Browser forwards bind on the server host, so they require separate forwarding to reach them from a laptop.
+Clients run in independent sessions. Reconnects retain their session during `--session-grace`, which defaults to `5m`. Explicit disconnect or grace expiry closes only that session's streams, exec sessions and port-forwards. Browser forwards bind on the server host, so they require separate forwarding to reach them from a laptop. Kubeconfig sources are shared operator configuration in every authentication mode. Set `KUBECONFIG` before starting the server; clients cannot change the shared source settings.
 
 The server uses native credential storage when available. Unix hosts without it use the encrypted file store approved in [ADR 0021](../../docs/decisions/0021-file-credential-store-without-keyring.md). Desktop remote-client integration and release packaging are tracked in [verification.md](verification.md).
 
@@ -55,9 +58,14 @@ an exact HTTPS `--public-origin`. Confidential clients additionally mount a priv
 [operator instructions](../../docs/wiki/Remote-Server.md#sign-in-through-openid-connect).
 
 OIDC is mutually exclusive with Cloudflare Access. It generates no startup token.
-It authenticates KubeCove users only; Kubernetes continues to use the server's
-credentials, shared by every permitted user, with one active owner. Browser logout
-revokes the cookie and closes the matching owner. Native desktop remote connections
+By default it authenticates KubeCove users only; Kubernetes uses the server's
+credentials. With `--oidc-kubernetes-credentials <AUD>`, Kubernetes instead receives
+each session's verified user ID token. Transient provider outages suspend expired
+tokens and retry within the existing sign-in deadline. Browser logout revokes the
+current sign-in, clears its bound Kubernetes bearer slots and cookies, and closes
+the session identified by a matching resume token. Other sockets using that sign-in
+close and follow the disconnect grace policy; separate sign-ins remain valid.
+Native desktop remote connections
 require token mode. The [deployment guide](../../deploy/README.md#openid-connect-with-authentik)
 has an Authentik example behind Cloudflare Tunnel.
 

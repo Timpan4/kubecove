@@ -97,12 +97,17 @@ mod headless {
         }
     }
 
-    /// Spawns on the ambient tokio runtime; callers run inside the server's runtime.
+    /// Spawns on the ambient tokio runtime; callers run inside the server's
+    /// runtime. The task keeps the caller's session scope, because watches,
+    /// exec and port-forwards build Kubernetes clients inside it.
     pub fn spawn<F>(task: F) -> JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        JoinHandle(tokio::spawn(task))
+        match crate::commands::SessionScope::current() {
+            Some(scope) => JoinHandle(tokio::spawn(scope.run(task))),
+            None => JoinHandle(tokio::spawn(task)),
+        }
     }
 }

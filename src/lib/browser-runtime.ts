@@ -180,10 +180,10 @@ export function initializeBrowserSession(): Promise<void> {
 			}
 			resumeToken = readStoredResumeToken();
 			try {
-				await postSession(resumeToken ? { resumeToken } : {});
+				await resumeOrOpenSession(resumeToken);
 			} catch (error) {
 				if (error instanceof BrowserSessionHttpError && error.status === 409) {
-					publish({ status: "moved", error: parseSessionErrorMessage(error, "The session is active in another browser.") });
+					publish({ status: "moved", error: parseSessionErrorMessage(error, "Could not open a server session.") });
 				} else if (error instanceof Error && error.message === "Your sign-in has expired. Sign in again.") {
 					publish({ status: "login", error: null });
 				} else {
@@ -217,8 +217,12 @@ export function initializeBrowserSession(): Promise<void> {
 			return;
 		}
 		try {
-			await postSession({ resumeToken });
+			await resumeOrOpenSession(resumeToken);
 		} catch (error) {
+			if (error instanceof BrowserSessionHttpError && error.status === 401) {
+				publish({ status: "login", error: null });
+				return;
+			}
 			publish({ status: "moved", error: parseSessionErrorMessage(error, "The session could not be resumed.") });
 		}
 	})().catch((error) => {
@@ -242,10 +246,25 @@ export async function loginToBrowserServer(token: string): Promise<void> {
 	}
 }
 
+// A closed or expired session cannot be resumed, and other sessions never
+// block a new one, so a refused resume opens a new session instead.
+async function resumeOrOpenSession(resume: string | null): Promise<void> {
+	if (resume) {
+		try {
+			await postSession({ resumeToken: resume });
+			return;
+		} catch (error) {
+			if (!(error instanceof BrowserSessionHttpError && error.status === 409)) throw error;
+			clearResumeToken();
+		}
+	}
+	await postSession({});
+}
+
 export async function takeOverBrowserSession(): Promise<void> {
 	clearReconnectTimer();
 	try {
-		// Fresh login transfers ownership using the cookie or verified Access identity.
+		// A fresh login opens a new session using the cookie or verified Access identity.
 		await postSession({});
 	} catch (error) {
 		if (sessionSnapshot.authenticationMode === "oidc"
@@ -253,7 +272,7 @@ export async function takeOverBrowserSession(): Promise<void> {
 			publish({ status: "login", error: null });
 			return;
 		}
-		publish({ status: "moved", error: parseSessionErrorMessage(error, "Could not take over the server session.") });
+		publish({ status: "moved", error: parseSessionErrorMessage(error, "Could not open a server session.") });
 		throw error;
 	}
 }

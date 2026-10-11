@@ -25,9 +25,9 @@
 		TableRow,
 	} from "@/components/ui/svelte";
 	import {
+		findSavedPortForwardSession,
 		portForwardLocalUrl,
 		savedPortForwardLabel,
-		savedPortForwardMatchesSession,
 	} from "@/features/live-sessions/helpers";
 	import { podExecCommandText } from "./podExecHelpers";
 	import type { PodExecSessionSummary, PortForwardSessionSummary } from "@/lib/types";
@@ -301,9 +301,7 @@
 								</TableRow>
 							{:else}
 								{#each workspace.portForwards ?? [] as portForward}
-				{@const activeSession = visiblePortForwardSessions.find((session: PortForwardSessionSummary) =>
-									savedPortForwardMatchesSession(portForward, session, kubeconfigSourceKey)
-								)}
+								{@const activeSession = findSavedPortForwardSession(portForward, visiblePortForwardSessions, kubeconfigSourceKey)}
 									<TableRow>
 										<TableCell class="truncate px-3 py-2 font-medium">{savedPortForwardLabel(portForward)}</TableCell>
 										<TableCell class="truncate px-3 py-2">{portForward.clusterContext}</TableCell>

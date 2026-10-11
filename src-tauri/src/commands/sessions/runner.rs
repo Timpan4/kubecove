@@ -2,9 +2,11 @@ use crate::models::AppErrorKind;
 use crate::models::{AppError, PortForwardRequest, PortForwardSessionSummary};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{api::Api, Client};
+use crate::commands::SessionScope;
 use std::{
     future::Future,
     net::{Ipv4Addr, SocketAddrV4},
+    sync::Arc,
 };
 use tokio::{
     io::{copy_bidirectional, AsyncRead, AsyncWrite},
@@ -253,14 +255,17 @@ pub(super) async fn start_pod_port_forward_in_registry(
     };
     let connection_session_id = session_id.clone();
     let connection_registry = registry.clone();
+    // Each connection resolves its target again, a Service's through a new
+    // client, in a JoinSet task that would not inherit the session scope.
+    let scope = SessionScope::current_or_process();
     let handle_connection = move |local_stream: TcpStream| {
-        resolve_and_forward_connection(
+        Arc::clone(&scope).run(resolve_and_forward_connection(
             client.clone(),
             handle_request.clone(),
             local_stream,
             connection_session_id.clone(),
             connection_registry.clone(),
-        )
+        ))
     };
     let handle = crate::runtime::spawn(async move {
         run_port_forward_session(session_id, listener, loop_registry, handle_connection).await;

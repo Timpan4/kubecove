@@ -98,7 +98,7 @@ pub(super) async fn run_pod_log_stream(
 }
 
 // Product budget approved for a single log line; it excludes the truncation notice.
-pub(super) const MAX_LOG_LINE_BYTES: usize = 256 * 1024;
+pub(crate) const MAX_LOG_LINE_BYTES: usize = 256 * 1024;
 
 pub(super) async fn read_log_line(
     reader: &mut (impl AsyncBufRead + Unpin),
@@ -147,6 +147,13 @@ pub(super) async fn read_log_line(
         line.push_str(" [truncated at 256 KiB]");
     }
     Ok(Some(line))
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) async fn benchmark_read_log_line(
+    reader: &mut (impl AsyncBufRead + Unpin),
+) -> std::io::Result<Option<String>> {
+    read_log_line(reader).await
 }
 
 #[cfg(test)]

@@ -205,6 +205,26 @@ pub(crate) async fn fetch_and_serialize_with_encoding<
 where
     <T as Resource>::DynamicType: Default,
 {
+    let resource = fetch_resource(client, namespace, name).await?;
+    let yaml = serialize_resource_document(&resource, mode, encoding)?;
+    Ok((resource, yaml))
+}
+
+pub(crate) async fn fetch_resource<
+    T: Resource<Scope = NamespaceResourceScope>
+        + DeserializeOwned
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync,
+>(
+    client: Client,
+    namespace: Option<&str>,
+    name: &str,
+) -> Result<T, AppError>
+where
+    <T as Resource>::DynamicType: Default,
+{
     super::validate_namespace(namespace)?;
     super::validate_path_segment(name, "resource name")?;
     let api: Api<T> = if let Some(ns) = namespace {
@@ -215,9 +235,7 @@ where
             AppErrorKind::Validation,
         ));
     };
-    let resource = api.get(name).await.map_err(AppError::from)?;
-    let yaml = serialize_resource_document(&resource, mode, encoding)?;
-    Ok((resource, yaml))
+    api.get(name).await.map_err(AppError::from)
 }
 
 pub(crate) async fn fetch_and_serialize_cluster<

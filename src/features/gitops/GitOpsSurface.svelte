@@ -83,6 +83,7 @@
 	const context = $derived(workspace.scope.clusterContext);
 	let realtimeMessage = $state("Starting live updates");
 	let realtimeStatus = $state("connecting");
+	let realtimeWarnings = $state<string[]>([]);
 	let realtimeError = $state<string | null>(null);
 	let reloadError = $state<string | null>(null);
 
@@ -192,7 +193,7 @@
 		const fluxKinds = fluxDetectionQuery.data?.kinds ?? [];
 		const freshness = createArgoListFreshness((queryKey) => void queryClient.invalidateQueries({ queryKey }), source);
 		const stop = observeResourceScope({ client, clusterContext, keys, kubeconfigEnvVar: source,
-			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; },
+			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; realtimeWarnings = state.warnings ?? []; },
 			reload: () => refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: source, keys, namespaces: [] }),
 			onChange: (event) => {
 				// The workspace monitor keeps Application lists fresh across navigation.
@@ -237,12 +238,12 @@
 </script>
 
 {#snippet refreshControls()}
-	{#key context + kubeconfigSourceKey}
+	{#key JSON.stringify([context, kubeconfigSourceKey, watchKeys, selectedGitOpsItemKey])}
 		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady}
 			status={watchKeys.length ? realtimeStatus : "idle"}
 			message={watchKeys.length ? realtimeMessage : "No live resource watches in this view."}
 			connectionError={watchKeys.length ? realtimeError : null}
-			reloadError={watchKeys.length ? reloadError : null} />
+			reloadError={watchKeys.length ? reloadError : null} warnings={watchKeys.length ? realtimeWarnings : []} />
 	{/key}
 {/snippet}
 <GitOpsView

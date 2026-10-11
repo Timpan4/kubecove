@@ -20,7 +20,11 @@
 	} from "@codemirror/view";
 	import { onMount } from "svelte";
 	import { loadYamlCodeViewerExtensions } from "@/components/yamlCodeViewerExtensions";
-	import { yamlDiagnostics, yamlHighlightStyle } from "@/components/yamlCodeViewerDiagnostics";
+	import {
+		forEachYamlErrorLensDiagnostic,
+		yamlDiagnostics,
+		yamlHighlightStyle,
+	} from "@/components/yamlCodeViewerDiagnostics";
 
 	let {
 		value = $bindable(""),
@@ -67,21 +71,20 @@
 			for (const effect of transaction.effects) {
 				if (!effect.is(setErrorLensDiagnostics)) continue;
 				const builder = new RangeSetBuilder<Decoration>();
-				const seenLines = new Set<number>();
-				for (const diagnostic of effect.value) {
-					if (diagnostic.severity === "info") continue;
-					const line = transaction.state.doc.lineAt(diagnostic.from);
-					if (seenLines.has(line.number)) continue;
-					seenLines.add(line.number);
-					builder.add(
-						line.to,
-						line.to,
-						Decoration.widget({
-							widget: new ErrorLensWidget(diagnostic),
-							side: 1,
-						}),
-					);
-				}
+				forEachYamlErrorLensDiagnostic(
+					effect.value,
+					transaction.state.doc,
+					(to, diagnostic) => {
+						builder.add(
+							to,
+							to,
+							Decoration.widget({
+								widget: new ErrorLensWidget(diagnostic),
+								side: 1,
+							}),
+						);
+					},
+				);
 				return builder.finish();
 			}
 			return decorations.map(transaction.changes);

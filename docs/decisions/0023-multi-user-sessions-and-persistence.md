@@ -4,9 +4,9 @@
 
 Proposed 2026-10-11. Planning only; no runtime changes are implemented by this record.
 
-The product owner confirmed multiple user sessions per backend, concurrent tabs and devices for the same user, and support for both shared and per-user Kubernetes credentials. Both operator-assigned sources and user-provided credentials belong in the first multi-user release. Storage mechanics and the policies identified below remain proposed.
+The product owner confirmed multiple user sessions per backend, concurrent tabs and devices for the same user, and support for both shared and per-user Kubernetes credentials. Concurrent session isolation and opt-in OIDC credential forwarding are implemented. Both operator-assigned private sources and user-provided credentials remain part of the broader multi-user plan. Their provisioning, durable storage and the policies identified below remain proposed.
 
-Extends the initial stage in [ADR 0020](0020-headless-server-mode.md). Before implementation, accept the ownership and persistence boundary here and amend the affected contracts in ADRs [0003](0003-guarded-live-sessions.md), [0009](0009-workspace-request-cancellation.md), [0013](0013-argocd-connected-inspection-and-operations.md), [0019](0019-reviewed-rbac-risk-context.md), [0021](0021-file-credential-store-without-keyring.md) and [0022](0022-oidc-server-sign-in.md).
+Extends the concurrent-session baseline in [ADR 0020](0020-headless-server-mode.md) and forwarded credentials in [ADR 0022](0022-oidc-server-sign-in.md). Before implementing the remaining proposal, accept its ownership and persistence boundary and amend the affected contracts in ADRs [0003](0003-guarded-live-sessions.md), [0009](0009-workspace-request-cancellation.md), [0013](0013-argocd-connected-inspection-and-operations.md), [0019](0019-reviewed-rbac-risk-context.md), [0021](0021-file-credential-store-without-keyring.md) and [0022](0022-oidc-server-sign-in.md) where needed.
 
 ## Outcome
 
@@ -16,14 +16,14 @@ The deployment can use shared server Kubernetes credentials, per-user credential
 
 ## Current implementation
 
-These are source observations, not proof of multi-user runtime behavior:
+The merged session implementation provides the baseline below. It does not implement private kubeconfig provisioning or durable per-user workspace/settings storage:
 
-- [`Sessions`](../../src-tauri/server/src/sessions.rs) holds one `current` owner. Fresh authentication cancels the old owner and creates a new `BackendState`. Its server-bound port-forward registry is shared across takeovers.
-- [`BackendState`](../../src-tauri/server/src/backend.rs) already groups live cache, cancellation, streams, Pod exec, usage and Argo connection state per owner. Channels, tunnels, socket generation and reconnect expiry also belong to that owner.
+- [`Sessions`](../../src-tauri/server/src/sessions.rs) keeps a registry of independent owners. Fresh authentication opens another session; a resume reattaches only its matching identity-bound session.
+- [`BackendState`](../../src-tauri/server/src/backend.rs) groups live cache, cancellation, streams, Pod exec, port-forwards, usage and Argo connection state per session. Channels, tunnels, socket generation and reconnect expiry also belong to that session. [`SessionScope`](../../src-tauri/src/commands/helpers/session_scope.rs) isolates Kubernetes client caches, bearer slots and diagnostics.
 - [`workspaceStore.ts`](../../src/features/workspaces/workspaceStore.ts) writes saved workspaces to `kubecove-workspaces` in client `localStorage`. [`settings.ts`](../../src/lib/settings.ts) persists UI preferences and Argo profile metadata to `kubecove-settings`. Neither key identifies a server or authenticated user. [`path-state.ts`](../../src/lib/path-state.ts) uses a URL hash and `sessionStorage` for navigation.
-- [`kubeconfig.rs`](../../src-tauri/src/commands/kubeconfig.rs) uses a process-wide settings path and cache for `kubeconfig-sources.json`. [`inspection.rs`](../../src-tauri/server/src/dispatch/inspection.rs) exposes source-changing commands to the current owner. These commands cannot remain unrestricted global writes once users coexist.
-- [`credential_store.rs`](../../src-tauri/src/commands/argo/credential_store.rs) selects a process-wide secure-store adapter. Sharing the adapter can remain valid, but every remembered credential and persisted operation review needs an explicit user namespace and authorization checks.
-- OIDC already verifies issuer and subject, and Access verifies the configured issuer and subject. Resume credentials are bound to the verified identity. Startup-token mode has no distinct authenticated user identities. Native desktop remote sign-in currently supports token mode only.
+- [`kubeconfig.rs`](../../src-tauri/src/commands/kubeconfig.rs) keeps `kubeconfig-sources.json` as shared operator configuration. Server sessions cannot change its source registrations or labels in any authentication mode. Private-source assignment and self-service provisioning remain unimplemented.
+- [`credential_store.rs`](../../src-tauri/src/commands/argo/credential_store.rs) shares one secure-store adapter, but namespaces remembered credentials and persisted operation reviews by the session's verified identity in OIDC and Access modes. Argo profile metadata remains client-persisted; it is not a durable per-user server profile.
+- OIDC verifies issuer and subject, and Access verifies its configured issuer and subject. Resume credentials are bound to the verified identity. With `--oidc-kubernetes-credentials <AUD>`, each session forwards its user's verified ID token instead of kubeconfig credentials, with in-memory refresh and expiry handling. Without that opt-in, Kubernetes uses shared server credentials. Startup-token mode has no distinct authenticated user identities. Native desktop remote sign-in supports token mode only.
 
 ## Proposed boundaries
 
@@ -31,17 +31,17 @@ These are source observations, not proof of multi-user runtime behavior:
 
 Use a stable server-side user ID mapped from the verified authentication mode, issuer and subject. Never use email, a display name, a bearer token or a resume token as the durable user key. Do not merge users across providers without an explicit account-linking decision.
 
-Replace the single `current` owner with a registry of client sessions. Each session belongs to one authenticated user and has its own opaque session/resume credential, socket generation, backend state, channels, tunnel registry and reconnect timer. A resume reattaches that exact session; a fresh login creates another session without transferring resources from an existing one. Keep port-forward registries session-owned too.
+Preserve the implemented registry of client sessions. Each session already has its own opaque session/resume credential, socket generation, backend state, channels, tunnel and port-forward registries, and reconnect timer. A resume reattaches that exact session; a fresh login creates another without transferring resources. The remaining proposal associates persisted user records and private source grants with these authenticated sessions.
 
 Resolve user and session from authenticated request context before dispatch. A request body may select an owned workspace or allowed credential source, but cannot select another user or override ownership. Validate HTTP invokes, WebSocket control and binary frames, stream subscriptions, exec input/resize/stop, forwards, cancellation and persisted-data access against that context.
 
-Reconnect grace continues to apply independently to each session, using the existing configured policy. Ending or expiring one session cleans up only its resources. Revoking an authentication credential ends the sessions authenticated through that credential. Browser tabs sharing the same cookie also share its revocation; another independently authenticated device remains active. Closing a workspace or switching scope cancels only that client's finite reads under ADR 0009. Confirmed mutations retain their existing non-cancellable execution semantics and visible outcomes.
+Reconnect grace continues to apply independently to each session, using the existing configured policy. Ending or expiring one session cleans up only its resources. OIDC logout revokes the current sign-in, clears its bound bearer slots, and closes the session identified by a matching resume token. Other sockets using that credential close and follow the disconnect grace policy. Browser tabs sharing the same cookie share its revocation; a separate sign-in remains valid, including one for the same subject. Preserve this contract when adding persistence. Closing a workspace or switching scope cancels only that client's finite reads under ADR 0009. Confirmed mutations retain their existing non-cancellable execution semantics and visible outcomes.
 
 Proposed token-mode compatibility: treat the shared startup token as one stable local application user, with concurrent sessions and a durable profile independent of the token value. Token holders share that user's data and cannot claim separate private profiles. OIDC or Access supplies distinct users. Keep native desktop token support; native OIDC/Access sign-in needs a separate client-flow decision before those clients can access identity-backed profiles.
 
 ### Kubernetes credentials and operator policy
 
-Support both credential models explicitly:
+The server already supports shared credentials and opt-in per-user OIDC forwarding. The remaining proposal adds explicit source assignment and selection:
 
 | Model | Credential owner | Workspace behavior |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ Proposed operator policy can enable shared sources, per-user sources, or both. E
 
 Resolve authorized sources in Rust before constructing a Kubernetes client. Include credential scope in client/cache keys, discovery, live-store lookups, Argo profile eligibility, operation reviews and RBAC review fingerprints. Identically named contexts or workspaces from different users or credential sources must not collide. Frontend-supplied paths or environment-variable selectors cannot bypass the allowed source set.
 
-Keep listener, TLS, authentication configuration, data directory and shared kubeconfig registration operator-owned. User settings cannot change these global values. Separate presentation preferences such as source labels from source registration. Provide both operator assignment and self-service credential provisioning in the first multi-user release; neither is deferred merely to reduce scope. Operator policy determines which methods a deployment permits.
+Keep listener, TLS, authentication configuration, data directory and shared kubeconfig registration operator-owned. User settings cannot change these global values. Separate presentation preferences such as source labels from source registration. The remaining provisioning scope includes both operator assignment and self-service credentials. Operator policy determines which methods a deployment permits. These paths are not prerequisites for the already implemented concurrent-session baseline.
 
 ### Credential provisioning
 
@@ -62,7 +62,7 @@ Self-service lets an authenticated user import, replace and remove their own Kub
 
 Parse and validate in Rust before storing or constructing a client. Enforce the existing transport body limits and define any additional format bounds from the supported credential contract before implementation. Resolve kubeconfig references deliberately: uploaded server-side file paths cannot read arbitrary host files, and uploaded environment settings cannot choose another user's credentials. Support self-contained token and certificate credentials; report missing external material or unsupported authentication explicitly rather than silently falling back. Store private credential material in user/source-namespaced secure storage, extending ADR 0021 where needed, with only sanitized source metadata in preference records. Replacement and removal invalidate all affected clients, caches, connections and reviews for that source while leaving unrelated sources and sessions intact.
 
-Proposed exec-plugin policy: reject uploaded executable commands, arguments and environment overrides by default. If a deployment needs exec-based authentication, the operator supplies a trusted helper definition with its executable, invocation and allowed inputs. An uploaded source can reference only an authorized helper definition; it cannot supply arbitrary server commands or filesystem paths. Confirm the helper contract and supported authentication forms before implementation. This validation is part of delivering user-provided credentials in the first release, not a reason to move that provisioning method to a later release.
+Proposed exec-plugin policy: reject uploaded executable commands, arguments and environment overrides by default. If a deployment needs exec-based authentication, the operator supplies a trusted helper definition with its executable, invocation and allowed inputs. An uploaded source can reference only an authorized helper definition; it cannot supply arbitrary server commands or filesystem paths. Confirm the helper contract and supported authentication forms before implementation. This validation belongs to the proposed user-provided credential path.
 
 ### Persistent workspaces and settings
 
@@ -73,7 +73,7 @@ The server becomes authoritative for remote user data. Use versioned, typed reco
 | Saved workspace scope, layout, pinned/recent entries and port-forward presets | User-owned server records. Preserve existing workspace IDs within that user. |
 | UI settings, Argo profile metadata and workspace connection preferences | User-owned server records. Keep safety defaults and explicit opt-ins. |
 | RBAC review notes and fingerprints | Private user/workspace/source records under an amendment to ADR 0019; excluded from sharing exports. |
-| Remembered Argo credentials and operation reviews | User-namespaced secure storage under ADRs 0013 and 0021. Reviews bind the user, credential scope and reviewed target; retain existing expiry, restart revalidation and single-use behavior. |
+| Remembered Argo credentials and operation reviews | Preserve implemented identity-namespaced secure storage under ADRs 0013 and 0021. Extend review binding to private source scope while retaining reviewed-target binding, expiry, restart revalidation and single-use behavior. |
 | Per-user Kubernetes credentials | Rust-only secure storage and both provisioning paths above, separate from general preference JSON and workspace exports. |
 | Active navigation, selection, query results and revealed Secrets | Client-session state. No durable cluster snapshots or Secret values. |
 | Running streams, logs, exec, tunnels and port forwards | Session memory only. Resume within grace; do not restore running handles after a server restart. Saved presets remain separate. |
@@ -89,15 +89,15 @@ Remote browser and desktop stores load only after authentication and server/user
 
 Existing browser storage has no trustworthy user owner. Offer explicit, previewed import into the signed-in user's server profile; never assign it to the first person who logs in or upload it automatically. Reuse workspace import validation and conflict choices. Retain the original client data until the server confirms the write and the user chooses to remove it.
 
-Existing server kubeconfig sources remain shared operator configuration unless explicitly assigned otherwise. Legacy remembered credentials and operation reviews also lack a durable application-user owner. Require explicit assignment or fresh credentials, and invalidate unowned reviews. Do not expose them to every signed-in user. Preserve originals during migration and version the new storage so an older server cannot silently overwrite it.
+Existing server kubeconfig sources remain shared operator configuration unless explicitly assigned otherwise. Current OIDC/Access Argo credentials and operation reviews already use verified-identity namespaces. Legacy unnamespaced entries are not read through those namespaces and require credentials to be entered again. Any later migration of legacy entries or remapping to durable user IDs must require explicit ownership and invalidate unowned reviews. Do not expose them to every signed-in user. Preserve originals during migration and version the new storage so an older server cannot silently overwrite it.
 
 ## Delivery sequence and proof
 
 This sequence is a design proposal, not a delivery-status checklist. Create or update GitHub Issues after the open policies are settled; keep ownership, release targets and progress there rather than in this ADR.
 
 1. Accept identity, credential provisioning, operator policy, migration and persistence contracts. Inventory every dispatched command and stateful registry as operator, user or client-session scope, including indirect credential-store access. This inventory must cover the command table, not a sample.
-2. Implement user/source resolution, operator assignment, self-service import/replace/remove, and user-namespaced credential and review storage. Deny unauthorized source selection and global source mutation before allowing concurrent users. Prove two users with identically named contexts cannot cross-read, connect or execute using each other's credentials or review IDs. Cover malformed uploads, external file references, unapproved exec plugins, secure-store failures, credential replacement and removal.
-3. Replace owner takeover with isolated concurrent session lifecycle. Prove another login, reconnect, scope switch, logout or grace expiry leaves unrelated sessions active. Cover same-user tabs, different users, guessed IDs and server-bound forward port conflicts. Preserve aggregate admission/backpressure and determine any new limits from deployment requirements or measurements.
+2. Implement private user/source resolution, operator assignment and self-service import/replace/remove, extending the existing identity-namespaced credential and review storage. Preserve the existing ban on client changes to global source settings. Prove two users with identically named contexts cannot cross-read, connect or execute using each other's private credentials or review IDs. Cover malformed uploads, external file references, unapproved exec plugins, secure-store failures, credential replacement and removal.
+3. Preserve the implemented concurrent-session lifecycle while adding those source and persistence paths. Prove another login, reconnect, scope switch, logout or grace expiry leaves unrelated sessions active. Cover same-user tabs, different users, guessed IDs and server-bound forward port conflicts. Derive any additional admission or backpressure limits from deployment requirements or measurements; the current session registry is uncapped.
 4. Add durable user workspace/settings storage and typed remote wrappers, then integrate the existing Svelte stores and migration UI. Prove restart recovery, another-device loading, stale-write conflicts, deletion conflicts, failed-save handling and user/server cache separation. Verify saved auto-start preferences do not create unowned or duplicate forwards across concurrent clients; settle their concurrent-client behavior before enabling that path.
 5. Run browser E2E with independent identities and clients across shared and private source policies and both credential provisioning methods, plus native desktop token-mode regressions. Record repeatable reports, redacted diagnostics and failure screenshots under `e2e/artifacts/`. Verify source revocation, interrupted persistence and server restart with active sessions as well as the happy path. Source or unit inspection alone cannot establish isolation.
 
@@ -105,7 +105,7 @@ For each implementation slice, use the project's frontend/backend checks and the
 
 ## Open owner decisions
 
-1. Credential import policy: confirm supported authentication forms, treatment of external credential material, and the proposed operator-controlled exec-helper contract. Both operator assignment and user-provided credentials are already required for the first release.
+1. Credential import policy: confirm supported authentication forms, treatment of external credential material, and the proposed operator-controlled exec-helper contract. Both operator assignment and user-provided credentials remain in the proposed provisioning scope.
 2. Operator policy: choose which source models a deployment enables and how sources are assigned/revoked. Recommendation is explicit source grants with no implicit access to private sources or server configuration.
 3. Persistence policy: confirm which user preferences should follow devices, any device-specific exclusions, migration ownership, and the proposed file-store durability contract. Navigation remains independent per client.
 4. Saved-forward auto-start: define how the existing opt-in behaves across concurrent clients and server restart. Restoring a workspace must not transfer another session's live resources.

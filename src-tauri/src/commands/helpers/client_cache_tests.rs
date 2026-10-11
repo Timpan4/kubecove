@@ -2,6 +2,7 @@ use super::*;
 use std::{
     env, fs,
     path::PathBuf,
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -58,6 +59,25 @@ fn rotation_cancels_previous_generation_only() {
     assert!(previous.token.is_cancelled());
     assert_eq!(replacement.id, next_id);
     assert!(!replacement.token.is_cancelled());
+}
+
+#[tokio::test]
+async fn rotation_inside_a_scope_cancels_only_that_scope() {
+    let alice = SessionScope::new(None);
+    let bob = SessionScope::new(None);
+    let bob_before = Arc::clone(&bob)
+        .run(async { finite_client_generation() })
+        .await;
+
+    Arc::clone(&alice)
+        .run(async {
+            let before = finite_client_generation();
+            rotate_client_generation();
+            assert!(before.token.is_cancelled());
+        })
+        .await;
+
+    assert!(!bob_before.token.is_cancelled());
 }
 
 #[test]

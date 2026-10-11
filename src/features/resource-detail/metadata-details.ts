@@ -1,6 +1,25 @@
 import { gitOpsOwnership } from "../../lib/gitops-ownership-evidence";
 import type { JsonObject, JsonValue, ResourceSummary } from "../../lib/types";
 
+export interface RawObjectRow {
+	key: string;
+	value: string;
+}
+
+export function formatObjectRows(value: JsonObject): RawObjectRow[] {
+	return Object.entries(value).map(([key, item]) => ({
+		key,
+		value: formatRawValue(item),
+	}));
+}
+
+function formatRawValue(value: JsonValue | undefined): string {
+	if (value === undefined || value === null) return "-";
+	if (String(value) === value) return value;
+	if (Number(value) === value || value === true || value === false) return String(value);
+	return JSON.stringify(value, null, 2);
+}
+
 export interface CuratedMetadataField {
 	label: string;
 	value: string;

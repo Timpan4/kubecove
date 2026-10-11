@@ -103,6 +103,26 @@ fn access_post(path: &str, subject: &str, resume: Option<&str>, body: &Value) ->
 }
 
 #[tokio::test]
+async fn http2_authority_stands_in_for_the_host_header() {
+    for (uri, status) in [
+        ("https://localhost:1234/api/v1/auth", StatusCode::OK),
+        ("https://evil.example:1234/api/v1/auth", StatusCode::FORBIDDEN),
+    ] {
+        let response = router(state())
+            .oneshot(
+                Request::builder()
+                    .version(axum::http::Version::HTTP_2)
+                    .uri(uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status, "{uri}");
+    }
+}
+
+#[tokio::test]
 async fn access_login_needs_no_token_and_never_creates_a_token_cookie() {
     let app = router(access_state());
     let response = app

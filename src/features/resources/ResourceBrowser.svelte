@@ -237,6 +237,7 @@
 	let appliedSelectionScrollKey = $state("");
 	let metricsQueryReady = $state(false);
 	let realtimeStatus = $state("idle");
+	let realtimeWarnings = $state<string[]>([]);
 	let realtimeMessage = $state("Realtime idle");
 	let realtimeError = $state<unknown>("");
 	let reloadError = $state<string | null>(null);
@@ -829,14 +830,21 @@
 	});
 
 	async function refreshView() {
-		await refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: kubeconfigSourceKey,
+		return refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: kubeconfigSourceKey,
 			keys: mergeWatchKeys(watchKeysFromFetchKeys(fetchKeys), mapPanelOpen ? topologyWatchKeys(topologyNamespaces) : [], focusedArgoWatchKeys),
 			namespaces: selectedNamespaces,
 		});
 	}
 
 	$effect(() => {
-		if (!sourceReady || !clusterContext || fetchKeys.length === 0) return;
+		if (!sourceReady || !clusterContext || fetchKeys.length === 0) {
+			realtimeStatus = "idle";
+			realtimeMessage = "No live resource watches in this view.";
+			realtimeError = null;
+			reloadError = null;
+			realtimeWarnings = [];
+			return;
+		}
 		const watchKeys = mergeWatchKeys(watchKeysFromFetchKeys(fetchKeys), mapPanelOpen ? topologyWatchKeys(topologyNamespaces) : [], focusedArgoWatchKeys);
 		const resourceKey = resourceQueryKey;
 		const topologyKey = topologyQueryKey;
@@ -847,7 +855,7 @@
 		let debounce: ReturnType<typeof setTimeout> | null = null;
 		const reload = () => refreshCurrentView({ client, queryClient, clusterContext: context, kubeconfigEnvVar: source, keys: watchKeys, namespaces });
 		const stop = observeResourceScope({ client, clusterContext: context, keys: watchKeys, kubeconfigEnvVar: source,
-			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; },
+			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; realtimeWarnings = state.warnings ?? []; },
 			reload,
 			onChange: () => {
 				if (debounce) return;
@@ -973,9 +981,9 @@
 </script>
 
 {#snippet refreshControls()}
-	{#key clusterContext + kubeconfigSourceKey}
+	{#key JSON.stringify([clusterContext, kubeconfigSourceKey, fetchKeys, mapPanelOpen ? topologyNamespaces : [], focusedArgoWatchKeys, selectedResourceKey])}
 		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady || !clusterContext}
-			status={realtimeStatus} message={realtimeMessage} connectionError={realtimeError} {reloadError} />
+			status={realtimeStatus} message={realtimeMessage} connectionError={realtimeError} {reloadError} warnings={realtimeWarnings} />
 	{/key}
 {/snippet}
 

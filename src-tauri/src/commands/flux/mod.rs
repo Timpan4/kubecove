@@ -241,6 +241,13 @@ fn installed_flux_kinds_from_resources(resources: &[ApiResource]) -> Vec<FluxRes
         .collect()
 }
 
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_installed_flux_kinds_from_resources(
+    resources: &[ApiResource],
+) -> Vec<FluxResourceKind> {
+    installed_flux_kinds_from_resources(resources)
+}
+
 async fn installed_flux_kinds(client: &Client) -> Result<Vec<FluxResourceKind>, AppError> {
     let resources = discover_api_resources(client).await?;
     Ok(installed_flux_kinds_from_resources(&resources))
@@ -378,6 +385,15 @@ fn flux_summary(
         inventory: inventory(&object.data),
         inventory_partial: inventory_partial(&object.data),
     }
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_flux_summary(
+    cluster_context: &str,
+    resource_kind: &FluxResourceKind,
+    object: &DynamicObject,
+) -> FluxResourceSummary {
+    flux_summary(cluster_context, resource_kind, object)
 }
 
 fn flux_health_assessment(ready_status: Option<&str>) -> HealthAssessment {

@@ -196,6 +196,20 @@ try {
 		assert.ok(String(error.message) === error.message);
 	}
 	checks.push("Cookie/native commands preserve typed results and errors");
+	const sourcesBefore = await (await invoke(first.session, "get_kubeconfig_sources", {})).json();
+	const sourceMutations: Array<[string, JsonValue]> = [
+		["set_kubeconfig_env_var", { envVar: "KUBECOVE_SMOKE_CONFIG" }],
+		["add_kubeconfig_paths", { paths: [fixtureConfig] }],
+		["remove_kubeconfig_path", { path: fixtureConfig }],
+		["reorder_kubeconfig_paths", { paths: [] }],
+		["set_show_kubeconfig_source_labels", { show: false }],
+	];
+	for (const [command, args] of sourceMutations) {
+		const response = await invoke(first.session, command, args);
+		assert.equal((await response.json()).kind, "unsupportedOperation", command);
+	}
+	assert.deepEqual(await (await invoke(first.session, "get_kubeconfig_sources", {})).json(), sourcesBefore);
+	checks.push("Server users cannot change operator kubeconfig sources or labels");
 	// Failure contract: a denied type or namespace cannot discard readable rows,
 	// claim reconciliation coverage, or turn authentication failures into empty success.
 	const unauthorized = await invoke(first.session, "list_resource_scope", { clusterContext: "fixture", requests: [{ kind: "Pod", namespace: "unauthorized" }], kubeconfigEnvVar: "KUBECOVE_SMOKE_CONFIG" });
@@ -317,35 +331,37 @@ try {
 	}
 	checks.push("Pod-side EOF and errors terminate tunnels without waiting for client upload EOF");
 	const second = await login();
-	assert.equal((await channel.next()).type, "session_moved");
-	assert.equal((await invoke(first.session, "get_backend_diagnostics", {})).status, 409);
-	await channel.close();
+	assert.notEqual(second.session.resumeToken, first.session.resumeToken);
+	assert.equal((await invoke(first.session, "get_backend_diagnostics", {})).status, 200);
 	assert.equal((await invoke(second.session, "get_backend_diagnostics", {})).status, 200);
-	checks.push("Ownership takeover closes the old socket and revokes old commands");
-	const forwards = await (await invoke(second.session, "list_port_forwards", {})).json();
-	assert.ok(forwards.some((item: { id: string }) => item.id === forward.id));
+	checks.push("Another login opens a second session and leaves the first one working");
+	const secondForwards = await (await invoke(second.session, "list_port_forwards", {})).json();
+	assert.ok(!secondForwards.some((item: { id: string }) => item.id === forward.id), "Port-forwards belong to their session.");
 	await new Promise<void>((resolveEcho, reject) => {
 		let echo = "";
 		Bun.connect({ hostname: "127.0.0.1", port: forward.localPort, socket: {
-			open(socket) { socket.write("forward survives takeover"); },
+			open(socket) { socket.write("forward survives another login"); },
 			data(socket, bytes) {
 				echo += bytes.toString();
-				if (echo === "forward survives takeover") { socket.end(); resolveEcho(); }
+				if (echo === "forward survives another login") { socket.end(); resolveEcho(); }
 			},
-			error() { reject(new Error("Transferred server forward failed.")); },
-			close() { if (echo !== "forward survives takeover") reject(new Error("Transferred server forward closed before echo.")); },
-		} }).catch(() => reject(new Error("Transferred server listener could not connect.")));
+			error() { reject(new Error("Server forward failed.")); },
+			close() { if (echo !== "forward survives another login") reject(new Error("Server forward closed before echo.")); },
+		} }).catch(() => reject(new Error("Server listener could not connect.")));
 	});
-	checks.push("Server-loopback forward transfers ownership and preserves every echoed byte");
-	assert.equal((await post("/api/v1/session/close", {}, { Authorization: `Bearer ${token}`, "X-Kubecove-Session": second.session.resumeToken })).status, 200);
-	assert.equal((await invoke(second.session, "get_backend_diagnostics", {})).status, 409);
+	checks.push("Server-loopback forward stays with its session and preserves every echoed byte");
+	assert.equal((await post("/api/v1/session/close", {}, { Authorization: `Bearer ${token}`, "X-Kubecove-Session": first.session.resumeToken })).status, 200);
+	await channel.close();
+	assert.equal((await invoke(first.session, "get_backend_diagnostics", {})).status, 409);
+	assert.equal((await invoke(second.session, "get_backend_diagnostics", {})).status, 200);
 	let listenerClosed = false;
 	try {
 		const unexpected = await Bun.connect({ hostname: "127.0.0.1", port: forward.localPort, socket: { data() {} } });
 		unexpected.end();
 	} catch { listenerClosed = true; }
 	assert.ok(listenerClosed, "Explicit disconnect must close server forward listeners.");
-	checks.push("Explicit disconnect revokes the current owner");
+	assert.equal((await post("/api/v1/session/close", {}, { Authorization: `Bearer ${token}`, "X-Kubecove-Session": second.session.resumeToken })).status, 200);
+	checks.push("Explicit disconnect revokes only that session");
 	if (process.env.KUBECOVE_NATIVE_REMOTE_PROBE) {
 		const probe = Bun.spawn([
 			process.env.CARGO ?? "cargo", "test", "--locked", "--manifest-path", "src-tauri/Cargo.toml",

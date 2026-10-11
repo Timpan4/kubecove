@@ -7,9 +7,10 @@ use super::{
 };
 use crate::commands::helpers::{
     enrich_resource_summaries_with_flux_inventory, fmt_ready, list_params,
-    read_flux_ownership_index, update_resource_health,
+    read_flux_ownership_index, update_resource_health, FluxOwnershipIndex,
 };
 use crate::models::{AppError, DiscoveredResourceKind};
+use chrono::{DateTime, Utc};
 use futures_util::{stream, StreamExt};
 use k8s_openapi::api::{
     apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet},
@@ -44,18 +45,33 @@ pub(super) struct TopologyInputCollection {
     pub warnings: Vec<String>,
 }
 
-fn inputs_from_metadata<T>(cluster_context: &str, items: Vec<T>) -> Vec<TopologyInputResource>
+pub(crate) fn inputs_from_metadata<T>(
+    cluster_context: &str,
+    items: Vec<T>,
+) -> Vec<TopologyInputResource>
+where
+    T: k8s_openapi::Metadata<Ty = ObjectMeta>,
+{
+    inputs_from_metadata_at(cluster_context, items, Utc::now())
+}
+
+pub(crate) fn inputs_from_metadata_at<T>(
+    cluster_context: &str,
+    items: Vec<T>,
+    now: DateTime<Utc>,
+) -> Vec<TopologyInputResource>
 where
     T: k8s_openapi::Metadata<Ty = ObjectMeta>,
 {
     items
         .iter()
         .map(|item| {
-            input_from_metadata(
+            super::topology::input_from_metadata_at(
                 cluster_context,
                 <T as k8s_openapi::Resource>::KIND,
                 <T as k8s_openapi::Resource>::API_VERSION,
                 item.metadata(),
+                now,
             )
         })
         .collect()
@@ -204,7 +220,7 @@ where
     Ok((out, warnings))
 }
 
-pub(super) fn inputs_from_partial_metadata<T: k8s_openapi::Resource>(
+pub(crate) fn inputs_from_partial_metadata<T: k8s_openapi::Resource>(
     cluster_context: &str,
     items: Vec<PartialObjectMeta<T>>,
 ) -> Vec<TopologyInputResource> {
@@ -277,20 +293,29 @@ pub(super) async fn collect_topology_inputs(
         .append(&mut support_inputs.warnings);
     workload_inputs.warnings.append(&mut custom_inputs.warnings);
     let index = read_flux_ownership_index(client, namespaces).await?;
-    let mut summary_rows = workload_inputs
-        .resources
+    workload_inputs.resources =
+        topology_inputs_with_flux_ownership(workload_inputs.resources, &index, namespaces);
+    Ok(workload_inputs)
+}
+
+pub(crate) fn topology_inputs_with_flux_ownership(
+    mut resources: Vec<TopologyInputResource>,
+    index: &FluxOwnershipIndex,
+    namespaces: &[String],
+) -> Vec<TopologyInputResource> {
+    let mut summary_rows = resources
         .iter()
         .map(|input| input.summary.clone())
         .collect::<Vec<_>>();
-    enrich_resource_summaries_with_flux_inventory(&mut summary_rows, &index);
-    for (input, summary) in workload_inputs.resources.iter_mut().zip(summary_rows) {
+    enrich_resource_summaries_with_flux_inventory(&mut summary_rows, index);
+    for (input, summary) in resources.iter_mut().zip(summary_rows) {
         input.summary = summary;
     }
-    workload_inputs.resources.retain(|input| {
+    resources.retain(|input| {
         input.summary.kind != "StorageClass"
             || cluster_scoped_input_visible_in_scope(input, namespaces)
     });
-    Ok(workload_inputs)
+    resources
 }
 
 async fn collect_workload_topology_inputs(
@@ -519,8 +544,17 @@ async fn collect_custom_topology_inputs(
     })
 }
 
-fn pod_input(cluster_context: &str, pod: Pod) -> TopologyInputResource {
-    let mut input = input_from_metadata(cluster_context, "Pod", "v1", &pod.metadata);
+pub(crate) fn pod_input(cluster_context: &str, pod: Pod) -> TopologyInputResource {
+    pod_input_at(cluster_context, pod, Utc::now())
+}
+
+pub(crate) fn pod_input_at(
+    cluster_context: &str,
+    pod: Pod,
+    now: DateTime<Utc>,
+) -> TopologyInputResource {
+    let mut input =
+        super::topology::input_from_metadata_at(cluster_context, "Pod", "v1", &pod.metadata, now);
     if let Some(spec) = &pod.spec {
         input.port_hints = spec
             .containers
@@ -575,16 +609,42 @@ pub(super) async fn collect_network_topology_inputs(
     warnings.append(&mut service_warnings);
     warnings.append(&mut ingress_warnings);
     warnings.append(&mut endpoint_slice_warnings);
+    Ok(network_topology_inputs_from_objects_at(
+        cluster_context,
+        pods,
+        services,
+        ingresses,
+        endpoint_slices,
+        warnings,
+        Utc::now(),
+    ))
+}
+
+pub(crate) fn network_topology_inputs_from_objects_at(
+    cluster_context: &str,
+    pods: Vec<Pod>,
+    services: Vec<Service>,
+    ingresses: Vec<Ingress>,
+    endpoint_slices: Vec<EndpointSlice>,
+    warnings: Vec<String>,
+    now: DateTime<Utc>,
+) -> NetworkTopologyInputs {
     let mut resources = Vec::new();
     let mut service_flows = Vec::new();
     let mut ingress_backends = Vec::new();
     let mut endpoint_slice_flows = Vec::new();
 
     for pod in pods {
-        resources.push(pod_input(cluster_context, pod));
+        resources.push(pod_input_at(cluster_context, pod, now));
     }
     for service in services {
-        let mut input = input_from_metadata(cluster_context, "Service", "v1", &service.metadata);
+        let mut input = super::topology::input_from_metadata_at(
+            cluster_context,
+            "Service",
+            "v1",
+            &service.metadata,
+            now,
+        );
         let namespace = service.metadata.namespace.clone().unwrap_or_default();
         let name = service.metadata.name.clone().unwrap_or_default();
         let selector = service
@@ -645,11 +705,12 @@ pub(super) async fn collect_network_topology_inputs(
                 }
             }
         }
-        resources.push(input_from_metadata(
+        resources.push(super::topology::input_from_metadata_at(
             cluster_context,
             "Ingress",
             "networking.k8s.io/v1",
             &ingress.metadata,
+            now,
         ));
     }
     for slice in endpoint_slices {
@@ -668,11 +729,12 @@ pub(super) async fn collect_network_topology_inputs(
                 (target.kind.as_deref() == Some("Pod")).then(|| target.name.clone())?
             })
             .collect();
-        let mut input = input_from_metadata(
+        let mut input = super::topology::input_from_metadata_at(
             cluster_context,
             "EndpointSlice",
             "discovery.k8s.io/v1",
             &slice.metadata,
+            now,
         );
         input.port_hints = slice
             .ports
@@ -694,13 +756,34 @@ pub(super) async fn collect_network_topology_inputs(
         resources.push(input);
     }
 
-    Ok(NetworkTopologyInputs {
+    NetworkTopologyInputs {
         resources,
         services: service_flows,
         ingress_backends,
         endpoint_slices: endpoint_slice_flows,
         warnings,
-    })
+    }
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn network_topology_from_objects_at(
+    cluster_context: &str,
+    pods: Vec<Pod>,
+    services: Vec<Service>,
+    ingresses: Vec<Ingress>,
+    endpoint_slices: Vec<EndpointSlice>,
+    warnings: Vec<String>,
+    now: DateTime<Utc>,
+) -> crate::models::ResourceTopology {
+    super::topology_network::build_network_flow_topology(network_topology_inputs_from_objects_at(
+        cluster_context,
+        pods,
+        services,
+        ingresses,
+        endpoint_slices,
+        warnings,
+        now,
+    ))
 }
 
 fn backend_service_name(
