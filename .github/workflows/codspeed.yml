@@ -1,150 +1,40 @@
 name: CodSpeed
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
-  changes:
-    name: Detect benchmark changes
-    runs-on: ubuntu-latest
-    outputs:
-      frontend: ${{ steps.detect.outputs.frontend }}
-      frontend_suites: ${{ steps.suites.outputs.files }}
-      rust: ${{ steps.detect.outputs.rust }}
-
+  compare:
+    name: Compare Cargo updates on one runner
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+      BENCH_FILTER: serialize_large_resource_kyaml|sort_custom_resource_catalog_1000_kinds|argo_selected_comparison_json_encoding|dynamic_resource_identity_health_edges|namespace_name_age_projection_100|port_forward_session_summary_json_encoding
     steps:
-      - name: Checkout
+      - name: Checkout baseline
         uses: actions/checkout@v7
         with:
+          ref: dc7f470ee653fdeb6b6b7648ac69b44f26e5d683
+          path: baseline
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Test benchmark orchestration
-        run: node --test scripts/codspeed-workflow-regression.test.mjs
+      - name: Checkout updated dependencies
+        uses: actions/checkout@v7
+        with:
+          ref: 8701cc4072d8ca29f1f57c854be923e208fef071
+          path: updated
+          persist-credentials: false
 
-      - name: Enumerate frontend benchmark files
-        id: suites
-        run: echo "files=$(node scripts/codspeed-benchmark-suites.mjs)" >> "${GITHUB_OUTPUT}"
-
-      - name: Detect frontend and Rust benchmark changes
-        id: detect
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          EVENT_NAME: ${{ github.event_name }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify comparison scope
         run: |
           set -euo pipefail
-
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            echo "frontend=true" >> "${GITHUB_OUTPUT}"
-            echo "rust=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]]; then
-            echo "No usable base commit; running benchmarks."
-            echo "frontend=true" >> "${GITHUB_OUTPUT}"
-            echo "rust=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          for sha in "${BASE_SHA}" "${HEAD_SHA}"; do
-            if ! git cat-file -e "${sha}^{commit}"; then
-              git fetch --no-tags --depth=1 origin "${sha}"
-            fi
-          done
-          changed_files=$(git diff --name-only --no-renames "${BASE_SHA}" "${HEAD_SHA}")
-          frontend=false
-          rust=false
-          while IFS= read -r path; do
-            if [[ "${path}" == .github/* || "${path}" == fixtures/* || "${path}" == */fixtures/* ]]; then
-              frontend=true
-              rust=true
-            elif [[ "${path}" == src-tauri/* ]]; then
-              rust=true
-            else
-              if [[ "${path}" =~ \.(svelte|js|jsx|mjs|cjs|ts|tsx|mts|cts|json)$ || "${path}" =~ (^|/)bun\.lock$ || "${path}" == src/* || "${path}" == benchmarks/* ]]; then
-                frontend=true
-              fi
-              if [[ "${path}" =~ \.rs$ || "${path}" =~ (^|/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$ || "${path}" =~ (^|/)\.cargo/ ]]; then
-                rust=true
-              fi
-            fi
-          done <<< "${changed_files}"
-          echo "frontend=${frontend}" >> "${GITHUB_OUTPUT}"
-          echo "rust=${rust}" >> "${GITHUB_OUTPUT}"
-
-  frontend:
-    name: Run frontend benchmarks (${{ matrix.file }})
-    permissions:
-      contents: read
-      id-token: write
-    needs:
-      - changes
-    if: ${{ needs.changes.outputs.frontend == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        file: ${{ fromJSON(needs.changes.outputs.frontend_suites) }}
-    env:
-      KUBECOVE_BENCHMARK_FILE: ${{ matrix.file }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4.0"
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v6
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run benchmarks
-        uses: CodSpeedHQ/action@v5.4.0
-        with:
-          mode: simulation
-          run: bunx vitest bench --run
-
-  rust:
-    name: Run Rust benchmarks
-    permissions:
-      contents: read
-      id-token: write
-    needs:
-      - changes
-    if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
+          git -C baseline diff HEAD "$(git -C updated rev-parse HEAD)" --stat
+          test -z "$(git -C baseline diff --name-only HEAD "$(git -C updated rev-parse HEAD)" -- '*.rs' '.github/workflows/*')"
+          lscpu
 
       - name: Install Tauri Linux dependencies
         run: |
@@ -157,66 +47,34 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+
+      - name: Record compiler
+        run: rustc --version
 
       - name: Cache Rust
         uses: swatinem/rust-cache@v2
         with:
-          shared-key: kubecove-rust-codspeed
-          workspaces: "./src-tauri -> target"
-          cache-workspace-crates: true
+          shared-key: kubecove-rust-cargo-comparison
+          workspaces: baseline/src-tauri -> ../../target
 
-      - name: Install cargo-codspeed
-        run: cargo install cargo-codspeed --version 5.0.1 --locked
-
-      - name: Build Rust benchmarks
-        working-directory: src-tauri
-        run: cargo codspeed build --features bench-support --bench backend_hot_paths --locked
-
-      - name: Run benchmarks
-        uses: CodSpeedHQ/action@v5.4.0
-        with:
-          mode: simulation
-          run: cd src-tauri && cargo codspeed run --bench backend_hot_paths
-
-  check:
-    name: CodSpeed Performance Analysis
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs:
-      - changes
-      - frontend
-      - rust
-    if: always()
-
-    steps:
-      - name: Verify benchmark result
-        env:
-          CHANGES_RESULT: ${{ needs.changes.result }}
-          FRONTEND_REQUIRED: ${{ needs.changes.outputs.frontend }}
-          FRONTEND_RESULT: ${{ needs.frontend.result }}
-          RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
-          RUST_REQUIRED: ${{ needs.changes.outputs.rust }}
-          RUST_RESULT: ${{ needs.rust.result }}
+      - name: Build both benchmark binaries
         run: |
           set -euo pipefail
-          echo "Change detection: ${CHANGES_RESULT}"
-          echo "Frontend benchmarks: ${FRONTEND_RESULT} (required: ${FRONTEND_REQUIRED})"
-          echo "Rust benchmarks: ${RUST_RESULT} (required: ${RUST_REQUIRED})"
-          test "${CHANGES_RESULT}" = "success"
-          if [[ "${RELEASE_PR}" == "true" ]]; then
-            test "${FRONTEND_RESULT}" = "skipped"
-            test "${RUST_RESULT}" = "skipped"
-          else
-            verify_result() {
-              local required="$1"
-              local result="$2"
-              if [[ "${required}" == "true" ]]; then
-                test "${result}" = "success"
-              else
-                test "${required}" = "false"
-                test "${result}" = "skipped"
-              fi
-            }
-            verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
-            verify_result "${RUST_REQUIRED}" "${RUST_RESULT}"
-          fi
+          for revision in baseline updated; do
+            binary=$(cargo bench --manifest-path "${revision}/src-tauri/Cargo.toml" \
+              --features bench-support --bench backend_hot_paths --locked --no-run \
+              --message-format=json | jq -r 'select(.reason == "compiler-artifact" and .target.name == "backend_hot_paths" and .executable != null) | .executable')
+            test -n "${binary}"
+            install -m 755 "${binary}" "${RUNNER_TEMP}/${revision}-bench"
+          done
+
+      - name: Measure both orders
+        run: |
+          set -euo pipefail
+          for revision in baseline updated updated baseline; do
+            echo "::group::${revision} native walltime"
+            "${RUNNER_TEMP}/${revision}-bench" "${BENCH_FILTER}"
+            echo "::endgroup::"
+          done
