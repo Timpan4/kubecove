@@ -3,6 +3,18 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.1 - 2026-10-11
+### Added
+
+- Full and slim native server archives.
+- Build distroless server images for amd64 and arm64.
+- Add quiet server startup for service managers.
+
+### Fixed
+
+- Install dependencies before release workflow tests.
+- Validate shared packaging and macOS build commands.
+
 ## 0.12.0 - 2026-10-11
 ### Added
 
