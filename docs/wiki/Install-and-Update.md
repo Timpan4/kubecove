@@ -15,6 +15,8 @@ Beta installers are not OS-signed. macOS may require **Open** from the contextua
 chmod +x KubeCove_*.AppImage
 ```
 
+To run KubeCove on a remote host instead, see [Install the server](https://github.com/Timpan4/kubecove/wiki/Server-Installation).
+
 The installers include the application and runtime only. Provide your own kubeconfig and Kubernetes tooling where needed; installers do not include cluster credentials, `kubectl`, Helm, or GitOps CLIs.
 
 ### Nix

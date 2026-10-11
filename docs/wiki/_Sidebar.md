@@ -5,6 +5,7 @@
 - [Home](https://github.com/Timpan4/kubecove/wiki/Home)
 - [Install and update](https://github.com/Timpan4/kubecove/wiki/Install-and-Update)
 - [Remote server](https://github.com/Timpan4/kubecove/wiki/Remote-Server)
+- [Install the server](https://github.com/Timpan4/kubecove/wiki/Server-Installation)
 - [Workspaces and scope](https://github.com/Timpan4/kubecove/wiki/Workspaces-and-Scope)
 - [Workspace overview](https://github.com/Timpan4/kubecove/wiki/Workspace-Overview)
 

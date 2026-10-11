@@ -63,7 +63,9 @@ async fn main() -> io::Result<()> {
                     "--socket requires --public-origin for the browser's forwarded TCP origin",
                 )
             })?;
-            print_login(origin, &token, config.print_token, login_mode);
+            if !config.quiet {
+                print_login(origin, &token, config.print_token, login_mode);
+            }
             let state = Arc::new(AppState {
                 token,
                 policy,
@@ -89,7 +91,9 @@ async fn main() -> io::Result<()> {
             .public_origin
             .clone()
             .unwrap_or_else(|| policy.origins[0].clone());
-        print_login(&origin, &token, config.print_token, login_mode);
+        if !config.quiet {
+            print_login(&origin, &token, config.print_token, login_mode);
+        }
         let state = Arc::new(AppState {
             token,
             policy,

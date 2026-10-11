@@ -9,18 +9,15 @@ temporary="$(mktemp -d)"
 container=""
 cleanup() {
   if [[ -n "$container" ]]; then docker rm -f "$container" >/dev/null; fi
-  # The mounted private directory belongs to the image user.
-  docker run --rm --network none --user 0 --entrypoint /bin/sh \
-    --mount "type=bind,src=$temporary,dst=/check" "$image" -c 'rm -rf /check/*'
-  rmdir "$temporary"
+  rm -rf "$temporary"
 }
 trap cleanup EXIT
 test "$(docker image inspect --format '{{.Config.User}}' "$image")" = '65534:65534'
-docker run --rm --network none --user 0 --entrypoint /bin/sh \
-  --mount "type=bind,src=$temporary,dst=/check" "$image" -c 'chown 65534:65534 /check; chmod 700 /check'
-container="$(docker run -d --network none --log-driver none --read-only --cap-drop ALL \
+chown 65534:65534 "$temporary"
+chmod 700 "$temporary"
+container="$(docker run -d --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges --mount "type=bind,src=$temporary,dst=/data/kubecove" \
-  "$image" --socket /data/kubecove/check.sock --public-origin http://localhost:8080 \
+  "$image" --quiet --socket /data/kubecove/check.sock --public-origin http://localhost:8080 \
   --data-dir /data/kubecove)"
 while [[ ! -S "$temporary/check.sock" ]]; do
   test "$(docker inspect --format '{{.State.Running}}' "$container")" = true
@@ -37,19 +34,20 @@ test "$(status http://localhost:8080/)" = "$root_status"
 test "$(status -H 'Host: untrusted.example' http://localhost:8080/)" = 403
 test "$(status -X POST -H 'Origin: http://localhost:8080' -H 'Content-Type: application/json' \
   -d '{}' http://localhost:8080/api/v1/session)" = 401
-docker exec "$container" /bin/sh -ec '
-  test "$(id -u)" = 65534
-  test -s /etc/ssl/certs/ca-certificates.crt
-  test -x /usr/local/bin/kubeconform
-  test "$(stat -c %a /data/kubecove/server-token)" = 600
-  ! command -v cargo
-  ! command -v bun
-'
+test "$(stat -c %u "$temporary/server-token")" = 65534
+test "$(stat -c %a "$temporary/server-token")" = 600
+docker cp "$container:/etc/ssl/certs/ca-certificates.crt" "$temporary/ca.crt"
+test -s "$temporary/ca.crt"
+docker exec "$container" /usr/local/bin/kubeconform -v >/dev/null
+docker export "$container" | tar -tf - > "$temporary/runtime-files.txt"
+! grep -Eq '(^|/)(sh|bash|cargo|bun|apt|apt-get)$' "$temporary/runtime-files.txt"
 # Feed credentials through stdin, never through command arguments or logs.
-docker exec "$container" cat /data/kubecove/server-token | \
+cat "$temporary/server-token" | \
   { read -r token || test -n "$token"; printf '{"token":"%s"}' "$token"; } > "$temporary/login.json"
 test "$(status -X POST -H 'Origin: http://localhost:8080' -H 'Content-Type: application/json' \
   --data-binary @"$temporary/login.json" http://localhost:8080/api/v1/session)" = 200
 docker stop "$container" >/dev/null
 test "$(docker inspect --format '{{.State.ExitCode}}' "$container")" = 0
-printf '%s image: non-root, read-only runtime, CA, sidecar, UI selection, authentication and shutdown passed\n' "$variant"
+docker logs "$container" > "$temporary/stdout.txt"
+test ! -s "$temporary/stdout.txt"
+printf '%s image: distroless, non-root, read-only runtime, CA, sidecar, UI selection, authentication, quiet startup and shutdown passed\n' "$variant"

@@ -1,0 +1,47 @@
+[Unit]
+Description=KubeCove Kubernetes workspace server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+User=kubecove
+Group=kubecove
+Environment=HOME=/var/lib/kubecove
+Environment=KUBECONFIG=/etc/kubecove/config
+Environment=XDG_CACHE_HOME=/var/cache/kubecove
+StateDirectory=kubecove
+StateDirectoryMode=0700
+CacheDirectory=kubecove
+CacheDirectoryMode=0700
+ExecStart=/opt/kubecove/current/kubecove-server --quiet --listen 127.0.0.1:8080 --public-origin http://localhost:8080 --data-dir /var/lib/kubecove
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# MemoryDenyWriteExecute is omitted: it would break JIT-based kubeconfig exec plugins.
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# Never persist a login URL, including with an older binary without --quiet.
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

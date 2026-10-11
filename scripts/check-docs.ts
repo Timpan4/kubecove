@@ -178,7 +178,7 @@ export function checkDocs(root = process.cwd()): string[] {
 	const nested = wikiFiles.filter((file) => dirname(file) !== wikiDirectory);
 	if (nested.length) errors.push(`docs/wiki: must be flat; nested page ${relative(wikiDirectory, nested[0])}`);
 	const pages = wikiFiles.filter((file) => file !== sidebar);
-	if (pages.length !== 19) errors.push(`docs/wiki: expected 19 user pages, found ${pages.length}`);
+	if (pages.length !== 20) errors.push(`docs/wiki: expected 20 user pages, found ${pages.length}`);
 	if (!existsSync(sidebar)) errors.push("docs/wiki: missing _Sidebar.md");
 	if (existsSync(sidebar)) for (const page of pages) {
 		const count = sidebarReferences.get(page) ?? 0;

@@ -13,6 +13,7 @@ fn ensure_sidecar_permissions() {
 
     for name in [
         "bin/kubeconform-x86_64-unknown-linux-gnu",
+        "bin/kubeconform-aarch64-unknown-linux-gnu",
         "bin/kubeconform-x86_64-apple-darwin",
         "bin/kubeconform-aarch64-apple-darwin",
         "bin/kubeconform-universal-apple-darwin",

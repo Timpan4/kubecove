@@ -1,0 +1,13 @@
+{
+  "securityContext": {
+    "runAsNonRoot": true,
+    "runAsUser": 65534,
+    "runAsGroup": 65534,
+    "allowPrivilegeEscalation": false,
+    "readOnlyRootFilesystem": true,
+    "capabilities": { "drop": ["ALL"] }
+  },
+  "volumeMounts": [
+    { "name": "data", "mountPath": "/data", "readOnly": true }
+  ]
+}
