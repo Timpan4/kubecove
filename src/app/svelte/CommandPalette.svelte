@@ -12,7 +12,7 @@
 	} from "@/components/ui/svelte";
 	import {
 		buildArgoSearchResources,
-		buildDedupedResourceSearchIndex,
+		buildPaletteResourceSearchIndex,
 		buildGlobalSearchFetchKeys,
 		buildNavigationEntries,
 		filterNamespaces,
@@ -172,11 +172,11 @@
 		const cached = queryClient.getQueriesData<Pick<ResourceScopeResult, "resources">>({
 			queryKey: ["resources", normalizedSourceKey, workspace.scope.clusterContext],
 		});
-		return buildDedupedResourceSearchIndex([
+		return buildPaletteResourceSearchIndex(
 			warmedRows,
 			argoSearchResources,
-			...cached.map(([, result]) => result?.resources ?? []),
-		]);
+			cached,
+		);
 	});
 	const visibleResources = $derived(
 		hasQuery

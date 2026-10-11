@@ -2,7 +2,7 @@ use crate::commands::diagnostics::record_backend_result;
 use crate::commands::helpers::{
     extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
     k8s_creation_timestamp_to_rfc3339, legacy_resource_health, list_params,
-    normalize_k8s_yaml_value, resource_age, serialize_json_value_document,
+    normalize_k8s_yaml_value, serialize_json_value_document,
 };
 use crate::commands::{
     diagnostic_field,
@@ -17,7 +17,7 @@ use crate::models::{
     YamlViewMode,
 };
 use crate::runtime::State;
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use kube::{
     api::{Api, ApiResource, DynamicObject},
     Client,
@@ -82,16 +82,33 @@ pub(crate) fn dynamic_resource_summary(
     resource_kind: &DiscoveredResourceKind,
     object: &DynamicObject,
 ) -> ResourceSummary {
+    dynamic_resource_summary_at(cluster_context, resource_kind, object, Utc::now())
+}
+
+pub(crate) fn dynamic_resource_summary_at(
+    cluster_context: &str,
+    resource_kind: &DiscoveredResourceKind,
+    object: &DynamicObject,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
     let mut summary = ResourceSummary {
         kind: resource_kind.kind.clone(),
         cluster: cluster_context.to_string(),
         name: object.metadata.name.clone().unwrap_or_default(),
         namespace: object.metadata.namespace.clone(),
-        age: resource_age(object.metadata.creation_timestamp.clone().map(|t| {
-            Utc.timestamp_opt(t.0.as_second(), 0)
-                .single()
-                .unwrap_or_else(Utc::now)
-        })),
+        age: object
+            .metadata
+            .creation_timestamp
+            .as_ref()
+            .map(|time| {
+                Utc.timestamp_opt(time.0.as_second(), 0)
+                    .single()
+                    .unwrap_or(now)
+            })
+            .map_or_else(
+                || "unknown".to_string(),
+                |time| crate::commands::helpers::resource_age_at(time, now),
+            ),
         api_version: Some(resource_kind.api_version.clone()),
         group: Some(resource_kind.group.clone()),
         version: Some(resource_kind.version.clone()),
@@ -127,6 +144,30 @@ pub(crate) fn dynamic_resource_summary(
         summary.health = legacy_resource_health(summary.health_assessment.state);
     }
     summary
+}
+
+pub(crate) fn dynamic_resource_summaries(
+    cluster_context: &str,
+    resource_kind: &DiscoveredResourceKind,
+    objects: &[DynamicObject],
+) -> Vec<ResourceSummary> {
+    objects
+        .iter()
+        .map(|object| dynamic_resource_summary(cluster_context, resource_kind, object))
+        .collect()
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn dynamic_resource_summaries_at(
+    cluster_context: &str,
+    resource_kind: &DiscoveredResourceKind,
+    objects: &[DynamicObject],
+    now: DateTime<Utc>,
+) -> Vec<ResourceSummary> {
+    objects
+        .iter()
+        .map(|object| dynamic_resource_summary_at(cluster_context, resource_kind, object, now))
+        .collect()
 }
 
 fn dynamic_health_assessment(data: &Value) -> HealthAssessment {
@@ -190,7 +231,7 @@ fn redact_dynamic_secret_fields(value: &mut Value) {
     }
 }
 
-fn serialize_dynamic_resource_document(
+pub(crate) fn serialize_dynamic_resource_document(
     resource_kind: &DiscoveredResourceKind,
     object: &DynamicObject,
     mode: YamlViewMode,
@@ -234,10 +275,11 @@ pub async fn dynamic_resources_summary_from(
 
     let objects = api.list(&list_params()).await.map_err(AppError::from)?;
 
-    Ok(objects
-        .iter()
-        .map(|object| dynamic_resource_summary(&cluster_context, &resource_kind, object))
-        .collect())
+    Ok(dynamic_resource_summaries(
+        &cluster_context,
+        &resource_kind,
+        &objects.items,
+    ))
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -344,15 +386,31 @@ pub async fn dynamic_resource_details_from(
         Api::all_with(client, &api_resource)
     };
 
-    let mut object = api.get(&name).await.map_err(AppError::from)?;
+    let object = api.get(&name).await.map_err(AppError::from)?;
+    dynamic_resource_details_from_object(
+        cluster_context,
+        resource_kind,
+        object,
+        yaml_view_mode.unwrap_or_default(),
+        yaml_encoding.unwrap_or_default(),
+    )
+}
+
+pub(crate) fn dynamic_resource_details_from_object(
+    cluster_context: String,
+    resource_kind: DiscoveredResourceKind,
+    mut object: DynamicObject,
+    yaml_view_mode: YamlViewMode,
+    yaml_encoding: YamlEncoding,
+) -> Result<ResourceDetailsFull, AppError> {
     if is_core_v1_secret(&resource_kind) {
         crate::commands::helpers::redact_secret_metadata(&mut object.metadata);
     }
     let yaml = serialize_dynamic_resource_document(
         &resource_kind,
         &object,
-        yaml_view_mode.unwrap_or_default(),
-        yaml_encoding.unwrap_or_default(),
+        yaml_view_mode,
+        yaml_encoding,
     )?;
     let metadata = serde_json::to_value(&object.metadata)
         .map_err(|e| AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e))?;

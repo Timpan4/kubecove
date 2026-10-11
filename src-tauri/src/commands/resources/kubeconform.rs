@@ -85,10 +85,24 @@ pub(super) async fn append_kubeconform_lint(yaml: &str, result: &mut KubernetesY
 }
 
 fn collect_kubeconform_output(output: std::process::Output, result: &mut KubernetesYamlLintResult) {
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    collect_kubeconform_bytes(
+        &output.stdout,
+        output.status.success(),
+        &output.stderr,
+        result,
+    );
+}
+
+pub(crate) fn collect_kubeconform_bytes(
+    stdout: &[u8],
+    success: bool,
+    stderr: &[u8],
+    result: &mut KubernetesYamlLintResult,
+) {
+    let stdout = String::from_utf8_lossy(stdout);
     if stdout.trim().is_empty() {
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+        if !success {
+            let stderr = String::from_utf8_lossy(stderr);
             result.notes.push(status_note(
                 KubernetesYamlLintSeverity::Warning,
                 "Kubeconform",
@@ -302,6 +316,8 @@ fn target_triple() -> &'static str {
         "x86_64-pc-windows-msvc"
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         "x86_64-unknown-linux-gnu"
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        "aarch64-unknown-linux-gnu"
     } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
         "x86_64-apple-darwin"
     } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {

@@ -139,7 +139,7 @@ jobs:
           persist-credentials: false
 
       - name: Test CI orchestration
-        run: node --test scripts/ci-workflow-regression.test.mjs scripts/release-workflow-regression.test.mjs
+        run: node --test scripts/ci-workflow-regression.test.mjs
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -157,6 +157,9 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: Test release orchestration
+        run: node --test scripts/release-workflow-regression.test.mjs
+
       - name: Audit frontend dependencies
         run: bun run audit
 
@@ -165,6 +168,9 @@ jobs:
 
       - name: Typecheck frontend
         run: bun run typecheck
+
+      - name: Typecheck benchmark fixtures
+        run: bun run typecheck:bench
 
       - name: Check Svelte frontend
         run: bun run svelte:check
@@ -278,7 +284,7 @@ jobs:
         run: bun e2e/headless-smoke.ts
       - name: Upload headless verification report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: headless-verification
           path: e2e/artifacts/headless/**

@@ -49,6 +49,14 @@ fn app_project_summary_from_object(
     })
 }
 
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_app_project_summary_from_object(
+    cluster_context: &str,
+    obj: &DynamicObject,
+) -> Option<ArgoAppProjectSummary> {
+    app_project_summary_from_object(cluster_context, obj)
+}
+
 /// Get detailed Argo CD `AppProject` information including YAML and metadata.
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_argocd_appproject_details(

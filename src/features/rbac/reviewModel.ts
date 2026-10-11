@@ -24,6 +24,18 @@ export type RbacReviewStatus = "active" | "stale" | "none";
 export type RbacReviewRecord = WorkspaceRbacReview;
 export type RbacReviewRecordInput = RbacReviewRecord;
 
+export function findRbacReviewRecord(
+	records: RbacReviewRecord[],
+	clusterContext: string,
+	objectKey: string,
+): RbacReviewRecord | undefined {
+	return records.find(
+		(candidate) =>
+			candidate.clusterContext === clusterContext &&
+			candidate.objectKey === objectKey,
+	);
+}
+
 export function isReviewableRbacCategory(category: RbacView): category is ReviewableRbacCategory {
 	return REVIEWABLE_RBAC_CATEGORIES.some((reviewable) => reviewable === category);
 }

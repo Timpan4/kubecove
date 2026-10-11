@@ -166,7 +166,7 @@ fn container_usage_totals(data: &Value) -> (Option<f64>, Option<i64>) {
     )
 }
 
-fn metric_from_object(
+pub(crate) fn metric_from_object(
     cluster_context: &str,
     kind: &str,
     object: &DynamicObject,
@@ -344,7 +344,7 @@ fn add_workload_metric(
     entry.summary.source_pods.push(pod_name.to_string());
 }
 
-fn aggregate_workload_metrics(
+pub(crate) fn aggregate_workload_metrics(
     cluster_context: &str,
     pods: &[Pod],
     replicasets: &[ReplicaSet],
@@ -418,6 +418,53 @@ fn availability(
     }
 }
 
+pub(crate) fn resource_metrics_projection(
+    cluster_context: &str,
+    pod_metric_objects: &[DynamicObject],
+    node_metric_objects: &[DynamicObject],
+    pod_objects: &[Pod],
+    replicasets: &[ReplicaSet],
+    warnings: Vec<String>,
+    had_forbidden_error: bool,
+    had_unavailable_error: bool,
+) -> ResourceMetricsSummary {
+    let pods: Vec<_> = pod_metric_objects
+        .iter()
+        .map(|object| metric_from_object(cluster_context, "Pod", object))
+        .collect();
+    let nodes: Vec<_> = node_metric_objects
+        .iter()
+        .map(|object| metric_from_object(cluster_context, "Node", object))
+        .collect();
+    let workloads = aggregate_workload_metrics(cluster_context, pod_objects, replicasets, &pods);
+    let status = if pods.is_empty() && nodes.is_empty() {
+        if had_forbidden_error {
+            ResourceMetricsAvailabilityStatus::Forbidden
+        } else if had_unavailable_error {
+            ResourceMetricsAvailabilityStatus::Unavailable
+        } else {
+            ResourceMetricsAvailabilityStatus::NoSamples
+        }
+    } else {
+        ResourceMetricsAvailabilityStatus::Available
+    };
+    let message = match status {
+        ResourceMetricsAvailabilityStatus::Available => "metrics available",
+        ResourceMetricsAvailabilityStatus::Unavailable => "metrics API unavailable",
+        ResourceMetricsAvailabilityStatus::Forbidden => "forbidden",
+        ResourceMetricsAvailabilityStatus::NoSamples => "no samples yet",
+    };
+
+    ResourceMetricsSummary {
+        cluster: cluster_context.to_string(),
+        availability: availability(status, message),
+        pods,
+        nodes,
+        workloads,
+        warnings,
+    }
+}
+
 pub async fn resource_metrics_from(
     cluster_context: String,
     namespaces: Vec<String>,
@@ -482,16 +529,8 @@ pub async fn resource_metrics_from(
         had_unavailable_error = true;
         warnings.push("Pod metrics unavailable".to_string());
     }
-    let pods: Vec<ResourceMetricSummary> = pod_result
-        .objects
-        .iter()
-        .map(|object| metric_from_object(&cluster_context, "Pod", object))
-        .collect();
-    let nodes = match node_result {
-        Ok(objects) => objects
-            .iter()
-            .map(|object| metric_from_object(&cluster_context, "Node", object))
-            .collect(),
+    let node_objects = match node_result {
+        Ok(objects) => objects,
         Err(status) => {
             if status == MetricsListStatus::Forbidden {
                 had_forbidden_error = true;
@@ -503,51 +542,33 @@ pub async fn resource_metrics_from(
             Vec::new()
         }
     };
-    let workloads = match list_pods(client.clone(), &namespaces).await {
-        Ok(pod_objects) => {
-            let replicasets = match list_replicasets(client, &namespaces).await {
-                Ok(replicasets) => replicasets,
-                Err(err) => {
-                    warnings.push(format!(
-                        "Workload owner rollup unavailable: {}",
-                        err.message
-                    ));
-                    Vec::new()
-                }
-            };
-            aggregate_workload_metrics(&cluster_context, &pod_objects, &replicasets, &pods)
-        }
+    let (pod_objects, replicasets) = match list_pods(client.clone(), &namespaces).await {
+        Ok(pod_objects) => match list_replicasets(client, &namespaces).await {
+            Ok(replicasets) => (pod_objects, replicasets),
+            Err(err) => {
+                warnings.push(format!(
+                    "Workload owner rollup unavailable: {}",
+                    err.message
+                ));
+                (pod_objects, Vec::new())
+            }
+        },
         Err(err) => {
             warnings.push(format!("Workload metrics unavailable: {}", err.message));
-            Vec::new()
+            (Vec::new(), Vec::new())
         }
-    };
-    let status = if pods.is_empty() && nodes.is_empty() {
-        if had_forbidden_error {
-            ResourceMetricsAvailabilityStatus::Forbidden
-        } else if had_unavailable_error {
-            ResourceMetricsAvailabilityStatus::Unavailable
-        } else {
-            ResourceMetricsAvailabilityStatus::NoSamples
-        }
-    } else {
-        ResourceMetricsAvailabilityStatus::Available
-    };
-    let message = match status {
-        ResourceMetricsAvailabilityStatus::Available => "metrics available",
-        ResourceMetricsAvailabilityStatus::Unavailable => "metrics API unavailable",
-        ResourceMetricsAvailabilityStatus::Forbidden => "forbidden",
-        ResourceMetricsAvailabilityStatus::NoSamples => "no samples yet",
     };
 
-    Ok(ResourceMetricsSummary {
-        cluster: cluster_context,
-        availability: availability(status, message),
-        pods,
-        nodes,
-        workloads,
+    Ok(resource_metrics_projection(
+        &cluster_context,
+        &pod_result.objects,
+        &node_objects,
+        &pod_objects,
+        &replicasets,
         warnings,
-    })
+        had_forbidden_error,
+        had_unavailable_error,
+    ))
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

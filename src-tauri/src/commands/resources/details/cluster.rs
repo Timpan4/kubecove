@@ -183,6 +183,14 @@ pub(super) async fn crd_details(
 ) -> Result<ResourceDetailsFull, AppError> {
     let (crd, yaml) =
         fetch_and_serialize_cluster::<CustomResourceDefinition>(client, &name).await?;
+    crd_details_from_fetched(cluster_context, crd, yaml)
+}
+
+pub(crate) fn crd_details_from_fetched(
+    cluster_context: String,
+    crd: CustomResourceDefinition,
+    yaml: String,
+) -> Result<ResourceDetailsFull, AppError> {
     let metadata = serde_json::to_value(&crd.metadata)
         .map_err(|e| AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e))?;
     let status = crd

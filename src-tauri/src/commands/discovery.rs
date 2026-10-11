@@ -34,20 +34,30 @@ pub(crate) async fn crd_resource_kinds(
     client: Client,
 ) -> Result<Vec<DiscoveredResourceKind>, AppError> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    let mut kinds: Vec<_> = api
-        .list(&list_params())
-        .await
-        .map_err(AppError::from)?
-        .items
+    Ok(crd_resource_kinds_from(
+        api.list(&list_params())
+            .await
+            .map_err(AppError::from)?
+            .items
+            .into_iter()
+            .collect::<Vec<_>>(),
+    ))
+}
+
+pub(crate) fn crd_resource_kinds_from(
+    definitions: impl IntoIterator<Item = CustomResourceDefinition>,
+) -> Vec<DiscoveredResourceKind> {
+    let mut kinds = definitions
         .into_iter()
         .filter_map(|crd| discovered_kind_from_crd(&crd))
         .collect();
-
     sort_and_dedup_kinds(&mut kinds);
-    Ok(kinds)
+    kinds
 }
 
-fn discovered_kind_from_crd(crd: &CustomResourceDefinition) -> Option<DiscoveredResourceKind> {
+pub(crate) fn discovered_kind_from_crd(
+    crd: &CustomResourceDefinition,
+) -> Option<DiscoveredResourceKind> {
     let version = preferred_crd_version(&crd.spec.versions)?;
     let group = crd.spec.group.clone();
     let api_version = format!("{group}/{}", version.name);

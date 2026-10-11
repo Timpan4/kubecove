@@ -32,23 +32,7 @@ async fn argo_resource_comparison(
             )
             .await?,
         )?;
-        let resource = inspector
-            .resources
-            .into_iter()
-            .find(|candidate| {
-                candidate.group == resource.group
-                    && candidate.version == resource.version
-                    && candidate.kind == resource.kind
-                    && candidate.namespace == resource.namespace
-                    && candidate.name == resource.name
-            })
-            .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
-        return Ok(ArgoResourceComparison {
-            resource,
-            exact: Some(false),
-            provenance: Some("kubernetes-status-no-diff".into()),
-            ..Default::default()
-        });
+        return kubernetes_selected_comparison(inspector, &resource);
     }
     if transport != "connected" {
         return Err(AppError::new(
@@ -65,7 +49,7 @@ async fn argo_resource_comparison(
         application.workspace_id.as_deref(),
         kubeconfig_env_var.as_deref(),
     )?;
-    let mut value = api_get(
+    let value = api_get(
         &connection,
         &connected_application_path(
             &connection.profile.url,
@@ -76,23 +60,8 @@ async fn argo_resource_comparison(
         )?,
     )
     .await?;
-    redact_secret_fields(&mut value);
-    let item = value
-        .get("items")
-        .or_else(|| value.get("managedResources"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .find(|item| {
-            text(item, "group") == resource.group
-                && text(item, "version") == resource.version
-                && text(item, "kind") == resource.kind
-                && text(item, "namespace") == resource.namespace
-                && text(item, "name") == resource.name
-        })
-        .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
-    let resource = managed_resource(item);
-    let available_actions = match actions_path(&application, &resource) {
+    let mut comparison = connected_selected_comparison(value, &resource)?;
+    comparison.available_actions = match actions_path(&application, &comparison.resource) {
         Some(path) => api_get(&connection, &path)
             .await?
             .get("actions")
@@ -101,6 +70,52 @@ async fn argo_resource_comparison(
             .unwrap_or_default(),
         None => vec![],
     };
+    Ok(comparison)
+}
+
+fn kubernetes_selected_comparison(
+    inspector: crate::models::ArgoApplicationInspector,
+    requested: &ArgoManagedResource,
+) -> Result<ArgoResourceComparison, AppError> {
+    let resource = inspector
+        .resources
+        .into_iter()
+        .find(|candidate| {
+            candidate.group == requested.group
+                && candidate.version == requested.version
+                && candidate.kind == requested.kind
+                && candidate.namespace == requested.namespace
+                && candidate.name == requested.name
+        })
+        .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
+    Ok(ArgoResourceComparison {
+        resource,
+        exact: Some(false),
+        provenance: Some("kubernetes-status-no-diff".into()),
+        ..Default::default()
+    })
+}
+
+fn connected_selected_comparison(
+    mut value: Value,
+    requested: &ArgoManagedResource,
+) -> Result<ArgoResourceComparison, AppError> {
+    redact_secret_fields(&mut value);
+    let item = value
+        .get("items")
+        .or_else(|| value.get("managedResources"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|item| {
+            text(item, "group") == requested.group
+                && text(item, "version") == requested.version
+                && text(item, "kind") == requested.kind
+                && text(item, "namespace") == requested.namespace
+                && text(item, "name") == requested.name
+        })
+        .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
+    let resource = managed_resource(item);
     Ok(ArgoResourceComparison {
         resource,
         target_state: state(item.get("targetState"), true),
@@ -110,8 +125,25 @@ async fn argo_resource_comparison(
         modified: item.get("modified").and_then(Value::as_bool),
         exact: Some(true),
         provenance: Some("argocd-managed-resource".into()),
-        available_actions,
+        available_actions: Vec::new(),
     })
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_kubernetes_selected_comparison(
+    object: &kube::core::DynamicObject,
+    requested: &ArgoManagedResource,
+) -> Result<ArgoResourceComparison, AppError> {
+    let inspector = inspector_from_application(object)?;
+    kubernetes_selected_comparison(inspector, requested)
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_connected_selected_comparison(
+    value: Value,
+    requested: &ArgoManagedResource,
+) -> Result<ArgoResourceComparison, AppError> {
+    connected_selected_comparison(value, requested)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

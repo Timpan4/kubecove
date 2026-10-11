@@ -70,7 +70,6 @@ spec:
       serviceAccountName: kubecove
       automountServiceAccountToken: false
       nodeSelector:
-        kubernetes.io/arch: amd64
         kubernetes.io/os: linux
       securityContext:
         runAsNonRoot: true
@@ -86,11 +85,10 @@ spec:
           # Replace with the image you built and pushed to your registry.
           image: kubecove-server:local
           imagePullPolicy: IfNotPresent
-          # Startup stdout contains the login token. Read its private file instead.
-          command: [/bin/sh, -ec]
+          # Distroless has no shell. Quiet startup keeps tokens out of pod logs.
+          command: [/usr/local/bin/kubecove-server]
           args:
-            - 'exec /usr/local/bin/kubecove-server "$@" >/dev/null'
-            - kubecove-server
+            - --quiet
             - --listen
             - 127.0.0.1:8080
             - --data-dir

@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { benchmarkFiles, benchmarkSelection } from "./codspeed-benchmark-suites.mjs";
 
 const workflow = readFileSync(new URL("../.github/workflows/codspeed.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 
@@ -40,7 +41,7 @@ function detect(paths, overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), "kubecove-codspeed-"));
   const output = join(root, "output").replaceAll("\\", "/");
   try {
-    const result = bash(`git() { printf '%s\\n' "$CHANGED_PATHS"; }\n${runBlock(job("changes"))}`, {
+    const result = bash(`git() { if [[ "$1" == "diff" ]]; then printf '%s\\n' "$CHANGED_PATHS"; fi; }\n${runBlock(job("changes"))}`, {
       BASE_SHA: "a".repeat(40), HEAD_SHA: "b".repeat(40), EVENT_NAME: "pull_request",
       CHANGED_PATHS: paths.join("\n"), GITHUB_OUTPUT: output, ...overrides,
     });
@@ -67,6 +68,10 @@ for (const [path, frontend, rust] of [
   [".cargo/config.toml", false, true],
   ["rust-toolchain.toml", false, true],
   [".github/workflows/codspeed.yml", true, true],
+  ["fixtures/resource.yaml", true, true],
+  ["shared/fixtures/resource.json", true, true],
+  ["shared/fixtures/stream.txt", true, true],
+  ["scripts/codspeed-benchmark-suites.mjs", true, false],
 ]) {
   test(`selects affected benchmarks for ${path}`, () => {
     assert.deepEqual(detect([path]), { frontend: String(frontend), rust: String(rust) });
@@ -117,4 +122,52 @@ test("release PRs still require both benchmark jobs to be skipped", () => {
   assert.notEqual(gate({ ...release, FRONTEND_RESULT: "success" }), 0);
   assert.notEqual(gate({ ...release, RUST_RESULT: "success" }), 0);
   assert.notEqual(gate({ ...release, RELEASE_PR: "false" }), 0);
+});
+
+test("frontend file jobs form a complete, disjoint partition of actual benchmark files", () => {
+	const files = benchmarkFiles();
+	assert.ok(files.length);
+	const selected = files.flatMap(
+		(file) => benchmarkSelection({ KUBECOVE_BENCHMARK_FILE: file }).include,
+	);
+	assert.deepEqual(selected, files);
+	assert.equal(new Set(selected).size, selected.length);
+	assert.deepEqual(benchmarkSelection({}).include, files);
+	const legacy = ["topology", "other"]
+		.flatMap(
+			(suite) =>
+				benchmarkSelection({ KUBECOVE_BENCHMARK_SUITE: suite }).include,
+		)
+		.sort();
+	assert.deepEqual(legacy, files);
+	assert.match(
+		job("frontend"),
+		/fromJSON\(needs\.changes\.outputs\.frontend_suites\)/,
+	);
+	assert.match(
+		job("frontend"),
+		/KUBECOVE_BENCHMARK_FILE: \$\{\{ matrix\.file \}\}/,
+	);
+});
+
+test("invalid or conflicting frontend selectors fail instead of running every benchmark", () => {
+	assert.throws(
+		() =>
+			benchmarkSelection({
+				KUBECOVE_BENCHMARK_FILE: "benchmarks/missing.bench.ts",
+			}),
+		/Unknown benchmark file/,
+	);
+	assert.throws(
+		() => benchmarkSelection({ KUBECOVE_BENCHMARK_SUITE: "typo" }),
+		/Unknown benchmark suite/,
+	);
+	assert.throws(
+		() =>
+			benchmarkSelection({
+				KUBECOVE_BENCHMARK_FILE: benchmarkFiles()[0],
+				KUBECOVE_BENCHMARK_SUITE: "other",
+			}),
+		/not both/,
+	);
 });

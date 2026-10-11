@@ -1,3 +1,10 @@
+#[cfg(feature = "bench-support")]
+mod benchmark;
+#[cfg(feature = "bench-support")]
+pub(crate) use benchmark::{
+    benchmark_usage_process_attribution, BenchUsagePlatform, BenchUsageProcess,
+};
+
 #[cfg(target_os = "macos")]
 use super::usage_webview::{
     is_macos_orphan_webkit_process, macos_orphan_webview_process_candidate,
@@ -56,9 +63,14 @@ impl AppUsageMonitor {
                     .with_cmd(UpdateKind::Always),
             );
         }
-        let process_count = observed_process_count(&system, &pids);
-        let memory_bytes = process_tree_memory_bytes(&system, &pids);
-        let raw_cpu_percent = process_tree_cpu_percent(&system, &pids);
+        let process_count = observed_process_count(&pids, |pid| system.process(pid));
+        let memory_bytes =
+            process_tree_memory_bytes(&pids, |pid| system.process(pid), |process| process.memory());
+        let raw_cpu_percent = process_tree_cpu_percent(
+            &pids,
+            |pid| system.process(pid),
+            |process| process.cpu_usage(),
+        );
         let cpu_count = available_cpu_count();
         let cpu_percent = normalize_cpu_percent(raw_cpu_percent, cpu_count);
         let breakdown = process_tree_breakdown(&system, &pids, current_pid, cpu_count);
@@ -208,24 +220,45 @@ fn process_tree_pids_from_roots(
     pids
 }
 
-fn observed_process_count(system: &System, pids: &HashSet<Pid>) -> usize {
-    pids.iter()
-        .filter(|pid| system.process(**pid).is_some())
-        .count()
+fn observed_process_count<T>(
+    pids: &HashSet<Pid>,
+    mut process_by_pid: impl FnMut(Pid) -> Option<T>,
+) -> usize {
+    let mut process_count = 0;
+    for pid in pids {
+        if process_by_pid(*pid).is_some() {
+            process_count += 1;
+        }
+    }
+    process_count
 }
 
-fn process_tree_memory_bytes(system: &System, pids: &HashSet<Pid>) -> u64 {
-    pids.iter()
-        .filter_map(|pid| system.process(*pid))
-        .map(sysinfo::Process::memory)
-        .sum()
+fn process_tree_memory_bytes<T>(
+    pids: &HashSet<Pid>,
+    mut process_by_pid: impl FnMut(Pid) -> Option<T>,
+    mut memory_bytes: impl FnMut(&T) -> u64,
+) -> u64 {
+    let mut total_memory_bytes = 0;
+    for pid in pids {
+        if let Some(process) = process_by_pid(*pid) {
+            total_memory_bytes += memory_bytes(&process);
+        }
+    }
+    total_memory_bytes
 }
 
-fn process_tree_cpu_percent(system: &System, pids: &HashSet<Pid>) -> f32 {
-    pids.iter()
-        .filter_map(|pid| system.process(*pid))
-        .map(sysinfo::Process::cpu_usage)
-        .sum()
+fn process_tree_cpu_percent<T>(
+    pids: &HashSet<Pid>,
+    mut process_by_pid: impl FnMut(Pid) -> Option<T>,
+    mut cpu_percent: impl FnMut(&T) -> f32,
+) -> f32 {
+    let mut total_cpu_percent = 0.0;
+    for pid in pids {
+        if let Some(process) = process_by_pid(*pid) {
+            total_cpu_percent += cpu_percent(&process);
+        }
+    }
+    total_cpu_percent
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -276,19 +309,65 @@ struct UsageProcessSample {
     memory_bytes: u64,
 }
 
+struct UsageProcessPreparedSample {
+    group: UsageProcessGroup,
+    label: String,
+    description: String,
+    raw_cpu_percent: f32,
+    memory_bytes: u64,
+}
+
 impl UsageProcessGroupTotals {
-    fn add_process(&mut self, process: &Process, include_child_sample: bool) {
-        self.raw_cpu_percent += process.cpu_usage();
-        self.memory_bytes += process.memory();
+    fn add_sample(&mut self, sample: UsageProcessPreparedSample, include_child_sample: bool) {
+        self.raw_cpu_percent += sample.raw_cpu_percent;
+        self.memory_bytes += sample.memory_bytes;
         self.process_count += 1;
         if include_child_sample {
             self.children.push(UsageProcessSample {
-                label: usage_process_child_label(process),
-                description: usage_process_child_description(process),
-                raw_cpu_percent: process.cpu_usage(),
-                memory_bytes: process.memory(),
+                label: sample.label,
+                description: sample.description,
+                raw_cpu_percent: sample.raw_cpu_percent,
+                memory_bytes: sample.memory_bytes,
             });
         }
+    }
+}
+
+trait UsageProcessView {
+    fn raw_cpu_percent(&self) -> f32;
+    fn memory_bytes(&self) -> u64;
+    fn is_webview_descendant(&self) -> bool;
+    fn child_label(&self) -> String;
+    fn child_description(&self) -> String;
+
+    fn group(&self, pid: Pid, root_pid: Pid) -> UsageProcessGroup {
+        usage_process_group_with_webview_check(pid, root_pid, || self.is_webview_descendant())
+    }
+}
+
+impl UsageProcessView for Process {
+    fn raw_cpu_percent(&self) -> f32 {
+        self.cpu_usage()
+    }
+
+    fn memory_bytes(&self) -> u64 {
+        self.memory()
+    }
+
+    fn is_webview_descendant(&self) -> bool {
+        is_webview_descendant_process(self)
+    }
+
+    fn child_label(&self) -> String {
+        usage_process_child_label(self)
+    }
+
+    fn child_description(&self) -> String {
+        usage_process_child_description(self)
+    }
+
+    fn group(&self, pid: Pid, root_pid: Pid) -> UsageProcessGroup {
+        usage_process_group(pid, root_pid, self)
     }
 }
 
@@ -296,6 +375,43 @@ fn process_tree_breakdown(
     system: &System,
     pids: &HashSet<Pid>,
     root_pid: Pid,
+    cpu_count: usize,
+) -> Vec<AppUsageMetricsBreakdown> {
+    let samples = pids
+        .iter()
+        .filter_map(|pid| system.process(*pid).map(|process| (*pid, process)));
+    process_tree_breakdown_from_processes(samples, root_pid, cpu_count)
+}
+
+fn process_tree_breakdown_from_processes<'a, T: UsageProcessView + 'a>(
+    samples: impl IntoIterator<Item = (Pid, &'a T)>,
+    root_pid: Pid,
+    cpu_count: usize,
+) -> Vec<AppUsageMetricsBreakdown> {
+    let prepared_samples = samples.into_iter().map(|(pid, process)| {
+        let group = process.group(pid, root_pid);
+        let is_child = group != UsageProcessGroup::App;
+        UsageProcessPreparedSample {
+            group,
+            label: if is_child {
+                process.child_label()
+            } else {
+                String::new()
+            },
+            description: if is_child {
+                process.child_description()
+            } else {
+                String::new()
+            },
+            raw_cpu_percent: process.raw_cpu_percent(),
+            memory_bytes: process.memory_bytes(),
+        }
+    });
+    process_tree_breakdown_from_samples(prepared_samples, cpu_count)
+}
+
+fn process_tree_breakdown_from_samples(
+    samples: impl IntoIterator<Item = UsageProcessPreparedSample>,
     cpu_count: usize,
 ) -> Vec<AppUsageMetricsBreakdown> {
     let mut buckets = [
@@ -310,19 +426,15 @@ fn process_tree_breakdown(
         ),
     ];
 
-    for pid in pids {
-        let Some(process) = system.process(*pid) else {
-            continue;
-        };
-        let group = usage_process_group(*pid, root_pid, process);
-        let bucket_index = match group {
+    for sample in samples {
+        let bucket_index = match sample.group {
             UsageProcessGroup::App => 0,
             UsageProcessGroup::WebView => 1,
             UsageProcessGroup::OtherChildren => 2,
         };
         buckets[bucket_index]
             .1
-            .add_process(process, group != UsageProcessGroup::App);
+            .add_sample(sample, bucket_index != 0);
     }
 
     buckets
@@ -375,7 +487,11 @@ fn usage_process_child_label(process: &Process) -> String {
 }
 
 fn usage_process_child_description(process: &Process) -> String {
-    if is_webview_descendant_process(process) {
+    usage_process_child_description_from_webview(is_webview_descendant_process(process))
+}
+
+fn usage_process_child_description_from_webview(is_webview: bool) -> String {
+    if is_webview {
         "WebView child process".to_string()
     } else {
         "Child process".to_string()
@@ -383,11 +499,19 @@ fn usage_process_child_description(process: &Process) -> String {
 }
 
 fn usage_process_group(pid: Pid, root_pid: Pid, process: &Process) -> UsageProcessGroup {
+    usage_process_group_with_webview_check(pid, root_pid, || is_webview_descendant_process(process))
+}
+
+fn usage_process_group_with_webview_check(
+    pid: Pid,
+    root_pid: Pid,
+    is_webview: impl FnOnce() -> bool,
+) -> UsageProcessGroup {
     if pid == root_pid {
         return UsageProcessGroup::App;
     }
 
-    if is_webview_descendant_process(process) {
+    if is_webview() {
         UsageProcessGroup::WebView
     } else {
         UsageProcessGroup::OtherChildren

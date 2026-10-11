@@ -66,7 +66,7 @@ fn deployment_selector(deployment: &Deployment) -> Option<String> {
     )
 }
 
-fn deployment_revisions_from_replica_sets(
+pub(crate) fn deployment_revisions_from_replica_sets(
     replica_sets: Vec<ReplicaSet>,
     deployment_uid: &str,
 ) -> Vec<DeploymentRevision> {
@@ -99,7 +99,7 @@ fn deployment_revisions_from_replica_sets(
     revisions
 }
 
-fn is_owned_by_deployment(replica_set: &ReplicaSet, deployment_uid: &str) -> bool {
+pub(crate) fn is_owned_by_deployment(replica_set: &ReplicaSet, deployment_uid: &str) -> bool {
     replica_set
         .metadata
         .owner_references

@@ -7,7 +7,7 @@ use kube::{api::Api, Client};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
-pub(super) struct RestartEvidence {
+pub(crate) struct RestartEvidence {
     pub(super) state: IncidentSignalState,
     pub(super) last_seen_at: Option<String>,
     pub(super) container: Option<String>,
@@ -57,20 +57,28 @@ pub(super) async fn list_restart_evidence(
     });
     for fetch in join_all(fetches).await {
         let (restarted_resources, pods) = fetch?;
-        let pods_by_name = pods
-            .into_iter()
-            .filter_map(|pod| pod.metadata.name.clone().map(|name| (name, pod)))
-            .collect::<BTreeMap<_, _>>();
-        for resource in restarted_resources {
-            let Some(pod) = pods_by_name.get(&resource.name) else {
-                continue;
-            };
-            if let Some(evidence) = restart_evidence_from_pod(pod) {
-                result.by_resource.insert(resource_key(resource), evidence);
-            }
-        }
+        restart_evidence_from_pods(restarted_resources, pods.items, &mut result.by_resource);
     }
     Ok(result)
+}
+
+pub(crate) fn restart_evidence_from_pods<'a>(
+    restarted_resources: impl IntoIterator<Item = &'a ResourceSummary>,
+    pods: Vec<Pod>,
+    by_resource: &mut BTreeMap<String, RestartEvidence>,
+) {
+    let pods_by_name = pods
+        .into_iter()
+        .filter_map(|pod| pod.metadata.name.clone().map(|name| (name, pod)))
+        .collect::<BTreeMap<_, _>>();
+    for resource in restarted_resources {
+        let Some(pod) = pods_by_name.get(&resource.name) else {
+            continue;
+        };
+        if let Some(evidence) = restart_evidence_from_pod(pod) {
+            by_resource.insert(resource_key(resource), evidence);
+        }
+    }
 }
 
 struct RestartOccurrence {

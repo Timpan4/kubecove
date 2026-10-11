@@ -58,11 +58,11 @@ impl TopologyMode {
     }
 }
 
-fn age_from_metadata(metadata: &ObjectMeta) -> String {
-    resource_age(metadata.creation_timestamp.clone().map(|t| {
+fn age_from_metadata_at(metadata: &ObjectMeta, now: chrono::DateTime<Utc>) -> String {
+    resource_age(metadata.creation_timestamp.as_ref().map(|t| {
         Utc.timestamp_opt(t.0.as_second(), 0)
             .single()
-            .unwrap_or_else(Utc::now)
+            .unwrap_or(now)
     }))
 }
 
@@ -99,14 +99,28 @@ fn selectable_kind(kind: &str) -> bool {
     kind != "EndpointSlice"
 }
 
-pub(super) fn input_from_metadata(
+pub(crate) fn input_from_metadata(
     cluster_context: &str,
     kind: &str,
     api_version: &str,
     metadata: &ObjectMeta,
 ) -> TopologyInputResource {
-    let mut summary =
-        base_resource_summary(kind, cluster_context, metadata, age_from_metadata(metadata));
+    input_from_metadata_at(cluster_context, kind, api_version, metadata, Utc::now())
+}
+
+pub(crate) fn input_from_metadata_at(
+    cluster_context: &str,
+    kind: &str,
+    api_version: &str,
+    metadata: &ObjectMeta,
+    now: chrono::DateTime<Utc>,
+) -> TopologyInputResource {
+    let mut summary = base_resource_summary(
+        kind,
+        cluster_context,
+        metadata,
+        age_from_metadata_at(metadata, now),
+    );
     summary.api_version = Some(api_version.to_string());
     TopologyInputResource {
         uid: metadata.uid.clone().unwrap_or_default(),

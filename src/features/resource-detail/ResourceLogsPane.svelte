@@ -16,7 +16,8 @@
 	import LogsTab from "./LogsTab.svelte";
 	import {
 		appendParsedLogLine,
-		logLineSearchText,
+		filterOrderedParsedLogLines,
+		orderParsedLogLines,
 		type ParsedLogLine,
 	} from "./log-helpers";
 
@@ -105,15 +106,11 @@
 	);
 	const logSignature = $derived(logRequest ? JSON.stringify(logRequest) : "");
 	const orderedVisibleLogLines = $derived(
-		logLatestFirst ? [...parsedLogLines].reverse() : parsedLogLines,
+		orderParsedLogLines(parsedLogLines, logLatestFirst),
 	);
 	const logFilterTerm = $derived(logFilter.trim().toLowerCase());
 	const visibleLogLines = $derived(
-		logFilterTerm
-			? orderedVisibleLogLines.filter((line) =>
-					logLineSearchText(line).includes(logFilterTerm),
-				)
-			: orderedVisibleLogLines,
+		filterOrderedParsedLogLines(orderedVisibleLogLines, logFilterTerm),
 	);
 
 	$effect(() => {

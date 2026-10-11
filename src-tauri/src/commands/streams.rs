@@ -5,6 +5,13 @@ mod logs;
 mod registry;
 mod watch;
 
+#[cfg(feature = "bench-support")]
+pub(crate) use aggregate_logs::benchmark_log_sources_from_pods;
+#[cfg(feature = "bench-support")]
+pub(crate) use logs::benchmark_read_log_line;
+#[cfg(feature = "bench-support")]
+pub(crate) use logs::MAX_LOG_LINE_BYTES;
+
 use crate::commands::kubeconfig::{kubeconfig_source_key, KubeconfigSource};
 use crate::commands::ClusterLiveStore;
 use crate::models::{

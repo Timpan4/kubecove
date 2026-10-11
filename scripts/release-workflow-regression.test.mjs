@@ -1,90 +1,164 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { runInNewContext } from "node:vm";
+import { parse } from "yaml";
 
-const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
+const workflow = parse(readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"));
+const packaging = parse(readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8"));
+const targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin"];
 
-function job(name) {
-  const lines = workflow.split("\n");
-  const start = lines.indexOf(`  ${name}:`);
-  assert.notEqual(start, -1, `Missing job: ${name}`);
-  let end = start + 1;
-  while (end < lines.length && !/^ {2}[\w-]+:$/.test(lines[end])) end++;
-  return lines.slice(start, end).join("\n");
+function job(name, source = workflow) {
+  assert.ok(source.jobs[name], `Missing job: ${name}`);
+  return source.jobs[name];
 }
 
-test("both container variants are verified before registry publication", () => {
-  const build = job("container-build");
-  assert.match(build, /variant: \[full, slim\]/);
-  assert.match(build, /docker build[^\n]+--target "\$VARIANT"/);
-  assert.match(build, /scripts\/container-smoke\.sh/);
-  assert.match(build, /docker save/);
-  assert.doesNotMatch(build, /docker push|docker login/);
-  const verify = job("verify");
-  assert.match(verify, /- container-build/);
-  assert.match(verify, /test "\$\{CONTAINER_BUILD_RESULT\}" = "success"/);
-  const publish = job("publish");
-  assert.match(publish, /packages: write/);
-  assert.match(publish, /- container-build/);
-  assert.ok(publish.indexOf("Publish container images") > publish.indexOf("Verify final updater platform coverage"));
-  assert.match(publish, /docker load/);
-  assert.match(publish, /--password-stdin/);
-  assert.match(publish, /for variant in full slim/);
-  assert.match(publish, /suffix="-slim"/);
+function step(job, name) {
+  const found = job.steps.find((step) => step.name === name);
+  assert.ok(found, `Missing step: ${name}`);
+  return found;
+}
+
+test("release orchestration runs after dependencies are installed in CI and releases", () => {
+  const ci = parse(readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"));
+  for (const source of [ci, workflow]) {
+    const frontend = job("frontend", source);
+    const installed = frontend.steps.indexOf(step(frontend, "Install frontend dependencies"));
+    const tested = frontend.steps.findIndex(({ run }) => run?.includes("node --test") &&
+      run.includes("scripts/release-workflow-regression.test.mjs"));
+    assert.ok(tested > installed, "release tests need the installed YAML parser");
+  }
 });
 
-test("headless release builds the three standalone targets from web assets", () => {
-  const build = job("server-build");
-  for (const target of [
-    "x86_64-unknown-linux-gnu",
-    "x86_64-apple-darwin",
-    "aarch64-apple-darwin",
-  ]) assert.ok(build.includes(`target: ${target}`), target);
+test("both container variants and architectures are verified before registry publication", () => {
+  const build = job("container-build", packaging);
+  assert.deepEqual(build.strategy.matrix.include.map(({ arch, variant }) => `${arch}/${variant}`).sort(),
+    ["amd64/full", "amd64/slim", "arm64/full", "arm64/slim"]);
+  const commands = step(build, "Build and verify container").run;
+  assert.match(commands, /docker build[^\n]+--target "\$VARIANT"/);
+  assert.match(commands, /scripts\/container-smoke\.sh/);
+  assert.ok(commands.indexOf("scripts/container-smoke.sh") < commands.indexOf("docker save"));
+  assert.doesNotMatch(commands, /docker push|docker login/);
+  const shared = job("server-packaging");
+  assert.equal(shared.uses, "./.github/workflows/server-packaging.yml");
+  assert.equal(shared.with["release-tag"], "${{ github.ref_name }}");
+  const verify = job("verify");
+  assert.ok(verify.needs.includes("server-packaging"));
+  assert.equal(step(verify, "Verify required jobs").env.SERVER_PACKAGING_RESULT, "${{ needs.server-packaging.result }}");
+  assert.match(step(verify, "Verify required jobs").run, /test "\$\{SERVER_PACKAGING_RESULT\}" = "success"/);
+  const publish = job("publish");
+  assert.equal(publish.permissions.packages, "write");
+  assert.ok(publish.needs.includes("server-packaging"));
+  const publishCommands = step(publish, "Publish container images").run;
+  assert.match(publishCommands, /docker load/);
+  assert.match(publishCommands, /--password-stdin/);
+  assert.match(publishCommands, /for variant in full slim/);
+  assert.match(publishCommands, /for arch in amd64 arm64/);
+  assert.match(publishCommands, /suffix="-slim"/);
+  assert.match(publishCommands, /docker buildx imagetools create/);
+  assert.doesNotMatch(publishCommands, /docker build --/);
+  assert.ok(publish.steps.indexOf(step(publish, "Publish container images")) >
+    publish.steps.indexOf(step(publish, "Verify final updater platform coverage")));
+});
 
-  assert.match(build, /name: Build embedded web assets\n {8}run: bun --bun vite build\n {8}env:\n {10}KUBECOVE_PUBLIC_RUNTIME: web/);
-  assert.ok(build.indexOf("run: bun --bun vite build") < build.indexOf("run: cargo build --locked --release"));
-  assert.match(build, /run: cargo build --locked --release --manifest-path src-tauri\/server\/Cargo\.toml --target \$\{\{ matrix\.target \}\}/);
-  assert.match(build, /kubecove-server_\$\{version\}_\$\{TARGET\}\.tar\.gz/);
-  assert.match(build, /actions\/upload-artifact@[a-f0-9]{40}/);
-  assert.match(build, /sidecar="kubeconform-\$\{TARGET\}"/);
-  assert.match(build, /test -x "src-tauri\/bin\/\$sidecar"/);
-  assert.match(build, /tar -czf "\$archive"[^\n]+kubecove-server[^\n]+"\$sidecar"/);
-  assert.doesNotMatch(build, /cache-apt-pkgs|apt-get install|webkit2gtk|appindicator|libsecret/);
+test("native builds include Linux arm64 and both variants without a desktop runtime", () => {
+  const build = job("server-build", packaging);
+  assert.deepEqual(build.strategy.matrix.include.map(({ target }) => target).sort(), [...targets].sort());
+  const web = step(build, "Build embedded web assets");
+  assert.equal(web.env.KUBECOVE_PUBLIC_RUNTIME, "web");
+  assert.equal(web.run, "bun --bun vite build");
+  const native = step(build, "Build and package both native variants");
+  assert.ok(build.steps.indexOf(web) < build.steps.indexOf(native));
+  assert.match(native.run, /for variant in full slim/);
+  assert.match(native.run, /cargo build --locked --release --manifest-path src-tauri\/server\/Cargo\.toml --target/);
+  assert.match(native.run, /--no-default-features/);
+  assert.match(native.run, /scripts\/package-server\.sh/);
+  assert.equal(step(build, "Upload server archive for release assembly").with.path, "kubecove-server_*");
+  assert.doesNotMatch(JSON.stringify(build), /cache-apt-pkgs|apt-get install|webkit2gtk|appindicator|libsecret/);
+});
+
+test("native shell builds both variants with a nonempty command array", () => {
+  const commands = step(job("server-build", packaging), "Build and package both native variants").run;
+  // Replace external build/package tools with recordings; execute the real workflow loop.
+  const result = spawnSync("bash", ["-euc", `
+    cargo() { printf 'cargo %s\\n' "$*"; }
+    bash() { printf 'package %s\\n' "$*"; }
+    TARGET=aarch64-apple-darwin
+    TAG_NAME=app-v1.2.3
+    ${commands}
+  `], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.stdout.trim().split("\n"), [
+    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-apple-darwin",
+    "package scripts/package-server.sh aarch64-apple-darwin full 1.2.3",
+    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-apple-darwin --no-default-features",
+    "package scripts/package-server.sh aarch64-apple-darwin slim 1.2.3",
+  ]);
+  // Bash 3.2 treats empty arrays as unset under nounset; the base command must never be empty.
+  assert.match(commands, /build=\(cargo build/);
 });
 
 test("server build reuses pinned actions already used by release jobs", () => {
-  const build = job("server-build");
-  const existingReleaseJob = job("frontend");
+  const build = job("server-build", packaging);
+  const existing = job("frontend");
   for (const action of ["actions/checkout", "oven-sh/setup-bun", "actions/cache"]) {
-    const pinned = existingReleaseJob.match(new RegExp(`uses: ${action.replaceAll("/", "\\/")}@([a-f0-9]{40})`));
-    assert.ok(pinned, `Expected an existing pinned ${action} action`);
-    assert.ok(build.includes(`uses: ${action}@${pinned[1]}`), `${action} pin differs`);
+    const pinned = existing.steps.find(({ uses }) => uses?.startsWith(`${action}@`))?.uses;
+    assert.match(pinned, /@[a-f0-9]{40}$/);
+    assert.ok(build.steps.some(({ uses }) => uses === pinned), `${action} pin differs`);
   }
-  assert.match(build, /dtolnay\/rust-toolchain@[a-f0-9]{40}/);
-  assert.match(build, /swatinem\/rust-cache@[a-f0-9]{40}/);
+  for (const action of ["dtolnay/rust-toolchain", "swatinem/rust-cache"]) {
+    assert.match(build.steps.find(({ uses }) => uses?.startsWith(`${action}@`))?.uses, /@[a-f0-9]{40}$/);
+  }
 });
 
 test("publishing can read build artifacts and waits for all release gates", () => {
   const publish = job("publish");
-  assert.match(publish, /permissions:\n {6}actions: read\n {6}contents: write/);
-  for (const need of ["prepare", "verify", "build", "server-build"]) {
-    assert.match(publish, new RegExp(`- ${need}(?:\\n|$)`), need);
+  assert.equal(publish.permissions.actions, "read");
+  assert.equal(publish.permissions.contents, "write");
+  for (const need of ["prepare", "verify", "build", "server-packaging"]) {
+    assert.ok(publish.needs.includes(need), need);
   }
-  assert.match(publish, /gh run download/);
-  assert.match(publish, /gh release upload[\s\S]*kubecove-server-/);
+  assert.match(step(publish, "Download headless server archives").run, /gh run download/);
+  assert.match(step(publish, "Upload headless server release assets").run, /gh release upload[^\n]+kubecove-server-\*\/kubecove-server_\*/);
 });
 
-test("final asset verification requires each server archive before publishing", () => {
+test("final verification rejects every missing archive, checksum, installer or updater platform", () => {
   const publish = job("publish");
-  for (const asset of [
-    /kubecove-server_\$\{version\}_x86_64-unknown-linux-gnu\.tar\.gz/,
-    /kubecove-server_\$\{version\}_x86_64-apple-darwin\.tar\.gz/,
-    /kubecove-server_\$\{version\}_aarch64-apple-darwin\.tar\.gz/,
-  ]) assert.match(publish, asset);
-
-  const verifyAt = publish.indexOf("Verify final updater platform coverage");
-  const publishAt = publish.indexOf("Publish completed release");
-  assert.notEqual(verifyAt, -1);
-  assert.ok(publishAt > verifyAt, "release must remain unpublished until final verification completes");
-  assert.match(publish.slice(publishAt), /if: needs\.prepare\.outputs\.release-draft == 'true'/);
+  const verification = step(publish, "Verify final updater platform coverage");
+  const code = verification.run.match(/node <<'EOF'\n([\s\S]+)\nEOF/)[1];
+  const version = "1.2.3";
+  const assets = [
+    `KubeCove_${version}_universal.app.tar.gz`, `KubeCove_${version}_universal.app.tar.gz.sig`,
+    `KubeCove_${version}_amd64.AppImage`, `KubeCove_${version}_amd64.AppImage.sig`,
+    `KubeCove_${version}_x64-setup.exe`, `KubeCove_${version}_x64-setup.exe.sig`, "latest.json",
+    ...targets.flatMap((target) => ["", "-slim"].flatMap((suffix) => {
+      const archive = `kubecove-server_${version}_${target}${suffix}.tar.gz`;
+      return [archive, `${archive}.sha256`];
+    })),
+  ];
+  const platforms = Object.fromEntries(["darwin-aarch64", "darwin-x86_64", "linux-x86_64",
+    "linux-x86_64-appimage", "windows-x86_64", "windows-x86_64-nsis"].map((key) => [key, {}]));
+  const validate = (names, coverage) => runInNewContext(code, {
+    process: { env: { UPDATER_CHECK_DIR: "/check", RELEASE_VERSION: version } },
+    require: (name) => {
+      assert.equal(name, "node:fs");
+      return { readFileSync: (path) => {
+        if (path === "/check/assets.txt") return names.join("\n");
+        assert.equal(path, "/check/latest.json");
+        return JSON.stringify({ platforms: coverage });
+      } };
+    },
+  });
+  assert.doesNotThrow(() => validate(assets, platforms));
+  for (const missing of assets) {
+    assert.throws(() => validate(assets.filter((asset) => asset !== missing), platforms), /missing assets/);
+  }
+  for (const missing of Object.keys(platforms)) {
+    assert.throws(() => validate(assets, Object.fromEntries(Object.entries(platforms).filter(([key]) => key !== missing))),
+      /missing platforms/);
+  }
+  const final = step(publish, "Publish completed release");
+  assert.ok(publish.steps.indexOf(final) > publish.steps.indexOf(verification));
+  assert.equal(final.if, "needs.prepare.outputs.release-draft == 'true'");
 });

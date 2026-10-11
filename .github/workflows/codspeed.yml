@@ -21,17 +21,21 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.detect.outputs.frontend }}
+      frontend_suites: ${{ steps.suites.outputs.files }}
       rust: ${{ steps.detect.outputs.rust }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       - name: Test benchmark orchestration
         run: node --test scripts/codspeed-workflow-regression.test.mjs
+
+      - name: Enumerate frontend benchmark files
+        id: suites
+        run: echo "files=$(node scripts/codspeed-benchmark-suites.mjs)" >> "${GITHUB_OUTPUT}"
 
       - name: Detect frontend and Rust benchmark changes
         id: detect
@@ -56,11 +60,16 @@ jobs:
             exit 0
           fi
 
-          git diff --name-only --no-renames "${BASE_SHA}" "${HEAD_SHA}" | tee /tmp/kubecove-changed-files.txt
+          for sha in "${BASE_SHA}" "${HEAD_SHA}"; do
+            if ! git cat-file -e "${sha}^{commit}"; then
+              git fetch --no-tags --depth=1 origin "${sha}"
+            fi
+          done
+          changed_files=$(git diff --name-only --no-renames "${BASE_SHA}" "${HEAD_SHA}")
           frontend=false
           rust=false
           while IFS= read -r path; do
-            if [[ "${path}" == .github/* ]]; then
+            if [[ "${path}" == .github/* || "${path}" == fixtures/* || "${path}" == */fixtures/* ]]; then
               frontend=true
               rust=true
             elif [[ "${path}" == src-tauri/* ]]; then
@@ -73,12 +82,12 @@ jobs:
                 rust=true
               fi
             fi
-          done < /tmp/kubecove-changed-files.txt
+          done <<< "${changed_files}"
           echo "frontend=${frontend}" >> "${GITHUB_OUTPUT}"
           echo "rust=${rust}" >> "${GITHUB_OUTPUT}"
 
   frontend:
-    name: Run frontend benchmarks (${{ matrix.suite }})
+    name: Run frontend benchmarks (${{ matrix.file }})
     permissions:
       contents: read
       id-token: write
@@ -89,9 +98,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [topology, other]
+        file: ${{ fromJSON(needs.changes.outputs.frontend_suites) }}
     env:
-      KUBECOVE_BENCHMARK_SUITE: ${{ matrix.suite }}
+      KUBECOVE_BENCHMARK_FILE: ${{ matrix.file }}
 
     steps:
       - name: Checkout
@@ -116,7 +125,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v5.2.1
+        uses: CodSpeedHQ/action@v5.4.0
         with:
           mode: simulation
           run: bunx vitest bench --run
@@ -140,7 +149,7 @@ jobs:
       - name: Install Tauri Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
@@ -154,6 +163,7 @@ jobs:
         with:
           shared-key: kubecove-rust-codspeed
           workspaces: "./src-tauri -> target"
+          cache-workspace-crates: true
 
       - name: Install cargo-codspeed
         run: cargo install cargo-codspeed --version 5.0.1 --locked
@@ -163,7 +173,7 @@ jobs:
         run: cargo codspeed build --features bench-support --bench backend_hot_paths --locked
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v5.2.1
+        uses: CodSpeedHQ/action@v5.4.0
         with:
           mode: simulation
           run: cd src-tauri && cargo codspeed run --bench backend_hot_paths

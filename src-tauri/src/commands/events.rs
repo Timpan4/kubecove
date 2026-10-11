@@ -70,17 +70,52 @@ fn event_matches_resource(
         }
 }
 
-fn summarize_event(event: &k8s_openapi::api::core::v1::Event) -> ResourceEventSummary {
+fn summarize_event_at(
+    event: &k8s_openapi::api::core::v1::Event,
+    now: Option<DateTime<Utc>>,
+) -> ResourceEventSummary {
     ResourceEventSummary {
         event_type: event.type_.clone().unwrap_or_else(|| "Normal".to_string()),
         reason: event.reason.clone().unwrap_or_else(|| "Event".to_string()),
         message: event.message.clone().unwrap_or_default(),
         count: event.count.unwrap_or(1),
-        last_seen: resource_age(event_timestamp(event)),
+        last_seen: match (event_timestamp(event), now) {
+            (Some(timestamp), Some(now)) => {
+                crate::commands::helpers::resource_age_at(timestamp, now)
+            }
+            (timestamp, _) => resource_age(timestamp),
+        },
         last_seen_at: event_timestamp(event).map(|dt| dt.to_rfc3339()),
         source: event_source(event),
         namespace: event.metadata.namespace.clone(),
     }
+}
+
+pub(crate) fn resource_events_after_fetch(
+    events: Vec<k8s_openapi::api::core::v1::Event>,
+    kind: &str,
+    name: &str,
+    namespace: Option<&str>,
+    uid: Option<&str>,
+) -> Vec<ResourceEventSummary> {
+    resource_events_after_fetch_at(events, kind, name, namespace, uid, None)
+}
+
+pub(crate) fn resource_events_after_fetch_at(
+    mut events: Vec<k8s_openapi::api::core::v1::Event>,
+    kind: &str,
+    name: &str,
+    namespace: Option<&str>,
+    uid: Option<&str>,
+    now: Option<DateTime<Utc>>,
+) -> Vec<ResourceEventSummary> {
+    events.retain(|event| event_matches_resource(event, kind, name, namespace, uid));
+    events.sort_by_key(event_timestamp);
+    events.reverse();
+    events
+        .iter()
+        .map(|event| summarize_event_at(event, now))
+        .collect()
 }
 
 pub async fn resource_events_from(
@@ -105,20 +140,20 @@ pub async fn resource_events_from(
         None => format!("involvedObject.kind={kind},involvedObject.name={name}"),
     };
 
-    let mut events: Vec<_> = event_api
+    let events: Vec<_> = event_api
         .list(&list_params().fields(&field_selector))
         .await
         .map_err(AppError::from)?
         .into_iter()
-        .filter(|event| {
-            event_matches_resource(event, &kind, &name, namespace.as_deref(), uid.as_deref())
-        })
         .collect();
 
-    events.sort_by_key(event_timestamp);
-    events.reverse();
-
-    Ok(events.iter().map(summarize_event).collect())
+    Ok(resource_events_after_fetch(
+        events,
+        &kind,
+        &name,
+        namespace.as_deref(),
+        uid.as_deref(),
+    ))
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -245,7 +280,7 @@ mod tests {
         assert_eq!(event_source(&event), "deployment-controller");
         assert_eq!(event_timestamp(&event).unwrap().timestamp(), 1_700_000_100);
 
-        let summary = summarize_event(&event);
+        let summary = summarize_event_at(&event, None);
         assert_eq!(summary.event_type, "Warning");
         assert_eq!(summary.reason, "BackOff");
         assert_eq!(summary.count, 3);

@@ -104,6 +104,7 @@ pub(crate) async fn fetch_flux_ownership_index(
             plural: plural.to_string(),
         };
         let mut objects = Vec::new();
+        let mut batch_partial = false;
         // Owners are cluster-wide evidence; target namespaces only filter retained inventory identities.
         let api = Api::<DynamicObject>::all_with(client.clone(), &resource);
         for api in [api] {
@@ -112,7 +113,7 @@ pub(crate) async fn fetch_flux_ownership_index(
                 .await
             {
                 Ok(rows) => {
-                    index.partial |= has_continuation_token(rows.metadata.continue_.as_deref());
+                    batch_partial |= has_continuation_token(rows.metadata.continue_.as_deref());
                     objects.extend(rows.items);
                 }
                 Err(e) => {
@@ -120,72 +121,90 @@ pub(crate) async fn fetch_flux_ownership_index(
                     if error.kind == AppErrorKind::Cancelled {
                         return Err(error);
                     }
-                    index.partial = true;
+                    batch_partial = true;
                 }
             }
         }
-        if objects.len() >= MAX_FLUX_OWNER_OBJECTS {
-            index.partial = true;
-        }
-        for object in objects.into_iter().take(MAX_FLUX_OWNER_OBJECTS) {
-            let Some(owner_name) = object.metadata.name.clone() else {
-                index.partial = true;
-                continue;
-            };
-            let owner_namespace = object.metadata.namespace.clone();
-            let entries = object
-                .data
-                .get("status")
-                .and_then(|s| s.get("inventory"))
-                .and_then(|i| i.get("entries"))
-                .and_then(|e| e.as_array());
-            let Some(entries) = entries else {
-                index.partial = true;
-                continue;
-            };
-            if entries.len() > MAX_FLUX_INVENTORY_ENTRIES {
-                index.partial = true;
-            }
-            for entry in entries.iter().take(MAX_FLUX_INVENTORY_ENTRIES) {
-                let Some(id) = entry.get("id").and_then(|v| v.as_str()) else {
-                    index.partial = true;
-                    continue;
-                };
-                let Some((namespace, name, group, target_kind)) = parse_inventory_id(id) else {
-                    index.partial = true;
-                    continue;
-                };
-                let Some(api_version) = normalized_api_version(
-                    &group,
-                    entry
-                        .get("version")
-                        .or_else(|| entry.get("v"))
-                        .and_then(|v| v.as_str()),
-                ) else {
-                    index.partial = true;
-                    continue;
-                };
-                index
-                    .owners
-                    .entry(ResourceKey {
-                        namespace: namespace.clone(),
-                        api_version,
-                        kind: target_kind,
-                        name,
-                    })
-                    .or_insert_with(|| GitOpsOwnerSummary {
-                        provider: "flux".into(),
-                        kind: kind.to_string(),
-                        name: owner_name.clone(),
-                        namespace: owner_namespace.clone(),
-                        confidence: "inventory".into(),
-                        provenance: "flux-inventory".into(),
-                        partial: true,
-                    });
-            }
-        }
+        index_flux_owner_objects(&mut index, kind, objects, batch_partial);
     }
     Ok(index)
+}
+
+fn index_flux_owner_objects(
+    index: &mut FluxOwnershipIndex,
+    kind: &str,
+    objects: Vec<DynamicObject>,
+    batch_partial: bool,
+) {
+    index.partial |= batch_partial || objects.len() >= MAX_FLUX_OWNER_OBJECTS;
+    for object in objects.into_iter().take(MAX_FLUX_OWNER_OBJECTS) {
+        let Some(owner_name) = object.metadata.name.clone() else {
+            index.partial = true;
+            continue;
+        };
+        let owner_namespace = object.metadata.namespace.clone();
+        let entries = object
+            .data
+            .get("status")
+            .and_then(|s| s.get("inventory"))
+            .and_then(|i| i.get("entries"))
+            .and_then(|e| e.as_array());
+        let Some(entries) = entries else {
+            index.partial = true;
+            continue;
+        };
+        if entries.len() > MAX_FLUX_INVENTORY_ENTRIES {
+            index.partial = true;
+        }
+        for entry in entries.iter().take(MAX_FLUX_INVENTORY_ENTRIES) {
+            let Some(id) = entry.get("id").and_then(|v| v.as_str()) else {
+                index.partial = true;
+                continue;
+            };
+            let Some((namespace, name, group, target_kind)) = parse_inventory_id(id) else {
+                index.partial = true;
+                continue;
+            };
+            let Some(api_version) = normalized_api_version(
+                &group,
+                entry
+                    .get("version")
+                    .or_else(|| entry.get("v"))
+                    .and_then(|v| v.as_str()),
+            ) else {
+                index.partial = true;
+                continue;
+            };
+            index
+                .owners
+                .entry(ResourceKey {
+                    namespace: namespace.clone(),
+                    api_version,
+                    kind: target_kind,
+                    name,
+                })
+                .or_insert_with(|| GitOpsOwnerSummary {
+                    provider: "flux".into(),
+                    kind: kind.to_string(),
+                    name: owner_name.clone(),
+                    namespace: owner_namespace.clone(),
+                    confidence: "inventory".into(),
+                    provenance: "flux-inventory".into(),
+                    partial: true,
+                });
+        }
+    }
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn flux_ownership_index_from_fetched_objects(
+    batches: Vec<(String, Vec<DynamicObject>)>,
+) -> FluxOwnershipIndex {
+    let mut index = FluxOwnershipIndex::default();
+    for (kind, objects) in batches {
+        index_flux_owner_objects(&mut index, &kind, objects, false);
+    }
+    index
 }
 
 /// Restricts a fetched index to owners whose inventoried targets live in the

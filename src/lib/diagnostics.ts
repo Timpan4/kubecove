@@ -157,6 +157,15 @@ export function clearDiagnostics(): void {
 }
 
 export function getDiagnosticsSnapshot(): DiagnosticsSnapshot {
+	return buildDiagnosticsSnapshot(enabled, counters, frontendEvents, traceLines);
+}
+
+export function buildDiagnosticsSnapshot(
+	enabled: boolean,
+	counters: ReadonlyMap<string, number>,
+	frontendEvents: FrontendDiagnosticEvent[],
+	traceLines: string[],
+): DiagnosticsSnapshot {
 	const counterSnapshot = Object.fromEntries(counters.entries());
 	const timedEvents = frontendEvents.filter(
 		(event) => Object.is(Number(event.durationMs), event.durationMs),

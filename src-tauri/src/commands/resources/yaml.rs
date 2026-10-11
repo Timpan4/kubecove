@@ -3,7 +3,7 @@ use crate::commands::{
     diagnostic_field,
     helpers::{
         fetch_and_serialize_cluster_with_encoding, fetch_and_serialize_with_encoding,
-        redact_secret, serialize_resource_document,
+        fetch_resource, redact_secret, serialize_resource_document,
     },
     kubeconfig::KubeconfigSource,
     BackendCancellationRegistry,
@@ -129,15 +129,13 @@ pub(super) async fn resource_yaml_with_client(
             Ok(yaml)
         }
         "Secret" => {
-            let (mut sec, _yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::core::v1::Secret,
-            >(
-                client, namespace.as_deref(), &name, mode, encoding
+            let secret = fetch_resource::<k8s_openapi::api::core::v1::Secret>(
+                client,
+                namespace.as_deref(),
+                &name,
             )
             .await?;
-            redact_secret(&mut sec);
-            let yaml = serialize_resource_document(&sec, mode, encoding)?;
-            Ok(yaml)
+            serialize_secret_resource_document(secret, mode, encoding)
         }
         "PersistentVolumeClaim" => {
             let (_pvc, yaml) = fetch_and_serialize_with_encoding::<
@@ -198,6 +196,16 @@ pub(super) async fn resource_yaml_with_client(
             AppErrorKind::Cluster,
         )),
     }
+}
+
+pub(crate) fn serialize_secret_resource_document(
+    mut secret: k8s_openapi::api::core::v1::Secret,
+    mode: YamlViewMode,
+    encoding: YamlEncoding,
+) -> Result<String, AppError> {
+    let _discarded_first_document = serialize_resource_document(&secret, mode, encoding)?;
+    redact_secret(&mut secret);
+    serialize_resource_document(&secret, mode, encoding)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

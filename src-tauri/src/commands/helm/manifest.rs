@@ -33,7 +33,8 @@ pub(crate) fn manifest_resources(manifest: Option<&str>) -> Vec<HelmManifestReso
     let mut resources = Vec::new();
     for document in serde_yaml::Deserializer::from_str(manifest) {
         let Ok(value) = serde_yaml::Value::deserialize(document) else {
-            continue;
+            // The iterator cannot advance past a YAML syntax error.
+            break;
         };
         let Some(resource) = manifest_resource_summary(&value) else {
             continue;

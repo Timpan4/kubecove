@@ -308,13 +308,7 @@ impl KubeconfigSource {
         for configured in paths {
             match Kubeconfig::read_from(&configured.path) {
                 Ok(next) => {
-                    merged = merged.merge(next).map_err(|err| {
-                        AppError::new(
-                            format_kubeconfig_error(&self.env_var),
-                            AppErrorKind::Kubeconfig,
-                        )
-                        .with_source(err)
-                    })?;
+                    merged = merge_kubeconfigs(merged, next, &self.env_var)?;
                     loaded += 1;
                 }
                 Err(err) => {
@@ -374,16 +368,46 @@ pub fn cluster_contexts_from_source(
     source: &KubeconfigSource,
 ) -> Result<Vec<ClusterContext>, AppError> {
     let kubeconfig = source.read_kubeconfig()?;
+    Ok(cluster_contexts_from_kubeconfig(&kubeconfig))
+}
+
+pub(crate) fn cluster_contexts_from_kubeconfig(kubeconfig: &Kubeconfig) -> Vec<ClusterContext> {
     let current_context = kubeconfig.current_context.as_deref();
 
-    Ok(kubeconfig
+    kubeconfig
         .contexts
         .iter()
         .map(|ctx| ClusterContext {
             name: ctx.name.clone(),
             is_current: current_context == Some(ctx.name.as_str()),
         })
-        .collect())
+        .collect()
+}
+
+fn merge_kubeconfigs(
+    merged: Kubeconfig,
+    next: Kubeconfig,
+    env_var: &str,
+) -> Result<Kubeconfig, AppError> {
+    merged.merge(next).map_err(|err| {
+        AppError::new(format_kubeconfig_error(env_var), AppErrorKind::Kubeconfig).with_source(err)
+    })
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn kubeconfig_from_source_texts(sources: &[&str]) -> Result<Kubeconfig, AppError> {
+    let mut merged = Kubeconfig::default();
+    for source in sources {
+        let next = Kubeconfig::from_yaml(source).map_err(|error| {
+            AppError::new(
+                "failed to parse a configured kubeconfig source",
+                AppErrorKind::Kubeconfig,
+            )
+            .with_source(error)
+        })?;
+        merged = merge_kubeconfigs(merged, next, DEFAULT_KUBECONFIG_ENV_VAR)?;
+    }
+    Ok(merged)
 }
 
 fn normalize_env_var(env_var: Option<&str>) -> String {

@@ -46,7 +46,8 @@
 	import RbacReviewBadge from "./RbacReviewBadge.svelte";
 	import RbacReviewPanel from "./RbacReviewPanel.svelte";
 	import type { RbacReviewRecord } from "./reviewModel";
-	import { riskSummaryLabel, subjectListLabel } from "./risk";
+	import { riskSummaryLabel } from "./risk";
+	import { bindingSources, queueSummary, queueTags } from "./queueModel";
 	import type { RbacView } from "./surfaceModel";
 
 	type InspectorIdentity = {
@@ -415,86 +416,6 @@
 
 	function riskCount(next: RbacRiskBucket) {
 		return filterCockpitItems(allItems, next, "").length;
-	}
-
-	function queueTags(
-		inspection: RbacInspectionSummary,
-		entry: RbacCockpitItem,
-	): string[] {
-		if (entry.category === "Service Accounts" && isServiceAccountSummary(entry.item)) {
-			const account = entry.item;
-			return [
-				`${bindingSources(inspection, entry).length} bindings`,
-				`${account.secretsCount} secrets`,
-				account.automountToken === false ? "token off" : "token posture",
-			];
-		}
-		if ((entry.category === "Roles" || entry.category === "Cluster Roles") && isRbacRoleSummary(entry.item)) {
-			const role = entry.item;
-			return [
-				`${role.rulesCount} rules`,
-				role.namespace ?? "cluster-wide",
-			];
-		}
-		if (entry.category === "Bindings" && isRbacBindingSummary(entry.item)) {
-			const binding = entry.item;
-			return [
-				`${binding.subjects.length} subjects`,
-				`${binding.roleRefKind}/${binding.roleRefName}`,
-			];
-		}
-		if (!isRbacNamespaceAccessSummary(entry.item)) return [];
-		const namespaceAccess = entry.item;
-		return [
-			`${namespaceAccess.serviceAccounts} identities`,
-			`${namespaceAccess.roleBindings} bindings`,
-		];
-	}
-
-	function queueSummary(entry: RbacCockpitItem): string {
-		if (entry.risks.length) {
-			return entry.risks
-				.slice(0, 2)
-				.map((risk) => risk.label)
-				.join(" · ");
-		}
-		if ("subjects" in entry.item) return subjectListLabel(entry.item.subjects, 2);
-		return "No policy heuristic flags for this object.";
-	}
-
-	function bindingSources(
-		inspection: RbacInspectionSummary,
-		entry: RbacCockpitItem,
-	): RbacBindingSummary[] {
-		const bindings = [...inspection.roleBindings, ...inspection.clusterRoleBindings];
-		if (entry.category === "Service Accounts" && isServiceAccountSummary(entry.item)) {
-			const account = entry.item;
-			const groups = new Set([
-				"system:serviceaccounts",
-				`system:serviceaccounts:${account.namespace}`,
-				"system:authenticated",
-			]);
-			return bindings.filter((binding) =>
-				binding.subjects.some(
-					(subject) =>
-						(subject.kind === "ServiceAccount" &&
-							subject.name === account.name &&
-							subject.namespace === account.namespace) ||
-						(subject.kind === "Group" && groups.has(subject.name)),
-				),
-			);
-		}
-		if ((entry.category === "Roles" || entry.category === "Cluster Roles") && isRbacRoleSummary(entry.item)) {
-			const role = entry.item;
-			return bindings.filter(
-				(binding) =>
-					binding.roleRefKind === role.kind &&
-					binding.roleRefName === role.name &&
-					(role.kind !== "Role" || binding.namespace === role.namespace),
-			);
-		}
-		if (entry.category === "Bindings" && isRbacBindingSummary(entry.item)) return [entry.item];
-		return bindings.filter((binding) => binding.namespace === entry.namespace);
 	}
 
 	function selectedReach(): string {

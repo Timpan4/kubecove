@@ -64,7 +64,7 @@ pub async fn get_helm_release_reconciliation(
     )
     .await?;
     let discovered = discovered_resources(client.clone()).await?;
-    let (resources, warnings) = reconcile_release(
+    let (resources, warnings, totals) = reconcile_release(
         client,
         &cluster_context,
         &record.summary,
@@ -75,7 +75,7 @@ pub async fn get_helm_release_reconciliation(
 
     Ok(HelmReleaseReconciliation {
         summary: record.summary,
-        totals: reconciliation_totals(&resources),
+        totals,
         resources,
         warnings,
     })
@@ -121,15 +121,18 @@ async fn reconcile_release(
     release: &HelmReleaseSummary,
     manifest_refs: &[HelmManifestResourceSummary],
     discovered: &[DiscoveredResourceKind],
-) -> (Vec<HelmReconciliationResource>, Vec<String>) {
+) -> (
+    Vec<HelmReconciliationResource>,
+    Vec<String>,
+    HelmReconciliationTotals,
+) {
     let discovered_by_ref = discovered_ref_index(discovered);
     let mut rows_by_key = BTreeMap::new();
     let mut unavailable_rows = Vec::new();
     let mut manifest_scan_kinds = BTreeSet::new();
 
     for manifest_ref in manifest_refs {
-        match resource_identity_from_manifest(manifest_ref, &release.namespace, &discovered_by_ref)
-        {
+        match prepare_manifest_ref(manifest_ref, &release.namespace, &discovered_by_ref) {
             Ok(identity) => {
                 manifest_scan_kinds
                     .insert((identity.key.api_version.clone(), identity.key.kind.clone()));
@@ -143,7 +146,7 @@ async fn reconcile_release(
                 .await;
                 rows_by_key.insert(identity.key, row);
             }
-            Err(message) => unavailable_rows.push(unavailable_row(manifest_ref, true, message)),
+            Err(row) => unavailable_rows.push(row),
         }
     }
 
@@ -159,12 +162,120 @@ async fn reconcile_release(
     )
     .await;
 
+    assemble_reconciliation_rows(rows_by_key, unavailable_rows, warnings)
+}
+
+fn assemble_reconciliation_rows(
+    rows_by_key: BTreeMap<ResourceKey, HelmReconciliationResource>,
+    mut unavailable_rows: Vec<HelmReconciliationResource>,
+    mut warnings: Vec<String>,
+) -> (
+    Vec<HelmReconciliationResource>,
+    Vec<String>,
+    HelmReconciliationTotals,
+) {
     let mut rows: Vec<HelmReconciliationResource> = rows_by_key.into_values().collect();
-    rows.extend(unavailable_rows);
+    rows.append(&mut unavailable_rows);
     rows.sort_by_key(row_sort_key);
     warnings.sort();
     warnings.dedup();
-    (rows, warnings)
+    let totals = reconciliation_totals(&rows);
+    (rows, warnings, totals)
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) struct BenchmarkReconciliationPreparation {
+    pub discovered_index_size: usize,
+    pub valid_identity_count: usize,
+    pub unavailable_rows: Vec<HelmReconciliationResource>,
+    pub scan_kinds: Vec<DiscoveredResourceKind>,
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_reconciliation_prepare(
+    manifest_refs: &[HelmManifestResourceSummary],
+    discovered: &[DiscoveredResourceKind],
+) -> BenchmarkReconciliationPreparation {
+    let discovered_by_ref = discovered_ref_index(discovered);
+    let mut valid_identity_count = 0;
+    let mut unavailable_rows = Vec::new();
+    let mut manifest_scan_kinds = BTreeSet::new();
+    for manifest_ref in manifest_refs {
+        match prepare_manifest_ref(manifest_ref, "payments", &discovered_by_ref) {
+            Ok(identity) => {
+                manifest_scan_kinds
+                    .insert((identity.key.api_version.clone(), identity.key.kind.clone()));
+                std::hint::black_box(identity);
+                valid_identity_count += 1;
+            }
+            Err(row) => unavailable_rows.push(row),
+        }
+    }
+    let scan_kinds = conservative_label_scan_kinds(discovered, &manifest_scan_kinds);
+    BenchmarkReconciliationPreparation {
+        discovered_index_size: discovered_by_ref.len(),
+        valid_identity_count,
+        unavailable_rows,
+        scan_kinds,
+    }
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_reconciliation_identity_namespace(
+    manifest_ref: &HelmManifestResourceSummary,
+    release_namespace: &str,
+    discovered: &[DiscoveredResourceKind],
+) -> Option<String> {
+    let discovered_by_ref = discovered_ref_index(discovered);
+    prepare_manifest_ref(manifest_ref, release_namespace, &discovered_by_ref)
+        .ok()
+        .and_then(|identity| identity.key.namespace)
+}
+
+// Keep the projected row inline; boxing would add an allocation to each invalid ref.
+#[allow(clippy::result_large_err)]
+fn prepare_manifest_ref(
+    manifest_ref: &HelmManifestResourceSummary,
+    release_namespace: &str,
+    discovered_by_ref: &BTreeMap<(String, String), DiscoveredResourceKind>,
+) -> Result<ResourceIdentity, HelmReconciliationResource> {
+    resource_identity_from_manifest(manifest_ref, release_namespace, discovered_by_ref)
+        .map_err(|message| unavailable_row(manifest_ref, true, message))
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_reconciliation_assemble(
+    summary: HelmReleaseSummary,
+    rows: Vec<(
+        String,
+        String,
+        Option<String>,
+        String,
+        HelmReconciliationResource,
+    )>,
+    unavailable_rows: Vec<HelmReconciliationResource>,
+    warnings: Vec<String>,
+) -> HelmReleaseReconciliation {
+    let mut rows_by_key = BTreeMap::new();
+    for (api_version, kind, namespace, name, row) in rows {
+        rows_by_key.insert(
+            ResourceKey {
+                api_version,
+                kind,
+                namespace,
+                name,
+            },
+            row,
+        );
+    }
+    let (resources, warnings, totals) =
+        assemble_reconciliation_rows(rows_by_key, unavailable_rows, warnings);
+    HelmReleaseReconciliation {
+        summary,
+        totals,
+        resources,
+        warnings,
+    }
 }
 
 fn discovered_ref_index(

@@ -20,7 +20,12 @@
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import { nodeIdToString, type TreeNode, type TreeNodeId } from "@/lib/tree-nav";
 	import { settingsStore } from "@/lib/settings-store";
-	import { buildNamespaceTreeNode } from "@/components/sidebar-tree-helpers";
+	import {
+		buildExpandedNamespaceChildren,
+		customResourceErrorsByExpandedNamespace,
+		customResourcesByExpandedNamespace,
+		pendingCustomResourceNamespaces as buildPendingCustomResourceNamespaces,
+	} from "@/components/sidebar-tree-helpers";
 	import { buildSidebarTree } from "./workspaceShellModel";
 	import SidebarTreeNode from "./SidebarTreeNode.svelte";
 
@@ -112,70 +117,31 @@
 		})),
 	}));
 	const customResourcesByNamespace = $derived.by(() => {
-		const rows = new Map<string, DiscoveredResourceKind[]>();
-		if (!showCustomResources) return rows;
-		for (const [index, query] of namespaceCustomResourceQueries.entries()) {
-			const namespace = expandedNamespaces[index];
-			if (!namespace || !query.data) continue;
-			// SAFETY: every generated query calls listPresentCustomResourceKinds, which returns this array type.
-			const data = query.data as DiscoveredResourceKind[];
-			rows.set(namespace, data);
-		}
-		return rows;
+		return showCustomResources
+			? customResourcesByExpandedNamespace(expandedNamespaces, namespaceCustomResourceQueries)
+			: new Map<string, DiscoveredResourceKind[]>();
 	});
 	const customResourceErrorsByNamespace = $derived.by(() => {
-		const errors = new Map<string, string>();
-		if (!showCustomResources) return errors;
-		for (const [index, query] of namespaceCustomResourceQueries.entries()) {
-			const namespace = expandedNamespaces[index];
-			if (!namespace || !query.isError) continue;
-			errors.set(
-				namespace,
-				query.error instanceof Error ? query.error.message : String(query.error),
-			);
-		}
-		return errors;
+		return showCustomResources
+			? customResourceErrorsByExpandedNamespace(expandedNamespaces, namespaceCustomResourceQueries)
+			: new Map<string, string>();
 	});
 	const pendingCustomResourceNamespaces = $derived.by(() => {
-		const pending = new Set<string>();
-		if (!showCustomResources) return pending;
-		for (const [index, query] of namespaceCustomResourceQueries.entries()) {
-			const namespace = expandedNamespaces[index];
-			if (namespace && query.isPending) pending.add(namespace);
-		}
-		return pending;
+		return showCustomResources
+			? buildPendingCustomResourceNamespaces(expandedNamespaces, namespaceCustomResourceQueries)
+			: new Set<string>();
 	});
 	let customResourceSearch = $state("");
 	function getLazyChildren(node: TreeNode) {
 		if (node.id.type !== "namespace" || !node.id.namespace) return node.children;
 		if (!showCustomResources) return node.children;
 		const customResources = customResourcesByNamespace.get(node.id.namespace) ?? [];
-		const children = buildNamespaceTreeNode(node.id.namespace, customResources).children ?? [];
-		const error = customResourceErrorsByNamespace.get(node.id.namespace);
-		if (error) {
-			return children.concat({
-				id: {
-					type: "group",
-					section: "namespaces",
-					namespace: node.id.namespace,
-					group: "custom-resources-error",
-				},
-				label: "Custom resources failed to load",
-				description: error,
-				disabled: true,
-			});
-		}
-		if (!pendingCustomResourceNamespaces.has(node.id.namespace)) return children;
-		return children.concat({
-			id: {
-				type: "group",
-				section: "namespaces",
-				namespace: node.id.namespace,
-				group: "custom-resources-loading",
-			},
-			label: "Loading custom resources...",
-			disabled: true,
-		});
+		return buildExpandedNamespaceChildren(
+			node.id.namespace,
+			customResources,
+			customResourceErrorsByNamespace.get(node.id.namespace),
+			pendingCustomResourceNamespaces.has(node.id.namespace),
+		);
 	}
 	const nodes = $derived(buildSidebarTree({
 		namespaces: namespacesQuery.data ?? [],

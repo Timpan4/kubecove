@@ -58,6 +58,18 @@ metadata:
 }
 
 #[test]
+fn malformed_manifest_stops_parsing_and_preserves_valid_prefix() {
+    // A syntax error leaves the YAML document iterator at the failed document.
+    // Retrying it would hang; resources parsed before it must remain available.
+    let valid = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: before-error\n";
+    let malformed = "apiVersion: apps/v1\nkind: [";
+    let summary = manifest_summary(Some(&format!("{valid}---\n{malformed}")), None);
+    assert_eq!(summary.resource_count, 1);
+    assert_eq!(summary.resources[0].name.as_deref(), Some("before-error"));
+    assert_eq!(manifest_summary(Some(malformed), None).resource_count, 0);
+}
+
+#[test]
 fn rejects_decoded_release_over_approved_budget() {
     use std::io::Write;
     const LIMIT: usize = 32 * 1024 * 1024;

@@ -7,6 +7,7 @@ import {
 } from "@/features/resources";
 import { gitOpsSelectionResource } from "@/lib/gitops-resource";
 import { resourceKey } from "@/lib/resource-identity";
+import type { ResourceScopeResult } from "@/lib/resource-scope-types";
 import {
 	SECTIONS,
 	type SectionName,
@@ -181,4 +182,18 @@ export function buildDedupedResourceSearchIndex(
 		}
 	}
 	return buildResourceSearchIndex(unique);
+}
+
+export function buildPaletteResourceSearchIndex(
+	warmedRows: ResourceSummary[],
+	argoRows: ResourceSummary[],
+	cachedRows: readonly (
+		readonly [unknown, Pick<ResourceScopeResult, "resources"> | undefined]
+	)[],
+): ResourceSearchEntry[] {
+	return buildDedupedResourceSearchIndex([
+		warmedRows,
+		argoRows,
+		...cachedRows.map(([, result]) => result?.resources ?? []),
+	]);
 }
