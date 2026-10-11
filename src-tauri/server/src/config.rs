@@ -17,6 +17,7 @@ pub const HELP: &str = "kubecove-server [OPTIONS]\n\
   --oidc-client-id <ID>   Registered OIDC application client ID\n\
   --oidc-client-secret-file <PATH>  Optional confidential-client secret\n\
   --oidc-login-timeout <TIME>  Required OIDC transaction and network deadline\n\
+  --oidc-kubernetes-credentials <AUD>  Call Kubernetes with the user's ID token; AUD is the API server's OIDC client ID\n\
   --print-token          Also print the token on startup\n\
   --quiet                Suppress the startup login URL in service logs\n\
   --help                 Show this help";
@@ -59,6 +60,7 @@ impl Config {
         let mut oidc_client = None;
         let mut oidc_secret = None;
         let mut oidc_timeout = None;
+        let mut oidc_forward = None;
         let mut args = args.into_iter();
         while let Some(flag) = args.next() {
             let flag = flag.to_str().ok_or("option names must be UTF-8")?;
@@ -81,6 +83,9 @@ impl Config {
                 "--oidc-issuer" => oidc_issuer = Some(text(value(&mut args, flag)?)?),
                 "--oidc-client-id" => oidc_client = Some(text(value(&mut args, flag)?)?),
                 "--oidc-client-secret-file" => oidc_secret = Some(value(&mut args, flag)?.into()),
+                "--oidc-kubernetes-credentials" => {
+                    oidc_forward = Some(text(value(&mut args, flag)?)?);
+                }
                 "--oidc-login-timeout" => {
                     oidc_timeout = Some(duration(&text(value(&mut args, flag)?)?, flag)?);
                 }
@@ -109,6 +114,15 @@ impl Config {
                 )
             }
         };
+        if let Some(audience) = oidc_forward {
+            config.oidc = Some(
+                config
+                    .oidc
+                    .take()
+                    .ok_or("--oidc-kubernetes-credentials requires OIDC sign-in")?
+                    .with_forwarded_credentials(audience)?,
+            );
+        }
         if config.data_dir.as_os_str().is_empty() {
             config.data_dir = default_data_dir()?;
         }

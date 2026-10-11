@@ -2,12 +2,23 @@ use super::kubeconfig::{KubeconfigSource, FINITE_REQUEST_READ_TIMEOUT};
 #[cfg(test)]
 use crate::models::AppErrorKind;
 use crate::{
-    commands::helpers::{client_cache, client_cancellation::RequestCancellationLayer},
+    commands::helpers::{
+        client_cache, client_cancellation::RequestCancellationLayer,
+        forwarded_bearer::forwarded_bearer_layer,
+    },
     models::AppError,
 };
-use kube::{client::ClientBuilder, Client};
+use kube::{client::ClientBuilder, Client, Config};
 use std::future::Future;
 use tokio_util::sync::CancellationToken;
+
+fn build_client(config: Config) -> Result<Client, AppError> {
+    let bearer = forwarded_bearer_layer()?;
+    Ok(ClientBuilder::try_from(config)
+        .map_err(AppError::from)?
+        .with_layer(&bearer)
+        .build())
+}
 
 async fn resolve_before_cancel<T, F>(
     future: F,
@@ -45,9 +56,11 @@ impl KubeconfigSource {
                 .await?;
         config.read_timeout = Some(FINITE_REQUEST_READ_TIMEOUT);
         let default_namespace = config.default_namespace.clone();
+        let bearer = forwarded_bearer_layer()?;
         let builder = ClientBuilder::try_from(config).map_err(AppError::from)?;
         let client = builder
             .with_layer(&RequestCancellationLayer::new(generation.token.clone()))
+            .with_layer(&bearer)
             .build();
         if !client_cache::store_client(
             source_key,
@@ -76,7 +89,7 @@ impl KubeconfigSource {
         }
         let mut config = self.config_for_context(cluster_context).await?;
         config.read_timeout = Some(FINITE_REQUEST_READ_TIMEOUT);
-        let client = Client::try_from(config).map_err(AppError::from)?;
+        let client = build_client(config)?;
         client_cache::store_operation_client(
             source_key,
             cluster_context.to_string(),
@@ -107,7 +120,7 @@ impl KubeconfigSource {
         }
         let config = self.config_for_context(cluster_context).await?;
         let default_namespace = config.default_namespace.clone();
-        let client = Client::try_from(config).map_err(AppError::from)?;
+        let client = build_client(config)?;
         client_cache::store_live_client(
             source_key,
             cluster_context.to_string(),

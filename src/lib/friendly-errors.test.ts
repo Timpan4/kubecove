@@ -12,6 +12,7 @@ declare function expect<T>(actual: T): {
 
 describe("friendlyError", () => {
 	const cases: Array<[string, unknown, string]> = [
+		["operator-managed kubeconfig", { kind: "unsupportedOperation", message: "kubeconfig sources are set by the server operator" }, "unsupportedOperation"],
 		["kubeconfig", { kind: "kubeconfig", message: "missing config" }, "kubeconfigConfig"],
 		["forbidden", { kind: "forbidden", message: "pods is forbidden" }, "forbiddenRbac"],
 		["not found", { kind: "notFound", message: "pods x not found" }, "notFoundStale"],
@@ -64,6 +65,13 @@ describe("friendlyError", () => {
 			expect(friendlyErrorBucket(error)).toBe(bucket);
 		});
 	}
+
+	test("shows the reason an operation is unavailable without suggesting kubeconfig repair", () => {
+		const message = "kubeconfig sources are set by the server operator";
+		const presentation = friendlyError({ kind: "unsupportedOperation", message });
+		expect(presentation.summary).toBe(message);
+		expect(presentation.next).toBe(undefined);
+	});
 
 	test("keeps unknown technical detail copyable", () => {
 		const message = "ApiError: unexpected nested status";

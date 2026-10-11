@@ -22,6 +22,7 @@ if pkgs == null || bun2nix == null then
         in
         !builtins.elem name [
           ".git"
+          ".jj"
           "dist"
           "node_modules"
           "result"
@@ -43,8 +44,20 @@ else
     kubecove = pkgs.callPackage ./nix/kubecove.nix {
       inherit frontend;
     };
+    web-frontend = pkgs.callPackage ./nix/frontend.nix {
+      inherit bun2nix;
+      runtime = "web";
+    };
+    kubecove-server = pkgs.callPackage ./nix/server.nix {
+      frontend = web-frontend;
+    };
   in
   {
-    inherit frontend kubecove;
+    inherit
+      frontend
+      kubecove
+      web-frontend
+      kubecove-server
+      ;
     default = kubecove;
   }

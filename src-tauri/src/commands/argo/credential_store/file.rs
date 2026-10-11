@@ -1,7 +1,7 @@
+#[cfg(all(unix, test))]
+use super::ARGO_CREDENTIAL_SERVICE;
 #[cfg(unix)]
-use super::{
-    credential_error, credential_io_error, SecureStore, ARGO_CREDENTIAL_SERVICE, SESSION_SERVICE,
-};
+use super::{credential_error, credential_io_error, SecureStore, SESSION_SERVICE};
 #[cfg(unix)]
 use crate::models::AppError;
 #[cfg(unix)]
@@ -217,14 +217,8 @@ impl SecureStore for FileCredentialStore {
     fn delete(&self, service: &str, id: &str) -> Result<(), AppError> {
         let _guard = self.entries.write().map_err(|_| credential_error())?;
         let mut entries = self.load_entries()?;
-        let removed = entries.remove(&entry_key(service, id)).is_some();
-        if entries.is_empty()
-            || (removed
-                && service == ARGO_CREDENTIAL_SERVICE
-                && !entries
-                    .keys()
-                    .any(|key| key.service == ARGO_CREDENTIAL_SERVICE))
-        {
+        entries.remove(&entry_key(service, id));
+        if entries.is_empty() {
             remove_storage_files(&self.directory)
         } else {
             self.write_entries(&entries)
@@ -480,14 +474,32 @@ mod tests {
     }
 
     #[test]
-    fn deleting_last_remembered_credential_removes_data_and_key() {
+    fn deleting_last_credential_preserves_another_users_pending_review() {
         let path = temp_dir();
         let store = FileCredentialStore::open(&path).unwrap();
         store
             .write(ARGO_CREDENTIAL_SERVICE, "credential", "secret")
             .unwrap();
-        store.write(SESSION_SERVICE, "session", "{}").unwrap();
+        store
+            .write(
+                SESSION_SERVICE,
+                "other-user/review",
+                r#"{"expiresAt":4102444800}"#,
+            )
+            .unwrap();
         store.delete(ARGO_CREDENTIAL_SERVICE, "credential").unwrap();
+        let restarted = FileCredentialStore::open(&path).unwrap();
+        assert!(restarted
+            .read(SESSION_SERVICE, "other-user/review")
+            .unwrap()
+            .is_some());
+        assert!(restarted
+            .read(ARGO_CREDENTIAL_SERVICE, "credential")
+            .unwrap()
+            .is_none());
+        restarted
+            .delete(SESSION_SERVICE, "other-user/review")
+            .unwrap();
         assert!(!path.join(DATA_FILE).exists());
         assert!(!path.join(KEY_FILE).exists());
         fs::remove_dir_all(path).unwrap();

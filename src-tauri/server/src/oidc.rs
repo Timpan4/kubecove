@@ -5,18 +5,22 @@ use axum::{
     Json,
 };
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
-use kubecove_lib::models::AppErrorKind;
+use kubecove_lib::{commands::SessionScope, models::AppErrorKind};
 use openidconnect::{
-    core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
+    core::{
+        CoreAuthenticationFlow, CoreClient, CoreIdTokenClaims, CoreIdTokenVerifier,
+        CoreProviderMetadata,
+    },
     AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet,
-    EndpointSet, IssuerUrl, Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, TokenResponse,
+    EndpointSet, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier,
+    RedirectUrl, TokenResponse,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs,
     path::PathBuf,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use subtle::ConstantTimeEq;
@@ -26,15 +30,42 @@ use tokio_util::sync::CancellationToken;
 pub const TRANSACTION_COOKIE: &str = "__Host-kubecove_oidc_tx";
 pub const AUTH_COOKIE: &str = "__Host-kubecove_oidc";
 
+#[path = "oidc_refresh.rs"]
+mod refresh;
+
+type OidcClient = CoreClient<
+    EndpointSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointMaybeSet,
+    EndpointMaybeSet,
+>;
+
 #[derive(Clone)]
 pub struct OidcConfig {
     issuer: String,
     client_id: String,
     secret_file: Option<PathBuf>,
     login_timeout: Duration,
+    /// The API server's `--oidc-client-id`, when ID tokens are forwarded.
+    kubernetes_audience: Option<String>,
 }
 
 impl OidcConfig {
+    /// Send Kubernetes requests with the signed-in user's ID token instead of
+    /// the server's kubeconfig credentials (ADR 0022 amendment). The token
+    /// must also be issued to `audience`, the API server's OIDC client ID.
+    pub fn with_forwarded_credentials(mut self, audience: String) -> Result<Self, String> {
+        if audience.trim().is_empty() || audience == self.client_id {
+            return Err(
+                "the Kubernetes audience must be the API server's own OIDC client ID".into(),
+            );
+        }
+        self.kubernetes_audience = Some(audience);
+        Ok(self)
+    }
+
     pub fn new(
         issuer: String,
         client_id: String,
@@ -57,6 +88,7 @@ impl OidcConfig {
             client_id,
             secret_file,
             login_timeout,
+            kubernetes_audience: None,
         })
     }
 }
@@ -64,7 +96,21 @@ impl OidcConfig {
 pub struct AuthSession {
     pub identity: AccessIdentity,
     pub revoked: CancellationToken,
+    pub credential: OidcCredential,
 }
+
+/// The opaque authentication cookie value of the request's sign-in.
+#[derive(Clone)]
+pub struct OidcCredential(pub String);
+
+// A forwarding session outlives its 5-minute ID token: the refresher renews
+// the token, and a refusal from the provider revokes the session. This caps
+// the session even while the provider keeps renewing it.
+const FORWARDING_SESSION_CAP: Duration = Duration::from_hours(12);
+// Renew this long before the ID token expires, so a request never carries a
+// token the API server is about to reject.
+const REFRESH_MARGIN_SECONDS: u64 = 60;
+const REFRESH_INTERVAL: Duration = Duration::from_secs(15);
 
 pub struct Oidc {
     config: OidcConfig,
@@ -74,6 +120,9 @@ pub struct Oidc {
     metadata: CoreProviderMetadata,
     transaction_key: [u8; 32],
     credentials: Mutex<HashMap<String, Credential>>,
+    /// The open sessions, each with the sign-in whose ID token its
+    /// Kubernetes requests carry.
+    bound: Mutex<Vec<Binding>>,
     allow_http_test: bool,
 }
 
@@ -81,6 +130,30 @@ struct Credential {
     identity: AccessIdentity,
     expires_unix: u64,
     revoked: CancellationToken,
+    tokens: Option<Tokens>,
+    refreshing: Arc<tokio::sync::Mutex<()>>,
+}
+
+#[derive(Clone)]
+struct Tokens {
+    id_token: String,
+    id_expires_unix: u64,
+    refresh_token: Option<String>,
+    nonce: String,
+    subject: String,
+}
+
+struct Binding {
+    credential: String,
+    owner: String,
+    scope: Arc<SessionScope>,
+    ended: CancellationToken,
+}
+
+struct Verified {
+    subject: String,
+    exp: u64,
+    tokens: Option<Tokens>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -136,6 +209,7 @@ impl Oidc {
             metadata,
             transaction_key,
             credentials: Mutex::new(HashMap::new()),
+            bound: Mutex::new(Vec::new()),
             allow_http_test: false,
         })
     }
@@ -185,7 +259,7 @@ impl Oidc {
         query: Callback,
     ) -> Result<Response, ApiError> {
         match self.callback_inner(headers, query).await {
-            Ok((issuer, subject, exp)) => match self.callback_success(&issuer, &subject, exp) {
+            Ok(verified) => match self.callback_success(verified) {
                 Ok(response) => Ok(response),
                 Err(_) => Ok(callback_failure(false)),
             },
@@ -193,12 +267,23 @@ impl Oidc {
         }
     }
 
-    fn callback_success(
-        &self,
-        issuer: &str,
-        subject: &str,
-        exp: u64,
-    ) -> Result<Response, ApiError> {
+    fn callback_success(&self, verified: Verified) -> Result<Response, ApiError> {
+        let Verified {
+            subject,
+            exp,
+            tokens,
+        } = verified;
+        let issuer = &self.config.issuer;
+        // Without a refresh token the session ends with the ID token, as it
+        // does when forwarding is off.
+        let exp = if tokens
+            .as_ref()
+            .is_some_and(|tokens| tokens.refresh_token.is_some())
+        {
+            unix_now() + FORWARDING_SESSION_CAP.as_secs()
+        } else {
+            exp
+        };
         let opaque = crate::security::random_token().map_err(|_| oidc_unavailable())?;
         let expiry = UNIX_EPOCH
             .checked_add(Duration::from_secs(exp))
@@ -219,9 +304,11 @@ impl Oidc {
             identity,
             expires_unix: exp,
             revoked: CancellationToken::new(),
+            tokens,
+            refreshing: Arc::default(),
         };
         let mut credentials = self.credentials.lock().map_err(|_| oidc_unavailable())?;
-        prune_expired(&mut credentials, unix_now());
+        self.prune_expired(&mut credentials);
         credentials.insert(opaque.clone(), credential);
         let mut response = Redirect::to("/").into_response();
         response
@@ -241,7 +328,7 @@ impl Oidc {
         &self,
         headers: &HeaderMap,
         query: Callback,
-    ) -> Result<(String, String, u64), ApiError> {
+    ) -> Result<Verified, ApiError> {
         if query.error.is_some() {
             return Err(ApiError::new(
                 StatusCode::SEE_OTHER,
@@ -280,18 +367,28 @@ impl Oidc {
             .map_err(|_| oidc_unavailable())?;
         let id_token = response.id_token().ok_or_else(invalid_callback)?;
         let nonce = Nonce::new(transaction.nonce);
-        let verifier = client
-            .id_token_verifier()
-            .set_issue_time_verifier_fn(|issued_at| {
-                if issued_at.timestamp() > i64::try_from(unix_now()).unwrap_or(i64::MAX) {
-                    Err("ID token issue time is in the future".to_owned())
-                } else {
-                    Ok(())
-                }
-            });
         let claims = id_token
-            .claims(&verifier, &nonce)
+            .claims(&self.id_token_verifier(&client), &nonce)
             .map_err(|_| invalid_callback())?;
+        let (subject, exp) = self
+            .accept_claims(claims, &id_token.to_string())
+            .ok_or_else(invalid_callback)?;
+        let tokens = self.forwards_credentials().then(|| Tokens {
+            id_token: id_token.to_string(),
+            id_expires_unix: exp,
+            refresh_token: response.refresh_token().map(|token| token.secret().clone()),
+            nonce: nonce.secret().clone(),
+            subject: subject.clone(),
+        });
+        Ok(Verified {
+            subject,
+            exp,
+            tokens,
+        })
+    }
+
+    /// The subject and expiry of an acceptable ID token.
+    fn accept_claims(&self, claims: &CoreIdTokenClaims, raw: &str) -> Option<(String, u64)> {
         let client_id = self.config.client_id.as_str();
         if claims
             .authorized_party()
@@ -300,69 +397,50 @@ impl Oidc {
                 && claims
                     .authorized_party()
                     .is_none_or(|party| party.as_str() != client_id))
-            || id_token_has_invalid_not_before(&id_token.to_string())
+            || id_token_has_invalid_not_before(raw)
         {
-            return Err(invalid_callback());
+            return None;
+        }
+        // The API server rejects a forwarded token without its audience, so
+        // refuse the sign-in here, where the reason is known.
+        if let Some(audience) = &self.config.kubernetes_audience {
+            if !claims
+                .audiences()
+                .iter()
+                .any(|aud| aud.as_str() == audience)
+            {
+                return None;
+            }
         }
         let subject = claims.subject().as_str();
         if subject.is_empty() {
-            return Err(invalid_callback());
+            return None;
         }
-        let exp = claims
-            .expiration()
-            .timestamp()
-            .try_into()
-            .map_err(|_| invalid_callback())?;
-        if exp <= unix_now() {
-            return Err(invalid_callback());
-        }
-        Ok((self.config.issuer.clone(), subject.to_owned(), exp))
+        let exp: u64 = claims.expiration().timestamp().try_into().ok()?;
+        (exp > unix_now()).then(|| (subject.to_owned(), exp))
     }
 
-    pub fn verify(&self, headers: &HeaderMap) -> Result<AuthSession, ApiError> {
-        let token = cookie_value(headers, AUTH_COOKIE).ok_or_else(invalid_auth)?;
-        let mut credentials = self.credentials.lock().map_err(|_| oidc_unavailable())?;
-        prune_expired(&mut credentials, unix_now());
-        let credential = credentials.get(token).ok_or_else(invalid_auth)?;
-        Ok(AuthSession {
-            identity: credential.identity.clone(),
-            revoked: credential.revoked.clone(),
-        })
+    pub fn forwards_credentials(&self) -> bool {
+        self.config.kubernetes_audience.is_some()
     }
 
-    pub fn logout(&self, headers: &HeaderMap) -> Result<Option<String>, ApiError> {
-        let mut credentials = self.credentials.lock().map_err(|_| oidc_unavailable())?;
-        let subject = cookie_value(headers, AUTH_COOKIE)
-            .and_then(|token| credentials.remove(token))
-            .map(|credential| {
-                credential.revoked.cancel();
-                credential.identity.subject
-            });
-        prune_expired(&mut credentials, unix_now());
-        Ok(subject)
+    /// Trusts the API server's audience beside the client ID when forwarding,
+    /// and no other.
+    fn id_token_verifier<'a>(&'a self, client: &'a OidcClient) -> CoreIdTokenVerifier<'a> {
+        let trusted = self.config.kubernetes_audience.clone();
+        client
+            .id_token_verifier()
+            .set_other_audience_verifier_fn(move |aud| trusted.as_deref() == Some(aud.as_str()))
+            .set_issue_time_verifier_fn(|issued_at| {
+                if issued_at.timestamp() > i64::try_from(unix_now()).unwrap_or(i64::MAX) {
+                    Err("ID token issue time is in the future".to_owned())
+                } else {
+                    Ok(())
+                }
+            })
     }
 
-    pub fn clear_cookies(&self) -> Result<Vec<HeaderValue>, ApiError> {
-        [TRANSACTION_COOKIE, AUTH_COOKIE]
-            .into_iter()
-            .map(|name| cookie_header(&clear_cookie_header(name)))
-            .collect()
-    }
-
-    fn client(
-        &self,
-        metadata: &CoreProviderMetadata,
-    ) -> Result<
-        CoreClient<
-            EndpointSet,
-            EndpointNotSet,
-            EndpointNotSet,
-            EndpointNotSet,
-            EndpointMaybeSet,
-            EndpointMaybeSet,
-        >,
-        String,
-    > {
+    fn client(&self, metadata: &CoreProviderMetadata) -> Result<OidcClient, String> {
         let secret = self
             .client_secret
             .as_ref()
@@ -392,6 +470,7 @@ impl Oidc {
             metadata,
             transaction_key: key,
             credentials: Mutex::new(HashMap::new()),
+            bound: Mutex::new(Vec::new()),
             allow_http_test: true,
         })
     }
@@ -409,6 +488,8 @@ impl Oidc {
                 },
                 expires_unix: exp,
                 revoked: CancellationToken::new(),
+                tokens: None,
+                refreshing: Arc::default(),
             },
         );
         token
@@ -645,17 +726,6 @@ fn timeout_seconds_ceil(timeout: Duration) -> u64 {
     timeout
         .as_secs()
         .saturating_add(u64::from(timeout.subsec_nanos() > 0))
-}
-
-fn prune_expired(credentials: &mut HashMap<String, Credential>, now: u64) {
-    credentials.retain(|_, credential| {
-        if credential.expires_unix <= now {
-            credential.revoked.cancel();
-            false
-        } else {
-            true
-        }
-    });
 }
 
 fn callback_failure(denied: bool) -> Response {

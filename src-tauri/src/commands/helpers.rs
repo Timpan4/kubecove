@@ -1,8 +1,10 @@
 pub(crate) mod client_cache;
 pub(crate) mod client_cancellation;
+pub(crate) mod forwarded_bearer;
 mod health;
 mod metadata;
 mod serialization;
+pub(crate) mod session_scope;
 mod time;
 mod validation;
 pub(crate) use validation::{validate_api_resource, validate_namespace, validate_path_segment};

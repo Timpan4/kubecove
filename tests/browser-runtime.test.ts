@@ -86,7 +86,7 @@ describe("browser OIDC session lifecycle", () => {
 		expect(navigation).toBeNull();
 	});
 
-	test("preserves OIDC takeover on 409 and returns expired sessions to sign-in", async () => {
+	test("opens a new OIDC session after a stale resume and returns expired sign-ins to login", async () => {
 		storage.set("kubecove-browser-resume", "stale-resume-token");
 		const requests: { url: string; init?: RequestInit }[] = [];
 		let sessionRequests = 0;
@@ -100,7 +100,7 @@ describe("browser OIDC session lifecycle", () => {
 			}
 			if (url.endsWith("/api/v1/session")) {
 				sessionRequests++;
-				if (sessionRequests === 1) return jsonResponse({ error: "Session is active elsewhere." }, 409);
+				if (sessionRequests === 1) return jsonResponse({ error: "Session is no longer available." }, 409);
 				if (sessionRequests === 4) return jsonResponse({ error: "Unauthorized" }, 401);
 				return jsonResponse({ resumeToken: "current-owner-resume", serverVersion: "test", credentialStore: "memory", sessionGraceSeconds: 30 });
 			}
@@ -111,10 +111,12 @@ describe("browser OIDC session lifecycle", () => {
 		await initializeBrowserSession();
 		expect(requests[1]?.url).toBe("https://kubecove.example/api/v1/session");
 		expect(JSON.parse(String(requests[1]?.init?.body))).toEqual({ resumeToken: "stale-resume-token" });
-		expect(getBrowserSessionState()).toMatchObject({ status: "moved", authenticationMode: "oidc" });
-		expect(storage.get("kubecove-browser-resume")).toBe("stale-resume-token");
+		expect(requests[2]?.url).toBe("https://kubecove.example/api/v1/session");
+		expect(JSON.parse(String(requests[2]?.init?.body))).toEqual({});
+		expect(sessionRequests).toBe(2);
+		expect(getBrowserSessionState()).toMatchObject({ status: "ready", authenticationMode: "oidc" });
+		expect(storage.get("kubecove-browser-resume")).toBe("current-owner-resume");
 
-		await takeOverBrowserSession();
 		let channelMessages = 0;
 		const createChannel = createBrowserTauriClient().createChannel;
 		if (!createChannel) throw new Error("Browser client must support channels");

@@ -1,3 +1,4 @@
+use super::session_scope::SessionScope;
 use kube::Client;
 use std::{
     collections::hash_map::DefaultHasher,
@@ -5,7 +6,7 @@ use std::{
     fs,
     hash::{Hash, Hasher},
     path::PathBuf,
-    sync::{LazyLock, RwLock},
+    sync::RwLock,
     time::UNIX_EPOCH,
 };
 use tokio_util::sync::CancellationToken;
@@ -76,19 +77,37 @@ impl FiniteClientState {
     }
 }
 
-static FINITE_CLIENTS: LazyLock<RwLock<FiniteClientState>> =
-    LazyLock::new(|| RwLock::new(FiniteClientState::new()));
-static OPERATION_CLIENTS: LazyLock<RwLock<Cache<Client>>> =
-    LazyLock::new(|| RwLock::new(Cache::new()));
-static LIVE_CLIENTS: LazyLock<RwLock<Cache<ClientEntry>>> =
-    LazyLock::new(|| RwLock::new(Cache::new()));
+/// The finite, operation and live client caches of one session scope, or of
+/// the whole process outside any scope.
+pub(crate) struct ClientCaches {
+    finite: RwLock<FiniteClientState>,
+    operation: RwLock<Cache<Client>>,
+    live: RwLock<Cache<ClientEntry>>,
+}
+
+impl Default for ClientCaches {
+    fn default() -> Self {
+        Self {
+            finite: RwLock::new(FiniteClientState::new()),
+            operation: RwLock::new(Cache::new()),
+            live: RwLock::new(Cache::new()),
+        }
+    }
+}
+
+fn with_caches<R>(f: impl FnOnce(&ClientCaches) -> R) -> R {
+    f(&SessionScope::current_or_process().caches)
+}
 
 pub(crate) fn finite_client_generation() -> ClientGeneration {
-    FINITE_CLIENTS
-        .read()
-        .expect("finite client cache lock")
-        .generation
-        .clone()
+    with_caches(|caches| {
+        caches
+            .finite
+            .read()
+            .expect("finite client cache lock")
+            .generation
+            .clone()
+    })
 }
 
 pub(crate) fn lookup_client(
@@ -97,14 +116,16 @@ pub(crate) fn lookup_client(
     fingerprint: u64,
     generation: u64,
 ) -> Option<ClientEntry> {
-    let state = FINITE_CLIENTS.read().expect("finite client cache lock");
-    (state.generation.id == generation)
-        .then(|| {
-            state
-                .clients
-                .lookup(source_key, cluster_context, fingerprint)
-        })
-        .flatten()
+    with_caches(|caches| {
+        let state = caches.finite.read().expect("finite client cache lock");
+        (state.generation.id == generation)
+            .then(|| {
+                state
+                    .clients
+                    .lookup(source_key, cluster_context, fingerprint)
+            })
+            .flatten()
+    })
 }
 
 pub(crate) fn store_client(
@@ -115,22 +136,28 @@ pub(crate) fn store_client(
     client: Client,
     default_namespace: String,
 ) -> bool {
-    let mut state = FINITE_CLIENTS.write().expect("finite client cache lock");
-    if state.generation.id != generation {
-        return false;
-    }
-    state.clients.store(
-        source_key,
-        cluster_context,
-        fingerprint,
-        (client, default_namespace),
-    );
-    true
+    with_caches(|caches| {
+        let mut state = caches.finite.write().expect("finite client cache lock");
+        if state.generation.id != generation {
+            return false;
+        }
+        state.clients.store(
+            source_key,
+            cluster_context,
+            fingerprint,
+            (client, default_namespace),
+        );
+        true
+    })
 }
 
 pub(crate) fn rotate_client_generation() -> u64 {
+    with_caches(rotate_generation)
+}
+
+fn rotate_generation(caches: &ClientCaches) -> u64 {
     let (previous, next_id) = {
-        let mut state = FINITE_CLIENTS.write().expect("finite client cache lock");
+        let mut state = caches.finite.write().expect("finite client cache lock");
         let previous = state.generation.token.clone();
         let next_id = state.generation.id.saturating_add(1);
         state.generation = ClientGeneration {
@@ -149,10 +176,13 @@ pub(crate) fn lookup_operation_client(
     cluster_context: &str,
     fingerprint: u64,
 ) -> Option<Client> {
-    OPERATION_CLIENTS
-        .read()
-        .expect("operation client cache lock")
-        .lookup(source_key, cluster_context, fingerprint)
+    with_caches(|caches| {
+        caches
+            .operation
+            .read()
+            .expect("operation client cache lock")
+            .lookup(source_key, cluster_context, fingerprint)
+    })
 }
 
 pub(crate) fn store_operation_client(
@@ -161,10 +191,13 @@ pub(crate) fn store_operation_client(
     fingerprint: u64,
     client: Client,
 ) {
-    OPERATION_CLIENTS
-        .write()
-        .expect("operation client cache lock")
-        .store(source_key, cluster_context, fingerprint, client);
+    with_caches(|caches| {
+        caches
+            .operation
+            .write()
+            .expect("operation client cache lock")
+            .store(source_key, cluster_context, fingerprint, client);
+    });
 }
 
 pub(crate) fn lookup_live_client(
@@ -172,11 +205,13 @@ pub(crate) fn lookup_live_client(
     cluster_context: &str,
     fingerprint: u64,
 ) -> Option<ClientEntry> {
-    LIVE_CLIENTS.read().expect("live client cache lock").lookup(
-        source_key,
-        cluster_context,
-        fingerprint,
-    )
+    with_caches(|caches| {
+        caches.live.read().expect("live client cache lock").lookup(
+            source_key,
+            cluster_context,
+            fingerprint,
+        )
+    })
 }
 
 pub(crate) fn store_live_client(
@@ -186,12 +221,14 @@ pub(crate) fn store_live_client(
     client: Client,
     default_namespace: String,
 ) {
-    LIVE_CLIENTS.write().expect("live client cache lock").store(
-        source_key,
-        cluster_context,
-        fingerprint,
-        (client, default_namespace),
-    );
+    with_caches(|caches| {
+        caches.live.write().expect("live client cache lock").store(
+            source_key,
+            cluster_context,
+            fingerprint,
+            (client, default_namespace),
+        );
+    });
 }
 
 pub(crate) fn fingerprint_files(paths: &[PathBuf]) -> u64 {

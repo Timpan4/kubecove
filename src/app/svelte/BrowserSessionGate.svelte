@@ -62,7 +62,7 @@
 				{session.status === "checking" || session.status === "connecting"
 					? "Connecting to KubeCove"
 					: session.status === "moved"
-						? "Session opened elsewhere"
+						? "Session ended"
 						: session.authenticationMode === "oidc"
 							? "Sign in to KubeCove"
 							: "Connect to KubeCove"}
@@ -77,13 +77,13 @@
 			{:else}
 				{#if session.status === "moved"}
 					<Alert>
-						<AlertTitle>This session is no longer the active owner.</AlertTitle>
+						<AlertTitle>This browser's server session closed or expired.</AlertTitle>
 						<AlertDescription>
-							Take over only if you want this browser to own the server session again. Other sessions will stop receiving live updates.
+							Start a new session to continue. Other sessions on the server are not affected.
 						</AlertDescription>
 					</Alert>
 					<Button type="button" disabled={busy} onclick={takeOver}>
-						Take over session
+						Start a new session
 					</Button>
 				{/if}
 

@@ -1,6 +1,8 @@
 {
   lib,
   bun2nix,
+  # "web" builds the browser app kubecove-server embeds.
+  runtime ? "native",
 }:
 
 let
@@ -36,6 +38,7 @@ bun2nix.mkDerivation {
   dontRunLifecycleScripts = true;
 
   VITE_KUBECOVE_RELEASE_CHANNEL = "dev";
+  KUBECOVE_PUBLIC_RUNTIME = runtime;
 
   buildPhase = ''
     runHook preBuild

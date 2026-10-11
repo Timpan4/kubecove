@@ -18,6 +18,7 @@ export type FriendlyErrorBucket =
 	| "liveSessionTargetUnavailable"
 	| "providerDiscoveryUnavailable"
 	| "networkTransient"
+	| "unsupportedOperation"
 	| "unknown";
 
 export type FriendlyErrorOperation =
@@ -113,6 +114,7 @@ const KIND_BUCKETS = {
 	serialization: "serialization",
 	unauthorized: "authentication",
 	validation: "validation",
+	unsupportedOperation: "unsupportedOperation",
 	mixedWorkspaceConnection: "mixedWorkspaceConnection",
 } satisfies Readonly<Record<string, FriendlyErrorBucket>>;
 
@@ -217,6 +219,12 @@ export function friendlyError(
 	>;
 
 	switch (bucket) {
+		case "unsupportedOperation":
+			return {
+				...base,
+				title: context.fallbackTitle ?? "This operation is unavailable",
+				summary: technicalDetail,
+			};
 		case "authentication":
 			return {
 				...base,

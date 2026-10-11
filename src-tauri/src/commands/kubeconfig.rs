@@ -1,7 +1,7 @@
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ClusterContext};
 use kube::{
-    config::{KubeConfigOptions, Kubeconfig},
+    config::{AuthInfo, KubeConfigOptions, Kubeconfig},
     Config,
 };
 use serde::{Deserialize, Serialize};
@@ -217,7 +217,7 @@ impl KubeconfigSource {
             ..Default::default()
         };
 
-        match self.configured_paths()? {
+        let mut config = match self.configured_paths()? {
             Some(_) => {
                 let (kubeconfig, _) = self.read_configured_kubeconfig()?;
                 Config::from_custom_kubeconfig(kubeconfig, &options)
@@ -227,7 +227,13 @@ impl KubeconfigSource {
             None => Config::from_kubeconfig(&options)
                 .await
                 .map_err(AppError::from),
+        }?;
+        // The signed-in user's token replaces the kubeconfig's identity, and
+        // the server's own credentials must never stand in for it.
+        if super::helpers::forwarded_bearer::forwarded_bearer_enabled() {
+            config.auth_info = AuthInfo::default();
         }
+        Ok(config)
     }
 
     // The kubeconfig files that back this source, in the same order
@@ -600,6 +606,15 @@ fn load_persisted_sources() -> Result<PersistedKubeconfigSources, AppError> {
 }
 
 fn save_persisted_sources(settings: &PersistedKubeconfigSources) -> Result<(), AppError> {
+    // Server sessions share these operator settings in every authentication mode.
+    if super::helpers::session_scope::SessionScope::current().is_some()
+        || super::helpers::forwarded_bearer::forwarded_bearer_enabled()
+    {
+        return Err(AppError::new(
+            "kubeconfig sources are set by the server operator",
+            AppErrorKind::UnsupportedOperation,
+        ));
+    }
     let Some(path) = settings_path() else {
         return Ok(());
     };

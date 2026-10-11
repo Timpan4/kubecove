@@ -30,6 +30,11 @@ async fn main() -> io::Result<()> {
         )),
         None => None,
     };
+    if let Some(oidc) = oidc.as_ref().filter(|oidc| oidc.forwards_credentials()) {
+        kubecove_lib::commands::enable_forwarded_bearer();
+        let oidc = Arc::clone(oidc);
+        tokio::spawn(async move { oidc.refresh_forever().await });
+    }
     let login_mode = if oidc.is_some() {
         "OIDC"
     } else {

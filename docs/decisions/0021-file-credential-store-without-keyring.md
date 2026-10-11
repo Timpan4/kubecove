@@ -18,7 +18,7 @@ File store rules:
 - Each entry is sealed separately with an AEAD cipher, a fresh random nonce, and the entry's service and id as associated data.
 - Files are written atomically by writing a temporary file and renaming it, with file mode `0600` in a directory with mode `0700`. At startup the server refuses the file store if either file is readable by group or others or is owned by another user.
 - The file store is Unix-only, including macOS when its keychain is unavailable. The server refuses to start a file store on other platforms.
-- Expired review sessions are purged when read and at startup. Consumed sessions are removed before execution, matching ADR 0013's single-use rule. Forgetting the last credential deletes both files.
+- Expired review sessions are purged when read and at startup. Consumed sessions are removed before execution, matching ADR 0013's single-use rule. Forgetting a credential preserves other entries, including other users' pending reviews. Both files are deleted only when the store has no remaining entries.
 - Settings shows which store is active. With the file store, it says that credentials are stored in a file on this host.
 
 ## Consequences
