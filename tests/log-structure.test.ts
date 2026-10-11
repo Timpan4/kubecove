@@ -115,6 +115,19 @@ describe("parseLogStructure", () => {
 		expect(parseLogStructure("level=notice msg=x").level).toBe("info");
 	});
 
+	test("keeps a msg field when a prose headline precedes it", () => {
+		expect(
+			parseLogStructure('INFO request failed msg="upstream refused connection" status=502'),
+		).toEqual({
+			level: "info",
+			headline: "request failed",
+			fields: [
+				{ key: "msg", value: "upstream refused connection" },
+				{ key: "status", value: "502" },
+			],
+		});
+	});
+
 	test("leaves unleveled plain text unchanged", () => {
 		expect(parseLogStructure("plain message")).toEqual({ headline: "plain message", fields: [] });
 		expect(parseLogStructure("")).toEqual({ headline: "", fields: [] });

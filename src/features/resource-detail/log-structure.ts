@@ -173,21 +173,23 @@ export function parseLogStructure(message: string): LogStructure {
 		}
 	}
 
-	const { headline, pairs } = splitFields(rest);
+	const split = splitFields(rest);
+	const headline = unquote(split.headline.trim());
 	let msg: string | undefined;
 	let error: string | undefined;
 	const fields: LogField[] = [];
-	for (const pair of pairs) {
+	for (const pair of split.pairs) {
 		const lowerKey = pair.key.toLowerCase();
 		if (TIME_KEYS.has(lowerKey)) continue;
 		const value = unquote(pair.value);
 		const mappedLevel = LEVEL_KEYS.has(lowerKey) ? levelFrom(value) : undefined;
 		if (mappedLevel) level ??= mappedLevel;
-		else if (MESSAGE_KEYS.has(lowerKey) && msg === undefined) msg = value;
+		// A prose headline already fills the headline slot, so msg stays visible as a field.
+		else if (MESSAGE_KEYS.has(lowerKey) && msg === undefined && !headline) msg = value;
 		else if (ERROR_KEYS.has(lowerKey) && error === undefined) error = value;
 		else fields.push({ key: pair.key, value });
 	}
-	return finish(level, unquote(headline.trim()), msg, error, fields);
+	return finish(level, headline, msg, error, fields);
 }
 
 export function highlightSegments(text: string, term: string): HighlightSegment[] {

@@ -128,7 +128,8 @@
 		formatLogTime: (timestamp: string | undefined) => string;
 	} = $props();
 
-	const openRows = new SvelteSet<string>();
+	// Rows the user toggled away from the expand-all state, so either state can be overridden per row.
+	const toggledRows = new SvelteSet<string>();
 	let expandAll = $state(false);
 	let tailMenuOpen = $state(false);
 
@@ -178,17 +179,17 @@
 	}
 
 	function toggleRow(key: string) {
-		if (openRows.has(key)) openRows.delete(key);
-		else openRows.add(key);
+		if (toggledRows.has(key)) toggledRows.delete(key);
+		else toggledRows.add(key);
 	}
 
 	function toggleExpandAll() {
 		expandAll = !expandAll;
-		openRows.clear();
+		toggledRows.clear();
 	}
 
 	function clearLines() {
-		openRows.clear();
+		toggledRows.clear();
 		onClear();
 	}
 
@@ -407,7 +408,7 @@
 								{line}
 								layout={logLayout}
 								wrap={logWrapLines}
-								open={expandAll || openRows.has(key)}
+								open={expandAll !== toggledRows.has(key)}
 								term={logFilterTerm}
 								levelColumn={hasLevels}
 								showSource={isAggregate}
