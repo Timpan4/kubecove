@@ -32,6 +32,11 @@
 		| { mode: "aggregate"; request: AggregatedLogStreamRequest }
 		| null;
 
+	interface ScrollAnchor {
+		row: HTMLElement;
+		top: number;
+	}
+
 	let {
 		client,
 		resource,
@@ -207,11 +212,15 @@
 		if (logViewport) scrollToLatest(logViewport);
 	}
 
-	function findScrollAnchor(viewport: HTMLElement): { row: HTMLElement; top: number } | null {
+	// Every visible row is a candidate so the anchor survives eviction of the top row.
+	function findScrollAnchors(viewport: HTMLElement): ScrollAnchor[] {
+		const anchors: ScrollAnchor[] = [];
+		const bottom = viewport.scrollTop + viewport.clientHeight;
 		for (const row of viewport.querySelectorAll<HTMLElement>("[data-log-row]")) {
-			if (row.offsetTop + row.offsetHeight > viewport.scrollTop) return { row, top: row.offsetTop };
+			if (row.offsetTop >= bottom) break;
+			if (row.offsetTop + row.offsetHeight > viewport.scrollTop) anchors.push({ row, top: row.offsetTop });
 		}
-		return null;
+		return anchors;
 	}
 
 	$effect(() => {
@@ -244,20 +253,20 @@
 
 	// The viewport disables native overflow-anchor (WebKit lacks it), so keep the row the
 	// user is reading in place when lines are prepended or evicted while scrolled away.
-	let scrollAnchor: { row: HTMLElement; top: number } | null = null;
+	let scrollAnchors: ScrollAnchor[] = [];
 	$effect.pre(() => {
 		void appendedCount;
 		const viewport = untrack(() => logViewport);
-		scrollAnchor =
-			viewport && !untrack(() => pinnedToLatest) ? findScrollAnchor(viewport) : null;
+		scrollAnchors =
+			viewport && !untrack(() => pinnedToLatest) ? findScrollAnchors(viewport) : [];
 	});
 
 	$effect(() => {
 		void appendedCount;
-		const anchor = scrollAnchor;
-		scrollAnchor = null;
+		const anchor = scrollAnchors.find((candidate) => candidate.row.isConnected);
+		scrollAnchors = [];
 		const viewport = untrack(() => logViewport);
-		if (!anchor || !viewport || !anchor.row.isConnected) return;
+		if (!anchor || !viewport) return;
 		viewport.scrollTop += anchor.row.offsetTop - anchor.top;
 	});
 

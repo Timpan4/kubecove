@@ -47,7 +47,11 @@
 	const structure = $derived(line.structure);
 	const level = $derived(structure.level);
 	const sourceLabel = $derived(
-		showSource && line.source ? `${line.source.podName}/${line.source.container}` : "",
+		!showSource || !line.source
+			? ""
+			: line.source.container
+				? `${line.source.podName}/${line.source.container}`
+				: line.source.podName,
 	);
 	const edgeClass = $derived(
 		level === "error"
@@ -73,8 +77,13 @@
 
 	async function copyLine(event: MouseEvent) {
 		event.stopPropagation();
-		await navigator.clipboard?.writeText(line.raw);
-		copied = true;
+		try {
+			await navigator.clipboard.writeText(line.raw);
+			copied = true;
+		} catch {
+			// Clipboard access can be missing or denied; leave the button label unchanged.
+			copied = false;
+		}
 	}
 </script>
 
