@@ -93,18 +93,23 @@ jobs:
           measurement=0
           for revision in baseline updated updated baseline; do
             measurement=$((measurement + 1))
-            profile="${RUNNER_TEMP}/cargo-simulation/${measurement}-${revision}"
-            mkdir -p "${profile}"
-            echo "::group::${measurement} ${revision} CPU simulation"
-            CODSPEED_CARGO_WORKSPACE_ROOT="${GITHUB_WORKSPACE}/${revision}/src-tauri" \
-              codspeed run --mode simulation --skip-upload --show-full-output \
-              --working-directory "${GITHUB_WORKSPACE}/${revision}/src-tauri" \
-              --profile-folder "${profile}" \
-              -- "\"${RUNNER_TEMP}/${revision}-bench\" \"${BENCH_FILTER}\"" \
-              2>&1 | tee "${profile}/run.log"
-            grep -E '^(events|summary|totals):' "${profile}"/*.out* \
-              | tee "${profile}/counters.txt"
-            echo "::endgroup::"
+            IFS='|' read -r -a benchmarks <<< "${BENCH_FILTER}"
+            for benchmark in "${benchmarks[@]}"; do
+              profile="${RUNNER_TEMP}/cargo-simulation/${measurement}-${revision}/${benchmark}"
+              mkdir -p "${profile}"
+              echo "::group::${measurement} ${revision} ${benchmark} CPU simulation"
+              CODSPEED_CARGO_WORKSPACE_ROOT="${GITHUB_WORKSPACE}/${revision}/src-tauri" \
+                codspeed run --mode simulation --skip-upload --show-full-output \
+                --working-directory "${GITHUB_WORKSPACE}/${revision}/src-tauri" \
+                --profile-folder "${profile}" \
+                -- "\"${RUNNER_TEMP}/${revision}-bench\" \"::${benchmark}$\"" \
+                2>&1 | tee "${profile}/run.log"
+              grep -E '^(events|summary|totals):' "${profile}"/*.out* \
+                | tee "${profile}/counters.txt"
+              test "$(grep -h '^desc: Trigger: Client Request: benches/' "${profile}"/*.out* \
+                | wc -l)" -eq 1
+              echo "::endgroup::"
+            done
           done
 
       - name: Retain raw simulation profiles
