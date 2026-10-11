@@ -78,7 +78,6 @@ const detail: PathStateResourceDetailState = {
 	logFilter: "timeout",
 	logWrapLines: true,
 	logLatestFirst: true,
-	logAutoFollow: false,
 	yamlViewMode: "applyClean",
 	yamlEncoding: "yaml",
 	yamlShowFullDiff: true,

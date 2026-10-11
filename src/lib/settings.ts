@@ -14,6 +14,7 @@ import type {
 
 export type TimestampTimezone = "local" | "utc";
 export type YamlDiffStyle = "clean" | "git";
+export type LogLayout = "stacked" | "gutter" | "oneLine";
 export type GitOpsViewMode = "cards" | "list";
 export type HelmViewMode = "cards" | "list";
 export type SavedArgoProfile = {
@@ -49,6 +50,7 @@ export interface SettingsState {
 	yamlEncodingDefault: YamlEncoding;
 	yamlDiffStyle: YamlDiffStyle;
 	yamlErrorLensEnabled: boolean;
+	logLayout: LogLayout;
 	kubeconfigEnvVar: string;
 	kubeconfigSourceKey: string;
 	kubeconfigSourceLabel: string;
@@ -74,6 +76,7 @@ export interface SettingsState {
 	setYamlEncodingDefault: (encoding: YamlEncoding) => void;
 	setYamlDiffStyle: (style: YamlDiffStyle) => void;
 	setYamlErrorLensEnabled: (enabled: boolean) => void;
+	setLogLayout: (layout: LogLayout) => void;
 	setKubeconfigEnvVar: (envVar: string) => void;
 	resetKubeconfigEnvVar: () => void;
 	setKubeconfigSources: (sources: KubeconfigSourcesSummary) => void;
@@ -99,6 +102,10 @@ function isString<Value>(value: Value): value is Value & string {
 
 function booleanValue<Value>(value: Value, fallback: boolean): boolean {
 	return Boolean(value) === value ? Boolean(value) : fallback;
+}
+
+function isLogLayout<Value>(layout: Value): layout is Value & LogLayout {
+	return layout === "stacked" || layout === "gutter" || layout === "oneLine";
 }
 
 function isYamlDiffStyle<Value>(style: Value): style is Value & YamlDiffStyle {
@@ -169,6 +176,7 @@ export function mergePersistedSettings<Persisted>(
 			? saved.yamlDiffStyle
 			: current.yamlDiffStyle,
 		yamlErrorLensEnabled: booleanValue(saved.yamlErrorLensEnabled, current.yamlErrorLensEnabled),
+		logLayout: isLogLayout(saved.logLayout) ? saved.logLayout : current.logLayout,
 	};
 }
 
@@ -282,6 +290,7 @@ export function partializeSettings(state: SettingsState): Partial<SettingsState>
 		yamlEncodingDefault: state.yamlEncodingDefault,
 		yamlDiffStyle: state.yamlDiffStyle,
 		yamlErrorLensEnabled: state.yamlErrorLensEnabled,
+		logLayout: state.logLayout,
 	};
 }
 
@@ -309,6 +318,7 @@ export const useSettingsState = createStore<SettingsState>()(
 			yamlEncodingDefault: "yaml",
 			yamlDiffStyle: "clean",
 			yamlErrorLensEnabled: true,
+			logLayout: "stacked",
 			kubeconfigEnvVar: DEFAULT_KUBECONFIG_ENV_VAR,
 			kubeconfigSourceKey: DEFAULT_KUBECONFIG_SOURCE_KEY,
 			kubeconfigSourceLabel: DEFAULT_KUBECONFIG_ENV_VAR,
@@ -353,6 +363,7 @@ export const useSettingsState = createStore<SettingsState>()(
 				set({ yamlDiffStyle }),
 			setYamlErrorLensEnabled: (yamlErrorLensEnabled: boolean) =>
 				set({ yamlErrorLensEnabled }),
+			setLogLayout: (logLayout: LogLayout) => set({ logLayout }),
 			setKubeconfigEnvVar: (envVar: string) =>
 				set({ kubeconfigEnvVar: envVar.trim() }),
 			resetKubeconfigEnvVar: () =>

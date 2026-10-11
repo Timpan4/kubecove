@@ -5,6 +5,7 @@
 		Cable,
 		FileCode2,
 		FolderCog,
+		Palette,
 		RefreshCw,
 		Search,
 		SlidersHorizontal,
@@ -19,7 +20,7 @@
 		Switch,
 	} from "@/components/ui/svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
-	import type { TimestampTimezone, YamlDiffStyle } from "@/lib/settings";
+	import type { LogLayout, TimestampTimezone, YamlDiffStyle } from "@/lib/settings";
 	import { IS_DEV_BUILD } from "@/lib/build-env";
 	import { isBrowserRuntime, isTauriRuntime } from "@/lib/tauri-runtime";
 	import {
@@ -38,6 +39,7 @@
 
 	type SettingsCategoryId =
 		| "general"
+		| "appearance"
 		| "sessions"
 		| "yaml"
 		| "kubeconfig"
@@ -105,6 +107,13 @@
 			title: "Keep live sessions across workspace switches",
 			description:
 				"Leaves port-forward and Pod exec sessions running when you leave their scope.",
+		},
+	} satisfies Record<string, SettingsRowMeta>;
+
+	const APPEARANCE_ROWS = {
+		logLayout: {
+			title: "Log layout",
+			description: "Controls how entries are shown in the Logs tab.",
 		},
 	} satisfies Record<string, SettingsRowMeta>;
 
@@ -194,6 +203,7 @@
 			...Object.values(GENERAL_ROWS),
 			...(isBrowserRuntime() ? [SERVER_INFO_ROW] : []),
 		],
+		appearance: Object.values(APPEARANCE_ROWS),
 		sessions: Object.values(SESSION_ROWS),
 		yaml: Object.values(YAML_ROWS),
 		kubeconfig: Object.values(KUBECONFIG_ROWS),
@@ -207,6 +217,7 @@
 
 	const categories: Array<{ id: SettingsCategoryId; label: string }> = [
 		{ id: "general", label: "General" },
+		{ id: "appearance", label: "Appearance" },
 		{ id: "sessions", label: "Live sessions" },
 		{ id: "yaml", label: "YAML" },
 		{ id: "kubeconfig", label: "Kubeconfig" },
@@ -335,6 +346,7 @@
 					}}
 				>
 					{#if category.id === "general"}<SlidersHorizontal data-icon="inline-start" />
+					{:else if category.id === "appearance"}<Palette data-icon="inline-start" />
 					{:else if category.id === "sessions"}<Cable data-icon="inline-start" />
 					{:else if category.id === "yaml"}<FileCode2 data-icon="inline-start" />
 					{:else if category.id === "kubeconfig"}<FolderCog data-icon="inline-start" />
@@ -443,6 +455,22 @@
 					checked={settings.showCustomResources}
 					onCheckedChange={settings.setShowCustomResources}
 					aria-label={GENERAL_ROWS.customResources.title}
+				/>
+			</SettingsRow>
+		</FieldGroup>
+		{/if}
+		{#if showCategory("appearance")}
+		<FieldGroup>
+			<SettingsRow {...APPEARANCE_ROWS.logLayout}>
+				<SegmentedControl
+					value={settings.logLayout}
+					options={[
+						{ value: "stacked", label: "Stacked" },
+						{ value: "gutter", label: "Gutter" },
+						{ value: "oneLine", label: "One line" },
+					]}
+					onChange={(value: LogLayout) => settings.setLogLayout(value)}
+					ariaLabel={APPEARANCE_ROWS.logLayout.title}
 				/>
 			</SettingsRow>
 		</FieldGroup>

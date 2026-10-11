@@ -7,24 +7,35 @@
 		stopStream,
 		type TauriClient,
 	} from "@/lib/tauri";
+	import { settingsStore } from "@/lib/settings-store";
+	import { untrack } from "svelte";
+	import { SvelteSet } from "svelte/reactivity";
 	import type {
 		AggregatedLogStreamRequest,
 		PodLogStreamRequest,
 		ResourceSummary,
+		LogLineSource,
 		StreamMessage,
 	} from "@/lib/types";
 	import LogsTab from "./LogsTab.svelte";
 	import {
 		appendParsedLogLine,
 		filterOrderedParsedLogLines,
+		MAX_RETAINED_LOG_LINES,
 		orderParsedLogLines,
 		type ParsedLogLine,
 	} from "./log-helpers";
+	import type { LogLevel } from "./log-structure";
 
 	type LogStreamRequest =
 		| { mode: "pod"; request: PodLogStreamRequest }
 		| { mode: "aggregate"; request: AggregatedLogStreamRequest }
 		| null;
+
+	interface ScrollAnchor {
+		row: HTMLElement;
+		top: number;
+	}
 
 	let {
 		client,
@@ -36,7 +47,6 @@
 		active,
 		logFilter = $bindable(""),
 		logWrapLines = $bindable(true),
-		logAutoFollow = $bindable(true),
 		logLatestFirst = $bindable(false),
 		parsedLogLines = $bindable<ParsedLogLine[]>([]),
 		formatFullTimestamp,
@@ -51,7 +61,6 @@
 		active: boolean;
 		logFilter: string;
 		logWrapLines: boolean;
-		logAutoFollow: boolean;
 		logLatestFirst: boolean;
 		parsedLogLines: ParsedLogLine[];
 		formatFullTimestamp: (timestamp: string | null | undefined) => string;
@@ -66,6 +75,15 @@
 	let logTailLines = $state(200);
 	let logSinceSeconds = $state<number | undefined>(undefined);
 	let logPaused = $state(false);
+	let pendingLogLines: { line: string; source?: LogLineSource }[] = [];
+	let pendingCount = $state(0);
+	let appendedCount = $state(0);
+	let seenAppendedCount = 0;
+	let pinnedToLatest = $state(true);
+	let programmaticScrollTop: number | null = null;
+	let unseenCount = $state(0);
+	const hiddenLevels = new SvelteSet<LogLevel>();
+	const logLayout = $derived($settingsStore.logLayout);
 
 	const aggregateTargetKind = $derived(
 		resource.kind === "Deployment" || resource.kind === "Service" ? resource.kind : null,
@@ -109,9 +127,26 @@
 		orderParsedLogLines(parsedLogLines, logLatestFirst),
 	);
 	const logFilterTerm = $derived(logFilter.trim().toLowerCase());
-	const visibleLogLines = $derived(
+	const textMatchedLogLines = $derived(
 		filterOrderedParsedLogLines(orderedVisibleLogLines, logFilterTerm),
 	);
+	// Unleveled lines stay visible: level chips only filter lines whose level was detected.
+	const visibleLogLines = $derived(
+		hiddenLevels.size === 0
+			? textMatchedLogLines
+			: textMatchedLogLines.filter((line) => {
+					const level = line.structure.level;
+					return !level || !hiddenLevels.has(level);
+				}),
+	);
+	const levelCounts = $derived.by(() => {
+		const counts = { error: 0, warn: 0, info: 0, debug: 0 } satisfies Record<LogLevel, number>;
+		for (const line of parsedLogLines) {
+			const level = line.structure.level;
+			if (level) counts[level] += 1;
+		}
+		return counts;
+	});
 
 	$effect(() => {
 		if (!isPod) {
@@ -124,37 +159,132 @@
 		}
 	});
 
-	$effect(() => {
-		void logSignature;
+	function resetLogLines() {
 		parsedLogLines = [];
 		nextLogLineIndex = 0;
-		logError = null;
-	});
-
-	$effect(() => {
-		void active;
-		void parsedLogLines.length;
-		void visibleLogLines.length;
-		void logAutoFollow;
-		void logLatestFirst;
-		void logWrapLines;
-		if (!active || !logAutoFollow || !logViewport) return;
-		const frame = window.requestAnimationFrame(() => {
-			if (!logViewport) return;
-			logViewport.scrollTop = logLatestFirst ? 0 : logViewport.scrollHeight;
-		});
-		return () => window.cancelAnimationFrame(frame);
-	});
-
-	function clearLogLines() {
-		parsedLogLines = [];
-		nextLogLineIndex = 0;
+		pendingLogLines = [];
+		pendingCount = 0;
+		appendedCount = 0;
+		seenAppendedCount = 0;
+		unseenCount = 0;
+		pinnedToLatest = true;
 	}
 
 	$effect(() => {
-		if (!active || !logRequest || logPaused) {
-			logStatus = logPaused ? "paused" : "idle";
-			logMessage = logPaused ? "Log stream paused" : "Log stream idle";
+		void logSignature;
+		resetLogLines();
+		logError = null;
+	});
+
+	function appendLogLine(entry: { line: string; source?: LogLineSource }) {
+		appendParsedLogLine(parsedLogLines, entry, nextLogLineIndex);
+		nextLogLineIndex += 1;
+		appendedCount += 1;
+	}
+
+	function togglePause() {
+		if (!logPaused) {
+			logPaused = true;
+			return;
+		}
+		logPaused = false;
+		const pending = pendingLogLines;
+		pendingLogLines = [];
+		pendingCount = 0;
+		for (const entry of pending) appendLogLine(entry);
+	}
+
+	function isAtLatest(viewport: HTMLElement): boolean {
+		// MDN's scrolled-to-end check; the 1px tolerance absorbs fractional scroll offsets.
+		return logLatestFirst
+			? viewport.scrollTop <= 1
+			: Math.abs(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop) <= 1;
+	}
+
+	function scrollToLatest(viewport: HTMLElement) {
+		viewport.scrollTop = logLatestFirst ? 0 : viewport.scrollHeight;
+		programmaticScrollTop = viewport.scrollTop;
+	}
+
+	function jumpToLatest() {
+		pinnedToLatest = true;
+		unseenCount = 0;
+		if (logViewport) scrollToLatest(logViewport);
+	}
+
+	// Every visible row is a candidate so the anchor survives eviction of the top row.
+	function findScrollAnchors(viewport: HTMLElement): ScrollAnchor[] {
+		const anchors: ScrollAnchor[] = [];
+		const bottom = viewport.scrollTop + viewport.clientHeight;
+		for (const row of viewport.querySelectorAll<HTMLElement>("[data-log-row]")) {
+			if (row.offsetTop >= bottom) break;
+			if (row.offsetTop + row.offsetHeight > viewport.scrollTop) anchors.push({ row, top: row.offsetTop });
+		}
+		return anchors;
+	}
+
+	$effect(() => {
+		const viewport = logViewport;
+		if (!viewport) return;
+		const onScroll = () => {
+			// Our own follow scroll reports late; lines appended meanwhile must not read as scrolling away.
+			if (viewport.scrollTop === programmaticScrollTop) return;
+			programmaticScrollTop = null;
+			pinnedToLatest = isAtLatest(viewport);
+			if (pinnedToLatest) unseenCount = 0;
+		};
+		viewport.addEventListener("scroll", onScroll, { passive: true });
+		return () => viewport.removeEventListener("scroll", onScroll);
+	});
+
+	$effect(() => {
+		void logLatestFirst;
+		untrack(jumpToLatest);
+	});
+
+	$effect(() => {
+		const count = appendedCount;
+		const added = count - seenAppendedCount;
+		seenAppendedCount = count;
+		if (added > 0 && !untrack(() => pinnedToLatest)) {
+			unseenCount = untrack(() => unseenCount) + added;
+		}
+	});
+
+	// The viewport disables native overflow-anchor (WebKit lacks it), so keep the row the
+	// user is reading in place when lines are prepended or evicted while scrolled away.
+	let scrollAnchors: ScrollAnchor[] = [];
+	$effect.pre(() => {
+		void appendedCount;
+		const viewport = untrack(() => logViewport);
+		scrollAnchors =
+			viewport && !untrack(() => pinnedToLatest) ? findScrollAnchors(viewport) : [];
+	});
+
+	$effect(() => {
+		void appendedCount;
+		const anchor = scrollAnchors.find((candidate) => candidate.row.isConnected);
+		scrollAnchors = [];
+		const viewport = untrack(() => logViewport);
+		if (!anchor || !viewport) return;
+		viewport.scrollTop += anchor.row.offsetTop - anchor.top;
+	});
+
+	$effect(() => {
+		// visibleLogLines can be the same mutated array, so track the append counter and length.
+		void appendedCount;
+		void visibleLogLines.length;
+		void logLayout;
+		void logWrapLines;
+		const viewport = logViewport;
+		if (!active || !viewport || !pinnedToLatest) return;
+		scrollToLatest(viewport);
+	});
+
+	$effect(() => {
+		if (!active || !logRequest) {
+			logStatus = "idle";
+			logMessage = "Log stream idle";
 			logError = null;
 			return;
 		}
@@ -177,12 +307,14 @@
 			if (event.type === "logLine") {
 				logStatus = "connected";
 				logMessage = logRequest.mode === "aggregate" ? "Aggregated logs connected" : "Log stream connected";
-				appendParsedLogLine(
-					parsedLogLines,
-					{ line: event.line, source: event.source },
-					nextLogLineIndex,
-				);
-				nextLogLineIndex += 1;
+				const entry = { line: event.line, source: event.source };
+				if (!logPaused) {
+					appendLogLine(entry);
+					return;
+				}
+				pendingLogLines.push(entry);
+				if (pendingLogLines.length > MAX_RETAINED_LOG_LINES) pendingLogLines.shift();
+				pendingCount = pendingLogLines.length;
 				return;
 			}
 			if (event.type === "error") {
@@ -225,8 +357,6 @@
 <LogsTab
 	{isPod}
 	isAggregate={isAggregateTarget}
-	targetKind={resource.kind}
-	targetName={resource.name}
 	{containerOptions}
 	bind:selectedContainer
 	{logStatus}
@@ -235,16 +365,21 @@
 	bind:logFilter
 	{logFilterTerm}
 	bind:logWrapLines
-	bind:logAutoFollow
 	bind:logLatestFirst
+	{logLayout}
 	lineCount={parsedLogLines.length}
-	onClear={clearLogLines}
+	onClear={resetLogLines}
 	bind:logViewport
 	bind:logTailLines
 	bind:logSinceSeconds
-	bind:logPaused
+	{logPaused}
+	{pendingCount}
+	onTogglePause={togglePause}
+	{unseenCount}
+	onJumpToLatest={jumpToLatest}
+	{hiddenLevels}
+	{levelCounts}
 	{visibleLogLines}
-	{parsedLogLines}
 	{formatFullTimestamp}
 	{formatLogTime}
 />
