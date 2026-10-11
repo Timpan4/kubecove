@@ -12,12 +12,12 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
-      BENCH_FILTER: serialize_large_resource_kyaml|sort_custom_resource_catalog_1000_kinds|argo_selected_comparison_json_encoding|dynamic_resource_identity_health_edges|namespace_name_age_projection_100|port_forward_session_summary_json_encoding
+      BENCH_FILTER: serialize_large_resource_kyaml|sort_custom_resource_catalog_1000_kinds|argo_selected_comparison_json_encoding|dynamic_resource_identity_health_edges|namespace_name_age_projection_100|port_forward_session_summary_json_encoding|typed_resource_summaries_10000|usage_process_attribution_macos_orphans|argo_project_list_json_encoding|argo_application_list_json_encoding
     steps:
       - name: Checkout baseline
         uses: actions/checkout@v7
         with:
-          ref: dc7f470ee653fdeb6b6b7648ac69b44f26e5d683
+          ref: 1f4daaf5de5b2d3f97c0a5ffe7eee828beb11d8d
           path: baseline
           fetch-depth: 0
           persist-credentials: false
@@ -25,7 +25,7 @@ jobs:
       - name: Checkout updated dependencies
         uses: actions/checkout@v7
         with:
-          ref: 8701cc4072d8ca29f1f57c854be923e208fef071
+          ref: 5517ce1264053d32825a5be6ed3187188504dfcc
           path: updated
           persist-credentials: false
 
