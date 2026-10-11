@@ -8,7 +8,7 @@ mod helm_storage_records_to_latest_releases {
     // R25 and folded R26: decode every Secret/ConfigMap record, construct its
     // full summaries, select latest revisions, and drop discarded payloads.
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn helm_storage_records_to_latest_releases(bencher: Bencher) {
         let fixture = domain_helm::storage_records();
         assert_eq!(fixture.0.len() + fixture.1.len(), 250);
         let expected = domain_helm::benchmark_storage_records(fixture.0.clone(), fixture.1.clone())
@@ -105,7 +105,7 @@ mod helm_storage_record_decode_bounds {
 
     // R25: exercise the actual stored-size and expanded-size rejection paths.
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn helm_storage_record_decode_bounds(bencher: Bencher) {
         let records = domain_helm::storage_bound_records();
         assert_eq!(
             records[0].data.as_ref().unwrap()["release"].0.len(),
@@ -163,7 +163,7 @@ mod helm_manifest_parse_mixed_250_documents {
     // R27: retain the caller's whole-document YAML parse over mixed resource
     // kinds, embedded config, empty documents, and malformed/non-resource docs.
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn helm_manifest_parse_mixed_250_documents(bencher: Bencher) {
         let manifest = domain_helm::manifest_fixture();
         let parsed = domain_helm::parse_manifest(&manifest);
         assert_eq!(parsed.len(), 250);
@@ -194,7 +194,7 @@ mod helm_reconciliation_prepare {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn helm_reconciliation_prepare(bencher: Bencher) {
         let (refs, discovered) = domain_helm::reconciliation_inputs();
         let expected = domain_helm::reconciliation_prepare(&refs, &discovered);
         assert_eq!(expected.discovered_index_size, 1_000);
@@ -255,7 +255,7 @@ mod helm_reconciliation_assemble {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn helm_reconciliation_assemble(bencher: Bencher) {
         let fixture = domain_helm::reconciliation_assembly_inputs();
         let expected = domain_helm::reconciliation_assemble(
             fixture.0.clone(),
@@ -308,7 +308,7 @@ mod helm_release_list_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn helm_release_list_json_encoding(bencher: Bencher) {
         let fixture = domain_helm::storage_records();
         let releases = domain_helm::benchmark_storage_records(fixture.0, fixture.1)
             .expect("storage fixtures decode");
@@ -325,7 +325,7 @@ mod helm_manifest_summary_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn helm_manifest_summary_json_encoding(bencher: Bencher) {
         let manifest = domain_helm::manifest_fixture();
         let resources = domain_helm::parse_manifest(&manifest);
         let summary = domain_helm::manifest_summary(&resources);
@@ -342,7 +342,7 @@ mod helm_reconciliation_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn helm_reconciliation_json_encoding(bencher: Bencher) {
         let (summary, rows, unavailable, warnings) = domain_helm::reconciliation_assembly_inputs();
         let result = domain_helm::reconciliation_assemble(summary, rows, unavailable, warnings);
         let json = domain_helm::encode(&result);

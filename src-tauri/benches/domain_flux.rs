@@ -7,7 +7,7 @@ mod flux_list_projection {
     // R35 and folded R34: installed API matching once per preparation plus
     // complete summaries across Source, Kustomization, and HelmRelease batches.
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn flux_list_projection(bencher: Bencher) {
         let discovery = domain_flux::discovery_resources();
         let batches = domain_flux::flux_object_batches();
         assert_eq!(batches.len(), 3);
@@ -83,7 +83,7 @@ mod flux_resource_list_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn flux_resource_list_json_encoding(bencher: Bencher) {
         let discovery = domain_flux::discovery_resources();
         let batches = domain_flux::flux_object_batches();
         let output = domain_flux::project_list(&discovery, &batches).summaries;

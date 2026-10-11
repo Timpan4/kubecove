@@ -165,7 +165,7 @@ fn expect_apply_validation_error(
 mod deployment_yaml_document_prepare_40_containers {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn deployment_yaml_document_prepare_40_containers(bencher: codspeed_divan_compat::Bencher) {
         let expected = serialize_typed_document(
             &DOCUMENT_INPUT.deployment,
             YamlViewMode::ApplyClean,
@@ -191,7 +191,7 @@ mod deployment_yaml_document_prepare_40_containers {
 mod secret_yaml_redaction_and_encoding_40_keys {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn secret_yaml_redaction_and_encoding_40_keys(bencher: codspeed_divan_compat::Bencher) {
         let expected = serialize_secret_yaml(
             DOCUMENT_INPUT.secret.clone(),
             YamlViewMode::Kubectl,
@@ -213,7 +213,7 @@ mod secret_yaml_redaction_and_encoding_40_keys {
 mod dynamic_document_prepare_40_values {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn dynamic_document_prepare_40_values(bencher: codspeed_divan_compat::Bencher) {
         let expected = serialize_dynamic_document(
             &DOCUMENT_INPUT.dynamic_kind,
             &DOCUMENT_INPUT.dynamic_object,
@@ -246,7 +246,9 @@ mod dynamic_document_prepare_40_values {
 mod deployment_details_complete_inspection_40_containers {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn deployment_details_complete_inspection_40_containers(
+        bencher: codspeed_divan_compat::Bencher,
+    ) {
         let expected =
             deployment_details(DOCUMENT_INPUT.deployment.clone()).expect("Deployment details");
         assert_detail_identity(
@@ -284,7 +286,7 @@ mod deployment_details_complete_inspection_40_containers {
 mod configmap_details_complete_inspection_40_keys {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn configmap_details_complete_inspection_40_keys(bencher: codspeed_divan_compat::Bencher) {
         let expected =
             configmap_details(DOCUMENT_INPUT.config_map.clone()).expect("ConfigMap details");
         assert_detail_identity(
@@ -308,7 +310,7 @@ mod configmap_details_complete_inspection_40_keys {
 mod secret_details_discarded_yaml_redaction_and_dto {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn secret_details_discarded_yaml_redaction_and_dto(bencher: codspeed_divan_compat::Bencher) {
         let expected = secret_details(DOCUMENT_INPUT.secret.clone()).expect("Secret details");
         assert_detail_identity(
             &expected,
@@ -333,7 +335,7 @@ mod secret_details_discarded_yaml_redaction_and_dto {
 mod crd_details_complete_inspection {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn crd_details_complete_inspection(bencher: codspeed_divan_compat::Bencher) {
         let expected = crd_details(DOCUMENT_INPUT.crd.clone()).expect("CRD details");
         assert_detail_identity(
             &expected,
@@ -374,7 +376,7 @@ mod crd_details_complete_inspection {
 mod dynamic_details_complete_inspection {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn dynamic_details_complete_inspection(bencher: codspeed_divan_compat::Bencher) {
         let expected = dynamic_details(
             DOCUMENT_INPUT.dynamic_kind.clone(),
             DOCUMENT_INPUT.dynamic_object.clone(),
@@ -434,7 +436,7 @@ mod dynamic_details_complete_inspection {
 mod deployment_revision_history_500_candidates {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn deployment_revision_history_500_candidates(bencher: codspeed_divan_compat::Bencher) {
         let expected = deployment_revisions(REVISION_INPUT.clone());
         assert_eq!(expected.len(), 447);
         assert!(expected.windows(2).all(|rows| {
@@ -492,7 +494,7 @@ mod deployment_revision_history_500_candidates {
 mod editor_local_lint_multiple_documents {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn editor_local_lint_multiple_documents(bencher: codspeed_divan_compat::Bencher) {
         let expected = editor_local_lint(EDITOR_INPUT.multiple_documents.clone());
         assert_eq!(expected.notes.len(), 0);
         assert_lint_diagnostic(
@@ -551,7 +553,7 @@ mod editor_local_lint_multiple_documents {
 mod editor_apply_validation_valid {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn editor_apply_validation_valid(bencher: codspeed_divan_compat::Bencher) {
         let (target, manifest) =
             editor_apply_validation(EDITOR_INPUT.valid.clone()).expect("valid apply request");
         assert_eq!(target.cluster_context, "catalog-cluster");
@@ -577,7 +579,7 @@ mod editor_apply_validation_valid {
 mod editor_apply_validation_target_mismatch {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn editor_apply_validation_target_mismatch(bencher: codspeed_divan_compat::Bencher) {
         expect_apply_validation_error(
             EDITOR_INPUT.api_version_mismatch.clone(),
             "apiVersion must match selected resource: expected v1, got apps/v1",
@@ -603,7 +605,7 @@ mod editor_apply_validation_target_mismatch {
 mod editor_apply_validation_secret_rejection {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn editor_apply_validation_secret_rejection(bencher: codspeed_divan_compat::Bencher) {
         expect_apply_validation_error(
             EDITOR_INPUT.secret.clone(),
             "YAML apply is disabled for v1 Secrets because redacted values can corrupt data",
@@ -617,7 +619,7 @@ mod editor_apply_validation_secret_rejection {
 mod editor_apply_validation_empty_comment_null {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn editor_apply_validation_empty_comment_null(bencher: codspeed_divan_compat::Bencher) {
         for request in &EDITOR_INPUT.empty_comment_null {
             expect_apply_validation_error(request.clone(), "YAML document is empty");
         }
@@ -637,7 +639,7 @@ mod editor_apply_validation_empty_comment_null {
 mod editor_apply_validation_malformed_yaml {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn editor_apply_validation_malformed_yaml(bencher: codspeed_divan_compat::Bencher) {
         let error = editor_apply_validation(EDITOR_INPUT.malformed.clone())
             .expect_err("malformed YAML apply request");
         assert_eq!(error.kind, kubecove_lib::models::AppErrorKind::Validation);
@@ -650,7 +652,9 @@ mod editor_apply_validation_malformed_yaml {
 mod editor_schema_output_projection_valid_invalid_skipped_error {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn editor_schema_output_projection_valid_invalid_skipped_error(
+        bencher: codspeed_divan_compat::Bencher,
+    ) {
         let expected = schema_output_projection(&SCHEMA_INPUT);
         assert_eq!(expected.diagnostics.len(), 3);
         assert_schema_diagnostic(

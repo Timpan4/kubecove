@@ -62,7 +62,7 @@ mod ownership_topology_production_mapping_500_apps {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn ownership_topology_production_mapping_500_apps(bencher: codspeed_divan_compat::Bencher) {
         assert_eq!(OWNERSHIP_OUTPUT.nodes.len(), 2_512);
         assert_sorted_unique(&OWNERSHIP_OUTPUT);
         assert!(OWNERSHIP_OUTPUT
@@ -160,7 +160,9 @@ mod network_topology_endpoint_slice_and_selector_500_services {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn network_topology_endpoint_slice_and_selector_500_services(
+        bencher: codspeed_divan_compat::Bencher,
+    ) {
         assert_eq!(NETWORK_OUTPUT.nodes.len(), 1_255);
         assert_sorted_unique(&NETWORK_OUTPUT);
         assert!(!NETWORK_OUTPUT.warnings.is_empty());

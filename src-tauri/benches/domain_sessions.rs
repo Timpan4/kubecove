@@ -6,7 +6,7 @@ mod service_ready_target_resolution_named {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn service_ready_target_resolution_named(bencher: Bencher) {
         let (pods, named_port, numeric_port) = domain_sessions::target_inputs();
         let named = domain_sessions::resolve_service_target(pods.clone(), named_port.clone())
             .expect("second eligible Pod exposes the named port");
@@ -47,7 +47,7 @@ mod service_ready_target_resolution_numeric {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn service_ready_target_resolution_numeric(bencher: Bencher) {
         let (pods, _, numeric_port) = domain_sessions::target_inputs();
         let expected = domain_sessions::resolve_service_target(pods.clone(), numeric_port.clone())
             .expect("numeric target resolves on first ready Pod");
@@ -65,7 +65,7 @@ mod port_forward_session_summary_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn port_forward_session_summary_json_encoding(bencher: Bencher) {
         let summary = domain_sessions::port_forward_session_summary("api-b".to_string(), 8080);
         let json = domain_sessions::encode(&summary);
         assert!(json.contains("resolvedPodPort"));
@@ -80,7 +80,7 @@ mod pod_exec_session_summary_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn pod_exec_session_summary_json_encoding(bencher: Bencher) {
         let summary = domain_sessions::pod_exec_session_summary();
         let json = domain_sessions::encode(&summary);
         assert!(json.contains("terminalCols"));

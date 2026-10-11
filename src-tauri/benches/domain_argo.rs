@@ -6,7 +6,7 @@ mod argo_list_projection {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_list_projection(bencher: Bencher) {
         let objects = domain_argo::list_objects();
         let expected = domain_argo::project_list_summaries(&objects.0, &objects.1, &objects.2);
         assert_eq!(expected.applications.len(), 250);
@@ -65,7 +65,7 @@ mod argo_kubernetes_inspector {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_kubernetes_inspector(bencher: Bencher) {
         let object = domain_argo::kubernetes_inspector_input();
         let application = domain_argo::application_ref("checkout-17");
         let expected = domain_argo::kubernetes_inspector(object.clone(), &application)
@@ -109,7 +109,7 @@ mod argo_connected_inspector {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_connected_inspector(bencher: Bencher) {
         let (application, response, managed) = domain_argo::connected_inspector_inputs();
         let expected = domain_argo::connected_inspector(
             application.clone(),
@@ -176,7 +176,7 @@ mod argo_selected_comparison_kubernetes {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_selected_comparison_kubernetes(bencher: Bencher) {
         let application = domain_argo::kubernetes_inspector_input();
         let target = domain_argo::selected_resource_in_namespace(
             "deployment-249",
@@ -213,7 +213,7 @@ mod argo_selected_comparison_connected {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_selected_comparison_connected(bencher: Bencher) {
         let (_, _, managed) = domain_argo::connected_inspector_inputs();
         let target = domain_argo::selected_resource("late-secret", "Secret");
         let expected = domain_argo::selected_connected_comparison(managed.clone(), &target)
@@ -262,7 +262,7 @@ mod argo_kubernetes_identity_revalidation {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_kubernetes_identity_revalidation(bencher: Bencher) {
         let current = domain_argo::kubernetes_inspector_input();
         let expected = domain_argo::application_ref("checkout-17");
         assert!(domain_argo::identity_revalidation(&current, &expected).is_ok());
@@ -291,7 +291,7 @@ mod argo_application_list_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_application_list_json_encoding(bencher: Bencher) {
         let objects = domain_argo::list_objects();
         let output = domain_argo::project_list_summaries(&objects.0, &objects.1, &objects.2);
         let json = domain_argo::encode(&output.applications);
@@ -307,7 +307,7 @@ mod argo_appset_list_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_appset_list_json_encoding(bencher: Bencher) {
         let objects = domain_argo::list_objects();
         let output = domain_argo::project_list_summaries(&objects.0, &objects.1, &objects.2);
         let json = domain_argo::encode(&output.application_sets);
@@ -322,7 +322,7 @@ mod argo_project_list_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_project_list_json_encoding(bencher: Bencher) {
         let objects = domain_argo::list_objects();
         let output = domain_argo::project_list_summaries(&objects.0, &objects.1, &objects.2);
         let json = domain_argo::encode(&output.projects);
@@ -337,7 +337,7 @@ mod argo_kubernetes_inspector_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_kubernetes_inspector_json_encoding(bencher: Bencher) {
         let object = domain_argo::kubernetes_inspector_input();
         let output =
             domain_argo::kubernetes_inspector(object, &domain_argo::application_ref("checkout-17"))
@@ -354,7 +354,7 @@ mod argo_connected_inspector_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_connected_inspector_json_encoding(bencher: Bencher) {
         let (application, response, managed) = domain_argo::connected_inspector_inputs();
         let output = domain_argo::connected_inspector(application, response, managed);
         let json = domain_argo::encode(&output);
@@ -370,7 +370,7 @@ mod argo_selected_kubernetes_comparison_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_selected_kubernetes_comparison_json_encoding(bencher: Bencher) {
         let application = domain_argo::kubernetes_inspector_input();
         let target = domain_argo::selected_resource_in_namespace(
             "deployment-249",
@@ -392,7 +392,7 @@ mod argo_selected_comparison_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn argo_selected_comparison_json_encoding(bencher: Bencher) {
         let (_, _, managed) = domain_argo::connected_inspector_inputs();
         let output = domain_argo::selected_connected_comparison(
             managed,

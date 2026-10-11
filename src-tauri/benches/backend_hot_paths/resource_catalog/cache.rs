@@ -4,7 +4,7 @@ use super::*;
 mod cache_ready_resource_payload_hit_10000 {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn cache_ready_resource_payload_hit_10000(bencher: codspeed_divan_compat::Bencher) {
         let fixture = resource_cache_fixture();
         fixture.assert_cache_partitioning_and_namespace_normalization();
         let hit = fixture.ready_resource_hit().expect("ready hit");
@@ -24,7 +24,7 @@ mod cache_ready_resource_payload_hit_10000 {
 mod cache_all_namespace_to_named_scope_100 {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn cache_all_namespace_to_named_scope_100(bencher: codspeed_divan_compat::Bencher) {
         let fixture = resource_cache_fixture();
         let hit = fixture.named_scope_from_all_hit().expect("named hit");
         let expected = fixture
@@ -53,7 +53,7 @@ mod cache_all_namespace_to_named_scope_100 {
 mod cache_topology_payload_hit {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn cache_topology_payload_hit(bencher: codspeed_divan_compat::Bencher) {
         let fixture = resource_cache_fixture();
         let hit = fixture.topology_hit().expect("topology hit");
         assert_eq!(hit.nodes.len(), 2_512);
@@ -70,7 +70,7 @@ mod cache_topology_payload_hit {
 mod cache_flux_index_payload_hit {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn cache_flux_index_payload_hit(bencher: codspeed_divan_compat::Bencher) {
         assert_eq!(
             resource_cache_fixture().flux_index_hit().expect("Flux hit"),
             2_048
@@ -84,7 +84,7 @@ mod cache_flux_index_payload_hit {
 mod cache_watch_dirty_replacement_10000 {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn cache_watch_dirty_replacement_10000(bencher: codspeed_divan_compat::Bencher) {
         let expected = resource_cache_fixture()
             .dirty_replacement()
             .expect("replacement");

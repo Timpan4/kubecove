@@ -26,7 +26,7 @@ mod usage_process_attribution_native {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn usage_process_attribution_native(bencher: Bencher) {
         let inputs = domain_usage::process_inputs();
         let expected =
             domain_usage::attribute_processes(inputs.clone(), UsageProcessPlatform::Native);
@@ -56,7 +56,7 @@ mod usage_process_attribution_macos_orphans {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn usage_process_attribution_macos_orphans(bencher: Bencher) {
         let inputs = domain_usage::process_inputs();
         let expected =
             domain_usage::attribute_processes(inputs.clone(), UsageProcessPlatform::MacOs);
@@ -87,7 +87,7 @@ mod usage_process_attribution_macos_ambiguous_cohort {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn usage_process_attribution_macos_ambiguous_cohort(bencher: Bencher) {
         let inputs = domain_usage::ambiguous_macos_cohort_inputs();
         let expected =
             domain_usage::attribute_processes(inputs.clone(), UsageProcessPlatform::MacOs);
@@ -113,7 +113,7 @@ mod usage_process_attribution_windows_webview {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn usage_process_attribution_windows_webview(bencher: Bencher) {
         let inputs = domain_usage::process_inputs();
         let expected =
             domain_usage::attribute_processes(inputs.clone(), UsageProcessPlatform::Windows);
@@ -147,7 +147,7 @@ mod usage_process_attribution_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn usage_process_attribution_json_encoding(bencher: Bencher) {
         let metrics = domain_usage::attribute_processes(
             domain_usage::process_inputs(),
             UsageProcessPlatform::MacOs,

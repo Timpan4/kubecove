@@ -12,7 +12,7 @@ mod bounded_log_line_decode_and_drain {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn bounded_log_line_decode_and_drain(bencher: Bencher) {
         let readers = domain_streams::log_reader_cases();
         let expected = domain_streams::decode_log_reader_cases(readers, &LOG_RUNTIME);
         assert_eq!(expected.len(), 6);
@@ -49,7 +49,7 @@ mod exec_incremental_utf8_decode {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn exec_incremental_utf8_decode(bencher: Bencher) {
         let chunks = domain_streams::exec_utf8_chunks();
         assert_eq!(
             chunks.iter().take(2).map(Vec::len).collect::<Vec<_>>(),
@@ -71,7 +71,7 @@ mod aggregate_log_source_enumeration {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn aggregate_log_source_enumeration(bencher: Bencher) {
         let pods = domain_streams::aggregate_log_pods();
         let (active, total) = domain_streams::aggregate_source_counts(&pods);
         assert_eq!((active, total), (50, 75));
@@ -97,7 +97,7 @@ mod bounded_log_messages_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn bounded_log_messages_json_encoding(bencher: Bencher) {
         let decoded = domain_streams::decode_log_reader_cases(
             domain_streams::log_reader_cases(),
             &LOG_RUNTIME,
@@ -116,7 +116,7 @@ mod exec_output_messages_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn exec_output_messages_json_encoding(bencher: Bencher) {
         let outputs = domain_streams::decode_exec_utf8_chunks(&domain_streams::exec_utf8_chunks());
         let messages = domain_streams::exec_messages(&outputs);
         assert_eq!(messages.len(), outputs.len());

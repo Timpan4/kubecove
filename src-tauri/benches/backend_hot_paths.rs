@@ -29,7 +29,7 @@ mod helm_manifest_parse_250_resources {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run() -> usize {
+    fn helm_manifest_parse_250_resources() -> usize {
         black_box(helm_manifest_resources(black_box(Some(
             HELM_MANIFEST.as_str(),
         ))))
@@ -42,7 +42,7 @@ mod serialize_large_resource_yaml {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run() -> usize {
+    fn serialize_large_resource_yaml() -> usize {
         black_box(serialize_backend_yaml(
             black_box(&YAML_VALUE),
             YamlEncoding::Yaml,
@@ -55,7 +55,7 @@ mod serialize_large_resource_kyaml {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run() -> usize {
+    fn serialize_large_resource_kyaml() -> usize {
         black_box(serialize_backend_yaml(
             black_box(&YAML_VALUE),
             YamlEncoding::Kyaml,
@@ -69,7 +69,7 @@ mod build_ownership_topology_500_apps {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run() -> usize {
+    fn build_ownership_topology_500_apps() -> usize {
         let topology = black_box(build_bench_topology(black_box(&TOPOLOGY_INPUTS)));
         topology.nodes.len() + topology.edges.len()
     }
@@ -80,7 +80,7 @@ mod sort_custom_resource_catalog_1000_kinds {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run() -> usize {
+    fn sort_custom_resource_catalog_1000_kinds() -> usize {
         black_box(sort_custom_resource_catalog(black_box(
             &CUSTOM_RESOURCE_KINDS,
         )))
@@ -92,7 +92,7 @@ mod build_ownership_topology_500_apps_with_crd_overlay {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run() -> usize {
+    fn build_ownership_topology_500_apps_with_crd_overlay() -> usize {
         let topology = black_box(build_custom_overlay_bench_topology_from_inputs(black_box(
             CUSTOM_OVERLAY_INPUTS.clone(),
         )));

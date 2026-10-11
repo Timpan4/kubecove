@@ -4,7 +4,7 @@ use super::*;
 mod typed_resource_summaries_10000 {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn typed_resource_summaries_10000(bencher: codspeed_divan_compat::Bencher) {
         assert_eq!(TYPED_OUTPUT.len(), 10_015);
         assert!(TYPED_OUTPUT
             .iter()
@@ -67,7 +67,7 @@ mod typed_resource_summaries_10000 {
 mod namespace_name_age_projection_100 {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn namespace_name_age_projection_100(bencher: codspeed_divan_compat::Bencher) {
         let expected = namespace_summaries_at(&NAMESPACES, fixed_now());
         assert_eq!(expected.len(), 100);
         assert_eq!(expected[0].name, "tenant-0");
@@ -83,7 +83,7 @@ mod namespace_name_age_projection_100 {
 mod dynamic_resource_summaries_10000 {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn dynamic_resource_summaries_10000(bencher: codspeed_divan_compat::Bencher) {
         assert_eq!(DYNAMIC_OUTPUT.len(), 10_000);
         assert!(DYNAMIC_OUTPUT.iter().any(|row| row.health_assessment.state
             == kubecove_lib::models::HealthAssessmentState::Degraded));
@@ -132,7 +132,7 @@ mod dynamic_resource_summaries_10000 {
 mod dynamic_resource_identity_health_edges {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn dynamic_resource_identity_health_edges(bencher: codspeed_divan_compat::Bencher) {
         assert_eq!(DYNAMIC_EDGE_OUTPUT.len(), 2);
         assert!(DYNAMIC_EDGE_OUTPUT
             .iter()
@@ -173,7 +173,7 @@ mod dynamic_resource_identity_health_edges {
 mod crd_catalog_projection_1000 {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn crd_catalog_projection_1000(bencher: codspeed_divan_compat::Bencher) {
         let expected = crd_resource_catalog(CRDS.clone());
         assert_eq!(expected.len(), 1_000);
         assert!(expected.iter().all(|kind| kind.version == "v1"));
@@ -201,7 +201,7 @@ mod crd_catalog_projection_1000 {
 mod kubeconfig_parse_merge_context_projection {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn kubeconfig_parse_merge_context_projection(bencher: codspeed_divan_compat::Bencher) {
         let contexts = kubeconfig_context_projection(&KUBECONFIG_INPUT)
             .expect("credential-free source fixtures parse and merge");
         assert!(!contexts.is_empty());
@@ -217,7 +217,7 @@ mod kubeconfig_parse_merge_context_projection {
 mod flux_owner_index_64_objects_2048_entries {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn flux_owner_index_64_objects_2048_entries(bencher: codspeed_divan_compat::Bencher) {
         let expected = build_flux_index_fixture(FLUX_INPUT.clone());
         assert_eq!(expected.retained_items, 2_048);
         assert!(expected.partial);

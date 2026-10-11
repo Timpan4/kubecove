@@ -4,7 +4,7 @@ use super::*;
 mod incident_cockpit_post_fetch_500_events {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn incident_cockpit_post_fetch_500_events(bencher: codspeed_divan_compat::Bencher) {
         // Events cover the first 167 Pods. Derive remaining membership from
         // prepared summary evidence, independently of the incident output.
         let expected_keys = INCIDENT_INPUT
@@ -120,7 +120,7 @@ mod incident_cockpit_post_fetch_500_events {
 mod selected_resource_events_500 {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn selected_resource_events_500(bencher: codspeed_divan_compat::Bencher) {
         assert_eq!(EVENT_OUTPUT.len(), 375);
         assert!(EVENT_OUTPUT
             .iter()

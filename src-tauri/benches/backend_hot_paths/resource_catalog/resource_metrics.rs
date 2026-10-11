@@ -34,7 +34,7 @@ mod resource_metrics_normalization_and_rollup_10000 {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn resource_metrics_normalization_and_rollup_10000(bencher: codspeed_divan_compat::Bencher) {
         assert_eq!(METRICS_OUTPUT.pods.len(), 10_007);
         assert_eq!(METRICS_OUTPUT.nodes.len(), 1);
         assert_eq!(METRICS_OUTPUT.workloads.len(), 10);

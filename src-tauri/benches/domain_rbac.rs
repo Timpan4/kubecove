@@ -16,7 +16,7 @@ mod rbac_inventory_projection_complete_coverage {
     // R36 and folded R37: raw ServiceAccount/Role/ClusterRole/binding
     // projection, rule normalization, inherited risks, and namespace rollup.
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn rbac_inventory_projection_complete_coverage(bencher: Bencher) {
         let inputs = domain_rbac::inventory_inputs();
         let expected = domain_rbac::project_inventory(
             inputs.clone(),
@@ -108,7 +108,7 @@ mod rbac_inventory_projection_partial_coverage {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn rbac_inventory_projection_partial_coverage(bencher: Bencher) {
         let inputs = domain_rbac::inventory_inputs();
         let expected = domain_rbac::project_inventory(
             inputs.clone(),
@@ -141,7 +141,7 @@ mod rbac_inventory_json_encoding {
     use super::*;
 
     #[codspeed_divan_compat::bench]
-    fn run(bencher: Bencher) {
+    fn rbac_inventory_json_encoding(bencher: Bencher) {
         let output = complete_inventory();
         let json = domain_rbac::encode(&output);
         assert!(json.contains("namespaceAccess"));

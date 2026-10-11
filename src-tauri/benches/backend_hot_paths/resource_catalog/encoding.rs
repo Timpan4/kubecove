@@ -4,7 +4,7 @@ use super::*;
 mod json_encode_typed_resource_summaries {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_typed_resource_summaries(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*TYPED_OUTPUT).expect("typed response JSON");
         assert!(serde_json::from_str::<serde_json::Value>(&encoded)
             .unwrap()
@@ -20,7 +20,7 @@ mod json_encode_typed_resource_summaries {
 mod json_encode_dynamic_resource_summaries {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_dynamic_resource_summaries(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*DYNAMIC_OUTPUT).expect("dynamic response JSON");
         assert!(serde_json::from_str::<serde_json::Value>(&encoded)
             .unwrap()
@@ -36,7 +36,7 @@ mod json_encode_dynamic_resource_summaries {
 mod json_encode_ownership_topology {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_ownership_topology(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*OWNERSHIP_OUTPUT).expect("topology response JSON");
         assert!(serde_json::from_str::<serde_json::Value>(&encoded).unwrap()["nodes"].is_array());
         bencher
@@ -50,7 +50,7 @@ mod json_encode_ownership_topology {
 mod json_encode_network_topology {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_network_topology(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*NETWORK_OUTPUT).expect("network topology JSON");
         assert!(serde_json::from_str::<serde_json::Value>(&encoded).unwrap()["edges"].is_array());
         bencher
@@ -64,7 +64,7 @@ mod json_encode_network_topology {
 mod json_encode_resource_metrics {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_resource_metrics(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*METRICS_OUTPUT).expect("metrics response JSON");
         assert!(
             serde_json::from_str::<serde_json::Value>(&encoded).unwrap()["workloads"].is_array()
@@ -80,7 +80,7 @@ mod json_encode_resource_metrics {
 mod json_encode_incident_cockpit {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_incident_cockpit(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*INCIDENT_OUTPUT).expect("incident response JSON");
         assert!(serde_json::from_str::<serde_json::Value>(&encoded).unwrap()["items"].is_array());
         bencher
@@ -94,7 +94,7 @@ mod json_encode_incident_cockpit {
 mod json_encode_selected_resource_events {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_selected_resource_events(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*EVENT_OUTPUT).expect("event response JSON");
         assert!(serde_json::from_str::<serde_json::Value>(&encoded)
             .unwrap()
@@ -111,7 +111,7 @@ mod json_encode_selected_resource_events {
 mod json_encode_namespace_summaries {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_namespace_summaries(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*NAMESPACE_OUTPUT).expect("namespace response JSON");
         assert!(serde_json::from_str::<serde_json::Value>(&encoded)
             .unwrap()
@@ -127,7 +127,7 @@ mod json_encode_namespace_summaries {
 mod json_encode_resource_scope_rows {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_resource_scope_rows(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*SCOPE_OUTPUT).expect("scope response JSON");
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&encoded)
@@ -148,7 +148,7 @@ mod json_encode_resource_scope_rows {
 mod json_encode_crd_catalog {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_crd_catalog(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*CRD_CATALOG_OUTPUT).expect("catalog response JSON");
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&encoded)
@@ -169,7 +169,7 @@ mod json_encode_crd_catalog {
 mod json_encode_kubeconfig_contexts {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_kubeconfig_contexts(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*KUBECONFIG_OUTPUT).expect("context response JSON");
         assert!(serde_json::from_str::<serde_json::Value>(&encoded)
             .unwrap()
@@ -185,7 +185,7 @@ mod json_encode_kubeconfig_contexts {
 mod json_encode_deployment_details {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_deployment_details(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*DEPLOYMENT_DETAILS_OUTPUT).expect("details JSON");
         assert!(serde_json::from_str::<serde_json::Value>(&encoded).unwrap()["yaml"].is_string());
         bencher
@@ -199,7 +199,7 @@ mod json_encode_deployment_details {
 mod json_encode_configmap_details {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_configmap_details(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*CONFIGMAP_DETAILS_OUTPUT).expect("details JSON");
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&encoded).unwrap()["summary"]["name"],
@@ -216,7 +216,7 @@ mod json_encode_configmap_details {
 mod json_encode_secret_details {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_secret_details(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*SECRET_DETAILS_OUTPUT).expect("details JSON");
         assert!(!encoded.contains("c2VjcmV0"));
         bencher
@@ -230,7 +230,7 @@ mod json_encode_secret_details {
 mod json_encode_crd_details {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_crd_details(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*CRD_DETAILS_OUTPUT).expect("details JSON");
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&encoded).unwrap()["summary"]["kind"],
@@ -247,7 +247,7 @@ mod json_encode_crd_details {
 mod json_encode_dynamic_details {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_dynamic_details(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*DYNAMIC_DETAILS_OUTPUT).expect("details JSON");
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&encoded).unwrap()["summary"]["kind"],
@@ -264,7 +264,7 @@ mod json_encode_dynamic_details {
 mod json_encode_deployment_revisions {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_deployment_revisions(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*REVISION_OUTPUT).expect("revision response JSON");
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&encoded).unwrap(),
@@ -281,7 +281,7 @@ mod json_encode_deployment_revisions {
 mod json_encode_editor_lint_result {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn json_encode_editor_lint_result(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*EDITOR_LINT_OUTPUT).expect("lint response JSON");
         assert!(
             serde_json::from_str::<serde_json::Value>(&encoded).unwrap()["diagnostics"].is_array()

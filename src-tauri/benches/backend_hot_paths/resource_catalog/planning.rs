@@ -4,7 +4,7 @@ use super::*;
 mod resource_scope_fetch_plan {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn resource_scope_fetch_plan(bencher: codspeed_divan_compat::Bencher) {
         let plan = scope_fetch_plan(SCOPE_INPUT.requests.clone()).expect("fetch plan");
         assert_eq!(plan.len(), 20);
         bencher
@@ -16,7 +16,7 @@ mod resource_scope_fetch_plan {
 mod resource_scope_fetch_plan_all_namespace_promotion {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn resource_scope_fetch_plan_all_namespace_promotion(bencher: codspeed_divan_compat::Bencher) {
         let plan = scope_fetch_plan(ALL_NAMESPACE_SCOPE_REQUESTS.clone()).expect("fetch plan");
         assert_eq!(plan, vec![("typed:Pod".to_string(), None)]);
         bencher
@@ -29,7 +29,7 @@ mod resource_scope_fetch_plan_all_namespace_promotion {
 mod resource_scope_filter_enrich_dedupe {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn run(bencher: codspeed_divan_compat::Bencher) {
+    fn resource_scope_filter_enrich_dedupe(bencher: codspeed_divan_compat::Bencher) {
         let rows = assemble_resource_scope(SCOPE_INPUT.clone()).expect("scope fixture");
         assert_eq!(rows.len(), 2_000);
         assert!(rows.iter().any(|row| row.git_ops_owner.is_some()));
