@@ -22,7 +22,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   cargoRoot = "src-tauri/server";
   buildAndTestSubdir = finalAttrs.cargoRoot;
-  cargoHash = "sha256-NziVjEZd2Vuo3OSy+zbfYg+TUY9q+OAmRPI2/YIAHbs=";
+  cargoHash = "sha256-xgESFwLKcBD/lA+zJ3JS/bqCcMRSTOQpHNOoqJJ5T88=";
   doCheck = false;
 
   nativeBuildInputs = [ makeBinaryWrapper ];
