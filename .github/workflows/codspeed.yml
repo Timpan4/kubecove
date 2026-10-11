@@ -75,6 +75,8 @@ jobs:
           set -euo pipefail
           for revision in baseline updated updated baseline; do
             echo "::group::${revision} native walltime"
-            "${RUNNER_TEMP}/${revision}-bench" "${BENCH_FILTER}"
+            "${RUNNER_TEMP}/${revision}-bench" --bench --color never "${BENCH_FILTER}" \
+              | tee "${RUNNER_TEMP}/${revision}-timings.txt"
+            grep -qi 'fastest.*slowest.*median' "${RUNNER_TEMP}/${revision}-timings.txt"
             echo "::endgroup::"
           done
