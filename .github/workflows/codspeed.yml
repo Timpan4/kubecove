@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   compare:
-    name: Compare Cargo updates on one runner
+    name: Compare Cargo updates with matched CPU simulation
     runs-on: ubuntu-24.04
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout baseline
         uses: actions/checkout@v7
         with:
-          ref: 1f4daaf5de5b2d3f97c0a5ffe7eee828beb11d8d
+          ref: 56606edb7154f7ac47541c2d7cf761e9ff213a7b
           path: baseline
           fetch-depth: 0
           persist-credentials: false
@@ -25,7 +25,7 @@ jobs:
       - name: Checkout updated dependencies
         uses: actions/checkout@v7
         with:
-          ref: 5517ce1264053d32825a5be6ed3187188504dfcc
+          ref: a2fad45d56ae086c7404f712285afd94f113a26f
           path: updated
           persist-credentials: false
 
@@ -53,30 +53,64 @@ jobs:
       - name: Record compiler
         run: rustc --version
 
+      - name: Install cargo-codspeed
+        run: cargo install cargo-codspeed --version 5.0.1 --locked
+
       - name: Cache Rust
         uses: swatinem/rust-cache@v2
         with:
-          shared-key: kubecove-rust-cargo-comparison
+          shared-key: kubecove-rust-cargo-simulation-comparison
           workspaces: baseline/src-tauri -> ../../target
 
       - name: Build both benchmark binaries
         run: |
           set -euo pipefail
           for revision in baseline updated; do
-            binary=$(cargo bench --manifest-path "${revision}/src-tauri/Cargo.toml" \
-              --features bench-support --bench backend_hot_paths --locked --no-run \
-              --message-format=json | jq -r 'select(.reason == "compiler-artifact" and .target.name == "backend_hot_paths" and .executable != null) | .executable')
-            test -n "${binary}"
+            (cd "${revision}/src-tauri" && cargo codspeed build -m simulation \
+              --features bench-support --bench backend_hot_paths --locked)
+            binary="${CARGO_TARGET_DIR}/codspeed/analysis/kubecove/backend_hot_paths"
             install -m 755 "${binary}" "${RUNNER_TEMP}/${revision}-bench"
           done
 
-      - name: Measure both orders
+      - name: Prepare matching CodSpeed simulation instrument
+        uses: CodSpeedHQ/action@v5.4.0
+        env:
+          CODSPEED_SKIP_UPLOAD: "true"
+        with:
+          mode: simulation
+          allow-empty: "true"
+          run: "true"
+
+      - name: Measure both orders and retain baseline control
         run: |
           set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/cargo-simulation"
+          rustc --version > "${RUNNER_TEMP}/cargo-simulation/compiler.txt"
+          codspeed --version > "${RUNNER_TEMP}/cargo-simulation/runner.txt"
+          lscpu > "${RUNNER_TEMP}/cargo-simulation/cpu.txt"
+          git -C baseline rev-parse HEAD > "${RUNNER_TEMP}/cargo-simulation/baseline-sha.txt"
+          git -C updated rev-parse HEAD > "${RUNNER_TEMP}/cargo-simulation/updated-sha.txt"
+          measurement=0
           for revision in baseline updated updated baseline; do
-            echo "::group::${revision} native walltime"
-            "${RUNNER_TEMP}/${revision}-bench" --bench --color never "${BENCH_FILTER}" \
-              | tee "${RUNNER_TEMP}/${revision}-timings.txt"
-            grep -qi 'fastest.*slowest.*median' "${RUNNER_TEMP}/${revision}-timings.txt"
+            measurement=$((measurement + 1))
+            profile="${RUNNER_TEMP}/cargo-simulation/${measurement}-${revision}"
+            mkdir -p "${profile}"
+            echo "::group::${measurement} ${revision} CPU simulation"
+            CODSPEED_CARGO_WORKSPACE_ROOT="${GITHUB_WORKSPACE}/${revision}/src-tauri" \
+              codspeed run --mode simulation --skip-upload --show-full-output \
+              --working-directory "${GITHUB_WORKSPACE}/${revision}/src-tauri" \
+              --profile-folder "${profile}" \
+              -- "\"${RUNNER_TEMP}/${revision}-bench\" \"${BENCH_FILTER}\"" \
+              2>&1 | tee "${profile}/run.log"
+            grep -E '^(events|summary|totals):' "${profile}"/*.out* \
+              | tee "${profile}/counters.txt"
             echo "::endgroup::"
           done
+
+      - name: Retain raw simulation profiles
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: cargo-simulation-comparison
+          path: ${{ runner.temp }}/cargo-simulation
+          if-no-files-found: error
