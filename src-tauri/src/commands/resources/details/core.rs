@@ -134,6 +134,16 @@ pub(super) async fn configmap_details(
         &name,
     )
     .await?;
+    configmap_details_from_fetched(cluster_context, name, namespace, cm, yaml)
+}
+
+pub(crate) fn configmap_details_from_fetched(
+    cluster_context: String,
+    name: String,
+    namespace: Option<String>,
+    cm: k8s_openapi::api::core::v1::ConfigMap,
+    yaml: String,
+) -> Result<ResourceDetailsFull, AppError> {
     let metadata = serde_json::to_value(&cm.metadata)
         .map_err(|e| AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e))?;
     let summary = ResourceSummary {
@@ -178,12 +188,22 @@ pub(super) async fn secret_details(
     name: String,
     namespace: Option<String>,
 ) -> Result<ResourceDetailsFull, AppError> {
-    let (mut sec, _yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Secret>(
+    let (sec, yaml) = fetch_and_serialize::<k8s_openapi::api::core::v1::Secret>(
         client,
         namespace.as_deref(),
         &name,
     )
     .await?;
+    secret_details_from_fetched(cluster_context, name, namespace, sec, yaml)
+}
+
+pub(crate) fn secret_details_from_fetched(
+    cluster_context: String,
+    name: String,
+    namespace: Option<String>,
+    mut sec: k8s_openapi::api::core::v1::Secret,
+    _discarded_yaml: String,
+) -> Result<ResourceDetailsFull, AppError> {
     redact_secret(&mut sec);
     let yaml = serde_yaml::to_string(&sec)
         .map_err(|e| AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e))?;

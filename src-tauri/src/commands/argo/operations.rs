@@ -409,6 +409,14 @@ fn verify_kubernetes_application_identity(
     verify_application_identity(&value, expected)
 }
 
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_verify_kubernetes_application_identity(
+    current: &DynamicObject,
+    expected: &ArgoApplicationRef,
+) -> Result<(), AppError> {
+    verify_kubernetes_application_identity(current, expected)
+}
+
 fn verify_application_identity(
     value: &Value,
     expected: &ArgoApplicationRef,

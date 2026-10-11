@@ -3,7 +3,11 @@
 	import { Button } from "@/components/ui/svelte";
 	import { settingsStore } from "@/lib/settings-store";
 	import type { IncidentTimelineItem, IncidentTimelineTone } from "./incident-timeline";
-	import { incidentTimelineTitle } from "./incident-timeline-labels";
+	import {
+		groupIncidentTimelineByDay,
+		incidentTimelineTime,
+		incidentTimelineTitle,
+	} from "./incident-timeline-labels";
 
 	let { items, resourceKind }: { items: IncidentTimelineItem[]; resourceKind: string } = $props();
 	let expansion = $state<{ defaultOpen: boolean; overrides: Record<string, boolean> }>({
@@ -37,23 +41,7 @@
 		return date.toLocaleDateString("en-CA", { ...dateOptions, year: "numeric", month: "2-digit", day: "2-digit" });
 	}
 
-	const groups = $derived.by(() => {
-		const result = new Map<string, { label: string; items: IncidentTimelineItem[] }>();
-		for (const item of entries) {
-			const date = item.timestamp ? new Date(item.timestamp) : null;
-			const valid = date && !Number.isNaN(date.getTime());
-			const key = valid ? dateKey(date) : "unknown";
-			const group = result.get(key) ?? {
-				label: valid ? date.toLocaleDateString(undefined, { ...dateOptions, day: "numeric", month: "short", year: "numeric" }) : "Time not reported",
-				items: [],
-			};
-			group.items.push(item);
-			result.set(key, group);
-		}
-		const unknown = result.get("unknown");
-		result.delete("unknown");
-		return [...Array.from(result, ([key, group]) => ({ key, ...group })), ...(unknown ? [{ key: "unknown", ...unknown }] : [])];
-	});
+	const groups = $derived(groupIncidentTimelineByDay(entries, timezone));
 	const todayKey = $derived(dateKey(now));
 	const hideTodayHeading = $derived(
 		groups.filter((group) => group.key !== "unknown").length === 1 &&
@@ -61,9 +49,7 @@
 	);
 
 	function time(item: IncidentTimelineItem): string {
-		if (!item.timestamp) return "No time";
-		const date = new Date(item.timestamp);
-		return Number.isNaN(date.getTime()) ? "No time" : date.toLocaleTimeString(undefined, { ...dateOptions, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+		return incidentTimelineTime(item, timezone);
 	}
 
 	function toneClass(tone: IncidentTimelineTone): string {

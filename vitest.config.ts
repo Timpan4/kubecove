@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import codspeedPlugin from "@codspeed/vitest-plugin";
 import { defineConfig } from "vitest/config";
+import { benchmarkSelection } from "./scripts/codspeed-benchmark-suites.mjs";
 
 // Dedicated Vitest configuration for CodSpeed benchmarks.
 // Unit tests continue to run through `bun test`; this config only powers the
@@ -14,15 +15,6 @@ export default defineConfig({
 		},
 	},
 	test: {
-		benchmark: {
-			include:
-				process.env.KUBECOVE_BENCHMARK_SUITE === "topology"
-					? ["benchmarks/topology.bench.ts"]
-					: ["benchmarks/**/*.bench.ts"],
-			exclude:
-				process.env.KUBECOVE_BENCHMARK_SUITE === "other"
-					? ["benchmarks/topology.bench.ts"]
-					: [],
-		},
+		benchmark: benchmarkSelection(),
 	},
 });

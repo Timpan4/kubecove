@@ -1,5 +1,5 @@
-import { RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
 import { lintKeymap } from "@codemirror/lint";
+import { type Extension, RangeSetBuilder, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
 
 const yamlIndentDepthClassCount = 6;
@@ -161,7 +161,7 @@ const editorThemeStyles: Parameters<typeof EditorView.theme>[0] = {
 	},
 };
 
-function buildYamlValueDecorations(
+export function buildYamlValueDecorations(
 	state: StateLike | null,
 ) {
 	if (!state) return Decoration.none;

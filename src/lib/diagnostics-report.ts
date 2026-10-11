@@ -1,10 +1,10 @@
 import { APP_VERSION } from "./app-version";
 import {
-	getDiagnosticsSnapshot,
-	summarizeDurations,
 	type DiagnosticData,
 	type DiagnosticMetricSummary,
 	type FrontendDiagnosticEvent,
+	getDiagnosticsSnapshot,
+	summarizeDurations,
 } from "./diagnostics";
 import type { BackendCacheDiagnosticSnapshot } from "./diagnostics-types";
 import type { BackendDiagnosticEvent } from "./types";
@@ -120,9 +120,29 @@ export function createLatencyReport({
 	backendCaches?: BackendCacheDiagnosticSnapshot[];
 	includeIdentifiers?: boolean;
 } = {}): string {
-	const snapshot = getDiagnosticsSnapshot();
+	return createLatencyReportFromSnapshot(getDiagnosticsSnapshot(), {
+		backendEvents,
+		backendCaches,
+		includeIdentifiers,
+	});
+}
+
+export function createLatencyReportFromSnapshot(
+	snapshot: ReturnType<typeof getDiagnosticsSnapshot>,
+	{
+		backendEvents = [],
+		backendCaches = [],
+		includeIdentifiers = false,
+		generatedAt = new Date().toISOString(),
+	}: {
+		backendEvents?: BackendDiagnosticEvent[];
+		backendCaches?: BackendCacheDiagnosticSnapshot[];
+		includeIdentifiers?: boolean;
+		generatedAt?: string;
+	} = {},
+): string {
 	const report: LatencyReport = {
-		generatedAt: new Date().toISOString(),
+		generatedAt,
 		appVersion: APP_VERSION,
 		redacted: !includeIdentifiers,
 		frontend: {

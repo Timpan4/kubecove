@@ -10,10 +10,9 @@ use chrono::{DateTime, Utc};
 use kube::api::Api;
 use std::time::Instant;
 
-fn namespace_age(creation_timestamp: Option<DateTime<Utc>>) -> String {
+fn namespace_age_at(creation_timestamp: Option<DateTime<Utc>>, now: DateTime<Utc>) -> String {
     match creation_timestamp {
         Some(t) => {
-            let now = Utc::now();
             let duration = now.signed_duration_since(t);
             if duration.num_days() > 0 {
                 format!("{}d", duration.num_days())
@@ -29,6 +28,24 @@ fn namespace_age(creation_timestamp: Option<DateTime<Utc>>) -> String {
     }
 }
 
+pub(crate) fn namespace_summary_from_at(
+    namespace: &k8s_openapi::api::core::v1::Namespace,
+    now: DateTime<Utc>,
+) -> crate::models::NamespaceSummary {
+    crate::models::NamespaceSummary {
+        name: namespace.metadata.name.clone().unwrap_or_default(),
+        age: namespace_age_at(
+            namespace
+                .metadata
+                .creation_timestamp
+                .as_ref()
+                .and_then(|timestamp| k8s_openapi_time_to_datetime(&timestamp.0)),
+            now,
+        ),
+        created_at: k8s_creation_timestamp_to_rfc3339(&namespace.metadata.creation_timestamp),
+    }
+}
+
 pub async fn namespaces_summary_from(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
@@ -41,16 +58,7 @@ pub async fn namespaces_summary_from(
 
     let summaries: Vec<NamespaceSummary> = namespaces
         .iter()
-        .map(|ns| NamespaceSummary {
-            name: ns.metadata.name.clone().unwrap_or_default(),
-            age: namespace_age(
-                ns.metadata
-                    .creation_timestamp
-                    .as_ref()
-                    .and_then(|t| k8s_openapi_time_to_datetime(&t.0)),
-            ),
-            created_at: k8s_creation_timestamp_to_rfc3339(&ns.metadata.creation_timestamp),
-        })
+        .map(|ns| namespace_summary_from_at(ns, Utc::now()))
         .collect();
 
     Ok(summaries)

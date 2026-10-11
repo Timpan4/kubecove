@@ -1,6 +1,6 @@
 mod execution;
-mod linting;
-mod validation;
+pub(crate) mod linting;
+pub(crate) mod validation;
 
 use crate::commands::kubeconfig::KubeconfigSource;
 use crate::models::{

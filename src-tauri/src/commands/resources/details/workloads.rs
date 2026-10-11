@@ -68,6 +68,16 @@ pub(super) async fn deployment_details(
         &name,
     )
     .await?;
+    deployment_details_from_fetched(cluster_context, name, namespace, deploy, yaml)
+}
+
+pub(crate) fn deployment_details_from_fetched(
+    cluster_context: String,
+    name: String,
+    namespace: Option<String>,
+    deploy: k8s_openapi::api::apps::v1::Deployment,
+    yaml: String,
+) -> Result<ResourceDetailsFull, AppError> {
     let metadata = serde_json::to_value(&deploy.metadata)
         .map_err(|e| AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e))?;
     let status = deploy

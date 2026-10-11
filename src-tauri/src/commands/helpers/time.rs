@@ -2,20 +2,21 @@ use chrono::{DateTime, TimeZone, Utc};
 
 pub(crate) fn resource_age(creation_timestamp: Option<DateTime<Utc>>) -> String {
     match creation_timestamp {
-        Some(t) => {
-            let now = Utc::now();
-            let duration = now.signed_duration_since(t);
-            if duration.num_days() > 0 {
-                format!("{}d", duration.num_days())
-            } else if duration.num_hours() > 0 {
-                format!("{}h", duration.num_hours())
-            } else if duration.num_minutes() > 0 {
-                format!("{}m", duration.num_minutes())
-            } else {
-                "<1m".to_string()
-            }
-        }
+        Some(t) => resource_age_at(t, Utc::now()),
         None => "unknown".to_string(),
+    }
+}
+
+pub(crate) fn resource_age_at(creation_timestamp: DateTime<Utc>, now: DateTime<Utc>) -> String {
+    let duration = now.signed_duration_since(creation_timestamp);
+    if duration.num_days() > 0 {
+        format!("{}d", duration.num_days())
+    } else if duration.num_hours() > 0 {
+        format!("{}h", duration.num_hours())
+    } else if duration.num_minutes() > 0 {
+        format!("{}m", duration.num_minutes())
+    } else {
+        "<1m".to_string()
     }
 }
 

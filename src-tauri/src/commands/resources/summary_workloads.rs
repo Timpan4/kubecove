@@ -1,20 +1,215 @@
 use crate::commands::helpers::{
-    base_resource_summary, fmt_ready, list_params, resource_age, update_resource_health,
+    base_resource_summary, fmt_ready, list_params, update_resource_health,
 };
 use crate::models::{AppError, ResourceSummary};
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use kube::{api::Api, Client};
 
 use super::ingress_status::apply_ingress_status;
 
-fn age_from_metadata(
-    metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
-) -> String {
-    resource_age(metadata.creation_timestamp.clone().map(|t| {
-        Utc.timestamp_opt(t.0.as_second(), 0)
-            .single()
-            .unwrap_or_else(Utc::now)
-    }))
+pub(crate) fn deployment_resource_summary(
+    cluster_context: &str,
+    deploy: &k8s_openapi::api::apps::v1::Deployment,
+) -> ResourceSummary {
+    deployment_resource_summary_at(cluster_context, deploy, Utc::now())
+}
+
+pub(crate) fn deployment_resource_summary_at(
+    cluster_context: &str,
+    deploy: &k8s_openapi::api::apps::v1::Deployment,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    let mut summary = base_resource_summary(
+        "Deployment",
+        cluster_context,
+        &deploy.metadata,
+        super::summary_core::age_from_metadata_at(&deploy.metadata, now),
+    );
+    if let Some(ref status) = deploy.status {
+        let available = status.available_replicas.unwrap_or(0);
+        let ready = status.ready_replicas.unwrap_or(0);
+        let desired = status.replicas.unwrap_or(0);
+        summary.ready = Some(format!("{ready}/{desired}"));
+        if available > 0 || ready > 0 || desired > 0 {
+            summary.status = Some(format!("Available: {available}"));
+        }
+    }
+    update_resource_health(&mut summary);
+    summary
+}
+
+pub(crate) fn replicaset_resource_summary(
+    cluster_context: &str,
+    replica_set: &k8s_openapi::api::apps::v1::ReplicaSet,
+) -> ResourceSummary {
+    replicaset_resource_summary_at(cluster_context, replica_set, Utc::now())
+}
+
+pub(crate) fn replicaset_resource_summary_at(
+    cluster_context: &str,
+    replica_set: &k8s_openapi::api::apps::v1::ReplicaSet,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    let mut summary = base_resource_summary(
+        "ReplicaSet",
+        cluster_context,
+        &replica_set.metadata,
+        super::summary_core::age_from_metadata_at(&replica_set.metadata, now),
+    );
+    if let Some(ref status) = replica_set.status {
+        summary.ready = Some(fmt_ready(status.ready_replicas, status.replicas));
+        summary.status = Some(format!(
+            "Available: {}",
+            status.available_replicas.unwrap_or(0)
+        ));
+    }
+    update_resource_health(&mut summary);
+    summary
+}
+
+pub(crate) fn statefulset_resource_summary(
+    cluster_context: &str,
+    stateful_set: &k8s_openapi::api::apps::v1::StatefulSet,
+) -> ResourceSummary {
+    statefulset_resource_summary_at(cluster_context, stateful_set, Utc::now())
+}
+
+pub(crate) fn statefulset_resource_summary_at(
+    cluster_context: &str,
+    stateful_set: &k8s_openapi::api::apps::v1::StatefulSet,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    let mut summary = base_resource_summary(
+        "StatefulSet",
+        cluster_context,
+        &stateful_set.metadata,
+        super::summary_core::age_from_metadata_at(&stateful_set.metadata, now),
+    );
+    if let Some(ref status) = stateful_set.status {
+        summary.ready = Some(fmt_ready(status.ready_replicas, status.replicas));
+    }
+    update_resource_health(&mut summary);
+    summary
+}
+
+pub(crate) fn daemonset_resource_summary(
+    cluster_context: &str,
+    daemon_set: &k8s_openapi::api::apps::v1::DaemonSet,
+) -> ResourceSummary {
+    daemonset_resource_summary_at(cluster_context, daemon_set, Utc::now())
+}
+
+pub(crate) fn daemonset_resource_summary_at(
+    cluster_context: &str,
+    daemon_set: &k8s_openapi::api::apps::v1::DaemonSet,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    let mut summary = base_resource_summary(
+        "DaemonSet",
+        cluster_context,
+        &daemon_set.metadata,
+        super::summary_core::age_from_metadata_at(&daemon_set.metadata, now),
+    );
+    if let Some(ref status) = daemon_set.status {
+        summary.ready = Some(format!(
+            "{}/{}",
+            status.number_ready, status.desired_number_scheduled
+        ));
+    }
+    update_resource_health(&mut summary);
+    summary
+}
+
+pub(crate) fn ingress_resource_summary(
+    cluster_context: &str,
+    ingress: &k8s_openapi::api::networking::v1::Ingress,
+) -> ResourceSummary {
+    ingress_resource_summary_at(cluster_context, ingress, Utc::now())
+}
+
+pub(crate) fn ingress_resource_summary_at(
+    cluster_context: &str,
+    ingress: &k8s_openapi::api::networking::v1::Ingress,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    let mut summary = base_resource_summary(
+        "Ingress",
+        cluster_context,
+        &ingress.metadata,
+        super::summary_core::age_from_metadata_at(&ingress.metadata, now),
+    );
+    apply_ingress_status(&mut summary, ingress.status.as_ref());
+    update_resource_health(&mut summary);
+    summary
+}
+
+pub(crate) fn job_resource_summary(
+    cluster_context: &str,
+    job: &k8s_openapi::api::batch::v1::Job,
+) -> ResourceSummary {
+    job_resource_summary_at(cluster_context, job, Utc::now())
+}
+
+pub(crate) fn job_resource_summary_at(
+    cluster_context: &str,
+    job: &k8s_openapi::api::batch::v1::Job,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    let mut summary = base_resource_summary(
+        "Job",
+        cluster_context,
+        &job.metadata,
+        super::summary_core::age_from_metadata_at(&job.metadata, now),
+    );
+    if let Some(ref status) = job.status {
+        let active = status.active.unwrap_or(0);
+        let failed = status.failed.unwrap_or(0);
+        let succeeded = status.succeeded.unwrap_or(0);
+        summary.status = if failed > 0 {
+            Some("Failed".to_string())
+        } else if succeeded > 0 {
+            Some("Complete".to_string())
+        } else if active > 0 {
+            Some("Active".to_string())
+        } else {
+            Some("Pending".to_string())
+        };
+        summary.ready = Some(format!(
+            "{}/{}",
+            succeeded,
+            job.spec.as_ref().and_then(|s| s.completions).unwrap_or(1)
+        ));
+    }
+    update_resource_health(&mut summary);
+    summary
+}
+
+pub(crate) fn cronjob_resource_summary(
+    cluster_context: &str,
+    cron_job: &k8s_openapi::api::batch::v1::CronJob,
+) -> ResourceSummary {
+    cronjob_resource_summary_at(cluster_context, cron_job, Utc::now())
+}
+
+pub(crate) fn cronjob_resource_summary_at(
+    cluster_context: &str,
+    cron_job: &k8s_openapi::api::batch::v1::CronJob,
+    now: DateTime<Utc>,
+) -> ResourceSummary {
+    let mut summary = base_resource_summary(
+        "CronJob",
+        cluster_context,
+        &cron_job.metadata,
+        super::summary_core::age_from_metadata_at(&cron_job.metadata, now),
+    );
+    if let Some(ref status) = cron_job.status {
+        let active = status.active.as_ref().map_or(0, std::vec::Vec::len);
+        if active > 0 {
+            summary.status = Some(format!("{active} active"));
+        }
+    }
+    update_resource_health(&mut summary);
+    summary
 }
 
 pub(super) async fn workload_resource_summaries(
@@ -52,25 +247,7 @@ async fn deployment_summaries(
         .await
         .map_err(AppError::from)?
         .iter()
-        .map(|deploy| {
-            let mut summary = base_resource_summary(
-                "Deployment",
-                cluster_context,
-                &deploy.metadata,
-                age_from_metadata(&deploy.metadata),
-            );
-            if let Some(ref status) = deploy.status {
-                let available = status.available_replicas.unwrap_or(0);
-                let ready = status.ready_replicas.unwrap_or(0);
-                let desired = status.replicas.unwrap_or(0);
-                summary.ready = Some(format!("{ready}/{desired}"));
-                if available > 0 || ready > 0 || desired > 0 {
-                    summary.status = Some(format!("Available: {available}"));
-                }
-            }
-            update_resource_health(&mut summary);
-            summary
-        })
+        .map(|deploy| deployment_resource_summary(cluster_context, deploy))
         .collect())
 }
 
@@ -89,23 +266,7 @@ async fn replicaset_summaries(
         .await
         .map_err(AppError::from)?
         .iter()
-        .map(|rs| {
-            let mut summary = base_resource_summary(
-                "ReplicaSet",
-                cluster_context,
-                &rs.metadata,
-                age_from_metadata(&rs.metadata),
-            );
-            if let Some(ref status) = rs.status {
-                summary.ready = Some(fmt_ready(status.ready_replicas, status.replicas));
-                summary.status = Some(format!(
-                    "Available: {}",
-                    status.available_replicas.unwrap_or(0)
-                ));
-            }
-            update_resource_health(&mut summary);
-            summary
-        })
+        .map(|rs| replicaset_resource_summary(cluster_context, rs))
         .collect())
 }
 
@@ -124,19 +285,7 @@ async fn statefulset_summaries(
         .await
         .map_err(AppError::from)?
         .iter()
-        .map(|ss| {
-            let mut summary = base_resource_summary(
-                "StatefulSet",
-                cluster_context,
-                &ss.metadata,
-                age_from_metadata(&ss.metadata),
-            );
-            if let Some(ref status) = ss.status {
-                summary.ready = Some(fmt_ready(status.ready_replicas, status.replicas));
-            }
-            update_resource_health(&mut summary);
-            summary
-        })
+        .map(|ss| statefulset_resource_summary(cluster_context, ss))
         .collect())
 }
 
@@ -155,22 +304,7 @@ async fn daemonset_summaries(
         .await
         .map_err(AppError::from)?
         .iter()
-        .map(|ds| {
-            let mut summary = base_resource_summary(
-                "DaemonSet",
-                cluster_context,
-                &ds.metadata,
-                age_from_metadata(&ds.metadata),
-            );
-            if let Some(ref status) = ds.status {
-                summary.ready = Some(format!(
-                    "{}/{}",
-                    status.number_ready, status.desired_number_scheduled
-                ));
-            }
-            update_resource_health(&mut summary);
-            summary
-        })
+        .map(|ds| daemonset_resource_summary(cluster_context, ds))
         .collect())
 }
 
@@ -189,17 +323,7 @@ async fn ingress_summaries(
         .await
         .map_err(AppError::from)?
         .iter()
-        .map(|ing| {
-            let mut summary = base_resource_summary(
-                "Ingress",
-                cluster_context,
-                &ing.metadata,
-                age_from_metadata(&ing.metadata),
-            );
-            apply_ingress_status(&mut summary, ing.status.as_ref());
-            update_resource_health(&mut summary);
-            summary
-        })
+        .map(|ing| ingress_resource_summary(cluster_context, ing))
         .collect())
 }
 
@@ -218,35 +342,7 @@ async fn job_summaries(
         .await
         .map_err(AppError::from)?
         .iter()
-        .map(|job| {
-            let mut summary = base_resource_summary(
-                "Job",
-                cluster_context,
-                &job.metadata,
-                age_from_metadata(&job.metadata),
-            );
-            if let Some(ref status) = job.status {
-                let active = status.active.unwrap_or(0);
-                let failed = status.failed.unwrap_or(0);
-                let succeeded = status.succeeded.unwrap_or(0);
-                summary.status = if failed > 0 {
-                    Some("Failed".to_string())
-                } else if succeeded > 0 {
-                    Some("Complete".to_string())
-                } else if active > 0 {
-                    Some("Active".to_string())
-                } else {
-                    Some("Pending".to_string())
-                };
-                summary.ready = Some(format!(
-                    "{}/{}",
-                    succeeded,
-                    job.spec.as_ref().and_then(|s| s.completions).unwrap_or(1)
-                ));
-            }
-            update_resource_health(&mut summary);
-            summary
-        })
+        .map(|job| job_resource_summary(cluster_context, job))
         .collect())
 }
 
@@ -265,21 +361,6 @@ async fn cronjob_summaries(
         .await
         .map_err(AppError::from)?
         .iter()
-        .map(|cj| {
-            let mut summary = base_resource_summary(
-                "CronJob",
-                cluster_context,
-                &cj.metadata,
-                age_from_metadata(&cj.metadata),
-            );
-            if let Some(ref status) = cj.status {
-                let active = status.active.as_ref().map_or(0, std::vec::Vec::len);
-                if active > 0 {
-                    summary.status = Some(format!("{active} active"));
-                }
-            }
-            update_resource_health(&mut summary);
-            summary
-        })
+        .map(|cj| cronjob_resource_summary(cluster_context, cj))
         .collect())
 }

@@ -58,6 +58,18 @@ pub(crate) async fn crd_resource_kinds(
         .map_err(AppError::from)
 }
 
+#[cfg(feature = "bench-support")]
+pub(crate) fn crd_resource_kinds_from(
+    definitions: impl IntoIterator<Item = CustomResourceDefinition>,
+) -> Vec<DiscoveredResourceKind> {
+    let mut kinds = definitions
+        .into_iter()
+        .filter_map(|crd| discovered_kind_from_crd(&CatalogCrd::from(crd)))
+        .collect();
+    sort_and_dedup_kinds(&mut kinds);
+    kinds
+}
+
 fn discovered_kind_from_crd(crd: &CatalogCrd) -> Option<DiscoveredResourceKind> {
     let version = preferred_crd_version(&crd.spec.versions)?;
     let group = crd.spec.group.clone();

@@ -14,6 +14,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 ## Engineering
 
 - [Development Workflow](development-workflow.md) — setup, local development, and checks.
+- [CodSpeed benchmark catalog](codspeed-benchmark-catalog.md) — current coverage, benchmark candidates, fixtures, and measurement boundaries.
 - [Deferred Svelte surfaces](lazy-surface-loading.md) — import boundaries and before/after bundle and native launcher evidence.
 - [Engineering Handbook](handbook/README.md) — code organization, design system, hygiene, and pull request checklist.
 - [Frontend memory characterization](frontend-memory-retention.md) — normal and large payload, retention, native process, and refetch measurements.

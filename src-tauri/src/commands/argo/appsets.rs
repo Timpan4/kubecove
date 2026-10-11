@@ -83,6 +83,14 @@ fn application_set_summary_from_object(
     })
 }
 
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_application_set_summary_from_object(
+    cluster_context: &str,
+    obj: &DynamicObject,
+) -> Option<ArgoApplicationSetSummary> {
+    application_set_summary_from_object(cluster_context, obj)
+}
+
 /// List Argo CD `ApplicationSets` in the cluster.
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_argocd_appsets(

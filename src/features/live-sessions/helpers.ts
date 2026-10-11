@@ -1,10 +1,10 @@
+import { normalizeKubeconfigEnvVar } from "@/lib/settings";
 import type {
+	JsonObject,
 	PortForwardRequest,
 	PortForwardSessionSummary,
 	ResourceSummary,
-	JsonObject,
 } from "@/lib/types";
-import { normalizeKubeconfigEnvVar } from "@/lib/settings";
 import type { SavedPortForward } from "@/lib/workspaces";
 
 export function portForwardErrorMessage(cause: unknown): string {
@@ -138,6 +138,16 @@ export function savedPortForwardMatchesSession(
 		session.remotePort === portForward.servicePort &&
 		(portForward.localPort === undefined ||
 			session.localPort === portForward.localPort)
+	);
+}
+
+export function findSavedPortForwardSession(
+	portForward: SavedPortForward,
+	sessions: PortForwardSessionSummary[],
+	kubeconfigSource?: string,
+): PortForwardSessionSummary | undefined {
+	return sessions.find((session) =>
+		savedPortForwardMatchesSession(portForward, session, kubeconfigSource),
 	);
 }
 

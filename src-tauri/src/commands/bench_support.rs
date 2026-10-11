@@ -6,6 +6,9 @@ use crate::models::{
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+pub mod domain_catalog;
+pub mod resource_catalog;
+
 pub fn decode_crd_catalog(text: &str) -> Vec<DiscoveredResourceKind> {
     discovery::crd_catalog::decode(text).expect("benchmark CRD list")
 }

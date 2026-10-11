@@ -1,9 +1,8 @@
-use super::{
-    api_resource_from_discovered, dynamic_resource_summary, topology::TopologyInputResource,
-};
+use super::{api_resource_from_discovered, topology::TopologyInputResource};
 use crate::commands::helpers::{extract_owner_ref_summary, list_params};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, DiscoveredResourceKind};
+use chrono::{DateTime, Utc};
 use futures_util::{stream, StreamExt};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::{
@@ -85,17 +84,31 @@ pub(super) async fn list_crd_definition_inputs(
     }
 }
 
-fn dynamic_topology_input(
+pub(crate) fn dynamic_topology_input(
     cluster_context: &str,
     resource_kind: &DiscoveredResourceKind,
     object: &DynamicObject,
+) -> TopologyInputResource {
+    dynamic_topology_input_at(cluster_context, resource_kind, object, Utc::now())
+}
+
+pub(crate) fn dynamic_topology_input_at(
+    cluster_context: &str,
+    resource_kind: &DiscoveredResourceKind,
+    object: &DynamicObject,
+    now: DateTime<Utc>,
 ) -> TopologyInputResource {
     TopologyInputResource {
         uid: object.metadata.uid.clone().unwrap_or_default(),
         owner: extract_owner_ref_summary(&object.metadata),
         labels: object.metadata.labels.clone().unwrap_or_default(),
         port_hints: Vec::new(),
-        summary: dynamic_resource_summary(cluster_context, resource_kind, object),
+        summary: super::dynamic::dynamic_resource_summary_at(
+            cluster_context,
+            resource_kind,
+            object,
+            now,
+        ),
     }
 }
 

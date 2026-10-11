@@ -194,6 +194,14 @@ fn resolve_ready_service_target(
     Ok((pod_name, resolve_service_target_port(&pod, service_port)?))
 }
 
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_resolve_ready_service_target(
+    pods: Vec<Pod>,
+    service_port: ServicePort,
+) -> Result<(String, u16), AppError> {
+    resolve_ready_service_target(pods, &service_port)
+}
+
 fn select_ready_pod(mut pods: Vec<Pod>) -> Option<Pod> {
     pods.sort_by_key(pod_name);
     pods.into_iter().find(is_ready_running_pod)

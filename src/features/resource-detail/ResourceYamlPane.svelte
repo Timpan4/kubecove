@@ -35,8 +35,8 @@
 	import YamlTab from "./YamlTab.svelte";
 	import {
 		buildYamlDryRunDiff,
-		findYamlFieldRange,
 	} from "./yamlTabDiff";
+import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 	import {
 		buildYamlApplyRequest as createYamlApplyRequest,
 		isYamlApplyDisabled,
@@ -363,16 +363,7 @@
 			yamlLintDiagnostics = result.diagnostics;
 			yamlLintNotes = result.notes;
 			yamlLintError = "";
-			return result.diagnostics.map((diagnostic) => {
-				const range = findYamlFieldRange(value, diagnostic.fieldPath);
-				return {
-					from: range.from,
-					to: range.to,
-					severity: diagnostic.severity,
-					source: diagnostic.source,
-					message: diagnostic.message,
-				};
-			});
+			return mapKubernetesYamlDiagnostics(value, result.diagnostics);
 		} catch (error) {
 			yamlLintError = getErrorMessage(error);
 			return [];

@@ -19,6 +19,9 @@ use kube::Client;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
+#[cfg(feature = "bench-support")]
+use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
+
 #[path = "rbac_risk.rs"]
 mod rbac_risk;
 use rbac_risk::{binding_risks, dedupe_risks, dedupe_subjects, rule_risks, service_account_risks};
@@ -488,6 +491,119 @@ fn namespace_access_summary(
             summary
         })
         .collect()
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_rbac_inventory_projection(
+    cluster_context: &str,
+    namespaces: Vec<String>,
+    service_accounts: Vec<ServiceAccount>,
+    roles: Vec<Role>,
+    cluster_roles: Vec<ClusterRole>,
+    role_bindings: Vec<RoleBinding>,
+    cluster_role_bindings: Vec<ClusterRoleBinding>,
+    roles_coverage_status: RbacCoverageStatus,
+    cluster_roles_coverage_status: RbacCoverageStatus,
+) -> RbacInspectionSummary {
+    let service_accounts = service_accounts
+        .into_iter()
+        .map(|account| service_account_summary(cluster_context, account))
+        .collect::<Vec<_>>();
+    let roles = roles
+        .into_iter()
+        .map(|role| role_summary(cluster_context, "Role", role.metadata, role.rules))
+        .collect::<Vec<_>>();
+    let cluster_roles = cluster_roles
+        .into_iter()
+        .map(|role| role_summary(cluster_context, "ClusterRole", role.metadata, role.rules))
+        .collect::<Vec<_>>();
+    let mut role_bindings = role_bindings
+        .into_iter()
+        .map(|binding| {
+            binding_summary(
+                cluster_context,
+                "RoleBinding",
+                binding.metadata,
+                binding.role_ref.kind,
+                binding.role_ref.name,
+                binding.subjects,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut cluster_role_bindings = cluster_role_bindings
+        .into_iter()
+        .map(|binding| {
+            binding_summary(
+                cluster_context,
+                "ClusterRoleBinding",
+                binding.metadata,
+                binding.role_ref.kind,
+                binding.role_ref.name,
+                binding.subjects,
+            )
+        })
+        .collect::<Vec<_>>();
+    inherit_binding_risks(
+        &mut role_bindings,
+        &roles,
+        &cluster_roles,
+        &roles_coverage_status,
+        &cluster_roles_coverage_status,
+    );
+    inherit_binding_risks(
+        &mut cluster_role_bindings,
+        &roles,
+        &cluster_roles,
+        &roles_coverage_status,
+        &cluster_roles_coverage_status,
+    );
+    let namespace_access = namespace_access_summary(
+        cluster_context,
+        &namespaces,
+        &service_accounts,
+        &roles,
+        &role_bindings,
+        &cluster_role_bindings,
+    );
+    let coverage = vec![
+        coverage(
+            RbacFamily::ServiceAccounts,
+            service_accounts.len(),
+            RbacCoverageStatus::Complete,
+            None,
+        ),
+        coverage(RbacFamily::Roles, roles.len(), roles_coverage_status, None),
+        coverage(
+            RbacFamily::ClusterRoles,
+            cluster_roles.len(),
+            cluster_roles_coverage_status,
+            None,
+        ),
+        coverage(
+            RbacFamily::RoleBindings,
+            role_bindings.len(),
+            RbacCoverageStatus::Complete,
+            None,
+        ),
+        coverage(
+            RbacFamily::ClusterRoleBindings,
+            cluster_role_bindings.len(),
+            RbacCoverageStatus::Complete,
+            None,
+        ),
+    ];
+    RbacInspectionSummary {
+        cluster: cluster_context.to_string(),
+        refreshed_at: "2026-10-11T00:00:00Z".to_string(),
+        warnings: Vec::new(),
+        coverage,
+        service_accounts,
+        roles,
+        cluster_roles,
+        role_bindings,
+        cluster_role_bindings,
+        namespace_access,
+    }
 }
 
 fn namespace_entry<'a>(

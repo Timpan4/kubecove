@@ -37,8 +37,6 @@
 	} from "@/lib/tauri";
 	import type {
 		ArgoApplicationSummary,
-		JsonObject,
-		JsonValue,
 		ResourceDetailsFull,
 		ResourceEventSummary,
 		ResourceSummary,
@@ -78,6 +76,7 @@
 	import type { ParsedLogLine } from "./log-helpers";
 	import {
 		buildCuratedMetadata,
+		formatObjectRows,
 		visibleMetadataBadges,
 	} from "./metadata-details";
 
@@ -511,17 +510,6 @@
 			closeStreamChannel(channel);
 		};
 	});
-
-	function formatUnknown(value: JsonValue | undefined): string {
-		if (value === undefined || value === null) return "-";
-		if (String(value) === value) return value;
-		if (Number(value) === value || value === true || value === false) return String(value);
-		return JSON.stringify(value, null, 2);
-	}
-
-	function formatObjectRows(value: JsonObject) {
-		return Object.entries(value).map(([key, item]) => ({ key, value: formatUnknown(item) }));
-	}
 
 	function formatLogTime(timestamp: string | undefined): string {
 		return formatExactTimeOnly(timestamp, timestampTimezone) ?? "-";

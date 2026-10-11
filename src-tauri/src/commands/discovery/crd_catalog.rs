@@ -64,6 +64,34 @@ where
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
+#[cfg(feature = "bench-support")]
+impl From<k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition>
+    for CatalogCrd
+{
+    fn from(
+        crd: k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition,
+    ) -> Self {
+        Self {
+            spec: CatalogSpec {
+                group: crd.spec.group,
+                names: crd.spec.names,
+                scope: crd.spec.scope,
+                versions: crd
+                    .spec
+                    .versions
+                    .into_iter()
+                    .map(|version| CatalogVersion {
+                        name: version.name,
+                        served: version.served,
+                        storage: version.storage,
+                    })
+                    .collect(),
+            },
+            ..Self::default()
+        }
+    }
+}
+
 pub(crate) fn decode(text: &str) -> Result<Vec<DiscoveredResourceKind>, serde_json::Error> {
     let list: ObjectList<CatalogCrd> = serde_json::from_str(text)?;
     let mut kinds = list

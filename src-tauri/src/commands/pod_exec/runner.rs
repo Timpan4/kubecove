@@ -16,6 +16,8 @@ use super::registry::{
 };
 use super::validation::{client_for_context, validate_request, ValidatedPodExecRequest};
 
+pub(crate) const EXEC_OUTPUT_CHUNK_BYTES: usize = 4096;
+
 fn send(channel: &Channel<PodExecSessionMessage>, message: PodExecSessionMessage) -> bool {
     channel.send(message).is_ok()
 }
@@ -53,13 +55,29 @@ fn take_utf8_prefix(pending: &mut Vec<u8>) -> Option<String> {
     Some(data)
 }
 
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_decode_exec_chunks(chunks: &[Vec<u8>]) -> Vec<String> {
+    let mut pending = Vec::new();
+    let mut output = Vec::new();
+    for chunk in chunks {
+        pending.extend_from_slice(chunk);
+        while let Some(data) = take_utf8_prefix(&mut pending) {
+            output.push(data);
+        }
+    }
+    if !pending.is_empty() {
+        output.push(String::from_utf8_lossy(&pending).into_owned());
+    }
+    output
+}
+
 async fn read_exec_output(
     session_id: String,
     stream: &'static str,
     mut reader: impl AsyncRead + Unpin,
     channel: Channel<PodExecSessionMessage>,
 ) -> Result<(), AppError> {
-    let mut buffer = [0_u8; 4096];
+    let mut buffer = [0_u8; EXEC_OUTPUT_CHUNK_BYTES];
     let mut pending = Vec::new();
     loop {
         match reader.read(&mut buffer).await {

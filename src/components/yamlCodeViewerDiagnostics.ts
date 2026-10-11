@@ -1,5 +1,6 @@
 import { HighlightStyle } from "@codemirror/language";
 import type { Diagnostic } from "@codemirror/lint";
+import type { Text } from "@codemirror/state";
 import { tags } from "@lezer/highlight";
 import { parseYamlErrors } from "@/lib/yamlFormat";
 
@@ -25,6 +26,23 @@ export function yamlDiagnostics(value: string): Diagnostic[] {
 		);
 	} catch (error) {
 		return [yamlErrorDiagnostic(error, value.length)];
+	}
+}
+
+export function forEachYamlErrorLensDiagnostic(
+	diagnostics: Diagnostic[],
+	doc: Text,
+	visit: (to: number, diagnostic: Diagnostic) => void,
+): void {
+	const selectedLines = new Map<number, Diagnostic>();
+	for (const diagnostic of diagnostics) {
+		if (diagnostic.severity === "info") continue;
+		const line = doc.lineAt(diagnostic.from);
+		if (selectedLines.has(line.to)) continue;
+		selectedLines.set(line.to, diagnostic);
+	}
+	for (const [to, diagnostic] of [...selectedLines].sort(([a], [b]) => a - b)) {
+		visit(to, diagnostic);
 	}
 }
 

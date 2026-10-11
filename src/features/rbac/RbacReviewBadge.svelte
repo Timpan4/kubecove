@@ -3,6 +3,7 @@
 	import type { RbacInspectionSummary } from "@/lib/types";
 	import type { RbacCockpitItem } from "./cockpitModel";
 	import {
+		findRbacReviewRecord,
 		isReviewableRbacCategory,
 		reviewStatus,
 		type RbacReviewRecord,
@@ -19,11 +20,7 @@
 	} = $props();
 
 	const record = $derived(
-		records.find(
-			(candidate) =>
-				candidate.clusterContext === inspection.cluster &&
-				candidate.objectKey === entry.key,
-		),
+		findRbacReviewRecord(records, inspection.cluster, entry.key),
 	);
 	const status = $derived(reviewStatus(record, inspection, entry));
 	const label = $derived(

@@ -10,6 +10,21 @@ mod session;
 mod transport;
 mod tunnel;
 
+#[cfg(feature = "bench-support")]
+pub(crate) use applications::benchmark_application_summary_from_object;
+#[cfg(feature = "bench-support")]
+pub(crate) use appprojects::benchmark_app_project_summary_from_object;
+#[cfg(feature = "bench-support")]
+pub(crate) use appsets::benchmark_application_set_summary_from_object;
+#[cfg(feature = "bench-support")]
+pub(crate) use comparison::{
+    benchmark_connected_selected_comparison, benchmark_kubernetes_selected_comparison,
+};
+#[cfg(feature = "bench-support")]
+pub(crate) use connected::{benchmark_connected_inspector, benchmark_kubernetes_inspector};
+#[cfg(feature = "bench-support")]
+pub(crate) use operations::benchmark_verify_kubernetes_application_identity;
+
 use crate::{commands::gitops_crd, models::AppError};
 
 pub use applications::{get_argocd_application_details, list_argocd_applications};

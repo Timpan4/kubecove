@@ -2,8 +2,6 @@
 	import { getArgoOperationTracker, argoTrackingKey } from "./argo-operation-tracker";
 	import { argoOperationProgress } from "./argo-operation-progress";
 	import ArgoOperationProgress from "./ArgoOperationProgress.svelte";
-	import { yamlLanguage } from "@codemirror/lang-yaml";
-	import { highlightTree, tagHighlighter, tags } from "@lezer/highlight";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import {
 		ChevronDown,
@@ -14,7 +12,6 @@
 		RotateCcw,
 		TriangleAlert,
 	} from "lucide-svelte";
-	import { parse, stringify } from "yaml";
 	import YamlCodeEditor from "@/components/YamlCodeEditor.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import OperationScopeCard from "@/components/OperationScopeCard.svelte";
@@ -54,8 +51,13 @@
 	import {
 		buildArgoResourceDiff,
 		diffLineClassName,
-		type UnifiedDiffLine,
 	} from "@/features/resource-detail/yamlTabDiff";
+	import { applicationSpecFromYaml } from "./argo-application-yaml";
+	import {
+		argoDocumentText,
+		highlightedArgoDiffSegments,
+		resolveArgoResourceComparison,
+	} from "./argo-resource-display";
 	import {
 		createCancelScope,
 		createFiniteReadCleanup,
@@ -98,7 +100,6 @@
 	import {
 		applyArgoSyncDefaults,
 		argoComparisonDocument,
-		argoComparisonForResource,
 		argoHistoryKey,
 		argoReconciliationResources,
 		argoResourceCounts,
@@ -126,7 +127,6 @@
 	} = $props();
 
 	type DiffView = "changes" | "target" | "live";
-	type YamlDiffSegment = { text: string; className: string };
 
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
@@ -140,17 +140,6 @@
 		{ value: "target", label: "Desired" },
 		{ value: "live", label: "Live" },
 	];
-	const yamlDiffHighlighter = tagHighlighter([
-		{ tag: tags.keyword, class: "text-blue-700 dark:text-blue-300" },
-		{ tag: [tags.atom, tags.bool], class: "text-violet-700 dark:text-violet-300" },
-		{ tag: tags.number, class: "text-amber-700 dark:text-amber-300" },
-		{ tag: [tags.string, tags.content], class: "text-emerald-700 dark:text-emerald-300" },
-		{ tag: [tags.propertyName, tags.definition(tags.propertyName)], class: "text-sky-700 dark:text-sky-300" },
-		{ tag: tags.comment, class: "text-muted-foreground italic" },
-		{ tag: tags.punctuation, class: "text-muted-foreground" },
-		{ tag: tags.operator, class: "text-rose-700 dark:text-rose-300" },
-		{ tag: tags.invalid, class: "text-destructive" },
-	]);
 
 	const clusterContext = $derived(workspaceReadContext.clusterContext);
 	const workspaceId = $derived(workspaceReadContext.workspaceId);
@@ -575,19 +564,13 @@
 	}
 
 	function comparisonFor(item: ArgoManagedResource): ArgoResourceComparison | null {
-		const eager = argoComparisonForResource(
-			inspector.data?.comparisons ?? [],
+		return resolveArgoResourceComparison(
 			item,
+			inspector.data?.comparisons ?? [],
+			inspector.data?.transport,
+			selectedResourceKey,
+			selectedComparison.data,
 		);
-		if (
-			inspector.data?.transport === "connected" &&
-			selectedResourceKey === argoResourceIdentityKey(item) &&
-			selectedComparison.data &&
-			argoResourceIdentityKey(selectedComparison.data.resource) === selectedResourceKey
-		) {
-			return selectedComparison.data;
-		}
-		return eager;
 	}
 
 	function removalExpanded(item: ArgoManagedResource): boolean {
@@ -610,38 +593,16 @@
 	function resourceModified(item: ArgoManagedResource): boolean {
 		const comparison = argoComparisonDocument(item, comparisonFor(item));
 		if (comparison.modified === true || comparison.modified === false) return comparison.modified;
-		return documentText(comparison.desired) !== documentText(comparison.normalizedLive);
+		return argoDocumentText(comparison.desired) !== argoDocumentText(comparison.normalizedLive);
 	}
 
 	function resourceAdded(item: ArgoManagedResource): boolean {
 		const comparison = argoComparisonDocument(item, comparisonFor(item));
-		return documentText(comparison.live) === "" && documentText(comparison.desired) !== "";
-	}
-
-	function highlightedDiffSegments(line: UnifiedDiffLine): YamlDiffSegment[] {
-		if (line.type !== "add" && line.type !== "remove" && line.type !== "context") {
-			return [{ text: line.text, className: "" }];
-		}
-		const prefix = line.text.slice(0, 1);
-		const source = line.text.slice(1);
-		const segments: YamlDiffSegment[] = [{ text: prefix, className: "font-semibold" }];
-		let cursor = 0;
-		highlightTree(yamlLanguage.parser.parse(source), yamlDiffHighlighter, (from, to, className) => {
-			if (from > cursor) segments.push({ text: source.slice(cursor, from), className: "" });
-			segments.push({ text: source.slice(from, to), className });
-			cursor = to;
-		});
-		if (cursor < source.length) segments.push({ text: source.slice(cursor), className: "" });
-		return segments;
+		return argoDocumentText(comparison.live) === "" && argoDocumentText(comparison.desired) !== "";
 	}
 
 	function historyRevision(entry: ArgoApplicationHistory): string {
 		return entry.revision ?? (entry.revisions.join(", ") || "Unknown revision");
-	}
-
-	function documentText(value: JsonValue | undefined): string {
-		if (isString(value)) return value.trimEnd();
-		return value === undefined || value === null ? "" : stringify(value).trimEnd();
 	}
 
 	function statusValue(value: JsonValue | undefined, ...path: string[]): string | null {
@@ -651,16 +612,6 @@
 			current = current[key];
 		}
 		return isString(current) && current.trim() ? current : null;
-	}
-
-	function applicationSpecFromYaml(yaml: string | undefined): JsonObject {
-		if (!yaml) return {};
-		try {
-			const value: JsonValue = parse(yaml);
-			return isRecord(value) && isRecord(value.spec) ? value.spec : {};
-		} catch {
-			return {};
-		}
 	}
 
 	function valueAt(value: JsonValue | undefined, ...path: string[]): JsonValue | undefined {
@@ -927,16 +878,16 @@
 						<span class="sr-only">Live YAML collapsed.</span>
 					{:else if diffView === "target" && removal}
 						<div class="border-t p-3 font-sans text-xs leading-relaxed"><div class="font-medium">No desired manifest</div><div class="mt-1 text-muted-foreground">Selected revision no longer contains this resource.</div></div>
-					{:else if diffView === "changes" && documentText(documents.desired) && documentText(documents.normalizedLive)}
+					{:else if diffView === "changes" && argoDocumentText(documents.desired) && argoDocumentText(documents.normalizedLive)}
 						<div class="overflow-x-auto border-t font-mono text-[0.6875rem] leading-5">
-							{#each buildArgoResourceDiff(documentText(documents.desired), documentText(documents.normalizedLive)) as line}<div class={`whitespace-pre px-3 ${diffLineClassName(line.type)}`}>{#each highlightedDiffSegments(line) as segment}<span class={segment.className}>{segment.text}</span>{/each}</div>{/each}
+							{#each buildArgoResourceDiff(argoDocumentText(documents.desired), argoDocumentText(documents.normalizedLive)) as line}<div class={`whitespace-pre px-3 ${diffLineClassName(line.type)}`}>{#each highlightedArgoDiffSegments(line) as segment}<span class={segment.className}>{segment.text}</span>{/each}</div>{/each}
 						</div>
-					{:else if diffView === "changes" && removal && documentText(documents.live)}
-						<div class="border-t [&_.yaml-code-editor]:rounded-none [&_.yaml-code-editor]:border-0 [&_.yaml-code-editor]:shadow-none"><YamlCodeEditor value={documentText(documents.live)} editable={false} minHeight="180px" showErrorLens={false} /></div>
-					{:else if diffView === "target" && documentText(documents.desired)}
-						<div class="border-t [&_.yaml-code-editor]:rounded-none [&_.yaml-code-editor]:border-0 [&_.yaml-code-editor]:shadow-none"><YamlCodeEditor value={documentText(documents.desired)} editable={false} minHeight="180px" showErrorLens={false} /></div>
-					{:else if diffView === "live" && documentText(documents.live)}
-						<div class="border-t [&_.yaml-code-editor]:rounded-none [&_.yaml-code-editor]:border-0 [&_.yaml-code-editor]:shadow-none"><YamlCodeEditor value={documentText(documents.live)} editable={false} minHeight="180px" showErrorLens={false} /></div>
+					{:else if diffView === "changes" && removal && argoDocumentText(documents.live)}
+						<div class="border-t [&_.yaml-code-editor]:rounded-none [&_.yaml-code-editor]:border-0 [&_.yaml-code-editor]:shadow-none"><YamlCodeEditor value={argoDocumentText(documents.live)} editable={false} minHeight="180px" showErrorLens={false} /></div>
+					{:else if diffView === "target" && argoDocumentText(documents.desired)}
+						<div class="border-t [&_.yaml-code-editor]:rounded-none [&_.yaml-code-editor]:border-0 [&_.yaml-code-editor]:shadow-none"><YamlCodeEditor value={argoDocumentText(documents.desired)} editable={false} minHeight="180px" showErrorLens={false} /></div>
+					{:else if diffView === "live" && argoDocumentText(documents.live)}
+						<div class="border-t [&_.yaml-code-editor]:rounded-none [&_.yaml-code-editor]:border-0 [&_.yaml-code-editor]:shadow-none"><YamlCodeEditor value={argoDocumentText(documents.live)} editable={false} minHeight="180px" showErrorLens={false} /></div>
 					{:else}
 						<div class="border-t p-3 text-xs leading-relaxed text-muted-foreground">{comparison?.exact === false || transport === "kubernetes" ? "Exact target and live manifests are unavailable through Kubernetes fallback. Select a connected Argo CD profile for manifest comparison." : `No ${diffView === "target" ? "desired" : diffView === "live" ? "live" : "comparison"} manifest reported.`}</div>
 					{/if}

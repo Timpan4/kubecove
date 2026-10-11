@@ -28,8 +28,8 @@ const HELM_STORAGE_SECRET: &str = "Secret";
 const HELM_STORAGE_CONFIGMAP: &str = "ConfigMap";
 // Kubernetes limits Secret and ConfigMap data to 1 MiB. The decoded budget is
 // the separately approved application limit, including gzip expansion.
-const MAX_STORED_RELEASE_BYTES: usize = 1024 * 1024;
-const MAX_DECODED_RELEASE_BYTES: u64 = 32 * 1024 * 1024;
+pub(crate) const MAX_STORED_RELEASE_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_DECODED_RELEASE_BYTES: u64 = 32 * 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct DecodedHelmRelease {
@@ -625,6 +625,58 @@ fn latest_releases(records: Vec<HelmStorageRecord>) -> Vec<HelmReleaseSummary> {
         }
     }
     latest.into_values().collect()
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_storage_records(
+    secrets: Vec<Secret>,
+    configmaps: Vec<ConfigMap>,
+) -> Result<Vec<HelmReleaseSummary>, AppError> {
+    let mut records = Vec::with_capacity(secrets.len() + configmaps.len());
+    for mut secret in secrets {
+        records.push(secret_record("benchmark", &mut secret)?);
+    }
+    for mut configmap in configmaps {
+        records.push(configmap_record("benchmark", &mut configmap)?);
+    }
+    Ok(latest_releases(records))
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_invalid_storage_record_is_retained(secret: Secret) -> bool {
+    let mut secret = secret;
+    secret_record("benchmark", &mut secret).is_ok_and(|record| record.decode_error.is_some())
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_storage_record_error(secret: Secret) -> Option<(AppErrorKind, String)> {
+    let mut secret = secret;
+    secret_record("benchmark", &mut secret)
+        .ok()
+        .and_then(|record| record.decode_error.map(|error| (error.kind, error.message)))
+}
+
+#[cfg(feature = "bench-support")]
+pub(crate) fn benchmark_storage_record_projection(
+    mut secret: Secret,
+) -> Result<
+    (
+        HelmReleaseSummary,
+        HelmValuesSummary,
+        HelmManifestSummary,
+        Option<serde_json::Value>,
+        bool,
+    ),
+    AppError,
+> {
+    let record = secret_record("benchmark", &mut secret)?;
+    Ok((
+        record.summary,
+        record.values_summary,
+        record.manifest_summary,
+        record.release,
+        record.decode_error.is_some(),
+    ))
 }
 
 fn decode_helm_release(data: &[u8]) -> Result<DecodedHelmRelease, AppError> {

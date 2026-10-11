@@ -4,12 +4,12 @@ import {
 	entryPointFromApplication,
 	entryPointFromNamespace,
 	entryPointFromResource,
-	entryPointsEqual,
-	normalizeEntryPoints,
+	type normalizeEntryPoints,
 	type ResourceEntryPointCoverage,
 	reconcileEntryPoints,
 	recordRecentEntry,
 	togglePinnedEntry,
+	updateWorkspaceEntryPointsInCollection,
 } from "@/lib/workspace-entry-points";
 import {
 	type CreateWorkspaceInput,
@@ -203,10 +203,11 @@ export function writePersistedWorkspaces(
 	storage: StorageLike | null = browserStorage(),
 ): void {
 	if (!storage) return;
-	storage.setItem(
-		WORKSPACE_STORAGE_KEY,
-		JSON.stringify({ state: { workspaces }, version: 0 }),
-	);
+	storage.setItem(WORKSPACE_STORAGE_KEY, serializePersistedWorkspaces(workspaces));
+}
+
+export function serializePersistedWorkspaces(workspaces: SavedWorkspace[]): string {
+	return JSON.stringify({ state: { workspaces }, version: 0 });
 }
 
 export function createWorkspaceStore(
@@ -236,20 +237,13 @@ export function createWorkspaceStore(
 	) {
 		const current = get(state);
 		const now = new Date().toISOString();
-		let changed = false;
-		const workspaces = current.workspaces.map((workspace) => {
-			if (workspace.id !== workspaceId) return workspace;
-			const currentEntryPoints = normalizeEntryPoints(workspace.entryPoints);
-			const nextEntryPoints = recipe(currentEntryPoints, now);
-			if (entryPointsEqual(currentEntryPoints, nextEntryPoints)) return workspace;
-			changed = true;
-			return {
-				...workspace,
-				entryPoints: nextEntryPoints,
-				updatedAt: now,
-			};
-		});
-		if (!changed) return;
+		const workspaces = updateWorkspaceEntryPointsInCollection(
+			current.workspaces,
+			workspaceId,
+			recipe,
+			now,
+		);
+		if (!workspaces) return;
 		writePersistedWorkspaces(workspaces, storage);
 		state.set({ ...current, workspaces });
 	}

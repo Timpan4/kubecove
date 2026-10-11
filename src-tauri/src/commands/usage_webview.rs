@@ -58,21 +58,22 @@ fn process_name_lossy(process: &Process) -> String {
     process.name().to_string_lossy().into_owned()
 }
 
-fn process_cmd_text(process: &Process) -> String {
-    process
-        .cmd()
-        .iter()
-        .map(|part| part.to_string_lossy().into_owned())
-        .collect::<Vec<_>>()
-        .join(" ")
+fn process_identity_text(process: &Process) -> String {
+    process_identity_text_from_parts(
+        process_name_lossy(process),
+        process
+            .cmd()
+            .iter()
+            .map(|part| part.to_string_lossy().into_owned()),
+    )
 }
 
-fn process_identity_text(process: &Process) -> String {
-    format!(
-        "{} {}",
-        process_name_lossy(process),
-        process_cmd_text(process)
-    )
+pub(super) fn process_identity_text_from_parts(
+    process_name: String,
+    command_parts: impl IntoIterator<Item = String>,
+) -> String {
+    let command_text = command_parts.into_iter().collect::<Vec<_>>().join(" ");
+    format!("{process_name} {command_text}")
 }
 
 pub(super) fn is_webview_descendant_process(process: &Process) -> bool {
@@ -196,14 +197,18 @@ pub(super) fn macos_orphan_webview_process_candidate(
     process: &Process,
 ) -> Option<OrphanWebViewProcessCandidate> {
     let identity = process_identity_text(process);
-    if !is_macos_orphan_webkit_process_text(&identity) {
+    macos_orphan_webview_process_candidate_from_text(process.start_time(), &identity)
+}
+
+pub(super) fn macos_orphan_webview_process_candidate_from_text(
+    start_time: u64,
+    identity: &str,
+) -> Option<OrphanWebViewProcessCandidate> {
+    if !is_macos_orphan_webkit_process_text(identity) {
         return None;
     }
-    let role = webview_process_role_from_text(&identity)?;
-    Some(OrphanWebViewProcessCandidate {
-        start_time: process.start_time(),
-        role,
-    })
+    let role = webview_process_role_from_text(identity)?;
+    Some(OrphanWebViewProcessCandidate { start_time, role })
 }
 
 pub(super) fn webview_process_role_from_cmd(command_line: &str) -> Option<String> {
