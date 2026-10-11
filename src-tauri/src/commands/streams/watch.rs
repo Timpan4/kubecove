@@ -18,6 +18,28 @@ use std::time::{Duration, Instant};
 
 const WATCH_TIMEOUT_SECS: u32 = 30;
 
+fn report_forbidden_watch(
+    broadcaster: &StreamBroadcaster,
+    key: &WatchResourceKey,
+    namespaced: bool,
+) {
+    let scope = if namespaced {
+        key.namespace.as_ref().map_or_else(
+            || "in all namespaces".to_string(),
+            |namespace| format!("in namespace {namespace}"),
+        )
+    } else {
+        "at cluster scope".to_string()
+    };
+    broadcaster.status(
+        "forbidden",
+        format!(
+            "{} {scope}: watch access denied. Readable resources will refresh periodically.",
+            key.resource_kind.kind
+        ),
+    );
+}
+
 fn event_action<K>(event: &WatchEvent<K>) -> String {
     match event {
         WatchEvent::Added(_) => "added",
@@ -206,6 +228,10 @@ async fn run_resource_watch_with_client<F, Fut>(
                     };
                     match event {
                         Ok(event) => {
+                            if matches!(&event, WatchEvent::Error(status) if status.code == 403) {
+                                report_forbidden_watch(&broadcaster, &key, namespaced);
+                                return;
+                            }
                             if let Some(message) =
                                 reset_resource_version_for_error(&mut resource_version, &event)
                             {
@@ -235,6 +261,10 @@ async fn run_resource_watch_with_client<F, Fut>(
                             }
                         }
                         Err(err) => {
+                            if matches!(&err, kube::Error::Api(status) if status.code == 403) {
+                                report_forbidden_watch(&broadcaster, &key, namespaced);
+                                return;
+                            }
                             reset_resource_version_for_api_error(&mut resource_version, &err);
                             if !broadcaster.error(err.to_string()) {
                                 return;
@@ -245,6 +275,10 @@ async fn run_resource_watch_with_client<F, Fut>(
                 }
             }
             Err(err) => {
+                if matches!(&err, kube::Error::Api(status) if status.code == 403) {
+                    report_forbidden_watch(&broadcaster, &key, namespaced);
+                    return;
+                }
                 reset_resource_version_for_api_error(&mut resource_version, &err);
                 if !broadcaster.error(err.to_string()) {
                     return;

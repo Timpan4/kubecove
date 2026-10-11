@@ -9,6 +9,56 @@ import type { StreamMessage } from "./types";
 
 afterEach(() => jest.useRealTimers());
 
+test("a denied watch warns without interrupting permitted updates or retrying startup", async () => {
+	jest.useFakeTimers();
+	const channels: Array<ReturnType<typeof createMockChannel<StreamMessage>>> = [];
+	const states: ResourceWatchState[] = [];
+	let starts = 0;
+	let changes = 0;
+	let reloads = 0;
+	const stop = observeResourceScope({
+		client: createMockTauriClient({ start_resource_watch: () => `watch-${++starts}`, stop_stream: () => true }),
+		clusterContext: "dev",
+		keys: [{ resourceKind: { kind: "Pod" }, namespace: "cert-manager" }, { resourceKind: { kind: "Secret" }, namespace: "cert-manager" }],
+		onState: (state) => states.push(state),
+		onChange: () => { changes++; },
+		reload: async () => { reloads++; },
+		openChannel: (handler) => { const channel = createMockChannel(handler); channels.push(channel); return channel; },
+	});
+	await Promise.resolve();
+	try {
+		channels[0]?.onmessage({ type: "status", streamId: "watch-1", status: "connected", message: "pods connected" });
+		channels[1]?.onmessage({ type: "status", streamId: "watch-2", status: "forbidden", message: "Secret in namespace cert-manager: watch access denied." });
+		expect(states.at(-1)).toMatchObject({ status: "partial", error: null, warnings: ["Secret in namespace cert-manager: watch access denied."] });
+		channels[0]?.onmessage({ type: "resourceChanged", streamId: "watch-1", action: "modified", target: { cluster: "dev", kind: "Pod", name: "pod" } });
+		expect(changes).toBe(1);
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		await Promise.resolve();
+		expect(reloads).toBe(1);
+		expect(starts).toBe(2);
+		channels[0]?.onmessage({ type: "error", streamId: "watch-1", message: "offline" });
+		expect(states.at(-1)).toMatchObject({ status: "reconnecting", error: "offline" });
+		channels[0]?.onmessage({ type: "status", streamId: "watch-1", status: "connected", message: "recovered" });
+		expect(states.at(-1)?.status).toBe("partial");
+	} finally { stop(); }
+});
+
+test("an entirely denied scope uses polling rather than reconnecting", async () => {
+	let channel!: ReturnType<typeof createMockChannel<StreamMessage>>;
+	const states: ResourceWatchState[] = [];
+	const stop = observeResourceScope({
+		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
+		clusterContext: "dev", keys: [{ resourceKind: { kind: "Pod" } }],
+		onState: (state) => states.push(state), onChange: () => {}, reload: async () => {},
+		openChannel: (handler) => { channel = createMockChannel(handler); return channel; },
+	});
+	await Promise.resolve();
+	try {
+		channel.onmessage({ type: "status", streamId: "watch", status: "forbidden", message: "Pod: watch access denied." });
+		expect(states.at(-1)).toMatchObject({ status: "polling", error: null });
+	} finally { stop(); }
+});
+
 test("healthy startup and watch renewals do not reload the view", async () => {
 	jest.useFakeTimers();
 	let channel!: ReturnType<typeof createMockChannel<StreamMessage>>;
