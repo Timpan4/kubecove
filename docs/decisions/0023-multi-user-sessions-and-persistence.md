@@ -46,7 +46,8 @@ The server already supports shared credentials and opt-in per-user OIDC forwardi
 | Model | Credential owner | Workspace behavior |
 | --- | --- | --- |
 | Shared | Server operator | Uses an operator-enabled shared source; Kubernetes RBAC evaluates that source's credentials. |
-| Per-user | One application user | Uses a source assigned to that user; other users cannot select it or receive its summaries or credentials. |
+| Forwarded OIDC ID token, implemented | Signed-in user | With `--oidc-kubernetes-credentials <AUD>`, uses the user's verified ID token and Kubernetes RBAC. No kubeconfig upload or durable credential storage is required; refresh stays in server memory. |
+| Private source, proposed | One application user | Uses a source assigned to that user; other users cannot select it or receive its summaries or credentials. |
 
 Proposed operator policy can enable shared sources, per-user sources, or both. Each workspace records its selected source scope and stable source ID. If both are available, creation and any later switch show the credential model and target context explicitly. Changing a source invalidates affected reads, connections and operation reviews using the existing scope-change rules. A missing, expired, revoked or forbidden private source never silently falls back to shared credentials, including service-account or default kubeconfig discovery.
 
