@@ -10,7 +10,10 @@ The headless server supports one configured OpenID Connect issuer as an alternat
 to startup-token or Cloudflare Access authentication. These modes are mutually
 exclusive. OIDC authenticates browser users. Kubernetes requests continue to use
 the server's configured credentials, including an operator-granted cluster-admin
-service account. This remains a shared backend with one active owner.
+service account. This first stage remains a shared backend with one active owner,
+as described in [ADR 0020](0020-headless-server-mode.md). Concurrent user sessions
+and both shared and per-user Kubernetes credentials are planned separately in
+proposed [ADR 0023](0023-multi-user-sessions-and-persistence.md).
 
 Use authorization code flow with PKCE S256 and a nonce. The operator registers
 `<public-origin>/api/v1/oidc/callback` as the exact redirect URI. OIDC requires native

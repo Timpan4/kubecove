@@ -5,7 +5,7 @@
 ## Before you start
 
 - **One shared backend.** The server uses the Kubernetes credentials configured on its host or in its container. Everyone who can sign in to the server acts with those credentials. Sign-in does not map users to Kubernetes RBAC identities.
-- **One active owner.** Only one client owns live streams, Pod exec sessions and port forwards at a time. A new sign-in takes ownership. This mode is not a multi-user dashboard.
+- **One active owner in the current release.** Only one client owns live streams, Pod exec sessions and port forwards at a time. A new sign-in takes ownership. Concurrent user sessions are planned and are not available yet.
 - **One authentication mode per server.** Choose a per-start token, Cloudflare Access or OpenID Connect (OIDC) when starting the server. The modes cannot be combined.
 
 ## Choose a client

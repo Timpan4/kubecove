@@ -2,7 +2,7 @@
 
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/Timpan4/kubecove?utm_source=badge)
 
-KubeCove is a fast Kubernetes workspace for cluster inspection, GitOps, and troubleshooting. Use the desktop app locally, or run its single-user headless server on a remote host that already has kubeconfig access. It is built for application developers and cluster operators who want to browse resources across contexts and namespaces, understand ownership and topology, inspect Argo CD, Flux, and Helm state, and use guarded cluster operations.
+KubeCove is a fast Kubernetes workspace for cluster inspection, GitOps, and troubleshooting. Use the desktop app locally, or run its headless server on a remote host that already has kubeconfig access. The initial server release supports one active client. It is built for application developers and cluster operators who want to browse resources across contexts and namespaces, understand ownership and topology, inspect Argo CD, Flux, and Helm state, and use guarded cluster operations.
 
 KubeCove is a calm, evidence-oriented workspace: see what is running, what owns it, and what is broken before acting.
 
