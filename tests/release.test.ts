@@ -38,7 +38,7 @@ describe("release version helpers", () => {
 		expect(tagWorkflow).toContain('gh workflow run release.yml --ref "$tag_name"');
 	});
 
-	test("runs cached native Nix builds without blocking a release", () => {
+	test("runs native Nix builds without blocking a release", () => {
 		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
 		const nixJob = releaseWorkflow.match(
 			/\n {2}nix:\n[\s\S]*?(?=\n {2}verify:\n)/,
@@ -53,15 +53,14 @@ describe("release version helpers", () => {
 		expect(nixJob).toContain("nix build .#kubecove");
 		expect(nixJob).toContain("continue-on-error: true");
 		expect(nixJob).toMatch(
-			/^[ \t]+uses: DeterminateSystems\/magic-nix-cache-action@[a-f0-9]{40}(?:[ \t]+#.*)?[ \t]*\r?$/m,
+			/^[ \t]+uses: cachix\/install-nix-action@[a-f0-9]{40}(?:[ \t]+#.*)?[ \t]*\r?$/m,
 		);
-		expect(nixJob).toContain('diagnostic-endpoint: ""');
 		expect(nixJob).not.toContain("timeout-minutes:");
 		expect(verifyJob).not.toContain("- nix");
 		expect(verifyJob).not.toContain("NIX_RESULT:");
 	});
 
-	test("gates pull requests on the locked Nix Rust vendor tree", () => {
+	test("gates pull requests on the frontend and desktop Nix packages", () => {
 		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 		const nixJob = ciWorkflow.match(
 			/\n {2}nix:\n[\s\S]*?(?=\n {2}check:\n)/,
@@ -69,11 +68,10 @@ describe("release version helpers", () => {
 		const checkJob = ciWorkflow.match(/\n {2}check:\n[\s\S]*$/)?.[0];
 
 		expect(nixJob).toBeDefined();
-		expect(nixJob).toContain("nix build .#kubecove.cargoDeps");
+		expect(nixJob).toContain("nix build .#frontend .#kubecove");
 		expect(nixJob).toMatch(
-			/^[ \t]+uses: DeterminateSystems\/magic-nix-cache-action@[a-f0-9]{40}(?:[ \t]+#.*)?[ \t]*\r?$/m,
+			/^[ \t]+uses: cachix\/install-nix-action@[a-f0-9]{40}(?:[ \t]+#.*)?[ \t]*\r?$/m,
 		);
-		expect(nixJob).toContain('diagnostic-endpoint: ""');
 		expect(checkJob).toContain("- nix");
 		expect(checkJob).toContain("NIX_RESULT: $" + "{{ needs.nix.result }}");
 		expect(checkJob).toContain('test "$' + '{NIX_RESULT}" = "success"');
