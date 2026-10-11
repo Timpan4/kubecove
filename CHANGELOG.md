@@ -3,6 +3,31 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.1 - 2026-10-11
+### Added
+
+- Support independent concurrent server sessions across tabs and devices (#521).
+- Optionally use each OIDC user's verified ID token for Kubernetes access (#521).
+- Add quiet server startup for service managers (#516).
+
+### Improved
+
+- Show Pod logs as structured rows with selectable layouts (#528).
+- Keep permitted resource watches live when other watches are denied by RBAC (#524).
+- Reduce CRD discovery schema and response-buffer allocations (#525).
+
+### Fixed
+
+- Isolate session resources and remembered Argo CD credentials, recover stale browser sessions, and preserve OIDC refresh rotation and credential expiry (#521).
+- Keep kubeconfig-source configuration under server-operator control (#521).
+- Update frontend and Rust dependencies (#511, #512, #514).
+- Install dependencies before release workflow tests and validate shared packaging and macOS build commands (#516).
+
+### Release
+
+- Publish full and slim native server archives for Linux x64, Linux arm64 and macOS arm64, and multi-architecture distroless server images (#516).
+- Add Nix server packaging and refresh generated dependencies (#521, #527).
+
 ## 0.12.0 - 2026-10-11
 ### Added
 
