@@ -1,5 +1,6 @@
 import { $, $$, browser, expect } from "@wdio/globals";
 import { beforeEach, describe, it } from "mocha";
+import { join } from "node:path";
 
 declare global {
 	interface Window {
@@ -134,6 +135,23 @@ describe("Incident Cockpit", () => {
 				return result.active && result.focusVisible && result.outerScrolled && result.visible;
 			}, { timeoutMsg: "Keyboard focus did not scroll the remediation action fully into view." });
 			expect(await readKeyboardResult()).toEqual({ active: true, focusVisible: true, outerScrolled: true, visible: true });
+		} catch (error) {
+			console.error("Incident keyboard geometry", await browser.execute(() => {
+				const element = document.querySelector<HTMLElement>("[data-incident-remediation]");
+				const scroller = element?.closest<HTMLElement>('[data-slot="scroll-area"]');
+				return {
+					viewport: { width: innerWidth, height: innerHeight, clientHeight: document.documentElement.clientHeight, visualHeight: visualViewport?.height },
+					bounds: element?.getBoundingClientRect().toJSON(),
+					active: document.activeElement === element,
+					focusVisible: element?.matches(":focus-visible"),
+					scrollTop: scroller?.scrollTop,
+					scrollerBounds: scroller?.getBoundingClientRect().toJSON(),
+					fonts: document.fonts.status,
+				};
+			}));
+			const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
+			if (artifacts) await browser.saveScreenshot(join(artifacts, "incident-before-viewport-reset.png"));
+			throw error;
 		} finally {
 			await browser.sendCommandAndGetResult("Emulation.clearDeviceMetricsOverride", {});
 			await browser.setWindowSize(originalSize.width, originalSize.height);
