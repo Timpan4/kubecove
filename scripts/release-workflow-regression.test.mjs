@@ -20,6 +20,16 @@ function step(job, name) {
   return found;
 }
 
+test("release preparation commits desktop and server version metadata", () => {
+  const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
+  const commands = step(job("prepare", preparation), "Commit release branch").run;
+  const staged = commands.match(/^\s*git add (.+)$/m)[1].split(/\s+/);
+  for (const path of ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml",
+    "src-tauri/Cargo.lock", "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock", "CHANGELOG.md"]) {
+    assert.ok(staged.includes(path), `Release commit omits ${path}`);
+  }
+});
+
 test("release orchestration runs after dependencies are installed in CI and releases", () => {
   const ci = parse(readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"));
   for (const source of [ci, workflow]) {

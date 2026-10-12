@@ -12,6 +12,7 @@ should mirror the matching version section.
 
 - Reveal sidebar navigation when visible (#533).
 - Separate sidebar navigation from expansion (#532).
+- Include server version metadata in generated release PRs.
 
 ## 0.12.1 - 2026-10-11
 ### Added
