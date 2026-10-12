@@ -30,6 +30,47 @@ test("release preparation commits desktop and server version metadata", () => {
   }
 });
 
+test("release preparation creates verified commits without rewriting the branch", () => {
+  const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
+  const commands = step(job("prepare", preparation), "Commit release branch").run;
+  assert.match(commands, /node scripts\/commit-release-pr\.mjs/);
+  assert.doesNotMatch(commands, /git commit|git push|git checkout -B/);
+  const script = readFileSync(new URL("./commit-release-pr.mjs", import.meta.url), "utf8")
+    .replace(/^import .+;\r?\n/gm, "");
+  const base = "a".repeat(40);
+  const existing = "b".repeat(40);
+  for (const parent of [null, existing]) {
+    for (const valid of [true, false]) {
+      const calls = [];
+      let payload;
+      const execute = () => runInNewContext(script, {
+        Buffer,
+        console: { log() {} },
+        process: { env: { GH_REPO: "owner/repo", BRANCH_NAME: "release/app-v1.2.3", RELEASE_TITLE: "release: KubeCove v1.2.3" } },
+        readFileSync: (path) => Buffer.from(`${path} contents`),
+        spawnSync: (command, args, options) => {
+          calls.push([command, ...args]);
+          let stdout;
+          if (command === "git") stdout = args[0] === "rev-parse" ? base : "package.json\0src-tauri/server/Cargo.toml\0";
+          else if (args[1] === "graphql") {
+            payload = JSON.parse(options.input);
+            stdout = JSON.stringify({ data: { createCommitOnBranch: { commit: { oid: "c".repeat(40), signature: { isValid: valid } } } } });
+          } else stdout = args[1].includes("matching-refs") ? JSON.stringify(parent ? [{ ref: "refs/heads/release/app-v1.2.3", object: { sha: parent } }] : []) : "{}";
+          return { status: 0, stdout, stderr: "" };
+        },
+      });
+      if (valid) assert.doesNotThrow(execute);
+      else assert.throws(execute, /verified signature/);
+      assert.equal(payload.variables.input.expectedHeadOid, parent ?? base);
+      assert.equal(payload.variables.input.branch.refName, "release/app-v1.2.3");
+      assert.deepEqual(payload.variables.input.fileChanges.additions.map(({ path, contents }) => [path, Buffer.from(contents, "base64").toString()]),
+        [["package.json", "package.json contents"], ["src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.toml contents"]]);
+      assert.equal(calls.filter((call) => call.includes("POST")).length, parent ? 0 : 1);
+      assert.ok(calls.every((call) => !call.includes("push") && !call.includes("update-ref")));
+    }
+  }
+});
+
 test("release orchestration runs after dependencies are installed in CI and releases", () => {
   const ci = parse(readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"));
   for (const source of [ci, workflow]) {
