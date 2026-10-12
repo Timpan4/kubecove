@@ -1,27 +1,9 @@
-<script module lang="ts">
-	const loadResourceDetail = () => import("@/features/resource-detail/ResourceDetailPanel.svelte");
-</script>
-
 <script lang="ts">
 	import ArgoOperationMonitor from "@/features/gitops/ArgoOperationMonitor.svelte";
 	import { markStartup } from "@/lib/startup-marks";
 	import { onMount } from "svelte";
-	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { createQuery } from "@tanstack/svelte-query";
 	import {
-		Cable,
-		ChevronRight,
-		FolderOpen,
-		Eye,
-		Menu,
-		Pin,
-		Play,
-		Search,
-		Settings,
-		X,
-	} from "lucide-svelte";
-	import FriendlyError from "@/components/FriendlyError.svelte";
-	import {
-		Badge,
 		Button,
 		Alert,
 		AlertDescription,
@@ -31,26 +13,16 @@
 		CardDescription,
 		CardHeader,
 		CardTitle,
-		Checkbox,
 		Empty,
 		EmptyDescription,
 		EmptyHeader,
 		EmptyTitle,
-		Field,
-		FieldLabel,
 		ScrollArea,
-		Sheet,
-		SheetContent,
-		SheetTitle,
-		Sidebar,
-		SidebarContent,
 		SidebarInset,
 		SidebarProvider,
 	} from "@/components/ui/svelte";
-	import ClusterSelector from "@/components/ClusterSelector.svelte";
 	import {
 		summarizeWorkspaceScope,
-		workspaceScopeContexts,
 		type CreateWorkspaceInput,
 		type SavedWorkspace,
 	} from "@/lib/workspace-model";
@@ -81,13 +53,7 @@
 		type PathStateSurfacesState,
 		type PathStateWorkspaceSnapshot,
 	} from "@/lib/path-state";
-	import {
-		savedPortForwardStartFailureMessage,
-		shouldAutoStartSavedPortForwards,
-		shouldShowSavedPortForwardRestorePrompt,
-		startSavedPortForwards,
-	} from "@/features/live-sessions/portForwardLifecycle";
-	import DeferredSurface from "@/components/DeferredSurface.svelte";
+	import SavedPortForwardRestore from "@/features/live-sessions/SavedPortForwardRestore.svelte";
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
 	import type { HealthFilter } from "@/features/resources/helpers";
@@ -101,18 +67,16 @@
 	import { gitOpsSelectionResource } from "@/lib/gitops-resource";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import AppSurfaces from "./AppSurfaces.svelte";
-	import ActiveLiveSessionsButton from "./ActiveLiveSessionsButton.svelte";
-	import RemoteHostScope from "@/features/remote-connection/RemoteHostScope.svelte";
 	import AppUsageFooter from "./AppUsageFooter.svelte";
 	import CommandPalette from "./CommandPalette.svelte";
 	import DetailPanelFrame from "./DetailPanelFrame.svelte";
-	import SidebarTree from "./SidebarTree.svelte";
-	import UpdateStatusButton from "./UpdateStatusButton.svelte";
+	import ResourceInspector from "./ResourceInspector.svelte";
+	import WorkspaceHeader from "./WorkspaceHeader.svelte";
+	import WorkspaceSidebar from "./WorkspaceSidebar.svelte";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import {
 		GITOPS_RESOURCE_KINDS,
 		resourceBrowserAvailableKinds,
-		toggleCompactSidebarSection,
 	} from "./workspaceShellModel";
 	import {
 		buildWorkspaceNavigationModel,
@@ -124,9 +88,6 @@
 		type WorkspaceNavigationIntent,
 		type WorkspaceNavigationState,
 	} from "./workspaceNavigation";
-
-	const IS_MAC = /Mac/i.test(globalThis.navigator?.userAgent ?? "");
-	const SEARCH_SHORTCUT_HINT = IS_MAC ? "⌘K" : "Ctrl K";
 
 	let {
 		workspace,
@@ -147,7 +108,6 @@
 	} = $props();
 
 	const client = createTauriClient();
-	const queryClient = useQueryClient();
 	const workspaceSourceQuery = createQuery(() => kubeconfigSourcesQueryOptions(client));
 	const workspaceReadContext = $derived(
 		buildWorkspaceReadContext({
@@ -189,15 +149,8 @@
 				? [nodeIdToString(initialNavigation.selectedNode)]
 				: []),
 	);
-	const rbacSectionId = nodeIdToString({ type: "section", section: "rbac" });
-	$effect(() => {
-		if (viewMode === "rbac" && !expandedSections.includes(rbacSectionId)) {
-			expandedSections = [...expandedSections, rbacSectionId];
-		}
-	});
 	let commandOpen = $state(false);
 	let navigationOpen = $state(false);
-	let compactSidebarScrollTop = $state(0);
 	let resourceDetailPathState = $state<PathStateResourceDetailState | null>(
 		initialDetailPathState,
 	);
@@ -207,13 +160,6 @@
 	let rbacVerifierHandoff = $state<RbacVerifierHandoff | undefined>();
 	let rbacVerifierReturnNavigation = $state<WorkspaceNavigationState | null>(null);
 	let rbacVerifierReturnLabel = $state<string | undefined>();
-	let dismissedPortForwardRestoreWorkspaceId = $state<string | null>(null);
-	let startingSavedPortForwards = $state(false);
-	let savedPortForwardRestoreError = $state<unknown>(null);
-	const autoStartedSavedPortForwardWorkspaceIds = new Set<string>();
-	const autoStartSavedPortForwards = $derived(
-		$settingsStore.autoStartSavedPortForwards,
-	);
 	const kubeconfigSourceKey = $derived($settingsStore.kubeconfigSourceKey);
 	const showCustomResources = $derived($settingsStore.showCustomResources);
 
@@ -223,7 +169,6 @@
 	const title = $derived(navigationModel.title);
 	const placeholder = $derived(navigationModel.placeholder);
 	const scopeSummary = $derived(summarizeWorkspaceScope(workspace.scope));
-	const contextCount = $derived(workspaceScopeContexts(workspace.scope).length);
 	const isOverview = $derived(navigationModel.isOverview);
 	const isNamespaceList = $derived(navigationModel.isNamespaceList);
 	const resourceBrowserScope = $derived(navigationModel.resourceBrowserScope);
@@ -310,13 +255,6 @@
 			fixedResourceKindScope,
 		),
 	);
-	const showPortForwardRestorePrompt = $derived(
-		shouldShowSavedPortForwardRestorePrompt({
-			workspace,
-			autoStart: autoStartSavedPortForwards,
-			dismissedWorkspaceId: dismissedPortForwardRestoreWorkspaceId,
-		}),
-	);
 	const pinnedResourceKeys = $derived(
 		normalizeEntryPoints(workspace.entryPoints).pinned.flatMap((entry) => {
 			const resource = resourceFromEntryPoint(entry);
@@ -365,20 +303,6 @@
 	function applyWorkspaceNavigation(intent: WorkspaceNavigationIntent) {
 		navigation = navigateWorkspace(navigation, intent);
 	}
-
-	$effect(() => {
-		if (
-			!shouldAutoStartSavedPortForwards({
-				workspace,
-				autoStart: autoStartSavedPortForwards,
-				startedWorkspaceIds: autoStartedSavedPortForwardWorkspaceIds,
-			})
-		) {
-			return;
-		}
-		autoStartedSavedPortForwardWorkspaceIds.add(workspace.id);
-		void startAllSavedPortForwards(false);
-	});
 
 	function openLauncher() {
 		applyWorkspaceNavigation({ type: "openLauncher" });
@@ -491,43 +415,6 @@
 		applyWorkspaceNavigation({ type: "openPortForwards" });
 	}
 
-	function setAutoStartSavedPortForwards(autoStart: boolean) {
-		getSettingsSnapshot().setAutoStartSavedPortForwards(autoStart);
-	}
-
-	function dismissPortForwardRestore() {
-		dismissedPortForwardRestoreWorkspaceId = workspace.id;
-		savedPortForwardRestoreError = null;
-	}
-
-	function reviewPortForwards() {
-		openPortForwards();
-	}
-
-	async function startAllSavedPortForwards(dismissOnSuccess: boolean) {
-		startingSavedPortForwards = true;
-		savedPortForwardRestoreError = null;
-		try {
-			const results = await startSavedPortForwards({
-				client,
-				workspace,
-				kubeconfigSource: kubeconfigSourceKey,
-				updateSavedPortForward: workspaceStore.updateSavedPortForward,
-				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
-			const failureMessage = savedPortForwardStartFailureMessage(results);
-			if (failureMessage) {
-				savedPortForwardRestoreError = failureMessage;
-				return;
-			}
-			if (dismissOnSuccess) dismissPortForwardRestore();
-		} catch (error) {
-			savedPortForwardRestoreError = error;
-		} finally {
-			startingSavedPortForwards = false;
-		}
-	}
-
 	function selectNode(nodeId: TreeNodeId) {
 		navigationOpen = false;
 		if (nodeId.type === "namespace" && nodeId.namespace) {
@@ -590,158 +477,34 @@
 		});
 	}
 
-	function toggleSection(id: string) {
-		expandedSections = expandedSections.includes(id)
-			? expandedSections.filter((item) => item !== id)
-			: [...expandedSections, id];
-	}
-
-	function toggleCompactSection(id: string) {
-		expandedSections = toggleCompactSidebarSection(expandedSections, id);
-	}
-
 </script>
 
 <ArgoOperationMonitor context={workspaceReadContext} />
 
 <SidebarProvider class="h-screen overflow-hidden bg-background text-foreground xl:gap-2 xl:p-2">
-	<Sidebar
-		class="hidden w-[260px] shrink-0 flex-col border-r bg-surface-1 xl:flex xl:overflow-hidden xl:rounded-xl xl:border xl:border-sidebar-border xl:shadow-lg"
-	>
-		<div class="border-b px-3 py-3">
-			<div class="flex items-center justify-between gap-2">
-				<div class="min-w-0">
-					<div class="truncate text-sm font-semibold">{workspace.name}</div>
-					<div class="truncate text-xs text-muted-foreground">
-						{workspace.scope.clusterContext}
-					</div>
-				</div>
-				<Badge variant="outline" class="tabular-nums">{contextCount}</Badge>
-			</div>
-		</div>
-		<SidebarContent>
-			<SidebarTree
-				{workspaceReadContext}
-				{selectedNode}
-				{expandedSections}
-				onNodeSelect={selectNode}
-				onSectionToggle={toggleSection}
-			/>
-		</SidebarContent>
-	</Sidebar>
-
-	{#if navigationOpen}
-		<Sheet open onOpenChange={(open: boolean) => (navigationOpen = open)}>
-		<SheetContent side="left" class="w-[280px] max-w-[85vw] p-0 xl:hidden">
-			<SheetTitle class="sr-only">Workspace navigation</SheetTitle>
-			<div class="border-b px-3 py-3 pr-12">
-				<div class="flex items-center justify-between gap-2">
-					<div class="min-w-0">
-						<div class="truncate text-sm font-semibold">{workspace.name}</div>
-						<div class="truncate text-xs text-muted-foreground">
-							{workspace.scope.clusterContext}
-						</div>
-					</div>
-					<Badge variant="outline" class="tabular-nums">{contextCount}</Badge>
-				</div>
-			</div>
-			<SidebarContent>
-				<SidebarTree
-					{workspaceReadContext}
-					{selectedNode}
-					{expandedSections}
-					onNodeSelect={selectNode}
-					onSectionToggle={toggleCompactSection}
-					bind:scrollTop={compactSidebarScrollTop}
-				/>
-			</SidebarContent>
-		</SheetContent>
-	</Sheet>
-	{/if}
+	<WorkspaceSidebar
+		{workspace}
+		{workspaceReadContext}
+		{selectedNode}
+		bind:expandedSections
+		bind:navigationOpen
+		onNodeSelect={selectNode}
+	/>
 
 	<SidebarInset
 		class="flex h-full min-w-0 flex-col overflow-hidden xl:rounded-xl xl:border xl:border-sidebar-border xl:bg-background xl:shadow-lg"
 	>
-		<header
-			class="flex h-12 shrink-0 items-center gap-2 border-b bg-sidebar px-2 sm:gap-4 sm:px-4 [-webkit-app-region:drag]"
-		>
-			<Button
-				type="button"
-				variant="ghost"
-				size="icon"
-				class="shrink-0 xl:hidden [-webkit-app-region:no-drag]"
-				aria-label="Open workspace navigation"
-				onclick={() => (navigationOpen = true)}
-			>
-				<Menu />
-			</Button>
-			<nav
-				class="hidden min-w-0 flex-1 items-center gap-2 [-webkit-app-region:no-drag] md:flex"
-				aria-label="Workspace location"
-			>
-				<ClusterSelector
-					value={workspace.scope.clusterContext}
-					onClusterChange={changeClusterContext}
-				/>
-				<ChevronRight class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-				<span class="truncate whitespace-nowrap text-xs font-medium text-muted-foreground">
-					{resourceBrowserScope.canQuery ? "Resources" : title}
-				</span>
-				{#if resourceGitOpsFocusApplication}
-					<ChevronRight class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-					<strong class="truncate text-xs font-semibold">{resourceGitOpsFocusApplication.name}</strong>
-				{/if}
-			</nav>
-			<nav
-				class="flex min-w-0 flex-1 items-center gap-1.5 md:hidden"
-				aria-label="Workspace location"
-			>
-				<span class="truncate whitespace-nowrap text-xs font-medium text-muted-foreground">
-					{resourceBrowserScope.canQuery ? "Resources" : title}
-				</span>
-				{#if resourceGitOpsFocusApplication}
-					<ChevronRight class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-					<strong class="truncate text-xs font-semibold">{resourceGitOpsFocusApplication.name}</strong>
-				{/if}
-			</nav>
-			<div class="flex min-w-0 shrink-0 items-center justify-end gap-1 [-webkit-app-region:no-drag] md:flex-1">
-				<RemoteHostScope />
-				<ActiveLiveSessionsButton onOpenManager={openPortForwards} />
-				<UpdateStatusButton />
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon"
-					aria-label="Open workspaces"
-					onclick={openLauncher}
-				>
-					<FolderOpen />
-				</Button>
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon"
-					aria-label="Open settings"
-					onclick={openSettings}
-				>
-					<Settings />
-				</Button>
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					class="hidden gap-2 whitespace-nowrap bg-surface-1 px-3 text-xs font-normal text-muted-foreground shadow-xs [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-foreground hover:shadow-sm lg:inline-flex"
-					aria-label="Search views, namespaces, and resources"
-					onclick={() => (commandOpen = true)}
-				>
-					<Search class="size-3.5" aria-hidden="true" />
-					<span>Search resources...</span>
-					<kbd class="rounded border bg-muted px-1 py-px font-mono text-xs text-muted-foreground">
-						{SEARCH_SHORTCUT_HINT}
-					</kbd>
-				</Button>
-			</div>
-		</header>
+		<WorkspaceHeader
+			clusterContext={workspace.scope.clusterContext}
+			locationLabel={resourceBrowserScope.canQuery ? "Resources" : title}
+			focusApplicationName={resourceGitOpsFocusApplication?.name}
+			onOpenNavigation={() => (navigationOpen = true)}
+			onClusterChange={changeClusterContext}
+			onOpenPortForwards={openPortForwards}
+			onOpenLauncher={openLauncher}
+			onOpenSettings={openSettings}
+			onOpenSearch={() => (commandOpen = true)}
+		/>
 
 		{#if liveSessionCleanupMessage}
 			<Alert class="shrink-0 rounded-none border-x-0 border-t-0">
@@ -755,60 +518,7 @@
 			</Alert>
 		{/if}
 
-		{#if showPortForwardRestorePrompt}
-			<Alert class="shrink-0 rounded-none border-x-0 border-t-0">
-				<Cable class="size-3.5" />
-				<AlertTitle>Saved port forwards available</AlertTitle>
-				<AlertDescription class="flex flex-wrap items-center justify-between gap-3">
-					<span>
-						This workspace has {workspace.portForwards?.length ?? 0} saved Service{" "}
-						{(workspace.portForwards?.length ?? 0) === 1 ? "forward" : "forwards"} ready to start.
-					</span>
-					{#if savedPortForwardRestoreError}
-						<div class="w-full">
-							<FriendlyError
-								mode="compact"
-								error={savedPortForwardRestoreError}
-								context={{
-									operation: "portForward",
-									fallbackTitle: "Saved port-forwards failed",
-									partial: true,
-								}}
-							/>
-						</div>
-					{/if}
-					<span class="flex flex-wrap items-center gap-2">
-						<Field orientation="horizontal" class="w-auto pr-2">
-							<FieldLabel class="items-center gap-2 text-xs text-muted-foreground">
-								<Checkbox
-									checked={autoStartSavedPortForwards}
-									onCheckedChange={setAutoStartSavedPortForwards}
-									aria-label="Auto-start saved port forwards"
-								/>
-								Auto-start
-							</FieldLabel>
-						</Field>
-						<Button
-							type="button"
-							size="sm"
-							disabled={startingSavedPortForwards}
-							onclick={() => void startAllSavedPortForwards(true)}
-						>
-							<Play data-icon="inline-start" />
-							Start saved
-						</Button>
-						<Button type="button" size="sm" variant="outline" onclick={reviewPortForwards}>
-							<Eye data-icon="inline-start" />
-							Review
-						</Button>
-						<Button type="button" size="sm" variant="ghost" onclick={dismissPortForwardRestore}>
-							<X data-icon="inline-start" />
-							Skip
-						</Button>
-					</span>
-				</AlertDescription>
-			</Alert>
-		{/if}
+		<SavedPortForwardRestore {client} {workspace} onReview={openPortForwards} />
 
 		<main class="flex min-h-0 flex-1 overflow-hidden">
 			<DetailPanelFrame
@@ -819,55 +529,18 @@
 			>
 				{#snippet detailPanel()}
 					{#if focusedResource}
-						<section class="flex h-full min-h-0 flex-col bg-surface-1">
-							<header class="flex shrink-0 items-start justify-between gap-3 border-b px-4 py-3">
-								<div class="min-w-0">
-									<h2 class="truncate text-sm font-semibold">{focusedResource.name}</h2>
-									<div class="truncate text-xs text-muted-foreground">
-										{focusedResource.kind} / {focusedResource.namespace ?? "cluster"}
-									</div>
-								</div>
-								<div class="flex shrink-0 items-center gap-1">
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon"
-										class="size-7 text-muted-foreground"
-										aria-label={`${focusedResourcePinned ? "Unpin" : "Pin"} ${focusedResource.kind} ${focusedResource.name}`}
-										onclick={() => togglePinnedResource(focusedResource)}
-									>
-										<Pin class={focusedResourcePinned ? "fill-current" : ""} />
-									</Button>
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon"
-										class="size-7 text-muted-foreground"
-										aria-label="Close resource details"
-										onclick={() => applyWorkspaceNavigation({ type: "clearResource" })}
-									>
-										<X />
-									</Button>
-								</div>
-							</header>
-							<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
-								{#key resourceKey(focusedResource)}
-									<DeferredSurface load={loadResourceDetail} label="resource details">
-										{#snippet children(ResourceDetailPanel)}
-											<ResourceDetailPanel
-												{client}
-												resource={focusedResource}
-												argoApplicationSummary={resourceGitOpsFocusApplication}
-												{workspaceReadContext}
-												onOpenHelmRelease={openHelmReleaseFromResource}
-												initialPathState={resourceDetailPathState}
-												onPathStateChange={(state) => (resourceDetailPathState = state)}
-											/>
-										{/snippet}
-									</DeferredSurface>
-								{/key}
-							</div>
-						</section>
+						<ResourceInspector
+							{client}
+							resource={focusedResource}
+							pinned={focusedResourcePinned}
+							argoApplicationSummary={resourceGitOpsFocusApplication}
+							{workspaceReadContext}
+							initialPathState={resourceDetailPathState}
+							onPinToggle={() => togglePinnedResource(focusedResource)}
+							onClose={() => applyWorkspaceNavigation({ type: "clearResource" })}
+							onOpenHelmRelease={openHelmReleaseFromResource}
+							onPathStateChange={(state) => (resourceDetailPathState = state)}
+						/>
 					{/if}
 				{/snippet}
 			<ScrollArea class="h-full">

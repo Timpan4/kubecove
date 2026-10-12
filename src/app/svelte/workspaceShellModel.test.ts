@@ -1,9 +1,12 @@
 import { filterCustomResourceKinds } from "@/components/sidebar-tree-helpers";
 import type { DiscoveredResourceKind } from "@/lib/types";
+import type { TreeNode, TreeNodeId } from "@/lib/tree-nav";
 import {
 	appendPresentCustomResourceKinds,
 	buildSidebarTree,
+	collectSelectedAncestorIds,
 	resourceBrowserAvailableKinds,
+	type SidebarTreeGroup,
 } from "./workspaceShellModel";
 
 declare function describe(name: string, fn: () => void): void;
@@ -23,9 +26,29 @@ const widget: DiscoveredResourceKind = {
 	namespaced: true,
 };
 
+const helmGroups: SidebarTreeGroup[] = [
+	{
+		id: "cluster",
+		nodes: [
+			{
+				id: { type: "section", section: "helm" },
+				label: "Helm",
+				children: [
+					{ id: { type: "kind", section: "helm", kind: "Releases" }, label: "Releases" },
+				],
+			},
+			{ id: { type: "section", section: "rbac" }, label: "RBAC" },
+		],
+	},
+];
+
+function treeNodes(groups: SidebarTreeGroup[]): TreeNode[] {
+	return groups.flatMap((group) => group.nodes);
+}
+
 describe("Custom Resources tree model", () => {
 	test("labels CRD-backed catalog as Custom Resources", () => {
-		const nodes = buildSidebarTree({
+		const groups = buildSidebarTree({
 			namespaces: [],
 			resourceKinds: [widget],
 			argoDetected: false,
@@ -36,7 +59,9 @@ describe("Custom Resources tree model", () => {
 			showUnavailableGitOpsProviders: false,
 		});
 
-		const customResources = nodes.find((node) => node.id.section === "discovered");
+		const customResources = groups
+			.find((group) => group.id === "scope")
+			?.nodes.find((node) => node.id.section === "discovered");
 
 		expect(customResources?.label).toBe("Custom Resources");
 		expect(customResources?.children?.[0]?.label).toBe("example.com");
@@ -44,7 +69,7 @@ describe("Custom Resources tree model", () => {
 	});
 
 	test("omits Custom Resources when disabled", () => {
-		const nodes = buildSidebarTree({
+		const groups = buildSidebarTree({
 			namespaces: [],
 			resourceKinds: [widget],
 			argoDetected: false,
@@ -56,7 +81,7 @@ describe("Custom Resources tree model", () => {
 			showCustomResources: false,
 		});
 
-		expect(nodes.some((node) => node.id.section === "discovered")).toBe(false);
+		expect(treeNodes(groups).some((node) => node.id.section === "discovered")).toBe(false);
 	});
 
 	test("filters custom resources by CRD names and API metadata", () => {
@@ -66,7 +91,7 @@ describe("Custom Resources tree model", () => {
 	});
 
 	test("shows an explicit empty search result", () => {
-		const nodes = buildSidebarTree({
+		const groups = buildSidebarTree({
 			namespaces: [],
 			resourceKinds: [widget],
 			argoDetected: false,
@@ -78,7 +103,7 @@ describe("Custom Resources tree model", () => {
 			customResourceSearch: "missing",
 		});
 
-		expect(nodes.find((node) => node.id.section === "discovered")?.children?.[0]?.label).toBe(
+		expect(treeNodes(groups).find((node) => node.id.section === "discovered")?.children?.[0]?.label).toBe(
 			"No custom resources match search",
 		);
 	});
@@ -94,5 +119,97 @@ describe("Custom Resources tree model", () => {
 		expect(resourceBrowserAvailableKinds(["Pod"], [widget], true)).toEqual([
 			"Pod",
 		]);
+	});
+});
+
+describe("Sidebar groups", () => {
+	test("lists namespaces as top-level rows without a Namespaces section row", () => {
+		const groups = buildSidebarTree({
+			namespaces: [{ name: "default", age: "1d" }],
+			resourceKinds: [],
+			argoDetected: false,
+			fluxDetection: undefined,
+			detectingGitOps: false,
+			resourceKindsPending: false,
+			resourceKindsError: "",
+			showUnavailableGitOpsProviders: false,
+		});
+
+		expect(groups.map((group) => group.id)).toEqual([
+			"workspace",
+			"cluster",
+			"scope",
+			"namespaces",
+		]);
+		expect(
+			groups.find((group) => group.id === "namespaces")?.nodes.map((node) => node.label),
+		).toEqual(["default"]);
+		expect(
+			treeNodes(groups).some(
+				(node) => node.id.type === "section" && node.id.section === "namespaces",
+			),
+		).toBe(false);
+	});
+
+	test("returns no ancestors for null, missing, or top-level selections", () => {
+		expect([...collectSelectedAncestorIds(helmGroups, null)]).toEqual([]);
+		expect([
+			...collectSelectedAncestorIds(helmGroups, { type: "section", section: "missing" }),
+		]).toEqual([]);
+		expect([
+			...collectSelectedAncestorIds(helmGroups, { type: "section", section: "rbac" }),
+		]).toEqual([]);
+	});
+
+	test("returns the ancestors of a nested selection", () => {
+		expect([
+			...collectSelectedAncestorIds(helmGroups, {
+				type: "kind",
+				section: "helm",
+				kind: "Releases",
+			}),
+		]).toEqual(["section::helm"]);
+	});
+
+	test("walks lazily loaded children to find ancestors", () => {
+		const groups: SidebarTreeGroup[] = [
+			{
+				id: "namespaces",
+				nodes: [
+					{
+						id: { type: "namespace", section: "namespaces", namespace: "default" },
+						label: "default",
+					},
+				],
+			},
+		];
+		const pod: TreeNodeId = {
+			type: "kind",
+			section: "namespaces",
+			namespace: "default",
+			group: "Workloads",
+			kind: "Pod",
+		};
+		const getLazyChildren = (node: TreeNode): TreeNode[] | undefined =>
+			node.id.type === "namespace"
+				? [
+						{
+							id: {
+								type: "group",
+								section: "namespaces",
+								namespace: "default",
+								group: "Workloads",
+							},
+							label: "Workloads",
+							children: [{ id: pod, label: "Pod" }],
+						},
+					]
+				: undefined;
+
+		expect([...collectSelectedAncestorIds(groups, pod, getLazyChildren)]).toEqual([
+			"namespace::namespaces::default",
+			"group::namespaces::default::Workloads",
+		]);
+		expect([...collectSelectedAncestorIds(groups, pod)]).toEqual([]);
 	});
 });

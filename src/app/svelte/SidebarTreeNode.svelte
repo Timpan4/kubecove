@@ -1,4 +1,10 @@
+<script lang="ts" module>
+	// Set while a row click or keypress navigates, so the reveal effect skips that change.
+	let navigatingFromRow = false;
+</script>
+
 <script lang="ts">
+	import { tick, untrack } from "svelte";
 	import { ChevronRight } from "lucide-svelte";
 	import { Button } from "@/components/ui/svelte";
 	import { cnfast } from "@/lib/utils";
@@ -14,6 +20,7 @@
 		node,
 		depth,
 		selectedNode,
+		selectedAncestorIds = new Set<string>(),
 		expandedSections,
 		onNodeSelect,
 		onSectionToggle,
@@ -24,6 +31,7 @@
 		node: TreeNode;
 		depth: number;
 		selectedNode: TreeNodeId | null;
+		selectedAncestorIds?: ReadonlySet<string>;
 		expandedSections: string[];
 		onNodeSelect: (id: TreeNodeId) => void;
 		onSectionToggle: (id: string) => void;
@@ -33,10 +41,10 @@
 	} = $props();
 
 	const id = $derived(nodeIdToString(node.id));
-	const isSelected = $derived(
-		selectedNode !== null && nodeIdToString(selectedNode) === id,
-	);
+	const selectedKey = $derived(selectedNode ? nodeIdToString(selectedNode) : null);
+	const isSelected = $derived(selectedKey === id);
 	const isExpanded = $derived(expandedSections.includes(id));
+	const hidesSelection = $derived(!isExpanded && selectedAncestorIds.has(id));
 	const hasChildren = $derived(
 		node.id.type === "namespace" || Boolean(node.children?.length),
 	);
@@ -56,6 +64,20 @@
 					: "pl-[72px]",
 	);
 
+	let rowElement: HTMLDivElement | undefined;
+	let highlighted = $state(false);
+	// Only a selection change while mounted reveals, so expanding a section does not.
+	let previousSelectedKey = untrack(() => selectedKey);
+
+	$effect(() => {
+		const key = selectedKey;
+		if (key === previousSelectedKey) return;
+		previousSelectedKey = key;
+		if (navigatingFromRow || !(isSelected || hidesSelection) || !rowElement) return;
+		rowElement.scrollIntoView({ block: "nearest" });
+		if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) highlighted = true;
+	});
+
 	/** Kind nodes use their kind tone; everything else uses the group tone. */
 	function getNodeVisual(item: TreeNode): ResourceVisual {
 		if (item.id.type === "kind" && item.id.kind) {
@@ -68,9 +90,11 @@
 	}
 
 	function selectNode() {
-		if (isDisabled) return;
-		if (node.selectable !== false) onNodeSelect(node.id);
-		if (hasChildren) onSectionToggle(id);
+		if (isDisabled || node.selectable === false) return;
+		navigatingFromRow = true;
+		onNodeSelect(node.id);
+		// Reveal effects for this selection run within tick, so the flag clears after them.
+		tick().then(() => (navigatingFromRow = false));
 	}
 
 	function toggleNode(event: MouseEvent) {
@@ -80,6 +104,8 @@
 
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key === "Enter" || event.key === " ") {
+			// A focused chevron button handles its own Enter and Space as a click.
+			if (event.target !== event.currentTarget) return;
 			event.preventDefault();
 			selectNode();
 			return;
@@ -97,14 +123,15 @@
 
 <li>
 	<div
+		bind:this={rowElement}
 		class={cnfast(
 			"relative flex h-[26px] cursor-pointer select-none items-center gap-1 rounded-none text-xs text-sidebar-foreground/80 transition-colors hover:bg-surface-1 hover:text-sidebar-accent-foreground",
 			isDisabled &&
 				"cursor-default text-muted-foreground/70 hover:bg-transparent hover:text-muted-foreground/70",
 			isSelected &&
 				"bg-primary/10 text-sidebar-accent-foreground before:absolute before:bottom-0 before:left-0 before:top-0 before:w-0.5 before:rounded-r-sm before:bg-primary",
-			depth === 0 &&
-				"text-xs font-bold uppercase tracking-wide text-muted-foreground/70 hover:bg-transparent hover:text-foreground/70",
+			depth === 0 && node.id.type !== "namespace" && "font-medium",
+			highlighted && "animate-[sidebar-row-reveal_1s_ease-out]",
 			depthClass,
 		)}
 		data-depth={depth}
@@ -116,6 +143,7 @@
 		title={node.description}
 		onclick={selectNode}
 		onkeydown={handleKeydown}
+		onanimationend={() => (highlighted = false)}
 	>
 		<Button
 			type="button"
@@ -143,7 +171,10 @@
 			)}
 			aria-hidden="true"
 		/>
-		<span class="min-w-0 flex-1 truncate leading-none">{node.label}</span>
+		<span
+			class={cnfast("min-w-0 flex-1 truncate leading-none", hidesSelection && "text-primary")}
+			>{node.label}</span
+		>
 	</div>
 	{#if node.id.type === "section" && node.id.section === "discovered" && isExpanded}
 		<div class="px-2 py-1 pl-6">
@@ -163,6 +194,7 @@
 					node={child}
 					depth={depth + 1}
 					{selectedNode}
+					{selectedAncestorIds}
 					{expandedSections}
 					{onNodeSelect}
 					{onSectionToggle}

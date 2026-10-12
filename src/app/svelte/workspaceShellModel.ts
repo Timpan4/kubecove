@@ -15,6 +15,7 @@ import {
 	nodeIdToString,
 	SECTIONS,
 	type TreeNode,
+	type TreeNodeId,
 } from "@/lib/tree-nav";
 import type {
 	DiscoveredResourceKind,
@@ -34,7 +35,6 @@ const COMPACT_RESOURCE_SECTION_IDS = new Set(
 	(
 		[
 			"clusterOverview",
-			"namespaces",
 			"workloads",
 			"network",
 			"config",
@@ -172,6 +172,11 @@ function buildGitOpsNode({
 	};
 }
 
+export interface SidebarTreeGroup {
+	id: "workspace" | "cluster" | "scope" | "namespaces";
+	nodes: TreeNode[];
+}
+
 export function buildSidebarTree({
 	namespaces,
 	resourceKinds,
@@ -194,17 +199,10 @@ export function buildSidebarTree({
 	showUnavailableGitOpsProviders: boolean;
 	showCustomResources?: boolean;
 	customResourceSearch?: string;
-}): TreeNode[] {
+}): SidebarTreeGroup[] {
 	const extraKinds = extraDiscoveredKinds(
 		filterCustomResourceKinds(resourceKinds, customResourceSearch),
 	);
-	const namespaceNode: TreeNode = {
-		id: { type: "section", section: "namespaces" },
-		label: SECTIONS.namespaces.label,
-		children: namespaces.map((namespace) =>
-			buildShallowNamespaceTreeNode(namespace.name),
-		),
-	};
 	const discoveredChildren: TreeNode[] = resourceKindsPending
 		? [
 				{
@@ -234,7 +232,7 @@ export function buildSidebarTree({
 						},
 					];
 
-	return [
+	const workspaceNodes: TreeNode[] = [
 		{
 			id: { type: "section", section: "workspaceOverview" },
 			label: SECTIONS.workspaceOverview.label,
@@ -244,6 +242,8 @@ export function buildSidebarTree({
 			id: { type: "section", section: "portForwards" },
 			label: SECTIONS.portForwards.label,
 		},
+	];
+	const clusterNodes: TreeNode[] = [
 		buildGitOpsNode({
 			argoDetected,
 			fluxDetection,
@@ -274,7 +274,8 @@ export function buildSidebarTree({
 				label: kind,
 			})),
 		},
-		namespaceNode,
+	];
+	const scopeNodes: TreeNode[] = [
 		...(["workloads", "network", "config", "storage"] as const).map(
 			(section) => ({
 				id: { type: "section" as const, section },
@@ -295,4 +296,38 @@ export function buildSidebarTree({
 				]
 			: []),
 	];
+	const namespaceNodes = namespaces.map((namespace) =>
+		buildShallowNamespaceTreeNode(namespace.name),
+	);
+	return [
+		{ id: "workspace", nodes: workspaceNodes },
+		{ id: "cluster", nodes: clusterNodes },
+		{ id: "scope", nodes: scopeNodes },
+		{ id: "namespaces", nodes: namespaceNodes },
+	];
+}
+
+export function collectSelectedAncestorIds(
+	groups: SidebarTreeGroup[],
+	selectedNode: TreeNodeId | null,
+	getLazyChildren?: (node: TreeNode) => TreeNode[] | undefined,
+): Set<string> {
+	if (!selectedNode) return new Set<string>();
+	const selectedId = nodeIdToString(selectedNode);
+	const findAncestorIds = (nodes: TreeNode[]): string[] | null => {
+		for (const node of nodes) {
+			const id = nodeIdToString(node.id);
+			if (id === selectedId) return [];
+			const childAncestorIds = findAncestorIds(
+				getLazyChildren?.(node) ?? node.children ?? [],
+			);
+			if (childAncestorIds) return [id, ...childAncestorIds];
+		}
+		return null;
+	};
+	for (const group of groups) {
+		const ancestorIds = findAncestorIds(group.nodes);
+		if (ancestorIds) return new Set(ancestorIds);
+	}
+	return new Set<string>();
 }

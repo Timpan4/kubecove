@@ -28,6 +28,13 @@
   }
 }
 
+/* No "to" frame, so the fade ends on the row's own background. */
+@keyframes sidebar-row-reveal {
+  from {
+    background-color: color-mix(in oklch, var(--primary) 30%, transparent);
+  }
+}
+
 :root {
   color-scheme: dark;
   --background: oklch(1 0 0);
