@@ -71,17 +71,20 @@
 			const lane = laneOf(draft, drop);
 			draft = moved(draft, kind, lane, draft[lane].indexOf(drop));
 		};
-		const end = () => {
+		const cancel = () => {
 			window.removeEventListener("pointermove", move);
-			window.removeEventListener("pointerup", end);
-			window.removeEventListener("pointercancel", end);
-			if (draft) $settingsStore.setResourceKindLanes(draft);
+			window.removeEventListener("pointerup", commit);
+			window.removeEventListener("pointercancel", cancel);
 			draft = null;
 			dragging = null;
 		};
+		const commit = () => {
+			if (draft) $settingsStore.setResourceKindLanes(draft);
+			cancel();
+		};
 		window.addEventListener("pointermove", move);
-		window.addEventListener("pointerup", end);
-		window.addEventListener("pointercancel", end);
+		window.addEventListener("pointerup", commit);
+		window.addEventListener("pointercancel", cancel);
 	}
 
 	async function onKeydown(event: KeyboardEvent, kind: string) {
