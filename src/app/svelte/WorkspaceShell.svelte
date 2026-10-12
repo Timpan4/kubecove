@@ -129,6 +129,7 @@
 	const initialDetailPathState = initialPathSnapshot?.detail ?? null;
 	const initialSurfacesPathState = initialPathSnapshot?.surfaces ?? null;
 	let navigation = $state<WorkspaceNavigationState>(initialNavigation);
+	let sidebarNavigationRevision = $state(0);
 	const selectedNode = $derived(navigation.selectedNode);
 	const viewMode = $derived(navigation.viewMode);
 	const focusedResource = $derived(navigation.focusedResource);
@@ -300,8 +301,11 @@
 		rbacVerifierReturnLabel = undefined;
 	}
 
-	function applyWorkspaceNavigation(intent: WorkspaceNavigationIntent) {
+	function applyWorkspaceNavigation(intent: WorkspaceNavigationIntent, revealSidebar = true) {
 		navigation = navigateWorkspace(navigation, intent);
+		if (revealSidebar && ["selectNode", "selectResource", "openResources", "openHelmRelease", "openArgo", "openIncidents", "openPortForwards"].includes(intent.type)) {
+			sidebarNavigationRevision += 1;
+		}
 	}
 
 	function openLauncher() {
@@ -415,7 +419,7 @@
 		applyWorkspaceNavigation({ type: "openPortForwards" });
 	}
 
-	function selectNode(nodeId: TreeNodeId) {
+	function selectNode(nodeId: TreeNodeId, revealSidebar = true) {
 		navigationOpen = false;
 		if (nodeId.type === "namespace" && nodeId.namespace) {
 			workspaceStore.recordRecentNamespace(
@@ -424,7 +428,7 @@
 				nodeId.namespace,
 			);
 		}
-		applyWorkspaceNavigation({ type: "selectNode", node: nodeId });
+		applyWorkspaceNavigation({ type: "selectNode", node: nodeId }, revealSidebar);
 	}
 
 	function selectResource(resource: ResourceSummary, nodeId: TreeNodeId) {
@@ -486,9 +490,10 @@
 		{workspace}
 		{workspaceReadContext}
 		{selectedNode}
+		{sidebarNavigationRevision}
 		bind:expandedSections
 		bind:navigationOpen
-		onNodeSelect={selectNode}
+		onNodeSelect={(id) => selectNode(id, false)}
 	/>
 
 	<SidebarInset

@@ -20,6 +20,7 @@
 		workspace,
 		workspaceReadContext,
 		selectedNode,
+		sidebarNavigationRevision,
 		expandedSections = $bindable(),
 		navigationOpen = $bindable(),
 		onNodeSelect,
@@ -27,13 +28,14 @@
 		workspace: SavedWorkspace;
 		workspaceReadContext: WorkspaceReadContext;
 		selectedNode: TreeNodeId | null;
+		sidebarNavigationRevision: number;
 		expandedSections: string[];
 		navigationOpen: boolean;
 		onNodeSelect: (id: TreeNodeId) => void;
 	} = $props();
 
 	let compactScrollTop = $state(0);
-	let compactSelectedKey = $state<string | null>(untrack(() => selectedNode ? nodeIdToString(selectedNode) : null));
+	let compactSelectedKey = $state<string | null>(untrack(() => selectedNode ? `${nodeIdToString(selectedNode)}:${sidebarNavigationRevision}` : null));
 	const contextCount = $derived(workspaceScopeContexts(workspace.scope).length);
 
 	function toggleSection(id: string) {
@@ -81,6 +83,7 @@
 		<SidebarTree
 			{workspaceReadContext}
 			{selectedNode}
+			{sidebarNavigationRevision}
 			{expandedSections}
 			{onNodeSelect}
 			onSectionToggle={toggleSection}
@@ -97,6 +100,7 @@
 				<SidebarTree
 					{workspaceReadContext}
 					{selectedNode}
+					{sidebarNavigationRevision}
 					{expandedSections}
 					{onNodeSelect}
 					onSectionToggle={toggleCompactSection}

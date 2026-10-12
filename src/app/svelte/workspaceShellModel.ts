@@ -307,10 +307,29 @@ export function buildSidebarTree({
 	];
 }
 
-export function sidebarSelectionNode(node: TreeNodeId | null): TreeNodeId | null {
-	return node?.type === "kind" && node.section !== "namespaces" && node.namespace
+export function sidebarSelectionNode(
+	node: TreeNodeId | null,
+	groups: SidebarTreeGroup[] = [],
+): TreeNodeId | null {
+	if (node?.type !== "kind" || node.section === "namespaces") return node;
+	const selection = node.namespace
 		? { ...node, namespace: undefined }
 		: node;
+	const matches: TreeNodeId[] = [];
+	const visit = (nodes: TreeNode[]) => {
+		for (const candidate of nodes) {
+			const id = candidate.id;
+			if (!candidate.disabled && id.type === "kind" && id.section === selection.section &&
+				(!selection.group || id.group === selection.group) &&
+				(id.kind === selection.kind || id.resourceKind?.kind === selection.kind)) {
+				matches.push(id);
+			}
+			if (candidate.children) visit(candidate.children);
+		}
+	};
+	for (const group of groups) visit(group.nodes);
+	return matches.find((id) => nodeIdToString(id) === nodeIdToString(selection)) ??
+		(matches.length === 1 ? matches[0] : selection);
 }
 
 export function collectSelectedAncestorIds(
@@ -331,6 +350,9 @@ export function collectSelectedAncestorIds(
 			// A folded namespace's custom-resource children may be unloaded.
 			if (node.id.type === "namespace" && selectedNode.section === "namespaces" &&
 				node.id.namespace === selectedNode.namespace) return [id];
+			// Bare external kinds may be ambiguous or absent from the filtered catalog.
+			if (node.id.type === "section" && selectedNode.type === "kind" &&
+				node.id.section === selectedNode.section) return [id];
 		}
 		return null;
 	};

@@ -124,6 +124,32 @@ describe("Custom Resources tree model", () => {
 });
 
 describe("Sidebar groups", () => {
+	test("resolves external custom-resource and GitOps kinds to their sidebar rows", () => {
+		const groups = buildSidebarTree({
+			namespaces: [], resourceKinds: [widget], argoDetected: true,
+			fluxDetection: undefined, detectingGitOps: false, resourceKindsPending: false,
+			resourceKindsError: "", showUnavailableGitOpsProviders: false,
+		});
+		const custom = sidebarSelectionNode({ type: "kind", section: "discovered", namespace: "default", kind: "Widget" }, groups);
+		expect(custom?.kind).toBe("example.com/v1/widgets/Widget");
+		expect([...collectSelectedAncestorIds(groups, custom)]).toEqual(["section::discovered", "group::discovered::example.com"]);
+		const argo = sidebarSelectionNode({ type: "kind", section: "argo", kind: "Argo CD Applications" }, groups);
+		expect(argo?.group).toBe("gitops:argo");
+		expect([...collectSelectedAncestorIds(groups, argo)]).toEqual(["section::argo", "group::argo::gitops:argo"]);
+		expect(sidebarSelectionNode(custom, groups)).toEqual(custom);
+	});
+
+	test("reveals the section without guessing between identical custom-resource names", () => {
+		const groups = buildSidebarTree({
+			namespaces: [], resourceKinds: [widget, { ...widget, group: "other.com", apiVersion: "other.com/v1" }],
+			argoDetected: false, fluxDetection: undefined, detectingGitOps: false,
+			resourceKindsPending: false, resourceKindsError: "", showUnavailableGitOpsProviders: false,
+		});
+		const custom = sidebarSelectionNode({ type: "kind", section: "discovered", kind: "Widget" }, groups);
+		expect(custom?.group).toBe(undefined);
+		expect([...collectSelectedAncestorIds(groups, custom)]).toEqual(["section::discovered"]);
+	});
+
 	test("matches external resource selections without changing their namespace scope", () => {
 		const external: TreeNodeId = { type: "kind", section: "helm", namespace: "default", kind: "Releases" };
 		const sidebar = sidebarSelectionNode(external);

@@ -41,6 +41,7 @@
 	let {
 		workspaceReadContext,
 		selectedNode,
+		sidebarNavigationRevision,
 		expandedSections,
 		onNodeSelect,
 		onSectionToggle,
@@ -49,6 +50,7 @@
 	}: {
 		workspaceReadContext: WorkspaceReadContext;
 		selectedNode: TreeNodeId | null;
+		sidebarNavigationRevision: number;
 		expandedSections: string[];
 		onNodeSelect: (id: TreeNodeId) => void;
 		onSectionToggle: (id: string) => void;
@@ -56,8 +58,7 @@
 		previousSelectedKey?: string | null;
 	} = $props();
 
-	const selectionKey = $derived(selectedNode ? nodeIdToString(selectedNode) : null);
-	const sidebarSelectedNode = $derived(sidebarSelectionNode(selectedNode));
+	const selectionKey = $derived(selectedNode ? `${nodeIdToString(selectedNode)}:${sidebarNavigationRevision}` : null);
 	if (previousSelectedKey === undefined) previousSelectedKey = untrack(() => selectionKey);
 	let revealKey = $state<string | null>(null);
 	$effect(() => {
@@ -70,7 +71,7 @@
 	});
 
 	function selectFromTree(node: TreeNodeId) {
-		previousSelectedKey = nodeIdToString(node);
+		previousSelectedKey = `${nodeIdToString(node)}:${sidebarNavigationRevision}`;
 		revealKey = null;
 		onNodeSelect(node);
 	}
@@ -185,6 +186,7 @@
 		showCustomResources,
 		customResourceSearch,
 	}));
+	const sidebarSelectedNode = $derived(sidebarSelectionNode(selectedNode, groups));
 	const selectedAncestorIds = $derived(
 		collectSelectedAncestorIds(groups, sidebarSelectedNode, getLazyChildren),
 	);
