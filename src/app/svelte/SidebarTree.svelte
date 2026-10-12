@@ -61,6 +61,16 @@
 	} = $props();
 
 	const selectionKey = $derived(selectedNode ? `${nodeIdToString(selectedNode)}:${sidebarNavigationRevision}` : null);
+	let treeElement = $state<HTMLElement>();
+	let treeVisible = $state(false);
+	$effect(() => {
+		if (!treeElement) return;
+		const observer = new ResizeObserver(([entry]) => {
+			treeVisible = entry.contentRect.width > 0 && entry.contentRect.height > 0;
+		});
+		observer.observe(treeElement);
+		return () => observer.disconnect();
+	});
 	if (previousSelectedKey === undefined) previousSelectedKey = untrack(() => selectionKey);
 	$effect(() => {
 		const key = selectionKey;
@@ -217,7 +227,7 @@
 		/>
 	{/if}
 	<ScrollArea class="min-h-0 flex-1" bind:scrollTop>
-		<nav class="py-2" aria-label="Kubernetes resource tree">
+		<nav bind:this={treeElement} class="py-2" aria-label="Kubernetes resource tree">
 			{#each groups as group (group.id)}
 				{@const headingId = `${uid}-${group.id}`}
 				<div class="flex items-center justify-between gap-2 px-3 pt-3 pb-1">
@@ -268,7 +278,7 @@
 							{node}
 							depth={0}
 							selectedNode={sidebarSelectedNode}
-							revealKey={revealKey === selectionKey ? revealKey : null}
+							revealKey={treeVisible && revealKey === selectionKey ? revealKey : null}
 							onReveal={() => (revealKey = null)}
 							{selectedAncestorIds}
 							{expandedSections}
