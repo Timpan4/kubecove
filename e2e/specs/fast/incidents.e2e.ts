@@ -3,11 +3,32 @@ import { join } from "node:path";
 import { $, $$, browser, expect } from "@wdio/globals";
 import { beforeEach, describe, it } from "mocha";
 
+type IncidentFocusBounds = Pick<DOMRect, "x" | "y" | "width" | "height" | "top" | "right" | "bottom" | "left">;
+interface IncidentFocusEvent {
+	kind: string;
+	at: number;
+	bounds: IncidentFocusBounds;
+	connected: boolean;
+	sameAction: boolean;
+	active: boolean;
+	focusVisible: boolean;
+	activeElement: { tag: string; text: string | null; data: DOMStringMap } | null;
+	viewport: { width: number; height: number; clientHeight: number; visualHeight: number | undefined };
+	scrollTop: number;
+	scrollHeight: number;
+	clientHeight: number;
+	scrollerBounds: IncidentFocusBounds;
+	guideBounds: IncidentFocusBounds;
+	stepCount: number;
+	loading: boolean;
+	fonts: Document["fonts"]["status"];
+}
+
 declare global {
 	interface Window {
 		copiedIncidentName?: string;
 		incidentFocusDiagnostics?: {
-			events: Record<string, unknown>[];
+			events: IncidentFocusEvent[];
 			record: (kind: string) => void;
 			cleanup: () => void;
 		};
@@ -112,7 +133,7 @@ describe("Incident Cockpit", () => {
 				const action = document.querySelector<HTMLElement>("[data-incident-remediation]");
 				const guide = document.querySelector<HTMLElement>("[data-incident-guide]");
 				if (outerScroller instanceof HTMLElement && action && guide) {
-					const events: Record<string, unknown>[] = [];
+					const events: IncidentFocusEvent[] = [];
 					const record = (kind: string) => {
 						const active = document.activeElement;
 						events.push({
