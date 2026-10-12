@@ -5,6 +5,11 @@ import {
 	normalizeArgoConnectionPreference,
 } from "./argo-connection-policy";
 import type { ArgoServerEndpoint } from "./gitops-types";
+import {
+	defaultResourceKindLanes,
+	normalizeResourceKindLanes,
+	type ResourceKindLanes,
+} from "./resource-kind-order";
 import type {
 	JsonObject,
 	KubeconfigSourcesSummary,
@@ -51,6 +56,7 @@ export interface SettingsState {
 	yamlDiffStyle: YamlDiffStyle;
 	yamlErrorLensEnabled: boolean;
 	logLayout: LogLayout;
+	resourceKindLanes: ResourceKindLanes;
 	kubeconfigEnvVar: string;
 	kubeconfigSourceKey: string;
 	kubeconfigSourceLabel: string;
@@ -77,6 +83,7 @@ export interface SettingsState {
 	setYamlDiffStyle: (style: YamlDiffStyle) => void;
 	setYamlErrorLensEnabled: (enabled: boolean) => void;
 	setLogLayout: (layout: LogLayout) => void;
+	setResourceKindLanes: (lanes: ResourceKindLanes) => void;
 	setKubeconfigEnvVar: (envVar: string) => void;
 	resetKubeconfigEnvVar: () => void;
 	setKubeconfigSources: (sources: KubeconfigSourcesSummary) => void;
@@ -177,6 +184,10 @@ export function mergePersistedSettings<Persisted>(
 			: current.yamlDiffStyle,
 		yamlErrorLensEnabled: booleanValue(saved.yamlErrorLensEnabled, current.yamlErrorLensEnabled),
 		logLayout: isLogLayout(saved.logLayout) ? saved.logLayout : current.logLayout,
+		resourceKindLanes:
+			saved.resourceKindLanes === undefined
+				? current.resourceKindLanes
+				: normalizeResourceKindLanes(saved.resourceKindLanes),
 	};
 }
 
@@ -291,6 +302,7 @@ export function partializeSettings(state: SettingsState): Partial<SettingsState>
 		yamlDiffStyle: state.yamlDiffStyle,
 		yamlErrorLensEnabled: state.yamlErrorLensEnabled,
 		logLayout: state.logLayout,
+		resourceKindLanes: state.resourceKindLanes,
 	};
 }
 
@@ -319,6 +331,7 @@ export const useSettingsState = createStore<SettingsState>()(
 			yamlDiffStyle: "clean",
 			yamlErrorLensEnabled: true,
 			logLayout: "stacked",
+			resourceKindLanes: defaultResourceKindLanes(),
 			kubeconfigEnvVar: DEFAULT_KUBECONFIG_ENV_VAR,
 			kubeconfigSourceKey: DEFAULT_KUBECONFIG_SOURCE_KEY,
 			kubeconfigSourceLabel: DEFAULT_KUBECONFIG_ENV_VAR,
@@ -364,6 +377,8 @@ export const useSettingsState = createStore<SettingsState>()(
 			setYamlErrorLensEnabled: (yamlErrorLensEnabled: boolean) =>
 				set({ yamlErrorLensEnabled }),
 			setLogLayout: (logLayout: LogLayout) => set({ logLayout }),
+			setResourceKindLanes: (lanes: ResourceKindLanes) =>
+				set({ resourceKindLanes: normalizeResourceKindLanes(lanes) }),
 			setKubeconfigEnvVar: (envVar: string) =>
 				set({ kubeconfigEnvVar: envVar.trim() }),
 			resetKubeconfigEnvVar: () =>

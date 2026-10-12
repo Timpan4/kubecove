@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { defaultResourceKindLanes } from "../src/lib/resource-kind-order";
 import {
 	mergePersistedSettings,
 	normalizeSavedArgoProfile,
@@ -24,6 +25,20 @@ describe("settings", () => {
 		expect(mergePersistedSettings(saved, current).showOwnershipMapByDefault).toBe(false);
 		expect(mergePersistedSettings({}, current).showOwnershipMapByDefault).toBe(true);
 		expect(mergePersistedSettings({ showOwnershipMapByDefault: "false" }, current).showOwnershipMapByDefault).toBe(true);
+	});
+
+	test("validates persisted resource kind lanes", () => {
+		const current = useSettingsState.getState();
+		const merge = <Value,>(resourceKindLanes: Value) =>
+			mergePersistedSettings({ resourceKindLanes }, current).resourceKindLanes;
+
+		expect(merge(undefined)).toEqual(current.resourceKindLanes);
+		expect(merge("Pod")).toEqual(defaultResourceKindLanes());
+		expect(merge({ first: [], normal: [], last: [] })).toEqual(defaultResourceKindLanes());
+		expect(
+			merge({ first: ["Secret", 7, "", "Pod"], normal: ["Pod", "*"], last: "Node" }),
+		).toEqual({ first: ["Secret", "Pod"], normal: ["*"], last: [] });
+		expect(merge({ first: ["Job"] })).toEqual({ first: ["Job"], normal: ["*"], last: [] });
 	});
 
 	test("falls back to cards for invalid persisted GitOps view modes", () => {

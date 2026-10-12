@@ -1,6 +1,16 @@
 import { gitOpsOwnershipGroupLabel } from "@/lib/gitops-ownership-evidence";
+import { OTHER_RESOURCE_KINDS } from "@/lib/resource-kind-order";
 import type { ResourceSummary } from "@/lib/types";
 import { formatResourceTypeGroupLabel } from "./helpers";
+
+// The user's kind order decides group order; kinds it does not list share the
+// "other kinds" slot. The column sort orders rows inside groups and ties.
+export function kindGroupRank(row: ResourceSummary, kindOrder: readonly string[]): number {
+	const index = kindOrder.indexOf(row.kind);
+	if (index !== -1) return index;
+	const other = kindOrder.indexOf(OTHER_RESOURCE_KINDS);
+	return other === -1 ? kindOrder.length : other;
+}
 
 export function pageGitOpsGroupCounts(
 	rows: ResourceSummary[],

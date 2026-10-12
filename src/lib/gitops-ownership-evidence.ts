@@ -107,11 +107,25 @@ export function gitOpsOwnershipFilters(
 }
 
 export function gitOpsOwnershipGroupLabel(resource: ResourceSummary): string {
-	return gitOpsOwnership(resource)?.label ??
-		(resource.helmRelease ? `Helm release: ${resource.helmRelease}` :
-			resource.gitOpsOwnershipPartial
-				? "No GitOps ownership evidence (partial coverage)"
-				: "No GitOps ownership evidence");
+	return gitOpsOwnershipGroup(resource).label;
+}
+
+/// Rank orders ownership groups: GitOps-owned, then Helm, then no evidence.
+export interface GitOpsOwnershipGroup {
+	label: string;
+	rank: number;
+}
+
+export function gitOpsOwnershipGroup(resource: ResourceSummary): GitOpsOwnershipGroup {
+	const ownership = gitOpsOwnership(resource);
+	if (ownership) return { label: ownership.label, rank: 0 };
+	if (resource.helmRelease) return { label: `Helm release: ${resource.helmRelease}`, rank: 1 };
+	return {
+		label: resource.gitOpsOwnershipPartial
+			? "No GitOps ownership evidence (partial coverage)"
+			: "No GitOps ownership evidence",
+		rank: 2,
+	};
 }
 
 export function gitOpsOwnershipFilterValue(filter: string): string {

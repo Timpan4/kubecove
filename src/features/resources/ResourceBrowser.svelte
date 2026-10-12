@@ -95,6 +95,7 @@
 		import { cnfast } from "@/lib/utils";
 	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
+	import { resourceKindOrder } from "@/lib/resource-kind-order";
 	import { queryKeys } from "@/lib/queryKeys";
 	import type { PathStateResourceBrowserState } from "@/lib/path-state";
 	import {
@@ -672,6 +673,7 @@
 				preferredGitOpsResourceKeys: gitOpsFocusApplication
 					? focusedArgoResourceKeys
 					: undefined,
+				kindOrder: resourceKindOrder($settingsStore.resourceKindLanes),
 			},
 		),
 	);

@@ -27,6 +27,7 @@ export interface ResourceTableState {
 	collapsedGroups: Set<string>;
 	selectedResource?: ResourceSummary | null;
 	preferredGitOpsResourceKeys?: ReadonlySet<string>;
+	kindOrder?: readonly string[];
 }
 
 export type ResourceTableEntry =
