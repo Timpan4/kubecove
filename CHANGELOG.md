@@ -3,6 +3,16 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.2 - 2026-10-12
+### Added
+
+- Order resource table groups with draggable kind lanes (#541).
+
+### Fixed
+
+- Reveal sidebar navigation when visible (#533).
+- Separate sidebar navigation from expansion (#532).
+
 ## 0.12.1 - 2026-10-11
 ### Added
 
