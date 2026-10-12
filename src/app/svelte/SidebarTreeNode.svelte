@@ -69,6 +69,7 @@
 	$effect(() => {
 		const key = revealKey;
 		if (key === null || key === previousRevealKey || !(isSelected || hidesSelection) || !rowElement) return;
+		if (rowElement.getClientRects().length === 0) return;
 		previousRevealKey = key;
 		rowElement.scrollIntoView({ block: "nearest" });
 		if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) highlighted = true;
