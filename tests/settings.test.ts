@@ -29,7 +29,7 @@ describe("settings", () => {
 
 	test("validates persisted resource kind lanes", () => {
 		const current = useSettingsState.getState();
-		const merge = (resourceKindLanes: unknown) =>
+		const merge = <Value,>(resourceKindLanes: Value) =>
 			mergePersistedSettings({ resourceKindLanes }, current).resourceKindLanes;
 
 		expect(merge(undefined)).toEqual(current.resourceKindLanes);

@@ -13,11 +13,11 @@
 
 	let { title, description }: { title: string; description: string } = $props();
 
-	const LANE_TITLES: Record<ResourceKindLaneId, string> = {
+	const LANE_TITLES = {
 		first: "Show first",
 		normal: "Normal",
 		last: "Show last",
-	};
+	} satisfies Record<ResourceKindLaneId, string>;
 
 	let draft = $state<ResourceKindLanes | null>(null);
 	let dragging = $state<string | null>(null);
@@ -60,9 +60,11 @@
 			const target = hit?.closest<HTMLElement>("[data-kind-drop]");
 			if (!draft || !target || !container?.contains(target)) return;
 			const drop = target.dataset.kindDrop ?? "";
-			if (drop.startsWith("lane:")) {
-				const lane = drop.slice(5) as ResourceKindLaneId;
-				if (laneOf(draft, kind) !== lane) draft = moved(draft, kind, lane, draft[lane].length);
+			const dropLane = RESOURCE_KIND_LANE_IDS.find((lane) => drop === `lane:${lane}`);
+			if (dropLane) {
+				if (laneOf(draft, kind) !== dropLane) {
+					draft = moved(draft, kind, dropLane, draft[dropLane].length);
+				}
 				return;
 			}
 			if (drop === kind) return;

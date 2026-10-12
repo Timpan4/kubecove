@@ -4,7 +4,11 @@ export const OTHER_RESOURCE_KINDS = "*";
 
 export const RESOURCE_KIND_LANE_IDS = ["first", "normal", "last"] as const;
 export type ResourceKindLaneId = (typeof RESOURCE_KIND_LANE_IDS)[number];
-export type ResourceKindLanes = Record<ResourceKindLaneId, string[]>;
+export interface ResourceKindLanes {
+	first: string[];
+	normal: string[];
+	last: string[];
+}
 
 export function defaultResourceKindLanes(): ResourceKindLanes {
 	return {
