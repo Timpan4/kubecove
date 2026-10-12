@@ -30,6 +30,7 @@ import {
 	buildFlowTopologyFitPlan,
 	buildFlowTopologyView,
 } from "../src/features/resources/topology";
+import { OTHER_RESOURCE_KINDS } from "../src/lib/resource-kind-order";
 import type {
 	DiscoveredResourceKind,
 	ResourceSummary,
@@ -637,7 +638,7 @@ describe("svelte resource browser model", () => {
 				...state,
 				sort: { id: "name", desc: true },
 			}).pageRows.map((row) => row.name),
-		).toEqual(["pod-1", "pod-0"]);
+		).toEqual(["pod-0", "z-deployment"]);
 	});
 
 	test("keeps GitOps ownership groups contiguous across resource types", () => {
@@ -682,10 +683,52 @@ describe("svelte resource browser model", () => {
 		]);
 	});
 
-	test("sorts resource type groups by Age in both directions", () => {
+	test("orders resource groups by the selected group order", () => {
+		const rows = [
+			resource("66202", { kind: "CiliumIdentity", namespace: undefined }),
+			resource("web", { kind: "Deployment" }),
+			resource("web-abc", { kind: "Pod" }),
+			resource("cache", { kind: "Service", helmRelease: "redis" }),
+			resource("zz-api", {
+				gitOpsOwner: {
+					provider: "argo",
+					kind: "Application",
+					name: "api",
+					namespace: "argocd",
+					confidence: "inventory",
+				},
+			}),
+		];
+		const names = (kindOrder?: string[]) =>
+			buildResourceTableModel(rows, {
+				search: "",
+				gitOpsFilter: "",
+				healthFilter: "all",
+				sort: { id: "name", desc: false },
+				pageIndex: 0,
+				collapsedGroups: new Set(),
+				kindOrder,
+			}).pageRows.map((row) => row.name);
+		const unowned = (kindOrder?: string[]) =>
+			names(kindOrder).filter((name) => name !== "zz-api" && name !== "cache");
+
+		expect(names()).toEqual(["zz-api", "cache", "web-abc", "web", "66202"]);
+		expect(unowned(["Deployment", "Pod", OTHER_RESOURCE_KINDS])).toEqual([
+			"web",
+			"web-abc",
+			"66202",
+		]);
+		expect(unowned([OTHER_RESOURCE_KINDS, "Deployment", "Pod"])).toEqual([
+			"66202",
+			"web",
+			"web-abc",
+		]);
+	});
+
+	test("sorts rows inside resource type groups by Age in both directions", () => {
 		const rows = [
 			resource("newer", {
-				kind: "Deployment",
+				kind: "Pod",
 				createdAt: "2026-08-19T00:00:00Z",
 			}),
 			resource("older", {

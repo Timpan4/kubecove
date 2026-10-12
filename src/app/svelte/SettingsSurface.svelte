@@ -36,6 +36,7 @@
 	import SettingsRow from "./SettingsRow.svelte";
 	import UpdatesSettings from "./UpdatesSettings.svelte";
 	import { settingsStore } from "@/lib/settings-store";
+	import ResourceKindOrderSettings from "./ResourceKindOrderSettings.svelte";
 
 	type SettingsCategoryId =
 		| "general"
@@ -114,6 +115,11 @@
 		logLayout: {
 			title: "Log layout",
 			description: "Controls how entries are shown in the Logs tab.",
+		},
+		resourceKindOrder: {
+			title: "Resource group order",
+			description:
+				"Drag kinds between lanes to order Resource Table groups, or focus a kind and use the arrow keys. Column sorting still orders rows inside each group.",
 		},
 	} satisfies Record<string, SettingsRowMeta>;
 
@@ -473,6 +479,7 @@
 					ariaLabel={APPEARANCE_ROWS.logLayout.title}
 				/>
 			</SettingsRow>
+			<ResourceKindOrderSettings {...APPEARANCE_ROWS.resourceKindOrder} />
 		</FieldGroup>
 		{/if}
 		{#if showCategory("sessions")}
