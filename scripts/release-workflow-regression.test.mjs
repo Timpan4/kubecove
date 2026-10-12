@@ -20,6 +20,83 @@ function step(job, name) {
   return found;
 }
 
+test("release preparation commits desktop and server version metadata", () => {
+  const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
+  const commands = step(job("prepare", preparation), "Commit release branch").run;
+  const staged = commands.match(/^\s*git add (.+)$/m)[1].split(/\s+/);
+  for (const path of ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml",
+    "src-tauri/Cargo.lock", "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock", "CHANGELOG.md"]) {
+    assert.ok(staged.includes(path), `Release commit omits ${path}`);
+  }
+});
+
+test("release preparation creates verified commits without rewriting the branch", () => {
+  const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
+  const commands = step(job("prepare", preparation), "Commit release branch").run;
+  assert.match(commands, /node scripts\/commit-release-pr\.mjs/);
+  assert.doesNotMatch(commands, /git commit|git push|git checkout -B/);
+  const script = readFileSync(new URL("./commit-release-pr.mjs", import.meta.url), "utf8")
+    .replace(/^import .+;\r?\n/gm, "");
+  const base = "a".repeat(40);
+  const existing = "b".repeat(40);
+  for (const parent of [null, existing]) {
+    for (const valid of [true, false]) {
+      const calls = [];
+      let payload;
+      const execute = () => runInNewContext(script, {
+        Buffer,
+        console: { log() {} },
+        process: { env: { GH_REPO: "owner/repo", BRANCH_NAME: "release/app-v1.2.3", RELEASE_TITLE: "release: KubeCove v1.2.3" } },
+        readFileSync: (path) => Buffer.from(`${path} contents`),
+        spawnSync: (command, args, options) => {
+          calls.push([command, ...args]);
+          let stdout;
+          if (command === "git") stdout = args[0] === "rev-parse" ? base : "package.json\0src-tauri/server/Cargo.toml\0";
+          else if (args[1] === "graphql") {
+            payload = JSON.parse(options.input);
+            stdout = JSON.stringify({ data: { createCommitOnBranch: { commit: { oid: "c".repeat(40), signature: { isValid: valid } } } } });
+          } else if (args.includes("--paginate")) stdout = JSON.stringify([{ commits: [{ sha: existing, commit: { verification: { verified: true } } }] }]);
+          else stdout = args[1].includes("matching-refs") ? JSON.stringify(parent ? [{ ref: "refs/heads/release/app-v1.2.3", object: { sha: parent } }] : []) : "{}";
+          return { status: 0, stdout, stderr: "" };
+        },
+      });
+      if (valid) assert.doesNotThrow(execute);
+      else assert.throws(execute, /verified signature/);
+      assert.equal(payload.variables.input.expectedHeadOid, parent ?? base);
+      assert.equal(payload.variables.input.branch.refName, "release/app-v1.2.3");
+      assert.deepEqual(payload.variables.input.fileChanges.additions.map(({ path, contents }) => [path, Buffer.from(contents, "base64").toString()]),
+        [["package.json", "package.json contents"], ["src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.toml contents"]]);
+      assert.equal(calls.filter((call) => call.includes("POST")).length, parent ? 0 : 1);
+      assert.ok(calls.every((call) => !call.includes("push") && !call.includes("update-ref")));
+    }
+  }
+});
+
+test("release reruns reject unverified history before advancing an existing branch", () => {
+  const script = readFileSync(new URL("./commit-release-pr.mjs", import.meta.url), "utf8")
+    .replace(/^import .+;\r?\n/gm, "");
+  const calls = [];
+  assert.throws(() => runInNewContext(script, {
+    Buffer,
+    console: { log() {} },
+    process: { env: { GH_REPO: "owner/repo", BRANCH_NAME: "release/app-v1.2.3", RELEASE_TITLE: "release: KubeCove v1.2.3" } },
+    readFileSync: () => Buffer.from("contents"),
+    spawnSync: (command, args) => {
+      calls.push([command, ...args]);
+      let stdout;
+      if (command === "git") stdout = args[0] === "rev-parse" ? "a".repeat(40) : "package.json\0";
+      else if (args.includes("--paginate")) stdout = JSON.stringify([
+        { commits: [{ sha: "b".repeat(40), commit: { verification: { verified: true } } }] },
+        { commits: [{ sha: "c".repeat(40), commit: { verification: { verified: false } } }] },
+      ]);
+      else if (args[1].includes("matching-refs")) stdout = JSON.stringify([{ ref: "refs/heads/release/app-v1.2.3", object: { sha: "b".repeat(40) } }]);
+      else stdout = JSON.stringify({ data: { createCommitOnBranch: { commit: { oid: "d".repeat(40), signature: { isValid: true } } } } });
+      return { status: 0, stdout, stderr: "" };
+    },
+  }), /unverified commit.*before rerunning/);
+  assert.ok(calls.every((call) => !call.includes("graphql") && !call.includes("POST") && !call.includes("DELETE")));
+});
+
 test("release orchestration runs after dependencies are installed in CI and releases", () => {
   const ci = parse(readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"));
   for (const source of [ci, workflow]) {

@@ -337,8 +337,8 @@ jobs:
             exit 1
           fi
 
-      - name: Build the frontend and the desktop app
-        run: nix build .#frontend .#kubecove --print-build-logs
+      - name: Build the frontend, desktop app, and server dependencies
+        run: nix build .#frontend .#kubecove .#kubecove-server.cargoDeps --print-build-logs
 
   check:
     name: Typecheck and test

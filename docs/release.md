@@ -24,7 +24,11 @@ KubeCove is inspection-first outside ADR-approved live sessions and guarded oper
 2. Review version metadata, generated `CHANGELOG.md` section, `bun run docs:check`, and release claims against implemented guarded-operation contracts.
 3. Merge release PR to `main`.
 
-Trusted release PRs skip frontend, Rust, and CodSpeed checks. The exemption requires the same-repository `release/app-v*` branch and `release` label. The short Nix vendor check still validates the version-dependent Cargo hash. Tag builds still run every automated release gate below before publishing.
+Preparation commits the generated files through GitHub's signed-commit API and verifies the signature before opening the PR. Reruns append to an existing release branch without rewriting its history.
+
+If signature verification fails after commit creation, the branch may already contain that commit. Preparation preserves the branch and stops. Reruns check every commit introduced since the checked-out `main` and reject unverified history before appending. Verify the rejected signature or prepare a new signed release branch before rerunning.
+
+Trusted release PRs skip frontend, Rust, and CodSpeed checks. The exemption requires the same-repository `release/app-v*` branch and `release` label. The Nix check builds the frontend and desktop app and verifies server dependencies directly from the committed Cargo lockfiles. Tag builds still run every automated release gate below before publishing.
 
 After merge, GitHub Actions finds merged `release` PR, creates matching annotated `app-vX.Y.Z` tag, runs release workflow, builds desktop installers and headless server archives, verifies required assets and updater coverage, then publishes the release.
 
