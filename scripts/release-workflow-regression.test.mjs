@@ -63,7 +63,10 @@ test("release preparation creates verified commits without rewriting the branch"
       if (valid) assert.doesNotThrow(execute);
       else assert.throws(execute, /verified signature/);
       assert.equal(payload.variables.input.expectedHeadOid, parent ?? base);
-      assert.equal(payload.variables.input.branch.refName, "release/app-v1.2.3");
+      assert.deepEqual(payload.variables.input.branch, {
+        repositoryNameWithOwner: "owner/repo",
+        branchName: "release/app-v1.2.3",
+      });
       assert.deepEqual(payload.variables.input.fileChanges.additions.map(({ path, contents }) => [path, Buffer.from(contents, "base64").toString()]),
         [["package.json", "package.json contents"], ["src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.toml contents"]]);
       assert.equal(calls.filter((call) => call.includes("POST")).length, parent ? 0 : 1);
