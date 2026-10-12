@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { $, browser, expect } from "@wdio/globals";
 import { after, before, describe, it } from "mocha";
 import type { RemoteConnectionSummary } from "../../../src/lib/remote-runtime";
-import type { ClusterContext, PortForwardSessionSummary } from "../../../src/lib/types";
+import type { ClusterContext, KubeconfigSourcesSummary, PortForwardSessionSummary } from "../../../src/lib/types";
 
 const serverBinary = process.env.KUBECOVE_HEADLESS_BINARY;
 
@@ -139,7 +139,8 @@ async function echoBytes(port: number): Promise<void> {
 		await browser.saveScreenshot(join(process.env.KUBECOVE_E2E_ARTIFACTS ?? directory, "remote-connected.png"));
 	});
 
-	it("uses server filesystem controls through the frontend command adapter", async () => {
+	it("rejects client changes to operator-managed kubeconfig sources", async () => {
+		const sourcesBefore = await browser.execute(() => window.__TAURI__.core.invoke<KubeconfigSourcesSummary, object>("remote_invoke", { command: "get_kubeconfig_sources", args: {} }));
 		const settings = await $('button[aria-label="Open settings"]');
 		if (await settings.isDisplayed()) await settings.click();
 		await $('button=Kubeconfig').click();
@@ -148,7 +149,9 @@ async function echoBytes(port: number): Promise<void> {
 		await expect($('button=Choose files')).not.toBeDisplayed();
 		await serverPath.setValue(fixtureConfig);
 		await $('button=Add server path').click();
-		await expect($('body')).toHaveText(expect.stringContaining(fixtureConfig));
+		await expect($('body')).toHaveText(expect.stringContaining("kubeconfig sources are set by the server operator"));
+		const sourcesAfter = await browser.execute(() => window.__TAURI__.core.invoke<KubeconfigSourcesSummary, object>("remote_invoke", { command: "get_kubeconfig_sources", args: {} }));
+		expect(sourcesAfter).toEqual(sourcesBefore);
 		await $('button=Remote server').click();
 	});
 
@@ -176,17 +179,30 @@ async function echoBytes(port: number): Promise<void> {
 		await echoBytes(forward.localPort);
 	});
 
-	it("revokes the old desktop owner after browser takeover and disconnects cleanly", async () => {
+	it("keeps the desktop session and tunnel working when another session opens and closes", async () => {
 		const response = await fetch(`${origin}/api/v1/session`, {
 			method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ token }),
 		});
 		expect(response.status).toBe(200);
-		await browser.waitUntil(async () => {
+		const session: { resumeToken: string } = await response.json();
+		const headers = { Origin: origin, Authorization: `Bearer ${token}`, "Content-Type": "application/json", "X-Kubecove-Session": session.resumeToken };
+		try {
+			const forwardsResponse = await fetch(`${origin}/api/v1/invoke/list_port_forwards`, { method: "POST", headers, body: "{}" });
+			expect(forwardsResponse.status).toBe(200);
+			const otherForwards: PortForwardSessionSummary[] = await forwardsResponse.json();
+			expect(otherForwards).toEqual([]);
 			const status = await browser.execute(() => window.__TAURI__.core.invoke<RemoteConnectionSummary | null>("remote_connection_status"));
-			return status?.connected === false;
-		}, { timeoutMsg: "Takeover did not revoke the desktop connection." });
-		await browser.waitUntil(() => portRefusesConnection(forward.localPort), { timeoutMsg: "Takeover left the laptop forward listener open." });
+			expect(status?.connected).toBe(true);
+			await echoBytes(forward.localPort);
+		} finally {
+			const closeResponse = await fetch(`${origin}/api/v1/session/close`, { method: "POST", headers, body: "{}" });
+			expect(closeResponse.status).toBe(200);
+		}
+		const connectedStatus = await browser.execute(() => window.__TAURI__.core.invoke<RemoteConnectionSummary | null>("remote_connection_status"));
+		expect(connectedStatus?.connected).toBe(true);
+		await echoBytes(forward.localPort);
 		await $('button=Disconnect').click();
+		await browser.waitUntil(() => portRefusesConnection(forward.localPort), { timeoutMsg: "Disconnect left the laptop forward listener open." });
 		const status = await browser.execute(() => window.__TAURI__.core.invoke<RemoteConnectionSummary | null>("remote_connection_status"));
 		expect(status).toBeNull();
 	});
