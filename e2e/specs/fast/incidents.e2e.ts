@@ -119,7 +119,7 @@ describe("Incident Cockpit", () => {
 
 			const investigationStepCount = await $$('[data-incident-investigation-step]').length;
 			for (let index = 0; index < investigationStepCount; index++) await browser.keys("Tab");
-			const keyboardResult = await browser.execute((element: HTMLElement) => {
+			const readKeyboardResult = () => browser.execute((element: HTMLElement) => {
 				const bounds = element.getBoundingClientRect();
 				const outerScroller = element.closest('[data-slot="scroll-area"]');
 				return {
@@ -129,7 +129,11 @@ describe("Incident Cockpit", () => {
 					visible: bounds.top >= 0 && bounds.bottom <= document.documentElement.clientHeight,
 				};
 			}, remediation);
-			expect(keyboardResult).toEqual({ active: true, focusVisible: true, outerScrolled: true, visible: true });
+			await browser.waitUntil(async () => {
+				const result = await readKeyboardResult();
+				return result.active && result.focusVisible && result.outerScrolled && result.visible;
+			}, { timeoutMsg: "Keyboard focus did not scroll the remediation action fully into view." });
+			expect(await readKeyboardResult()).toEqual({ active: true, focusVisible: true, outerScrolled: true, visible: true });
 		} finally {
 			await browser.sendCommandAndGetResult("Emulation.clearDeviceMetricsOverride", {});
 			await browser.setWindowSize(originalSize.width, originalSize.height);
