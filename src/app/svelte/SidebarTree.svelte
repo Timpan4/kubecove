@@ -47,6 +47,7 @@
 		onSectionToggle,
 		scrollTop = $bindable(0),
 		previousSelectedKey = $bindable(),
+		revealKey = $bindable(null),
 	}: {
 		workspaceReadContext: WorkspaceReadContext;
 		selectedNode: TreeNodeId | null;
@@ -56,11 +57,11 @@
 		onSectionToggle: (id: string) => void;
 		scrollTop?: number;
 		previousSelectedKey?: string | null;
+		revealKey?: string | null;
 	} = $props();
 
 	const selectionKey = $derived(selectedNode ? `${nodeIdToString(selectedNode)}:${sidebarNavigationRevision}` : null);
 	if (previousSelectedKey === undefined) previousSelectedKey = untrack(() => selectionKey);
-	let revealKey = $state<string | null>(null);
 	$effect(() => {
 		const key = selectionKey;
 		if (key === previousSelectedKey) return;
@@ -267,7 +268,8 @@
 							{node}
 							depth={0}
 							selectedNode={sidebarSelectedNode}
-							{revealKey}
+							revealKey={revealKey === selectionKey ? revealKey : null}
+							onReveal={() => (revealKey = null)}
 							{selectedAncestorIds}
 							{expandedSections}
 							onNodeSelect={selectFromTree}

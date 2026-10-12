@@ -35,6 +35,7 @@
 	} = $props();
 
 	let compactScrollTop = $state(0);
+	let compactRevealKey = $state<string | null>(null);
 	let compactSelectedKey = $state<string | null>(untrack(() => selectedNode ? `${nodeIdToString(selectedNode)}:${sidebarNavigationRevision}` : null));
 	const contextCount = $derived(workspaceScopeContexts(workspace.scope).length);
 
@@ -106,6 +107,7 @@
 					onSectionToggle={toggleCompactSection}
 					bind:scrollTop={compactScrollTop}
 					bind:previousSelectedKey={compactSelectedKey}
+					bind:revealKey={compactRevealKey}
 				/>
 			</SidebarContent>
 		</SheetContent>

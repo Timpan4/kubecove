@@ -146,8 +146,10 @@ describe("Sidebar groups", () => {
 			resourceKindsPending: false, resourceKindsError: "", showUnavailableGitOpsProviders: false,
 		});
 		const custom = sidebarSelectionNode({ type: "kind", section: "discovered", kind: "Widget" }, groups);
-		expect(custom?.group).toBe(undefined);
-		expect([...collectSelectedAncestorIds(groups, custom)]).toEqual(["section::discovered"]);
+		expect(custom).toEqual({ type: "section", section: "discovered" });
+		expect([...collectSelectedAncestorIds(groups, custom)]).toEqual([]);
+		const filtered = sidebarSelectionNode({ type: "kind", section: "discovered", kind: "HiddenKind" }, groups);
+		expect(filtered).toEqual({ type: "section", section: "discovered" });
 	});
 
 	test("matches external resource selections without changing their namespace scope", () => {

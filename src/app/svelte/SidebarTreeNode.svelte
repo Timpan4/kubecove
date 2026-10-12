@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { untrack } from "svelte";
 	import { ChevronRight } from "lucide-svelte";
 	import { Button } from "@/components/ui/svelte";
 	import { cnfast } from "@/lib/utils";
@@ -16,6 +15,7 @@
 		depth,
 		selectedNode,
 		revealKey = null,
+		onReveal,
 		selectedAncestorIds = new Set<string>(),
 		expandedSections,
 		onNodeSelect,
@@ -28,6 +28,7 @@
 		depth: number;
 		selectedNode: TreeNodeId | null;
 		revealKey?: string | null;
+		onReveal?: () => void;
 		selectedAncestorIds?: ReadonlySet<string>;
 		expandedSections: string[];
 		onNodeSelect: (id: TreeNodeId) => void;
@@ -63,16 +64,15 @@
 
 	let rowElement: HTMLDivElement | undefined;
 	let highlighted = $state(false);
-	// Newly expanded rows inherit the current reveal and do not flash again.
-	let previousRevealKey = untrack(() => revealKey);
+	let previousRevealKey: string | null = null;
 
 	$effect(() => {
 		const key = revealKey;
-		if (key === previousRevealKey) return;
+		if (key === null || key === previousRevealKey || !(isSelected || hidesSelection) || !rowElement) return;
 		previousRevealKey = key;
-		if (key === null || !(isSelected || hidesSelection) || !rowElement) return;
 		rowElement.scrollIntoView({ block: "nearest" });
 		if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) highlighted = true;
+		onReveal?.();
 	});
 
 	/** Kind nodes use their kind tone; everything else uses the group tone. */
@@ -189,6 +189,7 @@
 					depth={depth + 1}
 					{selectedNode}
 					{revealKey}
+					{onReveal}
 					{selectedAncestorIds}
 					{expandedSections}
 					{onNodeSelect}

@@ -329,7 +329,10 @@ export function sidebarSelectionNode(
 	};
 	for (const group of groups) visit(group.nodes);
 	return matches.find((id) => nodeIdToString(id) === nodeIdToString(selection)) ??
-		(matches.length === 1 ? matches[0] : selection);
+		(matches.length === 1 ? matches[0] :
+			groups.flatMap((group) => group.nodes).find((candidate) =>
+				candidate.id.type === "section" && candidate.id.section === selection.section,
+			)?.id ?? selection);
 }
 
 export function collectSelectedAncestorIds(
@@ -350,9 +353,6 @@ export function collectSelectedAncestorIds(
 			// A folded namespace's custom-resource children may be unloaded.
 			if (node.id.type === "namespace" && selectedNode.section === "namespaces" &&
 				node.id.namespace === selectedNode.namespace) return [id];
-			// Bare external kinds may be ambiguous or absent from the filtered catalog.
-			if (node.id.type === "section" && selectedNode.type === "kind" &&
-				node.id.section === selectedNode.section) return [id];
 		}
 		return null;
 	};
