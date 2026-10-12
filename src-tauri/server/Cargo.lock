@@ -1896,7 +1896,7 @@ dependencies = [
 
 [[package]]
 name = "kubecove"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "base64 0.23.1",
  "chacha20poly1305",
@@ -1923,7 +1923,7 @@ dependencies = [
 
 [[package]]
 name = "kubecove-server"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "axum",
  "axum-server",
