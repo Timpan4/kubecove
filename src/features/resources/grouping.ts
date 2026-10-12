@@ -1,4 +1,4 @@
-import { gitOpsOwnership, gitOpsOwnershipGroupLabel } from "@/lib/gitops-ownership-evidence";
+import { gitOpsOwnershipGroupLabel } from "@/lib/gitops-ownership-evidence";
 import { OTHER_RESOURCE_KINDS } from "@/lib/resource-kind-order";
 import type { ResourceSummary } from "@/lib/types";
 import { formatResourceTypeGroupLabel } from "./helpers";
@@ -10,11 +10,6 @@ export function kindGroupRank(row: ResourceSummary, kindOrder: readonly string[]
 	if (index !== -1) return index;
 	const other = kindOrder.indexOf(OTHER_RESOURCE_KINDS);
 	return other === -1 ? kindOrder.length : other;
-}
-
-export function ownershipGroupRank(row: ResourceSummary): number {
-	if (gitOpsOwnership(row)) return 0;
-	return row.helmRelease ? 1 : 2;
 }
 
 export function pageGitOpsGroupCounts(

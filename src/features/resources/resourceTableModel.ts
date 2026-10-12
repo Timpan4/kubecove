@@ -2,6 +2,7 @@ import { argoResourceIdentityKey } from "@/features/gitops/argo-workspace-model"
 import {
 	gitOpsOwnership,
 	gitOpsOwnershipFilters,
+	gitOpsOwnershipGroup,
 	gitOpsOwnershipGroupLabel,
 	inheritGitOpsOwnership,
 } from "@/lib/gitops-ownership-evidence";
@@ -12,7 +13,6 @@ import type { ResourceSummary } from "@/lib/types";
 import { PAGE_SIZE } from "./constants";
 import {
 	kindGroupRank,
-	ownershipGroupRank,
 	pageGitOpsGroupCounts,
 	pageTypeGroupCounts,
 } from "./grouping";
@@ -99,22 +99,22 @@ function sortedResourceRows(
 	});
 }
 
-function rankedGroups(
+function kindGroupedRows(
 	rows: ResourceSummary[],
-	keyForRow: (row: ResourceSummary) => string,
 	rankForGroup: (firstRow: ResourceSummary) => number,
-): ResourceSummary[][] {
-	const groups = new Map<string, ResourceSummary[]>();
+	out: ResourceSummary[],
+): void {
+	const groups = new Map<string, { rank: number; rows: ResourceSummary[] }>();
 	for (const row of rows) {
-		const key = keyForRow(row);
-		const group = groups.get(key);
-		if (group) group.push(row);
-		else groups.set(key, [row]);
+		const group = groups.get(row.kind);
+		if (group) group.rows.push(row);
+		else groups.set(row.kind, { rank: rankForGroup(row), rows: [row] });
 	}
 	// Stable sort: equal ranks keep the column-sort order of their first row.
-	return Array.from(groups.values()).sort(
-		(left, right) => rankForGroup(left[0]) - rankForGroup(right[0]),
-	);
+	const ranked = Array.from(groups.values()).sort((left, right) => left.rank - right.rank);
+	for (const group of ranked) {
+		for (const row of group.rows) out.push(row);
+	}
 }
 
 function gitOpsGroupedRows(
@@ -124,38 +124,48 @@ function gitOpsGroupedRows(
 ): ResourceSummary[] {
 	const isPreferred = (row: ResourceSummary) =>
 		isPreferredGitOpsResource(row, preferredGitOpsResourceKeys);
-	const preferredRows = [...rows].sort(
-		(left, right) => Number(isPreferred(right)) - Number(isPreferred(left)),
+	const preferredRows: ResourceSummary[] = [];
+	const otherRows: ResourceSummary[] = [];
+	for (const row of rows) (isPreferred(row) ? preferredRows : otherRows).push(row);
+	for (const row of otherRows) preferredRows.push(row);
+	const ownershipGroups = new Map<string, { rank: number; rows: ResourceSummary[] }>();
+	for (const row of preferredRows) {
+		const { label, rank } = gitOpsOwnershipGroup(row);
+		const group = ownershipGroups.get(label);
+		if (group) group.rows.push(row);
+		else ownershipGroups.set(label, { rank: isPreferred(row) ? -1 : rank, rows: [row] });
+	}
+	const rankedOwnershipGroups = Array.from(ownershipGroups.values()).sort(
+		(left, right) => left.rank - right.rank,
 	);
-	const ownershipGroups = rankedGroups(preferredRows, gitOpsOwnershipGroupLabel, (row) =>
-		isPreferred(row) ? -1 : ownershipGroupRank(row),
-	);
-	return ownershipGroups.flatMap((ownershipRows) =>
-		rankedGroups(
+	const grouped: ResourceSummary[] = [];
+	for (const { rank, rows: ownershipRows } of rankedOwnershipGroups) {
+		// Only a group led by a preferred row can contain preferred rows to lift.
+		kindGroupedRows(
 			ownershipRows,
-			(row) => row.kind,
-			(row) => (isPreferred(row) ? -1 : kindGroupRank(row, kindOrder)),
-		).flat(),
-	);
+			(row) => (rank === -1 && isPreferred(row) ? -1 : kindGroupRank(row, kindOrder)),
+			grouped,
+		);
+	}
+	return grouped;
 }
 
 function isPreferredGitOpsResource(
 	row: ResourceSummary,
 	preferredKeys?: ReadonlySet<string>,
 ): boolean {
+	if (!preferredKeys?.size) return false;
 	const key = argoResourceIdentityKey(row);
-	return key !== null && preferredKeys?.has(key) === true;
+	return key !== null && preferredKeys.has(key);
 }
 
 function typeGroupedRows(
 	rows: ResourceSummary[],
 	kindOrder: readonly string[],
 ): ResourceSummary[] {
-	return rankedGroups(
-		rows,
-		(row) => row.kind,
-		(row) => kindGroupRank(row, kindOrder),
-	).flat();
+	const grouped: ResourceSummary[] = [];
+	kindGroupedRows(rows, (row) => kindGroupRank(row, kindOrder), grouped);
+	return grouped;
 }
 
 function buildEntries({
