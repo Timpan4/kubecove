@@ -11,6 +11,7 @@ import {
 	buildSidebarTree,
 	GITOPS_RESOURCE_KINDS,
 	toggleCompactSidebarSection,
+	type SidebarTreeGroup,
 } from "../src/app/svelte/workspaceShellModel";
 import {
 	extraDiscoveredKinds,
@@ -144,8 +145,8 @@ const fluxDetected: FluxDetectionSummary = {
 	missingKinds: [],
 };
 
-function findNode(nodes: TreeNode[], label: string): TreeNode {
-	const match = nodes.find((node) => node.label === label);
+function findNode(groups: SidebarTreeGroup[], label: string): TreeNode {
+	const match = groups.flatMap((group) => group.nodes).find((node) => node.label === label);
 	if (!match) throw new Error(`Missing node ${label}`);
 	return match;
 }
@@ -171,7 +172,8 @@ describe("svelte workspace shell model", () => {
 			showUnavailableGitOpsProviders: false,
 		});
 
-		expect(nodes.map((node) => node.label)).toEqual([
+		expect(nodes.map((group) => group.id)).toEqual(["workspace", "cluster", "scope", "namespaces"]);
+		expect(nodes.flatMap((group) => group.nodes).map((node) => node.label)).toEqual([
 			"Workspace Overview",
 			"Incidents",
 			"Port Forwards",
@@ -179,14 +181,15 @@ describe("svelte workspace shell model", () => {
 			"Helm",
 			"RBAC",
 			"Cluster Overview",
-			"Namespaces",
 			"Workloads",
 			"Network",
 			"Config",
 			"Storage",
 			"Custom Resources",
+			"default",
+			"argocd",
 		]);
-		expect(findNode(nodes, "Namespaces").children?.map((node) => node.label)).toEqual([
+		expect(nodes.find((group) => group.id === "namespaces")?.nodes.map((node) => node.label)).toEqual([
 			"default",
 			"argocd",
 		]);
@@ -208,7 +211,7 @@ describe("svelte workspace shell model", () => {
 	});
 
 	test("keeps one broad resource branch open in compact navigation", () => {
-		const namespacesId = nodeIdToString({ type: "section", section: "namespaces" });
+		const networkId = nodeIdToString({ type: "section", section: "network" });
 		const workloadsId = nodeIdToString({ type: "section", section: "workloads" });
 		const nestedNamespaceId = nodeIdToString({
 			type: "namespace",
@@ -217,7 +220,7 @@ describe("svelte workspace shell model", () => {
 		});
 
 		expect(
-			toggleCompactSidebarSection([namespacesId, nestedNamespaceId], workloadsId),
+			toggleCompactSidebarSection([networkId, nestedNamespaceId], workloadsId),
 		).toEqual([nestedNamespaceId, workloadsId]);
 		expect(
 			toggleCompactSidebarSection([nestedNamespaceId, workloadsId], workloadsId),
@@ -235,7 +238,7 @@ describe("svelte workspace shell model", () => {
 			resourceKindsError: "",
 			showUnavailableGitOpsProviders: false,
 		});
-		const namespace = findNode(nodes, "Namespaces").children?.[0];
+		const namespace = nodes.find((group) => group.id === "namespaces")?.nodes[0];
 
 		expect(namespace?.label).toBe("default");
 		expect(namespace?.children).toBeUndefined();

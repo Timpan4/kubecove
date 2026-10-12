@@ -929,11 +929,13 @@ describe("svelte resource browser model", () => {
 			"utf8",
 		);
 		const shell = readFileSync("src/app/svelte/WorkspaceShell.svelte", "utf8");
+		const inspector = readFileSync("src/app/svelte/ResourceInspector.svelte", "utf8");
 
 		expect(browser).not.toContain("ResourceDetailPanel");
 		expect(browser).not.toContain("Close resource details");
-		expect(shell).toContain("<ResourceDetailPanel");
-		expect(shell).toContain('aria-label="Close resource details"');
+		expect(shell).toContain("<ResourceInspector");
+		expect(inspector).toContain("<ResourceDetailPanel");
+		expect(inspector).toContain('aria-label="Close resource details"');
 		expect(browser).toContain("selectedTopologyNodeId = null");
 	});
 
