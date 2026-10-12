@@ -55,7 +55,8 @@ test("release preparation creates verified commits without rewriting the branch"
           else if (args[1] === "graphql") {
             payload = JSON.parse(options.input);
             stdout = JSON.stringify({ data: { createCommitOnBranch: { commit: { oid: "c".repeat(40), signature: { isValid: valid } } } } });
-          } else stdout = args[1].includes("matching-refs") ? JSON.stringify(parent ? [{ ref: "refs/heads/release/app-v1.2.3", object: { sha: parent } }] : []) : "{}";
+          } else if (args.includes("--paginate")) stdout = JSON.stringify([{ commits: [{ sha: existing, commit: { verification: { verified: true } } }] }]);
+          else stdout = args[1].includes("matching-refs") ? JSON.stringify(parent ? [{ ref: "refs/heads/release/app-v1.2.3", object: { sha: parent } }] : []) : "{}";
           return { status: 0, stdout, stderr: "" };
         },
       });
@@ -69,6 +70,31 @@ test("release preparation creates verified commits without rewriting the branch"
       assert.ok(calls.every((call) => !call.includes("push") && !call.includes("update-ref")));
     }
   }
+});
+
+test("release reruns reject unverified history before advancing an existing branch", () => {
+  const script = readFileSync(new URL("./commit-release-pr.mjs", import.meta.url), "utf8")
+    .replace(/^import .+;\r?\n/gm, "");
+  const calls = [];
+  assert.throws(() => runInNewContext(script, {
+    Buffer,
+    console: { log() {} },
+    process: { env: { GH_REPO: "owner/repo", BRANCH_NAME: "release/app-v1.2.3", RELEASE_TITLE: "release: KubeCove v1.2.3" } },
+    readFileSync: () => Buffer.from("contents"),
+    spawnSync: (command, args) => {
+      calls.push([command, ...args]);
+      let stdout;
+      if (command === "git") stdout = args[0] === "rev-parse" ? "a".repeat(40) : "package.json\0";
+      else if (args.includes("--paginate")) stdout = JSON.stringify([
+        { commits: [{ sha: "b".repeat(40), commit: { verification: { verified: true } } }] },
+        { commits: [{ sha: "c".repeat(40), commit: { verification: { verified: false } } }] },
+      ]);
+      else if (args[1].includes("matching-refs")) stdout = JSON.stringify([{ ref: "refs/heads/release/app-v1.2.3", object: { sha: "b".repeat(40) } }]);
+      else stdout = JSON.stringify({ data: { createCommitOnBranch: { commit: { oid: "d".repeat(40), signature: { isValid: true } } } } });
+      return { status: 0, stdout, stderr: "" };
+    },
+  }), /unverified commit.*before rerunning/);
+  assert.ok(calls.every((call) => !call.includes("graphql") && !call.includes("POST") && !call.includes("DELETE")));
 });
 
 test("release orchestration runs after dependencies are installed in CI and releases", () => {

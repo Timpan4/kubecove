@@ -13,8 +13,18 @@ if (paths.length === 0) throw new Error("No release files are staged.");
 const additions = paths.map((path) => ({ path, contents: readFileSync(path).toString("base64") }));
 const refs = JSON.parse(run("gh", ["api", `repos/${repository}/git/matching-refs/heads/${branch}`]));
 let parent = refs.find((ref) => ref.ref === `refs/heads/${branch}`)?.object.sha;
-if (!parent) {
-  parent = run("git", ["rev-parse", "HEAD"]).trim();
+const base = run("git", ["rev-parse", "HEAD"]).trim();
+if (parent) {
+  const pages = JSON.parse(run("gh", ["api", "--paginate", "--slurp", `repos/${repository}/compare/${base}...${parent}?page=1`]));
+  for (const page of pages) {
+    for (const commit of page.commits) {
+      if (commit.commit.verification?.verified !== true) {
+        throw new Error(`Release branch ${branch} contains unverified commit ${commit.sha}. Verify its signature or use a new signed branch before rerunning.`);
+      }
+    }
+  }
+} else {
+  parent = base;
   run("gh", ["api", "--method", "POST", `repos/${repository}/git/refs`, "-f", `ref=refs/heads/${branch}`, "-f", `sha=${parent}`]);
 }
 
@@ -30,7 +40,9 @@ const response = JSON.parse(run("gh", ["api", "graphql", "--input", "-"], JSON.s
   },
 })));
 const commit = response.data?.createCommitOnBranch?.commit;
-if (commit?.signature?.isValid !== true) throw new Error("Release commit must have a verified signature.");
+if (commit?.signature?.isValid !== true) {
+  throw new Error(`Release commit ${commit?.oid ?? "unknown"} on ${branch} lacks a verified signature. The branch may have advanced. Verify its signature or use a new signed branch before rerunning.`);
+}
 console.log(`Created verified release commit ${commit.oid} on ${branch}.`);
 
 function run(command, args, input) {
