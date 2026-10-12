@@ -2710,7 +2710,7 @@ dependencies = [
 
 [[package]]
 name = "kubecove"
-version = "0.12.2"
+version = "0.12.3"
 dependencies = [
  "base64 0.23.1",
  "chacha20poly1305",

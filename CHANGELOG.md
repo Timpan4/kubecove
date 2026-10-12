@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.3 - 2026-10-12
+### Fixed
+
+- Use GitHub release commit branch field (#545).
+
 ## 0.12.2 - 2026-10-12
 ### Added
 
