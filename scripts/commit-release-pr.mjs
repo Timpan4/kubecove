@@ -32,7 +32,7 @@ const response = JSON.parse(run("gh", ["api", "graphql", "--input", "-"], JSON.s
   query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid signature { isValid } } } }",
   variables: {
     input: {
-      branch: { repositoryNameWithOwner: repository, refName: branch },
+      branch: { repositoryNameWithOwner: repository, branchName: branch },
       expectedHeadOid: parent,
       message: { headline: title },
       fileChanges: { additions },
