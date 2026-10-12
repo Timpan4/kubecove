@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick, untrack } from "svelte";
 	import { createQueries, createQuery } from "@tanstack/svelte-query";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
@@ -34,7 +35,7 @@
 		customResourcesByExpandedNamespace,
 		pendingCustomResourceNamespaces as buildPendingCustomResourceNamespaces,
 	} from "@/components/sidebar-tree-helpers";
-	import { buildSidebarTree, collectSelectedAncestorIds } from "./workspaceShellModel";
+	import { buildSidebarTree, collectSelectedAncestorIds, sidebarSelectionNode } from "./workspaceShellModel";
 	import SidebarTreeNode from "./SidebarTreeNode.svelte";
 
 	let {
@@ -44,6 +45,7 @@
 		onNodeSelect,
 		onSectionToggle,
 		scrollTop = $bindable(0),
+		previousSelectedKey = $bindable(),
 	}: {
 		workspaceReadContext: WorkspaceReadContext;
 		selectedNode: TreeNodeId | null;
@@ -51,7 +53,27 @@
 		onNodeSelect: (id: TreeNodeId) => void;
 		onSectionToggle: (id: string) => void;
 		scrollTop?: number;
+		previousSelectedKey?: string | null;
 	} = $props();
+
+	const selectionKey = $derived(selectedNode ? nodeIdToString(selectedNode) : null);
+	const sidebarSelectedNode = $derived(sidebarSelectionNode(selectedNode));
+	if (previousSelectedKey === undefined) previousSelectedKey = untrack(() => selectionKey);
+	let revealKey = $state<string | null>(null);
+	$effect(() => {
+		const key = selectionKey;
+		if (key === previousSelectedKey) return;
+		previousSelectedKey = key;
+		void tick().then(() => {
+			if (selectionKey === key) revealKey = key;
+		});
+	});
+
+	function selectFromTree(node: TreeNodeId) {
+		previousSelectedKey = nodeIdToString(node);
+		revealKey = null;
+		onNodeSelect(node);
+	}
 
 	const client = createTauriClient();
 	const showUnavailableGitOpsProviders = $derived(
@@ -164,7 +186,7 @@
 		customResourceSearch,
 	}));
 	const selectedAncestorIds = $derived(
-		collectSelectedAncestorIds(groups, selectedNode, getLazyChildren),
+		collectSelectedAncestorIds(groups, sidebarSelectedNode, getLazyChildren),
 	);
 	const isNamespaceListSelected = $derived(
 		selectedNode?.type === "section" && selectedNode.section === "namespaces",
@@ -231,7 +253,7 @@
 								"text-[10.5px] font-medium",
 								isNamespaceListSelected ? "text-primary" : "text-muted-foreground",
 							)}
-							onclick={() => onNodeSelect({ type: "section", section: "namespaces" })}
+							onclick={() => selectFromTree({ type: "section", section: "namespaces" })}
 						>
 							View all
 						</Button>
@@ -242,10 +264,11 @@
 						<SidebarTreeNode
 							{node}
 							depth={0}
-							{selectedNode}
+							selectedNode={sidebarSelectedNode}
+							{revealKey}
 							{selectedAncestorIds}
 							{expandedSections}
-							{onNodeSelect}
+							onNodeSelect={selectFromTree}
 							{onSectionToggle}
 							{getLazyChildren}
 							{customResourceSearch}

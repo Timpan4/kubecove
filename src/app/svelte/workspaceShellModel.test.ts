@@ -6,6 +6,7 @@ import {
 	buildSidebarTree,
 	collectSelectedAncestorIds,
 	resourceBrowserAvailableKinds,
+	sidebarSelectionNode,
 	type SidebarTreeGroup,
 } from "./workspaceShellModel";
 
@@ -123,6 +124,17 @@ describe("Custom Resources tree model", () => {
 });
 
 describe("Sidebar groups", () => {
+	test("matches external resource selections without changing their namespace scope", () => {
+		const external: TreeNodeId = { type: "kind", section: "helm", namespace: "default", kind: "Releases" };
+		const sidebar = sidebarSelectionNode(external);
+		expect([...collectSelectedAncestorIds(helmGroups, sidebar)]).toEqual(["section::helm"]);
+		expect(sidebar?.namespace).toBe(undefined);
+		expect(external.namespace).toBe("default");
+		const namespaceKind: TreeNodeId = { type: "kind", section: "namespaces", namespace: "default", group: "Workloads", kind: "Pod" };
+		expect(sidebarSelectionNode(namespaceKind)).toEqual(namespaceKind);
+		expect(sidebarSelectionNode(null)).toBe(null);
+	});
+
 	test("lists namespaces as top-level rows without a Namespaces section row", () => {
 		const groups = buildSidebarTree({
 			namespaces: [{ name: "default", age: "1d" }],
@@ -210,6 +222,12 @@ describe("Sidebar groups", () => {
 			"namespace::namespaces::default",
 			"group::namespaces::default::Workloads",
 		]);
-		expect([...collectSelectedAncestorIds(groups, pod)]).toEqual([]);
+		expect([...collectSelectedAncestorIds(groups, pod)]).toEqual(["namespace::namespaces::default"]);
+		expect([...collectSelectedAncestorIds(groups, {
+			...pod,
+			group: widget.group,
+			kind: "example.com/v1/widgets/Widget",
+			resourceKind: widget,
+		}, () => [])]).toEqual(["namespace::namespaces::default"]);
 	});
 });

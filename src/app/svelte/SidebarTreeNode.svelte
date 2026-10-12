@@ -1,10 +1,5 @@
-<script lang="ts" module>
-	// Set while a row click or keypress navigates, so the reveal effect skips that change.
-	let navigatingFromRow = false;
-</script>
-
 <script lang="ts">
-	import { tick, untrack } from "svelte";
+	import { untrack } from "svelte";
 	import { ChevronRight } from "lucide-svelte";
 	import { Button } from "@/components/ui/svelte";
 	import { cnfast } from "@/lib/utils";
@@ -20,6 +15,7 @@
 		node,
 		depth,
 		selectedNode,
+		revealKey = null,
 		selectedAncestorIds = new Set<string>(),
 		expandedSections,
 		onNodeSelect,
@@ -31,6 +27,7 @@
 		node: TreeNode;
 		depth: number;
 		selectedNode: TreeNodeId | null;
+		revealKey?: string | null;
 		selectedAncestorIds?: ReadonlySet<string>;
 		expandedSections: string[];
 		onNodeSelect: (id: TreeNodeId) => void;
@@ -66,14 +63,14 @@
 
 	let rowElement: HTMLDivElement | undefined;
 	let highlighted = $state(false);
-	// Only a selection change while mounted reveals, so expanding a section does not.
-	let previousSelectedKey = untrack(() => selectedKey);
+	// Newly expanded rows inherit the current reveal and do not flash again.
+	let previousRevealKey = untrack(() => revealKey);
 
 	$effect(() => {
-		const key = selectedKey;
-		if (key === previousSelectedKey) return;
-		previousSelectedKey = key;
-		if (navigatingFromRow || !(isSelected || hidesSelection) || !rowElement) return;
+		const key = revealKey;
+		if (key === previousRevealKey) return;
+		previousRevealKey = key;
+		if (key === null || !(isSelected || hidesSelection) || !rowElement) return;
 		rowElement.scrollIntoView({ block: "nearest" });
 		if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) highlighted = true;
 	});
@@ -91,10 +88,7 @@
 
 	function selectNode() {
 		if (isDisabled || node.selectable === false) return;
-		navigatingFromRow = true;
 		onNodeSelect(node.id);
-		// Reveal effects for this selection run within tick, so the flag clears after them.
-		tick().then(() => (navigatingFromRow = false));
 	}
 
 	function toggleNode(event: MouseEvent) {
@@ -194,6 +188,7 @@
 					node={child}
 					depth={depth + 1}
 					{selectedNode}
+					{revealKey}
 					{selectedAncestorIds}
 					{expandedSections}
 					{onNodeSelect}

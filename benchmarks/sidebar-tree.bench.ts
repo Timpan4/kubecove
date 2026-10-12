@@ -129,10 +129,9 @@ assert(
 		children.some((node) => node.label === "Loading custom resources..."),
 	),
 );
-assert(
-	fullTree.some(
-		(node) => node.id.type === "section" && node.id.section === "namespaces",
-	),
+assert.deepEqual(
+	fullTree.find((group) => group.id === "namespaces")?.nodes,
+	namespaceNodes,
 );
 assert.equal(availableKinds.length, extraKinds.length + 2);
 assert.equal(appendedKinds.length, extraKinds.length + 1);

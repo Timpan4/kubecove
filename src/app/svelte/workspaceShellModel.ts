@@ -307,6 +307,12 @@ export function buildSidebarTree({
 	];
 }
 
+export function sidebarSelectionNode(node: TreeNodeId | null): TreeNodeId | null {
+	return node?.type === "kind" && node.section !== "namespaces" && node.namespace
+		? { ...node, namespace: undefined }
+		: node;
+}
+
 export function collectSelectedAncestorIds(
 	groups: SidebarTreeGroup[],
 	selectedNode: TreeNodeId | null,
@@ -322,6 +328,9 @@ export function collectSelectedAncestorIds(
 				getLazyChildren?.(node) ?? node.children ?? [],
 			);
 			if (childAncestorIds) return [id, ...childAncestorIds];
+			// A folded namespace's custom-resource children may be unloaded.
+			if (node.id.type === "namespace" && selectedNode.section === "namespaces" &&
+				node.id.namespace === selectedNode.namespace) return [id];
 		}
 		return null;
 	};

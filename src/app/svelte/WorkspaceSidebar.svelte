@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from "svelte";
 	import { ChevronsDownUp } from "lucide-svelte";
 	import {
 		Badge,
@@ -11,7 +12,7 @@
 	} from "@/components/ui/svelte";
 	import { type SavedWorkspace, workspaceScopeContexts } from "@/lib/workspace-model";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
-	import type { TreeNodeId } from "@/lib/tree-nav";
+	import { nodeIdToString, type TreeNodeId } from "@/lib/tree-nav";
 	import SidebarTree from "./SidebarTree.svelte";
 	import { toggleCompactSidebarSection } from "./workspaceShellModel";
 
@@ -32,6 +33,7 @@
 	} = $props();
 
 	let compactScrollTop = $state(0);
+	let compactSelectedKey = $state<string | null>(untrack(() => selectedNode ? nodeIdToString(selectedNode) : null));
 	const contextCount = $derived(workspaceScopeContexts(workspace.scope).length);
 
 	function toggleSection(id: string) {
@@ -99,6 +101,7 @@
 					{onNodeSelect}
 					onSectionToggle={toggleCompactSection}
 					bind:scrollTop={compactScrollTop}
+					bind:previousSelectedKey={compactSelectedKey}
 				/>
 			</SidebarContent>
 		</SheetContent>
