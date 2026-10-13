@@ -3,35 +3,9 @@ import { join } from "node:path";
 import { $, $$, browser, expect } from "@wdio/globals";
 import { beforeEach, describe, it } from "mocha";
 
-type IncidentFocusBounds = Pick<DOMRect, "x" | "y" | "width" | "height" | "top" | "right" | "bottom" | "left">;
-interface IncidentFocusEvent {
-	kind: string;
-	at: number;
-	bounds: IncidentFocusBounds;
-	connected: boolean;
-	sameAction: boolean;
-	active: boolean;
-	focusVisible: boolean;
-	activeElement: { tag: string; text: string | null; data: DOMStringMap } | null;
-	viewport: { width: number; height: number; clientHeight: number; visualHeight: number | undefined };
-	scrollTop: number;
-	scrollHeight: number;
-	clientHeight: number;
-	scrollerBounds: IncidentFocusBounds;
-	guideBounds: IncidentFocusBounds;
-	stepCount: number;
-	loading: boolean;
-	fonts: Document["fonts"]["status"];
-}
-
 declare global {
 	interface Window {
 		copiedIncidentName?: string;
-		incidentFocusDiagnostics?: {
-			events: IncidentFocusEvent[];
-			record: (kind: string) => void;
-			cleanup: () => void;
-		};
 	}
 }
 
@@ -130,45 +104,6 @@ describe("Incident Cockpit", () => {
 			await remediation.waitForDisplayed();
 			const started = await browser.execute((element: HTMLElement) => {
 				const outerScroller = element.closest('[data-slot="scroll-area"]');
-				const action = document.querySelector<HTMLElement>("[data-incident-remediation]");
-				const guide = document.querySelector<HTMLElement>("[data-incident-guide]");
-				if (outerScroller instanceof HTMLElement && action && guide) {
-					const events: IncidentFocusEvent[] = [];
-					const record = (kind: string) => {
-						const active = document.activeElement;
-						events.push({
-							kind, at: performance.now(),
-							bounds: action.getBoundingClientRect().toJSON(),
-							connected: action.isConnected,
-							sameAction: document.querySelector("[data-incident-remediation]") === action,
-							active: active === action, focusVisible: action.matches(":focus-visible"),
-							activeElement: active instanceof HTMLElement ? { tag: active.tagName, text: active.textContent, data: { ...active.dataset } } : null,
-							viewport: { width: innerWidth, height: innerHeight, clientHeight: document.documentElement.clientHeight, visualHeight: visualViewport?.height },
-							scrollTop: outerScroller.scrollTop, scrollHeight: outerScroller.scrollHeight,
-							clientHeight: outerScroller.clientHeight, scrollerBounds: outerScroller.getBoundingClientRect().toJSON(),
-							guideBounds: guide.getBoundingClientRect().toJSON(),
-							stepCount: guide.querySelectorAll("[data-incident-investigation-step]").length,
-							loading: guide.textContent?.includes("Loading") ?? false, fonts: document.fonts.status,
-						});
-					};
-					const onScroll = () => record("scroll");
-					const onFocus = (event: FocusEvent) => record(event.type);
-					const mutations = new MutationObserver(() => record("mutation"));
-					const resize = new ResizeObserver(() => record("resize"));
-					mutations.observe(guide, { childList: true, subtree: true, characterData: true });
-					resize.observe(guide);
-					outerScroller.addEventListener("scroll", onScroll);
-					guide.addEventListener("focusin", onFocus);
-					guide.addEventListener("focusout", onFocus);
-					window.incidentFocusDiagnostics = { events, record, cleanup: () => {
-						mutations.disconnect();
-						resize.disconnect();
-						outerScroller.removeEventListener("scroll", onScroll);
-						guide.removeEventListener("focusin", onFocus);
-						guide.removeEventListener("focusout", onFocus);
-					} };
-					record("before-focus");
-				}
 				element.focus();
 				if (outerScroller instanceof HTMLElement) outerScroller.scrollTop = 0;
 				return document.activeElement === element;
@@ -187,7 +122,6 @@ describe("Incident Cockpit", () => {
 			const investigationStepCount = await $$('[data-incident-investigation-step]').length;
 			for (let index = 0; index < investigationStepCount; index++) await browser.keys("Tab");
 			const readKeyboardResult = () => browser.execute((element: HTMLElement) => {
-				window.incidentFocusDiagnostics?.record("assertion");
 				const bounds = element.getBoundingClientRect();
 				const outerScroller = element.closest('[data-slot="scroll-area"]');
 				return {
@@ -202,9 +136,33 @@ describe("Incident Cockpit", () => {
 				return result.active && result.focusVisible && result.outerScrolled && result.visible;
 			}, { timeoutMsg: "Keyboard focus did not scroll the remediation action fully into view." });
 			expect(await readKeyboardResult()).toEqual({ active: true, focusVisible: true, outerScrolled: true, visible: true });
+
+			// Keep the natural Tab path above, then exercise nearest-edge scrolling on settled content.
+			await browser.waitUntil(() => browser.execute(() =>
+				!document.querySelector("[data-incident-guide]")?.textContent?.includes("Loading live conditions"),
+			));
+			const investigationSteps = $$("[data-incident-investigation-step]");
+			const lastInvestigationStep = await investigationSteps[(await investigationSteps.length) - 1];
+			if (!lastInvestigationStep) throw new Error("The incident guide has no investigation step to Tab from.");
+			await browser.execute((element: HTMLElement) => element.focus(), lastInvestigationStep);
+			expect(await browser.execute((element: HTMLElement) => {
+				const scroller = element.closest<HTMLElement>('[data-slot="scroll-area"]');
+				if (!scroller) return false;
+				const bounds = element.getBoundingClientRect();
+				const clipBottom = scroller.getBoundingClientRect().bottom;
+				scroller.scrollTop += bounds.top - (clipBottom - bounds.height / 2);
+				const positioned = element.getBoundingClientRect();
+				return document.activeElement !== element && positioned.top < clipBottom && positioned.bottom > clipBottom;
+			}, remediation)).toBe(true);
+			await browser.keys("Tab");
+			await browser.waitUntil(async () => {
+				const result = await readKeyboardResult();
+				return result.active && result.focusVisible && result.outerScrolled && result.visible;
+			}, { timeoutMsg: "Keyboard focus left the partially visible remediation action clipped." });
+			expect(await readKeyboardResult()).toEqual({ active: true, focusVisible: true, outerScrolled: true, visible: true });
 		} catch (error) {
 			try {
-				console.error("Incident keyboard geometry", await browser.execute(() => {
+				const geometry = await browser.execute(() => {
 					const element = document.querySelector<HTMLElement>("[data-incident-remediation]");
 					const scroller = element?.closest<HTMLElement>('[data-slot="scroll-area"]');
 					return {
@@ -216,27 +174,18 @@ describe("Incident Cockpit", () => {
 						scrollerBounds: scroller?.getBoundingClientRect().toJSON(),
 						fonts: document.fonts.status,
 					};
-				}));
+				});
+				console.error("Incident keyboard geometry", geometry);
 				const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
-				if (artifacts) await browser.saveScreenshot(join(artifacts, "incident-before-viewport-reset.png"));
+				if (artifacts) {
+					await writeFile(join(artifacts, "incident-focus-failure.json"), JSON.stringify(geometry, null, 2));
+					await browser.saveScreenshot(join(artifacts, "incident-before-viewport-reset.png"));
+				}
 			} catch (diagnosticError) {
 				console.error("Could not retain Incident failure screenshot", diagnosticError);
 			}
 			throw error;
 		} finally {
-			try {
-				const events = await browser.execute(() => {
-					const diagnostics = window.incidentFocusDiagnostics;
-					diagnostics?.record("before-viewport-reset");
-					diagnostics?.cleanup();
-					delete window.incidentFocusDiagnostics;
-					return diagnostics?.events ?? [];
-				});
-				const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
-				if (artifacts) await writeFile(join(artifacts, "incident-focus-trace.json"), JSON.stringify(events, null, 2));
-			} catch (diagnosticError) {
-				console.error("Could not retain Incident focus trace", diagnosticError);
-			}
 			await browser.sendCommandAndGetResult("Emulation.clearDeviceMetricsOverride", {});
 			await browser.setWindowSize(originalSize.width, originalSize.height);
 		}
