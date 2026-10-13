@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.4 - 2026-10-13
+### Fixed
+
+- Keep Incident keyboard focus fully visible (#547).
+
 ## 0.12.3 - 2026-10-12
 
 Includes the changes from 0.12.2, which was tagged but not published.
