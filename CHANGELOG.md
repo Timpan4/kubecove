@@ -3,6 +3,29 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.4 - 2026-10-13
+
+Includes the changes from 0.12.2 and 0.12.3, which were tagged but not published.
+
+### Added
+
+- Order resource table groups with draggable kind lanes (#541).
+
+### Fixed
+
+- Reveal sidebar navigation when visible (#533).
+- Separate sidebar navigation from expansion (#532).
+- Keep the Incident Cockpit action and its focus ring fully visible when reached by keyboard (#547).
+
+### Release
+
+- Include server version metadata in generated release PRs.
+- Create verified release commits through GitHub's API so signed-commit protections allow generated release PRs to merge.
+- Read Nix desktop and server dependencies directly from Cargo lockfiles so version bumps do not require vendor-hash updates.
+- Wait for keyboard focus scrolling to finish before checking Incident Cockpit visibility in the fast E2E release gate (#544).
+- Use the supported GitHub branch field when creating release commits (#545).
+- Exercise nearest-edge keyboard scrolling and capture Incident failures before restoring the viewport (#547).
+
 ## 0.12.3 - 2026-10-12
 
 Includes the changes from 0.12.2, which was tagged but not published.
