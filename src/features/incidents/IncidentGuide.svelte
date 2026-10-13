@@ -237,7 +237,7 @@
 									data-incident-remediation
 									variant={action.tone === "destructive" ? "destructive" : "outline"}
 									size="sm"
-									class="self-start"
+									class="self-start scroll-my-1"
 									onclick={() => onResourceInspect(action.target, "operations")}
 								>
 									Review in Actions

@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { $, $$, browser, expect } from "@wdio/globals";
 import { beforeEach, describe, it } from "mocha";
 
@@ -134,6 +136,55 @@ describe("Incident Cockpit", () => {
 				return result.active && result.focusVisible && result.outerScrolled && result.visible;
 			}, { timeoutMsg: "Keyboard focus did not scroll the remediation action fully into view." });
 			expect(await readKeyboardResult()).toEqual({ active: true, focusVisible: true, outerScrolled: true, visible: true });
+
+			// Keep the natural Tab path above, then exercise nearest-edge scrolling on settled content.
+			await browser.waitUntil(() => browser.execute(() =>
+				!document.querySelector("[data-incident-guide]")?.textContent?.includes("Loading live conditions"),
+			));
+			const investigationSteps = $$("[data-incident-investigation-step]");
+			const lastInvestigationStep = await investigationSteps[(await investigationSteps.length) - 1];
+			if (!lastInvestigationStep) throw new Error("The incident guide has no investigation step to Tab from.");
+			await browser.execute((element: HTMLElement) => element.focus(), lastInvestigationStep);
+			expect(await browser.execute((element: HTMLElement) => {
+				const scroller = element.closest<HTMLElement>('[data-slot="scroll-area"]');
+				if (!scroller) return false;
+				const bounds = element.getBoundingClientRect();
+				const clipBottom = scroller.getBoundingClientRect().bottom;
+				scroller.scrollTop += bounds.top - (clipBottom - bounds.height / 2);
+				const positioned = element.getBoundingClientRect();
+				return document.activeElement !== element && positioned.top < clipBottom && positioned.bottom > clipBottom;
+			}, remediation)).toBe(true);
+			await browser.keys("Tab");
+			await browser.waitUntil(async () => {
+				const result = await readKeyboardResult();
+				return result.active && result.focusVisible && result.outerScrolled && result.visible;
+			}, { timeoutMsg: "Keyboard focus left the partially visible remediation action clipped." });
+			expect(await readKeyboardResult()).toEqual({ active: true, focusVisible: true, outerScrolled: true, visible: true });
+		} catch (error) {
+			try {
+				const geometry = await browser.execute(() => {
+					const element = document.querySelector<HTMLElement>("[data-incident-remediation]");
+					const scroller = element?.closest<HTMLElement>('[data-slot="scroll-area"]');
+					return {
+						viewport: { width: innerWidth, height: innerHeight, clientHeight: document.documentElement.clientHeight, visualHeight: visualViewport?.height },
+						bounds: element?.getBoundingClientRect().toJSON(),
+						active: document.activeElement === element,
+						focusVisible: element?.matches(":focus-visible"),
+						scrollTop: scroller?.scrollTop,
+						scrollerBounds: scroller?.getBoundingClientRect().toJSON(),
+						fonts: document.fonts.status,
+					};
+				});
+				console.error("Incident keyboard geometry", geometry);
+				const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
+				if (artifacts) {
+					await writeFile(join(artifacts, "incident-focus-failure.json"), JSON.stringify(geometry, null, 2));
+					await browser.saveScreenshot(join(artifacts, "incident-before-viewport-reset.png"));
+				}
+			} catch (diagnosticError) {
+				console.error("Could not retain Incident failure screenshot", diagnosticError);
+			}
+			throw error;
 		} finally {
 			await browser.sendCommandAndGetResult("Emulation.clearDeviceMetricsOverride", {});
 			await browser.setWindowSize(originalSize.width, originalSize.height);
