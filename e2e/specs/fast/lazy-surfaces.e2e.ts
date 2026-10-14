@@ -14,16 +14,16 @@ describe("deferred application screens", () => {
 		const create = await $("button=Create workspace");
 		await create.waitForEnabled();
 		await create.click();
-		await $("button=Resources").waitForDisplayed();
+		await $$("button=Resources")[0].waitForDisplayed();
 		expect((await loaded()).some((name) => name.includes("/WorkspaceShell.svelte"))).toBe(true);
 		expect((await loaded()).some((name) => name.includes("/ResourceDetailPanel.svelte"))).toBe(false);
 		for (const name of ["GitOpsSurface", "HelmSurface", "RbacSurface", "IncidentSurface", "LiveSessionsSurface", "SettingsSurface"]) {
 			expect((await loaded()).some((url) => url.includes(`/${name}.svelte`))).toBe(false);
 		}
-		await $("button=Resources").click();
+		await $$("button=Resources")[0].click();
 		await $('input[aria-label="Search resources"]').setValue("payments-api");
 		await browser.execute(() => performance.clearResourceTimings());
-		await $('button[aria-label="Open resource payments-api"]').click();
+		await $('//tr[td[normalize-space()="Deployment"]]//button[@aria-label="Open resource payments-api"]').click();
 		await $('[role="tab"]=YAML').waitForDisplayed();
 		await $('[role="tab"]=YAML').click();
 		await expect($("body")).toHaveText(expect.stringContaining("apiVersion:"));
@@ -51,7 +51,7 @@ describe("deferred application screens", () => {
 			await expect($("body")).toHaveText(expect.stringContaining("Could not load workspace."));
 			await browser.sendCommandAndGetResult("Network.setBlockedURLs", { urls: [] });
 			await $("button=Reload to retry workspace").click();
-			await $("button=Resources").waitForDisplayed();
+			await $$("button=Resources")[0].waitForDisplayed();
 			await expect($("body")).toHaveText(expect.stringContaining("Retry workspace"));
 		} finally {
 			await browser.sendCommandAndGetResult("Network.setBlockedURLs", { urls: [] });

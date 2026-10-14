@@ -111,7 +111,7 @@ describe("Incident Cockpit", () => {
 			expect(started).toBe(true);
 
 			await browser.keys("Tab");
-			const investigationStep = await $("[data-incident-investigation-step]");
+			const investigationStep = await $$("[data-incident-investigation-step]")[0];
 			expect(
 				await browser.execute(
 					(element: HTMLElement) => document.activeElement === element && element.matches(":focus-visible"),
