@@ -9,6 +9,7 @@
 		RefreshCw,
 		Search,
 		SlidersHorizontal,
+		Wrench,
 	} from "lucide-svelte";
 	import {
 		Badge,
@@ -37,6 +38,7 @@
 	import UpdatesSettings from "./UpdatesSettings.svelte";
 	import { settingsStore } from "@/lib/settings-store";
 	import ResourceKindOrderSettings from "./ResourceKindOrderSettings.svelte";
+	import AdvancedActionsSettings from "./AdvancedActionsSettings.svelte";
 
 	type SettingsCategoryId =
 		| "general"
@@ -47,6 +49,7 @@
 		| "updates"
 		| "diagnostics"
 		| "argo"
+		| "advanced"
 		| "remote";
 	type SettingsRowMeta = { title: string; description: string };
 
@@ -177,6 +180,14 @@
 		},
 	} satisfies Record<string, SettingsRowMeta>;
 
+	const ADVANCED_ROWS = {
+		skipChangeReview: {
+			title: "Skip change review",
+			description:
+				"Successful dry-runs apply without showing a diff, across every context including production. Dry-run remains required, and deletes always ask.",
+		},
+	} satisfies Record<string, SettingsRowMeta>;
+
 	const SERVER_INFO_ROW: SettingsRowMeta = {
 		title: "Server information",
 		description: "KubeCove server version and active credential storage on this host.",
@@ -216,6 +227,7 @@
 		updates: !isBrowserRuntime() ? Object.values(UPDATES_ROWS) : [],
 		diagnostics: DIAGNOSTICS_ROWS,
 		argo: [{ title: "Argo CD connection", description: "Connect to Argo CD without storing credentials in settings." }],
+		advanced: Object.values(ADVANCED_ROWS),
 		remote: !isBrowserRuntime() && isTauriRuntime()
 			? [{ title: "Remote KubeCove server", description: "Connect this desktop to a headless KubeCove host." }]
 			: [],
@@ -230,6 +242,7 @@
 		...(!isBrowserRuntime() ? [{ id: "updates" as const, label: "Updates" }] : []),
 		{ id: "diagnostics", label: "Diagnostics" },
 		{ id: "argo", label: "Argo CD" },
+		{ id: "advanced", label: "Advanced" },
 		...(!isBrowserRuntime() && isTauriRuntime() ? [{ id: "remote" as const, label: "Remote server" }] : []),
 	];
 
@@ -357,7 +370,9 @@
 					{:else if category.id === "yaml"}<FileCode2 data-icon="inline-start" />
 					{:else if category.id === "kubeconfig"}<FolderCog data-icon="inline-start" />
 					{:else if category.id === "updates"}<RefreshCw data-icon="inline-start" />
-					{:else if category.id === "diagnostics"}<Bug data-icon="inline-start" />{:else}<Cable data-icon="inline-start" />{/if}
+					{:else if category.id === "diagnostics"}<Bug data-icon="inline-start" />
+					{:else if category.id === "advanced"}<Wrench data-icon="inline-start" />
+					{:else}<Cable data-icon="inline-start" />{/if}
 					<span>{category.label}</span>
 				</Button>
 			{/each}
@@ -567,6 +582,10 @@
 
 		{#if showCategory("argo")}
 			<ArgoConnectionSettings {clusterContext} {workspaceId} {kubeconfigEnvVar} />
+		{/if}
+
+		{#if showCategory("advanced")}
+			<AdvancedActionsSettings />
 		{/if}
 
 		{#if showCategory("remote") && isTauriRuntime()}

@@ -14,6 +14,7 @@ mod namespace;
 mod operations;
 mod rbac;
 mod resource;
+mod resource_actions;
 mod sessions;
 mod streams;
 mod usage;
@@ -79,6 +80,11 @@ pub use resource::{
     ResourceScopeFailure, ResourceScopeResult, ResourceSummary, ResourceTopology, TopologyEdge,
     TopologyNode, TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
     YamlApplyTarget, YamlEncoding, YamlViewMode,
+};
+pub use resource_actions::{
+    ResourceActionContainer, ResourceActionEdits, ResourceActionEnv, ResourceActionKind,
+    ResourceActionPermission, ResourceActionPreview, ResourceActionRequest, ResourceActionRevision,
+    ResourceActionState, ResourceActionStateRequest, ResourceContainerEdit, ResourceEnvEdit,
 };
 pub use sessions::{
     LiveSessionCleanupRequest, LiveSessionCleanupResult, PodExecConfirmation,
