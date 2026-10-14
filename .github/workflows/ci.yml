@@ -6,6 +6,8 @@ on:
       - main
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
+  # The Nix lock refresh workflow dispatches CI on its pull request branch.
+  workflow_dispatch:
 
 permissions:
   contents: read
