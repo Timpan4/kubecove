@@ -125,7 +125,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v5.4.0
+        uses: CodSpeedHQ/action@v5.4.2
         with:
           mode: simulation
           run: bunx vitest bench --run
@@ -173,7 +173,7 @@ jobs:
         run: cargo codspeed build --features bench-support --bench backend_hot_paths --locked
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v5.4.0
+        uses: CodSpeedHQ/action@v5.4.2
         with:
           mode: simulation
           run: cd src-tauri && cargo codspeed run --bench backend_hot_paths
