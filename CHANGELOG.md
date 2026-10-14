@@ -3,6 +3,15 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.5 - 2026-10-14
+### Added
+
+- Redesign resource Actions tab with batched dry-run review (#554).
+
+### Fixed
+
+- Open resource details from table rows (#551).
+
 ## 0.12.4 - 2026-10-13
 
 Includes the changes from 0.12.2 and 0.12.3, which were tagged but not published.
