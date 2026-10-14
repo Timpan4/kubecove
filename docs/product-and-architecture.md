@@ -11,7 +11,7 @@ The product is inspection-first. Its governed exceptions are:
 - Pod and selector-backed Service port forwarding;
 - exact-Pod exec;
 - selected-resource YAML apply;
-- narrow scale, rollout-restart, and delete actions;
+- selected-resource Actions for Deployment, StatefulSet, DaemonSet, Pod, and ConfigMap, as defined by [ADR 0024](decisions/0024-resource-actions-review.md);
 - reviewed Argo CD refresh and sync operations.
 
 These are typed workflows with visible targets. KubeCove is not a free-form mutation console or a wrapper around arbitrary shell commands.
@@ -57,7 +57,12 @@ New operation families require an ADR. Existing contracts are defined by:
 - [ADR 0004](decisions/0004-guarded-cluster-operations.md) for scale, restart, and delete;
 - [ADR 0005](decisions/0005-guarded-pod-exec-sessions.md) for Pod exec;
 - [ADR 0006](decisions/0006-guarded-selected-resource-yaml-apply.md) for YAML apply;
-- [ADR 0013](decisions/0013-argocd-connected-inspection-and-operations.md) for Argo CD inspection and operations.
+- [ADR 0013](decisions/0013-argocd-connected-inspection-and-operations.md) for Argo CD inspection and operations;
+- [ADR 0024](decisions/0024-resource-actions-review.md) for selected-resource Actions and change review.
+
+Selected-resource Actions use a typed allowlist. Deployment supports replica changes, pause or resume, restart, rollback to an owned ReplicaSet revision, container edits, metadata edits, and exact deletion. StatefulSet supports replica changes, restart, container and metadata edits, and exact deletion. DaemonSet supports restart, container and metadata edits, and exact deletion. Pod and ConfigMap support metadata edits and exact deletion. Container edits change a named regular container's image, literal environment variables, or resource requests and limits. Metadata edits change the selected object's labels and annotations, not its Pod template or selector. Dynamic resources and Secret edits are outside this allowlist.
+
+Pending edits for one object are reviewed together as one atomic patch. Rust checks permissions and asks the API server for a dry-run; the review compares the current YAML with the API-server-produced result. Execution requires the reviewed object's UID and resourceVersion to remain current, then repeats the dry-run and applies with optimistic concurrency or delete preconditions. A failed dry-run never proceeds. Settings > Advanced can skip the successful change-review screen after a warning; it does not skip dry-run, and deletion always requires typing the resource name. The selected-resource YAML editor retains its separate second **Apply** step.
 
 ## Trust boundary
 

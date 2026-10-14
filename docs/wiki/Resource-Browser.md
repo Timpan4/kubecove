@@ -39,6 +39,24 @@ Use the status menu in the Resource browser header to check live-watch state and
 
 Custom Resources appear when their discovery and loading setting is enabled. KubeCove discovers the kinds exposed by the selected cluster rather than assuming every cluster has the same APIs.
 
+## Use resource actions
+
+The **Actions** tab exposes a limited set of guarded operations for selected resources:
+
+| Kind | Supported actions |
+| --- | --- |
+| Deployment | Change replicas, pause or resume, restart, roll back to an owned ReplicaSet revision, edit containers or metadata, delete |
+| StatefulSet | Change replicas, restart, edit containers or metadata, delete |
+| DaemonSet | Restart, edit containers or metadata, delete |
+| Pod | Edit metadata, delete |
+| ConfigMap | Edit metadata, delete |
+
+Container edits target a regular container by name. They can change its image, literal environment variables, and resource requests or limits. Metadata edits change labels and annotations on the selected object, not a workload's Pod template or selector. Other kinds and Secret edits are not part of this Actions allowlist.
+
+Actions remain visible when Kubernetes permission is denied or cannot be determined, but the unavailable action is locked and shows the required permission. You can collect several edits for one object and review them as one atomic change. By default, KubeCove sends a server-side dry-run and shows a diff between the current YAML and the API server's result before applying. If the resource UID or resource version changes after review, execution is rejected as stale. A failed dry-run cannot be applied.
+
+In global **Settings > Advanced**, **Skip change review** skips the successful review screen only, after an explicit warning. Server-side dry-run still runs, and exact deletion always requires typing the resource name. The selected-resource YAML editor keeps its separate second **Apply** step.
+
 ## Understand loading and empty states
 
 | Message | Meaning and next check |

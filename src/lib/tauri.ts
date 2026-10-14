@@ -27,6 +27,10 @@ import type {
 	DeleteResourceRequest,
 	ClusterOperationPreview,
 	ClusterOperationResult,
+	ResourceActionPreview,
+	ResourceActionRequest,
+	ResourceActionStateRequest,
+	ResourceActionState,
 	KubernetesYamlLintResult,
 	KubeconfigSourcesSummary,
 	CancellableRequest,
@@ -469,6 +473,27 @@ export async function deleteResource(
 	request: DeleteResourceRequest,
 ): Promise<ClusterOperationResult> {
 	return client.invoke<ClusterOperationResult>("delete_resource", { request });
+}
+
+export async function getResourceActionState(
+	client: TauriClient,
+	request: ResourceActionStateRequest,
+): Promise<ResourceActionState> {
+	return client.invoke<ResourceActionState>("get_resource_action_state", { request });
+}
+
+export async function previewResourceAction(
+	client: TauriClient,
+	request: ResourceActionRequest,
+): Promise<ResourceActionPreview> {
+	return client.invoke<ResourceActionPreview>("preview_resource_action", { request });
+}
+
+export async function executeResourceAction(
+	client: TauriClient,
+	request: ResourceActionRequest,
+): Promise<ClusterOperationResult> {
+	return client.invoke<ClusterOperationResult>("execute_resource_action", { request });
 }
 
 export async function listResourceEvents(

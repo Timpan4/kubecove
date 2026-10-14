@@ -5,7 +5,7 @@ import type {
 } from "@/lib/types";
 import { findResourceIndex, looseResourceKey } from "@/lib/resource-identity";
 import { incidentState } from "./model";
-import { isBuiltinOperationTarget } from "../resource-detail/operations-model";
+import { isBuiltinOperationTarget } from "../resource-detail/resource-actions-model";
 
 export type IncidentEnrichmentState = "idle" | "loading" | "ready" | "error";
 

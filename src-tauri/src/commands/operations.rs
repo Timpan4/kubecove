@@ -128,7 +128,7 @@ pub async fn delete_resource(
 
 /// Previews must never persist: every preview request goes to the API server
 /// with `dryRun=All`. Centralized here so tests can pin the behavior.
-fn preview_patch_params() -> PatchParams {
+pub(super) fn preview_patch_params() -> PatchParams {
     PatchParams::default().dry_run()
 }
 
@@ -136,7 +136,7 @@ fn preview_delete_params() -> DeleteParams {
     DeleteParams::default().dry_run()
 }
 
-async fn operation_client_for(
+pub(super) async fn operation_client_for(
     target: &ClusterOperationTarget,
     kubeconfig_env_var: Option<String>,
 ) -> Result<kube::Client, AppError> {
@@ -146,7 +146,7 @@ async fn operation_client_for(
         .await
 }
 
-async fn client_for(
+pub(super) async fn client_for(
     target: &ClusterOperationTarget,
     kubeconfig_env_var: Option<String>,
 ) -> Result<kube::Client, AppError> {
