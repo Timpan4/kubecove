@@ -96,7 +96,7 @@
     "typescript": "7.0.2",
     "vite": "8.3.4",
     "vitest": "4.1.11",
-    "webdriverio": "9.32.0"
+    "webdriverio": "10.0.2"
   },
   "overrides": {
     "@codemirror/state": "6.7.6",
