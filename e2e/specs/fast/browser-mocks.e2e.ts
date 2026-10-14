@@ -34,6 +34,42 @@ describe("browser mock inspection", () => {
 		await expect($("body")).toHaveText(expect.stringContaining("payments-api"));
 	});
 
+	it("opens resource details from row cells and keeps row controls independent", async () => {
+		await $("button=Resources").click();
+		const name = "payments-api-7d9c9b7f8d-k2r9p";
+		const rowSelector = `tr:has(button[aria-label="Open resource ${name}"])`;
+		const closeSelector = 'button[aria-label="Close resource details"]';
+		const cellCount = await $(rowSelector).$$("td").length;
+
+		for (let index = 0; index < cellCount; index++) {
+			const cell = await $(rowSelector).$(`td:nth-child(${index + 1})`);
+			await cell.scrollIntoView({ block: "center", inline: "center" });
+			const { height } = await cell.getSize();
+			await cell.click({ y: 4 - Math.floor(height / 2) });
+			await expect($(closeSelector)).toBeDisplayed();
+			await expect($(rowSelector)).toHaveAttribute("data-resource-selected", "true");
+			await $(closeSelector).click();
+		}
+
+		const row = await $(rowSelector);
+		await row.$(`button[aria-label="Copy resource name: ${name}"]`).click();
+		await expect($(closeSelector)).not.toExist();
+		await row.$('button[data-slot="tooltip-trigger"]:not([aria-label])').click();
+		await expect($(closeSelector)).not.toExist();
+		await row.$(`button[aria-label="Pin Pod ${name}"]`).click();
+		await expect($(closeSelector)).not.toExist();
+		await expect(row.$(`button[aria-label="Unpin Pod ${name}"]`)).toBeDisplayed();
+		await row.$(`button[aria-label="Unpin Pod ${name}"]`).click();
+
+		for (const key of ["Enter", "Space"]) {
+			const open = await $(rowSelector).$(`button[aria-label="Open resource ${name}"]`);
+			await browser.execute((element: HTMLElement) => element.focus(), open);
+			await browser.keys(key);
+			await expect($(closeSelector)).toBeDisplayed();
+			await $(closeSelector).click();
+		}
+	});
+
 	it("lets page scrolling bypass the resource graph", async () => {
 		const originalSize = await browser.getWindowSize();
 		await browser.sendCommandAndGetResult("Emulation.setEmulatedMedia", {
