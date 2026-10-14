@@ -61,12 +61,14 @@ export interface SettingsState {
 	kubeconfigSourceKey: string;
 	kubeconfigSourceLabel: string;
 	showKubeconfigSourceLabels: boolean;
+	skipChangeReview: boolean;
 	setShowExactTimestamps: (show: boolean) => void;
 	setShowUsageFooter: (show: boolean) => void;
 	setShowOwnershipMapByDefault: (show: boolean) => void;
 	setExpandTimelineByDefault: (expand: boolean) => void;
 	setShowFullTopologyOnSelection: (show: boolean) => void;
 	setShowUnavailableGitOpsProviders: (show: boolean) => void;
+	setSkipChangeReview: (skip: boolean) => void;
 	setRedactSecrets: (redact: boolean) => void;
 	setArgoProfiles: (profiles: SavedArgoProfile[]) => void;
 	setArgoConnectionPreference: (workspaceId: string, preference: ArgoConnectionPreference) => void;
@@ -144,6 +146,7 @@ export function mergePersistedSettings<Persisted>(
 			booleanValue(saved.showFullTopologyOnSelection, current.showFullTopologyOnSelection),
 		showUnavailableGitOpsProviders:
 			booleanValue(saved.showUnavailableGitOpsProviders, current.showUnavailableGitOpsProviders),
+		skipChangeReview: booleanValue(saved.skipChangeReview, current.skipChangeReview),
 		redactSecrets: booleanValue(saved.redactSecrets, current.redactSecrets),
 		argoProfiles: Array.isArray(saved.argoProfiles)
 			? saved.argoProfiles.flatMap((profile) => {
@@ -286,6 +289,7 @@ export function partializeSettings(state: SettingsState): Partial<SettingsState>
 		showOwnershipMapByDefault: state.showOwnershipMapByDefault,
 		showFullTopologyOnSelection: state.showFullTopologyOnSelection,
 		showUnavailableGitOpsProviders: state.showUnavailableGitOpsProviders,
+		skipChangeReview: state.skipChangeReview,
 		redactSecrets: state.redactSecrets,
 		argoProfiles: state.argoProfiles,
 		argoConnectionPreferences: state.argoConnectionPreferences,
@@ -315,6 +319,7 @@ export const useSettingsState = createStore<SettingsState>()(
 			showOwnershipMapByDefault: true,
 			showFullTopologyOnSelection: false,
 			showUnavailableGitOpsProviders: false,
+			skipChangeReview: false,
 			redactSecrets: true,
 			argoProfiles: [],
 			argoConnectionPreferences: {},
@@ -346,6 +351,7 @@ export const useSettingsState = createStore<SettingsState>()(
 				set({ showFullTopologyOnSelection: show }),
 			setShowUnavailableGitOpsProviders: (show: boolean) =>
 				set({ showUnavailableGitOpsProviders: show }),
+			setSkipChangeReview: (skip: boolean) => set({ skipChangeReview: skip }),
 			setRedactSecrets: (redactSecrets: boolean) => set({ redactSecrets }),
 			setArgoProfiles: (argoProfiles: SavedArgoProfile[]) => set({ argoProfiles }),
 			setArgoConnectionPreference: (workspaceId, preference) =>

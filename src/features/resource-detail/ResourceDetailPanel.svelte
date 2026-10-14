@@ -65,7 +65,7 @@
 	import DeploymentRevisionsTab from "./DeploymentRevisionsTab.svelte";
 	import EventsTab from "./EventsTab.svelte";
 	import PortForwardTab from "./PortForwardTab.svelte";
-	import OperationsTab from "./OperationsTab.svelte";
+	import ResourceActionsTab from "./ResourceActionsTab.svelte";
 	import ResourceLogsPane from "./ResourceLogsPane.svelte";
 	import ResourceYamlPane from "./ResourceYamlPane.svelte";
 	import { sortIncidentEvents } from "./incident-events";
@@ -759,6 +759,6 @@
 		</TabsContent>
 	{/if}
 	<TabsContent value="operations">
-		<OperationsTab {client} resource={detailResource} {kubeconfigSourceKey} />
+		<ResourceActionsTab {client} resource={detailResource} {kubeconfigSourceKey} />
 	</TabsContent>
 </Tabs>

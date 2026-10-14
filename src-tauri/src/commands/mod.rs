@@ -24,6 +24,7 @@ mod rbac;
 mod rbac_review;
 #[cfg(feature = "desktop")]
 pub mod remote;
+mod resource_actions;
 mod resources;
 pub mod sessions;
 mod streams;
@@ -89,6 +90,9 @@ pub use rbac_review::review_rbac_access;
 pub use remote::{
     remote_connect, remote_connection_status, remote_disconnect, remote_invoke,
     remote_subscribe_channel, remote_unsubscribe_channel, RemoteConnectionStore,
+};
+pub use resource_actions::{
+    execute_resource_action, get_resource_action_state, preview_resource_action,
 };
 pub use resources::{
     apply_yaml, dynamic_resource_details_from, dynamic_resources_summary_from,

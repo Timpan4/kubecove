@@ -4,8 +4,9 @@ use kubecove_lib::{
     commands,
     models::{
         AppError, DeleteResourceRequest, DiscoveredResourceKind, FluxResourceKind,
-        RbacAccessReviewRequest, ResourceListRequest, RolloutRestartRequest, ScaleWorkloadRequest,
-        YamlApplyRequest, YamlEncoding, YamlViewMode,
+        RbacAccessReviewRequest, ResourceActionRequest, ResourceActionStateRequest,
+        ResourceListRequest, RolloutRestartRequest, ScaleWorkloadRequest, YamlApplyRequest,
+        YamlEncoding, YamlViewMode,
     },
     runtime::State,
 };
@@ -37,6 +38,9 @@ command_table! { state, _channels, args;
     rollout_restart => commands::rollout_restart(arg::<RolloutRestartRequest>(args, "request")?).await?,
     preview_delete_resource => commands::preview_delete_resource(arg::<DeleteResourceRequest>(args, "request")?).await?,
     delete_resource => commands::delete_resource(arg::<DeleteResourceRequest>(args, "request")?).await?,
+    get_resource_action_state => commands::get_resource_action_state(arg::<ResourceActionStateRequest>(args, "request")?).await?,
+    preview_resource_action => commands::preview_resource_action(arg::<ResourceActionRequest>(args, "request")?).await?,
+    execute_resource_action => commands::execute_resource_action(arg::<ResourceActionRequest>(args, "request")?).await?,
     detect_flux => commands::detect_flux(arg::<String>(args, "clusterContext")?, arg::<Option<String>>(args, "kubeconfigEnvVar")?).await?,
     list_flux_resources => commands::list_flux_resources(arg::<String>(args, "clusterContext")?, arg::<FluxResourceKind>(args, "resourceKind")?, arg::<Option<String>>(args, "kubeconfigEnvVar")?).await?,
     get_flux_resource_details => commands::get_flux_resource_details(arg::<String>(args, "clusterContext")?, arg::<FluxResourceKind>(args, "resourceKind")?, arg::<String>(args, "name")?, arg::<Option<String>>(args, "namespace")?, arg::<Option<String>>(args, "kubeconfigEnvVar")?, arg::<Option<YamlViewMode>>(args, "yamlViewMode")?, arg::<Option<YamlEncoding>>(args, "yamlEncoding")?).await?,
