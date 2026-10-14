@@ -169,7 +169,7 @@ describe("resource Actions review", () => {
 		const imageRow = await $('[data-resource-action="image"]');
 		await imageRow.$("button=Edit").click();
 		await imageRow.$('input[aria-label="Container image"]').setValue("ghcr.io/example/payments-api:skipped");
-		const outcome = await browser.executeAsync((done) => {
+		const outcome = await browser.execute(() => new Promise<{ dialogSeen: boolean; missingCheckButton?: boolean }>((done) => {
 			let dialogSeen = false;
 			const observer = new MutationObserver(() => {
 				if (document.querySelector('[role="dialog"]')) dialogSeen = true;
@@ -190,7 +190,7 @@ describe("resource Actions review", () => {
 				return;
 			}
 			checkChanges.click();
-		});
+		}));
 		expect(outcome).toEqual({ dialogSeen: false });
 		await expect($('[role="dialog"]')).not.toBeDisplayed();
 		await expect(imageRow).not.toHaveText(expect.stringContaining("Pending"));
