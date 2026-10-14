@@ -1279,7 +1279,11 @@
 											{@const rowSelected = row === selectedPageRow}
 											<TableRow
 												data-resource-selected={rowSelected ? "true" : undefined}
-												class={cnfast(ROW_CLASS, rowSelected && SELECTED_ROW_CLASS)}
+												class={cnfast(ROW_CLASS, "cursor-pointer", rowSelected && SELECTED_ROW_CLASS)}
+												onclick={(event: MouseEvent) => {
+													if (event.target instanceof Element && event.target.closest("button")) return;
+													selectResource(row);
+												}}
 											>
 												<TableCell class="font-medium">
 													<CopyableText
