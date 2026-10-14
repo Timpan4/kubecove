@@ -23,9 +23,9 @@ describe("resource Actions review", () => {
 		const create = await $("button=Create workspace");
 		await create.waitForEnabled();
 		await create.click();
-		await $("button=Resources").click();
+		await $$("button=Resources")[0].click();
 		await $('input[aria-label="Search resources"]').setValue("payments-api");
-		await $('button[aria-label="Open resource payments-api"]').click();
+		await $('//tr[td[normalize-space()="Deployment"]]//button[@aria-label="Open resource payments-api"]').click();
 		await $('[role="tab"]=Actions').click();
 	});
 
@@ -36,9 +36,9 @@ describe("resource Actions review", () => {
 		const warning = await $('[role="alert"]');
 		await warning.$("button=Skip review").click();
 		await $("button=Back to app").click();
-		await $("button=Resources").click();
+		await $$("button=Resources")[0].click();
 		await $('input[aria-label="Search resources"]').setValue("payments-api");
-		await $('button[aria-label="Open resource payments-api"]').click();
+		await $('//tr[td[normalize-space()="Deployment"]]//button[@aria-label="Open resource payments-api"]').click();
 		await $('[role="tab"]=Actions').click();
 	}
 
@@ -65,7 +65,7 @@ describe("resource Actions review", () => {
 		await resourcesRow.$('input[aria-label="Request value api cpu"]').setValue("100m");
 		await resourcesRow.$('input[aria-label="New request name api"]').setValue("ephemeral-storage");
 		await resourcesRow.$('input[aria-label="New request value api"]').setValue("1Gi");
-		await resourcesRow.$("button=Add").click();
+		await resourcesRow.$$("button=Add")[0].click();
 		await expect(resourcesRow).toHaveText(expect.stringContaining("Pending"));
 
 		const labelsRow = await $('[data-resource-action="labels"]');
@@ -111,9 +111,9 @@ describe("resource Actions review", () => {
 		await expect(warning).toBeDisplayed();
 		await warning.$("button=Skip review").click();
 		await $("button=Back to app").click();
-		await $("button=Resources").click();
+		await $$("button=Resources")[0].click();
 		await $('input[aria-label="Search resources"]').setValue("payments-api");
-		await $('button[aria-label="Open resource payments-api"]').click();
+		await $('//tr[td[normalize-space()="Deployment"]]//button[@aria-label="Open resource payments-api"]').click();
 		await $('[role="tab"]=Actions').click();
 
 		await $('[data-resource-action="delete"]').$("button=Delete").click();
@@ -169,7 +169,7 @@ describe("resource Actions review", () => {
 		const imageRow = await $('[data-resource-action="image"]');
 		await imageRow.$("button=Edit").click();
 		await imageRow.$('input[aria-label="Container image"]').setValue("ghcr.io/example/payments-api:skipped");
-		const outcome = await browser.executeAsync((done) => {
+		const outcome = await browser.execute(() => new Promise<{ dialogSeen: boolean; missingCheckButton?: boolean }>((done) => {
 			let dialogSeen = false;
 			const observer = new MutationObserver(() => {
 				if (document.querySelector('[role="dialog"]')) dialogSeen = true;
@@ -190,7 +190,7 @@ describe("resource Actions review", () => {
 				return;
 			}
 			checkChanges.click();
-		});
+		}));
 		expect(outcome).toEqual({ dialogSeen: false });
 		await expect($('[role="dialog"]')).not.toBeDisplayed();
 		await expect(imageRow).not.toHaveText(expect.stringContaining("Pending"));

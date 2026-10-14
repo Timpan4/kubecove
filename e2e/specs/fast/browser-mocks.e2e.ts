@@ -15,12 +15,12 @@ describe("browser mock inspection", () => {
 	it("shows deterministic mock context and resources", async () => {
 		await expect(browser).toHaveTitle(expect.stringContaining("KubeCove"));
 		await expect($("body")).toHaveText(expect.stringContaining("mock-dev"));
-		await $("button=Resources").click();
+		await $$("button=Resources")[0].click();
 		await expect($("body")).toHaveText(expect.stringContaining("payments-api"));
 	});
 
 	it("refreshes the current resource view without clearing its search", async () => {
-		await $("button=Resources").click();
+		await $$("button=Resources")[0].click();
 		const search = await $('input[aria-label="Search resources"]');
 		await search.setValue("payments-api");
 		await $('button[aria-label="Live updates and refresh options"]').click();
@@ -35,7 +35,7 @@ describe("browser mock inspection", () => {
 	});
 
 	it("opens resource details from row cells and keeps row controls independent", async () => {
-		await $("button=Resources").click();
+		await $$("button=Resources")[0].click();
 		const name = "payments-api-7d9c9b7f8d-k2r9p";
 		const rowSelector = `tr:has(button[aria-label="Open resource ${name}"])`;
 		const closeSelector = 'button[aria-label="Close resource details"]';
@@ -82,7 +82,7 @@ describe("browser mock inspection", () => {
 					window.matchMedia("(prefers-reduced-motion: reduce)").matches,
 				),
 			).toBe(true);
-			await $("button=Resources").click();
+			await $$("button=Resources")[0].click();
 			const graph = await $(".svelte-flow");
 			await graph.waitForDisplayed();
 

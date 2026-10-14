@@ -13,9 +13,9 @@ describe("YAML apply review", () => {
 	});
 
 	it("does not enable Apply for a draft edited while its dry run was in flight", async () => {
-		await $("button=Resources").click();
+		await $$("button=Resources")[0].click();
 		await $('input[aria-label="Search resources"]').setValue("payments-api");
-		await $('button[aria-label="Open resource payments-api"]').click();
+		await $('//tr[td[normalize-space()="Deployment"]]//button[@aria-label="Open resource payments-api"]').click();
 		await $('[role="tab"]=YAML').click();
 		await $("button=Edit YAML").click();
 		const editor = await $('.cm-content[contenteditable="true"]');
