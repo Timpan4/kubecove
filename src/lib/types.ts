@@ -151,36 +151,25 @@ export interface KubernetesYamlLintResult {
 	notes: KubernetesYamlLintStatusNote[];
 }
 
-export interface ClusterOperationTarget {
-	clusterContext: string;
-	kind: string;
-	name: string;
-	apiVersion?: string;
-	namespace?: string | null;
-}
-
-export interface ScaleWorkloadRequest extends ClusterOperationTarget {
-	replicas: number;
-	confirmed: boolean;
-	kubeconfigEnvVar?: string;
-}
-
-export interface RolloutRestartRequest extends ClusterOperationTarget {
-	confirmed: boolean;
-	kubeconfigEnvVar?: string;
-}
-
-export interface DeleteResourceRequest extends ClusterOperationTarget {
-	confirmed: boolean;
-	kubeconfigEnvVar?: string;
-}
-
-export interface ClusterOperationPreview {
-	target: ClusterOperationTarget;
-	effect: string;
-}
-
-export type ClusterOperationResult = ClusterOperationPreview;
+export type {
+	ClusterOperationPreview,
+	ClusterOperationResult,
+	ClusterOperationTarget,
+	DeleteResourceRequest,
+	ResourceActionContainer,
+	ResourceActionEdits,
+	ResourceActionKind,
+	ResourceActionPermission,
+	ResourceActionPreview,
+	ResourceActionRequest,
+	ResourceActionRevision,
+	ResourceActionState,
+	ResourceActionStateRequest,
+	ResourceContainerEdit,
+	ResourceEnvEdit,
+	RolloutRestartRequest,
+	ScaleWorkloadRequest,
+} from "./operations-types";
 
 export type ResourceHealth =
 	| "healthy"
