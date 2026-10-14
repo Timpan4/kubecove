@@ -64,6 +64,9 @@ jobs:
           token: ${{ secrets.NIX_LOCK_REFRESH_TOKEN || github.token }}
           branch: chore/nix-lock-refresh
           delete-branch: true
+          # The main ruleset requires signed commits; unsigned bot commits
+          # block the merge.
+          sign-commits: true
           commit-message: "chore(nix): refresh flake.lock and bun.nix"
           title: "chore(nix): refresh flake.lock and bun.nix"
           body: |
