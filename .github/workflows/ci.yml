@@ -121,8 +121,13 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            echo "No available base commit; checking the entire tree for whitespace."
-            BASE_SHA=$(git hash-object -w -t tree /dev/null)
+            # Dispatched runs have no base; compare with main when it is available.
+            if BASE_SHA=$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null); then
+              echo "No available base commit; checking changes since main for whitespace."
+            else
+              echo "No available base commit; checking the entire tree for whitespace."
+              BASE_SHA=$(git hash-object -w -t tree /dev/null)
+            fi
           fi
           git diff --check "${BASE_SHA}" "${HEAD_SHA}"
 
