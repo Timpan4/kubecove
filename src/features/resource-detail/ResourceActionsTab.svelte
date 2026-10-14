@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { useQueryClient } from "@tanstack/svelte-query";
+	import { untrack } from "svelte";
 	import {
 		Button,
 		Dialog,
@@ -139,8 +140,10 @@
 		actionResult = null;
 		inlineStatus = null;
 		void identity;
-		if (rows.length > 0) void loadState(currentGeneration);
-		else loading = false;
+		untrack(() => {
+			if (rows.length > 0) void loadState(currentGeneration);
+			else loading = false;
+		});
 		return () => {
 			generation += 1;
 		};
@@ -583,7 +586,7 @@
 										<label class="grid max-w-xl gap-1 text-xs text-muted-foreground">Container image<Input aria-label="Container image" value={containerEdit(container.name).image ?? container.image} oninput={(event: Event & { currentTarget: HTMLInputElement }) => setContainerEdit(container.name, (current) => ({ ...current, image: event.currentTarget.value }))} /></label>
 									{:else if row.id === "environment"}
 										<div class="space-y-2">
-											{#each displayedEnvironment(container.name) as variable (variable.name)}
+											{#each displayedEnvironment(container.name) as variable, index (variable.isNew ? `new:${index}` : variable.name)}
 												<div class="grid gap-2 sm:grid-cols-[minmax(8rem,0.7fr)_minmax(10rem,1.3fr)_auto]">
 													<Input aria-label={`Environment name ${container.name} ${variable.name}`} value={variable.name} disabled={!variable.isNew} oninput={(event: Event & { currentTarget: HTMLInputElement }) => renameEnvironment(container.name, variable.name, event.currentTarget.value)} />
 													<Input aria-label={`Environment value ${container.name} ${variable.name}`} type="text" placeholder={variable.referenced ? "Value from Secret or ConfigMap" : "Value"} value={variable.value} disabled={variable.removed} oninput={(event: Event & { currentTarget: HTMLInputElement }) => setEnvironment(container.name, variable.name, event.currentTarget.value)} />
