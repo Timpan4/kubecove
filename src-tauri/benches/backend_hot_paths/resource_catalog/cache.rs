@@ -1,6 +1,7 @@
 use super::*;
 
 // R11, folded R12/R14/R15: ready cache payload copies and watch-dirty replacement.
+// `bench_refs` keeps fixture teardown (store, seed rows, topology, index) out of timing.
 mod cache_ready_resource_payload_hit_10000 {
     use super::*;
     #[codspeed_divan_compat::bench]
@@ -15,7 +16,7 @@ mod cache_ready_resource_payload_hit_10000 {
         );
         bencher
             .with_inputs(resource_cache_fixture)
-            .bench_values(|fixture| {
+            .bench_refs(|fixture| {
                 black_box(fixture.ready_resource_hit().expect("ready resource hit"))
             });
     }
@@ -40,7 +41,7 @@ mod cache_all_namespace_to_named_scope_100 {
         );
         bencher
             .with_inputs(resource_cache_fixture)
-            .bench_values(|fixture| {
+            .bench_refs(|fixture| {
                 black_box(
                     fixture
                         .named_scope_from_all_hit()
@@ -63,7 +64,7 @@ mod cache_topology_payload_hit {
         );
         bencher
             .with_inputs(resource_cache_fixture)
-            .bench_values(|fixture| black_box(fixture.topology_hit().expect("topology cache hit")));
+            .bench_refs(|fixture| black_box(fixture.topology_hit().expect("topology cache hit")));
     }
 }
 
@@ -77,7 +78,7 @@ mod cache_flux_index_payload_hit {
         );
         bencher
             .with_inputs(resource_cache_fixture)
-            .bench_values(|fixture| black_box(fixture.flux_index_hit().expect("Flux cache hit")));
+            .bench_refs(|fixture| black_box(fixture.flux_index_hit().expect("Flux cache hit")));
     }
 }
 
@@ -95,7 +96,7 @@ mod cache_watch_dirty_replacement_10000 {
         );
         bencher
             .with_inputs(resource_cache_fixture)
-            .bench_values(|fixture| {
+            .bench_refs(|fixture| {
                 black_box(fixture.dirty_replacement().expect("dirty replacement"))
             });
     }

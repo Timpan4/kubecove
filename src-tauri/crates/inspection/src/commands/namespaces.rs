@@ -8,6 +8,7 @@ use crate::models::{AppError, NamespaceSummary};
 use crate::runtime::State;
 use chrono::{DateTime, Utc};
 use kube::api::Api;
+use std::sync::Arc;
 use std::time::Instant;
 
 fn namespace_age_at(creation_timestamp: Option<DateTime<Utc>>, now: DateTime<Utc>) -> String {
@@ -73,7 +74,7 @@ pub async fn list_namespaces(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
-) -> Result<Vec<NamespaceSummary>, AppError> {
+) -> Result<Arc<Vec<NamespaceSummary>>, AppError> {
     let started = Instant::now();
     eprintln!("[kubecove:backend] list_namespaces start context={cluster_context}");
     let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;

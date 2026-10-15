@@ -30,7 +30,7 @@ mod refresh;
 mod cache_diagnostics;
 use cache_diagnostics::CacheCounters;
 
-type SharedLoad<T> = Shared<BoxFuture<'static, Result<T, AppError>>>;
+type SharedLoad<T> = Shared<BoxFuture<'static, Result<Arc<T>, AppError>>>;
 
 #[derive(Clone, Copy)]
 enum CacheMode {
@@ -39,7 +39,7 @@ enum CacheMode {
 }
 
 struct ReadyValue<T> {
-    value: T,
+    value: Arc<T>,
     completed_at: Instant,
     dirty: bool,
 }
@@ -64,7 +64,7 @@ struct SharedCache<T> {
 
 impl<T> SharedCache<T>
 where
-    T: Clone + Send + Sync + 'static,
+    T: Send + Sync + 'static,
 {
     fn new(label: &'static str) -> Self {
         Self {
@@ -75,7 +75,7 @@ where
         }
     }
 
-    fn ready_value(value: T) -> ReadyValue<T> {
+    fn ready_value(value: Arc<T>) -> ReadyValue<T> {
         ReadyValue {
             value,
             completed_at: Instant::now(),
@@ -94,12 +94,12 @@ where
         }
     }
 
-    fn peek(&self, key: &str, mode: CacheMode) -> Option<T> {
+    fn peek(&self, key: &str, mode: CacheMode) -> Option<Arc<T>> {
         let entries = self.entries.lock().expect("live store cache lock");
         match entries.get(key) {
             Some(CacheEntry::Ready(ready)) if Self::can_reuse(ready, mode) => {
                 self.counters.hits.fetch_add(1, Ordering::Relaxed);
-                Some(ready.value.clone())
+                Some(Arc::clone(&ready.value))
             }
             _ => None,
         }
@@ -110,7 +110,7 @@ where
         key: String,
         mode: CacheMode,
         loader: F,
-    ) -> Result<T, AppError>
+    ) -> Result<Arc<T>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<T, AppError>> + Send + 'static,
@@ -120,7 +120,7 @@ where
             match entries.get(&key) {
                 Some(CacheEntry::Ready(ready)) if Self::can_reuse(ready, mode) => {
                     self.counters.hits.fetch_add(1, Ordering::Relaxed);
-                    return Ok(ready.value.clone());
+                    return Ok(Arc::clone(&ready.value));
                 }
                 Some(CacheEntry::Loading {
                     load_id, future, ..
@@ -139,7 +139,7 @@ where
                     let loader_cancellation = cancellation.clone();
                     let future = async move {
                         tokio::select! {
-                            result = loader() => result,
+                            result = loader() => result.map(Arc::new),
                             () = loader_cancellation.cancelled() => Err(AppError::cancelled()),
                         }
                     }
@@ -344,7 +344,7 @@ impl ClusterLiveStore {
         source_key: String,
         cluster_context: String,
         loader: F,
-    ) -> Result<FluxOwnershipIndex, AppError>
+    ) -> Result<Arc<FluxOwnershipIndex>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<FluxOwnershipIndex, AppError>> + Send + 'static,
@@ -363,7 +363,7 @@ impl ClusterLiveStore {
         source_key: String,
         cluster_context: String,
         loader: F,
-    ) -> Result<Vec<NamespaceSummary>, AppError>
+    ) -> Result<Arc<Vec<NamespaceSummary>>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<Vec<NamespaceSummary>, AppError>> + Send + 'static,
@@ -382,7 +382,7 @@ impl ClusterLiveStore {
         source_key: String,
         cluster_context: String,
         loader: F,
-    ) -> Result<Vec<DiscoveredResourceKind>, AppError>
+    ) -> Result<Arc<Vec<DiscoveredResourceKind>>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<Vec<DiscoveredResourceKind>, AppError>> + Send + 'static,
@@ -400,7 +400,7 @@ impl ClusterLiveStore {
         &self,
         source_key: &str,
         cluster_context: &str,
-    ) -> Option<Vec<DiscoveredResourceKind>> {
+    ) -> Option<Arc<Vec<DiscoveredResourceKind>>> {
         self.resource_kinds.peek(
             &context_cache_key(source_key, cluster_context),
             CacheMode::LiveFor(RESOURCE_FRESHNESS),
@@ -413,7 +413,7 @@ impl ClusterLiveStore {
         cluster_context: String,
         namespaces: Vec<String>,
         loader: F,
-    ) -> Result<Vec<DiscoveredResourceKind>, AppError>
+    ) -> Result<Arc<Vec<DiscoveredResourceKind>>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<Vec<DiscoveredResourceKind>, AppError>> + Send + 'static,
@@ -430,7 +430,7 @@ impl ClusterLiveStore {
         source_key: &str,
         cluster_context: &str,
         namespaces: &[String],
-    ) -> Option<Vec<DiscoveredResourceKind>> {
+    ) -> Option<Arc<Vec<DiscoveredResourceKind>>> {
         self.present_custom_resource_kinds.peek(
             &present_custom_resource_kinds_cache_key(source_key, cluster_context, namespaces),
             CacheMode::LiveFor(RESOURCE_FRESHNESS),
@@ -444,7 +444,7 @@ impl ClusterLiveStore {
         kind: String,
         namespace: Option<String>,
         loader: F,
-    ) -> Result<Vec<ResourceSummary>, AppError>
+    ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
@@ -462,7 +462,7 @@ impl ClusterLiveStore {
         resource_kind: DiscoveredResourceKind,
         namespace: Option<String>,
         loader: F,
-    ) -> Result<Vec<ResourceSummary>, AppError>
+    ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
@@ -485,7 +485,7 @@ impl ClusterLiveStore {
         kind_key: String,
         namespace_key: ScopeNamespace,
         loader: F,
-    ) -> Result<Vec<ResourceSummary>, AppError>
+    ) -> Result<Arc<Vec<ResourceSummary>>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
@@ -501,10 +501,12 @@ impl ClusterLiveStore {
                 .resources
                 .peek(&all_key, CacheMode::LiveFor(RESOURCE_FRESHNESS))
             {
-                return Ok(rows
-                    .into_iter()
-                    .filter(|row| row.namespace.as_deref() == Some(namespace.as_str()))
-                    .collect());
+                return Ok(Arc::new(
+                    rows.iter()
+                        .filter(|row| row.namespace.as_deref() == Some(namespace.as_str()))
+                        .cloned()
+                        .collect(),
+                ));
             }
         }
 
@@ -524,7 +526,7 @@ impl ClusterLiveStore {
         namespaces: Vec<String>,
         mode: String,
         loader: F,
-    ) -> Result<ResourceTopology, AppError>
+    ) -> Result<Arc<ResourceTopology>, AppError>
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<ResourceTopology, AppError>> + Send + 'static,

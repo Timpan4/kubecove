@@ -1,5 +1,10 @@
-use crate::commands::helpers::{base_resource_summary, list_params, update_resource_health};
-use crate::models::{AppError, ResourceSummary};
+use crate::commands::helpers::{
+    base_resource_summary, base_resource_summary_with_health, list_params, update_resource_health,
+};
+use crate::models::{
+    AppError, HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentState,
+    ResourceSummary,
+};
 use chrono::{DateTime, TimeZone, Utc};
 use kube::{api::Api, Client};
 
@@ -33,11 +38,20 @@ pub fn pod_resource_summary_at(
     pod: &k8s_openapi::api::core::v1::Pod,
     now: DateTime<Utc>,
 ) -> ResourceSummary {
-    let mut summary = base_resource_summary(
+    // Health is always re-evaluated below, so start from an empty placeholder instead of the default.
+    let placeholder = HealthAssessment {
+        state: HealthAssessmentState::NotEvaluated,
+        completeness: HealthAssessmentCompleteness::Complete,
+        winning_sources: Vec::new(),
+        reasons: Vec::new(),
+        evidence: Vec::new(),
+    };
+    let mut summary = base_resource_summary_with_health(
         "Pod",
         cluster_context,
         &pod.metadata,
         age_from_metadata_at(&pod.metadata, now),
+        placeholder,
     );
     if let Some(ref status) = pod.status {
         summary.status = status.phase.clone().filter(|phase| !phase.is_empty());

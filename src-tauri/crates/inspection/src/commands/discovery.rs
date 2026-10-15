@@ -15,6 +15,7 @@ use kube::{
     api::{Api, ApiResource, DynamicObject},
     Client,
 };
+use std::sync::Arc;
 use std::time::Instant;
 
 mod crd_catalog;
@@ -129,7 +130,7 @@ pub async fn list_resource_kinds(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
-) -> Result<Vec<DiscoveredResourceKind>, AppError> {
+) -> Result<Arc<Vec<DiscoveredResourceKind>>, AppError> {
     let started = Instant::now();
     eprintln!("[kubecove:backend] list_resource_kinds start context={cluster_context}");
     let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
@@ -270,7 +271,7 @@ pub async fn list_present_custom_resource_kinds(
     namespaces: Vec<String>,
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
-) -> Result<Vec<DiscoveredResourceKind>, AppError> {
+) -> Result<Arc<Vec<DiscoveredResourceKind>>, AppError> {
     let started = Instant::now();
     eprintln!(
         "[kubecove:backend] list_present_custom_resource_kinds start context={cluster_context} namespaces={}",
@@ -299,7 +300,12 @@ pub async fn list_present_custom_resource_kinds(
                                 crd_resource_kinds(catalog_client)
                             })
                             .await?;
-                        present_custom_resource_kinds_for_catalog(client, catalog, namespaces).await
+                        present_custom_resource_kinds_for_catalog(
+                            client,
+                            Arc::unwrap_or_clone(catalog),
+                            namespaces,
+                        )
+                        .await
                     }
                 }
             },

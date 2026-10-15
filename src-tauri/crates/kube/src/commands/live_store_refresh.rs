@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(cache.evict_where(|key| key == "key"), 1);
         assert!(old.await.unwrap().is_err());
         assert_eq!(
-            cache
+            *cache
                 .get_or_load("key".into(), CacheMode::GraceOnly, || async { Ok(2) })
                 .await
                 .unwrap(),

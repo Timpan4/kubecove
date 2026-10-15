@@ -60,26 +60,24 @@ fn resource_health_state(health: ResourceHealth) -> Option<HealthAssessmentState
 }
 
 pub(crate) fn classify_resource_health(summary: &ResourceSummary) -> ResourceHealth {
-    let status = normalized(summary.status.as_deref());
-    let ready = normalized(summary.ready.as_deref());
-    let successful_terminal = is_successful_terminal_status(&status);
+    // Compare trimmed values case-insensitively instead of allocating lowercase copies per row.
+    let status = summary.status.as_deref().unwrap_or_default().trim();
+    let ready = summary.ready.as_deref().unwrap_or_default().trim();
+    let successful_terminal = is_successful_terminal_status(status);
 
-    if matches!(status.as_str(), "pending" | "terminating") {
+    if matches_any(status, &["pending", "terminating"]) {
         return ResourceHealth::Attention;
     }
-    if is_degraded_status(&status) || (!successful_terminal && ready == "false") {
+    if is_degraded_status(status) || (!successful_terminal && ready.eq_ignore_ascii_case("false")) {
         return ResourceHealth::Degraded;
     }
-    if !successful_terminal && has_incomplete_ready_ratio(&ready) {
+    if !successful_terminal && has_incomplete_ready_ratio(ready) {
         return ResourceHealth::Attention;
     }
     if successful_terminal
-        || matches!(
-            status.as_str(),
-            "running" | "ready" | "true" | "ready: true"
-        )
-        || ready == "true"
-        || has_complete_ready_ratio(&ready)
+        || matches_any(status, &["running", "ready", "true", "ready: true"])
+        || ready.eq_ignore_ascii_case("true")
+        || has_complete_ready_ratio(ready)
     {
         return ResourceHealth::Healthy;
     }
@@ -87,18 +85,20 @@ pub(crate) fn classify_resource_health(summary: &ResourceSummary) -> ResourceHea
     ResourceHealth::Unknown
 }
 
-fn normalized(value: Option<&str>) -> String {
-    value.unwrap_or_default().trim().to_ascii_lowercase()
+fn matches_any(value: &str, options: &[&str]) -> bool {
+    options
+        .iter()
+        .any(|option| value.eq_ignore_ascii_case(option))
 }
 
 fn is_successful_terminal_status(status: &str) -> bool {
-    matches!(status, "succeeded" | "complete" | "completed")
+    matches_any(status, &["succeeded", "complete", "completed"])
 }
 
 fn is_degraded_status(status: &str) -> bool {
-    matches!(
+    matches_any(
         status,
-        "failed" | "error" | "crashloopbackoff" | "imagepullbackoff"
+        &["failed", "error", "crashloopbackoff", "imagepullbackoff"],
     )
 }
 

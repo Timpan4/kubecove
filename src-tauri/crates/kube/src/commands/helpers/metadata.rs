@@ -1,6 +1,6 @@
 use crate::commands::builtin_kinds::{builtin_kind, BuiltinKind};
 use crate::commands::helpers::k8s_timestamp_to_datetime;
-use crate::models::{OwnerReferenceSummary, ResourceHealth, ResourceSummary};
+use crate::models::{HealthAssessment, OwnerReferenceSummary, ResourceHealth, ResourceSummary};
 
 mod flux_inventory;
 mod ownership;
@@ -61,7 +61,24 @@ pub fn base_resource_summary(
     metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
     age: String,
 ) -> ResourceSummary {
+    base_resource_summary_with_health(kind, cluster, metadata, age, HealthAssessment::default())
+}
+
+/// Callers that always re-evaluate health pass a placeholder to skip the default's allocations.
+pub fn base_resource_summary_with_health(
+    kind: &str,
+    cluster: &str,
+    metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
+    age: String,
+    health_assessment: HealthAssessment,
+) -> ResourceSummary {
     let api_version = builtin_kind(kind).map(BuiltinKind::api_version);
+    // Argo CD ownership is the git-ops owner when present, so derive it instead of rebuilding it.
+    let git_ops_owner = extract_git_ops_owner(metadata);
+    let argo_app = git_ops_owner
+        .as_ref()
+        .filter(|owner| owner.provider == "argo")
+        .map(|owner| owner.name.clone());
     ResourceSummary {
         kind: kind.to_string(),
         cluster: cluster.to_string(),
@@ -75,7 +92,7 @@ pub fn base_resource_summary(
         namespaced: None,
         dynamic: None,
         health: ResourceHealth::Unknown,
-        health_assessment: crate::models::HealthAssessment::default(),
+        health_assessment,
         created_at: metadata
             .creation_timestamp
             .as_ref()
@@ -84,9 +101,9 @@ pub fn base_resource_summary(
         ready: None,
         restarts: None,
         owner_ref: extract_owner_ref(metadata),
-        argo_app: extract_argo_app(metadata),
+        argo_app,
         helm_release: extract_helm_release(metadata),
-        git_ops_owner: extract_git_ops_owner(metadata),
+        git_ops_owner,
         git_ops_ownership_partial: false,
     }
 }

@@ -1,5 +1,5 @@
 use crate::commands::helpers::{
-    extract_argo_app, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
+    extract_git_ops_owner, extract_helm_release, extract_owner_ref,
     k8s_creation_timestamp_to_rfc3339, legacy_resource_health,
 };
 use crate::models::{
@@ -73,6 +73,12 @@ pub fn dynamic_resource_summary_at(
     object: &DynamicObject,
     now: DateTime<Utc>,
 ) -> ResourceSummary {
+    // Argo ownership is the provider-"argo" owner, so derive it from the one owner lookup.
+    let git_ops_owner = extract_git_ops_owner(&object.metadata);
+    let argo_app = git_ops_owner
+        .as_ref()
+        .filter(|owner| owner.provider == "argo")
+        .map(|owner| owner.name.clone());
     let mut summary = ResourceSummary {
         kind: resource_kind.kind.clone(),
         cluster: cluster_context.to_string(),
@@ -104,9 +110,9 @@ pub fn dynamic_resource_summary_at(
         ready: None,
         restarts: None,
         owner_ref: extract_owner_ref(&object.metadata),
-        argo_app: extract_argo_app(&object.metadata),
+        argo_app,
         helm_release: extract_helm_release(&object.metadata),
-        git_ops_owner: extract_git_ops_owner(&object.metadata),
+        git_ops_owner,
         git_ops_ownership_partial: false,
     };
     if resource_kind.group == "argoproj.io" && resource_kind.kind == "Application" {

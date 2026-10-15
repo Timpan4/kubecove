@@ -76,8 +76,8 @@ fn grace_cache_reuses_recent_completed_value() {
             .await
             .expect("second load");
 
-        assert_eq!(first, vec!["one".to_string()]);
-        assert_eq!(second, vec!["one".to_string()]);
+        assert_eq!(*first, vec!["one".to_string()]);
+        assert_eq!(*second, vec!["one".to_string()]);
         assert_eq!(loads.load(Ordering::SeqCst), 1);
     });
 }
@@ -116,8 +116,8 @@ fn dirty_live_cache_reloads_even_inside_grace_window() {
             .await
             .expect("second load");
 
-        assert_eq!(first, vec!["one".to_string()]);
-        assert_eq!(second, vec!["two".to_string()]);
+        assert_eq!(*first, vec!["one".to_string()]);
+        assert_eq!(*second, vec!["two".to_string()]);
         assert_eq!(loads.load(Ordering::SeqCst), 2);
     });
 }
@@ -156,8 +156,8 @@ fn live_cache_reloads_after_freshness_window() {
             .await
             .expect("second load");
 
-        assert_eq!(first, vec!["one".to_string()]);
-        assert_eq!(second, vec!["two".to_string()]);
+        assert_eq!(*first, vec!["one".to_string()]);
+        assert_eq!(*second, vec!["two".to_string()]);
         assert_eq!(loads.load(Ordering::SeqCst), 2);
     });
 }
@@ -309,7 +309,7 @@ fn cancel_loading_allows_replacement_and_ignores_stale_completion() {
             )
             .await
             .expect("replacement load");
-        assert_eq!(replacement, vec!["fresh".to_string()]);
+        assert_eq!(*replacement, vec!["fresh".to_string()]);
 
         let cached = cache
             .get_or_load(
@@ -319,7 +319,7 @@ fn cancel_loading_allows_replacement_and_ignores_stale_completion() {
             )
             .await
             .expect("cached replacement");
-        assert_eq!(cached, vec!["fresh".to_string()]);
+        assert_eq!(*cached, vec!["fresh".to_string()]);
     });
 }
 

@@ -19,6 +19,7 @@ use crate::runtime::State;
 use chrono::{TimeZone, Utc};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Clone)]
@@ -377,7 +378,7 @@ pub async fn list_resource_topology(
     cancel_scope: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
     cancellations: State<'_, BackendCancellationRegistry>,
-) -> Result<ResourceTopology, AppError> {
+) -> Result<Arc<ResourceTopology>, AppError> {
     let mode = TopologyMode::parse(mode)?;
     let started = Instant::now();
     let namespace_count = namespaces.len();
@@ -426,7 +427,7 @@ pub async fn list_resource_topology(
                                     namespaces,
                                     Some(mode),
                                     kubeconfig_env_var,
-                                    Some(custom_resource_kinds),
+                                    Some(Arc::unwrap_or_clone(custom_resource_kinds)),
                                     custom_resource_kinds_are_present,
                                 ))
                                 .await
