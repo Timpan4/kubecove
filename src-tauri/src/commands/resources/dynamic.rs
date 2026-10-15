@@ -23,6 +23,7 @@ use kube::{
     Client,
 };
 use serde_json::Value;
+use std::sync::Arc;
 use std::time::Instant;
 
 pub(crate) fn api_resource_from_discovered(
@@ -289,7 +290,7 @@ pub async fn list_dynamic_resources(
     namespace: Option<String>,
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
-) -> Result<Vec<ResourceSummary>, AppError> {
+) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<all>");
     eprintln!(

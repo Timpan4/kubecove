@@ -3,6 +3,7 @@ use crate::{
     commands::{helpers, live_store::ClusterLiveStore, resources},
     models::{AppError, ResourceSummary, WatchResourceKind},
 };
+use std::sync::Arc;
 
 const SOURCE: &str = "cache-catalog-source";
 const CONTEXT: &str = "cache-catalog-context";
@@ -226,7 +227,7 @@ impl ResourceCacheFixture {
             .is_some_and(|kinds| kinds.is_empty()));
     }
 
-    pub fn ready_resource_hit(&self) -> Result<Vec<ResourceSummary>, AppError> {
+    pub fn ready_resource_hit(&self) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
         tauri::async_runtime::block_on(self.store.typed_resources(
             SOURCE.to_string(),
             CONTEXT.to_string(),
@@ -241,7 +242,7 @@ impl ResourceCacheFixture {
         ))
     }
 
-    pub fn named_scope_from_all_hit(&self) -> Result<Vec<ResourceSummary>, AppError> {
+    pub fn named_scope_from_all_hit(&self) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
         tauri::async_runtime::block_on(self.store.typed_resources(
             SOURCE.to_string(),
             CONTEXT.to_string(),
@@ -256,7 +257,7 @@ impl ResourceCacheFixture {
         ))
     }
 
-    pub fn topology_hit(&self) -> Result<crate::models::ResourceTopology, AppError> {
+    pub fn topology_hit(&self) -> Result<Arc<crate::models::ResourceTopology>, AppError> {
         tauri::async_runtime::block_on(self.store.topology(
             SOURCE.to_string(),
             CONTEXT.to_string(),
@@ -285,7 +286,7 @@ impl ResourceCacheFixture {
         .map(|index| index.retained_item_count())
     }
 
-    pub fn dirty_replacement(&mut self) -> Result<Vec<ResourceSummary>, AppError> {
+    pub fn dirty_replacement(&mut self) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
         let kind = WatchResourceKind {
             kind: "Pod".to_string(),
             group: None,

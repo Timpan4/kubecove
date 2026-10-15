@@ -10,6 +10,7 @@ use crate::commands::{
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ResourceSummary};
 use crate::runtime::State;
+use std::sync::Arc;
 use std::time::Instant;
 
 pub async fn resources_summary_from(
@@ -67,7 +68,7 @@ pub async fn list_resources(
     namespace: Option<String>,
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
-) -> Result<Vec<ResourceSummary>, AppError> {
+) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
     let started = Instant::now();
     let namespace_label = namespace.as_deref().unwrap_or("<all>");
     eprintln!(
