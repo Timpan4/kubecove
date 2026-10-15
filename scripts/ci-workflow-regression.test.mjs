@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-const workflow = readFileSync(process.env.CI_WORKFLOW_PATH ?? new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+const workflow = readFileSync(process.env.CI_WORKFLOW_PATH ?? new URL("../.github/workflows/ci.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 const base = "a".repeat(40);
 const head = "b".repeat(40);
 const domains = ["docs", "frontend", "nix", "rust"];
@@ -68,6 +68,13 @@ for (const [path, selected] of [
   ["scripts/check-docs.ts", ["frontend"]],
   ["bun.lock", ["frontend", "nix"]],
   ["src-tauri/src/lib.rs", ["rust"]],
+  ["src-tauri/crates/models/src/lib.rs", ["rust"]],
+  ["src-tauri/crates/kube/src/commands/discovery.rs", ["rust"]],
+  ["src-tauri/crates/inspection/src/commands/resources/kubeconform.rs", ["rust"]],
+  ["src-tauri/crates/live/src/commands/streams.rs", ["rust"]],
+  ["src-tauri/crates/gitops/src/commands/argo/connected.rs", ["rust"]],
+  ["src-tauri/crates/host/src/commands/usage.rs", ["rust"]],
+  ["src-tauri/crates/inspection/Cargo.toml", ["nix", "rust"]],
   ["src-tauri/capabilities/default.yaml", ["rust"]],
   ["src-tauri/tauri.conf.json", ["frontend", "rust"]],
   ["src-tauri/Cargo.lock", ["nix", "rust"]],
@@ -192,8 +199,39 @@ test("existing release PR exception still requires Nix success", () => {
     assert.ok(job(name).includes("!contains(github.event.pull_request.labels.*.name, 'release')"));
   }
 });
+test("Rust verification selects all workspace members despite root-only default-members", () => {
+  const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const release = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
+  const hook = readFileSync(new URL("../.githooks/pre-commit-user", import.meta.url), "utf8");
+  const commands = [
+    ...["rust:test", "rust:check", "rust:lint"].map((name) => scripts[name]),
+    ...[job("rust"), release].flatMap((source) => [...source.matchAll(/run: (cargo (?:test|clippy) [^\n]+)/g)].map((match) => match[1])),
+    ...[...hook.matchAll(/^\s*(cargo check [^\n]*--manifest-path src-tauri\/Cargo.toml[^\n]*)/gm)].map((match) => match[1]),
+  ];
+  assert.equal(commands.length, 8, "package, CI, release and hook verification commands must be covered");
+  for (const command of commands) {
+    const args = command.trim().split(/\s+/);
+    const cargoArgs = args.slice(0, args.indexOf("--") === -1 ? args.length : args.indexOf("--"));
+    assert.ok(cargoArgs.includes("--workspace"), command);
+    assert.equal(cargoArgs[cargoArgs.indexOf("--manifest-path") + 1], "src-tauri/Cargo.toml", command);
+  }
+});
+test("server packaging follows the relocated kubeconform source without changing its standalone build", () => {
+  const packaging = readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8");
+  assert.match(packaging, /^      - src-tauri\/crates\/inspection\/src\/commands\/resources\/kubeconform\.rs\r?$/m);
+  assert.doesNotMatch(packaging, /src-tauri\/src\/commands\/resources\/kubeconform\.rs/);
+  assert.match(packaging, /cargo build --locked --release --manifest-path src-tauri\/server\/Cargo.toml --target "\$TARGET"/);
+  assert.doesNotMatch(packaging, /--workspace|--all-features/);
+  const dockerIgnore = readFileSync(new URL("../.dockerignore", import.meta.url), "utf8");
+  assert.match(dockerIgnore, /^!src-tauri\/crates\/\r?$/m, "Docker must reopen the crate directory");
+  assert.match(dockerIgnore, /^!src-tauri\/crates\/\*\*\r?$/m, "Docker must include crate sources and manifests");
+  assert.match(dockerIgnore, /^\*\*\/target\r?$/m, "Rust build caches must stay out of the context");
+});
 test("headless checks run without GUI packages and the gate requires their success", () => {
-  assert.doesNotMatch(job("server"), /apt-get|cache-apt-pkgs|pkg-config/);
+  assert.doesNotMatch(job("server"), /apt-get|cache-apt-pkgs|pkg-config|--all-features/);
+  assert.match(job("server"), /cargo test --locked --workspace --no-default-features --manifest-path src-tauri\/Cargo.toml/);
+  assert.match(job("server"), /cargo tree --manifest-path src-tauri\/server\/Cargo.toml --locked --edges normal,build/);
+  assert.match(job("server"), /cargo test --manifest-path src-tauri\/server\/Cargo.toml --locked --no-default-features/);
   assert.match(job("server"), /cargo test --manifest-path src-tauri\/server\/Cargo.toml --locked/);
   for (const result of ["failure", "cancelled", "skipped", ""]) assert.notEqual(gate({ SERVER_RESULT: result }), 0);
   assert.equal(gate({ FRONTEND_REQUIRED: "false", FRONTEND_RESULT: "skipped", RUST_REQUIRED: "false", RUST_RESULT: "skipped", SERVER_RESULT: "skipped" }), 0);

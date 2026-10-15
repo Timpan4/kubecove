@@ -1,0 +1,33 @@
+[package]
+name = "kubecove-live"
+version = "0.1.0"
+publish = false
+edition = "2021"
+rust-version = "1.91"
+license = "AGPL-3.0-or-later"
+description = "KubeCove watches, logs, Pod exec and guarded port forwards"
+
+[features]
+default = []
+desktop = ["dep:tauri", "kubecove-kube/desktop"]
+bench-support = ["desktop", "kubecove-kube/bench-support"]
+
+[dependencies]
+kubecove-models = { path = "../models" }
+kubecove-kube = { path = "../kube" }
+serde_json = { workspace = true }
+kube = { workspace = true }
+k8s-openapi = { workspace = true }
+chrono = { workspace = true }
+futures-util = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tauri = { workspace = true, optional = true }
+
+[dev-dependencies]
+http = { workspace = true }
+tower = { workspace = true }
+tower-test = { workspace = true }
+
+[lints]
+workspace = true

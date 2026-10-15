@@ -1,0 +1,19 @@
+[package]
+name = "kubecove-models"
+version = "0.1.0"
+publish = false
+edition = "2021"
+rust-version = "1.91"
+license = "AGPL-3.0-or-later"
+description = "KubeCove serialized contracts, health assessment and typed errors"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+thiserror = { workspace = true }
+kube = { workspace = true }
+k8s-openapi = { workspace = true }
+
+[lints]
+workspace = true

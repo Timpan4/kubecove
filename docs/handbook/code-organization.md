@@ -24,9 +24,11 @@ Typed Tauri wrappers, frontend-safe contracts, stores, query keys, and pure shar
 
 ## Backend (`src-tauri/src/`)
 
-`commands/` owns typed Tauri command domains. `models/` owns frontend-safe serde contracts. Keep kubeconfig contents, tokens, certificates, and unnecessary raw Kubernetes objects out of models. Add reusable Kubernetes access module only when multiple consumers need it.
+`src-tauri/crates/` contains private Rust workspace crates for frontend contracts, Kubernetes/session infrastructure, resource inspection, live sessions, GitOps, and host support. The desktop package remains the composition root; the server stays outside the desktop workspace's package selection.
 
-`src-tauri/server/` is the headless binary crate. It owns authenticated HTTP and WebSocket adapters, session ownership, and server startup. It calls the existing backend library through `runtime.rs`'s transport seam with the `desktop` feature disabled.
+The desktop `commands/` module composes domain APIs and coordinates workspace cancellation. Domain `commands/` implementations live in `src-tauri/crates/`; frontend-safe contracts live in `crates/models/`. Keep kubeconfig contents, tokens, certificates, and unnecessary raw Kubernetes objects out of models. Shared Kubernetes clients and session infrastructure belong in `crates/kube/`. See the [crate map](../../src-tauri/crates/README.md) before introducing cross-domain dependencies.
+
+`src-tauri/server/` is the headless binary's separate workspace. It owns authenticated HTTP and WebSocket adapters, session ownership, and server startup. It calls the existing backend facade through `crates/kube/src/runtime.rs`'s transport seam with the `desktop` feature disabled.
 
 `deploy/` contains operator-applied deployment examples for the headless server. The root `Dockerfile` builds its container image; these files are not app runtime installation paths.
 

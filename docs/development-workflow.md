@@ -39,6 +39,18 @@ mkdir -p .e2e/tools/allocator
 bun run lint:anti-slop
 ```
 
+## Rust workspace checks
+
+The desktop manifest is a workspace containing private backend crates under `src-tauri/crates/`. Use `bun run rust:test`, `bun run rust:check` and `bun run rust:lint` for workspace-wide checks, including tests moved into dependency crates. Direct equivalents are:
+
+```sh
+cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml
+cargo check --locked --workspace --manifest-path src-tauri/Cargo.toml
+cargo clippy --locked --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+```
+
+For a backend-only check, add `--no-default-features`; for E2E source isolation, use the shell's `--features e2e`. The default package remains the desktop shell so existing Tauri build and packaging commands keep their output paths. See [the crate map](../src-tauri/crates/README.md) and [build measurements](rust-build-measurements.md).
+
 ## Headless Server Development
 
 The server is a separate Rust binary under `src-tauri/server`; it uses the shared backend without enabling the desktop feature. Build the browser runtime before compiling the server so the binary embeds the generated `dist/` assets:
