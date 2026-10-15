@@ -139,6 +139,7 @@ mod tests {
             .split(',')
             .map(str::trim)
             .filter(|name| !name.is_empty())
+            .map(|path| path.rsplit("::").next().unwrap_or(path))
             .collect::<BTreeSet<_>>();
         let all = inspection::COMMANDS
             .iter()

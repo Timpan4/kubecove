@@ -18,6 +18,8 @@ scripts/*
 src-tauri/*
 !src-tauri/Cargo.toml
 !src-tauri/build.rs
+!src-tauri/crates/
+!src-tauri/crates/**
 !src-tauri/src/
 !src-tauri/src/**
 !src-tauri/examples/

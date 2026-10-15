@@ -20,7 +20,7 @@ on:
       - src-tauri/server/**
       - src-tauri/bin/**
       - src-tauri/build.rs
-      - src-tauri/src/commands/resources/kubeconform.rs
+      - src-tauri/crates/inspection/src/commands/resources/kubeconform.rs
   workflow_dispatch:
 
 permissions:

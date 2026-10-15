@@ -1,113 +1,45 @@
-mod argo;
+//! Host composition and the stable command API used by desktop and server.
+
 #[cfg(feature = "bench-support")]
 pub mod bench_support;
-mod builtin_kinds;
-mod cancellation;
-mod contexts;
-mod diagnostics;
-mod discovery;
-mod events;
-mod flux;
-mod gitops_crd;
-mod helm;
-mod helpers;
-mod incidents;
-mod kubeconfig;
-mod kubeconfig_clients;
-mod live_sessions;
-mod live_store;
-mod metrics;
-mod namespaces;
-mod operations;
-mod pod_exec;
-mod rbac;
-mod rbac_review;
-#[cfg(feature = "desktop")]
-pub mod remote;
-mod resource_actions;
-mod resources;
-pub mod sessions;
-mod streams;
-mod usage;
-mod usage_webview;
-#[cfg(feature = "desktop")]
-mod workspace_files;
 
-#[cfg(not(feature = "desktop"))]
-pub use argo::{
-    active_credential_store_description, initialize_server_credential_store,
-    CredentialStoreDescription,
-};
-pub use argo::{
-    connect_argo_server, detect_argocd, disconnect_argo_server, discover_argo_servers,
-    forget_argo_credential, get_argo_application_inspector, get_argo_connection_status,
-    get_argo_resource_comparison, get_argocd_application_details, get_argocd_appproject_details,
-    get_argocd_appset_details, list_argocd_applications, list_argocd_appprojects,
-    list_argocd_appsets, preflight_argo_operation, run_argo_operation, ArgoConnectionStore,
-};
-pub use cancellation::{
-    cancel_backend_requests, cancel_workspace_requests, BackendCancellationRegistry,
-};
-pub use contexts::{get_cluster_contexts, list_kube_contexts};
-pub use diagnostics::{
-    clear_backend_diagnostics, diagnostic_field, get_backend_cache_diagnostics,
-    get_backend_diagnostics, record_backend_cancelled, record_backend_error,
-    record_backend_success, set_backend_diagnostics_enabled,
-};
-pub use discovery::{
-    list_present_custom_resource_kinds, list_resource_kinds, present_custom_resource_kinds_from,
-    resource_kinds_from,
-};
-pub use events::{list_resource_events, resource_events_from};
-pub use flux::{detect_flux, get_flux_resource_details, list_flux_resources};
-pub use helm::{get_helm_release_details, get_helm_release_reconciliation, list_helm_releases};
-pub use helpers::forwarded_bearer::enable_forwarded_bearer;
-pub use helpers::session_scope::SessionScope;
-pub use incidents::{incident_cockpit_from, list_incident_cockpit};
+pub use kubecove_gitops::commands::*;
 #[cfg(feature = "desktop")]
-pub use kubeconfig::pick_kubeconfig_paths;
-pub use kubeconfig::{
-    add_kubeconfig_paths, get_kubeconfig_sources, init_kubeconfig_settings_path,
-    kubeconfig_source_key, remove_kubeconfig_path, reorder_kubeconfig_paths,
-    set_kubeconfig_env_var, set_show_kubeconfig_source_labels, KubeconfigSource,
-    DEFAULT_KUBECONFIG_ENV_VAR,
-};
-pub use live_sessions::stop_live_sessions_outside_scope;
-pub use live_store::ClusterLiveStore;
-pub use metrics::{list_resource_metrics, resource_metrics_from};
-pub use namespaces::{list_namespaces, namespaces_summary_from};
-pub use operations::{
-    delete_resource, preview_delete_resource, preview_rollout_restart, preview_scale_workload,
-    rollout_restart, scale_workload,
-};
-pub use pod_exec::{
-    list_pod_exec_sessions, resize_pod_exec_terminal, start_pod_exec_session,
-    stop_pod_exec_session, write_pod_exec_stdin, PodExecRegistry,
-};
-pub use rbac::{list_rbac_inspection, rbac_inspection_from};
-pub use rbac_review::review_rbac_access;
-#[cfg(feature = "desktop")]
-pub use remote::{
+pub use kubecove_host::remote::{
     remote_connect, remote_connection_status, remote_disconnect, remote_invoke,
     remote_subscribe_channel, remote_unsubscribe_channel, RemoteConnectionStore,
 };
-pub use resource_actions::{
-    execute_resource_action, get_resource_action_state, preview_resource_action,
-};
-pub use resources::{
-    apply_yaml, dynamic_resource_details_from, dynamic_resources_summary_from,
-    get_dynamic_resource_details, get_resource_details, get_resource_yaml, lint_kubernetes_yaml,
-    list_deployment_revisions, list_dynamic_resources, list_resource_scope, list_resource_topology,
-    list_resources, prepare_yaml_apply, resource_details_from, resource_scope_from,
-    resource_topology_from, resource_yaml_from, resources_summary_from, reveal_secret_data_value,
-};
-pub use sessions::{
-    list_port_forwards, start_pod_port_forward, stop_port_forward, PortForwardRegistry,
-};
-pub use streams::{
-    refresh_resource_cache, start_aggregated_log_stream, start_pod_log_stream,
-    start_resource_event_watch, start_resource_watch, stop_stream, StreamRegistry,
-};
-pub use usage::{get_app_usage_metrics, AppUsageMonitor};
+#[cfg(feature = "bench-support")]
+pub(crate) use kubecove_host::usage;
+pub use kubecove_host::usage::{get_app_usage_metrics, AppUsageMonitor};
 #[cfg(feature = "desktop")]
-pub use workspace_files::{pick_workspace_import_json, save_workspace_export_json};
+pub use kubecove_host::workspace_files::{pick_workspace_import_json, save_workspace_export_json};
+#[cfg(feature = "desktop")]
+pub use kubecove_host::{remote, workspace_files};
+pub use kubecove_inspection::commands::*;
+pub use kubecove_kube::commands::*;
+pub use kubecove_live::commands::*;
+
+use crate::{
+    models::{AppError, CancelWorkspaceRequestsResult},
+    runtime::State,
+};
+
+// Workspace changes coordinate infrastructure and GitOps without a back-edge
+// from client cancellation into Argo connection management.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn cancel_workspace_requests(
+    registry: State<'_, BackendCancellationRegistry>,
+    live_store: State<'_, ClusterLiveStore>,
+    argo_connections: State<'_, ArgoConnectionStore>,
+) -> Result<CancelWorkspaceRequestsResult, AppError> {
+    let cancelled_requests = registry.cancel_all();
+    let client_generation = helpers::client_cache::rotate_client_generation();
+    let cancelled_loads = live_store.cancel_loading();
+    argo_connections.close_all().await?;
+    Ok(CancelWorkspaceRequestsResult {
+        cancelled_requests,
+        cancelled_loads,
+        client_generation,
+    })
+}

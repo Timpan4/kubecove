@@ -126,18 +126,27 @@ The server's data directory stores kubeconfig-source settings, source paths, and
 
 ## Backend shape
 
-The Rust backend separates Tauri command handlers from serialized frontend contracts.
+The Rust backend is a workspace of private crates with a small desktop composition root. Independent command domains compile separately, while both hosts use the same contracts and session infrastructure.
 
 ```text
-src-tauri/src/
-  commands/              Kubernetes, GitOps, Helm, RBAC, session, and support handlers
-  models/                serde contracts returned across the Tauri boundary
+src-tauri/
+  src/                   Tauri shell, cross-domain cancellation, benchmark aggregation
+  crates/
+    models/              serde contracts, health assessment and typed errors
+    kube/                clients, session scope, shared projections, caches and diagnostics
+    inspection/          resources, topology, metrics, RBAC, incidents and guarded operations
+    live/                watches, logs, exec and port forwarding
+    gitops/              Argo CD, Flux and Helm
+    host/                usage, native files and desktop remote client
+  server/                separate headless workspace and transport adapters
 ```
+
+See [private backend crates](../src-tauri/crates/README.md) for dependency direction and workspace checks. The existing `kubecove_lib::{commands, models, runtime}` facade remains shared by both hosts. The server has a separate workspace/lockfile so desktop feature unification cannot pull Tauri into a headless build.
 
 Backend rules:
 
-- `commands/` owns handlers and command-domain helpers;
-- `models/` owns structured frontend contracts;
+- domain crates' `commands/` modules own handlers and command-domain helpers;
+- `kubecove-models` owns structured frontend contracts;
 - commands return frontend-safe data and user-visible serialized errors;
 - normal resource access uses typed or dynamic Kubernetes APIs, not shell commands;
 - cancellation, stream/session cleanup, response bounds, and redaction are part of each applicable command contract;

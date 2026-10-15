@@ -1,0 +1,36 @@
+[package]
+name = "kubecove-kube"
+version = "0.1.0"
+publish = false
+edition = "2021"
+rust-version = "1.91"
+license = "AGPL-3.0-or-later"
+description = "KubeCove Kubernetes clients, session scope, shared metadata and caches"
+
+[features]
+default = []
+desktop = ["dep:tauri", "dep:tauri-plugin-dialog"]
+bench-support = ["desktop"]
+e2e = ["desktop"]
+
+[dependencies]
+kubecove-models = { path = "../models" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+kube = { workspace = true }
+k8s-openapi = { workspace = true }
+chrono = { workspace = true }
+futures-util = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tower = { workspace = true }
+http = { workspace = true }
+tauri = { workspace = true, optional = true }
+tauri-plugin-dialog = { workspace = true, optional = true }
+
+[dev-dependencies]
+tower-test = { workspace = true }
+
+[lints]
+workspace = true

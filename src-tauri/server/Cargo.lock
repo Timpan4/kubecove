@@ -1898,27 +1898,123 @@ dependencies = [
 name = "kubecove"
 version = "0.12.5"
 dependencies = [
+ "chrono",
+ "k8s-openapi",
+ "kube",
+ "kubecove-gitops",
+ "kubecove-host",
+ "kubecove-inspection",
+ "kubecove-kube",
+ "kubecove-live",
+ "kubecove-models",
+ "serde",
+ "serde_json",
+ "tokio",
+ "yaml_serde",
+]
+
+[[package]]
+name = "kubecove-gitops"
+version = "0.1.0"
+dependencies = [
  "base64 0.23.1",
  "chacha20poly1305",
  "chrono",
  "flate2",
  "futures-util",
  "getrandom 0.4.3",
- "http",
  "k8s-openapi",
  "keyring",
  "kube",
+ "kubecove-kube",
+ "kubecove-live",
+ "kubecove-models",
  "libc",
  "reqwest",
  "serde",
  "serde_json",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "yaml_serde",
+]
+
+[[package]]
+name = "kubecove-host"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures-util",
+ "kubecove-kube",
+ "kubecove-models",
+ "reqwest",
+ "serde",
+ "serde_json",
  "sysinfo",
- "thiserror 2.0.21",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "kubecove-inspection"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "chrono",
+ "futures-util",
+ "k8s-openapi",
+ "kube",
+ "kubecove-kube",
+ "kubecove-models",
+ "serde",
+ "serde_json",
+ "tokio",
+ "yaml_serde",
+]
+
+[[package]]
+name = "kubecove-kube"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures-util",
+ "http",
+ "k8s-openapi",
+ "kube",
+ "kubecove-models",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-util",
  "tower",
- "uuid",
  "yaml_serde",
+]
+
+[[package]]
+name = "kubecove-live"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures-util",
+ "k8s-openapi",
+ "kube",
+ "kubecove-kube",
+ "kubecove-models",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "kubecove-models"
+version = "0.1.0"
+dependencies = [
+ "k8s-openapi",
+ "kube",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

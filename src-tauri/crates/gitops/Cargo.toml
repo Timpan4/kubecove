@@ -1,0 +1,45 @@
+[package]
+name = "kubecove-gitops"
+version = "0.1.0"
+publish = false
+edition = "2021"
+rust-version = "1.91"
+license = "AGPL-3.0-or-later"
+description = "KubeCove Argo CD, Flux and Helm backend domains"
+
+[features]
+default = []
+desktop = ["dep:tauri", "kubecove-kube/desktop", "kubecove-live/desktop"]
+bench-support = ["desktop", "kubecove-kube/bench-support", "kubecove-live/bench-support"]
+
+[dependencies]
+kubecove-models = { path = "../models" }
+kubecove-kube = { path = "../kube" }
+kubecove-live = { path = "../live" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+kube = { workspace = true }
+k8s-openapi = { workspace = true }
+chrono = { workspace = true }
+futures-util = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+reqwest = { workspace = true }
+base64 = { workspace = true }
+flate2 = { workspace = true }
+keyring = { workspace = true }
+chacha20poly1305 = { workspace = true }
+getrandom = { workspace = true }
+libc = { workspace = true }
+uuid = { workspace = true }
+tauri = { workspace = true, optional = true }
+
+[dev-dependencies]
+rustls = { workspace = true }
+http = { workspace = true }
+tower = { workspace = true }
+tower-test = { workspace = true }
+
+[lints]
+workspace = true
