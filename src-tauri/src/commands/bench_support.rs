@@ -1,4 +1,4 @@
-use super::{discovery, helm::manifest, helpers, live_store, resources::topology};
+use super::{discovery, helm, helpers, live_store, resources as topology};
 use crate::models::{
     DiscoveredResourceKind, HelmManifestResourceSummary, HelmManifestSummary,
     OwnerReferenceSummary, ResourceHealth, ResourceSummary, ResourceTopology, YamlEncoding,
@@ -10,7 +10,7 @@ pub mod domain_catalog;
 pub mod resource_catalog;
 
 pub fn decode_crd_catalog(text: &str) -> Vec<DiscoveredResourceKind> {
-    discovery::crd_catalog::decode(text).expect("benchmark CRD list")
+    discovery::decode_crd_catalog(text).expect("benchmark CRD list")
 }
 
 pub fn cached_topology_fixture(apps: usize) -> live_store::ClusterLiveStore {
@@ -80,11 +80,11 @@ pub struct BenchOwner {
 }
 
 pub fn helm_manifest_resources(manifest: Option<&str>) -> Vec<HelmManifestResourceSummary> {
-    manifest::manifest_resources(manifest)
+    helm::manifest_resources(manifest)
 }
 
 pub fn helm_manifest_summary(resources: &[HelmManifestResourceSummary]) -> HelmManifestSummary {
-    manifest::manifest_summary_from_resources(resources)
+    helm::manifest_summary_from_resources(resources)
 }
 
 pub fn serialize_backend_yaml(value: &Value, encoding: YamlEncoding) -> String {

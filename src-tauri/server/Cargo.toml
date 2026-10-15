@@ -1,3 +1,7 @@
+# A separate workspace prevents desktop features from unifying into server builds.
+[workspace]
+resolver = "2"
+
 [package]
 name = "kubecove-server"
 version = "0.12.5"

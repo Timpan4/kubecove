@@ -2762,24 +2762,21 @@ name = "kubecove"
 version = "0.12.5"
 dependencies = [
  "base64 0.23.1",
- "chacha20poly1305",
  "chrono",
  "codspeed-divan-compat",
  "codspeed-divan-compat-walltime",
  "flate2",
  "futures-util",
- "getrandom 0.4.3",
- "http",
  "k8s-openapi",
- "keyring",
  "kube",
- "libc",
- "proptest",
- "reqwest",
- "rustls",
+ "kubecove-gitops",
+ "kubecove-host",
+ "kubecove-inspection",
+ "kubecove-kube",
+ "kubecove-live",
+ "kubecove-models",
  "serde",
  "serde_json",
- "sysinfo",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -2788,14 +2785,133 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-wdio",
  "tauri-plugin-wdio-webdriver",
- "thiserror 2.0.21",
  "tokio",
- "tokio-tungstenite 0.30.0",
+ "yaml_serde",
+]
+
+[[package]]
+name = "kubecove-gitops"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "chacha20poly1305",
+ "chrono",
+ "flate2",
+ "futures-util",
+ "getrandom 0.4.3",
+ "http",
+ "k8s-openapi",
+ "keyring",
+ "kube",
+ "kubecove-kube",
+ "kubecove-live",
+ "kubecove-models",
+ "libc",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tokio",
  "tokio-util",
  "tower",
  "tower-test",
  "uuid",
  "yaml_serde",
+]
+
+[[package]]
+name = "kubecove-host"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures-util",
+ "kubecove-kube",
+ "kubecove-models",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tauri",
+ "tauri-plugin-dialog",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+ "uuid",
+]
+
+[[package]]
+name = "kubecove-inspection"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "chrono",
+ "futures-util",
+ "http",
+ "k8s-openapi",
+ "kube",
+ "kubecove-kube",
+ "kubecove-models",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tokio",
+ "tower",
+ "tower-test",
+ "yaml_serde",
+]
+
+[[package]]
+name = "kubecove-kube"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures-util",
+ "http",
+ "k8s-openapi",
+ "kube",
+ "kubecove-models",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin-dialog",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tower-test",
+ "yaml_serde",
+]
+
+[[package]]
+name = "kubecove-live"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures-util",
+ "http",
+ "k8s-openapi",
+ "kube",
+ "kubecove-kube",
+ "kubecove-models",
+ "serde_json",
+ "tauri",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tower-test",
+]
+
+[[package]]
+name = "kubecove-models"
+version = "0.1.0"
+dependencies = [
+ "k8s-openapi",
+ "kube",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

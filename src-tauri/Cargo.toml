@@ -1,43 +1,11 @@
-[package]
-name = "kubecove"
-version = "0.12.5"
-description = "A context-first desktop workspace for Kubernetes operations"
-license = "AGPL-3.0-or-later"
-authors = ["timpan"]
-edition = "2021"
-rust-version = "1.91"
-autobenches = false
+[workspace]
+members = [".", "crates/*"]
+default-members = ["."]
+# Keep server feature resolution, lockfile and target directory independent of desktop.
+exclude = ["server"]
+resolver = "2"
 
-[features]
-default = ["desktop"]
-# Tauri shell and plugins. kubecove-server builds the library without it (ADR 0020).
-desktop = [
-    "dep:tauri",
-    "dep:tauri-build",
-    "dep:tauri-plugin-updater",
-    "dep:tauri-plugin-process",
-    "dep:tauri-plugin-dialog",
-    "dep:tauri-plugin-opener",
-    "dep:tokio-tungstenite",
-    "dep:rustls",
-]
-bench-support = ["desktop"]
-e2e = ["desktop", "dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
-
-[lib]
-name = "kubecove_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
-[[bin]]
-name = "kubecove"
-path = "src/main.rs"
-required-features = ["desktop"]
-
-[build-dependencies]
-tauri-build = { version = "=2.7.2", features = [], optional = true }
-
-[dependencies]
-tauri = { version = "=2.12.3", features = [], optional = true }
+[workspace.dependencies]
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 base64 = "=0.23.1"
@@ -53,26 +21,106 @@ tokio-util = "=0.7.20"
 tower = { version = "=0.5.3", features = ["util"] }
 http = "=1.5.0"
 sysinfo = { version = "=0.39.6", default-features = false, features = ["system"] }
-tauri-plugin-updater = { version = "=2.13.3", optional = true }
-tauri-plugin-process = { version = "=2.4.0", optional = true }
-tauri-plugin-dialog = { version = "=2.8.2", optional = true }
-tauri-plugin-wdio = { version = "=1.5.0", optional = true }
-tauri-plugin-wdio-webdriver = { version = "=1.5.0", optional = true }
+tauri = { version = "=2.12.3", features = [] }
+tauri-plugin-dialog = "=2.8.2"
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls-no-provider", "http2", "stream"] }
-tokio-tungstenite = { version = "=0.30.0", features = ["rustls-tls-native-roots"], optional = true }
-rustls = { version = "=0.23.46", default-features = false, features = ["ring"], optional = true }
+tokio-tungstenite = { version = "=0.30.0", features = ["rustls-tls-native-roots"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
 keyring = "=4.2.0"
 chacha20poly1305 = "=0.11.0"
 getrandom = "=0.4.3"
 libc = "=0.2.190"
 uuid = { version = "=1.28.0", features = ["v4"] }
+proptest = "=1.12.0"
+tower-test = "=0.4.0"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+large_enum_variant = "allow"
+manual_let_else = "allow"
+match_same_arms = "allow"
+must_use_candidate = "allow"
+needless_pass_by_value = "allow"
+option_if_let_else = "allow"
+ref_option = "allow"
+struct_field_names = "allow"
+too_many_arguments = "allow"
+too_many_lines = "allow"
+unnecessary_wraps = "allow"
+unused_async = "allow"
+
+[package]
+name = "kubecove"
+version = "0.12.5"
+description = "A context-first desktop workspace for Kubernetes operations"
+license = "AGPL-3.0-or-later"
+authors = ["timpan"]
+edition = "2021"
+rust-version = "1.91"
+autobenches = false
+
+[features]
+default = ["desktop"]
+desktop = [
+    "dep:tauri", "dep:tauri-build", "dep:tauri-plugin-updater",
+    "dep:tauri-plugin-process", "dep:tauri-plugin-dialog", "dep:tauri-plugin-opener",
+    "kubecove-kube/desktop", "kubecove-inspection/desktop", "kubecove-live/desktop",
+    "kubecove-gitops/desktop", "kubecove-host/desktop",
+]
+bench-support = [
+    "desktop", "kubecove-kube/bench-support", "kubecove-inspection/bench-support",
+    "kubecove-live/bench-support", "kubecove-gitops/bench-support", "kubecove-host/bench-support",
+    "dep:base64", "dep:flate2", "dep:futures-util",
+]
+e2e = ["desktop", "kubecove-kube/e2e", "dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
+
+[lib]
+name = "kubecove_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "kubecove"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.2", features = [], optional = true }
+
+[dependencies]
+kubecove-models = { path = "crates/models" }
+kubecove-kube = { path = "crates/kube" }
+kubecove-inspection = { path = "crates/inspection" }
+kubecove-live = { path = "crates/live" }
+kubecove-gitops = { path = "crates/gitops" }
+kubecove-host = { path = "crates/host" }
+tauri = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+chrono = { workspace = true }
+kube = { workspace = true }
+k8s-openapi = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true }
+tauri-plugin-updater = { version = "=2.13.3", optional = true }
+tauri-plugin-process = { version = "=2.4.0", optional = true }
+tauri-plugin-dialog = { workspace = true, optional = true }
+tauri-plugin-wdio = { version = "=1.5.0", optional = true }
+tauri-plugin-wdio-webdriver = { version = "=1.5.0", optional = true }
 tauri-plugin-opener = { version = "=2.7.1", optional = true }
 
 [dev-dependencies]
 codspeed-divan-compat = "=5.0.1"
 divan = { package = "codspeed-divan-compat-walltime", version = "=5.0.1" }
-proptest = "=1.12.0"
-tower-test = "=0.4.0"
 
 [[bench]]
 name = "backend_hot_paths"

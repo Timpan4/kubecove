@@ -1,0 +1,349 @@
+mod credentials;
+mod discovery;
+mod inspection;
+mod inspector_read;
+mod store;
+
+pub(crate) use super::transport::{api_delete, api_get, api_post, redact_secret_fields};
+#[cfg(feature = "bench-support")]
+pub use inspection::{benchmark_connected_inspector, benchmark_kubernetes_inspector};
+pub(crate) use inspection::{inspector_from_application, managed_resource, state, text};
+pub(crate) use inspector_read::{connected_application_path, kubernetes_application};
+pub use store::ArgoConnectionStore;
+pub(crate) use store::{kubeconfig_source_key, ConnectedArgo};
+
+use self::{
+    credentials::{
+        connection_generation, delete_credential, load_credential, save_credential,
+        ActiveCredentialStore,
+    },
+    discovery::{is_argo_labeled, servicetunnel_capabilities, tunnel_target_unavailable},
+    inspector_read::application_inspector,
+};
+use super::transport::{
+    argo_url, http_client, normalize_endpoint, response_json, safe_http_error, url,
+};
+use super::tunnel::{verify_confirmed_target, ArgoServiceTunnel};
+use crate::commands::{gitops_crd::client_for_context, BackendCancellationRegistry};
+use crate::models::AppErrorKind;
+use crate::models::{
+    AppError, ArgoApplicationInspector, ArgoApplicationRef, ArgoConfirmedTarget,
+    ArgoConnectionProfile, ArgoConnectionStatus, ArgoServerCapability, ArgoServerEndpoint,
+};
+use k8s_openapi::api::core::v1::Service;
+use kube::api::{Api, ListParams};
+use serde_json::{json, Value};
+use std::{
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    sync::Arc,
+};
+use tokio::sync::Mutex as AsyncMutex;
+use uuid::Uuid;
+
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn discover_argo_servers(
+    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
+    cluster_context: String,
+    kubeconfig_env_var: Option<String>,
+    request_id: Option<String>,
+    cancel_scope: Option<String>,
+) -> Result<Vec<ArgoServerCapability>, AppError> {
+    cancellations
+        .execute(
+            cancel_scope,
+            request_id,
+            Box::pin(async move {
+                let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+                let services: Api<Service> = Api::all(client.clone());
+                let list = services
+                    .list(&ListParams::default())
+                    .await
+                    .map_err(AppError::from)?;
+                let mut capabilities = Vec::new();
+                for service in list.items {
+                    for mut capability in servicetunnel_capabilities(&service) {
+                        capability.argo_labeled = is_argo_labeled(&service);
+                        if let Some(ArgoServerEndpoint::ServiceTunnel {
+                            namespace,
+                            service_name,
+                            service_port,
+                            ..
+                        }) = capability.endpoint.as_ref()
+                        {
+                            match crate::commands::sessions::service::resolve_service_target(
+                                client.clone(),
+                                namespace,
+                                service_name,
+                                *service_port,
+                            )
+                            .await
+                            {
+                                Ok(target) => capability.target_pod = Some(target.pod_name),
+                                Err(error) => {
+                                    capability.unavailable =
+                                        Some(tunnel_target_unavailable(&error));
+                                    capability.unavailable_reason = Some(error.message);
+                                }
+                            }
+                        }
+                        capabilities.push(capability);
+                    }
+                }
+                Ok(capabilities)
+            }),
+        )
+        .await
+}
+
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn connect_argo_server(
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
+    id: String,
+    server_url: String,
+    endpoint: Option<ArgoServerEndpoint>,
+    token: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+    insecure_tls: bool,
+    custom_ca_pem: Option<Vec<u8>>,
+    remember_credential: bool,
+    cluster_context: Option<String>,
+    kubeconfig_env_var: Option<String>,
+    workspace_id: Option<String>,
+    confirmed_target: Option<ArgoConfirmedTarget>,
+) -> Result<ArgoConnectionStatus, AppError> {
+    let connection_epoch = store.connection_epoch();
+    let kubeconfig_source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+    let (endpoint, normalized_url) = normalize_endpoint(
+        endpoint.unwrap_or(ArgoServerEndpoint::ExternalHttps { url: server_url }),
+    )?;
+    let profile = ArgoConnectionProfile {
+        id,
+        url: normalized_url,
+        endpoint,
+        cluster_context,
+        workspace_id,
+        kubeconfig_source_key: Some(kubeconfig_source_key.clone()),
+        transport: "connected".into(),
+        remember_credential,
+    };
+    let mut tunnel = None;
+    let resolved_host = if let ArgoServerEndpoint::ServiceTunnel {
+        namespace,
+        service_name,
+        service_port,
+        ..
+    } = &profile.endpoint
+    {
+        let cluster_context = profile.cluster_context.as_deref().ok_or_else(|| {
+            AppError::new(
+                "clusterContext required for an Argo CD Service tunnel",
+                AppErrorKind::ArgoConnection,
+            )
+        })?;
+        let started = ArgoServiceTunnel::start(
+            cluster_context,
+            kubeconfig_env_var,
+            namespace.clone(),
+            service_name.clone(),
+            *service_port,
+        )
+        .await?;
+        verify_confirmed_target(
+            confirmed_target.as_ref(),
+            namespace,
+            service_name,
+            started.pod_name(),
+        )?;
+        let host = argo_url(&profile.url)?
+            .host_str()
+            .expect("normalized service endpoint has a host")
+            .to_string();
+        let address = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, started.local_port()));
+        tunnel = Some(started);
+        Some((host, address))
+    } else {
+        None
+    };
+    let client = http_client(
+        insecure_tls,
+        custom_ca_pem.clone(),
+        resolved_host
+            .as_ref()
+            .map(|(host, address)| (host.as_str(), *address)),
+    )?;
+    let credential_store = ActiveCredentialStore;
+    let submitted_token = token.filter(|value| !value.is_empty());
+    let stored = if remember_credential {
+        load_credential(&credential_store, &profile)?
+    } else {
+        None
+    };
+    let stored_token = stored.as_ref().map(|record| record.token.clone());
+    let token = if let Some(token) = submitted_token.clone().or(stored_token) {
+        token
+    } else {
+        let user = username.ok_or_else(|| {
+            AppError::new(
+                "token or local login credentials required",
+                AppErrorKind::ArgoConnection,
+            )
+        })?;
+        let password = password.ok_or_else(|| {
+            AppError::new(
+                "token or local login credentials required",
+                AppErrorKind::ArgoConnection,
+            )
+        })?;
+        let response = client
+            .post(url(&profile.url, "/api/v1/session")?)
+            .json(&json!({"username": user, "password": password}))
+            .send()
+            .await
+            .map_err(safe_http_error)?;
+        if !response.status().is_success() {
+            return Err(AppError::new(
+                format!("Argo CD login failed ({})", response.status()),
+                AppErrorKind::ArgoConnection,
+            ));
+        }
+        response_json(response)
+            .await?
+            .get("token")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                AppError::new(
+                    "Argo CD login returned no token",
+                    AppErrorKind::ArgoConnection,
+                )
+            })?
+    };
+    let response = client
+        .get(url(&profile.url, "/api/v1/session/userinfo")?)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(safe_http_error)?;
+    if !response.status().is_success() {
+        return Err(AppError::new(
+            format!("Argo CD session validation failed ({})", response.status()),
+            AppErrorKind::ArgoConnection,
+        ));
+    }
+    let userinfo = response_json(response).await?;
+    let user = userinfo
+        .get("username")
+        .or_else(|| userinfo.get("sub"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let generation = connection_generation(
+        stored.as_ref(),
+        submitted_token.is_some(),
+        remember_credential,
+        insecure_tls,
+        custom_ca_pem.as_deref(),
+    );
+    if remember_credential && (submitted_token.is_some() || stored.is_none()) {
+        save_credential(&credential_store, &profile, &token, generation.clone())?;
+    } else if !remember_credential {
+        // A stale remembered credential must not revive on a later reconnect.
+        delete_credential(&credential_store, &profile)?;
+    }
+    store
+        .replace_connection_at(
+            profile.id.clone(),
+            Arc::new(ConnectedArgo {
+                profile: profile.clone(),
+                token,
+                username: user.clone(),
+                client,
+                tunnel,
+                generation,
+                instance_id: Uuid::new_v4().to_string(),
+                gate: Arc::new(AsyncMutex::new(())),
+            }),
+            connection_epoch,
+        )
+        .await?;
+    Ok(ArgoConnectionStatus {
+        profile: Some(profile),
+        connected: true,
+        username: user,
+        unavailable_reason: None,
+    })
+}
+
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub fn get_argo_connection_status(
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
+    id: String,
+) -> Result<ArgoConnectionStatus, AppError> {
+    let connection = store
+        .connections
+        .lock()
+        .map_err(|_| {
+            AppError::new(
+                "Argo CD connection state unavailable",
+                AppErrorKind::ArgoConnection,
+            )
+        })?
+        .get(&id)
+        .cloned();
+    Ok(match connection {
+        Some(connection) => ArgoConnectionStatus {
+            profile: Some(connection.profile.clone()),
+            connected: true,
+            username: connection.username.clone(),
+            unavailable_reason: None,
+        },
+        None => ArgoConnectionStatus {
+            profile: None,
+            connected: false,
+            username: None,
+            unavailable_reason: None,
+        },
+    })
+}
+
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn disconnect_argo_server(
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
+    id: String,
+) -> Result<(), AppError> {
+    store.remove_connection(&id).await
+}
+
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub fn forget_argo_credential(profile: ArgoConnectionProfile) -> Result<(), AppError> {
+    delete_credential(&ActiveCredentialStore, &profile)
+}
+
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn get_argo_application_inspector(
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
+    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
+    cluster_context: String,
+    kubeconfig_env_var: Option<String>,
+    connection_id: Option<String>,
+    transport: String,
+    application: ArgoApplicationRef,
+    _redact_secrets: Option<bool>,
+    request_id: Option<String>,
+    cancel_scope: Option<String>,
+) -> Result<ArgoApplicationInspector, AppError> {
+    cancellations
+        .execute(
+            cancel_scope,
+            request_id,
+            application_inspector(
+                &store,
+                cluster_context,
+                kubeconfig_env_var,
+                connection_id,
+                transport,
+                application,
+            ),
+        )
+        .await
+}
