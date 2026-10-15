@@ -62,6 +62,12 @@ pub(crate) fn base_resource_summary(
     age: String,
 ) -> ResourceSummary {
     let api_version = builtin_kind(kind).map(BuiltinKind::api_version);
+    // Argo CD ownership is the git-ops owner when present, so derive it instead of rebuilding it.
+    let git_ops_owner = extract_git_ops_owner(metadata);
+    let argo_app = git_ops_owner
+        .as_ref()
+        .filter(|owner| owner.provider == "argo")
+        .map(|owner| owner.name.clone());
     ResourceSummary {
         kind: kind.to_string(),
         cluster: cluster.to_string(),
@@ -84,9 +90,9 @@ pub(crate) fn base_resource_summary(
         ready: None,
         restarts: None,
         owner_ref: extract_owner_ref(metadata),
-        argo_app: extract_argo_app(metadata),
+        argo_app,
         helm_release: extract_helm_release(metadata),
-        git_ops_owner: extract_git_ops_owner(metadata),
+        git_ops_owner,
         git_ops_ownership_partial: false,
     }
 }
