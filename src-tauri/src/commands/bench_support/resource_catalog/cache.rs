@@ -285,7 +285,7 @@ impl ResourceCacheFixture {
         .map(|index| index.retained_item_count())
     }
 
-    pub fn dirty_replacement(mut self) -> Result<Vec<ResourceSummary>, AppError> {
+    pub fn dirty_replacement(&mut self) -> Result<Vec<ResourceSummary>, AppError> {
         let kind = WatchResourceKind {
             kind: "Pod".to_string(),
             group: None,
