@@ -125,11 +125,10 @@ fn parse_memory_bytes(value: &str) -> Option<i64> {
     trimmed.parse::<i64>().ok().filter(|bytes| *bytes >= 0)
 }
 
-fn usage_value(data: &Value, key: &str) -> Option<String> {
+fn usage_value<'a>(data: &'a Value, key: &str) -> Option<&'a str> {
     data.get("usage")
         .and_then(|usage| usage.get(key))
         .and_then(Value::as_str)
-        .map(str::to_string)
 }
 
 fn container_usage_totals(data: &Value) -> (Option<f64>, Option<i64>) {
@@ -144,17 +143,13 @@ fn container_usage_totals(data: &Value) -> (Option<f64>, Option<i64>) {
     let mut has_memory = false;
 
     for container in containers {
-        if let Some(value) =
-            usage_value(container, "cpu").and_then(|value| parse_cpu_millicores(&value))
-        {
+        if let Some(value) = usage_value(container, "cpu").and_then(parse_cpu_millicores) {
             cpu = cpu
                 .map(|total| total + value)
                 .filter(|total| total.is_finite());
             has_cpu = true;
         }
-        if let Some(value) =
-            usage_value(container, "memory").and_then(|value| parse_memory_bytes(&value))
-        {
+        if let Some(value) = usage_value(container, "memory").and_then(parse_memory_bytes) {
             memory = memory.and_then(|total| total.checked_add(value));
             has_memory = true;
         }
@@ -175,8 +170,8 @@ pub(crate) fn metric_from_object(
         container_usage_totals(&object.data)
     } else {
         (
-            usage_value(&object.data, "cpu").and_then(|value| parse_cpu_millicores(&value)),
-            usage_value(&object.data, "memory").and_then(|value| parse_memory_bytes(&value)),
+            usage_value(&object.data, "cpu").and_then(parse_cpu_millicores),
+            usage_value(&object.data, "memory").and_then(parse_memory_bytes),
         )
     };
 
