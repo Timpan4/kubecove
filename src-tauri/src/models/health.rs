@@ -143,27 +143,15 @@ pub fn evaluate_health(mut input: HealthAssessmentInput) -> HealthAssessment {
             reason: "No current source can classify health".to_string(),
         });
     }
-    let winning_evidence: Vec<&HealthAssessmentEvidence> = if let Some(rank) = winning_rank {
-        input
-            .evidence
-            .iter()
-            .filter(|evidence| {
-                evidence.current
-                    && evidence.state.and_then(HealthAssessmentState::rank) == Some(rank)
-            })
-            .collect()
-    } else {
-        input
-            .evidence
-            .iter()
-            .filter(|evidence| {
-                evidence.current && evidence.state == Some(HealthAssessmentState::Unknown)
-            })
-            .collect()
+    let is_winner = |evidence: &HealthAssessmentEvidence| match winning_rank {
+        Some(rank) => {
+            evidence.current && evidence.state.and_then(HealthAssessmentState::rank) == Some(rank)
+        }
+        None => evidence.current && evidence.state == Some(HealthAssessmentState::Unknown),
     };
     let mut winning_sources = vec![];
     let mut reasons = vec![];
-    for evidence in &winning_evidence {
+    for evidence in input.evidence.iter().filter(|evidence| is_winner(evidence)) {
         if !winning_sources.contains(&evidence.source) {
             winning_sources.push(evidence.source);
         }
