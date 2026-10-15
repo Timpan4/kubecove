@@ -19,6 +19,7 @@ use crate::{
 };
 use futures_util::future::join_all;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Clone)]
@@ -280,7 +281,7 @@ async fn resource_scope_result_from(
             for (request, fetched) in join_all(fetches).await {
                 match fetched {
                     Ok(rows) => {
-                        result.resources.extend(rows);
+                        result.resources.extend(Arc::unwrap_or_clone(rows));
                         result.completed_requests.push(request);
                     }
                     Err(error) if error.kind == AppErrorKind::Forbidden => {
@@ -314,7 +315,11 @@ async fn resource_scope_result_from(
             move || fetch_flux_ownership_index(client)
         })
         .await?;
-    scope.resources = assemble_post_fetch_scope(scope.resources, index, &requested_namespaces);
+    scope.resources = assemble_post_fetch_scope(
+        scope.resources,
+        Arc::unwrap_or_clone(index),
+        &requested_namespaces,
+    );
     Ok(scope)
 }
 

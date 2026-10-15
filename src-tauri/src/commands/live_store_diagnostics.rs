@@ -49,7 +49,7 @@ impl CachePayloadWeight for FluxOwnershipIndex {
     }
 }
 
-impl<T: Clone + Send + Sync + CachePayloadWeight + 'static> SharedCache<T> {
+impl<T: Send + Sync + CachePayloadWeight + 'static> SharedCache<T> {
     fn clear_diagnostic_counters(&self) {
         let _entries = self.entries.lock().expect("live store cache lock");
         for counter in [
