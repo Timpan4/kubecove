@@ -18,7 +18,7 @@ use kube::{
     Client, Error,
 };
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -285,7 +285,7 @@ async fn list_replicasets(
     Ok(out)
 }
 
-type WorkloadKey = (String, String, String);
+type WorkloadKey<'a> = (&'a str, &'a str, &'a str);
 
 fn controller_owner(
     owners: &[k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference],
@@ -302,22 +302,22 @@ struct WorkloadMetric {
     memory_overflowed: bool,
 }
 
-fn add_workload_metric(
-    by_workload: &mut BTreeMap<WorkloadKey, WorkloadMetric>,
+fn add_workload_metric<'a>(
+    by_workload: &mut BTreeMap<WorkloadKey<'a>, WorkloadMetric>,
     cluster_context: &str,
-    key: WorkloadKey,
+    key: WorkloadKey<'a>,
     pod_name: &str,
     metric: &ResourceMetricSummary,
 ) {
-    let (kind, namespace, name) = key.clone();
+    let (kind, namespace, name) = key;
     let entry = by_workload.entry(key).or_insert_with(|| WorkloadMetric {
         cpu_overflowed: false,
         memory_overflowed: false,
         summary: ResourceMetricSummary {
-            kind,
+            kind: kind.to_string(),
             cluster: cluster_context.to_string(),
-            name,
-            namespace: Some(namespace),
+            name: name.to_string(),
+            namespace: Some(namespace.to_string()),
             cpu_millicores: None,
             memory_bytes: None,
             sampled_at: metric.sampled_at.clone(),
@@ -350,55 +350,43 @@ pub(crate) fn aggregate_workload_metrics(
     replicasets: &[ReplicaSet],
     pod_metrics: &[ResourceMetricSummary],
 ) -> Vec<ResourceMetricSummary> {
-    let metric_by_pod: BTreeMap<_, _> = pod_metrics
+    let metric_by_pod: HashMap<(&str, &str), &ResourceMetricSummary> = pod_metrics
         .iter()
-        .filter_map(|metric| Some(((metric.namespace.clone()?, metric.name.clone()), metric)))
+        .filter_map(|metric| Some(((metric.namespace.as_deref()?, metric.name.as_str()), metric)))
         .collect();
-    let replicaset_owner_by_key: BTreeMap<WorkloadKey, WorkloadKey> = replicasets
+    let replicaset_owner_by_key: BTreeMap<WorkloadKey<'_>, WorkloadKey<'_>> = replicasets
         .iter()
         .filter_map(|replicaset| {
-            let namespace = replicaset.metadata.namespace.clone()?;
-            let name = replicaset.metadata.name.clone()?;
+            let namespace = replicaset.metadata.namespace.as_deref()?;
+            let name = replicaset.metadata.name.as_deref()?;
             let owner = controller_owner(replicaset.metadata.owner_references.as_deref()?)?;
             Some((
-                ("ReplicaSet".to_string(), namespace.clone(), name),
-                (owner.kind.clone(), namespace, owner.name.clone()),
+                ("ReplicaSet", namespace, name),
+                (owner.kind.as_str(), namespace, owner.name.as_str()),
             ))
         })
         .collect();
-    let mut by_workload: BTreeMap<WorkloadKey, WorkloadMetric> = BTreeMap::new();
+    let mut by_workload: BTreeMap<WorkloadKey<'_>, WorkloadMetric> = BTreeMap::new();
 
     for pod in pods {
-        let namespace = pod.metadata.namespace.clone().unwrap_or_default();
-        let name = pod.metadata.name.clone().unwrap_or_default();
-        let Some(metric) = metric_by_pod.get(&(namespace.clone(), name.clone())) else {
+        let namespace = pod.metadata.namespace.as_deref().unwrap_or_default();
+        let name = pod.metadata.name.as_deref().unwrap_or_default();
+        let Some(metric) = metric_by_pod.get(&(namespace, name)) else {
             continue;
         };
-        let Some(owner) = pod.metadata.owner_references.as_ref().and_then(|owners| {
-            owners
-                .iter()
-                .find(|owner| owner.controller == Some(true))
-                .or_else(|| owners.first())
-        }) else {
+        let Some(owner) = pod
+            .metadata
+            .owner_references
+            .as_deref()
+            .and_then(controller_owner)
+        else {
             continue;
         };
-        let key = (owner.kind.clone(), namespace.clone(), owner.name.clone());
-        add_workload_metric(
-            &mut by_workload,
-            cluster_context,
-            key.clone(),
-            &name,
-            metric,
-        );
+        let key = (owner.kind.as_str(), namespace, owner.name.as_str());
+        add_workload_metric(&mut by_workload, cluster_context, key, name, metric);
 
         if let Some(parent_key) = replicaset_owner_by_key.get(&key) {
-            add_workload_metric(
-                &mut by_workload,
-                cluster_context,
-                parent_key.clone(),
-                &name,
-                metric,
-            );
+            add_workload_metric(&mut by_workload, cluster_context, *parent_key, name, metric);
         }
     }
 
