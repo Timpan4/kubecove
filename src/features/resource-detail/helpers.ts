@@ -559,34 +559,6 @@ export function buildIncidentSignals(
 	return signals;
 }
 
-export const formatMetadata = (
-	metadata: JsonObject,
-): Array<{ key: string; value: JsonValue | undefined }> => {
-	const entries: Array<{ key: string; value: JsonValue | undefined }> = [];
-	if (metadata.name) entries.push({ key: "Name", value: metadata.name });
-	if (metadata.namespace)
-		entries.push({ key: "Namespace", value: metadata.namespace });
-	if (metadata.uid) entries.push({ key: "UID", value: metadata.uid });
-	if (metadata.resourceVersion)
-		entries.push({
-			key: "Resource Version",
-			value: metadata.resourceVersion,
-		});
-	if (metadata.creationTimestamp)
-		entries.push({ key: "Created", value: metadata.creationTimestamp });
-	if (metadata.labels)
-		entries.push({
-			key: "Labels",
-			value: metadata.labels,
-		});
-	if (metadata.annotations)
-		entries.push({
-			key: "Annotations",
-			value: metadata.annotations,
-		});
-	return entries;
-};
-
 export const getErrorMessage = (cause: unknown): string => {
 	if (cause instanceof Error) return cause.message;
 	if (isString(cause)) return cause;

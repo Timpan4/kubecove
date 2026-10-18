@@ -178,17 +178,6 @@ export const STATIC_SECTION_NAMES: SectionName[] = [
   "rbac",
 ];
 
-// ─── Section → Kinds Mapping ───────────────────────────────────────────────────
-
-export function sectionKinds(section: SectionName): readonly string[] {
-  return SECTIONS[section].children;
-}
-
-export function isNamespacedKind(kind: string): boolean {
-  return SUPPORTED_KINDS.some((candidate) => candidate === kind) &&
-    !CLUSTER_SCOPED_KINDS.some((candidate) => candidate === kind);
-}
-
 // ─── TreeNodeId Helpers ────────────────────────────────────────────────────────
 
 export function nodeIdToString(id: TreeNodeId): string {
@@ -203,23 +192,6 @@ export function discoveredResourceKindKey(resourceKind: DiscoveredResourceKind):
   return `${resourceKind.group}/${resourceKind.version}/${resourceKind.plural}/${resourceKind.kind}`;
 }
 
-export function stringToNodeId(s: string): TreeNodeId {
-  const parts = s.split("::");
-  return {
-    type: treeNodeType(parts[0]),
-    section: parts[1],
-    namespace: parts[2],
-    group: parts[3],
-    kind: parts[4],
-  };
-}
-
-function treeNodeType(value: string | undefined): TreeNodeType {
-  return value === "namespace" || value === "group" || value === "kind"
-    ? value
-    : "section";
-}
-
 function isSectionName(value: string): value is SectionName {
   return Object.hasOwn(SECTIONS, value);
 }
@@ -228,31 +200,10 @@ function isKindGroupName(value: string | undefined): value is KindGroupName {
   return value !== undefined && Object.hasOwn(KIND_GROUPS, value);
 }
 
-export function makeSectionNode(section: SectionName): TreeNode {
-  return {
-    id: { type: "section", section },
-    label: SECTIONS[section].label,
-  };
-}
-
 export function makeNamespaceNode(namespace: string): TreeNode {
   return {
     id: { type: "namespace", section: "namespaces", namespace },
     label: namespace,
-  };
-}
-
-export function makeGroupNode(section: SectionName, namespace: string, group: KindGroupName): TreeNode {
-  return {
-    id: { type: "group", section, namespace, group },
-    label: group,
-  };
-}
-
-export function makeKindNode(section: SectionName, namespace: string, group: KindGroupName, kind: string): TreeNode {
-  return {
-    id: { type: "kind", section, namespace, group, kind },
-    label: kind,
   };
 }
 
@@ -407,22 +358,4 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
   }
 
   return { section: null, namespace: null, group: null, kinds: [], clusterScoped: false, argoMode: false, helmMode: false, incidentMode: false, portForwardMode: false, rbacMode: false };
-}
-
-// ─── Argo Section Helpers ─────────────────────────────────────────────────────
-
-export function isArgoSection(section: SectionName | string): boolean {
-  return section === "argo";
-}
-
-export function argoChildKinds(child: string): string[] {
-  switch (child) {
-    case "Argo CD Applications": return [];
-    case "Argo CD ApplicationSets": return [];
-    case "Argo CD AppProjects": return [];
-    case "Applications": return [];
-    case "ApplicationSets": return [];
-    case "AppProjects": return [];
-    default: return [];
-  }
 }

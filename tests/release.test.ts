@@ -39,7 +39,7 @@ describe("release version helpers", () => {
 	});
 
 	test("runs native Nix builds without blocking a release", () => {
-		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
+		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8").replaceAll("\r\n", "\n");
 		const nixJob = releaseWorkflow.match(
 			/\n {2}nix:\n[\s\S]*?(?=\n {2}verify:\n)/,
 		)?.[0];
@@ -61,7 +61,7 @@ describe("release version helpers", () => {
 	});
 
 	test("gates pull requests on the frontend and desktop Nix packages", () => {
-		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8").replaceAll("\r\n", "\n");
 		const nixJob = ciWorkflow.match(
 			/\n {2}nix:\n[\s\S]*?(?=\n {2}check:\n)/,
 		)?.[0];
@@ -144,8 +144,8 @@ describe("release version helpers", () => {
 	});
 
 	test("uses an unlocked session collection for Linux desktop E2E", () => {
-		const e2eWorkflow = readFileSync(".github/workflows/e2e.yml", "utf8");
-		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
+		const e2eWorkflow = readFileSync(".github/workflows/e2e.yml", "utf8").replaceAll("\r\n", "\n");
+		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8").replaceAll("\r\n", "\n");
 		const sessionAlias = [
 			"org.freedesktop.Secret.Service.SetAlias",
 			"string:default",

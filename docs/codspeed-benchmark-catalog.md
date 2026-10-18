@@ -713,6 +713,8 @@ Native commands build/launch the application and write artifacts. Check their pr
 
 ## Frontend audit coverage
 
+The inventories in this section record the original benchmark audit baseline. Later [legacy code and test cleanup](legacy-test-audit.md) removed proven uncalled paths; these historical counts and names are not a current filesystem manifest.
+
 The parallel frontend audit inspected every source domain and all eight benchmark suites. The filesystem inventory contains 399 TypeScript/Svelte files: 166 non-test TS, 193 Svelte, 38 tests and two declarations. Of the 359 non-test implementation/module entries, 349 belong to production and ten to browser mocks or the topology harness. These include types and barrels, not just executable algorithms. The compact source manifest below expands to all 361 non-test/declaration paths with no missing or extra files against the filesystem inventory. Tests are counted separately and informed fixture contracts.
 
 | Directory under `src/` | Non-test TS | Svelte | Tests | Declarations |
