@@ -118,8 +118,9 @@ jobs:
           - name: Lint frontend
             run: bun run lint
 
-          - name: Test frontend
-            run: bun test
+      # Svelte compilation tests need the runner after the parallel checks finish.
+      - name: Test frontend
+        run: bun test
 
   rust:
     name: Rust release checks

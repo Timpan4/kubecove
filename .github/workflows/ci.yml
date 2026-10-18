@@ -190,8 +190,9 @@ jobs:
           - name: Lint frontend anti-slop rules
             run: bun run lint:anti-slop
 
-          - name: Test frontend
-            run: bun test
+      # Svelte compilation tests need the runner after the parallel checks finish.
+      - name: Test frontend
+        run: bun test
 
       - name: Run fast end-to-end suite
         run: bun run e2e:fast

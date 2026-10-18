@@ -100,14 +100,13 @@ test("release reruns reject unverified history before advancing an existing bran
   assert.ok(calls.every((call) => !call.includes("graphql") && !call.includes("POST") && !call.includes("DELETE")));
 });
 
-test("parallel frontend checks retain coverage and wait for installed dependencies", () => {
+test("parallel frontend checks retain coverage and finish before compilation-heavy tests", () => {
   const ci = parse(readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"));
   const common = [
     "bun run docs:check",
     "node --test scripts/release-workflow-regression.test.mjs",
     "bun run typecheck",
     "bun run lint",
-    "bun test",
   ];
   for (const [source, commands] of [
     [ci, [...common, "bun run audit", "bun run typecheck:bench", "bun run svelte:check", "bun run lint:anti-slop"]],
@@ -125,9 +124,12 @@ test("parallel frontend checks retain coverage and wait for installed dependenci
     for (const child of group.parallel) {
       assert.deepEqual(Object.keys(child).sort(), ["name", "run"], "each check must run and fail normally");
     }
+    const tested = frontend.steps.indexOf(step(frontend, "Test frontend"));
+    assert.ok(tested > checked, "Svelte compilation tests need the runner after parallel checks finish");
+    assert.equal(frontend.steps[tested].run, "bun test");
     if (source === ci) {
-      assert.ok(frontend.steps.indexOf(step(frontend, "Run fast end-to-end suite")) > checked,
-        "E2E must wait for the parallel checks");
+      assert.ok(frontend.steps.indexOf(step(frontend, "Run fast end-to-end suite")) > tested,
+        "E2E must wait for the frontend tests");
     }
   }
 });
