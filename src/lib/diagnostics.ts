@@ -135,10 +135,6 @@ export function summarizeDurations(
 		.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function diagnosticsEnabled(): boolean {
-	return enabled;
-}
-
 export function setDiagnosticsEnabled(nextEnabled: boolean): void {
 	enabled = nextEnabled;
 	previousTimestamp = performance.now();

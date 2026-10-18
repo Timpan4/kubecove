@@ -199,16 +199,6 @@ function pickString<T extends string, Value>(value: Value, values: readonly T[],
 	return values.find((candidate) => Object.is(candidate, value)) ?? fallback;
 }
 
-export function isPathStateWorkspaceViewMode<Value>(
-	value: Value,
-): value is Value & PathStateWorkspaceViewMode {
-	return PATH_STATE_WORKSPACE_VIEW_MODES.some((mode) => Object.is(mode, value));
-}
-
-export function isPathStateHealthFilter<Value>(value: Value): value is Value & PathStateHealthFilter {
-	return PATH_STATE_HEALTH_FILTERS.some((filter) => Object.is(filter, value));
-}
-
 function sanitizeDiscoveredResourceKind<Value>(value: Value): DiscoveredResourceKind | null {
 	if (!isRecord(value)) return null;
 	const group = stringValue(value.group);
@@ -472,14 +462,21 @@ export function parsePathStateHash(hash: string): PathStateSnapshot | null {
 	if (parts.length === 1 && parts[0] === "workspaces") return defaultPathStateSnapshot("workspaces");
 	if (parts.length === 1 && parts[0] === "settings") return defaultPathStateSnapshot("settings");
 	if (parts.length >= 3 && parts[0] === "workspace") {
-		const workspaceId = decodeURIComponent(parts[1] ?? "");
+		let workspaceId: string;
+		let viewMode: string;
+		try {
+			workspaceId = decodeURIComponent(parts[1] ?? "");
+			viewMode = decodeURIComponent(parts[2] ?? "");
+		} catch {
+			return null;
+		}
 		if (!workspaceId) return null;
 		return {
 			...defaultPathStateSnapshot(),
 			workspace: {
 				...defaultWorkspaceSnapshot(workspaceId),
 				viewMode: pickString(
-					decodeURIComponent(parts[2] ?? ""),
+					viewMode,
 					PATH_STATE_WORKSPACE_VIEW_MODES,
 					"overview",
 				),

@@ -3,8 +3,8 @@ import { buildGitOpsReadState } from "../src/features/gitops/surfaceState";
 import {
 	argoApplicationResourceNavigation,
 	resolveTargetGitOpsSelection,
+	selectedGitOpsApplicationName,
 } from "../src/features/gitops/surfaceSelection";
-import { selectedGitOpsApplicationName } from "../src/features/gitops";
 
 const readyDetection = {
 	isSuccess: true,

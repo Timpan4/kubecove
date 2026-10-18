@@ -22,10 +22,6 @@ export function isDesktopRemoteSelected(): boolean {
 	return desktopRemoteSummary !== null;
 }
 
-export function getDesktopRemoteSummary(): RemoteConnectionSummary | null {
-	return desktopRemoteSummary;
-}
-
 export async function connectDesktopRemote(
 	serverUrl: string,
 	token: string,

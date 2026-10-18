@@ -149,6 +149,20 @@ describe("path state", () => {
 		expect(readPathState()).toEqual(defaultPathStateSnapshot("settings"));
 	});
 
+	test("ignores malformed hash escapes and restores the saved session", () => {
+		const saved = snapshot();
+		for (const hash of [
+			"#/workspace/%E0%A4%A/resources",
+			"#/workspace/workspace-1/%",
+		]) {
+			const fakeWindow = installWindow(hash);
+			fakeWindow.sessionStorage.setItem(PATH_STATE_SESSION_KEY, JSON.stringify(saved));
+
+			expect(parsePathStateHash(hash)).toBeNull();
+			expect(readPathState()).toEqual(saved);
+		}
+	});
+
 	test("defaults missing and invalid restored resource scopes to table-first", () => {
 		for (const resources of [{}, { mapPanelOpen: "true" }, { mapPanelOpen: 1 }]) {
 			const safe = sanitizePathStateSnapshot({

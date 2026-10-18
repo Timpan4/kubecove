@@ -189,15 +189,6 @@ fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut Ha
     );
 }
 
-// Test helper for process-tree traversal without constructing sysinfo snapshots.
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn process_tree_pids_from_relations(
-    root_pid: Pid,
-    relations: impl IntoIterator<Item = (Pid, Option<Pid>)>,
-) -> HashSet<Pid> {
-    process_tree_pids_from_roots([root_pid], relations)
-}
-
 fn process_tree_pids_from_roots(
     root_pids: impl IntoIterator<Item = Pid>,
     relations: impl IntoIterator<Item = (Pid, Option<Pid>)>,
@@ -518,9 +509,7 @@ fn usage_process_group_with_webview_check(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        normalize_cpu_percent, process_tree_pids_from_relations, process_tree_pids_from_roots,
-    };
+    use super::{normalize_cpu_percent, process_tree_pids_from_roots};
     use sysinfo::Pid;
 
     fn pid(value: u32) -> Pid {
@@ -574,8 +563,8 @@ mod tests {
 
     #[test]
     fn collects_recursive_child_processes() {
-        let pids = process_tree_pids_from_relations(
-            pid(10),
+        let pids = process_tree_pids_from_roots(
+            [pid(10)],
             [
                 (pid(10), None),
                 (pid(11), Some(pid(10))),
@@ -592,8 +581,8 @@ mod tests {
 
     #[test]
     fn ignores_processes_without_parent_link_to_host() {
-        let pids = process_tree_pids_from_relations(
-            pid(10),
+        let pids = process_tree_pids_from_roots(
+            [pid(10)],
             [
                 (pid(10), None),
                 (pid(11), Some(pid(10))),
