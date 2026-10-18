@@ -40,12 +40,6 @@ export function formatUsageMetrics(metrics: AppUsageMetrics): string {
 	].join(" · ");
 }
 
-export function formatUsageMetricsBreakdown(
-	item: AppUsageMetricsBreakdown,
-): string {
-	return [item.label, formatUsageMetricsBreakdownDetails(item)].join(" · ");
-}
-
 export function formatUsageMetricsBreakdownDetails(
 	item: AppUsageMetricsBreakdown,
 ): string {

@@ -11,7 +11,6 @@ import {
 	resourceTopologyNodeId,
 } from "../topology";
 
-export const TOPOLOGY_SPIKE_NODE_COUNTS = [1_000, 4_000, 10_000] as const;
 export const TOPOLOGY_SPIKE_SELECTION_COUNT = 100;
 
 export interface TopologySpikeNode {

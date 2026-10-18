@@ -14,6 +14,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 ## Engineering
 
 - [Development Workflow](development-workflow.md) — setup, local development, and checks.
+- [Legacy code and test audit](legacy-test-audit.md) — removal evidence, preserved coverage, and verification boundaries.
 - [Rust build measurements](rust-build-measurements.md) — private-crate boundaries and incremental rebuild evidence.
 - [CodSpeed benchmark catalog](codspeed-benchmark-catalog.md) — current coverage, benchmark candidates, fixtures, and measurement boundaries.
 - [Deferred Svelte surfaces](lazy-surface-loading.md) — import boundaries and before/after bundle and native launcher evidence.

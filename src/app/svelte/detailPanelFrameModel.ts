@@ -1,4 +1,3 @@
-export const MAIN_PANEL_DEFAULT_SIZE = 60;
 export const DETAIL_PANEL_DEFAULT_SIZE = 40;
 export const MAIN_PANEL_MIN_SIZE = 30;
 export const DETAIL_PANEL_MIN_SIZE = 33;

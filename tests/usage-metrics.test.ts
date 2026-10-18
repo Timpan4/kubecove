@@ -4,7 +4,7 @@ import {
 	formatMemoryBytes,
 	formatProcessCount,
 	formatUsageMetrics,
-	formatUsageMetricsBreakdown,
+	formatUsageMetricsBreakdownDetails,
 	flattenUsageMetricsBreakdown,
 } from "../src/lib/usage-metrics";
 
@@ -68,11 +68,11 @@ describe("usage metrics formatting", () => {
 			],
 		};
 
-		expect(formatUsageMetricsBreakdown(item)).toBe(
-			"KubeCove · CPU 1.2% · 256 MB · 3 processes",
+		expect(formatUsageMetricsBreakdownDetails(item)).toBe(
+			"CPU 1.2% · 256 MB · 3 processes",
 		);
-		expect(formatUsageMetricsBreakdown(item.children[0])).toBe(
-			"WebView · CPU 0.8% · 128 MB · 2 processes",
+		expect(formatUsageMetricsBreakdownDetails(item.children[0])).toBe(
+			"CPU 0.8% · 128 MB · 2 processes",
 		);
 		expect(flattenUsageMetricsBreakdown([item]).map(({ item, depth }) => [item.label, depth])).toEqual([
 			["KubeCove", 0],

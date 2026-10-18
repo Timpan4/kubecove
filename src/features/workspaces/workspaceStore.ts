@@ -432,7 +432,3 @@ export function createWorkspaceStore(
 }
 
 export const workspaceStore = createWorkspaceStore();
-
-export function getWorkspaceSnapshot(): WorkspaceState {
-	return get(workspaceStore);
-}

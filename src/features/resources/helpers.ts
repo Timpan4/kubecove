@@ -351,30 +351,6 @@ export function formatResourceTypeGroupLabel(resource: ResourceSummary): string 
 	return `${resource.kind}s`;
 }
 
-const RESOURCE_GROUP_KIND_RANK = {
-	Deployment: 10,
-	StatefulSet: 11,
-	DaemonSet: 12,
-	ReplicaSet: 13,
-	Pod: 20,
-	Job: 30,
-	CronJob: 31,
-	Service: 40,
-	Ingress: 41,
-	EndpointSlice: 42,
-	PersistentVolumeClaim: 50,
-	ConfigMap: 80,
-	Secret: 81,
-} satisfies Record<string, number>;
-
-export function resourceGroupKindRank(kind: string): number {
-	return resourceKindRank(RESOURCE_GROUP_KIND_RANK, kind) ?? 70;
-}
-
-function resourceKindRank(ranks: Record<string, number>, kind: string): number | undefined {
-	return ranks[kind];
-}
-
 export function resourceGroupCollapseKey(resource: ResourceSummary): string {
 	return `group:${gitOpsOwnershipGroupLabel(resource)}`;
 }

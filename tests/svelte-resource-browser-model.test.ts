@@ -942,7 +942,7 @@ describe("svelte resource browser model", () => {
 		const source = readFileSync(
 			"src/features/resources/ResourceBrowser.svelte",
 			"utf8",
-		);
+		).replaceAll("\r\n", "\n");
 
 		expect(source).toContain(
 			'selectedTopologyNodeId = null;\n\t\tonResourceSelect(resource, "explicit")',
