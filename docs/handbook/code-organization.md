@@ -30,6 +30,8 @@ The desktop `commands/` module composes domain APIs and coordinates workspace ca
 
 `src-tauri/server/` is the headless binary's separate workspace. It owns authenticated HTTP and WebSocket adapters, session ownership, and server startup. It calls the existing backend facade through `crates/kube/src/runtime.rs`'s transport seam with the `desktop` feature disabled.
 
+`src-tauri/vendor/` contains published third-party dependency sources with narrowly documented local patches and removal conditions.
+
 `deploy/` contains operator-applied deployment examples for the headless server. The root `Dockerfile` builds its container image; these files are not app runtime installation paths.
 
 ## Cross-Cutting Rules

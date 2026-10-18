@@ -22,6 +22,7 @@ Exempt:
 - `node_modules/**`
 - `src-tauri/target/**`
 - `target/**`
+- `src-tauri/vendor/tauri-plugin-updater/src/updater.rs`, the intact upstream extraction implementation. See its [patch record](../../src-tauri/vendor/tauri-plugin-updater/PATCH.md). Remove this exception with the vendored patch.
 
 ## Meaning
 

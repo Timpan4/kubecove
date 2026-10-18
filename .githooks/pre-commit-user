@@ -92,6 +92,9 @@ hard_cap_for() {
 
 is_size_exempt() {
   case "$1" in
+    # Keep published third-party source intact; the local patch changes only its manifest.
+    src-tauri/vendor/tauri-plugin-updater/src/updater.rs)
+      return 0 ;;
     *.test.*|*.spec.*|*.gen.*|*.d.ts)
       return 0 ;;
     bun.lock|node_modules/*|src-tauri/target/*|target/*)

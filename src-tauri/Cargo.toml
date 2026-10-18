@@ -2,8 +2,12 @@
 members = [".", "crates/*"]
 default-members = ["."]
 # Keep server feature resolution, lockfile and target directory independent of desktop.
-exclude = ["server"]
+exclude = ["server", "vendor/tauri-plugin-updater"]
 resolver = "2"
+
+[patch.crates-io]
+# Remove when the published updater accepts the patched ZIP release. See vendor/tauri-plugin-updater/PATCH.md.
+tauri-plugin-updater = { path = "vendor/tauri-plugin-updater" }
 
 [workspace.dependencies]
 serde = { version = "=1.0.229", features = ["derive", "rc"] }
