@@ -20,13 +20,13 @@ serde_yaml = { package = "yaml_serde", version = "=0.10.4" }
 thiserror = "=2.0.21"
 chrono = "=0.4.45"
 futures-util = "=0.3.34"
-tokio = { version = "=1.53.2", features = ["io-util", "macros", "net", "process", "rt", "sync", "time"] }
+tokio = { version = "=1.53.3", features = ["io-util", "macros", "net", "process", "rt", "sync", "time"] }
 tokio-util = "=0.7.20"
 tower = { version = "=0.5.3", features = ["util"] }
 http = "=1.5.0"
 sysinfo = { version = "=0.39.6", default-features = false, features = ["system"] }
 tauri = { version = "=2.12.3", features = [] }
-tauri-plugin-dialog = "=2.8.2"
+tauri-plugin-dialog = "=2.8.3"
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls-no-provider", "http2", "stream"] }
 tokio-tungstenite = { version = "=0.30.0", features = ["rustls-tls-native-roots"] }
 rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
