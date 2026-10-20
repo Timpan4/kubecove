@@ -4,6 +4,8 @@
 
 Use [GitHub private vulnerability reporting](https://github.com/Timpan4/kubecove/security/advisories/new).
 
+You can also email [security@timpan.me](mailto:security@timpan.me). This is the public maintainer contact for private security reports and OSS Scanner enrollment.
+
 If private reporting is unavailable, open a public issue asking for a private contact path. Do not post exploit details, credentials, kubeconfig contents, tokens, certificates, or cluster-specific sensitive data publicly.
 
 Include affected version or commit, operating system, impact, and minimal reproduction steps. State whether credentials or Kubernetes resources may be exposed or modified.

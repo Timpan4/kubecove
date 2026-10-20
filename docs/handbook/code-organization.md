@@ -34,6 +34,8 @@ The desktop `commands/` module composes domain APIs and coordinates workspace ca
 
 `deploy/` contains operator-applied deployment examples for the headless server. The root `Dockerfile` builds its container image; these files are not app runtime installation paths.
 
+`.oss-scanner/` contains the offline security-audit build environment, threat model, and maintainer enrollment instructions for Anthropic OSS Scanner.
+
 ## Cross-Cutting Rules
 
 - Frontend uses typed Tauri wrappers; it never calls Kubernetes or local shell directly.

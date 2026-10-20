@@ -34,6 +34,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 - [Planning and milestones](milestones.md) — GitHub Issue and Milestone tracking direction.
 - [Multiple user sessions and persistence](decisions/0023-multi-user-sessions-and-persistence.md) — implemented session baseline and proposed private-source provisioning, persistent user workspaces, settings and migration.
 - [Security Policy](../SECURITY.md) — vulnerability reporting and support.
+- [OSS Scanner](../.oss-scanner/README.md) — offline audit environment, threat model, and maintainer enrollment.
 - [Contributing](../CONTRIBUTING.md) — contribution and documentation reporting process.
 - [License](../LICENSE) — AGPL-3.0-or-later terms.
 
