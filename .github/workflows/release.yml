@@ -104,18 +104,21 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Check documentation
-        run: bun run docs:check
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstepsparallel
+      - parallel:
+          - name: Check documentation
+            run: bun run docs:check
 
-      - name: Test release orchestration
-        run: node --test scripts/release-workflow-regression.test.mjs
+          - name: Test release orchestration
+            run: node --test scripts/release-workflow-regression.test.mjs
 
-      - name: Typecheck frontend
-        run: bun run typecheck
+          - name: Typecheck frontend
+            run: bun run typecheck
 
-      - name: Lint frontend
-        run: bun run lint
+          - name: Lint frontend
+            run: bun run lint
 
+      # Svelte compilation tests need the runner after the parallel checks finish.
       - name: Test frontend
         run: bun test
 

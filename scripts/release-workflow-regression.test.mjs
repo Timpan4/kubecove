@@ -100,14 +100,37 @@ test("release reruns reject unverified history before advancing an existing bran
   assert.ok(calls.every((call) => !call.includes("graphql") && !call.includes("POST") && !call.includes("DELETE")));
 });
 
-test("release orchestration runs after dependencies are installed in CI and releases", () => {
+test("parallel frontend checks retain coverage and finish before compilation-heavy tests", () => {
   const ci = parse(readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"));
-  for (const source of [ci, workflow]) {
+  const common = [
+    "bun run docs:check",
+    "node --test scripts/release-workflow-regression.test.mjs",
+    "bun run typecheck",
+    "bun run lint",
+  ];
+  for (const [source, commands] of [
+    [ci, [...common, "bun run audit", "bun run typecheck:bench", "bun run svelte:check", "bun run lint:anti-slop"]],
+    [workflow, common],
+  ]) {
     const frontend = job("frontend", source);
     const installed = frontend.steps.indexOf(step(frontend, "Install frontend dependencies"));
-    const tested = frontend.steps.findIndex(({ run }) => run?.includes("node --test") &&
-      run.includes("scripts/release-workflow-regression.test.mjs"));
-    assert.ok(tested > installed, "release tests need the installed YAML parser");
+    const groups = frontend.steps.filter(({ parallel }) => parallel);
+    assert.equal(groups.length, 1);
+    const group = groups[0];
+    const checked = frontend.steps.indexOf(group);
+    assert.ok(checked > installed, "parallel checks need installed dependencies");
+    assert.deepEqual(Object.keys(group), ["parallel"], "group failures must propagate");
+    assert.deepEqual(group.parallel.map(({ run }) => run).sort(), [...commands].sort());
+    for (const child of group.parallel) {
+      assert.deepEqual(Object.keys(child).sort(), ["name", "run"], "each check must run and fail normally");
+    }
+    const tested = frontend.steps.indexOf(step(frontend, "Test frontend"));
+    assert.ok(tested > checked, "Svelte compilation tests need the runner after parallel checks finish");
+    assert.equal(frontend.steps[tested].run, "bun test");
+    if (source === ci) {
+      assert.ok(frontend.steps.indexOf(step(frontend, "Run fast end-to-end suite")) > tested,
+        "E2E must wait for the frontend tests");
+    }
   }
 });
 
