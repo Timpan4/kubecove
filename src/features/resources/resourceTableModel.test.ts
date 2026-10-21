@@ -94,8 +94,8 @@ test("every sort preserves legacy collation, missing values and stable ties", ()
 				const left = legacyValue(a, id),
 					right = legacyValue(b, id);
 				const compared =
-					typeof left === "number" && typeof right === "number"
-						? left - right
+					id === "restarts" || id === "cpu" || id === "memory"
+						? Number(left) - Number(right)
 						: String(left).localeCompare(String(right), undefined, {
 								numeric: true,
 								sensitivity: "base",

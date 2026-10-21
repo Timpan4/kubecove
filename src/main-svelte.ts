@@ -20,7 +20,7 @@ function mountApp(target: HTMLElement): void {
 if (IS_DEV_BUILD) {
 	void initializeBrowserDevMocks()
 		.then(() => mountApp(target))
-		.catch((error: unknown) => {
+		.catch((error) => {
 			console.error("Failed to start KubeCove", error);
 			target.textContent = "KubeCove could not start. Reload the window to try again.";
 		});
