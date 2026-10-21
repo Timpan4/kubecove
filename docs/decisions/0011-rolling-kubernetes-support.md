@@ -12,7 +12,9 @@ KubeCove uses Kubernetes discovery and dynamic resources across clusters with di
 
 KubeCove officially supports the latest three active Kubernetes minor releases for which the repository has digest-pinned Kind images and a green real E2E matrix. The initial window is Kubernetes 1.34, 1.35, and 1.36.
 
-The default real test targets 1.35. Nightly, manual, and release gates run the full 1.34–1.36 matrix. A maintainer PR may advance the window only after:
+Amendment (2026-10-21): the window adds Kubernetes 1.37 and keeps 1.34 for now, so it temporarily covers four minors, 1.34–1.37. Dropping 1.34 is a later maintainer PR under the same rules.
+
+The default real test targets 1.35. Nightly, manual, and release gates run the full 1.34–1.37 matrix. A maintainer PR may advance the window only after:
 
 1. the replacement Kind release publishes digest-pinned node images for all three minors;
 2. runner pins and checksums are reviewed;

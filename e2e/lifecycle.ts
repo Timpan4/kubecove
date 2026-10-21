@@ -49,29 +49,30 @@ const kubernetes = parseKubernetesVersion(requestedKubernetes);
 validateImmutablePins();
 
 const images = {
-	"1.34": "kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256",
-	"1.35": "kindest/node:v1.35.5@sha256:ce977ae6d65918d0b58a5f8b5e940429c2ce42fa3a5619ec2bbc60b949c0ac95",
-	"1.36": "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5",
+	"1.34": "kindest/node:v1.34.11@sha256:44e222ee2132dab25ff87301682f89eb82c7880ea3a1bf543bfe9708fd08d67d",
+	"1.35": "kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0",
+	"1.36": "kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed",
+	"1.37": "kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5",
 } satisfies Record<string, string>;
 function parseKubernetesVersion(value: string): keyof typeof images {
-	if (value === "1.34" || value === "1.35" || value === "1.36") return value;
-	throw new Error("--kubernetes must be 1.34, 1.35, or 1.36");
+	if (value === "1.34" || value === "1.35" || value === "1.36" || value === "1.37") return value;
+	throw new Error("--kubernetes must be 1.34, 1.35, 1.36, or 1.37");
 }
 function imageFor(version: string) {
 	return images[parseKubernetesVersion(version)];
 }
 const pins = {
-	kind: { "darwin-amd64": "295ac6d0d634c9819c9907df45e3017d1f13166bd13c3404c45e79f7faa47498", "darwin-arm64": "dca67911095a110c2b5c36e26df6cac860c602033e456c0db47be498cdef1ebb", "linux-amd64": "50030de23cf40a18505f20426f6a8506bedf13c6e509244bd1fa9463721b0f54", "linux-arm64": "b92cd615e97585de8ddade28ed5cd7feb4248d717c233eea5b03c37298900f5d", "windows-amd64": "0bcb2d1cfedc1912d664014db716937e8a0e843e91c6807b4db2025dbc8989fa" },
-	kubectl: { "darwin-amd64": "fa6b472ca1e542e171d7daedd9435b8e9650bc18d42a57eb930a51f48ca58874", "darwin-arm64": "1827b555615791c1c1065dd64870eb49a4e00e9dfd389a82a2ef1d31bb46d200", "linux-amd64": "5d11e2ba01ea68ffd053f56e27738e2b4330013ee67f7e46c6da6c585d3c9926", "linux-arm64": "c0f97f31c9ddc22d4951d543a1a7125a9af4b31e895ad4aa99899c4ba2a6ff0b", "windows-amd64": "ce1c21d0e0a64fa249fad3b6372c14479e7901fedf6d5a425d92c46c2bd87442" },
-	helm: { "darwin-amd64": "1376ea697140e4db316736e760d5a47d12afc1524dce704476ef06fd7fdeddc6", "darwin-arm64": "f13f959015447b6bc309f9fd506509926543988a39035c088b52522ec95e2acb", "linux-amd64": "97dbeb971be4ac4b27e3839976d9564c0fb35c6f3b1da89dd1e292d236af4096", "linux-arm64": "1f8de130dfbd04de64978e7b852a7a547be1404956a366608276d2520b678670", "windows-amd64": "614f68ddc567ac9bfb0c205f869b1f83ba4e0a9aacd26cbae47743ae6082a579" },
+	kind: { "darwin-amd64": "5a99f26f57246dc9319dd294803313197a0f34d33c525b3ea8b655db5916ece0", "darwin-arm64": "0c8c7dbe5e23594a198b786c4bc13dacc101fa6196b0cb0b23a1ca44e61f4b4f", "linux-amd64": "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d", "linux-arm64": "20022bee6cfcd5086cb7234d218e3454e6090022f2a8f55d1fa7fcf42c3867a2", "windows-amd64": "4b22adaa135368c5a465d56bbd8e520cbea87272a06ca00b6078e7b81515c9fc" },
+	kubectl: { "darwin-amd64": "03338828c3ba74c37bf5964573fbfbab132eb5bb15da2f821c25a4043d6eb3f0", "darwin-arm64": "c5850a4a6b9469b26cce47c1ab456285f58e308283dcdf72b4ddda3db49b0ec0", "linux-amd64": "33bc88a24c3b09cf55bfd59e6ca977881b61fc3f25ab65bc80c65b430248648e", "linux-arm64": "88fc1aca8fd0c1b44fe379f67c39bd6858bdfc50241dc55775f84d0f5b31da3a", "windows-amd64": "5e87156aa0b20e3c1c66db22a11d898f9a5f787513a3bbd8df2633c207a5a855" },
+	helm: { "darwin-amd64": "34bec4eba761ba5c16d1965ee6b8f5b0abe5993974a802274e2a4f0418893d89", "darwin-arm64": "6b4e61c8cd27d99e5a801e63ff25dd5c70b36875c2cd659d3e9ce6b76fc23198", "linux-amd64": "0403a88ae20913d11b10a2467b50087721fea7581736da6b9d3992f5357fe54b", "linux-arm64": "8cf8f66ecbc252ac8f7f06cca68aba88508ddfde3a6a34feb1678ad1694b4f88", "windows-amd64": "fcfd7b796dcf0f225abc40b5636a3b01f55f3de2fb1dfb18475df94e62c14112" },
 } as const;
-const obscuraRelease = "v0.2.3";
+const obscuraRelease = "v0.2.5";
 const obscuraArchives = {
-	"darwin-amd64": { name: "obscura-x86_64-macos.tar.gz", sha256: "d7c48122debc2ad9b24842df44560860dba765ea928b3f636b7f053225245116" },
-	"darwin-arm64": { name: "obscura-aarch64-macos.tar.gz", sha256: "45653cfad226f1c9b415603a2ed59477fcbd6335c742338ce133c05de0bdd056" },
-	"linux-amd64": { name: "obscura-x86_64-linux.tar.gz", sha256: "1534d1e6ddaf3d080ec4091eb41d0a4d8cc042a48b607d3c410fc13b482a9eec" },
-	"linux-arm64": { name: "obscura-aarch64-linux.tar.gz", sha256: "5ecf980bca3060236a7a86ec7ed83d943e6598ee87caa46d20325d90bc75f979" },
-	"windows-amd64": { name: "obscura-x86_64-windows.zip", sha256: "781a1b8bd12b65ec5aba95842e75e6f56b3101d360397506c0e35fe3f78536e8" },
+	"darwin-amd64": { name: "obscura-x86_64-macos.tar.gz", sha256: "9f354cf929a577491d6ba0ef451e07baefffd19d34115330f69a0e463771d6cd" },
+	"darwin-arm64": { name: "obscura-aarch64-macos.tar.gz", sha256: "fcca31eba4280cd67a2e226ef4b015e432d5c089f78cefd074ad12bbc8e23345" },
+	"linux-amd64": { name: "obscura-x86_64-linux.tar.gz", sha256: "2116764b99bc084fae3668b68aa535b4cf456e4498845b47493ad4123e83ca36" },
+	"linux-arm64": { name: "obscura-aarch64-linux.tar.gz", sha256: "24c549a348b1d464e80aa3f643bc0c874b0a2942fb7836c683528028d0fbb190" },
+	"windows-amd64": { name: "obscura-x86_64-windows.zip", sha256: "9e56fa1cc1f9e4fb78926f7e9f36c40166b65177541ad7b7fd9645944c49174e" },
 } as const;
 
 const runDir = (id = runId) => join(stateDir, "runs", id);
@@ -187,9 +188,9 @@ function tools() {
 	if (toolPromise) return toolPromise;
 	toolPromise = (async () => {
 	if (!pins.kind[key()] || !pins.kubectl[key()] || !pins.helm[key()]) throw new Error(`unsupported tool platform ${key()}`);
-	const kind = await verified(`kind${suffix}`, `https://github.com/kubernetes-sigs/kind/releases/download/v0.32.0/kind-${os}-${cpu}`, pins.kind[key()]);
-	const kubectl = await verified(`kubectl${suffix}`, `https://dl.k8s.io/release/v1.35.6/bin/${os}/${cpu}/kubectl${suffix}`, pins.kubectl[key()]);
-	const archiveName = `helm-v4.2.0-${os}-${cpu}.${os === "windows" ? "zip" : "tar.gz"}`;
+	const kind = await verified(`kind${suffix}`, `https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-${os}-${cpu}`, pins.kind[key()]);
+	const kubectl = await verified(`kubectl${suffix}`, `https://dl.k8s.io/release/v1.36.5/bin/${os}/${cpu}/kubectl${suffix}`, pins.kubectl[key()]);
+	const archiveName = `helm-v4.3.1-${os}-${cpu}.${os === "windows" ? "zip" : "tar.gz"}`;
 	const archive = await verified(archiveName, `https://get.helm.sh/${archiveName}`, pins.helm[key()]);
 	const extractDir = join(stateDir, "tools", `helm-extract-${process.pid}`); await rm(extractDir, { recursive: true, force: true }); await mkdir(extractDir, { recursive: true });
 	if (os === "windows") { const escapedArchive = archive.replaceAll("'", "''"); const escapedDir = extractDir.replaceAll("'", "''"); await execute("powershell", ["-NoProfile", "-Command", `Expand-Archive -Force -LiteralPath '${escapedArchive}' -DestinationPath '${escapedDir}'`]); }
@@ -338,7 +339,7 @@ async function applyLab(record: Ownership) {
 	await applyFile(kubectl, await materialize(record, "git-server.yaml", fixturePaths.gitServer, seedCommit), env);
 	await execute(kubectl, ["rollout", "status", "deployment/git-server", "-n", "e2e-system", "--timeout=120s"], env);
 	await attempt(kubectl, ["delete", "pod", "git-probe", "-n", "argocd", "--ignore-not-found"], env);
-	await execute(kubectl, ["run", "git-probe", "-n", "argocd", "--image=alpine/git:v2.47.2@sha256:062a01ad7a0eb17cff382bc5e26086b4d710e56dfdfdf001109a49b6d9bd378c", "--restart=Never", "--command", "--", "git", "ls-remote", gitRepositoryUrl], env);
+	await execute(kubectl, ["run", "git-probe", "-n", "argocd", "--image=alpine/git:v2.54.0@sha256:03228d7ded483b0b3e55e1de7fa660d70d3e1bb432fa7021d29e192640de11aa", "--restart=Never", "--command", "--", "git", "ls-remote", gitRepositoryUrl], env);
 	await execute(kubectl, ["wait", "--for=jsonpath={.status.phase}=Succeeded", "pod/git-probe", "-n", "argocd", "--timeout=120s"], env);
 	await execute(kubectl, ["delete", "pod", "git-probe", "-n", "argocd", "--wait=true"], env);
 	await applyTemplate(record, helm, kubectl, "argocd", chartPins.argocd, "argocd", fixturePaths.argoCdValues);
@@ -357,7 +358,7 @@ async function applyLab(record: Ownership) {
 	await execute(kubectl, ["exec", "-n", "tenant-catalog", "declared-client", "--", "wget", "-qO-", "--timeout=3", "http://catalog"], env, true);
 	if (await attempt(kubectl, ["exec", "-n", "tenant-catalog", "isolated-client", "--", "wget", "-qO-", "--timeout=3", "http://catalog"], env)) throw new Error("Cilium failed to deny the isolated client");
 	await attempt(kubectl, ["delete", "pod", "ingress-probe", "-n", "tenant-catalog", "--ignore-not-found"], env);
-	await execute(kubectl, ["run", "ingress-probe", "-n", "tenant-catalog", "--image=busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662", "--restart=Never", "--command", "--", "sh", "-ec", "wget -qO- --header='Host: catalog.e2e.local' http://traefik.traefik.svc.cluster.local | grep catalog-ingress-marker"], env);
+	await execute(kubectl, ["run", "ingress-probe", "-n", "tenant-catalog", "--image=busybox:1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e", "--restart=Never", "--command", "--", "sh", "-ec", "wget -qO- --header='Host: catalog.e2e.local' http://traefik.traefik.svc.cluster.local | grep catalog-ingress-marker"], env);
 	await execute(kubectl, ["wait", "--for=jsonpath={.status.phase}=Succeeded", "pod/ingress-probe", "-n", "tenant-catalog", "--timeout=120s"], env);
 	await execute(kubectl, ["delete", "pod", "ingress-probe", "-n", "tenant-catalog", "--wait=true"], env);
 	await execute(helm, ["upgrade", "--install", "operations", fixturePaths.chart, "-n", "operations", "--create-namespace"], env);
