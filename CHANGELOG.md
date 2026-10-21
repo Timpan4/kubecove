@@ -3,6 +3,17 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.6 - 2026-10-21
+### Improved
+
+- Reduce cache and resource-summary allocations (#564).
+- Split backend into domain crates (#563).
+
+### Fixed
+
+- Reject compromised eMudhra certificate chains (#575).
+- Sign Nix lock refresh commits with the default token (#559).
+
 ## 0.12.5 - 2026-10-14
 ### Added
 
