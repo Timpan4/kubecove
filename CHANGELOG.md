@@ -11,7 +11,7 @@ should mirror the matching version section.
 
 ### Fixed
 
-- Reject compromised eMudhra certificate chains (#575).
+- Reject compromised eMudhra certificate chains in WebPKI-backed TLS clients, including Linux and raw Rustls paths (#575). macOS and Windows platform-verifier paths still require operating-system trust updates.
 - Sign Nix lock refresh commits with the default token (#559).
 
 ## 0.12.5 - 2026-10-14
