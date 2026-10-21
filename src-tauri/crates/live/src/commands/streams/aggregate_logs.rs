@@ -1,4 +1,8 @@
-use super::{client_for_context, logs::read_log_line, send};
+use super::{
+    client_for_context,
+    log_batches::{emit_log_batch, read_log_batches},
+    send,
+};
 use crate::models::AppErrorKind;
 use crate::models::{AggregatedLogStreamRequest, AppError, LogLineSource, StreamMessage};
 use crate::runtime::{Channel, JoinHandle};
@@ -23,6 +27,7 @@ const MAX_AGGREGATED_LOG_SOURCES: usize = 50;
 
 #[derive(Clone)]
 struct LogStreamOptions {
+    batch_lines: bool,
     tail_lines: Option<i64>,
     since_seconds: Option<i64>,
 }
@@ -76,6 +81,7 @@ pub(super) async fn run_aggregated_log_stream(
     };
     let pods: Api<Pod> = Api::namespaced(client.clone(), &request.namespace);
     let options = LogStreamOptions {
+        batch_lines: request.batch_lines,
         tail_lines: Some(super::clamp_tail_lines(request.tail_lines)),
         since_seconds: request.since_seconds,
     };
@@ -399,26 +405,19 @@ async fn stream_log_source(
     match pods.log_stream(&source.pod_name, &params).await {
         Ok(logs) => {
             let mut logs = logs;
-            loop {
-                match read_log_line(&mut logs).await {
-                    Ok(Some(line)) => {
-                        if !send(
-                            &channel,
-                            StreamMessage::LogLine {
-                                stream_id: stream_id.clone(),
-                                line,
-                                source: Some(log_line_source(&source)),
-                            },
-                        ) {
-                            return;
-                        }
-                    }
-                    Ok(None) => return,
-                    Err(err) => {
-                        send_source_error(&channel, &stream_id, &source, err.to_string());
-                        return;
-                    }
-                }
+            let line_source = log_line_source(&source);
+            if let Err(err) = read_log_batches(&mut logs, &stream_id, Some(&line_source), |lines| {
+                emit_log_batch(
+                    &stream_id,
+                    Some(&line_source),
+                    options.batch_lines,
+                    lines,
+                    |message| send(&channel, message),
+                )
+            })
+            .await
+            {
+                send_source_error(&channel, &stream_id, &source, err.to_string());
             }
         }
         Err(err) => send_source_error(&channel, &stream_id, &source, err.to_string()),
@@ -440,9 +439,9 @@ fn send_source_error(
 ) {
     send(
         channel,
-        StreamMessage::LogLine {
+        StreamMessage::LogLines {
             stream_id: stream_id.to_string(),
-            line: format!("log stream error: {message}"),
+            lines: vec![format!("log stream error: {message}")],
             source: Some(log_line_source(source)),
         },
     );
@@ -501,6 +500,7 @@ mod tests {
             Client::new(service, "default"),
             "default".into(),
             LogStreamOptions {
+                batch_lines: false,
                 tail_lines: Some(10),
                 since_seconds: None,
             },

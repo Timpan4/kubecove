@@ -287,6 +287,7 @@ export interface WatchResourceKey {
 }
 
 export interface PodLogStreamRequest {
+	batchLines?: boolean;
 	clusterContext: string;
 	kubeconfigEnvVar?: string;
 	namespace: string;
@@ -297,6 +298,7 @@ export interface PodLogStreamRequest {
 }
 
 export interface AggregatedLogStreamRequest {
+	batchLines?: boolean;
 	clusterContext: string;
 	kubeconfigEnvVar?: string;
 	namespace: string;
@@ -525,7 +527,16 @@ export interface ResourceMetricsSummary {
 
 export type StreamStatus = "connected" | "reconnecting" | "stopped" | "error";
 
+// Older remote servers send one log line per message.
+export interface LegacyLogLineMessage {
+	type: "logLine";
+	streamId: string;
+	line: string;
+	source?: LogLineSource;
+}
+
 export type StreamMessage =
+	| LegacyLogLineMessage
 	| { type: "started"; streamId: string; label: string }
 	| {
 			type: "status";
@@ -545,7 +556,7 @@ export type StreamMessage =
 			target: WatchResourceTarget;
 			action: string;
 	  }
-	| { type: "logLine"; streamId: string; line: string; source?: LogLineSource }
+	| { type: "logLines"; streamId: string; lines: string[]; source?: LogLineSource }
 	| { type: "error"; streamId: string; message: string }
 	| { type: "stopped"; streamId: string };
 

@@ -50,7 +50,7 @@ command_table! { state, _channels, args;
     list_incident_cockpit => commands::list_incident_cockpit(arg::<String>(args, "clusterContext")?, arg::<Vec<ResourceListRequest>>(args, "requests")?, arg::<Option<String>>(args, "kubeconfigEnvVar")?, State::new(&state.live_store)).await?,
     list_rbac_inspection => Box::pin(commands::list_rbac_inspection(arg::<String>(args, "clusterContext")?, arg::<Option<String>>(args, "kubeconfigEnvVar")?, arg::<Option<String>>(args, "requestId")?, arg::<Option<String>>(args, "cancelScope")?, State::new(&state.cancellation))).await?,
     review_rbac_access => commands::review_rbac_access(arg::<RbacAccessReviewRequest>(args, "request")?, arg::<Option<String>>(args, "requestId")?, arg::<Option<String>>(args, "cancelScope")?, State::new(&state.cancellation)).await?,
-    get_app_usage_metrics => commands::get_app_usage_metrics(State::new(&state.usage))?,
+    get_app_usage_metrics => commands::get_app_usage_metrics(State::new(&state.usage)).await?,
     get_kubeconfig_sources => commands::get_kubeconfig_sources()?,
     set_kubeconfig_env_var => commands::set_kubeconfig_env_var(arg::<String>(args, "envVar")?)?,
     set_show_kubeconfig_source_labels => commands::set_show_kubeconfig_source_labels(arg::<bool>(args, "show")?)?,

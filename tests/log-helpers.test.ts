@@ -4,13 +4,10 @@ import {
 	formatExactTimestamp,
 } from "../src/components/timestamp-format";
 import {
-	appendParsedLogLine,
 	latestTimestampedLogLine,
 	logLineSearchText,
-	MAX_RETAINED_LOG_LINES,
 	orderedLogLines,
 	parseLogLine,
-	type ParsedLogLine,
 } from "../src/features/resource-detail/log-helpers";
 
 describe("log presentation helpers", () => {
@@ -95,15 +92,22 @@ describe("log presentation helpers", () => {
 		});
 	});
 
-	test("retains the newest parsed log lines without reparsing the buffer", () => {
-		const lines: ParsedLogLine[] = [];
-		for (let index = 0; index <= MAX_RETAINED_LOG_LINES; index += 1) {
-			appendParsedLogLine(lines, `line ${index}`, index);
-		}
-
-		expect(lines).toHaveLength(MAX_RETAINED_LOG_LINES);
-		expect(lines[0]?.index).toBe(1);
-		expect(lines.at(-1)?.index).toBe(MAX_RETAINED_LOG_LINES);
+	// Failure modes: arrival order differs from time, equal times/indices, invalid or absent timestamps.
+	test("keeps stable ties and ignores invalid times without changing arrival order", () => {
+		const newest = parseLogLine("2026-05-18T09:01:36Z newest", 1);
+		const tied = parseLogLine("2026-05-18T09:01:36Z tied", 1);
+		const lines = [
+			newest,
+			parseLogLine("2026-05-18T09:01:35Z older", 10),
+			tied,
+			parseLogLine('time="invalid"', 20),
+			parseLogLine("no timestamp", 30),
+		];
+		const original = [...lines];
+		expect(latestTimestampedLogLine(lines)).toBe(newest);
+		expect(lines).toEqual(original);
+		expect(latestTimestampedLogLine(lines.slice(3))).toBeUndefined();
+		expect(latestTimestampedLogLine([])).toBeUndefined();
 	});
 
 	test("formats log timestamps through the shared timestamp formatter", () => {

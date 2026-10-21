@@ -2766,6 +2766,7 @@ dependencies = [
  "tauri-plugin-wdio",
  "tauri-plugin-wdio-webdriver",
  "tokio",
+ "webkit2gtk",
  "yaml_serde",
 ]
 

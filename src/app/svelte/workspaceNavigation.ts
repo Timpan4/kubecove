@@ -64,7 +64,10 @@ function gitOpsGroupLabel(group: string | undefined): string | null {
 	return FLUX_FAMILIES.find((family) => family.groupId === group)?.label ?? null;
 }
 
-function isNamespaceListView(state: WorkspaceNavigationState): boolean {
+type NavigationScopeState = Pick<WorkspaceNavigationState, "viewMode" | "selectedNode" | "resourceNamespaceOverride">;
+type NavigationWorkspace = Pick<SavedWorkspace, "name" | "scope">;
+
+function isNamespaceListView(state: NavigationScopeState): boolean {
 	return (
 		state.viewMode === "resources" &&
 		state.selectedNode?.type === "section" &&
@@ -73,8 +76,8 @@ function isNamespaceListView(state: WorkspaceNavigationState): boolean {
 }
 
 function resourceBrowserScope(
-	workspace: SavedWorkspace,
-	state: WorkspaceNavigationState,
+	workspace: NavigationWorkspace,
+	state: NavigationScopeState,
 ): ResourceBrowserScope {
 	if (state.viewMode !== "resources" || isNamespaceListView(state)) {
 		return { canQuery: false, namespaces: [], kinds: [] };
@@ -101,8 +104,8 @@ function resourceBrowserScope(
 }
 
 function workspaceTitle(
-	workspace: SavedWorkspace,
-	state: WorkspaceNavigationState,
+	workspace: NavigationWorkspace,
+	state: NavigationScopeState,
 ): string {
 	const scope = resolveTreeScope(state.selectedNode);
 	if (state.viewMode === "overview") return workspace.name;
@@ -139,7 +142,7 @@ function workspaceTitle(
 	return SECTION_LABELS.get(scope.section) ?? scope.section;
 }
 
-function workspacePlaceholder(state: WorkspaceNavigationState): string {
+function workspacePlaceholder(state: NavigationScopeState): string {
 	if (state.viewMode === "overview") {
 		return "Use the sidebar to open resource and app surfaces for this workspace.";
 	}
@@ -157,8 +160,8 @@ function workspacePlaceholder(state: WorkspaceNavigationState): string {
 }
 
 export function buildWorkspaceNavigationModel(
-	workspace: SavedWorkspace,
-	state: WorkspaceNavigationState,
+	workspace: NavigationWorkspace,
+	state: NavigationScopeState,
 ): WorkspaceNavigationModel {
 	return {
 		activeSurface: state.viewMode,

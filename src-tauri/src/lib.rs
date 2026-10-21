@@ -45,9 +45,11 @@ pub fn run() {
     #[cfg(feature = "e2e")]
     let e2e_config = e2e::startup_config().expect("invalid KubeCove E2E environment");
     #[cfg(not(feature = "e2e"))]
-    if std::env::var("KUBECOVE_E2E").as_deref() == Ok("1") {
-        panic!("KUBECOVE_E2E=1 requires the e2e Cargo feature");
-    }
+    assert_ne!(
+        std::env::var("KUBECOVE_E2E").as_deref(),
+        Ok("1"),
+        "KUBECOVE_E2E=1 requires the e2e Cargo feature"
+    );
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -85,6 +87,62 @@ pub fn run() {
                 #[cfg(not(debug_assertions))]
                 let app_config_dir = app.path().app_config_dir()?;
                 init_kubeconfig_settings_path(app_config_dir);
+            }
+            #[cfg(target_os = "linux")]
+            {
+                use std::ffi::{c_char, c_void, CStr};
+                use tauri::Manager;
+                use webkit2gtk::{glib::translate::ToGlibPtr, WebViewExt};
+
+                extern "C" {
+                    fn webkit_settings_get_all_features() -> *mut c_void;
+                    fn webkit_feature_list_get_length(list: *mut c_void) -> usize;
+                    fn webkit_feature_list_get(list: *mut c_void, index: usize) -> *mut c_void;
+                    fn webkit_feature_get_identifier(feature: *mut c_void) -> *const c_char;
+                    fn webkit_settings_set_feature_enabled(
+                        settings: *mut webkit2gtk::ffi::WebKitSettings,
+                        feature: *mut c_void,
+                        enabled: webkit2gtk::glib::ffi::gboolean,
+                    );
+                    fn webkit_feature_list_unref(list: *mut c_void);
+                }
+
+                if let Some(window) = app.get_webview_window("main") {
+                    // WebKit otherwise renders near 60 fps on high-refresh monitors.
+                    let _ = window.with_webview(|webview| {
+                        let Some(settings) = webview.inner().settings() else {
+                            return;
+                        };
+                        // SAFETY: with_webview runs on the GTK thread; settings stays alive.
+                        // The owned list keeps its borrowed features and NUL-terminated identifiers
+                        // alive until unref; null pointers are checked before use.
+                        unsafe {
+                            let list = webkit_settings_get_all_features();
+                            if list.is_null() {
+                                return;
+                            }
+                            for index in 0..webkit_feature_list_get_length(list) {
+                                let feature = webkit_feature_list_get(list, index);
+                                if feature.is_null() {
+                                    continue;
+                                }
+                                let identifier = webkit_feature_get_identifier(feature);
+                                if !identifier.is_null()
+                                    && CStr::from_ptr(identifier)
+                                        == c"PreferPageRenderingUpdatesNear60FPS"
+                                {
+                                    webkit_settings_set_feature_enabled(
+                                        settings.to_glib_none().0,
+                                        feature,
+                                        0,
+                                    );
+                                    break;
+                                }
+                            }
+                            webkit_feature_list_unref(list);
+                        }
+                    });
+                }
             }
             Ok(())
         })

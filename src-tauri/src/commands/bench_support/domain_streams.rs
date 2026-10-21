@@ -149,9 +149,9 @@ pub fn log_messages(cases: &[Result<Vec<String>, std::io::ErrorKind>]) -> Vec<St
         .flat_map(|case| match case {
             Ok(lines) => lines
                 .iter()
-                .map(|line| StreamMessage::LogLine {
+                .map(|line| StreamMessage::LogLines {
                     stream_id: "log-stream-17".to_string(),
-                    line: line.clone(),
+                    lines: vec![line.clone()],
                     source: Some(LogLineSource {
                         pod_name: "api-17".to_string(),
                         container: Some("app".to_string()),

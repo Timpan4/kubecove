@@ -38,15 +38,20 @@ fn lookup_misses_when_fingerprint_changes() {
 }
 
 #[test]
-fn store_clears_cache_at_capacity_instead_of_growing() {
+fn store_evicts_only_oldest_entry_and_refreshes_replaced_keys() {
     let mut cache = Cache::new();
     for index in 0..MAX_ENTRIES {
         cache.store(format!("source-{index}"), "context".to_string(), 1, index);
     }
     assert_eq!(cache.entries.len(), MAX_ENTRIES);
 
+    cache.store("source-0".to_string(), "context".to_string(), 1, 100);
+    assert_eq!(cache.entries.len(), MAX_ENTRIES);
     cache.store("overflow".to_string(), "context".to_string(), 1, 99);
-    assert_eq!(cache.entries.len(), 1);
+    assert_eq!(cache.entries.len(), MAX_ENTRIES);
+    assert_eq!(cache.lookup("source-0", "context", 1), Some(100));
+    assert_eq!(cache.lookup("source-1", "context", 1), None);
+    assert_eq!(cache.lookup("source-2", "context", 1), Some(2));
     assert_eq!(cache.lookup("overflow", "context", 1), Some(99));
 }
 

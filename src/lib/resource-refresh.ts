@@ -1,4 +1,4 @@
-import type { Query, QueryClient } from "@tanstack/svelte-query";
+import type { Query, QueryClient, QueryKey } from "@tanstack/svelte-query";
 import { isFiniteReadQuery } from "./finite-read-lifecycle";
 import { friendlyErrorBucket } from "./friendly-errors";
 import { messageFromError } from "./error-redaction";
@@ -30,6 +30,8 @@ export async function refreshCurrentView({
 	kubeconfigEnvVar,
 	keys,
 	namespaces,
+	reads,
+	cancelRefetch = true,
 }: {
 	client: TauriClient;
 	queryClient: QueryClient;
@@ -37,6 +39,10 @@ export async function refreshCurrentView({
 	kubeconfigEnvVar?: string;
 	keys: WatchResourceKey[];
 	namespaces: string[];
+	/** Permission recovery limits invalidation to these query families. */
+	reads?: readonly QueryKey[];
+	/** Automatic recovery waits for running reads before clearing caches. */
+	cancelRefetch?: boolean;
 }): Promise<string[]> {
 	// Capture the exact active reads. Navigation during refresh must not broaden its scope.
 	const queries = new Set(
@@ -44,11 +50,14 @@ export async function refreshCurrentView({
 			.getQueryCache()
 			.findAll({
 				predicate: (query) =>
-					isCurrentViewRead(query, clusterContext, kubeconfigEnvVar),
+					isCurrentViewRead(query, clusterContext, kubeconfigEnvVar) &&
+					(!reads || reads.some((key) => key.every((part, index) => part === query.queryKey[index]))),
 			}),
 	);
 	const predicate = (query: Query) => queries.has(query);
-	await queryClient.cancelQueries({ predicate });
+	if (!cancelRefetch) {
+		await Promise.allSettled([...queries].map((query) => query.promise));
+	} else await queryClient.cancelQueries({ predicate });
 	await refreshResourceCache(
 		client,
 		clusterContext,
@@ -60,7 +69,7 @@ export async function refreshCurrentView({
 	const results = await Promise.allSettled([...queries].map((query) =>
 		queryClient.invalidateQueries(
 			{ predicate: (current) => current === query, refetchType: "active" },
-			{ throwOnError: true },
+			{ throwOnError: true, cancelRefetch },
 		),
 	));
 	const warnings: string[] = [];

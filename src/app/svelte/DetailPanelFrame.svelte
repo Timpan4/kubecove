@@ -34,6 +34,7 @@
 	let activeSizeKey = $state("");
 	let stopResize: (() => void) | null = null;
 	const mainSize = $derived(100 - detailSize);
+	const panelVisible = $derived(detailOpen && Boolean(detailPanel));
 
 	onMount(() => () => stopCurrentResize());
 
@@ -53,21 +54,31 @@
 		if (!frameElement) return;
 		event.preventDefault();
 		stopCurrentResize();
-		const handleMove = (moveEvent: PointerEvent) => {
-			if (!frameElement) return;
+		const rect = frameElement.getBoundingClientRect();
+		let frame: number | null = null;
+		let clientX = event.clientX;
+		const applySize = () => {
+			frame = null;
 			detailSize = detailPanelSizeFromPointer(
-				frameElement.getBoundingClientRect(),
-				moveEvent.clientX,
-				detailDefaultSize,
-				detailMinSize,
-				mainMinSize,
+				rect, clientX, detailDefaultSize, detailMinSize, mainMinSize,
 			);
 		};
-		const handleEnd = () => stopCurrentResize();
+		const handleMove = (moveEvent: PointerEvent) => {
+			clientX = moveEvent.clientX;
+			frame ??= window.requestAnimationFrame(applySize);
+		};
+		const handleEnd = () => {
+			if (frame !== null) {
+				window.cancelAnimationFrame(frame);
+				applySize();
+			}
+			stopCurrentResize();
+		};
 		window.addEventListener("pointermove", handleMove);
 		window.addEventListener("pointerup", handleEnd);
 		window.addEventListener("pointercancel", handleEnd);
 		stopResize = () => {
+			if (frame !== null) window.cancelAnimationFrame(frame);
 			window.removeEventListener("pointermove", handleMove);
 			window.removeEventListener("pointerup", handleEnd);
 			window.removeEventListener("pointercancel", handleEnd);
@@ -82,15 +93,11 @@
 	}
 </script>
 
-{#if !detailOpen || !detailPanel}
-	<div class={cnfast("h-full min-h-0 min-w-0 flex-1 overflow-hidden", className)}>
-		{@render children?.()}
-	</div>
-{:else}
 	<div bind:this={frameElement} class={cnfast("relative flex h-full min-h-0 min-w-0 flex-1 overflow-hidden", className)}>
-		<section class="h-full min-w-0 overflow-hidden max-xl:!basis-full" style={`flex: 0 0 ${mainSize}%;`}>
+		<section class="h-full min-w-0 overflow-hidden max-xl:!basis-full" style={`flex: 0 0 ${panelVisible ? mainSize : 100}%;`}>
 			{@render children?.()}
 		</section>
+		{#if panelVisible}
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 		<div
 			role="separator"
@@ -113,5 +120,5 @@
 		>
 			{@render detailPanel?.()}
 		</aside>
+		{/if}
 	</div>
-{/if}

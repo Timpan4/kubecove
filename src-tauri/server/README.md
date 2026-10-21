@@ -30,6 +30,47 @@ The default listener is `127.0.0.1:0`, which chooses an available port. Non-loop
 
 Clients run in independent sessions. Reconnects retain their session during `--session-grace`, which defaults to `5m`. Explicit disconnect or grace expiry closes only that session's streams, exec sessions and port-forwards. Browser forwards bind on the server host, so they require separate forwarding to reach them from a laptop. Kubeconfig sources are shared operator configuration in every authentication mode. Set `KUBECONFIG` before starting the server; clients cannot change the shared source settings.
 
+## Memory and transport
+
+Binaries use the platform's system allocator. A mimalloc global allocator was
+measured on the Linux desktop host and raised its resident memory by up to about
+160 MiB, so it is not used.
+
+`KUBECOVE_SERVER_WORKER_THREADS` accepts a positive integer to set Tokio's async
+worker count. Invalid values fail startup. When unset, Tokio retains its default
+of one worker per available CPU, or its existing `TOKIO_WORKER_THREADS` override.
+The KubeCove variable takes precedence. The runtime's blocking pool is separate.
+No lower default is selected without a throughput comparison: prior replay measured
+allocator sensitivity, not throughput parity across worker counts. Operators can
+use this override to compare their I/O workload with fewer workers.
+
+The web build precompresses embedded Vite assets with gzip and Brotli. Only smaller
+compressed representations are embedded. Successful files under `/assets/` matching
+Vite's default eight-character hash suffix receive
+`Cache-Control: max-age=31536000, immutable`. Encoding negotiation honors
+`Accept-Encoding` qualities and compressed-encoding exclusions, prefers Brotli at
+equal quality, and falls back to identity if no acceptable encoding is available.
+It sets `Vary: Accept-Encoding`. HTML, API responses, errors and other files retain
+`no-store`. The existing Host, Origin, authentication and CSP guards still wrap
+asset requests.
+
+Each live channel queue retains at most 1,000 messages and one desktop WebSocket
+frame's payload capacity, the existing 2 MiB frame limit minus the channel JSON
+wrapper, including during disconnect grace. Oldest messages are evicted to fit both
+bounds. A message larger than the byte budget is dropped without closing its
+producer or discarding smaller pending messages. The existing `channel_gap` frame
+reports drops at their position among retained messages. Gap counts use fixed
+metadata per queued message and coalesce consecutive drops. These bounds apply per
+channel, not per session or process.
+The replay budget is one frame of serialized payload plus the 1,000-message cap,
+so long log lines leave fewer lines retained across a reconnect; a `channel_gap`
+marker reports the drops.
+
+HTTP command results serialize directly from their typed values to JSON bytes.
+Channel payloads are serialized once on enqueue; desktop remote channels forward
+raw JSON without constructing a payload tree. WebSocket compression remains
+unavailable because [Tungstenite does not support permessage-deflate](https://github.com/snapview/tungstenite-rs#features).
+
 The server uses native credential storage when available. Unix hosts without it use the encrypted file store approved in [ADR 0021](../../docs/decisions/0021-file-credential-store-without-keyring.md). Desktop remote-client integration and release packaging are tracked in [verification.md](verification.md).
 
 Local transport verification uses an isolated Kubernetes WebSocket echo fixture. It creates no cluster resources.

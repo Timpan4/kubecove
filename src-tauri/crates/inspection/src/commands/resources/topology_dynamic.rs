@@ -1,5 +1,6 @@
 use super::{api_resource_from_discovered, topology::TopologyInputResource};
 use crate::commands::helpers::{extract_owner_ref_summary, list_params};
+use crate::commands::MAX_LIST_CONCURRENCY;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, DiscoveredResourceKind};
 use chrono::{DateTime, Utc};
@@ -12,7 +13,6 @@ use kube::{
 use std::sync::Arc;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
-const MAX_TOPOLOGY_LIST_CONCURRENCY: usize = 16;
 const MAX_DYNAMIC_TOPOLOGY_KIND_CONCURRENCY: usize = 48;
 const MAX_DYNAMIC_TOPOLOGY_LIST_CONCURRENCY: usize = 32;
 type DynamicListLimiter = Arc<Semaphore>;
@@ -128,7 +128,10 @@ async fn list_dynamic_topology_kind(
         }
         let api: Api<DynamicObject> = Api::all_with(client, &api_resource);
         let _permit = dynamic_list_permit(&limiter).await?;
-        match api.list(&list_params()).await.map_err(AppError::from) {
+        match kubecove_kube::commands::list_projection::list_dynamic(api, &list_params())
+            .await
+            .map_err(AppError::from)
+        {
             Ok(rows) => out.extend(
                 rows.iter()
                     .map(|object| dynamic_topology_input(cluster_context, resource_kind, object)),
@@ -144,7 +147,10 @@ async fn list_dynamic_topology_kind(
     if namespaces.is_empty() {
         let api: Api<DynamicObject> = Api::all_with(client, &api_resource);
         let _permit = dynamic_list_permit(&limiter).await?;
-        match api.list(&list_params()).await.map_err(AppError::from) {
+        match kubecove_kube::commands::list_projection::list_dynamic(api, &list_params())
+            .await
+            .map_err(AppError::from)
+        {
             Ok(rows) => out.extend(
                 rows.iter()
                     .map(|object| dynamic_topology_input(cluster_context, resource_kind, object)),
@@ -166,14 +172,14 @@ async fn list_dynamic_topology_kind(
                 let _permit = dynamic_list_permit(&limiter).await?;
                 Ok::<_, AppError>((
                     namespace,
-                    api.list(&list_params())
+                    kubecove_kube::commands::list_projection::list_dynamic(api, &list_params())
                         .await
                         .map(|rows| rows.items)
                         .map_err(AppError::from),
                 ))
             }
         })
-        .buffered(MAX_TOPOLOGY_LIST_CONCURRENCY)
+        .buffered(MAX_LIST_CONCURRENCY)
         .collect::<Vec<_>>()
         .await;
 

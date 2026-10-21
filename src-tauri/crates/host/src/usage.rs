@@ -19,14 +19,14 @@ use chrono::Utc;
 use kubecove_models::AppErrorKind;
 use kubecove_models::{AppError, AppUsageMetrics, AppUsageMetricsBreakdown};
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use sysinfo::{
     get_current_pid, Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind,
 };
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct AppUsageMonitor {
-    system: Mutex<System>,
+    system: Arc<Mutex<System>>,
 }
 
 impl AppUsageMonitor {
@@ -43,10 +43,31 @@ impl AppUsageMonitor {
         system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::nothing()
-                .without_tasks()
-                .with_cmd(UpdateKind::Always),
+            ProcessRefreshKind::nothing().without_tasks(),
         );
+
+        // WebView2 can outlive its parent. Only its named candidates need
+        // command lines to recover the host-exe identity before attribution.
+        #[cfg(target_os = "windows")]
+        {
+            let mut identity_pids = process_tree_pids(&system, current_pid);
+            identity_pids.extend(system.processes().iter().filter_map(|(pid, process)| {
+                process
+                    .name()
+                    .to_string_lossy()
+                    .to_ascii_lowercase()
+                    .contains("msedgewebview2")
+                    .then_some(*pid)
+            }));
+            let identity_pids: Vec<Pid> = identity_pids.into_iter().collect();
+            system.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&identity_pids),
+                false,
+                ProcessRefreshKind::nothing()
+                    .without_tasks()
+                    .with_cmd(UpdateKind::Always),
+            );
+        }
 
         let pids = usage_process_pids(&system, current_pid);
         let pids_to_refresh: Vec<Pid> = pids.iter().copied().collect();
@@ -84,10 +105,18 @@ impl AppUsageMonitor {
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn get_app_usage_metrics(
+pub async fn get_app_usage_metrics(
     monitor: kubecove_kube::runtime::State<'_, AppUsageMonitor>,
 ) -> Result<AppUsageMetrics, AppError> {
-    monitor.sample()
+    let monitor = monitor.inner().clone();
+    tokio::task::spawn_blocking(move || monitor.sample())
+        .await
+        .map_err(|error| {
+            AppError::new(
+                format!("usage metrics worker failed: {error}"),
+                AppErrorKind::UsageMetrics,
+            )
+        })?
 }
 
 fn available_cpu_count() -> usize {

@@ -6,6 +6,58 @@ import { refreshCurrentView } from "./resource-refresh";
 import { createMockTauriClient } from "./tauri-runtime";
 import { listNamespaces, refreshResourceCache } from "./tauri";
 
+// Failure modes: automatic catch-up skips inspector/discovery/metrics reads,
+// cancels a running read, or permission recovery refreshes unrelated families.
+test.each([false, true])("automatic recovery waits for running reads, permission-only: %s", async (permissionOnly) => {
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+	configureFiniteReadQueryDefaults(queryClient);
+	const source = queryKeys.resources("dev", [])[1];
+	const resourceKey = queryKeys.resources("dev", []);
+	const keys = [
+		resourceKey,
+		["resource-details", source, "redacted", "dev", "Pod", "pod"],
+		["resource-yaml", source, "redacted", "dev", "Pod", "pod"],
+		["resource-events", source, "dev", "Pod", "pod"],
+		queryKeys.namespaces("dev"),
+		queryKeys.resourceMetrics("dev", []),
+	];
+	const calls: string[] = [];
+	let finish!: () => void;
+	let aborted = false;
+	const stops = keys.map((key) => {
+		queryClient.setQueryData(key, "cached");
+		return new QueryObserver(queryClient, {
+			queryKey: key,
+			queryFn: async ({ signal }) => {
+				calls.push(String(key[0]));
+				if (key === keys[0] && calls.length === 1) {
+					signal.addEventListener("abort", () => { aborted = true; });
+					await new Promise<void>((resolve) => { finish = resolve; });
+				}
+				return "fresh";
+			},
+		}).subscribe(() => {});
+	});
+	try {
+		const running = queryClient.refetchQueries({ queryKey: keys[0], exact: true });
+		const recovery = refreshCurrentView({
+			queryClient,
+			client: createMockTauriClient({ refresh_resource_cache: () => { calls.push("evict"); return { clearedEntries: 1 }; } }),
+			clusterContext: "dev", keys: [], namespaces: [],
+			reads: permissionOnly ? [resourceKey] : undefined,
+			cancelRefetch: false,
+		});
+		await Promise.resolve();
+		expect(calls).toEqual(["resources"]);
+		expect(aborted).toBe(false);
+		finish();
+		await running;
+		await recovery;
+		expect(aborted).toBe(false);
+		expect(calls).toEqual(["resources", "evict", ...(permissionOnly ? ["resources"] : keys.map((key) => String(key[0])))]);
+	} finally { for (const stop of stops) stop(); queryClient.clear(); }
+});
+
 test("cache clearing never rejoins a discovery read started before refresh", async () => {
 	let finishOld!: (value: object[]) => void;
 	const oldResult = new Promise<object[]>((done) => {

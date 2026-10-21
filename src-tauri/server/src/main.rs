@@ -8,8 +8,24 @@ use kubecove_server::{
 };
 use std::{io, net::SocketAddr, sync::Arc};
 
-#[tokio::main]
-async fn main() -> io::Result<()> {
+fn main() -> io::Result<()> {
+    let mut runtime = tokio::runtime::Builder::new_multi_thread();
+    if let Some(value) = std::env::var_os("KUBECOVE_SERVER_WORKER_THREADS") {
+        let threads = value
+            .to_str()
+            .and_then(|value| value.parse::<std::num::NonZeroUsize>().ok())
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "KUBECOVE_SERVER_WORKER_THREADS must be a positive integer",
+                )
+            })?;
+        runtime.worker_threads(threads.get());
+    }
+    runtime.enable_all().build()?.block_on(run())
+}
+
+async fn run() -> io::Result<()> {
     let args = std::env::args_os().skip(1).collect::<Vec<_>>();
     if args.iter().any(|arg| arg == "--help") {
         println!("{HELP}");

@@ -23,7 +23,7 @@ import {
 	incidentTimelineTitle,
 } from "@/features/resource-detail/incident-timeline-labels";
 import {
-	appendParsedLogLine,
+	appendParsedLogBatch,
 	filterOrderedParsedLogLines,
 	type LogLineInput,
 	MAX_RETAINED_LOG_LINES,
@@ -190,21 +190,15 @@ const resource: ResourceSummary = {
 };
 
 function buildRetainedLogs(): ParsedLogLine[] {
-	const retained: ParsedLogLine[] = [];
-	for (const [index, line] of logLines.entries())
-		appendParsedLogLine(retained, line, index);
-	return retained;
+	return appendParsedLogBatch([], logLines, 0);
 }
 
 function appendOverflowBatch(retained: ParsedLogLine[]): ParsedLogLine[] {
-	for (const [index, line] of logLines.entries()) {
-		appendParsedLogLine(retained, line, logLines.length + index);
-	}
-	return retained;
+	return appendParsedLogBatch(retained, logLines, logLines.length);
 }
 
 const parsedLogLines = buildRetainedLogs();
-const overflowingLogLines = buildRetainedLogs();
+let overflowingLogLines = buildRetainedLogs();
 const latestFirstLines = orderParsedLogLines(parsedLogLines, true);
 const sortedEvents = sortIncidentEvents(events);
 const filteredEvents = filterResourceEvents(sortedEvents, "warning", "backoff");
@@ -319,10 +313,8 @@ const invalidTimeTimelineItem = boundaryTimeline.find(
 
 assert.equal(logLines.length, 1_000);
 assert.equal(parsedLogLines.length, MAX_RETAINED_LOG_LINES);
-assert.equal(
-	appendOverflowBatch(overflowingLogLines).length,
-	MAX_RETAINED_LOG_LINES,
-);
+overflowingLogLines = appendOverflowBatch(overflowingLogLines);
+assert.equal(overflowingLogLines.length, MAX_RETAINED_LOG_LINES);
 assert.equal(overflowingLogLines[0].index, logLines.length);
 assert.equal(events.length, 1_000);
 assert.equal(buildEventSummary(sortedEvents).warningCount, 500);
@@ -376,13 +368,23 @@ assert.equal(
 
 describe("F13 F14 F15 resource detail workloads with folded F11 and F24", () => {
 	bench("F13 append and retain a 1k-line stream buffer", () => {
-		const retained: ParsedLogLine[] = [];
-		for (const [index, line] of logLines.entries())
-			appendParsedLogLine(retained, line, index);
+		buildRetainedLogs();
 	});
 
 	bench("F13 steady-state eviction at the 1k-line retention bound", () => {
-		appendOverflowBatch(overflowingLogLines);
+		overflowingLogLines = appendOverflowBatch(overflowingLogLines);
+	});
+
+	bench("F13 batched steady-state eviction at the 1k-line retention bound", () => {
+		let retained = parsedLogLines;
+		for (let offset = 0; offset < logLines.length; offset += 64) {
+			retained = appendParsedLogBatch(
+				retained,
+				logLines.slice(offset, offset + 64),
+				logLines.length + offset,
+			);
+		}
+		void retained;
 	});
 
 	bench(

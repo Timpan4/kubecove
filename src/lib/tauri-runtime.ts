@@ -1,5 +1,5 @@
 import { Channel, invoke, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
-import { diagnosticLog, diagnosticResultSummary } from "./diagnostics";
+import { diagnosticLog, diagnosticResultSummary, isDiagnosticsEnabled } from "./diagnostics";
 import { markProfileIpc, markStartup } from "./startup-marks";
 import { IS_DEV_BUILD, IS_WEB_RUNTIME } from "./build-env";
 
@@ -25,29 +25,37 @@ export function createNativeTauriClient(): TauriClient {
 			args?: Args,
 			options?: InvokeOptions,
 		): Promise<T> => {
-			const started = performance.now();
-			diagnosticLog("tauri.invoke.start", {
-				cmd,
-				args: args ? Object.keys(args).join(",") : "",
-			});
+			const diagnosticsEnabled = isDiagnosticsEnabled();
+			const started = diagnosticsEnabled || process.env.KUBECOVE_PUBLIC_PROFILE === "true"
+				? performance.now() : 0;
+			if (diagnosticsEnabled) {
+				diagnosticLog("tauri.invoke.start", {
+					cmd,
+					args: args ? Object.keys(args).join(",") : "",
+				});
+			}
 			try {
 				// SAFETY: typed wrappers pass Tauri-serializable command objects; Tauri validates IPC encoding.
 				const result = await invoke<T>(cmd, args as InvokeArgs | undefined, options);
 				markProfileIpc(cmd, started, true);
 				if (cmd === "get_kubeconfig_sources") markStartup("kubeconfig-ready");
-				diagnosticLog("tauri.invoke.done", {
-					cmd,
-					ms: Math.round(performance.now() - started),
-					result: diagnosticResultSummary(result),
-				});
+				if (diagnosticsEnabled) {
+					diagnosticLog("tauri.invoke.done", {
+						cmd,
+						ms: Math.round(performance.now() - started),
+						result: diagnosticResultSummary(result),
+					});
+				}
 				return result;
 			} catch (error) {
 				markProfileIpc(cmd, started, false);
-				diagnosticLog("tauri.invoke.error", {
-					cmd,
-					ms: Math.round(performance.now() - started),
-					error: errorMessage(error),
-				});
+				if (diagnosticsEnabled) {
+					diagnosticLog("tauri.invoke.error", {
+						cmd,
+						ms: Math.round(performance.now() - started),
+						error: errorMessage(error),
+					});
+				}
 				console.error(`[k8s-manager:tauri] ${cmd} error`, error);
 				throw error;
 			}

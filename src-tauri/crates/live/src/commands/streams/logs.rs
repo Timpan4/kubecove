@@ -1,4 +1,8 @@
-use super::{client_for_context, send};
+use super::{
+    client_for_context,
+    log_batches::{emit_log_batch, read_log_batches},
+    send,
+};
 use crate::models::{LogLineSource, PodLogStreamRequest, StreamMessage};
 use crate::runtime::Channel;
 use futures_util::{io::AsyncBufRead, AsyncBufReadExt};
@@ -52,35 +56,28 @@ pub(super) async fn run_pod_log_stream(
     match pods.log_stream(&request.pod_name, &params).await {
         Ok(logs) => {
             let mut logs = logs;
-            loop {
-                match read_log_line(&mut logs).await {
-                    Ok(Some(line)) => {
-                        if !send(
-                            &channel,
-                            StreamMessage::LogLine {
-                                stream_id: stream_id.clone(),
-                                line,
-                                source: Some(LogLineSource {
-                                    pod_name: request.pod_name.clone(),
-                                    container: request.container.clone(),
-                                }),
-                            },
-                        ) {
-                            return;
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(err) => {
-                        send(
-                            &channel,
-                            StreamMessage::Error {
-                                stream_id: stream_id.clone(),
-                                message: err.to_string(),
-                            },
-                        );
-                        break;
-                    }
-                }
+            let source = LogLineSource {
+                pod_name: request.pod_name.clone(),
+                container: request.container.clone(),
+            };
+            if let Err(err) = read_log_batches(&mut logs, &stream_id, Some(&source), |lines| {
+                emit_log_batch(
+                    &stream_id,
+                    Some(&source),
+                    request.batch_lines,
+                    lines,
+                    |message| send(&channel, message),
+                )
+            })
+            .await
+            {
+                send(
+                    &channel,
+                    StreamMessage::Error {
+                        stream_id: stream_id.clone(),
+                        message: err.to_string(),
+                    },
+                );
             }
         }
         Err(err) => {

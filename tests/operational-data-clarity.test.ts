@@ -4,7 +4,6 @@ import type { Component } from "svelte";
 import { compile, compileModule } from "svelte/compiler";
 import { render } from "svelte/server";
 import { copyText, copyTextWithAnnouncement } from "../src/components/copy-text";
-import { formatRelativeTimestamp } from "../src/components/timestamp-format";
 
 type SvelteTestProps = Record<string, string | boolean | (() => void)>;
 
@@ -62,12 +61,6 @@ describe("operational data clarity", () => {
 		expect(body).toContain(`title="${timestamp}"`);
 		expect(body).toContain(`Exact timestamp ${timestamp}`);
 		expect(body).toContain(">2m</time>");
-		expect(formatRelativeTimestamp("2m", timestamp, false, "utc", "millisecond")).toBe(
-			"2m",
-		);
-		expect(formatRelativeTimestamp("2m", timestamp, true, "utc", "millisecond")).toBe(
-			"2m (2026-08-24 12:34:56.789 UTC)",
-		);
 	});
 
 	test("omits full-value hover titles while copying the untruncated value", async () => {

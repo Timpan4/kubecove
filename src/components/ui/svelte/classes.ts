@@ -19,7 +19,7 @@ export type ButtonSize =
 	| "icon-lg";
 
 export const buttonVariants = cva(
-	"group/button inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent bg-clip-padding text-xs/relaxed font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+	"group/button inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent bg-clip-padding text-xs/relaxed font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,opacity,transform] outline-none select-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
 	{
 		variants: {
 			variant: {
@@ -75,7 +75,7 @@ export type BadgeVariant =
 	| "link";
 
 export const badgeVariants = cva(
-	"group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-[0.625rem] font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-2.5!",
+	"group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-[0.625rem] font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-2.5!",
 	{
 		variants: {
 			variant: {
@@ -162,12 +162,11 @@ export const tabsListVariants = cva(
 	},
 );
 
-export type CardElevation = "flat" | "raised" | "overlay";
+export type CardElevation = "flat" | "raised";
 
 /**
  * Card surface + depth. Replaces the old ring-1 outline with a real border + soft shadow.
- * `flat` = resting surface; `raised` = hoverable/emphasized (cards in lists); `overlay` =
- * floating surface (popovers, command palette) with strong depth + blur.
+ * `flat` = resting surface; `raised` = hoverable/emphasized (cards in lists).
  */
 export const cardVariants = cva(
 	"group/card flex flex-col gap-4 overflow-hidden rounded-lg bg-surface-1 py-4 text-xs/relaxed text-card-foreground border border-border has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg transition-shadow duration-150",
@@ -176,8 +175,6 @@ export const cardVariants = cva(
 			elevation: {
 				flat: "shadow-none",
 				raised: "shadow-sm hover:shadow-md hover:border-primary/30",
-				overlay:
-					"shadow-xl border-border/60 bg-surface-2 backdrop-blur-2xl backdrop-saturate-150 z-popover",
 			},
 		},
 		defaultVariants: {

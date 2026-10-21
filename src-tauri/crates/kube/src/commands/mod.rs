@@ -7,6 +7,7 @@ pub mod flux_catalog;
 pub mod helpers;
 pub mod kubeconfig;
 mod kubeconfig_clients;
+pub mod list_projection;
 pub mod live_store;
 
 pub use cancellation::{cancel_backend_requests, BackendCancellationRegistry};

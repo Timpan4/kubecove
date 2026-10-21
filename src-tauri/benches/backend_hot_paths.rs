@@ -11,6 +11,8 @@ use serde_json::json;
 use std::sync::LazyLock;
 
 mod domain_catalog;
+#[path = "backend_hot_paths/list_projections.rs"]
+mod list_projections;
 #[path = "backend_hot_paths/resource_catalog.rs"]
 mod resource_catalog;
 

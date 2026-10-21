@@ -6,6 +6,19 @@ The value review accounts for all 108 original candidates. It retains 63 worthwh
 
 ## Implementation status
 
+The 2026-10-21 backend list projection batch adds twelve decoder variants to
+`backend_hot_paths::list_projections`: full/projected Pod decoding plus summary
+construction, and full/projected decoding for Deployment, ReplicaSet, Job, Event
+and dynamic Widget lists. These cover wire decoding that the existing R01/R04
+post-fetch summary workloads exclude. Two cached scope assembly/encoding cases
+compare the previous owned pipeline with shared-row serialization, using prepared
+cached batches and an empty Flux inventory. The existing R25/R26 Helm workload now
+uses the production narrow list-record path; its full detail projection checks
+remain intact. Native wall-clock comparisons and verification limits are in
+[Backend list projections](backend-list-projections.md). These additions have
+not been run with the CodSpeed instrument; the instrumented counts below describe
+the earlier audit implementation.
+
 The implementation covers all 63 retained families and their 34 folded helpers. All 35 frontend families execute across 25 files, including reruns of corrected fixtures. All 100 registered Rust variants execute successfully in one instrumented CodSpeed run. Independent caller reviews and their fixture corrections are reconciled, including namespace-qualified joins, owner precedence, Secret redaction, cache isolation, and retained-state timing boundaries. Parallel implementation and review used GPT-6 Luna with xhigh reasoning.
 
 CI now enumerates frontend benchmark files into independent jobs. The exact-file selector rejects unknown files; the legacy topology/other selectors remain complete and disjoint. Shared fixtures of any extension select both language lanes. Change detection fetches missing comparison commits without cloning repository history. Rust keeps one benchmark target and caches workspace crates as well as dependencies.

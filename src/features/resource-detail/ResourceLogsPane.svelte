@@ -8,7 +8,7 @@
 		type TauriClient,
 	} from "@/lib/tauri";
 	import { settingsStore } from "@/lib/settings-store";
-	import { untrack } from "svelte";
+	import { onDestroy, untrack } from "svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import type {
 		AggregatedLogStreamRequest,
@@ -19,7 +19,7 @@
 	} from "@/lib/types";
 	import LogsTab from "./LogsTab.svelte";
 	import {
-		appendParsedLogLine,
+		appendParsedLogBatch,
 		filterOrderedParsedLogLines,
 		MAX_RETAINED_LOG_LINES,
 		orderParsedLogLines,
@@ -75,12 +75,20 @@
 	let logTailLines = $state(200);
 	let logSinceSeconds = $state<number | undefined>(undefined);
 	let logPaused = $state(false);
+	let reconnectVersion = $state(0);
 	let pendingLogLines: { line: string; source?: LogLineSource }[] = [];
+	let incomingLogLines: { line: string; source?: LogLineSource }[] = [];
+	let incomingCount = 0;
+	let flushFrame: number | null = null;
+	onDestroy(() => {
+		if (flushFrame !== null) cancelAnimationFrame(flushFrame);
+	});
 	let pendingCount = $state(0);
 	let appendedCount = $state(0);
 	let seenAppendedCount = 0;
 	let pinnedToLatest = $state(true);
 	let programmaticScrollTop: number | null = null;
+	let savedScrollTop = 0;
 	let unseenCount = $state(0);
 	const hiddenLevels = new SvelteSet<LogLevel>();
 	const logLayout = $derived($settingsStore.logLayout);
@@ -160,8 +168,11 @@
 	});
 
 	function resetLogLines() {
+		if (flushFrame !== null) cancelAnimationFrame(flushFrame);
+		flushFrame = null;
+		incomingLogLines = [];
+		incomingCount = 0;
 		parsedLogLines = [];
-		nextLogLineIndex = 0;
 		pendingLogLines = [];
 		pendingCount = 0;
 		appendedCount = 0;
@@ -176,13 +187,36 @@
 		logError = null;
 	});
 
-	function appendLogLine(entry: { line: string; source?: LogLineSource }) {
-		appendParsedLogLine(parsedLogLines, entry, nextLogLineIndex);
-		nextLogLineIndex += 1;
-		appendedCount += 1;
+	function flushLogLines() {
+		flushFrame = null;
+		const entries = incomingLogLines;
+		const count = incomingCount;
+		incomingLogLines = [];
+		incomingCount = 0;
+		if (logPaused) {
+			pendingLogLines = [...pendingLogLines, ...entries].slice(-MAX_RETAINED_LOG_LINES);
+			pendingCount = pendingLogLines.length;
+			return;
+		}
+		parsedLogLines = appendParsedLogBatch(parsedLogLines, entries, nextLogLineIndex + count - entries.length);
+		nextLogLineIndex += count;
+		appendedCount += count;
+	}
+
+	function queueLogLines(lines: string[], source?: LogLineSource) {
+		for (const line of lines) incomingLogLines.push({ line, source });
+		incomingCount += lines.length;
+		if (incomingLogLines.length > MAX_RETAINED_LOG_LINES) {
+			incomingLogLines = incomingLogLines.slice(-MAX_RETAINED_LOG_LINES);
+		}
+		flushFrame ??= requestAnimationFrame(flushLogLines);
 	}
 
 	function togglePause() {
+		if (flushFrame !== null) {
+			cancelAnimationFrame(flushFrame);
+			flushLogLines();
+		}
 		if (!logPaused) {
 			logPaused = true;
 			return;
@@ -191,7 +225,9 @@
 		const pending = pendingLogLines;
 		pendingLogLines = [];
 		pendingCount = 0;
-		for (const entry of pending) appendLogLine(entry);
+		parsedLogLines = appendParsedLogBatch(parsedLogLines, pending, nextLogLineIndex);
+		nextLogLineIndex += pending.length;
+		appendedCount += pending.length;
 	}
 
 	function isAtLatest(viewport: HTMLElement): boolean {
@@ -212,6 +248,18 @@
 		if (logViewport) scrollToLatest(logViewport);
 	}
 
+	$effect.pre(() => {
+		if (!active) savedScrollTop = untrack(() => logViewport?.scrollTop ?? savedScrollTop);
+	});
+	$effect(() => {
+		if (!active) return;
+		const viewport = untrack(() => logViewport);
+		if (viewport && !untrack(() => pinnedToLatest)) {
+			viewport.scrollTop = savedScrollTop;
+			programmaticScrollTop = viewport.scrollTop;
+		}
+	});
+
 	// Every visible row is a candidate so the anchor survives eviction of the top row.
 	function findScrollAnchors(viewport: HTMLElement): ScrollAnchor[] {
 		const anchors: ScrollAnchor[] = [];
@@ -227,6 +275,7 @@
 		const viewport = logViewport;
 		if (!viewport) return;
 		const onScroll = () => {
+			if (!active) return;
 			// Our own follow scroll reports late; lines appended meanwhile must not read as scrolling away.
 			if (viewport.scrollTop === programmaticScrollTop) return;
 			programmaticScrollTop = null;
@@ -282,7 +331,21 @@
 	});
 
 	$effect(() => {
-		if (!active || !logRequest) {
+		if (!active) return;
+		untrack(() => {
+			if (logStatus !== "stopped" && logStatus !== "error") return;
+			// The stream request has no sinceTime cursor. Clear before re-tailing so
+			// older servers and aggregate streams cannot replay retained lines.
+			resetLogLines();
+			reconnectVersion += 1;
+		});
+	});
+
+	$effect(() => {
+		// Keep healthy streams alive across tab switches; restart only on re-entry
+		// after a stop/error or when the requested target/options change.
+		void reconnectVersion;
+		if (!logRequest) {
 			logStatus = "idle";
 			logMessage = "Log stream idle";
 			logError = null;
@@ -304,17 +367,10 @@
 				logMessage = event.message;
 				return;
 			}
-			if (event.type === "logLine") {
+			if (event.type === "logLines" || event.type === "logLine") {
 				logStatus = "connected";
 				logMessage = logRequest.mode === "aggregate" ? "Aggregated logs connected" : "Log stream connected";
-				const entry = { line: event.line, source: event.source };
-				if (!logPaused) {
-					appendLogLine(entry);
-					return;
-				}
-				pendingLogLines.push(entry);
-				if (pendingLogLines.length > MAX_RETAINED_LOG_LINES) pendingLogLines.shift();
-				pendingCount = pendingLogLines.length;
+				queueLogLines(event.type === "logLine" ? [event.line] : event.lines, event.source);
 				return;
 			}
 			if (event.type === "error") {
@@ -355,6 +411,7 @@
 </script>
 
 <LogsTab
+	{active}
 	{isPod}
 	isAggregate={isAggregateTarget}
 	{containerOptions}

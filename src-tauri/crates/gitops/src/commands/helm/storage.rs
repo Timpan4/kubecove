@@ -23,6 +23,10 @@ use kube::{
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, io::Read};
 
+#[path = "storage_list.rs"]
+mod list_projection;
+use list_projection::{configmap_list_record, secret_list_record};
+
 const HELM_OWNER_SELECTOR: &str = "owner=helm";
 const HELM_STORAGE_SECRET: &str = "Secret";
 const HELM_STORAGE_CONFIGMAP: &str = "ConfigMap";
@@ -320,7 +324,7 @@ async fn list_secret_releases(
     let records = items
         .items
         .into_iter()
-        .map(|mut secret| secret_record(cluster_context, &mut secret))
+        .map(|mut secret| secret_list_record(cluster_context, &mut secret))
         .collect::<Result<_, _>>()?;
     Ok((records, None))
 }
@@ -353,7 +357,7 @@ async fn list_configmap_releases(
     let records = items
         .items
         .into_iter()
-        .map(|mut configmap| configmap_record(cluster_context, &mut configmap))
+        .map(|mut configmap| configmap_list_record(cluster_context, &mut configmap))
         .collect::<Result<_, _>>()?;
     Ok((records, None))
 }
@@ -375,7 +379,7 @@ async fn list_secret_releases_by_namespace(
             Ok(items) => {
                 succeeded = true;
                 for mut secret in items.items {
-                    records.push(secret_record(cluster_context, &mut secret)?);
+                    records.push(secret_list_record(cluster_context, &mut secret)?);
                 }
             }
             Err(err) => {
@@ -411,7 +415,7 @@ async fn list_configmap_releases_by_namespace(
             Ok(items) => {
                 succeeded = true;
                 for mut configmap in items.items {
-                    records.push(configmap_record(cluster_context, &mut configmap)?);
+                    records.push(configmap_list_record(cluster_context, &mut configmap)?);
                 }
             }
             Err(err) => {
@@ -634,10 +638,10 @@ pub fn benchmark_storage_records(
 ) -> Result<Vec<HelmReleaseSummary>, AppError> {
     let mut records = Vec::with_capacity(secrets.len() + configmaps.len());
     for mut secret in secrets {
-        records.push(secret_record("benchmark", &mut secret)?);
+        records.push(secret_list_record("benchmark", &mut secret)?);
     }
     for mut configmap in configmaps {
-        records.push(configmap_record("benchmark", &mut configmap)?);
+        records.push(configmap_list_record("benchmark", &mut configmap)?);
     }
     Ok(latest_releases(records))
 }
@@ -680,6 +684,10 @@ pub fn benchmark_storage_record_projection(
 }
 
 fn decode_helm_release(data: &[u8]) -> Result<DecodedHelmRelease, AppError> {
+    decode_release(data)
+}
+
+fn decode_release<T: serde::de::DeserializeOwned>(data: &[u8]) -> Result<T, AppError> {
     if data.len() > MAX_STORED_RELEASE_BYTES {
         return Err(AppError::new(
             "Helm release storage exceeds the Kubernetes 1 MiB limit",

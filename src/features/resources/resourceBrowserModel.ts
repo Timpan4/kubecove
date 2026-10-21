@@ -156,6 +156,27 @@ export function filterTopologyByTableRows(
 	};
 }
 
+export function createTableTopologyFilter() {
+	let source: ResourceTopology | undefined;
+	let hideHistorical = false;
+	let keys = new Set<string>();
+	let result: ResourceTopology | undefined;
+	return (topology: ResourceTopology | undefined, rows: ResourceSummary[], hide: boolean) => {
+		const nextKeys = new Set<string>();
+		for (const row of rows) nextKeys.add(looseResourceKey(row));
+		let sameKeys = nextKeys.size === keys.size;
+		for (const key of nextKeys) {
+			if (!keys.has(key)) { sameKeys = false; break; }
+		}
+		if (topology === source && hide === hideHistorical && sameKeys) return result;
+		source = topology;
+		hideHistorical = hide;
+		keys = nextKeys;
+		result = filterTopologyByTableRows(filterHistoricalReplicaSets(topology, hide), rows);
+		return result;
+	};
+}
+
 export function filterHistoricalReplicaSets(
 	topology: ResourceTopology | undefined,
 	hide: boolean,

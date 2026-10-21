@@ -13,6 +13,7 @@
 
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { SvelteSet } from "svelte/reactivity";
 	import { Button, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/svelte";
 	import {
 		formatExactTimeOnly,
@@ -139,7 +140,11 @@
 	let logFilter = $state(initialDetailState?.logFilter ?? "");
 	let logWrapLines = $state(initialDetailState?.logWrapLines ?? true);
 	let logLatestFirst = $state(initialDetailState?.logLatestFirst ?? false);
-	let parsedLogLines = $state<ParsedLogLine[]>([]);
+	let parsedLogLines = $state.raw<ParsedLogLine[]>([]);
+	const visitedTabs = new SvelteSet<DetailTab>();
+	$effect(() => {
+		visitedTabs.add(activeTab);
+	});
 	let realtimeWatchError = $state<string | null>(null);
 	let realtimeEventsWatchError = $state<string | null>(null);
 	let yamlShowFullDiff = $state(initialDetailState?.yamlShowFullDiff ?? false);
@@ -353,13 +358,13 @@
 	);
 	const topIncidentSignals = $derived(incidentSignals.slice(0, 3));
 	const incidentTimeline = $derived(
-		buildIncidentTimeline({
+		activeTab === "details" ? buildIncidentTimeline({
 			resource: detailResource,
 			conditions: conditionRows,
 			events: sortedEvents,
 			containers: signalContainers,
 			logLines: parsedLogLines,
-		}),
+		}) : [],
 	);
 
 	$effect(() => {
@@ -397,19 +402,25 @@
 		let cancelled = false;
 		let streamId: string | null = null;
 		let debounce: ReturnType<typeof setTimeout> | null = null;
+		let lastInvalidated = -Infinity;
 		const watchKey = readSpec.resourceWatchKey;
 		const currentArgoApplicationScope = argoApplicationScope;
+		const invalidate = () => {
+			debounce = null;
+			lastInvalidated = performance.now();
+			void queryClient.invalidateQueries({ queryKey: detailsQueryKey });
+			if (currentArgoApplicationScope) {
+				void queryClient.invalidateQueries({ queryKey: currentArgoApplicationScope });
+			}
+			if (activeTab === "yaml") {
+				resourceRefreshVersion += 1;
+			}
+		};
 		const invalidateSoon = () => {
-			if (debounce) clearTimeout(debounce);
-			debounce = setTimeout(() => {
-				void queryClient.invalidateQueries({ queryKey: detailsQueryKey });
-				if (currentArgoApplicationScope) {
-					void queryClient.invalidateQueries({ queryKey: currentArgoApplicationScope });
-				}
-				if (activeTab === "yaml") {
-					resourceRefreshVersion += 1;
-				}
-			}, 250);
+			if (debounce !== null) return;
+			const remaining = 250 - (performance.now() - lastInvalidated);
+			if (remaining <= 0) invalidate();
+			else debounce = setTimeout(invalidate, remaining);
 		};
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
@@ -463,11 +474,17 @@
 		let cancelled = false;
 		let streamId: string | null = null;
 		let debounce: ReturnType<typeof setTimeout> | null = null;
+		let lastInvalidated = -Infinity;
+		const invalidate = () => {
+			debounce = null;
+			lastInvalidated = performance.now();
+			void queryClient.invalidateQueries({ queryKey: eventsQueryKey });
+		};
 		const invalidateSoon = () => {
-			if (debounce) clearTimeout(debounce);
-			debounce = setTimeout(() => {
-				void queryClient.invalidateQueries({ queryKey: eventsQueryKey });
-			}, 250);
+			if (debounce !== null) return;
+			const remaining = 250 - (performance.now() - lastInvalidated);
+			if (remaining <= 0) invalidate();
+			else debounce = setTimeout(invalidate, remaining);
 		};
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
@@ -638,7 +655,7 @@
 		</p>
 	{/if}
 
-	<DetailsTab
+	{#if visitedTabs.has("details")}<DetailsTab
 		{resourceKey}
 		{detailsQuery}
 		{eventsQuery}
@@ -665,9 +682,9 @@
 		{containerTone}
 		{containerReadyLabel}
 		{containerStateLabel}
-	/>
+	/>{/if}
 
-	<ResourceYamlPane
+	{#if visitedTabs.has("yaml")}<ResourceYamlPane
 		{client}
 		{resource}
 		{dynamicKind}
@@ -680,16 +697,16 @@
 		bind:yamlViewMode
 		bind:yamlEncoding
 		bind:yamlShowFullDiff
-	/>
+	/>{/if}
 
-	<EventsTab
+	{#if visitedTabs.has("events")}<EventsTab
 		{eventsQuery}
 		{sortedEvents}
 		{formatEventExactTime}
 		{formatEventCompactTime}
-	/>
+	/>{/if}
 
-	{#if canShowLogs}
+	{#if canShowLogs && visitedTabs.has("logs")}
 		<ResourceLogsPane
 			{client}
 			{resource}
@@ -730,7 +747,7 @@
 		{/if}
 	</TabsContent>{/if}
 
-	{#if canShowPortForward}<TabsContent value="portForward">
+	{#if canShowPortForward && visitedTabs.has("portForward")}<TabsContent value="portForward">
 		<PortForwardTab
 			{client}
 			{resource}
@@ -739,7 +756,7 @@
 			active={activeTab === "portForward"}
 		/>
 	</TabsContent>{/if}
-	{#if canShowRevisions}
+	{#if canShowRevisions && visitedTabs.has("revisions")}
 		<DeploymentRevisionsTab
 			{client}
 			{resource}
@@ -747,7 +764,7 @@
 			active={activeTab === "revisions"}
 		/>
 	{/if}
-	{#if isArgoApplication}
+	{#if isArgoApplication && visitedTabs.has("argo")}
 		<TabsContent value="argo" class="min-h-0">
 			<ArgoApplicationDetails
 					resourceSummary={resource}
@@ -759,6 +776,6 @@
 		</TabsContent>
 	{/if}
 	<TabsContent value="operations">
-		<ResourceActionsTab {client} resource={detailResource} {kubeconfigSourceKey} />
+		{#if visitedTabs.has("operations")}<ResourceActionsTab {client} resource={detailResource} {kubeconfigSourceKey} />{/if}
 	</TabsContent>
 </Tabs>

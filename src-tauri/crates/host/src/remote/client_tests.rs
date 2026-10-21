@@ -128,6 +128,44 @@ fn tunnel_error_removes_download_sender_and_reaches_control_waiter() {
             .expect("deliver handshake error"),
         error
     );
+
+    // Forward nested JSON verbatim, including escapes and number lexemes. A
+    // parse into Value loses this representation and allocates the entire tree.
+    let received = Arc::new(Mutex::new(Vec::new()));
+    let sent = Arc::clone(&received);
+    let channel = tauri::ipc::Channel::new(move |body| {
+        let tauri::ipc::InvokeResponseBody::Json(json) = body else {
+            panic!("channel payload must remain JSON");
+        };
+        sent.lock().unwrap().push(json);
+        Ok(())
+    });
+    connection.subscribe(42, channel).unwrap();
+    let payload = r#"{ "nested": [1.00, {"line":"a\n\"b","unicode":"\u0061"}], "null": null }"#;
+    assert!(!super::handle_text(
+        &connection,
+        &format!(r#"{{"type":"channel","channelId":42,"message":{payload}}}"#)
+    ));
+    assert!(!super::handle_text(
+        &connection,
+        r#"{"type":"channel_gap","channelId":42,"dropped":3}"#
+    ));
+    assert!(!super::handle_text(
+        &connection,
+        r#"{"type":"channel","channelId":42}"#
+    ));
+    assert!(!super::handle_text(
+        &connection,
+        r#"{"type":"channel","channelId":42,"message":[}"#
+    ));
+    assert_eq!(
+        *received.lock().unwrap(),
+        [
+            payload.to_string(),
+            r#"{"dropped":3,"type":"channel_gap"}"#.to_string(),
+            "null".to_string(),
+        ]
+    );
 }
 
 #[test]

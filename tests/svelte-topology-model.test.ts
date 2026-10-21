@@ -97,8 +97,9 @@ describe("svelte topology model", () => {
 		expect(graph.nodes[2]?.selected).toBe(true);
 		expect(graph.nodes[2]?.data.selected).toBe(true);
 		expect(graph.nodes[0]?.data.connected).toBe(true);
-		expect(graph.edges.find((edge) => edge.id === "rs-to-pod")?.animated).toBe(true);
-		expect(graph.edges.find((edge) => edge.id === "deployment-to-rs")?.animated).toBe(true);
+		expect(graph.edges.find((edge) => edge.id === "rs-to-pod")?.style).toContain("stroke-dasharray: 8 8");
+		expect(graph.edges.find((edge) => edge.id === "deployment-to-rs")?.style).toContain("stroke-dasharray: 8 8");
+		expect(graph.edges.every((edge) => edge.animated === false)).toBe(true);
 		expect(graph.nodes[0]?.type).toBe("ownershipResource");
 		expect(graph.nodes[0]?.style).toContain("width: 408px");
 		expect(graph.edges.every((edge) => edge.type === "smoothstep")).toBe(true);

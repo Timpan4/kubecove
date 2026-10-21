@@ -9,6 +9,7 @@ use crate::commands::helpers::{
     enrich_resource_summaries_with_flux_inventory, fmt_ready, list_params,
     read_flux_ownership_index, update_resource_health, FluxOwnershipIndex,
 };
+use crate::commands::MAX_LIST_CONCURRENCY;
 use crate::models::{AppError, DiscoveredResourceKind};
 use chrono::{DateTime, Utc};
 use futures_util::{stream, StreamExt};
@@ -24,7 +25,6 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use k8s_openapi::{ClusterResourceScope, NamespaceResourceScope};
 use kube::{core::PartialObjectMeta, Api, Client, Error as KubeError};
 
-const MAX_TOPOLOGY_LIST_CONCURRENCY: usize = 16;
 const DEPLOYMENT_REVISION_ANNOTATION: &str = "deployment.kubernetes.io/revision";
 
 fn attach_deployment_revision(input: &mut TopologyInputResource, metadata: &ObjectMeta) {
@@ -136,7 +136,7 @@ where
                 )
             }
         })
-        .buffered(MAX_TOPOLOGY_LIST_CONCURRENCY)
+        .buffered(MAX_LIST_CONCURRENCY)
         .collect::<Vec<_>>()
         .await;
 
@@ -202,7 +202,7 @@ where
                 (namespace, rows.map(|rows| rows.items))
             }
         })
-        .buffered(MAX_TOPOLOGY_LIST_CONCURRENCY)
+        .buffered(MAX_LIST_CONCURRENCY)
         .collect::<Vec<_>>()
         .await;
 

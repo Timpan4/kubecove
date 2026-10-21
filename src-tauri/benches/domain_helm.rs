@@ -5,8 +5,8 @@ use kubecove_lib::models::AppErrorKind;
 mod helm_storage_records_to_latest_releases {
     use super::*;
 
-    // R25 and folded R26: decode every Secret/ConfigMap record, construct its
-    // full summaries, select latest revisions, and drop discarded payloads.
+    // R25 and folded R26: decode every Secret/ConfigMap list summary, select
+    // latest revisions, and drop discarded payloads. Detail projection is checked below.
     #[codspeed_divan_compat::bench]
     fn helm_storage_records_to_latest_releases(bencher: Bencher) {
         let fixture = domain_helm::storage_records();

@@ -30,6 +30,7 @@
 		type PodExecPreset,
 	} from "@/features/live-sessions";
 	import { settingsStore } from "@/lib/settings-store";
+	import { trackLiveSessionUi } from "@/features/live-sessions/sessionPolling.svelte";
 	import {
 		closePodExecChannel,
 		createPodExecChannel,
@@ -68,6 +69,7 @@
 	} = $props();
 
 	const queryClient = useQueryClient();
+	trackLiveSessionUi(() => active);
 	let preset = $state<PodExecPreset>("sh");
 	let customArgv = $state("");
 	let confirmed = $state(false);
@@ -94,7 +96,7 @@
 	const sessionsQuery = createQuery<PodExecSessionSummary[]>(() =>
 		podExecQueryOptions(client, {
 			enabled: active,
-			refetchInterval: active ? 3_000 : false,
+			refetchInterval: false,
 		}),
 	);
 	const sessions = $derived(
@@ -115,12 +117,18 @@
 				},
 			);
 			terminal = nextTerminal;
-			const fit = () => fitTerminal();
-			const frame = window.requestAnimationFrame(fit);
+			let frame: number | null = null;
+			const fit = () => {
+				frame ??= window.requestAnimationFrame(() => {
+					frame = null;
+					fitTerminal();
+				});
+			};
+			fit();
 			window.addEventListener("resize", fit);
 			return () => {
 				input?.dispose();
-				window.cancelAnimationFrame(frame);
+				if (frame !== null) window.cancelAnimationFrame(frame);
 				window.removeEventListener("resize", fit);
 				if (channel) closePodExecChannel(channel);
 				if (sessionId) {

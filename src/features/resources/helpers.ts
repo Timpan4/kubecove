@@ -285,12 +285,17 @@ export function filterResources(
 	);
 }
 
+const searchEntries = new WeakMap<ResourceSummary, ResourceSearchEntry>();
+
 export function buildResourceSearchIndex(
 	data: ResourceSummary[],
 ): ResourceSearchEntry[] {
-	return data.map((resource) => {
+	const entries: ResourceSearchEntry[] = [];
+	for (const resource of data) {
+		const cached = searchEntries.get(resource);
+		if (cached) { entries.push(cached); continue; }
 		const ownership = gitOpsOwnership(resource);
-		return {
+		const entry = {
 			resource,
 			gitOpsFilterKeys: ownership?.filterKeys ?? [],
 			searchText: [
@@ -308,7 +313,10 @@ export function buildResourceSearchIndex(
 				.join("\n")
 				.toLowerCase(),
 		};
-	});
+		searchEntries.set(resource, entry);
+		entries.push(entry);
+	}
+	return entries;
 }
 
 export function filterResourceSearchIndex(

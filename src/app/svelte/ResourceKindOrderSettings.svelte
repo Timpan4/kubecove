@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from "svelte";
+	import { onDestroy, tick } from "svelte";
 	import { RotateCcw } from "lucide-svelte";
 	import { Button } from "@/components/ui/svelte";
 	import {
@@ -22,6 +22,8 @@
 	let draft = $state<ResourceKindLanes | null>(null);
 	let dragging = $state<string | null>(null);
 	let container = $state<HTMLElement>();
+	let cancelDrag: (() => void) | undefined;
+	onDestroy(() => cancelDrag?.());
 	const lanes = $derived(draft ?? $settingsStore.resourceKindLanes);
 
 	function kindLabel(kind: string): string {
@@ -51,6 +53,7 @@
 	// handler intercepts HTML5 drag events in WebView2 on Windows.
 	function startDrag(event: PointerEvent & { currentTarget: HTMLElement }, kind: string) {
 		if (event.button !== 0) return;
+		cancelDrag?.();
 		event.preventDefault();
 		event.currentTarget.focus();
 		dragging = kind;
@@ -72,6 +75,7 @@
 			draft = moved(draft, kind, lane, draft[lane].indexOf(drop));
 		};
 		const cancel = () => {
+			cancelDrag = undefined;
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", commit);
 			window.removeEventListener("pointercancel", cancel);
@@ -83,6 +87,7 @@
 			cancel();
 		};
 		window.addEventListener("pointermove", move);
+		cancelDrag = cancel;
 		window.addEventListener("pointerup", commit);
 		window.addEventListener("pointercancel", cancel);
 	}

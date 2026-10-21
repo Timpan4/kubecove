@@ -133,6 +133,8 @@ export function gitOpsOwnershipFilterValue(filter: string): string {
 	return provider && kind && name ? name : filter;
 }
 
+const inheritedRows = new WeakMap<ResourceSummary, { ownerKey: string | undefined; row: ResourceSummary }>();
+
 export function inheritGitOpsOwnership(resources: ResourceSummary[]): ResourceSummary[] {
 	const ownerKeys = new Set<string>();
 	for (const resource of resources) {
@@ -159,7 +161,12 @@ export function inheritGitOpsOwnership(resources: ResourceSummary[]): ResourceSu
 			);
 			if (!owner || seen.has(owner)) break;
 			if (gitOpsOwnership(owner)) {
-				return { ...resource, gitOpsOwner: owner.gitOpsOwner };
+				const ownerKey = JSON.stringify(owner.gitOpsOwner);
+				const cached = inheritedRows.get(resource);
+				if (cached && cached.ownerKey === ownerKey) return cached.row;
+				const row = { ...resource, gitOpsOwner: owner.gitOpsOwner };
+				inheritedRows.set(resource, { ownerKey, row });
+				return row;
 			}
 			seen.add(owner);
 			current = owner;

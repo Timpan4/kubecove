@@ -7,7 +7,7 @@ mod restarts;
 #[cfg(feature = "bench-support")]
 pub use post_fetch::incident_cockpit_post_fetch;
 
-use super::{resource_scope_from, ClusterLiveStore};
+use super::{resource_scope_from, ClusterLiveStore, MAX_LIST_CONCURRENCY};
 use crate::commands::{
     helpers::{k8s_timestamp_to_datetime, list_params, resource_age_at},
     kubeconfig::KubeconfigSource,
@@ -18,9 +18,9 @@ use crate::models::{
 };
 use crate::runtime::State;
 use chrono::{DateTime, Utc};
-use futures_util::future::join_all;
 use k8s_openapi::api::core::v1::Event;
 use kube::{api::Api, Client};
+use kubecove_kube::commands::list_projection::bounded_join_all;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
@@ -206,11 +206,15 @@ async fn list_warning_events(
             };
             (
                 namespace,
-                api.list(&list_params().fields("type=Warning")).await,
+                kubecove_kube::commands::list_projection::list::<
+                    _,
+                    super::event_projection::EventProjection,
+                >(api, &list_params().fields("type=Warning"))
+                .await,
             )
         }
     });
-    for (namespace, result) in join_all(fetches).await {
+    for (namespace, result) in bounded_join_all(fetches, MAX_LIST_CONCURRENCY).await {
         let list = match result {
             Ok(list) => list,
             Err(err) => {
@@ -224,7 +228,7 @@ async fn list_warning_events(
                 return Err(app_error);
             }
         };
-        events.extend(list.into_iter().filter_map(event_match));
+        events.extend(list.into_iter().filter_map(|event| event_match(event.0)));
     }
     sort_warning_event_matches(&mut events);
     Ok(WarningEventList {

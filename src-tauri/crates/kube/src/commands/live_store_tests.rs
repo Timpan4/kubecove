@@ -6,6 +6,62 @@ use std::sync::{
 };
 use tokio::sync::oneshot;
 
+#[test]
+fn expired_entries_are_pruned_without_losing_in_use_or_failed_reload_values() {
+    crate::runtime::block_on(async {
+        let cache = SharedCache::new("test");
+        let held = Arc::new(vec![1]);
+        let old = Instant::now()
+            .checked_sub(RESOURCE_FRESHNESS + COMPLETED_GRACE)
+            .expect("cache age fixture");
+        {
+            let mut entries = cache.entries.lock().unwrap();
+            for key in ["stale", "reload", "held"] {
+                entries.insert(
+                    key.into(),
+                    CacheEntry::Ready(ReadyValue {
+                        value: if key == "held" {
+                            held.clone()
+                        } else {
+                            Arc::new(vec![2])
+                        },
+                        completed_at: old,
+                        dirty: false,
+                    }),
+                );
+            }
+        }
+        let error = cache
+            .get_or_load(
+                "reload".into(),
+                CacheMode::LiveFor(RESOURCE_FRESHNESS),
+                || async { Err(AppError::cancelled()) },
+            )
+            .await;
+        assert!(error.is_err());
+        assert!(cache.has_key("reload"));
+        assert!(cache.has_key("held"));
+        assert!(!cache.has_key("stale"));
+        assert_eq!(
+            cache
+                .counters
+                .restored_reload_failures
+                .load(Ordering::Relaxed),
+            1
+        );
+        drop(held);
+        cache
+            .get_or_load(
+                "fresh".into(),
+                CacheMode::LiveFor(RESOURCE_FRESHNESS),
+                || async { Ok(vec![3]) },
+            )
+            .await
+            .unwrap();
+        assert!(!cache.has_key("held"));
+    });
+}
+
 fn resource(name: &str, namespace: &str) -> ResourceSummary {
     ResourceSummary {
         kind: "Pod".to_string(),

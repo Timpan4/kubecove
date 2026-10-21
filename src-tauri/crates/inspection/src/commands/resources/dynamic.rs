@@ -20,8 +20,7 @@ use kube::{
 #[cfg(feature = "bench-support")]
 pub use kubecove_kube::commands::dynamic_projection::dynamic_resource_summaries_at;
 pub(crate) use kubecove_kube::commands::dynamic_projection::{
-    api_resource_from_discovered, dynamic_resource_summaries, dynamic_resource_summary,
-    dynamic_resource_summary_at,
+    api_resource_from_discovered, dynamic_resource_summary, dynamic_resource_summary_at,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -98,13 +97,17 @@ pub async fn dynamic_resources_summary_from(
         Api::all_with(client, &api_resource)
     };
 
-    let objects = api.list(&list_params()).await.map_err(AppError::from)?;
-
-    Ok(dynamic_resource_summaries(
-        &cluster_context,
-        &resource_kind,
-        &objects.items,
-    ))
+    let objects = kubecove_kube::commands::list_projection::list::<
+        _,
+        kubecove_kube::commands::list_projection::Dynamic,
+    >(api, &list_params())
+    .await
+    .map_err(AppError::from)?;
+    Ok(objects
+        .items
+        .into_iter()
+        .map(|object| dynamic_resource_summary(&cluster_context, &resource_kind, &object.into()))
+        .collect())
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

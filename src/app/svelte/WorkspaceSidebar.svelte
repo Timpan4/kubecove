@@ -77,7 +77,7 @@
 {/snippet}
 
 <Sidebar
-	class="hidden w-[260px] shrink-0 flex-col border-r bg-surface-1 xl:flex xl:overflow-hidden xl:rounded-xl xl:border xl:border-sidebar-border xl:shadow-lg"
+	class="hidden w-[260px] shrink-0 flex-col border-r bg-surface-1 xl:flex xl:overflow-hidden xl:rounded-xl xl:border xl:border-sidebar-border"
 >
 	{@render header("")}
 	<SidebarContent>

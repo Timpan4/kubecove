@@ -10,9 +10,12 @@ pub mod sessions;
 pub mod tunnel;
 mod websocket;
 
-use access::{AccessIdentity, CloudflareAccess};
+#[cfg(all(test, feature = "web-ui"))]
+mod asset_tests;
 #[cfg(feature = "web-ui")]
-use axum::http::Uri;
+mod assets;
+
+use access::{AccessIdentity, CloudflareAccess};
 use axum::{
     extract::{
         rejection::{JsonRejection, QueryRejection},
@@ -25,8 +28,6 @@ use axum::{
     Extension, Json, Router,
 };
 use kubecove_lib::models::{AppError, AppErrorKind};
-#[cfg(feature = "web-ui")]
-use rust_embed::Embed;
 use security::{authenticated, equal_secret, NetworkPolicy};
 use serde::Deserialize;
 use serde_json::Value;
@@ -36,11 +37,6 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 struct AuthenticationRevoked(CancellationToken);
-
-#[cfg(feature = "web-ui")]
-#[derive(Embed)]
-#[folder = "../../dist/"]
-struct Assets;
 
 pub struct AppState {
     pub token: String,
@@ -74,7 +70,7 @@ impl From<AppError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.0, Json(self.1)).into_response()
+        (self.0, [(header::CACHE_CONTROL, "no-store")], Json(self.1)).into_response()
     }
 }
 
@@ -90,7 +86,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/channels", get(websocket::upgrade))
         .route("/api/v1/channels/{id}/close", post(close_channel));
     #[cfg(feature = "web-ui")]
-    let router = router.fallback(get(asset));
+    let router = router.fallback(get(assets::asset));
     router
         // Axum's default 2 MiB JSON limit matches the existing workspace import cap.
         .layer(middleware::from_fn_with_state(Arc::clone(&state), guard))
@@ -114,6 +110,7 @@ async fn guard(
         }
     }
     let path = request.uri().path();
+    let asset_request = path.starts_with("/assets/");
     let needs_origin = request.method() == axum::http::Method::POST || path == "/api/v1/channels";
     if ((state.access.is_some() || state.oidc.is_some())
         && needs_origin
@@ -192,10 +189,12 @@ async fn guard(
         header::REFERRER_POLICY,
         "no-referrer".parse().expect("static header"),
     );
-    headers.insert(
-        header::CACHE_CONTROL,
-        "no-store".parse().expect("static header"),
-    );
+    if !asset_request || !headers.contains_key(header::CACHE_CONTROL) {
+        headers.insert(
+            header::CACHE_CONTROL,
+            "no-store".parse().expect("static header"),
+        );
+    }
     response
 }
 
@@ -392,7 +391,7 @@ async fn invoke(
     revoked: Option<Extension<AuthenticationRevoked>>,
     headers: HeaderMap,
     payload: Result<Json<Value>, JsonRejection>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Response, ApiError> {
     let Json(args) = payload.map_err(json_error)?;
     let owner = state
         .sessions
@@ -403,7 +402,9 @@ async fn invoke(
         biased;
         () = owner.ended.cancelled() => Err(ApiError::new(StatusCode::CONFLICT, "session opened elsewhere or expired", AppErrorKind::Session)),
         () = authentication_ended(identity.as_ref(), revoked.as_ref()) => Err(ApiError::new(StatusCode::UNAUTHORIZED, "authentication expired or was revoked", AppErrorKind::Forbidden)),
-        result = dispatch::dispatch(&owner.backend, &owner.channels, &command, &args) => Ok(Json(result?)),
+        result = dispatch::dispatch(&owner.backend, &owner.channels, &command, &args) => {
+            Ok(([(header::CONTENT_TYPE, "application/json")], result?).into_response())
+        },
     }
 }
 
@@ -479,41 +480,6 @@ fn json_error(error: JsonRejection) -> ApiError {
         "request body is invalid or exceeds the 2 MiB limit",
         AppErrorKind::Validation,
     )
-}
-
-#[cfg(feature = "web-ui")]
-async fn asset(State(state): State<Arc<AppState>>, headers: HeaderMap, uri: Uri) -> Response {
-    if uri.path().starts_with("/api/") {
-        return ApiError::new(
-            StatusCode::NOT_FOUND,
-            "unknown API route",
-            AppErrorKind::UnsupportedOperation,
-        )
-        .into_response();
-    }
-    let path = uri.path().trim_start_matches('/');
-    let path = if path.is_empty() { "index.html" } else { path };
-    let Some(asset) = Assets::get(path) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    if path == "index.html" {
-        let host = headers
-            .get(header::HOST)
-            .and_then(|host| host.to_str().ok())
-            .expect("validated Host");
-        let policy = state.policy.content_security_policy(host);
-        let html = std::str::from_utf8(&asset.data)
-            .ok()
-            .and_then(|html| index_with_policy(html, &policy));
-        return html.map_or_else(
-            || StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-            |html| ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response(),
-        );
-    }
-    let mime = mime_guess::from_path(path)
-        .first_or_octet_stream()
-        .to_string();
-    ([(header::CONTENT_TYPE, mime)], asset.data.into_owned()).into_response()
 }
 
 #[cfg(any(feature = "web-ui", test))]

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { trackLiveSessionUi } from "@/features/live-sessions/sessionPolling.svelte";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import { Cable, Copy, Play, Square } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
@@ -62,6 +63,7 @@
 	} = $props();
 
 	const queryClient = useQueryClient();
+	trackLiveSessionUi(() => active);
 	const selectedWorkspace = workspaceStore.selectedWorkspace;
 	const showKubeconfigSourceLabels = $derived(
 		$settingsStore.showKubeconfigSourceLabels,
@@ -83,7 +85,7 @@
 	const sessionsQuery = createQuery<PortForwardSessionSummary[]>(() =>
 		portForwardQueryOptions(client, {
 			enabled: active,
-			refetchInterval: active ? 3_000 : false,
+			refetchInterval: false,
 		}),
 	);
 	const sessions = $derived(

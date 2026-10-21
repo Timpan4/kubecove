@@ -2,6 +2,7 @@
 	import { getArgoOperationTracker, argoTrackingKey } from "./argo-operation-tracker";
 	import { argoOperationProgress } from "./argo-operation-progress";
 	import ArgoOperationProgress from "./ArgoOperationProgress.svelte";
+	import ArgoResourceDiff from "./ArgoResourceDiff.svelte";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import {
 		ChevronDown,
@@ -48,14 +49,9 @@
 		Spinner,
 		buttonClass,
 	} from "@/components/ui/svelte";
-	import {
-		buildArgoResourceDiff,
-		diffLineClassName,
-	} from "@/features/resource-detail/yamlTabDiff";
 	import { applicationSpecFromYaml } from "./argo-application-yaml";
 	import {
 		argoDocumentText,
-		highlightedArgoDiffSegments,
 		resolveArgoResourceComparison,
 	} from "./argo-resource-display";
 	import {
@@ -880,7 +876,7 @@
 						<div class="border-t p-3 font-sans text-xs leading-relaxed"><div class="font-medium">No desired manifest</div><div class="mt-1 text-muted-foreground">Selected revision no longer contains this resource.</div></div>
 					{:else if diffView === "changes" && argoDocumentText(documents.desired) && argoDocumentText(documents.normalizedLive)}
 						<div class="overflow-x-auto border-t font-mono text-[0.6875rem] leading-5">
-							{#each buildArgoResourceDiff(argoDocumentText(documents.desired), argoDocumentText(documents.normalizedLive)) as line}<div class={`whitespace-pre px-3 ${diffLineClassName(line.type)}`}>{#each highlightedArgoDiffSegments(line) as segment}<span class={segment.className}>{segment.text}</span>{/each}</div>{/each}
+							<ArgoResourceDiff desired={argoDocumentText(documents.desired)} live={argoDocumentText(documents.normalizedLive)} />
 						</div>
 					{:else if diffView === "changes" && removal && argoDocumentText(documents.live)}
 						<div class="border-t [&_.yaml-code-editor]:rounded-none [&_.yaml-code-editor]:border-0 [&_.yaml-code-editor]:shadow-none"><YamlCodeEditor value={argoDocumentText(documents.live)} editable={false} minHeight="180px" showErrorLens={false} /></div>

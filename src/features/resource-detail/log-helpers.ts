@@ -55,13 +55,19 @@ export function parseLogLine(input: LogLineInput, index = 0): ParsedLogLine {
 	};
 }
 
-export function appendParsedLogLine(
+export function appendParsedLogBatch(
 	lines: ParsedLogLine[],
-	input: LogLineInput,
-	index: number,
-): void {
-	lines.push(parseLogLine(input, index));
-	if (lines.length > MAX_RETAINED_LOG_LINES) lines.shift();
+	inputs: LogLineInput[],
+	startIndex: number,
+): ParsedLogLine[] {
+	const retained = lines.slice(
+		Math.max(0, lines.length + inputs.length - MAX_RETAINED_LOG_LINES),
+	);
+	const first = Math.max(0, inputs.length - MAX_RETAINED_LOG_LINES);
+	for (let index = first; index < inputs.length; index += 1) {
+		retained.push(parseLogLine(inputs[index], startIndex + index));
+	}
+	return retained;
 }
 
 export function orderedLogLines(
@@ -105,13 +111,15 @@ function validTimestampMs(value: string | undefined): number | undefined {
 export function latestTimestampedLogLine(
 	lines: ParsedLogLine[],
 ): ParsedLogLine | undefined {
-	return [...lines]
-		.filter((line) => validTimestampMs(line.timestamp) !== undefined)
-		.sort((a, b) => {
-			const timeDelta =
-				(validTimestampMs(b.timestamp) ?? 0) -
-				(validTimestampMs(a.timestamp) ?? 0);
-			if (timeDelta !== 0) return timeDelta;
-			return b.index - a.index;
-		})[0];
+	let latest: ParsedLogLine | undefined;
+	let latestTime = -Infinity;
+	for (const line of lines) {
+		const time = validTimestampMs(line.timestamp);
+		if (time === undefined) continue;
+		if (time > latestTime || (time === latestTime && latest && line.index > latest.index)) {
+			latest = line;
+			latestTime = time;
+		}
+	}
+	return latest;
 }

@@ -4,6 +4,50 @@ use super::*;
 use std::collections::BTreeMap;
 
 #[test]
+fn list_record_matches_full_decode_including_decoded_label_precedence_and_failures() {
+    for release in [
+        serde_json::json!({"name":"decoded", "namespace":"other", "version":7,
+            "info":{"status":"failed", "last_deployed":"2026-10-01T00:00:00Z"},
+            "chart":{"metadata":{"name":"chart", "version":"1.0", "appVersion":"v2"}},
+            "config":{"token":"not returned"}, "manifest":"apiVersion: v1\nkind: Secret\nmetadata:\n  name: hidden\n"}),
+        serde_json::json!({"name":null, "namespace":null, "version":null, "manifest":null}),
+        serde_json::json!({"name":"bad-manifest", "manifest":42}),
+        serde_json::json!({"name":"bad-version", "version":"invalid"}),
+    ] {
+        let encoded = STANDARD.encode(serde_json::to_vec(&release).unwrap());
+        let mut secret = Secret {
+            metadata: ObjectMeta {
+                name: Some("sh.helm.release.v1.label.v1".into()),
+                namespace: Some("tenant".into()),
+                labels: Some(BTreeMap::from([
+                    ("owner".into(), "helm".into()),
+                    ("name".into(), "label".into()),
+                    ("version".into(), "1".into()),
+                ])),
+                ..ObjectMeta::default()
+            },
+            data: Some(BTreeMap::from([(
+                "release".into(),
+                k8s_openapi::ByteString(encoded.as_bytes().to_vec()),
+            )])),
+            ..Secret::default()
+        };
+        let full = secret_record("context", &mut secret).unwrap();
+        let projected = secret_list_record("context", &mut secret).unwrap();
+        assert_eq!(
+            serde_json::to_vec(&full.summary).unwrap(),
+            serde_json::to_vec(&projected.summary).unwrap()
+        );
+        assert_eq!(
+            full.decode_error.as_ref().map(|e| e.kind),
+            projected.decode_error.as_ref().map(|e| e.kind)
+        );
+        assert!(projected.release.is_none());
+        assert!(projected.manifest_resources.is_empty());
+    }
+}
+
+#[test]
 fn missing_helm_owner_label_rejects_storage() {
     let labels = BTreeMap::from([("app".to_string(), "not-helm".to_string())]);
 

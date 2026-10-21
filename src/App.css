@@ -272,7 +272,6 @@
      so form/control text keeps the Inter body face. */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" 1;
   }
 }
 
@@ -610,34 +609,10 @@
   stroke: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
 }
 
-/* Edge dash-flow lives in the SVG layer, outside node card subtrees. */
-.ownership-map-flow .ownership-map-edge-active .svelte-flow__edge-path {
-  stroke-dasharray: 8 8;
-  animation: topology-edge-flow 1.8s linear infinite;
-}
-
-@keyframes topology-edge-flow {
-  to {
-    stroke-dashoffset: -28;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .ownership-map-flow .ownership-map-edge-active .svelte-flow__edge-path,
-  .ownership-map-flow .svelte-flow__edge.animated path {
-    animation: none;
-  }
-
   .resource-topology-node::after {
     transition: none;
   }
-}
-
-.ownership-map-flow .ownership-map-edge-active .svelte-flow__edge-path,
-.ownership-map-flow .ownership-map-edge-active .svelte-flow__edge-interaction {
-  transition:
-    stroke 160ms ease,
-    opacity 160ms ease;
 }
 
 

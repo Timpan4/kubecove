@@ -16,7 +16,7 @@ macro_rules! command_table {
             $channels: &Arc<ChannelHub>,
             command: &str,
             $args: &Value,
-        ) -> Result<Option<Value>, AppError> {
+        ) -> Result<Option<Vec<u8>>, AppError> {
             match command {
                 $(stringify!($name) => serialize($call).map(Some),)+
                 _ => Ok(None),
@@ -46,7 +46,7 @@ pub async fn dispatch(
     channels: &Arc<ChannelHub>,
     command: &str,
     args: &Value,
-) -> Result<Value, AppError> {
+) -> Result<Vec<u8>, AppError> {
     state
         .scoped(Box::pin(dispatch_unscoped(state, channels, command, args)))
         .await
@@ -57,7 +57,7 @@ async fn dispatch_unscoped(
     channels: &Arc<ChannelHub>,
     command: &str,
     args: &Value,
-) -> Result<Value, AppError> {
+) -> Result<Vec<u8>, AppError> {
     if !args.is_object() {
         return Err(AppError::new(
             "command arguments must be an object",
@@ -87,7 +87,7 @@ async fn dispatch_unscoped(
 }
 
 fn arg<T: DeserializeOwned>(args: &Value, key: &str) -> Result<T, AppError> {
-    serde_json::from_value(args.get(key).cloned().unwrap_or(Value::Null)).map_err(|_| {
+    T::deserialize(args.get(key).unwrap_or(&Value::Null)).map_err(|_| {
         AppError::new(
             format!("missing or invalid argument: {key}"),
             AppErrorKind::Validation,
@@ -111,8 +111,8 @@ fn channel<T: Serialize + Send + 'static>(
     Ok(channels.channel(id))
 }
 
-fn serialize<T: Serialize>(value: T) -> Result<Value, AppError> {
-    serde_json::to_value(value).map_err(|_| {
+fn serialize<T: Serialize>(value: T) -> Result<Vec<u8>, AppError> {
+    serde_json::to_vec(&value).map_err(|_| {
         AppError::new(
             "failed to serialize command result",
             AppErrorKind::Serialization,
@@ -204,7 +204,7 @@ mod tests {
             )
             .await
             .unwrap(),
-            json!(false)
+            b"false"
         );
     }
 }

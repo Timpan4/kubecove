@@ -140,12 +140,15 @@ pub async fn resource_events_from(
         None => format!("involvedObject.kind={kind},involvedObject.name={name}"),
     };
 
-    let events: Vec<_> = event_api
-        .list(&list_params().fields(&field_selector))
-        .await
-        .map_err(AppError::from)?
-        .into_iter()
-        .collect();
+    let events: Vec<_> = kubecove_kube::commands::list_projection::list::<
+        _,
+        super::event_projection::EventProjection,
+    >(event_api, &list_params().fields(&field_selector))
+    .await
+    .map_err(AppError::from)?
+    .into_iter()
+    .map(|event| event.0)
+    .collect();
 
     Ok(resource_events_after_fetch(
         events,

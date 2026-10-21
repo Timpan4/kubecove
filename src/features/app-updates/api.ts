@@ -1,4 +1,5 @@
 import type { DownloadEvent } from "@tauri-apps/plugin-updater";
+import { flushPathStateWrite } from "@/lib/path-state";
 
 import type { AppUpdate, AppUpdateApi, AppUpdateDownloadEvent } from "./types";
 
@@ -23,6 +24,7 @@ export const tauriAppUpdateApi: AppUpdateApi = {
 	},
 	relaunch: async () => {
 		const { relaunch } = await import("@tauri-apps/plugin-process");
+		flushPathStateWrite();
 		return relaunch();
 	},
 };

@@ -650,7 +650,7 @@
 	{#if loadError && rows.length === 0}<p class="py-6 text-xs text-muted-foreground">The resource kind is outside the selected-resource action allowlist.</p>{/if}
 
 	{#if pending}
-		<div class="sticky bottom-0 mt-auto flex flex-wrap items-center justify-between gap-3 border-t bg-background/90 px-3 py-2 shadow-sm backdrop-blur">
+		<div class="sticky bottom-0 mt-auto flex flex-wrap items-center justify-between gap-3 border-t bg-background px-3 py-2 shadow-sm">
 			<div class="text-xs text-muted-foreground">{resourceActionEditCount(edits)} pending changes</div>
 			<div class="flex items-center gap-2"><Button variant="ghost" size="sm" onclick={() => (edits = {})}>Discard</Button><Button size="sm" disabled={!allowed("edit") || loading} onclick={() => openReview("edit")}>Check changes</Button></div>
 		</div>

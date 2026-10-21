@@ -495,7 +495,26 @@ export function readPathState(): PathStateSnapshot | null {
 	return hashSnapshot;
 }
 
+let pendingPathState: PathStateSnapshot | null = null;
+let pathWriteFrame: number | undefined;
+
+export function schedulePathStateWrite(snapshot: PathStateSnapshot): void {
+	pendingPathState = snapshot;
+	if (globalThis.document?.visibilityState === "hidden") {
+		flushPathStateWrite();
+	} else if (pathWriteFrame === undefined) {
+		pathWriteFrame = requestAnimationFrame(flushPathStateWrite);
+	}
+}
+
+export function flushPathStateWrite(): void {
+	if (pendingPathState) writePathState(pendingPathState);
+}
+
 export function writePathState(snapshot: PathStateSnapshot): void {
+	if (pathWriteFrame !== undefined) cancelAnimationFrame(pathWriteFrame);
+	pathWriteFrame = undefined;
+	pendingPathState = null;
 	const safeSnapshot = sanitizePathStateSnapshot(snapshot);
 	if (!safeSnapshot) return;
 	writeSessionValue(PATH_STATE_SESSION_KEY, JSON.stringify(safeSnapshot));
