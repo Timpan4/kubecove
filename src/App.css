@@ -568,6 +568,13 @@
   color: color-mix(in oklch, var(--topology-chip-color, var(--muted-foreground)) 88%, var(--foreground));
 }
 
+/* Composite pans and isolate culling repaints. Release the layers at rest so
+   WebKit rerasterizes zoomed text sharply. */
+.ownership-map-flow:has(.svelte-flow__pane.dragging)
+  :is(.svelte-flow__viewport, .svelte-flow__node) {
+  will-change: transform;
+}
+
 .ownership-map-flow .svelte-flow__controls {
   overflow: hidden;
   border: 1px solid var(--border);
