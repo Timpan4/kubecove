@@ -27,6 +27,10 @@ applicationSet:
     limits: {cpu: 250m, memory: 256Mi}
 redis:
   enabled: true
+  # Docker Hub copy of the chart's default image; anonymous ECR Public pulls stall on shared CI runners.
+  image:
+    repository: docker.io/library/redis
+    tag: 8.6.4-alpine@sha256:2cc044fc5a07c9b701f8f1255a309ae9ad7856e694ac03513bf3648c01e40763
 redis-ha:
   enabled: false
 notifications:

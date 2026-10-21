@@ -11,16 +11,16 @@ export const fixturePaths = {
 } as const;
 
 export const chartPins = {
-	cilium: { chart: "cilium", repository: "https://helm.cilium.io/cilium-1.19.6.tgz", version: "1.19.6", sha256: "21c43cf53841f9ab0375047d95aa4c64051ea52bbd2c679416e6408f5f1c9179" },
-	argocd: { chart: "argo-cd", repository: "https://github.com/argoproj/argo-helm/releases/download/argo-cd-10.1.4/argo-cd-10.1.4.tgz", version: "10.1.4", appVersion: "3.4.5", sha256: "142d2eaaa2adf9051c109c396c5fe3af742674011a5837df262bd6f8f2991d2c" },
+	cilium: { chart: "cilium", repository: "https://helm.cilium.io/cilium-1.20.3.tgz", version: "1.20.3", sha256: "0805a5273118c436c9772bb9566d87ec558d8b25cc2ce5dc32918ecdd36f2c7c" },
+	argocd: { chart: "argo-cd", repository: "https://github.com/argoproj/argo-helm/releases/download/argo-cd-10.10.5/argo-cd-10.10.5.tgz", version: "10.10.5", appVersion: "3.5.5", sha256: "ba6447eeed42bc41d1f0527721047b236304e97669a7b6286d02be4a1644ba7a" },
 	metricsServer: { manifest: "https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.0/components.yaml", version: "0.9.0", sha256: "1cec29a5267809306a2c6ec74a3e449abbb705b4a8beed0c8a1963910f72c79b" },
-	localPath: { manifest: "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.36/deploy/local-path-storage.yaml", version: "0.0.36", sha256: "a5b4b057e4e400a2ca7188b03dc11303f874bfe600fc837d5446d86b3d13e26c" },
-	traefik: { chart: "traefik", repository: "https://traefik.github.io/charts/traefik/traefik-41.0.2.tgz", version: "41.0.2", appVersion: "3.7.6", sha256: "71685966a482dfa2c2b39fedf7ae9b1391251314f87f4d05faa84e4848b8d3c2" },
+	localPath: { manifest: "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.37/deploy/local-path-storage.yaml", version: "0.0.37", sha256: "9781b39c24f3f651bd6d6e41b561e04e4904bbdb6d4f8c7a6009df3a702dcd65" },
+	traefik: { chart: "traefik", repository: "https://traefik.github.io/charts/traefik/traefik-42.1.2.tgz", version: "42.1.2", appVersion: "3.7.16", sha256: "ecf9ac8bc0837e3260722566c2a49919332ca96b0b4e962405dfcfae51838699" },
 } as const;
 
 export const gitDaemonPins = {
-	amd64: { version: "2.47.3-r0", url: "https://dl-cdn.alpinelinux.org/alpine/v3.21/main/x86_64/git-daemon-2.47.3-r0.apk", sha256: "06ce97d655dcb68bebbfb5355bdc2dd69c3020e38ff5fd2bb682776aefd44174" },
-	arm64: { version: "2.47.3-r0", url: "https://dl-cdn.alpinelinux.org/alpine/v3.21/main/aarch64/git-daemon-2.47.3-r0.apk", sha256: "d072d4b3a5b7a79dff2bdec63ab771f63cfe27f464197a0bc45b540ec4132bab" },
+	amd64: { version: "2.54.0-r0", url: "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/git-daemon-2.54.0-r0.apk", sha256: "b376522eadb4df8dc5274687ceabe07456924d415cfcc5683c4b198e97a6c855" },
+	arm64: { version: "2.54.0-r0", url: "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/git-daemon-2.54.0-r0.apk", sha256: "e34fc8841226216b798b8e1ff20c2ad856d97c2bc2c512f6b7e183d934f3d9b0" },
 } as const;
 
 export function validateImmutablePins(pins = chartPins) {

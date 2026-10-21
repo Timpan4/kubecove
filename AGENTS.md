@@ -145,7 +145,7 @@ Write an ADR before changing:
 - Run the relevant checks before claiming work is complete.
 - Frontend changes should pass `bun run typecheck` and `bun run lint` (Biome).
 - Rust backend changes should pass `cargo check --manifest-path src-tauri/Cargo.toml`.
-- Kubernetes 1.34–1.36 is the tested rolling support window. ADR 0011 and the E2E/release workflow matrices are authoritative.
+- Kubernetes 1.34–1.37 is the tested rolling support window. ADR 0011 and the E2E/release workflow matrices are authoritative.
 - If a check cannot run, state the exact blocker and what remains unverified.
 - When completing scoped work, check off the corresponding items in `docs/milestones.md`.
 

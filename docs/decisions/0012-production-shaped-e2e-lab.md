@@ -23,7 +23,7 @@ The lab must stay isolated, reproducible, and small enough for local development
 - Readiness is condition-based. Platform applications must be Synced and Healthy; the exact declared incident is the only expected unhealthy workload.
 - Diagnostics contain allowlisted metadata/status plus bounded logs from the credential-free lab controllers and declared incident. Redaction still runs over every text artifact. Diagnostics exclude Secrets, kubeconfig contents, credentials, environment dumps, repository contents, and unfiltered Kind logs.
 
-Cilium 1.19.6 is the latest stable release selected for the initial lab. Its upstream tested matrix ends at Kubernetes 1.34. KubeCove still exercises 1.35 and 1.36 in its own matrix; those combinations are locally validated, not an upstream Cilium support claim.
+The lab pins Cilium 1.20.3. Its upstream tested matrix is Kubernetes 1.33–1.36. KubeCove also exercises 1.37 in its CI E2E matrix; that combination is validated by KubeCove's own matrix, not an upstream Cilium support claim.
 
 ## Consequences
 
@@ -31,4 +31,4 @@ The lab costs more startup time and memory than static fixtures, but it proves t
 
 The lab does not model multi-node scheduling, high availability, cloud load balancers, service mesh, certificate management, or production capacity. Add a controller only when it proves a KubeCove surface.
 
-Argo CD and Cilium upgrades are deliberate maintenance changes. Each upgrade must refresh checksums and pass the Kubernetes 1.34–1.36 matrix before the documented pins change.
+Argo CD and Cilium upgrades are deliberate maintenance changes. Each upgrade must refresh checksums and pass the full Kubernetes matrix from ADR 0011 before the documented pins change.
