@@ -23,7 +23,7 @@ The lab must stay isolated, reproducible, and small enough for local development
 - Readiness is condition-based. Platform applications must be Synced and Healthy; the exact declared incident is the only expected unhealthy workload.
 - Diagnostics contain allowlisted metadata/status plus bounded logs from the credential-free lab controllers and declared incident. Redaction still runs over every text artifact. Diagnostics exclude Secrets, kubeconfig contents, credentials, environment dumps, repository contents, and unfiltered Kind logs.
 
-The lab pins Cilium 1.20.3. Its upstream tested matrix is Kubernetes 1.33–1.36. KubeCove also exercises 1.37 in its own matrix; that combination is locally validated, not an upstream Cilium support claim.
+The lab pins Cilium 1.20.3. Its upstream tested matrix is Kubernetes 1.33–1.36. KubeCove also exercises 1.37 in its CI E2E matrix; that combination is validated by KubeCove's own matrix, not an upstream Cilium support claim.
 
 ## Consequences
 

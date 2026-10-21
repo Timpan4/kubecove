@@ -16,7 +16,7 @@ Amendment (2026-10-21): the window adds Kubernetes 1.37 and keeps 1.34 for now, 
 
 The default real test targets 1.35. Nightly, manual, and release gates run the full 1.34–1.37 matrix. A maintainer PR may advance the window only after:
 
-1. the replacement Kind release publishes digest-pinned node images for all three minors;
+1. the replacement Kind release publishes digest-pinned node images for every minor in the window;
 2. runner pins and checksums are reviewed;
 3. the complete matrix passes; and
 4. this ADR and compatibility documentation are updated together.
@@ -25,4 +25,4 @@ Older or newer clusters may work, but they are outside the tested support statem
 
 ## Consequences
 
-Compatibility claims match deterministic evidence. Supporting three minors increases scheduled and release CI cost. The window does not move automatically with upstream releases; a maintainer owns each deliberate advance.
+Compatibility claims match deterministic evidence. Supporting three or more minors increases scheduled and release CI cost. The window does not move automatically with upstream releases; a maintainer owns each deliberate advance.

@@ -61,9 +61,15 @@ function parseKubernetesVersion(value: string): keyof typeof images {
 function imageFor(version: string) {
 	return images[parseKubernetesVersion(version)];
 }
+// kubectl supports one minor of version skew: v1.35 covers clusters 1.34–1.36 and v1.36 covers 1.37.
+const kubectlRelease = kubernetes === "1.37" ? "v1.36.5" : "v1.35.9";
+const kubectlPins = {
+	"v1.35.9": { "darwin-amd64": "51a130a5ea965314a41d27e840e96a7f4e4c13c508ab5fa0fd101ee4c1829990", "darwin-arm64": "652548e6a9405266c5acd2719703bc8d36befa46e79e151a0d646904aa32c89b", "linux-amd64": "3cfeaf80be482b435b0aa214aff6e0b2c312ee23c0ff20810c75517b6004c6eb", "linux-arm64": "39c98bca82875d9a9ddfb6f3c5ab17c3f78ea0801230683e538a67d5c053308d", "windows-amd64": "160bebf50d49ac4b5892370803da09cc26bbeabed6a4cf22bf382bd72d14d4d7" },
+	"v1.36.5": { "darwin-amd64": "03338828c3ba74c37bf5964573fbfbab132eb5bb15da2f821c25a4043d6eb3f0", "darwin-arm64": "c5850a4a6b9469b26cce47c1ab456285f58e308283dcdf72b4ddda3db49b0ec0", "linux-amd64": "33bc88a24c3b09cf55bfd59e6ca977881b61fc3f25ab65bc80c65b430248648e", "linux-arm64": "88fc1aca8fd0c1b44fe379f67c39bd6858bdfc50241dc55775f84d0f5b31da3a", "windows-amd64": "5e87156aa0b20e3c1c66db22a11d898f9a5f787513a3bbd8df2633c207a5a855" },
+} as const;
 const pins = {
 	kind: { "darwin-amd64": "5a99f26f57246dc9319dd294803313197a0f34d33c525b3ea8b655db5916ece0", "darwin-arm64": "0c8c7dbe5e23594a198b786c4bc13dacc101fa6196b0cb0b23a1ca44e61f4b4f", "linux-amd64": "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d", "linux-arm64": "20022bee6cfcd5086cb7234d218e3454e6090022f2a8f55d1fa7fcf42c3867a2", "windows-amd64": "4b22adaa135368c5a465d56bbd8e520cbea87272a06ca00b6078e7b81515c9fc" },
-	kubectl: { "darwin-amd64": "03338828c3ba74c37bf5964573fbfbab132eb5bb15da2f821c25a4043d6eb3f0", "darwin-arm64": "c5850a4a6b9469b26cce47c1ab456285f58e308283dcdf72b4ddda3db49b0ec0", "linux-amd64": "33bc88a24c3b09cf55bfd59e6ca977881b61fc3f25ab65bc80c65b430248648e", "linux-arm64": "88fc1aca8fd0c1b44fe379f67c39bd6858bdfc50241dc55775f84d0f5b31da3a", "windows-amd64": "5e87156aa0b20e3c1c66db22a11d898f9a5f787513a3bbd8df2633c207a5a855" },
+	kubectl: kubectlPins[kubectlRelease],
 	helm: { "darwin-amd64": "34bec4eba761ba5c16d1965ee6b8f5b0abe5993974a802274e2a4f0418893d89", "darwin-arm64": "6b4e61c8cd27d99e5a801e63ff25dd5c70b36875c2cd659d3e9ce6b76fc23198", "linux-amd64": "0403a88ae20913d11b10a2467b50087721fea7581736da6b9d3992f5357fe54b", "linux-arm64": "8cf8f66ecbc252ac8f7f06cca68aba88508ddfde3a6a34feb1678ad1694b4f88", "windows-amd64": "fcfd7b796dcf0f225abc40b5636a3b01f55f3de2fb1dfb18475df94e62c14112" },
 } as const;
 const obscuraRelease = "v0.2.5";
@@ -189,7 +195,7 @@ function tools() {
 	toolPromise = (async () => {
 	if (!pins.kind[key()] || !pins.kubectl[key()] || !pins.helm[key()]) throw new Error(`unsupported tool platform ${key()}`);
 	const kind = await verified(`kind${suffix}`, `https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-${os}-${cpu}`, pins.kind[key()]);
-	const kubectl = await verified(`kubectl${suffix}`, `https://dl.k8s.io/release/v1.36.5/bin/${os}/${cpu}/kubectl${suffix}`, pins.kubectl[key()]);
+	const kubectl = await verified(`kubectl-${kubectlRelease}${suffix}`, `https://dl.k8s.io/release/${kubectlRelease}/bin/${os}/${cpu}/kubectl${suffix}`, pins.kubectl[key()]);
 	const archiveName = `helm-v4.3.1-${os}-${cpu}.${os === "windows" ? "zip" : "tar.gz"}`;
 	const archive = await verified(archiveName, `https://get.helm.sh/${archiveName}`, pins.helm[key()]);
 	const extractDir = join(stateDir, "tools", `helm-extract-${process.pid}`); await rm(extractDir, { recursive: true, force: true }); await mkdir(extractDir, { recursive: true });
