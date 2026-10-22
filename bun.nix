@@ -845,9 +845,9 @@
     url = "https://registry.npmjs.org/@tauri-apps/plugin-process/-/plugin-process-2.4.0.tgz";
     hash = "sha512-GddrmsSLAYrLa/yTXlXK/YRDzUgYeeOnUXTbiyvJWkmI424RmDPD3FVLeqcon7rv6O6ZfhBilcrHWnSo7o6hIQ==";
   };
-  "@tauri-apps/plugin-updater@2.14.0" = fetchurl {
-    url = "https://registry.npmjs.org/@tauri-apps/plugin-updater/-/plugin-updater-2.14.0.tgz";
-    hash = "sha512-gdylJ9tger4hkyOn24QZd6MNOKVo2Eh53iw5th2Qj1vKTR/+u4PIwJWuiis5hohYvobn6iOvlnALfrqIPSzh7Q==";
+  "@tauri-apps/plugin-updater@2.13.3" = fetchurl {
+    url = "https://registry.npmjs.org/@tauri-apps/plugin-updater/-/plugin-updater-2.13.3.tgz";
+    hash = "sha512-CtbA8CZ79WJry2HbRiFGx6WZN7uspho6A4jM+TxmuqwWL2EEfJEMw6BIYgRncIZyqp4vEXw3U/97ZjQ33dKUgg==";
   };
   "@tybys/wasm-util@0.10.3" = fetchurl {
     url = "https://registry.npmjs.org/@tybys/wasm-util/-/wasm-util-0.10.3.tgz";
