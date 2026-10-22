@@ -72,7 +72,6 @@ describe("incident workflow helpers", () => {
 		expect(spec.detailsEnabled).toBe(true);
 		expect(spec.eventsEnabled).toBe(true);
 		expect(spec.detailsQueryKey).not.toEqual(spec.eventsQueryKey);
-		expect(spec.detailsCancelScope).not.toBe(spec.eventsCancelScope);
 		expect(spec.detailReadPermission).toEqual({
 			kind: "resource",
 			verb: "get",

@@ -1,3 +1,4 @@
+import { queryKeys } from "@/lib/queryKeys";
 import { createMockChannel, createMockTauriClient } from "@/lib/tauri";
 import type { PodExecSessionMessage, PodExecSessionSummary } from "@/lib/types";
 import { createWorkspaceRecord } from "@/lib/workspace-model";
@@ -49,7 +50,7 @@ describe("pod exec lifecycle", () => {
 			refetchInterval: 2_500,
 		});
 
-		expect(options.queryKey).toEqual(["pod-exec-sessions"]);
+		expect(options.queryKey).toEqual(queryKeys.podExecSessions());
 		expect(options.enabled).toBe(true);
 		expect(options.refetchInterval).toBe(2_500);
 		expect((await options.queryFn()).map((item) => item.id)).toEqual([

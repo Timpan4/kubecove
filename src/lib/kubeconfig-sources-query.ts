@@ -1,8 +1,9 @@
 import { queryOptions } from "@tanstack/svelte-query";
 import { queryRetry } from "./query-retry";
+import { queryKeys } from "./queryKeys";
 import { getKubeconfigSources, type TauriClient } from "./tauri";
 
-export const KUBECONFIG_SOURCES_QUERY_KEY = ["kubeconfig-sources"] as const;
+export const KUBECONFIG_SOURCES_QUERY_KEY = queryKeys.kubeconfigSources();
 
 export function kubeconfigSourcesQueryOptions(client: TauriClient) {
 	return queryOptions({

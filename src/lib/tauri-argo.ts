@@ -1,5 +1,4 @@
-import { cancellableArg } from "./finite-read-lifecycle";
-import { kubeconfigArg } from "./tauri-args";
+import { cancellableArg, kubeconfigArg } from "./tauri-args";
 import type { TauriClient } from "./tauri-runtime";
 import type {
 	ArgoApplicationInspector,

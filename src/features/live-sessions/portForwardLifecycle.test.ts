@@ -1,3 +1,4 @@
+import { queryKeys } from "@/lib/queryKeys";
 import { createMockTauriClient } from "@/lib/tauri";
 import type { JsonObject, PortForwardSessionSummary } from "@/lib/types";
 import { createWorkspaceRecord } from "@/lib/workspace-model";
@@ -54,7 +55,7 @@ describe("port forward lifecycle", () => {
 			refetchInterval: 2_500,
 		});
 
-		expect(options.queryKey).toEqual(["port-forwards"]);
+		expect(options.queryKey).toEqual(queryKeys.portForwards());
 		expect(options.enabled).toBe(true);
 		expect(options.refetchInterval).toBe(2_500);
 		expect((await options.queryFn()).map((item) => item.id)).toEqual(["first", "second"]);
@@ -112,7 +113,7 @@ describe("port forward lifecycle", () => {
 
 		expect(calls).toEqual(["stop:port-forward-1", "start"]);
 		expect(error).toBe("restart failed");
-		expect(invalidated).toEqual(["port-forwards"]);
+		expect(invalidated).toEqual(queryKeys.portForwards());
 	});
 
 	test("validates saved forward forms against workspace scope", () => {

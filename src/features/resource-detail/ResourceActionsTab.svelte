@@ -26,7 +26,7 @@
 		ResourceSummary,
 	} from "@/lib/types";
 	import { settingsStore } from "@/lib/settings-store";
-	import { queryKeys } from "@/lib/queryKeys";
+	import { queryMatchers } from "@/lib/queryKeys";
 	import { buildCompactUnifiedDiff, diffLineClassName } from "./yamlTabDiff";
 	import {
 		actionTarget,
@@ -372,20 +372,9 @@
 	}
 
 	async function invalidateSuccessfulAction(request: ResourceActionRequest, targetResource: ResourceSummary) {
-		const target = request;
-		const source = queryKeys.resources(target.clusterContext, [], target.kubeconfigEnvVar)[1];
-		const detailPrefix = queryKeys.resourceDetails(targetResource, null, target.kubeconfigEnvVar).slice(0, 8);
-		const yamlPrefix = queryKeys.resourceYaml(targetResource, null, target.kubeconfigEnvVar).slice(0, 8);
-		await Promise.all([
-			queryClient.invalidateQueries({ predicate: (query) => detailPrefix.every((part, index) => query.queryKey[index] === part) }),
-			queryClient.invalidateQueries({ predicate: (query) => yamlPrefix.every((part, index) => query.queryKey[index] === part) }),
-			queryClient.invalidateQueries({ queryKey: queryKeys.deploymentRevisions(targetResource, target.kubeconfigEnvVar) }),
-			queryClient.invalidateQueries({
-				predicate: (query) =>
-					(query.queryKey[0] === "resources" || query.queryKey[0] === "resource-topology") &&
-					query.queryKey[1] === source && query.queryKey[2] === target.clusterContext,
-			}),
-		]);
+		await queryClient.invalidateQueries({
+			predicate: queryMatchers.resourceAction(targetResource, request.kubeconfigEnvVar),
+		});
 	}
 
 	async function executePreview(

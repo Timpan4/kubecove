@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { describe, it } from "mocha";
-import { LARGE_QUERY_GC_TIME_MS, LARGE_QUERY_ROOTS } from "../../../src/lib/query-retention";
+import { LARGE_QUERY_GC_TIME_MS, LARGE_QUERY_ROOTS } from "../../../src/lib/queryKeys";
 import type { AppUsageMetrics } from "../../../src/lib/types";
 import { startupReport } from "../../harness/startup-report";
 
