@@ -1,4 +1,4 @@
-import { QueryObserver, type QueryClient } from "@tanstack/svelte-query";
+import { QueryObserver, type QueryClient } from "@tanstack/query-core";
 import {
 	eligibleArgoProfiles,
 	resolveArgoConnectionPolicy,
