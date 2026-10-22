@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
-	import { createTauriClient, detectArgoCD, listArgoApplications, refreshResourceCache } from "@/lib/tauri";
-	import { queryKeys } from "@/lib/queryKeys";
-	import { observeResourceScope } from "@/lib/resource-watch";
-	import { createArgoListFreshness } from "./argo-application-freshness";
+	import { argoApplicationWatchKey } from "@/lib/argo-application-inspection";
+	import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
+	import { createTauriClient, detectArgoCD, listArgoApplications } from "@/lib/tauri";
+	import { queryKeys, queryMatchers } from "@/lib/queryKeys";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import { getArgoOperationTracker } from "./argo-operation-tracker";
 	let { context }: { context: WorkspaceReadContext } = $props();
@@ -20,22 +20,19 @@
 		queryFn: () => listArgoApplications(client, context.clusterContext, context.kubeconfigSourceKey),
 		enabled: context.sourceReady && detection.data === true,
 	}));
-	$effect(() => {
-		if (!context.sourceReady || detection.data !== true) return;
-		const clusterContext = context.clusterContext;
-		const source = context.kubeconfigSourceKey;
-		const keys = [{ resourceKind: { kind: "Application", apiVersion: "argoproj.io/v1alpha1", plural: "applications", namespaced: true } }];
-		const freshness = createArgoListFreshness((queryKey) => void queryClient.invalidateQueries({ queryKey }), source);
-		const stop = observeResourceScope({
-			client, clusterContext, keys, kubeconfigEnvVar: source,
-			onState: () => {},
-			onChange: freshness.handle,
-			reload: async () => {
-				await refreshResourceCache(client, clusterContext, keys, [], source);
-				await queryClient.invalidateQueries({ queryKey: queryKeys.argoApps(clusterContext, source) }, { throwOnError: true });
-			},
-		});
-		return () => { stop(); freshness.dispose(); };
+	// Keeps the Application list fresh across navigation; recovery rereads only that list.
+	liveViewRefresh(client, () => {
+		if (!context.sourceReady || detection.data !== true) return null;
+		const keys = [argoApplicationWatchKey()];
+		const match = queryMatchers.exact(queryKeys.argoApps(context.clusterContext, context.kubeconfigSourceKey));
+		return {
+			clusterContext: context.clusterContext,
+			kubeconfigSourceKey: context.kubeconfigSourceKey,
+			namespaces: [],
+			keys,
+			reads: [{ keys, match }],
+			refreshScope: "reads",
+		};
 	});
 	$effect(() => {
 		if (!context.sourceReady) return;

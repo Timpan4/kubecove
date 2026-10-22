@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { QueryClient, type Query } from "@tanstack/svelte-query";
 import { readFileSync } from "node:fs";
 import { resourceBrowserAvailableKinds } from "../src/app/svelte/workspaceShellModel";
 import { argoResourceIdentityKey } from "../src/features/gitops/argo-workspace-model";
@@ -23,8 +24,11 @@ import {
 } from "../src/features/resources/resourceBrowserModel";
 import {
 	buildResourceBrowserReadSpecs,
+	resourceBrowserLiveView,
 	type ResourceBrowserReadSpecInput,
 } from "../src/features/resources/resourceBrowserReadSpecs";
+import type { LiveView } from "../src/lib/live-view-refresh";
+import { queryKeys } from "../src/lib/queryKeys";
 import {
 	buildResourceTableModel as buildProjectedResourceTableModel,
 	buildResourceTableProjection,
@@ -272,6 +276,50 @@ test("ResourceBrowser keeps rows and the map visible while the next scope loads"
 
 	expect(specs.resources.placeholderData(rows)).toBe(rows);
 	expect(specs.topology.placeholderData(graph)).toBe(graph);
+});
+
+// Failure modes: a closed map watches topology kinds or refetches a hidden map;
+// an open map misses topology changes; focused Application reads miss resource
+// changes; a view with no kinds or no source watches anything.
+test("ResourceBrowser declares which watched kinds keep rows, the map, and the focused Application fresh", () => {
+	const readContext = { workspaceId: "ws", clusterContext: "kind-dev", kubeconfigSourceKey: undefined, sourceReady: true };
+	const input = { fetchKeys: buildFetchKeys(["default"], ["Pod"]), namespaces: ["default"], focusedApplication: { name: "guestbook", namespace: "argocd" } };
+	const specs = (mapPanelOpen: boolean) => buildResourceBrowserReadSpecs({
+		client: createMockTauriClient({}),
+		clusterContext: "kind-dev",
+		kubeconfigSourceKey: undefined,
+		fetchKeys: input.fetchKeys,
+		namespaces: input.namespaces,
+		topologyMode: "ownership",
+		mapPanelOpen,
+		sourceReady: true,
+		customResourcesEnabled: false,
+	});
+	const queryClient = new QueryClient();
+	const cached = (queryKey: readonly unknown[]) => queryClient.getQueryCache().build(queryClient, { queryKey });
+	const rows = cached(specs(false).resources.queryKey);
+	const map = cached(specs(false).topology.queryKey);
+	const application = cached(queryKeys.argoWorkspaceInspector("kind-dev", "ws", "guestbook", "argocd", "uid", true, "kubernetes"));
+	const kindsFeeding = (view: LiveView | null, query: Query, refetch = true) =>
+		(view?.reads ?? [])
+			.filter((read) => read.match(query) && (read.refetch ?? true) === refetch)
+			.flatMap((read) => read.keys.map((key) => key.resourceKind.kind));
+
+	const closed = resourceBrowserLiveView(readContext, specs(false), { ...input, mapPanelOpen: false });
+	expect(closed?.keys.map((key) => key.resourceKind.kind)).toEqual(["Pod", "Application"]);
+	expect(kindsFeeding(closed, rows)).toEqual(["Pod"]);
+	expect(kindsFeeding(closed, map)).toEqual([]);
+	expect(kindsFeeding(closed, map, false)).toEqual(["Pod", "Application"]);
+	expect(kindsFeeding(closed, application)).toEqual(["Pod", "Application"]);
+
+	const open = resourceBrowserLiveView(readContext, specs(true), { ...input, mapPanelOpen: true });
+	expect(kindsFeeding(open, map)).toContain("Deployment");
+	expect(kindsFeeding(open, map)).not.toContain("Application");
+	expect(kindsFeeding(open, map, false)).toEqual([]);
+
+	expect(resourceBrowserLiveView(readContext, specs(false), { ...input, fetchKeys: [], mapPanelOpen: true })).toMatchObject({ keys: [], reads: [] });
+	expect(resourceBrowserLiveView({ ...readContext, sourceReady: false }, specs(false), { ...input, mapPanelOpen: false })).toBeNull();
+	queryClient.clear();
 });
 
 test("ResourceBrowser map reads show the foreground loading bar until they settle", async () => {
@@ -1244,7 +1292,6 @@ describe("svelte resource browser model", () => {
 		expect(resizedKey).not.toBe(baseKey);
 		expect(movedKey).not.toBe(baseKey);
 		expect(browserSource).toContain("const topologyFitViewKey = $derived(readSpecs.topologyFitViewKey)");
-		expect(browserSource).toContain("const topologyQueryKey = $derived(readSpecs.topology.queryKey)");
 		expect(browserSource).toContain("fitViewKey={topologyFitViewKey}");
 	});
 

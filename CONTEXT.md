@@ -14,6 +14,9 @@ _Avoid_ treating resources from different API groups with the same kind and name
 **Query catalog** means the one declaration of each frontend read family's query key, finite-read class, and retention class, with the named matchers that select reads by view, resource, or family.
 _Avoid_ building query keys, reading key positions, or listing query roots outside it.
 
+**Live view refresh** means a view's declaration of which watched kinds keep which reads fresh, bound to watch streams that stop with the view, per-read throttling, live status, recovery reloads, and manual refresh.
+_Avoid_ mapping watch events to queries, throttling refetches, or holding live status in a view.
+
 **Incident signal** means a read-only resource health, restart, or warning-event cue surfaced for triage.
 _Avoid_ using it for durable tickets, alerts, or response lifecycle state.
 

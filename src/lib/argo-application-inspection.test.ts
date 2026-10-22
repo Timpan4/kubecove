@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/svelte-query";
-import { createArgoApplicationInspection, type ArgoInspectionInput } from "./argo-application-inspection";
+import {
+	createArgoApplicationInspection,
+	type ArgoApplicationInspectionController,
+	type ArgoInspectionInput,
+} from "./argo-application-inspection";
 import type { ArgoConnectionPreference } from "./argo-connection-policy";
 import type { ArgoApplicationInspector, ArgoConnectionStatus } from "./gitops-types";
 import { configureQueryCatalog, queryKeys } from "./queryKeys";
@@ -86,13 +90,13 @@ function harness({
 			return result(args);
 		},
 	});
-	const inspection = createArgoApplicationInspection(client, queryClient);
+	let controller: ArgoApplicationInspectionController | undefined;
 	const view = (
 		patch: Partial<ArgoInspectionInput> = {},
 		preference: ArgoConnectionPreference = { kind: "automatic" },
 		profiles = [profile("primary"), profile("backup")],
 	) => {
-		inspection.update({
+		const input: ArgoInspectionInput = {
 			readContext: {
 				workspaceId: "workspace-1",
 				clusterContext: "kind-dev",
@@ -109,15 +113,30 @@ function harness({
 				redactSecrets: true,
 			},
 			...patch,
-		});
+		};
+		if (controller) controller.update(input);
+		else controller = createArgoApplicationInspection(client, queryClient, input);
+	};
+	const inspection = () => {
+		if (!controller) throw new Error("Call view() first");
+		return controller;
 	};
 	const observe = () => {
-		const stop = inspection.subscribe(() => {});
+		const stop = inspection().subscribe(() => {});
 		cleanups.push(stop);
 		return stop;
 	};
 	cleanups.push(() => queryClient.clear());
-	return { inspection, queryClient, statusReads, inspections, view, observe };
+	return {
+		get inspection() {
+			return inspection();
+		},
+		queryClient,
+		statusReads,
+		inspections,
+		view,
+		observe,
+	};
 }
 
 describe("Argo Application inspection", () => {

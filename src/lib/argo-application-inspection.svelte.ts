@@ -11,10 +11,9 @@ import type { TauriClient } from "./tauri-runtime";
 
 /** Argo Application inspection for the calling component; its reads stop when it unmounts. */
 export function argoApplicationInspection(client: TauriClient, target: () => ArgoInspectionTarget) {
-	const inspection = createArgoApplicationInspection(client, useQueryClient());
 	const settings = fromStore(settingsStore);
 	const input = () => ({ ...target(), settings: settings.current });
-	untrack(() => inspection.update(input()));
+	const inspection = createArgoApplicationInspection(client, useQueryClient(), untrack(input));
 	let current = $state.raw<ArgoApplicationInspection>(inspection.current);
 	$effect.pre(() => inspection.update(input()));
 	$effect(() => inspection.subscribe((next) => (current = next)));

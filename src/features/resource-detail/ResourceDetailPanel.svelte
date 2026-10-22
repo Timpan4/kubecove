@@ -38,8 +38,9 @@
 		YamlViewMode,
 	} from "@/lib/types";
 	import type { PathStateResourceDetailState } from "@/lib/path-state";
-	import { queryKeys } from "@/lib/queryKeys";
-	import { createWatchQueryRefresh, createWatchRefreshThrottle } from "@/lib/resource-watch-refresh";
+	import { argoApplicationReads } from "@/lib/argo-application-inspection";
+	import { createLiveReadRefresh } from "@/lib/live-view-refresh";
+	import { queryMatchers, type QueryMatch } from "@/lib/queryKeys";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
 		getSettingsSnapshot,
@@ -166,16 +167,8 @@
 	const isArgoApplication = $derived(
 		resource.kind === "Application" && resource.group === "argoproj.io",
 	);
-	const argoApplicationScope = $derived(
-		isArgoApplication
-			? queryKeys.argoWorkspaceApplicationScope(
-					workspaceReadContext.clusterContext,
-					workspaceReadContext.workspaceId,
-					resource.name,
-					resource.namespace,
-					kubeconfigSourceKey,
-				)
-			: null,
+	const argoApplicationReadsMatch = $derived(
+		isArgoApplication ? argoApplicationReads(workspaceReadContext, resource) : null,
 	);
 
 	$effect(() => {
@@ -305,19 +298,11 @@
 		let cancelled = false;
 		let streamId: string | null = null;
 		const watchKey = readSpec.resourceWatchKey;
-		const currentArgoApplicationScope = argoApplicationScope;
-		const filters = [{ queryKey: detailsQueryKey }];
-		if (currentArgoApplicationScope) filters.push({ queryKey: currentArgoApplicationScope });
-		const refresh = createWatchRefreshThrottle(async () => {
-			const alreadyFetching = filters.some((filter) => queryClient.isFetching({ ...filter, type: "active" }) > 0);
-			const reads = filters.map((filter) =>
-				queryClient.invalidateQueries(filter, { cancelRefetch: false }),
-			);
-			if (activeTab === "yaml") {
-				resourceRefreshVersion += 1;
-			}
-			await Promise.all(reads);
-			if (alreadyFetching) refresh.notify();
+		const details = queryMatchers.exact(detailsQueryKey);
+		const argoReads = argoApplicationReadsMatch;
+		const reads: QueryMatch = argoReads ? (query) => details(query) || argoReads(query) : details;
+		const refresh = createLiveReadRefresh(queryClient, reads, () => {
+			if (activeTab === "yaml") resourceRefreshVersion += 1;
 		});
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
@@ -370,7 +355,7 @@
 		if (!eventsEnabled) return;
 		let cancelled = false;
 		let streamId: string | null = null;
-		const refresh = createWatchQueryRefresh(queryClient, eventsQueryKey, false);
+		const refresh = createLiveReadRefresh(queryClient, queryMatchers.prefix(eventsQueryKey));
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
 			if (event.type === "error") {

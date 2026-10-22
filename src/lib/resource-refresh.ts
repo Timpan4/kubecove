@@ -1,7 +1,7 @@
-import type { Query, QueryClient, QueryKey } from "@tanstack/svelte-query";
+import type { Query, QueryClient } from "@tanstack/svelte-query";
 import { friendlyErrorBucket } from "./friendly-errors";
 import { messageFromError } from "./error-redaction";
-import { queryMatchers } from "./queryKeys";
+import { queryMatchers, type QueryMatch } from "./queryKeys";
 import { refreshResourceCache } from "./tauri";
 import type { TauriClient } from "./tauri";
 import type { WatchResourceKey } from "./types";
@@ -22,8 +22,8 @@ export async function refreshCurrentView({
 	kubeconfigEnvVar?: string;
 	keys: WatchResourceKey[];
 	namespaces: string[];
-	/** Permission recovery limits invalidation to these query families. */
-	reads?: readonly QueryKey[];
+	/** Permission recovery limits invalidation to these reads. */
+	reads?: readonly QueryMatch[];
 	/** Automatic recovery waits for running reads before clearing caches. */
 	cancelRefetch?: boolean;
 }): Promise<string[]> {
@@ -33,9 +33,7 @@ export async function refreshCurrentView({
 		queryClient
 			.getQueryCache()
 			.findAll({
-				predicate: (query) =>
-					inCurrentView(query) &&
-					(!reads || reads.some((key) => key.every((part, index) => part === query.queryKey[index]))),
+				predicate: (query) => inCurrentView(query) && (!reads || reads.some((read) => read(query))),
 			}),
 	);
 	const predicate = (query: Query) => queries.has(query);

@@ -1,11 +1,11 @@
 <script lang="ts">
 	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
-	import { observeResourceScope } from "@/lib/resource-watch";
-	import { refreshCurrentView } from "@/lib/resource-refresh";
+	import { ARGO_APPLICATION_API_VERSION, argoApplicationWatchKey } from "@/lib/argo-application-inspection";
+	import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 	import { createQueries, createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import type { HealthFilter } from "@/features/resources";
 	import type { PathStateDetailTab } from "@/lib/path-state";
-	import { queryKeys } from "@/lib/queryKeys";
+	import { queryKeys, queryMatchers } from "@/lib/queryKeys";
 	import {
 		createTauriClient,
 		detectArgoCD,
@@ -24,7 +24,6 @@
 	} from "@/lib/types";
 	import type { TreeNodeId } from "@/lib/tree-nav";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
-	import { createArgoListFreshness } from "./argo-application-freshness";
 	import { argoTrackingKey, getArgoOperationTracker } from "./argo-operation-tracker";
 	import GitOpsView from "./GitOpsView.svelte";
 	import {
@@ -81,11 +80,6 @@
 		return `${action}: ${operation.phase}`;
 	}
 	const context = $derived(workspace.scope.clusterContext);
-	let realtimeMessage = $state("Starting live updates");
-	let realtimeStatus = $state("connecting");
-	let realtimeWarnings = $state<string[]>([]);
-	let realtimeError = $state<string | null>(null);
-	let reloadError = $state<string | null>(null);
 
 	const namespacesQuery = createQuery(() => ({
 		queryKey: queryKeys.namespaces(context, kubeconfigSourceKey),
@@ -105,20 +99,34 @@
 		enabled: sourceReady && !namespacesQuery.isPending,
 		staleTime: 60_000,
 	}));
-	const watchKeys = $derived([
-		...(argoDetectionQuery.data === true ? [
-			{ resourceKind: { kind: "Application", apiVersion: "argoproj.io/v1alpha1", plural: "applications", namespaced: true } },
-			{ resourceKind: { kind: "ApplicationSet", apiVersion: "argoproj.io/v1alpha1", plural: "applicationsets", namespaced: true } },
-			{ resourceKind: { kind: "AppProject", apiVersion: "argoproj.io/v1alpha1", plural: "appprojects", namespaced: true } },
-		] : []),
-		...(fluxDetectionQuery.data?.kinds ?? []).map((kind) => ({ resourceKind: kind })),
-	]);
-	const liveStatusKey = $derived(`${context}\0${kubeconfigSourceKey ?? ""}\0${watchKeys
-		.map(({ resourceKind }) => `${resourceKind.apiVersion}/${resourceKind.plural}`)
-		.join(",")}`);
-	function refreshView() {
-		return refreshCurrentView({ client, queryClient, clusterContext: context, kubeconfigEnvVar: kubeconfigSourceKey, keys: watchKeys, namespaces: [] });
-	}
+	const argoKind = (kind: string, plural: string) => ({
+		resourceKind: { kind, apiVersion: ARGO_APPLICATION_API_VERSION, plural, namespaced: true },
+	});
+	const live = liveViewRefresh(client, () => {
+		if (!sourceReady) return null;
+		const argo = argoDetectionQuery.data === true;
+		const appSets = argoKind("ApplicationSet", "applicationsets");
+		const projects = argoKind("AppProject", "appprojects");
+		const flux = (fluxDetectionQuery.data?.kinds ?? []).map((kind) => ({
+			keys: [{ resourceKind: kind }],
+			match: queryMatchers.exact(queryKeys.fluxResources(context, kind, kubeconfigSourceKey)),
+		}));
+		return {
+			clusterContext: context,
+			kubeconfigSourceKey,
+			namespaces: [],
+			refreshScope: "view",
+			keys: [...(argo ? [argoApplicationWatchKey(), appSets, projects] : []), ...flux.flatMap((read) => read.keys)],
+			// The workspace Argo operation monitor keeps the Application list fresh across navigation.
+			reads: [
+				...(argo ? [
+					{ keys: [appSets], match: queryMatchers.exact(queryKeys.argoAppSets(context, kubeconfigSourceKey)) },
+					{ keys: [projects], match: queryMatchers.exact(queryKeys.argoAppProjects(context, kubeconfigSourceKey)) },
+				] : []),
+				...flux,
+			],
+		};
+	});
 	const argoAppsQuery = createQuery<ArgoApplicationSummary[]>(() => ({
 		queryKey: queryKeys.argoApps(context, kubeconfigSourceKey),
 		queryFn: () => listArgoApplications(client, context, kubeconfigSourceKey),
@@ -188,31 +196,6 @@
 		}
 	});
 
-	$effect(() => {
-		if (!sourceReady || watchKeys.length === 0) return;
-		const clusterContext = context;
-		const source = kubeconfigSourceKey;
-		const keys = watchKeys;
-		const fluxKinds = fluxDetectionQuery.data?.kinds ?? [];
-		const freshness = createArgoListFreshness((queryKey) => void queryClient.invalidateQueries({ queryKey }), source);
-		const stop = observeResourceScope({ client, clusterContext, keys, kubeconfigEnvVar: source,
-			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; realtimeWarnings = state.warnings ?? []; },
-			reload: () => refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: source, keys, namespaces: [] }),
-			onChange: (event) => {
-				// The workspace monitor keeps Application lists fresh across navigation.
-				if (event.type !== "resourceChanged" || event.target.kind !== "Application") freshness.handle(event);
-				if (event.type === "resourceChanged") {
-					for (const kind of fluxKinds) {
-						if (kind.kind === event.target.kind && kind.apiVersion !== "argoproj.io/v1alpha1") {
-							void queryClient.invalidateQueries({ queryKey: queryKeys.fluxResources(clusterContext, kind, source) });
-						}
-					}
-				}
-			},
-		});
-		return () => { stop(); freshness.dispose(); };
-	});
-
 	function openSelectedArgoApplicationResources(selectionOverride?: GitOpsSelection) {
 		const selection = selectionOverride ?? selectedGitOpsItem;
 		if (!selection) return;
@@ -241,12 +224,8 @@
 </script>
 
 {#snippet refreshControls()}
-	{#key liveStatusKey}
-		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady}
-			status={watchKeys.length ? realtimeStatus : "idle"}
-			message={watchKeys.length ? realtimeMessage : "No live resource watches in this view."}
-			connectionError={watchKeys.length ? realtimeError : null}
-			reloadError={watchKeys.length ? reloadError : null} warnings={watchKeys.length ? realtimeWarnings : []} />
+	{#key live.key}
+		<ResourceLiveStatusMenu {live} disabled={!sourceReady} />
 	{/key}
 {/snippet}
 <GitOpsView

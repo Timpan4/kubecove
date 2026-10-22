@@ -2,21 +2,15 @@
 	import { ChevronDown, RefreshCw } from "lucide-svelte";
 	import { Button, Popover, PopoverContent, PopoverTrigger, Spinner } from "@/components/ui/svelte";
 	import { messageFromError } from "@/lib/error-redaction";
-	let { onRefresh, disabled = false, status, message, connectionError = null, reloadError = null, warnings = [] }: {
-		onRefresh: () => Promise<void> | Promise<string[]>;
-		disabled?: boolean;
-		status: string;
-		message: string;
-		connectionError?: unknown;
-		reloadError?: string | null;
-		warnings?: string[];
-	} = $props();
+	import type { LiveViewControls } from "@/lib/live-view-refresh";
+	let { live, disabled = false }: { live: LiveViewControls; disabled?: boolean } = $props();
+	const { status, message, error: connectionError, reloadError, warnings } = $derived(live.state);
 	let open = $state(false);
 	let refreshing = $state(false);
 	let error = $state<string | null>(null);
 	let refreshWarnings = $state<string[]>([]);
 	const permissionWarnings = $derived([...new Set([...warnings, ...refreshWarnings])]);
-	const connectionProblem = $derived(Boolean(connectionError) || status === "reconnecting" || status === "error");
+	const connectionProblem = $derived(Boolean(connectionError) || status === "reconnecting");
 	const label = $derived(
 		refreshing ? "Refreshing…"
 			: error || reloadError ? "Refresh failed"
@@ -39,7 +33,7 @@
 		if (refreshing || disabled) return;
 		refreshing = true;
 		error = null;
-		try { refreshWarnings = (await onRefresh()) ?? []; } catch (cause) { error = messageFromError(cause); }
+		try { refreshWarnings = await live.refresh(); } catch (cause) { error = messageFromError(cause); }
 		finally { refreshing = false; }
 	}
 </script>
