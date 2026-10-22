@@ -6,7 +6,7 @@ Proposed 2026-10-22.
 
 ## Context
 
-Every Kubernetes command receives a cluster context and an optional `kubeconfigEnvVar` selector, and passes the pair down as loose arguments. Before this decision, 36 call sites built a `KubeconfigSource` from the selector, and 14 calls derived the source key separately through `kubeconfig_source_key`, often in the same command that built a client from the same selector again. About a dozen local wrappers turned the pair into a client, and the GitOps crate imported a live-session internal of the live crate only to get a fail-closed live client.
+Every Kubernetes command receives a cluster context and an optional `kubeconfigEnvVar` selector, and passes the pair down as loose arguments. Before this decision, 36 call sites built a `KubeconfigSource` from the selector, and 12 calls derived the source key separately through `kubeconfig_source_key`, often in the same command that built a client from the same selector again. About a dozen local wrappers turned the pair into a client, and the GitOps crate imported a live-session internal of the live crate only to get a fail-closed live client.
 
 [ADR 0009](0009-workspace-request-cancellation.md) sets three client paths: rotating finite clients for reads, a non-rotating client for confirmed mutations, and a non-rotating client for long-lived streams and sessions. Cluster-changing paths also must not fall back to the default kubeconfig when configured sources fail to load. Each call site chose its path and its fail-closed rule by hand: 8 `fail_closed()` sites, 3 operation-client sites and 3 live-client sites. The rule had no single home, and no test checked that a confirmed write uses the non-rotating client.
 
