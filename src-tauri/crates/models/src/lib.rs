@@ -62,10 +62,7 @@ pub use metrics::{
     ResourceMetricsSummary,
 };
 pub use namespace::NamespaceSummary;
-pub use operations::{
-    ClusterOperationPreview, ClusterOperationResult, ClusterOperationTarget, DeleteResourceRequest,
-    RolloutRestartRequest, ScaleWorkloadRequest,
-};
+pub use operations::{ClusterOperationResult, ClusterOperationTarget};
 pub use rbac::{
     RbacAccessReviewIdentity, RbacAccessReviewOutcome, RbacAccessReviewRequest,
     RbacAccessReviewResult, RbacAccessReviewTarget, RbacBindingSummary, RbacCoverageStatus,

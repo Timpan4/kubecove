@@ -26,10 +26,6 @@ pub use events::{list_resource_events, resource_events_from};
 pub use incidents::{incident_cockpit_from, list_incident_cockpit};
 pub use metrics::{list_resource_metrics, resource_metrics_from};
 pub use namespaces::{list_namespaces, namespaces_summary_from};
-pub use operations::{
-    delete_resource, preview_delete_resource, preview_rollout_restart, preview_scale_workload,
-    rollout_restart, scale_workload,
-};
 pub use rbac::{list_rbac_inspection, rbac_inspection_from};
 pub use rbac_review::review_rbac_access;
 pub use resource_actions::{

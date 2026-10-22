@@ -1,42 +1,20 @@
 import { stringify } from "yaml";
 import type {
-	ClusterOperationPreview,
 	ClusterOperationResult,
-	DeleteResourceRequest,
 	ResourceActionPreview,
 	ResourceActionRequest,
 	ResourceActionState,
 	ResourceActionStateRequest,
-	RolloutRestartRequest,
-	ScaleWorkloadRequest,
 } from "./types";
 
 interface MockArgs {
 	request?: object;
 }
 
-type OperationRequest =
-	| DeleteResourceRequest
-	| ResourceActionRequest
-	| RolloutRestartRequest
-	| ScaleWorkloadRequest;
-
 export const operationMockHandlers = {
 	get_resource_action_state: (args?: MockArgs) => resourceActionState(resourceActionStateRequest(args)),
 	preview_resource_action: (args?: MockArgs) => resourceActionPreview(resourceActionRequest(args)),
 	execute_resource_action: (args?: MockArgs) => resourceActionResult(resourceActionRequest(args)),
-	preview_scale_workload: (args?: MockArgs) =>
-		scaleOperationPreview(operationRequest<ScaleWorkloadRequest>(args)),
-	scale_workload: (args?: MockArgs) =>
-		scaleOperationResult(operationRequest<ScaleWorkloadRequest>(args)),
-	preview_rollout_restart: (args?: MockArgs) =>
-		restartOperationPreview(operationRequest<RolloutRestartRequest>(args)),
-	rollout_restart: (args?: MockArgs) =>
-		restartOperationResult(operationRequest<RolloutRestartRequest>(args)),
-	preview_delete_resource: (args?: MockArgs) =>
-		deleteOperationPreview(operationRequest<DeleteResourceRequest>(args)),
-	delete_resource: (args?: MockArgs) =>
-		deleteOperationResult(operationRequest<DeleteResourceRequest>(args)),
 };
 
 function resourceActionRequest(args?: MockArgs): ResourceActionRequest {
@@ -416,83 +394,10 @@ function cloneMock<T>(value: T): T {
 	return structuredClone(value);
 }
 
-function operationRequest<T extends OperationRequest>(args?: MockArgs): T {
-	const request = args?.request;
-	if (!request) {
-		throw new Error("Operation request is required.");
-	}
-	// SAFETY: each handler is called through its matching typed operation wrapper.
-	return request as T;
-}
-
-function operationTarget(request: OperationRequest) {
-	return {
-		clusterContext: request.clusterContext,
-		namespace: request.namespace,
-		kind: request.kind,
-		name: request.name,
-	};
-}
-
-function operationLabel(request: OperationRequest) {
+function operationLabel(request: ResourceActionRequest) {
 	return `${request.kind} ${request.namespace}/${request.name} in context ${request.clusterContext}`;
 }
 
-function requireMockConfirmation(request: OperationRequest) {
+function requireMockConfirmation(request: ResourceActionRequest) {
 	if (!request.confirmed) throw new Error("Explicit confirmation is required.");
-}
-
-function scaleOperationPreview(
-	request: ScaleWorkloadRequest,
-): ClusterOperationPreview {
-	return {
-		target: operationTarget(request),
-		effect: `Scale ${operationLabel(request)} to ${request.replicas} replicas`,
-	};
-}
-
-function scaleOperationResult(request: ScaleWorkloadRequest): ClusterOperationResult {
-	requireMockConfirmation(request);
-	return {
-		target: operationTarget(request),
-		effect: `Simulated scaling ${operationLabel(request)} to ${request.replicas} replicas in browser mock mode.`,
-	};
-}
-
-function restartOperationPreview(
-	request: RolloutRestartRequest,
-): ClusterOperationPreview {
-	return {
-		target: operationTarget(request),
-		effect: `Restart ${operationLabel(request)} by updating its pod template`,
-	};
-}
-
-function restartOperationResult(
-	request: RolloutRestartRequest,
-): ClusterOperationResult {
-	requireMockConfirmation(request);
-	return {
-		target: operationTarget(request),
-		effect: `Simulated restart of ${operationLabel(request)} in browser mock mode.`,
-	};
-}
-
-function deleteOperationPreview(
-	request: DeleteResourceRequest,
-): ClusterOperationPreview {
-	return {
-		target: operationTarget(request),
-		effect: `Delete ${operationLabel(request)}`,
-	};
-}
-
-function deleteOperationResult(
-	request: DeleteResourceRequest,
-): ClusterOperationResult {
-	requireMockConfirmation(request);
-	return {
-		target: operationTarget(request),
-		effect: `Simulated deletion of ${operationLabel(request)} in browser mock mode.`,
-	};
 }

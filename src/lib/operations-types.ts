@@ -6,28 +6,10 @@ export interface ClusterOperationTarget {
 	namespace?: string | null;
 }
 
-export interface ScaleWorkloadRequest extends ClusterOperationTarget {
-	replicas: number;
-	confirmed: boolean;
-	kubeconfigEnvVar?: string;
-}
-
-export interface RolloutRestartRequest extends ClusterOperationTarget {
-	confirmed: boolean;
-	kubeconfigEnvVar?: string;
-}
-
-export interface DeleteResourceRequest extends ClusterOperationTarget {
-	confirmed: boolean;
-	kubeconfigEnvVar?: string;
-}
-
-export interface ClusterOperationPreview {
+export interface ClusterOperationResult {
 	target: ClusterOperationTarget;
 	effect: string;
 }
-
-export type ClusterOperationResult = ClusterOperationPreview;
 
 export type ResourceActionKind = "edit" | "restart" | "pause" | "resume" | "rollback" | "delete";
 
