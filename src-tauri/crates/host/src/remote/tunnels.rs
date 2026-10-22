@@ -70,7 +70,6 @@ impl RemoteTunnelRegistry {
             registration.kubeconfig_source_label,
         );
 
-
         let relay_connection = Arc::clone(connection);
         let relay_forward_id = forward_id.clone();
         let started = self
