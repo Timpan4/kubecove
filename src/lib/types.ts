@@ -152,10 +152,8 @@ export interface KubernetesYamlLintResult {
 }
 
 export type {
-	ClusterOperationPreview,
 	ClusterOperationResult,
 	ClusterOperationTarget,
-	DeleteResourceRequest,
 	ResourceActionContainer,
 	ResourceActionEdits,
 	ResourceActionKind,
@@ -167,8 +165,6 @@ export type {
 	ResourceActionStateRequest,
 	ResourceContainerEdit,
 	ResourceEnvEdit,
-	RolloutRestartRequest,
-	ScaleWorkloadRequest,
 } from "./operations-types";
 
 export type ResourceHealth =

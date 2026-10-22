@@ -2,16 +2,15 @@ use kubecove_models::AppErrorKind;
 use std::{fs, io::Read};
 
 use kubecove_models::AppError;
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 use tauri_plugin_dialog::{DialogExt, FilePath};
 
 const WORKSPACE_IMPORT_MAX_BYTES: u64 = 2 * 1024 * 1024;
 
-#[tauri::command]
-pub fn save_workspace_export_json(
-    app: AppHandle,
+pub fn save_workspace_export_json<R: Runtime>(
     file_name: String,
     content: String,
+    app: AppHandle<R>,
 ) -> Result<bool, AppError> {
     let Some(file_path) = app
         .dialog()
@@ -35,8 +34,9 @@ pub fn save_workspace_export_json(
     Ok(true)
 }
 
-#[tauri::command]
-pub fn pick_workspace_import_json(app: AppHandle) -> Result<Option<String>, AppError> {
+pub fn pick_workspace_import_json<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<Option<String>, AppError> {
     let Some(file_path) = app
         .dialog()
         .file()

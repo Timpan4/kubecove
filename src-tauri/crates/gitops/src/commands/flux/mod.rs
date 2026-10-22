@@ -19,7 +19,6 @@ pub const MAX_FLUX_INVENTORY_ENTRIES: usize = 2048;
 
 use kubecove_kube::commands::flux_catalog::FLUX_KINDS;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn detect_flux(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
@@ -42,7 +41,6 @@ pub async fn detect_flux(
     })
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_flux_resources(
     cluster_context: String,
     resource_kind: FluxResourceKind,
@@ -61,7 +59,6 @@ pub async fn list_flux_resources(
         .collect())
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_flux_resource_details(
     cluster_context: String,
     resource_kind: FluxResourceKind,

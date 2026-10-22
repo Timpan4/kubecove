@@ -80,7 +80,6 @@ export interface ArgoApplicationInspectionReadSpec {
 		connectionId?: string;
 		transport: "connected" | "kubernetes";
 		application: ArgoApplicationRef;
-		redactSecrets: boolean;
 	};
 	queryKey: readonly unknown[];
 	cancelScope: string;
@@ -144,7 +143,6 @@ export function buildArgoApplicationInspectionReadSpec({
 		kubeconfigEnvVar,
 		transport: policy.transport,
 		application,
-		redactSecrets,
 	};
 	if (policy.transport === "connected") request.connectionId = connectionId;
 

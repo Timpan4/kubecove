@@ -16,7 +16,7 @@ Run before PR or completion.
 
 - [ ] Feature-specific frontend code lives in `src/features/<area>/`; generic UI or shared logic only in `src/components/` or `src/lib/`.
 - [ ] New top-level directories are documented in [code-organization.md](code-organization.md).
-- [ ] New Tauri commands have typed frontend wrappers; components do not call raw `invoke()`.
+- [ ] New Tauri commands are declared once in `command_contract!` and have typed frontend wrappers; components do not call raw `invoke()`.
 - [ ] Touched files meet size caps; oversized files have split follow-up.
 - [ ] No superseded files, reference leftovers, commented-out blocks, or one-import wrappers remain.
 

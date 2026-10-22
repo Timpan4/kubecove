@@ -3,7 +3,9 @@ pub mod flux;
 mod gitops_crd;
 pub mod helm;
 
-pub(crate) use kubecove_kube::commands::{helpers, kubeconfig, BackendCancellationRegistry};
+pub(crate) use kubecove_kube::commands::{
+    diagnostic_field, helpers, kubeconfig, BackendCancellationRegistry, FiniteRead,
+};
 pub(crate) use kubecove_live::commands::sessions;
 
 #[cfg(not(feature = "desktop"))]

@@ -104,7 +104,6 @@ impl AppUsageMonitor {
     }
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_app_usage_metrics(
     monitor: kubecove_kube::runtime::State<'_, AppUsageMonitor>,
 ) -> Result<AppUsageMetrics, AppError> {

@@ -24,7 +24,9 @@ use super::transport::{
     argo_url, http_client, normalize_endpoint, response_json, safe_http_error, url,
 };
 use super::tunnel::{verify_confirmed_target, ArgoServiceTunnel};
-use crate::commands::{gitops_crd::client_for_context, BackendCancellationRegistry};
+use crate::commands::{
+    diagnostic_field, gitops_crd::client_for_context, BackendCancellationRegistry, FiniteRead,
+};
 use crate::models::AppErrorKind;
 use crate::models::{
     AppError, ArgoApplicationInspector, ArgoApplicationRef, ArgoConfirmedTarget,
@@ -40,18 +42,17 @@ use std::{
 use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn discover_argo_servers(
-    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
     request_id: Option<String>,
     cancel_scope: Option<String>,
+    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
 ) -> Result<Vec<ArgoServerCapability>, AppError> {
-    cancellations
-        .execute(
-            cancel_scope,
-            request_id,
+    FiniteRead::new("discover_argo_servers")
+        .label("context", &cluster_context)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
             Box::pin(async move {
                 let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
                 let services: Api<Service> = Api::all(client.clone());
@@ -91,13 +92,12 @@ pub async fn discover_argo_servers(
                 }
                 Ok(capabilities)
             }),
+            |capabilities| vec![diagnostic_field("servers", capabilities.len())],
         )
         .await
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn connect_argo_server(
-    store: crate::runtime::State<'_, ArgoConnectionStore>,
     id: String,
     server_url: String,
     endpoint: Option<ArgoServerEndpoint>,
@@ -111,6 +111,7 @@ pub async fn connect_argo_server(
     kubeconfig_env_var: Option<String>,
     workspace_id: Option<String>,
     confirmed_target: Option<ArgoConfirmedTarget>,
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
 ) -> Result<ArgoConnectionStatus, AppError> {
     let connection_epoch = store.connection_epoch();
     let kubeconfig_source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
@@ -274,10 +275,9 @@ pub async fn connect_argo_server(
     })
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_argo_connection_status(
-    store: crate::runtime::State<'_, ArgoConnectionStore>,
     id: String,
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
 ) -> Result<ArgoConnectionStatus, AppError> {
     let connection = store
         .connections
@@ -306,36 +306,34 @@ pub fn get_argo_connection_status(
     })
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn disconnect_argo_server(
-    store: crate::runtime::State<'_, ArgoConnectionStore>,
     id: String,
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
 ) -> Result<(), AppError> {
     store.remove_connection(&id).await
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn forget_argo_credential(profile: ArgoConnectionProfile) -> Result<(), AppError> {
     delete_credential(&ActiveCredentialStore, &profile)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_argo_application_inspector(
-    store: crate::runtime::State<'_, ArgoConnectionStore>,
-    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
     connection_id: Option<String>,
     transport: String,
     application: ArgoApplicationRef,
-    _redact_secrets: Option<bool>,
     request_id: Option<String>,
     cancel_scope: Option<String>,
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
+    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
 ) -> Result<ArgoApplicationInspector, AppError> {
-    cancellations
-        .execute(
-            cancel_scope,
-            request_id,
+    FiniteRead::new("get_argo_application_inspector")
+        .label("context", &cluster_context)
+        .label("transport", &transport)
+        .label("application", &application.name)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
             application_inspector(
                 &store,
                 cluster_context,
@@ -344,6 +342,13 @@ pub async fn get_argo_application_inspector(
                 transport,
                 application,
             ),
+            |inspector| {
+                vec![
+                    diagnostic_field("transport", &inspector.transport),
+                    diagnostic_field("resources", inspector.resources.len()),
+                    diagnostic_field("comparisons", inspector.comparisons.len()),
+                ]
+            },
         )
         .await
 }
