@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { createQuery, skipToken, useQueryClient } from "@tanstack/svelte-query";
 	import { onMount } from "svelte";
 	import { Box, Folder, PanelsTopLeft } from "lucide-svelte";
 	import {
@@ -22,8 +22,8 @@
 	import { resourceKey } from "@/lib/resource-identity";
 	import { shouldToggleCommandPaletteShortcut } from "@/features/command-palette/shortcut";
 	import {
-		fetchResourcePage,
 		filterResourceSearchIndex,
+		resourceScopeQuery,
 	} from "@/features/resources";
 	import {
 		createTauriClient,
@@ -35,7 +35,6 @@
 		listNamespaces,
 	} from "@/lib/tauri";
 	import { queryKeys, queryMatchers } from "@/lib/queryKeys";
-	import { createCancelScope, finiteReadMeta } from "@/lib/finite-read-lifecycle";
 	import {
 		makeNamespaceNode,
 		type TreeNodeId,
@@ -138,22 +137,19 @@
 			fluxDetectionQuery.data?.kinds ?? [],
 		),
 	);
-	const browserResourceKey = $derived(
-		queryKeys.resources(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey),
+	const resourcesQuery = createQuery<ResourceScopeResult>(() =>
+		open
+			? {
+					...resourceScopeQuery(client, {
+						clusterContext: workspace.scope.clusterContext,
+						fetchKeys,
+						kubeconfigSourceKey,
+					}),
+					enabled: sourceReady && gitOpsDetectionReady && fetchKeys.length > 0,
+					gcTime: 0,
+				}
+			: { queryKey: queryKeys.idle("palette-resources"), queryFn: skipToken },
 	);
-	const resourcesQuery = createQuery<ResourceScopeResult>(() => ({
-		queryKey: open ? browserResourceKey : queryKeys.idle("palette-resources"),
-		queryFn: () => fetchResourcePage(
-			workspace.scope.clusterContext,
-			fetchKeys,
-			kubeconfigSourceKey,
-			createCancelScope("resources", browserResourceKey),
-		),
-		enabled: open && sourceReady && gitOpsDetectionReady && fetchKeys.length > 0,
-		staleTime: 30_000,
-		gcTime: 0,
-		meta: finiteReadMeta(),
-	}));
 	const argoSearchResources = $derived(
 		buildArgoSearchResources(
 			argoAppsQuery.data ?? [],

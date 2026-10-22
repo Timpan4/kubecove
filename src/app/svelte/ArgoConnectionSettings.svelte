@@ -20,15 +20,10 @@
 		upsertArgoProfileInSavedOrder,
 	} from "@/lib/argo-connection-policy";
 	import { argoConnectionStatusQueryOptions } from "@/lib/argo-application-inspection";
-	import {
-		createCancelScope,
-		createFiniteReadCleanup,
-		createFiniteReadRequest,
-	} from "@/lib/finite-read-lifecycle";
+	import { finiteRead } from "@/lib/finite-read-lifecycle";
 	import { queryKeys, queryMatchers } from "@/lib/queryKeys";
 	import { settingsStore } from "@/lib/settings-store";
 	import {
-		cancelBackendRequests,
 		connectArgoServer,
 		createTauriClient,
 		disconnectArgoServer,
@@ -44,9 +39,6 @@
 	} = $props();
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
-	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
-		cancelBackendRequests(client, cancelScope),
-	);
 	const settings = $derived($settingsStore);
 	let connectionMode = $state<"external" | "serviceTunnel">("external");
 	let url = $state("");
@@ -96,18 +88,13 @@
 	const discoveryQueryKey = $derived(
 		queryKeys.argoServerDiscovery(clusterContext ?? "", kubeconfigEnvVar),
 	);
-	const discoveryCancelScope = $derived(
-		createCancelScope("argo-server-discovery", discoveryQueryKey),
-	);
 	const discovered = createQuery(() => ({
-		queryKey: discoveryQueryKey,
-		queryFn: () =>
-			discoverArgoServers(
-				client,
-				clusterContext!,
-				kubeconfigEnvVar,
-				createFiniteReadRequest(discoveryCancelScope, "argo-discovery"),
-			),
+		...finiteRead({
+			queryKey: discoveryQueryKey,
+			label: "argo.discovery",
+			read: (cancellable) =>
+				discoverArgoServers(client, clusterContext!, kubeconfigEnvVar, cancellable),
+		}),
 		enabled: Boolean(clusterContext),
 		staleTime: 60_000,
 	}));
@@ -143,13 +130,6 @@
 				: null
 			: tunnelEndpoint,
 	);
-
-	$effect(() => {
-		const cancelScope = discoveryCancelScope;
-		const queryKey = discoveryQueryKey;
-		finiteReadCleanup.cancelPending(cancelScope);
-		return () => finiteReadCleanup.schedule(cancelScope, queryKey);
-	});
 
 	// A confirmation belongs to one cluster scope; any scope or selection change discards it.
 	$effect(() => {

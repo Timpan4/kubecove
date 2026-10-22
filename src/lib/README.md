@@ -6,8 +6,9 @@ Allowed:
 
 - typed Tauri wrappers in `tauri.ts`
 - frontend mirrors of serde contracts in `types.ts`
-- Zustand stores and composed dashboard hooks in `hooks.ts`
-- workspace, settings, query-key, release-channel, diagnostics, and formatting helpers
+- the Zustand settings store in `settings.ts` and its Svelte adapter in `settings-store.ts`
+- the query catalog in `queryKeys.ts` and the finite-read lifecycle in `finite-read-lifecycle.ts`
+- workspace, settings, release-channel, diagnostics, and formatting helpers
 - pure resource health, metrics, visuals, and tree-navigation logic
 - future guarded operation helpers when they are pure and shared
 

@@ -1,26 +1,14 @@
 <script lang="ts">
-	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { createQuery, skipToken } from "@tanstack/svelte-query";
 	import {
 		buildResourceDetailReadSpec,
-		readResourceDetails,
+		resourceDetailsQuery,
 	} from "@/features/resource-detail";
-	import type { HealthFilter } from "@/features/resources";
-	import {
-		createCancelScope,
-		createFiniteReadCleanup,
-		createFiniteReadRequest,
-	} from "@/lib/finite-read-lifecycle";
-	import { diagnosticLog } from "@/lib/diagnostics";
+	import { resourceTopologyQuery, type HealthFilter } from "@/features/resources";
 	import type { PathStateDetailTab } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { getSettingsSnapshot } from "@/lib/settings-store";
-	import {
-		cancelBackendRequests,
-		createTauriClient,
-		isAppError,
-		listIncidentCockpit,
-		listResourceTopology,
-	} from "@/lib/tauri";
+	import { createTauriClient, listIncidentCockpit } from "@/lib/tauri";
 	import type {
 		IncidentCockpitSummary,
 		ResourceDetailsFull,
@@ -65,10 +53,6 @@
 	} = $props();
 
 	const client = createTauriClient();
-	const queryClient = useQueryClient();
-	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
-		cancelBackendRequests(client, cancelScope),
-	);
 	const settings = getSettingsSnapshot();
 	const yamlViewMode = settings.yamlViewModeDefault;
 	const yamlEncoding = settings.yamlEncodingDefault;
@@ -120,97 +104,22 @@
 				selectedResource.namespace,
 		),
 	);
-	const detailsQueryKey = $derived(
-		detailReadSpec?.detailsQueryKey ?? queryKeys.idle("incident-details"),
+	// The same details and topology reads as Resource Detail and the Browser map share their cache.
+	const detailsQuery = createQuery<ResourceDetailsFull>(() =>
+		detailReadSpec
+			? resourceDetailsQuery(client, detailReadSpec, detailsEnabled)
+			: { queryKey: queryKeys.idle("incident-details"), queryFn: skipToken },
 	);
-	const topologyQueryKey = $derived(
+	const topologyQuery = createQuery<ResourceTopology>(() =>
 		topologyEnabled && selectedResource?.namespace
-			? queryKeys.resourceTopology(
-					selectedResource.cluster,
-					[selectedResource.namespace],
-					"ownership",
+			? resourceTopologyQuery(client, {
+					clusterContext: selectedResource.cluster,
+					namespaces: [selectedResource.namespace],
+					mode: "ownership",
 					kubeconfigSourceKey,
-				)
-			: queryKeys.idle("incident-topology"),
+				})
+			: { queryKey: queryKeys.idle("incident-topology"), queryFn: skipToken },
 	);
-	const detailsCancelScope = $derived(createCancelScope("resource-details", detailsQueryKey));
-	const topologyCancelScope = $derived(
-		createCancelScope("resource-topology", topologyQueryKey),
-	);
-
-	$effect(() => {
-		const currentDetailsCancelScope = detailsCancelScope;
-		const currentDetailsQueryKey = detailsQueryKey;
-		const currentTopologyCancelScope = topologyCancelScope;
-		const currentTopologyQueryKey = topologyQueryKey;
-		finiteReadCleanup.cancelPending(currentDetailsCancelScope);
-		finiteReadCleanup.cancelPending(currentTopologyCancelScope);
-		return () => {
-			for (const [cancelScope, queryKey, event] of [
-				[currentDetailsCancelScope, currentDetailsQueryKey, "incidents.details.cancel"],
-				[currentTopologyCancelScope, currentTopologyQueryKey, "incidents.topology.cancel"],
-			] as const) {
-				finiteReadCleanup.schedule(cancelScope, queryKey, {
-					onError: (error) => {
-						diagnosticLog(`${event}.error`, {
-							error: error instanceof Error ? error.message : String(error),
-						});
-					},
-				});
-			}
-		};
-	});
-
-	const detailsQuery = createQuery<ResourceDetailsFull>(() => ({
-		queryKey: detailsQueryKey,
-		queryFn: async () => {
-			const resource = selectedResource;
-			if (!resource) throw new Error("Incident detail requested without a selected resource.");
-			try {
-				return await readResourceDetails(client, resource, {
-					kubeconfigSourceKey,
-					yamlViewMode,
-					yamlEncoding,
-					cancellable: createFiniteReadRequest(detailsCancelScope, "details"),
-				});
-			} catch (error) {
-				if (isAppError(error) && error.kind === "cancelled") {
-					diagnosticLog("incidents.details.cancel", { key: selectedKey });
-				}
-				throw error;
-			}
-		},
-		enabled: detailsEnabled,
-		retry: false,
-		staleTime: 30_000,
-	}));
-	const topologyQuery = createQuery<ResourceTopology>(() => ({
-		queryKey: topologyQueryKey,
-		queryFn: async () => {
-			const resource = selectedResource;
-			if (!resource?.namespace) {
-				throw new Error("Incident topology requested without a namespaced resource.");
-			}
-			try {
-				return await listResourceTopology(
-					client,
-					resource.cluster,
-					[resource.namespace],
-					"ownership",
-					kubeconfigSourceKey,
-					createFiniteReadRequest(topologyCancelScope, "topology"),
-				);
-			} catch (error) {
-				if (isAppError(error) && error.kind === "cancelled") {
-					diagnosticLog("incidents.topology.cancel", { key: selectedKey });
-				}
-				throw error;
-			}
-		},
-		enabled: topologyEnabled,
-		retry: false,
-		staleTime: 30_000,
-	}));
 	const detailsState = $derived<IncidentEnrichmentState>(
 		!detailsEnabled
 			? "idle"

@@ -3,16 +3,15 @@
 	import type { Diagnostic } from "@codemirror/lint";
 	import {
 		applyYaml,
-		cancelBackendRequests,
 		isAppError,
 		lintKubernetesYaml,
 		prepareYamlApply,
 		type TauriClient,
 	} from "@/lib/tauri";
 	import {
-		createCancelScope,
-		createFiniteReadCleanup,
 		createFiniteReadRequest,
+		finiteRead,
+		finiteReadScope,
 	} from "@/lib/finite-read-lifecycle";
 	import { diagnosticLog, diagnosticResultSummary } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
@@ -76,9 +75,6 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 	const YAML_ENCODINGS: YamlEncoding[] = ["yaml", "kyaml"];
 
 	const queryClient = useQueryClient();
-	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
-		cancelBackendRequests(client, cancelScope),
-	);
 	let yamlEditing = $state(false);
 	let yamlDraft = $state("");
 	let yamlLoadingDraft = $state(false);
@@ -115,7 +111,6 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 			refreshVersion,
 		),
 	);
-	const yamlCancelScope = $derived(createCancelScope("resource-yaml", yamlQueryKey));
 	const yamlEnabled = $derived(detailsEnabled && active);
 	const showSecretDataViewer = $derived(
 		resource.kind === "Secret" && !$settingsStore.redactSecrets,
@@ -162,40 +157,21 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 	}
 
 
-	$effect(() => {
-		const currentYamlCancelScope = yamlCancelScope;
-		const currentYamlQueryKey = yamlQueryKey;
-		finiteReadCleanup.cancelPending(currentYamlCancelScope);
-		return () =>
-			finiteReadCleanup.schedule(currentYamlCancelScope, currentYamlQueryKey, {
-				onError: (error) => {
-					diagnosticLog("detail.yaml.cancel.error", {
-						error: error instanceof Error ? error.message : String(error),
-					});
-				},
-			});
-	});
-
 	const yamlQuery = createQuery<string>(() => ({
-		queryKey: yamlQueryKey,
-		queryFn: async () => {
-			try {
-				return await runYamlFetch("resource-yaml", async () => {
+		...finiteRead({
+			queryKey: yamlQueryKey,
+			label: "detail.yaml",
+			read: (cancellable) =>
+				runYamlFetch("resource-yaml", async () => {
 					if (dynamicKind && !showSecretDataViewer && detailsYaml) return detailsYaml;
 					return await readResourceYaml(client, resource, {
 						kubeconfigSourceKey,
 						yamlViewMode,
 						yamlEncoding,
-						cancellable: createFiniteReadRequest(yamlCancelScope, "yaml"),
+						cancellable,
 					});
-				});
-			} catch (error) {
-				if (isAppError(error) && error.kind === "cancelled") {
-					diagnosticLog("detail.yaml.cancel", { key: resourceKey(resource) });
-				}
-				throw error;
-			}
-		},
+				}),
+		}),
 		enabled: yamlEnabled,
 		retry: false,
 		staleTime: 30_000,
@@ -286,7 +262,7 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 				kubeconfigSourceKey,
 				yamlViewMode: "applyClean",
 				yamlEncoding,
-				cancellable: createFiniteReadRequest(yamlCancelScope, "yaml-draft"),
+				cancellable: createFiniteReadRequest(finiteReadScope(yamlQueryKey), "yaml-draft"),
 			});
 			if (draftRevision !== yamlApplyRevision) return;
 			yamlDraft = draft;

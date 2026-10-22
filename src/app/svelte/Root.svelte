@@ -6,7 +6,9 @@
 	import { Button } from "@/components/ui/svelte";
 	import { getBrowserSessionState, initializeBrowserSession, signOutBrowserSession, subscribeBrowserSession, type BrowserSessionState } from "@/lib/browser-runtime";
 	import { isBrowserRuntime } from "@/lib/tauri-runtime";
+	import { installFiniteReadLifecycle } from "@/lib/finite-read-lifecycle";
 	import { configureQueryCatalog } from "@/lib/queryKeys";
+	import { cancelBackendRequests, createTauriClient } from "@/lib/tauri";
 	import { queryRetry } from "@/lib/query-retry";
 	import { attachMemoryProfile } from "@/lib/memory-profile";
 
@@ -42,6 +44,10 @@
 		return unsubscribe;
 	});
 	configureQueryCatalog(queryClient);
+	const finiteReadClient = createTauriClient();
+	installFiniteReadLifecycle(queryClient, (cancelScope) =>
+		cancelBackendRequests(finiteReadClient, cancelScope),
+	);
 	attachMemoryProfile(queryClient);
 </script>
 

@@ -1,11 +1,14 @@
 import { requiredPermissionForResource } from "@/features/rbac/handoff";
-import { createCancelScope } from "@/lib/finite-read-lifecycle";
+import { diagnosticLog, diagnosticResultSummary } from "@/lib/diagnostics";
+import { finiteRead } from "@/lib/finite-read-lifecycle";
+import { withForegroundLoad } from "@/lib/foreground-loading";
 import { queryKeys } from "@/lib/queryKeys";
 import { dynamicKindKey, resourceKey } from "@/lib/resource-identity";
 import {
 	getDynamicResourceDetails,
 	getResourceDetails,
 	getResourceYaml,
+	listResourceEvents,
 	type TauriClient,
 } from "@/lib/tauri";
 import type {
@@ -25,15 +28,16 @@ import {
 } from "./helpers";
 
 export interface ResourceDetailReadSpec {
+	resource: ResourceSummary;
+	read: ResourceReadOptions;
 	identity: { key: string };
 	dynamicKind: DiscoveredResourceKind | null;
 	detailReadPermission: RbacAccessReviewTarget | null;
 	detailsEnabled: boolean;
 	eventsEnabled: boolean;
 	detailsQueryKey: readonly unknown[];
+	/** Prefix of the events reads for every UID the resource has had. */
 	eventsQueryKey: readonly unknown[];
-	detailsCancelScope: string;
-	eventsCancelScope: string;
 	resourceWatchKey: WatchResourceKey;
 	eventWatch: {
 		cluster: string;
@@ -80,6 +84,8 @@ export function buildResourceDetailReadSpec(
 	const eventsQueryKey = queryKeys.resourceEventsScope(resource, kubeconfigSourceKey);
 
 	return {
+		resource,
+		read: { kubeconfigSourceKey, yamlViewMode, yamlEncoding },
 		identity: { key: resourceKey(resource) },
 		dynamicKind,
 		detailReadPermission: requiredPermissionForResource(resource, "get"),
@@ -87,8 +93,6 @@ export function buildResourceDetailReadSpec(
 		eventsEnabled: shouldFetchResourceEvents(resource),
 		detailsQueryKey,
 		eventsQueryKey,
-		detailsCancelScope: createCancelScope("resource-details", detailsQueryKey),
-		eventsCancelScope: createCancelScope("resource-events", eventsQueryKey),
 		resourceWatchKey: resourceWatchKey(resource, dynamicKind),
 		eventWatch: {
 			cluster: resource.cluster,
@@ -130,4 +134,65 @@ export async function readResourceYaml(
 	}
 	const { kubeconfigSourceKey, yamlViewMode, yamlEncoding, cancellable } = options;
 	return getResourceYaml(client, resource.cluster, resource.kind, resource.name, resource.namespace ?? undefined, kubeconfigSourceKey, yamlViewMode, yamlEncoding, cancellable);
+}
+
+async function timedRead<T>(kind: "details" | "events", key: string, task: () => Promise<T>): Promise<T> {
+	const started = performance.now();
+	diagnosticLog(`detail.${kind}.fetch.start`, { key });
+	const result = await withForegroundLoad(`resource-${kind}`, task);
+	diagnosticLog(`detail.${kind}.fetch.done`, {
+		key,
+		ms: Math.round(performance.now() - started),
+		result: diagnosticResultSummary(result),
+	});
+	return result;
+}
+
+/** Details read shared by Resource Detail and the Incident Workbench. */
+export function resourceDetailsQuery(client: TauriClient, spec: ResourceDetailReadSpec, enabled: boolean) {
+	return {
+		...finiteRead({
+			queryKey: spec.detailsQueryKey,
+			label: "detail.details",
+			read: (cancellable) =>
+				timedRead("details", spec.identity.key, () =>
+					readResourceDetails(client, spec.resource, { ...spec.read, cancellable }),
+				),
+		}),
+		enabled,
+		retry: false,
+		staleTime: 30_000,
+	};
+}
+
+/** Events keyed by the resource UID, so a replaced resource never shows its predecessor's events. */
+export function resourceEventsQuery(
+	client: TauriClient,
+	spec: ResourceDetailReadSpec,
+	uid: string | undefined,
+	enabled: boolean,
+) {
+	const { resource, read } = spec;
+	return {
+		...finiteRead({
+			queryKey: queryKeys.resourceEvents(resource, read.kubeconfigSourceKey, uid),
+			label: "detail.events",
+			read: (cancellable) =>
+				timedRead("events", spec.identity.key, () =>
+					listResourceEvents(
+						client,
+						resource.cluster,
+						resource.kind,
+						resource.name,
+						resource.namespace ?? undefined,
+						read.kubeconfigSourceKey,
+						cancellable,
+						uid,
+					),
+				),
+		}),
+		enabled,
+		retry: false,
+		staleTime: 30_000,
+	};
 }

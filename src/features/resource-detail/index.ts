@@ -5,4 +5,4 @@ export {
 	getContainerStatusRows,
 	shouldFetchResourceDetails,
 } from "./helpers";
-export { buildResourceDetailReadSpec, readResourceDetails } from "./resourceDetailReadSpec";
+export { buildResourceDetailReadSpec, resourceDetailsQuery } from "./resourceDetailReadSpec";

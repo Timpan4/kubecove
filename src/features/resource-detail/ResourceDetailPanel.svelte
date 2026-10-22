@@ -19,18 +19,10 @@
 		formatExactTimeOnly,
 		formatExactTimestamp,
 	} from "@/components/timestamp-format";
+	import { diagnosticLog } from "@/lib/diagnostics";
 	import {
-		createFiniteReadCleanup,
-		createFiniteReadRequest,
-	} from "@/lib/finite-read-lifecycle";
-	import { diagnosticLog, diagnosticResultSummary } from "@/lib/diagnostics";
-	import { withForegroundLoad } from "@/lib/foreground-loading";
-	import {
-		cancelBackendRequests,
 		closeStreamChannel,
 		createStreamChannel,
-		isAppError,
-		listResourceEvents,
 		startResourceEventWatch,
 		startResourceWatch,
 		stopStream,
@@ -60,7 +52,11 @@
 		isCleanCompletedContainer,
 		type ContainerStatusRow,
 	} from "./helpers";
-	import { buildResourceDetailReadSpec, readResourceDetails } from "./resourceDetailReadSpec";
+	import {
+		buildResourceDetailReadSpec,
+		resourceDetailsQuery,
+		resourceEventsQuery,
+	} from "./resourceDetailReadSpec";
 	import ArgoApplicationDetails from "@/features/gitops/ArgoApplicationDetails.svelte";
 	import { CHIP_BADGE_STYLES, type ChipVariant } from "./constants";
 	import DetailsTab from "./DetailsTab.svelte";
@@ -95,7 +91,6 @@
 	const DETAIL_TABS: DetailTab[] = [
 		"details", "yaml", "events", "logs", "exec", "portForward", "revisions", "operations", "argo",
 	];
-	type DetailFetchKind = "details" | "events";
 
 	let {
 		client,
@@ -116,9 +111,6 @@
 	} = $props();
 
 	const queryClient = useQueryClient();
-	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
-		cancelBackendRequests(client, cancelScope),
-	);
 	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
 	const timestampTimezone = $derived($settingsStore.timestampTimezone);
 	function initialDetailSnapshot(): PathStateResourceDetailState | null {
@@ -209,8 +201,6 @@
 	}
 	const detailsQueryKey = $derived(readSpec.detailsQueryKey);
 	const eventsQueryKey = $derived(readSpec.eventsQueryKey);
-	const detailsCancelScope = $derived(readSpec.detailsCancelScope);
-	const eventsCancelScope = $derived(readSpec.eventsCancelScope);
 
 	$effect(() => {
 		const key = resourceKey;
@@ -218,110 +208,20 @@
 		return () => diagnosticLog("detail.unmount", { key });
 	});
 
-	async function runDetailFetch<T>(
-		kind: DetailFetchKind,
-		loadLabel: string,
-		task: () => Promise<T>,
-	): Promise<T> {
-		const started = performance.now();
-		diagnosticLog(`detail.${kind}.fetch.start`, { key: resourceKey });
-		const result = await withForegroundLoad(loadLabel, task);
-		diagnosticLog(`detail.${kind}.fetch.done`, {
-			key: resourceKey,
-			ms: Math.round(performance.now() - started),
-			result: diagnosticResultSummary(result),
-		});
-		return result;
-	}
-
-	$effect(() => {
-		const currentDetailsCancelScope = detailsCancelScope;
-		const currentDetailsQueryKey = detailsQueryKey;
-		const currentEventsCancelScope = eventsCancelScope;
-		const currentEventsQueryKey = scopedEventsQueryKey;
-		finiteReadCleanup.cancelPending(currentDetailsCancelScope);
-		finiteReadCleanup.cancelPending(currentEventsCancelScope);
-		return () => {
-			for (const [cancelScope, queryKey, event] of [
-				[currentDetailsCancelScope, currentDetailsQueryKey, "detail.details.cancel"],
-				[currentEventsCancelScope, currentEventsQueryKey, "detail.events.cancel"],
-			] as const) {
-				finiteReadCleanup.schedule(cancelScope, queryKey, {
-					onCancelled: (result) => {
-						if (result.cancelled > 0) diagnosticLog(event, { cancelled: result.cancelled });
-					},
-					onError: (error) => {
-						diagnosticLog(`${event}.error`, {
-							error: error instanceof Error ? error.message : String(error),
-						});
-					},
-				});
-			}
-		};
-	});
-
-	const detailsQuery = createQuery<ResourceDetailsFull>(() => ({
-		queryKey: detailsQueryKey,
-		queryFn: async () => {
-			try {
-				return await runDetailFetch("details", "resource-details", () =>
-					readResourceDetails(client, resource, {
-						kubeconfigSourceKey,
-						yamlViewMode,
-						yamlEncoding,
-						cancellable: createFiniteReadRequest(detailsCancelScope, "details"),
-					}),
-				);
-			} catch (error) {
-				if (isAppError(error) && error.kind === "cancelled") {
-					diagnosticLog("detail.details.cancel", { key: resourceKey });
-				}
-				throw error;
-			}
-		},
-		enabled: detailsEnabled,
-		retry: false,
-		staleTime: 30_000,
-	}));
+	const detailsQuery = createQuery<ResourceDetailsFull>(() =>
+		resourceDetailsQuery(client, readSpec, detailsEnabled),
+	);
 	const eventsUid = $derived.by(() => {
 		const uid = detailsQuery.data?.metadata?.uid;
 		return String(uid) === uid ? uid : undefined;
 	});
-	// Keyed by UID so results fetched without one (or for a replaced resource) are never reused.
-	const scopedEventsQueryKey = $derived(
-		queryKeys.resourceEvents(resource, kubeconfigSourceKey, eventsUid),
-	);
 	// Events are matched by UID, so wait for the details read that supplies it.
 	const eventsReady = $derived(
 		!detailsEnabled || detailsQuery.isSuccess || detailsQuery.isError,
 	);
-	const eventsQuery = createQuery<ResourceEventSummary[]>(() => ({
-		queryKey: scopedEventsQueryKey,
-		queryFn: async () => {
-			try {
-				return await runDetailFetch("events", "resource-events", () =>
-					listResourceEvents(
-						client,
-						resource.cluster,
-						resource.kind,
-						resource.name,
-						resource.namespace ?? undefined,
-						kubeconfigSourceKey,
-						createFiniteReadRequest(eventsCancelScope, "events"),
-						eventsUid,
-					),
-				);
-			} catch (error) {
-				if (isAppError(error) && error.kind === "cancelled") {
-					diagnosticLog("detail.events.cancel", { key: resourceKey });
-				}
-				throw error;
-			}
-		},
-		enabled: eventsEnabled && eventsReady,
-		retry: false,
-		staleTime: 30_000,
-	}));
+	const eventsQuery = createQuery<ResourceEventSummary[]>(() =>
+		resourceEventsQuery(client, readSpec, eventsUid, eventsEnabled && eventsReady),
+	);
 
 	const detailResource = $derived(detailsQuery.data?.summary ?? resource);
 	const conditionRows = $derived(getConditionRows(detailsQuery.data?.status));

@@ -4,7 +4,7 @@ import {
 	normalizeArgoConnectionPreference,
 	resolveArgoConnectionPolicy,
 } from "./argo-connection-policy";
-import { createCancelScope, createFiniteReadRequest } from "./finite-read-lifecycle";
+import { finiteRead } from "./finite-read-lifecycle";
 import type {
 	ArgoApplicationInspector,
 	ArgoApplicationRef,
@@ -83,7 +83,6 @@ export interface ArgoApplicationInspectionReadSpec {
 		redactSecrets: boolean;
 	};
 	queryKey: readonly unknown[];
-	cancelScope: string;
 	ready: boolean;
 	enabled: boolean;
 	redactSecrets: boolean;
@@ -152,7 +151,6 @@ export function buildArgoApplicationInspectionReadSpec({
 		policy,
 		request,
 		queryKey,
-		cancelScope: createCancelScope("argo-application-inspection", queryKey),
 		ready: connectionReady,
 		enabled: enabled && connectionReady,
 		redactSecrets,
@@ -164,13 +162,11 @@ export function argoApplicationInspectionQueryOptions(
 	spec: ArgoApplicationInspectionReadSpec,
 ) {
 	return {
-		queryKey: spec.queryKey,
-		queryFn: () =>
-			getArgoApplicationInspector(
-				client,
-				spec.request,
-				createFiniteReadRequest(spec.cancelScope, "argo-inspection"),
-			),
+		...finiteRead({
+			queryKey: spec.queryKey,
+			label: "argo.inspection",
+			read: (cancellable) => getArgoApplicationInspector(client, spec.request, cancellable),
+		}),
 		enabled: spec.enabled,
 		staleTime: 30_000,
 		refetchInterval: (_query: { state: { data?: ArgoApplicationInspector } }) => 15_000,
