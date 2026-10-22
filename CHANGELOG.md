@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.8 - 2026-10-22
+### Fixed
+
+- Restore real E2E log streams and full container build (#584).
+
 ## 0.12.7 - 2026-10-22
 
 Includes the changes from 0.12.6, which was tagged but not published.
