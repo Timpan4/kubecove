@@ -19,6 +19,12 @@ remain intact. Native wall-clock comparisons and verification limits are in
 not been run with the CodSpeed instrument; the instrumented counts below describe
 the earlier audit implementation.
 
+The 2026-10-22 shared summary projection routes R01, R08 and R21 fixtures through
+the per-kind `BuiltinSummary` projection that production list, details and
+topology paths use. The R08 harness no longer builds two summaries per typed
+workload object. No benchmark was added or renamed. Before and after timings are in
+[Built-in resource summary projection](resource-summary-projection.md).
+
 The implementation covers all 63 retained families and their 34 folded helpers. All 35 frontend families execute across 25 files, including reruns of corrected fixtures. All 100 registered Rust variants execute successfully in one instrumented CodSpeed run. Independent caller reviews and their fixture corrections are reconciled, including namespace-qualified joins, owner precedence, Secret redaction, cache isolation, and retained-state timing boundaries. Parallel implementation and review used GPT-6 Luna with xhigh reasoning.
 
 CI now enumerates frontend benchmark files into independent jobs. The exact-file selector rejects unknown files; the legacy topology/other selectors remain complete and disjoint. Shared fixtures of any extension select both language lanes. Change detection fetches missing comparison commits without cloning repository history. Rust keeps one benchmark target and caches workspace crates as well as dependencies.
