@@ -51,7 +51,7 @@ macro_rules! cases {
 fn cases() -> Vec<Case> {
     cases! {
         "running ready Pod": pod("Running", Some("True"), 2) => Some("Running"), Some("True"), Some(2), Healthy, Ownership;
-        "succeeded Pod with false readiness": pod("Succeeded", Some("False"), 0) => Some("Succeeded"), Some("False"), None, Healthy, Ownership;
+        "succeeded Pod with false readiness and restarts": pod("Succeeded", Some("False"), 2) => Some("Succeeded"), Some("False"), Some(2), Healthy, Ownership;
         "running Pod with false readiness": pod("Running", Some("False"), 0) => Some("Running"), Some("False"), None, Degraded, Ownership;
         "pending Pod": pod("Pending", Some("False"), 0) => Some("Pending"), Some("False"), None, NeedsAttention, Ownership;
         "Pod in unknown phase": pod("Unknown", None, 0) => Some("Unknown"), None, None, Unknown, Ownership;
