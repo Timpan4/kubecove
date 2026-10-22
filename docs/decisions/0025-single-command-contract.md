@@ -25,14 +25,14 @@ The six commands above, their TypeScript wrappers, dev mocks, request models and
 
 ### One declaration per command
 
-`command_contract!` in `kubecove-models` declares every command once. An entry states:
+`command_contract!` in `kubecove-models` declares every command once. Each entry carries its transport class and states:
 
 - whether the command runs synchronously or asynchronously, which preserves Tauri's main-thread handling for synchronous commands;
 - the command name, which is also the Rust command function in the shared `commands` API;
 - its wire arguments in call order, each as the exact camelCase key the frontend sends and its Rust type;
 - host-supplied parameters after the wire arguments: managed `State<T>`, the stream `Channel` read from the `channel` key, or the desktop `App` handle.
 
-Entries are grouped by transport class:
+The transport classes are:
 
 - `both`: served by Tauri IPC and server HTTP;
 - `remote_intercepted`: served by both, and handled on the laptop by the desktop remote client instead of being forwarded to the server;
@@ -56,17 +56,17 @@ Malformed IPC arguments now produce the validation `AppError` that the server al
 
 ### ADR 0020 explicit table and test
 
-ADR 0020 requires the server to dispatch through an explicit command table and a test that classifies every desktop command. The declaration is now that explicit table, and its transport groups are the classification. Neither transport can serve a command that is not declared. Tests check the declaration and both adapters:
+ADR 0020 requires the server to dispatch through an explicit command table and a test that classifies every desktop command. The declaration is now that explicit table, and each entry's transport class is the classification. Neither transport can serve a command that is not declared. Both adapters expand the same entries and decode with the same `CommandArgs` calls on the same key tokens, so a key mismatch between them cannot compile into existence. Tests then check what construction does not:
 
-- every declared key uses the lowerCamel form the frontend sends, and command names are unique;
-- every declared command is run through the HTTP adapter's argument decoding and the IPC adapter's argument decoding, which reject a non-object payload with a validation error;
-- desktop-only commands and unknown names are rejected over HTTP before any argument is read.
+- every declared key uses the lowerCamel form the frontend sends, and command names and keys are unique;
+- every declared command is run through the HTTP adapter: a non-object payload fails validation, a payload with an invalid value for every declared key fails on the first declared key, and desktop-only commands are rejected before any argument is read;
+- unknown command names are rejected over HTTP.
 
-These replace the test that parsed `lib.rs` as text and the single-command camelCase test.
+These replace the test that parsed `lib.rs` as text and the single-command camelCase test. A runtime test of the IPC adapter would need Tauri's `test` feature as a dev-dependency, which the GUI-free CI job cannot build without WebKit; the IPC side therefore relies on the shared expansion and decoding above.
 
 ### Scope classification
 
-This decision does not classify commands by the operator, user or client-session scope proposed in [ADR 0023](0023-multi-user-sessions-and-persistence.md), which is still Proposed. Each entry already names its host-supplied state, and an entry can gain a scope field later without another list.
+This decision does not classify commands by the operator, user or client-session scope proposed in [ADR 0023](0023-multi-user-sessions-and-persistence.md), which is still Proposed. Each entry already names its host-supplied state, and `kubecove-models` exposes the entries as the `DECLARED_COMMANDS` inventory. An entry can gain a scope field later without another list.
 
 ## Consequences
 
