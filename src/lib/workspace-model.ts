@@ -1,3 +1,4 @@
+import { kindKey, kindLabel } from "./kind-identity";
 import { classifyResourceHealth } from "./resource-health";
 import {
 	CLUSTER_SCOPED_KINDS,
@@ -245,17 +246,6 @@ export function reconcileSavedPortForwardsForScope(
 	);
 }
 
-export function resourceKindKey(kind: ResourceKindSelection): string {
-	if (kind instanceof Object) {
-		return `dynamic:${kind.group}:${kind.version}:${kind.plural}:${kind.kind}`;
-	}
-	return `builtin:${kind}`;
-}
-
-export function resourceKindLabel(kind: ResourceKindSelection): string {
-	return kind instanceof Object ? kind.kind : kind;
-}
-
 export function workspaceClusterGroupLabel(scope: WorkspaceScope): string {
 	const contexts = workspaceScopeContexts(scope);
 	if (contexts.length <= 1) return scope.clusterContext;
@@ -272,13 +262,13 @@ export function summarizeWorkspaceScope(scope: WorkspaceScope): string {
 				: `${scope.namespaces.slice(0, 2).join(", ")}${
 						scope.namespaces.length > 2 ? ` +${scope.namespaces.length - 2}` : ""
 					}`;
-	const kindLabel =
+	const kindsLabel =
 		scope.kinds.length <= 2
-			? scope.kinds.map(resourceKindLabel).join(", ")
-			: `${scope.kinds.slice(0, 2).map(resourceKindLabel).join(", ")} +${
+			? scope.kinds.map(kindLabel).join(", ")
+			: `${scope.kinds.slice(0, 2).map(kindLabel).join(", ")} +${
 					scope.kinds.length - 2
 				}`;
-	return `${contextLabel} / ${namespaceLabel} / ${kindLabel}`;
+	return `${contextLabel} / ${namespaceLabel} / ${kindsLabel}`;
 }
 
 export function buildWorkspaceCompareEntries(
@@ -441,11 +431,7 @@ export function updateWorkspaceRecord(
 }
 
 function knownKindKeys(discoveredKinds: DiscoveredResourceKind[]): Set<string> {
-	return new Set([
-		...SUPPORTED_KINDS.map((kind) => `builtin:${kind}`),
-		...CLUSTER_SCOPED_KINDS.map((kind) => `builtin:${kind}`),
-		...discoveredKinds.map(resourceKindKey),
-	]);
+	return new Set([...SUPPORTED_KINDS, ...CLUSTER_SCOPED_KINDS, ...discoveredKinds].map(kindKey));
 }
 
 export function computeRestoreStatus(
@@ -468,8 +454,8 @@ export function computeRestoreStatus(
 			(namespace) => !namespaceSet.has(namespace),
 		),
 		missingKinds: workspace.scope.kinds
-			.filter((kind) => !kindSet.has(resourceKindKey(kind)))
-			.map(resourceKindLabel),
+			.filter((kind) => !kindSet.has(kindKey(kind)))
+			.map(kindLabel),
 	};
 }
 

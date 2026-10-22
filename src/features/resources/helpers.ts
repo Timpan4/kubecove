@@ -4,22 +4,15 @@ import {
 	gitOpsOwnershipFilterValue,
 	gitOpsOwnershipGroupLabel,
 } from "@/lib/gitops-ownership-evidence";
+import { kindLabel } from "@/lib/kind-identity";
 import { classifyResourceHealth } from "@/lib/resource-health";
 import type {
 	ArgoApplicationSummary,
-	ClusterScopedKind,
-	DiscoveredResourceKind,
 	ResourceKindSelection,
 	ResourceSummary,
 	WatchResourceKey,
 } from "@/lib/types";
-import { CLUSTER_SCOPED_KINDS } from "@/lib/types";
 import type { ResourceSortingState } from "./table-state";
-
-export interface FetchKey {
-	kind: ResourceKindSelection;
-	namespace: string | undefined;
-}
 
 export interface HealthSummary {
 	total: number;
@@ -126,107 +119,6 @@ const TOPOLOGY_WATCH_KINDS = [
 	"ConfigMap",
 	"Secret",
 ] as const;
-
-export function isClusterScopedKind(kind: string): kind is ClusterScopedKind {
-	return CLUSTER_SCOPED_KINDS.some((clusterScopedKind) => clusterScopedKind === kind);
-}
-
-export function isDiscoveredResourceKind(
-	kind: ResourceKindSelection,
-): kind is DiscoveredResourceKind {
-	return Object(kind) === kind;
-}
-
-export function resourceKindLabel(kind: ResourceKindSelection): string {
-	return isDiscoveredResourceKind(kind) ? kind.kind : kind;
-}
-
-export function resourceKindFetchKey(kind: ResourceKindSelection): string {
-	return isDiscoveredResourceKind(kind)
-		? `dynamic:${kind.apiVersion}:${kind.plural}:${kind.kind}`
-		: `typed:${kind}`;
-}
-
-function isClusterScopedSelection(kind: ResourceKindSelection): boolean {
-	return isDiscoveredResourceKind(kind)
-		? !kind.namespaced
-		: isClusterScopedKind(kind);
-}
-
-export function buildFetchKeys(
-	namespaces: string[],
-	kinds: ResourceKindSelection[],
-): FetchKey[] {
-	const keys: FetchKey[] = [];
-	for (const kind of kinds) {
-		if (isClusterScopedSelection(kind)) {
-			keys.push({ kind, namespace: undefined });
-			continue;
-		}
-		if (isDiscoveredResourceKind(kind) && namespaces.length === 0) {
-			keys.push({ kind, namespace: undefined });
-			continue;
-		}
-		if (namespaces.length === 0) {
-			keys.push({ kind, namespace: undefined });
-			continue;
-		}
-		for (const namespace of namespaces) {
-			keys.push({ kind, namespace });
-		}
-	}
-	return keys;
-}
-
-export function watchKeysFromFetchKeys(keys: FetchKey[]): WatchResourceKey[] {
-	const coalesced = new Map<string, WatchResourceKey>();
-	for (const key of keys) {
-		if (isDiscoveredResourceKind(key.kind)) {
-			const watchKey = {
-				resourceKind: {
-					kind: key.kind.kind,
-					group: key.kind.group,
-					version: key.kind.version,
-					apiVersion: key.kind.apiVersion,
-					plural: key.kind.plural,
-					namespaced: key.kind.namespaced,
-				},
-				namespace: key.namespace,
-			};
-			coalesced.set(watchKeySignature(watchKey), watchKey);
-			continue;
-		}
-
-		const watchKey = {
-			resourceKind: { kind: key.kind },
-			namespace: key.namespace,
-		};
-		coalesced.set(watchKeySignature(watchKey), watchKey);
-	}
-	return Array.from(coalesced.values());
-}
-
-function watchKeySignature(key: WatchResourceKey): string {
-	const kind = key.resourceKind;
-	return [
-		kind.kind,
-		kind.apiVersion ?? "",
-		kind.plural ?? "",
-		key.namespace ?? "",
-	].join(":");
-}
-
-export function mergeWatchKeys(
-	...groups: WatchResourceKey[][]
-): WatchResourceKey[] {
-	const merged = new Map<string, WatchResourceKey>();
-	for (const group of groups) {
-		for (const key of group) {
-			merged.set(watchKeySignature(key), key);
-		}
-	}
-	return Array.from(merged.values());
-}
 
 export function topologyWatchKeys(namespaces: string[]): WatchResourceKey[] {
 	const namespaceScopes: Array<string | undefined> =
@@ -391,8 +283,8 @@ export function describeResourceScope(
 			label: kinds.length === 1 ? "Kind" : "Kinds",
 			value:
 				kinds.length <= 3
-					? kinds.map(resourceKindLabel).join(", ")
-					: `${kinds.slice(0, 3).map(resourceKindLabel).join(", ")} +${
+					? kinds.map(kindLabel).join(", ")
+					: `${kinds.slice(0, 3).map(kindLabel).join(", ")} +${
 							kinds.length - 3
 						}`,
 		});

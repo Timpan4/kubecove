@@ -1,5 +1,5 @@
+import { kindKey } from "@/lib/kind-identity";
 import {
-	discoveredResourceKindKey,
 	KIND_GROUPS,
 	type KindGroupName,
 	type TreeNode,
@@ -74,7 +74,7 @@ export function buildCustomResourceGroupNodes({
 							section,
 							namespace,
 							group,
-							kind: discoveredResourceKindKey(resourceKind),
+							kind: kindKey(resourceKind),
 							resourceKind,
 						},
 						label: resourceKind.kind,

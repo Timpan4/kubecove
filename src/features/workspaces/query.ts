@@ -4,24 +4,22 @@ import {
 	messageFromFriendlyError,
 } from "@/lib/friendly-errors";
 import {
+	isClusterScopedKind,
+	type KindFetchKey,
+	kindFetchKeys,
+	kindListRequest,
+} from "@/lib/kind-identity";
+import {
 	createTauriClient,
 	listResourceScope,
 } from "@/lib/tauri";
-import {
-	CLUSTER_SCOPED_KINDS,
-	type DiscoveredResourceKind,
-	type ResourceKindSelection,
-	type ResourceListRequest,
-	type ResourceSummary,
-	type ResourceScopeFailure,
+import type {
+	ResourceListRequest,
+	ResourceSummary,
+	ResourceScopeFailure,
 } from "@/lib/types";
 import type { WorkspaceScope } from "@/lib/workspaces";
 import { workspaceScopeContexts } from "@/lib/workspaces";
-
-export interface WorkspaceFetchKey {
-	kind: ResourceKindSelection;
-	namespace?: string;
-}
 
 export interface WorkspaceFetchPlan {
 	clusterContext: string;
@@ -67,42 +65,19 @@ export class WorkspaceResourceLoadError extends Error {
 	}
 }
 
-function isClusterScopedKind(kind: ResourceKindSelection): boolean {
-	if (isDiscoveredResourceKind(kind)) return !kind.namespaced;
-	// SAFETY: CLUSTER_SCOPED_KINDS contains only resource-kind strings.
-	return (CLUSTER_SCOPED_KINDS as readonly string[]).includes(kind);
-}
-
 export function buildWorkspaceFetchKeys(
 	scope: WorkspaceScope,
 	availableNamespaces?: string[],
-): WorkspaceFetchKey[] {
+): KindFetchKey[] {
 	const namespaceSet = availableNamespaces ? new Set(availableNamespaces) : null;
 	const namespaces = namespaceSet
 		? scope.namespaces.filter((namespace) => namespaceSet.has(namespace))
 		: scope.namespaces;
-
-	return scope.kinds.flatMap((kind) => {
-		if (isClusterScopedKind(kind)) return [{ kind }];
-		if (scope.namespaces.length === 0) return [{ kind }];
-		if (namespaces.length === 0) return [];
-		return namespaces.map((namespace) => ({ kind, namespace }));
-	});
-}
-
-export function workspaceFetchKeyRequest({
-	kind,
-	namespace,
-}: WorkspaceFetchKey): ResourceListRequest {
-	return isDiscoveredResourceKind(kind)
-		? { resourceKind: kind, namespace }
-		: { kind, namespace };
-}
-
-function isDiscoveredResourceKind(
-	kind: ResourceKindSelection,
-): kind is DiscoveredResourceKind {
-	return Object(kind) === kind;
+	// Saved namespaces that no longer exist read nothing rather than every namespace.
+	const kinds = scope.namespaces.length > 0 && namespaces.length === 0
+		? scope.kinds.filter(isClusterScopedKind)
+		: scope.kinds;
+	return kindFetchKeys(namespaces, kinds);
 }
 
 export function buildWorkspaceFetchPlans(
@@ -115,9 +90,7 @@ export function buildWorkspaceFetchPlans(
 			contexts.length === 1 ? availableNamespaces : undefined;
 		return {
 			clusterContext,
-			requests: buildWorkspaceFetchKeys(scope, namespaceScope).map(
-				workspaceFetchKeyRequest,
-			),
+			requests: buildWorkspaceFetchKeys(scope, namespaceScope).map(kindListRequest),
 		};
 	});
 }

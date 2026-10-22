@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { groupHelmReleasesByNamespace } from "../src/features/helm/helpers";
 import {
-	buildFetchKeys,
 	buildResourceHealthSummary,
 	buildResourceSearchIndex,
 	describeResourceScope,
@@ -13,8 +12,8 @@ import {
 	resourceTypeGroupCollapseKey,
 	sortedRows,
 	topologyWatchKeys,
-	watchKeysFromFetchKeys,
 } from "../src/features/resources/helpers";
+import { kindFetchKeys, kindWatchKeys } from "../src/lib/kind-identity";
 import {
 	gitOpsOwnershipFilters,
 	gitOpsOwnershipGroupLabel,
@@ -87,7 +86,7 @@ describe("resource browser presentation helpers", () => {
   });
 
   test("builds fetch keys for namespaced and cluster-scoped kinds", () => {
-    expect(buildFetchKeys(["default", "payments"], ["Pod", "Node"])).toEqual([
+    expect(kindFetchKeys(["default", "payments"], ["Pod", "Node"])).toEqual([
       { kind: "Pod", namespace: "default" },
       { kind: "Pod", namespace: "payments" },
       { kind: "Node", namespace: undefined },
@@ -95,17 +94,17 @@ describe("resource browser presentation helpers", () => {
   });
 
   test("builds fetch keys for discovered resource kinds", () => {
-    expect(buildFetchKeys([], [widgetKind])).toEqual([
+    expect(kindFetchKeys([], [widgetKind])).toEqual([
       { kind: widgetKind, namespace: undefined },
     ]);
-    expect(buildFetchKeys(["default"], [widgetKind, clusterWidgetKind])).toEqual([
+    expect(kindFetchKeys(["default"], [widgetKind, clusterWidgetKind])).toEqual([
       { kind: widgetKind, namespace: "default" },
       { kind: clusterWidgetKind, namespace: undefined },
     ]);
   });
 
   test("builds realtime watch keys for typed and discovered resources", () => {
-    expect(watchKeysFromFetchKeys([
+    expect(kindWatchKeys([
       { kind: "Pod", namespace: "default" },
       { kind: widgetKind, namespace: "apps" },
     ])).toEqual([
@@ -136,7 +135,7 @@ describe("resource browser presentation helpers", () => {
       "prod",
     ];
 
-    expect(watchKeysFromFetchKeys([
+    expect(kindWatchKeys([
       ...namespaces.map((namespace) => ({ kind: "Pod" as const, namespace })),
       { kind: "Service", namespace: "default" },
     ])).toEqual([
