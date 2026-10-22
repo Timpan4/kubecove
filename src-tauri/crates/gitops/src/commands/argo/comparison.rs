@@ -8,7 +8,7 @@ use super::{
 };
 use crate::models::AppErrorKind;
 use crate::{
-    commands::BackendCancellationRegistry,
+    commands::{diagnostic_field, BackendCancellationRegistry, FiniteRead},
     models::{AppError, ArgoApplicationRef, ArgoManagedResource, ArgoResourceComparison},
 };
 use serde_json::Value;
@@ -158,10 +158,12 @@ pub async fn get_argo_resource_comparison(
     store: crate::runtime::State<'_, ArgoConnectionStore>,
     cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
 ) -> Result<ArgoResourceComparison, AppError> {
-    cancellations
-        .execute(
-            cancel_scope,
-            request_id,
+    FiniteRead::new("get_argo_resource_comparison")
+        .label("context", &cluster_context)
+        .label("transport", &transport)
+        .label("application", &application.name)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
             argo_resource_comparison(
                 &store,
                 cluster_context,
@@ -171,6 +173,14 @@ pub async fn get_argo_resource_comparison(
                 application,
                 resource,
             ),
+            |comparison| {
+                vec![diagnostic_field(
+                    "modified",
+                    comparison
+                        .modified
+                        .map_or_else(|| "unknown".to_string(), |modified| modified.to_string()),
+                )]
+            },
         )
         .await
 }

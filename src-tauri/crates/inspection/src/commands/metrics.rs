@@ -1,7 +1,6 @@
-use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
     diagnostic_field, helpers::list_params, kubeconfig::KubeconfigSource,
-    BackendCancellationRegistry,
+    BackendCancellationRegistry, FiniteRead,
 };
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -19,7 +18,6 @@ use kube::{
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
-use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MetricsListStatus {
@@ -562,57 +560,24 @@ pub async fn list_resource_metrics(
     cancel_scope: Option<String>,
     cancellations: State<'_, BackendCancellationRegistry>,
 ) -> Result<ResourceMetricsSummary, AppError> {
-    let started = Instant::now();
     let namespace_count = namespaces.len();
-    eprintln!(
-        "[kubecove:backend] list_resource_metrics start context={cluster_context} namespaces={namespace_count}",
-    );
-    let result = cancellations
-        .execute(
-            cancel_scope,
-            request_id,
-            resource_metrics_from(cluster_context.clone(), namespaces, kubeconfig_env_var),
+    FiniteRead::new("list_resource_metrics")
+        .label("context", &cluster_context)
+        .label("namespaces", namespace_count)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
+            resource_metrics_from(cluster_context, namespaces, kubeconfig_env_var),
+            |summary| {
+                vec![
+                    diagnostic_field("status", format!("{:?}", summary.availability.status)),
+                    diagnostic_field("namespaces", namespace_count),
+                    diagnostic_field("pods", summary.pods.len()),
+                    diagnostic_field("nodes", summary.nodes.len()),
+                    diagnostic_field("workloads", summary.workloads.len()),
+                ]
+            },
         )
-        .await;
-    match &result {
-        Ok(summary) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_metrics done context={} status={:?} pods={} nodes={} workloads={} ms={}",
-                cluster_context,
-                summary.availability.status,
-                summary.pods.len(),
-                summary.nodes.len(),
-                summary.workloads.len(),
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) if err.kind == AppErrorKind::Cancelled => {
-            eprintln!(
-                "[kubecove:backend] list_resource_metrics cancelled context={} ms={}",
-                cluster_context,
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_metrics error context={} kind={} message={} ms={}",
-                cluster_context,
-                err.kind,
-                err.message,
-                started.elapsed().as_millis()
-            );
-        }
-    }
-    record_backend_result("list_resource_metrics", started, &result, |summary| {
-        vec![
-            diagnostic_field("status", format!("{:?}", summary.availability.status)),
-            diagnostic_field("namespaces", namespace_count),
-            diagnostic_field("pods", summary.pods.len()),
-            diagnostic_field("nodes", summary.nodes.len()),
-            diagnostic_field("workloads", summary.workloads.len()),
-        ]
-    });
-    result
+        .await
 }
 
 #[cfg(test)]

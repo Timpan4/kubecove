@@ -1,5 +1,4 @@
 use super::{dynamic_resources_summary_from, resources_summary_from};
-use crate::commands::diagnostics::record_backend_result;
 #[cfg(any(test, feature = "bench-support"))]
 use crate::commands::helpers::enrich_resource_summaries_with_flux_inventory;
 use crate::commands::helpers::{fetch_flux_ownership_index, filter_flux_ownership_index};
@@ -10,7 +9,7 @@ use crate::{
     commands::{
         diagnostic_field,
         kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-        BackendCancellationRegistry, ClusterLiveStore,
+        BackendCancellationRegistry, ClusterLiveStore, FiniteRead,
     },
     models::{
         AppError, DiscoveredResourceKind, ResourceListRequest, ResourceScopeFailure,
@@ -20,7 +19,6 @@ use crate::{
 use futures_util::future::join_all;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
-use std::time::Instant;
 use tokio::sync::Semaphore;
 
 #[path = "scope_rows.rs"]
@@ -360,7 +358,6 @@ pub async fn list_resource_scope(
     live_store: State<'_, ClusterLiveStore>,
     cancellations: State<'_, BackendCancellationRegistry>,
 ) -> Result<ResourceScopeResponse, AppError> {
-    let started = Instant::now();
     let request_count = requests.len();
     let namespace_count = requests
         .iter()
@@ -368,56 +365,27 @@ pub async fn list_resource_scope(
         .filter(|namespace| !namespace.trim().is_empty())
         .collect::<BTreeSet<_>>()
         .len();
-    eprintln!(
-        "[kubecove:backend] list_resource_scope start context={cluster_context} requests={request_count}",
-    );
-    let result = cancellations
-        .execute(
-            cancel_scope,
-            request_id,
+    FiniteRead::new("list_resource_scope")
+        .label("context", &cluster_context)
+        .label("requests", request_count)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
             resource_scope_result_from(
-                cluster_context.clone(),
+                cluster_context,
                 requests,
                 live_store.inner().clone(),
                 kubeconfig_env_var,
             ),
+            |rows| {
+                vec![
+                    diagnostic_field("requests", request_count),
+                    diagnostic_field("namespaces", namespace_count),
+                    diagnostic_field("rows", rows.resources.len()),
+                    diagnostic_field("deniedRequests", rows.failures.len()),
+                ]
+            },
         )
-        .await;
-    match &result {
-        Ok(rows) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_scope done context={} rows={} ms={}",
-                cluster_context,
-                rows.resources.len(),
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) if err.kind == AppErrorKind::Cancelled => {
-            eprintln!(
-                "[kubecove:backend] list_resource_scope cancelled context={} ms={}",
-                cluster_context,
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_scope error context={} error_kind={} message={} ms={}",
-                cluster_context,
-                err.kind,
-                err.message,
-                started.elapsed().as_millis()
-            );
-        }
-    }
-    record_backend_result("list_resource_scope", started, &result, |rows| {
-        vec![
-            diagnostic_field("requests", request_count),
-            diagnostic_field("namespaces", namespace_count),
-            diagnostic_field("rows", rows.resources.len()),
-            diagnostic_field("deniedRequests", rows.failures.len()),
-        ]
-    });
-    result
+        .await
 }
 
 #[cfg(test)]

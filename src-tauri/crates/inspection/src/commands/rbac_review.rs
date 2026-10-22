@@ -1,9 +1,7 @@
 use crate::models::AppErrorKind;
 use crate::runtime::State;
 use crate::{
-    commands::{
-        diagnostic_field, diagnostics::record_backend_result, kubeconfig::KubeconfigSource,
-    },
+    commands::{diagnostic_field, kubeconfig::KubeconfigSource, FiniteRead},
     models::{
         AppError, RbacAccessReviewIdentity, RbacAccessReviewOutcome, RbacAccessReviewRequest,
         RbacAccessReviewResult, RbacAccessReviewTarget,
@@ -14,7 +12,6 @@ use k8s_openapi::api::authorization::v1::{
     SubjectAccessReviewStatus,
 };
 use kube::api::{Api, PostParams};
-use std::time::Instant;
 
 pub async fn review_rbac_access(
     request: RbacAccessReviewRequest,
@@ -22,14 +19,13 @@ pub async fn review_rbac_access(
     cancel_scope: Option<String>,
     cancellations: State<'_, crate::commands::BackendCancellationRegistry>,
 ) -> Result<RbacAccessReviewResult, AppError> {
-    let started = Instant::now();
-    let result = cancellations
-        .execute(cancel_scope, request_id, review_rbac_access_from(request))
-        .await;
-    record_backend_result("review_rbac_access", started, &result, |result| {
-        vec![diagnostic_field("outcome", format!("{:?}", result.outcome))]
-    });
-    result
+    FiniteRead::new("review_rbac_access")
+        .label("context", &request.cluster_context)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(review_rbac_access_from(request), |result| {
+            vec![diagnostic_field("outcome", format!("{:?}", result.outcome))]
+        })
+        .await
 }
 
 async fn review_rbac_access_from(

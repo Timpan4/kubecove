@@ -14,8 +14,8 @@ pub mod resources;
 pub(crate) const MAX_LIST_CONCURRENCY: usize = 16;
 
 pub(crate) use kubecove_kube::commands::{
-    builtin_kinds, diagnostic_field, diagnostics, helpers, kubeconfig, record_backend_error,
-    record_backend_success, BackendCancellationRegistry, ClusterLiveStore,
+    builtin_kinds, diagnostic_field, helpers, kubeconfig, BackendCancellationRegistry,
+    ClusterLiveStore, FiniteRead,
 };
 
 pub use discovery::{

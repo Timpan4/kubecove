@@ -1,5 +1,4 @@
 use super::{live_store::ClusterLiveStore, SessionScope};
-use crate::models::AppErrorKind;
 use crate::models::{
     AppError, BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent, BackendDiagnosticField,
     BackendDiagnosticStatus,
@@ -93,21 +92,6 @@ pub fn record_backend_cancelled(command: &str, started: Instant) {
     );
 }
 
-pub fn record_backend_result<T>(
-    command: &str,
-    started: Instant,
-    result: &Result<T, AppError>,
-    success_summary: impl FnOnce(&T) -> Vec<BackendDiagnosticField>,
-) {
-    match result {
-        Ok(value) => record_backend_success(command, started, success_summary(value)),
-        Err(error) if error.kind == AppErrorKind::Cancelled => {
-            record_backend_cancelled(command, started);
-        }
-        Err(error) => record_backend_error(command, started, error.kind.as_str()),
-    }
-}
-
 pub fn set_backend_diagnostics_enabled(enabled: bool) -> Result<bool, AppError> {
     with_state(|state| {
         state.enabled = enabled;
@@ -188,36 +172,6 @@ mod tests {
 
         clear_stored_diagnostics();
         assert_eq!(stored_backend_diagnostics().len(), 0);
-
-        record_backend_result(
-            "tracked_success",
-            Instant::now(),
-            &Ok::<_, AppError>(5),
-            |rows| vec![diagnostic_field("rows", rows)],
-        );
-        record_backend_result::<()>(
-            "tracked_cancelled",
-            Instant::now(),
-            &Err(AppError::cancelled()),
-            |()| Vec::new(),
-        );
-        record_backend_result::<()>(
-            "tracked_error",
-            Instant::now(),
-            &Err(AppError::new("boom", AppErrorKind::Transport)),
-            |()| Vec::new(),
-        );
-        let events = stored_backend_diagnostics();
-        assert_eq!(events.len(), 3);
-        assert_eq!(events[0].status, BackendDiagnosticStatus::Ok);
-        assert_eq!(events[1].status, BackendDiagnosticStatus::Cancelled);
-        assert_eq!(events[2].status, BackendDiagnosticStatus::Error);
-        assert_eq!(
-            events[2].summary,
-            vec![diagnostic_field("errorKind", "transport")]
-        );
-
-        clear_stored_diagnostics();
         set_backend_diagnostics_enabled(false).unwrap();
     }
 }

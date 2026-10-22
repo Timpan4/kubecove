@@ -1,16 +1,13 @@
-use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
     diagnostic_field,
     helpers::{k8s_timestamp_to_datetime, list_params, resource_age},
     kubeconfig::KubeconfigSource,
-    BackendCancellationRegistry,
+    BackendCancellationRegistry, FiniteRead,
 };
-use crate::models::AppErrorKind;
 use crate::models::{AppError, ResourceEventSummary};
 use crate::runtime::State;
 use chrono::{DateTime, Utc};
 use kube::api::Api;
-use std::time::Instant;
 
 fn event_timestamp(event: &k8s_openapi::api::core::v1::Event) -> Option<DateTime<Utc>> {
     event
@@ -170,67 +167,29 @@ pub async fn list_resource_events(
     cancel_scope: Option<String>,
     cancellations: State<'_, BackendCancellationRegistry>,
 ) -> Result<Vec<ResourceEventSummary>, AppError> {
-    let started = Instant::now();
-    let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
-    eprintln!(
-        "[kubecove:backend] list_resource_events start context={cluster_context} kind={kind} namespace={namespace_label} name={name}"
-    );
-    let result = cancellations
-        .execute(
-            cancel_scope,
-            request_id,
+    FiniteRead::new("list_resource_events")
+        .label("context", &cluster_context)
+        .label("kind", &kind)
+        .label("namespace", namespace.as_deref().unwrap_or("<cluster>"))
+        .label("name", &name)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
             resource_events_from(
-                cluster_context.clone(),
+                cluster_context,
                 kind.clone(),
-                name.clone(),
-                namespace.clone(),
+                name,
+                namespace,
                 uid,
                 kubeconfig_env_var,
             ),
+            |events| {
+                vec![
+                    diagnostic_field("kind", &kind),
+                    diagnostic_field("rows", events.len()),
+                ]
+            },
         )
-        .await;
-    match &result {
-        Ok(events) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_events done context={} kind={} namespace={} name={} rows={} ms={}",
-                cluster_context,
-                kind,
-                namespace_label,
-                name,
-                events.len(),
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) if err.kind == AppErrorKind::Cancelled => {
-            eprintln!(
-                "[kubecove:backend] list_resource_events cancelled context={} kind={} namespace={} name={} ms={}",
-                cluster_context,
-                kind,
-                namespace_label,
-                name,
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_events error context={} kind={} namespace={} name={} error_kind={} message={} ms={}",
-                cluster_context,
-                kind,
-                namespace_label,
-                name,
-                err.kind,
-                err.message,
-                started.elapsed().as_millis()
-            );
-        }
-    }
-    record_backend_result("list_resource_events", started, &result, |events| {
-        vec![
-            diagnostic_field("kind", &kind),
-            diagnostic_field("rows", events.len()),
-        ]
-    });
-    result
+        .await
 }
 
 #[cfg(test)]

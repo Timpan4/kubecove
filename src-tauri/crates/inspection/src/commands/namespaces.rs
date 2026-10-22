@@ -2,14 +2,13 @@ use crate::commands::{
     diagnostic_field,
     helpers::{k8s_creation_timestamp_to_rfc3339, list_params},
     kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-    record_backend_error, record_backend_success, ClusterLiveStore,
+    ClusterLiveStore, FiniteRead,
 };
 use crate::models::{AppError, NamespaceSummary};
 use crate::runtime::State;
 use chrono::{DateTime, Utc};
 use kube::api::Api;
 use std::sync::Arc;
-use std::time::Instant;
 
 fn namespace_age_at(creation_timestamp: Option<DateTime<Utc>>, now: DateTime<Utc>) -> String {
     match creation_timestamp {
@@ -74,40 +73,18 @@ pub async fn list_namespaces(
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Arc<Vec<NamespaceSummary>>, AppError> {
-    let started = Instant::now();
-    eprintln!("[kubecove:backend] list_namespaces start context={cluster_context}");
-    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
-    let result = live_store
-        .namespaces(source_key, cluster_context.clone(), {
-            let cluster_context = cluster_context.clone();
-            let kubeconfig_env_var = kubeconfig_env_var.clone();
-            move || namespaces_summary_from(cluster_context, kubeconfig_env_var)
-        })
-        .await;
-    match &result {
-        Ok(rows) => {
-            eprintln!(
-                "[kubecove:backend] list_namespaces done context={} rows={} ms={}",
-                cluster_context,
-                rows.len(),
-                started.elapsed().as_millis()
-            );
-            record_backend_success(
-                "list_namespaces",
-                started,
-                vec![diagnostic_field("rows", rows.len())],
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "[kubecove:backend] list_namespaces error context={} kind={} message={} ms={}",
-                cluster_context,
-                err.kind,
-                err.message,
-                started.elapsed().as_millis()
-            );
-            record_backend_error("list_namespaces", started, err.kind.as_str());
-        }
-    }
-    result
+    FiniteRead::new("list_namespaces")
+        .label("context", &cluster_context)
+        .run(
+            async move {
+                let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+                live_store
+                    .namespaces(source_key, cluster_context.clone(), move || {
+                        namespaces_summary_from(cluster_context, kubeconfig_env_var)
+                    })
+                    .await
+            },
+            |rows| vec![diagnostic_field("rows", rows.len())],
+        )
+        .await
 }

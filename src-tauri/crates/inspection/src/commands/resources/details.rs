@@ -10,13 +10,11 @@ pub use core::{configmap_details_from_fetched, secret_details_from_fetched};
 #[cfg(feature = "bench-support")]
 pub use workloads::deployment_details_from_fetched;
 
-use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
-    diagnostic_field, kubeconfig::KubeconfigSource, BackendCancellationRegistry,
+    diagnostic_field, kubeconfig::KubeconfigSource, BackendCancellationRegistry, FiniteRead,
 };
 use crate::models::{AppError, ResourceDetailsFull};
 use crate::runtime::State;
-use std::time::Instant;
 
 pub async fn resource_details_from(
     cluster_context: String,
@@ -84,43 +82,29 @@ pub async fn get_resource_details(
     cancel_scope: Option<String>,
     cancellations: State<'_, BackendCancellationRegistry>,
 ) -> Result<ResourceDetailsFull, AppError> {
-    let started = Instant::now();
-    let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
-    eprintln!(
-        "[kubecove:backend] get_resource_details start context={cluster_context} kind={kind} namespace={namespace_label} name={name}"
-    );
-    let result = cancellations
-        .execute(
-            cancel_scope,
-            request_id,
+    FiniteRead::new("get_resource_details")
+        .label("context", &cluster_context)
+        .label("kind", &kind)
+        .label("namespace", namespace.as_deref().unwrap_or("<cluster>"))
+        .label("name", &name)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
             resource_details_from(
-                cluster_context.clone(),
+                cluster_context,
                 kind.clone(),
-                name.clone(),
-                namespace.clone(),
+                name,
+                namespace,
                 kubeconfig_env_var,
             ),
+            |details| {
+                vec![
+                    diagnostic_field("kind", &kind),
+                    diagnostic_field("yamlBytes", details.yaml.len()),
+                    diagnostic_field("hasStatus", details.status.is_some()),
+                ]
+            },
         )
-        .await;
-    match &result {
-        Ok(details) => {
-            eprintln!("[kubecove:backend] get_resource_details done context={} kind={} namespace={} name={} yaml_bytes={} status={} ms={}", cluster_context, kind, namespace_label, name, details.yaml.len(), details.status.is_some(), started.elapsed().as_millis());
-        }
-        Err(err) if err.kind == AppErrorKind::Cancelled => {
-            eprintln!("[kubecove:backend] get_resource_details cancelled context={} kind={} namespace={} name={} ms={}", cluster_context, kind, namespace_label, name, started.elapsed().as_millis());
-        }
-        Err(err) => {
-            eprintln!("[kubecove:backend] get_resource_details error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis());
-        }
-    }
-    record_backend_result("get_resource_details", started, &result, |details| {
-        vec![
-            diagnostic_field("kind", &kind),
-            diagnostic_field("yamlBytes", details.yaml.len()),
-            diagnostic_field("hasStatus", details.status.is_some()),
-        ]
-    });
-    result
+        .await
 }
 
 #[cfg(test)]
