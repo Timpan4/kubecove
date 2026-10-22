@@ -227,6 +227,17 @@ test("server packaging follows the relocated kubeconform source without changing
   assert.match(dockerIgnore, /^!src-tauri\/crates\/\*\*\r?$/m, "Docker must include crate sources and manifests");
   assert.match(dockerIgnore, /^\*\*\/target\r?$/m, "Rust build caches must stay out of the context");
 });
+// Failure mode: vite.config.ts imports a scripts/ module the container context excludes, so the
+// image's frontend build cannot load its config. PR CI skips the container build.
+test("container context includes every scripts module vite.config.ts imports", () => {
+  const viteConfig = readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
+  const dockerIgnore = readFileSync(new URL("../.dockerignore", import.meta.url), "utf8");
+  const imported = [...viteConfig.matchAll(/from "\.\/(scripts\/[^"]+)"/g)].map((match) => match[1]);
+  assert.ok(imported.length > 0, "vite.config.ts should import its build plugins from scripts/");
+  for (const path of imported) {
+    assert.match(dockerIgnore, new RegExp(`^!${path.replaceAll(".", "\\.")}\\r?$`, "m"), `.dockerignore must reopen ${path}`);
+  }
+});
 test("headless checks run without GUI packages and the gate requires their success", () => {
   assert.doesNotMatch(job("server"), /apt-get|cache-apt-pkgs|pkg-config|--all-features/);
   assert.match(job("server"), /cargo test --locked --workspace --no-default-features --manifest-path src-tauri\/Cargo.toml/);
