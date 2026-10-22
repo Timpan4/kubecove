@@ -5,6 +5,7 @@
 // roles in release builds; never text content or cluster data. Entries stay in
 // memory; the dev server additionally mirrors them to e2e/artifacts.
 import { getDiagnosticsSnapshot, isDiagnosticsEnabled, MAX_FRONTEND_EVENTS } from "./diagnostics";
+import { addFrame, emptyHistogram, type FrameHistogram, frameDeltas, percentileMs } from "./interaction-frames";
 import { describeTarget, resetSourceCache, sourceOf, subtreeSource } from "./interaction-sources";
 
 type InteractionKind = "click" | "drag" | "key" | "scroll";
@@ -34,7 +35,10 @@ interface Segment {
 	wallTime: string;
 	target: string;
 	inputToPaint: { type: string; ms: number }[];
-	frameDeltas: number[];
+	// Input-to-paint measurements still waiting for their frame; the dev sink post waits for them.
+	pendingPaints: number;
+	flushed: RecordedInteraction | null;
+	frames: FrameHistogram;
 	added: number;
 	removed: number;
 	attributes: number;
@@ -50,26 +54,15 @@ interface Session {
 
 const DEV_SINK = process.env.KUBECOVE_PUBLIC_DEV_INTERACTIONS ?? "";
 const recorded: RecordedInteraction[] = [];
-// Session histogram of rAF deltas (0.1 ms buckets); its median is the refresh interval.
-const frameHistogram = new Map<number, number>();
-let histogramTotal = 0;
+// The session histogram's median is the refresh interval.
+let sessionFrames = emptyHistogram();
 let session: Session | null = null;
 let current: Segment | null = null;
 let nextId = 1;
 let pointerDown = false;
 
 function refreshIntervalMs(): number {
-	let seen = 0;
-	for (const [bucket, count] of [...frameHistogram.entries()].sort((a, b) => a[0] - b[0])) {
-		seen += count;
-		if (seen * 2 >= histogramTotal) return bucket / 10;
-	}
-	return 0;
-}
-
-function percentile(sorted: number[], fraction: number): number {
-	if (sorted.length === 0) return 0;
-	return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
+	return percentileMs(sessionFrames, 0.5);
 }
 
 function round(value: number): number {
@@ -96,11 +89,11 @@ function commandsDuring(start: number, end: number): RecordedInteraction["comman
 
 function serialize(segment: Segment, endedAt: number): RecordedInteraction {
 	const refreshMs = refreshIntervalMs();
-	const sorted = [...segment.frameDeltas].sort((a, b) => a - b);
+	const deltas = frameDeltas(segment.frames);
 	let droppedFrames = 0;
 	if (refreshMs > 0) {
-		for (const delta of segment.frameDeltas) {
-			droppedFrames += Math.max(0, Math.round(delta / refreshMs) - 1);
+		for (const [deltaMs, count] of deltas) {
+			droppedFrames += count * Math.max(0, Math.round(deltaMs / refreshMs) - 1);
 		}
 	}
 	return {
@@ -111,11 +104,11 @@ function serialize(segment: Segment, endedAt: number): RecordedInteraction {
 		durationMs: Math.round(endedAt - segment.startedAt),
 		inputToPaint: segment.inputToPaint,
 		frames: {
-			count: segment.frameDeltas.length,
+			count: segment.frames.total,
 			refreshMs: round(refreshMs),
-			p50Ms: round(percentile(sorted, 0.5)),
-			p95Ms: round(percentile(sorted, 0.95)),
-			maxMs: round(sorted.at(-1) ?? 0),
+			p50Ms: round(percentileMs(segment.frames, 0.5)),
+			p95Ms: round(percentileMs(segment.frames, 0.95)),
+			maxMs: round(deltas.at(-1)?.[0] ?? 0),
 			droppedFrames,
 		},
 		dom: {
@@ -131,13 +124,7 @@ function serialize(segment: Segment, endedAt: number): RecordedInteraction {
 	};
 }
 
-function flush(): void {
-	if (!current) return;
-	const interaction = serialize(current, performance.now());
-	current = null;
-	recorded.push(interaction);
-	// Same retention as frontend diagnostic events.
-	if (recorded.length > MAX_FRONTEND_EVENTS) recorded.splice(0, recorded.length - MAX_FRONTEND_EVENTS);
+function postToDevSink(interaction: RecordedInteraction): void {
 	if (!DEV_SINK) return;
 	void fetch(DEV_SINK, {
 		method: "POST",
@@ -145,6 +132,18 @@ function flush(): void {
 		body: JSON.stringify(interaction),
 		keepalive: true,
 	}).catch((error) => console.warn("[kubecove:interactions] dev sink post failed", error));
+}
+
+function flush(): void {
+	if (!current) return;
+	const segment = current;
+	const interaction = serialize(segment, performance.now());
+	current = null;
+	segment.flushed = interaction;
+	recorded.push(interaction);
+	// Same retention as frontend diagnostic events.
+	if (recorded.length > MAX_FRONTEND_EVENTS) recorded.splice(0, recorded.length - MAX_FRONTEND_EVENTS);
+	if (segment.pendingPaints === 0) postToDevSink(interaction);
 }
 
 function begin(kind: InteractionKind, event: Event): void {
@@ -156,7 +155,9 @@ function begin(kind: InteractionKind, event: Event): void {
 		wallTime: new Date().toISOString(),
 		target: describeTarget(event.target),
 		inputToPaint: [],
-		frameDeltas: [],
+		pendingPaints: 0,
+		flushed: null,
+		frames: emptyHistogram(),
 		added: 0,
 		removed: 0,
 		attributes: 0,
@@ -173,10 +174,14 @@ function measureInputToPaint(event: Event): void {
 	const segment = current;
 	if (!segment) return;
 	const dispatchedAt = performance.now();
+	segment.pendingPaints += 1;
 	requestAnimationFrame(() => {
 		const channel = new MessageChannel();
 		channel.port1.onmessage = () => {
 			segment.inputToPaint.push({ type: event.type, ms: round(performance.now() - dispatchedAt) });
+			segment.pendingPaints -= 1;
+			// A later input may have ended this segment before its frame painted.
+			if (segment.flushed && segment.pendingPaints === 0) postToDevSink(segment.flushed);
 		};
 		channel.port2.postMessage(null);
 	});
@@ -208,10 +213,8 @@ function trackFrame(previous: number) {
 		if (!session) return;
 		const delta = now - previous;
 		if (document.visibilityState === "visible") {
-			const bucket = Math.round(delta * 10);
-			frameHistogram.set(bucket, (frameHistogram.get(bucket) ?? 0) + 1);
-			histogramTotal += 1;
-			current?.frameDeltas.push(delta);
+			addFrame(sessionFrames, delta);
+			if (current) addFrame(current.frames, delta);
 		}
 		session.frameRequest = requestAnimationFrame(trackFrame(now));
 	};
@@ -278,6 +281,5 @@ export function getRecordedInteractions(): RecordedInteraction[] {
 export function clearRecordedInteractions(): void {
 	recorded.length = 0;
 	current = null;
-	frameHistogram.clear();
-	histogramTotal = 0;
+	sessionFrames = emptyHistogram();
 }
