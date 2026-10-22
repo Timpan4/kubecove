@@ -9,12 +9,13 @@ mod time;
 mod validation;
 pub use validation::{validate_api_resource, validate_namespace, validate_path_segment};
 
-pub use health::{legacy_resource_health, pod_restarts, update_resource_health};
+pub use health::{
+    assess_kubernetes_health, kubernetes_health, legacy_resource_health, pod_restarts, Readiness,
+};
 pub use metadata::{
-    base_resource_summary, base_resource_summary_with_health,
-    enrich_resource_summaries_with_flux_inventory, extract_argo_app, extract_git_ops_owner,
+    base_resource_summary, enrich_resource_summaries_with_flux_inventory, extract_git_ops_owner,
     extract_helm_release, extract_owner_ref, extract_owner_ref_summary, fetch_flux_ownership_index,
-    filter_flux_ownership_index, fmt_ready, read_flux_ownership_index, FluxOwnershipIndex,
+    filter_flux_ownership_index, read_flux_ownership_index, FluxOwnershipIndex,
 };
 #[cfg(feature = "bench-support")]
 pub use metadata::{

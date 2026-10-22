@@ -1,21 +1,21 @@
-use crate::models::AppErrorKind;
-mod cluster;
-mod core;
-mod workloads;
-
-#[cfg(feature = "bench-support")]
-pub use cluster::crd_details_from_fetched;
-#[cfg(feature = "bench-support")]
-pub use core::{configmap_details_from_fetched, secret_details_from_fetched};
-#[cfg(feature = "bench-support")]
-pub use workloads::deployment_details_from_fetched;
-
+use super::builtin_summary::{builtin_summary, BuiltinSummary};
 use crate::commands::diagnostics::record_backend_result;
+use crate::commands::helpers::{fetch_and_serialize, fetch_and_serialize_cluster, redact_secret};
 use crate::commands::{
     diagnostic_field, kubeconfig::KubeconfigSource, BackendCancellationRegistry,
 };
+use crate::models::AppErrorKind;
 use crate::models::{AppError, ResourceDetailsFull, YamlEncoding, YamlViewMode};
 use crate::runtime::State;
+use chrono::{DateTime, Utc};
+use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
+use k8s_openapi::api::batch::v1::{CronJob, Job};
+use k8s_openapi::api::core::v1::{
+    ConfigMap, Node, PersistentVolume, PersistentVolumeClaim, Pod, Secret, Service,
+};
+use k8s_openapi::api::networking::v1::Ingress;
+use k8s_openapi::api::storage::v1::StorageClass;
+use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use std::time::Instant;
 
 #[cfg(test)]
@@ -116,40 +116,107 @@ pub(super) async fn resource_details_with_client(
     name: String,
     namespace: Option<String>,
 ) -> Result<ResourceDetailsFull, AppError> {
+    let cluster = cluster_context.as_str();
+    let namespace = namespace.as_deref();
     match kind.as_str() {
-        "Pod" => core::pod_details(client, cluster_context, name, namespace).await,
-        "Service" => core::service_details(client, cluster_context, name, namespace).await,
-        "ConfigMap" => core::configmap_details(client, cluster_context, name, namespace).await,
-        "Secret" => core::secret_details(client, cluster_context, name, namespace).await,
+        "Pod" => namespaced_details::<Pod>(client, cluster, &name, namespace).await,
+        "Service" => namespaced_details::<Service>(client, cluster, &name, namespace).await,
+        "ConfigMap" => namespaced_details::<ConfigMap>(client, cluster, &name, namespace).await,
+        "Secret" => {
+            let (secret, _discarded_yaml) =
+                fetch_and_serialize::<Secret>(client, namespace, &name).await?;
+            secret_details_from_fetched(cluster, secret, Utc::now())
+        }
         "PersistentVolumeClaim" => {
-            core::pvc_details(client, cluster_context, name, namespace).await
+            namespaced_details::<PersistentVolumeClaim>(client, cluster, &name, namespace).await
         }
-        "Deployment" => {
-            workloads::deployment_details(client, cluster_context, name, namespace).await
-        }
-        "ReplicaSet" => {
-            workloads::replicaset_details(client, cluster_context, name, namespace).await
-        }
-        "StatefulSet" => {
-            workloads::statefulset_details(client, cluster_context, name, namespace).await
-        }
-        "DaemonSet" => workloads::daemonset_details(client, cluster_context, name, namespace).await,
-        "Ingress" => workloads::ingress_details(client, cluster_context, name, namespace).await,
-        "Job" => workloads::job_details(client, cluster_context, name, namespace).await,
-        "CronJob" => workloads::cronjob_details(client, cluster_context, name, namespace).await,
-        "Node" => cluster::node_details(client, cluster_context, name, namespace).await,
-        "StorageClass" => {
-            cluster::storageclass_details(client, cluster_context, name, namespace).await
-        }
-        "PersistentVolume" => cluster::pv_details(client, cluster_context, name, namespace).await,
+        "Deployment" => namespaced_details::<Deployment>(client, cluster, &name, namespace).await,
+        "ReplicaSet" => namespaced_details::<ReplicaSet>(client, cluster, &name, namespace).await,
+        "StatefulSet" => namespaced_details::<StatefulSet>(client, cluster, &name, namespace).await,
+        "DaemonSet" => namespaced_details::<DaemonSet>(client, cluster, &name, namespace).await,
+        "Ingress" => namespaced_details::<Ingress>(client, cluster, &name, namespace).await,
+        "Job" => namespaced_details::<Job>(client, cluster, &name, namespace).await,
+        "CronJob" => namespaced_details::<CronJob>(client, cluster, &name, namespace).await,
+        "Node" => cluster_details::<Node>(client, cluster, &name).await,
+        "StorageClass" => cluster_details::<StorageClass>(client, cluster, &name).await,
+        "PersistentVolume" => cluster_details::<PersistentVolume>(client, cluster, &name).await,
         "CustomResourceDefinition" => {
-            cluster::crd_details(client, cluster_context, name, namespace).await
+            cluster_details::<CustomResourceDefinition>(client, cluster, &name).await
         }
         _ => Err(AppError::new(
             format!("unsupported resource kind: {kind}"),
             AppErrorKind::Cluster,
         )),
     }
+}
+
+async fn namespaced_details<K>(
+    client: kube::Client,
+    cluster_context: &str,
+    name: &str,
+    namespace: Option<&str>,
+) -> Result<ResourceDetailsFull, AppError>
+where
+    K: BuiltinSummary
+        + kube::Resource<DynamicType = (), Scope = k8s_openapi::NamespaceResourceScope>
+        + serde::Serialize
+        + serde::de::DeserializeOwned
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync,
+{
+    let (object, yaml) = fetch_and_serialize::<K>(client, namespace, name).await?;
+    details_from_fetched(cluster_context, &object, yaml, Utc::now())
+}
+
+async fn cluster_details<K>(
+    client: kube::Client,
+    cluster_context: &str,
+    name: &str,
+) -> Result<ResourceDetailsFull, AppError>
+where
+    K: BuiltinSummary
+        + kube::Resource<DynamicType = (), Scope = k8s_openapi::ClusterResourceScope>
+        + serde::Serialize
+        + serde::de::DeserializeOwned
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync,
+{
+    let (object, yaml) = fetch_and_serialize_cluster::<K>(client, name).await?;
+    details_from_fetched(cluster_context, &object, yaml, Utc::now())
+}
+
+/// Details add the YAML document, raw metadata and raw status to the shared summary.
+pub fn details_from_fetched<K: BuiltinSummary>(
+    cluster_context: &str,
+    object: &K,
+    yaml: String,
+    now: DateTime<Utc>,
+) -> Result<ResourceDetailsFull, AppError> {
+    let serialization = |e: serde_json::Error| {
+        AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e)
+    };
+    Ok(ResourceDetailsFull {
+        summary: builtin_summary(cluster_context, object, now),
+        yaml,
+        metadata: serde_json::to_value(object.metadata()).map_err(serialization)?,
+        status: object.raw_status().transpose().map_err(serialization)?,
+    })
+}
+
+/// Secret details discard the fetched YAML and re-serialize the redacted object.
+pub fn secret_details_from_fetched(
+    cluster_context: &str,
+    mut secret: Secret,
+    now: DateTime<Utc>,
+) -> Result<ResourceDetailsFull, AppError> {
+    redact_secret(&mut secret);
+    let yaml = serde_yaml::to_string(&secret)
+        .map_err(|e| AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e))?;
+    details_from_fetched(cluster_context, &secret, yaml, now)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

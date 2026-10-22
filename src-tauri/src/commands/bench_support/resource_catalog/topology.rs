@@ -188,64 +188,17 @@ pub fn build_ownership_topology(fixture: OwnershipTopologyFixture) -> ResourceTo
         index,
     } = fixture;
     let mut inputs = Vec::with_capacity(2_509);
-    for deploy in deployments {
-        let mut input = resources::input_from_metadata_at(
-            CLUSTER,
-            "Deployment",
-            "apps/v1",
-            &deploy.metadata,
-            now,
-        );
-        input.summary = resources::deployment_resource_summary_at(CLUSTER, &deploy, now);
-        inputs.push(input);
-    }
-    for rs in replica_sets {
-        let mut input =
-            resources::input_from_metadata_at(CLUSTER, "ReplicaSet", "apps/v1", &rs.metadata, now);
-        input.summary = resources::replicaset_resource_summary_at(CLUSTER, &rs, now);
-        inputs.push(input);
-    }
-    for stateful_set in stateful_sets {
-        let mut input = resources::input_from_metadata_at(
-            CLUSTER,
-            "StatefulSet",
-            "apps/v1",
-            &stateful_set.metadata,
-            now,
-        );
-        input.summary = resources::statefulset_resource_summary_at(CLUSTER, &stateful_set, now);
-        inputs.push(input);
-    }
-    for cron_job in cron_jobs {
-        let mut input = resources::input_from_metadata_at(
-            CLUSTER,
-            "CronJob",
-            "batch/v1",
-            &cron_job.metadata,
-            now,
-        );
-        input.summary = resources::cronjob_resource_summary_at(CLUSTER, &cron_job, now);
-        inputs.push(input);
-    }
-    for job in jobs {
-        let mut input =
-            resources::input_from_metadata_at(CLUSTER, "Job", "batch/v1", &job.metadata, now);
-        input.summary = resources::job_resource_summary_at(CLUSTER, &job, now);
-        inputs.push(input);
-    }
-    for node in nodes {
-        let mut input =
-            resources::input_from_metadata_at(CLUSTER, "Node", "v1", &node.metadata, now);
-        input.summary = resources::node_resource_summary_at(CLUSTER, &node, now);
-        inputs.push(input);
-    }
+    inputs.extend(resources::builtin_inputs(CLUSTER, &deployments, now));
+    inputs.extend(resources::builtin_inputs(CLUSTER, &replica_sets, now));
+    inputs.extend(resources::builtin_inputs(CLUSTER, &stateful_sets, now));
+    inputs.extend(resources::builtin_inputs(CLUSTER, &cron_jobs, now));
+    inputs.extend(resources::builtin_inputs(CLUSTER, &jobs, now));
+    inputs.extend(resources::builtin_inputs(CLUSTER, &nodes, now));
     for pod in pods {
-        inputs.push(resources::pod_input_at(CLUSTER, pod, now));
+        inputs.push(resources::pod_input(CLUSTER, pod, now));
     }
     for service in services {
-        let mut input =
-            resources::input_from_metadata_at(CLUSTER, "Service", "v1", &service.metadata, now);
-        input.summary = resources::service_resource_summary_at(CLUSTER, &service, now);
+        let mut input = resources::builtin_input(CLUSTER, &service, now);
         if let Some(spec) = &service.spec {
             input.port_hints = spec
                 .ports
@@ -261,8 +214,8 @@ pub fn build_ownership_topology(fixture: OwnershipTopologyFixture) -> ResourceTo
         }
         inputs.push(input);
     }
-    inputs.extend(resources::inputs_from_metadata_at(CLUSTER, claims, now));
-    inputs.extend(resources::inputs_from_metadata_at(CLUSTER, noise, now));
+    inputs.extend(resources::builtin_inputs(CLUSTER, &claims, now));
+    inputs.extend(resources::builtin_inputs(CLUSTER, &noise, now));
     let summaries::DynamicSummaryFixture { kind, objects } = custom_resources;
     inputs.extend(
         objects

@@ -2,8 +2,8 @@ use codspeed_divan_compat::{black_box, Bencher};
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::ObjectList;
 use kubecove_inspection::commands::resources::{
-    decode_pod_list_summaries, decode_summary_projection, encode_shared_scope_rows,
-    pod_resource_summary_at, resource_scope_post_fetch,
+    builtin_summary, decode_pod_list_summaries, decode_summary_projection,
+    encode_shared_scope_rows, resource_scope_post_fetch,
 };
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -142,7 +142,7 @@ fn full() -> Vec<kubecove_models::ResourceSummary> {
     let list: ObjectList<Pod> = serde_json::from_str(&PODS).unwrap();
     list.items
         .iter()
-        .map(|pod| pod_resource_summary_at("benchmark", pod, clock))
+        .map(|pod| builtin_summary("benchmark", pod, clock))
         .collect()
 }
 

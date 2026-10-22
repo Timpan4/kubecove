@@ -1,13 +1,14 @@
 use super::{
-    topology::{input_from_metadata, TopologyInputResource, DEPLOYMENT_REVISION_LABEL},
+    builtin_summary::{builtin_summary, metadata_summary, BuiltinSummary},
+    topology::{input_with_summary, TopologyInputResource, DEPLOYMENT_REVISION_LABEL},
     topology_dynamic::{list_crd_definition_inputs, list_dynamic_topology_inputs},
     topology_network::{
         NetworkEndpointSlice, NetworkIngressBackend, NetworkService, NetworkTopologyInputs,
     },
 };
 use crate::commands::helpers::{
-    enrich_resource_summaries_with_flux_inventory, fmt_ready, list_params,
-    read_flux_ownership_index, update_resource_health, FluxOwnershipIndex,
+    enrich_resource_summaries_with_flux_inventory, list_params, read_flux_ownership_index,
+    FluxOwnershipIndex,
 };
 use crate::commands::MAX_LIST_CONCURRENCY;
 use crate::models::{AppError, DiscoveredResourceKind};
@@ -45,33 +46,39 @@ pub(super) struct TopologyInputCollection {
     pub warnings: Vec<String>,
 }
 
-pub(crate) fn inputs_from_metadata<T>(
+pub fn builtin_input<K: BuiltinSummary>(
     cluster_context: &str,
-    items: Vec<T>,
-) -> Vec<TopologyInputResource>
-where
-    T: k8s_openapi::Metadata<Ty = ObjectMeta>,
-{
-    inputs_from_metadata_at(cluster_context, items, Utc::now())
+    object: &K,
+    now: DateTime<Utc>,
+) -> TopologyInputResource {
+    input_with_summary(
+        object.metadata(),
+        builtin_summary(cluster_context, object, now),
+    )
 }
 
-pub fn inputs_from_metadata_at<T>(
+pub fn builtin_inputs<K: BuiltinSummary>(
     cluster_context: &str,
-    items: Vec<T>,
+    objects: &[K],
     now: DateTime<Utc>,
-) -> Vec<TopologyInputResource>
-where
-    T: k8s_openapi::Metadata<Ty = ObjectMeta>,
-{
+) -> Vec<TopologyInputResource> {
+    objects
+        .iter()
+        .map(|object| builtin_input(cluster_context, object, now))
+        .collect()
+}
+
+pub(crate) fn metadata_inputs<K: BuiltinSummary>(
+    cluster_context: &str,
+    items: &[PartialObjectMeta<K>],
+    now: DateTime<Utc>,
+) -> Vec<TopologyInputResource> {
     items
         .iter()
         .map(|item| {
-            super::topology::input_from_metadata_at(
-                cluster_context,
-                <T as k8s_openapi::Resource>::KIND,
-                <T as k8s_openapi::Resource>::API_VERSION,
-                item.metadata(),
-                now,
+            input_with_summary(
+                &item.metadata,
+                metadata_summary::<K>(cluster_context, &item.metadata, now),
             )
         })
         .collect()
@@ -220,16 +227,6 @@ where
     Ok((out, warnings))
 }
 
-pub(crate) fn inputs_from_partial_metadata<T: k8s_openapi::Resource>(
-    cluster_context: &str,
-    items: Vec<PartialObjectMeta<T>>,
-) -> Vec<TopologyInputResource> {
-    items
-        .iter()
-        .map(|item| input_from_metadata(cluster_context, T::KIND, T::API_VERSION, &item.metadata))
-        .collect()
-}
-
 async fn list_cluster_with_warnings<T>(client: Client) -> Result<(Vec<T>, Vec<String>), AppError>
 where
     T: Clone
@@ -351,105 +348,23 @@ async fn collect_workload_topology_inputs(
     warnings.append(&mut job_warnings);
     warnings.append(&mut pod_warnings);
 
-    for deploy in deployments {
-        let mut input =
-            input_from_metadata(cluster_context, "Deployment", "apps/v1", &deploy.metadata);
+    let now = Utc::now();
+    for deploy in &deployments {
+        let mut input = builtin_input(cluster_context, deploy, now);
         attach_deployment_revision(&mut input, &deploy.metadata);
-        if let Some(status) = deploy.status {
-            let ready = status.ready_replicas.unwrap_or(0);
-            let desired = status.replicas.unwrap_or(0);
-            input.summary.ready = Some(format!("{ready}/{desired}"));
-            input.summary.status = Some(format!(
-                "Available: {}",
-                status.available_replicas.unwrap_or(0)
-            ));
-        }
-        update_resource_health(&mut input.summary);
         inputs.push(input);
     }
-
-    for ds in daemonsets {
-        let mut input = input_from_metadata(cluster_context, "DaemonSet", "apps/v1", &ds.metadata);
-        if let Some(status) = ds.status {
-            input.summary.ready = Some(format!(
-                "{}/{}",
-                status.number_ready, status.desired_number_scheduled
-            ));
-            input.summary.status = Some(format!(
-                "Available: {}",
-                status.number_available.unwrap_or(0)
-            ));
-        }
-        update_resource_health(&mut input.summary);
-        inputs.push(input);
-    }
-
-    for rs in replicasets {
-        let mut input = input_from_metadata(cluster_context, "ReplicaSet", "apps/v1", &rs.metadata);
+    inputs.extend(builtin_inputs(cluster_context, &daemonsets, now));
+    for rs in &replicasets {
+        let mut input = builtin_input(cluster_context, rs, now);
         attach_deployment_revision(&mut input, &rs.metadata);
-        if let Some(status) = rs.status {
-            input.summary.ready = Some(fmt_ready(status.ready_replicas, status.replicas));
-            input.summary.status = Some(format!(
-                "Available: {}",
-                status.available_replicas.unwrap_or(0)
-            ));
-        }
-        update_resource_health(&mut input.summary);
         inputs.push(input);
     }
-
-    for ss in statefulsets {
-        let mut input =
-            input_from_metadata(cluster_context, "StatefulSet", "apps/v1", &ss.metadata);
-        if let Some(status) = ss.status {
-            input.summary.ready = Some(fmt_ready(status.ready_replicas, status.replicas));
-        }
-        update_resource_health(&mut input.summary);
-        inputs.push(input);
-    }
-
-    for cj in cronjobs {
-        let mut input = input_from_metadata(cluster_context, "CronJob", "batch/v1", &cj.metadata);
-        if let Some(status) = cj.status {
-            let active = status.active.as_ref().map_or(0, std::vec::Vec::len);
-            if active > 0 {
-                input.summary.status = Some(format!("{active} active"));
-            }
-        }
-        update_resource_health(&mut input.summary);
-        inputs.push(input);
-    }
-
-    for job in jobs {
-        let mut input = input_from_metadata(cluster_context, "Job", "batch/v1", &job.metadata);
-        if let Some(status) = job.status {
-            let active = status.active.unwrap_or(0);
-            let failed = status.failed.unwrap_or(0);
-            let succeeded = status.succeeded.unwrap_or(0);
-            input.summary.status = if failed > 0 {
-                Some("Failed".to_string())
-            } else if succeeded > 0 {
-                Some("Complete".to_string())
-            } else if active > 0 {
-                Some("Active".to_string())
-            } else {
-                Some("Pending".to_string())
-            };
-            input.summary.ready = Some(format!(
-                "{}/{}",
-                succeeded,
-                job.spec
-                    .as_ref()
-                    .and_then(|spec| spec.completions)
-                    .unwrap_or(1)
-            ));
-        }
-        update_resource_health(&mut input.summary);
-        inputs.push(input);
-    }
-
+    inputs.extend(builtin_inputs(cluster_context, &statefulsets, now));
+    inputs.extend(builtin_inputs(cluster_context, &cronjobs, now));
+    inputs.extend(builtin_inputs(cluster_context, &jobs, now));
     for pod in pods {
-        inputs.push(pod_input(cluster_context, pod));
+        inputs.push(pod_input(cluster_context, pod, now));
     }
 
     Ok(TopologyInputCollection {
@@ -488,12 +403,13 @@ async fn collect_support_topology_inputs(
     warnings.append(&mut secret_warnings);
     warnings.append(&mut storageclass_warnings);
 
-    inputs.extend(inputs_from_metadata(cluster_context, pvcs));
-    inputs.extend(inputs_from_metadata(cluster_context, services));
-    inputs.extend(inputs_from_metadata(cluster_context, ingresses));
-    inputs.extend(inputs_from_partial_metadata(cluster_context, configmaps));
-    inputs.extend(inputs_from_partial_metadata(cluster_context, secrets));
-    inputs.extend(inputs_from_metadata(cluster_context, storageclasses));
+    let now = Utc::now();
+    inputs.extend(builtin_inputs(cluster_context, &pvcs, now));
+    inputs.extend(builtin_inputs(cluster_context, &services, now));
+    inputs.extend(builtin_inputs(cluster_context, &ingresses, now));
+    inputs.extend(metadata_inputs(cluster_context, &configmaps, now));
+    inputs.extend(metadata_inputs(cluster_context, &secrets, now));
+    inputs.extend(builtin_inputs(cluster_context, &storageclasses, now));
 
     Ok(TopologyInputCollection {
         resources: inputs,
@@ -544,13 +460,8 @@ async fn collect_custom_topology_inputs(
     })
 }
 
-pub(crate) fn pod_input(cluster_context: &str, pod: Pod) -> TopologyInputResource {
-    pod_input_at(cluster_context, pod, Utc::now())
-}
-
-pub fn pod_input_at(cluster_context: &str, pod: Pod, now: DateTime<Utc>) -> TopologyInputResource {
-    let mut input =
-        super::topology::input_from_metadata_at(cluster_context, "Pod", "v1", &pod.metadata, now);
+pub fn pod_input(cluster_context: &str, pod: Pod, now: DateTime<Utc>) -> TopologyInputResource {
+    let mut input = builtin_input(cluster_context, &pod, now);
     if let Some(spec) = &pod.spec {
         input.port_hints = spec
             .containers
@@ -569,17 +480,6 @@ pub fn pod_input_at(cluster_context: &str, pod: Pod, now: DateTime<Utc>) -> Topo
         input.port_hints.sort();
         input.port_hints.dedup();
     }
-    if let Some(status) = pod.status {
-        input.summary.status = status.phase.filter(|phase| !phase.is_empty());
-        input.summary.ready = status
-            .conditions
-            .as_ref()
-            .and_then(|conds| conds.iter().find(|condition| condition.type_ == "Ready"))
-            .map(|condition| condition.status.clone());
-        input.summary.restarts =
-            crate::commands::helpers::pod_restarts(status.container_statuses.as_deref());
-    }
-    update_resource_health(&mut input.summary);
     input
 }
 
@@ -631,16 +531,10 @@ pub(crate) fn network_topology_inputs_from_objects_at(
     let mut endpoint_slice_flows = Vec::new();
 
     for pod in pods {
-        resources.push(pod_input_at(cluster_context, pod, now));
+        resources.push(pod_input(cluster_context, pod, now));
     }
     for service in services {
-        let mut input = super::topology::input_from_metadata_at(
-            cluster_context,
-            "Service",
-            "v1",
-            &service.metadata,
-            now,
-        );
+        let mut input = builtin_input(cluster_context, &service, now);
         let namespace = service.metadata.namespace.clone().unwrap_or_default();
         let name = service.metadata.name.clone().unwrap_or_default();
         let selector = service
@@ -654,7 +548,6 @@ pub(crate) fn network_topology_inputs_from_objects_at(
             .and_then(|spec| spec.type_.clone())
             .unwrap_or_else(|| "ClusterIP".to_string());
         if let Some(spec) = &service.spec {
-            input.summary.status = Some(service_type.clone());
             input.port_hints = spec
                 .ports
                 .iter()
@@ -664,7 +557,6 @@ pub(crate) fn network_topology_inputs_from_objects_at(
             input.port_hints.sort();
             input.port_hints.dedup();
         }
-        update_resource_health(&mut input.summary);
         service_flows.push(NetworkService {
             namespace,
             name,
@@ -701,13 +593,7 @@ pub(crate) fn network_topology_inputs_from_objects_at(
                 }
             }
         }
-        resources.push(super::topology::input_from_metadata_at(
-            cluster_context,
-            "Ingress",
-            "networking.k8s.io/v1",
-            &ingress.metadata,
-            now,
-        ));
+        resources.push(builtin_input(cluster_context, &ingress, now));
     }
     for slice in endpoint_slices {
         let namespace = slice.metadata.namespace.clone().unwrap_or_default();
@@ -725,13 +611,7 @@ pub(crate) fn network_topology_inputs_from_objects_at(
                 (target.kind.as_deref() == Some("Pod")).then(|| target.name.clone())?
             })
             .collect();
-        let mut input = super::topology::input_from_metadata_at(
-            cluster_context,
-            "EndpointSlice",
-            "discovery.k8s.io/v1",
-            &slice.metadata,
-            now,
-        );
+        let mut input = builtin_input(cluster_context, &slice, now);
         input.port_hints = slice
             .ports
             .iter()
