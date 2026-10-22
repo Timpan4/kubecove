@@ -52,15 +52,24 @@ pub async fn remote_invoke(
     args: Value,
     store: State<'_, RemoteConnectionStore>,
 ) -> Result<Value, AppError> {
-    let connection = current_connection(&store).await?;
+    invoke_remote(&current_connection(&store).await?, &command, args).await
+}
+
+/// Runs `command` on the remote server, except the port-forward and
+/// live-session cleanup commands, which also act on the laptop's tunnels.
+async fn invoke_remote(
+    connection: &Arc<client::RemoteConnection>,
+    command: &str,
+    args: Value,
+) -> Result<Value, AppError> {
     if let Some(value) = connection
         .tunnels
-        .invoke(Arc::clone(&connection), &command, args.clone())
+        .invoke(Arc::clone(connection), command, args.clone())
         .await?
     {
         return Ok(value);
     }
-    connection.invoke(&command, args).await
+    connection.invoke(command, args).await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

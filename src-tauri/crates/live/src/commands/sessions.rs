@@ -14,6 +14,9 @@ pub struct TunnelTarget {
     pub namespace: String,
     pub pod_name: String,
     pub pod_port: u16,
+    /// The server's kubeconfig source, which scopes the desktop's forward (ADR 0003).
+    pub kubeconfig_source_key: Option<String>,
+    pub kubeconfig_source_label: Option<String>,
 }
 
 /// Validate and resolve a tunnel target through the same Pod/Service path as desktop forwards.
@@ -30,6 +33,8 @@ pub async fn resolve_tunnel_target(request: PortForwardRequest) -> Result<Tunnel
         namespace: target.namespace,
         pod_name: target.pod_name,
         pod_port: target.pod_port,
+        kubeconfig_source_key: target.kubeconfig_source_key,
+        kubeconfig_source_label: target.kubeconfig_source_label,
     })
 }
 

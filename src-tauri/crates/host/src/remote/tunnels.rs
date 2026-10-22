@@ -1,6 +1,12 @@
 use super::client::{RemoteConnection, MAX_TUNNEL_PAYLOAD_BYTES};
-use kubecove_live::commands::sessions::{target::validate_target, PortForwardRegistry};
-use kubecove_models::{AppError, AppErrorKind, PortForwardRequest, PortForwardSessionSummary};
+use kubecove_live::commands::{
+    sessions::{target::validate_target, PortForwardRegistry},
+    LiveSessionScope,
+};
+use kubecove_models::{
+    AppError, AppErrorKind, LiveSessionCleanupRequest, LiveSessionCleanupResult,
+    PortForwardRequest, PortForwardSessionSummary,
+};
 use serde::Deserialize;
 use serde_json::json;
 use std::{future::Future, sync::Arc};
@@ -25,6 +31,9 @@ pub struct RemoteTunnelRegistry {
 struct TunnelRegistration {
     resolved_pod_name: String,
     resolved_pod_port: u16,
+    // A server without this field leaves the forward outside every scope.
+    kubeconfig_source_key: Option<String>,
+    kubeconfig_source_label: Option<String>,
 }
 
 impl RemoteTunnelRegistry {
@@ -54,8 +63,8 @@ impl RemoteTunnelRegistry {
         let target = validated.resolved_by_server(
             registration.resolved_pod_name,
             registration.resolved_pod_port,
-            None,
-            None,
+            registration.kubeconfig_source_key,
+            registration.kubeconfig_source_label,
         );
 
         let relay_connection = Arc::clone(&connection);
@@ -96,6 +105,46 @@ impl RemoteTunnelRegistry {
 
     pub fn list(&self) -> Vec<PortForwardSessionSummary> {
         self.forwards.list()
+    }
+
+    /// Applies a workspace scope change to the laptop's forwards, then sends
+    /// the same cleanup to the server for the sessions it runs (ADR 0003).
+    async fn stop_outside_scope(
+        &self,
+        connection: &RemoteConnection,
+        args: serde_json::Value,
+    ) -> Result<LiveSessionCleanupResult, AppError> {
+        let request: LiveSessionCleanupRequest =
+            serde_json::from_value(args.get("request").cloned().unwrap_or_else(|| args.clone()))
+                .map_err(|error| {
+                    AppError::new(
+                        "live session cleanup request is invalid",
+                        AppErrorKind::Validation,
+                    )
+                    .with_source(error)
+                })?;
+        let stopped = self
+            .forwards
+            .stop_outside_scope(&LiveSessionScope::new(request)?);
+        for forward_id in &stopped {
+            let _ = connection
+                .send_control_without_reply(unregister_control(forward_id))
+                .await;
+        }
+        let server = connection
+            .invoke("stop_live_sessions_outside_scope", args)
+            .await?;
+        let mut result: LiveSessionCleanupResult =
+            serde_json::from_value(server).map_err(|error| {
+                AppError::new(
+                    "remote server returned an invalid live session cleanup result",
+                    AppErrorKind::Session,
+                )
+                .with_source(error)
+            })?;
+        result.stopped_port_forward_ids.extend(stopped);
+        result.stopped_port_forwards = result.stopped_port_forward_ids.len();
+        Ok(result)
     }
 
     pub async fn close_all(&self, connection: Option<&RemoteConnection>) {
@@ -157,6 +206,16 @@ impl RemoteTunnelRegistry {
                     )
                     .with_source(error)
                 }),
+            "stop_live_sessions_outside_scope" => {
+                let result = self.stop_outside_scope(&connection, args).await?;
+                serde_json::to_value(result).map(Some).map_err(|error| {
+                    AppError::new(
+                        "live session cleanup result could not be serialized",
+                        AppErrorKind::Serialization,
+                    )
+                    .with_source(error)
+                })
+            }
             _ => Ok(None),
         }
     }

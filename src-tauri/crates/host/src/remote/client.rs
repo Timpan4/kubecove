@@ -711,3 +711,7 @@ fn session_error(message: &str) -> AppError {
 #[cfg(test)]
 #[path = "client_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "client_tunnel_tests.rs"]
+mod tunnel_tests;
