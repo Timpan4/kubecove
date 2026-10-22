@@ -3,7 +3,7 @@
 // Tauri's AppImage bundler cannot add AppRun hooks (`bundle.linux.appimage.files` only lands
 // under `usr/`), and the bundled AppRun prepends the AppImage library dirs to
 // `LD_LIBRARY_PATH`. The switch therefore happens here: the binary re-executes itself with the
-// host library dir first, so host libraries win and bundled ones only fill gaps. The updater
+// host library dir first, so host libraries there win over bundled copies. The updater
 // signature covers the unchanged AppImage file.
 
 use std::ffi::{OsStr, OsString};
@@ -192,6 +192,10 @@ pub fn prefer_newer_system_webkit() {
         .filter(|output| output.status.success())
         .and_then(|output| parse_version(&String::from_utf8_lossy(&output.stdout)))
     else {
+        eprintln!(
+            "KubeCove: staying on bundled WebKitGTK; the host stack in {} failed to load",
+            system_dir.display()
+        );
         return;
     };
     let bundled_version = loaded_version();
@@ -209,10 +213,18 @@ pub fn prefer_newer_system_webkit() {
             command.env_remove(var);
         }
     }
-    if let Some(data_dirs) =
-        std::env::var_os("XDG_DATA_DIRS").and_then(|dirs| without_app_dirs(&dirs, &app_dirs))
-    {
-        command.env("XDG_DATA_DIRS", data_dirs);
+    // AppRun's GStreamer paths replace the default plugin search path; without their AppImage
+    // entries, host GStreamer falls back to its own plugins.
+    for var in [
+        "XDG_DATA_DIRS",
+        "GST_PLUGIN_SYSTEM_PATH",
+        "GST_PLUGIN_SYSTEM_PATH_1_0",
+    ] {
+        match std::env::var_os(var).and_then(|list| without_app_dirs(&list, &app_dirs)) {
+            Some(list) if !list.is_empty() => command.env(var, list),
+            Some(_) => command.env_remove(var),
+            None => &mut command,
+        };
     }
     let (major, minor, micro) = system_version;
     let (bundled_major, bundled_minor, bundled_micro) = bundled_version;
@@ -235,7 +247,7 @@ mod tests {
         host_first_library_path, host_stack_dir, ldconfig_library_path, parse_version,
         without_app_dirs,
     };
-    use std::ffi::OsStr;
+    use std::ffi::{OsStr, OsString};
     use std::path::Path;
 
     // Failure modes: matching the unversioned dev symlink, picking another ABI's copy on
@@ -299,15 +311,25 @@ mod tests {
     #[test]
     fn data_dirs_drop_only_appimage_entries() {
         let app_dir = Path::new("/tmp/.mount_KubeCo");
-        let dirs = OsStr::new(
-            "/tmp/.mount_KubeCo//usr/share:/usr/share:/tmp/.mount_KubeCoX/share:/usr/local/share",
-        );
+        let dirs = path_list(&[
+            "/tmp/.mount_KubeCo//usr/share",
+            "/usr/share",
+            "/tmp/.mount_KubeCoX/share",
+            "/usr/local/share",
+        ]);
         assert_eq!(
-            without_app_dirs(dirs, &[app_dir]).as_deref(),
-            Some(OsStr::new(
-                "/usr/share:/tmp/.mount_KubeCoX/share:/usr/local/share"
-            ))
+            without_app_dirs(&dirs, &[app_dir]),
+            Some(path_list(&[
+                "/usr/share",
+                "/tmp/.mount_KubeCoX/share",
+                "/usr/local/share"
+            ]))
         );
+    }
+
+    // Path lists use the platform separator, so these tests also hold on Windows.
+    fn path_list(entries: &[&str]) -> OsString {
+        std::env::join_paths(entries).expect("test entries contain no separator")
     }
 
     // Failure mode: an unset or colon-terminated inherited value leaves an empty entry, which
@@ -316,13 +338,17 @@ mod tests {
     fn library_path_puts_host_first_without_empty_entries() {
         let host = Path::new("/usr/lib");
         assert_eq!(
-            host_first_library_path(host, OsStr::new("")).as_deref(),
-            Some(OsStr::new("/usr/lib"))
+            host_first_library_path(host, OsStr::new("")),
+            Some(path_list(&["/usr/lib"]))
         );
+        let inherited = path_list(&["/tmp/.mount_K/usr/lib/", "", "/opt/lib", ""]);
         assert_eq!(
-            host_first_library_path(host, OsStr::new("/tmp/.mount_K/usr/lib/::/opt/lib:"))
-                .as_deref(),
-            Some(OsStr::new("/usr/lib:/tmp/.mount_K/usr/lib/:/opt/lib"))
+            host_first_library_path(host, &inherited),
+            Some(path_list(&[
+                "/usr/lib",
+                "/tmp/.mount_K/usr/lib/",
+                "/opt/lib"
+            ]))
         );
     }
 }
