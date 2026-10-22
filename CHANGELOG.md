@@ -6,7 +6,15 @@ should mirror the matching version section.
 ## 0.12.7 - 2026-10-22
 ### Improved
 
-- Cut WebKitGTK render, log and resource-list overhead (#578).
+- Make the Linux app and headless browser client faster and lighter (#578):
+  - Resource details open about four times faster.
+  - Busy log streams arrive in batches and no longer stall the UI.
+  - The renderer uses less memory.
+  - GitOps and Helm lists render only visible rows.
+  - Resource lists load through lighter typed reads.
+  - Topology map panning stays smooth in WebKitGTK.
+- Render at the monitor's refresh rate on Linux instead of WebKit's 60 fps preference. This takes effect when the GPU driver provides DRM vblank; on NVIDIA this requires `options nvidia_drm vblank=1` (#578).
+- Serve the headless server's web assets precompressed with Brotli or gzip, with long-lived caching for hashed files (#578).
 
 ## 0.12.6 - 2026-10-21
 ### Improved
