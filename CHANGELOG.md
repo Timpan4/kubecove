@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.10 - 2026-10-22
+### Fixed
+
+- Keep unchanged watches when the resource scope changes (#593).
+
 ## 0.12.9 - 2026-10-22
 ### Added
 
