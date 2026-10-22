@@ -240,6 +240,25 @@ describe("live view refresh binding", () => {
 		expect(live.states).toEqual([expect.objectContaining({ status: "idle" })]);
 	});
 
+	// Failure mode: rebinding on every view change restarts each stream on a namespace or kind switch.
+	test("updating the watched keys keeps unchanged streams and starts or stops only the difference", async () => {
+		const live = liveHarness();
+		const deployments = { resourceKind: { kind: "Deployment" }, namespace: "shop" };
+		const podReads = [{ keys: [pods], match: queryMatchers.exact(podsKey) }];
+		live.observe("pods", podsKey);
+		const binding = live.bind({ keys: [pods, secrets], reads: podReads });
+		await settle();
+
+		binding.update({ clusterContext: "dev", namespaces: ["shop"], keys: [pods, deployments], reads: podReads, refreshScope: "view" });
+		await settle();
+
+		expect(live.channels).toHaveLength(3);
+		expect(live.stopped).toEqual(["watch-2"]);
+		live.change(0, "Pod");
+		await settle();
+		expect(live.fetches("pods")).toBe(1);
+	});
+
 	test("permission recovery rereads only what the denied kind keeps fresh", async () => {
 		jest.useFakeTimers();
 		const flush = async () => {
