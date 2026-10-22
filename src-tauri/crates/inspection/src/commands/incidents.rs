@@ -9,8 +9,10 @@ pub use post_fetch::incident_cockpit_post_fetch;
 
 use super::{resource_scope_from, ClusterLiveStore, MAX_LIST_CONCURRENCY};
 use crate::commands::{
+    diagnostic_field,
     helpers::{k8s_timestamp_to_datetime, list_params, resource_age_at},
     kubeconfig::KubeconfigSource,
+    FiniteRead,
 };
 use crate::models::{
     AppError, IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalState,
@@ -22,7 +24,6 @@ use k8s_openapi::api::core::v1::Event;
 use kube::{api::Api, Client};
 use kubecove_kube::commands::list_projection::bounded_join_all;
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::Instant;
 
 use health::{
     apply_incident_health_evidence, current_status_severity, has_current_kubernetes_concern,
@@ -36,43 +37,30 @@ use restarts::{
 const MAX_WARNING_EVENTS_PER_RESOURCE: usize = 3;
 const MAX_WARNING_EVENTS_TOTAL: usize = 500;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_incident_cockpit(
     cluster_context: String,
     requests: Vec<ResourceListRequest>,
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<IncidentCockpitSummary, AppError> {
-    let started = Instant::now();
-    eprintln!(
-        "[kubecove:backend] list_incident_cockpit start context={} requests={}",
-        cluster_context,
-        requests.len()
-    );
-    let result = incident_cockpit_from(
-        cluster_context.clone(),
-        requests,
-        kubeconfig_env_var,
-        live_store.inner().clone(),
-    )
-    .await;
-    match &result {
-        Ok(summary) => eprintln!(
-            "[kubecove:backend] list_incident_cockpit done context={} items={} warnings={} ms={}",
-            cluster_context,
-            summary.items.len(),
-            summary.warnings.len(),
-            started.elapsed().as_millis()
-        ),
-        Err(err) => eprintln!(
-            "[kubecove:backend] list_incident_cockpit error context={} error_kind={} message={} ms={}",
-            cluster_context,
-            err.kind,
-            err.message,
-            started.elapsed().as_millis()
-        ),
-    }
-    result
+    FiniteRead::new("list_incident_cockpit")
+        .label("context", &cluster_context)
+        .label("requests", requests.len())
+        .run(
+            incident_cockpit_from(
+                cluster_context,
+                requests,
+                kubeconfig_env_var,
+                live_store.inner().clone(),
+            ),
+            |summary| {
+                vec![
+                    diagnostic_field("items", summary.items.len()),
+                    diagnostic_field("warnings", summary.warnings.len()),
+                ]
+            },
+        )
+        .await
 }
 
 pub async fn incident_cockpit_from(

@@ -67,3 +67,9 @@ _Avoid_ calling it a selected-resource YAML apply diff, which compares an edited
 
 **Helm Reconciliation** means comparison of decoded Helm release intent with live Kubernetes resource evidence.
 _Avoid_ using it for Helm install, upgrade, rollback, uninstall, or CLI execution.
+
+**Command contract** means the single declaration of every backend command's name, camelCase wire arguments, host-supplied state and transport class. The Tauri IPC handlers, server HTTP dispatch and desktop remote interception are generated from it.
+_Avoid_ keeping a separate command list for one transport.
+
+**Finite-read envelope** means the backend wrapper that registers one finite read for request cancellation and records its timing, log lines and diagnostics outcome.
+_Avoid_ using it for confirmed writes or live sessions, which keep their own lifecycles under ADR 0009.

@@ -140,7 +140,6 @@ fn validate_aggregated_log_stream_request(
     Ok(())
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn refresh_resource_cache(
     cluster_context: String,
     mut keys: Vec<WatchResourceKey>,
@@ -168,7 +167,6 @@ pub async fn refresh_resource_cache(
     })
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn start_resource_watch(
     cluster_context: String,
     keys: Vec<WatchResourceKey>,
@@ -210,7 +208,6 @@ pub async fn start_resource_watch(
     Ok(stream_id)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn start_resource_event_watch(
     cluster_context: String,
     kind: String,
@@ -254,7 +251,6 @@ pub async fn start_resource_event_watch(
     Ok(stream_id)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn start_pod_log_stream(
     request: PodLogStreamRequest,
     channel: Channel<StreamMessage>,
@@ -278,7 +274,6 @@ pub async fn start_pod_log_stream(
     Ok(stream_id)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn start_aggregated_log_stream(
     request: AggregatedLogStreamRequest,
     channel: Channel<StreamMessage>,
@@ -302,7 +297,6 @@ pub async fn start_aggregated_log_stream(
     Ok(stream_id)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stop_stream(
     stream_id: String,
     registry: State<'_, StreamRegistry>,

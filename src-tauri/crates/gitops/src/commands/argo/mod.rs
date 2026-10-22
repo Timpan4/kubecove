@@ -43,7 +43,6 @@ pub use credential_store::{
 pub use operations::{preflight_argo_operation, run_argo_operation};
 
 /// Detect if Argo CD CRDs are present in the cluster.
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn detect_argocd(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,

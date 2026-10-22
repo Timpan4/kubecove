@@ -1,11 +1,10 @@
 use super::builtin_summary::{builtin_summary, BuiltinSummary};
-use crate::commands::diagnostics::record_backend_result;
 use crate::commands::helpers::{fetch_and_serialize, fetch_and_serialize_cluster, redact_secret};
 use crate::commands::{
-    diagnostic_field, kubeconfig::KubeconfigSource, BackendCancellationRegistry,
+    diagnostic_field, kubeconfig::KubeconfigSource, BackendCancellationRegistry, FiniteRead,
 };
 use crate::models::AppErrorKind;
-use crate::models::{AppError, ResourceDetailsFull, YamlEncoding, YamlViewMode};
+use crate::models::{AppError, ResourceDetailsFull};
 use crate::runtime::State;
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
@@ -16,85 +15,6 @@ use k8s_openapi::api::core::v1::{
 use k8s_openapi::api::networking::v1::Ingress;
 use k8s_openapi::api::storage::v1::StorageClass;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
-use std::time::Instant;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use http::{Request, Response};
-    use kube::{client::Body, Client};
-    use serde_json::json;
-
-    #[tokio::test]
-    async fn replicaset_details_load_from_namespaced_api() {
-        for status in [
-            Some(json!({"replicas": 3, "readyReplicas": 2, "availableReplicas": 1})),
-            None,
-        ] {
-            let object = json!({
-                "apiVersion": "apps/v1",
-                "kind": "ReplicaSet",
-                "metadata": {
-                    "name": "calagopus-5f554d575f",
-                    "namespace": "calagopus",
-                    "ownerReferences": [{
-                        "apiVersion": "apps/v1", "kind": "Deployment",
-                        "name": "calagopus", "uid": "deployment-uid", "controller": true
-                    }]
-                },
-                "status": status
-            });
-            let service = tower::service_fn(move |request: Request<Body>| {
-                assert_eq!(request.method(), http::Method::GET);
-                assert_eq!(
-                    request.uri().path(),
-                    "/apis/apps/v1/namespaces/calagopus/replicasets/calagopus-5f554d575f"
-                );
-                let body = object.to_string().into_bytes();
-                async move { Ok::<_, std::convert::Infallible>(Response::new(Body::from(body))) }
-            });
-            let client = Client::new(service, "default");
-            let details = resource_details_with_client(
-                client.clone(),
-                "test-cluster".into(),
-                "ReplicaSet".into(),
-                "calagopus-5f554d575f".into(),
-                Some("calagopus".into()),
-            )
-            .await
-            .expect("ReplicaSet details should load");
-            assert_eq!(details.summary.kind, "ReplicaSet");
-            assert_eq!(details.summary.cluster, "test-cluster");
-            assert_eq!(details.summary.name, "calagopus-5f554d575f");
-            assert_eq!(details.summary.namespace.as_deref(), Some("calagopus"));
-            assert_eq!(details.summary.owner_ref.as_deref(), Some("calagopus"));
-            assert_eq!(
-                details.summary.ready.as_deref(),
-                status.as_ref().map(|_| "2/3")
-            );
-            assert_eq!(
-                details.summary.status.as_deref(),
-                status.as_ref().map(|_| "Available: 1")
-            );
-            assert_eq!(details.status, status);
-            assert_eq!(details.metadata["name"], "calagopus-5f554d575f");
-            let yaml: serde_json::Value = serde_yaml::from_str(&details.yaml).unwrap();
-            assert_eq!(yaml["kind"], "ReplicaSet");
-            let document = super::super::yaml::resource_yaml_with_client(
-                client,
-                "ReplicaSet".into(),
-                "calagopus-5f554d575f".into(),
-                Some("calagopus".into()),
-                YamlViewMode::default(),
-                YamlEncoding::default(),
-            )
-            .await
-            .expect("ReplicaSet YAML should load");
-            let document: serde_json::Value = serde_yaml::from_str(&document).unwrap();
-            assert_eq!(document, yaml);
-        }
-    }
-}
 
 pub async fn resource_details_from(
     cluster_context: String,
@@ -219,54 +139,116 @@ pub fn secret_details_from_fetched(
     details_from_fetched(cluster_context, &secret, yaml, now)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_resource_details(
     cluster_context: String,
     kind: String,
     name: String,
     namespace: Option<String>,
     kubeconfig_env_var: Option<String>,
-    _yaml_view_mode: Option<YamlViewMode>,
-    _yaml_encoding: Option<YamlEncoding>,
     request_id: Option<String>,
     cancel_scope: Option<String>,
     cancellations: State<'_, BackendCancellationRegistry>,
 ) -> Result<ResourceDetailsFull, AppError> {
-    let started = Instant::now();
-    let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
-    eprintln!(
-        "[kubecove:backend] get_resource_details start context={cluster_context} kind={kind} namespace={namespace_label} name={name}"
-    );
-    let result = cancellations
-        .execute(
-            cancel_scope,
-            request_id,
+    FiniteRead::new("get_resource_details")
+        .label("context", &cluster_context)
+        .label("kind", &kind)
+        .label("namespace", namespace.as_deref().unwrap_or("<cluster>"))
+        .label("name", &name)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
             resource_details_from(
-                cluster_context.clone(),
+                cluster_context,
                 kind.clone(),
-                name.clone(),
-                namespace.clone(),
+                name,
+                namespace,
                 kubeconfig_env_var,
             ),
+            |details| {
+                vec![
+                    diagnostic_field("kind", &kind),
+                    diagnostic_field("yamlBytes", details.yaml.len()),
+                    diagnostic_field("hasStatus", details.status.is_some()),
+                ]
+            },
         )
-        .await;
-    match &result {
-        Ok(details) => {
-            eprintln!("[kubecove:backend] get_resource_details done context={} kind={} namespace={} name={} yaml_bytes={} status={} ms={}", cluster_context, kind, namespace_label, name, details.yaml.len(), details.status.is_some(), started.elapsed().as_millis());
-        }
-        Err(err) if err.kind == AppErrorKind::Cancelled => {
-            eprintln!("[kubecove:backend] get_resource_details cancelled context={} kind={} namespace={} name={} ms={}", cluster_context, kind, namespace_label, name, started.elapsed().as_millis());
-        }
-        Err(err) => {
-            eprintln!("[kubecove:backend] get_resource_details error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis());
+        .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{YamlEncoding, YamlViewMode};
+    use http::{Request, Response};
+    use kube::{client::Body, Client};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn replicaset_details_load_from_namespaced_api() {
+        for status in [
+            Some(json!({"replicas": 3, "readyReplicas": 2, "availableReplicas": 1})),
+            None,
+        ] {
+            let object = json!({
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "metadata": {
+                    "name": "calagopus-5f554d575f",
+                    "namespace": "calagopus",
+                    "ownerReferences": [{
+                        "apiVersion": "apps/v1", "kind": "Deployment",
+                        "name": "calagopus", "uid": "deployment-uid", "controller": true
+                    }]
+                },
+                "status": status
+            });
+            let service = tower::service_fn(move |request: Request<Body>| {
+                assert_eq!(request.method(), http::Method::GET);
+                assert_eq!(
+                    request.uri().path(),
+                    "/apis/apps/v1/namespaces/calagopus/replicasets/calagopus-5f554d575f"
+                );
+                let body = object.to_string().into_bytes();
+                async move { Ok::<_, std::convert::Infallible>(Response::new(Body::from(body))) }
+            });
+            let client = Client::new(service, "default");
+            let details = resource_details_with_client(
+                client.clone(),
+                "test-cluster".into(),
+                "ReplicaSet".into(),
+                "calagopus-5f554d575f".into(),
+                Some("calagopus".into()),
+            )
+            .await
+            .expect("ReplicaSet details should load");
+            assert_eq!(details.summary.kind, "ReplicaSet");
+            assert_eq!(details.summary.cluster, "test-cluster");
+            assert_eq!(details.summary.name, "calagopus-5f554d575f");
+            assert_eq!(details.summary.namespace.as_deref(), Some("calagopus"));
+            assert_eq!(details.summary.owner_ref.as_deref(), Some("calagopus"));
+            assert_eq!(
+                details.summary.ready.as_deref(),
+                status.as_ref().map(|_| "2/3")
+            );
+            assert_eq!(
+                details.summary.status.as_deref(),
+                status.as_ref().map(|_| "Available: 1")
+            );
+            assert_eq!(details.status, status);
+            assert_eq!(details.metadata["name"], "calagopus-5f554d575f");
+            let yaml: serde_json::Value = serde_yaml::from_str(&details.yaml).unwrap();
+            assert_eq!(yaml["kind"], "ReplicaSet");
+            let document = super::super::yaml::resource_yaml_with_client(
+                client,
+                "ReplicaSet".into(),
+                "calagopus-5f554d575f".into(),
+                Some("calagopus".into()),
+                YamlViewMode::default(),
+                YamlEncoding::default(),
+            )
+            .await
+            .expect("ReplicaSet YAML should load");
+            let document: serde_json::Value = serde_yaml::from_str(&document).unwrap();
+            assert_eq!(document, yaml);
         }
     }
-    record_backend_result("get_resource_details", started, &result, |details| {
-        vec![
-            diagnostic_field("kind", &kind),
-            diagnostic_field("yamlBytes", details.yaml.len()),
-            diagnostic_field("hasStatus", details.status.is_some()),
-        ]
-    });
-    result
 }
