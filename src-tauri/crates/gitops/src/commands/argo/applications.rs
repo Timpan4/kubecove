@@ -1,8 +1,9 @@
 use crate::commands::gitops_crd::{
-    client_for_context, find_api_resource, get_crd_object, list_crd_objects, resource_metadata,
-    resource_status, resource_yaml,
+    find_api_resource, get_crd_object, list_crd_objects, resource_metadata, resource_status,
+    resource_yaml,
 };
 use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{
     argo_health_assessment, AppError, ArgoApplicationDetails, ArgoApplicationSourceSummary,
@@ -104,7 +105,9 @@ pub async fn list_argocd_applications(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ArgoApplicationSummary>, AppError> {
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
 
     let ar = match find_api_resource(&client, "argoproj.io", "Application").await? {
         Some(ar) => ar,
@@ -130,7 +133,9 @@ pub async fn get_argocd_application_details(
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<ArgoApplicationDetails, AppError> {
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
 
     let ar = match find_api_resource(&client, "argoproj.io", "Application").await? {
         Some(ar) => ar,

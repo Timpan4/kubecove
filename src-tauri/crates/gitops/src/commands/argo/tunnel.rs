@@ -1,10 +1,12 @@
 use crate::models::AppErrorKind;
 use crate::{
-    commands::sessions::{
-        relay::{bind_loopback, spawn_relay, RelayEvent},
-        runner::forward_pod_connection,
-        service::resolve_service_target,
-        target::client_for_context,
+    commands::{
+        sessions::{
+            relay::{bind_loopback, spawn_relay, RelayEvent},
+            runner::forward_pod_connection,
+            service::resolve_service_target,
+        },
+        ClusterAccess,
     },
     models::{AppError, ArgoConfirmedTarget},
     runtime::JoinHandle,
@@ -21,13 +23,13 @@ pub(crate) struct ArgoServiceTunnel {
 
 impl ArgoServiceTunnel {
     pub(crate) async fn start(
+        access: &ClusterAccess,
         cluster_context: &str,
-        kubeconfig_env_var: Option<String>,
         namespace: String,
         service_name: String,
         service_port: u16,
     ) -> Result<Self, AppError> {
-        let client = client_for_context(cluster_context, kubeconfig_env_var).await?;
+        let client = access.live_session_client(cluster_context).await?;
         let target =
             resolve_service_target(client.clone(), &namespace, &service_name, service_port).await?;
         let pod_name = target.pod_name.clone();

@@ -1,7 +1,7 @@
 use super::super::connected::api_get;
 use super::super::scope::scoped_connection;
 use super::payload::{application_path, sync_payload};
-use crate::commands::gitops_crd::{fail_closed_client_for_context, find_api_resource};
+use crate::commands::{gitops_crd::find_api_resource, ClusterAccess};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ArgoOperationRequest};
 use kube::{api::Api, core::DynamicObject};
@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 
 pub(super) async fn resolve_request(
     store: &super::super::ArgoConnectionStore,
+    access: &ClusterAccess,
     request: &ArgoOperationRequest,
 ) -> Result<(ArgoOperationRequest, Option<String>, Option<String>), AppError> {
     let (mut resolved, generation, instance_id) = if request.transport == "connected" {
@@ -24,7 +25,7 @@ pub(super) async fn resolve_request(
                 )
             })?,
             request.application.workspace_id.as_deref(),
-            request.kubeconfig_env_var.as_deref(),
+            access.source_key(),
         )?;
         let value = api_get(
             &connection,
@@ -87,7 +88,7 @@ pub(super) async fn resolve_request(
                 )
             })?,
             resolved.application.workspace_id.as_deref(),
-            resolved.kubeconfig_env_var.as_deref(),
+            access.source_key(),
         )?;
         api_get(
             &connection,
@@ -103,8 +104,7 @@ pub(super) async fn resolve_request(
                 AppErrorKind::ArgoOperationUnavailable,
             )
         })?;
-        let client =
-            fail_closed_client_for_context(context, request.kubeconfig_env_var.clone()).await?;
+        let client = access.preview_client(context).await?;
         let ar = find_api_resource(&client, "argoproj.io", "Application")
             .await?
             .ok_or_else(|| AppError::new("Application CRD not found", AppErrorKind::Cluster))?;

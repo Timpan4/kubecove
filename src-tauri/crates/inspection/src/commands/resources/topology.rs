@@ -3,11 +3,8 @@ use super::{
     topology_network::build_network_flow_topology,
 };
 use crate::commands::{
-    diagnostic_field,
-    discovery::crd_resource_kinds,
-    helpers::extract_owner_ref_summary,
-    kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-    BackendCancellationRegistry, ClusterLiveStore, FiniteRead,
+    diagnostic_field, discovery::crd_resource_kinds, helpers::extract_owner_ref_summary,
+    BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead,
 };
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -298,10 +295,10 @@ fn add_statefulset_pvc_edges(
 }
 
 pub async fn resource_topology_from(
+    access: &ClusterAccess,
     cluster_context: String,
     namespaces: Vec<String>,
     mode: Option<String>,
-    kubeconfig_env_var: Option<String>,
     custom_resource_kinds: Option<Vec<DiscoveredResourceKind>>,
     custom_resource_kinds_are_present: bool,
 ) -> Result<ResourceTopology, AppError> {
@@ -309,8 +306,7 @@ pub async fn resource_topology_from(
         crate::commands::helpers::validate_namespace(Some(namespace))?;
     }
     let mode = TopologyMode::parse(mode)?;
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
+    let client = access.read_client(&cluster_context).await?;
     match mode {
         TopologyMode::Ownership => {
             let custom_resource_kinds = match custom_resource_kinds {
@@ -358,7 +354,8 @@ pub async fn list_resource_topology(
         .cancellable(&cancellations, cancel_scope, request_id)
         .run(
             async {
-                let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                let source_key = access.source_key().to_string();
                 let cached_custom_resource_kinds = match &mode {
                     TopologyMode::Ownership => live_store
                         .cached_present_custom_resource_kinds(
@@ -383,7 +380,6 @@ pub async fn list_resource_topology(
                             let cluster_context = cluster_context.clone();
                             let namespaces = namespaces.clone();
                             let mode = mode.as_str().to_string();
-                            let kubeconfig_env_var = kubeconfig_env_var.clone();
                             let cached_custom_resource_kinds = cached_custom_resource_kinds.clone();
                             move || {
                                 let cached_custom_resource_kinds =
@@ -392,10 +388,10 @@ pub async fn list_resource_topology(
                                     let (custom_resource_kinds, custom_resource_kinds_are_present) =
                                         cached_custom_resource_kinds.unwrap_or_default();
                                     Box::pin(resource_topology_from(
+                                        &access,
                                         cluster_context,
                                         namespaces,
                                         Some(mode),
-                                        kubeconfig_env_var,
                                         Some(Arc::unwrap_or_clone(custom_resource_kinds)),
                                         custom_resource_kinds_are_present,
                                     ))

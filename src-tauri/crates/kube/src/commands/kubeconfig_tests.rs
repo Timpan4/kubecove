@@ -1,4 +1,5 @@
 use super::*;
+use crate::commands::{ClusterAccess, SessionScope};
 use crate::models::AppErrorKind;
 use std::{
     ffi::OsStr,
@@ -76,7 +77,7 @@ kind: Config
 {clusters_key}:
 - name: cluster-{context}
   cluster:
-    server: https://127.0.0.1
+    server: http://127.0.0.1:1
 {contexts_key}:
 - name: {context}
   context:
@@ -99,11 +100,14 @@ fn custom_env_var_reads_selected_kubeconfig() {
     let path = write_kubeconfig("custom-env-context");
     let _selected_env = EnvVarGuard::set(env_var.clone(), &path);
 
-    let source = KubeconfigSource::new(Some(env_var.clone())).expect("source");
-    let contexts = cluster_contexts_from_source(&source).expect("contexts");
+    let access = ClusterAccess::resolve(Some(&env_var)).expect("access");
+    let contexts = access.contexts().expect("contexts");
 
     let _ = fs::remove_file(path);
-    assert_eq!(source.env_var(), env_var);
+    assert_eq!(
+        access.source_label(),
+        Some(format!("{env_var} + 1 path").as_str())
+    );
     assert_eq!(contexts.len(), 1);
     assert_eq!(contexts[0].name, "custom-env-context");
     assert!(contexts[0].is_current);
@@ -115,7 +119,7 @@ fn unset_custom_env_var_uses_default_loader_key_without_path_leak() {
     let env_var = unique_env_var("UNSET");
     let _selected_env = EnvVarGuard::unset(env_var.clone());
 
-    let source = KubeconfigSource::new(Some(env_var.clone())).expect("source");
+    let source = KubeconfigSource::from_persisted(Some(&env_var)).expect("source");
 
     assert!(source.key().starts_with("kubeconfigSource="));
     assert!(!source.key().contains(&env_var));
@@ -140,14 +144,16 @@ fn unset_custom_env_uses_standard_kubeconfig_for_key_and_warnings() {
     .expect("source");
 
     let missing_key = source.key();
-    let (_, warnings) = source.read_configured_kubeconfig().expect("app fallback");
+    let (_, warnings) = source
+        .read_configured_kubeconfig(Fallback::Allow)
+        .expect("app fallback");
     assert_eq!(warnings.len(), 1);
     assert_eq!(warnings[0].source, "env");
     assert!(warnings[0].message.contains(DEFAULT_KUBECONFIG_ENV_VAR));
 
     env::set_var(DEFAULT_KUBECONFIG_ENV_VAR, &standard_path);
     assert_ne!(source.key(), missing_key);
-    let contexts = cluster_contexts_from_source(&source).expect("contexts");
+    let contexts = cluster_contexts_from_kubeconfig(&source.read_kubeconfig().expect("kubeconfig"));
     assert_eq!(
         contexts
             .iter()
@@ -174,7 +180,7 @@ fn env_and_app_paths_merge_in_order_without_key_path_leak() {
         true,
     )
     .expect("source");
-    let contexts = cluster_contexts_from_source(&source).expect("contexts");
+    let contexts = cluster_contexts_from_kubeconfig(&source.read_kubeconfig().expect("kubeconfig"));
     let label = source.label();
 
     let _ = fs::remove_file(&env_path);
@@ -217,7 +223,7 @@ fn unset_env_and_app_paths_merge_platform_default_in_order() {
         true,
     )
     .expect("source");
-    let contexts = cluster_contexts_from_source(&source).expect("contexts");
+    let contexts = cluster_contexts_from_kubeconfig(&source.read_kubeconfig().expect("kubeconfig"));
 
     assert_eq!(
         contexts
@@ -234,13 +240,17 @@ fn unset_env_and_app_paths_merge_platform_default_in_order() {
     );
 
     fs::write(&default_path, "not: [valid").expect("write malformed default kubeconfig");
-    let (_, warnings) = source.read_configured_kubeconfig().expect("app fallback");
+    let (_, warnings) = source
+        .read_configured_kubeconfig(Fallback::Allow)
+        .expect("app fallback");
     assert_eq!(warnings.len(), 1);
     assert_eq!(warnings[0].source, "default");
     assert!(warnings[0].path.is_none());
 
     fs::remove_file(&default_path).expect("remove default kubeconfig");
-    let (_, warnings) = source.read_configured_kubeconfig().expect("app fallback");
+    let (_, warnings) = source
+        .read_configured_kubeconfig(Fallback::Allow)
+        .expect("app fallback");
     assert!(warnings.is_empty());
 
     let _ = fs::remove_dir_all(home);
@@ -268,7 +278,7 @@ fn missing_app_path_warns_and_falls_back_when_default_exists() {
     .expect("source");
 
     let (kubeconfig, warnings) = source
-        .read_configured_kubeconfig()
+        .read_configured_kubeconfig(Fallback::Allow)
         .expect("default fallback");
 
     assert_eq!(
@@ -285,7 +295,9 @@ fn missing_app_path_warns_and_falls_back_when_default_exists() {
 
 #[test]
 fn invalid_env_var_returns_validation_error() {
-    let err = KubeconfigSource::new(Some("bad-name".to_string())).expect_err("invalid");
+    let Err(err) = ClusterAccess::resolve(Some("bad-name")) else {
+        panic!("an invalid variable name must be rejected");
+    };
 
     assert_eq!(err.kind, AppErrorKind::Validation);
     assert!(err.message.contains("kubeconfig env var name"));
@@ -301,7 +313,7 @@ fn e2e_source_ignores_inherited_override() {
     let _standard = EnvVarGuard::set(DEFAULT_KUBECONFIG_ENV_VAR, &standard_path);
 
     let source = KubeconfigSource::from_e2e_path(expected.clone());
-    let contexts = cluster_contexts_from_source(&source).expect("contexts");
+    let contexts = cluster_contexts_from_kubeconfig(&source.read_kubeconfig().expect("kubeconfig"));
 
     assert_eq!(contexts.len(), 1);
     assert_eq!(contexts[0].name, "expected-e2e-context");
@@ -317,8 +329,11 @@ fn e2e_source_ignores_inherited_override() {
     let _ = fs::remove_file(standard_path);
 }
 
+// Failure modes: a cluster-changing intent that falls back to the default
+// kubeconfig, a fail-closed intent served a client cached by a read that fell
+// back, and a read or stream that stops falling back.
 #[test]
-fn missing_app_path_fails_closed_for_cluster_changing_sources() {
+fn cluster_changing_intents_fail_closed_when_configured_sources_do_not_load() {
     let _env_lock = ENV_LOCK.lock().expect("environment lock");
     let home = env::temp_dir().join(unique_env_var("FAIL_CLOSED_HOME"));
     let default_path = home.join(".kube").join("config");
@@ -330,24 +345,37 @@ fn missing_app_path_fails_closed_for_cluster_changing_sources() {
     let env_var = unique_env_var("FAIL_CLOSED_ENV");
     let _kubeconfig = EnvVarGuard::set(&env_var, &missing);
     let _home = EnvVarGuard::set("HOME", &home);
-    let source = KubeconfigSource::from_settings(Some(&env_var), Vec::new(), true).expect("source");
-
-    let (kubeconfig, _) = source
-        .read_configured_kubeconfig()
-        .expect("read-only paths fall back to the default kubeconfig");
-    assert_eq!(
-        kubeconfig.current_context.as_deref(),
-        Some("default-context")
+    let access = ClusterAccess::from_kubeconfig(
+        KubeconfigSource::from_settings(Some(&env_var), Vec::new(), true).expect("source"),
     );
 
-    let source = source.fail_closed();
-
-    let error = source
-        .read_configured_kubeconfig()
-        .expect_err("must not fall back to the default kubeconfig");
-    assert_eq!(error.kind, AppErrorKind::Kubeconfig);
-    assert!(error.message.contains("refusing to fall back"));
-    assert!(source.ensure_configured_sources_load().is_err());
+    crate::runtime::block_on(SessionScope::new(None).run(async {
+        access
+            .read_client("default-context")
+            .await
+            .expect("reads fall back to the default kubeconfig");
+        access
+            .stream_client("default-context")
+            .await
+            .expect("streams fall back to the default kubeconfig");
+        for (intent, result) in [
+            ("preview", access.preview_client("default-context").await),
+            (
+                "confirmed operation",
+                access.confirmed_operation_client("default-context").await,
+            ),
+            (
+                "live session",
+                access.live_session_client("default-context").await,
+            ),
+        ] {
+            let Err(error) = result else {
+                panic!("{intent} must not fall back to the default kubeconfig");
+            };
+            assert_eq!(error.kind, AppErrorKind::Kubeconfig, "{intent}");
+            assert!(error.message.contains("refusing to fall back"), "{intent}");
+        }
+    }));
 
     let _ = fs::remove_dir_all(home);
     let _ = fs::remove_file(default_source);

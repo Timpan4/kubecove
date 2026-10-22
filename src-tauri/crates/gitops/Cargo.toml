@@ -36,6 +36,7 @@ uuid = { workspace = true }
 tauri = { workspace = true, optional = true }
 
 [dev-dependencies]
+kubecove-kube = { path = "../kube", features = ["test-support"] }
 rustls = { workspace = true }
 http = { workspace = true }
 tower = { workspace = true }

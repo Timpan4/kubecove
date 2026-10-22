@@ -1,5 +1,5 @@
 use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
-use crate::commands::kubeconfig::KubeconfigSource;
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, DeploymentRevision};
 use k8s_openapi::api::apps::v1::{Deployment, ReplicaSet};
@@ -15,8 +15,9 @@ pub async fn list_deployment_revisions(
     namespace: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<DeploymentRevision>, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
     deployment_revisions_from(client, &name, &namespace).await
 }
 

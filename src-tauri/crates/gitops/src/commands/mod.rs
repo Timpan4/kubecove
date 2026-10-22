@@ -4,8 +4,10 @@ mod gitops_crd;
 pub mod helm;
 
 pub(crate) use kubecove_kube::commands::{
-    diagnostic_field, helpers, kubeconfig, BackendCancellationRegistry, FiniteRead,
+    diagnostic_field, helpers, BackendCancellationRegistry, ClusterAccess, FiniteRead,
 };
+#[cfg(test)]
+pub(crate) use kubecove_kube::commands::{FixedClusterAccess, FIXED_SOURCE_KEY};
 pub(crate) use kubecove_live::commands::sessions;
 
 #[cfg(not(feature = "desktop"))]

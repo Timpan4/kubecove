@@ -1,5 +1,5 @@
 use crate::commands::builtin_kinds::{builtin_kind, BuiltinKind};
-use crate::commands::operations::{client_for, operation_client_for, preview_patch_params};
+use crate::commands::{operations::preview_patch_params, ClusterAccess};
 use crate::models::{
     AppError, AppErrorKind, ClusterOperationResult, ClusterOperationTarget, ResourceActionEdits,
     ResourceActionKind, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
@@ -23,7 +23,9 @@ pub async fn get_resource_action_state(
             AppErrorKind::UnsupportedOperation,
         ));
     }
-    let client = client_for(&request.target, request.kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
+        .preview_client(&request.target.cluster_context)
+        .await?;
     let api = resource_api(client.clone(), &request.target)?;
     let current = api.get(&request.target.name).await?;
     let value = action_value(&current)?;
@@ -90,14 +92,9 @@ pub async fn preview_resource_action(
     request: ResourceActionRequest,
 ) -> Result<ResourceActionPreview, AppError> {
     validate_resource_action_request(&request)?;
-    let client = client_for(&request.target, request.kubeconfig_env_var.clone()).await?;
-    preview_resource_action_with_client(request, client).await
-}
-
-async fn preview_resource_action_with_client(
-    request: ResourceActionRequest,
-    client: kube::Client,
-) -> Result<ResourceActionPreview, AppError> {
+    let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
+        .preview_client(&request.target.cluster_context)
+        .await?;
     let api = resource_api(client.clone(), &request.target)?;
     let current = api.get(&request.target.name).await?;
     let current_value = action_value(&current)?;
@@ -133,14 +130,9 @@ pub async fn execute_resource_action(
 ) -> Result<ClusterOperationResult, AppError> {
     validate_resource_action_request(&request)?;
     require_action_confirmation(&request)?;
-    let client = operation_client_for(&request.target, request.kubeconfig_env_var.clone()).await?;
-    execute_resource_action_with_client(request, client).await
-}
-
-async fn execute_resource_action_with_client(
-    request: ResourceActionRequest,
-    client: kube::Client,
-) -> Result<ClusterOperationResult, AppError> {
+    let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
+        .confirmed_operation_client(&request.target.cluster_context)
+        .await?;
     if request.action == ResourceActionKind::Rollback
         && request
             .expected_revision_uid

@@ -1,5 +1,5 @@
 use super::{client_cache::ClientCaches, forwarded_bearer::BearerSlot};
-use crate::commands::diagnostics::BackendDiagnosticsState;
+use crate::commands::{cluster_access::SourcePolicy, diagnostics::BackendDiagnosticsState};
 use std::{
     future::Future,
     sync::{Arc, LazyLock, Mutex},
@@ -9,10 +9,12 @@ tokio::task_local! {
     static CURRENT: Arc<SessionScope>;
 }
 
-static PROCESS: LazyLock<Arc<SessionScope>> = LazyLock::new(|| SessionScope::new(None));
+static PROCESS: LazyLock<Arc<SessionScope>> =
+    LazyLock::new(|| SessionScope::with_source_policy(None, SourcePolicy::Local));
 
-/// One session's client state: its bearer slot, client caches and their
-/// cancellation generation, and its command diagnostics.
+/// One session's client state: its bearer slot, kubeconfig source policy,
+/// client caches and their cancellation generation, and its command
+/// diagnostics.
 ///
 /// `kubecove-server` runs every command of a session inside that session's
 /// scope, so one session's requests and workspace cancellation never reach
@@ -20,6 +22,7 @@ static PROCESS: LazyLock<Arc<SessionScope>> = LazyLock::new(|| SessionScope::new
 /// the process scope, through the same path.
 pub struct SessionScope {
     bearer: Arc<BearerSlot>,
+    source_policy: SourcePolicy,
     pub(crate) caches: ClientCaches,
     pub(crate) diagnostics: Mutex<BackendDiagnosticsState>,
     credential_namespace: Option<String>,
@@ -30,8 +33,16 @@ impl SessionScope {
     /// apart from every other namespace's. The server passes the signed-in
     /// subject.
     pub fn new(credential_namespace: Option<String>) -> Arc<Self> {
+        Self::with_source_policy(credential_namespace, SourcePolicy::Local)
+    }
+
+    pub(crate) fn with_source_policy(
+        credential_namespace: Option<String>,
+        source_policy: SourcePolicy,
+    ) -> Arc<Self> {
         Arc::new(Self {
             bearer: Arc::default(),
+            source_policy,
             caches: ClientCaches::default(),
             diagnostics: Mutex::default(),
             credential_namespace,
@@ -77,6 +88,10 @@ impl SessionScope {
 
     pub(crate) fn bearer_slot(&self) -> Arc<BearerSlot> {
         Arc::clone(&self.bearer)
+    }
+
+    pub(crate) fn source_policy(&self) -> &SourcePolicy {
+        &self.source_policy
     }
 
     pub fn credential_namespace(&self) -> Option<&str> {

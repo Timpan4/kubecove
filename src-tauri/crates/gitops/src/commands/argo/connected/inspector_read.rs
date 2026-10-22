@@ -2,18 +2,21 @@ use super::super::scope::scoped_connection;
 use super::super::transport::{api_get, argo_url, redact_secret_fields};
 use super::inspection::{connected_inspector, inspector_from_application};
 use super::store::ArgoConnectionStore;
-use crate::commands::gitops_crd::{client_for_context, find_api_resource, get_crd_object};
+use crate::commands::{
+    gitops_crd::{find_api_resource, get_crd_object},
+    ClusterAccess,
+};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ArgoApplicationInspector, ArgoApplicationRef};
 use kube::core::DynamicObject;
 
 pub(crate) async fn kubernetes_application(
+    access: &ClusterAccess,
     cluster_context: &str,
     namespace: Option<&str>,
     name: &str,
-    kubeconfig_env_var: Option<String>,
 ) -> Result<DynamicObject, AppError> {
-    let client = client_for_context(cluster_context, kubeconfig_env_var).await?;
+    let client = access.read_client(cluster_context).await?;
     let ar = find_api_resource(&client, "argoproj.io", "Application")
         .await?
         .ok_or_else(|| AppError::new("Application CRD not found", AppErrorKind::Cluster))?;
@@ -21,16 +24,16 @@ pub(crate) async fn kubernetes_application(
 }
 
 async fn kubernetes_inspector(
+    access: &ClusterAccess,
     cluster_context: &str,
     application: &ArgoApplicationRef,
-    kubeconfig_env_var: Option<String>,
 ) -> Result<ArgoApplicationInspector, AppError> {
     let workspace_id = application.workspace_id.clone();
     let mut object = kubernetes_application(
+        access,
         cluster_context,
         application.namespace.as_deref(),
         &application.name,
-        kubeconfig_env_var,
     )
     .await?;
     redact_secret_fields(&mut object.data);
@@ -79,7 +82,7 @@ pub(crate) fn connected_application_path(
 async fn connected_inspector_read(
     store: &ArgoConnectionStore,
     cluster_context: &str,
-    kubeconfig_env_var: Option<&str>,
+    source_key: &str,
     connection_id: Option<&str>,
     application: ArgoApplicationRef,
 ) -> Result<ArgoApplicationInspector, AppError> {
@@ -90,7 +93,7 @@ async fn connected_inspector_read(
         })?,
         cluster_context,
         application.workspace_id.as_deref(),
-        kubeconfig_env_var,
+        source_key,
     )?;
     let namespace = application.namespace.clone().unwrap_or_default();
     let response = api_get(
@@ -175,14 +178,14 @@ fn inspection_error(connected: &AppError, kubernetes: &AppError) -> AppError {
 
 pub(super) async fn application_inspector(
     store: &ArgoConnectionStore,
+    access: &ClusterAccess,
     cluster_context: String,
-    kubeconfig_env_var: Option<String>,
     connection_id: Option<String>,
     transport: String,
     application: ArgoApplicationRef,
 ) -> Result<ArgoApplicationInspector, AppError> {
     if transport == "kubernetes" {
-        return kubernetes_inspector(&cluster_context, &application, kubeconfig_env_var).await;
+        return kubernetes_inspector(access, &cluster_context, &application).await;
     }
     if transport != "connected" {
         return Err(AppError::new(
@@ -193,7 +196,7 @@ pub(super) async fn application_inspector(
     match connected_inspector_read(
         store,
         &cluster_context,
-        kubeconfig_env_var.as_deref(),
+        access.source_key(),
         connection_id.as_deref(),
         application.clone(),
     )
@@ -201,7 +204,7 @@ pub(super) async fn application_inspector(
     {
         Ok(inspector) => Ok(inspector),
         Err(connected_error) => {
-            match kubernetes_inspector(&cluster_context, &application, kubeconfig_env_var).await {
+            match kubernetes_inspector(access, &cluster_context, &application).await {
                 Ok(inspector) => Ok(with_connected_fallback(inspector, &connected_error)),
                 Err(kubernetes_error) => Err(inspection_error(&connected_error, &kubernetes_error)),
             }

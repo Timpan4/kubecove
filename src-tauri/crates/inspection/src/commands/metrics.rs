@@ -1,6 +1,5 @@
 use crate::commands::{
-    diagnostic_field, helpers::list_params, kubeconfig::KubeconfigSource,
-    BackendCancellationRegistry, FiniteRead,
+    diagnostic_field, helpers::list_params, BackendCancellationRegistry, ClusterAccess, FiniteRead,
 };
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -41,14 +40,6 @@ fn metrics_api_resource(kind: &str, plural: &str) -> ApiResource {
         kind: kind.to_string(),
         plural: plural.to_string(),
     }
-}
-
-async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    source.client_for_context(cluster_context).await
 }
 
 async fn has_metrics_api(client: Client) -> Result<bool, AppError> {
@@ -447,14 +438,14 @@ pub fn resource_metrics_projection(
 }
 
 pub async fn resource_metrics_from(
+    access: &ClusterAccess,
     cluster_context: String,
     namespaces: Vec<String>,
-    kubeconfig_env_var: Option<String>,
 ) -> Result<ResourceMetricsSummary, AppError> {
     for namespace in &namespaces {
         crate::commands::helpers::validate_namespace(Some(namespace))?;
     }
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = access.read_client(&cluster_context).await?;
     match has_metrics_api(client.clone()).await {
         Ok(true) => {}
         Ok(false) => {
@@ -566,7 +557,10 @@ pub async fn list_resource_metrics(
         .label("namespaces", namespace_count)
         .cancellable(&cancellations, cancel_scope, request_id)
         .run(
-            resource_metrics_from(cluster_context, namespaces, kubeconfig_env_var),
+            async move {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                resource_metrics_from(&access, cluster_context, namespaces).await
+            },
             |summary| {
                 vec![
                     diagnostic_field("status", format!("{:?}", summary.availability.status)),

@@ -6,7 +6,7 @@ use crate::commands::{
     helpers::{
         k8s_creation_timestamp_to_rfc3339, list_params, resource_age, serialize_resource_document,
     },
-    kubeconfig::KubeconfigSource,
+    ClusterAccess,
 };
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -79,20 +79,14 @@ pub async fn list_helm_releases(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<HelmReleaseList, AppError> {
-    let (client, default_namespace) =
-        client_for_context(&cluster_context, kubeconfig_env_var).await?;
-    list_helm_releases_with_client(client, &cluster_context, &default_namespace).await
-}
-
-async fn list_helm_releases_with_client(
-    client: Client,
-    cluster_context: &str,
-    default_namespace: &str,
-) -> Result<HelmReleaseList, AppError> {
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
     let (fallback_namespaces, namespaces_discovered) =
-        helm_fallback_namespaces(client.clone(), default_namespace).await;
-    let secrets = list_secret_releases(client.clone(), cluster_context, &fallback_namespaces).await;
-    let configmaps = list_configmap_releases(client, cluster_context, &fallback_namespaces).await;
+        helm_fallback_namespaces(client.clone(), client.default_namespace()).await;
+    let secrets =
+        list_secret_releases(client.clone(), &cluster_context, &fallback_namespaces).await;
+    let configmaps = list_configmap_releases(client, &cluster_context, &fallback_namespaces).await;
     let mut records = Vec::new();
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
@@ -162,7 +156,9 @@ pub async fn get_helm_release_details(
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<HelmReleaseDetails, AppError> {
-    let (client, _) = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
 
     let (record, metadata, yaml) = release_storage_object(
         client,
@@ -261,14 +257,6 @@ async fn release_storage_object(
             AppErrorKind::Validation,
         )),
     }
-}
-
-pub(super) async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<(Client, String), AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    source.client_and_default_namespace(cluster_context).await
 }
 
 /// Namespaces for the per-namespace fallback, and whether they were discovered.

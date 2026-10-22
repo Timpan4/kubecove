@@ -61,8 +61,6 @@ impl<T: Clone> Cache<T> {
     }
 }
 
-type ClientEntry = (Client, String);
-
 #[derive(Clone)]
 pub(crate) struct ClientGeneration {
     pub(crate) id: u64,
@@ -71,7 +69,7 @@ pub(crate) struct ClientGeneration {
 
 struct FiniteClientState {
     generation: ClientGeneration,
-    clients: Cache<ClientEntry>,
+    clients: Cache<Client>,
 }
 
 impl FiniteClientState {
@@ -91,7 +89,7 @@ impl FiniteClientState {
 pub(crate) struct ClientCaches {
     finite: RwLock<FiniteClientState>,
     operation: RwLock<Cache<Client>>,
-    live: RwLock<Cache<ClientEntry>>,
+    live: RwLock<Cache<Client>>,
 }
 
 impl Default for ClientCaches {
@@ -124,7 +122,7 @@ pub(crate) fn lookup_client(
     cluster_context: &str,
     fingerprint: u64,
     generation: u64,
-) -> Option<ClientEntry> {
+) -> Option<Client> {
     with_caches(|caches| {
         let mut state = caches.finite.write().expect("finite client cache lock");
         (state.generation.id == generation)
@@ -143,19 +141,15 @@ pub(crate) fn store_client(
     fingerprint: u64,
     generation: u64,
     client: Client,
-    default_namespace: String,
 ) -> bool {
     with_caches(|caches| {
         let mut state = caches.finite.write().expect("finite client cache lock");
         if state.generation.id != generation {
             return false;
         }
-        state.clients.store(
-            source_key,
-            cluster_context,
-            fingerprint,
-            (client, default_namespace),
-        );
+        state
+            .clients
+            .store(source_key, cluster_context, fingerprint, client);
         true
     })
 }
@@ -214,7 +208,7 @@ pub(crate) fn lookup_live_client(
     source_key: &str,
     cluster_context: &str,
     fingerprint: u64,
-) -> Option<ClientEntry> {
+) -> Option<Client> {
     with_caches(|caches| {
         caches.live.write().expect("live client cache lock").lookup(
             source_key,
@@ -229,14 +223,13 @@ pub(crate) fn store_live_client(
     cluster_context: String,
     fingerprint: u64,
     client: Client,
-    default_namespace: String,
 ) {
     with_caches(|caches| {
         caches.live.write().expect("live client cache lock").store(
             source_key,
             cluster_context,
             fingerprint,
-            (client, default_namespace),
+            client,
         );
     });
 }
@@ -296,7 +289,7 @@ mod lru_tests {
                 "source".into(),
                 "context".into(),
                 1,
-                (Client::new(service, "default"), "default".into()),
+                Client::new(service, "default"),
             );
         }
         rotate_generation(&caches);

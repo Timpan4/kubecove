@@ -152,7 +152,10 @@ fn exact_argv_preserves_whitespace_and_empty_arguments() {
         String::new(),
     ];
     request.confirmation.command = serde_json::to_string(&request.command).unwrap();
-    assert_eq!(validate_request(&request).unwrap().command, request.command);
+    assert_eq!(
+        validate_request(&request).unwrap().0.command,
+        request.command
+    );
 }
 
 #[test]

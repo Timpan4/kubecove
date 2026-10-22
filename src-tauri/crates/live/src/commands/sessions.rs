@@ -21,13 +21,11 @@ pub struct TunnelTarget {
 
 /// Validate and resolve a tunnel target through the same Pod/Service path as desktop forwards.
 pub async fn resolve_tunnel_target(request: PortForwardRequest) -> Result<TunnelTarget, AppError> {
-    let validated = target::validate_request(&request)?;
-    let client = target::client_for_context(
-        &validated.cluster_context,
-        validated.kubeconfig_env_var.clone(),
-    )
-    .await?;
-    let target = target::resolve_port_forward_target_with_client(validated, client.clone()).await?;
+    let (validated, access) = target::validate_request(&request)?;
+    let client = access
+        .live_session_client(&validated.cluster_context)
+        .await?;
+    let target = target::resolve_port_forward_target(&access, validated).await?;
     Ok(TunnelTarget {
         client,
         namespace: target.namespace,

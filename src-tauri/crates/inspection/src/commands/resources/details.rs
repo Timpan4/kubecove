@@ -1,8 +1,6 @@
 use super::builtin_summary::{builtin_summary, BuiltinSummary};
 use crate::commands::helpers::{fetch_and_serialize, fetch_and_serialize_cluster, redact_secret};
-use crate::commands::{
-    diagnostic_field, kubeconfig::KubeconfigSource, BackendCancellationRegistry, FiniteRead,
-};
+use crate::commands::{diagnostic_field, BackendCancellationRegistry, ClusterAccess, FiniteRead};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ResourceDetailsFull};
 use crate::runtime::State;
@@ -17,25 +15,13 @@ use k8s_openapi::api::storage::v1::StorageClass;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 
 pub async fn resource_details_from(
-    cluster_context: String,
-    kind: String,
-    name: String,
-    namespace: Option<String>,
-    kubeconfig_env_var: Option<String>,
-) -> Result<ResourceDetailsFull, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
-
-    resource_details_with_client(client, cluster_context, kind, name, namespace).await
-}
-
-pub(super) async fn resource_details_with_client(
-    client: kube::Client,
+    access: &ClusterAccess,
     cluster_context: String,
     kind: String,
     name: String,
     namespace: Option<String>,
 ) -> Result<ResourceDetailsFull, AppError> {
+    let client = access.read_client(&cluster_context).await?;
     let cluster = cluster_context.as_str();
     let namespace = namespace.as_deref();
     match kind.as_str() {
@@ -156,13 +142,13 @@ pub async fn get_resource_details(
         .label("name", &name)
         .cancellable(&cancellations, cancel_scope, request_id)
         .run(
-            resource_details_from(
-                cluster_context,
-                kind.clone(),
-                name,
-                namespace,
-                kubeconfig_env_var,
-            ),
+            {
+                let kind = kind.clone();
+                async move {
+                    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                    resource_details_from(&access, cluster_context, kind, name, namespace).await
+                }
+            },
             |details| {
                 vec![
                     diagnostic_field("kind", &kind),
@@ -177,7 +163,7 @@ pub async fn get_resource_details(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{YamlEncoding, YamlViewMode};
+    use crate::commands::FixedClusterAccess;
     use http::{Request, Response};
     use kube::{client::Body, Client};
     use serde_json::json;
@@ -210,9 +196,9 @@ mod tests {
                 let body = object.to_string().into_bytes();
                 async move { Ok::<_, std::convert::Infallible>(Response::new(Body::from(body))) }
             });
-            let client = Client::new(service, "default");
-            let details = resource_details_with_client(
-                client.clone(),
+            let access = FixedClusterAccess::new(Client::new(service, "default")).access();
+            let details = resource_details_from(
+                &access,
                 "test-cluster".into(),
                 "ReplicaSet".into(),
                 "calagopus-5f554d575f".into(),
@@ -237,13 +223,14 @@ mod tests {
             assert_eq!(details.metadata["name"], "calagopus-5f554d575f");
             let yaml: serde_json::Value = serde_yaml::from_str(&details.yaml).unwrap();
             assert_eq!(yaml["kind"], "ReplicaSet");
-            let document = super::super::yaml::resource_yaml_with_client(
-                client,
+            let document = super::super::yaml::resource_yaml_from(
+                &access,
+                "test-cluster".into(),
                 "ReplicaSet".into(),
                 "calagopus-5f554d575f".into(),
                 Some("calagopus".into()),
-                YamlViewMode::default(),
-                YamlEncoding::default(),
+                None,
+                None,
             )
             .await
             .expect("ReplicaSet YAML should load");

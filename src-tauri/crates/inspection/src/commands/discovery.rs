@@ -2,11 +2,7 @@ use crate::models::AppErrorKind;
 use crate::runtime::State;
 use crate::{
     commands::helpers::list_params,
-    commands::{
-        diagnostic_field,
-        kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-        ClusterLiveStore, FiniteRead,
-    },
+    commands::{diagnostic_field, ClusterAccess, ClusterLiveStore, FiniteRead},
     models::{AppError, DiscoveredResourceKind},
 };
 use futures_util::{io::AsyncReadExt, stream, StreamExt};
@@ -25,12 +21,10 @@ use crd_catalog::{CatalogCrd, CatalogVersion};
 const MAX_PRESENT_KIND_CONCURRENCY: usize = 48;
 
 pub async fn resource_kinds_from(
-    cluster_context: String,
-    kubeconfig_env_var: Option<String>,
+    access: &ClusterAccess,
+    cluster_context: &str,
 ) -> Result<Vec<DiscoveredResourceKind>, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
-    crd_resource_kinds(client).await
+    crd_resource_kinds(access.read_client(cluster_context).await?).await
 }
 
 pub(crate) async fn crd_resource_kinds(
@@ -133,27 +127,18 @@ pub async fn list_resource_kinds(
         .label("context", &cluster_context)
         .run(
             async move {
-                let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
                 live_store
-                    .resource_kinds(source_key, cluster_context.clone(), move || {
-                        resource_kinds_from(cluster_context, kubeconfig_env_var)
-                    })
+                    .resource_kinds(
+                        access.source_key().to_string(),
+                        cluster_context.clone(),
+                        move || async move { resource_kinds_from(&access, &cluster_context).await },
+                    )
                     .await
             },
             |rows| vec![diagnostic_field("rows", rows.len())],
         )
         .await
-}
-
-pub async fn present_custom_resource_kinds_from(
-    cluster_context: String,
-    namespaces: Vec<String>,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Vec<DiscoveredResourceKind>, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
-    let catalog = crd_resource_kinds(client.clone()).await?;
-    present_custom_resource_kinds_for_catalog(client, catalog, namespaces).await
 }
 
 pub(crate) async fn present_custom_resource_kinds_for_catalog(
@@ -252,7 +237,8 @@ pub async fn list_present_custom_resource_kinds(
         .label("namespaces", namespaces.len())
         .run(
             async move {
-                let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                let source_key = access.source_key().to_string();
                 let store = live_store.inner().clone();
                 live_store
                     .present_custom_resource_kinds(
@@ -263,8 +249,7 @@ pub async fn list_present_custom_resource_kinds(
                             let source_key = source_key.clone();
                             let store = store.clone();
                             async move {
-                                let source = KubeconfigSource::new(kubeconfig_env_var)?;
-                                let client = source.client_for_context(&cluster_context).await?;
+                                let client = access.read_client(&cluster_context).await?;
                                 let catalog_client = client.clone();
                                 let catalog = store
                                     .resource_kinds(

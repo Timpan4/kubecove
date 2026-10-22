@@ -4,8 +4,7 @@ use crate::commands::{
         fetch_and_serialize_cluster_with_encoding, fetch_and_serialize_with_encoding,
         fetch_resource, redact_secret, serialize_resource_document,
     },
-    kubeconfig::KubeconfigSource,
-    BackendCancellationRegistry, FiniteRead,
+    BackendCancellationRegistry, ClusterAccess, FiniteRead,
 };
 use crate::models::AppErrorKind;
 use crate::models::{AppError, YamlEncoding, YamlViewMode};
@@ -20,11 +19,11 @@ pub async fn reveal_secret_data_value(
     key: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<String, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
     crate::commands::helpers::validate_namespace(Some(&namespace))?;
     crate::commands::helpers::validate_path_segment(&name, "Secret name")?;
     let secret = Api::<k8s_openapi::api::core::v1::Secret>::namespaced(
-        source.client_for_context(&cluster_context).await?,
+        access.read_client(&cluster_context).await?,
         &namespace,
     )
     .get(&name)
@@ -39,30 +38,17 @@ pub async fn reveal_secret_data_value(
 }
 
 pub async fn resource_yaml_from(
+    access: &ClusterAccess,
     cluster_context: String,
     kind: String,
     name: String,
     namespace: Option<String>,
-    kubeconfig_env_var: Option<String>,
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<String, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
+    let client = access.read_client(&cluster_context).await?;
     let mode = yaml_view_mode.unwrap_or_default();
     let encoding = yaml_encoding.unwrap_or_default();
-
-    resource_yaml_with_client(client, kind, name, namespace, mode, encoding).await
-}
-
-pub(super) async fn resource_yaml_with_client(
-    client: kube::Client,
-    kind: String,
-    name: String,
-    namespace: Option<String>,
-    mode: YamlViewMode,
-    encoding: YamlEncoding,
-) -> Result<String, AppError> {
     match kind.as_str() {
         "Pod" => {
             let (_pod, yaml) =
@@ -224,15 +210,22 @@ pub async fn get_resource_yaml(
         .label("name", &name)
         .cancellable(&cancellations, cancel_scope, request_id)
         .run(
-            resource_yaml_from(
-                cluster_context,
-                kind.clone(),
-                name,
-                namespace,
-                kubeconfig_env_var,
-                yaml_view_mode,
-                yaml_encoding,
-            ),
+            {
+                let kind = kind.clone();
+                async move {
+                    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                    resource_yaml_from(
+                        &access,
+                        cluster_context,
+                        kind,
+                        name,
+                        namespace,
+                        yaml_view_mode,
+                        yaml_encoding,
+                    )
+                    .await
+                }
+            },
             |yaml| {
                 vec![
                     diagnostic_field("kind", &kind),

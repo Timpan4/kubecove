@@ -1,15 +1,20 @@
 use super::*;
+use crate::commands::{ClientIntent, FixedClusterAccess};
 use crate::models::AppErrorKind;
 use http::{header::CONTENT_TYPE, Method, Request, Response};
 use kube::{client::Body, Client};
 use serde_json::json;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 type MockHandle = tower_test::mock::Handle<Request<Body>, Response<Body>>;
 
-fn mock_client() -> (Client, MockHandle) {
+/// A session whose requests resolve to a mock cluster, and that cluster's handle.
+fn mock_cluster() -> (Arc<FixedClusterAccess>, MockHandle) {
     let (service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
-    (Client::new(service, "default"), handle)
+    (
+        FixedClusterAccess::new(Client::new(service, "default")),
+        handle,
+    )
 }
 
 fn json_response(status: u16, body: serde_json::Value) -> Response<Body> {
@@ -85,10 +90,10 @@ async fn await_mock<T>(future: impl std::future::Future<Output = T>) -> T {
 
 #[tokio::test]
 async fn prepare_issues_get_then_dry_run_patch() {
-    let (client, mut handle) = mock_client();
-    let validated = validate_yaml_apply(base_request_yaml(false)).unwrap();
-
-    let operation = prepare_yaml_apply_with_client(client, validated);
+    let (cluster, mut handle) = mock_cluster();
+    let operation = cluster
+        .scope()
+        .run(prepare_yaml_apply(base_request_yaml(false)));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("get request");
         assert_eq!(request.method(), Method::GET);
@@ -103,8 +108,9 @@ async fn prepare_issues_get_then_dry_run_patch() {
         send.send_response(json_response(200, service_manifest()));
     };
 
-    let (preview, ()) = await_mock(async { tokio::join!(operation, responder) }).await;
+    let (preview, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
     let preview = preview.unwrap();
+    assert_eq!(cluster.intents(), vec![ClientIntent::Preview]);
 
     assert!(preview.current_yaml.contains("name: api"));
     assert!(preview.dry_run_yaml.contains("name: api"));
@@ -112,10 +118,8 @@ async fn prepare_issues_get_then_dry_run_patch() {
 
 #[tokio::test]
 async fn apply_force_conflicts_sets_force_param() {
-    let (client, mut handle) = mock_client();
-    let validated = validate_yaml_apply(base_request_yaml(true)).unwrap();
-
-    let operation = apply_yaml_with_client(client, validated);
+    let (cluster, mut handle) = mock_cluster();
+    let operation = cluster.scope().run(apply_yaml(base_request_yaml(true)));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("patch request");
         assert_eq!(request.method(), Method::PATCH);
@@ -126,17 +130,17 @@ async fn apply_force_conflicts_sets_force_param() {
         send.send_response(json_response(200, service_manifest()));
     };
 
-    let (result, ()) = await_mock(async { tokio::join!(operation, responder) }).await;
+    let (result, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
 
     assert!(result.unwrap().applied_yaml.contains("name: api"));
+    // ADR 0009: workspace rotation must not cancel a write the API server may have applied.
+    assert_eq!(cluster.intents(), vec![ClientIntent::ConfirmedOperation]);
 }
 
 #[tokio::test]
 async fn apply_classifies_field_manager_conflict() {
-    let (client, mut handle) = mock_client();
-    let validated = validate_yaml_apply(base_request_yaml(false)).unwrap();
-
-    let operation = apply_yaml_with_client(client, validated);
+    let (cluster, mut handle) = mock_cluster();
+    let operation = cluster.scope().run(apply_yaml(base_request_yaml(false)));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("patch request");
         assert_eq!(request.method(), Method::PATCH);
@@ -162,7 +166,7 @@ async fn apply_classifies_field_manager_conflict() {
         ));
     };
 
-    let (result, ()) = await_mock(async { tokio::join!(operation, responder) }).await;
+    let (result, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
     let err = result.unwrap_err();
 
     assert_eq!(err.kind, AppErrorKind::FieldManagerConflict);
@@ -171,10 +175,8 @@ async fn apply_classifies_field_manager_conflict() {
 
 #[tokio::test]
 async fn apply_maps_forbidden_to_forbidden_kind() {
-    let (client, mut handle) = mock_client();
-    let validated = validate_yaml_apply(base_request_yaml(false)).unwrap();
-
-    let operation = apply_yaml_with_client(client, validated);
+    let (cluster, mut handle) = mock_cluster();
+    let operation = cluster.scope().run(apply_yaml(base_request_yaml(false)));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("patch request");
         assert_eq!(request.method(), Method::PATCH);
@@ -193,7 +195,7 @@ async fn apply_maps_forbidden_to_forbidden_kind() {
         ));
     };
 
-    let (result, ()) = await_mock(async { tokio::join!(operation, responder) }).await;
+    let (result, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
     let err = result.unwrap_err();
 
     assert_eq!(err.kind, AppErrorKind::Forbidden);

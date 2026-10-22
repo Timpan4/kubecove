@@ -1,8 +1,7 @@
 use crate::commands::{
     diagnostic_field,
     helpers::{k8s_timestamp_to_datetime, list_params, resource_age},
-    kubeconfig::KubeconfigSource,
-    BackendCancellationRegistry, FiniteRead,
+    BackendCancellationRegistry, ClusterAccess, FiniteRead,
 };
 use crate::models::{AppError, ResourceEventSummary};
 use crate::runtime::State;
@@ -116,15 +115,14 @@ pub fn resource_events_after_fetch_at(
 }
 
 pub async fn resource_events_from(
+    access: &ClusterAccess,
     cluster_context: String,
     kind: String,
     name: String,
     namespace: Option<String>,
     uid: Option<String>,
-    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ResourceEventSummary>, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
+    let client = access.read_client(&cluster_context).await?;
     let event_api: Api<k8s_openapi::api::core::v1::Event> = if let Some(ns) = &namespace {
         Api::namespaced(client, ns)
     } else {
@@ -174,14 +172,13 @@ pub async fn list_resource_events(
         .label("name", &name)
         .cancellable(&cancellations, cancel_scope, request_id)
         .run(
-            resource_events_from(
-                cluster_context,
-                kind.clone(),
-                name,
-                namespace,
-                uid,
-                kubeconfig_env_var,
-            ),
+            {
+                let kind = kind.clone();
+                async move {
+                    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                    resource_events_from(&access, cluster_context, kind, name, namespace, uid).await
+                }
+            },
             |events| {
                 vec![
                     diagnostic_field("kind", &kind),
