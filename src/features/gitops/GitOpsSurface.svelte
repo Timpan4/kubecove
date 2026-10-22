@@ -195,7 +195,7 @@
 		const keys = watchKeys;
 		const fluxKinds = fluxDetectionQuery.data?.kinds ?? [];
 		const freshness = createArgoListFreshness((queryKey) => void queryClient.invalidateQueries({ queryKey }), source);
-		const stop = observeResourceScope({ client, clusterContext, keys, kubeconfigEnvVar: source,
+		const { stop } = observeResourceScope({ client, clusterContext, keys, kubeconfigEnvVar: source,
 			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; realtimeWarnings = state.warnings ?? []; },
 			reload: () => refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: source, keys, namespaces: [] }),
 			onChange: (event) => {

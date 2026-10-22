@@ -3,7 +3,7 @@
 Contract: one object-to-summary projection per built-in kind feeds list rows,
 `get_resource_details`, and ownership and network-flow topology. Details and
 topology add only their own extras. List rows keep their previous serialized
-output, and the health assessment keeps the [ADR 0018](decisions/0018-health-assessment-contract.md)
+output except that PersistentVolumeClaims now show their phase, and the health assessment keeps the [ADR 0018](decisions/0018-health-assessment-contract.md)
 contract.
 
 The projection is the `BuiltinSummary` trait in
