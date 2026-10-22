@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.7 - 2026-10-22
+### Improved
+
+- Cut WebKitGTK render, log and resource-list overhead (#578).
+
 ## 0.12.6 - 2026-10-21
 ### Improved
 
