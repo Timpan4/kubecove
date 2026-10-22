@@ -143,6 +143,7 @@ function inspectionQueryOptions(
 	request: ArgoApplicationInspectionRequest,
 	workspaceId: string,
 	enabled: boolean,
+	redactSecrets: boolean,
 ) {
 	const { application } = request;
 	return {
@@ -153,7 +154,7 @@ function inspectionQueryOptions(
 				application.name,
 				application.namespace,
 				application.uid,
-				request.redactSecrets === true,
+				redactSecrets,
 				request.transport,
 				request.connectionId,
 				request.kubeconfigEnvVar,
@@ -167,7 +168,7 @@ function inspectionQueryOptions(
 		refetchIntervalInBackground: false,
 		retry: false,
 		// Unredacted inspections leave the cache as soon as no view shows them.
-		gcTime: request.redactSecrets ? undefined : 0,
+		gcTime: redactSecrets ? undefined : 0,
 	};
 }
 
@@ -175,14 +176,12 @@ function inspectionRequest(
 	readContext: WorkspaceReadContext,
 	application: ArgoApplicationTarget,
 	choice: ArgoConnectionChoice<SavedArgoProfile>,
-	redactSecrets: boolean,
 ): ArgoApplicationInspectionRequest {
 	const request: ArgoApplicationInspectionRequest = {
 		clusterContext: readContext.clusterContext,
 		kubeconfigEnvVar: readContext.kubeconfigSourceKey,
 		transport: choice.transport,
 		application: argoApplicationRef(readContext, application),
-		redactSecrets,
 	};
 	if (choice.transport === "connected") request.connectionId = choice.connectionId ?? "";
 	return request;
@@ -225,9 +224,11 @@ export function createArgoApplicationInspection(
 		});
 		const checkingProfiles = choice.preference.kind !== "kubernetes" && profiles.length > 0 && statusResult.isPending;
 		const ready = reading && !checkingProfiles && (choice.transport === "kubernetes" || !choice.unavailable);
-		const request = application && inspectionRequest(readContext, application, choice, settings.redactSecrets);
+		const request = application && inspectionRequest(readContext, application, choice);
 		inspector.setOptions(
-			request ? inspectionQueryOptions(client, request, workspaceId, ready) : idleRead("argo.inspection"),
+			request
+				? inspectionQueryOptions(client, request, workspaceId, ready, settings.redactSecrets)
+				: idleRead("argo.inspection"),
 		);
 		const result = inspector.getCurrentResult();
 		const loading = (statusesEnabled && statusResult.isPending) || (ready && result.isPending);

@@ -1,6 +1,7 @@
 mod argo;
 mod cancellation;
 mod cluster;
+mod command_contract;
 mod diagnostics;
 mod discovery;
 mod error;
@@ -31,6 +32,7 @@ pub use argo::{
 };
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;
+pub use command_contract::{CommandArgs, CommandTransport, DeclaredCommand, DECLARED_COMMANDS};
 pub use diagnostics::{
     BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent, BackendDiagnosticField,
     BackendDiagnosticStatus,
@@ -62,10 +64,7 @@ pub use metrics::{
     ResourceMetricsSummary,
 };
 pub use namespace::NamespaceSummary;
-pub use operations::{
-    ClusterOperationPreview, ClusterOperationResult, ClusterOperationTarget, DeleteResourceRequest,
-    RolloutRestartRequest, ScaleWorkloadRequest,
-};
+pub use operations::{ClusterOperationResult, ClusterOperationTarget};
 pub use rbac::{
     RbacAccessReviewIdentity, RbacAccessReviewOutcome, RbacAccessReviewRequest,
     RbacAccessReviewResult, RbacAccessReviewTarget, RbacBindingSummary, RbacCoverageStatus,
