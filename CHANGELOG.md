@@ -3,6 +3,15 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.9 - 2026-10-22
+### Added
+
+- Record interaction frame timing and DOM churn (#587).
+
+### Fixed
+
+- Prefer newer host WebKitGTK in the AppImage (#586).
+
 ## 0.12.8 - 2026-10-22
 
 Includes the changes from 0.12.7, which was tagged but not published.
