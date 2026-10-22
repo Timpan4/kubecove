@@ -4,6 +4,7 @@ use crate::runtime::State;
 use kube::Client;
 
 mod registry;
+pub mod relay;
 pub mod runner;
 pub mod service;
 pub mod target;
@@ -61,8 +62,6 @@ pub fn benchmark_port_forward_session_summary(
 pub use registry::PortForwardRegistry;
 #[cfg(test)]
 use registry::LOCAL_ADDRESS;
-#[cfg(test)]
-use runner::run_port_forward_session;
 use runner::start_pod_port_forward_in_registry;
 #[cfg(test)]
 use target::validate_request;

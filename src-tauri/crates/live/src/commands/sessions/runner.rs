@@ -1,31 +1,18 @@
-use crate::commands::SessionScope;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, PortForwardRequest, PortForwardSessionSummary};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{api::Api, Client};
-use std::{
-    future::Future,
-    net::{Ipv4Addr, SocketAddrV4},
-    sync::Arc,
-};
 use tokio::{
     io::{copy_bidirectional, AsyncRead, AsyncWrite},
-    net::{TcpListener, TcpStream},
-    task::JoinSet,
+    net::TcpStream,
 };
 
 use super::registry::{session_summary, PortForwardRegistry};
+use super::relay::{bind_loopback, spawn_relay};
 use super::target::{
     client_for_context, resolve_port_forward_target, validate_request, PortForwardTarget,
     ValidatedPortForwardRequest,
 };
-
-const MAX_CONSECUTIVE_ACCEPT_FAILURES: u32 = 5;
-pub const ACCEPT_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
-
-pub fn should_retry_accept(consecutive_failures: u32) -> bool {
-    consecutive_failures < MAX_CONSECUTIVE_ACCEPT_FAILURES
-}
 
 fn port_forward_error(err: kube::Error) -> AppError {
     let mut error = AppError::from(err);
@@ -138,62 +125,6 @@ async fn resolve_and_forward_connection(
     forward_connection(client, target, local_stream).await
 }
 
-pub(super) async fn run_port_forward_session<H, F>(
-    session_id: String,
-    listener: TcpListener,
-    registry: PortForwardRegistry,
-    handle_connection: H,
-) where
-    H: Fn(TcpStream) -> F + Send + 'static,
-    F: Future<Output = Result<(), AppError>> + Send + 'static,
-{
-    let mut connections = JoinSet::new();
-    let mut consecutive_accept_failures: u32 = 0;
-    loop {
-        tokio::select! {
-            accept_result = listener.accept() => {
-                let (local_stream, _) = match accept_result {
-                    Ok(accepted) => {
-                        consecutive_accept_failures = 0;
-                        accepted
-                    }
-                    Err(err) => {
-                        consecutive_accept_failures += 1;
-                        if !should_retry_accept(consecutive_accept_failures) {
-                            registry.mark_error(&session_id, err.to_string());
-                            break;
-                        }
-                        registry.mark_status(
-                            &session_id,
-                            "listening",
-                            Some(format!("accept retry {consecutive_accept_failures}: {err}")),
-                        );
-                        tokio::time::sleep(ACCEPT_RETRY_DELAY).await;
-                        continue;
-                    }
-                };
-                connections.spawn(handle_connection(local_stream));
-            }
-            join_result = connections.join_next(), if !connections.is_empty() => {
-                match join_result {
-                    Some(Ok(Ok(()))) => {
-                        if connections.is_empty() {
-                            registry.mark_status(&session_id, "listening", None);
-                        }
-                    }
-                    Some(Ok(Err(message))) => {
-                        registry.mark_error(&session_id, message.message);
-                    }
-                    Some(Err(err)) => {
-                        registry.mark_error(&session_id, err.to_string());
-                    }
-                    None => {}
-                }
-            }
-        }
-    }
-}
-
 pub(super) async fn start_pod_port_forward_in_registry(
     request: PortForwardRequest,
     registry: &PortForwardRegistry,
@@ -208,25 +139,13 @@ pub(super) async fn start_pod_port_forward_in_registry(
         }
     }
 
-    let bind_port = request.local_port.unwrap_or(0);
-    let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, bind_port))
-        .await
-        .map_err(|err| {
-            AppError::new(
-                format!("local port unavailable: {err}"),
-                AppErrorKind::LiveSessionTargetUnavailable,
-            )
-        })?;
-    let local_port = listener
-        .local_addr()
-        .map_err(|err| {
-            AppError::new(
-                format!("local port unavailable: {err}"),
-                AppErrorKind::LiveSessionTargetUnavailable,
-            )
-            .with_source(err)
-        })?
-        .port();
+    let (listener, local_port) = bind_loopback(request.local_port).await.map_err(|err| {
+        AppError::new(
+            format!("local port unavailable: {err}"),
+            AppErrorKind::LiveSessionTargetUnavailable,
+        )
+        .with_source(err)
+    })?;
     if registry.has_local_port(local_port) {
         return Err(AppError::new(
             format!("local port {local_port} is already forwarded"),
@@ -241,7 +160,6 @@ pub(super) async fn start_pod_port_forward_in_registry(
 
     let session_id = registry.session_id();
     let summary = session_summary(session_id.clone(), &target, local_port);
-    let loop_registry = registry.clone();
     let handle_request = ValidatedPortForwardRequest {
         cluster_context: target.cluster_context.clone(),
         kubeconfig_env_var: target.kubeconfig_env_var.clone(),
@@ -255,20 +173,19 @@ pub(super) async fn start_pod_port_forward_in_registry(
     };
     let connection_session_id = session_id.clone();
     let connection_registry = registry.clone();
-    // Each connection resolves its target again, a Service's through a new
-    // client, in a JoinSet task that would not inherit the session scope.
-    let scope = SessionScope::current_or_process();
     let handle_connection = move |local_stream: TcpStream| {
-        Arc::clone(&scope).run(resolve_and_forward_connection(
+        resolve_and_forward_connection(
             client.clone(),
             handle_request.clone(),
             local_stream,
             connection_session_id.clone(),
             connection_registry.clone(),
-        ))
+        )
     };
-    let handle = crate::runtime::spawn(async move {
-        run_port_forward_session(session_id, listener, loop_registry, handle_connection).await;
-    });
+    let handle = spawn_relay(
+        listener,
+        handle_connection,
+        registry.relay_events(session_id),
+    );
     registry.insert(summary, handle)
 }

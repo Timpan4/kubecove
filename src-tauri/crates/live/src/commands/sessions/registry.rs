@@ -11,7 +11,7 @@ use std::{
     },
 };
 
-use super::target::PortForwardTarget;
+use super::{relay::RelayEvent, target::PortForwardTarget};
 
 pub(super) const LOCAL_ADDRESS: &str = "127.0.0.1";
 
@@ -103,6 +103,30 @@ impl PortForwardRegistry {
 
     pub(super) fn mark_error(&self, session_id: &str, message: String) {
         self.mark_status(session_id, "error", Some(message));
+    }
+
+    /// Reports a forward's relay events in its listed status.
+    pub(super) fn relay_events(
+        &self,
+        session_id: String,
+    ) -> impl FnMut(RelayEvent) + Send + 'static {
+        let registry = self.clone();
+        move |event| match event {
+            RelayEvent::AcceptRetry { attempt, error } => registry.mark_status(
+                &session_id,
+                "listening",
+                Some(format!("accept retry {attempt}: {error}")),
+            ),
+            RelayEvent::AcceptFailed(error) => registry.mark_error(&session_id, error.to_string()),
+            RelayEvent::ConnectionClosed { idle: true } => {
+                registry.mark_status(&session_id, "listening", None);
+            }
+            RelayEvent::ConnectionClosed { idle: false } => {}
+            RelayEvent::ConnectionFailed(error) => registry.mark_error(&session_id, error.message),
+            RelayEvent::ConnectionPanicked(error) => {
+                registry.mark_error(&session_id, error.to_string());
+            }
+        }
     }
 
     pub(super) fn mark_resolved_target(&self, session_id: &str, target: &PortForwardTarget) {

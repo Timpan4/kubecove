@@ -1,5 +1,5 @@
 use super::*;
-use crate::commands::LiveSessionScope;
+use crate::commands::{LiveSessionScope, SessionScope};
 use crate::models::LiveSessionCleanupRequest;
 use std::{
     future::Future,
@@ -66,11 +66,7 @@ where
         .expect("localhost listener should have a bound address")
         .port();
     let id = registry.session_id();
-    let task_id = id.clone();
-    let task_registry = registry.clone();
-    let handle = crate::runtime::spawn(async move {
-        run_port_forward_session(task_id, listener, task_registry, handler).await;
-    });
+    let handle = relay::spawn_relay(listener, handler, registry.relay_events(id.clone()));
     registry
         .insert(test_summary(&id, local_port), handle)
         .expect("test session should insert");
@@ -325,4 +321,40 @@ async fn stop_aborts_session_task() {
     })
     .await
     .expect("session lifecycle test should finish within timeout");
+}
+
+// A forwarding server refuses to build a Kubernetes client outside a session
+// scope, and JoinSet tasks do not inherit the task-local scope by themselves.
+#[tokio::test(flavor = "current_thread")]
+async fn relay_runs_each_connection_in_the_callers_session_scope() {
+    timeout(Duration::from_secs(5), async {
+        let scope = SessionScope::new(None);
+        let (listener, local_port) = relay::bind_loopback(None)
+            .await
+            .expect("localhost listener should bind");
+        let (seen, mut seen_rx) = tokio::sync::mpsc::unbounded_channel();
+        let handle = Arc::clone(&scope).run_sync(|| {
+            relay::spawn_relay(
+                listener,
+                move |_stream| {
+                    let seen = seen.clone();
+                    async move {
+                        let _ = seen.send(SessionScope::current());
+                        Ok(())
+                    }
+                },
+                |_| {},
+            )
+        });
+
+        let _stream = TcpStream::connect((LOCAL_ADDRESS, local_port))
+            .await
+            .expect("local connection should be accepted");
+        let current = seen_rx.recv().await.expect("connection should run");
+        handle.abort();
+
+        assert!(current.is_some_and(|current| Arc::ptr_eq(&current, &scope)));
+    })
+    .await
+    .expect("relay scope test should finish within timeout");
 }
