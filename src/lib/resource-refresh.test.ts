@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { QueryClient, QueryObserver } from "@tanstack/svelte-query";
-import { configureQueryCatalog, queryKeys } from "./queryKeys";
+import { configureQueryCatalog, queryKeys, queryMatchers } from "./queryKeys";
 import { refreshCurrentView } from "./resource-refresh";
 import { createMockTauriClient } from "./tauri-runtime";
 import { listNamespaces, refreshResourceCache } from "./tauri";
@@ -45,7 +45,7 @@ test.each([false, true])("automatic recovery waits for running reads, permission
 			queryClient,
 			client: createMockTauriClient({ refresh_resource_cache: () => { calls.push("evict"); return { clearedEntries: 1 }; } }),
 			clusterContext: "dev", keys: [], namespaces: [],
-			reads: permissionOnly ? [resourceKey] : undefined,
+			reads: permissionOnly ? [queryMatchers.exact(resourceKey)] : undefined,
 			cancelRefetch: false,
 		});
 		await Promise.resolve();

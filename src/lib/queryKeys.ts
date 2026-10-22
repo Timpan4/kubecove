@@ -1,3 +1,4 @@
+import { matchQuery } from "@tanstack/query-core";
 import type { Query, QueryClient } from "@tanstack/svelte-query";
 import { finiteReadMeta } from "./finite-read-lifecycle";
 import { kubeconfigSourceKey } from "./settings";
@@ -325,7 +326,7 @@ export function queryFamilyRoot(queryKey: readonly unknown[]): string {
 	return FAMILIES.get(queryKey[0])?.root ?? "other";
 }
 
-type QueryMatch = (query: Query) => boolean;
+export type QueryMatch = (query: Query) => boolean;
 
 function startsWith(query: Query, prefix: QueryKeyParts): boolean {
 	return prefix.every((part, index) => query.queryKey[index] === part);
@@ -353,6 +354,10 @@ function dependsOnResource(
 }
 
 export const queryMatchers = {
+	/** Exactly the read with this catalog key; a scope with more parts is another read. */
+	exact: (queryKey: QueryKeyParts): QueryMatch => (query) => matchQuery({ queryKey, exact: true }, query),
+	/** Every read under a catalog scope key, such as `argoWorkspaceApplicationScope`. */
+	prefix: (queryKey: QueryKeyParts): QueryMatch => (query) => matchQuery({ queryKey }, query),
 	/** Active finite reads rendering one cluster context from one kubeconfig source. */
 	currentView: (context: string, source?: string): QueryMatch => {
 		const sourceKey = kubeconfigSourceKey(source);
