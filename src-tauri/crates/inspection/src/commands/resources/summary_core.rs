@@ -49,6 +49,13 @@ impl BuiltinSummary for ConfigMap {}
 impl BuiltinSummary for Secret {}
 
 impl BuiltinSummary for PersistentVolumeClaim {
+    fn unassessed_status(&self) -> Option<String> {
+        self.status
+            .as_ref()
+            .and_then(|status| status.phase.clone())
+            .filter(|phase| !phase.is_empty())
+    }
+
     fn raw_status(&self) -> Option<serde_json::Result<Value>> {
         self.status.as_ref().map(serde_json::to_value)
     }
