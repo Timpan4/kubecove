@@ -29,11 +29,14 @@ pub struct SessionScope {
 }
 
 impl SessionScope {
+    /// A server session. Its requests may select only the operator's configured
+    /// kubeconfig source, and it cannot change the source settings.
+    ///
     /// `credential_namespace` keeps this session's stored Argo CD credentials
     /// apart from every other namespace's. The server passes the signed-in
     /// subject.
     pub fn new(credential_namespace: Option<String>) -> Arc<Self> {
-        Self::with_source_policy(credential_namespace, SourcePolicy::Local)
+        Self::with_source_policy(credential_namespace, SourcePolicy::Operator)
     }
 
     pub(crate) fn with_source_policy(

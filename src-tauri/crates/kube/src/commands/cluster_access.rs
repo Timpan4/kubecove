@@ -10,9 +10,11 @@ mod fixed;
 
 use super::{
     helpers::session_scope::SessionScope,
-    kubeconfig::{cluster_contexts_from_kubeconfig, is_source_key, KubeconfigSource},
+    kubeconfig::{
+        cluster_contexts_from_kubeconfig, is_source_key, normalize_env_var, KubeconfigSource,
+    },
 };
-use crate::models::{AppError, ClusterContext};
+use crate::models::{AppError, AppErrorKind, ClusterContext};
 #[cfg(feature = "test-support")]
 pub use fixed::{FixedClusterAccess, FIXED_SOURCE_KEY};
 use kube::Client;
@@ -40,6 +42,9 @@ pub(crate) enum SourcePolicy {
     /// The desktop user's own machine: a selector may name any environment
     /// variable.
     Local,
+    /// A server session: a selector may name only the operator's configured
+    /// environment variable or source key (ADR 0026).
+    Operator,
     /// Every selector resolves to one test adapter.
     #[cfg(feature = "test-support")]
     Fixed(Arc<FixedClusterAccess>),
@@ -84,6 +89,7 @@ impl ClusterAccess {
                     env_var,
                 )?))
             }
+            SourcePolicy::Operator => Ok(Self::from_kubeconfig(operator_source(selector)?)),
             #[cfg(feature = "test-support")]
             SourcePolicy::Fixed(fixed) => Ok(fixed.access()),
         }
@@ -156,6 +162,29 @@ impl ClusterAccess {
             #[cfg(feature = "test-support")]
             Source::Fixed(fixed) => Ok(fixed.client(intent)),
         }
+    }
+}
+
+/// The operator's configured source, when `selector` names it. The check reads
+/// only the operator's settings, never the environment variable or files a
+/// client named.
+fn operator_source(selector: Option<&str>) -> Result<KubeconfigSource, AppError> {
+    let configured = KubeconfigSource::from_persisted(None)?;
+    let Some(selector) = selector else {
+        return Ok(configured);
+    };
+    let names_configured = if is_source_key(selector) {
+        selector == configured.key()
+    } else {
+        normalize_env_var(Some(selector)) == configured.env_var()
+    };
+    if names_configured {
+        Ok(configured)
+    } else {
+        Err(AppError::new(
+            "this kubeconfig source is not configured on the server; the server operator sets its kubeconfig sources",
+            AppErrorKind::Kubeconfig,
+        ))
     }
 }
 

@@ -4,7 +4,7 @@
 
 ## Before you start
 
-- **Operator-managed sources.** Kubernetes uses the server's configured credentials by default. With `--oidc-kubernetes-credentials <AUD>`, requests use each signed-in user's verified ID token and Kubernetes RBAC evaluates that user. Client sessions cannot change the shared kubeconfig source settings.
+- **Operator-managed sources.** Kubernetes uses the server's configured credentials by default. With `--oidc-kubernetes-credentials <AUD>`, requests use each signed-in user's verified ID token and Kubernetes RBAC evaluates that user. Client sessions cannot change the shared kubeconfig source settings, and each request can select only the operator's configured source.
 - **Independent sessions.** A new sign-in opens another session without taking over existing clients. Each session owns its live streams, Pod exec sessions and port forwards. Closing or expiring one session leaves the others active. Saved workspaces and UI settings still use client storage; durable per-user server storage remains proposed.
 - **One authentication mode per server.** Choose a per-start token, Cloudflare Access or OpenID Connect (OIDC) when starting the server. The modes cannot be combined.
 

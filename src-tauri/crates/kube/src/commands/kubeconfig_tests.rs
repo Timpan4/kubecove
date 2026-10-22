@@ -380,3 +380,54 @@ fn cluster_changing_intents_fail_closed_when_configured_sources_do_not_load() {
     let _ = fs::remove_dir_all(home);
     let _ = fs::remove_file(default_source);
 }
+
+fn context_names(access: &ClusterAccess) -> Vec<String> {
+    access
+        .contexts()
+        .expect("contexts")
+        .into_iter()
+        .map(|context| context.name)
+        .collect()
+}
+
+// Failure modes (ADR 0026): a server session that reads an environment
+// variable a client named, or the kubeconfig files it lists; a server session
+// that rejects the operator's own variable name or source key; and a desktop
+// that loses its local environment variable selector.
+#[test]
+fn server_sessions_select_only_the_operator_source_while_the_desktop_selects_any() {
+    let _env_lock = ENV_LOCK.lock().expect("environment lock");
+    let client_var = unique_env_var("CLIENT_SELECTED");
+    let client_path = write_kubeconfig("client-selected-context");
+    let _client = EnvVarGuard::set(&client_var, &client_path);
+    let operator_path = write_kubeconfig("operator-context");
+    let _operator = EnvVarGuard::set(DEFAULT_KUBECONFIG_ENV_VAR, &operator_path);
+
+    let desktop = ClusterAccess::resolve(Some(&client_var)).expect("desktop selector");
+    assert_eq!(context_names(&desktop), vec!["client-selected-context"]);
+
+    let server = SessionScope::new(None);
+    let resolve = |selector: Option<&str>| {
+        std::sync::Arc::clone(&server).run_sync(|| ClusterAccess::resolve(selector))
+    };
+    let configured = resolve(None).expect("operator source");
+    assert_eq!(context_names(&configured), vec!["operator-context"]);
+    for selector in [DEFAULT_KUBECONFIG_ENV_VAR, configured.source_key()] {
+        let access = resolve(Some(selector)).expect(selector);
+        assert_eq!(access.source_key(), configured.source_key(), "{selector}");
+    }
+    // The client variable lists a readable kubeconfig, so reading it would
+    // resolve its context as the desktop did.
+    for selector in [
+        client_var.as_str(),
+        "bad-name",
+        "kubeconfigSource=0000000000000000",
+    ] {
+        let error = resolve(Some(selector)).expect_err(selector);
+        assert_eq!(error.kind, AppErrorKind::Kubeconfig, "{selector}");
+        assert!(error.message.contains("server operator"), "{selector}");
+    }
+
+    let _ = fs::remove_file(client_path);
+    let _ = fs::remove_file(operator_path);
+}

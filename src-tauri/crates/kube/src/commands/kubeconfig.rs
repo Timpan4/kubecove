@@ -401,7 +401,7 @@ pub fn kubeconfig_from_source_texts(sources: &[&str]) -> Result<Kubeconfig, AppE
     Ok(merged)
 }
 
-fn normalize_env_var(env_var: Option<&str>) -> String {
+pub(crate) fn normalize_env_var(env_var: Option<&str>) -> String {
     env_var
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -583,8 +583,10 @@ fn load_persisted_sources() -> Result<PersistedKubeconfigSources, AppError> {
 
 fn save_persisted_sources(settings: &PersistedKubeconfigSources) -> Result<(), AppError> {
     // Server sessions share these operator settings in every authentication mode.
-    if super::helpers::session_scope::SessionScope::current().is_some()
-        || super::helpers::forwarded_bearer::forwarded_bearer_enabled()
+    if matches!(
+        super::helpers::session_scope::SessionScope::current_or_process().source_policy(),
+        super::cluster_access::SourcePolicy::Operator
+    ) || super::helpers::forwarded_bearer::forwarded_bearer_enabled()
     {
         return Err(AppError::new(
             "kubeconfig sources are set by the server operator",
