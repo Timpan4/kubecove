@@ -351,7 +351,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_resource_scope(
     cluster_context: String,
     requests: Vec<ResourceListRequest>,

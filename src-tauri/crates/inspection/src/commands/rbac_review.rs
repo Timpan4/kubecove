@@ -16,7 +16,6 @@ use k8s_openapi::api::authorization::v1::{
 use kube::api::{Api, PostParams};
 use std::time::Instant;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn review_rbac_access(
     request: RbacAccessReviewRequest,
     request_id: Option<String>,

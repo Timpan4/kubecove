@@ -368,7 +368,6 @@ pub async fn resource_topology_from(
     }
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_resource_topology(
     cluster_context: String,
     namespaces: Vec<String>,

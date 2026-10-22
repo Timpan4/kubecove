@@ -1,6 +1,7 @@
 mod argo;
 mod cancellation;
 mod cluster;
+mod command_contract;
 mod diagnostics;
 mod discovery;
 mod error;
@@ -31,6 +32,7 @@ pub use argo::{
 };
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;
+pub use command_contract::{CommandArgs, CommandTransport, DeclaredCommand, DECLARED_COMMANDS};
 pub use diagnostics::{
     BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent, BackendDiagnosticField,
     BackendDiagnosticStatus,

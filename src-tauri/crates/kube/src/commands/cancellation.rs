@@ -170,14 +170,13 @@ impl Drop for BackendCancellationGuard {
     }
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn cancel_backend_requests(
     cancel_scope: String,
     registry: State<'_, BackendCancellationRegistry>,
-) -> CancelBackendRequestsResult {
-    CancelBackendRequestsResult {
+) -> Result<CancelBackendRequestsResult, AppError> {
+    Ok(CancelBackendRequestsResult {
         cancelled: registry.cancel_scope(cancel_scope.trim()),
-    }
+    })
 }
 
 #[cfg(test)]

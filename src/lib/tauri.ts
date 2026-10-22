@@ -379,8 +379,6 @@ export async function getResourceDetails(
 	name: string,
 	namespace?: string,
 	kubeconfigEnvVar?: string,
-	yamlViewMode?: YamlViewMode,
-	yamlEncoding?: YamlEncoding,
 	cancellable?: CancellableRequest,
 ): Promise<ResourceDetailsFull> {
 	return client.invoke<ResourceDetailsFull>("get_resource_details", {
@@ -389,8 +387,6 @@ export async function getResourceDetails(
 		name,
 		namespace,
 		...kubeconfigArg(kubeconfigEnvVar),
-		yamlViewMode,
-		yamlEncoding,
 		...cancellableArg(cancellable),
 	});
 }

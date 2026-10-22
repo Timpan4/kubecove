@@ -159,7 +159,6 @@ pub async fn resource_events_from(
     ))
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_resource_events(
     cluster_context: String,
     kind: String,

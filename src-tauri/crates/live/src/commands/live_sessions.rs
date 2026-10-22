@@ -4,7 +4,6 @@ use crate::models::{AppError, LiveSessionCleanupRequest, LiveSessionCleanupResul
 use crate::runtime::State;
 use std::collections::HashSet;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stop_live_sessions_outside_scope(
     request: LiveSessionCleanupRequest,
     port_forwards: State<'_, PortForwardRegistry>,

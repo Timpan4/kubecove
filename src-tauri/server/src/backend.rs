@@ -62,3 +62,24 @@ impl BackendState {
         Ok(())
     }
 }
+
+// Command dispatch reaches session state by the type a command declares.
+macro_rules! managed_state {
+    ($($field:ident: $state:ty),+ $(,)?) => {
+        $(impl AsRef<$state> for BackendState {
+            fn as_ref(&self) -> &$state {
+                &self.$field
+            }
+        })+
+    };
+}
+
+managed_state! {
+    live_store: ClusterLiveStore,
+    cancellation: BackendCancellationRegistry,
+    streams: StreamRegistry,
+    port_forwards: PortForwardRegistry,
+    pod_exec: PodExecRegistry,
+    usage: AppUsageMonitor,
+    argo: ArgoConnectionStore,
+}

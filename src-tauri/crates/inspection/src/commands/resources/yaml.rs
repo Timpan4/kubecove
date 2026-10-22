@@ -15,7 +15,6 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use kube::Api;
 use std::time::Instant;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn reveal_secret_data_value(
     cluster_context: String,
     name: String,
@@ -208,7 +207,6 @@ pub fn serialize_secret_resource_document(
     serialize_resource_document(&secret, mode, encoding)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_resource_yaml(
     cluster_context: String,
     kind: String,

@@ -69,7 +69,6 @@ fn k8s_openapi_time_to_datetime(timestamp: &k8s_openapi::jiff::Timestamp) -> Opt
     DateTime::from_timestamp(timestamp.as_second(), 0)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_namespaces(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,

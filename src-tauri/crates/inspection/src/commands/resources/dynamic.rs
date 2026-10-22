@@ -110,7 +110,6 @@ pub async fn dynamic_resources_summary_from(
         .collect())
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_dynamic_resources(
     cluster_context: String,
     resource_kind: DiscoveredResourceKind,
@@ -253,7 +252,6 @@ pub fn dynamic_resource_details_from_object(
     })
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_dynamic_resource_details(
     cluster_context: String,
     resource_kind: DiscoveredResourceKind,

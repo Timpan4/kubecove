@@ -15,7 +15,6 @@ pub fn get_cluster_contexts(
     cluster_contexts_from_source(&source)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn list_kube_contexts(
     kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ClusterContext>, AppError> {

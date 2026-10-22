@@ -146,19 +146,17 @@ pub fn benchmark_connected_selected_comparison(
     connected_selected_comparison(value, requested)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_argo_resource_comparison(
-    store: crate::runtime::State<'_, ArgoConnectionStore>,
-    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
     connection_id: Option<String>,
     transport: String,
     application: ArgoApplicationRef,
     resource: ArgoManagedResource,
-    _redact_secrets: Option<bool>,
     request_id: Option<String>,
     cancel_scope: Option<String>,
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
+    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
 ) -> Result<ArgoResourceComparison, AppError> {
     cancellations
         .execute(

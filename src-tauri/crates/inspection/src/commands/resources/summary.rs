@@ -61,7 +61,6 @@ pub(super) async fn resource_summaries_with_client(
     ))
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_resources(
     cluster_context: String,
     kind: String,

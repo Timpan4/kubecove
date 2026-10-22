@@ -108,12 +108,11 @@ pub fn record_backend_result<T>(
     }
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
-pub fn set_backend_diagnostics_enabled(enabled: bool) -> bool {
+pub fn set_backend_diagnostics_enabled(enabled: bool) -> Result<bool, AppError> {
     with_state(|state| {
         state.enabled = enabled;
     });
-    enabled
+    Ok(enabled)
 }
 
 fn stored_backend_diagnostics() -> Vec<BackendDiagnosticEvent> {
@@ -128,16 +127,14 @@ fn cache_snapshots(store: &ClusterLiveStore) -> Vec<BackendCacheDiagnosticSnapsh
     }
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_backend_cache_diagnostics(
     store: crate::runtime::State<'_, ClusterLiveStore>,
-) -> Vec<BackendCacheDiagnosticSnapshot> {
-    cache_snapshots(&store)
+) -> Result<Vec<BackendCacheDiagnosticSnapshot>, AppError> {
+    Ok(cache_snapshots(&store))
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
-pub fn get_backend_diagnostics() -> Vec<BackendDiagnosticEvent> {
-    stored_backend_diagnostics()
+pub fn get_backend_diagnostics() -> Result<Vec<BackendDiagnosticEvent>, AppError> {
+    Ok(stored_backend_diagnostics())
 }
 
 fn clear_stored_diagnostics() {
@@ -147,10 +144,12 @@ fn clear_stored_diagnostics() {
     });
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
-pub fn clear_backend_diagnostics(store: crate::runtime::State<'_, ClusterLiveStore>) {
+pub fn clear_backend_diagnostics(
+    store: crate::runtime::State<'_, ClusterLiveStore>,
+) -> Result<(), AppError> {
     store.clear_diagnostic_counters();
     clear_stored_diagnostics();
+    Ok(())
 }
 
 #[cfg(test)]
@@ -160,7 +159,7 @@ mod tests {
     #[test]
     fn disabled_store_drops_events_then_records_bounded_events_and_clears() {
         clear_stored_diagnostics();
-        set_backend_diagnostics_enabled(false);
+        set_backend_diagnostics_enabled(false).unwrap();
         record_backend_timing(
             "list_resource_scope",
             BackendDiagnosticStatus::Ok,
@@ -169,7 +168,7 @@ mod tests {
         );
         assert_eq!(stored_backend_diagnostics().len(), 0);
 
-        set_backend_diagnostics_enabled(true);
+        set_backend_diagnostics_enabled(true).unwrap();
         for index in 0..505 {
             record_backend_timing(
                 "list_resource_scope",
@@ -219,6 +218,6 @@ mod tests {
         );
 
         clear_stored_diagnostics();
-        set_backend_diagnostics_enabled(false);
+        set_backend_diagnostics_enabled(false).unwrap();
     }
 }

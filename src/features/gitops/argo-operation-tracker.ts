@@ -87,7 +87,6 @@ export function createArgoOperationTracker(
 				connectionId: request.connectionId ?? undefined,
 				transport: request.transport,
 				application: request.application,
-				redactSecrets: true,
 			},
 			createFiniteReadRequest(job.cancelScope, "argo-operation-observation"),
 		);

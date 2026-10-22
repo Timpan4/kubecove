@@ -125,7 +125,6 @@ pub fn sort_and_dedup_kinds(kinds: &mut Vec<DiscoveredResourceKind>) {
     });
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_resource_kinds(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
@@ -265,7 +264,6 @@ async fn custom_resource_kind_present(
     Ok(false)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_present_custom_resource_kinds(
     cluster_context: String,
     namespaces: Vec<String>,

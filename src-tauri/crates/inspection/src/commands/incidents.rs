@@ -36,7 +36,6 @@ use restarts::{
 const MAX_WARNING_EVENTS_PER_RESOURCE: usize = 3;
 const MAX_WARNING_EVENTS_TOTAL: usize = 500;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_incident_cockpit(
     cluster_context: String,
     requests: Vec<ResourceListRequest>,

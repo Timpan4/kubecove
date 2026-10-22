@@ -119,7 +119,7 @@ export function readResourceDetails(
 	const dynamicKind = dynamicResourceKindFromSummary(resource);
 	return dynamicKind
 		? getDynamicResourceDetails(client, resource.cluster, dynamicKind, resource.name, namespace, kubeconfigSourceKey, yamlViewMode, yamlEncoding, cancellable)
-		: getResourceDetails(client, resource.cluster, resource.kind, resource.name, namespace, kubeconfigSourceKey, yamlViewMode, yamlEncoding, cancellable);
+		: getResourceDetails(client, resource.cluster, resource.kind, resource.name, namespace, kubeconfigSourceKey, cancellable);
 }
 
 /** YAML for this resource; discovered kinds have no YAML command and read it from their details. */

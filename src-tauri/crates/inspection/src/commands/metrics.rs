@@ -554,7 +554,6 @@ pub async fn resource_metrics_from(
     ))
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_resource_metrics(
     cluster_context: String,
     namespaces: Vec<String>,

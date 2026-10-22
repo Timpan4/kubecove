@@ -10,7 +10,6 @@ use serde_json::{json, Map, Value};
 
 const ACTION_KINDS: &[&str] = &["Deployment", "StatefulSet", "DaemonSet", "Pod", "ConfigMap"];
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_resource_action_state(
     request: ResourceActionStateRequest,
 ) -> Result<ResourceActionState, AppError> {
@@ -87,7 +86,6 @@ pub async fn get_resource_action_state(
     ))
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn preview_resource_action(
     request: ResourceActionRequest,
 ) -> Result<ResourceActionPreview, AppError> {
@@ -130,7 +128,6 @@ async fn preview_resource_action_with_client(
     })
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn execute_resource_action(
     request: ResourceActionRequest,
 ) -> Result<ClusterOperationResult, AppError> {

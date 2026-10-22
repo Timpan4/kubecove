@@ -40,13 +40,12 @@ use std::{
 use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn discover_argo_servers(
-    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
     request_id: Option<String>,
     cancel_scope: Option<String>,
+    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
 ) -> Result<Vec<ArgoServerCapability>, AppError> {
     cancellations
         .execute(
@@ -95,9 +94,7 @@ pub async fn discover_argo_servers(
         .await
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn connect_argo_server(
-    store: crate::runtime::State<'_, ArgoConnectionStore>,
     id: String,
     server_url: String,
     endpoint: Option<ArgoServerEndpoint>,
@@ -111,6 +108,7 @@ pub async fn connect_argo_server(
     kubeconfig_env_var: Option<String>,
     workspace_id: Option<String>,
     confirmed_target: Option<ArgoConfirmedTarget>,
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
 ) -> Result<ArgoConnectionStatus, AppError> {
     let connection_epoch = store.connection_epoch();
     let kubeconfig_source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
@@ -274,10 +272,9 @@ pub async fn connect_argo_server(
     })
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_argo_connection_status(
-    store: crate::runtime::State<'_, ArgoConnectionStore>,
     id: String,
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
 ) -> Result<ArgoConnectionStatus, AppError> {
     let connection = store
         .connections
@@ -306,31 +303,27 @@ pub fn get_argo_connection_status(
     })
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn disconnect_argo_server(
-    store: crate::runtime::State<'_, ArgoConnectionStore>,
     id: String,
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
 ) -> Result<(), AppError> {
     store.remove_connection(&id).await
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn forget_argo_credential(profile: ArgoConnectionProfile) -> Result<(), AppError> {
     delete_credential(&ActiveCredentialStore, &profile)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_argo_application_inspector(
-    store: crate::runtime::State<'_, ArgoConnectionStore>,
-    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
     connection_id: Option<String>,
     transport: String,
     application: ArgoApplicationRef,
-    _redact_secrets: Option<bool>,
     request_id: Option<String>,
     cancel_scope: Option<String>,
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
+    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
 ) -> Result<ArgoApplicationInspector, AppError> {
     cancellations
         .execute(
