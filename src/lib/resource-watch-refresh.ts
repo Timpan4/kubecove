@@ -51,7 +51,7 @@ export function createWatchQueryRefresh(
 ) {
 	const filter = { queryKey, exact };
 	const throttle = createWatchRefreshThrottle(async () => {
-		const alreadyFetching = queryClient.isFetching(filter) > 0;
+		const alreadyFetching = queryClient.isFetching({ ...filter, type: "active" }) > 0;
 		await queryClient.invalidateQueries(filter, { cancelRefetch: false });
 		if (alreadyFetching) throttle.notify();
 	});

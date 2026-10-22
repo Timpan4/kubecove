@@ -407,7 +407,7 @@
 		const filters = [{ queryKey: detailsQueryKey }];
 		if (currentArgoApplicationScope) filters.push({ queryKey: currentArgoApplicationScope });
 		const refresh = createWatchRefreshThrottle(async () => {
-			const alreadyFetching = filters.some((filter) => queryClient.isFetching(filter) > 0);
+			const alreadyFetching = filters.some((filter) => queryClient.isFetching({ ...filter, type: "active" }) > 0);
 			const reads = filters.map((filter) =>
 				queryClient.invalidateQueries(filter, { cancelRefetch: false }),
 			);

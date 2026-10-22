@@ -1,10 +1,11 @@
-import { QueryClient } from "@tanstack/svelte-query";
+import { QueryClient, QueryObserver } from "@tanstack/svelte-query";
 import { mount, unmount } from "svelte";
 import { buildResourceDetailReadSpec } from "@/features/resource-detail/resourceDetailReadSpec";
 import { resources } from "@/lib/tauri-dev-mock-data";
 import { createDevMockTauriClient } from "@/lib/tauri-dev-mocks";
 import { createMockTauriClient } from "@/lib/tauri-runtime";
 import { getSettingsSnapshot } from "@/lib/settings-store";
+import { queryKeys } from "@/lib/queryKeys";
 import type { ResourceDetailsFull, ResourceEventSummary, StreamMessage } from "@/lib/types";
 import ResourceDetailWatchHarness from "./ResourceDetailWatchHarness.svelte";
 
@@ -16,9 +17,13 @@ function deferred<T>() {
 
 // Failure modes: a watch joins a pre-change read and clears its invalidation,
 // or an exact events filter misses the component's UID-suffixed query key.
-export async function resourceDetailWatchRegression() {
-	const resource = resources.find((row) => row.kind === "Pod");
-	if (!resource) throw new Error("Pod fixture is missing");
+// A disabled Argo inspector can keep fetching after a tab switch. Counting it
+// as an active read requeues details every 250 ms although invalidation never
+// waits for that request. One watch must cause only one details refresh.
+export async function resourceDetailWatchRegression(disabledArgo = false) {
+	const pod = resources.find((row) => row.kind === "Pod");
+	if (!pod) throw new Error("Pod fixture is missing");
+	const resource = disabledArgo ? { ...pod, kind: "Application", group: "argoproj.io" } : pod;
 	const base = createDevMockTauriClient();
 	const details = await base.invoke<ResourceDetailsFull>("get_resource_details", {
 		kind: resource.kind, name: resource.name, namespace: resource.namespace,
@@ -60,6 +65,20 @@ export async function resourceDetailWatchRegression() {
 		cancel_backend_requests: { cancelled: 0 },
 	});
 	const queryClient = new QueryClient();
+	const inspectorRead = deferred<null>();
+	const inspectorOptions = {
+		queryKey: queryKeys.argoWorkspaceInspector(
+			resource.cluster, "watch-regression", resource.name, resource.namespace,
+			String(details.metadata.uid ?? ""),
+			true, "kubernetes",
+		),
+		queryFn: () => inspectorRead.promise,
+		enabled: true,
+	};
+	const inspector = new QueryObserver(queryClient, inspectorOptions);
+	const stopInspector = disabledArgo ? inspector.subscribe(() => {}) : () => {};
+	// Model a mounted inspector becoming disabled while its request is pending.
+	inspector.setOptions({ ...inspectorOptions, enabled: false });
 	const settings = getSettingsSnapshot();
 	const spec = buildResourceDetailReadSpec(resource, undefined, settings.yamlViewModeDefault, settings.yamlEncodingDefault);
 	const freshDetails = deferred<void>();
@@ -100,9 +119,20 @@ export async function resourceDetailWatchRegression() {
 		if (queryClient.getQueryData<ResourceEventSummary[]>(eventsKey)?.length !== 0) {
 			throw new Error("Events retained the pre-change snapshot");
 		}
+		if (disabledArgo) {
+			// Observe two throttle intervals so a queued repeat has time to run.
+			await new Promise((resolve) => setTimeout(resolve, 2 * 250));
+			if (queryClient.isFetching({ queryKey: inspectorOptions.queryKey }) !== 1 ||
+				queryClient.isFetching({ queryKey: inspectorOptions.queryKey, type: "active" }) !== 0) {
+				throw new Error("Inspector must remain disabled and fetching throughout the check");
+			}
+			if (detailReads !== 2) throw new Error(`Disabled inspector caused repeated details reads: ${detailReads}`);
+		}
 		return { detailReads, eventReads, details: "new", events: [] };
 	} finally {
 		await unmount(component);
+		stopInspector();
+		inspectorRead.resolve(null);
 		stop();
 		queryClient.clear();
 		target.remove();
