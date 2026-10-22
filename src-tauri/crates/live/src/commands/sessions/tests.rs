@@ -1,6 +1,7 @@
 use super::*;
+use crate::commands::LiveSessionScope;
+use crate::models::LiveSessionCleanupRequest;
 use std::{
-    collections::HashSet,
     future::Future,
     sync::{
         atomic::{AtomicU32, Ordering},
@@ -177,8 +178,12 @@ fn registry_stops_sessions_outside_context_or_source_scope() {
     registry.insert_summary_for_test(wrong_context);
     registry.insert_summary_for_test(wrong_source);
 
-    let allowed = HashSet::from(["kind-dev".to_string()]);
-    let stopped = registry.stop_outside_scope(&allowed, "kubeconfigSource=current");
+    let scope = LiveSessionScope::new(LiveSessionCleanupRequest {
+        allowed_cluster_contexts: vec!["kind-dev".to_string()],
+        kubeconfig_source_key: "kubeconfigSource=current".to_string(),
+    })
+    .expect("valid scope");
+    let stopped = registry.stop_outside_scope(&scope);
 
     assert_eq!(
         stopped,

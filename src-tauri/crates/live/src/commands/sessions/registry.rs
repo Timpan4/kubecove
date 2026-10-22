@@ -1,9 +1,10 @@
+use crate::commands::LiveSessionScope;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, PortForwardSessionSummary};
 use crate::runtime::JoinHandle;
 use chrono::Utc;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex,
@@ -33,7 +34,7 @@ pub struct PortForwardRegistry {
 impl PortForwardRegistry {
     /// Stop all listeners when their host session expires.
     pub fn stop_all(&self) {
-        self.stop_outside_scope(&HashSet::new(), "");
+        self.stop_where(|_| true);
     }
 
     pub(super) fn session_id(&self) -> String {
@@ -137,39 +138,32 @@ impl PortForwardRegistry {
         true
     }
 
-    pub(crate) fn stop_outside_scope(
-        &self,
-        allowed_cluster_contexts: &HashSet<String>,
-        kubeconfig_source_key: &str,
-    ) -> Vec<String> {
-        let mut stopped = Vec::new();
-        let mut handles = Vec::new();
-        {
-            let mut state = self.state.lock().expect("port-forward registry lock");
-            let session_ids = state
-                .sessions
-                .iter()
-                .filter_map(|(id, session)| {
-                    let in_context =
-                        allowed_cluster_contexts.contains(&session.summary.cluster_context);
-                    let in_source = session.summary.kubeconfig_source_key.as_deref()
-                        == Some(kubeconfig_source_key);
-                    (!in_context || !in_source).then(|| id.clone())
-                })
-                .collect::<Vec<_>>();
-            for session_id in session_ids {
-                if let Some(mut session) = state.sessions.remove(&session_id) {
-                    if let Some(handle) = session.handle.take() {
-                        handles.push(handle);
-                    }
-                    stopped.push(session_id);
-                }
-            }
-        }
-        for handle in handles {
-            handle.abort();
-        }
+    pub(crate) fn stop_outside_scope(&self, scope: &LiveSessionScope) -> Vec<String> {
+        self.stop_where(|summary| {
+            !scope.contains(
+                &summary.cluster_context,
+                summary.kubeconfig_source_key.as_deref(),
+            )
+        })
+    }
+
+    fn stop_where(&self, mut stop: impl FnMut(&PortForwardSessionSummary) -> bool) -> Vec<String> {
+        let stopped = self
+            .state
+            .lock()
+            .expect("port-forward registry lock")
+            .sessions
+            .extract_if(.., |_, session| stop(&session.summary))
+            .collect::<Vec<_>>();
         stopped
+            .into_iter()
+            .map(|(id, session)| {
+                if let Some(handle) = session.handle {
+                    handle.abort();
+                }
+                id
+            })
+            .collect()
     }
 
     #[cfg(test)]
