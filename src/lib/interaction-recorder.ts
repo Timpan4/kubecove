@@ -5,6 +5,7 @@
 // roles in release builds; never text content or cluster data. Entries stay in
 // memory; the dev server additionally mirrors them to e2e/artifacts.
 import { getDiagnosticsSnapshot, isDiagnosticsEnabled, MAX_FRONTEND_EVENTS } from "./diagnostics";
+import { describeTarget, resetSourceCache, sourceOf, subtreeSource } from "./interaction-sources";
 
 type InteractionKind = "click" | "drag" | "key" | "scroll";
 
@@ -47,14 +48,8 @@ interface Session {
 	frameRequest: number;
 }
 
-type ElementWithMeta = Element & {
-	__svelte_meta?: { loc?: { file: string; line: number } } | null;
-};
-
-const UNATTRIBUTED = "(unattributed)";
 const DEV_SINK = process.env.KUBECOVE_PUBLIC_DEV_INTERACTIONS ?? "";
 const recorded: RecordedInteraction[] = [];
-let sourceCache = new WeakMap<Node, string>();
 // Session histogram of rAF deltas (0.1 ms buckets); its median is the refresh interval.
 const frameHistogram = new Map<number, number>();
 let histogramTotal = 0;
@@ -62,47 +57,6 @@ let session: Session | null = null;
 let current: Segment | null = null;
 let nextId = 1;
 let pointerDown = false;
-
-function ownSource(node: Node): string | undefined {
-	// SAFETY: Svelte dev builds set the optional __svelte_meta field on nodes they create; other nodes lack it.
-	const loc = (node as ElementWithMeta).__svelte_meta?.loc;
-	return loc ? `${loc.file}:${loc.line}` : undefined;
-}
-
-function fallbackSource(node: Node): string | undefined {
-	if (!(node instanceof Element)) return undefined;
-	const testId = node.getAttribute("data-testid");
-	if (testId) return `[data-testid=${testId}]`;
-	const role = node.getAttribute("role");
-	return role ? `[role=${role}]` : undefined;
-}
-
-// Nearest Svelte source location; release builds have none, so use the nearest
-// test id or role instead.
-function sourceOf(node: Node | null): string {
-	const visited: Node[] = [];
-	let fallback: string | undefined;
-	let result: string | undefined;
-	for (let cursor = node; cursor; cursor = cursor.parentNode) {
-		const cached = sourceCache.get(cursor);
-		if (cached) {
-			result = cached;
-			break;
-		}
-		visited.push(cursor);
-		result = ownSource(cursor);
-		if (result) break;
-		fallback ??= fallbackSource(cursor);
-	}
-	result ??= fallback ?? UNATTRIBUTED;
-	for (const seen of visited) sourceCache.set(seen, result);
-	return result;
-}
-
-function describeTarget(target: EventTarget | null): string {
-	if (!(target instanceof Element)) return "(window)";
-	return `${target.tagName.toLowerCase()} ${sourceOf(target)}`;
-}
 
 function refreshIntervalMs(): number {
 	let seen = 0;
@@ -228,15 +182,6 @@ function measureInputToPaint(event: Event): void {
 	});
 }
 
-// Attribute rebuilt subtrees to the template that created or destroyed them.
-function subtreeSource(record: MutationRecord): string {
-	for (const node of [record.addedNodes[0], record.removedNodes[0]]) {
-		const source = node ? sourceOf(node) : UNATTRIBUTED;
-		if (source !== UNATTRIBUTED) return source;
-	}
-	return sourceOf(record.target);
-}
-
 function countMutation(segment: Segment, record: MutationRecord): void {
 	let source: string;
 	let weight = 1;
@@ -323,7 +268,7 @@ export function stopInteractionRecording(): void {
 	cancelAnimationFrame(session.frameRequest);
 	session = null;
 	pointerDown = false;
-	sourceCache = new WeakMap();
+	resetSourceCache();
 }
 
 export function getRecordedInteractions(): RecordedInteraction[] {
