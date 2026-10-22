@@ -75,7 +75,7 @@ _Avoid_ using it for Helm install, upgrade, rollback, uninstall, or CLI executio
 _Avoid_ keeping a separate command list for one transport.
 
 **Finite-read envelope** means the backend wrapper that registers one finite read for request cancellation and records its timing, log lines and diagnostics outcome.
-_Avoid_ using it for confirmed writes or live sessions, which keep their own lifecycles under ADR 0009.
+_Avoid_ using it for confirmed writes, which use a separate non-rotating client path, or live sessions, whose lifecycles follow ADR 0003. ADR 0009 defines how both behave on workspace cancellation.
 
 **Cluster access** means one request's resolved kubeconfig source and the Kubernetes clients it hands out by intent: read, preview, confirmed operation, live session or stream. The intent decides the ADR 0009 client path and whether a source that fails to load may fall back to the default kubeconfig.
 _Avoid_ building Kubernetes clients, deriving source keys or choosing a client path outside it.
