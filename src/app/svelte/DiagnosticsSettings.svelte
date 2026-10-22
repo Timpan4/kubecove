@@ -19,6 +19,7 @@
 	import { queryKeys } from "@/lib/queryKeys";
 	import type { BackendCacheDiagnosticSnapshot } from "@/lib/diagnostics-types";
 	import type { BackendDiagnosticEvent } from "@/lib/types";
+	import InteractionRecorderSettings from "./InteractionRecorderSettings.svelte";
 	import SettingsRow from "./SettingsRow.svelte";
 	import SimpleTable from "@/components/SimpleTable.svelte";
 	import {
@@ -150,6 +151,8 @@
 			aria-label="Enable diagnostics"
 		/>
 	</SettingsRow>
+
+	<InteractionRecorderSettings />
 
 	{#if IS_DEV_BUILD}
 		<SettingsRow

@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
+import { devInteractionsPlugin } from "./scripts/dev-interactions-plugin.ts";
 import { frontendBundleReportPlugin } from "./scripts/frontend-bundle-report.ts";
 
 export default defineConfig(({ command }) => {
@@ -9,9 +10,12 @@ export default defineConfig(({ command }) => {
 	const releaseChannel = process.env.KUBECOVE_PUBLIC_RELEASE_CHANNEL === "stable" ? "stable" : "dev";
 	const profiling = process.env.KUBECOVE_PUBLIC_PROFILE === "true";
 	const runtime = process.env.KUBECOVE_PUBLIC_RUNTIME === "web" ? "web" : "native";
+	// Settings -> Diagnostics interaction recordings mirror to e2e/artifacts while serving.
+	const devInteractionsEndpoint = command === "serve" ? "/__kubecove/dev-interactions" : "";
 	return {
 		plugins: [
 			svelte(), tailwindcss(), frontendBundleReportPlugin(releaseChannel, profiling),
+			devInteractionsEndpoint ? devInteractionsPlugin(devInteractionsEndpoint) : null,
 			{
 				name: "native-e2e-bridge",
 				transformIndexHtml: {
@@ -43,6 +47,7 @@ export default defineConfig(({ command }) => {
 			"process.env.KUBECOVE_PUBLIC_RUNTIME": JSON.stringify(runtime),
 			"process.env.KUBECOVE_PUBLIC_PROFILE": JSON.stringify(String(profiling)),
 			"process.env.KUBECOVE_PUBLIC_RELEASE_CHANNEL": JSON.stringify(releaseChannel),
+			"process.env.KUBECOVE_PUBLIC_DEV_INTERACTIONS": JSON.stringify(devInteractionsEndpoint),
 		},
 		build: {
 			// Preserve native dynamic imports and BigInt on older WebKit releases.
