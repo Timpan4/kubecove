@@ -41,7 +41,7 @@
 			aria-checked={active}
 			onclick={() => onChange(option.value)}
 			class={cnfast(
-				"inline-flex cursor-pointer items-center gap-1.5 rounded-md font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 [&_svg]:pointer-events-none [&_svg]:size-3.5",
+				"inline-flex cursor-pointer items-center gap-1.5 rounded-md font-medium transition-[color,background-color,border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 [&_svg]:pointer-events-none [&_svg]:size-3.5",
 				size === "md" ? "h-7 px-2.5 text-xs" : "h-6 px-2 text-xs",
 				active
 					? "bg-surface-1 text-foreground shadow-sm"

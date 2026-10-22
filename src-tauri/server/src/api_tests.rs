@@ -20,7 +20,7 @@ async fn authentication_wait_observes_expiry_without_a_revocation_token() {
     assert!(futures_util::poll!(&mut ended).is_ready());
 }
 
-fn state() -> Arc<AppState> {
+pub(super) fn state() -> Arc<AppState> {
     Arc::new(AppState {
         token: "test-token".into(),
         policy: NetworkPolicy {
@@ -106,7 +106,10 @@ fn access_post(path: &str, subject: &str, resume: Option<&str>, body: &Value) ->
 async fn http2_authority_stands_in_for_the_host_header() {
     for (uri, status) in [
         ("https://localhost:1234/api/v1/auth", StatusCode::OK),
-        ("https://evil.example:1234/api/v1/auth", StatusCode::FORBIDDEN),
+        (
+            "https://evil.example:1234/api/v1/auth",
+            StatusCode::FORBIDDEN,
+        ),
     ] {
         let response = router(state())
             .oneshot(

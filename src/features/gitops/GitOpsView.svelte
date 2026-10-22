@@ -2,6 +2,7 @@
 	import type { Snippet } from "svelte";
 	import { CircleHelp, GitBranch, Layers, Package, Plug } from "lucide-svelte";
 	import CopyableText from "@/components/CopyableText.svelte";
+	import LazyTooltip from "@/components/LazyTooltip.svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import { copyTextWithAnnouncement } from "@/components/copy-text";
@@ -14,10 +15,7 @@
 		EmptyHeader,
 		EmptyTitle,
 		SegmentedControl,
-		Tooltip,
-		TooltipContent,
 		TooltipProvider,
-		TooltipTrigger,
 	} from "@/components/ui/svelte";
 	import { formatStatusLabel } from "@/lib/utils";
 	import { settingsStore } from "@/lib/settings-store";
@@ -51,6 +49,7 @@
 		type GitOpsUnavailableProvider,
 	} from "./surfaceModel";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
+	import VirtualCollection from "@/components/VirtualCollection.svelte";
 
 	const gitOpsFactFieldClass =
 		"relative min-w-0 rounded-md border bg-background/30 px-2.5 pb-2 pt-3 text-left";
@@ -170,8 +169,8 @@
 		openSelectedArgoApplicationResources(selection);
 	}
 
-	function stopTooltipEvent(event: Event) {
-		event.stopPropagation();
+	function stopTooltipEvent(event: KeyboardEvent) {
+		if (event.key !== "Escape") event.stopPropagation();
 	}
 
 	function revisionCopyValue(selection: GitOpsSelection): string {
@@ -495,8 +494,8 @@
 						</Empty>
 					{:else}
 						{#if gitOpsViewMode === "cards"}
-							<div class="grid grid-cols-1 gap-3 @min-[35rem]:grid-cols-2 @min-[64rem]:grid-cols-[repeat(auto-fit,minmax(18.75rem,26.25rem))]">
-							{#each gitOpsSelections as item (gitOpsSelectionKey(item))}
+							<VirtualCollection items={gitOpsSelections} itemKey={gitOpsSelectionKey} selectedKey={selectedGitOpsItemKey} estimateSize={296} gridClass="grid grid-cols-1 gap-3 @min-[35rem]:grid-cols-2 @min-[64rem]:grid-cols-[repeat(auto-fit,minmax(18.75rem,26.25rem))]">
+							{#snippet children(item)}
 								{@const sourceMode = gitOpsSelectionSourceMode(item)}
 								{@const SourceIcon = gitOpsSourceIcon(sourceMode)}
 								{@const sourceLabel = gitOpsSelectionSourceLabel(sourceMode, argoSourceCount(item))}
@@ -506,8 +505,8 @@
 								{@const sourceLine = gitOpsSelectionSourceLine(item)}
 								<div
 									class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-										? "group relative flex h-[18.5rem] overflow-hidden rounded-lg border border-primary/60 bg-accent/40 text-xs/relaxed shadow-sm transition-all hover:-translate-y-px hover:border-primary/70 hover:bg-accent/50 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-										: "group relative flex h-[18.5rem] overflow-hidden rounded-lg border bg-surface-1 text-xs/relaxed transition-all hover:-translate-y-px hover:border-primary/50 hover:bg-accent/30 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0"}
+										? "group relative flex h-[18.5rem] overflow-hidden rounded-lg border border-primary/60 bg-accent/40 text-xs/relaxed shadow-sm transition-[border-color,background-color,box-shadow] hover:border-primary/70 hover:bg-accent/50 hover:shadow-md motion-reduce:transition-none"
+										: "group relative flex h-[18.5rem] overflow-hidden rounded-lg border bg-surface-1 text-xs/relaxed transition-[border-color,background-color,box-shadow] hover:border-primary/50 hover:bg-accent/30 hover:shadow-md motion-reduce:transition-none"}
 								>
 									<button
 										type="button"
@@ -530,20 +529,17 @@
 												<div class="truncate text-xs/relaxed text-muted-foreground">{gitOpsCardSubtitle(item)}</div>
 											</div>
 											{#if SourceIcon}
-												<Tooltip>
-													<TooltipTrigger
-														type="button"
+												<LazyTooltip
 														class={gitOpsSourceIconClass(sourceMode)}
 														aria-label={`${sourceTooltip}. Activate to copy source details.`}
 														onclick={(event: MouseEvent) => void copyRevealedValue(event, sourceTooltip, "source details")}
 														onkeydown={stopTooltipEvent}
-													>
-														<SourceIcon class="size-3.5" aria-hidden="true" />
-													</TooltipTrigger>
-													<TooltipContent side="top" align="end" sideOffset={8} class={gitOpsTooltipClass}>
+													side="top" align="end" sideOffset={8} contentClass={gitOpsTooltipClass}>
+													{#snippet content()}
 														{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
-													</TooltipContent>
-												</Tooltip>
+													{/snippet}
+													<SourceIcon class="size-3.5" aria-hidden="true" />
+												</LazyTooltip>
 											{/if}
 										</div>
 										<div class="mt-3">
@@ -554,36 +550,28 @@
 											/>
 										</div>
 										{#if sourceLine}
-											<Tooltip>
-												<TooltipTrigger
-													type="button"
+											<LazyTooltip
 													class={`${gitOpsSourceLineClass} hover:border-primary/40`}
 													aria-label={`${sourceTooltip}. Activate to copy source details.`}
 													onclick={(event: MouseEvent) => void copyRevealedValue(event, sourceTooltip, "source details")}
 													onkeydown={stopTooltipEvent}
-												>
-													{sourceLine}
-												</TooltipTrigger>
-												<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
+												side="top" align="start" sideOffset={8} contentClass={gitOpsTooltipClass}>
+												{#snippet content()}
 													{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine)}
-												</TooltipContent>
-											</Tooltip>
+												{/snippet}
+												{sourceLine}
+											</LazyTooltip>
 										{/if}
 										<div class="mt-3 grid grid-cols-2 gap-1.5">
 											{#each gitOpsCardFacts(item) as fact}
 												{#if hasFactTooltip(fact)}
-													<Tooltip>
-														<TooltipTrigger
-															type="button"
+													<LazyTooltip
 															class={`${gitOpsFactFieldClass} w-full cursor-help transition-colors hover:border-primary/40`}
 															aria-label={`${fact.label}: ${factCopyValue(fact)}. Activate to copy.`}
 															onclick={(event: MouseEvent) => void copyRevealedValue(event, factCopyValue(fact), fact.label.toLocaleLowerCase())}
 															onkeydown={stopTooltipEvent}
-														>
-															<span class={gitOpsFactLabelClass}>{fact.label}</span>
-															<span class={gitOpsFactValueClass}>{fact.value}</span>
-														</TooltipTrigger>
-														<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
+														side="top" align="start" sideOffset={8} contentClass={gitOpsTooltipClass}>
+														{#snippet content()}
 															<div class={gitOpsTooltipHeaderClass}>{fact.tooltipTitle ?? fact.label}</div>
 															{#if fact.revisionRows && fact.revisionRows.length > 0}
 																{#each fact.revisionRows as row}
@@ -607,8 +595,10 @@
 																	</div>
 																</div>
 															{/if}
-														</TooltipContent>
-													</Tooltip>
+														{/snippet}
+														<span class={gitOpsFactLabelClass}>{fact.label}</span>
+															<span class={gitOpsFactValueClass}>{fact.value}</span>
+													</LazyTooltip>
 												{:else}
 													<div class={gitOpsFactFieldClass}>
 														<span class={gitOpsFactLabelClass}>{fact.label}</span>
@@ -644,8 +634,8 @@
 										</div>
 									</div>
 								</div>
-							{/each}
-							</div>
+							{/snippet}
+							</VirtualCollection>
 						{:else}
 							<div class="overflow-x-auto rounded-lg border">
 								<div
@@ -659,7 +649,8 @@
 									<span>Age</span>
 									<span class="sticky right-0 flex self-stretch items-center justify-end bg-muted text-right">Actions</span>
 								</div>
-								{#each gitOpsSelections as item (gitOpsSelectionKey(item))}
+								<VirtualCollection items={gitOpsSelections} itemKey={gitOpsSelectionKey} selectedKey={selectedGitOpsItemKey} estimateSize={64} minWidth="68rem">
+								{#snippet children(item)}
 									{@const sourceMode = gitOpsSelectionSourceMode(item)}
 									{@const SourceIcon = gitOpsSourceIcon(sourceMode)}
 									{@const sourceLabel = gitOpsSelectionSourceLabel(sourceMode, argoSourceCount(item))}
@@ -669,8 +660,9 @@
 									{@const sourceLine = gitOpsSelectionSourceLine(item)}
 									<div
 										class={gitOpsSelectionKey(item) === selectedGitOpsItemKey
-											? "group relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-accent/40 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/50 motion-reduce:transition-none"
-											: "group relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/30 motion-reduce:transition-none"}
+											? "group relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-accent/40 px-3 py-2.5 text-sm transition-colors hover:bg-accent/50 motion-reduce:transition-none"
+											: "group relative grid min-w-[68rem] grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,1.35fr)_minmax(7rem,0.6fr)_minmax(9rem,0.75fr)_4rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 text-sm transition-colors hover:bg-accent/30 motion-reduce:transition-none"}
+										class:border-b-0={item === gitOpsSelections[gitOpsSelections.length - 1]}
 									>
 										<div class={`absolute inset-y-0 left-0 w-1 ${gitOpsCardTone(item)}`}></div>
 										<div class="min-w-0 pl-1">
@@ -693,42 +685,36 @@
 											{/each}
 										</div>
 										{#if SourceIcon || sourceLine}
-											<Tooltip>
-												<TooltipTrigger
-													type="button"
+											<LazyTooltip
 													class="flex min-w-0 items-center gap-2 text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
 													aria-label={`${sourceTooltip}. Activate to copy source details.`}
 													onclick={(event: MouseEvent) => void copyRevealedValue(event, sourceTooltip, "source details")}
 													onkeydown={stopTooltipEvent}
-												>
-													{#if SourceIcon}
+												side="top" align="start" sideOffset={8} contentClass={gitOpsTooltipClass}>
+												{#snippet content()}
+													{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
+												{/snippet}
+												{#if SourceIcon}
 														<span class={gitOpsSourceIconClass(sourceMode)} aria-hidden="true">
 															<SourceIcon class="size-3.5" />
 														</span>
 													{/if}
 													<span class="min-w-0 flex-1 truncate">{sourceLine ?? "-"}</span>
-												</TooltipTrigger>
-												<TooltipContent side="top" align="start" sideOffset={8} class={gitOpsTooltipClass}>
-													{@render sourceTooltipContent(sourceTooltipTitle, sourceTooltipGroups, sourceLine ?? sourceLabel)}
-												</TooltipContent>
-											</Tooltip>
+											</LazyTooltip>
 										{:else}
 											<span class="text-muted-foreground">-</span>
 										{/if}
-										<Tooltip>
-											<TooltipTrigger
-												type="button"
+										<LazyTooltip
 												class="truncate text-left font-medium underline-offset-4 hover:underline"
 												aria-label={`Revision: ${revisionCopyValue(item)}. Activate to copy.`}
 												onclick={(event: MouseEvent) => void copyRevealedValue(event, revisionCopyValue(item), "revision")}
 												onkeydown={stopTooltipEvent}
-											>
-												{gitOpsSelectionRevisionLabel(item)}
-											</TooltipTrigger>
-											<TooltipContent side="top" align="start" sideOffset={8} class="max-w-[34rem] break-all">
+											side="top" align="start" sideOffset={8} contentClass="max-w-[34rem] break-all">
+											{#snippet content()}
 												{revisionCopyValue(item)}
-											</TooltipContent>
-										</Tooltip>
+											{/snippet}
+											{gitOpsSelectionRevisionLabel(item)}
+										</LazyTooltip>
 										<span class="truncate text-muted-foreground">{gitOpsSelectionDestination(item)}</span>
 										<span class="tabular-nums text-muted-foreground">{item.item.age ?? "-"}</span>
 										<div
@@ -760,7 +746,8 @@
 											{/if}
 										</div>
 									</div>
-								{/each}
+								{/snippet}
+								</VirtualCollection>
 							</div>
 						{/if}
 					{/if}

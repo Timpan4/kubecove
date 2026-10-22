@@ -1,6 +1,7 @@
 use crate::models::AppErrorKind;
 mod aggregate_logs;
 mod kinds;
+mod log_batches;
 mod logs;
 mod registry;
 mod watch;
@@ -315,6 +316,7 @@ mod tests {
 
     fn valid_log_request() -> PodLogStreamRequest {
         PodLogStreamRequest {
+            batch_lines: false,
             cluster_context: "kind-dev".to_string(),
             kubeconfig_env_var: None,
             namespace: "default".to_string(),
@@ -327,6 +329,7 @@ mod tests {
 
     fn valid_aggregated_log_request() -> AggregatedLogStreamRequest {
         AggregatedLogStreamRequest {
+            batch_lines: false,
             cluster_context: "kind-dev".to_string(),
             kubeconfig_env_var: None,
             namespace: "default".to_string(),

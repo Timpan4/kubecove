@@ -54,6 +54,7 @@ import type {
 	IncidentCockpitSummary,
 	IncidentSeverity,
 	LiveSessionCleanupResult,
+	PodLogStreamRequest,
 	ResourceDetailsFull,
 	ResourceEventSummary,
 	ResourceListRequest,
@@ -66,7 +67,7 @@ import type {
 	YamlApplyPreview,
 } from "./types";
 
-type MockRequest = Partial<ArgoOperationRequest & YamlApplyRequest>;
+type MockRequest = Partial<ArgoOperationRequest & YamlApplyRequest & Pick<PodLogStreamRequest, "batchLines">>;
 interface MockArgs {
 	application?: Partial<ArgoApplicationRef>;
 	channel?: Pick<Channel<StreamMessage>, "onmessage">;
@@ -153,8 +154,8 @@ const handlers = {
 	refresh_resource_cache: () => ({ clearedEntries: 1 }),
 	start_resource_watch: (args) => startStream(args?.channel, "mock-watch", "Resource watch connected"),
 	start_resource_event_watch: (args) => startStream(args?.channel, "mock-events", "Event watch connected"),
-	start_pod_log_stream: (args) => startLogStream(args?.channel),
-	start_aggregated_log_stream: (args) => startLogStream(args?.channel, true),
+	start_pod_log_stream: (args) => startLogStream(args?.channel, false, args?.request?.batchLines === true),
+	start_aggregated_log_stream: (args) => startLogStream(args?.channel, true, args?.request?.batchLines === true),
 	stop_stream: () => true,
 	start_pod_port_forward: unavailable("Port forwarding is unavailable in browser mock mode."),
 	stop_port_forward: () => true,
@@ -788,6 +789,7 @@ function startStream(
 function startLogStream(
 	channel: Pick<Channel<StreamMessage>, "onmessage"> | undefined,
 	aggregate = false,
+	batchLines = false,
 ): string {
 	const streamId = `mock-logs-${Date.now()}`;
 	send(channel, { type: "started", streamId, label: aggregate ? "Mock aggregate logs" : "Mock pod logs" });
@@ -799,7 +801,10 @@ function startLogStream(
 			]
 		: [undefined];
 	for (const [index, line] of ["2026-06-29T10:00:00Z boot payments-api", "2026-06-29T10:00:02Z handled GET /healthz 200", "2026-06-29T10:00:04Z warning downstream retry budget at 82%"].entries()) {
-		send(channel, { type: "logLine", streamId, line, source: sources[index % sources.length] });
+		const source = sources[index % sources.length];
+		send(channel, batchLines
+			? { type: "logLines", streamId, lines: [line], source }
+			: { type: "logLine", streamId, line, source });
 	}
 	return streamId;
 }

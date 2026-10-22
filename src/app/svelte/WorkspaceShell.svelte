@@ -47,7 +47,8 @@
 	} from "@/lib/tauri";
 	import { kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
 	import {
-		writePathState,
+		schedulePathStateWrite,
+		flushPathStateWrite,
 		type PathStateDetailTab,
 		type PathStateResourceDetailState,
 		type PathStateSurfacesState,
@@ -128,7 +129,7 @@
 	const initialNavigation = initialWorkspaceNavigation();
 	const initialDetailPathState = initialPathSnapshot?.detail ?? null;
 	const initialSurfacesPathState = initialPathSnapshot?.surfaces ?? null;
-	let navigation = $state<WorkspaceNavigationState>(initialNavigation);
+	let navigation = $state.raw<WorkspaceNavigationState>(initialNavigation);
 	let sidebarNavigationRevision = $state(0);
 	const selectedNode = $derived(navigation.selectedNode);
 	const viewMode = $derived(navigation.viewMode);
@@ -164,8 +165,13 @@
 	const kubeconfigSourceKey = $derived($settingsStore.kubeconfigSourceKey);
 	const showCustomResources = $derived($settingsStore.showCustomResources);
 
+	const navigationWorkspaceName = $derived(workspace.name);
+	const navigationWorkspaceScope = $derived(workspace.scope);
 	const navigationModel = $derived(
-		buildWorkspaceNavigationModel(workspace, navigation),
+		buildWorkspaceNavigationModel(
+			{ name: navigationWorkspaceName, scope: navigationWorkspaceScope },
+			{ selectedNode, viewMode, resourceNamespaceOverride },
+		),
 	);
 	const title = $derived(navigationModel.title);
 	const placeholder = $derived(navigationModel.placeholder);
@@ -288,9 +294,19 @@
 			if (window.matchMedia("(min-width: 80rem)").matches) navigationOpen = false;
 		};
 		window.addEventListener("resize", closeNarrowNavigation);
+		window.addEventListener("pagehide", flushPathStateWrite);
+		window.addEventListener("beforeunload", flushPathStateWrite);
+		const flushWhenHidden = () => {
+			if (document.visibilityState === "hidden") flushPathStateWrite();
+		};
+		document.addEventListener("visibilitychange", flushWhenHidden);
 		return () => {
+			flushPathStateWrite();
 			stopRbacHandoff();
 			window.removeEventListener("resize", closeNarrowNavigation);
+			window.removeEventListener("pagehide", flushPathStateWrite);
+			window.removeEventListener("beforeunload", flushPathStateWrite);
+			document.removeEventListener("visibilitychange", flushWhenHidden);
 		};
 	});
 
@@ -335,7 +351,7 @@
 	}
 
 	$effect(() => {
-		writePathState({
+		schedulePathStateWrite({
 			version: 1,
 			runtime: "svelte",
 			launcherView: "workspaces",
@@ -497,7 +513,7 @@
 	/>
 
 	<SidebarInset
-		class="flex h-full min-w-0 flex-col overflow-hidden xl:rounded-xl xl:border xl:border-sidebar-border xl:bg-background xl:shadow-lg"
+		class="flex h-full min-w-0 flex-col overflow-hidden xl:rounded-xl xl:border xl:border-sidebar-border xl:bg-background"
 	>
 		<WorkspaceHeader
 			clusterContext={workspace.scope.clusterContext}

@@ -113,6 +113,9 @@
 		] : []),
 		...(fluxDetectionQuery.data?.kinds ?? []).map((kind) => ({ resourceKind: kind })),
 	]);
+	const liveStatusKey = $derived(`${context}\0${kubeconfigSourceKey ?? ""}\0${watchKeys
+		.map(({ resourceKind }) => `${resourceKind.apiVersion}/${resourceKind.plural}`)
+		.join(",")}`);
 	function refreshView() {
 		return refreshCurrentView({ client, queryClient, clusterContext: context, kubeconfigEnvVar: kubeconfigSourceKey, keys: watchKeys, namespaces: [] });
 	}
@@ -238,7 +241,7 @@
 </script>
 
 {#snippet refreshControls()}
-	{#key JSON.stringify([context, kubeconfigSourceKey, watchKeys, selectedGitOpsItemKey])}
+	{#key liveStatusKey}
 		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady}
 			status={watchKeys.length ? realtimeStatus : "idle"}
 			message={watchKeys.length ? realtimeMessage : "No live resource watches in this view."}

@@ -28,7 +28,7 @@
 		ownershipResource: OwnershipResourceNode,
 		standaloneKindGroup: StandaloneKindGroupNode,
 	};
-	// ponytail: tune threshold from real cluster profiles if this still flickers or lags.
+	// Keep small graphs mounted so Tab can reach offscreen nodes and pan them into view.
 	const VISIBLE_ELEMENT_RENDER_THRESHOLD = 120;
 
 	let {

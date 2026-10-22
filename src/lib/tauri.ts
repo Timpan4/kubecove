@@ -1,5 +1,5 @@
 import { Channel, type InvokeOptions } from "@tauri-apps/api/core";
-import { createDevMockTauriClient } from "./tauri-dev-mocks";
+import { IS_DEV_BUILD } from "./build-env";
 import { cancellableArg, kubeconfigArg } from "./tauri-args";
 import { createBrowserTauriClient } from "./browser-runtime";
 import { getDesktopRemoteTauriClient, isDesktopRemoteSelected } from "./remote-runtime";
@@ -102,10 +102,22 @@ export function refreshResourceCache(
 }
 
 const nativeTauriClient = createNativeTauriClient();
+let createDevMockClient: (() => TauriClient) | undefined;
+
+export async function initializeBrowserDevMocks(): Promise<void> {
+	// Keep the define at the import site so production removes the entire mock graph.
+	if (process.env.KUBECOVE_PUBLIC_DEV === "true" && shouldUseBrowserDevMocks()) {
+		const mocks = await import("./tauri-dev-mocks");
+		createDevMockClient = mocks.createDevMockTauriClient;
+	}
+}
 
 export function createTauriClient(): TauriClient {
 	if (isBrowserRuntime()) return createBrowserTauriClient();
-	if (shouldUseBrowserDevMocks()) return createDevMockTauriClient();
+	if (IS_DEV_BUILD && shouldUseBrowserDevMocks()) {
+		if (!createDevMockClient) throw new Error("Browser dev mocks must initialize before mounting the app");
+		return createDevMockClient();
+	}
 	return {
 		createChannel: <T>(onMessage: (message: T) => void) => {
 			const activeClient = isDesktopRemoteSelected()

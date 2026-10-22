@@ -887,9 +887,6 @@ describe("svelte resource browser model", () => {
 
 		expect(source).toContain("resourceMetricIndex(metricsQuery.data)");
 		expect(source).toContain("mergeTopologyMetrics(");
-		expect(source).toContain("filterTopologyByTableRows(");
-		expect(source).toContain("tableModel.filteredRows");
-		expect(source).toContain("filterHistoricalReplicaSets(");
 		expect(source).toContain("topology={topologyWithMetrics}");
 		expect(source).toContain("topologyNodes: topologyWithMetrics?.nodes");
 	});

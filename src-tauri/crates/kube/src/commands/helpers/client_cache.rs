@@ -2,7 +2,7 @@ use super::session_scope::SessionScope;
 use kube::Client;
 use std::{
     collections::hash_map::DefaultHasher,
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fs,
     hash::{Hash, Hasher},
     path::PathBuf,
@@ -19,6 +19,7 @@ use tokio_util::sync::CancellationToken;
 // the entry without re-reading file contents on every command.
 struct Cache<T> {
     entries: HashMap<(String, String), (u64, T)>,
+    recency: VecDeque<(String, String)>,
 }
 
 // Entries are keyed by hashed source state, so source changes strand old
@@ -29,15 +30,18 @@ impl<T: Clone> Cache<T> {
     fn new() -> Self {
         Self {
             entries: HashMap::new(),
+            recency: VecDeque::new(),
         }
     }
 
-    fn lookup(&self, source_key: &str, cluster_context: &str, fingerprint: u64) -> Option<T> {
-        let (cached_fingerprint, value) = self
-            .entries
-            .get(&(source_key.to_string(), cluster_context.to_string()))?;
+    fn lookup(&mut self, source_key: &str, cluster_context: &str, fingerprint: u64) -> Option<T> {
+        let key = (source_key.to_string(), cluster_context.to_string());
+        let (cached_fingerprint, value) = self.entries.get(&key)?;
         if *cached_fingerprint == fingerprint {
-            Some(value.clone())
+            let value = value.clone();
+            self.recency.retain(|entry| entry != &key);
+            self.recency.push_back(key);
+            Some(value)
         } else {
             None
         }
@@ -45,9 +49,14 @@ impl<T: Clone> Cache<T> {
 
     fn store(&mut self, source_key: String, cluster_context: String, fingerprint: u64, value: T) {
         let key = (source_key, cluster_context);
-        if self.entries.len() >= MAX_ENTRIES && !self.entries.contains_key(&key) {
-            self.entries.clear();
+        if self.entries.contains_key(&key) {
+            self.recency.retain(|entry| entry != &key);
+        } else if self.entries.len() >= MAX_ENTRIES {
+            if let Some(oldest) = self.recency.pop_front() {
+                self.entries.remove(&oldest);
+            }
         }
+        self.recency.push_back(key.clone());
         self.entries.insert(key, (fingerprint, value));
     }
 }
@@ -117,7 +126,7 @@ pub(crate) fn lookup_client(
     generation: u64,
 ) -> Option<ClientEntry> {
     with_caches(|caches| {
-        let state = caches.finite.read().expect("finite client cache lock");
+        let mut state = caches.finite.write().expect("finite client cache lock");
         (state.generation.id == generation)
             .then(|| {
                 state
@@ -165,6 +174,7 @@ fn rotate_generation(caches: &ClientCaches) -> u64 {
             token: CancellationToken::new(),
         };
         state.clients.entries.clear();
+        state.clients.recency.clear();
         (previous, next_id)
     };
     previous.cancel();
@@ -179,7 +189,7 @@ pub(crate) fn lookup_operation_client(
     with_caches(|caches| {
         caches
             .operation
-            .read()
+            .write()
             .expect("operation client cache lock")
             .lookup(source_key, cluster_context, fingerprint)
     })
@@ -206,7 +216,7 @@ pub(crate) fn lookup_live_client(
     fingerprint: u64,
 ) -> Option<ClientEntry> {
     with_caches(|caches| {
-        caches.live.read().expect("live client cache lock").lookup(
+        caches.live.write().expect("live client cache lock").lookup(
             source_key,
             cluster_context,
             fingerprint,
@@ -254,3 +264,44 @@ pub(crate) fn fingerprint_files(paths: &[PathBuf]) -> u64 {
 #[cfg(test)]
 #[path = "client_cache_tests.rs"]
 mod client_cache_tests;
+
+#[cfg(test)]
+mod lru_tests {
+    use super::*;
+
+    #[test]
+    fn hit_refreshes_recency_but_fingerprint_miss_does_not() {
+        let mut cache = Cache::new();
+        for index in 0..MAX_ENTRIES {
+            cache.store(format!("source-{index}"), "context".into(), 1, index);
+        }
+        assert_eq!(cache.lookup("source-0", "context", 1), Some(0));
+        assert_eq!(cache.lookup("source-1", "context", 2), None);
+        cache.store("overflow".into(), "context".into(), 1, MAX_ENTRIES);
+        assert_eq!(cache.lookup("source-0", "context", 1), Some(0));
+        assert_eq!(cache.lookup("source-1", "context", 1), None);
+        assert_eq!(cache.lookup("source-2", "context", 1), Some(2));
+    }
+
+    #[tokio::test]
+    async fn generation_rotation_clears_entries_and_recency_together() {
+        let caches = ClientCaches::default();
+        {
+            let mut state = caches.finite.write().unwrap();
+            let (service, _) = tower_test::mock::pair::<
+                http::Request<kube::client::Body>,
+                http::Response<kube::client::Body>,
+            >();
+            state.clients.store(
+                "source".into(),
+                "context".into(),
+                1,
+                (Client::new(service, "default"), "default".into()),
+            );
+        }
+        rotate_generation(&caches);
+        let state = caches.finite.read().unwrap();
+        assert!(state.clients.entries.is_empty());
+        assert!(state.clients.recency.is_empty());
+    }
+}

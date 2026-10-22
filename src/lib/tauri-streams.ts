@@ -109,7 +109,7 @@ export async function startPodLogStream(
 	channel: Channel<StreamMessage>,
 ): Promise<string> {
 	return client.invoke<string>("start_pod_log_stream", {
-		request: sanitizeKubeconfigRequest(request),
+		request: sanitizeKubeconfigRequest({ ...request, batchLines: true }),
 		channel,
 	});
 }
@@ -120,7 +120,7 @@ export async function startAggregatedLogStream(
 	channel: Channel<StreamMessage>,
 ): Promise<string> {
 	return client.invoke<string>("start_aggregated_log_stream", {
-		request: sanitizeKubeconfigRequest(request),
+		request: sanitizeKubeconfigRequest({ ...request, batchLines: true }),
 		channel,
 	});
 }

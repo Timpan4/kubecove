@@ -25,6 +25,22 @@ struct ResourceKey {
 }
 
 impl FluxOwnershipIndex {
+    pub fn would_enrich(&self, summary: &ResourceSummary) -> bool {
+        if self.partial && !summary.git_ops_ownership_partial {
+            return true;
+        }
+        if let Some(owner) = &summary.git_ops_owner {
+            return self.partial && !owner.partial;
+        }
+        !self.owners.is_empty()
+            && self.owners.contains_key(&ResourceKey {
+                namespace: summary.namespace.clone(),
+                api_version: summary.api_version.clone().unwrap_or_default(),
+                kind: summary.kind.clone(),
+                name: summary.name.clone(),
+            })
+    }
+
     pub fn retained_item_count(&self) -> usize {
         self.owners.len()
     }
@@ -381,16 +397,22 @@ mod tests {
         );
         let mut summaries = vec![summary("Deployment", "api"), summary("Service", "missing")];
 
+        assert!(index.would_enrich(&summaries[0]));
+        assert!(!index.would_enrich(&summaries[1]));
+
         enrich_resource_summaries_with_flux_inventory(&mut summaries, &index);
 
         assert!(!summaries[0].git_ops_owner.as_ref().unwrap().partial);
         assert_eq!(summaries[1].git_ops_owner, None);
         assert!(!summaries.iter().any(|row| row.git_ops_ownership_partial));
+        assert!(summaries.iter().all(|row| !index.would_enrich(row)));
 
         index.partial = true;
+        assert!(summaries.iter().all(|row| index.would_enrich(row)));
         enrich_resource_summaries_with_flux_inventory(&mut summaries, &index);
         assert!(summaries.iter().all(|row| row.git_ops_ownership_partial));
         assert!(summaries[0].git_ops_owner.as_ref().unwrap().partial);
+        assert!(summaries.iter().all(|row| !index.would_enrich(row)));
     }
 
     fn summary(kind: &str, name: &str) -> ResourceSummary {

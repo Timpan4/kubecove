@@ -33,6 +33,7 @@ export default defineConfig(({ command }) => {
 				"@codemirror/state",
 				"@codemirror/view",
 				"@lezer/highlight",
+				"@tanstack/svelte-virtual",
 				"diff",
 				"yaml",
 			],
@@ -42,6 +43,23 @@ export default defineConfig(({ command }) => {
 			"process.env.KUBECOVE_PUBLIC_RUNTIME": JSON.stringify(runtime),
 			"process.env.KUBECOVE_PUBLIC_PROFILE": JSON.stringify(String(profiling)),
 			"process.env.KUBECOVE_PUBLIC_RELEASE_CHANNEL": JSON.stringify(releaseChannel),
+		},
+		build: {
+			// Preserve native dynamic imports and BigInt on older WebKit releases.
+			target: "safari15",
+			rolldownOptions: {
+				output: {
+					codeSplitting: {
+						groups: [
+							{ name: "vendor-svelte", test: /node_modules[\\/]svelte[\\/]/, entriesAware: true },
+							{ name: "vendor-query", test: /node_modules[\\/]@tanstack[\\/]/, entriesAware: true },
+							{ name: "vendor-bits", test: /node_modules[\\/]bits-ui[\\/]/, entriesAware: true },
+							{ name: "vendor-icons", test: /node_modules[\\/]lucide-svelte[\\/]/, entriesAware: true },
+							{ name: "vendor-yaml", test: /node_modules[\\/]yaml[\\/]/, entriesAware: true },
+						],
+					},
+				},
+			},
 		},
 		server: {
 			port: 1430,

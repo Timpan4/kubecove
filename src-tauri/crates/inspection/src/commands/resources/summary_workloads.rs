@@ -242,13 +242,15 @@ async fn deployment_summaries(
     } else {
         Api::all(client)
     };
-    Ok(api
-        .list(&list_params())
-        .await
-        .map_err(AppError::from)?
-        .iter()
-        .map(|deploy| deployment_resource_summary(cluster_context, deploy))
-        .collect())
+    Ok(kubecove_kube::commands::list_projection::list::<
+        _,
+        super::summary_projection::DeploymentProjection,
+    >(api, &list_params())
+    .await
+    .map_err(AppError::from)?
+    .into_iter()
+    .map(|deploy| deployment_resource_summary(cluster_context, &deploy.into_resource()))
+    .collect())
 }
 
 async fn replicaset_summaries(
@@ -261,13 +263,15 @@ async fn replicaset_summaries(
     } else {
         Api::all(client)
     };
-    Ok(api
-        .list(&list_params())
-        .await
-        .map_err(AppError::from)?
-        .iter()
-        .map(|rs| replicaset_resource_summary(cluster_context, rs))
-        .collect())
+    Ok(kubecove_kube::commands::list_projection::list::<
+        _,
+        super::summary_projection::ReplicaSetProjection,
+    >(api, &list_params())
+    .await
+    .map_err(AppError::from)?
+    .into_iter()
+    .map(|rs| replicaset_resource_summary(cluster_context, &rs.into_resource()))
+    .collect())
 }
 
 async fn statefulset_summaries(
@@ -337,12 +341,11 @@ async fn job_summaries(
     } else {
         Api::all(client)
     };
-    Ok(api
-        .list(&list_params())
+    Ok(kubecove_kube::commands::list_projection::list::<_, super::summary_projection::JobProjection>(api, &list_params())
         .await
         .map_err(AppError::from)?
-        .iter()
-        .map(|job| job_resource_summary(cluster_context, job))
+        .into_iter()
+        .map(|job| job_resource_summary(cluster_context, &job.into_resource()))
         .collect())
 }
 

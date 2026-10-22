@@ -44,8 +44,8 @@ export function observeResourceScope({
 	keys: WatchResourceKey[];
 	kubeconfigEnvVar?: string;
 	onState: (state: ResourceWatchState) => void;
-	onChange: (event: StreamMessage) => void;
-	reload: () => Promise<void> | Promise<string[]>;
+	onChange: (event: StreamMessage, key: WatchResourceKey) => void;
+	reload: (keys?: WatchResourceKey[]) => Promise<void> | Promise<string[]>;
 	openChannel?: typeof createStreamChannel;
 }): () => void {
 	let disposed = false;
@@ -64,11 +64,11 @@ export function observeResourceScope({
 		channel: null,
 	}));
 
-	async function refresh() {
+	async function refresh(recoveryKeys?: WatchResourceKey[]) {
 		if (disposed || reloading) return;
 		reloading = true;
 		try {
-			reloadWarnings = (await reload()) ?? [];
+			reloadWarnings = (await reload(recoveryKeys)) ?? [];
 			reloadError = null;
 		} catch (error) {
 			reloadError = messageFromError(error);
@@ -97,7 +97,7 @@ export function observeResourceScope({
 			reloadError,
 			warnings,
 		});
-		if (connected && needsCatchUp) {
+		if (connected && needsCatchUp && !reloading) {
 			needsCatchUp = false;
 			void refresh();
 		}
@@ -122,7 +122,7 @@ export function observeResourceScope({
 				needsCatchUp = true;
 				closeStreamChannel(channel);
 			} else if (event.type === "resourceChanged") {
-				onChange(event);
+				onChange(event, watch.key);
 			}
 			publish();
 		}, client);
@@ -155,7 +155,10 @@ export function observeResourceScope({
 		if (disposed) return;
 		for (const watch of watches) start(watch);
 		if (watches.some((watch) => !watch.connected && !watch.permissionWarning)) needsCatchUp = true;
-		if (needsCatchUp || reloadError || watches.some((watch) => watch.permissionWarning)) void refresh();
+		if (needsCatchUp || reloadError || watches.some((watch) => watch.permissionWarning)) {
+			const recoveryKeys = watches.filter((watch) => watch.permissionWarning).map((watch) => watch.key);
+			void refresh(!needsCatchUp && recoveryKeys.length ? recoveryKeys : undefined);
+		}
 		timer = setTimeout(tick, RESOURCE_RECOVERY_INTERVAL);
 	}
 	onState({

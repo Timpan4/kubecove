@@ -5,9 +5,133 @@ import {
 	RESOURCE_RECOVERY_INTERVAL,
 	type ResourceWatchState,
 } from "./resource-watch";
-import type { StreamMessage } from "./types";
+import type { StreamMessage, WatchResourceKey } from "./types";
 
 afterEach(() => jest.useRealTimers());
+
+// Failure modes: forbidden-watch polling evicts permitted kinds or repeated
+// failures delay recovery beyond the existing recovery interval.
+test("permission recovery scopes reloads to denied kinds at the original interval", async () => {
+	jest.useFakeTimers();
+	const channels: Array<ReturnType<typeof createMockChannel<StreamMessage>>> = [];
+	const requested: Array<WatchResourceKey[] | undefined> = [];
+	const reloadTimes: number[] = [];
+	let fail = true;
+	const denied = { resourceKind: { kind: "Secret" }, namespace: "ns" };
+	const stop = observeResourceScope({
+		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
+		clusterContext: "dev", keys: [{ resourceKind: { kind: "Pod" }, namespace: "ns" }, denied],
+		onState: () => {}, onChange: () => {},
+		reload: async (keys) => {
+			requested.push(keys);
+			reloadTimes.push(Date.now());
+			await Promise.resolve();
+			jest.advanceTimersByTime(1);
+			if (fail) throw new Error("forbidden");
+		},
+		openChannel: (handler) => { const channel = createMockChannel(handler); channels.push(channel); return channel; },
+	});
+	await Promise.resolve();
+	try {
+		channels[0]?.onmessage({ type: "status", streamId: "watch", status: "connected", message: "connected" });
+		channels[1]?.onmessage({ type: "status", streamId: "watch", status: "forbidden", message: "denied" });
+		jest.advanceTimersByTime(15_000);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(requested).toEqual([[denied]]);
+		jest.advanceTimersByTime(15_000);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(requested).toHaveLength(2);
+		fail = false;
+		jest.advanceTimersByTime(15_000);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(requested).toHaveLength(3);
+		jest.advanceTimersByTime(15_000);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(requested).toHaveLength(4);
+		expect(reloadTimes.map((time) => time - (reloadTimes[0] ?? 0))).toEqual([0, 15_000, 30_000, 45_000]);
+	} finally { stop(); }
+});
+
+// Failure modes: a denied kind delays a disconnected permitted watch or a
+// network failure delays its next recovery attempt.
+test.each(["disconnected", "reload failure"])("denied kinds do not delay %s recovery", async (reason) => {
+	jest.useFakeTimers();
+	const channels: Array<ReturnType<typeof createMockChannel<StreamMessage>>> = [];
+	const requested: Array<WatchResourceKey[] | undefined> = [];
+	let reloads = 0;
+	let networkFailure = false;
+	const stop = observeResourceScope({
+		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
+		clusterContext: "dev",
+		keys: [{ resourceKind: { kind: "Pod" } }, { resourceKind: { kind: "Secret" } }],
+		onState: () => {}, onChange: () => {},
+		reload: async (keys) => {
+			requested.push(keys);
+			reloads++;
+			await Promise.resolve();
+			jest.advanceTimersByTime(1);
+			if (networkFailure) throw new Error("offline");
+			return ["forbidden"];
+		},
+		openChannel: (handler) => { const channel = createMockChannel(handler); channels.push(channel); return channel; },
+	});
+	try {
+		channels[0]?.onmessage({ type: "status", streamId: "watch", status: "connected", message: "connected" });
+		channels[1]?.onmessage({ type: "status", streamId: "watch", status: "forbidden", message: "denied" });
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(reloads).toBe(1);
+		if (reason === "disconnected") {
+			channels[0]?.onmessage({ type: "error", streamId: "watch", message: "offline" });
+		} else {
+			networkFailure = true;
+			jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(reloads).toBe(2);
+		}
+		const beforeRetry = reloads;
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(reloads).toBe(beforeRetry + 1);
+		if (reason === "disconnected") expect(requested.at(-1)).toBeUndefined();
+	} finally { stop(); }
+});
+
+// A list snapshot can predate reconnection. Catch up once after that list ends,
+// even if multiple connected notifications arrive while it is in flight.
+test("reconnection during a reload queues exactly one trailing catch-up", async () => {
+	jest.useFakeTimers();
+	let channel!: ReturnType<typeof createMockChannel<StreamMessage>>;
+	let complete!: () => void;
+	let reloads = 0;
+	const stop = observeResourceScope({
+		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
+		clusterContext: "dev", keys: [{ resourceKind: { kind: "Pod" } }],
+		onState: () => {}, onChange: () => {},
+		reload: () => ++reloads === 1 ? new Promise<void>((resolve) => { complete = resolve; }) : Promise.resolve(),
+		openChannel: (handler) => { channel = createMockChannel(handler); return channel; },
+	});
+	try {
+		channel.onmessage({ type: "error", streamId: "watch", message: "offline" });
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		channel.onmessage({ type: "status", streamId: "watch", status: "connected", message: "connected" });
+		channel.onmessage({ type: "status", streamId: "watch", status: "connected", message: "renewed" });
+		expect(reloads).toBe(1);
+		complete();
+		await Promise.resolve();
+		expect(reloads).toBe(2);
+		await Promise.resolve();
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		expect(reloads).toBe(2);
+	} finally { stop(); }
+});
 
 test("a denied watch warns without interrupting permitted updates or retrying startup", async () => {
 	jest.useFakeTimers();

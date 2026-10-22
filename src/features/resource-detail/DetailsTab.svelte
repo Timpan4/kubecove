@@ -1,4 +1,5 @@
 <script lang="ts">
+	let advancedMetadataOpen = $state(false);
 	import { ExternalLink } from "lucide-svelte";
 	import ResourceTimeline from "./ResourceTimeline.svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
@@ -471,11 +472,11 @@
 						</div>
 					</section>
 				{/if}
-				<details class="rounded-md border bg-background/30">
+				<details bind:open={advancedMetadataOpen} class="rounded-md border bg-background/30">
 					<summary class="cursor-pointer px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
 						Advanced metadata
 					</summary>
-					<div class="overflow-hidden border-t bg-background/80">
+					{#if advancedMetadataOpen}<div class="overflow-hidden border-t bg-background/80">
 						<Table>
 							<TableHeader>
 								<TableRow>
@@ -495,6 +496,7 @@
 							</TableBody>
 						</Table>
 					</div>
+					{/if}
 				</details>
 				{#if statusRows.length > 0}
 					<section class="flex flex-col gap-2">

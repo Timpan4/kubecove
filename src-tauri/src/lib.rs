@@ -45,9 +45,11 @@ pub fn run() {
     #[cfg(feature = "e2e")]
     let e2e_config = e2e::startup_config().expect("invalid KubeCove E2E environment");
     #[cfg(not(feature = "e2e"))]
-    if std::env::var("KUBECOVE_E2E").as_deref() == Ok("1") {
-        panic!("KUBECOVE_E2E=1 requires the e2e Cargo feature");
-    }
+    assert_ne!(
+        std::env::var("KUBECOVE_E2E").as_deref(),
+        Ok("1"),
+        "KUBECOVE_E2E=1 requires the e2e Cargo feature"
+    );
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -85,6 +87,120 @@ pub fn run() {
                 #[cfg(not(debug_assertions))]
                 let app_config_dir = app.path().app_config_dir()?;
                 init_kubeconfig_settings_path(app_config_dir);
+            }
+            #[cfg(target_os = "linux")]
+            {
+                use std::ffi::{c_char, c_void, CStr};
+                use tauri::Manager;
+                use webkit2gtk::{glib::translate::ToGlibPtr, WebViewExt};
+
+                if let Some(window) = app.get_webview_window("main") {
+                    // WebKit otherwise renders near 60 fps on high-refresh monitors.
+                    let _ =
+                        window.with_webview(|webview| {
+                            let Some(settings) = webview.inner().settings() else {
+                                return;
+                            };
+                            // SAFETY: RTLD_DEFAULT searches loaded libraries; all symbol names
+                            // are static NUL-terminated strings. Older WebKit returns null.
+                            let symbols = unsafe {
+                                [
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_settings_get_all_features".as_ptr(),
+                                    ),
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_feature_list_get_length".as_ptr(),
+                                    ),
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_feature_list_get".as_ptr(),
+                                    ),
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_feature_get_identifier".as_ptr(),
+                                    ),
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_settings_set_feature_enabled".as_ptr(),
+                                    ),
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_feature_list_unref".as_ptr(),
+                                    ),
+                                ]
+                            };
+                            if symbols.iter().any(|symbol| symbol.is_null()) {
+                                return;
+                            }
+                            // SAFETY: all six symbols are non-null WebKit C functions with
+                            // these ABI signatures, and the loaded library stays resident.
+                            let (
+                                get_all_features,
+                                get_length,
+                                get_feature,
+                                get_identifier,
+                                set_enabled,
+                                unref,
+                            ) = unsafe {
+                                (
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn() -> *mut c_void,
+                                    >(symbols[0]),
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn(*mut c_void) -> usize,
+                                    >(symbols[1]),
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn(*mut c_void, usize) -> *mut c_void,
+                                    >(symbols[2]),
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn(*mut c_void) -> *const c_char,
+                                    >(symbols[3]),
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn(
+                                            *mut webkit2gtk::ffi::WebKitSettings,
+                                            *mut c_void,
+                                            webkit2gtk::glib::ffi::gboolean,
+                                        ),
+                                    >(symbols[4]),
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn(*mut c_void),
+                                    >(symbols[5]),
+                                )
+                            };
+                            // SAFETY: with_webview runs on the GTK thread; settings stays alive.
+                            // The owned list keeps its borrowed features and NUL-terminated identifiers
+                            // alive until unref; null pointers are checked before use.
+                            unsafe {
+                                let list = get_all_features();
+                                if list.is_null() {
+                                    return;
+                                }
+                                for index in 0..get_length(list) {
+                                    let feature = get_feature(list, index);
+                                    if feature.is_null() {
+                                        continue;
+                                    }
+                                    let identifier = get_identifier(feature);
+                                    if !identifier.is_null()
+                                        && CStr::from_ptr(identifier)
+                                            == c"PreferPageRenderingUpdatesNear60FPS"
+                                    {
+                                        set_enabled(settings.to_glib_none().0, feature, 0);
+                                        break;
+                                    }
+                                }
+                                unref(list);
+                            }
+                        });
+                }
             }
             Ok(())
         })

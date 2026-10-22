@@ -28,6 +28,7 @@
 		stopPortForward as stopPortForwardLifecycle,
 	} from "./portForwardLifecycle";
 	import LiveSessionsView from "./LiveSessionsView.svelte";
+	import { trackLiveSessionUi } from "./sessionPolling.svelte";
 
 	let {
 		workspace,
@@ -55,6 +56,7 @@
 	let savedPortForwardForm = $state<SavedPortForwardFormValues>(newSavedPortForwardForm());
 	let liveSessionActionError = $state<unknown>(null);
 	const autoStartSavedPortForwards = $derived($settingsStore.autoStartSavedPortForwards);
+	trackLiveSessionUi(() => sourceReady);
 
 	const portForwardsQuery = createQuery<PortForwardSessionSummary[]>(() =>
 		portForwardQueryOptions(client, {

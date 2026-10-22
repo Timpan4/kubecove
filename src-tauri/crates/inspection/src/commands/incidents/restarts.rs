@@ -1,9 +1,10 @@
 use crate::commands::helpers::{k8s_timestamp_to_datetime, list_params};
+use crate::commands::MAX_LIST_CONCURRENCY;
 use crate::models::{AppError, IncidentSignalState, ResourceSummary};
 use chrono::DateTime;
-use futures_util::future::join_all;
 use k8s_openapi::api::core::v1::{ContainerStatus, Pod};
 use kube::{api::Api, Client};
+use kubecove_kube::commands::list_projection::bounded_join_all;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
@@ -45,17 +46,20 @@ pub(super) async fn list_restart_evidence(
     }
 
     let mut result = RestartEvidenceList::default();
-    let fetches = by_namespace.into_iter().map(|(namespace, restarted)| {
-        let client = client.clone();
-        async move {
-            let pods = Api::<Pod>::namespaced(client, namespace)
-                .list(&list_params())
-                .await
-                .map_err(AppError::from)?;
-            Ok::<_, AppError>((restarted, pods))
-        }
-    });
-    for fetch in join_all(fetches).await {
+    let fetches: Vec<_> = by_namespace
+        .into_iter()
+        .map(|(namespace, restarted)| {
+            let client = client.clone();
+            async move {
+                let pods = Api::<Pod>::namespaced(client, namespace)
+                    .list(&list_params())
+                    .await
+                    .map_err(AppError::from)?;
+                Ok::<_, AppError>((restarted, pods))
+            }
+        })
+        .collect();
+    for fetch in bounded_join_all(fetches, MAX_LIST_CONCURRENCY).await {
         let (restarted_resources, pods) = fetch?;
         restart_evidence_from_pods(restarted_resources, pods.items, &mut result.by_resource);
     }

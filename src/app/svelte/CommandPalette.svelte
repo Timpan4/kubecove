@@ -35,6 +35,7 @@
 		listNamespaces,
 	} from "@/lib/tauri";
 	import { queryKeys } from "@/lib/queryKeys";
+	import { createCancelScope, finiteReadMeta } from "@/lib/finite-read-lifecycle";
 	import { kubeconfigSourceKey as normalizeKubeconfigSourceKey } from "@/lib/settings";
 	import {
 		makeNamespaceNode,
@@ -139,11 +140,21 @@
 			fluxDetectionQuery.data?.kinds ?? [],
 		),
 	);
+	const browserResourceKey = $derived(
+		queryKeys.resources(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey),
+	);
 	const resourcesQuery = createQuery<ResourceScopeResult>(() => ({
-		queryKey: queryKeys.resources(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey),
-		queryFn: () => fetchResourcePage(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey),
+		queryKey: open ? browserResourceKey : ["palette-resources", "closed"],
+		queryFn: () => fetchResourcePage(
+			workspace.scope.clusterContext,
+			fetchKeys,
+			kubeconfigSourceKey,
+			createCancelScope("resources", browserResourceKey),
+		),
 		enabled: open && sourceReady && gitOpsDetectionReady && fetchKeys.length > 0,
 		staleTime: 30_000,
+		gcTime: 0,
+		meta: finiteReadMeta(),
 	}));
 	const argoSearchResources = $derived(
 		buildArgoSearchResources(

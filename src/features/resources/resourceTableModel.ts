@@ -3,33 +3,30 @@ import {
 	gitOpsOwnership,
 	gitOpsOwnershipFilters,
 	gitOpsOwnershipGroup,
-	gitOpsOwnershipGroupLabel,
 	inheritGitOpsOwnership,
 } from "@/lib/gitops-ownership-evidence";
 import { resourceHealthAssessment } from "@/lib/resource-health";
-import { findResourceIndex, resourceKey } from "@/lib/resource-identity";
-import { defaultResourceKindLanes, resourceKindOrder } from "@/lib/resource-kind-order";
+import { looseResourceKey, resourceKey } from "@/lib/resource-identity";
+import {
+	defaultResourceKindLanes,
+	resourceKindOrder,
+} from "@/lib/resource-kind-order";
 import type { ResourceSummary } from "@/lib/types";
 import { PAGE_SIZE } from "./constants";
-import {
-	kindGroupRank,
-	pageGitOpsGroupCounts,
-	pageTypeGroupCounts,
-} from "./grouping";
+import { kindGroupRank } from "./grouping";
+import { buildResourceTableEntries } from "./resourceTableEntries";
 import {
 	buildResourceHealthSummary,
 	buildResourceSearchIndex,
 	filterResourceSearchIndex,
 	filterResourcesByHealth,
-	formatResourceTypeGroupLabel,
-	resourceGroupCollapseKey,
-	resourceTypeGroupCollapseKey,
 } from "./helpers";
 import type {
 	ResourceSort,
 	ResourceSortColumn,
-	ResourceTableEntry,
+	ResourceTableDisplay,
 	ResourceTableModel,
+	ResourceTablePage,
 	ResourceTableProjection,
 	ResourceTableState,
 } from "./resourceTableTypes";
@@ -44,6 +41,11 @@ export type {
 } from "./resourceTableTypes";
 
 const DEFAULT_KIND_ORDER = resourceKindOrder(defaultResourceKindLanes());
+const sortCollator = new Intl.Collator(undefined, {
+	numeric: true,
+	sensitivity: "base",
+});
+const nameCollator = new Intl.Collator();
 
 function valueForSort(
 	row: ResourceSummary,
@@ -75,10 +77,7 @@ function compareValues(left: string | number, right: string | number): number {
 	if (isNumber(left) && isNumber(right)) {
 		return left - right;
 	}
-	return String(left).localeCompare(String(right), undefined, {
-		numeric: true,
-		sensitivity: "base",
-	});
+	return sortCollator.compare(String(left), String(right));
 }
 
 function isNumber<Value>(value: Value): value is Value & number {
@@ -89,14 +88,17 @@ function sortedResourceRows(
 	rows: ResourceSummary[],
 	sort: ResourceSort,
 ): ResourceSummary[] {
-	return [...rows].sort((left, right) => {
-		const compare = compareValues(
-			valueForSort(left, sort.id),
-			valueForSort(right, sort.id),
-		);
+	const decorated = [];
+	for (const row of rows)
+		decorated.push({ row, value: valueForSort(row, sort.id) });
+	decorated.sort((left, right) => {
+		const compare = compareValues(left.value, right.value);
 		if (compare !== 0) return sort.desc ? -compare : compare;
-		return left.name.localeCompare(right.name);
+		return nameCollator.compare(left.row.name, right.row.name);
 	});
+	const sorted = [];
+	for (const entry of decorated) sorted.push(entry.row);
+	return sorted;
 }
 
 function kindGroupedRows(
@@ -111,7 +113,9 @@ function kindGroupedRows(
 		else groups.set(row.kind, { rank: rankForGroup(row), rows: [row] });
 	}
 	// Stable sort: equal ranks keep the column-sort order of their first row.
-	const ranked = Array.from(groups.values()).sort((left, right) => left.rank - right.rank);
+	const ranked = Array.from(groups.values()).sort(
+		(left, right) => left.rank - right.rank,
+	);
 	for (const group of ranked) {
 		for (const row of group.rows) out.push(row);
 	}
@@ -126,14 +130,22 @@ function gitOpsGroupedRows(
 		isPreferredGitOpsResource(row, preferredGitOpsResourceKeys);
 	const preferredRows: ResourceSummary[] = [];
 	const otherRows: ResourceSummary[] = [];
-	for (const row of rows) (isPreferred(row) ? preferredRows : otherRows).push(row);
+	for (const row of rows)
+		(isPreferred(row) ? preferredRows : otherRows).push(row);
 	for (const row of otherRows) preferredRows.push(row);
-	const ownershipGroups = new Map<string, { rank: number; rows: ResourceSummary[] }>();
+	const ownershipGroups = new Map<
+		string,
+		{ rank: number; rows: ResourceSummary[] }
+	>();
 	for (const row of preferredRows) {
 		const { label, rank } = gitOpsOwnershipGroup(row);
 		const group = ownershipGroups.get(label);
 		if (group) group.rows.push(row);
-		else ownershipGroups.set(label, { rank: isPreferred(row) ? -1 : rank, rows: [row] });
+		else
+			ownershipGroups.set(label, {
+				rank: isPreferred(row) ? -1 : rank,
+				rows: [row],
+			});
 	}
 	const rankedOwnershipGroups = Array.from(ownershipGroups.values()).sort(
 		(left, right) => left.rank - right.rank,
@@ -143,7 +155,8 @@ function gitOpsGroupedRows(
 		// Only a group led by a preferred row can contain preferred rows to lift.
 		kindGroupedRows(
 			ownershipRows,
-			(row) => (rank === -1 && isPreferred(row) ? -1 : kindGroupRank(row, kindOrder)),
+			(row) =>
+				rank === -1 && isPreferred(row) ? -1 : kindGroupRank(row, kindOrder),
 			grouped,
 		);
 	}
@@ -168,88 +181,6 @@ function typeGroupedRows(
 	return grouped;
 }
 
-function buildEntries({
-	pageRows,
-	groupedByGitOps,
-	collapsedGroups,
-}: {
-	pageRows: ResourceSummary[];
-	groupedByGitOps: boolean;
-	collapsedGroups: Set<string>;
-}): ResourceTableEntry[] {
-	const pageGroups = groupedByGitOps
-		? pageGitOpsGroupCounts(pageRows, groupedByGitOps)
-		: new Map<string, number>();
-	const pageTypeGroups = pageTypeGroupCounts(pageRows, true);
-	const entries: ResourceTableEntry[] = [];
-	let previous: ResourceSummary | null = null;
-	for (const resource of pageRows) {
-		const groupLabel = gitOpsOwnershipGroupLabel(resource);
-		const typeLabel = formatResourceTypeGroupLabel(resource);
-		const groupKey = resourceGroupCollapseKey(resource);
-		const typeKey = resourceTypeGroupCollapseKey(resource);
-		const groupCollapsed = groupedByGitOps && collapsedGroups.has(groupKey);
-		const typeCollapsed = collapsedGroups.has(typeKey);
-		const showGroup =
-			groupedByGitOps &&
-			(!previous || gitOpsOwnershipGroupLabel(previous) !== groupLabel);
-		const showType =
-			!previous ||
-			(groupedByGitOps && gitOpsOwnershipGroupLabel(previous) !== groupLabel) ||
-			formatResourceTypeGroupLabel(previous) !== typeLabel;
-		if (showGroup) {
-			entries.push({
-				type: "group",
-				key: groupKey,
-				label: groupLabel,
-				count: pageGroups.get(groupLabel) ?? 0,
-				collapsed: groupCollapsed,
-			});
-		}
-		if (showType && !groupCollapsed) {
-			entries.push({
-				type: "type",
-				key: typeKey,
-				label: typeLabel,
-				kind: resource.kind,
-				count: pageTypeGroups.get(`${groupLabel}::${typeLabel}`) ?? 0,
-				collapsed: typeCollapsed,
-			});
-		}
-		if (!groupCollapsed && !typeCollapsed) {
-			entries.push({
-				type: "resource",
-				key: resourceKey(resource),
-				resource,
-			});
-		}
-		previous = resource;
-	}
-	return entries;
-}
-
-function effectiveCollapsedGroups({
-	collapsedGroups,
-	displayRows,
-	selectedResource,
-}: {
-	collapsedGroups: Set<string>;
-	displayRows: ResourceSummary[];
-	selectedResource?: ResourceSummary | null;
-}): Set<string> {
-	if (!selectedResource) return collapsedGroups;
-	const selectedRow =
-		displayRows[findResourceIndex(displayRows, selectedResource, (row) => row)];
-	if (!selectedRow) return collapsedGroups;
-	const groupKey = resourceGroupCollapseKey(selectedRow);
-	const typeKey = resourceTypeGroupCollapseKey(selectedRow);
-	if (!collapsedGroups.has(groupKey) && !collapsedGroups.has(typeKey)) return collapsedGroups;
-	const next = new Set(collapsedGroups);
-	next.delete(groupKey);
-	next.delete(typeKey);
-	return next;
-}
-
 export function buildResourceTableProjection(
 	rows: ResourceSummary[],
 ): ResourceTableProjection {
@@ -260,10 +191,13 @@ export function buildResourceTableProjection(
 	};
 }
 
-export function buildResourceTableModel(
+export function buildResourceTableDisplay(
 	projection: ResourceTableProjection,
-	state: ResourceTableState,
-): ResourceTableModel {
+	state: Omit<
+		ResourceTableState,
+		"pageIndex" | "collapsedGroups" | "selectedResource"
+	>,
+): ResourceTableDisplay {
 	const scopedRows = filterResourceSearchIndex(
 		projection.searchIndex,
 		state.search,
@@ -271,38 +205,68 @@ export function buildResourceTableModel(
 	);
 	const filteredRows = filterResourcesByHealth(scopedRows, state.healthFilter);
 	const sortedRows = sortedResourceRows(filteredRows, state.sort);
-	const groupedByGitOps = filteredRows.some((row) => gitOpsOwnership(row) !== null);
+	const groupedByGitOps = filteredRows.some(
+		(row) => gitOpsOwnership(row) !== null,
+	);
 	const kindOrder = state.kindOrder ?? DEFAULT_KIND_ORDER;
 	const displayRows = groupedByGitOps
-		? gitOpsGroupedRows(sortedRows, kindOrder, state.preferredGitOpsResourceKeys)
+		? gitOpsGroupedRows(
+				sortedRows,
+				kindOrder,
+				state.preferredGitOpsResourceKeys,
+			)
 		: typeGroupedRows(sortedRows, kindOrder);
-	const visibleCollapsedGroups = effectiveCollapsedGroups({
-		collapsedGroups: state.collapsedGroups,
-		displayRows,
-		selectedResource: state.selectedResource,
-	});
 	const pageCount = Math.max(1, Math.ceil(displayRows.length / PAGE_SIZE));
-	const safePageIndex = Math.min(state.pageIndex, pageCount - 1);
+	const exact = new Map<string, ResourceSummary>();
+	const loose = new Map<string, ResourceSummary>();
+	const unversioned = new Map<string, ResourceSummary>();
+	let indexed = false;
+	function rowForResource(resource: ResourceSummary) {
+		if (!indexed) {
+			for (const row of displayRows) {
+				const key = resourceKey(row),
+					looseKey = looseResourceKey(row);
+				if (!exact.has(key)) exact.set(key, row);
+				if (!loose.has(looseKey)) loose.set(looseKey, row);
+				if (row.apiVersion === undefined && !unversioned.has(looseKey))
+					unversioned.set(looseKey, row);
+			}
+			indexed = true;
+		}
+		return (
+			exact.get(resourceKey(resource)) ??
+			(resource.apiVersion === undefined ? loose : unversioned).get(
+				looseResourceKey(resource),
+			)
+		);
+	}
+	return {
+		scopedRows,
+		filteredRows,
+		displayRows,
+		pageCount,
+		totalRows: displayRows.length,
+		groupedByGitOps,
+		gitOpsFilters: projection.gitOpsFilters,
+		healthSummary: buildResourceHealthSummary(scopedRows),
+		rowForResource,
+	};
+}
+
+export function buildResourceTablePage(
+	display: ResourceTableDisplay,
+	pageIndex: number,
+): ResourceTablePage {
+	const safePageIndex = Math.min(pageIndex, display.pageCount - 1);
+	const { displayRows } = display;
 	const pageRows = displayRows.slice(
 		safePageIndex * PAGE_SIZE,
 		safePageIndex * PAGE_SIZE + PAGE_SIZE,
 	);
 	return {
-		scopedRows,
-		filteredRows,
-		displayRows,
+		...display,
 		pageRows,
-		entries: buildEntries({
-			pageRows,
-			groupedByGitOps,
-			collapsedGroups: visibleCollapsedGroups,
-		}),
-		totalRows: displayRows.length,
-		pageCount,
 		safePageIndex,
-		groupedByGitOps,
-		gitOpsFilters: projection.gitOpsFilters,
-		healthSummary: buildResourceHealthSummary(scopedRows),
 		columnVisibility: {
 			ready: pageRows.some((row) => Boolean(row.ready)),
 			restarts: pageRows.some((row) => row.restarts !== undefined),
@@ -310,5 +274,24 @@ export function buildResourceTableModel(
 			memory: pageRows.some((row) => row.metrics?.memoryBytes !== undefined),
 			gitOps: pageRows.some((row) => gitOpsOwnership(row) !== null),
 		},
+	};
+}
+
+export function buildResourceTableModel(
+	projection: ResourceTableProjection,
+	state: ResourceTableState,
+): ResourceTableModel {
+	const page = buildResourceTablePage(
+		buildResourceTableDisplay(projection, state),
+		state.pageIndex,
+	);
+	const { rowForResource, ...model } = page;
+	return {
+		...model,
+		entries: buildResourceTableEntries(
+			{ ...model, rowForResource },
+			state.collapsedGroups,
+			state.selectedResource,
+		),
 	};
 }

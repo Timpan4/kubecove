@@ -48,6 +48,7 @@
 	import { cn, formatStatusLabel } from "@/lib/utils";
 	import SimpleTable from "@/components/SimpleTable.svelte";
 	import SurfaceFrame from "@/components/SurfaceFrame.svelte";
+	import VirtualCollection from "@/components/VirtualCollection.svelte";
 
 	type QueryState<T> = {
 		data?: T;
@@ -293,8 +294,8 @@
 						{/if}
 					</Empty>
 				{:else if helmViewMode === "cards"}
-					<div class="grid grid-cols-1 gap-3 @min-[35rem]:grid-cols-2 @min-[64rem]:grid-cols-[repeat(auto-fit,minmax(18.75rem,26.25rem))]">
-						{#each filteredHelmReleases as release (helmReleaseKey(release))}
+					<VirtualCollection items={filteredHelmReleases} itemKey={helmReleaseKey} selectedKey={selectedHelmReleaseKey} estimateSize={296} gridClass="grid grid-cols-1 gap-3 @min-[35rem]:grid-cols-2 @min-[64rem]:grid-cols-[repeat(auto-fit,minmax(18.75rem,26.25rem))]">
+						{#snippet children(release)}
 							<Card
 								size="sm"
 								elevation="raised"
@@ -361,8 +362,8 @@
 									</Button>
 								</CardFooter>
 							</Card>
-						{/each}
-					</div>
+						{/snippet}
+					</VirtualCollection>
 				{:else}
 					<div class="overflow-x-auto rounded-lg border">
 						<div class="grid min-w-[76rem] grid-cols-[minmax(12rem,1.1fr)_8rem_minmax(14rem,1.2fr)_minmax(9rem,0.9fr)_minmax(7rem,0.7fr)_5rem_5rem_9rem] items-center gap-3 border-b bg-muted/30 px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -375,14 +376,16 @@
 							<span>Age</span>
 							<span class="text-right">Actions</span>
 						</div>
-						{#each filteredHelmReleases as release (helmReleaseKey(release))}
+						<VirtualCollection items={filteredHelmReleases} itemKey={helmReleaseKey} selectedKey={selectedHelmReleaseKey} estimateSize={64} minWidth="76rem">
+						{#snippet children(release)}
 							<div
 								class={cn(
-									"relative grid min-w-[76rem] grid-cols-[minmax(12rem,1.1fr)_8rem_minmax(14rem,1.2fr)_minmax(9rem,0.9fr)_minmax(7rem,0.7fr)_5rem_5rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5 last:border-b-0",
+									"relative grid min-w-[76rem] grid-cols-[minmax(12rem,1.1fr)_8rem_minmax(14rem,1.2fr)_minmax(9rem,0.9fr)_minmax(7rem,0.7fr)_5rem_5rem_9rem] items-center gap-3 border-b bg-surface-1 px-3 py-2.5",
 									helmReleaseKey(release) === selectedHelmReleaseKey
 										? "bg-accent ring-1 ring-ring"
 										: "hover:bg-accent/40",
 								)}
+								class:border-b-0={release === filteredHelmReleases[filteredHelmReleases.length - 1]}
 							>
 								<div class={cn("absolute inset-y-0 left-0 w-1", helmStatusRailClass(release.status))}></div>
 								<div class="min-w-0 pl-1">
@@ -420,7 +423,8 @@
 									</Button>
 								</div>
 							</div>
-						{/each}
+						{/snippet}
+						</VirtualCollection>
 					</div>
 				{/if}
 			</section>

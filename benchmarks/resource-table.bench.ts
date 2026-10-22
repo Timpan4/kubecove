@@ -10,8 +10,11 @@ import { filterResourcesByKinds } from "@/features/resources/resourceBrowserMode
 import {
 	buildResourceTableModel,
 	buildResourceTableProjection,
+	buildResourceTableDisplay,
+	buildResourceTablePage,
 	type ResourceTableState,
 } from "@/features/resources/resourceTableModel";
+import { createResourceTableEntryBuilder } from "@/features/resources/resourceTableEntries";
 import { gitOpsOwnershipGroupLabel } from "@/lib/gitops-ownership-evidence";
 import type {
 	DiscoveredResourceKind,
@@ -180,6 +183,10 @@ const stateVariants: ResourceTableState[] = [
 		sort: { id: "name", desc: false },
 	},
 ];
+
+const retainedDisplay = buildResourceTableDisplay(projection, selectedAndCollapsedState);
+const retainedPage = buildResourceTablePage(retainedDisplay, selectedAndCollapsedState.pageIndex);
+const retainedEntries = createResourceTableEntryBuilder();
 
 const ownershipRows: ResourceSummary[] = Array.from(
 	{ length: 2_500 },
@@ -467,6 +474,12 @@ describe("F01 F02 F03 resource arrival and retained table state (10k rows)", () 
 	bench("buildResourceTableModel repeated variants (reused projection)", () => {
 		for (const variant of stateVariants)
 			buildResourceTableModel(projection, variant);
+	});
+
+	bench("F02 row selection (reused display and page)", () => {
+		for (const selected of retainedPage.pageRows) {
+			retainedEntries(retainedPage, selectedAndCollapsedState.collapsedGroups, selected);
+		}
 	});
 
 	bench("F02 retained model on multi-hop ownership projection", () => {

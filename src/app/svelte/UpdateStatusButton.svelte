@@ -129,7 +129,7 @@
 						<div class="text-sm text-foreground">Downloading update...</div>
 						<div class="h-2 overflow-hidden rounded-full bg-muted">
 							<div
-								class="h-full bg-primary transition-all"
+								class="h-full bg-primary transition-[width]"
 								style={`width: ${update.downloadProgress ?? 12}%`}
 							></div>
 						</div>

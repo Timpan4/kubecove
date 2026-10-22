@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+// Existing desktop remote WebSocket message and frame limit.
+pub const MAX_WEBSOCKET_MESSAGE_BYTES: usize = 2 * 1024 * 1024;
+// Channel JSON wrapper with the longest u64 channel id, excluding its payload.
+pub const CHANNEL_MESSAGE_ENVELOPE_BYTES: usize =
+    b"{\"channelId\":18446744073709551615,\"message\":,\"type\":\"channel\"}".len();
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceCacheRefreshResult {
@@ -33,6 +39,8 @@ pub struct WatchResourceKey {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PodLogStreamRequest {
+    #[serde(default)]
+    pub batch_lines: bool,
     pub cluster_context: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kubeconfig_env_var: Option<String>,
@@ -49,6 +57,8 @@ pub struct PodLogStreamRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AggregatedLogStreamRequest {
+    #[serde(default)]
+    pub batch_lines: bool,
     pub cluster_context: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kubeconfig_env_var: Option<String>,
@@ -109,6 +119,12 @@ pub enum StreamMessage {
     LogLine {
         stream_id: String,
         line: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<LogLineSource>,
+    },
+    LogLines {
+        stream_id: String,
+        lines: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         source: Option<LogLineSource>,
     },

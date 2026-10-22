@@ -121,6 +121,7 @@ export function portForwardQueryOptions(
 		enabled: settings.enabled ?? true,
 		placeholderData: (previousData: PortForwardSessionSummary[] | undefined) => previousData,
 		refetchInterval: settings.refetchInterval ?? 3_000,
+		refetchIntervalInBackground: false,
 	};
 }
 

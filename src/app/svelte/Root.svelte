@@ -69,7 +69,7 @@
 				<div class="shrink-0 border-b bg-warning-surface px-4 py-2 text-xs text-warning-foreground">
 					{browserSession.error ?? ""}
 					{#if browserSession.channelGap > 0}
-						{browserSession.channelGap} live messages were dropped during reconnect. Refresh affected views.
+						{browserSession.channelGap} live messages were dropped. Refresh affected views.
 					{/if}
 				</div>
 			{/if}

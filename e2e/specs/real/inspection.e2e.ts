@@ -231,7 +231,7 @@ describe("native Kind command boundary", () => {
 		if (!pod) throw new Error("fixture-api Pod was not discovered");
 		const logBucket = "__kubecoveLogMessages";
 		streams.push(await tauri.startPodLogStream({ clusterContext: cluster, namespace: "e2e-sessions", podName: pod.name, container: "api", tailLines: 20 }, logBucket));
-		await browser.waitUntil(async () => (await messages<StreamMessage>(logBucket)).some((message) => message.type === "logLine" && message.line.includes("kubecove-log-marker")), { timeout: 20_000, interval: 200 });
+		await browser.waitUntil(async () => (await messages<StreamMessage>(logBucket)).some((message) => message.type === "logLines" && message.lines.some((line) => line.includes("kubecove-log-marker"))), { timeout: 20_000, interval: 200 });
 		const execBucket = "__kubecoveExecMessages";
 		const command = ["sh", "-c", "echo kubecove-exec-marker"];
 		const exec = await tauri.startPodExecSession({ clusterContext: cluster, namespace: "e2e-sessions", podName: pod.name, container: "api", command, stdin: false, tty: false, terminalSize: { cols: 80, rows: 24 }, confirmation: { acknowledged: true, target: `${cluster}/e2e-sessions/Pod/${pod.name}/container/api`, command: JSON.stringify(command) } }, execBucket);
@@ -372,7 +372,7 @@ describe("native Kind command boundary", () => {
 		expect(incident.restarts).toBeGreaterThan(0);
 		const incidentBucket = "__kubecoveIncidentLogMessages";
 		streams.push(await tauri.startPodLogStream({ clusterContext: cluster, namespace: "operations", podName: incident.name, container: "crashloop", tailLines: 20 }, incidentBucket));
-		await browser.waitUntil(async () => (await messages<StreamMessage>(incidentBucket)).some((message) => message.type === "logLine" && message.line.includes("kubecove-crashloop-marker")), { timeout: 30_000, interval: 500 });
+		await browser.waitUntil(async () => (await messages<StreamMessage>(incidentBucket)).some((message) => message.type === "logLines" && message.lines.some((line) => line.includes("kubecove-crashloop-marker"))), { timeout: 30_000, interval: 500 });
 		expect(await runKubectl(["get", "events", "-n", "operations", "--field-selector", `involvedObject.name=${incident.name}`, "-o", "jsonpath={.items[*].reason}"])).toContain("BackOff");
 	});
 });

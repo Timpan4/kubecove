@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from "svelte";
 	import { Check, Copy } from "lucide-svelte";
 	import { copyTextWithAnnouncement } from "./copy-text";
 	import { copyToast } from "./CopyToast.svelte";
@@ -26,6 +27,14 @@
 
 	let copied = $state(false);
 	let message = $state("");
+	const triggerId = $props.id();
+	const copyButtonClass = "inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
+	let tooltipReady = $state(false);
+	async function activateTooltip(focused: boolean) {
+		tooltipReady = true;
+		await tick();
+		if (focused) document.getElementById(triggerId)?.focus({ preventScroll: true });
+	}
 
 	async function handleCopy(event: MouseEvent) {
 		event.stopPropagation();
@@ -55,17 +64,26 @@
 	{:else}
 		<span class={`min-w-0 truncate ${textClass}`}>{value}</span>
 	{/if}
+	{#if tooltipReady}
 	<Tooltip>
 		<TooltipTrigger
+			id={triggerId}
 			type="button"
-			class="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+			class={copyButtonClass}
 			aria-label={`Copy ${label}: ${value}`}
 			onclick={handleCopy}
-			onkeydown={(event: KeyboardEvent) => event.stopPropagation()}
+			onkeydown={(event: KeyboardEvent) => { if (event.key !== "Escape") event.stopPropagation(); }}
 		>
 			{#if copied}<Check class="size-3" aria-hidden="true" />{:else}<Copy class="size-3" aria-hidden="true" />{/if}
 		</TooltipTrigger>
 		<TooltipContent sideOffset={8} class="border bg-popover text-popover-foreground shadow-md">Copy {label}</TooltipContent>
 	</Tooltip>
+	{:else}
+		<button id={triggerId} type="button" class={copyButtonClass} aria-label={`Copy ${label}: ${value}`}
+			onpointerenter={() => void activateTooltip(false)} onfocus={() => void activateTooltip(true)}
+			onclick={handleCopy} onkeydown={(event: KeyboardEvent) => { if (event.key !== "Escape") event.stopPropagation(); }}>
+			{#if copied}<Check class="size-3" aria-hidden="true" />{:else}<Copy class="size-3" aria-hidden="true" />{/if}
+		</button>
+	{/if}
 	<span class="sr-only" role="status" aria-live="polite">{message}</span>
 </span>

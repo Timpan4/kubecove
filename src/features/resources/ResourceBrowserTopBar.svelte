@@ -52,7 +52,6 @@
 		onArgoFilterSelect = () => {},
 		onHideHistoricalReplicaSetsChange = () => {},
 		onGitOpsFilterChange,
-		onSearchInput,
 		onClearFilters,
 	}: {
 		selectedNamespaces: string[];
@@ -81,7 +80,6 @@
 		onArgoFilterSelect?: (filter: ArgoResourceFilter) => void;
 		onHideHistoricalReplicaSetsChange?: (hide: boolean) => void;
 		onGitOpsFilterChange: (value: string) => void;
-		onSearchInput: () => void;
 		onClearFilters: () => void;
 	} = $props();
 
@@ -194,7 +192,6 @@
 				class="h-7 text-xs"
 				bind:value={search}
 				placeholder="Search by name, namespace, kind, owner, GitOps owner, Helm release..."
-				oninput={onSearchInput}
 			/>
 		</InputGroup>
 

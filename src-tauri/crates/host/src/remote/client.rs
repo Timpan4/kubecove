@@ -2,9 +2,10 @@ use super::models::{RemoteConnectionSummary, RemoteCredentials, ServerSession};
 use super::tunnels::RemoteTunnelRegistry;
 use futures_util::{SinkExt, StreamExt};
 use kubecove_kube::runtime::Channel;
-use kubecove_models::{AppError, AppErrorKind};
+use kubecove_models::{AppError, AppErrorKind, MAX_WEBSOCKET_MESSAGE_BYTES};
 use reqwest::{header::HeaderValue, Client as HttpClient, Url};
-use serde_json::{json, Value};
+use serde::Deserialize;
+use serde_json::{json, value::RawValue, Value};
 use std::{
     collections::HashMap,
     sync::{
@@ -28,7 +29,6 @@ use tokio_tungstenite::{
 
 #[cfg(test)]
 const CHANNEL_PREFIX: &str = "__KUBECOVE_CHANNEL__:";
-const MAX_WEBSOCKET_MESSAGE_BYTES: usize = 2 * 1024 * 1024;
 pub(super) const MAX_TUNNEL_PAYLOAD_BYTES: usize = 16 * 1024;
 
 pub struct RemoteConnectionStore {
@@ -48,7 +48,7 @@ pub struct RemoteConnection {
     pub(super) http: HttpClient,
     pub(super) summary: RemoteConnectionSummary,
     outgoing: mpsc::Sender<WsMessage>,
-    channels: Mutex<HashMap<u64, Channel<Value>>>,
+    channels: Mutex<HashMap<u64, Channel<Box<RawValue>>>>,
     controls: Mutex<HashMap<String, oneshot::Sender<Value>>>,
     pub(super) tunnel_senders: Mutex<HashMap<String, mpsc::Sender<Vec<u8>>>>,
     pub(super) tunnels: Arc<RemoteTunnelRegistry>,
@@ -71,7 +71,11 @@ impl RemoteConnection {
         response_value(response).await
     }
 
-    pub fn subscribe(&self, channel_id: u64, channel: Channel<Value>) -> Result<(), AppError> {
+    pub fn subscribe(
+        &self,
+        channel_id: u64,
+        channel: Channel<Box<RawValue>>,
+    ) -> Result<(), AppError> {
         if channel_id > (1_u64 << 53) - 1 {
             return Err(validation_error(
                 "channel id is outside the supported range",
@@ -471,7 +475,49 @@ async fn run_socket(
     }
 }
 
+#[derive(Deserialize)]
+struct ChannelFrame {
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(rename = "channelId")]
+    channel_id: Option<u64>,
+    #[serde(default)]
+    message: Box<RawValue>,
+    #[serde(default = "default_dropped")]
+    dropped: Box<RawValue>,
+}
+
+fn default_dropped() -> Box<RawValue> {
+    serde_json::value::to_raw_value(&0).expect("zero serializes")
+}
+
 fn handle_text(connection: &RemoteConnection, text: &str) -> bool {
+    let Ok(frame) = serde_json::from_str::<ChannelFrame>(text) else {
+        return false;
+    };
+    if frame.kind == "channel" || frame.kind == "channel_gap" {
+        let Some(channel_id) = frame.channel_id else {
+            return false;
+        };
+        let message = if frame.kind == "channel" {
+            frame.message
+        } else {
+            RawValue::from_string(format!(
+                "{{\"dropped\":{},\"type\":\"channel_gap\"}}",
+                frame.dropped
+            ))
+            .expect("gap wraps valid JSON")
+        };
+        if let Some(channel) = connection
+            .channels
+            .lock()
+            .expect("remote channel registry lock")
+            .get(&channel_id)
+        {
+            let _ = channel.send(message);
+        }
+        return false;
+    }
     let Ok(value) = serde_json::from_str::<Value>(text) else {
         return false;
     };
@@ -488,25 +534,6 @@ fn handle_text(connection: &RemoteConnection, text: &str) -> bool {
         if let Some(connection_id) = value.get("connectionId").and_then(Value::as_str) {
             connection.remove_tunnel_sender(connection_id);
         }
-    }
-    if kind == "channel" || kind == "channel_gap" {
-        let Some(channel_id) = value.get("channelId").and_then(Value::as_u64) else {
-            return false;
-        };
-        let message = if kind == "channel" {
-            value.get("message").cloned().unwrap_or(Value::Null)
-        } else {
-            json!({"type":"channel_gap","dropped":value.get("dropped").cloned().unwrap_or(Value::from(0))})
-        };
-        if let Some(channel) = connection
-            .channels
-            .lock()
-            .expect("remote channel registry lock")
-            .get(&channel_id)
-        {
-            let _ = channel.send(message);
-        }
-        return false;
     }
     if let Some(key) = control_key(&value) {
         if let Some(sender) = connection

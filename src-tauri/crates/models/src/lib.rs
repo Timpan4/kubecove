@@ -94,5 +94,6 @@ pub use sessions::{
 pub use streams::{
     AggregatedLogStreamRequest, LogLineSource, PodLogStreamRequest, ResourceCacheRefreshResult,
     StreamMessage, WatchResourceKey, WatchResourceKind, WatchResourceTarget,
+    CHANNEL_MESSAGE_ENVELOPE_BYTES, MAX_WEBSOCKET_MESSAGE_BYTES,
 };
 pub use usage::{AppUsageMetrics, AppUsageMetricsBreakdown};

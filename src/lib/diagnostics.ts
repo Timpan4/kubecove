@@ -37,10 +37,6 @@ type PerformanceWithMemory = Performance & {
 	};
 };
 
-type DebugWindow = Window & {
-	__K8S_DEBUG_TRACE__?: string[];
-};
-
 const MAX_TRACE_LINES = 400;
 const MAX_FRONTEND_EVENTS = 500;
 const CHATTER_EVENTS = new Set(["app.render", "resources.render", "detail.render"]);
@@ -49,8 +45,11 @@ let enabled = false;
 let sequence = 0;
 let previousTimestamp = performance.now();
 const counters = new Map<string, number>();
-const frontendEvents: FrontendDiagnosticEvent[] = [];
+type RecordedDiagnosticEvent = Omit<FrontendDiagnosticEvent, "recordedAt"> & { recordedAtMs: number };
+const frontendEvents: RecordedDiagnosticEvent[] = [];
 const traceLines: string[] = [];
+const pendingConsoleLines: string[] = [];
+let consoleFlushScheduled = false;
 
 function formatBytes(bytes: number | undefined): number | undefined {
 	if (bytes === undefined) return undefined;
@@ -81,11 +80,29 @@ function pushBounded<T>(items: T[], item: T, max: number): void {
 	}
 }
 
-function setWindowTrace(lines: string[]): void {
+function installWindowTrace(): void {
 	if (globalThis.window === undefined) return;
-	// SAFETY: browser diagnostics intentionally attach this optional debug-only trace property.
-	const debugWindow = window as DebugWindow;
-	debugWindow.__K8S_DEBUG_TRACE__ = [...lines];
+	Object.defineProperty(window, "__K8S_DEBUG_TRACE__", {
+		configurable: true,
+		get: () => [...traceLines],
+	});
+}
+
+function flushConsoleLines(): void {
+	if (pendingConsoleLines.length === 0) return;
+	console.info(pendingConsoleLines.join("\n"));
+	pendingConsoleLines.length = 0;
+}
+
+function queueConsoleLine(line: string): void {
+	pushBounded(pendingConsoleLines, line, MAX_TRACE_LINES);
+	if (consoleFlushScheduled) return;
+	consoleFlushScheduled = true;
+	const flush = () => {
+		consoleFlushScheduled = false;
+		flushConsoleLines();
+	};
+	setTimeout(flush, 0);
 }
 
 function durationFromData(data: DiagnosticData | undefined): number | undefined {
@@ -138,9 +155,12 @@ export function summarizeDurations(
 export function setDiagnosticsEnabled(nextEnabled: boolean): void {
 	enabled = nextEnabled;
 	previousTimestamp = performance.now();
-	if (!nextEnabled) {
-		setWindowTrace(traceLines);
-	}
+	installWindowTrace();
+	if (!nextEnabled) flushConsoleLines();
+}
+
+export function isDiagnosticsEnabled(): boolean {
+	return enabled;
 }
 
 export function clearDiagnostics(): void {
@@ -149,11 +169,16 @@ export function clearDiagnostics(): void {
 	counters.clear();
 	frontendEvents.length = 0;
 	traceLines.length = 0;
-	setWindowTrace(traceLines);
+	pendingConsoleLines.length = 0;
+	installWindowTrace();
 }
 
 export function getDiagnosticsSnapshot(): DiagnosticsSnapshot {
-	return buildDiagnosticsSnapshot(enabled, counters, frontendEvents, traceLines);
+	const events = frontendEvents.map(({ recordedAtMs, ...event }) => ({
+		...event,
+		recordedAt: new Date(recordedAtMs).toISOString(),
+	}));
+	return buildDiagnosticsSnapshot(enabled, counters, events, traceLines);
 }
 
 export function buildDiagnosticsSnapshot(
@@ -194,9 +219,9 @@ export function diagnosticLog(event: string, data?: DiagnosticData): void {
 	previousTimestamp = now;
 	sequence += 1;
 
-	const eventRecord: FrontendDiagnosticEvent = {
+	const eventRecord: RecordedDiagnosticEvent = {
 		id: sequence,
-		recordedAt: new Date().toISOString(),
+		recordedAtMs: Date.now(),
 		atMs: Math.round(now),
 		deltaMs: delta,
 		event,
@@ -212,10 +237,9 @@ export function diagnosticLog(event: string, data?: DiagnosticData): void {
 		heapMb === undefined ? "" : ` heap=${heapMb}MB`
 	}] ${event}${fields ? ` ${fields}` : ""}`;
 	pushBounded(traceLines, line, MAX_TRACE_LINES);
-	setWindowTrace(traceLines);
 
 	if (!CHATTER_EVENTS.has(event) || count <= 20 || count % 100 === 0) {
-		console.info(line);
+		queueConsoleLine(line);
 	}
 }
 

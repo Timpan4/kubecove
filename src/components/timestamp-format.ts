@@ -78,15 +78,3 @@ export function formatExactTimeOnly(
 	}
 	return `${time}${parts.suffix}`;
 }
-
-export function formatRelativeTimestamp(
-	relative: string,
-	exact: string | null | undefined,
-	showExact: boolean,
-	timezone: TimestampTimezone,
-	precision: TimestampPrecision = "minute",
-): string {
-	const exactTimestamp = formatExactTimestamp(exact, timezone, precision);
-	if (!showExact || !exactTimestamp) return relative;
-	return `${relative} (${exactTimestamp})`;
-}

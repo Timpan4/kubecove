@@ -58,7 +58,7 @@ function view(
 }
 
 describe("topology selection", () => {
-	test("animates only selected ownership path edges", () => {
+	test("marks only selected ownership path edges without continuous animation", () => {
 		const topology: ResourceTopology = {
 			nodes: [
 				node("Deployment", "argocd-redis"),
@@ -97,8 +97,10 @@ describe("topology selection", () => {
 			(edge) => edge.id === "deployment-to-secret",
 		);
 
-		expect(activeEdge?.animated).toBe(true);
+		expect(activeEdge?.animated).toBe(false);
 		expect(inactiveEdge?.animated).toBe(false);
+		expect(activeEdge?.style?.includes("stroke-dasharray: 8 8")).toBe(true);
+		expect(inactiveEdge?.style?.includes("stroke-dasharray: none")).toBe(true);
 
 		expect(
 			selected.nodes.find((node) => node.id === "Secret:argocd-secret")?.data

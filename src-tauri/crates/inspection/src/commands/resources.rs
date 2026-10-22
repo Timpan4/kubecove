@@ -10,6 +10,9 @@ mod scope;
 mod summary;
 mod summary_cluster;
 mod summary_core;
+mod summary_projection;
+#[cfg(feature = "bench-support")]
+pub use summary_projection::{decode_pod_list_summaries, decode_summary_projection};
 mod summary_workloads;
 pub(crate) mod topology;
 #[cfg(feature = "bench-support")]
@@ -48,6 +51,8 @@ pub use kubeconform::collect_kubeconform_bytes;
 #[cfg(feature = "bench-support")]
 pub use revisions::deployment_revisions_from_replica_sets;
 pub use revisions::list_deployment_revisions;
+#[cfg(feature = "bench-support")]
+pub use scope::encode_shared_scope_rows;
 #[cfg(feature = "bench-support")]
 pub use scope::resource_scope_fetch_plan;
 #[cfg(feature = "bench-support")]

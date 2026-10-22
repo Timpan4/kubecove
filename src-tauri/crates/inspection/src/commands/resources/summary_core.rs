@@ -87,13 +87,7 @@ pub fn service_resource_summary_at(
     )
 }
 
-pub(crate) fn config_map_resource_summary(
-    cluster_context: &str,
-    config_map: &k8s_openapi::api::core::v1::ConfigMap,
-) -> ResourceSummary {
-    config_map_resource_summary_at(cluster_context, config_map, Utc::now())
-}
-
+#[cfg(any(test, feature = "bench-support"))]
 pub fn config_map_resource_summary_at(
     cluster_context: &str,
     config_map: &k8s_openapi::api::core::v1::ConfigMap,
@@ -107,13 +101,7 @@ pub fn config_map_resource_summary_at(
     )
 }
 
-pub(crate) fn secret_resource_summary(
-    cluster_context: &str,
-    secret: &k8s_openapi::api::core::v1::Secret,
-) -> ResourceSummary {
-    secret_resource_summary_at(cluster_context, secret, Utc::now())
-}
-
+#[cfg(any(test, feature = "bench-support"))]
 pub fn secret_resource_summary_at(
     cluster_context: &str,
     secret: &k8s_openapi::api::core::v1::Secret,
@@ -160,12 +148,15 @@ pub(super) async fn core_resource_summaries(
             } else {
                 Api::all(client)
             };
-            api.list(&list_params())
-                .await
-                .map_err(AppError::from)?
-                .iter()
-                .map(|pod| pod_resource_summary(cluster_context, pod))
-                .collect()
+            kubecove_kube::commands::list_projection::list::<
+                _,
+                super::summary_projection::PodProjection,
+            >(api, &list_params())
+            .await
+            .map_err(AppError::from)?
+            .into_iter()
+            .map(|pod| pod_resource_summary(cluster_context, &pod.into_resource()))
+            .collect()
         }
         "Service" => {
             let api: Api<k8s_openapi::api::core::v1::Service> = if let Some(ns) = namespace {
@@ -186,11 +177,18 @@ pub(super) async fn core_resource_summaries(
             } else {
                 Api::all(client)
             };
-            api.list(&list_params())
+            api.list_metadata(&list_params())
                 .await
                 .map_err(AppError::from)?
                 .iter()
-                .map(|cm| config_map_resource_summary(cluster_context, cm))
+                .map(|cm| {
+                    base_resource_summary(
+                        "ConfigMap",
+                        cluster_context,
+                        &cm.metadata,
+                        age_from_metadata_at(&cm.metadata, Utc::now()),
+                    )
+                })
                 .collect()
         }
         "Secret" => {
@@ -199,11 +197,18 @@ pub(super) async fn core_resource_summaries(
             } else {
                 Api::all(client)
             };
-            api.list(&list_params())
+            api.list_metadata(&list_params())
                 .await
                 .map_err(AppError::from)?
                 .iter()
-                .map(|sec| secret_resource_summary(cluster_context, sec))
+                .map(|sec| {
+                    base_resource_summary(
+                        "Secret",
+                        cluster_context,
+                        &sec.metadata,
+                        age_from_metadata_at(&sec.metadata, Utc::now()),
+                    )
+                })
                 .collect()
         }
         "PersistentVolumeClaim" => {

@@ -34,6 +34,7 @@ export function podExecQueryOptions(
 		enabled: settings.enabled ?? true,
 		placeholderData: (previousData: PodExecSessionSummary[] | undefined) => previousData,
 		refetchInterval: settings.refetchInterval ?? 3_000,
+		refetchIntervalInBackground: false,
 	};
 }
 

@@ -1,8 +1,13 @@
-<script lang="ts">
+<script module lang="ts">
+	import { derived } from "svelte/store";
 	import { settingsStore } from "@/lib/settings-store";
+	const timezone = derived(settingsStore, (settings) => settings.timestampTimezone);
+	const showExact = derived(settingsStore, (settings) => settings.showExactTimestamps);
+</script>
+
+<script lang="ts">
 	import {
 		formatExactTimestamp,
-		formatRelativeTimestamp,
 		type TimestampPrecision,
 	} from "./timestamp-format";
 
@@ -21,17 +26,11 @@
 	} = $props();
 
 	const exactTimestamp = $derived(
-		formatExactTimestamp(value, $settingsStore.timestampTimezone, precision),
+		formatExactTimestamp(value, $timezone, precision),
 	);
 	const display = $derived(
 		relative
-			? formatRelativeTimestamp(
-					relative,
-					value,
-					$settingsStore.showExactTimestamps,
-					$settingsStore.timestampTimezone,
-					precision,
-				)
+			? ($showExact && exactTimestamp ? `${relative} (${exactTimestamp})` : relative)
 			: (exactTimestamp ?? value ?? fallback),
 	);
 </script>

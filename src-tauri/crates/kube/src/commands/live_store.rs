@@ -21,6 +21,12 @@ const RESOURCE_FRESHNESS: Duration = Duration::from_secs(30);
 /// Flux ownership comes from cluster-wide lists with no watch feed; a short
 /// freshness window bounds staleness while absorbing per-request refetches.
 const FLUX_INDEX_FRESHNESS: Duration = Duration::from_secs(30);
+const MAX_FRESHNESS: Duration = Duration::from_secs(30);
+const _: () = {
+    assert!(COMPLETED_GRACE.as_nanos() <= MAX_FRESHNESS.as_nanos());
+    assert!(RESOURCE_FRESHNESS.as_nanos() <= MAX_FRESHNESS.as_nanos());
+    assert!(FLUX_INDEX_FRESHNESS.as_nanos() <= MAX_FRESHNESS.as_nanos());
+};
 const MAX_CACHE_ENTRIES: usize = 128;
 
 #[path = "live_store_refresh.rs"]
@@ -84,14 +90,16 @@ where
     }
 
     fn can_reuse(ready: &ReadyValue<T>, mode: CacheMode) -> bool {
+        let freshness = match mode {
+            CacheMode::GraceOnly => COMPLETED_GRACE,
+            CacheMode::LiveFor(freshness) => freshness,
+        };
+        debug_assert!(freshness <= MAX_FRESHNESS);
         if ready.dirty {
             return false;
         }
 
-        match mode {
-            CacheMode::GraceOnly => ready.completed_at.elapsed() <= COMPLETED_GRACE,
-            CacheMode::LiveFor(freshness) => ready.completed_at.elapsed() <= freshness,
-        }
+        ready.completed_at.elapsed() <= freshness
     }
 
     fn peek(&self, key: &str, mode: CacheMode) -> Option<Arc<T>> {
@@ -117,6 +125,7 @@ where
     {
         let (future, load_id) = {
             let mut entries = self.entries.lock().expect("live store cache lock");
+            self.prune_expired(&mut entries, &key);
             match entries.get(&key) {
                 Some(CacheEntry::Ready(ready)) if Self::can_reuse(ready, mode) => {
                     self.counters.hits.fetch_add(1, Ordering::Relaxed);
@@ -248,6 +257,21 @@ where
             }
         }
         loading_keys.len()
+    }
+
+    fn prune_expired(&self, entries: &mut HashMap<String, CacheEntry<T>>, requested_key: &str) {
+        // Use the longest existing freshness window, without a new retention
+        // multiplier. Keep the requested value available for failed reloads.
+        entries.retain(|key, entry| {
+            let evict = key != requested_key
+                && matches!(entry,
+                CacheEntry::Ready(ready) if ready.completed_at.elapsed() > MAX_FRESHNESS
+                    && Arc::strong_count(&ready.value) == 1);
+            if evict {
+                self.counters.evictions.fetch_add(1, Ordering::Relaxed);
+            }
+            !evict
+        });
     }
 
     fn trim_to_budget(&self, entries: &mut HashMap<String, CacheEntry<T>>) {
@@ -554,12 +578,11 @@ impl ClusterLiveStore {
             self.resources.mark_dirty(&exact_key);
             self.resources.mark_dirty(&all_key);
         }
-        self.topologies.mark_dirty_where(|key| {
-            key.starts_with(&format!("{source_key}|context={cluster_context}|"))
-        });
-        self.present_custom_resource_kinds.mark_dirty_where(|key| {
-            key.starts_with(&format!("{source_key}|context={cluster_context}|"))
-        });
+        let prefix = format!("{source_key}|context={cluster_context}|");
+        self.topologies
+            .mark_dirty_where(|key| key.starts_with(&prefix));
+        self.present_custom_resource_kinds
+            .mark_dirty_where(|key| key.starts_with(&prefix));
     }
 }
 

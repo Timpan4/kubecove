@@ -1,4 +1,5 @@
 pub mod discovery;
+mod event_projection;
 pub mod events;
 pub mod incidents;
 pub mod metrics;
@@ -8,6 +9,9 @@ pub mod rbac;
 mod rbac_review;
 mod resource_actions;
 pub mod resources;
+
+// Reuse the topology list fan-out budget across inspection commands.
+pub(crate) const MAX_LIST_CONCURRENCY: usize = 16;
 
 pub(crate) use kubecove_kube::commands::{
     builtin_kinds, diagnostic_field, diagnostics, helpers, kubeconfig, record_backend_error,

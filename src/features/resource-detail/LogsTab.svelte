@@ -71,6 +71,7 @@
 	];
 
 	let {
+		active,
 		isPod,
 		isAggregate,
 		containerOptions,
@@ -99,6 +100,7 @@
 		formatFullTimestamp,
 		formatLogTime,
 	}: {
+		active: boolean;
 		isPod: boolean;
 		isAggregate: boolean;
 		containerOptions: string[];
@@ -194,7 +196,7 @@
 	}
 
 	function rowKey(line: ParsedLogLine): string {
-		return `${line.index}:${line.source?.podName ?? ""}:${line.source?.container ?? ""}:${line.raw}`;
+		return String(line.index);
 	}
 </script>
 
@@ -402,7 +404,7 @@
 					{:else if visibleLogLines.length === 0}
 						<div class="p-3 text-sm text-muted-foreground">No log lines match the current filters.</div>
 					{:else}
-						{#each visibleLogLines as line (rowKey(line))}
+						{#if active}{#each visibleLogLines as line (line.index)}
 							{@const key = rowKey(line)}
 							<LogEntry
 								{line}
@@ -416,7 +418,7 @@
 								{formatFullTimestamp}
 								{formatLogTime}
 							/>
-						{/each}
+						{/each}{/if}
 					{/if}
 				</div>
 				{#if unseenCount > 0}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from "svelte";
 	import type { HealthAssessment } from "@/lib/types";
 	import {
 		healthSourceLabel,
@@ -15,18 +16,25 @@
 		rawStatuses = [],
 	}: { assessment?: HealthAssessment | null; loading?: boolean; details?: boolean; compact?: boolean; rawStatuses?: string[] } = $props();
 
-	const state = $derived(assessment?.state);
+	const healthState = $derived(assessment?.state);
+	const triggerId = $props.id();
+	let tooltipReady = $state(false);
+	async function activateTooltip(focused: boolean) {
+		tooltipReady = true;
+		await tick();
+		if (focused) document.getElementById(triggerId)?.focus({ preventScroll: true });
+	}
 	const label = $derived(
 		loading ? "Loading" : assessment ? healthStateLabel(assessment.state) : "Assessment unavailable",
 	);
 	const source = $derived(
 		loading ? "Assessment pending" : assessment ? healthSourceSummary(assessment) : "Backend contract missing",
 	);
-	const variant = $derived(state === "degraded" ? "destructive" : "outline");
+	const variant = $derived(healthState === "degraded" ? "destructive" : "outline");
 	const tone = $derived(
-		state === "healthy"
+		healthState === "healthy"
 			? "border-emerald-500/50 text-emerald-700 dark:text-emerald-300"
-			: state === "needsAttention"
+			: healthState === "needsAttention"
 				? "border-amber-500/50 text-amber-700 dark:text-amber-300"
 				: "",
 	);
@@ -42,8 +50,9 @@
 
 <div class="flex min-w-0 flex-wrap items-center gap-1.5">
 	{#if compact}
+		{#if tooltipReady}
 		<Tooltip>
-			<TooltipTrigger type="button" class="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+			<TooltipTrigger id={triggerId} type="button" class="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
 				<Badge {variant} class={tone}>{label}</Badge>
 			</TooltipTrigger>
 			<TooltipContent class="max-w-sm flex-col items-stretch rounded-lg border border-border bg-surface-2 p-3 text-popover-foreground shadow-xl">
@@ -62,6 +71,12 @@
 				</div>
 			</TooltipContent>
 		</Tooltip>
+		{:else}
+			<button id={triggerId} type="button" class="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+				onpointerenter={() => void activateTooltip(false)} onfocus={() => void activateTooltip(true)}>
+				<Badge {variant} class={tone}>{label}</Badge>
+			</button>
+		{/if}
 	{:else}
 		<Badge {variant} class={tone}>{label}</Badge>
 		<span class="truncate text-[0.6875rem] text-muted-foreground" title={source}>Source: {source}</span>

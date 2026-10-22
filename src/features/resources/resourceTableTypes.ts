@@ -1,6 +1,10 @@
 import type { GitOpsOwnershipFilter } from "@/lib/gitops-ownership-evidence";
 import type { ResourceSummary } from "@/lib/types";
-import type { HealthFilter, HealthSummary, ResourceSearchEntry } from "./helpers";
+import type {
+	HealthFilter,
+	HealthSummary,
+	ResourceSearchEntry,
+} from "./helpers";
 
 export type ResourceSortColumn =
 	| "name"
@@ -77,3 +81,20 @@ export interface ResourceTableModel {
 		gitOps: boolean;
 	};
 }
+
+export type ResourceTableDisplay = Pick<
+	ResourceTableModel,
+	| "scopedRows"
+	| "filteredRows"
+	| "displayRows"
+	| "totalRows"
+	| "pageCount"
+	| "groupedByGitOps"
+	| "gitOpsFilters"
+	| "healthSummary"
+> & {
+	rowForResource: (resource: ResourceSummary) => ResourceSummary | undefined;
+};
+
+export type ResourceTablePage = Omit<ResourceTableModel, "entries"> &
+	Pick<ResourceTableDisplay, "rowForResource">;

@@ -2755,6 +2755,7 @@ dependencies = [
  "kubecove-kube",
  "kubecove-live",
  "kubecove-models",
+ "libc",
  "serde",
  "serde_json",
  "tauri",
@@ -2766,6 +2767,7 @@ dependencies = [
  "tauri-plugin-wdio",
  "tauri-plugin-wdio-webdriver",
  "tokio",
+ "webkit2gtk",
  "yaml_serde",
 ]
 

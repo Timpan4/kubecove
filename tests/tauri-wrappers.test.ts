@@ -12,6 +12,7 @@ import {
 	listResourceTopology,
 	revealSecretDataValue,
 	shouldUseBrowserDevMocks,
+	startAggregatedLogStream,
 	startPodExecSession,
 	startPodLogStream,
 	startPortForward,
@@ -312,6 +313,7 @@ describe("typed Tauri wrappers", () => {
 
 		expect(calls[0]?.args).toEqual({
 			request: {
+				batchLines: true,
 				clusterContext: "kind-dev",
 				namespace: "payments",
 				podName: "api-0",
@@ -345,6 +347,26 @@ describe("typed Tauri wrappers", () => {
 				},
 			},
 			channel,
+		});
+		await startAggregatedLogStream(client, {
+			clusterContext: "kind-dev",
+			kubeconfigEnvVar: "kubeconfigSource=abc123",
+			namespace: "payments",
+			targetKind: "Deployment",
+			targetName: "api",
+		}, channel);
+		expect(calls[3]).toEqual({
+			cmd: "start_aggregated_log_stream",
+			args: {
+				request: {
+					batchLines: true,
+					clusterContext: "kind-dev",
+					namespace: "payments",
+					targetKind: "Deployment",
+					targetName: "api",
+				},
+				channel,
+			},
 		});
 	});
 });

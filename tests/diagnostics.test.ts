@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, spyOn, test } from "bun:test";
 import {
 	clearDiagnostics,
 	diagnosticLog,
@@ -24,6 +24,29 @@ afterEach(() => {
 });
 
 describe("diagnostics", () => {
+	// Hidden windows do not run animation frames, and monotonic clocks can stop
+	// during sleep. Console output must still flush and use the wall clock.
+	test("flushes without animation frames and records wall-clock timestamps", () => {
+		jest.useFakeTimers();
+		const info = spyOn(console, "info").mockImplementation(() => {});
+		const now = spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+		const descriptor = Object.getOwnPropertyDescriptor(globalThis, "requestAnimationFrame");
+		Object.defineProperty(globalThis, "requestAnimationFrame", { configurable: true, value: () => 1 });
+		try {
+			setDiagnosticsEnabled(true);
+			diagnosticLog("hidden-window");
+			jest.runOnlyPendingTimers();
+			expect(info).toHaveBeenCalledTimes(1);
+			expect(info.mock.calls[0]?.[0]).toContain("hidden-window");
+			expect(getDiagnosticsSnapshot().frontendEvents[0]?.recordedAt).toBe(new Date(Date.now()).toISOString());
+		} finally {
+			if (descriptor) Object.defineProperty(globalThis, "requestAnimationFrame", descriptor);
+			else Reflect.deleteProperty(globalThis, "requestAnimationFrame");
+			now.mockRestore();
+			info.mockRestore();
+			jest.useRealTimers();
+		}
+	});
 	test("drops events while disabled", () => {
 		setDiagnosticsEnabled(false);
 

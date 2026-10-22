@@ -13,6 +13,7 @@
 
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { SvelteSet } from "svelte/reactivity";
 	import { Button, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/svelte";
 	import {
 		formatExactTimeOnly,
@@ -46,6 +47,7 @@
 	} from "@/lib/types";
 	import type { PathStateResourceDetailState } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
+	import { createWatchQueryRefresh, createWatchRefreshThrottle } from "@/lib/resource-watch-refresh";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
 		getSettingsSnapshot,
@@ -139,7 +141,11 @@
 	let logFilter = $state(initialDetailState?.logFilter ?? "");
 	let logWrapLines = $state(initialDetailState?.logWrapLines ?? true);
 	let logLatestFirst = $state(initialDetailState?.logLatestFirst ?? false);
-	let parsedLogLines = $state<ParsedLogLine[]>([]);
+	let parsedLogLines = $state.raw<ParsedLogLine[]>([]);
+	const visitedTabs = new SvelteSet<DetailTab>();
+	$effect(() => {
+		visitedTabs.add(activeTab);
+	});
 	let realtimeWatchError = $state<string | null>(null);
 	let realtimeEventsWatchError = $state<string | null>(null);
 	let yamlShowFullDiff = $state(initialDetailState?.yamlShowFullDiff ?? false);
@@ -353,13 +359,13 @@
 	);
 	const topIncidentSignals = $derived(incidentSignals.slice(0, 3));
 	const incidentTimeline = $derived(
-		buildIncidentTimeline({
+		activeTab === "details" ? buildIncidentTimeline({
 			resource: detailResource,
 			conditions: conditionRows,
 			events: sortedEvents,
 			containers: signalContainers,
 			logLines: parsedLogLines,
-		}),
+		}) : [],
 	);
 
 	$effect(() => {
@@ -396,21 +402,21 @@
 		if (!detailsEnabled) return;
 		let cancelled = false;
 		let streamId: string | null = null;
-		let debounce: ReturnType<typeof setTimeout> | null = null;
 		const watchKey = readSpec.resourceWatchKey;
 		const currentArgoApplicationScope = argoApplicationScope;
-		const invalidateSoon = () => {
-			if (debounce) clearTimeout(debounce);
-			debounce = setTimeout(() => {
-				void queryClient.invalidateQueries({ queryKey: detailsQueryKey });
-				if (currentArgoApplicationScope) {
-					void queryClient.invalidateQueries({ queryKey: currentArgoApplicationScope });
-				}
-				if (activeTab === "yaml") {
-					resourceRefreshVersion += 1;
-				}
-			}, 250);
-		};
+		const filters = [{ queryKey: detailsQueryKey }];
+		if (currentArgoApplicationScope) filters.push({ queryKey: currentArgoApplicationScope });
+		const refresh = createWatchRefreshThrottle(async () => {
+			const alreadyFetching = filters.some((filter) => queryClient.isFetching({ ...filter, type: "active" }) > 0);
+			const reads = filters.map((filter) =>
+				queryClient.invalidateQueries(filter, { cancelRefetch: false }),
+			);
+			if (activeTab === "yaml") {
+				resourceRefreshVersion += 1;
+			}
+			await Promise.all(reads);
+			if (alreadyFetching) refresh.notify();
+		});
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
 			if (event.type === "error") {
@@ -430,7 +436,7 @@
 			) {
 				return;
 			}
-			invalidateSoon();
+			refresh.notify();
 		}, client);
 		void startResourceWatch(
 			client,
@@ -452,7 +458,7 @@
 			});
 		return () => {
 			cancelled = true;
-			if (debounce) clearTimeout(debounce);
+			refresh.dispose();
 			if (streamId) void stopStream(client, streamId);
 			closeStreamChannel(channel);
 		};
@@ -462,13 +468,7 @@
 		if (!eventsEnabled) return;
 		let cancelled = false;
 		let streamId: string | null = null;
-		let debounce: ReturnType<typeof setTimeout> | null = null;
-		const invalidateSoon = () => {
-			if (debounce) clearTimeout(debounce);
-			debounce = setTimeout(() => {
-				void queryClient.invalidateQueries({ queryKey: eventsQueryKey });
-			}, 250);
-		};
+		const refresh = createWatchQueryRefresh(queryClient, eventsQueryKey, false);
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
 			if (event.type === "error") {
@@ -479,7 +479,7 @@
 				if (event.status === "connected") realtimeEventsWatchError = null;
 				return;
 			}
-			if (event.type === "resourceEventsChanged") invalidateSoon();
+			if (event.type === "resourceEventsChanged") refresh.notify();
 		}, client);
 		void startResourceEventWatch(
 			client,
@@ -503,7 +503,7 @@
 			});
 		return () => {
 			cancelled = true;
-			if (debounce) clearTimeout(debounce);
+			refresh.dispose();
 			if (streamId) void stopStream(client, streamId);
 			closeStreamChannel(channel);
 		};
@@ -638,7 +638,7 @@
 		</p>
 	{/if}
 
-	<DetailsTab
+	{#if visitedTabs.has("details")}<DetailsTab
 		{resourceKey}
 		{detailsQuery}
 		{eventsQuery}
@@ -665,9 +665,9 @@
 		{containerTone}
 		{containerReadyLabel}
 		{containerStateLabel}
-	/>
+	/>{/if}
 
-	<ResourceYamlPane
+	{#if visitedTabs.has("yaml")}<ResourceYamlPane
 		{client}
 		{resource}
 		{dynamicKind}
@@ -680,16 +680,16 @@
 		bind:yamlViewMode
 		bind:yamlEncoding
 		bind:yamlShowFullDiff
-	/>
+	/>{/if}
 
-	<EventsTab
+	{#if visitedTabs.has("events")}<EventsTab
 		{eventsQuery}
 		{sortedEvents}
 		{formatEventExactTime}
 		{formatEventCompactTime}
-	/>
+	/>{/if}
 
-	{#if canShowLogs}
+	{#if canShowLogs && visitedTabs.has("logs")}
 		<ResourceLogsPane
 			{client}
 			{resource}
@@ -730,7 +730,7 @@
 		{/if}
 	</TabsContent>{/if}
 
-	{#if canShowPortForward}<TabsContent value="portForward">
+	{#if canShowPortForward && visitedTabs.has("portForward")}<TabsContent value="portForward">
 		<PortForwardTab
 			{client}
 			{resource}
@@ -739,7 +739,7 @@
 			active={activeTab === "portForward"}
 		/>
 	</TabsContent>{/if}
-	{#if canShowRevisions}
+	{#if canShowRevisions && visitedTabs.has("revisions")}
 		<DeploymentRevisionsTab
 			{client}
 			{resource}
@@ -747,7 +747,7 @@
 			active={activeTab === "revisions"}
 		/>
 	{/if}
-	{#if isArgoApplication}
+	{#if isArgoApplication && visitedTabs.has("argo")}
 		<TabsContent value="argo" class="min-h-0">
 			<ArgoApplicationDetails
 					resourceSummary={resource}
@@ -759,6 +759,6 @@
 		</TabsContent>
 	{/if}
 	<TabsContent value="operations">
-		<ResourceActionsTab {client} resource={detailResource} {kubeconfigSourceKey} />
+		{#if visitedTabs.has("operations")}<ResourceActionsTab {client} resource={detailResource} {kubeconfigSourceKey} />{/if}
 	</TabsContent>
 </Tabs>

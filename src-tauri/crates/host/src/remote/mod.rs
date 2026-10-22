@@ -8,7 +8,7 @@ pub use models::RemoteConnectionSummary;
 use client::connect;
 use kubecove_kube::runtime::{Channel, State};
 use kubecove_models::{AppError, AppErrorKind};
-use serde_json::Value;
+use serde_json::{value::RawValue, Value};
 use std::sync::Arc;
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -66,7 +66,7 @@ pub async fn remote_invoke(
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn remote_subscribe_channel(
     channel_id: u64,
-    channel: Channel<Value>,
+    channel: Channel<Box<RawValue>>,
     store: State<'_, RemoteConnectionStore>,
 ) -> Result<(), AppError> {
     current_connection(&store)

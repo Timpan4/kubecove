@@ -17,6 +17,7 @@
 	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
 	import { refreshCurrentView } from "@/lib/resource-refresh";
 	import { observeResourceScope } from "@/lib/resource-watch";
+	import { createWatchQueryRefresh, watchKeyMatches } from "@/lib/resource-watch-refresh";
 	import { markStartup } from "@/lib/startup-marks";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 	import {
@@ -115,6 +116,7 @@
 		ResourceSummary,
 		ResourceTopology,
 		TopologyMode,
+		WatchResourceKey,
 	} from "@/lib/types";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import { findResourceIndex, resourceKey } from "@/lib/resource-identity";
@@ -141,8 +143,7 @@
 	import {
 		allKindOptions,
 		filterResourcesByKinds,
-		filterTopologyByTableRows,
-		filterHistoricalReplicaSets,
+		createTableTopologyFilter,
 		initialOwnershipMapOpen,
 		kindSelectionKey,
 		nextNamespaceSelection,
@@ -151,10 +152,12 @@
 	} from "./resourceBrowserModel";
 	import { buildResourceBrowserReadSpecs } from "./resourceBrowserReadSpecs";
 	import {
-		buildResourceTableModel,
+		buildResourceTableDisplay,
+		buildResourceTablePage,
 		buildResourceTableProjection,
 		type ResourceSortColumn,
 	} from "./resourceTableModel";
+	import { createResourceTableEntryBuilder } from "./resourceTableEntries";
 
 	const BACKGROUND_METRICS_DELAY_MS = 1_500;
 	const EMPTY_CELL = "—";
@@ -214,6 +217,7 @@
 	let selectedKinds = $state<ResourceKindSelection[]>([]);
 	let appliedScopeKey = $state("");
 	let search = $state("");
+	let filterSearch = $state("");
 	let gitOpsFilter = $state("");
 	let healthFilter = $state<HealthFilter>("all");
 	let argoResourceFilter = $state<ArgoResourceFilter>("none");
@@ -294,6 +298,7 @@
 		appliedScopeKey = incomingScopeKey;
 		appliedAvailableKindsKey = initialKinds.map(kindSelectionKey).sort().join(",");
 		search = pathState?.search ?? initialSearch;
+		filterSearch = search;
 		gitOpsFilter = pathState?.gitOpsFilter ?? initialGitOpsFilter;
 		healthFilter = pathState?.healthFilter ?? initialHealthFilter;
 		argoResourceFilter = "none";
@@ -454,7 +459,10 @@
 	}));
 	$effect(() => {
 		if (kindScopeLocked) {
-			selectedKinds = [...initialKinds];
+			if (selectedKinds.length !== initialKinds.length ||
+				selectedKinds.some((kind, index) => kindSelectionKey(kind) !== kindSelectionKey(initialKinds[index]))) {
+				selectedKinds = [...initialKinds];
+			}
 			appliedAvailableKindsKey = availableKindsKey;
 			return;
 		}
@@ -659,17 +667,23 @@
 	const focusedArgoRefreshing = $derived(
 		!focusedArgoLoading && focusedArgoInspectorQuery.isFetching,
 	);
-	const tableModel = $derived(
-		buildResourceTableModel(
+	$effect(() => {
+		const value = search;
+		const frame = requestAnimationFrame(() => {
+			if (filterSearch === value) return;
+			filterSearch = value;
+			pageIndex = 0;
+		});
+		return () => cancelAnimationFrame(frame);
+	});
+	const tableDisplay = $derived(
+		buildResourceTableDisplay(
 			tableProjection,
 			{
-				search,
+				search: filterSearch,
 				gitOpsFilter,
 				healthFilter,
 				sort: { id: sortColumn, desc: sortDesc },
-				pageIndex,
-				collapsedGroups,
-				selectedResource,
 				preferredGitOpsResourceKeys: gitOpsFocusApplication
 					? focusedArgoResourceKeys
 					: undefined,
@@ -677,14 +691,19 @@
 			},
 		),
 	);
+	const tablePage = $derived(buildResourceTablePage(tableDisplay, pageIndex));
+	const buildPageEntries = createResourceTableEntryBuilder();
+	const tableModel = $derived({
+		...tablePage,
+		entries: buildPageEntries(tablePage, collapsedGroups, selectedResource),
+	});
+	const filterTableTopology = createTableTopologyFilter();
 	const topologyWithMetrics = $derived(
 		mergeTopologyMetrics(
-			filterTopologyByTableRows(
-				filterHistoricalReplicaSets(
-					topologyQuery.data,
-					hideHistoricalReplicaSets,
-				),
-				tableModel.filteredRows,
+			filterTableTopology(
+				topologyQuery.data,
+				tableDisplay.filteredRows,
+				hideHistoricalReplicaSets,
 			),
 			metricsQuery.data,
 			metricsIndex,
@@ -847,29 +866,41 @@
 			realtimeWarnings = [];
 			return;
 		}
-		const watchKeys = mergeWatchKeys(watchKeysFromFetchKeys(fetchKeys), mapPanelOpen ? topologyWatchKeys(topologyNamespaces) : [], focusedArgoWatchKeys);
+		const resourceWatchKeys = watchKeysFromFetchKeys(fetchKeys);
+		const mapWatchKeys = mapPanelOpen ? mergeWatchKeys(
+			topologyWatchKeys(topologyNamespaces),
+			resourceWatchKeys.filter((key) => Boolean(key.resourceKind.group)),
+		) : [];
+		const argoWatchKeys = focusedArgoWatchKeys;
+		const watchKeys = mergeWatchKeys(resourceWatchKeys, mapWatchKeys, argoWatchKeys);
 		const resourceKey = resourceQueryKey;
 		const topologyKey = topologyQueryKey;
 		const argoScope = focusedArgoApplicationScope;
 		const context = clusterContext;
 		const source = kubeconfigSourceKey;
 		const namespaces = [...selectedNamespaces];
-		let debounce: ReturnType<typeof setTimeout> | null = null;
-		const reload = () => refreshCurrentView({ client, queryClient, clusterContext: context, kubeconfigEnvVar: source, keys: watchKeys, namespaces });
+		const resourceRefresh = createWatchQueryRefresh(queryClient, resourceKey);
+		const topologyRefresh = createWatchQueryRefresh(queryClient, topologyKey);
+		const argoRefresh = argoScope ? createWatchQueryRefresh(queryClient, argoScope, false) : null;
+		const reload = (keys?: WatchResourceKey[]) => {
+			const reads = [];
+			if (keys?.some((key) => resourceWatchKeys.some((candidate) => watchKeyMatches(candidate, key)))) reads.push(resourceKey);
+			if (keys?.some((key) => mapWatchKeys.some((candidate) => watchKeyMatches(candidate, key)))) reads.push(topologyKey);
+			if (argoScope && keys?.some((key) => argoWatchKeys.some((candidate) => watchKeyMatches(candidate, key)))) reads.push(argoScope);
+			return refreshCurrentView({ client, queryClient, clusterContext: context, kubeconfigEnvVar: source, keys: keys ?? watchKeys, namespaces, reads: keys ? reads : undefined, cancelRefetch: false });
+		};
 		const stop = observeResourceScope({ client, clusterContext: context, keys: watchKeys, kubeconfigEnvVar: source,
 			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; realtimeWarnings = state.warnings ?? []; },
 			reload,
-			onChange: () => {
-				if (debounce) return;
-				debounce = setTimeout(() => {
-					debounce = null;
-					void queryClient.invalidateQueries({ queryKey: resourceKey });
-					void queryClient.invalidateQueries({ queryKey: topologyKey });
-					if (argoScope) void queryClient.invalidateQueries({ queryKey: argoScope });
-				}, 250);
+			onChange: (_event, key) => {
+				const resourceChanged = resourceWatchKeys.some((candidate) => watchKeyMatches(candidate, key));
+				if (resourceChanged) resourceRefresh.notify();
+				if (!mapPanelOpen) void queryClient.invalidateQueries({ queryKey: topologyKey, refetchType: "none" });
+				if (mapWatchKeys.some((candidate) => watchKeyMatches(candidate, key))) topologyRefresh.notify();
+				if (resourceChanged || argoWatchKeys.some((candidate) => watchKeyMatches(candidate, key))) argoRefresh?.notify();
 			},
 		});
-		return () => { stop(); if (debounce) clearTimeout(debounce); };
+		return () => { stop(); resourceRefresh.dispose(); topologyRefresh.dispose(); argoRefresh?.dispose(); };
 	});
 
 	function toggleNamespace(namespace: string, checked: boolean) {
@@ -983,7 +1014,7 @@
 </script>
 
 {#snippet refreshControls()}
-	{#key JSON.stringify([clusterContext, kubeconfigSourceKey, fetchKeys, mapPanelOpen ? topologyNamespaces : [], focusedArgoWatchKeys, selectedResourceKey])}
+	{#key JSON.stringify([clusterContext, kubeconfigSourceKey, fetchKeys, mapPanelOpen ? topologyNamespaces : [], focusedArgoWatchKeys])}
 		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady || !clusterContext}
 			status={realtimeStatus} message={realtimeMessage} connectionError={realtimeError} {reloadError} warnings={realtimeWarnings} />
 	{/key}
@@ -1072,7 +1103,6 @@
 			onArgoFilterSelect={selectArgoResource}
 			onHideHistoricalReplicaSetsChange={(hide) => (hideHistoricalReplicaSets = hide)}
 			onGitOpsFilterChange={setGitOpsFilter}
-			onSearchInput={() => (pageIndex = 0)}
 			onClearFilters={clearFilters}
 		/>
 

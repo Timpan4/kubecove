@@ -375,7 +375,7 @@ export function applyFlowTopologySelectionWithIndex(
 		const stroke = active ? "var(--primary)" : "var(--muted-foreground)";
 		return {
 			...edge,
-			animated: active,
+			animated: false,
 			markerEnd: {
 				type: MarkerType.ArrowClosed,
 				width: active ? 18 : 14,
@@ -385,6 +385,7 @@ export function applyFlowTopologySelectionWithIndex(
 			style: [
 				`stroke: ${stroke}`,
 				`stroke-width: ${active ? 2.6 : 1.6}`,
+				`stroke-dasharray: ${active ? "8 8" : "none"}`,
 				`opacity: ${active ? 1 : 0.2}`,
 			].join("; "),
 		};

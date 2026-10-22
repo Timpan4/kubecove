@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { onMount } from "svelte";
 	import { Cable, Copy, RotateCcw, Square, Terminal } from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
 	import {
@@ -13,6 +14,7 @@
 		buttonClass,
 	} from "@/components/ui/svelte";
 	import { buildLiveSessionReadModel } from "@/features/live-sessions/liveSessionReadModel";
+	import { refreshLiveSessionQueries, trackLiveSessionUi } from "@/features/live-sessions/sessionPolling.svelte";
 	import { podExecCommandText } from "@/features/live-sessions/podExecHelpers";
 	import { podExecQueryOptions, stopPodExec } from "@/features/live-sessions/podExecLifecycle";
 	import { portForwardLocalUrl } from "@/features/live-sessions/helpers";
@@ -36,6 +38,14 @@
 	let actionError = $state<unknown>(null);
 	const portForwardsQuery = createQuery(() => portForwardQueryOptions(client));
 	const execSessionsQuery = createQuery(() => podExecQueryOptions(client));
+	trackLiveSessionUi(() => popoverOpen);
+	onMount(() => {
+		const onVisible = () => {
+			if (document.visibilityState === "visible") refreshLiveSessionQueries(queryClient);
+		};
+		document.addEventListener("visibilitychange", onVisible);
+		return () => document.removeEventListener("visibilitychange", onVisible);
+	});
 
 	const liveSessionModel = $derived(
 		buildLiveSessionReadModel(
