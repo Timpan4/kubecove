@@ -34,7 +34,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 - [Architecture decisions](decisions/) — accepted technical and safety decisions.
 - [Planning and milestones](milestones.md) — GitHub Issue and Milestone tracking direction.
 - [Multiple user sessions and persistence](decisions/0023-multi-user-sessions-and-persistence.md) — implemented session baseline and proposed private-source provisioning, persistent user workspaces, settings and migration.
-- [Single command contract](decisions/0025-single-command-contract.md) — proposed single declaration for Tauri IPC and server HTTP commands, and removal of the legacy name-only operation commands.
+- [Single command contract](decisions/0025-single-command-contract.md) — single declaration for Tauri IPC and server HTTP commands, and removal of the legacy name-only operation commands.
 - [Cluster access by intent](decisions/0026-cluster-access-by-intent.md) — single module for Kubernetes clients named by intent, and the server's restriction to operator-configured kubeconfig sources.
 - [Security Policy](../SECURITY.md) — vulnerability reporting and support.
 - [OSS Scanner](../.oss-scanner/README.md) — offline audit environment, threat model, and maintainer enrollment.
