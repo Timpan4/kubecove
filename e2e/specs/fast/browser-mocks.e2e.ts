@@ -43,7 +43,8 @@ describe("browser mock inspection", () => {
 
 		for (let index = 0; index < cellCount; index++) {
 			const cell = await $(rowSelector).$(`td:nth-child(${index + 1})`);
-			await cell.scrollIntoView({ block: "center", inline: "center" });
+			// Scroll the nested viewports directly and keep the cell below sticky headers.
+			await browser.execute((element: HTMLElement) => element.scrollIntoView({ block: "end", inline: "center" }), cell);
 			const { height } = await cell.getSize();
 			await cell.click({ y: 4 - Math.floor(height / 2) });
 			await expect($(closeSelector)).toBeDisplayed();
@@ -54,7 +55,8 @@ describe("browser mock inspection", () => {
 		const row = await $(rowSelector);
 		await row.$(`button[aria-label="Copy resource name: ${name}"]`).click();
 		await expect($(closeSelector)).not.toExist();
-		await row.$('button[data-slot="tooltip-trigger"]:not([aria-label])').click();
+		await $('button[aria-label="Dismiss copy notification"]').click();
+		await row.$("button=Needs attention").click();
 		await expect($(closeSelector)).not.toExist();
 		await row.$(`button[aria-label="Pin Pod ${name}"]`).click();
 		await expect($(closeSelector)).not.toExist();
@@ -271,7 +273,9 @@ describe("browser mock inspection", () => {
 			await $('button[aria-label="Open workspace navigation"]').click();
 			const navigation = await $('[data-slot="sheet-content"]');
 			await navigation.$('[role="treeitem"]*=GitOps').click();
-			await $("button=List").click();
+			const list = await $("button=List");
+			await list.waitForDisplayed();
+			await list.click();
 			const details = await $('button[aria-label="Open details for Application platform-argocd in argocd"]');
 			await details.waitForDisplayed();
 			const compactActions = await browser.execute((button: HTMLElement) => {

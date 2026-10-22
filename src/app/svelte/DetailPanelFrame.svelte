@@ -94,7 +94,7 @@
 </script>
 
 	<div bind:this={frameElement} class={cnfast("relative flex h-full min-h-0 min-w-0 flex-1 overflow-hidden", className)}>
-		<section class="h-full min-w-0 overflow-hidden max-xl:!basis-full" style={`flex: 0 0 ${panelVisible ? mainSize : 100}%;`}>
+		<section class="isolate h-full min-w-0 overflow-hidden max-xl:!basis-full" style={`flex: 0 0 ${panelVisible ? mainSize : 100}%;`}>
 			{@render children?.()}
 		</section>
 		{#if panelVisible}
