@@ -4,7 +4,8 @@
 // mutation sources are Svelte source locations in dev builds, and test ids or
 // roles in release builds; never text content or cluster data. Entries stay in
 // memory; the dev server additionally mirrors them to e2e/artifacts.
-import { getDiagnosticsSnapshot, isDiagnosticsEnabled, MAX_FRONTEND_EVENTS } from "./diagnostics";
+import { MAX_FRONTEND_EVENTS } from "./diagnostics";
+import { commandsDuring, type InteractionCommand } from "./interaction-commands";
 import { addFrame, emptyHistogram, type FrameHistogram, frameDeltas, percentileMs } from "./interaction-frames";
 import { describeTarget, resetSourceCache, sourceOf, subtreeSource } from "./interaction-sources";
 
@@ -25,7 +26,7 @@ export interface RecordedInteraction {
 		text: number;
 		sources: { source: string; mutations: number }[];
 	};
-	commands?: { cmd: string; ms: number; ok: boolean; startOffsetMs: number }[];
+	commands?: InteractionCommand[];
 }
 
 interface Segment {
@@ -60,6 +61,9 @@ let session: Session | null = null;
 let current: Segment | null = null;
 let nextId = 1;
 let pointerDown = false;
+let resumedFromHidden = false;
+// Flushed entries whose input-to-paint is still pending; posted once it resolves or the page exits.
+const awaitingPaint = new Set<Segment>();
 
 function refreshIntervalMs(): number {
 	return percentileMs(sessionFrames, 0.5);
@@ -67,24 +71,6 @@ function refreshIntervalMs(): number {
 
 function round(value: number): number {
 	return Math.round(value * 10) / 10;
-}
-
-function commandsDuring(start: number, end: number): RecordedInteraction["commands"] {
-	if (!isDiagnosticsEnabled()) return undefined;
-	const commands: NonNullable<RecordedInteraction["commands"]> = [];
-	for (const event of getDiagnosticsSnapshot().frontendEvents) {
-		if (event.event !== "tauri.invoke.done" && event.event !== "tauri.invoke.error") continue;
-		const ms = Number(event.data.ms ?? 0);
-		const commandStart = event.atMs - ms;
-		if (commandStart < start || commandStart >= end) continue;
-		commands.push({
-			cmd: String(event.data.cmd),
-			ms,
-			ok: event.event === "tauri.invoke.done",
-			startOffsetMs: Math.round(commandStart - start),
-		});
-	}
-	return commands;
 }
 
 function serialize(segment: Segment, endedAt: number): RecordedInteraction {
@@ -144,6 +130,16 @@ function flush(): void {
 	// Same retention as frontend diagnostic events.
 	if (recorded.length > MAX_FRONTEND_EVENTS) recorded.splice(0, recorded.length - MAX_FRONTEND_EVENTS);
 	if (segment.pendingPaints === 0) postToDevSink(interaction);
+	else awaitingPaint.add(segment);
+}
+
+// A closing page may never paint the frames these entries wait for; post them as they are.
+function flushForPageExit(): void {
+	flush();
+	for (const segment of awaitingPaint) {
+		if (segment.flushed) postToDevSink(segment.flushed);
+	}
+	awaitingPaint.clear();
 }
 
 function begin(kind: InteractionKind, event: Event): void {
@@ -181,7 +177,9 @@ function measureInputToPaint(event: Event): void {
 			segment.inputToPaint.push({ type: event.type, ms: round(performance.now() - dispatchedAt) });
 			segment.pendingPaints -= 1;
 			// A later input may have ended this segment before its frame painted.
-			if (segment.flushed && segment.pendingPaints === 0) postToDevSink(segment.flushed);
+			if (segment.flushed && segment.pendingPaints === 0 && awaitingPaint.delete(segment)) {
+				postToDevSink(segment.flushed);
+			}
 		};
 		channel.port2.postMessage(null);
 	});
@@ -212,7 +210,9 @@ function trackFrame(previous: number) {
 	return (now: number) => {
 		if (!session) return;
 		const delta = now - previous;
-		if (document.visibilityState === "visible") {
+		// The first frame after the page was hidden spans the hidden time, not a frame.
+		if (resumedFromHidden) resumedFromHidden = false;
+		else if (document.visibilityState === "visible") {
 			addFrame(sessionFrames, delta);
 			if (current) addFrame(current.frames, delta);
 		}
@@ -250,9 +250,11 @@ export function startInteractionRecording(): void {
 		begin("key", event);
 		measureInputToPaint(event);
 	}, options);
-	window.addEventListener("pagehide", flush, { signal: abort.signal });
+	window.addEventListener("pagehide", flushForPageExit, { signal: abort.signal });
 	document.addEventListener("visibilitychange", () => {
-		if (document.visibilityState === "hidden") flush();
+		if (document.visibilityState !== "hidden") return;
+		flush();
+		resumedFromHidden = true;
 	}, { signal: abort.signal });
 
 	const observer = new MutationObserver((records) => {
@@ -271,6 +273,7 @@ export function stopInteractionRecording(): void {
 	cancelAnimationFrame(session.frameRequest);
 	session = null;
 	pointerDown = false;
+	resumedFromHidden = false;
 	resetSourceCache();
 }
 
@@ -281,5 +284,6 @@ export function getRecordedInteractions(): RecordedInteraction[] {
 export function clearRecordedInteractions(): void {
 	recorded.length = 0;
 	current = null;
+	awaitingPaint.clear();
 	sessionFrames = emptyHistogram();
 }

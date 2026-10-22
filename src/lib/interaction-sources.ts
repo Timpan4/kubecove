@@ -24,25 +24,22 @@ function fallbackSource(node: Node): string | undefined {
 }
 
 // Nearest Svelte source location; release builds have none, so use the nearest
-// test id or role instead.
+// test id or role instead. Only Svelte locations are cached: they hold for every
+// node walked to reach them, while the nearest fallback differs per starting node.
 export function sourceOf(node: Node | null): string {
 	const visited: Node[] = [];
 	let fallback: string | undefined;
-	let result: string | undefined;
 	for (let cursor = node; cursor; cursor = cursor.parentNode) {
-		const cached = sourceCache.get(cursor);
-		if (cached) {
-			result = cached;
-			break;
+		const location = sourceCache.get(cursor) ?? ownSource(cursor);
+		if (location) {
+			for (const seen of visited) sourceCache.set(seen, location);
+			sourceCache.set(cursor, location);
+			return location;
 		}
 		visited.push(cursor);
-		result = ownSource(cursor);
-		if (result) break;
 		fallback ??= fallbackSource(cursor);
 	}
-	result ??= fallback ?? UNATTRIBUTED;
-	for (const seen of visited) sourceCache.set(seen, result);
-	return result;
+	return fallback ?? UNATTRIBUTED;
 }
 
 export function describeTarget(target: EventTarget | null): string {

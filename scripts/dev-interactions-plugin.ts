@@ -12,7 +12,9 @@ function parseInteractionLine(body: string): string | null {
 	const dom = Object(entry.dom);
 	const valid = Number.isFinite(entry.id) && [entry.kind, entry.wallTime, entry.target].every((field) => String(field) === field) &&
 		Array.isArray(entry.inputToPaint) &&
-		Number.isFinite(frames.droppedFrames) && Number.isFinite(frames.maxMs) && Array.isArray(dom.sources);
+		Array.from(entry.inputToPaint, Object).every((paint) => String(paint.type) === paint.type && Number.isFinite(paint.ms)) &&
+		Number.isFinite(frames.droppedFrames) && Number.isFinite(frames.maxMs) && Array.isArray(dom.sources) &&
+		Array.from(dom.sources, Object).every((source) => String(source.source) === source.source && Number.isFinite(source.mutations));
 	return valid ? JSON.stringify(entry) : null;
 }
 

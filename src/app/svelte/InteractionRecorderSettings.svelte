@@ -50,7 +50,7 @@
 
 <SettingsRow
 	title="Record interactions"
-	description="Measures input-to-paint time, dropped frames, and DOM changes for each click, drag, key, and scroll. Adds overhead while on. Data stays in memory."
+	description="Measures input-to-paint time, dropped frames, and DOM changes for each click, drag, key, and scroll. Adds overhead while on. Data stays in memory; development builds served by Vite also write it to e2e/artifacts/dev-interactions."
 >
 	<Switch checked={recording} onCheckedChange={setRecording} aria-label="Record interactions" />
 </SettingsRow>
