@@ -20,8 +20,11 @@ _Avoid_ treating it as a cluster-changing incident response surface.
 **Workspace Navigation** means movement within an active workspace scope across resource, GitOps, Helm, incident, settings, and live-session surfaces.
 _Avoid_ using it for switching between saved workspaces or changing cluster credentials.
 
-**Port Forward Lifecycle** means starting, restoring, reconnecting, observing, and stopping a guarded Pod or selector-backed Service port-forward session.
+**Port Forward Lifecycle** means starting, restoring, reconnecting, observing, and stopping a guarded Pod or selector-backed Service port-forward session, whether its listener runs in the backend or on the desktop through a remote server tunnel.
 _Avoid_ using it for Pod exec or durable background tunnels.
+
+**Live session scope** means the active workspace's cluster contexts and kubeconfig source key. A port-forward or Pod exec session keeps running across a workspace switch only when its context and recorded source key both match, or when the user keeps live sessions. A session without a recorded source key is outside every scope.
+_Avoid_ using it for Argo CD connection scope or finite request cancellation.
 
 **Pod Exec Lifecycle** means confirming, starting, interacting with, observing, and stopping a guarded exact-Pod exec session.
 _Avoid_ using it for local shell execution or owner-backed resource targets.
