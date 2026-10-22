@@ -1943,6 +1943,7 @@ dependencies = [
  "kubecove-kube",
  "kubecove-live",
  "kubecove-models",
+ "libc",
  "serde",
  "serde_json",
  "tokio",

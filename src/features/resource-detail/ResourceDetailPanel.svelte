@@ -408,9 +408,9 @@
 		const invalidate = () => {
 			debounce = null;
 			lastInvalidated = performance.now();
-			void queryClient.invalidateQueries({ queryKey: detailsQueryKey });
+			void queryClient.invalidateQueries({ queryKey: detailsQueryKey }, { cancelRefetch: false });
 			if (currentArgoApplicationScope) {
-				void queryClient.invalidateQueries({ queryKey: currentArgoApplicationScope });
+				void queryClient.invalidateQueries({ queryKey: currentArgoApplicationScope }, { cancelRefetch: false });
 			}
 			if (activeTab === "yaml") {
 				resourceRefreshVersion += 1;
@@ -478,7 +478,7 @@
 		const invalidate = () => {
 			debounce = null;
 			lastInvalidated = performance.now();
-			void queryClient.invalidateQueries({ queryKey: eventsQueryKey });
+			void queryClient.invalidateQueries({ queryKey: eventsQueryKey }, { cancelRefetch: false });
 		};
 		const invalidateSoon = () => {
 			if (debounce !== null) return;

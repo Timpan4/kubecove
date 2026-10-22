@@ -233,7 +233,7 @@ async fn resource_scope_result_from(
             .into_iter()
             .map(move |namespace| (group.kind.clone(), namespace))
     });
-    // Match topology's ceiling, acquiring only when a cache loader needs I/O.
+    // Keep permits outside shared cache loaders so cancellation releases them.
     let permits = Arc::new(Semaphore::new(MAX_LIST_CONCURRENCY));
     let futures = fetches.map(|(kind, namespace)| {
         let permits = Arc::clone(&permits);
@@ -253,62 +253,37 @@ async fn resource_scope_result_from(
                 },
                 namespace: namespace.clone(),
             };
-            let result = match kind {
-                ResourceScopeKind::Typed(kind) => {
-                    live_store
-                        .typed_resources(
-                            source_key,
-                            cluster_context.clone(),
-                            kind.clone(),
-                            namespace.clone(),
-                            {
-                                let cluster_context = cluster_context.clone();
-                                let kubeconfig_env_var = kubeconfig_env_var.clone();
-                                move || async move {
-                                    let _permit = permits
-                                        .acquire()
-                                        .await
-                                        .expect("scope semaphore stays open");
-                                    resources_summary_from(
-                                        cluster_context,
-                                        kind,
-                                        namespace,
-                                        kubeconfig_env_var,
-                                    )
-                                    .await
-                                }
-                            },
-                        )
-                        .await
-                }
-                ResourceScopeKind::Dynamic(resource_kind) => {
-                    live_store
-                        .dynamic_resources(
-                            source_key,
-                            cluster_context.clone(),
-                            resource_kind.clone(),
-                            namespace.clone(),
-                            {
-                                let cluster_context = cluster_context.clone();
-                                let kubeconfig_env_var = kubeconfig_env_var.clone();
-                                move || async move {
-                                    let _permit = permits
-                                        .acquire()
-                                        .await
-                                        .expect("scope semaphore stays open");
-                                    dynamic_resources_summary_from(
-                                        cluster_context,
-                                        resource_kind,
-                                        namespace,
-                                        kubeconfig_env_var,
-                                    )
-                                    .await
-                                }
-                            },
-                        )
-                        .await
-                }
-            };
+            let result = cached_scope_resources(
+                &live_store,
+                permits,
+                source_key,
+                cluster_context.clone(),
+                kind.clone(),
+                namespace.clone(),
+                move || async move {
+                    match kind {
+                        ResourceScopeKind::Typed(kind) => {
+                            resources_summary_from(
+                                cluster_context,
+                                kind,
+                                namespace,
+                                kubeconfig_env_var,
+                            )
+                            .await
+                        }
+                        ResourceScopeKind::Dynamic(kind) => {
+                            dynamic_resources_summary_from(
+                                cluster_context,
+                                kind,
+                                namespace,
+                                kubeconfig_env_var,
+                            )
+                            .await
+                        }
+                    }
+                },
+            )
+            .await;
             (request, result)
         }
     });
@@ -346,6 +321,34 @@ async fn resource_scope_result_from(
         completed_requests: scope.completed_requests,
         failures: scope.failures,
     })
+}
+
+async fn cached_scope_resources<F, Fut>(
+    live_store: &ClusterLiveStore,
+    permits: Arc<Semaphore>,
+    source_key: String,
+    cluster_context: String,
+    kind: ResourceScopeKind,
+    namespace: Option<String>,
+    loader: F,
+) -> Result<Arc<Vec<ResourceSummary>>, AppError>
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = Result<Vec<ResourceSummary>, AppError>> + Send + 'static,
+{
+    let _permit = permits.acquire().await.expect("scope semaphore stays open");
+    match kind {
+        ResourceScopeKind::Typed(kind) => {
+            live_store
+                .typed_resources(source_key, cluster_context, kind, namespace, loader)
+                .await
+        }
+        ResourceScopeKind::Dynamic(kind) => {
+            live_store
+                .dynamic_resources(source_key, cluster_context, kind, namespace, loader)
+                .await
+        }
+    }
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -427,6 +430,74 @@ mod tests {
             kind: Some("Pod".to_string()),
             resource_kind: None,
             namespace: namespace.map(ToString::to_string),
+        }
+    }
+
+    // Failure mode: cancelling a scope leaves shared loaders holding its permits,
+    // so a later request for the first queued namespace can never acquire one.
+    #[tokio::test]
+    async fn cancelled_scope_does_not_strand_a_later_cached_request() {
+        use futures_util::FutureExt;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::Duration;
+
+        let dynamic = DiscoveredResourceKind {
+            group: "example.com".into(),
+            version: "v1".into(),
+            api_version: "example.com/v1".into(),
+            kind: "Widget".into(),
+            plural: "widgets".into(),
+            namespaced: true,
+            short_names: Vec::new(),
+        };
+        for kind in [
+            ResourceScopeKind::Typed("Pod".into()),
+            ResourceScopeKind::Dynamic(dynamic),
+        ] {
+            let store = ClusterLiveStore::default();
+            let permits = Arc::new(Semaphore::new(MAX_LIST_CONCURRENCY));
+            let started = Arc::new(AtomicUsize::new(0));
+            let (release, _) = tokio::sync::watch::channel(false);
+            let scope = join_all((0..=MAX_LIST_CONCURRENCY).map(|index| {
+                let started = Arc::clone(&started);
+                let mut wait = release.subscribe();
+                cached_scope_resources(
+                    &store,
+                    Arc::clone(&permits),
+                    "scope-cancel".into(),
+                    "test".into(),
+                    kind.clone(),
+                    Some(format!("namespace-{index}")),
+                    move || async move {
+                        started.fetch_add(1, Ordering::SeqCst);
+                        wait.wait_for(|released| *released).await.unwrap();
+                        Ok(Vec::new())
+                    },
+                )
+            }));
+            let mut scope = Box::pin(scope);
+            assert!(scope.as_mut().now_or_never().is_none());
+            assert_eq!(started.load(Ordering::SeqCst), MAX_LIST_CONCURRENCY);
+            drop(scope);
+            release.send(true).unwrap();
+
+            // Use the existing mock-client test deadline, not a latency budget.
+            let rows = tokio::time::timeout(
+                Duration::from_secs(5),
+                cached_scope_resources(
+                    &store,
+                    Arc::new(Semaphore::new(MAX_LIST_CONCURRENCY)),
+                    "scope-cancel".into(),
+                    "test".into(),
+                    kind,
+                    Some(format!("namespace-{MAX_LIST_CONCURRENCY}")),
+                    || async { Ok(Vec::new()) },
+                ),
+            )
+            .await
+            .expect("cancelled scope must not block a later request")
+            .unwrap();
+            assert!(rows.is_empty());
         }
     }
 

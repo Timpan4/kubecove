@@ -23,7 +23,7 @@ All tokens live in `src/App.css`.
 
 - Primitives use `cn()` from `@/lib/utils` and `data-slot`.
 - Buttons default compact. Keep density unless interaction needs more space.
-- Use `Card` elevation: `flat` for forms, `raised` for hoverable lists. Floating surfaces use opaque popover backgrounds without backdrop blur (WebKitGTK compositing cost).
+- Use `Card` elevation: `flat` for forms, `raised` for hoverable lists, `overlay` for floating surfaces.
 - Preserve visible keyboard focus and `aria-invalid` styles.
 
 ## Motion and Platforms

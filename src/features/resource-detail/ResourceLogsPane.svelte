@@ -334,9 +334,10 @@
 		if (!active) return;
 		untrack(() => {
 			if (logStatus !== "stopped" && logStatus !== "error") return;
-			// The stream request has no sinceTime cursor. Clear before re-tailing so
-			// older servers and aggregate streams cannot replay retained lines.
-			resetLogLines();
+			if (flushFrame !== null) {
+				cancelAnimationFrame(flushFrame);
+				flushLogLines();
+			}
 			reconnectVersion += 1;
 		});
 	});

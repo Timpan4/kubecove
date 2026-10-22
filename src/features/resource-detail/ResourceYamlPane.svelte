@@ -456,8 +456,7 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 	/>
 {/if}
 
-<!-- An active draft also owns CodeMirror undo and selection state. -->
-{#if active || yamlEditing}<YamlTab
+<YamlTab
 	{yamlQuery}
 	{resource}
 	{yamlText}
@@ -498,4 +497,4 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 	{allowYamlForceConflictsForResource}
 	{kubernetesYamlDiagnostics}
 	{clearYamlDraftFeedback}
-/>{/if}
+/>

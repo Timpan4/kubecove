@@ -417,10 +417,22 @@ async fn stream_log_source(
             })
             .await
             {
-                send_source_error(&channel, &stream_id, &source, err.to_string());
+                send_source_error(
+                    &channel,
+                    &stream_id,
+                    &source,
+                    options.batch_lines,
+                    err.to_string(),
+                );
             }
         }
-        Err(err) => send_source_error(&channel, &stream_id, &source, err.to_string()),
+        Err(err) => send_source_error(
+            &channel,
+            &stream_id,
+            &source,
+            options.batch_lines,
+            err.to_string(),
+        ),
     }
 }
 
@@ -435,15 +447,15 @@ fn send_source_error(
     channel: &Channel<StreamMessage>,
     stream_id: &str,
     source: &LogSourceKey,
+    batch_lines: bool,
     message: String,
 ) {
-    send(
-        channel,
-        StreamMessage::LogLines {
-            stream_id: stream_id.to_string(),
-            lines: vec![format!("log stream error: {message}")],
-            source: Some(log_line_source(source)),
-        },
+    emit_log_batch(
+        stream_id,
+        Some(&log_line_source(source)),
+        batch_lines,
+        vec![format!("log stream error: {message}")],
+        |message| send(channel, message),
     );
 }
 
@@ -481,6 +493,83 @@ fn aggregate_status_message(total_sources: usize, active_sources: usize) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Failure mode: source errors always use LogLines, so clients that omit or
+    // disable batchLines never see the error. Preserve the source in both modes.
+    #[tokio::test]
+    async fn source_errors_honor_batch_lines_opt_in() {
+        use std::sync::{Arc, Mutex};
+
+        for flag in [None, Some(false), Some(true)] {
+            let mut request = serde_json::json!({
+                "clusterContext": "test", "namespace": "default",
+                "targetKind": "Deployment", "targetName": "api"
+            });
+            if let Some(flag) = flag {
+                request["batchLines"] = flag.into();
+            }
+            let request: AggregatedLogStreamRequest = serde_json::from_value(request).unwrap();
+            let received = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+            let sink = Arc::clone(&received);
+            let channel = Channel::new(move |message| {
+                #[cfg(feature = "desktop")]
+                let message = match message {
+                    tauri::ipc::InvokeResponseBody::Json(json) => {
+                        serde_json::from_str(&json).unwrap()
+                    }
+                    tauri::ipc::InvokeResponseBody::Raw(_) => panic!("expected JSON log message"),
+                };
+                #[cfg(not(feature = "desktop"))]
+                let message = serde_json::to_value(message).unwrap();
+                sink.lock().unwrap().push(message);
+                Ok(())
+            });
+            let (service, mut handle) = tower_test::mock::pair::<
+                http::Request<kube::client::Body>,
+                http::Response<kube::client::Body>,
+            >();
+            let stream = stream_log_source(
+                Client::new(service, "default"),
+                "default".into(),
+                LogSourceKey {
+                    pod_name: "api".into(),
+                    container: "app".into(),
+                },
+                LogStreamOptions {
+                    batch_lines: request.batch_lines,
+                    tail_lines: None,
+                    since_seconds: None,
+                },
+                channel,
+                "logs".into(),
+            );
+            let respond = async {
+                let (_, send) = handle.next_request().await.unwrap();
+                send.send_response(http::Response::builder().status(403).body(kube::client::Body::from(
+                    br#"{"apiVersion":"v1","kind":"Status","status":"Failure","message":"denied","reason":"Forbidden","code":403}"#.to_vec(),
+                )).unwrap());
+            };
+            tokio::join!(stream, respond);
+            let messages = received.lock().unwrap();
+            assert_eq!(messages.len(), 1);
+            let message = &messages[0];
+            assert_eq!(message["streamId"], "logs");
+            assert_eq!(
+                message["source"],
+                serde_json::json!({"podName": "api", "container": "app"})
+            );
+            let line = if request.batch_lines {
+                assert_eq!(message["type"], "logLines");
+                assert_eq!(message["lines"].as_array().unwrap().len(), 1);
+                &message["lines"][0]
+            } else {
+                assert_eq!(message["type"], "logLine");
+                &message["line"]
+            };
+            assert!(line.as_str().unwrap().starts_with("log stream error: "));
+            assert!(line.as_str().unwrap().contains("denied"));
+        }
+    }
 
     #[tokio::test]
     async fn audit_departed_log_sources_release_replay_bookkeeping() {

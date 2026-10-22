@@ -12,6 +12,8 @@
 		children: Snippet<[Item]>;
 	} = $props();
 
+	// TODO: add a native in-app search; offscreen rows are absent from the DOM, so browser
+	// find-in-page and screen readers only reach rendered rows.
 	let host: HTMLDivElement;
 	let probe: HTMLDivElement;
 	let width = $state(0);

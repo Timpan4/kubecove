@@ -143,23 +143,21 @@
 	const browserResourceKey = $derived(
 		queryKeys.resources(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey),
 	);
-	const resourcesQuery = createQuery<ResourceScopeResult>(() => ({
-		queryKey: open
-			? ["palette-resources", ...browserResourceKey.slice(1)]
-			: ["palette-resources", "closed"],
-		queryFn: () => {
-			const browserQuery = queryClient.getQueryCache().find<ResourceScopeResult>({ queryKey: browserResourceKey, exact: true });
-			if (browserQuery?.state.fetchStatus === "fetching" && browserQuery.promise) return browserQuery.promise;
-			return fetchResourcePage(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey);
-		},
-		initialData: () => open ? queryClient.getQueryData<ResourceScopeResult>(browserResourceKey) : undefined,
-		initialDataUpdatedAt: () => queryClient.getQueryState(browserResourceKey)?.dataUpdatedAt,
-		placeholderData: () => queryClient.getQueryData<ResourceScopeResult>(browserResourceKey),
-		enabled: open && sourceReady && gitOpsDetectionReady && fetchKeys.length > 0,
-		staleTime: 30_000,
-		gcTime: 0,
-		meta: finiteReadMeta(),
-	}));
+	const resourcesQuery = createQuery<ResourceScopeResult>(() => {
+		const browserQuery = open
+			? queryClient.getQueryCache().find<ResourceScopeResult>({ queryKey: browserResourceKey, exact: true })
+			: undefined;
+		return {
+			queryKey: browserQuery ? browserResourceKey : open
+				? ["palette-resources", ...browserResourceKey.slice(1)]
+				: ["palette-resources", "closed"],
+			queryFn: () => fetchResourcePage(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey),
+			enabled: open && sourceReady && gitOpsDetectionReady && fetchKeys.length > 0,
+			staleTime: 30_000,
+			gcTime: browserQuery?.gcTime ?? 0,
+			meta: finiteReadMeta(),
+		};
+	});
 	const argoSearchResources = $derived(
 		buildArgoSearchResources(
 			argoAppsQuery.data ?? [],

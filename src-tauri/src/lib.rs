@@ -94,54 +94,112 @@ pub fn run() {
                 use tauri::Manager;
                 use webkit2gtk::{glib::translate::ToGlibPtr, WebViewExt};
 
-                extern "C" {
-                    fn webkit_settings_get_all_features() -> *mut c_void;
-                    fn webkit_feature_list_get_length(list: *mut c_void) -> usize;
-                    fn webkit_feature_list_get(list: *mut c_void, index: usize) -> *mut c_void;
-                    fn webkit_feature_get_identifier(feature: *mut c_void) -> *const c_char;
-                    fn webkit_settings_set_feature_enabled(
-                        settings: *mut webkit2gtk::ffi::WebKitSettings,
-                        feature: *mut c_void,
-                        enabled: webkit2gtk::glib::ffi::gboolean,
-                    );
-                    fn webkit_feature_list_unref(list: *mut c_void);
-                }
-
                 if let Some(window) = app.get_webview_window("main") {
                     // WebKit otherwise renders near 60 fps on high-refresh monitors.
-                    let _ = window.with_webview(|webview| {
-                        let Some(settings) = webview.inner().settings() else {
-                            return;
-                        };
-                        // SAFETY: with_webview runs on the GTK thread; settings stays alive.
-                        // The owned list keeps its borrowed features and NUL-terminated identifiers
-                        // alive until unref; null pointers are checked before use.
-                        unsafe {
-                            let list = webkit_settings_get_all_features();
-                            if list.is_null() {
+                    let _ =
+                        window.with_webview(|webview| {
+                            let Some(settings) = webview.inner().settings() else {
+                                return;
+                            };
+                            // SAFETY: RTLD_DEFAULT searches loaded libraries; all symbol names
+                            // are static NUL-terminated strings. Older WebKit returns null.
+                            let symbols = unsafe {
+                                [
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_settings_get_all_features".as_ptr(),
+                                    ),
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_feature_list_get_length".as_ptr(),
+                                    ),
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_feature_list_get".as_ptr(),
+                                    ),
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_feature_get_identifier".as_ptr(),
+                                    ),
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_settings_set_feature_enabled".as_ptr(),
+                                    ),
+                                    libc::dlsym(
+                                        libc::RTLD_DEFAULT,
+                                        c"webkit_feature_list_unref".as_ptr(),
+                                    ),
+                                ]
+                            };
+                            if symbols.iter().any(|symbol| symbol.is_null()) {
                                 return;
                             }
-                            for index in 0..webkit_feature_list_get_length(list) {
-                                let feature = webkit_feature_list_get(list, index);
-                                if feature.is_null() {
-                                    continue;
+                            // SAFETY: all six symbols are non-null WebKit C functions with
+                            // these ABI signatures, and the loaded library stays resident.
+                            let (
+                                get_all_features,
+                                get_length,
+                                get_feature,
+                                get_identifier,
+                                set_enabled,
+                                unref,
+                            ) = unsafe {
+                                (
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn() -> *mut c_void,
+                                    >(symbols[0]),
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn(*mut c_void) -> usize,
+                                    >(symbols[1]),
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn(*mut c_void, usize) -> *mut c_void,
+                                    >(symbols[2]),
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn(*mut c_void) -> *const c_char,
+                                    >(symbols[3]),
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn(
+                                            *mut webkit2gtk::ffi::WebKitSettings,
+                                            *mut c_void,
+                                            webkit2gtk::glib::ffi::gboolean,
+                                        ),
+                                    >(symbols[4]),
+                                    std::mem::transmute::<
+                                        *mut c_void,
+                                        unsafe extern "C" fn(*mut c_void),
+                                    >(symbols[5]),
+                                )
+                            };
+                            // SAFETY: with_webview runs on the GTK thread; settings stays alive.
+                            // The owned list keeps its borrowed features and NUL-terminated identifiers
+                            // alive until unref; null pointers are checked before use.
+                            unsafe {
+                                let list = get_all_features();
+                                if list.is_null() {
+                                    return;
                                 }
-                                let identifier = webkit_feature_get_identifier(feature);
-                                if !identifier.is_null()
-                                    && CStr::from_ptr(identifier)
-                                        == c"PreferPageRenderingUpdatesNear60FPS"
-                                {
-                                    webkit_settings_set_feature_enabled(
-                                        settings.to_glib_none().0,
-                                        feature,
-                                        0,
-                                    );
-                                    break;
+                                for index in 0..get_length(list) {
+                                    let feature = get_feature(list, index);
+                                    if feature.is_null() {
+                                        continue;
+                                    }
+                                    let identifier = get_identifier(feature);
+                                    if !identifier.is_null()
+                                        && CStr::from_ptr(identifier)
+                                            == c"PreferPageRenderingUpdatesNear60FPS"
+                                    {
+                                        set_enabled(settings.to_glib_none().0, feature, 0);
+                                        break;
+                                    }
                                 }
+                                unref(list);
                             }
-                            webkit_feature_list_unref(list);
-                        }
-                    });
+                        });
                 }
             }
             Ok(())

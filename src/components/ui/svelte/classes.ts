@@ -162,11 +162,12 @@ export const tabsListVariants = cva(
 	},
 );
 
-export type CardElevation = "flat" | "raised";
+export type CardElevation = "flat" | "raised" | "overlay";
 
 /**
  * Card surface + depth. Replaces the old ring-1 outline with a real border + soft shadow.
- * `flat` = resting surface; `raised` = hoverable/emphasized (cards in lists).
+ * `flat` = resting surface; `raised` = hoverable/emphasized (cards in lists); `overlay` =
+ * floating surface (popovers, command palette) with strong depth + blur.
  */
 export const cardVariants = cva(
 	"group/card flex flex-col gap-4 overflow-hidden rounded-lg bg-surface-1 py-4 text-xs/relaxed text-card-foreground border border-border has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg transition-shadow duration-150",
@@ -175,6 +176,8 @@ export const cardVariants = cva(
 			elevation: {
 				flat: "shadow-none",
 				raised: "shadow-sm hover:shadow-md hover:border-primary/30",
+				overlay:
+					"shadow-xl border-border/60 bg-surface-2 backdrop-blur-2xl backdrop-saturate-150 z-popover",
 			},
 		},
 		defaultVariants: {
