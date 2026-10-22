@@ -33,6 +33,7 @@ export default defineConfig(({ command }) => {
 				"@codemirror/state",
 				"@codemirror/view",
 				"@lezer/highlight",
+				"@tanstack/svelte-virtual",
 				"diff",
 				"yaml",
 			],
