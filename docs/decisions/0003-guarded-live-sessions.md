@@ -42,3 +42,15 @@ When the desktop app uses a remote `kubecove-server` ([ADR 0020](0020-headless-s
 - A tunnelled forward stops on explicit stop, session failure, scope changes as above, desktop app exit, explicit session closure, or expiry of that session's server reconnect grace window. Under ADR 0020's concurrent-session amendment of 2026-10-11, another sign-in opens an independent session and does not transfer or stop existing forwards.
 
 Browser clients cannot open local listeners, so their forwards keep listening on the server's `127.0.0.1`, and the UI labels them as remote.
+
+## Amendment 2026-10-22: one scope rule for every forward
+
+Status: Proposed.
+
+The amendment of 2026-10-09 says tunnelled forwards stop on scope changes, but it does not say which kubeconfig source a tunnelled forward belongs to or which side stops it. The same rule now applies to every port-forward, whether its listener runs in the backend that resolves it or on the laptop:
+
+- Each forward records its cluster context and the kubeconfig source key of the backend that validated and resolved its target. A tunnelled forward records the server's source key, which the server returns when it registers the forward.
+- When live-session retention is not enabled and the workspace scope changes, a forward keeps running only if its cluster context is one of the workspace's contexts and its source key equals the workspace's source key. A forward without a recorded source key is outside every scope.
+- In desktop remote mode, the desktop app applies the rule to its tunnelled forwards. It closes their laptop listeners, unregisters them on the server, and then sends the same cleanup to the server for its sessions. The cleanup result counts tunnelled forwards with the other stopped forwards.
+- Pod exec sessions ([ADR 0005](0005-guarded-pod-exec-sessions.md)) keep their own lifecycle and apply the same scope rule.
+- The private Argo CD Service tunnel ([ADR 0017](0017-private-argocd-service-tunnels.md)) is not a port-forward session. Its Argo CD connection owns it, and live-session cleanup does not stop it.
