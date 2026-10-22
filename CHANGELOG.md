@@ -3,6 +3,14 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.8 - 2026-10-22
+
+Includes the changes from 0.12.7, which was tagged but not published.
+
+### Fixed
+
+- Build the full headless server container image with its embedded browser UI again (#584).
+
 ## 0.12.7 - 2026-10-22
 
 Includes the changes from 0.12.6, which was tagged but not published.
