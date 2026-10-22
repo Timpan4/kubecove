@@ -1,3 +1,4 @@
+import { watchKeySignature } from "./resource-watch";
 import {
 	type AnyKind,
 	CLUSTER_SCOPED_KINDS,
@@ -113,10 +114,6 @@ function watchKind(kind: string | DiscoveredResourceKind): WatchResourceKind {
 	if (!isCustomResourceKind(kind)) return { kind };
 	const { group, version, apiVersion, plural, namespaced } = kind;
 	return { kind: kind.kind, group, version, apiVersion, plural, namespaced };
-}
-
-function watchKeySignature({ resourceKind, namespace }: WatchResourceKey): string {
-	return [resourceKind.kind, resourceKind.apiVersion ?? "", resourceKind.plural ?? "", namespace ?? ""].join(":");
 }
 
 /** The watch keys, one per kind and namespace; a later duplicate replaces an earlier one. */
