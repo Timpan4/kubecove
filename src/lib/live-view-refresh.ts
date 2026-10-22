@@ -1,7 +1,12 @@
 import type { QueryClient } from "@tanstack/svelte-query";
 import type { QueryMatch } from "./queryKeys";
 import { refreshCurrentView } from "./resource-refresh";
-import { observeResourceScope, type ResourceWatchState } from "./resource-watch";
+import {
+	observeResourceScope,
+	type ResourceScopeHandlers,
+	type ResourceScopeObserver,
+	type ResourceWatchState,
+} from "./resource-watch";
 import type { TauriClient } from "./tauri-runtime";
 import type { createStreamChannel } from "./tauri-streams";
 import type { WatchResourceKey } from "./types";
@@ -97,16 +102,21 @@ export function createWatchRefreshThrottle(refresh: () => Promise<void>) {
 	};
 }
 
-/** Throttled refresh of the reads `match` selects. A change seen while one of them runs refreshes them again once it ends. */
-export function createLiveReadRefresh(queryClient: QueryClient, match: QueryMatch, beforeRefresh?: () => void) {
-	const filter = { predicate: match };
+/** Throttled refresh of the reads `match()` selects, read at each refresh. A change seen while one of them runs refreshes them again once it ends. */
+function createReadRefresh(queryClient: QueryClient, match: () => QueryMatch, beforeRefresh?: () => void) {
 	const throttle = createWatchRefreshThrottle(async () => {
+		const filter = { predicate: match() };
 		const alreadyFetching = queryClient.isFetching({ ...filter, type: "active" }) > 0;
 		beforeRefresh?.();
 		await queryClient.invalidateQueries(filter, { cancelRefetch: false });
 		if (alreadyFetching) throttle.notify();
 	});
 	return throttle;
+}
+
+/** Throttled refresh of the reads `match` selects. A change seen while one of them runs refreshes them again once it ends. */
+export function createLiveReadRefresh(queryClient: QueryClient, match: QueryMatch, beforeRefresh?: () => void) {
+	return createReadRefresh(queryClient, () => match, beforeRefresh);
 }
 
 // A key that names only an apiVersion matches a discovered kind that also names its group.
@@ -123,6 +133,33 @@ function watchGroup(key: WatchResourceKey): string {
 	return group ?? (apiVersion?.includes("/") ? apiVersion.slice(0, apiVersion.indexOf("/")) : "");
 }
 
+/** A declared read's refresh. The throttle outlives read-set changes, so a pending refresh still runs for what the view shows now. */
+function createReadSlot(queryClient: QueryClient, initial: LiveRead) {
+	let read = initial;
+	const throttle = createReadRefresh(queryClient, () => read.match);
+	return {
+		get read() {
+			return read;
+		},
+		set(next: LiveRead) {
+			read = next;
+		},
+		notify() {
+			if (read.refetch === false) void queryClient.invalidateQueries({ predicate: read.match, refetchType: "none" });
+			else throttle.notify();
+		},
+		dispose: () => throttle.dispose(),
+	};
+}
+
+export interface LiveViewBinding {
+	refresh(): Promise<string[]>;
+	/** Applies a changed view with the same owner. Watch keys the view keeps keep their streams. */
+	update(view: LiveView): void;
+	stop(): void;
+}
+
+/** Binds a view's watches and refresh paths. The owner (cluster context and kubeconfig source) must not change; bind again for a new owner. */
 export function bindLiveView({
 	client,
 	queryClient,
@@ -135,52 +172,76 @@ export function bindLiveView({
 	view: LiveView;
 	onState: (state: LiveViewState) => void;
 	openChannel?: typeof createStreamChannel;
-}) {
+}): LiveViewBinding {
+	let current = view;
+	let stopped = false;
+	let observer: ResourceScopeObserver | null = null;
+	// Slots are kept by declared position. A changed read set re-points each slot.
+	const slots: ReturnType<typeof createReadSlot>[] = [];
 	const keptFreshBy = (read: LiveRead, key: WatchResourceKey) =>
 		read.keys.some((candidate) => watchKeyMatches(candidate, key));
-	const reads = view.reads.map((read) => ({
-		read,
-		refresh: read.refetch === false
-			? { notify: () => void queryClient.invalidateQueries({ predicate: read.match, refetchType: "none" }), dispose() {} }
-			: createLiveReadRefresh(queryClient, read.match),
-	}));
-	const refetched = view.reads.filter((read) => read.refetch !== false);
-	const viewReads = view.refreshScope === "view" ? undefined : refetched.map((read) => read.match);
+	const refetched = () => current.reads.filter((read) => read.refetch !== false);
+	const viewReads = () => (current.refreshScope === "view" ? undefined : refetched().map((read) => read.match));
 	const reread = (keys: readonly WatchResourceKey[], matches: readonly QueryMatch[] | undefined, cancelRefetch: boolean) =>
 		refreshCurrentView({
 			client,
 			queryClient,
-			clusterContext: view.clusterContext,
-			kubeconfigEnvVar: view.kubeconfigSourceKey,
+			clusterContext: current.clusterContext,
+			kubeconfigEnvVar: current.kubeconfigSourceKey,
 			keys: [...keys],
-			namespaces: [...view.namespaces],
+			namespaces: [...current.namespaces],
 			reads: matches,
 			cancelRefetch,
 		});
-	let stopWatches = () => {};
-	if (view.keys.length === 0) onState(IDLE_LIVE_VIEW);
-	else stopWatches = observeResourceScope({
-		client,
-		clusterContext: view.clusterContext,
-		keys: [...view.keys],
-		kubeconfigEnvVar: view.kubeconfigSourceKey,
-		openChannel,
+	// One handler set for the binding's lifetime; it reads the current view when it runs.
+	const handlers: ResourceScopeHandlers = {
 		onState: (state) => onState({ ...state, reloadError: state.reloadError ?? null, warnings: state.warnings ?? [] }),
 		onChange: (_event, key) => {
-			for (const { read, refresh } of reads) if (keptFreshBy(read, key)) refresh.notify();
+			for (const slot of slots) if (keptFreshBy(slot.read, key)) slot.notify();
 		},
 		// Automatic recovery waits for running reads. Permission recovery rereads only
 		// what the denied kinds keep fresh; a lost watch rereads the whole scope.
 		reload: (denied) =>
 			denied
-				? reread(denied, refetched.filter((read) => denied.some((key) => keptFreshBy(read, key))).map((read) => read.match), false)
-				: reread(view.keys, viewReads, false),
-	});
+				? reread(denied, refetched().filter((read) => denied.some((key) => keptFreshBy(read, key))).map((read) => read.match), false)
+				: reread(current.keys, viewReads(), false),
+	};
+	function apply(next: LiveView) {
+		current = next;
+		next.reads.forEach((read, index) => {
+			const slot = slots[index];
+			if (slot) slot.set(read);
+			else slots.push(createReadSlot(queryClient, read));
+		});
+		for (const slot of slots.splice(next.reads.length)) slot.dispose();
+		if (next.keys.length === 0) {
+			observer?.stop();
+			observer = null;
+			onState(IDLE_LIVE_VIEW);
+		} else if (observer) {
+			observer.update([...next.keys], handlers);
+		} else {
+			observer = observeResourceScope({
+				client,
+				clusterContext: next.clusterContext,
+				keys: [...next.keys],
+				kubeconfigEnvVar: next.kubeconfigSourceKey,
+				openChannel,
+				...handlers,
+			});
+		}
+	}
+	apply(view);
 	return {
-		refresh: () => reread(view.keys, viewReads, true),
+		refresh: () => reread(current.keys, viewReads(), true),
+		update(next) {
+			if (!stopped) apply(next);
+		},
 		stop() {
-			stopWatches();
-			for (const { refresh } of reads) refresh.dispose();
+			stopped = true;
+			observer?.stop();
+			observer = null;
+			for (const slot of slots.splice(0)) slot.dispose();
 		},
 	};
 }

@@ -134,6 +134,23 @@ Run smallest checks matching work:
 
 If a check cannot run, record exact blocker and remaining unverified behavior.
 
+## Interaction recordings
+
+Settings → Diagnostics → Record interactions measures each click, drag, key, and
+scroll in the running webview: input-to-paint time, dropped frames against the
+measured refresh interval, and DOM nodes added, removed, and changed, grouped by
+source. Dev builds group by Svelte file and line. Release builds have no source
+locations and fall back to `data-testid` attributes and ARIA roles, which the app
+sets on few elements, so release attribution is coarse; profile in a dev build to
+find the component. Enable diagnostics as well to include Tauri command
+timings. Entries stay in memory, and Copy outputs JSON lines.
+
+Under `bun run tauri dev`, the Vite server also appends each entry to
+`e2e/artifacts/dev-interactions/<server-start>.jsonl`. `bun run perf:interactions
+[file]` summarizes the newest recording, or a pasted copy. Measure on the target
+webview: Chromium timings do not predict WebKitGTK behavior. Recording adds
+overhead, so compare runs only with recording on in both.
+
 ## Startup and memory baselines
 
 `bun run build` writes `.e2e/reports/frontend-bundle.json` outside the shipped
