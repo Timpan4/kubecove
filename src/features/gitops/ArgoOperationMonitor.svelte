@@ -26,7 +26,7 @@
 		const source = context.kubeconfigSourceKey;
 		const keys = [{ resourceKind: { kind: "Application", apiVersion: "argoproj.io/v1alpha1", plural: "applications", namespaced: true } }];
 		const freshness = createArgoListFreshness((queryKey) => void queryClient.invalidateQueries({ queryKey }), source);
-		const stop = observeResourceScope({
+		const { stop } = observeResourceScope({
 			client, clusterContext, keys, kubeconfigEnvVar: source,
 			onState: () => {},
 			onChange: freshness.handle,
