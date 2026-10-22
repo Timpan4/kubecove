@@ -1,0 +1,77 @@
+# ADR 0025: Single Command Contract
+
+## Status
+
+Proposed 2026-10-22.
+
+## Context
+
+[ADR 0020](0020-headless-server-mode.md) made the backend command surface reachable through two transports: Tauri IPC in the desktop app and HTTP in `kubecove-server`. Each command's name, argument keys, argument types, managed state and transport class are restated in up to four hand-synchronized places:
+
+- the desktop `tauri::generate_handler!` list in `src-tauri/src/lib.rs`;
+- the server `command_table!` entries and `DESKTOP_ONLY` list in `src-tauri/server/src/dispatch/`, which repeat each camelCase key, Rust type and `State` wiring;
+- the desktop remote client, which intercepts three port-forward commands by string in `src-tauri/crates/host/src/remote/tunnels.rs`;
+- the typed frontend wrappers in `src/lib/tauri.ts`.
+
+Tauri derives a desktop argument key from the Rust parameter name, while the server reads the key it was given and treats a missing key as null. A misspelled optional key in the server table therefore decodes as `None` without an error. The guards are a test that parses `lib.rs` as text and a camelCase test that covers one command.
+
+Six name-only operation commands remain registered in both transports: `preview_scale_workload`, `scale_workload`, `preview_rollout_restart`, `rollout_restart`, `preview_delete_resource` and `delete_resource`. No frontend code calls them outside their unused wrappers and browser dev mocks. `delete_resource` deletes by name with default delete parameters, without the UID and resourceVersion preconditions that [ADR 0024](0024-resource-actions-review.md) requires for exact deletion.
+
+## Decision
+
+### Remove the legacy operation commands
+
+The six commands above, their TypeScript wrappers, dev mocks, request models and tests are removed. Scale, restart and delete go only through the ADR 0024 Actions family (`get_resource_action_state`, `preview_resource_action`, `execute_resource_action`), which keeps its exact-target and precondition rules. This removal happens before the contract change so the declaration does not inherit them.
+
+### One declaration per command
+
+`command_contract!` in `kubecove-models` declares every command once. An entry states:
+
+- whether the command runs synchronously or asynchronously, which preserves Tauri's main-thread handling for synchronous commands;
+- the command name, which is also the Rust command function in the shared `commands` API;
+- its wire arguments in call order, each as the exact camelCase key the frontend sends and its Rust type;
+- host-supplied parameters after the wire arguments: managed `State<T>`, the stream `Channel` read from the `channel` key, or the desktop `App` handle.
+
+Entries are grouped by transport class:
+
+- `both`: served by Tauri IPC and server HTTP;
+- `remote_intercepted`: served by both, and handled on the laptop by the desktop remote client instead of being forwarded to the server;
+- `desktop_only`: served by Tauri IPC only; the server rejects them as requiring the desktop client.
+
+Each consumer expands the declaration with its own adapter macro:
+
+- The desktop composition root generates one `#[tauri::command]` per entry and the `generate_handler!` list from the same entries.
+- The server generates its HTTP dispatch for `both` and `remote_intercepted` entries and its desktop-only rejection from the `desktop_only` names.
+- The desktop remote client generates its interception from the `remote_intercepted` entries. Each intercepted command calls a remote handler method with the same name, so a newly declared intercepted command fails to compile until the remote client handles it.
+
+Tauri IPC and server HTTP are two real adapters for this seam. The remote interception is an override inside the desktop remote client, not a third transport.
+
+### Shared argument decoding
+
+Every adapter decodes arguments with the same `CommandArgs` type in `kubecove-models`, reading the key written in the declaration. A payload must be a JSON object. A missing key reads as null, so an optional argument becomes `None`; a missing or invalid required argument fails with a validation `AppError` that names the key. Both adapters serialize results with `serde_json` and return the same `AppError` shape.
+
+Tauri no longer derives argument keys from Rust parameter names. Generated IPC commands receive the raw request and decode it with `CommandArgs`, so the declared key is the only spelling in either transport. A key mismatch between transports cannot be expressed. Command functions keep their names, take wire arguments before host-supplied parameters, and return `Result<T, AppError>`. The frontend keeps its command names and camelCase argument keys.
+
+Malformed IPC arguments now produce the validation `AppError` that the server already returned, instead of Tauri's string error. Correct frontend calls are unaffected.
+
+### ADR 0020 explicit table and test
+
+ADR 0020 requires the server to dispatch through an explicit command table and a test that classifies every desktop command. The declaration is now that explicit table, and its transport groups are the classification. Neither transport can serve a command that is not declared. Tests check the declaration and both adapters:
+
+- every declared key uses the lowerCamel form the frontend sends, and command names are unique;
+- every declared command is run through the HTTP adapter's argument decoding and the IPC adapter's argument decoding, which reject a non-object payload with a validation error;
+- desktop-only commands and unknown names are rejected over HTTP before any argument is read.
+
+These replace the test that parsed `lib.rs` as text and the single-command camelCase test.
+
+### Scope classification
+
+This decision does not classify commands by the operator, user or client-session scope proposed in [ADR 0023](0023-multi-user-sessions-and-persistence.md), which is still Proposed. Each entry already names its host-supplied state, and an entry can gain a scope field later without another list.
+
+## Consequences
+
+Adding a command takes one declaration entry, the Rust command function and its typed frontend wrapper. The desktop handler list, server dispatch, desktop-only rejection and remote interception follow from the declaration.
+
+The frontend wrappers in `src/lib/tauri.ts` stay hand-written. This decision does not generate TypeScript, so a frontend key that differs from the declaration still needs typecheck, frontend tests or E2E coverage to catch.
+
+Domain crates no longer carry `#[tauri::command]` attributes. They still use the `runtime` `State` and `Channel` types, so desktop and server builds keep their existing feature split.
