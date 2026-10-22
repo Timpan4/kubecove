@@ -11,7 +11,6 @@ use kubecove_models::{AppError, AppErrorKind};
 use serde_json::{value::RawValue, Value};
 use std::sync::Arc;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn remote_connect(
     server_url: String,
     token: String,
@@ -26,7 +25,6 @@ pub async fn remote_connect(
     Ok(summary)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn remote_disconnect(store: State<'_, RemoteConnectionStore>) -> Result<(), AppError> {
     let connection = store.current.write().await.take();
     if let Some(connection) = connection {
@@ -35,7 +33,6 @@ pub async fn remote_disconnect(store: State<'_, RemoteConnectionStore>) -> Resul
     Ok(())
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn remote_connection_status(
     store: State<'_, RemoteConnectionStore>,
 ) -> Result<Option<RemoteConnectionSummary>, AppError> {
@@ -46,7 +43,6 @@ pub async fn remote_connection_status(
     }))
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn remote_invoke(
     command: String,
     args: Value,
@@ -55,8 +51,8 @@ pub async fn remote_invoke(
     invoke_remote(&current_connection(&store).await?, &command, args).await
 }
 
-/// Runs `command` on the remote server, except the port-forward and
-/// live-session cleanup commands, which also act on the laptop's tunnels.
+/// Runs `command` on the remote server, except `remote_intercepted` commands,
+/// which the laptop's tunnel registry handles (ADR 0025).
 async fn invoke_remote(
     connection: &Arc<client::RemoteConnection>,
     command: &str,
@@ -64,7 +60,7 @@ async fn invoke_remote(
 ) -> Result<Value, AppError> {
     if let Some(value) = connection
         .tunnels
-        .invoke(Arc::clone(connection), command, args.clone())
+        .invoke(connection, command, &args)
         .await?
     {
         return Ok(value);
@@ -72,7 +68,6 @@ async fn invoke_remote(
     connection.invoke(command, args).await
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn remote_subscribe_channel(
     channel_id: u64,
     channel: Channel<Box<RawValue>>,
@@ -83,7 +78,6 @@ pub async fn remote_subscribe_channel(
         .subscribe(channel_id, channel)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn remote_unsubscribe_channel(
     channel_id: u64,
     store: State<'_, RemoteConnectionStore>,

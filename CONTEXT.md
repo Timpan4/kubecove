@@ -11,6 +11,9 @@ _Avoid_ calling this surface Discovered.
 **Resource identity** means the cluster, apiVersion, kind, namespace, and name of one listed Kubernetes resource. A source that omits apiVersion matches on the remaining fields only when no exact match exists.
 _Avoid_ treating resources from different API groups with the same kind and name as one resource when both identities are known.
 
+**Resource summary** means the resource identity, status, readiness, restarts, health, and GitOps ownership evidence that KubeCove derives from one Kubernetes object. A list row, the details panel, and a topology node show the same summary for the same object and add only their own context around it.
+_Avoid_ giving one surface its own status, readiness, or health rule for a kind.
+
 **Incident signal** means a read-only resource health, restart, or warning-event cue surfaced for triage.
 _Avoid_ using it for durable tickets, alerts, or response lifecycle state.
 
@@ -67,3 +70,9 @@ _Avoid_ calling it a selected-resource YAML apply diff, which compares an edited
 
 **Helm Reconciliation** means comparison of decoded Helm release intent with live Kubernetes resource evidence.
 _Avoid_ using it for Helm install, upgrade, rollback, uninstall, or CLI execution.
+
+**Command contract** means the single declaration of every backend command's name, camelCase wire arguments, host-supplied state and transport class. The Tauri IPC handlers, server HTTP dispatch and desktop remote interception are generated from it.
+_Avoid_ keeping a separate command list for one transport.
+
+**Finite-read envelope** means the backend wrapper that registers one finite read for request cancellation and records its timing, log lines and diagnostics outcome.
+_Avoid_ using it for confirmed writes or live sessions, which keep their own lifecycles under ADR 0009.

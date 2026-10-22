@@ -1,3 +1,4 @@
+use super::super::builtin_summary::builtin_summary;
 use super::*;
 use chrono::{TimeZone, Utc};
 use serde_json::{json, Value};
@@ -26,7 +27,7 @@ fn fixture(kind: &str, api_version: &str) -> Value {
 fn projected_summaries_equal_full_decode_with_missing_null_and_populated_fields() {
     let now = Utc.with_ymd_and_hms(2026, 10, 21, 0, 0, 0).unwrap();
     macro_rules! compare {
-        ($kind:literal, $version:literal, $full:ty, $projection:ty, $summary:path) => {
+        ($kind:literal, $version:literal, $full:ty, $projection:ty) => {
             for variant in 0..4 {
                 let mut value = fixture($kind, $version);
                 if variant == 1 {
@@ -45,8 +46,8 @@ fn projected_summaries_equal_full_decode_with_missing_null_and_populated_fields(
                 let projected: $projection = serde_json::from_value(value).unwrap();
                 let projected = projected.into_resource();
                 assert_eq!(
-                    serde_json::to_vec(&$summary("context", &full, now)).unwrap(),
-                    serde_json::to_vec(&$summary("context", &projected, now)).unwrap(),
+                    serde_json::to_vec(&builtin_summary("context", &full, now)).unwrap(),
+                    serde_json::to_vec(&builtin_summary("context", &projected, now)).unwrap(),
                     "{} variant {}",
                     $kind,
                     variant
@@ -58,69 +59,10 @@ fn projected_summaries_equal_full_decode_with_missing_null_and_populated_fields(
             }
         };
     }
-    compare!(
-        "Pod",
-        "v1",
-        Pod,
-        PodProjection,
-        super::super::summary_core::pod_resource_summary_at
-    );
-    compare!(
-        "Deployment",
-        "apps/v1",
-        Deployment,
-        DeploymentProjection,
-        super::super::summary_workloads::deployment_resource_summary_at
-    );
-    compare!(
-        "ReplicaSet",
-        "apps/v1",
-        ReplicaSet,
-        ReplicaSetProjection,
-        super::super::summary_workloads::replicaset_resource_summary_at
-    );
-    compare!(
-        "Job",
-        "batch/v1",
-        Job,
-        JobProjection,
-        super::super::summary_workloads::job_resource_summary_at
-    );
-}
-
-#[test]
-fn metadata_only_secret_and_configmap_summaries_preserve_output_without_data() {
-    use super::super::summary_core::{
-        age_from_metadata_at, config_map_resource_summary_at, secret_resource_summary_at,
-    };
-    use crate::commands::helpers::base_resource_summary;
-    use k8s_openapi::api::core::v1::{ConfigMap, Secret};
-    let now = Utc.with_ymd_and_hms(2026, 10, 21, 0, 0, 0).unwrap();
-    let mut value = fixture("Secret", "v1");
-    value["data"] = json!({"password":"c2VjcmV0"});
-    let secret: Secret = serde_json::from_value(value.clone()).unwrap();
-    let summary = base_resource_summary(
-        "Secret",
-        "context",
-        &secret.metadata,
-        age_from_metadata_at(&secret.metadata, now),
-    );
-    assert_eq!(
-        serde_json::to_vec(&secret_resource_summary_at("context", &secret, now)).unwrap(),
-        serde_json::to_vec(&summary).unwrap()
-    );
-    value["kind"] = json!("ConfigMap");
-    let config: ConfigMap = serde_json::from_value(value).unwrap();
-    let summary = base_resource_summary(
-        "ConfigMap",
-        "context",
-        &config.metadata,
-        age_from_metadata_at(&config.metadata, now),
-    );
-    assert_eq!(
-        serde_json::to_vec(&config_map_resource_summary_at("context", &config, now)).unwrap(),
-        serde_json::to_vec(&summary).unwrap()
-    );
+    compare!("Pod", "v1", Pod, PodProjection);
+    compare!("Deployment", "apps/v1", Deployment, DeploymentProjection);
+    compare!("ReplicaSet", "apps/v1", ReplicaSet, ReplicaSetProjection);
+    compare!("Job", "batch/v1", Job, JobProjection);
 }
 
 #[test]

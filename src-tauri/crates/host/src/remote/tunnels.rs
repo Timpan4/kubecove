@@ -4,12 +4,15 @@ use kubecove_live::commands::{
     LiveSessionScope,
 };
 use kubecove_models::{
-    AppError, AppErrorKind, LiveSessionCleanupRequest, LiveSessionCleanupResult,
+    AppError, AppErrorKind, CommandArgs, LiveSessionCleanupRequest, LiveSessionCleanupResult,
     PortForwardRequest, PortForwardSessionSummary,
 };
 use serde::Deserialize;
-use serde_json::json;
-use std::{future::Future, sync::Arc};
+use serde_json::{json, Value};
+use std::{
+    future::{ready, Future, Ready},
+    sync::Arc,
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::TcpStream,
@@ -37,9 +40,9 @@ struct TunnelRegistration {
 }
 
 impl RemoteTunnelRegistry {
-    pub async fn start(
+    pub async fn start_pod_port_forward(
         &self,
-        connection: Arc<RemoteConnection>,
+        connection: &Arc<RemoteConnection>,
         mut request: PortForwardRequest,
     ) -> Result<PortForwardSessionSummary, AppError> {
         let validated = validate_target(&request)?;
@@ -67,7 +70,8 @@ impl RemoteTunnelRegistry {
             registration.kubeconfig_source_label,
         );
 
-        let relay_connection = Arc::clone(&connection);
+
+        let relay_connection = Arc::clone(connection);
         let relay_forward_id = forward_id.clone();
         let started = self
             .forwards
@@ -86,43 +90,42 @@ impl RemoteTunnelRegistry {
         started
     }
 
-    pub async fn stop(
+    pub async fn stop_port_forward(
         &self,
-        connection: &RemoteConnection,
-        forward_id: &str,
+        connection: &Arc<RemoteConnection>,
+        forward_id: String,
     ) -> Result<bool, AppError> {
-        if !self.forwards.stop(forward_id) {
+        if !self.forwards.stop(&forward_id) {
             return Ok(false);
         }
         connection
             .send_control(
-                unregister_control(forward_id),
+                unregister_control(&forward_id),
                 format!("tunnel_unregistered:{forward_id}"),
             )
             .await?;
         Ok(true)
     }
 
-    pub fn list(&self) -> Vec<PortForwardSessionSummary> {
+    pub fn list_port_forwards(
+        &self,
+        _connection: &Arc<RemoteConnection>,
+    ) -> Ready<Result<Vec<PortForwardSessionSummary>, AppError>> {
+        ready(Ok(self.list()))
+    }
+
+    pub(super) fn list(&self) -> Vec<PortForwardSessionSummary> {
         self.forwards.list()
     }
 
     /// Applies a workspace scope change to the laptop's forwards, then sends
     /// the same cleanup to the server for the sessions it runs (ADR 0003).
-    async fn stop_outside_scope(
+    pub async fn stop_live_sessions_outside_scope(
         &self,
-        connection: &RemoteConnection,
-        args: serde_json::Value,
+        connection: &Arc<RemoteConnection>,
+        request: LiveSessionCleanupRequest,
     ) -> Result<LiveSessionCleanupResult, AppError> {
-        let request: LiveSessionCleanupRequest =
-            serde_json::from_value(args.get("request").cloned().unwrap_or_else(|| args.clone()))
-                .map_err(|error| {
-                    AppError::new(
-                        "live session cleanup request is invalid",
-                        AppErrorKind::Validation,
-                    )
-                    .with_source(error)
-                })?;
+        let server_args = json!({ "request": &request });
         let stopped = self
             .forwards
             .stop_outside_scope(&LiveSessionScope::new(request)?);
@@ -132,7 +135,7 @@ impl RemoteTunnelRegistry {
                 .await;
         }
         let server = connection
-            .invoke("stop_live_sessions_outside_scope", args)
+            .invoke("stop_live_sessions_outside_scope", server_args)
             .await?;
         let mut result: LiveSessionCleanupResult =
             serde_json::from_value(server).map_err(|error| {
@@ -157,71 +160,56 @@ impl RemoteTunnelRegistry {
             }
         }
     }
-
-    pub async fn invoke(
-        &self,
-        connection: Arc<RemoteConnection>,
-        command: &str,
-        args: serde_json::Value,
-    ) -> Result<Option<serde_json::Value>, AppError> {
-        match command {
-            "start_pod_port_forward" => {
-                let request: PortForwardRequest = serde_json::from_value(
-                    args.get("request").cloned().unwrap_or(args),
-                )
-                .map_err(|error| {
-                    AppError::new("port-forward request is invalid", AppErrorKind::Validation)
-                        .with_source(error)
-                })?;
-                let summary = self.start(connection, request).await?;
-                serde_json::to_value(summary).map(Some).map_err(|error| {
-                    AppError::new(
-                        "port-forward summary could not be serialized",
-                        AppErrorKind::Serialization,
-                    )
-                    .with_source(error)
-                })
-            }
-            "stop_port_forward" => {
-                let session_id = args
-                    .get("sessionId")
-                    .and_then(serde_json::Value::as_str)
-                    .ok_or_else(|| validation_error("port-forward session id is required"))?;
-                serde_json::to_value(self.stop(&connection, session_id).await?)
-                    .map(Some)
-                    .map_err(|error| {
-                        AppError::new(
-                            "port-forward result could not be serialized",
-                            AppErrorKind::Serialization,
-                        )
-                        .with_source(error)
-                    })
-            }
-            "list_port_forwards" => serde_json::to_value(self.list())
-                .map(Some)
-                .map_err(|error| {
-                    AppError::new(
-                        "port-forward list could not be serialized",
-                        AppErrorKind::Serialization,
-                    )
-                    .with_source(error)
-                }),
-            "stop_live_sessions_outside_scope" => {
-                let result = self.stop_outside_scope(&connection, args).await?;
-                serde_json::to_value(result).map(Some).map_err(|error| {
-                    AppError::new(
-                        "live session cleanup result could not be serialized",
-                        AppErrorKind::Serialization,
-                    )
-                    .with_source(error)
-                })
-            }
-            _ => Ok(None),
-        }
-    }
 }
 
-fn unregister_control(forward_id: &str) -> serde_json::Value {
+// The desktop remote client handles each `remote_intercepted` command with the registry
+// method of the same name. The method decides what, if anything, it sends to the server.
+macro_rules! intercept {
+    (
+        $this:ident, $connection:ident, $command:ident, $payload:ident;
+        remote_intercepted $name:ident($($key:ident: $ty:ty),*)
+    ) => {
+        if $command == stringify!($name) {
+            #[allow(unused_variables)]
+            let args = CommandArgs::new($payload)?;
+            let result = $this
+                .$name($connection, $(args.get::<$ty>(stringify!($key))?),*)
+                .await?;
+            return serde_json::to_value(result).map(Some).map_err(|error| {
+                AppError::new(
+                    concat!(stringify!($name), " result could not be serialized"),
+                    AppErrorKind::Serialization,
+                )
+                .with_source(error)
+            });
+        }
+    };
+    ($this:ident, $connection:ident, $command:ident, $payload:ident; $other:ident $($ignored:tt)*) => {};
+}
+
+macro_rules! remote_intercept {
+    ($(
+        $transport:ident $mode:ident fn $name:ident($($key:ident: $ty:ty),* $(,)?)
+            $(with $($host:ident $(<$state:ty>)?),+)?;
+    )*) => {
+        impl RemoteTunnelRegistry {
+            /// Runs `command` on the laptop when it is remote-intercepted; `None` forwards it.
+            pub async fn invoke(
+                &self,
+                connection: &Arc<RemoteConnection>,
+                command: &str,
+                payload: &Value,
+            ) -> Result<Option<Value>, AppError> {
+                $(intercept!(self, connection, command, payload; $transport $name($($key: $ty),*));)*
+                Ok(None)
+            }
+        }
+    };
+}
+
+kubecove_models::command_contract!(remote_intercept);
+
+fn unregister_control(forward_id: &str) -> Value {
     json!({"type":"tunnel_unregister","forwardId":forward_id})
 }
 
@@ -300,9 +288,6 @@ where
 fn io_error(error: std::io::Error) -> AppError {
     AppError::new("remote tunnel I/O failed", AppErrorKind::Io).with_source(error)
 }
-fn validation_error(message: &str) -> AppError {
-    AppError::new(message, AppErrorKind::Validation)
-}
 
 #[cfg(test)]
 mod tests {
@@ -330,7 +315,7 @@ mod tests {
         .expect("fixture request");
         let forward = connection
             .tunnels
-            .start(Arc::clone(&connection), request.clone())
+            .start_pod_port_forward(&connection, request.clone())
             .await
             .expect("start laptop listener");
         let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, forward.local_port))
@@ -368,7 +353,7 @@ mod tests {
             request.pod_name = Some(pod_name.to_string());
             let forward = connection
                 .tunnels
-                .start(Arc::clone(&connection), request.clone())
+                .start_pod_port_forward(&connection, request.clone())
                 .await
                 .expect("start peer termination listener");
             let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, forward.local_port))

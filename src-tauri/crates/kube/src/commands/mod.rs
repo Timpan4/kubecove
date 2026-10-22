@@ -3,6 +3,7 @@ pub mod cancellation;
 mod contexts;
 pub mod diagnostics;
 pub mod dynamic_projection;
+mod finite_read;
 pub mod flux_catalog;
 pub mod helpers;
 pub mod kubeconfig;
@@ -17,6 +18,7 @@ pub use diagnostics::{
     get_backend_diagnostics, record_backend_cancelled, record_backend_error,
     record_backend_success, set_backend_diagnostics_enabled,
 };
+pub use finite_read::FiniteRead;
 pub use helpers::forwarded_bearer::enable_forwarded_bearer;
 pub use helpers::session_scope::SessionScope;
 #[cfg(feature = "desktop")]

@@ -67,7 +67,6 @@ use runner::start_pod_port_forward_in_registry;
 #[cfg(test)]
 use target::validate_request;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn start_pod_port_forward(
     request: PortForwardRequest,
     registry: State<'_, PortForwardRegistry>,
@@ -75,7 +74,6 @@ pub async fn start_pod_port_forward(
     start_pod_port_forward_in_registry(request, registry.inner()).await
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stop_port_forward(
     session_id: String,
     registry: State<'_, PortForwardRegistry>,
@@ -89,7 +87,6 @@ pub async fn stop_port_forward(
     Ok(registry.stop(session_id.trim()))
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_port_forwards(
     registry: State<'_, PortForwardRegistry>,
 ) -> Result<Vec<PortForwardSessionSummary>, AppError> {

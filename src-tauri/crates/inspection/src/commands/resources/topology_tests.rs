@@ -1,13 +1,12 @@
 use super::topology::{
-    build_resource_topology, input_from_metadata, node_from_input, topology_node_id,
-    TopologyInputResource, DEPLOYMENT_REVISION_LABEL,
+    build_resource_topology, node_from_input, topology_node_id, TopologyInputResource,
+    DEPLOYMENT_REVISION_LABEL,
 };
-use super::topology_collection::cluster_scoped_input_visible_in_scope;
+use super::topology_collection::{cluster_scoped_input_visible_in_scope, pod_input};
 use super::topology_network::{
     build_network_flow_topology, NetworkEndpointSlice, NetworkIngressBackend, NetworkService,
     NetworkTopologyInputs,
 };
-use crate::commands::helpers::update_resource_health;
 use crate::models::{
     GitOpsOwnerSummary, OwnerReferenceSummary, ResourceHealth, ResourceSummary, TopologyRelation,
 };
@@ -127,30 +126,7 @@ fn pod_fixture_input() -> TopologyInputResource {
         "../../../../../../tests/fixtures/kubernetes/pod-running.json"
     ))
     .expect("fixture pod");
-    let mut input = input_from_metadata("kind-dev", "Pod", "v1", &pod.metadata);
-    if let Some(status) = pod.status {
-        input.summary.status = status.phase.filter(|phase| !phase.is_empty());
-        input.summary.ready = status
-            .conditions
-            .as_ref()
-            .and_then(|conditions| {
-                conditions
-                    .iter()
-                    .find(|condition| condition.type_ == "Ready")
-            })
-            .map(|condition| condition.status.clone());
-        let restarts: i32 = status.container_statuses.as_ref().map_or(0, |statuses| {
-            statuses
-                .iter()
-                .map(|container| container.restart_count)
-                .sum()
-        });
-        if restarts > 0 {
-            input.summary.restarts = Some(restarts);
-        }
-    }
-    update_resource_health(&mut input.summary);
-    input
+    pod_input("kind-dev", pod, chrono::Utc::now())
 }
 
 #[test]
@@ -562,18 +538,6 @@ fn warns_when_owner_reference_target_is_missing() {
     assert_eq!(topology.edges.len(), 0);
     assert_eq!(topology.warnings.len(), 1);
     assert!(topology.warnings[0].contains("ReplicaSet/api-missing"));
-}
-
-#[test]
-fn marks_incomplete_ready_ratios_as_attention() {
-    let mut deployment = resource("Deployment", "api", "default", "deploy-1");
-    deployment.summary.ready = Some("0/3".to_string());
-    deployment.summary.status = Some("Available: 0".to_string());
-    update_resource_health(&mut deployment.summary);
-
-    let topology = build_resource_topology(vec![deployment]);
-
-    assert_eq!(topology.nodes[0].health, ResourceHealth::Attention);
 }
 
 #[test]

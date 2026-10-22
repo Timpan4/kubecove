@@ -144,9 +144,9 @@ Paths below are relative to `src-tauri` at the reviewed baseline; link destinati
 | [src/commands/resources/apply/validation.rs](../src-tauri/crates/inspection/src/commands/resources/apply/validation.rs) | Read; updated |
 | [src/commands/resources/apply_client_tests.rs](../src-tauri/crates/inspection/src/commands/resources/apply_client_tests.rs) | Read; updated |
 | [src/commands/resources/details.rs](../src-tauri/crates/inspection/src/commands/resources/details.rs) | Read; updated |
-| [src/commands/resources/details/cluster.rs](../src-tauri/crates/inspection/src/commands/resources/details/cluster.rs) | Read; updated |
-| [src/commands/resources/details/core.rs](../src-tauri/crates/inspection/src/commands/resources/details/core.rs) | Read; updated |
-| [src/commands/resources/details/workloads.rs](../src-tauri/crates/inspection/src/commands/resources/details/workloads.rs) | Read; updated |
+| src/commands/resources/details/cluster.rs | Read; updated; later merged into the shared summary projection |
+| src/commands/resources/details/core.rs | Read; updated; later merged into the shared summary projection |
+| src/commands/resources/details/workloads.rs | Read; updated; later merged into the shared summary projection |
 | [src/commands/resources/dynamic.rs](../src-tauri/crates/inspection/src/commands/resources/dynamic.rs) | Read; updated |
 | [src/commands/resources/ingress_status.rs](../src-tauri/crates/inspection/src/commands/resources/ingress_status.rs) | Read; unchanged |
 | [src/commands/resources/kubeconform.rs](../src-tauri/crates/inspection/src/commands/resources/kubeconform.rs) | Read; updated |

@@ -100,7 +100,6 @@ pub fn benchmark_application_summary_from_object(
 }
 
 /// List Argo CD Applications in the cluster.
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_argocd_applications(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
@@ -123,7 +122,6 @@ pub async fn list_argocd_applications(
 }
 
 /// Get detailed Argo CD Application information including YAML, metadata, and status.
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_argocd_application_details(
     cluster_context: String,
     name: String,

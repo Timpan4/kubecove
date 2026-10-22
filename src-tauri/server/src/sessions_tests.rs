@@ -59,15 +59,29 @@ async fn diagnostics_belong_to_their_session() {
     let alice = BackendState::default();
     let bob = BackendState::default();
     bob.scoped(async { set_backend_diagnostics_enabled(true) })
-        .await;
+        .await
+        .unwrap();
     alice
         .scoped(async {
-            set_backend_diagnostics_enabled(true);
+            set_backend_diagnostics_enabled(true).unwrap();
             record_backend_error("list_namespaces", std::time::Instant::now(), "forbidden");
         })
         .await;
-    assert_eq!(alice.scoped(async { get_backend_diagnostics() }).await.len(), 1);
-    assert_eq!(bob.scoped(async { get_backend_diagnostics() }).await.len(), 0);
+    assert_eq!(
+        alice
+            .scoped(async { get_backend_diagnostics() })
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        bob.scoped(async { get_backend_diagnostics() })
+            .await
+            .unwrap()
+            .len(),
+        0
+    );
 }
 
 // Watches, exec and port-forwards build their clients inside tasks that the

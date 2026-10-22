@@ -11,7 +11,6 @@ use execution::{apply_yaml_with_client, prepare_yaml_apply_with_client};
 use linting::lint_kubernetes_yaml_with_kubeconform;
 use validation::validate_yaml_apply;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn prepare_yaml_apply(request: YamlApplyRequest) -> Result<YamlApplyPreview, AppError> {
     let validated = validate_yaml_apply(request)?;
     let source = KubeconfigSource::new(validated.request.kubeconfig_env_var.clone())?.fail_closed();
@@ -21,7 +20,6 @@ pub async fn prepare_yaml_apply(request: YamlApplyRequest) -> Result<YamlApplyPr
     prepare_yaml_apply_with_client(client, validated).await
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn apply_yaml(request: YamlApplyRequest) -> Result<YamlApplyResult, AppError> {
     let validated = validate_yaml_apply(request)?;
     let source = KubeconfigSource::new(validated.request.kubeconfig_env_var.clone())?.fail_closed();
@@ -31,7 +29,6 @@ pub async fn apply_yaml(request: YamlApplyRequest) -> Result<YamlApplyResult, Ap
     apply_yaml_with_client(client, validated).await
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn lint_kubernetes_yaml(
     request: YamlApplyRequest,
 ) -> Result<KubernetesYamlLintResult, AppError> {

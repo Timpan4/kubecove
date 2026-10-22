@@ -17,10 +17,6 @@ pub(super) fn argo_app_from_tracking_id(tracking_id: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-pub fn extract_argo_app(metadata: &ObjectMeta) -> Option<String> {
-    argo_owner(metadata).map(|owner| owner.name)
-}
-
 pub fn extract_git_ops_owner(metadata: &ObjectMeta) -> Option<GitOpsOwnerSummary> {
     argo_owner(metadata).or_else(|| flux_owner(metadata))
 }
@@ -168,7 +164,6 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(extract_argo_app(&metadata), None);
         assert_eq!(extract_git_ops_owner(&metadata), None);
     }
 
