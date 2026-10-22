@@ -19,6 +19,7 @@
     clippy::unused_async
 )]
 
+mod appimage_webkit;
 pub mod commands;
 #[cfg(feature = "e2e")]
 use kubecove_kube::e2e;
@@ -42,6 +43,12 @@ use {
 #[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    appimage_webkit::prefer_newer_system_webkit();
+
     #[cfg(feature = "e2e")]
     let e2e_config = e2e::startup_config().expect("invalid KubeCove E2E environment");
     #[cfg(not(feature = "e2e"))]
