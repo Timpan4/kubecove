@@ -18,12 +18,12 @@ Windows releases use NSIS so in-app updates share one installer path. An older M
 
 The AppImage bundles the WebKitGTK stack from its Ubuntu build runner. At launch, the binary uses the host stack instead when the host `libwebkit2gtk-4.1.so.0` is newer:
 
-1. It finds the host library through `ldconfig -p`. It matches the soname and the 64-bit ABI flag, not a fixed directory.
+1. It finds the host `libwebkit2gtk-4.1.so.0`, `libgtk-3.so.0`, and `libglib-2.0.so.0` through `ldconfig -p`, matching the soname and the 64-bit ABI flag. It continues only when all three are in one directory, so host WebKit never resolves GTK or GLib from the AppImage.
 2. It reads the bundled version from the loaded library with `webkit_get_major_version`, `webkit_get_minor_version`, and `webkit_get_micro_version`.
-3. It starts itself once as a probe with the host library directory first in `LD_LIBRARY_PATH`, and the probe prints the same three values. The binary links with `BIND_NOW`, so a host stack that cannot satisfy it makes the probe fail.
-4. If the probe succeeds with a newer version, the binary re-executes itself with that `LD_LIBRARY_PATH`. Host libraries then win, and bundled libraries fill only the gaps. Otherwise the launch continues on the bundled stack.
+3. It starts itself once as a probe with the host library directory first in `LD_LIBRARY_PATH` and `LD_BIND_NOW=1`, and the probe prints the same three values. Every library must resolve its symbols against that stack at load, so an incompatible host stack fails the probe. The probe does not initialize GTK or start a web process, so a host WebKit that fails at runtime is not detected.
+4. If the probe succeeds with a newer version, the binary logs the switch to stderr and re-executes itself with that `LD_LIBRARY_PATH`. Host libraries then win, and bundled libraries fill only the gaps. The re-exec drops the GTK hook's variables that point into the AppImage (`GTK_PATH`, `GIO_MODULE_DIR`, `GSETTINGS_SCHEMA_DIR`, `GDK_PIXBUF_MODULE_FILE`, and related) and its `XDG_DATA_DIRS` entries, so host GTK and GLib load host modules and schemas. Otherwise the launch continues on the bundled stack.
 
-Set `KUBECOVE_APPIMAGE_WEBKIT=bundled` to keep the bundled stack. Tauri's AppImage bundler copies `bundle.linux.appimage.files` only under `usr/`, so it cannot add an AppRun hook. The switch therefore lives in the binary, and the signed AppImage file stays as the Tauri bundler produced it. Other Linux packages and AppDirs without `APPDIR` skip the check.
+Set `KUBECOVE_APPIMAGE_WEBKIT=bundled` to keep the bundled stack; other values are ignored with a warning. Processes the app starts inherit the host-first `LD_LIBRARY_PATH`. Tauri's AppImage bundler copies `bundle.linux.appimage.files` only under `usr/`, so it cannot add an AppRun hook. The switch therefore lives in the binary, and the signed AppImage file stays as the Tauri bundler produced it. Other Linux packages and AppDirs without `APPDIR` skip the check.
 
 ## Product Safety
 
