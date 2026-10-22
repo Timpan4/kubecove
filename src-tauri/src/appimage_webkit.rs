@@ -65,6 +65,15 @@ fn without_app_dirs(list: &OsStr, app_dirs: &[&Path]) -> Option<OsString> {
     std::env::join_paths(kept).ok()
 }
 
+// Puts the host library dir before the inherited `LD_LIBRARY_PATH`. Empty entries are dropped:
+// the dynamic loader reads them as the current directory. Compiled on every platform so shared
+// tests can cover it.
+#[allow(dead_code)]
+fn host_first_library_path(system_dir: &Path, inherited: &OsStr) -> Option<OsString> {
+    let inherited = std::env::split_paths(inherited).filter(|entry| !entry.as_os_str().is_empty());
+    std::env::join_paths(std::iter::once(system_dir.to_path_buf()).chain(inherited)).ok()
+}
+
 #[cfg(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64"),
@@ -165,9 +174,7 @@ pub fn prefer_newer_system_webkit() {
         return;
     }
     let inherited = std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default();
-    let Ok(library_path) = std::env::join_paths(
-        std::iter::once(system_dir.to_path_buf()).chain(std::env::split_paths(&inherited)),
-    ) else {
+    let Some(library_path) = host_first_library_path(system_dir, &inherited) else {
         return;
     };
 
@@ -224,7 +231,10 @@ pub fn prefer_newer_system_webkit() {
 
 #[cfg(test)]
 mod tests {
-    use super::{host_stack_dir, ldconfig_library_path, parse_version, without_app_dirs};
+    use super::{
+        host_first_library_path, host_stack_dir, ldconfig_library_path, parse_version,
+        without_app_dirs,
+    };
     use std::ffi::OsStr;
     use std::path::Path;
 
@@ -297,6 +307,22 @@ mod tests {
             Some(OsStr::new(
                 "/usr/share:/tmp/.mount_KubeCoX/share:/usr/local/share"
             ))
+        );
+    }
+
+    // Failure mode: an unset or colon-terminated inherited value leaves an empty entry, which
+    // makes the loader search the launch directory for libraries.
+    #[test]
+    fn library_path_puts_host_first_without_empty_entries() {
+        let host = Path::new("/usr/lib");
+        assert_eq!(
+            host_first_library_path(host, OsStr::new("")).as_deref(),
+            Some(OsStr::new("/usr/lib"))
+        );
+        assert_eq!(
+            host_first_library_path(host, OsStr::new("/tmp/.mount_K/usr/lib/::/opt/lib:"))
+                .as_deref(),
+            Some(OsStr::new("/usr/lib:/tmp/.mount_K/usr/lib/:/opt/lib"))
         );
     }
 }
