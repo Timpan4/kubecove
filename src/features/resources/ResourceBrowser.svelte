@@ -443,9 +443,8 @@
 	});
 	const resourceQueryKey = $derived(readSpecs.resourceQueryKey);
 	const topologyNamespaces = $derived(readSpecs.topologyNamespaces);
-	const topologyBaseQueryKey = $derived(readSpecs.topologyBaseQueryKey);
 	const topologyQueryKey = $derived(readSpecs.topologyQueryKey);
-	const topologyFitViewKey = $derived(JSON.stringify(topologyBaseQueryKey));
+	const topologyFitViewKey = $derived(readSpecs.topologyFitViewKey);
 	const metricsQueryKey = $derived(readSpecs.metricsQueryKey);
 	const resourceCancelScope = $derived(readSpecs.resourceCancelScope);
 	const topologyCancelScope = $derived(readSpecs.topologyCancelScope);

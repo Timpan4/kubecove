@@ -1,36 +1,6 @@
 import type { Query, QueryClient } from "@tanstack/svelte-query";
 import type { CancellableRequest } from "./types";
 
-const FINITE_READ_QUERY_ROOTS = [
-	"kube-namespaces",
-	"kube-resource-kinds",
-	"kube-present-custom-resource-kinds",
-	"resources",
-	"deployment-revisions",
-	"resource-topology",
-	"resource-metrics",
-	"resource-details",
-	"resource-yaml",
-	"resource-events",
-	"argo-server-discovery",
-	"argo-detect",
-	"argo-apps",
-	"argo-appsets",
-	"argo-appprojects",
-	"argo-app-details",
-	"argo-workspace",
-	"argo-appset-details",
-	"argo-appproject-details",
-	"flux-detect",
-	"flux-resources",
-	"flux-resource-details",
-	"helm-releases",
-	"helm-release-details",
-	"helm-release-reconciliation",
-	"rbac-inspection",
-	"incident-cockpit",
-] as const;
-
 const FINITE_READ_META = { finiteRead: true } as const;
 
 interface FiniteReadMetadata extends Record<string, unknown> {
@@ -55,25 +25,10 @@ export function createFiniteReadRequest(
 	};
 }
 
-export function cancellableArg(
-	request?: CancellableRequest,
-): Partial<CancellableRequest> {
-	return request ?? {};
-}
-
 export function finiteReadMeta(
 	meta: Omit<FiniteReadMetadata, "finiteRead"> = {},
 ): FiniteReadMetadata {
 	return { ...meta, ...FINITE_READ_META };
-}
-
-export function configureFiniteReadQueryDefaults(queryClient: QueryClient): void {
-	for (const root of FINITE_READ_QUERY_ROOTS) {
-		queryClient.setQueryDefaults([root], {
-			...queryClient.getQueryDefaults([root]),
-			meta: finiteReadMeta(),
-		});
-	}
 }
 
 export function isFiniteReadQuery(query: Query): boolean {

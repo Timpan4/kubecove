@@ -25,7 +25,7 @@
 		createFiniteReadCleanup,
 		createFiniteReadRequest,
 	} from "@/lib/finite-read-lifecycle";
-	import { queryKeys } from "@/lib/queryKeys";
+	import { queryKeys, queryMatchers } from "@/lib/queryKeys";
 	import { settingsStore } from "@/lib/settings-store";
 	import {
 		cancelBackendRequests,
@@ -256,7 +256,7 @@
 				);
 			}
 			connected = result.profile?.id ?? id;
-			void queryClient.invalidateQueries({ queryKey: ["argo-connection-status"] });
+			void queryClient.invalidateQueries({ predicate: queryMatchers.argoConnectionStatuses() });
 		} catch (caught) {
 			error = caught instanceof Error ? caught.message : String(caught);
 			// A rejected tunnel target is usually a replaced Pod; refetch so the next confirmation shows the current one.
@@ -276,7 +276,7 @@
 		try {
 			await disconnectArgoServer(client, id);
 			if (connected === id) connected = null;
-			void queryClient.invalidateQueries({ queryKey: ["argo-connection-status"] });
+			void queryClient.invalidateQueries({ predicate: queryMatchers.argoConnectionStatuses() });
 		} catch (caught) {
 			error = caught instanceof Error ? caught.message : String(caught);
 		}
@@ -292,7 +292,7 @@
 			});
 			settings.setArgoProfiles(settings.argoProfiles.filter((item) => item.id !== profile.id));
 			if (connected === profile.id) connected = null;
-			void queryClient.invalidateQueries({ queryKey: ["argo-connection-status"] });
+			void queryClient.invalidateQueries({ predicate: queryMatchers.argoConnectionStatuses() });
 		} catch (caught) {
 			error = caught instanceof Error ? caught.message : String(caught);
 		}

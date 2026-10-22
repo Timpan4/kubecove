@@ -288,7 +288,9 @@
 		return String(uid) === uid ? uid : undefined;
 	});
 	// Keyed by UID so results fetched without one (or for a replaced resource) are never reused.
-	const scopedEventsQueryKey = $derived([...eventsQueryKey, eventsUid ?? ""] as const);
+	const scopedEventsQueryKey = $derived(
+		queryKeys.resourceEvents(resource, kubeconfigSourceKey, eventsUid),
+	);
 	// Events are matched by UID, so wait for the details read that supplies it.
 	const eventsReady = $derived(
 		!detailsEnabled || detailsQuery.isSuccess || detailsQuery.isError,
@@ -673,7 +675,6 @@
 		{dynamicKind}
 		{kubeconfigSourceKey}
 		detailsYaml={resourceYaml}
-		{detailsQueryKey}
 		{detailsEnabled}
 		active={activeTab === "yaml"}
 		refreshVersion={resourceRefreshVersion}

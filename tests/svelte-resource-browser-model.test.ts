@@ -21,7 +21,10 @@ import {
 	shouldLoadOwnershipMap,
 	syncedTopologyNodeId,
 } from "../src/features/resources/resourceBrowserModel";
-import { buildResourceBrowserReadSpecs } from "../src/features/resources/resourceBrowserReadSpecs";
+import {
+	buildResourceBrowserReadSpecs,
+	type ResourceBrowserReadSpecInput,
+} from "../src/features/resources/resourceBrowserReadSpecs";
 import {
 	buildResourceTableModel as buildProjectedResourceTableModel,
 	buildResourceTableProjection,
@@ -205,28 +208,28 @@ test("builds safe active-workspace read metadata from one source result", () => 
 });
 
 test("builds immutable ResourceBrowser read identities and enablement", () => {
-	const fetchKeys = buildFetchKeys(["default", "kube-system"], ["Pod", widget]);
-	const specs = buildResourceBrowserReadSpecs({
+	const input: ResourceBrowserReadSpecInput = {
 		clusterContext: "kind-dev",
 		kubeconfigSourceKey: "source-a",
-		fetchKeys,
+		fetchKeys: buildFetchKeys(["default", "kube-system"], ["Pod", widget]),
 		namespaces: ["kube-system", "default", "default"],
 		topologyMode: "ownership",
 		mapPanelOpen: false,
 		sourceReady: true,
 		customResourcesEnabled: true,
+	};
+	const specs = buildResourceBrowserReadSpecs(input);
+	const nativeOnly = buildResourceBrowserReadSpecs({
+		...input,
+		fetchKeys: buildFetchKeys(["default", "kube-system"], ["Pod"]),
 	});
+	const otherMode = buildResourceBrowserReadSpecs({ ...input, topologyMode: "networkFlow" });
 
 	expect(specs.topologyNamespaces).toEqual(["default", "kube-system"]);
-	expect(specs.resourceQueryKey[0]).toBe("resources");
-	expect(specs.topologyQueryKey).toEqual([
-		"resource-topology",
-		"kubeconfigEnv=source-a",
-		"kind-dev",
-		"default,kube-system",
-		"ownership",
-		"dynamic:example.com/v1:widgets:Widget",
-	]);
+	// Browsed custom kinds refetch the map without refitting its viewport.
+	expect(specs.topologyQueryKey).not.toEqual(nativeOnly.topologyQueryKey);
+	expect(specs.topologyFitViewKey).toBe(nativeOnly.topologyFitViewKey);
+	expect(specs.topologyFitViewKey).not.toBe(otherMode.topologyFitViewKey);
 	expect(specs.resourcesEnabled).toBe(true);
 	expect(specs.topologyEnabled).toBe(false);
 	expect(specs.resourceKindsEnabled).toBe(true);
@@ -1202,7 +1205,7 @@ describe("svelte resource browser model", () => {
 
 		expect(resizedKey).not.toBe(baseKey);
 		expect(movedKey).not.toBe(baseKey);
-		expect(browserSource).toContain("const topologyFitViewKey = $derived(JSON.stringify(topologyBaseQueryKey))");
+		expect(browserSource).toContain("const topologyFitViewKey = $derived(readSpecs.topologyFitViewKey)");
 		expect(browserSource).toContain("const topologyQueryKey = $derived(readSpecs.topologyQueryKey)");
 		expect(browserSource).toContain("fitViewKey={topologyFitViewKey}");
 	});

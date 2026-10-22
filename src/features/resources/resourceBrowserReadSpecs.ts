@@ -38,13 +38,13 @@ export function buildResourceBrowserReadSpecs({
 		fetchKeys,
 		kubeconfigSourceKey,
 	);
-	const topologyBaseQueryKey = queryKeys.resourceTopology(
+	const topologyQueryKey = queryKeys.resourceTopology(
 		clusterContext,
 		topologyNamespaces,
 		topologyMode,
 		kubeconfigSourceKey,
+		topologyCustomResourceKey,
 	);
-	const topologyQueryKey = [...topologyBaseQueryKey, topologyCustomResourceKey] as const;
 	const metricsQueryKey = queryKeys.resourceMetrics(
 		clusterContext,
 		topologyNamespaces,
@@ -59,7 +59,13 @@ export function buildResourceBrowserReadSpecs({
 			kubeconfigSourceKey,
 		),
 		resourceQueryKey,
-		topologyBaseQueryKey,
+		// Custom kinds refetch the map but keep its fitted viewport.
+		topologyFitViewKey: JSON.stringify([
+			clusterContext,
+			topologyNamespaces,
+			topologyMode,
+			kubeconfigSourceKey ?? "",
+		]),
 		topologyQueryKey,
 		metricsQueryKey,
 		resourceCancelScope: createCancelScope("resources", resourceQueryKey),

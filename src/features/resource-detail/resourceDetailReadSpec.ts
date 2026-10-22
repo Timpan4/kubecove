@@ -72,15 +72,12 @@ export function buildResourceDetailReadSpec(
 	yamlEncoding: YamlEncoding,
 ): ResourceDetailReadSpec {
 	const dynamicKind = dynamicResourceKindFromSummary(resource);
-	const selectedDynamicKindKey = dynamicKindKey(dynamicKind);
-	const detailsQueryKey = queryKeys.resourceDetails(
-		resource,
-		selectedDynamicKindKey,
-		kubeconfigSourceKey,
+	const detailsQueryKey = queryKeys.resourceDetails(resource, kubeconfigSourceKey, {
+		dynamicKindKey: dynamicKindKey(dynamicKind),
 		yamlViewMode,
 		yamlEncoding,
-	);
-	const eventsQueryKey = queryKeys.resourceEvents(resource, kubeconfigSourceKey);
+	});
+	const eventsQueryKey = queryKeys.resourceEventsScope(resource, kubeconfigSourceKey);
 
 	return {
 		identity: { key: resourceKey(resource) },

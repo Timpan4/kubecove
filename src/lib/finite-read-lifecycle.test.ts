@@ -1,12 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { QueryClient, QueryObserver } from "@tanstack/svelte-query";
 import {
-	configureFiniteReadQueryDefaults,
 	createCancelScope,
 	createFiniteReadCleanup,
 	createFiniteReadRequest,
-	finiteReadMeta,
-	isFiniteReadQuery,
 } from "./finite-read-lifecycle";
 
 function settleCancellation(): Promise<void> {
@@ -28,36 +25,6 @@ function observedQuery(queryClient: QueryClient, queryKey: readonly unknown[]) {
 }
 
 describe("finite read lifecycle", () => {
-	test("classifies finite reads through TanStack metadata", async () => {
-		const queryClient = new QueryClient();
-		configureFiniteReadQueryDefaults(queryClient);
-		await queryClient.fetchQuery({
-			queryKey: ["resources", "default"],
-			queryFn: async () => [],
-			meta: finiteReadMeta({ namespace: "default" }),
-		});
-		queryClient.setQueryData(["argo-server-discovery", "default", "kind-dev"], []);
-		queryClient.setQueryData(["port-forwards"], []);
-
-		const finite = queryClient.getQueryCache().find({
-			queryKey: ["resources", "default"],
-			exact: true,
-		});
-		const discovery = queryClient.getQueryCache().find({
-			queryKey: ["argo-server-discovery", "default", "kind-dev"],
-			exact: true,
-		});
-		const live = queryClient.getQueryCache().find({
-			queryKey: ["port-forwards"],
-			exact: true,
-		});
-
-		expect(finite && isFiniteReadQuery(finite)).toBe(true);
-		expect(discovery && isFiniteReadQuery(discovery)).toBe(true);
-		expect(finite?.options.meta?.namespace).toBe("default");
-		expect(live && isFiniteReadQuery(live)).toBe(false);
-	});
-
 	test("derives a stable scope and unique backend request identity", () => {
 		const queryKey = ["resource-details", "default", "Pod", "api"] as const;
 		const scope = createCancelScope("resource-details", queryKey);

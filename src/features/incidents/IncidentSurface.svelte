@@ -121,7 +121,7 @@
 		),
 	);
 	const detailsQueryKey = $derived(
-		detailReadSpec?.detailsQueryKey ?? (["resource-details", "incident-idle"] as const),
+		detailReadSpec?.detailsQueryKey ?? queryKeys.idle("incident-details"),
 	);
 	const topologyQueryKey = $derived(
 		topologyEnabled && selectedResource?.namespace
@@ -131,7 +131,7 @@
 					"ownership",
 					kubeconfigSourceKey,
 				)
-			: (["resource-topology", "incident-idle"] as const),
+			: queryKeys.idle("incident-topology"),
 	);
 	const detailsCancelScope = $derived(createCancelScope("resource-details", detailsQueryKey));
 	const topologyCancelScope = $derived(

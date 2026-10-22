@@ -16,7 +16,7 @@
 	} from "@/lib/finite-read-lifecycle";
 	import { diagnosticLog, diagnosticResultSummary } from "@/lib/diagnostics";
 	import { withForegroundLoad } from "@/lib/foreground-loading";
-	import { queryKeys } from "@/lib/queryKeys";
+	import { queryKeys, queryMatchers } from "@/lib/queryKeys";
 	import { dynamicKindKey, resourceKey } from "@/lib/resource-identity";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import type {
@@ -53,7 +53,6 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 		dynamicKind,
 		kubeconfigSourceKey,
 		detailsYaml = "",
-		detailsQueryKey,
 		detailsEnabled,
 		active,
 		refreshVersion,
@@ -66,7 +65,6 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 		dynamicKind: DiscoveredResourceKind | null;
 		kubeconfigSourceKey?: string;
 		detailsYaml?: string;
-		detailsQueryKey: readonly unknown[];
 		detailsEnabled: boolean;
 		active: boolean;
 		refreshVersion: number;
@@ -104,17 +102,19 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 	let yamlApplyRevision = 0;
 
 	const selectedDynamicKindKey = $derived(dynamicKindKey(dynamicKind));
-	const yamlQueryKey = $derived([
-		...queryKeys.resourceYaml(
+	const yamlQueryKey = $derived(
+		queryKeys.resourceYaml(
 			resource,
-			selectedDynamicKindKey,
 			kubeconfigSourceKey,
-			yamlViewMode,
-			yamlEncoding,
-			$settingsStore.redactSecrets,
+			{
+				dynamicKindKey: selectedDynamicKindKey,
+				yamlViewMode,
+				yamlEncoding,
+				redactSecrets: $settingsStore.redactSecrets,
+			},
+			refreshVersion,
 		),
-		refreshVersion,
-	]);
+	);
 	const yamlCancelScope = $derived(createCancelScope("resource-yaml", yamlQueryKey));
 	const yamlEnabled = $derived(detailsEnabled && active);
 	const showSecretDataViewer = $derived(
@@ -427,8 +427,13 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 			yamlEditing = false;
 			yamlPreview = null;
 			yamlPreviewRequest = null;
-			void queryClient.invalidateQueries({ queryKey: detailsQueryKey });
-			void queryClient.invalidateQueries({ queryKey: yamlQueryKey });
+			void queryClient.invalidateQueries({
+				predicate: queryMatchers.yamlApply(resource, kubeconfigSourceKey, {
+					dynamicKindKey: selectedDynamicKindKey,
+					yamlViewMode,
+					yamlEncoding,
+				}),
+			});
 		} catch (error) {
 			if (applyRevision !== yamlApplyRevision) return;
 			yamlApplyRawError = error;
