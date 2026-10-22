@@ -50,6 +50,9 @@ _Avoid_ treating connection response order or a profile from another workspace a
 **Argo inspection fallback** means, when Kubernetes inspection succeeds, visibly replacing a failed Connected Argo CD inspection with one complete Kubernetes transport result while preserving the Connected failure and result provenance. If both transports fail, the result preserves both safe failure classifications.
 _Avoid_ mixing data from both transports, hiding the fallback, or using it during operation execution.
 
+**Argo Application inspection** means the one entry point that turns a workspace read context and an Application into one inspection state: the normalized preference, the transport choice, readiness, and one whole result with its refresh.
+_Avoid_ sequencing profile status reads, preference normalization, or transport choice in a view.
+
 **Argo operation review** means a short-lived, single-use review that binds one exact Application action and one visible transport before confirmation. A supported Kubernetes transport may be chosen before review, but execution never changes the reviewed transport.
 _Avoid_ treating a read-only fallback as permission to execute, replaying an uncertain operation, or switching transport after confirmation.
 

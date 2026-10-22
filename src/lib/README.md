@@ -8,6 +8,7 @@ Allowed:
 - frontend mirrors of serde contracts in `types.ts`
 - the Zustand settings store in `settings.ts` and its Svelte adapter in `settings-store.ts`
 - the query catalog in `queryKeys.ts` and the finite-read lifecycle in `finite-read-lifecycle.ts`
+- the Argo Application inspection in `argo-application-inspection.ts`, with its component adapter in `argo-application-inspection.svelte.ts`; the adapter only binds the framework-free module to the calling component's lifecycle
 - workspace, settings, release-channel, diagnostics, and formatting helpers
 - pure resource health, metrics, visuals, and tree-navigation logic
 - future guarded operation helpers when they are pure and shared
