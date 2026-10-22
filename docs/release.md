@@ -14,6 +14,17 @@ The release workflow also builds standalone `kubecove-server` archives for Linux
 
 Windows releases use NSIS so in-app updates share one installer path. An older MSI install may require one uninstall before NSIS install.
 
+### Linux AppImage WebKitGTK
+
+The AppImage bundles the WebKitGTK stack from its Ubuntu build runner. At launch, the binary uses the host stack instead when the host `libwebkit2gtk-4.1.so.0` is newer:
+
+1. It finds the host library through `ldconfig -p`. It matches the soname and the 64-bit ABI flag, not a fixed directory.
+2. It reads the bundled version from the loaded library with `webkit_get_major_version`, `webkit_get_minor_version`, and `webkit_get_micro_version`.
+3. It starts itself once as a probe with the host library directory first in `LD_LIBRARY_PATH`, and the probe prints the same three values. The binary links with `BIND_NOW`, so a host stack that cannot satisfy it makes the probe fail.
+4. If the probe succeeds with a newer version, the binary re-executes itself with that `LD_LIBRARY_PATH`. Host libraries then win, and bundled libraries fill only the gaps. Otherwise the launch continues on the bundled stack.
+
+Set `KUBECOVE_APPIMAGE_WEBKIT=bundled` to keep the bundled stack. Tauri's AppImage bundler copies `bundle.linux.appimage.files` only under `usr/`, so it cannot add an AppRun hook. The switch therefore lives in the binary, and the signed AppImage file stays as the Tauri bundler produced it. Other Linux packages and AppDirs without `APPDIR` skip the check.
+
 ## Product Safety
 
 KubeCove is inspection-first outside ADR-approved live sessions and guarded operations. Pod and selector-backed Service port-forwarding follows [ADR 0003](decisions/0003-guarded-live-sessions.md); guarded resource operations follow [ADR 0004](decisions/0004-guarded-cluster-operations.md); exact-Pod exec follows [ADR 0005](decisions/0005-guarded-pod-exec-sessions.md); selected-resource YAML apply follows [ADR 0006](decisions/0006-guarded-selected-resource-yaml-apply.md); connected Argo CD follows [ADR 0013](decisions/0013-argocd-connected-inspection-and-operations.md); runtime Secret disclosure follows [ADR 0014](decisions/0014-runtime-secret-disclosure.md).
