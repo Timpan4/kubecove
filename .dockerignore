@@ -30,6 +30,7 @@ src-tauri/*
 src-tauri/server/*
 !src-tauri/server/Cargo.toml
 !src-tauri/server/Cargo.lock
+!src-tauri/server/build.rs
 !src-tauri/server/src/
 !src-tauri/server/src/**
 !src-tauri/bin/

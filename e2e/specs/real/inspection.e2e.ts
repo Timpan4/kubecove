@@ -165,7 +165,7 @@ const tauri = {
 	listHelmReleases: (clusterContext: string) => invokeTauri("list_helm_releases", { clusterContext }),
 	getHelmReleaseDetails: (args: CommandMap["get_helm_release_details"]["args"]) => invokeTauri("get_helm_release_details", args),
 	startResourceWatch: (clusterContext: string, keys: WatchResourceKey[], bucket: string) => invokeChannel("start_resource_watch", { clusterContext, keys }, bucket),
-	startPodLogStream: (request: PodLogStreamRequest, bucket: string) => invokeChannel("start_pod_log_stream", { request }, bucket),
+	startPodLogStream: (request: PodLogStreamRequest, bucket: string) => invokeChannel("start_pod_log_stream", { request: { ...request, batchLines: true } }, bucket),
 	startPodExecSession: (request: PodExecSessionRequest, bucket: string) => invokeChannel("start_pod_exec_session", { request }, bucket),
 };
 
