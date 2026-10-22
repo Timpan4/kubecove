@@ -21,7 +21,7 @@ pub fn resource_cache_fixture() -> ResourceCacheFixture {
     let rows = summary_fixture
         .pods
         .iter()
-        .map(|pod| resources::pod_resource_summary_at(CONTEXT, pod, fixed_now()))
+        .map(|pod| resources::builtin_summary(CONTEXT, pod, fixed_now()))
         .collect::<Vec<_>>();
     let mut replacement = rows.clone();
     if let Some(first) = replacement.first_mut() {

@@ -11,6 +11,9 @@ _Avoid_ calling this surface Discovered.
 **Resource identity** means the cluster, apiVersion, kind, namespace, and name of one listed Kubernetes resource. A source that omits apiVersion matches on the remaining fields only when no exact match exists.
 _Avoid_ treating resources from different API groups with the same kind and name as one resource when both identities are known.
 
+**Resource summary** means the resource identity, status, readiness, restarts, health, and GitOps ownership evidence that KubeCove derives from one Kubernetes object. A list row, the details panel, and a topology node show the same summary for the same object and add only their own context around it.
+_Avoid_ giving one surface its own status, readiness, or health rule for a kind.
+
 **Query catalog** means the one declaration of each frontend read family's query key, finite-read class, and retention class, with the named matchers that select reads by view, resource, or family.
 _Avoid_ building query keys, reading key positions, or listing query roots outside it.
 

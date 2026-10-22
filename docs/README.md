@@ -17,6 +17,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 - [Legacy code and test audit](legacy-test-audit.md) — removal evidence, preserved coverage, and verification boundaries.
 - [Rust build measurements](rust-build-measurements.md) — private-crate boundaries and incremental rebuild evidence.
 - [CodSpeed benchmark catalog](codspeed-benchmark-catalog.md) — current coverage, benchmark candidates, fixtures, and measurement boundaries.
+- [Built-in resource summary projection](resource-summary-projection.md) — shared list, details, and topology summary rules, kept differences, and measurements.
 - [Deferred Svelte surfaces](lazy-surface-loading.md) — import boundaries and before/after bundle and native launcher evidence.
 - [Engineering Handbook](handbook/README.md) — code organization, design system, hygiene, and pull request checklist.
 - [Frontend memory characterization](frontend-memory-retention.md) — normal and large payload, retention, native process, and refetch measurements.

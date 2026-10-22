@@ -206,24 +206,24 @@ pub fn typed_summaries_at(
     let mut rows = fixture
         .pods
         .iter()
-        .map(|pod| resources::pod_resource_summary_at(CLUSTER, pod, now))
+        .map(|pod| resources::builtin_summary(CLUSTER, pod, now))
         .collect::<Vec<_>>();
     rows.extend([
-        resources::service_resource_summary_at(CLUSTER, &fixture.service, now),
-        resources::config_map_resource_summary_at(CLUSTER, &fixture.config_map, now),
-        resources::secret_resource_summary_at(CLUSTER, &fixture.secret, now),
-        resources::persistent_volume_claim_resource_summary_at(CLUSTER, &fixture.claim, now),
-        resources::deployment_resource_summary_at(CLUSTER, &fixture.deployment, now),
-        resources::replicaset_resource_summary_at(CLUSTER, &fixture.replica_set, now),
-        resources::statefulset_resource_summary_at(CLUSTER, &fixture.stateful_set, now),
-        resources::daemonset_resource_summary_at(CLUSTER, &fixture.daemon_set, now),
-        resources::ingress_resource_summary_at(CLUSTER, &fixture.ingress, now),
-        resources::job_resource_summary_at(CLUSTER, &fixture.job, now),
-        resources::cronjob_resource_summary_at(CLUSTER, &fixture.cron_job, now),
-        resources::node_resource_summary_at(CLUSTER, &fixture.node, now),
-        resources::storage_class_resource_summary_at(CLUSTER, &fixture.storage_class, now),
-        resources::persistent_volume_resource_summary_at(CLUSTER, &fixture.volume, now),
-        resources::custom_resource_definition_resource_summary_at(CLUSTER, &fixture.crd, now),
+        resources::builtin_summary(CLUSTER, &fixture.service, now),
+        resources::builtin_summary(CLUSTER, &fixture.config_map, now),
+        resources::builtin_summary(CLUSTER, &fixture.secret, now),
+        resources::builtin_summary(CLUSTER, &fixture.claim, now),
+        resources::builtin_summary(CLUSTER, &fixture.deployment, now),
+        resources::builtin_summary(CLUSTER, &fixture.replica_set, now),
+        resources::builtin_summary(CLUSTER, &fixture.stateful_set, now),
+        resources::builtin_summary(CLUSTER, &fixture.daemon_set, now),
+        resources::builtin_summary(CLUSTER, &fixture.ingress, now),
+        resources::builtin_summary(CLUSTER, &fixture.job, now),
+        resources::builtin_summary(CLUSTER, &fixture.cron_job, now),
+        resources::builtin_summary(CLUSTER, &fixture.node, now),
+        resources::builtin_summary(CLUSTER, &fixture.storage_class, now),
+        resources::builtin_summary(CLUSTER, &fixture.volume, now),
+        resources::builtin_summary(CLUSTER, &fixture.crd, now),
     ]);
     rows
 }

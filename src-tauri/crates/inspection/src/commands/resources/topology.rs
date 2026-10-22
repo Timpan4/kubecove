@@ -5,7 +5,7 @@ use super::{
 use crate::commands::{
     diagnostic_field,
     discovery::crd_resource_kinds,
-    helpers::{base_resource_summary, extract_owner_ref_summary, resource_age},
+    helpers::extract_owner_ref_summary,
     kubeconfig::{kubeconfig_source_key, KubeconfigSource},
     BackendCancellationRegistry, ClusterLiveStore, FiniteRead,
 };
@@ -15,7 +15,6 @@ use crate::models::{
     TopologyEdge, TopologyNode, TopologyRelation,
 };
 use crate::runtime::State;
-use chrono::{TimeZone, Utc};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -57,14 +56,6 @@ impl TopologyMode {
     }
 }
 
-fn age_from_metadata_at(metadata: &ObjectMeta, now: chrono::DateTime<Utc>) -> String {
-    resource_age(metadata.creation_timestamp.as_ref().map(|t| {
-        Utc.timestamp_opt(t.0.as_second(), 0)
-            .single()
-            .unwrap_or(now)
-    }))
-}
-
 pub(crate) fn topology_node_id(
     cluster: &str,
     api_version: &str,
@@ -98,29 +89,11 @@ fn selectable_kind(kind: &str) -> bool {
     kind != "EndpointSlice"
 }
 
-pub(crate) fn input_from_metadata(
-    cluster_context: &str,
-    kind: &str,
-    api_version: &str,
+/// Topology adds the object uid, controller owner and labels to the shared summary.
+pub(crate) fn input_with_summary(
     metadata: &ObjectMeta,
+    summary: ResourceSummary,
 ) -> TopologyInputResource {
-    input_from_metadata_at(cluster_context, kind, api_version, metadata, Utc::now())
-}
-
-pub fn input_from_metadata_at(
-    cluster_context: &str,
-    kind: &str,
-    api_version: &str,
-    metadata: &ObjectMeta,
-    now: chrono::DateTime<Utc>,
-) -> TopologyInputResource {
-    let mut summary = base_resource_summary(
-        kind,
-        cluster_context,
-        metadata,
-        age_from_metadata_at(metadata, now),
-    );
-    summary.api_version = Some(api_version.to_string());
     TopologyInputResource {
         uid: metadata.uid.clone().unwrap_or_default(),
         owner: extract_owner_ref_summary(metadata),

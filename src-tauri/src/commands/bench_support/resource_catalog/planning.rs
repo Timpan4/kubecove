@@ -183,7 +183,7 @@ pub fn resource_scope_fixture() -> ResourceScopeFixture {
                 .and_then(|namespace| namespace.parse::<usize>().ok())
                 .is_some_and(|namespace| namespace < 10)
         })
-        .map(|pod| crate::commands::resources::pod_resource_summary_at("catalog-cluster", pod, now))
+        .map(|pod| crate::commands::resources::builtin_summary("catalog-cluster", pod, now))
         .collect::<Vec<_>>();
     let ownerless_target = typed_rows
         .iter()
