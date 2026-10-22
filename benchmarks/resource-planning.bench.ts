@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { bench, describe } from "vitest";
+import { createMockTauriClient } from "@/lib/tauri-runtime";
 import {
 	topologyWatchKeys,
 } from "@/features/resources/helpers";
@@ -80,7 +81,9 @@ const scopeFetchKeys = buildWorkspaceFetchKeys(
 	availableNamespaces,
 );
 const workspacePlans = buildWorkspaceFetchPlans(workspaceScope);
+const client = createMockTauriClient({});
 const readSpecs = buildResourceBrowserReadSpecs({
+	client,
 	clusterContext: "prod/context-0",
 	kubeconfigSourceKey: "source-0",
 	fetchKeys,
@@ -123,7 +126,7 @@ assert.equal(
 	fetchKeys.length,
 	6 * namespaces.length + 1 + 80 * namespaces.length + 20,
 );
-assert.deepEqual(readSpecs.resourceQueryKey.slice(3), expectedReadScope);
+assert.deepEqual(readSpecs.resources.queryKey.slice(3), expectedReadScope);
 assert.deepEqual(
 	mergedWatchKeys.map(watchKeyIdentity),
 	expectedMergedWatchScope,
@@ -159,6 +162,7 @@ describe("F04 resource scope and read planning with folded F33 workspace fetch p
 		const nextWatchKeys = kindWatchKeys(nextFetchKeys);
 		mergeWatchKeys(nextWatchKeys, topologyWatchKeys(namespaces));
 		buildResourceBrowserReadSpecs({
+			client,
 			clusterContext: "prod/context-0",
 			kubeconfigSourceKey: "source-0",
 			fetchKeys: nextFetchKeys,

@@ -1,4 +1,5 @@
-import { matchQuery, type Query, type QueryClient } from "@tanstack/svelte-query";
+import { matchQuery } from "@tanstack/query-core";
+import type { Query, QueryClient } from "@tanstack/svelte-query";
 import { finiteReadMeta } from "./finite-read-lifecycle";
 import { type KindFetchKey, kindKey } from "./kind-identity";
 import { kubeconfigSourceKey } from "./settings";
