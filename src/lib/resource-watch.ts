@@ -70,7 +70,7 @@ export function observeResourceScope({
 	let needsCatchUp = false;
 	let reloadError: string | null = null;
 	let reloadWarnings: string[] = [];
-	// Bumped when update removes keys, so reloads started for the old scope are discarded.
+	// Bumped when update changes the key set, so reloads started for the old scope are discarded.
 	let scopeGeneration = 0;
 	const register = (key: WatchResourceKey): WatchRegistration => ({
 		key,
@@ -213,13 +213,13 @@ export function observeResourceScope({
 				if (wanted.delete(signature)) kept.push(watch);
 				else close(watch);
 			}
-			if (kept.length < watches.length) {
+			const added = [...wanted.values()].map(register);
+			if (added.length > 0 || kept.length < watches.length) {
 				// Reload results describe the old scope; the next recovery tick re-derives them.
 				scopeGeneration += 1;
 				reloadWarnings = [];
 				reloadError = null;
 			}
-			const added = [...wanted.values()].map(register);
 			watches = [...kept, ...added];
 			for (const watch of added) start(watch);
 			if (added.length === 0) {

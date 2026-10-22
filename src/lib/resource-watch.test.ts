@@ -486,3 +486,27 @@ test("removing keys clears the old scope's reload warnings, including a late rel
 	expect(states.at(-1)?.warnings ?? []).toEqual([]);
 	observer.stop();
 });
+
+// Failure mode: adding a namespace changes the queried scope too, so a reload still running
+// for the old scope reports its error into the new one.
+test("adding keys discards a reload that is still running for the old scope", async () => {
+	jest.useFakeTimers();
+	const harness = reconcileHarness();
+	const states: ResourceWatchState[] = [];
+	const onState = (state: ResourceWatchState) => states.push(state);
+	let failOldReload!: (error: Error) => void;
+	const observer = observeResourceScope({
+		client: harness.client, clusterContext: "dev", keys: [pod("a")], onState, onChange: () => {},
+		reload: () => new Promise<string[]>((_, fail) => (failOldReload = fail)),
+		openChannel: harness.openChannel,
+	});
+	await Promise.resolve();
+	await Promise.resolve();
+	jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+	observer.update([pod("a"), pod("b")], { onState, onChange: () => {}, reload: async () => [] });
+	failOldReload(new Error("old scope read failed"));
+	await Promise.resolve();
+	await Promise.resolve();
+	expect(states.at(-1)?.reloadError ?? null).toBeNull();
+	observer.stop();
+});
