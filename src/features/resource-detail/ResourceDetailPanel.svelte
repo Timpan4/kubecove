@@ -47,6 +47,7 @@
 	} from "@/lib/types";
 	import type { PathStateResourceDetailState } from "@/lib/path-state";
 	import { queryKeys } from "@/lib/queryKeys";
+	import { createWatchQueryRefresh, createWatchRefreshThrottle } from "@/lib/resource-watch-refresh";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
 		getSettingsSnapshot,
@@ -401,27 +402,21 @@
 		if (!detailsEnabled) return;
 		let cancelled = false;
 		let streamId: string | null = null;
-		let debounce: ReturnType<typeof setTimeout> | null = null;
-		let lastInvalidated = -Infinity;
 		const watchKey = readSpec.resourceWatchKey;
 		const currentArgoApplicationScope = argoApplicationScope;
-		const invalidate = () => {
-			debounce = null;
-			lastInvalidated = performance.now();
-			void queryClient.invalidateQueries({ queryKey: detailsQueryKey }, { cancelRefetch: false });
-			if (currentArgoApplicationScope) {
-				void queryClient.invalidateQueries({ queryKey: currentArgoApplicationScope }, { cancelRefetch: false });
-			}
+		const filters = [{ queryKey: detailsQueryKey }];
+		if (currentArgoApplicationScope) filters.push({ queryKey: currentArgoApplicationScope });
+		const refresh = createWatchRefreshThrottle(async () => {
+			const alreadyFetching = filters.some((filter) => queryClient.isFetching(filter) > 0);
+			const reads = filters.map((filter) =>
+				queryClient.invalidateQueries(filter, { cancelRefetch: false }),
+			);
 			if (activeTab === "yaml") {
 				resourceRefreshVersion += 1;
 			}
-		};
-		const invalidateSoon = () => {
-			if (debounce !== null) return;
-			const remaining = 250 - (performance.now() - lastInvalidated);
-			if (remaining <= 0) invalidate();
-			else debounce = setTimeout(invalidate, remaining);
-		};
+			await Promise.all(reads);
+			if (alreadyFetching) refresh.notify();
+		});
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
 			if (event.type === "error") {
@@ -441,7 +436,7 @@
 			) {
 				return;
 			}
-			invalidateSoon();
+			refresh.notify();
 		}, client);
 		void startResourceWatch(
 			client,
@@ -463,7 +458,7 @@
 			});
 		return () => {
 			cancelled = true;
-			if (debounce) clearTimeout(debounce);
+			refresh.dispose();
 			if (streamId) void stopStream(client, streamId);
 			closeStreamChannel(channel);
 		};
@@ -473,19 +468,7 @@
 		if (!eventsEnabled) return;
 		let cancelled = false;
 		let streamId: string | null = null;
-		let debounce: ReturnType<typeof setTimeout> | null = null;
-		let lastInvalidated = -Infinity;
-		const invalidate = () => {
-			debounce = null;
-			lastInvalidated = performance.now();
-			void queryClient.invalidateQueries({ queryKey: eventsQueryKey }, { cancelRefetch: false });
-		};
-		const invalidateSoon = () => {
-			if (debounce !== null) return;
-			const remaining = 250 - (performance.now() - lastInvalidated);
-			if (remaining <= 0) invalidate();
-			else debounce = setTimeout(invalidate, remaining);
-		};
+		const refresh = createWatchQueryRefresh(queryClient, eventsQueryKey, false);
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
 			if (event.type === "error") {
@@ -496,7 +479,7 @@
 				if (event.status === "connected") realtimeEventsWatchError = null;
 				return;
 			}
-			if (event.type === "resourceEventsChanged") invalidateSoon();
+			if (event.type === "resourceEventsChanged") refresh.notify();
 		}, client);
 		void startResourceEventWatch(
 			client,
@@ -520,7 +503,7 @@
 			});
 		return () => {
 			cancelled = true;
-			if (debounce) clearTimeout(debounce);
+			refresh.dispose();
 			if (streamId) void stopStream(client, streamId);
 			closeStreamChannel(channel);
 		};
