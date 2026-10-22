@@ -19,8 +19,26 @@ export interface ResourceWatchState {
 	warnings?: string[];
 }
 
+export function watchKeySignature(key: WatchResourceKey): string {
+	const kind = key.resourceKind;
+	return [kind.kind, kind.apiVersion ?? "", kind.plural ?? "", key.namespace ?? ""].join(":");
+}
+
+export interface ResourceScopeHandlers {
+	onState: (state: ResourceWatchState) => void;
+	onChange: (event: StreamMessage, key: WatchResourceKey) => void;
+	reload: (keys?: WatchResourceKey[]) => Promise<void> | Promise<string[]>;
+}
+
+export interface ResourceScopeObserver {
+	/** Reconciles the watched keys: unchanged keys keep their streams. */
+	update: (keys: WatchResourceKey[], handlers: ResourceScopeHandlers) => void;
+	stop: () => void;
+}
+
 interface WatchRegistration {
 	key: WatchResourceKey;
+	closed: boolean;
 	id: string | null;
 	opening: boolean;
 	connected: boolean;
@@ -38,40 +56,47 @@ export function observeResourceScope({
 	onChange,
 	reload,
 	openChannel = createStreamChannel,
-}: {
+}: ResourceScopeHandlers & {
 	client: TauriClient;
 	clusterContext: string;
 	keys: WatchResourceKey[];
 	kubeconfigEnvVar?: string;
-	onState: (state: ResourceWatchState) => void;
-	onChange: (event: StreamMessage, key: WatchResourceKey) => void;
-	reload: (keys?: WatchResourceKey[]) => Promise<void> | Promise<string[]>;
 	openChannel?: typeof createStreamChannel;
-}): () => void {
+}): ResourceScopeObserver {
+	let handlers: ResourceScopeHandlers = { onState, onChange, reload };
 	let disposed = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let reloading = false;
 	let needsCatchUp = false;
 	let reloadError: string | null = null;
 	let reloadWarnings: string[] = [];
-	const watches: WatchRegistration[] = keys.map((key) => ({
+	// Bumped when update removes keys, so reloads started for the old scope are discarded.
+	let scopeGeneration = 0;
+	const register = (key: WatchResourceKey): WatchRegistration => ({
 		key,
+		closed: false,
 		id: null,
 		opening: false,
 		connected: false,
 		error: null,
 		permissionWarning: null,
 		channel: null,
-	}));
+	});
+	let watches = keys.map(register);
 
 	async function refresh(recoveryKeys?: WatchResourceKey[]) {
 		if (disposed || reloading) return;
 		reloading = true;
+		const scope = scopeGeneration;
 		try {
-			reloadWarnings = (await reload(recoveryKeys)) ?? [];
-			reloadError = null;
+			const warnings = (await handlers.reload(recoveryKeys)) ?? [];
+			// A reload for a scope that keys have since left would revive its warnings.
+			if (scope === scopeGeneration) {
+				reloadWarnings = warnings;
+				reloadError = null;
+			}
 		} catch (error) {
-			reloadError = messageFromError(error);
+			if (scope === scopeGeneration) reloadError = messageFromError(error);
 		} finally {
 			reloading = false;
 			publish();
@@ -88,7 +113,7 @@ export function observeResourceScope({
 		const status = !connected ? "reconnecting"
 			: available.length === 0 ? "polling"
 			: warnings.length ? "partial" : "connected";
-		onState({
+		handlers.onState({
 			status,
 			message: status === "polling" ? "Watch access is unavailable. Readable resources refresh periodically."
 				: status === "partial" ? "Live updates connected for permitted resources. Readable resources without watch access refresh periodically."
@@ -102,11 +127,11 @@ export function observeResourceScope({
 			void refresh();
 		}
 	}
-	function start(watch: (typeof watches)[number]) {
-		if (disposed || watch.opening || watch.id || watch.permissionWarning) return;
+	function start(watch: WatchRegistration) {
+		if (disposed || watch.closed || watch.opening || watch.id || watch.permissionWarning) return;
 		watch.opening = true;
 		const channel = openChannel((event) => {
-			if (disposed || watch.channel !== channel) return;
+			if (disposed || watch.closed || watch.channel !== channel) return;
 			if (event.type === "status") {
 				watch.permissionWarning = event.status === "forbidden" ? event.message : null;
 				watch.connected = event.status === "connected";
@@ -122,7 +147,7 @@ export function observeResourceScope({
 				needsCatchUp = true;
 				closeStreamChannel(channel);
 			} else if (event.type === "resourceChanged") {
-				onChange(event, watch.key);
+				handlers.onChange(event, watch.key);
 			}
 			publish();
 		}, client);
@@ -136,7 +161,7 @@ export function observeResourceScope({
 		)
 			.then((id) => {
 				watch.opening = false;
-				if (disposed) {
+				if (disposed || watch.closed) {
 					void stopStream(client, id).catch(() => {});
 					return;
 				}
@@ -144,6 +169,7 @@ export function observeResourceScope({
 			})
 			.catch((error) => {
 				watch.opening = false;
+				if (watch.closed) return;
 				watch.error = messageFromError(error);
 				watch.connected = false;
 				needsCatchUp = true;
@@ -169,12 +195,49 @@ export function observeResourceScope({
 	});
 	for (const watch of watches) start(watch);
 	timer = setTimeout(tick, RESOURCE_RECOVERY_INTERVAL);
-	return () => {
-		disposed = true;
-		if (timer) clearTimeout(timer);
-		for (const watch of watches) {
-			if (watch.channel) closeStreamChannel(watch.channel);
-			if (watch.id) void stopStream(client, watch.id).catch(() => {});
-		}
+
+	function close(watch: WatchRegistration) {
+		watch.closed = true;
+		if (watch.channel) closeStreamChannel(watch.channel);
+		if (watch.id) void stopStream(client, watch.id).catch(() => {});
+	}
+
+	return {
+		update(nextKeys, nextHandlers) {
+			if (disposed) return;
+			handlers = nextHandlers;
+			const wanted = new Map(nextKeys.map((key) => [watchKeySignature(key), key]));
+			const kept: WatchRegistration[] = [];
+			for (const watch of watches) {
+				const signature = watchKeySignature(watch.key);
+				if (wanted.delete(signature)) kept.push(watch);
+				else close(watch);
+			}
+			if (kept.length < watches.length) {
+				// Reload results describe the old scope; the next recovery tick re-derives them.
+				scopeGeneration += 1;
+				reloadWarnings = [];
+				reloadError = null;
+			}
+			const added = [...wanted.values()].map(register);
+			watches = [...kept, ...added];
+			for (const watch of added) start(watch);
+			if (added.length === 0) {
+				publish();
+				return;
+			}
+			handlers.onState({
+				status: "connecting",
+				message: "Starting live updates",
+				error: null,
+				reloadError,
+				warnings: [...new Set(kept.flatMap((watch) => watch.permissionWarning ? [watch.permissionWarning] : []))],
+			});
+		},
+		stop() {
+			disposed = true;
+			if (timer) clearTimeout(timer);
+			for (const watch of watches) close(watch);
+		},
 	};
 }

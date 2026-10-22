@@ -18,7 +18,7 @@ test("permission recovery scopes reloads to denied kinds at the original interva
 	const reloadTimes: number[] = [];
 	let fail = true;
 	const denied = { resourceKind: { kind: "Secret" }, namespace: "ns" };
-	const stop = observeResourceScope({
+	const { stop } = observeResourceScope({
 		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
 		clusterContext: "dev", keys: [{ resourceKind: { kind: "Pod" }, namespace: "ns" }, denied],
 		onState: () => {}, onChange: () => {},
@@ -64,7 +64,7 @@ test.each(["disconnected", "reload failure"])("denied kinds do not delay %s reco
 	const requested: Array<WatchResourceKey[] | undefined> = [];
 	let reloads = 0;
 	let networkFailure = false;
-	const stop = observeResourceScope({
+	const { stop } = observeResourceScope({
 		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
 		clusterContext: "dev",
 		keys: [{ resourceKind: { kind: "Pod" } }, { resourceKind: { kind: "Secret" } }],
@@ -111,7 +111,7 @@ test("reconnection during a reload queues exactly one trailing catch-up", async 
 	let channel!: ReturnType<typeof createMockChannel<StreamMessage>>;
 	let complete!: () => void;
 	let reloads = 0;
-	const stop = observeResourceScope({
+	const { stop } = observeResourceScope({
 		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
 		clusterContext: "dev", keys: [{ resourceKind: { kind: "Pod" } }],
 		onState: () => {}, onChange: () => {},
@@ -140,7 +140,7 @@ test("a denied watch warns without interrupting permitted updates or retrying st
 	let starts = 0;
 	let changes = 0;
 	let reloads = 0;
-	const stop = observeResourceScope({
+	const { stop } = observeResourceScope({
 		client: createMockTauriClient({ start_resource_watch: () => `watch-${++starts}`, stop_stream: () => true }),
 		clusterContext: "dev",
 		keys: [{ resourceKind: { kind: "Pod" }, namespace: "cert-manager" }, { resourceKind: { kind: "Secret" }, namespace: "cert-manager" }],
@@ -170,7 +170,7 @@ test("a denied watch warns without interrupting permitted updates or retrying st
 test("an entirely denied scope uses polling rather than reconnecting", async () => {
 	let channel!: ReturnType<typeof createMockChannel<StreamMessage>>;
 	const states: ResourceWatchState[] = [];
-	const stop = observeResourceScope({
+	const { stop } = observeResourceScope({
 		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
 		clusterContext: "dev", keys: [{ resourceKind: { kind: "Pod" } }],
 		onState: (state) => states.push(state), onChange: () => {}, reload: async () => {},
@@ -187,7 +187,7 @@ test("healthy startup and watch renewals do not reload the view", async () => {
 	jest.useFakeTimers();
 	let channel!: ReturnType<typeof createMockChannel<StreamMessage>>;
 	let reloads = 0;
-	const stop = observeResourceScope({
+	const { stop } = observeResourceScope({
 		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
 		clusterContext: "dev",
 		keys: [{ resourceKind: { kind: "Pod" } }],
@@ -212,7 +212,7 @@ test("a failed reload cannot mark a recovered watch as disconnected and clears a
 	const states: ResourceWatchState[] = [];
 	let rejectReload!: (error: Error) => void;
 	let reloads = 0;
-	const stop = observeResourceScope({
+	const { stop } = observeResourceScope({
 		client: createMockTauriClient({ start_resource_watch: () => "watch", stop_stream: () => true }),
 		clusterContext: "dev",
 		keys: [{ resourceKind: { kind: "Pod" } }],
@@ -252,7 +252,7 @@ test("a healthy kind cannot hide a failed watch; fallback reloads stop after rec
 			return true;
 		},
 	});
-	const stop = observeResourceScope({
+	const { stop } = observeResourceScope({
 		client,
 		clusterContext: "dev",
 		keys: [
@@ -326,7 +326,7 @@ test("startup rejection retries and a late start is stopped after disposal", asy
 	const stoppedLate = new Promise<void>((done) => {
 		didStop = done;
 	});
-	const stop = observeResourceScope({
+	const { stop } = observeResourceScope({
 		client: createMockTauriClient({
 			start_resource_watch: () => {
 				if (++starts === 1) throw new Error("offline");
@@ -354,4 +354,135 @@ test("startup rejection retries and a late start is stopped after disposal", asy
 	resolve("late");
 	await stoppedLate;
 	expect(stopped).toEqual([{ streamId: "late" }]);
+});
+
+function reconcileHarness() {
+	const started: string[] = [];
+	const stopped: string[] = [];
+	const handlers = new Map<string, (event: StreamMessage) => void>();
+	const pending = new Map<string, (id: string) => void>();
+	const keyId = (key: WatchResourceKey) => `${key.resourceKind.kind}/${key.namespace ?? "*"}`;
+	const client = createMockTauriClient({
+		start_resource_watch: (args: { keys: WatchResourceKey[] }) => {
+			const id = keyId(args.keys[0]);
+			started.push(id);
+			if (id.startsWith("Slow/")) return new Promise<string>((done) => pending.set(id, done));
+			return id;
+		},
+		stop_stream: (args: { streamId: string }) => {
+			stopped.push(args.streamId);
+			return true;
+		},
+	});
+	let opened = 0;
+	const openChannel = (handler: (event: StreamMessage) => void) => {
+		// Keep the raw handler so tests can deliver events a closed channel would drop.
+		handlers.set(String(opened++), handler);
+		return createMockChannel(handler);
+	};
+	return { client, started, stopped, handlers, pending, openChannel };
+}
+
+const pod = (namespace: string) => ({ resourceKind: { kind: "Pod" }, namespace });
+
+// Failure modes: a scope change restarts watches whose keys did not change,
+// leaves removed watches running, or never starts added keys.
+test("updating keys keeps unchanged watches and only starts or stops the difference", async () => {
+	const harness = reconcileHarness();
+	const observer = observeResourceScope({
+		client: harness.client, clusterContext: "dev", keys: [pod("a"), pod("b")],
+		onState: () => {}, onChange: () => {}, reload: async () => {},
+		openChannel: harness.openChannel,
+	});
+	await Promise.resolve();
+	await Promise.resolve();
+	observer.update([pod("b"), pod("c")], { onState: () => {}, onChange: () => {}, reload: async () => {} });
+	await Promise.resolve();
+	await Promise.resolve();
+	expect(harness.started).toEqual(["Pod/a", "Pod/b", "Pod/c"]);
+	expect(harness.stopped).toEqual(["Pod/a"]);
+	observer.stop();
+	await Promise.resolve();
+	expect(harness.stopped.sort()).toEqual(["Pod/a", "Pod/b", "Pod/c"]);
+});
+
+// Failure modes: a key removed while its start is in flight leaks the backend
+// stream, or a removed watch still delivers changes into the new scope.
+test("removed watches are stopped when their start resolves late and their events are ignored", async () => {
+	const harness = reconcileHarness();
+	const changes: string[] = [];
+	const slow = { resourceKind: { kind: "Slow" }, namespace: "a" };
+	const observer = observeResourceScope({
+		client: harness.client, clusterContext: "dev", keys: [pod("a"), slow],
+		onState: () => {}, onChange: (_event, key) => changes.push(`old:${key.namespace}`), reload: async () => {},
+		openChannel: harness.openChannel,
+	});
+	await Promise.resolve();
+	await Promise.resolve();
+	observer.update([slow], {
+		onState: () => {}, onChange: (_event, key) => changes.push(`new:${key.resourceKind.kind}`), reload: async () => {},
+	});
+	const removedPod = harness.handlers.get("0");
+	const keptSlow = harness.handlers.get("1");
+	const changed = (streamId: string): StreamMessage => ({
+		type: "resourceChanged", streamId, action: "modified",
+		target: { cluster: "dev", kind: "Pod", name: "x", namespace: "a" },
+	});
+	removedPod?.(changed("Pod/a"));
+	keptSlow?.(changed("Slow/a"));
+	expect(changes).toEqual(["new:Slow"]);
+
+	observer.update([], { onState: () => {}, onChange: () => {}, reload: async () => {} });
+	harness.pending.get("Slow/a")?.("Slow/a");
+	await new Promise((done) => setTimeout(done, 0));
+	expect(harness.stopped.sort()).toEqual(["Pod/a", "Slow/a"]);
+	observer.stop();
+});
+
+// Failure mode: status keeps reporting a removed disconnected watch, so the
+// view shows "reconnecting" after its scope no longer includes that key.
+test("status after an update reflects only the current keys", async () => {
+	const harness = reconcileHarness();
+	const states: ResourceWatchState[] = [];
+	const onState = (state: ResourceWatchState) => states.push(state);
+	const observer = observeResourceScope({
+		client: harness.client, clusterContext: "dev", keys: [pod("a"), pod("b")],
+		onState, onChange: () => {}, reload: async () => {},
+		openChannel: harness.openChannel,
+	});
+	await Promise.resolve();
+	await Promise.resolve();
+	harness.handlers.get("0")?.({ type: "status", streamId: "Pod/a", status: "connected", message: "connected" });
+	expect(states.at(-1)?.status).toBe("reconnecting");
+	observer.update([pod("a")], { onState, onChange: () => {}, reload: async () => {} });
+	expect(states.at(-1)?.status).toBe("connected");
+	observer.stop();
+});
+
+// Failure modes: reload warnings from a removed scope keep the view "partial" after the
+// switch, or a reload still running for the old scope writes its warnings back afterward.
+test("removing keys clears the old scope's reload warnings, including a late reload", async () => {
+	jest.useFakeTimers();
+	const harness = reconcileHarness();
+	const states: ResourceWatchState[] = [];
+	const onState = (state: ResourceWatchState) => states.push(state);
+	let finishOldReload!: (warnings: string[]) => void;
+	const secrets = { resourceKind: { kind: "Secret" }, namespace: "a" };
+	const observer = observeResourceScope({
+		client: harness.client, clusterContext: "dev", keys: [pod("a"), secrets], onState, onChange: () => {},
+		reload: () => new Promise<string[]>((done) => (finishOldReload = done)),
+		openChannel: harness.openChannel,
+	});
+	await Promise.resolve();
+	await Promise.resolve();
+	harness.handlers.get("0")?.({ type: "status", streamId: "Pod/a", status: "connected", message: "connected" });
+	harness.handlers.get("1")?.({ type: "status", streamId: "Secret/a", status: "forbidden", message: "denied" });
+	jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+	observer.update([pod("a")], { onState, onChange: () => {}, reload: async () => [] });
+	finishOldReload(["Secrets cannot be listed"]);
+	await Promise.resolve();
+	await Promise.resolve();
+	expect(states.at(-1)?.status).toBe("connected");
+	expect(states.at(-1)?.warnings ?? []).toEqual([]);
+	observer.stop();
 });
