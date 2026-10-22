@@ -23,6 +23,7 @@
     "perf:frontend": "bun scripts/perf-frontend.ts",
     "perf:resource-scope": "bun scripts/perf-resource-scope.ts",
     "perf:release": "bun scripts/perf-release-footprint.ts",
+    "perf:interactions": "bun scripts/dev-interactions-report.ts",
     "rust:bench": "cargo bench --manifest-path src-tauri/Cargo.toml --features bench-support --bench backend_hot_paths",
     "rust:test": "cargo test --workspace --manifest-path src-tauri/Cargo.toml",
     "rust:check": "cargo check --workspace --manifest-path src-tauri/Cargo.toml",
