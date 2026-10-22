@@ -446,6 +446,7 @@ describe("resource action session: drafts", () => {
 		await settle();
 
 		expect(h.session.current.loading).toBe(true);
+		expect(h.session.draft(setImage("api", "registry.example/api:v3"))).toBe(false);
 		void h.session.review("edit");
 		await settle();
 		expect(h.calls("preview_resource_action")).toHaveLength(1);

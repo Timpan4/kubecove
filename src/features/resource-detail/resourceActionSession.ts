@@ -226,7 +226,8 @@ export function createResourceActionSession(options: ResourceActionSessionOption
 			void loadBaseline(target);
 		},
 		draft(change) {
-			if (!state.actionState) return false;
+			// ADR 0024: drafts are judged against the refreshed baseline, not the one an action just changed.
+			if (!state.actionState || state.loading) return false;
 			const edits = change(state.edits, state.actionState);
 			if (edits === state.edits) return false;
 			publish({ edits });

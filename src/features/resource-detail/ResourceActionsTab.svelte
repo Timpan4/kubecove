@@ -189,7 +189,7 @@
 					</div>
 
 					{#if isExpanded && canAct && row.id === "replicas"}
-						<div class="mt-3 max-w-56"><label class="grid gap-1 text-xs text-muted-foreground">Desired replicas<Input type="number" min="0" step="1" aria-label="Desired replicas" value={String(edits.replicas ?? actionState?.replicas ?? 0)} oninput={(event: Event & { currentTarget: HTMLInputElement }) => session.draft(setReplicas(Number(event.currentTarget.value)))} /></label></div>
+						<fieldset class="mt-3 max-w-56 min-w-0" disabled={current.loading}><label class="grid gap-1 text-xs text-muted-foreground">Desired replicas<Input type="number" min="0" step="1" aria-label="Desired replicas" value={String(edits.replicas ?? actionState?.replicas ?? 0)} oninput={(event: Event & { currentTarget: HTMLInputElement }) => session.draft(setReplicas(Number(event.currentTarget.value)))} /></label></fieldset>
 					{/if}
 					{#if isExpanded && canAct && row.id === "rollback"}
 						<div class="mt-3 space-y-2">
@@ -204,7 +204,7 @@
 						</div>
 					{/if}
 					{#if isExpanded && canAct && ["image", "environment", "resources"].includes(row.id) && actionState}
-						<div class="mt-3 space-y-4 border-l pl-3">
+						<fieldset class="mt-3 min-w-0 space-y-4 border-l pl-3" disabled={current.loading}>
 							{#each actionState.containers as container (container.name)}
 								<section class="space-y-2">
 									<h4 class="text-xs font-semibold">{container.name}</h4>
@@ -248,11 +248,11 @@
 									{/if}
 								</section>
 							{/each}
-						</div>
+						</fieldset>
 					{/if}
 					{#if isExpanded && canAct && (row.id === "labels" || row.id === "annotations") && actionState}
 						{@const field = row.id}
-						<div class="mt-3 space-y-2 border-l pl-3">
+						<fieldset class="mt-3 min-w-0 space-y-2 border-l pl-3" disabled={current.loading}>
 							{#each metadataRows(edits, actionState, field) as entry (entry.key)}
 								<div class="grid gap-2 sm:grid-cols-[minmax(8rem,0.7fr)_minmax(10rem,1.3fr)_auto]">
 									<Input aria-label={`${row.label} key ${entry.key}`} value={entry.key} disabled />
@@ -265,7 +265,7 @@
 								<Input aria-label={`New ${row.label.toLocaleLowerCase()} value`} placeholder="Value" value={newMetadata[field].value} oninput={(event: Event & { currentTarget: HTMLInputElement }) => (newMetadata = { ...newMetadata, [field]: { ...newMetadata[field], value: event.currentTarget.value } })} />
 								<Button variant="outline" size="sm" disabled={!newMetadata[field].name.trim()} onclick={() => addMetadataEntry(field)}>Add</Button>
 							</div>
-						</div>
+						</fieldset>
 					{/if}
 				</article>
 			{/each}
