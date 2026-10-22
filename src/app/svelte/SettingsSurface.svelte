@@ -200,6 +200,11 @@
 				"Collects local latency timings for release smoke testing. Trace data stays in memory.",
 		},
 		{
+			title: "Record interactions",
+			description:
+				"Measures input-to-paint time, dropped frames, and DOM changes for each click, drag, key, and scroll.",
+		},
+		{
 			title: "Latency report",
 			description:
 				"Shows frontend and backend timing summaries, with redacted copy output by default.",
