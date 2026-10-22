@@ -67,10 +67,6 @@
 		RESTART_COUNT_NOT_REPORTED,
 	} from "./operational-data";
 	import {
-		createFiniteReadCleanup,
-		createFiniteReadRequest,
-	} from "@/lib/finite-read-lifecycle";
-	import {
 		argoApplicationInspectionQueryOptions,
 		argoConnectionStatusQueryOptions,
 		buildArgoApplicationInspectionReadSpec,
@@ -78,7 +74,6 @@
 	} from "@/lib/argo-application-inspection";
 	import { normalizeArgoConnectionPreference } from "@/lib/argo-connection-policy";
 	import { diagnosticLog } from "@/lib/diagnostics";
-	import { withForegroundLoad } from "@/lib/foreground-loading";
 	import { resourceHealthAssessment } from "@/lib/resource-health";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
 	import type { ChipVariant } from "@/features/argo/status";
@@ -104,15 +99,7 @@
 	import { resourceKindOrder } from "@/lib/resource-kind-order";
 	import { queryKeys } from "@/lib/queryKeys";
 	import type { PathStateResourceBrowserState } from "@/lib/path-state";
-	import {
-		cancelBackendRequests,
-		createTauriClient,
-		isAppError,
-		listNamespaces,
-		listResourceKinds,
-		listResourceMetrics,
-		listResourceTopology,
-	} from "@/lib/tauri";
+	import { createTauriClient, listNamespaces, listResourceKinds } from "@/lib/tauri";
 	import type {
 		DiscoveredResourceKind,
 		NamespaceSummary,
@@ -143,7 +130,6 @@
 		watchKeysFromFetchKeys,
 	} from "./helpers";
 	import type { HealthFilter } from "./helpers";
-	import { fetchResourcePage } from "./query";
 	import ResourceBrowserTopBar from "./ResourceBrowserTopBar.svelte";
 	import {
 		allKindOptions,
@@ -215,9 +201,6 @@
 
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
-	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
-		cancelBackendRequests(client, cancelScope),
-	);
 	let selectedNamespaces = $state<string[]>([]);
 	let selectedKinds = $state<ResourceKindSelection[]>([]);
 	let appliedScopeKey = $state("");
@@ -339,6 +322,7 @@
 	const fetchKeys = $derived(buildFetchKeys(selectedNamespaces, selectedKinds));
 	const readSpecs = $derived(
 		buildResourceBrowserReadSpecs({
+			client,
 			clusterContext,
 			kubeconfigSourceKey,
 			fetchKeys,
@@ -392,9 +376,6 @@
 			enabled: sourceReady && gitOpsFocusApplication !== null,
 		}),
 	);
-	const focusedArgoInspectorQueryKey = $derived(
-		focusedArgoInspectionReadSpec.queryKey,
-	);
 	const focusedArgoApplicationScope = $derived(
 		gitOpsFocusApplication
 			? queryKeys.argoWorkspaceApplicationScope(
@@ -421,9 +402,6 @@
 				]
 			: [],
 	);
-	const focusedArgoInspectorCancelScope = $derived(
-		focusedArgoInspectionReadSpec.cancelScope,
-	);
 	const focusedArgoInspectorQuery = createQuery(() =>
 		argoApplicationInspectionQueryOptions(client, focusedArgoInspectionReadSpec),
 	);
@@ -446,22 +424,11 @@
 			markStartup("base-scope-ready");
 		}
 	});
-	const resourceQueryKey = $derived(readSpecs.resourceQueryKey);
+	const resourceQueryKey = $derived(readSpecs.resources.queryKey);
 	const topologyNamespaces = $derived(readSpecs.topologyNamespaces);
-	const topologyBaseQueryKey = $derived(readSpecs.topologyBaseQueryKey);
-	const topologyQueryKey = $derived(readSpecs.topologyQueryKey);
-	const topologyFitViewKey = $derived(JSON.stringify(topologyBaseQueryKey));
-	const metricsQueryKey = $derived(readSpecs.metricsQueryKey);
-	const resourceCancelScope = $derived(readSpecs.resourceCancelScope);
-	const topologyCancelScope = $derived(readSpecs.topologyCancelScope);
-	const metricsCancelScope = $derived(readSpecs.metricsCancelScope);
-	const resourcesQuery = createQuery<ResourceScopeResult>(() => ({
-		queryKey: resourceQueryKey,
-		queryFn: () => fetchResourcePage(clusterContext, fetchKeys, kubeconfigSourceKey, resourceCancelScope),
-		enabled: readSpecs.resourcesEnabled,
-		placeholderData: (previousData) => previousData,
-		staleTime: 30_000,
-	}));
+	const topologyQueryKey = $derived(readSpecs.topology.queryKey);
+	const topologyFitViewKey = $derived(readSpecs.topologyFitViewKey);
+	const resourcesQuery = createQuery<ResourceScopeResult>(() => readSpecs.resources);
 	$effect(() => {
 		if (kindScopeLocked) {
 			if (selectedKinds.length !== initialKinds.length ||
@@ -492,75 +459,9 @@
 		appliedAvailableKindsKey = availableKindsKey;
 		if (additions.length > 0) selectedKinds = [...selectedKinds, ...additions];
 	});
-	const topologyQuery = createQuery<ResourceTopology>(() => ({
-		queryKey: topologyQueryKey,
-		queryFn: () =>
-			withForegroundLoad("resource-topology", () =>
-				listResourceTopology(
-					client,
-					clusterContext,
-					topologyNamespaces,
-					topologyMode,
-					kubeconfigSourceKey,
-					createFiniteReadRequest(topologyCancelScope, "topology"),
-				).catch((cause: unknown) => {
-					if (isAppError(cause) && cause.kind === "cancelled") {
-						diagnosticLog("resources.topology.cancel", {
-							namespaces: topologyNamespaces.length,
-						});
-					}
-					throw cause;
-				}),
-			),
-		enabled: readSpecs.topologyEnabled,
-		placeholderData: (previousData) => previousData,
-		staleTime: 30_000,
-		retry: false,
-	}));
-
+	const topologyQuery = createQuery<ResourceTopology>(() => readSpecs.topology);
 	$effect(() => {
-		const currentResourceCancelScope = resourceCancelScope;
-		const currentResourceQueryKey = resourceQueryKey;
-		const currentTopologyCancelScope = topologyCancelScope;
-		const currentTopologyQueryKey = topologyQueryKey;
-		const currentMetricsCancelScope = metricsCancelScope;
-		const currentMetricsQueryKey = metricsQueryKey;
-		const currentFocusedArgoCancelScope = focusedArgoInspectorCancelScope;
-		const currentFocusedArgoQueryKey = focusedArgoInspectorQueryKey;
-		for (const cancelScope of [
-			currentResourceCancelScope,
-			currentTopologyCancelScope,
-			currentMetricsCancelScope,
-			currentFocusedArgoCancelScope,
-		]) {
-			finiteReadCleanup.cancelPending(cancelScope);
-		}
-		return () => {
-			for (const [cancelScope, queryKey, event] of [
-				[currentResourceCancelScope, currentResourceQueryKey, "resources.scope.cancel"],
-				[currentTopologyCancelScope, currentTopologyQueryKey, "resources.topology.cancel"],
-				[currentMetricsCancelScope, currentMetricsQueryKey, "resources.metrics.cancel"],
-				[
-					currentFocusedArgoCancelScope,
-					currentFocusedArgoQueryKey,
-					"resources.argo-inspection.cancel",
-				],
-			] as const) {
-				finiteReadCleanup.schedule(cancelScope, queryKey, {
-					onCancelled: (result) => {
-						if (result.cancelled > 0) diagnosticLog(event, { cancelled: result.cancelled });
-					},
-						onError: (cause) => {
-							diagnosticLog(`${event}.error`, {
-								error: cause instanceof Error ? cause.message : String(cause),
-						});
-					},
-				});
-			}
-		};
-	});
-	$effect(() => {
-		const metricsScopeKey = JSON.stringify(metricsQueryKey);
+		const metricsScopeKey = JSON.stringify(readSpecs.metrics.queryKey);
 		if (appliedMetricsScopeKey === metricsScopeKey) return;
 		appliedMetricsScopeKey = metricsScopeKey;
 		metricsQueryReady = false;
@@ -590,25 +491,8 @@
 		return () => window.clearTimeout(timer);
 	});
 	const metricsQuery = createQuery<ResourceMetricsSummary>(() => ({
-		queryKey: metricsQueryKey,
-		queryFn: () =>
-			listResourceMetrics(
-				client,
-				clusterContext,
-				topologyNamespaces,
-				kubeconfigSourceKey,
-				createFiniteReadRequest(metricsCancelScope, "metrics"),
-			).catch((cause: unknown) => {
-				if (isAppError(cause) && cause.kind === "cancelled") {
-					diagnosticLog("resources.metrics.cancel", {
-						namespaces: topologyNamespaces.length,
-					});
-				}
-				throw cause;
-			}),
+		...readSpecs.metrics,
 		enabled: metricsQueryReady && Boolean(clusterContext),
-		retry: false,
-		staleTime: 30_000,
 	}));
 
 	const namespaceOptions = $derived(namespacesQuery.data ?? []);

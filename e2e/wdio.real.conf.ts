@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { browser } from "@wdio/globals";
 import type { Capabilities, Options } from "@wdio/types";
-import { LARGE_QUERY_GC_TIME_MS } from "../src/lib/query-retention";
+import { LARGE_QUERY_GC_TIME_MS } from "../src/lib/queryKeys";
 
 const profiling = process.env.KUBECOVE_PROFILE === "1";
 const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;

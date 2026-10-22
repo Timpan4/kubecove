@@ -1,3 +1,4 @@
+import { queryKeys } from "@/lib/queryKeys";
 import { createArgoListFreshness } from "./argo-application-freshness";
 
 declare function describe(name: string, fn: () => void): void;
@@ -30,9 +31,9 @@ describe("Argo application freshness", () => {
 		await waitForDebounce();
 
 		expect(invalidated).toEqual([
-			["argo-apps", "kubeconfigEnv=KUBECONFIG", "kind-dev"],
-			["argo-appsets", "kubeconfigEnv=KUBECONFIG", "kind-dev"],
-			["argo-appprojects", "kubeconfigEnv=KUBECONFIG", "kind-dev"],
+			queryKeys.argoApps("kind-dev", "KUBECONFIG"),
+			queryKeys.argoAppSets("kind-dev", "KUBECONFIG"),
+			queryKeys.argoAppProjects("kind-dev", "KUBECONFIG"),
 		]);
 	});
 
@@ -44,7 +45,7 @@ describe("Argo application freshness", () => {
 		freshness.handle(changed("Application"));
 		await waitForDebounce();
 
-		expect(invalidated).toEqual([["argo-apps", "kubeconfigEnv=KUBECONFIG", "kind-dev"]]);
+		expect(invalidated).toEqual([queryKeys.argoApps("kind-dev")]);
 	});
 
 	test("cleanup suppresses scheduled and late watch events", async () => {
