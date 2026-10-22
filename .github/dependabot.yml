@@ -14,6 +14,11 @@ updates:
       - dependency-name: "vitest"
         update-types:
           - "version-update:semver-major"
+      # Must match the vendored Rust updater's major.minor; see src-tauri/vendor/tauri-plugin-updater/PATCH.md.
+      - dependency-name: "@tauri-apps/plugin-updater"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
     groups:
       bun-production-minor-patch:
         dependency-type: "production"
