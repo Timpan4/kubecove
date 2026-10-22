@@ -190,7 +190,8 @@ export function createResourceActionSession(options: ResourceActionSessionOption
 		// Drafts edited while this one executed stay pending; independent actions keep every draft.
 		const applied =
 			current.request.action === "edit" && JSON.stringify(state.edits) === JSON.stringify(current.request.edits);
-		publish({ review: null, inlineStatus: null, result: effect, edits: applied ? {} : state.edits });
+		// Reviews wait for the reloaded baseline, so drafts never review against the old one (ADR 0024).
+		publish({ review: null, inlineStatus: null, result: effect, edits: applied ? {} : state.edits, loading: true });
 		if (applied) options.onDraftsApplied?.();
 		await loadBaseline(current.target);
 	}
@@ -232,7 +233,7 @@ export function createResourceActionSession(options: ResourceActionSessionOption
 			return true;
 		},
 		async review(action, revision) {
-			if (!target || !actionAllowed(state.actionState, action)) return;
+			if (!target || state.loading || !actionAllowed(state.actionState, action)) return;
 			if (action === "edit" && !hasPendingEdits(state.edits)) return;
 			// A running execution keeps its result and refresh.
 			if (run?.view.status === "executing") return;

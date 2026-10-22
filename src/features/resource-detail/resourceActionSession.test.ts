@@ -435,6 +435,29 @@ describe("resource action session: drafts", () => {
 		expect(h.last("preview_resource_action")?.request.edits?.containers?.[0]?.image).toBe("registry.example/api:v2");
 	});
 
+	test("a review waits for the baseline reload after an independent action", async () => {
+		const h = harness({ held: ["get_resource_action_state"] });
+		await ready(h);
+		h.last("get_resource_action_state")?.resolve();
+		await settle();
+		h.session.draft(setImage("api", "registry.example/api:v2"));
+		await h.session.review("restart");
+		const execution = h.session.execute();
+		await settle();
+
+		expect(h.session.current.loading).toBe(true);
+		void h.session.review("edit");
+		await settle();
+		expect(h.calls("preview_resource_action")).toHaveLength(1);
+
+		h.last("get_resource_action_state")?.resolve();
+		await execution;
+		expect(h.session.current.loading).toBe(false);
+		await h.session.review("edit");
+		expect(h.calls("preview_resource_action")).toHaveLength(2);
+		expect(h.last("preview_resource_action")?.request.edits?.containers?.[0]?.image).toBe("registry.example/api:v2");
+	});
+
 	test("removal sends only what the baseline has", async () => {
 		const h = harness();
 		await ready(h);
