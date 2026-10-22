@@ -1,7 +1,7 @@
 import type { QueryClient } from "@tanstack/svelte-query";
 import type { QueryMatch } from "./queryKeys";
 import { refreshCurrentView } from "./resource-refresh";
-import { observeResourceScope, type ResourceWatchState } from "./resource-watch";
+import { observeResourceScope, type ResourceScopeObserver, type ResourceWatchState } from "./resource-watch";
 import type { TauriClient } from "./tauri-runtime";
 import type { createStreamChannel } from "./tauri-streams";
 import type { WatchResourceKey } from "./types";
@@ -157,9 +157,9 @@ export function bindLiveView({
 			reads: matches,
 			cancelRefetch,
 		});
-	let stopWatches = () => {};
+	let watches: ResourceScopeObserver | null = null;
 	if (view.keys.length === 0) onState(IDLE_LIVE_VIEW);
-	else stopWatches = observeResourceScope({
+	else watches = observeResourceScope({
 		client,
 		clusterContext: view.clusterContext,
 		keys: [...view.keys],
@@ -179,7 +179,7 @@ export function bindLiveView({
 	return {
 		refresh: () => reread(view.keys, viewReads, true),
 		stop() {
-			stopWatches();
+			watches?.stop();
 			for (const { refresh } of reads) refresh.dispose();
 		},
 	};

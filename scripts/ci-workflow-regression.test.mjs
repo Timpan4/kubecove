@@ -227,6 +227,20 @@ test("server packaging follows the relocated kubeconform source without changing
   assert.match(dockerIgnore, /^!src-tauri\/crates\/\*\*\r?$/m, "Docker must include crate sources and manifests");
   assert.match(dockerIgnore, /^\*\*\/target\r?$/m, "Rust build caches must stay out of the context");
 });
+// Failure mode: vite.config.ts imports a scripts/ module that the container context or the Nix
+// frontend fileset excludes, so that build cannot load its config. PR CI skips the container build.
+test("container and Nix build sources include every scripts module vite.config.ts imports", () => {
+  const viteConfig = readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
+  const dockerIgnore = readFileSync(new URL("../.dockerignore", import.meta.url), "utf8");
+  const nixFrontend = readFileSync(new URL("../nix/frontend.nix", import.meta.url), "utf8");
+  const imported = [...viteConfig.matchAll(/from "\.\/(scripts\/[^"]+)"/g)].map((match) => match[1]);
+  assert.ok(imported.length > 0, "vite.config.ts should import its build plugins from scripts/");
+  for (const path of imported) {
+    const escaped = path.replaceAll(".", "\\.");
+    assert.match(dockerIgnore, new RegExp(`^!${escaped}\\r?$`, "m"), `.dockerignore must reopen ${path}`);
+    assert.match(nixFrontend, new RegExp(`^\\s+\\.\\./${escaped}\\r?$`, "m"), `nix/frontend.nix must include ${path}`);
+  }
+});
 test("headless checks run without GUI packages and the gate requires their success", () => {
   assert.doesNotMatch(job("server"), /apt-get|cache-apt-pkgs|pkg-config|--all-features/);
   assert.match(job("server"), /cargo test --locked --workspace --no-default-features --manifest-path src-tauri\/Cargo.toml/);

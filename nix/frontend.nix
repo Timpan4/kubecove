@@ -18,6 +18,7 @@ bun2nix.mkDerivation {
       ../index.html
       ../package.json
       ../public
+      ../scripts/dev-interactions-plugin.ts
       ../scripts/frontend-bundle-report.ts
       ../src
       ../svelte.config.js

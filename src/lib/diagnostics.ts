@@ -38,7 +38,7 @@ type PerformanceWithMemory = Performance & {
 };
 
 const MAX_TRACE_LINES = 400;
-const MAX_FRONTEND_EVENTS = 500;
+export const MAX_FRONTEND_EVENTS = 500;
 const CHATTER_EVENTS = new Set(["app.render", "resources.render", "detail.render"]);
 
 let enabled = false;
