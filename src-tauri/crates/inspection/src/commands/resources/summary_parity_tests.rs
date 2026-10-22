@@ -73,7 +73,8 @@ fn cases() -> Vec<Case> {
         "Service": namespaced("Service", "v1", json!({"spec": {"type": "ClusterIP", "selector": {"app": "workload"}}})) => None, None, None, NotEvaluated, Network;
         "ConfigMap": namespaced("ConfigMap", "v1", json!({"data": {"key": "value"}})) => None, None, None, NotEvaluated, MetadataOnly;
         "Secret": namespaced("Secret", "v1", json!({"data": {"password": "c2VjcmV0"}})) => None, None, None, NotEvaluated, MetadataOnly;
-        "bound PersistentVolumeClaim": namespaced("PersistentVolumeClaim", "v1", json!({"status": {"phase": "Bound"}})) => None, None, None, NotEvaluated, Ownership;
+        "bound PersistentVolumeClaim": namespaced("PersistentVolumeClaim", "v1", json!({"status": {"phase": "Bound"}})) => Some("Bound"), None, None, NotEvaluated, Ownership;
+        "pending PersistentVolumeClaim": namespaced("PersistentVolumeClaim", "v1", json!({"status": {"phase": "Pending"}})) => Some("Pending"), None, None, NotEvaluated, Ownership;
         "ready Node": node("True") => Some("True"), Some("1/1"), None, Healthy, Absent;
         "unready Node": node("False") => Some("False"), Some("0/1"), None, NeedsAttention, Absent;
         "bound PersistentVolume": cluster("PersistentVolume", "v1", json!({"status": {"phase": "Bound"}})) => Some("Bound"), None, None, Unknown, Absent;

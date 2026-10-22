@@ -52,8 +52,9 @@ status and health are what users already see in tables.
   - Ingress: `Ready`/`true` with a load-balancer address, otherwise `Pending`/`false`.
   - Node: Ready condition status; the count of `Ready=True` conditions over one.
   - PersistentVolume: phase.
+  - PersistentVolumeClaim: phase as status only; the assessment stays not evaluated.
   - CustomResourceDefinition: the `Established` condition, otherwise the first condition, as `Type: Status`.
-  - Service, ConfigMap, Secret, PersistentVolumeClaim, StorageClass: none; the default assessment.
+  - Service, ConfigMap, Secret, StorageClass: none; the default assessment.
 
 ## Differences kept
 
@@ -64,21 +65,21 @@ status and health are what users already see in tables.
 3. Flux inventory ownership needs Kustomization and HelmRelease inventories, not the
    object itself. Scope lists and topology add it; details and `list_resources` do not.
 4. Topology does not collect Nodes or PersistentVolumes.
-5. PersistentVolumeClaims keep the list rule, so details no longer show the phase.
-   Adopting the phase everywhere would label every bound claim's health unknown,
-   because no rule classifies `Bound`. It would also turn intentionally unbound
-   `Pending` claims into incident items. A typed phase rule for claims and volumes
-   needs an owner decision.
+5. PersistentVolumeClaims show their phase as status on every surface, but their
+   health stays not evaluated (owner decision, 2026-10-22). Assessing the phase
+   would label every bound claim's health unknown, because no rule classifies
+   `Bound`, and would turn intentionally unbound `Pending` claims into incident
+   items.
 
 ## Visible changes
 
-List rows are unchanged.
+List rows are unchanged except that PersistentVolumeClaims now show their phase.
 
 - Details: built-in kinds show their API version. Deployments show
   `Available: N`. Pods with an empty phase show no status. Nodes,
   PersistentVolumes, and StorageClasses show owner, Helm, and Argo CD or Flux
-  ownership. PersistentVolumeClaims no longer show their phase, and their
-  assessment becomes not evaluated.
+  ownership. PersistentVolumeClaims keep their phase, and their assessment
+  becomes not evaluated.
 - Topology: Ingress nodes show `Ready` or `Pending` with health. DaemonSet nodes
   no longer show `Available: N` and fall back to their health text. Deployments
   with all counts at zero no longer show `Available: 0`. CRD node summaries gain

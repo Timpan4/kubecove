@@ -24,6 +24,11 @@ pub trait BuiltinSummary: k8s_openapi::Resource + k8s_openapi::Metadata<Ty = Obj
         None
     }
 
+    /// Status text for a kind without health semantics; its assessment stays not evaluated.
+    fn unassessed_status(&self) -> Option<String> {
+        None
+    }
+
     /// The object's `status`, which details return beside the summary.
     fn raw_status(&self) -> Option<serde_json::Result<Value>> {
         None
@@ -39,7 +44,9 @@ pub fn builtin_summary<K: BuiltinSummary>(
     now: DateTime<Utc>,
 ) -> ResourceSummary {
     let Some(kind_status) = object.kind_status() else {
-        return metadata_summary::<K>(cluster, object.metadata(), now);
+        let mut summary = metadata_summary::<K>(cluster, object.metadata(), now);
+        summary.status = object.unassessed_status();
+        return summary;
     };
     // Health is assessed below, so skip the default assessment's allocations.
     let assessed_below = HealthAssessment {
