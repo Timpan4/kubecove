@@ -9,8 +9,9 @@ use std::{
     },
     time::Duration,
 };
+use target::{PortForwardTarget, PortForwardTargetKind};
 use tokio::{
-    net::{TcpListener, TcpStream},
+    net::TcpStream,
     time::{sleep, timeout},
 };
 
@@ -27,27 +28,40 @@ fn valid_request() -> PortForwardRequest {
     }
 }
 
-fn test_summary(id: &str, local_port: u16) -> PortForwardSessionSummary {
-    PortForwardSessionSummary {
-        id: id.to_string(),
-        cluster_context: "kind-dev".to_string(),
+const CURRENT_SOURCE: &str = "kubeconfigSource=current";
+
+fn test_target(cluster_context: &str, kubeconfig_source_key: Option<&str>) -> PortForwardTarget {
+    PortForwardTarget {
+        cluster_context: cluster_context.to_string(),
         kubeconfig_env_var: None,
-        kubeconfig_source_key: None,
+        kubeconfig_source_key: kubeconfig_source_key.map(str::to_string),
         kubeconfig_source_label: None,
         namespace: "default".to_string(),
-        target_kind: "Pod".to_string(),
+        target_kind: PortForwardTargetKind::Pod,
         target_name: "api-0".to_string(),
         pod_name: "api-0".to_string(),
         remote_port: 8080,
-        resolved_pod_name: "api-0".to_string(),
-        resolved_pod_port: 8080,
-        local_port,
-        local_address: LOCAL_ADDRESS.to_string(),
-        local_url: format!("http://{LOCAL_ADDRESS}:{local_port}"),
-        status: "listening".to_string(),
-        started_at: "2026-05-31T00:00:00Z".to_string(),
-        last_error: None,
+        pod_port: 8080,
     }
+}
+
+/// Starts a forward through the lifecycle, relaying each connection through `handler`.
+async fn start_forward<H, F>(
+    registry: &PortForwardRegistry,
+    target: &PortForwardTarget,
+    handler: H,
+) -> PortForwardSessionSummary
+where
+    H: Fn(TcpStream) -> F + Send + 'static,
+    F: Future<Output = Result<(), AppError>> + Send + 'static,
+{
+    let listener = registry
+        .bind(None)
+        .await
+        .expect("localhost listener should bind");
+    registry
+        .start(registry.next_id(), target, listener, handler)
+        .expect("forward should start")
 }
 
 async fn spawn_session_with_handler<H, F>(
@@ -58,19 +72,13 @@ where
     H: Fn(TcpStream) -> F + Send + 'static,
     F: Future<Output = Result<(), AppError>> + Send + 'static,
 {
-    let listener = TcpListener::bind((LOCAL_ADDRESS, 0))
-        .await
-        .expect("localhost listener should bind");
-    let local_port = listener
-        .local_addr()
-        .expect("localhost listener should have a bound address")
-        .port();
-    let id = registry.session_id();
-    let handle = relay::spawn_relay(listener, handler, registry.relay_events(id.clone()));
-    registry
-        .insert(test_summary(&id, local_port), handle)
-        .expect("test session should insert");
-    (id, local_port)
+    let forward = start_forward(
+        registry,
+        &test_target("kind-dev", Some(CURRENT_SOURCE)),
+        handler,
+    )
+    .await;
+    (forward.id, forward.local_port)
 }
 
 async fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
@@ -151,43 +159,82 @@ fn validates_required_pod_target_and_ports() {
     );
 }
 
-#[test]
-fn registry_detects_local_port_collision() {
-    let registry = PortForwardRegistry::default();
-    registry.insert_summary_for_test(test_summary("pf-1", 18080));
+#[tokio::test(flavor = "current_thread")]
+async fn bind_rejects_a_local_port_that_is_already_forwarded() {
+    timeout(Duration::from_secs(5), async {
+        let registry = PortForwardRegistry::default();
+        let (session_id, local_port) =
+            spawn_session_with_handler(&registry, |_stream| async { Ok(()) }).await;
 
-    assert!(registry.has_local_port(18080));
-    assert!(!registry.has_local_port(18081));
+        let error = registry
+            .bind(Some(local_port))
+            .await
+            .err()
+            .expect("a forwarded local port must be rejected");
+        registry.stop(&session_id);
+
+        assert_eq!(
+            error.message,
+            format!("local port {local_port} is already forwarded")
+        );
+        assert_eq!(error.kind, AppErrorKind::LiveSessionTargetUnavailable);
+    })
+    .await
+    .expect("local port test should finish within timeout");
 }
 
-#[test]
-fn registry_stops_sessions_outside_context_or_source_scope() {
-    let registry = PortForwardRegistry::default();
-    let mut kept = test_summary("pf-kept", 18080);
-    kept.kubeconfig_source_key = Some("kubeconfigSource=current".to_string());
-    let mut wrong_context = test_summary("pf-context", 18081);
-    wrong_context.cluster_context = "other-context".to_string();
-    wrong_context.kubeconfig_source_key = Some("kubeconfigSource=current".to_string());
-    let mut wrong_source = test_summary("pf-source", 18082);
-    wrong_source.kubeconfig_source_key = Some("kubeconfigSource=old".to_string());
-    registry.insert_summary_for_test(kept);
-    registry.insert_summary_for_test(wrong_context);
-    registry.insert_summary_for_test(wrong_source);
+#[tokio::test(flavor = "current_thread")]
+async fn scope_change_stops_forwards_outside_the_workspace_and_keeps_the_rest() {
+    timeout(Duration::from_secs(5), async {
+        let registry = PortForwardRegistry::default();
+        let idle = |_stream| async { Ok(()) };
+        let kept = start_forward(
+            &registry,
+            &test_target("kind-dev", Some(CURRENT_SOURCE)),
+            idle,
+        )
+        .await;
+        let mut outside = Vec::new();
+        for target in [
+            test_target("other-context", Some(CURRENT_SOURCE)),
+            test_target("kind-dev", Some("kubeconfigSource=old")),
+            test_target("kind-dev", None),
+        ] {
+            outside.push(start_forward(&registry, &target, idle).await);
+        }
 
-    let scope = LiveSessionScope::new(LiveSessionCleanupRequest {
-        allowed_cluster_contexts: vec!["kind-dev".to_string()],
-        kubeconfig_source_key: "kubeconfigSource=current".to_string(),
+        let stopped = registry.stop_outside_scope(
+            &LiveSessionScope::new(LiveSessionCleanupRequest {
+                allowed_cluster_contexts: vec!["kind-dev".to_string()],
+                kubeconfig_source_key: CURRENT_SOURCE.to_string(),
+            })
+            .expect("valid scope"),
+        );
+
+        assert_eq!(
+            stopped,
+            outside
+                .iter()
+                .map(|forward| forward.id.clone())
+                .collect::<Vec<_>>()
+        );
+        let listed = registry.list();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, kept.id);
+        for forward in &outside {
+            assert!(
+                wait_until_connect_fails(forward.local_port).await,
+                "out-of-scope local port {} should close",
+                forward.local_port
+            );
+        }
+        TcpStream::connect((LOCAL_ADDRESS, kept.local_port))
+            .await
+            .expect("in-scope forward keeps listening");
+        registry.stop(&kept.id);
     })
-    .expect("valid scope");
-    let stopped = registry.stop_outside_scope(&scope);
-
-    assert_eq!(
-        stopped,
-        vec!["pf-context".to_string(), "pf-source".to_string()]
-    );
-    let remaining = registry.list();
-    assert_eq!(remaining.len(), 1);
-    assert_eq!(remaining[0].id, "pf-kept");
+    .await
+    .expect("scope change test should finish within timeout");
 }
 
 #[tokio::test(flavor = "current_thread")]

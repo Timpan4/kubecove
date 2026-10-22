@@ -7,8 +7,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use super::registry::{session_summary, PortForwardRegistry};
-use super::relay::{bind_loopback, spawn_relay};
+use super::lifecycle::PortForwardRegistry;
 use super::target::{
     client_for_context, resolve_port_forward_target, validate_request, PortForwardTarget,
     ValidatedPortForwardRequest,
@@ -130,36 +129,13 @@ pub(super) async fn start_pod_port_forward_in_registry(
     registry: &PortForwardRegistry,
 ) -> Result<PortForwardSessionSummary, AppError> {
     let request = validate_request(&request)?;
-    if let Some(local_port) = request.local_port {
-        if registry.has_local_port(local_port) {
-            return Err(AppError::new(
-                format!("local port {local_port} is already forwarded"),
-                AppErrorKind::LiveSessionTargetUnavailable,
-            ));
-        }
-    }
-
-    let (listener, local_port) = bind_loopback(request.local_port).await.map_err(|err| {
-        AppError::new(
-            format!("local port unavailable: {err}"),
-            AppErrorKind::LiveSessionTargetUnavailable,
-        )
-        .with_source(err)
-    })?;
-    if registry.has_local_port(local_port) {
-        return Err(AppError::new(
-            format!("local port {local_port} is already forwarded"),
-            AppErrorKind::LiveSessionTargetUnavailable,
-        ));
-    }
-
+    let listener = registry.bind(request.local_port).await?;
     let target = resolve_port_forward_target(request).await?;
     let client =
         client_for_context(&target.cluster_context, target.kubeconfig_env_var.clone()).await?;
     verify_pod_port_forward(client.clone(), &target).await?;
 
-    let session_id = registry.session_id();
-    let summary = session_summary(session_id.clone(), &target, local_port);
+    let session_id = registry.next_id();
     let handle_request = ValidatedPortForwardRequest {
         cluster_context: target.cluster_context.clone(),
         kubeconfig_env_var: target.kubeconfig_env_var.clone(),
@@ -169,11 +145,11 @@ pub(super) async fn start_pod_port_forward_in_registry(
         target_kind: target.target_kind,
         target_name: target.target_name.clone(),
         remote_port: target.remote_port,
-        local_port: Some(local_port),
+        local_port: Some(listener.local_port()),
     };
     let connection_session_id = session_id.clone();
     let connection_registry = registry.clone();
-    let handle_connection = move |local_stream: TcpStream| {
+    let relay_connection = move |local_stream: TcpStream| {
         resolve_and_forward_connection(
             client.clone(),
             handle_request.clone(),
@@ -182,10 +158,5 @@ pub(super) async fn start_pod_port_forward_in_registry(
             connection_registry.clone(),
         )
     };
-    let handle = spawn_relay(
-        listener,
-        handle_connection,
-        registry.relay_events(session_id),
-    );
-    registry.insert(summary, handle)
+    registry.start(session_id, &target, listener, relay_connection)
 }

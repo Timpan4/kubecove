@@ -36,7 +36,7 @@ pub(super) struct ValidatedPortForwardRequest {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct PortForwardTarget {
+pub struct PortForwardTarget {
     pub(super) cluster_context: String,
     pub(super) kubeconfig_env_var: Option<String>,
     pub(super) kubeconfig_source_key: Option<String>,

@@ -3,7 +3,7 @@ use crate::models::{AppError, PortForwardRequest, PortForwardSessionSummary};
 use crate::runtime::State;
 use kube::Client;
 
-mod registry;
+mod lifecycle;
 pub mod relay;
 pub mod runner;
 pub mod service;
@@ -54,14 +54,14 @@ pub fn benchmark_port_forward_session_summary(
         remote_port: 80,
         pod_port,
     };
-    let mut summary = registry::session_summary("session-1".to_string(), &target, 18080);
+    let mut summary = lifecycle::session_summary("session-1".to_string(), &target, 18080);
     summary.started_at = "2026-10-11T00:00:00Z".to_string();
     summary
 }
 
-pub use registry::PortForwardRegistry;
 #[cfg(test)]
-use registry::LOCAL_ADDRESS;
+use lifecycle::LOCAL_ADDRESS;
+pub use lifecycle::{ForwardListener, PortForwardRegistry};
 use runner::start_pod_port_forward_in_registry;
 #[cfg(test)]
 use target::validate_request;
