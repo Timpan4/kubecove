@@ -2809,6 +2809,7 @@ dependencies = [
  "chrono",
  "futures-util",
  "kubecove-kube",
+ "kubecove-live",
  "kubecove-models",
  "reqwest",
  "rustls",

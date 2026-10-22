@@ -16,10 +16,6 @@ pub struct TunnelTarget {
     pub pod_port: u16,
 }
 
-pub fn validate_tunnel_request(request: &PortForwardRequest) -> Result<(), AppError> {
-    target::validate_request(request).map(|_| ())
-}
-
 /// Validate and resolve a tunnel target through the same Pod/Service path as desktop forwards.
 pub async fn resolve_tunnel_target(request: PortForwardRequest) -> Result<TunnelTarget, AppError> {
     let validated = target::validate_request(&request)?;
