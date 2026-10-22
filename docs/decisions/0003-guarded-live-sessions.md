@@ -45,7 +45,7 @@ Browser clients cannot open local listeners, so their forwards keep listening on
 
 ## Amendment 2026-10-22: one scope rule for every forward
 
-Status: Proposed.
+Status: Accepted on 2026-10-22.
 
 The amendment of 2026-10-09 says tunnelled forwards stop on scope changes, but it does not say which kubeconfig source a tunnelled forward belongs to or which side stops it. The same rule now applies to every port-forward, whether its listener runs in the backend that resolves it or on the laptop:
 
