@@ -16,7 +16,12 @@
 	import type { ResourceScopeResult } from "@/lib/types";
 	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
 	import { refreshCurrentView } from "@/lib/resource-refresh";
-	import { observeResourceScope } from "@/lib/resource-watch";
+	import { onDestroy, untrack } from "svelte";
+	import {
+		observeResourceScope,
+		type ResourceScopeHandlers,
+		type ResourceScopeObserver,
+	} from "@/lib/resource-watch";
 	import { createWatchQueryRefresh, watchKeyMatches } from "@/lib/resource-watch-refresh";
 	import { markStartup } from "@/lib/startup-marks";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
@@ -857,8 +862,18 @@
 		});
 	}
 
+	// One observer per cluster context and kubeconfig source. Scope changes reconcile
+	// its watches, so streams shared by the old and new scope are not restarted.
+	let scopeObserver: { observer: ResourceScopeObserver; owner: string } | null = null;
+	function stopScopeObserver() {
+		scopeObserver?.observer.stop();
+		scopeObserver = null;
+	}
+	onDestroy(stopScopeObserver);
+
 	$effect(() => {
 		if (!sourceReady || !clusterContext || fetchKeys.length === 0) {
+			stopScopeObserver();
 			realtimeStatus = "idle";
 			realtimeMessage = "No live resource watches in this view.";
 			realtimeError = null;
@@ -889,18 +904,31 @@
 			if (argoScope && keys?.some((key) => argoWatchKeys.some((candidate) => watchKeyMatches(candidate, key)))) reads.push(argoScope);
 			return refreshCurrentView({ client, queryClient, clusterContext: context, kubeconfigEnvVar: source, keys: keys ?? watchKeys, namespaces, reads: keys ? reads : undefined, cancelRefetch: false });
 		};
-		const stop = observeResourceScope({ client, clusterContext: context, keys: watchKeys, kubeconfigEnvVar: source,
+		const mapOpen = mapPanelOpen;
+		const handlers: ResourceScopeHandlers = {
 			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; realtimeWarnings = state.warnings ?? []; },
 			reload,
 			onChange: (_event, key) => {
 				const resourceChanged = resourceWatchKeys.some((candidate) => watchKeyMatches(candidate, key));
 				if (resourceChanged) resourceRefresh.notify();
-				if (!mapPanelOpen) void queryClient.invalidateQueries({ queryKey: topologyKey, refetchType: "none" });
+				if (!mapOpen) void queryClient.invalidateQueries({ queryKey: topologyKey, refetchType: "none" });
 				if (mapWatchKeys.some((candidate) => watchKeyMatches(candidate, key))) topologyRefresh.notify();
 				if (resourceChanged || argoWatchKeys.some((candidate) => watchKeyMatches(candidate, key))) argoRefresh?.notify();
 			},
+		};
+		const owner = JSON.stringify([context, source ?? null]);
+		untrack(() => {
+			if (scopeObserver?.owner === owner) {
+				scopeObserver.observer.update(watchKeys, handlers);
+				return;
+			}
+			stopScopeObserver();
+			scopeObserver = {
+				owner,
+				observer: observeResourceScope({ client, clusterContext: context, keys: watchKeys, kubeconfigEnvVar: source, ...handlers }),
+			};
 		});
-		return () => { stop(); resourceRefresh.dispose(); topologyRefresh.dispose(); argoRefresh?.dispose(); };
+		return () => { resourceRefresh.dispose(); topologyRefresh.dispose(); argoRefresh?.dispose(); };
 	});
 
 	function toggleNamespace(namespace: string, checked: boolean) {

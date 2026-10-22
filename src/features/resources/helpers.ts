@@ -5,6 +5,7 @@ import {
 	gitOpsOwnershipGroupLabel,
 } from "@/lib/gitops-ownership-evidence";
 import { classifyResourceHealth } from "@/lib/resource-health";
+import { watchKeySignature } from "@/lib/resource-watch";
 import type {
 	ArgoApplicationSummary,
 	ClusterScopedKind,
@@ -204,16 +205,6 @@ export function watchKeysFromFetchKeys(keys: FetchKey[]): WatchResourceKey[] {
 		coalesced.set(watchKeySignature(watchKey), watchKey);
 	}
 	return Array.from(coalesced.values());
-}
-
-function watchKeySignature(key: WatchResourceKey): string {
-	const kind = key.resourceKind;
-	return [
-		kind.kind,
-		kind.apiVersion ?? "",
-		kind.plural ?? "",
-		key.namespace ?? "",
-	].join(":");
 }
 
 export function mergeWatchKeys(

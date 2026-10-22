@@ -1,5 +1,6 @@
 import type { DiagnosticMetricSummary } from "@/lib/diagnostics";
 import type { BackendDiagnosticEvent } from "@/lib/types";
+import type { RecordedInteraction } from "@/lib/interaction-recorder";
 
 export function formatDiagnosticMs(value: number | undefined): string {
 	return value === undefined ? "-" : `${value} ms`;
@@ -69,4 +70,24 @@ function percentile(sorted: number[], percentileValue: number): number | undefin
 		Math.max(0, Math.ceil((percentileValue / 100) * sorted.length) - 1),
 	);
 	return sorted[index];
+}
+
+export function interactionTableRows(
+	interactions: RecordedInteraction[],
+	maxRows = 10,
+): string[][] {
+	return interactions
+		.filter((interaction) => interaction.frames.droppedFrames > 0)
+		.sort((a, b) => b.frames.droppedFrames - a.frames.droppedFrames || b.frames.maxMs - a.frames.maxMs)
+		.slice(0, maxRows)
+		.map((interaction) => [
+			new Date(interaction.wallTime).toLocaleTimeString(),
+			interaction.kind,
+			interaction.target,
+			String(interaction.frames.droppedFrames),
+			formatDiagnosticMs(interaction.frames.maxMs),
+			formatDiagnosticMs(Math.max(0, ...interaction.inputToPaint.map((entry) => entry.ms))),
+			`+${interaction.dom.added} -${interaction.dom.removed}`,
+			interaction.dom.sources[0]?.source ?? "-",
+		]);
 }
