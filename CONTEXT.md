@@ -72,4 +72,4 @@ _Avoid_ using it for Helm install, upgrade, rollback, uninstall, or CLI executio
 _Avoid_ keeping a separate command list for one transport.
 
 **Finite-read envelope** means the backend wrapper that registers one finite read for request cancellation and records its timing, log lines and diagnostics outcome.
-_Avoid_ using it for confirmed writes or live sessions, which keep their own lifecycles under ADR 0009.
+_Avoid_ using it for confirmed writes, which use a separate non-rotating client path, or live sessions, whose lifecycles follow ADR 0003. ADR 0009 defines how both behave on workspace cancellation.
