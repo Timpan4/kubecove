@@ -9,7 +9,8 @@ use serde_json::{Map, Value};
 /// Each entry is `transport mode fn name(wireKey: Type, ...) with HostParam, ...;`:
 ///
 /// - `transport` is `both` (Tauri IPC and server HTTP), `remote_intercepted` (both, and the
-///   desktop remote client handles it on the laptop instead of forwarding it) or `desktop_only`.
+///   desktop remote client runs its own handler on the laptop instead of forwarding the call
+///   unchanged) or `desktop_only`.
 /// - `mode` is `async` or `sync`. Synchronous commands keep Tauri's main-thread execution.
 /// - `name` is the command name and the function in the shared `commands` API.
 /// - Wire arguments use the exact camelCase key the frontend sends, in call order.
@@ -291,8 +292,9 @@ macro_rules! command_contract {
                 with State<PodExecRegistry>;
             both async fn stop_pod_exec_session(sessionId: String) with State<PodExecRegistry>;
             both async fn list_pod_exec_sessions() with State<PodExecRegistry>;
-            both async fn stop_live_sessions_outside_scope(request: LiveSessionCleanupRequest)
-                with State<PortForwardRegistry>, State<PodExecRegistry>;
+            remote_intercepted async fn stop_live_sessions_outside_scope(
+                request: LiveSessionCleanupRequest,
+            ) with State<PortForwardRegistry>, State<PodExecRegistry>;
             both async fn get_app_usage_metrics() with State<AppUsageMonitor>;
             both sync fn get_kubeconfig_sources();
             both sync fn set_kubeconfig_env_var(envVar: String);

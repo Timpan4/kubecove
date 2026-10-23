@@ -1,34 +1,32 @@
 use super::client::{RemoteConnection, MAX_TUNNEL_PAYLOAD_BYTES};
+use kubecove_live::commands::{
+    sessions::{target::validate_target, PortForwardRegistry},
+    LiveSessionScope,
+};
 use kubecove_models::{
-    AppError, AppErrorKind, CommandArgs, PortForwardRequest, PortForwardSessionSummary,
+    AppError, AppErrorKind, CommandArgs, LiveSessionCleanupRequest, LiveSessionCleanupResult,
+    PortForwardRequest, PortForwardSessionSummary,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
     future::{ready, Future, Ready},
-    net::{Ipv4Addr, SocketAddrV4},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-    sync::{mpsc, oneshot},
-    task::{JoinHandle, JoinSet},
+    net::TcpStream,
+    sync::mpsc,
 };
 use uuid::Uuid;
 
 const FORWARD_QUEUE_MESSAGES: usize = 16;
 
+/// The desktop tunnel adapter of the Port Forward Lifecycle: forwards listen
+/// on the laptop and relay each connection over the remote server's socket.
 #[derive(Default)]
 pub struct RemoteTunnelRegistry {
-    state: Mutex<HashMap<String, RemoteForward>>,
-}
-
-struct RemoteForward {
-    summary: PortForwardSessionSummary,
-    stop: oneshot::Sender<()>,
-    task: JoinHandle<()>,
+    forwards: PortForwardRegistry,
 }
 
 #[derive(Deserialize)]
@@ -36,6 +34,9 @@ struct RemoteForward {
 struct TunnelRegistration {
     resolved_pod_name: String,
     resolved_pod_port: u16,
+    // A server without this field leaves the forward outside every scope.
+    kubeconfig_source_key: Option<String>,
+    kubeconfig_source_label: Option<String>,
 }
 
 impl RemoteTunnelRegistry {
@@ -44,20 +45,9 @@ impl RemoteTunnelRegistry {
         connection: &Arc<RemoteConnection>,
         mut request: PortForwardRequest,
     ) -> Result<PortForwardSessionSummary, AppError> {
-        validate_request(&request)?;
-        let listener = TcpListener::bind(SocketAddrV4::new(
-            Ipv4Addr::LOCALHOST,
-            request.local_port.unwrap_or(0) as u16,
-        ))
-        .await
-        .map_err(|error| {
-            AppError::new(
-                format!("local port unavailable: {error}"),
-                AppErrorKind::LiveSessionTargetUnavailable,
-            )
-        })?;
-        let local_port = listener.local_addr().map_err(io_error)?.port();
-        request.local_port = Some(i64::from(local_port));
+        let validated = validate_target(&request)?;
+        let listener = self.forwards.bind(validated.local_port()).await?;
+        request.local_port = Some(i64::from(listener.local_port()));
         let forward_id = Uuid::new_v4().to_string();
         let registration = connection
             .send_control(
@@ -73,62 +63,30 @@ impl RemoteTunnelRegistry {
                 )
                 .with_source(error)
             })?;
+        let target = validated.resolved_by_server(
+            registration.resolved_pod_name,
+            registration.resolved_pod_port,
+            registration.kubeconfig_source_key,
+            registration.kubeconfig_source_label,
+        );
 
-        let target_kind = request
-            .target_kind
-            .as_deref()
-            .unwrap_or(if request.pod_name.is_some() {
-                "Pod"
-            } else {
-                "Service"
-            })
-            .to_string();
-        let target_name = request
-            .target_name
-            .clone()
-            .or_else(|| request.pod_name.clone())
-            .unwrap_or_default();
-        let started_at = chrono::Utc::now().to_rfc3339();
-        let summary = PortForwardSessionSummary {
-            id: forward_id.clone(),
-            cluster_context: request.cluster_context.clone(),
-            kubeconfig_env_var: request.kubeconfig_env_var.clone(),
-            kubeconfig_source_key: None,
-            kubeconfig_source_label: None,
-            namespace: request.namespace.clone(),
-            target_kind,
-            target_name,
-            pod_name: registration.resolved_pod_name.clone(),
-            remote_port: u16::try_from(request.remote_port)
-                .map_err(|_| validation_error("remote port must be between 1 and 65535"))?,
-            resolved_pod_name: registration.resolved_pod_name,
-            resolved_pod_port: registration.resolved_pod_port,
-            local_port,
-            local_address: "127.0.0.1".to_string(),
-            local_url: format!("http://127.0.0.1:{local_port}"),
-            status: "listening".to_string(),
-            started_at,
-            last_error: None,
-        };
-
-        let (stop, stopped) = oneshot::channel();
-        let connection_task = Arc::clone(connection);
-        let forward_task_id = forward_id.clone();
-        let task = tokio::spawn(async move {
-            run_forward(listener, connection_task, forward_task_id, stopped).await;
-        });
-        self.state
-            .lock()
-            .expect("remote tunnel registry lock")
-            .insert(
-                forward_id,
-                RemoteForward {
-                    summary: summary.clone(),
-                    stop,
-                    task,
-                },
-            );
-        Ok(summary)
+        let relay_connection = Arc::clone(connection);
+        let relay_forward_id = forward_id.clone();
+        let started = self
+            .forwards
+            .start(forward_id.clone(), &target, listener, move |stream| {
+                Box::pin(run_connection(
+                    stream,
+                    Arc::clone(&relay_connection),
+                    relay_forward_id.clone(),
+                ))
+            });
+        if started.is_err() {
+            let _ = connection
+                .send_control_without_reply(unregister_control(&forward_id))
+                .await;
+        }
+        started
     }
 
     pub async fn stop_port_forward(
@@ -136,19 +94,12 @@ impl RemoteTunnelRegistry {
         connection: &Arc<RemoteConnection>,
         forward_id: String,
     ) -> Result<bool, AppError> {
-        let Some(forward) = self
-            .state
-            .lock()
-            .expect("remote tunnel registry lock")
-            .remove(&forward_id)
-        else {
+        if !self.forwards.stop(&forward_id) {
             return Ok(false);
-        };
-        let _ = forward.stop.send(());
-        forward.task.abort();
+        }
         connection
             .send_control(
-                json!({"type":"tunnel_unregister","forwardId":forward_id}),
+                unregister_control(&forward_id),
                 format!("tunnel_unregistered:{forward_id}"),
             )
             .await?;
@@ -162,30 +113,48 @@ impl RemoteTunnelRegistry {
         ready(Ok(self.list()))
     }
 
-    fn list(&self) -> Vec<PortForwardSessionSummary> {
-        self.state
-            .lock()
-            .expect("remote tunnel registry lock")
-            .values()
-            .map(|forward| forward.summary.clone())
-            .collect()
+    pub(super) fn list(&self) -> Vec<PortForwardSessionSummary> {
+        self.forwards.list()
+    }
+
+    /// Applies a workspace scope change to the laptop's forwards, then sends
+    /// the same cleanup to the server for the sessions it runs (ADR 0003).
+    pub async fn stop_live_sessions_outside_scope(
+        &self,
+        connection: &Arc<RemoteConnection>,
+        request: LiveSessionCleanupRequest,
+    ) -> Result<LiveSessionCleanupResult, AppError> {
+        let server_args = json!({ "request": &request });
+        let stopped = self
+            .forwards
+            .stop_outside_scope(&LiveSessionScope::new(request)?);
+        for forward_id in &stopped {
+            let _ = connection
+                .send_control_without_reply(unregister_control(forward_id))
+                .await;
+        }
+        let server = connection
+            .invoke("stop_live_sessions_outside_scope", server_args)
+            .await?;
+        let mut result: LiveSessionCleanupResult =
+            serde_json::from_value(server).map_err(|error| {
+                AppError::new(
+                    "remote server returned an invalid live session cleanup result",
+                    AppErrorKind::Session,
+                )
+                .with_source(error)
+            })?;
+        result.stopped_port_forward_ids.extend(stopped);
+        result.stopped_port_forwards = result.stopped_port_forward_ids.len();
+        Ok(result)
     }
 
     pub async fn close_all(&self, connection: Option<&RemoteConnection>) {
-        let forwards = self
-            .state
-            .lock()
-            .expect("remote tunnel registry lock")
-            .drain()
-            .map(|(_, forward)| forward)
-            .collect::<Vec<_>>();
-        for forward in forwards {
-            let _ = forward.stop.send(());
-            forward.task.abort();
-            if let Some(connection) = connection {
-                let id = forward.summary.id;
+        let stopped = self.forwards.stop_all();
+        if let Some(connection) = connection {
+            for forward_id in stopped {
                 let _ = connection
-                    .send_control_without_reply(json!({"type":"tunnel_unregister","forwardId":id}))
+                    .send_control_without_reply(unregister_control(&forward_id))
                     .await;
             }
         }
@@ -193,7 +162,7 @@ impl RemoteTunnelRegistry {
 }
 
 // The desktop remote client handles each `remote_intercepted` command with the registry
-// method of the same name instead of forwarding it to the server.
+// method of the same name. The method decides what, if anything, it sends to the server.
 macro_rules! intercept {
     (
         $this:ident, $connection:ident, $command:ident, $payload:ident;
@@ -207,7 +176,7 @@ macro_rules! intercept {
                 .await?;
             return serde_json::to_value(result).map(Some).map_err(|error| {
                 AppError::new(
-                    "port-forward result could not be serialized",
+                    concat!(stringify!($name), " result could not be serialized"),
                     AppErrorKind::Serialization,
                 )
                 .with_source(error)
@@ -239,28 +208,8 @@ macro_rules! remote_intercept {
 
 kubecove_models::command_contract!(remote_intercept);
 
-async fn run_forward(
-    listener: TcpListener,
-    connection: Arc<RemoteConnection>,
-    forward_id: String,
-    mut stopped: oneshot::Receiver<()>,
-) {
-    let mut connections = JoinSet::new();
-    loop {
-        tokio::select! {
-            _ = &mut stopped => break,
-            _ = connections.join_next(), if !connections.is_empty() => {},
-            accepted = listener.accept() => match accepted {
-                Ok((stream, _)) => {
-                    let connection = Arc::clone(&connection);
-                    let forward_id = forward_id.clone();
-                    connections.spawn(Box::pin(run_connection(stream, connection, forward_id)));
-                }
-                Err(_) => break,
-            }
-        }
-    }
-    connections.abort_all();
+fn unregister_control(forward_id: &str) -> Value {
+    json!({"type":"tunnel_unregister","forwardId":forward_id})
 }
 
 async fn run_connection(
@@ -335,30 +284,14 @@ where
     }
 }
 
-fn validate_request(request: &PortForwardRequest) -> Result<(), AppError> {
-    if request.remote_port < 1 || request.remote_port > i64::from(u16::MAX) {
-        return Err(validation_error("remote port must be between 1 and 65535"));
-    }
-    if let Some(port) = request.local_port {
-        if port != 0 && !(1024..=i64::from(u16::MAX)).contains(&port) {
-            return Err(validation_error(
-                "local port must be 0 or between 1024 and 65535",
-            ));
-        }
-    }
-    Ok(())
-}
-
 fn io_error(error: std::io::Error) -> AppError {
     AppError::new("remote tunnel I/O failed", AppErrorKind::Io).with_source(error)
-}
-fn validation_error(message: &str) -> AppError {
-    AppError::new(message, AppErrorKind::Validation)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::Ipv4Addr;
     use tokio::net::TcpListener;
 
     // Exercises the production Rust client against the headless smoke's isolated

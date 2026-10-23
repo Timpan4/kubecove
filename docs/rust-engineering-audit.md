@@ -163,7 +163,7 @@ Paths below are relative to `src-tauri` at the reviewed baseline; link destinati
 | [src/commands/resources/topology_tests.rs](../src-tauri/crates/inspection/src/commands/resources/topology_tests.rs) | Read; unchanged |
 | [src/commands/resources/yaml.rs](../src-tauri/crates/inspection/src/commands/resources/yaml.rs) | Read; updated |
 | [src/commands/sessions.rs](../src-tauri/crates/live/src/commands/sessions.rs) | Read; updated |
-| [src/commands/sessions/registry.rs](../src-tauri/crates/live/src/commands/sessions/registry.rs) | Read; updated |
+| [src/commands/sessions/lifecycle.rs](../src-tauri/crates/live/src/commands/sessions/lifecycle.rs) | Read; updated |
 | [src/commands/sessions/runner.rs](../src-tauri/crates/live/src/commands/sessions/runner.rs) | Read; updated |
 | [src/commands/sessions/service.rs](../src-tauri/crates/live/src/commands/sessions/service.rs) | Read; updated |
 | [src/commands/sessions/target.rs](../src-tauri/crates/live/src/commands/sessions/target.rs) | Read; updated |

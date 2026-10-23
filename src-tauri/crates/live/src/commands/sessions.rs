@@ -3,7 +3,8 @@ use crate::models::{AppError, PortForwardRequest, PortForwardSessionSummary};
 use crate::runtime::State;
 use kube::Client;
 
-mod registry;
+mod lifecycle;
+pub mod relay;
 pub mod runner;
 pub mod service;
 pub mod target;
@@ -13,10 +14,9 @@ pub struct TunnelTarget {
     pub namespace: String,
     pub pod_name: String,
     pub pod_port: u16,
-}
-
-pub fn validate_tunnel_request(request: &PortForwardRequest) -> Result<(), AppError> {
-    target::validate_request(request).map(|_| ())
+    /// The server's kubeconfig source, which scopes the desktop's forward (ADR 0003).
+    pub kubeconfig_source_key: Option<String>,
+    pub kubeconfig_source_label: Option<String>,
 }
 
 /// Validate and resolve a tunnel target through the same Pod/Service path as desktop forwards.
@@ -33,6 +33,8 @@ pub async fn resolve_tunnel_target(request: PortForwardRequest) -> Result<Tunnel
         namespace: target.namespace,
         pod_name: target.pod_name,
         pod_port: target.pod_port,
+        kubeconfig_source_key: target.kubeconfig_source_key,
+        kubeconfig_source_label: target.kubeconfig_source_label,
     })
 }
 
@@ -53,16 +55,14 @@ pub fn benchmark_port_forward_session_summary(
         remote_port: 80,
         pod_port,
     };
-    let mut summary = registry::session_summary("session-1".to_string(), &target, 18080);
+    let mut summary = lifecycle::session_summary("session-1".to_string(), &target, 18080);
     summary.started_at = "2026-10-11T00:00:00Z".to_string();
     summary
 }
 
-pub use registry::PortForwardRegistry;
 #[cfg(test)]
-use registry::LOCAL_ADDRESS;
-#[cfg(test)]
-use runner::run_port_forward_session;
+use lifecycle::LOCAL_ADDRESS;
+pub use lifecycle::{ForwardListener, PortForwardRegistry};
 use runner::start_pod_port_forward_in_registry;
 #[cfg(test)]
 use target::validate_request;

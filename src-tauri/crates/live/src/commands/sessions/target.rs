@@ -23,7 +23,7 @@ impl PortForwardTargetKind {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ValidatedPortForwardRequest {
+pub struct ValidatedPortForwardRequest {
     pub(super) cluster_context: String,
     pub(super) kubeconfig_env_var: Option<String>,
     pub(super) kubeconfig_source_key: Option<String>,
@@ -35,8 +35,37 @@ pub(super) struct ValidatedPortForwardRequest {
     pub(super) local_port: Option<u16>,
 }
 
+impl ValidatedPortForwardRequest {
+    pub fn local_port(&self) -> Option<u16> {
+        self.local_port
+    }
+
+    /// The target as `kubecove-server` resolved it, under the server's
+    /// kubeconfig source.
+    pub fn resolved_by_server(
+        self,
+        pod_name: String,
+        pod_port: u16,
+        kubeconfig_source_key: Option<String>,
+        kubeconfig_source_label: Option<String>,
+    ) -> PortForwardTarget {
+        PortForwardTarget {
+            cluster_context: self.cluster_context,
+            kubeconfig_env_var: self.kubeconfig_env_var,
+            kubeconfig_source_key,
+            kubeconfig_source_label,
+            namespace: self.namespace,
+            target_kind: self.target_kind,
+            target_name: self.target_name,
+            pod_name,
+            remote_port: self.remote_port,
+            pod_port,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub(super) struct PortForwardTarget {
+pub struct PortForwardTarget {
     pub(super) cluster_context: String,
     pub(super) kubeconfig_env_var: Option<String>,
     pub(super) kubeconfig_source_key: Option<String>,
@@ -78,7 +107,10 @@ fn validate_target_kind(request: &PortForwardRequest) -> Result<PortForwardTarge
     }
 }
 
-pub(super) fn validate_request(
+/// Checks a request's target and ports without reading kubeconfig sources.
+/// The desktop remote client checks a tunnelled forward this way; the server
+/// then validates it again against the server's own sources.
+pub fn validate_target(
     request: &PortForwardRequest,
 ) -> Result<ValidatedPortForwardRequest, AppError> {
     if request.cluster_context.trim().is_empty() || request.namespace.trim().is_empty() {
@@ -97,6 +129,7 @@ pub(super) fn validate_request(
     crate::commands::helpers::validate_namespace(Some(request.namespace.trim()))?;
     crate::commands::helpers::validate_path_segment(&target_name, "port-forward target")?;
     let remote_port = validate_port(request.remote_port, "remote_port")?;
+    // Port 0 picks a free port internally; a user-provided port must be unprivileged (ADR 0003).
     let local_port = request
         .local_port
         .map(|port| validate_port(port, "local_port"))
@@ -108,18 +141,27 @@ pub(super) fn validate_request(
         ));
     }
 
-    let source = KubeconfigSource::new(request.kubeconfig_env_var.clone())?;
     Ok(ValidatedPortForwardRequest {
         cluster_context: request.cluster_context.trim().to_string(),
         kubeconfig_env_var: request.kubeconfig_env_var.clone(),
-        kubeconfig_source_key: Some(source.key()),
-        kubeconfig_source_label: source.show_source_labels().then(|| source.label()),
+        kubeconfig_source_key: None,
+        kubeconfig_source_label: None,
         namespace: request.namespace.trim().to_string(),
         target_kind,
         target_name,
         remote_port,
         local_port,
     })
+}
+
+pub(super) fn validate_request(
+    request: &PortForwardRequest,
+) -> Result<ValidatedPortForwardRequest, AppError> {
+    let mut validated = validate_target(request)?;
+    let source = KubeconfigSource::new(request.kubeconfig_env_var.clone())?;
+    validated.kubeconfig_source_key = Some(source.key());
+    validated.kubeconfig_source_label = source.show_source_labels().then(|| source.label());
+    Ok(validated)
 }
 
 pub(super) async fn resolve_port_forward_target(

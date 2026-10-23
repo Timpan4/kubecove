@@ -190,7 +190,9 @@ async fn control(owner: &Arc<Owner>, responses: &mpsc::Sender<Message>, text: &s
             request,
         } => match owner.tunnels.register(forward_id.clone(), request).await {
             Ok(target) => json!({"type":"tunnel_registered","forwardId":forward_id,
-                "resolvedPodName":target.pod_name,"resolvedPodPort":target.pod_port}),
+                "resolvedPodName":target.pod_name,"resolvedPodPort":target.pod_port,
+                "kubeconfigSourceKey":target.kubeconfig_source_key,
+                "kubeconfigSourceLabel":target.kubeconfig_source_label}),
             Err(error) => tunnel_error(Some(&forward_id), None, &error),
         },
         TunnelControl::Unregister { forward_id } => {

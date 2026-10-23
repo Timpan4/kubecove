@@ -10,7 +10,7 @@ Accepted on 2026-10-23.
 
 - the desktop `tauri::generate_handler!` list in `src-tauri/src/lib.rs`;
 - the server `command_table!` entries and `DESKTOP_ONLY` list in `src-tauri/server/src/dispatch/`, which repeat each camelCase key, Rust type and `State` wiring;
-- the desktop remote client, which intercepts three port-forward commands by string in `src-tauri/crates/host/src/remote/tunnels.rs`;
+- the desktop remote client, which intercepts the three port-forward commands and live-session scope cleanup by string in `src-tauri/crates/host/src/remote/tunnels.rs`;
 - the typed frontend wrappers in `src/lib/tauri.ts`.
 
 Tauri derives a desktop argument key from the Rust parameter name, while the server reads the key it was given and treats a missing key as null. A misspelled optional key in the server table therefore decodes as `None` without an error. The guards are a test that parses `lib.rs` as text and a camelCase test that covers one command.
@@ -35,7 +35,7 @@ The six commands above, their TypeScript wrappers, dev mocks, request models and
 The transport classes are:
 
 - `both`: served by Tauri IPC and server HTTP;
-- `remote_intercepted`: served by both, and handled on the laptop by the desktop remote client instead of being forwarded to the server;
+- `remote_intercepted`: served by both; in desktop remote mode the desktop remote client runs its own handler on the laptop instead of forwarding the call unchanged. The three port-forward commands run only on the laptop. `stop_live_sessions_outside_scope` stops the laptop's tunnelled forwards and then sends the cleanup to the server for its sessions, as the [ADR 0003](0003-guarded-live-sessions.md) amendment of 2026-10-22 requires;
 - `desktop_only`: served by Tauri IPC only; the server rejects them as requiring the desktop client.
 
 Each consumer expands the declaration with its own adapter macro:

@@ -48,15 +48,24 @@ pub async fn remote_invoke(
     args: Value,
     store: State<'_, RemoteConnectionStore>,
 ) -> Result<Value, AppError> {
-    let connection = current_connection(&store).await?;
+    invoke_remote(&current_connection(&store).await?, &command, args).await
+}
+
+/// Runs `command` on the remote server, except `remote_intercepted` commands,
+/// which the laptop's tunnel registry handles (ADR 0025).
+async fn invoke_remote(
+    connection: &Arc<client::RemoteConnection>,
+    command: &str,
+    args: Value,
+) -> Result<Value, AppError> {
     if let Some(value) = connection
         .tunnels
-        .invoke(&connection, &command, &args)
+        .invoke(connection, command, &args)
         .await?
     {
         return Ok(value);
     }
-    connection.invoke(&command, args).await
+    connection.invoke(command, args).await
 }
 
 pub async fn remote_subscribe_channel(

@@ -13,6 +13,7 @@ desktop = [
     "dep:tauri-plugin-dialog",
     "dep:tokio-tungstenite",
     "dep:rustls",
+    "dep:kubecove-live",
     "kubecove-kube/desktop",
 ]
 bench-support = ["desktop"]
@@ -20,6 +21,7 @@ bench-support = ["desktop"]
 [dependencies]
 kubecove-models = { path = "../models" }
 kubecove-kube = { path = "../kube", default-features = false }
+kubecove-live = { path = "../live", optional = true }
 chrono = { workspace = true }
 futures-util = { workspace = true }
 reqwest = { workspace = true }
