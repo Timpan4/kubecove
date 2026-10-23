@@ -4,8 +4,8 @@ The desktop package at `src-tauri/` is the Cargo workspace root and host composi
 
 | Crate | Responsibility | Internal dependencies |
 | --- | --- | --- |
-| `kubecove-models` | Serialized contracts, health assessment, endpoint validation and typed errors | None |
-| `kubecove-kube` | Kubernetes clients, source settings, session scope, cancellation primitives, diagnostics, common metadata/projections and live cache | models |
+| `kubecove-models` | Serialized contracts, the command contract declaration, health assessment, endpoint validation and typed errors | None |
+| `kubecove-kube` | Kubernetes clients, source settings, session scope, cancellation primitives, diagnostics, the finite-read envelope, common metadata/projections and live cache | models |
 | `kubecove-inspection` | Resource reads, discovery, topology, metrics, RBAC, incidents and guarded Kubernetes operations | models, kube |
 | `kubecove-live` | Watches, logs, exec, Pod/Service forwards and session cleanup | models, kube |
 | `kubecove-gitops` | Argo CD, Flux and Helm | models, kube, live |

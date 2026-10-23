@@ -22,10 +22,6 @@ import type {
 	YamlApplyResult,
 	YamlEncoding,
 	YamlViewMode,
-	ScaleWorkloadRequest,
-	RolloutRestartRequest,
-	DeleteResourceRequest,
-	ClusterOperationPreview,
 	ClusterOperationResult,
 	ResourceActionPreview,
 	ResourceActionRequest,
@@ -383,8 +379,6 @@ export async function getResourceDetails(
 	name: string,
 	namespace?: string,
 	kubeconfigEnvVar?: string,
-	yamlViewMode?: YamlViewMode,
-	yamlEncoding?: YamlEncoding,
 	cancellable?: CancellableRequest,
 ): Promise<ResourceDetailsFull> {
 	return client.invoke<ResourceDetailsFull>("get_resource_details", {
@@ -393,8 +387,6 @@ export async function getResourceDetails(
 		name,
 		namespace,
 		...kubeconfigArg(kubeconfigEnvVar),
-		yamlViewMode,
-		yamlEncoding,
 		...cancellableArg(cancellable),
 	});
 }
@@ -443,48 +435,6 @@ export async function lintKubernetesYaml(
 	return client.invoke<KubernetesYamlLintResult>("lint_kubernetes_yaml", {
 		request,
 	});
-}
-
-export async function previewScaleWorkload(
-	client: TauriClient,
-	request: ScaleWorkloadRequest,
-): Promise<ClusterOperationPreview> {
-	return client.invoke<ClusterOperationPreview>("preview_scale_workload", { request });
-}
-
-export async function scaleWorkload(
-	client: TauriClient,
-	request: ScaleWorkloadRequest,
-): Promise<ClusterOperationResult> {
-	return client.invoke<ClusterOperationResult>("scale_workload", { request });
-}
-
-export async function previewRolloutRestart(
-	client: TauriClient,
-	request: RolloutRestartRequest,
-): Promise<ClusterOperationPreview> {
-	return client.invoke<ClusterOperationPreview>("preview_rollout_restart", { request });
-}
-
-export async function rolloutRestart(
-	client: TauriClient,
-	request: RolloutRestartRequest,
-): Promise<ClusterOperationResult> {
-	return client.invoke<ClusterOperationResult>("rollout_restart", { request });
-}
-
-export async function previewDeleteResource(
-	client: TauriClient,
-	request: DeleteResourceRequest,
-): Promise<ClusterOperationPreview> {
-	return client.invoke<ClusterOperationPreview>("preview_delete_resource", { request });
-}
-
-export async function deleteResource(
-	client: TauriClient,
-	request: DeleteResourceRequest,
-): Promise<ClusterOperationResult> {
-	return client.invoke<ClusterOperationResult>("delete_resource", { request });
 }
 
 export async function getResourceActionState(

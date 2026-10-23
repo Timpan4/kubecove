@@ -31,10 +31,9 @@ use kube::{
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn preflight_argo_operation(
-    store: crate::runtime::State<'_, super::ArgoConnectionStore>,
     request: ArgoOperationRequest,
+    store: crate::runtime::State<'_, super::ArgoConnectionStore>,
 ) -> Result<ArgoOperationPreflight, AppError> {
     valid(&request)?;
     if request.transport == "kubernetes" {
@@ -193,10 +192,9 @@ async fn run_argo_operation_for_store(
     }
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn run_argo_operation(
-    store: crate::runtime::State<'_, super::ArgoConnectionStore>,
     confirmation: ArgoOperationConfirmation,
+    store: crate::runtime::State<'_, super::ArgoConnectionStore>,
 ) -> Result<ArgoOperationResult, AppError> {
     run_argo_operation_for_store(&store, confirmation).await
 }

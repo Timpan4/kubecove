@@ -81,7 +81,6 @@ export function getArgoApplicationInspector(
 		connectionId?: string;
 		transport: "connected" | "kubernetes";
 		application: ArgoApplicationRef;
-		redactSecrets?: boolean;
 	},
 	cancellable?: CancellableRequest,
 ): Promise<ArgoApplicationInspector> {
@@ -100,7 +99,6 @@ export function getArgoResourceComparison(
 		transport: "connected" | "kubernetes";
 		application: ArgoApplicationRef;
 		resource: ArgoManagedResource;
-		redactSecrets?: boolean;
 	},
 	cancellable?: CancellableRequest,
 ): Promise<ArgoResourceComparison> {

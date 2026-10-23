@@ -27,7 +27,6 @@ use crate::{
 
 // Workspace changes coordinate infrastructure and GitOps without a back-edge
 // from client cancellation into Argo connection management.
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn cancel_workspace_requests(
     registry: State<'_, BackendCancellationRegistry>,
     live_store: State<'_, ClusterLiveStore>,
