@@ -1,4 +1,7 @@
-use super::{api_resource_from_discovered, topology::TopologyInputResource};
+use super::{
+    api_resource_from_discovered, topology::TopologyInputResource,
+    topology_collection::is_optional_topology_list_error,
+};
 use crate::commands::helpers::{extract_owner_ref_summary, list_params};
 use crate::commands::MAX_LIST_CONCURRENCY;
 use crate::models::AppErrorKind;
@@ -8,7 +11,7 @@ use futures_util::{stream, StreamExt};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::{
     api::{Api, DynamicObject},
-    Client, Error as KubeError,
+    Client,
 };
 use std::sync::Arc;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -19,10 +22,6 @@ type DynamicListLimiter = Arc<Semaphore>;
 
 fn is_optional_app_error(error: &AppError) -> bool {
     matches!(error.kind, AppErrorKind::Forbidden | AppErrorKind::NotFound)
-}
-
-fn is_optional_topology_list_error(error: &KubeError) -> bool {
-    matches!(error, KubeError::Api(api_error) if matches!(api_error.code, 403 | 404))
 }
 
 fn push_dynamic_topology_list_warning(

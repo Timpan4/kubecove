@@ -84,7 +84,7 @@ pub(crate) fn metadata_inputs<K: BuiltinSummary>(
         .collect()
 }
 
-fn is_optional_topology_list_error(error: &KubeError) -> bool {
+pub(super) fn is_optional_topology_list_error(error: &KubeError) -> bool {
     matches!(error, KubeError::Api(api_error) if matches!(api_error.code, 403 | 404))
 }
 
