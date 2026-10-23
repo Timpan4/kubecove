@@ -1,12 +1,8 @@
 <script lang="ts">
-	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { createQuery } from "@tanstack/svelte-query";
 	import { onDestroy } from "svelte";
 	import { workspaceStore } from "@/features/workspaces";
-	import {
-		createCancelScope,
-		createFiniteReadCleanup,
-		createFiniteReadRequest,
-	} from "@/lib/finite-read-lifecycle";
+	import { finiteRead } from "@/lib/finite-read-lifecycle";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { cancelBackendRequests, createTauriClient, listRbacInspection } from "@/lib/tauri";
 	import type { RbacInspectionSummary } from "@/lib/types";
@@ -43,33 +39,17 @@
 	} = $props();
 
 	const client = createTauriClient();
-	const queryClient = useQueryClient();
-	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (scope) =>
-		cancelBackendRequests(client, scope),
-	);
-	const queryKey = $derived(
-		queryKeys.rbacInspection(workspace.scope.clusterContext, kubeconfigSourceKey),
-	);
-	const cancelScope = $derived(
-		createCancelScope("rbac-inspection", [
-			workspace.id,
-			workspace.scope.clusterContext,
-			kubeconfigSourceKey ?? "default",
-		]),
-	);
+	// Permission verification reviews run outside TanStack Query under their own scope.
 	onDestroy(() => {
-		finiteReadCleanup.schedule(cancelScope, queryKey);
 		void cancelBackendRequests(client, "rbac-review").catch(() => {});
 	});
 	const rbacQuery = createQuery<RbacInspectionSummary>(() => ({
-		queryKey,
-		queryFn: () =>
-			listRbacInspection(
-				client,
-				workspace.scope.clusterContext,
-				kubeconfigSourceKey,
-				createFiniteReadRequest(cancelScope, "rbac"),
-			),
+		...finiteRead({
+			queryKey: queryKeys.rbacInspection(workspace.scope.clusterContext, kubeconfigSourceKey),
+			label: "rbac.inspection",
+			read: (cancellable) =>
+				listRbacInspection(client, workspace.scope.clusterContext, kubeconfigSourceKey, cancellable),
+		}),
 		enabled: sourceReady,
 		staleTime: 30_000,
 	}));

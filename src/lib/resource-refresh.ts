@@ -1,27 +1,10 @@
 import type { Query, QueryClient, QueryKey } from "@tanstack/svelte-query";
-import { isFiniteReadQuery } from "./finite-read-lifecycle";
 import { friendlyErrorBucket } from "./friendly-errors";
 import { messageFromError } from "./error-redaction";
-import { kubeconfigSourceKey } from "./settings";
+import { queryMatchers } from "./queryKeys";
 import { refreshResourceCache } from "./tauri";
 import type { TauriClient } from "./tauri";
 import type { WatchResourceKey } from "./types";
-
-export function isCurrentViewRead(
-	query: Query,
-	context: string,
-	source?: string,
-): boolean {
-	const key = query.queryKey;
-	const contextIndex =
-		key[0] === "resource-details" || key[0] === "resource-yaml" ? 3 : 2;
-	return (
-		isFiniteReadQuery(query) &&
-		query.isActive() &&
-		key[1] === kubeconfigSourceKey(source) &&
-		key[contextIndex] === context
-	);
-}
 
 export async function refreshCurrentView({
 	client,
@@ -45,12 +28,13 @@ export async function refreshCurrentView({
 	cancelRefetch?: boolean;
 }): Promise<string[]> {
 	// Capture the exact active reads. Navigation during refresh must not broaden its scope.
+	const inCurrentView = queryMatchers.currentView(clusterContext, kubeconfigEnvVar);
 	const queries = new Set(
 		queryClient
 			.getQueryCache()
 			.findAll({
 				predicate: (query) =>
-					isCurrentViewRead(query, clusterContext, kubeconfigEnvVar) &&
+					inCurrentView(query) &&
 					(!reads || reads.some((key) => key.every((part, index) => part === query.queryKey[index]))),
 			}),
 	);

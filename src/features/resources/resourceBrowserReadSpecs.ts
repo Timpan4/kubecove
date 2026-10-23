@@ -1,9 +1,11 @@
-import { createCancelScope } from "@/lib/finite-read-lifecycle";
 import { queryKeys } from "@/lib/queryKeys";
+import type { TauriClient } from "@/lib/tauri";
 import type { TopologyMode } from "@/lib/types";
 import { type FetchKey, resourceKindFetchKey } from "./helpers";
+import { resourceMetricsQuery, resourceScopeQuery, resourceTopologyQuery } from "./query";
 
 export interface ResourceBrowserReadSpecInput {
+	client: TauriClient;
 	clusterContext: string;
 	kubeconfigSourceKey: string | undefined;
 	fetchKeys: FetchKey[];
@@ -14,8 +16,12 @@ export interface ResourceBrowserReadSpecInput {
 	customResourcesEnabled: boolean;
 }
 
-/** Immutable identities and enablement for ResourceBrowser-owned reads. */
+// Scope and map changes keep the previous rows and graph visible while the next read loads.
+const keepPreviousData = <T>(previousData: T | undefined) => previousData;
+
+/** Immutable identities, enablement, and finite-read options for ResourceBrowser-owned reads. */
 export function buildResourceBrowserReadSpecs({
+	client,
 	clusterContext,
 	kubeconfigSourceKey,
 	fetchKeys,
@@ -26,30 +32,13 @@ export function buildResourceBrowserReadSpecs({
 	customResourcesEnabled,
 }: ResourceBrowserReadSpecInput) {
 	const topologyNamespaces = [...new Set(namespaces)].sort();
-	const topologyCustomResourceKey = [...new Set(
+	const customResourceKinds = [...new Set(
 		fetchKeys
 			.filter((key) => key.kind instanceof Object)
 			.map((key) => resourceKindFetchKey(key.kind)),
 	)]
 		.sort()
 		.join(",");
-	const resourceQueryKey = queryKeys.resources(
-		clusterContext,
-		fetchKeys,
-		kubeconfigSourceKey,
-	);
-	const topologyBaseQueryKey = queryKeys.resourceTopology(
-		clusterContext,
-		topologyNamespaces,
-		topologyMode,
-		kubeconfigSourceKey,
-	);
-	const topologyQueryKey = [...topologyBaseQueryKey, topologyCustomResourceKey] as const;
-	const metricsQueryKey = queryKeys.resourceMetrics(
-		clusterContext,
-		topologyNamespaces,
-		kubeconfigSourceKey,
-	);
 
 	return {
 		topologyNamespaces,
@@ -58,18 +47,37 @@ export function buildResourceBrowserReadSpecs({
 			clusterContext,
 			kubeconfigSourceKey,
 		),
-		resourceQueryKey,
-		topologyBaseQueryKey,
-		topologyQueryKey,
-		metricsQueryKey,
-		resourceCancelScope: createCancelScope("resources", resourceQueryKey),
-		topologyCancelScope: createCancelScope("resource-topology", topologyQueryKey),
-		metricsCancelScope: createCancelScope("resource-metrics", metricsQueryKey),
+		// Custom kinds refetch the map but keep its fitted viewport.
+		topologyFitViewKey: JSON.stringify([
+			clusterContext,
+			topologyNamespaces,
+			topologyMode,
+			kubeconfigSourceKey ?? "",
+		]),
 		namespacesEnabled: Boolean(clusterContext) && sourceReady,
 		resourceKindsEnabled:
 			customResourcesEnabled && Boolean(clusterContext) && sourceReady,
-		resourcesEnabled:
-			Boolean(clusterContext) && fetchKeys.length > 0 && sourceReady,
-		topologyEnabled: Boolean(clusterContext && mapPanelOpen) && sourceReady,
+		resources: {
+			...resourceScopeQuery(client, { clusterContext, fetchKeys, kubeconfigSourceKey }),
+			enabled: Boolean(clusterContext) && fetchKeys.length > 0 && sourceReady,
+			placeholderData: keepPreviousData,
+		},
+		topology: {
+			...resourceTopologyQuery(client, {
+				clusterContext,
+				namespaces: topologyNamespaces,
+				mode: topologyMode,
+				kubeconfigSourceKey,
+				customResourceKinds,
+			}),
+			enabled: Boolean(clusterContext && mapPanelOpen) && sourceReady,
+			placeholderData: keepPreviousData,
+		},
+		// The Browser enables metrics after rows and the map settle.
+		metrics: resourceMetricsQuery(client, {
+			clusterContext,
+			namespaces: topologyNamespaces,
+			kubeconfigSourceKey,
+		}),
 	};
 }

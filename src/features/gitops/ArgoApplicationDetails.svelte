@@ -54,11 +54,7 @@
 		argoDocumentText,
 		resolveArgoResourceComparison,
 	} from "./argo-resource-display";
-	import {
-		createCancelScope,
-		createFiniteReadCleanup,
-		createFiniteReadRequest,
-	} from "@/lib/finite-read-lifecycle";
+	import { finiteRead } from "@/lib/finite-read-lifecycle";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { settingsStore } from "@/lib/settings-store";
 	import {
@@ -68,11 +64,7 @@
 		buildArgoConnectionStatusReadSpec,
 	} from "@/lib/argo-application-inspection";
 	import { argoConnectionPreferenceValue, normalizeArgoConnectionPreference } from "@/lib/argo-connection-policy";
-	import {
-		cancelBackendRequests,
-		createTauriClient,
-		getArgoResourceComparison,
-	} from "@/lib/tauri";
+	import { createTauriClient, getArgoResourceComparison } from "@/lib/tauri";
 	import type {
 		ArgoApplicationHistory,
 		ArgoApplicationRef,
@@ -128,9 +120,6 @@
 	const queryClient = useQueryClient();
 	const tracker = getArgoOperationTracker(queryClient);
 
-	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
-		cancelBackendRequests(client, cancelScope),
-	);
 	const diffViewOptions: { value: DiffView; label: string }[] = [
 		{ value: "changes", label: "Changes" },
 		{ value: "target", label: "Desired" },
@@ -228,8 +217,6 @@
 	const selectedStatus = $derived(statuses.data?.find(([id]) => id === connectionPolicy.connectionId)?.[1]);
 	const selectedProfile = $derived(connectionPolicy.selectedProfile);
 	const request = $derived(inspectionReadSpec.request);
-	const inspectorQueryKey = $derived(inspectionReadSpec.queryKey);
-	const inspectorCancelScope = $derived(inspectionReadSpec.cancelScope);
 	const inspector = createQuery(() =>
 		argoApplicationInspectionQueryOptions(client, inspectionReadSpec),
 	);
@@ -269,22 +256,19 @@
 			kubeconfigEnvVar,
 		),
 	);
-	const selectedComparisonCancelScope = $derived(
-		createCancelScope("argo-resource-actions", selectedComparisonQueryKey),
-	);
 	const selectedComparison = createQuery(() => ({
-		queryKey: selectedComparisonQueryKey,
-		queryFn: () => {
-			if (!selectedResource) throw new Error("No selected resource");
-			return getArgoResourceComparison(
-				client,
-				{ ...request, resource: selectedResource },
-				createFiniteReadRequest(
-					selectedComparisonCancelScope,
-					"argo-resource-actions",
-				),
-			);
-		},
+		...finiteRead({
+			queryKey: selectedComparisonQueryKey,
+			label: "argo.resource-comparison",
+			read: async (cancellable) => {
+				if (!selectedResource) throw new Error("No selected resource");
+				return getArgoResourceComparison(
+					client,
+					{ ...request, resource: selectedResource },
+					cancellable,
+				);
+			},
+		}),
 		enabled: lazyComparisonEnabled,
 		staleTime: 30_000,
 		refetchInterval: lazyComparisonEnabled ? 15_000 : false,
@@ -292,19 +276,6 @@
 		retry: false,
 		gcTime: redactSecrets ? undefined : 0,
 	}));
-
-	$effect(() => {
-		const reads = [
-			[inspectorCancelScope, inspectorQueryKey],
-			[selectedComparisonCancelScope, selectedComparisonQueryKey],
-		] as const;
-		for (const [cancelScope] of reads) finiteReadCleanup.cancelPending(cancelScope);
-		return () => {
-			for (const [cancelScope, queryKey] of reads) {
-				finiteReadCleanup.schedule(cancelScope, queryKey);
-			}
-		};
-	});
 
 	const scopeKey = $derived(
 		[

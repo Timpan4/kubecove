@@ -8,4 +8,4 @@ export {
 	type HealthFilter,
 	type ResourceSearchEntry,
 } from "./helpers";
-export { fetchResourcePage } from "./query";
+export { resourceScopeQuery, resourceTopologyQuery } from "./query";

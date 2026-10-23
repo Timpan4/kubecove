@@ -1,153 +1,175 @@
-import { describe, expect, test } from "bun:test";
-import { QueryClient, QueryObserver } from "@tanstack/svelte-query";
-import {
-	configureFiniteReadQueryDefaults,
-	createCancelScope,
-	createFiniteReadCleanup,
-	createFiniteReadRequest,
-	finiteReadMeta,
-	isFiniteReadQuery,
-} from "./finite-read-lifecycle";
+import { afterEach, describe, expect, test } from "bun:test";
+import { QueryClient, QueryObserver, type QueryKey } from "@tanstack/svelte-query";
+import { finiteRead, installFiniteReadLifecycle } from "./finite-read-lifecycle";
+import { configureQueryCatalog, queryKeys } from "./queryKeys";
+import type { CancellableRequest } from "./types";
 
-function settleCancellation(): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, 10));
-}
+// Failure modes: the backend scope is cancelled before the frontend query
+// (ADR 0009 order), a remount or key change in the same task loses its read, an
+// observer of another query protects or exposes the wrong read, a remount during
+// frontend cancellation has its new backend request cancelled, the backend is
+// asked to cancel a scope the read never used, reads without a backend request
+// cause backend calls, and a cancelled read loses its `cancelled` kind.
 
-function deferred() {
-	let resolve!: () => void;
-	const promise = new Promise<void>((done) => {
-		resolve = done;
+const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+const cleanups: (() => void)[] = [];
+
+afterEach(() => {
+	for (const cleanup of cleanups.splice(0)) cleanup();
+});
+
+function lifecycle() {
+	const queryClient = new QueryClient();
+	configureQueryCatalog(queryClient);
+	const events: string[] = [];
+	const backendScopes: string[] = [];
+	const uninstall = installFiniteReadLifecycle(queryClient, async (scope) => {
+		events.push("backend");
+		backendScopes.push(scope);
+		return { cancelled: 1 };
 	});
-	return { promise, resolve };
+	// TanStack reverts a cancelled fetch to idle with a setState action.
+	const unwatch = queryClient.getQueryCache().subscribe((event) => {
+		if (event.type === "updated" && event.action.type === "setState" && event.query.state.fetchStatus === "idle") {
+			events.push("frontend");
+		}
+	});
+	cleanups.push(() => {
+		unwatch();
+		uninstall();
+		queryClient.clear();
+	});
+	return { queryClient, events, backendScopes };
 }
 
-function observedQuery(queryClient: QueryClient, queryKey: readonly unknown[]) {
-	queryClient.setQueryData(queryKey, "cached");
-	const observer = new QueryObserver(queryClient, { queryKey, enabled: false });
-	return observer.subscribe(() => {});
+function pendingRead(queryKey: QueryKey) {
+	const requests: CancellableRequest[] = [];
+	const results: ((value: string) => void)[] = [];
+	const options = finiteRead({
+		queryKey,
+		label: "test.read",
+		read: (request) => {
+			requests.push(request);
+			return new Promise<string>((resolve) => results.push(resolve));
+		},
+	});
+	return { options, requests, resolve: (value: string) => results.at(-1)?.(value) };
 }
+
+function observe(queryClient: QueryClient, options: ReturnType<typeof pendingRead>["options"]) {
+	return new QueryObserver(queryClient, options).subscribe(() => {});
+}
+
+const topologyKey = queryKeys.resourceTopology("dev", ["default"], "ownership");
+const metricsKey = queryKeys.resourceMetrics("dev", ["default"]);
 
 describe("finite read lifecycle", () => {
-	test("classifies finite reads through TanStack metadata", async () => {
-		const queryClient = new QueryClient();
-		configureFiniteReadQueryDefaults(queryClient);
-		await queryClient.fetchQuery({
-			queryKey: ["resources", "default"],
-			queryFn: async () => [],
-			meta: finiteReadMeta({ namespace: "default" }),
-		});
-		queryClient.setQueryData(["argo-server-discovery", "default", "kind-dev"], []);
-		queryClient.setQueryData(["port-forwards"], []);
+	test("an unobserved read is cancelled in the next task, frontend before backend", async () => {
+		const { queryClient, events, backendScopes } = lifecycle();
+		const read = pendingRead(topologyKey);
+		const unsubscribe = observe(queryClient, read.options);
+		expect(read.requests).toHaveLength(1);
 
-		const finite = queryClient.getQueryCache().find({
-			queryKey: ["resources", "default"],
-			exact: true,
-		});
-		const discovery = queryClient.getQueryCache().find({
-			queryKey: ["argo-server-discovery", "default", "kind-dev"],
-			exact: true,
-		});
-		const live = queryClient.getQueryCache().find({
-			queryKey: ["port-forwards"],
-			exact: true,
-		});
-
-		expect(finite && isFiniteReadQuery(finite)).toBe(true);
-		expect(discovery && isFiniteReadQuery(discovery)).toBe(true);
-		expect(finite?.options.meta?.namespace).toBe("default");
-		expect(live && isFiniteReadQuery(live)).toBe(false);
-	});
-
-	test("derives a stable scope and unique backend request identity", () => {
-		const queryKey = ["resource-details", "default", "Pod", "api"] as const;
-		const scope = createCancelScope("resource-details", queryKey);
-		const first = createFiniteReadRequest(scope, "details");
-		const second = createFiniteReadRequest(scope, "details");
-
-		expect(scope).toBe(
-			'resource-details:["resource-details","default","Pod","api"]',
-		);
-		expect(first.cancelScope).toBe(scope);
-		expect(second.cancelScope).toBe(scope);
-		expect(first.requestId).not.toBe(second.requestId);
-	});
-
-	test("cancels frontend before backend when exact query is unobserved", async () => {
-		const queryClient = new QueryClient();
-		const queryKey = ["resources", "stale"] as const;
-		queryClient.setQueryData(queryKey, []);
-		const events: string[] = [];
-		queryClient.cancelQueries = async () => {
-			events.push("frontend");
-		};
-		const cleanup = createFiniteReadCleanup(queryClient, async () => {
-			events.push("backend");
-			return { cancelled: 1 };
-		});
-
-		cleanup.schedule("resources:stale", queryKey);
-		await settleCancellation();
+		unsubscribe();
+		expect(events).toEqual([]);
+		await settle();
 
 		expect(events).toEqual(["frontend", "backend"]);
+		expect(backendScopes).toEqual([read.requests[0].cancelScope]);
 	});
 
-	test("next-task exact observer protects only its query", async () => {
-		const queryClient = new QueryClient();
-		queryClient.cancelQueries = async () => {};
-		const observedKey = ["resources", "current"] as const;
-		const staleKey = ["resources", "stale"] as const;
-		const unsubscribe = observedQuery(queryClient, observedKey);
-		queryClient.setQueryData(staleKey, []);
-		const cancelled: string[] = [];
-		const cleanup = createFiniteReadCleanup(queryClient, async (scope) => {
-			cancelled.push(scope);
-			return { cancelled: 1 };
+	test("a remount in the same task keeps the running read and its result", async () => {
+		const { queryClient, events } = lifecycle();
+		const read = pendingRead(topologyKey);
+		observe(queryClient, read.options)();
+		cleanups.push(observe(queryClient, read.options));
+		await settle();
+		read.resolve("fresh");
+		await settle();
+
+		expect(events).toEqual([]);
+		expect(read.requests).toHaveLength(1);
+		expect(queryClient.getQueryData(topologyKey)).toBe("fresh");
+	});
+
+	test("a key change cancels the previous key's read and starts the next", async () => {
+		const { queryClient, backendScopes } = lifecycle();
+		const previous = pendingRead(topologyKey);
+		const next = pendingRead(metricsKey);
+		const observer = new QueryObserver(queryClient, previous.options);
+		cleanups.push(observer.subscribe(() => {}));
+
+		observer.setOptions(next.options);
+		await settle();
+
+		expect(backendScopes).toEqual([previous.requests[0].cancelScope]);
+		expect(next.requests).toHaveLength(1);
+		expect(next.requests[0].cancelScope).not.toBe(previous.requests[0].cancelScope);
+	});
+
+	test("only an observer of the exact query protects its read", async () => {
+		const { queryClient, backendScopes } = lifecycle();
+		const shared = pendingRead(topologyKey);
+		const alone = pendingRead(metricsKey);
+		const firstShared = observe(queryClient, shared.options);
+		cleanups.push(observe(queryClient, shared.options));
+		const onlyAlone = observe(queryClient, alone.options);
+
+		firstShared();
+		onlyAlone();
+		await settle();
+
+		expect(backendScopes).toEqual([alone.requests[0].cancelScope]);
+	});
+
+	test("a remount during frontend cancellation keeps its new backend request", async () => {
+		const { queryClient, events } = lifecycle();
+		const read = pendingRead(topologyKey);
+		const remount = queryClient.getQueryCache().subscribe((event) => {
+			if (event.type === "updated" && event.action.type === "setState") {
+				remount();
+				cleanups.push(observe(queryClient, read.options));
+			}
 		});
+		observe(queryClient, read.options)();
+		await settle();
 
-		cleanup.schedule("resources:current", observedKey);
-		cleanup.schedule("resources:stale", staleKey);
-		await settleCancellation();
+		expect(events).toEqual(["frontend"]);
+		expect(read.requests).toHaveLength(2);
+		expect(read.requests[1].cancelScope).toBe(read.requests[0].cancelScope);
+		expect(read.requests[1].requestId).not.toBe(read.requests[0].requestId);
+	});
 
-		expect(cancelled).toEqual(["resources:stale"]);
+	test("finite reads without a backend request finish into the cache", async () => {
+		const { queryClient, events } = lifecycle();
+		const namespacesKey = queryKeys.namespaces("dev");
+		let finish!: (value: string) => void;
+		const unsubscribe = new QueryObserver(queryClient, {
+			queryKey: namespacesKey,
+			queryFn: () => new Promise<string>((resolve) => { finish = resolve; }),
+		}).subscribe(() => {});
+
 		unsubscribe();
+		await settle();
+		finish("namespaces");
+		await settle();
+
+		expect(events).toEqual([]);
+		expect(queryClient.getQueryData(namespacesKey)).toBe("namespaces");
 	});
 
-	test("remount during frontend cancellation protects the new backend request", async () => {
-		const queryClient = new QueryClient();
-		const queryKey = ["resource-details", "current"] as const;
-		queryClient.setQueryData(queryKey, {});
-		const frontendCancellation = deferred();
-		queryClient.cancelQueries = () => frontendCancellation.promise;
-		let backendCalls = 0;
-		const cleanup = createFiniteReadCleanup(queryClient, async () => {
-			backendCalls += 1;
-			return { cancelled: 1 };
+	test("a read cancelled by the backend keeps the cancelled kind", async () => {
+		const { queryClient } = lifecycle();
+		const read = finiteRead({
+			queryKey: topologyKey,
+			label: "test.read",
+			read: async () => {
+				throw { kind: "cancelled", message: "Request was cancelled" };
+			},
 		});
 
-		cleanup.schedule("resource-details:current", queryKey);
-		await settleCancellation();
-		const unsubscribe = observedQuery(queryClient, queryKey);
-		frontendCancellation.resolve();
-		await settleCancellation();
-
-		expect(backendCalls).toBe(0);
-		unsubscribe();
-	});
-
-	test("retaining a scope cancels its pending cleanup", async () => {
-		const queryClient = new QueryClient();
-		const queryKey = ["resource-details", "current"] as const;
-		queryClient.setQueryData(queryKey, {});
-		let backendCalls = 0;
-		const cleanup = createFiniteReadCleanup(queryClient, async () => {
-			backendCalls += 1;
-			return { cancelled: 1 };
+		await expect(queryClient.fetchQuery({ ...read, retry: false })).rejects.toMatchObject({
+			kind: "cancelled",
 		});
-
-		cleanup.schedule("resource-details:current", queryKey);
-		cleanup.cancelPending("resource-details:current");
-		await settleCancellation();
-
-		expect(backendCalls).toBe(0);
 	});
 });
