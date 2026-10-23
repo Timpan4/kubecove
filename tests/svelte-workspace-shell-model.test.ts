@@ -7,9 +7,9 @@ import {
 	viewModeForTreeNode,
 } from "../src/app/svelte/workspaceNavigation";
 import {
-	appendPresentCustomResourceKinds,
 	buildSidebarTree,
 	GITOPS_RESOURCE_KINDS,
+	resourceBrowserAvailableKinds,
 	toggleCompactSidebarSection,
 	type SidebarTreeGroup,
 } from "../src/app/svelte/workspaceShellModel";
@@ -246,7 +246,7 @@ describe("svelte workspace shell model", () => {
 
 	test("appends CRD kinds to live resource scopes without changing the base scope", () => {
 		const base = [...GITOPS_RESOURCE_KINDS];
-		const live = appendPresentCustomResourceKinds(base, [widgets]);
+		const live = resourceBrowserAvailableKinds(base, [widgets], false);
 
 		expect(base.includes(widgets)).toBe(false);
 		expect(live.includes(widgets)).toBe(true);

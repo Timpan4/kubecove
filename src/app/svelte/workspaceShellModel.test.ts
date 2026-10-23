@@ -2,7 +2,6 @@ import { filterCustomResourceKinds } from "@/components/sidebar-tree-helpers";
 import type { DiscoveredResourceKind } from "@/lib/types";
 import type { TreeNode, TreeNodeId } from "@/lib/tree-nav";
 import {
-	appendPresentCustomResourceKinds,
 	buildSidebarTree,
 	collectSelectedAncestorIds,
 	resourceBrowserAvailableKinds,
@@ -110,7 +109,7 @@ describe("Custom Resources tree model", () => {
 	});
 
 	test("appends present custom resources without duplicates", () => {
-		expect(appendPresentCustomResourceKinds(["Pod", widget], [widget])).toEqual([
+		expect(resourceBrowserAvailableKinds(["Pod", widget], [widget], false)).toEqual([
 			"Pod",
 			widget,
 		]);

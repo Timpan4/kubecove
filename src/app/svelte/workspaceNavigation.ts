@@ -4,6 +4,7 @@ import {
 	FLUX_PROVIDER_GROUP_ID,
 } from "@/features/gitops/gitops-nav";
 import type { ArgoApplicationSummary } from "@/lib/gitops-types";
+import { kindLabel } from "@/lib/kind-identity";
 import {
 	resourceRefFromSummary,
 	resourceSummaryFromRef,
@@ -22,10 +23,7 @@ import {
 	type TreeNodeId,
 } from "@/lib/tree-nav";
 import type { ResourceKindSelection, ResourceSummary } from "@/lib/types";
-import {
-	resourceKindLabel,
-	type SavedWorkspace,
-} from "@/lib/workspace-model";
+import type { SavedWorkspace } from "@/lib/workspace-model";
 
 export interface ResourceBrowserScope {
 	canQuery: boolean;
@@ -129,7 +127,7 @@ function workspaceTitle(
 	if (!scope.section) return "Kubernetes Resources";
 	if (scope.section === "clusterOverview") {
 		return scope.kinds.length === 1
-			? `${resourceKindLabel(scope.kinds[0])} Resources`
+			? `${kindLabel(scope.kinds[0])} Resources`
 			: "Cluster Overview";
 	}
 	if (scope.section === "namespaces" && scope.namespace) {
@@ -137,7 +135,7 @@ function workspaceTitle(
 	}
 	if (scope.group) return scope.group;
 	if (scope.kinds.length === 1) {
-		return `${resourceKindLabel(scope.kinds[0])} Resources`;
+		return `${kindLabel(scope.kinds[0])} Resources`;
 	}
 	return SECTION_LABELS.get(scope.section) ?? scope.section;
 }

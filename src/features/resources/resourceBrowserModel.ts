@@ -5,13 +5,9 @@ import type {
 	ResourceTopology,
 	TopologyNode,
 } from "@/lib/types";
+import { kindKey, kindMatcher } from "@/lib/kind-identity";
 import { findResourceIndex, looseResourceKey } from "@/lib/resource-identity";
 import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "@/lib/types";
-import {
-	isDiscoveredResourceKind,
-	resourceKindFetchKey,
-	resourceKindLabel,
-} from "./helpers";
 
 export function initialOwnershipMapOpen(
 	restoredState: { mapPanelOpen: boolean } | null | undefined,
@@ -28,12 +24,14 @@ export function shouldLoadOwnershipMap(
 	return mapPanelOpen && !componentLoaded && !loadFailed;
 }
 
-export function kindSelectionKey(kind: ResourceKindSelection): string {
-	return resourceKindFetchKey(kind);
-}
-
-export function kindSelectionLabel(kind: ResourceKindSelection): string {
-	return resourceKindLabel(kind);
+/** Available kinds that were not available before and are not selected yet. */
+export function newlyAvailableKinds(
+	available: ResourceKindSelection[],
+	previous: ResourceKindSelection[],
+	selected: ResourceKindSelection[],
+): ResourceKindSelection[] {
+	const known = new Set([...previous, ...selected].map(kindKey));
+	return available.filter((kind) => !known.has(kindKey(kind)));
 }
 
 export interface ResourceScopeOption {
@@ -70,39 +68,11 @@ export function allKindOptions(
 	return [...SUPPORTED_KINDS, ...CLUSTER_SCOPED_KINDS, ...discovered];
 }
 
-function exactResourceKindKey(kind: string, apiVersion: string | undefined): string {
-	return `${kind}\0${apiVersion ?? ""}`;
-}
-
-function indexKindSelections(kinds: ResourceKindSelection[]) {
-	const builtInKinds = new Set<string>();
-	const exactKinds = new Set<string>();
-	for (const kind of kinds) {
-		if (isDiscoveredResourceKind(kind)) {
-			exactKinds.add(exactResourceKindKey(kind.kind, kind.apiVersion));
-		} else {
-			builtInKinds.add(kind);
-		}
-	}
-	return { builtInKinds, exactKinds };
-}
-
-function resourceMatchesKindIndex(
-	resource: ResourceSummary,
-	index: ReturnType<typeof indexKindSelections>,
-): boolean {
-	return (
-		index.builtInKinds.has(resource.kind) ||
-		index.exactKinds.has(exactResourceKindKey(resource.kind, resource.apiVersion))
-	);
-}
-
 export function filterResourcesByKinds(
 	resources: ResourceSummary[],
 	kinds: ResourceKindSelection[],
 ): ResourceSummary[] {
-	const index = indexKindSelections(kinds);
-	return resources.filter((resource) => resourceMatchesKindIndex(resource, index));
+	return resources.filter(kindMatcher(kinds));
 }
 
 export function filterTopologyByKinds(
@@ -110,8 +80,8 @@ export function filterTopologyByKinds(
 	kinds: ResourceKindSelection[],
 ): ResourceTopology | undefined {
 	if (!topology) return undefined;
-	const index = indexKindSelections(kinds);
-	const nodes = topology.nodes.filter((node) => resourceMatchesKindIndex(node.summary, index));
+	const matches = kindMatcher(kinds);
+	const nodes = topology.nodes.filter((node) => matches(node.summary));
 	const nodeIds = new Set(nodes.map((node) => node.id));
 	return {
 		...topology,
