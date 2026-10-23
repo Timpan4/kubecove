@@ -106,11 +106,8 @@
 		STICKY_TYPE_GROUP_TOP,
 		TABLE_CLASS,
 	} from "./constants";
-	import {
-		buildFetchKeys,
-		isDiscoveredResourceKind,
-		resourceReadyChip,
-	} from "./helpers";
+	import { isCustomResourceKind, kindFetchKeys, kindKey, sameKinds } from "@/lib/kind-identity";
+	import { resourceReadyChip } from "./helpers";
 	import type { HealthFilter } from "./helpers";
 	import ResourceBrowserTopBar from "./ResourceBrowserTopBar.svelte";
 	import {
@@ -118,7 +115,7 @@
 		filterResourcesByKinds,
 		createTableTopologyFilter,
 		initialOwnershipMapOpen,
-		kindSelectionKey,
+		newlyAvailableKinds,
 		nextNamespaceSelection,
 		shouldLoadOwnershipMap,
 		syncedTopologyNodeId as resolveSyncedTopologyNodeId,
@@ -197,7 +194,7 @@
 	let collapsedGroups = $state<Set<string>>(new Set());
 	let selectedTopologyNodeId = $state<string | null>(null);
 	let topologyMode = $state<TopologyMode>("ownership");
-	let appliedAvailableKindsKey = $state("");
+	let appliedAvailableKinds = $state.raw<ResourceKindSelection[]>([]);
 	// svelte-ignore state_referenced_locally
 	let mapPanelOpen = $state(
 		initialOwnershipMapOpen(initialPathState, getSettingsSnapshot().showOwnershipMapByDefault),
@@ -245,7 +242,7 @@
 	const incomingScopeKey = $derived(
 		JSON.stringify({
 			namespaces: [...initialNamespaces].sort(),
-			kinds: initialKinds.map(kindSelectionKey).sort(),
+			kinds: initialKinds.map(kindKey).sort(),
 			search: initialSearch,
 			gitOpsFilter: initialGitOpsFilter,
 			healthFilter: initialHealthFilter,
@@ -260,7 +257,7 @@
 		selectedNamespaces = pathState ? [...pathState.selectedNamespaces] : [...initialNamespaces];
 		selectedKinds = pathState ? [...pathState.selectedKinds] : [...initialKinds];
 		appliedScopeKey = incomingScopeKey;
-		appliedAvailableKindsKey = initialKinds.map(kindSelectionKey).sort().join(",");
+		appliedAvailableKinds = initialKinds;
 		search = pathState?.search ?? initialSearch;
 		filterSearch = search;
 		gitOpsFilter = pathState?.gitOpsFilter ?? initialGitOpsFilter;
@@ -277,25 +274,21 @@
 		tablePanelOpen = pathState?.tablePanelOpen ?? true;
 		initialPathStateConsumed = true;
 	});
-	const availableKindsKey = $derived(
-		availableKinds.map(kindSelectionKey).sort().join(","),
-	);
-	$effect(() => {
-		if (appliedScopeKey === "" || appliedAvailableKindsKey === availableKindsKey) return;
-		const previous = new Set(appliedAvailableKindsKey.split(",").filter(Boolean));
-		const selected = new Set(selectedKinds.map(kindSelectionKey));
-		const additions = availableKinds.filter((kind) => {
-			const key = kindSelectionKey(kind);
-			return !previous.has(key) && !selected.has(key);
-		});
-		appliedAvailableKindsKey = availableKindsKey;
+	/** Selects kinds that became available since they were last applied. */
+	function selectNewlyAvailableKinds() {
+		if (sameKinds(appliedAvailableKinds, availableKinds)) return;
+		const additions = newlyAvailableKinds(availableKinds, appliedAvailableKinds, selectedKinds);
+		appliedAvailableKinds = availableKinds;
 		if (additions.length > 0) selectedKinds = [...selectedKinds, ...additions];
+	}
+	$effect(() => {
+		if (appliedScopeKey !== "") selectNewlyAvailableKinds();
 	});
 
 	const clusterContext = $derived(workspaceReadContext.clusterContext);
 	const sourceReady = $derived(workspaceReadContext.sourceReady);
 	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
-	const fetchKeys = $derived(buildFetchKeys(selectedNamespaces, selectedKinds));
+	const fetchKeys = $derived(kindFetchKeys(selectedNamespaces, selectedKinds));
 	const readSpecs = $derived(
 		buildResourceBrowserReadSpecs({
 			client,
@@ -346,32 +339,21 @@
 	$effect(() => {
 		if (kindScopeLocked) {
 			if (selectedKinds.length !== initialKinds.length ||
-				selectedKinds.some((kind, index) => kindSelectionKey(kind) !== kindSelectionKey(initialKinds[index]))) {
+				selectedKinds.some((kind, index) => kindKey(kind) !== kindKey(initialKinds[index]))) {
 				selectedKinds = [...initialKinds];
 			}
-			appliedAvailableKindsKey = availableKindsKey;
+			appliedAvailableKinds = availableKinds;
 			return;
 		}
 		if (!customResourcesEnabled) {
-			const nativeKinds = selectedKinds.filter((kind) => !isDiscoveredResourceKind(kind));
-			if (nativeKinds.length !== selectedKinds.length) selectedKinds = nativeKinds;
-			appliedAvailableKindsKey = availableKindsKey;
+			const builtinKinds = selectedKinds.filter((kind) => !isCustomResourceKind(kind));
+			if (builtinKinds.length !== selectedKinds.length) selectedKinds = builtinKinds;
+			appliedAvailableKinds = availableKinds;
 			return;
 		}
-		if (
-			appliedScopeKey === "" ||
-			appliedAvailableKindsKey === availableKindsKey ||
-			!resourcesQuery.isSuccess ||
-			resourcesQuery.isPlaceholderData
-		) return;
-		const previous = new Set(appliedAvailableKindsKey.split(",").filter(Boolean));
-		const selected = new Set(selectedKinds.map(kindSelectionKey));
-		const additions = availableKinds.filter((kind) => {
-			const key = kindSelectionKey(kind);
-			return !previous.has(key) && !selected.has(key);
-		});
-		appliedAvailableKindsKey = availableKindsKey;
-		if (additions.length > 0) selectedKinds = [...selectedKinds, ...additions];
+		if (appliedScopeKey !== "" && resourcesQuery.isSuccess && !resourcesQuery.isPlaceholderData) {
+			selectNewlyAvailableKinds();
+		}
 	});
 	const topologyQuery = createQuery<ResourceTopology>(() => readSpecs.topology);
 	$effect(() => {
@@ -416,7 +398,7 @@
 			: allKindOptions(customResourcesEnabled ? (resourceKindsQuery.data ?? []) : []),
 	);
 	const selectedNamespaceSet = $derived(new Set(selectedNamespaces));
-	const selectedKindSet = $derived(new Set(selectedKinds.map(kindSelectionKey)));
+	const selectedKindSet = $derived(new Set(selectedKinds.map(kindKey)));
 	const metricsIndex = $derived(resourceMetricIndex(metricsQuery.data));
 	const scopedRows = $derived(
 		filterResourcesByKinds(resourcesQuery.data?.resources ?? [], selectedKinds),
@@ -651,10 +633,10 @@
 	}
 
 	function toggleKind(kind: ResourceKindSelection, checked: boolean) {
-		const key = kindSelectionKey(kind);
+		const key = kindKey(kind);
 		selectedKinds = checked
 			? [...selectedKinds, kind]
-			: selectedKinds.filter((item) => kindSelectionKey(item) !== key);
+			: selectedKinds.filter((item) => kindKey(item) !== key);
 		pageIndex = 0;
 		onResourceClose();
 		selectedTopologyNodeId = null;

@@ -1,10 +1,10 @@
 import { matchQuery } from "@tanstack/query-core";
 import type { Query, QueryClient } from "@tanstack/svelte-query";
 import { finiteReadMeta } from "./finite-read-lifecycle";
+import { type KindFetchKey, kindKey } from "./kind-identity";
 import { kubeconfigSourceKey } from "./settings";
 import type {
 	FluxResourceKind,
-	ResourceKindSelection,
 	ResourceSummary,
 	TopologyMode,
 	YamlEncoding,
@@ -111,24 +111,13 @@ const yamlDocument =
 	) =>
 		scoped(family, source, context, namespace ?? "", name, yamlViewMode, yamlEncoding);
 
-interface ResourceFetchKey {
-	kind: ResourceKindSelection;
-	namespace?: string;
-}
-
-function resourceKindKey(kind: ResourceKindSelection): string {
-	return kind instanceof Object
-		? `dynamic:${kind.apiVersion}:${kind.plural}:${kind.kind}`
-		: `typed:${kind}`;
-}
-
 function sortedNamespaces(namespaces: string[]): string {
 	return [...new Set(namespaces)].sort((a, b) => a.localeCompare(b)).join(",");
 }
 
-function resourceScopeParts(fetchKeys: ResourceFetchKey[]): string[] {
+function resourceScopeParts(fetchKeys: KindFetchKey[]): string[] {
 	return fetchKeys
-		.map((key) => `${resourceKindKey(key.kind)}:${key.namespace ?? ""}`)
+		.map((key) => `${kindKey(key.kind)}:${key.namespace ?? ""}`)
 		.sort((a, b) => a.localeCompare(b));
 }
 
@@ -158,7 +147,7 @@ export const queryKeys = {
 	resourceKinds: contextRead(F.resourceKinds),
 	presentCustomResourceKinds: (context: string, namespaces: string[], source?: string) =>
 		scoped(F.presentCustomResourceKinds, source, context, sortedNamespaces(namespaces)),
-	resources: (context: string, fetchKeys: ResourceFetchKey[], source?: string) =>
+	resources: (context: string, fetchKeys: KindFetchKey[], source?: string) =>
 		scoped(F.resources, source, context, ...resourceScopeParts(fetchKeys)),
 	deploymentRevisions: (resource: ResourceSummary, source?: string) =>
 		resourceKey(F.deploymentRevisions, resource, source),
@@ -300,7 +289,7 @@ export const queryKeys = {
 		source?: string,
 	) => scoped(F.helmReleaseReconciliation, source, context, namespace, storageKind, storageName),
 	rbacInspection: contextRead(F.rbacInspection),
-	incidentCockpit: (context: string, fetchKeys: ResourceFetchKey[], source?: string) =>
+	incidentCockpit: (context: string, fetchKeys: KindFetchKey[], source?: string) =>
 		scoped(F.incidentCockpit, source, context, ...resourceScopeParts(fetchKeys)),
 	portForwards: () => [F.portForwards.root] as const,
 	podExecSessions: () => [F.podExecSessions.root] as const,

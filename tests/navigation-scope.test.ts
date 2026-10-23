@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { buildFetchKeys } from "../src/features/resources/helpers";
+import { kindFetchKeys } from "../src/lib/kind-identity";
 import { CLUSTER_SCOPED_KINDS } from "../src/lib/types";
 import { resolveTreeScope } from "../src/lib/tree-nav";
 import { createWorkspaceRecord } from "../src/lib/workspace-model";
@@ -30,7 +30,7 @@ describe("navigation scope", () => {
 	});
 
 	test("empty namespace selection fetches all namespaces for typed kinds", () => {
-		expect(buildFetchKeys([], ["Pod", "Service"])).toEqual([
+		expect(kindFetchKeys([], ["Pod", "Service"])).toEqual([
 			{ kind: "Pod", namespace: undefined },
 			{ kind: "Service", namespace: undefined },
 		]);

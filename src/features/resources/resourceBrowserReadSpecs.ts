@@ -9,19 +9,20 @@ import type { TauriClient } from "@/lib/tauri";
 import type { TopologyMode } from "@/lib/types";
 import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 import {
-	type FetchKey,
+	isCustomResourceKind,
+	type KindFetchKey,
+	kindKey,
+	kindWatchKeys,
 	mergeWatchKeys,
-	resourceKindFetchKey,
-	topologyWatchKeys,
-	watchKeysFromFetchKeys,
-} from "./helpers";
+} from "@/lib/kind-identity";
+import { topologyWatchKeys } from "./helpers";
 import { resourceMetricsQuery, resourceScopeQuery, resourceTopologyQuery } from "./query";
 
 export interface ResourceBrowserReadSpecInput {
 	client: TauriClient;
 	clusterContext: string;
 	kubeconfigSourceKey: string | undefined;
-	fetchKeys: FetchKey[];
+	fetchKeys: KindFetchKey[];
 	namespaces: string[];
 	topologyMode: TopologyMode;
 	mapPanelOpen: boolean;
@@ -47,8 +48,8 @@ export function buildResourceBrowserReadSpecs({
 	const topologyNamespaces = [...new Set(namespaces)].sort();
 	const customResourceKinds = [...new Set(
 		fetchKeys
-			.filter((key) => key.kind instanceof Object)
-			.map((key) => resourceKindFetchKey(key.kind)),
+			.filter((key) => isCustomResourceKind(key.kind))
+			.map((key) => kindKey(key.kind)),
 	)]
 		.sort()
 		.join(",");
@@ -108,7 +109,7 @@ export function resourceBrowserLiveView(
 		mapPanelOpen,
 		focusedApplication,
 	}: {
-		fetchKeys: FetchKey[];
+		fetchKeys: KindFetchKey[];
 		namespaces: string[];
 		mapPanelOpen: boolean;
 		focusedApplication: ArgoApplicationTarget | null;
@@ -118,7 +119,7 @@ export function resourceBrowserLiveView(
 	if (!readContext.sourceReady || !clusterContext) return null;
 	const view = { clusterContext, kubeconfigSourceKey, namespaces, refreshScope: "view" } as const;
 	if (fetchKeys.length === 0) return { ...view, keys: [], reads: [] };
-	const resourceKeys = watchKeysFromFetchKeys(fetchKeys);
+	const resourceKeys = kindWatchKeys(fetchKeys);
 	const mapKeys = mapPanelOpen
 		? mergeWatchKeys(topologyWatchKeys(specs.topologyNamespaces), resourceKeys.filter((key) => Boolean(key.resourceKind.group)))
 		: [];

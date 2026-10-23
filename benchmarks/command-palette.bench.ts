@@ -8,7 +8,7 @@ import {
 	buildPaletteResourceSearchIndex,
 	filterNamespaces,
 } from "@/features/command-palette/entries";
-import { resourceKindFetchKey } from "@/features/resources";
+import { kindKey } from "@/lib/kind-identity";
 import { filterResourceSearchIndex } from "@/features/resources/helpers";
 import type { ResourceScopeResult } from "@/lib/resource-scope-types";
 import type {
@@ -184,8 +184,8 @@ assert.deepEqual(visibleNamespaceResults(" \t "), []);
 assert(
 	providerAndWorkspaceKeys.some(
 		(key) =>
-			resourceKindFetchKey(key.kind) ===
-				resourceKindFetchKey(firstFluxResourceKind) &&
+			kindKey(key.kind) ===
+				kindKey(firstFluxResourceKind) &&
 			key.namespace === undefined,
 	),
 );
@@ -195,15 +195,15 @@ assert(namespacedCustomKind);
 for (const namespace of namespaces.slice(0, 100)) {
 	assert(providerAndWorkspaceKeys.some((key) => key.kind === "Pod" && key.namespace === namespace));
 	assert(providerAndWorkspaceKeys.some((key) =>
-		resourceKindFetchKey(key.kind) === resourceKindFetchKey(namespacedCustomKind) &&
+		kindKey(key.kind) === kindKey(namespacedCustomKind) &&
 		key.namespace === namespace));
 }
 assert(clusterScopedCustomKind);
 assert(
 	providerAndWorkspaceKeys.some(
 		(key) =>
-			resourceKindFetchKey(key.kind) ===
-				resourceKindFetchKey(clusterScopedCustomKind) &&
+			kindKey(key.kind) ===
+				kindKey(clusterScopedCustomKind) &&
 			key.namespace === undefined,
 	),
 );

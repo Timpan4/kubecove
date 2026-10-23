@@ -8,25 +8,12 @@ import {
 	listResourceTopology,
 	type TauriClient,
 } from "@/lib/tauri";
+import { type KindFetchKey, kindLabel, kindListRequest } from "@/lib/kind-identity";
 import type {
 	CancellableRequest,
-	ResourceListRequest,
 	ResourceScopeResult,
 	TopologyMode,
 } from "@/lib/types";
-import {
-	type FetchKey,
-	isDiscoveredResourceKind,
-	resourceKindLabel,
-} from "./helpers";
-
-function fetchKeyRequest({ kind, namespace }: FetchKey): ResourceListRequest {
-	const normalizedNamespace = namespace === "" ? undefined : namespace;
-	if (isDiscoveredResourceKind(kind)) {
-		return { resourceKind: kind, namespace: normalizedNamespace };
-	}
-	return { kind, namespace: normalizedNamespace };
-}
 
 async function fetchResourcePage(
 	client: TauriClient,
@@ -37,13 +24,13 @@ async function fetchResourcePage(
 	diagnosticLog("resources.fetch.start", {
 		cluster: clusterContext,
 		fetches: fetchKeys.length,
-		kinds: fetchKeys.map((key) => resourceKindLabel(key.kind)).join("|"),
+		kinds: fetchKeys.map((key) => kindLabel(key.kind)).join("|"),
 	});
 	const rows = await withForegroundLoad("resources", () =>
 		listResourceScope(
 			client,
 			clusterContext,
-			fetchKeys.map(fetchKeyRequest),
+			fetchKeys.map(kindListRequest),
 			kubeconfigSourceKey,
 			cancellable,
 		),
@@ -59,7 +46,7 @@ async function fetchResourcePage(
 
 export interface ResourceScopeRead {
 	clusterContext: string;
-	fetchKeys: FetchKey[];
+	fetchKeys: KindFetchKey[];
 	kubeconfigSourceKey: string | undefined;
 }
 

@@ -3,15 +3,9 @@
  * for the IDE-style sidebar tree.
  */
 
+import { isBuiltinKind, isClusterScopedKind } from "./kind-identity";
 import type { DiscoveredResourceKind, ResourceKindSelection } from "./types";
 import { CLUSTER_SCOPED_KINDS, SUPPORTED_KINDS } from "./types";
-
-const CLUSTER_SCOPED_KIND_SET = new Set<string>(CLUSTER_SCOPED_KINDS);
-
-function isNativeResourceKind(kind: string): kind is Extract<ResourceKindSelection, string> {
-  return SUPPORTED_KINDS.some((candidate) => candidate === kind) ||
-    CLUSTER_SCOPED_KINDS.some((candidate) => candidate === kind);
-}
 
 // ─── Tree Node Types ───────────────────────────────────────────────────────────
 
@@ -188,10 +182,6 @@ export function nodeIdToString(id: TreeNodeId): string {
   return parts.join("::");
 }
 
-export function discoveredResourceKindKey(resourceKind: DiscoveredResourceKind): string {
-  return `${resourceKind.group}/${resourceKind.version}/${resourceKind.plural}/${resourceKind.kind}`;
-}
-
 function isSectionName(value: string): value is SectionName {
   return Object.hasOwn(SECTIONS, value);
 }
@@ -257,9 +247,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       };
     }
     if (nodeId.section === "namespaces") {
-      const namespacedKinds = SUPPORTED_KINDS.filter(
-        (kind) => !CLUSTER_SCOPED_KIND_SET.has(kind)
-      );
+      const namespacedKinds = SUPPORTED_KINDS.filter((kind) => !isClusterScopedKind(kind));
       return {
         section: "namespaces",
         namespace: null,
@@ -293,9 +281,7 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
 
   if (nodeId.type === "namespace") {
     // Namespace selected — return all namespaced kinds for that namespace
-    const namespacedKinds = SUPPORTED_KINDS.filter(
-      (kind) => !CLUSTER_SCOPED_KIND_SET.has(kind)
-    );
+    const namespacedKinds = SUPPORTED_KINDS.filter((kind) => !isClusterScopedKind(kind));
     return {
       section: "namespaces",
       namespace: nodeId.namespace ?? null,
@@ -341,13 +327,13 @@ export function resolveTreeScope(nodeId: TreeNodeId | null): TreeScope {
       group: nodeId.group ?? null,
       kinds: nodeId.resourceKind
         ? [nodeId.resourceKind]
-        : nodeId.kind && isNativeResourceKind(nodeId.kind)
+        : nodeId.kind && isBuiltinKind(nodeId.kind)
           ? [nodeId.kind]
           : [],
       clusterScoped: nodeId.resourceKind
         ? !nodeId.resourceKind.namespaced
         : nodeId.kind
-          ? CLUSTER_SCOPED_KINDS.some((candidate) => candidate === nodeId.kind)
+          ? isClusterScopedKind(nodeId.kind)
           : false,
       argoMode: nodeId.section === "argo",
       helmMode: nodeId.section === "helm",

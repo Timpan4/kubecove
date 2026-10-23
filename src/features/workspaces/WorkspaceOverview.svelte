@@ -37,6 +37,7 @@
 		fetchWorkspaceResources,
 		WorkspaceResourceLoadError,
 	} from "@/features/workspaces/query";
+	import { kindLabel } from "@/lib/kind-identity";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
 		createTauriClient,
@@ -59,7 +60,6 @@
 		buildWorkspaceCompareSummaries,
 		buildWorkspaceHealthSummary,
 		computeRestoreStatus,
-		resourceKindLabel,
 		workspaceClusterGroupLabel,
 		workspaceScopeContexts,
 		type SavedWorkspace,
@@ -278,7 +278,7 @@
 				{workspace.scope.namespaces.length || "All"} namespaces
 			</Badge>
 			<Badge variant="outline" class="max-w-96 truncate rounded-sm">
-				{workspace.scope.kinds.map(resourceKindLabel).join(", ")}
+				{workspace.scope.kinds.map(kindLabel).join(", ")}
 			</Badge>
 		</div>
 	</header>

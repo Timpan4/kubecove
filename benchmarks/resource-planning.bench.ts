@@ -2,12 +2,9 @@ import assert from "node:assert/strict";
 import { bench, describe } from "vitest";
 import { createMockTauriClient } from "@/lib/tauri-runtime";
 import {
-	buildFetchKeys,
-	mergeWatchKeys,
-	resourceKindFetchKey,
 	topologyWatchKeys,
-	watchKeysFromFetchKeys,
 } from "@/features/resources/helpers";
+import { kindFetchKeys, kindKey, kindWatchKeys, mergeWatchKeys } from "@/lib/kind-identity";
 import type { ResourceScopeOption } from "@/features/resources/resourceBrowserModel";
 import { filterResourceScopeOptions } from "@/features/resources/resourceBrowserModel";
 import { buildResourceBrowserReadSpecs } from "@/features/resources/resourceBrowserReadSpecs";
@@ -46,8 +43,8 @@ const kinds: ResourceKindSelection[] = [
 	"Node",
 	...discoveredKinds,
 ];
-const fetchKeys = buildFetchKeys(namespaces, kinds);
-const fetchWatchKeys = watchKeysFromFetchKeys(fetchKeys);
+const fetchKeys = kindFetchKeys(namespaces, kinds);
+const fetchWatchKeys = kindWatchKeys(fetchKeys);
 const topologyOnlyWatchKeys = topologyWatchKeys(namespaces);
 const mergedWatchKeys = mergeWatchKeys(fetchWatchKeys, topologyOnlyWatchKeys);
 const options: ResourceScopeOption[] = [
@@ -98,7 +95,7 @@ const readSpecs = buildResourceBrowserReadSpecs({
 });
 
 function fetchKeyIdentity(key: (typeof fetchKeys)[number]): string {
-	return `${resourceKindFetchKey(key.kind)}:${key.namespace ?? ""}`;
+	return `${kindKey(key.kind)}:${key.namespace ?? ""}`;
 }
 
 function watchKeyIdentity(key: (typeof fetchWatchKeys)[number]): string {
@@ -161,8 +158,8 @@ assert(
 
 describe("F04 resource scope and read planning with folded F33 workspace fetch plans", () => {
 	bench("F04 build canonical fetch/watch keys and read specs", () => {
-		const nextFetchKeys = buildFetchKeys(namespaces, kinds);
-		const nextWatchKeys = watchKeysFromFetchKeys(nextFetchKeys);
+		const nextFetchKeys = kindFetchKeys(namespaces, kinds);
+		const nextWatchKeys = kindWatchKeys(nextFetchKeys);
 		mergeWatchKeys(nextWatchKeys, topologyWatchKeys(namespaces));
 		buildResourceBrowserReadSpecs({
 			client,

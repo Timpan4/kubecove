@@ -5,11 +5,10 @@ import { resourceBrowserAvailableKinds } from "../src/app/svelte/workspaceShellM
 import { argoResourceIdentityKey } from "../src/features/gitops/argo-workspace-model";
 import { PAGE_SIZE } from "../src/features/resources/constants";
 import {
-	buildFetchKeys,
-	isDiscoveredResourceKind,
 	resourceGroupCollapseKey,
 	resourceTypeGroupCollapseKey,
 } from "../src/features/resources/helpers";
+import { kindFetchKeys, kindLabel } from "../src/lib/kind-identity";
 import {
 	allKindOptions,
 	filterHistoricalReplicaSets,
@@ -218,7 +217,7 @@ test("builds immutable ResourceBrowser read identities and enablement", () => {
 		client: createMockTauriClient({}),
 		clusterContext: "kind-dev",
 		kubeconfigSourceKey: "source-a",
-		fetchKeys: buildFetchKeys(["default", "kube-system"], ["Pod", widget]),
+		fetchKeys: kindFetchKeys(["default", "kube-system"], ["Pod", widget]),
 		namespaces: ["kube-system", "default", "default"],
 		topologyMode: "ownership",
 		mapPanelOpen: false,
@@ -228,7 +227,7 @@ test("builds immutable ResourceBrowser read identities and enablement", () => {
 	const specs = buildResourceBrowserReadSpecs(input);
 	const nativeOnly = buildResourceBrowserReadSpecs({
 		...input,
-		fetchKeys: buildFetchKeys(["default", "kube-system"], ["Pod"]),
+		fetchKeys: kindFetchKeys(["default", "kube-system"], ["Pod"]),
 	});
 	const otherMode = buildResourceBrowserReadSpecs({ ...input, topologyMode: "networkFlow" });
 
@@ -264,7 +263,7 @@ test("ResourceBrowser keeps rows and the map visible while the next scope loads"
 		client: createMockTauriClient({}),
 		clusterContext: "kind-dev",
 		kubeconfigSourceKey: undefined,
-		fetchKeys: buildFetchKeys(["default"], ["Pod"]),
+		fetchKeys: kindFetchKeys(["default"], ["Pod"]),
 		namespaces: ["default"],
 		topologyMode: "ownership",
 		mapPanelOpen: true,
@@ -283,7 +282,7 @@ test("ResourceBrowser keeps rows and the map visible while the next scope loads"
 // changes; a view with no kinds or no source watches anything.
 test("ResourceBrowser declares which watched kinds keep rows, the map, and the focused Application fresh", () => {
 	const readContext = { workspaceId: "ws", clusterContext: "kind-dev", kubeconfigSourceKey: undefined, sourceReady: true };
-	const input = { fetchKeys: buildFetchKeys(["default"], ["Pod"]), namespaces: ["default"], focusedApplication: { name: "guestbook", namespace: "argocd" } };
+	const input = { fetchKeys: kindFetchKeys(["default"], ["Pod"]), namespaces: ["default"], focusedApplication: { name: "guestbook", namespace: "argocd" } };
 	const specs = (mapPanelOpen: boolean) => buildResourceBrowserReadSpecs({
 		client: createMockTauriClient({}),
 		clusterContext: "kind-dev",
@@ -330,7 +329,7 @@ test("ResourceBrowser map reads show the foreground loading bar until they settl
 		}),
 		clusterContext: "kind-dev",
 		kubeconfigSourceKey: undefined,
-		fetchKeys: buildFetchKeys(["default"], ["Pod"]),
+		fetchKeys: kindFetchKeys(["default"], ["Pod"]),
 		namespaces: ["default"],
 		topologyMode: "ownership",
 		mapPanelOpen: true,
@@ -900,7 +899,7 @@ describe("svelte resource browser model", () => {
 
 	test("keeps built-in, cluster-scoped, and discovered kinds editable", () => {
 		const kindNames = allKindOptions([widget]).map((kind) =>
-			isDiscoveredResourceKind(kind) ? kind.kind : kind,
+			kindLabel(kind),
 		);
 
 		expect(kindNames).toContain("Node");
