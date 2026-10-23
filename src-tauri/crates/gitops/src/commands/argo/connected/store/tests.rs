@@ -52,7 +52,7 @@ async fn lease_rejects_replaced_and_disconnected_connections() {
         "server",
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
     )
     .unwrap();
     let replacement = connection("replacement");
@@ -67,7 +67,7 @@ async fn lease_rejects_replaced_and_disconnected_connections() {
         selected,
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
         "old",
         "old-instance",
     )
@@ -85,7 +85,7 @@ async fn lease_rejects_replaced_and_disconnected_connections() {
         "server",
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
     )
     .unwrap();
     store.remove_connection("server").await.unwrap();
@@ -95,7 +95,7 @@ async fn lease_rejects_replaced_and_disconnected_connections() {
         selected,
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
         "replacement",
         "replacement-instance",
     )
@@ -122,12 +122,12 @@ async fn disconnect_and_replacement_wait_for_active_lease() {
             "server",
             "cluster",
             Some("workspace"),
-            Some("kubeconfigSource=test"),
+            "kubeconfigSource=test",
         )
         .unwrap(),
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
         "old",
         &old.instance_id,
     )
@@ -160,12 +160,12 @@ async fn disconnect_and_replacement_wait_for_active_lease() {
             "server",
             "cluster",
             Some("workspace"),
-            Some("kubeconfigSource=test"),
+            "kubeconfigSource=test",
         )
         .unwrap(),
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
         "old",
         &old.instance_id,
     )
@@ -259,7 +259,7 @@ async fn source_scope_rejects_same_context_from_another_kubeconfig() {
         "server",
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=other"),
+        "kubeconfigSource=other",
     )
     .err()
     .expect("another kubeconfig source must not reuse the connection");

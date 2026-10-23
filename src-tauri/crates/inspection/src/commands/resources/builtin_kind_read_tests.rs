@@ -1,9 +1,8 @@
 use super::{
-    details::resource_details_with_client, summary::resource_summaries_with_client,
-    yaml::resource_yaml_with_client,
+    details::resource_details_from, summary::resources_summary_from, yaml::resource_yaml_from,
 };
-use crate::commands::builtin_kinds::BUILTIN_KINDS;
-use crate::models::{AppError, AppErrorKind, YamlEncoding, YamlViewMode};
+use crate::commands::{builtin_kinds::BUILTIN_KINDS, ClusterAccess, FixedClusterAccess};
+use crate::models::{AppError, AppErrorKind};
 use http::{header::CONTENT_TYPE, Request, Response};
 use kube::client::Body;
 use std::future::Future;
@@ -12,7 +11,7 @@ use std::future::Future;
 /// that reaches the API reports `NotFound` instead of an unsupported kind.
 async fn with_missing_objects<T, F, Fut>(read: F) -> Result<T, AppError>
 where
-    F: FnOnce(kube::Client) -> Fut,
+    F: FnOnce(ClusterAccess) -> Fut,
     Fut: Future<Output = Result<T, AppError>>,
 {
     let (service, mut handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
@@ -31,7 +30,8 @@ where
             );
         }
     };
-    let (result, ()) = tokio::join!(read(kube::Client::new(service, "default")), responder);
+    let access = FixedClusterAccess::new(kube::Client::new(service, "default")).access();
+    let (result, ()) = tokio::join!(read(access), responder);
     result
 }
 
@@ -42,42 +42,55 @@ async fn every_table_kind_is_served_by_summary_details_and_yaml_reads() {
         let reads = [
             (
                 "summary",
-                with_missing_objects(|client| {
-                    resource_summaries_with_client(
-                        client,
-                        "kind-dev".into(),
-                        entry.kind.into(),
-                        namespace.clone(),
-                    )
+                with_missing_objects(|access| {
+                    let namespace = namespace.clone();
+                    async move {
+                        resources_summary_from(
+                            &access,
+                            "kind-dev".into(),
+                            entry.kind.into(),
+                            namespace,
+                        )
+                        .await
+                    }
                 })
                 .await
                 .map(drop),
             ),
             (
                 "details",
-                with_missing_objects(|client| {
-                    resource_details_with_client(
-                        client,
-                        "kind-dev".into(),
-                        entry.kind.into(),
-                        "missing".into(),
-                        namespace.clone(),
-                    )
+                with_missing_objects(|access| {
+                    let namespace = namespace.clone();
+                    async move {
+                        resource_details_from(
+                            &access,
+                            "kind-dev".into(),
+                            entry.kind.into(),
+                            "missing".into(),
+                            namespace,
+                        )
+                        .await
+                    }
                 })
                 .await
                 .map(drop),
             ),
             (
                 "yaml",
-                with_missing_objects(|client| {
-                    resource_yaml_with_client(
-                        client,
-                        entry.kind.into(),
-                        "missing".into(),
-                        namespace.clone(),
-                        YamlViewMode::default(),
-                        YamlEncoding::default(),
-                    )
+                with_missing_objects(|access| {
+                    let namespace = namespace.clone();
+                    async move {
+                        resource_yaml_from(
+                            &access,
+                            "kind-dev".into(),
+                            entry.kind.into(),
+                            "missing".into(),
+                            namespace,
+                            None,
+                            None,
+                        )
+                        .await
+                    }
                 })
                 .await
                 .map(drop),

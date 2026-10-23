@@ -12,6 +12,8 @@ default = []
 desktop = ["dep:tauri", "dep:tauri-plugin-dialog"]
 bench-support = ["desktop"]
 e2e = ["desktop"]
+# Exposes the fixed-client test adapter for other crates' tests.
+test-support = []
 
 [dependencies]
 kubecove-models = { path = "../models" }

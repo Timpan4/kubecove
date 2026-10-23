@@ -1,7 +1,6 @@
-use crate::commands::kubeconfig::KubeconfigSource;
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, PodExecSessionRequest, PodExecTerminalSize};
-use kube::Client;
 
 const MIN_TERMINAL_SIZE: u16 = 1;
 const MAX_TERMINAL_SIZE: u16 = 500;
@@ -51,9 +50,10 @@ fn exec_command_text(command: &[String]) -> String {
     serde_json::to_string(command).expect("pod exec command serializes")
 }
 
+/// Validates the confirmed target and resolves the cluster access the session keeps.
 pub(super) fn validate_request(
     request: &PodExecSessionRequest,
-) -> Result<ValidatedPodExecRequest, AppError> {
+) -> Result<(ValidatedPodExecRequest, ClusterAccess), AppError> {
     let cluster_context = trimmed(&request.cluster_context);
     let namespace = trimmed(&request.namespace);
     let pod_name = trimmed(&request.pod_name);
@@ -115,12 +115,12 @@ pub(super) fn validate_request(
         ));
     }
 
-    let source = KubeconfigSource::new(request.kubeconfig_env_var.clone())?;
-    Ok(ValidatedPodExecRequest {
+    let access = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?;
+    let validated = ValidatedPodExecRequest {
         cluster_context,
         kubeconfig_env_var: request.kubeconfig_env_var.clone(),
-        kubeconfig_source_key: Some(source.key()),
-        kubeconfig_source_label: source.show_source_labels().then(|| source.label()),
+        kubeconfig_source_key: Some(access.source_key().to_string()),
+        kubeconfig_source_label: access.source_label().map(str::to_string),
         namespace,
         pod_name,
         container,
@@ -128,13 +128,6 @@ pub(super) fn validate_request(
         stdin: request.stdin,
         tty: request.tty,
         terminal_size: request.terminal_size.clone(),
-    })
-}
-
-pub(super) async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?.fail_closed();
-    source.live_client_for_context(cluster_context).await
+    };
+    Ok((validated, access))
 }

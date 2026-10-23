@@ -1,10 +1,9 @@
 use super::{
-    client_for_context,
     kinds::{api_resource_from_kind, normalize_resource_kind},
     registry::StreamBroadcaster,
 };
 use crate::{
-    commands::ClusterLiveStore,
+    commands::{ClusterAccess, ClusterLiveStore},
     models::{WatchResourceKey, WatchResourceTarget},
 };
 use futures_util::StreamExt;
@@ -146,35 +145,12 @@ fn scoped_dynamic_api(
 }
 
 pub(super) async fn run_resource_watch(
-    source_key: String,
+    access: ClusterAccess,
     cluster_context: String,
     key: WatchResourceKey,
-    kubeconfig_env_var: Option<String>,
     broadcaster: StreamBroadcaster,
     live_store: ClusterLiveStore,
 ) {
-    run_resource_watch_with_client(
-        source_key,
-        cluster_context.clone(),
-        key,
-        broadcaster,
-        live_store,
-        || client_for_context(&cluster_context, kubeconfig_env_var.clone()),
-    )
-    .await;
-}
-
-async fn run_resource_watch_with_client<F, Fut>(
-    source_key: String,
-    cluster_context: String,
-    key: WatchResourceKey,
-    broadcaster: StreamBroadcaster,
-    live_store: ClusterLiveStore,
-    client_for_watch: F,
-) where
-    F: Fn() -> Fut,
-    Fut: std::future::Future<Output = Result<Client, crate::models::AppError>>,
-{
     let normalized_kind = match normalize_resource_kind(&key.resource_kind) {
         Ok(kind) => kind,
         Err(err) => {
@@ -194,7 +170,7 @@ async fn run_resource_watch_with_client<F, Fut>(
     let mut resource_version = "0".to_string();
 
     'watch: loop {
-        let client = match client_for_watch().await {
+        let client = match access.stream_client(&cluster_context).await {
             Ok(client) => client,
             Err(err) => {
                 if !broadcaster.error(err.message) {
@@ -251,7 +227,7 @@ async fn run_resource_watch_with_client<F, Fut>(
                             let target =
                                 dynamic_event_target(&cluster_context, &kind_label, &event);
                             live_store.mark_watch_resource_dirty(
-                                &source_key,
+                                access.source_key(),
                                 &cluster_context,
                                 &normalized_kind,
                                 target.namespace.as_deref(),
@@ -308,11 +284,11 @@ fn event_target(
 }
 
 pub(super) async fn run_event_watch(
+    access: ClusterAccess,
     cluster_context: String,
     kind: String,
     name: String,
     namespace: Option<String>,
-    kubeconfig_env_var: Option<String>,
     broadcaster: StreamBroadcaster,
 ) {
     let field_selector = match namespace.as_deref() {
@@ -324,7 +300,7 @@ pub(super) async fn run_event_watch(
     let mut resource_version = "0".to_string();
 
     loop {
-        let client = match client_for_context(&cluster_context, kubeconfig_env_var.clone()).await {
+        let client = match access.stream_client(&cluster_context).await {
             Ok(client) => client,
             Err(err) => {
                 if !broadcaster.error(err.message) {

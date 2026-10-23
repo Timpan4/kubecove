@@ -1,7 +1,7 @@
 use crate::models::AppErrorKind;
 use crate::runtime::State;
 use crate::{
-    commands::{diagnostic_field, kubeconfig::KubeconfigSource, FiniteRead},
+    commands::{diagnostic_field, ClusterAccess, FiniteRead},
     models::{
         AppError, RbacAccessReviewIdentity, RbacAccessReviewOutcome, RbacAccessReviewRequest,
         RbacAccessReviewResult, RbacAccessReviewTarget,
@@ -31,8 +31,8 @@ pub async fn review_rbac_access(
 async fn review_rbac_access_from(
     request: RbacAccessReviewRequest,
 ) -> Result<RbacAccessReviewResult, AppError> {
-    let client = KubeconfigSource::new(request.kubeconfig_env_var)?
-        .client_for_context(&request.cluster_context)
+    let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
+        .read_client(&request.cluster_context)
         .await?;
     let (user, groups) = review_identity(&request.identity)?;
     let review = SubjectAccessReview {

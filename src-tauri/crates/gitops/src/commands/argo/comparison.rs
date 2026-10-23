@@ -8,15 +8,15 @@ use super::{
 };
 use crate::models::AppErrorKind;
 use crate::{
-    commands::{diagnostic_field, BackendCancellationRegistry, FiniteRead},
+    commands::{diagnostic_field, BackendCancellationRegistry, ClusterAccess, FiniteRead},
     models::{AppError, ArgoApplicationRef, ArgoManagedResource, ArgoResourceComparison},
 };
 use serde_json::Value;
 
 async fn argo_resource_comparison(
     store: &ArgoConnectionStore,
+    access: &ClusterAccess,
     cluster_context: String,
-    kubeconfig_env_var: Option<String>,
     connection_id: Option<String>,
     transport: String,
     application: ArgoApplicationRef,
@@ -25,10 +25,10 @@ async fn argo_resource_comparison(
     if transport == "kubernetes" {
         let inspector = inspector_from_application(
             &kubernetes_application(
+                access,
                 &cluster_context,
                 application.namespace.as_deref(),
                 &application.name,
-                kubeconfig_env_var,
             )
             .await?,
         )?;
@@ -47,7 +47,7 @@ async fn argo_resource_comparison(
         })?,
         &cluster_context,
         application.workspace_id.as_deref(),
-        kubeconfig_env_var.as_deref(),
+        access.source_key(),
     )?;
     let value = api_get(
         &connection,
@@ -164,15 +164,19 @@ pub async fn get_argo_resource_comparison(
         .label("application", &application.name)
         .cancellable(&cancellations, cancel_scope, request_id)
         .run(
-            argo_resource_comparison(
-                &store,
-                cluster_context,
-                kubeconfig_env_var,
-                connection_id,
-                transport,
-                application,
-                resource,
-            ),
+            Box::pin(async {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                argo_resource_comparison(
+                    &store,
+                    &access,
+                    cluster_context,
+                    connection_id,
+                    transport,
+                    application,
+                    resource,
+                )
+                .await
+            }),
             |comparison| {
                 vec![diagnostic_field(
                     "modified",

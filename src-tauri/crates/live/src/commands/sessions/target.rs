@@ -1,7 +1,6 @@
-use crate::commands::kubeconfig::KubeconfigSource;
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, PortForwardRequest};
-use kube::Client;
 
 use super::service;
 
@@ -154,39 +153,20 @@ pub fn validate_target(
     })
 }
 
+/// Validates the target and resolves the cluster access the session keeps.
 pub(super) fn validate_request(
     request: &PortForwardRequest,
-) -> Result<ValidatedPortForwardRequest, AppError> {
+) -> Result<(ValidatedPortForwardRequest, ClusterAccess), AppError> {
     let mut validated = validate_target(request)?;
-    let source = KubeconfigSource::new(request.kubeconfig_env_var.clone())?;
-    validated.kubeconfig_source_key = Some(source.key());
-    validated.kubeconfig_source_label = source.show_source_labels().then(|| source.label());
-    Ok(validated)
+    let access = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?;
+    validated.kubeconfig_source_key = Some(access.source_key().to_string());
+    validated.kubeconfig_source_label = access.source_label().map(str::to_string);
+    Ok((validated, access))
 }
 
 pub(super) async fn resolve_port_forward_target(
+    access: &ClusterAccess,
     request: ValidatedPortForwardRequest,
-) -> Result<PortForwardTarget, AppError> {
-    match request.target_kind {
-        PortForwardTargetKind::Pod => Ok(PortForwardTarget {
-            cluster_context: request.cluster_context,
-            kubeconfig_env_var: request.kubeconfig_env_var,
-            kubeconfig_source_key: request.kubeconfig_source_key,
-            kubeconfig_source_label: request.kubeconfig_source_label,
-            namespace: request.namespace,
-            target_kind: PortForwardTargetKind::Pod,
-            target_name: request.target_name.clone(),
-            pod_name: request.target_name,
-            remote_port: request.remote_port,
-            pod_port: request.remote_port,
-        }),
-        PortForwardTargetKind::Service => service::resolve_service_request_target(request).await,
-    }
-}
-
-pub(super) async fn resolve_port_forward_target_with_client(
-    request: ValidatedPortForwardRequest,
-    client: Client,
 ) -> Result<PortForwardTarget, AppError> {
     match request.target_kind {
         PortForwardTargetKind::Pod => Ok(PortForwardTarget {
@@ -202,15 +182,7 @@ pub(super) async fn resolve_port_forward_target_with_client(
             pod_port: request.remote_port,
         }),
         PortForwardTargetKind::Service => {
-            service::resolve_service_request_target_with_client(request, client).await
+            service::resolve_service_request_target(access, request).await
         }
     }
-}
-
-pub async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?.fail_closed();
-    source.live_client_for_context(cluster_context).await
 }

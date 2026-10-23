@@ -10,7 +10,7 @@ pub use inspection::{benchmark_connected_inspector, benchmark_kubernetes_inspect
 pub(crate) use inspection::{inspector_from_application, managed_resource, state, text};
 pub(crate) use inspector_read::{connected_application_path, kubernetes_application};
 pub use store::ArgoConnectionStore;
-pub(crate) use store::{kubeconfig_source_key, ConnectedArgo};
+pub(crate) use store::ConnectedArgo;
 
 use self::{
     credentials::{
@@ -24,9 +24,7 @@ use super::transport::{
     argo_url, http_client, normalize_endpoint, response_json, safe_http_error, url,
 };
 use super::tunnel::{verify_confirmed_target, ArgoServiceTunnel};
-use crate::commands::{
-    diagnostic_field, gitops_crd::client_for_context, BackendCancellationRegistry, FiniteRead,
-};
+use crate::commands::{diagnostic_field, BackendCancellationRegistry, ClusterAccess, FiniteRead};
 use crate::models::AppErrorKind;
 use crate::models::{
     AppError, ArgoApplicationInspector, ArgoApplicationRef, ArgoConfirmedTarget,
@@ -54,7 +52,9 @@ pub async fn discover_argo_servers(
         .cancellable(&cancellations, cancel_scope, request_id)
         .run(
             Box::pin(async move {
-                let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+                let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+                    .read_client(&cluster_context)
+                    .await?;
                 let services: Api<Service> = Api::all(client.clone());
                 let list = services
                     .list(&ListParams::default())
@@ -114,7 +114,7 @@ pub async fn connect_argo_server(
     store: crate::runtime::State<'_, ArgoConnectionStore>,
 ) -> Result<ArgoConnectionStatus, AppError> {
     let connection_epoch = store.connection_epoch();
-    let kubeconfig_source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
     let (endpoint, normalized_url) = normalize_endpoint(
         endpoint.unwrap_or(ArgoServerEndpoint::ExternalHttps { url: server_url }),
     )?;
@@ -124,7 +124,7 @@ pub async fn connect_argo_server(
         endpoint,
         cluster_context,
         workspace_id,
-        kubeconfig_source_key: Some(kubeconfig_source_key.clone()),
+        kubeconfig_source_key: Some(access.source_key().to_string()),
         transport: "connected".into(),
         remember_credential,
     };
@@ -143,8 +143,8 @@ pub async fn connect_argo_server(
             )
         })?;
         let started = ArgoServiceTunnel::start(
+            &access,
             cluster_context,
-            kubeconfig_env_var,
             namespace.clone(),
             service_name.clone(),
             *service_port,
@@ -334,14 +334,18 @@ pub async fn get_argo_application_inspector(
         .label("application", &application.name)
         .cancellable(&cancellations, cancel_scope, request_id)
         .run(
-            application_inspector(
-                &store,
-                cluster_context,
-                kubeconfig_env_var,
-                connection_id,
-                transport,
-                application,
-            ),
+            async {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                application_inspector(
+                    &store,
+                    &access,
+                    cluster_context,
+                    connection_id,
+                    transport,
+                    application,
+                )
+                .await
+            },
             |inspector| {
                 vec![
                     diagnostic_field("transport", &inspector.transport),

@@ -9,9 +9,9 @@ use tokio::{
 
 use super::lifecycle::PortForwardRegistry;
 use super::target::{
-    client_for_context, resolve_port_forward_target, validate_request, PortForwardTarget,
-    ValidatedPortForwardRequest,
+    resolve_port_forward_target, validate_request, PortForwardTarget, ValidatedPortForwardRequest,
 };
+use crate::commands::ClusterAccess;
 
 fn port_forward_error(err: kube::Error) -> AppError {
     let mut error = AppError::from(err);
@@ -111,6 +111,7 @@ async fn forward_connection(
 }
 
 async fn resolve_and_forward_connection(
+    access: ClusterAccess,
     client: Client,
     request: ValidatedPortForwardRequest,
     local_stream: TcpStream,
@@ -118,7 +119,7 @@ async fn resolve_and_forward_connection(
     registry: PortForwardRegistry,
 ) -> Result<(), AppError> {
     registry.mark_status(&session_id, "reconnecting", None);
-    let target = resolve_port_forward_target(request).await?;
+    let target = resolve_port_forward_target(&access, request).await?;
     registry.mark_resolved_target(&session_id, &target);
     registry.mark_status(&session_id, "connected", None);
     forward_connection(client, target, local_stream).await
@@ -128,11 +129,10 @@ pub(super) async fn start_pod_port_forward_in_registry(
     request: PortForwardRequest,
     registry: &PortForwardRegistry,
 ) -> Result<PortForwardSessionSummary, AppError> {
-    let request = validate_request(&request)?;
+    let (request, access) = validate_request(&request)?;
     let listener = registry.bind(request.local_port).await?;
-    let target = resolve_port_forward_target(request).await?;
-    let client =
-        client_for_context(&target.cluster_context, target.kubeconfig_env_var.clone()).await?;
+    let target = resolve_port_forward_target(&access, request).await?;
+    let client = access.live_session_client(&target.cluster_context).await?;
     verify_pod_port_forward(client.clone(), &target).await?;
 
     let session_id = registry.next_id();
@@ -151,6 +151,7 @@ pub(super) async fn start_pod_port_forward_in_registry(
     let connection_registry = registry.clone();
     let relay_connection = move |local_stream: TcpStream| {
         resolve_and_forward_connection(
+            access.clone(),
             client.clone(),
             handle_request.clone(),
             local_stream,

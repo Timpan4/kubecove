@@ -1,13 +1,16 @@
 //! One built-in object must produce the same summary as a list row, in details and as a
 //! topology node. Each case also pins the status, readiness and health its kind reports.
 use super::super::{
-    details::resource_details_with_client,
-    summary::resource_summaries_with_client,
+    details::resource_details_from,
+    summary::resources_summary_from,
     topology::build_resource_topology,
     topology_collection::{collect_network_topology_inputs, collect_topology_inputs},
     topology_network::build_network_flow_topology,
 };
-use crate::commands::builtin_kinds::{builtin_kind, BUILTIN_KINDS};
+use crate::commands::{
+    builtin_kinds::{builtin_kind, BUILTIN_KINDS},
+    FixedClusterAccess,
+};
 use crate::models::{HealthAssessment, HealthAssessmentState, ResourceHealth, ResourceSummary};
 use http::{Request, Response};
 use kube::{client::Body, Client};
@@ -239,15 +242,11 @@ async fn list_details_and_topology_share_one_summary_per_builtin_kind() {
             .as_str()
             .map(str::to_string);
         let client = mock_client(case.object.clone());
+        let access = FixedClusterAccess::new(client.clone()).access();
 
-        let rows = resource_summaries_with_client(
-            client.clone(),
-            CONTEXT.into(),
-            kind.clone(),
-            namespace.clone(),
-        )
-        .await
-        .unwrap_or_else(|error| panic!("{label}: list failed: {}", error.message));
+        let rows = resources_summary_from(&access, CONTEXT.into(), kind.clone(), namespace.clone())
+            .await
+            .unwrap_or_else(|error| panic!("{label}: list failed: {}", error.message));
         let [list] = rows.as_slice() else {
             panic!("{label}: expected one list row, got {}", rows.len());
         };
@@ -273,8 +272,8 @@ async fn list_details_and_topology_share_one_summary_per_builtin_kind() {
         assert_eq!(status, (case.status, case.ready, case.restarts), "{label}");
         assert_eq!(list.health_assessment.state, case.health, "{label}");
 
-        let details = resource_details_with_client(
-            client.clone(),
+        let details = resource_details_from(
+            &access,
             CONTEXT.into(),
             kind.clone(),
             "workload".into(),

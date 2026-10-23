@@ -1,8 +1,9 @@
 use crate::commands::gitops_crd::{
-    client_for_context, discover_api_resources, find_discovered_api_resource, get_crd_object,
-    list_crd_objects, resource_metadata, resource_status, resource_yaml,
+    discover_api_resources, find_discovered_api_resource, get_crd_object, list_crd_objects,
+    resource_metadata, resource_status, resource_yaml,
 };
 use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{
     evaluate_health, AppError, FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails,
@@ -23,7 +24,9 @@ pub async fn detect_flux(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<FluxDetectionSummary, AppError> {
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
     let installed = installed_flux_kinds(&client).await?;
     let missing_kinds = flux_kinds()
         .into_iter()
@@ -46,7 +49,9 @@ pub async fn list_flux_resources(
     resource_kind: FluxResourceKind,
     kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<FluxResourceSummary>, AppError> {
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
     let Some(resource_kind) = installed_flux_kind(&client, &resource_kind).await? else {
         return Ok(vec![]);
     };
@@ -68,7 +73,9 @@ pub async fn get_flux_resource_details(
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<FluxResourceDetails, AppError> {
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
     let resource_kind = installed_flux_kind(&client, &resource_kind)
         .await?
         .ok_or_else(|| AppError::new("Flux resource kind not found", AppErrorKind::Cluster))?;

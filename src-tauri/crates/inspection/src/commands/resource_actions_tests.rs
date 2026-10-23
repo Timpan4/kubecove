@@ -1,16 +1,21 @@
 use super::state::clean_action_display_metadata;
 use super::*;
+use crate::commands::{ClientIntent, FixedClusterAccess};
 use crate::models::{AppErrorKind, ResourceActionEdits, ResourceActionRequest};
 use http::{header::CONTENT_TYPE, Method, Request, Response};
 use kube::{client::Body, Client};
 use serde_json::{json, Value};
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 type MockHandle = tower_test::mock::Handle<Request<Body>, Response<Body>>;
 
-fn mock_client() -> (Client, MockHandle) {
+/// A session whose requests resolve to a mock cluster, and that cluster's handle.
+fn mock_cluster() -> (Arc<FixedClusterAccess>, MockHandle) {
     let (service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
-    (Client::new(service, "default"), handle)
+    (
+        FixedClusterAccess::new(Client::new(service, "default")),
+        handle,
+    )
 }
 
 fn json_response(status: u16, value: Value) -> Response<Body> {
@@ -333,8 +338,10 @@ fn deletion_confirmation_and_exact_preconditions_are_mandatory() {
 
 #[tokio::test]
 async fn execute_edit_repeats_dry_run_before_guarded_patch() {
-    let (client, mut handle) = mock_client();
-    let operation = execute_resource_action_with_client(execution_request("edit"), client);
+    let (cluster, mut handle) = mock_cluster();
+    let operation = cluster
+        .scope()
+        .run(execute_resource_action(execution_request("edit")));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("target read");
         assert_eq!(request.method(), Method::GET);
@@ -363,12 +370,16 @@ async fn execute_edit_repeats_dry_run_before_guarded_patch() {
     };
     let (result, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
     assert!(result.is_ok());
+    // ADR 0009: workspace rotation must not cancel a write the API server may have applied.
+    assert_eq!(cluster.intents(), vec![ClientIntent::ConfirmedOperation]);
 }
 
 #[tokio::test]
 async fn failed_execution_dry_run_never_sends_mutating_patch() {
-    let (client, mut handle) = mock_client();
-    let operation = execute_resource_action_with_client(execution_request("edit"), client);
+    let (cluster, mut handle) = mock_cluster();
+    let operation = cluster
+        .scope()
+        .run(execute_resource_action(execution_request("edit")));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("target read");
         assert_eq!(request.method(), Method::GET);
@@ -388,8 +399,10 @@ async fn failed_execution_dry_run_never_sends_mutating_patch() {
 
 #[tokio::test]
 async fn execute_delete_dry_runs_then_uses_uid_and_resource_version_preconditions() {
-    let (client, mut handle) = mock_client();
-    let operation = execute_resource_action_with_client(execution_request("delete"), client);
+    let (cluster, mut handle) = mock_cluster();
+    let operation = cluster
+        .scope()
+        .run(execute_resource_action(execution_request("delete")));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("target read");
         assert_eq!(request.method(), Method::GET);
@@ -421,15 +434,18 @@ async fn execute_delete_dry_runs_then_uses_uid_and_resource_version_precondition
     };
     let (result, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
     assert!(result.is_ok());
+    assert_eq!(cluster.intents(), vec![ClientIntent::ConfirmedOperation]);
 }
 
 #[tokio::test]
 async fn rollback_execution_rejects_a_changed_revision_source_before_patch() {
-    let (client, mut handle) = mock_client();
-    let operation = execute_resource_action_with_client(
-        rollback_request(Some("revision-uid"), Some("10")),
-        client,
-    );
+    let (cluster, mut handle) = mock_cluster();
+    let operation = cluster
+        .scope()
+        .run(execute_resource_action(rollback_request(
+            Some("revision-uid"),
+            Some("10"),
+        )));
     let responder = async move {
         let mut operation = Box::pin(operation);
         loop {
@@ -448,7 +464,7 @@ async fn rollback_execution_rejects_a_changed_revision_source_before_patch() {
             }
         }
     };
-    let result = await_mock(responder).await;
+    let result = Box::pin(await_mock(responder)).await;
     assert_eq!(result.unwrap_err().kind, AppErrorKind::Validation);
 }
 
@@ -459,9 +475,13 @@ async fn rollback_execution_requires_both_revision_source_guards_before_api_acce
         (Some("revision-uid"), None),
         (None, Some("10")),
     ] {
-        let (client, mut handle) = mock_client();
-        let operation =
-            execute_resource_action_with_client(rollback_request(uid, resource_version), client);
+        let (cluster, mut handle) = mock_cluster();
+        let operation = cluster
+            .scope()
+            .run(execute_resource_action(rollback_request(
+                uid,
+                resource_version,
+            )));
         let responder = async move {
             tokio::select! {
                 result = operation => result,
@@ -471,15 +491,17 @@ async fn rollback_execution_requires_both_revision_source_guards_before_api_acce
                 }
             }
         };
-        let result = await_mock(responder).await;
+        let result = Box::pin(await_mock(responder)).await;
         assert_eq!(result.unwrap_err().kind, AppErrorKind::Validation);
     }
 }
 
 #[tokio::test]
 async fn rollback_preview_returns_identity_of_the_revision_used_for_its_dry_run_patch() {
-    let (client, mut handle) = mock_client();
-    let operation = preview_resource_action_with_client(rollback_request(None, None), client);
+    let (cluster, mut handle) = mock_cluster();
+    let operation = cluster
+        .scope()
+        .run(preview_resource_action(rollback_request(None, None)));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("target read");
         assert_eq!(request.method(), Method::GET);
@@ -514,6 +536,7 @@ async fn rollback_preview_returns_identity_of_the_revision_used_for_its_dry_run_
     };
     let (preview, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
     let preview = preview.unwrap();
+    assert_eq!(cluster.intents(), vec![ClientIntent::Preview]);
     assert_eq!(
         preview.revision_uid.as_deref(),
         Some("reviewed-revision-uid")

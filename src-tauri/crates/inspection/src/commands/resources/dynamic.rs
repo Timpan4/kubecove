@@ -2,9 +2,7 @@ use crate::commands::helpers::{
     list_params, normalize_k8s_yaml_value, serialize_json_value_document,
 };
 use crate::commands::{
-    diagnostic_field,
-    kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-    BackendCancellationRegistry, ClusterLiveStore, FiniteRead,
+    diagnostic_field, BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead,
 };
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -12,10 +10,7 @@ use crate::models::{
     YamlViewMode,
 };
 use crate::runtime::State;
-use kube::{
-    api::{Api, DynamicObject},
-    Client,
-};
+use kube::api::{Api, DynamicObject};
 #[cfg(feature = "bench-support")]
 pub use kubecove_kube::commands::dynamic_projection::dynamic_resource_summaries_at;
 pub(crate) use kubecove_kube::commands::dynamic_projection::{
@@ -68,22 +63,14 @@ pub fn serialize_dynamic_resource_document(
     serialize_json_value_document(&value, encoding)
 }
 
-async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    source.client_for_context(cluster_context).await
-}
-
 pub async fn dynamic_resources_summary_from(
+    access: &ClusterAccess,
     cluster_context: String,
     resource_kind: DiscoveredResourceKind,
     namespace: Option<String>,
-    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
     crate::commands::helpers::validate_namespace(namespace.as_deref())?;
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = access.read_client(&cluster_context).await?;
     let api_resource = api_resource_from_discovered(&resource_kind)?;
     let api: Api<DynamicObject> = if resource_kind.namespaced {
         if let Some(namespace) = namespace.as_deref() {
@@ -122,10 +109,10 @@ pub async fn list_dynamic_resources(
         .label("namespace", namespace.as_deref().unwrap_or("<all>"))
         .run(
             async {
-                let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
                 live_store
                     .dynamic_resources(
-                        source_key,
+                        access.source_key().to_string(),
                         cluster_context.clone(),
                         resource_kind.clone(),
                         namespace.clone(),
@@ -133,14 +120,14 @@ pub async fn list_dynamic_resources(
                             let cluster_context = cluster_context.clone();
                             let resource_kind = resource_kind.clone();
                             let namespace = namespace.clone();
-                            let kubeconfig_env_var = kubeconfig_env_var.clone();
-                            move || {
+                            move || async move {
                                 dynamic_resources_summary_from(
+                                    &access,
                                     cluster_context,
                                     resource_kind,
                                     namespace,
-                                    kubeconfig_env_var,
                                 )
+                                .await
                             }
                         },
                     )
@@ -157,11 +144,11 @@ pub async fn list_dynamic_resources(
 }
 
 pub async fn dynamic_resource_details_from(
+    access: &ClusterAccess,
     cluster_context: String,
     resource_kind: DiscoveredResourceKind,
     name: String,
     namespace: Option<String>,
-    kubeconfig_env_var: Option<String>,
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<ResourceDetailsFull, AppError> {
@@ -174,7 +161,7 @@ pub async fn dynamic_resource_details_from(
         ));
     }
 
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = access.read_client(&cluster_context).await?;
     let api_resource = api_resource_from_discovered(&resource_kind)?;
     let api: Api<DynamicObject> = if resource_kind.namespaced {
         Api::namespaced_with(
@@ -247,15 +234,22 @@ pub async fn get_dynamic_resource_details(
         .label("name", &name)
         .cancellable(&cancellations, cancel_scope, request_id)
         .run(
-            dynamic_resource_details_from(
-                cluster_context,
-                resource_kind.clone(),
-                name,
-                namespace,
-                kubeconfig_env_var,
-                yaml_view_mode,
-                yaml_encoding,
-            ),
+            {
+                let resource_kind = resource_kind.clone();
+                async move {
+                    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                    dynamic_resource_details_from(
+                        &access,
+                        cluster_context,
+                        resource_kind,
+                        name,
+                        namespace,
+                        yaml_view_mode,
+                        yaml_encoding,
+                    )
+                    .await
+                }
+            },
             |details| {
                 vec![
                     diagnostic_field("kind", &resource_kind.kind),

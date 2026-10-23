@@ -1,8 +1,7 @@
 use crate::commands::{
     diagnostic_field,
     helpers::{k8s_creation_timestamp_to_rfc3339, list_params},
-    kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-    ClusterLiveStore, FiniteRead,
+    ClusterAccess, ClusterLiveStore, FiniteRead,
 };
 use crate::models::{AppError, NamespaceSummary};
 use crate::runtime::State;
@@ -47,11 +46,10 @@ pub fn namespace_summary_from_at(
 }
 
 pub async fn namespaces_summary_from(
-    cluster_context: String,
-    kubeconfig_env_var: Option<String>,
+    access: &ClusterAccess,
+    cluster_context: &str,
 ) -> Result<Vec<NamespaceSummary>, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
+    let client = access.read_client(cluster_context).await?;
     let ns_api: Api<k8s_openapi::api::core::v1::Namespace> = Api::all(client);
 
     let namespaces = ns_api.list(&list_params()).await.map_err(AppError::from)?;
@@ -77,11 +75,13 @@ pub async fn list_namespaces(
         .label("context", &cluster_context)
         .run(
             async move {
-                let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
                 live_store
-                    .namespaces(source_key, cluster_context.clone(), move || {
-                        namespaces_summary_from(cluster_context, kubeconfig_env_var)
-                    })
+                    .namespaces(
+                        access.source_key().to_string(),
+                        cluster_context.clone(),
+                        move || async move { namespaces_summary_from(&access, &cluster_context).await },
+                    )
                     .await
             },
             |rows| vec![diagnostic_field("rows", rows.len())],

@@ -1,6 +1,7 @@
 use super::super::manifest::manifest_summary;
 use super::super::values::values_summary;
 use super::*;
+use crate::commands::FixedClusterAccess;
 use std::collections::BTreeMap;
 
 #[test]
@@ -158,8 +159,9 @@ async fn list_with_default_namespace(
     default_namespace: &str,
 ) -> Result<HelmReleaseList, AppError> {
     let (service, handle) = tower_test::mock::pair();
-    let client = Client::new(service, "default");
-    let listing = list_helm_releases_with_client(client, "kind-dev", default_namespace);
+    let listing = FixedClusterAccess::new(Client::new(service, default_namespace))
+        .scope()
+        .run(list_helm_releases("kind-dev".into(), None));
     let (result, ()) = tokio::time::timeout(std::time::Duration::from_secs(5), async {
         tokio::join!(listing, serve(handle, route))
     })

@@ -117,7 +117,7 @@ Paths below are relative to `src-tauri` at the reviewed baseline; link destinati
 | [src/commands/incidents/health.rs](../src-tauri/crates/inspection/src/commands/incidents/health.rs) | Read; unchanged |
 | [src/commands/incidents/restarts.rs](../src-tauri/crates/inspection/src/commands/incidents/restarts.rs) | Read; unchanged |
 | [src/commands/kubeconfig.rs](../src-tauri/crates/kube/src/commands/kubeconfig.rs) | Read; updated |
-| [src/commands/kubeconfig_clients.rs](../src-tauri/crates/kube/src/commands/kubeconfig_clients.rs) | Read; updated |
+| [src/commands/kubeconfig_clients.rs, now cluster_access/clients.rs](../src-tauri/crates/kube/src/commands/cluster_access/clients.rs) | Read; updated |
 | [src/commands/kubeconfig_tests.rs](../src-tauri/crates/kube/src/commands/kubeconfig_tests.rs) | Read; updated |
 | [src/commands/live_sessions.rs](../src-tauri/crates/live/src/commands/live_sessions.rs) | Read; updated |
 | [src/commands/live_store.rs](../src-tauri/crates/kube/src/commands/live_store.rs) | Read; updated |

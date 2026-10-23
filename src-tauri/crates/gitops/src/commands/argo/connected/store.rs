@@ -1,6 +1,5 @@
 use super::super::session::SessionStore;
 use super::super::tunnel::ArgoServiceTunnel;
-use crate::commands::kubeconfig::KubeconfigSource;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ArgoConnectionProfile};
 use reqwest::Client as HttpClient;
@@ -37,13 +36,6 @@ impl ConnectedArgo {
             tunnel.close();
         }
     }
-}
-
-pub(crate) fn kubeconfig_source_key(value: Option<&str>) -> Result<String, AppError> {
-    if let Some(key) = value.filter(|value| value.starts_with("kubeconfigSource=")) {
-        return Ok(key.to_string());
-    }
-    Ok(KubeconfigSource::new(value.map(str::to_string))?.key())
 }
 
 fn cleanup_error() -> AppError {

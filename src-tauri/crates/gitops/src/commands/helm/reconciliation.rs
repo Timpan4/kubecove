@@ -1,5 +1,6 @@
-use super::storage::{client_for_context, get_helm_storage_record};
+use super::storage::get_helm_storage_record;
 use crate::commands::helpers::list_params;
+use crate::commands::ClusterAccess;
 use crate::models::{
     AppError, DiscoveredResourceKind, HelmManifestResourceSummary, HelmReconciliationResource,
     HelmReconciliationStatus, HelmReconciliationTotals, HelmReleaseReconciliation,
@@ -53,7 +54,9 @@ pub async fn get_helm_release_reconciliation(
     storage_name: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<HelmReleaseReconciliation, AppError> {
-    let (client, _) = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
     let record = get_helm_storage_record(
         client.clone(),
         &cluster_context,

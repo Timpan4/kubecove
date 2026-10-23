@@ -77,6 +77,8 @@ async function echoBytes(port: number): Promise<void> {
 			contexts: [{ name: "fixture", context: { cluster: "fixture", user: "fixture" } }],
 			users: [{ name: "fixture", user: {} }], "current-context": "fixture",
 		}));
+		// The operator adds the fixture to its sources; requests cannot name their own variable (ADR 0026).
+		await writeFile(join(directory, "kubeconfig-sources.json"), JSON.stringify({ kubeconfigEnvVar: "KUBECONFIG", paths: [fixtureConfig], showSourceLabels: true }));
 		if (!serverBinary) throw new Error("Headless binary is required.");
 		child = spawn(serverBinary, ["--data-dir", directory], {
 			env: { ...process.env, KUBECONFIG: process.env.KUBECOVE_KUBECONFIG, KUBECOVE_REMOTE_FIXTURE_CONFIG: fixtureConfig },
@@ -126,7 +128,17 @@ async function echoBytes(port: number): Promise<void> {
 			return status?.connected === true;
 		}, { timeoutMsg: "Remote Settings connection did not become active." });
 		const contexts = await browser.execute(() => window.__TAURI__.core.invoke<ClusterContext[], { command: string; args: object }>("remote_invoke", { command: "list_kube_contexts", args: {} }));
-		expect(contexts.length).toBe(2);
+		// The lab kubeconfig's two contexts and the operator-added fixture.
+		expect(contexts.length).toBe(3);
+		const outsideSources = await browser.execute(async () => {
+			try {
+				await window.__TAURI__.core.invoke("remote_invoke", { command: "list_kube_contexts", args: { kubeconfigEnvVar: "KUBECOVE_REMOTE_FIXTURE_CONFIG" } });
+				return null;
+			} catch (error) {
+				return error;
+			}
+		});
+		expect(outsideSources).toEqual(expect.objectContaining({ kind: "kubeconfig" }));
 		const commandError = await browser.execute(async () => {
 			try {
 				await window.__TAURI__.core.invoke("remote_invoke", { command: "unknown_command", args: {} });
@@ -163,7 +175,7 @@ async function echoBytes(port: number): Promise<void> {
 			await window.__TAURI__.core.invoke<void, object>("remote_subscribe_channel", { channelId: 1, channel });
 			await window.__TAURI__.core.invoke<unknown, object>("remote_invoke", {
 				command: "start_pod_log_stream",
-				args: { request: { clusterContext: "missing", namespace: "default", podName: "missing", kubeconfigEnvVar: "KUBECOVE_REMOTE_FIXTURE_CONFIG" }, channel: "__KUBECOVE_CHANNEL__:1" },
+				args: { request: { clusterContext: "missing", namespace: "default", podName: "missing" }, channel: "__KUBECOVE_CHANNEL__:1" },
 			});
 		});
 		await browser.waitUntil(async () => browser.execute(() => window.__KUBECOVE_REMOTE_STREAM__?.some((message) => message.type === "error") === true), { timeoutMsg: "Remote stream did not deliver its typed error through the native channel." });
@@ -173,7 +185,7 @@ async function echoBytes(port: number): Promise<void> {
 	it("binds a laptop loopback listener and preserves tunneled bytes", async () => {
 		forward = await browser.execute(() => window.__TAURI__.core.invoke<PortForwardSessionSummary, object>("remote_invoke", {
 			command: "start_pod_port_forward",
-			args: { request: { clusterContext: "fixture", namespace: "default", podName: "forward-target", remotePort: 8080, kubeconfigEnvVar: "KUBECOVE_REMOTE_FIXTURE_CONFIG" } },
+			args: { request: { clusterContext: "fixture", namespace: "default", podName: "forward-target", remotePort: 8080 } },
 		}));
 		expect(forward.localAddress).toBe("127.0.0.1");
 		await echoBytes(forward.localPort);
@@ -213,7 +225,7 @@ async function echoBytes(port: number): Promise<void> {
 		await browser.waitUntil(async () => browser.execute(async () => (await window.__TAURI__.core.invoke<RemoteConnectionSummary | null>("remote_connection_status"))?.connected === true), { timeoutMsg: "Desktop could not reconnect for disconnect cleanup." });
 		const activeForward = await browser.execute(() => window.__TAURI__.core.invoke<PortForwardSessionSummary, object>("remote_invoke", {
 			command: "start_pod_port_forward",
-			args: { request: { clusterContext: "fixture", namespace: "default", targetKind: "Service", targetName: "forward-service", remotePort: 80, kubeconfigEnvVar: "KUBECOVE_REMOTE_FIXTURE_CONFIG" } },
+			args: { request: { clusterContext: "fixture", namespace: "default", targetKind: "Service", targetName: "forward-service", remotePort: 80 } },
 		}));
 		expect(activeForward.resolvedPodName).toBe("forward-target");
 		expect(activeForward.resolvedPodPort).toBe(8080);

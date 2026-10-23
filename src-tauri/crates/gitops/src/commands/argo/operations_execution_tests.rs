@@ -137,9 +137,10 @@ async fn confirmed_kubernetes_operation_survives_workspace_client_rotation() {
         "Application",
     ));
 
+    let access = ClusterAccess::resolve(Some(&env_var)).expect("access");
     let (result, received) = tokio::time::timeout(Duration::from_secs(10), async {
         tokio::join!(
-            kubernetes_operation(request, resource, "uid-demo"),
+            kubernetes_operation(&access, request, resource, "uid-demo"),
             answer_after_rotation(listener)
         )
     })
@@ -184,9 +185,10 @@ async fn operation_client_rejects_a_different_application_before_patching() {
         "Application",
     ));
 
+    let access = ClusterAccess::resolve(Some(&env_var)).expect("access");
     let (result, received) = tokio::time::timeout(Duration::from_secs(10), async {
         tokio::join!(
-            kubernetes_operation(request, resource, "reviewed-uid"),
+            kubernetes_operation(&access, request, resource, "reviewed-uid"),
             answer_application(listener, "changed-uid")
         )
     })

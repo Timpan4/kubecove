@@ -11,8 +11,7 @@ use super::{resource_scope_from, ClusterLiveStore, MAX_LIST_CONCURRENCY};
 use crate::commands::{
     diagnostic_field,
     helpers::{k8s_timestamp_to_datetime, list_params, resource_age_at},
-    kubeconfig::KubeconfigSource,
-    FiniteRead,
+    ClusterAccess, FiniteRead,
 };
 use crate::models::{
     AppError, IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalState,
@@ -47,12 +46,16 @@ pub async fn list_incident_cockpit(
         .label("context", &cluster_context)
         .label("requests", requests.len())
         .run(
-            incident_cockpit_from(
-                cluster_context,
-                requests,
-                kubeconfig_env_var,
-                live_store.inner().clone(),
-            ),
+            async move {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                incident_cockpit_from(
+                    &access,
+                    cluster_context,
+                    requests,
+                    live_store.inner().clone(),
+                )
+                .await
+            },
             |summary| {
                 vec![
                     diagnostic_field("items", summary.items.len()),
@@ -64,19 +67,19 @@ pub async fn list_incident_cockpit(
 }
 
 pub async fn incident_cockpit_from(
+    access: &ClusterAccess,
     cluster_context: String,
     requests: Vec<ResourceListRequest>,
-    kubeconfig_env_var: Option<String>,
     live_store: ClusterLiveStore,
 ) -> Result<IncidentCockpitSummary, AppError> {
     let resources = resource_scope_from(
+        access,
         cluster_context.clone(),
         requests.clone(),
         live_store,
-        kubeconfig_env_var.clone(),
     )
     .await?;
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = access.read_client(&cluster_context).await?;
     let event_scope = event_namespace_scope(&requests, &resources);
     let mut warnings = Vec::new();
     let (restart_result, event_result) = tokio::join!(
@@ -163,14 +166,6 @@ fn event_namespace_scope(
     } else {
         EventNamespaceScope::Namespaces(namespaces)
     }
-}
-
-async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    source.client_for_context(cluster_context).await
 }
 
 async fn list_warning_events(

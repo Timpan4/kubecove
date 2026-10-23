@@ -1,6 +1,6 @@
 use super::super::connected::api_get;
 use super::payload::resource_action_path;
-use crate::commands::gitops_crd::fail_closed_client_for_context;
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ArgoApplicationRef, ArgoOperationRequest};
 use k8s_openapi::api::authorization::v1::{
@@ -88,7 +88,10 @@ pub(super) fn valid(request: &ArgoOperationRequest) -> Result<(), AppError> {
     Ok(())
 }
 
-pub(super) async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(), AppError> {
+pub(super) async fn fallback_allowed(
+    access: &ClusterAccess,
+    request: &ArgoOperationRequest,
+) -> Result<(), AppError> {
     let context = request
         .cluster_context
         .as_deref()
@@ -120,8 +123,7 @@ pub(super) async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(
             AppErrorKind::ArgoOperationUnavailable,
         ));
     }
-    let client =
-        fail_closed_client_for_context(context, request.kubeconfig_env_var.clone()).await?;
+    let client = access.preview_client(context).await?;
     let review = SelfSubjectAccessReview {
         metadata: ObjectMeta::default(),
         spec: SelfSubjectAccessReviewSpec {
