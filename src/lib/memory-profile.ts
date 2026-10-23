@@ -1,16 +1,5 @@
 import type { Query, QueryClient } from "@tanstack/svelte-query";
-
-const ROOT_CLASSES = new Map<unknown, string>([
-	"resources", "resource-topology", "resource-metrics", "resource-details",
-	"resource-yaml", "resource-events", "kube-contexts", "kube-namespaces",
-	"kube-resource-kinds", "kube-present-custom-resource-kinds", "kubeconfig-sources",
-	"deployment-revisions", "argo-connection-status", "argo-server-discovery", "argo-detect",
-	"argo-apps", "argo-appsets", "argo-appprojects", "argo-app-details", "argo-appset-details",
-	"argo-appproject-details", "argo-workspace", "flux-detect", "flux-resources", "flux-resource-details",
-	"helm-releases", "helm-release-details", "helm-release-reconciliation", "rbac-inspection",
-	"incident-cockpit", "port-forwards", "pod-exec-sessions", "app-usage-metrics",
-	"backend-diagnostics", "backend-cache-diagnostics",
-].map((root) => [root, root]));
+import { queryFamilyRoot } from "./queryKeys";
 
 interface QueryMemoryRoot {
 	root: string;
@@ -44,7 +33,7 @@ export function collectQueryMemory(client: QueryClient, includePayloadEstimates 
 	const started = performance.now();
 	const roots = new Map<string, QueryMemoryRoot>();
 	for (const query of client.getQueryCache().getAll()) {
-		const root = ROOT_CLASSES.get(query.queryKey[0]) ?? "other";
+		const root = queryFamilyRoot(query.queryKey);
 		const row = roots.get(root) ?? {
 			root, queries: 0, active: 0, observed: 0, inactive: 0, unobserved: 0,
 			items: 0, jsonBytes: includePayloadEstimates ? 0 : null, unavailablePayloads: 0,

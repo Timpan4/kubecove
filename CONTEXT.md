@@ -11,8 +11,17 @@ _Avoid_ calling this surface Discovered.
 **Resource identity** means the cluster, apiVersion, kind, namespace, and name of one listed Kubernetes resource. A source that omits apiVersion matches on the remaining fields only when no exact match exists.
 _Avoid_ treating resources from different API groups with the same kind and name as one resource when both identities are known.
 
+**Kind identity** means the one key, label, scope, and resource match for a browsed kind. A built-in kind is identified by its name, and a Custom Resources kind by its apiVersion, plural, and kind, so the two never share a key.
+_Avoid_ encoding kind keys, labels, or resource matches in each feature.
+
 **Resource summary** means the resource identity, status, readiness, restarts, health, and GitOps ownership evidence that KubeCove derives from one Kubernetes object. A list row, the details panel, and a topology node show the same summary for the same object and add only their own context around it.
 _Avoid_ giving one surface its own status, readiness, or health rule for a kind.
+
+**Query catalog** means the one declaration of each frontend read family's query key, finite-read class, and retention class, with the named matchers that select reads by view, resource, or family.
+_Avoid_ building query keys, reading key positions, or listing query roots outside it.
+
+**Live view refresh** means a view's declaration of which watched kinds keep which reads fresh, bound to watch streams that stop with the view, per-read throttling, live status, recovery reloads, and manual refresh.
+_Avoid_ mapping watch events to queries, throttling refetches, or holding live status in a view.
 
 **Incident signal** means a read-only resource health, restart, or warning-event cue surfaced for triage.
 _Avoid_ using it for durable tickets, alerts, or response lifecycle state.
@@ -52,6 +61,9 @@ _Avoid_ treating connection response order or a profile from another workspace a
 
 **Argo inspection fallback** means, when Kubernetes inspection succeeds, visibly replacing a failed Connected Argo CD inspection with one complete Kubernetes transport result while preserving the Connected failure and result provenance. If both transports fail, the result preserves both safe failure classifications.
 _Avoid_ mixing data from both transports, hiding the fallback, or using it during operation execution.
+
+**Argo Application inspection** means the one entry point that turns a workspace read context and an Application into one inspection state: the normalized preference, the transport choice, readiness, and one whole result with its refresh.
+_Avoid_ sequencing profile status reads, preference normalization, or transport choice in a view.
 
 **Argo operation review** means a short-lived, single-use review that binds one exact Application action and one visible transport before confirmation. A supported Kubernetes transport may be chosen before review, but execution never changes the reviewed transport.
 _Avoid_ treating a read-only fallback as permission to execute, replaying an uncertain operation, or switching transport after confirmation.

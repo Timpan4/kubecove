@@ -114,19 +114,14 @@ describe("typed Tauri wrappers", () => {
 		expect(kubeconfigSourceKey("kubeconfigSource=abc123")).toBe(
 			"kubeconfigSource=abc123",
 		);
-		expect(queryKeys.kubeContexts("KUBECOVE_CONFIG")).toEqual([
-			"kube-contexts",
-			"kubeconfigEnv=KUBECOVE_CONFIG",
-		]);
-		expect(queryKeys.kubeContexts("kubeconfigSource=abc123")).toEqual([
-			"kube-contexts",
-			"kubeconfigSource=abc123",
-		]);
-		expect(queryKeys.namespaces("kind-dev", "KUBECOVE_CONFIG")).toEqual([
-			"kube-namespaces",
-			"kubeconfigEnv=KUBECOVE_CONFIG",
-			"kind-dev",
-		]);
+		expect(queryKeys.kubeContexts("")).toEqual(queryKeys.kubeContexts("KUBECONFIG"));
+		expect(queryKeys.kubeContexts("KUBECOVE_CONFIG")).not.toEqual(queryKeys.kubeContexts());
+		expect(queryKeys.kubeContexts("kubeconfigSource=abc123")).not.toEqual(
+			queryKeys.kubeContexts("kubeconfigSource=def456"),
+		);
+		expect(queryKeys.namespaces("kind-dev", "KUBECOVE_CONFIG")).not.toEqual(
+			queryKeys.namespaces("kind-dev"),
+		);
 	});
 
 	test("keeps broad Secret YAML redacted and reveals only selected keys", async () => {

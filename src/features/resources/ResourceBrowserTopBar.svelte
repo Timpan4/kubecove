@@ -23,7 +23,7 @@
 	import type { NamespaceSummary, ResourceKindSelection } from "@/lib/types";
 	import type { HealthFilter, HealthSummary } from "./helpers";
 	import ResourceScopeSelector from "./ResourceScopeSelector.svelte";
-	import { kindSelectionKey, kindSelectionLabel } from "./resourceBrowserModel";
+	import { kindKey, kindLabel } from "@/lib/kind-identity";
 
 	let {
 		selectedNamespaces,
@@ -93,21 +93,21 @@
 	);
 	const kindsLabel = $derived(
 		selectedKinds.length <= 3
-			? selectedKinds.map(kindSelectionLabel).join(", ")
-			: `${selectedKinds.slice(0, 3).map(kindSelectionLabel).join(", ")} +${selectedKinds.length - 3}`,
+			? selectedKinds.map(kindLabel).join(", ")
+			: `${selectedKinds.slice(0, 3).map(kindLabel).join(", ")} +${selectedKinds.length - 3}`,
 	);
 	const namespaceScopeOptions = $derived(
 		namespaceOptions.map((namespace) => ({ key: namespace.name, label: namespace.name })),
 	);
 	const kindScopeOptions = $derived(
 		kindOptions.map((kind) => ({
-			key: kindSelectionKey(kind),
-			label: kindSelectionLabel(kind),
+			key: kindKey(kind),
+			label: kindLabel(kind),
 		})),
 	);
 	const allKindsSelected = $derived(
 		kindOptions.length > 0 &&
-		kindOptions.every((kind) => selectedKindSet.has(kindSelectionKey(kind))),
+		kindOptions.every((kind) => selectedKindSet.has(kindKey(kind))),
 	);
 
 	function healthButtonClass(active: boolean) {
@@ -176,7 +176,7 @@
 					allSelected={allKindsSelected}
 					onSelectAll={onAllKindsSelect}
 					onToggle={(key, checked) => {
-						const kind = kindOptions.find((option) => kindSelectionKey(option) === key);
+						const kind = kindOptions.find((option) => kindKey(option) === key);
 						if (kind) onKindToggle(kind, checked);
 					}}
 				/>

@@ -1,11 +1,6 @@
-import {
-	buildFetchKeys,
-	buildResourceSearchIndex,
-	type FetchKey,
-	type ResourceSearchEntry,
-	resourceKindFetchKey,
-} from "@/features/resources";
+import { buildResourceSearchIndex, type ResourceSearchEntry } from "@/features/resources";
 import { gitOpsSelectionResource } from "@/lib/gitops-resource";
+import { type KindFetchKey, kindFetchKeys, kindKey, uniqueKinds } from "@/lib/kind-identity";
 import { resourceKey } from "@/lib/resource-identity";
 import type { ResourceScopeResult } from "@/lib/resource-scope-types";
 import {
@@ -20,7 +15,6 @@ import {
 	type ArgoAppProjectSummary,
 	CLUSTER_SCOPED_KINDS,
 	type DiscoveredResourceKind,
-	type ResourceKindSelection,
 	type ResourceSummary,
 	SUPPORTED_KINDS,
 } from "@/lib/types";
@@ -35,33 +29,21 @@ export interface PaletteNavigationEntry {
 	action?: PaletteAction;
 }
 
-function dedupeKinds(kinds: ResourceKindSelection[]): ResourceKindSelection[] {
-	const seen = new Set<string>();
-	return kinds.filter((kind) => {
-		const key = resourceKindFetchKey(kind);
-		if (seen.has(key)) return false;
-		seen.add(key);
-		return true;
-	});
-}
-
 export function buildGlobalSearchFetchKeys(
 	namespaces: string[],
 	customResourceKinds: DiscoveredResourceKind[],
 	fluxResourceKinds: DiscoveredResourceKind[],
-): FetchKey[] {
-	const providerKinds = dedupeKinds(fluxResourceKinds);
-	const providerKeys = new Set(providerKinds.map(resourceKindFetchKey));
-	const scopedKinds = dedupeKinds([
+): KindFetchKey[] {
+	const providerKinds = uniqueKinds(fluxResourceKinds);
+	const providerKeys = new Set(providerKinds.map(kindKey));
+	const scopedKinds = uniqueKinds([
 		...SUPPORTED_KINDS,
 		...CLUSTER_SCOPED_KINDS,
-		...customResourceKinds.filter(
-			(kind) => !providerKeys.has(resourceKindFetchKey(kind)),
-		),
+		...customResourceKinds.filter((kind) => !providerKeys.has(kindKey(kind))),
 	]);
 	return [
-		...buildFetchKeys(namespaces, scopedKinds),
-		...buildFetchKeys([], providerKinds),
+		...kindFetchKeys(namespaces, scopedKinds),
+		...kindFetchKeys([], providerKinds),
 	];
 }
 

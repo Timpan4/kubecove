@@ -72,7 +72,7 @@
 					"kubectl",
 					"yaml",
 				)
-			: ["helm-release-details", "idle"],
+			: queryKeys.idle("helm-release-details"),
 		queryFn: () => {
 			if (!selectedHelmRelease) throw new Error("Helm release selection is required.");
 			return getHelmReleaseDetails(
@@ -95,7 +95,7 @@
 					selectedHelmRelease.storageName,
 					kubeconfigSourceKey,
 				)
-			: ["helm-release-reconciliation", "idle"],
+			: queryKeys.idle("helm-release-reconciliation"),
 		queryFn: () => {
 			if (!selectedHelmRelease) throw new Error("Helm release selection is required.");
 			return getHelmReleaseReconciliation(

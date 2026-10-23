@@ -1,10 +1,9 @@
 import {
-	buildFetchKeys,
 	buildResourceSearchIndex,
 	filterResourceSearchIndex,
 	topologyWatchKeys,
-	watchKeysFromFetchKeys,
 } from "../src/features/resources/helpers";
+import { kindFetchKeys, kindWatchKeys } from "../src/lib/kind-identity";
 import type { ResourceSummary } from "../src/lib/types";
 
 const namespaceCount = 100;
@@ -66,8 +65,8 @@ function legacyFilterResources(
 }
 
 const namespaces = Array.from({ length: namespaceCount }, (_, index) => `ns-${index}`);
-const tableKeys = buildFetchKeys(namespaces, ["Pod"]);
-const tableWatchKeys = watchKeysFromFetchKeys(tableKeys);
+const tableKeys = kindFetchKeys(namespaces, ["Pod"]);
+const tableWatchKeys = kindWatchKeys(tableKeys);
 const topologyWatchStreamCount = topologyWatchKeys(namespaces).length;
 
 const rows = makeRows(searchRows);

@@ -29,7 +29,7 @@ function makeStorage(): Storage {
 	} satisfies Storage;
 }
 
-const originalWindow = globalThis.window;
+const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
 
 type FakeWindow = {
 	sessionStorage: Storage;
@@ -61,10 +61,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	Object.defineProperty(globalThis, "window", {
-		configurable: true,
-		value: originalWindow,
-	});
+	// A window defined as undefined breaks modules that check `"window" in globalThis`.
+	if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+	else Reflect.deleteProperty(globalThis, "window");
 });
 
 function workspaceSnapshot(

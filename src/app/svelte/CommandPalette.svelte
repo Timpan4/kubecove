@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { createQuery, skipToken, useQueryClient } from "@tanstack/svelte-query";
 	import { onMount } from "svelte";
 	import { Box, Folder, PanelsTopLeft } from "lucide-svelte";
 	import {
@@ -22,8 +22,8 @@
 	import { resourceKey } from "@/lib/resource-identity";
 	import { shouldToggleCommandPaletteShortcut } from "@/features/command-palette/shortcut";
 	import {
-		fetchResourcePage,
 		filterResourceSearchIndex,
+		resourceScopeQuery,
 	} from "@/features/resources";
 	import {
 		createTauriClient,
@@ -34,9 +34,7 @@
 		listArgoAppProjects,
 		listNamespaces,
 	} from "@/lib/tauri";
-	import { queryKeys } from "@/lib/queryKeys";
-	import { createCancelScope, finiteReadMeta } from "@/lib/finite-read-lifecycle";
-	import { kubeconfigSourceKey as normalizeKubeconfigSourceKey } from "@/lib/settings";
+	import { queryKeys, queryMatchers } from "@/lib/queryKeys";
 	import {
 		makeNamespaceNode,
 		type TreeNodeId,
@@ -86,7 +84,6 @@
 
 	const sourceReady = $derived(workspaceReadContext.sourceReady);
 	const kubeconfigSourceKey = $derived(workspaceReadContext.kubeconfigSourceKey);
-	const normalizedSourceKey = $derived(normalizeKubeconfigSourceKey(kubeconfigSourceKey));
 	const namespacesQuery = createQuery(() => ({
 		queryKey: queryKeys.namespaces(workspace.scope.clusterContext, kubeconfigSourceKey),
 		queryFn: () => listNamespaces(client, workspace.scope.clusterContext, kubeconfigSourceKey),
@@ -140,22 +137,19 @@
 			fluxDetectionQuery.data?.kinds ?? [],
 		),
 	);
-	const browserResourceKey = $derived(
-		queryKeys.resources(workspace.scope.clusterContext, fetchKeys, kubeconfigSourceKey),
+	const resourcesQuery = createQuery<ResourceScopeResult>(() =>
+		open
+			? {
+					...resourceScopeQuery(client, {
+						clusterContext: workspace.scope.clusterContext,
+						fetchKeys,
+						kubeconfigSourceKey,
+					}),
+					enabled: sourceReady && gitOpsDetectionReady && fetchKeys.length > 0,
+					gcTime: 0,
+				}
+			: { queryKey: queryKeys.idle("palette-resources"), queryFn: skipToken },
 	);
-	const resourcesQuery = createQuery<ResourceScopeResult>(() => ({
-		queryKey: open ? browserResourceKey : ["palette-resources", "closed"],
-		queryFn: () => fetchResourcePage(
-			workspace.scope.clusterContext,
-			fetchKeys,
-			kubeconfigSourceKey,
-			createCancelScope("resources", browserResourceKey),
-		),
-		enabled: open && sourceReady && gitOpsDetectionReady && fetchKeys.length > 0,
-		staleTime: 30_000,
-		gcTime: 0,
-		meta: finiteReadMeta(),
-	}));
 	const argoSearchResources = $derived(
 		buildArgoSearchResources(
 			argoAppsQuery.data ?? [],
@@ -181,7 +175,7 @@
 		if (!open) return [];
 		const warmedRows = resourcesQuery.data?.resources ?? [];
 		const cached = queryClient.getQueriesData<Pick<ResourceScopeResult, "resources">>({
-			queryKey: ["resources", normalizedSourceKey, workspace.scope.clusterContext],
+			predicate: queryMatchers.resourceLists(workspace.scope.clusterContext, kubeconfigSourceKey),
 		});
 		return buildPaletteResourceSearchIndex(
 			warmedRows,
