@@ -17,10 +17,10 @@ import {
 	resourceTopologyNodeId,
 } from "../src/features/resources/topology-implementation";
 import {
-	configureLargeQueryRetention,
+	configureQueryCatalog,
 	LARGE_QUERY_GC_TIME_MS,
 	LARGE_QUERY_ROOTS,
-} from "../src/lib/query-retention";
+} from "../src/lib/queryKeys";
 import {
 	mergeResourceMetrics,
 	mergeTopologyMetrics,
@@ -281,7 +281,7 @@ const queryTimeouts = new VirtualTimeouts();
 const memoryFixtures = characterizeMemoryFixtures();
 timeoutManager.setTimeoutProvider(queryTimeouts);
 const queryClient = new QueryClient();
-configureLargeQueryRetention(queryClient);
+configureQueryCatalog(queryClient);
 for (const root of LARGE_QUERY_ROOTS) {
 	queryClient.setQueryData(
 		[root, "memory-measurement"],

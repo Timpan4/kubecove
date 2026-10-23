@@ -768,7 +768,7 @@ Root TS: `main`, `main-svelte`.
 
 Production `lib` TS:
 
-`app-version`, `argo-application-inspection`, `argo-connection-policy`, `build-env`, `cancellation-types`, `diagnostics-report`, `diagnostics-types`, `diagnostics`, `error-redaction`, `finite-read-lifecycle`, `foreground-loading-svelte`, `foreground-loading`, `friendly-errors`, `gitops-ownership-evidence`, `gitops-resource`, `gitops-types`, `health-types`, `helm-types`, `kubeconfig-sources-query`, `memory-profile`, `path-state`, `query-retention`, `query-retry`, `queryKeys`, `rbac-types`, `release-channel`, `resource-health`, `resource-identity`, `resource-metrics`, `resource-refresh`, `resource-watch`, `settings-store`, `settings`, `startup-marks`, `tauri-argo`, `tauri-args`, `tauri-diagnostics`, `tauri-inspection`, `tauri-runtime`, `tauri-streams`, `tauri`, `tree-nav`, `types`, `usage-metrics`, `utils`, `workspace-entry-points`, `workspace-model`, `workspaceReadContext`, `workspaces`, `yamlFormat`.
+`app-version`, `argo-application-inspection`, `argo-application-inspection.svelte`, `argo-connection-policy`, `build-env`, `cancellation-types`, `diagnostics-report`, `diagnostics-types`, `diagnostics`, `error-redaction`, `finite-read-lifecycle`, `foreground-loading-svelte`, `foreground-loading`, `friendly-errors`, `gitops-ownership-evidence`, `gitops-resource`, `gitops-types`, `health-types`, `helm-types`, `kubeconfig-sources-query`, `live-view-refresh`, `live-view-refresh.svelte`, `memory-profile`, `path-state`, `query-retry`, `queryKeys`, `rbac-types`, `release-channel`, `resource-health`, `resource-identity`, `resource-metrics`, `resource-refresh`, `resource-watch`, `settings-store`, `settings`, `startup-marks`, `tauri-argo`, `tauri-args`, `tauri-diagnostics`, `tauri-inspection`, `tauri-runtime`, `tauri-streams`, `tauri`, `tree-nav`, `types`, `usage-metrics`, `utils`, `workspace-entry-points`, `workspace-model`, `workspaceReadContext`, `workspaces`, `yamlFormat`.
 
 Browser-mock `lib` TS, excluded from production priorities:
 
@@ -794,7 +794,7 @@ Browser-mock `lib` TS, excluded from production priorities:
 | `live-sessions` | `helpers`, `index`, `liveSessionReadModel`, `podExecHelpers`, `podExecLifecycle`, `portForwardForms`, `portForwardLifecycle` | `LiveSessionsSurface`, `LiveSessionsView`, `SavedPortForwardForm` |
 | `helm` | `helpers`, `index`, `surfaceState` | `HelmSurface`, `HelmView` |
 | `argo` | `status-insights`, `status` | None |
-| `gitops` | `argo-application-freshness`, `argo-operation-presentation`, `argo-operation-progress`, `argo-operation-tracker`, `argo-workspace-model`, `flux-kinds`, `gitops-nav`, `gitops-overview-helpers`, `index`, `surfaceModel`, `surfaceSelection`, `surfaceState`, `surfaceSummary`, `surfaceTooltips` | `ArgoApplicationDetails`, `ArgoApplicationWorkspaceHeader`, `ArgoOperationMonitor`, `ArgoOperationProgress`, `GitOpsSurface`, `GitOpsView` |
+| `gitops` | `argo-operation-presentation`, `argo-operation-progress`, `argo-operation-tracker`, `argo-workspace-model`, `flux-kinds`, `gitops-nav`, `gitops-overview-helpers`, `index`, `surfaceModel`, `surfaceSelection`, `surfaceState`, `surfaceSummary`, `surfaceTooltips` | `ArgoApplicationDetails`, `ArgoApplicationWorkspaceHeader`, `ArgoOperationMonitor`, `ArgoOperationProgress`, `GitOpsSurface`, `GitOpsView` |
 | `incidents` | `guidance`, `incident-actions`, `index`, `model` | `IncidentGuide`, `IncidentQueue`, `IncidentSurface`, `IncidentView` |
 | `app-updates` | `api`, `index`, `store`, `types` | None |
 

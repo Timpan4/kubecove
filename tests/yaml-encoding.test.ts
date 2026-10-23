@@ -106,46 +106,19 @@ describe("YAML encoding", () => {
 			age: "7d",
 			health: "healthy",
 		} as const;
-		const detailKey = queryKeys.resourceDetails(
-			resource,
-			null,
-			"KUBECONFIG",
-			"kubectl",
-			"yaml",
-		);
-		const yamlKey = queryKeys.resourceYaml(
-			resource,
-			null,
-			"KUBECONFIG",
-			"applyClean",
-			"kyaml",
-		);
-		const eventsKey = queryKeys.resourceEvents(resource, "KUBECONFIG");
+		const kubectl = { yamlViewMode: "kubectl", yamlEncoding: "yaml" } as const;
+		const applyClean = { yamlViewMode: "applyClean", yamlEncoding: "kyaml" } as const;
+		const detailKey = queryKeys.resourceDetails(resource, "KUBECONFIG", kubectl);
+		const yamlKey = queryKeys.resourceYaml(resource, "KUBECONFIG", applyClean);
 
-		expect(detailKey).toEqual([
-			"resource-details",
-			"kubeconfigEnv=KUBECONFIG",
-			"",
-			"kind-dev",
-			"v1",
-			"Pod",
-			"argocd",
-			"argocd-server-abc",
-			"kubectl",
-			"yaml",
-			true,
-		]);
+		expect(queryKeys.resourceDetails({ ...resource }, "KUBECONFIG", kubectl)).toEqual(detailKey);
+		expect(queryKeys.resourceDetails(resource, "KUBECONFIG", applyClean)).not.toEqual(detailKey);
+		expect(queryKeys.resourceDetails(resource, "OTHER", kubectl)).not.toEqual(detailKey);
 		expect(yamlKey).toContain("applyClean");
 		expect(yamlKey).toContain("kyaml");
-		expect(eventsKey).toEqual([
-			"resource-events",
-			"kubeconfigEnv=KUBECONFIG",
-			"kind-dev",
-			"v1",
-			"Pod",
-			"argocd",
-			"argocd-server-abc",
-		]);
+		expect(queryKeys.resourceEvents({ ...resource }, "KUBECONFIG")).toEqual(
+			queryKeys.resourceEvents(resource, "KUBECONFIG"),
+		);
 	});
 
 	test("settings disallow YAML force-conflicts by default and can enable them", () => {

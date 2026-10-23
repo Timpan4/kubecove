@@ -6,8 +6,10 @@ Allowed:
 
 - typed Tauri wrappers in `tauri.ts`
 - frontend mirrors of serde contracts in `types.ts`
-- Zustand stores and composed dashboard hooks in `hooks.ts`
-- workspace, settings, query-key, release-channel, diagnostics, and formatting helpers
+- the Zustand settings store in `settings.ts` and its Svelte adapter in `settings-store.ts`
+- the query catalog in `queryKeys.ts` and the finite-read lifecycle in `finite-read-lifecycle.ts`
+- the Argo Application inspection in `argo-application-inspection.ts` and the live view refresh binding in `live-view-refresh.ts`, each with a component adapter in a matching `.svelte.ts` file; an adapter only binds its framework-free module to the calling component's lifecycle
+- workspace, settings, release-channel, diagnostics, and formatting helpers
 - pure resource health, metrics, visuals, and tree-navigation logic
 - future guarded operation helpers when they are pure and shared
 

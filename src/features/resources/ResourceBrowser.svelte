@@ -15,16 +15,9 @@
 	import ResourceScopeWarnings from "./ResourceScopeWarnings.svelte";
 	import type { ResourceScopeResult } from "@/lib/types";
 	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
-	import { refreshCurrentView } from "@/lib/resource-refresh";
-	import { onDestroy, untrack } from "svelte";
-	import {
-		observeResourceScope,
-		type ResourceScopeHandlers,
-		type ResourceScopeObserver,
-	} from "@/lib/resource-watch";
-	import { createWatchQueryRefresh, watchKeyMatches } from "@/lib/resource-watch-refresh";
+	import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 	import { markStartup } from "@/lib/startup-marks";
-	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { createQuery } from "@tanstack/svelte-query";
 	import {
 		ArrowDown,
 		ArrowUp,
@@ -66,19 +59,8 @@
 		READINESS_NOT_REPORTED,
 		RESTART_COUNT_NOT_REPORTED,
 	} from "./operational-data";
-	import {
-		createFiniteReadCleanup,
-		createFiniteReadRequest,
-	} from "@/lib/finite-read-lifecycle";
-	import {
-		argoApplicationInspectionQueryOptions,
-		argoConnectionStatusQueryOptions,
-		buildArgoApplicationInspectionReadSpec,
-		buildArgoConnectionStatusReadSpec,
-	} from "@/lib/argo-application-inspection";
-	import { normalizeArgoConnectionPreference } from "@/lib/argo-connection-policy";
+	import { argoApplicationInspection } from "@/lib/argo-application-inspection.svelte";
 	import { diagnosticLog } from "@/lib/diagnostics";
-	import { withForegroundLoad } from "@/lib/foreground-loading";
 	import { resourceHealthAssessment } from "@/lib/resource-health";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
 	import type { ChipVariant } from "@/features/argo/status";
@@ -102,17 +84,8 @@
 	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import { resourceKindOrder } from "@/lib/resource-kind-order";
-	import { queryKeys } from "@/lib/queryKeys";
 	import type { PathStateResourceBrowserState } from "@/lib/path-state";
-	import {
-		cancelBackendRequests,
-		createTauriClient,
-		isAppError,
-		listNamespaces,
-		listResourceKinds,
-		listResourceMetrics,
-		listResourceTopology,
-	} from "@/lib/tauri";
+	import { createTauriClient, listNamespaces, listResourceKinds } from "@/lib/tauri";
 	import type {
 		DiscoveredResourceKind,
 		NamespaceSummary,
@@ -121,7 +94,6 @@
 		ResourceSummary,
 		ResourceTopology,
 		TopologyMode,
-		WatchResourceKey,
 	} from "@/lib/types";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import { findResourceIndex, resourceKey } from "@/lib/resource-identity";
@@ -138,12 +110,8 @@
 		buildFetchKeys,
 		isDiscoveredResourceKind,
 		resourceReadyChip,
-		mergeWatchKeys,
-		topologyWatchKeys,
-		watchKeysFromFetchKeys,
 	} from "./helpers";
 	import type { HealthFilter } from "./helpers";
-	import { fetchResourcePage } from "./query";
 	import ResourceBrowserTopBar from "./ResourceBrowserTopBar.svelte";
 	import {
 		allKindOptions,
@@ -155,7 +123,7 @@
 		shouldLoadOwnershipMap,
 		syncedTopologyNodeId as resolveSyncedTopologyNodeId,
 	} from "./resourceBrowserModel";
-	import { buildResourceBrowserReadSpecs } from "./resourceBrowserReadSpecs";
+	import { buildResourceBrowserReadSpecs, resourceBrowserLiveView } from "./resourceBrowserReadSpecs";
 	import {
 		buildResourceTableDisplay,
 		buildResourceTablePage,
@@ -214,10 +182,6 @@
 	} = $props();
 
 	const client = createTauriClient();
-	const queryClient = useQueryClient();
-	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
-		cancelBackendRequests(client, cancelScope),
-	);
 	let selectedNamespaces = $state<string[]>([]);
 	let selectedKinds = $state<ResourceKindSelection[]>([]);
 	let appliedScopeKey = $state("");
@@ -246,11 +210,6 @@
 	let appliedMetricsScopeKey = $state("");
 	let appliedSelectionScrollKey = $state("");
 	let metricsQueryReady = $state(false);
-	let realtimeStatus = $state("idle");
-	let realtimeWarnings = $state<string[]>([]);
-	let realtimeMessage = $state("Realtime idle");
-	let realtimeError = $state<unknown>("");
-	let reloadError = $state<string | null>(null);
 	let tableViewportElement = $state<HTMLDivElement | null>(null);
 	let initialPathStateConsumed = $state(false);
 	const showFullTopologyOnSelection = $derived($settingsStore.showFullTopologyOnSelection);
@@ -339,6 +298,7 @@
 	const fetchKeys = $derived(buildFetchKeys(selectedNamespaces, selectedKinds));
 	const readSpecs = $derived(
 		buildResourceBrowserReadSpecs({
+			client,
 			clusterContext,
 			kubeconfigSourceKey,
 			fetchKeys,
@@ -349,83 +309,18 @@
 			customResourcesEnabled,
 		}),
 	);
-	const focusedArgoApplicationRequest = $derived({
-		name: gitOpsFocusApplication?.name ?? "",
-		namespace: gitOpsFocusApplication?.namespace ?? null,
-		project: gitOpsFocusApplication?.project ?? null,
-		resourceVersion: gitOpsFocusApplication?.resourceVersion ?? null,
-		uid: gitOpsFocusApplication?.uid ?? null,
-		apiVersion: "argoproj.io/v1alpha1",
-		context: clusterContext,
-		workspaceId: workspaceReadContext.workspaceId,
-	});
-	const focusedArgoStatusReadSpec = $derived(
-		buildArgoConnectionStatusReadSpec({
-			profiles: $settingsStore.argoProfiles,
-			clusterContext,
-			workspaceId: workspaceReadContext.workspaceId,
-			kubeconfigEnvVar: kubeconfigSourceKey,
+	const focusedArgo = argoApplicationInspection(client, () => ({
+		readContext: workspaceReadContext,
+		application: gitOpsFocusApplication,
+	}));
+	const workspaceId = $derived(workspaceReadContext.workspaceId);
+	const live = liveViewRefresh(client, () =>
+		resourceBrowserLiveView({ workspaceId, clusterContext, kubeconfigSourceKey, sourceReady }, readSpecs, {
+			fetchKeys,
+			namespaces: selectedNamespaces,
+			mapPanelOpen,
+			focusedApplication: gitOpsFocusApplication,
 		}),
-	);
-	const focusedArgoStatuses = createQuery(() =>
-		argoConnectionStatusQueryOptions(client, {
-			...focusedArgoStatusReadSpec,
-			enabled:
-				sourceReady &&
-				gitOpsFocusApplication !== null &&
-				focusedArgoStatusReadSpec.enabled,
-		}),
-	);
-	const focusedArgoInspectionReadSpec = $derived(
-		buildArgoApplicationInspectionReadSpec({
-			profiles: $settingsStore.argoProfiles,
-			statuses: focusedArgoStatuses.data,
-			statusesPending: focusedArgoStatuses.isPending,
-			preference: normalizeArgoConnectionPreference(
-				$settingsStore.argoConnectionPreferences[workspaceReadContext.workspaceId],
-			),
-			application: focusedArgoApplicationRequest,
-			clusterContext,
-			workspaceId: workspaceReadContext.workspaceId,
-			kubeconfigEnvVar: kubeconfigSourceKey,
-			redactSecrets: $settingsStore.redactSecrets,
-			enabled: sourceReady && gitOpsFocusApplication !== null,
-		}),
-	);
-	const focusedArgoInspectorQueryKey = $derived(
-		focusedArgoInspectionReadSpec.queryKey,
-	);
-	const focusedArgoApplicationScope = $derived(
-		gitOpsFocusApplication
-			? queryKeys.argoWorkspaceApplicationScope(
-					clusterContext,
-					workspaceReadContext.workspaceId,
-					gitOpsFocusApplication.name,
-					gitOpsFocusApplication.namespace,
-					kubeconfigSourceKey,
-				)
-			: null,
-	);
-	const focusedArgoWatchKeys = $derived(
-		gitOpsFocusApplication
-			? [
-					{
-						resourceKind: {
-							kind: "Application",
-							apiVersion: "argoproj.io/v1alpha1",
-							plural: "applications",
-							namespaced: true,
-						},
-						namespace: gitOpsFocusApplication.namespace ?? undefined,
-					},
-				]
-			: [],
-	);
-	const focusedArgoInspectorCancelScope = $derived(
-		focusedArgoInspectionReadSpec.cancelScope,
-	);
-	const focusedArgoInspectorQuery = createQuery(() =>
-		argoApplicationInspectionQueryOptions(client, focusedArgoInspectionReadSpec),
 	);
 	const namespacesQuery = createQuery<NamespaceSummary[]>(() => ({
 		queryKey: readSpecs.namespacesQueryKey,
@@ -446,22 +341,8 @@
 			markStartup("base-scope-ready");
 		}
 	});
-	const resourceQueryKey = $derived(readSpecs.resourceQueryKey);
-	const topologyNamespaces = $derived(readSpecs.topologyNamespaces);
-	const topologyBaseQueryKey = $derived(readSpecs.topologyBaseQueryKey);
-	const topologyQueryKey = $derived(readSpecs.topologyQueryKey);
-	const topologyFitViewKey = $derived(JSON.stringify(topologyBaseQueryKey));
-	const metricsQueryKey = $derived(readSpecs.metricsQueryKey);
-	const resourceCancelScope = $derived(readSpecs.resourceCancelScope);
-	const topologyCancelScope = $derived(readSpecs.topologyCancelScope);
-	const metricsCancelScope = $derived(readSpecs.metricsCancelScope);
-	const resourcesQuery = createQuery<ResourceScopeResult>(() => ({
-		queryKey: resourceQueryKey,
-		queryFn: () => fetchResourcePage(clusterContext, fetchKeys, kubeconfigSourceKey, resourceCancelScope),
-		enabled: readSpecs.resourcesEnabled,
-		placeholderData: (previousData) => previousData,
-		staleTime: 30_000,
-	}));
+	const topologyFitViewKey = $derived(readSpecs.topologyFitViewKey);
+	const resourcesQuery = createQuery<ResourceScopeResult>(() => readSpecs.resources);
 	$effect(() => {
 		if (kindScopeLocked) {
 			if (selectedKinds.length !== initialKinds.length ||
@@ -492,75 +373,9 @@
 		appliedAvailableKindsKey = availableKindsKey;
 		if (additions.length > 0) selectedKinds = [...selectedKinds, ...additions];
 	});
-	const topologyQuery = createQuery<ResourceTopology>(() => ({
-		queryKey: topologyQueryKey,
-		queryFn: () =>
-			withForegroundLoad("resource-topology", () =>
-				listResourceTopology(
-					client,
-					clusterContext,
-					topologyNamespaces,
-					topologyMode,
-					kubeconfigSourceKey,
-					createFiniteReadRequest(topologyCancelScope, "topology"),
-				).catch((cause: unknown) => {
-					if (isAppError(cause) && cause.kind === "cancelled") {
-						diagnosticLog("resources.topology.cancel", {
-							namespaces: topologyNamespaces.length,
-						});
-					}
-					throw cause;
-				}),
-			),
-		enabled: readSpecs.topologyEnabled,
-		placeholderData: (previousData) => previousData,
-		staleTime: 30_000,
-		retry: false,
-	}));
-
+	const topologyQuery = createQuery<ResourceTopology>(() => readSpecs.topology);
 	$effect(() => {
-		const currentResourceCancelScope = resourceCancelScope;
-		const currentResourceQueryKey = resourceQueryKey;
-		const currentTopologyCancelScope = topologyCancelScope;
-		const currentTopologyQueryKey = topologyQueryKey;
-		const currentMetricsCancelScope = metricsCancelScope;
-		const currentMetricsQueryKey = metricsQueryKey;
-		const currentFocusedArgoCancelScope = focusedArgoInspectorCancelScope;
-		const currentFocusedArgoQueryKey = focusedArgoInspectorQueryKey;
-		for (const cancelScope of [
-			currentResourceCancelScope,
-			currentTopologyCancelScope,
-			currentMetricsCancelScope,
-			currentFocusedArgoCancelScope,
-		]) {
-			finiteReadCleanup.cancelPending(cancelScope);
-		}
-		return () => {
-			for (const [cancelScope, queryKey, event] of [
-				[currentResourceCancelScope, currentResourceQueryKey, "resources.scope.cancel"],
-				[currentTopologyCancelScope, currentTopologyQueryKey, "resources.topology.cancel"],
-				[currentMetricsCancelScope, currentMetricsQueryKey, "resources.metrics.cancel"],
-				[
-					currentFocusedArgoCancelScope,
-					currentFocusedArgoQueryKey,
-					"resources.argo-inspection.cancel",
-				],
-			] as const) {
-				finiteReadCleanup.schedule(cancelScope, queryKey, {
-					onCancelled: (result) => {
-						if (result.cancelled > 0) diagnosticLog(event, { cancelled: result.cancelled });
-					},
-						onError: (cause) => {
-							diagnosticLog(`${event}.error`, {
-								error: cause instanceof Error ? cause.message : String(cause),
-						});
-					},
-				});
-			}
-		};
-	});
-	$effect(() => {
-		const metricsScopeKey = JSON.stringify(metricsQueryKey);
+		const metricsScopeKey = JSON.stringify(readSpecs.metrics.queryKey);
 		if (appliedMetricsScopeKey === metricsScopeKey) return;
 		appliedMetricsScopeKey = metricsScopeKey;
 		metricsQueryReady = false;
@@ -590,25 +405,8 @@
 		return () => window.clearTimeout(timer);
 	});
 	const metricsQuery = createQuery<ResourceMetricsSummary>(() => ({
-		queryKey: metricsQueryKey,
-		queryFn: () =>
-			listResourceMetrics(
-				client,
-				clusterContext,
-				topologyNamespaces,
-				kubeconfigSourceKey,
-				createFiniteReadRequest(metricsCancelScope, "metrics"),
-			).catch((cause: unknown) => {
-				if (isAppError(cause) && cause.kind === "cancelled") {
-					diagnosticLog("resources.metrics.cancel", {
-						namespaces: topologyNamespaces.length,
-					});
-				}
-				throw cause;
-			}),
+		...readSpecs.metrics,
 		enabled: metricsQueryReady && Boolean(clusterContext),
-		retry: false,
-		staleTime: 30_000,
 	}));
 
 	const namespaceOptions = $derived(namespacesQuery.data ?? []);
@@ -626,11 +424,9 @@
 	const rowsWithMetrics = $derived(
 		mergeResourceMetrics(scopedRows, metricsQuery.data, metricsIndex),
 	);
-	const focusedArgoResources = $derived(
-		focusedArgoInspectorQuery.data?.resources ?? [],
-	);
+	const focusedArgoResources = $derived(focusedArgo.current.data?.resources ?? []);
 	const focusedArgoFilterSummary = $derived(
-		gitOpsFocusApplication && focusedArgoInspectorQuery.data
+		gitOpsFocusApplication && focusedArgo.current.data
 			? argoResourceCounts(focusedArgoResources)
 			: null,
 	);
@@ -659,19 +455,6 @@
 		}
 	});
 	const tableProjection = $derived(buildResourceTableProjection(tableRows));
-	const focusedArgoError = $derived(
-		focusedArgoInspectorQuery.isError ? focusedArgoInspectorQuery.error : null,
-	);
-	const focusedArgoLoading = $derived(
-		(sourceReady &&
-			gitOpsFocusApplication !== null &&
-			focusedArgoStatusReadSpec.enabled &&
-			focusedArgoStatuses.isPending) ||
-			(focusedArgoInspectionReadSpec.enabled && focusedArgoInspectorQuery.isPending),
-	);
-	const focusedArgoRefreshing = $derived(
-		!focusedArgoLoading && focusedArgoInspectorQuery.isFetching,
-	);
 	$effect(() => {
 		const value = search;
 		const frame = requestAnimationFrame(() => {
@@ -855,82 +638,6 @@
 		appliedTargetResourceKey = targetResourceKey;
 	});
 
-	async function refreshView() {
-		return refreshCurrentView({ client, queryClient, clusterContext, kubeconfigEnvVar: kubeconfigSourceKey,
-			keys: mergeWatchKeys(watchKeysFromFetchKeys(fetchKeys), mapPanelOpen ? topologyWatchKeys(topologyNamespaces) : [], focusedArgoWatchKeys),
-			namespaces: selectedNamespaces,
-		});
-	}
-
-	// One observer per cluster context and kubeconfig source. Scope changes reconcile
-	// its watches, so streams shared by the old and new scope are not restarted.
-	let scopeObserver: { observer: ResourceScopeObserver; owner: string } | null = null;
-	function stopScopeObserver() {
-		scopeObserver?.observer.stop();
-		scopeObserver = null;
-	}
-	onDestroy(stopScopeObserver);
-
-	$effect(() => {
-		if (!sourceReady || !clusterContext || fetchKeys.length === 0) {
-			stopScopeObserver();
-			realtimeStatus = "idle";
-			realtimeMessage = "No live resource watches in this view.";
-			realtimeError = null;
-			reloadError = null;
-			realtimeWarnings = [];
-			return;
-		}
-		const resourceWatchKeys = watchKeysFromFetchKeys(fetchKeys);
-		const mapWatchKeys = mapPanelOpen ? mergeWatchKeys(
-			topologyWatchKeys(topologyNamespaces),
-			resourceWatchKeys.filter((key) => Boolean(key.resourceKind.group)),
-		) : [];
-		const argoWatchKeys = focusedArgoWatchKeys;
-		const watchKeys = mergeWatchKeys(resourceWatchKeys, mapWatchKeys, argoWatchKeys);
-		const resourceKey = resourceQueryKey;
-		const topologyKey = topologyQueryKey;
-		const argoScope = focusedArgoApplicationScope;
-		const context = clusterContext;
-		const source = kubeconfigSourceKey;
-		const namespaces = [...selectedNamespaces];
-		const resourceRefresh = createWatchQueryRefresh(queryClient, resourceKey);
-		const topologyRefresh = createWatchQueryRefresh(queryClient, topologyKey);
-		const argoRefresh = argoScope ? createWatchQueryRefresh(queryClient, argoScope, false) : null;
-		const reload = (keys?: WatchResourceKey[]) => {
-			const reads = [];
-			if (keys?.some((key) => resourceWatchKeys.some((candidate) => watchKeyMatches(candidate, key)))) reads.push(resourceKey);
-			if (keys?.some((key) => mapWatchKeys.some((candidate) => watchKeyMatches(candidate, key)))) reads.push(topologyKey);
-			if (argoScope && keys?.some((key) => argoWatchKeys.some((candidate) => watchKeyMatches(candidate, key)))) reads.push(argoScope);
-			return refreshCurrentView({ client, queryClient, clusterContext: context, kubeconfigEnvVar: source, keys: keys ?? watchKeys, namespaces, reads: keys ? reads : undefined, cancelRefetch: false });
-		};
-		const mapOpen = mapPanelOpen;
-		const handlers: ResourceScopeHandlers = {
-			onState: (state) => { realtimeStatus = state.status; realtimeMessage = state.message; realtimeError = state.error; reloadError = state.reloadError ?? null; realtimeWarnings = state.warnings ?? []; },
-			reload,
-			onChange: (_event, key) => {
-				const resourceChanged = resourceWatchKeys.some((candidate) => watchKeyMatches(candidate, key));
-				if (resourceChanged) resourceRefresh.notify();
-				if (!mapOpen) void queryClient.invalidateQueries({ queryKey: topologyKey, refetchType: "none" });
-				if (mapWatchKeys.some((candidate) => watchKeyMatches(candidate, key))) topologyRefresh.notify();
-				if (resourceChanged || argoWatchKeys.some((candidate) => watchKeyMatches(candidate, key))) argoRefresh?.notify();
-			},
-		};
-		const owner = JSON.stringify([context, source ?? null]);
-		untrack(() => {
-			if (scopeObserver?.owner === owner) {
-				scopeObserver.observer.update(watchKeys, handlers);
-				return;
-			}
-			stopScopeObserver();
-			scopeObserver = {
-				owner,
-				observer: observeResourceScope({ client, clusterContext: context, keys: watchKeys, kubeconfigEnvVar: source, ...handlers }),
-			};
-		});
-		return () => { resourceRefresh.dispose(); topologyRefresh.dispose(); argoRefresh?.dispose(); };
-	});
-
 	function toggleNamespace(namespace: string, checked: boolean) {
 		selectedNamespaces = nextNamespaceSelection(
 			selectedNamespaces,
@@ -972,10 +679,6 @@
 	function selectHealth(filter: HealthFilter) {
 		healthFilter = filter;
 		pageIndex = 0;
-	}
-
-	async function refreshFocusedArgo() {
-		await focusedArgoInspectorQuery.refetch();
 	}
 
 	function selectArgoResource(filter: ArgoResourceFilter) {
@@ -1042,9 +745,8 @@
 </script>
 
 {#snippet refreshControls()}
-	{#key JSON.stringify([clusterContext, kubeconfigSourceKey, fetchKeys, mapPanelOpen ? topologyNamespaces : [], focusedArgoWatchKeys])}
-		<ResourceLiveStatusMenu onRefresh={refreshView} disabled={!sourceReady || !clusterContext}
-			status={realtimeStatus} message={realtimeMessage} connectionError={realtimeError} {reloadError} warnings={realtimeWarnings} />
+	{#key live.key}
+		<ResourceLiveStatusMenu {live} disabled={!sourceReady || !clusterContext} />
 	{/key}
 {/snippet}
 
@@ -1058,13 +760,13 @@
 	{#if gitOpsFocusApplication}
 		<ArgoApplicationWorkspaceHeader
 			app={gitOpsFocusApplication}
-			inspector={focusedArgoInspectorQuery.data ?? null}
+			inspector={focusedArgo.current.data ?? null}
 			managedResources={focusedArgoResources}
-			loading={focusedArgoLoading}
-			refreshing={focusedArgoRefreshing}
-			refreshDisabled={!focusedArgoInspectionReadSpec.ready}
-			error={focusedArgoError}
-			onRefresh={refreshFocusedArgo}
+			loading={focusedArgo.current.loading}
+			refreshing={focusedArgo.current.refreshing}
+			refreshDisabled={!focusedArgo.current.ready}
+			error={focusedArgo.current.error}
+			onRefresh={focusedArgo.refresh}
 			onInspect={onArgoApplicationInspect}
 		/>
 	{/if}

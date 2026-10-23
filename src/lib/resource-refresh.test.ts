@@ -1,23 +1,24 @@
 import { expect, test } from "bun:test";
 import { QueryClient, QueryObserver } from "@tanstack/svelte-query";
-import { configureFiniteReadQueryDefaults } from "./finite-read-lifecycle";
-import { queryKeys } from "./queryKeys";
+import { configureQueryCatalog, queryKeys, queryMatchers } from "./queryKeys";
 import { refreshCurrentView } from "./resource-refresh";
 import { createMockTauriClient } from "./tauri-runtime";
 import { listNamespaces, refreshResourceCache } from "./tauri";
+import type { ResourceSummary } from "./types";
+
+const pod: ResourceSummary = { kind: "Pod", cluster: "dev", name: "pod", namespace: "default", age: "1d", health: "healthy" };
 
 // Failure modes: automatic catch-up skips inspector/discovery/metrics reads,
 // cancels a running read, or permission recovery refreshes unrelated families.
 test.each([false, true])("automatic recovery waits for running reads, permission-only: %s", async (permissionOnly) => {
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-	configureFiniteReadQueryDefaults(queryClient);
-	const source = queryKeys.resources("dev", [])[1];
+	configureQueryCatalog(queryClient);
 	const resourceKey = queryKeys.resources("dev", []);
 	const keys = [
 		resourceKey,
-		["resource-details", source, "redacted", "dev", "Pod", "pod"],
-		["resource-yaml", source, "redacted", "dev", "Pod", "pod"],
-		["resource-events", source, "dev", "Pod", "pod"],
+		queryKeys.resourceDetails(pod, undefined, { redactSecrets: true }),
+		queryKeys.resourceYaml(pod, undefined, { redactSecrets: true }),
+		queryKeys.resourceEvents(pod),
 		queryKeys.namespaces("dev"),
 		queryKeys.resourceMetrics("dev", []),
 	];
@@ -44,7 +45,7 @@ test.each([false, true])("automatic recovery waits for running reads, permission
 			queryClient,
 			client: createMockTauriClient({ refresh_resource_cache: () => { calls.push("evict"); return { clearedEntries: 1 }; } }),
 			clusterContext: "dev", keys: [], namespaces: [],
-			reads: permissionOnly ? [resourceKey] : undefined,
+			reads: permissionOnly ? [queryMatchers.exact(resourceKey)] : undefined,
 			cancelRefetch: false,
 		});
 		await Promise.resolve();
@@ -80,7 +81,7 @@ test("refresh evicts backend data before reloading only active reads in the sele
 	const queryClient = new QueryClient({
 		defaultOptions: { queries: { retry: false, staleTime: Infinity } },
 	});
-	configureFiniteReadQueryDefaults(queryClient);
+	configureQueryCatalog(queryClient);
 	const calls: string[] = [];
 	const keys = [
 		queryKeys.resources("dev", []),
@@ -127,7 +128,7 @@ test("refresh reports read errors instead of treating invalidation as successful
 	const queryClient = new QueryClient({
 		defaultOptions: { queries: { retry: false, staleTime: Infinity } },
 	});
-	configureFiniteReadQueryDefaults(queryClient);
+	configureQueryCatalog(queryClient);
 	const key = queryKeys.argoApps("dev");
 	queryClient.setQueryData(key, []);
 	const stop = new QueryObserver(queryClient, {
@@ -157,7 +158,7 @@ test("refresh reports read errors instead of treating invalidation as successful
 
 test("refresh keeps permitted reads fresh and returns denied reads as warnings", async () => {
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-	configureFiniteReadQueryDefaults(queryClient);
+	configureQueryCatalog(queryClient);
 	const allowed = queryKeys.resources("dev", []);
 	const denied = queryKeys.argoApps("dev");
 	queryClient.setQueryData(allowed, "old");

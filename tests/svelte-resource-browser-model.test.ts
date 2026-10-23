@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { QueryClient, type Query } from "@tanstack/svelte-query";
 import { readFileSync } from "node:fs";
 import { resourceBrowserAvailableKinds } from "../src/app/svelte/workspaceShellModel";
 import { argoResourceIdentityKey } from "../src/features/gitops/argo-workspace-model";
@@ -21,7 +22,13 @@ import {
 	shouldLoadOwnershipMap,
 	syncedTopologyNodeId,
 } from "../src/features/resources/resourceBrowserModel";
-import { buildResourceBrowserReadSpecs } from "../src/features/resources/resourceBrowserReadSpecs";
+import {
+	buildResourceBrowserReadSpecs,
+	resourceBrowserLiveView,
+	type ResourceBrowserReadSpecInput,
+} from "../src/features/resources/resourceBrowserReadSpecs";
+import type { LiveView } from "../src/lib/live-view-refresh";
+import { queryKeys } from "../src/lib/queryKeys";
 import {
 	buildResourceTableModel as buildProjectedResourceTableModel,
 	buildResourceTableProjection,
@@ -30,7 +37,9 @@ import {
 	buildFlowTopologyFitPlan,
 	buildFlowTopologyView,
 } from "../src/features/resources/topology";
+import { getForegroundLoadingSnapshot } from "../src/lib/foreground-loading";
 import { OTHER_RESOURCE_KINDS } from "../src/lib/resource-kind-order";
+import { createMockTauriClient } from "../src/lib/tauri";
 import type {
 	DiscoveredResourceKind,
 	ResourceSummary,
@@ -205,33 +214,36 @@ test("builds safe active-workspace read metadata from one source result", () => 
 });
 
 test("builds immutable ResourceBrowser read identities and enablement", () => {
-	const fetchKeys = buildFetchKeys(["default", "kube-system"], ["Pod", widget]);
-	const specs = buildResourceBrowserReadSpecs({
+	const input: ResourceBrowserReadSpecInput = {
+		client: createMockTauriClient({}),
 		clusterContext: "kind-dev",
 		kubeconfigSourceKey: "source-a",
-		fetchKeys,
+		fetchKeys: buildFetchKeys(["default", "kube-system"], ["Pod", widget]),
 		namespaces: ["kube-system", "default", "default"],
 		topologyMode: "ownership",
 		mapPanelOpen: false,
 		sourceReady: true,
 		customResourcesEnabled: true,
+	};
+	const specs = buildResourceBrowserReadSpecs(input);
+	const nativeOnly = buildResourceBrowserReadSpecs({
+		...input,
+		fetchKeys: buildFetchKeys(["default", "kube-system"], ["Pod"]),
 	});
+	const otherMode = buildResourceBrowserReadSpecs({ ...input, topologyMode: "networkFlow" });
 
 	expect(specs.topologyNamespaces).toEqual(["default", "kube-system"]);
-	expect(specs.resourceQueryKey[0]).toBe("resources");
-	expect(specs.topologyQueryKey).toEqual([
-		"resource-topology",
-		"kubeconfigEnv=source-a",
-		"kind-dev",
-		"default,kube-system",
-		"ownership",
-		"dynamic:example.com/v1:widgets:Widget",
-	]);
-	expect(specs.resourcesEnabled).toBe(true);
-	expect(specs.topologyEnabled).toBe(false);
+	// Browsed custom kinds refetch the map without refitting its viewport.
+	expect(specs.topology.queryKey).not.toEqual(nativeOnly.topology.queryKey);
+	expect(specs.topologyFitViewKey).toBe(nativeOnly.topologyFitViewKey);
+	expect(specs.topologyFitViewKey).not.toBe(otherMode.topologyFitViewKey);
+	expect(specs.resources.enabled).toBe(true);
+	expect(specs.topology.enabled).toBe(false);
+	expect(buildResourceBrowserReadSpecs({ ...input, mapPanelOpen: true }).topology.enabled).toBe(true);
 	expect(specs.resourceKindsEnabled).toBe(true);
 
 	const waitingForSource = buildResourceBrowserReadSpecs({
+		client: input.client,
 		clusterContext: "kind-dev",
 		kubeconfigSourceKey: undefined,
 		fetchKeys: [],
@@ -243,8 +255,95 @@ test("builds immutable ResourceBrowser read identities and enablement", () => {
 	});
 	expect(waitingForSource.namespacesEnabled).toBe(false);
 	expect(waitingForSource.resourceKindsEnabled).toBe(false);
-	expect(waitingForSource.resourcesEnabled).toBe(false);
-	expect(waitingForSource.topologyEnabled).toBe(false);
+	expect(waitingForSource.resources.enabled).toBe(false);
+	expect(waitingForSource.topology.enabled).toBe(false);
+});
+
+test("ResourceBrowser keeps rows and the map visible while the next scope loads", () => {
+	const specs = buildResourceBrowserReadSpecs({
+		client: createMockTauriClient({}),
+		clusterContext: "kind-dev",
+		kubeconfigSourceKey: undefined,
+		fetchKeys: buildFetchKeys(["default"], ["Pod"]),
+		namespaces: ["default"],
+		topologyMode: "ownership",
+		mapPanelOpen: true,
+		sourceReady: true,
+		customResourcesEnabled: false,
+	});
+	const rows = { resources: [], completedRequests: [], failures: [] };
+	const graph = { nodes: [], edges: [], warnings: [] };
+
+	expect(specs.resources.placeholderData(rows)).toBe(rows);
+	expect(specs.topology.placeholderData(graph)).toBe(graph);
+});
+
+// Failure modes: a closed map watches topology kinds or refetches a hidden map;
+// an open map misses topology changes; focused Application reads miss resource
+// changes; a view with no kinds or no source watches anything.
+test("ResourceBrowser declares which watched kinds keep rows, the map, and the focused Application fresh", () => {
+	const readContext = { workspaceId: "ws", clusterContext: "kind-dev", kubeconfigSourceKey: undefined, sourceReady: true };
+	const input = { fetchKeys: buildFetchKeys(["default"], ["Pod"]), namespaces: ["default"], focusedApplication: { name: "guestbook", namespace: "argocd" } };
+	const specs = (mapPanelOpen: boolean) => buildResourceBrowserReadSpecs({
+		client: createMockTauriClient({}),
+		clusterContext: "kind-dev",
+		kubeconfigSourceKey: undefined,
+		fetchKeys: input.fetchKeys,
+		namespaces: input.namespaces,
+		topologyMode: "ownership",
+		mapPanelOpen,
+		sourceReady: true,
+		customResourcesEnabled: false,
+	});
+	const queryClient = new QueryClient();
+	const cached = (queryKey: readonly unknown[]) => queryClient.getQueryCache().build(queryClient, { queryKey });
+	const rows = cached(specs(false).resources.queryKey);
+	const map = cached(specs(false).topology.queryKey);
+	const application = cached(queryKeys.argoWorkspaceInspector("kind-dev", "ws", "guestbook", "argocd", "uid", true, "kubernetes"));
+	const kindsFeeding = (view: LiveView | null, query: Query, refetch = true) =>
+		(view?.reads ?? [])
+			.filter((read) => read.match(query) && (read.refetch ?? true) === refetch)
+			.flatMap((read) => read.keys.map((key) => key.resourceKind.kind));
+
+	const closed = resourceBrowserLiveView(readContext, specs(false), { ...input, mapPanelOpen: false });
+	expect(closed?.keys.map((key) => key.resourceKind.kind)).toEqual(["Pod", "Application"]);
+	expect(kindsFeeding(closed, rows)).toEqual(["Pod"]);
+	expect(kindsFeeding(closed, map)).toEqual([]);
+	expect(kindsFeeding(closed, map, false)).toEqual(["Pod", "Application"]);
+	expect(kindsFeeding(closed, application)).toEqual(["Pod", "Application"]);
+
+	const open = resourceBrowserLiveView(readContext, specs(true), { ...input, mapPanelOpen: true });
+	expect(kindsFeeding(open, map)).toContain("Deployment");
+	expect(kindsFeeding(open, map)).not.toContain("Application");
+	expect(kindsFeeding(open, map, false)).toEqual([]);
+
+	expect(resourceBrowserLiveView(readContext, specs(false), { ...input, fetchKeys: [], mapPanelOpen: true })).toMatchObject({ keys: [], reads: [] });
+	expect(resourceBrowserLiveView({ ...readContext, sourceReady: false }, specs(false), { ...input, mapPanelOpen: false })).toBeNull();
+	queryClient.clear();
+});
+
+test("ResourceBrowser map reads show the foreground loading bar until they settle", async () => {
+	let finish!: (topology: ResourceTopology) => void;
+	const specs = buildResourceBrowserReadSpecs({
+		client: createMockTauriClient({
+			list_resource_topology: () => new Promise<ResourceTopology>((resolve) => { finish = resolve; }),
+		}),
+		clusterContext: "kind-dev",
+		kubeconfigSourceKey: undefined,
+		fetchKeys: buildFetchKeys(["default"], ["Pod"]),
+		namespaces: ["default"],
+		topologyMode: "ownership",
+		mapPanelOpen: true,
+		sourceReady: true,
+		customResourcesEnabled: false,
+	});
+	const before = getForegroundLoadingSnapshot();
+	const read = specs.topology.queryFn();
+
+	expect(getForegroundLoadingSnapshot()).toBe(before + 1);
+	finish({ nodes: [], edges: [], warnings: [] });
+	await read;
+	expect(getForegroundLoadingSnapshot()).toBe(before);
 });
 
 describe("svelte resource browser model", () => {
@@ -1061,16 +1160,6 @@ describe("svelte resource browser model", () => {
 		expect(source).toContain("return;");
 	});
 
-	test("loads Svelte topology when ownership map is open", () => {
-		const source = readFileSync(
-			"src/features/resources/ResourceBrowser.svelte",
-			"utf8",
-		);
-
-		expect(source).toContain('withForegroundLoad("resource-topology"');
-		expect(source).toContain("enabled: readSpecs.topologyEnabled");
-	});
-
 	test("keeps Svelte topology mode copy and warnings aligned", () => {
 		const source = readFileSync("src/features/resources/OwnershipMap.svelte", "utf8");
 
@@ -1202,8 +1291,7 @@ describe("svelte resource browser model", () => {
 
 		expect(resizedKey).not.toBe(baseKey);
 		expect(movedKey).not.toBe(baseKey);
-		expect(browserSource).toContain("const topologyFitViewKey = $derived(JSON.stringify(topologyBaseQueryKey))");
-		expect(browserSource).toContain("const topologyQueryKey = $derived(readSpecs.topologyQueryKey)");
+		expect(browserSource).toContain("const topologyFitViewKey = $derived(readSpecs.topologyFitViewKey)");
 		expect(browserSource).toContain("fitViewKey={topologyFitViewKey}");
 	});
 
@@ -1213,7 +1301,6 @@ describe("svelte resource browser model", () => {
 			"utf8",
 		);
 
-		expect(source).toContain("placeholderData: (previousData) => previousData");
 		expect(source).toContain(
 			"resourcesQuery.isPending && !resourcesQuery.isPlaceholderData",
 		);
