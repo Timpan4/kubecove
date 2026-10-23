@@ -50,7 +50,7 @@ pub fn incident_fixture() -> IncidentFixture {
     let mut resources = source
         .pods
         .iter()
-        .map(|pod| resources::pod_resource_summary_at("incident-cluster", pod, fixed_now()))
+        .map(|pod| resources::builtin_summary("incident-cluster", pod, fixed_now()))
         .collect::<Vec<_>>();
     let mut pods = source.pods;
     let mut events = Vec::with_capacity(500);
@@ -105,7 +105,7 @@ pub fn incident_fixture() -> IncidentFixture {
             termination.reason = Some("Completed".to_string());
             termination.exit_code = 0;
         }
-        resources.push(resources::pod_resource_summary_at(
+        resources.push(resources::builtin_summary(
             "incident-cluster",
             &pod,
             fixed_now(),

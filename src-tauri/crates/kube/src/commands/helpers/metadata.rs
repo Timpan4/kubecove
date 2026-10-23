@@ -1,4 +1,3 @@
-use crate::commands::builtin_kinds::{builtin_kind, BuiltinKind};
 use crate::commands::helpers::k8s_timestamp_to_datetime;
 use crate::models::{HealthAssessment, OwnerReferenceSummary, ResourceHealth, ResourceSummary};
 
@@ -13,7 +12,7 @@ pub use flux_inventory::{
 pub use flux_inventory::{
     flux_ownership_index_from_fetched_objects, MAX_FLUX_INVENTORY_ENTRIES, MAX_FLUX_OWNER_OBJECTS,
 };
-pub use ownership::{extract_argo_app, extract_git_ops_owner};
+pub use ownership::extract_git_ops_owner;
 
 const LABEL_HELM_RELEASE_NAME: &str = "helm.sh/release";
 
@@ -55,24 +54,15 @@ pub fn extract_helm_release(
         .cloned()
 }
 
+/// Identity, timestamps and ownership evidence shared by every summary of a typed object.
 pub fn base_resource_summary(
     kind: &str,
-    cluster: &str,
-    metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
-    age: String,
-) -> ResourceSummary {
-    base_resource_summary_with_health(kind, cluster, metadata, age, HealthAssessment::default())
-}
-
-/// Callers that always re-evaluate health pass a placeholder to skip the default's allocations.
-pub fn base_resource_summary_with_health(
-    kind: &str,
+    api_version: &str,
     cluster: &str,
     metadata: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
     age: String,
     health_assessment: HealthAssessment,
 ) -> ResourceSummary {
-    let api_version = builtin_kind(kind).map(BuiltinKind::api_version);
     // Argo CD ownership is the git-ops owner when present, so derive it instead of rebuilding it.
     let git_ops_owner = extract_git_ops_owner(metadata);
     let argo_app = git_ops_owner
@@ -85,7 +75,7 @@ pub fn base_resource_summary_with_health(
         name: metadata.name.clone().unwrap_or_default(),
         namespace: metadata.namespace.clone(),
         age,
-        api_version,
+        api_version: Some(api_version.to_string()),
         group: None,
         version: None,
         plural: None,
@@ -106,14 +96,6 @@ pub fn base_resource_summary_with_health(
         git_ops_owner,
         git_ops_ownership_partial: false,
     }
-}
-
-fn opt_i32_to_str(opt: Option<i32>) -> String {
-    opt.map_or_else(|| "0".to_string(), |v| v.to_string())
-}
-
-pub fn fmt_ready(ready: Option<i32>, desired: i32) -> String {
-    format!("{}/{}", opt_i32_to_str(ready), desired)
 }
 
 #[cfg(test)]

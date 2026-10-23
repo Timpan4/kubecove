@@ -101,6 +101,10 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
 
     for service in &services {
         let service_id = resource_id("Service", "v1", &service.namespace, &service.name);
+        // Network flow labels Service nodes with their type; the summary keeps the shared status.
+        if let Some(node) = nodes_by_id.get_mut(&service_id) {
+            node.status = Some(service.service_type.clone());
+        }
         let service_slices: Vec<_> = endpoint_slices
             .iter()
             .filter(|slice| {

@@ -162,9 +162,7 @@ pub fn decode_pod_list_summaries(
     Ok(list
         .items
         .into_iter()
-        .map(|pod| {
-            super::summary_core::pod_resource_summary_at("benchmark", &pod.into_resource(), now)
-        })
+        .map(|pod| super::builtin_summary::builtin_summary("benchmark", &pod.into_resource(), now))
         .collect())
 }
 
@@ -189,3 +187,7 @@ pub fn decode_summary_projection(kind: &str, text: &str) -> Result<usize, serde_
 #[cfg(test)]
 #[path = "summary_projection_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "summary_parity_tests.rs"]
+mod parity_tests;

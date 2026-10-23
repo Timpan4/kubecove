@@ -62,9 +62,10 @@ pub(super) async fn list_crd_definition_inputs(
 ) -> Result<Vec<TopologyInputResource>, AppError> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
     match api.list_metadata(&list_params()).await {
-        Ok(rows) => Ok(super::topology_collection::inputs_from_partial_metadata(
+        Ok(rows) => Ok(super::topology_collection::metadata_inputs(
             cluster_context,
-            rows.items,
+            &rows.items,
+            Utc::now(),
         )
         .into_iter()
         .filter(|input| {
