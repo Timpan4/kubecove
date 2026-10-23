@@ -1,7 +1,20 @@
-import { queryKeys } from "@/lib/queryKeys";
+import {
+	argoApplicationReads,
+	argoApplicationWatchKey,
+	type ArgoApplicationTarget,
+} from "@/lib/argo-application-inspection";
+import type { LiveRead, LiveView } from "@/lib/live-view-refresh";
+import { queryKeys, queryMatchers } from "@/lib/queryKeys";
 import type { TauriClient } from "@/lib/tauri";
 import type { TopologyMode } from "@/lib/types";
-import { type FetchKey, resourceKindFetchKey } from "./helpers";
+import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
+import {
+	type FetchKey,
+	mergeWatchKeys,
+	resourceKindFetchKey,
+	topologyWatchKeys,
+	watchKeysFromFetchKeys,
+} from "./helpers";
 import { resourceMetricsQuery, resourceScopeQuery, resourceTopologyQuery } from "./query";
 
 export interface ResourceBrowserReadSpecInput {
@@ -80,4 +93,44 @@ export function buildResourceBrowserReadSpecs({
 			kubeconfigSourceKey,
 		}),
 	};
+}
+
+/**
+ * The watches that keep the Browser's rows, map, and focused Application fresh.
+ * A closed map is not watched, so every change marks its topology stale instead.
+ */
+export function resourceBrowserLiveView(
+	readContext: Pick<WorkspaceReadContext, "workspaceId" | "clusterContext" | "kubeconfigSourceKey" | "sourceReady">,
+	specs: Pick<ReturnType<typeof buildResourceBrowserReadSpecs>, "resources" | "topology" | "topologyNamespaces">,
+	{
+		fetchKeys,
+		namespaces,
+		mapPanelOpen,
+		focusedApplication,
+	}: {
+		fetchKeys: FetchKey[];
+		namespaces: string[];
+		mapPanelOpen: boolean;
+		focusedApplication: ArgoApplicationTarget | null;
+	},
+): LiveView | null {
+	const { clusterContext, kubeconfigSourceKey } = readContext;
+	if (!readContext.sourceReady || !clusterContext) return null;
+	const view = { clusterContext, kubeconfigSourceKey, namespaces, refreshScope: "view" } as const;
+	if (fetchKeys.length === 0) return { ...view, keys: [], reads: [] };
+	const resourceKeys = watchKeysFromFetchKeys(fetchKeys);
+	const mapKeys = mapPanelOpen
+		? mergeWatchKeys(topologyWatchKeys(specs.topologyNamespaces), resourceKeys.filter((key) => Boolean(key.resourceKind.group)))
+		: [];
+	const argoKeys = focusedApplication ? [argoApplicationWatchKey(focusedApplication.namespace)] : [];
+	const keys = mergeWatchKeys(resourceKeys, mapKeys, argoKeys);
+	const topology = queryMatchers.exact(specs.topology.queryKey);
+	const reads: LiveRead[] = [
+		{ keys: resourceKeys, match: queryMatchers.exact(specs.resources.queryKey) },
+		mapPanelOpen ? { keys: mapKeys, match: topology } : { keys, match: topology, refetch: false },
+	];
+	if (focusedApplication) {
+		reads.push({ keys: [...resourceKeys, ...argoKeys], match: argoApplicationReads(readContext, focusedApplication) });
+	}
+	return { ...view, keys, reads };
 }

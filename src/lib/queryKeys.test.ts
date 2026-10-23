@@ -263,6 +263,19 @@ describe("query catalog matchers", () => {
 		queryClient.clear();
 	});
 
+	test("an exact read never selects a wider resource scope that shares its prefix", () => {
+		const queryClient = new QueryClient();
+		const pods = queryKeys.resources("dev", [{ kind: "Pod", namespace: "shop" }]);
+		const [selectedPods] = hashes(queryClient, [pods]);
+		const [widerScope] = hashes(queryClient, [
+			queryKeys.resources("dev", [{ kind: "Pod", namespace: "shop" }, { kind: "Service", namespace: "shop" }]),
+		]);
+
+		expect(selected(queryClient, queryMatchers.exact(pods))).toEqual([selectedPods]);
+		expect(selected(queryClient, queryMatchers.prefix(pods))).toEqual([selectedPods, widerScope].sort());
+		queryClient.clear();
+	});
+
 	test("Argo connection status matcher covers every status read and nothing else", () => {
 		const queryClient = new QueryClient();
 		const statuses = hashes(queryClient, [
