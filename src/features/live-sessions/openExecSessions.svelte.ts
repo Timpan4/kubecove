@@ -66,9 +66,10 @@ export function confirmStoppingExecSessions(): Promise<boolean> {
 					resolve(false);
 					return;
 				}
-				void Promise.all([...openTabs.values()].map((tab) => tab.stopAll())).then((stopped) =>
-					resolve(stopped.every(Boolean)),
-				);
+				void Promise.all([...openTabs.values()].map((tab) => tab.stopAll()))
+					.then((stopped) => stopped.every(Boolean))
+					.catch(() => false)
+					.then(resolve);
 			},
 		};
 	});

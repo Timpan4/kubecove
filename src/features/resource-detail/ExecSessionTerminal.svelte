@@ -210,7 +210,7 @@
 			if (channel !== nextChannel) {
 				// The tab stopped, closed, or unmounted, or the session already ended,
 				// while start was in flight. Stop it so no session runs without a tab.
-				await stopPodExec({ client, sessionId: summary.id, invalidateQueries }).catch(() => undefined);
+				await stopBackendSession(summary.id);
 				return;
 			}
 			if (!sessionId) {
@@ -219,7 +219,9 @@
 			}
 		} catch (cause) {
 			closePodExecChannel(nextChannel);
-			if (channel === nextChannel) channel = null;
+			// A tab that was stopped or closed meanwhile has no start error to show.
+			if (channel !== nextChannel) return;
+			channel = null;
 			status = "error";
 			error = cause;
 		}
@@ -230,6 +232,10 @@
 			await stopPodExec({ client, sessionId: id, invalidateQueries });
 			return true;
 		} catch (cause) {
+			// The session may still run: keep tracking it so the leave dialog,
+			// unmount, and Restart all try to stop it again.
+			sessionId = id;
+			status = "error";
 			error = cause;
 			return false;
 		}
@@ -242,9 +248,10 @@
 		startRun += 1;
 		ended("stopped", "session stopped");
 		if (liveSessionId) return stopBackendSession(liveSessionId);
-		// Still starting: the start gives up or, once its channel is closed, stops its own session.
+		// Still starting: the start gives up or, once its channel is closed, stops its own
+		// session. The backend start returns right after registering, so this wait is short.
 		await startInFlight;
-		return true;
+		return sessionId === null;
 	}
 </script>
 
