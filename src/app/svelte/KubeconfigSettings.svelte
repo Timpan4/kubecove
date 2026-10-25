@@ -35,6 +35,7 @@
 		setShowKubeconfigSourceLabels,
 	} from "@/lib/tauri";
 	import type { KubeconfigSourcesSummary } from "@/lib/types";
+	import { confirmStoppingExecSessions } from "@/features/live-sessions/openExecSessions.svelte";
 	import SettingsRow from "./SettingsRow.svelte";
 	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
 	import { KUBECONFIG_SOURCES_QUERY_KEY, kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
@@ -81,6 +82,10 @@
 		action: () => Promise<KubeconfigSourcesSummary>,
 		busy = true,
 	): Promise<boolean> {
+		// A source change stops sessions outside the new source unless the user keeps them.
+		if (!settings.keepLiveSessionsOnWorkspaceSwitch && !(await confirmStoppingExecSessions())) {
+			return false;
+		}
 		if (busy) sourceActionBusy = true;
 		try {
 			applySources(await action());
@@ -98,11 +103,11 @@
 	}
 
 	function resetEnvVar() {
-		getSettingsSnapshot().resetKubeconfigEnvVar();
-		envDraft = DEFAULT_KUBECONFIG_ENV_VAR;
 		void runSourceUpdate(() =>
 			setBackendKubeconfigEnvVar(client, DEFAULT_KUBECONFIG_ENV_VAR),
-		);
+		).then((saved) => {
+			if (saved) getSettingsSnapshot().resetKubeconfigEnvVar();
+		});
 	}
 
 	function addPastedPaths() {
