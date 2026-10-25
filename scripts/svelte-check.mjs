@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -55,15 +56,18 @@ async function cssDiagnostics(workspace, records) {
 			`Cannot read the Svelte compiler file graph:\n${program.output}`,
 		);
 	const files = new Set();
+	const generated = join(realpathSync(cache), "svelte");
 	// Include declaration wrappers: scriptless components need CSS checking too.
 	for (const emitted of program.output.split(/\r?\n/)) {
-		const path = relative(join(cache, "svelte"), emitted);
+		const script = /\.svelte\.svn\.(ts|js)$/.test(emitted);
+		const declaration = emitted.endsWith(".d.svelte.ts");
+		if (!script && !declaration) continue;
+		// The compiler resolves Windows short paths and workspace symlinks.
+		const path = relative(generated, realpathSync(emitted));
 		if (isAbsolute(path) || path === ".." || path.startsWith(`..${sep}`))
 			continue;
-		if (/\.svelte\.svn\.(ts|js)$/.test(path))
-			files.add(path.replace(/\.svn\.(ts|js)$/, ""));
-		else if (path.endsWith(".d.svelte.ts"))
-			files.add(`${path.slice(0, -".d.svelte.ts".length)}.svelte`);
+		if (script) files.add(path.replace(/\.svn\.(ts|js)$/, ""));
+		else files.add(`${path.slice(0, -".d.svelte.ts".length)}.svelte`);
 	}
 	const diagnostics = [];
 	for (const file of files) {
@@ -127,7 +131,7 @@ async function main() {
 			"Supported output formats: human-verbose, machine-verbose.",
 		);
 	}
-	const workspace = resolve(values.workspace);
+	const workspace = realpathSync(resolve(values.workspace));
 	const entry = join(
 		dirname(require.resolve("svelte-check-native/package.json")),
 		"bin",

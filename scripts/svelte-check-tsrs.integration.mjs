@@ -13,9 +13,10 @@ const modules = fileURLToPath(new URL("../node_modules", import.meta.url));
 // Failure modes: native compiler discovery rejects tsrs, mapped type/prop errors
 // disappear or point into generated files, Svelte/CSS warnings vanish, or a failed
 // compiler process is reported as a successful check, or deleted components
-// remain in the generated compiler inputs.
-test("tsrs checks Svelte components and preserves mapped diagnostics", () => {
-	const workspace = mkdtempSync(join(tmpdir(), "kubecove-svelte-tsrs-"));
+// remain in the generated compiler inputs, or path aliases hide CSS diagnostics.
+function checkSvelteDiagnostics(alias) {
+	const directory = mkdtempSync(join(tmpdir(), "kubecove-svelte-tsrs-"));
+	const workspace = alias ? join(directory, "workspace-alias") : directory;
 	const config = join(workspace, "tsconfig.json");
 	const app = join(workspace, "App.svelte");
 	const run = (env = {}, args = []) => {
@@ -41,6 +42,12 @@ test("tsrs checks Svelte components and preserves mapped diagnostics", () => {
 		return { status: result.status, output: result.stdout + result.stderr };
 	};
 	try {
+		if (alias)
+			symlinkSync(
+				directory,
+				workspace,
+				process.platform === "win32" ? "junction" : "dir",
+			);
 		symlinkSync(
 			modules,
 			join(workspace, "node_modules"),
@@ -175,6 +182,11 @@ test("tsrs checks Svelte components and preserves mapped diagnostics", () => {
 		assert.ok(!failed.output.includes(missingBinary), failed.output);
 		assert.doesNotMatch(failed.output, /COMPLETED/);
 	} finally {
-		rmSync(workspace, { recursive: true, force: true });
+		rmSync(directory, { recursive: true, force: true });
 	}
-});
+}
+
+test("tsrs preserves mapped Svelte diagnostics", () =>
+	checkSvelteDiagnostics(false));
+test("tsrs preserves mapped Svelte diagnostics through a workspace alias", () =>
+	checkSvelteDiagnostics(true));
