@@ -1,5 +1,7 @@
 use super::builtin_summary::{builtin_summary, BuiltinSummary};
-use crate::commands::helpers::{fetch_and_serialize, fetch_and_serialize_cluster, redact_secret};
+use crate::commands::helpers::{
+    fetch_and_serialize, fetch_and_serialize_cluster, fetch_resource, redact_secret,
+};
 use crate::commands::{diagnostic_field, BackendCancellationRegistry, ClusterAccess, FiniteRead};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ResourceDetailsFull};
@@ -29,8 +31,7 @@ pub async fn resource_details_from(
         "Service" => namespaced_details::<Service>(client, cluster, &name, namespace).await,
         "ConfigMap" => namespaced_details::<ConfigMap>(client, cluster, &name, namespace).await,
         "Secret" => {
-            let (secret, _discarded_yaml) =
-                fetch_and_serialize::<Secret>(client, namespace, &name).await?;
+            let secret = fetch_resource::<Secret>(client, namespace, &name).await?;
             secret_details_from_fetched(cluster, secret, Utc::now())
         }
         "PersistentVolumeClaim" => {

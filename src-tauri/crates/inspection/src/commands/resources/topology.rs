@@ -74,14 +74,6 @@ fn topology_edge_id(source: &str, target: &str, relation: &TopologyRelation) -> 
     format!("{source}=>{target}:{relation:?}")
 }
 
-pub(crate) fn topology_root_kinds() -> &'static [&'static str] {
-    &["Deployment", "DaemonSet", "StatefulSet", "CronJob"]
-}
-
-pub(crate) fn topology_standalone_kinds() -> &'static [&'static str] {
-    &["Service", "Ingress", "ConfigMap", "Secret"]
-}
-
 fn selectable_kind(kind: &str) -> bool {
     kind != "EndpointSlice"
 }
@@ -100,20 +92,19 @@ pub(crate) fn input_with_summary(
     }
 }
 
-fn owner_lookup_key(owner: &OwnerReferenceSummary) -> String {
-    owner.uid.clone()
+pub(super) fn input_node_id(input: &TopologyInputResource) -> String {
+    topology_node_id(
+        &input.summary.cluster,
+        input.summary.api_version.as_deref().unwrap_or("v1"),
+        &input.summary.kind,
+        input.summary.namespace.as_deref(),
+        &input.summary.name,
+    )
 }
 
 pub(super) fn node_from_input(input: &TopologyInputResource) -> TopologyNode {
-    let api_version = input.summary.api_version.as_deref().unwrap_or("v1");
     TopologyNode {
-        id: topology_node_id(
-            &input.summary.cluster,
-            api_version,
-            &input.summary.kind,
-            input.summary.namespace.as_deref(),
-            &input.summary.name,
-        ),
+        id: input_node_id(input),
         kind: input.summary.kind.clone(),
         name: input.summary.name.clone(),
         namespace: input.summary.namespace.clone(),
@@ -135,8 +126,7 @@ pub fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> ResourceTo
         .into_iter()
         .filter(|input| !is_ownership_noise(input))
     {
-        let node = node_from_input(&input);
-        deduped_inputs.insert(node.id, input);
+        deduped_inputs.insert(input_node_id(&input), input);
     }
     let inputs: Vec<TopologyInputResource> = deduped_inputs.into_values().collect();
 
@@ -158,7 +148,7 @@ pub fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> ResourceTo
         let Some(owner) = &input.owner else {
             continue;
         };
-        let Some(source) = uid_to_node.get(&owner_lookup_key(owner)) else {
+        let Some(source) = uid_to_node.get(&owner.uid) else {
             warnings.push(format!(
                 "{} {}/{} references missing owner {}/{}",
                 input.summary.kind,
@@ -169,12 +159,11 @@ pub fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> ResourceTo
             ));
             continue;
         };
-        let target = node_from_input(input).id;
         push_edge(
             &mut edges,
             &mut edge_keys,
             source.clone(),
-            target,
+            input_node_id(input),
             TopologyRelation::Owns,
         );
     }
@@ -220,13 +209,9 @@ pub(super) fn push_edge(
 }
 
 pub(super) fn topology_kind_rank(kind: &str) -> usize {
-    if topology_root_kinds().contains(&kind) {
-        return 0;
-    }
-    if topology_standalone_kinds().contains(&kind) {
-        return 0;
-    }
     match kind {
+        "Deployment" | "DaemonSet" | "StatefulSet" | "CronJob" | "Service" | "Ingress"
+        | "ConfigMap" | "Secret" => 0,
         "ReplicaSet" | "Job" => 1,
         "EndpointSlice" | "Pod" => 2,
         "PersistentVolumeClaim" => 3,
@@ -283,12 +268,11 @@ fn add_statefulset_pvc_edges(
         let Some(source) = uid_to_node.get(&owner.uid) else {
             continue;
         };
-        let target = node_from_input(pvc).id;
         push_edge(
             edges,
             edge_keys,
             source.clone(),
-            target,
+            input_node_id(pvc),
             TopologyRelation::Creates,
         );
     }

@@ -1,8 +1,9 @@
-use super::client::{RemoteConnection, MAX_TUNNEL_PAYLOAD_BYTES};
+use super::client::RemoteConnection;
 use kubecove_live::commands::{
     sessions::{target::validate_target, PortForwardRegistry},
     LiveSessionScope,
 };
+use kubecove_models::MAX_TUNNEL_PAYLOAD_BYTES;
 use kubecove_models::{
     AppError, AppErrorKind, CommandArgs, LiveSessionCleanupRequest, LiveSessionCleanupResult,
     PortForwardRequest, PortForwardSessionSummary,
@@ -149,15 +150,9 @@ impl RemoteTunnelRegistry {
         Ok(result)
     }
 
-    pub async fn close_all(&self, connection: Option<&RemoteConnection>) {
-        let stopped = self.forwards.stop_all();
-        if let Some(connection) = connection {
-            for forward_id in stopped {
-                let _ = connection
-                    .send_control_without_reply(unregister_control(&forward_id))
-                    .await;
-            }
-        }
+    /// Stops every local forward without telling the server, which is unreachable or closing.
+    pub fn close_all(&self) {
+        self.forwards.stop_all();
     }
 }
 

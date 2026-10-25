@@ -17,10 +17,19 @@ pub struct ServerSession {
     pub server_version: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RemoteCredentials {
     pub server_url: String,
     pub bearer_token: String,
     pub resume_token: String,
+}
+
+impl std::fmt::Debug for RemoteCredentials {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RemoteCredentials")
+            .field("server_url", &self.server_url)
+            .field("bearer_token", &"[REDACTED]")
+            .field("resume_token", &"[REDACTED]")
+            .finish()
+    }
 }

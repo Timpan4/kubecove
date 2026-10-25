@@ -11,7 +11,7 @@ use crate::{
     },
     models::{
         AppError, DiscoveredResourceKind, ResourceListRequest, ResourceScopeFailure,
-        ResourceScopeResult, ResourceSummary,
+        ResourceSummary,
     },
 };
 use futures_util::future::join_all;
@@ -115,14 +115,8 @@ pub fn resource_scope_fetch_plan(
 ) -> Result<Vec<(String, Option<String>)>, AppError> {
     let groups = group_requests(requests)?;
     Ok(groups
-        .into_values()
-        .flat_map(|group| {
-            let kind = match &group.kind {
-                ResourceScopeKind::Typed(kind) => format!("typed:{kind}"),
-                ResourceScopeKind::Dynamic(kind) => {
-                    format!("dynamic:{}:{}:{}", kind.api_version, kind.plural, kind.kind)
-                }
-            };
+        .into_iter()
+        .flat_map(|(kind, group)| {
             fetch_namespaces(&group)
                 .into_iter()
                 .map(move |namespace| (kind.clone(), namespace))
@@ -276,16 +270,17 @@ async fn resource_scope_result_from(
         }
     });
     let results = join_all(futures).await;
-    let mut scope = ResourceScopeResult::default();
     let mut batches = Vec::new();
+    let mut completed_requests = Vec::new();
+    let mut failures = Vec::new();
     for (request, fetched) in results {
         match fetched {
             Ok(rows) => {
                 batches.push(rows);
-                scope.completed_requests.push(request);
+                completed_requests.push(request);
             }
             Err(error) if error.kind == AppErrorKind::Forbidden => {
-                scope.failures.push(ResourceScopeFailure {
+                failures.push(ResourceScopeFailure {
                     cluster_context: cluster_context.clone(),
                     request,
                     error,
@@ -304,8 +299,8 @@ async fn resource_scope_result_from(
     let index = filter_flux_ownership_index(Arc::unwrap_or_clone(index), &requested_namespaces);
     Ok(ResourceScopeResponse {
         resources: SharedRows::new(batches, &index),
-        completed_requests: scope.completed_requests,
-        failures: scope.failures,
+        completed_requests,
+        failures,
     })
 }
 

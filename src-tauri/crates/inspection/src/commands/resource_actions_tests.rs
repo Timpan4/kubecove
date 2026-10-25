@@ -133,8 +133,21 @@ fn action_allowlist_rejects_retargeted_api_versions() {
 
 #[test]
 fn permission_errors_fail_closed_and_keep_the_action_visible() {
-    let denied = permission_from_review("patch", "deployments", Some(false), None);
-    let unknown = permission_from_review("patch", "deployments", None, Some("review failed"));
+    let denied = permission_from_review(
+        ResourceActionKind::Edit,
+        "patch",
+        "deployments",
+        Some(false),
+        None,
+    );
+    let unknown = permission_from_review(
+        ResourceActionKind::Restart,
+        "patch",
+        "deployments",
+        None,
+        Some("review failed"),
+    );
+    assert_eq!(unknown.action, ResourceActionKind::Restart);
     assert!(!denied.allowed);
     assert_eq!(denied.required_permission, "patch deployments");
     assert!(!unknown.allowed);

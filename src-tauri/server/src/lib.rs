@@ -222,11 +222,8 @@ fn configured_oidc(state: &AppState) -> Result<&oidc::Oidc, ApiError> {
     })
 }
 
-async fn oidc_login(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-) -> Result<Response, ApiError> {
-    configured_oidc(&state)?.start(&headers)
+async fn oidc_login(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
+    configured_oidc(&state)?.start()
 }
 
 async fn oidc_callback(
@@ -408,7 +405,9 @@ async fn invoke(
     }
 }
 
-async fn authentication_ended(
+/// Completes when the caller's access expires or its authentication is revoked; never when
+/// neither applies.
+pub(crate) async fn authentication_ended(
     identity: Option<&Extension<AccessIdentity>>,
     revoked: Option<&Extension<AuthenticationRevoked>>,
 ) {

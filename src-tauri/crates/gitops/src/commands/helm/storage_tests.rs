@@ -16,7 +16,7 @@ fn list_record_matches_full_decode_including_decoded_label_precedence_and_failur
         serde_json::json!({"name":"bad-version", "version":"invalid"}),
     ] {
         let encoded = STANDARD.encode(serde_json::to_vec(&release).unwrap());
-        let mut secret = Secret {
+        let secret = Secret {
             metadata: ObjectMeta {
                 name: Some("sh.helm.release.v1.label.v1".into()),
                 namespace: Some("tenant".into()),
@@ -33,8 +33,8 @@ fn list_record_matches_full_decode_including_decoded_label_precedence_and_failur
             )])),
             ..Secret::default()
         };
-        let full = secret_record("context", &mut secret).unwrap();
-        let projected = secret_list_record("context", &mut secret).unwrap();
+        let full = secret_record("context", &secret).unwrap();
+        let projected = secret_list_record("context", &secret).unwrap();
         assert_eq!(
             serde_json::to_vec(&full.summary).unwrap(),
             serde_json::to_vec(&projected.summary).unwrap()

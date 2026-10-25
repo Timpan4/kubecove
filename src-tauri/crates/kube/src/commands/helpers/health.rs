@@ -74,7 +74,7 @@ pub fn assess_kubernetes_health(summary: &mut ResourceSummary, health: ResourceH
             HealthAssessmentEvidence {
                 source: HealthAssessmentSource::Kubernetes,
                 raw: json!({ "status": summary.status, "ready": summary.ready }),
-                state: resource_health_state(health),
+                state: Some(resource_health_state(health)),
                 current: true,
                 reason: "Kubernetes status and readiness".to_string(),
             },
@@ -101,12 +101,12 @@ pub fn legacy_resource_health(state: HealthAssessmentState) -> ResourceHealth {
     }
 }
 
-fn resource_health_state(health: ResourceHealth) -> Option<HealthAssessmentState> {
+fn resource_health_state(health: ResourceHealth) -> HealthAssessmentState {
     match health {
-        ResourceHealth::Healthy => Some(HealthAssessmentState::Healthy),
-        ResourceHealth::Attention => Some(HealthAssessmentState::NeedsAttention),
-        ResourceHealth::Degraded => Some(HealthAssessmentState::Degraded),
-        ResourceHealth::Restarted | ResourceHealth::Unknown => Some(HealthAssessmentState::Unknown),
+        ResourceHealth::Healthy => HealthAssessmentState::Healthy,
+        ResourceHealth::Attention => HealthAssessmentState::NeedsAttention,
+        ResourceHealth::Degraded => HealthAssessmentState::Degraded,
+        ResourceHealth::Restarted | ResourceHealth::Unknown => HealthAssessmentState::Unknown,
     }
 }
 

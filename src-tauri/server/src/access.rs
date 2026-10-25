@@ -57,7 +57,7 @@ impl CloudflareAccess {
         validation.set_required_spec_claims(&["exp", "iss", "aud", "sub"]);
         validation.validate_nbf = true;
         validation.leeway = 0;
-        let _ = rustls::crypto::ring::default_provider().install_default();
+        crate::security::install_tls_provider();
         let client = reqwest::Client::builder()
             .https_only(true)
             .redirect(reqwest::redirect::Policy::none())

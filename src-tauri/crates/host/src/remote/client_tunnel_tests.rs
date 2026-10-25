@@ -210,7 +210,7 @@ async fn tunnelled_forwards_carry_the_server_source_key() {
         forward.kubeconfig_source_label.as_deref(),
         Some(SERVER_SOURCE_LABEL)
     );
-    server.connection.tunnels.close_all(None).await;
+    server.connection.tunnels.close_all();
 }
 
 #[tokio::test]
@@ -269,5 +269,5 @@ async fn scope_cleanup_stops_out_of_scope_tunnels_and_keeps_in_scope_ones() {
     TcpStream::connect((Ipv4Addr::LOCALHOST, kept.local_port))
         .await
         .expect("the in-scope laptop listener keeps accepting");
-    server.connection.tunnels.close_all(None).await;
+    server.connection.tunnels.close_all();
 }

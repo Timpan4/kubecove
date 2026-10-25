@@ -307,10 +307,10 @@ mod configmap_details_complete_inspection_40_keys {
     }
 }
 
-mod secret_details_discarded_yaml_redaction_and_dto {
+mod secret_details_redaction_and_dto {
     use super::*;
     #[codspeed_divan_compat::bench]
-    fn secret_details_discarded_yaml_redaction_and_dto(bencher: codspeed_divan_compat::Bencher) {
+    fn secret_details_redaction_and_dto(bencher: codspeed_divan_compat::Bencher) {
         let expected = secret_details(DOCUMENT_INPUT.secret.clone()).expect("Secret details");
         assert_detail_identity(
             &expected,

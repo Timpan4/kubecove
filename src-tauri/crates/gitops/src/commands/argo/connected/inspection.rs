@@ -143,7 +143,7 @@ pub(crate) fn inspector_from_application(
     })
 }
 
-fn kubernetes_comparison(resource: ArgoManagedResource) -> ArgoResourceComparison {
+pub(crate) fn kubernetes_comparison(resource: ArgoManagedResource) -> ArgoResourceComparison {
     ArgoResourceComparison {
         resource,
         exact: Some(false),
@@ -259,11 +259,19 @@ pub fn benchmark_connected_inspector(
 
 #[cfg(feature = "bench-support")]
 pub fn benchmark_kubernetes_inspector(
-    mut object: DynamicObject,
+    object: DynamicObject,
     cluster_context: &str,
     application: &ArgoApplicationRef,
 ) -> Result<ArgoApplicationInspector, AppError> {
-    let workspace_id = application.workspace_id.clone();
+    kubernetes_inspector_from_object(object, cluster_context, application.workspace_id.clone())
+}
+
+/// Builds the Kubernetes-only inspector after removing Secret fields from the Application.
+pub(crate) fn kubernetes_inspector_from_object(
+    mut object: DynamicObject,
+    cluster_context: &str,
+    workspace_id: Option<String>,
+) -> Result<ArgoApplicationInspector, AppError> {
     redact_secret_fields(&mut object.data);
     let mut inspector = inspector_from_application(&object)?;
     inspector.application.context = Some(cluster_context.to_string());

@@ -46,20 +46,9 @@ pub(crate) fn scoped_connection(
     source_key: &str,
 ) -> Result<Arc<ConnectedArgo>, AppError> {
     let workspace_id = required_workspace_id(workspace_id)?;
-    let connection = store
-        .connections
-        .lock()
-        .map_err(|_| {
-            AppError::new(
-                "Argo CD connection state unavailable",
-                AppErrorKind::ArgoConnection,
-            )
-        })?
-        .get(id)
-        .cloned()
-        .ok_or_else(|| {
-            AppError::new("Argo CD connection not found", AppErrorKind::ArgoConnection)
-        })?;
+    let connection = store.lock_connections()?.get(id).cloned().ok_or_else(|| {
+        AppError::new("Argo CD connection not found", AppErrorKind::ArgoConnection)
+    })?;
     if !in_scope(&connection, cluster_context, workspace_id, source_key) {
         return Err(scope_error());
     }
@@ -78,17 +67,7 @@ pub(crate) async fn acquire_connection_lease(
 ) -> Result<ConnectionLease, AppError> {
     let workspace_id = required_workspace_id(workspace_id)?;
     let gate = connection.gate.clone().lock_owned().await;
-    let current = store
-        .connections
-        .lock()
-        .map_err(|_| {
-            AppError::new(
-                "Argo CD connection state unavailable",
-                AppErrorKind::ArgoConnection,
-            )
-        })?
-        .get(id)
-        .cloned();
+    let current = store.lock_connections()?.get(id).cloned();
     let current_matches = current.is_some_and(|current| Arc::ptr_eq(&current, &connection));
     let scope_matches = in_scope(&connection, cluster_context, workspace_id, source_key);
     let generation_matches = connection.generation == expected_generation;

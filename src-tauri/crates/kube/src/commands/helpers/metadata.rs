@@ -1,4 +1,4 @@
-use crate::commands::helpers::k8s_timestamp_to_datetime;
+use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
 use crate::models::{HealthAssessment, OwnerReferenceSummary, ResourceHealth, ResourceSummary};
 
 mod flux_inventory;
@@ -12,7 +12,7 @@ pub use flux_inventory::{
 pub use flux_inventory::{
     flux_ownership_index_from_fetched_objects, MAX_FLUX_INVENTORY_ENTRIES, MAX_FLUX_OWNER_OBJECTS,
 };
-pub use ownership::extract_git_ops_owner;
+pub use ownership::{argo_app_name, extract_git_ops_owner};
 
 const LABEL_HELM_RELEASE_NAME: &str = "helm.sh/release";
 
@@ -63,12 +63,8 @@ pub fn base_resource_summary(
     age: String,
     health_assessment: HealthAssessment,
 ) -> ResourceSummary {
-    // Argo CD ownership is the git-ops owner when present, so derive it instead of rebuilding it.
     let git_ops_owner = extract_git_ops_owner(metadata);
-    let argo_app = git_ops_owner
-        .as_ref()
-        .filter(|owner| owner.provider == "argo")
-        .map(|owner| owner.name.clone());
+    let argo_app = argo_app_name(git_ops_owner.as_ref());
     ResourceSummary {
         kind: kind.to_string(),
         cluster: cluster.to_string(),
@@ -83,10 +79,7 @@ pub fn base_resource_summary(
         dynamic: None,
         health: ResourceHealth::Unknown,
         health_assessment,
-        created_at: metadata
-            .creation_timestamp
-            .as_ref()
-            .and_then(|t| k8s_timestamp_to_datetime(&t.0).map(|dt| dt.to_rfc3339())),
+        created_at: k8s_creation_timestamp_to_rfc3339(&metadata.creation_timestamp),
         status: None,
         ready: None,
         restarts: None,

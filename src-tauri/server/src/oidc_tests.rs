@@ -329,8 +329,8 @@ fn transaction_cookie_is_signed_expiring_and_bound_to_its_state() {
     assert!(verify_transaction(&format!("{token}x"), &key, unix_now()).is_err());
     assert!(verify_transaction(&token, &[8; 32], unix_now()).is_err());
     assert!(verify_transaction(&token, &key, transaction.expires_at).is_err());
-    assert!(!constant_time_state_matches("state-1", "state-2"));
-    assert!(constant_time_state_matches("state-1", "state-1"));
+    assert!(!equal_secret("state-1", "state-2"));
+    assert!(equal_secret("state-1", "state-1"));
 }
 
 #[test]
@@ -354,7 +354,7 @@ fn oidc_cookies_are_host_scoped_and_clearing_is_explicit() {
 async fn local_provider_completes_authorization_code_pkce_nonce_and_cookie_login() {
     let app_origin = "http://localhost:43129";
     let (oidc, provider) = mock::fixture(app_origin).await.unwrap();
-    let start = oidc.start(&HeaderMap::new()).unwrap();
+    let start = oidc.start().unwrap();
     assert_eq!(start.status(), StatusCode::OK);
     let transaction_cookie = start
         .headers()
@@ -634,7 +634,7 @@ async fn sign_in_without_forwarding_keeps_no_tokens_and_ends_with_the_id_token()
 }
 
 async fn pending_callback(oidc: &Oidc) -> (HeaderMap, Callback) {
-    let start = oidc.start(&HeaderMap::new()).unwrap();
+    let start = oidc.start().unwrap();
     let cookie = start
         .headers()
         .get(header::SET_COOKIE)

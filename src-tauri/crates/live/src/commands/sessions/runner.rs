@@ -37,7 +37,7 @@ async fn verify_pod_port_forward(
     client: Client,
     target: &PortForwardTarget,
 ) -> Result<(), AppError> {
-    let pods: Api<Pod> = Api::namespaced(client, &target.namespace);
+    let pods: Api<Pod> = Api::namespaced(client, &target.request.namespace);
     let forwarder = pods
         .portforward(&target.pod_name, &[target.pod_port])
         .await
@@ -102,7 +102,7 @@ async fn forward_connection(
 ) -> Result<(), AppError> {
     forward_pod_connection(
         client,
-        target.namespace,
+        target.request.namespace,
         target.pod_name,
         target.pod_port,
         local_stream,
@@ -132,20 +132,16 @@ pub(super) async fn start_pod_port_forward_in_registry(
     let (request, access) = validate_request(&request)?;
     let listener = registry.bind(request.local_port).await?;
     let target = resolve_port_forward_target(&access, request).await?;
-    let client = access.live_session_client(&target.cluster_context).await?;
+    let client = access
+        .live_session_client(&target.request.cluster_context)
+        .await?;
     verify_pod_port_forward(client.clone(), &target).await?;
 
     let session_id = registry.next_id();
+    // Each connection resolves the request again, so a Service forward follows Pod changes.
     let handle_request = ValidatedPortForwardRequest {
-        cluster_context: target.cluster_context.clone(),
-        kubeconfig_env_var: target.kubeconfig_env_var.clone(),
-        kubeconfig_source_key: target.kubeconfig_source_key.clone(),
-        kubeconfig_source_label: target.kubeconfig_source_label.clone(),
-        namespace: target.namespace.clone(),
-        target_kind: target.target_kind,
-        target_name: target.target_name.clone(),
-        remote_port: target.remote_port,
         local_port: Some(listener.local_port()),
+        ..target.request.clone()
     };
     let connection_session_id = session_id.clone();
     let connection_registry = registry.clone();

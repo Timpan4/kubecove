@@ -1,13 +1,14 @@
 use crate::commands::helpers::{
-    extract_git_ops_owner, extract_helm_release, extract_owner_ref,
-    k8s_creation_timestamp_to_rfc3339, legacy_resource_health,
+    argo_app_name, extract_git_ops_owner, extract_helm_release, extract_owner_ref,
+    k8s_creation_timestamp_to_rfc3339, k8s_timestamp_to_datetime, legacy_resource_health,
+    resource_age_at,
 };
 use crate::models::{
     argo_health_assessment, condition_evidence, evaluate_health, AppError, AppErrorKind,
     DiscoveredResourceKind, HealthAssessment, HealthAssessmentEvidence, HealthAssessmentInput,
     HealthAssessmentSource, HealthAssessmentState, ResourceHealth, ResourceSummary,
 };
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use kube::api::{ApiResource, DynamicObject};
 use serde_json::Value;
 
@@ -73,12 +74,8 @@ pub fn dynamic_resource_summary_at(
     object: &DynamicObject,
     now: DateTime<Utc>,
 ) -> ResourceSummary {
-    // Argo ownership is the provider-"argo" owner, so derive it from the one owner lookup.
     let git_ops_owner = extract_git_ops_owner(&object.metadata);
-    let argo_app = git_ops_owner
-        .as_ref()
-        .filter(|owner| owner.provider == "argo")
-        .map(|owner| owner.name.clone());
+    let argo_app = argo_app_name(git_ops_owner.as_ref());
     let mut summary = ResourceSummary {
         kind: resource_kind.kind.clone(),
         cluster: cluster_context.to_string(),
@@ -88,15 +85,8 @@ pub fn dynamic_resource_summary_at(
             .metadata
             .creation_timestamp
             .as_ref()
-            .map(|time| {
-                Utc.timestamp_opt(time.0.as_second(), 0)
-                    .single()
-                    .unwrap_or(now)
-            })
-            .map_or_else(
-                || "unknown".to_string(),
-                |time| crate::commands::helpers::resource_age_at(time, now),
-            ),
+            .map(|time| k8s_timestamp_to_datetime(&time.0).unwrap_or(now))
+            .map_or_else(|| "unknown".to_string(), |time| resource_age_at(time, now)),
         api_version: Some(resource_kind.api_version.clone()),
         group: Some(resource_kind.group.clone()),
         version: Some(resource_kind.version.clone()),
@@ -134,17 +124,6 @@ pub fn dynamic_resource_summary_at(
     summary
 }
 
-pub fn dynamic_resource_summaries(
-    cluster_context: &str,
-    resource_kind: &DiscoveredResourceKind,
-    objects: &[DynamicObject],
-) -> Vec<ResourceSummary> {
-    objects
-        .iter()
-        .map(|object| dynamic_resource_summary(cluster_context, resource_kind, object))
-        .collect()
-}
-
 #[cfg(feature = "bench-support")]
 pub fn dynamic_resource_summaries_at(
     cluster_context: &str,
@@ -158,7 +137,7 @@ pub fn dynamic_resource_summaries_at(
         .collect()
 }
 
-pub fn dynamic_health_assessment(data: &Value) -> HealthAssessment {
+fn dynamic_health_assessment(data: &Value) -> HealthAssessment {
     let conditions = data.pointer("/status/conditions").and_then(Value::as_array);
     let evidence: Vec<HealthAssessmentEvidence> = conditions
         .into_iter()

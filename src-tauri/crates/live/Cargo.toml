@@ -21,7 +21,6 @@ k8s-openapi = { workspace = true }
 chrono = { workspace = true }
 futures-util = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
 tauri = { workspace = true, optional = true }
 
 [dev-dependencies]

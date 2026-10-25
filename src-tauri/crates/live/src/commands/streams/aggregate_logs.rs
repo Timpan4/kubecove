@@ -122,7 +122,9 @@ pub(super) async fn run_aggregated_log_stream(
             return;
         }
 
-        let params = WatchParams::default().labels(&selector).timeout(30);
+        let params = WatchParams::default()
+            .labels(&selector)
+            .timeout(super::watch::WATCH_TIMEOUT_SECS);
         match pods.watch(&params, &resource_version).await {
             Ok(stream) => {
                 let mut stream = stream.boxed();

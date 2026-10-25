@@ -1,8 +1,9 @@
 use super::scope::scoped_connection;
+use super::transport::resource_actions_path;
 use super::{
     connected::{
         api_get, connected_application_path, inspector_from_application, kubernetes_application,
-        managed_resource, redact_secret_fields, state, text,
+        kubernetes_comparison, managed_resource, redact_secret_fields, state, text,
     },
     ArgoConnectionStore,
 };
@@ -88,12 +89,7 @@ fn kubernetes_selected_comparison(
                 && candidate.name == requested.name
         })
         .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
-    Ok(ArgoResourceComparison {
-        resource,
-        exact: Some(false),
-        provenance: Some("kubernetes-status-no-diff".into()),
-        ..Default::default()
-    })
+    Ok(kubernetes_comparison(resource))
 }
 
 fn connected_selected_comparison(
@@ -197,35 +193,10 @@ fn actions_path(
     application: &ArgoApplicationRef,
     resource: &ArgoManagedResource,
 ) -> Option<String> {
-    let version = required_identity(resource.version.as_deref())?;
-    let kind = required_identity(resource.kind.as_deref())?;
-    let name = required_identity(resource.name.as_deref())?;
-    let mut url =
-        reqwest::Url::parse("https://argo.invalid/api/v1/applications").expect("static URL");
-    url.path_segments_mut()
-        .expect("static URL")
-        .push(&application.name);
-    url.set_path(&format!("{}/resource/actions", url.path()));
-    let mut query = url.query_pairs_mut();
-    for (key, value) in [
-        ("appNamespace", application.namespace.as_deref()),
-        ("project", application.project.as_deref()),
-        ("group", resource.group.as_deref()),
-        ("version", Some(version)),
-        ("kind", Some(kind)),
-        ("namespace", resource.namespace.as_deref()),
-        ("resourceName", Some(name)),
-    ] {
-        if let Some(value) = value {
-            query.append_pair(key, value);
-        }
-    }
-    drop(query);
-    Some(format!(
-        "{}?{}",
-        url.path(),
-        url.query().unwrap_or_default()
-    ))
+    required_identity(resource.version.as_deref())?;
+    required_identity(resource.kind.as_deref())?;
+    required_identity(resource.name.as_deref())?;
+    Some(resource_actions_path(application, resource))
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use std::{
     },
     time::Duration,
 };
-use target::{PortForwardTarget, PortForwardTargetKind};
+use target::{PortForwardTarget, PortForwardTargetKind, ValidatedPortForwardRequest};
 use tokio::{
     net::TcpStream,
     time::{sleep, timeout},
@@ -32,15 +32,18 @@ const CURRENT_SOURCE: &str = "kubeconfigSource=current";
 
 fn test_target(cluster_context: &str, kubeconfig_source_key: Option<&str>) -> PortForwardTarget {
     PortForwardTarget {
-        cluster_context: cluster_context.to_string(),
-        kubeconfig_env_var: None,
-        kubeconfig_source_key: kubeconfig_source_key.map(str::to_string),
-        kubeconfig_source_label: None,
-        namespace: "default".to_string(),
-        target_kind: PortForwardTargetKind::Pod,
-        target_name: "api-0".to_string(),
+        request: ValidatedPortForwardRequest {
+            cluster_context: cluster_context.to_string(),
+            kubeconfig_env_var: None,
+            kubeconfig_source_key: kubeconfig_source_key.map(str::to_string),
+            kubeconfig_source_label: None,
+            namespace: "default".to_string(),
+            target_kind: PortForwardTargetKind::Pod,
+            target_name: "api-0".to_string(),
+            remote_port: 8080,
+            local_port: None,
+        },
         pod_name: "api-0".to_string(),
-        remote_port: 8080,
         pod_port: 8080,
     }
 }

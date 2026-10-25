@@ -144,5 +144,5 @@ built two summaries per typed workload object; it now calls the production input
 builder once. CodSpeed instrumented runs were not performed locally.
 
 ```sh
-cargo bench --manifest-path src-tauri/Cargo.toml --features bench-support --bench backend_hot_paths -- 'typed_resource_summaries_10000|pod_list_decode_projected_1000|ownership_topology_production_mapping_500_apps|details_complete_inspection|secret_details_discarded'
+cargo bench --manifest-path src-tauri/Cargo.toml --features bench-support --bench backend_hot_paths -- 'typed_resource_summaries_10000|pod_list_decode_projected_1000|ownership_topology_production_mapping_500_apps|details_complete_inspection|secret_details_'
 ```

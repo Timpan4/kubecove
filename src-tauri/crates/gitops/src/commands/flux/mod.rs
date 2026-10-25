@@ -1,8 +1,8 @@
 use crate::commands::gitops_crd::{
     discover_api_resources, find_discovered_api_resource, get_crd_object, list_crd_objects,
-    resource_metadata, resource_status, resource_yaml,
+    object_age, resource_metadata, resource_status, resource_yaml,
 };
-use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
+use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
 use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -11,7 +11,6 @@ use crate::models::{
     HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState, YamlEncoding,
     YamlViewMode,
 };
-use chrono::{TimeZone, Utc};
 use kube::api::{ApiResource, DynamicObject};
 use kube::Client;
 use serde_json::Value;
@@ -176,29 +175,21 @@ fn api_resource_from_flux_kind(kind: &FluxResourceKind) -> ApiResource {
     }
 }
 
-pub(crate) fn ready_status(data: &Value) -> Option<String> {
+fn ready_condition(data: &Value) -> Option<&Value> {
     data.get("status")
         .and_then(|status| status.get("conditions"))
         .and_then(Value::as_array)?
         .iter()
-        .find(|condition| {
-            condition
-                .get("type")
-                .and_then(Value::as_str)
-                .is_some_and(|value| value == "Ready")
-        })
-        .and_then(|condition| {
-            condition
-                .get("status")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .or_else(|| {
-                    condition
-                        .get("reason")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                })
-        })
+        .find(|condition| condition.get("type").and_then(Value::as_str) == Some("Ready"))
+}
+
+pub(crate) fn ready_status(data: &Value) -> Option<String> {
+    let condition = ready_condition(data)?;
+    condition
+        .get("status")
+        .and_then(Value::as_str)
+        .or_else(|| condition.get("reason").and_then(Value::as_str))
+        .map(str::to_string)
 }
 
 fn bounded_status(object: &DynamicObject) -> Option<Value> {
@@ -256,11 +247,7 @@ fn flux_summary(
         cluster: cluster_context.to_string(),
         name: object.metadata.name.clone().unwrap_or_default(),
         namespace: object.metadata.namespace.clone(),
-        age: resource_age(object.metadata.creation_timestamp.clone().map(|timestamp| {
-            Utc.timestamp_opt(timestamp.0.as_second(), 0)
-                .single()
-                .unwrap_or_else(Utc::now)
-        })),
+        age: object_age(&object.metadata),
         created_at: k8s_creation_timestamp_to_rfc3339(&object.metadata.creation_timestamp),
         resource_kind: resource_kind.clone(),
         health_assessment: flux_health_assessment(ready_status.as_deref()),
@@ -338,17 +325,8 @@ fn revision(data: &Value) -> Option<String> {
 }
 
 fn ready_message(data: &Value) -> Option<String> {
-    data.get("status")
-        .and_then(|status| status.get("conditions"))
-        .and_then(Value::as_array)?
-        .iter()
-        .find(|condition| {
-            condition
-                .get("type")
-                .and_then(Value::as_str)
-                .is_some_and(|value| value == "Ready")
-        })
-        .and_then(|condition| condition.get("message"))
+    ready_condition(data)?
+        .get("message")
         .and_then(Value::as_str)
         .map(str::to_string)
 }
