@@ -59,7 +59,9 @@
 	let terminal: ExecTerminalHandle | null = null;
 	let input: ReturnType<typeof createExecInput> | null = null;
 	let channel: ReturnType<typeof createPodExecChannel> | null = null;
-	let starting = false;
+	let startTask: Promise<void> | null = null;
+	// Bumped by stop and unmount so a start that has not opened its channel yet gives up.
+	let startRun = 0;
 	let fitFrame: number | null = null;
 
 	export function clear() {
@@ -70,8 +72,9 @@
 		void start();
 	}
 
-	export function stop() {
-		void stopSession();
+	/** Resolves false when the backend refused to stop the session. */
+	export function stop(): Promise<boolean> {
+		return stopSession();
 	}
 
 	onMount(() => {
@@ -94,8 +97,14 @@
 			observer.disconnect();
 			if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
 			const liveSessionId = sessionId;
+			// A start still in flight sees the closed channel and stops its own session.
+			startRun += 1;
 			closeChannel();
-			if (liveSessionId) void stopPodExec({ client, sessionId: liveSessionId, invalidateQueries });
+			// No tab is left to show a failure; the live-sessions indicator still lists
+			// any session the backend kept, with its own Stop.
+			if (liveSessionId) {
+				void stopPodExec({ client, sessionId: liveSessionId, invalidateQueries }).catch(() => undefined);
+			}
 			terminal?.dispose();
 			terminal = null;
 		};
@@ -159,67 +168,83 @@
 		}
 	}
 
-	async function start() {
-		if (starting) return;
-		starting = true;
+	function start(): Promise<void> {
+		startTask ??= runStart().finally(() => {
+			startTask = null;
+		});
+		return startTask;
+	}
+
+	async function runStart() {
+		const run = ++startRun;
+		error = null;
+		const previous = sessionId;
+		closeChannel();
+		if (previous && !(await stopBackendSession(previous))) return;
+		await tick();
+		if (run !== startRun) return;
+		terminal?.fit();
+		const built = buildPodExecRequest(
+			resource,
+			{
+				command,
+				container,
+				cols: terminal?.cols ?? DEFAULT_COLS,
+				rows: terminal?.rows ?? DEFAULT_ROWS,
+			},
+			kubeconfigSourceKey,
+		);
+		if (!built.ok) {
+			status = "error";
+			error = built.message;
+			return;
+		}
+		const nextChannel = createPodExecChannel(handleMessage, client);
+		channel = nextChannel;
+		status = "starting";
+		terminal?.writeln(
+			`${DIM}Starting ${podExecCommandLabel(command)} on ${podExecTarget(resource, container)}${RESET}\r\n`,
+		);
 		try {
-			error = null;
-			const previous = sessionId;
-			closeChannel();
-			if (previous) await stopPodExec({ client, sessionId: previous, invalidateQueries });
-			await tick();
-			terminal?.fit();
-			const built = buildPodExecRequest(
-				resource,
-				{
-					command,
-					container,
-					cols: terminal?.cols ?? DEFAULT_COLS,
-					rows: terminal?.rows ?? DEFAULT_ROWS,
-				},
-				kubeconfigSourceKey,
-			);
-			if (!built.ok) {
-				status = "error";
-				error = built.message;
+			const summary = await startPodExec({ client, request: built.request, channel: nextChannel, invalidateQueries });
+			if (channel !== nextChannel) {
+				// The tab stopped, closed, or unmounted, or the session already ended,
+				// while start was in flight. Stop it so no session runs without a tab.
+				await stopPodExec({ client, sessionId: summary.id, invalidateQueries }).catch(() => undefined);
 				return;
 			}
-			const { request } = built;
-			const nextChannel = createPodExecChannel(handleMessage, client);
-			channel = nextChannel;
-			status = "starting";
-			terminal?.writeln(
-				`${DIM}Starting ${podExecCommandLabel(command)} on ${podExecTarget(resource, container)}${RESET}\r\n`,
-			);
-			try {
-				const summary = await startPodExec({ client, request, channel: nextChannel, invalidateQueries });
-				// Channel messages may have advanced or torn down the session
-				// while the start call was in flight; never regress their state.
-				if (channel !== nextChannel) return;
-				if (!sessionId) {
-					sessionId = summary.id;
-					status = summary.status;
-				}
-			} catch (cause) {
-				closePodExecChannel(nextChannel);
-				if (channel === nextChannel) channel = null;
-				status = "error";
-				error = cause;
+			if (!sessionId) {
+				sessionId = summary.id;
+				status = summary.status;
 			}
-		} finally {
-			starting = false;
+		} catch (cause) {
+			closePodExecChannel(nextChannel);
+			if (channel === nextChannel) channel = null;
+			status = "error";
+			error = cause;
 		}
 	}
 
-	async function stopSession() {
-		const liveSessionId = sessionId;
-		if (!liveSessionId) return;
-		ended("stopped", "session stopped");
+	async function stopBackendSession(id: string): Promise<boolean> {
 		try {
-			await stopPodExec({ client, sessionId: liveSessionId, invalidateQueries });
+			await stopPodExec({ client, sessionId: id, invalidateQueries });
+			return true;
 		} catch (cause) {
 			error = cause;
+			return false;
 		}
+	}
+
+	async function stopSession(): Promise<boolean> {
+		const liveSessionId = sessionId;
+		const startInFlight = startTask;
+		if (!liveSessionId && !startInFlight) return true;
+		startRun += 1;
+		ended("stopped", "session stopped");
+		if (liveSessionId) return stopBackendSession(liveSessionId);
+		// Still starting: the start gives up or, once its channel is closed, stops its own session.
+		await startInFlight;
+		return true;
 	}
 </script>
 

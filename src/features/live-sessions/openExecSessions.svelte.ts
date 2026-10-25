@@ -13,7 +13,8 @@ export interface OpenExecSession {
 interface OpenExecTab {
 	sessions: () => OpenExecSession[];
 	show: (sessionId: string) => void;
-	stopAll: () => void;
+	/** Resolves false when any session could not be stopped. */
+	stopAll: () => Promise<boolean>;
 }
 
 interface StopPrompt {
@@ -50,7 +51,8 @@ export function hasOpenExecSessions(): boolean {
 /**
  * Resolves true when no exec session is open. Otherwise asks first; on agreement
  * every open session is stopped before resolving, so chained leave actions do not
- * prompt twice.
+ * prompt twice. Resolves false when a stop fails, keeping the user on the Pod
+ * where that tab shows the error.
  */
 export function confirmStoppingExecSessions(): Promise<boolean> {
 	const sessions = openExecSessions();
@@ -60,8 +62,13 @@ export function confirmStoppingExecSessions(): Promise<boolean> {
 		stopPrompt = {
 			sessions,
 			resolve: (stop) => {
-				if (stop) for (const tab of openTabs.values()) tab.stopAll();
-				resolve(stop);
+				if (!stop) {
+					resolve(false);
+					return;
+				}
+				void Promise.all([...openTabs.values()].map((tab) => tab.stopAll())).then((stopped) =>
+					resolve(stopped.every(Boolean)),
+				);
 			},
 		};
 	});

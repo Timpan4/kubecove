@@ -8,7 +8,6 @@
 
 <script lang="ts">
 	import { Pencil, TerminalSquare } from "lucide-svelte";
-	import { untrack } from "svelte";
 	import {
 		Badge,
 		Button,
@@ -37,9 +36,15 @@
 	} = $props();
 
 	let mode = $state<"shells" | "custom">("shells");
-	let customContainer = $state(untrack(() => defaultContainer));
+	let pickedContainer = $state<string | null>(null);
 	let argvText = $state("");
 	const argv = $derived(parsePodExecArgv(argvText));
+	// Fall back to the default when the picked container leaves the Pod's list.
+	const customContainer = $derived(
+		pickedContainer !== null && containers.some((container) => container.name === pickedContainer)
+			? pickedContainer
+			: defaultContainer,
+	);
 
 	const itemClass =
 		"flex h-7 w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-left text-xs outline-none hover:bg-muted focus-visible:bg-muted [&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:text-muted-foreground";
@@ -57,8 +62,8 @@
 	<div class="truncate px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
 		Open in <span class="font-mono">{podName}</span>{#if sourceLabel} · {sourceLabel}{/if}
 	</div>
-	<div role="menu" aria-label="New exec session">
-		{#each containers as container (container.name)}
+	{#each containers as container (container.name)}
+		<div role="group" aria-label={`Shells in ${containerLabel(container.name)}`}>
 			<div class="flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground">
 				<span class="truncate">{containerLabel(container.name)}</span>
 				{#if container.restartCount > 0}
@@ -68,22 +73,21 @@
 			{#each POD_EXEC_SHELLS as shell (shell[0])}
 				<button
 					type="button"
-					role="menuitem"
 					class={itemClass}
-					title={`${podExecCommandLabel(shell)} in ${containerLabel(container.name)}`}
+					aria-label={`Open ${podExecCommandLabel(shell)} in ${containerLabel(container.name)}`}
 					onclick={() => onOpen(container.name, [...shell])}
 				>
 					<TerminalSquare />
 					<span class="font-mono">{podExecCommandLabel(shell)}</span>
 				</button>
 			{/each}
-		{/each}
-		<div class="-mx-1 my-1 h-px bg-border"></div>
-		<button type="button" role="menuitem" class={itemClass} onclick={() => (mode = "custom")}>
-			<Pencil />
-			Custom command…
-		</button>
-	</div>
+		</div>
+	{/each}
+	<div class="-mx-1 my-1 h-px bg-border"></div>
+	<button type="button" class={itemClass} onclick={() => (mode = "custom")}>
+		<Pencil />
+		Custom command…
+	</button>
 {:else}
 	<div class="flex flex-col gap-2.5 p-1.5">
 		<div class="truncate text-[11px] text-muted-foreground">
@@ -95,7 +99,7 @@
 				<Select
 					value={customContainer}
 					items={containers.map((container) => ({ value: container.name, label: containerLabel(container.name) }))}
-					onValueChange={(value: string) => (customContainer = value)}
+					onValueChange={(value: string) => (pickedContainer = value)}
 				>
 					<SelectTrigger class="h-7 w-full" aria-label="Exec container">
 						<SelectValue />

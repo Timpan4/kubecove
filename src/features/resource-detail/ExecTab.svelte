@@ -92,8 +92,9 @@
 				activeKey = tab.key;
 				onShow();
 			},
-			stopAll: () => {
-				for (const tab of tabs) terminals[tab.key]?.stop();
+			stopAll: async () => {
+				const stopped = await Promise.all(tabs.map((tab) => terminals[tab.key]?.stop() ?? true));
+				return stopped.every(Boolean);
 			},
 		}),
 	);
@@ -186,7 +187,7 @@
 	<div class="flex min-h-72 flex-1 flex-col overflow-hidden rounded-lg border bg-card">
 		<div class="flex h-9 shrink-0 items-stretch gap-0.5 border-b pr-1.5 pl-1">
 			<div
-				role="tablist"
+				role="group"
 				aria-label="Exec sessions"
 				class="flex min-w-0 items-stretch overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 			>
@@ -199,8 +200,8 @@
 					>
 						<button
 							type="button"
-							role="tab"
-							aria-selected={selected}
+							aria-pressed={selected}
+							aria-label={`${tabLabel(tab)}, ${tab.status}`}
 							class="flex cursor-pointer items-center gap-1.5 rounded-sm whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
 							title={`${podExecCommandLabel(tab.command)} on ${podExecTarget(resource, tab.container)}`}
 							onclick={() => (activeKey = tab.key)}
@@ -255,7 +256,7 @@
 							class="text-destructive hover:text-destructive"
 							aria-label="Stop session"
 							title="Stop session"
-							onclick={() => terminals[activeTab.key]?.stop()}
+							onclick={() => void terminals[activeTab.key]?.stop()}
 						>
 							<Square />
 						</Button>
