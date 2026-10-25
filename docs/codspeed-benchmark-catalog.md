@@ -812,7 +812,7 @@ Production `features/resources` Svelte:
 
 `features/resource-detail` Svelte:
 
-`DeploymentRevisionsTab`, `DetailsTab`, `EventsTab`, `ExecTab`, `LogsTab`, `OperationsTab`, `PodExecLaunchForm`, `PodExecSessionList`, `PortForwardTab`, `ResourceDetailPanel`, `ResourceLogsPane`, `ResourceTimeline`, `ResourceYamlPane`, `SecretDataViewer`, `YamlTab`.
+`DeploymentRevisionsTab`, `DetailsTab`, `EventsTab`, `ExecSessionMenu`, `ExecSessionTerminal`, `ExecTab`, `LogsTab`, `OperationsTab`, `PortForwardTab`, `ResourceDetailPanel`, `ResourceLogsPane`, `ResourceTimeline`, `ResourceYamlPane`, `SecretDataViewer`, `YamlTab`.
 
 Development `features/resources/topology-spike`:
 
