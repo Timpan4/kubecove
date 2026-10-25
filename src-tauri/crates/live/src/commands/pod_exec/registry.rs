@@ -104,7 +104,8 @@ impl PodExecRegistry {
             .collect()
     }
 
-    pub(super) fn mark_status(&self, session_id: &str, status: &str, last_error: Option<String>) {
+    /// Updates a session's listed summary; a session that already ended is left alone.
+    fn update_summary(&self, session_id: &str, update: impl FnOnce(&mut PodExecSessionSummary)) {
         if let Some(session) = self
             .state
             .lock()
@@ -112,9 +113,15 @@ impl PodExecRegistry {
             .sessions
             .get_mut(session_id)
         {
-            session.summary.status = status.to_string();
-            session.summary.last_error = last_error;
+            update(&mut session.summary);
         }
+    }
+
+    pub(super) fn mark_status(&self, session_id: &str, status: &str, last_error: Option<String>) {
+        self.update_summary(session_id, |summary| {
+            summary.status = status.to_string();
+            summary.last_error = last_error;
+        });
     }
 
     pub(super) fn mark_running(&self, session_id: &str) {
@@ -126,30 +133,18 @@ impl PodExecRegistry {
     }
 
     pub(super) fn mark_terminal_size(&self, session_id: &str, size: PodExecTerminalSize) {
-        if let Some(session) = self
-            .state
-            .lock()
-            .expect("pod exec registry lock")
-            .sessions
-            .get_mut(session_id)
-        {
-            session.summary.terminal_cols = size.cols;
-            session.summary.terminal_rows = size.rows;
-        }
+        self.update_summary(session_id, |summary| {
+            summary.terminal_cols = size.cols;
+            summary.terminal_rows = size.rows;
+        });
     }
 
     pub(super) fn mark_exited(&self, session_id: &str, exit_code: Option<i32>) {
-        if let Some(session) = self
-            .state
-            .lock()
-            .expect("pod exec registry lock")
-            .sessions
-            .get_mut(session_id)
-        {
-            session.summary.status = "exited".to_string();
-            session.summary.finished_at = Some(Utc::now().to_rfc3339());
-            session.summary.exit_code = exit_code;
-        }
+        self.update_summary(session_id, |summary| {
+            summary.status = "exited".to_string();
+            summary.finished_at = Some(Utc::now().to_rfc3339());
+            summary.exit_code = exit_code;
+        });
     }
 
     pub(super) fn send_command(

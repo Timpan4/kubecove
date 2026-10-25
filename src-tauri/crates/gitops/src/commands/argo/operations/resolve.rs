@@ -1,35 +1,58 @@
-use super::super::connected::api_get;
+use super::super::applications::application_api_resource;
+use super::super::connected::{api_get, ConnectedArgo};
 use super::super::scope::scoped_connection;
+use super::super::ArgoConnectionStore;
 use super::payload::{application_path, sync_payload};
-use crate::commands::{gitops_crd::find_api_resource, ClusterAccess};
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ArgoOperationRequest};
 use kube::{api::Api, core::DynamicObject};
 use serde_json::{json, Value};
+use std::sync::Arc;
+
+pub(super) fn required_cluster_context(request: &ArgoOperationRequest) -> Result<&str, AppError> {
+    request.cluster_context.as_deref().ok_or_else(|| {
+        AppError::new(
+            "clusterContext required",
+            AppErrorKind::ArgoOperationUnavailable,
+        )
+    })
+}
+
+/// The live connection an operation names, checked against the request's cluster and the
+/// given workspace.
+pub(super) fn request_connection(
+    store: &ArgoConnectionStore,
+    access: &ClusterAccess,
+    request: &ArgoOperationRequest,
+    workspace_id: Option<&str>,
+) -> Result<Arc<ConnectedArgo>, AppError> {
+    scoped_connection(
+        store,
+        request.connection_id.as_deref().ok_or_else(|| {
+            AppError::new("Argo CD connection required", AppErrorKind::ArgoConnection)
+        })?,
+        required_cluster_context(request)?,
+        workspace_id,
+        access.source_key(),
+    )
+}
 
 pub(super) async fn resolve_request(
-    store: &super::super::ArgoConnectionStore,
+    store: &ArgoConnectionStore,
     access: &ClusterAccess,
     request: &ArgoOperationRequest,
 ) -> Result<(ArgoOperationRequest, Option<String>, Option<String>), AppError> {
     let (mut resolved, generation, instance_id) = if request.transport == "connected" {
-        let connection = scoped_connection(
+        let connection = request_connection(
             store,
-            request.connection_id.as_deref().ok_or_else(|| {
-                AppError::new("Argo CD connection required", AppErrorKind::ArgoConnection)
-            })?,
-            request.cluster_context.as_deref().ok_or_else(|| {
-                AppError::new(
-                    "clusterContext required",
-                    AppErrorKind::ArgoOperationUnavailable,
-                )
-            })?,
+            access,
+            request,
             request.application.workspace_id.as_deref(),
-            access.source_key(),
         )?;
         let value = api_get(
             &connection,
-            &application_path(&request.application, "", None),
+            &application_path(&request.application, &[], None),
         )
         .await?;
         let metadata = value.get("metadata").unwrap_or(&value);
@@ -76,38 +99,23 @@ pub(super) async fn resolve_request(
         return Ok((resolved, generation, instance_id));
     }
     let sync = if resolved.transport == "connected" {
-        let connection = scoped_connection(
+        let connection = request_connection(
             store,
-            resolved.connection_id.as_deref().ok_or_else(|| {
-                AppError::new("Argo CD connection required", AppErrorKind::ArgoConnection)
-            })?,
-            resolved.cluster_context.as_deref().ok_or_else(|| {
-                AppError::new(
-                    "clusterContext required",
-                    AppErrorKind::ArgoOperationUnavailable,
-                )
-            })?,
+            access,
+            &resolved,
             resolved.application.workspace_id.as_deref(),
-            access.source_key(),
         )?;
         api_get(
             &connection,
-            &application_path(&resolved.application, "", None),
+            &application_path(&resolved.application, &[], None),
         )
         .await?
         .pointer("/status/operationState/operation/sync")
         .cloned()
     } else {
-        let context = request.cluster_context.as_deref().ok_or_else(|| {
-            AppError::new(
-                "clusterContext required",
-                AppErrorKind::ArgoOperationUnavailable,
-            )
-        })?;
+        let context = required_cluster_context(request)?;
         let client = access.preview_client(context).await?;
-        let ar = find_api_resource(&client, "argoproj.io", "Application")
-            .await?
-            .ok_or_else(|| AppError::new("Application CRD not found", AppErrorKind::Cluster))?;
+        let ar = application_api_resource(&client).await?;
         Api::<DynamicObject>::namespaced_with(
             client,
             request.application.namespace.as_deref().ok_or_else(|| {

@@ -1,6 +1,9 @@
 use super::connected::ConnectedArgo;
 use crate::models::AppErrorKind;
-use crate::models::{normalize_service_tunnel_endpoint, AppError, ArgoServerEndpoint};
+use crate::models::{
+    normalize_service_tunnel_endpoint, AppError, ArgoApplicationRef, ArgoManagedResource,
+    ArgoServerEndpoint,
+};
 use futures_util::StreamExt;
 use reqwest::{Certificate, Client as HttpClient};
 use serde_json::Value;
@@ -9,17 +12,8 @@ use std::{net::SocketAddr, time::Duration};
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
 pub(crate) async fn api_get(connection: &ConnectedArgo, path: &str) -> Result<Value, AppError> {
-    let response = connection
-        .client
-        .get(url(&connection.profile.url, path)?)
-        .bearer_auth(&connection.token)
-        .send()
-        .await
-        .map_err(safe_http_error)?;
-    if !response.status().is_success() {
-        return Err(api_status_error(response).await);
-    }
-    response_json(response).await
+    let request = connection.client.get(url(&connection.profile.url, path)?);
+    send_api(connection, request).await
 }
 
 pub(crate) async fn api_post(
@@ -27,24 +21,25 @@ pub(crate) async fn api_post(
     path: &str,
     payload: Value,
 ) -> Result<Value, AppError> {
-    let response = connection
+    let request = connection
         .client
         .post(url(&connection.profile.url, path)?)
-        .bearer_auth(&connection.token)
-        .json(&payload)
-        .send()
-        .await
-        .map_err(safe_http_error)?;
-    if !response.status().is_success() {
-        return Err(api_status_error(response).await);
-    }
-    response_json(response).await
+        .json(&payload);
+    send_api(connection, request).await
 }
 
 pub(crate) async fn api_delete(connection: &ConnectedArgo, path: &str) -> Result<Value, AppError> {
-    let response = connection
+    let request = connection
         .client
-        .delete(url(&connection.profile.url, path)?)
+        .delete(url(&connection.profile.url, path)?);
+    send_api(connection, request).await
+}
+
+async fn send_api(
+    connection: &ConnectedArgo,
+    request: reqwest::RequestBuilder,
+) -> Result<Value, AppError> {
+    let response = request
         .bearer_auth(&connection.token)
         .send()
         .await
@@ -216,6 +211,52 @@ pub(crate) fn normalize_endpoint(
             tls_server_name,
         ),
     }
+}
+
+/// `/api/v1/applications/{name}/{segments}?{query}`, relative to the Argo CD base URL.
+/// Every segment and query value is percent-encoded, absent query values are skipped, and
+/// the `?` is always present.
+pub(super) fn application_api_path(
+    name: &str,
+    segments: &[&str],
+    query: &[(&str, Option<&str>)],
+) -> String {
+    let mut path = reqwest::Url::parse("https://argo.invalid/")
+        .expect("constant Argo CD API base URL is valid");
+    path.path_segments_mut()
+        .expect("constant Argo CD API base URL has a path")
+        .extend(["api", "v1", "applications"])
+        .push(name)
+        .extend(segments);
+    {
+        let mut pairs = path.query_pairs_mut();
+        for (key, value) in query {
+            if let Some(value) = value {
+                pairs.append_pair(key, value);
+            }
+        }
+    }
+    format!("{}?{}", path.path(), path.query().unwrap_or_default())
+}
+
+/// The resource-actions listing for one managed resource of an application.
+pub(super) fn resource_actions_path(
+    application: &ArgoApplicationRef,
+    resource: &ArgoManagedResource,
+) -> String {
+    application_api_path(
+        &application.name,
+        &["resource", "actions"],
+        &[
+            ("appNamespace", application.namespace.as_deref()),
+            ("project", application.project.as_deref()),
+            ("group", resource.group.as_deref()),
+            ("version", resource.version.as_deref()),
+            ("kind", resource.kind.as_deref()),
+            ("namespace", resource.namespace.as_deref()),
+            ("resourceName", resource.name.as_deref()),
+        ],
+    )
 }
 
 pub(super) fn url(base: &str, path: &str) -> Result<String, AppError> {

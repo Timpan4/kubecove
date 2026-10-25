@@ -10,6 +10,14 @@ use crate::models::AppErrorKind;
 use crate::models::{AppError, YamlEncoding, YamlViewMode};
 use crate::runtime::State;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
+use k8s_openapi::api::batch::v1::{CronJob, Job};
+use k8s_openapi::api::core::v1::{
+    ConfigMap, Node, PersistentVolume, PersistentVolumeClaim, Pod, Secret, Service,
+};
+use k8s_openapi::api::networking::v1::Ingress;
+use k8s_openapi::api::storage::v1::StorageClass;
+use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::Api;
 
 pub async fn reveal_secret_data_value(
@@ -49,136 +57,102 @@ pub async fn resource_yaml_from(
     let client = access.read_client(&cluster_context).await?;
     let mode = yaml_view_mode.unwrap_or_default();
     let encoding = yaml_encoding.unwrap_or_default();
-    match kind.as_str() {
+    let ns = namespace.as_deref();
+    let name = name.as_str();
+    let yaml = match kind.as_str() {
         "Pod" => {
-            let (_pod, yaml) =
-                fetch_and_serialize_with_encoding::<k8s_openapi::api::core::v1::Pod>(
-                    client,
-                    namespace.as_deref(),
-                    &name,
-                    mode,
-                    encoding,
-                )
-                .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<Pod>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "Deployment" => {
-            let (_deploy, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::apps::v1::Deployment,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<Deployment>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "ReplicaSet" => {
-            let (_rs, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::apps::v1::ReplicaSet,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<ReplicaSet>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "Service" => {
-            let (_svc, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::core::v1::Service,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<Service>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "ConfigMap" => {
-            let (_cm, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::core::v1::ConfigMap,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<ConfigMap>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "StatefulSet" => {
-            let (_ss, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::apps::v1::StatefulSet,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<StatefulSet>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "DaemonSet" => {
-            let (_ds, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::apps::v1::DaemonSet,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<DaemonSet>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "Ingress" => {
-            let (_ing, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::networking::v1::Ingress,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<Ingress>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "Secret" => {
-            let secret = fetch_resource::<k8s_openapi::api::core::v1::Secret>(
-                client,
-                namespace.as_deref(),
-                &name,
-            )
-            .await?;
-            serialize_secret_resource_document(secret, mode, encoding)
+            let secret = fetch_resource::<Secret>(client, ns, name).await?;
+            serialize_secret_resource_document(secret, mode, encoding)?
         }
         "PersistentVolumeClaim" => {
-            let (_pvc, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::core::v1::PersistentVolumeClaim,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<PersistentVolumeClaim>(
+                client, ns, name, mode, encoding,
+            )
+            .await?
+            .1
         }
         "Job" => {
-            let (_job, yaml) =
-                fetch_and_serialize_with_encoding::<k8s_openapi::api::batch::v1::Job>(
-                    client,
-                    namespace.as_deref(),
-                    &name,
-                    mode,
-                    encoding,
-                )
-                .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<Job>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "CronJob" => {
-            let (_cj, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::batch::v1::CronJob,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<CronJob>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "Node" => {
-            let (_node, yaml) = fetch_and_serialize_cluster_with_encoding::<
-                k8s_openapi::api::core::v1::Node,
-            >(client, &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_cluster_with_encoding::<Node>(client, name, mode, encoding)
+                .await?
+                .1
         }
         "StorageClass" => {
-            let (_sc, yaml) = fetch_and_serialize_cluster_with_encoding::<
-                k8s_openapi::api::storage::v1::StorageClass,
-            >(client, &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_cluster_with_encoding::<StorageClass>(client, name, mode, encoding)
+                .await?
+                .1
         }
         "PersistentVolume" => {
-            let (_pv, yaml) = fetch_and_serialize_cluster_with_encoding::<
-                k8s_openapi::api::core::v1::PersistentVolume,
-            >(client, &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_cluster_with_encoding::<PersistentVolume>(
+                client, name, mode, encoding,
+            )
+            .await?
+            .1
         }
         "CustomResourceDefinition" => {
-            let (_crd, yaml) = fetch_and_serialize_cluster_with_encoding::<
-                k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition,
-            >(client, &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_cluster_with_encoding::<CustomResourceDefinition>(
+                client, name, mode, encoding,
+            )
+            .await?
+            .1
         }
-        _ => Err(AppError::new(
-            format!("unsupported resource kind: {kind}"),
-            AppErrorKind::Cluster,
-        )),
-    }
+        _ => {
+            return Err(AppError::new(
+                format!("unsupported resource kind: {kind}"),
+                AppErrorKind::Cluster,
+            ))
+        }
+    };
+    Ok(yaml)
 }
 
 pub fn serialize_secret_resource_document(
@@ -186,7 +160,6 @@ pub fn serialize_secret_resource_document(
     mode: YamlViewMode,
     encoding: YamlEncoding,
 ) -> Result<String, AppError> {
-    let _discarded_first_document = serialize_resource_document(&secret, mode, encoding)?;
     redact_secret(&mut secret);
     serialize_resource_document(&secret, mode, encoding)
 }

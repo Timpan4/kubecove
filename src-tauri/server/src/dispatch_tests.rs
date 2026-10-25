@@ -2,6 +2,30 @@ use super::*;
 use kubecove_lib::models::{CommandTransport, DECLARED_COMMANDS};
 use serde_json::json;
 
+#[test]
+fn accepts_only_safe_server_channel_markers() {
+    let channels = Arc::new(ChannelHub::default());
+    let marker = |value: &str| {
+        let payload = json!({ "channel": value });
+        channel::<Value>(CommandArgs::new(&payload).unwrap(), &channels).map(|_| ())
+    };
+    assert!(marker("__KUBECOVE_CHANNEL__:42").is_ok());
+    assert!(marker("__KUBECOVE_CHANNEL__:9007199254740991").is_ok());
+    for invalid in [
+        "__TAURI_CHANNEL__:42",
+        "__KUBECOVE_CHANNEL__:-1",
+        "__KUBECOVE_CHANNEL__:4x",
+        "__KUBECOVE_CHANNEL__:9007199254740992",
+    ] {
+        let error = marker(invalid).unwrap_err();
+        assert_eq!(
+            (error.kind, error.message.as_str()),
+            (AppErrorKind::Validation, "invalid channel id"),
+            "{invalid}"
+        );
+    }
+}
+
 // Probes stop at argument decoding, so no command function runs.
 #[tokio::test]
 async fn every_declared_command_reaches_its_transport_decision_and_declared_keys() {

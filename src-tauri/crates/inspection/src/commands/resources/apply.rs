@@ -3,14 +3,10 @@ pub(crate) mod linting;
 pub(crate) mod validation;
 
 use crate::commands::{helpers::serialize_resource_document, ClusterAccess};
-use crate::models::{
-    AppError, KubernetesYamlLintResult, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
-    YamlViewMode,
-};
+use crate::models::{AppError, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlViewMode};
 use kube::api::Patch;
 
 use execution::{apply_api, apply_error, apply_patch_params};
-use linting::lint_kubernetes_yaml_with_kubeconform;
 use validation::validate_yaml_apply;
 
 pub async fn prepare_yaml_apply(request: YamlApplyRequest) -> Result<YamlApplyPreview, AppError> {
@@ -65,12 +61,6 @@ pub async fn apply_yaml(request: YamlApplyRequest) -> Result<YamlApplyResult, Ap
         target: validated.target,
         applied_yaml,
     })
-}
-
-pub async fn lint_kubernetes_yaml(
-    request: YamlApplyRequest,
-) -> Result<KubernetesYamlLintResult, AppError> {
-    lint_kubernetes_yaml_with_kubeconform(request).await
 }
 
 #[cfg(test)]

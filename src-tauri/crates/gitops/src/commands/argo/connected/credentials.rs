@@ -35,10 +35,20 @@ fn credential_key(profile: &ArgoConnectionProfile) -> String {
         ),
     }
 }
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct StoredCredential {
     pub(super) token: String,
     generation: String,
+}
+
+impl std::fmt::Debug for StoredCredential {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("StoredCredential")
+            .field("token", &"[REDACTED]")
+            .field("generation", &self.generation)
+            .finish()
+    }
 }
 
 pub(super) trait CredentialStore {

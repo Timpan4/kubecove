@@ -1,3 +1,4 @@
+use super::super::scope::scoped_connection;
 use super::super::session::SecureStore;
 use super::payload::resource_action_path;
 use super::resolve::{recorded_retry, recorded_sync_payload};
@@ -170,6 +171,26 @@ async fn rejected_lease_tombstones_the_reviewed_session() {
 }
 
 #[test]
+fn operation_paths_without_query_values_keep_the_query_separator() {
+    let application = ArgoApplicationRef {
+        name: "demo".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        application_path(&application, &[], None),
+        "/api/v1/applications/demo?"
+    );
+    assert_eq!(
+        application_path(&application, &[], Some("hard")),
+        "/api/v1/applications/demo?refresh=hard"
+    );
+    assert_eq!(
+        application_path(&application, &["resource", "actions", "v2"], None),
+        "/api/v1/applications/demo/resource/actions/v2?"
+    );
+}
+
+#[test]
 fn operation_paths_encode_application_and_resource_identity() {
     let application = ArgoApplicationRef {
         name: "app/a?#".into(),
@@ -178,7 +199,7 @@ fn operation_paths_encode_application_and_resource_identity() {
         ..Default::default()
     };
     assert_eq!(
-        application_path(&application, "/sync", None),
+        application_path(&application, &["sync"], None),
         "/api/v1/applications/app%2Fa%3F%23/sync?appNamespace=app+ns%2F%26%3F%23&project=project%2F%26%3F%23"
     );
     let path = resource_action_path(&ArgoOperationRequest {

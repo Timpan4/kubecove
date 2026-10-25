@@ -17,7 +17,7 @@ use kube::{client::ClientBuilder, Client, Config};
 use std::{future::Future, time::Duration};
 use tokio_util::sync::CancellationToken;
 
-const FINITE_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
+const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(super) async fn client(
     source: &KubeconfigSource,
@@ -32,7 +32,7 @@ pub(super) async fn client(
             Fallback::Refuse
         }
     };
-    let fingerprint = client_cache::fingerprint_files(&source.effective_kubeconfig_paths()?);
+    let fingerprint = client_cache::fingerprint_files(&source.effective_kubeconfig_paths());
     match intent {
         ClientIntent::Read | ClientIntent::Preview => {
             finite_client(source, source_key, cluster_context, fingerprint, fallback).await
@@ -44,7 +44,7 @@ pub(super) async fn client(
                 return Ok(client);
             }
             let mut config = source.config_for_context(cluster_context, fallback).await?;
-            config.read_timeout = Some(FINITE_REQUEST_READ_TIMEOUT);
+            config.read_timeout = Some(REQUEST_READ_TIMEOUT);
             let client = build_client(config)?;
             client_cache::store_operation_client(
                 source_key.to_string(),
@@ -91,7 +91,7 @@ async fn finite_client(
         &generation.token,
     )
     .await?;
-    config.read_timeout = Some(FINITE_REQUEST_READ_TIMEOUT);
+    config.read_timeout = Some(REQUEST_READ_TIMEOUT);
     let bearer = forwarded_bearer_layer()?;
     let client = ClientBuilder::try_from(config)
         .map_err(AppError::from)?

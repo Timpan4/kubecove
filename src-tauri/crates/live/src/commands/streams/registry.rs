@@ -189,7 +189,12 @@ impl StreamRegistry {
     ) -> (String, StreamBroadcaster, bool) {
         let watch_key = resource_watch_key(source_key, cluster_context, key);
         let mut state = self.state.lock().expect("stream registry lock");
-        remove_empty_resource_watch(&mut state, &watch_key);
+        remove_watch_when(
+            &mut state.resource_watches,
+            &watch_key,
+            |watch| watch.broadcaster.is_empty(),
+            "watch_cleanup kind=resource",
+        );
         let mut started = false;
         let watch = state
             .resource_watches
@@ -225,21 +230,13 @@ impl StreamRegistry {
         broadcaster: &StreamBroadcaster,
         handle: JoinHandle<()>,
     ) {
-        if let Some(watch) = self
-            .state
-            .lock()
-            .expect("stream registry lock")
-            .resource_watches
-            .get_mut(key)
-        {
-            if Arc::ptr_eq(&watch.broadcaster.subscribers, &broadcaster.subscribers)
-                && watch.handle.is_none()
-            {
-                watch.handle = Some(handle);
-                return;
-            }
+        let rejected = {
+            let mut state = self.state.lock().expect("stream registry lock");
+            attach_watch_handle(&mut state.resource_watches, key, broadcaster, handle)
+        };
+        if let Some(handle) = rejected {
+            handle.abort();
         }
-        handle.abort();
     }
 
     pub(super) fn subscribe_event(
@@ -254,7 +251,12 @@ impl StreamRegistry {
     ) -> (String, StreamBroadcaster, bool) {
         let watch_key = event_watch_key(source_key, cluster_context, kind, name, namespace);
         let mut state = self.state.lock().expect("stream registry lock");
-        remove_empty_event_watch(&mut state, &watch_key);
+        remove_watch_when(
+            &mut state.event_watches,
+            &watch_key,
+            |watch| watch.broadcaster.is_empty(),
+            "watch_cleanup kind=events",
+        );
         let mut started = false;
         let watch = state
             .event_watches
@@ -285,21 +287,13 @@ impl StreamRegistry {
         broadcaster: &StreamBroadcaster,
         handle: JoinHandle<()>,
     ) {
-        if let Some(watch) = self
-            .state
-            .lock()
-            .expect("stream registry lock")
-            .event_watches
-            .get_mut(key)
-        {
-            if Arc::ptr_eq(&watch.broadcaster.subscribers, &broadcaster.subscribers)
-                && watch.handle.is_none()
-            {
-                watch.handle = Some(handle);
-                return;
-            }
+        let rejected = {
+            let mut state = self.state.lock().expect("stream registry lock");
+            attach_watch_handle(&mut state.event_watches, key, broadcaster, handle)
+        };
+        if let Some(handle) = rejected {
+            handle.abort();
         }
-        handle.abort();
     }
 
     pub(super) fn insert_handles(&self, stream_id: String, handles: Vec<JoinHandle<()>>) {
@@ -318,33 +312,21 @@ impl StreamRegistry {
         match subscription {
             StreamSubscription::Resources(keys) => {
                 for key in keys {
-                    let should_remove = state
-                        .resource_watches
-                        .get(&key)
-                        .is_some_and(|watch| watch.broadcaster.remove(stream_id) == 0);
-                    if should_remove {
-                        if let Some(mut watch) = state.resource_watches.remove(&key) {
-                            if let Some(handle) = watch.handle.take() {
-                                handle.abort();
-                            }
-                            eprintln!("[kubecove:backend] watch_stop kind=resource key={key}");
-                        }
-                    }
+                    remove_watch_when(
+                        &mut state.resource_watches,
+                        &key,
+                        |watch| watch.broadcaster.remove(stream_id) == 0,
+                        "watch_stop kind=resource",
+                    );
                 }
             }
             StreamSubscription::Events(key) => {
-                let should_remove = state
-                    .event_watches
-                    .get(&key)
-                    .is_some_and(|watch| watch.broadcaster.remove(stream_id) == 0);
-                if should_remove {
-                    if let Some(mut watch) = state.event_watches.remove(&key) {
-                        if let Some(handle) = watch.handle.take() {
-                            handle.abort();
-                        }
-                        eprintln!("[kubecove:backend] watch_stop kind=events key={key}");
-                    }
-                }
+                remove_watch_when(
+                    &mut state.event_watches,
+                    &key,
+                    |watch| watch.broadcaster.remove(stream_id) == 0,
+                    "watch_stop kind=events",
+                );
             }
             StreamSubscription::Handles(handles) => {
                 for handle in handles {
@@ -356,33 +338,40 @@ impl StreamRegistry {
     }
 }
 
-fn remove_empty_resource_watch(state: &mut RegistryState, key: &str) {
-    let should_remove = state
-        .resource_watches
-        .get(key)
-        .is_some_and(|watch| watch.broadcaster.is_empty());
-    if should_remove {
-        if let Some(mut watch) = state.resource_watches.remove(key) {
-            if let Some(handle) = watch.handle.take() {
-                handle.abort();
-            }
-            eprintln!("[kubecove:backend] watch_cleanup kind=resource key={key}");
+/// Keeps the watch task only when it still belongs to the broadcaster that started it, and
+/// otherwise hands it back so the caller can abort it after releasing the registry lock.
+#[must_use]
+fn attach_watch_handle(
+    watches: &mut HashMap<String, SharedWatch>,
+    key: &str,
+    broadcaster: &StreamBroadcaster,
+    handle: JoinHandle<()>,
+) -> Option<JoinHandle<()>> {
+    if let Some(watch) = watches.get_mut(key) {
+        if Arc::ptr_eq(&watch.broadcaster.subscribers, &broadcaster.subscribers)
+            && watch.handle.is_none()
+        {
+            watch.handle = Some(handle);
+            return None;
         }
     }
+    Some(handle)
 }
 
-fn remove_empty_event_watch(state: &mut RegistryState, key: &str) {
-    let should_remove = state
-        .event_watches
-        .get(key)
-        .is_some_and(|watch| watch.broadcaster.is_empty());
-    if should_remove {
-        if let Some(mut watch) = state.event_watches.remove(key) {
-            if let Some(handle) = watch.handle.take() {
-                handle.abort();
-            }
-            eprintln!("[kubecove:backend] watch_cleanup kind=events key={key}");
+fn remove_watch_when(
+    watches: &mut HashMap<String, SharedWatch>,
+    key: &str,
+    should_remove: impl FnOnce(&SharedWatch) -> bool,
+    log_label: &str,
+) {
+    if !watches.get(key).is_some_and(should_remove) {
+        return;
+    }
+    if let Some(mut watch) = watches.remove(key) {
+        if let Some(handle) = watch.handle.take() {
+            handle.abort();
         }
+        eprintln!("[kubecove:backend] {log_label} key={key}");
     }
 }
 

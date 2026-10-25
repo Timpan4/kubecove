@@ -174,6 +174,15 @@ pub fn evaluate_health(mut input: HealthAssessmentInput) -> HealthAssessment {
     }
 }
 
+fn argo_health_state(status: &str, fully_healthy: bool) -> HealthAssessmentState {
+    match status {
+        "Missing" | "Degraded" => HealthAssessmentState::Degraded,
+        "Progressing" => HealthAssessmentState::NeedsAttention,
+        "Healthy" if fully_healthy => HealthAssessmentState::Healthy,
+        _ => HealthAssessmentState::Unknown,
+    }
+}
+
 pub fn argo_health_assessment(
     health_status: Option<&str>,
     sync_status: Option<&str>,
@@ -184,12 +193,7 @@ pub fn argo_health_assessment(
         evidence.push(HealthAssessmentEvidence {
             source: HealthAssessmentSource::ArgoHealth,
             raw: Value::String(status.to_string()),
-            state: match status {
-                "Missing" | "Degraded" => Some(HealthAssessmentState::Degraded),
-                "Progressing" => Some(HealthAssessmentState::NeedsAttention),
-                "Healthy" if fully_healthy => Some(HealthAssessmentState::Healthy),
-                _ => Some(HealthAssessmentState::Unknown),
-            },
+            state: Some(argo_health_state(status, fully_healthy)),
             current: true,
             reason: format!("Argo CD health is {status}"),
         });
@@ -236,12 +240,7 @@ pub fn argo_application_set_health_assessment(
         evidence.push(HealthAssessmentEvidence {
             source: HealthAssessmentSource::ArgoHealth,
             raw: Value::String(status.to_string()),
-            state: match status {
-                "Missing" | "Degraded" => Some(HealthAssessmentState::Degraded),
-                "Progressing" => Some(HealthAssessmentState::NeedsAttention),
-                "Healthy" if fully_healthy => Some(HealthAssessmentState::Healthy),
-                _ => Some(HealthAssessmentState::Unknown),
-            },
+            state: Some(argo_health_state(status, fully_healthy)),
             current: true,
             reason: format!("Argo CD ApplicationSet health is {status}"),
         });

@@ -1,6 +1,4 @@
-use super::target::{
-    validate_port, PortForwardTarget, PortForwardTargetKind, ValidatedPortForwardRequest,
-};
+use super::target::{validate_port, PortForwardTarget, ValidatedPortForwardRequest};
 use crate::commands::ClusterAccess;
 use crate::models::AppError;
 use crate::models::AppErrorKind;
@@ -82,16 +80,10 @@ pub(super) async fn resolve_service_request_target(
     )
     .await?;
 
+    // resolve_service_target resolves inside the request's namespace.
     Ok(PortForwardTarget {
-        cluster_context: request.cluster_context,
-        kubeconfig_env_var: request.kubeconfig_env_var,
-        kubeconfig_source_key: request.kubeconfig_source_key,
-        kubeconfig_source_label: request.kubeconfig_source_label,
-        namespace: resolved.namespace,
-        target_kind: PortForwardTargetKind::Service,
-        target_name: request.target_name,
+        request,
         pod_name: resolved.pod_name,
-        remote_port: request.remote_port,
         pod_port: resolved.pod_port,
     })
 }

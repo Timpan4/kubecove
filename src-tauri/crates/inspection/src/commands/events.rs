@@ -8,7 +8,7 @@ use crate::runtime::State;
 use chrono::{DateTime, Utc};
 use kube::api::Api;
 
-fn event_timestamp(event: &k8s_openapi::api::core::v1::Event) -> Option<DateTime<Utc>> {
+pub(super) fn event_timestamp(event: &k8s_openapi::api::core::v1::Event) -> Option<DateTime<Utc>> {
     event
         .event_time
         .as_ref()
@@ -34,7 +34,7 @@ fn event_timestamp(event: &k8s_openapi::api::core::v1::Event) -> Option<DateTime
         })
 }
 
-fn event_source(event: &k8s_openapi::api::core::v1::Event) -> String {
+pub(super) fn event_source(event: &k8s_openapi::api::core::v1::Event) -> String {
     if let Some(component) = &event.reporting_component {
         if !component.is_empty() {
             return component.clone();
@@ -87,16 +87,6 @@ fn summarize_event_at(
     }
 }
 
-pub(crate) fn resource_events_after_fetch(
-    events: Vec<k8s_openapi::api::core::v1::Event>,
-    kind: &str,
-    name: &str,
-    namespace: Option<&str>,
-    uid: Option<&str>,
-) -> Vec<ResourceEventSummary> {
-    resource_events_after_fetch_at(events, kind, name, namespace, uid, None)
-}
-
 pub fn resource_events_after_fetch_at(
     mut events: Vec<k8s_openapi::api::core::v1::Event>,
     kind: &str,
@@ -145,12 +135,13 @@ pub async fn resource_events_from(
     .map(|event| event.0)
     .collect();
 
-    Ok(resource_events_after_fetch(
+    Ok(resource_events_after_fetch_at(
         events,
         &kind,
         &name,
         namespace.as_deref(),
         uid.as_deref(),
+        None,
     ))
 }
 

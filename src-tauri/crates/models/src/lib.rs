@@ -18,6 +18,7 @@ mod resource;
 mod resource_actions;
 mod sessions;
 mod streams;
+mod tunnel;
 mod usage;
 
 pub use argo::normalize_service_tunnel_endpoint;
@@ -75,10 +76,10 @@ pub use rbac::{
 pub use resource::{
     DeploymentRevision, GitOpsOwnerSummary, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult,
     KubernetesYamlLintSeverity, KubernetesYamlLintStatusNote, OwnerReferenceSummary,
-    ResourceDetails, ResourceDetailsFull, ResourceHealth, ResourceListRequest,
-    ResourceScopeFailure, ResourceScopeResult, ResourceSummary, ResourceTopology, TopologyEdge,
-    TopologyNode, TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
-    YamlApplyTarget, YamlEncoding, YamlViewMode,
+    ResourceDetailsFull, ResourceHealth, ResourceListRequest, ResourceScopeFailure,
+    ResourceScopeResult, ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode,
+    TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlApplyTarget,
+    YamlEncoding, YamlViewMode,
 };
 pub use resource_actions::{
     ResourceActionContainer, ResourceActionEdits, ResourceActionEnv, ResourceActionKind,
@@ -94,5 +95,9 @@ pub use streams::{
     AggregatedLogStreamRequest, LogLineSource, PodLogStreamRequest, ResourceCacheRefreshResult,
     StreamMessage, WatchResourceKey, WatchResourceKind, WatchResourceTarget,
     CHANNEL_MESSAGE_ENVELOPE_BYTES, MAX_WEBSOCKET_MESSAGE_BYTES,
+};
+pub use tunnel::{
+    decode_tunnel_frame, encode_tunnel_frame, is_tunnel_connection_id, MAX_TUNNEL_FRAME_BYTES,
+    MAX_TUNNEL_PAYLOAD_BYTES,
 };
 pub use usage::{AppUsageMetrics, AppUsageMetricsBreakdown};

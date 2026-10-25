@@ -174,9 +174,6 @@ pub fn configmap_details(config_map: ConfigMap) -> Result<ResourceDetailsFull, A
 }
 
 pub fn secret_details(secret: Secret) -> Result<ResourceDetailsFull, AppError> {
-    // Match get_resource_details: fetch-and-serialize first, then the Secret detail path discards it.
-    let _discarded =
-        serialize_typed_document(&secret, YamlViewMode::default(), YamlEncoding::default())?;
     resources::secret_details_from_fetched("catalog-cluster", secret, fixed_now())
 }
 
@@ -357,7 +354,7 @@ pub fn editor_fixture() -> EditorFixture {
 }
 
 pub fn editor_local_lint(request: YamlApplyRequest) -> KubernetesYamlLintResult {
-    resources::lint_kubernetes_yaml_request(request)
+    resources::lint_kubernetes_yaml_request(&request)
 }
 
 pub fn editor_apply_validation(

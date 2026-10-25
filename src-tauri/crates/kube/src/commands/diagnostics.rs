@@ -36,7 +36,7 @@ pub fn diagnostic_field(key: &str, value: impl ToString) -> BackendDiagnosticFie
     }
 }
 
-pub fn record_backend_timing(
+fn record_backend_timing(
     command: &str,
     status: BackendDiagnosticStatus,
     duration_ms: u64,

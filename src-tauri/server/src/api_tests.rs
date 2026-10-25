@@ -315,7 +315,7 @@ async fn http_boundary_rejects_wrong_token_origin_host_and_oversized_bodies() {
 #[tokio::test]
 async fn bearer_requests_keep_the_typed_error_and_command_result_contract() {
     let state = state();
-    let info = state.sessions.authenticate(None).await.unwrap();
+    let info = state.sessions.authenticate_as(None, None).await.unwrap();
     let app = router(Arc::clone(&state));
     for (command, args, expected) in [
         ("get_backend_diagnostics", json!({}), StatusCode::OK),

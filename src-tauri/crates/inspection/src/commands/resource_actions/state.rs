@@ -13,13 +13,14 @@ use kube::api::{Api, DynamicObject, ListParams, PostParams};
 use serde_json::Value;
 
 pub(super) fn permission_from_review(
+    action: ResourceActionKind,
     verb: &str,
     resource: &str,
     allowed: Option<bool>,
     error: Option<&str>,
 ) -> ResourceActionPermission {
     ResourceActionPermission {
-        action: ResourceActionKind::Edit,
+        action,
         allowed: allowed == Some(true),
         reason: match (allowed, error) {
             (Some(true), _) => "Allowed by Kubernetes authorization review".into(),
@@ -28,17 +29,6 @@ pub(super) fn permission_from_review(
             _ => "Permission check returned no decision".into(),
         },
         required_permission: format!("{verb} {resource}"),
-    }
-}
-
-pub(super) trait SetPermissionAction {
-    fn with_action(self, action: ResourceActionKind) -> Self;
-}
-
-impl SetPermissionAction for ResourceActionPermission {
-    fn with_action(mut self, action: ResourceActionKind) -> Self {
-        self.action = action;
-        self
     }
 }
 

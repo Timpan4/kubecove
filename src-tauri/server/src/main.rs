@@ -69,7 +69,7 @@ async fn run() -> io::Result<()> {
         kubecove_lib::commands::initialize_server_credential_store(config.data_dir.clone())
             .map_err(io::Error::other)?
             .kind;
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    kubecove_server::security::install_tls_provider();
     let sessions = Arc::new(Sessions::new(config.grace));
     if let Some(path) = &config.socket {
         #[cfg(unix)]

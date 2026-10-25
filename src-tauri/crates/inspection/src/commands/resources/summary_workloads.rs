@@ -1,11 +1,13 @@
-use super::builtin_summary::{builtin_summary, BuiltinSummary, KindStatus};
+use super::builtin_summary::{
+    builtin_summary, list_namespaced_summaries, namespace_or_all, BuiltinSummary, KindStatus,
+};
 use crate::commands::helpers::{kubernetes_health, list_params, Readiness};
 use crate::models::{AppError, ResourceHealth, ResourceSummary};
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
 use k8s_openapi::api::batch::v1::{CronJob, Job};
 use k8s_openapi::api::networking::v1::Ingress;
-use kube::{api::Api, Client};
+use kube::Client;
 use serde_json::Value;
 
 fn replica_health(ready: i32, desired: i32) -> ResourceHealth {
@@ -156,11 +158,20 @@ pub(super) async fn workload_resource_summaries(
     let summaries = match kind {
         "Deployment" => deployment_summaries(client, cluster_context, namespace, now).await?,
         "ReplicaSet" => replicaset_summaries(client, cluster_context, namespace, now).await?,
-        "StatefulSet" => statefulset_summaries(client, cluster_context, namespace, now).await?,
-        "DaemonSet" => daemonset_summaries(client, cluster_context, namespace, now).await?,
-        "Ingress" => ingress_summaries(client, cluster_context, namespace, now).await?,
+        "StatefulSet" => {
+            list_namespaced_summaries::<StatefulSet>(client, cluster_context, namespace, now)
+                .await?
+        }
+        "DaemonSet" => {
+            list_namespaced_summaries::<DaemonSet>(client, cluster_context, namespace, now).await?
+        }
+        "Ingress" => {
+            list_namespaced_summaries::<Ingress>(client, cluster_context, namespace, now).await?
+        }
         "Job" => job_summaries(client, cluster_context, namespace, now).await?,
-        "CronJob" => cronjob_summaries(client, cluster_context, namespace, now).await?,
+        "CronJob" => {
+            list_namespaced_summaries::<CronJob>(client, cluster_context, namespace, now).await?
+        }
         _ => return Ok(None),
     };
 
@@ -173,15 +184,13 @@ async fn deployment_summaries(
     namespace: Option<&str>,
     now: DateTime<Utc>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
-    let api: Api<Deployment> = if let Some(ns) = namespace {
-        Api::namespaced(client, ns)
-    } else {
-        Api::all(client)
-    };
     Ok(kubecove_kube::commands::list_projection::list::<
         _,
         super::summary_projection::DeploymentProjection,
-    >(api, &list_params())
+    >(
+        namespace_or_all::<Deployment>(client, namespace),
+        &list_params(),
+    )
     .await
     .map_err(AppError::from)?
     .into_iter()
@@ -195,80 +204,18 @@ async fn replicaset_summaries(
     namespace: Option<&str>,
     now: DateTime<Utc>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
-    let api: Api<ReplicaSet> = if let Some(ns) = namespace {
-        Api::namespaced(client, ns)
-    } else {
-        Api::all(client)
-    };
     Ok(kubecove_kube::commands::list_projection::list::<
         _,
         super::summary_projection::ReplicaSetProjection,
-    >(api, &list_params())
+    >(
+        namespace_or_all::<ReplicaSet>(client, namespace),
+        &list_params(),
+    )
     .await
     .map_err(AppError::from)?
     .into_iter()
     .map(|rs| builtin_summary(cluster_context, &rs.into_resource(), now))
     .collect())
-}
-
-async fn statefulset_summaries(
-    client: Client,
-    cluster_context: &str,
-    namespace: Option<&str>,
-    now: DateTime<Utc>,
-) -> Result<Vec<ResourceSummary>, AppError> {
-    let api: Api<StatefulSet> = if let Some(ns) = namespace {
-        Api::namespaced(client, ns)
-    } else {
-        Api::all(client)
-    };
-    Ok(api
-        .list(&list_params())
-        .await
-        .map_err(AppError::from)?
-        .iter()
-        .map(|ss| builtin_summary(cluster_context, ss, now))
-        .collect())
-}
-
-async fn daemonset_summaries(
-    client: Client,
-    cluster_context: &str,
-    namespace: Option<&str>,
-    now: DateTime<Utc>,
-) -> Result<Vec<ResourceSummary>, AppError> {
-    let api: Api<DaemonSet> = if let Some(ns) = namespace {
-        Api::namespaced(client, ns)
-    } else {
-        Api::all(client)
-    };
-    Ok(api
-        .list(&list_params())
-        .await
-        .map_err(AppError::from)?
-        .iter()
-        .map(|ds| builtin_summary(cluster_context, ds, now))
-        .collect())
-}
-
-async fn ingress_summaries(
-    client: Client,
-    cluster_context: &str,
-    namespace: Option<&str>,
-    now: DateTime<Utc>,
-) -> Result<Vec<ResourceSummary>, AppError> {
-    let api: Api<Ingress> = if let Some(ns) = namespace {
-        Api::namespaced(client, ns)
-    } else {
-        Api::all(client)
-    };
-    Ok(api
-        .list(&list_params())
-        .await
-        .map_err(AppError::from)?
-        .iter()
-        .map(|ing| builtin_summary(cluster_context, ing, now))
-        .collect())
 }
 
 async fn job_summaries(
@@ -277,35 +224,13 @@ async fn job_summaries(
     namespace: Option<&str>,
     now: DateTime<Utc>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
-    let api: Api<Job> = if let Some(ns) = namespace {
-        Api::namespaced(client, ns)
-    } else {
-        Api::all(client)
-    };
-    Ok(kubecove_kube::commands::list_projection::list::<_, super::summary_projection::JobProjection>(api, &list_params())
-        .await
-        .map_err(AppError::from)?
-        .into_iter()
-        .map(|job| builtin_summary(cluster_context, &job.into_resource(), now))
-        .collect())
-}
-
-async fn cronjob_summaries(
-    client: Client,
-    cluster_context: &str,
-    namespace: Option<&str>,
-    now: DateTime<Utc>,
-) -> Result<Vec<ResourceSummary>, AppError> {
-    let api: Api<CronJob> = if let Some(ns) = namespace {
-        Api::namespaced(client, ns)
-    } else {
-        Api::all(client)
-    };
-    Ok(api
-        .list(&list_params())
-        .await
-        .map_err(AppError::from)?
-        .iter()
-        .map(|cj| builtin_summary(cluster_context, cj, now))
-        .collect())
+    Ok(kubecove_kube::commands::list_projection::list::<
+        _,
+        super::summary_projection::JobProjection,
+    >(namespace_or_all::<Job>(client, namespace), &list_params())
+    .await
+    .map_err(AppError::from)?
+    .into_iter()
+    .map(|job| builtin_summary(cluster_context, &job.into_resource(), now))
+    .collect())
 }

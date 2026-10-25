@@ -7,10 +7,11 @@ mod restarts;
 #[cfg(feature = "bench-support")]
 pub use post_fetch::incident_cockpit_post_fetch;
 
+use super::events::{event_source, event_timestamp};
 use super::{resource_scope_from, ClusterLiveStore, MAX_LIST_CONCURRENCY};
 use crate::commands::{
     diagnostic_field,
-    helpers::{k8s_timestamp_to_datetime, list_params, resource_age_at},
+    helpers::{list_params, resource_age_at},
     ClusterAccess, FiniteRead,
 };
 use crate::models::{
@@ -232,45 +233,6 @@ pub(crate) struct ResourceEventMatch {
     summary: ResourceEventSummary,
 }
 
-fn event_timestamp(event: &Event) -> Option<DateTime<Utc>> {
-    event
-        .event_time
-        .as_ref()
-        .and_then(|t| k8s_timestamp_to_datetime(&t.0))
-        .or_else(|| {
-            event
-                .last_timestamp
-                .as_ref()
-                .and_then(|t| k8s_timestamp_to_datetime(&t.0))
-        })
-        .or_else(|| {
-            event
-                .first_timestamp
-                .as_ref()
-                .and_then(|t| k8s_timestamp_to_datetime(&t.0))
-        })
-        .or_else(|| {
-            event
-                .metadata
-                .creation_timestamp
-                .as_ref()
-                .and_then(|t| k8s_timestamp_to_datetime(&t.0))
-        })
-}
-
-fn event_source(event: &Event) -> String {
-    if let Some(component) = &event.reporting_component {
-        if !component.is_empty() {
-            return component.clone();
-        }
-    }
-    event
-        .source
-        .as_ref()
-        .and_then(|source| source.component.clone())
-        .unwrap_or_else(|| "unknown".to_string())
-}
-
 fn event_match(event: Event) -> Option<ResourceEventMatch> {
     event_match_at(event, Utc::now())
 }
@@ -318,15 +280,18 @@ fn event_match_sort(a: &ResourceEventMatch, b: &ResourceEventMatch) -> std::cmp:
 }
 
 fn event_time_ms(event: &ResourceEventSummary) -> i64 {
-    event
-        .last_seen_at
-        .as_deref()
+    rfc3339_millis(event.last_seen_at.as_deref())
+}
+
+/// Milliseconds since the epoch, or 0 when the value is missing or not RFC 3339.
+pub(super) fn rfc3339_millis(value: Option<&str>) -> i64 {
+    value
         .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
         .map(|dt| dt.timestamp_millis())
         .unwrap_or_default()
 }
 
-fn resource_match_key(
+pub(super) fn resource_match_key(
     kind: &str,
     api_version: Option<&str>,
     namespace: Option<&str>,
@@ -489,20 +454,11 @@ fn incident_item_sort(a: &IncidentCockpitItem, b: &IncidentCockpitItem) -> std::
 }
 
 fn latest_item_signal_time_ms(item: &IncidentCockpitItem) -> i64 {
-    item.latest_signal_at
-        .as_deref()
-        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        .map(|dt| dt.timestamp_millis())
-        .unwrap_or_default()
+    rfc3339_millis(item.latest_signal_at.as_deref())
 }
 
 fn signal_time_ms(signal: &IncidentSignalSummary) -> i64 {
-    signal
-        .last_seen_at
-        .as_deref()
-        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        .map(|dt| dt.timestamp_millis())
-        .unwrap_or_default()
+    rfc3339_millis(signal.last_seen_at.as_deref())
 }
 
 fn latest_signal_at(signals: &[IncidentSignalSummary]) -> Option<String> {

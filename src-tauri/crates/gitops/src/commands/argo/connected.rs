@@ -7,7 +7,9 @@ mod store;
 pub(crate) use super::transport::{api_delete, api_get, api_post, redact_secret_fields};
 #[cfg(feature = "bench-support")]
 pub use inspection::{benchmark_connected_inspector, benchmark_kubernetes_inspector};
-pub(crate) use inspection::{inspector_from_application, managed_resource, state, text};
+pub(crate) use inspection::{
+    inspector_from_application, kubernetes_comparison, managed_resource, state, text,
+};
 pub(crate) use inspector_read::{connected_application_path, kubernetes_application};
 pub use store::ArgoConnectionStore;
 pub(crate) use store::ConnectedArgo;
@@ -279,17 +281,7 @@ pub fn get_argo_connection_status(
     id: String,
     store: crate::runtime::State<'_, ArgoConnectionStore>,
 ) -> Result<ArgoConnectionStatus, AppError> {
-    let connection = store
-        .connections
-        .lock()
-        .map_err(|_| {
-            AppError::new(
-                "Argo CD connection state unavailable",
-                AppErrorKind::ArgoConnection,
-            )
-        })?
-        .get(&id)
-        .cloned();
+    let connection = store.lock_connections()?.get(&id).cloned();
     Ok(match connection {
         Some(connection) => ArgoConnectionStatus {
             profile: Some(connection.profile.clone()),

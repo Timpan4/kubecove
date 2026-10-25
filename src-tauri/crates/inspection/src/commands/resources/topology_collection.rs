@@ -1,5 +1,6 @@
 use super::{
     builtin_summary::{builtin_summary, metadata_summary, BuiltinSummary},
+    revisions::DEPLOYMENT_REVISION_ANNOTATION,
     topology::{input_with_summary, TopologyInputResource, DEPLOYMENT_REVISION_LABEL},
     topology_dynamic::{list_crd_definition_inputs, list_dynamic_topology_inputs},
     topology_network::{
@@ -25,8 +26,6 @@ use k8s_openapi::api::{
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use k8s_openapi::{ClusterResourceScope, NamespaceResourceScope};
 use kube::{core::PartialObjectMeta, Api, Client, Error as KubeError};
-
-const DEPLOYMENT_REVISION_ANNOTATION: &str = "deployment.kubernetes.io/revision";
 
 fn attach_deployment_revision(input: &mut TopologyInputResource, metadata: &ObjectMeta) {
     let Some(revision) = metadata
@@ -88,7 +87,7 @@ pub(super) fn is_optional_topology_list_error(error: &KubeError) -> bool {
     matches!(error, KubeError::Api(api_error) if matches!(api_error.code, 403 | 404))
 }
 
-fn push_topology_list_warning<T>(
+pub(super) fn push_topology_list_warning<T>(
     warnings: &mut Vec<String>,
     namespace: Option<&str>,
     error: &KubeError,
@@ -106,11 +105,10 @@ fn push_topology_list_warning<T>(
     ));
 }
 
-async fn list_namespaced<T>(
+async fn list_namespaced_with_warnings<T>(
     client: Client,
     namespaces: &[String],
-    warnings: &mut Vec<String>,
-) -> Result<Vec<T>, AppError>
+) -> Result<(Vec<T>, Vec<String>), AppError>
 where
     T: Clone
         + std::fmt::Debug
@@ -122,16 +120,17 @@ where
         + 'static,
 {
     let mut out = Vec::new();
+    let mut warnings = Vec::new();
     if namespaces.is_empty() {
         let api: Api<T> = Api::all(client);
         match api.list(&list_params()).await {
             Ok(rows) => out.extend(rows.items),
             Err(error) if is_optional_topology_list_error(&error) => {
-                push_topology_list_warning::<T>(warnings, None, &error);
+                push_topology_list_warning::<T>(&mut warnings, None, &error);
             }
             Err(error) => return Err(AppError::from(error)),
         }
-        return Ok(out);
+        return Ok((out, warnings));
     }
     let outcomes = stream::iter(namespaces.to_vec())
         .map(|namespace| {
@@ -151,31 +150,12 @@ where
         match outcome {
             Ok(rows) => out.extend(rows),
             Err(error) if is_optional_topology_list_error(&error) => {
-                push_topology_list_warning::<T>(warnings, Some(&namespace), &error);
+                push_topology_list_warning::<T>(&mut warnings, Some(&namespace), &error);
             }
             Err(error) => return Err(AppError::from(error)),
         }
     }
-    Ok(out)
-}
-
-async fn list_namespaced_with_warnings<T>(
-    client: Client,
-    namespaces: &[String],
-) -> Result<(Vec<T>, Vec<String>), AppError>
-where
-    T: Clone
-        + std::fmt::Debug
-        + serde::de::DeserializeOwned
-        + k8s_openapi::Metadata<Ty = ObjectMeta>
-        + kube::Resource<DynamicType = (), Scope = NamespaceResourceScope>
-        + Send
-        + Sync
-        + 'static,
-{
-    let mut warnings = Vec::new();
-    let rows = list_namespaced::<T>(client, namespaces, &mut warnings).await?;
-    Ok((rows, warnings))
+    Ok((out, warnings))
 }
 
 /// Lists only object metadata so Secret/ConfigMap payloads never reach the backend.
@@ -300,13 +280,11 @@ pub fn topology_inputs_with_flux_ownership(
     index: &FluxOwnershipIndex,
     namespaces: &[String],
 ) -> Vec<TopologyInputResource> {
-    let mut summary_rows = resources
-        .iter()
-        .map(|input| input.summary.clone())
-        .collect::<Vec<_>>();
-    enrich_resource_summaries_with_flux_inventory(&mut summary_rows, index);
-    for (input, summary) in resources.iter_mut().zip(summary_rows) {
-        input.summary = summary;
+    for input in &mut resources {
+        enrich_resource_summaries_with_flux_inventory(
+            std::slice::from_mut(&mut input.summary),
+            index,
+        );
     }
     resources.retain(|input| {
         input.summary.kind != "StorageClass"
@@ -467,14 +445,11 @@ pub fn pod_input(cluster_context: &str, pod: Pod, now: DateTime<Utc>) -> Topolog
             .containers
             .iter()
             .flat_map(|container| {
-                container.ports.iter().flatten().map(|port| {
-                    let number = port.container_port;
-                    let name = port.name.as_deref();
-                    match name {
-                        Some(name) if !name.is_empty() => format!("{name}:{number}"),
-                        _ => number.to_string(),
-                    }
-                })
+                container
+                    .ports
+                    .iter()
+                    .flatten()
+                    .map(|port| port_hint(port.name.as_deref(), port.container_port))
             })
             .collect();
         input.port_hints.sort();
@@ -552,7 +527,7 @@ pub(crate) fn network_topology_inputs_from_objects_at(
                 .ports
                 .iter()
                 .flatten()
-                .map(|port| service_port_hint(port.name.as_deref(), port.port))
+                .map(|port| port_hint(port.name.as_deref(), port.port))
                 .collect();
             input.port_hints.sort();
             input.port_hints.dedup();
@@ -618,7 +593,7 @@ pub(crate) fn network_topology_inputs_from_objects_at(
             .flatten()
             .filter_map(|port| {
                 port.port
-                    .map(|number| service_port_hint(port.name.as_deref(), number))
+                    .map(|number| port_hint(port.name.as_deref(), number))
             })
             .collect();
         input.port_hints.sort();
@@ -668,7 +643,7 @@ fn backend_service_name(
     backend.service.as_ref().map(|service| service.name.clone())
 }
 
-fn service_port_hint(name: Option<&str>, port: i32) -> String {
+fn port_hint(name: Option<&str>, port: i32) -> String {
     match name {
         Some(name) if !name.is_empty() => format!("{name}:{port}"),
         _ => port.to_string(),

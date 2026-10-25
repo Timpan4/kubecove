@@ -1,7 +1,7 @@
+use super::{resource_match_key, rfc3339_millis};
 use crate::commands::helpers::{k8s_timestamp_to_datetime, list_params};
 use crate::commands::MAX_LIST_CONCURRENCY;
 use crate::models::{AppError, IncidentSignalState, ResourceSummary};
-use chrono::DateTime;
 use k8s_openapi::api::core::v1::{ContainerStatus, Pod};
 use kube::{api::Api, Client};
 use kubecove_kube::commands::list_projection::bounded_join_all;
@@ -22,12 +22,11 @@ pub(super) struct RestartEvidenceList {
 }
 
 pub(super) fn resource_key(resource: &ResourceSummary) -> String {
-    format!(
-        "{}:{}:{}:{}",
-        resource.kind,
-        resource.api_version.as_deref().unwrap_or_default(),
-        resource.namespace.as_deref().unwrap_or_default(),
-        resource.name
+    resource_match_key(
+        &resource.kind,
+        resource.api_version.as_deref(),
+        resource.namespace.as_deref(),
+        &resource.name,
     )
 }
 
@@ -115,14 +114,7 @@ fn restart_evidence_from_pod(pod: &Pod) -> Option<RestartEvidence> {
     let latest = occurrences
         .iter()
         .filter_map(|occurrence| occurrence.termination.as_ref())
-        .max_by_key(|termination| {
-            termination
-                .last_seen_at
-                .as_deref()
-                .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-                .map(|time| time.timestamp_millis())
-                .unwrap_or_default()
-        });
+        .max_by_key(|termination| rfc3339_millis(termination.last_seen_at.as_deref()));
     let state = if currently_failing {
         IncidentSignalState::Active
     } else if latest.is_some_and(|termination| {

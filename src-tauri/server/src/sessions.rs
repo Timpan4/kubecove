@@ -55,13 +55,6 @@ impl Sessions {
         }
     }
 
-    pub async fn authenticate(
-        self: &Arc<Self>,
-        resume: Option<&str>,
-    ) -> Result<SessionInfo, AppError> {
-        self.authenticate_as(resume, None).await
-    }
-
     /// Resumes the session `resume`, or opens a new one beside the sessions
     /// already open.
     pub async fn authenticate_as(

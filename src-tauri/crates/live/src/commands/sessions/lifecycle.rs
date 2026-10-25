@@ -94,7 +94,6 @@ impl PortForwardRegistry {
         F: Future<Output = Result<(), AppError>> + Send + 'static,
     {
         let summary = session_summary(id.clone(), target, listener.local_port);
-        let handle = spawn_relay(listener.listener, relay_connection, self.relay_events(id));
         let mut state = self.state.lock().expect("port-forward registry lock");
         let conflict = if state.sessions.contains_key(&summary.id) {
             Some(format!("port-forward {} is already running", summary.id))
@@ -107,12 +106,13 @@ impl PortForwardRegistry {
             None
         };
         if let Some(message) = conflict {
-            handle.abort();
             return Err(AppError::new(
                 message,
                 AppErrorKind::LiveSessionTargetUnavailable,
             ));
         }
+        // Admit before spawning so a rejected session never accepts a connection.
+        let handle = spawn_relay(listener.listener, relay_connection, self.relay_events(id));
         state.sessions.insert(
             summary.id.clone(),
             PortForwardSession {
@@ -161,7 +161,12 @@ impl PortForwardRegistry {
         self.stop_where(|_| true)
     }
 
-    pub(super) fn mark_status(&self, session_id: &str, status: &str, last_error: Option<String>) {
+    /// Updates a forward's listed summary; a forward that already stopped is left alone.
+    fn update_summary(
+        &self,
+        session_id: &str,
+        update: impl FnOnce(&mut PortForwardSessionSummary),
+    ) {
         if let Some(session) = self
             .state
             .lock()
@@ -169,26 +174,23 @@ impl PortForwardRegistry {
             .sessions
             .get_mut(session_id)
         {
-            session.summary.status = status.to_string();
-            session.summary.last_error = last_error;
+            update(&mut session.summary);
         }
     }
 
+    pub(super) fn mark_status(&self, session_id: &str, status: &str, last_error: Option<String>) {
+        self.update_summary(session_id, |summary| {
+            summary.status = status.to_string();
+            summary.last_error = last_error;
+        });
+    }
+
     pub(super) fn mark_resolved_target(&self, session_id: &str, target: &PortForwardTarget) {
-        if let Some(session) = self
-            .state
-            .lock()
-            .expect("port-forward registry lock")
-            .sessions
-            .get_mut(session_id)
-        {
-            session.summary.pod_name.clone_from(&target.pod_name);
-            session
-                .summary
-                .resolved_pod_name
-                .clone_from(&target.pod_name);
-            session.summary.resolved_pod_port = target.pod_port;
-        }
+        self.update_summary(session_id, |summary| {
+            summary.pod_name.clone_from(&target.pod_name);
+            summary.resolved_pod_name.clone_from(&target.pod_name);
+            summary.resolved_pod_port = target.pod_port;
+        });
     }
 
     fn mark_error(&self, session_id: &str, message: String) {
@@ -259,17 +261,18 @@ pub(super) fn session_summary(
     target: &PortForwardTarget,
     local_port: u16,
 ) -> PortForwardSessionSummary {
+    let request = &target.request;
     PortForwardSessionSummary {
         id,
-        cluster_context: target.cluster_context.clone(),
-        kubeconfig_env_var: target.kubeconfig_env_var.clone(),
-        kubeconfig_source_key: target.kubeconfig_source_key.clone(),
-        kubeconfig_source_label: target.kubeconfig_source_label.clone(),
-        namespace: target.namespace.clone(),
-        target_kind: target.target_kind.as_str().to_string(),
-        target_name: target.target_name.clone(),
+        cluster_context: request.cluster_context.clone(),
+        kubeconfig_env_var: request.kubeconfig_env_var.clone(),
+        kubeconfig_source_key: request.kubeconfig_source_key.clone(),
+        kubeconfig_source_label: request.kubeconfig_source_label.clone(),
+        namespace: request.namespace.clone(),
+        target_kind: request.target_kind.as_str().to_string(),
+        target_name: request.target_name.clone(),
         pod_name: target.pod_name.clone(),
-        remote_port: target.remote_port,
+        remote_port: request.remote_port,
         resolved_pod_name: target.pod_name.clone(),
         resolved_pod_port: target.pod_port,
         local_port,

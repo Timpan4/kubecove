@@ -79,7 +79,7 @@ fn record(
 
 pub(super) fn secret_list_record(
     cluster: &str,
-    secret: &mut Secret,
+    secret: &Secret,
 ) -> Result<HelmStorageRecord, AppError> {
     record(
         cluster,
@@ -95,7 +95,7 @@ pub(super) fn secret_list_record(
 
 pub(super) fn configmap_list_record(
     cluster: &str,
-    config: &mut ConfigMap,
+    config: &ConfigMap,
 ) -> Result<HelmStorageRecord, AppError> {
     record(
         cluster,

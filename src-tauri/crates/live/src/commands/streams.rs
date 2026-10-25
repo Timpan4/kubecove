@@ -77,19 +77,25 @@ fn validate_pod_log_stream_request(request: &PodLogStreamRequest) -> Result<(), 
     }
     crate::commands::helpers::validate_namespace(Some(&request.namespace))?;
     crate::commands::helpers::validate_path_segment(&request.pod_name, "Pod name")?;
-    if matches!(request.tail_lines, Some(tail_lines) if tail_lines < 0) {
+    validate_log_window(request.tail_lines, request.since_seconds)
+}
+
+fn validate_log_window(
+    tail_lines: Option<i64>,
+    since_seconds: Option<i64>,
+) -> Result<(), AppError> {
+    if matches!(tail_lines, Some(tail_lines) if tail_lines < 0) {
         return Err(AppError::new(
             "tail_lines must be non-negative",
             AppErrorKind::Validation,
         ));
     }
-    if matches!(request.since_seconds, Some(since_seconds) if since_seconds < 0) {
+    if matches!(since_seconds, Some(since_seconds) if since_seconds < 0) {
         return Err(AppError::new(
             "since_seconds must be non-negative",
             AppErrorKind::Validation,
         ));
     }
-
     Ok(())
 }
 
@@ -114,20 +120,7 @@ fn validate_aggregated_log_stream_request(
             AppErrorKind::Validation,
         ));
     }
-    if matches!(request.tail_lines, Some(tail_lines) if tail_lines < 0) {
-        return Err(AppError::new(
-            "tail_lines must be non-negative",
-            AppErrorKind::Validation,
-        ));
-    }
-    if matches!(request.since_seconds, Some(since_seconds) if since_seconds < 0) {
-        return Err(AppError::new(
-            "since_seconds must be non-negative",
-            AppErrorKind::Validation,
-        ));
-    }
-
-    Ok(())
+    validate_log_window(request.tail_lines, request.since_seconds)
 }
 
 pub async fn refresh_resource_cache(
