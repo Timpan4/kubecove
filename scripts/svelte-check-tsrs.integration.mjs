@@ -168,9 +168,11 @@ test("tsrs checks Svelte components and preserves mapped diagnostics", () => {
 		assert.match(mappedCss.output, /0 ERRORS 1 WARNINGS/);
 		assert.doesNotMatch(mappedCss.output, /Ignored\.svelte/);
 
-		const failed = run({ TSRS_BINARY: join(workspace, "missing-tsrs") });
+		const missingBinary = join(workspace, "missing-tsrs-sensitive-marker");
+		const failed = run({ TSRS_BINARY: missingBinary });
 		assert.notEqual(failed.status, 0, failed.output);
 		assert.match(failed.output, /TSRS_BINARY.*does not exist/, failed.output);
+		assert.ok(!failed.output.includes(missingBinary), failed.output);
 		assert.doesNotMatch(failed.output, /COMPLETED/);
 	} finally {
 		rmSync(workspace, { recursive: true, force: true });

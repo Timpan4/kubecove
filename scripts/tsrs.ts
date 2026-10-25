@@ -89,9 +89,7 @@ async function main(): Promise<number> {
 	const env = { ...process.env };
 	if (!env.TSRS_BINARY && !hasPrebuilt) env.TSRS_BINARY = await buildSource();
 	if (env.TSRS_BINARY && !existsSync(env.TSRS_BINARY)) {
-		throw new Error(
-			`TSRS_BINARY is set to ${env.TSRS_BINARY}, which does not exist.`,
-		);
+		throw new Error("TSRS_BINARY points to a compiler that does not exist.");
 	}
 	const svelte = args[0] === "--svelte";
 	if (svelte) args.shift();
