@@ -114,8 +114,14 @@
 		if (activeKey === key) activeKey = (tabs[index] ?? tabs[index - 1])?.key ?? null;
 	}
 
-	function isLive(status: ExecSessionTab["status"]): boolean {
-		return status === "starting" || status === "connecting" || status === "running";
+	// A tab keeps its session id after a failed stop, so it still offers Stop then.
+	function hasSession(tab: ExecSessionTab): boolean {
+		return (
+			tab.sessionId !== null ||
+			tab.status === "starting" ||
+			tab.status === "connecting" ||
+			tab.status === "running"
+		);
 	}
 
 	function containerLabel(name: string): string {
@@ -213,8 +219,8 @@
 							variant="ghost"
 							size="icon-xs"
 							class="text-muted-foreground {selected ? '' : 'opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100'}"
-							aria-label={`${isLive(tab.status) ? "Stop and close" : "Close"} ${tabLabel(tab)}`}
-							title={isLive(tab.status) ? "Stop and close" : "Close"}
+							aria-label={`${hasSession(tab) ? "Stop and close" : "Close"} ${tabLabel(tab)}`}
+							title={hasSession(tab) ? "Stop and close" : "Close"}
 							onclick={() => closeTab(tab.key)}
 						>
 							<X />
@@ -249,7 +255,7 @@
 					>
 						<RotateCcw />
 					</Button>
-					{#if isLive(activeTab.status)}
+					{#if hasSession(activeTab)}
 						<Button
 							variant="ghost"
 							size="icon-sm"

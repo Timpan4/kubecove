@@ -69,7 +69,8 @@
 	}
 
 	export function restart() {
-		void start();
+		// A stopped start may still be settling; restart after it instead of joining it.
+		void (startTask ?? Promise.resolve()).then(start);
 	}
 
 	/** Resolves false when the backend refused to stop the session. */
@@ -233,7 +234,8 @@
 			return true;
 		} catch (cause) {
 			// The session may still run: keep tracking it so the leave dialog,
-			// unmount, and Restart all try to stop it again.
+			// unmount, and Stop all try to stop it again.
+			terminal?.writeln(`\r\n${DIM}[stop failed; the session may still be running]${RESET}`);
 			sessionId = id;
 			status = "error";
 			error = cause;
