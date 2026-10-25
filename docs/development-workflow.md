@@ -15,11 +15,11 @@ bun run check
 
 ## TypeScript and Svelte checks
 
-`typecheck` and `typecheck:bench` use tsrs. `svelte:check` uses Svelte's `--tsgo` CLI path with a Bun package patch that recognizes tsrs. TypeScript 6 remains installed under the `typescript` name for Svelte transformation and diagnostic mapping. The experimental native API path is unchanged.
+`typecheck` and `typecheck:bench` use tsrs. `svelte:check` uses Svelte's `--tsgo` CLI path with a Bun package patch that recognizes tsrs. TypeScript 6 remains installed under the `typescript` name for Svelte transformation and diagnostic mapping. The experimental native API integration is not switched to tsrs.
 
 Linux and Apple Silicon use the published tsrs binaries. Windows x64 and Intel macOS build from the source revision pinned in `scripts/tsrs.ts`, then reuse the binary under `.e2e/tools/tsrs/`. The source pin includes Windows fixes newer than the published npm release. Building requires Rust 1.99 or newer, Git, and the host C/C++ build tools. `bun run tsrs:build` builds that source revision explicitly on any platform. `TSRS_BINARY` selects an existing binary without an automatic build.
 
-The patch lives under `tools/patches/` and Bun applies it during installation. After upgrading `svelte-check`, regenerate the patch and run `bun run test:svelte` plus the project TypeScript and Svelte checks. The regression exercises component type and prop errors, original source positions, accessibility and CSS warnings, and compiler-process failure. Remove the patch once upstream accepts tsrs discovery for the CLI path.
+The patch lives under `tools/patches/` and Bun applies it during installation. It also clears generated Svelte compiler inputs before non-incremental checks so deleted components cannot leave stale errors. After upgrading `svelte-check`, regenerate the patch and run `bun run test:svelte` plus the project TypeScript and Svelte checks. The regression exercises component type and prop errors, original source positions, accessibility and CSS warnings, component deletion, and compiler-process failure. Remove the patch once upstream supports tsrs discovery for the CLI path and removes obsolete generated inputs.
 
 ## Linux native dependencies
 

@@ -1,319 +1,156 @@
 <script lang="ts">
 	import "@xterm/xterm/css/xterm.css";
 
-	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
-	import { onMount, tick } from "svelte";
-	import { Play, RotateCcw, Terminal as TerminalIcon } from "lucide-svelte";
-	import FriendlyError from "@/components/FriendlyError.svelte";
+	import { onMount } from "svelte";
+	import { ChevronDown, Play, Plus, RotateCcw, Square, TerminalSquare, X } from "lucide-svelte";
 	import {
 		Alert,
 		AlertDescription,
 		AlertTitle,
-		Badge,
 		Button,
+		buttonClass,
 		Empty,
+		EmptyContent,
 		EmptyDescription,
 		EmptyHeader,
+		EmptyMedia,
 		EmptyTitle,
-		Spinner,
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
 	} from "@/components/ui/svelte";
-	import {
-		buildPodExecRequest,
-		commandForPreset,
-		invalidatePodExecQueries,
-		isPodExecForResource,
-		podExecCommandText,
-		podExecQueryOptions,
-		podExecTarget,
-		startPodExec,
-		stopPodExec,
-		type PodExecPreset,
-	} from "@/features/live-sessions";
+	import { podExecCommandLabel, podExecTarget } from "@/features/live-sessions";
+	import { registerOpenExecSessions } from "@/features/live-sessions/openExecSessions.svelte";
 	import { settingsStore } from "@/lib/settings-store";
-	import { trackLiveSessionUi } from "@/features/live-sessions/sessionPolling.svelte";
-	import {
-		closePodExecChannel,
-		createPodExecChannel,
-		resizePodExecTerminal,
-		writePodExecStdin,
-		type TauriClient,
-	} from "@/lib/tauri";
-	import type {
-		PodExecSessionMessage,
-		PodExecSessionSummary,
-		ResourceSummary,
-	} from "@/lib/types";
-	import PodExecLaunchForm from "./PodExecLaunchForm.svelte";
-	import PodExecSessionList from "./PodExecSessionList.svelte";
-	import { createExecTerminal, type ExecTerminalHandle } from "./execTerminal";
-	import { createExecInput } from "./execInput";
+	import type { TauriClient } from "@/lib/tauri";
+	import type { PodExecSessionStatus, ResourceSummary } from "@/lib/types";
+	import ExecSessionMenu, { type ExecMenuContainer } from "./ExecSessionMenu.svelte";
+	import ExecSessionTerminal from "./ExecSessionTerminal.svelte";
 	import type { ContainerStatusRow } from "./helpers";
 
-	const DEFAULT_COLS = 100;
-	const DEFAULT_ROWS = 32;
+	interface ExecSessionTab {
+		key: number;
+		container: string;
+		command: string[];
+		sessionId: string | null;
+		status: PodExecSessionStatus | "stopped";
+	}
 
 	let {
 		client,
 		resource,
 		containers,
-		selectedContainer = $bindable(""),
+		selectedContainer,
 		kubeconfigSourceKey,
 		active,
+		onShow,
 	}: {
 		client: TauriClient;
 		resource: ResourceSummary;
 		containers: ContainerStatusRow[];
-		selectedContainer?: string;
+		selectedContainer: string;
 		kubeconfigSourceKey?: string;
 		active: boolean;
+		onShow: () => void;
 	} = $props();
 
-	const queryClient = useQueryClient();
-	trackLiveSessionUi(() => active);
-	let preset = $state<PodExecPreset>("sh");
-	let customArgv = $state("");
-	let confirmed = $state(false);
-	let starting = $state(false);
-	let stoppingId = $state<string | null>(null);
-	let status = $state("idle");
-	let message = $state("Start an exec session to open the terminal.");
-	let error = $state<unknown>(null);
-	let sessionId = $state<string | null>(null);
-	let channel = $state<ReturnType<typeof createPodExecChannel> | null>(null);
-	let terminalHost = $state<HTMLDivElement | null>(null);
-	let terminal: ExecTerminalHandle | null = null;
-	let input: ReturnType<typeof createExecInput> | null = null;
+	let tabs = $state<ExecSessionTab[]>([]);
+	let activeKey = $state<number | null>(null);
+	let menuOpen = $state(false);
+	let nextKey = 0;
+	const terminals: Record<number, ExecSessionTerminal> = {};
 
 	const isPod = $derived(resource.kind === "Pod" && Boolean(resource.namespace));
-	const showKubeconfigSourceLabels = $derived(
-		$settingsStore.showKubeconfigSourceLabels,
+	const activeTab = $derived(tabs.find((tab) => tab.key === activeKey) ?? null);
+	const menuContainers = $derived.by((): ExecMenuContainer[] => {
+		const appContainers = containers.filter((container) => container.type !== "init");
+		const rows = appContainers.length > 0 ? appContainers : containers;
+		return rows.length > 0
+			? rows.map((container) => ({ name: container.name, restartCount: container.restartCount }))
+			: [{ name: "", restartCount: 0 }];
+	});
+	const defaultContainer = $derived(
+		menuContainers.some((container) => container.name === selectedContainer)
+			? selectedContainer
+			: menuContainers[0].name,
 	);
-	const command = $derived(commandForPreset(preset, customArgv));
-	const commandText = $derived(
-		isValidationMessage(command) ? "" : podExecCommandText(command),
+	const sourceLabel = $derived(
+		$settingsStore.showKubeconfigSourceLabels ? $settingsStore.kubeconfigSourceLabel || null : null,
 	);
 
-	const sessionsQuery = createQuery<PodExecSessionSummary[]>(() =>
-		podExecQueryOptions(client, {
-			enabled: active,
-			refetchInterval: false,
+	onMount(() =>
+		registerOpenExecSessions({
+			sessions: () =>
+				tabs.flatMap((tab) =>
+					tab.sessionId
+						? [{ id: tab.sessionId, podName: resource.name, container: tab.container, command: tab.command }]
+						: [],
+				),
+			show: (sessionId) => {
+				const tab = tabs.find((candidate) => candidate.sessionId === sessionId);
+				if (!tab) return;
+				activeKey = tab.key;
+				onShow();
+			},
+			stopAll: async () => {
+				const stopped = await Promise.all(tabs.map((tab) => terminals[tab.key]?.stop() ?? true));
+				return stopped.every(Boolean);
+			},
 		}),
 	);
-	const sessions = $derived(
-		(sessionsQuery.data ?? []).filter((session) =>
-			isPodExecForResource(session, resource, kubeconfigSourceKey),
-		),
-	);
 
-	onMount(() => {
-		if (terminalHost) {
-			const nextTerminal = createExecTerminal(
-				terminalHost,
-				(data) => {
-					input?.enqueue(data);
-				},
-				(size) => {
-					if (sessionId) void resizePodExecTerminal(client, sessionId, size).catch((err) => { error = err; });
-				},
-			);
-			terminal = nextTerminal;
-			let frame: number | null = null;
-			const fit = () => {
-				frame ??= window.requestAnimationFrame(() => {
-					frame = null;
-					fitTerminal();
-				});
-			};
-			fit();
-			window.addEventListener("resize", fit);
-			return () => {
-				input?.dispose();
-				if (frame !== null) window.cancelAnimationFrame(frame);
-				window.removeEventListener("resize", fit);
-				if (channel) closePodExecChannel(channel);
-				if (sessionId) {
-					void stopPodExec({
-						client,
-						sessionId,
-						invalidateQueries: (options) => queryClient.invalidateQueries(options),
-					});
-				}
-				nextTerminal.dispose();
-				terminal = null;
-			};
-		}
-		return () => {
-			input?.dispose();
-			if (channel) closePodExecChannel(channel);
-			if (sessionId) {
-				void stopPodExec({
-					client,
-					sessionId,
-					invalidateQueries: (options) => queryClient.invalidateQueries(options),
-				});
-			}
-		};
-	});
-
-	// Container or Pod changes from the Logs tab or detail loading must not reuse an earlier acknowledgement.
-	$effect(() => {
-		void [selectedContainer, resource.cluster, resource.namespace, resource.name, kubeconfigSourceKey];
-		confirmed = false;
-	});
-
-	$effect(() => {
-		if (!active) return;
-		const frame = window.requestAnimationFrame(() => fitTerminal());
-		return () => window.cancelAnimationFrame(frame);
-	});
-
-	function fitTerminal() {
-		terminal?.fit();
+	function openSession(container: string, command: string[]) {
+		const tab: ExecSessionTab = { key: nextKey++, container, command, sessionId: null, status: "starting" };
+		tabs.push(tab);
+		activeKey = tab.key;
+		menuOpen = false;
 	}
 
-	function isValidationMessage<Value>(value: Value): value is Extract<Value, string> {
-		return Object(value) !== value;
+	function closeTab(key: number) {
+		const index = tabs.findIndex((tab) => tab.key === key);
+		if (index === -1) return;
+		tabs.splice(index, 1);
+		delete terminals[key];
+		if (activeKey === key) activeKey = (tabs[index] ?? tabs[index - 1])?.key ?? null;
 	}
 
-	function appendOutput(text: string) {
-		terminal?.write(text);
+	// A tab keeps its session id after a failed stop, so it still offers Stop then.
+	function hasSession(tab: ExecSessionTab): boolean {
+		return (
+			tab.sessionId !== null ||
+			tab.status === "starting" ||
+			tab.status === "connecting" ||
+			tab.status === "running"
+		);
 	}
 
-	function closeChannelOnly() {
-		input?.dispose();
-		input = null;
-		if (channel) closePodExecChannel(channel);
-		channel = null;
-		sessionId = null;
+	function containerLabel(name: string): string {
+		return name || "default container";
 	}
 
-	function handleMessage(event: PodExecSessionMessage) {
-		if (event.type !== "started" && sessionId && event.sessionId !== sessionId) return;
-		if (event.type === "started") {
-			sessionId = event.sessionId;
-			input?.dispose();
-			input = createExecInput(
-				(data) => writePodExecStdin(client, event.sessionId, data),
-				(err) => { error = err; },
-			);
-			status = event.summary.status;
-			return;
-		}
-		if (event.type === "status") {
-			status = event.status;
-			message = event.message;
-			return;
-		}
-		if (event.type === "output") {
-			appendOutput(event.data);
-			return;
-		}
-		if (event.type === "error") {
-			status = "error";
-			error = event.message;
-			appendOutput(`\n${event.message}\n`);
-			closeChannelOnly();
-			void invalidatePodExecQueries((options) => queryClient.invalidateQueries(options));
-			return;
-		}
-		if (event.type === "exited") {
-			status = "exited";
-			message =
-				event.exitCode === undefined
-					? "Exec session exited"
-					: `Exec session exited with code ${event.exitCode}`;
-			closeChannelOnly();
-			void invalidatePodExecQueries((options) => queryClient.invalidateQueries(options));
-			return;
-		}
-		if (event.type === "stopped") {
-			message = "Exec session stopped";
-			closeChannelOnly();
-			void invalidatePodExecQueries((options) => queryClient.invalidateQueries(options));
-		}
+	function tabLabel(tab: ExecSessionTab): string {
+		return `${tab.command[0].split("/").pop()} · ${tab.container || "default"}`;
 	}
 
-	async function startSession() {
-		if (starting) return;
-		starting = true;
-		try {
-			error = null;
-			await tick();
-			fitTerminal();
-			const request = buildPodExecRequest(
-				resource,
-				{
-					preset,
-					customArgv,
-					container: selectedContainer,
-					cols: terminal?.cols ?? DEFAULT_COLS,
-					rows: terminal?.rows ?? DEFAULT_ROWS,
-					confirmed,
-				},
-				kubeconfigSourceKey,
-			);
-			if (isValidationMessage(request)) {
-				error = request;
-				return;
-			}
-			const previous = sessionId;
-			closeChannelOnly();
-			if (previous) {
-				await stopPodExec({
-					client,
-					sessionId: previous,
-					invalidateQueries: (options) => queryClient.invalidateQueries(options),
-				});
-			}
-			const nextChannel = createPodExecChannel(handleMessage, client);
-			channel = nextChannel;
-			status = "starting";
-			message = "Starting exec session";
-			terminal?.clear();
-			terminal?.writeln(
-				`Starting ${commandText} on ${podExecTarget(resource, selectedContainer)}\r\n`,
-			);
-			try {
-				const summary = await startPodExec({
-					client,
-					request,
-					channel: nextChannel,
-					invalidateQueries: (options) => queryClient.invalidateQueries(options),
-				});
-				// Channel messages may have advanced or torn down the session
-				// while the start call was in flight; never regress their state.
-				if (channel !== nextChannel) return;
-				if (!sessionId) {
-					sessionId = summary.id;
-					status = summary.status;
-				}
-			} catch (err) {
-				closePodExecChannel(nextChannel);
-				if (channel === nextChannel) channel = null;
-				status = "error";
-				error = err;
-			}
-		} finally {
-			starting = false;
-		}
-	}
-
-	async function stopSession(id: string) {
-		stoppingId = id;
-		try {
-			if (sessionId === id) closeChannelOnly();
-			await stopPodExec({
-				client,
-				sessionId: id,
-				invalidateQueries: (options) => queryClient.invalidateQueries(options),
-			});
-		} catch (err) {
-			error = err;
-		} finally {
-			stoppingId = null;
-		}
+	function statusDotClass(status: ExecSessionTab["status"]): string {
+		if (status === "running") return "bg-emerald-500";
+		if (status === "starting" || status === "connecting") return "bg-amber-500";
+		if (status === "error") return "bg-red-500";
+		return "bg-muted-foreground/60";
 	}
 </script>
+
+{#snippet sessionMenu(align: "start" | "end")}
+	<PopoverContent {align} class="w-64 p-1">
+		<ExecSessionMenu
+			podName={resource.name}
+			containers={menuContainers}
+			{defaultContainer}
+			{sourceLabel}
+			onOpen={openSession}
+		/>
+	</PopoverContent>
+{/snippet}
 
 {#if resource.kind !== "Pod"}
 	<Empty class="min-h-32 border border-dashed">
@@ -327,64 +164,137 @@
 		<AlertTitle>Namespace required</AlertTitle>
 		<AlertDescription>Pod exec requires a namespaced Pod target.</AlertDescription>
 	</Alert>
+{:else if tabs.length === 0}
+	<Empty class="min-h-72 flex-1 border border-dashed">
+		<EmptyHeader>
+			<EmptyMedia variant="icon"><TerminalSquare /></EmptyMedia>
+			<EmptyTitle>No exec sessions</EmptyTitle>
+			<EmptyDescription>
+				Open a shell inside this Pod. Sessions stop when you close the Pod or switch to another one.
+			</EmptyDescription>
+		</EmptyHeader>
+		<EmptyContent>
+			<div class="flex flex-wrap items-center justify-center gap-1.5">
+				<Button onclick={() => openSession(defaultContainer, ["/bin/sh"])}>
+					<TerminalSquare data-icon="inline-start" />
+					Open /bin/sh in {containerLabel(defaultContainer)}
+				</Button>
+				<Popover bind:open={menuOpen}>
+					<PopoverTrigger class={buttonClass({ variant: "outline" })}>
+						Other
+						<ChevronDown data-icon="inline-end" />
+					</PopoverTrigger>
+					{@render sessionMenu("end")}
+				</Popover>
+			</div>
+		</EmptyContent>
+	</Empty>
 {:else}
-	<div class="flex flex-col gap-3">
-		<Alert>
-			<TerminalIcon />
-			<AlertTitle>Guarded Pod exec</AlertTitle>
-			<AlertDescription>Exec is limited to this exact Pod through the Kubernetes API.</AlertDescription>
-		</Alert>
-
-		<PodExecLaunchForm
-			{resource}
-			{containers}
-			bind:selectedContainer
-			bind:preset
-			bind:customArgv
-			bind:confirmed
-			{showKubeconfigSourceLabels}
-			{kubeconfigSourceKey}
-			{commandText}
-		/>
-
-		{#if error}
-			<FriendlyError
-				error={error}
-				context={{ operation: "exec", fallbackTitle: "Exec failed" }}
-			/>
-		{/if}
-
-		<div class="flex flex-wrap items-center gap-2">
-			<Badge variant={status === "error" ? "destructive" : "outline"}>Exec: {status}</Badge>
-			<span class="text-xs text-muted-foreground">{message}</span>
-			<Button onclick={startSession} disabled={starting}>
-				{#if starting}
-					<Spinner data-icon="inline-start" />
-				{:else}
-					<Play data-icon="inline-start" />
-				{/if}
-				Start
-			</Button>
+	<div class="flex min-h-72 flex-1 flex-col overflow-hidden rounded-lg border bg-card">
+		<div class="flex h-9 shrink-0 items-stretch gap-0.5 border-b pr-1.5 pl-1">
+			<div
+				role="group"
+				aria-label="Exec sessions"
+				class="flex min-w-0 items-stretch overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+			>
+				{#each tabs as tab (tab.key)}
+					{@const selected = tab.key === activeKey}
+					<div
+						class="group/session relative flex shrink-0 items-center gap-1 pr-1 pl-2 text-xs font-medium {selected
+							? 'text-foreground after:absolute after:inset-x-1.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-foreground'
+							: 'text-muted-foreground hover:text-foreground'}"
+					>
+						<button
+							type="button"
+							aria-pressed={selected}
+							aria-label={`${tabLabel(tab)}, ${tab.status}`}
+							class="flex cursor-pointer items-center gap-1.5 rounded-sm whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+							title={`${podExecCommandLabel(tab.command)} on ${podExecTarget(resource, tab.container)}`}
+							onclick={() => (activeKey = tab.key)}
+						>
+							<span class="size-[7px] shrink-0 rounded-full {statusDotClass(tab.status)}"></span>
+							{tabLabel(tab)}
+						</button>
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							class="text-muted-foreground {selected ? '' : 'opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100'}"
+							aria-label={`${hasSession(tab) ? "Stop and close" : "Close"} ${tabLabel(tab)}`}
+							title={hasSession(tab) ? "Stop and close" : "Close"}
+							onclick={() => closeTab(tab.key)}
+						>
+							<X />
+						</Button>
+					</div>
+				{/each}
+			</div>
+			<Popover bind:open={menuOpen}>
+				<PopoverTrigger
+					class={buttonClass({ variant: "ghost", size: "icon-sm", className: "self-center text-muted-foreground" })}
+					aria-label="New exec session"
+					title="New exec session"
+				>
+					<Plus />
+				</PopoverTrigger>
+				{@render sessionMenu("start")}
+			</Popover>
+			<span class="flex-1"></span>
+			{#if activeTab}
+				<div class="flex shrink-0 items-center gap-1">
+					<span class="mr-1 inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
+						<span class="size-[7px] shrink-0 rounded-full {statusDotClass(activeTab.status)}"></span>
+						{activeTab.status}
+					</span>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						class="text-muted-foreground"
+						aria-label="Clear terminal"
+						title="Clear terminal"
+						onclick={() => terminals[activeTab.key]?.clear()}
+					>
+						<RotateCcw />
+					</Button>
+					{#if hasSession(activeTab)}
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							class="text-destructive hover:text-destructive"
+							aria-label="Stop session"
+							title="Stop session"
+							onclick={() => void terminals[activeTab.key]?.stop()}
+						>
+							<Square />
+						</Button>
+					{:else}
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							class="text-muted-foreground"
+							aria-label={`Restart ${podExecCommandLabel(activeTab.command)} in ${containerLabel(activeTab.container)}`}
+							title="Restart session"
+							onclick={() => terminals[activeTab.key]?.restart()}
+						>
+							<Play />
+						</Button>
+					{/if}
+				</div>
+			{/if}
 		</div>
-
-		<div
-			bind:this={terminalHost}
-			class="min-h-[280px] overflow-hidden rounded-md border bg-background p-2"
-			class:hidden={!active}
-		></div>
-		<div class="flex justify-end">
-			<Button variant="outline" size="sm" onclick={() => terminal?.clear()}>
-				<RotateCcw data-icon="inline-start" />
-				Clear terminal
-			</Button>
+		<div class="relative min-h-0 flex-1 bg-[#101113]">
+			{#each tabs as tab (tab.key)}
+				<ExecSessionTerminal
+					bind:this={terminals[tab.key]}
+					bind:sessionId={tab.sessionId}
+					bind:status={tab.status}
+					{client}
+					{resource}
+					{kubeconfigSourceKey}
+					container={tab.container}
+					command={tab.command}
+					visible={active && tab.key === activeKey}
+				/>
+			{/each}
 		</div>
-
-		<PodExecSessionList
-			{sessions}
-			fetching={sessionsQuery.isFetching}
-			{showKubeconfigSourceLabels}
-			{stoppingId}
-			onStop={(sessionId) => void stopSession(sessionId)}
-		/>
 	</div>
 {/if}

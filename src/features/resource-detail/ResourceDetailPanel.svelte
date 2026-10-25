@@ -593,15 +593,16 @@
 		/>
 	{/if}
 
-	{#if canShowExec}<TabsContent value="exec">
+	{#if canShowExec}<TabsContent value="exec" class="flex min-h-0 flex-col">
 		{#if ExecTabComponent}
 			<ExecTabComponent
 				{client}
 				{resource}
 				containers={containerRows}
-				bind:selectedContainer
+				{selectedContainer}
 				{kubeconfigSourceKey}
 				active={activeTab === "exec"}
+				onShow={() => (activeTab = "exec")}
 			/>
 		{:else if activeTab === "exec" && execTabLoadError}
 			<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">

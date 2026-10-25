@@ -12,7 +12,8 @@ const modules = fileURLToPath(new URL("../node_modules", import.meta.url));
 // Run with Node's test runner. Bun's default test timeout also includes source builds.
 // Failure modes: native compiler discovery rejects tsrs, mapped type/prop errors
 // disappear or point into generated files, Svelte/CSS warnings vanish, or a failed
-// compiler process is reported as a successful check.
+// compiler process is reported as a successful check, or deleted components
+// remain in the generated compiler inputs.
 test("tsrs checks Svelte components and preserves mapped diagnostics", () => {
 	const workspace = mkdtempSync(join(tmpdir(), "kubecove-svelte-tsrs-"));
 	const config = join(workspace, "tsconfig.json");
@@ -111,6 +112,27 @@ test("tsrs checks Svelte components and preserves mapped diagnostics", () => {
 			),
 			invalid.output,
 		);
+
+		writeFileSync(
+			join(workspace, "model.ts"),
+			"export interface RemovedModel { count: number }\n",
+		);
+		writeFileSync(
+			join(workspace, "Child.svelte"),
+			'<script lang="ts">\nimport type { RemovedModel } from "./model";\nlet { count }: RemovedModel = $props();\n</script>\n<p>{count}</p>\n',
+		);
+		writeFileSync(
+			app,
+			'<script lang="ts">\nimport Child from "./Child.svelte";\n</script>\n<Child count={1} />\n',
+		);
+		const beforeDeletion = run();
+		assert.equal(beforeDeletion.status, 0, beforeDeletion.output);
+		rmSync(join(workspace, "Child.svelte"));
+		rmSync(join(workspace, "model.ts"));
+		writeFileSync(app, "<p>After deletion</p>\n");
+		const afterDeletion = run();
+		assert.equal(afterDeletion.status, 0, afterDeletion.output);
+		assert.match(afterDeletion.output, /COMPLETED 1 FILES 0 ERRORS 0 WARNINGS/);
 
 		const failed = run({ TSRS_BINARY: join(workspace, "missing-tsrs") });
 		assert.notEqual(failed.status, 0, failed.output);
