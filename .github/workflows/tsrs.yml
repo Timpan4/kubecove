@@ -48,13 +48,20 @@ jobs:
         with:
           bun-version: "1.4.0"
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-      - name: Cache tsrs source binary
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Restore tsrs source binary
+        id: tsrs-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .e2e/tools/tsrs/*/*/bin
           key: tsrs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tsrs.ts') }}
       - run: bun install --frozen-lockfile
       - run: bun run tsrs:build
+      - name: Save tsrs source binary
+        if: steps.tsrs-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .e2e/tools/tsrs/*/*/bin
+          key: ${{ steps.tsrs-cache.outputs.cache-primary-key }}
       - run: bun run typecheck
       - run: bun run typecheck:bench
       - run: bun run svelte:check

@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -181,6 +189,37 @@ function checkSvelteDiagnostics(alias) {
 		assert.match(failed.output, /TSRS_BINARY.*does not exist/, failed.output);
 		assert.ok(!failed.output.includes(missingBinary), failed.output);
 		assert.doesNotMatch(failed.output, /COMPLETED/);
+	} catch (error) {
+		const cache = join(
+			workspace,
+			"node_modules",
+			".cache",
+			"svelte-check-native",
+		);
+		const overlay = join(cache, "tsconfig.json");
+		if (existsSync(overlay)) {
+			const graph = spawnSync(
+				"bun",
+				[launcher, "--project", overlay, "--listFilesOnly"],
+				{
+					encoding: "utf8",
+					env: process.env,
+				},
+			);
+			console.error(
+				"Svelte compiler failure evidence:",
+				JSON.stringify({
+					workspace,
+					canonicalWorkspace: realpathSync(workspace),
+					canonicalCache: realpathSync(cache),
+					config: JSON.parse(readFileSync(overlay, "utf8")),
+					graphStatus: graph.status,
+					graph: graph.stdout,
+					graphErrors: graph.stderr,
+				}),
+			);
+		}
+		throw error;
 	} finally {
 		rmSync(directory, { recursive: true, force: true });
 	}
