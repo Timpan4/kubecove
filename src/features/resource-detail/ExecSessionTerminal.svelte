@@ -250,6 +250,8 @@
 	}
 
 	async function stopSession(): Promise<boolean> {
+		// A stop already in flight decides the outcome; its failure restores the session.
+		if (stopTask) return stopTask;
 		const liveSessionId = sessionId;
 		const startInFlight = startTask;
 		if (!liveSessionId && !startInFlight) return true;
