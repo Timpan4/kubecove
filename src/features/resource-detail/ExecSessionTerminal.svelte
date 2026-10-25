@@ -60,7 +60,8 @@
 	let input: ReturnType<typeof createExecInput> | null = null;
 	let channel: ReturnType<typeof createPodExecChannel> | null = null;
 	let startTask: Promise<void> | null = null;
-	// Bumped by stop and unmount so a start that has not opened its channel yet gives up.
+	let stopTask: Promise<boolean> | null = null;
+	// Bumped by start, stop, and unmount so stale starts and queued restarts give up.
 	let startRun = 0;
 	let fitFrame: number | null = null;
 
@@ -69,8 +70,12 @@
 	}
 
 	export function restart() {
-		// A stopped start may still be settling; restart after it instead of joining it.
-		void (startTask ?? Promise.resolve()).then(start);
+		const requested = startRun;
+		// Wait for a start or stop that is still settling, then restart unless a stop or
+		// unmount happened meanwhile.
+		void Promise.all([startTask, stopTask]).then(() => {
+			if (requested === startRun) void start();
+		});
 	}
 
 	/** Resolves false when the backend refused to stop the session. */
@@ -231,6 +236,7 @@
 	async function stopBackendSession(id: string): Promise<boolean> {
 		try {
 			await stopPodExec({ client, sessionId: id, invalidateQueries });
+			error = null;
 			return true;
 		} catch (cause) {
 			// The session may still run: keep tracking it so the leave dialog,
@@ -248,12 +254,20 @@
 		const startInFlight = startTask;
 		if (!liveSessionId && !startInFlight) return true;
 		startRun += 1;
-		ended("stopped", "session stopped");
-		if (liveSessionId) return stopBackendSession(liveSessionId);
-		// Still starting: the start gives up or, once its channel is closed, stops its own
-		// session. The backend start returns right after registering, so this wait is short.
-		await startInFlight;
-		return sessionId === null;
+		ended("stopped", "stopping session");
+		let stopped: boolean;
+		if (liveSessionId) {
+			stopTask = stopBackendSession(liveSessionId);
+			stopped = await stopTask;
+			stopTask = null;
+		} else {
+			// Still starting: the start gives up or, once its channel is closed, stops its own
+			// session. The backend start returns right after registering, so this wait is short.
+			await startInFlight;
+			stopped = sessionId === null;
+		}
+		if (stopped) terminal?.writeln(`${DIM}[session stopped]${RESET}`);
+		return stopped;
 	}
 </script>
 
