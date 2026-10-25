@@ -10,6 +10,7 @@ src-tauri/server/target/
 dist/
 build/
 .vite/
+.svelte-check/
 design-preview-plan.html
 
 # Nix

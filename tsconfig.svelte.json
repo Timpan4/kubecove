@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.svelte", "src/**/*.d.ts"],
+  "exclude": ["src/features/resources/topology-spike"]
+}

@@ -194,6 +194,9 @@ jobs:
       - name: Test frontend
         run: bun test
 
+      - name: Test Svelte compiler integration
+        run: bun run test:svelte
+
       - name: Run fast end-to-end suite
         run: bun run e2e:fast
 

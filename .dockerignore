@@ -15,6 +15,11 @@
 scripts/*
 !scripts/frontend-bundle-report.ts
 !scripts/dev-interactions-plugin.ts
+!scripts/tsrs.ts
+!tools/
+tools/*
+!tools/patches/
+!tools/patches/**
 !src-tauri/
 src-tauri/*
 !src-tauri/Cargo.toml
