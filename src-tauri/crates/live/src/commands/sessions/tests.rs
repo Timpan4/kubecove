@@ -187,6 +187,45 @@ async fn bind_rejects_a_local_port_that_is_already_forwarded() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn rejected_start_never_listens_or_relays() {
+    timeout(Duration::from_secs(5), async {
+        let registry = PortForwardRegistry::default();
+        let target = test_target("kind-dev", Some(CURRENT_SOURCE));
+        let first = start_forward(&registry, &target, |_stream| async { Ok(()) }).await;
+
+        let relayed = Arc::new(AtomicU32::new(0));
+        let rejected_relays = relayed.clone();
+        let listener = registry
+            .bind(None)
+            .await
+            .expect("localhost listener should bind");
+        let rejected_port = listener.local_port();
+        let error = registry
+            .start(first.id.clone(), &target, listener, move |_stream| {
+                rejected_relays.fetch_add(1, Ordering::Relaxed);
+                async { Ok(()) }
+            })
+            .expect_err("a duplicate session id must be rejected");
+
+        let connected = TcpStream::connect((LOCAL_ADDRESS, rejected_port)).await;
+        registry.stop(&first.id);
+
+        assert_eq!(
+            error.message,
+            format!("port-forward {} is already running", first.id)
+        );
+        assert_eq!(error.kind, AppErrorKind::LiveSessionTargetUnavailable);
+        assert!(
+            connected.is_err(),
+            "a rejected forward must not leave its local port listening"
+        );
+        assert_eq!(relayed.load(Ordering::Relaxed), 0);
+    })
+    .await
+    .expect("rejected start test should finish within timeout");
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn scope_change_stops_forwards_outside_the_workspace_and_keeps_the_rest() {
     timeout(Duration::from_secs(5), async {
         let registry = PortForwardRegistry::default();

@@ -122,6 +122,10 @@ builds were running on the host; load averages were between 4 and 10.
 | `secret_details_discarded_yaml_redaction_and_dto` | 34.05 µs | 34.00 µs |
 | `dynamic_details_complete_inspection` (unchanged code) | 24.62 µs | 25.39 µs |
 
+The Secret row measured the path as it was then, which serialized the unredacted Secret
+once and discarded it. That serialization was later removed, and the benchmark is now
+`secret_details_redaction_and_dto`.
+
 The unchanged dynamic details control moved 3% in the same direction. Deployment and
 ConfigMap details are dominated by YAML emission, which this change does not touch.
 User-space instruction counts per iteration, from 5- and 25-iteration runs, stayed

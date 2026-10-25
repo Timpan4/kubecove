@@ -230,8 +230,13 @@ impl StreamRegistry {
         broadcaster: &StreamBroadcaster,
         handle: JoinHandle<()>,
     ) {
-        let mut state = self.state.lock().expect("stream registry lock");
-        attach_watch_handle(&mut state.resource_watches, key, broadcaster, handle);
+        let rejected = {
+            let mut state = self.state.lock().expect("stream registry lock");
+            attach_watch_handle(&mut state.resource_watches, key, broadcaster, handle)
+        };
+        if let Some(handle) = rejected {
+            handle.abort();
+        }
     }
 
     pub(super) fn subscribe_event(
@@ -282,8 +287,13 @@ impl StreamRegistry {
         broadcaster: &StreamBroadcaster,
         handle: JoinHandle<()>,
     ) {
-        let mut state = self.state.lock().expect("stream registry lock");
-        attach_watch_handle(&mut state.event_watches, key, broadcaster, handle);
+        let rejected = {
+            let mut state = self.state.lock().expect("stream registry lock");
+            attach_watch_handle(&mut state.event_watches, key, broadcaster, handle)
+        };
+        if let Some(handle) = rejected {
+            handle.abort();
+        }
     }
 
     pub(super) fn insert_handles(&self, stream_id: String, handles: Vec<JoinHandle<()>>) {
@@ -328,22 +338,24 @@ impl StreamRegistry {
     }
 }
 
-/// Keeps the watch task only when it still belongs to the broadcaster that started it.
+/// Keeps the watch task only when it still belongs to the broadcaster that started it, and
+/// otherwise hands it back so the caller can abort it after releasing the registry lock.
+#[must_use]
 fn attach_watch_handle(
     watches: &mut HashMap<String, SharedWatch>,
     key: &str,
     broadcaster: &StreamBroadcaster,
     handle: JoinHandle<()>,
-) {
+) -> Option<JoinHandle<()>> {
     if let Some(watch) = watches.get_mut(key) {
         if Arc::ptr_eq(&watch.broadcaster.subscribers, &broadcaster.subscribers)
             && watch.handle.is_none()
         {
             watch.handle = Some(handle);
-            return;
+            return None;
         }
     }
-    handle.abort();
+    Some(handle)
 }
 
 fn remove_watch_when(

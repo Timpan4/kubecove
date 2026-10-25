@@ -9,12 +9,23 @@ pub struct RemoteConnectionSummary {
     pub connected: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerSession {
     pub resume_token: String,
     pub session_grace_seconds: u64,
     pub server_version: String,
+}
+
+impl std::fmt::Debug for ServerSession {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ServerSession")
+            .field("resume_token", &"[REDACTED]")
+            .field("session_grace_seconds", &self.session_grace_seconds)
+            .field("server_version", &self.server_version)
+            .finish()
+    }
 }
 
 pub struct RemoteCredentials {
