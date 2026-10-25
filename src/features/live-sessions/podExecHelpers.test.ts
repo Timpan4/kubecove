@@ -1,7 +1,7 @@
 import type { ResourceSummary } from "@/lib/types";
 import {
 	buildPodExecRequest,
-	commandForPreset,
+	parsePodExecArgv,
 	podExecCommandText,
 	podExecTarget,
 } from "@/features/live-sessions";
@@ -23,85 +23,63 @@ const pod: ResourceSummary = {
 };
 
 describe("pod exec helpers", () => {
-	test("builds exact shell preset requests with confirmation metadata", () => {
+	test("builds exact shell requests with confirmation metadata", () => {
 		const request = buildPodExecRequest(pod, {
-			preset: "sh",
-			customArgv: "",
+			command: ["/bin/sh"],
 			container: "api",
 			cols: 100,
 			rows: 32,
-			confirmed: true,
 		});
 
 		expect(request).toEqual({
-			clusterContext: "kind-dev",
-			namespace: "payments",
-			podName: "api-0",
-			container: "api",
-			command: ["/bin/sh"],
-			stdin: true,
-			tty: true,
-			terminalSize: { cols: 100, rows: 32 },
-			confirmation: {
-				acknowledged: true,
-				target: "kind-dev/payments/Pod/api-0/container/api",
-				command: '["/bin/sh"]',
+			ok: true,
+			request: {
+				clusterContext: "kind-dev",
+				namespace: "payments",
+				podName: "api-0",
+				container: "api",
+				command: ["/bin/sh"],
+				stdin: true,
+				tty: true,
+				terminalSize: { cols: 100, rows: 32 },
+				confirmation: {
+					acknowledged: true,
+					target: "kind-dev/payments/Pod/api-0/container/api",
+					command: '["/bin/sh"]',
+				},
 			},
 		});
 	});
 
-	test("requires Pod scope, namespace, command, terminal size, and confirmation", () => {
+	test("requires Pod scope, namespace, command, and terminal size", () => {
 		expect(
 			buildPodExecRequest(
 				{ ...pod, kind: "Deployment", name: "api" },
-				{
-					preset: "sh",
-					customArgv: "",
-					cols: 100,
-					rows: 32,
-					confirmed: true,
-				},
+				{ command: ["/bin/sh"], cols: 100, rows: 32 },
 			),
-		).toBe("Pod exec starts from an exact Pod");
+		).toEqual({ ok: false, message: "Pod exec starts from an exact Pod" });
 		expect(
 			buildPodExecRequest(
 				{ ...pod, namespace: null },
-				{
-					preset: "sh",
-					customArgv: "",
-					cols: 100,
-					rows: 32,
-					confirmed: true,
-				},
+				{ command: ["/bin/sh"], cols: 100, rows: 32 },
 			),
-		).toBe("Pod exec requires a namespace");
-		expect(commandForPreset("custom", "\n ")).toBe("Custom argv is required");
-		expect(
-			buildPodExecRequest(pod, {
-				preset: "sh",
-				customArgv: "",
-				cols: 0,
-				rows: 32,
-				confirmed: true,
-			}),
-		).toBe("Terminal size must be between 1 and 500 columns and rows");
-		expect(
-			buildPodExecRequest(pod, {
-				preset: "sh",
-				customArgv: "",
-				cols: 100,
-				rows: 32,
-				confirmed: false,
-			}),
-		).toBe("Confirm the exact target and command before starting exec");
+		).toEqual({ ok: false, message: "Pod exec requires a namespace" });
+		expect(buildPodExecRequest(pod, { command: parsePodExecArgv("\n "), cols: 100, rows: 32 })).toEqual({
+			ok: false,
+			message: "Enter a command to run",
+		});
+		expect(buildPodExecRequest(pod, { command: ["/bin/sh"], cols: 0, rows: 32 })).toEqual({
+			ok: false,
+			message: "Terminal size must be between 1 and 500 columns and rows",
+		});
 	});
 
 	test("uses line-based custom argv instead of shell parsing", () => {
-		expect(commandForPreset("custom", "/usr/bin/env\nprintenv")).toEqual([
+		expect(parsePodExecArgv("/usr/bin/env\nprintenv")).toEqual([
 			"/usr/bin/env",
 			"printenv",
 		]);
-		expect(commandForPreset("bash", "")).toEqual(["/bin/bash"]);
+		expect(parsePodExecArgv("sh -c 'echo $HOME'")).toEqual(["sh -c 'echo $HOME'"]);
 		expect(podExecTarget(pod, "api")).toBe(
 			"kind-dev/payments/Pod/api-0/container/api",
 		);

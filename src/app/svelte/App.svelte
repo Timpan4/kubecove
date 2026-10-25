@@ -15,6 +15,8 @@
 	import DeferredSurface from "@/components/DeferredSurface.svelte";
 	import WorkspaceLauncher from "@/features/workspaces/WorkspaceLauncher.svelte";
 	import { invalidatePodExecQueries } from "@/features/live-sessions/podExecLifecycle";
+	import { confirmStoppingExecSessions } from "@/features/live-sessions/openExecSessions.svelte";
+	import StopExecSessionsDialog from "@/features/live-sessions/StopExecSessionsDialog.svelte";
 	import { invalidatePortForwardQueries } from "@/features/live-sessions/portForwardLifecycle";
 	import ForegroundLoadingBar from "./ForegroundLoadingBar.svelte";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
@@ -103,20 +105,27 @@
 		},
 	});
 
+	// Every transition tears down the open Pod detail, which stops its exec sessions.
+	function requestWorkspaceTransition(destination: WorkspaceDestination) {
+		void confirmStoppingExecSessions().then((stop) => {
+			if (stop) void workspaceTransition.request(destination);
+		});
+	}
+
 	function openWorkspace(workspaceId: string) {
-		void workspaceTransition.request({ type: "open", workspaceId });
+		requestWorkspaceTransition({ type: "open", workspaceId });
 	}
 
 	function createWorkspace(input: CreateWorkspaceInput) {
-		void workspaceTransition.request({ type: "create", input });
+		requestWorkspaceTransition({ type: "create", input });
 	}
 
 	function closeWorkspace() {
-		void workspaceTransition.request({ type: "launcher" });
+		requestWorkspaceTransition({ type: "launcher" });
 	}
 
 	function changeWorkspaceContext(workspaceId: string, input: CreateWorkspaceInput) {
-		void workspaceTransition.request({ type: "context", workspaceId, input });
+		requestWorkspaceTransition({ type: "context", workspaceId, input });
 	}
 
 	function openLauncherSettings() {
@@ -344,4 +353,5 @@
 		<AppUsageFooter />
 	</div>
 	{/if}
+	<StopExecSessionsDialog />
 </TooltipProvider>

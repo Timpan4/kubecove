@@ -5,15 +5,13 @@ import type {
 	ResourceSummary,
 } from "@/lib/types";
 
-export type PodExecPreset = "sh" | "bash" | "custom";
+export const POD_EXEC_SHELLS = [["/bin/sh"], ["/bin/bash"]] as const;
 
 export interface PodExecDraft {
-	preset: PodExecPreset;
-	customArgv: string;
+	command: readonly string[];
 	container?: string;
 	cols: number;
 	rows: number;
-	confirmed: boolean;
 }
 
 export function podExecTarget(resource: ResourceSummary, container?: string): string {
@@ -21,38 +19,45 @@ export function podExecTarget(resource: ResourceSummary, container?: string): st
 	return `${resource.cluster}/${resource.namespace ?? ""}/Pod/${resource.name}/container/${containerName}`;
 }
 
-export function podExecCommandText(command: string[]): string {
+export function podExecCommandText(command: readonly string[]): string {
 	return JSON.stringify(command);
 }
 
-export function commandForPreset(
-	preset: PodExecPreset,
-	customArgv: string,
-): string[] | string {
-	if (preset === "sh") return ["/bin/sh"];
-	if (preset === "bash") return ["/bin/bash"];
-	const command = customArgv
+export function podExecCommandLabel(command: readonly string[]): string {
+	return command.join(" ");
+}
+
+export function parsePodExecArgv(text: string): string[] {
+	return text
 		.split(/\r?\n/)
 		.map((part) => part.trim())
 		.filter(Boolean);
-	return command.length > 0 ? command : "Custom argv is required";
+}
+
+export type PodExecRequestResult =
+	| { ok: true; request: PodExecSessionRequest }
+	| { ok: false; message: string };
+
+function invalid(message: string): PodExecRequestResult {
+	return { ok: false, message };
 }
 
 export function buildPodExecRequest(
 	resource: ResourceSummary,
 	draft: PodExecDraft,
 	kubeconfigSource?: string,
-): PodExecSessionRequest | string {
-	if (resource.kind !== "Pod") return "Pod exec starts from an exact Pod";
-	if (!resource.namespace) return "Pod exec requires a namespace";
-	const command = commandForPreset(draft.preset, draft.customArgv);
-	if (!Array.isArray(command)) return command;
+): PodExecRequestResult {
+	if (resource.kind !== "Pod") return invalid("Pod exec starts from an exact Pod");
+	if (!resource.namespace) return invalid("Pod exec requires a namespace");
+	const command = [...draft.command];
+	if (command.length === 0) return invalid("Enter a command to run");
 	if (draft.cols < 1 || draft.rows < 1 || draft.cols > 500 || draft.rows > 500) {
-		return "Terminal size must be between 1 and 500 columns and rows";
+		return invalid("Terminal size must be between 1 and 500 columns and rows");
 	}
-	if (!draft.confirmed) return "Confirm the exact target and command before starting exec";
 
-	return {
+	// Exec starts only from an action labeled with this exact command and container,
+	// which is the explicit confirmation ADR 0005 requires.
+	const request: PodExecSessionRequest = {
 		clusterContext: resource.cluster,
 		kubeconfigEnvVar: podExecRequestKubeconfigEnvVar(kubeconfigSource),
 		namespace: resource.namespace,
@@ -63,11 +68,12 @@ export function buildPodExecRequest(
 		tty: true,
 		terminalSize: { cols: draft.cols, rows: draft.rows },
 		confirmation: {
-			acknowledged: draft.confirmed,
+			acknowledged: true,
 			target: podExecTarget(resource, draft.container),
 			command: podExecCommandText(command),
 		},
 	};
+	return { ok: true, request };
 }
 
 export function isPodExecForResource(
