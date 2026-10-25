@@ -81,9 +81,14 @@
 	async function runSourceUpdate(
 		action: () => Promise<KubeconfigSourcesSummary>,
 		busy = true,
+		changesSource = true,
 	): Promise<boolean> {
 		// A source change stops sessions outside the new source unless the user keeps them.
-		if (!settings.keepLiveSessionsOnWorkspaceSwitch && !(await confirmStoppingExecSessions())) {
+		if (
+			changesSource &&
+			!settings.keepLiveSessionsOnWorkspaceSwitch &&
+			!(await confirmStoppingExecSessions())
+		) {
 			return false;
 		}
 		if (busy) sourceActionBusy = true;
@@ -196,7 +201,7 @@
 		<Switch
 			checked={settings.showKubeconfigSourceLabels}
 			onCheckedChange={(show) =>
-				void runSourceUpdate(() => setShowKubeconfigSourceLabels(client, show))}
+				void runSourceUpdate(() => setShowKubeconfigSourceLabels(client, show), true, false)}
 			aria-label="Show kubeconfig source labels"
 		/>
 	</SettingsRow>
