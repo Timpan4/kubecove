@@ -18,7 +18,7 @@ test("tsrs checks Svelte components and preserves mapped diagnostics", () => {
 	const workspace = mkdtempSync(join(tmpdir(), "kubecove-svelte-tsrs-"));
 	const config = join(workspace, "tsconfig.json");
 	const app = join(workspace, "App.svelte");
-	const run = (env = {}) => {
+	const run = (env = {}, args = []) => {
 		const result = spawnSync(
 			"bun",
 			[
@@ -28,9 +28,9 @@ test("tsrs checks Svelte components and preserves mapped diagnostics", () => {
 				workspace,
 				"--tsconfig",
 				config,
-				"--tsgo",
 				"--output",
 				"machine-verbose",
+				...args,
 			],
 			{
 				encoding: "utf8",
@@ -63,6 +63,7 @@ test("tsrs checks Svelte components and preserves mapped diagnostics", () => {
 					types: [],
 				},
 				include: ["*.svelte"],
+				exclude: ["Ignored.svelte"],
 			}),
 		);
 		writeFileSync(
@@ -112,6 +113,9 @@ test("tsrs checks Svelte components and preserves mapped diagnostics", () => {
 			),
 			invalid.output,
 		);
+		const css = records.find((record) => record.code === "unknownProperties");
+		assert.deepEqual(css.start, { line: 7, character: 11 }, invalid.output);
+		assert.deepEqual(css.end, { line: 7, character: 17 }, invalid.output);
 
 		writeFileSync(
 			join(workspace, "model.ts"),
@@ -133,6 +137,36 @@ test("tsrs checks Svelte components and preserves mapped diagnostics", () => {
 		const afterDeletion = run();
 		assert.equal(afterDeletion.status, 0, afterDeletion.output);
 		assert.match(afterDeletion.output, /COMPLETED 1 FILES 0 ERRORS 0 WARNINGS/);
+
+		writeFileSync(
+			app,
+			"<p>Example</p>\n<style>\n.unused { colour: red; }\n</style>\n",
+		);
+		const warnings = run({}, ["--fail-on-warnings"]);
+		assert.equal(warnings.status, 1, warnings.output);
+		assert.match(warnings.output, /"code":"css_unused_selector"/);
+		assert.match(warnings.output, /"code":"unknownProperties"/);
+		assert.match(warnings.output, /COMPLETED 1 FILES 0 ERRORS 2 WARNINGS/);
+
+		writeFileSync(
+			join(workspace, "Ignored.svelte"),
+			'<script lang="ts">const ignored: number = "bad";</script>\n<p>{ignored}</p>\n<style>p { colour: red; }</style>\n',
+		);
+		writeFileSync(
+			app,
+			"<p>🌊</p>\r\n<style>\r\np { colour: red; }\r\n</style>\r\n",
+		);
+		const mappedCss = run({}, ["--fail-on-warnings"]);
+		assert.equal(mappedCss.status, 1, mappedCss.output);
+		const cssRecord = mappedCss.output
+			.split(/\r?\n/)
+			.find((line) => line.includes('"code":"unknownProperties"'));
+		const mapped = JSON.parse(cssRecord.slice(cssRecord.indexOf("{")));
+		assert.equal(mapped.filename, "App.svelte", mappedCss.output);
+		assert.deepEqual(mapped.start, { line: 2, character: 4 }, mappedCss.output);
+		assert.deepEqual(mapped.end, { line: 2, character: 10 }, mappedCss.output);
+		assert.match(mappedCss.output, /0 ERRORS 1 WARNINGS/);
+		assert.doesNotMatch(mappedCss.output, /Ignored\.svelte/);
 
 		const failed = run({ TSRS_BINARY: join(workspace, "missing-tsrs") });
 		assert.notEqual(failed.status, 0, failed.output);

@@ -17,7 +17,7 @@
     "typecheck": "bun scripts/tsrs.ts --noEmit",
     "typecheck:bench": "bun scripts/tsrs.ts --noEmit --project tsconfig.benchmarks.json",
     "tsrs:build": "bun scripts/tsrs.ts --build-source",
-    "svelte:check": "bun scripts/tsrs.ts --svelte --tsconfig tsconfig.svelte.json --tsgo",
+    "svelte:check": "bun scripts/tsrs.ts --svelte --tsconfig tsconfig.svelte.json",
     "lint": "biome lint .",
     "lint:anti-slop": "bun scripts/lint-anti-slop.ts",
     "audit": "bun scripts/audit-dependencies.ts",
@@ -94,13 +94,13 @@
     "oxlint": "1.88.0",
     "playwright-core": "1.64.1",
     "svelte": "5.57.2",
-    "svelte-check": "4.7.7",
+    "svelte-check-native": "1.10.0",
     "tailwindcss": "4.3.3",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "tw-animate-css": "1.4.0",
-    "typescript": "npm:@typescript/typescript6@6.0.2",
     "vite": "8.3.4",
     "vitest": "4.1.12",
+    "vscode-css-languageservice": "6.3.10",
     "webdriverio": "10.0.2"
   },
   "overrides": {
@@ -114,8 +114,5 @@
     "nanoid": "3.3.18",
     "postcss": "8.5.25",
     "serialize-javascript": "7.1.4"
-  },
-  "patchedDependencies": {
-    "svelte-check@4.7.7": "tools/patches/svelte-check@4.7.7.patch"
   }
 }

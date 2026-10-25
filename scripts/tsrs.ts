@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import tsrs from "tsrs/package.json";
 
 const require = createRequire(import.meta.url);
@@ -88,15 +88,24 @@ async function main(): Promise<number> {
 	);
 	const env = { ...process.env };
 	if (!env.TSRS_BINARY && !hasPrebuilt) env.TSRS_BINARY = await buildSource();
+	if (env.TSRS_BINARY && !existsSync(env.TSRS_BINARY)) {
+		throw new Error(
+			`TSRS_BINARY is set to ${env.TSRS_BINARY}, which does not exist.`,
+		);
+	}
 	const svelte = args[0] === "--svelte";
 	if (svelte) args.shift();
+	const tsrsRoot = dirname(require.resolve("tsrs/package.json"));
+	if (svelte) {
+		// Use the pinned package's resolver for platform/libc selection.
+		const { default: getExePath } = await import(
+			pathToFileURL(join(tsrsRoot, "lib", "getExePath.js")).href
+		);
+		env.TSGO_BIN = env.TSRS_BINARY || getExePath();
+	}
 	const entry = svelte
-		? join(
-				dirname(require.resolve("svelte-check/package.json")),
-				"bin",
-				"svelte-check",
-			)
-		: join(dirname(require.resolve("tsrs/package.json")), tsrs.bin.tsrs);
+		? fileURLToPath(new URL("./svelte-check.mjs", import.meta.url))
+		: join(tsrsRoot, tsrs.bin.tsrs);
 	return run([process.execPath, entry, ...args], env);
 }
 

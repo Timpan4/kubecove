@@ -9,9 +9,6 @@
 
 let
   root = ../.;
-  patchedDependencies = lib.mapAttrs (_: path: root + "/${path}") (
-    (lib.importJSON ../package.json).patchedDependencies or { }
-  );
 in
 bun2nix.mkDerivation {
   packageJson = ../package.json;
@@ -26,7 +23,7 @@ bun2nix.mkDerivation {
       ../scripts/dev-interactions-plugin.ts
       ../scripts/frontend-bundle-report.ts
       ../scripts/tsrs.ts
-      ../tools/patches
+      ../scripts/svelte-check.mjs
       ../src
       ../svelte.config.js
       ../tsconfig.json
@@ -36,7 +33,6 @@ bun2nix.mkDerivation {
 
   bunDeps = bun2nix.fetchBunDeps {
     bunNix = ../bun.nix;
-    overrides = bun2nix.patchedDependenciesToOverrides { inherit patchedDependencies; };
   };
 
   nativeBuildInputs = [ autoPatchelfHook ];
