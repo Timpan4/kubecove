@@ -1,18 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
-	existsSync,
 	mkdirSync,
 	mkdtempSync,
-	readFileSync,
-	readdirSync,
-	realpathSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -196,69 +192,6 @@ function checkSvelteDiagnostics({ alias = false, localModules = true } = {}) {
 		assert.match(failed.output, /TSRS_BINARY.*does not exist/, failed.output);
 		assert.ok(!failed.output.includes(missingBinary), failed.output);
 		assert.doesNotMatch(failed.output, /COMPLETED/);
-	} catch (error) {
-		const cache = localModules
-			? join(workspace, "node_modules", ".cache", "svelte-check-native")
-			: join(workspace, ".svelte-check");
-		const overlay = join(cache, "tsconfig.json");
-		if (existsSync(overlay)) {
-			const config = JSON.parse(readFileSync(overlay, "utf8"));
-			const graph = (project, args = []) => {
-				const result = spawnSync(
-					"bun",
-					[launcher, "--project", project, "--listFilesOnly", ...args],
-					{
-						encoding: "utf8",
-						env: process.env,
-					},
-				);
-				return {
-					status: result.status,
-					files: result.stdout
-						.split(/\r?\n/)
-						.filter((path) =>
-							/\.svelte\.svn\.|\.d\.svelte\.ts|svelte-shims/.test(path),
-						),
-					stderr: result.stderr,
-				};
-			};
-			const slashConfig = join(cache, "tsconfig.slashes-probe.json");
-			writeFileSync(
-				slashConfig,
-				JSON.stringify({
-					...config,
-					include: config.include?.map((pattern) =>
-						pattern.replaceAll("\\", "/"),
-					),
-					exclude: config.exclude?.map((pattern) =>
-						pattern.replaceAll("\\", "/"),
-					),
-				}),
-			);
-			const nativeShim = config.files.find((path) =>
-				path.endsWith("svelte-shims.d.ts"),
-			);
-			const nativeProject = nativeShim
-				? join(dirname(nativeShim), "tsconfig.json")
-				: null;
-			console.error(
-				"Svelte compiler failure evidence:",
-				JSON.stringify({
-					workspace,
-					canonicalWorkspace: realpathSync(workspace),
-					canonicalCache: realpathSync(cache),
-					config,
-					generatedFiles: readdirSync(join(cache, "svelte")),
-					original: graph(overlay),
-					forwardGlobs: graph(slashConfig),
-					nativeProject,
-					canonicalProject: nativeProject ? graph(nativeProject) : null,
-					allowJs: graph(overlay, ["--allowJs"]),
-				}),
-			);
-			rmSync(slashConfig);
-		}
-		throw error;
 	} finally {
 		rmSync(directory, { recursive: true, force: true });
 	}

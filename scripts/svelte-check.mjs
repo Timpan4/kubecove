@@ -1,6 +1,14 @@
 import { realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+	basename,
+	dirname,
+	isAbsolute,
+	join,
+	relative,
+	resolve,
+	sep,
+} from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { parse } from "svelte/compiler";
@@ -43,10 +51,20 @@ async function cssDiagnostics(workspace, records) {
 	const cache = statSync(modules, { throwIfNoEntry: false })?.isDirectory()
 		? join(modules, ".cache", "svelte-check-native")
 		: join(workspace, ".svelte-check");
+	const config = await Bun.file(join(cache, "tsconfig.json")).json();
+	const shim = config.files.find(
+		(file) => basename(file) === "svelte-shims.d.ts",
+	);
+	if (!shim)
+		throw new Error(
+			"The native Svelte config is missing its generated type shim.",
+		);
+	// Use the native checker's spelling: Windows short paths omit include matches.
+	const project = join(dirname(shim), "tsconfig.json");
 	const program = await capture([
 		process.env.TSGO_BIN,
 		"--project",
-		join(cache, "tsconfig.json"),
+		project,
 		"--listFilesOnly",
 	]);
 	if (program.status !== 0)
