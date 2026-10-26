@@ -1,10 +1,13 @@
-use super::builtin_summary::{builtin_summary, metadata_summary, BuiltinSummary, KindStatus};
+use super::builtin_summary::{
+    builtin_summary, list_namespaced_summaries, metadata_summary, namespace_or_all, BuiltinSummary,
+    KindStatus,
+};
 use crate::commands::helpers::{kubernetes_health, list_params, pod_restarts, Readiness};
 use crate::models::{AppError, ResourceSummary};
 use chrono::Utc;
 use k8s_openapi::api::core::v1::{ConfigMap, PersistentVolumeClaim, Pod, Secret, Service};
 use k8s_openapi::api::discovery::v1::EndpointSlice;
-use kube::{api::Api, Client};
+use kube::Client;
 use serde_json::Value;
 
 impl BuiltinSummary for Pod {
@@ -71,73 +74,40 @@ pub(super) async fn core_resource_summaries(
 ) -> Result<Option<Vec<ResourceSummary>>, AppError> {
     let now = Utc::now();
     let summaries = match kind {
-        "Pod" => {
-            let api: Api<Pod> = if let Some(ns) = namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            kubecove_kube::commands::list_projection::list::<
-                _,
-                super::summary_projection::PodProjection,
-            >(api, &list_params())
+        "Pod" => kubecove_kube::commands::list_projection::list::<
+            _,
+            super::summary_projection::PodProjection,
+        >(namespace_or_all::<Pod>(client, namespace), &list_params())
+        .await
+        .map_err(AppError::from)?
+        .into_iter()
+        .map(|pod| builtin_summary(cluster_context, &pod.into_resource(), now))
+        .collect(),
+        "Service" => {
+            list_namespaced_summaries::<Service>(client, cluster_context, namespace, now).await?
+        }
+        "ConfigMap" => namespace_or_all::<ConfigMap>(client, namespace)
+            .list_metadata(&list_params())
             .await
             .map_err(AppError::from)?
-            .into_iter()
-            .map(|pod| builtin_summary(cluster_context, &pod.into_resource(), now))
-            .collect()
-        }
-        "Service" => {
-            let api: Api<Service> = if let Some(ns) = namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            api.list(&list_params())
-                .await
-                .map_err(AppError::from)?
-                .iter()
-                .map(|svc| builtin_summary(cluster_context, svc, now))
-                .collect()
-        }
-        "ConfigMap" => {
-            let api: Api<ConfigMap> = if let Some(ns) = namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            api.list_metadata(&list_params())
-                .await
-                .map_err(AppError::from)?
-                .iter()
-                .map(|cm| metadata_summary::<ConfigMap>(cluster_context, &cm.metadata, now))
-                .collect()
-        }
-        "Secret" => {
-            let api: Api<Secret> = if let Some(ns) = namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            api.list_metadata(&list_params())
-                .await
-                .map_err(AppError::from)?
-                .iter()
-                .map(|sec| metadata_summary::<Secret>(cluster_context, &sec.metadata, now))
-                .collect()
-        }
+            .iter()
+            .map(|cm| metadata_summary::<ConfigMap>(cluster_context, &cm.metadata, now))
+            .collect(),
+        "Secret" => namespace_or_all::<Secret>(client, namespace)
+            .list_metadata(&list_params())
+            .await
+            .map_err(AppError::from)?
+            .iter()
+            .map(|sec| metadata_summary::<Secret>(cluster_context, &sec.metadata, now))
+            .collect(),
         "PersistentVolumeClaim" => {
-            let api: Api<PersistentVolumeClaim> = if let Some(ns) = namespace {
-                Api::namespaced(client, ns)
-            } else {
-                Api::all(client)
-            };
-            api.list(&list_params())
-                .await
-                .map_err(AppError::from)?
-                .iter()
-                .map(|pvc| builtin_summary(cluster_context, pvc, now))
-                .collect()
+            list_namespaced_summaries::<PersistentVolumeClaim>(
+                client,
+                cluster_context,
+                namespace,
+                now,
+            )
+            .await?
         }
         _ => return Ok(None),
     };

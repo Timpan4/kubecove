@@ -41,6 +41,14 @@ fn description(kind: &str, text: &str) -> CredentialStoreDescription {
     }
 }
 
+#[cfg(not(feature = "desktop"))]
+fn native_description() -> CredentialStoreDescription {
+    description(
+        NATIVE_STORE_KIND,
+        "Credentials are stored in native credential storage.",
+    )
+}
+
 fn credential_error() -> AppError {
     AppError::new(
         "native credential storage unavailable",
@@ -91,12 +99,7 @@ fn store_slot() -> &'static RwLock<Arc<dyn SecureStore>> {
 
 #[cfg(not(feature = "desktop"))]
 fn description_slot() -> &'static RwLock<CredentialStoreDescription> {
-    ACTIVE_DESCRIPTION.get_or_init(|| {
-        RwLock::new(description(
-            NATIVE_STORE_KIND,
-            "Credentials are stored in native credential storage.",
-        ))
-    })
+    ACTIVE_DESCRIPTION.get_or_init(|| RwLock::new(native_description()))
 }
 
 pub(crate) fn active_store() -> Arc<dyn SecureStore> {
@@ -147,13 +150,7 @@ impl SecureStore for NamespacedStore {
 pub fn active_credential_store_description() -> CredentialStoreDescription {
     description_slot()
         .read()
-        .map(|description| description.clone())
-        .unwrap_or_else(|_| {
-            description(
-                NATIVE_STORE_KIND,
-                "Credentials are stored in native credential storage.",
-            )
-        })
+        .map_or_else(|_| native_description(), |description| description.clone())
 }
 
 #[cfg(not(feature = "desktop"))]
@@ -173,14 +170,8 @@ pub fn initialize_server_credential_store(
         .and_then(|_| native.delete(PROBE_SERVICE, &probe_id));
     if probe.is_ok() {
         *store_slot().write().map_err(|_| credential_error())? = Arc::new(native);
-        *description_slot().write().map_err(|_| credential_error())? = description(
-            NATIVE_STORE_KIND,
-            "Credentials are stored in native credential storage.",
-        );
-        return Ok(description(
-            NATIVE_STORE_KIND,
-            "Credentials are stored in native credential storage.",
-        ));
+        *description_slot().write().map_err(|_| credential_error())? = native_description();
+        return Ok(native_description());
     }
 
     if let Err(error) = probe {
@@ -195,14 +186,12 @@ pub fn initialize_server_credential_store(
         let file_store = Arc::new(FileCredentialStore::open(&data_dir)?);
         file_store.purge_expired_sessions()?;
         *store_slot().write().map_err(|_| credential_error())? = file_store;
-        *description_slot().write().map_err(|_| credential_error())? = description(
+        let file_description = description(
             FILE_STORE_KIND,
             "Credentials are stored in an encrypted file on this host.",
         );
-        Ok(description(
-            FILE_STORE_KIND,
-            "Credentials are stored in an encrypted file on this host.",
-        ))
+        *description_slot().write().map_err(|_| credential_error())? = file_description.clone();
+        Ok(file_description)
     }
     #[cfg(not(unix))]
     {

@@ -47,14 +47,6 @@ pub fn cached_topology_fixture(apps: usize) -> live_store::ClusterLiveStore {
     store
 }
 
-pub fn cache_diagnostic_payload_bytes(store: &live_store::ClusterLiveStore) -> usize {
-    store
-        .diagnostics()
-        .iter()
-        .map(|snapshot| snapshot.shallow_payload_bytes)
-        .sum()
-}
-
 pub fn cache_diagnostic_report(
     store: &live_store::ClusterLiveStore,
 ) -> Vec<crate::models::BackendCacheDiagnosticSnapshot> {
@@ -213,10 +205,6 @@ pub fn sort_custom_resource_catalog(
     kinds
 }
 
-pub fn present_custom_resource_scope_key(namespaces: &[String]) -> String {
-    live_store::present_custom_resource_kinds_cache_key("default", "admin@solid-k8s", namespaces)
-}
-
 pub fn custom_overlay_bench_inputs(apps: usize) -> BenchCustomOverlayInputs {
     let mut resources = Vec::with_capacity(apps * 5);
     for index in 0..apps {
@@ -318,11 +306,6 @@ pub fn custom_overlay_bench_inputs(apps: usize) -> BenchCustomOverlayInputs {
         });
     }
     BenchCustomOverlayInputs(resources)
-}
-
-pub fn build_custom_overlay_bench_topology(apps: usize) -> ResourceTopology {
-    let resources = custom_overlay_bench_inputs(apps);
-    build_custom_overlay_bench_topology_from_inputs(resources)
 }
 
 pub fn build_custom_overlay_bench_topology_from_inputs(

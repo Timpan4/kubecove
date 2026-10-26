@@ -124,7 +124,7 @@ fn unset_custom_env_var_uses_default_loader_key_without_path_leak() {
     assert!(source.key().starts_with("kubeconfigSource="));
     assert!(!source.key().contains(&env_var));
     assert!(!source.key().contains('/'));
-    assert!(source.custom_env_value_paths().expect("paths").is_none());
+    assert!(source.custom_env_value_paths().is_none());
 }
 
 #[test]
@@ -233,9 +233,7 @@ fn unset_env_and_app_paths_merge_platform_default_in_order() {
         vec!["default-context", "app-context"]
     );
     assert_eq!(
-        source
-            .effective_kubeconfig_paths()
-            .expect("effective paths"),
+        source.effective_kubeconfig_paths(),
         vec![default_path.clone(), app_path.clone()]
     );
 
@@ -317,12 +315,7 @@ fn e2e_source_ignores_inherited_override() {
 
     assert_eq!(contexts.len(), 1);
     assert_eq!(contexts[0].name, "expected-e2e-context");
-    assert_eq!(
-        source
-            .effective_kubeconfig_paths()
-            .expect("effective paths"),
-        vec![expected.clone()]
-    );
+    assert_eq!(source.effective_kubeconfig_paths(), vec![expected.clone()]);
 
     let _ = fs::remove_file(expected);
     let _ = fs::remove_file(override_path);

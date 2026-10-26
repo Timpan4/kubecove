@@ -15,7 +15,7 @@ use kube::{
 };
 use std::time::{Duration, Instant};
 
-const WATCH_TIMEOUT_SECS: u32 = 30;
+pub(super) const WATCH_TIMEOUT_SECS: u32 = 30;
 
 fn report_forbidden_watch(
     broadcaster: &StreamBroadcaster,
@@ -107,20 +107,10 @@ fn dynamic_event_target(
     }
 }
 
-fn dynamic_event_resource_version(event: &WatchEvent<DynamicObject>) -> Option<String> {
+fn watch_resource_version<K: kube::Resource>(event: &WatchEvent<K>) -> Option<String> {
     match event {
         WatchEvent::Added(object) | WatchEvent::Modified(object) | WatchEvent::Deleted(object) => {
-            object.metadata.resource_version.clone()
-        }
-        WatchEvent::Bookmark(bookmark) => Some(bookmark.metadata.resource_version.clone()),
-        WatchEvent::Error(_) => None,
-    }
-}
-
-fn event_resource_version(event: &WatchEvent<Event>) -> Option<String> {
-    match event {
-        WatchEvent::Added(object) | WatchEvent::Modified(object) | WatchEvent::Deleted(object) => {
-            object.metadata.resource_version.clone()
+            object.meta().resource_version.clone()
         }
         WatchEvent::Bookmark(bookmark) => Some(bookmark.metadata.resource_version.clone()),
         WatchEvent::Error(_) => None,
@@ -216,9 +206,7 @@ pub(super) async fn run_resource_watch(
                                 }
                                 break;
                             }
-                            if let Some(next_resource_version) =
-                                dynamic_event_resource_version(&event)
-                            {
+                            if let Some(next_resource_version) = watch_resource_version(&event) {
                                 resource_version = next_resource_version;
                             }
                             if matches!(event, WatchEvent::Bookmark(_)) {
@@ -315,7 +303,9 @@ pub(super) async fn run_event_watch(
         } else {
             Api::all(client)
         };
-        let params = WatchParams::default().fields(&field_selector).timeout(30);
+        let params = WatchParams::default()
+            .fields(&field_selector)
+            .timeout(WATCH_TIMEOUT_SECS);
 
         if !broadcaster.status("connected", "Watching events".to_string()) {
             return;
@@ -335,7 +325,7 @@ pub(super) async fn run_event_watch(
                                 }
                                 break;
                             }
-                            if let Some(next_resource_version) = event_resource_version(&event) {
+                            if let Some(next_resource_version) = watch_resource_version(&event) {
                                 resource_version = next_resource_version;
                             }
                             if matches!(event, WatchEvent::Bookmark(_)) {
@@ -448,7 +438,10 @@ mod tests {
             let mut resource_version = "55".to_string();
             for _ in 0..2 {
                 let stream = api
-                    .watch(&WatchParams::default().timeout(30), &resource_version)
+                    .watch(
+                        &WatchParams::default().timeout(WATCH_TIMEOUT_SECS),
+                        &resource_version,
+                    )
                     .await
                     .expect("watch response");
                 let event = stream

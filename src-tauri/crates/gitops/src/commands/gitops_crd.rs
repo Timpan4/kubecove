@@ -1,6 +1,10 @@
-use crate::commands::helpers::{list_params, serialize_resource_document};
+use crate::commands::helpers::{
+    k8s_timestamp_to_datetime, list_params, resource_age, serialize_resource_document,
+};
 use crate::models::AppError;
 use crate::models::AppErrorKind;
+use chrono::Utc;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
     api::{Api, ApiResource, DynamicObject},
     discovery::Discovery,
@@ -9,6 +13,16 @@ use kube::{
 use serde_json::Value;
 
 use crate::models::{YamlEncoding, YamlViewMode};
+
+/// Age of an Argo CD or Flux object; an unrepresentable creation timestamp reads as just created.
+pub(crate) fn object_age(metadata: &ObjectMeta) -> String {
+    resource_age(
+        metadata
+            .creation_timestamp
+            .as_ref()
+            .map(|timestamp| k8s_timestamp_to_datetime(&timestamp.0).unwrap_or_else(Utc::now)),
+    )
+}
 
 pub(crate) async fn discover_api_resources(client: &Client) -> Result<Vec<ApiResource>, AppError> {
     let discovery = Discovery::new(client.clone())

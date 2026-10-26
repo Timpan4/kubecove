@@ -356,13 +356,13 @@ fn concise_validation_message(field_path: Option<&str>, message: &str) -> Option
 }
 
 fn concise_kubeconform_message(message: &str) -> String {
-    message
-        .trim()
+    let message = message.trim();
+    let message = message
         .strip_prefix("problem validating schema. ")
-        .unwrap_or(message.trim())
-        .split(" - at ")
-        .last()
-        .unwrap_or(message.trim())
+        .unwrap_or(message);
+    message
+        .rsplit_once(" - at ")
+        .map_or(message, |(_, tail)| tail)
         .trim_matches('\'')
         .to_string()
 }

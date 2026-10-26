@@ -1,11 +1,48 @@
-use crate::commands::helpers::{assess_kubernetes_health, base_resource_summary, resource_age_at};
+use crate::commands::helpers::{
+    assess_kubernetes_health, base_resource_summary, list_params, resource_age_at,
+};
 use crate::models::{
-    HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentState, ResourceHealth,
-    ResourceSummary,
+    AppError, HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentState,
+    ResourceHealth, ResourceSummary,
 };
 use chrono::{DateTime, TimeZone, Utc};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+use k8s_openapi::NamespaceResourceScope;
+use kube::{Api, Client};
 use serde_json::Value;
+
+/// One namespace when given, otherwise every namespace.
+pub(super) fn namespace_or_all<K>(client: Client, namespace: Option<&str>) -> Api<K>
+where
+    K: kube::Resource<DynamicType = (), Scope = NamespaceResourceScope>,
+{
+    match namespace {
+        Some(namespace) => Api::namespaced(client, namespace),
+        None => Api::all(client),
+    }
+}
+
+pub(super) async fn list_namespaced_summaries<K>(
+    client: Client,
+    cluster_context: &str,
+    namespace: Option<&str>,
+    now: DateTime<Utc>,
+) -> Result<Vec<ResourceSummary>, AppError>
+where
+    K: BuiltinSummary
+        + kube::Resource<DynamicType = (), Scope = NamespaceResourceScope>
+        + Clone
+        + std::fmt::Debug
+        + serde::de::DeserializeOwned,
+{
+    Ok(namespace_or_all::<K>(client, namespace)
+        .list(&list_params())
+        .await
+        .map_err(AppError::from)?
+        .iter()
+        .map(|object| builtin_summary(cluster_context, object, now))
+        .collect())
+}
 
 /// Status, readiness and restarts read from one object, with the Kubernetes health they imply.
 #[derive(Default)]
@@ -91,7 +128,7 @@ fn identity_summary<K: BuiltinSummary>(
     summary
 }
 
-pub(crate) fn age_from_metadata_at(metadata: &ObjectMeta, now: DateTime<Utc>) -> String {
+fn age_from_metadata_at(metadata: &ObjectMeta, now: DateTime<Utc>) -> String {
     metadata
         .creation_timestamp
         .as_ref()

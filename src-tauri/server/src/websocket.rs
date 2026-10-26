@@ -1,6 +1,6 @@
 use crate::{
-    access::AccessIdentity, access_subject, sessions::Owner, tunnel::MAX_TUNNEL_FRAME_BYTES,
-    ApiError, AppState, AuthenticationRevoked,
+    access::AccessIdentity, access_subject, authentication_ended, sessions::Owner, ApiError,
+    AppState, AuthenticationRevoked,
 };
 use axum::{
     extract::{
@@ -11,7 +11,7 @@ use axum::{
     Extension,
 };
 use futures_util::{FutureExt, SinkExt, StreamExt};
-use kubecove_lib::models::{AppError, AppErrorKind, PortForwardRequest};
+use kubecove_lib::models::{AppError, AppErrorKind, PortForwardRequest, MAX_TUNNEL_FRAME_BYTES};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -34,23 +34,22 @@ pub async fn upgrade(
         .sessions
         .owner_as(&connection.resume_token, access_subject(identity.as_ref()))
         .await?;
-    let expiry = identity.map(|Extension(identity)| identity.expires_at);
     Ok(ws
         .max_message_size(MAX_TUNNEL_FRAME_BYTES)
-        .on_upgrade(move |socket| run(socket, state, owner, expiry, revoked)))
+        .on_upgrade(move |socket| run(socket, state, owner, identity, revoked)))
 }
 
 async fn run(
     socket: WebSocket,
     state: Arc<AppState>,
     owner: Arc<Owner>,
-    expiry: Option<tokio::time::Instant>,
+    identity: Option<Extension<AccessIdentity>>,
     revoked: Option<Extension<AuthenticationRevoked>>,
 ) {
     let generation = state.sessions.connect(&owner).await;
     let (mut outgoing, mut incoming) = socket.split();
-    // Match the tunnel's existing 16-message, 256 KiB pending byte budget.
-    let (responses, mut pending_responses) = mpsc::channel(16);
+    // Same pending budget as one tunnel connection: RELAY_QUEUE_MESSAGES chunks of 16 KiB.
+    let (responses, mut pending_responses) = mpsc::channel(crate::tunnel::RELAY_QUEUE_MESSAGES);
     let moved = {
         let changed = owner.socket_changed.notified();
         tokio::pin!(changed);
@@ -113,8 +112,7 @@ async fn run(
         tokio::select! {
             biased;
             () = owner.ended.cancelled() => true,
-            () = access_expired(expiry) => false,
-            () = authentication_revoked(revoked.as_ref()) => false,
+            () = authentication_ended(identity.as_ref(), revoked.as_ref()) => false,
             () = changed => false,
             () = writer => false,
             () = reader => false,
@@ -134,20 +132,6 @@ async fn run(
         }
     }
     state.sessions.disconnected(owner, generation).await;
-}
-
-async fn authentication_revoked(revoked: Option<&Extension<AuthenticationRevoked>>) {
-    match revoked {
-        Some(Extension(revoked)) => revoked.0.cancelled().await,
-        None => std::future::pending().await,
-    }
-}
-
-async fn access_expired(expiry: Option<tokio::time::Instant>) {
-    match expiry {
-        Some(expiry) => tokio::time::sleep_until(expiry).await,
-        None => std::future::pending().await,
-    }
 }
 
 #[derive(Deserialize)]

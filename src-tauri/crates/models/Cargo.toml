@@ -13,6 +13,7 @@ serde_json = { workspace = true }
 reqwest = { workspace = true }
 thiserror = { workspace = true }
 kube = { workspace = true }
+# Not imported directly: selects the Kubernetes API version feature kube needs when this crate builds alone.
 k8s-openapi = { workspace = true }
 
 [lints]

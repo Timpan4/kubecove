@@ -28,11 +28,11 @@ pub async fn resolve_tunnel_target(request: PortForwardRequest) -> Result<Tunnel
     let target = target::resolve_port_forward_target(&access, validated).await?;
     Ok(TunnelTarget {
         client,
-        namespace: target.namespace,
+        namespace: target.request.namespace,
         pod_name: target.pod_name,
         pod_port: target.pod_port,
-        kubeconfig_source_key: target.kubeconfig_source_key,
-        kubeconfig_source_label: target.kubeconfig_source_label,
+        kubeconfig_source_key: target.request.kubeconfig_source_key,
+        kubeconfig_source_label: target.request.kubeconfig_source_label,
     })
 }
 
@@ -42,15 +42,18 @@ pub fn benchmark_port_forward_session_summary(
     pod_port: u16,
 ) -> PortForwardSessionSummary {
     let target = target::PortForwardTarget {
-        cluster_context: "benchmark".to_string(),
-        kubeconfig_env_var: None,
-        kubeconfig_source_key: Some("fixture-source".to_string()),
-        kubeconfig_source_label: Some("Benchmark source".to_string()),
-        namespace: "payments".to_string(),
-        target_kind: target::PortForwardTargetKind::Service,
-        target_name: "checkout".to_string(),
+        request: target::ValidatedPortForwardRequest {
+            cluster_context: "benchmark".to_string(),
+            kubeconfig_env_var: None,
+            kubeconfig_source_key: Some("fixture-source".to_string()),
+            kubeconfig_source_label: Some("Benchmark source".to_string()),
+            namespace: "payments".to_string(),
+            target_kind: target::PortForwardTargetKind::Service,
+            target_name: "checkout".to_string(),
+            remote_port: 80,
+            local_port: None,
+        },
         pod_name,
-        remote_port: 80,
         pod_port,
     };
     let mut summary = lifecycle::session_summary("session-1".to_string(), &target, 18080);

@@ -7,10 +7,10 @@ use serde_json::Value;
 use super::super::kubeconform::append_kubeconform_lint;
 use super::validation::{parse_single_document, request_api_version};
 
-pub(super) async fn lint_kubernetes_yaml_with_kubeconform(
+pub async fn lint_kubernetes_yaml(
     request: YamlApplyRequest,
 ) -> Result<KubernetesYamlLintResult, AppError> {
-    let mut result = lint_kubernetes_yaml_request(request.clone());
+    let mut result = lint_kubernetes_yaml_request(&request);
     if !result
         .diagnostics
         .iter()
@@ -21,7 +21,7 @@ pub(super) async fn lint_kubernetes_yaml_with_kubeconform(
     Ok(result)
 }
 
-pub fn lint_kubernetes_yaml_request(request: YamlApplyRequest) -> KubernetesYamlLintResult {
+pub fn lint_kubernetes_yaml_request(request: &YamlApplyRequest) -> KubernetesYamlLintResult {
     let mut diagnostics = Vec::new();
 
     let manifest = match parse_single_document(&request.yaml) {
@@ -40,7 +40,7 @@ pub fn lint_kubernetes_yaml_request(request: YamlApplyRequest) -> KubernetesYaml
         }
     };
 
-    collect_local_lint_diagnostics(&request, &manifest, &mut diagnostics);
+    collect_local_lint_diagnostics(request, &manifest, &mut diagnostics);
 
     KubernetesYamlLintResult {
         diagnostics,
@@ -256,7 +256,7 @@ mod tests {
         request.api_version = None;
         request.version = None;
 
-        let result = lint_kubernetes_yaml_request(request);
+        let result = lint_kubernetes_yaml_request(&request);
 
         assert!(!result
             .diagnostics

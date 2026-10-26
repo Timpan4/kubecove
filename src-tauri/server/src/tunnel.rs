@@ -1,7 +1,10 @@
 use axum::{body::Bytes, extract::ws::Message};
 use kubecove_lib::{
     commands::sessions::{resolve_tunnel_target, runner::forward_pod_connection, TunnelTarget},
-    models::{AppError, AppErrorKind, PortForwardRequest},
+    models::{
+        decode_tunnel_frame, encode_tunnel_frame, is_tunnel_connection_id, AppError, AppErrorKind,
+        PortForwardRequest, MAX_TUNNEL_PAYLOAD_BYTES,
+    },
 };
 use serde_json::json;
 use std::{
@@ -14,12 +17,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-const RELAY_CHUNK_BYTES: usize = 16 * 1024;
-const RELAY_QUEUE_MESSAGES: usize = 16;
-const CONNECTION_ID_BYTES: usize = 36;
-const BINARY_HEADER_BYTES: usize = 2 + CONNECTION_ID_BYTES;
-pub(crate) const MAX_TUNNEL_PAYLOAD_BYTES: usize = RELAY_CHUNK_BYTES;
-pub(crate) const MAX_TUNNEL_FRAME_BYTES: usize = BINARY_HEADER_BYTES + RELAY_CHUNK_BYTES;
+pub(crate) const RELAY_QUEUE_MESSAGES: usize = 16;
 
 #[derive(Default)]
 struct TunnelState {
@@ -62,7 +60,7 @@ impl TunnelRegistry {
         forward_id: String,
         request: PortForwardRequest,
     ) -> Result<TunnelTarget, AppError> {
-        if !valid_id(&forward_id) {
+        if !is_tunnel_connection_id(&forward_id) {
             return Err(tunnel_validation("forward id must be a canonical UUID"));
         }
         let target = resolve_tunnel_target(request.clone()).await?;
@@ -80,7 +78,7 @@ impl TunnelRegistry {
         connection_id: String,
         outbound: mpsc::Sender<Message>,
     ) -> Result<(), AppError> {
-        if !valid_id(&connection_id) {
+        if !is_tunnel_connection_id(&connection_id) {
             return Err(tunnel_validation("connection id must be a canonical UUID"));
         }
         let request = {
@@ -114,7 +112,7 @@ impl TunnelRegistry {
         let registry = self.clone();
         let connection_id_for_task = connection_id.clone();
         let forward_id_for_task = forward_id.to_string();
-        let mut task = Some(tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             if started.await.is_err() {
                 return;
             }
@@ -140,9 +138,9 @@ impl TunnelRegistry {
                 .send(Message::Text(message.to_string().into()))
                 .await;
             registry.remove_connection(&connection_id_for_task, false);
-        }));
+        });
 
-        let inserted = {
+        let rejected = {
             let mut state = self.state.lock().expect("tunnel registry lock");
             let opening_matches = state
                 .openings
@@ -151,9 +149,6 @@ impl TunnelRegistry {
             let forward_is_current = state.forwards.contains_key(forward_id);
             if opening_matches && forward_is_current {
                 state.openings.remove(&connection_id);
-                let Some(task) = task.take() else {
-                    return Err(tunnel_session("connection task could not be started"));
-                };
                 state.connections.insert(
                     connection_id.clone(),
                     TunnelConnection {
@@ -162,15 +157,13 @@ impl TunnelRegistry {
                         task,
                     },
                 );
-                true
+                None
             } else {
-                false
+                Some(task)
             }
         };
-        if !inserted {
-            if let Some(task) = task {
-                task.abort();
-            }
+        if let Some(task) = rejected {
+            task.abort();
             return Err(tunnel_session(
                 "port-forward was closed before the connection opened",
             ));
@@ -180,7 +173,7 @@ impl TunnelRegistry {
     }
 
     pub(crate) async fn send_binary(&self, frame: &[u8]) -> Result<Option<String>, AppError> {
-        let (connection_id, payload) = parse_binary_frame(frame)
+        let (connection_id, payload) = decode_tunnel_frame(frame)
             .ok_or_else(|| tunnel_validation("invalid tunnel data frame"))?;
         let sender = self
             .state
@@ -200,10 +193,10 @@ impl TunnelRegistry {
         Ok(None)
     }
 
-    pub(crate) fn unregister(&self, forward_id: &str) -> bool {
-        let (removed, connections) = {
+    pub(crate) fn unregister(&self, forward_id: &str) {
+        let connections = {
             let mut state = self.state.lock().expect("tunnel registry lock");
-            let removed = state.forwards.remove(forward_id).is_some();
+            state.forwards.remove(forward_id);
             state.openings.retain(|_, id| id != forward_id);
             let ids = state
                 .connections
@@ -211,16 +204,13 @@ impl TunnelRegistry {
                 .filter(|(_, connection)| connection.forward_id == forward_id)
                 .map(|(id, _)| id.clone())
                 .collect::<Vec<_>>();
-            let connections = ids
-                .into_iter()
+            ids.into_iter()
                 .filter_map(|id| state.connections.remove(&id))
-                .collect::<Vec<_>>();
-            (removed, connections)
+                .collect::<Vec<_>>()
         };
         for connection in connections {
             connection.task.abort();
         }
-        removed
     }
 
     pub(crate) fn close_connection(&self, connection_id: &str) -> bool {
@@ -267,7 +257,7 @@ async fn relay_connection(
     outbound: mpsc::Sender<Message>,
     connection_id: String,
 ) -> Result<(), AppError> {
-    let (desktop_side, kube_side) = tokio::io::duplex(RELAY_CHUNK_BYTES);
+    let (desktop_side, kube_side) = tokio::io::duplex(MAX_TUNNEL_PAYLOAD_BYTES);
     let (mut desktop_read, mut desktop_write) = tokio::io::split(desktop_side);
     let forward = forward_pod_connection(
         target.client,
@@ -285,20 +275,13 @@ async fn relay_connection(
         desktop_write.shutdown().await.map_err(io_error)
     };
     let download = async {
-        let mut payload = [0_u8; RELAY_CHUNK_BYTES];
+        let mut payload = [0_u8; MAX_TUNNEL_PAYLOAD_BYTES];
         loop {
             let size = desktop_read.read(&mut payload).await.map_err(io_error)?;
             if size == 0 {
                 return Ok::<(), AppError>(());
             }
-            let mut frame = Vec::with_capacity(BINARY_HEADER_BYTES + size);
-            frame.extend_from_slice(
-                &u16::try_from(CONNECTION_ID_BYTES)
-                    .expect("UUID length fits u16")
-                    .to_be_bytes(),
-            );
-            frame.extend_from_slice(connection_id.as_bytes());
-            frame.extend_from_slice(&payload[..size]);
+            let frame = encode_tunnel_frame(&connection_id, &payload[..size]);
             outbound
                 .send(Message::Binary(Bytes::from(frame)))
                 .await
@@ -330,33 +313,6 @@ async fn relay_connection(
 
 fn io_error(error: std::io::Error) -> AppError {
     AppError::new("tunnel relay I/O failed", AppErrorKind::Io).with_source(error)
-}
-
-pub(crate) fn valid_id(value: &str) -> bool {
-    value.len() == CONNECTION_ID_BYTES
-        && value.bytes().enumerate().all(|(index, byte)| {
-            if [8, 13, 18, 23].contains(&index) {
-                byte == b'-'
-            } else {
-                byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
-            }
-        })
-}
-
-pub(crate) fn parse_binary_frame(frame: &[u8]) -> Option<(&str, &[u8])> {
-    if frame.len() < 2 {
-        return None;
-    }
-    let id_length = usize::from(u16::from_be_bytes([frame[0], frame[1]]));
-    if id_length != CONNECTION_ID_BYTES || frame.len() < 2 + id_length {
-        return None;
-    }
-    let payload = &frame[2 + id_length..];
-    if payload.len() > MAX_TUNNEL_PAYLOAD_BYTES {
-        return None;
-    }
-    let connection_id = std::str::from_utf8(&frame[2..2 + id_length]).ok()?;
-    valid_id(connection_id).then_some((connection_id, payload))
 }
 
 fn tunnel_validation(message: &str) -> AppError {

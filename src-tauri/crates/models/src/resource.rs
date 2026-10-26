@@ -120,15 +120,6 @@ pub struct DeploymentRevision {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResourceDetails {
-    pub kind: String,
-    pub cluster: String,
-    pub name: String,
-    pub namespace: Option<String>,
-    pub yaml: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceDetailsFull {
     pub summary: ResourceSummary,
     pub yaml: String,
@@ -245,7 +236,6 @@ pub struct KubernetesYamlLintResult {
 pub enum TopologyRelation {
     Owns,
     Creates,
-    Groups,
     RoutesTo,
     Selects,
     Targets,

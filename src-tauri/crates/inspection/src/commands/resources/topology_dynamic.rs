@@ -1,6 +1,10 @@
 use super::{
-    api_resource_from_discovered, topology::TopologyInputResource,
-    topology_collection::is_optional_topology_list_error,
+    api_resource_from_discovered,
+    topology::TopologyInputResource,
+    topology_collection::{
+        cluster_scoped_input_visible_in_scope, is_optional_topology_list_error, metadata_inputs,
+        push_topology_list_warning,
+    },
 };
 use crate::commands::helpers::{extract_owner_ref_summary, list_params};
 use crate::commands::MAX_LIST_CONCURRENCY;
@@ -61,23 +65,12 @@ pub(super) async fn list_crd_definition_inputs(
 ) -> Result<Vec<TopologyInputResource>, AppError> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
     match api.list_metadata(&list_params()).await {
-        Ok(rows) => Ok(super::topology_collection::metadata_inputs(
-            cluster_context,
-            &rows.items,
-            Utc::now(),
-        )
-        .into_iter()
-        .filter(|input| {
-            namespaces.is_empty()
-                || input.summary.git_ops_owner.is_some()
-                || input.summary.helm_release.is_some()
-                || input.owner.is_some()
-        })
-        .collect()),
+        Ok(rows) => Ok(metadata_inputs(cluster_context, &rows.items, Utc::now())
+            .into_iter()
+            .filter(|input| cluster_scoped_input_visible_in_scope(input, namespaces))
+            .collect()),
         Err(error) if is_optional_topology_list_error(&error) => {
-            warnings.push(format!(
-                "Skipped CustomResourceDefinition across namespaces in topology: {error}"
-            ));
+            push_topology_list_warning::<CustomResourceDefinition>(warnings, None, &error);
             Ok(Vec::new())
         }
         Err(error) => Err(AppError::from(error)),
@@ -122,25 +115,7 @@ async fn list_dynamic_topology_kind(
 ) -> Result<Vec<TopologyInputResource>, AppError> {
     let api_resource = api_resource_from_discovered(resource_kind)?;
     let mut out = Vec::new();
-    if !resource_kind.namespaced {
-        if !namespaces.is_empty() {
-            return Ok(out);
-        }
-        let api: Api<DynamicObject> = Api::all_with(client, &api_resource);
-        let _permit = dynamic_list_permit(&limiter).await?;
-        match kubecove_kube::commands::list_projection::list_dynamic(api, &list_params())
-            .await
-            .map_err(AppError::from)
-        {
-            Ok(rows) => out.extend(
-                rows.iter()
-                    .map(|object| dynamic_topology_input(cluster_context, resource_kind, object)),
-            ),
-            Err(error) if is_optional_app_error(&error) => {
-                push_dynamic_topology_list_warning(warnings, resource_kind, None, &error);
-            }
-            Err(error) => return Err(error),
-        }
+    if !resource_kind.namespaced && !namespaces.is_empty() {
         return Ok(out);
     }
 
@@ -213,20 +188,8 @@ async fn dynamic_topology_kind_present(
 ) -> Result<bool, AppError> {
     let api_resource = api_resource_from_discovered(resource_kind)?;
     let params = list_params().limit(1);
-    if !resource_kind.namespaced {
-        if !namespaces.is_empty() {
-            return Ok(false);
-        }
-        let api: Api<DynamicObject> = Api::all_with(client, &api_resource);
-        let _permit = dynamic_list_permit(&limiter).await?;
-        return match api.list_metadata(&params).await.map_err(AppError::from) {
-            Ok(list) => Ok(!list.items.is_empty()),
-            Err(error) if is_optional_app_error(&error) => {
-                push_dynamic_topology_list_warning(warnings, resource_kind, None, &error);
-                Ok(false)
-            }
-            Err(error) => Err(error),
-        };
+    if !resource_kind.namespaced && !namespaces.is_empty() {
+        return Ok(false);
     }
 
     if namespaces.is_empty() {
@@ -276,14 +239,13 @@ pub(super) async fn list_dynamic_topology_inputs(
         .map(|resource_kind| {
             let client = client.clone();
             let limiter = limiter.clone();
-            let namespaces = namespaces.to_vec();
             async move {
                 let mut warnings = Vec::new();
                 if !kinds_are_present
                     && !dynamic_topology_kind_present(
                         client.clone(),
                         &resource_kind,
-                        &namespaces,
+                        namespaces,
                         &mut warnings,
                         limiter.clone(),
                     )
@@ -295,7 +257,7 @@ pub(super) async fn list_dynamic_topology_inputs(
                     client,
                     cluster_context,
                     &resource_kind,
-                    &namespaces,
+                    namespaces,
                     &mut warnings,
                     limiter,
                 )

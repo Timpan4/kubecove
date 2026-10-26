@@ -72,14 +72,6 @@ export interface DeploymentRevision {
 	podTemplateYaml: string;
 }
 
-export interface ResourceDetails {
-	kind: string;
-	cluster: string;
-	name: string;
-	namespace: string | null;
-	yaml: string;
-}
-
 export interface ResourceDetailsFull {
 	summary: ResourceSummary;
 	yaml: string;
@@ -180,7 +172,6 @@ export type TopologyMode = "ownership" | "networkFlow";
 export type TopologyRelation =
 	| "owns"
 	| "creates"
-	| "groups"
 	| "routesTo"
 	| "selects"
 	| "targets";

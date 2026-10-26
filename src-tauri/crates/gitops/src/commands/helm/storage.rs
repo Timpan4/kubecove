@@ -1,10 +1,11 @@
 use super::manifest::{manifest_resources, manifest_summary_from_resources};
-use super::redaction::{redact_configmap_release, redact_secret_release};
+use super::redaction::redact_configmap_release;
 use super::time::parse_rfc3339;
 use super::values::values_summary;
 use crate::commands::{
     helpers::{
-        k8s_creation_timestamp_to_rfc3339, list_params, resource_age, serialize_resource_document,
+        k8s_creation_timestamp_to_rfc3339, list_params, redact_secret, resource_age,
+        serialize_resource_document,
     },
     ClusterAccess,
 };
@@ -16,11 +17,12 @@ use crate::models::{
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use flate2::read::GzDecoder;
 use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Secret};
+use k8s_openapi::NamespaceResourceScope;
 use kube::{
     api::{Api, ListParams, ObjectMeta},
     Client,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{collections::BTreeMap, io::Read};
 
 #[path = "storage_list.rs"]
@@ -84,9 +86,20 @@ pub async fn list_helm_releases(
         .await?;
     let (fallback_namespaces, namespaces_discovered) =
         helm_fallback_namespaces(client.clone(), client.default_namespace()).await;
-    let secrets =
-        list_secret_releases(client.clone(), &cluster_context, &fallback_namespaces).await;
-    let configmaps = list_configmap_releases(client, &cluster_context, &fallback_namespaces).await;
+    let secrets = list_releases::<Secret>(
+        client.clone(),
+        &cluster_context,
+        &fallback_namespaces,
+        secret_list_record,
+    )
+    .await;
+    let configmaps = list_releases::<ConfigMap>(
+        client,
+        &cluster_context,
+        &fallback_namespaces,
+        configmap_list_record,
+    )
+    .await;
     let mut records = Vec::new();
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
@@ -227,8 +240,8 @@ async fn release_storage_object(
                     AppErrorKind::Validation,
                 ));
             }
-            let record = secret_record(cluster_context, &mut secret)?;
-            redact_secret_release(&mut secret);
+            let record = secret_record(cluster_context, &secret)?;
+            redact_secret(&mut secret);
             let metadata = serde_json::to_value(&secret.metadata).map_err(|e| {
                 AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e)
             })?;
@@ -244,7 +257,7 @@ async fn release_storage_object(
                     AppErrorKind::Validation,
                 ));
             }
-            let record = configmap_record(cluster_context, &mut configmap)?;
+            let record = configmap_record(cluster_context, &configmap)?;
             let metadata = serde_json::to_value(&configmap.metadata).map_err(|e| {
                 AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e)
             })?;
@@ -286,41 +299,23 @@ type ListedRecords = (Vec<HelmStorageRecord>, Vec<String>);
 /// Records plus, when the cluster-wide list failed, the namespaces the fallback skipped.
 type StorageListing = (Vec<HelmStorageRecord>, Option<Vec<String>>);
 
-async fn list_secret_releases(
-    client: Client,
-    cluster_context: &str,
-    fallback_namespaces: &[String],
-) -> Result<StorageListing, AppError> {
-    let api: Api<Secret> = Api::all(client.clone());
-    let params = helm_list_params();
-    let items = match api.list(&params).await {
-        Ok(items) => items,
-        Err(all_error) => {
-            if fallback_namespaces.is_empty() {
-                return Err(AppError::from(all_error));
-            }
-            return list_secret_releases_by_namespace(client, cluster_context, fallback_namespaces)
-                .await
-                .map(|(records, skipped)| (records, Some(skipped)))
-                .map_err(|namespace_error| {
-                    storage_errors(vec![AppError::from(all_error), namespace_error])
-                });
-        }
-    };
-    let records = items
-        .items
-        .into_iter()
-        .map(|mut secret| secret_list_record(cluster_context, &mut secret))
-        .collect::<Result<_, _>>()?;
-    Ok((records, None))
-}
+/// Builds a list record from one Helm storage object, a Secret or a `ConfigMap`.
+type StorageRecordFn<K> = fn(&str, &K) -> Result<HelmStorageRecord, AppError>;
 
-async fn list_configmap_releases(
+/// Lists one storage kind cluster-wide, falling back to the given namespaces when that fails.
+async fn list_releases<K>(
     client: Client,
     cluster_context: &str,
     fallback_namespaces: &[String],
-) -> Result<StorageListing, AppError> {
-    let api: Api<ConfigMap> = Api::all(client.clone());
+    to_record: StorageRecordFn<K>,
+) -> Result<StorageListing, AppError>
+where
+    K: kube::Resource<DynamicType = (), Scope = NamespaceResourceScope>
+        + Clone
+        + DeserializeOwned
+        + std::fmt::Debug,
+{
+    let api: Api<K> = Api::all(client.clone());
     let params = helm_list_params();
     let items = match api.list(&params).await {
         Ok(items) => items,
@@ -328,10 +323,11 @@ async fn list_configmap_releases(
             if fallback_namespaces.is_empty() {
                 return Err(AppError::from(all_error));
             }
-            return list_configmap_releases_by_namespace(
+            return list_releases_by_namespace(
                 client,
                 cluster_context,
                 fallback_namespaces,
+                to_record,
             )
             .await
             .map(|(records, skipped)| (records, Some(skipped)))
@@ -342,17 +338,24 @@ async fn list_configmap_releases(
     };
     let records = items
         .items
-        .into_iter()
-        .map(|mut configmap| configmap_list_record(cluster_context, &mut configmap))
+        .iter()
+        .map(|object| to_record(cluster_context, object))
         .collect::<Result<_, _>>()?;
     Ok((records, None))
 }
 
-async fn list_secret_releases_by_namespace(
+async fn list_releases_by_namespace<K>(
     client: Client,
     cluster_context: &str,
     namespaces: &[String],
-) -> Result<ListedRecords, AppError> {
+    to_record: StorageRecordFn<K>,
+) -> Result<ListedRecords, AppError>
+where
+    K: kube::Resource<DynamicType = (), Scope = NamespaceResourceScope>
+        + Clone
+        + DeserializeOwned
+        + std::fmt::Debug,
+{
     let params = helm_list_params();
     let mut records = Vec::new();
     let mut succeeded = false;
@@ -360,48 +363,12 @@ async fn list_secret_releases_by_namespace(
     let mut skipped = Vec::new();
 
     for namespace in namespaces {
-        let api: Api<Secret> = Api::namespaced(client.clone(), namespace);
+        let api: Api<K> = Api::namespaced(client.clone(), namespace);
         match api.list(&params).await {
             Ok(items) => {
                 succeeded = true;
-                for mut secret in items.items {
-                    records.push(secret_list_record(cluster_context, &mut secret)?);
-                }
-            }
-            Err(err) => {
-                let mut error = AppError::from(err);
-                error.message = format!("{namespace}: {}", error.message);
-                errors.push(error);
-                skipped.push(namespace.clone());
-            }
-        }
-    }
-
-    if !succeeded && !errors.is_empty() {
-        Err(storage_errors(errors))
-    } else {
-        Ok((records, skipped))
-    }
-}
-
-async fn list_configmap_releases_by_namespace(
-    client: Client,
-    cluster_context: &str,
-    namespaces: &[String],
-) -> Result<ListedRecords, AppError> {
-    let params = helm_list_params();
-    let mut records = Vec::new();
-    let mut succeeded = false;
-    let mut errors = Vec::new();
-    let mut skipped = Vec::new();
-
-    for namespace in namespaces {
-        let api: Api<ConfigMap> = Api::namespaced(client.clone(), namespace);
-        match api.list(&params).await {
-            Ok(items) => {
-                succeeded = true;
-                for mut configmap in items.items {
-                    records.push(configmap_list_record(cluster_context, &mut configmap)?);
+                for object in &items.items {
+                    records.push(to_record(cluster_context, object)?);
                 }
             }
             Err(err) => {
@@ -458,10 +425,7 @@ fn helm_list_params() -> ListParams {
     list_params().labels(HELM_OWNER_SELECTOR)
 }
 
-fn secret_record(
-    cluster_context: &str,
-    secret: &mut Secret,
-) -> Result<HelmStorageRecord, AppError> {
+fn secret_record(cluster_context: &str, secret: &Secret) -> Result<HelmStorageRecord, AppError> {
     let release_data = secret
         .data
         .as_ref()
@@ -501,7 +465,7 @@ fn secret_record(
 
 fn configmap_record(
     cluster_context: &str,
-    configmap: &mut ConfigMap,
+    configmap: &ConfigMap,
 ) -> Result<HelmStorageRecord, AppError> {
     let release_data = configmap
         .data
@@ -623,32 +587,30 @@ pub fn benchmark_storage_records(
     configmaps: Vec<ConfigMap>,
 ) -> Result<Vec<HelmReleaseSummary>, AppError> {
     let mut records = Vec::with_capacity(secrets.len() + configmaps.len());
-    for mut secret in secrets {
-        records.push(secret_list_record("benchmark", &mut secret)?);
+    for secret in secrets {
+        records.push(secret_list_record("benchmark", &secret)?);
     }
-    for mut configmap in configmaps {
-        records.push(configmap_list_record("benchmark", &mut configmap)?);
+    for configmap in configmaps {
+        records.push(configmap_list_record("benchmark", &configmap)?);
     }
     Ok(latest_releases(records))
 }
 
 #[cfg(feature = "bench-support")]
 pub fn benchmark_invalid_storage_record_is_retained(secret: Secret) -> bool {
-    let mut secret = secret;
-    secret_record("benchmark", &mut secret).is_ok_and(|record| record.decode_error.is_some())
+    secret_record("benchmark", &secret).is_ok_and(|record| record.decode_error.is_some())
 }
 
 #[cfg(feature = "bench-support")]
 pub fn benchmark_storage_record_error(secret: Secret) -> Option<(AppErrorKind, String)> {
-    let mut secret = secret;
-    secret_record("benchmark", &mut secret)
+    secret_record("benchmark", &secret)
         .ok()
         .and_then(|record| record.decode_error.map(|error| (error.kind, error.message)))
 }
 
 #[cfg(feature = "bench-support")]
 pub fn benchmark_storage_record_projection(
-    mut secret: Secret,
+    secret: Secret,
 ) -> Result<
     (
         HelmReleaseSummary,
@@ -659,7 +621,7 @@ pub fn benchmark_storage_record_projection(
     ),
     AppError,
 > {
-    let record = secret_record("benchmark", &mut secret)?;
+    let record = secret_record("benchmark", &secret)?;
     Ok((
         record.summary,
         record.values_summary,

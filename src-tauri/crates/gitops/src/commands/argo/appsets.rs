@@ -1,14 +1,14 @@
 use crate::commands::gitops_crd::{
-    find_api_resource, get_crd_object, list_crd_objects, resource_metadata, resource_yaml,
+    find_api_resource, get_crd_object, list_crd_objects, object_age, resource_metadata,
+    resource_yaml,
 };
-use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
+use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
 use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{
     argo_application_set_health_assessment, AppError, ArgoApplicationSetDetails,
     ArgoApplicationSetSummary, YamlEncoding, YamlViewMode,
 };
-use chrono::{TimeZone, Utc};
 use kube::core::DynamicObject;
 
 fn application_set_summary_from_object(
@@ -37,11 +37,7 @@ fn application_set_summary_from_object(
     Some(ArgoApplicationSetSummary {
         cluster: cluster_context.to_string(),
         name: obj.metadata.name.clone().unwrap_or_default(),
-        age: resource_age(obj.metadata.creation_timestamp.clone().map(|timestamp| {
-            Utc.timestamp_opt(timestamp.0.as_second(), 0)
-                .single()
-                .unwrap_or_else(Utc::now)
-        })),
+        age: object_age(&obj.metadata),
         created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
         namespace: obj.metadata.namespace.clone(),
         project: data

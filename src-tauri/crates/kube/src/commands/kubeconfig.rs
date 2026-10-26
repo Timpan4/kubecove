@@ -138,7 +138,7 @@ impl KubeconfigSource {
     /// intents check this before client-cache lookups, so a client cached from
     /// the default fallback is never reused by them.
     pub(crate) fn ensure_configured_sources_load(&self) -> Result<(), AppError> {
-        if self.configured_paths()?.is_some() {
+        if self.configured_paths().is_some() {
             self.read_configured_kubeconfig(Fallback::Refuse)?;
         }
         Ok(())
@@ -191,13 +191,7 @@ impl KubeconfigSource {
     }
 
     fn configured_path_count(&self) -> usize {
-        let env_count = self
-            .read_env
-            .then(|| env::var_os(&self.env_var))
-            .flatten()
-            .and_then(split_non_empty_paths)
-            .map_or(0, |paths| paths.len());
-        env_count + self.app_paths.len()
+        self.custom_env_value_paths().map_or(0, |paths| paths.len()) + self.app_paths.len()
     }
 
     pub(crate) fn read_kubeconfig(&self) -> Result<Kubeconfig, AppError> {
@@ -215,7 +209,7 @@ impl KubeconfigSource {
             ..Default::default()
         };
 
-        let mut config = match self.configured_paths()? {
+        let mut config = match self.configured_paths() {
             Some(_) => {
                 let (kubeconfig, _) = self.read_configured_kubeconfig(fallback)?;
                 Config::from_custom_kubeconfig(kubeconfig, &options)
@@ -237,8 +231,8 @@ impl KubeconfigSource {
     // The kubeconfig files that back this source, in the same order
     // config_for_context resolves them: selected env paths, or standard
     // discovery when that selection is empty, followed by app-added paths.
-    pub(crate) fn effective_kubeconfig_paths(&self) -> Result<Vec<PathBuf>, AppError> {
-        if let Some(paths) = self.configured_paths()? {
+    pub(crate) fn effective_kubeconfig_paths(&self) -> Vec<PathBuf> {
+        if let Some(paths) = self.configured_paths() {
             let mut paths = paths
                 .into_iter()
                 .map(|configured| configured.path)
@@ -253,27 +247,24 @@ impl KubeconfigSource {
                     }
                 }
             }
-            return Ok(paths);
+            return paths;
         }
-        Ok(standard_kubeconfig_paths()
+        standard_kubeconfig_paths()
             .into_iter()
             .map(|configured| configured.path)
-            .collect())
+            .collect()
     }
 
-    fn custom_env_value_paths(&self) -> Result<Option<Vec<PathBuf>>, AppError> {
+    fn custom_env_value_paths(&self) -> Option<Vec<PathBuf>> {
         if !self.read_env {
-            return Ok(None);
+            return None;
         }
-        let Some(value) = env::var_os(&self.env_var) else {
-            return Ok(None);
-        };
-        Ok(split_non_empty_paths(value))
+        split_non_empty_paths(env::var_os(&self.env_var)?)
     }
 
-    fn configured_paths(&self) -> Result<Option<Vec<ConfiguredKubeconfigPath>>, AppError> {
+    fn configured_paths(&self) -> Option<Vec<ConfiguredKubeconfigPath>> {
         let mut paths = Vec::new();
-        if let Some(env_paths) = self.custom_env_value_paths()? {
+        if let Some(env_paths) = self.custom_env_value_paths() {
             paths.extend(env_paths.into_iter().map(|path| ConfiguredKubeconfigPath {
                 source: ConfiguredKubeconfigPathSource::Env(self.env_var.clone()),
                 path,
@@ -290,18 +281,14 @@ impl KubeconfigSource {
                     path,
                 }),
         );
-        if paths.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(paths))
-        }
+        (!paths.is_empty()).then_some(paths)
     }
 
     fn read_configured_kubeconfig(
         &self,
         fallback: Fallback,
     ) -> Result<(Kubeconfig, Vec<KubeconfigSourceWarning>), AppError> {
-        let Some(paths) = self.configured_paths()? else {
+        let Some(paths) = self.configured_paths() else {
             return Kubeconfig::read()
                 .map(|kubeconfig| (kubeconfig, Vec::new()))
                 .map_err(AppError::from);
@@ -316,8 +303,8 @@ impl KubeconfigSource {
                     merged = merge_kubeconfigs(merged, next, &self.env_var)?;
                     loaded += 1;
                 }
-                Err(err) => {
-                    if let Some(warning) = configured.warning(err) {
+                Err(_) => {
+                    if let Some(warning) = configured.warning() {
                         warnings.push(warning);
                     }
                 }
@@ -736,7 +723,7 @@ enum ConfiguredKubeconfigPathSource {
 }
 
 impl ConfiguredKubeconfigPath {
-    fn warning(&self, _err: kube::config::KubeconfigError) -> Option<KubeconfigSourceWarning> {
+    fn warning(&self) -> Option<KubeconfigSourceWarning> {
         match &self.source {
             ConfiguredKubeconfigPathSource::Env(env_var) => Some(KubeconfigSourceWarning {
                 source: "env".to_string(),

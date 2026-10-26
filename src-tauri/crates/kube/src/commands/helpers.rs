@@ -13,9 +13,10 @@ pub use health::{
     assess_kubernetes_health, kubernetes_health, legacy_resource_health, pod_restarts, Readiness,
 };
 pub use metadata::{
-    base_resource_summary, enrich_resource_summaries_with_flux_inventory, extract_git_ops_owner,
-    extract_helm_release, extract_owner_ref, extract_owner_ref_summary, fetch_flux_ownership_index,
-    filter_flux_ownership_index, read_flux_ownership_index, FluxOwnershipIndex,
+    argo_app_name, base_resource_summary, enrich_resource_summaries_with_flux_inventory,
+    extract_git_ops_owner, extract_helm_release, extract_owner_ref, extract_owner_ref_summary,
+    fetch_flux_ownership_index, filter_flux_ownership_index, read_flux_ownership_index,
+    FluxOwnershipIndex,
 };
 #[cfg(feature = "bench-support")]
 pub use metadata::{

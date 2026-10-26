@@ -42,49 +42,41 @@ impl ValidatedPortForwardRequest {
     /// The target as `kubecove-server` resolved it, under the server's
     /// kubeconfig source.
     pub fn resolved_by_server(
-        self,
+        mut self,
         pod_name: String,
         pod_port: u16,
         kubeconfig_source_key: Option<String>,
         kubeconfig_source_label: Option<String>,
     ) -> PortForwardTarget {
+        self.kubeconfig_source_key = kubeconfig_source_key;
+        self.kubeconfig_source_label = kubeconfig_source_label;
         PortForwardTarget {
-            cluster_context: self.cluster_context,
-            kubeconfig_env_var: self.kubeconfig_env_var,
-            kubeconfig_source_key,
-            kubeconfig_source_label,
-            namespace: self.namespace,
-            target_kind: self.target_kind,
-            target_name: self.target_name,
+            request: self,
             pod_name,
-            remote_port: self.remote_port,
             pod_port,
         }
     }
 }
 
+/// A validated request and the Pod and port that currently serve it. A Pod request is
+/// served by that Pod; a Service request by one ready Pod behind the Service.
 #[derive(Debug, Clone)]
 pub struct PortForwardTarget {
-    pub(super) cluster_context: String,
-    pub(super) kubeconfig_env_var: Option<String>,
-    pub(super) kubeconfig_source_key: Option<String>,
-    pub(super) kubeconfig_source_label: Option<String>,
-    pub(super) namespace: String,
-    pub(super) target_kind: PortForwardTargetKind,
-    pub(super) target_name: String,
+    pub(super) request: ValidatedPortForwardRequest,
     pub(super) pod_name: String,
-    pub(super) remote_port: u16,
     pub(super) pod_port: u16,
 }
 
 pub(super) fn validate_port(value: i64, field: &str) -> Result<u16, AppError> {
-    if !(1..=i64::from(u16::MAX)).contains(&value) {
-        return Err(AppError::new(
-            format!("{field} must be between 1 and 65535"),
-            AppErrorKind::Validation,
-        ));
-    }
-    Ok(value as u16)
+    u16::try_from(value)
+        .ok()
+        .filter(|port| *port != 0)
+        .ok_or_else(|| {
+            AppError::new(
+                format!("{field} must be between 1 and 65535"),
+                AppErrorKind::Validation,
+            )
+        })
 }
 
 fn target_text(value: Option<&String>) -> Option<String> {
@@ -170,16 +162,9 @@ pub(super) async fn resolve_port_forward_target(
 ) -> Result<PortForwardTarget, AppError> {
     match request.target_kind {
         PortForwardTargetKind::Pod => Ok(PortForwardTarget {
-            cluster_context: request.cluster_context,
-            kubeconfig_env_var: request.kubeconfig_env_var,
-            kubeconfig_source_key: request.kubeconfig_source_key,
-            kubeconfig_source_label: request.kubeconfig_source_label,
-            namespace: request.namespace,
-            target_kind: PortForwardTargetKind::Pod,
-            target_name: request.target_name.clone(),
-            pod_name: request.target_name,
-            remote_port: request.remote_port,
+            pod_name: request.target_name.clone(),
             pod_port: request.remote_port,
+            request,
         }),
         PortForwardTargetKind::Service => {
             service::resolve_service_request_target(access, request).await

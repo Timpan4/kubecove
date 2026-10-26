@@ -24,6 +24,17 @@ struct ResourceKey {
     name: String,
 }
 
+impl ResourceKey {
+    fn for_summary(summary: &ResourceSummary) -> Self {
+        Self {
+            namespace: summary.namespace.clone(),
+            api_version: summary.api_version.clone().unwrap_or_default(),
+            kind: summary.kind.clone(),
+            name: summary.name.clone(),
+        }
+    }
+}
+
 impl FluxOwnershipIndex {
     pub fn would_enrich(&self, summary: &ResourceSummary) -> bool {
         if self.partial && !summary.git_ops_ownership_partial {
@@ -32,13 +43,7 @@ impl FluxOwnershipIndex {
         if let Some(owner) = &summary.git_ops_owner {
             return self.partial && !owner.partial;
         }
-        !self.owners.is_empty()
-            && self.owners.contains_key(&ResourceKey {
-                namespace: summary.namespace.clone(),
-                api_version: summary.api_version.clone().unwrap_or_default(),
-                kind: summary.kind.clone(),
-                name: summary.name.clone(),
-            })
+        !self.owners.is_empty() && self.owners.contains_key(&ResourceKey::for_summary(summary))
     }
 
     pub fn retained_item_count(&self) -> usize {
@@ -121,22 +126,20 @@ pub async fn fetch_flux_ownership_index(client: Client) -> Result<FluxOwnershipI
         let mut batch_partial = false;
         // Owners are cluster-wide evidence; target namespaces only filter retained inventory identities.
         let api = Api::<DynamicObject>::all_with(client.clone(), &resource);
-        for api in [api] {
-            match api
-                .list(&ListParams::default().limit(MAX_FLUX_OWNER_OBJECTS as u32))
-                .await
-            {
-                Ok(rows) => {
-                    batch_partial |= has_continuation_token(rows.metadata.continue_.as_deref());
-                    objects.extend(rows.items);
+        match api
+            .list(&ListParams::default().limit(MAX_FLUX_OWNER_OBJECTS as u32))
+            .await
+        {
+            Ok(rows) => {
+                batch_partial |= has_continuation_token(rows.metadata.continue_.as_deref());
+                objects.extend(rows.items);
+            }
+            Err(e) => {
+                let error = AppError::from(e);
+                if error.kind == AppErrorKind::Cancelled {
+                    return Err(error);
                 }
-                Err(e) => {
-                    let error = AppError::from(e);
-                    if error.kind == AppErrorKind::Cancelled {
-                        return Err(error);
-                    }
-                    batch_partial = true;
-                }
+                batch_partial = true;
             }
         }
         index_flux_owner_objects(&mut index, kind, objects, batch_partial);
@@ -192,7 +195,7 @@ fn index_flux_owner_objects(
             index
                 .owners
                 .entry(ResourceKey {
-                    namespace: namespace.clone(),
+                    namespace,
                     api_version,
                     kind: target_kind,
                     name,
@@ -248,13 +251,7 @@ pub fn enrich_resource_summaries_with_flux_inventory(
             owner.partial |= index.partial;
             continue;
         }
-        let key = ResourceKey {
-            namespace: summary.namespace.clone(),
-            api_version: summary.api_version.clone().unwrap_or_default(),
-            kind: summary.kind.clone(),
-            name: summary.name.clone(),
-        };
-        if let Some(owner) = index.owners.get(&key) {
+        if let Some(owner) = index.owners.get(&ResourceKey::for_summary(summary)) {
             let mut owner = owner.clone();
             owner.partial |= index.partial;
             summary.git_ops_owner = Some(owner);

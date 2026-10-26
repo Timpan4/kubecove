@@ -14,15 +14,6 @@ pub async fn get_resource_action_state(
     request: ResourceActionStateRequest,
 ) -> Result<ResourceActionState, AppError> {
     validate_resource_action_target(&request.target)?;
-    if !ACTION_KINDS.contains(&request.target.kind.as_str()) {
-        return Err(AppError::new(
-            format!(
-                "{} is not supported for resource actions",
-                request.target.kind
-            ),
-            AppErrorKind::UnsupportedOperation,
-        ));
-    }
     let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
         .preview_client(&request.target.cluster_context)
         .await?;
@@ -36,11 +27,10 @@ pub async fn get_resource_action_state(
     for (action, verb, resource) in permissions_for_kind(&request.target.kind) {
         let reviewed = access_review(client.clone(), &request.target, verb, resource).await;
         permissions.push(match reviewed {
-            Ok(allowed) => {
-                permission_from_review(verb, resource, Some(allowed), None).with_action(action)
+            Ok(allowed) => permission_from_review(action, verb, resource, Some(allowed), None),
+            Err(error) => {
+                permission_from_review(action, verb, resource, None, Some(&error.message))
             }
-            Err(error) => permission_from_review(verb, resource, None, Some(&error.message))
-                .with_action(action),
         });
     }
 
@@ -53,14 +43,10 @@ pub async fn get_resource_action_state(
         (Vec::new(), None)
     };
     if let Some(error) = revision_error {
-        if let Some(permission) = permissions
-            .iter_mut()
-            .find(|permission| permission.action == ResourceActionKind::Rollback)
-        {
-            permission.allowed = false;
-            permission.reason = format!("Revision lookup failed: {}", error.message);
-            permission.required_permission = "list replicasets".into();
-        }
+        set_rollback_unavailable(
+            &mut permissions,
+            &format!("Revision lookup failed: {}", error.message),
+        );
     }
     if request.target.kind == "Deployment" {
         match access_review(client, &request.target, "list", "replicasets").await {
@@ -699,7 +685,7 @@ use state::{
     ensure_action_resource_is_not_secret, owned_revision_by_number, owned_revisions,
     permission_from_review, permissions_for_kind, revision_source_identity,
     set_rollback_permission_text, set_rollback_unavailable, state_from_value,
-    validate_revision_review_guard, SetPermissionAction,
+    validate_revision_review_guard,
 };
 
 fn resource_api(

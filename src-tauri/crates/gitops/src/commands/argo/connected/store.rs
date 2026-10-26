@@ -7,7 +7,7 @@ use std::{
     collections::HashMap,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard,
     },
 };
 use tokio::sync::Mutex as AsyncMutex;
@@ -46,6 +46,17 @@ fn cleanup_error() -> AppError {
 }
 
 impl ArgoConnectionStore {
+    pub(crate) fn lock_connections(
+        &self,
+    ) -> Result<MutexGuard<'_, HashMap<String, Arc<ConnectedArgo>>>, AppError> {
+        self.connections.lock().map_err(|_| {
+            AppError::new(
+                "Argo CD connection state unavailable",
+                AppErrorKind::ArgoConnection,
+            )
+        })
+    }
+
     pub(crate) fn connection_epoch(&self) -> u64 {
         self.cleanup_epoch.load(Ordering::Acquire)
     }
@@ -67,24 +78,9 @@ impl ArgoConnectionStore {
         expected_epoch: u64,
     ) -> Result<(), AppError> {
         loop {
-            let old = self
-                .connections
-                .lock()
-                .map_err(|_| {
-                    AppError::new(
-                        "Argo CD connection state unavailable",
-                        AppErrorKind::ArgoConnection,
-                    )
-                })?
-                .get(&id)
-                .cloned();
+            let old = self.lock_connections()?.get(&id).cloned();
             let Some(old) = old else {
-                let mut connections = self.connections.lock().map_err(|_| {
-                    AppError::new(
-                        "Argo CD connection state unavailable",
-                        AppErrorKind::ArgoConnection,
-                    )
-                })?;
+                let mut connections = self.lock_connections()?;
                 if self.connection_epoch() != expected_epoch {
                     return Err(cleanup_error());
                 }
@@ -95,12 +91,7 @@ impl ArgoConnectionStore {
                 return Ok(());
             };
             let _lease = old.gate.clone().lock_owned().await;
-            let mut connections = self.connections.lock().map_err(|_| {
-                AppError::new(
-                    "Argo CD connection state unavailable",
-                    AppErrorKind::ArgoConnection,
-                )
-            })?;
+            let mut connections = self.lock_connections()?;
             if self.connection_epoch() != expected_epoch {
                 return Err(cleanup_error());
             }
@@ -118,18 +109,7 @@ impl ArgoConnectionStore {
 
     pub async fn close_all(&self) -> Result<(), AppError> {
         self.cleanup_epoch.fetch_add(1, Ordering::AcqRel);
-        let ids = self
-            .connections
-            .lock()
-            .map_err(|_| {
-                AppError::new(
-                    "Argo CD connection state unavailable",
-                    AppErrorKind::ArgoConnection,
-                )
-            })?
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>();
+        let ids = self.lock_connections()?.keys().cloned().collect::<Vec<_>>();
         for id in ids {
             self.remove_connection(&id).await?;
         }
@@ -138,28 +118,13 @@ impl ArgoConnectionStore {
 
     pub(crate) async fn remove_connection(&self, id: &str) -> Result<(), AppError> {
         loop {
-            let old = self
-                .connections
-                .lock()
-                .map_err(|_| {
-                    AppError::new(
-                        "Argo CD connection state unavailable",
-                        AppErrorKind::ArgoConnection,
-                    )
-                })?
-                .get(id)
-                .cloned();
+            let old = self.lock_connections()?.get(id).cloned();
             let Some(old) = old else {
                 return Ok(());
             };
             let _lease = old.gate.clone().lock_owned().await;
             let removed = {
-                let mut connections = self.connections.lock().map_err(|_| {
-                    AppError::new(
-                        "Argo CD connection state unavailable",
-                        AppErrorKind::ArgoConnection,
-                    )
-                })?;
+                let mut connections = self.lock_connections()?;
                 if connections
                     .get(id)
                     .is_some_and(|current| Arc::ptr_eq(current, &old))

@@ -420,17 +420,6 @@ impl ClusterLiveStore {
             .await
     }
 
-    pub fn cached_resource_kinds(
-        &self,
-        source_key: &str,
-        cluster_context: &str,
-    ) -> Option<Arc<Vec<DiscoveredResourceKind>>> {
-        self.resource_kinds.peek(
-            &context_cache_key(source_key, cluster_context),
-            CacheMode::LiveFor(RESOURCE_FRESHNESS),
-        )
-    }
-
     pub async fn present_custom_resource_kinds<F, Fut>(
         &self,
         source_key: String,
@@ -587,7 +576,7 @@ impl ClusterLiveStore {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ScopeNamespace {
+pub(crate) enum ScopeNamespace {
     All,
     Cluster,
     Named(String),
@@ -644,11 +633,11 @@ fn namespace_key_for_namespaced(namespaced: bool, namespace: Option<&str>) -> Sc
     }
 }
 
-pub fn context_cache_key(source_key: &str, context: &str) -> String {
+pub(crate) fn context_cache_key(source_key: &str, context: &str) -> String {
     format!("{source_key}|context={context}")
 }
 
-pub fn resource_cache_key(
+pub(crate) fn resource_cache_key(
     source_key: &str,
     context: &str,
     kind_key: &str,
@@ -668,32 +657,24 @@ fn topology_cache_key(
     namespaces: &[String],
     mode: &str,
 ) -> String {
-    let mut namespaces = namespaces.to_vec();
-    namespaces.sort();
-    namespaces.dedup();
-    format!(
-        "{}|context={}|topology={}|namespaces={}",
-        source_key,
-        context,
-        mode,
-        namespaces.join(",")
-    )
+    let namespaces = normalized_namespaces(namespaces);
+    format!("{source_key}|context={context}|topology={mode}|namespaces={namespaces}")
 }
 
-pub fn present_custom_resource_kinds_cache_key(
+fn present_custom_resource_kinds_cache_key(
     source_key: &str,
     context: &str,
     namespaces: &[String],
 ) -> String {
-    let mut namespaces = namespaces.to_vec();
-    namespaces.sort();
+    let namespaces = normalized_namespaces(namespaces);
+    format!("{source_key}|context={context}|present_custom_resource_kinds={namespaces}")
+}
+
+fn normalized_namespaces(namespaces: &[String]) -> String {
+    let mut namespaces: Vec<&str> = namespaces.iter().map(String::as_str).collect();
+    namespaces.sort_unstable();
     namespaces.dedup();
-    format!(
-        "{}|context={}|present_custom_resource_kinds={}",
-        source_key,
-        context,
-        namespaces.join(",")
-    )
+    namespaces.join(",")
 }
 
 fn is_cluster_scoped_kind(kind: &str) -> bool {

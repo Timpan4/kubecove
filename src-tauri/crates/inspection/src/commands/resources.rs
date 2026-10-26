@@ -27,11 +27,12 @@ mod topology_network;
 mod topology_tests;
 mod yaml;
 
+pub use apply::linting::lint_kubernetes_yaml;
 #[cfg(feature = "bench-support")]
 pub use apply::linting::lint_kubernetes_yaml_request;
 #[cfg(feature = "bench-support")]
 pub use apply::validation::validate_yaml_apply;
-pub use apply::{apply_yaml, lint_kubernetes_yaml, prepare_yaml_apply};
+pub use apply::{apply_yaml, prepare_yaml_apply};
 #[cfg(feature = "bench-support")]
 pub use details::{details_from_fetched, secret_details_from_fetched};
 pub use details::{get_resource_details, resource_details_from};
