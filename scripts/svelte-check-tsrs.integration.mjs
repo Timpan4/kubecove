@@ -2,15 +2,17 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	readdirSync,
 	realpathSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -22,8 +24,12 @@ const modules = fileURLToPath(new URL("../node_modules", import.meta.url));
 // disappear or point into generated files, Svelte/CSS warnings vanish, or a failed
 // compiler process is reported as a successful check, or deleted components
 // remain in the generated compiler inputs, or path aliases hide CSS diagnostics.
-function checkSvelteDiagnostics(alias) {
-	const directory = mkdtempSync(join(tmpdir(), "kubecove-svelte-tsrs-"));
+function checkSvelteDiagnostics({ alias = false, localModules = true } = {}) {
+	const parent = localModules
+		? tmpdir()
+		: fileURLToPath(new URL("../.e2e/", import.meta.url));
+	mkdirSync(parent, { recursive: true });
+	const directory = mkdtempSync(join(parent, "kubecove-svelte-tsrs-"));
 	const workspace = alias ? join(directory, "workspace-alias") : directory;
 	const config = join(workspace, "tsconfig.json");
 	const app = join(workspace, "App.svelte");
@@ -56,11 +62,12 @@ function checkSvelteDiagnostics(alias) {
 				workspace,
 				process.platform === "win32" ? "junction" : "dir",
 			);
-		symlinkSync(
-			modules,
-			join(workspace, "node_modules"),
-			process.platform === "win32" ? "junction" : "dir",
-		);
+		if (localModules)
+			symlinkSync(
+				modules,
+				join(workspace, "node_modules"),
+				process.platform === "win32" ? "junction" : "dir",
+			);
 		writeFileSync(
 			join(workspace, "svelte.config.cjs"),
 			"module.exports = {};\n",
@@ -190,34 +197,66 @@ function checkSvelteDiagnostics(alias) {
 		assert.ok(!failed.output.includes(missingBinary), failed.output);
 		assert.doesNotMatch(failed.output, /COMPLETED/);
 	} catch (error) {
-		const cache = join(
-			workspace,
-			"node_modules",
-			".cache",
-			"svelte-check-native",
-		);
+		const cache = localModules
+			? join(workspace, "node_modules", ".cache", "svelte-check-native")
+			: join(workspace, ".svelte-check");
 		const overlay = join(cache, "tsconfig.json");
 		if (existsSync(overlay)) {
-			const graph = spawnSync(
-				"bun",
-				[launcher, "--project", overlay, "--listFilesOnly"],
-				{
-					encoding: "utf8",
-					env: process.env,
-				},
+			const config = JSON.parse(readFileSync(overlay, "utf8"));
+			const graph = (project, args = []) => {
+				const result = spawnSync(
+					"bun",
+					[launcher, "--project", project, "--listFilesOnly", ...args],
+					{
+						encoding: "utf8",
+						env: process.env,
+					},
+				);
+				return {
+					status: result.status,
+					files: result.stdout
+						.split(/\r?\n/)
+						.filter((path) =>
+							/\.svelte\.svn\.|\.d\.svelte\.ts|svelte-shims/.test(path),
+						),
+					stderr: result.stderr,
+				};
+			};
+			const slashConfig = join(cache, "tsconfig.slashes-probe.json");
+			writeFileSync(
+				slashConfig,
+				JSON.stringify({
+					...config,
+					include: config.include?.map((pattern) =>
+						pattern.replaceAll("\\", "/"),
+					),
+					exclude: config.exclude?.map((pattern) =>
+						pattern.replaceAll("\\", "/"),
+					),
+				}),
 			);
+			const nativeShim = config.files.find((path) =>
+				path.endsWith("svelte-shims.d.ts"),
+			);
+			const nativeProject = nativeShim
+				? join(dirname(nativeShim), "tsconfig.json")
+				: null;
 			console.error(
 				"Svelte compiler failure evidence:",
 				JSON.stringify({
 					workspace,
 					canonicalWorkspace: realpathSync(workspace),
 					canonicalCache: realpathSync(cache),
-					config: JSON.parse(readFileSync(overlay, "utf8")),
-					graphStatus: graph.status,
-					graph: graph.stdout,
-					graphErrors: graph.stderr,
+					config,
+					generatedFiles: readdirSync(join(cache, "svelte")),
+					original: graph(overlay),
+					forwardGlobs: graph(slashConfig),
+					nativeProject,
+					canonicalProject: nativeProject ? graph(nativeProject) : null,
+					allowJs: graph(overlay, ["--allowJs"]),
 				}),
 			);
+			rmSync(slashConfig);
 		}
 		throw error;
 	} finally {
@@ -226,6 +265,8 @@ function checkSvelteDiagnostics(alias) {
 }
 
 test("tsrs preserves mapped Svelte diagnostics", () =>
-	checkSvelteDiagnostics(false));
+	checkSvelteDiagnostics());
 test("tsrs preserves mapped Svelte diagnostics through a workspace alias", () =>
-	checkSvelteDiagnostics(true));
+	checkSvelteDiagnostics({ alias: true }));
+test("tsrs checks the fallback cache without local node_modules", () =>
+	checkSvelteDiagnostics({ localModules: false }));

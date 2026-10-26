@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -39,12 +39,10 @@ async function capture(command) {
 }
 
 async function cssDiagnostics(workspace, records) {
-	const cache = join(
-		workspace,
-		"node_modules",
-		".cache",
-		"svelte-check-native",
-	);
+	const modules = join(workspace, "node_modules");
+	const cache = statSync(modules, { throwIfNoEntry: false })?.isDirectory()
+		? join(modules, ".cache", "svelte-check-native")
+		: join(workspace, ".svelte-check");
 	const program = await capture([
 		process.env.TSGO_BIN,
 		"--project",
