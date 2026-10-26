@@ -203,3 +203,28 @@ test("tsrs preserves mapped Svelte diagnostics through a workspace alias", () =>
 	checkSvelteDiagnostics({ alias: true }));
 test("tsrs checks the fallback cache without local node_modules", () =>
 	checkSvelteDiagnostics({ localModules: false }));
+
+test("non-executable compiler overrides fail without exposing their values", () => {
+	const directory = mkdtempSync(join(tmpdir(), "kubecove-invalid-tsrs-"));
+	const binary = join(directory, "private-compiler-marker");
+	writeFileSync(binary, "This is not a compiler.\n");
+	try {
+		for (const args of [
+			["--noEmit"],
+			["--noEmit", "--project", "tsconfig.benchmarks.json"],
+			["--svelte", "--tsconfig", "tsconfig.svelte.json"],
+		]) {
+			const result = spawnSync("bun", [launcher, ...args], {
+				encoding: "utf8",
+				env: { ...process.env, TSRS_BINARY: binary },
+			});
+			assert.ifError(result.error);
+			const output = result.stdout + result.stderr;
+			assert.notEqual(result.status, 0, output);
+			assert.doesNotMatch(output, /private-compiler-marker/, output);
+			assert.doesNotMatch(output, /COMPLETED/, output);
+		}
+	} finally {
+		rmSync(directory, { recursive: true, force: true });
+	}
+});

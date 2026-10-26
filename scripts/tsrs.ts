@@ -93,6 +93,13 @@ async function main(): Promise<number> {
 	}
 	const svelte = args[0] === "--svelte";
 	if (svelte) args.shift();
+	if (!svelte && env.TSRS_BINARY) {
+		try {
+			return await run([env.TSRS_BINARY, ...args], env);
+		} catch {
+			throw new Error("Cannot execute the compiler selected by TSRS_BINARY.");
+		}
+	}
 	const tsrsRoot = dirname(require.resolve("tsrs/package.json"));
 	if (svelte) {
 		// Use the pinned package's resolver for platform/libc selection.

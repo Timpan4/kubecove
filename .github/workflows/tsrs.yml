@@ -54,6 +54,7 @@ jobs:
         with:
           path: .e2e/tools/tsrs/*/*/bin
           key: tsrs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tsrs.ts') }}
+          restore-keys: tsrs-${{ runner.os }}-${{ runner.arch }}-
       - run: bun install --frozen-lockfile
       - run: bun run tsrs:build
       - name: Save tsrs source binary
