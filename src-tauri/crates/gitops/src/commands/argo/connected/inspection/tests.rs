@@ -45,6 +45,55 @@ fn connected_inspection_eagerly_compares_and_redacts_nested_secrets() {
 }
 
 #[test]
+fn connected_comparison_diff_documents_are_apply_clean() {
+    let server_owned = serde_json::json!({
+        "apiVersion": "apps/v1", "kind": "Deployment",
+        "metadata": {
+            "name": "api", "uid": "u1", "resourceVersion": "7", "generation": 1,
+            "creationTimestamp": "2026-01-01T00:00:00Z",
+            "managedFields": [{"manager": "argocd-controller"}]
+        },
+        "spec": {"replicas": 1},
+        "status": {"readyReplicas": 1}
+    });
+    let inspector = connected_inspector(
+        ArgoApplicationRef {
+            name: "demo".into(),
+            ..Default::default()
+        },
+        serde_json::json!({}),
+        serde_json::json!({
+            "items": [{
+                "group": "apps", "version": "v1", "kind": "Deployment", "name": "api",
+                "targetState": server_owned.to_string(),
+                "liveState": server_owned.to_string(),
+                "normalizedLiveState": server_owned.to_string()
+            }]
+        }),
+    );
+    let comparison = &inspector.comparisons[0];
+
+    for document in [&comparison.target_state, &comparison.normalized_live_state] {
+        let document = document.as_ref().unwrap();
+        assert!(document.get("status").is_none());
+        for field in [
+            "managedFields",
+            "uid",
+            "resourceVersion",
+            "generation",
+            "creationTimestamp",
+        ] {
+            assert!(document["metadata"].get(field).is_none(), "{field} kept");
+        }
+        assert_eq!(document["spec"]["replicas"], 1);
+    }
+    assert_eq!(
+        comparison.live_state.as_ref().unwrap()["status"]["readyReplicas"],
+        1
+    );
+}
+
+#[test]
 fn non_json_secret_state_is_redacted() {
     let yaml = serde_json::json!("kind: Secret\ndata:\n  password: plaintext\n");
     let redacted = state(Some(&yaml), true).unwrap();

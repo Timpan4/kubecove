@@ -1,8 +1,9 @@
 use super::super::transport::redact_secret_fields;
+use crate::commands::helpers::normalize_k8s_yaml_value;
 use crate::models::AppErrorKind;
 use crate::models::{
     AppError, ArgoApplicationHistory, ArgoApplicationInspector, ArgoApplicationRef,
-    ArgoManagedResource, ArgoResourceComparison,
+    ArgoManagedResource, ArgoResourceComparison, YamlViewMode,
 };
 use kube::core::DynamicObject;
 use serde_json::Value;
@@ -53,6 +54,12 @@ pub(crate) fn state(value: Option<&Value>, redact: bool) -> Option<Value> {
             }
             state
         })
+}
+/// Desired and normalized live documents feed the Argo diff, which always uses apply-clean
+/// YAML regardless of the YAML view setting. Raw live state keeps server fields for the Live view.
+pub(crate) fn apply_clean_state(mut state: Value) -> Value {
+    normalize_k8s_yaml_value(&mut state, YamlViewMode::ApplyClean);
+    state
 }
 fn history(value: &Value) -> ArgoApplicationHistory {
     ArgoApplicationHistory {
@@ -161,9 +168,9 @@ fn connected_comparison(value: &Value) -> ArgoResourceComparison {
     };
     ArgoResourceComparison {
         resource: managed_resource(value),
-        target_state: redacted_state("targetState"),
+        target_state: redacted_state("targetState").map(apply_clean_state),
         live_state: redacted_state("liveState"),
-        normalized_live_state: redacted_state("normalizedLiveState"),
+        normalized_live_state: redacted_state("normalizedLiveState").map(apply_clean_state),
         predicted_live_state: redacted_state("predictedLiveState"),
         modified: value.get("modified").and_then(Value::as_bool),
         exact: Some(true),

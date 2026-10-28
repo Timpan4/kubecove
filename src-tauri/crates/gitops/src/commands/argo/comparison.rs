@@ -2,8 +2,9 @@ use super::scope::scoped_connection;
 use super::transport::resource_actions_path;
 use super::{
     connected::{
-        api_get, connected_application_path, inspector_from_application, kubernetes_application,
-        kubernetes_comparison, managed_resource, redact_secret_fields, state, text,
+        api_get, apply_clean_state, connected_application_path, inspector_from_application,
+        kubernetes_application, kubernetes_comparison, managed_resource, redact_secret_fields,
+        state, text,
     },
     ArgoConnectionStore,
 };
@@ -114,9 +115,9 @@ fn connected_selected_comparison(
     let resource = managed_resource(item);
     Ok(ArgoResourceComparison {
         resource,
-        target_state: state(item.get("targetState"), true),
+        target_state: state(item.get("targetState"), true).map(apply_clean_state),
         live_state: state(item.get("liveState"), true),
-        normalized_live_state: state(item.get("normalizedLiveState"), true),
+        normalized_live_state: state(item.get("normalizedLiveState"), true).map(apply_clean_state),
         predicted_live_state: state(item.get("predictedLiveState"), true),
         modified: item.get("modified").and_then(Value::as_bool),
         exact: Some(true),
