@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getArgoOperationTracker, argoTrackingKey } from "./argo-operation-tracker";
 	import { argoOperationProgress } from "./argo-operation-progress";
+	import ArgoConnectionDialog from "./ArgoConnectionDialog.svelte";
 	import ArgoOperationProgress from "./ArgoOperationProgress.svelte";
 	import ArgoResourceDiff from "./ArgoResourceDiff.svelte";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
@@ -162,6 +163,7 @@
 	let appliedSyncDefaults = $state<ArgoSyncSettings>({ ...defaultArgoSyncSettings });
 	let appliedSyncDefaultsKey = $state("");
 	let confirmationOpen = $state(false);
+	let argoConnectionOpen = $state(false);
 	let confirmationName = $state("");
 	let pendingSync = $state<ArgoSyncSettings | null>(null);
 	let appliedScopeKey = $state("");
@@ -700,7 +702,14 @@
 					? "Argo RBAC is not evaluated. Exact manifests require a connected profile."
 					: "Connected Argo CD authorization is evaluated during operation preflight."}
 		</div>
+		<Button type="button" size="sm" variant="outline" onclick={() => (argoConnectionOpen = true)}>
+			{connectionPolicy.eligibleProfiles.length > 0 ? "Manage connection" : "Connect Argo CD"}
+		</Button>
 	</div>
+	<ArgoConnectionDialog
+		bind:open={argoConnectionOpen}
+		scope={{ clusterContext, workspaceId, kubeconfigSourceKey: kubeconfigEnvVar }}
+	/>
 
 	{#if snapshot}<ArgoOperationProgress inspector={snapshot} />{/if}
 	{#if operationMessage}

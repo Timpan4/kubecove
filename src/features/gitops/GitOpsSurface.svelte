@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { Link2 } from "lucide-svelte";
 	import ResourceLiveStatusMenu from "@/components/ResourceLiveStatusMenu.svelte";
+	import { Button } from "@/components/ui/svelte";
 	import { ARGO_APPLICATION_API_VERSION, argoApplicationWatchKey } from "@/lib/argo-application-inspection";
 	import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 	import { createQueries, createQuery, useQueryClient } from "@tanstack/svelte-query";
@@ -25,6 +27,7 @@
 	import type { TreeNodeId } from "@/lib/tree-nav";
 	import type { SavedWorkspace } from "@/lib/workspace-model";
 	import { argoTrackingKey, getArgoOperationTracker } from "./argo-operation-tracker";
+	import ArgoConnectionDialog from "./ArgoConnectionDialog.svelte";
 	import GitOpsView from "./GitOpsView.svelte";
 	import {
 		buildGitOpsRailItems,
@@ -80,6 +83,7 @@
 		return `${action}: ${operation.phase}`;
 	}
 	const context = $derived(workspace.scope.clusterContext);
+	let argoConnectionOpen = $state(false);
 
 	const namespacesQuery = createQuery(() => ({
 		queryKey: queryKeys.namespaces(context, kubeconfigSourceKey),
@@ -227,7 +231,19 @@
 	{#key live.key}
 		<ResourceLiveStatusMenu {live} disabled={!sourceReady} />
 	{/key}
+	{#if argoDetectionQuery.data === true}
+		<Button type="button" variant="outline" size="sm" onclick={() => (argoConnectionOpen = true)}>
+			<Link2 data-icon="inline-start" />Argo CD connection
+		</Button>
+	{/if}
 {/snippet}
+{#if argoDetectionQuery.data === true}
+	<ArgoConnectionDialog
+		bind:open={argoConnectionOpen}
+		scope={{ clusterContext: context, workspaceId: workspace.id, kubeconfigSourceKey }}
+		workspaceName={workspace.name}
+	/>
+{/if}
 <GitOpsView
 	{refreshControls}
 	{gitOpsQuery}

@@ -2,8 +2,8 @@ use super::scope::scoped_connection;
 use super::transport::resource_actions_path;
 use super::{
     connected::{
-        api_get, connected_application_path, connected_comparison, inspector_from_application,
-        kubernetes_application, kubernetes_comparison, redact_secret_fields, text,
+        api_get, connected_comparison, inspector_from_application, kubernetes_application,
+        kubernetes_comparison, managed_resource_path, redact_secret_fields, text,
     },
     ArgoConnectionStore,
 };
@@ -52,13 +52,7 @@ async fn argo_resource_comparison(
     )?;
     let value = api_get(
         &connection,
-        &connected_application_path(
-            &connection.profile.url,
-            &application.name,
-            application.namespace.as_deref(),
-            None,
-            true,
-        )?,
+        &managed_resource_path(&connection.profile.url, &application, &resource)?,
     )
     .await?;
     let mut comparison = connected_selected_comparison(value, &resource)?;
@@ -92,6 +86,17 @@ fn kubernetes_selected_comparison(
     Ok(kubernetes_comparison(resource))
 }
 
+/// Argo CD's managed-resource items carry no API version, and cluster-scoped items an
+/// empty namespace, so they match on the identity the frontend keys by: group, kind,
+/// namespace and name, with empty meaning absent.
+fn same_identity(item: &Value, requested: &ArgoManagedResource) -> bool {
+    let present = |value: Option<String>| value.filter(|value| !value.is_empty());
+    present(text(item, "group")) == present(requested.group.clone())
+        && present(text(item, "kind")) == present(requested.kind.clone())
+        && present(text(item, "namespace")) == present(requested.namespace.clone())
+        && present(text(item, "name")) == present(requested.name.clone())
+}
+
 fn connected_selected_comparison(
     mut value: Value,
     requested: &ArgoManagedResource,
@@ -103,15 +108,15 @@ fn connected_selected_comparison(
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .find(|item| {
-            text(item, "group") == requested.group
-                && text(item, "version") == requested.version
-                && text(item, "kind") == requested.kind
-                && text(item, "namespace") == requested.namespace
-                && text(item, "name") == requested.name
-        })
+        .find(|item| same_identity(item, requested))
         .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
-    Ok(connected_comparison(item))
+    let mut comparison = connected_comparison(item);
+    // Server actions need the version the item lacks.
+    comparison.resource.version = comparison
+        .resource
+        .version
+        .or_else(|| requested.version.clone());
+    Ok(comparison)
 }
 
 #[cfg(feature = "bench-support")]
@@ -191,6 +196,46 @@ fn actions_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connected_comparison_matches_versionless_items_by_frontend_identity() {
+        let managed = serde_json::json!({"items": [
+            {"group": "apps", "kind": "Deployment", "namespace": "argocd", "name": "argocd-repo-server",
+             "liveState": "{\"kind\":\"Deployment\"}"},
+            {"group": "apps", "kind": "Deployment", "namespace": "argocd", "name": "argocd-server",
+             "liveState": "{\"kind\":\"Deployment\"}", "modified": false},
+            {"group": "apiextensions.k8s.io", "kind": "CustomResourceDefinition", "namespace": "",
+             "name": "applications.argoproj.io", "liveState": "{\"kind\":\"CustomResourceDefinition\"}"}
+        ]});
+        let deployment = ArgoManagedResource {
+            group: Some("apps".into()),
+            version: Some("v1".into()),
+            kind: Some("Deployment".into()),
+            namespace: Some("argocd".into()),
+            name: Some("argocd-server".into()),
+            ..Default::default()
+        };
+        let comparison = connected_selected_comparison(managed.clone(), &deployment).unwrap();
+        assert_eq!(comparison.resource.name.as_deref(), Some("argocd-server"));
+        assert_eq!(comparison.resource.version.as_deref(), Some("v1"));
+        assert_eq!(comparison.modified, Some(false));
+
+        let crd = ArgoManagedResource {
+            group: Some("apiextensions.k8s.io".into()),
+            version: Some("v1".into()),
+            kind: Some("CustomResourceDefinition".into()),
+            name: Some("applications.argoproj.io".into()),
+            ..Default::default()
+        };
+        assert!(connected_selected_comparison(managed.clone(), &crd).is_ok());
+
+        let other_kind = ArgoManagedResource {
+            kind: Some("StatefulSet".into()),
+            ..deployment
+        };
+        let missing = connected_selected_comparison(managed, &other_kind).unwrap_err();
+        assert_eq!(missing.kind, AppErrorKind::NotFound);
+    }
 
     #[test]
     fn actions_path_encodes_application_and_resource_identity() {

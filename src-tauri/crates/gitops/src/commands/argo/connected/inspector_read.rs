@@ -1,12 +1,12 @@
 use super::super::scope::scoped_connection;
-use super::super::transport::{api_get, application_api_path, argo_url};
+use super::super::transport::{api_get, application_api_path, argo_url, is_response_too_large};
 use super::inspection::{connected_inspector, kubernetes_inspector_from_object};
 use super::store::ArgoConnectionStore;
 use crate::commands::{
     argo::applications::application_api_resource, gitops_crd::get_crd_object, ClusterAccess,
 };
 use crate::models::AppErrorKind;
-use crate::models::{AppError, ArgoApplicationInspector, ArgoApplicationRef};
+use crate::models::{AppError, ArgoApplicationInspector, ArgoApplicationRef, ArgoManagedResource};
 use kube::core::DynamicObject;
 
 pub(crate) async fn kubernetes_application(
@@ -83,7 +83,7 @@ async fn connected_inspector_read(
         )?,
     )
     .await?;
-    let managed = api_get(
+    let managed = match api_get(
         &connection,
         &connected_application_path(
             &connection.profile.url,
@@ -93,8 +93,37 @@ async fn connected_inspector_read(
             true,
         )?,
     )
-    .await?;
+    .await
+    {
+        Ok(managed) => Some(managed),
+        // Every manifest at once can exceed the response cap, as for Argo CD's own CRDs.
+        // The Application status still lists the resources.
+        Err(error) if is_response_too_large(&error) => None,
+        Err(error) => return Err(error),
+    };
     Ok(connected_inspector(application, response, managed))
+}
+
+/// One managed resource's states. Argo CD filters the list server-side, so selecting
+/// a resource does not download every manifest of the Application.
+pub(crate) fn managed_resource_path(
+    base: &str,
+    application: &ArgoApplicationRef,
+    resource: &ArgoManagedResource,
+) -> Result<String, AppError> {
+    argo_url(base)?;
+    Ok(application_api_path(
+        &application.name,
+        &["managed-resources"],
+        &[
+            ("appNamespace", application.namespace.as_deref()),
+            ("namespace", resource.namespace.as_deref()),
+            ("name", resource.name.as_deref()),
+            ("version", resource.version.as_deref()),
+            ("group", resource.group.as_deref()),
+            ("kind", resource.kind.as_deref()),
+        ],
+    ))
 }
 
 fn inspection_failure(error: &AppError) -> crate::models::ArgoInspectionFailure {

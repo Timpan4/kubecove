@@ -66,12 +66,21 @@ fn persisted_credential_generation_survives_restart_and_rotates_on_change() {
     let store = MemoryCredentialStore::default();
     let profile = profile();
     let first = Uuid::new_v4().to_string();
-    save_credential(&store, &profile, "token-a", first.clone()).unwrap();
+    let pin = "ab".repeat(32);
+    save_credential(
+        &store,
+        &profile,
+        "token-a",
+        first.clone(),
+        Some(pin.clone()),
+    )
+    .unwrap();
     let restarted = load_credential(&store, &profile).unwrap().unwrap();
     assert_eq!(restarted.token, "token-a");
     assert_eq!(restarted.generation, first);
+    assert_eq!(restarted.certificate_sha256, Some(pin));
     let rotated = Uuid::new_v4().to_string();
-    save_credential(&store, &profile, "token-b", rotated.clone()).unwrap();
+    save_credential(&store, &profile, "token-b", rotated.clone(), None).unwrap();
     assert_ne!(rotated, restarted.generation);
 }
 
@@ -102,6 +111,7 @@ fn generation_policy_is_ephemeral_for_submitted_or_tls_credentials() {
     let stored = StoredCredential {
         token: "token".into(),
         generation: "saved-generation".into(),
+        certificate_sha256: None,
     };
     assert_eq!(
         connection_generation(Some(&stored), false, true, false, None),
@@ -126,6 +136,7 @@ fn serialized_credential_contains_no_tls_material() {
     let value = serde_json::to_value(StoredCredential {
         token: "token".into(),
         generation: "generation".into(),
+        certificate_sha256: None,
     })
     .unwrap();
     assert_eq!(

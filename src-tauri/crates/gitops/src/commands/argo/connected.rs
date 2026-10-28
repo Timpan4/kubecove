@@ -10,20 +10,20 @@ pub use inspection::{benchmark_connected_inspector, benchmark_kubernetes_inspect
 pub(crate) use inspection::{
     connected_comparison, inspector_from_application, kubernetes_comparison, text,
 };
-pub(crate) use inspector_read::{connected_application_path, kubernetes_application};
+pub(crate) use inspector_read::{kubernetes_application, managed_resource_path};
 pub use store::ArgoConnectionStore;
 pub(crate) use store::ConnectedArgo;
 
 use self::{
     credentials::{
         connection_generation, delete_credential, load_credential, save_credential,
-        ActiveCredentialStore,
+        ActiveCredentialStore, StoredCredential,
     },
-    discovery::{is_argo_labeled, servicetunnel_capabilities, tunnel_target_unavailable},
     inspector_read::application_inspector,
 };
+use super::certificate_pin::{parse_certificate_sha256, pinned_tls_config, PresentedCertificate};
 use super::transport::{
-    argo_url, http_client, normalize_endpoint, response_json, safe_http_error, url,
+    argo_url, http_client, normalize_endpoint, response_json, safe_http_error, url, ServerTrust,
 };
 use super::tunnel::{verify_confirmed_target, ArgoServiceTunnel};
 use crate::commands::{diagnostic_field, BackendCancellationRegistry, ClusterAccess, FiniteRead};
@@ -31,9 +31,8 @@ use crate::models::AppErrorKind;
 use crate::models::{
     AppError, ArgoApplicationInspector, ArgoApplicationRef, ArgoConfirmedTarget,
     ArgoConnectionProfile, ArgoConnectionStatus, ArgoServerCapability, ArgoServerEndpoint,
+    ArgoTunnelTargetPreview,
 };
-use k8s_openapi::api::core::v1::Service;
-use kube::api::{Api, ListParams};
 use serde_json::{json, Value};
 use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
@@ -57,46 +56,126 @@ pub async fn discover_argo_servers(
                 let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
                     .read_client(&cluster_context)
                     .await?;
-                let services: Api<Service> = Api::all(client.clone());
-                let list = services
-                    .list(&ListParams::default())
-                    .await
-                    .map_err(AppError::from)?;
-                let mut capabilities = Vec::new();
-                for service in list.items {
-                    for mut capability in servicetunnel_capabilities(&service) {
-                        capability.argo_labeled = is_argo_labeled(&service);
-                        if let Some(ArgoServerEndpoint::ServiceTunnel {
-                            namespace,
-                            service_name,
-                            service_port,
-                            ..
-                        }) = capability.endpoint.as_ref()
-                        {
-                            match crate::commands::sessions::service::resolve_service_target(
-                                client.clone(),
-                                namespace,
-                                service_name,
-                                *service_port,
-                            )
-                            .await
-                            {
-                                Ok(target) => capability.target_pod = Some(target.pod_name),
-                                Err(error) => {
-                                    capability.unavailable =
-                                        Some(tunnel_target_unavailable(&error));
-                                    capability.unavailable_reason = Some(error.message);
-                                }
-                            }
-                        }
-                        capabilities.push(capability);
-                    }
-                }
-                Ok(capabilities)
+                discovery::discover(&client).await
             }),
             |capabilities| vec![diagnostic_field("servers", capabilities.len())],
         )
         .await
+}
+
+/// Resolves the Pod a private tunnel reaches now and, for HTTPS, the certificate it presents,
+/// so the user can confirm both before any credential is sent.
+pub async fn preview_argo_tunnel_target(
+    cluster_context: String,
+    kubeconfig_env_var: Option<String>,
+    endpoint: ArgoServerEndpoint,
+) -> Result<ArgoTunnelTargetPreview, AppError> {
+    let (endpoint, server_url) = normalize_endpoint(endpoint)?;
+    let ArgoServerEndpoint::ServiceTunnel {
+        namespace,
+        service_name,
+        service_port,
+        scheme,
+        ..
+    } = endpoint
+    else {
+        return Err(AppError::new(
+            "only Argo CD Service tunnels have a target to preview",
+            AppErrorKind::ArgoConnection,
+        ));
+    };
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+    let tunnel = ArgoServiceTunnel::start(
+        &access,
+        &cluster_context,
+        namespace.clone(),
+        service_name.clone(),
+        service_port,
+    )
+    .await?;
+    let certificate_sha256 = if scheme == "https" {
+        Some(probe_certificate(&server_url, &tunnel).await?)
+    } else {
+        None
+    };
+    Ok(ArgoTunnelTargetPreview {
+        namespace,
+        service_name,
+        pod_name: tunnel.pod_name().to_string(),
+        certificate_sha256,
+    })
+}
+
+/// A verifier without a pin rejects every certificate, so the probe ends at the TLS
+/// handshake and never sends an HTTP request.
+async fn probe_certificate(
+    server_url: &str,
+    tunnel: &ArgoServiceTunnel,
+) -> Result<String, AppError> {
+    let (config, presented) = pinned_tls_config(None)?;
+    let (host, address) = tunnel_route(server_url, tunnel)?;
+    let client = http_client(ServerTrust::Pinned(config), Some((&host, address)))?;
+    let _ = client.get(url(server_url, "/")?).send().await;
+    presented.get().ok_or_else(|| {
+        AppError::new(
+            "Argo CD did not present an HTTPS certificate on this Service port; if the server runs with server.insecure, use HTTP",
+            AppErrorKind::ArgoConnection,
+        )
+    })
+}
+
+/// The URL keeps the Service host for the Host header and SNI; the socket is the tunnel.
+fn tunnel_route(
+    server_url: &str,
+    tunnel: &ArgoServiceTunnel,
+) -> Result<(String, SocketAddr), AppError> {
+    let host = argo_url(server_url)?
+        .host_str()
+        .expect("normalized service endpoint has a host")
+        .to_string();
+    let address = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, tunnel.local_port()));
+    Ok((host, address))
+}
+
+/// HTTPS through a tunnel accepts one certificate: the one confirmed with the Pod, or for a
+/// Service-level reconnect, the one saved with the remembered credential.
+fn tunnel_certificate_pin(
+    confirmed: &ArgoConfirmedTarget,
+    stored: Option<&StoredCredential>,
+) -> Result<String, AppError> {
+    if confirmed.pod_name.is_none() {
+        return stored
+            .and_then(|record| record.certificate_sha256.clone())
+            .ok_or_else(|| {
+                AppError::new(
+                    "this saved Argo CD profile has no confirmed certificate; connect and confirm the target again",
+                    AppErrorKind::ArgoConnection,
+                )
+            });
+    }
+    let fingerprint = confirmed.certificate_sha256.as_deref().ok_or_else(|| {
+        AppError::new(
+            "confirm the Argo CD server certificate before sending credentials",
+            AppErrorKind::ArgoConnection,
+        )
+    })?;
+    parse_certificate_sha256(fingerprint)
+}
+
+/// A request rejected by the certificate pin reports the rotation instead of a TLS error.
+fn request_error(error: reqwest::Error, pin: Option<&(String, PresentedCertificate)>) -> AppError {
+    let rotated = pin.is_some_and(|(pinned, presented)| {
+        presented
+            .get()
+            .is_some_and(|fingerprint| &fingerprint != pinned)
+    });
+    if rotated {
+        return AppError::new(
+            "the Argo CD server certificate changed since it was confirmed; connect and confirm the target again",
+            AppErrorKind::ArgoConnection,
+        );
+    }
+    safe_http_error(error)
 }
 
 pub async fn connect_argo_server(
@@ -130,60 +209,86 @@ pub async fn connect_argo_server(
         transport: "connected".into(),
         remember_credential,
     };
-    let mut tunnel = None;
-    let resolved_host = if let ArgoServerEndpoint::ServiceTunnel {
-        namespace,
-        service_name,
-        service_port,
-        ..
-    } = &profile.endpoint
-    {
-        let cluster_context = profile.cluster_context.as_deref().ok_or_else(|| {
-            AppError::new(
-                "clusterContext required for an Argo CD Service tunnel",
-                AppErrorKind::ArgoConnection,
-            )
-        })?;
-        let started = ArgoServiceTunnel::start(
-            &access,
-            cluster_context,
-            namespace.clone(),
-            service_name.clone(),
-            *service_port,
-        )
-        .await?;
-        verify_confirmed_target(
-            confirmed_target.as_ref(),
-            namespace,
-            service_name,
-            started.pod_name(),
-        )?;
-        let host = argo_url(&profile.url)?
-            .host_str()
-            .expect("normalized service endpoint has a host")
-            .to_string();
-        let address = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, started.local_port()));
-        tunnel = Some(started);
-        Some((host, address))
-    } else {
-        None
-    };
-    let client = http_client(
-        insecure_tls,
-        custom_ca_pem.clone(),
-        resolved_host
-            .as_ref()
-            .map(|(host, address)| (host.as_str(), *address)),
-    )?;
     let credential_store = ActiveCredentialStore;
     let submitted_token = token.filter(|value| !value.is_empty());
+    let username = username.filter(|value| !value.is_empty());
+    let password = password.filter(|value| !value.is_empty());
+    let submitted_credentials =
+        submitted_token.is_some() || username.is_some() || password.is_some();
     let stored = if remember_credential {
         load_credential(&credential_store, &profile)?
     } else {
         None
     };
+    let mut tunnel = None;
+    let mut pin = None;
+    let client = match &profile.endpoint {
+        ArgoServerEndpoint::ExternalHttps { .. } => http_client(
+            ServerTrust::Default {
+                insecure_tls,
+                custom_ca_pem: custom_ca_pem.clone(),
+            },
+            None,
+        )?,
+        ArgoServerEndpoint::ServiceTunnel {
+            namespace,
+            service_name,
+            service_port,
+            scheme,
+            ..
+        } => {
+            if insecure_tls || custom_ca_pem.is_some() {
+                return Err(AppError::new(
+                    "Argo CD Service tunnels trust only the confirmed certificate; insecure TLS and custom CAs do not apply",
+                    AppErrorKind::ArgoConnection,
+                ));
+            }
+            let cluster_context = profile.cluster_context.as_deref().ok_or_else(|| {
+                AppError::new(
+                    "clusterContext required for an Argo CD Service tunnel",
+                    AppErrorKind::ArgoConnection,
+                )
+            })?;
+            let started = ArgoServiceTunnel::start(
+                &access,
+                cluster_context,
+                namespace.clone(),
+                service_name.clone(),
+                *service_port,
+            )
+            .await?;
+            // A remembered credential was saved after a full confirmation of this Service.
+            let service_level_allowed = !submitted_credentials && stored.is_some();
+            let confirmed = verify_confirmed_target(
+                confirmed_target.as_ref(),
+                namespace,
+                service_name,
+                started.pod_name(),
+                service_level_allowed,
+            )?;
+            let (host, address) = tunnel_route(&profile.url, &started)?;
+            let trust = if scheme == "https" {
+                let fingerprint = tunnel_certificate_pin(confirmed, stored.as_ref())?;
+                let (config, presented) = pinned_tls_config(Some(fingerprint.clone()))?;
+                pin = Some((fingerprint, presented));
+                ServerTrust::Pinned(config)
+            } else {
+                ServerTrust::Default {
+                    insecure_tls: false,
+                    custom_ca_pem: None,
+                }
+            };
+            tunnel = Some(started);
+            http_client(trust, Some((&host, address)))?
+        }
+    };
     let stored_token = stored.as_ref().map(|record| record.token.clone());
-    let token = if let Some(token) = submitted_token.clone().or(stored_token) {
+    // Credentials typed now win over a remembered token, which may have expired.
+    let token = if let Some(token) = submitted_token.clone().or(if submitted_credentials {
+        None
+    } else {
+        stored_token
+    }) {
         token
     } else {
         let user = username.ok_or_else(|| {
@@ -203,7 +308,7 @@ pub async fn connect_argo_server(
             .json(&json!({"username": user, "password": password}))
             .send()
             .await
-            .map_err(safe_http_error)?;
+            .map_err(|error| request_error(error, pin.as_ref()))?;
         if !response.status().is_success() {
             return Err(AppError::new(
                 format!("Argo CD login failed ({})", response.status()),
@@ -227,7 +332,7 @@ pub async fn connect_argo_server(
         .bearer_auth(&token)
         .send()
         .await
-        .map_err(safe_http_error)?;
+        .map_err(|error| request_error(error, pin.as_ref()))?;
     if !response.status().is_success() {
         return Err(AppError::new(
             format!("Argo CD session validation failed ({})", response.status()),
@@ -240,15 +345,25 @@ pub async fn connect_argo_server(
         .or_else(|| userinfo.get("sub"))
         .and_then(Value::as_str)
         .map(str::to_owned);
+    let certificate_sha256 = pin.map(|(fingerprint, _)| fingerprint);
+    let pin_changed = stored
+        .as_ref()
+        .is_some_and(|record| record.certificate_sha256 != certificate_sha256);
     let generation = connection_generation(
         stored.as_ref(),
-        submitted_token.is_some(),
+        submitted_credentials || pin_changed,
         remember_credential,
         insecure_tls,
         custom_ca_pem.as_deref(),
     );
-    if remember_credential && (submitted_token.is_some() || stored.is_none()) {
-        save_credential(&credential_store, &profile, &token, generation.clone())?;
+    if remember_credential && (submitted_credentials || stored.is_none() || pin_changed) {
+        save_credential(
+            &credential_store,
+            &profile,
+            &token,
+            generation.clone(),
+            certificate_sha256,
+        )?;
     } else if !remember_credential {
         // A stale remembered credential must not revive on a later reconnect.
         delete_credential(&credential_store, &profile)?;

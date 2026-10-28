@@ -10,6 +10,16 @@ use serde_json::Value;
 use std::{net::SocketAddr, time::Duration};
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+const RESPONSE_TOO_LARGE: &str = "Argo CD response exceeded size limit";
+
+fn response_too_large() -> AppError {
+    AppError::new(RESPONSE_TOO_LARGE, AppErrorKind::ArgoApi)
+}
+
+/// Whether a read failed only because the response exceeded `MAX_RESPONSE_BYTES`.
+pub(crate) fn is_response_too_large(error: &AppError) -> bool {
+    error.kind == AppErrorKind::ArgoApi && error.message == RESPONSE_TOO_LARGE
+}
 
 pub(crate) async fn api_get(connection: &ConnectedArgo, path: &str) -> Result<Value, AppError> {
     let request = connection.client.get(url(&connection.profile.url, path)?);
@@ -84,10 +94,7 @@ async fn capped_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, A
         .content_length()
         .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
     {
-        return Err(AppError::new(
-            "Argo CD response exceeded size limit",
-            AppErrorKind::ArgoApi,
-        ));
+        return Err(response_too_large());
     }
     let mut bytes = Vec::new();
     let mut stream = response.bytes_stream();
@@ -99,10 +106,7 @@ async fn capped_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, A
 
 fn push_capped_chunk(bytes: &mut Vec<u8>, chunk: &[u8]) -> Result<(), AppError> {
     if chunk.len() > MAX_RESPONSE_BYTES.saturating_sub(bytes.len()) {
-        return Err(AppError::new(
-            "Argo CD response exceeded size limit",
-            AppErrorKind::ArgoApi,
-        ));
+        return Err(response_too_large());
     }
     bytes.extend_from_slice(chunk);
     Ok(())
@@ -159,9 +163,19 @@ pub(super) fn safe_http_error(error: reqwest::Error) -> AppError {
     )
 }
 
+/// How an Argo CD client verifies the server certificate.
+pub(super) enum ServerTrust {
+    /// Platform roots plus an optional session CA, or no verification for this session only.
+    Default {
+        insecure_tls: bool,
+        custom_ca_pem: Option<Vec<u8>>,
+    },
+    /// Exactly the certificate confirmed for a private Service tunnel.
+    Pinned(rustls::ClientConfig),
+}
+
 pub(super) fn http_client(
-    insecure_tls: bool,
-    custom_ca_pem: Option<Vec<u8>>,
+    trust: ServerTrust,
     resolved_host: Option<(&str, SocketAddr)>,
 ) -> Result<HttpClient, AppError> {
     let mut builder = HttpClient::builder()
@@ -172,14 +186,23 @@ pub(super) fn http_client(
         // The URL still contains `host`, so reqwest keeps its Host header and HTTPS SNI.
         builder = builder.resolve(host, address).no_proxy();
     }
-    if insecure_tls {
-        builder = builder.danger_accept_invalid_certs(true);
-    }
-    if let Some(pem) = custom_ca_pem {
-        let certificate = Certificate::from_pem(&pem).map_err(|error| {
-            AppError::new("invalid custom CA", AppErrorKind::ArgoConnection).with_source(error)
-        })?;
-        builder = builder.add_root_certificate(certificate);
+    match trust {
+        ServerTrust::Default {
+            insecure_tls,
+            custom_ca_pem,
+        } => {
+            if insecure_tls {
+                builder = builder.danger_accept_invalid_certs(true);
+            }
+            if let Some(pem) = custom_ca_pem {
+                let certificate = Certificate::from_pem(&pem).map_err(|error| {
+                    AppError::new("invalid custom CA", AppErrorKind::ArgoConnection)
+                        .with_source(error)
+                })?;
+                builder = builder.add_root_certificate(certificate);
+            }
+        }
+        ServerTrust::Pinned(config) => builder = builder.tls_backend_preconfigured(config),
     }
     builder.build().map_err(safe_http_error)
 }
@@ -313,3 +336,6 @@ pub(super) fn canonical_url(value: &str) -> Result<reqwest::Url, AppError> {
     base.set_fragment(None);
     Ok(base)
 }
+
+#[cfg(test)]
+mod tests;

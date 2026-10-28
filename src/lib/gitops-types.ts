@@ -92,10 +92,23 @@ export interface ArgoServerCapability {
 	argoLabeled: boolean;
 }
 
+/**
+ * A null Pod is a Service-level reconnect, which the backend accepts only with a remembered
+ * credential saved after a full confirmation. HTTPS tunnels pin `certificateSha256`.
+ */
 export interface ArgoConfirmedTarget {
 	namespace: string;
 	serviceName: string;
+	podName: string | null;
+	certificateSha256?: string | null;
+}
+
+export interface ArgoTunnelTargetPreview {
+	namespace: string;
+	serviceName: string;
 	podName: string;
+	/** SHA-256 of the HTTPS certificate as lowercase hex; null for HTTP endpoints. */
+	certificateSha256: string | null;
 }
 
 export interface ArgoApplicationRef {

@@ -376,7 +376,10 @@ pub struct ArgoServerCapability {
     pub argo_labeled: bool,
 }
 
-/// Exact private tunnel target the user confirmed before credentials are sent.
+/// Private tunnel target the user confirmed before credentials are sent.
+///
+/// A missing Pod is a Service-level reconnect: it is only accepted for a remembered
+/// credential, which was saved after a full confirmation of this namespace and Service.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArgoConfirmedTarget {
@@ -384,6 +387,20 @@ pub struct ArgoConfirmedTarget {
     pub service_name: String,
     #[serde(default)]
     pub pod_name: Option<String>,
+    /// SHA-256 of the HTTPS server certificate the user confirmed, as lowercase hex.
+    #[serde(default)]
+    pub certificate_sha256: Option<String>,
+}
+
+/// What a private tunnel currently reaches, shown to the user for confirmation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArgoTunnelTargetPreview {
+    pub namespace: String,
+    pub service_name: String,
+    pub pod_name: String,
+    /// Present for HTTPS endpoints: SHA-256 of the server certificate, as lowercase hex.
+    pub certificate_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

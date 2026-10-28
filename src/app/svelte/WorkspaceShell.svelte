@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ArgoAutoReconnect from "@/features/gitops/ArgoAutoReconnect.svelte";
 	import ArgoOperationMonitor from "@/features/gitops/ArgoOperationMonitor.svelte";
 	import { markStartup } from "@/lib/startup-marks";
 	import { onMount } from "svelte";
@@ -521,6 +522,7 @@
 </script>
 
 <ArgoOperationMonitor context={workspaceReadContext} />
+<ArgoAutoReconnect context={workspaceReadContext} />
 
 <SidebarProvider class="h-screen overflow-hidden bg-background text-foreground xl:gap-2 xl:p-2">
 	<WorkspaceSidebar

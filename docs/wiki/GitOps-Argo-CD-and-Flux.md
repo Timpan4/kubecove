@@ -34,6 +34,8 @@ Choose one transport for each Argo Application view:
 - **Kubernetes** reads the Argo Application CRD and its reported status through the selected cluster context. It can show status resources and history, but cannot claim an exact desired state or diff.
 - **Connected Argo CD** uses the configured Argo CD HTTPS API for that workspace and cluster context. It returns Argo-managed resources and authoritative target, live, normalized-live, and predicted-live state for a resource comparison.
 
+When an Application's manifests are too large to load together, such as Argo CD managing its own CRDs, connected inspection lists resources from the Application status and loads each resource's comparison when you select it.
+
 Connected inspection can visibly fall back to one complete Kubernetes inspection when a required connected read fails. KubeCove preserves the sanitized connected failure, identifies Kubernetes provenance, and never mixes the two transports. Operations stay bound to the transport reviewed at preflight and do not switch after confirmation.
 
 ## Run Argo CD operations
@@ -59,11 +61,18 @@ Connected operations require an active profile. Kubernetes operations require th
 
 ## Connect Argo CD safely
 
-Connected access is opt-in. Open the Argo CD category in **Settings** from an active workspace and cluster context to discover or connect a server. Select or reconnect a matching profile when available. For a new connection, enter a reachable manual HTTPS server URL or select an eligible discovered Kubernetes Service port for a private tunnel, then authenticate with a token or local login credentials. Application details lets you choose among matching profiles and transports; it no longer manages connection profiles. A healthy matching profile is selected automatically unless you explicitly choose another. A discovered Service with an unavailable reason cannot be tunneled; use a reachable manual URL or fix its stated prerequisite.
+Connected access is opt-in and set up per workspace. Open **Argo CD connection** beside the GitOps heading, or **Connect Argo CD** next to the transport picker in Application details. Connections saved there belong to that workspace, cluster context, and kubeconfig source. Other workspaces keep their own.
+
+1. KubeCove looks for the Argo CD server Service in the namespaces you can read and preselects the most likely one. It reads `argocd-cmd-params-cm` to choose HTTP or HTTPS and the root path. **Advanced** lets you override the protocol, root path, and TLS server name. Use **External URL** for a server reached through ingress.
+2. Enter a token or local login. Turn on **Remember credential in native keyring** to reconnect automatically whenever the workspace opens.
+3. For a cluster Service, confirm the namespace, Service, Pod, and, for HTTPS, the certificate fingerprint shown before KubeCove sends the credential.
+
+A healthy matching profile is selected automatically unless you explicitly choose another in Application details. A discovered Service with an unavailable reason cannot be tunneled; use an external URL or fix its stated prerequisite.
 
 - Tokens, passwords, TLS configuration, and custom CA material stay in the Rust backend. The frontend receives typed summaries, not credentials.
 - Without **Remember credential**, the token is memory-only. With it, KubeCove uses the native keyring; it has no plaintext credential fallback.
-- The server URL must use HTTPS and cannot embed credentials. Insecure TLS and custom CA PEM are session-only and are not stored; re-enter either setting after disconnecting or restarting before reconnecting.
+- HTTPS through a cluster Service accepts only the certificate you confirmed. With a remembered credential, its fingerprint is stored in the keyring. If Argo CD replaces its certificate, reconnecting fails and **Confirm target again** shows the new one.
+- An external server URL must use HTTPS and cannot embed credentials. Insecure TLS and custom CA PEM apply only to external URLs and are session-only. Re-enter either setting after disconnecting or restarting.
 - Connected profiles are bound to the selected cluster context and workspace. A profile outside that scope cannot be used.
 - Argo Secret `data` and `stringData` are redacted before they cross the desktop boundary, regardless of viewing preferences. The persisted redaction default is redact; any per-key reveal is transient.
 
@@ -78,7 +87,9 @@ Flux reconcile, suspend, resume, Git-writing actions, CLI integration, a connect
 | Symptom | What to check |
 | --- | --- |
 | Argo CD or Flux is unavailable | Select the intended cluster context and confirm the provider CRDs are installed and readable. Argo detection requires the `argoproj.io` Application CRD. |
+| No Argo CD server is found | Core (headless) Argo CD installs have no `argocd-server` Service or API, so connected access is unavailable; use the Kubernetes transport. Otherwise, discovery needs read access to Services, either cluster-wide or in the namespaces that hold Argo CD Applications. Discovery errors appear in the connection dialog. For a server reached through ingress, use **External URL**. |
 | A discovered Argo server is unavailable | Read its stated Service prerequisite. Private tunneling requires a selector-backed Service, TCP port, and ready target Pod; otherwise use a reachable manual HTTPS URL. |
+| The certificate changed since it was confirmed | Argo CD now serves a different certificate. Select **Confirm target again**, check the new fingerprint, and connect. |
 | Connected inspection or an operation is unavailable | Connect a profile for the current workspace and cluster context. Recheck the URL, credentials, TLS settings, and server response. |
 | Kubernetes operation is unavailable or unauthorized | Confirm Kubernetes RBAC allows patching the target Application, and that its namespace and current `resourceVersion` are present. This is separate from Argo CD RBAC. |
 | Connected operation is denied | Check the authenticated Argo CD user's authorization for that Application and action, then preflight again. |
@@ -86,4 +97,4 @@ Flux reconcile, suspend, resume, Git-writing actions, CLI integration, a connect
 
 ## Sources
 
-Safety and transport behavior is defined by [ADR 0002](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0002-argocd-native-kubernetes-api-first.md), [ADR 0007](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0007-gitops-providers-kubernetes-api-first.md), [ADR 0013](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0013-argocd-connected-inspection-and-operations.md), [ADR 0014](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0014-runtime-secret-disclosure.md), and [ADR 0015](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0015-flux-inspection-roadmap.md).
+Safety and transport behavior is defined by [ADR 0002](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0002-argocd-native-kubernetes-api-first.md), [ADR 0007](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0007-gitops-providers-kubernetes-api-first.md), [ADR 0013](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0013-argocd-connected-inspection-and-operations.md), [ADR 0014](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0014-runtime-secret-disclosure.md), [ADR 0017](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0017-private-argocd-service-tunnels.md), and [ADR 0015](https://github.com/Timpan4/kubecove/blob/main/docs/decisions/0015-flux-inspection-roadmap.md).
