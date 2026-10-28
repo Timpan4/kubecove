@@ -3,9 +3,28 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
-## 0.12.10 - 2026-10-22
+## 0.12.10 - 2026-10-28
+### Added
+
+- Set up Argo CD connections per workspace with Service discovery (#614).
+- Redesign the Pod Exec tab as a terminal card with session tabs (#602).
+
+### Improved
+
+- Remove TypeScript 6 from frontend checks (#604).
+- Remove dead code and merge duplicated Rust helpers (#605).
+- Share the optional topology list error predicate (#596).
+- Resolve cluster access once per request and name clients by intent (#595).
+- One Port Forward Lifecycle and scope rule for every forward (#592).
+- Resource action review session and one kind identity module (#597).
+- One Argo inspection entry point and declared live view refresh (#594).
+- Build built-in resource summaries through one projection (#591).
+- Deepen the query catalog and finite-read lifecycle (#589).
+- Declare each command once for Tauri IPC and server HTTP (#590).
+
 ### Fixed
 
+- Show the resource diff as apply-clean YAML (#613).
 - Keep unchanged watches when the resource scope changes (#593).
 
 ## 0.12.9 - 2026-10-22

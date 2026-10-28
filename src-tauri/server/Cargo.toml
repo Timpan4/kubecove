@@ -24,7 +24,7 @@ web-ui = ["dep:rust-embed", "dep:mime_guess", "dep:brotli", "dep:flate2"]
 kubecove = { path = "..", default-features = false }
 axum = { version = "=0.8.9", features = ["ws"] }
 axum-server = { version = "=0.8.0", features = ["tls-rustls-no-provider"] }
-tokio = { version = "=1.53.3", features = ["macros", "rt-multi-thread", "signal", "net", "sync", "time"] }
+tokio = { version = "=1.53.3", features = ["io-util", "macros", "rt-multi-thread", "signal", "net", "sync", "time"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 futures-util = "=0.3.34"
