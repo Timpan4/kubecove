@@ -29,7 +29,7 @@ pub use argo::{
     ArgoConfirmedTarget, ArgoConnectedFallback, ArgoConnectionProfile, ArgoConnectionStatus,
     ArgoInspectionFailure, ArgoManagedResource, ArgoOperationConfirmation, ArgoOperationPreflight,
     ArgoOperationRequest, ArgoOperationResult, ArgoResourceComparison, ArgoServerCapability,
-    ArgoServerEndpoint, ArgoServiceTunnelUnavailableReason,
+    ArgoServerEndpoint, ArgoServiceTunnelUnavailableReason, ArgoTunnelTargetPreview,
 };
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;

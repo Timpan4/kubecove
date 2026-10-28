@@ -14,6 +14,7 @@ import type {
 	ArgoResourceComparison,
 	ArgoServerCapability,
 	ArgoServerEndpoint,
+	ArgoTunnelTargetPreview,
 	CancellableRequest,
 } from "./types";
 
@@ -27,6 +28,19 @@ export async function discoverArgoServers(
 		clusterContext,
 		...kubeconfigArg(kubeconfigEnvVar),
 		...cancellableArg(cancellable),
+	});
+}
+
+export function previewArgoTunnelTarget(
+	client: TauriClient,
+	clusterContext: string,
+	endpoint: ArgoServerEndpoint,
+	kubeconfigEnvVar?: string,
+): Promise<ArgoTunnelTargetPreview> {
+	return client.invoke<ArgoTunnelTargetPreview>("preview_argo_tunnel_target", {
+		clusterContext,
+		endpoint,
+		...kubeconfigArg(kubeconfigEnvVar),
 	});
 }
 

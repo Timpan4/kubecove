@@ -20,7 +20,8 @@ pub use argo::{
     forget_argo_credential, get_argo_application_inspector, get_argo_connection_status,
     get_argo_resource_comparison, get_argocd_application_details, get_argocd_appproject_details,
     get_argocd_appset_details, list_argocd_applications, list_argocd_appprojects,
-    list_argocd_appsets, preflight_argo_operation, run_argo_operation, ArgoConnectionStore,
+    list_argocd_appsets, preflight_argo_operation, preview_argo_tunnel_target, run_argo_operation,
+    ArgoConnectionStore,
 };
 pub use flux::{detect_flux, get_flux_resource_details, list_flux_resources};
 pub use helm::{get_helm_release_details, get_helm_release_reconciliation, list_helm_releases};

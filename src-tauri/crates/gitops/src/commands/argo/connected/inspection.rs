@@ -172,26 +172,44 @@ fn connected_comparison(value: &Value) -> ArgoResourceComparison {
     }
 }
 
+/// Without `managed`, resources come from the Application status and each comparison
+/// is read when its resource is selected.
 pub(super) fn connected_inspector(
     application: ArgoApplicationRef,
     mut response: Value,
-    mut managed: Value,
+    managed: Option<Value>,
 ) -> ArgoApplicationInspector {
     redact_secret_fields(&mut response);
-    redact_secret_fields(&mut managed);
     let status = response.get("status").cloned();
-    let comparisons: Vec<_> = managed
-        .get("items")
-        .or_else(|| managed.get("managedResources"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(connected_comparison)
-        .collect();
-    let resources = comparisons
-        .iter()
-        .map(|comparison| comparison.resource.clone())
-        .collect();
+    let (resources, comparisons) = match managed {
+        Some(mut managed) => {
+            redact_secret_fields(&mut managed);
+            let comparisons: Vec<_> = managed
+                .get("items")
+                .or_else(|| managed.get("managedResources"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(connected_comparison)
+                .collect();
+            let resources = comparisons
+                .iter()
+                .map(|comparison| comparison.resource.clone())
+                .collect();
+            (resources, comparisons)
+        }
+        None => (
+            status
+                .as_ref()
+                .and_then(|value| value.get("resources"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(managed_resource)
+                .collect(),
+            Vec::new(),
+        ),
+    };
     ArgoApplicationInspector {
         refresh_requested: response
             .pointer("/metadata/annotations/argocd.argoproj.io~1refresh")
@@ -254,7 +272,7 @@ pub fn benchmark_connected_inspector(
     response: Value,
     managed: Value,
 ) -> ArgoApplicationInspector {
-    connected_inspector(application, response, managed)
+    connected_inspector(application, response, Some(managed))
 }
 
 #[cfg(feature = "bench-support")]

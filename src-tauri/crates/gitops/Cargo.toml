@@ -26,6 +26,8 @@ futures-util = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 reqwest = { workspace = true }
+rustls = { workspace = true }
+ring = { workspace = true }
 base64 = { workspace = true }
 flate2 = { workspace = true }
 keyring = { workspace = true }
@@ -37,7 +39,6 @@ tauri = { workspace = true, optional = true }
 
 [dev-dependencies]
 kubecove-kube = { path = "../kube", features = ["test-support"] }
-rustls = { workspace = true }
 http = { workspace = true }
 tower = { workspace = true }
 tower-test = { workspace = true }

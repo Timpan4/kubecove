@@ -75,6 +75,7 @@ interface MockArgs {
 	endpoint?: ArgoServerEndpoint;
 	id?: string;
 	kind?: string;
+	kubeconfigEnvVar?: string;
 	mode?: TopologyMode;
 	name?: string;
 	namespace?: string | null;
@@ -174,10 +175,19 @@ const handlers = {
 		{ id: "service:argocd:argocd-server:80", name: "argocd-server", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 80, scheme: "https" }, unavailableReason: null, targetPod: "argocd-server-7d9f8b6c5-x2k4q", argoLabeled: true },
 		{ id: "service:argocd:external", name: "argocd-external", namespace: "argocd", url: null, transport: "serviceTunnel", endpoint: null, unavailableReason: "ExternalName Services cannot be port-forwarded", argoLabeled: false },
 	],
+	preview_argo_tunnel_target: (args) => {
+		const endpoint = args?.endpoint?.kind === "serviceTunnel" ? args.endpoint : null;
+		return {
+			namespace: endpoint?.namespace ?? "argocd",
+			serviceName: endpoint?.serviceName ?? "argocd-server",
+			podName: "argocd-server-7d9f8b6c5-x2k4q",
+			certificateSha256: endpoint?.scheme === "http" ? null : "3f".repeat(32),
+		};
+	},
 	connect_argo_server: (args) => {
 		const serverUrl = args?.serverUrl ?? "https://argocd.example.test";
 		const endpoint = args?.endpoint ?? { kind: "externalHttps", url: serverUrl };
-		const profile: ArgoConnectionProfile = { id: args?.id ?? "mock-profile", endpoint, url: serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, transport: "connected", rememberCredential: Boolean(args?.rememberCredential) };
+		const profile: ArgoConnectionProfile = { id: args?.id ?? "mock-profile", endpoint, url: serverUrl, clusterContext: args?.clusterContext ?? null, workspaceId: args?.workspaceId ?? null, kubeconfigSourceKey: args?.kubeconfigEnvVar ?? source.sourceKey, transport: "connected", rememberCredential: Boolean(args?.rememberCredential) };
 		argoConnections.set(profile.id, profile);
 		return { profile, connected: true, username: args?.username ?? "mock-user", unavailableReason: null, targetPod: "argocd-server-7d9f8b6c5-x2k4q", argoLabeled: true };
 	},

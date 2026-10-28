@@ -1,6 +1,6 @@
 # Settings, updates, and diagnostics
 
-Open **Settings** from app navigation. Most settings are global preferences. When a workspace is active, the Argo CD category manages server profiles for that workspace and selected cluster context. Open Settings from a workspace to discover or connect a server; saved profiles can be reconnected, disconnected, or forgotten there.
+Open **Settings** from app navigation. Settings are global preferences. Argo CD connections are per workspace; manage them from **Argo CD connection** in the workspace GitOps view.
 
 ## General
 

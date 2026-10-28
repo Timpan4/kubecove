@@ -167,6 +167,11 @@ macro_rules! command_contract {
                 requestId: Option<String>,
                 cancelScope: Option<String>,
             ) with State<BackendCancellationRegistry>;
+            both async fn preview_argo_tunnel_target(
+                clusterContext: String,
+                kubeconfigEnvVar: Option<String>,
+                endpoint: ArgoServerEndpoint,
+            );
             both async fn connect_argo_server(
                 id: String,
                 serverUrl: String,

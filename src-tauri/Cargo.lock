@@ -2790,6 +2790,7 @@ dependencies = [
  "kubecove-models",
  "libc",
  "reqwest",
+ "ring",
  "rustls",
  "serde",
  "serde_json",
