@@ -13,6 +13,8 @@ const ignoredAdvisories = new Map([
 	["GHSA-mh99-v99m-4gvg", "brace-expansion"],
 	// TODO(Timpan4): Remove once braces ships a patch or WebdriverIO's mocha drops chokidar 3.
 	["GHSA-vfj7-8cjw-p6xm", "braces"],
+	// TODO(Timpan4): Remove once deepmerge ships a patch or @sveltejs/vite-plugin-svelte drops it.
+	["GHSA-gcqx-w48m-w2h4", "deepmerge"],
 ]);
 
 function advisoryId(advisory: AuditAdvisory): string {
