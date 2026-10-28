@@ -8,7 +8,7 @@ pub(crate) use super::transport::{api_delete, api_get, api_post, redact_secret_f
 #[cfg(feature = "bench-support")]
 pub use inspection::{benchmark_connected_inspector, benchmark_kubernetes_inspector};
 pub(crate) use inspection::{
-    inspector_from_application, kubernetes_comparison, managed_resource, state, text,
+    connected_comparison, inspector_from_application, kubernetes_comparison, text,
 };
 pub(crate) use inspector_read::{connected_application_path, kubernetes_application};
 pub use store::ArgoConnectionStore;
