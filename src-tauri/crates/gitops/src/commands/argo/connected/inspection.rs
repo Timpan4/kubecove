@@ -172,6 +172,7 @@ pub(crate) fn connected_comparison(value: &Value) -> ArgoResourceComparison {
         target_state: redacted_state("targetState").map(apply_clean_state),
         // Without Argo's normalized live state, the diff falls back to cleaned raw live state.
         normalized_live_state: redacted_state("normalizedLiveState")
+            .filter(|state| !state.is_null())
             .or_else(|| live_state.clone())
             .map(apply_clean_state),
         live_state,

@@ -72,10 +72,15 @@ fn connected_comparison_diff_documents_are_apply_clean() {
                 "group": "apps", "version": "v1", "kind": "Deployment", "name": "api",
                 "targetState": server_owned.to_string(),
                 "liveState": server_owned.to_string()
+            }, {
+                "group": "apps", "version": "v1", "kind": "Deployment", "name": "api",
+                "targetState": server_owned.to_string(),
+                "liveState": server_owned.to_string(),
+                "normalizedLiveState": "null"
             }]
         }),
     );
-    assert_eq!(inspector.comparisons.len(), 2);
+    assert_eq!(inspector.comparisons.len(), 3);
 
     for comparison in &inspector.comparisons {
         assert_eq!(
