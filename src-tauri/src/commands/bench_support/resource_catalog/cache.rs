@@ -1,6 +1,6 @@
 use super::{fixed_now, planning, summaries, topology};
 use crate::{
-    commands::{helpers, live_store::ClusterLiveStore, resources},
+    commands::{live_store::ClusterLiveStore, resources},
     models::{AppError, ResourceSummary, WatchResourceKind},
 };
 use std::sync::Arc;
@@ -13,7 +13,6 @@ pub struct ResourceCacheFixture {
     rows: Vec<ResourceSummary>,
     replacement: Vec<ResourceSummary>,
     topology: crate::models::ResourceTopology,
-    index: helpers::FluxOwnershipIndex,
 }
 
 pub fn resource_cache_fixture() -> ResourceCacheFixture {
@@ -21,7 +20,7 @@ pub fn resource_cache_fixture() -> ResourceCacheFixture {
     let rows = summary_fixture
         .pods
         .iter()
-        .map(|pod| resources::pod_resource_summary_at(CONTEXT, pod, fixed_now()))
+        .map(|pod| resources::builtin_summary(CONTEXT, pod, fixed_now()))
         .collect::<Vec<_>>();
     let mut replacement = rows.clone();
     if let Some(first) = replacement.first_mut() {
@@ -34,7 +33,7 @@ pub fn resource_cache_fixture() -> ResourceCacheFixture {
     let store = ClusterLiveStore::default();
     let resources_seed = rows.clone();
     let topology_seed = topology.clone();
-    let index_seed = index.clone();
+    let index_seed = index;
     tauri::async_runtime::block_on(async {
         store
             .typed_resources(
@@ -70,7 +69,6 @@ pub fn resource_cache_fixture() -> ResourceCacheFixture {
         rows,
         replacement,
         topology,
-        index,
     }
 }
 
@@ -313,10 +311,6 @@ impl ResourceCacheFixture {
 
     pub fn expected_topology(&self) -> &crate::models::ResourceTopology {
         &self.topology
-    }
-
-    pub fn expected_index_entries(&self) -> usize {
-        self.index.retained_item_count()
     }
 }
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ArgoAutoReconnect from "@/features/gitops/ArgoAutoReconnect.svelte";
 	import ArgoOperationMonitor from "@/features/gitops/ArgoOperationMonitor.svelte";
 	import { markStartup } from "@/lib/startup-marks";
 	import { onMount } from "svelte";
@@ -55,6 +56,10 @@
 		type PathStateWorkspaceSnapshot,
 	} from "@/lib/path-state";
 	import SavedPortForwardRestore from "@/features/live-sessions/SavedPortForwardRestore.svelte";
+	import {
+		confirmStoppingExecSessions,
+		hasOpenExecSessions,
+	} from "@/features/live-sessions/openExecSessions.svelte";
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
 	import type { HealthFilter } from "@/features/resources/helpers";
@@ -318,6 +323,20 @@
 	}
 
 	function applyWorkspaceNavigation(intent: WorkspaceNavigationIntent, revealSidebar = true) {
+		const current = navigation.focusedResource;
+		const next = navigateWorkspace(navigation, intent).focusedResource;
+		const leavesFocusedResource =
+			current !== null && (next === null || resourceKey(next) !== resourceKey(current));
+		if (!leavesFocusedResource || !hasOpenExecSessions()) {
+			commitWorkspaceNavigation(intent, revealSidebar);
+			return;
+		}
+		void confirmStoppingExecSessions().then((stop) => {
+			if (stop) commitWorkspaceNavigation(intent, revealSidebar);
+		});
+	}
+
+	function commitWorkspaceNavigation(intent: WorkspaceNavigationIntent, revealSidebar: boolean) {
 		navigation = navigateWorkspace(navigation, intent);
 		if (revealSidebar && ["selectNode", "selectResource", "openResources", "openHelmRelease", "openArgo", "openIncidents", "openPortForwards"].includes(intent.type)) {
 			sidebarNavigationRevision += 1;
@@ -325,8 +344,11 @@
 	}
 
 	function openLauncher() {
-		applyWorkspaceNavigation({ type: "openLauncher" });
-		onOpenLauncher();
+		void confirmStoppingExecSessions().then((stop) => {
+			if (!stop) return;
+			applyWorkspaceNavigation({ type: "openLauncher" });
+			onOpenLauncher();
+		});
 	}
 
 	function changeClusterContext(clusterContext: string) {
@@ -500,6 +522,7 @@
 </script>
 
 <ArgoOperationMonitor context={workspaceReadContext} />
+<ArgoAutoReconnect context={workspaceReadContext} />
 
 <SidebarProvider class="h-screen overflow-hidden bg-background text-foreground xl:gap-2 xl:p-2">
 	<WorkspaceSidebar

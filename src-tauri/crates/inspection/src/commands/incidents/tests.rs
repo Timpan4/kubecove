@@ -1,11 +1,16 @@
 use super::*;
-use crate::commands::helpers::update_resource_health;
+use crate::commands::helpers::{assess_kubernetes_health, kubernetes_health, Readiness};
 use crate::models::{HealthAssessmentState, ResourceHealth};
 
 #[test]
 fn permission_classification_uses_kind_not_resource_name() {
     let error = AppError::new("pod forbidden-403 not found", AppErrorKind::NotFound);
     assert!(!is_forbidden_app_error(&error));
+}
+
+fn assess(resource: &mut ResourceSummary, readiness: Readiness<'_>) {
+    let health = kubernetes_health(resource.status.as_deref(), readiness);
+    assess_kubernetes_health(resource, health);
 }
 
 fn resource(name: &str) -> ResourceSummary {
@@ -33,7 +38,7 @@ fn resource(name: &str) -> ResourceSummary {
         git_ops_owner: None,
         git_ops_ownership_partial: false,
     };
-    update_resource_health(&mut resource);
+    assess(&mut resource, Readiness::Condition("true"));
     resource
 }
 
@@ -72,7 +77,7 @@ fn degraded_status_wins_over_warning_event() {
     let mut pod = resource("api-0");
     pod.status = Some("CrashLoopBackOff".to_string());
     pod.ready = Some("false".to_string());
-    update_resource_health(&mut pod);
+    assess(&mut pod, Readiness::Condition("false"));
 
     let items = build_items(
         vec![pod],
@@ -178,7 +183,7 @@ fn succeeded_pod_with_false_ready_is_omitted_without_warning() {
     let mut pod = resource("job-pod");
     pod.status = Some("Succeeded".to_string());
     pod.ready = Some("False".to_string());
-    update_resource_health(&mut pod);
+    assess(&mut pod, Readiness::Condition("False"));
 
     let items = build_items(vec![pod], Vec::new());
 
@@ -193,7 +198,13 @@ fn workload_ready_ratio_below_desired_becomes_attention_item() {
     deployment.group = Some("apps".to_string());
     deployment.plural = Some("deployments".to_string());
     deployment.ready = Some("0/3".to_string());
-    update_resource_health(&mut deployment);
+    assess(
+        &mut deployment,
+        Readiness::Counts {
+            ready: 0,
+            desired: 3,
+        },
+    );
 
     let items = build_items(vec![deployment], Vec::new());
 
@@ -212,10 +223,10 @@ fn workload_ready_ratio_below_desired_becomes_attention_item() {
 fn items_sort_by_severity_then_recent_signal() {
     let mut restarted = resource("api-1");
     restarted.restarts = Some(2);
-    update_resource_health(&mut restarted);
+    assess(&mut restarted, Readiness::Condition("true"));
     let mut failed = resource("api-0");
     failed.status = Some("Failed".to_string());
-    update_resource_health(&mut failed);
+    assess(&mut failed, Readiness::Condition("true"));
 
     let items = build_items(
         vec![restarted, failed, resource("api-2"), resource("api-3")],

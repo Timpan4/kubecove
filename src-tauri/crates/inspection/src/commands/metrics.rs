@@ -1,7 +1,6 @@
-use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
-    diagnostic_field, helpers::list_params, kubeconfig::KubeconfigSource,
-    BackendCancellationRegistry,
+    diagnostic_field, helpers::list_params, BackendCancellationRegistry, ClusterAccess, FiniteRead,
+    MAX_LIST_CONCURRENCY,
 };
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -12,6 +11,7 @@ use crate::runtime::State;
 use futures_util::{stream, StreamExt};
 use k8s_openapi::api::apps::v1::ReplicaSet;
 use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::NamespaceResourceScope;
 use kube::{
     api::{Api, ApiResource, DynamicObject},
     discovery::{verbs, Discovery},
@@ -19,7 +19,6 @@ use kube::{
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
-use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MetricsListStatus {
@@ -33,8 +32,6 @@ struct MetricsObjectList {
     failures: Vec<MetricsListStatus>,
 }
 
-const MAX_NAMESPACE_CONCURRENCY: usize = 16;
-
 fn metrics_api_resource(kind: &str, plural: &str) -> ApiResource {
     ApiResource {
         group: "metrics.k8s.io".to_string(),
@@ -43,14 +40,6 @@ fn metrics_api_resource(kind: &str, plural: &str) -> ApiResource {
         kind: kind.to_string(),
         plural: plural.to_string(),
     }
-}
-
-async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    source.client_for_context(cluster_context).await
 }
 
 async fn has_metrics_api(client: Client) -> Result<bool, AppError> {
@@ -208,7 +197,7 @@ async fn list_pod_metric_objects(client: Client, namespaces: &[String]) -> Metri
                 Api::namespaced_with(client.clone(), &namespace, &resource);
             async move { api.list(&list_params()).await }
         })
-        .buffered(MAX_NAMESPACE_CONCURRENCY)
+        .buffered(MAX_LIST_CONCURRENCY)
         .collect::<Vec<_>>()
         .await;
     for outcome in outcomes {
@@ -229,51 +218,33 @@ async fn list_node_metric_objects(client: Client) -> Result<Vec<DynamicObject>, 
         .map_err(|error| classify_metrics_error(&error))
 }
 
-async fn list_pods(client: Client, namespaces: &[String]) -> Result<Vec<Pod>, AppError> {
-    let mut out = Vec::new();
+/// Lists every namespace when none are given; otherwise the named namespaces, failing on the
+/// first error in namespace order.
+async fn list_in_namespaces<K>(client: Client, namespaces: &[String]) -> Result<Vec<K>, AppError>
+where
+    K: kube::Resource<DynamicType = (), Scope = NamespaceResourceScope>
+        + Clone
+        + serde::de::DeserializeOwned
+        + std::fmt::Debug,
+{
     if namespaces.is_empty() {
-        let api: Api<Pod> = Api::all(client);
+        let api: Api<K> = Api::all(client);
         return api
             .list(&list_params())
             .await
             .map(|list| list.items)
             .map_err(AppError::from);
     }
+    // Owned names keep this future Send for the command boundary.
     let outcomes = stream::iter(namespaces.to_vec())
         .map(|namespace| {
-            let api: Api<Pod> = Api::namespaced(client.clone(), &namespace);
+            let api: Api<K> = Api::namespaced(client.clone(), &namespace);
             async move { api.list(&list_params()).await }
         })
-        .buffered(MAX_NAMESPACE_CONCURRENCY)
+        .buffered(MAX_LIST_CONCURRENCY)
         .collect::<Vec<_>>()
         .await;
-    for outcome in outcomes {
-        out.extend(outcome.map_err(AppError::from)?.items);
-    }
-    Ok(out)
-}
-
-async fn list_replicasets(
-    client: Client,
-    namespaces: &[String],
-) -> Result<Vec<ReplicaSet>, AppError> {
     let mut out = Vec::new();
-    if namespaces.is_empty() {
-        let api: Api<ReplicaSet> = Api::all(client);
-        return api
-            .list(&list_params())
-            .await
-            .map(|list| list.items)
-            .map_err(AppError::from);
-    }
-    let outcomes = stream::iter(namespaces.to_vec())
-        .map(|namespace| {
-            let api: Api<ReplicaSet> = Api::namespaced(client.clone(), &namespace);
-            async move { api.list(&list_params()).await }
-        })
-        .buffered(MAX_NAMESPACE_CONCURRENCY)
-        .collect::<Vec<_>>()
-        .await;
     for outcome in outcomes {
         out.extend(outcome.map_err(AppError::from)?.items);
     }
@@ -449,14 +420,14 @@ pub fn resource_metrics_projection(
 }
 
 pub async fn resource_metrics_from(
+    access: &ClusterAccess,
     cluster_context: String,
     namespaces: Vec<String>,
-    kubeconfig_env_var: Option<String>,
 ) -> Result<ResourceMetricsSummary, AppError> {
     for namespace in &namespaces {
         crate::commands::helpers::validate_namespace(Some(namespace))?;
     }
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = access.read_client(&cluster_context).await?;
     match has_metrics_api(client.clone()).await {
         Ok(true) => {}
         Ok(false) => {
@@ -525,22 +496,23 @@ pub async fn resource_metrics_from(
             Vec::new()
         }
     };
-    let (pod_objects, replicasets) = match list_pods(client.clone(), &namespaces).await {
-        Ok(pod_objects) => match list_replicasets(client, &namespaces).await {
-            Ok(replicasets) => (pod_objects, replicasets),
+    let (pod_objects, replicasets) =
+        match list_in_namespaces::<Pod>(client.clone(), &namespaces).await {
+            Ok(pod_objects) => match list_in_namespaces::<ReplicaSet>(client, &namespaces).await {
+                Ok(replicasets) => (pod_objects, replicasets),
+                Err(err) => {
+                    warnings.push(format!(
+                        "Workload owner rollup unavailable: {}",
+                        err.message
+                    ));
+                    (pod_objects, Vec::new())
+                }
+            },
             Err(err) => {
-                warnings.push(format!(
-                    "Workload owner rollup unavailable: {}",
-                    err.message
-                ));
-                (pod_objects, Vec::new())
+                warnings.push(format!("Workload metrics unavailable: {}", err.message));
+                (Vec::new(), Vec::new())
             }
-        },
-        Err(err) => {
-            warnings.push(format!("Workload metrics unavailable: {}", err.message));
-            (Vec::new(), Vec::new())
-        }
-    };
+        };
 
     Ok(resource_metrics_projection(
         &cluster_context,
@@ -554,7 +526,6 @@ pub async fn resource_metrics_from(
     ))
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_resource_metrics(
     cluster_context: String,
     namespaces: Vec<String>,
@@ -563,57 +534,27 @@ pub async fn list_resource_metrics(
     cancel_scope: Option<String>,
     cancellations: State<'_, BackendCancellationRegistry>,
 ) -> Result<ResourceMetricsSummary, AppError> {
-    let started = Instant::now();
     let namespace_count = namespaces.len();
-    eprintln!(
-        "[kubecove:backend] list_resource_metrics start context={cluster_context} namespaces={namespace_count}",
-    );
-    let result = cancellations
-        .execute(
-            cancel_scope,
-            request_id,
-            resource_metrics_from(cluster_context.clone(), namespaces, kubeconfig_env_var),
+    FiniteRead::new("list_resource_metrics")
+        .label("context", &cluster_context)
+        .label("namespaces", namespace_count)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
+            async move {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                resource_metrics_from(&access, cluster_context, namespaces).await
+            },
+            |summary| {
+                vec![
+                    diagnostic_field("status", format!("{:?}", summary.availability.status)),
+                    diagnostic_field("namespaces", namespace_count),
+                    diagnostic_field("pods", summary.pods.len()),
+                    diagnostic_field("nodes", summary.nodes.len()),
+                    diagnostic_field("workloads", summary.workloads.len()),
+                ]
+            },
         )
-        .await;
-    match &result {
-        Ok(summary) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_metrics done context={} status={:?} pods={} nodes={} workloads={} ms={}",
-                cluster_context,
-                summary.availability.status,
-                summary.pods.len(),
-                summary.nodes.len(),
-                summary.workloads.len(),
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) if err.kind == AppErrorKind::Cancelled => {
-            eprintln!(
-                "[kubecove:backend] list_resource_metrics cancelled context={} ms={}",
-                cluster_context,
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_metrics error context={} kind={} message={} ms={}",
-                cluster_context,
-                err.kind,
-                err.message,
-                started.elapsed().as_millis()
-            );
-        }
-    }
-    record_backend_result("list_resource_metrics", started, &result, |summary| {
-        vec![
-            diagnostic_field("status", format!("{:?}", summary.availability.status)),
-            diagnostic_field("namespaces", namespace_count),
-            diagnostic_field("pods", summary.pods.len()),
-            diagnostic_field("nodes", summary.nodes.len()),
-            diagnostic_field("workloads", summary.workloads.len()),
-        ]
-    });
-    result
+        .await
 }
 
 #[cfg(test)]

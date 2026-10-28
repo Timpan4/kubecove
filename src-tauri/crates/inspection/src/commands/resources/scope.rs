@@ -1,5 +1,4 @@
 use super::{dynamic_resources_summary_from, resources_summary_from};
-use crate::commands::diagnostics::record_backend_result;
 #[cfg(any(test, feature = "bench-support"))]
 use crate::commands::helpers::enrich_resource_summaries_with_flux_inventory;
 use crate::commands::helpers::{fetch_flux_ownership_index, filter_flux_ownership_index};
@@ -8,19 +7,16 @@ use crate::models::AppErrorKind;
 use crate::runtime::State;
 use crate::{
     commands::{
-        diagnostic_field,
-        kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-        BackendCancellationRegistry, ClusterLiveStore,
+        diagnostic_field, BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead,
     },
     models::{
         AppError, DiscoveredResourceKind, ResourceListRequest, ResourceScopeFailure,
-        ResourceScopeResult, ResourceSummary,
+        ResourceSummary,
     },
 };
 use futures_util::future::join_all;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
-use std::time::Instant;
 use tokio::sync::Semaphore;
 
 #[path = "scope_rows.rs"]
@@ -119,14 +115,8 @@ pub fn resource_scope_fetch_plan(
 ) -> Result<Vec<(String, Option<String>)>, AppError> {
     let groups = group_requests(requests)?;
     Ok(groups
-        .into_values()
-        .flat_map(|group| {
-            let kind = match &group.kind {
-                ResourceScopeKind::Typed(kind) => format!("typed:{kind}"),
-                ResourceScopeKind::Dynamic(kind) => {
-                    format!("dynamic:{}:{}:{}", kind.api_version, kind.plural, kind.kind)
-                }
-            };
+        .into_iter()
+        .flat_map(|(kind, group)| {
             fetch_namespaces(&group)
                 .into_iter()
                 .map(move |namespace| (kind.clone(), namespace))
@@ -202,14 +192,12 @@ pub fn encode_shared_scope_rows(
 }
 
 pub async fn resource_scope_from(
+    access: &ClusterAccess,
     cluster_context: String,
     requests: Vec<ResourceListRequest>,
     live_store: ClusterLiveStore,
-    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
-    let result =
-        resource_scope_result_from(cluster_context, requests, live_store, kubeconfig_env_var)
-            .await?;
+    let result = resource_scope_result_from(access, cluster_context, requests, live_store).await?;
     if let Some(failure) = result.failures.into_iter().next() {
         return Err(failure.error);
     }
@@ -217,17 +205,17 @@ pub async fn resource_scope_from(
 }
 
 async fn resource_scope_result_from(
+    access: &ClusterAccess,
     cluster_context: String,
     requests: Vec<ResourceListRequest>,
     live_store: ClusterLiveStore,
-    kubeconfig_env_var: Option<String>,
 ) -> Result<ResourceScopeResponse, AppError> {
     if requests.is_empty() {
         return Ok(ResourceScopeResponse::default());
     }
     let groups = group_requests(requests)?;
     let requested_namespaces = ownership_namespaces(&groups);
-    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+    let source_key = access.source_key().to_string();
     let fetches = groups.into_values().flat_map(|group| {
         fetch_namespaces(&group)
             .into_iter()
@@ -240,7 +228,7 @@ async fn resource_scope_result_from(
         let live_store = live_store.clone();
         let cluster_context = cluster_context.clone();
         let source_key = source_key.clone();
-        let kubeconfig_env_var = kubeconfig_env_var.clone();
+        let access = access.clone();
         async move {
             let request = ResourceListRequest {
                 kind: match &kind {
@@ -263,20 +251,14 @@ async fn resource_scope_result_from(
                 move || async move {
                     match kind {
                         ResourceScopeKind::Typed(kind) => {
-                            resources_summary_from(
-                                cluster_context,
-                                kind,
-                                namespace,
-                                kubeconfig_env_var,
-                            )
-                            .await
+                            resources_summary_from(&access, cluster_context, kind, namespace).await
                         }
                         ResourceScopeKind::Dynamic(kind) => {
                             dynamic_resources_summary_from(
+                                &access,
                                 cluster_context,
                                 kind,
                                 namespace,
-                                kubeconfig_env_var,
                             )
                             .await
                         }
@@ -288,16 +270,17 @@ async fn resource_scope_result_from(
         }
     });
     let results = join_all(futures).await;
-    let mut scope = ResourceScopeResult::default();
     let mut batches = Vec::new();
+    let mut completed_requests = Vec::new();
+    let mut failures = Vec::new();
     for (request, fetched) in results {
         match fetched {
             Ok(rows) => {
                 batches.push(rows);
-                scope.completed_requests.push(request);
+                completed_requests.push(request);
             }
             Err(error) if error.kind == AppErrorKind::Forbidden => {
-                scope.failures.push(ResourceScopeFailure {
+                failures.push(ResourceScopeFailure {
                     cluster_context: cluster_context.clone(),
                     request,
                     error,
@@ -306,9 +289,7 @@ async fn resource_scope_result_from(
             Err(error) => return Err(error),
         }
     }
-    let client = KubeconfigSource::new(kubeconfig_env_var)?
-        .client_for_context(&cluster_context)
-        .await?;
+    let client = access.read_client(&cluster_context).await?;
     let index = live_store
         .flux_ownership_index(source_key, cluster_context.clone(), {
             let client = client.clone();
@@ -318,8 +299,8 @@ async fn resource_scope_result_from(
     let index = filter_flux_ownership_index(Arc::unwrap_or_clone(index), &requested_namespaces);
     Ok(ResourceScopeResponse {
         resources: SharedRows::new(batches, &index),
-        completed_requests: scope.completed_requests,
-        failures: scope.failures,
+        completed_requests,
+        failures,
     })
 }
 
@@ -351,7 +332,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_resource_scope(
     cluster_context: String,
     requests: Vec<ResourceListRequest>,
@@ -361,7 +341,6 @@ pub async fn list_resource_scope(
     live_store: State<'_, ClusterLiveStore>,
     cancellations: State<'_, BackendCancellationRegistry>,
 ) -> Result<ResourceScopeResponse, AppError> {
-    let started = Instant::now();
     let request_count = requests.len();
     let namespace_count = requests
         .iter()
@@ -369,61 +348,44 @@ pub async fn list_resource_scope(
         .filter(|namespace| !namespace.trim().is_empty())
         .collect::<BTreeSet<_>>()
         .len();
-    eprintln!(
-        "[kubecove:backend] list_resource_scope start context={cluster_context} requests={request_count}",
-    );
-    let result = cancellations
-        .execute(
-            cancel_scope,
-            request_id,
-            resource_scope_result_from(
-                cluster_context.clone(),
-                requests,
-                live_store.inner().clone(),
-                kubeconfig_env_var,
-            ),
+    FiniteRead::new("list_resource_scope")
+        .label("context", &cluster_context)
+        .label("requests", request_count)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
+            async move {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                resource_scope_result_from(
+                    &access,
+                    cluster_context,
+                    requests,
+                    live_store.inner().clone(),
+                )
+                .await
+            },
+            |rows| {
+                vec![
+                    diagnostic_field("requests", request_count),
+                    diagnostic_field("namespaces", namespace_count),
+                    diagnostic_field("rows", rows.resources.len()),
+                    diagnostic_field("deniedRequests", rows.failures.len()),
+                ]
+            },
         )
-        .await;
-    match &result {
-        Ok(rows) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_scope done context={} rows={} ms={}",
-                cluster_context,
-                rows.resources.len(),
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) if err.kind == AppErrorKind::Cancelled => {
-            eprintln!(
-                "[kubecove:backend] list_resource_scope cancelled context={} ms={}",
-                cluster_context,
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_scope error context={} error_kind={} message={} ms={}",
-                cluster_context,
-                err.kind,
-                err.message,
-                started.elapsed().as_millis()
-            );
-        }
-    }
-    record_backend_result("list_resource_scope", started, &result, |rows| {
-        vec![
-            diagnostic_field("requests", request_count),
-            diagnostic_field("namespaces", namespace_count),
-            diagnostic_field("rows", rows.resources.len()),
-            diagnostic_field("deniedRequests", rows.failures.len()),
-        ]
-    });
-    result
+        .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::{ClientIntent, FixedClusterAccess, FIXED_SOURCE_KEY};
+    use http::{Request, Response};
+    use kube::client::Body;
+
+    fn unused_cluster() -> Arc<FixedClusterAccess> {
+        let (service, _) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+        FixedClusterAccess::new(kube::Client::new(service, "default"))
+    }
 
     fn pod_request(namespace: Option<&str>) -> ResourceListRequest {
         ResourceListRequest {
@@ -507,7 +469,8 @@ mod tests {
         use tokio::sync::oneshot;
 
         let store = ClusterLiveStore::default();
-        let source = "kubeconfigSource=scope-test";
+        let source = FIXED_SOURCE_KEY;
+        let cluster = unused_cluster();
         let mut releases = Vec::new();
         // Seed pending shared loads without driving them in another task.
         for namespace in ["a", "b"] {
@@ -529,11 +492,12 @@ mod tests {
             );
             assert!(load.now_or_never().is_none());
         }
+        let access = cluster.access();
         let scope = resource_scope_result_from(
+            &access,
             "test".into(),
             vec![pod_request(Some("a")), pod_request(Some("b"))],
             store.clone(),
-            Some(source.into()),
         );
         futures_util::pin_mut!(scope);
         assert!(scope.as_mut().now_or_never().is_none());
@@ -557,16 +521,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn empty_requests_return_without_kubeconfig_access() {
+    async fn empty_requests_return_without_requesting_a_client() {
+        let cluster = unused_cluster();
         let result = resource_scope_from(
+            &cluster.access(),
             "missing-context".to_string(),
             Vec::new(),
             ClusterLiveStore::default(),
-            Some("missing-kubeconfig".to_string()),
         )
         .await;
 
         assert!(result.expect("empty scope").is_empty());
+        assert_eq!(cluster.intents(), Vec::<ClientIntent>::new());
     }
 
     #[test]

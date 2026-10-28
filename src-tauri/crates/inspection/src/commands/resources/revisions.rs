@@ -1,5 +1,5 @@
 use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
-use crate::commands::kubeconfig::KubeconfigSource;
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, DeploymentRevision};
 use k8s_openapi::api::apps::v1::{Deployment, ReplicaSet};
@@ -7,17 +7,17 @@ use kube::api::ListParams;
 use kube::{Api, Client};
 
 const CHANGE_CAUSE: &str = "kubernetes.io/change-cause";
-const REVISION: &str = "deployment.kubernetes.io/revision";
+pub(super) const DEPLOYMENT_REVISION_ANNOTATION: &str = "deployment.kubernetes.io/revision";
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_deployment_revisions(
     cluster_context: String,
     name: String,
     namespace: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<DeploymentRevision>, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
     deployment_revisions_from(client, &name, &namespace).await
 }
 
@@ -80,7 +80,7 @@ pub fn deployment_revisions_from_replica_sets(
             Some(DeploymentRevision {
                 name,
                 revision: annotations
-                    .and_then(|values| values.get(REVISION))
+                    .and_then(|values| values.get(DEPLOYMENT_REVISION_ANNOTATION))
                     .and_then(|value| value.parse::<u64>().ok()),
                 change_cause: annotations.and_then(|values| values.get(CHANGE_CAUSE).cloned()),
                 created_at: k8s_creation_timestamp_to_rfc3339(
@@ -99,7 +99,7 @@ pub fn deployment_revisions_from_replica_sets(
     revisions
 }
 
-pub(crate) fn is_owned_by_deployment(replica_set: &ReplicaSet, deployment_uid: &str) -> bool {
+fn is_owned_by_deployment(replica_set: &ReplicaSet, deployment_uid: &str) -> bool {
     replica_set
         .metadata
         .owner_references
@@ -124,7 +124,10 @@ mod tests {
     fn replica_set(name: &str, owner_uid: &str, revision: Option<&str>) -> ReplicaSet {
         let mut annotations = std::collections::BTreeMap::new();
         if let Some(revision) = revision {
-            annotations.insert(REVISION.to_string(), revision.to_string());
+            annotations.insert(
+                DEPLOYMENT_REVISION_ANNOTATION.to_string(),
+                revision.to_string(),
+            );
         }
         ReplicaSet {
             metadata: ObjectMeta {

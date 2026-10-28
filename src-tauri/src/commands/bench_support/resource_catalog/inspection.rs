@@ -1,4 +1,4 @@
-use super::summaries;
+use super::{fixed_now, summaries};
 use crate::{
     commands::{helpers, kubeconfig, resources},
     models::{
@@ -161,15 +161,7 @@ pub fn deployment_details(deployment: Deployment) -> Result<ResourceDetailsFull,
         YamlViewMode::default(),
         YamlEncoding::default(),
     )?;
-    let name = deployment.metadata.name.clone().unwrap_or_default();
-    let namespace = deployment.metadata.namespace.clone();
-    resources::deployment_details_from_fetched(
-        "catalog-cluster".to_string(),
-        name,
-        namespace,
-        deployment,
-        yaml,
-    )
+    resources::details_from_fetched("catalog-cluster", &deployment, yaml, fixed_now())
 }
 
 pub fn configmap_details(config_map: ConfigMap) -> Result<ResourceDetailsFull, AppError> {
@@ -178,30 +170,11 @@ pub fn configmap_details(config_map: ConfigMap) -> Result<ResourceDetailsFull, A
         YamlViewMode::default(),
         YamlEncoding::default(),
     )?;
-    let name = config_map.metadata.name.clone().unwrap_or_default();
-    let namespace = config_map.metadata.namespace.clone();
-    resources::configmap_details_from_fetched(
-        "catalog-cluster".to_string(),
-        name,
-        namespace,
-        config_map,
-        yaml,
-    )
+    resources::details_from_fetched("catalog-cluster", &config_map, yaml, fixed_now())
 }
 
 pub fn secret_details(secret: Secret) -> Result<ResourceDetailsFull, AppError> {
-    // Match get_resource_details: fetch-and-serialize first, then the Secret detail path discards it.
-    let discarded =
-        serialize_typed_document(&secret, YamlViewMode::default(), YamlEncoding::default())?;
-    let name = secret.metadata.name.clone().unwrap_or_default();
-    let namespace = secret.metadata.namespace.clone();
-    resources::secret_details_from_fetched(
-        "catalog-cluster".to_string(),
-        name,
-        namespace,
-        secret,
-        discarded,
-    )
+    resources::secret_details_from_fetched("catalog-cluster", secret, fixed_now())
 }
 
 pub fn crd_details(crd: CustomResourceDefinition) -> Result<ResourceDetailsFull, AppError> {
@@ -211,7 +184,7 @@ pub fn crd_details(crd: CustomResourceDefinition) -> Result<ResourceDetailsFull,
             crate::models::AppErrorKind::Serialization,
         )
     })?;
-    resources::crd_details_from_fetched("catalog-cluster".to_string(), crd, yaml)
+    resources::details_from_fetched("catalog-cluster", &crd, yaml, fixed_now())
 }
 
 pub fn dynamic_details(
@@ -381,7 +354,7 @@ pub fn editor_fixture() -> EditorFixture {
 }
 
 pub fn editor_local_lint(request: YamlApplyRequest) -> KubernetesYamlLintResult {
-    resources::lint_kubernetes_yaml_request(request)
+    resources::lint_kubernetes_yaml_request(&request)
 }
 
 pub fn editor_apply_validation(

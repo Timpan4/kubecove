@@ -51,6 +51,37 @@ fn connected_paths_apply_argo_root_path_once() {
 }
 
 #[test]
+fn managed_resource_paths_filter_by_full_identity() {
+    let application = ArgoApplicationRef {
+        name: "platform".into(),
+        namespace: Some("argocd".into()),
+        ..Default::default()
+    };
+    let core = ArgoManagedResource {
+        version: Some("v1".into()),
+        kind: Some("Service".into()),
+        namespace: Some("argo cd".into()),
+        name: Some("argocd-server&x".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        managed_resource_path("https://argo.example", &application, &core).unwrap(),
+        "/api/v1/applications/platform/managed-resources?appNamespace=argocd&namespace=argo+cd&name=argocd-server%26x&version=v1&kind=Service"
+    );
+    let cluster_scoped = ArgoManagedResource {
+        group: Some("apiextensions.k8s.io".into()),
+        version: Some("v1".into()),
+        kind: Some("CustomResourceDefinition".into()),
+        name: Some("applicationsets.argoproj.io".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        managed_resource_path("https://argo.example", &application, &cluster_scoped).unwrap(),
+        "/api/v1/applications/platform/managed-resources?appNamespace=argocd&name=applicationsets.argoproj.io&version=v1&group=apiextensions.k8s.io&kind=CustomResourceDefinition"
+    );
+}
+
+#[test]
 fn fallback_keeps_complete_kubernetes_provenance_visible() {
     let inspector = ArgoApplicationInspector {
         transport: "kubernetes".into(),

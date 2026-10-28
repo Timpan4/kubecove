@@ -223,12 +223,7 @@
 {:else if viewMode === "settings"}
 	<DeferredSurface load={loadSettings} label="settings">
 		{#snippet children(SettingsSurface)}
-			<SettingsSurface
-				onBack={onCloseSettings}
-				clusterContext={workspace.scope.clusterContext}
-				workspaceId={workspace.id}
-				kubeconfigEnvVar={workspaceReadContext.kubeconfigSourceKey}
-			/>
+			<SettingsSurface onBack={onCloseSettings} />
 		{/snippet}
 	</DeferredSurface>
 {/if}

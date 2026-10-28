@@ -9,11 +9,15 @@ pub(super) fn rule_risks(verbs: &[String], resources: &[String]) -> Vec<RbacRisk
     let mut risks = Vec::new();
 
     if has_wildcard_verb {
-        risks.push(risk("high", "Wildcard verbs", "Rule allows every verb."));
+        risks.push(risk(
+            RbacRiskLevel::High,
+            "Wildcard verbs",
+            "Rule allows every verb.",
+        ));
     }
     if has_wildcard_resource {
         risks.push(risk(
-            "high",
+            RbacRiskLevel::High,
             "Wildcard resources",
             "Rule applies to every resource.",
         ));
@@ -23,7 +27,7 @@ pub(super) fn rule_risks(verbs: &[String], resources: &[String]) -> Vec<RbacRisk
         .any(|verb| matches!(*verb, "impersonate" | "escalate" | "bind"))
     {
         risks.push(risk(
-            "high",
+            RbacRiskLevel::High,
             "Privilege escalation verbs",
             "Rule includes impersonate, escalate, or bind.",
         ));
@@ -38,7 +42,7 @@ pub(super) fn rule_risks(verbs: &[String], resources: &[String]) -> Vec<RbacRisk
             }))
     {
         risks.push(risk(
-            "high",
+            RbacRiskLevel::High,
             "Secrets access",
             "Rule can read or change Secret resources.",
         ));
@@ -56,7 +60,7 @@ pub(super) fn rule_risks(verbs: &[String], resources: &[String]) -> Vec<RbacRisk
                 .any(|verb| matches!(*verb, "create" | "update" | "patch" | "delete")))
     {
         risks.push(risk(
-            "medium",
+            RbacRiskLevel::Medium,
             "RBAC write access",
             "Rule can change RBAC policy resources.",
         ));
@@ -72,7 +76,7 @@ pub(super) fn rule_risks(verbs: &[String], resources: &[String]) -> Vec<RbacRisk
             .any(|verb| matches!(*verb, "create" | "get")))
     {
         risks.push(risk(
-            "high",
+            RbacRiskLevel::High,
             "Workload interactive access",
             "Rule grants exec, attach, port-forward, or proxy access.",
         ));
@@ -83,7 +87,7 @@ pub(super) fn rule_risks(verbs: &[String], resources: &[String]) -> Vec<RbacRisk
         && (has_wildcard_verb || verb_set.contains("create"))
     {
         risks.push(risk(
-            "high",
+            RbacRiskLevel::High,
             "ServiceAccount token issuance",
             "Rule can request ServiceAccount tokens.",
         ));
@@ -95,7 +99,7 @@ pub(super) fn rule_risks(verbs: &[String], resources: &[String]) -> Vec<RbacRisk
 pub(super) fn service_account_risks(automount_token: Option<bool>) -> Vec<RbacRiskIndicator> {
     if automount_token == Some(true) {
         vec![risk(
-            "medium",
+            RbacRiskLevel::Medium,
             "Automount token",
             "ServiceAccount explicitly automounts an API token.",
         )]
@@ -112,7 +116,7 @@ pub(super) fn binding_risks(
     let mut risks = Vec::new();
     if role_ref_kind == "ClusterRole" && role_ref_name == "cluster-admin" {
         risks.push(risk(
-            "high",
+            RbacRiskLevel::High,
             "Cluster admin binding",
             "Binding references the cluster-admin ClusterRole.",
         ));
@@ -122,7 +126,7 @@ pub(super) fn binding_risks(
         .any(|subject| subject.kind == "Group" && subject.name == "system:masters")
     {
         risks.push(risk(
-            "high",
+            RbacRiskLevel::High,
             "System masters subject",
             "Binding includes the system:masters group.",
         ));
@@ -153,13 +157,9 @@ pub(super) fn dedupe_risks(risks: Vec<RbacRiskIndicator>) -> Vec<RbacRiskIndicat
         .collect()
 }
 
-fn risk(level: &str, label: &str, reason: &str) -> RbacRiskIndicator {
+fn risk(level: RbacRiskLevel, label: &str, reason: &str) -> RbacRiskIndicator {
     RbacRiskIndicator {
-        level: match level {
-            "high" => RbacRiskLevel::High,
-            "medium" => RbacRiskLevel::Medium,
-            _ => RbacRiskLevel::Low,
-        },
+        level,
         label: label.to_string(),
         reason: reason.to_string(),
     }

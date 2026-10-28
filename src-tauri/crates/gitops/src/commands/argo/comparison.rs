@@ -1,22 +1,23 @@
 use super::scope::scoped_connection;
+use super::transport::resource_actions_path;
 use super::{
     connected::{
-        api_get, connected_application_path, inspector_from_application, kubernetes_application,
-        managed_resource, redact_secret_fields, state, text,
+        api_get, connected_comparison, inspector_from_application, kubernetes_application,
+        kubernetes_comparison, managed_resource_path, redact_secret_fields, text,
     },
     ArgoConnectionStore,
 };
 use crate::models::AppErrorKind;
 use crate::{
-    commands::BackendCancellationRegistry,
+    commands::{diagnostic_field, BackendCancellationRegistry, ClusterAccess, FiniteRead},
     models::{AppError, ArgoApplicationRef, ArgoManagedResource, ArgoResourceComparison},
 };
 use serde_json::Value;
 
 async fn argo_resource_comparison(
     store: &ArgoConnectionStore,
+    access: &ClusterAccess,
     cluster_context: String,
-    kubeconfig_env_var: Option<String>,
     connection_id: Option<String>,
     transport: String,
     application: ArgoApplicationRef,
@@ -25,10 +26,10 @@ async fn argo_resource_comparison(
     if transport == "kubernetes" {
         let inspector = inspector_from_application(
             &kubernetes_application(
+                access,
                 &cluster_context,
                 application.namespace.as_deref(),
                 &application.name,
-                kubeconfig_env_var,
             )
             .await?,
         )?;
@@ -47,17 +48,11 @@ async fn argo_resource_comparison(
         })?,
         &cluster_context,
         application.workspace_id.as_deref(),
-        kubeconfig_env_var.as_deref(),
+        access.source_key(),
     )?;
     let value = api_get(
         &connection,
-        &connected_application_path(
-            &connection.profile.url,
-            &application.name,
-            application.namespace.as_deref(),
-            None,
-            true,
-        )?,
+        &managed_resource_path(&connection.profile.url, &application, &resource)?,
     )
     .await?;
     let mut comparison = connected_selected_comparison(value, &resource)?;
@@ -88,12 +83,18 @@ fn kubernetes_selected_comparison(
                 && candidate.name == requested.name
         })
         .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
-    Ok(ArgoResourceComparison {
-        resource,
-        exact: Some(false),
-        provenance: Some("kubernetes-status-no-diff".into()),
-        ..Default::default()
-    })
+    Ok(kubernetes_comparison(resource))
+}
+
+/// Argo CD's managed-resource items carry no API version, and cluster-scoped items an
+/// empty namespace, so they match on the identity the frontend keys by: group, kind,
+/// namespace and name, with empty meaning absent.
+fn same_identity(item: &Value, requested: &ArgoManagedResource) -> bool {
+    let present = |value: Option<String>| value.filter(|value| !value.is_empty());
+    present(text(item, "group")) == present(requested.group.clone())
+        && present(text(item, "kind")) == present(requested.kind.clone())
+        && present(text(item, "namespace")) == present(requested.namespace.clone())
+        && present(text(item, "name")) == present(requested.name.clone())
 }
 
 fn connected_selected_comparison(
@@ -107,26 +108,15 @@ fn connected_selected_comparison(
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .find(|item| {
-            text(item, "group") == requested.group
-                && text(item, "version") == requested.version
-                && text(item, "kind") == requested.kind
-                && text(item, "namespace") == requested.namespace
-                && text(item, "name") == requested.name
-        })
+        .find(|item| same_identity(item, requested))
         .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
-    let resource = managed_resource(item);
-    Ok(ArgoResourceComparison {
-        resource,
-        target_state: state(item.get("targetState"), true),
-        live_state: state(item.get("liveState"), true),
-        normalized_live_state: state(item.get("normalizedLiveState"), true),
-        predicted_live_state: state(item.get("predictedLiveState"), true),
-        modified: item.get("modified").and_then(Value::as_bool),
-        exact: Some(true),
-        provenance: Some("argocd-managed-resource".into()),
-        available_actions: Vec::new(),
-    })
+    let mut comparison = connected_comparison(item);
+    // Server actions need the version the item lacks.
+    comparison.resource.version = comparison
+        .resource
+        .version
+        .or_else(|| requested.version.clone());
+    Ok(comparison)
 }
 
 #[cfg(feature = "bench-support")]
@@ -146,33 +136,45 @@ pub fn benchmark_connected_selected_comparison(
     connected_selected_comparison(value, requested)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_argo_resource_comparison(
-    store: crate::runtime::State<'_, ArgoConnectionStore>,
-    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
     connection_id: Option<String>,
     transport: String,
     application: ArgoApplicationRef,
     resource: ArgoManagedResource,
-    _redact_secrets: Option<bool>,
     request_id: Option<String>,
     cancel_scope: Option<String>,
+    store: crate::runtime::State<'_, ArgoConnectionStore>,
+    cancellations: crate::runtime::State<'_, BackendCancellationRegistry>,
 ) -> Result<ArgoResourceComparison, AppError> {
-    cancellations
-        .execute(
-            cancel_scope,
-            request_id,
-            argo_resource_comparison(
-                &store,
-                cluster_context,
-                kubeconfig_env_var,
-                connection_id,
-                transport,
-                application,
-                resource,
-            ),
+    FiniteRead::new("get_argo_resource_comparison")
+        .label("context", &cluster_context)
+        .label("transport", &transport)
+        .label("application", &application.name)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
+            Box::pin(async {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                argo_resource_comparison(
+                    &store,
+                    &access,
+                    cluster_context,
+                    connection_id,
+                    transport,
+                    application,
+                    resource,
+                )
+                .await
+            }),
+            |comparison| {
+                vec![diagnostic_field(
+                    "modified",
+                    comparison
+                        .modified
+                        .map_or_else(|| "unknown".to_string(), |modified| modified.to_string()),
+                )]
+            },
         )
         .await
 }
@@ -185,40 +187,55 @@ fn actions_path(
     application: &ArgoApplicationRef,
     resource: &ArgoManagedResource,
 ) -> Option<String> {
-    let version = required_identity(resource.version.as_deref())?;
-    let kind = required_identity(resource.kind.as_deref())?;
-    let name = required_identity(resource.name.as_deref())?;
-    let mut url =
-        reqwest::Url::parse("https://argo.invalid/api/v1/applications").expect("static URL");
-    url.path_segments_mut()
-        .expect("static URL")
-        .push(&application.name);
-    url.set_path(&format!("{}/resource/actions", url.path()));
-    let mut query = url.query_pairs_mut();
-    for (key, value) in [
-        ("appNamespace", application.namespace.as_deref()),
-        ("project", application.project.as_deref()),
-        ("group", resource.group.as_deref()),
-        ("version", Some(version)),
-        ("kind", Some(kind)),
-        ("namespace", resource.namespace.as_deref()),
-        ("resourceName", Some(name)),
-    ] {
-        if let Some(value) = value {
-            query.append_pair(key, value);
-        }
-    }
-    drop(query);
-    Some(format!(
-        "{}?{}",
-        url.path(),
-        url.query().unwrap_or_default()
-    ))
+    required_identity(resource.version.as_deref())?;
+    required_identity(resource.kind.as_deref())?;
+    required_identity(resource.name.as_deref())?;
+    Some(resource_actions_path(application, resource))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connected_comparison_matches_versionless_items_by_frontend_identity() {
+        let managed = serde_json::json!({"items": [
+            {"group": "apps", "kind": "Deployment", "namespace": "argocd", "name": "argocd-repo-server",
+             "liveState": "{\"kind\":\"Deployment\"}"},
+            {"group": "apps", "kind": "Deployment", "namespace": "argocd", "name": "argocd-server",
+             "liveState": "{\"kind\":\"Deployment\"}", "modified": false},
+            {"group": "apiextensions.k8s.io", "kind": "CustomResourceDefinition", "namespace": "",
+             "name": "applications.argoproj.io", "liveState": "{\"kind\":\"CustomResourceDefinition\"}"}
+        ]});
+        let deployment = ArgoManagedResource {
+            group: Some("apps".into()),
+            version: Some("v1".into()),
+            kind: Some("Deployment".into()),
+            namespace: Some("argocd".into()),
+            name: Some("argocd-server".into()),
+            ..Default::default()
+        };
+        let comparison = connected_selected_comparison(managed.clone(), &deployment).unwrap();
+        assert_eq!(comparison.resource.name.as_deref(), Some("argocd-server"));
+        assert_eq!(comparison.resource.version.as_deref(), Some("v1"));
+        assert_eq!(comparison.modified, Some(false));
+
+        let crd = ArgoManagedResource {
+            group: Some("apiextensions.k8s.io".into()),
+            version: Some("v1".into()),
+            kind: Some("CustomResourceDefinition".into()),
+            name: Some("applications.argoproj.io".into()),
+            ..Default::default()
+        };
+        assert!(connected_selected_comparison(managed.clone(), &crd).is_ok());
+
+        let other_kind = ArgoManagedResource {
+            kind: Some("StatefulSet".into()),
+            ..deployment
+        };
+        let missing = connected_selected_comparison(managed, &other_kind).unwrap_err();
+        assert_eq!(missing.kind, AppErrorKind::NotFound);
+    }
 
     #[test]
     fn actions_path_encodes_application_and_resource_identity() {

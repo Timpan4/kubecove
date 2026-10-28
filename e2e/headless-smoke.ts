@@ -23,6 +23,8 @@ await writeFile(fixtureConfig, JSON.stringify({
 	contexts: [{ name: "fixture", context: { cluster: "fixture", user: "fixture" } }],
 	users: [{ name: "fixture", user: {} }], "current-context": "fixture",
 }));
+// The operator selects the fixture through a configured variable; requests may name only it (ADR 0026).
+await writeFile(join(dataDir, "kubeconfig-sources.json"), JSON.stringify({ kubeconfigEnvVar: "KUBECOVE_SMOKE_CONFIG", paths: [], showSourceLabels: true }));
 // SAFETY: DOM types hide Bun's documented constructor overload for authenticated sockets.
 const BunWebSocket = WebSocket as typeof WebSocket & {
 	new (url: URL, options: Bun.WebSocketOptions): WebSocket;
@@ -210,6 +212,10 @@ try {
 	}
 	assert.deepEqual(await (await invoke(first.session, "get_kubeconfig_sources", {})).json(), sourcesBefore);
 	checks.push("Server users cannot change operator kubeconfig sources or labels");
+	const outsideSources = await invoke(first.session, "list_kube_contexts", { kubeconfigEnvVar: "KUBECOVE_SMOKE_MISSING_CONFIG" });
+	assert.equal(outsideSources.status, 422);
+	assert.equal((await outsideSources.json()).kind, "kubeconfig");
+	checks.push("Requests cannot select a kubeconfig variable outside the operator's sources");
 	// Failure contract: a denied type or namespace cannot discard readable rows,
 	// claim reconciliation coverage, or turn authentication failures into empty success.
 	const unauthorized = await invoke(first.session, "list_resource_scope", { clusterContext: "fixture", requests: [{ kind: "Pod", namespace: "unauthorized" }], kubeconfigEnvVar: "KUBECOVE_SMOKE_CONFIG" });
@@ -231,7 +237,7 @@ try {
 	}
 	checks.push("Denied resource types and namespaces retain readable rows without false coverage; authentication still fails");
 	const response = await invoke(first.session, "start_pod_log_stream", {
-		request: { clusterContext: "missing", namespace: "default", podName: "missing", kubeconfigEnvVar: "KUBECOVE_SMOKE_MISSING_CONFIG" },
+		request: { clusterContext: "missing", namespace: "default", podName: "missing", kubeconfigEnvVar: "KUBECOVE_SMOKE_CONFIG" },
 		channel: "__KUBECOVE_CHANNEL__:1",
 	});
 	assert.equal(response.status, 200);
@@ -242,7 +248,7 @@ try {
 		assert.equal(frame.channelId, 1);
 		streamedError = frame.message?.type === "error";
 	}
-	checks.push("Typed channel delivery from an isolated missing kubeconfig");
+	checks.push("Typed channel delivery for a context missing from the operator's kubeconfig");
 	await channel.close();
 	const resumed = await login(first.session.resumeToken);
 	assert.ok(resumed.session.resumeToken === first.session.resumeToken, "Resume must retain the existing owner.");

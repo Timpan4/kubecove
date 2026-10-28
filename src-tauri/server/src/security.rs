@@ -16,7 +16,13 @@ pub fn equal_secret(left: &str, right: &str) -> bool {
     bool::from(left.as_bytes().ct_eq(right.as_bytes()))
 }
 
-pub fn bearer(headers: &HeaderMap) -> Option<&str> {
+/// Selects rustls' ring provider before the first TLS client is built. Only the first
+/// installation in the process takes effect, so later calls are harmless.
+pub fn install_tls_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
+fn bearer(headers: &HeaderMap) -> Option<&str> {
     headers
         .get(header::AUTHORIZATION)?
         .to_str()

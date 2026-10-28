@@ -4,12 +4,12 @@ The desktop package at `src-tauri/` is the Cargo workspace root and host composi
 
 | Crate | Responsibility | Internal dependencies |
 | --- | --- | --- |
-| `kubecove-models` | Serialized contracts, health assessment, endpoint validation and typed errors | None |
-| `kubecove-kube` | Kubernetes clients, source settings, session scope, cancellation primitives, diagnostics, common metadata/projections and live cache | models |
+| `kubecove-models` | Serialized contracts, the command contract declaration, the desktop–server tunnel frame format, health assessment, endpoint validation and typed errors | None |
+| `kubecove-kube` | Cluster access by intent, source settings, session scope, cancellation primitives, diagnostics, the finite-read envelope, common metadata/projections and live cache | models |
 | `kubecove-inspection` | Resource reads, discovery, topology, metrics, RBAC, incidents and guarded Kubernetes operations | models, kube |
-| `kubecove-live` | Watches, logs, exec, Pod/Service forwards and session cleanup | models, kube |
+| `kubecove-live` | Watches, logs, exec, the Port Forward Lifecycle with its shared accept-and-relay loop, and session cleanup | models, kube |
 | `kubecove-gitops` | Argo CD, Flux and Helm | models, kube, live |
-| `kubecove-host` | Process usage, native workspace files and desktop remote client | models, kube |
+| `kubecove-host` | Process usage, native workspace files and desktop remote client, including desktop-tunnelled forwards | models, kube, live (desktop only) |
 
 `kubecove` aggregates the existing public `commands`, `models` and `runtime` APIs for the desktop and server. Workspace cancellation stays there because it coordinates client generations, live-cache loads and Argo connections. Domain crates must not depend on this composition root. The `commands` namespaces preserve existing domain paths; they are not separate implementations.
 
@@ -17,7 +17,7 @@ The desktop package at `src-tauri/` is the Cargo workspace root and host composi
 
 Each member defaults to no desktop features. The shell forwards `desktop`, `bench-support` and E2E isolation explicitly. Models contain existing Kubernetes error conversions and URL validation, so they are not a serde-only package. `bench-support` deliberately exposes deterministic projection/fixture adapters without adding commands to the frontend.
 
-Keep session task-local state, client caches and runtime spawning in the same crate: every host must use exactly the same scope and cancellation-marker type. Keep finite reads, confirmed operations and live client generations distinct. Splitting code must not change IPC payloads, guarded targets, redaction, credentials or cleanup order.
+Keep session task-local state, client caches and runtime spawning in the same crate: every host must use exactly the same scope and cancellation-marker type. Keep finite reads, confirmed operations and live client generations distinct; commands choose among them only through the cluster-access intents. Splitting code must not change IPC payloads, guarded targets, redaction, credentials or cleanup order.
 
 The server is excluded from the desktop workspace. It retains its own lockfile and `server/target` directory, and consumes the shared facade with default features disabled. This prevents a desktop workspace build from unifying Tauri into the server. Do not add it to `--workspace --all-features` checks.
 

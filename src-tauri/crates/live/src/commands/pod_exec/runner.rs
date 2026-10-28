@@ -14,7 +14,8 @@ use tokio::{
 use super::registry::{
     session_summary, ExecCommand, PodExecRegistry, COMMAND_CAPACITY, INPUT_CHUNK_BYTES,
 };
-use super::validation::{client_for_context, validate_request, ValidatedPodExecRequest};
+use super::validation::{validate_request, ValidatedPodExecRequest};
+use crate::commands::ClusterAccess;
 
 pub const EXEC_OUTPUT_CHUNK_BYTES: usize = 4096;
 
@@ -127,6 +128,7 @@ async fn read_exec_output(
 async fn run_exec_session(
     summary: PodExecSessionSummary,
     request: ValidatedPodExecRequest,
+    access: ClusterAccess,
     commands: mpsc::Receiver<ExecCommand>,
     channel: Channel<PodExecSessionMessage>,
     registry: PodExecRegistry,
@@ -141,12 +143,7 @@ async fn run_exec_session(
         },
     );
 
-    let client = match client_for_context(
-        &request.cluster_context,
-        request.kubeconfig_env_var.clone(),
-    )
-    .await
-    {
+    let client = match access.live_session_client(&request.cluster_context).await {
         Ok(client) => client,
         Err(err) => {
             registry.mark_error(&session_id, err.message.clone());
@@ -358,7 +355,7 @@ pub(super) async fn start_pod_exec_session_in_registry(
     channel: Channel<PodExecSessionMessage>,
     registry: &PodExecRegistry,
 ) -> Result<PodExecSessionSummary, AppError> {
-    let request = validate_request(&request)?;
+    let (request, access) = validate_request(&request)?;
     let session_id = registry.session_id();
     let summary = session_summary(session_id.clone(), &request);
     let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
@@ -374,6 +371,7 @@ pub(super) async fn start_pod_exec_session_in_registry(
     let handle = crate::runtime::spawn(run_exec_session(
         summary.clone(),
         request,
+        access,
         command_rx,
         channel.clone(),
         registry_for_task,

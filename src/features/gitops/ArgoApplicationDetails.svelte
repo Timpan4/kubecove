@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getArgoOperationTracker, argoTrackingKey } from "./argo-operation-tracker";
 	import { argoOperationProgress } from "./argo-operation-progress";
+	import ArgoConnectionDialog from "./ArgoConnectionDialog.svelte";
 	import ArgoOperationProgress from "./ArgoOperationProgress.svelte";
 	import ArgoResourceDiff from "./ArgoResourceDiff.svelte";
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
@@ -54,25 +55,13 @@
 		argoDocumentText,
 		resolveArgoResourceComparison,
 	} from "./argo-resource-display";
-	import {
-		createCancelScope,
-		createFiniteReadCleanup,
-		createFiniteReadRequest,
-	} from "@/lib/finite-read-lifecycle";
+	import { finiteRead } from "@/lib/finite-read-lifecycle";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { settingsStore } from "@/lib/settings-store";
-	import {
-		argoApplicationInspectionQueryOptions,
-		argoConnectionStatusQueryOptions,
-		buildArgoApplicationInspectionReadSpec,
-		buildArgoConnectionStatusReadSpec,
-	} from "@/lib/argo-application-inspection";
+	import { argoApplicationRef } from "@/lib/argo-application-inspection";
+	import { argoApplicationInspection } from "@/lib/argo-application-inspection.svelte";
 	import { argoConnectionPreferenceValue, normalizeArgoConnectionPreference } from "@/lib/argo-connection-policy";
-	import {
-		cancelBackendRequests,
-		createTauriClient,
-		getArgoResourceComparison,
-	} from "@/lib/tauri";
+	import { createTauriClient, getArgoResourceComparison } from "@/lib/tauri";
 	import type {
 		ArgoApplicationHistory,
 		ArgoApplicationRef,
@@ -128,9 +117,6 @@
 	const queryClient = useQueryClient();
 	const tracker = getArgoOperationTracker(queryClient);
 
-	const finiteReadCleanup = createFiniteReadCleanup(queryClient, (cancelScope) =>
-		cancelBackendRequests(client, cancelScope),
-	);
 	const diffViewOptions: { value: DiffView; label: string }[] = [
 		{ value: "changes", label: "Changes" },
 		{ value: "target", label: "Desired" },
@@ -149,16 +135,16 @@
 			? applicationSummary
 			: null,
 	);
-	const applicationRequest = $derived<ArgoApplicationRef>({
-		name: resourceSummary.name,
-		namespace: resourceSummary.namespace,
-		project: matchingSummary?.project ?? null,
-		resourceVersion: matchingSummary?.resourceVersion ?? null,
-		uid: matchingSummary?.uid ?? null,
-		apiVersion: resourceSummary.apiVersion ?? "argoproj.io/v1alpha1",
-		context: clusterContext,
-		workspaceId,
-	});
+	const applicationRequest = $derived(
+		argoApplicationRef(workspaceReadContext, {
+			name: resourceSummary.name,
+			namespace: resourceSummary.namespace,
+			project: matchingSummary?.project,
+			resourceVersion: matchingSummary?.resourceVersion,
+			uid: matchingSummary?.uid,
+			apiVersion: resourceSummary.apiVersion,
+		}),
+	);
 	const trackingKey = $derived(argoTrackingKey(applicationRequest, kubeconfigEnvVar));
 	const trackedOperation = $derived($tracker.get(trackingKey));
 	const operationPhase = $derived(trackedOperation?.phase === "pending" ? "refreshing" : trackedOperation?.phase ?? "idle");
@@ -167,19 +153,6 @@
 	const observationPending = $derived(trackedOperation?.phase === "unknown");
 	const lastOperationRequest = $derived(trackedOperation?.request ?? null);
 
-	const statusReadSpec = $derived(
-		buildArgoConnectionStatusReadSpec({
-			profiles: $settingsStore.argoProfiles,
-			clusterContext,
-			workspaceId,
-			kubeconfigEnvVar,
-		}),
-	);
-	const preference = $derived(
-		normalizeArgoConnectionPreference(
-			$settingsStore.argoConnectionPreferences[workspaceId],
-		),
-	);
 	let selectedResource = $state<ArgoManagedResource | null>(null);
 	let selectedHistoryKey = $state<string | null>(null);
 	let diffView = $state<DiffView>("changes");
@@ -190,56 +163,33 @@
 	let appliedSyncDefaults = $state<ArgoSyncSettings>({ ...defaultArgoSyncSettings });
 	let appliedSyncDefaultsKey = $state("");
 	let confirmationOpen = $state(false);
+	let argoConnectionOpen = $state(false);
 	let confirmationName = $state("");
 	let pendingSync = $state<ArgoSyncSettings | null>(null);
 	let appliedScopeKey = $state("");
 
-	const statuses = createQuery(() =>
-		argoConnectionStatusQueryOptions(client, {
-			...statusReadSpec,
-			enabled: active && statusReadSpec.enabled,
-		}),
-	);
-	const inspectionReadSpec = $derived(
-		buildArgoApplicationInspectionReadSpec({
-			profiles: $settingsStore.argoProfiles,
-			statuses: statuses.data,
-			statusesPending: statuses.isPending,
-			preference,
-			application: applicationRequest,
-			clusterContext,
-			workspaceId,
-			kubeconfigEnvVar,
-			redactSecrets,
-			enabled: active && workspaceReadContext.sourceReady,
-		}),
-	);
-	const connectionPolicy = $derived(inspectionReadSpec.policy);
-	const argoProfiles = $derived(statusReadSpec.profiles);
-	const connectionPolicyReady = $derived(
-		preference.kind !== "automatic" || argoProfiles.length === 0 || !statuses.isPending,
-	);
+	const inspection = argoApplicationInspection(client, () => ({
+		readContext: workspaceReadContext,
+		application: applicationRequest,
+		enabled: active,
+	}));
+	const snapshot = $derived(inspection.current.data);
+	const connectionPolicy = $derived(inspection.current.choice);
 	const transport = $derived(connectionPolicy.transport);
 	const connectionId = $derived(connectionPolicy.connectionId ?? "");
-	const connectionReady = $derived(inspectionReadSpec.ready);
+	const connectionReady = $derived(inspection.current.ready);
 	const preferenceValue = $derived(
 		argoConnectionPreferenceValue(connectionPolicy.preference),
 	);
-	const selectedStatus = $derived(statuses.data?.find(([id]) => id === connectionPolicy.connectionId)?.[1]);
+	const selectedStatus = $derived(inspection.current.selectedStatus);
 	const selectedProfile = $derived(connectionPolicy.selectedProfile);
-	const request = $derived(inspectionReadSpec.request);
-	const inspectorQueryKey = $derived(inspectionReadSpec.queryKey);
-	const inspectorCancelScope = $derived(inspectionReadSpec.cancelScope);
-	const inspector = createQuery(() =>
-		argoApplicationInspectionQueryOptions(client, inspectionReadSpec),
-	);
 	const application = $derived<ArgoApplicationRef>({
 		...applicationRequest,
-		...inspector.data?.application,
+		...snapshot?.application,
 		context: clusterContext,
 		workspaceId,
 	});
-	const managedResources = $derived(inspector.data?.resources ?? []);
+	const managedResources = $derived(snapshot?.resources ?? []);
 	const reconciliationResources = $derived(argoReconciliationResources(managedResources));
 	const selectedResourceKey = $derived(
 		selectedResource ? argoResourceIdentityKey(selectedResource) : null,
@@ -250,7 +200,7 @@
 			workspaceReadContext.sourceReady &&
 			connectionReady &&
 			transport === "connected" &&
-			inspector.data?.transport === "connected",
+			snapshot?.transport === "connected",
 	);
 	const selectedComparisonQueryKey = $derived(
 		queryKeys.argoWorkspaceSelectedResource(
@@ -269,22 +219,20 @@
 			kubeconfigEnvVar,
 		),
 	);
-	const selectedComparisonCancelScope = $derived(
-		createCancelScope("argo-resource-actions", selectedComparisonQueryKey),
-	);
 	const selectedComparison = createQuery(() => ({
-		queryKey: selectedComparisonQueryKey,
-		queryFn: () => {
-			if (!selectedResource) throw new Error("No selected resource");
-			return getArgoResourceComparison(
-				client,
-				{ ...request, resource: selectedResource },
-				createFiniteReadRequest(
-					selectedComparisonCancelScope,
-					"argo-resource-actions",
-				),
-			);
-		},
+		...finiteRead({
+			queryKey: selectedComparisonQueryKey,
+			label: "argo.resource-comparison",
+			read: async (cancellable) => {
+				const request = inspection.current.request;
+				if (!selectedResource || !request) throw new Error("No selected resource");
+				return getArgoResourceComparison(
+					client,
+					{ ...request, resource: selectedResource },
+					cancellable,
+				);
+			},
+		}),
 		enabled: lazyComparisonEnabled,
 		staleTime: 30_000,
 		refetchInterval: lazyComparisonEnabled ? 15_000 : false,
@@ -292,19 +240,6 @@
 		retry: false,
 		gcTime: redactSecrets ? undefined : 0,
 	}));
-
-	$effect(() => {
-		const reads = [
-			[inspectorCancelScope, inspectorQueryKey],
-			[selectedComparisonCancelScope, selectedComparisonQueryKey],
-		] as const;
-		for (const [cancelScope] of reads) finiteReadCleanup.cancelPending(cancelScope);
-		return () => {
-			for (const [cancelScope, queryKey] of reads) {
-				finiteReadCleanup.schedule(cancelScope, queryKey);
-			}
-		};
-	});
 
 	const scopeKey = $derived(
 		[
@@ -317,20 +252,20 @@
 		].join(":"),
 	);
 	const selectedHistory = $derived(
-		(inspector.data?.history ?? []).find(
+		(snapshot?.history ?? []).find(
 			(entry) => argoHistoryKey(application, entry) === selectedHistoryKey,
-		) ?? inspector.data?.history[0] ?? null,
+		) ?? snapshot?.history[0] ?? null,
 	);
 	const diffResources = $derived(selectedResource ? [selectedResource] : reconciliationResources);
 	const counts = $derived(argoResourceCounts(managedResources));
 	const healthStatus = $derived(
-		statusValue(inspector.data?.status, "health", "status") ??
+		statusValue(snapshot?.status, "health", "status") ??
 			matchingSummary?.healthStatus ??
 			resourceSummary.status ??
 			"Unknown",
 	);
 	const syncStatus = $derived(
-		statusValue(inspector.data?.status, "sync", "status") ??
+		statusValue(snapshot?.status, "sync", "status") ??
 			matchingSummary?.syncStatus ??
 			"Unknown",
 	);
@@ -338,18 +273,18 @@
 		matchingSummary?.healthAssessment ?? resourceSummary.healthAssessment,
 	);
 	const resolvedRevision = $derived(
-		statusValue(inspector.data?.status, "sync", "revision") ??
+		statusValue(snapshot?.status, "sync", "revision") ??
 			matchingSummary?.sources?.[0]?.resolvedRevision ??
 			selectedHistory?.revision ??
 			matchingSummary?.sourceRevision ??
 			"Revision unavailable",
 	);
 	const operationStateMessage = $derived(
-		statusValue(inspector.data?.operationState, "phase") ??
-			statusValue(inspector.data?.operationState, "message"),
+		statusValue(snapshot?.operationState, "phase") ??
+			statusValue(snapshot?.operationState, "message"),
 	);
 	const conditionRows = $derived(
-		(inspector.data?.conditions ?? []).flatMap((condition) => {
+		(snapshot?.conditions ?? []).flatMap((condition) => {
 			const type = statusValue(condition, "type");
 			const message = statusValue(condition, "message");
 			return type || message ? [{ type: type ?? "Application condition", message: message ?? "No condition detail reported." }] : [];
@@ -402,20 +337,17 @@
 				booleanAt(applicationSpec, "syncPolicy", "automated", "selfHeal") ? "self-heal" : null,
 			].filter(Boolean).join(" · "),
 	);
-	const loading = $derived(
-		(active && statusReadSpec.enabled && statuses.isPending) ||
-			(inspectionReadSpec.enabled && inspector.isPending),
-	);
-	const dataError = $derived(inspector.isError ? inspector.error : null);
+	const loading = $derived(inspection.current.loading);
+	const dataError = $derived(inspection.current.error);
 	const snapshotFreshness = $derived(
-		inspector.data?.connectedFallback
+		snapshot?.connectedFallback
 			? "Connected Argo CD is unavailable; Kubernetes refreshes this fallback snapshot every 15 seconds while visible."
-			: inspector.data?.transport === "connected"
+			: snapshot?.transport === "connected"
 				? "Connected Argo CD refreshes this snapshot every 15 seconds while visible."
 				: "Kubernetes refreshes this snapshot every 15 seconds while visible.",
 	);
 	const busy = $derived(
-		Boolean(trackedOperation?.busy || (inspector.data && (argoOperationProgress(inspector.data).active || inspector.data.refreshRequested))),
+		Boolean(trackedOperation?.busy || (snapshot && (argoOperationProgress(snapshot).active || snapshot.refreshRequested))),
 	);
 	const operationTarget = $derived(
 		argoOperationTarget(resourceSummary, clusterContext, transport),
@@ -451,7 +383,7 @@
 	$effect(() => {
 		const next = preserveArgoHistorySelection(
 			application,
-			inspector.data?.history ?? [],
+			snapshot?.history ?? [],
 			selectedHistoryKey,
 		);
 		if (next !== selectedHistoryKey) selectedHistoryKey = next;
@@ -562,8 +494,8 @@
 	function comparisonFor(item: ArgoManagedResource): ArgoResourceComparison | null {
 		return resolveArgoResourceComparison(
 			item,
-			inspector.data?.comparisons ?? [],
-			inspector.data?.transport,
+			snapshot?.comparisons ?? [],
+			snapshot?.transport,
 			selectedResourceKey,
 			selectedComparison.data,
 		);
@@ -654,10 +586,10 @@
 						<h2 class="max-w-full truncate font-heading text-sm font-semibold">{resourceSummary.name}</h2>
 						<Badge variant="ghost">
 							<CircleDot class="size-2.5 text-primary" />
-							{inspector.data?.transport === "connected"
+							{snapshot?.transport === "connected"
 								? "Connected Argo CD API"
 								: "Kubernetes Application status"}
-							{#if inspector.data?.provenance} · {inspector.data.provenance}{/if}
+							{#if snapshot?.provenance} · {snapshot.provenance}{/if}
 						</Badge>
 					</div>
 					<div class="mt-2">
@@ -727,13 +659,13 @@
 		</div>
 	</section>
 
-	{#if inspector.data?.connectedFallback}
+	{#if snapshot?.connectedFallback}
 		<Alert>
 			<AlertTitle>Connected inspection unavailable</AlertTitle>
 			<AlertDescription>
 				Kubernetes fallback snapshot shown. Connected
-				{inspector.data.connectedFallback.failure.kind}:
-				{inspector.data.connectedFallback.failure.message}. Kubernetes watch keeps this snapshot fresh.
+				{snapshot.connectedFallback.failure.kind}:
+				{snapshot.connectedFallback.failure.message}. Kubernetes watch keeps this snapshot fresh.
 			</AlertDescription>
 		</Alert>
 	{/if}
@@ -743,7 +675,7 @@
 			<SelectTrigger class="w-72 max-w-full" ariaLabel="Argo CD inspection preference">
 				<SelectValue>
 					{connectionPolicy.preference.kind === "automatic"
-						? !connectionPolicyReady
+						? inspection.current.checkingProfiles
 							? "Automatic · Checking profiles"
 							: `Automatic · ${selectedProfile ? argoEndpointLabel(selectedProfile.endpoint) : "Kubernetes"}`
 						: connectionPolicy.preference.kind === "kubernetes"
@@ -757,7 +689,7 @@
 				<SelectGroup>
 					<SelectItem value="automatic" label="Automatic">Automatic</SelectItem>
 					<SelectItem value="kubernetes" label="Kubernetes">Kubernetes</SelectItem>
-					{#each argoProfiles as profile}
+					{#each connectionPolicy.eligibleProfiles as profile}
 						<SelectItem value={`connected:${profile.id}`} label={argoEndpointLabel(profile.endpoint)}>{argoEndpointLabel(profile.endpoint)}</SelectItem>
 					{/each}
 				</SelectGroup>
@@ -770,9 +702,16 @@
 					? "Argo RBAC is not evaluated. Exact manifests require a connected profile."
 					: "Connected Argo CD authorization is evaluated during operation preflight."}
 		</div>
+		<Button type="button" size="sm" variant="outline" onclick={() => (argoConnectionOpen = true)}>
+			{connectionPolicy.eligibleProfiles.length > 0 ? "Manage connection" : "Connect Argo CD"}
+		</Button>
 	</div>
+	<ArgoConnectionDialog
+		bind:open={argoConnectionOpen}
+		scope={{ clusterContext, workspaceId, kubeconfigSourceKey: kubeconfigEnvVar }}
+	/>
 
-	{#if inspector.data}<ArgoOperationProgress inspector={inspector.data} />{/if}
+	{#if snapshot}<ArgoOperationProgress inspector={snapshot} />{/if}
 	{#if operationMessage}
 		<div class="flex items-center gap-2 rounded-lg border bg-surface-1 p-3 text-xs" role="status" aria-live="polite" aria-atomic="true">
 			{#if busy}<Spinner class="size-3.5" />{/if}<span>{operationMessage}</span>
@@ -795,7 +734,7 @@
 	{#if dataError}
 		<Alert variant="destructive">
 			<AlertTitle>{transport === "connected" ? "Connected Argo CD snapshot unavailable" : "Kubernetes Application snapshot unavailable"}</AlertTitle>
-			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{dataError instanceof Error ? dataError.message : String(dataError)}</span><Button type="button" size="sm" variant="outline" onclick={() => void inspector.refetch()}>Retry snapshot</Button></AlertDescription>
+			<AlertDescription class="flex flex-wrap items-center justify-between gap-2"><span>{dataError instanceof Error ? dataError.message : String(dataError)}</span><Button type="button" size="sm" variant="outline" onclick={() => void inspection.refresh()}>Retry snapshot</Button></AlertDescription>
 		</Alert>
 	{/if}
 
@@ -831,11 +770,11 @@
 		</div>
 		<div class="min-w-0 rounded-lg border bg-surface-1 p-3">
 			<div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><GitCommitHorizontal class="size-3.5" /> Recent deployment</div>
-			{#if inspector.data?.history.length}
-				{#if inspector.data.history.length > 1}
+			{#if snapshot?.history.length}
+				{#if snapshot.history.length > 1}
 					<Select value={selectedHistoryKey ?? ""} onValueChange={(value: string) => (selectedHistoryKey = value)}>
 						<SelectTrigger class="mt-3 w-full" ariaLabel="Recent deployment"><SelectValue>{selectedHistory ? historyRevision(selectedHistory) : "Select deployment"}</SelectValue></SelectTrigger>
-						<SelectContent><SelectGroup>{#each inspector.data.history as entry}<SelectItem value={argoHistoryKey(application, entry)} label={historyRevision(entry)}>{historyRevision(entry)}</SelectItem>{/each}</SelectGroup></SelectContent>
+						<SelectContent><SelectGroup>{#each snapshot.history as entry}<SelectItem value={argoHistoryKey(application, entry)} label={historyRevision(entry)}>{historyRevision(entry)}</SelectItem>{/each}</SelectGroup></SelectContent>
 					</Select>
 				{/if}
 				{#if selectedHistory}<div class="mt-3 break-all text-sm font-semibold">{historyRevision(selectedHistory)}</div><div class="mt-1 text-xs leading-relaxed text-muted-foreground"><TimestampText value={selectedHistory.deployedAt} fallback="No deployment timestamp" precision="second" /> by {selectedHistory.initiatedBy ?? "unknown"}</div>{/if}

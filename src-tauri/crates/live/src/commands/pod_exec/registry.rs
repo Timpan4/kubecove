@@ -1,9 +1,10 @@
+use crate::commands::LiveSessionScope;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, PodExecSessionSummary, PodExecTerminalSize};
 use crate::runtime::JoinHandle;
 use chrono::Utc;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex,
@@ -48,7 +49,7 @@ pub struct PodExecRegistry {
 impl PodExecRegistry {
     /// Stop all exec sessions when their host owner ends.
     pub fn stop_all(&self) {
-        self.stop_outside_scope(&HashSet::new(), "");
+        self.stop_where(|_| true);
     }
 
     pub(super) fn session_id(&self) -> String {
@@ -103,7 +104,8 @@ impl PodExecRegistry {
             .collect()
     }
 
-    pub(super) fn mark_status(&self, session_id: &str, status: &str, last_error: Option<String>) {
+    /// Updates a session's listed summary; a session that already ended is left alone.
+    fn update_summary(&self, session_id: &str, update: impl FnOnce(&mut PodExecSessionSummary)) {
         if let Some(session) = self
             .state
             .lock()
@@ -111,9 +113,15 @@ impl PodExecRegistry {
             .sessions
             .get_mut(session_id)
         {
-            session.summary.status = status.to_string();
-            session.summary.last_error = last_error;
+            update(&mut session.summary);
         }
+    }
+
+    pub(super) fn mark_status(&self, session_id: &str, status: &str, last_error: Option<String>) {
+        self.update_summary(session_id, |summary| {
+            summary.status = status.to_string();
+            summary.last_error = last_error;
+        });
     }
 
     pub(super) fn mark_running(&self, session_id: &str) {
@@ -125,30 +133,18 @@ impl PodExecRegistry {
     }
 
     pub(super) fn mark_terminal_size(&self, session_id: &str, size: PodExecTerminalSize) {
-        if let Some(session) = self
-            .state
-            .lock()
-            .expect("pod exec registry lock")
-            .sessions
-            .get_mut(session_id)
-        {
-            session.summary.terminal_cols = size.cols;
-            session.summary.terminal_rows = size.rows;
-        }
+        self.update_summary(session_id, |summary| {
+            summary.terminal_cols = size.cols;
+            summary.terminal_rows = size.rows;
+        });
     }
 
     pub(super) fn mark_exited(&self, session_id: &str, exit_code: Option<i32>) {
-        if let Some(session) = self
-            .state
-            .lock()
-            .expect("pod exec registry lock")
-            .sessions
-            .get_mut(session_id)
-        {
-            session.summary.status = "exited".to_string();
-            session.summary.finished_at = Some(Utc::now().to_rfc3339());
-            session.summary.exit_code = exit_code;
-        }
+        self.update_summary(session_id, |summary| {
+            summary.status = "exited".to_string();
+            summary.finished_at = Some(Utc::now().to_rfc3339());
+            summary.exit_code = exit_code;
+        });
     }
 
     pub(super) fn send_command(
@@ -243,39 +239,32 @@ impl PodExecRegistry {
         true
     }
 
-    pub(crate) fn stop_outside_scope(
-        &self,
-        allowed_cluster_contexts: &HashSet<String>,
-        kubeconfig_source_key: &str,
-    ) -> Vec<String> {
-        let mut stopped = Vec::new();
-        let mut handles = Vec::new();
-        {
-            let mut state = self.state.lock().expect("pod exec registry lock");
-            let session_ids = state
-                .sessions
-                .iter()
-                .filter_map(|(id, session)| {
-                    let in_context =
-                        allowed_cluster_contexts.contains(&session.summary.cluster_context);
-                    let in_source = session.summary.kubeconfig_source_key.as_deref()
-                        == Some(kubeconfig_source_key);
-                    (!in_context || !in_source).then(|| id.clone())
-                })
-                .collect::<Vec<_>>();
-            for session_id in session_ids {
-                if let Some(mut session) = state.sessions.remove(&session_id) {
-                    if let Some(handle) = session.handle.take() {
-                        handles.push(handle);
-                    }
-                    stopped.push(session_id);
-                }
-            }
-        }
-        for handle in handles {
-            handle.abort();
-        }
+    pub(crate) fn stop_outside_scope(&self, scope: &LiveSessionScope) -> Vec<String> {
+        self.stop_where(|summary| {
+            !scope.contains(
+                &summary.cluster_context,
+                summary.kubeconfig_source_key.as_deref(),
+            )
+        })
+    }
+
+    fn stop_where(&self, mut stop: impl FnMut(&PodExecSessionSummary) -> bool) -> Vec<String> {
+        let stopped = self
+            .state
+            .lock()
+            .expect("pod exec registry lock")
+            .sessions
+            .extract_if(.., |_, session| stop(&session.summary))
+            .collect::<Vec<_>>();
         stopped
+            .into_iter()
+            .map(|(id, session)| {
+                if let Some(handle) = session.handle {
+                    handle.abort();
+                }
+                id
+            })
+            .collect()
     }
 
     #[cfg(test)]

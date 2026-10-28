@@ -7,10 +7,12 @@ mod restarts;
 #[cfg(feature = "bench-support")]
 pub use post_fetch::incident_cockpit_post_fetch;
 
+use super::events::{event_source, event_timestamp};
 use super::{resource_scope_from, ClusterLiveStore, MAX_LIST_CONCURRENCY};
 use crate::commands::{
-    helpers::{k8s_timestamp_to_datetime, list_params, resource_age_at},
-    kubeconfig::KubeconfigSource,
+    diagnostic_field,
+    helpers::{list_params, resource_age_at},
+    ClusterAccess, FiniteRead,
 };
 use crate::models::{
     AppError, IncidentCockpitItem, IncidentCockpitSummary, IncidentSeverity, IncidentSignalState,
@@ -22,7 +24,6 @@ use k8s_openapi::api::core::v1::Event;
 use kube::{api::Api, Client};
 use kubecove_kube::commands::list_projection::bounded_join_all;
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::Instant;
 
 use health::{
     apply_incident_health_evidence, current_status_severity, has_current_kubernetes_concern,
@@ -36,59 +37,50 @@ use restarts::{
 const MAX_WARNING_EVENTS_PER_RESOURCE: usize = 3;
 const MAX_WARNING_EVENTS_TOTAL: usize = 500;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_incident_cockpit(
     cluster_context: String,
     requests: Vec<ResourceListRequest>,
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<IncidentCockpitSummary, AppError> {
-    let started = Instant::now();
-    eprintln!(
-        "[kubecove:backend] list_incident_cockpit start context={} requests={}",
-        cluster_context,
-        requests.len()
-    );
-    let result = incident_cockpit_from(
-        cluster_context.clone(),
-        requests,
-        kubeconfig_env_var,
-        live_store.inner().clone(),
-    )
-    .await;
-    match &result {
-        Ok(summary) => eprintln!(
-            "[kubecove:backend] list_incident_cockpit done context={} items={} warnings={} ms={}",
-            cluster_context,
-            summary.items.len(),
-            summary.warnings.len(),
-            started.elapsed().as_millis()
-        ),
-        Err(err) => eprintln!(
-            "[kubecove:backend] list_incident_cockpit error context={} error_kind={} message={} ms={}",
-            cluster_context,
-            err.kind,
-            err.message,
-            started.elapsed().as_millis()
-        ),
-    }
-    result
+    FiniteRead::new("list_incident_cockpit")
+        .label("context", &cluster_context)
+        .label("requests", requests.len())
+        .run(
+            async move {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                incident_cockpit_from(
+                    &access,
+                    cluster_context,
+                    requests,
+                    live_store.inner().clone(),
+                )
+                .await
+            },
+            |summary| {
+                vec![
+                    diagnostic_field("items", summary.items.len()),
+                    diagnostic_field("warnings", summary.warnings.len()),
+                ]
+            },
+        )
+        .await
 }
 
 pub async fn incident_cockpit_from(
+    access: &ClusterAccess,
     cluster_context: String,
     requests: Vec<ResourceListRequest>,
-    kubeconfig_env_var: Option<String>,
     live_store: ClusterLiveStore,
 ) -> Result<IncidentCockpitSummary, AppError> {
     let resources = resource_scope_from(
+        access,
         cluster_context.clone(),
         requests.clone(),
         live_store,
-        kubeconfig_env_var.clone(),
     )
     .await?;
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = access.read_client(&cluster_context).await?;
     let event_scope = event_namespace_scope(&requests, &resources);
     let mut warnings = Vec::new();
     let (restart_result, event_result) = tokio::join!(
@@ -177,14 +169,6 @@ fn event_namespace_scope(
     }
 }
 
-async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    source.client_for_context(cluster_context).await
-}
-
 async fn list_warning_events(
     client: Client,
     scope: EventNamespaceScope,
@@ -249,45 +233,6 @@ pub(crate) struct ResourceEventMatch {
     summary: ResourceEventSummary,
 }
 
-fn event_timestamp(event: &Event) -> Option<DateTime<Utc>> {
-    event
-        .event_time
-        .as_ref()
-        .and_then(|t| k8s_timestamp_to_datetime(&t.0))
-        .or_else(|| {
-            event
-                .last_timestamp
-                .as_ref()
-                .and_then(|t| k8s_timestamp_to_datetime(&t.0))
-        })
-        .or_else(|| {
-            event
-                .first_timestamp
-                .as_ref()
-                .and_then(|t| k8s_timestamp_to_datetime(&t.0))
-        })
-        .or_else(|| {
-            event
-                .metadata
-                .creation_timestamp
-                .as_ref()
-                .and_then(|t| k8s_timestamp_to_datetime(&t.0))
-        })
-}
-
-fn event_source(event: &Event) -> String {
-    if let Some(component) = &event.reporting_component {
-        if !component.is_empty() {
-            return component.clone();
-        }
-    }
-    event
-        .source
-        .as_ref()
-        .and_then(|source| source.component.clone())
-        .unwrap_or_else(|| "unknown".to_string())
-}
-
 fn event_match(event: Event) -> Option<ResourceEventMatch> {
     event_match_at(event, Utc::now())
 }
@@ -335,15 +280,18 @@ fn event_match_sort(a: &ResourceEventMatch, b: &ResourceEventMatch) -> std::cmp:
 }
 
 fn event_time_ms(event: &ResourceEventSummary) -> i64 {
-    event
-        .last_seen_at
-        .as_deref()
+    rfc3339_millis(event.last_seen_at.as_deref())
+}
+
+/// Milliseconds since the epoch, or 0 when the value is missing or not RFC 3339.
+pub(super) fn rfc3339_millis(value: Option<&str>) -> i64 {
+    value
         .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
         .map(|dt| dt.timestamp_millis())
         .unwrap_or_default()
 }
 
-fn resource_match_key(
+pub(super) fn resource_match_key(
     kind: &str,
     api_version: Option<&str>,
     namespace: Option<&str>,
@@ -506,20 +454,11 @@ fn incident_item_sort(a: &IncidentCockpitItem, b: &IncidentCockpitItem) -> std::
 }
 
 fn latest_item_signal_time_ms(item: &IncidentCockpitItem) -> i64 {
-    item.latest_signal_at
-        .as_deref()
-        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        .map(|dt| dt.timestamp_millis())
-        .unwrap_or_default()
+    rfc3339_millis(item.latest_signal_at.as_deref())
 }
 
 fn signal_time_ms(signal: &IncidentSignalSummary) -> i64 {
-    signal
-        .last_seen_at
-        .as_deref()
-        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        .map(|dt| dt.timestamp_millis())
-        .unwrap_or_default()
+    rfc3339_millis(signal.last_seen_at.as_deref())
 }
 
 fn latest_signal_at(signals: &[IncidentSignalSummary]) -> Option<String> {

@@ -1,5 +1,5 @@
 use crate::commands::builtin_kinds::{builtin_kind, BuiltinKind};
-use crate::commands::operations::{client_for, operation_client_for, preview_patch_params};
+use crate::commands::{operations::preview_patch_params, ClusterAccess};
 use crate::models::{
     AppError, AppErrorKind, ClusterOperationResult, ClusterOperationTarget, ResourceActionEdits,
     ResourceActionKind, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
@@ -10,21 +10,13 @@ use serde_json::{json, Map, Value};
 
 const ACTION_KINDS: &[&str] = &["Deployment", "StatefulSet", "DaemonSet", "Pod", "ConfigMap"];
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_resource_action_state(
     request: ResourceActionStateRequest,
 ) -> Result<ResourceActionState, AppError> {
     validate_resource_action_target(&request.target)?;
-    if !ACTION_KINDS.contains(&request.target.kind.as_str()) {
-        return Err(AppError::new(
-            format!(
-                "{} is not supported for resource actions",
-                request.target.kind
-            ),
-            AppErrorKind::UnsupportedOperation,
-        ));
-    }
-    let client = client_for(&request.target, request.kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
+        .preview_client(&request.target.cluster_context)
+        .await?;
     let api = resource_api(client.clone(), &request.target)?;
     let current = api.get(&request.target.name).await?;
     let value = action_value(&current)?;
@@ -35,11 +27,10 @@ pub async fn get_resource_action_state(
     for (action, verb, resource) in permissions_for_kind(&request.target.kind) {
         let reviewed = access_review(client.clone(), &request.target, verb, resource).await;
         permissions.push(match reviewed {
-            Ok(allowed) => {
-                permission_from_review(verb, resource, Some(allowed), None).with_action(action)
+            Ok(allowed) => permission_from_review(action, verb, resource, Some(allowed), None),
+            Err(error) => {
+                permission_from_review(action, verb, resource, None, Some(&error.message))
             }
-            Err(error) => permission_from_review(verb, resource, None, Some(&error.message))
-                .with_action(action),
         });
     }
 
@@ -52,14 +43,10 @@ pub async fn get_resource_action_state(
         (Vec::new(), None)
     };
     if let Some(error) = revision_error {
-        if let Some(permission) = permissions
-            .iter_mut()
-            .find(|permission| permission.action == ResourceActionKind::Rollback)
-        {
-            permission.allowed = false;
-            permission.reason = format!("Revision lookup failed: {}", error.message);
-            permission.required_permission = "list replicasets".into();
-        }
+        set_rollback_unavailable(
+            &mut permissions,
+            &format!("Revision lookup failed: {}", error.message),
+        );
     }
     if request.target.kind == "Deployment" {
         match access_review(client, &request.target, "list", "replicasets").await {
@@ -87,19 +74,13 @@ pub async fn get_resource_action_state(
     ))
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn preview_resource_action(
     request: ResourceActionRequest,
 ) -> Result<ResourceActionPreview, AppError> {
     validate_resource_action_request(&request)?;
-    let client = client_for(&request.target, request.kubeconfig_env_var.clone()).await?;
-    preview_resource_action_with_client(request, client).await
-}
-
-async fn preview_resource_action_with_client(
-    request: ResourceActionRequest,
-    client: kube::Client,
-) -> Result<ResourceActionPreview, AppError> {
+    let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
+        .preview_client(&request.target.cluster_context)
+        .await?;
     let api = resource_api(client.clone(), &request.target)?;
     let current = api.get(&request.target.name).await?;
     let current_value = action_value(&current)?;
@@ -130,20 +111,14 @@ async fn preview_resource_action_with_client(
     })
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn execute_resource_action(
     request: ResourceActionRequest,
 ) -> Result<ClusterOperationResult, AppError> {
     validate_resource_action_request(&request)?;
     require_action_confirmation(&request)?;
-    let client = operation_client_for(&request.target, request.kubeconfig_env_var.clone()).await?;
-    execute_resource_action_with_client(request, client).await
-}
-
-async fn execute_resource_action_with_client(
-    request: ResourceActionRequest,
-    client: kube::Client,
-) -> Result<ClusterOperationResult, AppError> {
+    let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
+        .confirmed_operation_client(&request.target.cluster_context)
+        .await?;
     if request.action == ResourceActionKind::Rollback
         && request
             .expected_revision_uid
@@ -710,7 +685,7 @@ use state::{
     ensure_action_resource_is_not_secret, owned_revision_by_number, owned_revisions,
     permission_from_review, permissions_for_kind, revision_source_identity,
     set_rollback_permission_text, set_rollback_unavailable, state_from_value,
-    validate_revision_review_guard, SetPermissionAction,
+    validate_revision_review_guard,
 };
 
 fn resource_api(

@@ -13,25 +13,15 @@ pub use logs::benchmark_read_log_line;
 #[cfg(feature = "bench-support")]
 pub use logs::MAX_LOG_LINE_BYTES;
 
-use crate::commands::kubeconfig::{kubeconfig_source_key, KubeconfigSource};
-use crate::commands::ClusterLiveStore;
+use crate::commands::{ClusterAccess, ClusterLiveStore};
 use crate::models::{
     AggregatedLogStreamRequest, AppError, PodLogStreamRequest, StreamMessage, WatchResourceKey,
 };
 use crate::runtime::{Channel, State};
-use kube::Client;
 pub use registry::StreamRegistry;
 
 fn send(channel: &Channel<StreamMessage>, message: StreamMessage) -> bool {
     channel.send(message).is_ok()
-}
-
-async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    source.live_client_for_context(cluster_context).await
 }
 
 fn validate_resource_watch_scope(
@@ -87,19 +77,25 @@ fn validate_pod_log_stream_request(request: &PodLogStreamRequest) -> Result<(), 
     }
     crate::commands::helpers::validate_namespace(Some(&request.namespace))?;
     crate::commands::helpers::validate_path_segment(&request.pod_name, "Pod name")?;
-    if matches!(request.tail_lines, Some(tail_lines) if tail_lines < 0) {
+    validate_log_window(request.tail_lines, request.since_seconds)
+}
+
+fn validate_log_window(
+    tail_lines: Option<i64>,
+    since_seconds: Option<i64>,
+) -> Result<(), AppError> {
+    if matches!(tail_lines, Some(tail_lines) if tail_lines < 0) {
         return Err(AppError::new(
             "tail_lines must be non-negative",
             AppErrorKind::Validation,
         ));
     }
-    if matches!(request.since_seconds, Some(since_seconds) if since_seconds < 0) {
+    if matches!(since_seconds, Some(since_seconds) if since_seconds < 0) {
         return Err(AppError::new(
             "since_seconds must be non-negative",
             AppErrorKind::Validation,
         ));
     }
-
     Ok(())
 }
 
@@ -124,23 +120,9 @@ fn validate_aggregated_log_stream_request(
             AppErrorKind::Validation,
         ));
     }
-    if matches!(request.tail_lines, Some(tail_lines) if tail_lines < 0) {
-        return Err(AppError::new(
-            "tail_lines must be non-negative",
-            AppErrorKind::Validation,
-        ));
-    }
-    if matches!(request.since_seconds, Some(since_seconds) if since_seconds < 0) {
-        return Err(AppError::new(
-            "since_seconds must be non-negative",
-            AppErrorKind::Validation,
-        ));
-    }
-
-    Ok(())
+    validate_log_window(request.tail_lines, request.since_seconds)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn refresh_resource_cache(
     cluster_context: String,
     mut keys: Vec<WatchResourceKey>,
@@ -162,13 +144,17 @@ pub async fn refresh_resource_cache(
     for namespace in &namespaces {
         crate::commands::helpers::validate_namespace(Some(namespace))?;
     }
-    let source = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
     Ok(crate::models::ResourceCacheRefreshResult {
-        cleared_entries: live_store.refresh_view(&source, &cluster_context, &keys, &namespaces),
+        cleared_entries: live_store.refresh_view(
+            access.source_key(),
+            &cluster_context,
+            &keys,
+            &namespaces,
+        ),
     })
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn start_resource_watch(
     cluster_context: String,
     keys: Vec<WatchResourceKey>,
@@ -178,22 +164,21 @@ pub async fn start_resource_watch(
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<String, AppError> {
     validate_resource_watch_scope(&cluster_context, &keys)?;
-    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
     let stream_id = registry.stream_id("resources");
     for key in keys {
         let (watch_key, broadcaster, should_start) = registry.subscribe_resource(
             &stream_id,
-            &source_key,
+            access.source_key(),
             &cluster_context,
             &key,
             channel.clone(),
         );
         if should_start {
             let handle = crate::runtime::spawn(watch::run_resource_watch(
-                source_key.clone(),
+                access.clone(),
                 cluster_context.clone(),
                 key,
-                kubeconfig_env_var.clone(),
                 broadcaster.clone(),
                 live_store.inner().clone(),
             ));
@@ -210,7 +195,6 @@ pub async fn start_resource_watch(
     Ok(stream_id)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn start_resource_event_watch(
     cluster_context: String,
     kind: String,
@@ -222,11 +206,11 @@ pub async fn start_resource_event_watch(
 ) -> Result<String, AppError> {
     crate::commands::helpers::validate_namespace(namespace.as_deref())?;
     validate_event_watch_target(&cluster_context, &kind, &name)?;
-    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
     let stream_id = registry.stream_id("events");
     let (watch_key, broadcaster, should_start) = registry.subscribe_event(
         &stream_id,
-        &source_key,
+        access.source_key(),
         &cluster_context,
         &kind,
         &name,
@@ -235,11 +219,11 @@ pub async fn start_resource_event_watch(
     );
     if should_start {
         let handle = crate::runtime::spawn(watch::run_event_watch(
+            access,
             cluster_context,
             kind,
             name,
             namespace,
-            kubeconfig_env_var,
             broadcaster.clone(),
         ));
         registry.set_event_handle(&watch_key, &broadcaster, handle);
@@ -254,16 +238,17 @@ pub async fn start_resource_event_watch(
     Ok(stream_id)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn start_pod_log_stream(
     request: PodLogStreamRequest,
     channel: Channel<StreamMessage>,
     registry: State<'_, StreamRegistry>,
 ) -> Result<String, AppError> {
     validate_pod_log_stream_request(&request)?;
+    let access = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?;
     let stream_id = registry.stream_id("logs");
     let handle = crate::runtime::spawn(logs::run_pod_log_stream(
         stream_id.clone(),
+        access,
         request,
         channel.clone(),
     ));
@@ -278,16 +263,17 @@ pub async fn start_pod_log_stream(
     Ok(stream_id)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn start_aggregated_log_stream(
     request: AggregatedLogStreamRequest,
     channel: Channel<StreamMessage>,
     registry: State<'_, StreamRegistry>,
 ) -> Result<String, AppError> {
     validate_aggregated_log_stream_request(&request)?;
+    let access = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?;
     let stream_id = registry.stream_id("logs");
     let handle = crate::runtime::spawn(aggregate_logs::run_aggregated_log_stream(
         stream_id.clone(),
+        access,
         request,
         channel.clone(),
     ));
@@ -302,7 +288,6 @@ pub async fn start_aggregated_log_stream(
     Ok(stream_id)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stop_stream(
     stream_id: String,
     registry: State<'_, StreamRegistry>,

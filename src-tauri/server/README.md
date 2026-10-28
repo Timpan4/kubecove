@@ -28,7 +28,7 @@ Open `http://127.0.0.1:8080` locally. If the local port differs, start the serve
 
 The default listener is `127.0.0.1:0`, which chooses an available port. Non-loopback TCP requires `--allow-remote`, `--tls-cert` and `--tls-key`. `--socket` accepts a Unix socket path and requires `--public-origin` for its forwarded browser origin. Run `kubecove-server --help` for the remaining options.
 
-Clients run in independent sessions. Reconnects retain their session during `--session-grace`, which defaults to `5m`. Explicit disconnect or grace expiry closes only that session's streams, exec sessions and port-forwards. Browser forwards bind on the server host, so they require separate forwarding to reach them from a laptop. Kubeconfig sources are shared operator configuration in every authentication mode. Set `KUBECONFIG` before starting the server; clients cannot change the shared source settings.
+Clients run in independent sessions. Reconnects retain their session during `--session-grace`, which defaults to `5m`. Explicit disconnect or grace expiry closes only that session's streams, exec sessions and port-forwards. Browser forwards bind on the server host, so they require separate forwarding to reach them from a laptop. Kubeconfig sources are shared operator configuration in every authentication mode. Set `KUBECONFIG` before starting the server; clients cannot change the shared source settings. A request that names any other kubeconfig environment variable or source fails with a `kubeconfig` error before that variable is read.
 
 ## Memory and transport
 

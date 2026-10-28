@@ -11,6 +11,18 @@ _Avoid_ calling this surface Discovered.
 **Resource identity** means the cluster, apiVersion, kind, namespace, and name of one listed Kubernetes resource. A source that omits apiVersion matches on the remaining fields only when no exact match exists.
 _Avoid_ treating resources from different API groups with the same kind and name as one resource when both identities are known.
 
+**Kind identity** means the one key, label, scope, and resource match for a browsed kind. A built-in kind is identified by its name, and a Custom Resources kind by its apiVersion, plural, and kind, so the two never share a key.
+_Avoid_ encoding kind keys, labels, or resource matches in each feature.
+
+**Resource summary** means the resource identity, status, readiness, restarts, health, and GitOps ownership evidence that KubeCove derives from one Kubernetes object. A list row, the details panel, and a topology node show the same summary for the same object and add only their own context around it.
+_Avoid_ giving one surface its own status, readiness, or health rule for a kind.
+
+**Query catalog** means the one declaration of each frontend read family's query key, finite-read class, and retention class, with the named matchers that select reads by view, resource, or family.
+_Avoid_ building query keys, reading key positions, or listing query roots outside it.
+
+**Live view refresh** means a view's declaration of which watched kinds keep which reads fresh, bound to watch streams that stop with the view, per-read throttling, live status, recovery reloads, and manual refresh.
+_Avoid_ mapping watch events to queries, throttling refetches, or holding live status in a view.
+
 **Incident signal** means a read-only resource health, restart, or warning-event cue surfaced for triage.
 _Avoid_ using it for durable tickets, alerts, or response lifecycle state.
 
@@ -20,8 +32,11 @@ _Avoid_ treating it as a cluster-changing incident response surface.
 **Workspace Navigation** means movement within an active workspace scope across resource, GitOps, Helm, incident, settings, and live-session surfaces.
 _Avoid_ using it for switching between saved workspaces or changing cluster credentials.
 
-**Port Forward Lifecycle** means starting, restoring, reconnecting, observing, and stopping a guarded Pod or selector-backed Service port-forward session.
+**Port Forward Lifecycle** means starting, restoring, reconnecting, observing, and stopping a guarded Pod or selector-backed Service port-forward session, whether its listener runs in the backend or on the desktop through a remote server tunnel.
 _Avoid_ using it for Pod exec or durable background tunnels.
+
+**Live session scope** means the active workspace's cluster contexts and kubeconfig source key. A port-forward or Pod exec session keeps running across a workspace switch only when its context and recorded source key both match, or when the user keeps live sessions. A session without a recorded source key is outside every scope.
+_Avoid_ using it for Argo CD connection scope or finite request cancellation.
 
 **Pod Exec Lifecycle** means confirming, starting, interacting with, observing, and stopping a guarded exact-Pod exec session.
 _Avoid_ using it for local shell execution or owner-backed resource targets.
@@ -47,6 +62,9 @@ _Avoid_ treating connection response order or a profile from another workspace a
 **Argo inspection fallback** means, when Kubernetes inspection succeeds, visibly replacing a failed Connected Argo CD inspection with one complete Kubernetes transport result while preserving the Connected failure and result provenance. If both transports fail, the result preserves both safe failure classifications.
 _Avoid_ mixing data from both transports, hiding the fallback, or using it during operation execution.
 
+**Argo Application inspection** means the one entry point that turns a workspace read context and an Application into one inspection state: the normalized preference, the transport choice, readiness, and one whole result with its refresh.
+_Avoid_ sequencing profile status reads, preference normalization, or transport choice in a view.
+
 **Argo operation review** means a short-lived, single-use review that binds one exact Application action and one visible transport before confirmation. A supported Kubernetes transport may be chosen before review, but execution never changes the reviewed transport.
 _Avoid_ treating a read-only fallback as permission to execute, replaying an uncertain operation, or switching transport after confirmation.
 
@@ -64,3 +82,15 @@ _Avoid_ calling it a selected-resource YAML apply diff, which compares an edited
 
 **Helm Reconciliation** means comparison of decoded Helm release intent with live Kubernetes resource evidence.
 _Avoid_ using it for Helm install, upgrade, rollback, uninstall, or CLI execution.
+
+**Command contract** means the single declaration of every backend command's name, camelCase wire arguments, host-supplied state and transport class. The Tauri IPC handlers, server HTTP dispatch and desktop remote interception are generated from it.
+_Avoid_ keeping a separate command list for one transport.
+
+**Finite-read envelope** means the backend wrapper that registers one finite read for request cancellation and records its timing, log lines and diagnostics outcome.
+_Avoid_ using it for confirmed writes, which use a separate non-rotating client path, or live sessions, whose lifecycles follow ADR 0003. ADR 0009 defines how both behave on workspace cancellation.
+
+**Cluster access** means one request's resolved kubeconfig source and the Kubernetes clients it hands out by intent: read, preview, confirmed operation, live session or stream. The intent decides the ADR 0009 client path and whether a source that fails to load may fall back to the default kubeconfig.
+_Avoid_ building Kubernetes clients, deriving source keys or choosing a client path outside it.
+
+**Source policy** means the session's rule for which kubeconfig sources a request may select. The desktop app may name any local environment variable; a server session may select only the operator's configured source.
+_Avoid_ treating a request's kubeconfig selector as trusted outside its session's source policy.

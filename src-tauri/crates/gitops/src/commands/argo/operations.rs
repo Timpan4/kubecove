@@ -6,17 +6,17 @@ mod validation;
 pub use validation::benchmark_verify_kubernetes_application_identity;
 
 use payload::{application_path, connected_payload, kubernetes_sync_payload};
-use resolve::resolve_request;
+use resolve::{request_connection, required_cluster_context, resolve_request};
 use validation::{
     ensure_kubernetes_transport_action, fallback_allowed, valid, validate_resource_action,
     verify_application_identity, verify_kubernetes_application_identity,
 };
 
+use super::applications::application_api_resource;
 use super::connected::{api_delete, api_get, api_post, ConnectedArgo};
-use super::scope::{acquire_connection_lease, scoped_connection, ConnectionLease};
+use super::scope::{acquire_connection_lease, ConnectionLease};
 use super::session::{consume, issue, peek, OperationSession, SessionSnapshot};
-use crate::commands::gitops_crd::{fail_closed_client_for_context, find_api_resource};
-use crate::commands::kubeconfig::KubeconfigSource;
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 #[cfg(test)]
 use crate::models::ArgoApplicationRef;
@@ -31,32 +31,24 @@ use kube::{
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn preflight_argo_operation(
-    store: crate::runtime::State<'_, super::ArgoConnectionStore>,
     request: ArgoOperationRequest,
+    store: crate::runtime::State<'_, super::ArgoConnectionStore>,
 ) -> Result<ArgoOperationPreflight, AppError> {
     valid(&request)?;
+    let access = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?;
     if request.transport == "kubernetes" {
         ensure_kubernetes_transport_action(&request.action)?;
-        fallback_allowed(&request).await?;
+        fallback_allowed(&access, &request).await?;
     }
     let (resolved_request, connection_generation, connection_instance_id) =
-        resolve_request(&store, &request).await?;
+        resolve_request(&store, &access, &request).await?;
     if resolved_request.transport == "connected" && resolved_request.action == "resourceAction" {
-        let connection = scoped_connection(
+        let connection = request_connection(
             &store,
-            resolved_request.connection_id.as_deref().ok_or_else(|| {
-                AppError::new("Argo CD connection required", AppErrorKind::ArgoConnection)
-            })?,
-            resolved_request.cluster_context.as_deref().ok_or_else(|| {
-                AppError::new(
-                    "clusterContext required",
-                    AppErrorKind::ArgoOperationUnavailable,
-                )
-            })?,
+            &access,
+            &resolved_request,
             resolved_request.application.workspace_id.as_deref(),
-            resolved_request.kubeconfig_env_var.as_deref(),
         )?;
         validate_resource_action(&connection, &resolved_request).await?;
     }
@@ -86,16 +78,12 @@ async fn lease_connection(
     store: &super::ArgoConnectionStore,
     session: &OperationSession,
     connection: Arc<ConnectedArgo>,
+    source_key: &str,
 ) -> Result<ConnectionLease, AppError> {
     let connection_id = session.connection_id.as_deref().ok_or_else(|| {
         AppError::new("Argo CD connection required", AppErrorKind::ArgoConnection)
     })?;
-    let cluster_context = session.request.cluster_context.as_deref().ok_or_else(|| {
-        AppError::new(
-            "clusterContext required",
-            AppErrorKind::ArgoOperationUnavailable,
-        )
-    })?;
+    let cluster_context = required_cluster_context(&session.request)?;
     let generation = session.connection_generation.as_deref().ok_or_else(|| {
         AppError::new(
             "Argo CD connection was replaced",
@@ -114,7 +102,7 @@ async fn lease_connection(
         connection,
         cluster_context,
         session.workspace_id.as_deref(),
-        session.request.kubeconfig_env_var.as_deref(),
+        source_key,
         generation,
         instance_id,
     )
@@ -136,18 +124,21 @@ async fn run_connected_operation(
     id: &str,
     reviewed: &SessionSnapshot,
     connection: Arc<ConnectedArgo>,
+    access: &ClusterAccess,
 ) -> Result<ArgoOperationResult, AppError> {
-    let lease = lease_connection(store, &reviewed.session, connection)
+    let lease = lease_connection(store, &reviewed.session, connection, access.source_key())
         .await
         .map_err(|error| reject_reviewed_operation(&store.sessions, id, reviewed, error))?;
     let request = consume(&store.sessions, id, reviewed)?.request;
     let path = match request.action.as_str() {
-        "refresh" => application_path(&request.application, "", Some("normal")),
-        "hardRefresh" => application_path(&request.application, "", Some("hard")),
-        "sync" | "retry" => application_path(&request.application, "/sync", None),
-        "rollback" => application_path(&request.application, "/rollback", None),
-        "terminate" => application_path(&request.application, "/operation", None),
-        "resourceAction" => application_path(&request.application, "/resource/actions/v2", None),
+        "refresh" => application_path(&request.application, &[], Some("normal")),
+        "hardRefresh" => application_path(&request.application, &[], Some("hard")),
+        "sync" | "retry" => application_path(&request.application, &["sync"], None),
+        "rollback" => application_path(&request.application, &["rollback"], None),
+        "terminate" => application_path(&request.application, &["operation"], None),
+        "resourceAction" => {
+            application_path(&request.application, &["resource", "actions", "v2"], None)
+        }
         _ => {
             return Err(AppError::new(
                 "operation is not allowlisted",
@@ -177,26 +168,37 @@ async fn run_argo_operation_for_store(
     }
     let reviewed = peek(&store.sessions, &confirmation.session_id, None)?;
     valid(&reviewed.session.request)?;
-    let binding = revalidate_session(store, &reviewed.session)
-        .await
-        .map_err(|error| {
-            reject_reviewed_operation(&store.sessions, &confirmation.session_id, &reviewed, error)
-        })?;
+    let (access, binding) = async {
+        let access =
+            ClusterAccess::resolve(reviewed.session.request.kubeconfig_env_var.as_deref())?;
+        let binding = revalidate_session(store, &reviewed.session, &access).await?;
+        Ok((access, binding))
+    }
+    .await
+    .map_err(|error| {
+        reject_reviewed_operation(&store.sessions, &confirmation.session_id, &reviewed, error)
+    })?;
     match binding {
         ExecutionBinding::Kubernetes { resource, uid } => {
             let request = consume(&store.sessions, &confirmation.session_id, &reviewed)?.request;
-            kubernetes_operation(request, resource, &uid).await
+            kubernetes_operation(&access, request, resource, &uid).await
         }
         ExecutionBinding::Connected(connection) => {
-            run_connected_operation(store, &confirmation.session_id, &reviewed, connection).await
+            run_connected_operation(
+                store,
+                &confirmation.session_id,
+                &reviewed,
+                connection,
+                &access,
+            )
+            .await
         }
     }
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn run_argo_operation(
-    store: crate::runtime::State<'_, super::ArgoConnectionStore>,
     confirmation: ArgoOperationConfirmation,
+    store: crate::runtime::State<'_, super::ArgoConnectionStore>,
 ) -> Result<ArgoOperationResult, AppError> {
     run_argo_operation_for_store(&store, confirmation).await
 }
@@ -204,27 +206,13 @@ pub async fn run_argo_operation(
 async fn revalidate_session(
     store: &super::ArgoConnectionStore,
     session: &OperationSession,
+    access: &ClusterAccess,
 ) -> Result<ExecutionBinding, AppError> {
     let request = &session.request;
     if request.transport == "connected" {
-        let connection = scoped_connection(
-            store,
-            request.connection_id.as_deref().ok_or_else(|| {
-                AppError::new("Argo CD connection required", AppErrorKind::ArgoConnection)
-            })?,
-            request.cluster_context.as_deref().ok_or_else(|| {
-                AppError::new(
-                    "clusterContext required",
-                    AppErrorKind::ArgoOperationUnavailable,
-                )
-            })?,
-            session.workspace_id.as_deref(),
-            request.kubeconfig_env_var.as_deref(),
-        )?;
-        let connection_id = request.connection_id.as_deref().ok_or_else(|| {
-            AppError::new("Argo CD connection required", AppErrorKind::ArgoConnection)
-        })?;
-        if session.connection_id.as_deref() != Some(connection_id)
+        let connection =
+            request_connection(store, access, request, session.workspace_id.as_deref())?;
+        if session.connection_id != request.connection_id
             || session.connection_generation.as_deref() != Some(connection.generation.as_str())
             || session.connection_instance_id.as_deref() != Some(connection.instance_id.as_str())
         {
@@ -235,7 +223,7 @@ async fn revalidate_session(
         }
         let current = api_get(
             &connection,
-            &application_path(&session.application, "", None),
+            &application_path(&session.application, &[], None),
         )
         .await?;
         verify_application_identity(&current, &session.application)?;
@@ -244,13 +232,10 @@ async fn revalidate_session(
         }
         return Ok(ExecutionBinding::Connected(connection));
     }
-    fallback_allowed(request).await?;
+    fallback_allowed(access, request).await?;
     let context = request.cluster_context.as_deref().expect("validated");
-    let client =
-        fail_closed_client_for_context(context, request.kubeconfig_env_var.clone()).await?;
-    let resource = find_api_resource(&client, "argoproj.io", "Application")
-        .await?
-        .ok_or_else(|| AppError::new("Application CRD not found", AppErrorKind::Cluster))?;
+    let client = access.preview_client(context).await?;
+    let resource = application_api_resource(&client).await?;
     let current = Api::<DynamicObject>::namespaced_with(
         client.clone(),
         request.application.namespace.as_deref().expect("validated"),
@@ -278,16 +263,14 @@ fn accepted(transport: &str, operation: Value) -> Result<ArgoOperationResult, Ap
 }
 
 async fn kubernetes_operation(
+    access: &ClusterAccess,
     request: ArgoOperationRequest,
     resource: ApiResource,
     expected_uid: &str,
 ) -> Result<ArgoOperationResult, AppError> {
     ensure_kubernetes_transport_action(&request.action)?;
-    // ADR 0009: a confirmed write must not be cancelled by workspace client
-    // rotation after the API server may already have applied it.
-    let client = KubeconfigSource::new(request.kubeconfig_env_var.clone())?
-        .fail_closed()
-        .operation_client_for_context(request.cluster_context.as_deref().expect("validated"))
+    let client = access
+        .confirmed_operation_client(request.cluster_context.as_deref().expect("validated"))
         .await?;
     let api = Api::<DynamicObject>::namespaced_with(
         client,

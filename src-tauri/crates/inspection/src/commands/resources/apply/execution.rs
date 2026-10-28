@@ -1,8 +1,6 @@
-use crate::commands::helpers::serialize_resource_document;
-use crate::models::AppErrorKind;
-use crate::models::{AppError, YamlApplyPreview, YamlApplyResult, YamlViewMode};
+use crate::models::{AppError, AppErrorKind};
 use kube::{
-    api::{Api, DynamicObject, Patch, PatchParams},
+    api::{Api, DynamicObject, PatchParams},
     Error as KubeError,
 };
 
@@ -10,60 +8,7 @@ use super::validation::ValidatedApply;
 
 const FIELD_MANAGER: &str = "kubecove";
 
-pub(super) async fn prepare_yaml_apply_with_client(
-    client: kube::Client,
-    validated: ValidatedApply,
-) -> Result<YamlApplyPreview, AppError> {
-    let api = apply_api(client, &validated)?;
-    let current = api
-        .get(&validated.request.name)
-        .await
-        .map_err(AppError::from)?;
-    let encoding = validated.request.yaml_encoding;
-    let current_yaml = serialize_resource_document(&current, YamlViewMode::ApplyClean, encoding)?;
-    let dry_run = api
-        .patch(
-            &validated.request.name,
-            &apply_patch_params(validated.request.force_conflicts).dry_run(),
-            &Patch::Apply(&validated.manifest),
-        )
-        .await
-        .map_err(apply_error)?;
-    let dry_run_yaml = serialize_resource_document(&dry_run, YamlViewMode::ApplyClean, encoding)?;
-
-    Ok(YamlApplyPreview {
-        target: validated.target,
-        current_yaml,
-        dry_run_yaml,
-    })
-}
-
-pub(super) async fn apply_yaml_with_client(
-    client: kube::Client,
-    validated: ValidatedApply,
-) -> Result<YamlApplyResult, AppError> {
-    let api = apply_api(client, &validated)?;
-    let applied = api
-        .patch(
-            &validated.request.name,
-            &apply_patch_params(validated.request.force_conflicts),
-            &Patch::Apply(&validated.manifest),
-        )
-        .await
-        .map_err(apply_error)?;
-    let applied_yaml = serialize_resource_document(
-        &applied,
-        YamlViewMode::ApplyClean,
-        validated.request.yaml_encoding,
-    )?;
-
-    Ok(YamlApplyResult {
-        target: validated.target,
-        applied_yaml,
-    })
-}
-
-fn apply_patch_params(force_conflicts: bool) -> PatchParams {
+pub(super) fn apply_patch_params(force_conflicts: bool) -> PatchParams {
     let params = PatchParams::apply(FIELD_MANAGER);
     if force_conflicts {
         params.force()
@@ -72,7 +17,7 @@ fn apply_patch_params(force_conflicts: bool) -> PatchParams {
     }
 }
 
-fn apply_api(
+pub(super) fn apply_api(
     client: kube::Client,
     validated: &ValidatedApply,
 ) -> Result<Api<DynamicObject>, AppError> {
@@ -93,7 +38,7 @@ fn apply_api(
     }
 }
 
-fn apply_error(error: KubeError) -> AppError {
+pub(super) fn apply_error(error: KubeError) -> AppError {
     match &error {
         KubeError::Api(api_error) if status_has_cause(api_error, "FieldManagerConflict") => {
             AppError::new(

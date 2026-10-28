@@ -1,19 +1,28 @@
-import type { ArgoConnectionChoice, ArgoConnectionPreference } from "./argo-connection-policy";
+import { QueryObserver, type QueryClient } from "@tanstack/query-core";
 import {
 	eligibleArgoProfiles,
-	normalizeArgoConnectionPreference,
 	resolveArgoConnectionPolicy,
+	type ArgoConnectionChoice,
 } from "./argo-connection-policy";
-import { createCancelScope, createFiniteReadRequest } from "./finite-read-lifecycle";
+import { finiteRead } from "./finite-read-lifecycle";
 import type {
 	ArgoApplicationInspector,
 	ArgoApplicationRef,
 	ArgoConnectionStatus,
 } from "./gitops-types";
-import { queryKeys } from "./queryKeys";
-import type { SavedArgoProfile } from "./settings";
+import { queryKeys, queryMatchers, type QueryMatch } from "./queryKeys";
+import type { SavedArgoProfile, SettingsState } from "./settings";
 import { getArgoApplicationInspector, getArgoConnectionStatus } from "./tauri-argo";
 import type { TauriClient } from "./tauri-runtime";
+import type { WatchResourceKey } from "./types";
+import type { WorkspaceReadContext } from "./workspaceReadContext";
+
+// ADR 0016 module 2: one entry point owns the profile status read, the workspace
+// preference, the transport choice, and the whole-result inspection read.
+
+export const ARGO_APPLICATION_API_VERSION = "argoproj.io/v1alpha1";
+
+type ArgoConnectionStatusEntries = (readonly [string, ArgoConnectionStatus])[];
 
 export interface ArgoConnectionStatusReadSpec {
 	profiles: SavedArgoProfile[];
@@ -21,42 +30,14 @@ export interface ArgoConnectionStatusReadSpec {
 	enabled: boolean;
 }
 
-export function buildArgoConnectionStatusReadSpec({
-	profiles,
-	clusterContext,
-	workspaceId,
-	kubeconfigEnvVar,
-}: {
-	profiles: readonly SavedArgoProfile[];
-	clusterContext: string;
-	workspaceId: string;
-	kubeconfigEnvVar?: string;
-}): ArgoConnectionStatusReadSpec {
-	const eligibleProfiles = eligibleArgoProfiles(
-		profiles,
-		clusterContext,
-		workspaceId,
-		kubeconfigEnvVar ?? "",
-	);
-	return {
-		profiles: eligibleProfiles,
-		queryKey: queryKeys.argoConnectionStatuses(
-			clusterContext,
-			workspaceId,
-			eligibleProfiles.map((profile) => profile.id),
-			kubeconfigEnvVar,
-		),
-		enabled: eligibleProfiles.length > 0,
-	};
-}
-
+/** Status of each profile; a profile whose status read fails is left out. */
 export function argoConnectionStatusQueryOptions(
 	client: TauriClient,
 	spec: ArgoConnectionStatusReadSpec,
 ) {
 	return {
 		queryKey: spec.queryKey,
-		queryFn: async () => {
+		queryFn: async (): Promise<ArgoConnectionStatusEntries> => {
 			const results = await Promise.allSettled(
 				spec.profiles.map(
 					async (profile) =>
@@ -72,110 +53,244 @@ export function argoConnectionStatusQueryOptions(
 	};
 }
 
-export interface ArgoApplicationInspectionReadSpec {
-	policy: ArgoConnectionChoice<SavedArgoProfile>;
-	request: {
-		clusterContext: string;
-		kubeconfigEnvVar?: string;
-		connectionId?: string;
-		transport: "connected" | "kubernetes";
-		application: ArgoApplicationRef;
-		redactSecrets: boolean;
+/** The Application a view inspects; its workspace scope comes from the read context. */
+export type ArgoApplicationTarget = Pick<
+	ArgoApplicationRef,
+	"name" | "namespace" | "project" | "resourceVersion" | "uid" | "apiVersion"
+>;
+
+export function argoApplicationRef(
+	readContext: WorkspaceReadContext,
+	target: ArgoApplicationTarget,
+): ArgoApplicationRef {
+	return {
+		name: target.name,
+		namespace: target.namespace ?? null,
+		project: target.project ?? null,
+		resourceVersion: target.resourceVersion ?? null,
+		uid: target.uid ?? null,
+		apiVersion: target.apiVersion ?? ARGO_APPLICATION_API_VERSION,
+		context: readContext.clusterContext,
+		workspaceId: readContext.workspaceId,
 	};
-	queryKey: readonly unknown[];
-	cancelScope: string;
-	ready: boolean;
-	enabled: boolean;
-	redactSecrets: boolean;
 }
 
-export function buildArgoApplicationInspectionReadSpec({
-	profiles,
-	statuses,
-	statusesPending,
-	preference,
-	application,
-	clusterContext,
-	workspaceId,
-	kubeconfigEnvVar,
-	redactSecrets,
-	enabled,
-}: {
-	profiles: readonly SavedArgoProfile[];
-	statuses?: readonly (readonly [string, ArgoConnectionStatus])[];
-	statusesPending: boolean;
-	preference: ArgoConnectionPreference;
-	application: ArgoApplicationRef;
-	clusterContext: string;
-	workspaceId: string;
-	kubeconfigEnvVar?: string;
-	redactSecrets: boolean;
-	enabled: boolean;
-}): ArgoApplicationInspectionReadSpec {
-	const normalizedPreference = normalizeArgoConnectionPreference(preference);
-	const policy = resolveArgoConnectionPolicy({
-		profiles,
-		statuses,
-		clusterContext,
-		workspaceId,
-		kubeconfigSourceKey: kubeconfigEnvVar ?? "",
-		preference: normalizedPreference,
-	});
-	const connectionId = policy.connectionId ?? "";
-	const queryKey = queryKeys.argoWorkspaceInspector(
-		clusterContext,
-		workspaceId,
-		application.name,
-		application.namespace,
-		application.uid,
-		redactSecrets,
-		policy.transport,
-		connectionId,
-		kubeconfigEnvVar,
+/** The watch on Applications in one namespace, or in every namespace. */
+export function argoApplicationWatchKey(namespace?: string | null): WatchResourceKey {
+	return {
+		resourceKind: { kind: "Application", apiVersion: ARGO_APPLICATION_API_VERSION, plural: "applications", namespaced: true },
+		namespace: namespace ?? undefined,
+	};
+}
+
+/** Every read for one workspace Application: inspections and resource comparisons for any UID or transport. */
+export function argoApplicationReads(
+	readContext: Pick<WorkspaceReadContext, "workspaceId" | "clusterContext" | "kubeconfigSourceKey">,
+	application: Pick<ArgoApplicationRef, "name" | "namespace">,
+): QueryMatch {
+	return queryMatchers.prefix(
+		queryKeys.argoWorkspaceApplicationScope(
+			readContext.clusterContext,
+			readContext.workspaceId,
+			application.name,
+			application.namespace,
+			readContext.kubeconfigSourceKey,
+		),
 	);
-	const policyReady =
-		normalizedPreference.kind === "kubernetes" ||
-		policy.eligibleProfiles.length === 0 ||
-		!statusesPending;
-	const connectionReady =
-		policyReady && (policy.transport === "kubernetes" || !policy.unavailable);
-	const request: ArgoApplicationInspectionReadSpec["request"] = {
-		clusterContext,
-		kubeconfigEnvVar,
-		transport: policy.transport,
-		application,
-		redactSecrets,
-	};
-	if (policy.transport === "connected") request.connectionId = connectionId;
-
-	return {
-		policy,
-		request,
-		queryKey,
-		cancelScope: createCancelScope("argo-application-inspection", queryKey),
-		ready: connectionReady,
-		enabled: enabled && connectionReady,
-		redactSecrets,
-	};
 }
 
-export function argoApplicationInspectionQueryOptions(
+export interface ArgoInspectionTarget {
+	readContext: WorkspaceReadContext;
+	/** Null while the view has no Application. */
+	application: ArgoApplicationTarget | null;
+	/** False while the view is hidden; nothing is read then. */
+	enabled?: boolean;
+}
+
+export interface ArgoInspectionInput extends ArgoInspectionTarget {
+	settings: Pick<SettingsState, "argoProfiles" | "argoConnectionPreferences" | "redactSecrets">;
+}
+
+export type ArgoApplicationInspectionRequest = Parameters<typeof getArgoApplicationInspector>[1];
+
+export interface ArgoApplicationInspection {
+	/** The normalized workspace preference, eligible profiles, and the transport they select. */
+	choice: ArgoConnectionChoice<SavedArgoProfile>;
+	selectedStatus: ArgoConnectionStatus | null;
+	/** Automatic selection is waiting for profile statuses. */
+	checkingProfiles: boolean;
+	/** The view is reading, the choice is settled, and its transport can serve reads. */
+	ready: boolean;
+	/** What the choice resolves to, for reads that must use the same transport. */
+	request: ArgoApplicationInspectionRequest | null;
+	/** One whole result; a Kubernetes fallback keeps its Connected failure and provenance. */
+	data: ArgoApplicationInspector | undefined;
+	loading: boolean;
+	refreshing: boolean;
+	error: unknown;
+}
+
+export interface ArgoApplicationInspectionController {
+	readonly current: ArgoApplicationInspection;
+	update(input: ArgoInspectionInput): void;
+	/** Reads run while at least one listener is subscribed. */
+	subscribe(listener: (state: ArgoApplicationInspection) => void): () => void;
+	refresh(): Promise<void>;
+}
+
+function inspectionQueryOptions(
 	client: TauriClient,
-	spec: ArgoApplicationInspectionReadSpec,
+	request: ArgoApplicationInspectionRequest,
+	workspaceId: string,
+	enabled: boolean,
+	redactSecrets: boolean,
 ) {
+	const { application } = request;
 	return {
-		queryKey: spec.queryKey,
-		queryFn: () =>
-			getArgoApplicationInspector(
-				client,
-				spec.request,
-				createFiniteReadRequest(spec.cancelScope, "argo-inspection"),
+		...finiteRead({
+			queryKey: queryKeys.argoWorkspaceInspector(
+				request.clusterContext,
+				workspaceId,
+				application.name,
+				application.namespace,
+				application.uid,
+				redactSecrets,
+				request.transport,
+				request.connectionId,
+				request.kubeconfigEnvVar,
 			),
-		enabled: spec.enabled,
+			label: "argo.inspection",
+			read: (cancellable) => getArgoApplicationInspector(client, request, cancellable),
+		}),
+		enabled,
 		staleTime: 30_000,
-		refetchInterval: (_query: { state: { data?: ArgoApplicationInspector } }) => 15_000,
+		refetchInterval: 15_000,
 		refetchIntervalInBackground: false,
 		retry: false,
-		gcTime: spec.redactSecrets ? undefined : 0,
+		// Unredacted inspections leave the cache as soon as no view shows them.
+		gcTime: redactSecrets ? undefined : 0,
+	};
+}
+
+function inspectionRequest(
+	readContext: WorkspaceReadContext,
+	application: ArgoApplicationTarget,
+	choice: ArgoConnectionChoice<SavedArgoProfile>,
+): ArgoApplicationInspectionRequest {
+	const request: ArgoApplicationInspectionRequest = {
+		clusterContext: readContext.clusterContext,
+		kubeconfigEnvVar: readContext.kubeconfigSourceKey,
+		transport: choice.transport,
+		application: argoApplicationRef(readContext, application),
+	};
+	if (choice.transport === "connected") request.connectionId = choice.connectionId ?? "";
+	return request;
+}
+
+const idleRead = (label: string) => ({ queryKey: queryKeys.idle(label), enabled: false });
+
+export function createArgoApplicationInspection(
+	client: TauriClient,
+	queryClient: QueryClient,
+	initial: ArgoInspectionInput,
+): ArgoApplicationInspectionController {
+	const statuses = new QueryObserver<ArgoConnectionStatusEntries>(queryClient, idleRead("argo.statuses"));
+	const inspector = new QueryObserver<ArgoApplicationInspector>(queryClient, idleRead("argo.inspection"));
+	const listeners = new Set<(state: ArgoApplicationInspection) => void>();
+	let input = initial;
+	let current = step(initial);
+	let stopObserving: (() => void) | null = null;
+	let syncing = false;
+	let resync = false;
+
+	function step({ readContext, application, settings, enabled = true }: ArgoInspectionInput): ArgoApplicationInspection {
+		const { clusterContext, workspaceId, kubeconfigSourceKey } = readContext;
+		const reading = enabled && readContext.sourceReady && application !== null;
+		const profiles = eligibleArgoProfiles(settings.argoProfiles, clusterContext, workspaceId, kubeconfigSourceKey ?? "");
+		const statusesEnabled = reading && profiles.length > 0;
+		statuses.setOptions(argoConnectionStatusQueryOptions(client, {
+			profiles,
+			queryKey: queryKeys.argoConnectionStatuses(clusterContext, workspaceId, profiles.map((profile) => profile.id), kubeconfigSourceKey),
+			enabled: statusesEnabled,
+		}));
+		const statusResult = statuses.getCurrentResult();
+		const choice = resolveArgoConnectionPolicy({
+			profiles,
+			statuses: statusResult.data,
+			clusterContext,
+			workspaceId,
+			kubeconfigSourceKey: kubeconfigSourceKey ?? "",
+			preference: settings.argoConnectionPreferences[workspaceId],
+		});
+		const checkingProfiles = choice.preference.kind !== "kubernetes" && profiles.length > 0 && statusResult.isPending;
+		const ready = reading && !checkingProfiles && (choice.transport === "kubernetes" || !choice.unavailable);
+		const request = application && inspectionRequest(readContext, application, choice);
+		inspector.setOptions(
+			request
+				? inspectionQueryOptions(client, request, workspaceId, ready, settings.redactSecrets)
+				: idleRead("argo.inspection"),
+		);
+		const result = inspector.getCurrentResult();
+		const loading = (statusesEnabled && statusResult.isPending) || (ready && result.isPending);
+		return {
+			choice,
+			selectedStatus: statusResult.data?.find(([id]) => id === choice.connectionId)?.[1] ?? null,
+			checkingProfiles,
+			ready,
+			request,
+			data: request ? result.data : undefined,
+			loading,
+			refreshing: !loading && result.isFetching,
+			error: result.isError ? result.error : null,
+		};
+	}
+
+	// Setting observer options can report a new result synchronously; settle before notifying.
+	function sync() {
+		if (syncing) {
+			resync = true;
+			return;
+		}
+		syncing = true;
+		try {
+			do {
+				resync = false;
+				current = step(input);
+			} while (resync);
+		} finally {
+			syncing = false;
+		}
+		for (const listener of listeners) listener(current);
+	}
+
+	return {
+		get current() {
+			return current;
+		},
+		update(next) {
+			input = next;
+			sync();
+		},
+		subscribe(listener) {
+			listeners.add(listener);
+			if (!stopObserving) {
+				const stopStatuses = statuses.subscribe(sync);
+				const stopInspector = inspector.subscribe(sync);
+				stopObserving = () => {
+					stopStatuses();
+					stopInspector();
+				};
+			}
+			sync();
+			return () => {
+				listeners.delete(listener);
+				if (listeners.size > 0) return;
+				stopObserving?.();
+				stopObserving = null;
+			};
+		},
+		async refresh() {
+			if (current.ready) await inspector.refetch();
+		},
 	};
 }

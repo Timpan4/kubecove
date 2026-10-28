@@ -1,5 +1,8 @@
 use super::*;
-use crate::{commands::streams::StreamRegistry, test_support::stream_channel};
+use crate::{
+    commands::{streams::StreamRegistry, ClientIntent, FixedClusterAccess},
+    test_support::stream_channel,
+};
 use http::{Request, Response};
 use kube::client::Body;
 use serde_json::{json, Value};
@@ -49,15 +52,17 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
         serde_json::from_value(json!({ "resourceKind": { "kind": "Pod" } })).unwrap();
     let registry = StreamRegistry::default();
     let (_, broadcaster, _) = registry.subscribe_resource("test", "source", "dev", &key, channel);
-    run_resource_watch_with_client(
-        "source".into(),
+    let cluster = FixedClusterAccess::new(client);
+    run_resource_watch(
+        cluster.access(),
         "dev".into(),
         key,
         broadcaster,
         ClusterLiveStore::default(),
-        || std::future::ready(Ok(client.clone())),
     )
     .await;
+    // Each reconnect asks for a long-lived stream client again.
+    assert_eq!(cluster.intents(), vec![ClientIntent::Stream; 2]);
 
     let requests = requests.lock().unwrap();
     assert_eq!(
@@ -118,13 +123,12 @@ async fn forbidden_watch_stops_and_replays_permission_status_to_new_subscribers(
         let registry = StreamRegistry::default();
         let (_, broadcaster, _) =
             registry.subscribe_resource("test", "source", "dev", &key, channel);
-        run_resource_watch_with_client(
-            "source".into(),
+        run_resource_watch(
+            FixedClusterAccess::new(client.clone()).access(),
             "dev".into(),
             key.clone(),
             broadcaster,
             ClusterLiveStore::default(),
-            || std::future::ready(Ok(client.clone())),
         )
         .await;
         assert_eq!(*requests.lock().unwrap(), 1);

@@ -1,7 +1,5 @@
-use super::target::{
-    client_for_context, validate_port, PortForwardTarget, PortForwardTargetKind,
-    ValidatedPortForwardRequest,
-};
+use super::target::{validate_port, PortForwardTarget, ValidatedPortForwardRequest};
+use crate::commands::ClusterAccess;
 use crate::models::AppError;
 use crate::models::AppErrorKind;
 use k8s_openapi::{
@@ -70,17 +68,10 @@ pub async fn resolve_service_target(
 }
 
 pub(super) async fn resolve_service_request_target(
+    access: &ClusterAccess,
     request: ValidatedPortForwardRequest,
 ) -> Result<PortForwardTarget, AppError> {
-    let client =
-        client_for_context(&request.cluster_context, request.kubeconfig_env_var.clone()).await?;
-    resolve_service_request_target_with_client(request, client).await
-}
-
-pub(super) async fn resolve_service_request_target_with_client(
-    request: ValidatedPortForwardRequest,
-    client: Client,
-) -> Result<PortForwardTarget, AppError> {
+    let client = access.live_session_client(&request.cluster_context).await?;
     let resolved = resolve_service_target(
         client,
         &request.namespace,
@@ -89,16 +80,10 @@ pub(super) async fn resolve_service_request_target_with_client(
     )
     .await?;
 
+    // resolve_service_target resolves inside the request's namespace.
     Ok(PortForwardTarget {
-        cluster_context: request.cluster_context,
-        kubeconfig_env_var: request.kubeconfig_env_var,
-        kubeconfig_source_key: request.kubeconfig_source_key,
-        kubeconfig_source_label: request.kubeconfig_source_label,
-        namespace: resolved.namespace,
-        target_kind: PortForwardTargetKind::Service,
-        target_name: request.target_name,
+        request,
         pod_name: resolved.pod_name,
-        remote_port: request.remote_port,
         pod_port: resolved.pod_port,
     })
 }

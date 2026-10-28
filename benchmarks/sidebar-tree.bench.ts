@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { bench, describe } from "vitest";
 import {
-	appendPresentCustomResourceKinds,
 	buildSidebarTree,
 	resourceBrowserAvailableKinds,
 } from "@/app/svelte/workspaceShellModel";
@@ -15,10 +14,9 @@ import {
 	filterCustomResourceKinds,
 	pendingCustomResourceNamespaces,
 } from "@/components/sidebar-tree-helpers";
-import { isDiscoveredResourceKind } from "@/features/resources/helpers";
+import { kindKey } from "@/lib/kind-identity";
 import type {
 	DiscoveredResourceKind,
-	ResourceKindSelection,
 } from "@/lib/types";
 
 const namespaces = Array.from(
@@ -95,15 +93,11 @@ const fixedScopeKinds = resourceBrowserAvailableKinds(
 	duplicateDiscoveryObservations,
 	true,
 );
-const appendedKinds = appendPresentCustomResourceKinds(
+const appendedKinds = resourceBrowserAvailableKinds(
 	["Pod"],
 	duplicateDiscoveryObservations,
+	false,
 );
-function discoveredKindIdentity(kind: ResourceKindSelection): string {
-	return isDiscoveredResourceKind(kind)
-		? `dynamic:${kind.apiVersion}:${kind.plural}:${kind.kind}`
-		: `typed:${kind}`;
-}
 const fullTree = buildSidebarTree({
 	namespaces: namespaces.map((name) => ({ name, age: "1d" })),
 	resourceKinds: extraKinds,
@@ -136,12 +130,12 @@ assert.deepEqual(
 assert.equal(availableKinds.length, extraKinds.length + 2);
 assert.equal(appendedKinds.length, extraKinds.length + 1);
 assert.deepEqual(
-	availableKinds.slice(2).map(discoveredKindIdentity),
-	extraKinds.map(discoveredKindIdentity),
+	availableKinds.slice(2).map(kindKey),
+	extraKinds.map(kindKey),
 );
 assert.deepEqual(fixedScopeKinds, ["Pod", "Deployment"]);
 assert.equal(
-	new Set(appendedKinds.map(discoveredKindIdentity)).size,
+	new Set(appendedKinds.map(kindKey)).size,
 	appendedKinds.length,
 );
 assert(
@@ -224,9 +218,10 @@ describe("F26 lazy sidebar children with folded F27 query maps and F28 present k
 				false,
 			);
 			resourceBrowserAvailableKinds(["Pod", "Deployment"], extraKinds, true);
-			appendPresentCustomResourceKinds(
+			resourceBrowserAvailableKinds(
 				["Pod"],
 				duplicateDiscoveryObservations,
+				false,
 			);
 		},
 	);

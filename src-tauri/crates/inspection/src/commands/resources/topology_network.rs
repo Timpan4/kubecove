@@ -1,5 +1,6 @@
 use super::topology::{
-    node_from_input, push_edge, topology_kind_rank, topology_node_id, TopologyInputResource,
+    input_node_id, node_from_input, push_edge, topology_kind_rank, topology_node_id,
+    TopologyInputResource,
 };
 use crate::models::{ResourceTopology, TopologyRelation};
 use std::collections::{BTreeMap, HashSet};
@@ -46,8 +47,7 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
     } = inputs;
     let mut resources_by_id = BTreeMap::new();
     for input in resources {
-        let node = node_from_input(&input);
-        resources_by_id.insert(node.id, input);
+        resources_by_id.insert(input_node_id(&input), input);
     }
 
     let mut nodes_by_id = BTreeMap::new();
@@ -101,6 +101,10 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
 
     for service in &services {
         let service_id = resource_id("Service", "v1", &service.namespace, &service.name);
+        // Network flow labels Service nodes with their type; the summary keeps the shared status.
+        if let Some(node) = nodes_by_id.get_mut(&service_id) {
+            node.status = Some(service.service_type.clone());
+        }
         let service_slices: Vec<_> = endpoint_slices
             .iter()
             .filter(|slice| {
@@ -154,13 +158,14 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
                     && selector_matches(&service.selector, &pod.labels)
             }) {
                 let pod_node = node_from_input(pod);
-                linked_pods.insert(pod_node.id.clone());
-                nodes_by_id.insert(pod_node.id.clone(), pod_node.clone());
+                let pod_id = pod_node.id.clone();
+                linked_pods.insert(pod_id.clone());
+                nodes_by_id.insert(pod_id.clone(), pod_node);
                 push_edge(
                     &mut edges,
                     &mut edge_keys,
                     service_id.clone(),
-                    pod_node.id,
+                    pod_id,
                     TopologyRelation::Selects,
                 );
             }

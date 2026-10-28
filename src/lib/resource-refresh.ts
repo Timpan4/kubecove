@@ -1,27 +1,10 @@
-import type { Query, QueryClient, QueryKey } from "@tanstack/svelte-query";
-import { isFiniteReadQuery } from "./finite-read-lifecycle";
+import type { Query, QueryClient } from "@tanstack/svelte-query";
 import { friendlyErrorBucket } from "./friendly-errors";
 import { messageFromError } from "./error-redaction";
-import { kubeconfigSourceKey } from "./settings";
+import { queryMatchers, type QueryMatch } from "./queryKeys";
 import { refreshResourceCache } from "./tauri";
 import type { TauriClient } from "./tauri";
 import type { WatchResourceKey } from "./types";
-
-export function isCurrentViewRead(
-	query: Query,
-	context: string,
-	source?: string,
-): boolean {
-	const key = query.queryKey;
-	const contextIndex =
-		key[0] === "resource-details" || key[0] === "resource-yaml" ? 3 : 2;
-	return (
-		isFiniteReadQuery(query) &&
-		query.isActive() &&
-		key[1] === kubeconfigSourceKey(source) &&
-		key[contextIndex] === context
-	);
-}
 
 export async function refreshCurrentView({
 	client,
@@ -39,19 +22,18 @@ export async function refreshCurrentView({
 	kubeconfigEnvVar?: string;
 	keys: WatchResourceKey[];
 	namespaces: string[];
-	/** Permission recovery limits invalidation to these query families. */
-	reads?: readonly QueryKey[];
+	/** Permission recovery limits invalidation to these reads. */
+	reads?: readonly QueryMatch[];
 	/** Automatic recovery waits for running reads before clearing caches. */
 	cancelRefetch?: boolean;
 }): Promise<string[]> {
 	// Capture the exact active reads. Navigation during refresh must not broaden its scope.
+	const inCurrentView = queryMatchers.currentView(clusterContext, kubeconfigEnvVar);
 	const queries = new Set(
 		queryClient
 			.getQueryCache()
 			.findAll({
-				predicate: (query) =>
-					isCurrentViewRead(query, clusterContext, kubeconfigEnvVar) &&
-					(!reads || reads.some((key) => key.every((part, index) => part === query.queryKey[index]))),
+				predicate: (query) => inCurrentView(query) && (!reads || reads.some((read) => read(query))),
 			}),
 	);
 	const predicate = (query: Query) => queries.has(query);

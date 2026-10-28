@@ -1,5 +1,7 @@
 {
   lib,
+  stdenv,
+  autoPatchelfHook,
   bun2nix,
   # "web" builds the browser app kubecove-server embeds.
   runtime ? "native",
@@ -20,6 +22,8 @@ bun2nix.mkDerivation {
       ../public
       ../scripts/dev-interactions-plugin.ts
       ../scripts/frontend-bundle-report.ts
+      ../scripts/tsrs.ts
+      ../scripts/svelte-check.mjs
       ../src
       ../svelte.config.js
       ../tsconfig.json
@@ -31,6 +35,9 @@ bun2nix.mkDerivation {
     bunNix = ../bun.nix;
   };
 
+  nativeBuildInputs = [ autoPatchelfHook ];
+  buildInputs = [ stdenv.cc.cc.lib ];
+
   bunInstallFlags = [
     "--backend=copyfile"
     "--linker=isolated"
@@ -40,6 +47,14 @@ bun2nix.mkDerivation {
 
   VITE_KUBECOVE_RELEASE_CHANNEL = "dev";
   KUBECOVE_PUBLIC_RUNTIME = runtime;
+
+  # The npm binary needs Nix's linker before the build's TypeScript check runs.
+  preBuild = ''
+    while IFS= read -r -d "" binary; do
+      chmod u+w "$binary"
+      autoPatchelf "$binary"
+    done < <(find node_modules -type f -path '*/@tsrs/*/tsrs' -print0)
+  '';
 
   buildPhase = ''
     runHook preBuild

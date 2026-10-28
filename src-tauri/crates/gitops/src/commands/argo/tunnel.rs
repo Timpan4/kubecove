@@ -1,59 +1,35 @@
 use crate::models::AppErrorKind;
 use crate::{
-    commands::sessions::{
-        runner::{forward_pod_connection, should_retry_accept, ACCEPT_RETRY_DELAY},
-        service::resolve_service_target,
-        target::client_for_context,
+    commands::{
+        sessions::{
+            relay::{bind_loopback, spawn_relay, RelayEvent},
+            runner::forward_pod_connection,
+            service::resolve_service_target,
+        },
+        ClusterAccess,
     },
     models::{AppError, ArgoConfirmedTarget},
+    runtime::JoinHandle,
 };
 use k8s_openapi::api::core::v1::Pod;
 use kube::{api::Api, Client};
-use std::{
-    net::{Ipv4Addr, SocketAddrV4},
-    sync::Arc,
-};
-use tokio::{
-    net::TcpListener,
-    sync::oneshot,
-    task::{JoinHandle, JoinSet},
-};
+use tokio::net::TcpStream;
 
 pub(crate) struct ArgoServiceTunnel {
     local_port: u16,
     pod_name: String,
-    state: Arc<TunnelState>,
-}
-
-struct TunnelState {
-    shutdown: std::sync::Mutex<Option<oneshot::Sender<()>>>,
-    task: std::sync::Mutex<Option<JoinHandle<()>>>,
-}
-
-impl TunnelState {
-    fn close(&self) {
-        if let Ok(mut shutdown) = self.shutdown.lock() {
-            if let Some(shutdown) = shutdown.take() {
-                let _ = shutdown.send(());
-            }
-        }
-        if let Ok(mut task) = self.task.lock() {
-            if let Some(task) = task.take() {
-                task.abort();
-            }
-        }
-    }
+    relay: JoinHandle<()>,
 }
 
 impl ArgoServiceTunnel {
     pub(crate) async fn start(
+        access: &ClusterAccess,
         cluster_context: &str,
-        kubeconfig_env_var: Option<String>,
         namespace: String,
         service_name: String,
         service_port: u16,
     ) -> Result<Self, AppError> {
-        let client = client_for_context(cluster_context, kubeconfig_env_var).await?;
+        let client = access.live_session_client(cluster_context).await?;
         let target =
             resolve_service_target(client.clone(), &namespace, &service_name, service_port).await?;
         let pod_name = target.pod_name.clone();
@@ -64,44 +40,27 @@ impl ArgoServiceTunnel {
             target.pod_port,
         )
         .await?;
-        let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
-            .await
-            .map_err(|error| {
-                AppError::new(
-                    format!("local tunnel unavailable: {error}"),
-                    AppErrorKind::ArgoTunnel,
-                )
-                .with_source(error)
-            })?;
-        let local_port = listener
-            .local_addr()
-            .map_err(|error| {
-                AppError::new(
-                    format!("local tunnel unavailable: {error}"),
-                    AppErrorKind::ArgoTunnel,
-                )
-                .with_source(error)
-            })?
-            .port();
-        let (shutdown, shutdown_rx) = oneshot::channel();
-        let task = tokio::spawn(run_tunnel(
+        let (listener, local_port) = bind_loopback(None).await.map_err(|error| {
+            AppError::new(
+                format!("local tunnel unavailable: {error}"),
+                AppErrorKind::ArgoTunnel,
+            )
+            .with_source(error)
+        })?;
+        let route = ServiceRoute {
+            namespace,
+            service_name,
+            service_port,
+        };
+        let relay = spawn_relay(
             listener,
-            shutdown_rx,
-            client,
-            Arc::new(ServiceRoute {
-                namespace,
-                service_name,
-                service_port,
-                pod_name: pod_name.clone(),
-            }),
-        ));
+            move |stream| relay_service_connection(client.clone(), route.clone(), stream),
+            log_relay_event,
+        );
         Ok(Self {
             local_port,
             pod_name,
-            state: Arc::new(TunnelState {
-                shutdown: std::sync::Mutex::new(Some(shutdown)),
-                task: std::sync::Mutex::new(Some(task)),
-            }),
+            relay,
         })
     }
 
@@ -114,17 +73,19 @@ impl ArgoServiceTunnel {
     }
 
     pub(crate) fn close(&self) {
-        self.state.close();
+        self.relay.abort();
     }
 
+    /// A tunnel whose relay holds `held` until the tunnel closes, so its
+    /// receiver resolves when the relay stops.
     #[cfg(test)]
-    pub(crate) fn test_tunnel(shutdown: oneshot::Sender<()>) -> Self {
+    pub(crate) fn test_tunnel(held: tokio::sync::oneshot::Sender<()>) -> Self {
         Self {
             local_port: 0,
             pod_name: String::new(),
-            state: Arc::new(TunnelState {
-                shutdown: std::sync::Mutex::new(Some(shutdown)),
-                task: std::sync::Mutex::new(None),
+            relay: crate::runtime::spawn(async move {
+                let _held = held;
+                std::future::pending::<()>().await;
             }),
         }
     }
@@ -136,25 +97,31 @@ impl Drop for ArgoServiceTunnel {
     }
 }
 
-/// Credentials may only cross a tunnel whose resolved target is exactly what the user confirmed.
-pub(crate) fn verify_confirmed_target(
-    confirmed: Option<&ArgoConfirmedTarget>,
+/// Credentials may only cross a tunnel whose resolved target is what the user confirmed.
+///
+/// A confirmation without a Pod is accepted only when `service_level_allowed`, which the
+/// caller grants for a remembered credential saved after a full confirmation (ADR 0017).
+pub(crate) fn verify_confirmed_target<'a>(
+    confirmed: Option<&'a ArgoConfirmedTarget>,
     namespace: &str,
     service_name: &str,
     pod_name: &str,
-) -> Result<(), AppError> {
-    let confirmed = confirmed.ok_or_else(|| {
+    service_level_allowed: bool,
+) -> Result<&'a ArgoConfirmedTarget, AppError> {
+    let unconfirmed = || {
         AppError::new(
             "confirm the Argo CD Service tunnel target before sending credentials",
             AppErrorKind::ArgoConnection,
         )
-    })?;
-    let pod_matches = confirmed
-        .pod_name
-        .as_deref()
-        .is_some_and(|confirmed_pod| confirmed_pod == pod_name);
+    };
+    let confirmed = confirmed.ok_or_else(unconfirmed)?;
+    let pod_matches = match confirmed.pod_name.as_deref() {
+        Some(confirmed_pod) => confirmed_pod == pod_name,
+        None if service_level_allowed => true,
+        None => return Err(unconfirmed()),
+    };
     if confirmed.namespace == namespace && confirmed.service_name == service_name && pod_matches {
-        return Ok(());
+        return Ok(confirmed);
     }
     Err(AppError::new(
         "Argo CD Service tunnel target changed since it was confirmed; refresh discovery and confirm again",
@@ -167,8 +134,6 @@ struct ServiceRoute {
     namespace: String,
     service_name: String,
     service_port: u16,
-    /// The Pod the user confirmed; credentials never reach any other Pod.
-    pod_name: String,
 }
 
 async fn verify_port_forward(
@@ -202,94 +167,51 @@ fn port_forward_error(error: kube::Error) -> AppError {
     .with_source(error)
 }
 
-async fn run_tunnel(
-    listener: TcpListener,
-    mut shutdown: oneshot::Receiver<()>,
+/// Relays one connection to the Pod the confirmed Service resolves to now, so the tunnel
+/// follows rollouts. HTTPS stays bound to the pinned certificate across Pods.
+async fn relay_service_connection(
     client: Client,
-    route: Arc<ServiceRoute>,
-) {
-    let mut connections = JoinSet::new();
-    let mut consecutive_accept_failures = 0;
-    loop {
-        tokio::select! {
-            _ = &mut shutdown => break,
-            accept = listener.accept() => match accept {
-                Ok((stream, _)) => {
-                    consecutive_accept_failures = 0;
-                    let client = client.clone();
-                    let route = route.clone();
-                    connections.spawn(async move {
-                        let target = resolve_service_target(
-                            client.clone(),
-                            &route.namespace,
-                            &route.service_name,
-                            route.service_port,
-                        )
-                        .await?;
-                        if target.pod_name != route.pod_name {
-                            return Err(AppError::new(
-                                "Argo CD Service now resolves to a different Pod than the confirmed one; reconnect and confirm the new target",
-                                AppErrorKind::ArgoTunnel,
-                            ));
-                        }
-                        forward_pod_connection(
-                            client,
-                            target.namespace,
-                            target.pod_name,
-                            target.pod_port,
-                            stream,
-                        )
-                        .await
-                    });
-                }
-                Err(error) => {
-                    consecutive_accept_failures += 1;
-                    if !should_retry_accept(consecutive_accept_failures) {
-                        eprintln!("[kubecove:backend] Argo Service tunnel accept failed: {error}");
-                        break;
-                    }
-                    eprintln!("[kubecove:backend] Argo Service tunnel accept retry {consecutive_accept_failures}: {error}");
-                    tokio::time::sleep(ACCEPT_RETRY_DELAY).await;
-                }
-            },
-            connection = connections.join_next(), if !connections.is_empty() => {
-                match connection {
-                    Some(Ok(Err(error))) => {
-                        eprintln!("[kubecove:backend] Argo Service tunnel forward failed: {error}");
-                    }
-                    Some(Err(error)) => {
-                        eprintln!("[kubecove:backend] Argo Service tunnel task failed: {error}");
-                    }
-                    _ => {}
-                }
-            },
+    route: ServiceRoute,
+    stream: TcpStream,
+) -> Result<(), AppError> {
+    let target = resolve_service_target(
+        client.clone(),
+        &route.namespace,
+        &route.service_name,
+        route.service_port,
+    )
+    .await?;
+    forward_pod_connection(
+        client,
+        target.namespace,
+        target.pod_name,
+        target.pod_port,
+        stream,
+    )
+    .await
+}
+
+fn log_relay_event(event: RelayEvent) {
+    match event {
+        RelayEvent::AcceptRetry { attempt, error } => {
+            eprintln!("[kubecove:backend] Argo Service tunnel accept retry {attempt}: {error}");
         }
+        RelayEvent::AcceptFailed(error) => {
+            eprintln!("[kubecove:backend] Argo Service tunnel accept failed: {error}");
+        }
+        RelayEvent::ConnectionFailed(error) => {
+            eprintln!("[kubecove:backend] Argo Service tunnel forward failed: {error}");
+        }
+        RelayEvent::ConnectionPanicked(error) => {
+            eprintln!("[kubecove:backend] Argo Service tunnel task failed: {error}");
+        }
+        RelayEvent::ConnectionClosed { .. } => {}
     }
-    connections.abort_all();
-    while connections.join_next().await.is_some() {}
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn close_signals_shared_shutdown_once() {
-        let (shutdown, receiver) = oneshot::channel();
-        let tunnel = ArgoServiceTunnel {
-            local_port: 0,
-            pod_name: String::new(),
-            state: Arc::new(TunnelState {
-                shutdown: std::sync::Mutex::new(Some(shutdown)),
-                task: std::sync::Mutex::new(None),
-            }),
-        };
-        let state = tunnel.state.clone();
-
-        tunnel.close();
-        assert!(receiver.await.is_ok());
-        state.close();
-    }
 
     #[test]
     fn credentials_require_the_exact_confirmed_target() {
@@ -297,9 +219,11 @@ mod tests {
             namespace: namespace.into(),
             service_name: service.into(),
             pod_name: pod.map(Into::into),
+            certificate_sha256: None,
         };
         let check = |target: Option<ArgoConfirmedTarget>| {
-            verify_confirmed_target(target.as_ref(), "argocd", "argocd-server", "pod-a").is_ok()
+            verify_confirmed_target(target.as_ref(), "argocd", "argocd-server", "pod-a", false)
+                .is_ok()
         };
         assert!(check(Some(confirmed(
             "argocd",
@@ -323,6 +247,26 @@ mod tests {
             Some("pod-b")
         ))));
         assert!(!check(Some(confirmed("argocd", "argocd-server", None))));
+    }
+
+    #[test]
+    fn remembered_reconnects_confirm_only_the_service() {
+        let service_level = |namespace: &str, service: &str| ArgoConfirmedTarget {
+            namespace: namespace.into(),
+            service_name: service.into(),
+            pod_name: None,
+            certificate_sha256: None,
+        };
+        let check = |target: ArgoConfirmedTarget| {
+            verify_confirmed_target(Some(&target), "argocd", "argocd-server", "pod-b", true).is_ok()
+        };
+        assert!(check(service_level("argocd", "argocd-server")));
+        assert!(!check(service_level("evil", "argocd-server")));
+        assert!(!check(service_level("argocd", "argo-cd-argocd-server")));
+        assert!(!check(ArgoConfirmedTarget {
+            pod_name: Some("pod-a".into()),
+            ..service_level("argocd", "argocd-server")
+        }));
     }
 
     #[test]

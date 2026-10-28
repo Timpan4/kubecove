@@ -1,11 +1,8 @@
-use crate::commands::diagnostics::record_backend_result;
 use crate::commands::helpers::{
     list_params, normalize_k8s_yaml_value, serialize_json_value_document,
 };
 use crate::commands::{
-    diagnostic_field,
-    kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-    record_backend_error, record_backend_success, BackendCancellationRegistry, ClusterLiveStore,
+    diagnostic_field, BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead,
 };
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -13,10 +10,7 @@ use crate::models::{
     YamlViewMode,
 };
 use crate::runtime::State;
-use kube::{
-    api::{Api, DynamicObject},
-    Client,
-};
+use kube::api::{Api, DynamicObject};
 #[cfg(feature = "bench-support")]
 pub use kubecove_kube::commands::dynamic_projection::dynamic_resource_summaries_at;
 pub(crate) use kubecove_kube::commands::dynamic_projection::{
@@ -24,7 +18,6 @@ pub(crate) use kubecove_kube::commands::dynamic_projection::{
 };
 use serde_json::Value;
 use std::sync::Arc;
-use std::time::Instant;
 
 fn dynamic_status_value(data: &Value) -> Option<Value> {
     data.get("status").cloned()
@@ -70,22 +63,14 @@ pub fn serialize_dynamic_resource_document(
     serialize_json_value_document(&value, encoding)
 }
 
-async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    source.client_for_context(cluster_context).await
-}
-
 pub async fn dynamic_resources_summary_from(
+    access: &ClusterAccess,
     cluster_context: String,
     resource_kind: DiscoveredResourceKind,
     namespace: Option<String>,
-    kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ResourceSummary>, AppError> {
     crate::commands::helpers::validate_namespace(namespace.as_deref())?;
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = access.read_client(&cluster_context).await?;
     let api_resource = api_resource_from_discovered(&resource_kind)?;
     let api: Api<DynamicObject> = if resource_kind.namespaced {
         if let Some(namespace) = namespace.as_deref() {
@@ -110,7 +95,6 @@ pub async fn dynamic_resources_summary_from(
         .collect())
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_dynamic_resources(
     cluster_context: String,
     resource_kind: DiscoveredResourceKind,
@@ -118,76 +102,53 @@ pub async fn list_dynamic_resources(
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Arc<Vec<ResourceSummary>>, AppError> {
-    let started = Instant::now();
-    let namespace_label = namespace.as_deref().unwrap_or("<all>");
-    eprintln!(
-        "[kubecove:backend] list_dynamic_resources start context={} kind={} api_version={} namespace={}",
-        cluster_context, resource_kind.kind, resource_kind.api_version, namespace_label
-    );
-    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
-    let result = live_store
-        .dynamic_resources(
-            source_key,
-            cluster_context.clone(),
-            resource_kind.clone(),
-            namespace.clone(),
-            {
-                let cluster_context = cluster_context.clone();
-                let resource_kind = resource_kind.clone();
-                let namespace = namespace.clone();
-                let kubeconfig_env_var = kubeconfig_env_var.clone();
-                move || {
-                    dynamic_resources_summary_from(
-                        cluster_context,
-                        resource_kind,
-                        namespace,
-                        kubeconfig_env_var,
+    FiniteRead::new("list_dynamic_resources")
+        .label("context", &cluster_context)
+        .label("kind", &resource_kind.kind)
+        .label("api_version", &resource_kind.api_version)
+        .label("namespace", namespace.as_deref().unwrap_or("<all>"))
+        .run(
+            async {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                live_store
+                    .dynamic_resources(
+                        access.source_key().to_string(),
+                        cluster_context.clone(),
+                        resource_kind.clone(),
+                        namespace.clone(),
+                        {
+                            let cluster_context = cluster_context.clone();
+                            let resource_kind = resource_kind.clone();
+                            let namespace = namespace.clone();
+                            move || async move {
+                                dynamic_resources_summary_from(
+                                    &access,
+                                    cluster_context,
+                                    resource_kind,
+                                    namespace,
+                                )
+                                .await
+                            }
+                        },
                     )
-                }
+                    .await
             },
-        )
-        .await;
-    match &result {
-        Ok(rows) => {
-            eprintln!(
-                "[kubecove:backend] list_dynamic_resources done context={} kind={} namespace={} rows={} ms={}",
-                cluster_context,
-                resource_kind.kind,
-                namespace_label,
-                rows.len(),
-                started.elapsed().as_millis()
-            );
-            record_backend_success(
-                "list_dynamic_resources",
-                started,
+            |rows| {
                 vec![
                     diagnostic_field("kind", &resource_kind.kind),
                     diagnostic_field("rows", rows.len()),
-                ],
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "[kubecove:backend] list_dynamic_resources error context={} kind={} namespace={} error_kind={} message={} ms={}",
-                cluster_context,
-                resource_kind.kind,
-                namespace_label,
-                err.kind,
-                err.message,
-                started.elapsed().as_millis()
-            );
-            record_backend_error("list_dynamic_resources", started, err.kind.as_str());
-        }
-    }
-    result
+                ]
+            },
+        )
+        .await
 }
 
 pub async fn dynamic_resource_details_from(
+    access: &ClusterAccess,
     cluster_context: String,
     resource_kind: DiscoveredResourceKind,
     name: String,
     namespace: Option<String>,
-    kubeconfig_env_var: Option<String>,
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<ResourceDetailsFull, AppError> {
@@ -200,7 +161,7 @@ pub async fn dynamic_resource_details_from(
         ));
     }
 
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = access.read_client(&cluster_context).await?;
     let api_resource = api_resource_from_discovered(&resource_kind)?;
     let api: Api<DynamicObject> = if resource_kind.namespaced {
         Api::namespaced_with(
@@ -253,7 +214,6 @@ pub fn dynamic_resource_details_from_object(
     })
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_dynamic_resource_details(
     cluster_context: String,
     resource_kind: DiscoveredResourceKind,
@@ -266,76 +226,39 @@ pub async fn get_dynamic_resource_details(
     cancel_scope: Option<String>,
     cancellations: State<'_, BackendCancellationRegistry>,
 ) -> Result<ResourceDetailsFull, AppError> {
-    let started = Instant::now();
-    let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
-    eprintln!(
-        "[kubecove:backend] get_dynamic_resource_details start context={} kind={} api_version={} namespace={} name={}",
-        cluster_context, resource_kind.kind, resource_kind.api_version, namespace_label, name
-    );
-    let result = cancellations
-        .execute(
-            cancel_scope,
-            request_id,
-            dynamic_resource_details_from(
-                cluster_context.clone(),
-                resource_kind.clone(),
-                name.clone(),
-                namespace.clone(),
-                kubeconfig_env_var,
-                yaml_view_mode,
-                yaml_encoding,
-            ),
+    FiniteRead::new("get_dynamic_resource_details")
+        .label("context", &cluster_context)
+        .label("kind", &resource_kind.kind)
+        .label("api_version", &resource_kind.api_version)
+        .label("namespace", namespace.as_deref().unwrap_or("<cluster>"))
+        .label("name", &name)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
+            {
+                let resource_kind = resource_kind.clone();
+                async move {
+                    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                    dynamic_resource_details_from(
+                        &access,
+                        cluster_context,
+                        resource_kind,
+                        name,
+                        namespace,
+                        yaml_view_mode,
+                        yaml_encoding,
+                    )
+                    .await
+                }
+            },
+            |details| {
+                vec![
+                    diagnostic_field("kind", &resource_kind.kind),
+                    diagnostic_field("yamlBytes", details.yaml.len()),
+                    diagnostic_field("hasStatus", details.status.is_some()),
+                ]
+            },
         )
-        .await;
-    match &result {
-        Ok(details) => {
-            eprintln!(
-                "[kubecove:backend] get_dynamic_resource_details done context={} kind={} namespace={} name={} yaml_bytes={} status={} ms={}",
-                cluster_context,
-                resource_kind.kind,
-                namespace_label,
-                name,
-                details.yaml.len(),
-                details.status.is_some(),
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) if err.kind == AppErrorKind::Cancelled => {
-            eprintln!(
-                "[kubecove:backend] get_dynamic_resource_details cancelled context={} kind={} namespace={} name={} ms={}",
-                cluster_context,
-                resource_kind.kind,
-                namespace_label,
-                name,
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "[kubecove:backend] get_dynamic_resource_details error context={} kind={} namespace={} name={} error_kind={} message={} ms={}",
-                cluster_context,
-                resource_kind.kind,
-                namespace_label,
-                name,
-                err.kind,
-                err.message,
-                started.elapsed().as_millis()
-            );
-        }
-    }
-    record_backend_result(
-        "get_dynamic_resource_details",
-        started,
-        &result,
-        |details| {
-            vec![
-                diagnostic_field("kind", &resource_kind.kind),
-                diagnostic_field("yamlBytes", details.yaml.len()),
-                diagnostic_field("hasStatus", details.status.is_some()),
-            ]
-        },
-    );
-    result
+        .await
 }
 
 #[cfg(test)]

@@ -104,7 +104,6 @@ impl AppUsageMonitor {
     }
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_app_usage_metrics(
     monitor: kubecove_kube::runtime::State<'_, AppUsageMonitor>,
 ) -> Result<AppUsageMetrics, AppError> {
@@ -327,26 +326,13 @@ struct UsageProcessSample {
     memory_bytes: u64,
 }
 
-struct UsageProcessPreparedSample {
-    group: UsageProcessGroup,
-    label: String,
-    description: String,
-    raw_cpu_percent: f32,
-    memory_bytes: u64,
-}
-
 impl UsageProcessGroupTotals {
-    fn add_sample(&mut self, sample: UsageProcessPreparedSample, include_child_sample: bool) {
+    fn add_sample(&mut self, sample: UsageProcessSample, include_child_sample: bool) {
         self.raw_cpu_percent += sample.raw_cpu_percent;
         self.memory_bytes += sample.memory_bytes;
         self.process_count += 1;
         if include_child_sample {
-            self.children.push(UsageProcessSample {
-                label: sample.label,
-                description: sample.description,
-                raw_cpu_percent: sample.raw_cpu_percent,
-                memory_bytes: sample.memory_bytes,
-            });
+            self.children.push(sample);
         }
     }
 }
@@ -383,10 +369,6 @@ impl UsageProcessView for Process {
     fn child_description(&self) -> String {
         usage_process_child_description(self)
     }
-
-    fn group(&self, pid: Pid, root_pid: Pid) -> UsageProcessGroup {
-        usage_process_group(pid, root_pid, self)
-    }
 }
 
 fn process_tree_breakdown(
@@ -409,8 +391,7 @@ fn process_tree_breakdown_from_processes<'a, T: UsageProcessView + 'a>(
     let prepared_samples = samples.into_iter().map(|(pid, process)| {
         let group = process.group(pid, root_pid);
         let is_child = group != UsageProcessGroup::App;
-        UsageProcessPreparedSample {
-            group,
+        let sample = UsageProcessSample {
             label: if is_child {
                 process.child_label()
             } else {
@@ -423,13 +404,14 @@ fn process_tree_breakdown_from_processes<'a, T: UsageProcessView + 'a>(
             },
             raw_cpu_percent: process.raw_cpu_percent(),
             memory_bytes: process.memory_bytes(),
-        }
+        };
+        (group, sample)
     });
     process_tree_breakdown_from_samples(prepared_samples, cpu_count)
 }
 
 fn process_tree_breakdown_from_samples(
-    samples: impl IntoIterator<Item = UsageProcessPreparedSample>,
+    samples: impl IntoIterator<Item = (UsageProcessGroup, UsageProcessSample)>,
     cpu_count: usize,
 ) -> Vec<AppUsageMetricsBreakdown> {
     let mut buckets = [
@@ -444,8 +426,8 @@ fn process_tree_breakdown_from_samples(
         ),
     ];
 
-    for sample in samples {
-        let bucket_index = match sample.group {
+    for (group, sample) in samples {
+        let bucket_index = match group {
             UsageProcessGroup::App => 0,
             UsageProcessGroup::WebView => 1,
             UsageProcessGroup::OtherChildren => 2,
@@ -514,10 +496,6 @@ fn usage_process_child_description_from_webview(is_webview: bool) -> String {
     } else {
         "Child process".to_string()
     }
-}
-
-fn usage_process_group(pid: Pid, root_pid: Pid, process: &Process) -> UsageProcessGroup {
-    usage_process_group_with_webview_check(pid, root_pid, || is_webview_descendant_process(process))
 }
 
 fn usage_process_group_with_webview_check(

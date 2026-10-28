@@ -1,6 +1,7 @@
 mod argo;
 mod cancellation;
 mod cluster;
+mod command_contract;
 mod diagnostics;
 mod discovery;
 mod error;
@@ -17,6 +18,7 @@ mod resource;
 mod resource_actions;
 mod sessions;
 mod streams;
+mod tunnel;
 mod usage;
 
 pub use argo::normalize_service_tunnel_endpoint;
@@ -27,10 +29,11 @@ pub use argo::{
     ArgoConfirmedTarget, ArgoConnectedFallback, ArgoConnectionProfile, ArgoConnectionStatus,
     ArgoInspectionFailure, ArgoManagedResource, ArgoOperationConfirmation, ArgoOperationPreflight,
     ArgoOperationRequest, ArgoOperationResult, ArgoResourceComparison, ArgoServerCapability,
-    ArgoServerEndpoint, ArgoServiceTunnelUnavailableReason,
+    ArgoServerEndpoint, ArgoServiceTunnelUnavailableReason, ArgoTunnelTargetPreview,
 };
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;
+pub use command_contract::{CommandArgs, CommandTransport, DeclaredCommand, DECLARED_COMMANDS};
 pub use diagnostics::{
     BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent, BackendDiagnosticField,
     BackendDiagnosticStatus,
@@ -62,10 +65,7 @@ pub use metrics::{
     ResourceMetricsSummary,
 };
 pub use namespace::NamespaceSummary;
-pub use operations::{
-    ClusterOperationPreview, ClusterOperationResult, ClusterOperationTarget, DeleteResourceRequest,
-    RolloutRestartRequest, ScaleWorkloadRequest,
-};
+pub use operations::{ClusterOperationResult, ClusterOperationTarget};
 pub use rbac::{
     RbacAccessReviewIdentity, RbacAccessReviewOutcome, RbacAccessReviewRequest,
     RbacAccessReviewResult, RbacAccessReviewTarget, RbacBindingSummary, RbacCoverageStatus,
@@ -76,10 +76,10 @@ pub use rbac::{
 pub use resource::{
     DeploymentRevision, GitOpsOwnerSummary, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult,
     KubernetesYamlLintSeverity, KubernetesYamlLintStatusNote, OwnerReferenceSummary,
-    ResourceDetails, ResourceDetailsFull, ResourceHealth, ResourceListRequest,
-    ResourceScopeFailure, ResourceScopeResult, ResourceSummary, ResourceTopology, TopologyEdge,
-    TopologyNode, TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
-    YamlApplyTarget, YamlEncoding, YamlViewMode,
+    ResourceDetailsFull, ResourceHealth, ResourceListRequest, ResourceScopeFailure,
+    ResourceScopeResult, ResourceSummary, ResourceTopology, TopologyEdge, TopologyNode,
+    TopologyRelation, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlApplyTarget,
+    YamlEncoding, YamlViewMode,
 };
 pub use resource_actions::{
     ResourceActionContainer, ResourceActionEdits, ResourceActionEnv, ResourceActionKind,
@@ -95,5 +95,9 @@ pub use streams::{
     AggregatedLogStreamRequest, LogLineSource, PodLogStreamRequest, ResourceCacheRefreshResult,
     StreamMessage, WatchResourceKey, WatchResourceKind, WatchResourceTarget,
     CHANNEL_MESSAGE_ENVELOPE_BYTES, MAX_WEBSOCKET_MESSAGE_BYTES,
+};
+pub use tunnel::{
+    decode_tunnel_frame, encode_tunnel_frame, is_tunnel_connection_id, MAX_TUNNEL_FRAME_BYTES,
+    MAX_TUNNEL_PAYLOAD_BYTES,
 };
 pub use usage::{AppUsageMetrics, AppUsageMetricsBreakdown};

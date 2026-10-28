@@ -115,7 +115,8 @@ export async function resourceDetailWatchRegression(disabledArgo = false) {
 		} });
 		oldEvents.resolve(events);
 		await freshEvents.promise;
-		const eventsKey = [...spec.eventsQueryKey, details.metadata.uid ?? ""];
+		const uid = details.metadata.uid;
+		const eventsKey = queryKeys.resourceEvents(resource, undefined, String(uid) === uid ? uid : undefined);
 		if (queryClient.getQueryData<ResourceEventSummary[]>(eventsKey)?.length !== 0) {
 			throw new Error("Events retained the pre-change snapshot");
 		}

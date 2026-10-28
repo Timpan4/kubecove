@@ -17,6 +17,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 - [Legacy code and test audit](legacy-test-audit.md) — removal evidence, preserved coverage, and verification boundaries.
 - [Rust build measurements](rust-build-measurements.md) — private-crate boundaries and incremental rebuild evidence.
 - [CodSpeed benchmark catalog](codspeed-benchmark-catalog.md) — current coverage, benchmark candidates, fixtures, and measurement boundaries.
+- [Built-in resource summary projection](resource-summary-projection.md) — shared list, details, and topology summary rules, kept differences, and measurements.
 - [Deferred Svelte surfaces](lazy-surface-loading.md) — import boundaries and before/after bundle and native launcher evidence.
 - [Engineering Handbook](handbook/README.md) — code organization, design system, hygiene, and pull request checklist.
 - [Frontend memory characterization](frontend-memory-retention.md) — normal and large payload, retention, native process, and refetch measurements.
@@ -33,6 +34,8 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 - [Architecture decisions](decisions/) — accepted technical and safety decisions.
 - [Planning and milestones](milestones.md) — GitHub Issue and Milestone tracking direction.
 - [Multiple user sessions and persistence](decisions/0023-multi-user-sessions-and-persistence.md) — implemented session baseline and proposed private-source provisioning, persistent user workspaces, settings and migration.
+- [Single command contract](decisions/0025-single-command-contract.md) — single declaration for Tauri IPC and server HTTP commands, and removal of the legacy name-only operation commands.
+- [Cluster access by intent](decisions/0026-cluster-access-by-intent.md) — single module for Kubernetes clients named by intent, and the server's restriction to operator-configured kubeconfig sources.
 - [Security Policy](../SECURITY.md) — vulnerability reporting and support.
 - [OSS Scanner](../.oss-scanner/README.md) — offline audit environment, threat model, and maintainer enrollment.
 - [Contributing](../CONTRIBUTING.md) — contribution and documentation reporting process.

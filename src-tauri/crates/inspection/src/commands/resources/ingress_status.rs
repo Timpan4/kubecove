@@ -1,17 +1,28 @@
-use crate::models::ResourceSummary;
-use k8s_openapi::api::networking::v1::IngressStatus;
+use super::builtin_summary::{BuiltinSummary, KindStatus};
+use crate::models::ResourceHealth;
+use k8s_openapi::api::networking::v1::{Ingress, IngressStatus};
+use serde_json::Value;
 
-pub(super) fn apply_ingress_status(summary: &mut ResourceSummary, status: Option<&IngressStatus>) {
-    let Some(status) = status else {
-        return;
-    };
+impl BuiltinSummary for Ingress {
+    fn kind_status(&self) -> Option<KindStatus> {
+        let Some(status) = &self.status else {
+            return Some(KindStatus::default());
+        };
+        let (status, ready, health) = if has_load_balancer_address(status) {
+            ("Ready", "true", ResourceHealth::Healthy)
+        } else {
+            ("Pending", "false", ResourceHealth::Attention)
+        };
+        Some(KindStatus {
+            status: Some(status.to_string()),
+            ready: Some(ready.to_string()),
+            restarts: None,
+            health,
+        })
+    }
 
-    if has_load_balancer_address(status) {
-        summary.status = Some("Ready".to_string());
-        summary.ready = Some("true".to_string());
-    } else {
-        summary.status = Some("Pending".to_string());
-        summary.ready = Some("false".to_string());
+    fn raw_status(&self) -> Option<serde_json::Result<Value>> {
+        self.status.as_ref().map(serde_json::to_value)
     }
 }
 
@@ -33,100 +44,59 @@ fn has_load_balancer_address(status: &IngressStatus) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::ResourceHealth;
     use k8s_openapi::api::networking::v1::{IngressLoadBalancerIngress, IngressLoadBalancerStatus};
 
-    fn summary() -> ResourceSummary {
-        ResourceSummary {
-            kind: "Ingress".to_string(),
-            cluster: "kind-dev".to_string(),
-            name: "api".to_string(),
-            namespace: Some("default".to_string()),
-            age: "1m".to_string(),
-            api_version: Some("networking.k8s.io/v1".to_string()),
-            group: Some("networking.k8s.io".to_string()),
-            version: Some("v1".to_string()),
-            plural: Some("ingresses".to_string()),
-            namespaced: Some(true),
-            dynamic: None,
-            health: ResourceHealth::Unknown,
-            health_assessment: crate::models::HealthAssessment::default(),
-            created_at: None,
-            status: None,
-            ready: None,
-            restarts: None,
-            owner_ref: None,
-            argo_app: None,
-            helm_release: None,
-            git_ops_owner: None,
-            git_ops_ownership_partial: false,
-        }
+    fn status_and_ready(entries: Option<Vec<IngressLoadBalancerIngress>>) -> (String, String) {
+        let ingress = Ingress {
+            status: Some(IngressStatus {
+                load_balancer: Some(IngressLoadBalancerStatus { ingress: entries }),
+            }),
+            ..Ingress::default()
+        };
+        let status = ingress.kind_status().expect("Ingress status");
+        (status.status.unwrap(), status.ready.unwrap())
     }
 
     #[test]
     fn ingress_with_load_balancer_address_is_ready() {
-        let status = IngressStatus {
-            load_balancer: Some(IngressLoadBalancerStatus {
-                ingress: Some(vec![IngressLoadBalancerIngress {
-                    ip: Some("10.0.0.1".to_string()),
-                    ..Default::default()
-                }]),
-            }),
+        let entry = IngressLoadBalancerIngress {
+            ip: Some("10.0.0.1".to_string()),
+            ..Default::default()
         };
-        let mut summary = summary();
 
-        apply_ingress_status(&mut summary, Some(&status));
-
-        assert_eq!(summary.status.as_deref(), Some("Ready"));
-        assert_eq!(summary.ready.as_deref(), Some("true"));
+        assert_eq!(
+            status_and_ready(Some(vec![entry])),
+            ("Ready".to_string(), "true".to_string())
+        );
     }
 
     #[test]
     fn ingress_without_load_balancer_address_is_pending() {
-        let status = IngressStatus {
-            load_balancer: Some(IngressLoadBalancerStatus {
-                ingress: Some(Vec::new()),
-            }),
-        };
-        let mut summary = summary();
-
-        apply_ingress_status(&mut summary, Some(&status));
-
-        assert_eq!(summary.status.as_deref(), Some("Pending"));
-        assert_eq!(summary.ready.as_deref(), Some("false"));
+        assert_eq!(
+            status_and_ready(Some(Vec::new())),
+            ("Pending".to_string(), "false".to_string())
+        );
     }
 
     #[test]
     fn ingress_with_empty_load_balancer_entry_is_pending() {
-        let status = IngressStatus {
-            load_balancer: Some(IngressLoadBalancerStatus {
-                ingress: Some(vec![IngressLoadBalancerIngress::default()]),
-            }),
-        };
-        let mut summary = summary();
-
-        apply_ingress_status(&mut summary, Some(&status));
-
-        assert_eq!(summary.status.as_deref(), Some("Pending"));
-        assert_eq!(summary.ready.as_deref(), Some("false"));
+        assert_eq!(
+            status_and_ready(Some(vec![IngressLoadBalancerIngress::default()])),
+            ("Pending".to_string(), "false".to_string())
+        );
     }
 
     #[test]
     fn ingress_with_blank_load_balancer_address_is_pending() {
-        let status = IngressStatus {
-            load_balancer: Some(IngressLoadBalancerStatus {
-                ingress: Some(vec![IngressLoadBalancerIngress {
-                    ip: Some(String::new()),
-                    hostname: Some("  ".to_string()),
-                    ..Default::default()
-                }]),
-            }),
+        let entry = IngressLoadBalancerIngress {
+            ip: Some(String::new()),
+            hostname: Some("  ".to_string()),
+            ..Default::default()
         };
-        let mut summary = summary();
 
-        apply_ingress_status(&mut summary, Some(&status));
-
-        assert_eq!(summary.status.as_deref(), Some("Pending"));
-        assert_eq!(summary.ready.as_deref(), Some("false"));
+        assert_eq!(
+            status_and_ready(Some(vec![entry])),
+            ("Pending".to_string(), "false".to_string())
+        );
     }
 }

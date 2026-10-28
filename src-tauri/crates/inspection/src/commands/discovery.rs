@@ -2,11 +2,7 @@ use crate::models::AppErrorKind;
 use crate::runtime::State;
 use crate::{
     commands::helpers::list_params,
-    commands::{
-        diagnostic_field,
-        kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-        record_backend_error, record_backend_success, ClusterLiveStore,
-    },
+    commands::{diagnostic_field, ClusterAccess, ClusterLiveStore, FiniteRead},
     models::{AppError, DiscoveredResourceKind},
 };
 use futures_util::{io::AsyncReadExt, stream, StreamExt};
@@ -16,7 +12,6 @@ use kube::{
     Client,
 };
 use std::sync::Arc;
-use std::time::Instant;
 
 mod crd_catalog;
 #[cfg(feature = "bench-support")]
@@ -26,12 +21,10 @@ use crd_catalog::{CatalogCrd, CatalogVersion};
 const MAX_PRESENT_KIND_CONCURRENCY: usize = 48;
 
 pub async fn resource_kinds_from(
-    cluster_context: String,
-    kubeconfig_env_var: Option<String>,
+    access: &ClusterAccess,
+    cluster_context: &str,
 ) -> Result<Vec<DiscoveredResourceKind>, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
-    crd_resource_kinds(client).await
+    crd_resource_kinds(access.read_client(cluster_context).await?).await
 }
 
 pub(crate) async fn crd_resource_kinds(
@@ -125,59 +118,27 @@ pub fn sort_and_dedup_kinds(kinds: &mut Vec<DiscoveredResourceKind>) {
     });
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_resource_kinds(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Arc<Vec<DiscoveredResourceKind>>, AppError> {
-    let started = Instant::now();
-    eprintln!("[kubecove:backend] list_resource_kinds start context={cluster_context}");
-    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
-    let result = live_store
-        .resource_kinds(source_key, cluster_context.clone(), {
-            let cluster_context = cluster_context.clone();
-            let kubeconfig_env_var = kubeconfig_env_var.clone();
-            move || resource_kinds_from(cluster_context, kubeconfig_env_var)
-        })
-        .await;
-    match &result {
-        Ok(rows) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_kinds done context={} rows={} ms={}",
-                cluster_context,
-                rows.len(),
-                started.elapsed().as_millis()
-            );
-            record_backend_success(
-                "list_resource_kinds",
-                started,
-                vec![diagnostic_field("rows", rows.len())],
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_kinds error context={} kind={} message={} ms={}",
-                cluster_context,
-                err.kind,
-                err.message,
-                started.elapsed().as_millis()
-            );
-            record_backend_error("list_resource_kinds", started, err.kind.as_str());
-        }
-    }
-    result
-}
-
-pub async fn present_custom_resource_kinds_from(
-    cluster_context: String,
-    namespaces: Vec<String>,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Vec<DiscoveredResourceKind>, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
-    let catalog = crd_resource_kinds(client.clone()).await?;
-    present_custom_resource_kinds_for_catalog(client, catalog, namespaces).await
+    FiniteRead::new("list_resource_kinds")
+        .label("context", &cluster_context)
+        .run(
+            async move {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                live_store
+                    .resource_kinds(
+                        access.source_key().to_string(),
+                        cluster_context.clone(),
+                        move || async move { resource_kinds_from(&access, &cluster_context).await },
+                    )
+                    .await
+            },
+            |rows| vec![diagnostic_field("rows", rows.len())],
+        )
+        .await
 }
 
 pub(crate) async fn present_custom_resource_kinds_for_catalog(
@@ -265,82 +226,52 @@ async fn custom_resource_kind_present(
     Ok(false)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_present_custom_resource_kinds(
     cluster_context: String,
     namespaces: Vec<String>,
     kubeconfig_env_var: Option<String>,
     live_store: State<'_, ClusterLiveStore>,
 ) -> Result<Arc<Vec<DiscoveredResourceKind>>, AppError> {
-    let started = Instant::now();
-    eprintln!(
-        "[kubecove:backend] list_present_custom_resource_kinds start context={cluster_context} namespaces={}",
-        namespaces.len()
-    );
-    let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
-    let store = live_store.inner().clone();
-    let result = live_store
-        .present_custom_resource_kinds(
-            source_key.clone(),
-            cluster_context.clone(),
-            namespaces.clone(),
-            {
-                let cluster_context = cluster_context.clone();
-                let kubeconfig_env_var = kubeconfig_env_var.clone();
-                let namespaces = namespaces.clone();
-                move || {
-                    let source_key = source_key.clone();
-                    let store = store.clone();
-                    async move {
-                        let source = KubeconfigSource::new(kubeconfig_env_var)?;
-                        let client = source.client_for_context(&cluster_context).await?;
-                        let catalog_client = client.clone();
-                        let catalog = store
-                            .resource_kinds(source_key, cluster_context.clone(), move || {
-                                crd_resource_kinds(catalog_client)
-                            })
-                            .await?;
-                        present_custom_resource_kinds_for_catalog(
-                            client,
-                            Arc::unwrap_or_clone(catalog),
-                            namespaces,
-                        )
-                        .await
-                    }
-                }
+    FiniteRead::new("list_present_custom_resource_kinds")
+        .label("context", &cluster_context)
+        .label("namespaces", namespaces.len())
+        .run(
+            async move {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                let source_key = access.source_key().to_string();
+                let store = live_store.inner().clone();
+                live_store
+                    .present_custom_resource_kinds(
+                        source_key.clone(),
+                        cluster_context.clone(),
+                        namespaces.clone(),
+                        move || {
+                            let source_key = source_key.clone();
+                            let store = store.clone();
+                            async move {
+                                let client = access.read_client(&cluster_context).await?;
+                                let catalog_client = client.clone();
+                                let catalog = store
+                                    .resource_kinds(
+                                        source_key,
+                                        cluster_context.clone(),
+                                        move || crd_resource_kinds(catalog_client),
+                                    )
+                                    .await?;
+                                present_custom_resource_kinds_for_catalog(
+                                    client,
+                                    Arc::unwrap_or_clone(catalog),
+                                    namespaces,
+                                )
+                                .await
+                            }
+                        },
+                    )
+                    .await
             },
+            |rows| vec![diagnostic_field("rows", rows.len())],
         )
-        .await;
-    match &result {
-        Ok(rows) => {
-            eprintln!(
-                "[kubecove:backend] list_present_custom_resource_kinds done context={} rows={} ms={}",
-                cluster_context,
-                rows.len(),
-                started.elapsed().as_millis()
-            );
-            record_backend_success(
-                "list_present_custom_resource_kinds",
-                started,
-                vec![diagnostic_field("rows", rows.len())],
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "[kubecove:backend] list_present_custom_resource_kinds error context={} kind={} message={} ms={}",
-                cluster_context,
-                err.kind,
-                err.message,
-                started.elapsed().as_millis()
-            );
-            record_backend_error(
-                "list_present_custom_resource_kinds",
-                started,
-                err.kind.as_str(),
-            );
-        }
-    }
-    result
+        .await
 }
 
 #[cfg(test)]

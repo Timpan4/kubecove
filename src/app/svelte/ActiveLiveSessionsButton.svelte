@@ -15,6 +15,7 @@
 	} from "@/components/ui/svelte";
 	import { buildLiveSessionReadModel } from "@/features/live-sessions/liveSessionReadModel";
 	import { refreshLiveSessionQueries, trackLiveSessionUi } from "@/features/live-sessions/sessionPolling.svelte";
+	import { openExecSessions, showOpenExecSession } from "@/features/live-sessions/openExecSessions.svelte";
 	import { podExecCommandText } from "@/features/live-sessions/podExecHelpers";
 	import { podExecQueryOptions, stopPodExec } from "@/features/live-sessions/podExecLifecycle";
 	import { portForwardLocalUrl } from "@/features/live-sessions/helpers";
@@ -55,6 +56,7 @@
 	);
 	const portForwardSessions = $derived(liveSessionModel.portForwards);
 	const execSessions = $derived(liveSessionModel.podExecSessions);
+	const showableExecSessionIds = $derived(new Set(openExecSessions().map((session) => session.id)));
 	const sessionCount = $derived(liveSessionModel.counts.total);
 	const loading = $derived(portForwardsQuery.isLoading || execSessionsQuery.isLoading);
 	const fetching = $derived(portForwardsQuery.isFetching || execSessionsQuery.isFetching);
@@ -88,6 +90,11 @@
 		} finally {
 			stoppingId = null;
 		}
+	}
+
+	function showExecSession(sessionId: string) {
+		popoverOpen = false;
+		showOpenExecSession(sessionId);
 	}
 
 	async function stopExecSession(sessionId: string): Promise<void> {
@@ -217,6 +224,18 @@
 								/>
 							{/if}
 							<div class="flex flex-wrap justify-end gap-2">
+								{#if showableExecSessionIds.has(session.id)}
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										aria-label={`Show exec session in ${session.podName}`}
+										onclick={() => showExecSession(session.id)}
+									>
+										<Terminal data-icon="inline-start" />
+										Show
+									</Button>
+								{/if}
 								<Button
 									type="button"
 									variant="outline"

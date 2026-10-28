@@ -1,10 +1,9 @@
 use super::{
-    client_for_context,
     kinds::{api_resource_from_kind, normalize_resource_kind},
     registry::StreamBroadcaster,
 };
 use crate::{
-    commands::ClusterLiveStore,
+    commands::{ClusterAccess, ClusterLiveStore},
     models::{WatchResourceKey, WatchResourceTarget},
 };
 use futures_util::StreamExt;
@@ -16,7 +15,7 @@ use kube::{
 };
 use std::time::{Duration, Instant};
 
-const WATCH_TIMEOUT_SECS: u32 = 30;
+pub(super) const WATCH_TIMEOUT_SECS: u32 = 30;
 
 fn report_forbidden_watch(
     broadcaster: &StreamBroadcaster,
@@ -108,20 +107,10 @@ fn dynamic_event_target(
     }
 }
 
-fn dynamic_event_resource_version(event: &WatchEvent<DynamicObject>) -> Option<String> {
+fn watch_resource_version<K: kube::Resource>(event: &WatchEvent<K>) -> Option<String> {
     match event {
         WatchEvent::Added(object) | WatchEvent::Modified(object) | WatchEvent::Deleted(object) => {
-            object.metadata.resource_version.clone()
-        }
-        WatchEvent::Bookmark(bookmark) => Some(bookmark.metadata.resource_version.clone()),
-        WatchEvent::Error(_) => None,
-    }
-}
-
-fn event_resource_version(event: &WatchEvent<Event>) -> Option<String> {
-    match event {
-        WatchEvent::Added(object) | WatchEvent::Modified(object) | WatchEvent::Deleted(object) => {
-            object.metadata.resource_version.clone()
+            object.meta().resource_version.clone()
         }
         WatchEvent::Bookmark(bookmark) => Some(bookmark.metadata.resource_version.clone()),
         WatchEvent::Error(_) => None,
@@ -146,35 +135,12 @@ fn scoped_dynamic_api(
 }
 
 pub(super) async fn run_resource_watch(
-    source_key: String,
+    access: ClusterAccess,
     cluster_context: String,
     key: WatchResourceKey,
-    kubeconfig_env_var: Option<String>,
     broadcaster: StreamBroadcaster,
     live_store: ClusterLiveStore,
 ) {
-    run_resource_watch_with_client(
-        source_key,
-        cluster_context.clone(),
-        key,
-        broadcaster,
-        live_store,
-        || client_for_context(&cluster_context, kubeconfig_env_var.clone()),
-    )
-    .await;
-}
-
-async fn run_resource_watch_with_client<F, Fut>(
-    source_key: String,
-    cluster_context: String,
-    key: WatchResourceKey,
-    broadcaster: StreamBroadcaster,
-    live_store: ClusterLiveStore,
-    client_for_watch: F,
-) where
-    F: Fn() -> Fut,
-    Fut: std::future::Future<Output = Result<Client, crate::models::AppError>>,
-{
     let normalized_kind = match normalize_resource_kind(&key.resource_kind) {
         Ok(kind) => kind,
         Err(err) => {
@@ -194,7 +160,7 @@ async fn run_resource_watch_with_client<F, Fut>(
     let mut resource_version = "0".to_string();
 
     'watch: loop {
-        let client = match client_for_watch().await {
+        let client = match access.stream_client(&cluster_context).await {
             Ok(client) => client,
             Err(err) => {
                 if !broadcaster.error(err.message) {
@@ -240,9 +206,7 @@ async fn run_resource_watch_with_client<F, Fut>(
                                 }
                                 break;
                             }
-                            if let Some(next_resource_version) =
-                                dynamic_event_resource_version(&event)
-                            {
+                            if let Some(next_resource_version) = watch_resource_version(&event) {
                                 resource_version = next_resource_version;
                             }
                             if matches!(event, WatchEvent::Bookmark(_)) {
@@ -251,7 +215,7 @@ async fn run_resource_watch_with_client<F, Fut>(
                             let target =
                                 dynamic_event_target(&cluster_context, &kind_label, &event);
                             live_store.mark_watch_resource_dirty(
-                                &source_key,
+                                access.source_key(),
                                 &cluster_context,
                                 &normalized_kind,
                                 target.namespace.as_deref(),
@@ -308,11 +272,11 @@ fn event_target(
 }
 
 pub(super) async fn run_event_watch(
+    access: ClusterAccess,
     cluster_context: String,
     kind: String,
     name: String,
     namespace: Option<String>,
-    kubeconfig_env_var: Option<String>,
     broadcaster: StreamBroadcaster,
 ) {
     let field_selector = match namespace.as_deref() {
@@ -324,7 +288,7 @@ pub(super) async fn run_event_watch(
     let mut resource_version = "0".to_string();
 
     loop {
-        let client = match client_for_context(&cluster_context, kubeconfig_env_var.clone()).await {
+        let client = match access.stream_client(&cluster_context).await {
             Ok(client) => client,
             Err(err) => {
                 if !broadcaster.error(err.message) {
@@ -339,7 +303,9 @@ pub(super) async fn run_event_watch(
         } else {
             Api::all(client)
         };
-        let params = WatchParams::default().fields(&field_selector).timeout(30);
+        let params = WatchParams::default()
+            .fields(&field_selector)
+            .timeout(WATCH_TIMEOUT_SECS);
 
         if !broadcaster.status("connected", "Watching events".to_string()) {
             return;
@@ -359,7 +325,7 @@ pub(super) async fn run_event_watch(
                                 }
                                 break;
                             }
-                            if let Some(next_resource_version) = event_resource_version(&event) {
+                            if let Some(next_resource_version) = watch_resource_version(&event) {
                                 resource_version = next_resource_version;
                             }
                             if matches!(event, WatchEvent::Bookmark(_)) {
@@ -472,7 +438,10 @@ mod tests {
             let mut resource_version = "55".to_string();
             for _ in 0..2 {
                 let stream = api
-                    .watch(&WatchParams::default().timeout(30), &resource_version)
+                    .watch(
+                        &WatchParams::default().timeout(WATCH_TIMEOUT_SECS),
+                        &resource_version,
+                    )
                     .await
                     .expect("watch response");
                 let event = stream

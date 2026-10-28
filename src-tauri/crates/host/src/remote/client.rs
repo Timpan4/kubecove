@@ -2,7 +2,10 @@ use super::models::{RemoteConnectionSummary, RemoteCredentials, ServerSession};
 use super::tunnels::RemoteTunnelRegistry;
 use futures_util::{SinkExt, StreamExt};
 use kubecove_kube::runtime::Channel;
-use kubecove_models::{AppError, AppErrorKind, MAX_WEBSOCKET_MESSAGE_BYTES};
+use kubecove_models::{
+    decode_tunnel_frame, encode_tunnel_frame, is_tunnel_connection_id, AppError, AppErrorKind,
+    MAX_TUNNEL_PAYLOAD_BYTES, MAX_WEBSOCKET_MESSAGE_BYTES,
+};
 use reqwest::{header::HeaderValue, Client as HttpClient, Url};
 use serde::Deserialize;
 use serde_json::{json, value::RawValue, Value};
@@ -26,10 +29,6 @@ use tokio_tungstenite::{
         Message as WsMessage,
     },
 };
-
-#[cfg(test)]
-const CHANNEL_PREFIX: &str = "__KUBECOVE_CHANNEL__:";
-pub(super) const MAX_TUNNEL_PAYLOAD_BYTES: usize = 16 * 1024;
 
 pub struct RemoteConnectionStore {
     pub(super) current: RwLock<Option<Arc<RemoteConnection>>>,
@@ -159,13 +158,10 @@ impl RemoteConnection {
         if payload.len() > MAX_TUNNEL_PAYLOAD_BYTES {
             return Err(validation_error("tunnel payload exceeds 16 KiB"));
         }
-        if !is_canonical_uuid(connection_id) {
+        if !is_tunnel_connection_id(connection_id) {
             return Err(validation_error("connection id must be a canonical UUID"));
         }
-        let mut frame = Vec::with_capacity(2 + connection_id.len() + payload.len());
-        frame.extend_from_slice(&(connection_id.len() as u16).to_be_bytes());
-        frame.extend_from_slice(connection_id.as_bytes());
-        frame.extend_from_slice(payload);
+        let frame = encode_tunnel_frame(connection_id, payload);
         self.outgoing
             .send(WsMessage::Binary(frame.into()))
             .await
@@ -177,7 +173,7 @@ impl RemoteConnection {
         connection_id: String,
         sender: mpsc::Sender<Vec<u8>>,
     ) -> Result<(), AppError> {
-        if !is_canonical_uuid(&connection_id) {
+        if !is_tunnel_connection_id(&connection_id) {
             return Err(validation_error("connection id must be a canonical UUID"));
         }
         let mut senders = self
@@ -196,6 +192,18 @@ impl RemoteConnection {
             .lock()
             .expect("remote tunnel connection lock")
             .remove(connection_id);
+    }
+
+    /// Ends the session after the socket is lost for good. Subscribed channels stay
+    /// registered; only `close` clears them.
+    fn end_socket_session(&self) {
+        self.active.store(false, Ordering::Release);
+        self.fail_controls();
+        self.tunnel_senders
+            .lock()
+            .expect("remote tunnel connection lock")
+            .clear();
+        self.tunnels.close_all();
     }
 
     pub async fn close(&self) {
@@ -217,7 +225,7 @@ impl RemoteConnection {
             .lock()
             .expect("remote tunnel connection lock")
             .clear();
-        self.tunnels.close_all(None).await;
+        self.tunnels.close_all();
 
         let http = self.http.clone();
         let server_url = self.credentials.server_url.clone();
@@ -419,14 +427,7 @@ async fn run_socket(
         drop(reader);
 
         if moved {
-            connection.active.store(false, Ordering::Release);
-            connection.fail_controls();
-            connection
-                .tunnel_senders
-                .lock()
-                .expect("remote tunnel connection lock")
-                .clear();
-            connection.tunnels.close_all(None).await;
+            connection.end_socket_session();
             return;
         }
 
@@ -434,14 +435,7 @@ async fn run_socket(
         let reconnect_deadline = disconnected_at + grace;
         loop {
             if Instant::now() >= reconnect_deadline {
-                connection.active.store(false, Ordering::Release);
-                connection.fail_controls();
-                connection
-                    .tunnel_senders
-                    .lock()
-                    .expect("remote tunnel connection lock")
-                    .clear();
-                connection.tunnels.close_all(None).await;
+                connection.end_socket_session();
                 return;
             }
             match tokio::time::timeout_at(
@@ -460,14 +454,7 @@ async fn run_socket(
                     tokio::time::sleep_until(retry_at).await;
                 }
                 Err(_) => {
-                    connection.active.store(false, Ordering::Release);
-                    connection.fail_controls();
-                    connection
-                        .tunnel_senders
-                        .lock()
-                        .expect("remote tunnel connection lock")
-                        .clear();
-                    connection.tunnels.close_all(None).await;
+                    connection.end_socket_session();
                     return;
                 }
             }
@@ -584,25 +571,6 @@ fn control_key(value: &Value) -> Option<String> {
     }
 }
 
-fn decode_tunnel_frame(frame: &[u8]) -> Option<(&str, &[u8])> {
-    const ID_BYTES: usize = 36;
-    const HEADER_BYTES: usize = 2 + ID_BYTES;
-    const PAYLOAD_BYTES: usize = 16 * 1024;
-    if frame.len() < 2 || usize::from(u16::from_be_bytes([frame[0], frame[1]])) != ID_BYTES {
-        return None;
-    }
-    let payload = frame.get(HEADER_BYTES..)?;
-    if payload.len() > PAYLOAD_BYTES {
-        return None;
-    }
-    let id = std::str::from_utf8(frame.get(2..HEADER_BYTES)?).ok()?;
-    is_canonical_uuid(id).then_some((id, payload))
-}
-
-fn is_canonical_uuid(id: &str) -> bool {
-    uuid::Uuid::parse_str(id).is_ok_and(|parsed| parsed.to_string() == id)
-}
-
 fn normalize_server_url(value: &str) -> Result<String, AppError> {
     let value = value.trim();
     let url = Url::parse(value).map_err(|error| {
@@ -646,15 +614,6 @@ fn api_url(server_url: &str, path: &str) -> Result<Url, AppError> {
     .map_err(|error| {
         AppError::new("server URL is invalid", AppErrorKind::Validation).with_source(error)
     })
-}
-
-#[cfg(test)]
-fn channel_id_from_marker(value: &str) -> Option<u64> {
-    value
-        .strip_prefix(CHANNEL_PREFIX)?
-        .parse::<u64>()
-        .ok()
-        .filter(|id| *id < (1_u64 << 53))
 }
 
 async fn response_value(response: reqwest::Response) -> Result<Value, AppError> {
@@ -711,3 +670,7 @@ fn session_error(message: &str) -> AppError {
 #[cfg(test)]
 #[path = "client_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "client_tunnel_tests.rs"]
+mod tunnel_tests;

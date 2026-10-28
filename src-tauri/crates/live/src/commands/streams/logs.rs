@@ -1,8 +1,8 @@
 use super::{
-    client_for_context,
     log_batches::{emit_log_batch, read_log_batches},
     send,
 };
+use crate::commands::ClusterAccess;
 use crate::models::{LogLineSource, PodLogStreamRequest, StreamMessage};
 use crate::runtime::Channel;
 use futures_util::{io::AsyncBufRead, AsyncBufReadExt};
@@ -11,15 +11,11 @@ use kube::api::{Api, LogParams};
 
 pub(super) async fn run_pod_log_stream(
     stream_id: String,
+    access: ClusterAccess,
     request: PodLogStreamRequest,
     channel: Channel<StreamMessage>,
 ) {
-    let client = match client_for_context(
-        &request.cluster_context,
-        request.kubeconfig_env_var.clone(),
-    )
-    .await
-    {
+    let client = match access.stream_client(&request.cluster_context).await {
         Ok(client) => client,
         Err(err) => {
             send(

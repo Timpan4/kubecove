@@ -242,18 +242,20 @@ fn normalized_tls_server_name(
         )
         .with_source(error)
     })?;
-    if url.host_str().is_none()
-        || url.port().is_some()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.path() != "/"
-    {
-        return Err(AppError::new(
+    match url.host_str() {
+        Some(host)
+            if url.port().is_none()
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.path() == "/" =>
+        {
+            Ok(host.to_string())
+        }
+        _ => Err(AppError::new(
             "invalid Argo CD TLS server name",
             AppErrorKind::ArgoConnection,
-        ));
+        )),
     }
-    Ok(url.host_str().expect("validated host").to_string())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -299,9 +301,7 @@ impl<'de> Deserialize<'de> for ArgoConnectionProfile {
         let wire = ArgoConnectionProfileWire::deserialize(deserializer)?;
         let endpoint = wire
             .endpoint
-            .unwrap_or_else(|| ArgoServerEndpoint::ExternalHttps {
-                url: wire.url.clone(),
-            });
+            .unwrap_or(ArgoServerEndpoint::ExternalHttps { url: wire.url });
         let (endpoint, url) = match endpoint {
             ArgoServerEndpoint::ExternalHttps { url } => {
                 (ArgoServerEndpoint::ExternalHttps { url: url.clone() }, url)
@@ -333,21 +333,6 @@ impl<'de> Deserialize<'de> for ArgoConnectionProfile {
             transport: wire.transport,
             remember_credential: wire.remember_credential,
         })
-    }
-}
-
-impl Default for ArgoConnectionProfile {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            url: String::new(),
-            endpoint: ArgoServerEndpoint::ExternalHttps { url: String::new() },
-            cluster_context: None,
-            workspace_id: None,
-            kubeconfig_source_key: None,
-            transport: String::new(),
-            remember_credential: false,
-        }
     }
 }
 
@@ -391,7 +376,10 @@ pub struct ArgoServerCapability {
     pub argo_labeled: bool,
 }
 
-/// Exact private tunnel target the user confirmed before credentials are sent.
+/// Private tunnel target the user confirmed before credentials are sent.
+///
+/// A missing Pod is a Service-level reconnect: it is only accepted for a remembered
+/// credential, which was saved after a full confirmation of this namespace and Service.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArgoConfirmedTarget {
@@ -399,6 +387,20 @@ pub struct ArgoConfirmedTarget {
     pub service_name: String,
     #[serde(default)]
     pub pod_name: Option<String>,
+    /// SHA-256 of the HTTPS server certificate the user confirmed, as lowercase hex.
+    #[serde(default)]
+    pub certificate_sha256: Option<String>,
+}
+
+/// What a private tunnel currently reaches, shown to the user for confirmation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArgoTunnelTargetPreview {
+    pub namespace: String,
+    pub service_name: String,
+    pub pod_name: String,
+    /// Present for HTTPS endpoints: SHA-256 of the server certificate, as lowercase hex.
+    pub certificate_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

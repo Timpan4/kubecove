@@ -1,8 +1,8 @@
 use super::{
-    client_for_context,
     log_batches::{emit_log_batch, read_log_batches},
     send,
 };
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{AggregatedLogStreamRequest, AppError, LogLineSource, StreamMessage};
 use crate::runtime::{Channel, JoinHandle};
@@ -56,15 +56,11 @@ impl Drop for SourceStreams {
 
 pub(super) async fn run_aggregated_log_stream(
     stream_id: String,
+    access: ClusterAccess,
     request: AggregatedLogStreamRequest,
     channel: Channel<StreamMessage>,
 ) {
-    let client = match client_for_context(
-        &request.cluster_context,
-        request.kubeconfig_env_var.clone(),
-    )
-    .await
-    {
+    let client = match access.stream_client(&request.cluster_context).await {
         Ok(client) => client,
         Err(err) => {
             send_error(&channel, stream_id, err.message);
@@ -126,7 +122,9 @@ pub(super) async fn run_aggregated_log_stream(
             return;
         }
 
-        let params = WatchParams::default().labels(&selector).timeout(30);
+        let params = WatchParams::default()
+            .labels(&selector)
+            .timeout(super::watch::WATCH_TIMEOUT_SECS);
         match pods.watch(&params, &resource_version).await {
             Ok(stream) => {
                 let mut stream = stream.boxed();

@@ -14,8 +14,59 @@ pub fn pod_restarts(
     (total > 0).then_some(total)
 }
 
-pub fn update_resource_health(summary: &mut ResourceSummary) {
-    let state = classify_resource_health(summary);
+/// Readiness a built-in kind reports, before it is formatted for display.
+#[derive(Clone, Copy)]
+pub enum Readiness<'a> {
+    Absent,
+    /// A Ready condition status as the API reports it, such as `True` or `False`.
+    Condition(&'a str),
+    /// Ready against desired replicas; no desired replicas classifies nothing.
+    Counts {
+        ready: i32,
+        desired: i32,
+    },
+}
+
+/// Classifies a phase the API reports, such as a Pod phase, together with readiness.
+pub fn kubernetes_health(phase: Option<&str>, readiness: Readiness<'_>) -> ResourceHealth {
+    // Compare trimmed values case-insensitively instead of allocating lowercase copies per row.
+    let phase = phase.unwrap_or_default().trim();
+    let successful_terminal = matches_any(phase, &["succeeded", "complete", "completed"]);
+    let condition = match readiness {
+        Readiness::Condition(status) => status.trim(),
+        Readiness::Absent | Readiness::Counts { .. } => "",
+    };
+    let counts = match readiness {
+        Readiness::Counts { ready, desired } if desired > 0 => Some(ready >= desired),
+        _ => None,
+    };
+
+    if matches_any(phase, &["pending", "terminating"]) {
+        return ResourceHealth::Attention;
+    }
+    if matches_any(
+        phase,
+        &["failed", "error", "crashloopbackoff", "imagepullbackoff"],
+    ) || (!successful_terminal && condition.eq_ignore_ascii_case("false"))
+    {
+        return ResourceHealth::Degraded;
+    }
+    if !successful_terminal && counts == Some(false) {
+        return ResourceHealth::Attention;
+    }
+    if successful_terminal
+        || matches_any(phase, &["running", "ready", "true", "ready: true"])
+        || condition.eq_ignore_ascii_case("true")
+        || counts == Some(true)
+    {
+        return ResourceHealth::Healthy;
+    }
+
+    ResourceHealth::Unknown
+}
+
+/// Records the Kubernetes evidence for a summary whose status, readiness and restarts are set.
+pub fn assess_kubernetes_health(summary: &mut ResourceSummary, health: ResourceHealth) {
     summary.health_assessment = evaluate_health(HealthAssessmentInput {
         recognized_semantics: summary.status.is_some() || summary.ready.is_some(),
         provider_available: true,
@@ -23,7 +74,7 @@ pub fn update_resource_health(summary: &mut ResourceSummary) {
             HealthAssessmentEvidence {
                 source: HealthAssessmentSource::Kubernetes,
                 raw: json!({ "status": summary.status, "ready": summary.ready }),
-                state: resource_health_state(state),
+                state: Some(resource_health_state(health)),
                 current: true,
                 reason: "Kubernetes status and readiness".to_string(),
             },
@@ -50,73 +101,19 @@ pub fn legacy_resource_health(state: HealthAssessmentState) -> ResourceHealth {
     }
 }
 
-fn resource_health_state(health: ResourceHealth) -> Option<HealthAssessmentState> {
+fn resource_health_state(health: ResourceHealth) -> HealthAssessmentState {
     match health {
-        ResourceHealth::Healthy => Some(HealthAssessmentState::Healthy),
-        ResourceHealth::Attention => Some(HealthAssessmentState::NeedsAttention),
-        ResourceHealth::Degraded => Some(HealthAssessmentState::Degraded),
-        ResourceHealth::Restarted | ResourceHealth::Unknown => Some(HealthAssessmentState::Unknown),
+        ResourceHealth::Healthy => HealthAssessmentState::Healthy,
+        ResourceHealth::Attention => HealthAssessmentState::NeedsAttention,
+        ResourceHealth::Degraded => HealthAssessmentState::Degraded,
+        ResourceHealth::Restarted | ResourceHealth::Unknown => HealthAssessmentState::Unknown,
     }
-}
-
-pub(crate) fn classify_resource_health(summary: &ResourceSummary) -> ResourceHealth {
-    // Compare trimmed values case-insensitively instead of allocating lowercase copies per row.
-    let status = summary.status.as_deref().unwrap_or_default().trim();
-    let ready = summary.ready.as_deref().unwrap_or_default().trim();
-    let successful_terminal = is_successful_terminal_status(status);
-
-    if matches_any(status, &["pending", "terminating"]) {
-        return ResourceHealth::Attention;
-    }
-    if is_degraded_status(status) || (!successful_terminal && ready.eq_ignore_ascii_case("false")) {
-        return ResourceHealth::Degraded;
-    }
-    if !successful_terminal && has_incomplete_ready_ratio(ready) {
-        return ResourceHealth::Attention;
-    }
-    if successful_terminal
-        || matches_any(status, &["running", "ready", "true", "ready: true"])
-        || ready.eq_ignore_ascii_case("true")
-        || has_complete_ready_ratio(ready)
-    {
-        return ResourceHealth::Healthy;
-    }
-
-    ResourceHealth::Unknown
 }
 
 fn matches_any(value: &str, options: &[&str]) -> bool {
     options
         .iter()
         .any(|option| value.eq_ignore_ascii_case(option))
-}
-
-fn is_successful_terminal_status(status: &str) -> bool {
-    matches_any(status, &["succeeded", "complete", "completed"])
-}
-
-fn is_degraded_status(status: &str) -> bool {
-    matches_any(
-        status,
-        &["failed", "error", "crashloopbackoff", "imagepullbackoff"],
-    )
-}
-
-fn has_incomplete_ready_ratio(ready: &str) -> bool {
-    ready_ratio(ready).is_some_and(|(ready_count, desired_count)| {
-        desired_count > 0 && ready_count < desired_count
-    })
-}
-
-fn has_complete_ready_ratio(ready: &str) -> bool {
-    ready_ratio(ready).is_some_and(|(ready_count, desired_count)| {
-        desired_count > 0 && ready_count >= desired_count
-    })
-}
-
-fn ready_ratio(ready: &str) -> Option<(i32, i32)> {
-    let (ready_count, desired_count) = ready.split_once('/')?;
-    Some((ready_count.parse().ok()?, desired_count.parse().ok()?))
 }
 
 #[cfg(test)]
@@ -140,80 +137,5 @@ mod tests {
         assert_eq!(pod_restarts(None), None);
         assert_eq!(pod_restarts(Some(&statuses(&[i32::MAX, 1]))), None);
         assert_eq!(pod_restarts(Some(&statuses(&[-1, 2]))), None);
-    }
-
-    fn summary(status: &str, ready: &str, restarts: Option<i32>) -> ResourceSummary {
-        ResourceSummary {
-            kind: "Pod".to_string(),
-            cluster: "kind-dev".to_string(),
-            name: "job-pod".to_string(),
-            namespace: Some("default".to_string()),
-            age: "1m".to_string(),
-            api_version: Some("v1".to_string()),
-            group: None,
-            version: Some("v1".to_string()),
-            plural: Some("pods".to_string()),
-            namespaced: Some(true),
-            dynamic: None,
-            health: ResourceHealth::Unknown,
-            health_assessment: crate::models::HealthAssessment::default(),
-            created_at: None,
-            status: Some(status.to_string()),
-            ready: Some(ready.to_string()),
-            restarts,
-            owner_ref: None,
-            argo_app: None,
-            helm_release: None,
-            git_ops_owner: None,
-            git_ops_ownership_partial: false,
-        }
-    }
-
-    #[test]
-    fn succeeded_pod_with_false_ready_is_healthy() {
-        assert_eq!(
-            classify_resource_health(&summary("Succeeded", "False", None)),
-            ResourceHealth::Healthy
-        );
-    }
-
-    #[test]
-    fn succeeded_pod_with_restart_history_is_healthy() {
-        assert_eq!(
-            classify_resource_health(&summary("Succeeded", "False", Some(2))),
-            ResourceHealth::Healthy
-        );
-    }
-
-    #[test]
-    fn running_pod_with_false_ready_is_degraded() {
-        assert_eq!(
-            classify_resource_health(&summary("Running", "False", None)),
-            ResourceHealth::Degraded
-        );
-    }
-
-    #[test]
-    fn pending_pod_with_false_ready_needs_attention() {
-        assert_eq!(
-            classify_resource_health(&summary("Pending", "False", None)),
-            ResourceHealth::Attention
-        );
-    }
-
-    #[test]
-    fn unknown_status_stays_unknown() {
-        assert_eq!(
-            classify_resource_health(&summary("Unknown", "", None)),
-            ResourceHealth::Unknown
-        );
-    }
-
-    #[test]
-    fn incomplete_ready_ratio_needs_attention() {
-        assert_eq!(
-            classify_resource_health(&summary("Running", "0/3", None)),
-            ResourceHealth::Attention
-        );
     }
 }

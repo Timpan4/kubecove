@@ -86,6 +86,11 @@ export function permissionForAction(
 	return state?.permissions.find((permission) => permission.action === action);
 }
 
+/** Failed or unconfirmed permission checks never claim access. */
+export function actionAllowed(state: ResourceActionState | null, action: ResourceActionId): boolean {
+	return permissionForAction(state, action)?.allowed === true;
+}
+
 export function fallbackPermission(action: ResourceActionId, kind: string): string {
 	const plural = new Map([
 		["Deployment", "deployments"],
@@ -99,55 +104,47 @@ export function fallbackPermission(action: ResourceActionId, kind: string): stri
 	return `patch ${resource}`;
 }
 
-export function hasPendingResourceActionEdits(edits: {
-	replicas?: number;
-	containers?: Array<{
-		image?: string;
-		env?: unknown[];
-		requests?: Record<string, string | null>;
-		limits?: Record<string, string | null>;
-	}>;
-	labels?: Record<string, string | null>;
-	annotations?: Record<string, string | null>;
-}): boolean {
-	return Boolean(
-		edits.replicas !== undefined ||
-		edits.containers?.some((container) =>
-			container.image !== undefined ||
-			Boolean(container.env?.length) ||
-			Boolean(Object.keys(container.requests ?? {}).length) ||
-			Boolean(Object.keys(container.limits ?? {}).length),
-		) ||
-		Object.keys(edits.labels ?? {}).length ||
-		Object.keys(edits.annotations ?? {}).length,
-	);
+/** The rollout row resumes a paused Deployment. */
+export function actionForRow(row: ResourceActionRow, state: ResourceActionState | null): ResourceActionId {
+	return row.id === "rollout" && state?.paused ? "resume" : row.action;
 }
 
-export function resourceActionEditCount(edits: {
-	replicas?: number;
-	containers?: Array<{
-		image?: string;
-		env?: unknown[];
-		requests?: Record<string, string | null>;
-		limits?: Record<string, string | null>;
-	}>;
-	labels?: Record<string, string | null>;
-	annotations?: Record<string, string | null>;
-}): number {
-	return (
-		(edits.replicas === undefined ? 0 : 1) +
-		(edits.containers?.reduce(
-			(total, container) =>
-				total +
-				(container.image === undefined ? 0 : 1) +
-				(container.env?.length ?? 0) +
-				Object.keys(container.requests ?? {}).length +
-				Object.keys(container.limits ?? {}).length,
-			0,
-		) ?? 0) +
-		Object.keys(edits.labels ?? {}).length +
-		Object.keys(edits.annotations ?? {}).length
-	);
+function entries(map: Record<string, string>): string {
+	return Object.entries(map).map(([key, value]) => `${key} ${value}`).join(", ");
+}
+
+/** The row's current value in the loaded action state. */
+export function currentRowLabel(row: ResourceActionRow, state: ResourceActionState | null, kind: string): string {
+	if (!state) return "";
+	const { containers } = state;
+	switch (row.id) {
+		case "replicas":
+			return `${state.replicas ?? 0} desired`;
+		case "rollout":
+			return state.paused ? "Paused" : "Running";
+		case "restart":
+			return "Replace Pods gradually";
+		case "rollback":
+			return state.revisions.length ? `${state.revisions.length} available revisions` : "No owned revisions found";
+		case "image":
+			return containers.map((container) => `${container.name}: ${container.image}`).join(", ");
+		case "environment":
+			return containers
+				.map((container) => `${container.name}: ${container.env.map((variable) => variable.name).join(", ") || "no variables"}`)
+				.join("; ");
+		case "resources":
+			return containers
+				.map((container) => `${container.name}: requests ${entries(container.requests) || "none"}; limits ${entries(container.limits) || "none"}`)
+				.join("; ");
+		case "labels":
+		case "annotations":
+			return (
+				Object.entries(state[row.id]).map(([key, value]) => `${key}=${value}`).join(", ") ||
+				(row.id === "labels" ? "No labels" : "No annotations")
+			);
+		case "delete":
+			return `Deletes this ${kind} and its dependents where Kubernetes applies them.`;
+	}
 }
 
 export function actionTarget(resource: ResourceSummary) {

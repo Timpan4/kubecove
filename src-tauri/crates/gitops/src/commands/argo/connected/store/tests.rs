@@ -52,7 +52,7 @@ async fn lease_rejects_replaced_and_disconnected_connections() {
         "server",
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
     )
     .unwrap();
     let replacement = connection("replacement");
@@ -67,7 +67,7 @@ async fn lease_rejects_replaced_and_disconnected_connections() {
         selected,
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
         "old",
         "old-instance",
     )
@@ -85,7 +85,7 @@ async fn lease_rejects_replaced_and_disconnected_connections() {
         "server",
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
     )
     .unwrap();
     store.remove_connection("server").await.unwrap();
@@ -95,7 +95,7 @@ async fn lease_rejects_replaced_and_disconnected_connections() {
         selected,
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
         "replacement",
         "replacement-instance",
     )
@@ -122,12 +122,12 @@ async fn disconnect_and_replacement_wait_for_active_lease() {
             "server",
             "cluster",
             Some("workspace"),
-            Some("kubeconfigSource=test"),
+            "kubeconfigSource=test",
         )
         .unwrap(),
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
         "old",
         &old.instance_id,
     )
@@ -160,12 +160,12 @@ async fn disconnect_and_replacement_wait_for_active_lease() {
             "server",
             "cluster",
             Some("workspace"),
-            Some("kubeconfigSource=test"),
+            "kubeconfigSource=test",
         )
         .unwrap(),
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        "kubeconfigSource=test",
         "old",
         &old.instance_id,
     )
@@ -222,25 +222,19 @@ async fn disconnect_removes_replacement_after_waiting_on_old_gate() {
 #[tokio::test]
 async fn close_all_removes_connections_and_closes_tunnels() {
     let store = ArgoConnectionStore::default();
-    let (first_shutdown, first_closed) = tokio::sync::oneshot::channel();
-    let (second_shutdown, second_closed) = tokio::sync::oneshot::channel();
+    let (first_relay, first_relay_stopped) = tokio::sync::oneshot::channel();
+    let (second_relay, second_relay_stopped) = tokio::sync::oneshot::channel();
     store
         .replace_connection(
             "first".into(),
-            connection_with_tunnel(
-                "first",
-                Some(ArgoServiceTunnel::test_tunnel(first_shutdown)),
-            ),
+            connection_with_tunnel("first", Some(ArgoServiceTunnel::test_tunnel(first_relay))),
         )
         .await
         .unwrap();
     store
         .replace_connection(
             "second".into(),
-            connection_with_tunnel(
-                "second",
-                Some(ArgoServiceTunnel::test_tunnel(second_shutdown)),
-            ),
+            connection_with_tunnel("second", Some(ArgoServiceTunnel::test_tunnel(second_relay))),
         )
         .await
         .unwrap();
@@ -248,8 +242,8 @@ async fn close_all_removes_connections_and_closes_tunnels() {
     store.close_all().await.unwrap();
 
     assert!(store.connections.lock().unwrap().is_empty());
-    assert!(first_closed.await.is_ok());
-    assert!(second_closed.await.is_ok());
+    assert!(first_relay_stopped.await.is_err());
+    assert!(second_relay_stopped.await.is_err());
 }
 
 #[tokio::test]
@@ -265,7 +259,7 @@ async fn source_scope_rejects_same_context_from_another_kubeconfig() {
         "server",
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=other"),
+        "kubeconfigSource=other",
     )
     .err()
     .expect("another kubeconfig source must not reuse the connection");
@@ -280,8 +274,8 @@ async fn source_scope_rejects_same_context_from_another_kubeconfig() {
 async fn workspace_cleanup_rejects_connection_started_before_cleanup() {
     let store = ArgoConnectionStore::default();
     let started_epoch = store.connection_epoch();
-    let (shutdown, closed) = tokio::sync::oneshot::channel();
-    let late = connection_with_tunnel("late", Some(ArgoServiceTunnel::test_tunnel(shutdown)));
+    let (relay, relay_stopped) = tokio::sync::oneshot::channel();
+    let late = connection_with_tunnel("late", Some(ArgoServiceTunnel::test_tunnel(relay)));
 
     store.close_all().await.unwrap();
     let error = store
@@ -294,5 +288,5 @@ async fn workspace_cleanup_rejects_connection_started_before_cleanup() {
         "Argo CD connection was cancelled by workspace cleanup"
     );
     assert!(store.connections.lock().unwrap().is_empty());
-    assert!(closed.await.is_ok());
+    assert!(relay_stopped.await.is_err());
 }

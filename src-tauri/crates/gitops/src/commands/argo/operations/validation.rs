@@ -1,6 +1,6 @@
 use super::super::connected::api_get;
 use super::payload::resource_action_path;
-use crate::commands::gitops_crd::fail_closed_client_for_context;
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ArgoApplicationRef, ArgoOperationRequest};
 use k8s_openapi::api::authorization::v1::{
@@ -88,7 +88,10 @@ pub(super) fn valid(request: &ArgoOperationRequest) -> Result<(), AppError> {
     Ok(())
 }
 
-pub(super) async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(), AppError> {
+pub(super) async fn fallback_allowed(
+    access: &ClusterAccess,
+    request: &ArgoOperationRequest,
+) -> Result<(), AppError> {
     let context = request
         .cluster_context
         .as_deref()
@@ -120,8 +123,7 @@ pub(super) async fn fallback_allowed(request: &ArgoOperationRequest) -> Result<(
             AppErrorKind::ArgoOperationUnavailable,
         ));
     }
-    let client =
-        fail_closed_client_for_context(context, request.kubeconfig_env_var.clone()).await?;
+    let client = access.preview_client(context).await?;
     let review = SelfSubjectAccessReview {
         metadata: ObjectMeta::default(),
         spec: SelfSubjectAccessReviewSpec {
@@ -225,23 +227,19 @@ pub(super) async fn validate_resource_action(
 ) -> Result<(), AppError> {
     let actions = api_get(connection, &resource_action_path(request)).await?;
     let action = request.resource_action.as_deref();
-    let action_definition = actions
+    let Some(action_definition) = actions
         .get("actions")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .find(|item| item.get("name").and_then(Value::as_str) == action || item.as_str() == action);
-    if action_definition.is_none()
-        || action_definition
-            .and_then(|item| item.get("disabled"))
-            .and_then(Value::as_bool)
-            == Some(true)
-    {
+        .find(|item| item.get("name").and_then(Value::as_str) == action || item.as_str() == action)
+        .filter(|item| item.get("disabled").and_then(Value::as_bool) != Some(true))
+    else {
         return Err(AppError::new(
             "resource action is not reported by Argo CD",
             AppErrorKind::ArgoOperationUnavailable,
         ));
-    }
+    };
     let parameters = request
         .resource_action_parameters
         .as_ref()
@@ -255,7 +253,6 @@ pub(super) async fn validate_resource_action(
         ));
     }
     if action_definition
-        .unwrap()
         .get("params")
         .and_then(Value::as_array)
         .into_iter()

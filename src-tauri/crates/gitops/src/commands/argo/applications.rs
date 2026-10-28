@@ -1,14 +1,14 @@
 use crate::commands::gitops_crd::{
-    client_for_context, find_api_resource, get_crd_object, list_crd_objects, resource_metadata,
+    find_api_resource, get_crd_object, list_crd_objects, object_age, resource_metadata,
     resource_status, resource_yaml,
 };
-use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
+use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{
     argo_health_assessment, AppError, ArgoApplicationDetails, ArgoApplicationSourceSummary,
     ArgoApplicationSummary, YamlEncoding, YamlViewMode,
 };
-use chrono::{TimeZone, Utc};
 use kube::core::DynamicObject;
 use std::collections::BTreeSet;
 
@@ -40,11 +40,7 @@ pub(super) fn application_summary_from_object(
     Some(ArgoApplicationSummary {
         cluster: cluster_context.to_string(),
         name: obj.metadata.name.clone().unwrap_or_default(),
-        age: resource_age(obj.metadata.creation_timestamp.clone().map(|timestamp| {
-            Utc.timestamp_opt(timestamp.0.as_second(), 0)
-                .single()
-                .unwrap_or_else(Utc::now)
-        })),
+        age: object_age(&obj.metadata),
         created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
         namespace: obj.metadata.namespace.clone(),
         project: data
@@ -100,12 +96,13 @@ pub fn benchmark_application_summary_from_object(
 }
 
 /// List Argo CD Applications in the cluster.
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_argocd_applications(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ArgoApplicationSummary>, AppError> {
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
 
     let ar = match find_api_resource(&client, "argoproj.io", "Application").await? {
         Some(ar) => ar,
@@ -122,8 +119,16 @@ pub async fn list_argocd_applications(
     Ok(summaries)
 }
 
+/// The discovered Argo CD Application resource; an error when the CRD is not installed.
+pub(crate) async fn application_api_resource(
+    client: &kube::Client,
+) -> Result<kube::api::ApiResource, AppError> {
+    find_api_resource(client, "argoproj.io", "Application")
+        .await?
+        .ok_or_else(|| AppError::new("Application CRD not found", AppErrorKind::Cluster))
+}
+
 /// Get detailed Argo CD Application information including YAML, metadata, and status.
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_argocd_application_details(
     cluster_context: String,
     name: String,
@@ -132,18 +137,11 @@ pub async fn get_argocd_application_details(
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<ArgoApplicationDetails, AppError> {
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
 
-    let ar = match find_api_resource(&client, "argoproj.io", "Application").await? {
-        Some(ar) => ar,
-        None => {
-            return Err(AppError::new(
-                "Application CRD not found",
-                AppErrorKind::Cluster,
-            ))
-        }
-    };
-
+    let ar = application_api_resource(&client).await?;
     let obj = get_crd_object(client.clone(), &ar, &name, namespace.as_deref()).await?;
 
     let yaml = resource_yaml(&obj, yaml_view_mode, yaml_encoding)?;

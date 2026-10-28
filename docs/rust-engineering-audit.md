@@ -117,7 +117,7 @@ Paths below are relative to `src-tauri` at the reviewed baseline; link destinati
 | [src/commands/incidents/health.rs](../src-tauri/crates/inspection/src/commands/incidents/health.rs) | Read; unchanged |
 | [src/commands/incidents/restarts.rs](../src-tauri/crates/inspection/src/commands/incidents/restarts.rs) | Read; unchanged |
 | [src/commands/kubeconfig.rs](../src-tauri/crates/kube/src/commands/kubeconfig.rs) | Read; updated |
-| [src/commands/kubeconfig_clients.rs](../src-tauri/crates/kube/src/commands/kubeconfig_clients.rs) | Read; updated |
+| [src/commands/kubeconfig_clients.rs, now cluster_access/clients.rs](../src-tauri/crates/kube/src/commands/cluster_access/clients.rs) | Read; updated |
 | [src/commands/kubeconfig_tests.rs](../src-tauri/crates/kube/src/commands/kubeconfig_tests.rs) | Read; updated |
 | [src/commands/live_sessions.rs](../src-tauri/crates/live/src/commands/live_sessions.rs) | Read; updated |
 | [src/commands/live_store.rs](../src-tauri/crates/kube/src/commands/live_store.rs) | Read; updated |
@@ -144,9 +144,9 @@ Paths below are relative to `src-tauri` at the reviewed baseline; link destinati
 | [src/commands/resources/apply/validation.rs](../src-tauri/crates/inspection/src/commands/resources/apply/validation.rs) | Read; updated |
 | [src/commands/resources/apply_client_tests.rs](../src-tauri/crates/inspection/src/commands/resources/apply_client_tests.rs) | Read; updated |
 | [src/commands/resources/details.rs](../src-tauri/crates/inspection/src/commands/resources/details.rs) | Read; updated |
-| [src/commands/resources/details/cluster.rs](../src-tauri/crates/inspection/src/commands/resources/details/cluster.rs) | Read; updated |
-| [src/commands/resources/details/core.rs](../src-tauri/crates/inspection/src/commands/resources/details/core.rs) | Read; updated |
-| [src/commands/resources/details/workloads.rs](../src-tauri/crates/inspection/src/commands/resources/details/workloads.rs) | Read; updated |
+| src/commands/resources/details/cluster.rs | Read; updated; later merged into the shared summary projection |
+| src/commands/resources/details/core.rs | Read; updated; later merged into the shared summary projection |
+| src/commands/resources/details/workloads.rs | Read; updated; later merged into the shared summary projection |
 | [src/commands/resources/dynamic.rs](../src-tauri/crates/inspection/src/commands/resources/dynamic.rs) | Read; updated |
 | [src/commands/resources/ingress_status.rs](../src-tauri/crates/inspection/src/commands/resources/ingress_status.rs) | Read; unchanged |
 | [src/commands/resources/kubeconform.rs](../src-tauri/crates/inspection/src/commands/resources/kubeconform.rs) | Read; updated |
@@ -163,7 +163,7 @@ Paths below are relative to `src-tauri` at the reviewed baseline; link destinati
 | [src/commands/resources/topology_tests.rs](../src-tauri/crates/inspection/src/commands/resources/topology_tests.rs) | Read; unchanged |
 | [src/commands/resources/yaml.rs](../src-tauri/crates/inspection/src/commands/resources/yaml.rs) | Read; updated |
 | [src/commands/sessions.rs](../src-tauri/crates/live/src/commands/sessions.rs) | Read; updated |
-| [src/commands/sessions/registry.rs](../src-tauri/crates/live/src/commands/sessions/registry.rs) | Read; updated |
+| [src/commands/sessions/lifecycle.rs](../src-tauri/crates/live/src/commands/sessions/lifecycle.rs) | Read; updated |
 | [src/commands/sessions/runner.rs](../src-tauri/crates/live/src/commands/sessions/runner.rs) | Read; updated |
 | [src/commands/sessions/service.rs](../src-tauri/crates/live/src/commands/sessions/service.rs) | Read; updated |
 | [src/commands/sessions/target.rs](../src-tauri/crates/live/src/commands/sessions/target.rs) | Read; updated |

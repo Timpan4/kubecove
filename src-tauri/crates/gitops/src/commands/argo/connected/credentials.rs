@@ -35,10 +35,24 @@ fn credential_key(profile: &ArgoConnectionProfile) -> String {
         ),
     }
 }
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct StoredCredential {
     pub(super) token: String,
     generation: String,
+    /// Tunnel HTTPS certificate confirmed with this credential; reconnects accept only it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) certificate_sha256: Option<String>,
+}
+
+impl std::fmt::Debug for StoredCredential {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("StoredCredential")
+            .field("token", &"[REDACTED]")
+            .field("generation", &self.generation)
+            .field("certificate_sha256", &self.certificate_sha256)
+            .finish()
+    }
 }
 
 pub(super) trait CredentialStore {
@@ -81,8 +95,15 @@ pub(super) fn load_credential(
             let record = StoredCredential {
                 token: value,
                 generation: Uuid::new_v4().to_string(),
+                certificate_sha256: None,
             };
-            save_credential(store, profile, &record.token, record.generation.clone())?;
+            save_credential(
+                store,
+                profile,
+                &record.token,
+                record.generation.clone(),
+                None,
+            )?;
             record
         }
         Err(_) => return Ok(None),
@@ -95,10 +116,12 @@ pub(super) fn save_credential(
     profile: &ArgoConnectionProfile,
     token: &str,
     generation: String,
+    certificate_sha256: Option<String>,
 ) -> Result<(), AppError> {
     let value = serde_json::to_string(&StoredCredential {
         token: token.into(),
         generation,
+        certificate_sha256,
     })
     .map_err(|error| {
         AppError::new(
@@ -112,12 +135,12 @@ pub(super) fn save_credential(
 
 pub(super) fn connection_generation(
     stored: Option<&StoredCredential>,
-    submitted_token: bool,
+    new_token: bool,
     remember_credential: bool,
     insecure_tls: bool,
     custom_ca_pem: Option<&[u8]>,
 ) -> String {
-    if submitted_token || insecure_tls || custom_ca_pem.is_some() {
+    if new_token || insecure_tls || custom_ca_pem.is_some() {
         return Uuid::new_v4().to_string();
     }
     if remember_credential {

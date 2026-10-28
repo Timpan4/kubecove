@@ -164,27 +164,14 @@ pub async fn fetch_and_serialize<
 where
     <T as Resource>::DynamicType: Default,
 {
-    fetch_and_serialize_with_mode(client, namespace, name, YamlViewMode::Kubectl).await
-}
-
-pub(crate) async fn fetch_and_serialize_with_mode<
-    T: Resource<Scope = NamespaceResourceScope>
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + std::fmt::Debug
-        + Send
-        + Sync,
->(
-    client: Client,
-    namespace: Option<&str>,
-    name: &str,
-    mode: YamlViewMode,
-) -> Result<(T, String), AppError>
-where
-    <T as Resource>::DynamicType: Default,
-{
-    fetch_and_serialize_with_encoding(client, namespace, name, mode, YamlEncoding::Yaml).await
+    fetch_and_serialize_with_encoding(
+        client,
+        namespace,
+        name,
+        YamlViewMode::Kubectl,
+        YamlEncoding::Yaml,
+    )
+    .await
 }
 
 pub async fn fetch_and_serialize_with_encoding<
@@ -253,26 +240,13 @@ pub async fn fetch_and_serialize_cluster<
 where
     <T as Resource>::DynamicType: Default,
 {
-    fetch_and_serialize_cluster_with_mode(client, name, YamlViewMode::Kubectl).await
-}
-
-pub(crate) async fn fetch_and_serialize_cluster_with_mode<
-    T: Resource<Scope = ClusterResourceScope>
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + std::fmt::Debug
-        + Send
-        + Sync,
->(
-    client: Client,
-    name: &str,
-    mode: YamlViewMode,
-) -> Result<(T, String), AppError>
-where
-    <T as Resource>::DynamicType: Default,
-{
-    fetch_and_serialize_cluster_with_encoding(client, name, mode, YamlEncoding::Yaml).await
+    fetch_and_serialize_cluster_with_encoding(
+        client,
+        name,
+        YamlViewMode::Kubectl,
+        YamlEncoding::Yaml,
+    )
+    .await
 }
 
 pub async fn fetch_and_serialize_cluster_with_encoding<

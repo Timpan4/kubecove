@@ -1,7 +1,9 @@
+use super::super::scope::scoped_connection;
 use super::super::session::SecureStore;
 use super::payload::resource_action_path;
 use super::resolve::{recorded_retry, recorded_sync_payload};
 use super::*;
+use crate::commands::{FixedClusterAccess, FIXED_SOURCE_KEY};
 use crate::models::{ArgoConnectionProfile, ArgoServerEndpoint};
 use std::{
     collections::HashMap,
@@ -35,7 +37,7 @@ fn connection(generation: &str) -> Arc<ConnectedArgo> {
             },
             cluster_context: Some("cluster".into()),
             workspace_id: Some("workspace".into()),
-            kubeconfig_source_key: Some("kubeconfigSource=test".into()),
+            kubeconfig_source_key: Some(FIXED_SOURCE_KEY.into()),
             transport: "connected".into(),
             remember_credential: true,
         },
@@ -47,6 +49,15 @@ fn connection(generation: &str) -> Arc<ConnectedArgo> {
         instance_id: uuid::Uuid::new_v4().to_string(),
         gate: Arc::new(tokio::sync::Mutex::new(())),
     })
+}
+
+/// A session whose requests resolve to the source the test connections were made in.
+fn cluster() -> Arc<FixedClusterAccess> {
+    let (service, _) = tower_test::mock::pair::<
+        http::Request<kube::client::Body>,
+        http::Response<kube::client::Body>,
+    >();
+    FixedClusterAccess::new(kube::Client::new(service, "default"))
 }
 
 fn store() -> super::super::ArgoConnectionStore {
@@ -65,7 +76,7 @@ fn reviewed(store: &super::super::ArgoConnectionStore) -> (String, SessionSnapsh
         "server",
         "cluster",
         Some("workspace"),
-        Some("kubeconfigSource=test"),
+        FIXED_SOURCE_KEY,
     )
     .unwrap();
     let (id, _) = issue(
@@ -75,7 +86,7 @@ fn reviewed(store: &super::super::ArgoConnectionStore) -> (String, SessionSnapsh
             action: "refresh".into(),
             connection_id: Some("server".into()),
             cluster_context: Some("cluster".into()),
-            kubeconfig_env_var: Some("kubeconfigSource=test".into()),
+            kubeconfig_env_var: Some(FIXED_SOURCE_KEY.into()),
             application: ArgoApplicationRef {
                 name: "app".into(),
                 workspace_id: Some("workspace".into()),
@@ -107,29 +118,33 @@ async fn reconnect_with_same_generation_rejects_and_tombstones_reviewed_session(
         .replace_connection("server".into(), replacement)
         .await
         .unwrap();
-    let error = run_argo_operation_for_store(
-        &store,
-        ArgoOperationConfirmation {
-            session_id: id.clone(),
-            confirmation: id.clone(),
-        },
-    )
-    .await
-    .unwrap_err();
+    let error = cluster()
+        .scope()
+        .run(run_argo_operation_for_store(
+            &store,
+            ArgoOperationConfirmation {
+                session_id: id.clone(),
+                confirmation: id.clone(),
+            },
+        ))
+        .await
+        .unwrap_err();
     assert_eq!(error.message, "Argo CD connection was replaced");
     assert!(peek(&store.sessions, &id, None).is_err());
 
     let (id, _reviewed) = reviewed(&store);
     store.remove_connection("server").await.unwrap();
-    let error = run_argo_operation_for_store(
-        &store,
-        ArgoOperationConfirmation {
-            session_id: id.clone(),
-            confirmation: id.clone(),
-        },
-    )
-    .await
-    .unwrap_err();
+    let error = cluster()
+        .scope()
+        .run(run_argo_operation_for_store(
+            &store,
+            ArgoOperationConfirmation {
+                session_id: id.clone(),
+                confirmation: id.clone(),
+            },
+        ))
+        .await
+        .unwrap_err();
     assert_eq!(error.message, "Argo CD connection not found");
     assert!(peek(&store.sessions, &id, None).is_err());
 }
@@ -148,11 +163,31 @@ async fn rejected_lease_tombstones_the_reviewed_session() {
         .await
         .unwrap();
 
-    let error = run_connected_operation(&store, &id, &reviewed, old)
+    let error = run_connected_operation(&store, &id, &reviewed, old, &cluster().access())
         .await
         .unwrap_err();
     assert_eq!(error.message, "Argo CD connection was replaced");
     assert!(peek(&store.sessions, &id, None).is_err());
+}
+
+#[test]
+fn operation_paths_without_query_values_keep_the_query_separator() {
+    let application = ArgoApplicationRef {
+        name: "demo".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        application_path(&application, &[], None),
+        "/api/v1/applications/demo?"
+    );
+    assert_eq!(
+        application_path(&application, &[], Some("hard")),
+        "/api/v1/applications/demo?refresh=hard"
+    );
+    assert_eq!(
+        application_path(&application, &["resource", "actions", "v2"], None),
+        "/api/v1/applications/demo/resource/actions/v2?"
+    );
 }
 
 #[test]
@@ -164,7 +199,7 @@ fn operation_paths_encode_application_and_resource_identity() {
         ..Default::default()
     };
     assert_eq!(
-        application_path(&application, "/sync", None),
+        application_path(&application, &["sync"], None),
         "/api/v1/applications/app%2Fa%3F%23/sync?appNamespace=app+ns%2F%26%3F%23&project=project%2F%26%3F%23"
     );
     let path = resource_action_path(&ArgoOperationRequest {

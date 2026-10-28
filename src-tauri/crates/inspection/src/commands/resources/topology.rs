@@ -2,13 +2,9 @@ use super::{
     topology_collection::{collect_network_topology_inputs, collect_topology_inputs},
     topology_network::build_network_flow_topology,
 };
-use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
-    diagnostic_field,
-    discovery::crd_resource_kinds,
-    helpers::{base_resource_summary, extract_owner_ref_summary, resource_age},
-    kubeconfig::{kubeconfig_source_key, KubeconfigSource},
-    BackendCancellationRegistry, ClusterLiveStore,
+    diagnostic_field, discovery::crd_resource_kinds, helpers::extract_owner_ref_summary,
+    BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead,
 };
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -16,11 +12,9 @@ use crate::models::{
     TopologyEdge, TopologyNode, TopologyRelation,
 };
 use crate::runtime::State;
-use chrono::{TimeZone, Utc};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Instant;
 
 #[derive(Debug, Clone)]
 pub struct TopologyInputResource {
@@ -59,14 +53,6 @@ impl TopologyMode {
     }
 }
 
-fn age_from_metadata_at(metadata: &ObjectMeta, now: chrono::DateTime<Utc>) -> String {
-    resource_age(metadata.creation_timestamp.as_ref().map(|t| {
-        Utc.timestamp_opt(t.0.as_second(), 0)
-            .single()
-            .unwrap_or(now)
-    }))
-}
-
 pub(crate) fn topology_node_id(
     cluster: &str,
     api_version: &str,
@@ -88,41 +74,15 @@ fn topology_edge_id(source: &str, target: &str, relation: &TopologyRelation) -> 
     format!("{source}=>{target}:{relation:?}")
 }
 
-pub(crate) fn topology_root_kinds() -> &'static [&'static str] {
-    &["Deployment", "DaemonSet", "StatefulSet", "CronJob"]
-}
-
-pub(crate) fn topology_standalone_kinds() -> &'static [&'static str] {
-    &["Service", "Ingress", "ConfigMap", "Secret"]
-}
-
 fn selectable_kind(kind: &str) -> bool {
     kind != "EndpointSlice"
 }
 
-pub(crate) fn input_from_metadata(
-    cluster_context: &str,
-    kind: &str,
-    api_version: &str,
+/// Topology adds the object uid, controller owner and labels to the shared summary.
+pub(crate) fn input_with_summary(
     metadata: &ObjectMeta,
+    summary: ResourceSummary,
 ) -> TopologyInputResource {
-    input_from_metadata_at(cluster_context, kind, api_version, metadata, Utc::now())
-}
-
-pub fn input_from_metadata_at(
-    cluster_context: &str,
-    kind: &str,
-    api_version: &str,
-    metadata: &ObjectMeta,
-    now: chrono::DateTime<Utc>,
-) -> TopologyInputResource {
-    let mut summary = base_resource_summary(
-        kind,
-        cluster_context,
-        metadata,
-        age_from_metadata_at(metadata, now),
-    );
-    summary.api_version = Some(api_version.to_string());
     TopologyInputResource {
         uid: metadata.uid.clone().unwrap_or_default(),
         owner: extract_owner_ref_summary(metadata),
@@ -132,20 +92,19 @@ pub fn input_from_metadata_at(
     }
 }
 
-fn owner_lookup_key(owner: &OwnerReferenceSummary) -> String {
-    owner.uid.clone()
+pub(super) fn input_node_id(input: &TopologyInputResource) -> String {
+    topology_node_id(
+        &input.summary.cluster,
+        input.summary.api_version.as_deref().unwrap_or("v1"),
+        &input.summary.kind,
+        input.summary.namespace.as_deref(),
+        &input.summary.name,
+    )
 }
 
 pub(super) fn node_from_input(input: &TopologyInputResource) -> TopologyNode {
-    let api_version = input.summary.api_version.as_deref().unwrap_or("v1");
     TopologyNode {
-        id: topology_node_id(
-            &input.summary.cluster,
-            api_version,
-            &input.summary.kind,
-            input.summary.namespace.as_deref(),
-            &input.summary.name,
-        ),
+        id: input_node_id(input),
         kind: input.summary.kind.clone(),
         name: input.summary.name.clone(),
         namespace: input.summary.namespace.clone(),
@@ -167,8 +126,7 @@ pub fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> ResourceTo
         .into_iter()
         .filter(|input| !is_ownership_noise(input))
     {
-        let node = node_from_input(&input);
-        deduped_inputs.insert(node.id, input);
+        deduped_inputs.insert(input_node_id(&input), input);
     }
     let inputs: Vec<TopologyInputResource> = deduped_inputs.into_values().collect();
 
@@ -190,7 +148,7 @@ pub fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> ResourceTo
         let Some(owner) = &input.owner else {
             continue;
         };
-        let Some(source) = uid_to_node.get(&owner_lookup_key(owner)) else {
+        let Some(source) = uid_to_node.get(&owner.uid) else {
             warnings.push(format!(
                 "{} {}/{} references missing owner {}/{}",
                 input.summary.kind,
@@ -201,12 +159,11 @@ pub fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> ResourceTo
             ));
             continue;
         };
-        let target = node_from_input(input).id;
         push_edge(
             &mut edges,
             &mut edge_keys,
             source.clone(),
-            target,
+            input_node_id(input),
             TopologyRelation::Owns,
         );
     }
@@ -252,13 +209,9 @@ pub(super) fn push_edge(
 }
 
 pub(super) fn topology_kind_rank(kind: &str) -> usize {
-    if topology_root_kinds().contains(&kind) {
-        return 0;
-    }
-    if topology_standalone_kinds().contains(&kind) {
-        return 0;
-    }
     match kind {
+        "Deployment" | "DaemonSet" | "StatefulSet" | "CronJob" | "Service" | "Ingress"
+        | "ConfigMap" | "Secret" => 0,
         "ReplicaSet" | "Job" => 1,
         "EndpointSlice" | "Pod" => 2,
         "PersistentVolumeClaim" => 3,
@@ -315,22 +268,21 @@ fn add_statefulset_pvc_edges(
         let Some(source) = uid_to_node.get(&owner.uid) else {
             continue;
         };
-        let target = node_from_input(pvc).id;
         push_edge(
             edges,
             edge_keys,
             source.clone(),
-            target,
+            input_node_id(pvc),
             TopologyRelation::Creates,
         );
     }
 }
 
 pub async fn resource_topology_from(
+    access: &ClusterAccess,
     cluster_context: String,
     namespaces: Vec<String>,
     mode: Option<String>,
-    kubeconfig_env_var: Option<String>,
     custom_resource_kinds: Option<Vec<DiscoveredResourceKind>>,
     custom_resource_kinds_are_present: bool,
 ) -> Result<ResourceTopology, AppError> {
@@ -338,8 +290,7 @@ pub async fn resource_topology_from(
         crate::commands::helpers::validate_namespace(Some(namespace))?;
     }
     let mode = TopologyMode::parse(mode)?;
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
+    let client = access.read_client(&cluster_context).await?;
     match mode {
         TopologyMode::Ownership => {
             let custom_resource_kinds = match custom_resource_kinds {
@@ -368,7 +319,6 @@ pub async fn resource_topology_from(
     }
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_resource_topology(
     cluster_context: String,
     namespaces: Vec<String>,
@@ -380,106 +330,71 @@ pub async fn list_resource_topology(
     cancellations: State<'_, BackendCancellationRegistry>,
 ) -> Result<Arc<ResourceTopology>, AppError> {
     let mode = TopologyMode::parse(mode)?;
-    let started = Instant::now();
     let namespace_count = namespaces.len();
-    eprintln!(
-        "[kubecove:backend] list_resource_topology start context={} namespaces={} mode={}",
-        cluster_context,
-        namespaces.join(","),
-        mode.as_str()
-    );
-    let result = cancellations
-        .execute(cancel_scope, request_id, async {
-            let source_key = kubeconfig_source_key(kubeconfig_env_var.as_deref())?;
-            let cached_custom_resource_kinds = match &mode {
-                TopologyMode::Ownership => live_store
-                    .cached_present_custom_resource_kinds(
-                        &source_key,
-                        &cluster_context,
-                        &namespaces,
-                    )
-                    .map(|kinds| (kinds, true)),
-                TopologyMode::NetworkFlow => None,
-            };
-            let topology_cache_mode = match (&mode, cached_custom_resource_kinds.is_some()) {
-                (TopologyMode::Ownership, false) => "ownership:native",
-                _ => mode.as_str(),
-            };
-            live_store
-                .topology(
-                    source_key,
-                    cluster_context.clone(),
-                    namespaces.clone(),
-                    topology_cache_mode.to_string(),
-                    {
-                        let cluster_context = cluster_context.clone();
-                        let namespaces = namespaces.clone();
-                        let mode = mode.as_str().to_string();
-                        let kubeconfig_env_var = kubeconfig_env_var.clone();
-                        let cached_custom_resource_kinds = cached_custom_resource_kinds.clone();
-                        move || {
+    FiniteRead::new("list_resource_topology")
+        .label("context", &cluster_context)
+        .label("namespaces", namespaces.join(","))
+        .label("mode", mode.as_str())
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
+            async {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                let source_key = access.source_key().to_string();
+                let cached_custom_resource_kinds = match &mode {
+                    TopologyMode::Ownership => live_store
+                        .cached_present_custom_resource_kinds(
+                            &source_key,
+                            &cluster_context,
+                            &namespaces,
+                        )
+                        .map(|kinds| (kinds, true)),
+                    TopologyMode::NetworkFlow => None,
+                };
+                let topology_cache_mode = match (&mode, cached_custom_resource_kinds.is_some()) {
+                    (TopologyMode::Ownership, false) => "ownership:native",
+                    _ => mode.as_str(),
+                };
+                live_store
+                    .topology(
+                        source_key,
+                        cluster_context.clone(),
+                        namespaces.clone(),
+                        topology_cache_mode.to_string(),
+                        {
+                            let cluster_context = cluster_context.clone();
+                            let namespaces = namespaces.clone();
+                            let mode = mode.as_str().to_string();
                             let cached_custom_resource_kinds = cached_custom_resource_kinds.clone();
-                            async move {
-                                let (custom_resource_kinds, custom_resource_kinds_are_present) =
-                                    cached_custom_resource_kinds.unwrap_or_default();
-                                Box::pin(resource_topology_from(
-                                    cluster_context,
-                                    namespaces,
-                                    Some(mode),
-                                    kubeconfig_env_var,
-                                    Some(Arc::unwrap_or_clone(custom_resource_kinds)),
-                                    custom_resource_kinds_are_present,
-                                ))
-                                .await
+                            move || {
+                                let cached_custom_resource_kinds =
+                                    cached_custom_resource_kinds.clone();
+                                async move {
+                                    let (custom_resource_kinds, custom_resource_kinds_are_present) =
+                                        cached_custom_resource_kinds.unwrap_or_default();
+                                    Box::pin(resource_topology_from(
+                                        &access,
+                                        cluster_context,
+                                        namespaces,
+                                        Some(mode),
+                                        Some(Arc::unwrap_or_clone(custom_resource_kinds)),
+                                        custom_resource_kinds_are_present,
+                                    ))
+                                    .await
+                                }
                             }
-                        }
-                    },
-                )
-                .await
-        })
-        .await;
-    match &result {
-        Ok(topology) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_topology done context={} namespaces={} mode={} nodes={} edges={} warnings={} ms={}",
-                cluster_context,
-                namespaces.join(","),
-                mode.as_str(),
-                topology.nodes.len(),
-                topology.edges.len(),
-                topology.warnings.len(),
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) if err.kind == AppErrorKind::Cancelled => {
-            eprintln!(
-                "[kubecove:backend] list_resource_topology cancelled context={} namespaces={} mode={} ms={}",
-                cluster_context,
-                namespaces.join(","),
-                mode.as_str(),
-                started.elapsed().as_millis()
-            );
-        }
-        Err(err) => {
-            eprintln!(
-                "[kubecove:backend] list_resource_topology error context={} namespaces={} mode={} error_kind={} message={} ms={}",
-                cluster_context,
-                namespaces.join(","),
-                mode.as_str(),
-                err.kind,
-                err.message,
-                started.elapsed().as_millis()
-            );
-        }
-    }
-    record_backend_result("list_resource_topology", started, &result, |topology| {
-        vec![
-            diagnostic_field("mode", mode.as_str()),
-            diagnostic_field("namespaces", namespace_count),
-            diagnostic_field("nodes", topology.nodes.len()),
-            diagnostic_field("edges", topology.edges.len()),
-            diagnostic_field("warnings", topology.warnings.len()),
-        ]
-    });
-    result
+                        },
+                    )
+                    .await
+            },
+            |topology| {
+                vec![
+                    diagnostic_field("mode", mode.as_str()),
+                    diagnostic_field("namespaces", namespace_count),
+                    diagnostic_field("nodes", topology.nodes.len()),
+                    diagnostic_field("edges", topology.edges.len()),
+                    diagnostic_field("warnings", topology.warnings.len()),
+                ]
+            },
+        )
+        .await
 }

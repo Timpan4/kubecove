@@ -13,7 +13,6 @@ use std::{
     hash::{Hash, Hasher},
     path::PathBuf,
     sync::{OnceLock, RwLock},
-    time::Duration,
 };
 #[cfg(feature = "desktop")]
 use tauri::AppHandle;
@@ -24,11 +23,10 @@ pub const DEFAULT_KUBECONFIG_ENV_VAR: &str = "KUBECONFIG";
 const SETTINGS_FILE_NAME: &str = "kubeconfig-sources.json";
 #[cfg(any(feature = "e2e", test))]
 const E2E_KUBECONFIG_SOURCE_ENV_VAR: &str = "KUBECOVE_E2E_KUBECONFIG_SOURCE";
-pub(super) const FINITE_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 static SETTINGS_PATH: OnceLock<PathBuf> = OnceLock::new();
-// In-memory copy of the persisted sources file. Every command constructs a
-// KubeconfigSource, so reading the settings JSON from disk each time is pure
+// In-memory copy of the persisted sources file. Every request resolves cluster
+// access from it, so reading the settings JSON from disk each time is pure
 // overhead; the file is only ever written through save_persisted_sources.
 static SETTINGS_CACHE: RwLock<Option<PersistedKubeconfigSources>> = RwLock::new(None);
 
@@ -76,34 +74,39 @@ impl Default for PersistedKubeconfigSources {
     }
 }
 
+/// Whether a source whose configured paths all fail to load may fall back to
+/// the default kubeconfig. Cluster-changing intents refuse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Fallback {
+    Allow,
+    Refuse,
+}
+
+/// The kubeconfig files one request reads: an environment variable's path
+/// list, or standard discovery when it is empty, followed by app-added paths.
+/// Only cluster access builds one; see `cluster_access`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KubeconfigSource {
+pub(crate) struct KubeconfigSource {
     env_var: String,
     app_paths: Vec<PathBuf>,
     show_source_labels: bool,
     read_env: bool,
-    fail_closed: bool,
 }
 
 impl KubeconfigSource {
-    pub fn new(env_var: Option<String>) -> Result<Self, AppError> {
+    /// The persisted source settings, with `env_var` naming the environment
+    /// variable instead of the configured one when given.
+    pub(crate) fn from_persisted(env_var: Option<&str>) -> Result<Self, AppError> {
         #[cfg(feature = "e2e")]
         if crate::e2e::is_enabled() {
             return Ok(Self::from_e2e_path(crate::e2e::kubeconfig_path()?));
         }
         let settings = load_persisted_sources()?;
-        let env_var = env_var
-            .as_deref()
-            .filter(|value| !is_source_key(value))
-            .or(Some(settings.kubeconfig_env_var.as_str()));
-        Self::from_settings(env_var, settings.paths, settings.show_source_labels)
+        let env_var = env_var.unwrap_or(settings.kubeconfig_env_var.as_str());
+        Self::from_settings(Some(env_var), settings.paths, settings.show_source_labels)
     }
 
-    pub fn from_env_var(env_var: Option<&str>) -> Result<Self, AppError> {
-        Self::from_settings(env_var, Vec::new(), default_show_source_labels())
-    }
-
-    fn from_settings(
+    pub(crate) fn from_settings(
         env_var: Option<&str>,
         paths: Vec<String>,
         show_source_labels: bool,
@@ -118,7 +121,6 @@ impl KubeconfigSource {
                 .collect(),
             show_source_labels,
             read_env: true,
-            fail_closed: false,
         })
     }
 
@@ -129,28 +131,20 @@ impl KubeconfigSource {
             app_paths: vec![path],
             show_source_labels: false,
             read_env: false,
-            fail_closed: false,
         }
     }
 
-    /// Cluster-changing paths use this: when configured sources exist but none
-    /// load, they error instead of falling back to the default kubeconfig.
-    #[must_use]
-    pub fn fail_closed(mut self) -> Self {
-        self.fail_closed = true;
-        self
-    }
-
-    // Checked before client-cache lookups so a client cached from the default
-    // fallback is never reused by a fail-closed source.
-    pub(super) fn ensure_configured_sources_load(&self) -> Result<(), AppError> {
-        if self.fail_closed && self.configured_paths()?.is_some() {
-            self.read_configured_kubeconfig()?;
+    /// Fails when configured sources exist but none load. Cluster-changing
+    /// intents check this before client-cache lookups, so a client cached from
+    /// the default fallback is never reused by them.
+    pub(crate) fn ensure_configured_sources_load(&self) -> Result<(), AppError> {
+        if self.configured_paths().is_some() {
+            self.read_configured_kubeconfig(Fallback::Refuse)?;
         }
         Ok(())
     }
 
-    pub fn key(&self) -> String {
+    pub(crate) fn key(&self) -> String {
         let mut hasher = DefaultHasher::new();
         self.env_var.hash(&mut hasher);
         let selected_env_value = self.read_env.then(|| env::var_os(&self.env_var)).flatten();
@@ -174,7 +168,7 @@ impl KubeconfigSource {
         format!("kubeconfigSource={:016x}", hasher.finish())
     }
 
-    pub fn label(&self) -> String {
+    pub(crate) fn label(&self) -> String {
         let count = self.configured_path_count();
         if count == 0 {
             self.env_var.clone()
@@ -188,38 +182,36 @@ impl KubeconfigSource {
         }
     }
 
-    pub fn env_var(&self) -> &str {
+    pub(crate) fn env_var(&self) -> &str {
         &self.env_var
     }
 
-    pub fn show_source_labels(&self) -> bool {
+    pub(crate) fn show_source_labels(&self) -> bool {
         self.show_source_labels
     }
 
     fn configured_path_count(&self) -> usize {
-        let env_count = self
-            .read_env
-            .then(|| env::var_os(&self.env_var))
-            .flatten()
-            .and_then(split_non_empty_paths)
-            .map_or(0, |paths| paths.len());
-        env_count + self.app_paths.len()
+        self.custom_env_value_paths().map_or(0, |paths| paths.len()) + self.app_paths.len()
     }
 
-    pub fn read_kubeconfig(&self) -> Result<Kubeconfig, AppError> {
-        let (kubeconfig, _) = self.read_configured_kubeconfig()?;
+    pub(crate) fn read_kubeconfig(&self) -> Result<Kubeconfig, AppError> {
+        let (kubeconfig, _) = self.read_configured_kubeconfig(Fallback::Allow)?;
         Ok(kubeconfig)
     }
 
-    pub async fn config_for_context(&self, cluster_context: &str) -> Result<Config, AppError> {
+    pub(crate) async fn config_for_context(
+        &self,
+        cluster_context: &str,
+        fallback: Fallback,
+    ) -> Result<Config, AppError> {
         let options = KubeConfigOptions {
             context: Some(cluster_context.to_string()),
             ..Default::default()
         };
 
-        let mut config = match self.configured_paths()? {
+        let mut config = match self.configured_paths() {
             Some(_) => {
-                let (kubeconfig, _) = self.read_configured_kubeconfig()?;
+                let (kubeconfig, _) = self.read_configured_kubeconfig(fallback)?;
                 Config::from_custom_kubeconfig(kubeconfig, &options)
                     .await
                     .map_err(AppError::from)
@@ -239,8 +231,8 @@ impl KubeconfigSource {
     // The kubeconfig files that back this source, in the same order
     // config_for_context resolves them: selected env paths, or standard
     // discovery when that selection is empty, followed by app-added paths.
-    pub(super) fn effective_kubeconfig_paths(&self) -> Result<Vec<PathBuf>, AppError> {
-        if let Some(paths) = self.configured_paths()? {
+    pub(crate) fn effective_kubeconfig_paths(&self) -> Vec<PathBuf> {
+        if let Some(paths) = self.configured_paths() {
             let mut paths = paths
                 .into_iter()
                 .map(|configured| configured.path)
@@ -255,27 +247,24 @@ impl KubeconfigSource {
                     }
                 }
             }
-            return Ok(paths);
+            return paths;
         }
-        Ok(standard_kubeconfig_paths()
+        standard_kubeconfig_paths()
             .into_iter()
             .map(|configured| configured.path)
-            .collect())
+            .collect()
     }
 
-    fn custom_env_value_paths(&self) -> Result<Option<Vec<PathBuf>>, AppError> {
+    fn custom_env_value_paths(&self) -> Option<Vec<PathBuf>> {
         if !self.read_env {
-            return Ok(None);
+            return None;
         }
-        let Some(value) = env::var_os(&self.env_var) else {
-            return Ok(None);
-        };
-        Ok(split_non_empty_paths(value))
+        split_non_empty_paths(env::var_os(&self.env_var)?)
     }
 
-    fn configured_paths(&self) -> Result<Option<Vec<ConfiguredKubeconfigPath>>, AppError> {
+    fn configured_paths(&self) -> Option<Vec<ConfiguredKubeconfigPath>> {
         let mut paths = Vec::new();
-        if let Some(env_paths) = self.custom_env_value_paths()? {
+        if let Some(env_paths) = self.custom_env_value_paths() {
             paths.extend(env_paths.into_iter().map(|path| ConfiguredKubeconfigPath {
                 source: ConfiguredKubeconfigPathSource::Env(self.env_var.clone()),
                 path,
@@ -292,17 +281,14 @@ impl KubeconfigSource {
                     path,
                 }),
         );
-        if paths.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(paths))
-        }
+        (!paths.is_empty()).then_some(paths)
     }
 
     fn read_configured_kubeconfig(
         &self,
+        fallback: Fallback,
     ) -> Result<(Kubeconfig, Vec<KubeconfigSourceWarning>), AppError> {
-        let Some(paths) = self.configured_paths()? else {
+        let Some(paths) = self.configured_paths() else {
             return Kubeconfig::read()
                 .map(|kubeconfig| (kubeconfig, Vec::new()))
                 .map_err(AppError::from);
@@ -317,8 +303,8 @@ impl KubeconfigSource {
                     merged = merge_kubeconfigs(merged, next, &self.env_var)?;
                     loaded += 1;
                 }
-                Err(err) => {
-                    if let Some(warning) = configured.warning(err) {
+                Err(_) => {
+                    if let Some(warning) = configured.warning() {
                         warnings.push(warning);
                     }
                 }
@@ -337,7 +323,7 @@ impl KubeconfigSource {
             ));
         }
 
-        if self.fail_closed {
+        if fallback == Fallback::Refuse {
             return Err(AppError::new(
                 format!(
                     "none of the configured kubeconfig sources could be loaded; refusing to fall back to the default kubeconfig for a cluster-changing action: {}",
@@ -361,20 +347,6 @@ impl KubeconfigSource {
                 .with_source(err)
             })
     }
-}
-
-pub fn kubeconfig_source_key(kubeconfig_env_var: Option<&str>) -> Result<String, AppError> {
-    if let Some(value) = kubeconfig_env_var.filter(|value| is_source_key(value)) {
-        return Ok(value.to_string());
-    }
-    Ok(KubeconfigSource::new(kubeconfig_env_var.map(str::to_string))?.key())
-}
-
-pub fn cluster_contexts_from_source(
-    source: &KubeconfigSource,
-) -> Result<Vec<ClusterContext>, AppError> {
-    let kubeconfig = source.read_kubeconfig()?;
-    Ok(cluster_contexts_from_kubeconfig(&kubeconfig))
 }
 
 pub fn cluster_contexts_from_kubeconfig(kubeconfig: &Kubeconfig) -> Vec<ClusterContext> {
@@ -416,7 +388,7 @@ pub fn kubeconfig_from_source_texts(sources: &[&str]) -> Result<Kubeconfig, AppE
     Ok(merged)
 }
 
-fn normalize_env_var(env_var: Option<&str>) -> String {
+pub(crate) fn normalize_env_var(env_var: Option<&str>) -> String {
     env_var
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -428,12 +400,10 @@ pub fn init_kubeconfig_settings_path(app_config_dir: PathBuf) {
     let _ = SETTINGS_PATH.set(app_config_dir.join(SETTINGS_FILE_NAME));
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_kubeconfig_sources() -> Result<KubeconfigSourcesSummary, AppError> {
     kubeconfig_sources_summary()
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn set_kubeconfig_env_var(env_var: String) -> Result<KubeconfigSourcesSummary, AppError> {
     let mut settings = load_persisted_sources()?;
     let normalized = normalize_env_var(Some(&env_var));
@@ -443,7 +413,6 @@ pub fn set_kubeconfig_env_var(env_var: String) -> Result<KubeconfigSourcesSummar
     kubeconfig_sources_summary()
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn set_show_kubeconfig_source_labels(show: bool) -> Result<KubeconfigSourcesSummary, AppError> {
     let mut settings = load_persisted_sources()?;
     settings.show_source_labels = show;
@@ -451,7 +420,6 @@ pub fn set_show_kubeconfig_source_labels(show: bool) -> Result<KubeconfigSources
     kubeconfig_sources_summary()
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn add_kubeconfig_paths(paths: Vec<String>) -> Result<KubeconfigSourcesSummary, AppError> {
     let mut settings = load_persisted_sources()?;
     settings.paths = append_unique_paths(settings.paths, parse_path_input(paths));
@@ -459,7 +427,6 @@ pub fn add_kubeconfig_paths(paths: Vec<String>) -> Result<KubeconfigSourcesSumma
     kubeconfig_sources_summary()
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn remove_kubeconfig_path(path: String) -> Result<KubeconfigSourcesSummary, AppError> {
     let mut settings = load_persisted_sources()?;
     settings.paths.retain(|candidate| candidate != &path);
@@ -467,7 +434,6 @@ pub fn remove_kubeconfig_path(path: String) -> Result<KubeconfigSourcesSummary, 
     kubeconfig_sources_summary()
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn reorder_kubeconfig_paths(paths: Vec<String>) -> Result<KubeconfigSourcesSummary, AppError> {
     let mut settings = load_persisted_sources()?;
     let existing = settings.paths.iter().cloned().collect::<HashSet<_>>();
@@ -486,8 +452,9 @@ pub fn reorder_kubeconfig_paths(paths: Vec<String>) -> Result<KubeconfigSourcesS
 }
 
 #[cfg(feature = "desktop")]
-#[tauri::command]
-pub fn pick_kubeconfig_paths(app: AppHandle) -> Result<KubeconfigSourcesSummary, AppError> {
+pub fn pick_kubeconfig_paths<R: tauri::Runtime>(
+    app: AppHandle<R>,
+) -> Result<KubeconfigSourcesSummary, AppError> {
     let Some(paths) = app
         .dialog()
         .file()
@@ -530,10 +497,6 @@ fn default_kubeconfig_env_var() -> String {
     DEFAULT_KUBECONFIG_ENV_VAR.to_string()
 }
 
-fn default_show_source_labels() -> bool {
-    true
-}
-
 fn split_non_empty_paths(value: OsString) -> Option<Vec<PathBuf>> {
     let paths = env::split_paths(&value)
         .filter(|path| !path.as_os_str().is_empty())
@@ -568,7 +531,7 @@ fn format_kubeconfig_error(env_var: &str) -> String {
     format!("failed to load kubeconfig from {env_var}")
 }
 
-fn is_source_key(value: &str) -> bool {
+pub(crate) fn is_source_key(value: &str) -> bool {
     value.starts_with("kubeconfigSource=")
 }
 
@@ -607,8 +570,10 @@ fn load_persisted_sources() -> Result<PersistedKubeconfigSources, AppError> {
 
 fn save_persisted_sources(settings: &PersistedKubeconfigSources) -> Result<(), AppError> {
     // Server sessions share these operator settings in every authentication mode.
-    if super::helpers::session_scope::SessionScope::current().is_some()
-        || super::helpers::forwarded_bearer::forwarded_bearer_enabled()
+    if matches!(
+        super::helpers::session_scope::SessionScope::current_or_process().source_policy(),
+        super::cluster_access::SourcePolicy::Operator
+    ) || super::helpers::forwarded_bearer::forwarded_bearer_enabled()
     {
         return Err(AppError::new(
             "kubeconfig sources are set by the server operator",
@@ -652,16 +617,18 @@ fn kubeconfig_sources_summary() -> Result<KubeconfigSourcesSummary, AppError> {
         settings.paths.clone(),
         settings.show_source_labels,
     )?;
-    let warnings = source.read_configured_kubeconfig().map_or_else(
-        |err| {
-            vec![KubeconfigSourceWarning {
-                source: "default".to_string(),
-                path: None,
-                message: err.message,
-            }]
-        },
-        |(_, warnings)| warnings,
-    );
+    let warnings = source
+        .read_configured_kubeconfig(Fallback::Allow)
+        .map_or_else(
+            |err| {
+                vec![KubeconfigSourceWarning {
+                    source: "default".to_string(),
+                    path: None,
+                    message: err.message,
+                }]
+            },
+            |(_, warnings)| warnings,
+        );
 
     Ok(KubeconfigSourcesSummary {
         kubeconfig_env_var: source.env_var().to_string(),
@@ -756,7 +723,7 @@ enum ConfiguredKubeconfigPathSource {
 }
 
 impl ConfiguredKubeconfigPath {
-    fn warning(&self, _err: kube::config::KubeconfigError) -> Option<KubeconfigSourceWarning> {
+    fn warning(&self) -> Option<KubeconfigSourceWarning> {
         match &self.source {
             ConfiguredKubeconfigPathSource::Env(env_var) => Some(KubeconfigSourceWarning {
                 source: "env".to_string(),

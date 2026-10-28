@@ -1,6 +1,7 @@
 use super::super::manifest::manifest_summary;
 use super::super::values::values_summary;
 use super::*;
+use crate::commands::FixedClusterAccess;
 use std::collections::BTreeMap;
 
 #[test]
@@ -15,7 +16,7 @@ fn list_record_matches_full_decode_including_decoded_label_precedence_and_failur
         serde_json::json!({"name":"bad-version", "version":"invalid"}),
     ] {
         let encoded = STANDARD.encode(serde_json::to_vec(&release).unwrap());
-        let mut secret = Secret {
+        let secret = Secret {
             metadata: ObjectMeta {
                 name: Some("sh.helm.release.v1.label.v1".into()),
                 namespace: Some("tenant".into()),
@@ -32,8 +33,8 @@ fn list_record_matches_full_decode_including_decoded_label_precedence_and_failur
             )])),
             ..Secret::default()
         };
-        let full = secret_record("context", &mut secret).unwrap();
-        let projected = secret_list_record("context", &mut secret).unwrap();
+        let full = secret_record("context", &secret).unwrap();
+        let projected = secret_list_record("context", &secret).unwrap();
         assert_eq!(
             serde_json::to_vec(&full.summary).unwrap(),
             serde_json::to_vec(&projected.summary).unwrap()
@@ -158,8 +159,9 @@ async fn list_with_default_namespace(
     default_namespace: &str,
 ) -> Result<HelmReleaseList, AppError> {
     let (service, handle) = tower_test::mock::pair();
-    let client = Client::new(service, "default");
-    let listing = list_helm_releases_with_client(client, "kind-dev", default_namespace);
+    let listing = FixedClusterAccess::new(Client::new(service, default_namespace))
+        .scope()
+        .run(list_helm_releases("kind-dev".into(), None));
     let (result, ()) = tokio::time::timeout(std::time::Duration::from_secs(5), async {
         tokio::join!(listing, serve(handle, route))
     })

@@ -1,14 +1,14 @@
 use crate::commands::gitops_crd::{
-    client_for_context, find_api_resource, get_crd_object, list_crd_objects, resource_metadata,
+    find_api_resource, get_crd_object, list_crd_objects, object_age, resource_metadata,
     resource_yaml,
 };
-use crate::commands::helpers::{k8s_creation_timestamp_to_rfc3339, resource_age};
+use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
+use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{
     evaluate_health, AppError, ArgoAppProjectDetails, ArgoAppProjectSummary, HealthAssessmentInput,
     YamlEncoding, YamlViewMode,
 };
-use chrono::{TimeZone, Utc};
 use kube::core::DynamicObject;
 
 fn app_project_summary_from_object(
@@ -25,11 +25,7 @@ fn app_project_summary_from_object(
     Some(ArgoAppProjectSummary {
         cluster: cluster_context.to_string(),
         name: obj.metadata.name.clone().unwrap_or_default(),
-        age: resource_age(obj.metadata.creation_timestamp.clone().map(|timestamp| {
-            Utc.timestamp_opt(timestamp.0.as_second(), 0)
-                .single()
-                .unwrap_or_else(Utc::now)
-        })),
+        age: object_age(&obj.metadata),
         created_at: k8s_creation_timestamp_to_rfc3339(&obj.metadata.creation_timestamp),
         namespace: obj.metadata.namespace.clone(),
         description: data
@@ -58,7 +54,6 @@ pub fn benchmark_app_project_summary_from_object(
 }
 
 /// Get detailed Argo CD `AppProject` information including YAML and metadata.
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_argocd_appproject_details(
     cluster_context: String,
     name: String,
@@ -67,7 +62,9 @@ pub async fn get_argocd_appproject_details(
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<ArgoAppProjectDetails, AppError> {
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
 
     let ar = match find_api_resource(&client, "argoproj.io", "AppProject").await? {
         Some(ar) => ar,
@@ -92,12 +89,13 @@ pub async fn get_argocd_appproject_details(
 }
 
 /// List Argo CD `AppProjects` in the cluster.
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_argocd_appprojects(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<Vec<ArgoAppProjectSummary>, AppError> {
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
+        .read_client(&cluster_context)
+        .await?;
 
     let ar = match find_api_resource(&client, "argoproj.io", "AppProject").await? {
         Some(ar) => ar,

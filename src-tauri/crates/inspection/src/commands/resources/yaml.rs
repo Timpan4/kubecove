@@ -1,21 +1,25 @@
-use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
     diagnostic_field,
     helpers::{
         fetch_and_serialize_cluster_with_encoding, fetch_and_serialize_with_encoding,
         fetch_resource, redact_secret, serialize_resource_document,
     },
-    kubeconfig::KubeconfigSource,
-    BackendCancellationRegistry,
+    BackendCancellationRegistry, ClusterAccess, FiniteRead,
 };
 use crate::models::AppErrorKind;
 use crate::models::{AppError, YamlEncoding, YamlViewMode};
 use crate::runtime::State;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
+use k8s_openapi::api::batch::v1::{CronJob, Job};
+use k8s_openapi::api::core::v1::{
+    ConfigMap, Node, PersistentVolume, PersistentVolumeClaim, Pod, Secret, Service,
+};
+use k8s_openapi::api::networking::v1::Ingress;
+use k8s_openapi::api::storage::v1::StorageClass;
+use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::Api;
-use std::time::Instant;
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn reveal_secret_data_value(
     cluster_context: String,
     name: String,
@@ -23,11 +27,11 @@ pub async fn reveal_secret_data_value(
     key: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<String, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
     crate::commands::helpers::validate_namespace(Some(&namespace))?;
     crate::commands::helpers::validate_path_segment(&name, "Secret name")?;
     let secret = Api::<k8s_openapi::api::core::v1::Secret>::namespaced(
-        source.client_for_context(&cluster_context).await?,
+        access.read_client(&cluster_context).await?,
         &namespace,
     )
     .get(&name)
@@ -42,160 +46,113 @@ pub async fn reveal_secret_data_value(
 }
 
 pub async fn resource_yaml_from(
+    access: &ClusterAccess,
     cluster_context: String,
     kind: String,
     name: String,
     namespace: Option<String>,
-    kubeconfig_env_var: Option<String>,
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<String, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    let client = source.client_for_context(&cluster_context).await?;
+    let client = access.read_client(&cluster_context).await?;
     let mode = yaml_view_mode.unwrap_or_default();
     let encoding = yaml_encoding.unwrap_or_default();
-
-    resource_yaml_with_client(client, kind, name, namespace, mode, encoding).await
-}
-
-pub(super) async fn resource_yaml_with_client(
-    client: kube::Client,
-    kind: String,
-    name: String,
-    namespace: Option<String>,
-    mode: YamlViewMode,
-    encoding: YamlEncoding,
-) -> Result<String, AppError> {
-    match kind.as_str() {
+    let ns = namespace.as_deref();
+    let name = name.as_str();
+    let yaml = match kind.as_str() {
         "Pod" => {
-            let (_pod, yaml) =
-                fetch_and_serialize_with_encoding::<k8s_openapi::api::core::v1::Pod>(
-                    client,
-                    namespace.as_deref(),
-                    &name,
-                    mode,
-                    encoding,
-                )
-                .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<Pod>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "Deployment" => {
-            let (_deploy, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::apps::v1::Deployment,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<Deployment>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "ReplicaSet" => {
-            let (_rs, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::apps::v1::ReplicaSet,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<ReplicaSet>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "Service" => {
-            let (_svc, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::core::v1::Service,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<Service>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "ConfigMap" => {
-            let (_cm, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::core::v1::ConfigMap,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<ConfigMap>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "StatefulSet" => {
-            let (_ss, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::apps::v1::StatefulSet,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<StatefulSet>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "DaemonSet" => {
-            let (_ds, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::apps::v1::DaemonSet,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<DaemonSet>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "Ingress" => {
-            let (_ing, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::networking::v1::Ingress,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<Ingress>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "Secret" => {
-            let secret = fetch_resource::<k8s_openapi::api::core::v1::Secret>(
-                client,
-                namespace.as_deref(),
-                &name,
-            )
-            .await?;
-            serialize_secret_resource_document(secret, mode, encoding)
+            let secret = fetch_resource::<Secret>(client, ns, name).await?;
+            serialize_secret_resource_document(secret, mode, encoding)?
         }
         "PersistentVolumeClaim" => {
-            let (_pvc, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::core::v1::PersistentVolumeClaim,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<PersistentVolumeClaim>(
+                client, ns, name, mode, encoding,
+            )
+            .await?
+            .1
         }
         "Job" => {
-            let (_job, yaml) =
-                fetch_and_serialize_with_encoding::<k8s_openapi::api::batch::v1::Job>(
-                    client,
-                    namespace.as_deref(),
-                    &name,
-                    mode,
-                    encoding,
-                )
-                .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<Job>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "CronJob" => {
-            let (_cj, yaml) = fetch_and_serialize_with_encoding::<
-                k8s_openapi::api::batch::v1::CronJob,
-            >(client, namespace.as_deref(), &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_with_encoding::<CronJob>(client, ns, name, mode, encoding)
+                .await?
+                .1
         }
         "Node" => {
-            let (_node, yaml) = fetch_and_serialize_cluster_with_encoding::<
-                k8s_openapi::api::core::v1::Node,
-            >(client, &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_cluster_with_encoding::<Node>(client, name, mode, encoding)
+                .await?
+                .1
         }
         "StorageClass" => {
-            let (_sc, yaml) = fetch_and_serialize_cluster_with_encoding::<
-                k8s_openapi::api::storage::v1::StorageClass,
-            >(client, &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_cluster_with_encoding::<StorageClass>(client, name, mode, encoding)
+                .await?
+                .1
         }
         "PersistentVolume" => {
-            let (_pv, yaml) = fetch_and_serialize_cluster_with_encoding::<
-                k8s_openapi::api::core::v1::PersistentVolume,
-            >(client, &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_cluster_with_encoding::<PersistentVolume>(
+                client, name, mode, encoding,
+            )
+            .await?
+            .1
         }
         "CustomResourceDefinition" => {
-            let (_crd, yaml) = fetch_and_serialize_cluster_with_encoding::<
-                k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition,
-            >(client, &name, mode, encoding)
-            .await?;
-            Ok(yaml)
+            fetch_and_serialize_cluster_with_encoding::<CustomResourceDefinition>(
+                client, name, mode, encoding,
+            )
+            .await?
+            .1
         }
-        _ => Err(AppError::new(
-            format!("unsupported resource kind: {kind}"),
-            AppErrorKind::Cluster,
-        )),
-    }
+        _ => {
+            return Err(AppError::new(
+                format!("unsupported resource kind: {kind}"),
+                AppErrorKind::Cluster,
+            ))
+        }
+    };
+    Ok(yaml)
 }
 
 pub fn serialize_secret_resource_document(
@@ -203,12 +160,10 @@ pub fn serialize_secret_resource_document(
     mode: YamlViewMode,
     encoding: YamlEncoding,
 ) -> Result<String, AppError> {
-    let _discarded_first_document = serialize_resource_document(&secret, mode, encoding)?;
     redact_secret(&mut secret);
     serialize_resource_document(&secret, mode, encoding)
 }
 
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_resource_yaml(
     cluster_context: String,
     kind: String,
@@ -221,42 +176,35 @@ pub async fn get_resource_yaml(
     cancel_scope: Option<String>,
     cancellations: State<'_, BackendCancellationRegistry>,
 ) -> Result<String, AppError> {
-    let started = Instant::now();
-    let namespace_label = namespace.as_deref().unwrap_or("<cluster>");
-    eprintln!(
-        "[kubecove:backend] get_resource_yaml start context={cluster_context} kind={kind} namespace={namespace_label} name={name}"
-    );
-    let result = cancellations
-        .execute(
-            cancel_scope,
-            request_id,
-            resource_yaml_from(
-                cluster_context.clone(),
-                kind.clone(),
-                name.clone(),
-                namespace.clone(),
-                kubeconfig_env_var,
-                yaml_view_mode,
-                yaml_encoding,
-            ),
+    FiniteRead::new("get_resource_yaml")
+        .label("context", &cluster_context)
+        .label("kind", &kind)
+        .label("namespace", namespace.as_deref().unwrap_or("<cluster>"))
+        .label("name", &name)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
+            {
+                let kind = kind.clone();
+                async move {
+                    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                    resource_yaml_from(
+                        &access,
+                        cluster_context,
+                        kind,
+                        name,
+                        namespace,
+                        yaml_view_mode,
+                        yaml_encoding,
+                    )
+                    .await
+                }
+            },
+            |yaml| {
+                vec![
+                    diagnostic_field("kind", &kind),
+                    diagnostic_field("bytes", yaml.len()),
+                ]
+            },
         )
-        .await;
-    match &result {
-        Ok(yaml) => {
-            eprintln!("[kubecove:backend] get_resource_yaml done context={} kind={} namespace={} name={} bytes={} ms={}", cluster_context, kind, namespace_label, name, yaml.len(), started.elapsed().as_millis());
-        }
-        Err(err) if err.kind == AppErrorKind::Cancelled => {
-            eprintln!("[kubecove:backend] get_resource_yaml cancelled context={} kind={} namespace={} name={} ms={}", cluster_context, kind, namespace_label, name, started.elapsed().as_millis());
-        }
-        Err(err) => {
-            eprintln!("[kubecove:backend] get_resource_yaml error context={} kind={} namespace={} name={} error_kind={} message={} ms={}", cluster_context, kind, namespace_label, name, err.kind, err.message, started.elapsed().as_millis());
-        }
-    }
-    record_backend_result("get_resource_yaml", started, &result, |yaml| {
-        vec![
-            diagnostic_field("kind", &kind),
-            diagnostic_field("bytes", yaml.len()),
-        ]
-    });
-    result
+        .await
 }

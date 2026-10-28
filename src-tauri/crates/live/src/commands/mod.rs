@@ -4,10 +4,12 @@ pub mod sessions;
 pub mod streams;
 
 pub(crate) use kubecove_kube::commands::{
-    builtin_kinds, helpers, kubeconfig, ClusterLiveStore, SessionScope,
+    builtin_kinds, helpers, ClusterAccess, ClusterLiveStore, SessionScope,
 };
+#[cfg(test)]
+pub(crate) use kubecove_kube::commands::{ClientIntent, FixedClusterAccess};
 
-pub use live_sessions::stop_live_sessions_outside_scope;
+pub use live_sessions::{stop_live_sessions_outside_scope, LiveSessionScope};
 pub use pod_exec::{
     list_pod_exec_sessions, resize_pod_exec_terminal, start_pod_exec_session,
     stop_pod_exec_session, write_pod_exec_stdin, PodExecRegistry,

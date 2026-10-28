@@ -1,25 +1,29 @@
 use super::connected::ConnectedArgo;
 use crate::models::AppErrorKind;
-use crate::models::{normalize_service_tunnel_endpoint, AppError, ArgoServerEndpoint};
+use crate::models::{
+    normalize_service_tunnel_endpoint, AppError, ArgoApplicationRef, ArgoManagedResource,
+    ArgoServerEndpoint,
+};
 use futures_util::StreamExt;
 use reqwest::{Certificate, Client as HttpClient};
 use serde_json::Value;
 use std::{net::SocketAddr, time::Duration};
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+const RESPONSE_TOO_LARGE: &str = "Argo CD response exceeded size limit";
+
+fn response_too_large() -> AppError {
+    AppError::new(RESPONSE_TOO_LARGE, AppErrorKind::ArgoApi)
+}
+
+/// Whether a read failed only because the response exceeded `MAX_RESPONSE_BYTES`.
+pub(crate) fn is_response_too_large(error: &AppError) -> bool {
+    error.kind == AppErrorKind::ArgoApi && error.message == RESPONSE_TOO_LARGE
+}
 
 pub(crate) async fn api_get(connection: &ConnectedArgo, path: &str) -> Result<Value, AppError> {
-    let response = connection
-        .client
-        .get(url(&connection.profile.url, path)?)
-        .bearer_auth(&connection.token)
-        .send()
-        .await
-        .map_err(safe_http_error)?;
-    if !response.status().is_success() {
-        return Err(api_status_error(response).await);
-    }
-    response_json(response).await
+    let request = connection.client.get(url(&connection.profile.url, path)?);
+    send_api(connection, request).await
 }
 
 pub(crate) async fn api_post(
@@ -27,24 +31,25 @@ pub(crate) async fn api_post(
     path: &str,
     payload: Value,
 ) -> Result<Value, AppError> {
-    let response = connection
+    let request = connection
         .client
         .post(url(&connection.profile.url, path)?)
-        .bearer_auth(&connection.token)
-        .json(&payload)
-        .send()
-        .await
-        .map_err(safe_http_error)?;
-    if !response.status().is_success() {
-        return Err(api_status_error(response).await);
-    }
-    response_json(response).await
+        .json(&payload);
+    send_api(connection, request).await
 }
 
 pub(crate) async fn api_delete(connection: &ConnectedArgo, path: &str) -> Result<Value, AppError> {
-    let response = connection
+    let request = connection
         .client
-        .delete(url(&connection.profile.url, path)?)
+        .delete(url(&connection.profile.url, path)?);
+    send_api(connection, request).await
+}
+
+async fn send_api(
+    connection: &ConnectedArgo,
+    request: reqwest::RequestBuilder,
+) -> Result<Value, AppError> {
+    let response = request
         .bearer_auth(&connection.token)
         .send()
         .await
@@ -89,10 +94,7 @@ async fn capped_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, A
         .content_length()
         .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
     {
-        return Err(AppError::new(
-            "Argo CD response exceeded size limit",
-            AppErrorKind::ArgoApi,
-        ));
+        return Err(response_too_large());
     }
     let mut bytes = Vec::new();
     let mut stream = response.bytes_stream();
@@ -104,10 +106,7 @@ async fn capped_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, A
 
 fn push_capped_chunk(bytes: &mut Vec<u8>, chunk: &[u8]) -> Result<(), AppError> {
     if chunk.len() > MAX_RESPONSE_BYTES.saturating_sub(bytes.len()) {
-        return Err(AppError::new(
-            "Argo CD response exceeded size limit",
-            AppErrorKind::ArgoApi,
-        ));
+        return Err(response_too_large());
     }
     bytes.extend_from_slice(chunk);
     Ok(())
@@ -164,9 +163,19 @@ pub(super) fn safe_http_error(error: reqwest::Error) -> AppError {
     )
 }
 
+/// How an Argo CD client verifies the server certificate.
+pub(super) enum ServerTrust {
+    /// Platform roots plus an optional session CA, or no verification for this session only.
+    Default {
+        insecure_tls: bool,
+        custom_ca_pem: Option<Vec<u8>>,
+    },
+    /// Exactly the certificate confirmed for a private Service tunnel.
+    Pinned(rustls::ClientConfig),
+}
+
 pub(super) fn http_client(
-    insecure_tls: bool,
-    custom_ca_pem: Option<Vec<u8>>,
+    trust: ServerTrust,
     resolved_host: Option<(&str, SocketAddr)>,
 ) -> Result<HttpClient, AppError> {
     let mut builder = HttpClient::builder()
@@ -177,14 +186,23 @@ pub(super) fn http_client(
         // The URL still contains `host`, so reqwest keeps its Host header and HTTPS SNI.
         builder = builder.resolve(host, address).no_proxy();
     }
-    if insecure_tls {
-        builder = builder.danger_accept_invalid_certs(true);
-    }
-    if let Some(pem) = custom_ca_pem {
-        let certificate = Certificate::from_pem(&pem).map_err(|error| {
-            AppError::new("invalid custom CA", AppErrorKind::ArgoConnection).with_source(error)
-        })?;
-        builder = builder.add_root_certificate(certificate);
+    match trust {
+        ServerTrust::Default {
+            insecure_tls,
+            custom_ca_pem,
+        } => {
+            if insecure_tls {
+                builder = builder.danger_accept_invalid_certs(true);
+            }
+            if let Some(pem) = custom_ca_pem {
+                let certificate = Certificate::from_pem(&pem).map_err(|error| {
+                    AppError::new("invalid custom CA", AppErrorKind::ArgoConnection)
+                        .with_source(error)
+                })?;
+                builder = builder.add_root_certificate(certificate);
+            }
+        }
+        ServerTrust::Pinned(config) => builder = builder.tls_backend_preconfigured(config),
     }
     builder.build().map_err(safe_http_error)
 }
@@ -216,6 +234,52 @@ pub(crate) fn normalize_endpoint(
             tls_server_name,
         ),
     }
+}
+
+/// `/api/v1/applications/{name}/{segments}?{query}`, relative to the Argo CD base URL.
+/// Every segment and query value is percent-encoded, absent query values are skipped, and
+/// the `?` is always present.
+pub(super) fn application_api_path(
+    name: &str,
+    segments: &[&str],
+    query: &[(&str, Option<&str>)],
+) -> String {
+    let mut path = reqwest::Url::parse("https://argo.invalid/")
+        .expect("constant Argo CD API base URL is valid");
+    path.path_segments_mut()
+        .expect("constant Argo CD API base URL has a path")
+        .extend(["api", "v1", "applications"])
+        .push(name)
+        .extend(segments);
+    {
+        let mut pairs = path.query_pairs_mut();
+        for (key, value) in query {
+            if let Some(value) = value {
+                pairs.append_pair(key, value);
+            }
+        }
+    }
+    format!("{}?{}", path.path(), path.query().unwrap_or_default())
+}
+
+/// The resource-actions listing for one managed resource of an application.
+pub(super) fn resource_actions_path(
+    application: &ArgoApplicationRef,
+    resource: &ArgoManagedResource,
+) -> String {
+    application_api_path(
+        &application.name,
+        &["resource", "actions"],
+        &[
+            ("appNamespace", application.namespace.as_deref()),
+            ("project", application.project.as_deref()),
+            ("group", resource.group.as_deref()),
+            ("version", resource.version.as_deref()),
+            ("kind", resource.kind.as_deref()),
+            ("namespace", resource.namespace.as_deref()),
+            ("resourceName", resource.name.as_deref()),
+        ],
+    )
 }
 
 pub(super) fn url(base: &str, path: &str) -> Result<String, AppError> {
@@ -272,3 +336,6 @@ pub(super) fn canonical_url(value: &str) -> Result<reqwest::Url, AppError> {
     base.set_fragment(None);
     Ok(base)
 }
+
+#[cfg(test)]
+mod tests;

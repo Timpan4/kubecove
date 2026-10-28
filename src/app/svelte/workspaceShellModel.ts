@@ -10,8 +10,8 @@ import {
 	FLUX_FAMILIES,
 	FLUX_PROVIDER_GROUP_ID,
 } from "@/features/gitops/gitops-nav";
+import { uniqueKinds } from "@/lib/kind-identity";
 import {
-	discoveredResourceKindKey,
 	nodeIdToString,
 	SECTIONS,
 	type TreeNode,
@@ -59,35 +59,12 @@ export function toggleCompactSidebarSection(
 		.concat(id);
 }
 
-function resourceKindSelectionKey(kind: ResourceKindSelection): string {
-	return kind instanceof Object
-		? `dynamic:${discoveredResourceKindKey(kind)}`
-		: `typed:${kind}`;
-}
-
-export function appendPresentCustomResourceKinds(
-	kinds: ResourceKindSelection[],
-	customResourceKinds: DiscoveredResourceKind[],
-): ResourceKindSelection[] {
-	const seen = new Set(kinds.map(resourceKindSelectionKey));
-	return kinds.concat(
-		customResourceKinds.filter((kind) => {
-			const key = resourceKindSelectionKey(kind);
-			if (seen.has(key)) return false;
-			seen.add(key);
-			return true;
-		}),
-	);
-}
-
 export function resourceBrowserAvailableKinds(
 	kinds: ResourceKindSelection[],
 	customResourceKinds: DiscoveredResourceKind[],
 	fixedKindScope: boolean,
 ): ResourceKindSelection[] {
-	return fixedKindScope
-		? [...kinds]
-		: appendPresentCustomResourceKinds(kinds, customResourceKinds);
+	return fixedKindScope ? [...kinds] : uniqueKinds([...kinds, ...customResourceKinds]);
 }
 
 function buildArgoProviderNode(disabled: boolean): TreeNode {

@@ -1,8 +1,7 @@
-use crate::commands::diagnostics::record_backend_result;
 use crate::commands::{
     diagnostic_field,
     helpers::{k8s_creation_timestamp_to_rfc3339, resource_age},
-    kubeconfig::KubeconfigSource,
+    ClusterAccess, FiniteRead,
 };
 use crate::models::{
     AppError, RbacBindingSummary, RbacCoverageStatus, RbacFamily, RbacFamilyCoverage,
@@ -15,9 +14,7 @@ use k8s_openapi::api::{
     core::v1::ServiceAccount,
     rbac::v1::{PolicyRule, Subject},
 };
-use kube::Client;
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::Instant;
 
 #[cfg(feature = "bench-support")]
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
@@ -41,7 +38,6 @@ mod rbac_tests;
     clippy::large_futures,
     reason = "RBAC inspection intentionally loads five Kubernetes families concurrently"
 )]
-#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_rbac_inspection(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
@@ -49,32 +45,33 @@ pub async fn list_rbac_inspection(
     cancel_scope: Option<String>,
     cancellations: State<'_, crate::commands::BackendCancellationRegistry>,
 ) -> Result<RbacInspectionSummary, AppError> {
-    let started = Instant::now();
-    let result = cancellations
-        .execute(
-            cancel_scope,
-            request_id,
-            rbac_inspection_from(cluster_context, kubeconfig_env_var),
+    FiniteRead::new("list_rbac_inspection")
+        .label("context", &cluster_context)
+        .cancellable(&cancellations, cancel_scope, request_id)
+        .run(
+            async move {
+                let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+                rbac_inspection_from(&access, cluster_context).await
+            },
+            |summary| {
+                vec![
+                    diagnostic_field("service_accounts", summary.service_accounts.len()),
+                    diagnostic_field("roles", summary.roles.len()),
+                    diagnostic_field("cluster_roles", summary.cluster_roles.len()),
+                    diagnostic_field("role_bindings", summary.role_bindings.len()),
+                    diagnostic_field("cluster_role_bindings", summary.cluster_role_bindings.len()),
+                    diagnostic_field("warnings", summary.warnings.len()),
+                ]
+            },
         )
-        .await;
-    record_backend_result("list_rbac_inspection", started, &result, |summary| {
-        vec![
-            diagnostic_field("service_accounts", summary.service_accounts.len()),
-            diagnostic_field("roles", summary.roles.len()),
-            diagnostic_field("cluster_roles", summary.cluster_roles.len()),
-            diagnostic_field("role_bindings", summary.role_bindings.len()),
-            diagnostic_field("cluster_role_bindings", summary.cluster_role_bindings.len()),
-            diagnostic_field("warnings", summary.warnings.len()),
-        ]
-    });
-    result
+        .await
 }
 
 pub async fn rbac_inspection_from(
+    access: &ClusterAccess,
     cluster_context: String,
-    kubeconfig_env_var: Option<String>,
 ) -> Result<RbacInspectionSummary, AppError> {
-    let client = client_for_context(&cluster_context, kubeconfig_env_var).await?;
+    let client = access.read_client(&cluster_context).await?;
     // RBAC is a cluster-security review; workspace namespace filters never narrow inventory.
     let namespaces = Vec::new();
     let (
@@ -275,14 +272,6 @@ fn inherit_binding_risks(
         }
         binding.risks = dedupe_risks(std::mem::take(&mut binding.risks));
     }
-}
-
-async fn client_for_context(
-    cluster_context: &str,
-    kubeconfig_env_var: Option<String>,
-) -> Result<Client, AppError> {
-    let source = KubeconfigSource::new(kubeconfig_env_var)?;
-    source.client_for_context(cluster_context).await
 }
 
 pub(super) fn service_account_summary(

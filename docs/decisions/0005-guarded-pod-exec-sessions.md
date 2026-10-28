@@ -16,7 +16,7 @@ Pod exec v1 is limited to exact namespaced Pods.
 - The target context, namespace, Pod, optional container, and argv are shown before start.
 - Interactive shell presets are exact `/bin/sh` and `/bin/bash` commands; there is no silent fallback.
 - Custom commands are passed as explicit argv, not parsed by a local shell.
-- Each start requires explicit user confirmation.
+- Each start requires explicit user confirmation. A start or restart action labeled with the exact command, shown next to its container and Pod, is that confirmation; a separate acknowledgement checkbox is not required.
 - Sessions are in-memory only, visible in the Pod detail surface and live-session indicator, and stoppable.
 - Workspace switches and kubeconfig source changes stop sessions outside the new workspace context and source scope by default; a user setting may keep them running.
 - Sessions are not saved, restored, or auto-started across app restarts.

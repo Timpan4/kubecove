@@ -1,5 +1,5 @@
 use super::super::models::RemoteConnectionSummary;
-use super::{api_url, channel_id_from_marker, normalize_server_url, RemoteConnection};
+use super::{api_url, normalize_server_url, RemoteConnection};
 use crate::remote::{models::RemoteCredentials, tunnels::RemoteTunnelRegistry};
 use reqwest::Client as HttpClient;
 use serde_json::json;
@@ -222,16 +222,4 @@ fn normalizes_trailing_slashes_and_keeps_reverse_proxy_prefix() {
         normalize_server_url("https://example.test/kubecove/").expect("valid URL"),
         "https://example.test/kubecove"
     );
-}
-
-#[test]
-fn accepts_only_safe_server_channel_markers() {
-    assert_eq!(channel_id_from_marker("__KUBECOVE_CHANNEL__:42"), Some(42));
-    for marker in [
-        "__TAURI_CHANNEL__:42",
-        "__KUBECOVE_CHANNEL__:-1",
-        "__KUBECOVE_CHANNEL__:4x",
-    ] {
-        assert_eq!(channel_id_from_marker(marker), None);
-    }
 }

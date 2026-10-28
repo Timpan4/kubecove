@@ -1,3 +1,4 @@
+use crate::security::{equal_secret, install_tls_provider};
 use crate::{access::AccessIdentity, ApiError};
 use axum::{
     http::{header, HeaderMap, HeaderValue, StatusCode},
@@ -23,7 +24,6 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use subtle::ConstantTimeEq;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
@@ -214,7 +214,7 @@ impl Oidc {
         })
     }
 
-    pub fn start(&self, _headers: &HeaderMap) -> Result<Response, ApiError> {
+    pub fn start(&self) -> Result<Response, ApiError> {
         let client = self
             .client(&self.metadata)
             .map_err(|_| oidc_unavailable())?;
@@ -344,7 +344,7 @@ impl Oidc {
         let signed = cookie_value(headers, TRANSACTION_COOKIE).ok_or_else(invalid_callback)?;
         let transaction = verify_transaction(signed, &self.transaction_key, unix_now())
             .map_err(|_| invalid_callback())?;
-        if !constant_time_state_matches(state, &transaction.state) {
+        if !equal_secret(state, &transaction.state) {
             return Err(invalid_callback());
         }
 
@@ -605,7 +605,7 @@ fn validate_metadata(
 }
 
 fn client(timeout: Duration, https_only: bool) -> Result<reqwest::Client, String> {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    install_tls_provider();
     reqwest::Client::builder()
         .timeout(timeout)
         .https_only(https_only)
@@ -709,10 +709,6 @@ fn verify_transaction(
         return Err(jsonwebtoken::errors::ErrorKind::ExpiredSignature.into());
     }
     Ok(claims)
-}
-
-fn constant_time_state_matches(left: &str, right: &str) -> bool {
-    bool::from(left.as_bytes().ct_eq(right.as_bytes()))
 }
 
 fn unix_now() -> u64 {
