@@ -211,6 +211,8 @@ pub async fn connect_argo_server(
     };
     let credential_store = ActiveCredentialStore;
     let submitted_token = token.filter(|value| !value.is_empty());
+    let username = username.filter(|value| !value.is_empty());
+    let password = password.filter(|value| !value.is_empty());
     let submitted_credentials =
         submitted_token.is_some() || username.is_some() || password.is_some();
     let stored = if remember_credential {
