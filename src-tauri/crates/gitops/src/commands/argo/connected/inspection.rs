@@ -57,7 +57,7 @@ pub(crate) fn state(value: Option<&Value>, redact: bool) -> Option<Value> {
 }
 /// Desired and normalized live documents feed the Argo diff, which always uses apply-clean
 /// YAML regardless of the YAML view setting. Raw live state keeps server fields for the Live view.
-pub(crate) fn apply_clean_state(mut state: Value) -> Value {
+fn apply_clean_state(mut state: Value) -> Value {
     normalize_k8s_yaml_value(&mut state, YamlViewMode::ApplyClean);
     state
 }
@@ -159,18 +159,22 @@ pub(crate) fn kubernetes_comparison(resource: ArgoManagedResource) -> ArgoResour
     }
 }
 
-fn connected_comparison(value: &Value) -> ArgoResourceComparison {
+pub(crate) fn connected_comparison(value: &Value) -> ArgoResourceComparison {
     let is_secret = value.get("kind").and_then(Value::as_str) == Some("Secret");
     // Unstructured Secret state cannot be redacted field by field, so it is withheld whole.
     let redacted_state = |key: &str| match state(value.get(key), true) {
         Some(Value::String(_)) if is_secret => Some(Value::String("[REDACTED]".into())),
         other => other,
     };
+    let live_state = redacted_state("liveState");
     ArgoResourceComparison {
         resource: managed_resource(value),
         target_state: redacted_state("targetState").map(apply_clean_state),
-        live_state: redacted_state("liveState"),
-        normalized_live_state: redacted_state("normalizedLiveState").map(apply_clean_state),
+        // Without Argo's normalized live state, the diff falls back to cleaned raw live state.
+        normalized_live_state: redacted_state("normalizedLiveState")
+            .or_else(|| live_state.clone())
+            .map(apply_clean_state),
+        live_state,
         predicted_live_state: redacted_state("predictedLiveState"),
         modified: value.get("modified").and_then(Value::as_bool),
         exact: Some(true),
