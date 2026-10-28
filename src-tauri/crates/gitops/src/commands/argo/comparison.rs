@@ -2,8 +2,8 @@ use super::scope::scoped_connection;
 use super::transport::resource_actions_path;
 use super::{
     connected::{
-        api_get, inspector_from_application, kubernetes_application, kubernetes_comparison,
-        managed_resource, managed_resource_path, redact_secret_fields, state, text,
+        api_get, connected_comparison, inspector_from_application, kubernetes_application,
+        kubernetes_comparison, managed_resource_path, redact_secret_fields, text,
     },
     ArgoConnectionStore,
 };
@@ -110,20 +110,13 @@ fn connected_selected_comparison(
         .flatten()
         .find(|item| same_identity(item, requested))
         .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
-    let mut resource = managed_resource(item);
+    let mut comparison = connected_comparison(item);
     // Server actions need the version the item lacks.
-    resource.version = resource.version.or_else(|| requested.version.clone());
-    Ok(ArgoResourceComparison {
-        resource,
-        target_state: state(item.get("targetState"), true),
-        live_state: state(item.get("liveState"), true),
-        normalized_live_state: state(item.get("normalizedLiveState"), true),
-        predicted_live_state: state(item.get("predictedLiveState"), true),
-        modified: item.get("modified").and_then(Value::as_bool),
-        exact: Some(true),
-        provenance: Some("argocd-managed-resource".into()),
-        available_actions: Vec::new(),
-    })
+    comparison.resource.version = comparison
+        .resource
+        .version
+        .or_else(|| requested.version.clone());
+    Ok(comparison)
 }
 
 #[cfg(feature = "bench-support")]
