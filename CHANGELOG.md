@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.11 - 2026-10-30
+### Improved
+
+- Keep rollout views current and show blue lifecycle progress (#616).
+
 ## 0.12.10 - 2026-10-28
 ### Added
 
