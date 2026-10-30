@@ -4,7 +4,7 @@
 	import { messageFromError } from "@/lib/error-redaction";
 	import type { LiveViewControls } from "@/lib/live-view-refresh";
 	let { live, disabled = false }: { live: LiveViewControls; disabled?: boolean } = $props();
-	const { status, message, error: connectionError, reloadError, warnings } = $derived(live.state);
+	const { status, message, error: connectionError, reloadError, warnings, catchingUp } = $derived(live.state);
 	let open = $state(false);
 	let refreshing = $state(false);
 	let error = $state<string | null>(null);
@@ -16,6 +16,7 @@
 			: error || reloadError ? "Refresh failed"
 			: disabled ? "Unavailable"
 			: connectionProblem ? "Reconnecting"
+			: catchingUp ? "Catching up"
 			: status === "polling" ? "Polling (limited)"
 			: status === "partial" || (status === "connected" && permissionWarnings.length) ? "Live (limited)"
 			: permissionWarnings.length ? "Limited access"
@@ -26,6 +27,7 @@
 		error || reloadError ? "bg-destructive"
 			: disabled ? "bg-muted-foreground"
 			: connectionProblem ? "bg-amber-400"
+			: catchingUp ? "bg-sky-300"
 			: status === "partial" || status === "polling" || permissionWarnings.length ? "bg-amber-400"
 			: status === "connected" ? "bg-emerald-400" : "bg-muted-foreground",
 	);

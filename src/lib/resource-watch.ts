@@ -12,6 +12,7 @@ import { messageFromError } from "./error-redaction";
 export const RESOURCE_RECOVERY_INTERVAL = 15_000;
 
 export interface ResourceWatchState {
+	catchingUp: boolean;
 	status: "connecting" | "connected" | "partial" | "polling" | "reconnecting";
 	message: string;
 	error: string | null;
@@ -28,12 +29,14 @@ export interface ResourceScopeHandlers {
 	onState: (state: ResourceWatchState) => void;
 	onChange: (event: StreamMessage, key: WatchResourceKey) => void;
 	reload: (keys?: WatchResourceKey[]) => Promise<void> | Promise<string[]>;
+	readError?: () => string | null;
 }
 
 export interface ResourceScopeObserver {
 	/** Reconciles the watched keys: unchanged keys keep their streams. */
 	update: (keys: WatchResourceKey[], handlers: ResourceScopeHandlers) => void;
 	stop: () => void;
+	checkReads: () => void;
 }
 
 interface WatchRegistration {
@@ -55,6 +58,7 @@ export function observeResourceScope({
 	onState,
 	onChange,
 	reload,
+	readError,
 	openChannel = createStreamChannel,
 }: ResourceScopeHandlers & {
 	client: TauriClient;
@@ -63,7 +67,7 @@ export function observeResourceScope({
 	kubeconfigEnvVar?: string;
 	openChannel?: typeof createStreamChannel;
 }): ResourceScopeObserver {
-	let handlers: ResourceScopeHandlers = { onState, onChange, reload };
+	let handlers: ResourceScopeHandlers = { onState, onChange, reload, readError };
 	let disposed = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let reloading = false;
@@ -115,11 +119,12 @@ export function observeResourceScope({
 			: warnings.length ? "partial" : "connected";
 		handlers.onState({
 			status,
+			catchingUp: needsCatchUp || reloading,
 			message: status === "polling" ? "Watch access is unavailable. Readable resources refresh periodically."
 				: status === "partial" ? "Live updates connected for permitted resources. Readable resources without watch access refresh periodically."
 				: connected ? "Live updates connected" : "Reconnecting; periodically reloading this view",
 			error: watches.find((watch) => watch.error)?.error ?? null,
-			reloadError,
+			reloadError: reloadError ?? handlers.readError?.() ?? null,
 			warnings,
 		});
 		if (connected && needsCatchUp && !reloading) {
@@ -181,14 +186,16 @@ export function observeResourceScope({
 		if (disposed) return;
 		for (const watch of watches) start(watch);
 		if (watches.some((watch) => !watch.connected && !watch.permissionWarning)) needsCatchUp = true;
-		if (needsCatchUp || reloadError || watches.some((watch) => watch.permissionWarning)) {
+		const readError = handlers.readError?.();
+		if (needsCatchUp || reloadError || readError || watches.some((watch) => watch.permissionWarning)) {
 			const recoveryKeys = watches.filter((watch) => watch.permissionWarning).map((watch) => watch.key);
-			void refresh(!needsCatchUp && recoveryKeys.length ? recoveryKeys : undefined);
+			void refresh(!needsCatchUp && !readError && recoveryKeys.length ? recoveryKeys : undefined);
 		}
 		timer = setTimeout(tick, RESOURCE_RECOVERY_INTERVAL);
 	}
 	onState({
 		status: "connecting",
+		catchingUp: false,
 		message: "Starting live updates",
 		error: null,
 		reloadError: null,
@@ -203,6 +210,7 @@ export function observeResourceScope({
 	}
 
 	return {
+		checkReads: publish,
 		update(nextKeys, nextHandlers) {
 			if (disposed) return;
 			handlers = nextHandlers;
@@ -228,6 +236,7 @@ export function observeResourceScope({
 			}
 			handlers.onState({
 				status: "connecting",
+				catchingUp: needsCatchUp || reloading,
 				message: "Starting live updates",
 				error: null,
 				reloadError,

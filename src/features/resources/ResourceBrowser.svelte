@@ -31,7 +31,7 @@
 		Table2,
 	} from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
-	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
+	import ResourceTableStatus from "./ResourceTableStatus.svelte";
 	import CopyableText from "@/components/CopyableText.svelte";
 	import TimestampText from "@/components/TimestampText.svelte";
 	import {
@@ -61,7 +61,6 @@
 	} from "./operational-data";
 	import { argoApplicationInspection } from "@/lib/argo-application-inspection.svelte";
 	import { diagnosticLog } from "@/lib/diagnostics";
-	import { resourceHealthAssessment } from "@/lib/resource-health";
 	import { STATUS_BADGE_STYLES } from "@/components/status-badge-styles";
 	import type { ChipVariant } from "@/features/argo/status";
 	import ArgoApplicationWorkspaceHeader from "@/features/gitops/ArgoApplicationWorkspaceHeader.svelte";
@@ -133,6 +132,7 @@
 	const EMPTY_CELL = "—";
 
 	let {
+		client: providedClient,
 		workspaceReadContext,
 		initialNamespaces,
 		initialKinds,
@@ -155,6 +155,7 @@
 		onArgoApplicationInspect = () => {},
 		onPathStateChange = () => {},
 	}: {
+		client?: import("@/lib/tauri").TauriClient;
 		workspaceReadContext: WorkspaceReadContext;
 		initialNamespaces: string[];
 		initialKinds: ResourceKindSelection[];
@@ -177,8 +178,9 @@
 		onArgoApplicationInspect?: (app: ArgoApplicationSummary) => void;
 		onPathStateChange?: (state: PathStateResourceBrowserState) => void;
 	} = $props();
+	// svelte-ignore state_referenced_locally -- The mounted browser owns one fixed transport.
+	const client = providedClient ?? createTauriClient();
 
-	const client = createTauriClient();
 	let selectedNamespaces = $state<string[]>([]);
 	let selectedKinds = $state<ResourceKindSelection[]>([]);
 	let appliedScopeKey = $state("");
@@ -356,6 +358,9 @@
 		}
 	});
 	const topologyQuery = createQuery<ResourceTopology>(() => readSpecs.topology);
+	const updatesCurrent = $derived(live.state.status === "connected" && !live.state.catchingUp && !live.state.reloadError
+		&& !resourcesQuery.isError && !resourcesQuery.isPlaceholderData
+		&& (!mapPanelOpen || (!topologyQuery.isError && !topologyQuery.isPlaceholderData)));
 	$effect(() => {
 		const metricsScopeKey = JSON.stringify(readSpecs.metrics.queryKey);
 		if (appliedMetricsScopeKey === metricsScopeKey) return;
@@ -490,8 +495,8 @@
 	);
 	const tableMinWidth = $derived(
 		250 +
+			130 +
 			105 +
-			95 +
 			95 +
 			(tableModel.columnVisibility.ready ? 70 : 0) +
 			(tableModel.columnVisibility.restarts ? 75 : 0) +
@@ -767,7 +772,7 @@
 				<EmptyDescription>Select at least one kind.</EmptyDescription>
 			</EmptyHeader>
 		</Empty>
-	{:else if resourceError}
+	{:else if resourceError && (!resourcesQuery.data || workspaceReadContext.sourceError)}
 		<FriendlyError
 			error={resourceError}
 			context={{ operation: "resourcesLoad", fallbackTitle: "Failed to load resources" }}
@@ -818,6 +823,16 @@
 			onClearFilters={clearFilters}
 		/>
 
+		{#if live.state.reloadError}
+			<details class="rounded-md border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300" data-refresh-error>
+				<summary class="cursor-pointer px-3 py-2"><span role="status">Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.</span></summary>
+				<div class="px-3 pb-3"><FriendlyError error={live.state.reloadError} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} /></div>
+			</details>
+		{:else if !updatesCurrent && (resourcesQuery.data || topologyQuery.data)}
+			<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+				Showing last observed state. Activity indicators are paused until live updates recover.
+			</p>
+		{/if}
 		<div
 			class={inspectorOpen && mapPanelOpen && tablePanelOpen
 				? "grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)] gap-3"
@@ -834,6 +849,7 @@
 					{#if OwnershipMapComponent}
 						<OwnershipMapComponent
 							topology={topologyWithMetrics}
+							{updatesCurrent}
 							isLoading={topologyQuery.isPending && !topologyQuery.data}
 							isError={topologyQuery.isError && !topologyQuery.data}
 							error={topologyQuery.error}
@@ -921,8 +937,8 @@
 						<Table aria-label={`${title} resource table`} class={TABLE_CLASS} style={`min-width: ${tableMinWidth}px;`}>
 							<colgroup>
 								<col />
+								<col style="width: 130px;" />
 								<col style="width: 105px;" />
-								<col style="width: 95px;" />
 								<col style="width: 95px;" />
 								{#if tableModel.columnVisibility.ready}<col style="width: 70px;" />{/if}
 								{#if tableModel.columnVisibility.restarts}<col style="width: 75px;" />{/if}
@@ -935,9 +951,9 @@
 							<TableHeader>
 								<TableRow>
 									<TableHead>{@render SortButton("name", "Name")}</TableHead>
+									<TableHead>{@render SortButton("status", "Status")}</TableHead>
 									<TableHead>{@render SortButton("namespace", "Namespace")}</TableHead>
 									<TableHead>{@render SortButton("kind", "Kind")}</TableHead>
-									<TableHead>{@render SortButton("status", "Status")}</TableHead>
 									{#if tableModel.columnVisibility.ready}<TableHead>{@render SortButton("ready", "Ready")}</TableHead>{/if}
 									{#if tableModel.columnVisibility.restarts}<TableHead>{@render SortButton("restarts", "Restarts")}</TableHead>{/if}
 									{#if tableModel.columnVisibility.cpu}<TableHead>{@render SortButton("cpu", "CPU", CPU_USAGE_DESCRIPTION)}</TableHead>{/if}
@@ -1036,11 +1052,11 @@
 														active={rowSelected}
 													/>
 												</TableCell>
-												<TableCell>{row.namespace ?? EMPTY_CELL}</TableCell>
-												<TableCell>{row.kind}</TableCell>
 												<TableCell>
-													<HealthAssessmentBadge assessment={resourceHealthAssessment(row)} compact rawStatuses={row.status ? [row.status] : []} />
+												<ResourceTableStatus resource={row} active={updatesCurrent} />
 												</TableCell>
+											<TableCell>{row.namespace ?? EMPTY_CELL}</TableCell>
+											<TableCell>{row.kind}</TableCell>
 												{#if tableModel.columnVisibility.ready}
 													<TableCell>
 														{@const ready = resourceReadyChip(row)}
