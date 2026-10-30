@@ -55,7 +55,14 @@ the plugin yourself. It owns provider login, browser interaction, and token cach
 KubeCove does not bundle or manage plugins.
 
 Commands use KubeCove's process environment and the kubeconfig's `exec.env` entries.
-A desktop launcher can have a different `PATH` from your terminal. For Krew,
+A desktop launcher can have a different `PATH` from your terminal. On Linux and
+macOS, KubeCove recovers PATH once from your configured `SHELL` when a local
+credential plugin needs it. It appends missing absolute shell directories after
+inherited directories and passes that PATH only to the plugin and its children.
+An explicit `exec.env.PATH` takes precedence. Shell startup is asynchronous;
+cancelling the initializing read requests termination of the shell probe, though
+programs started by shell configuration can outlive it.
+Windows and remote servers retain their inherited environment. For Krew,
 ensure both `kubectl` and the Krew bin directory are available to that environment.
 Alternatively, set `exec.command` to the absolute path of the installed
 `kubectl-oidc_login` executable and pass `get-token` followed by your existing

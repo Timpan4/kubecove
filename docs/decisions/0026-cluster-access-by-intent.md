@@ -66,7 +66,7 @@ Command tests assert that resource action execution and YAML apply request the c
 ### Exec credential plugin compatibility
 
 Kubeconfig exec credential plugins remain owned by `kube-rs`. KubeCove does not
-install plugins, configure providers, import login-shell environments, or replace
+install plugins, configure providers, or replace
 the plugin's login, cache, or refresh flow. Configured commands, arguments,
 environment variables, and interactive modes retain their meaning. Operator
 plugins execute on the server host; forwarded-bearer mode continues to strip
@@ -98,6 +98,24 @@ cache misses, cancellation before and during construction, stale publication,
 independent session scopes, expired clients, wrapped auth errors, and frontend
 retry classification. Platform launch environments and real provider login need
 separate runtime evidence.
+
+### Desktop executable discovery amendment
+
+Desktop launches on Linux and macOS can omit the user's terminal PATH. Before
+building a local exec-authenticated client, recover only PATH from the configured
+absolute `SHELL`, using a fixed interactive login-shell command. Cache the result
+for this process. Preserve inherited directory precedence and append missing
+shell directories. Supply the result only to the credential plugin's environment;
+do not mutate process-global environment or kubeconfig files. Explicit
+`exec.env.PATH` wins. No plugin-specific directories or provider commands are added.
+
+The probe uses an asynchronous child process. Cancelling an initializing finite
+read requests termination of that shell and releases shared initialization so
+another caller can retry. Shell-started descendants may outlive the shell. No new
+deadline is introduced. Failed or invalid shell output
+leaves inherited lookup unchanged, and shell output is never logged. Windows and
+operator/server sessions retain their inherited environment. Shell startup files
+execute as the desktop user, as they do when starting an interactive login shell.
 
 ## Consequences
 

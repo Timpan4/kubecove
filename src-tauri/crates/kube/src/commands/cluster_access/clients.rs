@@ -95,7 +95,7 @@ pub(super) async fn client(
         ClientIntent::LiveSession | ClientIntent::Stream => ClientPath::Live,
     };
     let cancellation = path.cancellation().cloned();
-    let build = async {
+    let build = Box::pin(async {
         let fingerprint = client_cache::fingerprint_files(&source.effective_kubeconfig_paths());
         if let Some(client) = path.lookup(source_key, cluster_context, fingerprint) {
             return Ok(client);
@@ -113,6 +113,10 @@ pub(super) async fn client(
         // layer and cache owner before crossing that boundary.
         let bearer = forwarded_bearer_layer()?;
         let scope = SessionScope::current_or_process();
+        #[cfg(all(feature = "desktop", any(target_os = "linux", target_os = "macos")))]
+        if matches!(scope.source_policy(), super::SourcePolicy::Local) {
+            super::plugin_path::apply(&mut config).await;
+        }
         let source_key = source_key.to_owned();
         let cluster_context = cluster_context.to_owned();
         tokio::task::spawn_blocking(move || {
@@ -140,7 +144,7 @@ pub(super) async fn client(
                 AppErrorKind::Internal,
             )
         })?
-    };
+    });
     match cancellation {
         Some(token) => resolve_before_cancel(build, &token).await,
         None => build.await,
