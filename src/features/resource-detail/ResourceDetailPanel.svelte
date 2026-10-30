@@ -298,6 +298,7 @@
 		let cancelled = false;
 		let streamId: string | null = null;
 		const watchKey = readSpec.resourceWatchKey;
+		let needsCatchUp = false;
 		const details = queryMatchers.exact(detailsQueryKey);
 		const argoReads = argoApplicationReadsMatch;
 		const reads: QueryMatch = argoReads ? (query) => details(query) || argoReads(query) : details;
@@ -308,10 +309,17 @@
 			if (cancelled) return;
 			if (event.type === "error") {
 				realtimeWatchError = event.message;
+				needsCatchUp = true;
 				return;
 			}
 			if (event.type === "status") {
-				if (event.status === "connected") realtimeWatchError = null;
+				if (event.status === "connected") {
+					realtimeWatchError = null;
+					if (needsCatchUp) {
+						needsCatchUp = false;
+						refresh.notify();
+					}
+				} else needsCatchUp = true;
 				return;
 			}
 			if (event.type !== "resourceChanged") return;
@@ -356,14 +364,22 @@
 		let cancelled = false;
 		let streamId: string | null = null;
 		const refresh = createLiveReadRefresh(queryClient, queryMatchers.prefix(eventsQueryKey));
+		let needsCatchUp = false;
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
 			if (event.type === "error") {
 				realtimeEventsWatchError = event.message;
+				needsCatchUp = true;
 				return;
 			}
 			if (event.type === "status") {
-				if (event.status === "connected") realtimeEventsWatchError = null;
+				if (event.status === "connected") {
+					realtimeEventsWatchError = null;
+					if (needsCatchUp) {
+						needsCatchUp = false;
+						refresh.notify();
+					}
+				} else needsCatchUp = true;
 				return;
 			}
 			if (event.type === "resourceEventsChanged") refresh.notify();

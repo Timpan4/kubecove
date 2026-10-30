@@ -432,6 +432,10 @@
     --topology-stoplight-color: oklch(0.769 0.188 70.08);
   }
 
+  .resource-topology-stoplight-info {
+    --topology-stoplight-color: var(--color-sky-300);
+  }
+
   .resource-topology-stoplight-error {
     --topology-stoplight-color: var(--destructive);
   }

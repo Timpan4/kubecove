@@ -3,6 +3,7 @@ import type { QueryMatch } from "./queryKeys";
 import { refreshCurrentView } from "./resource-refresh";
 import {
 	observeResourceScope,
+	RESOURCE_RECOVERY_INTERVAL,
 	type ResourceScopeHandlers,
 	type ResourceScopeObserver,
 	type ResourceWatchState,
@@ -10,6 +11,7 @@ import {
 import type { TauriClient } from "./tauri-runtime";
 import type { createStreamChannel } from "./tauri-streams";
 import type { WatchResourceKey } from "./types";
+import { messageFromError } from "./error-redaction";
 
 // A view declares which watched kinds keep which reads fresh. The binding owns the
 // watch streams, per-read throttling, live status, recovery reloads, and manual
@@ -37,6 +39,7 @@ export interface LiveView {
 }
 
 export interface LiveViewState {
+	catchingUp: boolean;
 	status: ResourceWatchState["status"] | "idle";
 	message: string;
 	error: string | null;
@@ -45,6 +48,7 @@ export interface LiveViewState {
 }
 
 export const IDLE_LIVE_VIEW: LiveViewState = {
+	catchingUp: false,
 	status: "idle",
 	message: "No live resource watches in this view.",
 	error: null,
@@ -116,7 +120,36 @@ function createReadRefresh(queryClient: QueryClient, match: () => QueryMatch, be
 
 /** Throttled refresh of the reads `match` selects. A change seen while one of them runs refreshes them again once it ends. */
 export function createLiveReadRefresh(queryClient: QueryClient, match: QueryMatch, beforeRefresh?: () => void) {
-	return createReadRefresh(queryClient, () => match, beforeRefresh);
+	const refresh = createReadRefresh(queryClient, () => match, beforeRefresh);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let disposed = false;
+	const failedRead = () => queryClient.getQueryCache().getAll().some((query) =>
+		match(query) && query.isActive() && query.state.status === "error" && query.state.fetchStatus === "idle");
+	function checkRecovery() {
+		if (disposed) return;
+		if (!failedRead()) {
+			if (timer !== undefined) clearTimeout(timer);
+			timer = undefined;
+		} else if (timer === undefined) {
+			timer = setTimeout(() => {
+				timer = undefined;
+				if (!disposed && failedRead()) refresh.notify();
+			}, RESOURCE_RECOVERY_INTERVAL);
+		}
+	}
+	const unsubscribe = queryClient.getQueryCache().subscribe(({ query }) => {
+		if (match(query)) checkRecovery();
+	});
+	checkRecovery();
+	return {
+		notify: refresh.notify,
+		dispose() {
+			disposed = true;
+			if (timer !== undefined) clearTimeout(timer);
+			unsubscribe();
+			refresh.dispose();
+		},
+	};
 }
 
 // A key that names only an apiVersion matches a discovered kind that also names its group.
@@ -195,6 +228,13 @@ export function bindLiveView({
 		});
 	// One handler set for the binding's lifetime; it reads the current view when it runs.
 	const handlers: ResourceScopeHandlers = {
+		readError: () => {
+			const failed = queryClient.getQueryCache().findAll({
+				predicate: (query) => query.isActive() && query.state.status === "error"
+					&& refetched().some((read) => read.match(query)),
+			})[0];
+			return failed ? messageFromError(failed.state.error) : null;
+		},
 		onState: (state) => onState({ ...state, reloadError: state.reloadError ?? null, warnings: state.warnings ?? [] }),
 		onChange: (_event, key) => {
 			for (const slot of slots) if (keptFreshBy(slot.read, key)) slot.notify();
@@ -206,6 +246,11 @@ export function bindLiveView({
 				? reread(denied, refetched().filter((read) => denied.some((key) => keptFreshBy(read, key))).map((read) => read.match), false)
 				: reread(current.keys, viewReads(), false),
 	};
+	const stopQueryUpdates = queryClient.getQueryCache().subscribe(({ query, type }) => {
+		if (type === "updated" && current.reads.some((read) => read.refetch !== false && read.match(query))) {
+			observer?.checkReads();
+		}
+	});
 	function apply(next: LiveView) {
 		current = next;
 		next.reads.forEach((read, index) => {
@@ -239,6 +284,7 @@ export function bindLiveView({
 		},
 		stop() {
 			stopped = true;
+			stopQueryUpdates();
 			observer?.stop();
 			observer = null;
 			for (const slot of slots.splice(0)) slot.dispose();

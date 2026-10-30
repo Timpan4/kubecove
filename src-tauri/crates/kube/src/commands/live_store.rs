@@ -58,6 +58,7 @@ enum CacheEntry<T> {
         cancellation: CancellationToken,
         previous: Option<ReadyValue<T>>,
         dirty: bool,
+        waiters: usize,
     },
 }
 
@@ -66,6 +67,45 @@ struct SharedCache<T> {
     next_load_id: AtomicU64,
     entries: Mutex<HashMap<String, CacheEntry<T>>>,
     counters: CacheCounters,
+}
+
+// The cache retains a lazy shared future. Without a caller, that future must be
+// removed so a later view cannot resume an abandoned Kubernetes snapshot.
+struct LoadWaiter<'a, T> {
+    cache: &'a SharedCache<T>,
+    key: &'a str,
+    load_id: u64,
+}
+
+impl<T> Drop for LoadWaiter<'_, T> {
+    fn drop(&mut self) {
+        let mut entries = self.cache.entries.lock().expect("live store cache lock");
+        let Some(CacheEntry::Loading {
+            load_id, waiters, ..
+        }) = entries.get_mut(self.key)
+        else {
+            return;
+        };
+        if *load_id != self.load_id {
+            return;
+        }
+        *waiters -= 1;
+        if *waiters != 0 {
+            return;
+        }
+        if let Some(CacheEntry::Loading {
+            cancellation,
+            previous,
+            ..
+        }) = entries.remove(self.key)
+        {
+            cancellation.cancel();
+            if let Some(mut previous) = previous {
+                previous.dirty = true;
+                entries.insert(self.key.to_string(), CacheEntry::Ready(previous));
+            }
+        }
+    }
 }
 
 impl<T> SharedCache<T>
@@ -126,22 +166,38 @@ where
         let (future, load_id) = {
             let mut entries = self.entries.lock().expect("live store cache lock");
             self.prune_expired(&mut entries, &key);
-            match entries.get(&key) {
+            match entries.get_mut(&key) {
                 Some(CacheEntry::Ready(ready)) if Self::can_reuse(ready, mode) => {
                     self.counters.hits.fetch_add(1, Ordering::Relaxed);
                     return Ok(Arc::clone(&ready.value));
                 }
                 Some(CacheEntry::Loading {
-                    load_id, future, ..
+                    load_id,
+                    future,
+                    waiters,
+                    dirty: false,
+                    ..
                 }) => {
                     self.counters.joins.fetch_add(1, Ordering::Relaxed);
+                    *waiters += 1;
                     (future.clone(), *load_id)
                 }
                 _ => {
                     self.counters.misses.fetch_add(1, Ordering::Relaxed);
                     let previous = entries.remove(&key).and_then(|entry| match entry {
                         CacheEntry::Ready(ready) => Some(ready),
-                        CacheEntry::Loading { previous, .. } => previous,
+                        CacheEntry::Loading {
+                            previous,
+                            cancellation,
+                            dirty,
+                            ..
+                        } => {
+                            cancellation.cancel();
+                            previous.map(|mut ready| {
+                                ready.dirty |= dirty;
+                                ready
+                            })
+                        }
                     });
                     let load_id = self.next_load_id.fetch_add(1, Ordering::Relaxed) + 1;
                     let cancellation = CancellationToken::new();
@@ -162,6 +218,7 @@ where
                             cancellation,
                             previous,
                             dirty: false,
+                            waiters: 1,
                         },
                     );
                     (future, load_id)
@@ -169,6 +226,11 @@ where
             }
         };
 
+        let _waiter = LoadWaiter {
+            cache: self,
+            key: &key,
+            load_id,
+        };
         let result = future.await;
         let mut entries = self.entries.lock().expect("live store cache lock");
         let Some(CacheEntry::Loading {
@@ -186,7 +248,7 @@ where
         if let Ok(value) = &result {
             let mut ready = Self::ready_value(value.clone());
             ready.dirty = dirty_while_loading;
-            entries.insert(key, CacheEntry::Ready(ready));
+            entries.insert(key.clone(), CacheEntry::Ready(ready));
             self.trim_to_budget(&mut entries);
         } else {
             let previous = entries.remove(&key).and_then(|entry| match entry {
@@ -202,7 +264,7 @@ where
                 self.counters
                     .restored_reload_failures
                     .fetch_add(1, Ordering::Relaxed);
-                entries.insert(key, CacheEntry::Ready(previous));
+                entries.insert(key.clone(), CacheEntry::Ready(previous));
                 self.trim_to_budget(&mut entries);
             }
         }
@@ -688,6 +750,10 @@ fn is_known_typed_kind(kind: &str) -> bool {
 #[cfg(test)]
 #[path = "live_store_tests.rs"]
 mod live_store_tests;
+
+#[cfg(test)]
+#[path = "live_store_race_tests.rs"]
+mod race_tests;
 
 #[cfg(test)]
 #[path = "live_store_diagnostics_tests.rs"]
