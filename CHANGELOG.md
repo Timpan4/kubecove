@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.12 - 2026-10-30
+### Fixed
+
+- Keep kubeconfig exec authentication responsive (#618).
+
 ## 0.12.11 - 2026-10-30
 ### Improved
 
