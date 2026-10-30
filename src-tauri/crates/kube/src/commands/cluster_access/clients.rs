@@ -18,7 +18,7 @@ use kube::{client::ClientBuilder, Client};
 use std::{future::Future, time::Duration};
 use tokio_util::sync::CancellationToken;
 
-const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
+pub(super) const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 enum ClientPath {
     Finite(ClientGeneration),

@@ -111,8 +111,11 @@ do not mutate process-global environment or kubeconfig files. Explicit
 
 The probe uses an asynchronous child process. Cancelling an initializing finite
 read requests termination of that shell and releases shared initialization so
-another caller can retry. Shell-started descendants may outlive the shell. No new
-deadline is introduced. Failed or invalid shell output
+another caller can retry. Shell-started descendants may outlive the shell. The
+probe reuses the existing 30-second Kubernetes read timeout, including output
+collection. This duration was approved for the probe on 2026-10-30. Expiry caches
+the inherited-PATH fallback so operation and live-session callers also proceed.
+Failed or invalid shell output
 leaves inherited lookup unchanged, and shell output is never logged. Windows and
 operator/server sessions retain their inherited environment. Shell startup files
 execute as the desktop user, as they do when starting an interactive login shell.

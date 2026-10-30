@@ -62,6 +62,9 @@ inherited directories and passes that PATH only to the plugin and its children.
 An explicit `exec.env.PATH` takes precedence. Shell startup is asynchronous;
 cancelling the initializing read requests termination of the shell probe, though
 programs started by shell configuration can outlive it.
+The probe uses the existing 30-second Kubernetes read timeout. If it expires,
+KubeCove retains inherited lookup for this process, including operation and live
+clients.
 Windows and remote servers retain their inherited environment. For Krew,
 ensure both `kubectl` and the Krew bin directory are available to that environment.
 Alternatively, set `exec.command` to the absolute path of the installed

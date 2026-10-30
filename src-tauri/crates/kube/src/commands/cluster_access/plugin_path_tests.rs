@@ -180,3 +180,53 @@ async fn cancelled_shell_probe_releases_shared_initialization_for_retry() {
     assert_eq!(retry.as_deref(), Some("/fixture/bin"));
     assert!(config.auth_info.exec.unwrap().env.is_none());
 }
+
+#[tokio::test(start_paused = true)]
+async fn stalled_shell_deadline_caches_fallback_without_changing_exec_configuration() {
+    use futures_util::FutureExt;
+    let fixture = Fixture::new();
+    let fifo = fixture.0.join("wait");
+    assert!(std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .unwrap()
+        .success());
+    let started = fixture.0.join("started");
+    let shell = fixture.script(
+        "shell",
+        "printf x > \"$STARTED\"\nread -r value < \"$WAIT\"",
+    );
+    let cache = OnceCell::new();
+    let mut config = config();
+    let before = serde_json::to_value(&config.auth_info.exec).unwrap();
+    {
+        let recovery = recover(&mut config, Some(OsStr::new("/usr/bin:/bin")), async {
+            cache
+                .get_or_init(|| async {
+                    read_shell_path(
+                        Command::new(shell)
+                            .env("STARTED", &started)
+                            .env("WAIT", &fifo),
+                    )
+                    .await
+                })
+                .await
+                .clone()
+        });
+        tokio::pin!(recovery);
+        tokio::select! {
+            () = &mut recovery => panic!("shell must still be waiting"),
+            () = async { while !started.exists() { tokio::task::yield_now().await; } } => {}
+        }
+        tokio::time::advance(super::super::clients::REQUEST_READ_TIMEOUT).await;
+        assert!(
+            recovery.as_mut().now_or_never().is_some(),
+            "probe deadline must return inherited lookup without waiting for shell exit"
+        );
+    }
+    assert_eq!(cache.get(), Some(&None));
+    assert_eq!(
+        serde_json::to_value(&config.auth_info.exec).unwrap(),
+        before
+    );
+}

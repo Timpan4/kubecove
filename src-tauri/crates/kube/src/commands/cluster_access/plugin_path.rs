@@ -74,12 +74,13 @@ async fn recover(
 }
 
 async fn read_shell_path(command: &mut Command) -> Option<String> {
-    let output = command
-        .stdin(Stdio::null())
-        .kill_on_drop(true)
-        .output()
-        .await
-        .ok()?;
+    let output = tokio::time::timeout(
+        super::clients::REQUEST_READ_TIMEOUT,
+        command.stdin(Stdio::null()).kill_on_drop(true).output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
     if !output.status.success() {
         return None;
     }
