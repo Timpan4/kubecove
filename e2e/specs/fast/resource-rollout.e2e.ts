@@ -1,15 +1,48 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { browser, expect } from "@wdio/globals";
-import { describe, it } from "mocha";
+import { before, describe, it } from "mocha";
 
 describe("rollout progress and realtime recovery", () => {
-	it("keeps lifecycle beside names, replaces deleted pods, and recovers a failed final refresh", async () => {
-		const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
-		if (!artifacts) throw new Error("Artifact directory is required");
+	before(async () => {
 		// Match the user's existing table screenshot.
 		const frame = await browser.execute(() => ({ width: window.outerWidth - window.innerWidth, height: window.outerHeight - window.innerHeight }));
 		await browser.setWindowSize(1350 + frame.width, 868 + frame.height);
+	});
+	for (const mode of ["partial", "polling"] as const) {
+		it(`explains periodic refresh with ${mode} watch coverage`, async () => {
+			const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
+			if (!artifacts) throw new Error("Artifact directory is required");
+			await browser.url("/");
+			await browser.execute(async () => {
+				const fixture = "/e2e/fixtures/resource-rollout-regression.ts";
+				await (await import(/* @vite-ignore */ fixture)).mountResourceRollout();
+			});
+			const harness = browser.$("[data-rollout-harness]");
+			try {
+				await expect(harness.$$("canvas[data-resource-progress='active']")).toBeElementsArrayOfSize(6);
+				await browser.execute(async (coverage) => {
+					const fixture = "/e2e/fixtures/resource-rollout-regression.ts";
+					(await import(/* @vite-ignore */ fixture)).limitResourceRolloutWatches(coverage);
+				}, mode);
+				await expect(harness).toHaveText(expect.stringContaining(mode === "partial" ? "Live updates are limited." : "Live updates are unavailable."));
+				await expect(harness).toHaveText(expect.stringContaining("refresh periodically. Activity indicators are paused."));
+				await expect(harness).not.toHaveText(expect.stringContaining("until live updates recover"));
+				await expect(harness.$$("canvas[data-resource-progress='active']")).toBeElementsArrayOfSize(0);
+				await expect(harness.$$("canvas[data-resource-progress='paused']")).toBeElementsArrayOfSize(6);
+				await browser.saveScreenshot(join(artifacts, `resource-rollout-${mode}.png`));
+				await writeFile(join(artifacts, `resource-rollout-${mode}.json`), JSON.stringify({ mode, periodicRefreshExplained: true, activityPaused: true }, null, 2));
+			} finally {
+				await browser.execute(async () => {
+					const fixture = "/e2e/fixtures/resource-rollout-regression.ts";
+					await (await import(/* @vite-ignore */ fixture)).stopResourceRollout();
+				});
+			}
+		});
+	}
+	it("keeps lifecycle beside names, replaces deleted pods, and recovers a failed final refresh", async () => {
+		const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
+		if (!artifacts) throw new Error("Artifact directory is required");
 		await browser.url("/");
 		const setup = await browser.execute(async () => {
 			const fixture = "/e2e/fixtures/resource-rollout-regression.ts";

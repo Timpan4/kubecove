@@ -6,7 +6,7 @@ import type { ResourceListRequest, ResourceSummary, ResourceTopology, StreamMess
 import ResourceRolloutHarness from "./ResourceRolloutHarness.svelte";
 
 type WatchChannel = { onmessage: (message: StreamMessage) => void };
-let control: { add(): void; fail(): void; complete(): void; switchScope(): void; reconnect(): void; finishReads(): void; stop(): Promise<void> } | undefined;
+let control: { add(): void; fail(): void; complete(): void; switchScope(): void; reconnect(): void; limitWatches(mode: "partial" | "polling"): void; finishReads(): void; stop(): Promise<void> } | undefined;
 
 export async function mountResourceRollout() {
 	await control?.stop();
@@ -90,6 +90,11 @@ export async function mountResourceRollout() {
 			for (const channel of channels) channel.onmessage({ type: "status", streamId: "rollout", status: "connected", message: "Connected" });
 		},
 		finishReads() { finishReads(); },
+		limitWatches(mode) {
+			for (const [index, channel] of channels.entries()) {
+				if (mode === "polling" || index === 0) channel.onmessage({ type: "status", streamId: "rollout", status: "forbidden", message: "Watch access denied" });
+			}
+		},
 		add() { added = true; changed("added"); },
 		fail() { failing = true; changed(); },
 		complete() { failing = false; completed = true; },
@@ -103,6 +108,7 @@ export function addResourceRolloutPod() { control?.add(); }
 export function switchResourceRolloutScope() { control?.switchScope(); }
 export function reconnectResourceRollout() { control?.reconnect(); }
 export function finishResourceRolloutReads() { control?.finishReads(); }
+export function limitResourceRolloutWatches(mode: "partial" | "polling") { control?.limitWatches(mode); }
 // No event is emitted here. The recovery timer must replace the failed snapshot.
 export function completeResourceRollout() { control?.complete(); }
 export async function stopResourceRollout() { await control?.stop(); }

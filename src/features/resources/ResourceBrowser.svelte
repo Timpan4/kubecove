@@ -830,7 +830,13 @@
 			</details>
 		{:else if !updatesCurrent && (resourcesQuery.data || topologyQuery.data)}
 			<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-				Showing last observed state. Activity indicators are paused until live updates recover.
+				{#if live.state.status === "partial"}
+					Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.
+				{:else if live.state.status === "polling"}
+					Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused.
+				{:else}
+					Showing last observed state. Activity indicators are paused until live updates recover.
+				{/if}
 			</p>
 		{/if}
 		<div
