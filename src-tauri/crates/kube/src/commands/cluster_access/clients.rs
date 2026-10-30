@@ -3,6 +3,7 @@
 //! operations and live clients use their own non-rotating caches.
 
 use super::ClientIntent;
+use crate::commands::helpers::{client_cache::ClientGeneration, session_scope::SessionScope};
 use crate::{
     commands::{
         helpers::{
@@ -11,13 +12,67 @@ use crate::{
         },
         kubeconfig::{Fallback, KubeconfigSource},
     },
-    models::AppError,
+    models::{AppError, AppErrorKind},
 };
-use kube::{client::ClientBuilder, Client, Config};
+use kube::{client::ClientBuilder, Client};
 use std::{future::Future, time::Duration};
 use tokio_util::sync::CancellationToken;
 
 const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+enum ClientPath {
+    Finite(ClientGeneration),
+    Operation,
+    Live,
+}
+
+impl ClientPath {
+    fn cancellation(&self) -> Option<&CancellationToken> {
+        match self {
+            Self::Finite(generation) => Some(&generation.token),
+            Self::Operation | Self::Live => None,
+        }
+    }
+
+    fn lookup(&self, source: &str, context: &str, fingerprint: u64) -> Option<Client> {
+        match self {
+            Self::Finite(generation) => {
+                client_cache::lookup_client(source, context, fingerprint, generation.id)
+            }
+            Self::Operation => client_cache::lookup_operation_client(source, context, fingerprint),
+            Self::Live => client_cache::lookup_live_client(source, context, fingerprint),
+        }
+    }
+
+    fn store(
+        &self,
+        source: String,
+        context: String,
+        fingerprint: u64,
+        client: Client,
+    ) -> Result<Client, AppError> {
+        match self {
+            Self::Finite(generation) => {
+                if !client_cache::store_client(
+                    source,
+                    context,
+                    fingerprint,
+                    generation.id,
+                    client.clone(),
+                ) {
+                    return Err(AppError::cancelled());
+                }
+            }
+            Self::Operation => {
+                client_cache::store_operation_client(source, context, fingerprint, client.clone());
+            }
+            Self::Live => {
+                client_cache::store_live_client(source, context, fingerprint, client.clone());
+            }
+        }
+        Ok(client)
+    }
+}
 
 pub(super) async fn client(
     source: &KubeconfigSource,
@@ -32,90 +87,64 @@ pub(super) async fn client(
             Fallback::Refuse
         }
     };
-    let fingerprint = client_cache::fingerprint_files(&source.effective_kubeconfig_paths());
-    match intent {
+    let path = match intent {
         ClientIntent::Read | ClientIntent::Preview => {
-            finite_client(source, source_key, cluster_context, fingerprint, fallback).await
+            ClientPath::Finite(client_cache::finite_client_generation())
         }
-        ClientIntent::ConfirmedOperation => {
-            if let Some(client) =
-                client_cache::lookup_operation_client(source_key, cluster_context, fingerprint)
-            {
-                return Ok(client);
-            }
-            let mut config = source.config_for_context(cluster_context, fallback).await?;
+        ClientIntent::ConfirmedOperation => ClientPath::Operation,
+        ClientIntent::LiveSession | ClientIntent::Stream => ClientPath::Live,
+    };
+    let cancellation = path.cancellation().cloned();
+    let build = async {
+        let fingerprint = client_cache::fingerprint_files(&source.effective_kubeconfig_paths());
+        if let Some(client) = path.lookup(source_key, cluster_context, fingerprint) {
+            return Ok(client);
+        }
+        let gate = client_cache::client_build_gate(source_key, cluster_context);
+        let guard = gate.lock_owned().await;
+        if let Some(client) = path.lookup(source_key, cluster_context, fingerprint) {
+            return Ok(client);
+        }
+        let mut config = source.config_for_context(cluster_context, fallback).await?;
+        if !matches!(path, ClientPath::Live) {
             config.read_timeout = Some(REQUEST_READ_TIMEOUT);
-            let client = build_client(config)?;
-            client_cache::store_operation_client(
-                source_key.to_string(),
-                cluster_context.to_string(),
-                fingerprint,
-                client.clone(),
-            );
-            Ok(client)
         }
-        ClientIntent::LiveSession | ClientIntent::Stream => {
-            if let Some(client) =
-                client_cache::lookup_live_client(source_key, cluster_context, fingerprint)
+        // Task locals do not propagate to blocking workers. Capture the bearer
+        // layer and cache owner before crossing that boundary.
+        let bearer = forwarded_bearer_layer()?;
+        let scope = SessionScope::current_or_process();
+        let source_key = source_key.to_owned();
+        let cluster_context = cluster_context.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let _guard = guard;
+            if path
+                .cancellation()
+                .is_some_and(CancellationToken::is_cancelled)
             {
-                return Ok(client);
+                return Err(AppError::cancelled());
             }
-            let config = source.config_for_context(cluster_context, fallback).await?;
-            let client = build_client(config)?;
-            client_cache::store_live_client(
-                source_key.to_string(),
-                cluster_context.to_string(),
-                fingerprint,
-                client.clone(),
-            );
-            Ok(client)
-        }
+            let builder = ClientBuilder::try_from(config).map_err(AppError::from)?;
+            let client = match &path {
+                ClientPath::Finite(generation) => builder
+                    .with_layer(&RequestCancellationLayer::new(generation.token.clone()))
+                    .with_layer(&bearer)
+                    .build(),
+                ClientPath::Operation | ClientPath::Live => builder.with_layer(&bearer).build(),
+            };
+            scope.run_sync(|| path.store(source_key, cluster_context, fingerprint, client))
+        })
+        .await
+        .map_err(|_| {
+            AppError::new(
+                "Kubernetes client construction failed.",
+                AppErrorKind::Internal,
+            )
+        })?
+    };
+    match cancellation {
+        Some(token) => resolve_before_cancel(build, &token).await,
+        None => build.await,
     }
-}
-
-async fn finite_client(
-    source: &KubeconfigSource,
-    source_key: &str,
-    cluster_context: &str,
-    fingerprint: u64,
-    fallback: Fallback,
-) -> Result<Client, AppError> {
-    let generation = client_cache::finite_client_generation();
-    if let Some(cached) =
-        client_cache::lookup_client(source_key, cluster_context, fingerprint, generation.id)
-    {
-        return Ok(cached);
-    }
-    let mut config = resolve_before_cancel(
-        source.config_for_context(cluster_context, fallback),
-        &generation.token,
-    )
-    .await?;
-    config.read_timeout = Some(REQUEST_READ_TIMEOUT);
-    let bearer = forwarded_bearer_layer()?;
-    let client = ClientBuilder::try_from(config)
-        .map_err(AppError::from)?
-        .with_layer(&RequestCancellationLayer::new(generation.token.clone()))
-        .with_layer(&bearer)
-        .build();
-    if !client_cache::store_client(
-        source_key.to_string(),
-        cluster_context.to_string(),
-        fingerprint,
-        generation.id,
-        client.clone(),
-    ) {
-        return Err(AppError::cancelled());
-    }
-    Ok(client)
-}
-
-fn build_client(config: Config) -> Result<Client, AppError> {
-    let bearer = forwarded_bearer_layer()?;
-    Ok(ClientBuilder::try_from(config)
-        .map_err(AppError::from)?
-        .with_layer(&bearer)
-        .build())
 }
 
 async fn resolve_before_cancel<T, F>(
@@ -126,10 +155,15 @@ where
     F: Future<Output = Result<T, AppError>>,
 {
     tokio::select! {
-        result = future => result,
+        biased;
         () = cancellation.cancelled() => Err(AppError::cancelled()),
+        result = future => result,
     }
 }
+
+#[cfg(test)]
+#[path = "exec_tests.rs"]
+mod exec_tests;
 
 #[cfg(test)]
 mod tests {

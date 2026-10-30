@@ -47,6 +47,31 @@ For a different source, open Settings and choose a valid environment-variable na
 
 Continue with [workspaces and scope](https://github.com/Timpan4/kubecove/wiki/Workspaces-and-Scope).
 
+## Exec credential plugins
+
+KubeCove uses the exec credential plugin configured in your kubeconfig, including
+`kubectl oidc-login get-token` with Krew-installed oidc-login. Install and configure
+the plugin yourself. It owns provider login, browser interaction, and token caching.
+KubeCove does not bundle or manage plugins.
+
+Commands use KubeCove's process environment and the kubeconfig's `exec.env` entries.
+A desktop launcher can have a different `PATH` from your terminal. For Krew,
+ensure both `kubectl` and the Krew bin directory are available to that environment.
+Alternatively, set `exec.command` to the absolute path of the installed
+`kubectl-oidc_login` executable and pass `get-token` followed by your existing
+provider arguments. An explicit `PATH` in `exec.env` must include all directories
+the plugin needs; shell variable expansion does not apply there.
+
+If authentication fails, check the same context in a terminal, resolve the plugin's
+error, then retry in KubeCove. App errors omit plugin arguments, environment values,
+and captured output. A plugin configured to inherit stderr can still write to the
+launching terminal. Workspace switching stops waiting on finite requests, but does
+not terminate an already running plugin or its browser window.
+
+For remote connections, operator-configured plugins execute on the server host
+with that host's environment. KubeCove does not forward their browser login to your
+computer. Server OIDC sign-in and forwarded-user credentials are separate features.
+
 ## Update
 
 Release-channel builds check the published update feed at launch and from the update control in the app header or Settings. Development and ad hoc builds use the development channel and do not check for updates.

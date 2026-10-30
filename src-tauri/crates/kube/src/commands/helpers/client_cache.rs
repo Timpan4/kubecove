@@ -6,8 +6,8 @@ use std::{
     fs,
     hash::{Hash, Hasher},
     path::PathBuf,
-    sync::RwLock,
-    time::UNIX_EPOCH,
+    sync::{Arc, Mutex, RwLock, Weak},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -61,6 +61,23 @@ impl<T: Clone> Cache<T> {
     }
 }
 
+impl Cache<Client> {
+    fn current_client(
+        &mut self,
+        source_key: &str,
+        context: &str,
+        fingerprint: u64,
+    ) -> Option<Client> {
+        self.lookup(source_key, context, fingerprint)
+            .filter(|client| {
+                client
+                    .valid_until()
+                    .as_ref()
+                    .is_none_or(|expires| SystemTime::now() < SystemTime::from(*expires))
+            })
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct ClientGeneration {
     pub(crate) id: u64,
@@ -86,10 +103,13 @@ impl FiniteClientState {
 
 /// The finite, operation and live client caches of one session scope, or of
 /// the whole process outside any scope.
+type BuildGates = HashMap<(String, String), Weak<tokio::sync::Mutex<()>>>;
+
 pub(crate) struct ClientCaches {
     finite: RwLock<FiniteClientState>,
     operation: RwLock<Cache<Client>>,
     live: RwLock<Cache<Client>>,
+    builds: Mutex<BuildGates>,
 }
 
 impl Default for ClientCaches {
@@ -98,12 +118,29 @@ impl Default for ClientCaches {
             finite: RwLock::new(FiniteClientState::new()),
             operation: RwLock::new(Cache::new()),
             live: RwLock::new(Cache::new()),
+            builds: Mutex::default(),
         }
     }
 }
 
 fn with_caches<R>(f: impl FnOnce(&ClientCaches) -> R) -> R {
     f(&SessionScope::current_or_process().caches)
+}
+
+pub(crate) fn client_build_gate(source_key: &str, context: &str) -> Arc<tokio::sync::Mutex<()>> {
+    with_caches(|caches| {
+        let mut builds = caches.builds.lock().expect("client build gates lock");
+        builds.retain(|_, gate| gate.strong_count() > 0);
+        let entry = builds
+            .entry((source_key.to_owned(), context.to_owned()))
+            .or_default();
+        if let Some(gate) = entry.upgrade() {
+            return gate;
+        }
+        let gate = Arc::new(tokio::sync::Mutex::new(()));
+        *entry = Arc::downgrade(&gate);
+        gate
+    })
 }
 
 pub(crate) fn finite_client_generation() -> ClientGeneration {
@@ -129,7 +166,7 @@ pub(crate) fn lookup_client(
             .then(|| {
                 state
                     .clients
-                    .lookup(source_key, cluster_context, fingerprint)
+                    .current_client(source_key, cluster_context, fingerprint)
             })
             .flatten()
     })
@@ -185,7 +222,7 @@ pub(crate) fn lookup_operation_client(
             .operation
             .write()
             .expect("operation client cache lock")
-            .lookup(source_key, cluster_context, fingerprint)
+            .current_client(source_key, cluster_context, fingerprint)
     })
 }
 
@@ -210,11 +247,11 @@ pub(crate) fn lookup_live_client(
     fingerprint: u64,
 ) -> Option<Client> {
     with_caches(|caches| {
-        caches.live.write().expect("live client cache lock").lookup(
-            source_key,
-            cluster_context,
-            fingerprint,
-        )
+        caches
+            .live
+            .write()
+            .expect("live client cache lock")
+            .current_client(source_key, cluster_context, fingerprint)
     })
 }
 
@@ -261,6 +298,50 @@ mod client_cache_tests;
 #[cfg(test)]
 mod lru_tests {
     use super::*;
+
+    // A plugin-issued client certificate must not be reused after expiry.
+    #[tokio::test]
+    async fn expired_clients_miss_in_every_cache_path() {
+        SessionScope::new(None)
+            .run(async {
+                for expiry in [
+                    None,
+                    Some("2000-01-01T00:00:00Z"),
+                    Some("2099-01-01T00:00:00Z"),
+                ] {
+                    let (service, _handle) = tower_test::mock::pair::<
+                        http::Request<kube::client::Body>,
+                        http::Response<kube::client::Body>,
+                    >();
+                    let client = Client::new(service, "default")
+                        .with_valid_until(expiry.map(|value| value.parse().unwrap()));
+                    let generation = finite_client_generation();
+                    assert!(store_client(
+                        "source".into(),
+                        "context".into(),
+                        1,
+                        generation.id,
+                        client.clone()
+                    ));
+                    store_operation_client("source".into(), "context".into(), 1, client.clone());
+                    store_live_client("source".into(), "context".into(), 1, client);
+                    let expected = expiry != Some("2000-01-01T00:00:00Z");
+                    assert_eq!(
+                        lookup_client("source", "context", 1, generation.id).is_some(),
+                        expected
+                    );
+                    assert_eq!(
+                        lookup_operation_client("source", "context", 1).is_some(),
+                        expected
+                    );
+                    assert_eq!(
+                        lookup_live_client("source", "context", 1).is_some(),
+                        expected
+                    );
+                }
+            })
+            .await;
+    }
 
     #[test]
     fn hit_refreshes_recency_but_fingerprint_miss_does_not() {

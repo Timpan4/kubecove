@@ -125,7 +125,7 @@ impl KubeconfigSource {
     }
 
     #[cfg(any(feature = "e2e", test))]
-    fn from_e2e_path(path: PathBuf) -> Self {
+    pub(crate) fn from_e2e_path(path: PathBuf) -> Self {
         Self {
             env_var: E2E_KUBECONFIG_SOURCE_ENV_VAR.to_string(),
             app_paths: vec![path],

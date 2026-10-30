@@ -124,7 +124,13 @@ For manual development against same fixtures:
 bun run dev:kind
 bun run dev:kind:down
 bun run e2e:desktop-smoke
+bun run e2e:desktop-smoke -- --spec e2e/specs/desktop/exec-plugin.e2e.ts
 ```
+
+The focused exec-plugin scenario uses an isolated native app and a controlled
+credential subprocess. It checks IPC responsiveness and workspace cancellation
+without a cluster or real provider login. The desktop runner accepts WDIO's
+`--spec` selection; artifacts still go under `e2e/artifacts/desktop-<run-id>/`.
 
 `dev:kind` uses a workspace-derived cluster name and temporary app profile. Cluster remains until `dev:kind:down`; app profile disappears on exit.
 

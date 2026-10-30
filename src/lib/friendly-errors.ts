@@ -98,6 +98,7 @@ const MESSAGE_BUCKETS: Array<[FriendlyErrorBucket, RegExp]> = [
 const KIND_BUCKETS = {
 	admissionDenied: "admissionPolicy",
 	authentication: "authentication",
+	credentialUnavailable: "authentication",
 	applyImmutableField: "immutableField",
 	fieldManagerConflict: "fieldManagerConflict",
 	forbidden: "forbiddenRbac",
