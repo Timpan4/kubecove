@@ -83,7 +83,7 @@ impl fmt::Display for AppErrorKind {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AppError {
     pub message: String,
     pub kind: AppErrorKind,
@@ -118,6 +118,16 @@ impl fmt::Display for AppError {
     }
 }
 
+impl fmt::Debug for AppError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AppError")
+            .field("message", &self.message)
+            .field("kind", &self.kind)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Error for AppError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.source
@@ -128,8 +138,41 @@ impl Error for AppError {
 
 impl From<kube::Error> for AppError {
     fn from(error: kube::Error) -> Self {
+        if let Some(auth) = auth_error(&error) {
+            return Self::new(auth_message(auth), AppErrorKind::CredentialUnavailable)
+                .with_source(error);
+        }
         let kind = kube_error_kind(&error);
         Self::new(error.to_string(), kind).with_source(error)
+    }
+}
+
+fn auth_error<'a>(error: &'a (dyn Error + 'static)) -> Option<&'a kube::client::AuthError> {
+    let mut current = Some(error);
+    while let Some(source) = current {
+        if let Some(auth) = source.downcast_ref::<kube::client::AuthError>() {
+            return Some(auth);
+        }
+        // Transparent error wrappers may skip the auth enum in their source chain.
+        if let Some(kube::Error::Auth(auth)) = source.downcast_ref::<kube::Error>() {
+            return Some(auth);
+        }
+        current = source.source();
+    }
+    None
+}
+
+fn auth_message(error: &kube::client::AuthError) -> String {
+    use kube::client::AuthError;
+    match error {
+        AuthError::AuthExecStart(error) if error.kind() == std::io::ErrorKind::NotFound =>
+            "The kubeconfig credential plugin command could not be found. Check its command path and KubeCove's PATH.".into(),
+        AuthError::AuthExecStart(_) => "The kubeconfig credential plugin could not be started.".into(),
+        AuthError::AuthExecRun { status, .. } => status.code().map_or_else(
+            || "The kubeconfig credential plugin was terminated.".into(),
+            |code| format!("The kubeconfig credential plugin exited with status {code}."),
+        ),
+        _ => "Kubernetes credentials could not be obtained. Check the selected context's credential provider, then retry.".into(),
     }
 }
 
@@ -141,6 +184,9 @@ impl From<kube::config::KubeconfigError> for AppError {
 
 /// Classify transport failures by their types, never by remote message text.
 pub fn kube_error_kind(error: &kube::Error) -> AppErrorKind {
+    if auth_error(error).is_some() {
+        return AppErrorKind::CredentialUnavailable;
+    }
     let mut current: Option<&(dyn Error + 'static)> = Some(error);
     while let Some(source) = current {
         if source.is::<WorkspaceRequestCancelled>() {
@@ -209,6 +255,10 @@ fn status_kind(status: &kube::core::Status) -> AppErrorKind {
     }
     AppErrorKind::Cluster
 }
+
+#[cfg(test)]
+#[path = "error_auth_tests.rs"]
+mod auth_tests;
 
 #[cfg(test)]
 mod tests {

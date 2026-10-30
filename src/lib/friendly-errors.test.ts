@@ -14,6 +14,7 @@ describe("friendlyError", () => {
 	const cases: Array<[string, unknown, string]> = [
 		["operator-managed kubeconfig", { kind: "unsupportedOperation", message: "kubeconfig sources are set by the server operator" }, "unsupportedOperation"],
 		["kubeconfig", { kind: "kubeconfig", message: "missing config" }, "kubeconfigConfig"],
+		["credential plugin", { kind: "credentialUnavailable", message: "credential plugin could not be started" }, "authentication"],
 		["forbidden", { kind: "forbidden", message: "pods is forbidden" }, "forbiddenRbac"],
 		["not found", { kind: "notFound", message: "pods x not found" }, "notFoundStale"],
 		["validation", { kind: "validation", message: "namespace is required" }, "validation"],

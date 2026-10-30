@@ -63,6 +63,42 @@ Tests reach Kubernetes through commands or through `ClusterAccess` with `tower_t
 
 Command tests assert that resource action execution and YAML apply request the confirmed-operation intent, and the existing Argo CD Kubernetes-transport test keeps proving that an operation survives rotation. A cluster-access test asserts that generation rotation cancels read and preview clients but not confirmed-operation, live-session or stream clients. Server tests assert that an arbitrary environment variable selector is rejected without being read, that the operator's configured selector and source key are accepted, and desktop tests assert that a local environment variable selector is still accepted.
 
+### Exec credential plugin compatibility
+
+Kubeconfig exec credential plugins remain owned by `kube-rs`. KubeCove does not
+install plugins, configure providers, import login-shell environments, or replace
+the plugin's login, cache, or refresh flow. Configured commands, arguments,
+environment variables, and interactive modes retain their meaning. Operator
+plugins execute on the server host; forwarded-bearer mode continues to strip
+kubeconfig authentication before client construction.
+
+Client construction runs on the blocking pool. Each session serializes builds
+for a source and context across the finite, operation, and live cache paths.
+Cache lookup is repeated after acquiring the build gate. A started build owns
+the gate through publication, even when a finite requester leaves. Generation
+rotation cancels finite waiters and prevents publication into a stale generation;
+it does not terminate the plugin process. Confirmed operations and live sessions
+retain their independent lifecycles. Cached clients with an expired
+`Client::valid_until()` are rebuilt.
+
+Authentication errors are classified by their Rust types, including wrapped
+refresh errors, and become fixed `credentialUnavailable` messages. Command
+arguments, environment values, and captured plugin output are excluded from
+application errors. Queries do not automatically retry that error kind. Plugins
+that inherit stderr can still write directly to the launching terminal; KubeCove
+cannot sanitize that stream through error conversion.
+
+The dependency may execute a plugin repeatedly within one build. Its refresh
+state belongs to each client, and cancellation does not terminate its blocking
+refresh subprocess. Build serialization does not promise serialization of
+refreshes across separate clients. No authentication deadline is added.
+
+Regression coverage must exercise delayed subprocess completion, concurrent
+cache misses, cancellation before and during construction, stale publication,
+independent session scopes, expired clients, wrapped auth errors, and frontend
+retry classification. Platform launch environments and real provider login need
+separate runtime evidence.
+
 ## Consequences
 
 Each command family picks an intent instead of a client path, so new reads, previews, confirmed writes and sessions follow ADR 0009 and the fail-closed rule from one place.
