@@ -21,7 +21,7 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 
 pub const DEFAULT_KUBECONFIG_ENV_VAR: &str = "KUBECONFIG";
 const SETTINGS_FILE_NAME: &str = "kubeconfig-sources.json";
-#[cfg(any(feature = "e2e", test))]
+#[cfg(any(feature = "e2e", feature = "test-support", test))]
 const E2E_KUBECONFIG_SOURCE_ENV_VAR: &str = "KUBECOVE_E2E_KUBECONFIG_SOURCE";
 
 static SETTINGS_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -124,7 +124,7 @@ impl KubeconfigSource {
         })
     }
 
-    #[cfg(any(feature = "e2e", test))]
+    #[cfg(any(feature = "e2e", feature = "test-support", test))]
     pub(crate) fn from_e2e_path(path: PathBuf) -> Self {
         Self {
             env_var: E2E_KUBECONFIG_SOURCE_ENV_VAR.to_string(),

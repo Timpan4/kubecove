@@ -114,15 +114,10 @@ async fn answer_application(listener: TcpListener, uid: &str) -> Vec<u8> {
 async fn confirmed_kubernetes_operation_survives_workspace_client_rotation() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let kubeconfig = write_kubeconfig(&format!("http://{}", listener.local_addr().unwrap()));
-    let env_var = format!("KUBECOVE_TEST_ARGO_OPERATION_{}", nanos());
-    // The name is unique to this test, but parallel test threads may read the
-    // environment meanwhile. Edition 2024 only made that existing race explicit.
-    unsafe { env::set_var(&env_var, &kubeconfig) };
     let request = ArgoOperationRequest {
         action: "refresh".into(),
         transport: "kubernetes".into(),
         cluster_context: Some("argo-fallback".into()),
-        kubeconfig_env_var: Some(env_var.clone()),
         resource_version: Some("42".into()),
         application: ArgoApplicationRef {
             name: "demo".into(),
@@ -139,7 +134,7 @@ async fn confirmed_kubernetes_operation_survives_workspace_client_rotation() {
         "Application",
     ));
 
-    let access = ClusterAccess::resolve(Some(&env_var)).expect("access");
+    let access = ClusterAccess::from_kubeconfig_file(kubeconfig.clone());
     let (result, received) = tokio::time::timeout(Duration::from_secs(10), async {
         tokio::join!(
             kubernetes_operation(&access, request, resource, "uid-demo"),
@@ -148,9 +143,6 @@ async fn confirmed_kubernetes_operation_survives_workspace_client_rotation() {
     })
     .await
     .expect("operation timed out");
-    // The name is unique to this test, but parallel test threads may read the
-    // environment meanwhile. Edition 2024 only made that existing race explicit.
-    unsafe { env::remove_var(&env_var) };
     let _ = fs::remove_file(&kubeconfig);
 
     assert!(
@@ -168,15 +160,10 @@ async fn confirmed_kubernetes_operation_survives_workspace_client_rotation() {
 async fn operation_client_rejects_a_different_application_before_patching() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let kubeconfig = write_kubeconfig(&format!("http://{}", listener.local_addr().unwrap()));
-    let env_var = format!("KUBECOVE_TEST_ARGO_OPERATION_{}", nanos());
-    // The name is unique to this test, but parallel test threads may read the
-    // environment meanwhile. Edition 2024 only made that existing race explicit.
-    unsafe { env::set_var(&env_var, &kubeconfig) };
     let request = ArgoOperationRequest {
         action: "refresh".into(),
         transport: "kubernetes".into(),
         cluster_context: Some("argo-fallback".into()),
-        kubeconfig_env_var: Some(env_var.clone()),
         resource_version: Some("42".into()),
         application: ArgoApplicationRef {
             name: "demo".into(),
@@ -193,7 +180,7 @@ async fn operation_client_rejects_a_different_application_before_patching() {
         "Application",
     ));
 
-    let access = ClusterAccess::resolve(Some(&env_var)).expect("access");
+    let access = ClusterAccess::from_kubeconfig_file(kubeconfig.clone());
     let (result, received) = tokio::time::timeout(Duration::from_secs(10), async {
         tokio::join!(
             kubernetes_operation(&access, request, resource, "reviewed-uid"),
@@ -202,9 +189,6 @@ async fn operation_client_rejects_a_different_application_before_patching() {
     })
     .await
     .expect("operation timed out");
-    // The name is unique to this test, but parallel test threads may read the
-    // environment meanwhile. Edition 2024 only made that existing race explicit.
-    unsafe { env::remove_var(&env_var) };
     let _ = fs::remove_file(&kubeconfig);
 
     assert!(

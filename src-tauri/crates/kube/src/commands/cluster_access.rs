@@ -104,6 +104,12 @@ impl ClusterAccess {
         }
     }
 
+    /// Reads one kubeconfig file, so tests need no process environment.
+    #[cfg(any(feature = "test-support", test))]
+    pub fn from_kubeconfig_file(path: std::path::PathBuf) -> Self {
+        Self::from_kubeconfig(KubeconfigSource::from_e2e_path(path))
+    }
+
     /// Identifies the resolved source in caches, live-session scope and Argo
     /// CD connection scope. It never contains paths or credentials.
     pub fn source_key(&self) -> &str {

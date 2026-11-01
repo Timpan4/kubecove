@@ -69,13 +69,7 @@ async fn answer_after_rotation(listener: &TcpListener) {
 async fn generation_rotation_cancels_only_read_and_preview_clients() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let kubeconfig = write_kubeconfig(&format!("http://{}", listener.local_addr().unwrap()));
-    let env_var = format!("KUBECOVE_TEST_CLUSTER_ACCESS_{}", nanos());
-    // The name is unique to this test, but parallel test threads may read the
-    // environment meanwhile. Edition 2024 only made that existing race explicit.
-    unsafe { env::set_var(&env_var, &kubeconfig) };
-    let access = ClusterAccess::from_kubeconfig(
-        KubeconfigSource::from_settings(Some(&env_var), Vec::new(), true).expect("source"),
-    );
+    let access = ClusterAccess::from_kubeconfig_file(kubeconfig.clone());
     let scope = SessionScope::new(None);
 
     let mut outcomes = Vec::new();
@@ -101,9 +95,6 @@ async fn generation_rotation_cancels_only_read_and_preview_clients() {
             .await;
         outcomes.push((intent, result.map(|_| ()).map_err(|error| error.kind)));
     }
-    // The name is unique to this test, but parallel test threads may read the
-    // environment meanwhile. Edition 2024 only made that existing race explicit.
-    unsafe { env::remove_var(&env_var) };
     let _ = fs::remove_file(&kubeconfig);
 
     assert_eq!(

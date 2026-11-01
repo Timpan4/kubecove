@@ -102,11 +102,51 @@ fn fixture_kubeconfig(context: &str) -> String {
     )
 }
 
+/// A client-named variable that lists a readable kubeconfig. Only the child
+/// process of `sessions_select_only_the_operator_kubeconfig_source` has it.
+const CLIENT_SELECTED_VAR: &str = "KUBECOVE_SERVER_CLIENT_SELECTED_KUBECONFIG";
+
 // ADR 0026: a session may select only the operator's kubeconfig source. The
 // client-named variable lists a readable kubeconfig, so reading it would let
-// the context listing succeed.
-#[tokio::test]
-async fn sessions_select_only_the_operator_kubeconfig_source() {
+// the context listing succeed. The variable reaches a child copy of this test
+// binary through its startup environment, so no test writes the environment
+// while other test threads may read it.
+#[test]
+fn sessions_select_only_the_operator_kubeconfig_source() {
+    if std::env::var_os(CLIENT_SELECTED_VAR).is_some() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime")
+            .block_on(operator_source_is_the_only_selectable_source());
+        return;
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("kubecove-server-selector-{nanos}.yaml"));
+    std::fs::write(&path, fixture_kubeconfig("client-selected")).unwrap();
+    let module = module_path!().split_once("::").map_or("", |(_, path)| path);
+    let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+        .args([
+            &format!("{module}::sessions_select_only_the_operator_kubeconfig_source"),
+            "--exact",
+            "--test-threads=1",
+        ])
+        .env(CLIENT_SELECTED_VAR, &path)
+        .output()
+        .expect("run child test");
+    let _ = std::fs::remove_file(path);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success() && stdout.contains("1 passed"),
+        "child test failed:\n{stdout}{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+async fn operator_source_is_the_only_selectable_source() {
     let state = BackendState::default();
     let channels = Arc::new(ChannelHub::default());
     let sources = dispatch(&state, &channels, "get_kubeconfig_sources", &json!({}))
@@ -126,18 +166,8 @@ async fn sessions_select_only_the_operator_kubeconfig_source() {
         }
     }
 
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let client_var = format!("KUBECOVE_SERVER_SELECTOR_{nanos}");
-    let path = std::env::temp_dir().join(format!("kubecove-server-selector-{nanos}.yaml"));
-    std::fs::write(&path, fixture_kubeconfig("client-selected")).unwrap();
-    // The name is unique to this test, but parallel test threads may read the
-    // environment meanwhile. Edition 2024 only made that existing race explicit.
-    unsafe { std::env::set_var(&client_var, &path) };
     for selector in [
-        client_var.as_str(),
+        CLIENT_SELECTED_VAR,
         "bad-name",
         "kubeconfigSource=0000000000000000",
     ] {
@@ -148,8 +178,4 @@ async fn sessions_select_only_the_operator_kubeconfig_source() {
         assert_eq!(error.kind, AppErrorKind::Kubeconfig, "{selector}");
         assert!(!error.message.contains("client-selected"), "{selector}");
     }
-    // The name is unique to this test, but parallel test threads may read the
-    // environment meanwhile. Edition 2024 only made that existing race explicit.
-    unsafe { std::env::remove_var(&client_var) };
-    let _ = std::fs::remove_file(path);
 }
