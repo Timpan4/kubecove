@@ -2,6 +2,24 @@ use super::*;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use serde_json::json;
 
+#[tokio::test]
+async fn metrics_api_is_found_beside_an_api_with_null_verbs() {
+    use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
+    let metrics = |kind, plural, namespaced| FixtureKind {
+        group: "metrics.k8s.io",
+        version: "v1beta1",
+        kind,
+        plural,
+        namespaced,
+    };
+    let client = discovery_fixture::client(&[
+        metrics("PodMetrics", "pods", true),
+        metrics("NodeMetrics", "nodes", false),
+    ]);
+
+    assert!(has_metrics_api(client).await.expect("metrics discovery"));
+}
+
 #[test]
 fn workload_overflow_stays_unavailable_after_later_valid_samples() {
     let mut pods = Vec::new();

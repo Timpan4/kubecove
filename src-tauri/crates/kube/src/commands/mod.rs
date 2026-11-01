@@ -3,6 +3,8 @@ pub mod cancellation;
 mod cluster_access;
 mod contexts;
 pub mod diagnostics;
+#[cfg(feature = "test-support")]
+pub mod discovery_fixture;
 pub mod dynamic_projection;
 mod finite_read;
 pub mod flux_catalog;

@@ -131,6 +131,37 @@ fn reconciliation_totals_count_each_status() {
     assert_eq!(totals.unavailable, 0);
 }
 
+#[tokio::test]
+async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_api() {
+    use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
+    let kind = |group, version, kind, plural| FixtureKind {
+        group,
+        version,
+        kind,
+        plural,
+        namespaced: true,
+    };
+    let client = discovery_fixture::client(&[
+        kind("", "v1", "Service", "services"),
+        kind("apps", "v1", "Deployment", "deployments"),
+        kind("example.com", "v1", "Widget", "widgets"),
+    ]);
+    let manifest = [manifest_ref(
+        Some("example.com/v1"),
+        Some("Widget"),
+        None,
+        Some("blue"),
+    )];
+
+    let discovered = discovered_resources(client, &manifest)
+        .await
+        .expect("discovery");
+
+    let mut kinds: Vec<&str> = discovered.iter().map(|kind| kind.kind.as_str()).collect();
+    kinds.sort_unstable();
+    assert_eq!(kinds, ["Deployment", "Service", "Widget"]);
+}
+
 #[test]
 fn conservative_label_scan_includes_common_namespaced_and_manifest_kinds() {
     let widget = DiscoveredResourceKind {

@@ -24,9 +24,16 @@ pub(crate) fn object_age(metadata: &ObjectMeta) -> String {
     )
 }
 
-pub(crate) async fn discover_api_resources(client: &Client) -> Result<Vec<ApiResource>, AppError> {
+/// Discovers only `groups`. Per-group discovery keeps an unrelated aggregated API from
+/// failing the read: kube's aggregated parser rejects the `"verbs": null` that some
+/// publish (`subresources.kubevirt.io`), while the per-group parser reads it as empty.
+pub(crate) async fn discover_api_resources(
+    client: &Client,
+    groups: &[&str],
+) -> Result<Vec<ApiResource>, AppError> {
     let discovery = Discovery::new(client.clone())
-        .run_aggregated()
+        .filter(groups)
+        .run()
         .await
         .map_err(AppError::from)?;
     let mut resources = Vec::new();
@@ -54,7 +61,7 @@ pub(crate) async fn find_api_resource(
     group: &str,
     kind: &str,
 ) -> Result<Option<ApiResource>, AppError> {
-    let resources = discover_api_resources(client).await?;
+    let resources = discover_api_resources(client, &[group]).await?;
     Ok(find_discovered_api_resource(&resources, group, kind))
 }
 
@@ -116,3 +123,7 @@ pub(crate) fn resource_metadata(object: &DynamicObject) -> Result<Value, AppErro
 pub(crate) fn resource_status(object: &DynamicObject) -> Option<Value> {
     object.data.get("status").cloned()
 }
+
+#[cfg(test)]
+#[path = "gitops_crd_tests.rs"]
+mod tests;

@@ -43,8 +43,11 @@ fn metrics_api_resource(kind: &str, plural: &str) -> ApiResource {
 }
 
 async fn has_metrics_api(client: Client) -> Result<bool, AppError> {
+    // Per-group discovery: kube's aggregated parser fails on the whole cluster when an
+    // unrelated aggregated API publishes `"verbs": null` (`subresources.kubevirt.io` does).
     let discovery = Discovery::new(client)
-        .run_aggregated()
+        .filter(&["metrics.k8s.io"])
+        .run()
         .await
         .map_err(AppError::from)?;
     let available = discovery.groups().any(|group| {

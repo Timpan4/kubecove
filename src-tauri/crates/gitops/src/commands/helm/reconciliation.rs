@@ -32,6 +32,8 @@ const COMMON_LABEL_SCAN_KINDS: &[&str] = &[
     "Job",
     "CronJob",
 ];
+/// API groups that serve `COMMON_LABEL_SCAN_KINDS`.
+const COMMON_LABEL_SCAN_GROUPS: &[&str] = &["", "apps", "batch", "networking.k8s.io"];
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct ResourceKey {
@@ -65,7 +67,7 @@ pub async fn get_helm_release_reconciliation(
         &storage_name,
     )
     .await?;
-    let discovered = discovered_resources(client.clone()).await?;
+    let discovered = discovered_resources(client.clone(), &record.manifest_resources).await?;
     let (resources, warnings, totals) = reconcile_release(
         client,
         &cluster_context,
@@ -83,9 +85,22 @@ pub async fn get_helm_release_reconciliation(
     })
 }
 
-async fn discovered_resources(client: Client) -> Result<Vec<DiscoveredResourceKind>, AppError> {
+/// Discovers only the groups the manifest and the label scan use. kube's aggregated parser
+/// fails the whole read when an unrelated aggregated API publishes `"verbs": null`
+/// (`subresources.kubevirt.io` does); the per-group parser reads it as empty.
+async fn discovered_resources(
+    client: Client,
+    manifest_refs: &[HelmManifestResourceSummary],
+) -> Result<Vec<DiscoveredResourceKind>, AppError> {
+    let mut groups: BTreeSet<&str> = COMMON_LABEL_SCAN_GROUPS.iter().copied().collect();
+    groups.extend(manifest_refs.iter().filter_map(|manifest_ref| {
+        let api_version = manifest_ref.api_version.as_deref()?;
+        Some(api_version.rsplit_once('/').map_or("", |(group, _)| group))
+    }));
+    let groups: Vec<&str> = groups.into_iter().collect();
     let discovery = Discovery::new(client)
-        .run_aggregated()
+        .filter(&groups)
+        .run()
         .await
         .map_err(AppError::from)?;
     let mut kinds = Vec::new();

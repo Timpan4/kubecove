@@ -147,7 +147,10 @@ pub fn benchmark_installed_flux_kinds_from_resources(
 }
 
 async fn installed_flux_kinds(client: &Client) -> Result<Vec<FluxResourceKind>, AppError> {
-    let resources = discover_api_resources(client).await?;
+    let groups: std::collections::BTreeSet<&str> =
+        FLUX_KINDS.iter().map(|(group, ..)| *group).collect();
+    let groups: Vec<&str> = groups.into_iter().collect();
+    let resources = discover_api_resources(client, &groups).await?;
     Ok(installed_flux_kinds_from_resources(&resources))
 }
 
