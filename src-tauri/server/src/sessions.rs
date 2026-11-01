@@ -1,6 +1,7 @@
 use crate::{
     backend::BackendState,
     channels::ChannelHub,
+    metrics::{CacheTotals, RetiredCaches},
     observe::{self, AuthMode, CloseReason, SessionId},
     security::{equal_secret, random_token},
 };
@@ -9,7 +10,7 @@ use kubecove_lib::{
     models::{AppError, AppErrorKind},
 };
 use serde::Serialize;
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, Notify, RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -47,6 +48,7 @@ pub struct Sessions {
     transition: Mutex<()>,
     pub grace: Duration,
     auth_mode: AuthMode,
+    retired_caches: RetiredCaches,
 }
 
 impl Sessions {
@@ -56,7 +58,20 @@ impl Sessions {
             transition: Mutex::new(()),
             grace,
             auth_mode,
+            retired_caches: RetiredCaches::default(),
         }
+    }
+
+    /// Open sessions and cache totals by cache label. A session is removed
+    /// from the live list before `end` retires its counters, so it is never
+    /// counted twice.
+    pub async fn cache_totals(&self) -> (usize, BTreeMap<String, CacheTotals>) {
+        let mut totals = self.retired_caches.totals();
+        let owners = self.owners.lock().await.clone();
+        for owner in &owners {
+            CacheTotals::add_live(&mut totals, &owner.backend.live_store);
+        }
+        (owners.len(), totals)
     }
 
     /// Resumes the session `resume`, or opens a new one beside the sessions
@@ -182,7 +197,7 @@ impl Sessions {
                 sessions.remove(&owner).await;
             }
             observe::session_expired(owner.session_id, sessions.grace);
-            let _ = end(&owner).await;
+            let _ = sessions.end(&owner).await;
         }));
     }
 
@@ -197,7 +212,7 @@ impl Sessions {
         };
         for owner in owners {
             observe::session_closed(owner.session_id, CloseReason::Shutdown);
-            let _ = end(&owner).await;
+            let _ = self.end(&owner).await;
         }
     }
 
@@ -210,25 +225,27 @@ impl Sessions {
             owner
         };
         observe::session_closed(owner.session_id, reason);
-        end(&owner).await
+        self.end(&owner).await
     }
-}
 
-/// Stops everything the session runs, after its in-flight requests finish.
-/// Callers mark the session ended and remove it under `transition` first, and
-/// call this after releasing it: waiting here for one session's slow request
-/// must not hold up every other session's login, resume and close.
-async fn end(owner: &Owner) -> Result<(), AppError> {
-    owner.ended.cancel();
-    owner.channels.close();
-    let _requests = owner.request_gate.write().await;
-    owner.backend.scope.set_bearer(None);
-    owner.tunnels.close_all();
-    let result = owner.backend.cleanup().await;
-    if let Err(error) = &result {
-        observe::session_cleanup_failed(owner.session_id, error.kind);
+    /// Stops everything the session runs, after its in-flight requests finish,
+    /// then retires its cache counters. Callers mark the session ended and
+    /// remove it under `transition` first, and call this after releasing it:
+    /// waiting here for one session's slow request must not hold up every
+    /// other session's login, resume and close.
+    async fn end(&self, owner: &Owner) -> Result<(), AppError> {
+        owner.ended.cancel();
+        owner.channels.close();
+        let _requests = owner.request_gate.write().await;
+        owner.backend.scope.set_bearer(None);
+        owner.tunnels.close_all();
+        let result = owner.backend.cleanup().await;
+        if let Err(error) = &result {
+            observe::session_cleanup_failed(owner.session_id, error.kind);
+        }
+        self.retired_caches.retire(&owner.backend.live_store);
+        result
     }
-    result
 }
 
 #[cfg(test)]

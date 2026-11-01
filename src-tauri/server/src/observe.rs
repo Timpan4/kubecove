@@ -4,6 +4,9 @@
 //! The one exception is [`server_failed`], whose startup errors are operator
 //! configuration.
 
+use crate::metrics::{
+    self, AuthModeLabel, ErrorKindLabel, OutcomeLabel, ReasonLabel, RefusalLabels, SignInLabels,
+};
 use axum::http::{HeaderValue, Method, StatusCode};
 use kubecove_lib::models::AppErrorKind;
 use std::{fmt, time::Duration};
@@ -256,7 +259,21 @@ pub fn server_failed(failure: &std::io::Error) {
     }
 }
 
+pub fn metrics_listening(address: std::net::SocketAddr) {
+    info!(event = "metrics_listening", address = %address);
+}
+
+pub fn metrics_listener_failed(error: &std::io::Error) {
+    warn!(event = "metrics_listener_failed", error_kind = %error.kind());
+}
+
 pub fn session_opened(session: SessionId, mode: AuthMode, subject: Option<&str>) {
+    metrics::global()
+        .sessions_opened
+        .get_or_create(&AuthModeLabel {
+            auth_mode: mode.as_str(),
+        })
+        .inc();
     info!(
         event = "session_opened",
         session_id = %session,
@@ -266,6 +283,12 @@ pub fn session_opened(session: SessionId, mode: AuthMode, subject: Option<&str>)
 }
 
 pub fn session_resumed(session: SessionId, mode: AuthMode, subject: Option<&str>) {
+    metrics::global()
+        .sessions_resumed
+        .get_or_create(&AuthModeLabel {
+            auth_mode: mode.as_str(),
+        })
+        .inc();
     info!(
         event = "session_resumed",
         session_id = %session,
@@ -275,10 +298,17 @@ pub fn session_resumed(session: SessionId, mode: AuthMode, subject: Option<&str>
 }
 
 pub fn session_closed(session: SessionId, reason: CloseReason) {
+    metrics::global()
+        .sessions_closed
+        .get_or_create(&ReasonLabel {
+            reason: reason.as_str(),
+        })
+        .inc();
     info!(event = "session_closed", session_id = %session, reason = reason.as_str());
 }
 
 pub fn session_expired(session: SessionId, grace: Duration) {
+    metrics::global().sessions_expired.inc();
     info!(
         event = "session_expired",
         session_id = %session,
@@ -287,6 +317,12 @@ pub fn session_expired(session: SessionId, grace: Duration) {
 }
 
 pub fn session_cleanup_failed(session: SessionId, kind: AppErrorKind) {
+    metrics::global()
+        .session_cleanup_failures
+        .get_or_create(&ErrorKindLabel {
+            error_kind: kind.as_str(),
+        })
+        .inc();
     warn!(
         event = "session_cleanup_failed",
         session_id = %session,
@@ -295,6 +331,14 @@ pub fn session_cleanup_failed(session: SessionId, kind: AppErrorKind) {
 }
 
 pub fn sign_in_succeeded(mode: AuthMode, subject: Option<&str>) {
+    metrics::global()
+        .sign_ins
+        .get_or_create(&SignInLabels {
+            auth_mode: mode.as_str(),
+            outcome: "success",
+            reason: "none",
+        })
+        .inc();
     info!(
         event = "sign_in",
         auth_mode = mode.as_str(),
@@ -304,6 +348,14 @@ pub fn sign_in_succeeded(mode: AuthMode, subject: Option<&str>) {
 }
 
 pub fn sign_in_failed(mode: AuthMode, reason: SignInFailure) {
+    metrics::global()
+        .sign_ins
+        .get_or_create(&SignInLabels {
+            auth_mode: mode.as_str(),
+            outcome: "failure",
+            reason: reason.as_str(),
+        })
+        .inc();
     warn!(
         event = "sign_in",
         auth_mode = mode.as_str(),
@@ -327,6 +379,13 @@ pub fn oidc_callback_failed(status: StatusCode) {
 }
 
 pub fn authentication_refused(mode: AuthMode, reason: AuthRefusal) {
+    metrics::global()
+        .authentication_refused
+        .get_or_create(&RefusalLabels {
+            auth_mode: mode.as_str(),
+            reason: reason.as_str(),
+        })
+        .inc();
     info!(
         event = "authentication_refused",
         auth_mode = mode.as_str(),
@@ -342,6 +401,12 @@ pub fn request_refused(
     host: Option<&HeaderValue>,
     origin: Option<&HeaderValue>,
 ) {
+    metrics::global()
+        .requests_refused
+        .get_or_create(&ReasonLabel {
+            reason: reason.as_str(),
+        })
+        .inc();
     let method = standard_method(method);
     if tracing::enabled!(Level::DEBUG) {
         let host = host.map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned());
@@ -379,6 +444,12 @@ fn standard_method(method: &Method) -> &'static str {
 }
 
 pub fn oidc_refresh(outcome: RefreshOutcome) {
+    metrics::global()
+        .oidc_refreshes
+        .get_or_create(&OutcomeLabel {
+            outcome: outcome.as_str(),
+        })
+        .inc();
     if outcome == RefreshOutcome::Renewed {
         debug!(event = "oidc_refresh", outcome = outcome.as_str());
     } else {
@@ -397,6 +468,7 @@ pub fn command_completed(
         CommandOutcome::Error(kind) => Some(kind.as_str()),
         _ => None,
     };
+    metrics::global().observe_command(command, outcome.as_str(), error_kind, duration);
     if matches!(outcome, CommandOutcome::Ok | CommandOutcome::Cancelled) {
         debug!(
             event = "command_completed",

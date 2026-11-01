@@ -4,6 +4,7 @@ pub mod channels;
 pub mod config;
 pub mod dispatch;
 pub mod files;
+pub mod metrics;
 pub mod observe;
 pub mod oidc;
 pub mod security;

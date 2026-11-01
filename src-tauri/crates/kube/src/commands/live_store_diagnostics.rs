@@ -14,6 +14,21 @@ pub(super) struct CacheCounters {
     pub restored_reload_failures: AtomicU64,
 }
 
+impl CacheCounters {
+    fn pairs<'a>(&'a self, other: &'a Self) -> [(&'a AtomicU64, &'a AtomicU64); 5] {
+        [
+            (&self.hits, &other.hits),
+            (&self.misses, &other.misses),
+            (&self.joins, &other.joins),
+            (&self.evictions, &other.evictions),
+            (
+                &self.restored_reload_failures,
+                &other.restored_reload_failures,
+            ),
+        ]
+    }
+}
+
 pub(super) trait CachePayloadWeight {
     fn retained_items(&self) -> usize;
     fn shallow_payload_bytes(&self) -> usize;
@@ -52,30 +67,39 @@ impl CachePayloadWeight for FluxOwnershipIndex {
 impl<T: Send + Sync + CachePayloadWeight + 'static> SharedCache<T> {
     fn clear_diagnostic_counters(&self) {
         let _entries = self.entries.lock().expect("live store cache lock");
-        for counter in [
-            &self.counters.hits,
-            &self.counters.misses,
-            &self.counters.joins,
-            &self.counters.evictions,
-            &self.counters.restored_reload_failures,
-        ] {
-            counter.store(0, Ordering::Relaxed);
+        for (counter, cleared) in self.counters.pairs(&self.cleared) {
+            cleared.store(counter.load(Ordering::Relaxed), Ordering::Relaxed);
         }
     }
 
+    /// Counters since the last clear, as the diagnostics table shows them.
+    #[cfg(test)]
     pub(super) fn diagnostics(&self) -> CacheDiagnosticSnapshot {
+        self.snapshot(true)
+    }
+
+    fn snapshot(&self, since_clear: bool) -> CacheDiagnosticSnapshot {
         let entries = self.entries.lock().expect("live store cache lock");
+        let count = |counter: &AtomicU64, cleared: &AtomicU64| {
+            let total = counter.load(Ordering::Relaxed);
+            if since_clear {
+                total.saturating_sub(cleared.load(Ordering::Relaxed))
+            } else {
+                total
+            }
+        };
+        let (counters, cleared) = (&self.counters, &self.cleared);
         let mut snapshot = CacheDiagnosticSnapshot {
             label: self.label.to_string(),
             weight_kind: "shallow-payload-lower-bound".to_string(),
-            hits: self.counters.hits.load(Ordering::Relaxed),
-            misses: self.counters.misses.load(Ordering::Relaxed),
-            joins: self.counters.joins.load(Ordering::Relaxed),
-            evictions: self.counters.evictions.load(Ordering::Relaxed),
-            restored_reload_failures: self
-                .counters
-                .restored_reload_failures
-                .load(Ordering::Relaxed),
+            hits: count(&counters.hits, &cleared.hits),
+            misses: count(&counters.misses, &cleared.misses),
+            joins: count(&counters.joins, &cleared.joins),
+            evictions: count(&counters.evictions, &cleared.evictions),
+            restored_reload_failures: count(
+                &counters.restored_reload_failures,
+                &cleared.restored_reload_failures,
+            ),
             ..Default::default()
         };
         for entry in entries.values() {
@@ -118,13 +142,23 @@ impl ClusterLiveStore {
     }
 
     pub fn diagnostics(&self) -> Vec<CacheDiagnosticSnapshot> {
+        self.snapshots(true)
+    }
+
+    /// Like [`Self::diagnostics`], but counters cover the store's whole life
+    /// and ignore diagnostics clears. Server metrics export these.
+    pub fn lifetime_diagnostics(&self) -> Vec<CacheDiagnosticSnapshot> {
+        self.snapshots(false)
+    }
+
+    fn snapshots(&self, since_clear: bool) -> Vec<CacheDiagnosticSnapshot> {
         vec![
-            self.namespaces.diagnostics(),
-            self.resource_kinds.diagnostics(),
-            self.present_custom_resource_kinds.diagnostics(),
-            self.resources.diagnostics(),
-            self.topologies.diagnostics(),
-            self.flux_ownership_indexes.diagnostics(),
+            self.namespaces.snapshot(since_clear),
+            self.resource_kinds.snapshot(since_clear),
+            self.present_custom_resource_kinds.snapshot(since_clear),
+            self.resources.snapshot(since_clear),
+            self.topologies.snapshot(since_clear),
+            self.flux_ownership_indexes.snapshot(since_clear),
         ]
     }
 }
