@@ -7,7 +7,7 @@ use crate::observe::{
 };
 use axum::http::Method;
 use kubecove_lib::models::{AppError, AppErrorKind, NamespaceSummary};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 const DASHBOARD: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -16,38 +16,34 @@ const DASHBOARD: &str = concat!(
 
 /// Labels that Prometheus attaches at scrape time.
 const SCRAPE_LABELS: [&str; 2] = ["job", "instance"];
-const AGGREGATIONS: [&str; 12] = [
-    "sum",
-    "avg",
-    "min",
-    "max",
-    "count",
-    "group",
-    "stddev",
-    "stdvar",
-    "topk",
-    "bottomk",
-    "quantile",
-    "count_values",
+/// Aggregations whose output keeps only the labels their grouping names.
+const AGGREGATIONS: [&str; 9] = [
+    "sum", "avg", "min", "max", "count", "group", "stddev", "stdvar", "quantile",
 ];
-const LABEL_LISTS: [&str; 4] = ["by", "without", "on", "ignoring"];
-const OPERATORS: [&str; 7] = [
-    "or",
-    "and",
-    "unless",
-    "bool",
-    "offset",
+/// Words that pass labels through or between operands.
+const OPERATORS: [&str; 5] = ["or", "and", "unless", "bool", "offset"];
+/// Forms whose output labels `parse` does not model. A query that uses one
+/// fails until `parse` learns it, instead of passing unchecked.
+const UNSUPPORTED: [&str; 9] = [
+    "by",
+    "without",
+    "on",
+    "ignoring",
     "group_left",
     "group_right",
+    "count_values",
+    "label_replace",
+    "label_join",
 ];
 
-/// Sample name -> label name -> label values seen in a scrape.
-type Series<'a> = BTreeMap<&'a str, BTreeMap<&'a str, BTreeSet<&'a str>>>;
+/// Sample name -> the label set of each sample with that name.
+type Series<'a> = BTreeMap<&'a str, Vec<BTreeMap<&'a str, &'a str>>>;
 
 // Failure modes: a metric is renamed, removed or misspelled, including its
 // prefix; a matcher, grouping label or legend names a label that the queried
-// metric lacks, even if another metric has it; a matcher expects a value the
-// queried metric never emits; a legend names a label the aggregation drops.
+// metric lacks, even if another metric has it; a selector's exact matchers
+// match no single sample of its metric; a legend names a label that an
+// aggregation drops; a query uses a form whose labels the parser cannot follow.
 #[tokio::test]
 async fn grafana_dashboard_queries_only_exported_series() {
     let text = scrape_with_every_family().await;
@@ -70,48 +66,62 @@ async fn grafana_dashboard_queries_only_exported_series() {
         let parsed = parse(expr);
         assert!(!parsed.selectors.is_empty(), "no metric in {query}");
         for selector in &parsed.selectors {
-            let labels = series
+            let samples = series
                 .get(selector.metric)
                 .unwrap_or_else(|| panic!("{} is not exported: {query}", selector.metric));
             for matcher in &selector.matchers {
-                if SCRAPE_LABELS.contains(&matcher.label) {
-                    continue;
-                }
-                let values = labels.get(matcher.label).unwrap_or_else(|| {
-                    panic!(
-                        "{} has no label {}: {query}",
-                        selector.metric, matcher.label
-                    )
-                });
-                if let Some(value) = matcher.exact {
-                    assert!(
-                        values.contains(value),
-                        "{} never has {}=\"{value}\": {query}",
-                        selector.metric,
-                        matcher.label
-                    );
-                }
+                assert!(
+                    SCRAPE_LABELS.contains(&matcher.label)
+                        || samples
+                            .iter()
+                            .any(|labels| labels.contains_key(matcher.label)),
+                    "{} has no label {}: {query}",
+                    selector.metric,
+                    matcher.label
+                );
             }
+            let exact: Vec<_> = selector
+                .matchers
+                .iter()
+                .filter_map(|matcher| Some((matcher.label, matcher.exact?)))
+                .collect();
+            assert!(
+                exact.is_empty()
+                    || samples.iter().any(|labels| {
+                        exact
+                            .iter()
+                            .all(|(label, value)| labels.get(label) == Some(value))
+                    }),
+                "no {} sample has {exact:?}: {query}",
+                selector.metric
+            );
         }
         let on_every_metric = |label: &str| {
             SCRAPE_LABELS.contains(&label)
-                || parsed
-                    .selectors
-                    .iter()
-                    .all(|selector| series[selector.metric].contains_key(label))
+                || parsed.selectors.iter().all(|selector| {
+                    series[selector.metric]
+                        .iter()
+                        .any(|labels| labels.contains_key(label))
+                })
         };
-        for label in parsed.label_lists.iter().chain(read_label.as_ref()) {
+        let listed = parsed
+            .aggregations
+            .iter()
+            .flat_map(Grouping::labels)
+            .copied();
+        for label in listed.chain(read_label) {
             assert!(
                 on_every_metric(label),
                 "not every metric has {label}: {query}"
             );
         }
         for label in legend_labels(legend.unwrap_or_default()) {
-            let kept = if parsed.by.is_empty() {
-                !(parsed.aggregated && parsed.label_lists.is_empty()) && on_every_metric(label)
-            } else {
-                parsed.by.contains(&label)
-            };
+            let kept = on_every_metric(label)
+                && !(parsed.drops_le && label == "le")
+                && parsed
+                    .aggregations
+                    .iter()
+                    .all(|grouping| grouping.keeps(label));
             assert!(
                 kept,
                 "the legend names {label}, which {query} does not keep"
@@ -120,27 +130,62 @@ async fn grafana_dashboard_queries_only_exported_series() {
     }
 }
 
-/// Records one event through every observation function, with production
-/// label values, and one cache read, then scrapes.
+/// Records every production label value through each observation function,
+/// and one cache read, then scrapes. Other tests share the registry, so the
+/// fixture seeds every value itself rather than rely on what they record.
 async fn scrape_with_every_family() -> String {
     let session = SessionId::random().unwrap();
     let kind = AppErrorKind::Forbidden;
-    observe::session_opened(session, AuthMode::Token, None);
-    observe::session_resumed(session, AuthMode::Token, None);
-    observe::session_closed(session, CloseReason::Client);
+    for mode in [AuthMode::Token, AuthMode::CloudflareAccess, AuthMode::Oidc] {
+        observe::session_opened(session, mode, None);
+        observe::session_resumed(session, mode, None);
+        observe::sign_in_succeeded(mode, None);
+        for failure in [
+            SignInFailure::InvalidToken,
+            SignInFailure::ProviderDenied,
+            SignInFailure::InvalidCallback,
+            SignInFailure::ProviderUnavailable,
+        ] {
+            observe::sign_in_failed(mode, failure);
+        }
+        for refusal in [
+            AuthRefusal::Missing,
+            AuthRefusal::Invalid,
+            AuthRefusal::Unavailable,
+        ] {
+            observe::authentication_refused(mode, refusal);
+        }
+    }
+    for reason in [
+        CloseReason::Client,
+        CloseReason::Logout,
+        CloseReason::Shutdown,
+        CloseReason::ActivationFailed,
+    ] {
+        observe::session_closed(session, reason);
+    }
     observe::session_expired(session, Duration::ZERO);
     observe::session_cleanup_failed(session, kind);
-    observe::sign_in_succeeded(AuthMode::Token, None);
-    observe::sign_in_failed(AuthMode::Token, SignInFailure::InvalidToken);
-    observe::authentication_refused(AuthMode::Token, AuthRefusal::Missing);
-    observe::request_refused(RequestRefusal::Host, &Method::GET, None, None);
-    observe::oidc_refresh(RefreshOutcome::Renewed);
-    observe::command_completed(
-        session,
-        "list_namespaces",
+    for refusal in [RequestRefusal::Host, RequestRefusal::Origin] {
+        observe::request_refused(refusal, &Method::GET, None, None);
+    }
+    for outcome in [
+        RefreshOutcome::Renewed,
+        RefreshOutcome::Refused,
+        RefreshOutcome::Unusable,
+        RefreshOutcome::Failed,
+    ] {
+        observe::oidc_refresh(outcome);
+    }
+    for outcome in [
+        CommandOutcome::Ok,
+        CommandOutcome::Cancelled,
         CommandOutcome::Error(kind),
-        Duration::ZERO,
-    );
+        CommandOutcome::SessionEnded,
+        CommandOutcome::AuthenticationEnded,
+    ] {
+        observe::command_completed(session, "list_namespaces", outcome, Duration::ZERO);
+    }
     let sessions = Arc::new(Sessions::new(Duration::from_mins(5), AuthMode::Token));
     let info = sessions.authenticate_as(None, None).await.unwrap();
     let owner = sessions.owner(&info.resume_token).await.unwrap();
@@ -159,26 +204,24 @@ async fn scrape_with_every_family() -> String {
     global().render(&sessions).await
 }
 
-/// Every sample in a scrape, with the label values it carries.
+/// Every sample in a scrape, with the label set it carries.
 fn exported(text: &str) -> Series<'_> {
     let mut series = Series::new();
     for line in text.lines().filter(|line| !line.starts_with('#')) {
         let Some(end) = line.find(['{', ' ']) else {
             continue;
         };
-        let labels = series.entry(&line[..end]).or_default();
+        let mut labels = BTreeMap::new();
         let mut rest = line[end..].strip_prefix('{').unwrap_or_default();
         while let Some((label, tail)) = rest.split_once("=\"") {
             let (value, tail) = tail.split_once('"').expect("closed label value");
-            labels
-                .entry(label.trim_start_matches(','))
-                .or_default()
-                .insert(value);
+            labels.insert(label.trim_start_matches(','), value);
             if tail.starts_with('}') {
                 break;
             }
             rest = tail;
         }
+        series.entry(&line[..end]).or_default().push(labels);
     }
     series
 }
@@ -210,10 +253,9 @@ fn collect<'a>(value: &'a serde_json::Value, queries: &mut Vec<(&'a str, Option<
 #[derive(Default)]
 struct Query<'a> {
     selectors: Vec<Selector<'a>>,
-    /// Labels in `by`, `without`, `on` and `ignoring` lists.
-    label_lists: Vec<&'a str>,
-    by: Vec<&'a str>,
-    aggregated: bool,
+    aggregations: Vec<Grouping<'a>>,
+    /// `histogram_quantile` removes the `le` label.
+    drops_le: bool,
 }
 
 struct Selector<'a> {
@@ -227,9 +269,33 @@ struct Matcher<'a> {
     exact: Option<&'a str>,
 }
 
-/// Splits the `PromQL` subset the dashboard uses into selectors and label lists.
-/// Any identifier that is not a function, aggregation or operator counts as a
-/// metric, so a misspelled name fails the existence check.
+/// The labels an aggregation keeps.
+enum Grouping<'a> {
+    None,
+    By(Vec<&'a str>),
+    Without(Vec<&'a str>),
+}
+
+impl Grouping<'_> {
+    fn labels(&self) -> &[&str] {
+        match self {
+            Self::None => &[],
+            Self::By(labels) | Self::Without(labels) => labels,
+        }
+    }
+
+    fn keeps(&self, label: &str) -> bool {
+        match self {
+            Self::None => false,
+            Self::By(labels) => labels.contains(&label),
+            Self::Without(labels) => !labels.contains(&label),
+        }
+    }
+}
+
+/// Splits the `PromQL` subset the dashboard uses into selectors and
+/// aggregations. Any identifier that is not a function, aggregation or
+/// operator counts as a metric, so a misspelled name fails the existence check.
 fn parse(query: &str) -> Query<'_> {
     let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == ':';
     let mut parsed = Query::default();
@@ -252,19 +318,34 @@ fn parse(query: &str) -> Query<'_> {
             let next = tail.trim_start();
             let next_word = &next[..next.find(|c| !is_word(c)).unwrap_or(next.len())];
             rest = tail;
-            if LABEL_LISTS.contains(&word) {
-                let (list, tail) = next
-                    .strip_prefix('(')
-                    .and_then(|list| list.split_once(')'))
-                    .expect("label list");
-                let labels = list.split(',').map(str::trim).filter(|l| !l.is_empty());
-                if word == "by" {
-                    parsed.by.extend(labels.clone());
-                }
-                parsed.label_lists.extend(labels);
-                rest = tail;
-            } else if next.starts_with('(') || LABEL_LISTS.contains(&next_word) {
-                parsed.aggregated |= AGGREGATIONS.contains(&word);
+            assert!(
+                !UNSUPPORTED.contains(&word),
+                "teach parse() the labels `{word}` keeps before using it: {query}"
+            );
+            if AGGREGATIONS.contains(&word) {
+                parsed.aggregations.push(match next_word {
+                    "by" | "without" => {
+                        let (list, tail) = next[next_word.len()..]
+                            .trim_start()
+                            .strip_prefix('(')
+                            .and_then(|list| list.split_once(')'))
+                            .expect("label list");
+                        let labels = list
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|l| !l.is_empty())
+                            .collect();
+                        rest = tail;
+                        if next_word == "by" {
+                            Grouping::By(labels)
+                        } else {
+                            Grouping::Without(labels)
+                        }
+                    }
+                    _ => Grouping::None,
+                });
+            } else if next.starts_with('(') {
+                parsed.drops_le |= word == "histogram_quantile";
             } else if !OPERATORS.contains(&word) {
                 parsed.selectors.push(Selector {
                     metric: word,
