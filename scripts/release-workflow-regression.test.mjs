@@ -30,6 +30,51 @@ test("release preparation commits desktop and server version metadata", () => {
   }
 });
 
+test("release preparation does not use manual dispatch for required PR checks", () => {
+  const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
+  for (const { run = "" } of job("prepare", preparation).steps) {
+    assert.doesNotMatch(run, /gh workflow run (ci|codspeed)\.yml/,
+      "workflow_dispatch jobs cannot satisfy PR ruleset checks");
+  }
+  for (const name of ["ci", "codspeed"]) {
+    const checks = parse(readFileSync(new URL(`../.github/workflows/${name}.yml`, import.meta.url), "utf8"));
+    assert.ok(Object.hasOwn(checks.on, "pull_request"), `${name} must accept eligible PR events`);
+    const activities = checks.on.pull_request?.types;
+    for (const activity of ["opened", "synchronize"]) {
+      assert.ok(activities === undefined || activities.includes(activity), `${name} must accept PR ${activity}`);
+    }
+  }
+});
+
+test("release creation and synchronization use the approved token with verified API commits", () => {
+  const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
+  const prepare = job("prepare", preparation);
+  for (const name of ["Verify release automation token", "Commit release branch", "Open release PR"]) {
+    assert.match(step(prepare, name).env.GH_TOKEN, /^\$\{\{ secrets\.NIX_LOCK_REFRESH_TOKEN \}\}$/);
+  }
+  assert.deepEqual(preparation.permissions, { contents: "read" });
+  assert.match(step(prepare, "Commit release branch").run, /node scripts\/commit-release-pr\.mjs/);
+});
+
+test("release token preflight stops before writes when missing or rejected", () => {
+  const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
+  const prepare = job("prepare", preparation);
+  const preflight = step(prepare, "Verify release automation token");
+  assert.ok(prepare.steps.indexOf(preflight) < prepare.steps.indexOf(step(prepare, "Commit release branch")));
+  for (const [token, rejected] of [["", false], ["fixture-auth", true], ["fixture-auth", false]]) {
+    const result = spawnSync("bash", ["-c", `
+      gh() {
+        printf 'API probe %s\\n' "$*"
+        if [ "$REJECTED" = true ]; then return 1; fi
+      }
+      ${preflight.run}
+    `], { encoding: "utf8", env: { ...process.env, GH_TOKEN: token, GH_REPO: "owner/repo", REJECTED: String(rejected) } });
+    assert.equal(result.status, token && !rejected ? 0 : 1, result.stderr);
+    assert.equal(result.stdout.includes("API probe"), Boolean(token));
+    assert.ok(!result.stdout.includes("fixture-auth"));
+  }
+});
+
 test("release preparation creates verified commits without rewriting the branch", () => {
   const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
   const commands = step(job("prepare", preparation), "Commit release branch").run;
