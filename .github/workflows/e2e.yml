@@ -60,7 +60,6 @@ jobs:
           workspaces: |
             ./src-tauri -> target
             ./src-tauri/server -> target
-          cache-workspace-crates: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Cache Bun dependencies
@@ -150,7 +149,6 @@ jobs:
           workspaces: |
             ./src-tauri -> target
             ./src-tauri/server -> target
-          cache-workspace-crates: true
           # The primary Kubernetes version seeds the cache for all Linux runs.
           save-if: ${{ github.ref == 'refs/heads/main' && matrix.kubernetes == '1.35' }}
 
@@ -224,7 +222,6 @@ jobs:
           workspaces: |
             ./src-tauri -> target
             ./src-tauri/server -> target
-          cache-workspace-crates: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Cache Bun dependencies

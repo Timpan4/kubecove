@@ -139,11 +139,13 @@ See [ADR 0010](decisions/0010-e2e-only-wdio-security-boundary.md), [ADR 0011](de
 ## CI caching
 
 CI uses standard GitHub-hosted runners. CI, CodSpeed, and E2E restore Rust
-caches, including workspace crates. Successful runs on `main` publish those
+dependency caches. Successful runs on `main` publish those
 caches so PR runs can reuse them without saving duplicate branch caches. The
 primary Kubernetes version publishes the shared Linux E2E cache; the remaining
 Kubernetes versions restore it. Desktop caches remain separate by OS and
-architecture. E2E caches cover both the desktop and headless server targets.
+architecture. E2E caches cover dependencies for both the desktop and headless
+server targets. Workspace artifacts are excluded because fresh checkout times
+can invalidate them, and source-only edits do not change the dependency cache key.
 
 The frontend, headless server, and E2E jobs share Bun's download cache on each
 OS. They still run `bun install --frozen-lockfile` after restoring it. Caches

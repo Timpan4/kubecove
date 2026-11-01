@@ -232,11 +232,8 @@ jobs:
       - name: Cache Rust
         uses: swatinem/rust-cache@v2
         with:
-          # Existing dependency-only caches cannot be updated in place.
-          prefix-key: workspace-rust
           shared-key: kubecove-rust-ci
           workspaces: "./src-tauri -> target"
-          cache-workspace-crates: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Audit Rust dependencies
@@ -273,11 +270,9 @@ jobs:
       - name: Cache Rust
         uses: swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:
-          prefix-key: workspace-rust
           workspaces: |
             ./src-tauri -> target
             ./src-tauri/server -> target
-          cache-workspace-crates: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
