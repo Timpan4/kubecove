@@ -16,7 +16,6 @@
     "bench": "vitest bench --run",
     "typecheck": "bun scripts/tsrs.ts --noEmit",
     "typecheck:bench": "bun scripts/tsrs.ts --noEmit --project tsconfig.benchmarks.json",
-    "tsrs:build": "bun scripts/tsrs.ts --build-source",
     "svelte:check": "bun scripts/tsrs.ts --svelte --tsconfig tsconfig.svelte.json",
     "lint": "biome lint .",
     "lint:anti-slop": "bun scripts/lint-anti-slop.ts",

@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 const launcher = fileURLToPath(new URL("./tsrs.ts", import.meta.url));
 const modules = fileURLToPath(new URL("../node_modules", import.meta.url));
 
-// Run with Node's test runner. Bun's default test timeout also includes source builds.
+// Run with Node's test runner.
 // Failure modes: native compiler discovery rejects tsrs, mapped type/prop errors
 // disappear or point into generated files, Svelte/CSS warnings vanish, or a failed
 // compiler process is reported as a successful check, or deleted components

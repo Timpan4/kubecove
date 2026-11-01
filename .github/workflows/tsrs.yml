@@ -30,7 +30,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  source-build:
+  native:
     name: tsrs on ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -47,22 +47,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-      - name: Restore tsrs source binary
-        id: tsrs-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .e2e/tools/tsrs/*/*/bin
-          key: tsrs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/tsrs.ts') }}
-          restore-keys: tsrs-${{ runner.os }}-${{ runner.arch }}-
       - run: bun install --frozen-lockfile
-      - run: bun run tsrs:build
-      - name: Save tsrs source binary
-        if: steps.tsrs-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .e2e/tools/tsrs/*/*/bin
-          key: ${{ steps.tsrs-cache.outputs.cache-primary-key }}
       - run: bun run typecheck
       - run: bun run typecheck:bench
       - run: bun run svelte:check
