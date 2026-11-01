@@ -38,7 +38,11 @@ test("release preparation does not use manual dispatch for required PR checks", 
   }
   for (const name of ["ci", "codspeed"]) {
     const checks = parse(readFileSync(new URL(`../.github/workflows/${name}.yml`, import.meta.url), "utf8"));
-    assert.ok(checks.on.pull_request, `${name} must accept eligible PR events`);
+    assert.ok(Object.hasOwn(checks.on, "pull_request"), `${name} must accept eligible PR events`);
+    const activities = checks.on.pull_request?.types;
+    for (const activity of ["opened", "synchronize"]) {
+      assert.ok(activities === undefined || activities.includes(activity), `${name} must accept PR ${activity}`);
+    }
   }
 });
 
