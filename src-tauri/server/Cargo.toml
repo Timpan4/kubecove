@@ -12,7 +12,7 @@ opt-level = 3
 name = "kubecove-server"
 version = "0.12.13"
 edition = "2021"
-rust-version = "1.91"
+rust-version = "1.99"
 license = "AGPL-3.0-or-later"
 description = "Authenticated single-user headless KubeCove host"
 
@@ -37,21 +37,21 @@ mime_guess = { version = "=2.0.5", optional = true }
 rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
 jsonwebtoken = { version = "=11.1.0", default-features = false, features = ["rust_crypto"] }
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls-no-provider"] }
-openidconnect = { version = "=4.0.1", default-features = false }
+openidconnect = { version = "=4.1.0", default-features = false }
 tracing = { version = "=0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["env-filter", "fmt", "json", "std"] }
 prometheus-client = "=0.25.2"
 # Matches the backend workspace's pin.
-sysinfo = { version = "=0.39.6", default-features = false, features = ["system"] }
+sysinfo = { version = "=0.40.1", default-features = false, features = ["system"] }
 
 [dev-dependencies]
 tower = { version = "=0.5.3", features = ["util"] }
 tokio = { version = "=1.54.1", features = ["test-util"] }
-brotli = "=9.0.0"
+brotli = "=9.1.1"
 flate2 = "=1.1.10"
 
 [build-dependencies]
-brotli = { version = "=9.0.0", optional = true }
+brotli = { version = "=9.1.1", optional = true }
 flate2 = { version = "=1.1.10", optional = true }
 
 [lints.clippy]

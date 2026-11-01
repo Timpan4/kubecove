@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import { buildFlowTopologyLayoutState } from "@/features/resources/topology-view";
+import { benchmark } from "./benchmark";
 import {
 	addStandaloneTopologyResources,
 	buildBranchingTopology,
@@ -198,11 +199,11 @@ assert.equal(
 );
 
 describe("F07 branching layout with folded F08 standalone and network branches", () => {
-	bench("F07 production ownership layout state for branching graph", () => {
+	benchmark("F07 production ownership layout state for branching graph", () => {
 		buildFlowTopologyLayoutState(topology, "ownership", collapsedKinds, null);
 	});
 
-	bench("F08 collapsed standalone groups", () => {
+	benchmark("F08 collapsed standalone groups", () => {
 		buildFlowTopologyLayoutState(
 			standaloneTopology,
 			"ownership",
@@ -211,7 +212,7 @@ describe("F07 branching layout with folded F08 standalone and network branches",
 		);
 	});
 
-	bench("F08 expanded standalone group and selected standalone node", () => {
+	benchmark("F08 expanded standalone group and selected standalone node", () => {
 		buildFlowTopologyLayoutState(
 			standaloneTopology,
 			"ownership",
@@ -226,7 +227,7 @@ describe("F07 branching layout with folded F08 standalone and network branches",
 		);
 	});
 
-	bench("F08 network-flow layout", () => {
+	benchmark("F08 network-flow layout", () => {
 		buildFlowTopologyLayoutState(
 			standaloneTopology,
 			"networkFlow",
@@ -235,7 +236,7 @@ describe("F07 branching layout with folded F08 standalone and network branches",
 		);
 	});
 
-	bench("F07 duplicate node and dangling edge normalization", () => {
+	benchmark("F07 duplicate node and dangling edge normalization", () => {
 		buildFlowTopologyLayoutState(
 			malformedTopology,
 			"ownership",

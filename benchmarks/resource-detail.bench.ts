@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	formatExactTimeOnly,
 	formatExactTimestamp,
@@ -35,6 +35,7 @@ import type {
 	ResourceEventSummary,
 	ResourceSummary,
 } from "@/lib/types";
+import { benchmark } from "./benchmark";
 
 const startedAt = Date.UTC(2026, 0, 1);
 const timestamp = (index: number) =>
@@ -367,15 +368,15 @@ assert.equal(
 );
 
 describe("F13 F14 F15 resource detail workloads with folded F11 and F24", () => {
-	bench("F13 append and retain a 1k-line stream buffer", () => {
+	benchmark("F13 append and retain a 1k-line stream buffer", () => {
 		buildRetainedLogs();
 	});
 
-	bench("F13 steady-state eviction at the 1k-line retention bound", () => {
+	benchmark("F13 steady-state eviction at the 1k-line retention bound", () => {
 		overflowingLogLines = appendOverflowBatch(overflowingLogLines);
 	});
 
-	bench("F13 batched steady-state eviction at the 1k-line retention bound", () => {
+	benchmark("F13 batched steady-state eviction at the 1k-line retention bound", () => {
 		let retained = parsedLogLines;
 		for (let offset = 0; offset < logLines.length; offset += 64) {
 			retained = appendParsedLogBatch(
@@ -387,7 +388,7 @@ describe("F13 F14 F15 resource detail workloads with folded F11 and F24", () => 
 		void retained;
 	});
 
-	bench(
+	benchmark(
 		"F13 mounted retained log timestamp presentation with folded F24",
 		() => {
 			for (const line of parsedLogLines) {
@@ -397,20 +398,20 @@ describe("F13 F14 F15 resource detail workloads with folded F11 and F24", () => 
 		},
 	);
 
-	bench("F13 retained query scan on preordered parsed lines", () => {
+	benchmark("F13 retained query scan on preordered parsed lines", () => {
 		filterOrderedParsedLogLines(latestFirstLines, "error");
 	});
 
-	bench("F13 latest-first ordering invalidation on the retained buffer", () => {
+	benchmark("F13 latest-first ordering invalidation on the retained buffer", () => {
 		orderParsedLogLines(parsedLogLines, true);
 	});
 
-	bench("F14 event arrival sort and summary", () => {
+	benchmark("F14 event arrival sort and summary", () => {
 		const arrived = sortIncidentEvents(events);
 		buildEventSummary(arrived);
 	});
 
-	bench("F14 retained event search and mounted timestamp presentation", () => {
+	benchmark("F14 retained event search and mounted timestamp presentation", () => {
 		const visible = filterResourceEvents(sortedEvents, "warning", "backoff");
 		for (const event of visible) {
 			void (
@@ -423,7 +424,7 @@ describe("F13 F14 F15 resource detail workloads with folded F11 and F24", () => 
 		}
 	});
 
-	bench(
+	benchmark(
 		"F15 cold signals, timeline assembly, grouping, titles, and times",
 		() => {
 			const nextConditions = getConditionRows(rawStatus);
@@ -491,7 +492,7 @@ describe("F13 F14 F15 resource detail workloads with folded F11 and F24", () => 
 		},
 	);
 
-	bench("F15 retained timeline grouping, titles, and timestamps", () => {
+	benchmark("F15 retained timeline grouping, titles, and timestamps", () => {
 		groupIncidentTimelineByDay(timeline, "utc");
 		for (const item of timeline) {
 			incidentTimelineTitle(item, resource.kind);

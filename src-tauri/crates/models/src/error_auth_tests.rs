@@ -31,12 +31,11 @@ fn failed_process_output_and_command_never_reach_application_errors() {
         assert_safe(
             AuthError::AuthExecRun {
                 cmd: "synthetic-private-command-and-environment".into(),
-                status: std::process::ExitStatus::from_raw(1),
-                out: std::process::Output {
+                out: Box::new(std::process::Output {
                     status: std::process::ExitStatus::from_raw(1),
                     stdout: b"synthetic-private-stdout".to_vec(),
                     stderr: b"synthetic-private-stderr".to_vec(),
-                },
+                }),
             },
             wrapped,
         );

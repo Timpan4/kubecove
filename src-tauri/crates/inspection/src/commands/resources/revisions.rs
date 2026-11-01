@@ -53,7 +53,7 @@ async fn deployment_revisions_from(
 }
 
 fn deployment_selector(deployment: &Deployment) -> Option<String> {
-    let labels = deployment.spec.as_ref()?.selector.match_labels.as_ref()?;
+    let labels = deployment.spec.selector.match_labels.as_ref()?;
     if labels.is_empty() {
         return None;
     }
@@ -75,7 +75,7 @@ pub fn deployment_revisions_from_replica_sets(
         .filter(|replica_set| is_owned_by_deployment(replica_set, deployment_uid))
         .filter_map(|replica_set| {
             let name = replica_set.metadata.name?;
-            let pod_template_yaml = serde_yaml::to_string(&replica_set.spec?.template).ok()?;
+            let pod_template_yaml = serde_yaml::to_string(&replica_set.spec.template).ok()?;
             let annotations = replica_set.metadata.annotations.as_ref();
             Some(DeploymentRevision {
                 name,
@@ -143,7 +143,7 @@ mod tests {
                 }]),
                 ..Default::default()
             },
-            spec: Some(ReplicaSetSpec::default()),
+            spec: ReplicaSetSpec::default(),
             status: None,
         }
     }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	describeMetricsAvailability,
 	mergeResourceMetrics,
@@ -13,6 +13,7 @@ import type {
 	ResourceTopology,
 	TopologyNode,
 } from "@/lib/types";
+import { benchmark } from "./benchmark";
 
 const total = 10_000;
 const kinds = ["Pod", "Node", "Deployment"] as const;
@@ -152,20 +153,20 @@ assert.equal(
 );
 
 describe("F05 resource metric arrival and retained sparse joins (10k rows)", () => {
-	bench("F05 cold shared index + table and topology joins", () => {
+	benchmark("F05 cold shared index + table and topology joins", () => {
 		const index = resourceMetricIndex(metrics);
 		mergeResourceMetrics(resources, metrics, index);
 		mergeTopologyMetrics(topology, metrics, index);
 	});
 
-	bench("F05 retained sparse index + table and topology updates", () => {
+	benchmark("F05 retained sparse index + table and topology updates", () => {
 		mergeResourceMetrics(resources, sparseMetrics, sparseIndex);
 		mergeTopologyMetrics(topology, sparseMetrics, sparseIndex);
 		mergeResourceMetrics(resources, unavailableMetrics, unavailableIndex);
 		mergeTopologyMetrics(topology, unsupportedMetrics, unsupportedIndex);
 	});
 
-	bench(
+	benchmark(
 		"F05 empty index preserves unmatched table and topology references",
 		() => {
 			mergeResourceMetrics(unmatchedResources, metrics, emptyIndex);

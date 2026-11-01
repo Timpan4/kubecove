@@ -481,8 +481,7 @@ mod deployment_revision_history_500_candidates {
             serde_yaml::from_str(&latest.pod_template_yaml).expect("serialized Pod template");
         assert_eq!(
             serde_json::to_value(parsed_template).expect("Pod template JSON"),
-            serde_json::to_value(&source.spec.as_ref().expect("ReplicaSet spec").template)
-                .expect("fixture Pod template JSON")
+            serde_json::to_value(&source.spec.template).expect("fixture Pod template JSON")
         );
         bencher
             .with_inputs(|| REVISION_INPUT.clone())

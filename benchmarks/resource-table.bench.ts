@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import { argoResourceIdentityKey } from "@/features/gitops/argo-workspace-model";
 import {
 	buildResourceSearchIndex,
@@ -7,14 +7,14 @@ import {
 	resourceGroupCollapseKey,
 } from "@/features/resources/helpers";
 import { filterResourcesByKinds } from "@/features/resources/resourceBrowserModel";
+import { createResourceTableEntryBuilder } from "@/features/resources/resourceTableEntries";
 import {
-	buildResourceTableModel,
-	buildResourceTableProjection,
 	buildResourceTableDisplay,
+	buildResourceTableModel,
 	buildResourceTablePage,
+	buildResourceTableProjection,
 	type ResourceTableState,
 } from "@/features/resources/resourceTableModel";
-import { createResourceTableEntryBuilder } from "@/features/resources/resourceTableEntries";
 import { gitOpsOwnershipGroupLabel } from "@/lib/gitops-ownership-evidence";
 import type {
 	DiscoveredResourceKind,
@@ -23,6 +23,7 @@ import type {
 	ResourceMetricSummary,
 	ResourceSummary,
 } from "@/lib/types";
+import { benchmark } from "./benchmark";
 
 const kinds = [
 	"Deployment",
@@ -445,44 +446,44 @@ assert(
 );
 
 describe("F01 F02 F03 resource arrival and retained table state (10k rows)", () => {
-	bench("buildResourceSearchIndex", () => {
+	benchmark("buildResourceSearchIndex", () => {
 		buildResourceSearchIndex(rows);
 	});
 
-	bench("filterResourceSearchIndex (search + gitops owner)", () => {
+	benchmark("filterResourceSearchIndex (search + gitops owner)", () => {
 		filterResourceSearchIndex(searchIndex, "checkout-42", gitOpsFilter);
 	});
 
-	bench("buildResourceTableModel (search + health + sort + groups)", () => {
+	benchmark("buildResourceTableModel (search + health + sort + groups)", () => {
 		buildResourceTableModel(projection, state);
 	});
 
-	bench("buildResourceTableModel (gitops owner filtered)", () => {
+	benchmark("buildResourceTableModel (gitops owner filtered)", () => {
 		buildResourceTableModel(projection, gitOpsState);
 	});
 
-	bench("F01 multi-hop ownership projection on arrival", () => {
+	benchmark("F01 multi-hop ownership projection on arrival", () => {
 		buildResourceTableProjection(ownershipFixtureRows);
 	});
 
-	bench("F03 kind filter + F01 projection for versioned CRDs", () => {
+	benchmark("F03 kind filter + F01 projection for versioned CRDs", () => {
 		buildResourceTableProjection(
 			filterResourcesByKinds(lateKindRows, selectedKinds),
 		);
 	});
 
-	bench("buildResourceTableModel repeated variants (reused projection)", () => {
+	benchmark("buildResourceTableModel repeated variants (reused projection)", () => {
 		for (const variant of stateVariants)
 			buildResourceTableModel(projection, variant);
 	});
 
-	bench("F02 row selection (reused display and page)", () => {
+	benchmark("F02 row selection (reused display and page)", () => {
 		for (const selected of retainedPage.pageRows) {
 			retainedEntries(retainedPage, selectedAndCollapsedState.collapsedGroups, selected);
 		}
 	});
 
-	bench("F02 retained model on multi-hop ownership projection", () => {
+	benchmark("F02 retained model on multi-hop ownership projection", () => {
 		buildResourceTableModel(ownershipProjection, ownershipState);
 		buildResourceTableModel(ownershipProjection, ownershipInteractionState);
 	});

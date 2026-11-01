@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
-import { createMockTauriClient } from "@/lib/tauri-runtime";
+import { describe } from "vitest";
 import {
 	topologyWatchKeys,
 } from "@/features/resources/helpers";
-import { kindFetchKeys, kindKey, kindWatchKeys, mergeWatchKeys } from "@/lib/kind-identity";
 import type { ResourceScopeOption } from "@/features/resources/resourceBrowserModel";
 import { filterResourceScopeOptions } from "@/features/resources/resourceBrowserModel";
 import { buildResourceBrowserReadSpecs } from "@/features/resources/resourceBrowserReadSpecs";
@@ -12,11 +10,14 @@ import {
 	buildWorkspaceFetchKeys,
 	buildWorkspaceFetchPlans,
 } from "@/features/workspaces/query";
+import { kindFetchKeys, kindKey, kindWatchKeys, mergeWatchKeys } from "@/lib/kind-identity";
+import { createMockTauriClient } from "@/lib/tauri-runtime";
 import type {
 	DiscoveredResourceKind,
 	ResourceKindSelection,
 } from "@/lib/types";
 import type { WorkspaceScope } from "@/lib/workspace-model";
+import { benchmark } from "./benchmark";
 
 const namespaces = Array.from(
 	{ length: 100 },
@@ -157,7 +158,7 @@ assert(
 );
 
 describe("F04 resource scope and read planning with folded F33 workspace fetch plans", () => {
-	bench("F04 build canonical fetch/watch keys and read specs", () => {
+	benchmark("F04 build canonical fetch/watch keys and read specs", () => {
 		const nextFetchKeys = kindFetchKeys(namespaces, kinds);
 		const nextWatchKeys = kindWatchKeys(nextFetchKeys);
 		mergeWatchKeys(nextWatchKeys, topologyWatchKeys(namespaces));
@@ -174,11 +175,11 @@ describe("F04 resource scope and read planning with folded F33 workspace fetch p
 		});
 	});
 
-	bench("F04 retained selector options search", () => {
+	benchmark("F04 retained selector options search", () => {
 		filterResourceScopeOptions(options, "widget99");
 	});
 
-	bench("F33 workspace namespace, kind, and context fetch planning", () => {
+	benchmark("F33 workspace namespace, kind, and context fetch planning", () => {
 		buildWorkspaceFetchKeys(workspaceScope, availableNamespaces);
 		buildWorkspaceFetchPlans(workspaceScope);
 	});

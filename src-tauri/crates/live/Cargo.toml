@@ -3,7 +3,7 @@ name = "kubecove-live"
 version = "0.1.0"
 publish = false
 edition = "2021"
-rust-version = "1.91"
+rust-version = "1.99"
 license = "AGPL-3.0-or-later"
 description = "KubeCove watches, logs, Pod exec and guarded port forwards"
 

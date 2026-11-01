@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	buildFlowTopologyLayoutState,
 	buildFlowTopologyViewFromLayoutState,
 } from "@/features/resources/topology-view";
+import { benchmark } from "./benchmark";
 import { buildOwnershipTopology } from "./topology-benchmark-fixtures";
 
 const topology = buildOwnershipTopology(2_000);
@@ -24,7 +25,7 @@ assert.equal(topology.nodes.length, 4_000);
 assert.equal(selectedIds.length, 20);
 
 describe("F07 large ownership layout (2k apps / 4k nodes)", () => {
-	bench("F07 layout state construction including selection index", () => {
+	benchmark("F07 layout state construction including selection index", () => {
 		buildFlowTopologyLayoutState(
 			topology,
 			"ownership",
@@ -33,7 +34,7 @@ describe("F07 large ownership layout (2k apps / 4k nodes)", () => {
 		);
 	});
 
-	bench("F09 retained selection and viewport extent (20 updates)", () => {
+	benchmark("F09 retained selection and viewport extent (20 updates)", () => {
 		for (const [index, selectedNodeId] of selectedIds.entries()) {
 			buildFlowTopologyViewFromLayoutState(layoutState, {
 				mode: "ownership",

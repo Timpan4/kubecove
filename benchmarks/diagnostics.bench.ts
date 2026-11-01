@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	backendDiagnosticMetricRows,
 	diagnosticCounterRows,
@@ -14,6 +14,7 @@ import {
 import { createLatencyReportFromSnapshot } from "@/lib/diagnostics-report";
 import type { BackendCacheDiagnosticSnapshot } from "@/lib/diagnostics-types";
 import type { BackendDiagnosticEvent } from "@/lib/types";
+import { benchmark } from "./benchmark";
 
 const frontendEvents: FrontendDiagnosticEvent[] = Array.from(
 	{ length: 500 },
@@ -134,7 +135,7 @@ assert(
 );
 
 describe("diagnostics snapshot and report F54", () => {
-	bench("F54 periodic snapshot refresh and visible metric tables", () => {
+	benchmark("F54 periodic snapshot refresh and visible metric tables", () => {
 		const current = buildDiagnosticsSnapshot(
 			true,
 			counters,
@@ -147,7 +148,7 @@ describe("diagnostics snapshot and report F54", () => {
 		const backendSummaries = backendDiagnosticMetricRows(backendEvents);
 		diagnosticMetricTableRows(backendSummaries);
 	});
-	bench(
+	benchmark(
 		"F54 explicit report export with fresh snapshot and redacted serialization",
 		() => {
 			const current = buildDiagnosticsSnapshot(

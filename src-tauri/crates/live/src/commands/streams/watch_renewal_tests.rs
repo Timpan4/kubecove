@@ -72,15 +72,15 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
     );
     assert!(requests[1].contains("resourceVersion=55"));
     let messages = messages.lock().unwrap();
-    assert_eq!(messages.len(), 4);
+    // The refused renewal fails before it streams, so it is never reported as connected.
+    assert_eq!(messages.len(), 3);
     assert_eq!(messages[0]["status"], "connected");
-    assert_eq!(messages[1]["status"], "connected");
-    assert_eq!(messages[2]["type"], "error");
-    assert!(messages[2]["message"]
+    assert_eq!(messages[1]["type"], "error");
+    assert!(messages[1]["message"]
         .as_str()
         .unwrap()
         .contains("watch unavailable"));
-    assert_eq!(messages[3]["status"], "reconnecting");
+    assert_eq!(messages[2]["status"], "reconnecting");
 }
 
 #[tokio::test]

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { Diagnostic } from "@codemirror/lint";
 import { EditorState, RangeSetBuilder, Text } from "@codemirror/state";
 import { Decoration, WidgetType } from "@codemirror/view";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	forEachYamlErrorLensDiagnostic,
 	yamlDiagnostics,
@@ -10,6 +10,7 @@ import {
 import { buildYamlValueDecorations } from "@/components/yamlCodeViewerExtensions";
 import { mapKubernetesYamlDiagnostics } from "@/features/resource-detail/yamlLintDiagnostics";
 import type { KubernetesYamlLintDiagnostic } from "@/lib/types";
+import { benchmark } from "./benchmark";
 import { buildYamlManifest } from "./yaml-benchmark-fixtures";
 
 class HeadlessErrorLensWidget extends WidgetType {
@@ -92,34 +93,34 @@ function buildErrorLensDecorations() {
 }
 
 describe("F21 lint result application with folded F17 and F23, plus F22 editor updates", () => {
-	bench("F21 full valid document local YAML lint", () => {
+	benchmark("F21 full valid document local YAML lint", () => {
 		yamlDiagnostics(yaml);
 	});
 
-	bench("F21 full unfinished document local YAML lint", () => {
+	benchmark("F21 full unfinished document local YAML lint", () => {
 		yamlDiagnostics(invalidYaml);
 	});
 
-	bench(
+	benchmark(
 		"F21 prepared returned lint result range mapping with folded F17",
 		() => {
 			mapKubernetesYamlDiagnostics(yaml, returnedDiagnostics);
 		},
 	);
 
-	bench("F23 grouped error lens mapping over prepared diagnostics", () => {
+	benchmark("F23 grouped error lens mapping over prepared diagnostics", () => {
 		buildErrorLensDecorations();
 	});
 
-	bench("F22 full decoration build for initial YAML document", () => {
+	benchmark("F22 full decoration build for initial YAML document", () => {
 		buildYamlValueDecorations(initialEditorState);
 	});
 
-	bench("F22 full decoration rebuild after a document transaction", () => {
+	benchmark("F22 full decoration rebuild after a document transaction", () => {
 		buildYamlValueDecorations(changedEditorState);
 	});
 
-	bench("F22 edited document serialization for the update listener", () => {
+	benchmark("F22 edited document serialization for the update listener", () => {
 		changedEditorState.doc.toString();
 	});
 });

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	buildYamlDryRunDiff,
 	diffLineClassName,
 } from "@/features/resource-detail/yamlTabDiff";
+import { benchmark } from "./benchmark";
 
 function buildManifest(replicas: number, version: string): string {
 	const containers = Array.from({ length: 40 }, (_, index) => {
@@ -107,7 +108,7 @@ assert(
 assert(identicalDiff.some((line) => line.type === "empty"));
 
 describe("F16 active YAML comparison branches and presentation (40 containers)", () => {
-	bench("F16 compact git diff + production 24-line class projection", () => {
+	benchmark("F16 compact git diff + production 24-line class projection", () => {
 		buildYamlDryRunDiff({
 			currentYaml,
 			dryRunYaml,
@@ -133,7 +134,7 @@ describe("F16 active YAML comparison branches and presentation (40 containers)",
 		});
 	});
 
-	bench("F16 full clean diff with conflict presentation", () => {
+	benchmark("F16 full clean diff with conflict presentation", () => {
 		buildYamlDryRunDiff({
 			currentYaml,
 			dryRunYaml,
@@ -143,7 +144,7 @@ describe("F16 active YAML comparison branches and presentation (40 containers)",
 		});
 	});
 
-	bench("F16 identical full git diff with newline normalization", () => {
+	benchmark("F16 identical full git diff with newline normalization", () => {
 		buildYamlDryRunDiff({
 			currentYaml: identicalYaml,
 			dryRunYaml: identicalYaml,

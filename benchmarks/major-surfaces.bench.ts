@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import type { GitOpsData } from "@/features/gitops/surfaceModel";
 import {
 	buildGitOpsRailItems,
@@ -28,6 +28,7 @@ import type {
 	HelmReconciliationResource,
 	HelmReleaseSummary,
 } from "@/lib/types";
+import { benchmark } from "./benchmark";
 
 function fluxHealthAssessment(readyStatus: "False" | "True"): HealthAssessment {
 	const state = readyStatus === "True" ? "healthy" : "degraded";
@@ -371,7 +372,7 @@ assert.equal(
 );
 
 describe("major frontend surfaces", () => {
-	bench(
+	benchmark(
 		"F45 GitOps read state, rails, summaries, and selected tables for 5k objects",
 		() => {
 			const state = buildGitOpsReadState(gitOpsReadSnapshots);
@@ -402,7 +403,7 @@ describe("major frontend surfaces", () => {
 		},
 	);
 
-	bench(
+	benchmark(
 		"F46 GitOps mounted row cells and source/revision tooltip preparation",
 		() => {
 			const selections = selectedNodes.flatMap(({ node }) =>
@@ -420,7 +421,7 @@ describe("major frontend surfaces", () => {
 		},
 	);
 
-	bench(
+	benchmark(
 		"F44 Helm release search, namespace groups, counts, and reconciliation sorting",
 		() => {
 			// F43 namespace grouping runs through the same buildHelmReleaseState caller path.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { QueryClient } from "@tanstack/query-core";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	buildArgoSearchResources,
 	buildDedupedResourceSearchIndex,
@@ -8,8 +8,8 @@ import {
 	buildPaletteResourceSearchIndex,
 	filterNamespaces,
 } from "@/features/command-palette/entries";
-import { kindKey } from "@/lib/kind-identity";
 import { filterResourceSearchIndex } from "@/features/resources/helpers";
+import { kindKey } from "@/lib/kind-identity";
 import type { ResourceScopeResult } from "@/lib/resource-scope-types";
 import type {
 	ArgoApplicationSetSummary,
@@ -18,6 +18,7 @@ import type {
 	DiscoveredResourceKind,
 	ResourceSummary,
 } from "@/lib/types";
+import { benchmark } from "./benchmark";
 
 function resource(index: number): ResourceSummary {
 	return {
@@ -209,7 +210,7 @@ assert(
 );
 
 describe("F36 palette cache harvest, F37 retained typing, and folded F38 search scope", () => {
-	bench(
+	benchmark(
 		"F36 query cache harvest and cold index with warmed, Argo, and cached rows",
 		() => {
 			const cached = queryClient.getQueriesData<ResourceScopeResult>({
@@ -219,14 +220,14 @@ describe("F36 palette cache harvest, F37 retained typing, and folded F38 search 
 		},
 	);
 
-	bench(
+	benchmark(
 		"F36 one-pass dedupe and index across the existing overlapping resource sets",
 		() => {
 			buildDedupedResourceSearchIndex(resourceSets);
 		},
 	);
 
-	bench(
+	benchmark(
 		"F37 retained resource and namespace typing with production caps",
 		() => {
 			visibleResourceResults("resource-99");
@@ -240,7 +241,7 @@ describe("F36 palette cache harvest, F37 retained typing, and folded F38 search 
 		},
 	);
 
-	bench(
+	benchmark(
 		"F38 provider-wide Flux keys beside workspace-scoped Kubernetes keys",
 		() => {
 			buildGlobalSearchFetchKeys(

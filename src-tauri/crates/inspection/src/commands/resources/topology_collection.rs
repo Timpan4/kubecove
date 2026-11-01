@@ -581,6 +581,7 @@ pub(crate) fn network_topology_inputs_from_objects_at(
         let target_pods: Vec<String> = slice
             .endpoints
             .iter()
+            .flatten()
             .filter_map(|endpoint| {
                 let target = endpoint.target_ref.as_ref()?;
                 (target.kind.as_deref() == Some("Pod")).then(|| target.name.clone())?

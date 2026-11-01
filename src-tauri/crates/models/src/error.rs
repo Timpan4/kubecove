@@ -168,7 +168,7 @@ fn auth_message(error: &kube::client::AuthError) -> String {
         AuthError::AuthExecStart(error) if error.kind() == std::io::ErrorKind::NotFound =>
             "The kubeconfig credential plugin command could not be found. Check its command path and KubeCove's PATH.".into(),
         AuthError::AuthExecStart(_) => "The kubeconfig credential plugin could not be started.".into(),
-        AuthError::AuthExecRun { status, .. } => status.code().map_or_else(
+        AuthError::AuthExecRun { out, .. } => out.status.code().map_or_else(
             || "The kubeconfig credential plugin was terminated.".into(),
             |code| format!("The kubeconfig credential plugin exited with status {code}."),
         ),

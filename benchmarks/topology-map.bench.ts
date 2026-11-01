@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	filterHistoricalReplicaSets,
 	filterTopologyByTableRows,
@@ -23,6 +23,7 @@ import type {
 	ResourceMetricSummary,
 	ResourceMetricsSummary,
 } from "@/lib/types";
+import { benchmark } from "./benchmark";
 import { buildReplicaSetTopology } from "./topology-benchmark-fixtures";
 
 const baseTopology = buildReplicaSetTopology(500);
@@ -212,7 +213,7 @@ assert(
 );
 
 describe("F06 table-to-map updates with folded F03 selection reconciliation", () => {
-	bench("F06 full production table to consumed topology and fit plan", () => {
+	benchmark("F06 full production table to consumed topology and fit plan", () => {
 		for (const state of tableUpdates) updateTableToMap(state);
 		filterTopologyByTableRows(
 			filterHistoricalReplicaSets(topology, true),
@@ -221,7 +222,7 @@ describe("F06 table-to-map updates with folded F03 selection reconciliation", ()
 		filterTopologyByTableRows(topology, []);
 	});
 
-	bench("F03 selection reconciliation for retained table updates", () => {
+	benchmark("F03 selection reconciliation for retained table updates", () => {
 		for (const state of tableUpdates) {
 			syncedTopologyNodeId({
 				selectedTopologyNodeId: syncedSelection,

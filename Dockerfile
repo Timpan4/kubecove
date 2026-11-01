@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
-FROM oven/bun:1.4.0-slim@sha256:e0ee68d16ccb9927bf02aa7dd8fd4bf3369ee6d46da04faa72b05ce8bfd135f6 AS frontend
+FROM oven/bun:1.4.4-slim@sha256:1846adf22496bd711036aae8be147e57bdebbaea2e5264e3e0b5af1db187d9a4 AS frontend
 WORKDIR /source
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY . .
 RUN KUBECOVE_PUBLIC_RUNTIME=web bun run build
 
-FROM rust:1.99.0-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f312005784ef913d7e04a28f5f55dc581 AS backend
+FROM rust:1.99.1-slim-trixie@sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d453dbfeb2fccd5f982247 AS backend
 ARG TARGETARCH
 WORKDIR /source
 COPY src-tauri/ src-tauri/

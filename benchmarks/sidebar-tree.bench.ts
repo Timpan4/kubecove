@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bench, describe } from "vitest";
+import { describe } from "vitest";
 import {
 	buildSidebarTree,
 	resourceBrowserAvailableKinds,
@@ -18,6 +18,7 @@ import { kindKey } from "@/lib/kind-identity";
 import type {
 	DiscoveredResourceKind,
 } from "@/lib/types";
+import { benchmark } from "./benchmark";
 
 const namespaces = Array.from(
 	{ length: 1_000 },
@@ -151,7 +152,7 @@ assert(
 );
 
 describe("F26 lazy sidebar children with folded F27 query maps and F28 present kinds", () => {
-	bench(
+	benchmark(
 		"F26 eager custom-resource discovery tree roots (1k namespaces / 100 kinds)",
 		() => {
 			buildSidebarTree({
@@ -168,22 +169,22 @@ describe("F26 lazy sidebar children with folded F27 query maps and F28 present k
 		},
 	);
 
-	bench("F26 shallow namespace nodes without collapsed children", () => {
+	benchmark("F26 shallow namespace nodes without collapsed children", () => {
 		for (const namespace of namespaces)
 			buildShallowNamespaceTreeNode(namespace);
 	});
 
-	bench("F26 one expanded namespace with all discovered kinds", () => {
+	benchmark("F26 one expanded namespace with all discovered kinds", () => {
 		buildNamespaceTreeNode("namespace-0", extraKinds);
 	});
 
-	bench("F26 expanded children for per-namespace present-kind results", () => {
+	benchmark("F26 expanded children for per-namespace present-kind results", () => {
 		for (const { namespace, kinds } of presentKindsByNamespace) {
 			buildNamespaceTreeNode(namespace, kinds);
 		}
 	});
 
-	bench(
+	benchmark(
 		"F27 expanded result, error, and pending maps plus lazy child shaping",
 		() => {
 			const rows = customResourcesByExpandedNamespace(
@@ -209,7 +210,7 @@ describe("F26 lazy sidebar children with folded F27 query maps and F28 present k
 		},
 	);
 
-	bench(
+	benchmark(
 		"F28 append present dynamic kinds and preserve a fixed-kind scope",
 		() => {
 			resourceBrowserAvailableKinds(
