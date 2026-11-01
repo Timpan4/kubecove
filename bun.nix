@@ -85,13 +85,13 @@
     url = "https://registry.npmjs.org/@codemirror/view/-/view-6.43.15.tgz";
     hash = "sha512-HHsfpqFeHyXLs983pSRe38Xajs0vFWZQ2BuX0m7Ki8w3jZ5iD8cuR3lBz2/5/X53Dhf32SBHKh6rtSTB6tKeGw==";
   };
-  "@codspeed/core@5.7.1" = fetchurl {
-    url = "https://registry.npmjs.org/@codspeed/core/-/core-5.7.1.tgz";
-    hash = "sha512-7mrFkqaY14rXu3XHv3o7bK3btLK0LFRxfeK3bQC8dLduI/Ty9eq8Hv8rx04FAY/onQbRTx3rUUQg5xprYHpATQ==";
+  "@codspeed/core@6.1.0" = fetchurl {
+    url = "https://registry.npmjs.org/@codspeed/core/-/core-6.1.0.tgz";
+    hash = "sha512-lxFkexeuf6iOWUZmgCeuGSVgk0fKBbtnCVd3w3UWi3627/4t55FhA046LhFLzedCQUi6183s99DnM3/6TRjzHQ==";
   };
-  "@codspeed/vitest-plugin@5.7.1" = fetchurl {
-    url = "https://registry.npmjs.org/@codspeed/vitest-plugin/-/vitest-plugin-5.7.1.tgz";
-    hash = "sha512-yKNqaYVxZZPJYkhVHpz30Oem4TUgcI+/IRDD9YHvcAgi0P42CL6TB/+qYjuFOWghFzTPrm3TUbNFoBsevSTbUA==";
+  "@codspeed/vitest-plugin@6.1.0" = fetchurl {
+    url = "https://registry.npmjs.org/@codspeed/vitest-plugin/-/vitest-plugin-6.1.0.tgz";
+    hash = "sha512-jYGZo8RSCIYD0G/+WWeZZUcQtGzz6Xl9gsdaElg9EQr5D99DbtDd2QxJYtA/9DWoWlXSP/EPR2OQR2UeHpYTSQ==";
   };
   "@emnapi/core@1.11.3" = fetchurl {
     url = "https://registry.npmjs.org/@emnapi/core/-/core-1.11.3.tgz";
