@@ -360,9 +360,6 @@ async fn login(
             AppErrorKind::Forbidden,
         ));
     }
-    if state.auth_mode() == AuthMode::Token {
-        observe::sign_in_succeeded(AuthMode::Token, None);
-    }
     let session = state
         .sessions
         .authenticate_as(
@@ -370,6 +367,9 @@ async fn login(
             access_subject(identity.as_ref()),
         )
         .await?;
+    if state.auth_mode() == AuthMode::Token {
+        observe::sign_in_succeeded(AuthMode::Token, None);
+    }
     // Cleared when this session ends for any reason. A resumed session is
     // bound again; its sign-in may be a newer one from the same subject.
     if let (Some(oidc), Some(Extension(credential))) = (&state.oidc, credential) {

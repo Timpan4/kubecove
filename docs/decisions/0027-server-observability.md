@@ -30,6 +30,7 @@ Logs and metrics leave the server's trust boundary: they go to log collectors an
 - `--log-format text|json` selects the stderr format. Text is the default. JSON writes one object per line.
 - `RUST_LOG` sets levels with `tracing-subscriber` directive syntax. The default is `warn,kubecove_server=info`. An invalid value fails startup. Raising dependency targets to `debug` can log Kubernetes request URIs, which name namespaces and resources.
 - The startup login URL, `--quiet` and `--print-token` keep their stdout behavior.
+- `sign_in` covers token-mode login and the OIDC callback. Cloudflare Access signs users in before requests reach the server, so `session_opened` with its subject is the Access success record and `authentication_refused` records rejected assertions.
 - Successful and cancelled commands log at `debug`. Failed commands log at `warn`.
 - An error that stops the server is logged as `server_failed` in the selected format, with its message. Startup messages describe operator configuration such as ports and certificate paths, and the server printed them before this decision.
 - The desktop app installs no subscriber.

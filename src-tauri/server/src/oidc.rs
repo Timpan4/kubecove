@@ -10,8 +10,8 @@ use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, 
 use kubecove_lib::{commands::SessionScope, models::AppErrorKind};
 use openidconnect::{
     core::{
-        CoreAuthenticationFlow, CoreClient, CoreIdTokenClaims, CoreIdTokenVerifier,
-        CoreProviderMetadata,
+        CoreAuthenticationFlow, CoreClient, CoreErrorResponseType, CoreIdTokenClaims,
+        CoreIdTokenVerifier, CoreProviderMetadata,
     },
     AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet,
     EndpointSet, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier,
@@ -33,6 +33,11 @@ pub const AUTH_COOKIE: &str = "__Host-kubecove_oidc";
 
 #[path = "oidc_refresh.rs"]
 mod refresh;
+
+#[path = "oidc_cookies.rs"]
+mod cookies;
+pub use cookies::clear_cookie_header;
+use cookies::{auth_cookie, cookie_header, cookie_value, transaction_cookie};
 
 type OidcClient = CoreClient<
     EndpointSet,
@@ -373,8 +378,12 @@ impl Oidc {
             })
             .await
             .map_err(|error| match error {
-                // The provider answered and refused this code, for example a replay.
-                openidconnect::RequestTokenError::ServerResponse(_) => invalid_callback(),
+                // The provider refused this code, for example a replay.
+                openidconnect::RequestTokenError::ServerResponse(response)
+                    if *response.error() == CoreErrorResponseType::InvalidGrant =>
+                {
+                    invalid_callback()
+                }
                 _ => oidc_unavailable(),
             })?;
         let id_token = response.id_token().ok_or_else(invalid_callback)?;
@@ -642,39 +651,6 @@ async fn send_request(
     Ok(builder
         .body(response.bytes().await?.to_vec())
         .expect("valid HTTP response"))
-}
-
-fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
-    let mut found = None;
-    let cookies = headers.get_all(header::COOKIE).iter();
-    for header in cookies {
-        let value = header.to_str().ok()?;
-        for entry in value.split(';').map(str::trim) {
-            if let Some((key, value)) = entry.split_once('=') {
-                if key == name {
-                    if found.is_some() {
-                        return None;
-                    }
-                    found = Some(value);
-                }
-            }
-        }
-    }
-    found
-}
-
-fn cookie_header(value: &str) -> Result<HeaderValue, ApiError> {
-    HeaderValue::from_str(value).map_err(|_| oidc_unavailable())
-}
-
-fn transaction_cookie(value: &str) -> String {
-    format!("{TRANSACTION_COOKIE}={value}; Path=/; HttpOnly; Secure; SameSite=Lax")
-}
-fn auth_cookie(value: &str) -> String {
-    format!("{AUTH_COOKIE}={value}; Path=/; HttpOnly; Secure; SameSite=Strict")
-}
-pub fn clear_cookie_header(name: &str) -> String {
-    format!("{name}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0")
 }
 
 fn id_token_has_invalid_not_before(token: &str) -> bool {

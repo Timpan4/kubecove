@@ -104,7 +104,16 @@ async fn token_session_lifecycle_is_logged_without_credentials() {
         .header("x-kubecove-session", &resume)
         .body(Body::empty())
         .unwrap();
-    assert_eq!(app.oneshot(close).await.unwrap().status(), StatusCode::OK);
+    assert_eq!(
+        app.clone().oneshot(close).await.unwrap().status(),
+        StatusCode::OK
+    );
+    // A valid cookie with a closed session's resume token is no sign-in.
+    let stale = post("/api/v1/session")
+        .header(header::COOKIE, &cookie)
+        .body(Body::from(json!({"resumeToken": resume}).to_string()))
+        .unwrap();
+    assert!(!app.oneshot(stale).await.unwrap().status().is_success());
 
     let text = logs.text();
     for (name, secret) in [

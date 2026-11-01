@@ -116,6 +116,8 @@ async fn library_tasks_keep_the_session_scope() {
 
 #[tokio::test(start_paused = true)]
 async fn reconnect_invalidates_the_old_disconnect_timer_and_expiry_revokes_access() {
+    let logs = crate::observe::capture::Captured::default();
+    let _logging = logs.install();
     let grace = Duration::from_mins(5);
     let sessions = sessions(grace);
     let info = sessions.authenticate_as(None, None).await.unwrap();
@@ -130,6 +132,10 @@ async fn reconnect_invalidates_the_old_disconnect_timer_and_expiry_revokes_acces
     tokio::task::yield_now().await;
     assert!(!owner.ended.is_cancelled());
     assert!(sessions.owner(&info.resume_token).await.is_ok());
+    assert_eq!(
+        logs.named("session_expired"),
+        Vec::<serde_json::Value>::new()
+    );
     sessions
         .disconnected(Arc::clone(&owner), second_socket)
         .await;
@@ -137,6 +143,14 @@ async fn reconnect_invalidates_the_old_disconnect_timer_and_expiry_revokes_acces
     tokio::time::advance(grace).await;
     owner.ended.cancelled().await;
     assert!(sessions.owner(&info.resume_token).await.is_err());
+    let expired = logs.named("session_expired");
+    assert_eq!(expired.len(), 1);
+    assert_eq!(
+        expired[0]["session_id"],
+        logs.named("session_opened")[0]["session_id"]
+    );
+    assert_eq!(expired[0]["grace_seconds"], 300);
+    assert!(!logs.text().contains(&info.resume_token));
 }
 
 #[tokio::test(start_paused = true)]
