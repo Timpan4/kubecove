@@ -1,3 +1,4 @@
+use crate::observe::{self, AuthMode};
 use crate::security::{equal_secret, install_tls_provider};
 use crate::{access::AccessIdentity, ApiError};
 use axum::{
@@ -9,8 +10,8 @@ use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, 
 use kubecove_lib::{commands::SessionScope, models::AppErrorKind};
 use openidconnect::{
     core::{
-        CoreAuthenticationFlow, CoreClient, CoreIdTokenClaims, CoreIdTokenVerifier,
-        CoreProviderMetadata,
+        CoreAuthenticationFlow, CoreClient, CoreErrorResponseType, CoreIdTokenClaims,
+        CoreIdTokenVerifier, CoreProviderMetadata,
     },
     AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet,
     EndpointSet, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier,
@@ -32,6 +33,11 @@ pub const AUTH_COOKIE: &str = "__Host-kubecove_oidc";
 
 #[path = "oidc_refresh.rs"]
 mod refresh;
+
+#[path = "oidc_cookies.rs"]
+mod cookies;
+pub use cookies::clear_cookie_header;
+use cookies::{auth_cookie, cookie_header, cookie_value, transaction_cookie};
 
 type OidcClient = CoreClient<
     EndpointSet,
@@ -258,13 +264,20 @@ impl Oidc {
         headers: &HeaderMap,
         query: Callback,
     ) -> Result<Response, ApiError> {
-        match self.callback_inner(headers, query).await {
-            Ok(verified) => match self.callback_success(verified) {
-                Ok(response) => Ok(response),
-                Err(_) => Ok(callback_failure(false)),
-            },
-            Err(error) => Ok(callback_failure(matches!(error.0, StatusCode::SEE_OTHER))),
+        let verified = match self.callback_inner(headers, query).await {
+            Ok(verified) => verified,
+            Err(error) => {
+                observe::oidc_callback_failed(error.0);
+                return Ok(callback_failure(error.0 == StatusCode::SEE_OTHER));
+            }
+        };
+        let subject = format!("{}\u{1f}{}", self.config.issuer, verified.subject);
+        let response = self.callback_success(verified);
+        match &response {
+            Ok(_) => observe::sign_in_succeeded(AuthMode::Oidc, Some(&subject)),
+            Err(error) => observe::oidc_callback_failed(error.0),
         }
+        Ok(response.unwrap_or_else(|_| callback_failure(false)))
     }
 
     fn callback_success(&self, verified: Verified) -> Result<Response, ApiError> {
@@ -364,7 +377,15 @@ impl Oidc {
                 move |request| send_request(http.clone(), request)
             })
             .await
-            .map_err(|_| oidc_unavailable())?;
+            .map_err(|error| match error {
+                // The provider refused this code, for example a replay.
+                openidconnect::RequestTokenError::ServerResponse(response)
+                    if *response.error() == CoreErrorResponseType::InvalidGrant =>
+                {
+                    invalid_callback()
+                }
+                _ => oidc_unavailable(),
+            })?;
         let id_token = response.id_token().ok_or_else(invalid_callback)?;
         let nonce = Nonce::new(transaction.nonce);
         let claims = id_token
@@ -632,39 +653,6 @@ async fn send_request(
         .expect("valid HTTP response"))
 }
 
-fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
-    let mut found = None;
-    let cookies = headers.get_all(header::COOKIE).iter();
-    for header in cookies {
-        let value = header.to_str().ok()?;
-        for entry in value.split(';').map(str::trim) {
-            if let Some((key, value)) = entry.split_once('=') {
-                if key == name {
-                    if found.is_some() {
-                        return None;
-                    }
-                    found = Some(value);
-                }
-            }
-        }
-    }
-    found
-}
-
-fn cookie_header(value: &str) -> Result<HeaderValue, ApiError> {
-    HeaderValue::from_str(value).map_err(|_| oidc_unavailable())
-}
-
-fn transaction_cookie(value: &str) -> String {
-    format!("{TRANSACTION_COOKIE}={value}; Path=/; HttpOnly; Secure; SameSite=Lax")
-}
-fn auth_cookie(value: &str) -> String {
-    format!("{AUTH_COOKIE}={value}; Path=/; HttpOnly; Secure; SameSite=Strict")
-}
-pub fn clear_cookie_header(name: &str) -> String {
-    format!("{name}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0")
-}
-
 fn id_token_has_invalid_not_before(token: &str) -> bool {
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
     let Some(payload) = token
@@ -775,6 +763,9 @@ fn test_metadata(issuer: &str) -> Result<CoreProviderMetadata, String> {
     .map_err(|_| "invalid test provider metadata".into())
 }
 
+#[cfg(test)]
+#[path = "oidc_log_tests.rs"]
+mod log_tests;
 #[cfg(test)]
 #[path = "oidc_mock.rs"]
 pub(crate) mod mock;

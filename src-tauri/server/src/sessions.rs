@@ -1,6 +1,7 @@
 use crate::{
     backend::BackendState,
     channels::ChannelHub,
+    observe::{self, AuthMode, CloseReason, SessionId},
     security::{equal_secret, random_token},
 };
 use kubecove_lib::{
@@ -14,6 +15,7 @@ use tokio_util::sync::CancellationToken;
 
 pub struct Owner {
     pub resume_token: String,
+    pub session_id: SessionId,
     subject: Option<String>,
     pub backend: BackendState,
     pub channels: Arc<ChannelHub>,
@@ -44,14 +46,16 @@ pub struct Sessions {
     // Expiry, close and shutdown must not race one another's cleanup.
     transition: Mutex<()>,
     pub grace: Duration,
+    auth_mode: AuthMode,
 }
 
 impl Sessions {
-    pub fn new(grace: Duration) -> Self {
+    pub fn new(grace: Duration, auth_mode: AuthMode) -> Self {
         Self {
             owners: Mutex::new(Vec::new()),
             transition: Mutex::new(()),
             grace,
+            auth_mode,
         }
     }
 
@@ -65,17 +69,20 @@ impl Sessions {
         let _transition = self.transition.lock().await;
         if let Some(resume) = resume {
             let owner = self.owner_as(resume, subject).await?;
+            observe::session_resumed(owner.session_id, self.auth_mode, subject);
             return Ok(self.info(&owner));
         }
         let mut owners = self.owners.lock().await;
+        let credential_failed = |_| {
+            AppError::new(
+                "failed to generate session credential",
+                AppErrorKind::Internal,
+            )
+        };
         let owner = Arc::new(Owner {
             subject: subject.map(str::to_owned),
-            resume_token: random_token().map_err(|_| {
-                AppError::new(
-                    "failed to generate session credential",
-                    AppErrorKind::Internal,
-                )
-            })?,
+            resume_token: random_token().map_err(credential_failed)?,
+            session_id: SessionId::random().map_err(credential_failed)?,
             backend: BackendState::new(SessionScope::new(subject.map(str::to_owned))),
             channels: Arc::new(ChannelHub::default()),
             tunnels: Arc::new(crate::tunnel::TunnelRegistry::default()),
@@ -87,6 +94,7 @@ impl Sessions {
         let info = self.info(&owner);
         owners.push(Arc::clone(&owner));
         drop(owners);
+        observe::session_opened(owner.session_id, self.auth_mode, subject);
         self.disconnected(owner, 0).await;
         Ok(info)
     }
@@ -173,9 +181,8 @@ impl Sessions {
                 drop(socket);
                 sessions.remove(&owner).await;
             }
-            if let Err(error) = end(&owner).await {
-                eprintln!("headless session cleanup failed: {}", error.kind.as_str());
-            }
+            observe::session_expired(owner.session_id, sessions.grace);
+            let _ = end(&owner).await;
         }));
     }
 
@@ -189,13 +196,12 @@ impl Sessions {
             owners
         };
         for owner in owners {
-            if let Err(error) = end(&owner).await {
-                eprintln!("headless shutdown cleanup failed: {}", error.kind.as_str());
-            }
+            observe::session_closed(owner.session_id, CloseReason::Shutdown);
+            let _ = end(&owner).await;
         }
     }
 
-    pub async fn close(&self, resume: &str) -> Result<(), AppError> {
+    pub async fn close(&self, resume: &str, reason: CloseReason) -> Result<(), AppError> {
         let owner = {
             let _transition = self.transition.lock().await;
             let owner = self.owner(resume).await?;
@@ -203,6 +209,7 @@ impl Sessions {
             self.remove(&owner).await;
             owner
         };
+        observe::session_closed(owner.session_id, reason);
         end(&owner).await
     }
 }
@@ -217,7 +224,11 @@ async fn end(owner: &Owner) -> Result<(), AppError> {
     let _requests = owner.request_gate.write().await;
     owner.backend.scope.set_bearer(None);
     owner.tunnels.close_all();
-    owner.backend.cleanup().await
+    let result = owner.backend.cleanup().await;
+    if let Err(error) = &result {
+        observe::session_cleanup_failed(owner.session_id, error.kind);
+    }
+    result
 }
 
 #[cfg(test)]

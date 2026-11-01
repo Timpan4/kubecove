@@ -208,7 +208,10 @@ async fn close_during_resume_cannot_restore_session_credentials() {
             origins: vec![],
             secure: true,
         },
-        sessions: Arc::new(crate::sessions::Sessions::new(Duration::from_mins(5))),
+        sessions: Arc::new(crate::sessions::Sessions::new(
+            Duration::from_mins(5),
+            crate::observe::AuthMode::Oidc,
+        )),
         credential_store: String::new(),
         access: None,
         oidc: Some(Arc::clone(&oidc)),
@@ -244,7 +247,11 @@ async fn close_during_resume_cannot_restore_session_credentials() {
         })),
     ));
     assert!(resuming.as_mut().now_or_never().is_none());
-    state.sessions.close(&resume).await.unwrap();
+    state
+        .sessions
+        .close(&resume, crate::observe::CloseReason::Client)
+        .await
+        .unwrap();
     tokio::task::yield_now().await;
     assert!(oidc.bound.lock().unwrap().is_empty());
     assert!(owner.backend.scope.bearer().is_none());
@@ -633,7 +640,7 @@ async fn sign_in_without_forwarding_keeps_no_tokens_and_ends_with_the_id_token()
     assert!(credential.expires_unix <= unix_now() + 300);
 }
 
-async fn pending_callback(oidc: &Oidc) -> (HeaderMap, Callback) {
+pub(super) async fn pending_callback(oidc: &Oidc) -> (HeaderMap, Callback) {
     let start = oidc.start().unwrap();
     let cookie = start
         .headers()

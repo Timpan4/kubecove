@@ -22,6 +22,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 - [Engineering Handbook](handbook/README.md) — code organization, design system, hygiene, and pull request checklist.
 - [Frontend memory characterization](frontend-memory-retention.md) — normal and large payload, retention, native process, and refetch measurements.
 - [Backend cache diagnostics](backend-cache-diagnostics.md) — redacted cache states, counters, and retained payload measurements.
+- [Server observability design](server-observability-design.md): log events, metrics, redaction and the delivery plan for the headless server.
 - [Headless memory optimization](headless-memory-optimization.md) — CRD allocation cause, Linux replay, output parity, and decoder benchmarks.
 - [Release footprint variants](release-footprint-variants.md) — isolated stable Cargo comparisons and package, startup, font, benchmark, and crash evidence.
 - [Product and architecture](product-and-architecture.md) — current product principles, desktop architecture, and trust boundaries.
@@ -36,6 +37,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 - [Multiple user sessions and persistence](decisions/0023-multi-user-sessions-and-persistence.md) — implemented session baseline and proposed private-source provisioning, persistent user workspaces, settings and migration.
 - [Single command contract](decisions/0025-single-command-contract.md) — single declaration for Tauri IPC and server HTTP commands, and removal of the legacy name-only operation commands.
 - [Cluster access by intent](decisions/0026-cluster-access-by-intent.md) — single module for Kubernetes clients named by intent, and the server's restriction to operator-configured kubeconfig sources.
+- [Server observability](decisions/0027-server-observability.md): structured server logs, redaction rules and the opt-in Prometheus metrics listener.
 - [Security Policy](../SECURITY.md) — vulnerability reporting and support.
 - [OSS Scanner](../.oss-scanner/README.md) — offline audit environment, threat model, and maintainer enrollment.
 - [Contributing](../CONTRIBUTING.md) — contribution and documentation reporting process.

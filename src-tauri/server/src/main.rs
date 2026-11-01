@@ -1,14 +1,25 @@
 use kubecove_server::{
     config::{Config, HELP},
     files::write_startup_token,
+    observe::{self, AuthMode},
     router,
     security::random_token,
     sessions::Sessions,
     AppState,
 };
-use std::{io, net::SocketAddr, sync::Arc};
+use std::{io, net::SocketAddr, process::ExitCode, sync::Arc};
 
-fn main() -> io::Result<()> {
+fn main() -> ExitCode {
+    match start() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            observe::server_failed(&error);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn start() -> io::Result<()> {
     let mut runtime = tokio::runtime::Builder::new_multi_thread();
     if let Some(value) = std::env::var_os("KUBECOVE_SERVER_WORKER_THREADS") {
         let threads = value
@@ -32,6 +43,12 @@ async fn run() -> io::Result<()> {
         return Ok(());
     }
     let mut config = Config::parse(args).map_err(io::Error::other)?;
+    tracing::subscriber::set_global_default(observe::subscriber(
+        config.log_format,
+        observe::filter_from_env().map_err(io::Error::other)?,
+        io::stderr,
+    ))
+    .map_err(io::Error::other)?;
     let oidc = match config.oidc.take() {
         Some(oidc) => Some(Arc::new(
             kubecove_server::oidc::Oidc::discover(
@@ -56,6 +73,13 @@ async fn run() -> io::Result<()> {
     } else {
         "Cloudflare Access"
     };
+    let auth_mode = if oidc.is_some() {
+        AuthMode::Oidc
+    } else if config.access.is_some() {
+        AuthMode::CloudflareAccess
+    } else {
+        AuthMode::Token
+    };
     let token = if config.access.is_some() || oidc.is_some() {
         String::new()
     } else {
@@ -70,7 +94,7 @@ async fn run() -> io::Result<()> {
             .map_err(io::Error::other)?
             .kind;
     kubecove_server::security::install_tls_provider();
-    let sessions = Arc::new(Sessions::new(config.grace));
+    let sessions = Arc::new(Sessions::new(config.grace, auth_mode));
     if let Some(path) = &config.socket {
         #[cfg(unix)]
         {
@@ -95,6 +119,7 @@ async fn run() -> io::Result<()> {
                 access,
                 oidc,
             });
+            observe::server_started(auth_mode, "unix");
             axum::serve(listener, router(state))
                 .with_graceful_shutdown(shutdown(Arc::clone(&sessions)))
                 .await?;
@@ -125,6 +150,7 @@ async fn run() -> io::Result<()> {
         });
         if let (Some(cert), Some(key)) = (&config.tls_cert, &config.tls_key) {
             let tls = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
+            let server = axum_server::from_tcp_rustls(listener, tls)?;
             let handle = axum_server::Handle::new();
             let stopping = handle.clone();
             let stopping_sessions = Arc::clone(&sessions);
@@ -132,12 +158,15 @@ async fn run() -> io::Result<()> {
                 shutdown(stopping_sessions).await;
                 stopping.shutdown();
             });
-            axum_server::from_tcp_rustls(listener, tls)?
+            observe::server_started(auth_mode, "tls");
+            server
                 .handle(handle)
                 .serve(router(state).into_make_service())
                 .await?;
         } else {
-            axum::serve(tokio::net::TcpListener::from_std(listener)?, router(state))
+            let listener = tokio::net::TcpListener::from_std(listener)?;
+            observe::server_started(auth_mode, "tcp");
+            axum::serve(listener, router(state))
                 .with_graceful_shutdown(shutdown(Arc::clone(&sessions)))
                 .await?;
         }

@@ -1,8 +1,12 @@
 use super::*;
 
+fn sessions(grace: Duration) -> Arc<Sessions> {
+    Arc::new(Sessions::new(grace, AuthMode::Token))
+}
+
 #[tokio::test(start_paused = true)]
 async fn sessions_run_side_by_side_and_close_alone() {
-    let sessions = Arc::new(Sessions::new(Duration::from_mins(5)));
+    let sessions = sessions(Duration::from_mins(5));
     let alice = sessions.authenticate_as(None, Some("alice")).await.unwrap();
     let bob = sessions.authenticate_as(None, Some("bob")).await.unwrap();
     let alice_owner = sessions.owner(&alice.resume_token).await.unwrap();
@@ -18,7 +22,10 @@ async fn sessions_run_side_by_side_and_close_alone() {
         .await
         .is_err());
 
-    sessions.close(&alice.resume_token).await.unwrap();
+    sessions
+        .close(&alice.resume_token, CloseReason::Client)
+        .await
+        .unwrap();
     assert!(alice_owner.ended.is_cancelled());
     assert!(sessions.owner(&alice.resume_token).await.is_err());
     assert!(!bob_owner.ended.is_cancelled());
@@ -30,7 +37,7 @@ async fn sessions_run_side_by_side_and_close_alone() {
 
 #[tokio::test(start_paused = true)]
 async fn a_close_waiting_on_a_request_holds_up_no_other_login() {
-    let sessions = Arc::new(Sessions::new(Duration::from_mins(5)));
+    let sessions = sessions(Duration::from_mins(5));
     let alice = sessions.authenticate_as(None, None).await.unwrap();
     let alice_owner = sessions.owner(&alice.resume_token).await.unwrap();
     let in_flight = alice_owner.request_gate.read().await;
@@ -38,7 +45,7 @@ async fn a_close_waiting_on_a_request_holds_up_no_other_login() {
     let closing = {
         let sessions = Arc::clone(&sessions);
         let resume = alice.resume_token.clone();
-        tokio::spawn(async move { sessions.close(&resume).await })
+        tokio::spawn(async move { sessions.close(&resume, CloseReason::Client).await })
     };
     tokio::task::yield_now().await;
     assert!(alice_owner.ended.is_cancelled());
@@ -109,8 +116,10 @@ async fn library_tasks_keep_the_session_scope() {
 
 #[tokio::test(start_paused = true)]
 async fn reconnect_invalidates_the_old_disconnect_timer_and_expiry_revokes_access() {
+    let logs = crate::observe::capture::Captured::default();
+    let _logging = logs.install();
     let grace = Duration::from_mins(5);
-    let sessions = Arc::new(Sessions::new(grace));
+    let sessions = sessions(grace);
     let info = sessions.authenticate_as(None, None).await.unwrap();
     let owner = sessions.owner(&info.resume_token).await.unwrap();
     let first_socket = sessions.connect(&owner).await;
@@ -123,6 +132,10 @@ async fn reconnect_invalidates_the_old_disconnect_timer_and_expiry_revokes_acces
     tokio::task::yield_now().await;
     assert!(!owner.ended.is_cancelled());
     assert!(sessions.owner(&info.resume_token).await.is_ok());
+    assert_eq!(
+        logs.named("session_expired"),
+        Vec::<serde_json::Value>::new()
+    );
     sessions
         .disconnected(Arc::clone(&owner), second_socket)
         .await;
@@ -130,11 +143,19 @@ async fn reconnect_invalidates_the_old_disconnect_timer_and_expiry_revokes_acces
     tokio::time::advance(grace).await;
     owner.ended.cancelled().await;
     assert!(sessions.owner(&info.resume_token).await.is_err());
+    let expired = logs.named("session_expired");
+    assert_eq!(expired.len(), 1);
+    assert_eq!(
+        expired[0]["session_id"],
+        logs.named("session_opened")[0]["session_id"]
+    );
+    assert_eq!(expired[0]["grace_seconds"], 300);
+    assert!(!logs.text().contains(&info.resume_token));
 }
 
 #[tokio::test(start_paused = true)]
 async fn zero_grace_stops_on_disconnect_and_login_without_socket_eventually_expires() {
-    let sessions = Arc::new(Sessions::new(Duration::ZERO));
+    let sessions = sessions(Duration::ZERO);
     let info = sessions.authenticate_as(None, None).await.unwrap();
     let owner = sessions.owner(&info.resume_token).await.unwrap();
     let socket = sessions.connect(&owner).await;

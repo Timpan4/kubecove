@@ -4,7 +4,10 @@ use super::{
     Oidc, OidcCredential, Tokens, AUTH_COOKIE, REFRESH_INTERVAL, REFRESH_MARGIN_SECONDS,
     TRANSACTION_COOKIE,
 };
-use crate::ApiError;
+use crate::{
+    observe::{self, RefreshOutcome},
+    ApiError,
+};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use kubecove_lib::{commands::SessionScope, models::AppErrorKind};
@@ -191,19 +194,26 @@ impl Oidc {
             self.prune_expired(&mut credentials);
             let entry = credentials.get_mut(credential).ok_or_else(invalid_auth)?;
             match result {
-                Ok(renewed) => entry.tokens = Some(renewed),
-                Err(RefreshFailure::Unusable(Some(rotated))) => {
-                    if let Some(tokens) = entry.tokens.as_mut() {
+                Ok(renewed) => {
+                    entry.tokens = Some(renewed);
+                    observe::oidc_refresh(RefreshOutcome::Renewed);
+                }
+                Err(RefreshFailure::Unusable(rotated)) => {
+                    if let (Some(rotated), Some(tokens)) = (rotated, entry.tokens.as_mut()) {
                         tokens.refresh_token = Some(rotated);
                     }
+                    observe::oidc_refresh(RefreshOutcome::Unusable);
                 }
                 Err(RefreshFailure::Refused) if tokens.id_expires_unix <= unix_now() => {
                     entry.revoked.cancel();
                     credentials.remove(credential);
                     self.deactivate(credential);
+                    observe::oidc_refresh(RefreshOutcome::Refused);
                     return Err(invalid_auth());
                 }
-                Err(_) => {}
+                Err(RefreshFailure::Refused | RefreshFailure::Transient) => {
+                    observe::oidc_refresh(RefreshOutcome::Failed);
+                }
             }
         }
         // An expired ID token clears slots, but leaves the binding for retries.
