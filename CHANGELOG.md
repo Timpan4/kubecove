@@ -3,6 +3,15 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.12.13 - 2026-11-01
+### Improved
+
+- Reuse CI caches and patch vulnerable tooling (#621).
+
+### Fixed
+
+- Recover desktop credential plugin paths (#620).
+
 ## 0.12.12 - 2026-10-30
 ### Fixed
 
