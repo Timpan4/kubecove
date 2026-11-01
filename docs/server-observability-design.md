@@ -74,7 +74,7 @@ These extend the backend diagnostics rules (#419):
 The issue requires reusing the diagnostics counters. Two current behaviors would make a Prometheus counter go down, and `rate()` reads every decrease as a process restart:
 
 1. "Clear" in Settings stored 0. It now records a per-counter baseline. The diagnostics snapshot reports `raw - baseline`, so desktop and browser diagnostics behave as before, and `ClusterLiveStore::lifetime_diagnostics()` returns the raw values.
-2. Ending a session dropped its counters. `Sessions` now keeps `RetiredCaches`, the summed raw totals of ended sessions. `end()` removes the owner from the live list, finishes cleanup, then adds its totals to the retired sum. A scrape reads the retired sum before the live owners, so a session can be missing from one scrape while it ends but is never counted twice. Each exported counter is raised to the scraped total and never lowered, so a session missing from one scrape cannot make a counter go down.
+2. Ending a session dropped its counters. `Sessions` now keeps `RetiredCaches`, the summed raw totals of ended sessions. Close, expiry and shutdown remove the owner from the live list under the transition lock, then call `end()`, which finishes cleanup and adds the owner's totals to the retired sum. Counts that a stopping stream task records after that point are not exported; the counters undercount slightly but never decrease. A scrape reads the retired sum before the live owners, so a session can be missing from one scrape while it ends but is never counted twice. Each exported counter is raised to the scraped total and never lowered, so a session missing from one scrape cannot make a counter go down.
 
 #### Histogram buckets
 

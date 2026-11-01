@@ -23,6 +23,22 @@ fn log_format_defaults_to_text_and_accepts_only_text_or_json() {
     assert!(config(&["--log-format"]).is_err());
 }
 
+// Failure modes: the metrics listener starts without the flag; a malformed
+// address is accepted; any address needs the main listener's remote opt-in.
+#[test]
+fn metrics_listener_is_off_by_default_and_takes_one_socket_address() {
+    assert_eq!(config(&[]).unwrap().metrics_listen, None);
+    assert_eq!(
+        config(&["--metrics-listen", "0.0.0.0:9090"])
+            .unwrap()
+            .metrics_listen,
+        Some("0.0.0.0:9090".parse().unwrap())
+    );
+    for invalid in [&["--metrics-listen"][..], &["--metrics-listen", "9090"]] {
+        assert!(config(invalid).is_err());
+    }
+}
+
 fn config(args: &[&str]) -> Result<Config, String> {
     Config::parse(args.iter().map(std::ffi::OsString::from))
 }
