@@ -51,11 +51,10 @@ impl<T: Clone> Cache<T> {
         let key = (source_key, cluster_context);
         if self.entries.contains_key(&key) {
             self.recency.retain(|entry| entry != &key);
-        } else if self.entries.len() >= MAX_ENTRIES {
-            if let Some(oldest) = self.recency.pop_front() {
+        } else if self.entries.len() >= MAX_ENTRIES
+            && let Some(oldest) = self.recency.pop_front() {
                 self.entries.remove(&oldest);
             }
-        }
         self.recency.push_back(key.clone());
         self.entries.insert(key, (fingerprint, value));
     }

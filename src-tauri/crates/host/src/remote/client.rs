@@ -517,13 +517,12 @@ fn handle_text(connection: &RemoteConnection, text: &str) -> bool {
         connection.fail_controls();
         return true;
     }
-    if kind == "tunnel_closed" || kind == "tunnel_error" {
-        if let Some(connection_id) = value.get("connectionId").and_then(Value::as_str) {
+    if (kind == "tunnel_closed" || kind == "tunnel_error")
+        && let Some(connection_id) = value.get("connectionId").and_then(Value::as_str) {
             connection.remove_tunnel_sender(connection_id);
         }
-    }
-    if let Some(key) = control_key(&value) {
-        if let Some(sender) = connection
+    if let Some(key) = control_key(&value)
+        && let Some(sender) = connection
             .controls
             .lock()
             .expect("remote control registry lock")
@@ -531,7 +530,6 @@ fn handle_text(connection: &RemoteConnection, text: &str) -> bool {
         {
             let _ = sender.send(value);
         }
-    }
     false
 }
 

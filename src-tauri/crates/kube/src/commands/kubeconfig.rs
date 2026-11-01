@@ -240,13 +240,11 @@ impl KubeconfigSource {
             // read_configured_kubeconfig falls back to the default kubeconfig
             // when no configured path loads, so changes to it must invalidate
             // cached clients too.
-            if self.read_env {
-                if let Some(default) = default_kubeconfig_path() {
-                    if !paths.contains(&default) {
+            if self.read_env
+                && let Some(default) = default_kubeconfig_path()
+                    && !paths.contains(&default) {
                         paths.push(default);
                     }
-                }
-            }
             return paths;
         }
         standard_kubeconfig_paths()

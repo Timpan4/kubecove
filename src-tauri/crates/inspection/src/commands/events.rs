@@ -35,11 +35,10 @@ pub(super) fn event_timestamp(event: &k8s_openapi::api::core::v1::Event) -> Opti
 }
 
 pub(super) fn event_source(event: &k8s_openapi::api::core::v1::Event) -> String {
-    if let Some(component) = &event.reporting_component {
-        if !component.is_empty() {
+    if let Some(component) = &event.reporting_component
+        && !component.is_empty() {
             return component.clone();
         }
-    }
     event
         .source
         .as_ref()

@@ -424,15 +424,14 @@ impl Oidc {
         }
         // The API server rejects a forwarded token without its audience, so
         // refuse the sign-in here, where the reason is known.
-        if let Some(audience) = &self.config.kubernetes_audience {
-            if !claims
+        if let Some(audience) = &self.config.kubernetes_audience
+            && !claims
                 .audiences()
                 .iter()
                 .any(|aud| aud.as_str() == audience)
             {
                 return None;
             }
-        }
         let subject = claims.subject().as_str();
         if subject.is_empty() {
             return None;

@@ -290,20 +290,18 @@ fn add_workload_metric<'a>(
             source_pods: Vec::new(),
         },
     });
-    if !entry.cpu_overflowed {
-        if let Some(cpu) = metric.cpu_millicores {
+    if !entry.cpu_overflowed
+        && let Some(cpu) = metric.cpu_millicores {
             let total = entry.summary.cpu_millicores.unwrap_or(0.0) + cpu;
             entry.summary.cpu_millicores = total.is_finite().then_some(total);
             entry.cpu_overflowed = entry.summary.cpu_millicores.is_none();
         }
-    }
-    if !entry.memory_overflowed {
-        if let Some(memory) = metric.memory_bytes {
+    if !entry.memory_overflowed
+        && let Some(memory) = metric.memory_bytes {
             entry.summary.memory_bytes =
                 entry.summary.memory_bytes.unwrap_or(0).checked_add(memory);
             entry.memory_overflowed = entry.summary.memory_bytes.is_none();
         }
-    }
     if metric.sampled_at > entry.summary.sampled_at {
         entry.summary.sampled_at.clone_from(&metric.sampled_at);
     }

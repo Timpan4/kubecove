@@ -198,7 +198,7 @@ impl PortForwardRegistry {
     }
 
     /// Reports a forward's relay events in its listed status.
-    fn relay_events(&self, session_id: String) -> impl FnMut(RelayEvent) + Send + 'static {
+    fn relay_events(&self, session_id: String) -> impl FnMut(RelayEvent) + Send + 'static + use<> {
         let registry = self.clone();
         move |event| match event {
             RelayEvent::AcceptRetry { attempt, error } => registry.mark_status(

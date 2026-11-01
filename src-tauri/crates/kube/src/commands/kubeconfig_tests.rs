@@ -19,6 +19,11 @@ fn server_sessions_cannot_write_shared_source_settings_without_forwarding() {
     assert_eq!(error.kind, AppErrorKind::UnsupportedOperation);
 }
 
+/// Sets or clears an environment variable for one test and restores it on drop.
+///
+/// `ENV_LOCK` serializes the tests in this file, but tests in other modules run on
+/// parallel threads and may read the environment meanwhile. Edition 2024 marks these
+/// writes `unsafe` for that reason; the race predates the edition change.
 struct EnvVarGuard {
     name: String,
     previous: Option<OsString>,
@@ -28,14 +33,16 @@ impl EnvVarGuard {
     fn set(name: impl Into<String>, value: impl AsRef<OsStr>) -> Self {
         let name = name.into();
         let previous = env::var_os(&name);
-        env::set_var(&name, value);
+        // Concurrent environment access: see `EnvVarGuard`.
+        unsafe { env::set_var(&name, value) };
         Self { name, previous }
     }
 
     fn unset(name: impl Into<String>) -> Self {
         let name = name.into();
         let previous = env::var_os(&name);
-        env::remove_var(&name);
+        // Concurrent environment access: see `EnvVarGuard`.
+        unsafe { env::remove_var(&name) };
         Self { name, previous }
     }
 }
@@ -43,9 +50,11 @@ impl EnvVarGuard {
 impl Drop for EnvVarGuard {
     fn drop(&mut self) {
         if let Some(value) = &self.previous {
-            env::set_var(&self.name, value);
+            // Concurrent environment access: see `EnvVarGuard`.
+            unsafe { env::set_var(&self.name, value) };
         } else {
-            env::remove_var(&self.name);
+            // Concurrent environment access: see `EnvVarGuard`.
+            unsafe { env::remove_var(&self.name) };
         }
     }
 }
@@ -151,7 +160,8 @@ fn unset_custom_env_uses_standard_kubeconfig_for_key_and_warnings() {
     assert_eq!(warnings[0].source, "env");
     assert!(warnings[0].message.contains(DEFAULT_KUBECONFIG_ENV_VAR));
 
-    env::set_var(DEFAULT_KUBECONFIG_ENV_VAR, &standard_path);
+    // Concurrent environment access: see `EnvVarGuard`.
+    unsafe { env::set_var(DEFAULT_KUBECONFIG_ENV_VAR, &standard_path) };
     assert_ne!(source.key(), missing_key);
     let contexts = cluster_contexts_from_kubeconfig(&source.read_kubeconfig().expect("kubeconfig"));
     assert_eq!(

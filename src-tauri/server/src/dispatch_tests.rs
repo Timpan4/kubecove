@@ -133,7 +133,9 @@ async fn sessions_select_only_the_operator_kubeconfig_source() {
     let client_var = format!("KUBECOVE_SERVER_SELECTOR_{nanos}");
     let path = std::env::temp_dir().join(format!("kubecove-server-selector-{nanos}.yaml"));
     std::fs::write(&path, fixture_kubeconfig("client-selected")).unwrap();
-    std::env::set_var(&client_var, &path);
+    // The name is unique to this test, but parallel test threads may read the
+    // environment meanwhile. Edition 2024 only made that existing race explicit.
+    unsafe { std::env::set_var(&client_var, &path) };
     for selector in [
         client_var.as_str(),
         "bad-name",
@@ -146,6 +148,8 @@ async fn sessions_select_only_the_operator_kubeconfig_source() {
         assert_eq!(error.kind, AppErrorKind::Kubeconfig, "{selector}");
         assert!(!error.message.contains("client-selected"), "{selector}");
     }
-    std::env::remove_var(&client_var);
+    // The name is unique to this test, but parallel test threads may read the
+    // environment meanwhile. Edition 2024 only made that existing race explicit.
+    unsafe { std::env::remove_var(&client_var) };
     let _ = std::fs::remove_file(path);
 }

@@ -242,11 +242,10 @@ impl TunnelRegistry {
             .expect("tunnel registry lock")
             .connections
             .remove(connection_id);
-        if abort {
-            if let Some(connection) = &connection {
+        if abort
+            && let Some(connection) = &connection {
                 connection.task.abort();
             }
-        }
         connection
     }
 }

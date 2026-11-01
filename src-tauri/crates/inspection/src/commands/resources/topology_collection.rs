@@ -544,15 +544,14 @@ pub(crate) fn network_topology_inputs_from_objects_at(
         let namespace = ingress.metadata.namespace.clone().unwrap_or_default();
         let ingress_name = ingress.metadata.name.clone().unwrap_or_default();
         if let Some(spec) = &ingress.spec {
-            if let Some(default_backend) = &spec.default_backend {
-                if let Some(service_name) = backend_service_name(default_backend) {
+            if let Some(default_backend) = &spec.default_backend
+                && let Some(service_name) = backend_service_name(default_backend) {
                     ingress_backends.push(NetworkIngressBackend {
                         namespace: namespace.clone(),
                         ingress_name: ingress_name.clone(),
                         service_name,
                     });
                 }
-            }
             for rule in spec.rules.iter().flatten() {
                 let Some(http) = &rule.http else {
                     continue;

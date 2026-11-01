@@ -151,12 +151,10 @@ pub fn resource_scope_fixture() -> ResourceScopeFixture {
         .pods
         .iter_mut()
         .find(|pod| pod.metadata.name.as_deref() == Some("ledger-0"))
-    {
-        if let Some(annotations) = pod.metadata.annotations.as_mut() {
+        && let Some(annotations) = pod.metadata.annotations.as_mut() {
             annotations.remove("argocd.argoproj.io/name");
             annotations.remove("argocd.argoproj.io/tracking-id");
         }
-    }
     if let Some(pod) = summary_fixture
         .pods
         .iter_mut()

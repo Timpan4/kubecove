@@ -203,12 +203,11 @@ async fn list_warning_events(
             Ok(list) => list,
             Err(err) => {
                 let app_error = AppError::from(err);
-                if let Some(namespace) = namespace.as_ref() {
-                    if is_forbidden_app_error(&app_error) {
+                if let Some(namespace) = namespace.as_ref()
+                    && is_forbidden_app_error(&app_error) {
                         denied_namespaces.push(namespace.clone());
                         continue;
                     }
-                }
                 return Err(app_error);
             }
         };

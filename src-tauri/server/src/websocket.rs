@@ -103,11 +103,10 @@ async fn run(
                     },
                     Message::Close(_) => return,
                 };
-                if let Some(response) = response {
-                    if responses.send(response).await.is_err() {
+                if let Some(response) = response
+                    && responses.send(response).await.is_err() {
                         return;
                     }
-                }
             }
         };
         // Reading and writing must progress independently to avoid duplex relay deadlocks.

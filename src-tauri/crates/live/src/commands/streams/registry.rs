@@ -347,14 +347,13 @@ fn attach_watch_handle(
     broadcaster: &StreamBroadcaster,
     handle: JoinHandle<()>,
 ) -> Option<JoinHandle<()>> {
-    if let Some(watch) = watches.get_mut(key) {
-        if Arc::ptr_eq(&watch.broadcaster.subscribers, &broadcaster.subscribers)
+    if let Some(watch) = watches.get_mut(key)
+        && Arc::ptr_eq(&watch.broadcaster.subscribers, &broadcaster.subscribers)
             && watch.handle.is_none()
         {
             watch.handle = Some(handle);
             return None;
         }
-    }
     Some(handle)
 }
 

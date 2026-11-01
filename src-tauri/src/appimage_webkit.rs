@@ -120,7 +120,8 @@ pub fn prefer_newer_system_webkit() {
         Some("bundled") => return,
         Some("system") => {
             // Cleared so an updater relaunch of the AppImage detects again.
-            std::env::remove_var(MODE_VAR);
+            // SAFETY: `run()` calls this first, before Tauri or Tokio start any threads.
+            unsafe { std::env::remove_var(MODE_VAR) };
             return;
         }
         _ => {}

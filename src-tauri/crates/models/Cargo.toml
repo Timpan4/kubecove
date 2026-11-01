@@ -2,7 +2,7 @@
 name = "kubecove-models"
 version = "0.1.0"
 publish = false
-edition = "2021"
+edition = "2024"
 rust-version = "1.99"
 license = "AGPL-3.0-or-later"
 description = "KubeCove serialized contracts, health assessment and typed errors"

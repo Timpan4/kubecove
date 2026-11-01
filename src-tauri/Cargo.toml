@@ -63,7 +63,7 @@ version = "0.12.13"
 description = "A context-first desktop workspace for Kubernetes operations"
 license = "AGPL-3.0-or-later"
 authors = ["timpan"]
-edition = "2021"
+edition = "2024"
 rust-version = "1.99"
 autobenches = false
 

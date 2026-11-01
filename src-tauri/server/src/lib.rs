@@ -115,15 +115,14 @@ async fn guard(
 ) -> Response {
     // HTTP/2 sends the host as `:authority`, which hyper puts in the URI,
     // and no Host header (RFC 9113, section 8.3.1).
-    if !request.headers().contains_key(header::HOST) {
-        if let Some(host) = request
+    if !request.headers().contains_key(header::HOST)
+        && let Some(host) = request
             .uri()
             .authority()
             .and_then(|authority| HeaderValue::from_str(authority.as_str()).ok())
         {
             request.headers_mut().insert(header::HOST, host);
         }
-    }
     let path = request.uri().path();
     let asset_request = path.starts_with("/assets/");
     let needs_origin = request.method() == axum::http::Method::POST || path == "/api/v1/channels";
@@ -373,8 +372,8 @@ async fn login(
     }
     // Cleared when this session ends for any reason. A resumed session is
     // bound again; its sign-in may be a newer one from the same subject.
-    if let (Some(oidc), Some(Extension(credential))) = (&state.oidc, credential) {
-        if oidc.forwards_credentials() {
+    if let (Some(oidc), Some(Extension(credential))) = (&state.oidc, credential)
+        && oidc.forwards_credentials() {
             let opened = login.resume_token.is_none();
             let owner = state.sessions.owner(&session.resume_token).await?;
             let activation = async {
@@ -414,7 +413,6 @@ async fn login(
                 });
             }
         }
-    }
     let mut session = serde_json::to_value(session).map_err(|_| {
         ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,

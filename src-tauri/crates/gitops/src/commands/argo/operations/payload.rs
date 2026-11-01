@@ -21,11 +21,10 @@ fn identity(resource: &crate::models::ArgoManagedResource) -> Value {
     json!({"group": resource.group, "kind": resource.kind, "namespace": resource.namespace, "name": resource.name})
 }
 pub(super) fn connected_payload(request: &ArgoOperationRequest) -> Value {
-    if matches!(request.action.as_str(), "sync" | "retry") {
-        if let Some(payload) = &request.sync_payload {
+    if matches!(request.action.as_str(), "sync" | "retry")
+        && let Some(payload) = &request.sync_payload {
             return payload.clone();
         }
-    }
     match request.action.as_str() {
         "sync" | "retry" => sync_payload(request),
         "rollback" => {

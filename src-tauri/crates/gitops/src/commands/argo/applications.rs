@@ -179,14 +179,13 @@ fn application_resource_namespaces(
             }
         }
     }
-    if namespaces.is_empty() {
-        if let Some(namespace) = destination_namespace
+    if namespaces.is_empty()
+        && let Some(namespace) = destination_namespace
             .map(str::trim)
             .filter(|namespace| !namespace.is_empty())
         {
             namespaces.insert(namespace.to_string());
         }
-    }
     namespaces.into_iter().collect()
 }
 
