@@ -7,7 +7,7 @@ use crate::observe::{
 };
 use axum::http::Method;
 use kubecove_lib::models::{AppError, AppErrorKind, NamespaceSummary};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 const DASHBOARD: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -16,41 +16,106 @@ const DASHBOARD: &str = concat!(
 
 /// Labels that Prometheus attaches at scrape time.
 const SCRAPE_LABELS: [&str; 2] = ["job", "instance"];
+const AGGREGATIONS: [&str; 12] = [
+    "sum",
+    "avg",
+    "min",
+    "max",
+    "count",
+    "group",
+    "stddev",
+    "stdvar",
+    "topk",
+    "bottomk",
+    "quantile",
+    "count_values",
+];
+const LABEL_LISTS: [&str; 4] = ["by", "without", "on", "ignoring"];
+const OPERATORS: [&str; 7] = [
+    "or",
+    "and",
+    "unless",
+    "bool",
+    "offset",
+    "group_left",
+    "group_right",
+];
 
-// Failure modes: a metric is renamed or removed; a grouping label, matcher or
-// legend names a label its series lacks; a matcher expects a label value the
-// server never emits.
+/// Sample name -> label name -> label values seen in a scrape.
+type Series<'a> = BTreeMap<&'a str, BTreeMap<&'a str, BTreeSet<&'a str>>>;
+
+// Failure modes: a metric is renamed, removed or misspelled, including its
+// prefix; a matcher, grouping label or legend names a label that the queried
+// metric lacks, even if another metric has it; a matcher expects a value the
+// queried metric never emits; a legend names a label the aggregation drops.
 #[tokio::test]
 async fn grafana_dashboard_queries_only_exported_series() {
     let text = scrape_with_every_family().await;
-    let (names, labels) = exported(&text);
-    let known = |label: &str| labels.contains(label) || SCRAPE_LABELS.contains(&label);
+    let series = exported(&text);
     let dashboard: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(DASHBOARD).unwrap()).unwrap();
-    let (mut queries, mut legends) = (Vec::new(), Vec::new());
-    collect(&dashboard, &mut queries, &mut legends);
+    let mut queries = Vec::new();
+    collect(&dashboard, &mut queries);
     assert!(!queries.is_empty(), "the dashboard has no queries");
 
-    for query in &queries {
-        for name in metric_names(query) {
-            assert!(names.contains(name), "{name} is not exported: {query}");
-        }
-        for label in grouping_labels(query) {
-            assert!(known(label), "no series has label {label}: {query}");
-        }
-        for (label, value) in matchers(query) {
-            assert!(known(label), "no series has label {label}: {query}");
-            if let Some(value) = value {
-                assert!(
-                    text.contains(&format!("{label}=\"{value}\"")),
-                    "no series has {label}=\"{value}\": {query}"
-                );
+    for (query, legend) in queries {
+        // A `label_values(selector, label)` variable reads `label` from the selector.
+        let (expr, read_label) = match query.strip_prefix("label_values(") {
+            Some(args) => {
+                let (expr, label) = args.rsplit_once(',').expect("label_values arguments");
+                (expr, Some(label.trim().trim_end_matches(')').trim()))
+            }
+            None => (query, None),
+        };
+        let parsed = parse(expr);
+        assert!(!parsed.selectors.is_empty(), "no metric in {query}");
+        for selector in &parsed.selectors {
+            let labels = series
+                .get(selector.metric)
+                .unwrap_or_else(|| panic!("{} is not exported: {query}", selector.metric));
+            for matcher in &selector.matchers {
+                if SCRAPE_LABELS.contains(&matcher.label) {
+                    continue;
+                }
+                let values = labels.get(matcher.label).unwrap_or_else(|| {
+                    panic!(
+                        "{} has no label {}: {query}",
+                        selector.metric, matcher.label
+                    )
+                });
+                if let Some(value) = matcher.exact {
+                    assert!(
+                        values.contains(value),
+                        "{} never has {}=\"{value}\": {query}",
+                        selector.metric,
+                        matcher.label
+                    );
+                }
             }
         }
-    }
-    for legend in &legends {
-        for label in legend_labels(legend) {
-            assert!(known(label), "no series has label {label}: {legend}");
+        let on_every_metric = |label: &str| {
+            SCRAPE_LABELS.contains(&label)
+                || parsed
+                    .selectors
+                    .iter()
+                    .all(|selector| series[selector.metric].contains_key(label))
+        };
+        for label in parsed.label_lists.iter().chain(read_label.as_ref()) {
+            assert!(
+                on_every_metric(label),
+                "not every metric has {label}: {query}"
+            );
+        }
+        for label in legend_labels(legend.unwrap_or_default()) {
+            let kept = if parsed.by.is_empty() {
+                !(parsed.aggregated && parsed.label_lists.is_empty()) && on_every_metric(label)
+            } else {
+                parsed.by.contains(&label)
+            };
+            assert!(
+                kept,
+                "the legend names {label}, which {query} does not keep"
+            );
         }
     }
 }
@@ -94,93 +159,135 @@ async fn scrape_with_every_family() -> String {
     global().render(&sessions).await
 }
 
-/// Sample names and label names in a scrape.
-fn exported(text: &str) -> (BTreeSet<&str>, BTreeSet<&str>) {
-    let (mut names, mut labels) = (BTreeSet::new(), BTreeSet::new());
+/// Every sample in a scrape, with the label values it carries.
+fn exported(text: &str) -> Series<'_> {
+    let mut series = Series::new();
     for line in text.lines().filter(|line| !line.starts_with('#')) {
         let Some(end) = line.find(['{', ' ']) else {
             continue;
         };
-        names.insert(&line[..end]);
-        if let Some(set) = line[end..]
-            .strip_prefix('{')
-            .and_then(|rest| rest.split_once('}'))
-        {
-            labels.extend(
-                set.0
-                    .split(',')
-                    .filter_map(|pair| pair.split_once('='))
-                    .map(|p| p.0),
-            );
+        let labels = series.entry(&line[..end]).or_default();
+        let mut rest = line[end..].strip_prefix('{').unwrap_or_default();
+        while let Some((label, tail)) = rest.split_once("=\"") {
+            let (value, tail) = tail.split_once('"').expect("closed label value");
+            labels
+                .entry(label.trim_start_matches(','))
+                .or_default()
+                .insert(value);
+            if tail.starts_with('}') {
+                break;
+            }
+            rest = tail;
         }
     }
-    (names, labels)
+    series
 }
 
-/// Query and legend strings anywhere in the dashboard, including variables.
-fn collect<'a>(
-    value: &'a serde_json::Value,
-    queries: &mut Vec<&'a str>,
-    legends: &mut Vec<&'a str>,
-) {
+/// Each query in the dashboard, including variables, with its legend.
+fn collect<'a>(value: &'a serde_json::Value, queries: &mut Vec<(&'a str, Option<&'a str>)>) {
     match value {
         serde_json::Value::Object(map) => {
+            let legend = map.get("legendFormat").and_then(|legend| legend.as_str());
             for (key, value) in map {
                 match (key.as_str(), value.as_str()) {
-                    ("expr" | "definition", Some(text)) => queries.push(text),
-                    ("legendFormat", Some(text)) => legends.push(text),
-                    _ => collect(value, queries, legends),
+                    ("expr" | "definition", Some(query)) => queries.push((query, legend)),
+                    _ => collect(value, queries),
                 }
             }
         }
         serde_json::Value::Array(items) => {
             for item in items {
-                collect(item, queries, legends);
+                collect(item, queries);
             }
         }
         _ => {}
     }
 }
 
-fn metric_names(query: &str) -> impl Iterator<Item = &str> {
-    query
-        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == ':'))
-        .filter(|token| token.starts_with("kubecove_server_") || token.starts_with("process_"))
+#[derive(Default)]
+struct Query<'a> {
+    selectors: Vec<Selector<'a>>,
+    /// Labels in `by`, `without`, `on` and `ignoring` lists.
+    label_lists: Vec<&'a str>,
+    by: Vec<&'a str>,
+    aggregated: bool,
 }
 
-/// Labels in `by (...)` clauses.
-fn grouping_labels(query: &str) -> impl Iterator<Item = &str> {
-    query
-        .split("by (")
-        .skip(1)
-        .filter_map(|rest| rest.split_once(')'))
-        .flat_map(|(list, _)| list.split(','))
-        .map(str::trim)
+struct Selector<'a> {
+    metric: &'a str,
+    matchers: Vec<Matcher<'a>>,
 }
 
-/// Label names in `{...}` selectors, with the value of exact, literal matches.
-fn matchers(query: &str) -> Vec<(&str, Option<&str>)> {
-    let mut found = Vec::new();
-    for selector in query
-        .split('{')
-        .skip(1)
-        .filter_map(|rest| rest.split_once('}'))
-        .map(|(selector, _)| selector)
-    {
-        for matcher in selector.split(',').map(str::trim) {
-            let Some(at) = matcher.find(['=', '!']) else {
-                continue;
-            };
-            let (label, rest) = (matcher[..at].trim(), &matcher[at..]);
-            let value = rest
-                .strip_prefix('=')
-                .filter(|value| !value.starts_with('~'))
-                .map(|value| value.trim().trim_matches('"'))
-                .filter(|value| !value.contains('$'));
-            found.push((label, value));
+struct Matcher<'a> {
+    label: &'a str,
+    /// The value of an exact match that names no dashboard variable.
+    exact: Option<&'a str>,
+}
+
+/// Splits the `PromQL` subset the dashboard uses into selectors and label lists.
+/// Any identifier that is not a function, aggregation or operator counts as a
+/// metric, so a misspelled name fails the existence check.
+fn parse(query: &str) -> Query<'_> {
+    let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == ':';
+    let mut parsed = Query::default();
+    let mut rest = query;
+    while let Some(c) = rest.chars().next() {
+        if c == '{' {
+            let (body, tail) = rest[1..].split_once('}').expect("closed selector");
+            let selector = parsed.selectors.last_mut().expect("a metric before {");
+            selector.matchers = body
+                .split(',')
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(matcher)
+                .collect();
+            rest = tail;
+        } else if c == '[' {
+            rest = rest.split_once(']').expect("closed range").1;
+        } else if c.is_ascii_alphabetic() || c == '_' || c == ':' {
+            let (word, tail) = rest.split_at(rest.find(|c| !is_word(c)).unwrap_or(rest.len()));
+            let next = tail.trim_start();
+            let next_word = &next[..next.find(|c| !is_word(c)).unwrap_or(next.len())];
+            rest = tail;
+            if LABEL_LISTS.contains(&word) {
+                let (list, tail) = next
+                    .strip_prefix('(')
+                    .and_then(|list| list.split_once(')'))
+                    .expect("label list");
+                let labels = list.split(',').map(str::trim).filter(|l| !l.is_empty());
+                if word == "by" {
+                    parsed.by.extend(labels.clone());
+                }
+                parsed.label_lists.extend(labels);
+                rest = tail;
+            } else if next.starts_with('(') || LABEL_LISTS.contains(&next_word) {
+                parsed.aggregated |= AGGREGATIONS.contains(&word);
+            } else if !OPERATORS.contains(&word) {
+                parsed.selectors.push(Selector {
+                    metric: word,
+                    matchers: Vec::new(),
+                });
+            }
+        } else if c.is_ascii_digit() || c == '.' {
+            rest = rest.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.');
+        } else {
+            rest = &rest[c.len_utf8()..];
         }
     }
-    found
+    parsed
+}
+
+fn matcher(text: &str) -> Matcher<'_> {
+    let at = text.find(['=', '!']).expect("matcher operator");
+    let exact = text[at..]
+        .strip_prefix('=')
+        .filter(|value| !value.starts_with('~'))
+        .map(|value| value.trim().trim_matches('"'))
+        .filter(|value| !value.contains('$'));
+    Matcher {
+        label: text[..at].trim(),
+        exact,
+    }
 }
 
 fn legend_labels(legend: &str) -> impl Iterator<Item = &str> {
