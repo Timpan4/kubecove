@@ -74,6 +74,19 @@ fn remote_plaintext_and_incomplete_tls_configuration_are_rejected() {
 #[test]
 fn unknown_flags_invalid_grace_and_invalid_origins_fail_closed() {
     assert!(config(&["--unknown"]).is_err());
+    // The error reaches stderr, so a stray secret must not be echoed.
+    for (args, message) in [
+        (
+            &["--client-secret=s3cr3t"][..],
+            "unknown option: --client-secret",
+        ),
+        (
+            &["s3cr3t"][..],
+            "unexpected argument; options start with --",
+        ),
+    ] {
+        assert_eq!(config(args).err().as_deref(), Some(message));
+    }
     assert!(config(&["--session-grace", "-1"]).is_err());
     assert!(config(&["--session-grace", "18446744073709551615h"]).is_err());
     for origin in [

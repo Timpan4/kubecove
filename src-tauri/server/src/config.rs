@@ -110,7 +110,17 @@ impl Config {
                 "--session-grace" => {
                     config.grace = duration(&text(value(&mut args, flag)?)?, flag)?;
                 }
-                _ => return Err(format!("unknown option: {flag}")),
+                // A stray argument can be a misplaced secret, so echo at
+                // most an option name.
+                _ => {
+                    return Err(match flag.strip_prefix("--") {
+                        Some(name) => {
+                            let name = name.split('=').next().unwrap_or_default();
+                            format!("unknown option: --{name}")
+                        }
+                        None => "unexpected argument; options start with --".into(),
+                    })
+                }
             }
         }
         config.access = match (access_team, access_aud) {

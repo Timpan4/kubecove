@@ -32,7 +32,7 @@ Logs and metrics leave the server's trust boundary: they go to log collectors an
 - The startup login URL, `--quiet` and `--print-token` keep their stdout behavior.
 - `sign_in` covers token-mode login and the OIDC callback. Cloudflare Access signs users in before requests reach the server, so `session_opened` with its subject is the Access success record and `authentication_refused` records rejected assertions.
 - Successful and cancelled commands log at `debug`. Failed commands log at `warn`.
-- An error that stops the server is logged as `server_failed` in the selected format, with its message. Startup messages describe operator configuration such as ports and certificate paths, and the server printed them before this decision.
+- An error that stops the server after logging is configured is logged as `server_failed` in the selected format, with its message. Errors in arguments or `RUST_LOG` occur before that and print one `Error: ...` text line. Startup messages describe operator configuration such as ports and certificate paths, and the server printed them before this decision. An unknown argument echoes at most an option name, because it can be a misplaced secret.
 - The desktop app installs no subscriber.
 
 ### Metrics listener
