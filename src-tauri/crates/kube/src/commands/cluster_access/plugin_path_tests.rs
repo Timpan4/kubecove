@@ -150,6 +150,8 @@ async fn cancelled_shell_probe_releases_shared_initialization_for_retry() {
         "shell",
         "printf x > \"$STARTED\"\nread -r value < \"$WAIT\"",
     );
+    // A concurrent child can inherit this writer until its own exec closes it.
+    let _writer = fs::OpenOptions::new().write(true).open(&shell).unwrap();
     let cache = OnceCell::new();
     let mut config = config();
     {
@@ -157,7 +159,8 @@ async fn cancelled_shell_probe_releases_shared_initialization_for_retry() {
             cache
                 .get_or_init(|| async {
                     read_shell_path(
-                        Command::new(shell)
+                        Command::new("sh")
+                            .arg(shell)
                             .env("STARTED", &started)
                             .env("WAIT", &fifo),
                     )
@@ -204,7 +207,8 @@ async fn stalled_shell_deadline_caches_fallback_without_changing_exec_configurat
             cache
                 .get_or_init(|| async {
                     read_shell_path(
-                        Command::new(shell)
+                        Command::new("sh")
+                            .arg(shell)
                             .env("STARTED", &started)
                             .env("WAIT", &fifo),
                     )
