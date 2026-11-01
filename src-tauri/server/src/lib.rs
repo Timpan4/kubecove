@@ -4,6 +4,7 @@ pub mod channels;
 pub mod config;
 pub mod dispatch;
 pub mod files;
+pub mod observe;
 pub mod oidc;
 pub mod security;
 pub mod sessions;
@@ -28,11 +29,12 @@ use axum::{
     Extension, Json, Router,
 };
 use kubecove_lib::models::{AppError, AppErrorKind};
+use observe::{AuthMode, AuthRefusal, CloseReason, CommandOutcome, RequestRefusal, SignInFailure};
 use security::{authenticated, equal_secret, NetworkPolicy};
 use serde::Deserialize;
 use serde_json::Value;
 use sessions::Sessions;
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
@@ -45,6 +47,18 @@ pub struct AppState {
     pub credential_store: String,
     pub access: Option<Arc<CloudflareAccess>>,
     pub oidc: Option<Arc<oidc::Oidc>>,
+}
+
+impl AppState {
+    pub fn auth_mode(&self) -> AuthMode {
+        if self.oidc.is_some() {
+            AuthMode::Oidc
+        } else if self.access.is_some() {
+            AuthMode::CloudflareAccess
+        } else {
+            AuthMode::Token
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -112,13 +126,26 @@ async fn guard(
     let path = request.uri().path();
     let asset_request = path.starts_with("/assets/");
     let needs_origin = request.method() == axum::http::Method::POST || path == "/api/v1/channels";
-    if ((state.access.is_some() || state.oidc.is_some())
-        && needs_origin
-        && !request.headers().contains_key(header::ORIGIN))
-        || !state
-            .policy
-            .check(request.headers(), needs_origin, &state.token)
-    {
+    let checked = state
+        .policy
+        .check(request.headers(), needs_origin, &state.token)
+        .and_then(|()| {
+            if (state.access.is_some() || state.oidc.is_some())
+                && needs_origin
+                && !request.headers().contains_key(header::ORIGIN)
+            {
+                Err(RequestRefusal::Origin)
+            } else {
+                Ok(())
+            }
+        });
+    if let Err(reason) = checked {
+        observe::request_refused(
+            reason,
+            request.method(),
+            request.headers().get(header::HOST),
+            request.headers().get(header::ORIGIN),
+        );
         return ApiError::new(
             StatusCode::FORBIDDEN,
             "request Host or Origin is not allowed",
@@ -141,7 +168,11 @@ async fn guard(
                         .insert(AuthenticationRevoked(session.revoked));
                     request.extensions_mut().insert(session.credential);
                 }
-                Err(error) => return error.into_response(),
+                Err(error) => {
+                    let carried = names_cookie(request.headers(), oidc::AUTH_COOKIE);
+                    observe::authentication_refused(AuthMode::Oidc, refusal(&error, carried));
+                    return error.into_response();
+                }
             }
         }
     } else if let Some(access) = &state.access {
@@ -154,7 +185,14 @@ async fn guard(
                 Ok(identity) => {
                     request.extensions_mut().insert(identity);
                 }
-                Err(error) => return error.into_response(),
+                Err(error) => {
+                    let carried = request.headers().contains_key(access::ASSERTION_HEADER);
+                    observe::authentication_refused(
+                        AuthMode::CloudflareAccess,
+                        refusal(&error, carried),
+                    );
+                    return error.into_response();
+                }
             }
         }
     } else if path.starts_with("/api/")
@@ -162,6 +200,16 @@ async fn guard(
         && path != "/api/v1/auth"
         && !authenticated(request.headers(), &state.token)
     {
+        let carried = request.headers().contains_key(header::AUTHORIZATION)
+            || names_cookie(request.headers(), security::COOKIE_NAME);
+        observe::authentication_refused(
+            AuthMode::Token,
+            if carried {
+                AuthRefusal::Invalid
+            } else {
+                AuthRefusal::Missing
+            },
+        );
         return ApiError::new(
             StatusCode::UNAUTHORIZED,
             "authentication required",
@@ -272,7 +320,7 @@ async fn oidc_logout(
             .await
             .is_ok()
         {
-            state.sessions.close(resume).await?;
+            state.sessions.close(resume, CloseReason::Logout).await?;
         }
     }
     let mut response = Json(true).into_response();
@@ -305,11 +353,15 @@ async fn login(
             .as_deref()
             .is_some_and(|token| equal_secret(token, &state.token))
     {
+        observe::sign_in_failed(AuthMode::Token, SignInFailure::InvalidToken);
         return Err(ApiError::new(
             StatusCode::UNAUTHORIZED,
             "invalid login token",
             AppErrorKind::Forbidden,
         ));
+    }
+    if state.auth_mode() == AuthMode::Token {
+        observe::sign_in_succeeded(AuthMode::Token, None);
     }
     let session = state
         .sessions
@@ -345,7 +397,10 @@ async fn login(
             if let Err(error) = activation {
                 // A session nobody can use must not hold a slot until it expires.
                 if opened {
-                    let _ = state.sessions.close(&owner.resume_token).await;
+                    let _ = state
+                        .sessions
+                        .close(&owner.resume_token, CloseReason::ActivationFailed)
+                        .await;
                 }
                 return Err(error);
             }
@@ -395,14 +450,29 @@ async fn invoke(
         .owner_as(session_header(&headers)?, access_subject(identity.as_ref()))
         .await?;
     let _request = owner.request_gate.read().await;
-    tokio::select! {
+    let started = Instant::now();
+    let (outcome, result) = tokio::select! {
         biased;
-        () = owner.ended.cancelled() => Err(ApiError::new(StatusCode::CONFLICT, "session opened elsewhere or expired", AppErrorKind::Session)),
-        () = authentication_ended(identity.as_ref(), revoked.as_ref()) => Err(ApiError::new(StatusCode::UNAUTHORIZED, "authentication expired or was revoked", AppErrorKind::Forbidden)),
-        result = dispatch::dispatch(&owner.backend, &owner.channels, &command, &args) => {
-            Ok(([(header::CONTENT_TYPE, "application/json")], result?).into_response())
+        () = owner.ended.cancelled() => (
+            CommandOutcome::SessionEnded,
+            Err(ApiError::new(StatusCode::CONFLICT, "session opened elsewhere or expired", AppErrorKind::Session)),
+        ),
+        () = authentication_ended(identity.as_ref(), revoked.as_ref()) => (
+            CommandOutcome::AuthenticationEnded,
+            Err(ApiError::new(StatusCode::UNAUTHORIZED, "authentication expired or was revoked", AppErrorKind::Forbidden)),
+        ),
+        result = dispatch::dispatch(&owner.backend, &owner.channels, &command, &args) => match result {
+            Ok(body) => (CommandOutcome::Ok, Ok(body)),
+            Err(error) => (CommandOutcome::of_error(error.kind), Err(ApiError::from(error))),
         },
-    }
+    };
+    observe::command_completed(
+        owner.session_id,
+        dispatch::declared_command(&command),
+        outcome,
+        started.elapsed(),
+    );
+    result.map(|body| ([(header::CONTENT_TYPE, "application/json")], body).into_response())
 }
 
 /// Completes when the caller's access expires or its authentication is revoked; never when
@@ -450,8 +520,32 @@ async fn close_session(
         .sessions
         .owner_as(resume, access_subject(identity.as_ref()))
         .await?;
-    state.sessions.close(resume).await?;
+    state.sessions.close(resume, CloseReason::Client).await?;
     Ok(Json(true))
+}
+
+/// Whether the request names `name` in a Cookie header, whatever its value.
+fn names_cookie(headers: &HeaderMap, name: &str) -> bool {
+    headers.get_all(header::COOKIE).iter().any(|cookie| {
+        cookie.to_str().is_ok_and(|cookie| {
+            cookie.split(';').any(|entry| {
+                entry
+                    .trim()
+                    .split_once('=')
+                    .is_some_and(|(key, _)| key == name)
+            })
+        })
+    })
+}
+
+fn refusal(error: &ApiError, carried: bool) -> AuthRefusal {
+    if error.0 == StatusCode::SERVICE_UNAVAILABLE {
+        AuthRefusal::Unavailable
+    } else if carried {
+        AuthRefusal::Invalid
+    } else {
+        AuthRefusal::Missing
+    }
 }
 
 fn access_subject(identity: Option<&Extension<AccessIdentity>>) -> Option<&str> {

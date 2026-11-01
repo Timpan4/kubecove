@@ -124,6 +124,12 @@ A disconnected client can resume its matching session within the grace window, w
 
 Stop the server with Ctrl+C or the host's service manager. Shutdown closes live sessions and forwards. To upgrade, stop the server, replace the executable from a reviewed release, and start it again. Keep the data directory.
 
+## Logs
+
+The server logs session lifecycle, sign-in results, refused requests, OIDC token renewals and failed commands to stderr. Add `--log-format json` to write one JSON object per line for a log collector; the default is plain text. Each line has an `event` field, such as `session_opened`, `sign_in` or `request_refused`, and a random `session_id` that is unrelated to any credential.
+
+`RUST_LOG` sets the level, for example `RUST_LOG=kubecove_server=debug` to also log successful commands and the Host and Origin values of refused requests. Logs never contain tokens, cookies, kubeconfig contents or Secret data. Raising other crates to `debug` can log Kubernetes request paths, which name namespaces and resources. The token-mode login URL still goes to stdout; use `--quiet` to suppress it in service logs.
+
 ## Security and support boundaries
 
 - Non-loopback TCP requires `--allow-remote` and TLS. Unix sockets (`--socket`) use mode `0600`, cannot be combined with TLS or remote TCP, and need an exact `--public-origin` for browser access.

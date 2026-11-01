@@ -130,6 +130,27 @@ macro_rules! http_dispatch {
 
 kubecove_lib::models::command_contract!(http_dispatch);
 
+macro_rules! declared_commands {
+    ($(
+        $transport:ident $mode:ident fn $name:ident($($key:ident: $ty:ty),* $(,)?)
+            $(with $($host:ident $(<$managed:ty>)?),+)?;
+    )*) => {
+        const DECLARED_COMMANDS: &[&str] = &[$(stringify!($name)),*];
+    };
+}
+
+kubecove_lib::models::command_contract!(declared_commands);
+
+/// The declared name for observations, so a request path cannot add new
+/// label or log values.
+pub fn declared_command(command: &str) -> &'static str {
+    DECLARED_COMMANDS
+        .iter()
+        .find(|declared| **declared == command)
+        .copied()
+        .unwrap_or("unknown")
+}
+
 #[cfg(test)]
 #[path = "dispatch_tests.rs"]
 mod tests;

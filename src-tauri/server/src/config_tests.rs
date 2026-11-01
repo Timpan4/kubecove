@@ -8,6 +8,21 @@ fn quiet_startup_cannot_be_combined_with_print_token() {
     assert!(config(&["--quiet", "--print-token"]).is_err());
 }
 
+#[test]
+fn log_format_defaults_to_text_and_accepts_only_text_or_json() {
+    assert_eq!(config(&[]).unwrap().log_format, LogFormat::Text);
+    assert_eq!(
+        config(&["--log-format", "json"]).unwrap().log_format,
+        LogFormat::Json
+    );
+    assert_eq!(
+        config(&["--log-format", "text"]).unwrap().log_format,
+        LogFormat::Text
+    );
+    assert!(config(&["--log-format", "JSON"]).is_err());
+    assert!(config(&["--log-format"]).is_err());
+}
+
 fn config(args: &[&str]) -> Result<Config, String> {
     Config::parse(args.iter().map(std::ffi::OsString::from))
 }

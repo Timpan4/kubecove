@@ -1,6 +1,7 @@
 use kubecove_server::{
     config::{Config, HELP},
     files::write_startup_token,
+    observe::{self, AuthMode},
     router,
     security::random_token,
     sessions::Sessions,
@@ -32,6 +33,12 @@ async fn run() -> io::Result<()> {
         return Ok(());
     }
     let mut config = Config::parse(args).map_err(io::Error::other)?;
+    tracing::subscriber::set_global_default(observe::subscriber(
+        config.log_format,
+        observe::filter_from_env().map_err(io::Error::other)?,
+        io::stderr,
+    ))
+    .map_err(io::Error::other)?;
     let oidc = match config.oidc.take() {
         Some(oidc) => Some(Arc::new(
             kubecove_server::oidc::Oidc::discover(
@@ -56,6 +63,13 @@ async fn run() -> io::Result<()> {
     } else {
         "Cloudflare Access"
     };
+    let auth_mode = if oidc.is_some() {
+        AuthMode::Oidc
+    } else if config.access.is_some() {
+        AuthMode::CloudflareAccess
+    } else {
+        AuthMode::Token
+    };
     let token = if config.access.is_some() || oidc.is_some() {
         String::new()
     } else {
@@ -70,7 +84,7 @@ async fn run() -> io::Result<()> {
             .map_err(io::Error::other)?
             .kind;
     kubecove_server::security::install_tls_provider();
-    let sessions = Arc::new(Sessions::new(config.grace));
+    let sessions = Arc::new(Sessions::new(config.grace, auth_mode));
     if let Some(path) = &config.socket {
         #[cfg(unix)]
         {
@@ -95,6 +109,7 @@ async fn run() -> io::Result<()> {
                 access,
                 oidc,
             });
+            observe::server_started(auth_mode, "unix");
             axum::serve(listener, router(state))
                 .with_graceful_shutdown(shutdown(Arc::clone(&sessions)))
                 .await?;
@@ -123,6 +138,14 @@ async fn run() -> io::Result<()> {
             access,
             oidc,
         });
+        observe::server_started(
+            auth_mode,
+            if config.tls_cert.is_some() {
+                "tls"
+            } else {
+                "tcp"
+            },
+        );
         if let (Some(cert), Some(key)) = (&config.tls_cert, &config.tls_key) {
             let tls = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
             let handle = axum_server::Handle::new();

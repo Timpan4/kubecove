@@ -28,11 +28,135 @@ pub(super) fn state() -> Arc<AppState> {
             origins: vec!["http://localhost:1234".into()],
             secure: false,
         },
-        sessions: Arc::new(Sessions::new(Duration::from_mins(5))),
+        sessions: Arc::new(Sessions::new(Duration::from_mins(5), AuthMode::Token)),
         credential_store: "encryptedFile".into(),
         access: None,
         oidc: None,
     })
+}
+
+// Failure modes: the startup token, cookie or resume token reaches a log line;
+// a lifecycle event is missing or repeated; a request path becomes a command
+// value; a refused request is not recorded; a line is not one JSON object.
+#[tokio::test]
+async fn token_session_lifecycle_is_logged_without_credentials() {
+    let logs = crate::observe::capture::Captured::default();
+    let _logging = logs.install();
+    let app = router(state());
+    let wrong = post("/api/v1/session")
+        .body(Body::from(json!({"token": "wrong-token"}).to_string()))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(wrong).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let response = app
+        .clone()
+        .oneshot(
+            post("/api/v1/session")
+                .body(Body::from(json!({"token": "test-token"}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let cookie = response.headers()[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let value: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let resume = value["resumeToken"].as_str().unwrap().to_owned();
+    let resumed = post("/api/v1/session")
+        .header(header::COOKIE, &cookie)
+        .body(Body::from(json!({"resumeToken": resume}).to_string()))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(resumed).await.unwrap().status(),
+        StatusCode::OK
+    );
+    for command in ["get_backend_diagnostics", "attacker_chosen_command_name"] {
+        let request = post(&format!("/api/v1/invoke/{command}"))
+            .header(header::COOKIE, &cookie)
+            .header("x-kubecove-session", &resume)
+            .body(Body::from("{}"))
+            .unwrap();
+        app.clone().oneshot(request).await.unwrap();
+    }
+    let unauthenticated = post("/api/v1/session/close").body(Body::empty()).unwrap();
+    assert_eq!(
+        app.clone().oneshot(unauthenticated).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let mut rebound = post("/api/v1/session").body(Body::from("{}")).unwrap();
+    rebound
+        .headers_mut()
+        .insert(header::HOST, "evil.example".parse().unwrap());
+    assert_eq!(
+        app.clone().oneshot(rebound).await.unwrap().status(),
+        StatusCode::FORBIDDEN
+    );
+    let close = post("/api/v1/session/close")
+        .header(header::COOKIE, &cookie)
+        .header("x-kubecove-session", &resume)
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(app.oneshot(close).await.unwrap().status(), StatusCode::OK);
+
+    let text = logs.text();
+    for secret in [
+        "test-token",
+        "wrong-token",
+        resume.as_str(),
+        "attacker_chosen_command_name",
+    ] {
+        assert!(!text.contains(secret), "{secret} reached the logs");
+    }
+    let sign_ins = logs.named("sign_in");
+    assert_eq!(
+        sign_ins
+            .iter()
+            .map(|event| (event["outcome"].clone(), event["reason"].clone()))
+            .collect::<Vec<_>>(),
+        [
+            (json!("failure"), json!("invalid_token")),
+            (json!("success"), Value::Null),
+            (json!("success"), Value::Null),
+        ]
+    );
+    let opened = logs.named("session_opened");
+    let resumed = logs.named("session_resumed");
+    let closed = logs.named("session_closed");
+    assert_eq!((opened.len(), resumed.len(), closed.len()), (1, 1, 1));
+    let session = &opened[0]["session_id"];
+    assert_eq!(opened[0]["auth_mode"], "token");
+    assert!(opened[0].get("subject").is_none());
+    assert_eq!(&resumed[0]["session_id"], session);
+    assert_eq!(&closed[0]["session_id"], session);
+    assert_eq!(closed[0]["reason"], "client");
+    let commands = logs.named("command_completed");
+    assert_eq!(
+        commands
+            .iter()
+            .map(|event| (event["command"].clone(), event["outcome"].clone()))
+            .collect::<Vec<_>>(),
+        [
+            (json!("get_backend_diagnostics"), json!("ok")),
+            (json!("unknown"), json!("error")),
+        ]
+    );
+    assert!(commands.iter().all(|event| &event["session_id"] == session));
+    assert_eq!(commands[1]["error_kind"], "unsupportedOperation");
+    let refused = logs.named("authentication_refused");
+    assert_eq!(refused.len(), 1);
+    assert_eq!(refused[0]["reason"], "missing");
+    let refused = logs.named("request_refused");
+    assert_eq!(refused.len(), 1);
+    assert_eq!(refused[0]["reason"], "host");
+    assert_eq!(refused[0]["host"], "evil.example");
 }
 
 // API-only builds must retain authentication and Host checks while removing UI routes.

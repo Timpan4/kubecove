@@ -21,7 +21,7 @@ fn oidc_state() -> Arc<AppState> {
             origins: vec!["https://app.example".into()],
             secure: true,
         },
-        sessions: Arc::new(Sessions::new(Duration::from_mins(5))),
+        sessions: Arc::new(Sessions::new(Duration::from_mins(5), AuthMode::Oidc)),
         credential_store: "encryptedFile".into(),
         access: None,
         oidc: Some(Arc::new(
@@ -314,7 +314,7 @@ async fn oidc_browser_fixture() {
             origins: vec![origin.clone()],
             secure: false,
         },
-        sessions: Arc::new(Sessions::new(Duration::from_mins(5))),
+        sessions: Arc::new(Sessions::new(Duration::from_mins(5), AuthMode::Oidc)),
         credential_store,
     });
     let finished = Arc::new(tokio::sync::Notify::new());

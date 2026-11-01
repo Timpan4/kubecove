@@ -1,3 +1,4 @@
+use crate::observe::RequestRefusal;
 use axum::http::{header, HeaderMap};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use std::io;
@@ -59,19 +60,24 @@ impl NetworkPolicy {
         format!("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' {websocket_scheme}://{host}; img-src 'self' data:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
     }
 
-    pub fn check(&self, headers: &HeaderMap, check_origin: bool, token: &str) -> bool {
+    pub fn check(
+        &self,
+        headers: &HeaderMap,
+        check_origin: bool,
+        token: &str,
+    ) -> Result<(), RequestRefusal> {
         let mut hosts = headers.get_all(header::HOST).iter();
         let Some(host) = hosts.next().and_then(|host| host.to_str().ok()) else {
-            return false;
+            return Err(RequestRefusal::Host);
         };
         if hosts.next().is_some() || !self.hosts.iter().any(|allowed| allowed == host) {
-            return false;
+            return Err(RequestRefusal::Host);
         }
         if !check_origin {
-            return true;
+            return Ok(());
         }
         let mut origins = headers.get_all(header::ORIGIN).iter();
-        match origins.next() {
+        let allowed = match origins.next() {
             Some(origin) => {
                 origins.next().is_none()
                     && origin
@@ -80,6 +86,11 @@ impl NetworkPolicy {
             }
             // Native clients cannot use a browser cookie to bypass Origin checks.
             None => bearer(headers).is_some_and(|value| equal_secret(value, token)),
+        };
+        if allowed {
+            Ok(())
+        } else {
+            Err(RequestRefusal::Origin)
         }
     }
 
@@ -125,17 +136,29 @@ mod tests {
     #[test]
     fn host_rebinding_duplicate_hosts_and_cross_origin_are_rejected() {
         let mut headers = browser_headers();
-        assert!(policy().check(&headers, true, "secret"));
+        assert_eq!(policy().check(&headers, true, "secret"), Ok(()));
         headers.insert(header::HOST, "evil.example:1234".parse().unwrap());
-        assert!(!policy().check(&headers, true, "secret"));
+        assert_eq!(
+            policy().check(&headers, true, "secret"),
+            Err(RequestRefusal::Host)
+        );
         headers = browser_headers();
         headers.append(header::HOST, "localhost:1234".parse().unwrap());
-        assert!(!policy().check(&headers, true, "secret"));
+        assert_eq!(
+            policy().check(&headers, true, "secret"),
+            Err(RequestRefusal::Host)
+        );
         headers = browser_headers();
         headers.insert(header::ORIGIN, "http://evil.example".parse().unwrap());
-        assert!(!policy().check(&headers, true, "secret"));
+        assert_eq!(
+            policy().check(&headers, true, "secret"),
+            Err(RequestRefusal::Origin)
+        );
         headers.insert(header::AUTHORIZATION, "Bearer secret".parse().unwrap());
-        assert!(!policy().check(&headers, true, "secret"));
+        assert_eq!(
+            policy().check(&headers, true, "secret"),
+            Err(RequestRefusal::Origin)
+        );
     }
 
     #[test]
@@ -143,9 +166,12 @@ mod tests {
         let mut headers = browser_headers();
         headers.remove(header::ORIGIN);
         headers.insert(header::COOKIE, "kubecove_session=secret".parse().unwrap());
-        assert!(!policy().check(&headers, true, "secret"));
+        assert_eq!(
+            policy().check(&headers, true, "secret"),
+            Err(RequestRefusal::Origin)
+        );
         headers.insert(header::AUTHORIZATION, "Bearer secret".parse().unwrap());
-        assert!(policy().check(&headers, true, "secret"));
+        assert_eq!(policy().check(&headers, true, "secret"), Ok(()));
     }
 
     #[test]

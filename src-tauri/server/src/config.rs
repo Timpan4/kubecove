@@ -1,4 +1,6 @@
-use crate::{access::CloudflareAccess, oidc::OidcConfig, security::NetworkPolicy};
+use crate::{
+    access::CloudflareAccess, observe::LogFormat, oidc::OidcConfig, security::NetworkPolicy,
+};
 use axum::http::Uri;
 use std::{ffi::OsString, net::SocketAddr, path::PathBuf, time::Duration};
 
@@ -18,6 +20,7 @@ pub const HELP: &str = "kubecove-server [OPTIONS]\n\
   --oidc-client-secret-file <PATH>  Optional confidential-client secret\n\
   --oidc-login-timeout <TIME>  Required OIDC transaction and network deadline\n\
   --oidc-kubernetes-credentials <AUD>  Call Kubernetes with the user's ID token; AUD is the API server's OIDC client ID\n\
+  --log-format <FORMAT>  text (default) or json, one object per line on stderr; RUST_LOG sets levels\n\
   --print-token          Also print the token on startup\n\
   --quiet                Suppress the startup login URL in service logs\n\
   --help                 Show this help";
@@ -33,6 +36,7 @@ pub struct Config {
     pub public_origin: Option<String>,
     pub print_token: bool,
     pub quiet: bool,
+    pub log_format: LogFormat,
     pub access: Option<CloudflareAccess>,
     pub oidc: Option<OidcConfig>,
 }
@@ -51,6 +55,7 @@ impl Config {
             public_origin: None,
             print_token: false,
             quiet: false,
+            log_format: LogFormat::Text,
             access: None,
             oidc: None,
         };
@@ -74,6 +79,9 @@ impl Config {
                         .map_err(|_| "--listen requires IP:PORT")?;
                 }
                 "--socket" => config.socket = Some(value(&mut args, flag)?.into()),
+                "--log-format" => {
+                    config.log_format = LogFormat::parse(&text(value(&mut args, flag)?)?)?;
+                }
                 "--data-dir" => config.data_dir = value(&mut args, flag)?.into(),
                 "--tls-cert" => config.tls_cert = Some(value(&mut args, flag)?.into()),
                 "--tls-key" => config.tls_key = Some(value(&mut args, flag)?.into()),

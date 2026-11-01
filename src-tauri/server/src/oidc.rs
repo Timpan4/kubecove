@@ -1,3 +1,4 @@
+use crate::observe::{self, AuthMode};
 use crate::security::{equal_secret, install_tls_provider};
 use crate::{access::AccessIdentity, ApiError};
 use axum::{
@@ -258,13 +259,20 @@ impl Oidc {
         headers: &HeaderMap,
         query: Callback,
     ) -> Result<Response, ApiError> {
-        match self.callback_inner(headers, query).await {
-            Ok(verified) => match self.callback_success(verified) {
-                Ok(response) => Ok(response),
-                Err(_) => Ok(callback_failure(false)),
-            },
-            Err(error) => Ok(callback_failure(matches!(error.0, StatusCode::SEE_OTHER))),
+        let verified = match self.callback_inner(headers, query).await {
+            Ok(verified) => verified,
+            Err(error) => {
+                observe::oidc_callback_failed(error.0);
+                return Ok(callback_failure(error.0 == StatusCode::SEE_OTHER));
+            }
+        };
+        let subject = format!("{}\u{1f}{}", self.config.issuer, verified.subject);
+        let response = self.callback_success(verified);
+        match &response {
+            Ok(_) => observe::sign_in_succeeded(AuthMode::Oidc, Some(&subject)),
+            Err(error) => observe::oidc_callback_failed(error.0),
         }
+        Ok(response.unwrap_or_else(|_| callback_failure(false)))
     }
 
     fn callback_success(&self, verified: Verified) -> Result<Response, ApiError> {
@@ -364,7 +372,11 @@ impl Oidc {
                 move |request| send_request(http.clone(), request)
             })
             .await
-            .map_err(|_| oidc_unavailable())?;
+            .map_err(|error| match error {
+                // The provider answered and refused this code, for example a replay.
+                openidconnect::RequestTokenError::ServerResponse(_) => invalid_callback(),
+                _ => oidc_unavailable(),
+            })?;
         let id_token = response.id_token().ok_or_else(invalid_callback)?;
         let nonce = Nonce::new(transaction.nonce);
         let claims = id_token
@@ -775,6 +787,9 @@ fn test_metadata(issuer: &str) -> Result<CoreProviderMetadata, String> {
     .map_err(|_| "invalid test provider metadata".into())
 }
 
+#[cfg(test)]
+#[path = "oidc_log_tests.rs"]
+mod log_tests;
 #[cfg(test)]
 #[path = "oidc_mock.rs"]
 pub(crate) mod mock;
