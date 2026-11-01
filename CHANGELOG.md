@@ -10,6 +10,7 @@ should mirror the matching version section.
 
 ### Fixed
 
+- Run required checks for automated release PRs (#623).
 - Recover desktop credential plugin paths (#620).
 
 ## 0.12.12 - 2026-10-30
