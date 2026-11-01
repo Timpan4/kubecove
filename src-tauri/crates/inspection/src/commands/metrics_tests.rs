@@ -20,6 +20,18 @@ async fn metrics_api_is_found_beside_an_api_with_null_verbs() {
     assert!(has_metrics_api(client).await.expect("metrics discovery"));
 }
 
+// Failure mode: a registered metrics API whose server is down (metrics-server
+// not running) fails the metrics read with a raw error instead of reading as
+// unavailable.
+#[tokio::test]
+async fn metrics_api_with_a_stopped_server_reads_as_absent() {
+    use kubecove_kube::commands::discovery_fixture;
+    let client =
+        discovery_fixture::client_with_unavailable_groups(&[], &[("metrics.k8s.io", "v1beta1")]);
+
+    assert!(!has_metrics_api(client).await.expect("metrics discovery"));
+}
+
 #[test]
 fn workload_overflow_stays_unavailable_after_later_valid_samples() {
     let mut pods = Vec::new();

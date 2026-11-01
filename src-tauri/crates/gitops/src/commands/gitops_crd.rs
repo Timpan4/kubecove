@@ -7,9 +7,9 @@ use chrono::Utc;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
     api::{Api, ApiResource, DynamicObject},
-    discovery::Discovery,
     Client,
 };
+use kubecove_kube::commands::discover_groups;
 use serde_json::Value;
 
 use crate::models::{YamlEncoding, YamlViewMode};
@@ -24,22 +24,15 @@ pub(crate) fn object_age(metadata: &ObjectMeta) -> String {
     )
 }
 
-/// Discovers only `groups`. Per-group discovery keeps an unrelated aggregated API from
-/// failing the read: kube's aggregated parser rejects the `"verbs": null` that some
-/// publish (`subresources.kubevirt.io`), while the per-group parser reads it as empty.
+/// The recommended resources of `groups`, through `discover_groups`.
 pub(crate) async fn discover_api_resources(
     client: &Client,
     groups: &[&str],
 ) -> Result<Vec<ApiResource>, AppError> {
-    let discovery = Discovery::new(client.clone())
-        .filter(groups)
-        .run()
-        .await
-        .map_err(AppError::from)?;
     let mut resources = Vec::new();
-    for group in discovery.groups() {
+    for group in discover_groups(client, groups).await? {
         for (api_resource, _) in group.recommended_resources() {
-            resources.push(api_resource.clone());
+            resources.push(api_resource);
         }
     }
     Ok(resources)

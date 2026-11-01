@@ -8,9 +8,10 @@ use crate::models::{
 };
 use kube::{
     api::{Api, DynamicObject},
-    discovery::{verbs, Discovery, Scope},
+    discovery::{verbs, Scope},
     Client, Error as KubeError,
 };
+use kubecove_kube::commands::discover_groups;
 use kubecove_kube::commands::dynamic_projection::{
     api_resource_from_discovered, dynamic_resource_summary,
 };
@@ -18,22 +19,23 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const HELM_RELEASE_LABEL: &str = "helm.sh/release";
 const CONSERVATIVE_SCAN_WARNING: &str =
-    "Label-only reconciliation scans explicit Helm release labels for manifest kinds and common namespaced resource kinds; it does not exhaustively scan every CRD.";
-const COMMON_LABEL_SCAN_KINDS: &[&str] = &[
-    "Pod",
-    "Deployment",
-    "StatefulSet",
-    "DaemonSet",
-    "Service",
-    "Ingress",
-    "ConfigMap",
-    "Secret",
-    "PersistentVolumeClaim",
-    "Job",
-    "CronJob",
+    "Label-only reconciliation scans explicit Helm release labels for manifest kinds and common built-in namespaced kinds; it does not exhaustively scan every API group or CRD.";
+/// Built-in kinds the label scan covers even when the manifest omits them, as
+/// `(group, kind)`. A same-named kind in another group is scanned only when the
+/// manifest references it.
+const COMMON_LABEL_SCAN_KINDS: &[(&str, &str)] = &[
+    ("", "Pod"),
+    ("apps", "Deployment"),
+    ("apps", "StatefulSet"),
+    ("apps", "DaemonSet"),
+    ("", "Service"),
+    ("networking.k8s.io", "Ingress"),
+    ("", "ConfigMap"),
+    ("", "Secret"),
+    ("", "PersistentVolumeClaim"),
+    ("batch", "Job"),
+    ("batch", "CronJob"),
 ];
-/// API groups that serve `COMMON_LABEL_SCAN_KINDS`.
-const COMMON_LABEL_SCAN_GROUPS: &[&str] = &["", "apps", "batch", "networking.k8s.io"];
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct ResourceKey {
@@ -85,26 +87,24 @@ pub async fn get_helm_release_reconciliation(
     })
 }
 
-/// Discovers only the groups the manifest and the label scan use. kube's aggregated parser
-/// fails the whole read when an unrelated aggregated API publishes `"verbs": null`
-/// (`subresources.kubevirt.io` does); the per-group parser reads it as empty.
+/// Discovers only the groups the manifest and the label scan use. A manifest
+/// group that is not served or is unavailable is left out, so only its own rows
+/// read as unavailable.
 async fn discovered_resources(
     client: Client,
     manifest_refs: &[HelmManifestResourceSummary],
 ) -> Result<Vec<DiscoveredResourceKind>, AppError> {
-    let mut groups: BTreeSet<&str> = COMMON_LABEL_SCAN_GROUPS.iter().copied().collect();
+    let mut groups: BTreeSet<&str> = COMMON_LABEL_SCAN_KINDS
+        .iter()
+        .map(|(group, _)| *group)
+        .collect();
     groups.extend(manifest_refs.iter().filter_map(|manifest_ref| {
         let api_version = manifest_ref.api_version.as_deref()?;
         Some(api_version.rsplit_once('/').map_or("", |(group, _)| group))
     }));
     let groups: Vec<&str> = groups.into_iter().collect();
-    let discovery = Discovery::new(client)
-        .filter(&groups)
-        .run()
-        .await
-        .map_err(AppError::from)?;
     let mut kinds = Vec::new();
-    for group in discovery.groups() {
+    for group in discover_groups(&client, &groups).await? {
         for (api_resource, capabilities) in group.recommended_resources() {
             if !capabilities.supports_operation(verbs::GET)
                 && !capabilities.supports_operation(verbs::LIST)
@@ -478,11 +478,11 @@ fn conservative_label_scan_kinds(
     discovered: &[DiscoveredResourceKind],
     manifest_scan_kinds: &BTreeSet<(String, String)>,
 ) -> Vec<DiscoveredResourceKind> {
-    let common: BTreeSet<&str> = COMMON_LABEL_SCAN_KINDS.iter().copied().collect();
     let mut by_key = BTreeMap::new();
     for kind in discovered {
+        let common = COMMON_LABEL_SCAN_KINDS.contains(&(kind.group.as_str(), kind.kind.as_str()));
         if manifest_scan_kinds.contains(&(kind.api_version.clone(), kind.kind.clone()))
-            || (kind.namespaced && common.contains(kind.kind.as_str()))
+            || (kind.namespaced && common)
         {
             by_key.insert((kind.api_version.clone(), kind.kind.clone()), kind.clone());
         }

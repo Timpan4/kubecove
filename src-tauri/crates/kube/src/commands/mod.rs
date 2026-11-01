@@ -1,3 +1,4 @@
+mod api_discovery;
 pub mod builtin_kinds;
 pub mod cancellation;
 mod cluster_access;
@@ -13,6 +14,7 @@ pub mod kubeconfig;
 pub mod list_projection;
 pub mod live_store;
 
+pub use api_discovery::discover_groups;
 pub use cancellation::{cancel_backend_requests, BackendCancellationRegistry};
 pub use cluster_access::{ClientIntent, ClusterAccess};
 #[cfg(feature = "test-support")]

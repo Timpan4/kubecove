@@ -26,14 +26,25 @@ pub struct FixtureKind {
 /// A client whose discovery requests return `kinds` plus the null-verbs
 /// aggregated API, in both aggregated and per-group form.
 pub fn client(kinds: &[FixtureKind]) -> Client {
+    client_with_unavailable_groups(kinds, &[])
+}
+
+/// Like [`client`], but the per-group list also names each `(group, version)`
+/// in `unavailable`, and requests for those answer 503, as kube-apiserver does
+/// when an aggregated API server is down.
+pub fn client_with_unavailable_groups(
+    kinds: &[FixtureKind],
+    unavailable: &[(&'static str, &'static str)],
+) -> Client {
     let kinds = kinds.to_vec();
+    let unavailable = unavailable.to_vec();
     let service = tower::service_fn(move |request: http::Request<Body>| {
         let aggregated = request
             .headers()
             .get(http::header::ACCEPT)
             .and_then(|accept| accept.to_str().ok())
             .is_some_and(|accept| accept.contains("apidiscovery.k8s.io"));
-        let (status, body) = route(request.uri().path(), aggregated, &kinds);
+        let (status, body) = route(request.uri().path(), aggregated, &kinds, &unavailable);
         let response = http::Response::builder()
             .status(status)
             .header(http::header::CONTENT_TYPE, "application/json")
@@ -44,11 +55,16 @@ pub fn client(kinds: &[FixtureKind]) -> Client {
     Client::new(service, "default")
 }
 
-fn route(path: &str, aggregated: bool, kinds: &[FixtureKind]) -> (u16, Value) {
+fn route(
+    path: &str,
+    aggregated: bool,
+    kinds: &[FixtureKind],
+    unavailable: &[(&'static str, &'static str)],
+) -> (u16, Value) {
     match (path, aggregated) {
         ("/apis", true) => (200, aggregated_list(kinds, false)),
         ("/api", true) => (200, aggregated_list(kinds, true)),
-        ("/apis", false) => (200, group_list(kinds)),
+        ("/apis", false) => (200, group_list(kinds, unavailable)),
         ("/api", false) => (200, json!({ "kind": "APIVersions", "versions": ["v1"] })),
         ("/api/v1", false) => (200, resource_list("v1", kinds_in(kinds, "", "v1"))),
         (path, false) => match path
@@ -56,6 +72,9 @@ fn route(path: &str, aggregated: bool, kinds: &[FixtureKind]) -> (u16, Value) {
             .and_then(|gv| gv.split_once('/'))
         {
             Some((NULL_VERBS_GROUP, NULL_VERBS_VERSION)) => (200, null_verbs_resource_list()),
+            Some(group_version) if unavailable.contains(&group_version) => {
+                service_unavailable(path)
+            }
             Some((group, version)) if !kinds_in(kinds, group, version).is_empty() => (
                 200,
                 resource_list(
@@ -136,12 +155,15 @@ fn aggregated_list(kinds: &[FixtureKind], core: bool) -> Value {
     })
 }
 
-fn group_list(kinds: &[FixtureKind]) -> Value {
+fn group_list(kinds: &[FixtureKind], unavailable: &[(&'static str, &'static str)]) -> Value {
     let mut groups: Vec<Value> = group_versions(kinds, false)
         .into_iter()
         .map(|(group, versions)| api_group(group, &versions))
         .collect();
     groups.push(api_group(NULL_VERBS_GROUP, &[NULL_VERBS_VERSION]));
+    for (group, version) in unavailable {
+        groups.push(api_group(group, &[version]));
+    }
     json!({ "kind": "APIGroupList", "apiVersion": "v1", "groups": groups })
 }
 
@@ -187,6 +209,17 @@ fn null_verbs_resource_list() -> Value {
             "verbs": null,
         }],
     })
+}
+
+fn service_unavailable(path: &str) -> (u16, Value) {
+    (
+        503,
+        json!({
+            "kind": "Status", "apiVersion": "v1", "metadata": {}, "status": "Failure",
+            "message": format!("{path}: the server is currently unable to handle the request"),
+            "reason": "ServiceUnavailable", "code": 503,
+        }),
+    )
 }
 
 fn not_found(path: &str) -> (u16, Value) {

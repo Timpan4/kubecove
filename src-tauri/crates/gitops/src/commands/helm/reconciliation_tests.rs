@@ -131,8 +131,11 @@ fn reconciliation_totals_count_each_status() {
     assert_eq!(totals.unavailable, 0);
 }
 
+// Failure modes: an unrelated API publishing `"verbs": null` fails discovery,
+// and a manifest group whose aggregated API server is down fails the whole
+// reconciliation instead of leaving only its own rows unavailable.
 #[tokio::test]
-async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_api() {
+async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_and_unavailable_apis() {
     use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
     let kind = |group, version, kind, plural| FixtureKind {
         group,
@@ -141,17 +144,23 @@ async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_api() {
         plural,
         namespaced: true,
     };
-    let client = discovery_fixture::client(&[
-        kind("", "v1", "Service", "services"),
-        kind("apps", "v1", "Deployment", "deployments"),
-        kind("example.com", "v1", "Widget", "widgets"),
-    ]);
-    let manifest = [manifest_ref(
-        Some("example.com/v1"),
-        Some("Widget"),
-        None,
-        Some("blue"),
-    )];
+    let client = discovery_fixture::client_with_unavailable_groups(
+        &[
+            kind("", "v1", "Service", "services"),
+            kind("apps", "v1", "Deployment", "deployments"),
+            kind("example.com", "v1", "Widget", "widgets"),
+        ],
+        &[("down.example.com", "v1")],
+    );
+    let manifest = [
+        manifest_ref(Some("example.com/v1"), Some("Widget"), None, Some("blue")),
+        manifest_ref(
+            Some("down.example.com/v1"),
+            Some("Gadget"),
+            None,
+            Some("red"),
+        ),
+    ];
 
     let discovered = discovered_resources(client, &manifest)
         .await
@@ -173,8 +182,24 @@ fn conservative_label_scan_includes_common_namespaced_and_manifest_kinds() {
         short_names: Vec::new(),
         namespaced: true,
     };
+    // Shares a common kind's name but not its group, so only a manifest
+    // reference scans it.
+    let knative_service = DiscoveredResourceKind {
+        group: "serving.knative.dev".to_string(),
+        version: "v1".to_string(),
+        api_version: "serving.knative.dev/v1".to_string(),
+        kind: "Service".to_string(),
+        plural: "services".to_string(),
+        short_names: Vec::new(),
+        namespaced: true,
+    };
     let cluster_role = cluster_role_kind();
-    let discovered = vec![deployment_kind(), widget.clone(), cluster_role];
+    let discovered = vec![
+        deployment_kind(),
+        widget.clone(),
+        cluster_role,
+        knative_service,
+    ];
     let manifest = BTreeSet::from([("example.com/v1".to_string(), "Widget".to_string())]);
 
     let kinds = conservative_label_scan_kinds(&discovered, &manifest);
@@ -182,4 +207,5 @@ fn conservative_label_scan_includes_common_namespaced_and_manifest_kinds() {
     assert!(kinds.iter().any(|kind| kind.kind == "Deployment"));
     assert!(kinds.iter().any(|kind| kind.kind == "Widget"));
     assert!(!kinds.iter().any(|kind| kind.kind == "ClusterRole"));
+    assert!(!kinds.iter().any(|kind| kind.group == "serving.knative.dev"));
 }
