@@ -22,18 +22,60 @@ const AGGREGATIONS: [&str; 9] = [
 ];
 /// Words that pass labels through or between operands.
 const OPERATORS: [&str; 5] = ["or", "and", "unless", "bool", "offset"];
-/// Forms whose output labels `parse` does not model. A query that uses one
-/// fails until `parse` learns it, instead of passing unchecked.
-const UNSUPPORTED: [&str; 9] = [
-    "by",
-    "without",
-    "on",
-    "ignoring",
-    "group_left",
-    "group_right",
-    "count_values",
-    "label_replace",
-    "label_join",
+/// Functions whose output keeps the input series' labels, apart from
+/// `histogram_quantile` dropping `le` and `vector` having no input. Any other
+/// call, including postfix `by (...)`, `on (...)`, `group_left (...)` and
+/// `label_replace (...)`, fails until `parse` models its labels.
+const FUNCTIONS: [&str; 16] = [
+    "rate",
+    "irate",
+    "increase",
+    "delta",
+    "idelta",
+    "deriv",
+    "abs",
+    "round",
+    "clamp_min",
+    "clamp_max",
+    "avg_over_time",
+    "min_over_time",
+    "max_over_time",
+    "sum_over_time",
+    "histogram_quantile",
+    "vector",
+];
+
+/// Every `AppErrorKind`, which `error_kind` labels carry.
+const ERROR_KINDS: [AppErrorKind; 29] = [
+    AppErrorKind::AdmissionDenied,
+    AppErrorKind::ArgoApi,
+    AppErrorKind::ArgoConnection,
+    AppErrorKind::ArgoInspection,
+    AppErrorKind::ArgoOperationUnavailable,
+    AppErrorKind::ArgoTunnel,
+    AppErrorKind::ArgoTunnelForbidden,
+    AppErrorKind::Cancelled,
+    AppErrorKind::Cluster,
+    AppErrorKind::ConfirmationRequired,
+    AppErrorKind::CredentialUnavailable,
+    AppErrorKind::FieldManagerConflict,
+    AppErrorKind::Forbidden,
+    AppErrorKind::ImmutableField,
+    AppErrorKind::Internal,
+    AppErrorKind::InvalidResource,
+    AppErrorKind::Io,
+    AppErrorKind::Kubeconfig,
+    AppErrorKind::LiveSessionTargetUnavailable,
+    AppErrorKind::Logs,
+    AppErrorKind::Network,
+    AppErrorKind::NotFound,
+    AppErrorKind::ProviderDiscoveryUnavailable,
+    AppErrorKind::Serialization,
+    AppErrorKind::Session,
+    AppErrorKind::Transport,
+    AppErrorKind::UnsupportedOperation,
+    AppErrorKind::UsageMetrics,
+    AppErrorKind::Validation,
 ];
 
 /// Sample name -> the label set of each sample with that name.
@@ -83,6 +125,8 @@ async fn grafana_dashboard_queries_only_exported_series() {
             let exact: Vec<_> = selector
                 .matchers
                 .iter()
+                // Prometheus adds scrape labels, so the exporter's samples lack them.
+                .filter(|matcher| !SCRAPE_LABELS.contains(&matcher.label))
                 .filter_map(|matcher| Some((matcher.label, matcher.exact?)))
                 .collect();
             assert!(
@@ -135,7 +179,6 @@ async fn grafana_dashboard_queries_only_exported_series() {
 /// fixture seeds every value itself rather than rely on what they record.
 async fn scrape_with_every_family() -> String {
     let session = SessionId::random().unwrap();
-    let kind = AppErrorKind::Forbidden;
     for mode in [AuthMode::Token, AuthMode::CloudflareAccess, AuthMode::Oidc] {
         observe::session_opened(session, mode, None);
         observe::session_resumed(session, mode, None);
@@ -165,7 +208,9 @@ async fn scrape_with_every_family() -> String {
         observe::session_closed(session, reason);
     }
     observe::session_expired(session, Duration::ZERO);
-    observe::session_cleanup_failed(session, kind);
+    for kind in ERROR_KINDS {
+        observe::session_cleanup_failed(session, kind);
+    }
     for refusal in [RequestRefusal::Host, RequestRefusal::Origin] {
         observe::request_refused(refusal, &Method::GET, None, None);
     }
@@ -177,14 +222,22 @@ async fn scrape_with_every_family() -> String {
     ] {
         observe::oidc_refresh(outcome);
     }
-    for outcome in [
+    let outcomes = [
         CommandOutcome::Ok,
         CommandOutcome::Cancelled,
-        CommandOutcome::Error(kind),
         CommandOutcome::SessionEnded,
         CommandOutcome::AuthenticationEnded,
-    ] {
-        observe::command_completed(session, "list_namespaces", outcome, Duration::ZERO);
+    ]
+    .into_iter()
+    .chain(ERROR_KINDS.map(CommandOutcome::Error));
+    for outcome in outcomes {
+        // `declared_command` labels every undeclared name as "unknown".
+        for &command in crate::dispatch::DECLARED_COMMANDS
+            .iter()
+            .chain(&["unknown"])
+        {
+            observe::command_completed(session, command, outcome, Duration::ZERO);
+        }
     }
     let sessions = Arc::new(Sessions::new(Duration::from_mins(5), AuthMode::Token));
     let info = sessions.authenticate_as(None, None).await.unwrap();
@@ -231,11 +284,11 @@ fn collect<'a>(value: &'a serde_json::Value, queries: &mut Vec<(&'a str, Option<
     match value {
         serde_json::Value::Object(map) => {
             let legend = map.get("legendFormat").and_then(|legend| legend.as_str());
-            // A variable runs `query.query`; its `definition` is display text.
+            // A variable runs `query.query`; its `definition` is display text only.
             let is_query_object = map.contains_key("refId");
             for (key, value) in map {
                 match (key.as_str(), value.as_str()) {
-                    ("expr" | "definition", Some(query)) => queries.push((query, legend)),
+                    ("expr", Some(query)) => queries.push((query, legend)),
                     ("query", Some(query)) if is_query_object => queries.push((query, legend)),
                     _ => collect(value, queries),
                 }
@@ -318,10 +371,6 @@ fn parse(query: &str) -> Query<'_> {
             let next = tail.trim_start();
             let next_word = &next[..next.find(|c| !is_word(c)).unwrap_or(next.len())];
             rest = tail;
-            assert!(
-                !UNSUPPORTED.contains(&word),
-                "teach parse() the labels `{word}` keeps before using it: {query}"
-            );
             if AGGREGATIONS.contains(&word) {
                 parsed.aggregations.push(match next_word {
                     "by" | "without" => {
@@ -345,6 +394,10 @@ fn parse(query: &str) -> Query<'_> {
                     _ => Grouping::None,
                 });
             } else if next.starts_with('(') {
+                assert!(
+                    FUNCTIONS.contains(&word),
+                    "teach parse() the labels `{word}(...)` keeps before using it: {query}"
+                );
                 parsed.drops_le |= word == "histogram_quantile";
             } else if !OPERATORS.contains(&word) {
                 parsed.selectors.push(Selector {

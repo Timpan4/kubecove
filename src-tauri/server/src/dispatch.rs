@@ -135,7 +135,7 @@ macro_rules! declared_commands {
         $transport:ident $mode:ident fn $name:ident($($key:ident: $ty:ty),* $(,)?)
             $(with $($host:ident $(<$managed:ty>)?),+)?;
     )*) => {
-        const DECLARED_COMMANDS: &[&str] = &[$(stringify!($name)),*];
+        pub(crate) const DECLARED_COMMANDS: &[&str] = &[$(stringify!($name)),*];
     };
 }
 
