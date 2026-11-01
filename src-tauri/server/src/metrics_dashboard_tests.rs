@@ -188,9 +188,12 @@ fn collect<'a>(value: &'a serde_json::Value, queries: &mut Vec<(&'a str, Option<
     match value {
         serde_json::Value::Object(map) => {
             let legend = map.get("legendFormat").and_then(|legend| legend.as_str());
+            // A variable runs `query.query`; its `definition` is display text.
+            let is_query_object = map.contains_key("refId");
             for (key, value) in map {
                 match (key.as_str(), value.as_str()) {
                     ("expr" | "definition", Some(query)) => queries.push((query, legend)),
+                    ("query", Some(query)) if is_query_object => queries.push((query, legend)),
                     _ => collect(value, queries),
                 }
             }

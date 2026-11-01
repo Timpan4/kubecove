@@ -168,7 +168,8 @@
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
-        { "refId": "A", "expr": "sum by (outcome, reason) (rate(kubecove_server_sign_ins_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "{{outcome}} {{reason}}" }
+        { "refId": "A", "expr": "sum(rate(kubecove_server_sign_ins_total{job=~\"$job\", instance=~\"$instance\", outcome=\"success\"}[$__rate_interval])) * 60", "legendFormat": "success" },
+        { "refId": "B", "expr": "sum by (reason) (rate(kubecove_server_sign_ins_total{job=~\"$job\", instance=~\"$instance\", outcome=\"failure\"}[$__rate_interval])) * 60", "legendFormat": "failure: {{reason}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
