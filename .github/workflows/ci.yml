@@ -347,9 +347,9 @@ jobs:
       #     name: <cache name>
       #     authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
-      # Dependabot bumps bun.lock without bun.nix. Its pull requests only
-      # warn here, and build with the regenerated bun.nix; the Nix lock
-      # refresh workflow commits it daily.
+      # Dependabot bumps bun.lock without bun.nix. Dependabot-triggered builds
+      # warn and use the regenerated bun.nix; the Nix lock refresh workflow
+      # commits it daily.
       - name: Check that bun.nix matches bun.lock
         env:
           DEPENDABOT: ${{ github.actor == 'dependabot[bot]' }}
