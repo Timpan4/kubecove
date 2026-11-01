@@ -107,13 +107,13 @@ async fn token_session_lifecycle_is_logged_without_credentials() {
     assert_eq!(app.oneshot(close).await.unwrap().status(), StatusCode::OK);
 
     let text = logs.text();
-    for secret in [
-        "test-token",
-        "wrong-token",
-        resume.as_str(),
-        "attacker_chosen_command_name",
+    for (name, secret) in [
+        ("startup token", "test-token"),
+        ("rejected token", "wrong-token"),
+        ("resume token", resume.as_str()),
+        ("request path", "attacker_chosen_command_name"),
     ] {
-        assert!(!text.contains(secret), "{secret} reached the logs");
+        assert!(!text.contains(secret), "the {name} reached the logs");
     }
     let sign_ins = logs.named("sign_in");
     assert_eq!(
@@ -157,6 +157,45 @@ async fn token_session_lifecycle_is_logged_without_credentials() {
     assert_eq!(refused.len(), 1);
     assert_eq!(refused[0]["reason"], "host");
     assert_eq!(refused[0]["host"], "evil.example");
+}
+
+// Failure mode: at the default level, client-supplied Host or Origin text
+// reaches the logs of a refused request.
+#[tokio::test]
+async fn default_level_omits_refused_header_values() {
+    use tracing::instrument::WithSubscriber;
+    let logs = crate::observe::capture::Captured::default();
+    let app = router(state());
+    let mut bad_host = post("/api/v1/session").body(Body::from("{}")).unwrap();
+    bad_host
+        .headers_mut()
+        .insert(header::HOST, "evil-host.example".parse().unwrap());
+    let mut bad_origin = post("/api/v1/session").body(Body::from("{}")).unwrap();
+    bad_origin.headers_mut().insert(
+        header::ORIGIN,
+        "http://evil-origin.example".parse().unwrap(),
+    );
+    for request in [bad_host, bad_origin] {
+        let response = app
+            .clone()
+            .oneshot(request)
+            .with_subscriber(logs.at_default_level())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+    let refused = logs.named("request_refused");
+    assert_eq!(
+        refused
+            .iter()
+            .map(|event| event["reason"].clone())
+            .collect::<Vec<_>>(),
+        [json!("host"), json!("origin")]
+    );
+    assert!(refused
+        .iter()
+        .all(|event| event.get("host").is_none() && event.get("origin").is_none()));
+    assert!(!logs.text().contains("evil"));
 }
 
 // API-only builds must retain authentication and Host checks while removing UI routes.

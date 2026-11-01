@@ -1,13 +1,13 @@
 # Server observability design
 
-Design and implementation plan for [#522](https://github.com/Timpan4/kubecove/issues/522) (structured and JSON logging) and [#523](https://github.com/Timpan4/kubecove/issues/523) (Prometheus metrics) in `kubecove-server`. Status: design accepted, not implemented. Owner decisions are recorded at the end.
+Design and implementation plan for [#522](https://github.com/Timpan4/kubecove/issues/522) (structured and JSON logging) and [#523](https://github.com/Timpan4/kubecove/issues/523) (Prometheus metrics) in `kubecove-server`. Status: logging is implemented; metrics are pending. Owner decisions are recorded at the end.
 
-## Current state
+## Baseline before this work
 
-- The server writes four unstructured lines: the startup login URL (`main.rs`, stdout), `--help`, and two cleanup failures (`sessions.rs`, stderr). Sign-in failures, Host/Origin refusals, session lifecycle and OIDC refreshes leave no record.
-- `tracing` 0.1.44 is already in the server lockfile through `kube`, `hyper` and `tower`. No subscriber is installed, so those events are dropped.
-- Cache counters (#419) live per session in `ClusterLiveStore` (`crates/kube/src/commands/live_store_diagnostics.rs`). They count unconditionally; only the snapshot command is gated by the session's diagnostics toggle. Settings -> Diagnostics "Clear" stores 0 into them.
-- Concurrent sessions (#521) are merged. Each `Owner` holds its own `BackendState`, so cache counters disappear when a session ends.
+- The server wrote four unstructured lines: the startup login URL (`main.rs`, stdout), `--help`, and two cleanup failures (`sessions.rs`, stderr). Sign-in failures, Host/Origin refusals, session lifecycle and OIDC refreshes left no record.
+- `tracing` 0.1.44 was already in the server lockfile through `kube`, `hyper` and `tower`. No subscriber was installed, so those events were dropped.
+- Cache counters (#419) live per session in `ClusterLiveStore` (`crates/kube/src/commands/live_store_diagnostics.rs`). They count unconditionally; only the snapshot command is gated by the session's diagnostics toggle. Settings -> Diagnostics "Clear" stored 0 into them.
+- Concurrent sessions (#521) were merged. Each `Owner` holds its own `BackendState`, so cache counters disappeared when a session ended.
 - Every command passes through one seam: `invoke()` in `server/src/lib.rs` calling `dispatch::dispatch`.
 
 ## Design
@@ -20,7 +20,8 @@ Event names (log `event` field, metric name stem):
 
 | Event | Log level | Fields | Metric |
 | --- | --- | --- | --- |
-| `server_started` | info | version, auth_mode, transport (tcp, tls, unix), metrics_enabled | none |
+| `server_started` | info | version, auth_mode, transport (tcp, tls, unix); emitted once the listener and TLS configuration are ready | none |
+| `server_failed` | error | error (the startup or serve error that stops the server) | none |
 | `session_opened` | info | session_id, auth_mode, subject | `kubecove_server_sessions_opened_total{auth_mode}` |
 | `session_resumed` | info | session_id, auth_mode, subject | `kubecove_server_sessions_resumed_total{auth_mode}` |
 | `session_closed` | info | session_id, reason (client, logout, shutdown, activation_failed) | `kubecove_server_sessions_closed_total{reason}` |

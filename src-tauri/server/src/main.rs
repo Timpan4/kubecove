@@ -7,9 +7,19 @@ use kubecove_server::{
     sessions::Sessions,
     AppState,
 };
-use std::{io, net::SocketAddr, sync::Arc};
+use std::{io, net::SocketAddr, process::ExitCode, sync::Arc};
 
-fn main() -> io::Result<()> {
+fn main() -> ExitCode {
+    match start() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            observe::server_failed(&error);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn start() -> io::Result<()> {
     let mut runtime = tokio::runtime::Builder::new_multi_thread();
     if let Some(value) = std::env::var_os("KUBECOVE_SERVER_WORKER_THREADS") {
         let threads = value
@@ -138,16 +148,9 @@ async fn run() -> io::Result<()> {
             access,
             oidc,
         });
-        observe::server_started(
-            auth_mode,
-            if config.tls_cert.is_some() {
-                "tls"
-            } else {
-                "tcp"
-            },
-        );
         if let (Some(cert), Some(key)) = (&config.tls_cert, &config.tls_key) {
             let tls = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
+            let server = axum_server::from_tcp_rustls(listener, tls)?;
             let handle = axum_server::Handle::new();
             let stopping = handle.clone();
             let stopping_sessions = Arc::clone(&sessions);
@@ -155,12 +158,15 @@ async fn run() -> io::Result<()> {
                 shutdown(stopping_sessions).await;
                 stopping.shutdown();
             });
-            axum_server::from_tcp_rustls(listener, tls)?
+            observe::server_started(auth_mode, "tls");
+            server
                 .handle(handle)
                 .serve(router(state).into_make_service())
                 .await?;
         } else {
-            axum::serve(tokio::net::TcpListener::from_std(listener)?, router(state))
+            let listener = tokio::net::TcpListener::from_std(listener)?;
+            observe::server_started(auth_mode, "tcp");
+            axum::serve(listener, router(state))
                 .with_graceful_shutdown(shutdown(Arc::clone(&sessions)))
                 .await?;
         }

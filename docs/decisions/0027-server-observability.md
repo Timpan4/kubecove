@@ -31,6 +31,7 @@ Logs and metrics leave the server's trust boundary: they go to log collectors an
 - `RUST_LOG` sets levels with `tracing-subscriber` directive syntax. The default is `warn,kubecove_server=info`. An invalid value fails startup. Raising dependency targets to `debug` can log Kubernetes request URIs, which name namespaces and resources.
 - The startup login URL, `--quiet` and `--print-token` keep their stdout behavior.
 - Successful and cancelled commands log at `debug`. Failed commands log at `warn`.
+- An error that stops the server is logged as `server_failed` in the selected format, with its message. Startup messages describe operator configuration such as ports and certificate paths, and the server printed them before this decision.
 - The desktop app installs no subscriber.
 
 ### Metrics listener

@@ -32,7 +32,7 @@ Clients run in independent sessions. Reconnects retain their session during `--s
 
 ## Logs
 
-Log events follow [ADR 0027](../../docs/decisions/0027-server-observability.md). `src/observe.rs` is the only module that emits them, and it owns the redaction rules. Events go to stderr as text by default, or as one JSON object per line with `--log-format json`. `RUST_LOG` sets levels; the default is `warn,kubecove_server=info`. Each event has an `event` field: `server_started`, `session_opened`, `session_resumed`, `session_closed`, `session_expired`, `session_cleanup_failed`, `sign_in`, `authentication_refused`, `request_refused`, `oidc_refresh` or `command_completed`. Set `RUST_LOG=kubecove_server=debug` to add successful commands, token renewals and the Host and Origin values of refused requests. The startup login URL stays on stdout.
+Log events follow [ADR 0027](../../docs/decisions/0027-server-observability.md). `src/observe.rs` is the only module that emits them, and it owns the redaction rules. Events go to stderr as text by default, or as one JSON object per line with `--log-format json`. `RUST_LOG` sets levels; the default is `warn,kubecove_server=info`. Each event has an `event` field: `server_started`, `server_failed`, `session_opened`, `session_resumed`, `session_closed`, `session_expired`, `session_cleanup_failed`, `sign_in`, `authentication_refused`, `request_refused`, `oidc_refresh` or `command_completed`. Set `RUST_LOG=kubecove_server=debug` to add successful commands, token renewals and the Host and Origin values of refused requests. The startup login URL stays on stdout.
 
 ## Memory and transport
 
