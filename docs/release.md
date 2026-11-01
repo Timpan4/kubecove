@@ -37,6 +37,12 @@ KubeCove is inspection-first outside ADR-approved live sessions and guarded oper
 
 Preparation commits the generated files through GitHub's signed-commit API and verifies the signature before opening the PR. Reruns append to an existing release branch without rewriting its history.
 
+Release preparation uses the existing `NIX_LOCK_REFRESH_TOKEN` secret for both signed API commits and PR creation. This lets PR creation and later branch updates trigger eligible `opened` and `synchronize` checks. The token must have repository Contents and Pull requests write access, including permission to apply the `release` label. Preparation checks token availability and repository access before making changes. Write permissions and commit signing are verified by the subsequent API operations. Failures stop preparation; it never falls back to `GITHUB_TOKEN` or unsigned commits.
+
+The required `Typecheck and test` and `CodSpeed Performance Analysis` checks must come from an eligible event, such as `pull_request` or `push`. Jobs started with `workflow_dispatch` do not satisfy PR ruleset checks, even when they succeed on the same head commit. See [GitHub's required-check rules](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
+
+GitHub puts pull-request workflows created by `GITHUB_TOKEN` into an approval-required state. A maintainer with write access can approve the workflows from the PR page. PR creation with a GitHub App installation token or a personal access token starts eligible PR workflows without that hold. See [GitHub's workflow trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+
 If signature verification fails after commit creation, the branch may already contain that commit. Preparation preserves the branch and stops. Reruns check every commit introduced since the checked-out `main` and reject unverified history before appending. Verify the rejected signature or prepare a new signed release branch before rerunning.
 
 Trusted release PRs skip frontend, Rust, and CodSpeed checks. The exemption requires the same-repository `release/app-v*` branch and `release` label. The Nix check builds the frontend and desktop app and verifies server dependencies directly from the committed Cargo lockfiles. Tag builds still run every automated release gate below before publishing.
