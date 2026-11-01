@@ -13,6 +13,7 @@ on:
           - major
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
   issues: write
@@ -82,3 +83,13 @@ jobs:
           else
             gh pr create --base main --head "$BRANCH_NAME" --title "$RELEASE_TITLE" --body "$body" --label release
           fi
+
+      - name: Run required checks on the release branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH_NAME: ${{ steps.release.outputs.branch }}
+        run: |
+          set -euo pipefail
+          gh workflow run ci.yml --ref "$BRANCH_NAME"
+          gh workflow run codspeed.yml --ref "$BRANCH_NAME"

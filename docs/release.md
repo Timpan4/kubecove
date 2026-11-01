@@ -37,9 +37,13 @@ KubeCove is inspection-first outside ADR-approved live sessions and guarded oper
 
 Preparation commits the generated files through GitHub's signed-commit API and verifies the signature before opening the PR. Reruns append to an existing release branch without rewriting its history.
 
+After opening or updating the PR, preparation dispatches CI and CodSpeed on the release branch. These runs produce the required `Typecheck and test` and `CodSpeed Performance Analysis` checks on its head commit. Both must pass before merging. A dispatch failure fails preparation; rerun preparation after resolving the failure.
+
+GitHub puts pull-request workflows created by `GITHUB_TOKEN` into an approval-required state. Explicit workflow dispatch starts the required checks without a separate token or workflow approval. Dispatched checks run their full suites. See [GitHub's workflow trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+
 If signature verification fails after commit creation, the branch may already contain that commit. Preparation preserves the branch and stops. Reruns check every commit introduced since the checked-out `main` and reject unverified history before appending. Verify the rejected signature or prepare a new signed release branch before rerunning.
 
-Trusted release PRs skip frontend, Rust, and CodSpeed checks. The exemption requires the same-repository `release/app-v*` branch and `release` label. The Nix check builds the frontend and desktop app and verifies server dependencies directly from the committed Cargo lockfiles. Tag builds still run every automated release gate below before publishing.
+If a maintainer approves the separate pull-request event runs, trusted release PRs skip frontend, Rust, and CodSpeed checks in those runs. The exemption requires the same-repository `release/app-v*` branch and `release` label. The Nix check builds the frontend and desktop app and verifies server dependencies directly from the committed Cargo lockfiles. Tag builds still run every automated release gate below before publishing.
 
 After merge, GitHub Actions finds merged `release` PR, creates matching annotated `app-vX.Y.Z` tag, runs release workflow, builds desktop installers and headless server archives, verifies required assets and updater coverage, then publishes the release.
 

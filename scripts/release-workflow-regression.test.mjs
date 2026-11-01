@@ -30,6 +30,31 @@ test("release preparation commits desktop and server version metadata", () => {
   }
 });
 
+test("release preparation dispatches both required workflows on the release head", () => {
+  const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
+  const prepare = job("prepare", preparation);
+  const dispatch = step(prepare, "Run required checks on the release branch");
+  assert.equal(preparation.permissions.actions, "write");
+  assert.equal(dispatch.env.GH_TOKEN, "${{ secrets.GITHUB_TOKEN }}");
+  assert.equal(dispatch.env.GH_REPO, "${{ github.repository }}");
+  assert.equal(dispatch.env.BRANCH_NAME, "${{ steps.release.outputs.branch }}");
+  assert.ok(prepare.steps.indexOf(dispatch) > prepare.steps.indexOf(step(prepare, "Open release PR")));
+  assert.equal(dispatch.if, undefined, "failed PR preparation must stop before dispatch");
+  for (const fail of [false, true]) {
+    const result = spawnSync("bash", ["-c", `
+      gh() {
+        printf '%s\\n' "$*"
+        if [ "$FAIL" = true ]; then return 1; fi
+      }
+      ${dispatch.run}
+    `], { encoding: "utf8", env: { ...process.env, BRANCH_NAME: "release/app-v1.2.3", FAIL: String(fail) } });
+    assert.equal(result.status, fail ? 1 : 0, result.stderr);
+    assert.deepEqual(result.stdout.trim().split("\n"), fail
+      ? ["workflow run ci.yml --ref release/app-v1.2.3"]
+      : ["workflow run ci.yml --ref release/app-v1.2.3", "workflow run codspeed.yml --ref release/app-v1.2.3"]);
+  }
+});
+
 test("release preparation creates verified commits without rewriting the branch", () => {
   const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
   const commands = step(job("prepare", preparation), "Commit release branch").run;
