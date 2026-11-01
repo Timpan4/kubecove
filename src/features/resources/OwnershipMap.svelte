@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { setContext } from "svelte";
+	import { RESOURCE_ACTIVITY_CURRENT } from "./resource-activity-animation";
 	import { Controls, SvelteFlow, type NodeTypes } from "@xyflow/svelte";
 	import type { NodeEventWithPointer } from "@xyflow/svelte";
 	import "@xyflow/svelte/dist/style.css";
@@ -43,6 +45,7 @@
 		onModeChange,
 		onNodeSelect,
 		onMapToggle,
+		updatesCurrent = true,
 	}: {
 		topology: ResourceTopology | undefined;
 		isLoading: boolean;
@@ -55,7 +58,9 @@
 		onModeChange: (mode: TopologyMode) => void;
 		onNodeSelect: (nodeId: string, resource: ResourceSummary | null) => void;
 		onMapToggle?: () => void;
+		updatesCurrent?: boolean;
 	} = $props();
+	setContext(RESOURCE_ACTIVITY_CURRENT, () => updatesCurrent);
 
 	let viewportWidth = $state(0);
 	let viewportHeight = $state(0);

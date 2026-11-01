@@ -2,6 +2,7 @@ import { afterEach, describe, expect, jest, test } from "bun:test";
 import { QueryClient, QueryObserver, type QueryKey } from "@tanstack/svelte-query";
 import {
 	bindLiveView,
+	createLiveReadRefresh,
 	createWatchRefreshThrottle,
 	type LiveView,
 	type LiveViewState,
@@ -164,7 +165,65 @@ function liveHarness() {
 	};
 }
 
+// Failure modes: a final catch-up read fails with no later event, a timer keeps
+// rereading after success, or disposal refreshes a resource the user has left.
+describe("detail and event live read recovery", () => {
+	test("a failed final catch-up retries without a later event and stops after success", async () => {
+		jest.useFakeTimers();
+		const live = liveHarness();
+		let fail = true;
+		live.observe("details", podsKey, { gate: async () => { if (fail) throw new Error("offline"); } });
+		const refresh = createLiveReadRefresh(live.queryClient, queryMatchers.exact(podsKey));
+		cleanups.push(refresh.dispose);
+		refresh.notify();
+		await live.queryClient.getQueryCache().find({ queryKey: podsKey })?.promise?.catch(() => {});
+		fail = false;
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		await live.queryClient.getQueryCache().find({ queryKey: podsKey })?.promise?.catch(() => {});
+		expect(live.fetches("details")).toBe(2);
+		expect(live.queryClient.getQueryData(podsKey)).toBe("details");
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		expect(live.fetches("details")).toBe(2);
+	});
+	test("disposing a failed read cancels its recovery", async () => {
+		jest.useFakeTimers();
+		const live = liveHarness();
+		live.observe("events", podsKey, { gate: async () => { throw new Error("offline"); } });
+		const refresh = createLiveReadRefresh(live.queryClient, queryMatchers.exact(podsKey));
+		refresh.notify();
+		await live.queryClient.getQueryCache().find({ queryKey: podsKey })?.promise?.catch(() => {});
+		refresh.dispose();
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		expect(live.fetches("events")).toBe(1);
+	});
+});
+
 describe("live view refresh binding", () => {
+	// A connected watch alone does not prove its last list succeeded. A final
+	// delete event must recover even when no later event arrives to trigger a read.
+	test("a failed watch refresh exposes stale data and retries without another event", async () => {
+		jest.useFakeTimers();
+		const live = liveHarness();
+		let fail = true;
+		live.observe("pods", podsKey, { gate: async () => { if (fail) throw new Error("list unavailable"); } });
+		live.bind({ keys: [pods], reads: [{ keys: [pods], match: queryMatchers.exact(podsKey) }] });
+		live.status(0, "connected");
+		live.change(0, "Pod");
+		await live.queryClient.getQueryCache().find({ queryKey: podsKey })?.promise?.catch(() => {});
+		expect(live.states.at(-1)?.reloadError).toContain("list unavailable");
+		expect(live.queryClient.getQueryData(podsKey)).toBe("cached");
+		fail = false;
+		const recovered = new Promise<void>((resolve) => {
+			const stop = live.queryClient.getQueryCache().subscribe(({ query }) => {
+				if (query.state.data === "pods") { stop(); resolve(); }
+			});
+			cleanups.push(stop);
+		});
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		await recovered;
+		expect(live.queryClient.getQueryData(podsKey)).toBe("pods");
+		expect(live.states.at(-1)?.reloadError).toBeNull();
+	});
 	test("a change refreshes only the reads its watched kind keeps fresh", async () => {
 		const live = liveHarness();
 		live.observe("pods", podsKey);

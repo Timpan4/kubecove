@@ -9,6 +9,30 @@ import type { StreamMessage, WatchResourceKey } from "./types";
 
 afterEach(() => jest.useRealTimers());
 
+// Transport recovery does not make a pre-disconnect snapshot current.
+test("reconnect remains catching up until its replacement read completes", async () => {
+	jest.useFakeTimers();
+	let channel!: ReturnType<typeof createMockChannel<StreamMessage>>;
+	let complete!: () => void;
+	const states: ResourceWatchState[] = [];
+	const observer = observeResourceScope({
+		client: createMockTauriClient({ start_resource_watch: "watch", stop_stream: true }),
+		clusterContext: "dev", keys: [{ resourceKind: { kind: "Pod" } }],
+		onState: (state) => states.push(state), onChange: () => {},
+		reload: () => new Promise<void>((resolve) => { complete = resolve; }),
+		openChannel: (handler) => { channel = createMockChannel(handler); return channel; },
+	});
+	try {
+		channel.onmessage({ type: "status", streamId: "watch", status: "connected", message: "connected" });
+		channel.onmessage({ type: "error", streamId: "watch", message: "offline" });
+		channel.onmessage({ type: "status", streamId: "watch", status: "connected", message: "connected" });
+		expect(states.at(-1)?.catchingUp).toBe(true);
+		complete();
+		await Promise.resolve();
+		expect(states.at(-1)?.catchingUp).toBe(false);
+	} finally { observer.stop(); }
+});
+
 // Failure modes: forbidden-watch polling evicts permitted kinds or repeated
 // failures delay recovery beyond the existing recovery interval.
 test("permission recovery scopes reloads to denied kinds at the original interval", async () => {

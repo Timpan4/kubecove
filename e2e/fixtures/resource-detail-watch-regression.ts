@@ -20,7 +20,7 @@ function deferred<T>() {
 // A disabled Argo inspector can keep fetching after a tab switch. Counting it
 // as an active read requeues details every 250 ms although invalidation never
 // waits for that request. One watch must cause only one details refresh.
-export async function resourceDetailWatchRegression(disabledArgo = false) {
+export async function resourceDetailWatchRegression(disabledArgo = false, reconnect = false, failCatchUp = false) {
 	const pod = resources.find((row) => row.kind === "Pod");
 	if (!pod) throw new Error("Pod fixture is missing");
 	const resource = disabledArgo ? { ...pod, kind: "Application", group: "argoproj.io" } : pod;
@@ -44,6 +44,7 @@ export async function resourceDetailWatchRegression(disabledArgo = false) {
 		get_resource_details: () => {
 			detailReads++;
 			detailsStarted.resolve();
+			if (failCatchUp && detailReads === 2) throw new Error("Reconnect GET temporarily unavailable");
 			return detailReads === 1 ? oldDetails.promise : {
 				...details, metadata: { ...details.metadata, watchRevision: "new" },
 			};
@@ -104,13 +105,21 @@ export async function resourceDetailWatchRegression(disabledArgo = false) {
 	} });
 	try {
 		await detailsStarted.promise;
-		(await resourceWatch.promise).onmessage({ type: "resourceChanged", streamId: "detail-watch", action: "modified", target: {
+		const resourceChannel = await resourceWatch.promise;
+		if (reconnect) {
+			resourceChannel.onmessage({ type: "error", streamId: "detail-watch", message: "Watch interrupted" });
+			resourceChannel.onmessage({ type: "status", streamId: "detail-watch", status: "connected", message: "Connected" });
+		} else resourceChannel.onmessage({ type: "resourceChanged", streamId: "detail-watch", action: "modified", target: {
 			cluster: resource.cluster, kind: resource.kind, name: resource.name, namespace: resource.namespace,
 		} });
 		oldDetails.resolve(details);
 		await freshDetails.promise;
 		await eventsStarted.promise;
-		(await eventsWatch.promise).onmessage({ type: "resourceEventsChanged", streamId: "events-watch", action: "modified", target: {
+		const eventsChannel = await eventsWatch.promise;
+		if (reconnect) {
+			eventsChannel.onmessage({ type: "error", streamId: "events-watch", message: "Watch interrupted" });
+			eventsChannel.onmessage({ type: "status", streamId: "events-watch", status: "connected", message: "Connected" });
+		} else eventsChannel.onmessage({ type: "resourceEventsChanged", streamId: "events-watch", action: "modified", target: {
 			cluster: resource.cluster, kind: resource.kind, name: resource.name, namespace: resource.namespace,
 		} });
 		oldEvents.resolve(events);

@@ -7,6 +7,7 @@
 mod clients;
 #[cfg(feature = "test-support")]
 mod fixed;
+mod plugin_path;
 
 use super::{
     helpers::session_scope::SessionScope,

@@ -1,5 +1,6 @@
 const DETERMINISTIC_KINDS = new Set([
 	"admissionDenied",
+	"credentialUnavailable",
 	"fieldManagerConflict",
 	"forbidden",
 	"immutableField",

@@ -56,13 +56,13 @@ fn cases() -> Vec<Case> {
         "running ready Pod": pod("Running", Some("True"), 2) => Some("Running"), Some("True"), Some(2), Healthy, Ownership;
         "succeeded Pod with false readiness and restarts": pod("Succeeded", Some("False"), 2) => Some("Succeeded"), Some("False"), Some(2), Healthy, Ownership;
         "running Pod with false readiness": pod("Running", Some("False"), 0) => Some("Running"), Some("False"), None, Degraded, Ownership;
-        "pending Pod": pod("Pending", Some("False"), 0) => Some("Pending"), Some("False"), None, NeedsAttention, Ownership;
+        "pending Pod": pod("Pending", Some("False"), 0) => Some("Starting"), Some("False"), None, NeedsAttention, Ownership;
         "Pod in unknown phase": pod("Unknown", None, 0) => Some("Unknown"), None, None, Unknown, Ownership;
         "Pod with empty phase": pod("", None, 0) => None, None, None, NotEvaluated, Ownership;
-        "available Deployment": apps("Deployment", json!({"replicas": 3, "readyReplicas": 3, "availableReplicas": 3})) => Some("Available: 3"), Some("3/3"), None, Healthy, Ownership;
-        "unready Deployment": apps("Deployment", json!({"replicas": 3})) => Some("Available: 0"), Some("0/3"), None, NeedsAttention, Ownership;
+        "available Deployment": apps("Deployment", json!({"replicas": 3, "updatedReplicas": 3, "readyReplicas": 3, "availableReplicas": 3})) => Some("Available: 3"), Some("3/3"), None, Healthy, Ownership;
+        "unready Deployment": apps("Deployment", json!({"replicas": 3})) => Some("Rolling out"), Some("0/3"), None, NeedsAttention, Ownership;
         "scaled-to-zero Deployment": apps("Deployment", json!({})) => None, Some("0/0"), None, Unknown, Ownership;
-        "ReplicaSet": apps("ReplicaSet", json!({"replicas": 3, "readyReplicas": 2, "availableReplicas": 1})) => Some("Available: 1"), Some("2/3"), None, NeedsAttention, Ownership;
+        "ReplicaSet": apps("ReplicaSet", json!({"replicas": 3, "readyReplicas": 2, "availableReplicas": 1})) => Some("Starting"), Some("2/3"), None, NeedsAttention, Ownership;
         "StatefulSet": apps("StatefulSet", json!({"replicas": 3, "readyReplicas": 3})) => None, Some("3/3"), None, Healthy, Ownership;
         "DaemonSet": apps("DaemonSet", json!({"currentNumberScheduled": 5, "desiredNumberScheduled": 5, "numberMisscheduled": 0, "numberReady": 4, "numberAvailable": 4})) => None, Some("4/5"), None, NeedsAttention, Ownership;
         "failed Job": job(json!({"failed": 1, "succeeded": 3})) => Some("Failed"), Some("3/3"), None, Degraded, Ownership;

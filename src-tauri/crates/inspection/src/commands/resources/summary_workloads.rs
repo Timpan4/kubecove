@@ -4,7 +4,9 @@ use super::builtin_summary::{
 use crate::commands::helpers::{kubernetes_health, list_params, Readiness};
 use crate::models::{AppError, ResourceHealth, ResourceSummary};
 use chrono::{DateTime, Utc};
-use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
+use k8s_openapi::api::apps::v1::{
+    DaemonSet, Deployment, DeploymentStatus, ReplicaSet, StatefulSet,
+};
 use k8s_openapi::api::batch::v1::{CronJob, Job};
 use k8s_openapi::api::networking::v1::Ingress;
 use kube::Client;
@@ -16,18 +18,53 @@ fn replica_health(ready: i32, desired: i32) -> ResourceHealth {
 
 impl BuiltinSummary for Deployment {
     fn kind_status(&self) -> Option<KindStatus> {
-        let Some(status) = &self.status else {
+        if self.status.is_none() && self.spec.as_ref().and_then(|spec| spec.replicas).is_none() {
             return Some(KindStatus::default());
-        };
+        }
+        let pending_status = DeploymentStatus::default();
+        let status = self.status.as_ref().unwrap_or(&pending_status);
         let available = status.available_replicas.unwrap_or(0);
         let ready = status.ready_replicas.unwrap_or(0);
-        let desired = status.replicas.unwrap_or(0);
+        let desired = self
+            .spec
+            .as_ref()
+            .and_then(|spec| spec.replicas)
+            .unwrap_or(status.replicas.unwrap_or(0));
+        let paused = self
+            .spec
+            .as_ref()
+            .is_some_and(|spec| spec.paused == Some(true));
+        let failed = status.conditions.iter().flatten().any(|condition| {
+            condition.type_ == "Progressing"
+                && condition.status == "False"
+                && condition.reason.as_deref() == Some("ProgressDeadlineExceeded")
+        });
+        let updated = status.updated_replicas.unwrap_or(0);
+        let rolling = self
+            .metadata
+            .generation
+            .is_some_and(|generation| generation > status.observed_generation.unwrap_or(0))
+            || updated < desired
+            || status.replicas.unwrap_or(0) > updated
+            || status.available_replicas.unwrap_or(0) < desired;
+        let lifecycle = if paused {
+            Some("Paused".to_string())
+        } else if failed {
+            Some("Rollout failed".to_string())
+        } else if rolling {
+            Some("Rolling out".to_string())
+        } else {
+            (available > 0 || ready > 0 || desired > 0).then(|| format!("Available: {available}"))
+        };
         Some(KindStatus {
-            status: (available > 0 || ready > 0 || desired > 0)
-                .then(|| format!("Available: {available}")),
+            status: lifecycle,
             ready: Some(format!("{ready}/{desired}")),
             restarts: None,
-            health: replica_health(ready, desired),
+            health: if failed && !paused {
+                ResourceHealth::Degraded
+            } else {
+                replica_health(ready, desired)
+            },
         })
     }
 
@@ -38,18 +75,39 @@ impl BuiltinSummary for Deployment {
 
 impl BuiltinSummary for ReplicaSet {
     fn kind_status(&self) -> Option<KindStatus> {
-        let Some(status) = &self.status else {
+        let desired = self
+            .spec
+            .as_ref()
+            .and_then(|spec| spec.replicas)
+            .or_else(|| self.status.as_ref().map(|status| status.replicas));
+        let Some(desired) = desired else {
             return Some(KindStatus::default());
         };
-        let ready = status.ready_replicas.unwrap_or(0);
+        let ready = self
+            .status
+            .as_ref()
+            .and_then(|status| status.ready_replicas)
+            .unwrap_or(0);
+        let available = self
+            .status
+            .as_ref()
+            .and_then(|status| status.available_replicas)
+            .unwrap_or(0);
+        let scaling_down = self
+            .status
+            .as_ref()
+            .is_some_and(|status| status.replicas > desired);
         Some(KindStatus {
-            status: Some(format!(
-                "Available: {}",
-                status.available_replicas.unwrap_or(0)
-            )),
-            ready: Some(format!("{ready}/{}", status.replicas)),
+            status: Some(if scaling_down {
+                "Scaling down".to_string()
+            } else if ready < desired || available < desired {
+                "Starting".to_string()
+            } else {
+                format!("Available: {available}")
+            }),
+            ready: Some(format!("{ready}/{desired}")),
             restarts: None,
-            health: replica_health(ready, status.replicas),
+            health: replica_health(ready, desired),
         })
     }
 

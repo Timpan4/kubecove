@@ -441,7 +441,10 @@ mod tests {
             assert!(scope.as_mut().now_or_never().is_none());
             assert_eq!(started.load(Ordering::SeqCst), MAX_LIST_CONCURRENCY);
             drop(scope);
-            release.send(true).unwrap();
+            assert!(
+                release.send(true).is_err(),
+                "abandoned loads release their receivers and permits"
+            );
 
             // Use the existing mock-client test deadline, not a latency budget.
             let rows = tokio::time::timeout(
@@ -472,11 +475,12 @@ mod tests {
         let source = FIXED_SOURCE_KEY;
         let cluster = unused_cluster();
         let mut releases = Vec::new();
+        let mut loads = Vec::new();
         // Seed pending shared loads without driving them in another task.
         for namespace in ["a", "b"] {
             let (release, wait) = oneshot::channel::<()>();
             releases.push(release);
-            let load = store.typed_resources(
+            let load = Box::pin(store.typed_resources(
                 source.into(),
                 "test".into(),
                 "Pod".into(),
@@ -489,8 +493,9 @@ mod tests {
                         Ok(Vec::new())
                     }
                 },
-            );
-            assert!(load.now_or_never().is_none());
+            ));
+            loads.push(load);
+            assert!(loads.last_mut().unwrap().as_mut().now_or_never().is_none());
         }
         let access = cluster.access();
         let scope = resource_scope_result_from(
@@ -506,6 +511,9 @@ mod tests {
         releases.remove(0).send(()).unwrap();
         let error = scope.await.err().expect("scope error");
         assert_eq!(error.message, "first error");
+        for load in loads {
+            let _ = load.await;
+        }
         assert_eq!(store.cancel_loading(), 0);
         // A completed second batch must be reusable without calling its loader.
         store

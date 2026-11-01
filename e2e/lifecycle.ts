@@ -115,15 +115,17 @@ async function attempt(cmd: string, commandArgs: string[], extra: Record<string,
 }
 async function runWdio(config: string, extra: Record<string, string | undefined>, logFile?: string) {
 	const cli = join(root, "node_modules", "@wdio", "cli", "bin", "wdio.js");
+	const spec = option("--spec");
+	const command = [cli, "run", config, ...(spec ? ["--spec", spec] : [])];
 	const version = await execute("node", ["--version"], {}, true);
 	const match = /^v(\d+)\.(\d+)\.(\d+)/.exec(version.stdout.trim());
 	if (!match) throw new Error(`could not parse Node version ${version.stdout.trim()}`);
 	const [major, minor] = match.slice(1, 3).map(Number);
-	if ((major === 18 && minor >= 20) || (major > 18 && major <= 24)) return execute("node", [cli, "run", config], extra, false, logFile);
+	if ((major === 18 && minor >= 20) || (major > 18 && major <= 24)) return execute("node", command, extra, false, logFile);
 	if (major < 18 || (major === 18 && minor < 20)) throw new Error(`WDIO requires Node 18.20-24; found ${version.stdout.trim()}`);
 	const fnm = Bun.which("fnm");
 	if (!fnm) throw new Error(`WDIO requires Node 18-24; found ${version.stdout.trim()} and no fnm fallback`);
-	return execute(fnm, ["exec", "--using", "24", "node", cli, "run", config], extra, false, logFile);
+	return execute(fnm, ["exec", "--using", "24", "node", ...command], extra, false, logFile);
 }
 async function verified(name: string, url: string, expected: string) {
 	const target = join(stateDir, "tools", name);

@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { getContext } from "svelte";
+	import { CircleAlert, Pause } from "lucide-svelte";
+	import { resourceLifecycle } from "./resource-lifecycle";
+	import { RESOURCE_ACTIVITY_CURRENT } from "./resource-activity-animation";
+	import ResourceActivityIcon from "./ResourceActivityIcon.svelte";
 	import { Handle, Position, type NodeProps } from "@xyflow/svelte";
 	import { Badge } from "@/components/ui/svelte";
 	import { getResourceKindVisual } from "@/app/svelte/resourceVisuals";
@@ -41,7 +46,9 @@
 			: undefined,
 	);
 	const lifecycleStatus = $derived(node?.status || node?.health);
-	const statusText = $derived(portHint || lifecycleStatus || "No status");
+	const lifecycle = $derived(resourceLifecycle(node?.kind ?? "", node?.status));
+	const updatesCurrent = getContext<(() => boolean) | undefined>(RESOURCE_ACTIVITY_CURRENT) ?? (() => true);
+	const statusText = $derived(lifecycle?.label || portHint || lifecycleStatus || "No status");
 	const readyText = $derived(topologyReadyText(node?.summary.ready, lifecycleStatus));
 	const restartCount = $derived(node?.summary.restarts ?? 0);
 	const restartText = $derived(
@@ -86,7 +93,7 @@
 		class={cnfast(
 			"resource-topology-node relative flex h-full min-h-[90px] w-full flex-col overflow-hidden rounded-md border px-3.5 py-2.5 pl-4 text-left text-xs shadow-sm transition-opacity",
 			"svelte-ownership-resource-node bg-card text-card-foreground",
-			stoplightClass(railTone),
+			lifecycle?.progress && node?.health !== "degraded" ? "resource-topology-stoplight-info" : stoplightClass(railTone),
 			visual.surfaceClassName,
 			nodeData.connected && "resource-topology-node-connected ring-1 ring-primary/30",
 			isSelected && "resource-topology-node-selected ring-2 ring-primary",
@@ -126,13 +133,19 @@
 			class="mt-auto ml-8 flex min-w-0 items-center gap-1.5 border-t border-border/35 pt-1.5 text-xs leading-none"
 			title={statusTitle}
 		>
+			{#if lifecycle}
+				<span class={lifecycle.tone === "info" ? "text-sky-700 dark:text-sky-300" : lifecycle.tone === "warning" ? "text-amber-700 dark:text-amber-300" : "text-destructive"}>
+					{#if lifecycle.progress}<ResourceActivityIcon active={updatesCurrent()} />{:else if lifecycle.tone === "warning"}<Pause class="size-3 shrink-0" aria-hidden="true" />{:else}<CircleAlert class="size-3 shrink-0" aria-hidden="true" />{/if}
+				</span>
+			{:else}
 			<span
 				class={cnfast(
 					"resource-topology-status-dot size-2 shrink-0 rounded-full",
 					`resource-topology-chip-${railTone}`,
 				)}
 			></span>
-			<span class="min-w-0 truncate font-semibold text-foreground/85">{statusText}</span>
+			{/if}
+			<span class={cnfast("min-w-0 truncate font-semibold", lifecycle?.tone === "info" ? "text-sky-700 dark:text-sky-300" : lifecycle?.tone === "error" ? "text-destructive" : "text-foreground/85")}>{statusText}</span>
 			{#if readyText}
 				<span class="shrink-0 text-muted-foreground" aria-hidden="true">•</span>
 				<span class="min-w-0 truncate font-semibold text-foreground/85">{readyText}</span>

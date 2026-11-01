@@ -1,9 +1,14 @@
 #[cfg(feature = "bench-support")]
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::{
-    apps::v1::{Deployment, DeploymentStatus, ReplicaSet, ReplicaSetStatus},
+    apps::v1::{
+        Deployment, DeploymentCondition, DeploymentSpec, DeploymentStatus, ReplicaSet,
+        ReplicaSetSpec, ReplicaSetStatus,
+    },
     batch::v1::{Job, JobSpec, JobStatus},
-    core::v1::{ContainerStatus, Pod, PodCondition, PodStatus},
+    core::v1::{
+        ContainerState, ContainerStateWaiting, ContainerStatus, Pod, PodCondition, PodStatus,
+    },
 };
 use kubecove_kube::commands::list_projection::Typed;
 use serde::{Deserialize, Deserializer};
@@ -13,10 +18,12 @@ use serde::{Deserialize, Deserializer};
 pub(super) struct PodProjection(Typed<Pod, PodSummaryStatus>);
 #[derive(Clone, Deserialize)]
 #[serde(transparent)]
-pub(super) struct DeploymentProjection(Typed<Deployment, ReplicaStatus>);
+pub(super) struct DeploymentProjection(
+    Typed<Deployment, DeploymentSummaryStatus, DeploymentSummarySpec>,
+);
 #[derive(Clone, Deserialize)]
 #[serde(transparent)]
-pub(super) struct ReplicaSetProjection(Typed<ReplicaSet, ReplicaStatus>);
+pub(super) struct ReplicaSetProjection(Typed<ReplicaSet, ReplicaStatus, ReplicaSetSummarySpec>);
 #[derive(Clone, Deserialize)]
 #[serde(transparent)]
 pub(super) struct JobProjection(Typed<Job, JobSummaryStatus, JobSummarySpec>);
@@ -26,7 +33,8 @@ pub(super) struct JobProjection(Typed<Job, JobSummaryStatus, JobSummarySpec>);
 pub(super) struct PodSummaryStatus {
     phase: Option<String>,
     conditions: Option<Vec<ReadyCondition>>,
-    container_statuses: Option<Vec<Restarts>>,
+    container_statuses: Option<Vec<SummaryContainerStatus>>,
+    init_container_statuses: Option<Vec<SummaryContainerStatus>>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -38,9 +46,41 @@ struct ReadyCondition {
 }
 
 #[derive(Clone, Deserialize)]
-struct Restarts {
+struct SummaryContainerStatus {
     #[serde(default, rename = "restartCount", deserialize_with = "null_as_default")]
     restart_count: i32,
+    state: Option<SummaryContainerState>,
+}
+
+#[derive(Clone, Deserialize)]
+struct SummaryContainerState {
+    waiting: Option<SummaryWaiting>,
+}
+
+#[derive(Clone, Deserialize)]
+struct SummaryWaiting {
+    reason: Option<String>,
+}
+
+fn container_statuses(
+    statuses: Option<Vec<SummaryContainerStatus>>,
+) -> Option<Vec<ContainerStatus>> {
+    statuses.map(|statuses| {
+        statuses
+            .into_iter()
+            .map(|status| ContainerStatus {
+                restart_count: status.restart_count,
+                state: status.state.map(|state| ContainerState {
+                    waiting: state.waiting.map(|waiting| ContainerStateWaiting {
+                        reason: waiting.reason,
+                        ..ContainerStateWaiting::default()
+                    }),
+                    ..ContainerState::default()
+                }),
+                ..ContainerStatus::default()
+            })
+            .collect()
+    })
 }
 
 fn null_as_default<'de, D: Deserializer<'de>, T: Deserialize<'de> + Default>(
@@ -66,15 +106,8 @@ impl PodProjection {
                         })
                         .collect()
                 }),
-                container_statuses: status.container_statuses.map(|statuses| {
-                    statuses
-                        .into_iter()
-                        .map(|s| ContainerStatus {
-                            restart_count: s.restart_count,
-                            ..ContainerStatus::default()
-                        })
-                        .collect()
-                }),
+                container_statuses: container_statuses(status.container_statuses),
+                init_container_statuses: container_statuses(status.init_container_statuses),
                 ..PodStatus::default()
             }),
             ..Pod::default()
@@ -90,18 +123,65 @@ pub(super) struct ReplicaStatus {
     replicas: Option<i32>,
 }
 
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeploymentSummaryStatus {
+    #[serde(flatten)]
+    replicas: ReplicaStatus,
+    observed_generation: Option<i64>,
+    updated_replicas: Option<i32>,
+    conditions: Option<Vec<SummaryDeploymentCondition>>,
+}
+
+#[derive(Clone, Deserialize)]
+struct DeploymentSummarySpec {
+    replicas: Option<i32>,
+    paused: Option<bool>,
+}
+
+#[derive(Clone, Deserialize)]
+struct ReplicaSetSummarySpec {
+    replicas: Option<i32>,
+}
+
+#[derive(Clone, Deserialize)]
+struct SummaryDeploymentCondition {
+    #[serde(default, rename = "type", deserialize_with = "null_as_default")]
+    type_: String,
+    #[serde(default, deserialize_with = "null_as_default")]
+    status: String,
+    reason: Option<String>,
+}
+
 impl DeploymentProjection {
     pub(super) fn into_resource(self) -> Deployment {
         let value = self.0;
         Deployment {
             metadata: value.metadata,
+            spec: value.spec.map(|spec| DeploymentSpec {
+                replicas: spec.replicas,
+                paused: spec.paused,
+                ..DeploymentSpec::default()
+            }),
             status: value.status.map(|status| DeploymentStatus {
-                available_replicas: status.available_replicas,
-                ready_replicas: status.ready_replicas,
-                replicas: status.replicas,
+                available_replicas: status.replicas.available_replicas,
+                ready_replicas: status.replicas.ready_replicas,
+                replicas: status.replicas.replicas,
+                observed_generation: status.observed_generation,
+                updated_replicas: status.updated_replicas,
+                conditions: status.conditions.map(|conditions| {
+                    conditions
+                        .into_iter()
+                        .map(|condition| DeploymentCondition {
+                            type_: condition.type_,
+                            status: condition.status,
+                            reason: condition.reason,
+                            ..DeploymentCondition::default()
+                        })
+                        .collect()
+                }),
                 ..DeploymentStatus::default()
             }),
-            ..Deployment::default()
         }
     }
 }
@@ -111,13 +191,16 @@ impl ReplicaSetProjection {
         let value = self.0;
         ReplicaSet {
             metadata: value.metadata,
+            spec: value.spec.map(|spec| ReplicaSetSpec {
+                replicas: spec.replicas,
+                ..ReplicaSetSpec::default()
+            }),
             status: value.status.map(|status| ReplicaSetStatus {
                 available_replicas: status.available_replicas,
                 ready_replicas: status.ready_replicas,
                 replicas: status.replicas.unwrap_or_default(),
                 ..ReplicaSetStatus::default()
             }),
-            ..ReplicaSet::default()
         }
     }
 }
@@ -191,3 +274,7 @@ mod tests;
 #[cfg(test)]
 #[path = "summary_parity_tests.rs"]
 mod parity_tests;
+
+#[cfg(test)]
+#[path = "summary_lifecycle_tests.rs"]
+mod lifecycle_tests;

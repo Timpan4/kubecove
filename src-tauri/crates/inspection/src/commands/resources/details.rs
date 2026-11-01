@@ -218,7 +218,7 @@ mod tests {
             );
             assert_eq!(
                 details.summary.status.as_deref(),
-                status.as_ref().map(|_| "Available: 1")
+                status.as_ref().map(|_| "Starting")
             );
             assert_eq!(details.status, status);
             assert_eq!(details.metadata["name"], "calagopus-5f554d575f");

@@ -33,6 +33,7 @@ tauri-plugin-dialog = { workspace = true, optional = true }
 
 [dev-dependencies]
 tower-test = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true
