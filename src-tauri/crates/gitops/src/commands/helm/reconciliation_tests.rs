@@ -133,8 +133,9 @@ fn reconciliation_totals_count_each_status() {
 
 // Failure modes: an unrelated API publishing `"verbs": null` fails discovery,
 // a manifest group whose aggregated API server is down fails the whole
-// reconciliation instead of leaving only its own rows unavailable, and one
-// unavailable version of a group hides the group's available version.
+// reconciliation instead of leaving only its own rows unavailable, an
+// unavailable preferred version hides the group's available versions, and a
+// kind served only at a non-preferred version is missed.
 #[tokio::test]
 async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_and_unavailable_apis() {
     use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
@@ -150,11 +151,18 @@ async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_and_unavai
             kind("", "v1", "Service", "services"),
             kind("apps", "v1", "Deployment", "deployments"),
             kind("example.com", "v1", "Widget", "widgets"),
+            kind("example.com", "v1alpha1", "Gizmo", "gizmos"),
         ],
         &[("down.example.com", "v1"), ("example.com", "v1beta1")],
     );
     let manifest = [
         manifest_ref(Some("example.com/v1"), Some("Widget"), None, Some("blue")),
+        manifest_ref(
+            Some("example.com/v1alpha1"),
+            Some("Gizmo"),
+            None,
+            Some("green"),
+        ),
         manifest_ref(
             Some("down.example.com/v1"),
             Some("Gadget"),
@@ -169,7 +177,7 @@ async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_and_unavai
 
     let mut kinds: Vec<&str> = discovered.iter().map(|kind| kind.kind.as_str()).collect();
     kinds.sort_unstable();
-    assert_eq!(kinds, ["Deployment", "Service", "Widget"]);
+    assert_eq!(kinds, ["Deployment", "Gizmo", "Service", "Widget"]);
 }
 
 #[test]

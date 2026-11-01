@@ -9,7 +9,7 @@ use kube::{
     api::{Api, ApiResource, DynamicObject},
     Client,
 };
-use kubecove_kube::commands::discover_groups;
+use kubecove_kube::commands::discover_resources;
 use serde_json::Value;
 
 use crate::models::{YamlEncoding, YamlViewMode};
@@ -24,18 +24,16 @@ pub(crate) fn object_age(metadata: &ObjectMeta) -> String {
     )
 }
 
-/// The recommended resources of `groups`, through `discover_groups`.
+/// The resources of `groups`, one per kind, through `discover_resources`.
 pub(crate) async fn discover_api_resources(
     client: &Client,
     groups: &[&str],
 ) -> Result<Vec<ApiResource>, AppError> {
-    let mut resources = Vec::new();
-    for group in discover_groups(client, groups).await? {
-        for (api_resource, _) in group.recommended_resources() {
-            resources.push(api_resource);
-        }
-    }
-    Ok(resources)
+    Ok(discover_resources(client, groups)
+        .await?
+        .into_iter()
+        .map(|(api_resource, _)| api_resource)
+        .collect())
 }
 
 pub(crate) fn find_discovered_api_resource(

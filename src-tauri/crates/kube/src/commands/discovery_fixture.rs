@@ -30,8 +30,9 @@ pub fn client(kinds: &[FixtureKind]) -> Client {
 }
 
 /// Like [`client`], but the per-group list also names each `(group, version)`
-/// in `unavailable`, after the group's served versions, and requests for those
-/// answer 503, as kube-apiserver does when an aggregated API server is down.
+/// in `unavailable`, ahead of the group's served versions so it is the
+/// preferred version, and requests for those answer 503, as kube-apiserver
+/// does when an aggregated API server is down.
 pub fn client_with_unavailable_groups(
     kinds: &[FixtureKind],
     unavailable: &[(&'static str, &'static str)],
@@ -180,7 +181,7 @@ fn group_list(kinds: &[FixtureKind], unavailable: &[(&'static str, &'static str)
     for (group, version) in unavailable {
         let versions = versions_by_group.entry(group).or_default();
         if !versions.contains(version) {
-            versions.push(version);
+            versions.insert(0, version);
         }
     }
     let groups: Vec<Value> = versions_by_group

@@ -64,6 +64,43 @@ async fn providers_without_installed_kinds_are_not_detected() {
     assert!(!flux.detected);
 }
 
+// Failure mode: Flux serves `Receiver` at v1 and `Alert` at v1beta3 in one
+// group, the group prefers v1, and detection drops the installed `Alert`.
+#[tokio::test]
+async fn flux_detection_finds_kinds_served_only_at_a_non_preferred_version() {
+    let notification = |version, kind, plural| FixtureKind {
+        group: "notification.toolkit.fluxcd.io",
+        version,
+        kind,
+        plural,
+        namespaced: true,
+    };
+    let scope = FixedClusterAccess::new(discovery_fixture::client(&[
+        notification("v1", "Receiver", "receivers"),
+        notification("v1beta3", "Alert", "alerts"),
+    ]))
+    .scope();
+
+    let flux = scope
+        .run(detect_flux("fixture".into(), None))
+        .await
+        .expect("Flux detection");
+
+    let mut kinds: Vec<(&str, &str)> = flux
+        .kinds
+        .iter()
+        .map(|kind| (kind.api_version.as_str(), kind.kind.as_str()))
+        .collect();
+    kinds.sort_unstable();
+    assert_eq!(
+        kinds,
+        [
+            ("notification.toolkit.fluxcd.io/v1", "Receiver"),
+            ("notification.toolkit.fluxcd.io/v1beta3", "Alert"),
+        ]
+    );
+}
+
 // Failure mode: an overloaded API server answers the group list with 503, and
 // detection reports every provider as not installed instead of failing.
 #[tokio::test]

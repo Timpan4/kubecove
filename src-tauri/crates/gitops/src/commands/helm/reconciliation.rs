@@ -11,7 +11,7 @@ use kube::{
     discovery::{verbs, Scope},
     Client, Error as KubeError,
 };
-use kubecove_kube::commands::discover_groups;
+use kubecove_kube::commands::discover_resources;
 use kubecove_kube::commands::dynamic_projection::{
     api_resource_from_discovered, dynamic_resource_summary,
 };
@@ -104,23 +104,21 @@ async fn discovered_resources(
     }));
     let groups: Vec<&str> = groups.into_iter().collect();
     let mut kinds = Vec::new();
-    for group in discover_groups(&client, &groups).await? {
-        for (api_resource, capabilities) in group.recommended_resources() {
-            if !capabilities.supports_operation(verbs::GET)
-                && !capabilities.supports_operation(verbs::LIST)
-            {
-                continue;
-            }
-            kinds.push(DiscoveredResourceKind {
-                group: api_resource.group,
-                version: api_resource.version,
-                api_version: api_resource.api_version,
-                kind: api_resource.kind,
-                plural: api_resource.plural,
-                short_names: Vec::new(),
-                namespaced: matches!(capabilities.scope, Scope::Namespaced),
-            });
+    for (api_resource, capabilities) in discover_resources(&client, &groups).await? {
+        if !capabilities.supports_operation(verbs::GET)
+            && !capabilities.supports_operation(verbs::LIST)
+        {
+            continue;
         }
+        kinds.push(DiscoveredResourceKind {
+            group: api_resource.group,
+            version: api_resource.version,
+            api_version: api_resource.api_version,
+            kind: api_resource.kind,
+            plural: api_resource.plural,
+            short_names: Vec::new(),
+            namespaced: matches!(capabilities.scope, Scope::Namespaced),
+        });
     }
     kinds.sort_by(|a, b| {
         a.api_version

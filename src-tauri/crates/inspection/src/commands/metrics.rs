@@ -17,7 +17,7 @@ use kube::{
     discovery::verbs,
     Client, Error,
 };
-use kubecove_kube::commands::discover_groups;
+use kubecove_kube::commands::discover_resources;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
@@ -46,16 +46,11 @@ fn metrics_api_resource(kind: &str, plural: &str) -> ApiResource {
 /// Whether the cluster serves listable pod or node metrics. A registered metrics
 /// API whose server is down reads as absent.
 async fn has_metrics_api(client: Client) -> Result<bool, AppError> {
-    let groups = discover_groups(&client, &["metrics.k8s.io"]).await?;
-    let available = groups.iter().any(|group| {
-        group
-            .recommended_resources()
-            .iter()
-            .any(|(resource, capabilities)| {
-                resource.api_version == "metrics.k8s.io/v1beta1"
-                    && matches!(resource.kind.as_str(), "PodMetrics" | "NodeMetrics")
-                    && capabilities.supports_operation(verbs::LIST)
-            })
+    let resources = discover_resources(&client, &["metrics.k8s.io"]).await?;
+    let available = resources.iter().any(|(resource, capabilities)| {
+        resource.api_version == "metrics.k8s.io/v1beta1"
+            && matches!(resource.kind.as_str(), "PodMetrics" | "NodeMetrics")
+            && capabilities.supports_operation(verbs::LIST)
     });
     Ok(available)
 }
