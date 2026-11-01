@@ -5,7 +5,7 @@ import { test } from "vitest";
  * through the `bench` test fixture, and one benchmark per test keeps each
  * result named after its benchmark.
  */
-export function benchmark(name: string, fn: () => unknown): void {
+export function benchmark(name: string, fn: () => void): void {
 	test(name, async ({ bench }) => {
 		await bench(name, fn).run();
 	});
