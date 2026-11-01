@@ -40,6 +40,8 @@ Log events follow [ADR 0027](../../docs/decisions/0027-server-observability.md).
 
 Cache counters come from the backend cache diagnostics. Settings -> Diagnostics "Clear" and session end do not lower them: Clear only moves the baseline of the diagnostics table, and an ended session's totals move into a retired sum.
 
+`deploy/grafana/kubecove-server.json` is a Grafana dashboard for these metrics. `src/metrics_dashboard_tests.rs` checks that every metric, label and literal label value it queries appears in a scrape, so renaming a metric or label fails `cargo test` until the dashboard follows.
+
 ## Memory and transport
 
 Binaries use the platform's system allocator. A mimalloc global allocator was

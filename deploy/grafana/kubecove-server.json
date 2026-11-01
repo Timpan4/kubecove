@@ -1,0 +1,348 @@
+{
+  "title": "KubeCove server",
+  "uid": "kubecove-server",
+  "description": "Sessions, sign-in, refused requests, commands, backend cache and process usage for kubecove-server --metrics-listen. Metrics are defined in ADR 0027.",
+  "tags": ["kubecove"],
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "",
+  "links": [],
+  "annotations": { "list": [] },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Data source",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "name": "job",
+        "label": "Job",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": { "query": "label_values(kubecove_server_sessions_open, job)", "refId": "job" },
+        "definition": "label_values(kubecove_server_sessions_open, job)",
+        "current": {},
+        "hide": 0,
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1
+      },
+      {
+        "name": "instance",
+        "label": "Instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": { "query": "label_values(kubecove_server_sessions_open{job=~\"$job\"}, instance)", "refId": "instance" },
+        "definition": "label_values(kubecove_server_sessions_open{job=~\"$job\"}, instance)",
+        "current": {},
+        "hide": 0,
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "Overview", "id": 1, "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "type": "stat",
+      "title": "Open sessions",
+      "id": 2,
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum(kubecove_server_sessions_open{job=~\"$job\", instance=~\"$instance\"})" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "area", "textMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "Sign-in failures",
+      "description": "Failed token logins and OIDC callbacks in the selected time range.",
+      "id": 3,
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(kubecove_server_sign_ins_total{job=~\"$job\", instance=~\"$instance\", outcome=\"failure\"}[$__range])) or vector(0)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "Refused requests",
+      "description": "Requests refused by the Host or Origin check in the selected time range.",
+      "id": 4,
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(kubecove_server_requests_refused_total{job=~\"$job\", instance=~\"$instance\"}[$__range])) or vector(0)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "Command errors",
+      "description": "Failed commands as a share of all commands in the selected time range.",
+      "id": 5,
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "(sum(increase(kubecove_server_command_errors_total{job=~\"$job\", instance=~\"$instance\"}[$__range])) or vector(0)) / sum(increase(kubecove_server_command_duration_seconds_count{job=~\"$job\", instance=~\"$instance\"}[$__range]))" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "Resident memory",
+      "id": 6,
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum(process_resident_memory_bytes{job=~\"$job\", instance=~\"$instance\"})" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "area", "textMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "CPU (cores)",
+      "id": 7,
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(process_cpu_seconds_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval]))" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 3, "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "area", "textMode": "value" }
+    },
+
+    { "type": "row", "title": "Sessions and sign-in", "id": 10, "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "panels": [] },
+    {
+      "type": "timeseries",
+      "title": "Open sessions",
+      "id": 11,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (instance) (kubecove_server_sessions_open{job=~\"$job\", instance=~\"$instance\"})", "legendFormat": "{{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Session lifecycle per minute",
+      "id": 12,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(kubecove_server_sessions_opened_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "opened" },
+        { "refId": "B", "expr": "sum(rate(kubecove_server_sessions_resumed_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "resumed" },
+        { "refId": "C", "expr": "sum by (reason) (rate(kubecove_server_sessions_closed_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "closed: {{reason}}" },
+        { "refId": "D", "expr": "sum(rate(kubecove_server_sessions_expired_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "expired" },
+        { "refId": "E", "expr": "sum by (error_kind) (rate(kubecove_server_session_cleanup_failures_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "cleanup failed: {{error_kind}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Sign-ins per minute",
+      "description": "Token logins and OIDC callbacks. Cloudflare Access signs users in before requests reach the server; its rejected assertions appear under refused requests.",
+      "id": 13,
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome, reason) (rate(kubecove_server_sign_ins_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "{{outcome}} {{reason}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Refused requests per minute",
+      "description": "Host and Origin refusals, and protected requests without a valid credential.",
+      "id": 14,
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (reason) (rate(kubecove_server_requests_refused_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "{{reason}} check" },
+        { "refId": "B", "expr": "sum by (reason) (rate(kubecove_server_authentication_refused_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "credential {{reason}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "OIDC token renewals per minute",
+      "id": 15,
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome) (rate(kubecove_server_oidc_refreshes_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "{{outcome}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+
+    { "type": "row", "title": "Commands", "id": 20, "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }, "panels": [] },
+    {
+      "type": "timeseries",
+      "title": "Command p95 latency by command",
+      "id": 21,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (command, le) (rate(kubecove_server_command_duration_seconds_bucket{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])))", "legendFormat": "{{command}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"], "sortBy": "Max", "sortDesc": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Command latency, all commands",
+      "id": 22,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(kubecove_server_command_duration_seconds_bucket{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(kubecove_server_command_duration_seconds_bucket{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])))", "legendFormat": "p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(kubecove_server_command_duration_seconds_bucket{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])))", "legendFormat": "p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Commands per second by outcome",
+      "id": 23,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome) (rate(kubecove_server_command_duration_seconds_count{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval]))", "legendFormat": "{{outcome}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Command errors per minute by kind",
+      "id": 24,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (error_kind) (rate(kubecove_server_command_errors_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "{{error_kind}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+
+    { "type": "row", "title": "Backend cache", "id": 30, "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 }, "panels": [] },
+    {
+      "type": "timeseries",
+      "title": "Cache hit ratio",
+      "description": "Reads served from a ready entry, out of all reads: hits, misses and reads that joined a load in progress.",
+      "id": 31,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (cache) (rate(kubecove_server_cache_hits_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) / (sum by (cache) (rate(kubecove_server_cache_hits_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) + sum by (cache) (rate(kubecove_server_cache_misses_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) + sum by (cache) (rate(kubecove_server_cache_joins_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])))", "legendFormat": "{{cache}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache evictions and failed reloads per minute",
+      "id": 32,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (cache) (rate(kubecove_server_cache_evictions_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "evicted: {{cache}}" },
+        { "refId": "B", "expr": "sum by (cache) (rate(kubecove_server_cache_restored_reload_failures_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])) * 60", "legendFormat": "reload failed: {{cache}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["max"], "sortBy": "Max", "sortDesc": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache entries in open sessions",
+      "id": 33,
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 48 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (cache) (kubecove_server_cache_ready_entries{job=~\"$job\", instance=~\"$instance\"})", "legendFormat": "ready: {{cache}}" },
+        { "refId": "B", "expr": "sum(kubecove_server_cache_dirty_entries{job=~\"$job\", instance=~\"$instance\"})", "legendFormat": "dirty, all caches" },
+        { "refId": "C", "expr": "sum(kubecove_server_cache_loading_entries{job=~\"$job\", instance=~\"$instance\"})", "legendFormat": "loading, all caches" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache retained items",
+      "id": 34,
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 48 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (cache) (kubecove_server_cache_retained_items{job=~\"$job\", instance=~\"$instance\"})", "legendFormat": "{{cache}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache payload, shallow lower bound",
+      "description": "Value headers and collection elements only. Nested strings, allocator overhead and keys are not counted, so real memory use is higher.",
+      "id": 35,
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 48 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (cache) (kubecove_server_cache_shallow_payload_bytes{job=~\"$job\", instance=~\"$instance\"})", "legendFormat": "{{cache}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+
+    { "type": "row", "title": "Process", "id": 40, "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 56 }, "panels": [] },
+    {
+      "type": "timeseries",
+      "title": "Resident memory",
+      "id": 41,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 57 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (instance) (process_resident_memory_bytes{job=~\"$job\", instance=~\"$instance\"})", "legendFormat": "{{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU usage (cores)",
+      "id": 42,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 57 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (instance) (rate(process_cpu_seconds_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval]))", "legendFormat": "{{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    }
+  ]
+}

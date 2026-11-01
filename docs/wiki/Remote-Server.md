@@ -136,6 +136,8 @@ Add `--metrics-listen <IP:PORT>`, for example `--metrics-listen 0.0.0.0:9090`, t
 
 The metrics cover open sessions, sign-ins, refused requests, OIDC token renewals, command durations and errors, backend cache counters and sizes, and the server's memory and CPU use. Labels never contain user names, session ids, clusters, namespaces or resource names. Cache counters keep increasing when you press Clear in Settings -> Diagnostics or when a session ends.
 
+To chart them, import [`deploy/grafana/kubecove-server.json`](https://github.com/Timpan4/kubecove/blob/main/deploy/grafana/kubecove-server.json) into Grafana (Dashboards -> New -> Import) and pick your Prometheus data source. The dashboard filters by the `job` and `instance` labels your Prometheus scrape configuration assigns.
+
 ## Security and support boundaries
 
 - Non-loopback TCP requires `--allow-remote` and TLS. Unix sockets (`--socket`) use mode `0600`, cannot be combined with TLS or remote TCP, and need an exact `--public-origin` for browser access.
