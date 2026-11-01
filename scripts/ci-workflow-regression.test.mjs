@@ -187,10 +187,16 @@ for (const domain of domains) {
     assert.notEqual(gate({ [`${key}_REQUIRED`]: "", [`${key}_RESULT`]: "skipped" }), 0);
   });
 }
-test("existing release PR exception still requires Nix success", () => {
-  const release = { RELEASE_PR: "true", DOCS_RESULT: "skipped", FRONTEND_RESULT: "skipped", RUST_RESULT: "skipped", SERVER_RESULT: "skipped" };
+test("pull requests skip Nix without failing the required gate", () => {
+  const condition = "github.event_name != 'pull_request' && needs.changes.outputs.nix == 'true'";
+  assert.ok(job("nix").includes(`if: \${{ ${condition} }}`));
+  assert.ok(job("check").includes(`NIX_REQUIRED: \${{ ${condition} }}`));
+  assert.equal(gate({ NIX_REQUIRED: "false", NIX_RESULT: "skipped" }), 0);
+});
+test("release PRs skip Nix along with the other expensive checks", () => {
+  const release = { RELEASE_PR: "true", DOCS_RESULT: "skipped", FRONTEND_RESULT: "skipped", NIX_REQUIRED: "false", NIX_RESULT: "skipped", RUST_RESULT: "skipped", SERVER_RESULT: "skipped" };
   assert.equal(gate(release), 0);
-  for (const result of ["failure", "cancelled", "skipped"]) assert.notEqual(gate({ ...release, NIX_RESULT: result }), 0);
+  for (const result of ["failure", "cancelled", "success"]) assert.notEqual(gate({ ...release, NIX_RESULT: result }), 0);
   assert.notEqual(gate({ ...release, FRONTEND_RESULT: "success" }), 0);
   assert.notEqual(gate({ ...release, RELEASE_PR: "false" }), 0);
   for (const name of ["docs", "frontend", "rust"]) {
