@@ -6,7 +6,7 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"includes": ["src/**", "scripts/**", "tests/**", "e2e/**", "benchmarks/**", "vitest.config.ts", "!src/**/*.svelte"]
+		"includes": ["src/**", "scripts/**", "tests/**", "e2e/**", "benchmarks/**", "vitest.config.ts", "!src/**/*.svelte", "!e2e/fixtures/chart/templates/**"]
 	},
 	"formatter": {
 		"enabled": false
