@@ -60,7 +60,7 @@ describe("release version helpers", () => {
 		expect(verifyJob).not.toContain("NIX_RESULT:");
 	});
 
-	test("gates pull requests on the frontend and desktop Nix packages", () => {
+	test("retains frontend and desktop Nix builds outside pull requests", () => {
 		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8").replaceAll("\r\n", "\n");
 		const nixJob = ciWorkflow.match(
 			/\n {2}nix:\n[\s\S]*?(?=\n {2}check:\n)/,
@@ -74,7 +74,7 @@ describe("release version helpers", () => {
 		);
 		expect(checkJob).toContain("- nix");
 		expect(checkJob).toContain("NIX_RESULT: $" + "{{ needs.nix.result }}");
-		expect(checkJob).toContain('test "$' + '{NIX_RESULT}" = "success"');
+		expect(checkJob).toContain('verify_result "$' + '{NIX_REQUIRED}" "$' + '{NIX_RESULT}"');
 	});
 
 	test("skips expensive PR checks only for trusted release branches", () => {
@@ -129,7 +129,7 @@ describe("release version helpers", () => {
 			'test "$' + '{FRONTEND_RESULT}" = "skipped"',
 		);
 		expect(ciCheckJob).toContain(
-			'test "$' + '{NIX_RESULT}" = "success"',
+			'test "$' + '{NIX_RESULT}" = "skipped"',
 		);
 		expect(ciCheckJob).toContain(
 			'test "$' + '{RUST_RESULT}" = "skipped"',

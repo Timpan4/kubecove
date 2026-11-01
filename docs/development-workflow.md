@@ -151,6 +151,10 @@ The frontend, headless server, and E2E jobs share Bun's download cache on each
 OS. They still run `bun install --frozen-lockfile` after restoring it. Caches
 never replace a build or test gate, and a cache miss runs the same checks.
 
+PR runs skip Nix builds, including release PRs. Relevant pushes to `main` and
+manual CI runs retain the Nix build gate. The daily Nix lock refresh builds its
+packages before opening a PR, and release tags retain advisory Nix builds.
+
 Nix currently rebuilds without a persistent store cache. Check the repository's
 GitHub cache usage before adding one. A whole-store Nix cache can evict Rust
 caches. Cache storage and billing settings are unchanged by the workflows.
