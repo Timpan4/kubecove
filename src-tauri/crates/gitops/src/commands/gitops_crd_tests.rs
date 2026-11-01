@@ -63,3 +63,23 @@ async fn providers_without_installed_kinds_are_not_detected() {
     assert!(!argo);
     assert!(!flux.detected);
 }
+
+// Failure mode: an overloaded API server answers the group list with 503, and
+// detection reports every provider as not installed instead of failing.
+#[tokio::test]
+async fn provider_detection_fails_when_the_group_list_is_unavailable() {
+    let scope = FixedClusterAccess::new(discovery_fixture::client_with_unavailable_group_list(&[
+        ARGO_APPLICATION,
+        FLUX_GIT_REPOSITORY,
+    ]))
+    .scope();
+
+    let argo = scope
+        .clone()
+        .run(detect_argocd("fixture".into(), None))
+        .await;
+    let flux = scope.run(detect_flux("fixture".into(), None)).await;
+
+    assert!(argo.is_err(), "Argo CD detection: {argo:?}");
+    assert!(flux.is_err(), "Flux detection: {flux:?}");
+}

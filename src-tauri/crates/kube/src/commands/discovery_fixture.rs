@@ -26,15 +26,29 @@ pub struct FixtureKind {
 /// A client whose discovery requests return `kinds` plus the null-verbs
 /// aggregated API, in both aggregated and per-group form.
 pub fn client(kinds: &[FixtureKind]) -> Client {
-    client_with_unavailable_groups(kinds, &[])
+    serve(kinds, &[], true)
 }
 
 /// Like [`client`], but the per-group list also names each `(group, version)`
-/// in `unavailable`, and requests for those answer 503, as kube-apiserver does
-/// when an aggregated API server is down.
+/// in `unavailable`, after the group's served versions, and requests for those
+/// answer 503, as kube-apiserver does when an aggregated API server is down.
 pub fn client_with_unavailable_groups(
     kinds: &[FixtureKind],
     unavailable: &[(&'static str, &'static str)],
+) -> Client {
+    serve(kinds, unavailable, true)
+}
+
+/// Like [`client`], but the group lists at `/api` and `/apis` answer 503, as
+/// an overloaded or restarting API server does.
+pub fn client_with_unavailable_group_list(kinds: &[FixtureKind]) -> Client {
+    serve(kinds, &[], false)
+}
+
+fn serve(
+    kinds: &[FixtureKind],
+    unavailable: &[(&'static str, &'static str)],
+    group_list_available: bool,
 ) -> Client {
     let kinds = kinds.to_vec();
     let unavailable = unavailable.to_vec();
@@ -44,7 +58,12 @@ pub fn client_with_unavailable_groups(
             .get(http::header::ACCEPT)
             .and_then(|accept| accept.to_str().ok())
             .is_some_and(|accept| accept.contains("apidiscovery.k8s.io"));
-        let (status, body) = route(request.uri().path(), aggregated, &kinds, &unavailable);
+        let path = request.uri().path();
+        let (status, body) = if !group_list_available && matches!(path, "/api" | "/apis") {
+            service_unavailable(path)
+        } else {
+            route(path, aggregated, &kinds, &unavailable)
+        };
         let response = http::Response::builder()
             .status(status)
             .header(http::header::CONTENT_TYPE, "application/json")
@@ -156,14 +175,18 @@ fn aggregated_list(kinds: &[FixtureKind], core: bool) -> Value {
 }
 
 fn group_list(kinds: &[FixtureKind], unavailable: &[(&'static str, &'static str)]) -> Value {
-    let mut groups: Vec<Value> = group_versions(kinds, false)
+    let mut versions_by_group = group_versions(kinds, false);
+    versions_by_group.insert(NULL_VERBS_GROUP, vec![NULL_VERBS_VERSION]);
+    for (group, version) in unavailable {
+        let versions = versions_by_group.entry(group).or_default();
+        if !versions.contains(version) {
+            versions.push(version);
+        }
+    }
+    let groups: Vec<Value> = versions_by_group
         .into_iter()
         .map(|(group, versions)| api_group(group, &versions))
         .collect();
-    groups.push(api_group(NULL_VERBS_GROUP, &[NULL_VERBS_VERSION]));
-    for (group, version) in unavailable {
-        groups.push(api_group(group, &[version]));
-    }
     json!({ "kind": "APIGroupList", "apiVersion": "v1", "groups": groups })
 }
 

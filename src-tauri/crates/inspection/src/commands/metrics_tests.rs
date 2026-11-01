@@ -21,15 +21,31 @@ async fn metrics_api_is_found_beside_an_api_with_null_verbs() {
 }
 
 // Failure mode: a registered metrics API whose server is down (metrics-server
-// not running) fails the metrics read with a raw error instead of reading as
-// unavailable.
+// not running) reads as a discovery failure with a raw error warning instead
+// of an absent metrics API.
 #[tokio::test]
-async fn metrics_api_with_a_stopped_server_reads_as_absent() {
+async fn metrics_api_with_a_stopped_server_reads_as_unavailable() {
+    use crate::commands::FixedClusterAccess;
     use kubecove_kube::commands::discovery_fixture;
-    let client =
-        discovery_fixture::client_with_unavailable_groups(&[], &[("metrics.k8s.io", "v1beta1")]);
+    let access = FixedClusterAccess::new(discovery_fixture::client_with_unavailable_groups(
+        &[],
+        &[("metrics.k8s.io", "v1beta1")],
+    ))
+    .access();
 
-    assert!(!has_metrics_api(client).await.expect("metrics discovery"));
+    let summary = resource_metrics_from(&access, "fixture".into(), Vec::new())
+        .await
+        .expect("metrics summary");
+
+    assert_eq!(
+        summary.availability.status,
+        ResourceMetricsAvailabilityStatus::Unavailable
+    );
+    assert_eq!(
+        summary.availability.message.as_deref(),
+        Some("metrics API unavailable")
+    );
+    assert!(summary.warnings.is_empty(), "{:?}", summary.warnings);
 }
 
 #[test]

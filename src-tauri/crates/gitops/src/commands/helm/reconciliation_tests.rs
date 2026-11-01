@@ -132,8 +132,9 @@ fn reconciliation_totals_count_each_status() {
 }
 
 // Failure modes: an unrelated API publishing `"verbs": null` fails discovery,
-// and a manifest group whose aggregated API server is down fails the whole
-// reconciliation instead of leaving only its own rows unavailable.
+// a manifest group whose aggregated API server is down fails the whole
+// reconciliation instead of leaving only its own rows unavailable, and one
+// unavailable version of a group hides the group's available version.
 #[tokio::test]
 async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_and_unavailable_apis() {
     use kubecove_kube::commands::discovery_fixture::{self, FixtureKind};
@@ -150,7 +151,7 @@ async fn discovery_covers_manifest_and_common_kinds_beside_null_verbs_and_unavai
             kind("apps", "v1", "Deployment", "deployments"),
             kind("example.com", "v1", "Widget", "widgets"),
         ],
-        &[("down.example.com", "v1")],
+        &[("down.example.com", "v1"), ("example.com", "v1beta1")],
     );
     let manifest = [
         manifest_ref(Some("example.com/v1"), Some("Widget"), None, Some("blue")),
