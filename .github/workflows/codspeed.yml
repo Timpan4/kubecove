@@ -163,7 +163,8 @@ jobs:
         with:
           shared-key: kubecove-rust-codspeed
           workspaces: "./src-tauri -> target"
-          cache-workspace-crates: true
+          prefix-key: dependency-rust
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-codspeed
         run: cargo install cargo-codspeed --version 5.0.1 --locked

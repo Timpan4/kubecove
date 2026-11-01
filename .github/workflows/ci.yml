@@ -234,6 +234,7 @@ jobs:
         with:
           shared-key: kubecove-rust-ci
           workspaces: "./src-tauri -> target"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Audit Rust dependencies
         uses: rustsec/audit-check@v2.0.0
@@ -272,6 +273,14 @@ jobs:
           workspaces: |
             ./src-tauri -> target
             ./src-tauri/server -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
       - name: Build browser UI
