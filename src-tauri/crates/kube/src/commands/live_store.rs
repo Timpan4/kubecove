@@ -67,6 +67,9 @@ struct SharedCache<T> {
     next_load_id: AtomicU64,
     entries: Mutex<HashMap<String, CacheEntry<T>>>,
     counters: CacheCounters,
+    /// Counter values at the last diagnostics clear. The counters themselves
+    /// never reset, so server metrics stay monotonic.
+    cleared: CacheCounters,
 }
 
 // The cache retains a lazy shared future. Without a caller, that future must be
@@ -118,6 +121,7 @@ where
             next_load_id: AtomicU64::new(0),
             entries: Mutex::new(HashMap::new()),
             counters: CacheCounters::default(),
+            cleared: CacheCounters::default(),
         }
     }
 

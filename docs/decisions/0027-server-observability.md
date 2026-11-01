@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted on 2026-11-01. Structured logging is implemented. The metrics listener is accepted and not yet implemented.
+Accepted and implemented on 2026-11-01.
 
 ## Context
 
@@ -37,7 +37,7 @@ Logs and metrics leave the server's trust boundary: they go to log collectors an
 
 ### Metrics listener
 
-- `--metrics-listen <IP:PORT>` starts a second plain-HTTP listener that serves only `GET /metrics` in Prometheus text format. Without the flag, nothing listens.
+- `--metrics-listen <IP:PORT>` starts a second plain-HTTP listener that serves only `GET /metrics` in OpenMetrics text format, which Prometheus scrapes natively. Without the flag, nothing listens. A bind failure fails startup.
 - Any address is accepted. The flag is the opt-in, Prometheus scrapes pod IPs, and the content is aggregate counts. Operators restrict scrapers with a NetworkPolicy or firewall.
 - The listener shares no route, cookie or authentication state with the main API.
 - Labels exclude subjects, session identifiers, clusters, contexts, namespaces and resource names.

@@ -1,6 +1,7 @@
 use kubecove_server::{
     config::{Config, HELP},
     files::write_startup_token,
+    metrics,
     observe::{self, AuthMode},
     router,
     security::random_token,
@@ -95,6 +96,16 @@ async fn run() -> io::Result<()> {
             .kind;
     kubecove_server::security::install_tls_provider();
     let sessions = Arc::new(Sessions::new(config.grace, auth_mode));
+    if let Some(address) = config.metrics_listen {
+        let listener = tokio::net::TcpListener::bind(address).await?;
+        observe::metrics_listening(listener.local_addr()?);
+        let router = metrics::router(Arc::clone(&sessions));
+        tokio::spawn(async move {
+            if let Err(error) = axum::serve(listener, router).await {
+                observe::metrics_listener_failed(&error);
+            }
+        });
+    }
     if let Some(path) = &config.socket {
         #[cfg(unix)]
         {

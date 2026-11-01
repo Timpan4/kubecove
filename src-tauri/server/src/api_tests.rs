@@ -207,6 +207,61 @@ async fn default_level_omits_refused_header_values() {
     assert!(!logs.text().contains("evil"));
 }
 
+// Failure modes: a metric label carries a subject, session identifier, resume
+// token, cluster context or a request's command text.
+#[tokio::test]
+async fn metric_labels_never_carry_identities_or_cluster_names() {
+    let state = access_state();
+    let app = router(Arc::clone(&state));
+    let subject = "label-probe-subject@example.com";
+    let response = app
+        .clone()
+        .oneshot(access_post("/api/v1/session", subject, None, &json!({})))
+        .await
+        .unwrap();
+    let value: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let resume = value["resumeToken"].as_str().unwrap().to_owned();
+    let session_id = state
+        .sessions
+        .owner(&resume)
+        .await
+        .unwrap()
+        .session_id
+        .to_string();
+    for (command, args) in [
+        (
+            "list_namespaces",
+            json!({"clusterContext": "label-probe-context", "kubeconfigEnvVar": null}),
+        ),
+        ("label_probe_command", json!({})),
+    ] {
+        app.clone()
+            .oneshot(access_post(
+                &format!("/api/v1/invoke/{command}"),
+                subject,
+                Some(&resume),
+                &args,
+            ))
+            .await
+            .unwrap();
+    }
+    let text = crate::metrics::global().render(&state.sessions).await;
+    assert!(
+        text.contains("kubecove_server_command_duration_seconds_count{command=\"list_namespaces\"")
+    );
+    assert!(text.contains("kubecove_server_command_duration_seconds_count{command=\"unknown\""));
+    for (name, identity) in [
+        ("subject", subject),
+        ("resume token", resume.as_str()),
+        ("session id", session_id.as_str()),
+        ("cluster context", "label-probe-context"),
+        ("request path", "label_probe_command"),
+    ] {
+        assert!(!text.contains(identity), "the {name} reached a metric");
+    }
+}
+
 // API-only builds must retain authentication and Host checks while removing UI routes.
 #[cfg(not(feature = "web-ui"))]
 #[tokio::test]

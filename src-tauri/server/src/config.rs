@@ -21,6 +21,7 @@ pub const HELP: &str = "kubecove-server [OPTIONS]\n\
   --oidc-login-timeout <TIME>  Required OIDC transaction and network deadline\n\
   --oidc-kubernetes-credentials <AUD>  Call Kubernetes with the user's ID token; AUD is the API server's OIDC client ID\n\
   --log-format <FORMAT>  text (default) or json, one object per line on stderr; RUST_LOG sets levels\n\
+  --metrics-listen <IP:PORT>  Serve unauthenticated Prometheus metrics over plain HTTP at /metrics; off by default\n\
   --print-token          Also print the token on startup\n\
   --quiet                Suppress the startup login URL in service logs\n\
   --help                 Show this help";
@@ -37,6 +38,7 @@ pub struct Config {
     pub print_token: bool,
     pub quiet: bool,
     pub log_format: LogFormat,
+    pub metrics_listen: Option<SocketAddr>,
     pub access: Option<CloudflareAccess>,
     pub oidc: Option<OidcConfig>,
 }
@@ -56,6 +58,7 @@ impl Config {
             print_token: false,
             quiet: false,
             log_format: LogFormat::Text,
+            metrics_listen: None,
             access: None,
             oidc: None,
         };
@@ -81,6 +84,13 @@ impl Config {
                 "--socket" => config.socket = Some(value(&mut args, flag)?.into()),
                 "--log-format" => {
                     config.log_format = LogFormat::parse(&text(value(&mut args, flag)?)?)?;
+                }
+                "--metrics-listen" => {
+                    config.metrics_listen = Some(
+                        text(value(&mut args, flag)?)?
+                            .parse()
+                            .map_err(|_| "--metrics-listen requires IP:PORT")?,
+                    );
                 }
                 "--data-dir" => config.data_dir = value(&mut args, flag)?.into(),
                 "--tls-cert" => config.tls_cert = Some(value(&mut args, flag)?.into()),

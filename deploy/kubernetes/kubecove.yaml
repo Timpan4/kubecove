@@ -95,6 +95,13 @@ spec:
             - /data/kubecove
             - --public-origin
             - http://localhost:8080
+            # Optional unauthenticated Prometheus metrics. Restrict scrapers
+            # with a NetworkPolicy before enabling it.
+            # - --metrics-listen
+            # - 0.0.0.0:9090
+          # ports:
+          #   - name: metrics
+          #     containerPort: 9090
           env:
             - name: KUBECONFIG
               value: /etc/kubecove/config

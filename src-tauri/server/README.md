@@ -34,6 +34,12 @@ Clients run in independent sessions. Reconnects retain their session during `--s
 
 Log events follow [ADR 0027](../../docs/decisions/0027-server-observability.md). `src/observe.rs` is the only module that emits them, and it owns the redaction rules. Events go to stderr as text by default, or as one JSON object per line with `--log-format json`. `RUST_LOG` sets levels; the default is `warn,kubecove_server=info`. Each event has an `event` field: `server_started`, `server_failed`, `session_opened`, `session_resumed`, `session_closed`, `session_expired`, `session_cleanup_failed`, `sign_in`, `authentication_refused`, `request_refused`, `oidc_refresh` or `command_completed`. Set `RUST_LOG=kubecove_server=debug` to add successful commands, token renewals and the Host and Origin values of refused requests. The startup login URL stays on stdout.
 
+## Metrics
+
+`--metrics-listen <IP:PORT>` starts a second plain-HTTP listener that serves only `GET /metrics`, in OpenMetrics text format. It has no authentication, so bind it to an address only your scraper can reach. Without the flag nothing listens. `src/metrics.rs` owns the registry and the scrape handler; `observe.rs` updates the event counters. Metric names start with `kubecove_server_`, except `process_resident_memory_bytes` and `process_cpu_seconds_total`. Labels never carry subjects, session ids, clusters, contexts, namespaces or resource names.
+
+Cache counters come from the backend cache diagnostics. Settings -> Diagnostics "Clear" and session end do not lower them: Clear only moves the baseline of the diagnostics table, and an ended session's totals move into a retired sum.
+
 ## Memory and transport
 
 Binaries use the platform's system allocator. A mimalloc global allocator was

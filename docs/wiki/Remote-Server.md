@@ -130,6 +130,12 @@ The server logs session lifecycle, sign-in results, refused requests, OIDC token
 
 `RUST_LOG` sets the level, for example `RUST_LOG=kubecove_server=debug` to also log successful commands and the Host and Origin values of refused requests. Logs never contain tokens, cookies, kubeconfig contents or Secret data. Raising other crates to `debug` can log Kubernetes request paths, which name namespaces and resources. The token-mode login URL still goes to stdout; use `--quiet` to suppress it in service logs.
 
+## Metrics
+
+Add `--metrics-listen <IP:PORT>`, for example `--metrics-listen 0.0.0.0:9090`, to serve Prometheus metrics at `http://<IP:PORT>/metrics`. The endpoint uses plain HTTP and has no authentication, so allow only your Prometheus server to reach it, with a firewall or a Kubernetes NetworkPolicy. It serves nothing except `/metrics`.
+
+The metrics cover open sessions, sign-ins, refused requests, OIDC token renewals, command durations and errors, backend cache counters and sizes, and the server's memory and CPU use. Labels never contain user names, session ids, clusters, namespaces or resource names. Cache counters keep increasing when you press Clear in Settings -> Diagnostics or when a session ends.
+
 ## Security and support boundaries
 
 - Non-loopback TCP requires `--allow-remote` and TLS. Unix sockets (`--socket`) use mode `0600`, cannot be combined with TLS or remote TCP, and need an exact `--public-origin` for browser access.

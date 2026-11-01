@@ -75,6 +75,8 @@ The [Kubernetes example](kubernetes/kubecove.yaml) runs the same server binary; 
 
 The example runs one replica with the `Recreate` strategy, because the server has one active owner and one writer for its data directory. `fsGroupChangePolicy: OnRootMismatch` avoids recursive ownership changes when the volume root already matches. Check this with your storage driver; drivers that manage mount groups handle permissions themselves. See [Kubernetes volume permissions](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#configure-volume-permission-and-ownership-change-policy-for-pods). The example creates no Service, Ingress, NodePort or LoadBalancer. KubeCove itself deploys nothing; the operator applies these manifests.
 
+To expose Prometheus metrics, uncomment the `--metrics-listen` arguments and the `metrics` container port in the example. The endpoint has no authentication. Add a NetworkPolicy that admits only your Prometheus pods to port 9090, then point a pod scrape configuration or PodMonitor at the `metrics` port.
+
 ## Cloudflare Tunnel and Access
 
 Cloudflare Tunnel gives browsers an HTTPS route without a publicly reachable origin. A `cloudflared` container in the same pod reaches KubeCove's loopback listener. See [Cloudflare's Kubernetes guide](https://developers.cloudflare.com/tunnel/guides/kubernetes/) for the tunnel and its [Access setup](https://developers.cloudflare.com/cloudflare-one/setup/secure-private-apps/) for identity policies.

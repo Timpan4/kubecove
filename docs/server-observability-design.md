@@ -1,6 +1,6 @@
 # Server observability design
 
-Design and implementation plan for [#522](https://github.com/Timpan4/kubecove/issues/522) (structured and JSON logging) and [#523](https://github.com/Timpan4/kubecove/issues/523) (Prometheus metrics) in `kubecove-server`. Status: logging is implemented; metrics are pending. Owner decisions are recorded at the end.
+Design and implementation plan for [#522](https://github.com/Timpan4/kubecove/issues/522) (structured and JSON logging) and [#523](https://github.com/Timpan4/kubecove/issues/523) (Prometheus metrics) in `kubecove-server`. Status: implemented. Owner decisions are recorded at the end.
 
 ## Baseline before this work
 
@@ -22,6 +22,8 @@ Event names (log `event` field, metric name stem):
 | --- | --- | --- | --- |
 | `server_started` | info | version, auth_mode, transport (tcp, tls, unix); emitted once the listener and TLS configuration are ready | none |
 | `server_failed` | error | error (the startup or serve error that stops the server) | none |
+| `metrics_listening` | info | address | none |
+| `metrics_listener_failed` | warn | error_kind | none |
 | `session_opened` | info | session_id, auth_mode, subject | `kubecove_server_sessions_opened_total{auth_mode}` |
 | `session_resumed` | info | session_id, auth_mode, subject | `kubecove_server_sessions_resumed_total{auth_mode}` |
 | `session_closed` | info | session_id, reason (client, logout, shutdown, activation_failed) | `kubecove_server_sessions_closed_total{reason}` |
@@ -62,16 +64,17 @@ These extend the backend diagnostics rules (#419):
 - `--metrics-listen <IP:PORT>`, off by default. It starts a second `axum::serve` with a router that has only `GET /metrics`. That router shares no state with the main router except the metrics registry and a read handle to `Sessions`. No sign-in, cookie, or main-API route is reachable through it.
 - Scrape-time values:
   - `kubecove_server_sessions_open`: count of live owners.
-  - `kubecove_server_cache_{hits,misses,joins,evictions,restored_reload_failures}_total{cache}` and `kubecove_server_cache_{ready,dirty,loading,retained_items,shallow_payload_bytes}{cache}`. `cache` is one of the six fixed labels.
+  - `kubecove_server_cache_{hits,misses,joins,evictions,restored_reload_failures}_total{cache}` and `kubecove_server_cache_{ready_entries,dirty_entries,loading_entries,retained_items,shallow_payload_bytes}{cache}`. `cache` is one of the six fixed labels.
   - `process_resident_memory_bytes` and `process_cpu_seconds_total` from `sysinfo` (`Process::memory()`, `Process::accumulated_cpu_time()` in CPU-milliseconds). Both work on Linux, macOS and Windows.
+- Families with labels appear in a scrape after their first sample. `kubecove_server_sessions_open`, `kubecove_server_sessions_expired_total` and the process metrics are always present.
 - Excluded labels: subject, session id, cluster, context, namespace, resource name.
 
 #### Keeping cache counters monotonic
 
 The issue requires reusing the diagnostics counters. Two current behaviors would make a Prometheus counter go down, and `rate()` reads every decrease as a process restart:
 
-1. "Clear" in Settings stores 0. Change it to record a per-counter baseline. The diagnostics snapshot reports `raw - baseline`, so desktop and browser diagnostics behave exactly as today, and a new `ClusterLiveStore::cache_totals()` returns the raw values.
-2. Ending a session drops its counters. Add a server-side `CacheTotals` holding the live owners' stores and a retired sum, behind one mutex. `end()` moves a session's raw totals into the retired sum after its request gate is held and cleanup is done, in one locked step. A scrape takes the same lock and reports retired plus live. Each session is then counted exactly once in every scrape.
+1. "Clear" in Settings stored 0. It now records a per-counter baseline. The diagnostics snapshot reports `raw - baseline`, so desktop and browser diagnostics behave as before, and `ClusterLiveStore::lifetime_diagnostics()` returns the raw values.
+2. Ending a session dropped its counters. `Sessions` now keeps `RetiredCaches`, the summed raw totals of ended sessions. Close, expiry and shutdown remove the owner from the live list under the transition lock, then call `end()`, which finishes cleanup and adds the owner's totals to the retired sum. Counts that a stopping stream task records after that point are not exported; the counters undercount slightly but never decrease. A scrape reads the retired sum before the live owners, so a session can be missing from one scrape while it ends but is never counted twice. Each exported counter is raised to the scraped total and never lowered, so a session missing from one scrape cannot make a counter go down.
 
 #### Histogram buckets
 
@@ -97,7 +100,7 @@ Metrics:
 
 ## Plan
 
-Three pull requests, in order.
+Two pull requests, in order. Steps 2 and 3 below shipped together, because the cache totals have no consumer without the metrics listener.
 
 1. **ADR and logging (#522).** Write ADR 0027 "Server observability" covering the redaction rules, label rules and the unauthenticated metrics listener. ADR 0020 says removing a security assumption requires an amendment, so the listener needs the ADR before it ships. Add `observe.rs`, `--log-format`, the subscriber in `main.rs`, `session_id` on `Owner`, and the call sites in `lib.rs` (`guard`, `login`, `invoke`, `close_session`, `oidc_logout`), `oidc.rs` (callback), `access.rs`, `oidc_refresh.rs` and `sessions.rs`. Add config tests for the flag and the redaction test.
 2. **Monotonic cache totals.** In `crates/kube`, switch Clear to baselines and add `cache_totals()`. The existing diagnostics tests must still pass unchanged, which shows the desktop sees the same behavior.
