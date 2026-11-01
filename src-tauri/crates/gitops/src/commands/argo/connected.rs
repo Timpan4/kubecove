@@ -16,24 +16,24 @@ pub(crate) use store::ConnectedArgo;
 
 use self::{
     credentials::{
-        connection_generation, delete_credential, load_credential, save_credential,
-        ActiveCredentialStore, StoredCredential,
+        ActiveCredentialStore, StoredCredential, connection_generation, delete_credential,
+        load_credential, save_credential,
     },
     inspector_read::application_inspector,
 };
-use super::certificate_pin::{parse_certificate_sha256, pinned_tls_config, PresentedCertificate};
+use super::certificate_pin::{PresentedCertificate, parse_certificate_sha256, pinned_tls_config};
 use super::transport::{
-    argo_url, http_client, normalize_endpoint, response_json, safe_http_error, url, ServerTrust,
+    ServerTrust, argo_url, http_client, normalize_endpoint, response_json, safe_http_error, url,
 };
-use super::tunnel::{verify_confirmed_target, ArgoServiceTunnel};
-use crate::commands::{diagnostic_field, BackendCancellationRegistry, ClusterAccess, FiniteRead};
+use super::tunnel::{ArgoServiceTunnel, verify_confirmed_target};
+use crate::commands::{BackendCancellationRegistry, ClusterAccess, FiniteRead, diagnostic_field};
 use crate::models::AppErrorKind;
 use crate::models::{
     AppError, ArgoApplicationInspector, ArgoApplicationRef, ArgoConfirmedTarget,
     ArgoConnectionProfile, ArgoConnectionStatus, ArgoServerCapability, ArgoServerEndpoint,
     ArgoTunnelTargetPreview,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     sync::Arc,

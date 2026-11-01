@@ -99,14 +99,16 @@ async fn a_failed_replacement_cannot_make_the_pre_watch_fallback_fresh() {
     );
     assert!(poll!(&mut old).is_pending());
     cache.mark_dirty("pods");
-    assert!(cache
-        .get_or_load(
-            "pods".into(),
-            CacheMode::LiveFor(RESOURCE_FRESHNESS),
-            || async { Err(AppError::cancelled()) }
-        )
-        .await
-        .is_err());
+    assert!(
+        cache
+            .get_or_load(
+                "pods".into(),
+                CacheMode::LiveFor(RESOURCE_FRESHNESS),
+                || async { Err(AppError::cancelled()) }
+            )
+            .await
+            .is_err()
+    );
     drop(old);
     let fresh = cache
         .get_or_load(

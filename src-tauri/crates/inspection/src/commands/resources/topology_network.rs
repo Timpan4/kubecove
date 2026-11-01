@@ -1,6 +1,6 @@
 use super::topology::{
-    input_node_id, node_from_input, push_edge, topology_kind_rank, topology_node_id,
-    TopologyInputResource,
+    TopologyInputResource, input_node_id, node_from_input, push_edge, topology_kind_rank,
+    topology_node_id,
 };
 use crate::models::{ResourceTopology, TopologyRelation};
 use std::collections::{BTreeMap, HashSet};

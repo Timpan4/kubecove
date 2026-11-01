@@ -14,11 +14,11 @@ pub mod resources;
 pub(crate) const MAX_LIST_CONCURRENCY: usize = 16;
 
 pub(crate) use kubecove_kube::commands::{
-    builtin_kinds, diagnostic_field, helpers, BackendCancellationRegistry, ClusterAccess,
-    ClusterLiveStore, FiniteRead,
+    BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead, builtin_kinds,
+    diagnostic_field, helpers,
 };
 #[cfg(test)]
-pub(crate) use kubecove_kube::commands::{ClientIntent, FixedClusterAccess, FIXED_SOURCE_KEY};
+pub(crate) use kubecove_kube::commands::{ClientIntent, FIXED_SOURCE_KEY, FixedClusterAccess};
 
 pub use discovery::{list_present_custom_resource_kinds, list_resource_kinds, resource_kinds_from};
 pub use events::{list_resource_events, resource_events_from};

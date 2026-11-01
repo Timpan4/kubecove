@@ -13,9 +13,9 @@ use validation::{
 };
 
 use super::applications::application_api_resource;
-use super::connected::{api_delete, api_get, api_post, ConnectedArgo};
-use super::scope::{acquire_connection_lease, ConnectionLease};
-use super::session::{consume, issue, peek, OperationSession, SessionSnapshot};
+use super::connected::{ConnectedArgo, api_delete, api_get, api_post};
+use super::scope::{ConnectionLease, acquire_connection_lease};
+use super::session::{OperationSession, SessionSnapshot, consume, issue, peek};
 use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 #[cfg(test)]
@@ -28,7 +28,7 @@ use kube::{
     api::{Api, ApiResource, Patch, PatchParams},
     core::DynamicObject,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub async fn preflight_argo_operation(
@@ -143,7 +143,7 @@ async fn run_connected_operation(
             return Err(AppError::new(
                 "operation is not allowlisted",
                 AppErrorKind::ArgoOperationUnavailable,
-            ))
+            ));
         }
     };
     let value = if request.action == "refresh" || request.action == "hardRefresh" {
@@ -301,7 +301,7 @@ async fn kubernetes_operation(
             return Err(AppError::new(
                 "operation unavailable in Kubernetes fallback",
                 AppErrorKind::ArgoOperationUnavailable,
-            ))
+            ));
         }
     };
     api.patch(
@@ -327,7 +327,7 @@ mod tests;
 
 #[cfg(test)]
 mod kubernetes_transport_gate_tests {
-    use super::validation::{ensure_kubernetes_transport_action, KUBERNETES_TRANSPORT_ACTIONS};
+    use super::validation::{KUBERNETES_TRANSPORT_ACTIONS, ensure_kubernetes_transport_action};
     use crate::models::AppErrorKind;
 
     #[test]

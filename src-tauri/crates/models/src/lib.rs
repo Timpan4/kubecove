@@ -33,23 +33,24 @@ pub use argo::{
 };
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;
-pub use command_contract::{CommandArgs, CommandTransport, DeclaredCommand, DECLARED_COMMANDS};
+pub use command_contract::{CommandArgs, CommandTransport, DECLARED_COMMANDS, DeclaredCommand};
 pub use diagnostics::{
     BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent, BackendDiagnosticField,
     BackendDiagnosticStatus,
 };
 pub use discovery::DiscoveredResourceKind;
-pub use error::{kube_error_kind, WorkspaceRequestCancelled};
 pub use error::{AppError, AppErrorKind};
+pub use error::{WorkspaceRequestCancelled, kube_error_kind};
 pub use events::ResourceEventSummary;
 pub use flux::{
     FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails, FluxResourceKind,
     FluxResourceSummary,
 };
 pub use health::{
-    argo_application_set_health_assessment, argo_health_assessment, condition_evidence,
-    evaluate_health, HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentEvidence,
+    HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentEvidence,
     HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState,
+    argo_application_set_health_assessment, argo_health_assessment, condition_evidence,
+    evaluate_health,
 };
 pub use helm::{
     HelmManifestResourceSummary, HelmManifestSummary, HelmReconciliationResource,
@@ -92,12 +93,12 @@ pub use sessions::{
     PortForwardRequest, PortForwardSessionSummary,
 };
 pub use streams::{
-    AggregatedLogStreamRequest, LogLineSource, PodLogStreamRequest, ResourceCacheRefreshResult,
-    StreamMessage, WatchResourceKey, WatchResourceKind, WatchResourceTarget,
-    CHANNEL_MESSAGE_ENVELOPE_BYTES, MAX_WEBSOCKET_MESSAGE_BYTES,
+    AggregatedLogStreamRequest, CHANNEL_MESSAGE_ENVELOPE_BYTES, LogLineSource,
+    MAX_WEBSOCKET_MESSAGE_BYTES, PodLogStreamRequest, ResourceCacheRefreshResult, StreamMessage,
+    WatchResourceKey, WatchResourceKind, WatchResourceTarget,
 };
 pub use tunnel::{
-    decode_tunnel_frame, encode_tunnel_frame, is_tunnel_connection_id, MAX_TUNNEL_FRAME_BYTES,
-    MAX_TUNNEL_PAYLOAD_BYTES,
+    MAX_TUNNEL_FRAME_BYTES, MAX_TUNNEL_PAYLOAD_BYTES, decode_tunnel_frame, encode_tunnel_frame,
+    is_tunnel_connection_id,
 };
 pub use usage::{AppUsageMetrics, AppUsageMetricsBreakdown};

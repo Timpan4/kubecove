@@ -1,4 +1,4 @@
-use codspeed_divan_compat::{black_box, Bencher};
+use codspeed_divan_compat::{Bencher, black_box};
 use kubecove_lib::commands::bench_support::domain_catalog::domain_argo;
 use kubecove_lib::models::HealthAssessmentState;
 

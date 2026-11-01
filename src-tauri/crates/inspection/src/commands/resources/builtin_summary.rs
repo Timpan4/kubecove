@@ -6,8 +6,8 @@ use crate::models::{
     ResourceHealth, ResourceSummary,
 };
 use chrono::{DateTime, TimeZone, Utc};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use k8s_openapi::NamespaceResourceScope;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{Api, Client};
 use serde_json::Value;
 

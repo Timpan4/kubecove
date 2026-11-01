@@ -1,7 +1,7 @@
 //! Desktop tunnels through the remote invoke path, against a fake server that
 //! answers tunnel controls on the socket queue and serves one HTTP invoke.
 
-use super::{handle_text, RemoteConnection};
+use super::{RemoteConnection, handle_text};
 use crate::remote::{
     invoke_remote,
     models::{RemoteConnectionSummary, RemoteCredentials},
@@ -9,10 +9,10 @@ use crate::remote::{
 };
 use kubecove_models::{LiveSessionCleanupResult, PortForwardSessionSummary};
 use reqwest::Client as HttpClient;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     net::Ipv4Addr,
-    sync::{atomic::AtomicBool, Arc, Mutex, Weak},
+    sync::{Arc, Mutex, Weak, atomic::AtomicBool},
     time::Duration,
 };
 use tokio::{

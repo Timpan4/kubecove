@@ -1,5 +1,5 @@
 use crate::{
-    commands::{diagnostic_field, ClusterAccess, FiniteRead},
+    commands::{ClusterAccess, FiniteRead, diagnostic_field},
     models::{AppError, ClusterContext},
 };
 

@@ -1,8 +1,8 @@
-use super::builtin_summary::{builtin_summary, BuiltinSummary};
+use super::builtin_summary::{BuiltinSummary, builtin_summary};
 use crate::commands::helpers::{
     fetch_and_serialize, fetch_and_serialize_cluster, fetch_resource, redact_secret,
 };
-use crate::commands::{diagnostic_field, BackendCancellationRegistry, ClusterAccess, FiniteRead};
+use crate::commands::{BackendCancellationRegistry, ClusterAccess, FiniteRead, diagnostic_field};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ResourceDetailsFull};
 use crate::runtime::State;
@@ -166,7 +166,7 @@ mod tests {
     use super::*;
     use crate::commands::FixedClusterAccess;
     use http::{Request, Response};
-    use kube::{client::Body, Client};
+    use kube::{Client, client::Body};
     use serde_json::json;
 
     #[tokio::test]

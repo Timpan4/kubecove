@@ -1,5 +1,5 @@
 use super::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn pop(hub: &ChannelHub) -> Value {
     serde_json::from_str(&hub.pop().unwrap()).unwrap()

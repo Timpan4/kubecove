@@ -1,4 +1,4 @@
-use super::{live_store::ClusterLiveStore, SessionScope};
+use super::{SessionScope, live_store::ClusterLiveStore};
 use crate::models::{
     AppError, BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent, BackendDiagnosticField,
     BackendDiagnosticStatus,

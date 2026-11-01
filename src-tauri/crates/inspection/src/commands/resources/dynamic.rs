@@ -2,7 +2,7 @@ use crate::commands::helpers::{
     list_params, normalize_k8s_yaml_value, serialize_json_value_document,
 };
 use crate::commands::{
-    diagnostic_field, BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead,
+    BackendCancellationRegistry, ClusterAccess, ClusterLiveStore, FiniteRead, diagnostic_field,
 };
 use crate::models::AppErrorKind;
 use crate::models::{

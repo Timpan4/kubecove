@@ -43,7 +43,7 @@ fn expected_kubectl_document<T: serde::Serialize>(resource: &T) -> serde_json::V
 }
 
 fn assert_secret_yaml_redacted(yaml: &str) -> serde_json::Value {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
 
     let document = parsed_yaml_document(yaml);
     let data = document
@@ -445,14 +445,18 @@ mod deployment_revision_history_500_candidates {
         }));
         for index in (0..500).step_by(10) {
             let excluded_name = format!("checkout-{index}-rs");
-            assert!(!expected
-                .iter()
-                .any(|revision| revision.name == excluded_name));
+            assert!(
+                !expected
+                    .iter()
+                    .any(|revision| revision.name == excluded_name)
+            );
         }
         for excluded_name in ["checkout-1-rs", "checkout-2-rs", "checkout-3-rs"] {
-            assert!(!expected
-                .iter()
-                .any(|revision| revision.name == excluded_name));
+            assert!(
+                !expected
+                    .iter()
+                    .any(|revision| revision.name == excluded_name)
+            );
         }
         let missing_or_invalid = expected
             .iter()
@@ -467,9 +471,11 @@ mod deployment_revision_history_500_candidates {
             .collect::<Vec<_>>();
         // Every 25th candidate has revision 25; none has a rejected owner.
         assert_eq!(top_revision_names.len(), 20);
-        assert!(top_revision_names
-            .windows(2)
-            .all(|names| names[0] < names[1]));
+        assert!(
+            top_revision_names
+                .windows(2)
+                .all(|names| names[0] < names[1])
+        );
         let latest = expected.first().expect("highest revision");
         assert_eq!(latest.name, "checkout-124-rs");
         let source = REVISION_INPUT

@@ -1,19 +1,19 @@
 use crate::{
-    access::AccessIdentity, access_subject, authentication_ended, sessions::Owner, ApiError,
-    AppState, AuthenticationRevoked,
+    ApiError, AppState, AuthenticationRevoked, access::AccessIdentity, access_subject,
+    authentication_ended, sessions::Owner,
 };
 use axum::{
+    Extension,
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         Query, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     response::Response,
-    Extension,
 };
 use futures_util::{FutureExt, SinkExt, StreamExt};
-use kubecove_lib::models::{AppError, AppErrorKind, PortForwardRequest, MAX_TUNNEL_FRAME_BYTES};
+use kubecove_lib::models::{AppError, AppErrorKind, MAX_TUNNEL_FRAME_BYTES, PortForwardRequest};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -104,9 +104,10 @@ async fn run(
                     Message::Close(_) => return,
                 };
                 if let Some(response) = response
-                    && responses.send(response).await.is_err() {
-                        return;
-                    }
+                    && responses.send(response).await.is_err()
+                {
+                    return;
+                }
             }
         };
         // Reading and writing must progress independently to avoid duplex relay deadlocks.

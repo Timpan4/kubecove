@@ -1,8 +1,8 @@
 use super::*;
 use crate::models::AppErrorKind;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 use tokio::sync::oneshot;
 
@@ -255,13 +255,15 @@ fn all_namespace_resources_cover_named_namespace_reads() {
 fn cached_present_custom_resource_kinds_are_available_after_prewarm() {
     let store = ClusterLiveStore::default();
     crate::runtime::block_on(async {
-        assert!(store
-            .cached_present_custom_resource_kinds(
-                "kubeconfigEnv=KUBECONFIG",
-                "kind-dev",
-                &["argocd".to_string()],
-            )
-            .is_none());
+        assert!(
+            store
+                .cached_present_custom_resource_kinds(
+                    "kubeconfigEnv=KUBECONFIG",
+                    "kind-dev",
+                    &["argocd".to_string()],
+                )
+                .is_none()
+        );
 
         store
             .present_custom_resource_kinds(

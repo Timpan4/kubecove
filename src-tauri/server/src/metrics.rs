@@ -5,21 +5,21 @@
 
 use crate::sessions::Sessions;
 use axum::{
+    Router,
     extract::State,
     http::header,
     response::{IntoResponse, Response},
     routing::get,
-    Router,
 };
 use kubecove_lib::{commands::ClusterLiveStore, models::BackendCacheDiagnosticSnapshot};
 use prometheus_client::{
-    encoding::{text::encode, EncodeLabelSet},
+    encoding::{EncodeLabelSet, text::encode},
     metrics::{counter::Counter, family::Family, gauge::Gauge, histogram::Histogram},
     registry::Registry,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{atomic::AtomicU64, Arc, LazyLock, Mutex},
+    sync::{Arc, LazyLock, Mutex, atomic::AtomicU64},
     time::Duration,
 };
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};

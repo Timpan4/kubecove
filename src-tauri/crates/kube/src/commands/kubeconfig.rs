@@ -1,12 +1,12 @@
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ClusterContext};
 use kube::{
-    config::{AuthInfo, KubeConfigOptions, Kubeconfig},
     Config,
+    config::{AuthInfo, KubeConfigOptions, Kubeconfig},
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{hash_map::DefaultHasher, HashSet},
+    collections::{HashSet, hash_map::DefaultHasher},
     env,
     ffi::OsString,
     fs,
@@ -242,9 +242,10 @@ impl KubeconfigSource {
             // cached clients too.
             if self.read_env
                 && let Some(default) = default_kubeconfig_path()
-                    && !paths.contains(&default) {
-                        paths.push(default);
-                    }
+                && !paths.contains(&default)
+            {
+                paths.push(default);
+            }
             return paths;
         }
         standard_kubeconfig_paths()
@@ -499,11 +500,7 @@ fn split_non_empty_paths(value: OsString) -> Option<Vec<PathBuf>> {
     let paths = env::split_paths(&value)
         .filter(|path| !path.as_os_str().is_empty())
         .collect::<Vec<_>>();
-    if paths.is_empty() {
-        None
-    } else {
-        Some(paths)
-    }
+    if paths.is_empty() { None } else { Some(paths) }
 }
 
 fn standard_kubeconfig_paths() -> Vec<ConfiguredKubeconfigPath> {

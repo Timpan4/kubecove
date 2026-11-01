@@ -5,7 +5,7 @@ use super::{
 use crate::commands::ClusterAccess;
 use crate::models::{LogLineSource, PodLogStreamRequest, StreamMessage};
 use crate::runtime::Channel;
-use futures_util::{io::AsyncBufRead, AsyncBufReadExt};
+use futures_util::{AsyncBufReadExt, io::AsyncBufRead};
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::{Api, LogParams};
 
@@ -129,9 +129,10 @@ pub(super) async fn read_log_line(
     bytes.truncate(MAX_LOG_LINE_BYTES);
     if truncated
         && let Err(error) = std::str::from_utf8(&bytes)
-            && error.error_len().is_none() {
-                bytes.truncate(error.valid_up_to());
-            }
+        && error.error_len().is_none()
+    {
+        bytes.truncate(error.valid_up_to());
+    }
     let mut line = String::from_utf8(bytes)
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
     if truncated {

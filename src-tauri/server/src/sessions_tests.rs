@@ -17,10 +17,12 @@ async fn sessions_run_side_by_side_and_close_alone() {
         &bob_owner.backend.scope
     ));
 
-    assert!(sessions
-        .owner_as(&alice.resume_token, Some("bob"))
-        .await
-        .is_err());
+    assert!(
+        sessions
+            .owner_as(&alice.resume_token, Some("bob"))
+            .await
+            .is_err()
+    );
 
     sessions
         .close(&alice.resume_token, CloseReason::Client)
@@ -29,10 +31,12 @@ async fn sessions_run_side_by_side_and_close_alone() {
     assert!(alice_owner.ended.is_cancelled());
     assert!(sessions.owner(&alice.resume_token).await.is_err());
     assert!(!bob_owner.ended.is_cancelled());
-    assert!(sessions
-        .owner_as(&bob.resume_token, Some("bob"))
-        .await
-        .is_ok());
+    assert!(
+        sessions
+            .owner_as(&bob.resume_token, Some("bob"))
+            .await
+            .is_ok()
+    );
 }
 
 #[tokio::test(start_paused = true)]

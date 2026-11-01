@@ -15,8 +15,8 @@ use k8s_openapi::{
     apimachinery::pkg::apis::meta::v1::LabelSelector,
 };
 use kube::{
-    api::{Api, ListParams, LogParams, WatchEvent, WatchParams},
     Client,
+    api::{Api, ListParams, LogParams, WatchEvent, WatchParams},
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},

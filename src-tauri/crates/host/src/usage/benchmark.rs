@@ -1,7 +1,7 @@
 use super::{
-    normalize_cpu_percent, observed_process_count, process_tree_breakdown_from_processes,
-    process_tree_cpu_percent, process_tree_memory_bytes, process_tree_pids_from_roots,
-    usage_process_child_description_from_webview, UsageProcessView,
+    UsageProcessView, normalize_cpu_percent, observed_process_count,
+    process_tree_breakdown_from_processes, process_tree_cpu_percent, process_tree_memory_bytes,
+    process_tree_pids_from_roots, usage_process_child_description_from_webview,
 };
 use crate::usage_webview;
 use kubecove_models::AppUsageMetrics;

@@ -6,9 +6,9 @@ use crate::models::AppErrorKind;
 use chrono::Utc;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
+    Client,
     api::{Api, ApiResource, DynamicObject},
     discovery::Discovery,
-    Client,
 };
 use serde_json::Value;
 

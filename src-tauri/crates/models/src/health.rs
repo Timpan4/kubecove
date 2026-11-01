@@ -377,10 +377,12 @@ mod tests {
             assessment.completeness,
             HealthAssessmentCompleteness::Partial
         );
-        assert!(assessment
-            .evidence
-            .iter()
-            .any(|evidence| evidence.source == HealthAssessmentSource::Provider));
+        assert!(
+            assessment
+                .evidence
+                .iter()
+                .any(|evidence| evidence.source == HealthAssessmentSource::Provider)
+        );
     }
 
     #[test]

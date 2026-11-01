@@ -1,7 +1,7 @@
 #[cfg(feature = "bench-support")]
 pub mod benchmark;
 #[cfg(feature = "bench-support")]
-pub use benchmark::{benchmark_usage_process_attribution, BenchUsagePlatform, BenchUsageProcess};
+pub use benchmark::{BenchUsagePlatform, BenchUsageProcess, benchmark_usage_process_attribution};
 
 #[cfg(target_os = "macos")]
 use super::usage_webview::{
@@ -21,7 +21,7 @@ use kubecove_models::{AppError, AppUsageMetrics, AppUsageMetricsBreakdown};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use sysinfo::{
-    get_current_pid, Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind,
+    Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind, get_current_pid,
 };
 
 /// The process table is created on the first sample: `System::new` fails on platforms

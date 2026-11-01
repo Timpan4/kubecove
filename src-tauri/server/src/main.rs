@@ -1,4 +1,5 @@
 use kubecove_server::{
+    AppState,
     config::{Config, HELP},
     files::write_startup_token,
     metrics,
@@ -6,7 +7,6 @@ use kubecove_server::{
     router,
     security::random_token,
     sessions::Sessions,
-    AppState,
 };
 use std::{io, net::SocketAddr, process::ExitCode, sync::Arc};
 

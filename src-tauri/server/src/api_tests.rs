@@ -1,6 +1,6 @@
 use super::*;
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::Request,
 };
 use serde_json::json;
@@ -201,9 +201,11 @@ async fn default_level_omits_refused_header_values() {
             .collect::<Vec<_>>(),
         [json!("host"), json!("origin")]
     );
-    assert!(refused
-        .iter()
-        .all(|event| event.get("host").is_none() && event.get("origin").is_none()));
+    assert!(
+        refused
+            .iter()
+            .all(|event| event.get("host").is_none() && event.get("origin").is_none())
+    );
     assert!(!logs.text().contains("evil"));
 }
 

@@ -3,11 +3,11 @@ use super::super::session::SecureStore;
 use super::payload::resource_action_path;
 use super::resolve::{recorded_retry, recorded_sync_payload};
 use super::*;
-use crate::commands::{FixedClusterAccess, FIXED_SOURCE_KEY};
+use crate::commands::{FIXED_SOURCE_KEY, FixedClusterAccess};
 use crate::models::{ArgoConnectionProfile, ArgoServerEndpoint};
 use std::{
     collections::HashMap,
-    sync::{atomic::AtomicU64, Mutex},
+    sync::{Mutex, atomic::AtomicU64},
 };
 
 #[derive(Default)]

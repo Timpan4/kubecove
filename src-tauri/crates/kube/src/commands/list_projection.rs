@@ -2,7 +2,7 @@
 use futures_util::io::AsyncReadExt;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference, Time};
 use kube::api::{Api, DynamicObject, ListParams, ObjectList, TypeMeta};
-use serde::{de::DeserializeOwned, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, de::DeserializeOwned};
 use std::{collections::BTreeMap, future::Future, marker::PhantomData};
 
 /// Bound list fetches without delaying new work behind an earlier slow result.
@@ -227,11 +227,7 @@ mod tests {
                 async move {
                     started.set(started.get() + 1);
                     wait.await.unwrap();
-                    if index < 2 {
-                        Err(index)
-                    } else {
-                        Ok(index)
-                    }
+                    if index < 2 { Err(index) } else { Ok(index) }
                 }
             })
             .collect::<Vec<_>>();

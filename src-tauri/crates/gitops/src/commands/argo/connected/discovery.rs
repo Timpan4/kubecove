@@ -1,13 +1,13 @@
 use crate::commands::gitops_crd::find_api_resource;
 use crate::models::{
-    kube_error_kind, AppError, AppErrorKind, ArgoServerCapability, ArgoServerEndpoint,
-    ArgoServiceTunnelUnavailableReason,
+    AppError, AppErrorKind, ArgoServerCapability, ArgoServerEndpoint,
+    ArgoServiceTunnelUnavailableReason, kube_error_kind,
 };
 use k8s_openapi::api::core::v1::{ConfigMap, Service, ServicePort};
 use kube::{
+    Client,
     api::{Api, ListParams},
     core::DynamicObject,
-    Client,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -41,11 +41,7 @@ impl ArgoServerParams {
     }
 
     fn scheme(&self) -> &'static str {
-        if self.insecure {
-            "http"
-        } else {
-            "https"
-        }
+        if self.insecure { "http" } else { "https" }
     }
 }
 
@@ -125,11 +121,7 @@ async fn readable_services(client: &Client) -> Result<Vec<Service>, AppError> {
             services.extend(list.items);
         }
     }
-    if readable {
-        Ok(services)
-    } else {
-        Err(error)
-    }
+    if readable { Ok(services) } else { Err(error) }
 }
 
 async fn application_namespaces(client: &Client) -> Result<BTreeSet<String>, AppError> {

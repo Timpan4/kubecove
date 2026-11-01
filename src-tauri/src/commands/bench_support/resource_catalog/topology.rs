@@ -8,7 +8,7 @@ use k8s_openapi::api::{
     networking::v1::Ingress,
 };
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const CLUSTER: &str = "catalog-cluster";
 const TIME: &str = "2026-09-30T12:00:00Z";

@@ -384,10 +384,10 @@ impl WebViewCohort {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_macos_orphan_webkit_process_text, is_orphan_webview_start_candidate,
-        is_webview_descendant_process_text, is_windows_app_webview_browser_process_text,
-        is_windows_app_webview_process_text, selected_orphan_webview_cohort_start_time,
-        webview_process_role_from_cmd, OrphanWebViewProcessCandidate, WebViewProcessRole,
+        OrphanWebViewProcessCandidate, WebViewProcessRole, is_macos_orphan_webkit_process_text,
+        is_orphan_webview_start_candidate, is_webview_descendant_process_text,
+        is_windows_app_webview_browser_process_text, is_windows_app_webview_process_text,
+        selected_orphan_webview_cohort_start_time, webview_process_role_from_cmd,
     };
 
     #[test]

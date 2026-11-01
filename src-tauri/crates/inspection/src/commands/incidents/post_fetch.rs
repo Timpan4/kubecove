@@ -1,6 +1,6 @@
 use super::{
-    event_match_at, incident_cockpit_summary_from_parts, sort_warning_event_matches,
-    ResourceEventMatch,
+    ResourceEventMatch, event_match_at, incident_cockpit_summary_from_parts,
+    sort_warning_event_matches,
 };
 use crate::commands::incidents::restarts::restart_evidence_from_pods;
 use crate::models::{IncidentCockpitSummary, ResourceListRequest, ResourceSummary};

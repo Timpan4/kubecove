@@ -140,11 +140,13 @@ async fn cancelled_shell_probe_releases_shared_initialization_for_retry() {
     use futures_util::FutureExt;
     let fixture = Fixture::new();
     let fifo = fixture.0.join("wait");
-    assert!(std::process::Command::new("mkfifo")
-        .arg(&fifo)
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
     let started = fixture.0.join("started");
     let shell = fixture.script(
         "shell",
@@ -189,11 +191,13 @@ async fn stalled_shell_deadline_caches_fallback_without_changing_exec_configurat
     use futures_util::FutureExt;
     let fixture = Fixture::new();
     let fifo = fixture.0.join("wait");
-    assert!(std::process::Command::new("mkfifo")
-        .arg(&fifo)
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
     let started = fixture.0.join("started");
     let shell = fixture.script(
         "shell",

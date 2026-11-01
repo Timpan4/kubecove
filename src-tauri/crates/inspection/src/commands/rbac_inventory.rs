@@ -7,7 +7,7 @@ use k8s_openapi::api::{
     core::v1::ServiceAccount,
     rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding},
 };
-use kube::{api::Api, Client, Resource};
+use kube::{Client, Resource, api::Api};
 use serde::de::DeserializeOwned;
 use std::fmt::Debug;
 

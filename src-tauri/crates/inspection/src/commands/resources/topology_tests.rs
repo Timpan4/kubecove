@@ -1,11 +1,11 @@
 use super::topology::{
-    build_resource_topology, node_from_input, topology_node_id, TopologyInputResource,
-    DEPLOYMENT_REVISION_LABEL,
+    DEPLOYMENT_REVISION_LABEL, TopologyInputResource, build_resource_topology, node_from_input,
+    topology_node_id,
 };
 use super::topology_collection::{cluster_scoped_input_visible_in_scope, pod_input};
 use super::topology_network::{
-    build_network_flow_topology, NetworkEndpointSlice, NetworkIngressBackend, NetworkService,
-    NetworkTopologyInputs,
+    NetworkEndpointSlice, NetworkIngressBackend, NetworkService, NetworkTopologyInputs,
+    build_network_flow_topology,
 };
 use crate::models::{
     GitOpsOwnerSummary, OwnerReferenceSummary, ResourceHealth, ResourceSummary, TopologyRelation,
@@ -640,10 +640,11 @@ fn network_flow_falls_back_to_service_selector_and_warns_on_misses() {
             && edge.target == pod_id
             && edge.relation == TopologyRelation::Selects
     }));
-    assert!(topology
-        .warnings
-        .iter()
-        .any(|warning| warning.contains("Service default/missing has no matching Pod endpoints")));
+    assert!(
+        topology.warnings.iter().any(
+            |warning| warning.contains("Service default/missing has no matching Pod endpoints")
+        )
+    );
 }
 
 #[test]

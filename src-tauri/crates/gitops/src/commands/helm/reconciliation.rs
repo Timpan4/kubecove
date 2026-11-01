@@ -1,15 +1,15 @@
 use super::storage::get_helm_storage_record;
-use crate::commands::helpers::list_params;
 use crate::commands::ClusterAccess;
+use crate::commands::helpers::list_params;
 use crate::models::{
     AppError, DiscoveredResourceKind, HelmManifestResourceSummary, HelmReconciliationResource,
     HelmReconciliationStatus, HelmReconciliationTotals, HelmReleaseReconciliation,
     HelmReleaseSummary, ResourceSummary,
 };
 use kube::{
-    api::{Api, DynamicObject},
-    discovery::{verbs, Discovery, Scope},
     Client, Error as KubeError,
+    api::{Api, DynamicObject},
+    discovery::{Discovery, Scope, verbs},
 };
 use kubecove_kube::commands::dynamic_projection::{
     api_resource_from_discovered, dynamic_resource_summary,
@@ -17,8 +17,7 @@ use kubecove_kube::commands::dynamic_projection::{
 use std::collections::{BTreeMap, BTreeSet};
 
 const HELM_RELEASE_LABEL: &str = "helm.sh/release";
-const CONSERVATIVE_SCAN_WARNING: &str =
-    "Label-only reconciliation scans explicit Helm release labels for manifest kinds and common namespaced resource kinds; it does not exhaustively scan every CRD.";
+const CONSERVATIVE_SCAN_WARNING: &str = "Label-only reconciliation scans explicit Helm release labels for manifest kinds and common namespaced resource kinds; it does not exhaustively scan every CRD.";
 const COMMON_LABEL_SCAN_KINDS: &[&str] = &[
     "Pod",
     "Deployment",

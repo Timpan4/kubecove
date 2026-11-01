@@ -6,12 +6,12 @@ pub mod bench_support;
 pub use kubecove_gitops::commands::*;
 #[cfg(feature = "desktop")]
 pub use kubecove_host::remote::{
-    remote_connect, remote_connection_status, remote_disconnect, remote_invoke,
-    remote_subscribe_channel, remote_unsubscribe_channel, RemoteConnectionStore,
+    RemoteConnectionStore, remote_connect, remote_connection_status, remote_disconnect,
+    remote_invoke, remote_subscribe_channel, remote_unsubscribe_channel,
 };
 #[cfg(feature = "bench-support")]
 pub(crate) use kubecove_host::usage;
-pub use kubecove_host::usage::{get_app_usage_metrics, AppUsageMonitor};
+pub use kubecove_host::usage::{AppUsageMonitor, get_app_usage_metrics};
 #[cfg(feature = "desktop")]
 pub use kubecove_host::workspace_files::{pick_workspace_import_json, save_workspace_export_json};
 #[cfg(feature = "desktop")]

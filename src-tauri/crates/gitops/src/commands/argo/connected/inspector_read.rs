@@ -3,7 +3,7 @@ use super::super::transport::{api_get, application_api_path, argo_url, is_respon
 use super::inspection::{connected_inspector, kubernetes_inspector_from_object};
 use super::store::ArgoConnectionStore;
 use crate::commands::{
-    argo::applications::application_api_resource, gitops_crd::get_crd_object, ClusterAccess,
+    ClusterAccess, argo::applications::application_api_resource, gitops_crd::get_crd_object,
 };
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ArgoApplicationInspector, ArgoApplicationRef, ArgoManagedResource};

@@ -258,9 +258,11 @@ mod tests {
 
         let result = lint_kubernetes_yaml_request(&request);
 
-        assert!(!result
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.message.contains("apiVersion must match")));
+        assert!(
+            !result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("apiVersion must match"))
+        );
     }
 }

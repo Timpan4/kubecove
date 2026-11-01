@@ -1,7 +1,7 @@
 use super::*;
 use crate::observe::{AuthMode, CloseReason};
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Method, Request, StatusCode},
 };
 use kubecove_lib::models::{AppError, NamespaceSummary};
@@ -44,10 +44,12 @@ async fn metrics_listener_serves_only_metrics() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(response.headers()[header::CONTENT_TYPE]
-        .to_str()
-        .unwrap()
-        .starts_with("application/openmetrics-text"));
+    assert!(
+        response.headers()[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("application/openmetrics-text")
+    );
     let text = String::from_utf8(
         to_bytes(response.into_body(), usize::MAX)
             .await
@@ -127,9 +129,11 @@ async fn cache_counters_never_decrease_across_clear_and_session_end() {
 
     owner.backend.live_store.clear_diagnostic_counters();
     let table = owner.backend.live_store.diagnostics();
-    assert!(table
-        .iter()
-        .all(|cache| cache.hits == 0 && cache.misses == 0));
+    assert!(
+        table
+            .iter()
+            .all(|cache| cache.hits == 0 && cache.misses == 0)
+    );
     read_namespaces(&owner.backend.live_store).await;
     let text = metrics.render(&sessions).await;
     assert_eq!((sample(&text, hits), sample(&text, misses)), (2.0, 1.0));

@@ -1,7 +1,6 @@
 use crate::commands::{
-    diagnostic_field,
+    ClusterAccess, FiniteRead, diagnostic_field,
     helpers::{k8s_creation_timestamp_to_rfc3339, resource_age},
-    ClusterAccess, FiniteRead,
 };
 use crate::models::{
     AppError, RbacBindingSummary, RbacCoverageStatus, RbacFamily, RbacFamilyCoverage,
@@ -26,8 +25,8 @@ use rbac_risk::{binding_risks, dedupe_risks, dedupe_subjects, rule_risks, servic
 #[path = "rbac_inventory.rs"]
 mod rbac_inventory;
 use rbac_inventory::{
-    list_cluster_role_bindings, list_cluster_roles, list_role_bindings, list_roles,
-    list_service_accounts, InventoryLoad,
+    InventoryLoad, list_cluster_role_bindings, list_cluster_roles, list_role_bindings, list_roles,
+    list_service_accounts,
 };
 
 #[cfg(test)]

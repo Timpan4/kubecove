@@ -3,14 +3,14 @@
 //! One global subscriber serves every test. A per-thread subscriber is
 //! unreliable: while it is the only one registered, `tracing` caches a
 //! callsite as disabled when another test thread reaches it first.
-use super::{subscriber, LogFormat, DEFAULT_FILTER};
+use super::{DEFAULT_FILTER, LogFormat, subscriber};
 use std::{
     cell::RefCell,
     io,
     sync::{Arc, Mutex, Once},
 };
 use tracing::Dispatch;
-use tracing_subscriber::{fmt::MakeWriter, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt::MakeWriter};
 
 thread_local! {
     static CURRENT: RefCell<Option<Captured>> = const { RefCell::new(None) };

@@ -2,7 +2,7 @@ mod execution;
 pub(crate) mod linting;
 pub(crate) mod validation;
 
-use crate::commands::{helpers::serialize_resource_document, ClusterAccess};
+use crate::commands::{ClusterAccess, helpers::serialize_resource_document};
 use crate::models::{AppError, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlViewMode};
 use kube::api::Patch;
 

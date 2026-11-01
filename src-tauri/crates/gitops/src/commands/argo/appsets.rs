@@ -1,13 +1,13 @@
+use crate::commands::ClusterAccess;
 use crate::commands::gitops_crd::{
     find_api_resource, get_crd_object, list_crd_objects, object_age, resource_metadata,
     resource_yaml,
 };
 use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
-use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{
-    argo_application_set_health_assessment, AppError, ArgoApplicationSetDetails,
-    ArgoApplicationSetSummary, YamlEncoding, YamlViewMode,
+    AppError, ArgoApplicationSetDetails, ArgoApplicationSetSummary, YamlEncoding, YamlViewMode,
+    argo_application_set_health_assessment,
 };
 use kube::core::DynamicObject;
 
@@ -130,7 +130,7 @@ pub async fn get_argocd_appset_details(
             return Err(AppError::new(
                 "ApplicationSet CRD not found",
                 AppErrorKind::Cluster,
-            ))
+            ));
         }
     };
 

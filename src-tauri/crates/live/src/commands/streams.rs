@@ -9,9 +9,9 @@ mod watch;
 #[cfg(feature = "bench-support")]
 pub use aggregate_logs::benchmark_log_sources_from_pods;
 #[cfg(feature = "bench-support")]
-pub use logs::benchmark_read_log_line;
-#[cfg(feature = "bench-support")]
 pub use logs::MAX_LOG_LINE_BYTES;
+#[cfg(feature = "bench-support")]
+pub use logs::benchmark_read_log_line;
 
 use crate::commands::{ClusterAccess, ClusterLiveStore};
 use crate::models::{

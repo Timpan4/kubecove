@@ -33,9 +33,11 @@ fn flags_wildcard_verbs_as_rbac_write_access() {
 fn flags_privilege_escalation_verbs() {
     let risks = rule_risks(&values(&["bind"]), &values(&["clusterroles"]));
 
-    assert!(risks
-        .iter()
-        .any(|risk| risk.label == "Privilege escalation verbs"));
+    assert!(
+        risks
+            .iter()
+            .any(|risk| risk.label == "Privilege escalation verbs")
+    );
 }
 
 #[test]

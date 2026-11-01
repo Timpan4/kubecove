@@ -1,10 +1,10 @@
 use super::session_scope::SessionScope;
 use crate::models::{AppError, AppErrorKind};
-use http::{header::AUTHORIZATION, HeaderValue};
+use http::{HeaderValue, header::AUTHORIZATION};
 use kube::client::Body;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc, RwLock,
+    atomic::{AtomicBool, Ordering},
 };
 use tower::{Layer, Service};
 

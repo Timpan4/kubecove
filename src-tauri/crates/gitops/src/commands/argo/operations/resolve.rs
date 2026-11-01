@@ -1,13 +1,13 @@
-use super::super::applications::application_api_resource;
-use super::super::connected::{api_get, ConnectedArgo};
-use super::super::scope::scoped_connection;
 use super::super::ArgoConnectionStore;
+use super::super::applications::application_api_resource;
+use super::super::connected::{ConnectedArgo, api_get};
+use super::super::scope::scoped_connection;
 use super::payload::{application_path, sync_payload};
 use crate::commands::ClusterAccess;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ArgoOperationRequest};
 use kube::{api::Api, core::DynamicObject};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub(super) fn required_cluster_context(request: &ArgoOperationRequest) -> Result<&str, AppError> {
@@ -213,7 +213,7 @@ pub(super) fn recorded_sync_payload(sync: Value) -> Result<Value, AppError> {
             return Err(AppError::new(
                 "recorded sync resources are invalid",
                 AppErrorKind::ArgoOperationUnavailable,
-            ))
+            ));
         }
     }
     .into_iter()
@@ -268,7 +268,7 @@ pub(super) fn recorded_sync_payload(sync: Value) -> Result<Value, AppError> {
             return Err(AppError::new(
                 "recorded sync options are invalid",
                 AppErrorKind::ArgoOperationUnavailable,
-            ))
+            ));
         }
     };
     if options.iter().any(|option| !option.is_string()) {

@@ -1,7 +1,7 @@
 use crate::models::{AppError, AppErrorKind};
 use kube::{
-    api::{Api, DynamicObject, PatchParams},
     Error as KubeError,
+    api::{Api, DynamicObject, PatchParams},
 };
 
 use super::validation::ValidatedApply;
@@ -87,8 +87,8 @@ fn is_immutable_field_apply_error(status: &kube::core::Status) -> bool {
 mod tests {
     use super::*;
     use kube::core::{
-        response::{StatusCause, StatusDetails},
         Status,
+        response::{StatusCause, StatusDetails},
     };
 
     #[test]

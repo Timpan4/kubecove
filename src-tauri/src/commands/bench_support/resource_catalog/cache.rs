@@ -77,46 +77,56 @@ impl ResourceCacheFixture {
         let other_source = "cache-catalog-other-source";
         let other_context = "cache-catalog-other-context";
 
-        assert!(tauri::async_runtime::block_on(self.store.typed_resources(
-            other_source.to_string(),
-            CONTEXT.to_string(),
-            "Pod".to_string(),
-            None,
-            || async { Err(cache_isolation_error()) },
-        ))
-        .is_err());
-        assert!(tauri::async_runtime::block_on(self.store.typed_resources(
-            SOURCE.to_string(),
-            other_context.to_string(),
-            "Pod".to_string(),
-            None,
-            || async { Err(cache_isolation_error()) },
-        ))
-        .is_err());
-        assert!(tauri::async_runtime::block_on(self.store.topology(
-            other_source.to_string(),
-            CONTEXT.to_string(),
-            Vec::new(),
-            "ownership".to_string(),
-            || async { Err(cache_isolation_error()) },
-        ))
-        .is_err());
-        assert!(tauri::async_runtime::block_on(self.store.topology(
-            SOURCE.to_string(),
-            other_context.to_string(),
-            Vec::new(),
-            "ownership".to_string(),
-            || async { Err(cache_isolation_error()) },
-        ))
-        .is_err());
-        assert!(tauri::async_runtime::block_on(self.store.topology(
-            SOURCE.to_string(),
-            CONTEXT.to_string(),
-            Vec::new(),
-            "different-mode".to_string(),
-            || async { Err(cache_isolation_error()) },
-        ))
-        .is_err());
+        assert!(
+            tauri::async_runtime::block_on(self.store.typed_resources(
+                other_source.to_string(),
+                CONTEXT.to_string(),
+                "Pod".to_string(),
+                None,
+                || async { Err(cache_isolation_error()) },
+            ))
+            .is_err()
+        );
+        assert!(
+            tauri::async_runtime::block_on(self.store.typed_resources(
+                SOURCE.to_string(),
+                other_context.to_string(),
+                "Pod".to_string(),
+                None,
+                || async { Err(cache_isolation_error()) },
+            ))
+            .is_err()
+        );
+        assert!(
+            tauri::async_runtime::block_on(self.store.topology(
+                other_source.to_string(),
+                CONTEXT.to_string(),
+                Vec::new(),
+                "ownership".to_string(),
+                || async { Err(cache_isolation_error()) },
+            ))
+            .is_err()
+        );
+        assert!(
+            tauri::async_runtime::block_on(self.store.topology(
+                SOURCE.to_string(),
+                other_context.to_string(),
+                Vec::new(),
+                "ownership".to_string(),
+                || async { Err(cache_isolation_error()) },
+            ))
+            .is_err()
+        );
+        assert!(
+            tauri::async_runtime::block_on(self.store.topology(
+                SOURCE.to_string(),
+                CONTEXT.to_string(),
+                Vec::new(),
+                "different-mode".to_string(),
+                || async { Err(cache_isolation_error()) },
+            ))
+            .is_err()
+        );
         assert!(
             tauri::async_runtime::block_on(self.store.flux_ownership_index(
                 other_source.to_string(),
@@ -136,14 +146,16 @@ impl ResourceCacheFixture {
 
         self.assert_topology_namespace_normalization();
         self.assert_present_kind_namespace_normalization();
-        assert!(self
-            .store
-            .cached_present_custom_resource_kinds(other_source, CONTEXT, &[])
-            .is_none());
-        assert!(self
-            .store
-            .cached_present_custom_resource_kinds(SOURCE, other_context, &[])
-            .is_none());
+        assert!(
+            self.store
+                .cached_present_custom_resource_kinds(other_source, CONTEXT, &[])
+                .is_none()
+        );
+        assert!(
+            self.store
+                .cached_present_custom_resource_kinds(SOURCE, other_context, &[])
+                .is_none()
+        );
     }
 
     fn assert_topology_namespace_normalization(&self) {
@@ -207,10 +219,11 @@ impl ResourceCacheFixture {
         ))
         .expect("seed normalized present-kind cache key");
         let reordered = ["tenant-7".to_string(), "tenant-42".to_string()];
-        assert!(self
-            .store
-            .cached_present_custom_resource_kinds(SOURCE, CONTEXT, &reordered)
-            .is_some_and(|kinds| kinds.is_empty()));
+        assert!(
+            self.store
+                .cached_present_custom_resource_kinds(SOURCE, CONTEXT, &reordered)
+                .is_some_and(|kinds| kinds.is_empty())
+        );
 
         tauri::async_runtime::block_on(self.store.present_custom_resource_kinds(
             SOURCE.to_string(),
@@ -219,10 +232,11 @@ impl ResourceCacheFixture {
             || async { Ok(Vec::new()) },
         ))
         .expect("seed empty present-kind cache key");
-        assert!(self
-            .store
-            .cached_present_custom_resource_kinds(SOURCE, CONTEXT, &[])
-            .is_some_and(|kinds| kinds.is_empty()));
+        assert!(
+            self.store
+                .cached_present_custom_resource_kinds(SOURCE, CONTEXT, &[])
+                .is_some_and(|kinds| kinds.is_empty())
+        );
     }
 
     pub fn ready_resource_hit(&self) -> Result<Arc<Vec<ResourceSummary>>, AppError> {

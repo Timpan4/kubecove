@@ -1,4 +1,4 @@
-use crate::commands::helpers::{enrich_resource_summaries_with_flux_inventory, FluxOwnershipIndex};
+use crate::commands::helpers::{FluxOwnershipIndex, enrich_resource_summaries_with_flux_inventory};
 use crate::models::ResourceSummary;
 use serde::{Serialize, Serializer};
 use std::collections::BTreeMap;

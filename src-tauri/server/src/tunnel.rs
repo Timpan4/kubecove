@@ -1,9 +1,9 @@
 use axum::{body::Bytes, extract::ws::Message};
 use kubecove_lib::{
-    commands::sessions::{resolve_tunnel_target, runner::forward_pod_connection, TunnelTarget},
+    commands::sessions::{TunnelTarget, resolve_tunnel_target, runner::forward_pod_connection},
     models::{
-        decode_tunnel_frame, encode_tunnel_frame, is_tunnel_connection_id, AppError, AppErrorKind,
-        PortForwardRequest, MAX_TUNNEL_PAYLOAD_BYTES,
+        AppError, AppErrorKind, MAX_TUNNEL_PAYLOAD_BYTES, PortForwardRequest, decode_tunnel_frame,
+        encode_tunnel_frame, is_tunnel_connection_id,
     },
 };
 use serde_json::json;
@@ -242,10 +242,9 @@ impl TunnelRegistry {
             .expect("tunnel registry lock")
             .connections
             .remove(connection_id);
-        if abort
-            && let Some(connection) = &connection {
-                connection.task.abort();
-            }
+        if abort && let Some(connection) = &connection {
+            connection.task.abort();
+        }
         connection
     }
 }

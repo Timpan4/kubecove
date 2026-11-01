@@ -197,12 +197,16 @@ fn env_and_app_paths_merge_in_order_without_key_path_leak() {
     let _ = fs::remove_file(&app_path);
 
     assert_eq!(label, format!("{env_var} + 2 paths"));
-    assert!(!source
-        .key()
-        .contains(&env_path.to_string_lossy().into_owned()));
-    assert!(!source
-        .key()
-        .contains(&app_path.to_string_lossy().into_owned()));
+    assert!(
+        !source
+            .key()
+            .contains(&env_path.to_string_lossy().into_owned())
+    );
+    assert!(
+        !source
+            .key()
+            .contains(&app_path.to_string_lossy().into_owned())
+    );
     assert_eq!(
         contexts
             .iter()
@@ -293,9 +297,11 @@ fn missing_app_path_warns_and_falls_back_when_default_exists() {
         kubeconfig.current_context.as_deref(),
         Some("default-context")
     );
-    assert!(warnings
-        .iter()
-        .any(|warning| warning.path.as_deref() == Some(missing.to_string_lossy().as_ref())));
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.path.as_deref() == Some(missing.to_string_lossy().as_ref()))
+    );
 
     let _ = fs::remove_dir_all(home);
     let _ = fs::remove_file(default_source);

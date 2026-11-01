@@ -1,4 +1,4 @@
-use codspeed_divan_compat::{black_box, Bencher};
+use codspeed_divan_compat::{Bencher, black_box};
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::ObjectList;
 use kubecove_inspection::commands::resources::{

@@ -6,16 +6,16 @@ use super::{
         push_topology_list_warning,
     },
 };
-use crate::commands::helpers::{extract_owner_ref_summary, list_params};
 use crate::commands::MAX_LIST_CONCURRENCY;
+use crate::commands::helpers::{extract_owner_ref_summary, list_params};
 use crate::models::AppErrorKind;
 use crate::models::{AppError, DiscoveredResourceKind};
 use chrono::{DateTime, Utc};
-use futures_util::{stream, StreamExt};
+use futures_util::{StreamExt, stream};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::{
-    api::{Api, DynamicObject},
     Client,
+    api::{Api, DynamicObject},
 };
 use std::sync::Arc;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};

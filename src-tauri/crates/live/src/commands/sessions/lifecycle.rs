@@ -13,14 +13,14 @@ use std::{
     collections::BTreeMap,
     future::Future,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
     },
 };
 use tokio::net::{TcpListener, TcpStream};
 
 use super::{
-    relay::{bind_loopback, spawn_relay, RelayEvent},
+    relay::{RelayEvent, bind_loopback, spawn_relay},
     target::PortForwardTarget,
 };
 

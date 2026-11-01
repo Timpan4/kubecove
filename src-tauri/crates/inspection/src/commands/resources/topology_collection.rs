@@ -1,20 +1,20 @@
 use super::{
-    builtin_summary::{builtin_summary, metadata_summary, BuiltinSummary},
+    builtin_summary::{BuiltinSummary, builtin_summary, metadata_summary},
     revisions::DEPLOYMENT_REVISION_ANNOTATION,
-    topology::{input_with_summary, TopologyInputResource, DEPLOYMENT_REVISION_LABEL},
+    topology::{DEPLOYMENT_REVISION_LABEL, TopologyInputResource, input_with_summary},
     topology_dynamic::{list_crd_definition_inputs, list_dynamic_topology_inputs},
     topology_network::{
         NetworkEndpointSlice, NetworkIngressBackend, NetworkService, NetworkTopologyInputs,
     },
 };
-use crate::commands::helpers::{
-    enrich_resource_summaries_with_flux_inventory, list_params, read_flux_ownership_index,
-    FluxOwnershipIndex,
-};
 use crate::commands::MAX_LIST_CONCURRENCY;
+use crate::commands::helpers::{
+    FluxOwnershipIndex, enrich_resource_summaries_with_flux_inventory, list_params,
+    read_flux_ownership_index,
+};
 use crate::models::{AppError, DiscoveredResourceKind};
 use chrono::{DateTime, Utc};
-use futures_util::{stream, StreamExt};
+use futures_util::{StreamExt, stream};
 use k8s_openapi::api::{
     apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet},
     batch::v1::{CronJob, Job},
@@ -25,7 +25,7 @@ use k8s_openapi::api::{
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use k8s_openapi::{ClusterResourceScope, NamespaceResourceScope};
-use kube::{core::PartialObjectMeta, Api, Client, Error as KubeError};
+use kube::{Api, Client, Error as KubeError, core::PartialObjectMeta};
 
 fn attach_deployment_revision(input: &mut TopologyInputResource, metadata: &ObjectMeta) {
     let Some(revision) = metadata
@@ -545,13 +545,14 @@ pub(crate) fn network_topology_inputs_from_objects_at(
         let ingress_name = ingress.metadata.name.clone().unwrap_or_default();
         if let Some(spec) = &ingress.spec {
             if let Some(default_backend) = &spec.default_backend
-                && let Some(service_name) = backend_service_name(default_backend) {
-                    ingress_backends.push(NetworkIngressBackend {
-                        namespace: namespace.clone(),
-                        ingress_name: ingress_name.clone(),
-                        service_name,
-                    });
-                }
+                && let Some(service_name) = backend_service_name(default_backend)
+            {
+                ingress_backends.push(NetworkIngressBackend {
+                    namespace: namespace.clone(),
+                    ingress_name: ingress_name.clone(),
+                    service_name,
+                });
+            }
             for rule in spec.rules.iter().flatten() {
                 let Some(http) = &rule.http else {
                     continue;

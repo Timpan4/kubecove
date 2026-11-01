@@ -1,8 +1,8 @@
 use super::*;
 use crate::commands::{ClientIntent, FixedClusterAccess};
 use crate::models::AppErrorKind;
-use http::{header::CONTENT_TYPE, Method, Request, Response};
-use kube::{client::Body, Client};
+use http::{Method, Request, Response, header::CONTENT_TYPE};
+use kube::{Client, client::Body};
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
 

@@ -3,26 +3,26 @@ use super::redaction::redact_configmap_release;
 use super::time::parse_rfc3339;
 use super::values::values_summary;
 use crate::commands::{
+    ClusterAccess,
     helpers::{
         k8s_creation_timestamp_to_rfc3339, list_params, redact_secret, resource_age,
         serialize_resource_document,
     },
-    ClusterAccess,
 };
 use crate::models::AppErrorKind;
 use crate::models::{
     AppError, HelmManifestResourceSummary, HelmManifestSummary, HelmReleaseDetails,
     HelmReleaseList, HelmReleaseSummary, HelmValuesSummary, YamlEncoding, YamlViewMode,
 };
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use flate2::read::GzDecoder;
-use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Secret};
 use k8s_openapi::NamespaceResourceScope;
+use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Secret};
 use kube::{
-    api::{Api, ListParams, ObjectMeta},
     Client,
+    api::{Api, ListParams, ObjectMeta},
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{collections::BTreeMap, io::Read};
 
 #[path = "storage_list.rs"]

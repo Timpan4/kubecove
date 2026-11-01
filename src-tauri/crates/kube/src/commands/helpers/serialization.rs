@@ -2,10 +2,10 @@ use crate::models::AppErrorKind;
 use crate::models::{AppError, YamlEncoding, YamlViewMode};
 use k8s_openapi::{ClusterResourceScope, NamespaceResourceScope};
 use kube::{
-    api::{Api, Resource},
     Client,
+    api::{Api, Resource},
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 pub fn redact_secret(secret: &mut k8s_openapi::api::core::v1::Secret) {
@@ -276,8 +276,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::api::core::v1::Secret;
     use k8s_openapi::ByteString;
+    use k8s_openapi::api::core::v1::Secret;
     use std::collections::BTreeMap;
 
     #[test]

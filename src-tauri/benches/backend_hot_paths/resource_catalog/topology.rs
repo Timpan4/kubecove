@@ -43,18 +43,24 @@ fn topology_order_key(node: &kubecove_lib::models::TopologyNode) -> (usize, Opti
 
 fn assert_sorted_unique(topology: &ResourceTopology) {
     let mut node_ids = HashSet::with_capacity(topology.nodes.len());
-    assert!(topology
-        .nodes
-        .iter()
-        .all(|node| node_ids.insert(node.id.as_str())));
-    assert!(topology
-        .nodes
-        .windows(2)
-        .all(|pair| topology_order_key(&pair[0]) <= topology_order_key(&pair[1])));
-    assert!(topology
-        .edges
-        .windows(2)
-        .all(|pair| pair[0].id < pair[1].id));
+    assert!(
+        topology
+            .nodes
+            .iter()
+            .all(|node| node_ids.insert(node.id.as_str()))
+    );
+    assert!(
+        topology
+            .nodes
+            .windows(2)
+            .all(|pair| topology_order_key(&pair[0]) <= topology_order_key(&pair[1]))
+    );
+    assert!(
+        topology
+            .edges
+            .windows(2)
+            .all(|pair| pair[0].id < pair[1].id)
+    );
 }
 
 // R08, folded R07: complete typed/dynamic mapping, labels, health, ownership, StatefulSet PVCs.
@@ -65,22 +71,30 @@ mod ownership_topology_production_mapping_500_apps {
     fn ownership_topology_production_mapping_500_apps(bencher: codspeed_divan_compat::Bencher) {
         assert_eq!(OWNERSHIP_OUTPUT.nodes.len(), 2_512);
         assert_sorted_unique(&OWNERSHIP_OUTPUT);
-        assert!(OWNERSHIP_OUTPUT
-            .edges
-            .iter()
-            .any(|edge| edge.relation == kubecove_lib::models::TopologyRelation::Creates));
-        assert!(OWNERSHIP_OUTPUT
-            .nodes
-            .iter()
-            .any(|node| node.kind == "CronJob"));
-        assert!(OWNERSHIP_OUTPUT
-            .nodes
-            .iter()
-            .any(|node| node.kind == "Node"));
-        assert!(!OWNERSHIP_OUTPUT
-            .nodes
-            .iter()
-            .any(|node| node.name == "kube-root-ca.crt"));
+        assert!(
+            OWNERSHIP_OUTPUT
+                .edges
+                .iter()
+                .any(|edge| edge.relation == kubecove_lib::models::TopologyRelation::Creates)
+        );
+        assert!(
+            OWNERSHIP_OUTPUT
+                .nodes
+                .iter()
+                .any(|node| node.kind == "CronJob")
+        );
+        assert!(
+            OWNERSHIP_OUTPUT
+                .nodes
+                .iter()
+                .any(|node| node.kind == "Node")
+        );
+        assert!(
+            !OWNERSHIP_OUTPUT
+                .nodes
+                .iter()
+                .any(|node| node.name == "kube-root-ca.crt")
+        );
         assert!(!OWNERSHIP_OUTPUT.warnings.is_empty());
 
         let replica_set_id = node_id(
@@ -207,11 +221,10 @@ mod network_topology_endpoint_slice_and_selector_500_services {
             edge.source == missing_target_slice_id
                 && edge.relation == kubecove_lib::models::TopologyRelation::Targets
         }));
-        assert!(NETWORK_OUTPUT
-            .warnings
-            .iter()
-            .any(|warning| warning
-                == "Service tenant-0/ledger-0-service has no matching Pod endpoints"));
+        assert!(
+            NETWORK_OUTPUT.warnings.iter().any(|warning| warning
+                == "Service tenant-0/ledger-0-service has no matching Pod endpoints")
+        );
         let missing_target_slice = NETWORK_OUTPUT
             .nodes
             .iter()
@@ -321,10 +334,12 @@ mod network_topology_endpoint_slice_and_selector_500_services {
             "tenant-special",
             "external-database",
         );
-        assert!(!NETWORK_OUTPUT
-            .edges
-            .iter()
-            .any(|edge| edge.source == external_name_id));
+        assert!(
+            !NETWORK_OUTPUT
+                .edges
+                .iter()
+                .any(|edge| edge.source == external_name_id)
+        );
 
         bencher
             .with_inputs(|| NETWORK_INPUT.clone())

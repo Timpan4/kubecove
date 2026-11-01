@@ -1,10 +1,10 @@
 use super::tests::pending_callback;
 use super::*;
-use crate::observe::{capture::Captured, CloseReason};
+use crate::observe::{CloseReason, capture::Captured};
 use axum::{
-    extract::State,
-    http::{header, HeaderMap},
     Extension,
+    extract::State,
+    http::{HeaderMap, header},
 };
 use std::time::Duration;
 
@@ -120,10 +120,12 @@ async fn sign_in_events_carry_no_credentials() {
     let sign_ins = logs.named("sign_in");
     assert_eq!(sign_ins.len(), 2);
     assert_eq!(sign_ins[0]["outcome"], "success");
-    assert!(sign_ins[0]["subject"]
-        .as_str()
-        .unwrap()
-        .ends_with("mock-user"));
+    assert!(
+        sign_ins[0]["subject"]
+            .as_str()
+            .unwrap()
+            .ends_with("mock-user")
+    );
     assert_eq!(sign_ins[1]["outcome"], "failure");
     assert_eq!(sign_ins[1]["reason"], "provider_denied");
     let opened = logs.named("session_opened");
@@ -133,8 +135,9 @@ async fn sign_in_events_carry_no_credentials() {
     assert_eq!(closed.len(), 1);
     assert_eq!(closed[0]["reason"], "logout");
     assert_eq!(closed[0]["session_id"], opened[0]["session_id"]);
-    assert!(logs
-        .named("oidc_refresh")
-        .iter()
-        .any(|event| event["outcome"] == "renewed"));
+    assert!(
+        logs.named("oidc_refresh")
+            .iter()
+            .any(|event| event["outcome"] == "renewed")
+    );
 }

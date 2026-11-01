@@ -1,7 +1,7 @@
 use super::super::builtin_summary::builtin_summary;
 use super::*;
 use chrono::{TimeZone, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn fixture(kind: &str, api_version: &str) -> Value {
     json!({
@@ -53,9 +53,9 @@ fn projected_summaries_equal_full_decode_with_missing_null_and_populated_fields(
                     variant
                 );
                 assert!(projected.metadata.managed_fields.is_none());
-                assert!(!projected.metadata.annotations.as_ref().is_some_and(
-                    |a| a.contains_key("kubectl.kubernetes.io/last-applied-configuration")
-                ));
+                assert!(!projected.metadata.annotations.as_ref().is_some_and(|a| {
+                    a.contains_key("kubectl.kubernetes.io/last-applied-configuration")
+                }));
             }
         };
     }

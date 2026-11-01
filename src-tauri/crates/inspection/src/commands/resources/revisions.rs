@@ -1,5 +1,5 @@
-use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
 use crate::commands::ClusterAccess;
+use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
 use crate::models::AppErrorKind;
 use crate::models::{AppError, DeploymentRevision};
 use k8s_openapi::api::apps::v1::{Deployment, ReplicaSet};

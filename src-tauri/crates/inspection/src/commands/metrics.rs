@@ -1,6 +1,6 @@
 use crate::commands::{
-    diagnostic_field, helpers::list_params, BackendCancellationRegistry, ClusterAccess, FiniteRead,
-    MAX_LIST_CONCURRENCY,
+    BackendCancellationRegistry, ClusterAccess, FiniteRead, MAX_LIST_CONCURRENCY, diagnostic_field,
+    helpers::list_params,
 };
 use crate::models::AppErrorKind;
 use crate::models::{
@@ -8,14 +8,14 @@ use crate::models::{
     ResourceMetricsAvailabilityStatus, ResourceMetricsSummary,
 };
 use crate::runtime::State;
-use futures_util::{stream, StreamExt};
+use futures_util::{StreamExt, stream};
+use k8s_openapi::NamespaceResourceScope;
 use k8s_openapi::api::apps::v1::ReplicaSet;
 use k8s_openapi::api::core::v1::Pod;
-use k8s_openapi::NamespaceResourceScope;
 use kube::{
-    api::{Api, ApiResource, DynamicObject},
-    discovery::{verbs, Discovery},
     Client, Error,
+    api::{Api, ApiResource, DynamicObject},
+    discovery::{Discovery, verbs},
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -291,17 +291,18 @@ fn add_workload_metric<'a>(
         },
     });
     if !entry.cpu_overflowed
-        && let Some(cpu) = metric.cpu_millicores {
-            let total = entry.summary.cpu_millicores.unwrap_or(0.0) + cpu;
-            entry.summary.cpu_millicores = total.is_finite().then_some(total);
-            entry.cpu_overflowed = entry.summary.cpu_millicores.is_none();
-        }
+        && let Some(cpu) = metric.cpu_millicores
+    {
+        let total = entry.summary.cpu_millicores.unwrap_or(0.0) + cpu;
+        entry.summary.cpu_millicores = total.is_finite().then_some(total);
+        entry.cpu_overflowed = entry.summary.cpu_millicores.is_none();
+    }
     if !entry.memory_overflowed
-        && let Some(memory) = metric.memory_bytes {
-            entry.summary.memory_bytes =
-                entry.summary.memory_bytes.unwrap_or(0).checked_add(memory);
-            entry.memory_overflowed = entry.summary.memory_bytes.is_none();
-        }
+        && let Some(memory) = metric.memory_bytes
+    {
+        entry.summary.memory_bytes = entry.summary.memory_bytes.unwrap_or(0).checked_add(memory);
+        entry.memory_overflowed = entry.summary.memory_bytes.is_none();
+    }
     if metric.sampled_at > entry.summary.sampled_at {
         entry.summary.sampled_at.clone_from(&metric.sampled_at);
     }

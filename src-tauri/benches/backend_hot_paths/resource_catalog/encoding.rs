@@ -6,9 +6,11 @@ mod json_encode_typed_resource_summaries {
     #[codspeed_divan_compat::bench]
     fn json_encode_typed_resource_summaries(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*TYPED_OUTPUT).expect("typed response JSON");
-        assert!(serde_json::from_str::<serde_json::Value>(&encoded)
-            .unwrap()
-            .is_array());
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&encoded)
+                .unwrap()
+                .is_array()
+        );
         bencher
             .with_inputs(|| TYPED_OUTPUT.clone())
             .bench_values(|output| {
@@ -22,9 +24,11 @@ mod json_encode_dynamic_resource_summaries {
     #[codspeed_divan_compat::bench]
     fn json_encode_dynamic_resource_summaries(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*DYNAMIC_OUTPUT).expect("dynamic response JSON");
-        assert!(serde_json::from_str::<serde_json::Value>(&encoded)
-            .unwrap()
-            .is_array());
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&encoded)
+                .unwrap()
+                .is_array()
+        );
         bencher
             .with_inputs(|| DYNAMIC_OUTPUT.clone())
             .bench_values(|output| {
@@ -96,9 +100,11 @@ mod json_encode_selected_resource_events {
     #[codspeed_divan_compat::bench]
     fn json_encode_selected_resource_events(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*EVENT_OUTPUT).expect("event response JSON");
-        assert!(serde_json::from_str::<serde_json::Value>(&encoded)
-            .unwrap()
-            .is_array());
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&encoded)
+                .unwrap()
+                .is_array()
+        );
         bencher
             .with_inputs(|| EVENT_OUTPUT.clone())
             .bench_values(|output| {
@@ -113,9 +119,11 @@ mod json_encode_namespace_summaries {
     #[codspeed_divan_compat::bench]
     fn json_encode_namespace_summaries(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*NAMESPACE_OUTPUT).expect("namespace response JSON");
-        assert!(serde_json::from_str::<serde_json::Value>(&encoded)
-            .unwrap()
-            .is_array());
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&encoded)
+                .unwrap()
+                .is_array()
+        );
         bencher
             .with_inputs(|| NAMESPACE_OUTPUT.clone())
             .bench_values(|output| {
@@ -171,9 +179,11 @@ mod json_encode_kubeconfig_contexts {
     #[codspeed_divan_compat::bench]
     fn json_encode_kubeconfig_contexts(bencher: codspeed_divan_compat::Bencher) {
         let encoded = serde_json::to_string(&*KUBECONFIG_OUTPUT).expect("context response JSON");
-        assert!(serde_json::from_str::<serde_json::Value>(&encoded)
-            .unwrap()
-            .is_array());
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&encoded)
+                .unwrap()
+                .is_array()
+        );
         bencher
             .with_inputs(|| KUBECONFIG_OUTPUT.clone())
             .bench_values(|output| {

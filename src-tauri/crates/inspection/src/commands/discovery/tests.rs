@@ -1,7 +1,7 @@
 use super::*;
-use http::{header::CONTENT_TYPE, Request, Response};
+use http::{Request, Response, header::CONTENT_TYPE};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinitionVersion;
-use kube::{client::Body, Client};
+use kube::{Client, client::Body};
 use serde_json::json;
 
 type MockHandle = tower_test::mock::Handle<Request<Body>, Response<Body>>;

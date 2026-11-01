@@ -1,15 +1,15 @@
 use super::scope::scoped_connection;
 use super::transport::resource_actions_path;
 use super::{
+    ArgoConnectionStore,
     connected::{
         api_get, connected_comparison, inspector_from_application, kubernetes_application,
         kubernetes_comparison, managed_resource_path, redact_secret_fields, text,
     },
-    ArgoConnectionStore,
 };
 use crate::models::AppErrorKind;
 use crate::{
-    commands::{diagnostic_field, BackendCancellationRegistry, ClusterAccess, FiniteRead},
+    commands::{BackendCancellationRegistry, ClusterAccess, FiniteRead, diagnostic_field},
     models::{AppError, ArgoApplicationRef, ArgoManagedResource, ArgoResourceComparison},
 };
 use serde_json::Value;
@@ -257,7 +257,9 @@ mod tests {
         );
         assert_eq!(
             path.as_deref(),
-            Some("/api/v1/applications/app%2Fa%3F%23/resource/actions?appNamespace=app+ns%2F%26%3F%23&project=project%2F%26%3F%23&group=apps%2F%26%3F%23&version=v1%2F%3F.&kind=Deployment%2F%23&namespace=ns%2F%26%3F%23&resourceName=resource%2F%26%3F%23")
+            Some(
+                "/api/v1/applications/app%2Fa%3F%23/resource/actions?appNamespace=app+ns%2F%26%3F%23&project=project%2F%26%3F%23&group=apps%2F%26%3F%23&version=v1%2F%3F.&kind=Deployment%2F%23&namespace=ns%2F%26%3F%23&resourceName=resource%2F%26%3F%23"
+            )
         );
     }
 

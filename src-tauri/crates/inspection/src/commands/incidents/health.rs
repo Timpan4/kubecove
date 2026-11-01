@@ -1,12 +1,12 @@
 use crate::commands::helpers::legacy_resource_health;
 use crate::models::{
-    evaluate_health, HealthAssessmentCompleteness, HealthAssessmentEvidence, HealthAssessmentInput,
+    HealthAssessmentCompleteness, HealthAssessmentEvidence, HealthAssessmentInput,
     HealthAssessmentSource, HealthAssessmentState, IncidentSeverity, ResourceEventSummary,
-    ResourceSummary,
+    ResourceSummary, evaluate_health,
 };
 use serde_json::json;
 
-use super::restarts::{restart_signal_message, RestartEvidence};
+use super::restarts::{RestartEvidence, restart_signal_message};
 use crate::models::IncidentSignalState;
 
 pub(super) fn apply_incident_health_evidence(

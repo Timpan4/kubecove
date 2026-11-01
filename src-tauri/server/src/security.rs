@@ -1,6 +1,6 @@
 use crate::observe::RequestRefusal;
-use axum::http::{header, HeaderMap};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use axum::http::{HeaderMap, header};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::io;
 use subtle::ConstantTimeEq;
 
@@ -57,7 +57,9 @@ pub struct NetworkPolicy {
 impl NetworkPolicy {
     pub fn content_security_policy(&self, host: &str) -> String {
         let websocket_scheme = if self.secure { "wss" } else { "ws" };
-        format!("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' {websocket_scheme}://{host}; img-src 'self' data:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+        format!(
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' {websocket_scheme}://{host}; img-src 'self' data:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+        )
     }
 
     pub fn check(

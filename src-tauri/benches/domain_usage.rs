@@ -1,4 +1,4 @@
-use codspeed_divan_compat::{black_box, Bencher};
+use codspeed_divan_compat::{Bencher, black_box};
 use kubecove_lib::commands::bench_support::domain_catalog::domain_usage;
 use kubecove_lib::commands::bench_support::domain_catalog::domain_usage::UsageProcessPlatform;
 use kubecove_lib::models::AppUsageMetrics;
@@ -15,11 +15,13 @@ fn assert_attribution(metrics: &AppUsageMetrics, expected_count: usize) {
             .sum::<u64>(),
         metrics.memory_bytes
     );
-    assert!(metrics
-        .breakdown
-        .iter()
-        .flat_map(|group| group.children.windows(2))
-        .all(|children| children[0].memory_bytes >= children[1].memory_bytes));
+    assert!(
+        metrics
+            .breakdown
+            .iter()
+            .flat_map(|group| group.children.windows(2))
+            .all(|children| children[0].memory_bytes >= children[1].memory_bytes)
+    );
 }
 
 mod usage_process_attribution_native {
@@ -67,10 +69,12 @@ mod usage_process_attribution_macos_orphans {
             .find(|group| group.label == "WebView")
             .expect("WebKit process group");
         assert!(webview.process_count >= 4);
-        assert!(webview
-            .children
-            .iter()
-            .any(|child| child.label == "Renderer"));
+        assert!(
+            webview
+                .children
+                .iter()
+                .any(|child| child.label == "Renderer")
+        );
 
         bencher
             .with_inputs(|| inputs.clone())
@@ -123,14 +127,18 @@ mod usage_process_attribution_windows_webview {
             .iter()
             .find(|group| group.label == "WebView")
             .expect("WebView2 process group");
-        assert!(webview
-            .children
-            .iter()
-            .any(|child| child.label == "Browser process"));
-        assert!(webview
-            .children
-            .iter()
-            .any(|child| child.label == "Renderer"));
+        assert!(
+            webview
+                .children
+                .iter()
+                .any(|child| child.label == "Browser process")
+        );
+        assert!(
+            webview
+                .children
+                .iter()
+                .any(|child| child.label == "Renderer")
+        );
 
         bencher
             .with_inputs(|| inputs.clone())

@@ -1,6 +1,6 @@
 use super::*;
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::Request,
 };
 use std::time::{Duration, SystemTime};
@@ -184,11 +184,13 @@ async fn oidc_owner_is_identity_bound_and_logout_revokes_only_matching_owner() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(response
-        .headers()
-        .get_all(header::SET_COOKIE)
-        .iter()
-        .any(|cookie| cookie.to_str().unwrap().contains("Max-Age=0")));
+    assert!(
+        response
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .any(|cookie| cookie.to_str().unwrap().contains("Max-Age=0"))
+    );
     assert!(owner.ended.is_cancelled());
     assert!(auth.revoked.is_cancelled());
     let response = app

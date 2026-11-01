@@ -1,5 +1,5 @@
-use super::error::AppError;
 use super::HealthAssessment;
+use super::error::AppError;
 use crate::AppErrorKind;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

@@ -2,9 +2,9 @@ use super::state::clean_action_display_metadata;
 use super::*;
 use crate::commands::{ClientIntent, FixedClusterAccess};
 use crate::models::{AppErrorKind, ResourceActionEdits, ResourceActionRequest};
-use http::{header::CONTENT_TYPE, Method, Request, Response};
-use kube::{client::Body, Client};
-use serde_json::{json, Value};
+use http::{Method, Request, Response, header::CONTENT_TYPE};
+use kube::{Client, client::Body};
+use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 
 type MockHandle = tower_test::mock::Handle<Request<Body>, Response<Body>>;
@@ -218,8 +218,7 @@ fn env_edit_preserves_untouched_references_and_metadata() {
         "api"
     );
     assert_eq!(
-        after["spec"]["template"]["spec"]["containers"][0]["env"][0]["valueFrom"]["secretKeyRef"]
-            ["name"],
+        after["spec"]["template"]["spec"]["containers"][0]["env"][0]["valueFrom"]["secretKeyRef"]["name"],
         "auth"
     );
     assert_eq!(
@@ -292,9 +291,11 @@ fn rollback_requires_an_owned_revision_and_restores_the_complete_template() {
     let template = owned_revision_template(&revision, "api", "owner-uid").unwrap();
     assert_eq!(template["metadata"]["annotations"]["custom"], "preserve");
     assert_eq!(template["metadata"]["labels"]["app"], "api");
-    assert!(template["metadata"]["labels"]
-        .get("pod-template-hash")
-        .is_none());
+    assert!(
+        template["metadata"]["labels"]
+            .get("pod-template-hash")
+            .is_none()
+    );
     assert_eq!(template["spec"]["volumes"][0]["name"], "data");
     assert_eq!(template["spec"]["containers"][0]["image"], "v3");
     assert!(owned_revision_template(&revision, "api", "different-uid").is_err());
@@ -364,21 +365,25 @@ async fn execute_edit_repeats_dry_run_before_guarded_patch() {
         let (request, send) = handle.next_request().await.expect("mandatory dry-run");
         assert_eq!(request.method(), Method::PATCH);
         assert_configmap_path(&request);
-        assert!(request
-            .uri()
-            .query()
-            .unwrap_or_default()
-            .contains("dryRun=All"));
+        assert!(
+            request
+                .uri()
+                .query()
+                .unwrap_or_default()
+                .contains("dryRun=All")
+        );
         send.send_response(json_response(200, configmap()));
 
         let (request, send) = handle.next_request().await.expect("guarded apply");
         assert_eq!(request.method(), Method::PATCH);
         assert_configmap_path(&request);
-        assert!(!request
-            .uri()
-            .query()
-            .unwrap_or_default()
-            .contains("dryRun="));
+        assert!(
+            !request
+                .uri()
+                .query()
+                .unwrap_or_default()
+                .contains("dryRun=")
+        );
         send.send_response(json_response(200, configmap()));
     };
     let (result, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
@@ -399,11 +404,13 @@ async fn failed_execution_dry_run_never_sends_mutating_patch() {
         send.send_response(json_response(200, configmap()));
         let (request, send) = handle.next_request().await.expect("dry-run patch");
         assert_eq!(request.method(), Method::PATCH);
-        assert!(request
-            .uri()
-            .query()
-            .unwrap_or_default()
-            .contains("dryRun=All"));
+        assert!(
+            request
+                .uri()
+                .query()
+                .unwrap_or_default()
+                .contains("dryRun=All")
+        );
         send.send_response(json_response(422, json!({"kind":"Status","status":"Failure","reason":"Invalid","message":"dry-run rejected","code":422})));
     };
     let (result, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
@@ -530,11 +537,13 @@ async fn rollback_preview_returns_identity_of_the_revision_used_for_its_dry_run_
 
         let (request, send) = handle.next_request().await.expect("rollback dry-run patch");
         assert_eq!(request.method(), Method::PATCH);
-        assert!(request
-            .uri()
-            .query()
-            .unwrap_or_default()
-            .contains("dryRun=All"));
+        assert!(
+            request
+                .uri()
+                .query()
+                .unwrap_or_default()
+                .contains("dryRun=All")
+        );
         let patch: Value =
             serde_json::from_slice(&request.into_body().collect_bytes().await.unwrap()).unwrap();
         assert_eq!(

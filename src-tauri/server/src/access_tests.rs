@@ -1,7 +1,7 @@
 use super::*;
-use base64::{engine::general_purpose::STANDARD, Engine};
-use jsonwebtoken::{encode, EncodingKey, Header};
-use serde_json::{json, Value};
+use base64::{Engine, engine::general_purpose::STANDARD};
+use jsonwebtoken::{EncodingKey, Header, encode};
+use serde_json::{Value, json};
 
 pub(crate) fn fixture() -> Value {
     serde_json::from_str(include_str!("access_test_key.json")).unwrap()
@@ -74,10 +74,12 @@ async fn only_signed_unexpired_application_tokens_for_the_configured_issuer_and_
             "missing {field}"
         );
     }
-    assert!(access
-        .verify(&signed(&claims, Algorithm::RS512, "test-key"))
-        .await
-        .is_err());
+    assert!(
+        access
+            .verify(&signed(&claims, Algorithm::RS512, "test-key"))
+            .await
+            .is_err()
+    );
     let (message, _) = good.rsplit_once('.').unwrap();
     assert!(access.verify(&format!("{message}.AAAA")).await.is_err());
 }
@@ -115,10 +117,10 @@ fn key_cache_uses_the_upstream_http_lifetime_and_age() {
 
 #[tokio::test]
 async fn key_rotation_refreshes_unknown_ids_and_expired_cache_failures_deny_access() {
-    use axum::{routing::get, Json, Router};
+    use axum::{Json, Router, routing::get};
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     };
     let requests = Arc::new(AtomicUsize::new(0));
     let count = Arc::clone(&requests);

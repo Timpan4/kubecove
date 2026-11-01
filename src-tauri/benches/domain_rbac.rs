@@ -1,4 +1,4 @@
-use codspeed_divan_compat::{black_box, Bencher};
+use codspeed_divan_compat::{Bencher, black_box};
 use kubecove_lib::commands::bench_support::domain_catalog::domain_rbac;
 use kubecove_lib::models::{RbacCoverageStatus, RbacInspectionSummary};
 
@@ -43,10 +43,12 @@ mod rbac_inventory_projection_complete_coverage {
                 && subject.name == "sa-000"
                 && subject.namespace.as_deref() == Some("tenant-000")
         }));
-        assert!(expected.role_bindings[0]
-            .risks
-            .iter()
-            .any(|risk| risk.label == "Dangling role reference"));
+        assert!(
+            expected.role_bindings[0]
+                .risks
+                .iter()
+                .any(|risk| risk.label == "Dangling role reference")
+        );
         assert_eq!(
             expected.roles[0].rules[0].verbs,
             vec!["get".to_string(), "list".to_string()]
@@ -59,23 +61,31 @@ mod rbac_inventory_projection_complete_coverage {
             "RBAC write access",
             "Workload interactive access",
         ] {
-            assert!(expected.roles[0]
+            assert!(
+                expected.roles[0]
+                    .risks
+                    .iter()
+                    .any(|risk| risk.label == risk_label)
+            );
+        }
+        assert!(
+            expected.service_accounts[0]
                 .risks
                 .iter()
-                .any(|risk| risk.label == risk_label));
-        }
-        assert!(expected.service_accounts[0]
-            .risks
-            .iter()
-            .any(|risk| risk.label == "Automount token"));
-        assert!(expected.cluster_role_bindings[0]
-            .subjects
-            .iter()
-            .any(|subject| subject.name == "system:masters"));
-        assert!(expected.cluster_role_bindings[1]
-            .risks
-            .iter()
-            .any(|risk| risk.label == "Cluster admin binding"));
+                .any(|risk| risk.label == "Automount token")
+        );
+        assert!(
+            expected.cluster_role_bindings[0]
+                .subjects
+                .iter()
+                .any(|subject| subject.name == "system:masters")
+        );
+        assert!(
+            expected.cluster_role_bindings[1]
+                .risks
+                .iter()
+                .any(|risk| risk.label == "Cluster admin binding")
+        );
         assert_eq!(
             expected
                 .roles
@@ -86,10 +96,12 @@ mod rbac_inventory_projection_complete_coverage {
             [Some("tenant-001"), Some("tenant-002")]
         );
         for binding in &expected.role_bindings[1..=2] {
-            assert!(!binding
-                .risks
-                .iter()
-                .any(|risk| risk.label == "Dangling role reference"));
+            assert!(
+                !binding
+                    .risks
+                    .iter()
+                    .any(|risk| risk.label == "Dangling role reference")
+            );
         }
 
         bencher
@@ -115,14 +127,18 @@ mod rbac_inventory_projection_partial_coverage {
             RbacCoverageStatus::Partial,
             RbacCoverageStatus::Unavailable,
         );
-        assert!(expected.role_bindings[0]
-            .risks
-            .iter()
-            .any(|risk| risk.label == "Referenced role unavailable"));
-        assert!(expected.cluster_role_bindings[0]
-            .risks
-            .iter()
-            .any(|risk| risk.label == "Referenced role unavailable"));
+        assert!(
+            expected.role_bindings[0]
+                .risks
+                .iter()
+                .any(|risk| risk.label == "Referenced role unavailable")
+        );
+        assert!(
+            expected.cluster_role_bindings[0]
+                .risks
+                .iter()
+                .any(|risk| risk.label == "Referenced role unavailable")
+        );
         assert_eq!(expected.namespace_access.len(), 250);
 
         bencher

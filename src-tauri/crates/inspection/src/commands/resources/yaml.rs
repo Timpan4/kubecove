@@ -1,15 +1,14 @@
 use crate::commands::{
-    diagnostic_field,
+    BackendCancellationRegistry, ClusterAccess, FiniteRead, diagnostic_field,
     helpers::{
         fetch_and_serialize_cluster_with_encoding, fetch_and_serialize_with_encoding,
         fetch_resource, redact_secret, serialize_resource_document,
     },
-    BackendCancellationRegistry, ClusterAccess, FiniteRead,
 };
 use crate::models::AppErrorKind;
 use crate::models::{AppError, YamlEncoding, YamlViewMode};
 use crate::runtime::State;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet};
 use k8s_openapi::api::batch::v1::{CronJob, Job};
 use k8s_openapi::api::core::v1::{
@@ -149,7 +148,7 @@ pub async fn resource_yaml_from(
             return Err(AppError::new(
                 format!("unsupported resource kind: {kind}"),
                 AppErrorKind::Cluster,
-            ))
+            ));
         }
     };
     Ok(yaml)

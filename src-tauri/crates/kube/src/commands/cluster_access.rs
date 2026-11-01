@@ -12,12 +12,12 @@ mod plugin_path;
 use super::{
     helpers::session_scope::SessionScope,
     kubeconfig::{
-        cluster_contexts_from_kubeconfig, is_source_key, normalize_env_var, KubeconfigSource,
+        KubeconfigSource, cluster_contexts_from_kubeconfig, is_source_key, normalize_env_var,
     },
 };
 use crate::models::{AppError, AppErrorKind, ClusterContext};
 #[cfg(feature = "test-support")]
-pub use fixed::{FixedClusterAccess, FIXED_SOURCE_KEY};
+pub use fixed::{FIXED_SOURCE_KEY, FixedClusterAccess};
 use kube::Client;
 use std::{fmt, sync::Arc};
 
