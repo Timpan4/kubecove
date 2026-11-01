@@ -18,7 +18,7 @@ use prometheus_client::{
     registry::Registry,
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{atomic::AtomicU64, Arc, LazyLock, Mutex},
     time::Duration,
 };
@@ -125,8 +125,17 @@ pub struct Metrics {
     resident_memory: Gauge,
     cpu_seconds: Counter<f64, AtomicU64>,
     /// Serializes scrapes, which raise counters by the difference from
-    /// their last exported value, and owns the process sampler.
-    scrape: tokio::sync::Mutex<System>,
+    /// their last exported value.
+    scrape: tokio::sync::Mutex<Scrape>,
+}
+
+#[derive(Default)]
+struct Scrape {
+    process: System,
+    /// Caches that have exported gauges. One missing from a scrape, such as
+    /// while its only session is closing, reports zero instead of keeping
+    /// its last size.
+    caches: BTreeSet<String>,
 }
 
 impl Default for Metrics {
@@ -151,7 +160,7 @@ impl Default for Metrics {
             cache_gauges: Default::default(),
             resident_memory: Gauge::default(),
             cpu_seconds: Counter::default(),
-            scrape: tokio::sync::Mutex::new(System::new()),
+            scrape: tokio::sync::Mutex::default(),
         };
         metrics.register();
         metrics
@@ -262,10 +271,19 @@ impl Metrics {
 
     /// Records scrape-time values, then encodes the registry.
     pub async fn render(&self, sessions: &Sessions) -> String {
-        let mut system = self.scrape.lock().await;
+        let mut scrape = self.scrape.lock().await;
         let (open, caches) = sessions.cache_totals().await;
         self.sessions_open
             .set(i64::try_from(open).unwrap_or(i64::MAX));
+        for gone in scrape.caches.difference(&caches.keys().cloned().collect()) {
+            let label = CacheLabel {
+                cache: gone.clone(),
+            };
+            for family in &self.cache_gauges {
+                family.get_or_create(&label).set(0);
+            }
+        }
+        scrape.caches.extend(caches.keys().cloned());
         for (label, totals) in caches {
             let label = CacheLabel { cache: label };
             for (family, total) in self.cache_counters.iter().zip(totals.counters) {
@@ -277,8 +295,8 @@ impl Metrics {
                     .set(i64::try_from(value).unwrap_or(i64::MAX));
             }
         }
-        self.sample_process(&mut system);
-        drop(system);
+        self.sample_process(&mut scrape.process);
+        // Encoding under the lock keeps each response one consistent scrape.
         let mut text = String::new();
         encode(&mut text, &self.registry).expect("encoding into a String cannot fail");
         text

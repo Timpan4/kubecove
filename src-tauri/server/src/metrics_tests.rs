@@ -134,10 +134,28 @@ async fn cache_counters_never_decrease_across_clear_and_session_end() {
     let text = metrics.render(&sessions).await;
     assert_eq!((sample(&text, hits), sample(&text, misses)), (2.0, 1.0));
 
-    sessions
-        .close(&first.resume_token, CloseReason::Client)
-        .await
-        .unwrap();
+    // A closing session has left the live list but is not retired until its
+    // in-flight request finishes.
+    let in_flight = owner.request_gate.read().await;
+    let closing = {
+        let sessions = Arc::clone(&sessions);
+        let resume = first.resume_token.clone();
+        tokio::spawn(async move { sessions.close(&resume, CloseReason::Client).await })
+    };
+    tokio::task::yield_now().await;
+    assert!(!closing.is_finished());
+    let text = metrics.render(&sessions).await;
+    assert_eq!(
+        (
+            sample(&text, hits),
+            sample(&text, misses),
+            sample(&text, ready),
+            sample(&text, open)
+        ),
+        (2.0, 1.0, 0.0, 0.0)
+    );
+    drop(in_flight);
+    closing.await.unwrap().unwrap();
     let text = metrics.render(&sessions).await;
     assert_eq!(
         (
