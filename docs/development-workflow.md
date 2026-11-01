@@ -136,6 +136,28 @@ without a cluster or real provider login. The desktop runner accepts WDIO's
 
 See [ADR 0010](decisions/0010-e2e-only-wdio-security-boundary.md), [ADR 0011](decisions/0011-rolling-kubernetes-support.md), and [ADR 0012](decisions/0012-production-shaped-e2e-lab.md).
 
+## CI caching
+
+CI uses standard GitHub-hosted runners. CI, CodSpeed, and E2E restore Rust
+caches, including workspace crates. Successful runs on `main` publish those
+caches so PR runs can reuse them without saving duplicate branch caches. The
+primary Kubernetes version publishes the shared Linux E2E cache; the remaining
+Kubernetes versions restore it. Desktop caches remain separate by OS and
+architecture. E2E caches cover both the desktop and headless server targets.
+
+The frontend, headless server, and E2E jobs share Bun's download cache on each
+OS. They still run `bun install --frozen-lockfile` after restoring it. Caches
+never replace a build or test gate, and a cache miss runs the same checks.
+
+Nix currently rebuilds without a persistent store cache. Check the repository's
+GitHub cache usage before adding one. A whole-store Nix cache can evict Rust
+caches. Cache storage and billing settings are unchanged by the workflows.
+
+To evaluate a CI change, compare job queue, setup, execution, and cache upload
+times in GitHub Actions on comparable revisions. Include both cold and warm
+runs. Local workflow regression checks validate orchestration, not hosted cache
+hits or an end-to-end speedup.
+
 ## Verification Before Completion
 
 Run smallest checks matching work:
