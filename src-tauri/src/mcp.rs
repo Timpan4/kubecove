@@ -165,8 +165,13 @@ fn save_settings(config_dir: &Path, settings: McpSettings) -> Result<(), AppErro
     let content = serde_json::to_string_pretty(&settings).map_err(|error| {
         AppError::new(error.to_string(), AppErrorKind::Serialization).with_source(error)
     })?;
+    // Replace by rename so a failed or interrupted write keeps the previous settings.
+    // Callers hold the host lock, so one staging name is enough.
+    let path = config_dir.join(SETTINGS_FILE_NAME);
+    let staged = config_dir.join(format!("{SETTINGS_FILE_NAME}.tmp"));
     std::fs::create_dir_all(config_dir)
-        .and_then(|()| std::fs::write(config_dir.join(SETTINGS_FILE_NAME), content))
+        .and_then(|()| std::fs::write(&staged, content))
+        .and_then(|()| std::fs::rename(&staged, &path))
         .map_err(|error| {
             AppError::new(
                 format!("failed to save MCP settings: {error}"),

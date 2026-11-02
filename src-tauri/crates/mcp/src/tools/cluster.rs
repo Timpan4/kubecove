@@ -129,11 +129,15 @@ pub async fn get_resource_metrics(arguments: args::MetricsArgs) -> Result<Value,
         if arguments.list.is_some_and(|wanted| wanted != list) {
             continue;
         }
+        // Ties break by identity so pages stay stable across calls.
         rows.sort_by(|left, right| {
             right
                 .cpu_millicores
                 .unwrap_or_default()
                 .total_cmp(&left.cpu_millicores.unwrap_or_default())
+                .then_with(|| left.namespace.cmp(&right.namespace))
+                .then_with(|| left.kind.cmp(&right.kind))
+                .then_with(|| left.name.cmp(&right.name))
         });
         let rows = page(rows, arguments.limit, arguments.offset)?;
         body.insert(
