@@ -150,7 +150,7 @@ pub fn build_resource_topology(inputs: Vec<TopologyInputResource>) -> ResourceTo
         };
         let Some(source) = uid_to_node.get(&owner.uid) else {
             warnings.push(format!(
-                "{} {}/{} references missing owner {}/{}",
+                "{} {}/{} references owner {}/{} outside the loaded topology",
                 input.summary.kind,
                 input.summary.namespace.as_deref().unwrap_or("<cluster>"),
                 input.summary.name,

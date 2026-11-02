@@ -524,7 +524,7 @@ fn links_statefulset_to_matching_pvc_without_owner_reference() {
 }
 
 #[test]
-fn warns_when_owner_reference_target_is_missing() {
+fn warns_when_owner_reference_target_is_not_loaded() {
     let topology = build_resource_topology(vec![owned(
         "Pod",
         "api-orphan",
@@ -537,7 +537,10 @@ fn warns_when_owner_reference_target_is_missing() {
 
     assert_eq!(topology.edges.len(), 0);
     assert_eq!(topology.warnings.len(), 1);
-    assert!(topology.warnings[0].contains("ReplicaSet/api-missing"));
+    assert_eq!(
+        topology.warnings[0],
+        "Pod default/api-orphan references owner ReplicaSet/api-missing outside the loaded topology"
+    );
 }
 
 #[test]
