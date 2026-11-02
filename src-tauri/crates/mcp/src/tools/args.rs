@@ -122,9 +122,19 @@ pub struct MetricsArgs {
     pub context: Option<String>,
     /// Namespace for Pod and workload usage. Omit for all namespaces.
     pub namespace: Option<String>,
-    /// Maximum rows to return. Defaults to 500.
+    /// Return only this list. Required with `offset`, because each list pages separately.
+    pub list: Option<MetricsList>,
+    /// Maximum rows to return per list. Defaults to 500.
     #[schemars(range(min = 1))]
     pub limit: Option<usize>,
-    /// Rows to skip, from a previous result's `nextOffset`.
+    /// Rows to skip in `list`, from that list's previous `nextOffset`.
     pub offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum MetricsList {
+    Pods,
+    Workloads,
+    Nodes,
 }

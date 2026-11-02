@@ -32,7 +32,7 @@ Clients run in independent sessions. Reconnects retain their session during `--s
 
 ## MCP
 
-`--mcp` serves read-only MCP tools for AI agents at `/mcp` on the main listener ([ADR 0028](../../docs/decisions/0028-read-only-mcp-server.md)). `src/mcp.rs` mounts the `kubecove-mcp` endpoint in the router. Requests need the bearer token stored in `<data-dir>/mcp-token`, created on first start with mode `0600` and reused afterwards; startup prints its path, never the token. The MCP token opens only `/mcp`. The router guard still applies the Host policy, the Origin policy when an `Origin` header is present, and Cloudflare Access when configured. Tool calls run in one session scope with the operator's kubeconfig source. `--mcp` with `--oidc-kubernetes-credentials` fails at startup.
+`--mcp` serves read-only MCP tools for AI agents at `/mcp` on the main listener ([ADR 0028](../../docs/decisions/0028-read-only-mcp-server.md)). `src/mcp.rs` mounts the `kubecove-mcp` endpoint in the router. Requests need the bearer token stored in `<data-dir>/mcp-token`, created on first start with mode `0600` and reused afterwards; startup prints its path, never the token. The MCP token opens only `/mcp`. The router guard still applies the Host policy, the Origin policy when an `Origin` header is present, and Cloudflare Access when configured. Tool calls run in one session scope with the operator's kubeconfig source. With OIDC browser sign-in, `/mcp` needs only the MCP token, not an OIDC session, so treat that file as a service credential. `--mcp` with `--oidc-kubernetes-credentials` fails at startup.
 
 ## Logs
 

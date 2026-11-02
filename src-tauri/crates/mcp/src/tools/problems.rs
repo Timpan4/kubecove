@@ -32,12 +32,10 @@ pub async fn find_problems(
     let namespace = arguments
         .namespace
         .filter(|namespace| !namespace.is_empty());
-    let scan = |nodes: bool| {
-        let requests = NAMESPACED_KINDS
-            .iter()
-            .map(|kind| request(kind, namespace.clone()))
-            .chain(nodes.then(|| request("Node", None)))
-            .collect();
+    // Nodes are scanned on their own: a cluster-scoped request would widen the Warning
+    // event scan beyond the requested namespace, and identities scoped to namespaces
+    // often may not list Nodes at all.
+    let scan = |requests| {
         incident_cockpit_from(
             &access,
             cluster.clone(),
@@ -45,21 +43,27 @@ pub async fn find_problems(
             context.live_store.clone(),
         )
     };
-    let mut summary = match scan(true).await {
-        Ok(summary) => summary,
-        // Identities scoped to namespaces often may not list Nodes; scan what they can.
+    let workload_requests = NAMESPACED_KINDS
+        .iter()
+        .map(|kind| request(kind, namespace.clone()))
+        .collect();
+    let (workloads, nodes) =
+        tokio::join!(scan(workload_requests), scan(vec![request("Node", None)]));
+    let workloads = workloads?;
+    let generated_at = workloads.generated_at;
+    let mut warnings = workloads.warnings;
+    let mut items = workloads.items;
+    match nodes {
+        Ok(nodes) => {
+            items.extend(nodes.items);
+            warnings.extend(nodes.warnings);
+        }
         Err(error) if error.kind == AppErrorKind::Forbidden => {
-            let mut summary = scan(false).await?;
-            summary
-                .warnings
-                .push(format!("Nodes are not scanned: {}", error.message));
-            summary
+            warnings.push(format!("Nodes are not scanned: {}", error.message));
         }
         Err(error) => return Err(error),
-    };
-    let warnings = std::mem::take(&mut summary.warnings);
-    let mut items: Vec<IncidentCockpitItem> = summary
-        .items
+    }
+    let mut items: Vec<IncidentCockpitItem> = items
         .into_iter()
         .filter(|item| arguments.include_resolved || item.state == IncidentSignalState::Active)
         .collect();
@@ -73,7 +77,7 @@ pub async fn find_problems(
     });
     let mut body = page(items, arguments.limit, arguments.offset)?.into_json("problems", item);
     body.insert("context".into(), cluster.into());
-    body.insert("generatedAt".into(), summary.generated_at.into());
+    body.insert("generatedAt".into(), generated_at.into());
     if !warnings.is_empty() {
         body.insert("warnings".into(), json!(warnings));
     }

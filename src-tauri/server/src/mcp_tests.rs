@@ -68,7 +68,13 @@ async fn mcp_route_exists_only_with_the_flag() {
         ))
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    // With the embedded web UI, unknown paths fall back to its GET-only asset route.
+    let unrouted = if cfg!(feature = "web-ui") {
+        StatusCode::METHOD_NOT_ALLOWED
+    } else {
+        StatusCode::NOT_FOUND
+    };
+    assert_eq!(response.status(), unrouted);
     assert_eq!(response.headers().get(header::WWW_AUTHENTICATE), None);
 }
 

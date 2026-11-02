@@ -1,6 +1,6 @@
 import { type AddressInfo, createServer, type Server } from "node:net";
 import { $, browser, expect } from "@wdio/globals";
-import { after, describe, it } from "mocha";
+import { after, before, describe, it } from "mocha";
 import type { McpStatus } from "../../../src/lib/mcp-runtime";
 
 // Failure modes (ADR 0028): the listener starts before the user enables it; the tools
@@ -64,7 +64,18 @@ async function savePort(port: number): Promise<void> {
 
 describe("desktop MCP server", () => {
 	let blocker: Server | undefined;
+	let savedPort: number | undefined;
+	before(async () => {
+		savedPort = (await status()).port;
+	});
+	// Settings persist in mcp-settings.json, so a failed test must not leave MCP enabled.
 	after(async () => {
+		if (savedPort !== undefined) {
+			await browser.execute(
+				(port) => window.__TAURI__.core.invoke("set_mcp_settings", { enabled: false, port }).then(() => "saved"),
+				savedPort,
+			);
+		}
 		if (blocker) await new Promise((closed) => blocker?.close(closed));
 	});
 

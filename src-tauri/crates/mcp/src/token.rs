@@ -31,31 +31,47 @@ pub fn rotate_token(dir: &Path) -> io::Result<String> {
 
 fn write_new(path: &Path) -> io::Result<String> {
     // ADR 0020 requires 32 bytes from the OS CSPRNG for server tokens; ADR 0028 reuses it.
-    let mut bytes = [0_u8; 32];
-    getrandom::fill(&mut bytes).map_err(io::Error::other)?;
-    let token = URL_SAFE_NO_PAD.encode(bytes);
-    // Write beside the target and rename, so a reader never sees a partial token.
-    let staged = staged_path(path);
+    let token = URL_SAFE_NO_PAD.encode(random_bytes::<32>()?);
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    // Write a staging file of this call's own and rename it over the target, so a reader
+    // never sees a partial token and overlapping writers never share a staging file.
+    let staged = staged_path(path)?;
+    let written = write_staged(&staged, &token).and_then(|()| fs::rename(&staged, path));
+    if written.is_err() {
+        let _ = fs::remove_file(&staged);
+    }
+    written.map(|()| token)
+}
+
+fn write_staged(staged: &Path, token: &str) -> io::Result<()> {
     let mut options = fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt as _;
         options.mode(0o600);
     }
-    let mut file = options.open(&staged)?;
-    restrict(&staged)?;
+    let mut file = options.open(staged)?;
+    restrict(staged)?;
     file.write_all(token.as_bytes())?;
-    file.sync_all()?;
-    drop(file);
-    fs::rename(&staged, path)?;
-    Ok(token)
+    file.sync_all()
 }
 
-fn staged_path(path: &Path) -> PathBuf {
+fn random_bytes<const N: usize>() -> io::Result<[u8; N]> {
+    let mut bytes = [0_u8; N];
+    getrandom::fill(&mut bytes).map_err(io::Error::other)?;
+    Ok(bytes)
+}
+
+fn staged_path(path: &Path) -> io::Result<PathBuf> {
     let mut staged = path.as_os_str().to_owned();
-    staged.push(".tmp");
-    PathBuf::from(staged)
+    staged.push(format!(
+        ".{}.tmp",
+        URL_SAFE_NO_PAD.encode(random_bytes::<8>()?)
+    ));
+    Ok(PathBuf::from(staged))
 }
 
 /// Removes group and other access from an existing file, including one created before

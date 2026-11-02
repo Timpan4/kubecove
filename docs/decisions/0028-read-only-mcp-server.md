@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed on 2026-11-02.
+Accepted and implemented on 2026-11-03.
 
 ## Context
 
@@ -40,7 +40,7 @@ Connected Argo CD transport is out of scope. It needs a per-session connection a
 
 Tools return JSON text that keeps the evidence an agent reasons with: name, namespace, status, readiness, restarts, age, health state and reasons, owner and GitOps ownership. They drop `managedFields`, full health evidence trees and repeated cluster names.
 
-List-style tools (`list_resource_kinds`, `list_resources`, `find_problems`) accept `limit` and `offset` and report `total` and `nextOffset`. The default page size is 500 rows, chosen by the product owner on 2026-11-02. `get_pod_logs` reuses the existing log stream bounds: a default tail of 200 lines, a maximum of 1,000 lines and the existing per-line byte cap.
+List-style tools (`list_resource_kinds`, `list_resources`, `find_problems`, and each list of `get_resource_metrics`) accept `limit` and `offset` and report `total` and `nextOffset`. The default page size is 500 rows, chosen by the product owner on 2026-11-02. `get_pod_logs` reuses the existing log stream bounds: a default tail of 200 lines, a maximum of 1,000 lines and the existing per-line byte cap.
 
 `find_problems` returns active signals first and omits resolved and historical signals unless the agent asks for them.
 
@@ -57,14 +57,14 @@ Both hosts serve MCP over Streamable HTTP in stateless JSON mode. Each request i
 
 **Desktop.** Settings > AI agents enables a listener on `127.0.0.1:<port>/mcp` inside the running app. The default port is 47615, chosen by the product owner on 2026-11-02, and is editable. The listener binds loopback only and runs only while the app is open. Tool calls use the app's own `ClusterLiveStore` and client caches, so an agent reads the same warm caches as the UI. Desktop MCP uses the local kubeconfig sources and the Local source policy; it does not proxy through a desktop remote connection.
 
-**Server.** `kubecove-server --mcp` serves `/mcp` on the existing listener, so TLS, `--allow-remote` and the Host allowlist apply unchanged. Requests with an `Origin` header must match the served origin, as browser `POST` requests do. With Cloudflare Access, `/mcp` also requires a valid Access assertion, so agents need an Access service token in addition to the MCP token. Without `--mcp`, the server has no MCP route. MCP requests share one session scope and one `ClusterLiveStore` created at startup, with the operator's source policy. `--mcp` with `--oidc-kubernetes-credentials` fails at startup, because MCP requests carry no user's Kubernetes identity and that mode strips the operator's credentials.
+**Server.** `kubecove-server --mcp` serves `/mcp` on the existing listener, so TLS, `--allow-remote` and the Host allowlist apply unchanged. Requests with an `Origin` header must match the served origin, as browser `POST` requests do. With Cloudflare Access, `/mcp` also requires a valid Access assertion, so agents need an Access service token in addition to the MCP token. Without `--mcp`, the server has no MCP route. MCP requests share one session scope and one `ClusterLiveStore` created at startup, with the operator's source policy. `--mcp` with `--oidc-kubernetes-credentials` fails at startup, because MCP requests carry no user's Kubernetes identity and that mode strips the operator's credentials. With OIDC browser sign-in, `/mcp` does not require an OIDC session: the MCP token is an operator-held service credential, accepted by the product owner on 2026-11-03, and agents cannot complete a browser sign-in.
 
 ### Authentication
 
 MCP is disabled by default on both hosts.
 
 - Each host authenticates MCP requests with a dedicated bearer token of 32 bytes from the OS CSPRNG, the same strength ADR 0020 requires for the server token. Comparison is constant-time.
-- The token is stored as `mcp-token` in the host's data directory (the desktop app config directory, or the server `--data-dir`), mode `0600` on Unix, and is reused across restarts so agent configuration stays valid. It is created when MCP is first enabled.
+- The token is stored as `mcp-token` in the host's data directory (the desktop app config directory, or the server `--data-dir`), mode `0600` on Unix, and is reused across restarts so agent configuration stays valid. It is created on first use: when MCP starts, or when the desktop user first copies or rotates it.
 - The desktop never displays the token. Settings copies it, alone or inside a Claude Code command, only when the user asks, and can rotate it. Rotation restarts the listener, so the old token stops working immediately. The server prints the token file path, not the token, at startup; operators rotate it by deleting the file and restarting.
 - The MCP token grants only `/mcp`. It does not authenticate `/api/*`, and browser credentials (server token, cookies, Cloudflare Access or OIDC sessions) do not authenticate `/mcp`.
 - The desktop listener also rejects any `Host` other than its loopback address and any request carrying an `Origin`, so a web page cannot reach it through DNS rebinding or a cross-origin `fetch`.

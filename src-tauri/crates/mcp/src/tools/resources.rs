@@ -136,27 +136,42 @@ pub async fn describe_resource(
         target.namespace.clone(),
         uid,
     )
-    .await?;
+    .await;
     let mut body = Map::new();
     body.insert("context".into(), target.cluster.into());
     body.insert("summary".into(), compact::resource(&details.summary));
     body.insert("metadata".into(), metadata(&details.metadata));
     // The redacted YAML is the source for spec and other top-level fields, so Secret
-    // data is never read from anywhere else.
+    // data is never read from anywhere else. They sit under `fields` so a custom
+    // resource's own `context` or `summary` cannot replace this envelope's.
     if let Value::Object(document) = yaml_document(&details.yaml)? {
-        for (key, value) in document {
-            if !matches!(key.as_str(), "apiVersion" | "kind" | "metadata" | "status") {
-                body.insert(key, value);
-            }
-        }
+        let fields: Map<String, Value> = document
+            .into_iter()
+            .filter(|(key, _)| {
+                !matches!(key.as_str(), "apiVersion" | "kind" | "metadata" | "status")
+            })
+            .collect();
+        body.insert("fields".into(), Value::Object(fields));
     }
     if let Some(status) = details.status {
         body.insert("status".into(), status);
     }
-    body.insert(
-        "events".into(),
-        Value::Array(events.iter().map(compact::event).collect()),
-    );
+    match events {
+        Ok(events) => {
+            body.insert(
+                "events".into(),
+                Value::Array(events.iter().map(compact::event).collect()),
+            );
+        }
+        // The resource was readable; missing Event access should not hide it.
+        Err(error) if error.kind == AppErrorKind::Forbidden => {
+            body.insert(
+                "warnings".into(),
+                json!([format!("events are not listed: {}", error.message)]),
+            );
+        }
+        Err(error) => return Err(error),
+    }
     Ok(Value::Object(body))
 }
 

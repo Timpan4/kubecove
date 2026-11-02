@@ -11,9 +11,11 @@
 //! - A tool asks for a client other than a Read client.
 //! - `list_resource_kinds` misses a kind by its short name, or fails outright when the
 //!   user may not list custom resource definitions.
+//! - A stopped endpoint still serves requests on a connection that stayed open.
 //! - Paging skips or repeats rows, or reports a next page after the last one.
-//! - The token file is readable by other users, changes across restarts, or survives
-//!   rotation.
+//! - The token file is readable by other users, changes across restarts, survives
+//!   rotation, cannot be created before the config directory exists, or leaves a
+//!   staging file behind.
 
 use crate::{
     EndpointPolicy, McpContext, McpEndpoint, TOOL_NAMES, compact::page, load_or_create_token,
@@ -37,12 +39,16 @@ const TOKEN: &str = "test-token";
 const SECRET_VALUE: &str = "hunter2-database-password";
 
 fn endpoint(cluster: &Arc<FixedClusterAccess>) -> McpEndpoint {
+    endpoint_until(cluster, CancellationToken::new())
+}
+
+fn endpoint_until(cluster: &Arc<FixedClusterAccess>, shutdown: CancellationToken) -> McpEndpoint {
     let context = McpContext::new(ClusterLiveStore::default(), Some(cluster.scope()));
     McpEndpoint::new(
         Arc::new(context),
         TOKEN.to_owned(),
         EndpointPolicy::loopback(),
-        CancellationToken::new(),
+        shutdown,
     )
 }
 
@@ -138,15 +144,19 @@ async fn requests_without_the_bearer_token_never_reach_the_tools() {
         &[],
         &[("authorization", "Bearer wrong-token")],
         &[("authorization", "Basic dGVzdC10b2tlbg==")],
-        &[("authorization", "bearer test-token")],
+        &[("authorization", "Bearertest-token")],
         &[AUTHORIZED, AUTHORIZED],
     ];
     for headers in refused {
         let (status, _) = send(&endpoint, request(headers, &list_tools())).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{headers:?}");
     }
-    let (status, _) = send(&endpoint, request(&[AUTHORIZED], &list_tools())).await;
-    assert_eq!(status, StatusCode::OK);
+    // The scheme name is case-insensitive; the token is not.
+    for value in ["Bearer test-token", "bearer test-token"] {
+        let headers = [("authorization", value)];
+        let (status, _) = send(&endpoint, request(&headers, &list_tools())).await;
+        assert_eq!(status, StatusCode::OK, "{value}");
+    }
 }
 
 #[tokio::test]
@@ -200,7 +210,7 @@ async fn secret_values_never_leave_through_describe_or_yaml() {
     let (described, body) = call(&endpoint, "describe_resource", arguments.clone()).await;
     assert_eq!(body["summary"]["name"], "db");
     assert!(
-        body["data"]["password"].is_string(),
+        body["fields"]["data"]["password"].is_string(),
         "the key stays visible"
     );
     let (yaml, _) = call(&endpoint, "get_resource_yaml", arguments).await;
@@ -214,6 +224,17 @@ async fn secret_values_never_leave_through_describe_or_yaml() {
         intents.iter().all(|intent| *intent == ClientIntent::Read),
         "{intents:?}"
     );
+}
+
+#[tokio::test]
+async fn stopped_endpoint_refuses_requests_on_connections_still_open() {
+    let shutdown = CancellationToken::new();
+    let endpoint = endpoint_until(&cluster(), shutdown.clone());
+    let (status, _) = send(&endpoint, request(&[AUTHORIZED], &list_tools())).await;
+    assert_eq!(status, StatusCode::OK);
+    shutdown.cancel();
+    let (status, _) = send(&endpoint, request(&[AUTHORIZED], &list_tools())).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]
@@ -255,8 +276,9 @@ fn token_file_is_private_stable_and_replaced_on_rotation() {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("kubecove-mcp-token-{nanos}"));
-    std::fs::create_dir_all(&dir).unwrap();
+    // A fresh install has no config directory yet.
+    let root = std::env::temp_dir().join(format!("kubecove-mcp-token-{nanos}"));
+    let dir = root.join("config");
     let first = load_or_create_token(&dir).unwrap();
     assert_eq!(
         first.len(),
@@ -267,6 +289,11 @@ fn token_file_is_private_stable_and_replaced_on_rotation() {
     let rotated = rotate_token(&dir).unwrap();
     assert_ne!(rotated, first);
     assert_eq!(load_or_create_token(&dir).unwrap(), rotated);
+    assert_eq!(
+        std::fs::read_dir(&dir).unwrap().count(),
+        1,
+        "no staging file is left"
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
@@ -283,5 +310,5 @@ fn token_file_is_private_stable_and_replaced_on_rotation() {
             0o600
         );
     }
-    std::fs::remove_dir_all(dir).unwrap();
+    std::fs::remove_dir_all(root).unwrap();
 }

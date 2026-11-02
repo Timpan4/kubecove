@@ -61,8 +61,8 @@ tools! {
         "Scans Pods, workloads, Jobs, PersistentVolumeClaims and Nodes for degraded health, \
          restarts and recent Warning events, most severe first. Start troubleshooting here.";
     DescribeResource => "describe_resource", args::ResourceArgs, "Describe resource",
-        "One resource's summary, labels, annotations, owners, spec, status and recent events. \
-         Secret values are redacted.";
+        "One resource's summary, labels, annotations, owners, top-level fields such as spec \
+         or data, status and recent events. Secret values are redacted.";
     GetResourceYaml => "get_resource_yaml", args::ResourceArgs, "Get resource YAML",
         "One resource as YAML without managedFields. Secret values are redacted.";
     GetPodLogs => "get_pod_logs", args::PodLogsArgs, "Get Pod logs",

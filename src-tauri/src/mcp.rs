@@ -91,7 +91,9 @@ impl McpHost {
     async fn restart(&self, state: &mut HostState) {
         if let Some(listener) = state.listener.take() {
             listener.shutdown.cancel();
-            // Rebinding the same port must wait until the old listener is closed.
+            // Graceful drain would wait on any client that holds a connection open, so the
+            // accept loop is aborted; rebinding the port waits only for that.
+            listener.task.abort();
             let _ = listener.task.await;
         }
         state.error = None;

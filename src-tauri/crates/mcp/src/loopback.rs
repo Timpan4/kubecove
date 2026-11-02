@@ -10,8 +10,9 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 /// Binds `127.0.0.1:port` and serves `/mcp` until `shutdown` is cancelled. A bind failure,
-/// such as a port in use, is returned before anything is spawned. The returned task ends
-/// once the listener is closed and in-flight requests have finished.
+/// such as a port in use, is returned before anything is spawned. Aborting the returned
+/// task closes the listening socket at once; the cancelled endpoint refuses requests on
+/// connections that outlive it.
 pub async fn serve_loopback(
     port: u16,
     endpoint: McpEndpoint,

@@ -109,17 +109,26 @@ pub async fn list_resource_kinds(
 }
 
 pub async fn get_resource_metrics(arguments: args::MetricsArgs) -> Result<Value, AppError> {
+    if arguments.offset.is_some() && arguments.list.is_none() {
+        return Err(AppError::new(
+            "offset pages one list; pass list as pods, workloads or nodes",
+            AppErrorKind::Validation,
+        ));
+    }
     let (access, cluster) = access_for(arguments.context)?;
     let namespaces = arguments.namespace.into_iter().collect();
     let summary = resource_metrics_from(&access, cluster.clone(), namespaces).await?;
     let mut body = Map::new();
     body.insert("context".into(), cluster.into());
     body.insert("availability".into(), json!(summary.availability));
-    for (key, mut rows) in [
-        ("pods", summary.pods),
-        ("workloads", summary.workloads),
-        ("nodes", summary.nodes),
+    for (list, key, mut rows) in [
+        (args::MetricsList::Pods, "pods", summary.pods),
+        (args::MetricsList::Workloads, "workloads", summary.workloads),
+        (args::MetricsList::Nodes, "nodes", summary.nodes),
     ] {
+        if arguments.list.is_some_and(|wanted| wanted != list) {
+            continue;
+        }
         rows.sort_by(|left, right| {
             right
                 .cpu_millicores

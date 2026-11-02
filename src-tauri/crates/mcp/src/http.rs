@@ -36,11 +36,13 @@ impl EndpointPolicy {
 #[derive(Clone)]
 pub struct McpEndpoint {
     token: Arc<str>,
+    shutdown: CancellationToken,
     service: StreamableHttpService<KubeCoveMcp, NeverSessionManager>,
 }
 
 impl McpEndpoint {
-    /// Stops serving when `shutdown` is cancelled.
+    /// Stops serving when `shutdown` is cancelled: in-flight tool calls are cancelled and
+    /// later requests, including ones on connections still open, get 503.
     pub fn new(
         context: Arc<McpContext>,
         token: String,
@@ -55,10 +57,11 @@ impl McpEndpoint {
         // Each request stands alone: no MCP session state is kept between requests.
         config.legacy_session_mode = false;
         config.json_response = true;
-        config.cancellation_token = shutdown;
+        config.cancellation_token = shutdown.clone();
         let handler = KubeCoveMcp::new(context);
         Self {
             token: token.into(),
+            shutdown,
             service: StreamableHttpService::new(
                 move || Ok(handler.clone()),
                 Arc::new(NeverSessionManager::default()),
@@ -73,11 +76,15 @@ impl McpEndpoint {
         let (Some(value), None) = (values.next(), values.next()) else {
             return false;
         };
+        // The scheme name is case-insensitive (RFC 9110 section 11.1).
         value
             .to_str()
             .ok()
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .is_some_and(|presented| bool::from(presented.as_bytes().ct_eq(self.token.as_bytes())))
+            .and_then(|value| value.split_once(' '))
+            .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
+            .is_some_and(|(_, presented)| {
+                bool::from(presented.as_bytes().ct_eq(self.token.as_bytes()))
+            })
     }
 
     /// Authenticates, then serves the MCP request.
@@ -101,6 +108,9 @@ impl McpEndpoint {
         B::Error: Display,
     {
         use tower_service::Service as _;
+        if self.shutdown.is_cancelled() {
+            return json_error(StatusCode::SERVICE_UNAVAILABLE, "MCP server is stopped");
+        }
         match self.service.clone().call(request).await {
             Ok(response) => response,
             Err(never) => match never {},
@@ -109,19 +119,19 @@ impl McpEndpoint {
 }
 
 pub fn unauthorized() -> McpResponse {
-    let mut response = Response::new(
-        Full::new(Bytes::from_static(
-            b"{\"error\":\"MCP bearer token required\"}",
-        ))
-        .boxed(),
-    );
-    *response.status_mut() = StatusCode::UNAUTHORIZED;
-    let headers = response.headers_mut();
-    headers.insert(
+    let mut response = json_error(StatusCode::UNAUTHORIZED, "MCP bearer token required");
+    response.headers_mut().insert(
         header::WWW_AUTHENTICATE,
         http::HeaderValue::from_static("Bearer"),
     );
-    headers.insert(
+    response
+}
+
+fn json_error(status: StatusCode, message: &str) -> McpResponse {
+    let body = serde_json::json!({ "error": message }).to_string();
+    let mut response = Response::new(Full::new(Bytes::from(body)).boxed());
+    *response.status_mut() = status;
+    response.headers_mut().insert(
         header::CONTENT_TYPE,
         http::HeaderValue::from_static("application/json"),
     );

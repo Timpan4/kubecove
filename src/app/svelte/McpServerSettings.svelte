@@ -107,7 +107,11 @@
 				size="sm"
 				variant="outline"
 				disabled={pending || !status?.url}
-				onclick={() => status?.url && void copyWithToken("Claude Code command", (token) => claudeCodeCommand(status!.url!, token))}
+				onclick={() => {
+					// Captured before the token read, which can outlast a listener restart.
+					const url = status?.url;
+					if (url) void copyWithToken("Claude Code command", (token) => claudeCodeCommand(url, token));
+				}}
 			>
 				Copy Claude Code command
 			</Button>
